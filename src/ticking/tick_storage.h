@@ -649,6 +649,15 @@ public:
         return tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry);
     }
 
+    static unsigned long long getTickTransactionsSize()
+    {
+#ifdef USE_SWAP
+        return tickTransactionsSwapVM.getVmStateSize();
+#else
+        return tickTransactionsSize;
+#endif
+    }
+
     static bool init()
     {
         // TODO: allocate everything with one continuous buffer

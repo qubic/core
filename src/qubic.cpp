@@ -7840,21 +7840,14 @@ namespace Color {
 unsigned long long getTotalRam()
 {
     unsigned long long totalRam = 0;
-    unsigned long long totalRamMayBeUsed = 0;
-
-    // tickTransactionsDigestPtr can be / 100
-    // tickTransactionOffset can be / 100
-    // tickTransactionsDigestPtr + tickTransactionOffset ~ 300 MB in current mainnet state (already safe number,
-    // didnt take account of MAX_NUMBER_OF_TICKS_PER_EPOCH only around 75% used)
-
-    // tickTransactionsSize can be / 100 ~ 6.7gb (already safe number, didn't take account of MAX_NUMBER_OF_TICKS_PER_EPOCH only around 75% used)
-
-    // tickDataPtr can be reduced by 25%
-    // tickPtr can be reduced by 25%
 
     // computorPendingTransactions buffer
     totalRam += NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * MAX_TRANSACTION_SIZE;
     totalRam += NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * 32ULL;
+
+    // entityPendingTransctions buffer (almost nothing at current mainnet state)
+    // totalRam += SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE;
+    // totalRam += SPECTRUM_CAPACITY * 32ULL;
 
     // spectrum & spectrumDigests
     totalRam += spectrumSizeInBytes;
@@ -7903,8 +7896,10 @@ unsigned long long getTotalRam()
     // tick storage
     totalRam += ts.getTickDataSize();
     totalRam += ts.getTicksSize();
+    totalRam += ts.getTickTransactionsSize();
     totalRam += ts.getTickTransactionOffsetSize();
-    totalRam += ts.getTickTransactionsDigestPtrSize();
+    // At current mainnet state, tick transactions use about 1/10 of the allocated space
+    totalRam += ts.getTickTransactionsDigestPtrSize() / 10;
 
     return totalRam;
 }
@@ -7922,7 +7917,7 @@ void processArgs(int argc, const char* argv[]) {
         ("p,peers", "Public peers", cxxopts::value<std::string>())
         ("m,mode", "Core mode", cxxopts::value<std::string>())
         ("t,threads", "Total Threads will be used by the core", cxxopts::value<int>())
-        ("st,solution-threads", "Threads that will be used by the core to process solution", cxxopts::value<int>())
+        ("s,solution-threads", "Threads that will be used by the core to process solution", cxxopts::value<int>())
         ("v,verify-state", "Core will verify state after x tick, to reduce computational to the node", cxxopts::value<int>()->default_value("1"));
     auto result = options.parse(argc, argv);
 
