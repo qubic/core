@@ -1279,13 +1279,6 @@ static void decompose(unsigned long long* k, unsigned long long* scalars)
     const unsigned long long a3 = mul_truncate(k, (unsigned long long*)ell3);
     const unsigned long long a4 = mul_truncate(k, (unsigned long long*)ell4);
 
-#ifdef __AVX512F__
-    * ((m256i*)scalars) = _mm256_add_epi64(_mm256_add_epi64(_mm256_add_epi64(_mm256_add_epi64(_mm256_mullo_epi64(_mm256_set1_epi64x(a1), B1), _mm256_mullo_epi64(_mm256_set1_epi64x(a2), B2)), _mm256_mullo_epi64(_mm256_set1_epi64x(a3), B3)), _mm256_mullo_epi64(_mm256_set1_epi64x(a4), B4)), C);
-    if (!((scalars[0] += k[0]) & 1))
-    {
-        *((m256i*)scalars) = _mm256_sub_epi64(*((m256i*)scalars), B4);
-    }
-#else
     scalars[0] = a1 * B11 + a2 * B21 + a3 * B31 + a4 * B41 + C1 + k[0];
     scalars[1] = a1 * B12 + a2 * B22 + a3 * B32 + a4 * B42 + C2;
     scalars[2] = a1 * B13 + a2 * B23 + a3 * B33 + a4 * B43 + C3;
@@ -1297,7 +1290,6 @@ static void decompose(unsigned long long* k, unsigned long long* scalars)
         scalars[2] -= B43;
         scalars[3] -= B44;
     }
-#endif
 }
 
 static void wNAF_recode(unsigned long long scalar, unsigned int w, char* digits)
