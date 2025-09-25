@@ -6270,6 +6270,7 @@ static bool initialize()
 
 static void deinitialize()
 {
+    return;
     deinitTcp4();
 
     deinitSpecialEntities();
@@ -7816,12 +7817,12 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
     deinitialize();
 
     bs->Stall(1000000);
-    if (!shutDownNode)
-    {
-        st->ConIn->Reset(st->ConIn, FALSE);
-        unsigned long long eventIndex;
-        bs->WaitForEvent(1, &st->ConIn->WaitForKey, &eventIndex);
-    }
+    // if (!shutDownNode)
+    // {
+    //     st->ConIn->Reset(st->ConIn, FALSE);
+    //     unsigned long long eventIndex;
+    //     bs->WaitForEvent(1, &st->ConIn->WaitForKey, &eventIndex);
+    // }
 
     return EFI_SUCCESS;
 }
@@ -7904,21 +7905,33 @@ unsigned long long getTotalRam()
     return totalRam;
 }
 
+void logColorToScreen(std::string type, std::string msg) {
+    if (type == "INFO") {
+        std::cout << Color::green << "[INFO] " << Color::reset << msg << std::endl;
+    } else if (type == "WARN") {
+        std::cout << Color::yellow << "[WARN] " << Color::reset << msg << std::endl;
+    } else if (type == "ERROR") {
+        std::cout << Color::red << "[ERROR] " << Color::reset << msg << std::endl;
+    } else {
+        std::cout << "[UNKNOWN] " << msg << std::endl;
+    }
+}
+
 void processArgs(int argc, const char* argv[]) {
 #ifdef TESTNET
-    std::cout << Color::green << "[INFO] " << Color::reset << "This node is running as " << "TESNET" << std::endl;
+    logColorToScreen("INFO", "This node is running as TESTNET");
 #else
-	std::cout << Color::green << "[INFO] " << Color::reset << "This node is running as " << "MAINNET" << std::endl;
+    logColorToScreen("INFO", "This node is running as MAINNET");
 #endif
-    std::cout << Color::green << "[INFO] " << Color::reset << "Total RAM required: " << getTotalRam() / (1024 * 1024 * 1024) << " GB" << std::endl;
+    logColorToScreen("INFO", "Total RAM required " + std::to_string(getTotalRam() / (1024 * 1024 * 1024)) + " GB");
 
     cxxopts::Options options("Qubic Core Lite", "The lite version of Qubic Core that can run directly on the OS without a UEFI environment.");
     options.add_options()
         ("p,peers", "Public peers", cxxopts::value<std::string>())
         ("m,mode", "Core mode", cxxopts::value<std::string>())
         ("t,threads", "Total Threads will be used by the core", cxxopts::value<int>())
-        ("s,solution-threads", "Threads that will be used by the core to process solution", cxxopts::value<int>())
-        ("v,verify-state", "Core will verify state after x tick, to reduce computational to the node", cxxopts::value<int>()->default_value("1"));
+        ("l,solution-threads", "Threads that will be used by the core to process solution", cxxopts::value<int>())
+        ("s,security-tick", "Core will verify state after x tick, to reduce computational to the node", cxxopts::value<int>()->default_value("1"));
     auto result = options.parse(argc, argv);
 
     if (result.count("peers")) {
@@ -7945,6 +7958,11 @@ void processArgs(int argc, const char* argv[]) {
         NUMBER_OF_SOLUTION_PROCESSORS_DYNAMIC = result["solution-threads"].as<int>();
     }
 
+    if (result.count("security-tick")) {
+        securityTick = result["security-tick"].as<int>();
+        logColorToScreen("INFO", "Security tick set to " + std::to_string(securityTick));
+    }
+
     if (result.count("mode")) {
         std::vector<std::string> validModes = {"mainnet", "testnet"};
         std::string modeStr = result["mode"].as<std::string>();
@@ -7965,7 +7983,9 @@ void processArgs(int argc, const char* argv[]) {
 }
 
 int main(int argc, const char* argv[]) {
+    logColorToScreen("INFO", "================== Qubic Core Lite ==================");
 	processArgs(argc, argv);
+    logColorToScreen("INFO", "================== ~~~~~~~~~~~~~~~ ==================\n");
 
     Overload::initializeUefi();
     return efi_main(ih, st);
