@@ -6,7 +6,7 @@
 #include "network_messages/tick.h"
 
 #include "ticking/tick_storage.h"
-#include "ticking/txs_pool.h"
+#include "ticking/pending_txs_pool.h"
 
 #include "private_settings.h"
 

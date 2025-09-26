@@ -11,7 +11,7 @@
 
 // Mempool that saves pending transactions (txs) of all entities.
 // This is a kind of singleton class with only static members (so all instances refer to the same data).
-class TxsPool
+class PendingTxsPool
 {
 private:
     static constexpr unsigned long long maxNumTicksToSave = MAX_NUMBER_OF_TICKS_PER_EPOCH + TICKS_TO_KEEP_FROM_PRIOR_EPOCH;
@@ -122,9 +122,9 @@ public:
     // Init at node startup.
     static bool init()
     {
-        if (!allocPoolWithErrorLog(L"TxsPool::tickTransactionsPtr ", tickTransactionsSize, (void**)&tickTransactionsPtr, __LINE__)
-            || !allocPoolWithErrorLog(L"TxsPool::tickTransactionOffsetsPtr ", tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr, __LINE__)
-            || !allocPoolWithErrorLog(L"TxsPool::txsDigestsPtr ", txsDigestsSize, (void**)&txsDigestsPtr, __LINE__))
+        if (!allocPoolWithErrorLog(L"PendingTxsPool::tickTransactionsPtr ", tickTransactionsSize, (void**)&tickTransactionsPtr, __LINE__)
+            || !allocPoolWithErrorLog(L"PendingTxsPool::tickTransactionOffsetsPtr ", tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr, __LINE__)
+            || !allocPoolWithErrorLog(L"PendingTxsPool::txsDigestsPtr ", txsDigestsSize, (void**)&txsDigestsPtr, __LINE__))
         {
             return false;
         }
@@ -204,10 +204,10 @@ public:
     }
 
     // Return number of transactions scheduled for the specified tick.
-    static unsigned int getNumberOfTickTxs(unsigned int tick)
+    static unsigned int getNumberOfPendingTickTxs(unsigned int tick)
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin txsPool.getNumberOfTickTxs()");
+        addDebugMessage(L"Begin pendingTxsPool.getNumberOfPendingTickTxs()");
 #endif
         unsigned int res = 0;
         ACQUIRE(numSavedLock);
@@ -223,7 +223,7 @@ public:
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsgBuf[200];
-        setText(dbgMsgBuf, L"End txsPool.getNumberOfTickTxs() for tick=");
+        setText(dbgMsgBuf, L"End pendingTxsPool.getNumberOfPendingTickTxs() for tick=");
         appendNumber(dbgMsgBuf, tick, FALSE);
         appendText(dbgMsgBuf, L" -> res=");
         appendNumber(dbgMsgBuf, res, FALSE);
@@ -233,10 +233,10 @@ public:
     }
 
     // Return number of transactions scheduled later than the specified tick.
-    static unsigned int getNumberOfPendingTxs(unsigned int tick)
+    static unsigned int getTotalNumberOfPendingTxs(unsigned int tick)
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin txsPool.getNumberOfPendingTxs()");
+        addDebugMessage(L"Begin pendingTxsPool.getTotalNumberOfPendingTxs()");
 #endif
         unsigned int res = 0;
         unsigned int startTick = tickEnd;
@@ -270,7 +270,7 @@ public:
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsgBuf[200];
-        setText(dbgMsgBuf, L"End txsPool.getNumberOfPendingTxs() for tick=");
+        setText(dbgMsgBuf, L"End pendingTxsPool.getTotalNumberOfPendingTxs() for tick=");
         appendNumber(dbgMsgBuf, tick, FALSE);
         appendText(dbgMsgBuf, L" -> res=");
         appendNumber(dbgMsgBuf, res, FALSE);
@@ -283,7 +283,7 @@ public:
     static bool update(Transaction* tx)
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin txsPool.update()");
+        addDebugMessage(L"Begin pendingTxsPool.update()");
 #endif
         bool txAdded = false;
         if (tx->checkValidity() && tickInCurrentEpochStorage(tx->tick))
@@ -332,9 +332,9 @@ public:
         }
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         if (txAdded)
-            addDebugMessage(L"End txsPool.update(), txAdded true");
+            addDebugMessage(L"End pendingTxsPool.update(), txAdded true");
         else
-            addDebugMessage(L"End txsPool.update(), txAdded false");
+            addDebugMessage(L"End pendingTxsPool.update(), txAdded false");
 #endif
         return txAdded;
     }
@@ -344,7 +344,7 @@ public:
     static Transaction* get(unsigned int tick, unsigned int index)
     {
 //#if !defined(NDEBUG) && !defined(NO_UEFI)
-//        addDebugMessage(L"txsPool.get()");
+//        addDebugMessage(L"pendingTxsPool.get()");
 //        CHAR16 dbgMsgBuf[200];
 //        setText(dbgMsgBuf, L"tick=");
 //        appendNumber(dbgMsgBuf, tick, FALSE);
@@ -388,7 +388,7 @@ public:
     static m256i* getDigest(unsigned int tick, unsigned int index)
     {
 //#if !defined(NDEBUG) && !defined(NO_UEFI)
-//        addDebugMessage(L"txsPool.getDigest()");
+//        addDebugMessage(L"pendingTxsPool.getDigest()");
 //        CHAR16 dbgMsgBuf[200];
 //        setText(dbgMsgBuf, L"tick=");
 //        appendNumber(dbgMsgBuf, tick, FALSE);
@@ -431,7 +431,7 @@ public:
     void beginEpoch(unsigned int newInitialTick)
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin txsPool.beginEpoch()");
+        addDebugMessage(L"Begin pendingTxsPool.beginEpoch()");
 #endif
         if (tickBegin && tickInCurrentEpochStorage(newInitialTick) && tickBegin < newInitialTick)
         {
@@ -558,7 +558,7 @@ public:
         nextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"End txsPool.beginEpoch()");
+        addDebugMessage(L"End pendingTxsPool.beginEpoch()");
 #endif
     }
 
@@ -721,7 +721,7 @@ public:
         }
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"End txsPool.checkStateConsistencyWithAssert()");
+        addDebugMessage(L"End pendingTxsPool.checkStateConsistencyWithAssert()");
 #endif
     }
 

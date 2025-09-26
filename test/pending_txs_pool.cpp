@@ -9,13 +9,13 @@
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 5
 #undef TRANSACTION_SPARSENESS
 #define TRANSACTION_SPARSENESS 4
-#include "../src/ticking/txs_pool.h"
+#include "../src/ticking/pending_txs_pool.h"
 
 #include <random>
 #include <vector>
 
 
-class TestTxsPool : public TxsPool
+class TestPendingTxsPool : public PendingTxsPool
 {
     unsigned char transactionBuffer[MAX_TRANSACTION_SIZE];
 public:
@@ -34,7 +34,7 @@ public:
     }
 };
 
-TestTxsPool txsPool;
+TestPendingTxsPool pendingTxsPool;
 
 void addTickTransactions(unsigned int tick, unsigned long long seed, unsigned short maxTransactions, unsigned short* numTransactionsAdded = nullptr)
 {
@@ -49,17 +49,17 @@ void addTickTransactions(unsigned int tick, unsigned long long seed, unsigned sh
     for (unsigned int transaction = 0; transaction < transactionNum; ++transaction)
     {
         unsigned int inputSize = gen64() % MAX_INPUT_SIZE;
-        if (txsPool.addTransaction(tick, inputSize))
+        if (pendingTxsPool.addTransaction(tick, inputSize))
             if (numTransactionsAdded)
                 *numTransactionsAdded += 1;
     }
-    txsPool.checkStateConsistencyWithAssert();
+    pendingTxsPool.checkStateConsistencyWithAssert();
 }
 
 void checkTickTransactions(unsigned int tick, unsigned long long seed, unsigned short maxTransactions, bool previousEpoch = false)
 {
     // only last ticks of previous epoch are kept in storage -> check okay
-    if (previousEpoch && !txsPool.tickInPreviousEpochStorage(tick))
+    if (previousEpoch && !pendingTxsPool.tickInPreviousEpochStorage(tick))
         return;
 
     // use pseudo-random sequence
@@ -73,7 +73,7 @@ void checkTickTransactions(unsigned int tick, unsigned long long seed, unsigned 
         {
             int expectedInputSize = (int)(gen64() % MAX_INPUT_SIZE);
 
-            Transaction* tp = txsPool.get(tick, transaction);
+            Transaction* tp = pendingTxsPool.get(tick, transaction);
 
             // If previousEpoch, some transactions at the beginning may not have fit into the storage and are missing -> check okay
             // If current epoch, some may be missing at the end due to limited storage -> check okay
@@ -88,7 +88,7 @@ void checkTickTransactions(unsigned int tick, unsigned long long seed, unsigned 
                 EXPECT_EQ((int)tp->inputSize, expectedInputSize);
             }
 
-            m256i* digest = txsPool.getDigest(tick, transaction);
+            m256i* digest = pendingTxsPool.getDigest(tick, transaction);
 
             EXPECT_TRUE(digest);
             if (!digest)
@@ -102,7 +102,7 @@ void checkTickTransactions(unsigned int tick, unsigned long long seed, unsigned 
 }
 
 
-TEST(TestTxsPool, EpochTransition) {
+TEST(TestPendingTxsPool, EpochTransition) {
 
     unsigned long long seed = 42;
 
@@ -115,8 +115,8 @@ TEST(TestTxsPool, EpochTransition) {
         // first, test case of having no transactions
         unsigned short maxTransactions = (testIdx == 0) ? 0 : NUMBER_OF_TRANSACTIONS_PER_TICK;
 
-        txsPool.init();
-        txsPool.checkStateConsistencyWithAssert();
+        pendingTxsPool.init();
+        pendingTxsPool.checkStateConsistencyWithAssert();
 
         const int firstEpochTicks = gen64() % (MAX_NUMBER_OF_TICKS_PER_EPOCH + 1);
         const int secondEpochTicks = gen64() % (MAX_NUMBER_OF_TICKS_PER_EPOCH + 1);
@@ -135,8 +135,8 @@ TEST(TestTxsPool, EpochTransition) {
             thirdEpochSeeds[i] = gen64();
 
         // first epoch
-        txsPool.beginEpoch(firstEpochTick0);
-        txsPool.checkStateConsistencyWithAssert();
+        pendingTxsPool.beginEpoch(firstEpochTick0);
+        pendingTxsPool.checkStateConsistencyWithAssert();
 
         // add ticks transactions
         for (int i = 0; i < firstEpochTicks; ++i)
@@ -146,11 +146,11 @@ TEST(TestTxsPool, EpochTransition) {
         for (int i = 0; i < firstEpochTicks; ++i)
             checkTickTransactions(firstEpochTick0 + i, firstEpochSeeds[i], maxTransactions);
 
-        txsPool.checkStateConsistencyWithAssert();
+        pendingTxsPool.checkStateConsistencyWithAssert();
 
         // Epoch transistion
-        txsPool.beginEpoch(secondEpochTick0);
-        txsPool.checkStateConsistencyWithAssert();
+        pendingTxsPool.beginEpoch(secondEpochTick0);
+        pendingTxsPool.checkStateConsistencyWithAssert();
 
         // add ticks transactions
         for (int i = 0; i < secondEpochTicks; ++i)
@@ -163,11 +163,11 @@ TEST(TestTxsPool, EpochTransition) {
         for (int i = 0; i < firstEpochTicks; ++i)
             checkTickTransactions(firstEpochTick0 + i, firstEpochSeeds[i], maxTransactions, previousEpoch);
 
-        txsPool.checkStateConsistencyWithAssert();
+        pendingTxsPool.checkStateConsistencyWithAssert();
 
         // Epoch transistion
-        txsPool.beginEpoch(thirdEpochTick0);
-        txsPool.checkStateConsistencyWithAssert();
+        pendingTxsPool.beginEpoch(thirdEpochTick0);
+        pendingTxsPool.checkStateConsistencyWithAssert();
 
         // add ticks transactions
         for (int i = 0; i < thirdEpochTicks; ++i)
@@ -179,13 +179,13 @@ TEST(TestTxsPool, EpochTransition) {
         for (int i = 0; i < secondEpochTicks; ++i)
             checkTickTransactions(secondEpochTick0 + i, secondEpochSeeds[i], maxTransactions, previousEpoch);
 
-        txsPool.checkStateConsistencyWithAssert();
+        pendingTxsPool.checkStateConsistencyWithAssert();
 
-        txsPool.deinit();
+        pendingTxsPool.deinit();
     }
 }
 
-TEST(TestTxsPool, NumberOfPendingTxs) {
+TEST(TestPendingTxsPool, NumberOfPendingTxs) {
 
     unsigned long long seed = 1337;
 
@@ -198,8 +198,8 @@ TEST(TestTxsPool, NumberOfPendingTxs) {
         // first, test case of having no transactions
         unsigned short maxTransactions = (testIdx == 0) ? 0 : NUMBER_OF_TRANSACTIONS_PER_TICK;
 
-        txsPool.init();
-        txsPool.checkStateConsistencyWithAssert();
+        pendingTxsPool.init();
+        pendingTxsPool.checkStateConsistencyWithAssert();
 
         const int firstEpochTicks = gen64() % (MAX_NUMBER_OF_TICKS_PER_EPOCH + 1);
         const unsigned int firstEpochTick0 = gen64() % 10000000;
@@ -208,7 +208,7 @@ TEST(TestTxsPool, NumberOfPendingTxs) {
             firstEpochSeeds[i] = gen64();
 
         // first epoch
-        txsPool.beginEpoch(firstEpochTick0);
+        pendingTxsPool.beginEpoch(firstEpochTick0);
 
         // add ticks transactions
         std::vector<unsigned short> numTransactionsAdded(firstEpochTicks);
@@ -222,17 +222,17 @@ TEST(TestTxsPool, NumberOfPendingTxs) {
             }
         }
 
-        EXPECT_EQ(txsPool.getNumberOfPendingTxs(firstEpochTick0 - 1), (unsigned int)numTransactionsAdded[0] + numPendingTransactions[0]);
+        EXPECT_EQ(pendingTxsPool.getTotalNumberOfPendingTxs(firstEpochTick0 - 1), (unsigned int)numTransactionsAdded[0] + numPendingTransactions[0]);
         for (int i = 0; i < firstEpochTicks; ++i)
         {
-            EXPECT_EQ(txsPool.getNumberOfPendingTxs(firstEpochTick0 + i), (unsigned int)numPendingTransactions[i]);
+            EXPECT_EQ(pendingTxsPool.getTotalNumberOfPendingTxs(firstEpochTick0 + i), (unsigned int)numPendingTransactions[i]);
         }
 
-        txsPool.deinit();
+        pendingTxsPool.deinit();
     }
 }
 
-TEST(TestTxsPool, NumberOfTickTxs) {
+TEST(TestPendingTxsPool, NumberOfTickTxs) {
 
     unsigned long long seed = 67534;
 
@@ -245,8 +245,8 @@ TEST(TestTxsPool, NumberOfTickTxs) {
         // first, test case of having no transactions
         unsigned short maxTransactions = (testIdx == 0) ? 0 : NUMBER_OF_TRANSACTIONS_PER_TICK;
 
-        txsPool.init();
-        txsPool.checkStateConsistencyWithAssert();
+        pendingTxsPool.init();
+        pendingTxsPool.checkStateConsistencyWithAssert();
 
         const int firstEpochTicks = gen64() % (MAX_NUMBER_OF_TICKS_PER_EPOCH + 1);
         const unsigned int firstEpochTick0 = gen64() % 10000000;
@@ -255,7 +255,7 @@ TEST(TestTxsPool, NumberOfTickTxs) {
             firstEpochSeeds[i] = gen64();
 
         // first epoch
-        txsPool.beginEpoch(firstEpochTick0);
+        pendingTxsPool.beginEpoch(firstEpochTick0);
 
         // add ticks transactions
         std::vector<unsigned short> numTransactionsAdded(firstEpochTicks);
@@ -264,12 +264,12 @@ TEST(TestTxsPool, NumberOfTickTxs) {
             addTickTransactions(firstEpochTick0 + i, firstEpochSeeds[i], maxTransactions, &numTransactionsAdded[i]);
         }
 
-        EXPECT_EQ(txsPool.getNumberOfTickTxs(firstEpochTick0 - 1), 0);
+        EXPECT_EQ(pendingTxsPool.getNumberOfPendingTickTxs(firstEpochTick0 - 1), 0);
         for (int i = 0; i < firstEpochTicks; ++i)
         {
-            EXPECT_EQ(txsPool.getNumberOfTickTxs(firstEpochTick0 + i), (unsigned int)numTransactionsAdded[i]);
+            EXPECT_EQ(pendingTxsPool.getNumberOfPendingTickTxs(firstEpochTick0 + i), (unsigned int)numTransactionsAdded[i]);
         }
 
-        txsPool.deinit();
+        pendingTxsPool.deinit();
     }
 }

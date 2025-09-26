@@ -131,7 +131,7 @@ static unsigned short ownComputorIndicesMapping[sizeof(computorSeeds) / sizeof(c
 static TickStorage ts;
 static VoteCounter voteCounter;
 static TickData nextTickData;
-static TxsPool txsPool;
+static PendingTxsPool pendingTxsPool;
 
 static m256i uniqueNextTickTransactionDigests[NUMBER_OF_COMPUTORS];
 static unsigned int uniqueNextTickTransactionDigestCounters[NUMBER_OF_COMPUTORS];
@@ -1075,7 +1075,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 enqueueResponse(NULL, header);
             }
 
-            txsPool.update(request);
+            pendingTxsPool.update(request);
 
             unsigned int tickIndex = ts.tickToIndexCurrentEpoch(request->tick);
             ts.tickData.acquireLock();
@@ -3265,16 +3265,16 @@ static void processTick(unsigned long long processorNumber)
                     KangarooTwelve(timelockPreimage, sizeof(timelockPreimage), &broadcastedFutureTickData.tickData.timelock, sizeof(broadcastedFutureTickData.tickData.timelock));
 
                     unsigned int nextTxIndex = 0;
-                    unsigned int numTickTxs = txsPool.getNumberOfTickTxs(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET);
-                    for (unsigned int tx = 0; tx < numTickTxs; ++tx)
+                    unsigned int numPendingTickTxs = pendingTxsPool.getNumberOfPendingTickTxs(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET);
+                    for (unsigned int tx = 0; tx < numPendingTickTxs; ++tx)
                     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-                        addDebugMessage(L"txsPool.get() call in processTick()");
+                        addDebugMessage(L"pendingTxsPool.get() call in processTick()");
 #endif
-                        const Transaction* pendingTransaction = txsPool.get(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, tx);
+                        const Transaction* pendingTransaction = pendingTxsPool.get(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, tx);
                         if (pendingTransaction)
                         {
-                            txsPool.acquireLock();
+                            pendingTxsPool.acquireLock();
                             ASSERT(pendingTransaction->checkValidity());
                             const unsigned int transactionSize = pendingTransaction->totalSize();
                             ts.tickTransactions.acquireLock();
@@ -3282,7 +3282,7 @@ static void processTick(unsigned long long processorNumber)
                             {
                                 ts.tickTransactionOffsets(pendingTransaction->tick, nextTxIndex) = ts.nextTickTransactionOffset;
                                 copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), (void*)pendingTransaction, transactionSize);
-                                const m256i* digest = txsPool.getDigest(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, tx);
+                                const m256i* digest = pendingTxsPool.getDigest(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, tx);
                                 // digest should always be != nullptr because pendingTransaction != nullptr
                                 ASSERT(digest);
                                 broadcastedFutureTickData.tickData.transactionDigests[nextTxIndex] = digest ? *digest : m256i::zero();
@@ -3290,7 +3290,7 @@ static void processTick(unsigned long long processorNumber)
                                 nextTxIndex++;
                             }
                             ts.tickTransactions.releaseLock();
-                            txsPool.releaseLock();
+                            pendingTxsPool.releaseLock();
                         }
                         else
                         {
@@ -3478,14 +3478,14 @@ static void beginEpoch()
 
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
-    txsPool.checkStateConsistencyWithAssert();
+    pendingTxsPool.checkStateConsistencyWithAssert();
 #endif
     ts.beginEpoch(system.initialTick);
-    txsPool.beginEpoch(system.initialTick);
+    pendingTxsPool.beginEpoch(system.initialTick);
     voteCounter.init();
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
-    txsPool.checkStateConsistencyWithAssert();
+    pendingTxsPool.checkStateConsistencyWithAssert();
 #endif
 #if ADDON_TX_STATUS_REQUEST
     beginEpochTxStatusRequestAddOn(system.initialTick);
@@ -4342,20 +4342,20 @@ static void prepareNextTickTransactions()
     {
         // Checks if any of the missing transactions is available in the pending transaction pool and remove unknownTransaction flag if found
 
-        unsigned int numTickTxs = txsPool.getNumberOfTickTxs(nextTick);
-        for (unsigned int i = 0; i < numTickTxs; ++i)
+        unsigned int numPendingTickTxs = pendingTxsPool.getNumberOfPendingTickTxs(nextTick);
+        for (unsigned int i = 0; i < numPendingTickTxs; ++i)
         {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-            addDebugMessage(L"txsPool.get() call in prepareNextTickTransactions()");
+            addDebugMessage(L"pendingTxsPool.get() call in prepareNextTickTransactions()");
 #endif
-            Transaction* pendingTransaction = txsPool.get(nextTick, i);
+            Transaction* pendingTransaction = pendingTxsPool.get(nextTick, i);
             if (pendingTransaction)
             {
-                txsPool.acquireLock();
+                pendingTxsPool.acquireLock();
                 ASSERT(pendingTransaction->checkValidity());
                 auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
 
-                const m256i* digest = txsPool.getDigest(nextTick, i);
+                const m256i* digest = pendingTxsPool.getDigest(nextTick, i);
                 if (digest)
                 {
                     for (unsigned int j = 0; j < NUMBER_OF_TRANSACTIONS_PER_TICK; j++)
@@ -4387,7 +4387,7 @@ static void prepareNextTickTransactions()
                         }
                     }
                 }
-                txsPool.releaseLock();
+                pendingTxsPool.releaseLock();
             }
         }
 
@@ -5357,7 +5357,7 @@ static bool initialize()
         if (!ts.init())
             return false;
 
-        if (!txsPool.init())
+        if (!pendingTxsPool.init())
             return false;        
 
         setMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
@@ -5703,7 +5703,7 @@ static void deinitialize()
 
     ts.deinit();
 
-    txsPool.deinit();
+    pendingTxsPool.deinit();
 
     if (score)
     {
@@ -5939,7 +5939,7 @@ static void logInfo()
         appendNumber(message, td.millisecond % 10, FALSE);
         appendText(message, L".) ");
     }
-    appendNumber(message, txsPool.getNumberOfPendingTxs(system.tick), TRUE);
+    appendNumber(message, pendingTxsPool.getTotalNumberOfPendingTxs(system.tick), TRUE);
     appendText(message, L" pending transactions.");
     logToConsole(message);
 
