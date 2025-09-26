@@ -102,8 +102,8 @@ void checkTickTransactions(unsigned int tick, unsigned long long seed, unsigned 
 }
 
 
-TEST(TestPendingTxsPool, EpochTransition) {
-
+TEST(TestPendingTxsPool, EpochTransition) 
+{
     unsigned long long seed = 42;
 
     // use pseudo-random sequence
@@ -185,8 +185,8 @@ TEST(TestPendingTxsPool, EpochTransition) {
     }
 }
 
-TEST(TestPendingTxsPool, NumberOfPendingTxs) {
-
+TEST(TestPendingTxsPool, TotalNumberOfPendingTxs) 
+{
     unsigned long long seed = 1337;
 
     // use pseudo-random sequence
@@ -232,8 +232,8 @@ TEST(TestPendingTxsPool, NumberOfPendingTxs) {
     }
 }
 
-TEST(TestPendingTxsPool, NumberOfTickTxs) {
-
+TEST(TestPendingTxsPool, NumberOfPendingTickTxs) 
+{
     unsigned long long seed = 67534;
 
     // use pseudo-random sequence
