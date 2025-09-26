@@ -14,54 +14,28 @@
 class PendingTxsPool
 {
 private:
-    static constexpr unsigned long long maxNumTicksToSave = MAX_NUMBER_OF_TICKS_PER_EPOCH + TICKS_TO_KEEP_FROM_PRIOR_EPOCH;
-    static constexpr unsigned long long maxNumTxsCurrentEpoch = ((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK;
-    static constexpr unsigned long long maxNumTxsPreviousEpoch = ((unsigned long long)TICKS_TO_KEEP_FROM_PRIOR_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK;
-    static constexpr unsigned long long maxNumTxs = maxNumTxsCurrentEpoch + maxNumTxsPreviousEpoch;
+    static constexpr unsigned long long maxNumTxs = PENDING_TXS_POOL_NUM_TICKS * NUMBER_OF_TRANSACTIONS_PER_TICK;
 
-    static constexpr unsigned long long tickTransactionsSizeCurrentEpoch = FIRST_TICK_TRANSACTION_OFFSET + (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS);
-    static constexpr unsigned long long tickTransactionsSizePreviousEpoch = (((unsigned long long)TICKS_TO_KEEP_FROM_PRIOR_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE / TRANSACTION_SPARSENESS);
-    static constexpr unsigned long long tickTransactionsSize = tickTransactionsSizeCurrentEpoch + tickTransactionsSizePreviousEpoch;
-
-    static constexpr unsigned long long tickTransactionOffsetsSizeCurrentEpoch = maxNumTxsCurrentEpoch * sizeof(unsigned long long);
-    static constexpr unsigned long long tickTransactionOffsetsSizePreviousEpoch = maxNumTxsPreviousEpoch * sizeof(unsigned long long);
+    // Sizes of different buffers in bytes
+    static constexpr unsigned long long tickTransactionsSize =  maxNumTxs * MAX_TRANSACTION_SIZE;
     static constexpr unsigned long long tickTransactionOffsetsSize = maxNumTxs * sizeof(unsigned long long);
+    static constexpr unsigned long long txsDigestsSize = maxNumTxs * sizeof(m256i);
 
-    static constexpr unsigned long long txsDigestsSizeCurrentEpoch = maxNumTxsCurrentEpoch * 32ULL;
-    static constexpr unsigned long long txsDigestsSizePreviousEpoch = maxNumTxsPreviousEpoch * 32ULL;
-    static constexpr unsigned long long txsDigestsSize = txsDigestsSizeCurrentEpoch + txsDigestsSizePreviousEpoch;
+    // The pool stores the tick range [firstStoredTick, firstStoredTick + PENDING_TXS_POOL_NUM_TICKS[
+    inline static unsigned int firstStoredTick = 0;
 
-    // Tick number range of current epoch storage
-    inline static unsigned int tickBegin = 0;
-    inline static unsigned int tickEnd = 0;
+    // Allocated tickTransactions buffer with tickTransactionsSize bytes
+    inline static unsigned char* tickTransactionsBuffer = nullptr;
 
-    // Tick number range of previous epoch storage
-    inline static unsigned int oldTickBegin = 0;
-    inline static unsigned int oldTickEnd = 0;
+    // Allocated txsDigests buffer with maxNumTxs elements
+    inline static m256i* txsDigestsBuffer = nullptr;
 
-    // Allocated tickTransactions buffer with tickTransactionsSize bytes (includes current and previous epoch data)
-    inline static unsigned char* tickTransactionsPtr = nullptr;
+    // Records the number of saved transactions for each tick
+    inline static unsigned int numSavedTxsPerTick[PENDING_TXS_POOL_NUM_TICKS];
 
-    // Allocated tickTransactionOffsets buffer with tickTransactionOffsetsLength elements (includes current and previous epoch data)
-    inline static unsigned long long* tickTransactionOffsetsPtr = nullptr;
-
-    // Allocated txsDigests buffer with txsDigestsLength elements (includes current and previous epoch data)
-    inline static m256i* txsDigestsPtr = nullptr;
-
-    // Tick transaction buffer of previous epoch. Points to tickTransactionsPtr + tickTransactionsSizeCurrentEpoch.
-    inline static unsigned char* oldTickTransactionsPtr = nullptr;
-
-    // Tick transaction offsets of previous epoch. Points to tickTransactionOffsetsPtr + tickTransactionOffsetsLengthCurrentEpoch.
-    inline static unsigned long long* oldTickTransactionOffsetsPtr = nullptr;
-
-    // Transaction digests buffer of previous epoch. Points to txsDigestsPtr + txsDigestsLengthCurrentEpoch
-    inline static m256i* oldTxsDigestsPtr = nullptr;
-
-    // Records the number of saved transactions for each tick (includes current and previous epoch data)
-    inline static unsigned int numSavedTxsPerTick[maxNumTicksToSave];
-
-    // Offset of next free space in tick transaction storage
-    inline static unsigned long long nextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
+    // Begin index for tickTransactionOffsetsBuffer, txsDigestsBuffer, and numSavedTxsPerTick
+    // buffersBeginIndex corresponds to firstStoredTick
+    inline static unsigned long long buffersBeginIndex = 0;
 
     // Lock for securing tickTransactions and tickTransactionOffsets
     inline static volatile char tickTransactionsLock = 0;
@@ -72,78 +46,55 @@ private:
     // Lock for securing numSavedTxsPerTick
     inline static volatile char numSavedLock = 0;
 
+    // Return pointer to Transaction based on tickIndex and transactionIndex (checking offset with ASSERT)
+    inline static Transaction* getTxPtr(unsigned int tickIndex, unsigned int transactionIndex)
+    {
+        ASSERT(tickIndex < PENDING_TXS_POOL_NUM_TICKS);
+        ASSERT(transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK);
+        return (Transaction*)(tickTransactionsBuffer + (tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK + transactionIndex) * MAX_TRANSACTION_SIZE);
+    }
+
+    // Return pointer to transaction digest based on tickIndex and transactionIndex (checking offset with ASSERT)
+    inline static m256i* getDigestPtr(unsigned int tickIndex, unsigned int transactionIndex)
+    {
+        ASSERT(tickIndex < PENDING_TXS_POOL_NUM_TICKS);
+        ASSERT(transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK);
+        return &txsDigestsBuffer[tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK + transactionIndex];
+    }
+
+    // Check whether tick is stored in the pending txs pool
+    inline static bool tickInStorage(unsigned int tick)
+    {
+        return tick >= firstStoredTick && tick < firstStoredTick + PENDING_TXS_POOL_NUM_TICKS;
+    }
+
+    // Return index of tick data in current storage window (does not check tick).
+    inline static unsigned int tickToIndex(unsigned int tick)
+    {
+        return ((tick - firstStoredTick) + buffersBeginIndex) % PENDING_TXS_POOL_NUM_TICKS;
+    }
+
 public:
-    // Struct for structured, convenient access via ".tickTransactionOffsets"
-    static struct TickTransactionOffsetsAccess
-    {
-        // Return pointer to offset array of transactions by tick index independent of epoch (checking index with ASSERT)
-        inline static unsigned long long* getByTickIndex(unsigned int tickIndex)
-        {
-            ASSERT(tickIndex < maxNumTicksToSave);
-            return tickTransactionOffsetsPtr + (tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK);
-        }
-
-        // Return pointer to offset array of transactions of tick in current epoch by tick (checking tick with ASSERT)
-        inline static unsigned long long* getByTickInCurrentEpoch(unsigned int tick)
-        {
-            ASSERT(tickInCurrentEpochStorage(tick));
-            const unsigned int tickIndex = tickToIndexCurrentEpoch(tick);
-            return getByTickIndex(tickIndex);
-        }
-
-        // Return pointer to offset array of transactions of tick in previous epoch by tick (checking tick with ASSERT)
-        inline static unsigned long long* getByTickInPreviousEpoch(unsigned int tick)
-        {
-            ASSERT(tickInPreviousEpochStorage(tick));
-            const unsigned int tickIndex = tickToIndexPreviousEpoch(tick);
-            return getByTickIndex(tickIndex);
-        }
-
-        // Return reference to offset by tick and transaction in current epoch (checking inputs with ASSERT)
-        inline static unsigned long long& get(unsigned int tick, unsigned int transaction)
-        {
-            ASSERT(transaction < NUMBER_OF_TRANSACTIONS_PER_TICK);
-            return getByTickInCurrentEpoch(tick)[transaction];
-        }
-    } tickTransactionOffsets;
-
-    // Struct for structured, convenient access via ".tickTransactions"
-    static struct TickTransactionsAccess
-    {
-        // Return pointer to Transaction based on transaction offset independent of epoch (checking offset with ASSERT)
-        inline static Transaction* ptr(unsigned long long transactionOffset)
-        {
-            ASSERT(transactionOffset < tickTransactionsSize);
-            return (Transaction*)(tickTransactionsPtr + transactionOffset);
-        }
-    } tickTransactions;
-
 
     // Init at node startup.
     static bool init()
     {
-        if (!allocPoolWithErrorLog(L"PendingTxsPool::tickTransactionsPtr ", tickTransactionsSize, (void**)&tickTransactionsPtr, __LINE__)
-            || !allocPoolWithErrorLog(L"PendingTxsPool::tickTransactionOffsetsPtr ", tickTransactionOffsetsSize, (void**)&tickTransactionOffsetsPtr, __LINE__)
-            || !allocPoolWithErrorLog(L"PendingTxsPool::txsDigestsPtr ", txsDigestsSize, (void**)&txsDigestsPtr, __LINE__))
+        if (!allocPoolWithErrorLog(L"PendingTxsPool::tickTransactionsPtr ", tickTransactionsSize, (void**)&tickTransactionsBuffer, __LINE__)
+            || !allocPoolWithErrorLog(L"PendingTxsPool::txsDigestsPtr ", txsDigestsSize, (void**)&txsDigestsBuffer, __LINE__))
         {
             return false;
         }
 
-        nextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
-
-        oldTickTransactionsPtr = tickTransactionsPtr + tickTransactionsSizeCurrentEpoch;
-        oldTickTransactionOffsetsPtr = tickTransactionOffsetsPtr + maxNumTxsCurrentEpoch;
-        oldTxsDigestsPtr = txsDigestsPtr + maxNumTxsCurrentEpoch;
-
         ASSERT(tickTransactionsLock == 0);
         ASSERT(txsDigestsLock == 0);
         ASSERT(numSavedLock == 0);
-        setMem((void*)numSavedTxsPerTick, sizeof(numSavedTxsPerTick), 0);
 
-        tickBegin = 0;
-        tickEnd = 0;
-        oldTickBegin = 0;
-        oldTickEnd = 0;
+        setMem(tickTransactionsBuffer, tickTransactionsSize, 0);
+        setMem(txsDigestsBuffer, txsDigestsSize, 0);
+        setMem(numSavedTxsPerTick, sizeof(numSavedTxsPerTick), 0);
+
+        firstStoredTick = 0;
+        buffersBeginIndex = 0;
 
         return true;
     }
@@ -151,17 +102,13 @@ public:
     // Cleanup at node shutdown.
     static void deinit()
     {
-        if (tickTransactionOffsetsPtr)
+        if (tickTransactionsBuffer)
         {
-            freePool(tickTransactionOffsetsPtr);
+            freePool(tickTransactionsBuffer);
         }
-        if (tickTransactionsPtr)
+        if (txsDigestsBuffer)
         {
-            freePool(tickTransactionsPtr);
-        }
-        if (txsDigestsPtr)
-        {
-            freePool(txsDigestsPtr);
+            freePool(txsDigestsBuffer);
         }
     }
 
@@ -179,30 +126,6 @@ public:
         RELEASE(txsDigestsLock);
     }
 
-    // Check whether tick is stored in the current epoch storage.
-    inline static bool tickInCurrentEpochStorage(unsigned int tick)
-    {
-        return tick >= tickBegin && tick < tickEnd;
-    }
-
-    // Check whether tick is stored in the previous epoch storage.
-    inline static bool tickInPreviousEpochStorage(unsigned int tick)
-    {
-        return oldTickBegin <= tick && tick < oldTickEnd;
-    }
-
-    // Return index of tick data in current epoch (does not check tick).
-    unsigned static int tickToIndexCurrentEpoch(unsigned int tick)
-    {
-        return tick - tickBegin;
-    }
-
-    // Return index of tick data in previous epoch (does not check that it is stored).
-    unsigned static int tickToIndexPreviousEpoch(unsigned int tick)
-    {
-        return tick - oldTickBegin + MAX_NUMBER_OF_TICKS_PER_EPOCH;
-    }
-
     // Return number of transactions scheduled for the specified tick.
     static unsigned int getNumberOfPendingTickTxs(unsigned int tick)
     {
@@ -211,13 +134,9 @@ public:
 #endif
         unsigned int res = 0;
         ACQUIRE(numSavedLock);
-        if (tickInPreviousEpochStorage(tick))
+        if (tickInStorage(tick))
         {
-            res = numSavedTxsPerTick[tickToIndexPreviousEpoch(tick)];
-        }
-        else if (tickInCurrentEpochStorage(tick))
-        {
-            res = numSavedTxsPerTick[tickToIndexCurrentEpoch(tick)];
+            res = numSavedTxsPerTick[tickToIndex(tick)];
         }
         RELEASE(numSavedLock);
 
@@ -239,34 +158,26 @@ public:
         addDebugMessage(L"Begin pendingTxsPool.getTotalNumberOfPendingTxs()");
 #endif
         unsigned int res = 0;
-        unsigned int startTick = tickEnd;
-        unsigned int oldStartTick = oldTickEnd;
 
-        if (tick < oldTickBegin || oldTickBegin == 0 && tick < tickBegin)
+        if (tickInStorage(tick + 1))
         {
-            startTick = tickBegin;
-            oldStartTick = oldTickBegin;
-        }
-        else if (tickInPreviousEpochStorage(tick))
-        {
-            startTick = tickBegin;
-            oldStartTick = tick + 1;
-        }
-        else if (tickInCurrentEpochStorage(tick))
-        {
-            startTick = tick + 1;
-        }
+            unsigned int startIndex = tickToIndex(tick + 1);
 
-        ACQUIRE(numSavedLock);
-        for (unsigned int t = startTick; t < tickEnd; ++t)
-        {
-            res += numSavedTxsPerTick[tickToIndexCurrentEpoch(t)];
+            ACQUIRE(numSavedLock);
+            if (startIndex < buffersBeginIndex)
+            {
+                for (unsigned int t = startIndex; t < buffersBeginIndex; ++t)
+                    res += numSavedTxsPerTick[t];
+            }
+            else
+            {
+                for (unsigned int t = startIndex; t < PENDING_TXS_POOL_NUM_TICKS; ++t)
+                    res += numSavedTxsPerTick[t];
+                for (unsigned int t = 0; t < buffersBeginIndex; ++t)
+                    res += numSavedTxsPerTick[t];
+            }
+            RELEASE(numSavedLock);
         }
-        for (unsigned int t = oldStartTick; t < oldTickEnd; ++t)
-        {
-            res += numSavedTxsPerTick[tickToIndexPreviousEpoch(t)];
-        }
-        RELEASE(numSavedLock);
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsgBuf[200];
@@ -280,30 +191,25 @@ public:
     }
 
     // Check validity of transaction and add to the pool. Return boolean indicating whether transaction was added.
-    static bool update(Transaction* tx)
+    static bool add(Transaction* tx)
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"Begin pendingTxsPool.update()");
 #endif
         bool txAdded = false;
-        if (tx->checkValidity() && tickInCurrentEpochStorage(tx->tick))
+        if (tx->checkValidity() && tickInStorage(tx->tick))
         {
-            unsigned int tickIndex = tickToIndexCurrentEpoch(tx->tick);
+            unsigned int tickIndex = tickToIndex(tx->tick);
             const unsigned int transactionSize = tx->totalSize();
 
             acquireLock();
             ACQUIRE(numSavedLock);
 
-            if (numSavedTxsPerTick[tickIndex] < NUMBER_OF_TRANSACTIONS_PER_TICK
-                && nextTickTransactionOffset + transactionSize <= tickTransactionsSizeCurrentEpoch)
+            if (numSavedTxsPerTick[tickIndex] < NUMBER_OF_TRANSACTIONS_PER_TICK)
             {
-                unsigned long long& transactionOffset = tickTransactionOffsets.getByTickIndex(tickIndex)[numSavedTxsPerTick[tickIndex]];
-                ASSERT(transactionOffset == 0);
+                KangarooTwelve(tx, transactionSize, getDigestPtr(tickIndex, numSavedTxsPerTick[tickIndex]), sizeof(m256i));
 
-                KangarooTwelve(tx, transactionSize, &txsDigestsPtr[tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK + numSavedTxsPerTick[tickIndex]], 32ULL);
-                transactionOffset = nextTickTransactionOffset;
-                copyMem(tickTransactions.ptr(transactionOffset), tx, transactionSize);
-                nextTickTransactionOffset += transactionSize;
+                copyMem(getTxPtr(tickIndex, numSavedTxsPerTick[tickIndex]), tx, transactionSize);
 
                 numSavedTxsPerTick[tickIndex]++;
                 txAdded = true;
@@ -316,13 +222,6 @@ public:
                 appendNumber(dbgMsgBuf, numSavedTxsPerTick[tickIndex], FALSE);
                 appendText(dbgMsgBuf, L" txs for tick ");
                 appendNumber(dbgMsgBuf, tx->tick, FALSE);
-                appendText(dbgMsgBuf, L" OR nextTickTransactionOffset (");
-                appendNumber(dbgMsgBuf, nextTickTransactionOffset, FALSE);
-                appendText(dbgMsgBuf, L") + transactionSize (");
-                appendNumber(dbgMsgBuf, transactionSize, FALSE);
-                appendText(dbgMsgBuf, L") > tickTransactionsSizeCurrentEpoch (");
-                appendNumber(dbgMsgBuf, tickTransactionsSizeCurrentEpoch, FALSE);
-                appendText(dbgMsgBuf, L")");
                 addDebugMessage(dbgMsgBuf);
             }
 #endif
@@ -343,219 +242,100 @@ public:
     // If no more transactions for this tick, return nullptr.
     static Transaction* get(unsigned int tick, unsigned int index)
     {
-//#if !defined(NDEBUG) && !defined(NO_UEFI)
-//        addDebugMessage(L"pendingTxsPool.get()");
-//        CHAR16 dbgMsgBuf[200];
-//        setText(dbgMsgBuf, L"tick=");
-//        appendNumber(dbgMsgBuf, tick, FALSE);
-//        appendText(dbgMsgBuf, L", index=");
-//        appendNumber(dbgMsgBuf, index, FALSE);
-//        addDebugMessage(dbgMsgBuf);
-//#endif
         unsigned int tickIndex;
-        if (tickInCurrentEpochStorage(tick))
-        {
-            tickIndex = tickToIndexCurrentEpoch(tick);
-        }
-        else if (tickInPreviousEpochStorage(tick))
-        {
-            tickIndex = tickToIndexPreviousEpoch(tick);
-        }
+        if (tickInStorage(tick))
+            tickIndex = tickToIndex(tick);
         else
-        {
             return nullptr;
-        }
 
         ACQUIRE(numSavedLock);
         bool hasTx = index < numSavedTxsPerTick[tickIndex];
         RELEASE(numSavedLock);
 
         if (hasTx)
-        {
-            ASSERT(index < NUMBER_OF_TRANSACTIONS_PER_TICK);
-            unsigned long long offset = tickTransactionOffsets.getByTickIndex(tickIndex)[index];
-            ASSERT(offset != 0);
-            return tickTransactions.ptr(offset);
-        }
+            return getTxPtr(tickIndex, index);
         else
-        {
             return nullptr;
-        }
     }
 
     // Get a transaction digest for the specified tick.
     // If no more transactions for this tick, return nullptr.
     static m256i* getDigest(unsigned int tick, unsigned int index)
     {
-//#if !defined(NDEBUG) && !defined(NO_UEFI)
-//        addDebugMessage(L"pendingTxsPool.getDigest()");
-//        CHAR16 dbgMsgBuf[200];
-//        setText(dbgMsgBuf, L"tick=");
-//        appendNumber(dbgMsgBuf, tick, FALSE);
-//        appendText(dbgMsgBuf, L", index=");
-//        appendNumber(dbgMsgBuf, index, FALSE);
-//        addDebugMessage(dbgMsgBuf);
-//#endif
         unsigned int tickIndex;
-        if (tickInCurrentEpochStorage(tick))
-        {
-            tickIndex = tickToIndexCurrentEpoch(tick);
-        }
-        else if (tickInPreviousEpochStorage(tick))
-        {
-            tickIndex = tickToIndexPreviousEpoch(tick);
-        }
+        if (tickInStorage(tick))
+            tickIndex = tickToIndex(tick);
         else
-        {
             return nullptr;
-        }
 
         ACQUIRE(numSavedLock);
         bool hasTx = index < numSavedTxsPerTick[tickIndex];
         RELEASE(numSavedLock);
 
         if (hasTx)
-        {
-            ASSERT(index < NUMBER_OF_TRANSACTIONS_PER_TICK);
-            return &txsDigestsPtr[tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK + index];
-        }
+            return getDigestPtr(tickIndex, index);
         else
-        {
             return nullptr;
-        }
     }
 
+    static void incrementFirstStoredTick()
+    {
+        // set memory at buffersBeginIndex to 0 
+        unsigned long long numTxsBeforeBegin = buffersBeginIndex * NUMBER_OF_TRANSACTIONS_PER_TICK;
+        setMem(tickTransactionsBuffer + numTxsBeforeBegin * MAX_TRANSACTION_SIZE, NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE, 0);
+        setMem(txsDigestsBuffer + numTxsBeforeBegin, NUMBER_OF_TRANSACTIONS_PER_TICK * sizeof(m256i), 0);
+        numSavedTxsPerTick[buffersBeginIndex] = 0;
 
-    // Begin new epoch. If not called the first time (seamless transition), assume that the ticks to keep
-    // are ticks in [newInitialTick-TICKS_TO_KEEP_FROM_PRIOR_EPOCH, newInitialTick-1].
-    void beginEpoch(unsigned int newInitialTick)
+        // increment buffersBeginIndex and firstStoredTick
+        firstStoredTick++;
+        buffersBeginIndex = (buffersBeginIndex + 1) % PENDING_TXS_POOL_NUM_TICKS;
+    }
+
+    static void beginEpoch(unsigned int newInitialTick)
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"Begin pendingTxsPool.beginEpoch()");
 #endif
-        if (tickBegin && tickInCurrentEpochStorage(newInitialTick) && tickBegin < newInitialTick)
+
+        if (tickInStorage(newInitialTick))
         {
-            // seamless epoch transition: keep some ticks of prior epoch
-            oldTickEnd = newInitialTick;
-            oldTickBegin = newInitialTick - TICKS_TO_KEEP_FROM_PRIOR_EPOCH;
-            if (oldTickBegin < tickBegin)
-                oldTickBegin = tickBegin;
+            unsigned int newInitialIndex = tickToIndex(newInitialTick);
 
-            const unsigned int tickIndex = tickToIndexCurrentEpoch(oldTickBegin);
-            const unsigned int tickCount = oldTickEnd - oldTickBegin;
-
-            // copy transactions and transactionOffsets
+            // reset memory of discarded ticks
+            if (newInitialIndex < buffersBeginIndex)
             {
-                // copy transactions
-                const unsigned long long totalTransactionSizesSum = nextTickTransactionOffset - FIRST_TICK_TRANSACTION_OFFSET;
-                const unsigned long long keepTransactionSizesSum = (totalTransactionSizesSum <= tickTransactionsSizePreviousEpoch) ? totalTransactionSizesSum : tickTransactionsSizePreviousEpoch;
-                const unsigned long long firstToKeepOffset = nextTickTransactionOffset - keepTransactionSizesSum;
-                copyMem(oldTickTransactionsPtr, tickTransactionsPtr + firstToKeepOffset, keepTransactionSizesSum);
+                unsigned long long numTxsBeforeNew = newInitialIndex * NUMBER_OF_TRANSACTIONS_PER_TICK;
+                setMem(tickTransactionsBuffer, numTxsBeforeNew * MAX_TRANSACTION_SIZE, 0);
+                setMem(txsDigestsBuffer, numTxsBeforeNew * sizeof(m256i), 0);
+                setMem(numSavedTxsPerTick, newInitialIndex * sizeof(unsigned int), 0);
 
-                // adjust offsets (based on end of transactions)
-                const unsigned long long offsetDelta = tickTransactionsSizeCurrentEpoch - firstToKeepOffset;
-                for (unsigned int tickId = oldTickBegin; tickId < oldTickEnd; ++tickId)
-                {
-                    const unsigned long long* tickOffsets = tickTransactionOffsets.getByTickInCurrentEpoch(tickId);
-                    unsigned long long* tickOffsetsPrevEp = tickTransactionOffsets.getByTickInPreviousEpoch(tickId);
-                    for (unsigned int transactionIdx = 0; transactionIdx < NUMBER_OF_TRANSACTIONS_PER_TICK; ++transactionIdx)
-                    {
-                        const unsigned long long offset = tickOffsets[transactionIdx];
-                        if (!offset || offset < firstToKeepOffset)
-                        {
-                            // transaction not available (either not available overall or not fitting in storage of previous epoch)
-                            tickOffsetsPrevEp[transactionIdx] = 0;
-                        }
-                        else
-                        {
-                            // set offset of transcation
-                            const unsigned long long offsetPrevEp = offset + offsetDelta;
-                            tickOffsetsPrevEp[transactionIdx] = offsetPrevEp;
-
-                            // check offset and transaction
-                            ASSERT(offset >= FIRST_TICK_TRANSACTION_OFFSET);
-                            ASSERT(offset < tickTransactionsSizeCurrentEpoch);
-                            ASSERT(offsetPrevEp >= tickTransactionsSizeCurrentEpoch);
-                            ASSERT(offsetPrevEp < tickTransactionsSize);
-                            Transaction* transactionCurEp = tickTransactions.ptr(offset);
-                            Transaction* transactionPrevEp = tickTransactions.ptr(offsetPrevEp);
-                            ASSERT(transactionCurEp->checkValidity());
-                            ASSERT(transactionPrevEp->checkValidity());
-                            ASSERT(transactionPrevEp->tick == tickId);
-                            ASSERT(transactionPrevEp->tick == tickId);
-                            ASSERT(transactionPrevEp->amount == transactionCurEp->amount);
-                            ASSERT(transactionPrevEp->sourcePublicKey == transactionCurEp->sourcePublicKey);
-                            ASSERT(transactionPrevEp->destinationPublicKey == transactionCurEp->destinationPublicKey);
-                            ASSERT(transactionPrevEp->inputSize == transactionCurEp->inputSize);
-                            ASSERT(transactionPrevEp->inputType == transactionCurEp->inputType);
-                            ASSERT(offset + transactionCurEp->totalSize() <= tickTransactionsSizeCurrentEpoch);
-                            ASSERT(offsetPrevEp + transactionPrevEp->totalSize() <= tickTransactionsSize);
-                        }
-                    }
-                }
+                unsigned long long numTxsBeforeBegin = buffersBeginIndex * NUMBER_OF_TRANSACTIONS_PER_TICK;
+                unsigned long long numTxsStartingAtBegin = (PENDING_TXS_POOL_NUM_TICKS - buffersBeginIndex) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+                setMem(tickTransactionsBuffer + numTxsBeforeBegin * MAX_TRANSACTION_SIZE, numTxsStartingAtBegin * MAX_TRANSACTION_SIZE, 0);
+                setMem(txsDigestsBuffer + numTxsBeforeBegin, numTxsStartingAtBegin * sizeof(m256i), 0);
+                setMem(numSavedTxsPerTick + buffersBeginIndex, (PENDING_TXS_POOL_NUM_TICKS - buffersBeginIndex) * sizeof(unsigned int), 0);
+            }
+            else
+            {
+                unsigned long long numTxsBeforeBegin = buffersBeginIndex * NUMBER_OF_TRANSACTIONS_PER_TICK;
+                unsigned long long numTxsStartingAtBegin = (newInitialIndex - buffersBeginIndex) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+                setMem(tickTransactionsBuffer + numTxsBeforeBegin * MAX_TRANSACTION_SIZE, numTxsStartingAtBegin * MAX_TRANSACTION_SIZE, 0);
+                setMem(txsDigestsBuffer + numTxsBeforeBegin, numTxsStartingAtBegin * sizeof(m256i), 0);
+                setMem(numSavedTxsPerTick + buffersBeginIndex, (newInitialIndex - buffersBeginIndex) * sizeof(unsigned int), 0);
             }
 
-            setMem(tickTransactionOffsetsPtr, tickTransactionOffsetsSizeCurrentEpoch, 0);
-            setMem(tickTransactionsPtr, tickTransactionsSizeCurrentEpoch, 0);
-
-            copyMem(oldTxsDigestsPtr, &txsDigestsPtr[tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK], tickCount * NUMBER_OF_TRANSACTIONS_PER_TICK * 32ULL);
-            copyMem(&numSavedTxsPerTick[MAX_NUMBER_OF_TICKS_PER_EPOCH], &numSavedTxsPerTick[tickIndex], tickCount * sizeof(numSavedTxsPerTick[0]));
-
-            setMem(txsDigestsPtr, txsDigestsSizeCurrentEpoch, 0);
-            setMem(numSavedTxsPerTick, MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(numSavedTxsPerTick[0]), 0);
-
-            // Some txs from previous epoch might not have fit into prev epoch memory, check and adjust numSavedTxsPerTick accordingly.
-            // Additionally move offsets and digests s.t. there are no empty entries at the beginning of the array storage for each tick.
-            for (unsigned int t = oldTickBegin; t < oldTickEnd; ++t)
-            {
-                unsigned int index = tickToIndexPreviousEpoch(t);
-                unsigned long long* offsets = tickTransactionOffsets.getByTickIndex(index);
-                m256i* digests = &txsDigestsPtr[index * NUMBER_OF_TRANSACTIONS_PER_TICK];
-                if (numSavedTxsPerTick[index])
-                {
-                    int firstNonZero = -1;
-                    for (int tx = 0; tx < NUMBER_OF_TRANSACTIONS_PER_TICK; ++tx)
-                    {
-                        if (offsets[tx])
-                        {
-                            firstNonZero = tx;
-                            break;
-                        }
-                    }
-                    if (firstNonZero < 0)
-                    {
-                        numSavedTxsPerTick[index] = 0;
-                    }
-                    else if (firstNonZero > 0)
-                    {
-                        numSavedTxsPerTick[index] -= firstNonZero;
-                        for (unsigned int tx = 0; tx < numSavedTxsPerTick[index]; ++tx)
-                        {
-                            offsets[tx] = offsets[tx + firstNonZero];
-                            digests[tx] = digests[tx + firstNonZero];
-                        }
-                        setMem(&offsets[numSavedTxsPerTick[index]], firstNonZero * sizeof(unsigned long long), 0);
-                        setMem(&digests[numSavedTxsPerTick[index]], firstNonZero * sizeof(m256i), 0);
-                    }
-                }
-            }
+            buffersBeginIndex = newInitialIndex;
         }
         else
         {
-            // node startup with no data of prior epoch (also use storage for prior epoch for current)
-            setMem(tickTransactionOffsetsPtr, tickTransactionOffsetsSize, 0);
-            setMem(tickTransactionsPtr, tickTransactionsSize, 0);
-            setMem(txsDigestsPtr, txsDigestsSize, 0);
+            setMem(tickTransactionsBuffer, tickTransactionsSize, 0);
+            setMem(txsDigestsBuffer, txsDigestsSize, 0);
             setMem(numSavedTxsPerTick, sizeof(numSavedTxsPerTick), 0);
 
-            oldTickBegin = 0;
-            oldTickEnd = 0;
+            buffersBeginIndex = 0;
         }
 
-        tickBegin = newInitialTick;
-        tickEnd = newInitialTick + MAX_NUMBER_OF_TICKS_PER_EPOCH;
-
-        nextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
+        firstStoredTick = newInitialTick;
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"End pendingTxsPool.beginEpoch()");
@@ -568,56 +348,38 @@ public:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"Begin tsxPool.checkStateConsistencyWithAssert()");
         CHAR16 dbgMsgBuf[200];
-        setText(dbgMsgBuf, L"oldTickBegin=");
-        appendNumber(dbgMsgBuf, oldTickBegin, FALSE);
-        appendText(dbgMsgBuf, L", oldTickEnd=");
-        appendNumber(dbgMsgBuf, oldTickEnd, FALSE);
-        appendText(dbgMsgBuf, L", tickBegin=");
-        appendNumber(dbgMsgBuf, tickBegin, FALSE);
-        appendText(dbgMsgBuf, L", tickEnd=");
-        appendNumber(dbgMsgBuf, tickEnd, FALSE);
+        setText(dbgMsgBuf, L"firstStoredTick=");
+        appendNumber(dbgMsgBuf, firstStoredTick, FALSE);
+        appendText(dbgMsgBuf, L", buffersBeginIndex=");
+        appendNumber(dbgMsgBuf, buffersBeginIndex, FALSE);
         addDebugMessage(dbgMsgBuf);
 #endif
-        ASSERT(tickBegin <= tickEnd);
-        ASSERT(tickEnd - tickBegin <= MAX_NUMBER_OF_TICKS_PER_EPOCH);
-        ASSERT(oldTickBegin <= oldTickEnd);
-        ASSERT(oldTickEnd - oldTickBegin <= TICKS_TO_KEEP_FROM_PRIOR_EPOCH);
-        ASSERT(oldTickEnd <= tickBegin);
+        ASSERT(buffersBeginIndex >= 0);
+        ASSERT(buffersBeginIndex < PENDING_TXS_POOL_NUM_TICKS);
 
-        ASSERT(tickTransactionsPtr != nullptr);
-        ASSERT(tickTransactionOffsetsPtr != nullptr);
-        ASSERT(txsDigestsPtr != nullptr);
+        ASSERT(tickTransactionsBuffer != nullptr);
+        ASSERT(txsDigestsBuffer != nullptr);
 
-        ASSERT(oldTickTransactionsPtr != nullptr);
-        ASSERT(oldTickTransactionOffsetsPtr != nullptr);
-        ASSERT(oldTxsDigestsPtr != nullptr);
-
-        ASSERT(oldTickTransactionsPtr == tickTransactionsPtr + tickTransactionsSizeCurrentEpoch);
-        ASSERT(oldTickTransactionOffsetsPtr == tickTransactionOffsetsPtr + maxNumTxsCurrentEpoch);
-        ASSERT(oldTxsDigestsPtr == txsDigestsPtr + maxNumTxsCurrentEpoch);
-
-        ASSERT(nextTickTransactionOffset >= FIRST_TICK_TRANSACTION_OFFSET);
-        ASSERT(nextTickTransactionOffset <= tickTransactionsSizeCurrentEpoch);
-
-        // Check previous epoch data
-        for (unsigned int tickId = oldTickBegin; tickId < oldTickEnd; ++tickId)
+        for (unsigned int tick = firstStoredTick; tick < firstStoredTick + PENDING_TXS_POOL_NUM_TICKS; ++tick)
         {
-            const unsigned long long* tickOffsets = tickTransactionOffsets.getByTickInPreviousEpoch(tickId);
-            for (unsigned int transactionIdx = 0; transactionIdx < NUMBER_OF_TRANSACTIONS_PER_TICK; ++transactionIdx)
+            ASSERT(tickInStorage(tick));
+            if (tickInStorage(tick))
             {
-                unsigned long long offset = tickOffsets[transactionIdx];
-                if (offset)
+                unsigned int tickIndex = tickToIndex(tick);
+                unsigned int numSavedForTick = numSavedTxsPerTick[tickIndex];
+                ASSERT(numSavedForTick < NUMBER_OF_TRANSACTIONS_PER_TICK);
+                for (unsigned int txIndex = 0; txIndex < numSavedForTick; ++txIndex)
                 {
-                    Transaction* transaction = tickTransactions.ptr(offset);
+                    Transaction* transaction = (Transaction*)(tickTransactionsBuffer + (tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK + txIndex) * MAX_TRANSACTION_SIZE);
                     ASSERT(transaction->checkValidity());
-                    ASSERT(transaction->tick == tickId);
+                    ASSERT(transaction->tick == tick);
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-                    if (!transaction->checkValidity() || transaction->tick != tickId)
+                    if (!transaction->checkValidity() || transaction->tick != tick)
                     {
                         setText(dbgMsgBuf, L"Error in previous epoch transaction ");
-                        appendNumber(dbgMsgBuf, transactionIdx, FALSE);
+                        appendNumber(dbgMsgBuf, txIndex, FALSE);
                         appendText(dbgMsgBuf, L" in tick ");
-                        appendNumber(dbgMsgBuf, tickId, FALSE);
+                        appendNumber(dbgMsgBuf, tick, FALSE);
                         addDebugMessage(dbgMsgBuf);
 
                         setText(dbgMsgBuf, L"t->tick ");
@@ -629,93 +391,8 @@ public:
                         appendText(dbgMsgBuf, L", t->amount ");
                         appendNumber(dbgMsgBuf, transaction->amount, TRUE);
                         addDebugMessage(dbgMsgBuf);
-
-                        addDebugMessage(L"Skipping to check current epoch transactions and ticks");
-                        goto test_current_epoch;
                     }
 #endif
-                }
-            }
-        }
-
-        // Check current epoch data
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        test_current_epoch:
-#endif
-        unsigned long long lastTransactionEndOffset = FIRST_TICK_TRANSACTION_OFFSET;
-        for (unsigned int tickId = tickBegin; tickId < tickEnd; ++tickId)
-        {
-            const unsigned long long* tickOffsets = tickTransactionOffsets.getByTickInCurrentEpoch(tickId);
-            for (unsigned int transactionIdx = 0; transactionIdx < NUMBER_OF_TRANSACTIONS_PER_TICK; ++transactionIdx)
-            {
-                unsigned long long offset = tickOffsets[transactionIdx];
-                if (offset)
-                {
-                    Transaction* transaction = tickTransactions.ptr(offset);
-                    ASSERT(transaction->checkValidity());
-                    ASSERT(transaction->tick == tickId);
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-                    if (!transaction->checkValidity() || transaction->tick != tickId)
-                    {
-                        setText(dbgMsgBuf, L"Error in current epoch transaction ");
-                        appendNumber(dbgMsgBuf, transactionIdx, FALSE);
-                        appendText(dbgMsgBuf, L" in tick ");
-                        appendNumber(dbgMsgBuf, tickId, FALSE);
-                        addDebugMessage(dbgMsgBuf);
-
-                        setText(dbgMsgBuf, L"t->tick ");
-                        appendNumber(dbgMsgBuf, transaction->tick, FALSE);
-                        appendText(dbgMsgBuf, L", t->inputSize ");
-                        appendNumber(dbgMsgBuf, transaction->inputSize, FALSE);
-                        appendText(dbgMsgBuf, L", t->inputType ");
-                        appendNumber(dbgMsgBuf, transaction->inputType, FALSE);
-                        appendText(dbgMsgBuf, L", t->amount ");
-                        appendNumber(dbgMsgBuf, transaction->amount, TRUE);
-                        addDebugMessage(dbgMsgBuf);
-
-                        addDebugMessage(L"Skipping to check digests and number of saved txs");
-                        goto test_digests_and_num_saved;
-                    }
-#endif
-
-                    unsigned long long transactionEndOffset = offset + transaction->totalSize();
-                    if (lastTransactionEndOffset < transactionEndOffset)
-                        lastTransactionEndOffset = transactionEndOffset;
-                }
-            }
-        }
-        ASSERT(lastTransactionEndOffset == nextTickTransactionOffset);
-
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        test_digests_and_num_saved:
-#endif
-        // Check that transaction digests and number of saved txs per tick are consistent with transactions
-        unsigned int begins[2] = { oldTickBegin, tickBegin };
-        unsigned int ends[2] = { oldTickEnd, tickEnd };
-        typedef unsigned int (*TickToIndexFunction) (unsigned int t);
-        TickToIndexFunction tickToIndexFc[2] = { tickToIndexPreviousEpoch, tickToIndexCurrentEpoch };
-        for (unsigned int section = 0; section < 2; ++section)
-        {
-            for (unsigned int tickId = begins[section]; tickId < ends[section]; ++tickId)
-            {
-                unsigned int tickIndex = tickToIndexFc[section](tickId);
-                const unsigned int numSavedTxs = numSavedTxsPerTick[tickIndex];
-                ASSERT(numSavedTxs <= NUMBER_OF_TRANSACTIONS_PER_TICK);
-                for (unsigned int txIndex = 0; txIndex < numSavedTxs; ++txIndex)
-                {
-                    unsigned long long txOffset = tickTransactionOffsets.getByTickIndex(tickIndex)[txIndex];
-                    ASSERT(txOffset != 0);
-                    Transaction* txPtrFromStorage = tickTransactions.ptr(txOffset);
-                    Transaction* txPtr = get(tickId, txIndex);
-                    ASSERT(txPtr);
-                    ASSERT(txPtr == txPtrFromStorage);
-                }
-                for (unsigned int txIndex = numSavedTxs; txIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; ++txIndex)
-                {
-                    unsigned long long txOffset = tickTransactionOffsets.getByTickIndex(tickIndex)[txIndex];
-                    ASSERT(txOffset == 0);
-                    Transaction* txPtr = get(tickId, txIndex);
-                    ASSERT(txPtr == nullptr);
                 }
             }
         }

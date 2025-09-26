@@ -1075,7 +1075,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 enqueueResponse(NULL, header);
             }
 
-            pendingTxsPool.update(request);
+            pendingTxsPool.add(request);
 
             unsigned int tickIndex = ts.tickToIndexCurrentEpoch(request->tick);
             ts.tickData.acquireLock();
@@ -5073,6 +5073,7 @@ static void tickProcessor(void*)
                                 system.tick++;
 
                                 updateNumberOfTickTransactions();
+                                pendingTxsPool.incrementFirstStoredTick();
 
                                 bool isBeginEpoch = false;
                                 if (epochTransitionState == 1)

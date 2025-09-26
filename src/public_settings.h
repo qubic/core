@@ -31,6 +31,9 @@
 #define TICK_DURATION_FOR_ALLOCATION_MS 750
 #define TRANSACTION_SPARSENESS 1
 
+// Number of ticks that are stored in the pending txs pool. This also defines how many ticks in advance a tx can be registered.
+static constexpr unsigned long long PENDING_TXS_POOL_NUM_TICKS = 10000;
+
 // Below are 2 variables that are used for auto-F5 feature:
 #define AUTO_FORCE_NEXT_TICK_THRESHOLD 0ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
                                             // to prevent bad actor causing misalignment.
