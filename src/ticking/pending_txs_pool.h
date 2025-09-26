@@ -367,7 +367,7 @@ public:
             {
                 unsigned int tickIndex = tickToIndex(tick);
                 unsigned int numSavedForTick = numSavedTxsPerTick[tickIndex];
-                ASSERT(numSavedForTick < NUMBER_OF_TRANSACTIONS_PER_TICK);
+                ASSERT(numSavedForTick <= NUMBER_OF_TRANSACTIONS_PER_TICK);
                 for (unsigned int txIndex = 0; txIndex < numSavedForTick; ++txIndex)
                 {
                     Transaction* transaction = (Transaction*)(tickTransactionsBuffer + (tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK + txIndex) * MAX_TRANSACTION_SIZE);
