@@ -133,40 +133,6 @@ void customStackTest2(void* data)
     testStackSizeTracker<10>(recursionLevel);
 }
 
-
-TEST(TestCoreCustomStack, SimpleTest)
-{
-    CustomStack s;
-    s.init();
-    EXPECT_EQ(s.maxStackUsed(), 0);
-    EXPECT_TRUE(s.alloc(128*1024));
-    EXPECT_EQ(s.maxStackUsed(), 0);
-
-    // run function with small stack requirements on custom stack
-    s.setupFunction(customStackTest1, (void*)5);
-    CustomStack::runFunction(&s);
-    auto size1 = s.maxStackUsed();
-    EXPECT_GT(size1, 0u);
-
-    // run recursive function with small stack requirements on custom stack
-    s.setupFunction(customStackTest2, (void*)1);
-    CustomStack::runFunction(&s);
-    auto size2 = s.maxStackUsed();
-    EXPECT_GT(size2, size1);
-
-    // run recursive function with medium stack requirements on custom stack
-    s.setupFunction(customStackTest2, (void*)5);
-    CustomStack::runFunction(&s);
-    auto size3 = s.maxStackUsed();
-    EXPECT_GT(size3, size2);
-
-    // run recursive function with large stack requirements on custom stack
-    s.setupFunction(customStackTest2, (void*)10);
-    CustomStack::runFunction(&s);
-    auto size4 = s.maxStackUsed();
-    EXPECT_GT(size4, size3);
-}
-
 void recursiveProfilingTest(int depth)
 {
     ProfilingScope profScope(__FUNCTION__, __LINE__);

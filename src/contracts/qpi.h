@@ -1433,8 +1433,8 @@ namespace QPI
 			sint64 maxValue;            // Maximum value allowed in proposedValue and votes, must be >= minValue
 			sint64 proposedValue;       // Needs to be in range between minValue and maxValue
 
-			sint64 minSupportedValue = 0x8000000000000001;
-			sint64 maxSupportedValue = 0x7fffffffffffffff;
+			static constexpr sint64 minSupportedValue = 0x8000000000000001;
+			static constexpr sint64 maxSupportedValue = 0x7fffffffffffffff;
 		};
 
 		union
