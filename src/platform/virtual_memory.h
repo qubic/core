@@ -834,6 +834,16 @@ public:
         VMBase();
     }
 
+    void reset() {
+        VMBase::reset();
+        setMem(isPageWrittenToDisk, isPageWrittenToDiskSize, 0);
+        if (mode == SwapMode::OFFSET_MODE) {
+            setMem(pageExtraBytesBuffer, pageExtraBytesBufferSize, 0);
+            setMem(pageHasExtraBytes, pageHasExtraBytesBufferSize, 0);
+            setMem(lastestPageExtraBytesOffsetAccessed, lastestPageExtraBytesOffsetAccessedBufferSize, 0xff);
+        }
+    }
+
     bool init()
     requires (mode == SwapMode::OFFSET_MODE)
     {

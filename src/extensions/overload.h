@@ -166,7 +166,9 @@ inline void* qVirtualCommit(void* address, const unsigned long long size) {
 }
 
 inline bool qVirtualFreeAndRecommit(void* address, const unsigned long long size) {
-    return madvise(address, size, MADV_DONTNEED) == 0;
+    bool commitMem = commitMemMap[(unsigned long long)address];
+    int prot = commitMem ? (PROT_READ | PROT_WRITE) : PROT_NONE;
+    return mmap(address, size, prot, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0) == address;
 }
 
 #endif

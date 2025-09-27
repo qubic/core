@@ -50,3 +50,13 @@ static void numberToWchar(unsigned long long number, wchar_t* text) {
     text[3] = (number >> 48) & 0xFFFF;
     text[4] = 0; // null terminator
 }
+
+static bool isAllBytesZero(void *buffer, unsigned long long length) {
+    for (size_t i = 0; i < length; i++) {
+        if (((char*)buffer)[i] != 0) {
+            return false;
+        }
+    }
+
+    return true;
+}
