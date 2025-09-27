@@ -1,7 +1,7 @@
 #pragma once
 
 // Helper functions for wchar_t strings in linux (linux expects 32-bit wchar_t, while we use 16-bit wchar_t everywhere else)
-#ifndef _MSC_VER
+#include "lib/platform_efi/uefi.h"
 #include <stdarg.h>
 #include <codecvt>
 
@@ -30,10 +30,9 @@ void print_wstr(const wchar_t* wstr, ...) {
     va_end(args);
     printf("\n");
 }
-#endif
 
 // convert 4 wchar_t to a number
-static unsigned long long wcharToNumber(const wchar_t* text) {
+static unsigned long long wcharToNumber(const CHAR16* text) {
     unsigned long long result = 0;
     result |= ((unsigned long long)text[0] & 0xFFFF) <<  0;
     result |= ((unsigned long long)text[1] & 0xFFFF) << 16;
@@ -43,7 +42,7 @@ static unsigned long long wcharToNumber(const wchar_t* text) {
 }
 
 // convert a number to 4 wchar_t + null terminator
-static void numberToWchar(unsigned long long number, wchar_t* text) {
+static void numberToWchar(unsigned long long number, CHAR16* text) {
     text[0] = (number >>  0) & 0xFFFF;
     text[1] = (number >> 16) & 0xFFFF;
     text[2] = (number >> 32) & 0xFFFF;

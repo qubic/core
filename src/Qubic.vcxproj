@@ -61,6 +61,7 @@
     <ClInclude Include="contract_core\qpi_proposal_voting.h" />
     <ClInclude Include="extensions\overload.h" />
     <ClInclude Include="extensions\cxxopts.h" />
+    <ClInclude Include="extensions\utils.h" />
     <ClInclude Include="files\files.h" />
     <ClInclude Include="logging\logging.h" />
     <ClInclude Include="logging\net_msg_impl.h" />
@@ -96,6 +97,8 @@
     <ClInclude Include="platform\file_io.h" />
     <ClInclude Include="platform\console_logging.h" />
     <ClInclude Include="platform\common_types.h" />
+    <ClInclude Include="platform\memory_util.h" />
+    <ClInclude Include="platform\msvc_polyfill.h" />
     <ClInclude Include="platform\profiling.h" />
     <ClInclude Include="platform\random.h" />
     <ClInclude Include="platform\read_write_lock.h" />
@@ -136,6 +139,9 @@
     <ProjectReference Include="..\lib\platform_efi\platform_efi.vcxproj">
       <Project>{e8755f8f-3ad0-435a-992a-b05dcc188f6f}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="platform\custom_stack.nasm" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
@@ -317,7 +323,7 @@
       <AdditionalOptions>/Gs1638400 %(AdditionalOptions)</AdditionalOptions>
       <StackReserveSize>126976</StackReserveSize>
       <StackCommitSize>126976</StackCommitSize>
-      <DebugInformationFormat>None</DebugInformationFormat>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
       <OmitFramePointers>true</OmitFramePointers>
       <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
@@ -335,7 +341,7 @@
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <AdditionalDependencies>ws2_32.lib</AdditionalDependencies>
       <EntryPointSymbol>

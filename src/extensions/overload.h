@@ -981,8 +981,8 @@ struct Overload {
         #else
         // Pin the main thread to CPU 0 to make sure main thread cpu id wont change during process
 		// NOTE: In MSVC Release Mode, so the scheduler often just keeps the main thread on one CPU core (the best core), dont need to set affinity because it will slow down the main thread performance
-        //HANDLE hThread = GetCurrentThread();
-        //SetThreadAffinityMask(hThread, 1ULL << 0);
+        HANDLE hThread = GetCurrentThread();
+        SetThreadAffinityMask(hThread, 1ULL << 0);
         #endif
 
         ih = new EFI_HANDLE;

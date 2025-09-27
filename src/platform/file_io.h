@@ -36,8 +36,7 @@ static EFI_FILE_PROTOCOL* root = NULL;
 class AsyncFileIO;
 static AsyncFileIO* gAsyncFileIO = NULL;
 
-#ifndef _MSC_VER
-bool _wfopen_s(FILE **file, const CHAR16 *fileName, const CHAR16 *directory, const CHAR16 *mode, bool createFileIfNotExist = false) {
+bool q_wfopen_s(FILE **file, const CHAR16 *fileName, const CHAR16 *directory, const CHAR16 *mode, bool createFileIfNotExist = false) {
     if (!file) return EINVAL;
 
     // Convert filename
@@ -67,7 +66,6 @@ bool _wfopen_s(FILE **file, const CHAR16 *fileName, const CHAR16 *directory, con
 
     return 0;
 }
-#endif
 
 static void addDebugMessage(const CHAR16* msg);
 
@@ -312,7 +310,7 @@ static long long load(const CHAR16* fileName, unsigned long long totalSize, unsi
     {
         createDir(directory);
     }
-    if (_wfopen_s(&file, fileName, directory, L"rb") != 0 || !file)
+    if (q_wfopen_s(&file, fileName, directory, L"rb") != 0 || !file)
     {
 #ifdef _MSC_VER
         wprintf(L"Error opening file %s!\n", fileName);
@@ -403,7 +401,7 @@ static long long save(const CHAR16* fileName, unsigned long long totalSize, cons
     {
         createDir(directory);
     }
-    if (_wfopen_s(&file, fileName, directory, L"wb", true) != 0 || !file)
+    if (q_wfopen_s(&file, fileName, directory, L"wb", true) != 0 || !file)
     {
 #ifdef _MSC_VER
         wprintf(L"Error opening file %s!\n", fileName);
