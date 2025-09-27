@@ -222,7 +222,7 @@ public:
         Array<id, 1024> commissionFreeAddresses;
     };
     
-private:
+protected:
     Array<StakeEntry, 16> _stakeQueue;
     HashMap<uint16, MBondInfo, QBOND_MAX_EPOCH_COUNT> _epochMbondInfoMap;
     HashMap<id, sint64, 524288> _userTotalStakedMap;
@@ -302,9 +302,10 @@ private:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(Stake)
     {
-        locals.amountAndFee = sadd(smul((uint64) input.quMillions, QBOND_MBOND_PRICE), div(smul((uint64) input.quMillions, QBOND_MBOND_PRICE) * QBOND_STAKE_FEE_PERCENT, 10000ULL));
+        locals.amountAndFee = sadd(smul((uint64) input.quMillions, QBOND_MBOND_PRICE), div(smul(smul((uint64) input.quMillions, QBOND_MBOND_PRICE), QBOND_STAKE_FEE_PERCENT), 10000ULL));
 
         if (input.quMillions <= 0
+                || input.quMillions >= MAX_AMOUNT
                 || !state._epochMbondInfoMap.get(qpi.epoch(), locals.tempMbondInfo)
                 || qpi.invocationReward() < 0
                 || (uint64) qpi.invocationReward() < locals.amountAndFee)
@@ -313,7 +314,7 @@ private:
             return;
         }
 
-        if ((uint64) qpi.invocationReward() > locals.amountAndFee )
+        if ((uint64) qpi.invocationReward() > locals.amountAndFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.amountAndFee);
         }
@@ -358,13 +359,13 @@ private:
                 break;
             }
 
-            if (state._userTotalStakedMap.get(qpi.invocator(), locals.userMBondsAmount))
+            if (state._userTotalStakedMap.get(state._stakeQueue.get(locals.counter).staker, locals.userMBondsAmount))
             {
-                state._userTotalStakedMap.replace(qpi.invocator(), locals.userMBondsAmount + state._stakeQueue.get(locals.counter).amount);
+                state._userTotalStakedMap.replace(state._stakeQueue.get(locals.counter).staker, locals.userMBondsAmount + state._stakeQueue.get(locals.counter).amount);
             }
             else
             {
-                state._userTotalStakedMap.set(qpi.invocator(), state._stakeQueue.get(locals.counter).amount);
+                state._userTotalStakedMap.set(state._stakeQueue.get(locals.counter).staker, state._stakeQueue.get(locals.counter).amount);
             }
 
             if (qpi.numberOfPossessedShares(locals.tempMbondInfo.name, SELF, state._stakeQueue.get(locals.counter).staker, state._stakeQueue.get(locals.counter).staker, SELF_INDEX, SELF_INDEX) <= 0)
@@ -389,12 +390,7 @@ private:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(TransferMBondOwnershipAndPossession)
     {
-        if (input.numberOfMBonds >= MAX_AMOUNT)
-        {
-            return;
-        }
-
-        if (qpi.invocationReward() < QBOND_MBOND_TRANSFER_FEE)
+        if (input.numberOfMBonds >= MAX_AMOUNT || input.numberOfMBonds <= 0 || qpi.invocationReward() < QBOND_MBOND_TRANSFER_FEE)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -624,8 +620,8 @@ private:
             {
                 if (state._askOrders.element(locals.elementIndex).numberOfMBonds <= input.numberOfMBonds)
                 {
-                    state._askOrders.remove(locals.elementIndex);
                     output.removedMBondsAmount = state._askOrders.element(locals.elementIndex).numberOfMBonds;
+                    state._askOrders.remove(locals.elementIndex);
                 }
                 else
                 {
@@ -1264,14 +1260,16 @@ private:
         locals.chunk = (sint8) (48 + mod((uint64)qpi.epoch(), 10ULL));
         locals.currentName |= (uint64)locals.chunk << (6 * 8);
 
-        qpi.issueAsset(locals.currentName, SELF, 0, QBOND_MBONDS_EMISSION, 0);
+        if (qpi.issueAsset(locals.currentName, SELF, 0, QBOND_MBONDS_EMISSION, 0) == QBOND_MBONDS_EMISSION)
+        {
+            locals.tempMbondInfo.name = locals.currentName;
+            locals.tempMbondInfo.totalStaked = 0;
+            locals.tempMbondInfo.stakersAmount = 0;
+            state._epochMbondInfoMap.set(qpi.epoch(), locals.tempMbondInfo);
+        }
 
         locals.emptyEntry.staker = NULL_ID;
         locals.emptyEntry.amount = 0;
-        locals.tempMbondInfo.name = locals.currentName;
-        locals.tempMbondInfo.totalStaked = 0;
-        locals.tempMbondInfo.stakersAmount = 0;
-        state._epochMbondInfoMap.set(qpi.epoch(), locals.tempMbondInfo);
         state._stakeQueue.setAll(locals.emptyEntry);
     }
 
