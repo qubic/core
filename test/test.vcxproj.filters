@@ -37,6 +37,7 @@
     <ClCompile Include="qpi_date_time.cpp" />
     <ClCompile Include="uint128.cpp" />
     <ClCompile Include="fourq.cpp" />
+    <ClCompile Include="contract_qbond.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />

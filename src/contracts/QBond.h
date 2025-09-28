@@ -859,7 +859,10 @@ protected:
                 output.amount = 0;
             }
 
-            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            if (qpi.invocationReward() > 0 && qpi.invocationReward() < MAX_AMOUNT)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
             return;
         }
 
@@ -886,11 +889,11 @@ protected:
 
         if (input.operation == 0)
         {
-            state._commissionFreeAddresses.remove(input.user);
+            output.result = state._commissionFreeAddresses.remove(input.user);
         }
         else
         {
-            state._commissionFreeAddresses.add(input.user);
+            output.result = state._commissionFreeAddresses.add(input.user);
         }
     }
 
