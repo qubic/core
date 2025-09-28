@@ -282,7 +282,11 @@ public:
 
         if (pageDir != NULL)
         {
+#ifdef REAL_NODE
             addEpochToFileName(pageDir, 12, max(EPOCH, int(system.epoch)));
+#else
+			addEpochToFileName(pageDir, 12, 0);
+#endif
             if (asyncCreateDir(pageDir) != 0)
             {
 #if !defined(NDEBUG)

@@ -2498,8 +2498,13 @@ static void KangarooTwelve64To32(const void* input, void* output)
 static void random(const unsigned char* publicKey, const unsigned char* nonce, unsigned char* output, unsigned long long outputSize)
 {
     unsigned char state[200];
-    *((m256i*) & state[0]) = *((m256i*)publicKey);
-    *((m256i*) & state[32]) = *((m256i*)nonce);
+#ifdef _MSC_VER
+    *((__m256i*)&state[0]) = *((__m256i*)publicKey);
+    *((__m256i*)&state[32]) = *((__m256i*)nonce);
+#else
+    *((m256i*)&state[0]) = *((m256i*)publicKey);
+    *((m256i*)&state[32]) = *((m256i*)nonce);
+#endif
     setMem(&state[64], sizeof(state) - 64, 0);
 
     for (unsigned long long i = 0; i < outputSize / sizeof(state); i++)
