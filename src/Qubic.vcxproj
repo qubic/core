@@ -26,6 +26,7 @@
     <ClInclude Include="contracts\MsVault_v1.h" />
     <ClInclude Include="contracts\Qdraw.h" />
     <ClInclude Include="contracts\Qswap.h" />
+    <ClInclude Include="contracts\RandomLottery.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
     <ClInclude Include="contracts\EmptyTemplate.h" />
     <ClInclude Include="contracts\GeneralQuorumProposal.h" />
