@@ -116,7 +116,7 @@ public:
 	struct GetPlayers_locals
 	{
 		uint64 arrayIndex = 0;
-		sint32 i = 0;
+		sint64 i = 0;
 	};
 
 	/**
@@ -158,8 +158,8 @@ public:
 	struct GetWinner_locals
 	{
 		uint64 randomNum = 0;
-		sint32 i = 0;
-		sint32 j = 0;
+		sint64 i = 0;
+		uint64 j = 0;
 	};
 
 	struct GetWinners_input
@@ -182,7 +182,7 @@ public:
 
 	struct ReturnAllTickets_locals
 	{
-		sint32 i = 0;
+		sint64 i = 0;
 	};
 
 	struct END_EPOCH_locals
@@ -345,7 +345,7 @@ public:
 			locals.i = state.players.nextElementIndex(locals.i);
 		};
 
-		output.numberOfPlayers = locals.arrayIndex;
+		output.numberOfPlayers = static_cast<uint16>(locals.arrayIndex);
 	}
 
 	/**
