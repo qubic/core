@@ -172,7 +172,11 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_INDEX MSVAULT_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE MSVAULT
 #define CONTRACT_STATE2_TYPE MSVAULT2
-#include "contracts/MsVault.h"
+#ifdef MSVAULT_V1
+    #include "contracts/MsVault_v1.h"
+#else
+    #include "contracts/MsVault.h"
+#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
