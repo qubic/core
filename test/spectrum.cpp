@@ -123,7 +123,7 @@ static void updateAndPrintEntityCategoryPopulations()
 struct SpectrumTest : public LoggingTest
 {
     SpectrumInfo beforeAntiDustSpectrumInfo;
-    std::chrono::time_point<std::chrono::system_clock> beforeAntiDustTimestamp = std::chrono::high_resolution_clock::now();
+    std::chrono::time_point<std::chrono::high_resolution_clock> beforeAntiDustTimestamp = std::chrono::high_resolution_clock::now();
     bool antiDustCornerCase;
     std::mt19937_64 rnd64;
 

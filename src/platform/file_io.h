@@ -36,7 +36,7 @@ static EFI_FILE_PROTOCOL* root = NULL;
 class AsyncFileIO;
 static AsyncFileIO* gAsyncFileIO = NULL;
 
-bool q_wfopen_s(FILE **file, const CHAR16 *fileName, const CHAR16 *directory, const CHAR16 *mode, bool createFileIfNotExist = false) {
+static bool q_wfopen_s(FILE **file, const CHAR16 *fileName, const CHAR16 *directory, const CHAR16 *mode, bool createFileIfNotExist = false) {
     if (!file) return EINVAL;
 
     // Convert filename

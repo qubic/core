@@ -5,7 +5,7 @@
 #include <stdarg.h>
 #include <codecvt>
 
-std::string wchar_to_string(const wchar_t* wstr) {
+static std::string wchar_to_string(const wchar_t* wstr) {
     if (!wstr)
     {
         return std::string();
@@ -22,7 +22,7 @@ std::string wchar_to_string(const wchar_t* wstr) {
     return convert.to_bytes(u16str);
 }
 
-void print_wstr(const wchar_t* wstr, ...) {
+static void print_wstr(const wchar_t* wstr, ...) {
     std::string utf8String = wchar_to_string(wstr);
     va_list args;
     va_start(args, utf8String.c_str());

@@ -893,7 +893,6 @@ public:
             if (!isResetOk) {
                 while (true) {
                     logToConsole(L"Something wrong in reset ts state");
-                    bs->Stall(1'000'000);
                 }
             }
 

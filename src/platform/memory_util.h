@@ -10,9 +10,21 @@
 #include <cstdbool>
 #include <cstdio>
 
+#if defined(NO_UEFI) && !defined(REAL_NODE)
+static inline void* qVirtualAlloc(const unsigned long long size, bool commitMem) {
+	return nullptr;
+}
+static inline void* qVirtualCommit(void* address, const unsigned long long size) {
+    return nullptr;
+}
+static inline bool qVirtualFreeAndRecommit(void* address, const unsigned long long size) {
+	return false;
+}
+#else
 inline void* qVirtualAlloc(const unsigned long long size, bool commitMem);
 inline void* qVirtualCommit(void* address, const unsigned long long size);
 inline bool qVirtualFreeAndRecommit(void* address, const unsigned long long size);
+#endif
 
 // useVirtualMem indicates whether to use VirtualAlloc or malloc
 // commitMem indicates whether to commit memory when using VirtualAlloc

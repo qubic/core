@@ -61,3 +61,5 @@ unsigned long long now_ms()
 bool isMainProcessor() {
     return true;
 }
+
+unsigned long long mainThreadProcessorID = 1;
