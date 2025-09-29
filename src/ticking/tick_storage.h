@@ -1428,8 +1428,7 @@ public:
             {
                 if (pHashMap[index].digest == digest)
                 {
-                    // SWAP: should load the page containing the transaction
-                    return tickTransactionsSwapVM[pHashMap[index].offset];
+                    return TickTransactionsAccess::ptr(pHashMap[index].offset);
                 }
                 index = (index + 1) % tickTransactionOffsetsLengthCurrentEpoch;
                 if (index == original_index)
