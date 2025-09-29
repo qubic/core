@@ -8,6 +8,9 @@ constexpr uint16 FUNCTION_INDEX_GET_FEES = 1;
 constexpr uint16 FUNCTION_INDEX_GET_PLAYERS = 2;
 constexpr uint16 FUNCTION_INDEX_GET_WINNERS = 3;
 
+static const id RL_DEV_ADDRESS = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C,
+	_R, _L, _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
+
 // Equality operator for comparing WinnerInfo objects
 bool operator==(const RL::WinnerInfo& left, const RL::WinnerInfo& right)
 {
