@@ -134,7 +134,10 @@ inline void* qVirtualCommit(void* address, const unsigned long long size) {
 inline bool qVirtualFreeAndRecommit(void* address, const unsigned long long size) {
     VirtualFree(address, (SIZE_T)size, MEM_DECOMMIT);
     bool commitMem = commitMemMap[(unsigned long long)address];
-    return VirtualAlloc(address, (SIZE_T)size, MEM_RESERVE | (commitMem ? MEM_COMMIT : 0), PAGE_READWRITE) != nullptr;
+	if (!commitMem) {
+		return true;
+	}
+    return VirtualAlloc(address, (SIZE_T)size, MEM_COMMIT, PAGE_READWRITE) != address;
 }
 #else
 inline void* qVirtualAlloc(const unsigned long long size, bool commitMem = false) {

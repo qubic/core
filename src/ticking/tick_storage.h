@@ -917,10 +917,10 @@ public:
         else
         {
             // node startup with no data of prior epoch
-			//qVirtualDecommit(tickDataPtr, tickDataSize);
-			//qVirtualDecommit(ticksPtr, ticksSize);
-			//qVirtualDecommit(tickTransactionsPtr, tickTransactionsSize);
-            //setMem(tickTransactionOffsetsPtr, tickTransactionOffsetsSize, 0);
+            qVirtualFreeAndRecommit(tickDataPtr, tickDataSize);
+            qVirtualFreeAndRecommit(ticksPtr, ticksSize);
+            qVirtualFreeAndRecommit(tickTransactionsPtr, tickTransactionsSize);
+            qVirtualFreeAndRecommit(tickTransactionOffsetsPtr, tickTransactionOffsetsSize);
             oldTickBegin = 0;
             oldTickEnd = 0;
         }
