@@ -34,11 +34,6 @@ public:
         return (QBondChecker*)contractStates[QBOND_CONTRACT_INDEX];
     }
 
-    bool loadState(const CHAR16* filename)
-    {
-        return load(filename, sizeof(QBOND), contractStates[QBOND_CONTRACT_INDEX]) == sizeof(QBOND);
-    }
-
     void beginEpoch(bool expectSuccess = true)
     {
         callSystemProcedure(QBOND_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
