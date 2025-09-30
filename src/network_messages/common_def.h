@@ -2,7 +2,7 @@
 
 #define SIGNATURE_SIZE 64
 #ifdef TESTNET
-#define NUMBER_OF_TRANSACTIONS_PER_TICK 64 // Must be 2^N
+#define NUMBER_OF_TRANSACTIONS_PER_TICK 1024 // Must be 2^N
 #else
 #define NUMBER_OF_TRANSACTIONS_PER_TICK 1024 // Must be 2^N
 #endif
@@ -13,14 +13,14 @@
 #define NUMBER_OF_EXCHANGED_PEERS 4
 
 #ifdef TESTNET
-#define SPECTRUM_DEPTH 10 // Defines SPECTRUM_CAPACITY (1 << SPECTRUM_DEPTH)
+#define SPECTRUM_DEPTH 12 // Defines SPECTRUM_CAPACITY (1 << SPECTRUM_DEPTH)
 #else
 #define SPECTRUM_DEPTH 24 // Defines SPECTRUM_CAPACITY (1 << SPECTRUM_DEPTH)
 #endif
 #define SPECTRUM_CAPACITY (1ULL << SPECTRUM_DEPTH) // Must be 2^N
 
 #ifdef TESTNET
-#define ASSETS_DEPTH 10 // Is derived from ASSETS_CAPACITY (=N)
+#define ASSETS_DEPTH 24 // Is derived from ASSETS_CAPACITY (=N)
 #else
 #define ASSETS_DEPTH 24 // Is derived from ASSETS_CAPACITY (=N)
 #endif
@@ -62,6 +62,17 @@ typedef union IPv4Address
 {
     uint8_t     u8[4];
     uint32_t    u32;
+
+    void fromString(std::string str) {
+        size_t pos = 0;
+        for (int i = 0; i < 4; i++) {
+            size_t nextPos = str.find('.', pos);
+            std::string byteStr = (nextPos == std::string::npos) ? str.substr(pos) : str.substr(pos, nextPos - pos);
+            u8[i] = static_cast<uint8_t>(std::stoi(byteStr));
+            if (nextPos == std::string::npos) break;
+            pos = nextPos + 1;
+        }
+    }
 } IPv4Address;
 
 static_assert(sizeof(IPv4Address) == 4, "Unexpected size!");

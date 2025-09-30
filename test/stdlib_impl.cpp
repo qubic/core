@@ -55,5 +55,11 @@ unsigned long long now_ms()
 {
     std::time_t t = std::time(nullptr);
     std::tm* tm = std::gmtime(&t);
-    return ms(unsigned char(tm->tm_year % 100), tm->tm_mon, tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec, 0);
+    return ms((unsigned char)(tm->tm_year % 100), tm->tm_mon, tm->tm_mday, tm->tm_hour, tm->tm_min, tm->tm_sec, 0);
 }
+
+bool isMainProcessor() {
+    return true;
+}
+
+unsigned long long mainThreadProcessorID = 1;

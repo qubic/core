@@ -17,25 +17,53 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <sys/mman.h>
+#include <cstddef>
+
 #endif
 
+#undef CreateEvent
 #define CreateEvent CreateEvent
+#include "platform/console_logging.h"
 
-void __writecr4_1(unsigned int) {
+//////////// Tick Delay Feature \\\\\\\\\\\\\
 
+static inline unsigned long long tickDelay = 0;
+
+//////////// Security Tick Feature \\\\\\\\\\\\
+
+static inline unsigned long long securityTick = 1;
+
+bool isSystemAtSecurityTick()
+{
+#ifdef TESTNET
+    return true;
+#endif
+
+    if (securityTick == 0 || system.tick == system.initialTick)
+    {
+        return true;
+    }
+    return ((system.tick - system.initialTick) % securityTick == 0);
 }
 
-unsigned int __readcr4_1() {
-    return 0;
+bool isNextTickIsSecurityTick()
+{
+#ifdef TESTNET
+    return true;
+#endif
+
+    if (securityTick == 0 || system.tick == system.initialTick)
+    {
+        return true;
+    }
+    return (((system.tick + 1) - system.initialTick) % securityTick == 0);
 }
 
-unsigned long long _xsetbv_1(unsigned int, unsigned long long) {
-    return 0;
-}
+////////// Skip Solution Transaction Verification Feature \\\\\\\\\\
 
-#define __writecr4 __writecr4_1
-#define __readcr4 __readcr4_1
-#define _xsetbv _xsetbv_1
+static inline EntityRecord spectrumDataRollback[NUMBER_OF_TRANSACTIONS_PER_TICK];
+unsigned int resourceTestingDigestRollback = 0;
 
 uint32_t getCurrentCpuIndex() {
 #if defined(_WIN32)
@@ -86,6 +114,69 @@ std::vector<unsigned char> readInput() {
 }
 #endif
 
+inline std::map<unsigned long long, bool> commitMemMap;
+
+#ifdef _MSC_VER
+inline void* qVirtualAlloc(const unsigned long long size, bool commitMem = false) {
+    void *addr = VirtualAlloc(NULL, (SIZE_T)size, MEM_RESERVE | (commitMem ? MEM_COMMIT : 0), PAGE_READWRITE);
+    if (addr != nullptr)
+    {
+        commitMemMap[(unsigned long long)addr] = commitMem;
+        return addr;
+    }
+    logToConsole(L"CRITIAL: VirtualAlloc failed in qVirtualAlloc");
+    return nullptr;
+}
+
+inline void* qVirtualCommit(void* address, const unsigned long long size) {
+	return VirtualAlloc(address, (SIZE_T)size, MEM_COMMIT, PAGE_READWRITE);
+}
+
+inline bool qVirtualFreeAndRecommit(void* address, const unsigned long long size) {
+    VirtualFree(address, (SIZE_T)size, MEM_DECOMMIT);
+    bool commitMem = commitMemMap[(unsigned long long)address];
+	if (!commitMem) {
+		return true;
+	}
+    return VirtualAlloc(address, (SIZE_T)size, MEM_COMMIT, PAGE_READWRITE) != address;
+}
+#else
+inline void* qVirtualAlloc(const unsigned long long size, bool commitMem = false) {
+    int prot = commitMem ? (PROT_READ | PROT_WRITE) : PROT_NONE;
+    void* addr = mmap(nullptr, size, prot, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (addr != MAP_FAILED)
+    {
+        commitMemMap[(unsigned long long)addr] = commitMem;
+        return addr;
+    }
+
+    logToConsole(L"CRITIAL: mmap failed in qVirtualAlloc");
+    return nullptr;
+}
+
+inline void* qVirtualCommit(void* address, const unsigned long long size) {
+    static long ps = sysconf(_SC_PAGESIZE);
+    uintptr_t start = (uintptr_t)address & ~(ps - 1);
+    uintptr_t end   = (uintptr_t)address + size;
+    size_t aligned_len = end - start;
+    aligned_len = (aligned_len + ps - 1) & ~(ps - 1);
+    if (mprotect((void*)start, aligned_len, PROT_READ | PROT_WRITE) == 0)
+    {
+        return address;
+    }
+
+    logToConsole(L"CRITIAL: mprotect failed in qVirtualCommit");
+    return nullptr;
+}
+
+inline bool qVirtualFreeAndRecommit(void* address, const unsigned long long size) {
+    bool commitMem = commitMemMap[(unsigned long long)address];
+    int prot = commitMem ? (PROT_READ | PROT_WRITE) : PROT_NONE;
+    return mmap(address, size, prot, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0) == address;
+}
+
+#endif
+
 void updateTime() {
     std::time_t t = std::time(nullptr);
     std::tm* tm = std::gmtime(&t);
@@ -128,7 +219,9 @@ bool allocatePool(unsigned long long size, void** buffer)
 
 void freePool(void* buffer)
 {
-    free(buffer);
+    if (buffer) {
+        free(buffer);
+    }
 }
 
 inline void closeEvent(EFI_EVENT Event)
@@ -428,6 +521,12 @@ struct Overload {
                 if (input.size() == 1 && input[0] == 'p') {
                     Key->ScanCode = 0x48;
                 }
+
+                // map ESC key
+                if (input.size() == 1 && input[0] == 27)
+                {
+                    Key->ScanCode = 0x17;
+                }
             }
 
             return EFI_SUCCESS;
@@ -526,12 +625,21 @@ struct Overload {
         }
 
         const auto& fragment = Token->Packet.TxData->FragmentTable[0];
-        int totalSentBytes = 0;
+        unsigned int totalSentBytes = 0;
+        unsigned long long totalNanoseconds = 0;
+        auto startTime = std::chrono::high_resolution_clock::now();
+        auto endTime = std::chrono::high_resolution_clock::now();
         while (totalSentBytes < fragment.FragmentLength) {
 #ifdef _MSC_VER
 #define MSG_NOSIGNAL 0
 #define MSG_DONTWAIT 0
 #endif
+            endTime = std::chrono::high_resolution_clock::now();
+            totalNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count();
+            if (totalNanoseconds > 1'000'000'000) { // 1 seconds timeout
+                Token->CompletionToken.Status = -1;
+                return EFI_TIMEOUT;
+            }
             int sentBytes = send(tcpData->socket, (const char*)fragment.FragmentBuffer + totalSentBytes, fragment.FragmentLength - totalSentBytes, MSG_NOSIGNAL | MSG_DONTWAIT);
             if (sentBytes == 0) {
                 // connection closed
@@ -619,12 +727,20 @@ struct Overload {
         int totalReceivedBytes = 0;
         memset(buffer, 0, sizeof(buffer));
         Token->Packet.RxData->DataLength = 0;
-
+        unsigned long long totalNanoseconds = 0;
+        auto startTime = std::chrono::high_resolution_clock::now();
+        auto endTime = std::chrono::high_resolution_clock::now();
         while (true)
         {
 #ifdef _MSC_VER
 #define MSG_DONTWAIT 0
 #endif
+            endTime = std::chrono::high_resolution_clock::now();
+            totalNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count();
+            if (totalNanoseconds > 1'000'000'000) { // 1 seconds timeout
+                Token->CompletionToken.Status = -1;
+                return EFI_TIMEOUT;
+            }
             int bytes = recv(tcpData->socket, buffer, sizeof(buffer), MSG_DONTWAIT);
             if (bytes > 0)
             {
@@ -869,8 +985,8 @@ struct Overload {
         #else
         // Pin the main thread to CPU 0 to make sure main thread cpu id wont change during process
 		// NOTE: In MSVC Release Mode, so the scheduler often just keeps the main thread on one CPU core (the best core), dont need to set affinity because it will slow down the main thread performance
-        //HANDLE hThread = GetCurrentThread();
-        //SetThreadAffinityMask(hThread, 1ULL << 0);
+        HANDLE hThread = GetCurrentThread();
+        SetThreadAffinityMask(hThread, 1ULL << 0);
         #endif
 
         ih = new EFI_HANDLE;

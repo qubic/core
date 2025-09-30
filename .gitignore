@@ -19,3 +19,6 @@ build/
 out/build/
 **/Testing/Temporary/
 **/_deps/googletest-src
+
+# Clion
+.idea/

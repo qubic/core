@@ -1364,6 +1364,11 @@ static unsigned char broadcastedComputorSeeds[][55 + 1] = {
 "qicuxaeksjvynsomgevfkewhtjenprpogjaqloirxsdpqpvfgwlotru",
 };
 
+// If you want to fund any of your custom seeds with initial spectrum, add them here.
+static unsigned char customSeeds[][55 + 1] = {
+    "qubicorelitebyfeiyuivqubicqubicqubicqubicqubicquicqubic"
+};
+
 // number of private ips for computor's internal services
 // these are the first N ip in knownPublicPeers, these IPs will never be shared or deleted
 #define NUMBER_OF_PRIVATE_IP 0

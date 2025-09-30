@@ -31,7 +31,7 @@ struct Peer;
 #define LOG_STATE_DIGEST 0
 #endif
 
-#ifdef NO_UEFI
+#if defined(NO_UEFI) && !defined(REAL_NODE)
 #undef LOG_STATE_DIGEST
 #define LOG_STATE_DIGEST 0
 #else
@@ -227,12 +227,18 @@ struct SpectrumStats
 /*
  * LOGGING IMPLEMENTATION
  */
+#ifdef TESTNET
+#define LOG_BUFFER_PAGE_SIZE 30000000ULL
+#define PMAP_LOG_PAGE_SIZE 3000000ULL
+#define IMAP_LOG_PAGE_SIZE 1000ULL
+#else
 #define LOG_BUFFER_PAGE_SIZE 300000000ULL
 #define PMAP_LOG_PAGE_SIZE 30000000ULL
 #define IMAP_LOG_PAGE_SIZE 10000ULL
+#endif
 #define VM_NUM_CACHE_PAGE 8
  // Virtual memory with 100'000'000 items per page and 4 pages on cache
-#ifdef NO_UEFI
+#if defined(NO_UEFI) && !defined(REAL_NODE)
 #define TEXT_LOGS_AS_NUMBER 0
 #define TEXT_PMAP_AS_NUMBER 0
 #define TEXT_BUF_AS_NUMBER 0
@@ -328,12 +334,19 @@ private:
         tx.addLogId();
         logBuf.set(logId, logBufferTail, LOG_HEADER_SIZE + messageSize);
         *((unsigned short*)(buffer)) = system.epoch;
+        //copyMem(buffer, (char*)&system.epoch, 2);
         *((unsigned int*)(buffer + 2)) = system.tick;
+        //copyMem(buffer + 2, (char*)&system.tick, 4);
         *((unsigned int*)(buffer + 6)) = messageSize | (messageType << 24);
+        unsigned int sizeAndType = messageSize | (messageType << 24);
+        //copyMem(buffer + 6, (char*)&sizeAndType, 4);
         *((unsigned long long*)(buffer + 10)) = logId++;
+        //copyMem(buffer + 10, (char*)&logId, 8);
+        //logId++;
         unsigned long long logDigest = 0;
         KangarooTwelve(message, messageSize, &logDigest, 8);
         *((unsigned long long*)(buffer + 18)) = logDigest;
+        //copyMem(buffer + 18, (char*)&logDigest, 8);
         logBufferTail += LOG_HEADER_SIZE + messageSize;
         logBuffer.appendMany(buffer, LOG_HEADER_SIZE);
         logBuffer.appendMany((char*)message, messageSize);
@@ -594,7 +607,7 @@ public:
 #endif
     }
     
-#ifdef NO_UEFI
+#if defined(NO_UEFI) && !defined(REAL_NODE)
 #else
 
     // This function is part of save/load feature and can only be called from main thread
