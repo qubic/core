@@ -9,6 +9,11 @@ The lite version of Qubic Core that can run directly on the OS without a UEFI en
 - [x] Mainnet (Beta)
 - [x] Local Testnet
 
+## Parameters
+
+- **Security tick** : `./Qubic --security-tick 32`
+> The security tick temporarily skips verifying your **node’s contract state (computer digest)** against the quorum. Verification is performed only every `--security-tick` interval.
+
 ## Prerequisites
 
 ### Local Testnet
