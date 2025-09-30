@@ -884,7 +884,7 @@ public:
     T& getRef(unsigned long long index)
     requires (mode == SwapMode::INDEX_MODE)
     {
-        T result;
+        static T empty;
         ACQUIRE(memLock);
 
         unsigned long long requested_page_id = index / pageCapacity;
@@ -895,9 +895,9 @@ public:
 #if !defined(NDEBUG)
             addDebugMessage(L"Invalid cache page index, return zeroes array");
 #endif
-            setMem(&result, sizeof(T), 0);
+            setMem(&empty, sizeof(T), 0);
             RELEASE(memLock);
-            return result;
+            return empty;
         }
         T& resultRef = cache[cache_page_idx][index % pageCapacity];
         RELEASE(memLock);
@@ -909,9 +909,9 @@ public:
     T* getPtr(unsigned long long index)
     requires (mode == SwapMode::INDEX_MODE)
     {
-        T* result = nullptr;
+        static T* result = nullptr;
         ACQUIRE(memLock);
-
+		result = nullptr;
         unsigned long long requested_page_id = index / pageCapacity;
         currentPageId = requested_page_id > currentPageId ? requested_page_id : currentPageId;
         int cache_page_idx = loadPageToCacheAndTryToPersist(requested_page_id);
@@ -931,8 +931,9 @@ public:
     T* operator[](unsigned long long offset)
     requires (mode == SwapMode::OFFSET_MODE)
     {
-        T* result = nullptr;
+        static T* result = nullptr;
         ACQUIRE(memLock);
+		result = nullptr;
         unsigned long long pageId = offset / maxBytesPerPage;
         unsigned long long offsetInPage = offset % maxBytesPerPage;
         long long lastElementLength = 0;

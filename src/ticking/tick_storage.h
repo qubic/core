@@ -886,10 +886,10 @@ public:
 
             // reset data storage of new epoch
             bool isResetOk = true;
-			isResetOk = isResetOk & qVirtualFreeAndRecommit(tickDataPtr, MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(TickData));
-			isResetOk = isResetOk & qVirtualFreeAndRecommit(ticksPtr, ticksLengthCurrentEpoch * sizeof(Tick));
-			isResetOk = isResetOk & qVirtualFreeAndRecommit(tickTransactionsPtr, tickTransactionsSizeCurrentEpoch);
-			isResetOk = isResetOk & qVirtualFreeAndRecommit(tickTransactionOffsetsPtr, tickTransactionOffsetsSizeCurrentEpoch);
+			isResetOk = isResetOk && qVirtualFreeAndRecommit(tickDataPtr, MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(TickData));
+			isResetOk = isResetOk && qVirtualFreeAndRecommit(ticksPtr, ticksLengthCurrentEpoch * sizeof(Tick));
+			isResetOk = isResetOk && qVirtualFreeAndRecommit(tickTransactionsPtr, tickTransactionsSizeCurrentEpoch);
+			isResetOk = isResetOk && qVirtualFreeAndRecommit(tickTransactionOffsetsPtr, tickTransactionOffsetsSizeCurrentEpoch);
             if (!isResetOk) {
                 while (true) {
                     logToConsole(L"Something wrong in reset ts state");
@@ -903,11 +903,11 @@ public:
 #endif
 
 #ifndef NDEBUG
-            for (auto tickIndex = 0ULL; tickIndex < MAX_NUMBER_OF_TICKS_PER_EPOCH; tickIndex++) {
+            for (unsigned int tickIndex = 0; tickIndex < MAX_NUMBER_OF_TICKS_PER_EPOCH; tickIndex++) {
                 TickData &tickData = TickStorage::tickData[tickIndex];
                 ASSERT(isAllBytesZero(&tickData, sizeof(tickData)));
 
-                for (auto compIndex = 0ULL; compIndex < NUMBER_OF_COMPUTORS; compIndex++) {
+                for (unsigned int compIndex = 0; compIndex < NUMBER_OF_COMPUTORS; compIndex++) {
                     Tick &tick = TickStorage::ticks[(tickIndex * NUMBER_OF_COMPUTORS) + compIndex];
                     ASSERT(isAllBytesZero(&tick, sizeof(tick)));
                 }
@@ -1020,7 +1020,7 @@ public:
                         addDebugMessage(dbgMsgBuf);
 
                         addDebugMessage(L"Skipping to check more transactions and ticks");
-                        // goto test_current_epoch;
+                        goto test_current_epoch;
                     }
 #endif
                 }

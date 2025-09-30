@@ -22,6 +22,7 @@
 
 #endif
 
+#undef CreateEvent
 #define CreateEvent CreateEvent
 #include "platform/console_logging.h"
 
@@ -624,7 +625,7 @@ struct Overload {
         }
 
         const auto& fragment = Token->Packet.TxData->FragmentTable[0];
-        int totalSentBytes = 0;
+        unsigned int totalSentBytes = 0;
         unsigned long long totalNanoseconds = 0;
         auto startTime = std::chrono::high_resolution_clock::now();
         auto endTime = std::chrono::high_resolution_clock::now();

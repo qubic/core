@@ -5,6 +5,9 @@
 #include <stdarg.h>
 #include <codecvt>
 
+#ifdef _MSC_VER
+#pragma warning(disable: 4996)
+#endif
 static std::string wchar_to_string(const wchar_t* wstr) {
     if (!wstr)
     {
@@ -22,6 +25,9 @@ static std::string wchar_to_string(const wchar_t* wstr) {
     return convert.to_bytes(u16str);
 }
 
+#ifdef _MSC_VER
+#pragma warning(disable: 5082)
+#endif
 static void print_wstr(const wchar_t* wstr, ...) {
     std::string utf8String = wchar_to_string(wstr);
     va_list args;

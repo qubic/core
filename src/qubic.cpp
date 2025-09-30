@@ -3247,7 +3247,7 @@ static void processTick(unsigned long long processorNumber)
         solutionTotalExecutionTicks = __rdtsc() - solutionProcessStartTick; // for tracking the time processing solutions
 
         // Setup spectrum rollback data
-        setMem(spectrumDataRollback, 0, sizeof(spectrumDataRollback));
+        setMem(spectrumDataRollback, sizeof(spectrumDataRollback), 0);
         resourceTestingDigestRollback = resourceTestingDigest;
 
         // Process all transaction of the tick
@@ -8014,6 +8014,6 @@ int main(int argc, const char* argv[]) {
     logColorToScreen("INFO", "================== ~~~~~~~~~~~~~~~ ==================\n");
 
     Overload::initializeUefi();
-    return efi_main(ih, st);
+    return (int)efi_main(ih, st);
 }
 

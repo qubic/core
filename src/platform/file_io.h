@@ -37,7 +37,7 @@ class AsyncFileIO;
 static AsyncFileIO* gAsyncFileIO = NULL;
 
 static bool q_wfopen_s(FILE **file, const CHAR16 *fileName, const CHAR16 *directory, const CHAR16 *mode, bool createFileIfNotExist = false) {
-    if (!file) return EINVAL;
+    if (!file) return (bool)EINVAL;
 
     // Convert filename
     std::string fileNameUtf8 = wchar_to_string(fileName);
@@ -834,7 +834,7 @@ public:
     {
 #ifdef NO_UEFI
         mpFileSystemMPServices = pMPServices;
-        mBSProcID = mainThreadProcessorID;
+        mBSProcID = (unsigned int)mainThreadProcessorID;
 #else
         mpFileSystemMPServices = pMPServices;
 
@@ -917,7 +917,7 @@ public:
 
     void sleep(unsigned long long ms)
     {
-#ifdef NO_UEFI && !defined(REAL_NODE)
+#if defined(NO_UEFI) && !defined(REAL_NODE)
         _mm_pause();
 #else
         bs->Stall(ms);
