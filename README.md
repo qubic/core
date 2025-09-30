@@ -17,6 +17,9 @@ The lite version of Qubic Core that can run directly on the OS without a UEFI en
 - **Ticking delay (local testnet)**: `./Qubic --ticking-delay 1000`
 > If your local testnet ticking too fast, you can slow it down by `--ticking-delay` ms.
 
+- **Peers**: `./Qubic --peers 1.2.3.4,8.8.8.8`
+> You can add more peers using command line
+
 ## Prerequisites
 
 ### Local Testnet
@@ -82,7 +85,7 @@ In `qubic.cpp`
 #define USE_SWAP
 ```
 
-**3.** add public peers from https://app.qubic.li/network/live to `knownPublicPeers`
+**3.** add public peers from https://app.qubic.li/network/live to `knownPublicPeers` in `private_settings.h` or add via command line `--peers`
 
 ## Build
 
@@ -129,4 +132,5 @@ Delete the **system** file at your current working folder, it may make your node
 ## Donate The Project
 
 QUBIC Wallet: QPROLAPACSPVBDQADRXXKRGZMXADUAEXXJIQNWPGWFUFUAITRXMHVODDLGBK
+
 
