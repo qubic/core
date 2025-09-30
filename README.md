@@ -14,6 +14,9 @@ The lite version of Qubic Core that can run directly on the OS without a UEFI en
 - **Security tick** : `./Qubic --security-tick 32`
 > The security tick temporarily skips verifying your **node’s contract state (computer digest)** against the quorum. Verification is performed only every `--security-tick` interval.
 
+- **Ticking delay (local testnet)**: `./Qubic --ticking-delay 1000`
+> If your local testnet ticking too fast, you can slow it down by `--ticking-delay` ms.
+
 ## Prerequisites
 
 ### Local Testnet
@@ -126,3 +129,4 @@ Delete the **system** file at your current working folder, it may make your node
 ## Donate The Project
 
 QUBIC Wallet: QPROLAPACSPVBDQADRXXKRGZMXADUAEXXJIQNWPGWFUFUAITRXMHVODDLGBK
+
