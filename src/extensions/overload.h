@@ -928,6 +928,7 @@ struct Overload {
     }
 
     static EFI_STATUS Connect(IN void* This, IN EFI_TCP4_CONNECTION_TOKEN* ConnectionToken) {
+        static std::map<int, long> latestConnectTimestampMap; // map of <ip, timestamp>
         TcpData* tcpData = nullptr;
         unsigned long long key = (unsigned long long)This;
         if (tcpDataMap.contains(key)) {
@@ -937,7 +938,6 @@ struct Overload {
             logToConsole(L"No Tcp Data For This Connect!");
             return EFI_UNSUPPORTED;
         }
-
         SOCKET sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (sock == INVALID_SOCKET) {
             logToConsole(L"Socket creation failed!!");
@@ -952,11 +952,17 @@ struct Overload {
         #ifdef _MSC_VER
         serverAddr.sin_addr.S_un.S_addr = *((unsigned long*)tcpData->configData.AccessPoint.RemoteAddress.Addr);
         #else
-        serverAddr.sin_addr.s_addr = *((unsigned long*)tcpData->configData.AccessPoint.RemoteAddress.Addr);
+        serverAddr.sin_addr.s_addr = *((unsigned int*)tcpData->configData.AccessPoint.RemoteAddress.Addr);
         #endif
 
+        unsigned int ipInNumber = *(unsigned int*)tcpData->configData.AccessPoint.RemoteAddress.Addr;
         // connect in a thread
-        std::thread connectThread([tcpData, serverAddr, ConnectionToken]() {
+        std::thread connectThread([tcpData, serverAddr, ConnectionToken, ipInNumber]() {
+            auto now = std::chrono::system_clock::now();
+            long ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+            if (ms - latestConnectTimestampMap[ipInNumber] < 2'000) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5'000));
+            }
             if (connect(tcpData->socket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
                 ConnectionToken->CompletionToken.Status = EFI_ABORTED;
             }
@@ -967,6 +973,8 @@ struct Overload {
                 ioctlsocket(tcpData->socket, FIONBIO, &mode);
 #endif
             }
+
+            latestConnectTimestampMap[ipInNumber] = ms;
             });
         connectThread.detach();
 
