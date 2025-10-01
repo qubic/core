@@ -636,7 +636,7 @@ struct Overload {
 #endif
             endTime = std::chrono::high_resolution_clock::now();
             totalNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count();
-            if (totalNanoseconds > 1'000'000'000) { // 1 seconds timeout
+            if (totalNanoseconds > 1'000'000'000 / 10) { // 1 seconds timeout
                 Token->CompletionToken.Status = -1;
                 return EFI_TIMEOUT;
             }
