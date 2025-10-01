@@ -46,8 +46,8 @@ struct RequestedCustomMiningSolutionVerification
     };
     unsigned long long taskIndex;
     unsigned long long nonce;
-    unsigned long long reserve0;
-    unsigned long long reserve1;
+    unsigned long long encryptionLevel;
+    unsigned long long computorRandom;
     unsigned long long reserve2;
     unsigned long long isValid;  // validity of the solution. 0: invalid, >0: valid
 
@@ -67,8 +67,8 @@ struct RespondCustomMiningSolutionVerification
     };
     unsigned long long taskIndex;
     unsigned long long nonce;
-    unsigned long long reserve0;
-    unsigned long long reserve1;
+    unsigned long long encryptionLevel;
+    unsigned long long computorRandom;
     unsigned long long reserve2;
     long long status;       // Flag indicate the status of solution
 };

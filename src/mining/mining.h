@@ -55,7 +55,7 @@ struct CustomMiningSolutionTransaction : public Transaction
 struct CustomMiningTaskV2 {
     unsigned long long taskIndex;
     unsigned char m_template[896];
-    unsigned long long m_extraNonceOffset;
+    unsigned long long m_extraNonceOffset;// offset to place extra nonce
     unsigned long long m_size;
     unsigned long long m_target;
     unsigned long long m_height;
@@ -63,11 +63,11 @@ struct CustomMiningTaskV2 {
 };
 
 struct CustomMiningSolutionV2 {
-    unsigned long long taskIndex;
-    unsigned long long nonce; // (extraNonce<<32) | nonce
-    unsigned long long reserve0;
-    unsigned long long reserve1;
-    unsigned long long reserve2;
+    unsigned long long taskIndex;       // should match the index from task
+    unsigned long long nonce;           // (extraNonce<<32) | nonce
+    unsigned long long encryptionLevel; // 0 = no encryption. `0` is allowed for legacy purposes
+    unsigned long long computorRandom;  // random number which fullfils the condition computorRandom % 676 == ComputorIndex.`0` is allowed for legacy purposes
+    unsigned long long reserve2;        // reserved
     m256i result;
 };
 
@@ -75,13 +75,13 @@ static unsigned short customMiningGetComputorID(const CustomMiningSolutionV2* pS
 {
     // Check the computor idx of this solution.
     unsigned short computorID = 0;
-    if (pSolution->reserve0 == 0)
+    if (pSolution->encryptionLevel == 0)
     {
-        computorID = (pSolution->nonce >> 32ULL) % 676ULL;
+        computorID = (unsigned short)((pSolution->nonce >> 32ULL) % (unsigned long long)NUMBER_OF_COMPUTORS);
     }
     else
     {
-        computorID = pSolution->reserve1 % 676ULL;
+        computorID = (unsigned short)(pSolution->computorRandom % (unsigned long long)NUMBER_OF_COMPUTORS);
     }
     return computorID;
 }
@@ -91,8 +91,8 @@ static CustomMiningSolutionV2 customMiningVerificationRequestToSolution(Requeste
     CustomMiningSolutionV2 solution;
     solution.taskIndex = pRequest->taskIndex;
     solution.nonce = pRequest->nonce;
-    solution.reserve0 = pRequest->reserve0;
-    solution.reserve1 = pRequest->reserve1;
+    solution.encryptionLevel = pRequest->encryptionLevel;
+    solution.computorRandom = pRequest->computorRandom;
     solution.reserve2 = pRequest->reserve2;
     return solution;
 }
@@ -102,8 +102,8 @@ static RespondCustomMiningSolutionVerification customMiningVerificationRequestTo
     RespondCustomMiningSolutionVerification respond;
     respond.taskIndex = pRequest->taskIndex;
     respond.nonce = pRequest->nonce;
-    respond.reserve0 = pRequest->reserve0;
-    respond.reserve1 = pRequest->reserve1;
+    respond.encryptionLevel = pRequest->encryptionLevel;
+    respond.computorRandom = pRequest->computorRandom;
     respond.reserve2 = pRequest->reserve2;
 
     return respond;
