@@ -172,7 +172,11 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_INDEX MSVAULT_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE MSVAULT
 #define CONTRACT_STATE2_TYPE MSVAULT2
-#include "contracts/MsVault.h"
+#ifdef MSVAULT_V1
+    #include "contracts/MsVault_v1.h"
+#else
+    #include "contracts/MsVault.h"
+#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -213,6 +217,34 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE_TYPE QDRAW
 #define CONTRACT_STATE2_TYPE QDRAW2
 #include "contracts/Qdraw.h"
+
+#ifndef NO_RANDOM_LOTTERY
+
+constexpr unsigned short RL_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define CONTRACT_INDEX RL_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE RL
+#define CONTRACT_STATE2_TYPE RL2
+#include "contracts/RandomLottery.h"
+
+#endif
+
+#ifndef NO_QBOND
+
+constexpr unsigned short QBOND_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define CONTRACT_INDEX QBOND_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QBOND
+#define CONTRACT_STATE2_TYPE QBOND2
+#include "contracts/QBond.h"
+
+#endif
 
 // new contracts should be added above this line
 
@@ -312,6 +344,12 @@ constexpr struct ContractDescription
     {"QSWAP", 171, 10000, sizeof(QSWAP)}, // proposal in epoch 169, IPO in 170, construction and first use in 171
     {"NOST", 172, 10000, sizeof(NOST)}, // proposal in epoch 170, IPO in 171, construction and first use in 172
     {"QDRAW", 179, 10000, sizeof(QDRAW)}, // proposal in epoch 177, IPO in 178, construction and first use in 179
+#ifndef NO_RANDOM_LOTTERY
+    {"RL", 182, 10000, sizeof(RL)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
+#endif
+#ifndef NO_QBOND
+    {"QBOND", 182, 10000, sizeof(QBOND)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
+#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(IPO)},
@@ -416,6 +454,12 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QSWAP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(NOST);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDRAW);
+#ifndef NO_RANDOM_LOTTERY
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(RL);
+#endif
+#ifndef NO_QBOND
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QBOND);
+#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
