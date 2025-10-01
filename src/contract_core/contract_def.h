@@ -218,19 +218,15 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE QDRAW2
 #include "contracts/Qdraw.h"
 
-#ifndef NO_RANDOM_LOTTERY
-
-constexpr unsigned short RL_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
+#define RL_CONTRACT_INDEX 16
 #define CONTRACT_INDEX RL_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE RL
 #define CONTRACT_STATE2_TYPE RL2
 #include "contracts/RandomLottery.h"
-
-#endif
 
 constexpr unsigned short QBOND_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #undef CONTRACT_INDEX
@@ -340,9 +336,7 @@ constexpr struct ContractDescription
     {"QSWAP", 171, 10000, sizeof(QSWAP)}, // proposal in epoch 169, IPO in 170, construction and first use in 171
     {"NOST", 172, 10000, sizeof(NOST)}, // proposal in epoch 170, IPO in 171, construction and first use in 172
     {"QDRAW", 179, 10000, sizeof(QDRAW)}, // proposal in epoch 177, IPO in 178, construction and first use in 179
-#ifndef NO_RANDOM_LOTTERY
     {"RL", 182, 10000, sizeof(RL)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
-#endif
     {"QBOND", 182, 10000, sizeof(QBOND)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -448,9 +442,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QSWAP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(NOST);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDRAW);
-#ifndef NO_RANDOM_LOTTERY
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(RL);
-#endif
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QBOND);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
