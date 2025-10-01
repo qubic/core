@@ -224,11 +224,11 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE RL2
 #include "contracts/RandomLottery.h"
 
-constexpr unsigned short QBOND_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
+#define QBOND_CONTRACT_INDEX 17
 #define CONTRACT_INDEX QBOND_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QBOND
 #define CONTRACT_STATE2_TYPE QBOND2
