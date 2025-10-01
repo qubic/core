@@ -17,8 +17,8 @@
 #define TX00_AS_NUMBER 13511005048406132ULL
 #define DATA_AS_NUMBER 27303570963497060ULL
 
-#define CACHE_PAGE 64
-#define TICK_DATA_PAGE_CAPACITY 512 // one page can hold data for 512 ticks
+#define CACHE_PAGE 32
+#define TICK_DATA_PAGE_CAPACITY 128 // one page can hold data for 128 ticks
 #define TICKS_PAGE_CAPACITY (64 * NUMBER_OF_COMPUTORS) // one page can hold data for 64 ticks
 #define TRANSACTION_PAGE_CAPACITY (NUMBER_OF_TRANSACTIONS_PER_TICK * 16) // one page can hold data for AT LEAST 16 ticks
 
@@ -171,6 +171,7 @@ private:
         auto writtenSize = saveLargeFile(SNAPSHOT_TICK_DATA_FILE_NAME, tickDataSwapVM.getVmStateSize(), (unsigned char*)buffer, directory);
         if (writtenSize != tickDataSwapVM.getVmStateSize())
         {
+            freePool(buffer);
             return false;
         }
         freePool(buffer);
@@ -203,6 +204,7 @@ private:
         auto writtenSize = saveLargeFile(SNAPSHOT_TICKS_FILE_NAME, ticksSwapVM.getVmStateSize(), (unsigned char*)buffer, directory);
         if (writtenSize != ticksSwapVM.getVmStateSize())
         {
+            freePool(buffer);
             return false;
         }
         freePool(buffer);
