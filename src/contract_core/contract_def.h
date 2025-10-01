@@ -232,8 +232,6 @@ constexpr unsigned short RL_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 
 #endif
 
-#ifndef NO_QBOND
-
 constexpr unsigned short QBOND_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -243,8 +241,6 @@ constexpr unsigned short QBOND_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #define CONTRACT_STATE_TYPE QBOND
 #define CONTRACT_STATE2_TYPE QBOND2
 #include "contracts/QBond.h"
-
-#endif
 
 // new contracts should be added above this line
 
@@ -347,9 +343,7 @@ constexpr struct ContractDescription
 #ifndef NO_RANDOM_LOTTERY
     {"RL", 182, 10000, sizeof(RL)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
 #endif
-#ifndef NO_QBOND
     {"QBOND", 182, 10000, sizeof(QBOND)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
-#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(IPO)},
@@ -457,9 +451,7 @@ static void initializeContracts()
 #ifndef NO_RANDOM_LOTTERY
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(RL);
 #endif
-#ifndef NO_QBOND
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QBOND);
-#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
