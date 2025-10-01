@@ -155,9 +155,10 @@ public:
 #define INIT_CONTRACT(contractName) { \
     constexpr unsigned int contractIndex = contractName##_CONTRACT_INDEX; \
     EXPECT_LT(contractIndex, contractCount); \
-    const unsigned long long size = contractDescriptions[contractIndex].stateSize; \
-    contractStates[contractIndex] = (unsigned char*)malloc(size); \
-    setMem(contractStates[contractIndex], size, 0); \
+    const unsigned long long stateSize = contractDescriptions[contractIndex].stateSize; \
+    EXPECT_GE(stateSize, max(sizeof(contractName), sizeof(IPO))); \
+    contractStates[contractIndex] = (unsigned char*)malloc(stateSize); \
+    setMem(contractStates[contractIndex], stateSize, 0); \
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName); \
 }
 
