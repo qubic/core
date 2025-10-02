@@ -990,7 +990,7 @@ public:
         {
             totalOffsetModeExtraSize = pageExtraBytesBufferSize + pageHasExtraBytesBufferSize + lastestPageExtraBytesOffsetAccessedBufferSize;
         }
-        return pageSize * (numCachePage + 1) + isPageWrittenToDiskSize  + sizeof(cachePageId) + 8 + totalOffsetModeExtraSize;
+        return pageSize * (numCachePage + 1) + isPageWrittenToDiskSize  + sizeof(cachePageId) + sizeof(lastAccessedTimestamp) + 8 + totalOffsetModeExtraSize;
     }
 
     unsigned long long dumpVMState(unsigned char* buffer)
@@ -1022,6 +1022,10 @@ public:
             buffer += lastestPageExtraBytesOffsetAccessedBufferSize;
             ret += lastestPageExtraBytesOffsetAccessedBufferSize;
         }
+
+        copyMem(buffer, lastAccessedTimestamp, sizeof(lastAccessedTimestamp));
+        buffer += sizeof(lastAccessedTimestamp);
+        ret += sizeof(lastAccessedTimestamp);
 
         copyMem(buffer, cachePageId, sizeof(cachePageId));
         ret += sizeof(cachePageId);
@@ -1063,6 +1067,10 @@ public:
             buffer += lastestPageExtraBytesOffsetAccessedBufferSize;
             ret += lastestPageExtraBytesOffsetAccessedBufferSize;
         }
+
+        copyMem(lastAccessedTimestamp, buffer, sizeof(lastAccessedTimestamp));
+        buffer += sizeof(lastAccessedTimestamp);
+        ret += sizeof(lastAccessedTimestamp);
 
         copyMem(cachePageId, buffer, sizeof(cachePageId));
         buffer += sizeof(cachePageId);
