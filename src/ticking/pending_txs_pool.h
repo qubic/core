@@ -6,6 +6,11 @@
 #include "platform/concurrency.h"
 #include "platform/console_logging.h"
 
+#include "spectrum/spectrum.h"
+
+#include "contracts/qpi.h"
+#include "contract_core/qpi_collection_impl.h"
+
 #include "public_settings.h"
 #include "kangaroo_twelve.h"
 
@@ -35,7 +40,7 @@ private:
 
     // Begin index for tickTransactionOffsetsBuffer, txsDigestsBuffer, and numSavedTxsPerTick
     // buffersBeginIndex corresponds to firstStoredTick
-    inline static unsigned long long buffersBeginIndex = 0;
+    inline static unsigned int buffersBeginIndex = 0;
 
     // Lock for securing tickTransactions and tickTransactionOffsets
     inline static volatile char tickTransactionsLock = 0;
@@ -45,6 +50,17 @@ private:
     
     // Lock for securing numSavedTxsPerTick
     inline static volatile char numSavedLock = 0;
+
+    // Priority queues for transactions in each saved tick.
+    inline static QPI::Collection<unsigned int, NUMBER_OF_TRANSACTIONS_PER_TICK * PENDING_TXS_POOL_NUM_TICKS> txsPriorities;
+
+    static void cleanupTxsPriorities(unsigned int tickIndex)
+    {
+        sint64 elementIndex = txsPriorities.headIndex(m256i{ tickIndex, 0, 0, 0 });
+        while (elementIndex != QPI::NULL_INDEX)
+            elementIndex = txsPriorities.remove(elementIndex);
+        txsPriorities.cleanupIfNeeded();
+    }
 
     // Return pointer to Transaction based on tickIndex and transactionIndex (checking offset with ASSERT)
     inline static Transaction* getTxPtr(unsigned int tickIndex, unsigned int transactionIndex)
@@ -92,6 +108,8 @@ public:
         setMem(tickTransactionsBuffer, tickTransactionsSize, 0);
         setMem(txsDigestsBuffer, txsDigestsSize, 0);
         setMem(numSavedTxsPerTick, sizeof(numSavedTxsPerTick), 0);
+
+        txsPriorities.reset();
 
         firstStoredTick = 0;
         buffersBeginIndex = 0;
@@ -202,6 +220,12 @@ public:
             unsigned int tickIndex = tickToIndex(tx->tick);
             const unsigned int transactionSize = tx->totalSize();
 
+            // calculate tx priority as [amount] * [scheduledTick - latestOutgoingTransferTick]
+            int sourceIndex = spectrumIndex(tx->sourcePublicKey);
+            EntityRecord entity = spectrum[sourceIndex];
+            sint64 priority = tx->amount * (tx->tick - entity.latestOutgoingTransferTick);
+            m256i povIndex = m256i{ tickIndex, 0, 0, 0 };
+
             acquireLock();
             ACQUIRE(numSavedLock);
 
@@ -211,20 +235,59 @@ public:
 
                 copyMem(getTxPtr(tickIndex, numSavedTxsPerTick[tickIndex]), tx, transactionSize);
 
+                txsPriorities.add(povIndex, numSavedTxsPerTick[tickIndex], priority);
+
                 numSavedTxsPerTick[tickIndex]++;
                 txAdded = true;
             }
-#if !defined(NDEBUG) && !defined(NO_UEFI)
             else
             {
-                CHAR16 dbgMsgBuf[300];
-                setText(dbgMsgBuf, L"tx could not be added, already saved ");
-                appendNumber(dbgMsgBuf, numSavedTxsPerTick[tickIndex], FALSE);
-                appendText(dbgMsgBuf, L" txs for tick ");
-                appendNumber(dbgMsgBuf, tx->tick, FALSE);
-                addDebugMessage(dbgMsgBuf);
-            }
+                // check if priority is higher than lowest priority tx in this tick and replace in this case
+                sint64 lowestElementIndex = txsPriorities.tailIndex(povIndex);
+                if (lowestElementIndex != QPI::NULL_INDEX)
+                {
+                    if (txsPriorities.priority(lowestElementIndex) < priority)
+                    {
+                        unsigned int replacedTxIndex = txsPriorities.element(lowestElementIndex);
+                        txsPriorities.remove(lowestElementIndex);
+                        txsPriorities.add(povIndex, replacedTxIndex, priority);
+
+                        KangarooTwelve(tx, transactionSize, getDigestPtr(tickIndex, replacedTxIndex), sizeof(m256i));
+
+                        copyMem(getTxPtr(tickIndex, replacedTxIndex), tx, transactionSize);
+
+                        txAdded = true;
+                    }
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                    else
+                    {
+                        CHAR16 dbgMsgBuf[300];
+                        setText(dbgMsgBuf, L"tx could not be added, already saved ");
+                        appendNumber(dbgMsgBuf, numSavedTxsPerTick[tickIndex], FALSE);
+                        appendText(dbgMsgBuf, L" txs for tick ");
+                        appendNumber(dbgMsgBuf, tx->tick, FALSE);
+                        appendText(dbgMsgBuf, L" and priority ");
+                        appendNumber(dbgMsgBuf, priority, FALSE);
+                        appendText(dbgMsgBuf, L" is lower than lowest saved priority ");
+                        appendNumber(dbgMsgBuf, txsPriorities.priority(lowestElementIndex), FALSE);
+                        addDebugMessage(dbgMsgBuf);
+                    }
+#endif      
+                }
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                else
+                {
+                    // debug log, this should never happen
+                    CHAR16 dbgMsgBuf[300];
+                    setText(dbgMsgBuf, L"maximum number of txs ");
+                    appendNumber(dbgMsgBuf, numSavedTxsPerTick[tickIndex], FALSE);
+                    appendText(dbgMsgBuf, L" saved for tick ");
+                    appendNumber(dbgMsgBuf, tx->tick, FALSE);
+                    appendText(dbgMsgBuf, L" but povIndex is unknown. This should never happen.");
+                    addDebugMessage(dbgMsgBuf);
+                }
 #endif
+            }
 
             RELEASE(numSavedLock);
             releaseLock();
@@ -286,6 +349,9 @@ public:
         setMem(txsDigestsBuffer + numTxsBeforeBegin, NUMBER_OF_TRANSACTIONS_PER_TICK * sizeof(m256i), 0);
         numSavedTxsPerTick[buffersBeginIndex] = 0;
 
+        // remove txs priorities stored for firstStoredTick
+        cleanupTxsPriorities(tickToIndex(firstStoredTick));
+
         // increment buffersBeginIndex and firstStoredTick
         firstStoredTick++;
         buffersBeginIndex = (buffersBeginIndex + 1) % PENDING_TXS_POOL_NUM_TICKS;
@@ -309,11 +375,17 @@ public:
                 setMem(txsDigestsBuffer, numTxsBeforeNew * sizeof(m256i), 0);
                 setMem(numSavedTxsPerTick, newInitialIndex * sizeof(unsigned int), 0);
 
+                for (unsigned int tickIndex = 0; tickIndex < newInitialIndex; ++tickIndex)
+                    cleanupTxsPriorities(tickIndex);
+
                 unsigned long long numTxsBeforeBegin = buffersBeginIndex * NUMBER_OF_TRANSACTIONS_PER_TICK;
                 unsigned long long numTxsStartingAtBegin = (PENDING_TXS_POOL_NUM_TICKS - buffersBeginIndex) * NUMBER_OF_TRANSACTIONS_PER_TICK;
                 setMem(tickTransactionsBuffer + numTxsBeforeBegin * MAX_TRANSACTION_SIZE, numTxsStartingAtBegin * MAX_TRANSACTION_SIZE, 0);
                 setMem(txsDigestsBuffer + numTxsBeforeBegin, numTxsStartingAtBegin * sizeof(m256i), 0);
                 setMem(numSavedTxsPerTick + buffersBeginIndex, (PENDING_TXS_POOL_NUM_TICKS - buffersBeginIndex) * sizeof(unsigned int), 0);
+
+                for (unsigned int tickIndex = buffersBeginIndex; tickIndex < PENDING_TXS_POOL_NUM_TICKS; ++tickIndex)
+                    cleanupTxsPriorities(tickIndex);
             }
             else
             {
@@ -322,6 +394,9 @@ public:
                 setMem(tickTransactionsBuffer + numTxsBeforeBegin * MAX_TRANSACTION_SIZE, numTxsStartingAtBegin * MAX_TRANSACTION_SIZE, 0);
                 setMem(txsDigestsBuffer + numTxsBeforeBegin, numTxsStartingAtBegin * sizeof(m256i), 0);
                 setMem(numSavedTxsPerTick + buffersBeginIndex, (newInitialIndex - buffersBeginIndex) * sizeof(unsigned int), 0);
+
+                for (unsigned int tickIndex = buffersBeginIndex; tickIndex < newInitialIndex; ++tickIndex)
+                    cleanupTxsPriorities(tickIndex);
             }
 
             buffersBeginIndex = newInitialIndex;
@@ -331,6 +406,8 @@ public:
             setMem(tickTransactionsBuffer, tickTransactionsSize, 0);
             setMem(txsDigestsBuffer, txsDigestsSize, 0);
             setMem(numSavedTxsPerTick, sizeof(numSavedTxsPerTick), 0);
+
+            txsPriorities.reset();
 
             buffersBeginIndex = 0;
         }

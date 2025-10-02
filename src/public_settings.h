@@ -32,7 +32,7 @@
 #define TRANSACTION_SPARSENESS 1
 
 // Number of ticks that are stored in the pending txs pool. This also defines how many ticks in advance a tx can be registered.
-#define PENDING_TXS_POOL_NUM_TICKS 10000ULL
+#define PENDING_TXS_POOL_NUM_TICKS 8192ULL // must be 2^N
 
 // Below are 2 variables that are used for auto-F5 feature:
 #define AUTO_FORCE_NEXT_TICK_THRESHOLD 0ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
