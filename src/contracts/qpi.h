@@ -1252,6 +1252,11 @@ namespace QPI
 		{
 			copyMemory(*this, src);
 		}
+		ProposalSummarizedVotingDataV1& operator=(const ProposalSummarizedVotingDataV1& src)
+		{
+			copyMemory(*this, src);
+			return *this;
+		}
 	};
 	static_assert(sizeof(ProposalSummarizedVotingDataV1) == 16 + 8*4, "Unexpected struct size.");
 
@@ -1483,6 +1488,11 @@ namespace QPI
 		{
 			copyMemory(*this, src);
 		}
+		ProposalDataV1<SupportScalarVotes>& operator=(const ProposalDataV1<SupportScalarVotes>& src)
+		{
+			copyMemory(*this, src);
+			return *this;
+		}
 	};
 	static_assert(sizeof(ProposalDataV1<true>) == 256 + 8 + 64, "Unexpected struct size.");
 
@@ -1552,6 +1562,17 @@ namespace QPI
 
 		// Whether to support scalar votes next to option votes.
 		static constexpr bool supportScalarVotes = false;
+
+		ProposalDataYesNo() = default;
+		ProposalDataYesNo(const ProposalDataYesNo& src)
+		{
+			copyMemory(*this, src);
+		}
+		ProposalDataYesNo& operator=(const ProposalDataYesNo& src)
+		{
+			copyMemory(*this, src);
+			return *this;
+		}
 	};
 	static_assert(sizeof(ProposalDataYesNo) == 256 + 8 + 40, "Unexpected struct size.");
 
