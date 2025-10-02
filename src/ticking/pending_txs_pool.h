@@ -52,14 +52,14 @@ private:
     inline static volatile char numSavedLock = 0;
 
     // Priority queues for transactions in each saved tick.
-    inline static Collection<unsigned int, NUMBER_OF_TRANSACTIONS_PER_TICK * PENDING_TXS_POOL_NUM_TICKS> txsPriorities;
+    inline static Collection<unsigned int, NUMBER_OF_TRANSACTIONS_PER_TICK * PENDING_TXS_POOL_NUM_TICKS>* txsPriorities;
 
     static void cleanupTxsPriorities(unsigned int tickIndex)
     {
-        sint64 elementIndex = txsPriorities.headIndex(m256i{ tickIndex, 0, 0, 0 });
+        sint64 elementIndex = txsPriorities->headIndex(m256i{ tickIndex, 0, 0, 0 });
         while (elementIndex != NULL_INDEX)
-            elementIndex = txsPriorities.remove(elementIndex);
-        txsPriorities.cleanupIfNeeded();
+            elementIndex = txsPriorities->remove(elementIndex);
+        txsPriorities->cleanupIfNeeded();
     }
 
     // Return pointer to Transaction based on tickIndex and transactionIndex (checking offset with ASSERT)
@@ -96,7 +96,8 @@ public:
     static bool init()
     {
         if (!allocPoolWithErrorLog(L"PendingTxsPool::tickTransactionsPtr ", tickTransactionsSize, (void**)&tickTransactionsBuffer, __LINE__)
-            || !allocPoolWithErrorLog(L"PendingTxsPool::txsDigestsPtr ", txsDigestsSize, (void**)&txsDigestsBuffer, __LINE__))
+            || !allocPoolWithErrorLog(L"PendingTxsPool::txsDigestsPtr ", txsDigestsSize, (void**)&txsDigestsBuffer, __LINE__)
+            || !allocPoolWithErrorLog(L"PendingTxsPool::txsPriorities", sizeof(Collection<unsigned int, NUMBER_OF_TRANSACTIONS_PER_TICK * PENDING_TXS_POOL_NUM_TICKS>), (void**)&txsPriorities, __LINE__))
         {
             return false;
         }
@@ -109,7 +110,7 @@ public:
         setMem(txsDigestsBuffer, txsDigestsSize, 0);
         setMem(numSavedTxsPerTick, sizeof(numSavedTxsPerTick), 0);
 
-        txsPriorities.reset();
+        txsPriorities->reset();
 
         firstStoredTick = 0;
         buffersBeginIndex = 0;
@@ -127,6 +128,10 @@ public:
         if (txsDigestsBuffer)
         {
             freePool(txsDigestsBuffer);
+        }
+        if (txsPriorities)
+        {
+            freePool(txsPriorities);
         }
     }
 
@@ -239,7 +244,7 @@ public:
 
                 copyMem(getTxPtr(tickIndex, numSavedTxsPerTick[tickIndex]), tx, transactionSize);
 
-                txsPriorities.add(povIndex, numSavedTxsPerTick[tickIndex], priority);
+                txsPriorities->add(povIndex, numSavedTxsPerTick[tickIndex], priority);
 
                 numSavedTxsPerTick[tickIndex]++;
                 txAdded = true;
@@ -247,14 +252,14 @@ public:
             else
             {
                 // check if priority is higher than lowest priority tx in this tick and replace in this case
-                sint64 lowestElementIndex = txsPriorities.tailIndex(povIndex);
+                sint64 lowestElementIndex = txsPriorities->tailIndex(povIndex);
                 if (lowestElementIndex != NULL_INDEX)
                 {
-                    if (txsPriorities.priority(lowestElementIndex) < priority)
+                    if (txsPriorities->priority(lowestElementIndex) < priority)
                     {
-                        unsigned int replacedTxIndex = txsPriorities.element(lowestElementIndex);
-                        txsPriorities.remove(lowestElementIndex);
-                        txsPriorities.add(povIndex, replacedTxIndex, priority);
+                        unsigned int replacedTxIndex = txsPriorities->element(lowestElementIndex);
+                        txsPriorities->remove(lowestElementIndex);
+                        txsPriorities->add(povIndex, replacedTxIndex, priority);
 
                         KangarooTwelve(tx, transactionSize, getDigestPtr(tickIndex, replacedTxIndex), sizeof(m256i));
 
@@ -273,7 +278,7 @@ public:
                         appendText(dbgMsgBuf, L" and priority ");
                         appendNumber(dbgMsgBuf, priority, FALSE);
                         appendText(dbgMsgBuf, L" is lower than lowest saved priority ");
-                        appendNumber(dbgMsgBuf, txsPriorities.priority(lowestElementIndex), FALSE);
+                        appendNumber(dbgMsgBuf, txsPriorities->priority(lowestElementIndex), FALSE);
                         addDebugMessage(dbgMsgBuf);
                     }
 #endif      
@@ -411,7 +416,7 @@ public:
             setMem(txsDigestsBuffer, txsDigestsSize, 0);
             setMem(numSavedTxsPerTick, sizeof(numSavedTxsPerTick), 0);
 
-            txsPriorities.reset();
+            txsPriorities->reset();
 
             buffersBeginIndex = 0;
         }
