@@ -1070,9 +1070,17 @@ void testProposalVotingV1()
     QPI::ProposalSummarizedVotingDataV1 votingSummaryReturned;
     for (int i = 0; i < pv->maxProposals; ++i)
     {
+        proposalReturned.type = 42; // test that additional error indicator is set 0
         EXPECT_FALSE(qpi(*pv).getProposal(i, proposalReturned));
+        EXPECT_EQ((int)proposalReturned.type, 0);
+
+        voteDataReturned.proposalType = 42; // test that additional error indicator is set 0
         EXPECT_FALSE(qpi(*pv).getVote(i, 0, voteDataReturned));
+        EXPECT_EQ((int)voteDataReturned.proposalType, 0);
+
+        votingSummaryReturned.authorizedVoters = 42; // test that additional error indicator is set 0
         EXPECT_FALSE(qpi(*pv).getVotingSummary(i, votingSummaryReturned));
+        EXPECT_EQ(votingSummaryReturned.authorizedVoters, 0);
     }
     EXPECT_EQ(qpi(*pv).nextProposalIndex(-1), -1);
     EXPECT_EQ(qpi(*pv).nextProposalIndex(0), -1);

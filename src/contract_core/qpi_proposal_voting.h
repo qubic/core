@@ -670,7 +670,11 @@ namespace QPI
 	) const
 	{
 		if (proposalIndex >= pv.maxProposals || !pv.proposals[proposalIndex].epoch)
+		{
+			// proposal.type == 0 indicates error
+			proposal.type = 0;
 			return false;
+		}
 		const ProposalDataType& storedProposal = *static_cast<const ProposalDataType*>(&pv.proposals[proposalIndex]);
 		copyMemory(proposal, storedProposal);
 		return true;
@@ -684,7 +688,11 @@ namespace QPI
 	) const
 	{
 		if (proposalIndex >= pv.maxProposals || voterIndex >= pv.maxVoters || !pv.proposals[proposalIndex].epoch)
+		{
+			// vote.proposalType == 0 indicates error
+			vote.proposalType = 0;
 			return false;
+		}
 
 		vote.proposalIndex = proposalIndex;
 		vote.proposalType = pv.proposals[proposalIndex].type;
@@ -776,6 +784,9 @@ namespace QPI
 		ProposalSummarizedVotingDataV1& votingSummary
 	) const
 	{
+		// authorizedVoters = 0 is an additional error indicator in votes (overwritten on success at the end of the function)
+		votingSummary.authorizedVoters = 0;
+
 		if (proposalIndex >= pv.maxProposals || !pv.proposals[proposalIndex].epoch)
 			return false;
 
@@ -783,7 +794,6 @@ namespace QPI
 		votingSummary.proposalIndex = proposalIndex;
 		votingSummary.optionCount = ProposalTypes::optionCount(p.type);
 		votingSummary.proposalTick = p.tick;
-		votingSummary.authorizedVoters = pv.maxVoters;
 		votingSummary.totalVotes = 0;
 
 		if (p.type == ProposalTypes::VariableScalarMean)
@@ -809,6 +819,8 @@ namespace QPI
 				}
 			}
 		}
+
+		votingSummary.authorizedVoters = pv.maxVoters;
 
 		return true;
 	}

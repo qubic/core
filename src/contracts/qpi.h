@@ -1280,6 +1280,9 @@ namespace QPI
 			static constexpr uint16 TransferInEpoch = 0x400;
 		};
 
+		// Invalid proposal type returned to encode error in some interfaces
+		static constexpr uint16 Invalid = 0;
+
 		// Options yes and no without extra data -> result is histogram of options
 		static constexpr uint16 YesNo = Class::GeneralOptions | 2;
 
@@ -1618,13 +1621,13 @@ namespace QPI
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	struct QpiContextProposalFunctionCall
 	{
-		// Get proposal with given index if index is valid and proposal is set (epoch > 0)
+		// Get proposal with given index if index is valid and proposal is set (epoch > 0). On error returns false and sets proposal.type = 0.
 		bool getProposal(uint16 proposalIndex, ProposalDataType& proposal) const;
 
-		// Get data of single vote
+		// Get data of single vote. On error returns false and sets vote.proposalType = 0.
 		bool getVote(uint16 proposalIndex, uint32 voterIndex, ProposalSingleVoteDataV1& vote) const;
 
-		// Get summary of all votes casted
+		// Get summary of all votes casted. On error returns false and sets votingSummary.authorizedVoters = 0.
 		bool getVotingSummary(uint16 proposalIndex, ProposalSummarizedVotingDataV1& votingSummary) const;
 
 		// Return index of existing proposal or INVALID_PROPOSAL_INDEX if there is no proposal by given proposer
