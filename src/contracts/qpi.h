@@ -1231,11 +1231,11 @@ namespace QPI
 		// Tick when proposal has been set (useful for checking if cached ProposalData is still up to date).
 		uint32 proposalTick;
 
-		// Number of voter who have the right to vote
-		uint32 authorizedVoters;
+		// Maximal number of votes (number of voters who have the right to vote if there aren't multiple votes per voter)
+		uint32 totalVotesAuthorized;
 
 		// Number of total votes casted
-		uint32 totalVotes;
+		uint32 totalVotesCasted;
 
 		// Voting results
 		union
@@ -1627,7 +1627,7 @@ namespace QPI
 		// Get data of single vote. On error returns false and sets vote.proposalType = 0.
 		bool getVote(uint16 proposalIndex, uint32 voterIndex, ProposalSingleVoteDataV1& vote) const;
 
-		// Get summary of all votes casted. On error returns false and sets votingSummary.authorizedVoters = 0.
+		// Get summary of all votes casted. On error returns false and sets votingSummary.totalVotesAuthorized = 0.
 		bool getVotingSummary(uint16 proposalIndex, ProposalSummarizedVotingDataV1& votingSummary) const;
 
 		// Return index of existing proposal or INVALID_PROPOSAL_INDEX if there is no proposal by given proposer

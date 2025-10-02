@@ -905,8 +905,8 @@ void expectNoVotes(
 
     QPI::ProposalSummarizedVotingDataV1 votingSummaryReturned;
     EXPECT_TRUE(qpi(*pv).getVotingSummary(proposalIndex, votingSummaryReturned));
-    EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
-    EXPECT_EQ(votingSummaryReturned.totalVotes, 0);
+    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+    EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 0);
 }
 
 template <bool B>
@@ -1078,9 +1078,9 @@ void testProposalVotingV1()
         EXPECT_FALSE(qpi(*pv).getVote(i, 0, voteDataReturned));
         EXPECT_EQ((int)voteDataReturned.proposalType, 0);
 
-        votingSummaryReturned.authorizedVoters = 42; // test that additional error indicator is set 0
+        votingSummaryReturned.totalVotesAuthorized = 42; // test that additional error indicator is set 0
         EXPECT_FALSE(qpi(*pv).getVotingSummary(i, votingSummaryReturned));
-        EXPECT_EQ(votingSummaryReturned.authorizedVoters, 0);
+        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, 0);
     }
     EXPECT_EQ(qpi(*pv).nextProposalIndex(-1), -1);
     EXPECT_EQ(qpi(*pv).nextProposalIndex(0), -1);
@@ -1157,8 +1157,8 @@ void testProposalVotingV1()
     voteWithValidVoter<true>(qpi, *pv, qpi.computor(0), 0, QPI::ProposalTypes::YesNo, qpi.tick(), QPI::NO_VOTE_VALUE); // remove vote
     EXPECT_TRUE(qpi(*pv).getVotingSummary(0, votingSummaryReturned));
     EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 0);
-    EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
-    EXPECT_EQ(votingSummaryReturned.totalVotes, pv->maxVoters - 1);
+    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+    EXPECT_EQ(votingSummaryReturned.totalVotesCasted, pv->maxVoters - 1);
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 2);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), pv->maxVoters / 2 - 1);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(1), pv->maxVoters / 2);
@@ -1225,8 +1225,8 @@ void testProposalVotingV1()
         voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), 1, proposal.type, qpi.tick(), (i < 100) ? i % 4 : 3);
     EXPECT_TRUE(qpi(*pv).getVotingSummary(1, votingSummaryReturned));
     EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 1);
-    EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
-    EXPECT_EQ(votingSummaryReturned.totalVotes, pv->maxVoters);
+    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+    EXPECT_EQ(votingSummaryReturned.totalVotesCasted, pv->maxVoters);
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 4);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), 25);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(1), 25);
@@ -1284,8 +1284,8 @@ void testProposalVotingV1()
     voteWithValidVoter<true>(qpi, *pv, qpi.computor(5), secondProposalIdx, proposal.type, qpi.tick(), QPI::NO_VOTE_VALUE); // remove vote
     EXPECT_TRUE(qpi(*pv).getVotingSummary(1, votingSummaryReturned));
     EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 1);
-    EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
-    EXPECT_EQ(votingSummaryReturned.totalVotes, pv->maxVoters - 2);
+    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+    EXPECT_EQ(votingSummaryReturned.totalVotesCasted, pv->maxVoters - 2);
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 2);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), pv->maxVoters / 2);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(1), pv->maxVoters / 2 - 2);
@@ -1332,14 +1332,14 @@ void testProposalVotingV1()
             voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(1)), proposal.type, qpi.tick(), proposal.variableScalar.maxSupportedValue - 2 + i % 3);
         EXPECT_TRUE(qpi(*pv).getVotingSummary(qpi(*pv).proposalIndex(qpi.computor(1)), votingSummaryReturned));
         EXPECT_EQ((int)votingSummaryReturned.proposalIndex, (int)qpi(*pv).proposalIndex(qpi.computor(1)));
-        EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
-        EXPECT_EQ(votingSummaryReturned.totalVotes, 99);
+        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+        EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 99);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
         EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.variableScalar.maxSupportedValue - 1);
         for (int i = 0; i < 555; ++i)
             voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(1)), proposal.type, qpi.tick(), proposal.variableScalar.minSupportedValue + 10 - i % 5);
         EXPECT_TRUE(qpi(*pv).getVotingSummary(qpi(*pv).proposalIndex(qpi.computor(1)), votingSummaryReturned));
-        EXPECT_EQ(votingSummaryReturned.totalVotes, 555);
+        EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 555);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
         EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.variableScalar.minSupportedValue + 8);
 
@@ -1365,8 +1365,8 @@ void testProposalVotingV1()
             voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, qpi.tick(), (i % 201) - 100);
         EXPECT_TRUE(qpi(*pv).getVotingSummary(3, votingSummaryReturned));
         EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 3);
-        EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
-        EXPECT_EQ(votingSummaryReturned.totalVotes, 603);
+        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+        EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 603);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
         EXPECT_EQ(votingSummaryReturned.scalarVotingResult, 0);
 
@@ -1377,8 +1377,8 @@ void testProposalVotingV1()
             voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(10)), proposal.type, qpi.tick(), i + 1);
         EXPECT_TRUE(qpi(*pv).getVotingSummary(3, votingSummaryReturned));
         EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 3);
-        EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
-        EXPECT_EQ(votingSummaryReturned.totalVotes, 200);
+        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+        EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 200);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
         EXPECT_EQ(votingSummaryReturned.scalarVotingResult, (200 * 201 / 2) / 200);
     }
@@ -1449,8 +1449,8 @@ void testProposalVotingV1()
 
     // okay: query voting summary of other epoch
     EXPECT_TRUE(qpi(*pv).getVotingSummary(qpi(*pv).proposalIndex(qpi.computor(10)), votingSummaryReturned));
-    EXPECT_EQ(votingSummaryReturned.authorizedVoters, pv->maxVoters);
-    EXPECT_EQ(votingSummaryReturned.totalVotes, 20+40+100+200);
+    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+    EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 20+40+100+200);
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 4);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), 20);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(1), 40);

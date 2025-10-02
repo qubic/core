@@ -726,21 +726,21 @@ namespace QPI
 				value = p.getVoteValue(i);
 				if (value != NO_VOTE_VALUE)
 				{
-					++votingSummary.totalVotes;
+					++votingSummary.totalVotesCasted;
 				}
 			}
-			if (votingSummary.totalVotes)
+			if (votingSummary.totalVotesCasted)
 			{
 				for (uint32 i = 0; i < maxVoters; ++i)
 				{
 					value = p.getVoteValue(i);
 					if (value != NO_VOTE_VALUE)
 					{
-						accumulation += value / votingSummary.totalVotes;
-						acc2 += value % votingSummary.totalVotes;
+						accumulation += value / votingSummary.totalVotesCasted;
+						acc2 += value % votingSummary.totalVotesCasted;
 					}
 				}
-				acc2 /= votingSummary.totalVotes;
+				acc2 /= votingSummary.totalVotesCasted;
 				accumulation += acc2;
 			}
 		}
@@ -752,12 +752,12 @@ namespace QPI
 				value = p.getVoteValue(i);
 				if (value != NO_VOTE_VALUE)
 				{
-					++votingSummary.totalVotes;
+					++votingSummary.totalVotesCasted;
 					accumulation += value;
 				}
 			}
-			if (votingSummary.totalVotes)
-				accumulation /= votingSummary.totalVotes;
+			if (votingSummary.totalVotesCasted)
+				accumulation /= votingSummary.totalVotesCasted;
 		}
 
 		// make sure union is zeroed and set result
@@ -784,8 +784,8 @@ namespace QPI
 		ProposalSummarizedVotingDataV1& votingSummary
 	) const
 	{
-		// authorizedVoters = 0 is an additional error indicator in votes (overwritten on success at the end of the function)
-		votingSummary.authorizedVoters = 0;
+		// totalVotesAuthorized = 0 is an additional error indicator in votes (overwritten on success at the end of the function)
+		votingSummary.totalVotesAuthorized = 0;
 
 		if (proposalIndex >= pv.maxProposals || !pv.proposals[proposalIndex].epoch)
 			return false;
@@ -794,7 +794,7 @@ namespace QPI
 		votingSummary.proposalIndex = proposalIndex;
 		votingSummary.optionCount = ProposalTypes::optionCount(p.type);
 		votingSummary.proposalTick = p.tick;
-		votingSummary.totalVotes = 0;
+		votingSummary.totalVotesCasted = 0;
 
 		if (p.type == ProposalTypes::VariableScalarMean)
 		{
@@ -814,13 +814,13 @@ namespace QPI
 				sint64 value = p.getVoteValue(i);
 				if (value != NO_VOTE_VALUE && value >= 0 && value < votingSummary.optionCount)
 				{
-					++votingSummary.totalVotes;
+					++votingSummary.totalVotesCasted;
 					hist.set(value, hist.get(value) + 1);
 				}
 			}
 		}
 
-		votingSummary.authorizedVoters = pv.maxVoters;
+		votingSummary.totalVotesAuthorized = pv.maxVoters;
 
 		return true;
 	}
