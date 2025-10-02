@@ -52,12 +52,12 @@ private:
     inline static volatile char numSavedLock = 0;
 
     // Priority queues for transactions in each saved tick.
-    inline static QPI::Collection<unsigned int, NUMBER_OF_TRANSACTIONS_PER_TICK * PENDING_TXS_POOL_NUM_TICKS> txsPriorities;
+    inline static Collection<unsigned int, NUMBER_OF_TRANSACTIONS_PER_TICK * PENDING_TXS_POOL_NUM_TICKS> txsPriorities;
 
     static void cleanupTxsPriorities(unsigned int tickIndex)
     {
         sint64 elementIndex = txsPriorities.headIndex(m256i{ tickIndex, 0, 0, 0 });
-        while (elementIndex != QPI::NULL_INDEX)
+        while (elementIndex != NULL_INDEX)
             elementIndex = txsPriorities.remove(elementIndex);
         txsPriorities.cleanupIfNeeded();
     }
@@ -221,10 +221,14 @@ public:
             const unsigned int transactionSize = tx->totalSize();
 
             // calculate tx priority as [amount] * [scheduledTick - latestOutgoingTransferTick]
+            sint64 priority = tx->amount;
             int sourceIndex = spectrumIndex(tx->sourcePublicKey);
-            EntityRecord entity = spectrum[sourceIndex];
-            sint64 priority = tx->amount * (tx->tick - entity.latestOutgoingTransferTick);
-            m256i povIndex = m256i{ tickIndex, 0, 0, 0 };
+            if (sourceIndex != -1)
+            {
+                EntityRecord entity = spectrum[sourceIndex];
+                priority = smul(priority, static_cast<sint64>(tx->tick - entity.latestOutgoingTransferTick));
+            }            
+            m256i povIndex{ tickIndex, 0, 0, 0 };
 
             acquireLock();
             ACQUIRE(numSavedLock);
@@ -244,7 +248,7 @@ public:
             {
                 // check if priority is higher than lowest priority tx in this tick and replace in this case
                 sint64 lowestElementIndex = txsPriorities.tailIndex(povIndex);
-                if (lowestElementIndex != QPI::NULL_INDEX)
+                if (lowestElementIndex != NULL_INDEX)
                 {
                     if (txsPriorities.priority(lowestElementIndex) < priority)
                     {

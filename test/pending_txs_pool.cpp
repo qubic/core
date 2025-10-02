@@ -2,9 +2,15 @@
 
 #include "gtest/gtest.h"
 
+// workaround for name clash with stdlib
+#define system qubicSystemStruct
+
+#include "../src/contract_core/contract_def.h"
+#include "../src/contract_core/contract_exec.h"
+
 #include "../src/public_settings.h"
 #undef PENDING_TXS_POOL_NUM_TICKS
-#define PENDING_TXS_POOL_NUM_TICKS 50ULL
+#define PENDING_TXS_POOL_NUM_TICKS 64ULL
 #include "../src/ticking/pending_txs_pool.h"
 
 #include <random>
@@ -15,11 +21,23 @@ class TestPendingTxsPool : public PendingTxsPool
 {
     unsigned char transactionBuffer[MAX_TRANSACTION_SIZE];
 public:
+    TestPendingTxsPool()
+    {
+        // we need the spectrum for tx priority calculation
+        EXPECT_TRUE(initSpectrum());
+        memset(spectrum, 0, spectrumSizeInBytes);
+        updateSpectrumInfo();
+    }
 
-    bool addTransaction(unsigned int tick, unsigned int inputSize)
+    ~TestPendingTxsPool()
+    {
+        deinitSpectrum();
+    }
+
+    bool addTransaction(unsigned int tick, long long amount, unsigned int inputSize)
     {
         Transaction* transaction = (Transaction*)transactionBuffer;
-        transaction->amount = 10;
+        transaction->amount = amount;
         transaction->destinationPublicKey.setRandomValue();
         transaction->sourcePublicKey.setRandomValue();
         transaction->inputSize = inputSize;
@@ -44,7 +62,8 @@ unsigned int addTickTransactions(unsigned int tick, unsigned long long seed, uns
     for (unsigned int transaction = 0; transaction < transactionNum; ++transaction)
     {
         unsigned int inputSize = gen64() % MAX_INPUT_SIZE;
-        if (pendingTxsPool.addTransaction(tick, inputSize))
+        long long amount = gen64() % MAX_AMOUNT;
+        if (pendingTxsPool.addTransaction(tick, amount, inputSize))
             numTransactionsAdded++;
     }
     pendingTxsPool.checkStateConsistencyWithAssert();
@@ -62,7 +81,8 @@ void checkTickTransactions(unsigned int tick, unsigned long long seed, unsigned 
 
     for (unsigned int transaction = 0; transaction < transactionNum; ++transaction)
     {
-        int expectedInputSize = (int)(gen64() % MAX_INPUT_SIZE);
+        unsigned int expectedInputSize = gen64() % MAX_INPUT_SIZE;
+        long long expectedAmount = gen64() % MAX_AMOUNT;
 
         Transaction* tp = pendingTxsPool.get(tick, transaction);
 
@@ -73,7 +93,8 @@ void checkTickTransactions(unsigned int tick, unsigned long long seed, unsigned 
 
         EXPECT_TRUE(tp->checkValidity());
         EXPECT_EQ(tp->tick, tick);
-        EXPECT_EQ((int)tp->inputSize, expectedInputSize);
+        EXPECT_EQ(static_cast<unsigned int>(tp->inputSize), expectedInputSize);
+        EXPECT_EQ(tp->amount, expectedAmount);
 
         m256i* digest = pendingTxsPool.getDigest(tick, transaction);
 
@@ -326,4 +347,38 @@ TEST(TestPendingTxsPool, IncrementFirstStoredTick)
 
         pendingTxsPool.deinit();
     }
+}
+
+TEST(TestPendingTxsPool, TxsPrioritization)
+{
+    unsigned long long seed = 9532;
+
+    // use pseudo-random sequence
+    std::mt19937_64 gen64(seed);
+
+    pendingTxsPool.init();
+    pendingTxsPool.checkStateConsistencyWithAssert();
+
+    const unsigned int firstEpochTick0 = gen64() % 10000000;
+    unsigned int numAdditionalTxs = 128;
+
+    pendingTxsPool.beginEpoch(firstEpochTick0);
+
+    // add more than NUMBER_OF_TRANSACTIONS_PER_TICK transactions with increasing amount 
+    // (= priority because there are no previously outgoing txs for the entities)
+    for (int t = 0; t < NUMBER_OF_TRANSACTIONS_PER_TICK + numAdditionalTxs; ++t)
+        EXPECT_TRUE(pendingTxsPool.addTransaction(firstEpochTick0, /*amount=*/t + 1, /*inputSize=*/0));
+
+    EXPECT_EQ(pendingTxsPool.getTotalNumberOfPendingTxs(firstEpochTick0 - 1), NUMBER_OF_TRANSACTIONS_PER_TICK);
+    EXPECT_EQ(pendingTxsPool.getNumberOfPendingTickTxs(firstEpochTick0), NUMBER_OF_TRANSACTIONS_PER_TICK);
+
+    for (int t = 0; t < NUMBER_OF_TRANSACTIONS_PER_TICK; ++t)
+    {
+        if (t < numAdditionalTxs)
+            EXPECT_EQ(pendingTxsPool.get(firstEpochTick0, t)->amount, NUMBER_OF_TRANSACTIONS_PER_TICK + t + 1);
+        else
+            EXPECT_EQ(pendingTxsPool.get(firstEpochTick0, t)->amount, t + 1);
+    }
+
+    pendingTxsPool.deinit();
 }
