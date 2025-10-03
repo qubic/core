@@ -51,11 +51,15 @@ private:
     // Lock for securing numSavedTxsPerTick
     inline static volatile char numSavedLock = 0;
 
+    // Lock for securing txsPriorities
+    inline static volatile char txsPrioritiesLock = 0;
+
     // Priority queues for transactions in each saved tick.
     inline static Collection<unsigned int, NUMBER_OF_TRANSACTIONS_PER_TICK * PENDING_TXS_POOL_NUM_TICKS>* txsPriorities;
 
     static void cleanupTxsPriorities(unsigned int tickIndex)
     {
+        ACQUIRE(txsPrioritiesLock);
         sint64 elementIndex = txsPriorities->headIndex(m256i{ tickIndex, 0, 0, 0 });
         // use a `for` instead of a `while` loop to make sure it cannot run forever 
         // there can be at most NUMBER_OF_TRANSACTIONS_PER_TICK elements in one pov
@@ -67,6 +71,7 @@ private:
                 break;
         }
         txsPriorities->cleanupIfNeeded();
+        RELEASE(txsPrioritiesLock);
     }
 
     // Return pointer to Transaction based on tickIndex and transactionIndex (checking offset with ASSERT)
@@ -112,6 +117,7 @@ public:
         ASSERT(tickTransactionsLock == 0);
         ASSERT(txsDigestsLock == 0);
         ASSERT(numSavedLock == 0);
+        ASSERT(txsPrioritiesLock == 0);
 
         setMem(tickTransactionsBuffer, tickTransactionsSize, 0);
         setMem(txsDigestsBuffer, txsDigestsSize, 0);
@@ -244,6 +250,7 @@ public:
 
             acquireLock();
             ACQUIRE(numSavedLock);
+            ACQUIRE(txsPrioritiesLock);
 
             if (numSavedTxsPerTick[tickIndex] < NUMBER_OF_TRANSACTIONS_PER_TICK)
             {
@@ -305,6 +312,7 @@ public:
 #endif
             }
 
+            RELEASE(txsPrioritiesLock);
             RELEASE(numSavedLock);
             releaseLock();
         }
@@ -423,7 +431,9 @@ public:
             setMem(txsDigestsBuffer, txsDigestsSize, 0);
             setMem(numSavedTxsPerTick, sizeof(numSavedTxsPerTick), 0);
 
+            ACQUIRE(txsPrioritiesLock);
             txsPriorities->reset();
+            RELEASE(txsPrioritiesLock);
 
             buffersBeginIndex = 0;
         }
