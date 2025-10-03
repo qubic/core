@@ -8,11 +8,14 @@
 
 #include "spectrum/spectrum.h"
 
+#include "mining/mining.h"
+
 #include "contracts/qpi.h"
 #include "contract_core/qpi_collection_impl.h"
 
 #include "public_settings.h"
 #include "kangaroo_twelve.h"
+#include "vote_counter.h"
 
 // Mempool that saves pending transactions (txs) of all entities.
 // This is a kind of singleton class with only static members (so all instances refer to the same data).
@@ -72,6 +75,32 @@ private:
         }
         txsPriorities->cleanupIfNeeded();
         RELEASE(txsPrioritiesLock);
+    }
+
+    static sint64 calculateTxPriority(const Transaction* tx)
+    {
+        if (isZero(tx->destinationPublicKey) && tx->amount == 0LL
+            && (tx->inputType == VOTE_COUNTER_INPUT_TYPE || tx->inputType == CustomMiningSolutionTransaction::transactionType()))
+        {
+            // protocol-level tx always have max priority
+            return INT64_MAX;
+        }
+        else
+        {
+            // calculate tx priority as [amount] * [scheduledTick - latestOutgoingTransferTick]
+            sint64 priority = tx->amount;
+            int sourceIndex = spectrumIndex(tx->sourcePublicKey);
+            if (sourceIndex != -1)
+            {
+                EntityRecord entity = spectrum[sourceIndex];
+                priority = smul(priority, static_cast<sint64>(tx->tick - entity.latestOutgoingTransferTick));
+            }
+
+            // safely decrease by 1 to make sure no normal tx reaches max priority
+            priority = sadd(priority, -1LL);
+
+            return priority;
+        }
     }
 
     // Return pointer to Transaction based on tickIndex and transactionIndex (checking offset with ASSERT)
@@ -227,7 +256,7 @@ public:
     }
 
     // Check validity of transaction and add to the pool. Return boolean indicating whether transaction was added.
-    static bool add(Transaction* tx)
+    static bool add(const Transaction* tx)
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"Begin pendingTxsPool.update()");
@@ -238,14 +267,7 @@ public:
             unsigned int tickIndex = tickToIndex(tx->tick);
             const unsigned int transactionSize = tx->totalSize();
 
-            // calculate tx priority as [amount] * [scheduledTick - latestOutgoingTransferTick]
-            sint64 priority = tx->amount;
-            int sourceIndex = spectrumIndex(tx->sourcePublicKey);
-            if (sourceIndex != -1)
-            {
-                EntityRecord entity = spectrum[sourceIndex];
-                priority = smul(priority, static_cast<sint64>(tx->tick - entity.latestOutgoingTransferTick));
-            }            
+            sint64 priority = calculateTxPriority(tx);
             m256i povIndex{ tickIndex, 0, 0, 0 };
 
             acquireLock();

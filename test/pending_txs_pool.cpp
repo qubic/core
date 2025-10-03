@@ -427,3 +427,41 @@ TEST(TestPendingTxsPool, TxsPrioritizationDuplicateTxs)
 
     pendingTxsPool.deinit();
 }
+
+TEST(TestPendingTxsPool, ProtocolLevelTxsMaxPriority)
+{
+    unsigned long long seed = 9532;
+
+    // use pseudo-random sequence
+    std::mt19937_64 gen64(seed);
+
+    pendingTxsPool.init();
+    pendingTxsPool.checkStateConsistencyWithAssert();
+
+    const unsigned int firstEpochTick0 = gen64() % 10000000;
+
+    pendingTxsPool.beginEpoch(firstEpochTick0);
+
+    // add duplicate transactions: same dest, src, and amount
+    for (unsigned int t = 0; t < NUMBER_OF_TRANSACTIONS_PER_TICK; ++t)
+        EXPECT_TRUE(pendingTxsPool.addTransaction(firstEpochTick0, gen64() % MAX_AMOUNT, gen64() % MAX_INPUT_SIZE));
+
+    EXPECT_EQ(pendingTxsPool.getTotalNumberOfPendingTxs(firstEpochTick0 - 1), NUMBER_OF_TRANSACTIONS_PER_TICK);
+    EXPECT_EQ(pendingTxsPool.getNumberOfPendingTickTxs(firstEpochTick0), NUMBER_OF_TRANSACTIONS_PER_TICK);
+
+    Transaction tx { 
+        .sourcePublicKey = m256i::randomValue(),
+        .destinationPublicKey = m256i::zero(),
+        .amount = 0, .tick = firstEpochTick0, 
+        .inputType = VOTE_COUNTER_INPUT_TYPE,
+        .inputSize = 0,
+    };
+
+    EXPECT_TRUE(pendingTxsPool.add(&tx));
+
+    tx.inputType = CustomMiningSolutionTransaction::transactionType();
+
+    EXPECT_TRUE(pendingTxsPool.add(&tx));
+
+    pendingTxsPool.deinit();
+}

@@ -115,7 +115,7 @@ struct BroadcastCustomMiningTransaction
     bool isBroadcasted;
 };
 
-BroadcastCustomMiningTransaction gCustomMiningBroadcastTxBuffer[NUMBER_OF_COMPUTORS];
+static BroadcastCustomMiningTransaction gCustomMiningBroadcastTxBuffer[NUMBER_OF_COMPUTORS];
 
 class CustomMiningSharesCounter
 {
@@ -1398,7 +1398,7 @@ static CustomMiningStorage gCustomMiningStorage;
 static CustomMiningStats gCustomMiningStats;
 
 // Get the part ID
-int customMiningGetPartitionID(unsigned short firstComputorIndex, unsigned short lastComputorIndex)
+static int customMiningGetPartitionID(unsigned short firstComputorIndex, unsigned short lastComputorIndex)
 {
     int partitionID = -1;
     for (int k = 0; k < NUMBER_OF_TASK_PARTITIONS; k++)
@@ -1415,7 +1415,7 @@ int customMiningGetPartitionID(unsigned short firstComputorIndex, unsigned short
 
 
 // Generate computor task partition
-int customMiningInitTaskPartitions()
+static int customMiningInitTaskPartitions()
 {
     for (int i = 0; i < NUMBER_OF_TASK_PARTITIONS; i++)
     {
@@ -1429,12 +1429,12 @@ int customMiningInitTaskPartitions()
 }
 
 // Get computor ids
-int customMiningGetComputorID(unsigned int nonce, int partId)
+static int customMiningGetComputorID(unsigned int nonce, int partId)
 {
     return nonce / gTaskPartition[partId].domainSize + gTaskPartition[partId].firstComputorIdx;
 }
 
-int customMiningInitialize()
+static int customMiningInitialize()
 {
     gCustomMiningStorage.init();
 #if SOLUTION_CACHE_DYNAMIC_MEM 
@@ -1454,7 +1454,7 @@ int customMiningInitialize()
     return 0;
 }
 
-int customMiningDeinitialize()
+static int customMiningDeinitialize()
 {
 #if SOLUTION_CACHE_DYNAMIC_MEM 
     if (gSystemCustomMiningSolutionCache)
@@ -1470,7 +1470,7 @@ int customMiningDeinitialize()
 #ifdef NO_UEFI
 #else
 // Save score cache to SCORE_CACHE_FILE_NAME
-void saveCustomMiningCache(int epoch, CHAR16* directory = NULL)
+static void saveCustomMiningCache(int epoch, CHAR16* directory = NULL)
 {
     logToConsole(L"Saving custom mining cache file...");
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
@@ -1491,7 +1491,7 @@ void saveCustomMiningCache(int epoch, CHAR16* directory = NULL)
 }
 
 // Update score cache filename with epoch and try to load file
-bool loadCustomMiningCache(int epoch)
+static bool loadCustomMiningCache(int epoch)
 {
     logToConsole(L"Loading custom mining cache...");
     bool success = true;
