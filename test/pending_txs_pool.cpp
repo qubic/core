@@ -34,12 +34,18 @@ public:
         deinitSpectrum();
     }
 
-    bool addTransaction(unsigned int tick, long long amount, unsigned int inputSize)
+    bool addTransaction(unsigned int tick, long long amount, unsigned int inputSize, const m256i* dest = nullptr, const m256i* src = nullptr)
     {
         Transaction* transaction = (Transaction*)transactionBuffer;
         transaction->amount = amount;
-        transaction->destinationPublicKey.setRandomValue();
-        transaction->sourcePublicKey.setRandomValue();
+        if (dest == nullptr)
+            transaction->destinationPublicKey.setRandomValue();
+        else
+            transaction->destinationPublicKey.assign(*dest);
+        if (src == nullptr)
+            transaction->sourcePublicKey.setRandomValue();
+        else
+            transaction->sourcePublicKey.assign(*src);
         transaction->inputSize = inputSize;
         transaction->inputType = 0;
         transaction->tick = tick;
@@ -349,7 +355,7 @@ TEST(TestPendingTxsPool, IncrementFirstStoredTick)
     }
 }
 
-TEST(TestPendingTxsPool, TxsPrioritization)
+TEST(TestPendingTxsPool, TxsPrioritizationMoreThanMaxTxs)
 {
     unsigned long long seed = 9532;
 
@@ -366,18 +372,57 @@ TEST(TestPendingTxsPool, TxsPrioritization)
 
     // add more than NUMBER_OF_TRANSACTIONS_PER_TICK transactions with increasing amount 
     // (= priority because there are no previously outgoing txs for the entities)
-    for (int t = 0; t < NUMBER_OF_TRANSACTIONS_PER_TICK + numAdditionalTxs; ++t)
+    for (unsigned int t = 0; t < NUMBER_OF_TRANSACTIONS_PER_TICK + numAdditionalTxs; ++t)
         EXPECT_TRUE(pendingTxsPool.addTransaction(firstEpochTick0, /*amount=*/t + 1, /*inputSize=*/0));
 
     EXPECT_EQ(pendingTxsPool.getTotalNumberOfPendingTxs(firstEpochTick0 - 1), NUMBER_OF_TRANSACTIONS_PER_TICK);
     EXPECT_EQ(pendingTxsPool.getNumberOfPendingTickTxs(firstEpochTick0), NUMBER_OF_TRANSACTIONS_PER_TICK);
 
-    for (int t = 0; t < NUMBER_OF_TRANSACTIONS_PER_TICK; ++t)
+    for (unsigned int t = 0; t < NUMBER_OF_TRANSACTIONS_PER_TICK; ++t)
     {
         if (t < numAdditionalTxs)
             EXPECT_EQ(pendingTxsPool.get(firstEpochTick0, t)->amount, NUMBER_OF_TRANSACTIONS_PER_TICK + t + 1);
         else
             EXPECT_EQ(pendingTxsPool.get(firstEpochTick0, t)->amount, t + 1);
+    }
+
+    pendingTxsPool.deinit();
+}
+
+TEST(TestPendingTxsPool, TxsPrioritizationDuplicateTxs)
+{
+    unsigned long long seed = 9532;
+
+    // use pseudo-random sequence
+    std::mt19937_64 gen64(seed);
+
+    pendingTxsPool.init();
+    pendingTxsPool.checkStateConsistencyWithAssert();
+
+    const unsigned int firstEpochTick0 = gen64() % 10000000;
+    unsigned int numTxs = 128;
+
+    pendingTxsPool.beginEpoch(firstEpochTick0);
+
+    // add duplicate transactions: same dest, src, and amount
+    m256i dest{ 562, 789, 234, 121 };
+    m256i src{ 8970, 342, 6891, 345 };
+    long long amount = 1;
+    for (unsigned int t = 0; t < numTxs; ++t)
+        EXPECT_TRUE(pendingTxsPool.addTransaction(firstEpochTick0, amount, /*inputSize=*/0, &dest, & src));
+
+    EXPECT_EQ(pendingTxsPool.getTotalNumberOfPendingTxs(firstEpochTick0 - 1), numTxs);
+    EXPECT_EQ(pendingTxsPool.getNumberOfPendingTickTxs(firstEpochTick0), numTxs);
+
+    for (unsigned int t = 0; t < numTxs; ++t)
+    {
+        Transaction* tx = pendingTxsPool.get(firstEpochTick0, t);
+        EXPECT_TRUE(tx->checkValidity());
+        EXPECT_EQ(tx->amount, amount);
+        EXPECT_EQ(tx->tick, firstEpochTick0);
+        EXPECT_EQ(static_cast<unsigned int>(tx->inputSize), 0U);
+        EXPECT_TRUE(tx->destinationPublicKey == dest);
+        EXPECT_TRUE(tx->sourcePublicKey == src);
     }
 
     pendingTxsPool.deinit();
