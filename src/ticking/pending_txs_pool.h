@@ -367,6 +367,9 @@ public:
 
     static void incrementFirstStoredTick()
     {
+        acquireLock();
+        ACQUIRE(numSavedLock);
+
         // set memory at buffersBeginIndex to 0 
         unsigned long long numTxsBeforeBegin = buffersBeginIndex * NUMBER_OF_TRANSACTIONS_PER_TICK;
         setMem(tickTransactionsBuffer + numTxsBeforeBegin * MAX_TRANSACTION_SIZE, NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE, 0);
@@ -379,6 +382,9 @@ public:
         // increment buffersBeginIndex and firstStoredTick
         firstStoredTick++;
         buffersBeginIndex = (buffersBeginIndex + 1) % PENDING_TXS_POOL_NUM_TICKS;
+
+        RELEASE(numSavedLock);
+        releaseLock();
     }
 
     static void beginEpoch(unsigned int newInitialTick)
