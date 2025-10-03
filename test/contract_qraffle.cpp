@@ -74,12 +74,12 @@ public:
         EXPECT_EQ(numberOfEntryAmountSubmitted, expectedSubmitted);
     }
 
-    void proposalChecker(uint32 index, const Asset& expectedToken, uint64 expectedEntryAmount, uint32 expectedProposals)
+    void proposalChecker(uint32 index, const Asset& expectedToken, uint64 expectedEntryAmount)
     {
         EXPECT_EQ(proposals.get(index).token.assetName, expectedToken.assetName);
         EXPECT_EQ(proposals.get(index).token.issuer, expectedToken.issuer);
         EXPECT_EQ(proposals.get(index).entryAmount, expectedEntryAmount);
-        EXPECT_EQ(numberOfProposals, expectedProposals);
+        EXPECT_EQ(numberOfProposals, index + 1);
     }
 
     void voteChecker(uint32 proposalIndex, uint32 expectedYes, uint32 expectedNo)
@@ -105,12 +105,11 @@ public:
 
     void tokenRaffleMemberChecker(uint32 raffleIndex, const id& user, uint32 expectedMembers)
     {
-        Array<id, QRAFFLE_MAX_MEMBER> members;
-        tokenRaffleMembers.get(raffleIndex, members);
+        tokenRaffleMembers.get(raffleIndex, tmpTokenRaffleMembers);
         bool found = false;
         for (uint32 i = 0; i < numberOfTokenRaffleMembers.get(raffleIndex); i++)
         {
-            if (members.get(i) == user)
+            if (tmpTokenRaffleMembers.get(i) == user)
             {
                 found = true;
                 break;
@@ -149,7 +148,7 @@ public:
     }
 
     void endedTokenRaffleChecker(uint32 index, const id& expectedWinner, const Asset& expectedToken, 
-                                uint64 expectedEntryAmount, uint32 expectedMembers, uint32 expectedWinnerIndex, uint16 expectedEpoch)
+                                uint64 expectedEntryAmount, uint32 expectedMembers, uint32 expectedWinnerIndex, uint32 expectedEpoch)
     {
         EXPECT_EQ(tokenRaffle.get(index).epochWinner, expectedWinner);
         EXPECT_EQ(tokenRaffle.get(index).token.assetName, expectedToken.assetName);
@@ -173,6 +172,16 @@ public:
     uint64 getQuRaffleEntryAmount()
     {
         return qREAmount;
+    }
+
+    uint32 getNumberOfActiveTokenRaffle()
+    {
+        return numberOfActiveTokenRaffle;
+    }
+
+    uint32 getNumberOfEndedTokenRaffle()
+    {
+        return numberOfEndedTokenRaffle;
     }
 };
 
@@ -308,33 +317,13 @@ public:
         return output;
     }
 
-    QRAFFLE::getEpochWinner_output getEpochWinner(uint32 epoch)
-    {
-        QRAFFLE::getEpochWinner_input input;
-        QRAFFLE::getEpochWinner_output output;
-        
-        input.epoch = epoch;
-        callFunction(QRAFFLE_CONTRACT_INDEX, 5, input, output);
-        return output;
-    }
-
-    QRAFFLE::getEpochRaffleIndexes_output getEpochRaffleIndexes(uint16 epoch)
-    {
-        QRAFFLE::getEpochRaffleIndexes_input input;
-        QRAFFLE::getEpochRaffleIndexes_output output;
-        
-        input.epoch = epoch;
-        callFunction(QRAFFLE_CONTRACT_INDEX, 6, input, output);
-        return output;
-    }
-
     QRAFFLE::getEndedQuRaffle_output getEndedQuRaffle(uint16 epoch)
     {
         QRAFFLE::getEndedQuRaffle_input input;
         QRAFFLE::getEndedQuRaffle_output output;
         
         input.epoch = epoch;
-        callFunction(QRAFFLE_CONTRACT_INDEX, 7, input, output);
+        callFunction(QRAFFLE_CONTRACT_INDEX, 5, input, output);
         return output;
     }
 
@@ -344,7 +333,17 @@ public:
         QRAFFLE::getActiveTokenRaffle_output output;
         
         input.indexOfTokenRaffle = raffleIndex;
-        callFunction(QRAFFLE_CONTRACT_INDEX, 8, input, output);
+        callFunction(QRAFFLE_CONTRACT_INDEX, 6, input, output);
+        return output;
+    }
+
+    QRAFFLE::getEpochRaffleIndexes_output getEpochRaffleIndexes(uint16 epoch)
+    {
+        QRAFFLE::getEpochRaffleIndexes_input input;
+        QRAFFLE::getEpochRaffleIndexes_output output;
+        
+        input.epoch = epoch;
+        callFunction(QRAFFLE_CONTRACT_INDEX, 7, input, output);
         return output;
     }
 
@@ -356,7 +355,7 @@ public:
         return output.issuedNumberOfShares;
     }
 
-    sint64 transferShareOwnershipAndPossession(const id& issuer, uint64 assetName, sint64 numberOfShares, const id& newOwnerAndPossesor)
+    sint64 transferShareOwnershipAndPossession(const id& issuer, uint64 assetName, const id& currentOwnerAndPossesor, sint64 numberOfShares, const id& newOwnerAndPossesor)
     {
         QX::TransferShareOwnershipAndPossession_input input;
         QX::TransferShareOwnershipAndPossession_output output;
@@ -366,47 +365,76 @@ public:
         input.newOwnerAndPossessor = newOwnerAndPossesor;
         input.numberOfShares = numberOfShares;
 
-        invokeUserProcedure(QX_CONTRACT_INDEX, 2, input, output, issuer, 1000000ULL);
+        invokeUserProcedure(QX_CONTRACT_INDEX, 2, input, output, currentOwnerAndPossesor, 100);
+        return output.transferredNumberOfShares;
+    }
+
+    sint64 TransferShareManagementRights(const id& issuer, uint64 assetName, uint32 newManagingContractIndex, sint64 numberOfShares, const id& currentOwner)
+    {
+        QX::TransferShareManagementRights_input input;
+        QX::TransferShareManagementRights_output output;
+
+        input.asset.assetName = assetName;
+        input.asset.issuer = issuer;
+        input.newManagingContractIndex = newManagingContractIndex;
+        input.numberOfShares = numberOfShares;
+
+        invokeUserProcedure(QX_CONTRACT_INDEX, 9, input, output, currentOwner, 0);
+
+        return output.transferredNumberOfShares;
+    }
+
+    sint64 TransferShareManagementRightsQraffle(const id& issuer, uint64 assetName, uint32 newManagingContractIndex, sint64 numberOfShares, const id& currentOwner)
+    {
+        QRAFFLE::TransferShareManagementRights_input input;
+        QRAFFLE::TransferShareManagementRights_output output;
+
+        input.asset.assetName = assetName;
+        input.asset.issuer = issuer;
+        input.newManagingContractIndex = newManagingContractIndex;
+        input.numberOfShares = numberOfShares;
+
+        invokeUserProcedure(QRAFFLE_CONTRACT_INDEX, 8, input, output, currentOwner, QRAFFLE_TRANSFER_SHARE_FEE);
         return output.transferredNumberOfShares;
     }
 };
 
-// TEST(ContractQraffle, RegisterInSystem)
-// {
-//     ContractTestingQraffle qraffle;
+TEST(ContractQraffle, RegisterInSystem)
+{
+    ContractTestingQraffle qraffle;
     
-//     auto users = getRandomUsers(1000, 1000);
-//     uint32 registerCount = 0;
+    auto users = getRandomUsers(1000, 1000);
+    uint32 registerCount = 5;
 
-//     // Test successful registration
-//     for (const auto& user : users)
-//     {
-//         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-//         auto result = qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
-//         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
-//         qraffle.getState()->registerChecker(user, ++registerCount, true);
-//     }
+    // Test successful registration
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
+        auto result = qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        qraffle.getState()->registerChecker(user, ++registerCount, true);
+    }
 
-//     // // Test insufficient funds
-//     id poorUser = getUser(9999);
-//     increaseEnergy(poorUser, QRAFFLE_REGISTER_AMOUNT - 1);
-//     auto result = qraffle.registerInSystem(poorUser, QRAFFLE_REGISTER_AMOUNT - 1);
-//     EXPECT_EQ(result.returnCode, QRAFFLE_INSUFFICIENT_FUND);
-//     qraffle.getState()->registerChecker(poorUser, registerCount, false);
+    // // Test insufficient funds
+    id poorUser = getUser(9999);
+    increaseEnergy(poorUser, QRAFFLE_REGISTER_AMOUNT - 1);
+    auto result = qraffle.registerInSystem(poorUser, QRAFFLE_REGISTER_AMOUNT - 1);
+    EXPECT_EQ(result.returnCode, QRAFFLE_INSUFFICIENT_FUND);
+    qraffle.getState()->registerChecker(poorUser, registerCount, false);
 
-//     // Test already registered
-//     increaseEnergy(users[0], QRAFFLE_REGISTER_AMOUNT);
-//     result = qraffle.registerInSystem(users[0], QRAFFLE_REGISTER_AMOUNT);
-//     EXPECT_EQ(result.returnCode, QRAFFLE_ALREADY_REGISTERED);
-//     qraffle.getState()->registerChecker(users[0], registerCount, true);
-// }
+    // Test already registered
+    increaseEnergy(users[0], QRAFFLE_REGISTER_AMOUNT);
+    result = qraffle.registerInSystem(users[0], QRAFFLE_REGISTER_AMOUNT);
+    EXPECT_EQ(result.returnCode, QRAFFLE_ALREADY_REGISTERED);
+    qraffle.getState()->registerChecker(users[0], registerCount, true);
+}
 
 TEST(ContractQraffle, LogoutInSystem)
 {
     ContractTestingQraffle qraffle;
     
     auto users = getRandomUsers(1000, 1000);
-    uint32 registerCount = 0;
+    uint32 registerCount = 5;
 
     // Register users first
     for (const auto& user : users)
@@ -426,405 +454,692 @@ TEST(ContractQraffle, LogoutInSystem)
     }
 
     // Test unregistered user logout
-    id unregisteredUser = getUser(9999);
-    qraffle.getState()->unregisterChecker(unregisteredUser, registerCount);
-    auto result = qraffle.logoutInSystem(unregisteredUser);
+    qraffle.getState()->unregisterChecker(users[0], registerCount);
+    auto result = qraffle.logoutInSystem(users[0]);
     EXPECT_EQ(result.returnCode, QRAFFLE_UNREGISTERED);
 }
 
-// TEST(ContractQraffle, SubmitEntryAmount)
-// {
-//     ContractTestingQraffle qraffle;
+TEST(ContractQraffle, SubmitEntryAmount)
+{
+    ContractTestingQraffle qraffle;
     
-//     auto users = getRandomUsers(1000, 1000);
-//     uint32 registerCount = 0;
-//     uint32 entrySubmittedCount = 0;
+    auto users = getRandomUsers(1000, 1000);
+    uint32 registerCount = 5;
+    uint32 entrySubmittedCount = 0;
 
-//     // Register users first
-//     for (const auto& user : users)
-//     {
-//         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-//         qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
-//         registerCount++;
-//     }
+    // Register users first
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
+        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        registerCount++;
+    }
 
-//     // Test successful entry amount submission
-//     for (const auto& user : users)
-//     {
-//         uint64 amount = random(1000000, 1000000000);
-//         auto result = qraffle.submitEntryAmount(user, amount);
-//         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
-//         qraffle.getState()->entryAmountChecker(user, amount, ++entrySubmittedCount);
-//     }
+    // Test successful entry amount submission
+    for (const auto& user : users)
+    {
+        uint64 amount = random(1000000, 1000000000);
+        auto result = qraffle.submitEntryAmount(user, amount);
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        qraffle.getState()->entryAmountChecker(user, amount, ++entrySubmittedCount);
+    }
 
-//     // Test unregistered user
-//     id unregisteredUser = getUser(9999);
-//     increaseEnergy(unregisteredUser, QRAFFLE_REGISTER_AMOUNT);
-//     auto result = qraffle.submitEntryAmount(unregisteredUser, 1000000);
-//     EXPECT_EQ(result.returnCode, QRAFFLE_UNREGISTERED);
+    // Test unregistered user
+    id unregisteredUser = getUser(9999);
+    increaseEnergy(unregisteredUser, QRAFFLE_REGISTER_AMOUNT);
+    auto result = qraffle.submitEntryAmount(unregisteredUser, 1000000);
+    EXPECT_EQ(result.returnCode, QRAFFLE_UNREGISTERED);
 
-//     // Test update entry amount
-//     uint64 newAmount = random(1000000, 1000000000);
-//     result = qraffle.submitEntryAmount(users[0], newAmount);
-//     EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
-//     qraffle.getState()->entryAmountChecker(users[0], newAmount, entrySubmittedCount);
-// }
+    // Test update entry amount
+    uint64 newAmount = random(1000000, 1000000000);
+    result = qraffle.submitEntryAmount(users[0], newAmount);
+    EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+    qraffle.getState()->entryAmountChecker(users[0], newAmount, entrySubmittedCount);
+}
 
-// TEST(ContractQraffle, SubmitProposal)
-// {
-//     ContractTestingQraffle qraffle;
+TEST(ContractQraffle, SubmitProposal)
+{
+    ContractTestingQraffle qraffle;
     
-//     auto users = getRandomUsers(100, 5);
-//     uint32 registerCount = 0;
-//     uint32 proposalCount = 0;
+    auto users = getRandomUsers(1000, 1000);
+    uint32 registerCount = 5;
+    uint32 proposalCount = 0;
 
-//     // Register users first
-//     for (const auto& user : users)
-//     {
-//         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-//         qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
-//         registerCount++;
-//     }
+    // Register users first
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
+        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        registerCount++;
+    }
 
-//     // Issue some test assets
-//     id issuer = getUser(1000);
-//     increaseEnergy(issuer, 1000000000ULL);
-//     uint64 assetName1 = assetNameFromString("TEST1");
-//     uint64 assetName2 = assetNameFromString("TEST2");
-//     qraffle.issueAsset(issuer, assetName1, 1000000, 0, 0);
-//     qraffle.issueAsset(issuer, assetName2, 2000000, 0, 0);
+    // Issue some test assets
+    id issuer = getUser(2000);
+    increaseEnergy(issuer, 1000000000ULL);
+    uint64 assetName1 = assetNameFromString("TEST1");
+    uint64 assetName2 = assetNameFromString("TEST2");
+    qraffle.issueAsset(issuer, assetName1, 1000000, 0, 0);
+    qraffle.issueAsset(issuer, assetName2, 2000000, 0, 0);
 
-//     Asset token1, token2;
-//     token1.assetName = assetName1;
-//     token1.issuer = issuer;
-//     token2.assetName = assetName2;
-//     token2.issuer = issuer;
+    Asset token1, token2;
+    token1.assetName = assetName1;
+    token1.issuer = issuer;
+    token2.assetName = assetName2;
+    token2.issuer = issuer;
 
-//     // Test successful proposal submission
-//     for (const auto& user : users)
-//     {
-//         uint64 entryAmount = random(1000000, 1000000000);
-//         Asset token = (random(0, 2) == 0) ? token1 : token2;
+    // Test successful proposal submission
+    for (const auto& user : users)
+    {
+        uint64 entryAmount = random(1000000, 1000000000);
+        Asset token = (random(0, 2) == 0) ? token1 : token2;
         
-//         auto result = qraffle.submitProposal(user, token, entryAmount);
-//         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
-//         qraffle.getState()->proposalChecker(proposalCount, token, entryAmount, ++proposalCount);
-//     }
+        if (proposalCount == QRAFFLE_MAX_PROPOSAL_EPOCH - 1)
+        {
+           break;
+        }
+        increaseEnergy(user, 1000);
+        auto result = qraffle.submitProposal(user, token, entryAmount);
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        qraffle.getState()->proposalChecker(proposalCount, token, entryAmount);
+        proposalCount++;
+    }
 
-//     // Test unregistered user
-//     id unregisteredUser = getUser(999);
-//     auto result = qraffle.submitProposal(unregisteredUser, token1, 1000000);
-//     EXPECT_EQ(result.returnCode, QRAFFLE_UNREGISTERED);
-// }
+    // Test unregistered user
+    id unregisteredUser = getUser(1999);
+    increaseEnergy(unregisteredUser, QRAFFLE_REGISTER_AMOUNT);
+    auto result = qraffle.submitProposal(unregisteredUser, token1, 1000000);
+    EXPECT_EQ(result.returnCode, QRAFFLE_UNREGISTERED);
+}   
 
-// TEST(ContractQraffle, VoteInProposal)
-// {
-//     ContractTestingQraffle qraffle;
+TEST(ContractQraffle, VoteInProposal)
+{
+    ContractTestingQraffle qraffle;
     
-//     auto users = getRandomUsers(100, 10);
-//     uint32 registerCount = 0;
-//     uint32 proposalCount = 0;
+    auto users = getRandomUsers(1000, 1000);
+    uint32 registerCount = 5;
+    uint32 proposalCount = 0;
 
-//     // Register users first
-//     for (const auto& user : users)
-//     {
-//         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-//         qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
-//         registerCount++;
-//     }
+    // Register users first
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
+        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        registerCount++;
+    }
 
-//     // Create a proposal
-//     id issuer = getUser(1000);
-//     increaseEnergy(issuer, 1000000000ULL);
-//     uint64 assetName = assetNameFromString("VOTETEST");
-//     qraffle.issueAsset(issuer, assetName, 1000000, 0, 0);
+    // Create a proposal
+    id issuer = getUser(2000);
+    increaseEnergy(issuer, 1000000000ULL);
+    uint64 assetName = assetNameFromString("VOTETS");
+    qraffle.issueAsset(issuer, assetName, 1000000, 0, 0);
 
-//     Asset token;
-//     token.assetName = assetName;
-//     token.issuer = issuer;
+    Asset token;
+    token.assetName = assetName;
+    token.issuer = issuer;
 
-//     qraffle.submitProposal(users[0], token, 1000000);
-//     proposalCount++;
+    qraffle.submitProposal(users[0], token, 1000000);
+    proposalCount++;
 
-//     uint32 yesVotes = 0, noVotes = 0;
+    uint32 yesVotes = 0, noVotes = 0;
 
-//     // Test voting
-//     for (const auto& user : users)
-//     {
-//         bit vote = (bit)random(0, 2);
-//         auto result = qraffle.voteInProposal(user, 0, vote);
-//         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+    // Test voting
+    for (const auto& user : users)
+    {
+        bit vote = (bit)random(0, 2);
+        auto result = qraffle.voteInProposal(user, 0, vote);
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
         
-//         if (vote)
-//             yesVotes++;
-//         else
-//             noVotes++;
+        if (vote)
+            yesVotes++;
+        else
+            noVotes++;
         
-//         qraffle.getState()->voteChecker(0, yesVotes, noVotes);
-//     }
+        qraffle.getState()->voteChecker(0, yesVotes, noVotes);
+    }
 
-//     // Test duplicate vote (should change vote)
-//     bit newVote = (bit)random(0, 2);
-//     auto result = qraffle.voteInProposal(users[0], 0, newVote);
-//     EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+    // Test duplicate vote (should change vote)
+    bit newVote = (bit)random(0, 2);
+    auto result = qraffle.voteInProposal(users[0], 0, newVote);
+    EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
     
-//     if (newVote)
-//         yesVotes++;
-//     else
-//         noVotes++;
+    if (newVote)
+    {
+        yesVotes++;
+        noVotes--;
+    }   
+    else
+    {
+        noVotes++;
+        yesVotes--;
+    }
     
-//     qraffle.getState()->voteChecker(0, yesVotes, noVotes);
+    qraffle.getState()->voteChecker(0, yesVotes, noVotes);
 
-//     // Test unregistered user
-//     id unregisteredUser = getUser(999);
-//     result = qraffle.voteInProposal(unregisteredUser, 0, 1);
-//     EXPECT_EQ(result.returnCode, QRAFFLE_UNREGISTERED);
+    // Test unregistered user
+    id unregisteredUser = getUser(9999);
+    increaseEnergy(unregisteredUser, 1000000000ULL);
+    result = qraffle.voteInProposal(unregisteredUser, 0, 1);
+    EXPECT_EQ(result.returnCode, QRAFFLE_UNREGISTERED);
 
-//     // Test invalid proposal index
-//     result = qraffle.voteInProposal(users[0], 999, 1);
-//     EXPECT_EQ(result.returnCode, QRAFFLE_INVALID_PROPOSAL);
-// }
+    // Test invalid proposal index
+    result = qraffle.voteInProposal(users[0], 9999, 1);
+    EXPECT_EQ(result.returnCode, QRAFFLE_INVALID_PROPOSAL);
+}
 
-// TEST(ContractQraffle, DepositeInQuRaffle)
-// {
-//     ContractTestingQraffle qraffle;
+TEST(ContractQraffle, DepositeInQuRaffle)
+{
+    ContractTestingQraffle qraffle;
     
-//     auto users = getRandomUsers(100, 5);
-//     uint32 registerCount = 0;
-//     uint32 memberCount = 0;
+    auto users = getRandomUsers(1000, 1000);
+    uint32 registerCount = 5;
+    uint32 memberCount = 0;
 
-//     // Register users first
-//     for (const auto& user : users)
-//     {
-//         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-//         qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
-//         registerCount++;
-//     }
+    // Register users first
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
+        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        registerCount++;
+    }
 
-//     // Test successful deposit
-//     for (const auto& user : users)
-//     {
-//         increaseEnergy(user, qraffle.getState()->getQuRaffleEntryAmount());
-//         auto result = qraffle.depositeInQuRaffle(user, qraffle.getState()->getQuRaffleEntryAmount());
-//         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
-//         qraffle.getState()->quRaffleMemberChecker(user, ++memberCount);
-//     }
+    // Test successful deposit
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, qraffle.getState()->getQuRaffleEntryAmount());
+        auto result = qraffle.depositeInQuRaffle(user, qraffle.getState()->getQuRaffleEntryAmount());
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        qraffle.getState()->quRaffleMemberChecker(user, ++memberCount);
+    }
 
-//     // Test insufficient funds
-//     id poorUser = getUser(999);
-//     increaseEnergy(poorUser, qraffle.getState()->getQuRaffleEntryAmount() - 1);
-//     auto result = qraffle.depositeInQuRaffle(poorUser, qraffle.getState()->getQuRaffleEntryAmount() - 1);
-//     EXPECT_EQ(result.returnCode, QRAFFLE_INSUFFICIENT_FUND);
+    // Test insufficient funds
+    id poorUser = getUser(9999);
+    increaseEnergy(poorUser, qraffle.getState()->getQuRaffleEntryAmount() - 1);
+    auto result = qraffle.depositeInQuRaffle(poorUser, qraffle.getState()->getQuRaffleEntryAmount() - 1);
+    EXPECT_EQ(result.returnCode, QRAFFLE_INSUFFICIENT_FUND);
 
-//     // Test already registered
-//     increaseEnergy(users[0], qraffle.getState()->getQuRaffleEntryAmount());
-//     result = qraffle.depositeInQuRaffle(users[0], qraffle.getState()->getQuRaffleEntryAmount());
-//     EXPECT_EQ(result.returnCode, QRAFFLE_ALREADY_REGISTERED);
-// }
+    // Test already registered
+    increaseEnergy(users[0], qraffle.getState()->getQuRaffleEntryAmount());
+    result = qraffle.depositeInQuRaffle(users[0], qraffle.getState()->getQuRaffleEntryAmount());
+    EXPECT_EQ(result.returnCode, QRAFFLE_ALREADY_REGISTERED);
+}
 
-// TEST(ContractQraffle, DepositeInTokenRaffle)
-// {
-//     ContractTestingQraffle qraffle;
+TEST(ContractQraffle, DepositeInTokenRaffle)
+{
+    ContractTestingQraffle qraffle;
     
-//     auto users = getRandomUsers(100, 5);
-//     uint32 registerCount = 0;
+    auto users = getRandomUsers(1000, 1000);
+    uint32 registerCount = 5;
 
-//     // Register users first
-//     for (const auto& user : users)
-//     {
-//         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-//         qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
-//         registerCount++;
-//     }
+    // Register users first
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
+        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        registerCount++;
+    }
 
-//     // Create a proposal and vote for it
-//     id issuer = getUser(1000);
-//     increaseEnergy(issuer, 1000000000ULL);
-//     uint64 assetName = assetNameFromString("TOKENRAFFLE");
-//     qraffle.issueAsset(issuer, assetName, 1000000, 0, 0);
+    // Create a proposal and vote for it
+    id issuer = getUser(2000);    
+    increaseEnergy(issuer, 2000000000ULL);
+    uint64 assetName = assetNameFromString("TOKENRF");
+    qraffle.issueAsset(issuer, assetName, 1000000000000, 0, 0);
 
-//     Asset token;
-//     token.assetName = assetName;
-//     token.issuer = issuer;
+    Asset token;
+    token.assetName = assetName;
+    token.issuer = issuer;
 
-//     qraffle.submitProposal(users[0], token, 1000000);
+    qraffle.submitProposal(users[0], token, 1000000);
     
-//     // Vote yes for the proposal
-//     for (const auto& user : users)
-//     {
-//         qraffle.voteInProposal(user, 0, 1);
-//     }
+    // Vote yes for the proposal
+    for (const auto& user : users)
+    {
+        qraffle.voteInProposal(user, 0, 1);
+    }
 
-//     // End epoch to activate token raffle
-//     qraffle.endEpoch();
+    // End epoch to activate token raffle
+    qraffle.endEpoch();
 
-//     // Test successful token raffle deposit
-//     uint32 memberCount = 0;
-//     for (const auto& user : users)
-//     {
-//         increaseEnergy(user, QRAFFLE_TRANSFER_SHARE_FEE + 1000000);
-//         qraffle.transferShareOwnershipAndPossession(issuer, assetName, 1000000, user);
+    // Test active token raffle
+    auto activeRaffle = qraffle.getActiveTokenRaffle(0);
+    EXPECT_EQ(activeRaffle.returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(activeRaffle.token.assetName, assetName);
+    EXPECT_EQ(activeRaffle.token.issuer, issuer);
+    EXPECT_EQ(activeRaffle.entryAmount, 1000000);
+
+    // Test successful token raffle deposit
+    uint32 memberCount = 0;
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, QRAFFLE_TRANSFER_SHARE_FEE);
+        EXPECT_EQ(qraffle.transferShareOwnershipAndPossession(issuer, assetName, issuer, 1000000, user), 1000000);
+        EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 1000000);
         
-//         auto result = qraffle.depositeInTokenRaffle(user, 0, QRAFFLE_TRANSFER_SHARE_FEE);
-//         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
-//         qraffle.getState()->tokenRaffleMemberChecker(0, user, ++memberCount);
-//     }
+        EXPECT_EQ(qraffle.TransferShareManagementRights(issuer, assetName, QRAFFLE_CONTRACT_INDEX, 1000000, user), 1000000);
+        EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QRAFFLE_CONTRACT_INDEX, QRAFFLE_CONTRACT_INDEX), 1000000);
 
-//     // Test insufficient funds
-//     id poorUser = getUser(999);
-//     increaseEnergy(poorUser, QRAFFLE_TRANSFER_SHARE_FEE - 1);
-//     auto result = qraffle.depositeInTokenRaffle(poorUser, 0, QRAFFLE_TRANSFER_SHARE_FEE - 1);
-//     EXPECT_EQ(result.returnCode, QRAFFLE_INSUFFICIENT_FUND);
+        auto result = qraffle.depositeInTokenRaffle(user, 0, QRAFFLE_TRANSFER_SHARE_FEE);
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        memberCount++;
+        qraffle.getState()->tokenRaffleMemberChecker(0, user, memberCount);
+    }
 
-//     // Test invalid token raffle index
-//     result = qraffle.depositeInTokenRaffle(users[0], 999, QRAFFLE_TRANSFER_SHARE_FEE);
-//     EXPECT_EQ(result.returnCode, QRAFFLE_INVALID_TOKEN_RAFFLE);
-// }
+    // Test insufficient funds
+    id poorUser = getUser(9999);
+    increaseEnergy(poorUser, QRAFFLE_TRANSFER_SHARE_FEE - 1);
+    auto result = qraffle.depositeInTokenRaffle(poorUser, 0, QRAFFLE_TRANSFER_SHARE_FEE - 1);
+    EXPECT_EQ(result.returnCode, QRAFFLE_INSUFFICIENT_FUND);
 
-// TEST(ContractQraffle, GetFunctions)
-// {
-//     ContractTestingQraffle qraffle;
+    // Test insufficient Token
+    id poorUser2 = getUser(8888);
+    increaseEnergy(poorUser2, QRAFFLE_TRANSFER_SHARE_FEE);
+    qraffle.transferShareOwnershipAndPossession(issuer, assetName, issuer, 999999, poorUser2);
+    result = qraffle.depositeInTokenRaffle(poorUser2, 0, QRAFFLE_TRANSFER_SHARE_FEE);
+    EXPECT_EQ(result.returnCode, QRAFFLE_FAILED_TO_DEPOSITE);
+
+    // Test invalid token raffle index
+    increaseEnergy(users[0], QRAFFLE_TRANSFER_SHARE_FEE);
+    result = qraffle.depositeInTokenRaffle(users[0], 999, QRAFFLE_TRANSFER_SHARE_FEE);
+    EXPECT_EQ(result.returnCode, QRAFFLE_INVALID_TOKEN_RAFFLE);
+}
+
+TEST(ContractQraffle, TransferShareManagementRights)
+{
+    ContractTestingQraffle qraffle;
     
-//     auto users = getRandomUsers(100, 5);
-//     uint32 registerCount = 0;
+    id issuer = getUser(1000);    
+    increaseEnergy(issuer, 2000000000ULL);
+    uint64 assetName = assetNameFromString("TOKENRF");
+    qraffle.issueAsset(issuer, assetName, 1000000000000, 0, 0);
 
-//     // Register users first
-//     for (const auto& user : users)
-//     {
-//         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-//         qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
-//         registerCount++;
-//     }
+    id user1 = getUser(1001);
+    increaseEnergy(user1, 1000000000ULL);
+    qraffle.transferShareOwnershipAndPossession(issuer, assetName, issuer, 1000000, user1);
+    EXPECT_EQ(qraffle.TransferShareManagementRights(issuer, assetName, QRAFFLE_CONTRACT_INDEX, 1000000, user1), 1000000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user1, user1, QRAFFLE_CONTRACT_INDEX, QRAFFLE_CONTRACT_INDEX), 1000000);
 
-//     // Test getRegisters
-//     auto registers = qraffle.getRegisters(0, 10);
-//     EXPECT_EQ(registers.returnCode, QRAFFLE_SUCCESS);
-//     EXPECT_LE(registers.registers.capacity(), 10);
+    increaseEnergy(user1, 1000000000ULL);
+    qraffle.TransferShareManagementRightsQraffle(issuer, assetName, QX_CONTRACT_INDEX, 1000000, user1);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user1, user1, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 1000000);
+}
 
-//     // Test getAnalytics
-//     auto analytics = qraffle.getAnalytics();
-//     EXPECT_EQ(analytics.returnCode, QRAFFLE_SUCCESS);
-//     qraffle.getState()->analyticsChecker(analytics.totalBurnAmount, analytics.totalCharityAmount, 
-//                                         analytics.totalShareholderAmount, analytics.totalRegisterAmount,
-//                                         analytics.totalFeeAmount, analytics.totalWinnerAmount, 
-//                                         analytics.lagestWinnerAmount, analytics.numberOfRegisters,
-//                                         analytics.numberOfProposals, analytics.numberOfQuRaffleMembers,
-//                                         analytics.numberOfActiveTokenRaffle, analytics.numberOfEndedTokenRaffle,
-//                                         analytics.numberOfEntryAmountSubmitted);
-
-//     // Test getActiveProposal
-//     auto proposal = qraffle.getActiveProposal(0);
-//     EXPECT_EQ(proposal.returnCode, QRAFFLE_SUCCESS);
-
-//     // Test getEndedTokenRaffle
-//     auto endedRaffle = qraffle.getEndedTokenRaffle(0);
-//     EXPECT_EQ(endedRaffle.returnCode, QRAFFLE_SUCCESS);
-
-//     // Test getEpochWinner
-//     auto epochWinner = qraffle.getEpochWinner(0);
-//     EXPECT_EQ(epochWinner.returnCode, QRAFFLE_SUCCESS);
-
-//     // Test getEpochRaffleIndexes
-//     auto raffleIndexes = qraffle.getEpochRaffleIndexes(0);
-//     EXPECT_EQ(raffleIndexes.returnCode, QRAFFLE_SUCCESS);
-
-//     // Test getEndedQuRaffle
-//     auto endedQuRaffle = qraffle.getEndedQuRaffle(0);
-//     EXPECT_EQ(endedQuRaffle.returnCode, QRAFFLE_SUCCESS);
-
-//     // Test getActiveTokenRaffle
-//     auto activeRaffle = qraffle.getActiveTokenRaffle(0);
-//     EXPECT_EQ(activeRaffle.returnCode, QRAFFLE_SUCCESS);
-// }
-
-// TEST(ContractQraffle, EndEpoch)
-// {
-//     ContractTestingQraffle qraffle;
+TEST(ContractQraffle, GetFunctions)
+{
+    ContractTestingQraffle qraffle;
     
-//     auto users = getRandomUsers(100, 10);
-//     uint32 registerCount = 0;
+    // Setup: Create test users and register them
+    auto users = getRandomUsers(1000, 1000); // Use smaller set for more predictable testing
+    uint32 registerCount = 5;
+    uint32 proposalCount = 0;
+    uint32 entrySubmittedCount = 0;
 
-//     // Register users first
-//     for (const auto& user : users)
-//     {
-//         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-//         qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
-//         registerCount++;
-//     }
+    // Register users first
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
+        auto result = qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        registerCount++;
+    }
 
-//     // Submit entry amounts
-//     for (const auto& user : users)
-//     {
-//         uint64 amount = random(1000000, 1000000000);
-//         qraffle.submitEntryAmount(user, amount);
-//     }
+    // Submit entry amounts for some users
+    for (size_t i = 0; i < users.size() / 2; ++i)
+    {
+        uint64 amount = random(1000000, 1000000000);
+        auto result = qraffle.submitEntryAmount(users[i], amount);
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        entrySubmittedCount++;
+    }
 
-//     // Create proposals and vote for them
-//     id issuer = getUser(1000);
-//     increaseEnergy(issuer, 1000000000ULL);
-//     uint64 assetName1 = assetNameFromString("EPOCHTEST1");
-//     uint64 assetName2 = assetNameFromString("EPOCHTEST2");
-//     qraffle.issueAsset(issuer, assetName1, 1000000, 0, 0);
-//     qraffle.issueAsset(issuer, assetName2, 2000000, 0, 0);
+    // Create some proposals
+    id issuer = getUser(2000);
+    increaseEnergy(issuer, 1000000000ULL);
+    uint64 assetName1 = assetNameFromString("TEST1");
+    uint64 assetName2 = assetNameFromString("TEST2");
+    qraffle.issueAsset(issuer, assetName1, 1000000000, 0, 0);
+    qraffle.issueAsset(issuer, assetName2, 2000000000, 0, 0);
 
-//     Asset token1, token2;
-//     token1.assetName = assetName1;
-//     token1.issuer = issuer;
-//     token2.assetName = assetName2;
-//     token2.issuer = issuer;
+    Asset token1, token2;
+    token1.assetName = assetName1;
+    token1.issuer = issuer;
+    token2.assetName = assetName2;
+    token2.issuer = issuer;
 
-//     qraffle.submitProposal(users[0], token1, 1000000);
-//     qraffle.submitProposal(users[1], token2, 2000000);
+    // Submit proposals
+    for (size_t i = 0; i < std::min(users.size(), (size_t)5); ++i)
+    {
+        uint64 entryAmount = random(1000000, 1000000000);
+        Asset token = (i % 2 == 0) ? token1 : token2;
+        
+        increaseEnergy(users[i], 1000);
+        auto result = qraffle.submitProposal(users[i], token, entryAmount);
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        proposalCount++;
+    }
 
-//     // Vote yes for both proposals
-//     for (const auto& user : users)
-//     {
-//         qraffle.voteInProposal(user, 0, 1);
-//         qraffle.voteInProposal(user, 1, 1);
-//     }
+    // Vote on proposals
+    for (const auto& user : users)
+    {
+        for (uint32 i = 0; i < proposalCount; ++i)
+        {
+            bit vote = (bit)(i % 2);
+            auto result = qraffle.voteInProposal(user, i, vote);
+            EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        }
+    }
 
-//     // Deposit in QuRaffle
-//     for (const auto& user : users)
-//     {
-//         increaseEnergy(user, qraffle.getState()->getQuRaffleEntryAmount());
-//         qraffle.depositeInQuRaffle(user, qraffle.getState()->getQuRaffleEntryAmount());
-//     }
+    // Deposit in QuRaffle
+    uint32 memberCount = 0;
+    for (size_t i = 0; i < users.size() / 3; ++i)
+    {
+        increaseEnergy(users[i], qraffle.getState()->getQuRaffleEntryAmount());
+        auto result = qraffle.depositeInQuRaffle(users[i], qraffle.getState()->getQuRaffleEntryAmount());
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        memberCount++;
+    }
 
-//     // Deposit in token raffles
-//     for (const auto& user : users)
-//     {
-//         increaseEnergy(user, QRAFFLE_TRANSFER_SHARE_FEE + 1000000);
-//         qraffle.transferShareOwnershipAndPossession(issuer, assetName1, 1000000, user);
-//         qraffle.transferShareOwnershipAndPossession(issuer, assetName2, 2000000, user);
-//     }
+    // End epoch to create some ended raffles
+    qraffle.endEpoch();
 
-//     // End epoch
-//     qraffle.endEpoch();
+    // ===== DETAILED TEST CASES FOR EACH GETTER FUNCTION =====
 
-//     // Check that QuRaffle was processed
-//     auto quRaffle = qraffle.getEndedQuRaffle(0);
-//     EXPECT_EQ(quRaffle.returnCode, QRAFFLE_SUCCESS);
-//     qraffle.getState()->quRaffleWinnerChecker(0, quRaffle.epochWinner, quRaffle.receivedAmount, 
-//                                             quRaffle.entryAmount, quRaffle.numberOfMembers, quRaffle.winnerIndex);
+    // Test 1: getRegisters function
+    {
+        // Test with valid offset and limit
+        auto registers = qraffle.getRegisters(0, 10);
+        EXPECT_EQ(registers.returnCode, QRAFFLE_SUCCESS);
+        
+        // Test with offset beyond available registers
+        auto registers2 = qraffle.getRegisters(registerCount + 10, 5);
+        EXPECT_EQ(registers2.returnCode, QRAFFLE_INVALID_OFFSET_OR_LIMIT);
+        
+        // Test with limit exceeding maximum (1024)
+        auto registers3 = qraffle.getRegisters(0, 1025);
+        EXPECT_EQ(registers3.returnCode, QRAFFLE_INVALID_OFFSET_OR_LIMIT);
+        
+        // Test with offset + limit exceeding total registers
+        auto registers4 = qraffle.getRegisters(registerCount - 5, 10);
+        EXPECT_EQ(registers4.returnCode, QRAFFLE_INVALID_OFFSET_OR_LIMIT);
+        
+        // Test with zero limit
+        auto registers5 = qraffle.getRegisters(0, 0);
+        EXPECT_EQ(registers5.returnCode, QRAFFLE_SUCCESS);
+    }
 
-//     // Check that token raffles were processed
-//     auto tokenRaffle1 = qraffle.getEndedTokenRaffle(0);
-//     EXPECT_EQ(tokenRaffle1.returnCode, QRAFFLE_SUCCESS);
-//     qraffle.getState()->endedTokenRaffleChecker(0, tokenRaffle1.epochWinner, token1, 
-//                                               tokenRaffle1.entryAmount, tokenRaffle1.numberOfMembers, 
-//                                               tokenRaffle1.winnerIndex, tokenRaffle1.epoch);
+    // Test 2: getAnalytics function
+    {
+        auto analytics = qraffle.getAnalytics();
+        EXPECT_EQ(analytics.returnCode, QRAFFLE_SUCCESS);
+        
+        // Validate all analytics fields
+        EXPECT_GE(analytics.totalBurnAmount, 0);
+        EXPECT_GE(analytics.totalCharityAmount, 0);
+        EXPECT_GE(analytics.totalShareholderAmount, 0);
+        EXPECT_GE(analytics.totalRegisterAmount, 0);
+        EXPECT_GE(analytics.totalFeeAmount, 0);
+        EXPECT_GE(analytics.totalWinnerAmount, 0);
+        EXPECT_GE(analytics.lagestWinnerAmount, 0);
+        EXPECT_EQ(analytics.numberOfRegisters, registerCount);
+        EXPECT_EQ(analytics.numberOfProposals, 0);
+        EXPECT_EQ(analytics.numberOfQuRaffleMembers, 0);
+        EXPECT_GE(analytics.numberOfActiveTokenRaffle, 0);
+        EXPECT_GE(analytics.numberOfEndedTokenRaffle, 0);
+        EXPECT_EQ(analytics.numberOfEntryAmountSubmitted, 0);
+        
+        // Cross-validate with internal state
+        qraffle.getState()->analyticsChecker(analytics.totalBurnAmount, analytics.totalCharityAmount, 
+                                            analytics.totalShareholderAmount, analytics.totalRegisterAmount,
+                                            analytics.totalFeeAmount, analytics.totalWinnerAmount, 
+                                            analytics.lagestWinnerAmount, analytics.numberOfRegisters,
+                                            analytics.numberOfProposals, analytics.numberOfQuRaffleMembers,
+                                            analytics.numberOfActiveTokenRaffle, analytics.numberOfEndedTokenRaffle,
+                                            analytics.numberOfEntryAmountSubmitted);
 
-//     auto tokenRaffle2 = qraffle.getEndedTokenRaffle(1);
-//     EXPECT_EQ(tokenRaffle2.returnCode, QRAFFLE_SUCCESS);
-//     qraffle.getState()->endedTokenRaffleChecker(1, tokenRaffle2.epochWinner, token2, 
-//                                               tokenRaffle2.entryAmount, tokenRaffle2.numberOfMembers, 
-//                                               tokenRaffle2.winnerIndex, tokenRaffle2.epoch);
+        // Direct-validate with calculated values
+        // Calculate expected values based on the test setup
+        uint64 expectedTotalBurnAmount = 0;
+        uint64 expectedTotalCharityAmount = 0;
+        uint64 expectedTotalShareholderAmount = 0;
+        uint64 expectedTotalRegisterAmount = 0;
+        uint64 expectedTotalFeeAmount = 0;
+        uint64 expectedTotalWinnerAmount = 0;
+        uint64 expectedLargestWinnerAmount = 0;
+        
+        // Calculate expected values from QuRaffle (if any members participated)
+        if (memberCount > 0) {
+            uint64 qREAmount = 10000000; // initial entry amount
+            uint64 totalQuRaffleAmount = qREAmount * memberCount;
+            
+            expectedTotalBurnAmount += (totalQuRaffleAmount * QRAFFLE_BURN_FEE) / 100;
+            expectedTotalCharityAmount += (totalQuRaffleAmount * QRAFFLE_CHARITY_FEE) / 100;
+            expectedTotalShareholderAmount += ((totalQuRaffleAmount * QRAFFLE_SHRAEHOLDER_FEE) / 100) / 676 * 676;
+            expectedTotalRegisterAmount += ((totalQuRaffleAmount * QRAFFLE_REGISTER_FEE) / 100) / registerCount * registerCount;
+            expectedTotalFeeAmount += (totalQuRaffleAmount * QRAFFLE_FEE) / 100;
+            
+            // Winner amount calculation (after all fees)
+            uint64 winnerAmount = totalQuRaffleAmount - expectedTotalBurnAmount - expectedTotalCharityAmount 
+                                - expectedTotalShareholderAmount - expectedTotalRegisterAmount - expectedTotalFeeAmount;
+            expectedTotalWinnerAmount += winnerAmount;
+            expectedLargestWinnerAmount = winnerAmount; // First winner sets the largest
+        }
+        
+        // Validate calculated values
+        EXPECT_EQ(analytics.totalBurnAmount, expectedTotalBurnAmount);
+        EXPECT_EQ(analytics.totalCharityAmount, expectedTotalCharityAmount);
+        EXPECT_EQ(analytics.totalShareholderAmount, expectedTotalShareholderAmount);
+        EXPECT_EQ(analytics.totalRegisterAmount, expectedTotalRegisterAmount);
+        EXPECT_EQ(analytics.totalFeeAmount, expectedTotalFeeAmount);
+        EXPECT_EQ(analytics.totalWinnerAmount, expectedTotalWinnerAmount);
+        EXPECT_EQ(analytics.lagestWinnerAmount, expectedLargestWinnerAmount);
+        
+        // Validate counters
+        EXPECT_EQ(analytics.numberOfRegisters, registerCount);
+        EXPECT_EQ(analytics.numberOfProposals, 0); // Proposals are cleared after epoch end
+        EXPECT_EQ(analytics.numberOfQuRaffleMembers, 0); // Members are cleared after epoch end
+        EXPECT_EQ(analytics.numberOfActiveTokenRaffle, qraffle.getState()->getNumberOfActiveTokenRaffle());
+        EXPECT_EQ(analytics.numberOfEndedTokenRaffle, qraffle.getState()->getNumberOfEndedTokenRaffle());
+        EXPECT_EQ(analytics.numberOfEntryAmountSubmitted, 0); // Entry amounts are cleared after epoch end
+        
+    }
 
-//     // Check analytics after epoch
-//     auto analytics = qraffle.getAnalytics();
-//     EXPECT_EQ(analytics.returnCode, QRAFFLE_SUCCESS);
-//     EXPECT_GT(analytics.totalBurnAmount, 0);
-//     EXPECT_GT(analytics.totalCharityAmount, 0);
-//     EXPECT_GT(analytics.totalShareholderAmount, 0);
-//     EXPECT_GT(analytics.totalWinnerAmount, 0);
-// }
+    // Test 3: getActiveProposal function
+    {
+        // Test with valid proposal indices
+        for (uint32 i = 0; i < proposalCount; ++i)
+        {
+            auto proposal = qraffle.getActiveProposal(i);
+            EXPECT_EQ(proposal.returnCode, QRAFFLE_SUCCESS);
+            EXPECT_EQ(proposal.token.assetName, (i % 2 == 0) ? assetName1 : assetName2);
+            EXPECT_EQ(proposal.token.issuer, issuer);
+            EXPECT_GT(proposal.entryAmount, 0);
+            EXPECT_GE(proposal.nYes, 0);
+            EXPECT_GE(proposal.nNo, 0);
+        }
+        
+        // Test with invalid proposal index (beyond available proposals)
+        auto invalidProposal = qraffle.getActiveProposal(proposalCount + 10);
+        EXPECT_EQ(invalidProposal.returnCode, QRAFFLE_SUCCESS); // Note: This might return success with default values
+        
+        // Test with very large proposal index
+        auto largeIndexProposal = qraffle.getActiveProposal(UINT32_MAX);
+        EXPECT_EQ(largeIndexProposal.returnCode, QRAFFLE_SUCCESS);
+    }
+
+    // Test 4: getEndedTokenRaffle function
+    {
+        // Test with valid raffle indices (if any ended raffles exist)
+        for (uint32 i = 0; i < qraffle.getState()->getNumberOfEndedTokenRaffle(); ++i)
+        {
+            auto endedRaffle = qraffle.getEndedTokenRaffle(i);
+            EXPECT_EQ(endedRaffle.returnCode, QRAFFLE_SUCCESS);
+            EXPECT_NE(endedRaffle.epochWinner, id(0, 0, 0, 0)); // Winner should be set
+            EXPECT_GT(endedRaffle.entryAmount, 0);
+            EXPECT_GT(endedRaffle.numberOfMembers, 0);
+            EXPECT_GT(endedRaffle.winnerIndex, 0);
+            EXPECT_GE(endedRaffle.epoch, 0);
+        }
+    }
+
+    // Test 5: getEpochRaffleIndexes function
+    {
+        // Test with current epoch (0)
+        auto raffleIndexes = qraffle.getEpochRaffleIndexes(0);
+        EXPECT_EQ(raffleIndexes.returnCode, QRAFFLE_SUCCESS);
+        EXPECT_EQ(raffleIndexes.StartIndex, 0);
+        EXPECT_EQ(raffleIndexes.EndIndex, qraffle.getState()->getNumberOfActiveTokenRaffle());
+        
+        // Test with future epoch
+        auto futureRaffleIndexes = qraffle.getEpochRaffleIndexes(1);
+        EXPECT_EQ(futureRaffleIndexes.returnCode, QRAFFLE_INVALID_EPOCH);
+        
+        // Test with past epoch (if any exist)
+        if (qraffle.getState()->getNumberOfEndedTokenRaffle() > 0)
+        {
+            auto pastRaffleIndexes = qraffle.getEpochRaffleIndexes(0); // Should work for epoch 0
+            EXPECT_EQ(pastRaffleIndexes.returnCode, QRAFFLE_SUCCESS);
+        }
+    }
+
+    // Test 6: getEndedQuRaffle function
+    {
+        // Test with current epoch (0)
+        auto endedQuRaffle = qraffle.getEndedQuRaffle(0);
+        EXPECT_EQ(endedQuRaffle.returnCode, QRAFFLE_SUCCESS);
+        EXPECT_NE(endedQuRaffle.epochWinner, id(0, 0, 0, 0)); // Winner should be set
+        EXPECT_GT(endedQuRaffle.receivedAmount, 0);
+        EXPECT_EQ(endedQuRaffle.entryAmount, 10000000);
+        EXPECT_EQ(endedQuRaffle.numberOfMembers, memberCount);
+        EXPECT_GT(endedQuRaffle.winnerIndex, 0);
+        
+        // Test with future epoch
+        auto futureQuRaffle = qraffle.getEndedQuRaffle(1);
+        EXPECT_EQ(futureQuRaffle.returnCode, QRAFFLE_SUCCESS);
+        
+        // Test with very large epoch number
+        auto largeEpochQuRaffle = qraffle.getEndedQuRaffle(UINT16_MAX);
+        EXPECT_EQ(largeEpochQuRaffle.returnCode, QRAFFLE_SUCCESS);
+    }
+
+    // Test 7: getActiveTokenRaffle function
+    {
+        // Test with valid raffle indices (if any active raffles exist)
+        for (uint32 i = 0; i < qraffle.getState()->getNumberOfActiveTokenRaffle(); ++i)
+        {
+            auto activeRaffle = qraffle.getActiveTokenRaffle(i);
+            EXPECT_EQ(activeRaffle.returnCode, QRAFFLE_SUCCESS);
+            EXPECT_GT(activeRaffle.token.assetName, 0);
+            EXPECT_NE(activeRaffle.token.issuer, id(0, 0, 0, 0));
+            EXPECT_GT(activeRaffle.entryAmount, 0);
+        }
+        
+        // Test with invalid raffle index (beyond available active raffles)
+        auto invalidActiveRaffle = qraffle.getActiveTokenRaffle(qraffle.getState()->getNumberOfActiveTokenRaffle() + 10);
+        EXPECT_EQ(invalidActiveRaffle.returnCode, QRAFFLE_SUCCESS); // Note: This might return success with default values
+        
+        // Test with very large raffle index
+        auto largeIndexActiveRaffle = qraffle.getActiveTokenRaffle(UINT32_MAX);
+        EXPECT_EQ(largeIndexActiveRaffle.returnCode, QRAFFLE_SUCCESS);
+    }
+}
+
+TEST(ContractQraffle, EndEpoch)
+{
+    ContractTestingQraffle qraffle;
+    
+    auto users = getRandomUsers(1000, 1000);
+    uint32 registerCount = 5;
+
+    // Register users first
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
+        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        registerCount++;
+    }
+
+    // Submit entry amounts
+    for (const auto& user : users)
+    {
+        uint64 amount = random(1000000, 1000000000);
+        qraffle.submitEntryAmount(user, amount);
+    }
+
+    // Create proposals and vote for them
+    id issuer = getUser(2000);
+    increaseEnergy(issuer, 1000000000ULL);
+    uint64 assetName1 = assetNameFromString("TOKEN1");
+    uint64 assetName2 = assetNameFromString("TOKEN2");
+    qraffle.issueAsset(issuer, assetName1, 1000000000, 0, 0);
+    qraffle.issueAsset(issuer, assetName2, 2000000000, 0, 0);
+
+    Asset token1, token2;
+    token1.assetName = assetName1;
+    token1.issuer = issuer;
+    token2.assetName = assetName2;
+    token2.issuer = issuer;
+
+    qraffle.submitProposal(users[0], token1, 1000000);
+    qraffle.submitProposal(users[1], token2, 2000000);
+
+    // Vote yes for both proposals
+    for (const auto& user : users)
+    {
+        qraffle.voteInProposal(user, 0, 1);
+        qraffle.voteInProposal(user, 1, 1);
+    }
+
+    // Deposit in QuRaffle
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, qraffle.getState()->getQuRaffleEntryAmount());
+        qraffle.depositeInQuRaffle(user, qraffle.getState()->getQuRaffleEntryAmount());
+    }
+
+    // Deposit in token raffles
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, QRAFFLE_TRANSFER_SHARE_FEE + 1000000);
+        qraffle.transferShareOwnershipAndPossession(issuer, assetName1, issuer, 1000000, user);
+        qraffle.transferShareOwnershipAndPossession(issuer, assetName2, issuer, 2000000, user);
+    }
+
+    // End epoch
+    qraffle.endEpoch();
+
+    // Deposit in token raffles
+    for (const auto& user : users)
+    {
+        qraffle.TransferShareManagementRights(issuer, assetName1, QRAFFLE_CONTRACT_INDEX, 1000000, user);
+        qraffle.TransferShareManagementRights(issuer, assetName2, QRAFFLE_CONTRACT_INDEX, 2000000, user);
+
+        qraffle.depositeInTokenRaffle(user, 0, QRAFFLE_TRANSFER_SHARE_FEE);
+        qraffle.depositeInTokenRaffle(user, 1, QRAFFLE_TRANSFER_SHARE_FEE);
+    }
+
+    // Check that QuRaffle was processed
+    auto quRaffle = qraffle.getEndedQuRaffle(0);
+    EXPECT_EQ(quRaffle.returnCode, QRAFFLE_SUCCESS);
+    qraffle.getState()->quRaffleWinnerChecker(0, quRaffle.epochWinner, quRaffle.receivedAmount, 
+                                            quRaffle.entryAmount, quRaffle.numberOfMembers, quRaffle.winnerIndex);
+
+    qraffle.endEpoch();
+    // Check that token raffles were processed
+    auto tokenRaffle1 = qraffle.getEndedTokenRaffle(0);
+    EXPECT_EQ(tokenRaffle1.returnCode, QRAFFLE_SUCCESS);
+    qraffle.getState()->endedTokenRaffleChecker(0, tokenRaffle1.epochWinner, token1, 
+                                              tokenRaffle1.entryAmount, tokenRaffle1.numberOfMembers, 
+                                              tokenRaffle1.winnerIndex, tokenRaffle1.epoch);
+
+    auto tokenRaffle2 = qraffle.getEndedTokenRaffle(1);
+    EXPECT_EQ(tokenRaffle2.returnCode, QRAFFLE_SUCCESS);
+    qraffle.getState()->endedTokenRaffleChecker(1, tokenRaffle2.epochWinner, token2, 
+                                              tokenRaffle2.entryAmount, tokenRaffle2.numberOfMembers, 
+                                              tokenRaffle2.winnerIndex, tokenRaffle2.epoch);
+
+    // Check analytics after epoch
+    auto analytics = qraffle.getAnalytics();
+    EXPECT_EQ(analytics.returnCode, QRAFFLE_SUCCESS);
+    EXPECT_GT(analytics.totalBurnAmount, 0);
+    EXPECT_GT(analytics.totalCharityAmount, 0);
+    EXPECT_GT(analytics.totalShareholderAmount, 0);
+    EXPECT_GT(analytics.totalWinnerAmount, 0);
+}

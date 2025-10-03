@@ -25,6 +25,8 @@ constexpr sint32 QRAFFLE_ALREADY_VOTED = 7;
 constexpr sint32 QRAFFLE_INVALID_TOKEN_RAFFLE = 8;
 constexpr sint32 QRAFFLE_INVALID_OFFSET_OR_LIMIT = 9;
 constexpr sint32 QRAFFLE_INVALID_EPOCH = 10;
+constexpr sint32 QRAFFLE_MAX_MEMBER_REACHED = 11;
+constexpr sint32 QRAFFLE_INITIAL_REGISTER_CANNOT_LOGOUT = 12;
 
 struct QRAFFLE2
 {
@@ -103,6 +105,18 @@ public:
 		sint32 returnCode;
 	};
 
+	struct TransferShareManagementRights_input
+	{
+		Asset asset;
+		sint64 numberOfShares;
+		uint32 newManagingContractIndex;
+	};
+	
+	struct TransferShareManagementRights_output
+	{
+		sint64 transferredNumberOfShares;
+	};
+
 	struct getRegisters_input
 	{
 		uint32 offset;
@@ -163,24 +177,13 @@ public:
 		uint64 entryAmount;
 		uint32 numberOfMembers;
 		uint32 winnerIndex;
-		uint16 epoch;
-		sint32 returnCode;
-	};
-
-	struct getEpochWinner_input
-	{
 		uint32 epoch;
-	};
-
-	struct getEpochWinner_output
-	{
-		id winner;
 		sint32 returnCode;
 	};
 
 	struct getEpochRaffleIndexes_input
 	{
-		uint16 epoch;
+		uint32 epoch;
 	};
 
 	struct getEpochRaffleIndexes_output
@@ -192,7 +195,7 @@ public:
 
 	struct getEndedQuRaffle_input
 	{
-		uint16 epoch;
+		uint32 epoch;
 	};
 	
 	struct getEndedQuRaffle_output
@@ -263,12 +266,13 @@ protected:
 		uint64 entryAmount;
 		uint32 numberOfMembers;
 		uint32 winnerIndex;
-		uint16 epoch;
+		uint32 epoch;
 	};
 	Array <tokenRaffleInfo, 1048576> tokenRaffle;
 	HashMap <id, uint64, QRAFFLE_MAX_MEMBER> quRaffleEntryAmount;
 	HashSet <id, 1024> shareholdersList;
 
+	id initialRegister1, initialRegister2, initialRegister3, initialRegister4, initialRegister5;
 	id charityAddress, feeAddress;
 	uint64 epochRevenue, qREAmount, totalBurnAmount, totalCharityAmount, totalShareholderAmount, totalRegisterAmount, totalFeeAmount, totalWinnerAmount, lagestWinnerAmount;
 	uint32 numberOfRegisters, numberOfQuRaffleMembers, numberOfEntryAmountSubmitted, numberOfProposals, numberOfActiveTokenRaffle, numberOfEndedTokenRaffle;
@@ -293,6 +297,11 @@ protected:
 			output.returnCode = QRAFFLE_ALREADY_REGISTERED;
 			return ;
 		}
+		if (state.numberOfRegisters >= QRAFFLE_MAX_MEMBER)
+		{
+			output.returnCode = QRAFFLE_MAX_MEMBER_REACHED;
+			return ;
+		}
 		qpi.transfer(qpi.invocator(), qpi.invocationReward() - QRAFFLE_REGISTER_AMOUNT);
 
 		state.registers.add(qpi.invocator());
@@ -302,6 +311,11 @@ protected:
 
 	PUBLIC_PROCEDURE(logoutInSystem)
 	{
+		if (qpi.invocator() == state.initialRegister1 || qpi.invocator() == state.initialRegister2 || qpi.invocator() == state.initialRegister3 || qpi.invocator() == state.initialRegister4 || qpi.invocator() == state.initialRegister5)
+		{
+			output.returnCode = QRAFFLE_INITIAL_REGISTER_CANNOT_LOGOUT;
+			return ;
+		}
 		if (state.registers.contains(qpi.invocator()) == 0)
 		{
 			output.returnCode = QRAFFLE_UNREGISTERED;
@@ -431,6 +445,11 @@ protected:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(depositeInQuRaffle)
 	{
+		if (state.numberOfQuRaffleMembers >= QRAFFLE_MAX_MEMBER)
+		{
+			output.returnCode = QRAFFLE_MAX_MEMBER_REACHED;
+			return ;
+		}
 		if (qpi.invocationReward() < (sint64)state.qREAmount)
 		{
 			if (qpi.invocationReward() > 0)
@@ -479,7 +498,7 @@ protected:
 			output.returnCode = QRAFFLE_INVALID_TOKEN_RAFFLE;
 			return ;
 		}
-		if (qpi.transferShareOwnershipAndPossession(state.activeTokenRaffle.get(input.indexOfTokenRaffle).token.assetName, state.activeTokenRaffle.get(input.indexOfTokenRaffle).token.issuer, qpi.invocator(), qpi.invocator(), state.activeTokenRaffle.get(input.indexOfTokenRaffle).entryAmount, SELF) != state.activeTokenRaffle.get(input.indexOfTokenRaffle).entryAmount)
+		if (qpi.transferShareOwnershipAndPossession(state.activeTokenRaffle.get(input.indexOfTokenRaffle).token.assetName, state.activeTokenRaffle.get(input.indexOfTokenRaffle).token.issuer, qpi.invocator(), qpi.invocator(), state.activeTokenRaffle.get(input.indexOfTokenRaffle).entryAmount, SELF) < 0)
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -494,6 +513,47 @@ protected:
 		state.numberOfTokenRaffleMembers.set(input.indexOfTokenRaffle, state.numberOfTokenRaffleMembers.get(input.indexOfTokenRaffle) + 1);
 		state.tokenRaffleMembers.set(input.indexOfTokenRaffle, state.tmpTokenRaffleMembers);
 		output.returnCode = QRAFFLE_SUCCESS;
+	}
+
+	PUBLIC_PROCEDURE(TransferShareManagementRights)
+	{
+		if (qpi.invocationReward() < QRAFFLE_TRANSFER_SHARE_FEE)
+		{
+			return ;
+		}
+
+		if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer,qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
+		{
+			// not enough shares available
+			output.transferredNumberOfShares = 0;
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+		}
+		else
+		{
+			if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
+				input.newManagingContractIndex, input.newManagingContractIndex, QRAFFLE_TRANSFER_SHARE_FEE) < 0)
+			{
+				// error
+				output.transferredNumberOfShares = 0;
+				if (qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+			}
+			else
+			{
+				// success
+				output.transferredNumberOfShares = input.numberOfShares;
+				qpi.transfer(id(QX_CONTRACT_INDEX, 0, 0, 0), QRAFFLE_TRANSFER_SHARE_FEE);
+				if (qpi.invocationReward() > QRAFFLE_TRANSFER_SHARE_FEE)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward() -  QRAFFLE_TRANSFER_SHARE_FEE);
+				}
+			}
+		}
 	}
 
 	struct getRegisters_locals
@@ -572,12 +632,6 @@ protected:
 		output.epoch = state.tokenRaffle.get(input.indexOfRaffle).epoch;
 		output.returnCode = QRAFFLE_SUCCESS;
 	}
-	
-	PUBLIC_FUNCTION(getEpochWinner)
-	{
-		output.winner = state.QuRaffles.get(input.epoch).epochWinner;
-		output.returnCode = QRAFFLE_SUCCESS;
-	}
 
 	struct getEpochRaffleIndexes_locals
 	{
@@ -651,12 +705,25 @@ protected:
 		REGISTER_USER_PROCEDURE(voteInProposal, 5);
 		REGISTER_USER_PROCEDURE(depositeInQuRaffle, 6);
 		REGISTER_USER_PROCEDURE(depositeInTokenRaffle, 7);
+		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 8);
 	}
 
 	INITIALIZE()
 	{
 		state.qREAmount = 10000000;
 		state.charityAddress = ID(_D, _P, _Q, _R, _L, _S, _Z, _S, _S, _C, _X, _I, _Y, _F, _I, _Q, _G, _B, _F, _B, _X, _X, _I, _S, _D, _D, _E, _B, _E, _G, _Q, _N, _W, _N, _T, _Q, _U, _E, _I, _F, _S, _C, _U, _W, _G, _H, _V, _X, _J, _P, _L, _F, _G, _M, _Y, _D);
+		state.initialRegister1 = ID(_I, _L, _N, _J, _X, _V, _H, _A, _U, _X, _D, _G, _G, _B, _T, _T, _U, _O, _I, _T, _O, _Q, _G, _P, _A, _Y, _U, _C, _F, _T, _N, _C, _P, _X, _D, _K, _O, _C, _P, _U, _O, _C, _D, _O, _T, _P, _U, _W, _X, _B, _I, _G, _R, _V, _Q, _D);
+		state.initialRegister2 = ID(_L, _S, _D, _A, _A, _C, _L, _X, _X, _G, _I, _P, _G, _G, _L, _S, _O, _C, _L, _M, _V, _A, _Y, _L, _N, _T, _G, _D, _V, _B, _N, _O, _S, _S, _Y, _E, _Q, _D, _R, _K, _X, _D, _Y, _W, _B, _C, _G, _J, _I, _K, _C, _M, _Z, _K, _M, _F);
+		state.initialRegister3 = ID(_G, _H, _G, _R, _L, _W, _S, _X, _Z, _X, _W, _D, _A, _A, _O, _M, _T, _X, _Q, _Y, _U, _P, _R, _L, _P, _N, _K, _C, _W, _G, _H, _A, _E, _F, _I, _R, _J, _I, _Z, _A, _K, _C, _A, _U, _D, _G, _N, _M, _C, _D, _E, _Q, _R, _O, _Q, _B);
+		state.initialRegister4 = ID(_E, _U, _O, _N, _A, _Z, _J, _U, _A, _G, _V, _D, _C, _E, _I, _B, _A, _H, _J, _E, _T, _G, _U, _U, _H, _M, _N, _D, _J, _C, _S, _E, _T, _T, _Q, _V, _G, _Y, _F, _H, _M, _D, _P, _X, _T, _A, _L, _D, _Y, _U, _V, _E, _P, _F, _C, _A);
+		state.initialRegister5 = ID(_Q, _W, _H, _L, _C, _V, _S, _Y, _Z, _R, _J, _L, _U, _A, _J, _E, _B, _R, _M, _U, _K, _K, _S, _N, _S, _O, _M, _B, _A, _C, _R, _N, _E, _U, _A, _T, _C, _P, _M, _E, _H, _H, _K, _G, _K, _O, _X, _N, _A, _R, _X, _S, _S, _B, _L, _A);
+
+		state.registers.add(state.initialRegister1);
+		state.registers.add(state.initialRegister2);
+		state.registers.add(state.initialRegister3);
+		state.registers.add(state.initialRegister4);
+		state.registers.add(state.initialRegister5);
+		state.numberOfRegisters = 5;
 	}
 
 	struct BEGIN_EPOCH_locals
