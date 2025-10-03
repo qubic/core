@@ -57,8 +57,15 @@ private:
     static void cleanupTxsPriorities(unsigned int tickIndex)
     {
         sint64 elementIndex = txsPriorities->headIndex(m256i{ tickIndex, 0, 0, 0 });
-        while (elementIndex != NULL_INDEX)
-            elementIndex = txsPriorities->remove(elementIndex);
+        // use a `for` instead of a `while` loop to make sure it cannot run forever 
+        // there can be at most NUMBER_OF_TRANSACTIONS_PER_TICK elements in one pov
+        for (unsigned int t = 0; t < NUMBER_OF_TRANSACTIONS_PER_TICK; ++t)
+        {
+            if (elementIndex != NULL_INDEX)
+                elementIndex = txsPriorities->remove(elementIndex);
+            else
+                break;
+        }
         txsPriorities->cleanupIfNeeded();
     }
 
