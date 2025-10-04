@@ -72,9 +72,9 @@ static const unsigned char knownPublicPeers[][4] = {
 
 In `qubic.cpp`
 
-**1.** comment out `#define TESTNET`
+**1.** Comment out `#define TESTNET`
 
-**2.** uncomment out `#define USE_SWAP`
+**2.** Uncomment out `#define USE_SWAP`
 
 ```cpp
 // #define TESTNET // COMMENT this line if you want to compile for mainnet
@@ -85,7 +85,32 @@ In `qubic.cpp`
 #define USE_SWAP
 ```
 
-**3.** add public peers from https://app.qubic.li/network/live to `knownPublicPeers` in `private_settings.h` or add via command line `--peers`
+**3.** Add public peers from https://app.qubic.li/network/live to `knownPublicPeers` in `private_settings.h` or add via command line `--peers`
+
+**4.** Prepare the epoch files (blockchain state).
+
+They should be named and structured as follows:
+
+```
+./contract0000.XXX
+./contract0001.XXX
+./contract0002.XXX
+./contract0003.XXX
+./contract0004.XXX
+./contract0005.XXX
+./contract0006.XXX
+./contract0007.XXX
+./contract0008.XXX
+./contract0009.XXX
+./contract0010.XXX
+./contract0011.XXX
+./contract00xx.XXX
+./spectrum.XXX
+./universe.XXX
+./system
+```
+
+Place all of these files in the same directory where you plan to launch the `Qubic` binary.
 
 ## Build
 
@@ -115,6 +140,7 @@ Press **F12** to switch to **MAIN** mode to make the network start ticking (proc
 ## Tips
 
 - **For Local Testnet:** Default `PORT` is **31841**, you can change it in `qubic.cpp`
+- **For Local Testnet:** If you want to fund your custom wallet (seed), you can add these into `customSeeds` in `private_settings.h`
 - **For Local Testnet:** An epoch will have `TESTNET_EPOCH_DURATION` (**3000**) ticks by default, you can change it in `public_settings.h`
 - You can deploy your own RPC server to core lite - [how to](https://qubic-sc-docs.pages.dev/rpc/setup-rpc)
 - Change `TICK_STORAGE_AUTOSAVE_MODE` in `private_settings.h` to `1` to enable **Snapshot** mode (your node will start from latest saved snapshot state when crash/restart instead of from scratch)
@@ -132,5 +158,6 @@ Delete the **system** file at your current working folder, it may make your node
 ## Donate The Project
 
 QUBIC Wallet: QPROLAPACSPVBDQADRXXKRGZMXADUAEXXJIQNWPGWFUFUAITRXMHVODDLGBK
+
 
 
