@@ -7900,7 +7900,7 @@ unsigned long long getTotalRam()
     totalRam += RESPONSE_QUEUE_BUFFER_SIZE;
 
     // receiveBuffer & FragmentBuffer & dataToTransmit for each peers
-    totalRam += (NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS) * (BUFFER_SIZE * 3);
+    totalRam += (NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS) * (BUFFER_SIZE * 3ULL);
 
     // contractStates
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
