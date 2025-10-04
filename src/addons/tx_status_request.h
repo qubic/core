@@ -74,10 +74,10 @@ static RespondTxStatus* tickTxStatusStorage = NULL;
 static bool initTxStatusRequestAddOn()
 {
     // Allocate pool to store confirmed TX's
-    if (!allocPoolWithErrorLog(L"confirmedTx", confirmedTxLength * sizeof(ConfirmedTx), (void**)&confirmedTx, __LINE__))
+    if (!allocPoolWithErrorLog(L"confirmedTx", confirmedTxLength * sizeof(ConfirmedTx), (void**)&confirmedTx, __LINE__, true, true))
         return false;
     // allocate tickTxStatus responses storage
-    if (!allocPoolWithErrorLog(L"tickTxStatusStorage", MAX_NUMBER_OF_PROCESSORS * sizeof(RespondTxStatus), (void**)&tickTxStatusStorage, __LINE__))
+    if (!allocPoolWithErrorLog(L"tickTxStatusStorage", MAX_NUMBER_OF_PROCESSORS * sizeof(RespondTxStatus), (void**)&tickTxStatusStorage, __LINE__, true, true))
         return false;
     txStatusData.confirmedTxPreviousEpochBeginTick = 0;
     txStatusData.confirmedTxCurrentEpochBeginTick = 0;
