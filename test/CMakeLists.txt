@@ -43,8 +43,9 @@ add_executable(
   # qpi_hash_map.cpp
   # score_cache.cpp
   # score.cpp
-        spectrum.cpp
+  spectrum.cpp
   stdlib_impl.cpp
+  virtual_memory.cpp
   # tick_storage.cpp
   # tx_status_request.cpp
   # vote_counter.cpp

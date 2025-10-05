@@ -762,7 +762,7 @@ private:
         {
             writePageToDisk(cachePageId[cache_page_id]);
         }
-#if defined(NO_UEFI) && !defined(REAL_NODE)
+#if false
         auto sz = load(pageName, pageSize, (unsigned char*)cache[cache_page_id], pageDir);
         lastAccessedTimestamp[cache_page_id] = now_ms();
 #else
@@ -1096,8 +1096,16 @@ public:
         return ret;
     }
 
-    T* getCacheBuffer(unsigned long long cacheIndex) {
+    T* getPageBuffer(unsigned long long pageId) {
+        auto cacheIndex = findCachePage(pageId);
+        if (cacheIndex == -1) {
+            return nullptr;
+        }
         return cache[cacheIndex];
+    }
+
+    T* getExtraBuffer(unsigned long long pageId) {
+        return &pageExtraBytesBuffer[pageId];
     }
 
     const T* getCurrentPagePtr()

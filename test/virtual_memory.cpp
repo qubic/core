@@ -5,7 +5,10 @@
 #include "../src/public_settings.h"
 #include "../src/platform/virtual_memory.h"
 
+#include <cstring>
 #include <random>
+
+#include "network_messages/transactions.h"
 
 TEST(TestVirtualMemory, TestVirtualMemory_NativeChar) {
     initFilesystem();
@@ -236,4 +239,187 @@ TEST(TestVirtualMemory, TestVirtualMemory_SpecialCases) {
     }
 
     test_vm.deinit();
+}
+
+
+TEST(TestSwapVirtualMemory, TestSwapVirtualMemory_IndexModeRandomAccess) {
+    initFilesystem();
+    registerAsynFileIO(NULL);
+
+    struct TxHashMapEntry {
+        m256i digest;
+        unsigned long long offset;
+    };
+    SwapVirtualMemory<TxHashMapEntry, wcharToNumber(L"txdi"), wcharToNumber(L"data"), 64, 64, INDEX_MODE, 0> test_vm;
+    test_vm.init();
+
+    {
+        TxHashMapEntry &entry = test_vm.getRef(1);
+        entry.digest = m256i::zero();
+        entry.digest.m256i_u64[0] = 1;
+        entry.offset = 1;
+    }
+
+    {
+        TxHashMapEntry& entry = test_vm.getRef(1000);
+        entry.digest = m256i::zero();
+        entry.digest.m256i_u64[0] = 1000;
+        entry.offset = 1000;
+    }
+
+    {
+        TxHashMapEntry& entry = test_vm.getRef(1'000'000);
+        entry.digest = m256i::zero();
+        entry.digest.m256i_u64[0] = 1'000'000;
+        entry.offset = 1'000'000;
+    }
+
+    for (int i = 0; i < 1024 * 128 * 64; i++) {
+        auto randomRange = m256i::randomValue().m256i_u64[0] % (1024*128*64);
+        if (randomRange != 1 && randomRange != 1000 && randomRange != 1'000'000) {
+            TxHashMapEntry& entry = test_vm.getRef(randomRange);
+            entry.digest = m256i::zero();
+            entry.digest.m256i_u64[0] = randomRange;
+            entry.offset = randomRange;
+        }
+    }
+
+    // retest if previous test is ok
+    {
+        TxHashMapEntry& entry = test_vm.getRef(1);
+        EXPECT_TRUE(entry.digest.m256i_u64[0] == 1);
+        EXPECT_TRUE(entry.offset == 1);
+    }
+    {
+        TxHashMapEntry& entry = test_vm.getRef(1000);
+        EXPECT_TRUE(entry.digest.m256i_u64[0] == 1000);
+        EXPECT_TRUE(entry.offset == 1000);
+    }
+    {
+        TxHashMapEntry& entry = test_vm.getRef(1'000'000);
+        EXPECT_TRUE(entry.digest.m256i_u64[0] == 1'000'000);
+        EXPECT_TRUE(entry.offset == 1'000'000);
+    }
+}
+
+TEST(TestSwapVirtualMemory, TestSwapVirtualMemory_IndexModeLinearAccess) {
+    initFilesystem();
+    registerAsynFileIO(NULL);
+
+    struct TxHashMapEntry {
+        m256i digest;
+        unsigned long long offset;
+    };
+    SwapVirtualMemory<TxHashMapEntry, wcharToNumber(L"txdi"), wcharToNumber(L"data"), 64, 64, INDEX_MODE, 0> test_vm;
+    test_vm.init();
+
+    for (unsigned long long i = 0; i < 1024 * 128 * 64; i++) {
+        TxHashMapEntry& entry = test_vm.getRef(i);
+        entry.digest = m256i::zero();
+        entry.digest.m256i_u64[0] = i;
+        entry.offset = i;
+    }
+
+    for (unsigned long long i = 0; i < 1024 * 128 * 64; i++) {
+        TxHashMapEntry& entry = test_vm.getRef(i);
+        EXPECT_TRUE(entry.digest.m256i_u64[0] == i);
+        EXPECT_TRUE(entry.offset == i);
+    }
+}
+
+
+TEST(TestSwapVirtualMemory, TestSwapVirtualMemory_OffsetModeLinearAccess) {
+    initFilesystem();
+    registerAsynFileIO(NULL);
+
+    constexpr unsigned long long maxElementSize = (sizeof(Transaction) + SIGNATURE_SIZE + MAX_INPUT_SIZE);
+    SwapVirtualMemory<Transaction, wcharToNumber(L"offs"), wcharToNumber(L"data"), 2, 64, OFFSET_MODE, SIGNATURE_SIZE + MAX_INPUT_SIZE> test_vm;
+    test_vm.init();
+
+    // Init
+    {
+        Transaction *tx = test_vm[0];
+        tx->amount = 0;
+        tx->inputSize = 0;
+    }
+
+    {
+        Transaction *tx = test_vm[(maxElementSize)];
+        tx->amount = maxElementSize;
+        tx->inputSize = 0;
+        // Should not use extra buffer
+        EXPECT_TRUE(isAllBytesZero((void*)test_vm.getExtraBuffer(0), maxElementSize));
+    }
+
+    {
+        EXPECT_TRUE(isAllBytesZero((void*)test_vm.getExtraBuffer(0), maxElementSize));
+        // Will be added to extra buffer
+        Transaction *tx = test_vm[(maxElementSize) + sizeof(Transaction)];
+        tx->amount = (maxElementSize) + sizeof(Transaction);
+        tx->inputSize = 4;
+        EXPECT_FALSE(isAllBytesZero((void*)test_vm.getExtraBuffer(0), maxElementSize));
+
+        // Check if the tx is from extra buffer
+        EXPECT_TRUE(memcmp(test_vm.getExtraBuffer(0), (void*)tx, sizeof(Transaction)) == 0);
+    }
+
+    {
+        Transaction *backupTx = new Transaction();
+        memcpy(backupTx, (void*)test_vm.getExtraBuffer(0), sizeof(Transaction));
+        // Will remove about tx from extra buffer and add below to extra buffer
+        Transaction *tx = test_vm[(maxElementSize) + sizeof(Transaction) * 2 + 8];
+        // Extra buffer should be reset
+        EXPECT_TRUE(isAllBytesZero((void*)test_vm.getExtraBuffer(0), maxElementSize));
+        // Check if the previous tx is written back correctly
+        EXPECT_TRUE(memcmp(backupTx, (void*)test_vm[(maxElementSize) + sizeof(Transaction)], sizeof(Transaction)) == 0);
+        tx->amount = (maxElementSize) + sizeof(Transaction) * 2 + 8;
+        tx->inputSize = 0;
+        EXPECT_FALSE(isAllBytesZero((void*)test_vm.getExtraBuffer(0), maxElementSize));
+        // Check if the tx is from extra buffer
+        EXPECT_TRUE(memcmp(test_vm.getExtraBuffer(0), (void*)tx, sizeof(Transaction)) == 0);
+    }
+
+    // Recheck
+    {
+        Transaction* tx = test_vm[0];
+        EXPECT_TRUE(tx->amount == 0);
+        EXPECT_TRUE(tx->inputSize == 0);
+    }
+    {
+        Transaction* tx = test_vm[(maxElementSize)];
+        EXPECT_TRUE(tx->amount == maxElementSize);
+        EXPECT_TRUE(tx->inputSize == 0);
+    }
+    {
+        Transaction* tx = test_vm[(maxElementSize) + sizeof(Transaction)];
+        EXPECT_TRUE(tx->amount == (maxElementSize) + sizeof(Transaction));
+        EXPECT_TRUE(tx->inputSize == 4);
+    }
+    {
+        Transaction* tx = test_vm[(maxElementSize) + sizeof(Transaction) * 2 + 8];
+        EXPECT_TRUE(tx->amount == (maxElementSize) + sizeof(Transaction) * 2 + 8);
+        EXPECT_TRUE(tx->inputSize == 0);
+    }
+}
+
+TEST(TestSwapVirtualMemory, TestSwapVirtualMemory_OffsetModeRandomAccess) {
+    initFilesystem();
+    registerAsynFileIO(NULL);
+
+    SwapVirtualMemory<char, wcharToNumber(L"offs"), wcharToNumber(L"data"), 1024 * 1024, 64, OFFSET_MODE, 2> test_vm;
+    test_vm.init();
+    std::map<unsigned long long, char> valueMap;
+    for (int i = 0; i < 1024 * 128 * 64; i++) {
+        auto randomIndex = rand64() % (1024 * 128 * 64);
+        char randomvalue = int(rand() % 256) - 127;
+        char* entry = test_vm[randomIndex];
+        *entry = randomvalue;
+        valueMap[randomIndex] = randomvalue;
+    }
+
+    // Recheck
+    for (auto& it : valueMap) {
+        char* entry = test_vm[it.first];
+        EXPECT_TRUE(*entry == it.second);
+    }
 }
