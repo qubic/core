@@ -15,12 +15,14 @@
 #define TD00_AS_NUMBER 13511005047095412ULL
 #define TICK_AS_NUMBER 30118247716683892ULL
 #define TX00_AS_NUMBER 13511005048406132ULL
+#define TXDI_AS_NUMBER 20547965363421268ULL
 #define DATA_AS_NUMBER 27303570963497060ULL
 
 #define CACHE_PAGE 32
 #define TICK_DATA_PAGE_CAPACITY 128 // one page can hold data for 128 ticks
 #define TICKS_PAGE_CAPACITY (64 * NUMBER_OF_COMPUTORS) // one page can hold data for 64 ticks
 #define TRANSACTION_PAGE_CAPACITY (NUMBER_OF_TRANSACTIONS_PER_TICK * 16) // one page can hold data for AT LEAST 16 ticks
+#define TRANSACTION_DIGEST_HASHMAP_PAGE_CAPACITY (NUMBER_OF_TRANSACTIONS_PER_TICK * 64)
 
 #if TICK_STORAGE_AUTOSAVE_MODE
 static wchar_t SNAPSHOT_METADATA_FILE_NAME[] = L"snapshotMetadata.???";
@@ -103,7 +105,12 @@ private:
     inline static unsigned long long* oldTickTransactionOffsetsPtr = nullptr;
 
     // Allocated transaction access digest buffer with current epoch transactions.
+    struct TxHashMapEntry {
+        m256i digest;
+        unsigned long long offset;
+    };
     inline static unsigned char* tickTransactionsDigestPtr = nullptr;
+    inline static SwapVirtualMemory<TxHashMapEntry, TXDI_AS_NUMBER, DATA_AS_NUMBER, TRANSACTION_DIGEST_HASHMAP_PAGE_CAPACITY, CACHE_PAGE, SwapMode::INDEX_MODE, 0> tickTransactionsDigestSwapVM;
 
     // Lock for securing tickData
     inline static volatile char tickDataLock = 0;
@@ -649,7 +656,11 @@ public:
 
     static unsigned long long getTickTransactionsDigestPtrSize()
     {
+#ifdef USE_SWAP
+        return tickTransactionsDigestSwapVM.getVmStateSize();
+#else
         return tickTransactionOffsetsLengthCurrentEpoch * sizeof(TransactionsDigestAccess::HashMapEntry);
+#endif
     }
 
     static unsigned long long getTickTransactionsSize()
@@ -685,6 +696,7 @@ public:
         tickDataSwapVM.init();
         ticksSwapVM.init();
         tickTransactionsSwapVM.init();
+        tickTransactionsDigestSwapVM.init();
 #endif
 
         ASSERT(tickDataLock == 0);
@@ -1390,6 +1402,17 @@ public:
             return digest.m256i_u32[7] % tickTransactionOffsetsLengthCurrentEpoch;
         }
 
+        HashMapEntry& getByIndex(unsigned long long index)
+        {
+            ASSERT(index < tickTransactionOffsetsLengthCurrentEpoch);
+#ifdef USE_SWAP
+            return (HashMapEntry&)tickTransactionsDigestSwapVM.getRef(index);
+#else
+            HashMapEntry* pHashMap = (HashMapEntry*)tickTransactionsDigestPtr;
+            return pHashMap[index];
+#endif
+        }
+
         void insertTransaction(const m256i& digest, const unsigned long long offset)
         {
             // Zero digest. No further process
@@ -1398,11 +1421,10 @@ public:
                 return;
             }
 
-            HashMapEntry* pHashMap = (HashMapEntry*)tickTransactionsDigestPtr;
             unsigned long long index = hashFunc(digest);
             unsigned long long original_index = index;
             // TODO: check alraeady added tx ?
-            while (!isZero(pHashMap[index].digest))
+            while (!isZero(getByIndex(index).digest))
             {
                 index = (index + 1) % tickTransactionOffsetsLengthCurrentEpoch;
                 if (index == original_index)
@@ -1411,8 +1433,8 @@ public:
                     return;
                 }
             }
-            pHashMap[index].offset = offset;
-            pHashMap[index].digest = digest;
+            getByIndex(index).offset = offset;
+            getByIndex(index).digest = digest;
         }
 
         const Transaction* findTransaction(const m256i& digest)
@@ -1423,14 +1445,13 @@ public:
                 return NULL;
             }
 
-            HashMapEntry* pHashMap = (HashMapEntry*)tickTransactionsDigestPtr;
             unsigned long long index = hashFunc(digest);
             unsigned long long original_index = index;
-            while (!isZero(pHashMap[index].digest))
+            while (!isZero(getByIndex(index).digest))
             {
-                if (pHashMap[index].digest == digest)
+                if (getByIndex(index).digest == digest)
                 {
-                    return TickTransactionsAccess::ptr(pHashMap[index].offset);
+                    return TickTransactionsAccess::ptr(getByIndex(index).offset);
                 }
                 index = (index + 1) % tickTransactionOffsetsLengthCurrentEpoch;
                 if (index == original_index)

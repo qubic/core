@@ -983,6 +983,18 @@ public:
         return result;
     }
 
+    T* operator[](unsigned long long index)
+    requires (mode == SwapMode::INDEX_MODE)
+    {
+        return getPtr(index);
+    }
+
+    T& operator()(unsigned long long index)
+    requires (mode == SwapMode::INDEX_MODE)
+    {
+        return getRef(index);
+    }
+
     unsigned long long getVmStateSize()
     {
         unsigned long long totalOffsetModeExtraSize = 0;

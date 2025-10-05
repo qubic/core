@@ -7923,8 +7923,12 @@ unsigned long long getTotalRam()
     totalRam += ts.getTicksSize();
     totalRam += ts.getTickTransactionsSize();
     totalRam += ts.getTickTransactionOffsetSize();
+#ifdef USE_SWAP
+    totalRam += ts.getTickTransactionsDigestPtrSize();
+#else
     // At current mainnet state, tick transactions use about 1/10 of the allocated space
     totalRam += ts.getTickTransactionsDigestPtrSize() / 10;
+#endif
 
     return totalRam;
 }
