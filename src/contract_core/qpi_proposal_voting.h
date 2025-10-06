@@ -658,9 +658,121 @@ namespace QPI
 
 		// Return voter index (which may be INVALID_VOTER_INDEX if voter has no right to vote)
 		unsigned int voterIndex = pv.proposersAndVoters.getVoterIndex(qpi, voter, vote.proposalIndex);
+		if (voterIndex == INVALID_VOTER_INDEX)
+			return false;
 
-		// Set vote value (checking that voter index and value are valid)
-		return proposal.setVoteValue(voterIndex, vote.voteValue);
+		// Get count of votes that this voter can cast
+		unsigned int voteCount = pv.proposersAndVoters.getVoteCount(qpi, voterIndex, vote.proposalIndex);
+		ASSERT(voteCount >= 1);
+
+		if (voteCount == 1)
+		{
+			// Set single vote value (checking that voter index and value are valid)
+			return proposal.setVoteValue(voterIndex, vote.voteValue);
+		}
+		else
+		{
+			// Set multiple vote values (shareholder has multiple votes)
+			bool okay = true;
+			for (unsigned int i = 0; i < voteCount; ++i)
+			{
+				// Set vote value (checking that voter index and value are valid)
+				okay = proposal.setVoteValue(voterIndex + i, vote.voteValue);
+				if (!okay)
+					break;
+			}
+			return okay;
+		}
+	}
+
+	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+	bool QpiContextProposalProcedureCall<ProposerAndVoterHandlingType, ProposalDataType>::vote(
+		const id& voter,
+		const ProposalMultiVoteDataV1& vote
+	)
+	{
+		ProposalVotingType& pv = const_cast<ProposalVotingType&>(this->pv);
+		const QpiContextFunctionCall& qpi = this->qpi;
+
+		if (vote.proposalIndex >= pv.maxProposals)
+			return false;
+
+		// Check that vote matches proposal
+		auto& proposal = pv.proposals[vote.proposalIndex];
+		if (vote.proposalType != proposal.type)
+			return false;
+		if (qpi.epoch() != proposal.epoch)
+			return false;
+		if (vote.proposalTick != proposal.tick)
+			return false;
+
+		// Return voter index (which may be INVALID_VOTER_INDEX if voter has no right to vote)
+		unsigned int voterIndexBegin = pv.proposersAndVoters.getVoterIndex(qpi, voter, vote.proposalIndex);
+		if (voterIndexBegin == INVALID_VOTER_INDEX)
+			return false;
+
+		// Get count of votes that this voter can cast
+		unsigned int voteCountTotal = pv.proposersAndVoters.getVoteCount(qpi, voterIndexBegin, vote.proposalIndex);
+		ASSERT(voteCountTotal >= 1);
+
+		// Get count of votes sent
+		unsigned int voteCountSent = 0;
+		for (unsigned int i = 0; i < vote.voteCounts.capacity(); ++i)
+			voteCountSent += vote.voteCounts.get(i);
+
+		// Sent more votes than allowed?
+		if (voteCountSent > voteCountTotal)
+			return false;
+
+		// Set all votes up to total vote count (votes not sent are set to invalid)
+		unsigned int voterIndex = voterIndexBegin;
+		const unsigned int voterIndexEnd = voterIndexBegin + voteCountTotal;
+
+		// Compatibility case? -> count 0 means all votes with same value
+		bool okay = true;
+		if (voteCountSent == 0)
+		{
+			for (; voterIndex < voterIndexEnd; ++voterIndex)
+			{
+				// Set vote value (checking that voter index and value are valid)
+				okay = proposal.setVoteValue(voterIndex, vote.voteValues.get(0));
+				if (!okay)
+				{
+					// On error, fill all with invalid/no votes
+					voterIndex = voterIndexBegin;
+					goto leave;
+				}
+			}
+			return okay;
+		}
+
+		// Set multiple vote values (shareholder has multiple votes)
+		for (unsigned int i = 0; i < vote.voteCounts.capacity(); ++i)
+		{
+			sint64 voteValue = vote.voteValues.get(i);
+			uint32 voteCount = vote.voteCounts.get(i);
+			for (unsigned int j = 0; j < voteCount; ++j)
+			{
+				// Set vote value (checking that voter index and value are valid)
+				okay = proposal.setVoteValue(voterIndex, voteValue);
+				++voterIndex;
+				if (!okay)
+				{
+					// On error, fill all with invalid/no votes
+					voterIndex = voterIndexBegin;
+					goto leave;
+				}
+			}
+		}
+
+	leave:
+		// Set remaining votes to no vote
+		for (; voterIndex < voterIndexEnd; ++voterIndex)
+		{
+			proposal.setVoteValue(voterIndex, NO_VOTE_VALUE);
+		}
+
+		return okay;
 	}
 
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
@@ -701,6 +813,83 @@ namespace QPI
 		return true;
 	}
 
+	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+	bool QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::getVotes(
+		uint16 proposalIndex,
+		const id& voter,
+		ProposalMultiVoteDataV1& votes
+	) const
+	{
+		// proposalType = 0 is an additional error indicator in votes (overwritten on success at the end of the function)
+		votes.proposalType = 0;
+
+		if (proposalIndex >= pv.maxProposals || !pv.proposals[proposalIndex].epoch)
+			return false;
+
+		auto& proposal = pv.proposals[votes.proposalIndex];
+
+		// Return first voter index (which may be INVALID_VOTER_INDEX if voter has no right to vote)
+		unsigned int voterIndexBegin = pv.proposersAndVoters.getVoterIndex(qpi, voter, proposalIndex);
+		if (voterIndexBegin == INVALID_VOTER_INDEX)
+			return false;
+
+		// Get count of votes that this voter can cast
+		unsigned int voteCountTotal = pv.proposersAndVoters.getVoteCount(qpi, voterIndexBegin, proposalIndex);
+		ASSERT(voteCountTotal >= 1);
+			
+		// Count votes of individual values
+		unsigned int voterIndex = voterIndexBegin;
+		const unsigned int voterIndexEnd = voterIndexBegin + voteCountTotal;
+
+		if (proposal.type == ProposalTypes::VariableScalarMean)
+		{
+			// scalar voting -> histogram with arbitrary values
+			uint32 voteValueIdx = 0, uniqueVoteValues = 0;
+			QPI::HashMap<sint64, uint32, 16> valueIdx;
+			valueIdx.reset();
+			for (; voterIndex < voterIndexEnd; ++voterIndex)
+			{
+				sint64 voteValue = proposal.getVoteValue(voterIndex);
+				if (!valueIdx.get(voteValue, voteValueIdx))
+				{
+					voteValueIdx = uniqueVoteValues;
+					if (voteValueIdx >= votes.voteValues.capacity())
+						return false;
+					valueIdx.set(voteValue, voteValueIdx);
+					votes.voteValues.set(voteValueIdx, voteValue);
+					++uniqueVoteValues;
+				}
+				votes.voteCounts.set(voteValueIdx, votes.voteCounts.get(voteValueIdx) + 1);
+			}
+		}
+		else
+		{
+			// option voting -> compute histogram of option values
+			auto& hist = votes.voteCounts;
+			const uint16 optionCount = ProposalTypes::optionCount(proposal.type);
+			ASSERT(optionCount > 0);
+			ASSERT(optionCount <= hist.capacity());
+			hist.setAll(0);
+			for (; voterIndex < voterIndexEnd; ++voterIndex)
+			{
+				sint64 value = proposal.getVoteValue(voterIndex);
+				if (value != NO_VOTE_VALUE && value >= 0 && value < optionCount)
+				{
+					hist.set(value, hist.get(value) + 1);
+				}
+			}
+
+			votes.voteValues.setAll(0);
+			for (uint32 i = 0; i < optionCount; ++i)
+				votes.voteValues.set(i, i);
+		}
+
+		votes.proposalIndex = proposalIndex;
+		votes.proposalType = proposal.type;
+		votes.proposalTick = proposal.tick;
+
+		return true;
+	}
 
 	// Compute voting summary of scalar votes
 	template <typename ProposalDataType, uint32 maxVoters>

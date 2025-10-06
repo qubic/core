@@ -1218,6 +1218,33 @@ namespace QPI
 	};
 	static_assert(sizeof(ProposalSingleVoteDataV1) == 16, "Unexpected struct size.");
 
+	// For casting multiple votes for all types of proposals defined in August 2024.
+	// This makes sense for shareholder voting, where a single shareholder may own multiple shares, allowing to cast
+	// multiple votes. With this structs the votes may be individually distributed to multiple options/values.
+	// Input data for contract procedure call, compatible with ProposalSingleVoteDataV1.
+	struct ProposalMultiVoteDataV1
+	{
+		// Index of proposal the vote is about (can be requested with proposal voting API)
+		uint16 proposalIndex;
+
+		// Type of proposal, see ProposalTypes
+		uint16 proposalType;
+
+		// Tick when proposal has been set (to make sure that proposal version known by the voter matches the current version).
+		uint32 proposalTick;
+
+		// Value of vote. NO_VOTE_VALUE means no vote for every type.
+		// For proposals types with multiple options, 0 is no, 1 to N are the other options in order of definition in proposal.
+		// For scalar proposal types the value is passed directly.
+		Array<sint64, 8> voteValues;
+
+		// Count of votes to cast for the corresponding voteValues.
+		// For compatibility with ProposalSingleVoteDataV1, voteCounts.get(0) == 0 means all votes of the voter. In
+		// the other elements, 0 means no votes for the given value.
+		Array<uint32, 8> voteCounts;
+	};
+	static_assert(sizeof(ProposalMultiVoteDataV1) == 104, "Unexpected struct size.");
+
 	// Voting result summary for all types of proposals defined in August 2024.
 	// Output data for contract function call for getting voting results.
 	struct ProposalSummarizedVotingDataV1
@@ -1648,6 +1675,9 @@ namespace QPI
 		// Get data of single vote. On error returns false and sets vote.proposalType = 0.
 		bool getVote(uint16 proposalIndex, uint32 voterIndex, ProposalSingleVoteDataV1& vote) const;
 
+		// Get data of votes of a given voter. On error returns false and sets votes.proposalType = 0.
+		bool getVotes(uint16 proposalIndex, const id& voter, ProposalMultiVoteDataV1& votes) const;
+
 		// Get summary of all votes casted. On error returns false and sets votingSummary.totalVotesAuthorized = 0.
 		bool getVotingSummary(uint16 proposalIndex, ProposalSummarizedVotingDataV1& votingSummary) const;
 
@@ -1718,11 +1748,27 @@ namespace QPI
 		// Cast vote for proposal with index vote.proposalIndex if voter has right to vote, the proposal's epoch
 		// is the current epoch, vote.proposalType and vote.proposalTick match the corresponding proposal's values,
 		// and vote.voteValue is valid for the proposal type.
+		// If voter has multiple votes (possible in shareholder voting), cast all votes of voter with the same value.
 		// This can be used to remove a previous vote by vote.voteValue = NO_VOTE_VALUE.
 		// Return whether vote has been casted.
 		bool vote(
 			const id& voter,
 			const ProposalSingleVoteDataV1& vote
+		);
+
+		// Cast votes for proposal with index votes.proposalIndex if voter has right to vote, the proposal's epoch
+		// is the current epoch, votes.proposalType and votes.proposalTick match the corresponding proposal's values,
+		// the votes.voteValues are valid for the proposal type, and the sum of votes.voteCounts does not exceed the
+		// number of votes available to the voter.
+		// If any vote value is invalid, all votes of the voter are set to NO_VOTE_VALUE.
+		// This can be used to remove previous votes by using a vote value of NO_VOTE_VALUE or a total vote count less
+		// than the number of votes available to the voter.
+		// For compatibility with ProposalSingleVoteDataV1, all votes are set with votes.voteValues.get(0) if the sum
+		// of votes.voteCounts is 0.
+		// Return whether the votes have been casted.
+		bool vote(
+			const id& voter,
+			const ProposalMultiVoteDataV1& votes
 		);
 
 		// ProposalVoting type to work with
