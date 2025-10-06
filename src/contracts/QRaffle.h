@@ -230,7 +230,7 @@ public:
 
 	struct getRegisters_output
 	{
-		Array <id, 1024> registers;
+		id register1, register2, register3, register4, register5, register6, register7, register8, register9, register10, register11, register12, register13, register14, register15, register16, register17, register18, register19, register20;
 		sint32 returnCode;
 	};
 
@@ -842,7 +842,7 @@ protected:
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getRegisters)
 	{
-		if (input.limit > 1024)
+		if (input.limit > 20)
 		{
 			output.returnCode = QRAFFLE_INVALID_OFFSET_OR_LIMIT;
 			return ;
@@ -858,7 +858,86 @@ protected:
 			locals.user = state.registers.key(locals.idx);
 			if (locals.i >= input.offset && locals.i < input.offset + input.limit)
 			{
-				output.registers.set(locals.i - input.offset, locals.user);
+				if (locals.i - input.offset == 0)
+				{
+					output.register1 = locals.user;
+				}
+				else if (locals.i - input.offset == 1)
+				{
+					output.register2 = locals.user;
+				}
+				else if (locals.i - input.offset == 2)
+				{
+					output.register3 = locals.user;
+				}
+				else if (locals.i - input.offset == 3)
+				{
+					output.register4 = locals.user;
+				}
+				else if (locals.i - input.offset == 4)
+				{
+					output.register5 = locals.user;
+				}
+				else if (locals.i - input.offset == 5)
+				{
+					output.register6 = locals.user;
+				}
+				else if (locals.i - input.offset == 6)
+				{
+					output.register7 = locals.user;
+				}
+				else if (locals.i - input.offset == 7)
+				{
+					output.register8 = locals.user;
+				}
+				else if (locals.i - input.offset == 8)
+				{
+					output.register9 = locals.user;
+				}
+				else if (locals.i - input.offset == 9)
+				{
+					output.register10 = locals.user;
+				}
+				else if (locals.i - input.offset == 10)
+				{
+					output.register11 = locals.user;
+				}
+				else if (locals.i - input.offset == 11)
+				{
+					output.register12 = locals.user;
+				}
+				else if (locals.i - input.offset == 12)
+				{
+					output.register13 = locals.user;
+				}
+				else if (locals.i - input.offset == 13)
+				{
+					output.register14 = locals.user;
+				}
+				else if (locals.i - input.offset == 14)
+				{
+					output.register15 = locals.user;
+				}
+				else if (locals.i - input.offset == 15)
+				{
+					output.register16 = locals.user;
+				}
+				else if (locals.i - input.offset == 16)
+				{
+					output.register17 = locals.user;
+				}
+				else if (locals.i - input.offset == 17)
+				{
+					output.register18 = locals.user;
+				}
+				else if (locals.i - input.offset == 18)
+				{
+					output.register19 = locals.user;
+				}
+				else if (locals.i - input.offset == 19)
+				{
+					output.register20 = locals.user;
+				}
 			}
 			if (locals.i >= input.offset + input.limit)
 			{
