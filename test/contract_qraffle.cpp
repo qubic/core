@@ -183,6 +183,21 @@ public:
     {
         return numberOfEndedTokenRaffle;
     }
+
+    uint64 getEpochQXMRRevenue()
+    {
+        return epochQXMRRevenue;
+    }
+
+    uint32 getNumberOfRegisters()
+    {
+        return numberOfRegisters;
+    }
+
+    id getQXMRIssuer()
+    {
+        return QXMRIssuer;
+    }
 };
 
 class ContractTestingQraffle : protected ContractTesting
@@ -208,20 +223,22 @@ public:
         callSystemProcedure(QRAFFLE_CONTRACT_INDEX, END_EPOCH, expectSuccess);
     }
 
-    QRAFFLE::registerInSystem_output registerInSystem(const id& user, uint64 amount)
+    QRAFFLE::registerInSystem_output registerInSystem(const id& user, uint64 amount, bit useQXMR)
     {
         QRAFFLE::registerInSystem_input input;
         QRAFFLE::registerInSystem_output output;
         
+        input.useQXMR = useQXMR;
         invokeUserProcedure(QRAFFLE_CONTRACT_INDEX, 1, input, output, user, amount);
         return output;
     }
 
-    QRAFFLE::logoutInSystem_output logoutInSystem(const id& user)
+    QRAFFLE::logoutInSystem_output logoutInSystem(const id& user, bit useQXMR)
     {
         QRAFFLE::logoutInSystem_input input;
         QRAFFLE::logoutInSystem_output output;
         
+        input.useQXMR = useQXMR;
         invokeUserProcedure(QRAFFLE_CONTRACT_INDEX, 2, input, output, user, 0);
         return output;
     }
@@ -410,7 +427,7 @@ TEST(ContractQraffle, RegisterInSystem)
     for (const auto& user : users)
     {
         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-        auto result = qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        auto result = qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT, 0);
         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
         qraffle.getState()->registerChecker(user, ++registerCount, true);
     }
@@ -418,13 +435,13 @@ TEST(ContractQraffle, RegisterInSystem)
     // // Test insufficient funds
     id poorUser = getUser(9999);
     increaseEnergy(poorUser, QRAFFLE_REGISTER_AMOUNT - 1);
-    auto result = qraffle.registerInSystem(poorUser, QRAFFLE_REGISTER_AMOUNT - 1);
+    auto result = qraffle.registerInSystem(poorUser, QRAFFLE_REGISTER_AMOUNT - 1, 0);
     EXPECT_EQ(result.returnCode, QRAFFLE_INSUFFICIENT_FUND);
     qraffle.getState()->registerChecker(poorUser, registerCount, false);
 
     // Test already registered
     increaseEnergy(users[0], QRAFFLE_REGISTER_AMOUNT);
-    result = qraffle.registerInSystem(users[0], QRAFFLE_REGISTER_AMOUNT);
+    result = qraffle.registerInSystem(users[0], QRAFFLE_REGISTER_AMOUNT, 0);
     EXPECT_EQ(result.returnCode, QRAFFLE_ALREADY_REGISTERED);
     qraffle.getState()->registerChecker(users[0], registerCount, true);
 }
@@ -440,14 +457,14 @@ TEST(ContractQraffle, LogoutInSystem)
     for (const auto& user : users)
     {
         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT, 0);
         registerCount++;
     }
 
     // Test successful logout
     for (const auto& user : users)
     {
-        auto result = qraffle.logoutInSystem(user);
+        auto result = qraffle.logoutInSystem(user, 0);
         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
         EXPECT_EQ(getBalance(user), QRAFFLE_REGISTER_AMOUNT - QRAFFLE_LOGOUT_FEE);
         qraffle.getState()->unregisterChecker(user, --registerCount);
@@ -455,7 +472,7 @@ TEST(ContractQraffle, LogoutInSystem)
 
     // Test unregistered user logout
     qraffle.getState()->unregisterChecker(users[0], registerCount);
-    auto result = qraffle.logoutInSystem(users[0]);
+    auto result = qraffle.logoutInSystem(users[0], 0);
     EXPECT_EQ(result.returnCode, QRAFFLE_UNREGISTERED);
 }
 
@@ -471,7 +488,7 @@ TEST(ContractQraffle, SubmitEntryAmount)
     for (const auto& user : users)
     {
         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT, 0);
         registerCount++;
     }
 
@@ -509,7 +526,7 @@ TEST(ContractQraffle, SubmitProposal)
     for (const auto& user : users)
     {
         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT, 0);
         registerCount++;
     }
 
@@ -563,7 +580,7 @@ TEST(ContractQraffle, VoteInProposal)
     for (const auto& user : users)
     {
         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT, 0);
         registerCount++;
     }
 
@@ -638,7 +655,7 @@ TEST(ContractQraffle, DepositeInQuRaffle)
     for (const auto& user : users)
     {
         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT, 0);
         registerCount++;
     }
 
@@ -674,7 +691,7 @@ TEST(ContractQraffle, DepositeInTokenRaffle)
     for (const auto& user : users)
     {
         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT, 0);
         registerCount++;
     }
 
@@ -776,7 +793,7 @@ TEST(ContractQraffle, GetFunctions)
     for (const auto& user : users)
     {
         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-        auto result = qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        auto result = qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT, 0);
         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
         registerCount++;
     }
@@ -1052,7 +1069,7 @@ TEST(ContractQraffle, EndEpoch)
     for (const auto& user : users)
     {
         increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
-        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT);
+        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT, 0);
         registerCount++;
     }
 
@@ -1141,5 +1158,230 @@ TEST(ContractQraffle, EndEpoch)
     EXPECT_GT(analytics.totalBurnAmount, 0);
     EXPECT_GT(analytics.totalCharityAmount, 0);
     EXPECT_GT(analytics.totalShareholderAmount, 0);
-    EXPECT_GT(analytics.totalWinnerAmount, 0);
+     EXPECT_GT(analytics.totalWinnerAmount, 0);
+}
+
+TEST(ContractQraffle, RegisterInSystemWithQXMR)
+{
+    ContractTestingQraffle qraffle;
+    
+    auto users = getRandomUsers(1000, 1000);
+    uint32 registerCount = 5;
+
+    // Issue QXMR tokens to users
+    id qxmrIssuer = qraffle.getState()->getQXMRIssuer();
+    increaseEnergy(qxmrIssuer, 2000000000ULL);
+    qraffle.issueAsset(qxmrIssuer, QXMR_ASSET_NAME, 10000000000000, 0, 0);
+
+    // Test successful registration with QXMR tokens
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, 1000);
+        // Transfer QXMR tokens to user
+        qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
+        qraffle.TransferShareManagementRights(qxmrIssuer, QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
+        
+        // Register using QXMR tokens
+        auto result = qraffle.registerInSystem(user, 0, 1); // useQXMR = 1
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        registerCount++;
+        qraffle.getState()->registerChecker(user, registerCount, true);
+    }
+
+    // Test insufficient QXMR tokens
+    id poorUser = getUser(9999);
+    increaseEnergy(poorUser, 1000);
+    qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT - 1, poorUser);
+    qraffle.TransferShareManagementRights(qxmrIssuer, QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT - 1, poorUser);
+    auto result = qraffle.registerInSystem(poorUser, 0, 1);
+    EXPECT_EQ(result.returnCode, QRAFFLE_INSUFFICIENT_QXMR);
+    qraffle.getState()->registerChecker(poorUser, registerCount, false);
+
+    // Test already registered with QXMR
+    qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, users[0]);
+    qraffle.TransferShareManagementRights(qxmrIssuer, QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, users[0]);
+    result = qraffle.registerInSystem(users[0], 0, 1);
+    EXPECT_EQ(result.returnCode, QRAFFLE_ALREADY_REGISTERED);
+    qraffle.getState()->registerChecker(users[0], registerCount, true);
+}
+
+TEST(ContractQraffle, LogoutInSystemWithQXMR)
+{
+    ContractTestingQraffle qraffle;
+    
+    auto users = getRandomUsers(1000, 1000);
+    uint32 registerCount = 5;
+
+    // Issue QXMR tokens
+    id qxmrIssuer = qraffle.getState()->getQXMRIssuer();
+    increaseEnergy(qxmrIssuer, 2000000000ULL);
+    qraffle.issueAsset(qxmrIssuer, QXMR_ASSET_NAME, 10000000000000, 0, 0);
+
+    // Register users with QXMR tokens first
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, 1000);
+        qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
+        qraffle.TransferShareManagementRights(qxmrIssuer, QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
+        qraffle.registerInSystem(user, 0, 1);
+        registerCount++;
+    }
+
+    // Test successful logout with QXMR tokens
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, 1000);
+        auto result = qraffle.logoutInSystem(user, 1); // useQXMR = 1
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        
+        // Check that user received QXMR refund
+        uint64 expectedRefund = QRAFFLE_QXMR_REGISTER_AMOUNT - QXMR_LOGOUT_FEE;
+        EXPECT_EQ(numberOfPossessedShares(QXMR_ASSET_NAME, qxmrIssuer, user, user, QRAFFLE_CONTRACT_INDEX, QRAFFLE_CONTRACT_INDEX), expectedRefund);
+        
+        registerCount--;
+        qraffle.getState()->unregisterChecker(user, registerCount);
+    }
+
+    // Test unregistered user logout with QXMR
+    increaseEnergy(users[0], 1000);
+    auto result = qraffle.logoutInSystem(users[0], 1);
+    EXPECT_EQ(result.returnCode, QRAFFLE_UNREGISTERED);
+}
+
+TEST(ContractQraffle, MixedRegistrationAndLogout)
+{
+    ContractTestingQraffle qraffle;
+    
+    auto users = getRandomUsers(1000, 1000);
+    uint32 registerCount = 5;
+
+    // Issue QXMR tokens
+    id qxmrIssuer = qraffle.getState()->getQXMRIssuer();
+    increaseEnergy(qxmrIssuer, 2000000000ULL);
+    qraffle.issueAsset(qxmrIssuer, QXMR_ASSET_NAME, 10000000000000, 0, 0);
+
+    // Register some users with qubic, some with QXMR
+    for (size_t i = 0; i < users.size(); ++i)
+    {
+        if (i % 2 == 0)
+        {
+            // Register with qubic
+            increaseEnergy(users[i], QRAFFLE_REGISTER_AMOUNT);
+            auto result = qraffle.registerInSystem(users[i], QRAFFLE_REGISTER_AMOUNT, 0); // useQXMR = 0
+            EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        }
+        else
+        {
+            // Register with QXMR
+            increaseEnergy(users[i], 1000);
+            qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, users[i]);
+            qraffle.TransferShareManagementRights(qxmrIssuer, QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, users[i]);
+            auto result = qraffle.registerInSystem(users[i], 0, 1); // useQXMR = 1
+            EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        }
+        registerCount++;
+    }
+
+    // Logout some users with qubic, some with QXMR
+    for (size_t i = 0; i < users.size(); ++i)
+    {
+        if (i % 2 == 0)
+        {
+            // Logout with qubic
+            auto result = qraffle.logoutInSystem(users[i], 0); // useQXMR = 0
+            EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+            EXPECT_EQ(getBalance(users[i]), QRAFFLE_REGISTER_AMOUNT - QRAFFLE_LOGOUT_FEE);
+        }
+        else
+        {
+            // Logout with QXMR
+            auto result = qraffle.logoutInSystem(users[i], 1); // useQXMR = 1
+            EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+            
+            uint64 expectedRefund = QRAFFLE_QXMR_REGISTER_AMOUNT - QXMR_LOGOUT_FEE;
+            EXPECT_EQ(numberOfPossessedShares(QXMR_ASSET_NAME, qxmrIssuer, users[i], users[i], QRAFFLE_CONTRACT_INDEX, QRAFFLE_CONTRACT_INDEX), expectedRefund);
+        }
+        registerCount--;
+    }
+
+    // Verify final state
+    EXPECT_EQ(qraffle.getState()->getNumberOfRegisters(), registerCount);
+}
+
+TEST(ContractQraffle, QXMRInvalidTokenType)
+{
+    ContractTestingQraffle qraffle;
+
+    auto users = getRandomUsers(1000, 1000);
+    uint32 registerCount = 5;
+
+    // Issue QXMR tokens
+    id qxmrIssuer = qraffle.getState()->getQXMRIssuer();
+    increaseEnergy(qxmrIssuer, 2000000000ULL);
+    qraffle.issueAsset(qxmrIssuer, QXMR_ASSET_NAME, 10000000000000, 0, 0);
+
+    // Register user with qubic (token type 1)
+    increaseEnergy(users[0], QRAFFLE_REGISTER_AMOUNT);
+    qraffle.registerInSystem(users[0], QRAFFLE_REGISTER_AMOUNT, 0);
+    registerCount++;
+
+    // Try to logout with QXMR when registered with qubic
+    auto result = qraffle.logoutInSystem(users[0], 1); // useQXMR = 1, but registered with qubic
+    EXPECT_EQ(result.returnCode, QRAFFLE_INVALID_TOKEN_TYPE);
+
+    // Register user with QXMR (token type 2)
+    increaseEnergy(users[1], 1000);
+    qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, users[1]);
+    qraffle.TransferShareManagementRights(qxmrIssuer, QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, users[1]);
+    qraffle.registerInSystem(users[1], 0, 1);
+    registerCount++;
+
+    // Try to logout with qubic when registered with QXMR
+    result = qraffle.logoutInSystem(users[1], 0); // useQXMR = 0, but registered with QXMR
+    EXPECT_EQ(result.returnCode, QRAFFLE_INVALID_TOKEN_TYPE);
+
+    // Correct logout should work
+    result = qraffle.logoutInSystem(users[1], 1); // useQXMR = 1, registered with QXMR
+    EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+    registerCount--;
+}
+
+TEST(ContractQraffle, QXMRRevenueDistribution)
+{
+    ContractTestingQraffle qraffle;
+    
+    auto users = getRandomUsers(1000, 1000);
+    uint32 registerCount = 5;
+
+    // Issue QXMR tokens
+    id qxmrIssuer = qraffle.getState()->getQXMRIssuer();
+    increaseEnergy(qxmrIssuer, 2000000000ULL);
+    qraffle.issueAsset(qxmrIssuer, QXMR_ASSET_NAME, 10000000000000, 0, 0);
+
+    // Register some users with QXMR to generate QXMR revenue
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, 1000);
+        qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
+        qraffle.TransferShareManagementRights(qxmrIssuer, QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
+        qraffle.registerInSystem(user, 0, 1);
+        registerCount++;
+    }
+
+    uint64 expectedQXMRRevenue = 0;
+    // Logout some users to generate QXMR revenue
+    for (size_t i = 0; i < users.size(); ++i)
+    {
+        auto result = qraffle.logoutInSystem(users[i], 1);
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        expectedQXMRRevenue += QXMR_LOGOUT_FEE;
+        registerCount--;
+    }
+
+    // Check that QXMR revenue was recorded
+    EXPECT_EQ(qraffle.getState()->getEpochQXMRRevenue(), expectedQXMRRevenue);
+
+    // Test QXMR revenue distribution during epoch end
+    qraffle.endEpoch();
+    EXPECT_EQ(qraffle.getState()->getEpochQXMRRevenue(), expectedQXMRRevenue - div(expectedQXMRRevenue, 676ull) * 676);
 }
