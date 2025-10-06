@@ -17,7 +17,7 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{30e8e249-6b00-4575-bcdf-be2445d5e099}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <ConfigurationType>Application</ConfigurationType>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
@@ -120,6 +120,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="common_def.cpp" />
+    <ClCompile Include="contract_qbond.cpp" />
     <ClCompile Include="contract_qswap.cpp" />
     <ClCompile Include="fourq.cpp" />
     <ClCompile Include="uint128.cpp" />
@@ -135,6 +136,7 @@
     <ClCompile Include="contract_nostromo.cpp" />
     <ClCompile Include="contract_qraffle.cpp" />
     <ClCompile Include="contract_gqmprop.cpp" />
+    <ClCompile Include="contract_rl.cpp" />
     <ClCompile Include="custom_mining.cpp" />
     <ClCompile Include="file_io.cpp" />
     <ClCompile Include="qpi_collection.cpp" />
