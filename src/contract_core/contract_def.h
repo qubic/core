@@ -218,6 +218,17 @@ struct __FunctionOrProcedureBeginEndGuard
 #define CONTRACT_STATE2_TYPE QDRAW2
 #include "contracts/Qdraw.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QRAFFLE_CONTRACT_INDEX 16
+#define CONTRACT_INDEX QRAFFLE_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QRAFFLE
+#define CONTRACT_STATE2_TYPE QRAFFLE2
+
+#include "contracts/Qraffle.h"
+
 #ifndef NO_RANDOM_LOTTERY
 
 constexpr unsigned short RL_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
@@ -239,12 +250,6 @@ constexpr unsigned short QBOND_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
-#define QRAFFLE_CONTRACT_INDEX 16
-#define CONTRACT_INDEX QRAFFLE_CONTRACT_INDEX
-#define CONTRACT_STATE_TYPE QRAFFLE
-#define CONTRACT_STATE2_TYPE QRAFFLE2
-
-#include "contracts/Qraffle.h"
 #define CONTRACT_INDEX QBOND_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QBOND
 #define CONTRACT_STATE2_TYPE QBOND2
@@ -356,7 +361,7 @@ constexpr struct ContractDescription
 #ifndef NO_QBOND
     {"QBOND", 182, 10000, sizeof(QBOND)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
 #endif
-    {"QRAFFLE", 181, 10000, sizeof(QRAFFLE)}, // proposal in epoch 179, IPO in 180, construction and first use in 181
+    {"QRAFFLE", 184, 10000, sizeof(QRAFFLE)}, // proposal in epoch 182, IPO in 183, construction and first use in 184
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(IPO)},
