@@ -168,7 +168,8 @@ public:
 
 	struct submitProposal_input
 	{
-		Asset token;
+		id tokenIssuer;
+		uint64 tokenName;
 		uint64 entryAmount;
 	};
 
@@ -210,7 +211,8 @@ public:
 
 	struct TransferShareManagementRights_input
 	{
-		Asset asset;
+		id tokenIssuer;
+		uint64 tokenName;
 		sint64 numberOfShares;
 		uint32 newManagingContractIndex;
 	};
@@ -261,7 +263,8 @@ public:
 
 	struct getActiveProposal_output
 	{
-		Asset token;
+		id tokenIssuer;
+		uint64 tokenName;
 		uint64 entryAmount;
 		uint32 nYes;
 		uint32 nNo;
@@ -276,7 +279,8 @@ public:
 	struct getEndedTokenRaffle_output
 	{
 		id epochWinner;
-		Asset token;
+		id tokenIssuer;
+		uint64 tokenName;
 		uint64 entryAmount;
 		uint32 numberOfMembers;
 		uint32 winnerIndex;
@@ -318,7 +322,8 @@ public:
 	
 	struct getActiveTokenRaffle_output
 	{
-		Asset token;
+		id tokenIssuer;
+		uint64 tokenName;
 		uint64 entryAmount;
 		sint32 returnCode;
 	};
@@ -584,7 +589,8 @@ protected:
 			LOG_INFO(locals.log);
 			return ;
 		}
-		locals.proposal.token = input.token;
+		locals.proposal.token.issuer = input.tokenIssuer;
+		locals.proposal.token.assetName = input.tokenName;
 		locals.proposal.entryAmount = input.entryAmount;
 		state.proposals.set(state.numberOfProposals, locals.proposal);
 		state.numberOfProposals++;
@@ -772,6 +778,7 @@ protected:
 
 	struct TransferShareManagementRights_locals
 	{
+		Asset asset;
 		QRAFFLELogger log;
 	};
 
@@ -784,7 +791,7 @@ protected:
 			return ;
 		}
 
-		if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer,qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
+		if (qpi.numberOfPossessedShares(input.tokenName, input.tokenIssuer,qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
 		{
 			// not enough shares available
 			output.transferredNumberOfShares = 0;
@@ -797,7 +804,9 @@ protected:
 		}
 		else
 		{
-			if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
+			locals.asset.assetName = input.tokenName;
+			locals.asset.issuer = input.tokenIssuer;
+			if (qpi.releaseShares(locals.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
 				input.newManagingContractIndex, input.newManagingContractIndex, QRAFFLE_TRANSFER_SHARE_FEE) < 0)
 			{
 				// error
@@ -881,8 +890,8 @@ protected:
 	
 	PUBLIC_FUNCTION(getActiveProposal)
 	{
-		output.token.assetName = state.proposals.get(input.indexOfProposal).token.assetName;
-		output.token.issuer = state.proposals.get(input.indexOfProposal).token.issuer;
+		output.tokenName = state.proposals.get(input.indexOfProposal).token.assetName;
+		output.tokenIssuer = state.proposals.get(input.indexOfProposal).token.issuer;
 		output.entryAmount = state.proposals.get(input.indexOfProposal).entryAmount;
 		output.nYes = state.proposals.get(input.indexOfProposal).nYes;
 		output.nNo = state.proposals.get(input.indexOfProposal).nNo;
@@ -892,8 +901,8 @@ protected:
 	PUBLIC_FUNCTION(getEndedTokenRaffle)
 	{
 		output.epochWinner = state.tokenRaffle.get(input.indexOfRaffle).epochWinner;
-		output.token.assetName = state.tokenRaffle.get(input.indexOfRaffle).token.assetName;
-		output.token.issuer = state.tokenRaffle.get(input.indexOfRaffle).token.issuer;
+		output.tokenName = state.tokenRaffle.get(input.indexOfRaffle).token.assetName;
+		output.tokenIssuer = state.tokenRaffle.get(input.indexOfRaffle).token.issuer;
 		output.entryAmount = state.tokenRaffle.get(input.indexOfRaffle).entryAmount;
 		output.numberOfMembers = state.tokenRaffle.get(input.indexOfRaffle).numberOfMembers;
 		output.winnerIndex = state.tokenRaffle.get(input.indexOfRaffle).winnerIndex;
@@ -950,8 +959,8 @@ protected:
 
 	PUBLIC_FUNCTION(getActiveTokenRaffle)
 	{
-		output.token.assetName = state.activeTokenRaffle.get(input.indexOfTokenRaffle).token.assetName;
-		output.token.issuer = state.activeTokenRaffle.get(input.indexOfTokenRaffle).token.issuer;
+		output.tokenName = state.activeTokenRaffle.get(input.indexOfTokenRaffle).token.assetName;
+		output.tokenIssuer = state.activeTokenRaffle.get(input.indexOfTokenRaffle).token.issuer;
 		output.entryAmount = state.activeTokenRaffle.get(input.indexOfTokenRaffle).entryAmount;
 		output.returnCode = QRAFFLE_SUCCESS;
 	}

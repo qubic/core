@@ -258,7 +258,8 @@ public:
         QRAFFLE::submitProposal_input input;
         QRAFFLE::submitProposal_output output;
         
-        input.token = token;
+        input.tokenIssuer = token.issuer;
+        input.tokenName = token.assetName;
         input.entryAmount = entryAmount;
         invokeUserProcedure(QRAFFLE_CONTRACT_INDEX, 4, input, output, user, 0);
         return output;
@@ -406,8 +407,8 @@ public:
         QRAFFLE::TransferShareManagementRights_input input;
         QRAFFLE::TransferShareManagementRights_output output;
 
-        input.asset.assetName = assetName;
-        input.asset.issuer = issuer;
+        input.tokenName = assetName;
+        input.tokenIssuer = issuer;
         input.newManagingContractIndex = newManagingContractIndex;
         input.numberOfShares = numberOfShares;
 
@@ -719,8 +720,8 @@ TEST(ContractQraffle, DepositeInTokenRaffle)
     // Test active token raffle
     auto activeRaffle = qraffle.getActiveTokenRaffle(0);
     EXPECT_EQ(activeRaffle.returnCode, QRAFFLE_SUCCESS);
-    EXPECT_EQ(activeRaffle.token.assetName, assetName);
-    EXPECT_EQ(activeRaffle.token.issuer, issuer);
+    EXPECT_EQ(activeRaffle.tokenName, assetName);
+    EXPECT_EQ(activeRaffle.tokenIssuer, issuer);
     EXPECT_EQ(activeRaffle.entryAmount, 1000000);
 
     // Test successful token raffle deposit
@@ -965,8 +966,8 @@ TEST(ContractQraffle, GetFunctions)
         {
             auto proposal = qraffle.getActiveProposal(i);
             EXPECT_EQ(proposal.returnCode, QRAFFLE_SUCCESS);
-            EXPECT_EQ(proposal.token.assetName, (i % 2 == 0) ? assetName1 : assetName2);
-            EXPECT_EQ(proposal.token.issuer, issuer);
+            EXPECT_EQ(proposal.tokenName, (i % 2 == 0) ? assetName1 : assetName2);
+            EXPECT_EQ(proposal.tokenIssuer, issuer);
             EXPECT_GT(proposal.entryAmount, 0);
             EXPECT_GE(proposal.nYes, 0);
             EXPECT_GE(proposal.nNo, 0);
@@ -1043,8 +1044,8 @@ TEST(ContractQraffle, GetFunctions)
         {
             auto activeRaffle = qraffle.getActiveTokenRaffle(i);
             EXPECT_EQ(activeRaffle.returnCode, QRAFFLE_SUCCESS);
-            EXPECT_GT(activeRaffle.token.assetName, 0);
-            EXPECT_NE(activeRaffle.token.issuer, id(0, 0, 0, 0));
+            EXPECT_GT(activeRaffle.tokenName, 0);
+            EXPECT_NE(activeRaffle.tokenIssuer, id(0, 0, 0, 0));
             EXPECT_GT(activeRaffle.entryAmount, 0);
         }
         
