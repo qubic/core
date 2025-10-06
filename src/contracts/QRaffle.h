@@ -4,9 +4,9 @@ constexpr uint64 QRAFFLE_REGISTER_AMOUNT = 1000000000ull;
 constexpr uint64 QRAFFLE_QXMR_REGISTER_AMOUNT = 100000000ull;
 constexpr uint64 QRAFFLE_MAX_QRE_AMOUNT = 1000000000ull;
 constexpr uint64 QRAFFLE_ASSET_NAME = 19505638103142993;
-constexpr uint64 QXMR_ASSET_NAME = 1380800593; // QXMR token asset name
+constexpr uint64 QRAFFLE_QXMR_ASSET_NAME = 1380800593; // QXMR token asset name
 constexpr uint32 QRAFFLE_LOGOUT_FEE = 50000000;
-constexpr uint32 QXMR_LOGOUT_FEE = 5000000; // QXMR logout fee
+constexpr uint32 QRAFFLE_QXMR_LOGOUT_FEE = 5000000; // QXMR logout fee
 constexpr uint32 QRAFFLE_TRANSFER_SHARE_FEE = 100;
 constexpr uint32 QRAFFLE_BURN_FEE = 10; // percent
 constexpr uint32 QRAFFLE_REGISTER_FEE = 5; // percent
@@ -409,7 +409,7 @@ protected:
 		if (input.useQXMR)
 		{
 			// Use QXMR tokens for registration
-			if (qpi.numberOfPossessedShares(QXMR_ASSET_NAME, state.QXMRIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < QRAFFLE_QXMR_REGISTER_AMOUNT)
+			if (qpi.numberOfPossessedShares(QRAFFLE_QXMR_ASSET_NAME, state.QXMRIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < QRAFFLE_QXMR_REGISTER_AMOUNT)
 			{
 				if (qpi.invocationReward() > 0)
 				{
@@ -422,7 +422,7 @@ protected:
 			}
 			
 			// Transfer QXMR tokens to the contract
-			if (qpi.transferShareOwnershipAndPossession(QXMR_ASSET_NAME, state.QXMRIssuer, qpi.invocator(), qpi.invocator(), QRAFFLE_QXMR_REGISTER_AMOUNT, SELF) < 0)
+			if (qpi.transferShareOwnershipAndPossession(QRAFFLE_QXMR_ASSET_NAME, state.QXMRIssuer, qpi.invocator(), qpi.invocator(), QRAFFLE_QXMR_REGISTER_AMOUNT, SELF) < 0)
 			{
 				if (qpi.invocationReward() > 0)
 				{
@@ -494,10 +494,10 @@ protected:
 				return ;
 			}
 			// Use QXMR tokens for logout
-			locals.refundAmount = QRAFFLE_QXMR_REGISTER_AMOUNT - QXMR_LOGOUT_FEE;
+			locals.refundAmount = QRAFFLE_QXMR_REGISTER_AMOUNT - QRAFFLE_QXMR_LOGOUT_FEE;
 			
 			// Check if contract has enough QXMR tokens
-			if (qpi.numberOfPossessedShares(QXMR_ASSET_NAME, state.QXMRIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX) < locals.refundAmount)
+			if (qpi.numberOfPossessedShares(QRAFFLE_QXMR_ASSET_NAME, state.QXMRIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX) < locals.refundAmount)
 			{
 				output.returnCode = QRAFFLE_INSUFFICIENT_QXMR;
 				locals.log = QRAFFLELogger{ QRAFFLE_CONTRACT_INDEX, QRAFFLELogInfo::QRAFFLE_insufficientQXMR, 0 };
@@ -506,7 +506,7 @@ protected:
 			}
 			
 			// Transfer QXMR tokens back to user
-			if (qpi.transferShareOwnershipAndPossession(QXMR_ASSET_NAME, state.QXMRIssuer, SELF, SELF, locals.refundAmount, qpi.invocator()) < 0)
+			if (qpi.transferShareOwnershipAndPossession(QRAFFLE_QXMR_ASSET_NAME, state.QXMRIssuer, SELF, SELF, locals.refundAmount, qpi.invocator()) < 0)
 			{
 				output.returnCode = QRAFFLE_INSUFFICIENT_QXMR;
 				locals.log = QRAFFLELogger{ QRAFFLE_CONTRACT_INDEX, QRAFFLELogInfo::QRAFFLE_insufficientQXMR, 0 };
@@ -514,7 +514,7 @@ protected:
 				return ;
 			}
 			
-			state.epochQXMRRevenue += QXMR_LOGOUT_FEE;
+			state.epochQXMRRevenue += QRAFFLE_QXMR_LOGOUT_FEE;
 		}
 		else
 		{
@@ -1126,7 +1126,7 @@ protected:
 		while (locals.idx != NULL_INDEX)
 		{
 			locals.shareholder = state.shareholdersList.key(locals.idx);
-			qpi.transferShareOwnershipAndPossession(QXMR_ASSET_NAME, state.QXMRIssuer, SELF, SELF, div(state.epochQXMRRevenue, 676ULL), locals.shareholder);
+			qpi.transferShareOwnershipAndPossession(QRAFFLE_QXMR_ASSET_NAME, state.QXMRIssuer, SELF, SELF, div(state.epochQXMRRevenue, 676ULL), locals.shareholder);
 			locals.idx = state.shareholdersList.nextElementIndex(locals.idx);
 		}
 		state.epochQXMRRevenue -= div(state.epochQXMRRevenue, 676ULL) * 676;

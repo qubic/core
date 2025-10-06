@@ -1171,15 +1171,15 @@ TEST(ContractQraffle, RegisterInSystemWithQXMR)
     // Issue QXMR tokens to users
     id qxmrIssuer = qraffle.getState()->getQXMRIssuer();
     increaseEnergy(qxmrIssuer, 2000000000ULL);
-    qraffle.issueAsset(qxmrIssuer, QXMR_ASSET_NAME, 10000000000000, 0, 0);
+    qraffle.issueAsset(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, 10000000000000, 0, 0);
 
     // Test successful registration with QXMR tokens
     for (const auto& user : users)
     {
         increaseEnergy(user, 1000);
         // Transfer QXMR tokens to user
-        qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
-        qraffle.TransferShareManagementRights(qxmrIssuer, QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
+        qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
+        qraffle.TransferShareManagementRights(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
         
         // Register using QXMR tokens
         auto result = qraffle.registerInSystem(user, 0, 1); // useQXMR = 1
@@ -1191,15 +1191,15 @@ TEST(ContractQraffle, RegisterInSystemWithQXMR)
     // Test insufficient QXMR tokens
     id poorUser = getUser(9999);
     increaseEnergy(poorUser, 1000);
-    qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT - 1, poorUser);
-    qraffle.TransferShareManagementRights(qxmrIssuer, QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT - 1, poorUser);
+    qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT - 1, poorUser);
+    qraffle.TransferShareManagementRights(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT - 1, poorUser);
     auto result = qraffle.registerInSystem(poorUser, 0, 1);
     EXPECT_EQ(result.returnCode, QRAFFLE_INSUFFICIENT_QXMR);
     qraffle.getState()->registerChecker(poorUser, registerCount, false);
 
     // Test already registered with QXMR
-    qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, users[0]);
-    qraffle.TransferShareManagementRights(qxmrIssuer, QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, users[0]);
+    qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, users[0]);
+    qraffle.TransferShareManagementRights(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, users[0]);
     result = qraffle.registerInSystem(users[0], 0, 1);
     EXPECT_EQ(result.returnCode, QRAFFLE_ALREADY_REGISTERED);
     qraffle.getState()->registerChecker(users[0], registerCount, true);
@@ -1215,14 +1215,14 @@ TEST(ContractQraffle, LogoutInSystemWithQXMR)
     // Issue QXMR tokens
     id qxmrIssuer = qraffle.getState()->getQXMRIssuer();
     increaseEnergy(qxmrIssuer, 2000000000ULL);
-    qraffle.issueAsset(qxmrIssuer, QXMR_ASSET_NAME, 10000000000000, 0, 0);
+    qraffle.issueAsset(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, 10000000000000, 0, 0);
 
     // Register users with QXMR tokens first
     for (const auto& user : users)
     {
         increaseEnergy(user, 1000);
-        qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
-        qraffle.TransferShareManagementRights(qxmrIssuer, QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
+        qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
+        qraffle.TransferShareManagementRights(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
         qraffle.registerInSystem(user, 0, 1);
         registerCount++;
     }
@@ -1235,8 +1235,8 @@ TEST(ContractQraffle, LogoutInSystemWithQXMR)
         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
         
         // Check that user received QXMR refund
-        uint64 expectedRefund = QRAFFLE_QXMR_REGISTER_AMOUNT - QXMR_LOGOUT_FEE;
-        EXPECT_EQ(numberOfPossessedShares(QXMR_ASSET_NAME, qxmrIssuer, user, user, QRAFFLE_CONTRACT_INDEX, QRAFFLE_CONTRACT_INDEX), expectedRefund);
+        uint64 expectedRefund = QRAFFLE_QXMR_REGISTER_AMOUNT - QRAFFLE_QXMR_LOGOUT_FEE;
+        EXPECT_EQ(numberOfPossessedShares(QRAFFLE_QXMR_ASSET_NAME, qxmrIssuer, user, user, QRAFFLE_CONTRACT_INDEX, QRAFFLE_CONTRACT_INDEX), expectedRefund);
         
         registerCount--;
         qraffle.getState()->unregisterChecker(user, registerCount);
@@ -1258,7 +1258,7 @@ TEST(ContractQraffle, MixedRegistrationAndLogout)
     // Issue QXMR tokens
     id qxmrIssuer = qraffle.getState()->getQXMRIssuer();
     increaseEnergy(qxmrIssuer, 2000000000ULL);
-    qraffle.issueAsset(qxmrIssuer, QXMR_ASSET_NAME, 10000000000000, 0, 0);
+    qraffle.issueAsset(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, 10000000000000, 0, 0);
 
     // Register some users with qubic, some with QXMR
     for (size_t i = 0; i < users.size(); ++i)
@@ -1274,8 +1274,8 @@ TEST(ContractQraffle, MixedRegistrationAndLogout)
         {
             // Register with QXMR
             increaseEnergy(users[i], 1000);
-            qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, users[i]);
-            qraffle.TransferShareManagementRights(qxmrIssuer, QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, users[i]);
+            qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, users[i]);
+            qraffle.TransferShareManagementRights(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, users[i]);
             auto result = qraffle.registerInSystem(users[i], 0, 1); // useQXMR = 1
             EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
         }
@@ -1298,8 +1298,8 @@ TEST(ContractQraffle, MixedRegistrationAndLogout)
             auto result = qraffle.logoutInSystem(users[i], 1); // useQXMR = 1
             EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
             
-            uint64 expectedRefund = QRAFFLE_QXMR_REGISTER_AMOUNT - QXMR_LOGOUT_FEE;
-            EXPECT_EQ(numberOfPossessedShares(QXMR_ASSET_NAME, qxmrIssuer, users[i], users[i], QRAFFLE_CONTRACT_INDEX, QRAFFLE_CONTRACT_INDEX), expectedRefund);
+            uint64 expectedRefund = QRAFFLE_QXMR_REGISTER_AMOUNT - QRAFFLE_QXMR_LOGOUT_FEE;
+            EXPECT_EQ(numberOfPossessedShares(QRAFFLE_QXMR_ASSET_NAME, qxmrIssuer, users[i], users[i], QRAFFLE_CONTRACT_INDEX, QRAFFLE_CONTRACT_INDEX), expectedRefund);
         }
         registerCount--;
     }
@@ -1318,7 +1318,7 @@ TEST(ContractQraffle, QXMRInvalidTokenType)
     // Issue QXMR tokens
     id qxmrIssuer = qraffle.getState()->getQXMRIssuer();
     increaseEnergy(qxmrIssuer, 2000000000ULL);
-    qraffle.issueAsset(qxmrIssuer, QXMR_ASSET_NAME, 10000000000000, 0, 0);
+    qraffle.issueAsset(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, 10000000000000, 0, 0);
 
     // Register user with qubic (token type 1)
     increaseEnergy(users[0], QRAFFLE_REGISTER_AMOUNT);
@@ -1331,8 +1331,8 @@ TEST(ContractQraffle, QXMRInvalidTokenType)
 
     // Register user with QXMR (token type 2)
     increaseEnergy(users[1], 1000);
-    qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, users[1]);
-    qraffle.TransferShareManagementRights(qxmrIssuer, QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, users[1]);
+    qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, users[1]);
+    qraffle.TransferShareManagementRights(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, users[1]);
     qraffle.registerInSystem(users[1], 0, 1);
     registerCount++;
 
@@ -1356,14 +1356,14 @@ TEST(ContractQraffle, QXMRRevenueDistribution)
     // Issue QXMR tokens
     id qxmrIssuer = qraffle.getState()->getQXMRIssuer();
     increaseEnergy(qxmrIssuer, 2000000000ULL);
-    qraffle.issueAsset(qxmrIssuer, QXMR_ASSET_NAME, 10000000000000, 0, 0);
+    qraffle.issueAsset(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, 10000000000000, 0, 0);
 
     // Register some users with QXMR to generate QXMR revenue
     for (const auto& user : users)
     {
         increaseEnergy(user, 1000);
-        qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
-        qraffle.TransferShareManagementRights(qxmrIssuer, QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
+        qraffle.transferShareOwnershipAndPossession(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, qxmrIssuer, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
+        qraffle.TransferShareManagementRights(qxmrIssuer, QRAFFLE_QXMR_ASSET_NAME, QRAFFLE_CONTRACT_INDEX, QRAFFLE_QXMR_REGISTER_AMOUNT, user);
         qraffle.registerInSystem(user, 0, 1);
         registerCount++;
     }
@@ -1374,7 +1374,7 @@ TEST(ContractQraffle, QXMRRevenueDistribution)
     {
         auto result = qraffle.logoutInSystem(users[i], 1);
         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
-        expectedQXMRRevenue += QXMR_LOGOUT_FEE;
+        expectedQXMRRevenue += QRAFFLE_QXMR_LOGOUT_FEE;
         registerCount--;
     }
 
