@@ -472,12 +472,7 @@ public:
             github_link.get(15) == 99 && // 'c'
             github_link.get(16) == 111 && // 'o'
             github_link.get(17) == 109 && // 'm'
-            github_link.get(18) == 47 && // '/'
-            github_link.get(19) == 113 && // 'q'
-            github_link.get(20) == 117 && // 'u'
-            github_link.get(21) == 98 && // 'b'
-            github_link.get(22) == 105 && // 'i'
-            github_link.get(23) == 99; // 'c'
+            github_link.get(18) == 47; // '/'
     }
 
     /**************************************/
@@ -1177,7 +1172,7 @@ public:
         output.count = 0;
         for (locals.idx = 0; locals.idx < QUTIL_MAX_POLL; locals.idx++)
         {
-            if (state.polls.get(locals.idx).is_active != 0 && state.polls.get(locals.idx).creator == input.creator)
+            if (state.polls.get(locals.idx).creator != NULL_ID && state.polls.get(locals.idx).creator == input.creator)
             {
                 output.poll_ids.set(output.count, state.poll_ids.get(locals.idx));
                 output.count++;

@@ -1162,8 +1162,8 @@ TEST(QUtilTest, CreatePoll_InvalidGithubLink) {
     id creator = generateRandomId();
     id poll_name = generateRandomId();
     uint64_t min_amount = 1000;
-    // Invalid GitHub link (does not start with "https://github.com/qubic")
-    Array<uint8, 256> invalid_github_link = stringToArray("https://github.com/invalidorg/proposal/abc");
+    // Invalid GitHub link (does not start with "https://github.com/")
+    Array<uint8, 256> invalid_github_link = stringToArray("https://gitlab.com/invalidlink/proposal/abc");
     uint64_t poll_type = QUTIL_POLL_TYPE_QUBIC;
 
     QUTIL::CreatePoll_input input;
