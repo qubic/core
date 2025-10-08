@@ -193,6 +193,8 @@ public:
         struct TableEntry
         {
             sint64 epoch;
+            sint64 totalStakedQBond;
+            sint64 totalStakedQEarn;
             uint64 apy;
         };
         Array<TableEntry, 512> info;
@@ -1093,6 +1095,8 @@ protected:
                 locals.tempInput.Epoch = (uint32) locals.epoch;
                 CALL_OTHER_CONTRACT_FUNCTION(QEARN, getLockInfoPerEpoch, locals.tempInput, locals.tempOutput);
                 locals.tempTableEntry.epoch = locals.epoch;
+                locals.tempTableEntry.totalStakedQBond = locals.tempMBondInfo.totalStaked * QBOND_MBOND_PRICE;
+                locals.tempTableEntry.totalStakedQEarn = locals.tempOutput.currentLockedAmount;
                 locals.tempTableEntry.apy = locals.tempOutput.yield;
                 output.info.set(locals.index, locals.tempTableEntry);
                 locals.index++;
