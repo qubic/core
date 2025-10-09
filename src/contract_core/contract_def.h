@@ -318,7 +318,7 @@ constexpr struct ContractDescription
     {"QDRAW", 179, 10000, sizeof(QDRAW)}, // proposal in epoch 177, IPO in 178, construction and first use in 179
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
-    {"TESTEXA", 138, 10000, sizeof(IPO)},
+    {"TESTEXA", 138, 10000, sizeof(TESTEXA)},
     {"TESTEXB", 138, 10000, sizeof(IPO)},
     {"TESTEXC", 138, 10000, sizeof(IPO)},
     {"TESTEXD", 155, 10000, sizeof(IPO)},

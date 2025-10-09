@@ -1,5 +1,7 @@
 using namespace QPI;
 
+constexpr uint64 TESTEXA_ASSET_NAME = 18392928276923732;
+
 struct TESTEXA2
 {
 };
@@ -425,6 +427,309 @@ protected:
 	}
 
 	//---------------------------------------------------------------
+	// SHAREHOLDER PROPOSALS WITH COMPACT STORAGE (OPTIONS: NO/YES)
+
+public:
+	// Proposal data type. We only support yes/no voting.
+	typedef ProposalDataYesNo ProposalDataT;
+
+	// MultiVariables proposal option data type, which is custom per contract
+	struct MultiVariablesProposalExtraData
+	{
+		struct Option
+		{
+			uint64 dummyStateVariable1;
+			uint32 dummyStateVariable2;
+			sint8 dummyStateVariable3;
+		};
+
+		Option optionYesValues;
+		bool hasValueDummyStateVariable1;
+		bool hasValueDummyStateVariable2;
+		bool hasValueDummyStateVariable3;
+
+		bool isValid() const
+		{
+			return hasValueDummyStateVariable1 || hasValueDummyStateVariable2 || hasValueDummyStateVariable3;
+		}
+	};
+
+	struct SetShareholderProposal_input
+	{
+		ProposalDataT proposalData;
+		MultiVariablesProposalExtraData multiVarData; // may be skipped when sending TX if not MultiVariables proposal
+	};
+	struct SetShareholderProposal_output
+	{
+		uint16 proposalIndex;
+		bit success;
+	};
+
+	PUBLIC_PROCEDURE(SetShareholderProposal)
+	{
+		// - fee can be handled as you like
+		// - input.proposalData.epoch == 0 means clearing a proposal
+
+		// default return code: failure
+		output.proposalIndex = INVALID_PROPOSAL_INDEX;
+
+		// custom checks
+		switch (ProposalTypes::cls(input.proposalData.type))
+		{
+		case ProposalTypes::Class::MultiVariables:
+			// check input
+			if (!input.multiVarData.isValid())
+				return;
+
+			// check that proposed values are in valid range
+			if (input.multiVarData.hasValueDummyStateVariable1 && input.multiVarData.optionYesValues.dummyStateVariable1 > 1000000000000llu)
+				return;
+			if (input.multiVarData.hasValueDummyStateVariable2 && input.multiVarData.optionYesValues.dummyStateVariable2 > 1000000llu)
+				return;
+			if (input.multiVarData.hasValueDummyStateVariable3 && (input.multiVarData.optionYesValues.dummyStateVariable3 > 100 || input.multiVarData.optionYesValues.dummyStateVariable3 < -100))
+				return;
+
+			// find empty slot
+			input.proposalData.multiVariablesOptions.dataRefIdx = 0;
+			while (input.proposalData.multiVariablesOptions.dataRefIdx < state.multiVariablesProposalData.capacity())
+			{
+				if (!state.multiVariablesProposalData.get(input.proposalData.multiVariablesOptions.dataRefIdx).isValid())
+					break;
+				++input.proposalData.multiVariablesOptions.dataRefIdx;
+			}
+
+			break;
+
+		case ProposalTypes::Class::Variable:
+			// check that variable index is in valid range
+			if (input.proposalData.variableOptions.variable >= 3)
+				return;
+
+			// check that proposed value is in valid range
+			if (input.proposalData.variableOptions.variable == 0 && input.proposalData.variableOptions.value > 1000000000000llu)
+				return;
+			if (input.proposalData.variableOptions.variable == 1 && input.proposalData.variableOptions.value > 1000000llu)
+				return;
+			if (input.proposalData.variableOptions.variable == 2 && (input.proposalData.variableOptions.value > 100 || input.proposalData.variableOptions.value < -100))
+				return;
+
+			break;
+
+		case ProposalTypes::Class::GeneralOptions:
+			// allow without check
+			break;
+
+		default:
+			// this forbids other proposals including transfers and all future propsals classes not implemented yet
+			return;
+		}
+
+		// Try to set proposal (checks invocator's rights and general validity of input proposal), returns success as boolean
+		output.proposalIndex = qpi(state.proposals).setProposal(qpi.invocator(), input.proposalData);
+		output.success = (output.proposalIndex != INVALID_PROPOSAL_INDEX);
+
+		if (output.success)
+		{
+			// success
+			if (ProposalTypes::cls(input.proposalData.type) == ProposalTypes::Class::MultiVariables)
+			{
+				// store custom data of multi-variable proposal in array
+				state.multiVariablesProposalData.set(input.proposalData.multiVariablesOptions.dataRefIdx, input.multiVarData);
+			}
+		}
+	}
+
+	typedef ProposalMultiVoteDataV1 SetShareholderVotes_input;
+	typedef bit SetShareholderVotes_output;
+
+	PUBLIC_PROCEDURE(SetShareholderVotes)
+	{
+		// - fee can be handled as you like
+
+		output = qpi(state.proposals).vote(qpi.invocator(), input);
+	}
+
+	struct END_EPOCH_locals
+	{
+		sint32 proposalIndex;
+		ProposalDataT proposal;
+		ProposalSummarizedVotingDataV1 results;
+		MultiVariablesProposalExtraData multiVarData;
+	};
+
+	END_EPOCH_WITH_LOCALS()
+	{
+		// Analyze proposal results and set variables
+
+		// Iterate all proposals that were open for voting in this epoch ...
+		locals.proposalIndex = -1;
+		while ((locals.proposalIndex = qpi(state.proposals).nextProposalIndex(locals.proposalIndex, qpi.epoch())) >= 0)
+		{
+			if (!qpi(state.proposals).getProposal(locals.proposalIndex, locals.proposal))
+				continue;
+
+			// handle Variable proposal type
+			if (ProposalTypes::cls(locals.proposal.type) == ProposalTypes::Class::Variable)
+			{
+				// Get voting results and check if conditions for proposal acceptance are met
+				if (!qpi(state.proposals).getVotingSummary(locals.proposalIndex, locals.results))
+					continue;
+
+				// The total number of votes needs to be at least the quorum
+				if (locals.results.totalVotesCasted < QUORUM)
+					continue;
+
+				// The Yes option (1) must have more votes than the N option (0)
+				if (locals.results.optionVoteCount.get(1) > locals.results.optionVoteCount.get(0))
+				{
+					if (locals.proposal.variableOptions.variable == 0)
+						state.dummyStateVariable1 = uint64(locals.proposal.variableOptions.value);
+					if (locals.proposal.variableOptions.variable == 1)
+						state.dummyStateVariable2 = uint32(locals.proposal.variableOptions.value);
+					if (locals.proposal.variableOptions.variable == 2)
+						state.dummyStateVariable3 = sint8(locals.proposal.variableOptions.value);
+				}
+			}
+
+			// handle MultiVariables proposal type
+			if (ProposalTypes::cls(locals.proposal.type) == ProposalTypes::Class::MultiVariables)
+			{
+				// Get voting results and check if conditions for proposal acceptance are met
+				if (!qpi(state.proposals).getVotingSummary(locals.proposalIndex, locals.results))
+					continue;
+
+				// The total number of votes needs to be at least the quorum
+				if (locals.results.totalVotesCasted < QUORUM)
+					continue;
+
+				// The Yes option (1) must have more votes than the N option (0)
+				if (locals.results.optionVoteCount.get(1) > locals.results.optionVoteCount.get(0))
+				{
+					locals.multiVarData = state.multiVariablesProposalData.get(locals.proposal.multiVariablesOptions.dataRefIdx);
+
+					if (locals.multiVarData.hasValueDummyStateVariable1)
+						state.dummyStateVariable1 = locals.multiVarData.optionYesValues.dummyStateVariable1;
+					if (locals.multiVarData.hasValueDummyStateVariable2)
+						state.dummyStateVariable2 = locals.multiVarData.optionYesValues.dummyStateVariable2;
+					if (locals.multiVarData.hasValueDummyStateVariable3)
+						state.dummyStateVariable3 = locals.multiVarData.optionYesValues.dummyStateVariable3;
+
+					// clear multi-variable data in array
+					setMemory(locals.multiVarData, 0);
+					state.multiVariablesProposalData.set(locals.proposal.multiVariablesOptions.dataRefIdx, locals.multiVarData);
+				}
+			}
+		}
+	}
+
+	struct GetShareholderProposalIndices_input
+	{
+		bit activeProposals;		// Set true to return indices of active proposals, false for proposals of prior epochs
+		sint32 prevProposalIndex;   // Set -1 to start getting indices. If returned index array is full, call again with highest index returned.
+	};
+	struct GetShareholderProposalIndices_output
+	{
+		uint16 numOfIndices;		// Number of valid entries in indices. Call again if it is 64.
+		Array<uint16, 64> indices;	// Requested proposal indices. Valid entries are in range 0 ... (numOfIndices - 1).
+	};
+
+	PUBLIC_FUNCTION(GetShareholderProposalIndices)
+	{
+		if (input.activeProposals)
+		{
+			// Return proposals that are open for voting in current epoch
+			// (output is initalized with zeros by contract system)
+			while ((input.prevProposalIndex = qpi(state.proposals).nextProposalIndex(input.prevProposalIndex, qpi.epoch())) >= 0)
+			{
+				output.indices.set(output.numOfIndices, input.prevProposalIndex);
+				++output.numOfIndices;
+
+				if (output.numOfIndices == output.indices.capacity())
+					break;
+			}
+		}
+		else
+		{
+			// Return proposals of previous epochs not overwritten yet
+			// (output is initalized with zeros by contract system)
+			while ((input.prevProposalIndex = qpi(state.proposals).nextFinishedProposalIndex(input.prevProposalIndex)) >= 0)
+			{
+				output.indices.set(output.numOfIndices, input.prevProposalIndex);
+				++output.numOfIndices;
+
+				if (output.numOfIndices == output.indices.capacity())
+					break;
+			}
+		}
+	}
+
+
+	struct GetShareholderProposal_input
+	{
+		uint16 proposalIndex;
+	};
+	struct GetShareholderProposal_output
+	{
+		ProposalDataT proposal;
+		id proposerPubicKey;
+	};
+
+	PUBLIC_FUNCTION(GetShareholderProposal)
+	{
+		// On error, output.proposal.type is set to 0
+		output.proposerPubicKey = qpi(state.proposals).proposerId(input.proposalIndex);
+		qpi(state.proposals).getProposal(input.proposalIndex, output.proposal);
+	}
+
+	struct GetShareholderVotes_input
+	{
+		id voter;
+		uint16 proposalIndex;
+	};
+	typedef ProposalMultiVoteDataV1 GetShareholderVotes_output;
+
+	PUBLIC_FUNCTION(GetShareholderVotes)
+	{
+		// On error, output.votes.proposalType is set to 0
+		qpi(state.proposals).getVotes(
+			input.proposalIndex,
+			input.voter,
+			output);
+	}
+
+
+	struct GetShareholderVotingResults_input
+	{
+		uint16 proposalIndex;
+	};
+	typedef ProposalSummarizedVotingDataV1 GetShareholderVotingResults_output;
+
+	PUBLIC_FUNCTION(GetShareholderVotingResults)
+	{
+		// On error, output.totalVotesAuthorized is set to 0
+		qpi(state.proposals).getVotingSummary(
+			input.proposalIndex, output);
+	}
+
+protected:
+	// Variables that can be set with proposals
+	uint64 dummyStateVariable1;
+	uint32 dummyStateVariable2;
+	sint8 dummyStateVariable3;
+
+	// Shareholders of TESTEXA have right to propose and vote. Only 16 slots provided.
+	typedef ProposalAndVotingByShareholders<16, TESTEXA_ASSET_NAME> ProposersAndVotersT;
+
+	// Proposal and voting storage type
+	typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT;
+
+	// Proposal storage
+	ProposalVotingT proposals;
+
+	// MultiVariables proposal option data storage
+	Array<MultiVariablesProposalExtraData, 16> multiVariablesProposalData;
+
+	//---------------------------------------------------------------
 	// COMMON PARTS
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
@@ -443,5 +748,15 @@ protected:
 		REGISTER_USER_PROCEDURE(AcquireShareManagementRights, 6);
 		REGISTER_USER_PROCEDURE(QueryQpiFunctionsToState, 7);
 		REGISTER_USER_PROCEDURE(RunHeavyComputation, 8);
+
+		// Shareholder proposals: use standard function/proposal indices
+		REGISTER_USER_FUNCTION(GetShareholderProposalIndices, 65532);
+		REGISTER_USER_FUNCTION(GetShareholderProposal, 65533);
+		REGISTER_USER_FUNCTION(GetShareholderVotes, 65534);
+		REGISTER_USER_FUNCTION(GetShareholderVotingResults, 65535);
+
+		REGISTER_USER_PROCEDURE(SetShareholderProposal, 65534);
+		REGISTER_USER_PROCEDURE(SetShareholderVotes, 65535);
+
 	}
 };
