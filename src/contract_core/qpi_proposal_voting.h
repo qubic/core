@@ -170,14 +170,14 @@ namespace QPI
 					// and move iterations)
 					const id& possessor = iter.possessor();
 					int idx = lastShareholderIdx;
-					while (idx >= 0 && possessor < shareholders[idx].possessor)
+					while (idx >= 0 && !(shareholders[idx].possessor < possessor))
 					{
 						--idx;
 					}
 					++idx;
 
 					// update array: idx is the position to insert at with ID[idx] >= NewID
-					if (idx < lastShareholderIdx && shareholders[idx].possessor == possessor)
+					if (idx <= lastShareholderIdx && shareholders[idx].possessor == possessor)
 					{
 						// possessor is already in array -> increase number of shares
 						shareholders[idx].shares += iter.numberOfPossessedShares();
@@ -331,15 +331,6 @@ namespace QPI
 			return currentProposalShareholders[proposalIndex][voterIndex];
 		}
 
-		// 1 Shareholder-ID kann N votes haben!!!
-		// Stimmrechte werden bei Erstellung des Proposals zugeordnet, Verkaufen von Shares hat keinen Einfluss
-
-		// ProposalSingleVoteDataV2 wird superset von V1 für mehrere Votes
-		// ProposalSingleVoteDataV1 (neue Felder von V2 = 0) setzt alle votes
-
-
-
-		// Vote-Content für Var-Set wird in contract gespeichert: -> var set options idx in proposal
 
 	protected:
 		// needs to be initialized with zeros
@@ -665,24 +656,16 @@ namespace QPI
 		unsigned int voteCount = pv.proposersAndVoters.getVoteCount(qpi, voterIndex, vote.proposalIndex);
 		ASSERT(voteCount >= 1);
 
-		if (voteCount == 1)
+		// Set vote value(s) (shareholder has one vote per share / computor has one vote only)
+		bool okay = true;
+		for (unsigned int i = 0; i < voteCount; ++i)
 		{
-			// Set single vote value (checking that voter index and value are valid)
-			return proposal.setVoteValue(voterIndex, vote.voteValue);
+			// Set vote value (checking that voter index and value are valid)
+			okay = proposal.setVoteValue(voterIndex + i, vote.voteValue);
+			if (!okay)
+				break;
 		}
-		else
-		{
-			// Set multiple vote values (shareholder has multiple votes)
-			bool okay = true;
-			for (unsigned int i = 0; i < voteCount; ++i)
-			{
-				// Set vote value (checking that voter index and value are valid)
-				okay = proposal.setVoteValue(voterIndex + i, vote.voteValue);
-				if (!okay)
-					break;
-			}
-			return okay;
-		}
+		return okay;
 	}
 
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
@@ -826,7 +809,7 @@ namespace QPI
 		if (proposalIndex >= pv.maxProposals || !pv.proposals[proposalIndex].epoch)
 			return false;
 
-		auto& proposal = pv.proposals[votes.proposalIndex];
+		auto& proposal = pv.proposals[proposalIndex];
 
 		// Return first voter index (which may be INVALID_VOTER_INDEX if voter has no right to vote)
 		unsigned int voterIndexBegin = pv.proposersAndVoters.getVoterIndex(qpi, voter, proposalIndex);
@@ -847,19 +830,24 @@ namespace QPI
 			uint32 voteValueIdx = 0, uniqueVoteValues = 0;
 			QPI::HashMap<sint64, uint32, 16> valueIdx;
 			valueIdx.reset();
+			votes.voteValues.setAll(0);
+			votes.voteCounts.setAll(0);
 			for (; voterIndex < voterIndexEnd; ++voterIndex)
 			{
 				sint64 voteValue = proposal.getVoteValue(voterIndex);
-				if (!valueIdx.get(voteValue, voteValueIdx))
+				if (voteValue != NO_VOTE_VALUE)
 				{
-					voteValueIdx = uniqueVoteValues;
-					if (voteValueIdx >= votes.voteValues.capacity())
-						return false;
-					valueIdx.set(voteValue, voteValueIdx);
-					votes.voteValues.set(voteValueIdx, voteValue);
-					++uniqueVoteValues;
+					if (!valueIdx.get(voteValue, voteValueIdx))
+					{
+						voteValueIdx = uniqueVoteValues;
+						if (voteValueIdx >= votes.voteValues.capacity())
+							return false;
+						valueIdx.set(voteValue, voteValueIdx);
+						votes.voteValues.set(voteValueIdx, voteValue);
+						++uniqueVoteValues;
+					}
+					votes.voteCounts.set(voteValueIdx, votes.voteCounts.get(voteValueIdx) + 1);
 				}
-				votes.voteCounts.set(voteValueIdx, votes.voteCounts.get(voteValueIdx) + 1);
 			}
 		}
 		else
@@ -1063,7 +1051,7 @@ namespace QPI
 		uint16 proposalIndex
 	) const
 	{
-		return pv.proposersAndVoters.voteCount(qpi, voterIndex, proposalIndex);
+		return pv.proposersAndVoters.getVoteCount(qpi, voterIndex, proposalIndex);
 	}
 
 	// Return next proposal index of proposals of given epoch (default: current epoch)
