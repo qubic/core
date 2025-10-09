@@ -202,7 +202,7 @@ static inline void checkContractExecCleanup()
 }
 
 // Issue contract shares and transfer ownership/possession of all shares to one entity
-static inline void issueContractShares(unsigned int contractIndex, std::vector<std::pair<m256i, unsigned int>>& initialOwnerShares)
+static inline void issueContractShares(unsigned int contractIndex, std::vector<std::pair<m256i, unsigned int>>& initialOwnerShares, bool warnOnTooFewShares = true)
 {
     int issuanceIndex, ownershipIndex, possessionIndex, dstOwnershipIndex, dstPossessionIndex;
     EXPECT_EQ(issueAsset(m256i::zero(), (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex), NUMBER_OF_COMPUTORS);
@@ -213,7 +213,8 @@ static inline void issueContractShares(unsigned int contractIndex, std::vector<s
     EXPECT_LE(totalShareCount, NUMBER_OF_COMPUTORS);
     if (totalShareCount < NUMBER_OF_COMPUTORS)
     {
-        std::cout << "Warning: issueContractShares() called with " << NUMBER_OF_COMPUTORS - totalShareCount << " less then expected shares, adding remaining shares to first owner." << std::endl;
+        if (warnOnTooFewShares)
+            std::cout << "Warning: issueContractShares() called with " << NUMBER_OF_COMPUTORS - totalShareCount << " less then expected shares, adding remaining shares to first owner." << std::endl;
         initialOwnerShares[0].second += NUMBER_OF_COMPUTORS - totalShareCount;
     }
 
