@@ -26,6 +26,10 @@
 #define CreateEvent CreateEvent
 #include "platform/console_logging.h"
 
+//////////// Go Behind Testnet Trick \\\\\\\\
+
+static inline bool isTestnetGoBehindTrick = false;
+
 //////////// Tick Delay Feature \\\\\\\\\\\\\
 
 static inline unsigned long long tickDelay = 0;
