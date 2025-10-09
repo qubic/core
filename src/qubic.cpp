@@ -5120,7 +5120,7 @@ static void tickProcessor(void*, unsigned long long processorNumber)
 #else
             // We must go behind network 1 tick, so do nothing here
             // Except for last tick in epoch
-            if (isLastTickInEpoch()) {
+            if (isLastTickInEpoch() && !targetNextTickDataDigestIsKnown) {
                 findNextTickDataDigestFromCurrentTickVotes();
             }
 #endif
