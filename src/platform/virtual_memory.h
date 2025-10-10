@@ -9,6 +9,7 @@
 #include "four_q.h"
 #include "kangaroo_twelve.h"
 
+#include <thread>
 
 template <class T>
 inline constexpr const T& max(const T& left, const T& right)
@@ -892,12 +893,11 @@ public:
         int cache_page_idx = loadPageToCacheAndTryToPersist(requested_page_id);
         if (cache_page_idx == -1)
         {
-#if !defined(NDEBUG)
-            addDebugMessage(L"Invalid cache page index, return zeroes array");
-#endif
-            setMem(&empty, sizeof(T), 0);
-            RELEASE(memLock);
-            return empty;
+            setText(message, L"Fatal Error: Invalid cache page index | Line ");
+            appendNumber(message, __LINE__, true);
+            logToConsole(message);
+            // Exit program
+            exit(1);
         }
         T& resultRef = cache[cache_page_idx][index % pageCapacity];
         RELEASE(memLock);
@@ -917,11 +917,11 @@ public:
         int cache_page_idx = loadPageToCacheAndTryToPersist(requested_page_id);
         if (cache_page_idx == -1)
         {
-#if !defined(NDEBUG)
-            addDebugMessage(L"Invalid cache page index, return zeroes array");
-#endif
-            RELEASE(memLock);
-            return result;
+            setText(message, L"Fatal Error: Invalid cache page index | Line ");
+            appendNumber(message, __LINE__, true);
+            logToConsole(message);
+            // Exit program
+            exit(1);
         }
         result = &cache[cache_page_idx][index % pageCapacity];
         RELEASE(memLock);
@@ -941,11 +941,11 @@ public:
         int cache_page_idx = loadPageToCacheAndTryToPersist(pageId);
         if (cache_page_idx == -1)
         {
-#if !defined(NDEBUG)
-            addDebugMessage(L"Invalid cache page index, return zeroes array");
-#endif
-            RELEASE(memLock);
-            return result;
+            setText(message, L"Fatal Error: Invalid cache page index | Line ");
+            appendNumber(message, __LINE__, true);
+            logToConsole(message);
+            // Exit program
+            exit(1);
         }
 
         // To avoid cross page access, if the remaining bytes in this page is less than maxBytesPerElement,
