@@ -1197,6 +1197,7 @@ static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
 {
     RequestTickData* request = header->getPayload<RequestTickData>();
     // SWAP: we need atomic here to avoid flush the page while another thread is writing to it
+    ts.tickData.acquireLock();
     TickData* td = ts.tickData.getByTickIfNotEmpty(request->requestedTickData.tick);
     if (td)
     {
@@ -1206,6 +1207,7 @@ static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
     {
         enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
     }
+    ts.tickData.releaseLock();
 }
 
 static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* header)
@@ -4950,7 +4952,6 @@ static bool isTickTimeOut()
 
 void reprocessSolutionTransaction(unsigned long long processorNumber)
 {
-    TickData *currentTickData = ts.tickData.getByTickIfNotEmpty(system.tick);
     auto tsCurrentTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(system.tick);
 
     unsigned long long solutionProcessStartTick = __rdtsc(); // for tracking the time processing solutions
@@ -5004,6 +5005,8 @@ void reprocessSolutionTransaction(unsigned long long processorNumber)
 
     solutionTotalExecutionTicks = __rdtsc() - solutionProcessStartTick; // for tracking the time processing solutions
 
+    ts.tickData.acquireLock();
+    TickData *currentTickData = ts.tickData.getByTickIfNotEmpty(system.tick);
     for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
     {
         if (!isZero(currentTickData->transactionDigests[transactionIndex]))
@@ -5045,6 +5048,7 @@ void reprocessSolutionTransaction(unsigned long long processorNumber)
             }
         }
     }
+    ts.tickData.releaseLock();
 }
 
 // Disabling the optimizer for tickProcessor() is a workaround introduced to solve an issue
@@ -5360,8 +5364,10 @@ static void tickProcessor(void*, unsigned long long processorNumber)
                 {
                     // This node has all required transactions
                     requestedTickTransactions.requestedTickTransactions.tick = 0;
-
-                    if (ts.tickData[currentTickIndex].epoch == system.epoch)
+                    ts.tickData.acquireLock();
+                    bool isCurrentTickDataValid = (ts.tickData[currentTickIndex].epoch == system.epoch);
+                    ts.tickData.releaseLock();
+                    if (isCurrentTickDataValid)
                     {
                         KangarooTwelve(&ts.tickData[currentTickIndex], sizeof(TickData), &etalonTick.transactionDigest, 32);
                     }
@@ -6442,6 +6448,7 @@ static void logInfo()
         appendNumber(message, numberOfNextTickTransactions, TRUE);
     }
     appendText(message, L" next tick transactions are known. ");
+    ts.tickData.acquireLock();
     const TickData& td = ts.tickData.getByTickInCurrentEpoch(system.tick + 1);
     if (td.epoch == system.epoch)
     {
@@ -6469,6 +6476,7 @@ static void logInfo()
         appendNumber(message, td.millisecond % 10, FALSE);
         appendText(message, L".) ");
     }
+    ts.tickData.releaseLock();
     appendNumber(message, numberOfPendingTransactions, TRUE);
     appendText(message, L" pending transactions.");
     logToConsole(message);
@@ -7461,7 +7469,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         pushToAnyFullNode(&requestedQuorumTick.header);
                     }
                     futureTickRequestingIndicator = gFutureTickTotalNumberOfComputors;
-
+                    ts.tickData.acquireLock();
                     if ((ts.tickData[system.tick + 1 - system.initialTick].epoch != system.epoch
                         || targetNextTickDataDigestIsKnown)
                         && isNewTickPlus1)
@@ -7482,6 +7490,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         pushToAny(&requestedTickData.header);
                         pushToAnyFullNode(&requestedTickData.header);
                     }
+                    ts.tickData.releaseLock();
 
                     if (requestedTickTransactions.requestedTickTransactions.tick)
                     {

@@ -758,7 +758,7 @@ private:
         CHAR16 pageName[64];
         generatePageName(pageName, pageId);
         cache_page_id = getMostOutdatedCachePageExceptCurrentPage();
-        if (cachePageId[cache_page_id] != INVALID_PAGE_ID && !isPageWrittenToDisk[cachePageId[cache_page_id]])
+        if (cachePageId[cache_page_id] != INVALID_PAGE_ID)
         {
             writePageToDisk(cachePageId[cache_page_id]);
         }
@@ -1104,8 +1104,20 @@ public:
         return cache[cacheIndex];
     }
 
+    T* getCacheBuffer(unsigned long long cacheId) {
+        if (cacheId > numCachePage) {
+            return nullptr;
+        }
+        return cache[cacheId];
+    }
+
     T* getExtraBuffer(unsigned long long pageId) {
         return &pageExtraBytesBuffer[pageId];
+    }
+
+    unsigned long long getPageSize()
+    {
+        return pageSize;
     }
 
     const T* getCurrentPagePtr()

@@ -423,3 +423,33 @@ TEST(TestSwapVirtualMemory, TestSwapVirtualMemory_OffsetModeRandomAccess) {
         EXPECT_TRUE(*entry == it.second);
     }
 }
+
+TEST(TestSwapVirtualMemory, TestSwapVirtualMemory_TestCacheBuffer)
+{
+    initFilesystem();
+    registerAsynFileIO(NULL);
+
+    {
+        SwapVirtualMemory<Transaction, wcharToNumber(L"cach"), wcharToNumber(L"data"), 1024 * 1024, 64, INDEX_MODE, 0> test_vm;
+        test_vm.init();
+
+        for (int i = 0; i < 64; i++)
+        {
+            Transaction *tx = test_vm.getCacheBuffer(i);
+            EXPECT_TRUE(tx != nullptr);
+            EXPECT_TRUE((uint64_t)tx == (uint64_t)test_vm.getCacheBuffer(0) + i * sizeof(Transaction) * 1024 * 1024);
+        }
+    }
+
+    {
+        SwapVirtualMemory<Transaction, wcharToNumber(L"cach"), wcharToNumber(L"data"), 1024 * 1024, 64, OFFSET_MODE, 64> test_vm;
+        test_vm.init();
+        EXPECT_TRUE(test_vm.getPageSize() == (1024 * 1024 * (sizeof(Transaction) + 64)));
+        for (int i = 0; i < 64; i++)
+        {
+            Transaction *tx = test_vm.getCacheBuffer(i);
+            EXPECT_TRUE(tx != nullptr);
+            EXPECT_TRUE((uint64_t)tx == (uint64_t)test_vm.getCacheBuffer(0) + i * test_vm.getPageSize());
+        }
+    }
+}
