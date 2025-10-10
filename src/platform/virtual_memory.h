@@ -9,8 +9,6 @@
 #include "four_q.h"
 #include "kangaroo_twelve.h"
 
-#include <thread>
-
 template <class T>
 inline constexpr const T& max(const T& left, const T& right)
 {

@@ -1005,6 +1005,15 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                             {
                                 copyMem(&td, &request->tickData, sizeof(TickData));
                                 peer->lastActiveTick = max(peer->lastActiveTick, peer->getDejavuTick(header->dejavu()));
+
+                                if (memcmp(&td, &request->tickData, sizeof(TickData)) != 0)
+                                {
+                                    while (true)
+                                    {
+                                        logToConsole(L"Error: memcpy failed in processBroadcastFutureTickData\n");
+                                        bs->Stall(1'000'000);
+                                    }
+                                }
                             }
                         }
                     }
@@ -5131,6 +5140,16 @@ static void tickProcessor(void*, unsigned long long processorNumber)
 
             ts.tickData.acquireLock();
             copyMem(&nextTickData, &ts.tickData[nextTickIndex], sizeof(TickData));
+            if (nextTickData.tick != nextTick)
+            {
+                while (true)
+                {
+                    setText(message, L"Fatal Error: nextTickData.tick != nextTick | Line ");
+                    appendNumber(message, __LINE__, true);
+                    logToConsole(message);
+                    bs->Stall(1'000'000);
+                }
+            }
             ts.tickData.releaseLock();
 
             // This time lock ensures tickData is crafted 2 ticks "ago"
