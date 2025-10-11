@@ -17,6 +17,10 @@
 #include <stdint.h>
 #include <sys/mman.h>
 #include <map>
+#else
+#include <Windows.h>
+#include <conio.h>
+#include <map>
 #endif
 
 void setMem(void* buffer, unsigned long long size, unsigned char value)
@@ -74,22 +78,22 @@ bool isMainProcessor() {
 inline std::map<unsigned long long, bool> commitMemMap;
 
 #ifdef _MSC_VER
-inline void* qVirtualAlloc(const unsigned long long size, bool commitMem = false) {
+void* qVirtualAlloc(const unsigned long long size, bool commitMem = false) {
     void *addr = VirtualAlloc(NULL, (SIZE_T)size, MEM_RESERVE | (commitMem ? MEM_COMMIT : 0), PAGE_READWRITE);
     if (addr != nullptr)
     {
         commitMemMap[(unsigned long long)addr] = commitMem;
         return addr;
     }
-    logToConsole("CRITIAL: VirtualAlloc failed in qVirtualAlloc");
+    printf("CRITIAL: VirtualAlloc failed in qVirtualAlloc");
     return nullptr;
 }
 
-inline void* qVirtualCommit(void* address, const unsigned long long size) {
+void* qVirtualCommit(void* address, const unsigned long long size) {
 	return VirtualAlloc(address, (SIZE_T)size, MEM_COMMIT, PAGE_READWRITE);
 }
 
-inline bool qVirtualFreeAndRecommit(void* address, const unsigned long long size) {
+bool qVirtualFreeAndRecommit(void* address, const unsigned long long size) {
     VirtualFree(address, (SIZE_T)size, MEM_DECOMMIT);
     bool commitMem = commitMemMap[(unsigned long long)address];
 	if (!commitMem) {
