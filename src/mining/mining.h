@@ -432,20 +432,23 @@ public:
 #ifdef NO_UEFI
 #else
     /// Save custom mining share cache to file
-    void save(CHAR16* filename, CHAR16* directory = NULL)
+    bool save(CHAR16* filename, CHAR16* directory = NULL)
     {
+        bool success = false;
         const unsigned long long beginningTick = __rdtsc();
         ACQUIRE(lock);
         long long savedSize = ::save(filename, sizeof(cache), (unsigned char*)cache, directory);
         RELEASE(lock);
         if (savedSize == sizeof(cache))
         {
+            success = true;
             setNumber(message, savedSize, TRUE);
             appendText(message, L" bytes of the custom mining cache data are saved (");
             appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
             appendText(message, L" microseconds).");
             logToConsole(message);
         }
+        return success;
     }
 
     /// Try to load custom mining share cache file
@@ -1243,13 +1246,14 @@ static int customMiningDeinitialize()
 #ifdef NO_UEFI
 #else
 // Save score cache to SCORE_CACHE_FILE_NAME
-static void saveCustomMiningCache(int epoch, CHAR16* directory = NULL)
+static bool saveCustomMiningCache(int epoch, CHAR16* directory = NULL)
 {
     logToConsole(L"Saving custom mining cache file...");
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
     CUSTOM_MINING_CACHE_FILE_NAME[sizeof(CUSTOM_MINING_CACHE_FILE_NAME) / sizeof(CUSTOM_MINING_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
-    gSystemCustomMiningSolutionV2Cache.save(CUSTOM_MINING_CACHE_FILE_NAME, directory);
+    bool suceess = gSystemCustomMiningSolutionV2Cache.save(CUSTOM_MINING_CACHE_FILE_NAME, directory);
+    return suceess;
 }
 
 // Update score cache filename with epoch and try to load file

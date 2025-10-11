@@ -112,22 +112,24 @@ public:
     }
 
     /// Save score cache to file
-    void save(CHAR16* filename, CHAR16* directory = NULL)
+    bool save(CHAR16* filename, CHAR16* directory = NULL)
     {
         logToConsole(L"Saving score cache file...");
-
+        bool success = false;
         const unsigned long long beginningTick = __rdtsc();
         ACQUIRE(lock);
         long long savedSize = ::save(filename, sizeof(cache), (unsigned char*)cache, directory);
         RELEASE(lock);
         if (savedSize == sizeof(cache))
         {
+            success = true;
             setNumber(message, savedSize, TRUE);
             appendText(message, L" bytes of the score cache data are saved (");
             appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
             appendText(message, L" microseconds).");
             logToConsole(message);
         }
+        return success;
     }
 
     /// Try to load score cache file
