@@ -5140,7 +5140,7 @@ static void tickProcessor(void*, unsigned long long processorNumber)
 
             ts.tickData.acquireLock();
             copyMem(&nextTickData, &ts.tickData[nextTickIndex], sizeof(TickData));
-            if (nextTickData.tick != nextTick)
+            if (nextTickData.epoch == system.epoch && nextTickData.tick != nextTick)
             {
                 while (true)
                 {
