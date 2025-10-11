@@ -3798,13 +3798,6 @@ static bool saveAllNodeStates()
         return false;
     }
 
-    setText(message, L"Saving tick storage ");
-    logToConsole(message);
-    if (ts.trySaveToFile(system.epoch, system.tick, directory) != 0)
-    {
-        logToConsole(L"Failed to save tick storage");
-        return false;
-    }
 
 #if ADDON_TX_STATUS_REQUEST
     if (!saveStateTxStatus(numberOfTransactions, directory))
@@ -3814,8 +3807,21 @@ static bool saveAllNodeStates()
     }
 #endif
 #if ENABLED_LOGGING
-    logger.saveCurrentLoggingStates(directory);
+    if (!logger.saveCurrentLoggingStates(directory))
+    {
+        logToConsole(L"Failed to save current logging state");
+        return false;
+    }
 #endif
+
+    setText(message, L"Saving tick storage ");
+    logToConsole(message);
+    if (ts.trySaveToFile(system.epoch, system.tick, directory) != 0)
+    {
+        logToConsole(L"Failed to save tick storage");
+        return false;
+    }
+
     return true;
 }
 
