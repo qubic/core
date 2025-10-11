@@ -3735,7 +3735,11 @@ static bool saveAllNodeStates()
         return false;
     }
     
-    score->saveScoreCache(system.epoch, directory);
+    if (!score->saveScoreCache(system.epoch, directory))
+    {
+        logToConsole(L"Failed to save score cache");
+        return false;
+    }
     
     copyMem(&nodeStateBuffer.etalonTick, &etalonTick, sizeof(etalonTick));
     copyMem(nodeStateBuffer.minerPublicKeys, (void*)minerPublicKeys, sizeof(minerPublicKeys));
