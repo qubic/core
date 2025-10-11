@@ -1,5 +1,9 @@
 #define NO_UEFI
 
+#ifdef __linux__
+#include "platform/m256.h"
+#endif
+
 #include "../src/K12/kangaroo_twelve_xkcp.h"
 #include "../src/kangaroo_twelve.h"
 #include "../src/platform/memory.h"

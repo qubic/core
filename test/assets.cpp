@@ -2,6 +2,10 @@
 
 #define PRINT_TEST_INFO 0
 
+#ifdef __linux__
+#include "platform/msvc_polyfill.h"
+#endif
+
 #include "gtest/gtest.h"
 #include "test_util.h"
 

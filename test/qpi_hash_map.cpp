@@ -1,5 +1,9 @@
 #define NO_UEFI
 
+#ifdef __linux__
+#include "platform/msvc_polyfill.h"
+#endif
+
 #include "gtest/gtest.h"
 
 namespace QPI
@@ -177,7 +181,7 @@ TEST(NonTypedQPIHashMapTest, TestHashFunction)
 TYPED_TEST_P(QPIHashMapTest, TestCreation)
 {
 	constexpr QPI::uint64 capacity = 2;
-	QPI::HashMap<TypeParam::first_type, TypeParam::second_type, capacity> hashMap;
+	QPI::HashMap<typename TypeParam::first_type, typename TypeParam::second_type, capacity> hashMap;
 
 	EXPECT_EQ(hashMap.capacity(), capacity);
 	EXPECT_EQ(hashMap.population(), 0);
@@ -186,9 +190,9 @@ TYPED_TEST_P(QPIHashMapTest, TestCreation)
 TYPED_TEST_P(QPIHashMapTest, TestGetters)
 {
 	constexpr QPI::uint64 capacity = 4;
-	QPI::HashMap<TypeParam::first_type, TypeParam::second_type, capacity> hashMap;
+	QPI::HashMap<typename TypeParam::first_type, typename TypeParam::second_type, capacity> hashMap;
 
-	typedef HashMapTestData<TypeParam::first_type, TypeParam::second_type> TestData;
+	typedef HashMapTestData<typename TypeParam::first_type, typename TypeParam::second_type> TestData;
 
 	std::array<TypeParam, 4> keyValuePairs = TestData::CreateKeyValueTestPairs();
 	auto ids = std::views::keys(keyValuePairs);
@@ -234,9 +238,9 @@ TYPED_TEST_P(QPIHashMapTest, TestGetters)
 TYPED_TEST_P(QPIHashMapTest, TestSet)
 {
 	constexpr QPI::uint64 capacity = 2;
-	QPI::HashMap<TypeParam::first_type, TypeParam::second_type, capacity> hashMap;
+	QPI::HashMap<typename TypeParam::first_type, typename TypeParam::second_type, capacity> hashMap;
 
-	std::array<TypeParam, 4> keyValuePairs = HashMapTestData<TypeParam::first_type, TypeParam::second_type>::CreateKeyValueTestPairs();
+	std::array<TypeParam, 4> keyValuePairs = HashMapTestData<typename TypeParam::first_type, typename TypeParam::second_type>::CreateKeyValueTestPairs();
 	auto ids = std::views::keys(keyValuePairs);
 	auto values = std::views::values(keyValuePairs);
 
@@ -263,9 +267,9 @@ TYPED_TEST_P(QPIHashMapTest, TestSet)
 TYPED_TEST_P(QPIHashMapTest, TestRemove)
 {
 	constexpr QPI::uint64 capacity = 8;
-	QPI::HashMap<TypeParam::first_type, TypeParam::second_type, capacity> hashMap;
+	QPI::HashMap<typename TypeParam::first_type, typename TypeParam::second_type, capacity> hashMap;
 
-	typedef HashMapTestData<TypeParam::first_type, TypeParam::second_type> TestData;
+	typedef HashMapTestData<typename TypeParam::first_type,typename TypeParam::second_type> TestData;
 
 	std::array<TypeParam, 4> keyValuePairs = TestData::CreateKeyValueTestPairs();
 	auto ids = std::views::keys(keyValuePairs);
@@ -309,10 +313,10 @@ TYPED_TEST_P(QPIHashMapTest, TestRemove)
 TYPED_TEST_P(QPIHashMapTest, TestRemoveReuse)
 {
 	constexpr QPI::uint64 capacity = 4;
-	QPI::HashMap<TypeParam::first_type, TypeParam::second_type, capacity> hashMap;
+	QPI::HashMap<typename TypeParam::first_type, typename TypeParam::second_type, capacity> hashMap;
 	hashMap.reset();
 
-	typedef HashMapTestData<TypeParam::first_type, TypeParam::second_type> TestData;
+	typedef HashMapTestData<typename TypeParam::first_type, typename TypeParam::second_type> TestData;
 
 	const auto keyValuePairs = TestData::CreateKeyValueTestPairs();
 	auto ids = std::views::keys(keyValuePairs);
@@ -368,11 +372,11 @@ TYPED_TEST_P(QPIHashMapTest, TestRemoveReuse)
 TYPED_TEST_P(QPIHashMapTest, TestCleanup)
 {
 	constexpr QPI::uint64 capacity = 4;
-	QPI::HashMap<TypeParam::first_type, TypeParam::second_type, capacity> hashMap;
+	QPI::HashMap<typename TypeParam::first_type, typename TypeParam::second_type, capacity> hashMap;
 
 	reorgBuffer = new char[2 * sizeof(hashMap)];
 
-	std::array<TypeParam, 4> keyValuePairs = HashMapTestData<TypeParam::first_type, TypeParam::second_type>::CreateKeyValueTestPairs();
+	std::array<TypeParam, 4> keyValuePairs = HashMapTestData<typename TypeParam::first_type, typename TypeParam::second_type>::CreateKeyValueTestPairs();
 	auto ids = std::views::keys(keyValuePairs);
 	auto values = std::views::values(keyValuePairs);
 	QPI::sint64 returnedIndex;
@@ -416,9 +420,9 @@ TYPED_TEST_P(QPIHashMapTest, TestCleanup)
 TYPED_TEST_P(QPIHashMapTest, TestCleanupPerformanceShortcuts)
 {
 	constexpr QPI::uint64 capacity = 4;
-	QPI::HashMap<TypeParam::first_type, TypeParam::second_type, capacity> hashMap;
+	QPI::HashMap<typename TypeParam::first_type, typename TypeParam::second_type, capacity> hashMap;
 
-	std::array<TypeParam, 4> keyValuePairs = HashMapTestData<TypeParam::first_type, TypeParam::second_type>::CreateKeyValueTestPairs();
+	std::array<TypeParam, 4> keyValuePairs = HashMapTestData<typename TypeParam::first_type, typename TypeParam::second_type>::CreateKeyValueTestPairs();
 	auto ids = std::views::keys(keyValuePairs);
 	auto values = std::views::values(keyValuePairs);
 
@@ -466,9 +470,9 @@ TEST(NonTypedQPIHashMapTest, TestCleanupLargeMapSameHashes)
 TYPED_TEST_P(QPIHashMapTest, TestReplace)
 {
 	constexpr QPI::uint64 capacity = 8;
-	QPI::HashMap<TypeParam::first_type, TypeParam::second_type, capacity> hashMap;
+	QPI::HashMap<typename TypeParam::first_type, typename TypeParam::second_type, capacity> hashMap;
 
-	typedef HashMapTestData<TypeParam::first_type, TypeParam::second_type> TestData;
+	typedef HashMapTestData<typename TypeParam::first_type, typename TypeParam::second_type> TestData;
 
 	std::array<TypeParam, 4> keyValuePairs = TestData::CreateKeyValueTestPairs();
 	auto ids = std::views::keys(keyValuePairs);
@@ -504,9 +508,9 @@ TYPED_TEST_P(QPIHashMapTest, TestReplace)
 TYPED_TEST_P(QPIHashMapTest, TestReset)
 {
 	constexpr QPI::uint64 capacity = 4;
-	QPI::HashMap<TypeParam::first_type, TypeParam::second_type, capacity> hashMap;
+	QPI::HashMap<typename TypeParam::first_type, typename TypeParam::second_type, capacity> hashMap;
 
-	std::array<TypeParam, 4> keyValuePairs = HashMapTestData<TypeParam::first_type, TypeParam::second_type>::CreateKeyValueTestPairs();
+	std::array<TypeParam, 4> keyValuePairs = HashMapTestData<typename TypeParam::first_type, typename TypeParam::second_type>::CreateKeyValueTestPairs();
 	auto ids = std::views::keys(keyValuePairs);
 	auto values = std::views::values(keyValuePairs);
 
@@ -535,7 +539,7 @@ REGISTER_TYPED_TEST_CASE_P(QPIHashMapTest,
 typedef Types<std::pair<QPI::id, int>, std::pair<QPI::sint64, char>, std::pair<QPI::bit_1024, QPI::uint64>> KeyValueTypesToTest;
 INSTANTIATE_TYPED_TEST_CASE_P(TypedQPIHashMapTests, QPIHashMapTest, KeyValueTypesToTest);
 
-template <class KeyT, class ValueT, unsigned int capacity>
+template <class KeyT, class ValueT, unsigned long long capacity>
 void hasSameContent(QPI::HashMap<KeyT, ValueT, capacity>& map, const std::map<KeyT, ValueT>& referenceMap)
 {
 	EXPECT_EQ(map.population(), referenceMap.size());
@@ -588,7 +592,7 @@ void hasSameContent(QPI::HashMap<KeyT, ValueT, capacity>& map, const std::map<Ke
 	EXPECT_EQ(cnt, referenceMap.size());
 }
 
-template <class KeyT, class ValueT, unsigned int capacity>
+template <class KeyT, class ValueT, unsigned long long capacity>
 void cleanupHashMap(QPI::HashMap<KeyT, ValueT, capacity>& map, const std::map<KeyT, ValueT>& referenceMap)
 {
 	hasSameContent(map, referenceMap);
@@ -816,7 +820,7 @@ TEST(QPIHashMapTest, HashSet)
 	reorgBuffer = nullptr;
 }
 
-template <class T, unsigned int capacity>
+template <class T, unsigned long long capacity>
 void hasSameContent(QPI::HashSet<T, capacity>& set, const std::set<T>& referenceSet)
 {
 	EXPECT_EQ(set.population(), referenceSet.size());
@@ -864,7 +868,7 @@ void hasSameContent(QPI::HashSet<T, capacity>& set, const std::set<T>& reference
 	EXPECT_EQ(cnt, referenceSet.size());
 }
 
-template <class T, unsigned int capacity>
+template <class T, unsigned long long capacity>
 void cleanupHashSet(QPI::HashSet<T, capacity>& set, const std::set<T>& referenceSet)
 {
 	hasSameContent(set, referenceSet);
@@ -873,7 +877,7 @@ void cleanupHashSet(QPI::HashSet<T, capacity>& set, const std::set<T>& reference
 	hasSameContent(set, referenceSet);
 }
 
-template <class T, unsigned int capacity>
+template <class T, unsigned long long capacity>
 void testHashSetPseudoRandom(int seed, int cleanups, int percentAdd, int percentAddSecondHalf = -1)
 {
 	// add and remove entries with pseudo-random sequence

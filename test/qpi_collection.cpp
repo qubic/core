@@ -1,5 +1,9 @@
 #define NO_UEFI
 
+#ifdef __linux__
+#include "platform/msvc_polyfill.h"
+#endif
+
 #include "gtest/gtest.h"
 
 namespace QPI
@@ -1312,7 +1316,7 @@ TEST(TestCoreQPI, CollectionSubCollectionsRandom)
         tailIdx = coll.tailIndex(pov, priorities[size - 1]);
         EXPECT_EQ(coll.priority(tailIdx), priorities[size - 1]);
 
-        std::vector<size_t> indices(std::min(size, std::max(1llu, size / 5)));
+        std::vector<size_t> indices(std::min(size, std::max((size_t)1, size / 5)));
         for (size_t i = 0; i < indices.size(); i++) {
             indices[i] = std::abs((QPI::sint64)gen64()) % indices.size();
         }
