@@ -73,6 +73,7 @@ struct AssetIssuance
 {
     m256i issuerPublicKey;
     long long numberOfShares;
+    long long managingContractIndex;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
