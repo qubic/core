@@ -11,6 +11,7 @@
 #include "mining/mining.h"
 
 #include "contracts/qpi.h"
+#include "contracts/math_lib.h"
 #include "contract_core/qpi_collection_impl.h"
 
 #include "public_settings.h"
@@ -28,6 +29,9 @@ private:
     static constexpr unsigned long long tickTransactionsSize =  maxNumTxs * MAX_TRANSACTION_SIZE;
     static constexpr unsigned long long tickTransactionOffsetsSize = maxNumTxs * sizeof(unsigned long long);
     static constexpr unsigned long long txsDigestsSize = maxNumTxs * sizeof(m256i);
+
+    // `maxNumTxs` priorities have to be saved at a time. Collection capacity has to be 2^N so find the next bigger power of 2.
+    static constexpr unsigned long long txsPrioritiesCapacity = math_lib::findNextPowerOf2(maxNumTxs);
 
     // The pool stores the tick range [firstStoredTick, firstStoredTick + PENDING_TXS_POOL_NUM_TICKS[
     inline static unsigned int firstStoredTick = 0;
@@ -58,7 +62,7 @@ private:
     inline static volatile char txsPrioritiesLock = 0;
 
     // Priority queues for transactions in each saved tick.
-    inline static Collection<unsigned int, NUMBER_OF_TRANSACTIONS_PER_TICK * PENDING_TXS_POOL_NUM_TICKS>* txsPriorities;
+    inline static Collection<unsigned int, txsPrioritiesCapacity>* txsPriorities;
 
     static void cleanupTxsPriorities(unsigned int tickIndex)
     {
@@ -138,7 +142,7 @@ public:
     {
         if (!allocPoolWithErrorLog(L"PendingTxsPool::tickTransactionsPtr ", tickTransactionsSize, (void**)&tickTransactionsBuffer, __LINE__)
             || !allocPoolWithErrorLog(L"PendingTxsPool::txsDigestsPtr ", txsDigestsSize, (void**)&txsDigestsBuffer, __LINE__)
-            || !allocPoolWithErrorLog(L"PendingTxsPool::txsPriorities", sizeof(Collection<unsigned int, NUMBER_OF_TRANSACTIONS_PER_TICK * PENDING_TXS_POOL_NUM_TICKS>), (void**)&txsPriorities, __LINE__))
+            || !allocPoolWithErrorLog(L"PendingTxsPool::txsPriorities", sizeof(Collection<unsigned int, txsPrioritiesCapacity>), (void**)&txsPriorities, __LINE__))
         {
             return false;
         }
