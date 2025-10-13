@@ -99,7 +99,7 @@ static FileSystemWrapper fileSystem;
 long long loadFile(CHAR16* fileName, unsigned long long totalSize, char* buffer)
 {
     FILE* file = nullptr;
-    if (_wfopen_s(&file, fileName, L"rb") != 0 || !file)
+    if (q_wfopen_s(&file, fileName, 0, L"rb") != 0 || !file)
     {
         wprintf(L"Error opening file %s!\n", fileName);
         return -1;
@@ -116,7 +116,7 @@ long long loadFile(CHAR16* fileName, unsigned long long totalSize, char* buffer)
 long long saveFile(CHAR16* fileName, unsigned long long totalSize, const char* buffer)
 {
     FILE* file = nullptr;
-    if (_wfopen_s(&file, fileName, L"wb") != 0 || !file)
+    if (q_wfopen_s(&file, fileName, 0, L"wb") != 0 || !file)
     {
         wprintf(L"Error opening file %s!\n", fileName);
         return -1;

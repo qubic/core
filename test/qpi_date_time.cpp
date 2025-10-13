@@ -1,4 +1,8 @@
 #define NO_UEFI
+
+#ifdef __linux__
+#include "platform/msvc_polyfill.h"
+#endif
 #include "gtest/gtest.h"
 
 #include <type_traits>

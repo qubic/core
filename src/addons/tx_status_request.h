@@ -89,7 +89,7 @@ static bool initTxStatusRequestAddOn()
 static void deinitTxStatusRequestAddOn()
 {
     if (confirmedTx)
-        freePool(confirmedTx);
+        qVirtualFreeAndRecommit(confirmedTx, confirmedTxLength * sizeof(ConfirmedTx));
 }
 
 
