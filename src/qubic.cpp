@@ -99,7 +99,7 @@ struct Processor : public CustomStack
 };
 
 
-
+CHAR16 gVoteCountDebgMessage[256];
 
 static volatile int shutDownNode = 0;
 static volatile unsigned char mainAuxStatus = 0;
@@ -4416,6 +4416,7 @@ static void broadcastTickVotes()
 // NOTE: this doesn't compare expectedNextTickTransactionDigest
 static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& tickTotalNumberOfComputors)
 {
+    CHAR16 digestChars[60 + 1];
     const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
     const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -4467,6 +4468,15 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                                         // only count votes that matched etalonTick
                                         voteCounter.registerNewVote(tick->tick, tick->computorIndex);
                                     }
+                                    else
+                                    {
+                                        setText(gVoteCountDebgMessage, L"[DBG]saltedTransactionBodyDigest ");
+                                        appendNumber(gVoteCountDebgMessage, tick->saltedTransactionBodyDigest, false);
+
+                                        appendText(gVoteCountDebgMessage, L" vs ");
+                                        appendNumber(gVoteCountDebgMessage, saltedDigest.m256i_u32[0], false);
+                                        addDebugMessage(gVoteCountDebgMessage);
+                                    }
                                 }
                                 else // If expectedNextTickTransactionDigest changes to to empty due to time-out,
                                      // we count votes anyway, otherwise we may end up with no or very few votes
@@ -4474,9 +4484,99 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                                     voteCounter.registerNewVote(tick->tick, tick->computorIndex);
                                 }
                             }
+                            else
+                            {
+                                setText(gVoteCountDebgMessage, L"[DBG]saltedComputerDigest ");
+                                getIdentity(tick->saltedComputerDigest.m256i_u8, digestChars, true);
+                                appendText(gVoteCountDebgMessage, digestChars);
+
+                                appendText(gVoteCountDebgMessage, L" vs ");
+                                getIdentity(saltedDigest.m256i_u8, digestChars, true);
+                                appendText(gVoteCountDebgMessage, digestChars);
+                                addDebugMessage(gVoteCountDebgMessage);
+                            }
+                        }
+                        else
+                        {
+                            setText(gVoteCountDebgMessage, L"[DBG]saltedUniverseDigest ");
+                            getIdentity(tick->saltedUniverseDigest.m256i_u8, digestChars, true);
+                            appendText(gVoteCountDebgMessage, digestChars);
+
+                            appendText(gVoteCountDebgMessage, L" vs ");
+                            getIdentity(saltedDigest.m256i_u8, digestChars, true);
+                            appendText(gVoteCountDebgMessage, digestChars);
+                            addDebugMessage(gVoteCountDebgMessage);
                         }
                     }
+                    else
+                    {
+                        setText(gVoteCountDebgMessage, L"[DBG]saltedSpectrumDigest ");
+                        getIdentity(tick->saltedSpectrumDigest.m256i_u8, digestChars, true);
+                        appendText(gVoteCountDebgMessage, digestChars);
+
+                        appendText(gVoteCountDebgMessage, L" vs ");
+                        getIdentity(saltedDigest.m256i_u8, digestChars, true);
+                        appendText(gVoteCountDebgMessage, digestChars);
+                        addDebugMessage(gVoteCountDebgMessage);
+                    }
                 }
+                else
+                {
+                    setText(gVoteCountDebgMessage, L"[DBG]saltedResourceTestingDigest ");
+                    getIdentity(tick->prevSpectrumDigest.m256i_u8, digestChars, true);
+                    appendText(gVoteCountDebgMessage, digestChars);
+
+                    appendText(gVoteCountDebgMessage, L" vs ");
+                    getIdentity(saltedDigest.m256i_u8, digestChars, true);
+                    appendText(gVoteCountDebgMessage, digestChars);
+                    addDebugMessage(gVoteCountDebgMessage);
+
+                }
+            }
+            else
+            {
+                setText(gVoteCountDebgMessage, L"[DBG]ms ");
+                appendNumber(gVoteCountDebgMessage, tick->millisecond, false);
+                appendText(gVoteCountDebgMessage, L" vs ");
+                appendNumber(gVoteCountDebgMessage, etalonTick.millisecond, false);
+                addDebugMessage(gVoteCountDebgMessage);
+
+
+                setText(gVoteCountDebgMessage, L"[DBG]prevSpectrumDigest ");
+                getIdentity(tick->prevSpectrumDigest.m256i_u8, digestChars, true);
+                appendText(gVoteCountDebgMessage, digestChars);
+
+                appendText(gVoteCountDebgMessage, L" vs ");
+                getIdentity(etalonTick.prevSpectrumDigest.m256i_u8, digestChars, true);
+                appendText(gVoteCountDebgMessage, digestChars);
+                addDebugMessage(gVoteCountDebgMessage);
+
+                setText(gVoteCountDebgMessage, L"[DBG]prevUniverseDigest ");
+                getIdentity(tick->prevUniverseDigest.m256i_u8, digestChars, true);
+                appendText(gVoteCountDebgMessage, digestChars);
+
+                appendText(gVoteCountDebgMessage, L" vs ");
+                getIdentity(etalonTick.prevUniverseDigest.m256i_u8, digestChars, true);
+                appendText(gVoteCountDebgMessage, digestChars);
+                addDebugMessage(gVoteCountDebgMessage);
+
+                setText(gVoteCountDebgMessage, L"[DBG]prevComputerDigest ");
+                getIdentity(tick->prevComputerDigest.m256i_u8, digestChars, true);
+                appendText(gVoteCountDebgMessage, digestChars);
+
+                appendText(gVoteCountDebgMessage, L" vs ");
+                getIdentity(etalonTick.prevComputerDigest.m256i_u8, digestChars, true);
+                appendText(gVoteCountDebgMessage, digestChars);
+                addDebugMessage(gVoteCountDebgMessage);
+
+                setText(gVoteCountDebgMessage, L"[DBG]transactionDigest ");
+                getIdentity(tick->transactionDigest.m256i_u8, digestChars, true);
+                appendText(gVoteCountDebgMessage, digestChars);
+
+                appendText(gVoteCountDebgMessage, L" vs ");
+                getIdentity(etalonTick.transactionDigest.m256i_u8, digestChars, true);
+                appendText(gVoteCountDebgMessage, digestChars);
+                addDebugMessage(gVoteCountDebgMessage);
             }
         }
         ts.ticks.releaseLock(i);
