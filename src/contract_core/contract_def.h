@@ -267,6 +267,8 @@ constexpr unsigned short TESTEXD_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #undef POST_RELEASE_SHARES
 #undef POST_ACQUIRE_SHARES
 #undef POST_INCOMING_TRANSFER
+#undef SET_SHAREHOLDER_PROPOSAL
+#undef SET_SHAREHOLDER_VOTES
 
 
 // The following are included after the contracts to keep their definitions and dependencies
@@ -359,6 +361,8 @@ enum SystemProcedureID
     POST_RELEASE_SHARES,
     POST_ACQUIRE_SHARES,
     POST_INCOMING_TRANSFER,
+    SET_SHAREHOLDER_PROPOSAL,
+    SET_SHAREHOLDER_VOTES,
     contractSystemProcedureCount,
 };
 
@@ -396,6 +400,10 @@ if (!contractName::__postReleaseSharesEmpty) contractSystemProcedures[contractIn
 contractSystemProcedureLocalsSizes[contractIndex][POST_RELEASE_SHARES] = contractName::__postReleaseSharesLocalsSize; \
 if (!contractName::__postIncomingTransferEmpty) contractSystemProcedures[contractIndex][POST_INCOMING_TRANSFER] = (SYSTEM_PROCEDURE)contractName::__postIncomingTransfer;\
 contractSystemProcedureLocalsSizes[contractIndex][POST_INCOMING_TRANSFER] = contractName::__postIncomingTransferLocalsSize; \
+if (!contractName::__setShareholderProposalEmpty) contractSystemProcedures[contractIndex][SET_SHAREHOLDER_PROPOSAL] = (SYSTEM_PROCEDURE)contractName::__setShareholderProposal;\
+contractSystemProcedureLocalsSizes[contractIndex][SET_SHAREHOLDER_PROPOSAL] = contractName::__setShareholderProposalLocalsSize; \
+if (!contractName::setShareholderVotesEmpty) contractSystemProcedures[contractIndex][SET_SHAREHOLDER_VOTES] = (SYSTEM_PROCEDURE)contractName::setShareholderVotes;\
+contractSystemProcedureLocalsSizes[contractIndex][SET_SHAREHOLDER_VOTES] = contractName::setShareholderVotesLocalsSize; \
 if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
 QpiContextForInit qpi(contractIndex); \
 contractName::__registerUserFunctionsAndProcedures(qpi); \

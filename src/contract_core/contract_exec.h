@@ -72,6 +72,7 @@ enum ContractCallbacksRunningFlags
     NoContractCallback = 0,
     ContractCallbackManagementRightsTransfer = 1,
     ContractCallbackPostIncomingTransfer = 2,
+    ContractCallbackShareholderProposalAndVoting = 4,
 };
 
 
@@ -619,6 +620,8 @@ void QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
         || (sysProcId == POST_RELEASE_SHARES && sizeof(InputType) == sizeof(QPI::PostManagementRightsTransfer_input) && sizeof(OutputType) == sizeof(QPI::NoData))
         || (sysProcId == POST_ACQUIRE_SHARES && sizeof(InputType) == sizeof(QPI::PostManagementRightsTransfer_input) && sizeof(OutputType) == sizeof(QPI::NoData))
         || (sysProcId == POST_INCOMING_TRANSFER && sizeof(InputType) == sizeof(QPI::PostIncomingTransfer_input) && sizeof(OutputType) == sizeof(QPI::NoData))
+        || (sysProcId == SET_SHAREHOLDER_PROPOSAL && sizeof(InputType) == sizeof(QPI::SET_SHAREHOLDER_PROPOSAL_input) && sizeof(OutputType) == sizeof(QPI::SET_SHAREHOLDER_PROPOSAL_output))
+        || (sysProcId == SET_SHAREHOLDER_VOTES && sizeof(InputType) == sizeof(QPI::SET_SHAREHOLDER_VOTES_input) && sizeof(OutputType) == sizeof(QPI::SET_SHAREHOLDER_VOTES_output))
         , "Unsupported __qpiCallSystemProc() call"
     );
 
@@ -627,7 +630,8 @@ void QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
     ASSERT(sysProcContractIndex < contractCount);
     ASSERT(contractStates[sysProcContractIndex] != nullptr);
     if (sysProcId == PRE_RELEASE_SHARES || sysProcId == PRE_ACQUIRE_SHARES
-        || sysProcId == POST_RELEASE_SHARES || sysProcId == POST_ACQUIRE_SHARES)
+        || sysProcId == POST_RELEASE_SHARES || sysProcId == POST_ACQUIRE_SHARES
+        || sysProcId == SET_SHAREHOLDER_PROPOSAL || sysProcId == SET_SHAREHOLDER_VOTES)
     {
         ASSERT(sysProcContractIndex != _currentContractIndex);
     }
@@ -644,6 +648,10 @@ void QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
     if (sysProcId == POST_INCOMING_TRANSFER)
     {
         contractCallbacksRunning |= ContractCallbackPostIncomingTransfer;
+    }
+    else if (sysProcId == SET_SHAREHOLDER_PROPOSAL || sysProcId == SET_SHAREHOLDER_VOTES)
+    {
+        contractCallbacksRunning |= ContractCallbackShareholderProposalAndVoting;
     }
     else if (sysProcId == PRE_RELEASE_SHARES || sysProcId == PRE_ACQUIRE_SHARES
         || sysProcId == POST_RELEASE_SHARES || sysProcId == POST_ACQUIRE_SHARES)

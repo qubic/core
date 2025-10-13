@@ -2123,6 +2123,18 @@ namespace QPI
 		uint8 type;
 	};
 
+	// Input of SET_SHAREHOLDER_PROPOSAL system procedure (buffer for passing the contract-dependent proposal data)
+	typedef Array<uint8, 1024> SET_SHAREHOLDER_PROPOSAL_input;
+
+	// Output of SET_SHAREHOLDER_PROPOSAL system procedure (proposal index, or INVALID_PROPOSAL_INDEX on error)
+	typedef uint16 SET_SHAREHOLDER_PROPOSAL_output;
+
+	// Input of SET_SHAREHOLDER_VOTES system procedure (vote data)
+	typedef ProposalMultiVoteDataV1 SET_SHAREHOLDER_VOTES_input;
+
+	// Output of SET_SHAREHOLDER_VOTES system procedure (success flag)
+	typedef bit SET_SHAREHOLDER_VOTES_output;
+
 	//////////
 	
 	struct ContractBase
@@ -2147,6 +2159,10 @@ namespace QPI
 		static void __postReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __postIncomingTransferEmpty = 1, __postIncomingTransferLocalsSize = sizeof(NoData) };
 		static void __postIncomingTransfer(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __setShareholderProposalEmpty = 1, __setShareholderProposalLocalsSize = sizeof(NoData) };
+		static void __setShareholderProposal(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { setShareholderVotesEmpty = 1, setShareholderVotesLocalsSize = sizeof(NoData) };
+		static void setShareholderVotes(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __acceptOracleTrueReplyEmpty = 1, __acceptOracleTrueReplyLocalsSize = sizeof(NoData) };
 		static void __acceptOracleTrueReply(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __acceptOracleFalseReplyEmpty = 1, __acceptOracleFalseReplyLocalsSize = sizeof(NoData) };
@@ -2262,6 +2278,31 @@ namespace QPI
         NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_INCOMING_TRANSFER, __postIncomingTransfer, PostIncomingTransfer_input, \
                                       NoData)
 
+	// Define contract system procedure called when another contract tries to set/change/cancel a proposal through
+	// qpi.setShareholderProposal(). See `doc/contracts.md` for details.
+	#define SET_SHAREHOLDER_PROPOSAL() \
+        NO_IO_SYSTEM_PROC(SET_SHAREHOLDER_PROPOSAL, __setShareholderProposal, SET_SHAREHOLDER_PROPOSAL_input, \
+						  SET_SHAREHOLDER_PROPOSAL_output)
+
+	// Define contract system procedure called when another contract tries to set/change/cancel a proposal through
+	// qpi.setShareholderProposal(). Provides zeroed instance of SET_SHAREHOLDER_PROPOSAL_locals struct. See
+	// `doc/contracts.md` for details.
+	#define SET_SHAREHOLDER_PROPOSAL_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(SET_SHAREHOLDER_PROPOSAL, __setShareholderProposal, SET_SHAREHOLDER_PROPOSAL_input, \
+						              SET_SHAREHOLDER_PROPOSAL_output)
+
+	// Define contract system procedure called when another contract tries to set/change/cancel a vote through
+	// qpi.setShareholderVotes(). See `doc/contracts.md` for details.
+	#define SET_SHAREHOLDER_VOTES() \
+        NO_IO_SYSTEM_PROC(SET_SHAREHOLDER_VOTES, setShareholderVotes, SET_SHAREHOLDER_VOTES_input, \
+						  SET_SHAREHOLDER_VOTES_output)
+
+	// Define contract system procedure called when another contract tries to set/change/cancel a vote through
+	// qpi.setShareholderVotes(). Provides zeroed instance of SET_SHAREHOLDER_VOTES_locals struct. See
+	// `doc/contracts.md` for details.
+	#define SET_SHAREHOLDER_VOTES_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(SET_SHAREHOLDER_VOTES, setShareholderVotes, SET_SHAREHOLDER_VOTES_input, \
+						              SET_SHAREHOLDER_VOTES_output)
 
 	#define EXPAND() \
       public: \
