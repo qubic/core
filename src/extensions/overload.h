@@ -27,6 +27,7 @@
 #include "platform/console_logging.h"
 
 static volatile bool forceDontCheckComputerDigest = false;
+static volatile bool forceDontUseSecurityTick = false;
 
 //////////// Go Behind Testnet Trick \\\\\\\\
 
@@ -46,7 +47,7 @@ bool isSystemAtSecurityTick()
     {
         return false;
     }
-    if (securityTick == 0 || system.tick == system.initialTick)
+    if (forceDontUseSecurityTick || securityTick == 0 || system.tick == system.initialTick)
     {
         return true;
     }
@@ -521,21 +522,17 @@ struct Overload {
                 else if (keyName == "F11") Key->ScanCode = 0x15;
                 else if (keyName == "F12") Key->ScanCode = 0x16;
             } else {
-                // map 'p' to fake pause key
-                if (input.size() == 1 && input[0] == 'p') {
-                    Key->ScanCode = 0x48;
-                }
-
-                // map ESC key
-                if (input.size() == 1 && input[0] == 27)
+                if (input.size() == 1)
                 {
-                    Key->ScanCode = 0x17;
-                }
-
-                // map only the 'f' key
-                if (input.size() == 1 && input[0] == 'f')
-                {
-                    Key->UnicodeChar = 'f';
+                    // map 'p' to fake pause key
+                    if (input[0] == 'p')
+                    {
+                        Key->ScanCode = 0x48;
+                    } else if (input[0] == 27) {
+                        Key->ScanCode = 0x17;
+                    } else {
+                        Key->UnicodeChar = input[0];
+                    }
                 }
             }
 

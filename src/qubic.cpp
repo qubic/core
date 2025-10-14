@@ -6759,6 +6759,12 @@ static void processKeyPresses()
             logToConsole(L"Requesting for force skip checking computer digest for this tick.");
             forceDontCheckComputerDigest = true;
             break;
+        case 's':
+            forceDontUseSecurityTick = !forceDontUseSecurityTick;
+            setText(message, L"forceDontUseSecurityTick is now ");;
+            appendText(message, forceDontUseSecurityTick ? L"ON" : L"OFF");
+            logToConsole(message);
+            break;
         }
 
 
