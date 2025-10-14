@@ -50,23 +50,13 @@ private:
     inline static unsigned int buffersBeginIndex = 0;
 
     // Lock for securing tickTransactions and tickTransactionOffsets
-    inline static volatile char tickTransactionsLock = 0;
-
-    // Lock for securing txsDigests
-    inline static volatile char txsDigestsLock = 0;
-    
-    // Lock for securing numSavedTxsPerTick
-    inline static volatile char numSavedLock = 0;
-
-    // Lock for securing txsPriorities
-    inline static volatile char txsPrioritiesLock = 0;
+    inline static volatile char lock = 0;
 
     // Priority queues for transactions in each saved tick.
     inline static Collection<unsigned int, txsPrioritiesCapacity>* txsPriorities;
 
     static void cleanupTxsPriorities(unsigned int tickIndex)
     {
-        ACQUIRE(txsPrioritiesLock);
         sint64 elementIndex = txsPriorities->headIndex(m256i{ tickIndex, 0, 0, 0 });
         // use a `for` instead of a `while` loop to make sure it cannot run forever 
         // there can be at most NUMBER_OF_TRANSACTIONS_PER_TICK elements in one pov
@@ -78,7 +68,6 @@ private:
                 break;
         }
         txsPriorities->cleanupIfNeeded();
-        RELEASE(txsPrioritiesLock);
     }
 
     static sint64 calculateTxPriority(const Transaction* tx)
@@ -147,10 +136,7 @@ public:
             return false;
         }
 
-        ASSERT(tickTransactionsLock == 0);
-        ASSERT(txsDigestsLock == 0);
-        ASSERT(numSavedLock == 0);
-        ASSERT(txsPrioritiesLock == 0);
+        ASSERT(lock == 0);
 
         setMem(tickTransactionsBuffer, tickTransactionsSize, 0);
         setMem(txsDigestsBuffer, txsDigestsSize, 0);
@@ -181,18 +167,16 @@ public:
         }
     }
 
-    // Acquire lock for returned pointers to transactions, transaction offsets, or digests.
+    // Acquire lock for returned pointers to transactions or digests.
     inline static void acquireLock()
     {
-        ACQUIRE(txsDigestsLock);
-        ACQUIRE(tickTransactionsLock);
+        ACQUIRE(lock);
     }
 
-    // Release lock for returned pointers to transactions, transaction offsets, or digests.
+    // Release lock for returned pointers to transactions or digests.
     inline static void releaseLock()
     {
-        RELEASE(tickTransactionsLock);
-        RELEASE(txsDigestsLock);
+        RELEASE(lock);
     }
 
     // Return number of transactions scheduled for the specified tick.
@@ -202,12 +186,12 @@ public:
         addDebugMessage(L"Begin pendingTxsPool.getNumberOfPendingTickTxs()");
 #endif
         unsigned int res = 0;
-        ACQUIRE(numSavedLock);
+        ACQUIRE(lock);
         if (tickInStorage(tick))
         {
             res = numSavedTxsPerTick[tickToIndex(tick)];
         }
-        RELEASE(numSavedLock);
+        RELEASE(lock);
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsgBuf[200];
@@ -227,12 +211,11 @@ public:
         addDebugMessage(L"Begin pendingTxsPool.getTotalNumberOfPendingTxs()");
 #endif
         unsigned int res = 0;
-
+        ACQUIRE(lock);
         if (tickInStorage(tick + 1))
         {
             unsigned int startIndex = tickToIndex(tick + 1);
 
-            ACQUIRE(numSavedLock);
             if (startIndex < buffersBeginIndex)
             {
                 for (unsigned int t = startIndex; t < buffersBeginIndex; ++t)
@@ -245,8 +228,8 @@ public:
                 for (unsigned int t = 0; t < buffersBeginIndex; ++t)
                     res += numSavedTxsPerTick[t];
             }
-            RELEASE(numSavedLock);
         }
+        RELEASE(lock);
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsgBuf[200];
@@ -266,6 +249,7 @@ public:
         addDebugMessage(L"Begin pendingTxsPool.update()");
 #endif
         bool txAdded = false;
+        ACQUIRE(lock);
         if (tx->checkValidity() && tickInStorage(tx->tick))
         {
             unsigned int tickIndex = tickToIndex(tx->tick);
@@ -273,10 +257,6 @@ public:
 
             sint64 priority = calculateTxPriority(tx);
             m256i povIndex{ tickIndex, 0, 0, 0 };
-
-            acquireLock();
-            ACQUIRE(numSavedLock);
-            ACQUIRE(txsPrioritiesLock);
 
             if (numSavedTxsPerTick[tickIndex] < NUMBER_OF_TRANSACTIONS_PER_TICK)
             {
@@ -337,11 +317,9 @@ public:
                 }
 #endif
             }
-
-            RELEASE(txsPrioritiesLock);
-            RELEASE(numSavedLock);
-            releaseLock();
         }
+        RELEASE(lock);
+
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         if (txAdded)
             addDebugMessage(L"End pendingTxsPool.update(), txAdded true");
@@ -351,19 +329,18 @@ public:
         return txAdded;
     }
 
-    // Get a transaction for the specified tick.
-    // If no more transactions for this tick, return nullptr.
-    static Transaction* get(unsigned int tick, unsigned int index)
+    // Get a transaction for the specified tick. If no more transactions for this tick, return nullptr.
+    // ATTENTION: when running multiple threads, you need to have acquired the lock via acquireLock() before calling this function.
+    static Transaction* getTx(unsigned int tick, unsigned int index)
     {
         unsigned int tickIndex;
+
         if (tickInStorage(tick))
             tickIndex = tickToIndex(tick);
         else
             return nullptr;
 
-        ACQUIRE(numSavedLock);
         bool hasTx = index < numSavedTxsPerTick[tickIndex];
-        RELEASE(numSavedLock);
 
         if (hasTx)
             return getTxPtr(tickIndex, index);
@@ -371,19 +348,18 @@ public:
             return nullptr;
     }
 
-    // Get a transaction digest for the specified tick.
-    // If no more transactions for this tick, return nullptr.
+    // Get a transaction digest for the specified tick. If no more transactions for this tick, return nullptr.
+    // ATTENTION: when running multiple threads, you need to have acquired the lock via acquireLock() before calling this function.
     static m256i* getDigest(unsigned int tick, unsigned int index)
     {
         unsigned int tickIndex;
+
         if (tickInStorage(tick))
             tickIndex = tickToIndex(tick);
         else
             return nullptr;
 
-        ACQUIRE(numSavedLock);
         bool hasTx = index < numSavedTxsPerTick[tickIndex];
-        RELEASE(numSavedLock);
 
         if (hasTx)
             return getDigestPtr(tickIndex, index);
@@ -393,8 +369,7 @@ public:
 
     static void incrementFirstStoredTick()
     {
-        acquireLock();
-        ACQUIRE(numSavedLock);
+        ACQUIRE(lock);
 
         // set memory at buffersBeginIndex to 0 
         unsigned long long numTxsBeforeBegin = buffersBeginIndex * NUMBER_OF_TRANSACTIONS_PER_TICK;
@@ -409,8 +384,7 @@ public:
         firstStoredTick++;
         buffersBeginIndex = (buffersBeginIndex + 1) % PENDING_TXS_POOL_NUM_TICKS;
 
-        RELEASE(numSavedLock);
-        releaseLock();
+        RELEASE(lock);
     }
 
     static void beginEpoch(unsigned int newInitialTick)
@@ -418,7 +392,7 @@ public:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"Begin pendingTxsPool.beginEpoch()");
 #endif
-
+        ACQUIRE(lock);
         if (tickInStorage(newInitialTick))
         {
             unsigned int newInitialIndex = tickToIndex(newInitialTick);
@@ -463,14 +437,14 @@ public:
             setMem(txsDigestsBuffer, txsDigestsSize, 0);
             setMem(numSavedTxsPerTick, sizeof(numSavedTxsPerTick), 0);
 
-            ACQUIRE(txsPrioritiesLock);
             txsPriorities->reset();
-            RELEASE(txsPrioritiesLock);
 
             buffersBeginIndex = 0;
         }
 
         firstStoredTick = newInitialTick;
+
+        RELEASE(lock);
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"End pendingTxsPool.beginEpoch()");
@@ -480,6 +454,8 @@ public:
     // Useful for debugging, but expensive: check that everything is as expected.
     static void checkStateConsistencyWithAssert()
     {
+        ACQUIRE(lock);
+
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"Begin tsxPool.checkStateConsistencyWithAssert()");
         CHAR16 dbgMsgBuf[200];
@@ -489,6 +465,7 @@ public:
         appendNumber(dbgMsgBuf, buffersBeginIndex, FALSE);
         addDebugMessage(dbgMsgBuf);
 #endif
+
         ASSERT(buffersBeginIndex >= 0);
         ASSERT(buffersBeginIndex < PENDING_TXS_POOL_NUM_TICKS);
 
@@ -531,6 +508,8 @@ public:
                 }
             }
         }
+
+        RELEASE(lock);
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"End pendingTxsPool.checkStateConsistencyWithAssert()");

@@ -3127,15 +3127,15 @@ static void processTick(unsigned long long processorNumber)
 
                     unsigned int nextTxIndex = 0;
                     unsigned int numPendingTickTxs = pendingTxsPool.getNumberOfPendingTickTxs(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET);
+                    pendingTxsPool.acquireLock();
                     for (unsigned int tx = 0; tx < numPendingTickTxs; ++tx)
                     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
                         addDebugMessage(L"pendingTxsPool.get() call in processTick()");
 #endif
-                        const Transaction* pendingTransaction = pendingTxsPool.get(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, tx);
+                        const Transaction* pendingTransaction = pendingTxsPool.getTx(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, tx);
                         if (pendingTransaction)
                         {
-                            pendingTxsPool.acquireLock();
                             ASSERT(pendingTransaction->checkValidity());
                             const unsigned int transactionSize = pendingTransaction->totalSize();
                             ts.tickTransactions.acquireLock();
@@ -3151,14 +3151,13 @@ static void processTick(unsigned long long processorNumber)
                                 nextTxIndex++;
                             }
                             ts.tickTransactions.releaseLock();
-                            pendingTxsPool.releaseLock();
                         }
                         else
                         {
                             break;
                         }
-
                     }
+                    pendingTxsPool.releaseLock();
 
                     {
                         // insert & broadcast vote counter tx
@@ -4199,15 +4198,15 @@ static void prepareNextTickTransactions()
         // Checks if any of the missing transactions is available in the pending transaction pool and remove unknownTransaction flag if found
 
         unsigned int numPendingTickTxs = pendingTxsPool.getNumberOfPendingTickTxs(nextTick);
+        pendingTxsPool.acquireLock();
         for (unsigned int i = 0; i < numPendingTickTxs; ++i)
         {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
             addDebugMessage(L"pendingTxsPool.get() call in prepareNextTickTransactions()");
 #endif
-            Transaction* pendingTransaction = pendingTxsPool.get(nextTick, i);
+            Transaction* pendingTransaction = pendingTxsPool.getTx(nextTick, i);
             if (pendingTransaction)
             {
-                pendingTxsPool.acquireLock();
                 ASSERT(pendingTransaction->checkValidity());
                 auto* tsPendingTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(pendingTransaction->tick);
 
@@ -4243,10 +4242,9 @@ static void prepareNextTickTransactions()
                         }
                     }
                 }
-                pendingTxsPool.releaseLock();
             }
         }
-
+        pendingTxsPool.releaseLock();
 
         // At this point unknownTransactions is set to 1 for all transactions that are unknown
         // Update requestedTickTransactions the list of txs that not exist in memory so the MAIN loop can try to fetch them from peers

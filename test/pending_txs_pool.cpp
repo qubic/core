@@ -90,7 +90,7 @@ void checkTickTransactions(unsigned int tick, unsigned long long seed, unsigned 
         unsigned int expectedInputSize = gen64() % MAX_INPUT_SIZE;
         long long expectedAmount = gen64() % MAX_AMOUNT;
 
-        Transaction* tp = pendingTxsPool.get(tick, transaction);
+        Transaction* tp = pendingTxsPool.getTx(tick, transaction);
 
         // If previousEpoch, some transactions at the beginning may not have fit into the storage and are missing -> check okay
         // If current epoch, some may be missing at the end due to limited storage -> check okay
@@ -345,7 +345,7 @@ TEST(TestPendingTxsPool, IncrementFirstStoredTick)
             pendingTxsPool.incrementFirstStoredTick();
             for (int tx = 0; tx < numTransactionsAdded[i]; ++tx)
             {
-                EXPECT_EQ(pendingTxsPool.get(firstEpochTick0 + i, 0), nullptr);
+                EXPECT_EQ(pendingTxsPool.getTx(firstEpochTick0 + i, 0), nullptr);
                 EXPECT_EQ(pendingTxsPool.getDigest(firstEpochTick0 + i, 0), nullptr);
             }
             EXPECT_EQ(pendingTxsPool.getTotalNumberOfPendingTxs(firstEpochTick0 + i), (unsigned int)numPendingTransactions[i]);
@@ -381,9 +381,9 @@ TEST(TestPendingTxsPool, TxsPrioritizationMoreThanMaxTxs)
     for (unsigned int t = 0; t < NUMBER_OF_TRANSACTIONS_PER_TICK; ++t)
     {
         if (t < numAdditionalTxs)
-            EXPECT_EQ(pendingTxsPool.get(firstEpochTick0, t)->amount, NUMBER_OF_TRANSACTIONS_PER_TICK + t + 1);
+            EXPECT_EQ(pendingTxsPool.getTx(firstEpochTick0, t)->amount, NUMBER_OF_TRANSACTIONS_PER_TICK + t + 1);
         else
-            EXPECT_EQ(pendingTxsPool.get(firstEpochTick0, t)->amount, t + 1);
+            EXPECT_EQ(pendingTxsPool.getTx(firstEpochTick0, t)->amount, t + 1);
     }
 
     pendingTxsPool.deinit();
@@ -416,7 +416,7 @@ TEST(TestPendingTxsPool, TxsPrioritizationDuplicateTxs)
 
     for (unsigned int t = 0; t < numTxs; ++t)
     {
-        Transaction* tx = pendingTxsPool.get(firstEpochTick0, t);
+        Transaction* tx = pendingTxsPool.getTx(firstEpochTick0, t);
         EXPECT_TRUE(tx->checkValidity());
         EXPECT_EQ(tx->amount, amount);
         EXPECT_EQ(tx->tick, firstEpochTick0);
