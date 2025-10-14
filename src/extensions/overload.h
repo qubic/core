@@ -26,6 +26,8 @@
 #define CreateEvent CreateEvent
 #include "platform/console_logging.h"
 
+static volatile bool forceDontCheckComputerDigest = false;
+
 //////////// Go Behind Testnet Trick \\\\\\\\
 
 static inline bool isTestnetGoBehindTrick = false;
@@ -40,6 +42,10 @@ static inline unsigned long long securityTick = 1;
 
 bool isSystemAtSecurityTick()
 {
+    if (forceDontCheckComputerDigest)
+    {
+        return false;
+    }
     if (securityTick == 0 || system.tick == system.initialTick)
     {
         return true;
@@ -451,6 +457,8 @@ struct Overload {
     }
 
     static EFI_STATUS ReadKeyStroke(IN void* This, OUT EFI_INPUT_KEY* Key) {
+        Key->ScanCode = 0;
+        Key->UnicodeChar = 0;
 #ifdef _MSC_VER
         if (_kbhit()) {               // check if key was pressed
             int ch = _getch();        // now it's safe to read
@@ -522,6 +530,12 @@ struct Overload {
                 if (input.size() == 1 && input[0] == 27)
                 {
                     Key->ScanCode = 0x17;
+                }
+
+                // map only the 'f' key
+                if (input.size() == 1 && input[0] == 'f')
+                {
+                    Key->UnicodeChar = 'f';
                 }
             }
 
