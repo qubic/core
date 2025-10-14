@@ -5620,6 +5620,7 @@ static void tickProcessor(void*, unsigned long long processorNumber)
                                 targetNextTickDataDigestIsKnown = false;
                                 numberOfNextTickTransactions = 0;
                                 numberOfKnownNextTickTransactions = 0;
+                                forceDontCheckComputerDigest = false;
 
                                 for (unsigned int i = 0; i < sizeof(tickTicks) / sizeof(tickTicks[0]) - 1; i++)
                                 {
@@ -6754,6 +6755,10 @@ static void processKeyPresses()
             // setText(message, L"QUBIC QUBIC QUBIC QUBIC QUBIC");
             // logToConsole(message);
             // return;
+        case 'f':
+            logToConsole(L"Requesting for force skip checking computer digest for this tick.");
+            forceDontCheckComputerDigest = true;
+            break;
         }
 
 

@@ -6,6 +6,7 @@
 
 #include "../src/revenue.h"
 
+#include <algorithm>
 #include <fstream>
 
 std::string TEST_DIR = "data/";

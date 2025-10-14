@@ -3,6 +3,12 @@
 
 #include "debugging.h"
 
+#ifdef __linux__
+void *_AddressOfReturnAddress()
+{
+    return __builtin_frame_address(0);
+}
+#endif
 
 // Define StackSizeTracker, recommended to use in global scope
 #define DEFINE_STACK_SIZE_TRACKER(name) static StackSizeTracker name

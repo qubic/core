@@ -27,28 +27,44 @@ include_directories(${PROJECT_ROOT_DIR})
 
 add_executable(
   qubic_core_tests
-  # assets.cpp
-  # common_def.cpp
-  # contract_core.cpp
-  # contract_qearn.cpp
-  # contract_qvault.cpp
-  # contract_qx.cpp
-  # kangaroo_twelve.cpp
-  m256.cpp
-  math_lib.cpp
-  network_messages.cpp
-  # platform.cpp
-  # qpi_collection.cpp
-  # qpi.cpp
-  # qpi_hash_map.cpp
-  # score_cache.cpp
-  # score.cpp
-  spectrum.cpp
-  stdlib_impl.cpp
-  virtual_memory.cpp
-  # tick_storage.cpp
-  # tx_status_request.cpp
-  # vote_counter.cpp
+		assets.cpp
+   		common_def.cpp
+   		contract_core.cpp
+   		contract_gqmprop.cpp
+   		contract_msvault.cpp
+   		contract_nostromo.cpp
+   		contract_qbay.cpp
+		contract_qbond.cpp
+   		contract_qearn.cpp
+   		contract_qswap.cpp
+   		contract_qutil.cpp
+   		contract_qvault.cpp
+   		contract_qx.cpp
+   		contract_rl.cpp
+   		contract_testex.cpp
+   		custom_mining.cpp
+   		file_io.cpp
+   		# fourq.cpp
+   		kangaroo_twelve.cpp
+   		m256.cpp
+   		math_lib.cpp
+   		network_messages.cpp
+   		platform.cpp
+   		qpi.cpp
+   		qpi_collection.cpp
+   		qpi_date_time.cpp
+   		qpi_hash_map.cpp
+   		revenue.cpp
+   		score.cpp
+   		score_cache.cpp
+   		spectrum.cpp
+   		stdlib_impl.cpp
+   		# tick_storage.cpp
+   		time.cpp
+   		tx_status_request.cpp
+   		uint128.cpp
+   		virtual_memory.cpp
+   		vote_counter.cpp
 )
 
 # Apply test-specific compiler flags from the centralized detection module

@@ -3,7 +3,6 @@
 #include "gtest/gtest.h"
 #include "../src/platform/read_write_lock.h"
 #include "../src/platform/stack_size_tracker.h"
-#include "../src/platform/custom_stack.h"
 #include "../src/platform/profiling.h"
 
 TEST(TestCoreReadWriteLock, SimpleSingleThread)
@@ -244,7 +243,7 @@ void checkTicksToMicroseconds(int type, unsigned long long ticks, unsigned long 
 {
     ::frequency = frequency;
     unsigned long long microsecondsInt = ProfilingDataCollector::ticksToMicroseconds(ticks);
-    long double microsecondsFloat = long double(ticks) * long double(1000000) / long double(frequency);
+    long double microsecondsFloat = static_cast<long double>(ticks) * static_cast<long double>(1000000) / static_cast<long double>(frequency);
     long double diff = std::abs(microsecondsFloat - microsecondsInt);
     if (type == 0)
     {

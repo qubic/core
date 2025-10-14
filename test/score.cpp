@@ -1,5 +1,9 @@
 #define NO_UEFI
 
+#ifdef __linux__
+#include <algorithm>
+#endif
+
 #include "gtest/gtest.h"
 
 #define ENABLE_PROFILING 0
@@ -19,6 +23,7 @@
 #include <fstream>
 #include <filesystem>
 #include <thread>
+
 
 using namespace score_params;
 using namespace test_utils;
@@ -198,7 +203,7 @@ static void processElementWithPerformance(unsigned char* miningSeed, unsigned ch
 }
 
 // Main processing function
-template <char profiling, unsigned long long N, unsigned long long... Is>
+template <char profiling, unsigned long long N, unsigned long... Is>
 static void processHelper(unsigned char* miningSeed, unsigned char* publicKey, unsigned char* nonce, int sampleIndex, std::index_sequence<Is...>)
 {
     if constexpr (profiling)
@@ -347,7 +352,7 @@ void runCommonTests()
 
 
         // Read the groudtruth scores and init result scores
-        numberOfSamples = std::min(numberOfSamples, scoresString.size() - 1);
+        numberOfSamples = std::min((size_t)numberOfSamples, scoresString.size() - 1);
         gScoresGroundTruth.resize(numberOfSamples);
         for (size_t i = 0; i < numberOfSamples; ++i)
         {

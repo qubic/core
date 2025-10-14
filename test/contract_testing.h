@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef __linux__
+#include "platform/msvc_polyfill.h"
+#endif
+
 // Include this first, to ensure "logging/logging.h" isn't included before the custom LOG_BUFFER_SIZE has been defined
 #include "logging_test.h"
 

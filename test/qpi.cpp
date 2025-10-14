@@ -1,5 +1,9 @@
 #define NO_UEFI
 
+#ifdef __linux__
+#include "platform/msvc_polyfill.h"
+#endif
+
 #include "gtest/gtest.h"
 
 #include <type_traits>
@@ -32,9 +36,9 @@ TEST(TestCoreQPI, SafeMath)
     }
 
     {
-        uint64_t a = 1000000;
-        uint64_t b = 2000000;
-        uint64_t expected_ok = 2000000000000ULL;
+        uint64 a = 1000000;
+        uint64 b = 2000000;
+        uint64 expected_ok = 2000000000000ULL;
         EXPECT_EQ(smul(a, b), expected_ok);
     }
     {
@@ -43,8 +47,8 @@ TEST(TestCoreQPI, SafeMath)
         EXPECT_EQ(smul(a, b), INT64_MAX);
     }
     {
-        uint64_t a = 123456789ULL;
-        uint64_t b = 987654321ULL;
+        uint64 a = 123456789ULL;
+        uint64 b = 987654321ULL;
 
         // Case: Multiplication by zero.
         EXPECT_EQ(smul(a, 0ULL), 0ULL);
@@ -57,15 +61,15 @@ TEST(TestCoreQPI, SafeMath)
     {
         // Case: A clear overflow case.
         // UINT64_MAX is approximately 1.84e19.
-        uint64_t c = 4000000000ULL;
-        uint64_t d = 5000000000ULL; // c * d is 2e19, which overflows.
+        uint64 c = 4000000000ULL;
+        uint64 d = 5000000000ULL; // c * d is 2e19, which overflows.
         EXPECT_EQ(smul(c, d), UINT64_MAX);
     }
     {
         // Case: Test the exact boundary of overflow.
-        uint64_t max_val = UINT64_MAX;
-        uint64_t divisor = 2;
-        uint64_t limit = max_val / divisor;
+        uint64 max_val = UINT64_MAX;
+        uint64 divisor = 2;
+        uint64 limit = max_val / divisor;
 
         // This should not overflow.
         EXPECT_EQ(smul(limit, divisor), limit * 2);
@@ -75,21 +79,21 @@ TEST(TestCoreQPI, SafeMath)
     }
     {
         // Case: A simple multiplication that does not overflow.
-        int64_t e = 1000000;
-        int64_t f = -2000000;
+        sint64 e = 1000000;
+        sint64 f = -2000000;
         EXPECT_EQ(smul(e, f), -2000000000000LL);
     }
     {
         // Case: Positive * Positive, causing overflow.
-        int64_t a = INT64_MAX / 2;
-        int64_t b = 3;
+        sint64 a = INT64_MAX / 2;
+        sint64 b = 3;
         EXPECT_EQ(smul(a, b), INT64_MAX);
     }
     {
-        int64_t a = INT64_MAX / 2;
-        int64_t b = 3;
-        int64_t c = -3;
-        int64_t d = INT64_MIN / 2;
+        sint64 a = INT64_MAX / 2;
+        sint64 b = 3;
+        sint64 c = -3;
+        sint64 d = INT64_MIN / 2;
 
         // Case: Positive * Negative, causing underflow.
         EXPECT_EQ(smul(a, c), INT64_MIN);
@@ -99,8 +103,8 @@ TEST(TestCoreQPI, SafeMath)
     }
     {
         // Case: Negative * Negative, causing overflow.
-        int64_t c = -3;
-        int64_t d = INT64_MIN / 2;
+        sint64 c = -3;
+        sint64 d = INT64_MIN / 2;
         EXPECT_EQ(smul(d, c), INT64_MAX);
     }
     {
@@ -838,7 +842,7 @@ void testProposalVotingV1()
     system.epoch = 12345;
     initComputors(0);
 
-    typedef std::conditional<
+    typedef typename std::conditional<
         proposalByComputorsOnly,
         QPI::ProposalAndVotingByComputors<200>,   // Allow less proposals than NUMBER_OF_COMPUTORS to check handling of full arrays
         QPI::ProposalByAnyoneVotingByComputors<200>
@@ -1189,7 +1193,7 @@ void testProposalVotingV1()
 
     // okay: fill proposal storage
     proposal.transfer.amounts.setAll(0);
-    constexpr QPI::uint16 computorProposalToFillAll = (proposalByComputorsOnly) ? pv->maxProposals : pv->maxProposals - 1;
+    QPI::uint16 computorProposalToFillAll = (proposalByComputorsOnly) ? pv->maxProposals : pv->maxProposals - 1;
     for (int i = 0; i < computorProposalToFillAll; ++i)
     {
         proposal.transfer.amounts.set(0, i);

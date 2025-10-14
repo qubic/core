@@ -53,7 +53,7 @@ struct {
 RespondTxStatus responseMessage;
 
 
-static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data)
+void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data)
 {
     const RespondTxStatus* txStatus = (const RespondTxStatus*)data;
 

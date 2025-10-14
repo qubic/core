@@ -1239,7 +1239,6 @@ public:
     BEGIN_EPOCH()
     {
         state.dfMiningSeed = qpi.getPrevSpectrumDigest();
-        qpi.initMiningSeed(state.dfMiningSeed);
     }
 
     // Deactivate delay function
