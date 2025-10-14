@@ -107,7 +107,7 @@ After going through this validation process, a contract can be integrated in off
 
 Steps for deploying a contract:
 
-1. Finish development, review, and tests as written above.
+1. Finish development, review, and tests as written above. This includes waiting for approval of your PR by the core dev team. If you need to make any significant changes to the code after the computors accepted your proposal, you will need to make a second proposal. 
 2. A proposal for including your contract into the Qubic Core needs to be prepared.
    We recommend to add your proposal description to https://github.com/qubic/proposal/tree/main/SmartContracts via a pull request (this directory also contains files from other contracts added before, which can be used as a template).
    The proposal description should include a detailed description of your contract (see point 1 of the [Development section](#development)) and the final source code of the contract.
@@ -632,6 +632,7 @@ The file `proposal.cpp` has a lot of examples showing how to use both functions.
 For example, `getProposalIndices()` shows how to call a contract function requiring input and providing output with `runContractFunction()`.
 An example use case of `makeContractTransaction()` can be found in `gqmpropSetProposal()`.
 The function `castVote()` is a more complex example combining both, calling a contract function and invoking a contract procedure.
+
 
 
 

@@ -33,30 +33,29 @@ static_assert(false, "Either AVX2 or AVX512 is required.");
 #endif
 
 #if defined (__AVX512F__)
-    static constexpr int BATCH_SIZE = 64;
-    static constexpr int BATCH_SIZE_X8 = BATCH_SIZE * 8;
-    static inline int popcnt512(__m512i v)
-    {
-        __m512i pc = _mm512_popcnt_epi64(v);
-        return (int)_mm512_reduce_add_epi64(pc);
-    }
+static constexpr int BATCH_SIZE = 64;
+static constexpr int BATCH_SIZE_X8 = BATCH_SIZE * 8;
+static inline int popcnt512(__m512i v)
+{
+    __m512i pc = _mm512_popcnt_epi64(v);
+    return (int)_mm512_reduce_add_epi64(pc);
+}
 #elif defined(__AVX2__)
-    static constexpr int BATCH_SIZE = 32;
-    static constexpr int BATCH_SIZE_X8 = BATCH_SIZE * 8;
-    static inline unsigned popcnt256(__m256i v)
-    {
-        return  popcnt64(_mm256_extract_epi64(v, 0)) +
-            popcnt64(_mm256_extract_epi64(v, 1)) +
-            popcnt64(_mm256_extract_epi64(v, 2)) +
-            popcnt64(_mm256_extract_epi64(v, 3));
-    }
+static constexpr int BATCH_SIZE = 32;
+static constexpr int BATCH_SIZE_X8 = BATCH_SIZE * 8;
+static inline unsigned popcnt256(__m256i v)
+{
+    return  popcnt64(_mm256_extract_epi64(v, 0)) +
+        popcnt64(_mm256_extract_epi64(v, 1)) +
+        popcnt64(_mm256_extract_epi64(v, 2)) +
+        popcnt64(_mm256_extract_epi64(v, 3));
+}
 
 #endif
 
 constexpr unsigned long long POOL_VEC_SIZE = (((1ULL << 32) + 64)) >> 3; // 2^32+64 bits ~ 512MB
 constexpr unsigned long long POOL_VEC_PADDING_SIZE = (POOL_VEC_SIZE + 200 - 1) / 200 * 200; // padding for multiple of 200
 constexpr unsigned long long STATE_SIZE = 200;
-static const char gLUT3States[] = { 0, 1, -1 };
 
 static void generateRandom2Pool(const unsigned char* miningSeed, unsigned char* state, unsigned char* pool)
 {
@@ -140,50 +139,6 @@ static void extract64Bits(unsigned long long number, char* output)
     }
 }
 
-static void packNegPos(const char* data,
-    unsigned long long dataSize,
-    unsigned char* negMask,
-    unsigned char* posMask)
-{
-    for (unsigned long long i = 0; i < dataSize; ++i)
-    {
-        negMask[i] = (data[i] == -1);
-        posMask[i] = (data[i] == 1);
-    }
-}
-
-static void unpackNegPos(
-    const unsigned char* negMask,
-    const unsigned char* posMask,
-    const unsigned long long dataSize,
-    char* data)
-{
-    for (unsigned long long i = 0; i < dataSize; ++i)
-    {
-        data[i] = 0;
-        if (negMask[i])
-        {
-            data[i] = -1;
-            continue;
-        }
-        if (posMask[i])
-        {
-            data[i] = 1;
-            continue;
-        }
-    }
-}
-
-static char convertMaskValue(unsigned char pos, unsigned char neg)
-{
-    /*
-    value = +1  if  pos=1 , neg=0
-    value = -1  if  pos=0 , neg=1
-    value =  0  otherwise
-    */
-    return (char)(pos - neg);
-}
-
 static void setBitValue(unsigned char* data, unsigned long long bitIdx, unsigned char bitValue)
 {
     // (data[bitIdx >> 3] & ~(1u << (bitIdx & 7u))). Set the bit at data[bitIdx >> 3] byte become zeros
@@ -198,14 +153,6 @@ static unsigned char getBitValue(const unsigned char* data, unsigned  long long 
     // (bitIdx & 7u) get the bit index in byte
     // (data[bitIdx >> 3] >> (bitIdx & 7u)) move the required bits to the end
     return ((data[bitIdx >> 3] >> (bitIdx & 7u)) & 1u);
-}
-
-static char getValueFromBit(const unsigned char* negMask, const unsigned char* posMask, unsigned  long long  bitIdx)
-{
-    unsigned long long idx = bitIdx;            /* bit index */
-    unsigned char negBit = (negMask[idx >> 3] >> (idx & 7)) & 1u;
-    unsigned char posBit = (posMask[idx >> 3] >> (idx & 7)) & 1u;
-    return convertMaskValue(posBit, negBit);
 }
 
 template<unsigned long long paddedSizeInBits>
@@ -278,7 +225,7 @@ static void packNegPosWithPadding(const char* data,
     const __m512i vMinus1 = _mm512_set1_epi8(-1);
     const __m512i vPlus1 = _mm512_set1_epi8(+1);
     unsigned long long k = 0;
-    for (; k + BATCH_SIZE < dataSizeInBits; k += BATCH_SIZE)
+    for (; k + BATCH_SIZE <= dataSizeInBits; k += BATCH_SIZE)
     {
         __m512i v = _mm512_loadu_si512(reinterpret_cast<const void*>(data + k));
         __mmask64 mNeg = _mm512_cmpeq_epi8_mask(v, vMinus1);
@@ -297,7 +244,7 @@ static void packNegPosWithPadding(const char* data,
     const __m256i vMinus1 = _mm256_set1_epi8(-1);
     const __m256i vPlus1 = _mm256_set1_epi8(+1);
     unsigned long long k = 0;
-    for (; k + BATCH_SIZE < dataSizeInBits; k += BATCH_SIZE)
+    for (; k + BATCH_SIZE <= dataSizeInBits; k += BATCH_SIZE)
     {
         __m256i v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(data + k));
 
@@ -337,22 +284,6 @@ static void packNegPosWithPadding(const char* data,
     }
 }
 
-static void unpackNegPosBits(const unsigned char* negMask,
-    const unsigned char* posMask,
-    unsigned long long dataSize,
-    unsigned long long paddedSize,
-    char* out)
-{
-    const unsigned long long startBit = paddedSize;   /* first real */
-    for (unsigned long long i = 0; i < dataSize; ++i)
-    {
-        unsigned long long idx = startBit + i;            /* bit index */
-        unsigned char negBit = (negMask[idx >> 3] >> (idx & 7)) & 1u;
-        unsigned char posBit = (posMask[idx >> 3] >> (idx & 7)) & 1u;
-        out[i] = convertMaskValue(posBit, negBit);
-    }
-}
-
 // Load 256/512 values start from a bit index into a m512 or m256 register
 #if defined (__AVX512F__)
 static inline __m512i load512Bits(const unsigned char* array, unsigned long long bitLocation)
@@ -374,7 +305,7 @@ static inline __m512i load512Bits(const unsigned char* array, unsigned long long
 static inline __m256i load256Bits(const unsigned char* array, unsigned long long bitLocation)
 {
     const unsigned long long byteIndex = bitLocation >> 3;
-    const unsigned long long bitOffset = bitLocation & 7ULL;
+    const int bitOffset = (int)(bitLocation & 7ULL);
 
     // Load a 256-bit (32-byte) vector starting at the byte index.
     const __m256i v = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(array + byteIndex));
@@ -462,7 +393,7 @@ struct ScoreFunction
         typedef char Neuron;
         typedef unsigned char NeuronType;
 
- 
+
         // Data for roll back
         struct ANN
         {
@@ -872,12 +803,8 @@ struct ScoreFunction
         {
             unsigned long long population = currentANN.population;
 
-            // Prepare the padding regions
-            currentANN.prepareData();
-            // Test copy padding
             unsigned char* pPaddingNeuronMinus = currentANN.neuronMinus1s;
             unsigned char* pPaddingNeuronPlus = currentANN.neuronPlus1s;
-
 
             unsigned char* pPaddingSynapseMinus = currentANN.synapseMinus1s;
             unsigned char* pPaddingSynapsePlus = currentANN.synapsePlus1s;
@@ -885,40 +812,149 @@ struct ScoreFunction
             paddingDatabits<radius>(pPaddingNeuronMinus, population);
             paddingDatabits<radius>(pPaddingNeuronPlus, population);
 
+
 #if defined (__AVX512F__)
-            const unsigned long long chunks = incommingSynapsesPitch >> 9;        /* bits/512         */
+            constexpr unsigned long long chunks = incommingSynapsesPitch >> 9;
+            __m512i minusBlock[chunks];
+            __m512i minusNext[chunks];
+            __m512i plusBlock[chunks];
+            __m512i plusNext[chunks];
+
+            constexpr unsigned long long blockSizeNeurons = 64ULL;
+            constexpr unsigned long long bytesPerWord = 8ULL;
+
+            unsigned long long n = 0;
+            const unsigned long long lastBlock = (population / blockSizeNeurons) * blockSizeNeurons;
+            for (; n < lastBlock; n += blockSizeNeurons)
+            {
+                // byteIndex = start byte for word containing neuron n
+                unsigned long long byteIndex = ((n >> 6) << 3); // (n / 64) * 8
+                unsigned long long curIdx = byteIndex;
+                unsigned long long nextIdx = byteIndex + bytesPerWord; // +8 bytes
+
+                // Load the neuron windows once per block for all chunks
+                unsigned long long loadCur = curIdx;
+                unsigned long long loadNext = nextIdx;
+                for (unsigned blk = 0; blk < chunks; ++blk, loadCur += BATCH_SIZE, loadNext += BATCH_SIZE)
+                {
+                    plusBlock[blk] = _mm512_loadu_si512((const void*)(pPaddingNeuronPlus + loadCur));
+                    plusNext[blk] = _mm512_loadu_si512((const void*)(pPaddingNeuronPlus + loadNext));
+                    minusBlock[blk] = _mm512_loadu_si512((const void*)(pPaddingNeuronMinus + loadCur));
+                    minusNext[blk] = _mm512_loadu_si512((const void*)(pPaddingNeuronMinus + loadNext));
+                }
+
+                __m512i sh = _mm512_setzero_si512();
+                __m512i sh64 = _mm512_set1_epi64(64);
+                const __m512i ones512 = _mm512_set1_epi64(1);
+
+                // For each neuron inside this 64-neuron block
+                for (unsigned int lane = 0; lane < 64; ++lane)
+                {
+                    const unsigned long long current_n = n + lane;
+                    // synapse pointers for this neuron
+                    unsigned char* pSynapsePlus = pPaddingSynapsePlus + current_n * incommingSynapseBatchSize;
+                    unsigned char* pSynapseMinus = pPaddingSynapseMinus + current_n * incommingSynapseBatchSize;
+
+                    __m512i plusPopulation = _mm512_setzero_si512();
+                    __m512i minusPopulation = _mm512_setzero_si512();
+
+                    for (unsigned blk = 0; blk < chunks; ++blk)
+                    {
+                        const __m512i synP = _mm512_loadu_si512((const void*)(pSynapsePlus + blk * BATCH_SIZE));
+                        const __m512i synM = _mm512_loadu_si512((const void*)(pSynapseMinus + blk * BATCH_SIZE));
+
+                        // stitch 64-bit lanes: cur >> s | next << (64 - s)
+                        __m512i neuronPlus = _mm512_or_si512(_mm512_srlv_epi64(plusBlock[blk], sh), _mm512_sllv_epi64(plusNext[blk], sh64));
+                        __m512i neuronMinus = _mm512_or_si512(_mm512_srlv_epi64(minusBlock[blk], sh), _mm512_sllv_epi64(minusNext[blk], sh64));
+
+                        __m512i tmpP = _mm512_and_si512(neuronMinus, synM);
+                        const __m512i plus = _mm512_ternarylogic_epi64(neuronPlus, synP, tmpP, 234);
+
+                        __m512i tmpM = _mm512_and_si512(neuronMinus, synP);
+                        const __m512i minus = _mm512_ternarylogic_epi64(neuronPlus, synM, tmpM, 234);
+
+                        plusPopulation = _mm512_add_epi64(plusPopulation, _mm512_popcnt_epi64(plus));
+                        minusPopulation = _mm512_add_epi64(minusPopulation, _mm512_popcnt_epi64(minus));
+                    }
+                    sh = _mm512_add_epi64(sh, ones512);
+                    sh64 = _mm512_sub_epi64(sh64, ones512);
+
+                    // Reduce to scalar and compute neuron value
+                    int score = (int)_mm512_reduce_add_epi64(_mm512_sub_epi64(plusPopulation, minusPopulation));
+                    char neuronValue = (score > 0) - (score < 0);
+                    neuronValueBuffer[current_n] = neuronValue;
+
+                    // Update the neuron positive and negative bitmaps
+                    unsigned char nNextNeg = neuronValue < 0 ? 1 : 0;
+                    unsigned char nNextPos = neuronValue > 0 ? 1 : 0;
+                    setBitValue(currentANN.nextneuronMinus1s, current_n + radius, nNextNeg);
+                    setBitValue(currentANN.nextNeuronPlus1s, current_n + radius, nNextPos);
+                }
+            }
+
+            for (; n < population; ++n)
+            {
+                char neuronValue = 0;
+                int score = 0;
+                unsigned char* pSynapsePlus = pPaddingSynapsePlus + n * incommingSynapseBatchSize;
+                unsigned char* pSynapseMinus = pPaddingSynapseMinus + n * incommingSynapseBatchSize;
+
+                const unsigned long long byteIndex = n >> 3;
+                const unsigned int bitOffset = (n & 7U);
+                const unsigned int bitOffset_8 = (8u - bitOffset);
+                __m512i sh = _mm512_set1_epi64((long long)bitOffset);
+                __m512i sh8 = _mm512_set1_epi64((long long)bitOffset_8);
+
+                __m512i plusPopulation = _mm512_setzero_si512();
+                __m512i minusPopulation = _mm512_setzero_si512();
+
+                for (unsigned blk = 0; blk < chunks; ++blk, pSynapsePlus += BATCH_SIZE, pSynapseMinus += BATCH_SIZE)
+                {
+                    const __m512i synapsePlus = _mm512_loadu_si512((const void*)(pSynapsePlus));
+                    const __m512i synapseMinus = _mm512_loadu_si512((const void*)(pSynapseMinus));
+
+                    __m512i neuronPlus = _mm512_loadu_si512((const void*)(pPaddingNeuronPlus + byteIndex + blk * BATCH_SIZE));
+                    __m512i neuronPlusNext = _mm512_loadu_si512((const void*)(pPaddingNeuronPlus + byteIndex + blk * BATCH_SIZE + 1));
+                    __m512i neuronMinus = _mm512_loadu_si512((const void*)(pPaddingNeuronMinus + byteIndex + blk * BATCH_SIZE));
+                    __m512i neuronMinusNext = _mm512_loadu_si512((const void*)(pPaddingNeuronMinus + byteIndex + blk * BATCH_SIZE + 1));
+
+                    neuronPlus = _mm512_or_si512(_mm512_srlv_epi64(neuronPlus, sh), _mm512_sllv_epi64(neuronPlusNext, sh8));
+                    neuronMinus = _mm512_or_si512(_mm512_srlv_epi64(neuronMinus, sh), _mm512_sllv_epi64(neuronMinusNext, sh8));
+
+                    __m512i tempP = _mm512_and_si512(neuronMinus, synapseMinus);
+                    const __m512i plus = _mm512_ternarylogic_epi64(neuronPlus, synapsePlus, tempP, 234);
+
+                    __m512i tempM = _mm512_and_si512(neuronMinus, synapsePlus);
+                    const __m512i minus = _mm512_ternarylogic_epi64(neuronPlus, synapseMinus, tempM, 234);
+
+                    tempP = _mm512_popcnt_epi64(plus);
+                    tempM = _mm512_popcnt_epi64(minus);
+                    plusPopulation = _mm512_add_epi64(tempP, plusPopulation);
+                    minusPopulation = _mm512_add_epi64(tempM, minusPopulation);
+                }
+
+                score = (int)_mm512_reduce_add_epi64(_mm512_sub_epi64(plusPopulation, minusPopulation));
+                neuronValue = (score > 0) - (score < 0);
+                neuronValueBuffer[n] = neuronValue;
+
+                unsigned char nNextNeg = neuronValue < 0 ? 1 : 0;
+                unsigned char nNextPos = neuronValue > 0 ? 1 : 0;
+                setBitValue(currentANN.nextneuronMinus1s, n + radius, nNextNeg);
+                setBitValue(currentANN.nextNeuronPlus1s, n + radius, nNextPos);
+            }
 #else
-            const unsigned long long chunks = incommingSynapsesPitch >> 8;        /* bits/256         */
-#endif
+            constexpr unsigned long long chunks = incommingSynapsesPitch >> 8;
             for (unsigned long long n = 0; n < population; ++n, pPaddingSynapsePlus += incommingSynapseBatchSize, pPaddingSynapseMinus += incommingSynapseBatchSize)
             {
                 char neuronValue = 0;
                 int score = 0;
+                unsigned char* pSynapsePlus = pPaddingSynapsePlus;
+                unsigned char* pSynapseMinus = pPaddingSynapseMinus;
+
                 int synapseBlkIdx = 0; // blk index of synapse
                 int neuronBlkIdx = 0;
-                for (unsigned blk = 0; blk < chunks; ++blk, synapseBlkIdx += BATCH_SIZE, neuronBlkIdx +=BATCH_SIZE_X8)
+                for (unsigned blk = 0; blk < chunks; ++blk, synapseBlkIdx += BATCH_SIZE, neuronBlkIdx += BATCH_SIZE_X8)
                 {
-#if defined (__AVX512F__)
-                    const __m512i synapsePlus = _mm512_loadu_si512((const void*)(pPaddingSynapsePlus + synapseBlkIdx));
-                    const __m512i synapseMinus = _mm512_loadu_si512((const void*)(pPaddingSynapseMinus + synapseBlkIdx));
-
-                    __m512i neuronPlus = load512Bits(pPaddingNeuronPlus, n + neuronBlkIdx);
-                    __m512i neuronMinus = load512Bits(pPaddingNeuronMinus, n + neuronBlkIdx);
-
-                    //__m512i plus = _mm512_or_si512(_mm512_and_si512(neuronPlus, synapsePlus),
-                    //    _mm512_and_si512(neuronMinus, synapseMinus));
-
-                    //__m512i minus = _mm512_or_si512(_mm512_and_si512(neuronPlus, synapseMinus),
-                    //    _mm512_and_si512(neuronMinus, synapsePlus));
-
-                    const __m512i plus = _mm512_ternarylogic_epi64(neuronPlus, synapsePlus, _mm512_and_si512(neuronMinus, synapseMinus), 234);
-                    const __m512i minus = _mm512_ternarylogic_epi64(neuronPlus, synapseMinus, _mm512_and_si512(neuronMinus, synapsePlus), 234);
-
-                    const __m512i plusPopulation = _mm512_popcnt_epi64(plus);
-                    const __m512i minusPopulation = _mm512_popcnt_epi64(minus);
-                    score += (int)_mm512_reduce_add_epi64(_mm512_sub_epi64(plusPopulation, minusPopulation));
-
-#else
                     // Process 256bits at once, neigbor shilf 64 bytes = 256 bits
                     const __m256i synapsePlus = _mm256_loadu_si256((const __m256i*)(pPaddingSynapsePlus + synapseBlkIdx));
                     const __m256i synapseMinus = _mm256_loadu_si256((const __m256i*)(pPaddingSynapseMinus + synapseBlkIdx));
@@ -933,7 +969,6 @@ struct ScoreFunction
                         _mm256_and_si256(neuronMinus, synapsePlus));
 
                     score += popcnt256(plus) - popcnt256(minus);
-#endif
                 }
 
                 neuronValue = (score > 0) - (score < 0);
@@ -944,8 +979,11 @@ struct ScoreFunction
                 unsigned char nNextPos = neuronValue > 0 ? 1 : 0;
                 setBitValue(currentANN.nextneuronMinus1s, n + radius, nNextNeg);
                 setBitValue(currentANN.nextNeuronPlus1s, n + radius, nNextPos);
-
             }
+#endif
+
+
+
             copyMem(currentANN.neurons, neuronValueBuffer, population * sizeof(Neuron));
             copyMem(currentANN.neuronMinus1s, currentANN.nextneuronMinus1s, sizeof(currentANN.neuronMinus1s));
             copyMem(currentANN.neuronPlus1s, currentANN.nextNeuronPlus1s, sizeof(currentANN.neuronPlus1s));
@@ -960,16 +998,8 @@ struct ScoreFunction
 
             // Save the neuron value for comparison
             copyMem(previousNeuronValue, neurons, population * sizeof(Neuron));
-
-            const __m512i vPop = _mm512_set1_epi64(population);
-            const __m512i vPitch = _mm512_set1_epi64(static_cast<long long>(incommingSynapsesPitch));
-            const __m512i vStrideL = _mm512_set1_epi64(incommingSynapsesPitch - 1);
-            const __m512i vStrideR = _mm512_set1_epi64(incommingSynapsesPitch + 1);
-            const __m512i vNeighbor = _mm512_set1_epi64(static_cast<long long>(numberOfNeighbors));
-
-            const __m512i lane01234567 = _mm512_set_epi64(7, 6, 5, 4, 3, 2, 1, 0);   // constant
-            long long test[8] = { 0 };
             {
+                //PROFILE_NAMED_SCOPE("convertSynapse");
                 // Compute the incomming synapse of each neurons
                 setMem(paddingIncommingSynapses, sizeof(paddingIncommingSynapses), 0);
                 for (unsigned long long n = 0; n < population; ++n)
@@ -997,6 +1027,7 @@ struct ScoreFunction
 
             // Prepare masks
             {
+                //PROFILE_NAMED_SCOPE("prepareMask");
                 packNegPosWithPadding(currentANN.neurons,
                     population,
                     radius,
@@ -1011,6 +1042,7 @@ struct ScoreFunction
             }
 
             {
+                //PROFILE_NAMED_SCOPE("processTickLoop");
                 for (unsigned long long tick = 0; tick < numberOfTicks; ++tick)
                 {
                     processTick();
@@ -1018,25 +1050,9 @@ struct ScoreFunction
                     // - N ticks have passed (already in for loop)
                     // - All neuron values are unchanged
                     // - All output neurons have non-zero values
-                    bool shouldExit = true;
-                    bool allNeuronsUnchanged = true;
-                    bool allOutputNeuronsIsNonZeros = true;
-                    for (unsigned long long n = 0; n < population; ++n)
-                    {
-                        // Neuron unchanged check
-                        if (previousNeuronValue[n] != neurons[n])
-                        {
-                            allNeuronsUnchanged = false;
-                        }
 
-                        // Ouput neuron value check
-                        if (neuronTypes[n] == OUTPUT_NEURON_TYPE && neurons[n] == 0)
-                        {
-                            allOutputNeuronsIsNonZeros = false;
-                        }
-                    }
-
-                    if (allOutputNeuronsIsNonZeros || allNeuronsUnchanged)
+                    if (areAllNeuronsUnchanged((const char*)previousNeuronValue, (const char*)neurons, population)
+                        || areAllNeuronsZeros((const char*)neurons, (const char*)neuronTypes, population))
                     {
                         break;
                     }
@@ -1045,6 +1061,111 @@ struct ScoreFunction
                     copyMem(previousNeuronValue, neurons, population * sizeof(Neuron));
                 }
             }
+        }
+
+        bool areAllNeuronsZeros(
+            const char* neurons,
+            const char* neuronTypes,
+            unsigned long long population)
+        {
+
+#if defined (__AVX512F__)
+            const __m512i zero = _mm512_setzero_si512();
+            const __m512i typeOutput = _mm512_set1_epi8(OUTPUT_NEURON_TYPE);
+
+            unsigned long long i = 0;
+            for (; i + BATCH_SIZE <= population; i += BATCH_SIZE)
+            {
+                __m512i cur = _mm512_loadu_si512((const void*)(neurons + i));
+                __m512i types = _mm512_loadu_si512((const void*)(neuronTypes + i));
+
+                __mmask64 type_mask = _mm512_cmpeq_epi8_mask(types, typeOutput);
+                __mmask64 zero_mask = _mm512_cmpeq_epi8_mask(cur, zero);
+
+                if (type_mask & zero_mask)
+                    return false;
+            }
+#else
+            const __m256i zero = _mm256_setzero_si256();
+            const __m256i typeOutput = _mm256_set1_epi8(OUTPUT_NEURON_TYPE);
+
+            unsigned long long i = 0;
+            for (; i + BATCH_SIZE <= population; i += BATCH_SIZE)
+            {
+                __m256i cur = _mm256_loadu_si256((const __m256i*)(neurons + i));
+                __m256i types = _mm256_loadu_si256((const __m256i*)(neuronTypes + i));
+
+                // Compare for type == OUTPUT
+                __m256i type_cmp = _mm256_cmpeq_epi8(types, typeOutput);
+                int type_mask = _mm256_movemask_epi8(type_cmp);
+
+                // Compare for neuron == 0
+                __m256i zero_cmp = _mm256_cmpeq_epi8(cur, zero);
+                int zero_mask = _mm256_movemask_epi8(zero_cmp);
+
+                // If both masks overlap → some output neuron is zero
+                if (type_mask & zero_mask)
+                {
+                    return false;
+                }
+            }
+
+#endif
+            for (; i < population; i++)
+            {
+                // Neuron unchanged check
+                if (neuronTypes[i] == OUTPUT_NEURON_TYPE && neurons[i] == 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        bool areAllNeuronsUnchanged(
+            const char* previousNeuronValue,
+            const char* neurons,
+            unsigned long long population)
+        {
+            unsigned long long i = 0;
+            for (; i + BATCH_SIZE <= population; i += BATCH_SIZE)
+            {
+
+#if defined (__AVX512F__)
+                __m512i prev = _mm512_loadu_si512((const void*)(previousNeuronValue + i));
+                __m512i cur = _mm512_loadu_si512((const void*)(neurons + i));
+
+                __mmask64 neq_mask = _mm512_cmpneq_epi8_mask(prev, cur);
+                if (neq_mask)
+                {
+                    return false;
+                }
+#else
+                __m256i v_prev = _mm256_loadu_si256((const __m256i*)(previousNeuronValue + i));
+                __m256i v_curr = _mm256_loadu_si256((const __m256i*)(neurons + i));
+                __m256i cmp = _mm256_cmpeq_epi8(v_prev, v_curr);
+
+                int mask = _mm256_movemask_epi8(cmp);
+
+                // -1 means all bytes equal
+                if (mask != -1)
+                {
+                    return false;
+                }
+#endif
+            }
+
+            for (; i < population; i++)
+            {
+                // Neuron unchanged check
+                if (previousNeuronValue[i] != neurons[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         unsigned int computeNonMatchingOutput()
@@ -1057,7 +1178,61 @@ struct ScoreFunction
             // Because the output neuron order never changes, the order is preserved
             unsigned int R = 0;
             unsigned long long outputIdx = 0;
-            for (unsigned long long i = 0; i < population; i++)
+            unsigned long long i = 0;
+#if defined (__AVX512F__)
+            const __m512i typeOutputAVX = _mm512_set1_epi8(OUTPUT_NEURON_TYPE);
+            for (; i + BATCH_SIZE <= population; i += BATCH_SIZE)
+            {
+                // Load 64 neuron types and compare with OUTPUT_NEURON_TYPE
+                __m512i types = _mm512_loadu_si512((const void*)(neuronTypes + i));
+                __mmask64 type_mask = _mm512_cmpeq_epi8_mask(types, typeOutputAVX);
+
+                if (type_mask == 0)
+                {
+                    continue; // no output neurons in this 64-wide block, just skip
+                }
+
+                // Output neuron existed in this block
+                for (int k = 0; k < BATCH_SIZE; ++k)
+                {
+                    if (type_mask & (1ULL << k))
+                    {
+                        char neuronVal = neurons[i + k];
+                        if (neuronVal != outputNeuronExpectedValue[outputIdx])
+                        {
+                            R++;
+                        }
+                        outputIdx++;
+                    }
+                }
+            }
+#else
+            const __m256i typeOutputAVX = _mm256_set1_epi8(OUTPUT_NEURON_TYPE);
+            for (; i + BATCH_SIZE <= population; i += BATCH_SIZE)
+            {
+                __m256i types_vec = _mm256_loadu_si256((const __m256i*)(neuronTypes + i));
+                __m256i cmp_vec = _mm256_cmpeq_epi8(types_vec, typeOutputAVX);
+                unsigned int type_mask = _mm256_movemask_epi8(cmp_vec);
+
+                if (type_mask == 0)
+                {
+                    continue; // no output neurons in this 32-wide block, just skip
+                }
+                for (int k = 0; k < BATCH_SIZE; ++k)
+                {
+                    if (type_mask & (1U << k))
+                    {
+                        char neuronVal = neurons[i + k];
+                        if (neuronVal != outputNeuronExpectedValue[outputIdx])
+                            R++;
+                        outputIdx++;
+                    }
+                }
+            }
+#endif
+
+            // remainder loop
+            for (; i < population; i++)
             {
                 if (neuronTypes[i] == OUTPUT_NEURON_TYPE)
                 {
@@ -1068,6 +1243,7 @@ struct ScoreFunction
                     outputIdx++;
                 }
             }
+
             return R;
         }
 
@@ -1159,7 +1335,7 @@ struct ScoreFunction
         }
 
         void initializeRandom2(
-            const unsigned char* publicKey, 
+            const unsigned char* publicKey,
             const unsigned char* nonce,
             const unsigned char* pRandom2Pool)
         {
@@ -1202,9 +1378,9 @@ struct ScoreFunction
                     unsigned char extractValue = (unsigned char)((initValue->synapseWeight[i] >> shiftVal) & mask);
                     switch (extractValue)
                     {
-                        case 2: synapses[32 * i + j] = -1; break;
-                        case 3: synapses[32 * i + j] = 1; break;
-                        default: synapses[32 * i + j] = 0;
+                    case 2: synapses[32 * i + j] = -1; break;
+                    case 3: synapses[32 * i + j] = 1; break;
+                    default: synapses[32 * i + j] = 0;
                     }
                 }
             }
@@ -1236,7 +1412,7 @@ struct ScoreFunction
         {
             // Setup the random starting point 
             initializeRandom2(publicKey, nonce, pRandom2Pool);
-            
+
             // Initialize
             unsigned int bestR = initializeANN();
 
@@ -1272,7 +1448,7 @@ struct ScoreFunction
                     currentANN.copyDataTo(bestANN);
                 }
 
-                ASSERT(bestANN.population <= populationThreshold);
+                //ASSERT(bestANN.population <= populationThreshold);
             }
 
             unsigned int score = numberOfOutputNeurons - bestR;
@@ -1567,5 +1743,3 @@ struct ScoreFunction
         }
     }
 };
-
-

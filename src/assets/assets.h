@@ -245,6 +245,7 @@ iteration:
                 AssetIssuance assetIssuance;
                 assetIssuance.issuerPublicKey = issuerPublicKey;
                 assetIssuance.numberOfShares = numberOfShares;
+                assetIssuance.managingContractIndex = managingContractIndex; // any SC can call issueAsset now (eg: QBOND) not just QX
                 *((unsigned long long*) assetIssuance.name) = *((unsigned long long*) name); // Order must be preserved!
                 assetIssuance.numberOfDecimalPlaces = numberOfDecimalPlaces; // Order must be preserved!
                 *((unsigned long long*) assetIssuance.unitOfMeasurement) = *((unsigned long long*) unitOfMeasurement); // Order must be preserved!
@@ -417,8 +418,8 @@ iteration:
             logPM.possessionPublicKey = possessionPublicKey;
             logPM.ownershipPublicKey = ownershipPublicKey;
             logPM.issuerPublicKey = assets[issuanceIndex].varStruct.issuance.publicKey;
-            logOM.sourceContractIndex = assets[sourcePossessionIndex].varStruct.ownership.managingContractIndex;
-            logOM.destinationContractIndex = destinationPossessionManagingContractIndex;
+            logPM.sourceContractIndex = assets[sourcePossessionIndex].varStruct.ownership.managingContractIndex;
+            logPM.destinationContractIndex = destinationPossessionManagingContractIndex;
             logPM.numberOfShares = numberOfShares;
             *((unsigned long long*) & logPM.assetName) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name);  // possible with 7 byte array, because it is followed by memory reserved for terminator byte
             logger.logAssetPossessionManagingContractChange(logPM);

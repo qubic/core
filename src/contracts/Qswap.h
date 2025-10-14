@@ -1,5 +1,15 @@
 using namespace QPI;
 
+// Log types enum for QSWAP contract
+enum QSWAPLogInfo {
+    QSWAPAddLiquidity = 4,
+    QSWAPRemoveLiquidity = 5,
+    QSWAPSwapExactQuForAsset = 6,
+    QSWAPSwapQuForExactAsset = 7,
+    QSWAPSwapExactAssetForQu = 8,
+    QSWAPSwapAssetForExactQu = 9
+};
+
 // FIXED CONSTANTS
 constexpr uint64 QSWAP_INITIAL_MAX_POOL = 16384;
 constexpr uint64 QSWAP_MAX_POOL = QSWAP_INITIAL_MAX_POOL * X_MULTIPLIER;
@@ -10,6 +20,39 @@ constexpr uint32 QSWAP_FEE_BASE_100 = 100;
 
 struct QSWAP2 
 {
+};
+
+// Logging message structures for QSWAP procedures
+struct QSWAPAddLiquidityMessage
+{
+    uint32 _contractIndex;
+    uint32 _type;
+    id assetIssuer;
+    uint64 assetName;
+    sint64 userIncreaseLiquidity;
+    sint64 quAmount;
+    sint64 assetAmount;
+    sint8 _terminator;
+};
+
+struct QSWAPRemoveLiquidityMessage
+{
+    uint32 _contractIndex;
+    uint32 _type;
+    sint64 quAmount;
+    sint64 assetAmount;
+    sint8 _terminator;
+};
+
+struct QSWAPSwapMessage
+{
+    uint32 _contractIndex;
+    uint32 _type;
+    id assetIssuer;
+    uint64 assetName;
+    sint64 assetAmountIn;
+    sint64 assetAmountOut;
+    sint8 _terminator;
 };
 
 struct QSWAP : public ContractBase
@@ -228,6 +271,17 @@ public:
 	struct SwapAssetForExactQu_output
 	{
 		sint64 assetAmountIn;
+	};
+
+	struct TransferShareManagementRights_input
+	{
+		Asset asset;
+		sint64 numberOfShares;
+		uint32 newManagingContractIndex;
+	};
+	struct TransferShareManagementRights_output
+	{
+		sint64 transferredNumberOfShares;
 	};
 
 protected:
@@ -895,6 +949,7 @@ protected:
 
 	struct AddLiquidity_locals
 	{
+		QSWAPAddLiquidityMessage addLiquidityMessage;
 		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
@@ -1210,6 +1265,16 @@ protected:
 
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
 
+		// Log AddLiquidity procedure
+		locals.addLiquidityMessage._contractIndex = SELF_INDEX;
+		locals.addLiquidityMessage._type = QSWAPAddLiquidity;
+		locals.addLiquidityMessage.assetIssuer = input.assetIssuer;
+		locals.addLiquidityMessage.assetName = input.assetName;
+		locals.addLiquidityMessage.userIncreaseLiquidity = output.userIncreaseLiquidity;
+		locals.addLiquidityMessage.quAmount = output.quAmount;
+		locals.addLiquidityMessage.assetAmount = output.assetAmount;
+		LOG_INFO(locals.addLiquidityMessage);
+
 		if (qpi.invocationReward() > locals.quTransferAmount)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.quTransferAmount);
@@ -1218,6 +1283,7 @@ protected:
 
 	struct RemoveLiquidity_locals
 	{
+		QSWAPRemoveLiquidityMessage removeLiquidityMessage;
 		id poolID;
 		PoolBasicState poolBasicState;
 		sint64 userLiquidityElementIndex;
@@ -1346,10 +1412,18 @@ protected:
 		locals.poolBasicState.reservedAssetAmount -= locals.burnAssetAmount;
 
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log RemoveLiquidity procedure
+		locals.removeLiquidityMessage._contractIndex = SELF_INDEX;
+		locals.removeLiquidityMessage._type = QSWAPRemoveLiquidity;
+		locals.removeLiquidityMessage.quAmount = output.quAmount;
+		locals.removeLiquidityMessage.assetAmount = output.assetAmount;
+		LOG_INFO(locals.removeLiquidityMessage);
 	}
 
 	struct SwapExactQuForAsset_locals
 	{
+		QSWAPSwapMessage swapMessage;
 		id poolID;
 		sint64 poolSlot;
 		sint64 quAmountIn;
@@ -1466,10 +1540,20 @@ protected:
 		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - sint64(locals.feeToTeam.low) - sint64(locals.feeToProtocol.low);
 		locals.poolBasicState.reservedAssetAmount -= locals.assetAmountOut;
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log SwapExactQuForAsset procedure
+		locals.swapMessage._contractIndex = SELF_INDEX;
+		locals.swapMessage._type = QSWAPSwapExactQuForAsset;
+		locals.swapMessage.assetIssuer = input.assetIssuer;
+		locals.swapMessage.assetName = input.assetName;
+		locals.swapMessage.assetAmountIn = locals.quAmountIn;
+		locals.swapMessage.assetAmountOut = output.assetAmountOut;
+		LOG_INFO(locals.swapMessage);
 	}
 
 	struct SwapQuForExactAsset_locals
 	{
+		QSWAPSwapMessage swapMessage;
 		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
@@ -1601,10 +1685,20 @@ protected:
 		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - sint64(locals.feeToTeam.low) - sint64(locals.feeToProtocol.low);
 		locals.poolBasicState.reservedAssetAmount -= input.assetAmountOut;
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log SwapQuForExactAsset procedure
+		locals.swapMessage._contractIndex = SELF_INDEX;
+		locals.swapMessage._type = QSWAPSwapQuForExactAsset;
+		locals.swapMessage.assetIssuer = input.assetIssuer;
+		locals.swapMessage.assetName = input.assetName;
+		locals.swapMessage.assetAmountIn = output.quAmountIn;
+		locals.swapMessage.assetAmountOut = input.assetAmountOut;
+		LOG_INFO(locals.swapMessage);
 	}
 
 	struct SwapExactAssetForQu_locals
 	{
+		QSWAPSwapMessage swapMessage;
 		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
@@ -1755,10 +1849,20 @@ protected:
 		state.protocolEarnedFee += locals.feeToProtocol.low;
 
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log SwapExactAssetForQu procedure
+		locals.swapMessage._contractIndex = SELF_INDEX;
+		locals.swapMessage._type = QSWAPSwapExactAssetForQu;
+		locals.swapMessage.assetIssuer = input.assetIssuer;
+		locals.swapMessage.assetName = input.assetName;
+		locals.swapMessage.assetAmountIn = input.assetAmountIn;
+		locals.swapMessage.assetAmountOut = output.quAmountOut;
+		LOG_INFO(locals.swapMessage);
 	}
 
 	struct SwapAssetForExactQu_locals
 	{
+		QSWAPSwapMessage swapMessage;
 		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
@@ -1903,6 +2007,15 @@ protected:
 		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToTeam.low);
 		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToProtocol.low);
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log SwapAssetForExactQu procedure
+		locals.swapMessage._contractIndex = SELF_INDEX;
+		locals.swapMessage._type = QSWAPSwapAssetForExactQu;
+		locals.swapMessage.assetIssuer = input.assetIssuer;
+		locals.swapMessage.assetName = input.assetName;
+		locals.swapMessage.assetAmountIn = output.assetAmountIn;
+		locals.swapMessage.assetAmountOut = input.quAmountOut;
+		LOG_INFO(locals.swapMessage);
 	}
 
 	struct TransferShareOwnershipAndPossession_locals
@@ -1982,6 +2095,46 @@ protected:
 		output.success = true;
 	}
 
+	PUBLIC_PROCEDURE(TransferShareManagementRights)
+	{
+		if (qpi.invocationReward() < QSWAP_FEE_BASE_100)
+		{
+			return ;
+		}
+
+		if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer,qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
+		{
+			// not enough shares available
+			output.transferredNumberOfShares = 0;
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+		}
+		else
+		{
+			if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
+				input.newManagingContractIndex, input.newManagingContractIndex, QSWAP_FEE_BASE_100) < 0)
+			{
+				// error
+				output.transferredNumberOfShares = 0;
+				if (qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+			}
+			else
+			{
+				// success
+				output.transferredNumberOfShares = input.numberOfShares;
+				if (qpi.invocationReward() > QSWAP_FEE_BASE_100)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward() -  QSWAP_FEE_BASE_100);
+				}
+			}
+		}
+	}
+
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		// functions
@@ -2005,6 +2158,7 @@ protected:
 		REGISTER_USER_PROCEDURE(SwapExactAssetForQu, 8);
 		REGISTER_USER_PROCEDURE(SwapAssetForExactQu, 9);
 		REGISTER_USER_PROCEDURE(SetTeamInfo, 10);
+		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 11);
 	}
 
 	INITIALIZE()
@@ -2036,4 +2190,8 @@ protected:
 			}
 		}
 	}
+	PRE_ACQUIRE_SHARES()
+    {
+		output.allowTransfer = true;
+    }
 };

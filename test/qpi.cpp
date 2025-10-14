@@ -23,6 +23,126 @@ void initComputors(unsigned short computorIdOffset)
     }
 }
 
+TEST(TestCoreQPI, SafeMath)
+{
+    {
+        sint64 a = -1000000000000LL;  // This is valid - negative signed integer
+        sint64 b = 2;                 // Positive signed integer
+        EXPECT_EQ(smul(a, b), -2000000000000);
+    }
+
+    {
+        uint64_t a = 1000000;
+        uint64_t b = 2000000;
+        uint64_t expected_ok = 2000000000000ULL;
+        EXPECT_EQ(smul(a, b), expected_ok);
+    }
+    {
+        sint64 a = INT64_MIN;  // -9223372036854775808
+        sint64 b = -1;         // -1
+        EXPECT_EQ(smul(a, b), INT64_MAX);
+    }
+    {
+        uint64_t a = 123456789ULL;
+        uint64_t b = 987654321ULL;
+
+        // Case: Multiplication by zero.
+        EXPECT_EQ(smul(a, 0ULL), 0ULL);
+        EXPECT_EQ(smul(0ULL, b), 0ULL);
+
+        // Case: Multiplication by one.
+        EXPECT_EQ(smul(a, 1ULL), a);
+        EXPECT_EQ(smul(1ULL, b), b);
+    }
+    {
+        // Case: A clear overflow case.
+        // UINT64_MAX is approximately 1.84e19.
+        uint64_t c = 4000000000ULL;
+        uint64_t d = 5000000000ULL; // c * d is 2e19, which overflows.
+        EXPECT_EQ(smul(c, d), UINT64_MAX);
+    }
+    {
+        // Case: Test the exact boundary of overflow.
+        uint64_t max_val = UINT64_MAX;
+        uint64_t divisor = 2;
+        uint64_t limit = max_val / divisor;
+
+        // This should not overflow.
+        EXPECT_EQ(smul(limit, divisor), limit * 2);
+
+        // This should overflow and clamp.
+        EXPECT_EQ(smul(limit + 1, divisor), UINT64_MAX);
+    }
+    {
+        // Case: A simple multiplication that does not overflow.
+        int64_t e = 1000000;
+        int64_t f = -2000000;
+        EXPECT_EQ(smul(e, f), -2000000000000LL);
+    }
+    {
+        // Case: Positive * Positive, causing overflow.
+        int64_t a = INT64_MAX / 2;
+        int64_t b = 3;
+        EXPECT_EQ(smul(a, b), INT64_MAX);
+    }
+    {
+        int64_t a = INT64_MAX / 2;
+        int64_t b = 3;
+        int64_t c = -3;
+        int64_t d = INT64_MIN / 2;
+
+        // Case: Positive * Negative, causing underflow.
+        EXPECT_EQ(smul(a, c), INT64_MIN);
+
+        // Case: Negative * Positive, causing underflow.
+        EXPECT_EQ(smul(d, b), INT64_MIN);
+    }
+    {
+        // Case: Negative * Negative, causing overflow.
+        int64_t c = -3;
+        int64_t d = INT64_MIN / 2;
+        EXPECT_EQ(smul(d, c), INT64_MAX);
+    }
+    {
+        // --- Unsigned 32-bit Tests ---
+        // No Overflow
+        uint32_t a_u32 = 60000;
+        uint32_t b_u32 = 60000;
+        EXPECT_EQ(smul(a_u32, b_u32), 3600000000U);
+
+        // Overflow
+        uint32_t c_u32 = 70000;
+        uint32_t d_u32 = 70000; // 70000*70000 = 4,900,000,000 which is > UINT32_MAX (~4.29e9)
+        EXPECT_EQ(smul(c_u32, d_u32), UINT32_MAX);
+
+        // Boundary
+        uint32_t limit_u32 = UINT32_MAX / 2;
+        uint32_t divisor_u32 = 2;
+        EXPECT_EQ(smul(limit_u32, divisor_u32), limit_u32 * 2);
+        EXPECT_EQ(smul(limit_u32 + 1, divisor_u32), UINT32_MAX);
+
+        // --- Signed 32-bit Tests ---
+        // No Overflow
+        int32_t a_s32 = 10000;
+        int32_t b_s32 = -10000;
+        EXPECT_EQ(smul(a_s32, b_s32), -100000000);
+
+        // Positive Overflow
+        int32_t c_s32 = INT32_MAX / 2;
+        int32_t d_s32 = 3;
+        EXPECT_EQ(smul(c_s32, d_s32), INT32_MAX);
+
+        // Underflow
+        int32_t e_s32 = INT32_MIN / 2;
+        int32_t f_s32 = 3;
+        EXPECT_EQ(smul(e_s32, f_s32), INT32_MIN);
+
+        // Negative * Negative, causing overflow.
+        int32_t g_s32 = -3;
+        int32_t h_s32 = INT32_MIN / 2;
+        EXPECT_EQ(smul(h_s32, g_s32), INT32_MAX);
+    }
+}
 
 TEST(TestCoreQPI, Array)
 {

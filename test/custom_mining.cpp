@@ -19,13 +19,13 @@
 TEST(CustomMining, TaskStorageGeneral)
 {
     constexpr unsigned long long NUMBER_OF_TASKS = 100;
-    CustomMiningTaskStorage storage;
+    CustomMiningTaskV2Storage storage;
 
     storage.init();
 
     for (unsigned long long i = 0; i < NUMBER_OF_TASKS; i++)
     {
-        CustomMiningTask task;
+        CustomMiningTaskV2 task;
         task.taskIndex = NUMBER_OF_TASKS - i;
 
         storage.addData(&task);
@@ -34,8 +34,8 @@ TEST(CustomMining, TaskStorageGeneral)
     // Expect the task are sort in ascending order
     for (unsigned long long i = 0; i < NUMBER_OF_TASKS - 1; i++)
     {
-        CustomMiningTask* task0 = storage.getDataByIndex(i);
-        CustomMiningTask* task1 = storage.getDataByIndex(i + 1);
+        CustomMiningTaskV2* task0 = storage.getDataByIndex(i);
+        CustomMiningTaskV2* task1 = storage.getDataByIndex(i + 1);
         EXPECT_LT(task0->taskIndex, task1->taskIndex);
     }
     EXPECT_EQ(storage.getCount(), NUMBER_OF_TASKS);
@@ -47,14 +47,14 @@ TEST(CustomMining, TaskStorageDuplicatedItems)
 {
     constexpr unsigned long long NUMBER_OF_TASKS = 100;
     constexpr unsigned long long DUPCATED_TASKS = 10;
-    CustomMiningTaskStorage storage;
+    CustomMiningTaskV2Storage storage;
 
     storage.init();
 
     // For DUPCATED_TASKS will only recorded 1 task
     for (unsigned long long i = 0; i < DUPCATED_TASKS; i++)
     {
-        CustomMiningTask task;
+        CustomMiningTaskV2 task;
         task.taskIndex = 1;
 
         storage.addData(&task);
@@ -62,7 +62,7 @@ TEST(CustomMining, TaskStorageDuplicatedItems)
 
     for (unsigned long long i = DUPCATED_TASKS; i < NUMBER_OF_TASKS; i++)
     {
-        CustomMiningTask task;
+        CustomMiningTaskV2 task;
         task.taskIndex = i;
 
         storage.addData(&task);
@@ -78,19 +78,19 @@ TEST(CustomMining, TaskStorageExistedItem)
 {
     constexpr unsigned long long NUMBER_OF_TASKS = 100;
     constexpr unsigned long long DUPCATED_TASKS = 10;
-    CustomMiningTaskStorage storage;
+    CustomMiningTaskV2Storage storage;
 
     storage.init();
 
     for (unsigned long long i = 1; i < NUMBER_OF_TASKS + 1 ; i++)
     {
-        CustomMiningTask task;
+        CustomMiningTaskV2 task;
         task.taskIndex = i;
         storage.addData(&task);
     }
 
     // Test an existed task
-    CustomMiningTask task;
+    CustomMiningTaskV2 task;
     task.taskIndex = NUMBER_OF_TASKS - 10;
     storage.addData(&task);
 
@@ -119,19 +119,19 @@ TEST(CustomMining, TaskStorageExistedItem)
 TEST(CustomMining, TaskStorageOverflow)
 {
     constexpr unsigned long long NUMBER_OF_TASKS = CUSTOM_MINING_TASK_STORAGE_COUNT;
-    CustomMiningTaskStorage storage;
+    CustomMiningTaskV2Storage storage;
 
     storage.init();
 
     for (unsigned long long i = 0; i < NUMBER_OF_TASKS; i++)
     {
-        CustomMiningTask task;
+        CustomMiningTaskV2 task;
         task.taskIndex = i;
         storage.addData(&task);
     }
 
     // Overflow. Add one more and get error status
-    CustomMiningTask task;
+    CustomMiningTaskV2 task;
     task.taskIndex = NUMBER_OF_TASKS + 1;
     EXPECT_NE(storage.addData(&task), 0);
 

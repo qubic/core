@@ -26,7 +26,7 @@ static long long bidInContractIPO(long long price, unsigned short quantity, cons
     ASSERT(spectrumIndex >= 0);
     ASSERT(spectrumIndex == ::spectrumIndex(sourcePublicKey));
     ASSERT(contractIndex < contractCount);
-    ASSERT(system.epoch < contractDescriptions[contractIndex].constructionEpoch);
+    ASSERT(system.epoch == contractDescriptions[contractIndex].constructionEpoch - 1);
 
     long long registeredBids = -1;
 
@@ -128,7 +128,7 @@ static void finishIPOs()
 {
     for (unsigned int contractIndex = 1; contractIndex < contractCount; contractIndex++)
     {
-        if (system.epoch < contractDescriptions[contractIndex].constructionEpoch && contractStates[contractIndex])
+        if (system.epoch == (contractDescriptions[contractIndex].constructionEpoch - 1) && contractStates[contractIndex])
         {
             contractStateLock[contractIndex].acquireRead();
             IPO* ipo = (IPO*)contractStates[contractIndex];

@@ -1,5 +1,16 @@
 # How to Contribute
 
+## Table of contents
+
+1. [Contributing as an external developer](#contributing-as-an-external-developer)
+2. [Development workflow / branches](#development-workflow--branches)
+3. [Coding guidelines](#coding-guidelines)
+    1. [Most important principles](#most-important-principles)
+    2. [General guidelines](#general-guidelines)
+    3. [Style guidelines](#style-guidelines)
+4. [Version naming scheme](#version-naming-scheme)
+5. [Profiling](#profiling)
+
 ## Contributing as an external developer
 
 If you find bugs, typos, or other problems that can be fixed with a few changes, you are more than welcome to contribute these fixes with a pull request as follows.
@@ -390,4 +401,5 @@ Even when bound by serializing instructions, the system environment at the time 
 [AMD64 Architecture Programmer's Manual, Volumes 1-5, 13.2.4 Time-Stamp Counter](https://www.amd.com/content/dam/amd/en/documents/processor-tech-docs/programmer-references/40332.pdf)
 
 Another rich source: [Intel® 64 and IA-32 Architectures Software Developer's Manual Combined Volumes: 1, 2A, 2B, 2C, 2D, 3A, 3B, 3C, 3D, and 4](https://cdrdv2.intel.com/v1/dl/getContent/671200)
+
 
