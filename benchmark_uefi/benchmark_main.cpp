@@ -66,11 +66,6 @@ void print_line(const CHAR16* str) {
     }
 }
 
-#if defined(__clang__)
-void print_line(const wchar_t* str) {
-    print_line((CHAR16*)(str));
-}
-#endif
 // Helper to print a string followed by a hex value and newline
 void print_value_hex(const CHAR16* prefix, unsigned long long value) {
     if (gSystemTable && gSystemTable->ConOut) {
@@ -97,12 +92,6 @@ void print_value_hex(const CHAR16* prefix, unsigned long long value) {
         print_line(buffer);
     }
 }
-
-#if defined(__clang__)
-void print_value_hex(const wchar_t* prefix, unsigned long long value) {
-    print_value_hex((CHAR16*)(prefix), value);\
-}
-#endif
 
 static void calibrate_tsc_frequency_minimal() {
     if (!gSystemTable || !gSystemTable->BootServices) {
