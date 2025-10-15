@@ -3069,6 +3069,7 @@ static void processTick(unsigned long long processorNumber)
     WAIT_WHILE(contractProcessorState);
     PROFILE_SCOPE_END();
 
+    bool isThereQearnTx = false;
     unsigned int tickIndex = ts.tickToIndexCurrentEpoch(system.tick);
     ts.tickData.acquireLock();
     copyMem(&nextTickData, &ts.tickData[tickIndex], sizeof(TickData));
@@ -3144,6 +3145,11 @@ static void processTick(unsigned long long processorNumber)
                 {
                     Transaction* transaction = ts.tickTransactions(tsCurrentTickTransactionOffsets[transactionIndex]);
                     logger.registerNewTx(transaction->tick, transactionIndex);
+                    // A workaround way to fix not match computer for qearn, if there is a qearn tx, just fully verify this tick
+                    if (transaction->destinationPublicKey == m256i(QEARN_CONTRACT_INDEX, 0, 0, 0))
+                    {
+                        isThereQearnTx = true;
+                    }
                     // Store spectrum data for rollback if there is invalid solutions in the tick
                     auto sourceSpectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
                     spectrumDataRollback[transactionIndex] = spectrum[sourceSpectrumIndex];
@@ -3209,7 +3215,7 @@ static void processTick(unsigned long long processorNumber)
 
     getUniverseDigest(etalonTick.saltedUniverseDigest);
 
-    if (isSystemAtSecurityTick() || isNextTickIsSecurityTick() || isLastTickInEpoch())
+    if (isSystemAtSecurityTick() || isNextTickIsSecurityTick() || isLastTickInEpoch() || isThereQearnTx)
     {
         getComputerDigest(etalonTick.saltedComputerDigest);
     }
