@@ -956,6 +956,53 @@ namespace QPI
 		return (uint32)r;
 	}
 
+	//////////
+	// safety adding a and b and then clamp
+
+	inline static sint64 sadd(sint64 a, sint64 b)
+	{
+		sint64 sum = a + b;
+		if (a < 0 && b < 0 && sum > 0) // negative overflow
+			return INT64_MIN;
+		if (a > 0 && b > 0 && sum < 0) // positive overflow
+			return INT64_MAX;
+		return sum;
+	}
+
+	inline static uint64 sadd(uint64 a, uint64 b)
+	{
+		if (UINT64_MAX - a < b)
+			return UINT64_MAX;
+		return a + b;
+	}
+
+	inline static sint32 sadd(sint32 a, sint32 b)
+	{
+		sint64 sum = (sint64)(a) + (sint64)(b);
+		if (sum < INT32_MIN)
+		{
+			return INT32_MIN;
+		}
+		else if (sum > INT32_MAX)
+		{
+			return INT32_MAX;
+		}
+		else
+		{
+			return (sint32)sum;
+		}
+	}
+
+	inline static uint32 sadd(uint32 a, uint32 b)
+	{
+		uint64 sum = (uint64)(a) + (uint64)(b);
+		if (sum > UINT32_MAX)
+		{
+			return UINT32_MAX;
+		}
+		return (uint32)sum;
+	}
+
 	// Divide a by b, but return 0 if b is 0 (rounding to lower magnitude in case of integers)
 	template <typename T>
 	inline static constexpr T div(T a, T b)

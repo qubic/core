@@ -58,6 +58,9 @@ struct Peer;
 #define ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE 12
 #define CUSTOM_MESSAGE 255
 
+#define CUSTOM_MESSAGE_OP_START_DISTRIBUTE_DIVIDENDS 6217575821008262227ULL // STA_DDIV
+#define CUSTOM_MESSAGE_OP_END_DISTRIBUTE_DIVIDENDS 6217575821008457285ULL //END_DDIV
+
 /*
 * STRUCTS FOR LOGGING
 */
@@ -73,6 +76,7 @@ struct AssetIssuance
 {
     m256i issuerPublicKey;
     long long numberOfShares;
+    long long managingContractIndex;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
@@ -576,12 +580,14 @@ public:
 #endif
     }
 
+    // updateTick is called right after _tick is processed
     static void updateTick(unsigned int _tick)
     {
 #if ENABLED_LOGGING
         ASSERT((_tick == lastUpdatedTick + 1) || (_tick == tickBegin));
+        ASSERT(_tick >= tickBegin);
 #if LOG_STATE_DIGEST
-        unsigned long long index = lastUpdatedTick - tickBegin;
+        unsigned long long index = _tick - tickBegin;
         XKCP::KangarooTwelve_Final(&k12, digests[index].m256i_u8, (const unsigned char*)"", 0);
         XKCP::KangarooTwelve_Initialize(&k12, 128, 32); // init new k12
         XKCP::KangarooTwelve_Update(&k12, digests[index].m256i_u8, 32); // feed the prev hash back to this
