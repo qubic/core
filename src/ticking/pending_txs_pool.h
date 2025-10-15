@@ -22,16 +22,17 @@
 // This is a kind of singleton class with only static members (so all instances refer to the same data).
 class PendingTxsPool
 {
-private:
-    static constexpr unsigned long long maxNumTxs = PENDING_TXS_POOL_NUM_TICKS * NUMBER_OF_TRANSACTIONS_PER_TICK;
+protected:
+    // The PendingTxsPool will always leave space for the two protocol-level txs (tick votes and custom mining).
+    static constexpr unsigned long long maxNumTxsPerTick = NUMBER_OF_TRANSACTIONS_PER_TICK - 2;
+    static constexpr unsigned long long maxNumTxsTotal = PENDING_TXS_POOL_NUM_TICKS * maxNumTxsPerTick;
 
     // Sizes of different buffers in bytes
-    static constexpr unsigned long long tickTransactionsSize =  maxNumTxs * MAX_TRANSACTION_SIZE;
-    static constexpr unsigned long long tickTransactionOffsetsSize = maxNumTxs * sizeof(unsigned long long);
-    static constexpr unsigned long long txsDigestsSize = maxNumTxs * sizeof(m256i);
+    static constexpr unsigned long long tickTransactionsSize =  maxNumTxsTotal * MAX_TRANSACTION_SIZE;
+    static constexpr unsigned long long txsDigestsSize = maxNumTxsTotal * sizeof(m256i);
 
-    // `maxNumTxs` priorities have to be saved at a time. Collection capacity has to be 2^N so find the next bigger power of 2.
-    static constexpr unsigned long long txsPrioritiesCapacity = math_lib::findNextPowerOf2(maxNumTxs);
+    // `maxNumTxsTotal` priorities have to be saved at a time. Collection capacity has to be 2^N so find the next bigger power of 2.
+    static constexpr unsigned long long txsPrioritiesCapacity = math_lib::findNextPowerOf2(maxNumTxsTotal);
 
     // The pool stores the tick range [firstStoredTick, firstStoredTick + PENDING_TXS_POOL_NUM_TICKS[
     inline static unsigned int firstStoredTick = 0;
@@ -49,18 +50,18 @@ private:
     // buffersBeginIndex corresponds to firstStoredTick
     inline static unsigned int buffersBeginIndex = 0;
 
-    // Lock for securing tickTransactions and tickTransactionOffsets
+    // Lock for securing the data in the PendingTxsPool
     inline static volatile char lock = 0;
 
-    // Priority queues for transactions in each saved tick.
+    // Priority queues for transactions in each saved tick
     inline static Collection<unsigned int, txsPrioritiesCapacity>* txsPriorities;
 
     static void cleanupTxsPriorities(unsigned int tickIndex)
     {
         sint64 elementIndex = txsPriorities->headIndex(m256i{ tickIndex, 0, 0, 0 });
         // use a `for` instead of a `while` loop to make sure it cannot run forever 
-        // there can be at most NUMBER_OF_TRANSACTIONS_PER_TICK elements in one pov
-        for (unsigned int t = 0; t < NUMBER_OF_TRANSACTIONS_PER_TICK; ++t)
+        // there can be at most `maxNumTxsPerTick` elements in one pov
+        for (unsigned int t = 0; t < maxNumTxsPerTick; ++t)
         {
             if (elementIndex != NULL_INDEX)
                 elementIndex = txsPriorities->remove(elementIndex);
@@ -100,16 +101,16 @@ private:
     inline static Transaction* getTxPtr(unsigned int tickIndex, unsigned int transactionIndex)
     {
         ASSERT(tickIndex < PENDING_TXS_POOL_NUM_TICKS);
-        ASSERT(transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK);
-        return (Transaction*)(tickTransactionsBuffer + (tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK + transactionIndex) * MAX_TRANSACTION_SIZE);
+        ASSERT(transactionIndex < maxNumTxsPerTick);
+        return (Transaction*)(tickTransactionsBuffer + (tickIndex * maxNumTxsPerTick + transactionIndex) * MAX_TRANSACTION_SIZE);
     }
 
     // Return pointer to transaction digest based on tickIndex and transactionIndex (checking offset with ASSERT)
     inline static m256i* getDigestPtr(unsigned int tickIndex, unsigned int transactionIndex)
     {
         ASSERT(tickIndex < PENDING_TXS_POOL_NUM_TICKS);
-        ASSERT(transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK);
-        return &txsDigestsBuffer[tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK + transactionIndex];
+        ASSERT(transactionIndex < maxNumTxsPerTick);
+        return &txsDigestsBuffer[tickIndex * maxNumTxsPerTick + transactionIndex];
     }
 
     // Check whether tick is stored in the pending txs pool
@@ -258,7 +259,7 @@ public:
             sint64 priority = calculateTxPriority(tx);
             m256i povIndex{ tickIndex, 0, 0, 0 };
 
-            if (numSavedTxsPerTick[tickIndex] < NUMBER_OF_TRANSACTIONS_PER_TICK)
+            if (numSavedTxsPerTick[tickIndex] < maxNumTxsPerTick)
             {
                 KangarooTwelve(tx, transactionSize, getDigestPtr(tickIndex, numSavedTxsPerTick[tickIndex]), sizeof(m256i));
 
@@ -372,9 +373,9 @@ public:
         ACQUIRE(lock);
 
         // set memory at buffersBeginIndex to 0 
-        unsigned long long numTxsBeforeBegin = buffersBeginIndex * NUMBER_OF_TRANSACTIONS_PER_TICK;
-        setMem(tickTransactionsBuffer + numTxsBeforeBegin * MAX_TRANSACTION_SIZE, NUMBER_OF_TRANSACTIONS_PER_TICK * MAX_TRANSACTION_SIZE, 0);
-        setMem(txsDigestsBuffer + numTxsBeforeBegin, NUMBER_OF_TRANSACTIONS_PER_TICK * sizeof(m256i), 0);
+        unsigned long long numTxsBeforeBegin = buffersBeginIndex * maxNumTxsPerTick;
+        setMem(tickTransactionsBuffer + numTxsBeforeBegin * MAX_TRANSACTION_SIZE, maxNumTxsPerTick * MAX_TRANSACTION_SIZE, 0);
+        setMem(txsDigestsBuffer + numTxsBeforeBegin, maxNumTxsPerTick * sizeof(m256i), 0);
         numSavedTxsPerTick[buffersBeginIndex] = 0;
 
         // remove txs priorities stored for firstStoredTick
@@ -400,7 +401,7 @@ public:
             // reset memory of discarded ticks
             if (newInitialIndex < buffersBeginIndex)
             {
-                unsigned long long numTxsBeforeNew = newInitialIndex * NUMBER_OF_TRANSACTIONS_PER_TICK;
+                unsigned long long numTxsBeforeNew = newInitialIndex * maxNumTxsPerTick;
                 setMem(tickTransactionsBuffer, numTxsBeforeNew * MAX_TRANSACTION_SIZE, 0);
                 setMem(txsDigestsBuffer, numTxsBeforeNew * sizeof(m256i), 0);
                 setMem(numSavedTxsPerTick, newInitialIndex * sizeof(unsigned int), 0);
@@ -408,8 +409,8 @@ public:
                 for (unsigned int tickIndex = 0; tickIndex < newInitialIndex; ++tickIndex)
                     cleanupTxsPriorities(tickIndex);
 
-                unsigned long long numTxsBeforeBegin = buffersBeginIndex * NUMBER_OF_TRANSACTIONS_PER_TICK;
-                unsigned long long numTxsStartingAtBegin = (PENDING_TXS_POOL_NUM_TICKS - buffersBeginIndex) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+                unsigned long long numTxsBeforeBegin = buffersBeginIndex * maxNumTxsPerTick;
+                unsigned long long numTxsStartingAtBegin = (PENDING_TXS_POOL_NUM_TICKS - buffersBeginIndex) * maxNumTxsPerTick;
                 setMem(tickTransactionsBuffer + numTxsBeforeBegin * MAX_TRANSACTION_SIZE, numTxsStartingAtBegin * MAX_TRANSACTION_SIZE, 0);
                 setMem(txsDigestsBuffer + numTxsBeforeBegin, numTxsStartingAtBegin * sizeof(m256i), 0);
                 setMem(numSavedTxsPerTick + buffersBeginIndex, (PENDING_TXS_POOL_NUM_TICKS - buffersBeginIndex) * sizeof(unsigned int), 0);
@@ -419,8 +420,8 @@ public:
             }
             else
             {
-                unsigned long long numTxsBeforeBegin = buffersBeginIndex * NUMBER_OF_TRANSACTIONS_PER_TICK;
-                unsigned long long numTxsStartingAtBegin = (newInitialIndex - buffersBeginIndex) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+                unsigned long long numTxsBeforeBegin = buffersBeginIndex * maxNumTxsPerTick;
+                unsigned long long numTxsStartingAtBegin = (newInitialIndex - buffersBeginIndex) * maxNumTxsPerTick;
                 setMem(tickTransactionsBuffer + numTxsBeforeBegin * MAX_TRANSACTION_SIZE, numTxsStartingAtBegin * MAX_TRANSACTION_SIZE, 0);
                 setMem(txsDigestsBuffer + numTxsBeforeBegin, numTxsStartingAtBegin * sizeof(m256i), 0);
                 setMem(numSavedTxsPerTick + buffersBeginIndex, (newInitialIndex - buffersBeginIndex) * sizeof(unsigned int), 0);
@@ -479,10 +480,10 @@ public:
             {
                 unsigned int tickIndex = tickToIndex(tick);
                 unsigned int numSavedForTick = numSavedTxsPerTick[tickIndex];
-                ASSERT(numSavedForTick <= NUMBER_OF_TRANSACTIONS_PER_TICK);
+                ASSERT(numSavedForTick <= maxNumTxsPerTick);
                 for (unsigned int txIndex = 0; txIndex < numSavedForTick; ++txIndex)
                 {
-                    Transaction* transaction = (Transaction*)(tickTransactionsBuffer + (tickIndex * NUMBER_OF_TRANSACTIONS_PER_TICK + txIndex) * MAX_TRANSACTION_SIZE);
+                    Transaction* transaction = (Transaction*)(tickTransactionsBuffer + (tickIndex * maxNumTxsPerTick + txIndex) * MAX_TRANSACTION_SIZE);
                     ASSERT(transaction->checkValidity());
                     ASSERT(transaction->tick == tick);
 #if !defined(NDEBUG) && !defined(NO_UEFI)
