@@ -24,7 +24,7 @@ class PendingTxsPool
 {
 protected:
     // The PendingTxsPool will always leave space for the two protocol-level txs (tick votes and custom mining).
-    static constexpr unsigned long long maxNumTxsPerTick = NUMBER_OF_TRANSACTIONS_PER_TICK - 2;
+    static constexpr unsigned int maxNumTxsPerTick = NUMBER_OF_TRANSACTIONS_PER_TICK - 2;
     static constexpr unsigned long long maxNumTxsTotal = PENDING_TXS_POOL_NUM_TICKS * maxNumTxsPerTick;
 
     // Sizes of different buffers in bytes
@@ -73,28 +73,30 @@ protected:
 
     static sint64 calculateTxPriority(const Transaction* tx)
     {
-        if (isZero(tx->destinationPublicKey) && tx->amount == 0LL
-            && (tx->inputType == VOTE_COUNTER_INPUT_TYPE || tx->inputType == CustomMiningSolutionTransaction::transactionType()))
+        sint64 priority = 0;
+        int sourceIndex = spectrumIndex(tx->sourcePublicKey);
+        if (sourceIndex >= 0)
         {
-            // protocol-level tx always have max priority
-            return INT64_MAX;
-        }
-        else
-        {
-            // calculate tx priority as [amount] * [scheduledTick - latestOutgoingTransferTick]
-            sint64 priority = tx->amount;
-            int sourceIndex = spectrumIndex(tx->sourcePublicKey);
-            if (sourceIndex != -1)
+            sint64 balance = energy(sourceIndex);
+            if (balance > 0)
             {
-                EntityRecord entity = spectrum[sourceIndex];
-                priority = smul(priority, static_cast<sint64>(tx->tick - entity.latestOutgoingTransferTick));
+                if (isZero(tx->destinationPublicKey) && tx->amount == 0LL
+                    && (tx->inputType == VOTE_COUNTER_INPUT_TYPE || tx->inputType == CustomMiningSolutionTransaction::transactionType()))
+                {
+                    // protocol-level tx always have max priority
+                    return INT64_MAX;
+                }
+                else
+                {
+                    // calculate tx priority as [balance of src] * [scheduledTick - latestOutgoingTransferTick + 1]
+                    EntityRecord entity = spectrum[sourceIndex];
+                    priority = smul(balance, static_cast<sint64>(tx->tick - entity.latestOutgoingTransferTick + 1));
+                    // decrease by 1 to make sure no normal tx reaches max priority
+                    priority--;
+                }
             }
-
-            // safely decrease by 1 to make sure no normal tx reaches max priority
-            priority = sadd(priority, -1LL);
-
-            return priority;
         }
+        return priority;
     }
 
     // Return pointer to Transaction based on tickIndex and transactionIndex (checking offset with ASSERT)
@@ -247,7 +249,7 @@ public:
     static bool add(const Transaction* tx)
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin pendingTxsPool.update()");
+        addDebugMessage(L"Begin pendingTxsPool.add()");
 #endif
         bool txAdded = false;
         ACQUIRE(lock);
@@ -257,75 +259,87 @@ public:
             const unsigned int transactionSize = tx->totalSize();
 
             sint64 priority = calculateTxPriority(tx);
-            m256i povIndex{ tickIndex, 0, 0, 0 };
-
-            if (numSavedTxsPerTick[tickIndex] < maxNumTxsPerTick)
+            if (priority > 0)
             {
-                KangarooTwelve(tx, transactionSize, getDigestPtr(tickIndex, numSavedTxsPerTick[tickIndex]), sizeof(m256i));
+                m256i povIndex{ tickIndex, 0, 0, 0 };
 
-                copyMem(getTxPtr(tickIndex, numSavedTxsPerTick[tickIndex]), tx, transactionSize);
-
-                txsPriorities->add(povIndex, numSavedTxsPerTick[tickIndex], priority);
-
-                numSavedTxsPerTick[tickIndex]++;
-                txAdded = true;
-            }
-            else
-            {
-                // check if priority is higher than lowest priority tx in this tick and replace in this case
-                sint64 lowestElementIndex = txsPriorities->tailIndex(povIndex);
-                if (lowestElementIndex != NULL_INDEX)
+                if (numSavedTxsPerTick[tickIndex] < maxNumTxsPerTick)
                 {
-                    if (txsPriorities->priority(lowestElementIndex) < priority)
+                    KangarooTwelve(tx, transactionSize, getDigestPtr(tickIndex, numSavedTxsPerTick[tickIndex]), sizeof(m256i));
+
+                    copyMem(getTxPtr(tickIndex, numSavedTxsPerTick[tickIndex]), tx, transactionSize);
+
+                    txsPriorities->add(povIndex, numSavedTxsPerTick[tickIndex], priority);
+
+                    numSavedTxsPerTick[tickIndex]++;
+                    txAdded = true;
+                }
+                else
+                {
+                    // check if priority is higher than lowest priority tx in this tick and replace in this case
+                    sint64 lowestElementIndex = txsPriorities->tailIndex(povIndex);
+                    if (lowestElementIndex != NULL_INDEX)
                     {
-                        unsigned int replacedTxIndex = txsPriorities->element(lowestElementIndex);
-                        txsPriorities->remove(lowestElementIndex);
-                        txsPriorities->add(povIndex, replacedTxIndex, priority);
+                        if (txsPriorities->priority(lowestElementIndex) < priority)
+                        {
+                            unsigned int replacedTxIndex = txsPriorities->element(lowestElementIndex);
+                            txsPriorities->remove(lowestElementIndex);
+                            txsPriorities->add(povIndex, replacedTxIndex, priority);
 
-                        KangarooTwelve(tx, transactionSize, getDigestPtr(tickIndex, replacedTxIndex), sizeof(m256i));
+                            KangarooTwelve(tx, transactionSize, getDigestPtr(tickIndex, replacedTxIndex), sizeof(m256i));
 
-                        copyMem(getTxPtr(tickIndex, replacedTxIndex), tx, transactionSize);
+                            copyMem(getTxPtr(tickIndex, replacedTxIndex), tx, transactionSize);
 
-                        txAdded = true;
+                            txAdded = true;
+                        }
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                        else
+                        {
+                            CHAR16 dbgMsgBuf[300];
+                            setText(dbgMsgBuf, L"tx could not be added, already saved ");
+                            appendNumber(dbgMsgBuf, numSavedTxsPerTick[tickIndex], FALSE);
+                            appendText(dbgMsgBuf, L" txs for tick ");
+                            appendNumber(dbgMsgBuf, tx->tick, FALSE);
+                            appendText(dbgMsgBuf, L" and priority ");
+                            appendNumber(dbgMsgBuf, priority, FALSE);
+                            appendText(dbgMsgBuf, L" is lower than lowest saved priority ");
+                            appendNumber(dbgMsgBuf, txsPriorities->priority(lowestElementIndex), FALSE);
+                            addDebugMessage(dbgMsgBuf);
+                        }
+#endif      
                     }
 #if !defined(NDEBUG) && !defined(NO_UEFI)
                     else
                     {
+                        // debug log, this should never happen
                         CHAR16 dbgMsgBuf[300];
-                        setText(dbgMsgBuf, L"tx could not be added, already saved ");
+                        setText(dbgMsgBuf, L"maximum number of txs ");
                         appendNumber(dbgMsgBuf, numSavedTxsPerTick[tickIndex], FALSE);
-                        appendText(dbgMsgBuf, L" txs for tick ");
+                        appendText(dbgMsgBuf, L" saved for tick ");
                         appendNumber(dbgMsgBuf, tx->tick, FALSE);
-                        appendText(dbgMsgBuf, L" and priority ");
-                        appendNumber(dbgMsgBuf, priority, FALSE);
-                        appendText(dbgMsgBuf, L" is lower than lowest saved priority ");
-                        appendNumber(dbgMsgBuf, txsPriorities->priority(lowestElementIndex), FALSE);
+                        appendText(dbgMsgBuf, L" but povIndex is unknown. This should never happen.");
                         addDebugMessage(dbgMsgBuf);
                     }
-#endif      
-                }
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-                else
-                {
-                    // debug log, this should never happen
-                    CHAR16 dbgMsgBuf[300];
-                    setText(dbgMsgBuf, L"maximum number of txs ");
-                    appendNumber(dbgMsgBuf, numSavedTxsPerTick[tickIndex], FALSE);
-                    appendText(dbgMsgBuf, L" saved for tick ");
-                    appendNumber(dbgMsgBuf, tx->tick, FALSE);
-                    appendText(dbgMsgBuf, L" but povIndex is unknown. This should never happen.");
-                    addDebugMessage(dbgMsgBuf);
-                }
 #endif
+                }
             }
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            else
+            {
+                CHAR16 dbgMsgBuf[300];
+                setText(dbgMsgBuf, L"tx with priority 0 was rejected for tick ");
+                appendNumber(dbgMsgBuf, tx->tick, FALSE);
+                addDebugMessage(dbgMsgBuf);
+            }
+#endif
         }
         RELEASE(lock);
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         if (txAdded)
-            addDebugMessage(L"End pendingTxsPool.update(), txAdded true");
+            addDebugMessage(L"End pendingTxsPool.add(), txAdded true");
         else
-            addDebugMessage(L"End pendingTxsPool.update(), txAdded false");
+            addDebugMessage(L"End pendingTxsPool.add(), txAdded false");
 #endif
         return txAdded;
     }

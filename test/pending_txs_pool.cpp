@@ -10,12 +10,15 @@
 
 #include "../src/public_settings.h"
 #undef PENDING_TXS_POOL_NUM_TICKS
-#define PENDING_TXS_POOL_NUM_TICKS 64ULL
+#define PENDING_TXS_POOL_NUM_TICKS 50ULL
+#undef NUMBER_OF_TRANSACTIONS_PER_TICK
+#define NUMBER_OF_TRANSACTIONS_PER_TICK 128ULL
 #include "../src/ticking/pending_txs_pool.h"
 
 #include <random>
 #include <vector>
 
+static constexpr unsigned int NUM_INITIALIZED_ENTITIES = 200U;
 
 class TestPendingTxsPool : public PendingTxsPool
 {
@@ -26,6 +29,18 @@ public:
         // we need the spectrum for tx priority calculation
         EXPECT_TRUE(initSpectrum());
         memset(spectrum, 0, spectrumSizeInBytes);
+        for (unsigned int i = 0; i < NUM_INITIALIZED_ENTITIES; i++)
+        {
+            // create NUM_INITIALIZED_ENTITIES entities with balance > 0 to get desired txs priority
+            spectrum[i].incomingAmount = i + 1;
+            spectrum[i].outgoingAmount = 0;
+            spectrum[i].publicKey = m256i{0, 0, 0, i + 1 };
+
+            // create NUM_INITIALIZED_ENTITIES entities with balance = 0 for testing
+            spectrum[NUM_INITIALIZED_ENTITIES + i].incomingAmount = 0;
+            spectrum[NUM_INITIALIZED_ENTITIES + i].outgoingAmount = 0;
+            spectrum[NUM_INITIALIZED_ENTITIES + i].publicKey = m256i{ 0, 0, 0, NUM_INITIALIZED_ENTITIES + i + 1 };
+        }
         updateSpectrumInfo();
     }
 
@@ -34,7 +49,7 @@ public:
         deinitSpectrum();
     }
 
-    static constexpr unsigned long long getMaxNumTxsPerTick()
+    static constexpr unsigned int getMaxNumTxsPerTick()
     {
         return maxNumTxsPerTick;
     }
@@ -74,7 +89,8 @@ unsigned int addTickTransactions(unsigned int tick, unsigned long long seed, uns
     {
         unsigned int inputSize = gen64() % MAX_INPUT_SIZE;
         long long amount = gen64() % MAX_AMOUNT;
-        if (pendingTxsPool.addTransaction(tick, amount, inputSize))
+        m256i srcPublicKey = m256i{ 0, 0, 0, (gen64() % NUM_INITIALIZED_ENTITIES) + 1 };
+        if (pendingTxsPool.addTransaction(tick, amount, inputSize, /*dest=*/nullptr, &srcPublicKey))
             numTransactionsAdded++;
     }
     pendingTxsPool.checkStateConsistencyWithAssert();
@@ -94,6 +110,7 @@ void checkTickTransactions(unsigned int tick, unsigned long long seed, unsigned 
     {
         unsigned int expectedInputSize = gen64() % MAX_INPUT_SIZE;
         long long expectedAmount = gen64() % MAX_AMOUNT;
+        m256i expectedSrcPublicKey = m256i{ 0, 0, 0, (gen64() % NUM_INITIALIZED_ENTITIES) + 1 };
 
         Transaction* tp = pendingTxsPool.getTx(tick, transaction);
 
@@ -103,6 +120,7 @@ void checkTickTransactions(unsigned int tick, unsigned long long seed, unsigned 
         EXPECT_EQ(tp->tick, tick);
         EXPECT_EQ(static_cast<unsigned int>(tp->inputSize), expectedInputSize);
         EXPECT_EQ(tp->amount, expectedAmount);
+        EXPECT_TRUE(tp->sourcePublicKey == expectedSrcPublicKey);
 
         m256i* digest = pendingTxsPool.getDigest(tick, transaction);
 
@@ -126,7 +144,7 @@ TEST(TestPendingTxsPool, EpochTransition)
     for (int testIdx = 0; testIdx < 6; ++testIdx)
     {
         // first, test case of having no transactions
-        unsigned short maxTransactions = (testIdx == 0) ? 0 : pendingTxsPool.getMaxNumTxsPerTick();
+        unsigned int maxTransactions = (testIdx == 0) ? 0 : pendingTxsPool.getMaxNumTxsPerTick();
 
         pendingTxsPool.init();
         pendingTxsPool.checkStateConsistencyWithAssert();
@@ -150,6 +168,7 @@ TEST(TestPendingTxsPool, EpochTransition)
             secondEpochSeeds[i] = gen64();
         for (int i = 0; i < thirdEpochTicks; ++i)
             thirdEpochSeeds[i] = gen64();
+        unsigned int numAdded = 0;
 
         // first epoch
         pendingTxsPool.beginEpoch(firstEpochTick0);
@@ -157,7 +176,7 @@ TEST(TestPendingTxsPool, EpochTransition)
 
         // add ticks transactions
         for (int i = 0; i < firstEpochTicks; ++i)
-            addTickTransactions(firstEpochTick0 + i, firstEpochSeeds[i], maxTransactions);
+            numAdded = addTickTransactions(firstEpochTick0 + i, firstEpochSeeds[i], maxTransactions);
 
         // check ticks transactions
         for (int i = 0; i < firstEpochTicks; ++i)
@@ -173,14 +192,14 @@ TEST(TestPendingTxsPool, EpochTransition)
 
         // add ticks transactions
         for (int i = 0; i < secondEpochTicks; ++i)
-            addTickTransactions(secondEpochTick0 + i, secondEpochSeeds[i], maxTransactions);
+            numAdded = addTickTransactions(secondEpochTick0 + i, secondEpochSeeds[i], maxTransactions);
 
         // check ticks transactions
         for (int i = 0; i < secondEpochTicks; ++i)
             checkTickTransactions(secondEpochTick0 + i, secondEpochSeeds[i], maxTransactions);
 
         // add a transaction for the next epoch
-        unsigned int numAdded = addTickTransactions(thirdEpochTick0 + 1, thirdEpochSeeds[1], maxTransactions);
+        numAdded = addTickTransactions(thirdEpochTick0 + 1, thirdEpochSeeds[1], maxTransactions);
 
         pendingTxsPool.checkStateConsistencyWithAssert();
 
@@ -192,7 +211,7 @@ TEST(TestPendingTxsPool, EpochTransition)
 
         // add ticks transactions
         for (int i = 2; i < thirdEpochTicks; ++i)
-            addTickTransactions(thirdEpochTick0 + i, thirdEpochSeeds[i], maxTransactions);
+            numAdded = addTickTransactions(thirdEpochTick0 + i, thirdEpochSeeds[i], maxTransactions);
 
         // check ticks transactions
         for (int i = 1; i < thirdEpochTicks; ++i)
@@ -224,7 +243,7 @@ TEST(TestPendingTxsPool, TotalNumberOfPendingTxs)
     for (int testIdx = 0; testIdx < 6; ++testIdx)
     {
         // first, test case of having no transactions
-        unsigned short maxTransactions = (testIdx == 0) ? 0 : pendingTxsPool.getMaxNumTxsPerTick();
+        unsigned int maxTransactions = (testIdx == 0) ? 0 : pendingTxsPool.getMaxNumTxsPerTick();
 
         pendingTxsPool.init();
         pendingTxsPool.checkStateConsistencyWithAssert();
@@ -271,7 +290,7 @@ TEST(TestPendingTxsPool, NumberOfPendingTickTxs)
     for (int testIdx = 0; testIdx < 6; ++testIdx)
     {
         // first, test case of having no transactions
-        unsigned short maxTransactions = (testIdx == 0) ? 0 : pendingTxsPool.getMaxNumTxsPerTick();
+        unsigned int maxTransactions = (testIdx == 0) ? 0 : pendingTxsPool.getMaxNumTxsPerTick();
 
         pendingTxsPool.init();
         pendingTxsPool.checkStateConsistencyWithAssert();
@@ -313,7 +332,7 @@ TEST(TestPendingTxsPool, IncrementFirstStoredTick)
     for (int testIdx = 0; testIdx < 6; ++testIdx)
     {
         // first, test case of having no transactions
-        unsigned short maxTransactions = (testIdx == 0) ? 0 : pendingTxsPool.getMaxNumTxsPerTick();
+        unsigned int maxTransactions = (testIdx == 0) ? 0 : pendingTxsPool.getMaxNumTxsPerTick();
 
         pendingTxsPool.init();
         pendingTxsPool.checkStateConsistencyWithAssert();
@@ -366,17 +385,22 @@ TEST(TestPendingTxsPool, TxsPrioritizationMoreThanMaxTxs)
     pendingTxsPool.checkStateConsistencyWithAssert();
 
     const unsigned int firstEpochTick0 = gen64() % 10000000;
-    unsigned int numAdditionalTxs = 128;
+    unsigned int numAdditionalTxs = 64;
 
     pendingTxsPool.beginEpoch(firstEpochTick0);
 
-    // add more than `pendingTxsPool.getMaxNumTxsPerTick()` transactions with increasing amount 
-    // (= priority because there are no previously outgoing txs for the entities)
+    // add more than `pendingTxsPool.getMaxNumTxsPerTick()` with increasing priority
+    // (entities were set up in a way that u64._0 of the public key corresponds to their balance)
+    m256i srcPublicKey = m256i::zero();
     for (unsigned int t = 0; t < pendingTxsPool.getMaxNumTxsPerTick() + numAdditionalTxs; ++t)
-        EXPECT_TRUE(pendingTxsPool.addTransaction(firstEpochTick0, /*amount=*/t + 1, /*inputSize=*/0));
+    {
+        srcPublicKey.u64._3 = t + 1;
+        EXPECT_TRUE(pendingTxsPool.addTransaction(firstEpochTick0, /*amount=*/t + 1, /*inputSize=*/0, /*dest=*/nullptr, &srcPublicKey));
+    }
 
     // adding lower priority tx does not work
-    EXPECT_FALSE(pendingTxsPool.addTransaction(firstEpochTick0, /*amount=*/1, /*inputSize=*/0));
+    srcPublicKey.u64._3 = 1;
+    EXPECT_FALSE(pendingTxsPool.addTransaction(firstEpochTick0, /*amount=*/1, /*inputSize=*/0, /*dest=*/nullptr, &srcPublicKey));
 
     EXPECT_EQ(pendingTxsPool.getTotalNumberOfPendingTxs(firstEpochTick0 - 1), pendingTxsPool.getMaxNumTxsPerTick());
     EXPECT_EQ(pendingTxsPool.getNumberOfPendingTickTxs(firstEpochTick0), pendingTxsPool.getMaxNumTxsPerTick());
@@ -403,13 +427,13 @@ TEST(TestPendingTxsPool, TxsPrioritizationDuplicateTxs)
     pendingTxsPool.checkStateConsistencyWithAssert();
 
     const unsigned int firstEpochTick0 = gen64() % 10000000;
-    unsigned int numTxs = 128;
+    constexpr unsigned int numTxs = pendingTxsPool.getMaxNumTxsPerTick() / 2;
 
     pendingTxsPool.beginEpoch(firstEpochTick0);
 
     // add duplicate transactions: same dest, src, and amount
     m256i dest{ 562, 789, 234, 121 };
-    m256i src{ 8970, 342, 6891, 345 };
+    m256i src{ 0, 0, 0, NUM_INITIALIZED_ENTITIES / 3 };
     long long amount = 1;
     for (unsigned int t = 0; t < numTxs; ++t)
         EXPECT_TRUE(pendingTxsPool.addTransaction(firstEpochTick0, amount, /*inputSize=*/0, &dest, & src));
@@ -445,15 +469,19 @@ TEST(TestPendingTxsPool, ProtocolLevelTxsMaxPriority)
 
     pendingTxsPool.beginEpoch(firstEpochTick0);
 
-    // add duplicate transactions: same dest, src, and amount
+    // fill the PendingTxsPool completely for tick `firstEpochTick0`
+    m256i srcPublicKey = m256i::zero();
     for (unsigned int t = 0; t < pendingTxsPool.getMaxNumTxsPerTick(); ++t)
-        EXPECT_TRUE(pendingTxsPool.addTransaction(firstEpochTick0, gen64() % MAX_AMOUNT, gen64() % MAX_INPUT_SIZE));
+    {
+        srcPublicKey.u64._3 = t + 1;
+        EXPECT_TRUE(pendingTxsPool.addTransaction(firstEpochTick0, gen64() % MAX_AMOUNT, gen64() % MAX_INPUT_SIZE, /*dest=*/nullptr, &srcPublicKey));
+    }
 
     EXPECT_EQ(pendingTxsPool.getTotalNumberOfPendingTxs(firstEpochTick0 - 1), pendingTxsPool.getMaxNumTxsPerTick());
     EXPECT_EQ(pendingTxsPool.getNumberOfPendingTickTxs(firstEpochTick0), pendingTxsPool.getMaxNumTxsPerTick());
 
     Transaction tx { 
-        .sourcePublicKey = m256i::randomValue(),
+        .sourcePublicKey = m256i{ 0, 0, 0, (gen64() % NUM_INITIALIZED_ENTITIES) + 1 },
         .destinationPublicKey = m256i::zero(),
         .amount = 0, .tick = firstEpochTick0, 
         .inputType = VOTE_COUNTER_INPUT_TYPE,
@@ -467,4 +495,40 @@ TEST(TestPendingTxsPool, ProtocolLevelTxsMaxPriority)
     EXPECT_TRUE(pendingTxsPool.add(&tx));
 
     pendingTxsPool.deinit();
+}
+
+TEST(TestPendingTxsPool, TxsWithSrcBalance0AreRejected)
+{
+    unsigned long long seed = 3452;
+
+    // use pseudo-random sequence
+    std::mt19937_64 gen64(seed);
+
+    for (int testIdx = 0; testIdx < 6; ++testIdx)
+    {
+        pendingTxsPool.init();
+        pendingTxsPool.checkStateConsistencyWithAssert();
+
+        const unsigned int firstEpochTick0 = gen64() % 10000000;
+
+        pendingTxsPool.beginEpoch(firstEpochTick0);
+
+        // partially fill the PendingTxsPool for tick `firstEpochTick0`    
+        m256i srcPublicKey = m256i::zero();
+        for (unsigned int t = 0; t < pendingTxsPool.getMaxNumTxsPerTick() / 2; ++t)
+        {
+            srcPublicKey.u64._3 = t + 1;
+            EXPECT_TRUE(pendingTxsPool.addTransaction(firstEpochTick0, gen64() % MAX_AMOUNT, gen64() % MAX_INPUT_SIZE, /*dest=*/nullptr, &srcPublicKey));
+        }
+
+        // public key with balance 0
+        srcPublicKey.u64._3 = NUM_INITIALIZED_ENTITIES + 1 + (gen64() % NUM_INITIALIZED_ENTITIES);
+        EXPECT_FALSE(pendingTxsPool.addTransaction(firstEpochTick0, gen64() % MAX_AMOUNT, gen64() % MAX_INPUT_SIZE, /*dest=*/nullptr, &srcPublicKey));
+
+        // non-existant public key
+        srcPublicKey = m256i{ 0, gen64() % MAX_AMOUNT, 0, 0};
+        EXPECT_FALSE(pendingTxsPool.addTransaction(firstEpochTick0, gen64() % MAX_AMOUNT, gen64() % MAX_INPUT_SIZE, /*dest=*/nullptr, &srcPublicKey));
+
+        pendingTxsPool.deinit();
+    }
 }

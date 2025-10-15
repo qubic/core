@@ -3164,8 +3164,9 @@ static void processTick(unsigned long long processorNumber)
                         makeAndBroadcastTickVotesTransaction(i, broadcastedFutureTickData, nextTxIndex++);
                     }
                     {
-                        // insert & broadcast custom mining share
-                        if (makeAndBroadcastCustomMiningTransaction(i, broadcastedFutureTickData, nextTxIndex)) // this type of tx is only broadcasted in mining phases
+                        // insert & broadcast external mining score packet (containing the score for each computor on the last external mining phase)
+                        // this type of tx is only broadcasted in internal mining phases
+                        if (makeAndBroadcastCustomMiningTransaction(i, broadcastedFutureTickData, nextTxIndex))
                         {
                             nextTxIndex++;
                         }
