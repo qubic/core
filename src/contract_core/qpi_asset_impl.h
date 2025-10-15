@@ -486,6 +486,13 @@ bool QPI::QpiContextProcedureCall::distributeDividends(long long amountPerShare)
         return false;
     }
 
+    // this part of code doesn't perform completed QuTransfers, instead it `decreaseEnergy` all QUs at once and `increaseEnergy` multiple times.
+    // Meanwhile, a QUTransfer requires a pair of both decrease & increase calls.
+    // This behavior will produce different numberOfOutgoingTransfers for the SC index.
+    // 3rd party software needs to catch the HINT message to know the distribute dividends operation
+    DummyCustomMessage dcm{ CUSTOM_MESSAGE_OP_START_DISTRIBUTE_DIVIDENDS };
+    logger.logCustomMessage(dcm);
+
     if (decreaseEnergy(index, amountPerShare * NUMBER_OF_COMPUTORS))
     {
         ACQUIRE(universeLock);
@@ -523,7 +530,8 @@ bool QPI::QpiContextProcedureCall::distributeDividends(long long amountPerShare)
 
         RELEASE(universeLock);
     }
-
+    dcm = DummyCustomMessage{ CUSTOM_MESSAGE_OP_END_DISTRIBUTE_DIVIDENDS };
+    logger.logCustomMessage(dcm);
     return true;
 }
 
