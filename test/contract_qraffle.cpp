@@ -365,6 +365,25 @@ public:
         return output;
     }
 
+    QRAFFLE::getQuRaffleEntryAmountPerUser_output getQuRaffleEntryAmountPerUser(const id& user)
+    {
+        QRAFFLE::getQuRaffleEntryAmountPerUser_input input;
+        QRAFFLE::getQuRaffleEntryAmountPerUser_output output;
+        
+        input.user = user;
+        callFunction(QRAFFLE_CONTRACT_INDEX, 8, input, output);
+        return output;
+    }
+
+    QRAFFLE::getQuRaffleEntryAverageAmount_output getQuRaffleEntryAverageAmount()
+    {
+        QRAFFLE::getQuRaffleEntryAverageAmount_input input;
+        QRAFFLE::getQuRaffleEntryAverageAmount_output output;
+        
+        callFunction(QRAFFLE_CONTRACT_INDEX, 9, input, output);
+        return output;
+    }
+
     sint64 issueAsset(const id& issuer, uint64 assetName, sint64 numberOfShares, uint64 unitOfMeasurement, sint8 numberOfDecimalPlaces)
     {
         QX::IssueAsset_input input{ assetName, numberOfShares, unitOfMeasurement, numberOfDecimalPlaces };
@@ -1385,4 +1404,162 @@ TEST(ContractQraffle, QXMRRevenueDistribution)
     // Test QXMR revenue distribution during epoch end
     qraffle.endEpoch();
     EXPECT_EQ(qraffle.getState()->getEpochQXMRRevenue(), expectedQXMRRevenue - div(expectedQXMRRevenue, 676ull) * 676);
+}
+
+TEST(ContractQraffle, GetQuRaffleEntryAmountPerUser)
+{
+    ContractTestingQraffle qraffle;
+    
+    auto users = getRandomUsers(1000, 1000);
+    uint32 registerCount = 5;
+    uint32 entrySubmittedCount = 0;
+
+    // Register users first
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
+        auto result = qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT, 0);
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        registerCount++;
+    }
+
+    // Test 1: Query entry amount for users who haven't submitted any
+    for (const auto& user : users)
+    {
+        auto result = qraffle.getQuRaffleEntryAmountPerUser(user);
+        EXPECT_EQ(result.returnCode, QRAFFLE_USER_NOT_FOUND);
+        EXPECT_EQ(result.entryAmount, 0);
+    }
+
+    // Submit entry amounts for some users
+    std::vector<uint64> submittedAmounts;
+    for (size_t i = 0; i < users.size() / 2; ++i)
+    {
+        uint64 amount = random(1000000, 1000000000);
+        auto result = qraffle.submitEntryAmount(users[i], amount);
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        submittedAmounts.push_back(amount);
+        entrySubmittedCount++;
+    }
+
+    // Test 2: Query entry amount for users who have submitted amounts
+    for (size_t i = 0; i < submittedAmounts.size(); ++i)
+    {
+        auto result = qraffle.getQuRaffleEntryAmountPerUser(users[i]);
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        EXPECT_EQ(result.entryAmount, submittedAmounts[i]);
+    }
+
+    // Test 3: Query entry amount for users who haven't submitted amounts
+    for (size_t i = submittedAmounts.size(); i < users.size(); ++i)
+    {
+        auto result = qraffle.getQuRaffleEntryAmountPerUser(users[i]);
+        EXPECT_EQ(result.returnCode, QRAFFLE_USER_NOT_FOUND);
+        EXPECT_EQ(result.entryAmount, 0);
+    }
+
+    // Test 4: Update entry amount and verify
+    uint64 newAmount = random(1000000, 1000000000);
+    auto result = qraffle.submitEntryAmount(users[0], newAmount);
+    EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+    
+    auto updatedResult = qraffle.getQuRaffleEntryAmountPerUser(users[0]);
+    EXPECT_EQ(updatedResult.returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(updatedResult.entryAmount, newAmount);
+
+    // Test 5: Query for non-existent user
+    id nonExistentUser = getUser(99999);
+    auto nonExistentResult = qraffle.getQuRaffleEntryAmountPerUser(nonExistentUser);
+    EXPECT_EQ(nonExistentResult.returnCode, QRAFFLE_USER_NOT_FOUND);
+    EXPECT_EQ(nonExistentResult.entryAmount, 0);
+
+    // Test 6: Query for unregistered user
+    id unregisteredUser = getUser(88888);
+    increaseEnergy(unregisteredUser, QRAFFLE_REGISTER_AMOUNT);
+    auto unregisteredResult = qraffle.getQuRaffleEntryAmountPerUser(unregisteredUser);
+    EXPECT_EQ(unregisteredResult.returnCode, QRAFFLE_USER_NOT_FOUND);
+    EXPECT_EQ(unregisteredResult.entryAmount, 0);
+}
+
+TEST(ContractQraffle, GetQuRaffleEntryAverageAmount)
+{
+    ContractTestingQraffle qraffle;
+    
+    auto users = getRandomUsers(1000, 1000);
+    uint32 registerCount = 5;
+    uint32 entrySubmittedCount = 0;
+
+    // Register users first
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
+        auto result = qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT, 0);
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        registerCount++;
+    }
+
+    // Test 1: Query average when no users have submitted entry amounts
+    auto result = qraffle.getQuRaffleEntryAverageAmount();
+    EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(result.entryAverageAmount, 0);
+
+    // Submit entry amounts for some users
+    std::vector<uint64> submittedAmounts;
+    uint64 totalAmount = 0;
+    for (size_t i = 0; i < users.size() / 2; ++i)
+    {
+        uint64 amount = random(1000000, 1000000000);
+        increaseEnergy(users[i], amount);
+        auto result = qraffle.submitEntryAmount(users[i], amount);
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        submittedAmounts.push_back(amount);
+        totalAmount += amount;
+        entrySubmittedCount++;
+    }
+
+    // Test 2: Query average with submitted amounts
+    auto averageResult = qraffle.getQuRaffleEntryAverageAmount();
+    EXPECT_EQ(averageResult.returnCode, QRAFFLE_SUCCESS);
+    
+    // Calculate expected average
+    uint64 expectedAverage = 0;
+    if (submittedAmounts.size() > 0)
+    {
+        expectedAverage = totalAmount / submittedAmounts.size();
+    }
+    EXPECT_EQ(averageResult.entryAverageAmount, expectedAverage);
+
+    // Test 3: Add more users and verify average updates
+    std::vector<uint64> additionalAmounts;
+    uint64 additionalTotal = 0;
+    for (size_t i = users.size() / 2; i < users.size(); ++i)
+    {
+        uint64 amount = random(1000000, 1000000000);
+        auto result = qraffle.submitEntryAmount(users[i], amount);
+        EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+        additionalAmounts.push_back(amount);
+        additionalTotal += amount;
+        entrySubmittedCount++;
+    }
+
+    // Calculate new expected average
+    uint64 newTotalAmount = totalAmount + additionalTotal;
+    uint64 newExpectedAverage = newTotalAmount / (submittedAmounts.size() + additionalAmounts.size());
+
+    auto updatedAverageResult = qraffle.getQuRaffleEntryAverageAmount();
+    EXPECT_EQ(updatedAverageResult.returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(updatedAverageResult.entryAverageAmount, newExpectedAverage);
+
+    // Test 4: Update existing user's entry amount and verify average
+    uint64 updatedAmount = random(1000000, 1000000000);
+    auto updateResult = qraffle.submitEntryAmount(users[0], updatedAmount);
+    EXPECT_EQ(updateResult.returnCode, QRAFFLE_SUCCESS);
+    
+    // Recalculate expected average with updated amount
+    uint64 recalculatedTotal = newTotalAmount - submittedAmounts[0] + updatedAmount;
+    uint64 recalculatedAverage = recalculatedTotal / (submittedAmounts.size() + additionalAmounts.size());
+
+    auto recalculatedAverageResult = qraffle.getQuRaffleEntryAverageAmount();
+    EXPECT_EQ(recalculatedAverageResult.returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(recalculatedAverageResult.entryAverageAmount, recalculatedAverage);
 }

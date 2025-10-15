@@ -33,6 +33,7 @@ constexpr sint32 QRAFFLE_MAX_MEMBER_REACHED = 11;
 constexpr sint32 QRAFFLE_INITIAL_REGISTER_CANNOT_LOGOUT = 12;
 constexpr sint32 QRAFFLE_INSUFFICIENT_QXMR = 13;
 constexpr sint32 QRAFFLE_INVALID_TOKEN_TYPE = 14;
+constexpr sint32 QRAFFLE_USER_NOT_FOUND = 15;
 
 enum QRAFFLELogInfo {
     QRAFFLE_success = 0,
@@ -122,6 +123,7 @@ struct QRAFFLEProposalLogger
     uint32 _contractIndex;
     uint32 _type;
     uint32 _proposalIndex; // Index of the proposal
+    id _proposer; // Proposer of the proposal
     uint32 _yesVotes; // Number of yes votes
     uint32 _noVotes; // Number of no votes
     uint64 _assetName; // Asset name if approved
@@ -264,6 +266,7 @@ public:
 	struct getActiveProposal_output
 	{
 		id tokenIssuer;
+		id proposer;
 		uint64 tokenName;
 		uint64 entryAmount;
 		uint32 nYes;
@@ -328,12 +331,34 @@ public:
 		sint32 returnCode;
 	};
 
+	struct getQuRaffleEntryAmountPerUser_input
+	{
+		id user;
+	};
+
+	struct getQuRaffleEntryAmountPerUser_output
+	{
+		uint64 entryAmount;
+		sint32 returnCode;
+	};
+
+	struct getQuRaffleEntryAverageAmount_input
+	{
+	};
+
+	struct getQuRaffleEntryAverageAmount_output
+	{
+		uint64 entryAverageAmount;
+		sint32 returnCode;
+	};
+
 protected:
 
 	HashMap <id, uint8, QRAFFLE_MAX_MEMBER> registers;
 
 	struct proposalInfo {
 		Asset token;
+		id proposer;
 		uint64 entryAmount;
 		uint32 nYes;
 		uint32 nNo;
@@ -592,6 +617,7 @@ protected:
 		locals.proposal.token.issuer = input.tokenIssuer;
 		locals.proposal.token.assetName = input.tokenName;
 		locals.proposal.entryAmount = input.entryAmount;
+		locals.proposal.proposer = qpi.invocator();
 		state.proposals.set(state.numberOfProposals, locals.proposal);
 		state.numberOfProposals++;
 		output.returnCode = QRAFFLE_SUCCESS;
@@ -971,6 +997,7 @@ protected:
 	{
 		output.tokenName = state.proposals.get(input.indexOfProposal).token.assetName;
 		output.tokenIssuer = state.proposals.get(input.indexOfProposal).token.issuer;
+		output.proposer = state.proposals.get(input.indexOfProposal).proposer;
 		output.entryAmount = state.proposals.get(input.indexOfProposal).entryAmount;
 		output.nYes = state.proposals.get(input.indexOfProposal).nYes;
 		output.nNo = state.proposals.get(input.indexOfProposal).nNo;
@@ -1044,6 +1071,46 @@ protected:
 		output.returnCode = QRAFFLE_SUCCESS;
 	}
 
+	PUBLIC_FUNCTION(getQuRaffleEntryAmountPerUser)
+	{
+		if (state.quRaffleEntryAmount.contains(input.user) == 0)
+		{
+			output.entryAmount = 0;
+			output.returnCode = QRAFFLE_USER_NOT_FOUND;
+		}
+		else
+		{
+			state.quRaffleEntryAmount.get(input.user, output.entryAmount);
+			output.returnCode = QRAFFLE_SUCCESS;
+		}
+	}
+
+	struct getQuRaffleEntryAverageAmount_locals
+	{
+		uint64 entryAmount;
+		uint64 totalEntryAmount;
+		sint64 idx;
+	};
+
+	PUBLIC_FUNCTION_WITH_LOCALS(getQuRaffleEntryAverageAmount)
+	{
+		locals.idx = state.quRaffleEntryAmount.nextElementIndex(NULL_INDEX);
+		while (locals.idx != NULL_INDEX)
+		{
+			locals.totalEntryAmount += state.quRaffleEntryAmount.value(locals.idx);
+			locals.idx = state.quRaffleEntryAmount.nextElementIndex(locals.idx);
+		}
+		if (state.numberOfEntryAmountSubmitted > 0)
+		{
+			output.entryAverageAmount = div(locals.totalEntryAmount, state.numberOfEntryAmountSubmitted * 1ULL);
+		}
+		else
+		{
+			output.entryAverageAmount = 0;
+		}
+		output.returnCode = QRAFFLE_SUCCESS;
+	}
+
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_FUNCTION(getRegisters, 1);
@@ -1053,6 +1120,8 @@ protected:
 		REGISTER_USER_FUNCTION(getEndedQuRaffle, 5);
 		REGISTER_USER_FUNCTION(getActiveTokenRaffle, 6);
 		REGISTER_USER_FUNCTION(getEpochRaffleIndexes, 7);
+		REGISTER_USER_FUNCTION(getQuRaffleEntryAmountPerUser, 8);
+		REGISTER_USER_FUNCTION(getQuRaffleEntryAverageAmount, 9);
 
 		REGISTER_USER_PROCEDURE(registerInSystem, 1);
 		REGISTER_USER_PROCEDURE(logoutInSystem, 2);
@@ -1072,7 +1141,7 @@ protected:
 		state.initialRegister2 = ID(_L, _S, _D, _A, _A, _C, _L, _X, _X, _G, _I, _P, _G, _G, _L, _S, _O, _C, _L, _M, _V, _A, _Y, _L, _N, _T, _G, _D, _V, _B, _N, _O, _S, _S, _Y, _E, _Q, _D, _R, _K, _X, _D, _Y, _W, _B, _C, _G, _J, _I, _K, _C, _M, _Z, _K, _M, _F);
 		state.initialRegister3 = ID(_G, _H, _G, _R, _L, _W, _S, _X, _Z, _X, _W, _D, _A, _A, _O, _M, _T, _X, _Q, _Y, _U, _P, _R, _L, _P, _N, _K, _C, _W, _G, _H, _A, _E, _F, _I, _R, _J, _I, _Z, _A, _K, _C, _A, _U, _D, _G, _N, _M, _C, _D, _E, _Q, _R, _O, _Q, _B);
 		state.initialRegister4 = ID(_E, _U, _O, _N, _A, _Z, _J, _U, _A, _G, _V, _D, _C, _E, _I, _B, _A, _H, _J, _E, _T, _G, _U, _U, _H, _M, _N, _D, _J, _C, _S, _E, _T, _T, _Q, _V, _G, _Y, _F, _H, _M, _D, _P, _X, _T, _A, _L, _D, _Y, _U, _V, _E, _P, _F, _C, _A);
-		state.initialRegister5 = ID(_Q, _W, _H, _L, _C, _V, _S, _Y, _Z, _R, _J, _L, _U, _A, _J, _E, _B, _R, _M, _U, _K, _K, _S, _N, _S, _O, _M, _B, _A, _C, _R, _N, _E, _U, _A, _T, _C, _P, _M, _E, _H, _H, _K, _G, _K, _O, _X, _N, _A, _R, _X, _S, _S, _B, _L, _A);
+		state.initialRegister5 = ID(_S, _L, _C, _J, _C, _C, _U, _X, _G, _K, _N, _V, _A, _D, _F, _B, _E, _A, _Y, _V, _L, _S, _O, _B, _Z, _P, _A, _B, _H, _K, _S, _G, _M, _H, _W, _H, _S, _H, _G, _G, _B, _A, _P, _J, _W, _F, _V, _O, _K, _Z, _J, _P, _F, _L, _X, _D);
 		state.QXMRIssuer = ID(_Q, _X, _M, _R, _T, _K, _A, _I, _I, _G, _L, _U, _R, _E, _P, _I, _Q, _P, _C, _M, _H, _C, _K, _W, _S, _I, _P, _D, _T, _U, _Y, _F, _C, _F, _N, _Y, _X, _Q, _L, _T, _E, _C, _S, _U, _J, _V, _Y, _E, _M, _M, _D, _E, _L, _B, _M, _D);
 
 		state.registers.set(state.initialRegister1, 0);
@@ -1309,6 +1378,7 @@ protected:
 				QRAFFLE_CONTRACT_INDEX, 
 				QRAFFLE_proposalSubmitted, 
 				locals.i, 
+				locals.proposal.proposer,
 				locals.proposal.nYes, 
 				locals.proposal.nNo, 
 				locals.proposal.token.assetName, 
