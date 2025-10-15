@@ -90,6 +90,7 @@ struct AssetOwnershipChange
     m256i destinationPublicKey;
     m256i issuerPublicKey;
     long long numberOfShares;
+    long long managingContractIndex;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
@@ -103,6 +104,7 @@ struct AssetPossessionChange
     m256i destinationPublicKey;
     m256i issuerPublicKey;
     long long numberOfShares;
+    long long managingContractIndex;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
