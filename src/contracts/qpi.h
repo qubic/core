@@ -1454,12 +1454,6 @@ namespace QPI
 				static constexpr sint64 minSupportedValue = 0x8000000000000001;
 				static constexpr sint64 maxSupportedValue = 0x7fffffffffffffff;
 			} variableScalar;
-
-			// Used if type class is MultiVariables
-			struct MultiVariablesOptions
-			{
-				uint64 dataRefIdx;          // For referencing additional proposal data (interpreted by contract only)
-			} multiVariablesOptions;
 		};
 
 		// Check if content of instance are valid. Epoch is not checked.
@@ -1567,12 +1561,6 @@ namespace QPI
 				uint64 variable;    // For identifying variable (interpreted by contract only)
 				sint64 value;		// Value of proposed option, rest zero
 			} variableOptions;
-
-			// Used if type class is MultiVariables
-			struct MultiVariablesOptions
-			{
-				uint64 dataRefIdx;  // For referencing additional proposal data (interpreted by contract only)
-			} multiVariablesOptions;
 		};
 
 		// Check if content of instance are valid. Epoch is not checked.

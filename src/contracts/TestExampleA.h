@@ -485,15 +485,6 @@ public:
 			if (input.multiVarData.hasValueDummyStateVariable3 && (input.multiVarData.optionYesValues.dummyStateVariable3 > 100 || input.multiVarData.optionYesValues.dummyStateVariable3 < -100))
 				return;
 
-			// find empty slot
-			input.proposalData.multiVariablesOptions.dataRefIdx = 0;
-			while (input.proposalData.multiVariablesOptions.dataRefIdx < state.multiVariablesProposalData.capacity())
-			{
-				if (!state.multiVariablesProposalData.get(input.proposalData.multiVariablesOptions.dataRefIdx).isValid())
-					break;
-				++input.proposalData.multiVariablesOptions.dataRefIdx;
-			}
-
 			break;
 
 		case ProposalTypes::Class::Variable:
@@ -528,8 +519,8 @@ public:
 			// success
 			if (ProposalTypes::cls(input.proposalData.type) == ProposalTypes::Class::MultiVariables)
 			{
-				// store custom data of multi-variable proposal in array
-				state.multiVariablesProposalData.set(input.proposalData.multiVariablesOptions.dataRefIdx, input.multiVarData);
+				// store custom data of multi-variable proposal in array (at position proposalIdx)
+				state.multiVariablesProposalData.set(output, input.multiVarData);
 			}
 		}
 	}
@@ -600,7 +591,7 @@ public:
 				// The Yes option (1) must have more votes than the N option (0)
 				if (locals.results.optionVoteCount.get(1) > locals.results.optionVoteCount.get(0))
 				{
-					locals.multiVarData = state.multiVariablesProposalData.get(locals.proposal.multiVariablesOptions.dataRefIdx);
+					locals.multiVarData = state.multiVariablesProposalData.get(locals.proposalIndex);
 
 					if (locals.multiVarData.hasValueDummyStateVariable1)
 						state.dummyStateVariable1 = locals.multiVarData.optionYesValues.dummyStateVariable1;
@@ -608,10 +599,6 @@ public:
 						state.dummyStateVariable2 = locals.multiVarData.optionYesValues.dummyStateVariable2;
 					if (locals.multiVarData.hasValueDummyStateVariable3)
 						state.dummyStateVariable3 = locals.multiVarData.optionYesValues.dummyStateVariable3;
-
-					// clear multi-variable data in array
-					setMemory(locals.multiVarData, 0);
-					state.multiVariablesProposalData.set(locals.proposal.multiVariablesOptions.dataRefIdx, locals.multiVarData);
 				}
 			}
 		}
@@ -677,7 +664,7 @@ public:
 		qpi(state.proposals).getProposal(input.proposalIndex, output.proposal);
 		if (ProposalTypes::cls(output.proposal.type) == ProposalTypes::Class::MultiVariables)
 		{
-			output.multiVarData = state.multiVariablesProposalData.get(output.proposal.multiVariablesOptions.dataRefIdx);
+			output.multiVarData = state.multiVariablesProposalData.get(input.proposalIndex);
 		}
 	}
 
@@ -750,7 +737,7 @@ protected:
 	// Proposal storage
 	ProposalVotingT proposals;
 
-	// MultiVariables proposal option data storage
+	// MultiVariables proposal option data storage (same number of slots as proposals)
 	Array<MultiVariablesProposalExtraData, 16> multiVariablesProposalData;
 
 	//---------------------------------------------------------------

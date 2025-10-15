@@ -833,22 +833,18 @@ void testProposalWithAllVoteData()
 
     // MultiVariablesYesNo proposal
     proposal.type = QPI::ProposalTypes::MultiVariablesYesNo;
-    proposal.multiVariablesOptions.dataRefIdx = 0;
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 2);
 
     // MultiVariablesThreeOptions proposal
     proposal.type = QPI::ProposalTypes::MultiVariablesThreeOptions;
-    proposal.multiVariablesOptions.dataRefIdx = 123;
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 3);
 
     // MultiVariablesFourOptions proposal
     proposal.type = QPI::ProposalTypes::MultiVariablesFourOptions;
-    proposal.multiVariablesOptions.dataRefIdx = 123456;
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 4);
 
     // MultiVariables proposal with 8 options
     proposal.type = QPI::ProposalTypes::type(QPI::ProposalTypes::Class::MultiVariables, 8);
-    proposal.multiVariablesOptions.dataRefIdx = 123456789;
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 8);
 
     // fail: test MultiVariables proposal with too many or too few options
@@ -941,12 +937,10 @@ TEST(TestCoreQPI, ProposalWithAllVoteDataYesNoProposals)
 
     // MultiVariablesYesNo proposal
     proposal.type = QPI::ProposalTypes::MultiVariablesYesNo;
-    proposal.multiVariablesOptions.dataRefIdx = 0;
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 2);
 
     // MultiVariablesThreeOptions proposal (accepted for multiple variables proposal, because it does not cost anything)
     proposal.type = QPI::ProposalTypes::MultiVariablesThreeOptions;
-    proposal.multiVariablesOptions.dataRefIdx = 1;
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 3);
 
     // MultiVariablesFourOptions proposal
