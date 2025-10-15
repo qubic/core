@@ -127,6 +127,16 @@ namespace QPI
 	template <typename T1, typename T2>
 	inline void copyMemory(T1& dst, const T2& src);
 
+	// Copy object src into buffer dst. The size of the dst buffer must be grater or equal to the size of src object.
+	// If dst size is greater than src size and setTailToZero is true, set the part of dst to zero that follows
+	// behind the copy of src.
+	template <typename T1, typename T2>
+	inline void copyToBuffer(T1& dst, const T2& src, bool setTailToZero = false);
+
+	// Set object dst from buffer src. The size of the src buffer must be grater or equal to the size of dst object.
+	template <typename T1, typename T2>
+	inline void copyFromBuffer(T1& dst, const T2& src);
+
 	// Set all memory of dst to byte value.
 	template <typename T>
 	inline void setMemory(T& dst, uint8 value);
@@ -1220,8 +1230,10 @@ namespace QPI
 
 	// For casting multiple votes for all types of proposals defined in August 2024.
 	// This makes sense for shareholder voting, where a single shareholder may own multiple shares, allowing to cast
-	// multiple votes. With this structs the votes may be individually distributed to multiple options/values.
-	// Input data for contract procedure call, compatible with ProposalSingleVoteDataV1.
+	// multiple votes. With this structs, the votes may be individually distributed to multiple options/values.
+	// Input data for contract procedure call, compatible with ProposalSingleVoteDataV1. That is, to cast all votes
+	// of a shareholder with the same value, just set element 0 of voteValues and leave/set the rest to zero (including
+	// the voteCounts).
 	struct ProposalMultiVoteDataV1
 	{
 		// Index of proposal the vote is about (can be requested with proposal voting API)
@@ -2029,6 +2041,34 @@ namespace QPI
 			sint64 offeredTransferFee
 		) const; // Returns payed fee on success (>= 0), -requestedFee if offeredTransferFee or contract balance is not sufficient, INVALID_AMOUNT in case of other error.
 
+		/**
+		* @brief Add/change/cancel shareholder proposal as shareholder of another contract.
+		* @param contractIndex Index of the other contract, that SELF is shareholder of and that the proposal is about.
+		* @param proposalDataBuffer Buffer for passing the contract-dependent proposal data. You may use copyToBuffer() to fill it.
+		* @param invocationReward Invocation reaward sent to contractIndex when invoking it's procedure.
+		* @return Proposal index on success, INVALID_PROPOSAL_INDEX on error.
+		* @note Invokes SET_SHAREHOLDER_PROPOSAL of contractIndex without checking shareholder status and proposalDataBuffer.
+		*/
+		inline uint16 setShareholderProposal(
+			uint16 contractIndex,
+			const Array<uint8, 1024>& proposalDataBuffer,
+			sint64 invocationReward
+		) const;
+
+		/**
+		* @brief Add/change/cancel shareholder vote(s) in another contract.
+		* @param contractIndex Index of the other contract, that SELF is shareholder of and that the proposal is about.
+		* @param shareholderVoteData Vote(s) to cast. See ProposalMultiVoteDataV1 for details.
+		* @param invocationReward Invocation reaward sent to contractIndex when invoking it's procedure.
+		* @return Proposal index on success, INVALID_PROPOSAL_INDEX on error.
+		* @note Invokes SET_SHAREHOLDER_VOTES of contractIndex without checking shareholder status and shareholderVoteData.
+		*/
+		inline bool setShareholderVotes(
+			uint16 contractIndex,
+			const ProposalMultiVoteDataV1& shareholderVoteData,
+			sint64 invocationReward
+		) const;
+
 		inline sint64 transfer( // Attempts to transfer energy from this qubic
 			const id& destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
 			sint64 amount // Energy amount to transfer, must be in [0..1'000'000'000'000'000] range
@@ -2055,7 +2095,7 @@ namespace QPI
 		inline void* __qpiAcquireStateForWriting(unsigned int contractIndex) const;
 		inline void __qpiReleaseStateForWriting(unsigned int contractIndex) const;
 		template <unsigned int sysProcId, typename InputType, typename OutputType>
-		void __qpiCallSystemProc(unsigned int otherContractIndex, InputType& input, OutputType& output, sint64 invocationReward) const;
+		bool __qpiCallSystemProc(unsigned int otherContractIndex, InputType& input, OutputType& output, sint64 invocationReward) const;
 		inline void __qpiNotifyPostIncomingTransfer(const id& source, const id& dest, sint64 amount, uint8 type) const;
 
 	protected:

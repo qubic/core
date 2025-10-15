@@ -459,11 +459,7 @@ public:
 		ProposalDataT proposalData;
 		MultiVariablesProposalExtraData multiVarData; // may be skipped when sending TX if not MultiVariables proposal
 	};
-	struct SetShareholderProposal_output
-	{
-		uint16 proposalIndex;
-		bit success;
-	};
+	typedef SET_SHAREHOLDER_PROPOSAL_output SetShareholderProposal_output;
 
 	PUBLIC_PROCEDURE(SetShareholderProposal)
 	{
@@ -471,7 +467,7 @@ public:
 		// - input.proposalData.epoch == 0 means clearing a proposal
 
 		// default return code: failure
-		output.proposalIndex = INVALID_PROPOSAL_INDEX;
+		output = INVALID_PROPOSAL_INDEX;
 
 		// custom checks
 		switch (ProposalTypes::cls(input.proposalData.type))
@@ -525,10 +521,9 @@ public:
 		}
 
 		// Try to set proposal (checks invocator's rights and general validity of input proposal), returns success as boolean
-		output.proposalIndex = qpi(state.proposals).setProposal(qpi.invocator(), input.proposalData);
-		output.success = (output.proposalIndex != INVALID_PROPOSAL_INDEX);
+		output = qpi(state.proposals).setProposal(qpi.invocator(), input.proposalData);
 
-		if (output.success)
+		if (output != INVALID_PROPOSAL_INDEX)
 		{
 			// success
 			if (ProposalTypes::cls(input.proposalData.type) == ProposalTypes::Class::MultiVariables)
@@ -672,6 +667,7 @@ public:
 	{
 		ProposalDataT proposal;
 		id proposerPubicKey;
+		MultiVariablesProposalExtraData multiVarData;
 	};
 
 	PUBLIC_FUNCTION(GetShareholderProposal)
@@ -679,6 +675,10 @@ public:
 		// On error, output.proposal.type is set to 0
 		output.proposerPubicKey = qpi(state.proposals).proposerId(input.proposalIndex);
 		qpi(state.proposals).getProposal(input.proposalIndex, output.proposal);
+		if (ProposalTypes::cls(output.proposal.type) == ProposalTypes::Class::MultiVariables)
+		{
+			output.multiVarData = state.multiVariablesProposalData.get(output.proposal.multiVariablesOptions.dataRefIdx);
+		}
 	}
 
 	struct GetShareholderVotes_input
@@ -709,6 +709,30 @@ public:
 		// On error, output.totalVotesAuthorized is set to 0
 		qpi(state.proposals).getVotingSummary(
 			input.proposalIndex, output);
+	}
+
+	struct SET_SHAREHOLDER_PROPOSAL_locals
+	{
+		SetShareholderProposal_input userProcInput;
+	};
+
+	SET_SHAREHOLDER_PROPOSAL_WITH_LOCALS()
+	{
+		copyFromBuffer(locals.userProcInput, input);
+		CALL(SetShareholderProposal, locals.userProcInput, output);
+
+		// bug-checking: qpi.setSharehodler*() must fail
+		ASSERT(!qpi.setShareholderVotes(10, ProposalMultiVoteDataV1(), qpi.invocationReward()));
+		ASSERT(qpi.setShareholderProposal(10, input, qpi.invocationReward()) == INVALID_PROPOSAL_INDEX);
+	}
+
+	SET_SHAREHOLDER_VOTES()
+	{
+		CALL(SetShareholderVotes, input, output);
+
+		// bug-checking: qpi.setSharehodler*() must fail
+		ASSERT(!qpi.setShareholderVotes(10, input, qpi.invocationReward()));
+		ASSERT(qpi.setShareholderProposal(10, SET_SHAREHOLDER_PROPOSAL_input(), qpi.invocationReward()) == INVALID_PROPOSAL_INDEX);
 	}
 
 protected:

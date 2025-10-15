@@ -359,11 +359,11 @@ public:
         typename StateStruct::SetShareholderProposal_input input = { proposalData, multiVarData };
         typename StateStruct::SetShareholderProposal_output output;
         EXPECT_TRUE(invokeUserProcedure(StateStruct::__contract_index, 65534, input, output, originator, 0));
-        return output.proposalIndex;
+        return output;
     }
 
     template <typename StateStruct>
-    bool setShareholderVote(const id& originator, uint16 proposalIndex, const typename StateStruct::ProposalDataT& proposalData, sint64 voteValue)
+    bool setShareholderVotes(const id& originator, uint16 proposalIndex, const typename StateStruct::ProposalDataT& proposalData, sint64 voteValue)
     {
         // Contract procedure expects ProposalMultiVoteDataV1, but ProposalSingleVoteDataV1 is compatible
         ProposalSingleVoteDataV1 input{ proposalIndex, proposalData.type, proposalData.tick, voteValue };
@@ -487,6 +487,43 @@ public:
         return proposalIdx;
     }
 
+    template <typename StateStruct, typename FullProposalDataT>
+    uint16 setProposalInOtherContractAsShareholder(const id& originator, uint16 otherContractIndex, const FullProposalDataT& fullProposalData)
+    {
+        typename StateStruct::SetProposalInOtherContractAsShareholder_input input;
+        copyToBuffer(input, fullProposalData);
+        input.otherContractIndex = otherContractIndex;
+        typename StateStruct::SetProposalInOtherContractAsShareholder_output output;
+        invokeUserProcedure(StateStruct::__contract_index, 40, input, output, originator, 0);
+        return output.proposalIndex;
+    }
+
+    template <typename StateStruct, typename ProposalDataT>
+    bool setVotesInOtherContractAsShareholder(const id& originator, uint16 otherContractIndex, uint16 proposalIndex, const ProposalDataT& proposalData,
+        const std::vector<std::pair<sint64, uint32>>& voteValueCountPairs)
+    {
+        ASSERT(voteValueCountPairs.size() <= 8);
+        typename StateStruct::setVotesInOtherContractAsShareholder_input input{ {proposalIndex, proposalData.type, proposalData.tick} };
+        input.otherContractIndex = otherContractIndex;
+        input.voteData.voteValues.set(0, NO_VOTE_VALUE); // default with no voteValueCountPairs (vote count 0): set all to no votes
+        for (size_t i = 0; i < voteValueCountPairs.size(); ++i)
+        {
+            input.voteData.voteValues.set(i, voteValueCountPairs[i].first);
+            input.voteData.voteCounts.set(i, voteValueCountPairs[i].second);
+        }
+        typename StateStruct::setVotesInOtherContractAsShareholder_output output;
+        invokeUserProcedure(StateStruct::__contract_index, 41, input, output, originator, 0);
+        return output.success;
+    }
+
+    void endEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(TESTEXD_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+        callSystemProcedure(TESTEXC_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+        callSystemProcedure(TESTEXB_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+        callSystemProcedure(TESTEXA_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+        callSystemProcedure(QX_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+    }
 };
 
 void checkVoteCounts(const ProposalMultiVoteDataV1& votes, const std::vector<std::pair<sint64, uint32>>& expectedVoteValueCountPairs)
@@ -513,6 +550,12 @@ void checkVoteCounts(const ProposalMultiVoteDataV1& votes, const std::vector<std
         FAIL() << "Error: missing vote value/count pair " << it.first << "/" << it.second;
     }
 }
+
+bool operator==(const TESTEXA::MultiVariablesProposalExtraData& p1, const TESTEXA::MultiVariablesProposalExtraData& p2)
+{
+    return memcmp(&p1, &p2, sizeof(p1)) == 0;
+}
+
 
 TEST(ContractTestEx, QpiReleaseShares)
 {
@@ -1546,8 +1589,17 @@ TEST(ContractTestEx, ShareholderProposalsA)
     // fail: invalid value of variable
     test.setupShareholderProposalTestExA(USER2, ProposalTypes::VariableYesNo, false, 0, false, 0, true, 120, false);
 
+    // check that no active/inactive proposals
+    EXPECT_EQ(test.getShareholderProposalIndices<TESTEXA>(true).size(), 0);
+    EXPECT_EQ(test.getShareholderProposalIndices<TESTEXA>(false).size(), 0);
+
     // success: set var3 with single-var proposal
     proposalIdx = test.setupShareholderProposalTestExA(USER2, ProposalTypes::VariableYesNo, false, 0, false, 0, true, 100, true);
+
+    // check that no active/inactive proposals
+    auto proposalIndices = test.getShareholderProposalIndices<TESTEXA>(true);
+    EXPECT_TRUE(proposalIndices.size() == 1 && proposalIndices[0] == proposalIdx);
+    EXPECT_EQ(test.getShareholderProposalIndices<TESTEXA>(false).size(), 0);
 
     // fail: try to get non-existing proposal
     auto fullProposalData = test.getShareholderProposal<TESTEXA>(proposalIdx + 1);
@@ -1576,7 +1628,7 @@ TEST(ContractTestEx, ShareholderProposalsA)
     checkVoteCounts(votes, {});
 
     // set all votes of USER1 to option 0 with single-vote struct
-    EXPECT_TRUE(test.setShareholderVote<TESTEXA>(USER1, proposalIdx, proposal, 0));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER1, proposalIdx, proposal, 0));
 
     // get shareholder votes of user who is no shareholder and check that they are correct
     votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER1);
@@ -1635,8 +1687,8 @@ TEST(ContractTestEx, ShareholderProposalsA)
     EXPECT_EQ(results.totalVotesCasted, 1 + 20 + 300 + 19 + 30 + 50);
 
     // withdraw votes of USER1 and USER3
-    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER1, proposalIdx, proposal, {}));
-    EXPECT_TRUE(test.setShareholderVote<TESTEXA>(USER3, proposalIdx, proposal, NO_VOTE_VALUE));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER1, proposalIdx, proposal, std::vector<std::pair<sint64, uint32>>()));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER3, proposalIdx, proposal, NO_VOTE_VALUE));
 
     votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER3);
     checkVoteCounts(votes, {});
@@ -1653,7 +1705,7 @@ TEST(ContractTestEx, ShareholderProposalsA)
 
     // fail: try to set all votes of USER2 to invalid value with single-vote struct
     // (uses Multi-Vote internally for testing compatibility, so votes of the user are reset)
-    EXPECT_FALSE(test.setShareholderVote<TESTEXA>(USER2, proposalIdx, proposal, 4));
+    EXPECT_FALSE(test.setShareholderVotes<TESTEXA>(USER2, proposalIdx, proposal, 4));
     votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER2);
     checkVoteCounts(votes, {});
 
@@ -1689,7 +1741,73 @@ TEST(ContractTestEx, ShareholderProposalsA)
     votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER2);
     checkVoteCounts(votes, {});
 
-    // TODO:
-    // voting of TESTEXB as shareholder of TESTEXA
+    // voting of TESTEXB as shareholder of TESTEXA (originator not checked by procedure)
+    // user procedure TESTEXB::setVotesInOtherContractAsShareholder
+    EXPECT_TRUE(test.setVotesInOtherContractAsShareholder<TESTEXB>(USER4, TESTEXA_CONTRACT_INDEX, proposalIdx, proposal, { {0, 10}, {1, 20}, {0, 70} }));
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, TESTEXB_CONTRACT_ID);
+    checkVoteCounts(votes, { {0, 80}, {1, 20} });
+
+    results = test.getShareholderVotingResults<TESTEXA>(proposalIdx);
+    EXPECT_EQ(results.totalVotesAuthorized, 676);
+    EXPECT_EQ(results.optionVoteCount.get(0), 80);
+    EXPECT_EQ(results.optionVoteCount.get(1), 20);
+    EXPECT_EQ(results.totalVotesCasted, 100);
+
+    //////////////////////////////////////////////////////
+    // create new shareholder proposal in TESTEXA as shareholder TESTEXB
+    TESTEXA::SetShareholderProposal_input setShareholderProposalInput2;
+    setShareholderProposalInput2.proposalData.type = ProposalTypes::MultiVariablesYesNo;
+    setShareholderProposalInput2.proposalData.epoch = system.epoch;
+    setMemory(setShareholderProposalInput2.multiVarData, 0);
+
+    // fails to create proposal, because multiVarData is invalid (originator not checked by procedure)
+    uint16 proposalIdx2 = test.setProposalInOtherContractAsShareholder<TESTEXB>(USER4, TESTEXA_CONTRACT_INDEX, setShareholderProposalInput2);
+    EXPECT_EQ((int)proposalIdx2, (int)INVALID_PROPOSAL_INDEX);
+
+    // create proposal (originator not checked by procedure)
+    setShareholderProposalInput2.multiVarData.hasValueDummyStateVariable1 = true;
+    setShareholderProposalInput2.multiVarData.hasValueDummyStateVariable2 = true;
+    setShareholderProposalInput2.multiVarData.hasValueDummyStateVariable3 = true;
+    setShareholderProposalInput2.multiVarData.optionYesValues.dummyStateVariable1 = 1;
+    setShareholderProposalInput2.multiVarData.optionYesValues.dummyStateVariable2 = 2;
+    setShareholderProposalInput2.multiVarData.optionYesValues.dummyStateVariable3 = 3;
+    proposalIdx2 = test.setProposalInOtherContractAsShareholder<TESTEXB>(USER4, TESTEXA_CONTRACT_INDEX, setShareholderProposalInput2);
+
+    // get and check new proposal
+    auto fullProposalData2 = test.getShareholderProposal<TESTEXA>(proposalIdx2);
+    EXPECT_EQ(fullProposalData2.proposerPubicKey, TESTEXB_CONTRACT_ID);
+    EXPECT_EQ((int)fullProposalData2.proposal.type, (int)ProposalTypes::MultiVariablesYesNo);
+    auto proposal2 = fullProposalData2.proposal;
+    EXPECT_EQ(fullProposalData2.multiVarData, setShareholderProposalInput2.multiVarData);
+
+    // cast votes
+    EXPECT_TRUE(test.setVotesInOtherContractAsShareholder<TESTEXB>(USER4, TESTEXA_CONTRACT_INDEX, proposalIdx2, proposal2, { {1, 90} }));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER1, proposalIdx2, proposal2, { {0, 50}, {1, 260} }));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER2, proposalIdx2, proposal2, { {0, 10}, {1, 160} }));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER3, proposalIdx2, proposal2, { {0, 1}, {1, 15} }));
+    results = test.getShareholderVotingResults<TESTEXA>(proposalIdx2);
+    EXPECT_EQ(results.totalVotesAuthorized, 676);
+    EXPECT_EQ(results.optionVoteCount.get(0), 61);
+    EXPECT_EQ(results.optionVoteCount.get(1), 525);
+    EXPECT_EQ(results.totalVotesCasted, 61 + 525);
+
+    // test proposal listing function (2 active, 0 inactive)
+    proposalIndices = test.getShareholderProposalIndices<TESTEXA>(true);
+    EXPECT_TRUE(proposalIndices.size() == 2 && proposalIndices[0] == proposalIdx && proposalIndices[1] == proposalIdx2);
+    EXPECT_EQ(test.getShareholderProposalIndices<TESTEXA>(false).size(), 0);
+
     // test that variables are set correctly after epoch switch
+    test.getStateTestExampleA()->checkVariablesSetByProposal(0, 0, 0);
+    test.endEpoch();
+    ++system.epoch;
+    test.getStateTestExampleA()->checkVariablesSetByProposal(1, 2, 3);
+
+    // test proposal listing function (2 inactive, 0 active)
+    proposalIndices = test.getShareholderProposalIndices<TESTEXA>(false);
+    EXPECT_TRUE(proposalIndices.size() == 2 && proposalIndices[0] == proposalIdx && proposalIndices[1] == proposalIdx2);
+    EXPECT_EQ(test.getShareholderProposalIndices<TESTEXA>(true).size(), 0);
 }
+
+// TODO:
+// multi-proposal test
+// create proposal / vote in newer contract from older contract
