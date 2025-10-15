@@ -594,8 +594,7 @@ public:
         isValidVaultId_input iv_in;
         isValidVaultId_output iv_out;
         isValidVaultId_locals iv_locals;
-        QX::TransferShareOwnershipAndPossession_input qx_in;
-        QX::TransferShareOwnershipAndPossession_output qx_out;
+        sint64 remainingShares;
         sint64 releaseResult;
     };
 
@@ -1482,7 +1481,7 @@ protected:
             // Re-check balance before transfer
             if (locals.assetVault.assetBalances.get(locals.assetIndex).balance >= input.amount)
             {
-                locals.qx_out.transferredNumberOfShares = qpi.transferShareOwnershipAndPossession(
+                locals.remainingShares = qpi.transferShareOwnershipAndPossession(
                     input.asset.assetName,
                     input.asset.issuer,
                     SELF, // owner
@@ -1490,7 +1489,7 @@ protected:
                     input.amount,
                     input.destination // new owner & possessor
                 );
-                if (locals.qx_out.transferredNumberOfShares > 0)
+                if (locals.remainingShares >= 0)
                 {
                     // Update internal asset balance
                     locals.ab = locals.assetVault.assetBalances.get(locals.assetIndex);

@@ -58,6 +58,9 @@ struct Peer;
 #define ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE 12
 #define CUSTOM_MESSAGE 255
 
+#define CUSTOM_MESSAGE_OP_START_DISTRIBUTE_DIVIDENDS 6217575821008262227ULL // STA_DDIV
+#define CUSTOM_MESSAGE_OP_END_DISTRIBUTE_DIVIDENDS 6217575821008457285ULL //END_DDIV
+
 /*
 * STRUCTS FOR LOGGING
 */
@@ -73,6 +76,7 @@ struct AssetIssuance
 {
     m256i issuerPublicKey;
     long long numberOfShares;
+    long long managingContractIndex;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
