@@ -368,6 +368,8 @@ public:
 		if (state.players.contains(qpi.invocator()))
 		{
 			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_ALREADY_PURCHASED);
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+
 			return;
 		}
 
@@ -375,6 +377,8 @@ public:
 		if (state.players.add(qpi.invocator()) == NULL_INDEX)
 		{
 			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_ALL_SOLD_OUT);
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+
 			return;
 		}
 

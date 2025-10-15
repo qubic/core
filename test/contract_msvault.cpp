@@ -925,19 +925,19 @@ TEST(ContractMsVault, ReleaseAssetTo_FullApproval)
     EXPECT_EQ(vaultAssetBalanceBefore, 800ULL);
 
     // Owners approve the release
-    auto relAssetOut1 = msvault.releaseAssetTo(vaultId, assetTest, 500, DESTINATION, OWNER1);
+    auto relAssetOut1 = msvault.releaseAssetTo(vaultId, assetTest, 800, DESTINATION, OWNER1);
     EXPECT_EQ(relAssetOut1.status, 9ULL);
-    auto relAssetOut2 = msvault.releaseAssetTo(vaultId, assetTest, 500, DESTINATION, OWNER2);
+    auto relAssetOut2 = msvault.releaseAssetTo(vaultId, assetTest, 800, DESTINATION, OWNER2);
     EXPECT_EQ(relAssetOut2.status, 1ULL);
 
     // Check final balances
     sint64 destBalanceManagedByQx = numberOfShares(assetTest, { DESTINATION, QX_CONTRACT_INDEX }, { DESTINATION, QX_CONTRACT_INDEX });
     sint64 destBalanceManagedByMsVault = numberOfShares(assetTest, { DESTINATION, MSVAULT_CONTRACT_INDEX }, { DESTINATION, MSVAULT_CONTRACT_INDEX });
-    EXPECT_EQ(destBalanceManagedByQx, 500LL);
+    EXPECT_EQ(destBalanceManagedByQx, 800LL);
     EXPECT_EQ(destBalanceManagedByMsVault, 0LL);
 
     auto vaultAssetBalanceAfter = msvault.getVaultAssetBalances(vaultId).assetBalances.get(0).balance;
-    EXPECT_EQ(vaultAssetBalanceAfter, 300ULL); // 800 - 500
+    EXPECT_EQ(vaultAssetBalanceAfter, 0ULL); // 800 - 800
 
     // The vault's qubic balance should be 0 after paying the management transfer fee
     auto vaultQubicBalanceAfter = msvault.getBalanceOf(vaultId);
