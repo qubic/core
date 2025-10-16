@@ -306,10 +306,10 @@ public:
         return output;
     }
 
-    QRAFFLE::getAnalaytics_output getAnalytics()
+    QRAFFLE::getAnalytics_output getAnalytics()
     {
-        QRAFFLE::getAnalaytics_input input;
-        QRAFFLE::getAnalaytics_output output;
+        QRAFFLE::getAnalytics_input input;
+        QRAFFLE::getAnalytics_output output;
         
         callFunction(QRAFFLE_CONTRACT_INDEX, 2, input, output);
         return output;
