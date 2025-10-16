@@ -1664,6 +1664,8 @@ TEST(ContractTestEx, ShareholderProposalsA)
     EXPECT_EQ(results.optionVoteCount.get(0), 20 + 356);
     EXPECT_EQ(results.optionVoteCount.get(1), 30);
     EXPECT_EQ(results.totalVotesCasted, 20 + 356 + 30);
+    EXPECT_EQ(results.getAcceptedOption(), -1);
+    EXPECT_EQ(results.getMostVotedOption(), 0);
 
     // set 1 vote of USER3 to option 0 and 19 to option 1
     EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER3, proposalIdx, proposal, { {0, 1}, {1, 19} }));
@@ -1685,6 +1687,8 @@ TEST(ContractTestEx, ShareholderProposalsA)
     EXPECT_EQ(results.optionVoteCount.get(0), 1 + 20 + 300);
     EXPECT_EQ(results.optionVoteCount.get(1), 19 + 30 + 50);
     EXPECT_EQ(results.totalVotesCasted, 1 + 20 + 300 + 19 + 30 + 50);
+    EXPECT_EQ(results.getAcceptedOption(), -1);
+    EXPECT_EQ(results.getMostVotedOption(), 0);
 
     // withdraw votes of USER1 and USER3
     EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER1, proposalIdx, proposal, std::vector<std::pair<sint64, uint32>>()));
@@ -1702,6 +1706,8 @@ TEST(ContractTestEx, ShareholderProposalsA)
     EXPECT_EQ(results.optionVoteCount.get(0), 20);
     EXPECT_EQ(results.optionVoteCount.get(1), 30);
     EXPECT_EQ(results.totalVotesCasted, 20 + 30);
+    EXPECT_EQ(results.getAcceptedOption(), -1);
+    EXPECT_EQ(results.getMostVotedOption(), 1);
 
     // fail: try to set all votes of USER2 to invalid value with single-vote struct
     // (uses Multi-Vote internally for testing compatibility, so votes of the user are reset)
@@ -1752,6 +1758,8 @@ TEST(ContractTestEx, ShareholderProposalsA)
     EXPECT_EQ(results.optionVoteCount.get(0), 80);
     EXPECT_EQ(results.optionVoteCount.get(1), 20);
     EXPECT_EQ(results.totalVotesCasted, 100);
+    EXPECT_EQ(results.getAcceptedOption(), -1);
+    EXPECT_EQ(results.getMostVotedOption(), 0);
 
     //////////////////////////////////////////////////////
     // create new shareholder proposal in TESTEXA as shareholder TESTEXB
@@ -1789,6 +1797,7 @@ TEST(ContractTestEx, ShareholderProposalsA)
     EXPECT_EQ(results.totalVotesAuthorized, 676);
     EXPECT_EQ(results.optionVoteCount.get(0), 61);
     EXPECT_EQ(results.optionVoteCount.get(1), 525);
+    EXPECT_EQ(results.getAcceptedOption(), 1);
     EXPECT_EQ(results.totalVotesCasted, 61 + 525);
 
     // test proposal listing function (2 active, 0 inactive)

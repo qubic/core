@@ -966,6 +966,7 @@ void expectNoVotes(
     EXPECT_TRUE(qpi(*pv).getVotingSummary(proposalIndex, votingSummaryReturned));
     EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
     EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 0);
+    EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), -1);
 }
 
 template <bool B>
@@ -1353,6 +1354,8 @@ void testProposalVotingComputorsV1()
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 2);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), pv->maxVoters / 2 - 1);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(1), pv->maxVoters / 2);
+    EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), 1);
+    EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), 1);
 
     if (proposalByComputorsOnly)
     {
@@ -1430,6 +1433,8 @@ void testProposalVotingComputorsV1()
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(3), pv->maxVoters - 75);
     for (int i = 4; i < votingSummaryReturned.optionVoteCount.capacity(); ++i)
         EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(i), 0);
+    EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), 3);
+    EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), 3);
 
     // fail: proposal of transfer with wrong address
     proposal.type = QPI::ProposalTypes::TransferYesNo;
@@ -1492,6 +1497,8 @@ void testProposalVotingComputorsV1()
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 2);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), pv->maxVoters / 2);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(1), pv->maxVoters / 2 - 2);
+    EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), 0);
+    EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), 0);
 
     if (!supportScalarVotes)
     {
@@ -1541,6 +1548,8 @@ void testProposalVotingComputorsV1()
         EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
         EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 99);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
+        EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), -1);
+        EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), -1);
         EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.variableScalar.maxSupportedValue - 1);
         for (int i = 0; i < 555; ++i)
         {
@@ -1583,6 +1592,8 @@ void testProposalVotingComputorsV1()
         EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 603);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
         EXPECT_EQ(votingSummaryReturned.scalarVotingResult, 0);
+        EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), -1);
+        EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), -1);
 
         // another case for scalar voting summary
         for (int i = 0; i < 603; ++i)
@@ -1677,6 +1688,8 @@ void testProposalVotingComputorsV1()
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(2), 100);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(3), 200);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(4), 0);
+    EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), 3);
+    EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), -1);
 
     // manually clear some proposals
     EXPECT_FALSE(qpi(*pv).clearProposal(qpi(*pv).proposalIndex(qpi.originator())));
@@ -1882,6 +1895,8 @@ void testProposalVotingShareholdersV1()
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 2);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), optionProposalVoteCounts[0] - shareholderShares[0].second);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(1), optionProposalVoteCounts[1]);
+    EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), 1);
+    EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), 1);
 
     // fail: originator id(1,2,3,4) is no shareholder (see custom qpi.computor() above)
     setProposalExpectFailure(qpi, pv, qpi.originator(), proposal);
@@ -2010,6 +2025,8 @@ void testProposalVotingShareholdersV1()
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 2);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), optionProposalVoteCounts[0]);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(1), optionProposalVoteCounts[1]);
+    EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), 0);
+    EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), 0);
 
     if (!supportScalarVotes)
     {
@@ -2063,6 +2080,8 @@ void testProposalVotingShareholdersV1()
         EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 30);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
         EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.variableScalar.maxSupportedValue - 1);
+        EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), -1);
+        EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), -1);
 
         for (int i = 0; i < 5; ++i)
         {
@@ -2209,6 +2228,8 @@ void testProposalVotingShareholdersV1()
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 4);
     for (int i = 0; i < 8; ++i)
         EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(i), (i < 4) ? optionProposalVoteCounts[i] : 0);
+    EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), 0);
+    EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), -1);
 
     // manually clear some proposals
     EXPECT_FALSE(qpi(*pv).clearProposal(qpi(*pv).proposalIndex(qpi.originator())));

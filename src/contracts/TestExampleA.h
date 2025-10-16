@@ -561,12 +561,8 @@ public:
 				if (!qpi(state.proposals).getVotingSummary(locals.proposalIndex, locals.results))
 					continue;
 
-				// The total number of votes needs to be at least the quorum
-				if (locals.results.totalVotesCasted < QUORUM)
-					continue;
-
-				// The Yes option (1) must have more votes than the N option (0)
-				if (locals.results.optionVoteCount.get(1) > locals.results.optionVoteCount.get(0))
+				// Check if the yes option (1) has been accepted
+				if (locals.results.getAcceptedOption() == 1)
 				{
 					if (locals.proposal.variableOptions.variable == 0)
 						state.dummyStateVariable1 = uint64(locals.proposal.variableOptions.value);
@@ -584,12 +580,8 @@ public:
 				if (!qpi(state.proposals).getVotingSummary(locals.proposalIndex, locals.results))
 					continue;
 
-				// The total number of votes needs to be at least the quorum
-				if (locals.results.totalVotesCasted < QUORUM)
-					continue;
-
-				// The Yes option (1) must have more votes than the N option (0)
-				if (locals.results.optionVoteCount.get(1) > locals.results.optionVoteCount.get(0))
+				// Check if the yes option (1) has been accepted
+				if (locals.results.getAcceptedOption() == 1)
 				{
 					locals.multiVarData = state.multiVariablesProposalData.get(locals.proposalIndex);
 

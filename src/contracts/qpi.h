@@ -1333,6 +1333,37 @@ namespace QPI
 			sint64 scalarVotingResult;
 		};
 
+		// Return index of most voted option or -1 if this is scalar voting
+		sint32 getMostVotedOption() const
+		{
+			if (optionCount == 0)
+				return -1;
+			sint32 mostVotedOptionIndex = 0;
+			uint32 mostVotedOptionVotes = optionVoteCount.get(0);
+			for (sint32 optionIndex = 1; optionIndex < optionCount; ++optionIndex)
+			{
+				uint32 optionVotes = optionVoteCount.get(optionIndex);
+				if (mostVotedOptionVotes < optionVotes)
+				{
+					mostVotedOptionVotes = optionVotes;
+					mostVotedOptionIndex = optionIndex;
+				}
+			}
+			return mostVotedOptionIndex;
+		}
+
+		// Return index of option accepted by quorum or -1 if none is accepted
+		sint32 getAcceptedOption(uint32 totalVotesThresh = QUORUM, uint32 mostVotedThreshold = QUORUM/2) const
+		{
+			if (totalVotesCasted >= totalVotesThresh)
+			{
+				sint32 opt = getMostVotedOption();
+				if (opt >= 0 && optionVoteCount.get(opt) > mostVotedThreshold)
+					return opt;
+			}
+			return -1;
+		}
+
 		ProposalSummarizedVotingDataV1() = default;
 		ProposalSummarizedVotingDataV1(const ProposalSummarizedVotingDataV1& src)
 		{
