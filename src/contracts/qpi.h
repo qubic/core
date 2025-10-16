@@ -2236,8 +2236,8 @@ namespace QPI
 		static void __postIncomingTransfer(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __setShareholderProposalEmpty = 1, __setShareholderProposalLocalsSize = sizeof(NoData) };
 		static void __setShareholderProposal(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { setShareholderVotesEmpty = 1, setShareholderVotesLocalsSize = sizeof(NoData) };
-		static void setShareholderVotes(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __setShareholderVotesEmpty = 1, __setShareholderVotesLocalsSize = sizeof(NoData) };
+		static void __setShareholderVotes(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __acceptOracleTrueReplyEmpty = 1, __acceptOracleTrueReplyLocalsSize = sizeof(NoData) };
 		static void __acceptOracleTrueReply(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __acceptOracleFalseReplyEmpty = 1, __acceptOracleFalseReplyLocalsSize = sizeof(NoData) };
@@ -2369,14 +2369,14 @@ namespace QPI
 	// Define contract system procedure called when another contract tries to set/change/cancel a vote through
 	// qpi.setShareholderVotes(). See `doc/contracts.md` for details.
 	#define SET_SHAREHOLDER_VOTES() \
-        NO_IO_SYSTEM_PROC(SET_SHAREHOLDER_VOTES, setShareholderVotes, SET_SHAREHOLDER_VOTES_input, \
+        NO_IO_SYSTEM_PROC(SET_SHAREHOLDER_VOTES, __setShareholderVotes, SET_SHAREHOLDER_VOTES_input, \
 						  SET_SHAREHOLDER_VOTES_output)
 
 	// Define contract system procedure called when another contract tries to set/change/cancel a vote through
 	// qpi.setShareholderVotes(). Provides zeroed instance of SET_SHAREHOLDER_VOTES_locals struct. See
 	// `doc/contracts.md` for details.
 	#define SET_SHAREHOLDER_VOTES_WITH_LOCALS() \
-        NO_IO_SYSTEM_PROC_WITH_LOCALS(SET_SHAREHOLDER_VOTES, setShareholderVotes, SET_SHAREHOLDER_VOTES_input, \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(SET_SHAREHOLDER_VOTES, __setShareholderVotes, SET_SHAREHOLDER_VOTES_input, \
 						              SET_SHAREHOLDER_VOTES_output)
 
 	#define EXPAND() \

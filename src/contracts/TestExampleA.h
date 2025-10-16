@@ -717,9 +717,11 @@ public:
 	{
 		CALL(SetShareholderVotes, input, output);
 
+#ifdef NO_UEFI
 		// bug-checking: qpi.setSharehodler*() must fail
 		ASSERT(!qpi.setShareholderVotes(10, input, qpi.invocationReward()));
 		ASSERT(qpi.setShareholderProposal(10, SET_SHAREHOLDER_PROPOSAL_input(), qpi.invocationReward()) == INVALID_PROPOSAL_INDEX);
+#endif
 	}
 
 protected:
