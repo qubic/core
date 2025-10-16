@@ -15,7 +15,8 @@ struct System
     unsigned short epoch;
     unsigned int tick;
     unsigned int initialTick;
-    unsigned int latestCreatedTick, latestLedTick;
+    unsigned int latestCreatedTick;
+    unsigned int latestLedTick; // contains latest tick t in which TickData for tick (t + TICK_TRANSACTIONS_PUBLICATION_OFFSET) was broadcasted as tick leader
 
     unsigned short initialMillisecond;
     unsigned char initialSecond;
