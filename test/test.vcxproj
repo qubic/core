@@ -123,6 +123,7 @@
     <ClCompile Include="contract_qbond.cpp" />
     <ClCompile Include="contract_qswap.cpp" />
     <ClCompile Include="fourq.cpp" />
+    <ClCompile Include="pending_txs_pool.cpp" />
     <ClCompile Include="uint128.cpp" />
     <ClCompile Include="assets.cpp" />
     <ClCompile Include="contract_core.cpp" />

@@ -404,10 +404,9 @@ private:
 		{
 			return;
 		}
-		if (RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY >= state.winners.capacity() - 1)
-		{
-			state.winnersInfoNextEmptyIndex = 0;
-		}
+
+		state.winnersInfoNextEmptyIndex = mod<uint64>(state.winnersInfoNextEmptyIndex, state.winners.capacity());
+
 		locals.winnerInfo.winnerAddress = input.winnerAddress;
 		locals.winnerInfo.revenue = input.revenue;
 		locals.winnerInfo.epoch = qpi.epoch();
