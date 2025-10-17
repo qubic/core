@@ -5,6 +5,7 @@
 #if defined(_WIN32)
 #include <Windows.h>
 #include <conio.h>
+#define MSG_DONTWAIT 0
 #elif defined(__linux__)
 #include <sched.h>
 #include <unistd.h>
@@ -19,8 +20,10 @@
 #include <poll.h>
 #include <sys/mman.h>
 #include <cstddef>
-
+#include <mutex>
 #endif
+
+#define ACQUIRE_NO_SPINNING(lock) while (_InterlockedCompareExchange8(&lock, 1, 0)) std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
 #undef CreateEvent
 #define CreateEvent CreateEvent
@@ -239,10 +242,20 @@ inline EFI_STATUS createEvent(unsigned int Type, EFI_TPL NotifyTpl, void* Notify
 
 struct Overload {
 
+    enum ConnectStatus
+    {
+        Connected,
+        Connecting,
+        Disconnected,
+        Error
+    };
+
     struct TcpData {
         EFI_TCP4_CONFIG_DATA configData;
         SOCKET socket;
         bool isGlobal;
+        volatile char receiveLock;
+        ConnectStatus connectStatus;
     };
 
     struct EventData {
@@ -255,6 +268,7 @@ struct Overload {
     inline static std::map<unsigned long long, SOCKET> incomingSocketMap;
     inline static std::map<unsigned long long, TcpData> tcpDataMap;
     inline static std::map<unsigned long long, EventData> eventDataMap;
+    inline static std::map<unsigned long long, bool> isReceiveThreadSetupMap;
 
     // Directly call the setup function without using custom stack.
     static void startThread(EFI_AP_PROCEDURE procedure, void* data, unsigned long long ProcessorNumber, EFI_EVENT WaitEvent, unsigned long long TimeoutInMicroseconds) {
@@ -581,7 +595,7 @@ struct Overload {
     }
 
     static EFI_STATUS DestroyChild(IN void* This, IN EFI_HANDLE ChildHandle) {
-		// remove tcp4Protocol data from handle
+		// Remove tcp4Protocol data from handle
 		if (tcpDataMap.contains(*(unsigned long long*)ChildHandle)) {
 			TcpData& tcpData = tcpDataMap[*(unsigned long long*)ChildHandle];
 			if (tcpData.socket != INVALID_SOCKET) {
@@ -730,64 +744,72 @@ struct Overload {
             return EFI_ABORTED;
         }
 
-        char buffer[8 * 1024];
-        int totalReceivedBytes = 0;
-        memset(buffer, 0, sizeof(buffer));
-        Token->Packet.RxData->DataLength = 0;
-        unsigned long long totalNanoseconds = 0;
-        auto startTime = std::chrono::high_resolution_clock::now();
-        auto endTime = std::chrono::high_resolution_clock::now();
-        while (true)
+        // If call Receive, mean we have processed the previous data, so we can unlock the receive lock
+        RELEASE(tcpData->receiveLock);
+        if (!isReceiveThreadSetupMap[key])
         {
-#ifdef _MSC_VER
-#define MSG_DONTWAIT 0
-#endif
-            endTime = std::chrono::high_resolution_clock::now();
-            totalNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count();
-            if (totalNanoseconds > 1'000'000'000) { // 1 seconds timeout
-                Token->CompletionToken.Status = -1;
-                return EFI_TIMEOUT;
-            }
-            int bytes = recv(tcpData->socket, buffer, sizeof(buffer), MSG_DONTWAIT);
-            if (bytes > 0)
+            std::thread receiveThread([key, tcpData, Token]()
             {
-                memcpy((char *)Token->Packet.RxData->FragmentTable[0].FragmentBuffer + totalReceivedBytes, buffer, bytes);
-                totalReceivedBytes += bytes;
-                Token->Packet.RxData->DataLength += bytes;
-            } else if (bytes == SOCKET_ERROR)
-            {
-#ifdef _MSC_VER
-                int err = WSAGetLastError();
-                if (err == WSAEWOULDBLOCK) {
-                    // nothing left to read right now
-                    Token->CompletionToken.Status = EFI_SUCCESS;
-                    break;
-                } else {
-                    // real error
-                    Token->CompletionToken.Status = -1;
-                    return EFI_ABORTED;
-                }
-#else
-                if (errno == EAGAIN || errno == EWOULDBLOCK)
+                pollfd fds{};
+                fds.fd = tcpData->socket;
+                fds.events = POLLIN;
+                char* buffer = new char[BUFFER_SIZE];
+                while (true)
                 {
-                    // nothing left to read right now
-                    Token->CompletionToken.Status = EFI_SUCCESS;
-                    break;
-                } else
-                {
-                    Token->CompletionToken.Status = -1;
-                    return EFI_ABORTED;
+                    // Ensure the data received is processed in main thread
+                    ACQUIRE_NO_SPINNING(tcpData->receiveLock);
+                    int ret = poll(&fds, 1, -1);
+                    if (ret <= 0) {
+                        tcpData->connectStatus = Error;
+                        Token->CompletionToken.Status = EFI_ABORTED;
+                        break;
+                    }
+
+                    if (fds.revents & POLLIN)
+                    {
+                        auto n = recv(tcpData->socket, buffer, BUFFER_SIZE, MSG_DONTWAIT);
+                        if (n > 0)
+                        {
+                            memcpy((char *)Token->Packet.RxData->FragmentTable[0].FragmentBuffer, buffer, n);
+                            Token->Packet.RxData->DataLength = n;
+                            Token->CompletionToken.Status = EFI_SUCCESS;
+                        }
+                        else if (n == 0)
+                        {
+                            tcpData->connectStatus = Disconnected;
+                            Token->CompletionToken.Status = EFI_ABORTED;
+                            break;
+                        }
+                        else
+                        {
+                            tcpData->connectStatus = Error;
+                            Token->CompletionToken.Status = EFI_ABORTED;
+                            break;
+                        }
+                    }
+                    else if (fds.revents & (POLLHUP | POLLRDHUP | POLLERR))
+                    {
+                        tcpData->connectStatus = Disconnected;
+                        Token->CompletionToken.Status = EFI_ABORTED;
+                        break;
+                    }
                 }
-#endif
-            } else if (bytes == 0)
-            {
-                // connection closed, mark status as error to reconnect in main thread
-                Token->CompletionToken.Status = -1;
-                return EFI_CONNECTION_FIN;
-            }
+
+                delete[] buffer;
+                RELEASE(tcpData->receiveLock);
+            });
+            receiveThread.detach();
+            isReceiveThreadSetupMap[key] = true;
         }
 
-        Token->CompletionToken.Status = EFI_SUCCESS;
+        if (tcpData->connectStatus == Disconnected) {
+            Token->CompletionToken.Status = EFI_ABORTED;
+            return EFI_CONNECTION_FIN;
+        } else if (tcpData->connectStatus == Error) {
+            Token->CompletionToken.Status = EFI_ABORTED;
+            return EFI_ABORTED;
+        }
+
         return EFI_SUCCESS;
     }
 
@@ -843,7 +865,7 @@ struct Overload {
         data.configData = *TcpConfigData;
         data.isGlobal = *((unsigned int*)TcpConfigData->AccessPoint.RemoteAddress.Addr) == 0;
         data.socket = INVALID_SOCKET;
-
+        data.receiveLock = 0;
         // Global set up for accepting new connections
         if ((unsigned long long)This == (unsigned long long)peerTcp4Protocol && !isGlobalSocketInitialized) {
             #ifdef _MSC_VER
@@ -885,7 +907,7 @@ struct Overload {
         }
 
         unsigned long long key = (unsigned long long)This;
-        tcpDataMap[key] = data;
+        tcpDataMap.emplace(key, data);
         return EFI_SUCCESS;
     }
 
@@ -912,6 +934,7 @@ struct Overload {
             #else
             socklen_t addrlen = sizeof(addr);
             #endif
+            tcpData->connectStatus = Connecting;
             SOCKET clientSocket = accept(tcpData->socket, (sockaddr*)&addr, &addrlen);
             if (clientSocket == INVALID_SOCKET) {
                 logToConsole(L"Obtained tcpData failed");
@@ -929,6 +952,7 @@ struct Overload {
             // so we map the clientSocket to the handle to process it later in peerConnectionNewlyEstablished()
             incomingSocketMap[(unsigned long long)ListenToken->NewChildHandle] = clientSocket;
             ListenToken->CompletionToken.Status = EFI_SUCCESS;
+            tcpData->connectStatus = Connected;
             });
         acceptThread.detach();
         return EFI_SUCCESS;
@@ -970,10 +994,12 @@ struct Overload {
             if (ms - latestConnectTimestampMap[ipInNumber] < 2'000) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(5'000));
             }
+            tcpData->connectStatus = Connecting;
             if (connect(tcpData->socket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
                 ConnectionToken->CompletionToken.Status = EFI_ABORTED;
             }
             else {
+                tcpData->connectStatus = Connected;
                 ConnectionToken->CompletionToken.Status = EFI_SUCCESS;
 #ifdef _MSC_VER
                 u_long mode = 1;
