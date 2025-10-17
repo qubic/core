@@ -346,6 +346,7 @@ public:
 		id tokenIssuer;
 		uint64 tokenName;
 		uint64 entryAmount;
+		uint32 numberOfMembers;
 		sint32 returnCode;
 	};
 
@@ -1094,6 +1095,7 @@ protected:
 		output.tokenName = state.activeTokenRaffle.get(input.indexOfTokenRaffle).token.assetName;
 		output.tokenIssuer = state.activeTokenRaffle.get(input.indexOfTokenRaffle).token.issuer;
 		output.entryAmount = state.activeTokenRaffle.get(input.indexOfTokenRaffle).entryAmount;
+		output.numberOfMembers = state.numberOfTokenRaffleMembers.get(input.indexOfTokenRaffle);
 		output.returnCode = QRAFFLE_SUCCESS;
 	}
 
