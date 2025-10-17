@@ -788,9 +788,15 @@ struct Overload {
         {
             std::thread receiveThread([key, tcpData, Token]()
             {
+#ifdef _MSC_VER
                 WSAPOLLFD fds{};
                 fds.fd = tcpData->socket;
                 fds.events = POLLIN;
+#else
+                pollfd fds{};
+                fds.fd = tcpData->socket;
+                fds.events = POLLIN;
+#endif
 
                 char* buffer = new char[BUFFER_SIZE];
                 while (true)
