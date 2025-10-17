@@ -255,6 +255,7 @@ struct Overload {
         SOCKET socket;
         bool isGlobal;
         volatile char receiveLock;
+        volatile char sendLock;
         ConnectStatus connectStatus;
     };
 
@@ -269,6 +270,7 @@ struct Overload {
     inline static std::map<unsigned long long, TcpData> tcpDataMap;
     inline static std::map<unsigned long long, EventData> eventDataMap;
     inline static std::map<unsigned long long, bool> isReceiveThreadSetupMap;
+    inline static std::map<unsigned long long, bool> isSendThreadSetupMap;
 
     // Directly call the setup function without using custom stack.
     static void startThread(EFI_AP_PROCEDURE procedure, void* data, unsigned long long ProcessorNumber, EFI_EVENT WaitEvent, unsigned long long TimeoutInMicroseconds) {
@@ -596,13 +598,16 @@ struct Overload {
 
     static EFI_STATUS DestroyChild(IN void* This, IN EFI_HANDLE ChildHandle) {
 		// Remove tcp4Protocol data from handle
-		if (tcpDataMap.contains(*(unsigned long long*)ChildHandle)) {
-			TcpData& tcpData = tcpDataMap[*(unsigned long long*)ChildHandle];
+        unsigned long long key = *(unsigned long long*)ChildHandle;
+		if (tcpDataMap.contains(key)) {
+			TcpData& tcpData = tcpDataMap[key];
 			if (tcpData.socket != INVALID_SOCKET) {
 				closesocket(tcpData.socket);
 				tcpData.socket = INVALID_SOCKET;
 			}
-			tcpDataMap.erase(*(unsigned long long*)ChildHandle);
+			tcpDataMap.erase(key);
+		    isReceiveThreadSetupMap.erase(key);
+            isSendThreadSetupMap.erase(key);
 		}
         freePool(ChildHandle);
         return EFI_SUCCESS;
@@ -645,85 +650,93 @@ struct Overload {
             return EFI_UNSUPPORTED;
         }
 
-        const auto& fragment = Token->Packet.TxData->FragmentTable[0];
-        unsigned int totalSentBytes = 0;
-        unsigned long long totalNanoseconds = 0;
-        auto startTime = std::chrono::high_resolution_clock::now();
-        auto endTime = std::chrono::high_resolution_clock::now();
-        while (totalSentBytes < fragment.FragmentLength) {
-#ifdef _MSC_VER
-#define MSG_NOSIGNAL 0
-#define MSG_DONTWAIT 0
-#endif
-            endTime = std::chrono::high_resolution_clock::now();
-            totalNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count();
-            if (totalNanoseconds > 1'000'000'000 / 2) { // 1 seconds timeout
-                Token->CompletionToken.Status = -1;
-                return EFI_TIMEOUT;
-            }
-            int sentBytes = send(tcpData->socket, (const char*)fragment.FragmentBuffer + totalSentBytes, fragment.FragmentLength - totalSentBytes, MSG_NOSIGNAL | MSG_DONTWAIT);
-            if (sentBytes == 0) {
-                // connection closed
-                Token->CompletionToken.Status = -1;
-                return EFI_ABORTED;
-            } else if (sentBytes == SOCKET_ERROR)
+        RELEASE(tcpData->sendLock);
+        if (!isSendThreadSetupMap[key])
+        {
+            std::thread sendThread([key, tcpData, Token]()
             {
-#ifdef _MSC_VER
-                int err = WSAGetLastError();
-                if (err == WSAEWOULDBLOCK) {
-                    // // wait until socket is writable
-                    // fd_set wfds;
-                    // FD_ZERO(&wfds);
-                    // FD_SET(tcpData->socket, &wfds);
-                    //
-                    // int timeout_ms = 500; // no timeout
-                    //
-                    // TIMEVAL tv;
-                    // TIMEVAL* ptv = nullptr;
-                    // if (timeout_ms >= 0) {
-                    //     tv.tv_sec = timeout_ms / 1000;
-                    //     tv.tv_usec = (timeout_ms % 1000) * 1000;
-                    //     ptv = &tv;
-                    // }
-                    //
-                    // int ret = select(0, nullptr, &wfds, nullptr, ptv);
-                    // if (ret <= 0) {
-                    //     // timeout or error
-                    //     Token->CompletionToken.Status = -1;
-                    //     return EFI_ABORTED;
-                    // }
-                    continue; // retry send
-				}
-				else {
-					Token->CompletionToken.Status = -1;
-					return EFI_ABORTED;
-				}
-#else
-                if (errno == EAGAIN || errno == EWOULDBLOCK)
+                pollfd fds{};
+                fds.fd = tcpData->socket;
+                fds.events = POLLOUT;
+                while (true)
                 {
-                    // pollfd pfd;
-                    // pfd.fd = tcpData->socket;
-                    // pfd.events = POLLOUT;
-                    // int ret = poll(&pfd, 1, -1);
-                    // if (ret <= 0) {
-                    //     // timeout or error
-                    //     Token->CompletionToken.Status = -1;
-                    //     return EFI_ABORTED;
-                    // }
-                    continue; // retry
-                } else
-                {
-                    Token->CompletionToken.Status = -1;
-                    return EFI_ABORTED;
+                    // Ensure the data sent is processed in main thread
+                    ACQUIRE_NO_SPINNING(tcpData->sendLock);
+                    int ret = poll(&fds, 1, -1);
+                    if (ret <= 0) {
+                        tcpData->connectStatus = Error;
+                        Token->CompletionToken.Status = -1;
+                        break;
+                    }
+
+                    if (fds.revents & POLLOUT)
+                    {
+                        unsigned int totalSentBytes = 0;
+                        const auto& fragment = Token->Packet.TxData->FragmentTable[0];
+                        while (totalSentBytes < fragment.FragmentLength)
+                        {
+                            auto n = send(tcpData->socket, (const char*)fragment.FragmentBuffer + totalSentBytes, fragment.FragmentLength - totalSentBytes, 0);
+                            if (n > 0)
+                            {
+                                totalSentBytes += n;
+                            }
+                            else if (n == 0)
+                            {
+                                // connection closed
+                                tcpData->connectStatus = Disconnected;
+                                Token->CompletionToken.Status = -1;
+                                break;
+                            }
+                            else if (n == SOCKET_ERROR)
+                            {
+                                if (errno == EWOULDBLOCK || errno == EAGAIN)
+                                {
+                                    pollfd pfd;
+                                    pfd.fd = tcpData->socket;
+                                    pfd.events = POLLOUT;
+                                    int pres = poll(&pfd, 1, -1);
+                                    if (pres <= 0) {
+                                        tcpData->connectStatus = Error;
+                                        Token->CompletionToken.Status = -1;
+                                        break;
+                                    }
+                                    continue;
+                                }
+                                else
+                                {
+                                    tcpData->connectStatus = Error;
+                                    Token->CompletionToken.Status = -1;
+                                    break;
+                                }
+                            }
+                        }
+                        if (totalSentBytes >= fragment.FragmentLength)
+                        {
+                            Token->CompletionToken.Status = EFI_SUCCESS;
+                        }
+
+                        if (Token->CompletionToken.Status != EFI_SUCCESS)
+                        {
+                            tcpData->connectStatus = Disconnected;
+                            break;
+                        }
+                    } else if (fds.revents & (POLLHUP | POLLRDHUP | POLLERR | POLLNVAL))
+                    {
+                        tcpData->connectStatus = Disconnected;
+                        Token->CompletionToken.Status = -1;
+                        break;
+                    }
                 }
-#endif
-            } else
-            {
-                totalSentBytes += sentBytes;
-            }
+                RELEASE(tcpData->sendLock);
+            });
+            isSendThreadSetupMap[key] = true;
+            sendThread.detach();
         }
 
-        Token->CompletionToken.Status = EFI_SUCCESS;
+        if (tcpData->connectStatus == Disconnected || tcpData->connectStatus == Error) {
+            Token->CompletionToken.Status = EFI_ABORTED;
+            return EFI_ABORTED;
+        }
 
         return EFI_SUCCESS;
     }
@@ -866,6 +879,8 @@ struct Overload {
         data.isGlobal = *((unsigned int*)TcpConfigData->AccessPoint.RemoteAddress.Addr) == 0;
         data.socket = INVALID_SOCKET;
         data.receiveLock = 0;
+        data.sendLock = 0;
+        data.connectStatus = Disconnected;
         // Global set up for accepting new connections
         if ((unsigned long long)This == (unsigned long long)peerTcp4Protocol && !isGlobalSocketInitialized) {
             #ifdef _MSC_VER
@@ -996,6 +1011,7 @@ struct Overload {
             }
             tcpData->connectStatus = Connecting;
             if (connect(tcpData->socket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+                tcpData->connectStatus = Error;
                 ConnectionToken->CompletionToken.Status = EFI_ABORTED;
             }
             else {
