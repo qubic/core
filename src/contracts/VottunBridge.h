@@ -240,13 +240,41 @@ public:
         transferFailed = 7,
         maxManagersReached = 8,
         notAuthorized = 9,
-        onlyManagersCanRefundOrders = 10
+        onlyManagersCanRefundOrders = 10,
+        proposalNotFound = 11,
+        proposalAlreadyExecuted = 12,
+        proposalAlreadyApproved = 13,
+        notOwner = 14,
+        maxProposalsReached = 15
+    };
+
+    // Enum for proposal types
+    enum ProposalType
+    {
+        PROPOSAL_SET_ADMIN = 1,
+        PROPOSAL_ADD_MANAGER = 2,
+        PROPOSAL_REMOVE_MANAGER = 3,
+        PROPOSAL_WITHDRAW_FEES = 4,
+        PROPOSAL_CHANGE_THRESHOLD = 5
+    };
+
+    // Admin proposal structure for multisig
+    struct AdminProposal
+    {
+        uint64 proposalId;
+        uint8 proposalType;           // Type from ProposalType enum
+        id targetAddress;             // For setAdmin/addManager/removeManager
+        uint64 amount;                // For withdrawFees
+        Array<id, 16> approvals;      // Array of owner IDs who approved
+        uint8 approvalsCount;         // Count of approvals
+        bit executed;                 // Whether proposal was executed
+        bit active;                   // Whether proposal is active (not cancelled)
     };
 
 public:
     // Contract State
-    Array<BridgeOrder, 1024> orders; 
-    id admin;                        // Primary admin address
+    Array<BridgeOrder, 1024> orders;
+    id admin;                        // Primary admin address (deprecated, kept for compatibility)
     id feeRecipient;                 // Specific wallet to receive fees
     Array<id, 16> managers;          // Managers list
     uint64 nextOrderId;              // Counter for order IDs
@@ -258,6 +286,13 @@ public:
     uint64 _distributedFees;         // Fees already distributed to shareholders
     uint64 _earnedFeesQubic;         // Accumulated fees from Qubic trades
     uint64 _distributedFeesQubic;    // Fees already distributed to Qubic shareholders
+
+    // Multisig state
+    Array<id, 16> admins;            // List of multisig admins
+    uint8 numberOfAdmins;            // Number of active admins
+    uint8 requiredApprovals;         // Threshold: number of approvals needed (2 of 3)
+    Array<AdminProposal, 32> proposals; // Pending admin proposals
+    uint64 nextProposalId;           // Counter for proposal IDs
 
     // Internal methods for admin/manager permissions
     typedef id isAdmin_input;
@@ -281,6 +316,27 @@ public:
         for (locals.i = 0; locals.i < state.managers.capacity(); ++locals.i)
         {
             if (state.managers.get(locals.i) == input)
+            {
+                output = true;
+                return;
+            }
+        }
+        output = false;
+    }
+
+    typedef id isMultisigAdmin_input;
+    typedef bit isMultisigAdmin_output;
+
+    struct isMultisigAdmin_locals
+    {
+        uint64 i;
+    };
+
+    PRIVATE_FUNCTION_WITH_LOCALS(isMultisigAdmin)
+    {
+        for (locals.i = 0; locals.i < (uint64)state.numberOfAdmins; ++locals.i)
+        {
+            if (state.admins.get(locals.i) == input)
             {
                 output = true;
                 return;
@@ -512,6 +568,356 @@ public:
         output.status = 1; // Error
     }
 
+    // Multisig Proposal Functions
+
+    // Create proposal structures
+    struct createProposal_input
+    {
+        uint8 proposalType;      // Type of proposal
+        id targetAddress;        // Target address (for setAdmin/addManager/removeManager)
+        uint64 amount;           // Amount (for withdrawFees)
+    };
+
+    struct createProposal_output
+    {
+        uint8 status;
+        uint64 proposalId;
+    };
+
+    struct createProposal_locals
+    {
+        EthBridgeLogger log;
+        uint64 i;
+        bit slotFound;
+        AdminProposal newProposal;
+        bit isMultisigAdminResult;
+    };
+
+    // Approve proposal structures
+    struct approveProposal_input
+    {
+        uint64 proposalId;
+    };
+
+    struct approveProposal_output
+    {
+        uint8 status;
+        bit executed;
+    };
+
+    struct approveProposal_locals
+    {
+        EthBridgeLogger log;
+        AddressChangeLogger adminLog;
+        AdminProposal proposal;
+        uint64 i;
+        bit found;
+        bit alreadyApproved;
+        bit isMultisigAdminResult;
+        uint64 proposalIndex;
+        uint64 availableFees;
+    };
+
+    // Get proposal structures
+    struct getProposal_input
+    {
+        uint64 proposalId;
+    };
+
+    struct getProposal_output
+    {
+        uint8 status;
+        AdminProposal proposal;
+    };
+
+    struct getProposal_locals
+    {
+        uint64 i;
+    };
+
+    // Create a new proposal (only multisig admins can create)
+    PUBLIC_PROCEDURE_WITH_LOCALS(createProposal)
+    {
+        // Verify that the invocator is a multisig admin
+        id invocator = qpi.invocator();
+        CALL(isMultisigAdmin, invocator, locals.isMultisigAdminResult);
+        if (!locals.isMultisigAdminResult)
+        {
+            locals.log = EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::notOwner,
+                0,
+                0,
+                0 };
+            LOG_INFO(locals.log);
+            output.status = EthBridgeError::notOwner;
+            return;
+        }
+
+        // Validate proposal type
+        if (input.proposalType < PROPOSAL_SET_ADMIN || input.proposalType > PROPOSAL_CHANGE_THRESHOLD)
+        {
+            locals.log = EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::invalidAmount, // Reusing error code
+                0,
+                0,
+                0 };
+            LOG_INFO(locals.log);
+            output.status = EthBridgeError::invalidAmount;
+            return;
+        }
+
+        // Find an empty slot for the proposal
+        locals.slotFound = false;
+        for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
+        {
+            if (!state.proposals.get(locals.i).active && state.proposals.get(locals.i).proposalId == 0)
+            {
+                locals.slotFound = true;
+                break;
+            }
+        }
+
+        if (!locals.slotFound)
+        {
+            locals.log = EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::maxProposalsReached,
+                0,
+                0,
+                0 };
+            LOG_INFO(locals.log);
+            output.status = EthBridgeError::maxProposalsReached;
+            return;
+        }
+
+        // Create the new proposal
+        locals.newProposal.proposalId = state.nextProposalId++;
+        locals.newProposal.proposalType = input.proposalType;
+        locals.newProposal.targetAddress = input.targetAddress;
+        locals.newProposal.amount = input.amount;
+        locals.newProposal.approvalsCount = 1; // Creator automatically approves
+        locals.newProposal.executed = false;
+        locals.newProposal.active = true;
+
+        // Set creator as first approver
+        locals.newProposal.approvals.set(0, qpi.invocator());
+
+        // Store the proposal
+        state.proposals.set(locals.i, locals.newProposal);
+
+        locals.log = EthBridgeLogger{
+            CONTRACT_INDEX,
+            0, // No error
+            locals.newProposal.proposalId,
+            input.amount,
+            0 };
+        LOG_INFO(locals.log);
+
+        output.status = 0; // Success
+        output.proposalId = locals.newProposal.proposalId;
+    }
+
+    // Approve a proposal (only multisig admins can approve)
+    PUBLIC_PROCEDURE_WITH_LOCALS(approveProposal)
+    {
+        // Verify that the invocator is a multisig admin
+        id invocator = qpi.invocator();
+        CALL(isMultisigAdmin, invocator, locals.isMultisigAdminResult);
+        if (!locals.isMultisigAdminResult)
+        {
+            locals.log = EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::notOwner,
+                0,
+                0,
+                0 };
+            LOG_INFO(locals.log);
+            output.status = EthBridgeError::notOwner;
+            output.executed = false;
+            return;
+        }
+
+        // Find the proposal
+        locals.found = false;
+        for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
+        {
+            locals.proposal = state.proposals.get(locals.i);
+            if (locals.proposal.proposalId == input.proposalId && locals.proposal.active)
+            {
+                locals.found = true;
+                locals.proposalIndex = locals.i;
+                break;
+            }
+        }
+
+        if (!locals.found)
+        {
+            locals.log = EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::proposalNotFound,
+                input.proposalId,
+                0,
+                0 };
+            LOG_INFO(locals.log);
+            output.status = EthBridgeError::proposalNotFound;
+            output.executed = false;
+            return;
+        }
+
+        // Check if already executed
+        if (locals.proposal.executed)
+        {
+            locals.log = EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::proposalAlreadyExecuted,
+                input.proposalId,
+                0,
+                0 };
+            LOG_INFO(locals.log);
+            output.status = EthBridgeError::proposalAlreadyExecuted;
+            output.executed = false;
+            return;
+        }
+
+        // Check if this owner has already approved
+        locals.alreadyApproved = false;
+        for (locals.i = 0; locals.i < (uint64)locals.proposal.approvalsCount; ++locals.i)
+        {
+            if (locals.proposal.approvals.get(locals.i) == qpi.invocator())
+            {
+                locals.alreadyApproved = true;
+                break;
+            }
+        }
+
+        if (locals.alreadyApproved)
+        {
+            locals.log = EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::proposalAlreadyApproved,
+                input.proposalId,
+                0,
+                0 };
+            LOG_INFO(locals.log);
+            output.status = EthBridgeError::proposalAlreadyApproved;
+            output.executed = false;
+            return;
+        }
+
+        // Add approval
+        locals.proposal.approvals.set((uint64)locals.proposal.approvalsCount, qpi.invocator());
+        locals.proposal.approvalsCount++;
+
+        // Check if threshold reached and execute
+        if (locals.proposal.approvalsCount >= state.requiredApprovals)
+        {
+            // Execute the proposal based on type
+            if (locals.proposal.proposalType == PROPOSAL_SET_ADMIN)
+            {
+                state.admin = locals.proposal.targetAddress;
+                locals.adminLog = AddressChangeLogger{
+                    locals.proposal.targetAddress,
+                    CONTRACT_INDEX,
+                    1, // Admin changed
+                    0 };
+                LOG_INFO(locals.adminLog);
+            }
+            else if (locals.proposal.proposalType == PROPOSAL_ADD_MANAGER)
+            {
+                // Find empty slot in managers
+                for (locals.i = 0; locals.i < state.managers.capacity(); ++locals.i)
+                {
+                    if (state.managers.get(locals.i) == NULL_ID)
+                    {
+                        state.managers.set(locals.i, locals.proposal.targetAddress);
+                        locals.adminLog = AddressChangeLogger{
+                            locals.proposal.targetAddress,
+                            CONTRACT_INDEX,
+                            2, // Manager added
+                            0 };
+                        LOG_INFO(locals.adminLog);
+                        break;
+                    }
+                }
+            }
+            else if (locals.proposal.proposalType == PROPOSAL_REMOVE_MANAGER)
+            {
+                // Find and remove manager
+                for (locals.i = 0; locals.i < state.managers.capacity(); ++locals.i)
+                {
+                    if (state.managers.get(locals.i) == locals.proposal.targetAddress)
+                    {
+                        state.managers.set(locals.i, NULL_ID);
+                        locals.adminLog = AddressChangeLogger{
+                            locals.proposal.targetAddress,
+                            CONTRACT_INDEX,
+                            3, // Manager removed
+                            0 };
+                        LOG_INFO(locals.adminLog);
+                        break;
+                    }
+                }
+            }
+            else if (locals.proposal.proposalType == PROPOSAL_WITHDRAW_FEES)
+            {
+                locals.availableFees = state._earnedFees - state._distributedFees;
+                if (locals.proposal.amount <= locals.availableFees && locals.proposal.amount > 0)
+                {
+                    if (qpi.transfer(state.feeRecipient, locals.proposal.amount) >= 0)
+                    {
+                        state._distributedFees += locals.proposal.amount;
+                    }
+                }
+            }
+            else if (locals.proposal.proposalType == PROPOSAL_CHANGE_THRESHOLD)
+            {
+                // Amount field is used to store new threshold
+                if (locals.proposal.amount > 0 && locals.proposal.amount <= (uint64)state.numberOfAdmins)
+                {
+                    state.requiredApprovals = (uint8)locals.proposal.amount;
+                }
+            }
+
+            locals.proposal.executed = true;
+            output.executed = true;
+        }
+        else
+        {
+            output.executed = false;
+        }
+
+        // Update the proposal
+        state.proposals.set(locals.proposalIndex, locals.proposal);
+
+        locals.log = EthBridgeLogger{
+            CONTRACT_INDEX,
+            0, // No error
+            input.proposalId,
+            locals.proposal.approvalsCount,
+            0 };
+        LOG_INFO(locals.log);
+
+        output.status = 0; // Success
+    }
+
+    // Get proposal details
+    PUBLIC_FUNCTION_WITH_LOCALS(getProposal)
+    {
+        for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
+        {
+            if (state.proposals.get(locals.i).proposalId == input.proposalId)
+            {
+                output.proposal = state.proposals.get(locals.i);
+                output.status = 0; // Success
+                return;
+            }
+        }
+
+        output.status = EthBridgeError::proposalNotFound;
+    }
+
     // Admin Functions
     struct setAdmin_locals
     {
@@ -521,37 +927,16 @@ public:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(setAdmin)
     {
-        if (qpi.invocator() != state.admin)
-        {
-            locals.log = EthBridgeLogger{
-                CONTRACT_INDEX,
-                EthBridgeError::notAuthorized,
-                0, // No order ID involved
-                0, // No amount involved
-                0 };
-            LOG_INFO(locals.log);
-            output.status = EthBridgeError::notAuthorized; // Error
-            return;
-        }
-
-        state.admin = input.address;
-
-        // Logging the admin address has changed
-        locals.adminLog = AddressChangeLogger{
-            input.address,
-            CONTRACT_INDEX,
-            1, // Event code "Admin Changed"
-            0 };
-        LOG_INFO(locals.adminLog);
-
+        // DEPRECATED: Use createProposal/approveProposal with PROPOSAL_SET_ADMIN instead
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
-            0, // No error
-            0, // No order ID involved
-            0, // No amount involved
+            EthBridgeError::notAuthorized,
+            0,
+            0,
             0 };
         LOG_INFO(locals.log);
-        output.status = 0; // Success
+        output.status = EthBridgeError::notAuthorized;
+        return;
     }
 
     struct addManager_locals
@@ -563,45 +948,15 @@ public:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(addManager)
     {
-        if (qpi.invocator() != state.admin)
-        {
-            locals.log = EthBridgeLogger{
-                CONTRACT_INDEX,
-                EthBridgeError::notAuthorized,
-                0, // No order ID involved
-                0, // No amount involved
-                0 };
-            LOG_INFO(locals.log);
-            output.status = EthBridgeError::notAuthorized;
-            return;
-        }
-
-        for (locals.i = 0; locals.i < state.managers.capacity(); ++locals.i)
-        {
-            if (state.managers.get(locals.i) == NULL_ID)
-            {
-                state.managers.set(locals.i, input.address);
-
-                locals.managerLog = AddressChangeLogger{
-                    input.address,
-                    CONTRACT_INDEX,
-                    2, // Manager added
-                    0 };
-                LOG_INFO(locals.managerLog);
-                output.status = 0; // Success
-                return;
-            }
-        }
-
-        // No empty slot found
+        // DEPRECATED: Use createProposal/approveProposal with PROPOSAL_ADD_MANAGER instead
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
-            EthBridgeError::maxManagersReached,
-            0, // No orderId
-            0, // No amount
+            EthBridgeError::notAuthorized,
+            0,
+            0,
             0 };
         LOG_INFO(locals.log);
-        output.status = EthBridgeError::maxManagersReached;
+        output.status = EthBridgeError::notAuthorized;
         return;
     }
 
@@ -614,44 +969,16 @@ public:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(removeManager)
     {
-        if (qpi.invocator() != state.admin)
-        {
-            locals.log = EthBridgeLogger{
-                CONTRACT_INDEX,
-                EthBridgeError::notAuthorized,
-                0, // No order ID involved
-                0, // No amount involved
-                0 };
-            LOG_INFO(locals.log);
-            output.status = EthBridgeError::notAuthorized; // Error
-            return;
-        }
-
-        for (locals.i = 0; locals.i < state.managers.capacity(); ++locals.i)
-        {
-            if (state.managers.get(locals.i) == input.address)
-            {
-                state.managers.set(locals.i, NULL_ID);
-
-                locals.managerLog = AddressChangeLogger{
-                    input.address,
-                    CONTRACT_INDEX,
-                    3, // Manager removed
-                    0 };
-                LOG_INFO(locals.managerLog);
-                output.status = 0; // Success
-                return;
-            }
-        }
-
+        // DEPRECATED: Use createProposal/approveProposal with PROPOSAL_REMOVE_MANAGER instead
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
-            0, // No error
-            0, // No order ID involved
-            0, // No amount involved
+            EthBridgeError::notAuthorized,
+            0,
+            0,
             0 };
         LOG_INFO(locals.log);
-        output.status = 0; // Success
+        output.status = EthBridgeError::notAuthorized;
+        return;
     }
 
     struct getTotalReceivedTokens_locals
@@ -1128,78 +1455,16 @@ public:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(withdrawFees)
     {
-        // Verify that only admin can withdraw fees
-        if (qpi.invocator() != state.admin)
-        {
-            locals.log = EthBridgeLogger{
-                CONTRACT_INDEX,
-                EthBridgeError::notAuthorized,
-                0, // No order ID involved
-                0, // No amount involved
-                0 };
-            LOG_INFO(locals.log);
-            output.status = EthBridgeError::notAuthorized;
-            return;
-        }
-
-        // Calculate available fees
-        locals.availableFees = state._earnedFees - state._distributedFees;
-
-        // Verify that there are sufficient available fees
-        if (input.amount > locals.availableFees)
-        {
-            locals.log = EthBridgeLogger{
-                CONTRACT_INDEX,
-                EthBridgeError::insufficientLockedTokens, // Reusing this error
-                0,                                        // No order ID
-                input.amount,
-                0 };
-            LOG_INFO(locals.log);
-            output.status = EthBridgeError::insufficientLockedTokens;
-            return;
-        }
-
-        // Verify that amount is valid
-        if (input.amount == 0)
-        {
-            locals.log = EthBridgeLogger{
-                CONTRACT_INDEX,
-                EthBridgeError::invalidAmount,
-                0, // No order ID
-                input.amount,
-                0 };
-            LOG_INFO(locals.log);
-            output.status = EthBridgeError::invalidAmount;
-            return;
-        }
-
-        // Transfer fees to the designated wallet
-        if (qpi.transfer(state.feeRecipient, input.amount) < 0)
-        {
-            locals.log = EthBridgeLogger{
-                CONTRACT_INDEX,
-                EthBridgeError::transferFailed,
-                0, // No order ID
-                input.amount,
-                0 };
-            LOG_INFO(locals.log);
-            output.status = EthBridgeError::transferFailed;
-            return;
-        }
-
-        // Update distributed fees counter
-        state._distributedFees += input.amount;
-
-        // Successful log
+        // DEPRECATED: Use createProposal/approveProposal with PROPOSAL_WITHDRAW_FEES instead
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
-            0, // No error
-            0, // No order ID
-            input.amount,
+            EthBridgeError::notAuthorized,
+            0,
+            0,
             0 };
         LOG_INFO(locals.log);
-
-        output.status = 0; // Success
+        output.status = EthBridgeError::notAuthorized;
+        return;
     }
 
     PUBLIC_FUNCTION(getAdminID)
@@ -1473,7 +1738,8 @@ public:
         REGISTER_USER_FUNCTION(getTotalLockedTokens, 6);
         REGISTER_USER_FUNCTION(getOrderByDetails, 7);
         REGISTER_USER_FUNCTION(getContractInfo, 8);
-        REGISTER_USER_FUNCTION(getAvailableFees, 9); 
+        REGISTER_USER_FUNCTION(getAvailableFees, 9);
+        REGISTER_USER_FUNCTION(getProposal, 10); // New multisig function
 
         REGISTER_USER_PROCEDURE(createOrder, 1);
         REGISTER_USER_PROCEDURE(setAdmin, 2);
@@ -1482,8 +1748,10 @@ public:
         REGISTER_USER_PROCEDURE(completeOrder, 5);
         REGISTER_USER_PROCEDURE(refundOrder, 6);
         REGISTER_USER_PROCEDURE(transferToContract, 7);
-        REGISTER_USER_PROCEDURE(withdrawFees, 8); 
-        REGISTER_USER_PROCEDURE(addLiquidity, 9); 
+        REGISTER_USER_PROCEDURE(withdrawFees, 8);
+        REGISTER_USER_PROCEDURE(addLiquidity, 9);
+        REGISTER_USER_PROCEDURE(createProposal, 10); // New multisig procedure
+        REGISTER_USER_PROCEDURE(approveProposal, 11); // New multisig procedure
     }
 
     // Initialize the contract with SECURE ADMIN CONFIGURATION
@@ -1531,5 +1799,24 @@ public:
 
         state._earnedFeesQubic = 0;
         state._distributedFeesQubic = 0;
+
+        // Initialize multisig admins (3 admins, requires 2 approvals)
+        state.numberOfAdmins = 3;
+        state.requiredApprovals = 2; // 2 of 3 threshold
+
+        // Initialize admins array (REPLACE WITH ACTUAL ADMIN ADDRESSES)
+        state.admins.set(0, ID(_X, _A, _B, _E, _F, _A, _B, _I, _H, _W, _R, _W, _B, _A, _I, _J, _Q, _J, _P, _W, _T, _I, _I, _Q, _B, _U, _C, _B, _H, _B, _V, _W, _Y, _Y, _G, _F, _F, _J, _A, _D, _Q, _B, _K, _W, _F, _B, _O, _R, _R, _V, _X, _W, _S, _C, _V, _B)); // Admin 1
+        state.admins.set(1, ID(_X, _A, _B, _E, _F, _A, _B, _I, _H, _W, _R, _W, _B, _A, _I, _J, _Q, _J, _P, _W, _T, _I, _I, _Q, _B, _U, _C, _B, _H, _B, _V, _W, _Y, _Y, _G, _F, _F, _J, _A, _D, _Q, _B, _K, _W, _F, _B, _O, _R, _R, _V, _X, _W, _S, _C, _V, _B)); // Admin 2 (REPLACE)
+        state.admins.set(2, ID(_X, _A, _B, _E, _F, _A, _B, _I, _H, _W, _R, _W, _B, _A, _I, _J, _Q, _J, _P, _W, _T, _I, _I, _Q, _B, _U, _C, _B, _H, _B, _V, _W, _Y, _Y, _G, _F, _F, _J, _A, _D, _Q, _B, _K, _W, _F, _B, _O, _R, _R, _V, _X, _W, _S, _C, _V, _B)); // Admin 3 (REPLACE)
+
+        // Initialize remaining admin slots
+        for (locals.i = 3; locals.i < state.admins.capacity(); ++locals.i)
+        {
+            state.admins.set(locals.i, NULL_ID);
+        }
+
+        // Initialize proposals array
+        state.nextProposalId = 1;
+        // Don't initialize proposals array - leave as default (all zeros)
     }
 };

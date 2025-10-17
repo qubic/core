@@ -18,3 +18,11 @@ tmp
 out/build/
 **/Testing/Temporary/
 **/_deps/googletest-src
+test/CMakeLists.txt
+test/CMakeLists.txt
+comp.md
+proposal.md
+src/Qubic.vcxproj
+.claude/settings.local.json
+src/Qubic.vcxproj
+test/CMakeLists.txt

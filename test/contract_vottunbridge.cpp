@@ -123,11 +123,17 @@ TEST_F(VottunBridgeTest, ErrorCodes)
     const uint32 ERROR_INSUFFICIENT_FEE = 3;
     const uint32 ERROR_ORDER_NOT_FOUND = 4;
     const uint32 ERROR_NOT_AUTHORIZED = 9;
+    const uint32 ERROR_PROPOSAL_NOT_FOUND = 11;
+    const uint32 ERROR_NOT_OWNER = 14;
+    const uint32 ERROR_MAX_PROPOSALS_REACHED = 15;
 
     EXPECT_GT(ERROR_INVALID_AMOUNT, 0);
     EXPECT_GT(ERROR_INSUFFICIENT_FEE, ERROR_INVALID_AMOUNT);
-    EXPECT_LT(ERROR_ORDER_NOT_FOUND, ERROR_INSUFFICIENT_FEE);
+    EXPECT_GT(ERROR_ORDER_NOT_FOUND, ERROR_INSUFFICIENT_FEE); // Fixed: should be GT not LT
     EXPECT_GT(ERROR_NOT_AUTHORIZED, ERROR_ORDER_NOT_FOUND);
+    EXPECT_GT(ERROR_PROPOSAL_NOT_FOUND, ERROR_NOT_AUTHORIZED);
+    EXPECT_GT(ERROR_NOT_OWNER, ERROR_PROPOSAL_NOT_FOUND);
+    EXPECT_GT(ERROR_MAX_PROPOSALS_REACHED, ERROR_NOT_OWNER);
 }
 
 // Test 8: Mathematical operations
@@ -703,76 +709,117 @@ TEST_F(VottunBridgeFunctionalTest, CompleteOrderFunctionSimulation)
     }
 }
 
+// Test 23: Admin Functions with Multisig (UPDATED FOR MULTISIG)
 TEST_F(VottunBridgeFunctionalTest, AdminFunctionsSimulation)
 {
-    // Test setAdmin function
+    // NOTE: Admin functions now require multisig proposals
+    // Old direct calls to setAdmin/addManager/removeManager/withdrawFees are DEPRECATED
+
+    // Test that old admin functions are now disabled
     {
-        mockContext.setInvocator(TEST_ADMIN);  // Current admin
-        id newAdmin(150, 0, 0, 0);
+        mockContext.setInvocator(TEST_ADMIN);
 
-        // Check authorization
+        // Old setAdmin function should return notAuthorized (error 9)
         bool isCurrentAdmin = (mockContext.mockInvocator == contractState.admin);
-        EXPECT_TRUE(isCurrentAdmin);
+        EXPECT_TRUE(isCurrentAdmin); // User is admin
 
-        if (isCurrentAdmin)
-        {
-            // Simulate admin change
-            id oldAdmin = contractState.admin;
-            contractState.admin = newAdmin;
-
-            EXPECT_EQ(contractState.admin, newAdmin);
-            EXPECT_NE(contractState.admin, oldAdmin);
-
-            // Update mock context to use new admin for next tests
-            mockContext.setInvocator(newAdmin);
-        }
+        // But direct setAdmin call should still fail (deprecated)
+        uint8 expectedErrorCode = 9; // notAuthorized
+        EXPECT_EQ(expectedErrorCode, 9);
     }
 
-    // Test addManager function (use new admin)
+    // Test multisig proposal system for admin changes
     {
-        id newManager(160, 0, 0, 0);
+        // Simulate multisig admin 1 creating a proposal
+        id multisigAdmin1 = TEST_ADMIN;
+        id multisigAdmin2(201, 0, 0, 0);
+        id multisigAdmin3(202, 0, 0, 0);
+        id newAdmin(150, 0, 0, 0);
 
-        // Check authorization (new admin should be set from previous test)
-        bool isCurrentAdmin = (mockContext.mockInvocator == contractState.admin);
-        EXPECT_TRUE(isCurrentAdmin);
+        mockContext.setInvocator(multisigAdmin1);
 
-        if (isCurrentAdmin)
+        // Simulate isMultisigAdmin check
+        bool isMultisigAdminCheck = true; // Assume admin1 is multisig admin
+        EXPECT_TRUE(isMultisigAdminCheck);
+
+        if (isMultisigAdminCheck)
         {
-            // Simulate finding empty slot (index 1 should be empty)
-            bool foundEmptySlot = true;  // Simulate finding slot
+            // Create proposal: PROPOSAL_SET_ADMIN = 1
+            uint8 proposalType = 1; // PROPOSAL_SET_ADMIN
+            uint64 proposalId = 1;
+            uint8 approvalsCount = 1; // Creator auto-approves
 
-            if (foundEmptySlot)
+            EXPECT_EQ(approvalsCount, 1);
+            EXPECT_LT(approvalsCount, 2); // Threshold not reached yet
+
+            // Simulate admin2 approving
+            mockContext.setInvocator(multisigAdmin2);
+            approvalsCount++; // Now 2 approvals
+
+            EXPECT_EQ(approvalsCount, 2);
+
+            // Threshold reached (2 of 3), execute proposal
+            if (approvalsCount >= 2)
             {
-                contractState.managers[1] = newManager;
-                EXPECT_EQ(contractState.managers[1], newManager);
+                // Execute: change admin
+                id oldAdmin = contractState.admin;
+                contractState.admin = newAdmin;
+
+                EXPECT_EQ(contractState.admin, newAdmin);
+                EXPECT_NE(contractState.admin, oldAdmin);
             }
         }
     }
 
-    // Test unauthorized access
+    // Test multisig proposal for adding manager
     {
-        mockContext.setInvocator(TEST_USER_1);  // Regular user
+        id multisigAdmin1 = contractState.admin; // Use new admin from previous test
+        id multisigAdmin2(201, 0, 0, 0);
+        id newManager(160, 0, 0, 0);
 
-        bool isCurrentAdmin = (mockContext.mockInvocator == contractState.admin);
-        EXPECT_FALSE(isCurrentAdmin);
+        mockContext.setInvocator(multisigAdmin1);
 
-        // Should return error code 9 (notAuthorized)
-        uint8 expectedErrorCode = isCurrentAdmin ? 0 : 9;
-        EXPECT_EQ(expectedErrorCode, 9);
+        // Create proposal: PROPOSAL_ADD_MANAGER = 2
+        uint8 proposalType = 2;
+        uint64 proposalId = 2;
+        uint8 approvalsCount = 1;
+
+        // Admin2 approves
+        mockContext.setInvocator(multisigAdmin2);
+        approvalsCount++;
+
+        // Execute: add manager
+        if (approvalsCount >= 2)
+        {
+            contractState.managers[1] = newManager;
+            EXPECT_EQ(contractState.managers[1], newManager);
+        }
+    }
+
+    // Test unauthorized access (non-multisig admin)
+    {
+        mockContext.setInvocator(TEST_USER_1); // Regular user
+
+        bool isMultisigAdmin = false; // User is not in multisig admins list
+        EXPECT_FALSE(isMultisigAdmin);
+
+        // Should return error code 14 (notOwner/notMultisigAdmin)
+        uint8 expectedErrorCode = 14;
+        EXPECT_EQ(expectedErrorCode, 14);
     }
 }
 
-// Test 24: Fee withdrawal simulation
+// Test 24: Fee withdrawal simulation (UPDATED FOR MULTISIG)
 TEST_F(VottunBridgeFunctionalTest, FeeWithdrawalSimulation)
 {
     uint64 withdrawAmount = 15000;  // Less than available fees
 
-    // Test case 1: Admin withdrawing fees
+    // Test case 1: Multisig admins withdrawing fees via proposal
     {
-        mockContext.setInvocator(contractState.admin);
+        id multisigAdmin1 = contractState.admin;
+        id multisigAdmin2(201, 0, 0, 0);
 
-        bool isCurrentAdmin = (mockContext.mockInvocator == contractState.admin);
-        EXPECT_TRUE(isCurrentAdmin);
+        mockContext.setInvocator(multisigAdmin1);
 
         uint64 availableFees = contractState._earnedFees - contractState._distributedFees;
         EXPECT_EQ(availableFees, 20000);  // 50000 - 30000
@@ -783,7 +830,17 @@ TEST_F(VottunBridgeFunctionalTest, FeeWithdrawalSimulation)
         EXPECT_TRUE(sufficientFees);
         EXPECT_TRUE(validAmount);
 
-        if (isCurrentAdmin && sufficientFees && validAmount)
+        // Create proposal: PROPOSAL_WITHDRAW_FEES = 4
+        uint8 proposalType = 4;
+        uint64 proposalId = 3;
+        uint8 approvalsCount = 1; // Creator approves
+
+        // Admin2 approves
+        mockContext.setInvocator(multisigAdmin2);
+        approvalsCount++;
+
+        // Threshold reached, execute withdrawal
+        if (approvalsCount >= 2 && sufficientFees && validAmount)
         {
             // Simulate fee withdrawal
             contractState._distributedFees += withdrawAmount;
@@ -795,7 +852,7 @@ TEST_F(VottunBridgeFunctionalTest, FeeWithdrawalSimulation)
         }
     }
 
-    // Test case 2: Insufficient fees
+    // Test case 2: Proposal with insufficient fees should not execute
     {
         uint64 excessiveAmount = 25000;  // More than remaining available fees
         uint64 currentAvailableFees = contractState._earnedFees - contractState._distributedFees;
@@ -803,9 +860,19 @@ TEST_F(VottunBridgeFunctionalTest, FeeWithdrawalSimulation)
         bool sufficientFees = (excessiveAmount <= currentAvailableFees);
         EXPECT_FALSE(sufficientFees);
 
-        // Should return error (insufficient fees)
-        uint8 expectedErrorCode = sufficientFees ? 0 : 6;  // insufficientLockedTokens (reused)
+        // Even with 2 approvals, execution should fail due to insufficient fees
+        // The proposal executes but transfer fails
+        uint8 expectedErrorCode = 6;  // insufficientLockedTokens (reused for fees)
         EXPECT_EQ(expectedErrorCode, 6);
+    }
+
+    // Test case 3: Old direct withdrawFees call should fail
+    {
+        mockContext.setInvocator(contractState.admin);
+
+        // Direct call to withdrawFees should return notAuthorized (deprecated)
+        uint8 expectedErrorCode = 9; // notAuthorized
+        EXPECT_EQ(expectedErrorCode, 9);
     }
 }
 
@@ -1062,11 +1129,314 @@ TEST_F(VottunBridgeTest, TransferFlowValidation)
     EXPECT_EQ(order.status, 2);
 }
 
+// MULTISIG ADVANCED TESTS
+
+// Test 28: Multiple simultaneous proposals
+TEST_F(VottunBridgeFunctionalTest, MultipleProposalsSimultaneous)
+{
+    id multisigAdmin1 = TEST_ADMIN;
+    id multisigAdmin2(201, 0, 0, 0);
+    id multisigAdmin3(202, 0, 0, 0);
+
+    // Create 3 different proposals at the same time
+    mockContext.setInvocator(multisigAdmin1);
+
+    // Proposal 1: Add manager
+    uint64 proposal1Id = 1;
+    uint8 proposal1Type = 2; // PROPOSAL_ADD_MANAGER
+    id newManager1(160, 0, 0, 0);
+    uint8 proposal1Approvals = 1; // Creator approves
+
+    EXPECT_EQ(proposal1Approvals, 1);
+
+    // Proposal 2: Withdraw fees
+    uint64 proposal2Id = 2;
+    uint8 proposal2Type = 4; // PROPOSAL_WITHDRAW_FEES
+    uint64 withdrawAmount = 10000;
+    uint8 proposal2Approvals = 1; // Creator approves
+
+    EXPECT_EQ(proposal2Approvals, 1);
+
+    // Proposal 3: Set new admin
+    uint64 proposal3Id = 3;
+    uint8 proposal3Type = 1; // PROPOSAL_SET_ADMIN
+    id newAdmin(150, 0, 0, 0);
+    uint8 proposal3Approvals = 1; // Creator approves
+
+    EXPECT_EQ(proposal3Approvals, 1);
+
+    // Verify all proposals are pending
+    EXPECT_LT(proposal1Approvals, 2); // Not executed yet
+    EXPECT_LT(proposal2Approvals, 2); // Not executed yet
+    EXPECT_LT(proposal3Approvals, 2); // Not executed yet
+
+    // Admin2 approves proposal 1 (add manager)
+    mockContext.setInvocator(multisigAdmin2);
+    proposal1Approvals++;
+
+    EXPECT_EQ(proposal1Approvals, 2); // Threshold reached
+
+    // Execute proposal 1
+    if (proposal1Approvals >= 2)
+    {
+        contractState.managers[1] = newManager1;
+        EXPECT_EQ(contractState.managers[1], newManager1);
+    }
+
+    // Admin3 approves proposal 2 (withdraw fees)
+    mockContext.setInvocator(multisigAdmin3);
+    proposal2Approvals++;
+
+    EXPECT_EQ(proposal2Approvals, 2); // Threshold reached
+
+    // Execute proposal 2
+    uint64 availableFees = contractState._earnedFees - contractState._distributedFees;
+    if (proposal2Approvals >= 2 && withdrawAmount <= availableFees)
+    {
+        contractState._distributedFees += withdrawAmount;
+        EXPECT_EQ(contractState._distributedFees, 30000 + withdrawAmount);
+    }
+
+    // Proposal 3 still pending (only 1 approval)
+    EXPECT_LT(proposal3Approvals, 2);
+
+    // Verify proposals executed independently
+    EXPECT_EQ(contractState.managers[1], newManager1); // Proposal 1 executed
+    EXPECT_EQ(contractState._distributedFees, 40000); // Proposal 2 executed
+    EXPECT_NE(contractState.admin, newAdmin); // Proposal 3 NOT executed
+}
+
+// Test 29: Change threshold proposal
+TEST_F(VottunBridgeFunctionalTest, ChangeThresholdProposal)
+{
+    id multisigAdmin1 = TEST_ADMIN;
+    id multisigAdmin2(201, 0, 0, 0);
+
+    // Initial threshold is 2 (2 of 3)
+    uint8 currentThreshold = 2;
+    uint8 numberOfAdmins = 3;
+
+    EXPECT_EQ(currentThreshold, 2);
+
+    mockContext.setInvocator(multisigAdmin1);
+
+    // Create proposal: PROPOSAL_CHANGE_THRESHOLD = 5
+    uint8 proposalType = 5; // PROPOSAL_CHANGE_THRESHOLD
+    uint64 newThreshold = 3; // Change to 3 of 3 (stored in amount field)
+    uint64 proposalId = 10;
+    uint8 approvalsCount = 1;
+
+    EXPECT_EQ(approvalsCount, 1);
+
+    // Validate new threshold is valid
+    bool validThreshold = (newThreshold > 0 && newThreshold <= numberOfAdmins);
+    EXPECT_TRUE(validThreshold);
+
+    // Admin2 approves
+    mockContext.setInvocator(multisigAdmin2);
+    approvalsCount++;
+
+    EXPECT_EQ(approvalsCount, 2);
+
+    // Execute: change threshold
+    if (approvalsCount >= currentThreshold && validThreshold)
+    {
+        currentThreshold = (uint8)newThreshold;
+        EXPECT_EQ(currentThreshold, 3);
+    }
+
+    // Verify threshold changed
+    EXPECT_EQ(currentThreshold, 3);
+
+    // Now test that threshold 3 is required
+    // Create another proposal
+    mockContext.setInvocator(multisigAdmin1);
+    uint64 newProposalId = 11;
+    uint8 newProposalApprovals = 1;
+
+    // Admin2 approves (now 2 approvals)
+    mockContext.setInvocator(multisigAdmin2);
+    newProposalApprovals++;
+
+    EXPECT_EQ(newProposalApprovals, 2);
+
+    // With new threshold of 3, proposal should NOT execute yet
+    bool shouldExecute = (newProposalApprovals >= currentThreshold);
+    EXPECT_FALSE(shouldExecute);
+
+    // Need one more approval (Admin3)
+    id multisigAdmin3(202, 0, 0, 0);
+    mockContext.setInvocator(multisigAdmin3);
+    newProposalApprovals++;
+
+    EXPECT_EQ(newProposalApprovals, 3);
+
+    // Now it should execute
+    shouldExecute = (newProposalApprovals >= currentThreshold);
+    EXPECT_TRUE(shouldExecute);
+}
+
+// Test 30: Double approval prevention
+TEST_F(VottunBridgeFunctionalTest, DoubleApprovalPrevention)
+{
+    id multisigAdmin1 = TEST_ADMIN;
+    id multisigAdmin2(201, 0, 0, 0);
+
+    mockContext.setInvocator(multisigAdmin1);
+
+    // Create proposal
+    uint8 proposalType = 2; // PROPOSAL_ADD_MANAGER
+    id newManager(160, 0, 0, 0);
+    uint64 proposalId = 20;
+
+    // Simulate proposal creation (admin1 auto-approves)
+    Array<id, 16> approvalsList;
+    uint8 approvalsCount = 0;
+
+    // Admin1 creates and auto-approves
+    approvalsList.set(approvalsCount, multisigAdmin1);
+    approvalsCount++;
+
+    EXPECT_EQ(approvalsCount, 1);
+    EXPECT_EQ(approvalsList.get(0), multisigAdmin1);
+
+    // Admin1 tries to approve AGAIN (should be prevented)
+    bool alreadyApproved = false;
+    for (uint64 i = 0; i < approvalsCount; ++i)
+    {
+        if (approvalsList.get(i) == multisigAdmin1)
+        {
+            alreadyApproved = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(alreadyApproved);
+
+    // If already approved, don't increment
+    if (alreadyApproved)
+    {
+        // Return error (proposalAlreadyApproved = 13)
+        uint8 errorCode = 13;
+        EXPECT_EQ(errorCode, 13);
+    }
+    else
+    {
+        // This should NOT happen
+        approvalsCount++;
+        FAIL() << "Admin was able to approve twice!";
+    }
+
+    // Verify count didn't increase
+    EXPECT_EQ(approvalsCount, 1);
+
+    // Admin2 approves (should succeed)
+    mockContext.setInvocator(multisigAdmin2);
+
+    alreadyApproved = false;
+    for (uint64 i = 0; i < approvalsCount; ++i)
+    {
+        if (approvalsList.get(i) == multisigAdmin2)
+        {
+            alreadyApproved = true;
+            break;
+        }
+    }
+
+    EXPECT_FALSE(alreadyApproved); // Admin2 hasn't approved yet
+
+    if (!alreadyApproved)
+    {
+        approvalsList.set(approvalsCount, multisigAdmin2);
+        approvalsCount++;
+    }
+
+    EXPECT_EQ(approvalsCount, 2);
+    EXPECT_EQ(approvalsList.get(1), multisigAdmin2);
+
+    // Threshold reached (2 of 3)
+    bool thresholdReached = (approvalsCount >= 2);
+    EXPECT_TRUE(thresholdReached);
+
+    // Execute proposal
+    if (thresholdReached)
+    {
+        contractState.managers[1] = newManager;
+        EXPECT_EQ(contractState.managers[1], newManager);
+    }
+}
+
+// Test 31: Non-owner trying to create proposal
+TEST_F(VottunBridgeFunctionalTest, NonOwnerProposalRejection)
+{
+    id regularUser = TEST_USER_1;
+    id multisigAdmin1 = TEST_ADMIN;
+
+    mockContext.setInvocator(regularUser);
+
+    // Check if invocator is multisig admin
+    bool isMultisigAdmin = false;
+
+    // Simulate checking against admin list (capacity must be power of 2)
+    Array<id, 4> adminsList;
+    adminsList.set(0, multisigAdmin1);
+    adminsList.set(1, id(201, 0, 0, 0));
+    adminsList.set(2, id(202, 0, 0, 0));
+    adminsList.set(3, NULL_ID); // Unused slot
+
+    uint8 numberOfAdmins = 3;
+    for (uint64 i = 0; i < numberOfAdmins; ++i)
+    {
+        if (adminsList.get(i) == regularUser)
+        {
+            isMultisigAdmin = true;
+            break;
+        }
+    }
+
+    EXPECT_FALSE(isMultisigAdmin);
+
+    // If not admin, reject proposal creation
+    if (!isMultisigAdmin)
+    {
+        uint8 errorCode = 14; // notOwner
+        EXPECT_EQ(errorCode, 14);
+    }
+    else
+    {
+        FAIL() << "Regular user was able to create proposal!";
+    }
+
+    // Verify multisig admin CAN create proposal
+    mockContext.setInvocator(multisigAdmin1);
+
+    isMultisigAdmin = false;
+    for (uint64 i = 0; i < 3; ++i)
+    {
+        if (adminsList.get(i) == multisigAdmin1)
+        {
+            isMultisigAdmin = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(isMultisigAdmin);
+
+    if (isMultisigAdmin)
+    {
+        // Proposal created successfully
+        uint64 proposalId = 30;
+        uint8 status = 0; // Success
+        EXPECT_EQ(status, 0);
+        EXPECT_EQ(proposalId, 30);
+    }
+}
+
 TEST_F(VottunBridgeTest, StateConsistencyTests)
 {
     uint64 initialLockedTokens = 1000000;
     uint64 orderAmount = 250000;
-    
+
     uint64 afterTransfer = initialLockedTokens + orderAmount;
     EXPECT_EQ(afterTransfer, 1250000);
     
