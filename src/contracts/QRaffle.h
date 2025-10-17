@@ -39,6 +39,8 @@ constexpr sint32 QRAFFLE_INSUFFICIENT_QXMR = 13;
 constexpr sint32 QRAFFLE_INVALID_TOKEN_TYPE = 14;
 constexpr sint32 QRAFFLE_USER_NOT_FOUND = 15;
 constexpr sint32 QRAFFLE_INVALID_ENTRY_AMOUNT = 16;
+constexpr sint32 QRAFFLE_EMPTY_QU_RAFFLE = 17;
+constexpr sint32 QRAFFLE_EMPTY_TOKEN_RAFFLE = 18;
 
 enum QRAFFLELogInfo {
     QRAFFLE_success = 0,
@@ -71,7 +73,9 @@ enum QRAFFLELogInfo {
     QRAFFLE_proposalVoted = 27,
     QRAFFLE_quRaffleDeposited = 28,
     QRAFFLE_tokenRaffleDeposited = 29,
-    QRAFFLE_shareManagementRightsTransferred = 30
+    QRAFFLE_shareManagementRightsTransferred = 30,
+    QRAFFLE_emptyQuRaffle = 31,
+    QRAFFLE_emptyTokenRaffle = 32
 };
 
 struct QRAFFLELogger
@@ -133,6 +137,14 @@ struct QRAFFLEProposalLogger
     uint32 _noVotes; // Number of no votes
     uint64 _assetName; // Asset name if approved
     uint64 _entryAmount; // Entry amount if approved
+    sint8 _terminator;
+};
+
+struct QRAFFLEEmptyTokenRaffleLogger
+{
+    uint32 _contractIndex;
+    uint32 _type;
+    uint32 _tokenRaffleIndex; // Index of the token raffle per epoch
     sint8 _terminator;
 };
 
@@ -1187,6 +1199,7 @@ protected:
 		uint64 sumOfEntryAmountSubmitted, r, winnerRevenue, burnAmount, charityRevenue, shareholderRevenue, registerRevenue, fee;
 		uint32 i, j, winnerIndex;
 		QRAFFLELogger log;
+		QRAFFLEEmptyTokenRaffleLogger emptyTokenRafflelog;
 		QRAFFLEEndEpochLogger endEpochLog;
 		QRAFFLERevenueLogger revenueLog;
 		QRAFFLETokenRaffleLogger tokenRaffleLog;
@@ -1307,6 +1320,11 @@ protected:
 				state.epochQXMRRevenue -= div(state.epochQXMRRevenue, 676ULL) * 676;
 			}
 		}
+		else 
+		{
+			locals.log = QRAFFLELogger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_emptyQuRaffle, 0 };
+			LOG_INFO(locals.log);
+		}
 		
 		// Process each active token raffle and log
 		for (locals.i = 0 ; locals.i < state.numberOfActiveTokenRaffle; locals.i++)
@@ -1372,6 +1390,11 @@ protected:
 				LOG_INFO(locals.tokenRaffleLog);
 
 				state.numberOfTokenRaffleMembers.set(locals.i, 0);	
+			}
+			else 
+			{
+				locals.emptyTokenRafflelog = QRAFFLEEmptyTokenRaffleLogger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_emptyTokenRaffle, locals.i, 0 };
+				LOG_INFO(locals.emptyTokenRafflelog);
 			}
 		}
 
