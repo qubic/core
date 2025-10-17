@@ -3,6 +3,8 @@
 ////////////////// Extensions \\\\\\\\\\\\
 
 #if defined(_WIN32)
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <Windows.h>
 #include <conio.h>
 #define MSG_DONTWAIT 0
@@ -240,15 +242,15 @@ inline EFI_STATUS createEvent(unsigned int Type, EFI_TPL NotifyTpl, void* Notify
     return bs->CreateEvent(Type, NotifyTpl, NotifyFunction, NotifyContext, Event);
 }
 
-struct Overload {
+enum class ConnectStatus
+{
+    Connected,
+    Connecting,
+    Disconnected,
+    Error
+};
 
-    enum ConnectStatus
-    {
-        Connected,
-        Connecting,
-        Disconnected,
-        Error
-    };
+struct Overload {
 
     struct TcpData {
         EFI_TCP4_CONFIG_DATA configData;
@@ -655,16 +657,26 @@ struct Overload {
         {
             std::thread sendThread([key, tcpData, Token]()
             {
+#ifdef _MSC_VER
+                WSAPOLLFD fds{};
+                fds.fd = tcpData->socket;
+                fds.events = POLLOUT;
+#else
                 pollfd fds{};
                 fds.fd = tcpData->socket;
                 fds.events = POLLOUT;
+#endif
                 while (true)
                 {
                     // Ensure the data sent is processed in main thread
                     ACQUIRE_NO_SPINNING(tcpData->sendLock);
+#ifdef _MSC_VER
+					int ret = WSAPoll(&fds, 1, -1);
+#else
                     int ret = poll(&fds, 1, -1);
+#endif
                     if (ret <= 0) {
-                        tcpData->connectStatus = Error;
+                        tcpData->connectStatus = ConnectStatus::Error;
                         Token->CompletionToken.Status = -1;
                         break;
                     }
@@ -683,7 +695,7 @@ struct Overload {
                             else if (n == 0)
                             {
                                 // connection closed
-                                tcpData->connectStatus = Disconnected;
+                                tcpData->connectStatus = ConnectStatus::Disconnected;
                                 Token->CompletionToken.Status = -1;
                                 break;
                             }
@@ -691,20 +703,32 @@ struct Overload {
                             {
                                 if (errno == EWOULDBLOCK || errno == EAGAIN)
                                 {
+#ifdef _MSC_VER
+                                    WSAPOLLFD fds{};
+                                    fds.fd = tcpData->socket;
+									fds.events = POLLOUT;
+                                    int pres = WSAPoll(&fds, 1, -1);
+									if (pres <= 0) {
+										tcpData->connectStatus = ConnectStatus::Error;
+										Token->CompletionToken.Status = -1;
+										break;
+									}
+#else
                                     pollfd pfd;
                                     pfd.fd = tcpData->socket;
                                     pfd.events = POLLOUT;
                                     int pres = poll(&pfd, 1, -1);
                                     if (pres <= 0) {
-                                        tcpData->connectStatus = Error;
+                                        tcpData->connectStatus = ConnectStatus::Error;
                                         Token->CompletionToken.Status = -1;
                                         break;
                                     }
+#endif
                                     continue;
                                 }
                                 else
                                 {
-                                    tcpData->connectStatus = Error;
+                                    tcpData->connectStatus = ConnectStatus::Error;
                                     Token->CompletionToken.Status = -1;
                                     break;
                                 }
@@ -717,12 +741,13 @@ struct Overload {
 
                         if (Token->CompletionToken.Status != EFI_SUCCESS)
                         {
-                            tcpData->connectStatus = Disconnected;
+                            tcpData->connectStatus = ConnectStatus::Disconnected;
                             break;
                         }
-                    } else if (fds.revents & (POLLHUP | POLLRDHUP | POLLERR | POLLNVAL))
+                    } 
+                    else if (fds.revents & (POLLHUP | POLLERR | POLLNVAL))
                     {
-                        tcpData->connectStatus = Disconnected;
+                        tcpData->connectStatus = ConnectStatus::Disconnected;
                         Token->CompletionToken.Status = -1;
                         break;
                     }
@@ -733,7 +758,7 @@ struct Overload {
             sendThread.detach();
         }
 
-        if (tcpData->connectStatus == Disconnected || tcpData->connectStatus == Error) {
+        if (tcpData->connectStatus == ConnectStatus::Disconnected || tcpData->connectStatus == ConnectStatus::Error) {
             Token->CompletionToken.Status = EFI_ABORTED;
             return EFI_ABORTED;
         }
@@ -763,17 +788,22 @@ struct Overload {
         {
             std::thread receiveThread([key, tcpData, Token]()
             {
-                pollfd fds{};
+                WSAPOLLFD fds{};
                 fds.fd = tcpData->socket;
                 fds.events = POLLIN;
+
                 char* buffer = new char[BUFFER_SIZE];
                 while (true)
                 {
                     // Ensure the data received is processed in main thread
                     ACQUIRE_NO_SPINNING(tcpData->receiveLock);
+#ifdef _MSC_VER
+					int ret = WSAPoll(&fds, 1, -1);
+#else
                     int ret = poll(&fds, 1, -1);
+#endif
                     if (ret <= 0) {
-                        tcpData->connectStatus = Error;
+                        tcpData->connectStatus = ConnectStatus::Error;
                         Token->CompletionToken.Status = EFI_ABORTED;
                         break;
                     }
@@ -789,20 +819,20 @@ struct Overload {
                         }
                         else if (n == 0)
                         {
-                            tcpData->connectStatus = Disconnected;
+                            tcpData->connectStatus = ConnectStatus::Disconnected;
                             Token->CompletionToken.Status = EFI_ABORTED;
                             break;
                         }
                         else
                         {
-                            tcpData->connectStatus = Error;
+                            tcpData->connectStatus = ConnectStatus::Error;
                             Token->CompletionToken.Status = EFI_ABORTED;
                             break;
                         }
                     }
-                    else if (fds.revents & (POLLHUP | POLLRDHUP | POLLERR))
+                    else if (fds.revents & (POLLHUP | POLLERR))
                     {
-                        tcpData->connectStatus = Disconnected;
+                        tcpData->connectStatus = ConnectStatus::Disconnected;
                         Token->CompletionToken.Status = EFI_ABORTED;
                         break;
                     }
@@ -815,10 +845,10 @@ struct Overload {
             isReceiveThreadSetupMap[key] = true;
         }
 
-        if (tcpData->connectStatus == Disconnected) {
+        if (tcpData->connectStatus == ConnectStatus::Disconnected) {
             Token->CompletionToken.Status = EFI_ABORTED;
             return EFI_CONNECTION_FIN;
-        } else if (tcpData->connectStatus == Error) {
+        } else if (tcpData->connectStatus == ConnectStatus::Error) {
             Token->CompletionToken.Status = EFI_ABORTED;
             return EFI_ABORTED;
         }
@@ -880,7 +910,7 @@ struct Overload {
         data.socket = INVALID_SOCKET;
         data.receiveLock = 0;
         data.sendLock = 0;
-        data.connectStatus = Disconnected;
+        data.connectStatus = ConnectStatus::Disconnected;
         // Global set up for accepting new connections
         if ((unsigned long long)This == (unsigned long long)peerTcp4Protocol && !isGlobalSocketInitialized) {
             #ifdef _MSC_VER
@@ -949,7 +979,7 @@ struct Overload {
             #else
             socklen_t addrlen = sizeof(addr);
             #endif
-            tcpData->connectStatus = Connecting;
+            tcpData->connectStatus = ConnectStatus::Connecting;
             SOCKET clientSocket = accept(tcpData->socket, (sockaddr*)&addr, &addrlen);
             if (clientSocket == INVALID_SOCKET) {
                 logToConsole(L"Obtained tcpData failed");
@@ -967,14 +997,14 @@ struct Overload {
             // so we map the clientSocket to the handle to process it later in peerConnectionNewlyEstablished()
             incomingSocketMap[(unsigned long long)ListenToken->NewChildHandle] = clientSocket;
             ListenToken->CompletionToken.Status = EFI_SUCCESS;
-            tcpData->connectStatus = Connected;
+            tcpData->connectStatus = ConnectStatus::Connected;
             });
         acceptThread.detach();
         return EFI_SUCCESS;
     }
 
     static EFI_STATUS Connect(IN void* This, IN EFI_TCP4_CONNECTION_TOKEN* ConnectionToken) {
-        static std::map<int, long> latestConnectTimestampMap; // map of <ip, timestamp>
+        static std::map<int, long long> latestConnectTimestampMap; // map of <ip, timestamp>
         TcpData* tcpData = nullptr;
         unsigned long long key = (unsigned long long)This;
         if (tcpDataMap.contains(key)) {
@@ -1005,17 +1035,17 @@ struct Overload {
         // connect in a thread
         std::thread connectThread([tcpData, serverAddr, ConnectionToken, ipInNumber]() {
             auto now = std::chrono::system_clock::now();
-            long ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+            long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
             if (ms - latestConnectTimestampMap[ipInNumber] < 2'000) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(5'000));
             }
-            tcpData->connectStatus = Connecting;
+            tcpData->connectStatus = ConnectStatus::Connecting;
             if (connect(tcpData->socket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
-                tcpData->connectStatus = Error;
+                tcpData->connectStatus = ConnectStatus::Error;
                 ConnectionToken->CompletionToken.Status = EFI_ABORTED;
             }
             else {
-                tcpData->connectStatus = Connected;
+                tcpData->connectStatus = ConnectStatus::Connected;
                 ConnectionToken->CompletionToken.Status = EFI_SUCCESS;
 #ifdef _MSC_VER
                 u_long mode = 1;
