@@ -346,6 +346,48 @@ public:
 	}
 
 	//---------------------------------------------------------------
+	// SHAREHOLDER PROPOSALS WITH MULTI-OPTION + SCALAR STORAGE
+
+	struct SetProposalInOtherContractAsShareholder_input
+	{
+		Array<uint8, 512> proposalDataBuffer;
+		uint16 otherContractIndex;
+	};
+	struct SetProposalInOtherContractAsShareholder_output
+	{
+		uint16 proposalIndex;
+	};
+	struct SetProposalInOtherContractAsShareholder_locals
+	{
+		Array<uint8, 1024> proposalDataBuffer;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(SetProposalInOtherContractAsShareholder)
+	{
+		// User procedure for letting TESTEXB create a shareholder proposal in TESTEXA as shareholder of TESTEXA.
+		// Skipped here: checking that invocator has right to set proposal for this contract (e.g., is contract "admin")
+		copyToBuffer(locals.proposalDataBuffer, input.proposalDataBuffer);
+		output.proposalIndex = qpi.setShareholderProposal(input.otherContractIndex, locals.proposalDataBuffer, qpi.invocationReward());
+	}
+
+	struct setVotesInOtherContractAsShareholder_input
+	{
+		ProposalMultiVoteDataV1 voteData;
+		uint16 otherContractIndex;
+	};
+	struct setVotesInOtherContractAsShareholder_output
+	{
+		bit success;
+	};
+
+	PUBLIC_PROCEDURE(setVotesInOtherContractAsShareholder)
+	{
+		// User procedure for letting TESTEXB cast shareholder votes in TESTEXA as shareholder of TESTEXA.
+		// Skipped here: checking that invocator has right to cast votes for this contract (e.g., is contract "admin")
+		output.success = qpi.setShareholderVotes(input.otherContractIndex, input.voteData, qpi.invocationReward());
+	}
+
+	//---------------------------------------------------------------
 	// COMMON PARTS
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
@@ -366,5 +408,7 @@ public:
 		REGISTER_USER_PROCEDURE(QpiTransfer, 20);
 		REGISTER_USER_PROCEDURE(QpiDistributeDividends, 21);
 		REGISTER_USER_PROCEDURE(QpiBidInIpo, 30);
+		REGISTER_USER_PROCEDURE(SetProposalInOtherContractAsShareholder, 40);
+		REGISTER_USER_PROCEDURE(setVotesInOtherContractAsShareholder, 41);
 	}
 };

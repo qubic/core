@@ -20,6 +20,26 @@ namespace QPI
 		copyMem(&dst, &src, sizeof(dst));
 	}
 
+	template <typename T1, typename T2>
+	inline void copyToBuffer(T1& dst, const T2& src, bool setTailToZero)
+	{
+		static_assert(sizeof(dst) >= sizeof(src), "Destination buffer must be at least the size of the source object.");
+		copyMem(&dst, &src, sizeof(src));
+		if (sizeof(dst) > sizeof(src) && setTailToZero)
+		{
+			uint8* tailPtr = reinterpret_cast<uint8*>(&dst) + sizeof(src);
+			const uint64 tailSize = sizeof(dst) - sizeof(src);
+			setMem(tailPtr, tailSize, 0);
+		}
+	}
+
+	template <typename T1, typename T2>
+	inline void copyFromBuffer(T1& dst, const T2& src)
+	{
+		static_assert(sizeof(dst) <= sizeof(src), "Destination object must be at most the size of the source buffer.");
+		copyMem(&dst, &src, sizeof(dst));
+	}
+
 	template <typename T>
 	inline void setMemory(T& dst, uint8 value)
 	{

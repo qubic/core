@@ -42,7 +42,11 @@ template <typename T> static void __logContractDebugMessage(unsigned int, T&);
 template <typename T> static void __logContractErrorMessage(unsigned int, T&);
 template <typename T> static void __logContractInfoMessage(unsigned int, T&);
 template <typename T> static void __logContractWarningMessage(unsigned int, T&);
-static void* __scratchpad();    // TODO: concurrency support (n buffers for n allowed concurrent contract executions)
+
+// Get buffer for temporary use. Can only be used in contract procedures / tick processor / contract processor!
+// Always returns the samey one buffer, no concurrent access!
+static void* __scratchpad(unsigned long long sizeToMemsetZero = 0);
+
 // static void* __tryAcquireScratchpad(unsigned int size);  // Thread-safe, may return nullptr if no appropriate buffer is available
 // static void __ReleaseScratchpad(void*);
 
@@ -283,6 +287,8 @@ constexpr unsigned short TESTEXD_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #undef POST_RELEASE_SHARES
 #undef POST_ACQUIRE_SHARES
 #undef POST_INCOMING_TRANSFER
+#undef SET_SHAREHOLDER_PROPOSAL
+#undef SET_SHAREHOLDER_VOTES
 
 
 // The following are included after the contracts to keep their definitions and dependencies
@@ -336,7 +342,7 @@ constexpr struct ContractDescription
     {"QBOND", 182, 10000, sizeof(QBOND)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
-    {"TESTEXA", 138, 10000, sizeof(IPO)},
+    {"TESTEXA", 138, 10000, sizeof(TESTEXA)},
     {"TESTEXB", 138, 10000, sizeof(IPO)},
     {"TESTEXC", 138, 10000, sizeof(IPO)},
     {"TESTEXD", 155, 10000, sizeof(IPO)},
@@ -377,6 +383,8 @@ enum SystemProcedureID
     POST_RELEASE_SHARES,
     POST_ACQUIRE_SHARES,
     POST_INCOMING_TRANSFER,
+    SET_SHAREHOLDER_PROPOSAL,
+    SET_SHAREHOLDER_VOTES,
     contractSystemProcedureCount,
 };
 
@@ -414,6 +422,10 @@ if (!contractName::__postReleaseSharesEmpty) contractSystemProcedures[contractIn
 contractSystemProcedureLocalsSizes[contractIndex][POST_RELEASE_SHARES] = contractName::__postReleaseSharesLocalsSize; \
 if (!contractName::__postIncomingTransferEmpty) contractSystemProcedures[contractIndex][POST_INCOMING_TRANSFER] = (SYSTEM_PROCEDURE)contractName::__postIncomingTransfer;\
 contractSystemProcedureLocalsSizes[contractIndex][POST_INCOMING_TRANSFER] = contractName::__postIncomingTransferLocalsSize; \
+if (!contractName::__setShareholderProposalEmpty) contractSystemProcedures[contractIndex][SET_SHAREHOLDER_PROPOSAL] = (SYSTEM_PROCEDURE)contractName::__setShareholderProposal;\
+contractSystemProcedureLocalsSizes[contractIndex][SET_SHAREHOLDER_PROPOSAL] = contractName::__setShareholderProposalLocalsSize; \
+if (!contractName::__setShareholderVotesEmpty) contractSystemProcedures[contractIndex][SET_SHAREHOLDER_VOTES] = (SYSTEM_PROCEDURE)contractName::__setShareholderVotes;\
+contractSystemProcedureLocalsSizes[contractIndex][SET_SHAREHOLDER_VOTES] = contractName::__setShareholderVotesLocalsSize; \
 if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
 QpiContextForInit qpi(contractIndex); \
 contractName::__registerUserFunctionsAndProcedures(qpi); \

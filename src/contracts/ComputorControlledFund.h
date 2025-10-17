@@ -279,7 +279,7 @@ public:
 					continue;
 
 				// The total number of votes needs to be at least the quorum
-				if (locals.results.totalVotes < QUORUM)
+				if (locals.results.totalVotesCasted < QUORUM)
 					continue;
 
 				// The transfer option (1) must have more votes than the no-transfer option (0)
