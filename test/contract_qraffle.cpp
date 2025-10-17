@@ -1011,7 +1011,6 @@ TEST(ContractQraffle, GetFunctions)
             EXPECT_NE(endedRaffle.epochWinner, id(0, 0, 0, 0)); // Winner should be set
             EXPECT_GT(endedRaffle.entryAmount, 0);
             EXPECT_GT(endedRaffle.numberOfMembers, 0);
-            EXPECT_GT(endedRaffle.winnerIndex, 0);
             EXPECT_GE(endedRaffle.epoch, 0);
         }
     }
@@ -1045,7 +1044,6 @@ TEST(ContractQraffle, GetFunctions)
         EXPECT_GT(endedQuRaffle.receivedAmount, 0);
         EXPECT_EQ(endedQuRaffle.entryAmount, 10000000);
         EXPECT_EQ(endedQuRaffle.numberOfMembers, memberCount);
-        EXPECT_GT(endedQuRaffle.winnerIndex, 0);
         
         // Test with future epoch
         auto futureQuRaffle = qraffle.getEndedQuRaffle(1);
@@ -1102,7 +1100,7 @@ TEST(ContractQraffle, EndEpoch)
 
     // Create proposals and vote for them
     id issuer = getUser(2000);
-    increaseEnergy(issuer, 1000000000ULL);
+    increaseEnergy(issuer, 3000000000ULL);
     uint64 assetName1 = assetNameFromString("TOKEN1");
     uint64 assetName2 = assetNameFromString("TOKEN2");
     qraffle.issueAsset(issuer, assetName1, 1000000000, 0, 0);
@@ -1135,18 +1133,22 @@ TEST(ContractQraffle, EndEpoch)
     for (const auto& user : users)
     {
         increaseEnergy(user, QRAFFLE_TRANSFER_SHARE_FEE + 1000000);
-        qraffle.transferShareOwnershipAndPossession(issuer, assetName1, issuer, 1000000, user);
-        qraffle.transferShareOwnershipAndPossession(issuer, assetName2, issuer, 2000000, user);
+        EXPECT_EQ(qraffle.transferShareOwnershipAndPossession(issuer, assetName1, issuer, 1000000, user), 1000000);
+        EXPECT_EQ(qraffle.transferShareOwnershipAndPossession(issuer, assetName2, issuer, 2000000, user), 2000000);
     }
 
     // End epoch
     qraffle.endEpoch();
 
+    qraffle.getState()->activeTokenRaffleChecker(0, token1, 1000000);
+    qraffle.getState()->activeTokenRaffleChecker(1, token2, 2000000);
+
     // Deposit in token raffles
     for (const auto& user : users)
     {
-        qraffle.TransferShareManagementRights(issuer, assetName1, QRAFFLE_CONTRACT_INDEX, 1000000, user);
-        qraffle.TransferShareManagementRights(issuer, assetName2, QRAFFLE_CONTRACT_INDEX, 2000000, user);
+        increaseEnergy(user, QRAFFLE_TRANSFER_SHARE_FEE);
+        EXPECT_EQ(qraffle.TransferShareManagementRights(issuer, assetName1, QRAFFLE_CONTRACT_INDEX, 1000000, user), 1000000);
+        EXPECT_EQ(qraffle.TransferShareManagementRights(issuer, assetName2, QRAFFLE_CONTRACT_INDEX, 2000000, user), 2000000);
 
         qraffle.depositeInTokenRaffle(user, 0, QRAFFLE_TRANSFER_SHARE_FEE);
         qraffle.depositeInTokenRaffle(user, 1, QRAFFLE_TRANSFER_SHARE_FEE);
@@ -1178,7 +1180,7 @@ TEST(ContractQraffle, EndEpoch)
     EXPECT_GT(analytics.totalBurnAmount, 0);
     EXPECT_GT(analytics.totalCharityAmount, 0);
     EXPECT_GT(analytics.totalShareholderAmount, 0);
-     EXPECT_GT(analytics.totalWinnerAmount, 0);
+    EXPECT_GT(analytics.totalWinnerAmount, 0);
 }
 
 TEST(ContractQraffle, RegisterInSystemWithQXMR)
@@ -1402,6 +1404,9 @@ TEST(ContractQraffle, QXMRRevenueDistribution)
     EXPECT_EQ(qraffle.getState()->getEpochQXMRRevenue(), expectedQXMRRevenue);
 
     // Test QXMR revenue distribution during epoch end
+    increaseEnergy(users[0], QRAFFLE_DEFAULT_QRAFFLE_AMOUNT);
+    qraffle.depositeInQuRaffle(users[0], QRAFFLE_DEFAULT_QRAFFLE_AMOUNT);
+
     qraffle.endEpoch();
     EXPECT_EQ(qraffle.getState()->getEpochQXMRRevenue(), expectedQXMRRevenue - div(expectedQXMRRevenue, 676ull) * 676);
 }

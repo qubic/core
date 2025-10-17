@@ -17,6 +17,10 @@ constexpr uint32 QRAFFLE_MAX_EPOCH = 65536;
 constexpr uint32 QRAFFLE_MAX_PROPOSAL_EPOCH = 128;
 constexpr uint32 QRAFFLE_MAX_MEMBER = 65536;
 constexpr uint32 QRAFFLE_QXMR_DISTRIBUTION_FEE = 67600;
+constexpr uint32 QRAFFLE_DEFAULT_QRAFFLE_AMOUNT = 10000000ull;
+constexpr uint32 QRAFFLE_MIN_QRAFFLE_AMOUNT = 1000000ull;
+constexpr uint32 QRAFFLE_MAX_QRAFFLE_AMOUNT = 1000000000ull;
+constexpr uint32 QRAFFLE_QXMR_DISTRIBUTION_FEE_PERCENT = 67600;
 
 constexpr sint32 QRAFFLE_SUCCESS = 0;
 constexpr sint32 QRAFFLE_INSUFFICIENT_FUND = 1;
@@ -34,6 +38,7 @@ constexpr sint32 QRAFFLE_INITIAL_REGISTER_CANNOT_LOGOUT = 12;
 constexpr sint32 QRAFFLE_INSUFFICIENT_QXMR = 13;
 constexpr sint32 QRAFFLE_INVALID_TOKEN_TYPE = 14;
 constexpr sint32 QRAFFLE_USER_NOT_FOUND = 15;
+constexpr sint32 QRAFFLE_INVALID_ENTRY_AMOUNT = 16;
 
 enum QRAFFLELogInfo {
     QRAFFLE_success = 0,
@@ -576,6 +581,13 @@ protected:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(submitEntryAmount)
 	{
+		if (input.amount < QRAFFLE_MIN_QRAFFLE_AMOUNT || input.amount > QRAFFLE_MAX_QRAFFLE_AMOUNT)
+		{
+			output.returnCode = QRAFFLE_INVALID_ENTRY_AMOUNT;
+			locals.log = QRAFFLELogger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_invalidEntryAmount, 0 };
+			LOG_INFO(locals.log);
+			return ;
+		}
 		if (state.registers.contains(qpi.invocator()) == 0)
 		{
 			output.returnCode = QRAFFLE_UNREGISTERED;
@@ -1137,7 +1149,7 @@ protected:
 
 	INITIALIZE()
 	{
-		state.qREAmount = 10000000;
+		state.qREAmount = QRAFFLE_DEFAULT_QRAFFLE_AMOUNT;
 		state.charityAddress = ID(_D, _P, _Q, _R, _L, _S, _Z, _S, _S, _C, _X, _I, _Y, _F, _I, _Q, _G, _B, _F, _B, _X, _X, _I, _S, _D, _D, _E, _B, _E, _G, _Q, _N, _W, _N, _T, _Q, _U, _E, _I, _F, _S, _C, _U, _W, _G, _H, _V, _X, _J, _P, _L, _F, _G, _M, _Y, _D);
 		state.initialRegister1 = ID(_I, _L, _N, _J, _X, _V, _H, _A, _U, _X, _D, _G, _G, _B, _T, _T, _U, _O, _I, _T, _O, _Q, _G, _P, _A, _Y, _U, _C, _F, _T, _N, _C, _P, _X, _D, _K, _O, _C, _P, _U, _O, _C, _D, _O, _T, _P, _U, _W, _X, _B, _I, _G, _R, _V, _Q, _D);
 		state.initialRegister2 = ID(_L, _S, _D, _A, _A, _C, _L, _X, _X, _G, _I, _P, _G, _G, _L, _S, _O, _C, _L, _M, _V, _A, _Y, _L, _N, _T, _G, _D, _V, _B, _N, _O, _S, _S, _Y, _E, _Q, _D, _R, _K, _X, _D, _Y, _W, _B, _C, _G, _J, _I, _K, _C, _M, _Z, _K, _M, _F);
@@ -1188,173 +1200,179 @@ protected:
 
 		locals.digest = qpi.getPrevSpectrumDigest();
 		locals.r = (qpi.numberOfTickTransactions() + 1) * locals.digest.u64._0 + (qpi.second()) * locals.digest.u64._1 + locals.digest.u64._2;
-		locals.winnerIndex = (uint32)mod(locals.r, state.numberOfQuRaffleMembers * 1ull) + 1;
+		locals.winnerIndex = (uint32)mod(locals.r, state.numberOfQuRaffleMembers * 1ull);
 		locals.winner = state.quRaffleMembers.get(locals.winnerIndex);
 
-		// Calculate fee distributions
-		locals.burnAmount = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_BURN_FEE, 100ull);
-		locals.charityRevenue = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_CHARITY_FEE, 100ull);
-		locals.shareholderRevenue = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_SHRAEHOLDER_FEE, 100ull);
-		locals.registerRevenue = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_REGISTER_FEE, 100ull);
-		locals.fee = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_FEE, 100ull);
-		locals.winnerRevenue = state.qREAmount * state.numberOfQuRaffleMembers - locals.burnAmount - locals.charityRevenue - div(locals.shareholderRevenue, 676ull) * 676 - div(locals.registerRevenue, state.numberOfRegisters * 1ull) * state.numberOfRegisters - locals.fee;
-		
-		// Log QXMR revenue adjustment if applicable
-		if (state.epochQXMRRevenue > 0)
+		if (state.numberOfQuRaffleMembers > 0)
 		{
-			locals.winnerRevenue -= 67600;
-		}
-
-		// Log detailed revenue distribution information
-		locals.revenueLog = QRAFFLERevenueLogger{ 
-			QRAFFLE_CONTRACT_INDEX, 
-			QRAFFLE_revenueDistributed, 
-			locals.burnAmount, 
-			locals.charityRevenue, 
-			div(locals.shareholderRevenue, 676ull) * 676, 
-			div(locals.registerRevenue, state.numberOfRegisters * 1ull) * state.numberOfRegisters, 
-			locals.fee, 
-			locals.winnerRevenue, 
-			0 
-		};
-		LOG_INFO(locals.revenueLog);
-
-		// Execute transfers and log each distribution
-		qpi.transfer(locals.winner, locals.winnerRevenue);
-		qpi.burn(locals.burnAmount);
-		qpi.transfer(state.charityAddress, locals.charityRevenue);
-		qpi.distributeDividends(div(locals.shareholderRevenue, 676ull));
-		qpi.transfer(state.feeAddress, locals.fee);
-
-		// Update total amounts and log largest winner update
-		state.totalBurnAmount += locals.burnAmount;
-		state.totalCharityAmount += locals.charityRevenue;
-		state.totalShareholderAmount += div(locals.shareholderRevenue, 676ull) * 676;
-		state.totalRegisterAmount += div(locals.registerRevenue, state.numberOfRegisters * 1ull) * state.numberOfRegisters;
-		state.totalFeeAmount += locals.fee;
-		state.totalWinnerAmount += locals.winnerRevenue;
-		if (locals.winnerRevenue > state.lagestWinnerAmount)
-		{
-			state.lagestWinnerAmount = locals.winnerRevenue;
-		}
-
-		locals.idx = state.registers.nextElementIndex(NULL_INDEX);
-		while (locals.idx != NULL_INDEX)
-		{
-			qpi.transfer(state.registers.key(locals.idx), div(locals.registerRevenue, state.numberOfRegisters * 1ull));
-			locals.idx = state.registers.nextElementIndex(locals.idx);
-		}
-
-		// Store QuRaffle results and log completion with detailed information
-		locals.qraffle.epochWinner = locals.winner;
-		locals.qraffle.receivedAmount = locals.winnerRevenue;
-		locals.qraffle.entryAmount = state.qREAmount;
-		locals.qraffle.numberOfMembers = state.numberOfQuRaffleMembers;
-		locals.qraffle.winnerIndex = locals.winnerIndex;
-		state.QuRaffles.set(qpi.epoch(), locals.qraffle);
-
-		// Log QuRaffle completion with detailed information
-		locals.endEpochLog = QRAFFLEEndEpochLogger{ 
-			QRAFFLE_CONTRACT_INDEX, 
-			QRAFFLE_revenueDistributed, 
-			qpi.epoch(), 
-			state.numberOfQuRaffleMembers, 
-			state.qREAmount * state.numberOfQuRaffleMembers, 
-			locals.winnerRevenue, 
-			locals.winnerIndex, 
-			0 
-		};
-		LOG_INFO(locals.endEpochLog);
-
-		// Process QRAFFLE asset shareholders and log
-		locals.QraffleAsset.assetName = QRAFFLE_ASSET_NAME;
-		locals.QraffleAsset.issuer = NULL_ID;
-		locals.iter.begin(locals.QraffleAsset);
-		while (!locals.iter.reachedEnd())
-		{
-			locals.shareholder = locals.iter.possessor();
-			if (state.shareholdersList.contains(locals.shareholder) == 0)
+			// Calculate fee distributions
+			locals.burnAmount = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_BURN_FEE, 100ull);
+			locals.charityRevenue = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_CHARITY_FEE, 100ull);
+			locals.shareholderRevenue = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_SHRAEHOLDER_FEE, 100ull);
+			locals.registerRevenue = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_REGISTER_FEE, 100ull);
+			locals.fee = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_FEE, 100ull);
+			locals.winnerRevenue = state.qREAmount * state.numberOfQuRaffleMembers - locals.burnAmount - locals.charityRevenue - div(locals.shareholderRevenue, 676ull) * 676 - div(locals.registerRevenue, state.numberOfRegisters * 1ull) * state.numberOfRegisters - locals.fee;
+			
+			// Log QXMR revenue adjustment if applicable
+			if (state.epochQXMRRevenue > 0)
 			{
-				state.shareholdersList.add(locals.shareholder);
+				locals.winnerRevenue -= QRAFFLE_QXMR_DISTRIBUTION_FEE_PERCENT;
 			}
 
-			locals.iter.next();
-		}
+			// Log detailed revenue distribution information
+			locals.revenueLog = QRAFFLERevenueLogger{ 
+				QRAFFLE_CONTRACT_INDEX, 
+				QRAFFLE_revenueDistributed, 
+				locals.burnAmount, 
+				locals.charityRevenue, 
+				div(locals.shareholderRevenue, 676ull) * 676, 
+				div(locals.registerRevenue, state.numberOfRegisters * 1ull) * state.numberOfRegisters, 
+				locals.fee, 
+				locals.winnerRevenue, 
+				0 
+			};
+			LOG_INFO(locals.revenueLog);
 
-		locals.idx = state.shareholdersList.nextElementIndex(NULL_INDEX);
-		while (locals.idx != NULL_INDEX)
-		{
-			locals.shareholder = state.shareholdersList.key(locals.idx);
-			qpi.transferShareOwnershipAndPossession(QRAFFLE_QXMR_ASSET_NAME, state.QXMRIssuer, SELF, SELF, div(state.epochQXMRRevenue, 676ULL), locals.shareholder);
-			locals.idx = state.shareholdersList.nextElementIndex(locals.idx);
-		}
-		state.epochQXMRRevenue -= div(state.epochQXMRRevenue, 676ULL) * 676;
-		
-		// Reset QuRaffle members and log
-		state.numberOfQuRaffleMembers = 0;
+			// Execute transfers and log each distribution
+			qpi.transfer(locals.winner, locals.winnerRevenue);
+			qpi.burn(locals.burnAmount);
+			qpi.transfer(state.charityAddress, locals.charityRevenue);
+			qpi.distributeDividends(div(locals.shareholderRevenue, 676ull));
+			qpi.transfer(state.feeAddress, locals.fee);
 
-		// Process each active token raffle and log
-		for (locals.i = 0 ; locals.i < state.numberOfActiveTokenRaffle; locals.i++)
-		{
-			locals.winnerIndex = (uint32)mod(locals.r, state.numberOfTokenRaffleMembers.get(locals.i) * 1ull) + 1;
-			state.tokenRaffleMembers.get(locals.i, state.tmpTokenRaffleMembers);
-			locals.winner = state.tmpTokenRaffleMembers.get(locals.winnerIndex);
-
-			locals.acTokenRaffle = state.activeTokenRaffle.get(locals.i);
-
-			// Calculate token raffle fee distributions
-			locals.burnAmount = div(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_BURN_FEE, 100ull);
-			locals.charityRevenue = div(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_CHARITY_FEE, 100ull);
-			locals.shareholderRevenue = div(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_SHRAEHOLDER_FEE, 100ull);
-			locals.registerRevenue = div(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_REGISTER_FEE, 100ull);
-			locals.fee = div(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_FEE, 100ull);
-			locals.winnerRevenue = locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) - locals.burnAmount - locals.charityRevenue - div(locals.shareholderRevenue, 676ULL) * 676 - div(locals.registerRevenue, state.numberOfRegisters * 1ull) * state.numberOfRegisters - locals.fee;
-			
-			// Execute token transfers and log each
-			qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, locals.winnerRevenue, locals.winner);
-			qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, locals.burnAmount, NULL_ID);
-			qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, locals.charityRevenue, state.charityAddress);
-			qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, locals.fee, state.feeAddress);
-
-			locals.idx = state.shareholdersList.nextElementIndex(NULL_INDEX);
-			while (locals.idx != NULL_INDEX)
+			// Update total amounts and log largest winner update
+			state.totalBurnAmount += locals.burnAmount;
+			state.totalCharityAmount += locals.charityRevenue;
+			state.totalShareholderAmount += div(locals.shareholderRevenue, 676ull) * 676;
+			state.totalRegisterAmount += div(locals.registerRevenue, state.numberOfRegisters * 1ull) * state.numberOfRegisters;
+			state.totalFeeAmount += locals.fee;
+			state.totalWinnerAmount += locals.winnerRevenue;
+			if (locals.winnerRevenue > state.lagestWinnerAmount)
 			{
-				locals.shareholder = state.shareholdersList.key(locals.idx);
-				qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, div(locals.shareholderRevenue, 676ULL), locals.shareholder);
-				locals.idx = state.shareholdersList.nextElementIndex(locals.idx);
+				state.lagestWinnerAmount = locals.winnerRevenue;
 			}
 
 			locals.idx = state.registers.nextElementIndex(NULL_INDEX);
 			while (locals.idx != NULL_INDEX)
 			{
-				qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, div(locals.registerRevenue, state.numberOfRegisters * 1ull), state.registers.key(locals.idx));
+				qpi.transfer(state.registers.key(locals.idx), div(locals.registerRevenue, state.numberOfRegisters * 1ull));
 				locals.idx = state.registers.nextElementIndex(locals.idx);
 			}
 
-			locals.tRaffle.epochWinner = locals.winner;
-			locals.tRaffle.token.assetName = locals.acTokenRaffle.token.assetName;
-			locals.tRaffle.token.issuer = locals.acTokenRaffle.token.issuer;
-			locals.tRaffle.entryAmount = locals.acTokenRaffle.entryAmount;
-			locals.tRaffle.numberOfMembers = state.numberOfTokenRaffleMembers.get(locals.i);
-			locals.tRaffle.winnerIndex = locals.winnerIndex;
-			locals.tRaffle.epoch = qpi.epoch();
-			state.tokenRaffle.set(state.numberOfEndedTokenRaffle, locals.tRaffle);
+			// Store QuRaffle results and log completion with detailed information
+			locals.qraffle.epochWinner = locals.winner;
+			locals.qraffle.receivedAmount = locals.winnerRevenue;
+			locals.qraffle.entryAmount = state.qREAmount;
+			locals.qraffle.numberOfMembers = state.numberOfQuRaffleMembers;
+			locals.qraffle.winnerIndex = locals.winnerIndex;
+			state.QuRaffles.set(qpi.epoch(), locals.qraffle);
 
-			// Log token raffle ended with detailed information
-			locals.tokenRaffleLog = QRAFFLETokenRaffleLogger{ 
+			// Log QuRaffle completion with detailed information
+			locals.endEpochLog = QRAFFLEEndEpochLogger{ 
 				QRAFFLE_CONTRACT_INDEX, 
-				QRAFFLE_tokenRaffleEnded, 
-				state.numberOfEndedTokenRaffle++, 
-				locals.acTokenRaffle.token.assetName, 
-				state.numberOfTokenRaffleMembers.get(locals.i), 
-				locals.acTokenRaffle.entryAmount, 
-				locals.winnerIndex, 
+				QRAFFLE_revenueDistributed, 
+				qpi.epoch(), 
+				state.numberOfQuRaffleMembers, 
+				state.qREAmount * state.numberOfQuRaffleMembers, 
 				locals.winnerRevenue, 
-				0
+				locals.winnerIndex, 
+				0 
 			};
-			LOG_INFO(locals.tokenRaffleLog);
+			LOG_INFO(locals.endEpochLog);
 
-			state.numberOfTokenRaffleMembers.set(locals.i, 0);
+			if (state.epochQXMRRevenue > 676)
+			{
+				// Process QRAFFLE asset shareholders and log
+				locals.QraffleAsset.assetName = QRAFFLE_ASSET_NAME;
+				locals.QraffleAsset.issuer = NULL_ID;
+				locals.iter.begin(locals.QraffleAsset);
+				while (!locals.iter.reachedEnd())
+				{
+					locals.shareholder = locals.iter.possessor();
+					if (state.shareholdersList.contains(locals.shareholder) == 0)
+					{
+						state.shareholdersList.add(locals.shareholder);
+					}
+
+					locals.iter.next();
+				}
+
+				locals.idx = state.shareholdersList.nextElementIndex(NULL_INDEX);
+				while (locals.idx != NULL_INDEX)
+				{
+					locals.shareholder = state.shareholdersList.key(locals.idx);
+					qpi.transferShareOwnershipAndPossession(QRAFFLE_QXMR_ASSET_NAME, state.QXMRIssuer, SELF, SELF, div(state.epochQXMRRevenue, 676ULL), locals.shareholder);
+					locals.idx = state.shareholdersList.nextElementIndex(locals.idx);
+				}
+				state.epochQXMRRevenue -= div(state.epochQXMRRevenue, 676ULL) * 676;
+			}
+		}
+		
+		// Process each active token raffle and log
+		for (locals.i = 0 ; locals.i < state.numberOfActiveTokenRaffle; locals.i++)
+		{
+			if (state.numberOfTokenRaffleMembers.get(locals.i) > 0)
+			{
+				locals.winnerIndex = (uint32)mod(locals.r, state.numberOfTokenRaffleMembers.get(locals.i) * 1ull);
+				state.tokenRaffleMembers.get(locals.i, state.tmpTokenRaffleMembers);
+				locals.winner = state.tmpTokenRaffleMembers.get(locals.winnerIndex);
+
+				locals.acTokenRaffle = state.activeTokenRaffle.get(locals.i);
+
+				// Calculate token raffle fee distributions
+				locals.burnAmount = div(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_BURN_FEE, 100ull);
+				locals.charityRevenue = div(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_CHARITY_FEE, 100ull);
+				locals.shareholderRevenue = div(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_SHRAEHOLDER_FEE, 100ull);
+				locals.registerRevenue = div(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_REGISTER_FEE, 100ull);
+				locals.fee = div(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_FEE, 100ull);
+				locals.winnerRevenue = locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) - locals.burnAmount - locals.charityRevenue - div(locals.shareholderRevenue, 676ULL) * 676 - div(locals.registerRevenue, state.numberOfRegisters * 1ull) * state.numberOfRegisters - locals.fee;
+				
+				// Execute token transfers and log each
+				qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, locals.winnerRevenue, locals.winner);
+				qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, locals.burnAmount, NULL_ID);
+				qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, locals.charityRevenue, state.charityAddress);
+				qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, locals.fee, state.feeAddress);
+
+				locals.idx = state.shareholdersList.nextElementIndex(NULL_INDEX);
+				while (locals.idx != NULL_INDEX)
+				{
+					locals.shareholder = state.shareholdersList.key(locals.idx);
+					qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, div(locals.shareholderRevenue, 676ULL), locals.shareholder);
+					locals.idx = state.shareholdersList.nextElementIndex(locals.idx);
+				}
+
+				locals.idx = state.registers.nextElementIndex(NULL_INDEX);
+				while (locals.idx != NULL_INDEX)
+				{
+					qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, div(locals.registerRevenue, state.numberOfRegisters * 1ull), state.registers.key(locals.idx));
+					locals.idx = state.registers.nextElementIndex(locals.idx);
+				}
+
+				locals.tRaffle.epochWinner = locals.winner;
+				locals.tRaffle.token.assetName = locals.acTokenRaffle.token.assetName;
+				locals.tRaffle.token.issuer = locals.acTokenRaffle.token.issuer;
+				locals.tRaffle.entryAmount = locals.acTokenRaffle.entryAmount;
+				locals.tRaffle.numberOfMembers = state.numberOfTokenRaffleMembers.get(locals.i);
+				locals.tRaffle.winnerIndex = locals.winnerIndex;
+				locals.tRaffle.epoch = qpi.epoch();
+				state.tokenRaffle.set(state.numberOfEndedTokenRaffle, locals.tRaffle);
+
+				// Log token raffle ended with detailed information
+				locals.tokenRaffleLog = QRAFFLETokenRaffleLogger{ 
+					QRAFFLE_CONTRACT_INDEX, 
+					QRAFFLE_tokenRaffleEnded, 
+					state.numberOfEndedTokenRaffle++, 
+					locals.acTokenRaffle.token.assetName, 
+					state.numberOfTokenRaffleMembers.get(locals.i), 
+					locals.acTokenRaffle.entryAmount, 
+					locals.winnerIndex, 
+					locals.winnerRevenue, 
+					0
+				};
+				LOG_INFO(locals.tokenRaffleLog);
+
+				state.numberOfTokenRaffleMembers.set(locals.i, 0);	
+			}
 		}
 
 		// Calculate new qREAmount and log
@@ -1368,7 +1386,16 @@ protected:
 			locals.sumOfEntryAmountSubmitted += state.quRaffleEntryAmount.value(locals.idx);
 			locals.idx = state.quRaffleEntryAmount.nextElementIndex(locals.idx);
 		}
-		state.qREAmount = div(locals.sumOfEntryAmountSubmitted, state.numberOfEntryAmountSubmitted * 1ull);
+		if (state.numberOfEntryAmountSubmitted > 0)
+		{
+			state.qREAmount = div(locals.sumOfEntryAmountSubmitted, state.numberOfEntryAmountSubmitted * 1ull);
+		}
+		else
+		{
+			state.qREAmount = QRAFFLE_DEFAULT_QRAFFLE_AMOUNT;
+		}
+
+		state.numberOfActiveTokenRaffle = 0;
 
 		// Process approved proposals and create new token raffles
 		for (locals.i = 0 ; locals.i < state.numberOfProposals; locals.i++)
@@ -1403,6 +1430,7 @@ protected:
 		state.shareholdersList.reset();
 		state.numberOfEntryAmountSubmitted = 0;
 		state.numberOfProposals = 0;
+		state.numberOfQuRaffleMembers = 0;
 		state.registers.cleanupIfNeeded();
 		state.shareholdersList.cleanupIfNeeded();
 		state.quRaffleEntryAmount.cleanupIfNeeded();
