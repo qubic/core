@@ -292,6 +292,7 @@ private:
     inline static unsigned int lastUpdatedTick; // tick number that the system has generated all log
     inline static unsigned int currentTxId;
     inline static unsigned int currentTick;
+    inline static unsigned long long currentTickStartLogId;
 
     static unsigned long long getLogId(const char* ptr)
     {
@@ -494,6 +495,11 @@ public:
 
         static void _registerNewTx(const unsigned int tick, const unsigned int txId)
         {
+            if (currentTick != tick)
+            {
+                currentTickStartLogId = logId;
+            }
+
             if (currentTick != tick || currentTxId != txId)
             {
                 currentTick = tick;
@@ -551,34 +557,31 @@ public:
 
         // Few conditions to make the logging working properly:
         // 1. The deleted log id must be a log of invalid solution tx
-        // 2. There must always max 1 gap in log id (of blobInfoTmp) sequence after deletion
         static void _commit()
         {
             // commit the tmp blob info and logBuffer to the VM
-            unsigned long long lastedProcessedLogId = 0;
             unsigned long long currentDeletedLogs = 0;
             unsigned long long totalBytesOfLogsDeleted = 0;
-            for (auto& it : blobInfoTmp)
+            for (unsigned long long i = currentTickStartLogId; i < logId; i++)
             {
-                unsigned long long logId = it.first;
-                BlobInfo& blobInfo = it.second;
-                blobInfo.startIndex -= totalBytesOfLogsDeleted;
-                if (lastedProcessedLogId == 0 || logId == lastedProcessedLogId + 1)
+                auto it = blobInfoTmp.find(i);
+                if (it == blobInfoTmp.end())
                 {
-                    mapLogIdToBufferIndex.append(blobInfo);
-                    logBuffer.appendMany(tmpLogBuffer[logId], blobInfo.length);
+                    // this log id is deleted
+                    currentDeletedLogs++;
+                    unsigned long long deletedBytes = tmpLogSize[i];
+                    totalBytesOfLogsDeleted += deletedBytes;
                 } else
                 {
-                    currentDeletedLogs++;
-                    unsigned long long deletedLogId = logId - 1;
-                    unsigned long long deletedBytes = tmpLogSize[deletedLogId];
-                    totalBytesOfLogsDeleted += deletedBytes;
-                    blobInfo.startIndex -= deletedBytes;
-
+                    BlobInfo& blobInfo = blobInfoTmp[i];
+                    blobInfo.startIndex -= totalBytesOfLogsDeleted;
                     mapLogIdToBufferIndex.append(blobInfo);
-                    logBuffer.appendMany(tmpLogBuffer[logId], blobInfo.length);
+                    char * tmpLog = tmpLogBuffer[i];
+                    // change the log id in the log header
+                    *((unsigned long long*)(tmpLog + 10)) = i - currentDeletedLogs;
+                    // append the log to the log buffer
+                    logBuffer.appendMany(tmpLog, blobInfo.length);
                 }
-                lastedProcessedLogId = logId;
             }
             // Reset the tmp buffer
             blobInfoTmp.clear();
@@ -645,6 +648,7 @@ public:
         logId = 0;
         lastUpdatedTick = 0;
         tickBegin = _tickBegin;
+        currentTickStartLogId = 0;
         tx.cleanCurrentTickTxToId();
 #if LOG_STATE_DIGEST
         XKCP::KangarooTwelve_Initialize(&k12, 128, 32);

@@ -236,7 +236,7 @@ static long long energy(const int index)
 }
 
 // Increase balance of entity.
-static void increaseEnergy(const m256i& publicKey, long long amount)
+static void increaseEnergy(const m256i& publicKey, long long amount, bool isGenerateLog = true)
 {
     if (!isZero(publicKey) && amount >= 0)
     {
@@ -250,7 +250,10 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
             // Update anti-dust burn thresholds (and log spectrum stats before burning)
             updateAndAnalzeEntityCategoryPopulations();
 #if LOG_SPECTRUM
-            logSpectrumStats();
+            if (isGenerateLog)
+            {
+                logSpectrumStats();
+            }
 #endif
 #if LOG_SPECTRUM
             DustBurnLogger dbl;
@@ -266,7 +269,10 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                     {
                         spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
 #if LOG_SPECTRUM
-                        dbl.addDustBurn(spectrum[i].publicKey, balance);
+                        if (isGenerateLog)
+                        {
+                            dbl.addDustBurn(spectrum[i].publicKey, balance);
+                        }
 #endif
                     }
                 }
@@ -285,7 +291,10 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                         {
                             spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
 #if LOG_SPECTRUM
-                            dbl.addDustBurn(spectrum[i].publicKey, balance);
+                            if (isGenerateLog)
+                            {
+                                dbl.addDustBurn(spectrum[i].publicKey, balance);
+                            }
 #endif
                         }
                     }
@@ -294,7 +303,10 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
 
 #if LOG_SPECTRUM
             // Finished dust burning (pass message to log)
-            dbl.finished();
+            if (isGenerateLog)
+            {
+                dbl.finished();
+            }
 #endif
 
             // Remove entries with balance zero from hash map
@@ -302,8 +314,11 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
 
 #if LOG_SPECTRUM
             // Log spectrum stats after burning (before increasing energy / potenitally creating entity)
-            updateAndAnalzeEntityCategoryPopulations();
-            logSpectrumStats();
+            if (isGenerateLog)
+            {
+                updateAndAnalzeEntityCategoryPopulations();
+                logSpectrumStats();
+            }
 #endif
         }
 
@@ -329,12 +344,15 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                 spectrumInfo.totalAmount += amount;
 
 #if LOG_SPECTRUM
-                if ((spectrumInfo.numberOfEntities & 0x7ffff) == 1)
+                if (isGenerateLog)
                 {
-                    // Log spectrum stats when the number of entities hits the next half million
-                    // (== 1 is to avoid duplicate when anti-dust is triggered)
-                    updateAndAnalzeEntityCategoryPopulations();
-                    logSpectrumStats();
+                    if ((spectrumInfo.numberOfEntities & 0x7ffff) == 1)
+                    {
+                        // Log spectrum stats when the number of entities hits the next half million
+                        // (== 1 is to avoid duplicate when anti-dust is triggered)
+                        updateAndAnalzeEntityCategoryPopulations();
+                        logSpectrumStats();
+                    }
                 }
 #endif
             }
