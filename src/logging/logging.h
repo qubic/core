@@ -277,6 +277,7 @@ private:
     inline static std::map<unsigned long long, BlobInfo> blobInfoTmp;
     inline static std::map<unsigned long long, char*> tmpLogBuffer;
     inline static std::map<unsigned long long, unsigned long long> tmpLogSize;
+    inline static std::map<unsigned long long, unsigned int> logIdToTxIdMap;
 
 #if LOG_STATE_DIGEST
     // Digests of log data:
@@ -515,7 +516,8 @@ public:
             if (offsetTick < MAX_NUMBER_OF_TICKS_PER_EPOCH && currentTxId < LOG_TX_PER_TICK)
             {
                 auto& startIndex = currentTickTxToId.fromLogId[currentTxId];
-                auto& length = currentTickTxToId.length[currentTxId];
+                auto& length = currentTickTxToId.length[currentTxId];\
+                logIdToTxIdMap[logId] = currentTxId;
                 if (startIndex == -1)
                 {
                     startIndex = logId;
@@ -542,6 +544,9 @@ public:
 
                     // Remove the BlobInfo of this logId
                     blobInfoTmp.erase(startIndex + 1);
+                } else
+                {
+                    logToConsole(L"Warning: cannot remove return deposit log of solution transaction, invalid length");
                 }
             }
         }
@@ -581,6 +586,9 @@ public:
                     *((unsigned long long*)(tmpLog + 10)) = i - currentDeletedLogs;
                     // append the log to the log buffer
                     logBuffer.appendMany(tmpLog, blobInfo.length);
+                    // adjust the txInfoBlob
+                    unsigned int txId = logIdToTxIdMap[i];
+                    currentTickTxToId.fromLogId[txId] -= currentDeletedLogs;
                 }
             }
             // Reset the tmp buffer
@@ -591,6 +599,7 @@ public:
             }
             tmpLogBuffer.clear();
             tmpLogSize.clear();
+            logIdToTxIdMap.clear();
             // Adjust the logId and logBufferTail
             logId -= currentDeletedLogs;
             logBufferTail -= totalBytesOfLogsDeleted;
