@@ -23,6 +23,8 @@
 #include <sys/mman.h>
 #include <cstddef>
 #include <mutex>
+#include <condition_variable>
+#include <queue>
 #endif
 
 #define ACQUIRE_NO_SPINNING(lock) while (_InterlockedCompareExchange8(&lock, 1, 0)) std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -250,12 +252,37 @@ enum class ConnectStatus
     Error
 };
 
+template <typename T>
+class EventQueue {
+public:
+    void push(const T& value) {
+        {
+            std::unique_lock<std::mutex> lock(mtx_);
+            q_.push(value);
+        }
+        cv_.notify_one(); // event triggered here
+    }
+
+    T pop() {
+        std::unique_lock<std::mutex> lock(mtx_);
+        cv_.wait(lock, [&] { return !q_.empty(); }); // wait for event
+        T val = q_.front();
+        q_.pop();
+        return val;
+    }
+
+private:
+    std::queue<T> q_;
+    std::mutex mtx_;
+    std::condition_variable cv_;
+};
+
 struct Overload {
 
     struct TcpData {
         EFI_TCP4_CONFIG_DATA configData;
         SOCKET socket;
-        bool isGlobal;
+        bool isOutgoing;
         volatile char receiveLock;
         volatile char sendLock;
         ConnectStatus connectStatus;
@@ -267,12 +294,26 @@ struct Overload {
         void* notifyFunction;
     };
 
+    struct TransmitRequest
+    {
+        SOCKET socket;
+        EFI_TCP4_IO_TOKEN *token;
+    };
+
+    struct ReceiveRequest
+    {
+        SOCKET socket;
+        EFI_TCP4_IO_TOKEN *token;
+    };
+
     inline static std::vector<std::thread> threads;
     inline static std::map<unsigned long long, SOCKET> incomingSocketMap;
     inline static std::map<unsigned long long, TcpData> tcpDataMap;
     inline static std::map<unsigned long long, EventData> eventDataMap;
     inline static std::map<unsigned long long, bool> isReceiveThreadSetupMap;
     inline static std::map<unsigned long long, bool> isSendThreadSetupMap;
+    inline static EventQueue<TransmitRequest> transmitQueue;
+    inline static EventQueue<ReceiveRequest> receiveQueue;
 
     // Directly call the setup function without using custom stack.
     static void startThread(EFI_AP_PROCEDURE procedure, void* data, unsigned long long ProcessorNumber, EFI_EVENT WaitEvent, unsigned long long TimeoutInMicroseconds) {
@@ -653,115 +694,13 @@ struct Overload {
         }
 
         RELEASE(tcpData->sendLock);
-        if (!isSendThreadSetupMap[key])
-        {
-            std::thread sendThread([key, tcpData, Token]()
-            {
-#ifdef _MSC_VER
-                WSAPOLLFD fds{};
-                fds.fd = tcpData->socket;
-                fds.events = POLLOUT;
-#else
-                pollfd fds{};
-                fds.fd = tcpData->socket;
-                fds.events = POLLOUT;
-#endif
-                while (true)
-                {
-                    // Ensure the data sent is processed in main thread
-                    ACQUIRE_NO_SPINNING(tcpData->sendLock);
-// #ifdef _MSC_VER
-// 					int ret = WSAPoll(&fds, 1, -1);
-// #else
-//                     int ret = poll(&fds, 1, -1);
-// #endif
-//                     if (ret <= 0) {
-//                         tcpData->connectStatus = ConnectStatus::Error;
-//                         Token->CompletionToken.Status = -1;
-//                         break;
-//                     }
-
-                    if (true)
-                    {
-                        unsigned int totalSentBytes = 0;
-                        const auto& fragment = Token->Packet.TxData->FragmentTable[0];
-                        while (totalSentBytes < fragment.FragmentLength)
-                        {
-                            auto n = send(tcpData->socket, (const char*)fragment.FragmentBuffer + totalSentBytes, fragment.FragmentLength - totalSentBytes, MSG_DONTWAIT | MSG_NOSIGNAL);
-                            if (n > 0)
-                            {
-                                totalSentBytes += n;
-                            }
-                            else if (n == 0)
-                            {
-                                // connection closed
-                                tcpData->connectStatus = ConnectStatus::Disconnected;
-                                Token->CompletionToken.Status = -1;
-                                break;
-                            }
-                            else if (n == SOCKET_ERROR)
-                            {
-                                if (errno == EWOULDBLOCK || errno == EAGAIN)
-                                {
-#ifdef _MSC_VER
-         //                            WSAPOLLFD fds{};
-         //                            fds.fd = tcpData->socket;
-									// fds.events = POLLOUT;
-         //                            int pres = WSAPoll(&fds, 1, -1);
-									// if (pres <= 0) {
-									// 	tcpData->connectStatus = ConnectStatus::Error;
-									// 	Token->CompletionToken.Status = -1;
-									// 	break;
-									// }
-#else
-                                    // pollfd pfd;
-                                    // pfd.fd = tcpData->socket;
-                                    // pfd.events = POLLOUT;
-                                    // int pres = poll(&pfd, 1, -1);
-                                    // if (pres <= 0) {
-                                    //     tcpData->connectStatus = ConnectStatus::Error;
-                                    //     Token->CompletionToken.Status = -1;
-                                    //     break;
-                                    // }
-#endif
-                                    continue;
-                                }
-                                else
-                                {
-                                    tcpData->connectStatus = ConnectStatus::Error;
-                                    Token->CompletionToken.Status = -1;
-                                    break;
-                                }
-                            }
-                        }
-                        if (totalSentBytes >= fragment.FragmentLength)
-                        {
-                            Token->CompletionToken.Status = EFI_SUCCESS;
-                        }
-
-                        if (Token->CompletionToken.Status != EFI_SUCCESS)
-                        {
-                            tcpData->connectStatus = ConnectStatus::Disconnected;
-                            break;
-                        }
-                    } 
-                    else if (fds.revents & (POLLHUP | POLLERR | POLLNVAL))
-                    {
-                        tcpData->connectStatus = ConnectStatus::Disconnected;
-                        Token->CompletionToken.Status = -1;
-                        break;
-                    }
-                }
-                RELEASE(tcpData->sendLock);
-            });
-            isSendThreadSetupMap[key] = true;
-            sendThread.detach();
-        }
 
         if (tcpData->connectStatus == ConnectStatus::Disconnected || tcpData->connectStatus == ConnectStatus::Error) {
-            Token->CompletionToken.Status = -1;
+            Token->CompletionToken.Status = EFI_ABORTED;
             return EFI_ABORTED;
         }
+
+        transmitQueue.push({ tcpData->socket, Token});
 
         return EFI_SUCCESS;
     }
@@ -782,75 +721,6 @@ struct Overload {
             return EFI_ABORTED;
         }
 
-        // If call Receive, mean we have processed the previous data, so we can unlock the receive lock
-        RELEASE(tcpData->receiveLock);
-        if (!isReceiveThreadSetupMap[key])
-        {
-            std::thread receiveThread([key, tcpData, Token]()
-            {
-#ifdef _MSC_VER
-                WSAPOLLFD fds{};
-                fds.fd = tcpData->socket;
-                fds.events = POLLIN;
-#else
-                pollfd fds{};
-                fds.fd = tcpData->socket;
-                fds.events = POLLIN;
-#endif
-
-                char* buffer = new char[BUFFER_SIZE];
-                while (true)
-                {
-                    // Ensure the data received is processed in main thread
-                    ACQUIRE_NO_SPINNING(tcpData->receiveLock);
-#ifdef _MSC_VER
-					int ret = WSAPoll(&fds, 1, -1);
-#else
-                    int ret = poll(&fds, 1, -1);
-#endif
-                    if (ret <= 0) {
-                        tcpData->connectStatus = ConnectStatus::Error;
-                        Token->CompletionToken.Status = EFI_ABORTED;
-                        break;
-                    }
-
-                    if (fds.revents & POLLIN)
-                    {
-                        auto n = recv(tcpData->socket, buffer, BUFFER_SIZE, MSG_DONTWAIT);
-                        if (n > 0)
-                        {
-                            memcpy((char *)Token->Packet.RxData->FragmentTable[0].FragmentBuffer, buffer, n);
-                            Token->Packet.RxData->DataLength = n;
-                            Token->CompletionToken.Status = EFI_SUCCESS;
-                        }
-                        else if (n == 0)
-                        {
-                            tcpData->connectStatus = ConnectStatus::Disconnected;
-                            Token->CompletionToken.Status = EFI_ABORTED;
-                            break;
-                        }
-                        else
-                        {
-                            tcpData->connectStatus = ConnectStatus::Error;
-                            Token->CompletionToken.Status = EFI_ABORTED;
-                            break;
-                        }
-                    }
-                    else if (fds.revents & (POLLHUP | POLLERR))
-                    {
-                        tcpData->connectStatus = ConnectStatus::Disconnected;
-                        Token->CompletionToken.Status = EFI_ABORTED;
-                        break;
-                    }
-                }
-
-                delete[] buffer;
-                RELEASE(tcpData->receiveLock);
-            });
-            receiveThread.detach();
-            isReceiveThreadSetupMap[key] = true;
-        }
-
         if (tcpData->connectStatus == ConnectStatus::Disconnected) {
             Token->CompletionToken.Status = EFI_ABORTED;
             return EFI_CONNECTION_FIN;
@@ -858,6 +728,8 @@ struct Overload {
             Token->CompletionToken.Status = EFI_ABORTED;
             return EFI_ABORTED;
         }
+
+        receiveQueue.push({ tcpData->socket, Token});
 
         return EFI_SUCCESS;
     }
@@ -887,6 +759,7 @@ struct Overload {
 				    int ret = poll(&pfd, 1, 0);
 				    if (ret > 0 && (pfd.revents & (POLLERR | POLLHUP))) {
 				        *Tcp4State = Tcp4StateClosed;
+				        tcpData.connectStatus = ConnectStatus::Error;
 				    } else
 				    {
 				        *Tcp4State = Tcp4StateEstablished;
@@ -922,7 +795,7 @@ struct Overload {
 
         TcpData data;
         data.configData = *TcpConfigData;
-        data.isGlobal = *((unsigned int*)TcpConfigData->AccessPoint.RemoteAddress.Addr) == 0;
+        data.isOutgoing = *((unsigned int*)TcpConfigData->AccessPoint.RemoteAddress.Addr) == 0;
         data.socket = INVALID_SOCKET;
         data.receiveLock = 0;
         data.sendLock = 0;
@@ -1076,6 +949,81 @@ struct Overload {
         return EFI_SUCCESS;
     }
 
+    static void transmitProcessor()
+    {
+        while (true)
+        {
+            TransmitRequest request = transmitQueue.pop();
+            int totalSentBytes = 0;
+            auto& fragment = request.token->Packet.TxData->FragmentTable[0];
+            while (totalSentBytes < fragment.FragmentLength)
+            {
+                auto n = send(request.socket, (const char*)fragment.FragmentBuffer + totalSentBytes, fragment.FragmentLength - totalSentBytes, MSG_DONTWAIT | MSG_NOSIGNAL);
+                if (n > 0)
+                {
+                    totalSentBytes += n;
+                } else if (n == 0)
+                {
+                    // connection closed
+                    request.token->CompletionToken.Status = EFI_ABORTED;
+                    break;
+                }
+                else if (n == SOCKET_ERROR)
+                {
+                    if (errno == EWOULDBLOCK || errno == EAGAIN)
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                        continue;
+                    }
+                    else
+                    {
+                        logToConsole(L"Closed a transmit socket");
+                        request.token->CompletionToken.Status = EFI_ABORTED;
+                        break;
+                    }
+                }
+            }
+
+            if (totalSentBytes >= fragment.FragmentLength)
+            {
+                request.token->CompletionToken.Status = EFI_SUCCESS;
+            }
+        }
+    }
+
+    static void receiveProcessor()
+    {
+        while (true)
+        {
+            ReceiveRequest request = receiveQueue.pop();
+            //printf("Going to receve for socket %d \n", request.socket);
+            auto n = recv(request.socket, (char *)request.token->Packet.RxData->FragmentTable[0].FragmentBuffer, BUFFER_SIZE, MSG_DONTWAIT);
+            if (n > 0)
+            {
+                //printf("Received %u bytes \n", n);
+                request.token->Packet.RxData->DataLength = n;
+                request.token->CompletionToken.Status = EFI_SUCCESS;
+            }
+            else if (n == 0)
+            {
+                request.token->CompletionToken.Status = EFI_ABORTED;
+            }
+            else if (n == SOCKET_ERROR)
+            {
+                if (errno == EWOULDBLOCK || errno == EAGAIN)
+                {
+                    request.token->Packet.RxData->DataLength = 0;
+                    request.token->CompletionToken.Status = EFI_SUCCESS;
+                    continue;
+                }
+                else
+                {
+                    request.token->CompletionToken.Status = EFI_ABORTED;
+                }
+            }
+        }
+    }
+
     static void initializeUefi() {
         #ifndef _MSC_VER
         setNonBlockingInput(true);
@@ -1118,6 +1066,12 @@ struct Overload {
         ///// SystemTable Implementation /////
         st->ConOut->ClearScreen = Overload::ClearScreen;
         st->ConIn->ReadKeyStroke = Overload::ReadKeyStroke;
+
+        // Open transmit and receive processor threads
+        std::thread transmitProcessorThread(transmitProcessor);
+        transmitProcessorThread.detach();
+        std::thread receiveProcessorThread(receiveProcessor);
+        receiveProcessorThread.detach();
     }
 };
 
