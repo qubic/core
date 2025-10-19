@@ -767,7 +767,6 @@ struct Overload {
 				    int ret = poll(&pfd, 1, 0);
 #endif
                     if (ret > 0 && (pfd.revents & (POLLERR | POLLHUP))) {
-						logToConsole(L"Socket error detected in GetModeData");
                         *Tcp4State = Tcp4StateClosed;
                         tcpData.connectStatus = ConnectStatus::Error;
                     }
@@ -967,8 +966,17 @@ struct Overload {
             TransmitRequest request = transmitQueue.pop();
             int totalSentBytes = 0;
             auto& fragment = request.token->Packet.TxData->FragmentTable[0];
+            auto startTime = std::chrono::high_resolution_clock::now();
+            auto endTime = std::chrono::high_resolution_clock::now();
+            unsigned long long totalNanoseconds = 0;
             while ((unsigned int)totalSentBytes < fragment.FragmentLength)
             {
+                endTime = std::chrono::high_resolution_clock::now();
+                totalNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count();
+                if (totalNanoseconds > 1'000'000'000) { // 1 seconds timeout
+                    request.token->CompletionToken.Status = EFI_TIMEOUT;
+                    break;
+                }
                 auto n = send(request.socket, (const char*)fragment.FragmentBuffer + totalSentBytes, fragment.FragmentLength - totalSentBytes, MSG_DONTWAIT | MSG_NOSIGNAL);
                 if (n > 0)
                 {
