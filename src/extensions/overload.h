@@ -687,7 +687,7 @@ struct Overload {
                         const auto& fragment = Token->Packet.TxData->FragmentTable[0];
                         while (totalSentBytes < fragment.FragmentLength)
                         {
-                            auto n = send(tcpData->socket, (const char*)fragment.FragmentBuffer + totalSentBytes, fragment.FragmentLength - totalSentBytes, 0);
+                            auto n = send(tcpData->socket, (const char*)fragment.FragmentBuffer + totalSentBytes, fragment.FragmentLength - totalSentBytes, MSG_DONTWAIT | MSG_NOSIGNAL);
                             if (n > 0)
                             {
                                 totalSentBytes += n;
@@ -704,25 +704,25 @@ struct Overload {
                                 if (errno == EWOULDBLOCK || errno == EAGAIN)
                                 {
 #ifdef _MSC_VER
-                                    WSAPOLLFD fds{};
-                                    fds.fd = tcpData->socket;
-									fds.events = POLLOUT;
-                                    int pres = WSAPoll(&fds, 1, -1);
-									if (pres <= 0) {
-										tcpData->connectStatus = ConnectStatus::Error;
-										Token->CompletionToken.Status = -1;
-										break;
-									}
+         //                            WSAPOLLFD fds{};
+         //                            fds.fd = tcpData->socket;
+									// fds.events = POLLOUT;
+         //                            int pres = WSAPoll(&fds, 1, -1);
+									// if (pres <= 0) {
+									// 	tcpData->connectStatus = ConnectStatus::Error;
+									// 	Token->CompletionToken.Status = -1;
+									// 	break;
+									// }
 #else
-                                    pollfd pfd;
-                                    pfd.fd = tcpData->socket;
-                                    pfd.events = POLLOUT;
-                                    int pres = poll(&pfd, 1, -1);
-                                    if (pres <= 0) {
-                                        tcpData->connectStatus = ConnectStatus::Error;
-                                        Token->CompletionToken.Status = -1;
-                                        break;
-                                    }
+                                    // pollfd pfd;
+                                    // pfd.fd = tcpData->socket;
+                                    // pfd.events = POLLOUT;
+                                    // int pres = poll(&pfd, 1, -1);
+                                    // if (pres <= 0) {
+                                    //     tcpData->connectStatus = ConnectStatus::Error;
+                                    //     Token->CompletionToken.Status = -1;
+                                    //     break;
+                                    // }
 #endif
                                     continue;
                                 }
