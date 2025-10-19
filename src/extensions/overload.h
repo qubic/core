@@ -3,11 +3,14 @@
 ////////////////// Extensions \\\\\\\\\\\\
 
 #if defined(_WIN32)
+#include <condition_variable>
+#include <queue>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <Windows.h>
 #include <conio.h>
 #define MSG_DONTWAIT 0
+#define MSG_NOSIGNAL 0
 #elif defined(__linux__)
 #include <sched.h>
 #include <unistd.h>
@@ -752,18 +755,26 @@ struct Overload {
 					*Tcp4State = Tcp4StateClosed;
 				}
 				else {
+#ifdef _MSC_VER
+                    WSAPOLLFD pfd{};
+                    pfd.fd = tcpData.socket;
+                    pfd.events = POLLIN | POLLERR | POLLHUP;
+                    int ret = WSAPoll(&pfd, 1, 0);
+#else
 				    pollfd pfd{};
 				    pfd.fd = tcpData.socket;
 				    pfd.events = POLLIN | POLLERR | POLLHUP;
-
 				    int ret = poll(&pfd, 1, 0);
-				    if (ret > 0 && (pfd.revents & (POLLERR | POLLHUP))) {
-				        *Tcp4State = Tcp4StateClosed;
-				        tcpData.connectStatus = ConnectStatus::Error;
-				    } else
-				    {
-				        *Tcp4State = Tcp4StateEstablished;
-				    }
+#endif
+                    if (ret > 0 && (pfd.revents & (POLLERR | POLLHUP))) {
+						logToConsole(L"Socket error detected in GetModeData");
+                        *Tcp4State = Tcp4StateClosed;
+                        tcpData.connectStatus = ConnectStatus::Error;
+                    }
+                    else
+                    {
+                        *Tcp4State = Tcp4StateEstablished;
+                    }
 				}
 			}
 			else {
@@ -956,7 +967,7 @@ struct Overload {
             TransmitRequest request = transmitQueue.pop();
             int totalSentBytes = 0;
             auto& fragment = request.token->Packet.TxData->FragmentTable[0];
-            while (totalSentBytes < fragment.FragmentLength)
+            while ((unsigned int)totalSentBytes < fragment.FragmentLength)
             {
                 auto n = send(request.socket, (const char*)fragment.FragmentBuffer + totalSentBytes, fragment.FragmentLength - totalSentBytes, MSG_DONTWAIT | MSG_NOSIGNAL);
                 if (n > 0)
@@ -970,6 +981,20 @@ struct Overload {
                 }
                 else if (n == SOCKET_ERROR)
                 {
+#ifdef _MSC_VER
+					int err = WSAGetLastError();
+                    if (err == WSAEWOULDBLOCK)
+                    {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                        continue;
+                    }
+                    else
+                    {
+                        logToConsole(L"Closed a transmit socket");
+                        request.token->CompletionToken.Status = EFI_ABORTED;
+                        break;
+                    }
+#else
                     if (errno == EWOULDBLOCK || errno == EAGAIN)
                     {
                         std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -981,10 +1006,11 @@ struct Overload {
                         request.token->CompletionToken.Status = EFI_ABORTED;
                         break;
                     }
+#endif
                 }
             }
 
-            if (totalSentBytes >= fragment.FragmentLength)
+            if ((unsigned int)totalSentBytes >= fragment.FragmentLength)
             {
                 request.token->CompletionToken.Status = EFI_SUCCESS;
             }
@@ -996,11 +1022,9 @@ struct Overload {
         while (true)
         {
             ReceiveRequest request = receiveQueue.pop();
-            //printf("Going to receve for socket %d \n", request.socket);
             auto n = recv(request.socket, (char *)request.token->Packet.RxData->FragmentTable[0].FragmentBuffer, BUFFER_SIZE, MSG_DONTWAIT);
             if (n > 0)
             {
-                //printf("Received %u bytes \n", n);
                 request.token->Packet.RxData->DataLength = n;
                 request.token->CompletionToken.Status = EFI_SUCCESS;
             }
@@ -1010,6 +1034,19 @@ struct Overload {
             }
             else if (n == SOCKET_ERROR)
             {
+#ifdef _MSC_VER
+				int err = WSAGetLastError();
+				if (err == WSAEWOULDBLOCK)
+				{
+					request.token->Packet.RxData->DataLength = 0;
+					request.token->CompletionToken.Status = EFI_SUCCESS;
+					continue;
+				}
+				else
+				{
+					request.token->CompletionToken.Status = EFI_ABORTED;
+				}
+#else
                 if (errno == EWOULDBLOCK || errno == EAGAIN)
                 {
                     request.token->Packet.RxData->DataLength = 0;
@@ -1020,6 +1057,7 @@ struct Overload {
                 {
                     request.token->CompletionToken.Status = EFI_ABORTED;
                 }
+#endif
             }
         }
     }
