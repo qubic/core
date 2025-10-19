@@ -670,18 +670,18 @@ struct Overload {
                 {
                     // Ensure the data sent is processed in main thread
                     ACQUIRE_NO_SPINNING(tcpData->sendLock);
-#ifdef _MSC_VER
-					int ret = WSAPoll(&fds, 1, -1);
-#else
-                    int ret = poll(&fds, 1, -1);
-#endif
-                    if (ret <= 0) {
-                        tcpData->connectStatus = ConnectStatus::Error;
-                        Token->CompletionToken.Status = -1;
-                        break;
-                    }
+// #ifdef _MSC_VER
+// 					int ret = WSAPoll(&fds, 1, -1);
+// #else
+//                     int ret = poll(&fds, 1, -1);
+// #endif
+//                     if (ret <= 0) {
+//                         tcpData->connectStatus = ConnectStatus::Error;
+//                         Token->CompletionToken.Status = -1;
+//                         break;
+//                     }
 
-                    if (fds.revents & POLLOUT)
+                    if (true)
                     {
                         unsigned int totalSentBytes = 0;
                         const auto& fragment = Token->Packet.TxData->FragmentTable[0];
@@ -759,7 +759,7 @@ struct Overload {
         }
 
         if (tcpData->connectStatus == ConnectStatus::Disconnected || tcpData->connectStatus == ConnectStatus::Error) {
-            Token->CompletionToken.Status = EFI_ABORTED;
+            Token->CompletionToken.Status = -1;
             return EFI_ABORTED;
         }
 
@@ -880,7 +880,17 @@ struct Overload {
 					*Tcp4State = Tcp4StateClosed;
 				}
 				else {
-					*Tcp4State = Tcp4StateEstablished;
+				    pollfd pfd{};
+				    pfd.fd = tcpData.socket;
+				    pfd.events = POLLIN | POLLERR | POLLHUP;
+
+				    int ret = poll(&pfd, 1, 0);
+				    if (ret > 0 && (pfd.revents & (POLLERR | POLLHUP))) {
+				        *Tcp4State = Tcp4StateClosed;
+				    } else
+				    {
+				        *Tcp4State = Tcp4StateEstablished;
+				    }
 				}
 			}
 			else {
