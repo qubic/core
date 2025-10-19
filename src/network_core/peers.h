@@ -915,7 +915,7 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
         PROFILE_SCOPE();
-        peers[i].tcp4Protocol->Poll(peers[i].tcp4Protocol);
+        //peers[i].tcp4Protocol->Poll(peers[i].tcp4Protocol);
         processReceivedData(i, salt);
         receiveData(i, salt);
         processTransmittedData(i, salt);
