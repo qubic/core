@@ -1451,14 +1451,17 @@ protected:
 			}
 		}
 
+		state.numberOfVotedInProposal.setAll(0);
 		state.quRaffleEntryAmount.reset();
 		state.shareholdersList.reset();
+		state.voteStatus.reset();
 		state.numberOfEntryAmountSubmitted = 0;
 		state.numberOfProposals = 0;
 		state.numberOfQuRaffleMembers = 0;
 		state.registers.cleanupIfNeeded();
 		state.shareholdersList.cleanupIfNeeded();
 		state.quRaffleEntryAmount.cleanupIfNeeded();
+		state.voteStatus.cleanupIfNeeded();
 	}
 
 	PRE_ACQUIRE_SHARES()
