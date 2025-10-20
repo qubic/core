@@ -274,6 +274,10 @@ private:
     inline static VirtualMemory<TickBlobInfo, TEXT_IMAP_AS_NUMBER, TEXT_LOGS_AS_NUMBER, IMAP_LOG_PAGE_SIZE, VM_NUM_CACHE_PAGE> mapTxToLogId;
     inline static TickBlobInfo currentTickTxToId;
     inline static char responseBuffers[MAX_NUMBER_OF_PROCESSORS][RequestResponseHeader::max_size];
+    inline static std::map<unsigned long long, BlobInfo> blobInfoTmp;
+    inline static std::map<unsigned long long, char*> tmpLogBuffer;
+    inline static std::map<unsigned long long, unsigned long long> tmpLogSize;
+    inline static std::map<unsigned long long, unsigned int> logIdToTxIdMap;
 
 #if LOG_STATE_DIGEST
     // Digests of log data:
@@ -289,6 +293,7 @@ private:
     inline static unsigned int lastUpdatedTick; // tick number that the system has generated all log
     inline static unsigned int currentTxId;
     inline static unsigned int currentTick;
+    inline static unsigned long long currentTickStartLogId;
 
     static unsigned long long getLogId(const char* ptr)
     {
@@ -338,22 +343,21 @@ private:
         tx.addLogId();
         logBuf.set(logId, logBufferTail, LOG_HEADER_SIZE + messageSize);
         *((unsigned short*)(buffer)) = system.epoch;
-        //copyMem(buffer, (char*)&system.epoch, 2);
         *((unsigned int*)(buffer + 2)) = system.tick;
-        //copyMem(buffer + 2, (char*)&system.tick, 4);
         *((unsigned int*)(buffer + 6)) = messageSize | (messageType << 24);
-        unsigned int sizeAndType = messageSize | (messageType << 24);
-        //copyMem(buffer + 6, (char*)&sizeAndType, 4);
         *((unsigned long long*)(buffer + 10)) = logId++;
-        //copyMem(buffer + 10, (char*)&logId, 8);
-        //logId++;
         unsigned long long logDigest = 0;
         KangarooTwelve(message, messageSize, &logDigest, 8);
         *((unsigned long long*)(buffer + 18)) = logDigest;
-        //copyMem(buffer + 18, (char*)&logDigest, 8);
         logBufferTail += LOG_HEADER_SIZE + messageSize;
-        logBuffer.appendMany(buffer, LOG_HEADER_SIZE);
-        logBuffer.appendMany((char*)message, messageSize);
+        // logBuffer.appendMany(buffer, LOG_HEADER_SIZE);
+        // logBuffer.appendMany((char*)message, messageSize);
+        char* tmpLog = new char[LOG_HEADER_SIZE + messageSize];
+        setMem(tmpLog, LOG_HEADER_SIZE + messageSize, 0);
+        copyMem(tmpLog, buffer, LOG_HEADER_SIZE);
+        copyMem(tmpLog + LOG_HEADER_SIZE, (char*)message, messageSize);
+        tmpLogBuffer[logId - 1] = tmpLog;
+        tmpLogSize[logId - 1] = LOG_HEADER_SIZE + messageSize;
 #if LOG_STATE_DIGEST
         if (messageType == QU_TRANSFER || messageType == ASSET_ISSUANCE || messageType == ASSET_OWNERSHIP_CHANGE || messageType == ASSET_POSSESSION_CHANGE ||
             messageType == BURNING || messageType == DUST_BURNING || messageType == SPECTRUM_STATS || messageType == ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE ||
@@ -425,7 +429,8 @@ public:
             BlobInfo res;
             res.startIndex = index;
             res.length = length;
-            mapLogIdToBufferIndex.append(res);
+            //mapLogIdToBufferIndex.append(res);
+            blobInfoTmp[logId] = res;
         }
 
         static void get(char* dst, unsigned long long logId)
@@ -491,6 +496,11 @@ public:
 
         static void _registerNewTx(const unsigned int tick, const unsigned int txId)
         {
+            if (currentTick != tick)
+            {
+                currentTickStartLogId = logId;
+            }
+
             if (currentTick != tick || currentTxId != txId)
             {
                 currentTick = tick;
@@ -506,7 +516,8 @@ public:
             if (offsetTick < MAX_NUMBER_OF_TICKS_PER_EPOCH && currentTxId < LOG_TX_PER_TICK)
             {
                 auto& startIndex = currentTickTxToId.fromLogId[currentTxId];
-                auto& length = currentTickTxToId.length[currentTxId];
+                auto& length = currentTickTxToId.length[currentTxId];\
+                logIdToTxIdMap[logId] = currentTxId;
                 if (startIndex == -1)
                 {
                     startIndex = logId;
@@ -520,6 +531,26 @@ public:
             }
         }
 
+        static void removeReturnDepositLogOfSolutionTransaction(unsigned int txId)
+        {
+            if (txId < LOG_TX_PER_TICK)
+            {
+                auto& startIndex = currentTickTxToId.fromLogId[txId];
+                auto& length = currentTickTxToId.length[txId];
+                // Solution tx have max 2 logs, the last one is return deposit log. So if decrease length by 1, it will remove the return deposit log
+                if (startIndex != -1 && length == 2)
+                {
+                    length--;
+
+                    // Remove the BlobInfo of this logId
+                    blobInfoTmp.erase(startIndex + 1);
+                } else
+                {
+                    logToConsole(L"Warning: cannot remove return deposit log of solution transaction, invalid length");
+                }
+            }
+        }
+
         static void cleanCurrentTickTxToId()
         {
             for (int i = 0; i < LOG_TX_PER_TICK; i++)
@@ -529,8 +560,50 @@ public:
             }
         }
 
+        // Few conditions to make the logging working properly:
+        // 1. The deleted log id must be a log of invalid solution tx
         static void _commit()
         {
+            // commit the tmp blob info and logBuffer to the VM
+            unsigned long long currentDeletedLogs = 0;
+            unsigned long long totalBytesOfLogsDeleted = 0;
+            for (unsigned long long i = currentTickStartLogId; i < logId; i++)
+            {
+                auto it = blobInfoTmp.find(i);
+                if (it == blobInfoTmp.end())
+                {
+                    // this log id is deleted
+                    currentDeletedLogs++;
+                    unsigned long long deletedBytes = tmpLogSize[i];
+                    totalBytesOfLogsDeleted += deletedBytes;
+                } else
+                {
+                    BlobInfo& blobInfo = blobInfoTmp[i];
+                    blobInfo.startIndex -= totalBytesOfLogsDeleted;
+                    mapLogIdToBufferIndex.append(blobInfo);
+                    char * tmpLog = tmpLogBuffer[i];
+                    // change the log id in the log header
+                    *((unsigned long long*)(tmpLog + 10)) = i - currentDeletedLogs;
+                    // append the log to the log buffer
+                    logBuffer.appendMany(tmpLog, blobInfo.length);
+                    // adjust the txInfoBlob
+                    unsigned int txId = logIdToTxIdMap[i];
+                    currentTickTxToId.fromLogId[txId] -= currentDeletedLogs;
+                }
+            }
+            // Reset the tmp buffer
+            blobInfoTmp.clear();
+            for (auto& it : tmpLogBuffer)
+            {
+                delete[] it.second;
+            }
+            tmpLogBuffer.clear();
+            tmpLogSize.clear();
+            logIdToTxIdMap.clear();
+            // Adjust the logId and logBufferTail
+            logId -= currentDeletedLogs;
+            logBufferTail -= totalBytesOfLogsDeleted;
+
             mapTxToLogId.append(currentTickTxToId);
         }
 
@@ -584,6 +657,7 @@ public:
         logId = 0;
         lastUpdatedTick = 0;
         tickBegin = _tickBegin;
+        currentTickStartLogId = 0;
         tx.cleanCurrentTickTxToId();
 #if LOG_STATE_DIGEST
         XKCP::KangarooTwelve_Initialize(&k12, 128, 32);

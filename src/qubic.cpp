@@ -2519,7 +2519,7 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
     return transaction->amount > 0;
 }
 
-static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, const unsigned long long processorNumber, bool isRevalidation = false)
+static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, unsigned int transactionIndex, const unsigned long long processorNumber, bool isRevalidation = false)
 {
     PROFILE_SCOPE();
 
@@ -2563,9 +2563,11 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                 {
                     increaseEnergy(transaction->sourcePublicKey, transaction->amount);
 
-                    // TODO: how to revert this event when revalidation?
-                    const QuTransfer quTransfer = { m256i::zero(), transaction->sourcePublicKey, transaction->amount };
-                    logger.logQuTransfer(quTransfer);
+                    if (!isRevalidation)
+                    {
+                        const QuTransfer quTransfer = { m256i::zero(), transaction->sourcePublicKey, transaction->amount };
+                        logger.logQuTransfer(quTransfer);
+                    }
                 }
 
                 for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
@@ -2697,7 +2699,26 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                     system.futureComputors[i] = competitorPublicKeys[i - QUORUM];
                 }
             }
-        }        
+            else
+            {
+#if ENABLE_QUBIC_LOGGING_EVENT
+                if (isRevalidation)
+                {
+                    logger.tx.removeReturnDepositLogOfSolutionTransaction(transactionIndex);
+                }
+#endif
+
+            }
+        }
+        else
+        {
+#if ENABLE_QUBIC_LOGGING_EVENT
+            if (isRevalidation)
+            {
+                logger.tx.removeReturnDepositLogOfSolutionTransaction(transactionIndex);
+            }
+#endif
+        }
     }
     else
     {
@@ -2762,7 +2783,7 @@ static void processTickTransactionOracleReplyReveal(const OracleReplyRevealTrans
     // TODO
 }
 
-static void processTickTransaction(const Transaction* transaction, const unsigned long long txOffset, const m256i& transactionDigest, const m256i& dataLock, unsigned long long processorNumber)
+static void processTickTransaction(const Transaction* transaction, unsigned int transactionIndex, const unsigned long long txOffset, const m256i& transactionDigest, const m256i& dataLock, unsigned long long processorNumber)
 {
     PROFILE_SCOPE();
 
@@ -2842,7 +2863,7 @@ static void processTickTransaction(const Transaction* transaction, const unsigne
                     if (transaction->amount >= MiningSolutionTransaction::minAmount()
                         && transaction->inputSize >= MiningSolutionTransaction::minInputSize())
                     {
-                        processTickTransactionSolution((MiningSolutionTransaction*)transaction, processorNumber);
+                        processTickTransactionSolution((MiningSolutionTransaction*)transaction, transactionIndex, processorNumber);
                     }
                 }
                 break;
@@ -3153,7 +3174,7 @@ static void processTick(unsigned long long processorNumber)
                     // Store spectrum data for rollback if there is invalid solutions in the tick
                     auto sourceSpectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
                     spectrumDataRollback[transactionIndex] = spectrum[sourceSpectrumIndex];
-                    processTickTransaction(transaction, tsCurrentTickTransactionOffsets[transactionIndex], nextTickData.transactionDigests[transactionIndex], nextTickData.timelock, processorNumber);
+                    processTickTransaction(transaction, transactionIndex, tsCurrentTickTransactionOffsets[transactionIndex], nextTickData.transactionDigests[transactionIndex], nextTickData.timelock, processorNumber);
                 }
                 else
                 {
@@ -3531,7 +3552,9 @@ static void processTick(unsigned long long processorNumber)
     // Update entity category populations and dust thresholds each 8 ticks
     if ((system.tick & 7) == 0)
         updateAndAnalzeEntityCategoryPopulations();
-    logger.updateTick(system.tick);
+
+    // Will be updated later after have enough info in tickProcessor()
+    // logger.updateTick(system.tick);
 }
 
 OPTIMIZE_ON()
@@ -5049,7 +5072,7 @@ void reprocessSolutionTransaction(unsigned long long processorNumber)
                         RELEASE(spectrumLock);
 
                         // Then, process the transaction again
-                        processTickTransactionSolution((MiningSolutionTransaction*)transaction, processorNumber, true);
+                        processTickTransactionSolution((MiningSolutionTransaction*)transaction, transactionIndex, processorNumber, true);
                     }
                 }
             }
@@ -5550,6 +5573,7 @@ static void tickProcessor(void*, unsigned long long processorNumber)
                                     ts.tickData.releaseLock();
                                 }
 
+                                logger.updateTick(system.tick);
                                 system.tick++;
 
                                 updateNumberOfTickTransactions();
@@ -5958,7 +5982,7 @@ static bool initialize()
             // Give 676 computors money
             for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
             {
-                increaseEnergy(broadcastedComputors.computors.publicKeys[i], 10'000'000'000);
+                increaseEnergy(broadcastedComputors.computors.publicKeys[i], 10'000'000'000, false);
             }
 
             // Give custom seeds money
@@ -5970,7 +5994,7 @@ static bool initialize()
                 getSubseed(customSeeds[0], subseed.m256i_u8);
                 getPrivateKey(subseed.m256i_u8, privateKey.m256i_u8);
                 getPublicKey(privateKey.m256i_u8, publicKey.m256i_u8);
-                increaseEnergy(publicKey, 10'000'000'000);
+                increaseEnergy(publicKey, 10'000'000'000, false);
 
                 ASSERT(energy(::spectrumIndex(publicKey)) == 10'000'000'000);
             }
