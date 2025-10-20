@@ -41,12 +41,12 @@ void qLogger::processRequestLog(unsigned long long processorNumber, Peer* peer, 
             }
             else
             {
-                enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
+                enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
             }
         }
         else
         {
-            enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
+            enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
         }
         return;
     }
