@@ -1806,8 +1806,8 @@ public:
 
         // Initialize admins array (REPLACE WITH ACTUAL ADMIN ADDRESSES)
         state.admins.set(0, ID(_X, _A, _B, _E, _F, _A, _B, _I, _H, _W, _R, _W, _B, _A, _I, _J, _Q, _J, _P, _W, _T, _I, _I, _Q, _B, _U, _C, _B, _H, _B, _V, _W, _Y, _Y, _G, _F, _F, _J, _A, _D, _Q, _B, _K, _W, _F, _B, _O, _R, _R, _V, _X, _W, _S, _C, _V, _B)); // Admin 1
-        state.admins.set(1, ID(_E, _Q, _M, _B, _B, _V, _Y, _G, _Z, _O, _F, _U, _I, _H, _E, _X, _F, _O, _X, _K, _T, _F, _T, _A, _N, _E, _K, _B, _X, _L, _B, _X, _H, _A, _Y, _D, _F, _F, _M, _R, _E, _E, _M, _R, _Q, _E, _V, _A, _D, _Y, _M, _M, _E, _W, _A, _C, _T, _O, _D, _D)); // Admin 2 (Manager)
-        state.admins.set(2, ID(_H, _Y, _J, _X, _E, _Z, _S, _E, _C, _W, _S, _K, _O, _D, _J, _A, _L, _R, _C, _K, _S, _L, _K, _V, _Y, _U, _E, _B, _M, _A, _H, _D, _O, _D, _Y, _Z, _U, _J, _I, _I, _Y, _D, _P, _A, _G, _F, _K, _L, _M, _O, _T, _H, _T, _J, _X, _E, _B, _E, _W, _M)); // Admin 3 (User)
+        state.admins.set(1, ID(_E, _Q, _M, _B, _B, _V, _Y, _G, _Z, _O, _F, _U, _I, _H, _E, _X, _F, _O, _X, _K, _T, _F, _T, _A, _N, _E, _K, _B, _X, _L, _B, _X, _H, _A, _Y, _D, _F, _F, _M, _R, _E, _E, _M, _R, _Q, _E, _V, _A, _D, _Y, _M, _M, _E, _W, _A, _C)); // Admin 2 (Manager)
+        state.admins.set(2, ID(_H, _Y, _J, _X, _E, _Z, _S, _E, _C, _W, _S, _K, _O, _D, _J, _A, _L, _R, _C, _K, _S, _L, _K, _V, _Y, _U, _E, _B, _M, _A, _H, _D, _O, _D, _Y, _Z, _U, _J, _I, _I, _Y, _D, _P, _A, _G, _F, _K, _L, _M, _O, _T, _H, _T, _J, _X, _E)); // Admin 3 (User)
 
         // Initialize remaining admin slots
         for (locals.i = 3; locals.i < state.admins.capacity(); ++locals.i)
