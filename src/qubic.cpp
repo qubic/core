@@ -7637,13 +7637,8 @@ unsigned long long getTotalRam()
 {
     unsigned long long totalRam = 0;
 
-    // computorPendingTransactions buffer
-    totalRam += NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * MAX_TRANSACTION_SIZE;
-    totalRam += NUMBER_OF_COMPUTORS * MAX_NUMBER_OF_PENDING_TRANSACTIONS_PER_COMPUTOR * 32ULL;
-
-    // entityPendingTransctions buffer (almost nothing at current mainnet state)
-    // totalRam += SPECTRUM_CAPACITY * MAX_TRANSACTION_SIZE;
-    // totalRam += SPECTRUM_CAPACITY * 32ULL;
+    // tx mempool
+    totalRam += pendingTxsPool.getSize();
 
     // spectrum & spectrumDigests
     totalRam += spectrumSizeInBytes;

@@ -129,6 +129,11 @@ protected:
 
 public:
 
+    static unsigned long long getSize()
+    {
+        return tickTransactionsSize + txsDigestsSize + sizeof(numSavedTxsPerTick) + sizeof(Collection<unsigned int, txsPrioritiesCapacity>);
+    }
+
     // Init at node startup.
     static bool init()
     {

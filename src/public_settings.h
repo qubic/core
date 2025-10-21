@@ -34,6 +34,8 @@ inline unsigned int NUMBER_OF_SOLUTION_PROCESSORS_DYNAMIC = NUMBER_OF_SOLUTION_P
 #ifdef TESTNET
 #define TARGET_TICK_DURATION 7000
 #define TRANSACTION_SPARSENESS 1
+// Number of ticks that are stored in the pending txs pool. This also defines how many ticks in advance a tx can be registered.
+#define PENDING_TXS_POOL_NUM_TICKS (32ULL) // 10 minutes
 #else
 // The tick duration used for timing and scheduling logic.
 #define TARGET_TICK_DURATION 1000
