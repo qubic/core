@@ -579,7 +579,7 @@ public:
         }
 
         // Rebuild the transaction digest hashmap
-        for (auto i = metaData.tickBegin; i < metaData.tickEnd; i++)
+        for (auto i = metaData.tickBegin; i < metaData.tickEnd && rebuildTxHashmap; i++)
         {
             TickData *tickData = TickDataAccess::getByTickIfNotEmpty(i);
             if (!tickData)

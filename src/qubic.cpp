@@ -7724,6 +7724,7 @@ void processArgs(int argc, const char* argv[]) {
         ("p,peers", "Public peers", cxxopts::value<std::string>())
         ("m,mode", "Core mode", cxxopts::value<std::string>())
         ("g,testnet-gbt", "Enable testnet go behind trick in aux node", cxxopts::value<bool>())
+        ("r,rebuild-tx-hashmap", "Enable rebuild tx hashmap when start from snapshot", cxxopts::value<bool>())
         ("t,threads", "Total Threads will be used by the core", cxxopts::value<int>())
         ("d,ticking-delay", "Delay ticking process by milliseconds", cxxopts::value<int>())
         ("l,solution-threads", "Threads that will be used by the core to process solution", cxxopts::value<int>())
@@ -7768,6 +7769,11 @@ void processArgs(int argc, const char* argv[]) {
     {
         isTestnetGoBehindTrick = true;
         logColorToScreen("INFO", "Using testnet go behind trick");
+    }
+
+    if (result.count("rebuild-tx-hashmap"))
+    {
+        rebuildTxHashmap = true;
     }
 
     if (result.count("mode")) {

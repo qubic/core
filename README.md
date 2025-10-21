@@ -36,7 +36,7 @@ To run a qubic **mainnet** node, you need the following spec:
 
 - High frequency CPU with AVX2/AVX512 support (recommend VCPU AMD 7950x @ 8theads)
 - 1Gb/s synchronous internet connection
-- **32GB** RAM.
+- **64GB** RAM.
 - **500GB** fast SSD disk.
 
 > **Initial files are needed** in this version (eg. spectrum, universe, contract,...)
