@@ -42,6 +42,8 @@ inline unsigned int NUMBER_OF_SOLUTION_PROCESSORS_DYNAMIC = NUMBER_OF_SOLUTION_P
 // This determines the memory footprint of the application.
 #define TICK_DURATION_FOR_ALLOCATION_MS 750
 #define TRANSACTION_SPARSENESS 1
+// Number of ticks that are stored in the pending txs pool. This also defines how many ticks in advance a tx can be registered.
+#define PENDING_TXS_POOL_NUM_TICKS (1000 * 60 * 10ULL / TICK_DURATION_FOR_ALLOCATION_MS) // 10 minutes
 #endif
 
 #ifdef TESTNET
@@ -78,12 +80,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 264
+#define VERSION_B 265
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 183
-#define TICK 34815000
+#define EPOCH 184
+#define TICK 35340000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
