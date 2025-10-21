@@ -2,6 +2,10 @@
 
 #include "gtest/gtest.h"
 
+#ifdef __linux__
+#include "platform/msvc_polyfill.h"
+#endif
+
 // workaround for name clash with stdlib
 #define system qubicSystemStruct
 

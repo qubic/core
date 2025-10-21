@@ -49,6 +49,7 @@ add_executable(
    		m256.cpp
    		math_lib.cpp
    		network_messages.cpp
+		pending_txs_pool.cpp
    		platform.cpp
    		qpi.cpp
    		qpi_collection.cpp
