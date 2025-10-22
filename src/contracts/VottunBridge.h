@@ -185,6 +185,11 @@ public:
         Array<BridgeOrder, 16> firstOrders; // First 16 orders
         uint64 totalOrdersFound;            // How many non-empty orders exist
         uint64 emptySlots;
+        // Multisig info
+        Array<id, 16> multisigAdmins;       // List of multisig admins
+        uint8 numberOfAdmins;               // Number of active admins
+        uint8 requiredApprovals;            // Required approvals threshold
+        uint64 totalProposals;              // Total number of active proposals
     };
 
     // Logger structures
@@ -1686,6 +1691,21 @@ public:
                 output.totalOrdersFound++;
             }
         }
+
+        // Multisig info
+        output.multisigAdmins = state.admins;
+        output.numberOfAdmins = state.numberOfAdmins;
+        output.requiredApprovals = state.requiredApprovals;
+
+        // Count active proposals
+        output.totalProposals = 0;
+        for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
+        {
+            if (state.proposals.get(locals.i).active && state.proposals.get(locals.i).proposalId > 0)
+            {
+                output.totalProposals++;
+            }
+        }
     }
 
     // Called at the end of every tick to distribute earned fees
@@ -1763,7 +1783,7 @@ public:
 
     INITIALIZE_WITH_LOCALS()
     {
-        state.admin = ID(_X, _A, _B, _E, _F, _A, _B, _I, _H, _W, _R, _W, _B, _A, _I, _J, _Q, _J, _P, _W, _T, _I, _I, _Q, _B, _U, _C, _B, _H, _B, _V, _W, _Y, _Y, _G, _F, _F, _J, _A, _D, _Q, _B, _K, _W, _F, _B, _O, _R, _R, _V, _X, _W, _S, _C, _V, _B);
+        //state.admin = ID(_X, _A, _B, _E, _F, _A, _B, _I, _H, _W, _R, _W, _B, _A, _I, _J, _Q, _J, _P, _W, _T, _I, _I, _Q, _B, _U, _C, _B, _H, _B, _V, _W, _Y, _Y, _G, _F, _F, _J, _A, _D, _Q, _B, _K, _W, _F, _B, _O, _R, _R, _V, _X, _W, _S, _C, _V, _B);
 
         //Initialize the wallet that receives fees (REPLACE WITH YOUR WALLET)
         // state.feeRecipient = ID(_YOUR, _WALLET, _HERE, _PLACEHOLDER, _UNTIL, _YOU, _PUT, _THE, _REAL, _WALLET, _ADDRESS, _FROM, _VOTTUN, _TO, _RECEIVE, _THE, _BRIDGE, _FEES, _BETWEEN, _QUBIC, _AND, _ETHEREUM, _WITH, _HALF, _PERCENT, _COMMISSION, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V);
