@@ -42,7 +42,7 @@ constexpr unsigned short INVALIDATED_TICK_DATA = 0xffff;
 // - ticks (one Tick struct per tick and Computor)
 // - tickTransactions (continuous buffer efficiently storing the variable-size transactions)
 // - tickTransactionOffsets (offsets of transactions in buffer, order in tickTransactions may differ)
-// - nextTickTransactionOffset (offset of next transition to be added)
+// - nextTickTransactionOffset (offset of next transaction to be added)
 class TickStorage
 {
 private:
@@ -579,7 +579,7 @@ public:
         }
 
         // Rebuild the transaction digest hashmap
-        for (auto i = metaData.tickBegin; i < metaData.tickEnd; i++)
+        for (auto i = metaData.tickBegin; i < metaData.tickEnd && rebuildTxHashmap; i++)
         {
             TickData *tickData = TickDataAccess::getByTickIfNotEmpty(i);
             if (!tickData)
