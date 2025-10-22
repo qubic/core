@@ -18,6 +18,14 @@ constexpr uint16 RL_MAX_NUMBER_OF_PLAYERS = 1024;
 /// Maximum number of winners kept in the on-chain winners history buffer.
 constexpr uint16 RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY = 1024;
 
+constexpr uint64 RL_TICKET_PRICE = 1000000;
+
+constexpr uint8 RL_TEAM_FEE_PERCENT = 10;
+
+constexpr uint8 RL_SHAREHOLDER_FEE_PERCENT = 20;
+
+constexpr uint8 RL_BURN_PERCENT = 2;
+
 /// Placeholder structure for future extensions.
 struct RL2
 {
@@ -44,7 +52,9 @@ public:
 	enum class EState : uint8
 	{
 		SELLING,
-		LOCKED
+		LOCKED,
+
+		INVALID = 255
 	};
 
 	/**
@@ -55,13 +65,12 @@ public:
 		SUCCESS = 0,
 		// Ticket-related errors
 		TICKET_INVALID_PRICE = 1,
-		TICKET_ALREADY_PURCHASED = 2,
-		TICKET_ALL_SOLD_OUT = 3,
-		TICKET_SELLING_CLOSED = 4,
+		TICKET_ALL_SOLD_OUT = 2,
+		TICKET_SELLING_CLOSED = 3,
 		// Access-related errors
-		ACCESS_DENIED = 5,
+		ACCESS_DENIED = 4,
 		// Fee-related errors
-		FEE_INVALID_PERCENT_VALUE = 6,
+		FEE_INVALID_PERCENT_VALUE = 5,
 		// Fallback
 		UNKNOW_ERROR = UINT8_MAX
 	};
@@ -97,14 +106,8 @@ public:
 	struct GetPlayers_output
 	{
 		Array<id, RL_MAX_NUMBER_OF_PLAYERS> players;
-		uint16 numberOfPlayers = 0;
+		uint16 playerCounter = 0;
 		uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
-	};
-
-	struct GetPlayers_locals
-	{
-		uint64 arrayIndex = 0;
-		sint64 i = 0;
 	};
 
 	/**
@@ -157,8 +160,35 @@ public:
 	struct GetWinners_output
 	{
 		Array<WinnerInfo, RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
-		uint64 numberOfWinners = 0;
+		uint64 winnersCounter = 0;
 		uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+	};
+
+	struct GetTicketPrice_input
+	{
+	};
+
+	struct GetTicketPrice_output
+	{
+		uint64 ticketPrice = 0;
+	};
+
+	struct GetMaxNumberOfPlayers_input
+	{
+	};
+
+	struct GetMaxNumberOfPlayers_output
+	{
+		uint16 numberOfPlayers = 0;
+	};
+
+	struct GetState_input
+	{
+	};
+
+	struct GetState_output
+	{
+		uint8 currentState = static_cast<uint8>(EState::INVALID);
 	};
 
 	struct ReturnAllTickets_input
@@ -208,6 +238,9 @@ public:
 		REGISTER_USER_FUNCTION(GetFees, 1);
 		REGISTER_USER_FUNCTION(GetPlayers, 2);
 		REGISTER_USER_FUNCTION(GetWinners, 3);
+		REGISTER_USER_FUNCTION(GetTicketPrice, 4);
+		REGISTER_USER_FUNCTION(GetMaxNumberOfPlayers, 5);
+		REGISTER_USER_FUNCTION(GetState, 6);
 		REGISTER_USER_PROCEDURE(BuyTicket, 1);
 	}
 
@@ -218,22 +251,25 @@ public:
 	INITIALIZE()
 	{
 		// Addresses
-		state.teamAddress = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C,
-			_R, _L, _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
+		state.teamAddress = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C, _R, _L,
+		                       _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
 		// Owner address (currently identical to developer address; can be split in future revisions).
 		state.ownerAddress = state.teamAddress;
 
 		// Default fee percentages (sum <= 100; winner percent derived)
-		state.teamFeePercent = 10;
-		state.distributionFeePercent = 20;
-		state.burnPercent = 2;
+		state.teamFeePercent = RL_TEAM_FEE_PERCENT;
+		state.distributionFeePercent = RL_SHAREHOLDER_FEE_PERCENT;
+		state.burnPercent = RL_BURN_PERCENT;
 		state.winnerFeePercent = 100 - state.teamFeePercent - state.distributionFeePercent - state.burnPercent;
 
 		// Default ticket price
-		state.ticketPrice = 1000000;
+		state.ticketPrice = RL_TICKET_PRICE;
 
 		// Start locked
 		state.currentState = EState::LOCKED;
+
+		// Initialize Player index
+		state.playerCounter = 0;
 	}
 
 	/**
@@ -250,11 +286,11 @@ public:
 		state.currentState = EState::LOCKED;
 
 		// Single-player edge case: refund instead of drawing.
-		if (state.players.population() == 1)
+		if (state.playerCounter == 1)
 		{
 			ReturnAllTickets(qpi, state, locals.returnAllTicketsInput, locals.returnAllTicketsOutput, locals.returnAllTicketsLocals);
 		}
-		else if (state.players.population() > 1)
+		else if (state.playerCounter > 1)
 		{
 			qpi.getEntity(SELF, locals.entity);
 			locals.revenue = locals.entity.incomingAmount - locals.entity.outgoingAmount;
@@ -307,7 +343,7 @@ public:
 		}
 
 		// Prepare for next epoch.
-		state.players.reset();
+		state.playerCounter = 0;
 	}
 
 	/**
@@ -324,18 +360,10 @@ public:
 	/**
 	 * @brief Retrieves the active players list for the ongoing epoch.
 	 */
-	PUBLIC_FUNCTION_WITH_LOCALS(GetPlayers)
+	PUBLIC_FUNCTION(GetPlayers)
 	{
-		locals.arrayIndex = 0;
-
-		locals.i = state.players.nextElementIndex(NULL_INDEX);
-		while (locals.i != NULL_INDEX)
-		{
-			output.players.set(locals.arrayIndex++, state.players.key(locals.i));
-			locals.i = state.players.nextElementIndex(locals.i);
-		};
-
-		output.numberOfPlayers = static_cast<uint16>(locals.arrayIndex);
+		output.players = state.players;
+		output.playerCounter = state.playerCounter;
 	}
 
 	/**
@@ -344,8 +372,12 @@ public:
 	PUBLIC_FUNCTION(GetWinners)
 	{
 		output.winners = state.winners;
-		output.numberOfWinners = state.winnersInfoNextEmptyIndex;
+		output.winnersCounter = state.winnersCounter;
 	}
+
+	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.ticketPrice; }
+	PUBLIC_FUNCTION(GetMaxNumberOfPlayers) { output.numberOfPlayers = RL_MAX_NUMBER_OF_PLAYERS; }
+	PUBLIC_FUNCTION(GetState) { output.currentState = static_cast<uint8>(state.currentState); }
 
 	/**
 	 * @brief Attempts to buy a ticket (must send exact price unless zero is forbidden; state must
@@ -356,7 +388,28 @@ public:
 		// Selling closed
 		if (state.currentState == EState::LOCKED)
 		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
 			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_SELLING_CLOSED);
+			return;
+		}
+
+		// Price mismatch (validate before any state mutation)
+		if (qpi.invocationReward() != state.ticketPrice && qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+
+			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_INVALID_PRICE);
+			return;
+		}
+
+		// Capacity full
+		if (state.playerCounter >= state.players.capacity())
+		{
+			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_ALL_SOLD_OUT);
 			if (qpi.invocationReward() > 0)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -364,33 +417,11 @@ public:
 			return;
 		}
 
-		// Already purchased
-		if (state.players.contains(qpi.invocator()))
+		// Protect against rewriting existing players (should not happen due to prior checks).
+		if (state.playerCounter < state.players.capacity())
 		{
-			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_ALREADY_PURCHASED);
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-
-			return;
-		}
-
-		// Capacity full
-		if (state.players.add(qpi.invocator()) == NULL_INDEX)
-		{
-			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_ALL_SOLD_OUT);
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-
-			return;
-		}
-
-		// Price mismatch
-		if (qpi.invocationReward() != state.ticketPrice && qpi.invocationReward() > 0)
-		{
-			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_INVALID_PRICE);
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			state.players.remove(qpi.invocator());
-
-			state.players.cleanupIfNeeded(80);
-			return;
+			state.players.set(state.playerCounter, qpi.invocator());
+			state.playerCounter = min<uint64>(++state.playerCounter, state.players.capacity());
 		}
 	}
 
@@ -405,13 +436,13 @@ private:
 			return;
 		}
 
-		state.winnersInfoNextEmptyIndex = mod<uint64>(state.winnersInfoNextEmptyIndex, state.winners.capacity());
+		state.winnersCounter = mod<uint64>(state.winnersCounter, state.winners.capacity());
 
 		locals.winnerInfo.winnerAddress = input.winnerAddress;
 		locals.winnerInfo.revenue = input.revenue;
 		locals.winnerInfo.epoch = qpi.epoch();
 		locals.winnerInfo.tick = qpi.tick();
-		state.winners.set(state.winnersInfoNextEmptyIndex++, locals.winnerInfo);
+		state.winners.set(state.winnersCounter++, locals.winnerInfo);
 	}
 
 	/**
@@ -419,37 +450,24 @@ private:
 	 */
 	PRIVATE_PROCEDURE_WITH_LOCALS(GetWinner)
 	{
-		if (state.players.population() == 0)
+		if (state.playerCounter == 0)
 		{
 			return;
 		}
 
-		locals.randomNum = mod<uint64>(qpi.K12(qpi.getPrevSpectrumDigest()).u64._0, state.players.population());
+		locals.randomNum = mod<uint64>(qpi.K12(qpi.getPrevSpectrumDigest()).u64._0, state.playerCounter);
 
-		locals.j = 0;
-		locals.i = state.players.nextElementIndex(NULL_INDEX);
-		while (locals.i != NULL_INDEX)
-		{
-			if (locals.j++ == locals.randomNum)
-			{
-				output.winnerAddress = state.players.key(locals.i);
-				output.index = locals.i;
-				break;
-			}
-
-			locals.i = state.players.nextElementIndex(locals.i);
-		};
+		// Direct indexing for Array
+		output.winnerAddress = state.players.get(locals.randomNum);
+		output.index = locals.randomNum;
 	}
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(ReturnAllTickets)
 	{
-		locals.i = state.players.nextElementIndex(NULL_INDEX);
-		while (locals.i != NULL_INDEX)
+		for (locals.i = 0; locals.i < state.playerCounter; ++locals.i)
 		{
-			qpi.transfer(state.players.key(locals.i), state.ticketPrice);
-
-			locals.i = state.players.nextElementIndex(locals.i);
-		};
+			qpi.transfer(state.players.get(locals.i), state.ticketPrice);
+		}
 	}
 
 protected:
@@ -495,11 +513,13 @@ protected:
 	 */
 	uint64 ticketPrice = 0;
 
+	uint64 playerCounter = 0;
+
 	/**
 	 * @brief Set of players participating in the current lottery epoch.
 	 * Maximum capacity is defined by RL_MAX_NUMBER_OF_PLAYERS.
 	 */
-	HashSet<id, RL_MAX_NUMBER_OF_PLAYERS> players = {};
+	Array<id, RL_MAX_NUMBER_OF_PLAYERS> players = {};
 
 	/**
 	 * @brief Circular buffer storing the history of winners.
@@ -511,7 +531,7 @@ protected:
 	 * @brief Index pointing to the next empty slot in the winners array.
 	 * Used for maintaining the circular buffer of winners.
 	 */
-	uint64 winnersInfoNextEmptyIndex = 0;
+	uint64 winnersCounter = 0;
 
 	/**
 	 * @brief Current state of the lottery contract.
