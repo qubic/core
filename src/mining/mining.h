@@ -12,7 +12,9 @@
 
 static unsigned int getTickInMiningPhaseCycle()
 {
+#ifdef REAL_NODE
     return (system.tick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+#endif
 }
 
 struct MiningSolutionTransaction : public Transaction
@@ -251,6 +253,7 @@ public:
 
     void processTransactionData(const Transaction* transaction, const m256i& dataLock)
     {
+#ifdef REAL_NODE
         int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
         int tickPhase = getTickInMiningPhaseCycle();
         if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex] // this tx was sent by the tick leader of this tick
@@ -275,6 +278,7 @@ public:
 #endif
             }
         }
+#endif
     }
 };
 
