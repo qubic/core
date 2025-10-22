@@ -1779,6 +1779,7 @@ public:
     {
         uint64 i;
         BridgeOrder emptyOrder;
+        AdminProposal emptyProposal;
     };
 
     INITIALIZE_WITH_LOCALS()
@@ -1835,8 +1836,18 @@ public:
             state.admins.set(locals.i, NULL_ID);
         }
 
-        // Initialize proposals array
+        // Initialize proposals array properly (like orders array)
         state.nextProposalId = 1;
-        // Don't initialize proposals array - leave as default (all zeros)
+
+        locals.emptyProposal = {};  // Initialize all fields to 0
+        locals.emptyProposal.proposalId = 0;
+        locals.emptyProposal.active = false;
+        locals.emptyProposal.executed = false;
+        locals.emptyProposal.approvalsCount = 0;
+
+        for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
+        {
+            state.proposals.set(locals.i, locals.emptyProposal);
+        }
     }
 };
