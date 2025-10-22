@@ -39,10 +39,6 @@
 static volatile bool forceDontCheckComputerDigest = false;
 static volatile bool forceDontUseSecurityTick = false;
 
-//////////// Rebuild Tx Hashmap \\\\\\\\
-
-static inline bool rebuildTxHashmap = false;
-
 //////////// Go Behind Testnet Trick \\\\\\\\
 
 static inline bool isTestnetGoBehindTrick = false;
