@@ -1839,12 +1839,21 @@ public:
         // Initialize proposals array properly (like orders array)
         state.nextProposalId = 1;
 
-        locals.emptyProposal = {};  // Initialize all fields to 0
+        // Initialize emptyProposal fields explicitly (avoid memset)
         locals.emptyProposal.proposalId = 0;
-        locals.emptyProposal.active = false;
-        locals.emptyProposal.executed = false;
+        locals.emptyProposal.proposalType = 0;
+        locals.emptyProposal.targetAddress = NULL_ID;
+        locals.emptyProposal.amount = 0;
         locals.emptyProposal.approvalsCount = 0;
+        locals.emptyProposal.executed = false;
+        locals.emptyProposal.active = false;
+        // Initialize approvals array with NULL_ID
+        for (locals.i = 0; locals.i < locals.emptyProposal.approvals.capacity(); ++locals.i)
+        {
+            locals.emptyProposal.approvals.set(locals.i, NULL_ID);
+        }
 
+        // Set all proposal slots with the empty proposal
         for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
         {
             state.proposals.set(locals.i, locals.emptyProposal);
