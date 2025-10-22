@@ -106,7 +106,7 @@ public:
 	struct GetPlayers_output
 	{
 		Array<id, RL_MAX_NUMBER_OF_PLAYERS> players;
-		uint16 playerCounter = 0;
+		uint64 playerCounter = 0;
 		uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
 	};
 
@@ -179,7 +179,7 @@ public:
 
 	struct GetMaxNumberOfPlayers_output
 	{
-		uint16 numberOfPlayers = 0;
+		uint64 numberOfPlayers = 0;
 	};
 
 	struct GetState_input
@@ -189,6 +189,20 @@ public:
 	struct GetState_output
 	{
 		uint8 currentState = static_cast<uint8>(EState::INVALID);
+	};
+
+	struct GetBalance_input
+	{
+	};
+
+	struct GetBalance_output
+	{
+		uint64 balance = 0;
+	};
+
+	struct GetBalance_locals
+	{
+		Entity entity = {};
 	};
 
 	struct ReturnAllTickets_input
@@ -241,6 +255,7 @@ public:
 		REGISTER_USER_FUNCTION(GetTicketPrice, 4);
 		REGISTER_USER_FUNCTION(GetMaxNumberOfPlayers, 5);
 		REGISTER_USER_FUNCTION(GetState, 6);
+		REGISTER_USER_FUNCTION(GetBalance, 7);
 		REGISTER_USER_PROCEDURE(BuyTicket, 1);
 	}
 
@@ -363,7 +378,7 @@ public:
 	PUBLIC_FUNCTION(GetPlayers)
 	{
 		output.players = state.players;
-		output.playerCounter = state.playerCounter;
+		output.playerCounter = min<uint64>(state.playerCounter, state.players.capacity());
 	}
 
 	/**
@@ -372,12 +387,16 @@ public:
 	PUBLIC_FUNCTION(GetWinners)
 	{
 		output.winners = state.winners;
-		output.winnersCounter = state.winnersCounter;
+		output.winnersCounter = min<uint64>(state.winnersCounter, state.winners.capacity());
 	}
 
 	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.ticketPrice; }
 	PUBLIC_FUNCTION(GetMaxNumberOfPlayers) { output.numberOfPlayers = RL_MAX_NUMBER_OF_PLAYERS; }
 	PUBLIC_FUNCTION(GetState) { output.currentState = static_cast<uint8>(state.currentState); }
+	PUBLIC_FUNCTION_WITH_LOCALS(GetBalance)
+	{
+		output.balance = qpi.getEntity(SELF, locals.entity) ? locals.entity.incomingAmount - locals.entity.outgoingAmount : 0;
+	}
 
 	/**
 	 * @brief Attempts to buy a ticket (must send exact price unless zero is forbidden; state must
@@ -421,7 +440,7 @@ public:
 		if (state.playerCounter < state.players.capacity())
 		{
 			state.players.set(state.playerCounter, qpi.invocator());
-			state.playerCounter = min<uint64>(++state.playerCounter, state.players.capacity());
+			state.playerCounter = min<uint64>(state.playerCounter + 1, state.players.capacity());
 		}
 	}
 
@@ -538,4 +557,7 @@ protected:
 	 * Can be either SELLING (tickets available) or LOCKED (epoch closed).
 	 */
 	EState currentState = EState::LOCKED;
+
+protected:
+	template<typename T> static constexpr const T& min(const T& a, const T& b) { return (a < b) ? a : b; }
 };
