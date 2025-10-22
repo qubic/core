@@ -49,4 +49,21 @@ inline static unsigned char divUp(unsigned char a, unsigned char b)
     return b ? ((a + b - 1) / b) : 0;
 }
 
+inline constexpr unsigned long long findNextPowerOf2(unsigned long long num)
+{
+    if (num == 0)
+        return 1;
+
+    num--;
+    num |= num >> 1;
+    num |= num >> 2;
+    num |= num >> 4;
+    num |= num >> 8;
+    num |= num >> 16;
+    num |= num >> 32;
+    num++;
+
+    return num;
+}
+
 }

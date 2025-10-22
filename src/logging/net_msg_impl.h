@@ -41,17 +41,17 @@ void qLogger::processRequestLog(unsigned long long processorNumber, Peer* peer, 
             }
             else
             {
-                enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
+                enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
             }
         }
         else
         {
-            enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
+            enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
         }
         return;
     }
 #endif
-    enqueueResponse(peer, 0, RespondLog::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
 }
 
 void qLogger::processRequestTxLogInfo(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
@@ -83,7 +83,7 @@ void qLogger::processRequestTxLogInfo(unsigned long long processorNumber, Peer* 
         return;
     }
 #endif
-    enqueueResponse(peer, 0, ResponseLogIdRangeFromTx::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
 }
 
 void qLogger::processRequestTickTxLogInfo(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
@@ -116,7 +116,7 @@ void qLogger::processRequestTickTxLogInfo(unsigned long long processorNumber, Pe
         return;
     }
 #endif
-    enqueueResponse(peer, 0, ResponseAllLogIdRangesFromTick::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
 }
 
 void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* header)
@@ -170,7 +170,7 @@ void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* hea
         return;
     }
 #endif
-    enqueueResponse(peer, 0, ResponsePruningLog::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
 }
 
 void qLogger::processRequestGetLogDigest(Peer* peer, RequestResponseHeader* header)
@@ -190,5 +190,5 @@ void qLogger::processRequestGetLogDigest(Peer* peer, RequestResponseHeader* head
         return;
     }
 #endif
-    enqueueResponse(peer, 0, ResponseLogStateDigest::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
 }
