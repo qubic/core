@@ -344,7 +344,7 @@ constexpr struct ContractDescription
     {"QDRAW", 179, 10000, sizeof(QDRAW)}, // proposal in epoch 177, IPO in 178, construction and first use in 179
     {"RL", 182, 10000, sizeof(RL)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
     {"QBOND", 182, 10000, sizeof(QBOND)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
-    {"VBRIDGE", 183, 10000, sizeof(VOTTUNBRIDGE)}, // Vottun Bridge - Qubic <-> EVM bridge with multisig admin
+    {"VBRIDGE", 184, 10000, sizeof(VOTTUNBRIDGE)}, // Vottun Bridge - Qubic <-> EVM bridge with multisig admin
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(IPO)},
