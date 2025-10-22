@@ -131,7 +131,6 @@
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 5000
 constexpr unsigned long long TARGET_MAINTHREAD_LOOP_DURATION = 30; // mcs, it is the target duration of the main thread loop
-static inline bool rebuildTxHashmap = false;
 
 struct Processor : public CustomStack
 {

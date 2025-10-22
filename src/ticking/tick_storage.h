@@ -32,6 +32,7 @@ static wchar_t SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[] = L"snapshotTickTran
 static wchar_t SNAPSHOT_TRANSACTIONS_FILE_NAME[] = L"snapshotTickTransaction.???";
 #endif
 constexpr unsigned short INVALIDATED_TICK_DATA = 0xffff;
+static inline bool rebuildTxHashmap = false;
 // Encapsulated tick storage of current epoch that can additionally keep the last ticks of the previous epoch.
 // The number of ticks to keep from the previous epoch is TICKS_TO_KEEP_FROM_PRIOR_EPOCH (defined in public_settings.h).
 //
