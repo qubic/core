@@ -173,7 +173,10 @@ public:
 	{
 		RL::BuyTicket_input input;
 		RL::BuyTicket_output output;
-		invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_BUY_TICKET, input, output, user, reward);
+		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_BUY_TICKET, input, output, user, reward))
+		{
+			output.returnCode = static_cast<uint8>(RL::EReturnCode::UNKNOW_ERROR);
+		}
 		return output;
 	}
 
@@ -274,8 +277,19 @@ TEST(ContractRandomLottery, BuyTicket)
 
 		// (a) Invalid price (wrong reward sent) — player not added
 		{
-			const RL::BuyTicket_output outInvalid = ctl.buyTicket(user, ticketPrice - 1);
+			// < ticketPrice
+			RL::BuyTicket_output outInvalid = ctl.buyTicket(user, ticketPrice - 1);
 			EXPECT_EQ(outInvalid.returnCode, static_cast<uint8>(RL::EReturnCode::TICKET_INVALID_PRICE));
+			EXPECT_EQ(ctl.state()->getPlayerCounter(), expectedPlayers);
+
+			// == 0
+			outInvalid = ctl.buyTicket(user, 0);
+			EXPECT_EQ(outInvalid.returnCode, static_cast<uint8>(RL::EReturnCode::TICKET_INVALID_PRICE));
+			EXPECT_EQ(ctl.state()->getPlayerCounter(), expectedPlayers);
+
+			// < 0
+			outInvalid = ctl.buyTicket(user, -ticketPrice);
+			EXPECT_NE(outInvalid.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
 			EXPECT_EQ(ctl.state()->getPlayerCounter(), expectedPlayers);
 		}
 
@@ -297,7 +311,7 @@ TEST(ContractRandomLottery, BuyTicket)
 	}
 
 	// 3. Sanity check: number of tickets equals twice the number of users (due to duplicate buys)
-	EXPECT_EQ(expectedPlayers, userCount * 2);
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), userCount * 2);
 }
 
 TEST(ContractRandomLottery, EndEpoch)
@@ -356,7 +370,7 @@ TEST(ContractRandomLottery, EndEpoch)
 	{
 		ctl.BeginEpoch();
 
-		constexpr uint32 N = 5;
+		constexpr uint32 N = 5 * 2;
 		struct PlayerInfo
 		{
 			id addr;
@@ -367,12 +381,13 @@ TEST(ContractRandomLottery, EndEpoch)
 		infos.reserve(N);
 
 		// Add N distinct players with valid purchases
-		for (uint32 i = 0; i < N; ++i)
+		for (uint32 i = 0; i < N; i+=2)
 		{
 			const id randomUser = id::randomValue();
 			ctl.increaseAndBuy(ctl, randomUser, ticketPrice);
+			ctl.increaseAndBuy(ctl, randomUser, ticketPrice);
 			const uint64 bBefore = getBalance(randomUser);
-			infos.push_back({randomUser, bBefore + ticketPrice, bBefore}); // account for ticket deduction
+			infos.push_back({randomUser, bBefore + (ticketPrice * 2), bBefore}); // account for ticket deduction
 		}
 
 		EXPECT_EQ(ctl.state()->getPlayerCounter(), N);

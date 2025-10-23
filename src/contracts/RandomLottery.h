@@ -417,7 +417,7 @@ public:
 		}
 
 		// Price mismatch (validate before any state mutation)
-		if (qpi.invocationReward() != state.ticketPrice && qpi.invocationReward() > 0)
+		if (qpi.invocationReward() != state.ticketPrice)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 
