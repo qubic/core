@@ -32,6 +32,7 @@ enum ContractError
     ContractErrorTooManyActions,
     ContractErrorTimeout,
     ContractErrorStoppedToResolveDeadlock, // only returned by function call, not set to contractError
+    ContractErrorIPOFailed, // IPO failed i.e. final price was 0. This contract is not constructed.
 };
 
 // Used to store: locals and for first invocation level also input and output
