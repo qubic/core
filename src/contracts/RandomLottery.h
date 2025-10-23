@@ -72,7 +72,7 @@ public:
 		// Fee-related errors
 		FEE_INVALID_PERCENT_VALUE = 5,
 		// Fallback
-		UNKNOW_ERROR = UINT8_MAX
+		UNKNOWN_ERROR = UINT8_MAX
 	};
 
 	//---- User-facing I/O structures -------------------------------------------------------------

@@ -13,7 +13,7 @@ constexpr uint16 FUNCTION_INDEX_GET_STATE = 6;
 constexpr uint16 FUNCTION_INDEX_GET_BALANCE = 7;
 
 static const id RL_DEV_ADDRESS = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C,
-	_R, _L, _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
+                                    _R, _L, _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
 
 // Equality operator for comparing WinnerInfo objects
 bool operator==(const RL::WinnerInfo& left, const RL::WinnerInfo& right)
@@ -175,7 +175,7 @@ public:
 		RL::BuyTicket_output output;
 		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_BUY_TICKET, input, output, user, reward))
 		{
-			output.returnCode = static_cast<uint8>(RL::EReturnCode::UNKNOW_ERROR);
+			output.returnCode = static_cast<uint8>(RL::EReturnCode::UNKNOWN_ERROR);
 		}
 		return output;
 	}
@@ -380,8 +380,8 @@ TEST(ContractRandomLottery, EndEpoch)
 		std::vector<PlayerInfo> infos;
 		infos.reserve(N);
 
-		// Add N distinct players with valid purchases
-		for (uint32 i = 0; i < N; i+=2)
+		// Add N/2 distinct players, each making two valid purchases
+		for (uint32 i = 0; i < N; i += 2)
 		{
 			const id randomUser = id::randomValue();
 			ctl.increaseAndBuy(ctl, randomUser, ticketPrice);
@@ -440,6 +440,91 @@ TEST(ContractRandomLottery, EndEpoch)
 		// Burn (remaining on contract)
 		const uint64 burnExpected = ctl.expectedRemainingAfterPayout(contractBalanceBefore, fees);
 		EXPECT_EQ(getBalance(contractAddress), burnExpected);
+	}
+
+	// --- Scenario 4: Several consecutive epochs (winners accumulate, balances consistent) ---
+	{
+		const uint32 rounds = 3;
+		const uint32 playersPerRound = 6 * 2; // even number to mimic duplicates if desired
+
+		// Remember starting winners count and team balance
+		const uint64 winnersStart = ctl.getWinners().winnersCounter;
+		const uint64 teamStartBal = getBalance(RL_DEV_ADDRESS);
+
+		uint64 teamAccrued = 0;
+
+		for (uint32 r = 0; r < rounds; ++r)
+		{
+			ctl.BeginEpoch();
+
+			struct P
+			{
+				id addr;
+				uint64 balAfterBuy;
+			};
+			std::vector<P> roundPlayers;
+			roundPlayers.reserve(playersPerRound);
+
+			// Each player buys two tickets in this round
+			for (uint32 i = 0; i < playersPerRound; i += 2)
+			{
+				const id u = id::randomValue();
+				ctl.increaseAndBuy(ctl, u, ticketPrice);
+				ctl.increaseAndBuy(ctl, u, ticketPrice);
+				const uint64 balAfter = getBalance(u);
+				roundPlayers.push_back({u, balAfter});
+			}
+
+			EXPECT_EQ(ctl.state()->getPlayerCounter(), playersPerRound);
+
+			const uint64 winnersBefore = ctl.getWinners().winnersCounter;
+			const uint64 contractBefore = getBalance(contractAddress);
+			const uint64 teamBalBeforeRound = getBalance(RL_DEV_ADDRESS);
+
+			ctl.EndEpoch();
+
+			// Winners should increase by exactly one
+			const RL::GetWinners_output wOut = ctl.getWinners();
+			EXPECT_EQ(wOut.winnersCounter, winnersBefore + 1);
+
+			// Validate winner entry
+			const RL::WinnerInfo newWi = wOut.winners.get(winnersBefore);
+			EXPECT_NE(newWi.winnerAddress, id::zero());
+			EXPECT_EQ(newWi.revenue, (contractBefore * winnerPercent) / 100);
+
+			// Winner must be one of the current round players
+			bool inRound = false;
+			for (const auto& p : roundPlayers)
+			{
+				if (p.addr == newWi.winnerAddress)
+				{
+					inRound = true;
+					break;
+				}
+			}
+			EXPECT_TRUE(inRound);
+
+			// Check players' balances after payout
+			for (const auto& p : roundPlayers)
+			{
+				const uint64 b = getBalance(p.addr);
+				const uint64 expected = (p.addr == newWi.winnerAddress) ? (p.balAfterBuy + newWi.revenue) : p.balAfterBuy;
+				EXPECT_EQ(b, expected);
+			}
+
+			// Team fee for the whole contract balance of the round
+			const uint64 teamFee = (contractBefore * teamPercent) / 100;
+			teamAccrued += teamFee;
+			EXPECT_EQ(getBalance(RL_DEV_ADDRESS), teamBalBeforeRound + teamFee);
+
+			// Contract remaining should match expected
+			const uint64 expectedRemaining = ctl.expectedRemainingAfterPayout(contractBefore, fees);
+			EXPECT_EQ(getBalance(contractAddress), expectedRemaining);
+		}
+
+		// After all rounds winners increased by rounds and team received cumulative fees
+		EXPECT_EQ(ctl.getWinners().winnersCounter, winnersStart + rounds);
+		EXPECT_EQ(getBalance(RL_DEV_ADDRESS), teamStartBal + teamAccrued);
 	}
 }
 
