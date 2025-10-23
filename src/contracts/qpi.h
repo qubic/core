@@ -1252,7 +1252,7 @@ namespace QPI
 	//////////
 	
 	constexpr uint16 INVALID_PROPOSAL_INDEX = 0xffff;
-	constexpr uint32 INVALID_VOTER_INDEX = 0xffffffff;
+	constexpr uint32 INVALID_VOTE_INDEX = 0xffffffff;
 	constexpr sint64 NO_VOTE_VALUE = 0x8000000000000000;
 
 	// Single vote for all types of proposals defined in August 2024.
@@ -1721,17 +1721,17 @@ namespace QPI
 	{
 	public:
 		static constexpr uint16 maxProposals = ProposerAndVoterHandlingT::maxProposals;
-		static constexpr uint32 maxVoters = ProposerAndVoterHandlingT::maxVoters;
+		static constexpr uint32 maxVotes = ProposerAndVoterHandlingT::maxVotes;
 
 		typedef ProposerAndVoterHandlingT ProposerAndVoterHandlingType;
 		typedef ProposalDataT ProposalDataType;
 		typedef ProposalWithAllVoteData<
 			ProposalDataT,
-			maxVoters
+			maxVotes
 		> ProposalAndVotesDataType;
 
 		static_assert(maxProposals <= INVALID_PROPOSAL_INDEX);
-		static_assert(maxVoters <= INVALID_VOTER_INDEX);
+		static_assert(maxVotes <= INVALID_VOTE_INDEX);
 
 		// Handling of who has the right to propose and to vote + proposal / voter indices
 		ProposerAndVoterHandlingType proposersAndVoters;
@@ -1753,7 +1753,7 @@ namespace QPI
 		bool getProposal(uint16 proposalIndex, ProposalDataType& proposal) const;
 
 		// Get data of single vote. On error returns false and sets vote.proposalType = 0.
-		bool getVote(uint16 proposalIndex, uint32 voterIndex, ProposalSingleVoteDataV1& vote) const;
+		bool getVote(uint16 proposalIndex, uint32 voteIndex, ProposalSingleVoteDataV1& vote) const;
 
 		// Get data of votes of a given voter. On error returns false and sets votes.proposalType = 0.
 		bool getVotes(uint16 proposalIndex, const id& voter, ProposalMultiVoteDataV1& votes) const;
@@ -1767,19 +1767,19 @@ namespace QPI
 		// Return proposer ID of given proposal index or NULL_ID if there is no proposal at this index
 		id proposerId(uint16 proposalIndex) const;
 
-		// Return voter index for given ID or INVALID_VOTER_INDEX if ID has no right to vote. If the voter has multiple
+		// Return vote index for given ID or INVALID_VOTE_INDEX if ID has no right to vote. If the voter has multiple
 		// votes, this returns the first index. All votes of a voter are stored consecutively.
 		// If voters are shareholders, proposalIndex must be passed. If voters are computors, proposalIndex is ignored.
-		uint32 voterIndex(const id& voterId, uint16 proposalIndex = 0) const;
+		uint32 voteIndex(const id& voterId, uint16 proposalIndex = 0) const;
 
-		// Return ID for given voter index or NULL_ID if index is invalid
+		// Return ID for given vote index or NULL_ID if index is invalid.
 		// If voters are shareholders, proposalIndex must be passed. If voters are computors, proposalIndex is ignored.
-		id voterId(uint32 voterIndex, uint16 proposalIndex = 0) const;
+		id voterId(uint32 voteIndex, uint16 proposalIndex = 0) const;
 
-		// Return count of votes of a voter if the first voter index is passed. Otherwise return the number of votes
+		// Return count of votes of a voter if his first vote index is passed. Otherwise return the number of votes
 		// including this and the following indices. Returns 0 if an invalid index is passed.
 		// If voters are shareholders, proposalIndex must be passed. If voters are computors, proposalIndex is ignored.
-		uint32 voteCount(uint32 voterIndex, uint16 proposalIndex = 0) const;
+		uint32 voteCount(uint32 voteIndex, uint16 proposalIndex = 0) const;
 
 		// Return next proposal index of proposals of given epoch (default: current epoch)
 		// or -1 if there are not any more such proposals behind the passed index.

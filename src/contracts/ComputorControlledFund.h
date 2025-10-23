@@ -189,7 +189,7 @@ public:
 	{
 		output.okay = qpi(state.proposals).getVote(
 			input.proposalIndex,
-			qpi(state.proposals).voterIndex(input.voter),
+			qpi(state.proposals).voteIndex(input.voter),
 			output.vote);
 	}
 

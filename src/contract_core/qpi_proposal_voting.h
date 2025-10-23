@@ -11,14 +11,14 @@ namespace QPI
 		// Maximum number of proposals (may be lower than number of proposers = IDs with right to propose and lower than num. of voters)
 		static constexpr uint16 maxProposals = proposalSlotCount;
 
-		// Maximum number of voters
-		static constexpr uint32 maxVoters = NUMBER_OF_COMPUTORS;
+		// Maximum number of voters / votes (each computor has one vote)
+		static constexpr uint32 maxVotes = NUMBER_OF_COMPUTORS;
 
 		// Check if proposer has right to propose (and is not NULL_ID)
 		bool isValidProposer(const QpiContextFunctionCall& qpi, const id& proposerId) const
 		{
-			// Check if proposer is currently a computor (voter index is computor index here)
-			return getVoterIndex(qpi, proposerId) < maxVoters;
+			// Check if proposer is currently a computor (vote index is computor index here)
+			return getVoteIndex(qpi, proposerId) < maxVotes;
 		}
 
 		// Get new proposal slot (each proposer may have at most one).
@@ -76,41 +76,40 @@ namespace QPI
 			return INVALID_PROPOSAL_INDEX;
 		}
 
-		// Get voter index for given ID or INVALID_VOTER_INDEX if has no right to vote.
-		// Voter index is computor index
-		uint32 getVoterIndex(const QpiContextFunctionCall& qpi, const id& voterId, uint16 proposalIndex = 0) const
+		// Get first vote index for given ID or INVALID_VOTE_INDEX if voterId has no right to vote.
+		// Vote index is computor index.
+		uint32 getVoteIndex(const QpiContextFunctionCall& qpi, const id& voterId, uint16 proposalIndex = 0) const
 		{
 			// NULL_ID is invalid
 			if (isZero(voterId))
-				return INVALID_VOTER_INDEX;
+				return INVALID_VOTE_INDEX;
 
-			for (uint16 compIdx = 0; compIdx < maxVoters; ++compIdx)
+			for (uint16 compIdx = 0; compIdx < maxVotes; ++compIdx)
 			{
 				if (qpi.computor(compIdx) == voterId)
 					return compIdx;
 			}
-			return INVALID_VOTER_INDEX;
+			return INVALID_VOTE_INDEX;
 		}
 
-		// Get count of votes of a voter specified by voter index (return 0 on error).
-		uint32 getVoteCount(const QpiContextFunctionCall& qpi, uint32 voterIndex, uint16 proposalIndex = 0) const
+		// Get count of votes of a voter specified by vote index (return 0 on error).
+		uint32 getVoteCount(const QpiContextFunctionCall& qpi, uint32 voteIndex, uint16 proposalIndex = 0) const
 		{
-			if (voterIndex >= maxVoters)
+			if (voteIndex >= maxVotes)
 				return 0;
 
 			return 1;
 		}
 
-		// Return voter ID for given voter index or NULL_ID on error
-		id getVoterId(const QpiContextFunctionCall& qpi, uint32 voterIndex, uint16 proposalIndex = 0) const
+		// Return voter ID for given vote index or NULL_ID on error
+		id getVoterId(const QpiContextFunctionCall& qpi, uint32 voteIndex, uint16 proposalIndex = 0) const
 		{
-			if (voterIndex >= maxVoters)
+			if (voteIndex >= maxVotes)
 				return NULL_ID;
-			return qpi.computor(voterIndex);
+			return qpi.computor(voteIndex);
 		}
 
 	protected:
-		// TODO: maybe replace by hash map?
 		// needs to be initialized with zeros
 		id currentProposalProposers[maxProposals];
 	};
@@ -134,8 +133,8 @@ namespace QPI
 		// Maximum number of proposals (may be lower than number of proposers = IDs with right to propose and lower than num. of voters)
 		static constexpr uint16 maxProposals = proposalSlotCount;
 
-		// Maximum number of voters
-		static constexpr uint32 maxVoters = NUMBER_OF_COMPUTORS;
+		// Maximum number of votes (676 shares per contract)
+		static constexpr uint32 maxVotes = NUMBER_OF_COMPUTORS;
 
 		// Check if proposer has right to propose (and is not NULL_ID)
 		bool isValidProposer(const QpiContextFunctionCall& qpi, const id& proposerId) const
@@ -157,7 +156,7 @@ namespace QPI
 				id possessor;
 				sint64 shares;
 			};
-			Shareholder* shareholders = reinterpret_cast<Shareholder*>(__scratchpad(sizeof(Shareholder) * maxVoters));
+			Shareholder* shareholders = reinterpret_cast<Shareholder*>(__scratchpad(sizeof(Shareholder) * maxVotes));
 			int lastShareholderIdx = -1;
 
 			// gather shareholder info in sorted array
@@ -199,7 +198,7 @@ namespace QPI
 #ifndef NDEBUG
 			// sanity check of array (sorted, has expected size, and 676 shares in total)
 			ASSERT(lastShareholderIdx >= 0);
-			ASSERT(lastShareholderIdx < maxVoters);
+			ASSERT(lastShareholderIdx < maxVotes);
 			sint64 totalShares = 0;
 			for (int idx = 0; idx < lastShareholderIdx; ++idx)
 			{
@@ -209,21 +208,21 @@ namespace QPI
 			}
 			ASSERT(shareholders[lastShareholderIdx].shares > 0);
 			totalShares += shareholders[lastShareholderIdx].shares;
-			ASSERT(totalShares == maxVoters);
+			ASSERT(totalShares == maxVotes);
 #endif
 
-			// build sorted array of voters (one entry per share)
-			int voterIdx = 0;
+			// build sorted array of votes (one entry per share)
+			int voteIdx = 0;
 			for (int shareholderIdx = 0; shareholderIdx <= lastShareholderIdx; ++shareholderIdx)
 			{
 				const Shareholder& shareholder = shareholders[shareholderIdx];
 				for (int shareIdx = 0; shareIdx < shareholder.shares; ++shareIdx)
 				{
-					currentProposalShareholders[propsalIdx][voterIdx] = shareholder.possessor;
-					++voterIdx;
+					currentProposalShareholders[propsalIdx][voteIdx] = shareholder.possessor;
+					++voteIdx;
 				}
 			}
-			ASSERT(voterIdx == maxVoters);
+			ASSERT(voteIdx == maxVotes);
 		}
 
 		// Get new proposal slot (each proposer may have at most one).
@@ -258,7 +257,7 @@ namespace QPI
 			if (proposalIndex < maxProposals)
 			{
 				currentProposalProposers[proposalIndex] = NULL_ID;
-				setMem(currentProposalShareholders[proposalIndex], sizeof(id) * maxVoters, 0);
+				setMem(currentProposalShareholders[proposalIndex], sizeof(id) * maxVotes, 0);
 			}
 		}
 
@@ -284,36 +283,36 @@ namespace QPI
 			return INVALID_PROPOSAL_INDEX;
 		}
 
-		// Return voter index for given ID or INVALID_VOTER_INDEX if ID has no right to vote. If the voter has multiple
+		// Return vote index for given ID or INVALID_VOTE_INDEX if ID has no right to vote. If the voter has multiple
 		// votes, this returns the first index. All votes of a voter are stored consecutively.
-		uint32 getVoterIndex(const QpiContextFunctionCall& qpi, const id& voterId, uint16 proposalIndex) const
+		uint32 getVoteIndex(const QpiContextFunctionCall& qpi, const id& voterId, uint16 proposalIndex) const
 		{
 			// NULL_ID is invalid
 			if (isZero(voterId) || proposalIndex >= maxProposals)
-				return INVALID_VOTER_INDEX;
+				return INVALID_VOTE_INDEX;
 
-			// Search for first voter index with voterId
+			// Search for first vote index with voterId
 			// Note: This may be speeded up a bit because the array is sorted, but it is required to return the first element
 			//       in a set of duplicates.
-			for (uint16 voterIdx = 0; voterIdx < maxVoters; ++voterIdx)
+			for (uint16 voteIdx = 0; voteIdx < maxVotes; ++voteIdx)
 			{
-				if (currentProposalShareholders[proposalIndex][voterIdx] == voterId)
-					return voterIdx;
+				if (currentProposalShareholders[proposalIndex][voteIdx] == voterId)
+					return voteIdx;
 			}
 
-			return INVALID_VOTER_INDEX;
+			return INVALID_VOTE_INDEX;
 		}
 
-		// Get count of votes of a voter specified by voter index (return 0 on error).
-		uint32 getVoteCount(const QpiContextFunctionCall& qpi, uint32 voterIndex, uint16 proposalIndex) const
+		// Get count of votes of a voter specified by its first vote index (return 0 on error).
+		uint32 getVoteCount(const QpiContextFunctionCall& qpi, uint32 voteIndex, uint16 proposalIndex) const
 		{
-			if (voterIndex >= maxVoters || proposalIndex >= maxProposals)
+			if (voteIndex >= maxVotes || proposalIndex >= maxProposals)
 				return 0;
 
 			const id* shareholders = currentProposalShareholders[proposalIndex];
 			uint32 count = 1;
-			const id& voterId = shareholders[voterIndex];
-			for (uint32 idx = voterIndex + 1; idx < maxVoters; ++idx)
+			const id& voterId = shareholders[voteIndex];
+			for (uint32 idx = voteIndex + 1; idx < maxVotes; ++idx)
 			{
 				if (shareholders[idx] != voterId)
 					break;
@@ -323,12 +322,12 @@ namespace QPI
 			return count;
 		}
 
-		// Return voter ID for given voter index or NULL_ID on error
-		id getVoterId(const QpiContextFunctionCall& qpi, uint32 voterIndex, uint16 proposalIndex) const
+		// Return voter ID for given vote index or NULL_ID on error
+		id getVoterId(const QpiContextFunctionCall& qpi, uint32 voteIndex, uint16 proposalIndex) const
 		{
-			if (voterIndex >= maxVoters || proposalIndex >= maxProposals)
+			if (voteIndex >= maxVotes || proposalIndex >= maxProposals)
 				return NULL_ID;
-			return currentProposalShareholders[proposalIndex][voterIndex];
+			return currentProposalShareholders[proposalIndex][voteIndex];
 		}
 
 
@@ -374,7 +373,7 @@ namespace QPI
 
 	// Used internally by ProposalVoting to store a proposal with all votes.
 	// Supports all vote types.
-	template <typename ProposalDataType, uint32 numOfVoters>
+	template <typename ProposalDataType, uint32 numOfVotes>
 	struct ProposalWithAllVoteData : public ProposalDataType
 	{
 		// Select type for storage (sint64 if scalar votes are supported, uint8 otherwise).
@@ -382,42 +381,42 @@ namespace QPI
 		typedef __VoteStorageTypeSelector<supportScalarVotes>::type VoteStorageType;
 
 		// Vote storage
-		VoteStorageType votes[numOfVoters];
+		VoteStorageType votes[numOfVotes];
 
 		// Set proposal and reset all votes
 		bool set(const ProposalDataType& proposal)
 		{
 			if (!supportScalarVotes && proposal.type == ProposalTypes::VariableScalarMean)
 				return false;
-				
+
 			copyMemory(*(ProposalDataType*)this, proposal);
 
 			if (!supportScalarVotes)
 			{
-				// option voting only (1 byte per voter)
+				// option voting only (1 byte per vote)
 				ASSERT(proposal.type != ProposalTypes::VariableScalarMean);
 				constexpr uint8 noVoteValue = 0xff;
 				setMemory(votes, noVoteValue);
 			}
 			else
 			{
-				// scalar voting supported (sint64 per voter)
+				// scalar voting supported (sint64 per vote)
 				// (cast should not be needed but is to get rid of warning)
-				for (uint32 i = 0; i < numOfVoters; ++i)
+				for (uint32 i = 0; i < numOfVotes; ++i)
 					votes[i] = static_cast<VoteStorageType>(NO_VOTE_VALUE);
 			}
 			return true;
 		}
 
-		// Set vote value (as used in ProposalSingleVoteData) of given voter if voter and value are valid
-		bool setVoteValue(uint32 voterIndex, sint64 voteValue)
+		// Set vote value (as used in ProposalSingleVoteData) of given index if index and value are valid
+		bool setVoteValue(uint32 voteIndex, sint64 voteValue)
 		{
 			bool ok = false;
-			if (voterIndex < numOfVoters)
+			if (voteIndex < numOfVotes)
 			{
 				if (voteValue == NO_VOTE_VALUE)
 				{
-					votes[voterIndex] = (supportScalarVotes) ? NO_VOTE_VALUE : 0xff;
+					votes[voteIndex] = (supportScalarVotes) ? NO_VOTE_VALUE : 0xff;
 					ok = true;
 				}
 				else
@@ -431,7 +430,7 @@ namespace QPI
 							if ((voteValue >= this->variableScalar.minValue && voteValue <= this->variableScalar.maxValue))
 							{
 								// (cast should not be needed but is to get rid of warning)
-								votes[voterIndex] = static_cast<VoteStorageType>(voteValue);
+								votes[voteIndex] = static_cast<VoteStorageType>(voteValue);
 								ok = true;
 							}
 						}
@@ -442,7 +441,7 @@ namespace QPI
 						int numOptions = ProposalTypes::optionCount(this->type);
 						if (voteValue >= 0 && voteValue < numOptions)
 						{
-							votes[voterIndex] = static_cast<VoteStorageType>(voteValue);
+							votes[voteIndex] = static_cast<VoteStorageType>(voteValue);
 							ok = true;
 						}
 					}
@@ -451,23 +450,23 @@ namespace QPI
 			return ok;
 		}
 
-		// Get vote value of given voter as used in ProposalSingleVoteData
-		sint64 getVoteValue(uint32 voterIndex) const
+		// Get vote value of given vote as used in ProposalSingleVoteData
+		sint64 getVoteValue(uint32 voteIndex) const
 		{
 			sint64 vv = NO_VOTE_VALUE;
-			if (voterIndex < numOfVoters)
+			if (voteIndex < numOfVotes)
 			{
 				if (supportScalarVotes)
 				{
 					// stored in sint64 -> set directly
-					vv = votes[voterIndex];
+					vv = votes[voteIndex];
 				}
 				else
 				{
 					// stored in uint8 -> set if valid vote (not no-vote value 0xff)
-					if (votes[voterIndex] != 0xff)
+					if (votes[voteIndex] != 0xff)
 					{
-						vv = votes[voterIndex];
+						vv = votes[voteIndex];
 					}
 				}
 			}
@@ -477,11 +476,11 @@ namespace QPI
 
 	// Used internally by ProposalVoting to store a proposal with all votes
 	// Template specialization if only yes/no is supported (saves storage space in votes)
-	template <uint32 numOfVoters>
-	struct ProposalWithAllVoteData<ProposalDataYesNo, numOfVoters> : public ProposalDataYesNo
+	template <uint32 numOfVotes>
+	struct ProposalWithAllVoteData<ProposalDataYesNo, numOfVotes> : public ProposalDataYesNo
 	{
-		// Vote storage (2 bit per voter)
-		uint8 votes[(2 * numOfVoters + 7) / 8];
+		// Vote storage (2 bit per vote)
+		uint8 votes[(2 * numOfVotes + 7) / 8];
 
 		// Set proposal and reset all votes
 		bool set(const ProposalDataYesNo& proposal)
@@ -491,23 +490,23 @@ namespace QPI
 
 			copyMemory(*(ProposalDataYesNo*)this, proposal);
 
-			// option voting only (2 bit per voter)
+			// option voting only (2 bit per vote)
 			constexpr uint8 noVoteValue = 0xff;
 			setMemory(votes, noVoteValue);
 
 			return true;
 		}
 
-		// Set vote value (as used in ProposalSingleVoteData) of given voter if voter and value are valid
-		bool setVoteValue(uint32 voterIndex, sint64 voteValue)
+		// Set vote value (as used in ProposalSingleVoteData) of given index if index and value are valid
+		bool setVoteValue(uint32 voteIndex, sint64 voteValue)
 		{
 			bool ok = false;
-			if (voterIndex < numOfVoters)
+			if (voteIndex < numOfVotes)
 			{
 				if (voteValue == NO_VOTE_VALUE)
 				{
-					uint8 bits = (3 << ((voterIndex & 3) * 2));
-					votes[voterIndex >> 2] |= bits;
+					uint8 bits = (3 << ((voteIndex & 3) * 2));
+					votes[voteIndex >> 2] |= bits;
 					ok = true;
 				}
 				else
@@ -515,10 +514,10 @@ namespace QPI
 					uint16 numOptions = ProposalTypes::optionCount(this->type);
 					if (voteValue >= 0 && voteValue < numOptions)
 					{
-						uint8 bitMask = (3 << ((voterIndex & 3) * 2));
-						uint8 bitNum = (uint8(voteValue) << ((voterIndex & 3) * 2));
-						votes[voterIndex >> 2] &= ~bitMask;
-						votes[voterIndex >> 2] |= bitNum;
+						uint8 bitMask = (3 << ((voteIndex & 3) * 2));
+						uint8 bitNum = (uint8(voteValue) << ((voteIndex & 3) * 2));
+						votes[voteIndex >> 2] &= ~bitMask;
+						votes[voteIndex >> 2] |= bitNum;
 						ok = true;
 					}
 				}
@@ -526,14 +525,14 @@ namespace QPI
 			return ok;
 		}
 
-		// Get vote value of given voter as used in ProposalSingleVoteData
-		sint64 getVoteValue(uint32 voterIndex) const
+		// Get vote value of given vote as used in ProposalSingleVoteData
+		sint64 getVoteValue(uint32 voteIndex) const
 		{
 			sint64 vv = NO_VOTE_VALUE;
-			if (voterIndex < numOfVoters)
+			if (voteIndex < numOfVotes)
 			{
 				// stored in uint8 -> set if valid vote (not no-vote value 0xff)
-				uint8 value = (votes[voterIndex >> 2] >> ((voterIndex & 3) * 2)) & 3;
+				uint8 value = (votes[voteIndex >> 2] >> ((voteIndex & 3) * 2)) & 3;
 				if (value != 3)
 				{
 					vv = value;
@@ -585,7 +584,7 @@ namespace QPI
 			// all occupied slots are used in current epoch? -> error
 			if (proposalIndex >= pv.maxProposals)
 				return INVALID_PROPOSAL_INDEX;
-			
+
 			// remove oldest proposal
 			clearProposal(proposalIndex);
 
@@ -647,21 +646,21 @@ namespace QPI
 		if (vote.proposalTick != proposal.tick)
 			return false;
 
-		// Return voter index (which may be INVALID_VOTER_INDEX if voter has no right to vote)
-		unsigned int voterIndex = pv.proposersAndVoters.getVoterIndex(qpi, voter, vote.proposalIndex);
-		if (voterIndex == INVALID_VOTER_INDEX)
+		// Return vote index (which may be INVALID_VOTE_INDEX if voter has no right to vote)
+		unsigned int voteIndex = pv.proposersAndVoters.getVoteIndex(qpi, voter, vote.proposalIndex);
+		if (voteIndex == INVALID_VOTE_INDEX)
 			return false;
 
 		// Get count of votes that this voter can cast
-		unsigned int voteCount = pv.proposersAndVoters.getVoteCount(qpi, voterIndex, vote.proposalIndex);
+		unsigned int voteCount = pv.proposersAndVoters.getVoteCount(qpi, voteIndex, vote.proposalIndex);
 		ASSERT(voteCount >= 1);
 
 		// Set vote value(s) (shareholder has one vote per share / computor has one vote only)
 		bool okay = true;
 		for (unsigned int i = 0; i < voteCount; ++i)
 		{
-			// Set vote value (checking that voter index and value are valid)
-			okay = proposal.setVoteValue(voterIndex + i, vote.voteValue);
+			// Set vote value (checking that vote index and value are valid)
+			okay = proposal.setVoteValue(voteIndex + i, vote.voteValue);
 			if (!okay)
 				break;
 		}
@@ -689,13 +688,13 @@ namespace QPI
 		if (vote.proposalTick != proposal.tick)
 			return false;
 
-		// Return voter index (which may be INVALID_VOTER_INDEX if voter has no right to vote)
-		unsigned int voterIndexBegin = pv.proposersAndVoters.getVoterIndex(qpi, voter, vote.proposalIndex);
-		if (voterIndexBegin == INVALID_VOTER_INDEX)
+		// Return vote index (which may be INVALID_VOTE_INDEX if voter has no right to vote)
+		unsigned int voteIndexBegin = pv.proposersAndVoters.getVoteIndex(qpi, voter, vote.proposalIndex);
+		if (voteIndexBegin == INVALID_VOTE_INDEX)
 			return false;
 
 		// Get count of votes that this voter can cast
-		unsigned int voteCountTotal = pv.proposersAndVoters.getVoteCount(qpi, voterIndexBegin, vote.proposalIndex);
+		unsigned int voteCountTotal = pv.proposersAndVoters.getVoteCount(qpi, voteIndexBegin, vote.proposalIndex);
 		ASSERT(voteCountTotal >= 1);
 
 		// Get count of votes sent
@@ -708,21 +707,21 @@ namespace QPI
 			return false;
 
 		// Set all votes up to total vote count (votes not sent are set to invalid)
-		unsigned int voterIndex = voterIndexBegin;
-		const unsigned int voterIndexEnd = voterIndexBegin + voteCountTotal;
+		unsigned int voteIndex = voteIndexBegin;
+		const unsigned int voteIndexEnd = voteIndexBegin + voteCountTotal;
 
 		// Compatibility case? -> count 0 means all votes with same value
 		bool okay = true;
 		if (voteCountSent == 0)
 		{
-			for (; voterIndex < voterIndexEnd; ++voterIndex)
+			for (; voteIndex < voteIndexEnd; ++voteIndex)
 			{
-				// Set vote value (checking that voter index and value are valid)
-				okay = proposal.setVoteValue(voterIndex, vote.voteValues.get(0));
+				// Set vote value (checking that vote index and value are valid)
+				okay = proposal.setVoteValue(voteIndex, vote.voteValues.get(0));
 				if (!okay)
 				{
 					// On error, fill all with invalid/no votes
-					voterIndex = voterIndexBegin;
+					voteIndex = voteIndexBegin;
 					goto leave;
 				}
 			}
@@ -736,13 +735,13 @@ namespace QPI
 			uint32 voteCount = vote.voteCounts.get(i);
 			for (unsigned int j = 0; j < voteCount; ++j)
 			{
-				// Set vote value (checking that voter index and value are valid)
-				okay = proposal.setVoteValue(voterIndex, voteValue);
-				++voterIndex;
+				// Set vote value (checking that vote index and value are valid)
+				okay = proposal.setVoteValue(voteIndex, voteValue);
+				++voteIndex;
 				if (!okay)
 				{
 					// On error, fill all with invalid/no votes
-					voterIndex = voterIndexBegin;
+					voteIndex = voteIndexBegin;
 					goto leave;
 				}
 			}
@@ -750,9 +749,9 @@ namespace QPI
 
 	leave:
 		// Set remaining votes to no vote
-		for (; voterIndex < voterIndexEnd; ++voterIndex)
+		for (; voteIndex < voteIndexEnd; ++voteIndex)
 		{
-			proposal.setVoteValue(voterIndex, NO_VOTE_VALUE);
+			proposal.setVoteValue(voteIndex, NO_VOTE_VALUE);
 		}
 
 		return okay;
@@ -778,11 +777,11 @@ namespace QPI
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	bool QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::getVote(
 		uint16 proposalIndex,
-		uint32 voterIndex,
+		uint32 voteIndex,
 		ProposalSingleVoteDataV1& vote
 	) const
 	{
-		if (proposalIndex >= pv.maxProposals || voterIndex >= pv.maxVoters || !pv.proposals[proposalIndex].epoch)
+		if (proposalIndex >= pv.maxProposals || voteIndex >= pv.maxVotes || !pv.proposals[proposalIndex].epoch)
 		{
 			// vote.proposalType == 0 indicates error
 			vote.proposalType = 0;
@@ -792,7 +791,7 @@ namespace QPI
 		vote.proposalIndex = proposalIndex;
 		vote.proposalType = pv.proposals[proposalIndex].type;
 		vote.proposalTick = pv.proposals[proposalIndex].tick;
-		vote.voteValue = pv.proposals[proposalIndex].getVoteValue(voterIndex);
+		vote.voteValue = pv.proposals[proposalIndex].getVoteValue(voteIndex);
 		return true;
 	}
 
@@ -811,18 +810,18 @@ namespace QPI
 
 		auto& proposal = pv.proposals[proposalIndex];
 
-		// Return first voter index (which may be INVALID_VOTER_INDEX if voter has no right to vote)
-		unsigned int voterIndexBegin = pv.proposersAndVoters.getVoterIndex(qpi, voter, proposalIndex);
-		if (voterIndexBegin == INVALID_VOTER_INDEX)
+		// Return first vote index (which may be INVALID_VOTE_INDEX if voter has no right to vote)
+		unsigned int voteIndexBegin = pv.proposersAndVoters.getVoteIndex(qpi, voter, proposalIndex);
+		if (voteIndexBegin == INVALID_VOTE_INDEX)
 			return false;
 
 		// Get count of votes that this voter can cast
-		unsigned int voteCountTotal = pv.proposersAndVoters.getVoteCount(qpi, voterIndexBegin, proposalIndex);
+		unsigned int voteCountTotal = pv.proposersAndVoters.getVoteCount(qpi, voteIndexBegin, proposalIndex);
 		ASSERT(voteCountTotal >= 1);
-			
+
 		// Count votes of individual values
-		unsigned int voterIndex = voterIndexBegin;
-		const unsigned int voterIndexEnd = voterIndexBegin + voteCountTotal;
+		unsigned int voteIndex = voteIndexBegin;
+		const unsigned int voteIndexEnd = voteIndexBegin + voteCountTotal;
 
 		if (proposal.type == ProposalTypes::VariableScalarMean)
 		{
@@ -832,9 +831,9 @@ namespace QPI
 			valueIdx.reset();
 			votes.voteValues.setAll(0);
 			votes.voteCounts.setAll(0);
-			for (; voterIndex < voterIndexEnd; ++voterIndex)
+			for (; voteIndex < voteIndexEnd; ++voteIndex)
 			{
-				sint64 voteValue = proposal.getVoteValue(voterIndex);
+				sint64 voteValue = proposal.getVoteValue(voteIndex);
 				if (voteValue != NO_VOTE_VALUE)
 				{
 					if (!valueIdx.get(voteValue, voteValueIdx))
@@ -858,9 +857,9 @@ namespace QPI
 			ASSERT(optionCount > 0);
 			ASSERT(optionCount <= hist.capacity());
 			hist.setAll(0);
-			for (; voterIndex < voterIndexEnd; ++voterIndex)
+			for (; voteIndex < voteIndexEnd; ++voteIndex)
 			{
-				sint64 value = proposal.getVoteValue(voterIndex);
+				sint64 value = proposal.getVoteValue(voteIndex);
 				if (value != NO_VOTE_VALUE && value >= 0 && value < optionCount)
 				{
 					hist.set(value, hist.get(value) + 1);
@@ -880,9 +879,9 @@ namespace QPI
 	}
 
 	// Compute voting summary of scalar votes
-	template <typename ProposalDataType, uint32 maxVoters>
+	template <typename ProposalDataType, uint32 maxVotes>
 	bool __getVotingSummaryScalarVotes(
-		const ProposalWithAllVoteData<ProposalDataType, maxVoters>& p,
+		const ProposalWithAllVoteData<ProposalDataType, maxVotes>& p,
 		ProposalSummarizedVotingDataV1& votingSummary
 	)
 	{
@@ -892,13 +891,13 @@ namespace QPI
 		// scalar voting -> compute mean value of votes
 		sint64 value;
 		sint64 accumulation = 0;
-		if (p.variableScalar.maxValue > p.variableScalar.maxSupportedValue / maxVoters
-			|| p.variableScalar.minValue < p.variableScalar.minSupportedValue / maxVoters)
+		if (p.variableScalar.maxValue > p.variableScalar.maxSupportedValue / maxVotes
+			|| p.variableScalar.minValue < p.variableScalar.minSupportedValue / maxVotes)
 		{
 			// calculating mean in a way that avoids overflow of sint64
 			// algorithm based on https://stackoverflow.com/questions/56663116/how-to-calculate-average-of-int64-t
 			sint64 acc2 = 0;
-			for (uint32 i = 0; i < maxVoters; ++i)
+			for (uint32 i = 0; i < maxVotes; ++i)
 			{
 				value = p.getVoteValue(i);
 				if (value != NO_VOTE_VALUE)
@@ -908,7 +907,7 @@ namespace QPI
 			}
 			if (votingSummary.totalVotesCasted)
 			{
-				for (uint32 i = 0; i < maxVoters; ++i)
+				for (uint32 i = 0; i < maxVotes; ++i)
 				{
 					value = p.getVoteValue(i);
 					if (value != NO_VOTE_VALUE)
@@ -924,7 +923,7 @@ namespace QPI
 		else
 		{
 			// compute mean the regular way (faster than above)
-			for (uint32 i = 0; i < maxVoters; ++i)
+			for (uint32 i = 0; i < maxVotes; ++i)
 			{
 				value = p.getVoteValue(i);
 				if (value != NO_VOTE_VALUE)
@@ -945,9 +944,9 @@ namespace QPI
 	}
 
 	// Specialization of "Compute voting summary of scalar votes" for ProposalDataYesNo, which has no struct members about support scalar votes
-	template <uint32 maxVoters>
+	template <uint32 maxVotes>
 	bool __getVotingSummaryScalarVotes(
-		const ProposalWithAllVoteData<ProposalDataYesNo, maxVoters>& p,
+		const ProposalWithAllVoteData<ProposalDataYesNo, maxVotes>& p,
 		ProposalSummarizedVotingDataV1& votingSummary
 	)
 	{
@@ -967,7 +966,7 @@ namespace QPI
 		if (proposalIndex >= pv.maxProposals || !pv.proposals[proposalIndex].epoch)
 			return false;
 
-		const ProposalWithAllVoteData<ProposalDataType, pv.maxVoters>& p = pv.proposals[proposalIndex];
+		const ProposalWithAllVoteData<ProposalDataType, pv.maxVotes>& p = pv.proposals[proposalIndex];
 		votingSummary.proposalIndex = proposalIndex;
 		votingSummary.optionCount = ProposalTypes::optionCount(p.type);
 		votingSummary.proposalTick = p.tick;
@@ -986,7 +985,7 @@ namespace QPI
 			ASSERT(votingSummary.optionCount <= votingSummary.optionVoteCount.capacity());
 			auto& hist = votingSummary.optionVoteCount;
 			hist.setAll(0);
-			for (uint32 i = 0; i < pv.maxVoters; ++i)
+			for (uint32 i = 0; i < pv.maxVotes; ++i)
 			{
 				sint64 value = p.getVoteValue(i);
 				if (value != NO_VOTE_VALUE && value >= 0 && value < votingSummary.optionCount)
@@ -997,7 +996,7 @@ namespace QPI
 			}
 		}
 
-		votingSummary.totalVotesAuthorized = pv.maxVoters;
+		votingSummary.totalVotesAuthorized = pv.maxVotes;
 
 		return true;
 	}
@@ -1022,36 +1021,36 @@ namespace QPI
 		return pv.proposersAndVoters.getProposerId(qpi, proposalIndex);
 	}
 
-	// Return voter index for given ID or INVALID_VOTER_INDEX if ID has no right to vote. If the voter has multiple
+	// Return vote index for given ID or INVALID_VOTE_INDEX if ID has no right to vote. If the voter has multiple
 	// votes, this returns the first index. All votes of a voter are stored consecutively.
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
-	uint32 QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::voterIndex(
+	uint32 QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::voteIndex(
 		const id& voterId,
 		uint16 proposalIndex
 	) const
 	{
-		return pv.proposersAndVoters.getVoterIndex(qpi, voterId, proposalIndex);
+		return pv.proposersAndVoters.getVoteIndex(qpi, voterId, proposalIndex);
 	}
 
-	// Return ID for given voter index or NULL_ID if index is invalid
+	// Return ID for given vote index or NULL_ID if index is invalid
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	id QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::voterId(
-		uint32 voterIndex,
+		uint32 voteIndex,
 		uint16 proposalIndex
 	) const
 	{
-		return pv.proposersAndVoters.getVoterId(qpi, voterIndex, proposalIndex);
+		return pv.proposersAndVoters.getVoterId(qpi, voteIndex, proposalIndex);
 	}
 
-	// Return count of votes of a voter if the first voter index is passed. Otherwise return the number of votes
+	// Return count of votes of a voter if the first vote index is passed. Otherwise return the number of votes
 	// including this and the following indices. Returns 0 if an invalid index is passed.
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	uint32 QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>::voteCount(
-		uint32 voterIndex,
+		uint32 voteIndex,
 		uint16 proposalIndex
 	) const
 	{
-		return pv.proposersAndVoters.getVoteCount(qpi, voterIndex, proposalIndex);
+		return pv.proposersAndVoters.getVoteCount(qpi, voteIndex, proposalIndex);
 	}
 
 	// Return next proposal index of proposals of given epoch (default: current epoch)

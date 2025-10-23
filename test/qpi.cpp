@@ -367,21 +367,21 @@ TEST(TestCoreQPI, ProposalAndVotingByComputors)
     // Memory must be zeroed to work, which is done in contract states on init
     QPI::setMemory(pv, 0);
 
-    // voter index is computor index
+    // vote index is computor index
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
     {
-        EXPECT_EQ(pv.getVoterIndex(qpi, qpi.computor(i)), i);
+        EXPECT_EQ(pv.getVoteIndex(qpi, qpi.computor(i)), i);
         EXPECT_EQ(pv.getVoterId(qpi, i), qpi.computor(i));
         EXPECT_EQ(pv.getVoteCount(qpi, i), 1);
     }
     for (int i = NUMBER_OF_COMPUTORS; i < 800; ++i)
     {
         QPI::id testId(i, 9, 8, 7);
-        EXPECT_EQ(pv.getVoterIndex(qpi, testId), QPI::INVALID_VOTER_INDEX);
+        EXPECT_EQ(pv.getVoteIndex(qpi, testId), QPI::INVALID_VOTE_INDEX);
         EXPECT_EQ(pv.getVoterId(qpi, i), QPI::NULL_ID);
         EXPECT_EQ(pv.getVoteCount(qpi, i), 0);
     }
-    EXPECT_EQ(pv.getVoterIndex(qpi, qpi.originator()), QPI::INVALID_VOTER_INDEX);
+    EXPECT_EQ(pv.getVoteIndex(qpi, qpi.originator()), QPI::INVALID_VOTE_INDEX);
 
     // valid proposers are computors
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
@@ -457,7 +457,7 @@ static void checkShareholderVotingRights(const QpiContextUserProcedureCall& qpi,
     {
         const m256i owner = ownerSharesPair.first;
         const auto shareCount = ownerSharesPair.second;
-        EXPECT_EQ(pv.getVoterIndex(qpi, owner, proposalIdx), voterIdx);
+        EXPECT_EQ(pv.getVoteIndex(qpi, owner, proposalIdx), voterIdx);
         for (unsigned int i = 0; i < shareCount; ++i)
         {
             EXPECT_EQ(pv.getVoterId(qpi, voterIdx, proposalIdx), owner);
@@ -466,8 +466,8 @@ static void checkShareholderVotingRights(const QpiContextUserProcedureCall& qpi,
         }
     }
     EXPECT_EQ(voterIdx, NUMBER_OF_COMPUTORS);
-    EXPECT_EQ(pv.getVoterIndex(qpi, NULL_ID, proposalIdx), INVALID_VOTER_INDEX);
-    EXPECT_EQ(pv.getVoterIndex(qpi, id(12345678, 901234, 5678, 90), proposalIdx), INVALID_VOTER_INDEX);
+    EXPECT_EQ(pv.getVoteIndex(qpi, NULL_ID, proposalIdx), INVALID_VOTE_INDEX);
+    EXPECT_EQ(pv.getVoteIndex(qpi, id(12345678, 901234, 5678, 90), proposalIdx), INVALID_VOTE_INDEX);
     EXPECT_EQ(pv.getVoterId(qpi, voterIdx, proposalIdx), NULL_ID);
     EXPECT_EQ(pv.getVoteCount(qpi, voterIdx, proposalIdx), 0);
 }
@@ -956,7 +956,7 @@ void expectNoVotes(
 )
 {
     QPI::ProposalSingleVoteDataV1 vote;
-    for (QPI::uint32 i = 0; i < pv->maxVoters; ++i)
+    for (QPI::uint32 i = 0; i < pv->maxVotes; ++i)
     {
         EXPECT_TRUE(qpi(*pv).getVote(proposalIndex, i, vote));
         EXPECT_EQ(vote.voteValue, QPI::NO_VOTE_VALUE);
@@ -964,7 +964,7 @@ void expectNoVotes(
 
     QPI::ProposalSummarizedVotingDataV1 votingSummaryReturned;
     EXPECT_TRUE(qpi(*pv).getVotingSummary(proposalIndex, votingSummaryReturned));
-    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
     EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 0);
     EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), -1);
 }
@@ -1027,8 +1027,8 @@ void voteWithValidVoter(
     QPI::sint64 voteValue
 )
 {
-    QPI::uint32 voterIdx = qpi(pv).voterIndex(voterId);
-    EXPECT_NE(voterIdx, QPI::INVALID_VOTER_INDEX);
+    QPI::uint32 voterIdx = qpi(pv).voteIndex(voterId);
+    EXPECT_NE(voterIdx, QPI::INVALID_VOTE_INDEX);
     QPI::id voterIdReturned = qpi(pv).voterId(voterIdx);
     EXPECT_EQ(voterIdReturned, voterId);
 
@@ -1076,8 +1076,8 @@ void voteWithValidVoterMultiVote(
     QPI::uint32 voteCount3 = 0
 )
 {
-    QPI::uint32 voterIdx = qpi(pv).voterIndex(voterId);
-    EXPECT_NE(voterIdx, QPI::INVALID_VOTER_INDEX);
+    QPI::uint32 voterIdx = qpi(pv).voteIndex(voterId);
+    EXPECT_NE(voterIdx, QPI::INVALID_VOTE_INDEX);
     QPI::id voterIdReturned = qpi(pv).voterId(voterIdx);
     EXPECT_EQ(voterIdReturned, voterId);
 
@@ -1284,20 +1284,20 @@ void testProposalVotingComputorsV1()
     EXPECT_EQ(qpi(*pv).proposerId(1), QPI::NULL_ID);
 
     // okay: voters are available independently of proposals (= computors)
-    for (int i = 0; i < pv->maxVoters; ++i)
+    for (int i = 0; i < pv->maxVotes; ++i)
     {
-        EXPECT_EQ(qpi(*pv).voterIndex(qpi.computor(i)), i);
+        EXPECT_EQ(qpi(*pv).voteIndex(qpi.computor(i)), i);
         EXPECT_EQ(qpi(*pv).voteCount(i), 1);
         EXPECT_EQ(qpi(*pv).voterId(i), qpi.computor(i));
     }
 
     // fail: IDs / indices of non-voters
-    EXPECT_EQ(qpi(*pv).voterIndex(qpi.originator()), QPI::INVALID_VOTER_INDEX);
-    EXPECT_EQ(qpi(*pv).voterIndex(QPI::NULL_ID), QPI::INVALID_VOTER_INDEX);
-    EXPECT_EQ(qpi(*pv).voteCount(QPI::INVALID_VOTER_INDEX), 0);
+    EXPECT_EQ(qpi(*pv).voteIndex(qpi.originator()), QPI::INVALID_VOTE_INDEX);
+    EXPECT_EQ(qpi(*pv).voteIndex(QPI::NULL_ID), QPI::INVALID_VOTE_INDEX);
+    EXPECT_EQ(qpi(*pv).voteCount(QPI::INVALID_VOTE_INDEX), 0);
     EXPECT_EQ(qpi(*pv).voteCount(1000), 0);
-    EXPECT_EQ(qpi(*pv).voterId(pv->maxVoters), QPI::NULL_ID);
-    EXPECT_EQ(qpi(*pv).voterId(pv->maxVoters + 1), QPI::NULL_ID);
+    EXPECT_EQ(qpi(*pv).voterId(pv->maxVotes), QPI::NULL_ID);
+    EXPECT_EQ(qpi(*pv).voterId(pv->maxVotes + 1), QPI::NULL_ID);
 
     // okay: set proposal for computor 0
     QPI::ProposalDataV1<supportScalarVotes> proposal;
@@ -1340,7 +1340,7 @@ void testProposalVotingComputorsV1()
 
     // okay: correct votes in proposalIndex 0
     expectNoVotes(qpi, pv, 0);
-    for (int i = 0; i < pv->maxVoters; ++i)
+    for (int i = 0; i < pv->maxVotes; ++i)
     {
         voteWithValidVoterMultiVote<true>(qpi, *pv, qpi.computor(i), 0, QPI::ProposalTypes::YesNo, qpi.tick(), i % 2);
         voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), 0, QPI::ProposalTypes::YesNo, qpi.tick(), i % 2);
@@ -1349,11 +1349,11 @@ void testProposalVotingComputorsV1()
     voteWithValidVoterMultiVote<true>(qpi, *pv, qpi.computor(0), 0, QPI::ProposalTypes::YesNo, qpi.tick(), QPI::NO_VOTE_VALUE); // remove vote
     EXPECT_TRUE(qpi(*pv).getVotingSummary(0, votingSummaryReturned));
     EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 0);
-    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
-    EXPECT_EQ(votingSummaryReturned.totalVotesCasted, pv->maxVoters - 1);
+    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
+    EXPECT_EQ(votingSummaryReturned.totalVotesCasted, pv->maxVotes - 1);
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 2);
-    EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), pv->maxVoters / 2 - 1);
-    EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(1), pv->maxVoters / 2);
+    EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), pv->maxVotes / 2 - 1);
+    EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(1), pv->maxVotes / 2);
     EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), 1);
     EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), 1);
 
@@ -1417,20 +1417,20 @@ void testProposalVotingComputorsV1()
 
     // okay: correct votes in proposalIndex 1 (first use)
     expectNoVotes(qpi, pv, 1);
-    for (int i = 0; i < pv->maxVoters; ++i)
+    for (int i = 0; i < pv->maxVotes; ++i)
     {
         voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), 1, proposal.type, qpi.tick(), (i < 100) ? i % 4 : 3);
         voteWithValidVoterMultiVote<true>(qpi, *pv, qpi.computor(i), 1, proposal.type, qpi.tick(), (i < 100) ? i % 4 : 3);
     }
     EXPECT_TRUE(qpi(*pv).getVotingSummary(1, votingSummaryReturned));
     EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 1);
-    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
-    EXPECT_EQ(votingSummaryReturned.totalVotesCasted, pv->maxVoters);
+    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
+    EXPECT_EQ(votingSummaryReturned.totalVotesCasted, pv->maxVotes);
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 4);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), 25);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(1), 25);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(2), 25);
-    EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(3), pv->maxVoters - 75);
+    EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(3), pv->maxVotes - 75);
     for (int i = 4; i < votingSummaryReturned.optionVoteCount.capacity(); ++i)
         EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(i), 0);
     EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), 3);
@@ -1481,7 +1481,7 @@ void testProposalVotingComputorsV1()
 
     // okay: correct votes in proposalIndex 1 (reused)
     expectNoVotes(qpi, pv, 1); // checks that setProposal clears previous votes
-    for (int i = 0; i < pv->maxVoters; ++i)
+    for (int i = 0; i < pv->maxVotes; ++i)
     {
         voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), secondProposalIdx, proposal.type, qpi.tick(), i % 2);
         voteWithValidVoterMultiVote<true>(qpi, *pv, qpi.computor(i), secondProposalIdx, proposal.type, qpi.tick(), i % 2);
@@ -1492,11 +1492,11 @@ void testProposalVotingComputorsV1()
     voteWithValidVoter<true>(qpi, *pv, qpi.computor(5), secondProposalIdx, proposal.type, qpi.tick(), QPI::NO_VOTE_VALUE); // remove vote
     EXPECT_TRUE(qpi(*pv).getVotingSummary(1, votingSummaryReturned));
     EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 1);
-    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
-    EXPECT_EQ(votingSummaryReturned.totalVotesCasted, pv->maxVoters - 2);
+    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
+    EXPECT_EQ(votingSummaryReturned.totalVotesCasted, pv->maxVotes - 2);
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 2);
-    EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), pv->maxVoters / 2);
-    EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(1), pv->maxVoters / 2 - 2);
+    EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), pv->maxVotes / 2);
+    EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(1), pv->maxVotes / 2 - 2);
     EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), 0);
     EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), 0);
 
@@ -1545,7 +1545,7 @@ void testProposalVotingComputorsV1()
         }
         EXPECT_TRUE(qpi(*pv).getVotingSummary(qpi(*pv).proposalIndex(qpi.computor(1)), votingSummaryReturned));
         EXPECT_EQ((int)votingSummaryReturned.proposalIndex, (int)qpi(*pv).proposalIndex(qpi.computor(1)));
-        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
         EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 99);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
         EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), -1);
@@ -1588,7 +1588,7 @@ void testProposalVotingComputorsV1()
         }
         EXPECT_TRUE(qpi(*pv).getVotingSummary(3, votingSummaryReturned));
         EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 3);
-        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
         EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 603);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
         EXPECT_EQ(votingSummaryReturned.scalarVotingResult, 0);
@@ -1608,7 +1608,7 @@ void testProposalVotingComputorsV1()
         }
         EXPECT_TRUE(qpi(*pv).getVotingSummary(3, votingSummaryReturned));
         EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 3);
-        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
         EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 200);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
         EXPECT_EQ(votingSummaryReturned.scalarVotingResult, (200 * 201 / 2) / 200);
@@ -1680,7 +1680,7 @@ void testProposalVotingComputorsV1()
 
     // okay: query voting summary of other epoch
     EXPECT_TRUE(qpi(*pv).getVotingSummary(qpi(*pv).proposalIndex(qpi.computor(10)), votingSummaryReturned));
-    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
     EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 20+40+100+200);
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 4);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), 20);
@@ -1820,12 +1820,12 @@ void testProposalVotingShareholdersV1()
     EXPECT_EQ(qpi(*pv).proposerId(1), QPI::NULL_ID);
 
     // fail: IDs / indices of non-voters
-    EXPECT_EQ(qpi(*pv).voterIndex(qpi.originator()), QPI::INVALID_VOTER_INDEX);
-    EXPECT_EQ(qpi(*pv).voterIndex(QPI::NULL_ID), QPI::INVALID_VOTER_INDEX);
-    EXPECT_EQ(qpi(*pv).voteCount(QPI::INVALID_VOTER_INDEX), 0);
+    EXPECT_EQ(qpi(*pv).voteIndex(qpi.originator()), QPI::INVALID_VOTE_INDEX);
+    EXPECT_EQ(qpi(*pv).voteIndex(QPI::NULL_ID), QPI::INVALID_VOTE_INDEX);
+    EXPECT_EQ(qpi(*pv).voteCount(QPI::INVALID_VOTE_INDEX), 0);
     EXPECT_EQ(qpi(*pv).voteCount(1000), 0);
-    EXPECT_EQ(qpi(*pv).voterId(pv->maxVoters), QPI::NULL_ID);
-    EXPECT_EQ(qpi(*pv).voterId(pv->maxVoters + 1), QPI::NULL_ID);
+    EXPECT_EQ(qpi(*pv).voterId(pv->maxVotes), QPI::NULL_ID);
+    EXPECT_EQ(qpi(*pv).voterId(pv->maxVotes + 1), QPI::NULL_ID);
 
     // okay: set proposal for shareholder 0
     QPI::ProposalDataV1<supportScalarVotes> proposal;
@@ -1841,7 +1841,7 @@ void testProposalVotingShareholdersV1()
     // check that voters match shareholders
     for (size_t i = 0; i < shareholderShares.size(); ++i)
     {
-        uint32 voterIdx = qpi(*pv).voterIndex(shareholderShares[i].first);
+        uint32 voterIdx = qpi(*pv).voteIndex(shareholderShares[i].first);
         EXPECT_NE(voterIdx, NO_VOTE_VALUE);
         EXPECT_EQ(qpi(*pv).voteCount(voterIdx), shareholderShares[i].second);
         EXPECT_EQ(qpi(*pv).voterId(voterIdx), shareholderShares[i].first);
@@ -1890,8 +1890,8 @@ void testProposalVotingShareholdersV1()
     voteWithValidVoterMultiVote<true>(qpi, *pv, shareholderShares[0].first, 0, QPI::ProposalTypes::YesNo, qpi.tick(), QPI::NO_VOTE_VALUE); // remove vote
     EXPECT_TRUE(qpi(*pv).getVotingSummary(0, votingSummaryReturned));
     EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 0);
-    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
-    EXPECT_EQ(votingSummaryReturned.totalVotesCasted, pv->maxVoters - shareholderShares[0].second);
+    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
+    EXPECT_EQ(votingSummaryReturned.totalVotesCasted, pv->maxVotes - shareholderShares[0].second);
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 2);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), optionProposalVoteCounts[0] - shareholderShares[0].second);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(1), optionProposalVoteCounts[1]);
@@ -1950,8 +1950,8 @@ void testProposalVotingShareholdersV1()
     }
     EXPECT_TRUE(qpi(*pv).getVotingSummary(1, votingSummaryReturned));
     EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 1);
-    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
-    EXPECT_EQ(votingSummaryReturned.totalVotesCasted, pv->maxVoters);
+    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
+    EXPECT_EQ(votingSummaryReturned.totalVotesCasted, pv->maxVotes);
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 4);
     for (int i = 0; i < 4; ++i)
         EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(i), optionProposalVoteCounts[i]);
@@ -2020,7 +2020,7 @@ void testProposalVotingShareholdersV1()
     optionProposalVoteCounts[1] -= shareholderShares[5].second;
     EXPECT_TRUE(qpi(*pv).getVotingSummary(1, votingSummaryReturned));
     EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 1);
-    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
     EXPECT_EQ(votingSummaryReturned.totalVotesCasted, optionProposalVoteCounts[0] + optionProposalVoteCounts[1]);
     EXPECT_EQ((int)votingSummaryReturned.optionCount, 2);
     EXPECT_EQ(votingSummaryReturned.optionVoteCount.get(0), optionProposalVoteCounts[0]);
@@ -2076,7 +2076,7 @@ void testProposalVotingShareholdersV1()
         }
         EXPECT_TRUE(qpi(*pv).getVotingSummary(qpi(*pv).proposalIndex(shareholderShares[1].first), votingSummaryReturned));
         EXPECT_EQ((int)votingSummaryReturned.proposalIndex, (int)qpi(*pv).proposalIndex(shareholderShares[1].first));
-        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
         EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 30);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
         EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.variableScalar.maxSupportedValue - 1);
@@ -2125,7 +2125,7 @@ void testProposalVotingShareholdersV1()
         }
         EXPECT_TRUE(qpi(*pv).getVotingSummary(3, votingSummaryReturned));
         EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 3);
-        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
         EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 676);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
         EXPECT_EQ(votingSummaryReturned.scalarVotingResult, 0);
@@ -2144,7 +2144,7 @@ void testProposalVotingShareholdersV1()
         }
         EXPECT_TRUE(qpi(*pv).getVotingSummary(3, votingSummaryReturned));
         EXPECT_EQ((int)votingSummaryReturned.proposalIndex, 3);
-        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+        EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
         EXPECT_EQ(votingSummaryReturned.totalVotesCasted, shareholderShares.size() * 7);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
         EXPECT_EQ(votingSummaryReturned.scalarVotingResult, (shareholderShares.size() / 2) * 3 + 1);
@@ -2220,7 +2220,7 @@ void testProposalVotingShareholdersV1()
 
     // okay: query voting summary of other epoch
     EXPECT_TRUE(qpi(*pv).getVotingSummary(qpi(*pv).proposalIndex(shareholderShares[5].first), votingSummaryReturned));
-    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVoters);
+    EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
     uint32 voteCountSum = 0;
     for (int i = 0; i < 4; ++i)
         voteCountSum += optionProposalVoteCounts[i];
