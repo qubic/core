@@ -260,6 +260,7 @@ public:
     struct BurnQubic_input
     {
         sint64 amount;
+        sint32 contractIndexBurnedFor = -1;
     };
     struct BurnQubic_output
     {
@@ -874,7 +875,7 @@ public:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.amount); // return the changes
         }
-        qpi.burn(input.amount);
+        qpi.burn(input.amount, input.contractIndexBurnedFor);
         output.amount = input.amount;
         return;
     }
