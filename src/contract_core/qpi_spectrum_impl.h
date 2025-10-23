@@ -40,7 +40,7 @@ static long long& contractFeeReserve(unsigned int contractIndex)
     return ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex];
 }
 
-long long QPI::QpiContextProcedureCall::burn(long long amount) const
+long long QPI::QpiContextProcedureCall::burn(long long amount, int contractIndexBurnedFor) const
 {
     if (amount < 0 || amount > MAX_AMOUNT)
     {
@@ -63,11 +63,14 @@ long long QPI::QpiContextProcedureCall::burn(long long amount) const
 
     if (decreaseEnergy(index, amount))
     {
+        if (contractIndexBurnedFor < 1 || contractIndexBurnedFor >= contractCount)
+            contractIndexBurnedFor = _currentContractIndex;
+
         contractStateLock[0].acquireWrite();
-        contractFeeReserve(_currentContractIndex) += amount;
+        contractFeeReserve(contractIndexBurnedFor) += amount;
         contractStateLock[0].releaseWrite();
 
-        const Burning burning = { _currentContractId , amount };
+        const Burning burning = { _currentContractId , amount, contractIndexBurnedFor };
         logger.logBurning(burning);
     }
 
