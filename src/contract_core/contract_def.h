@@ -286,7 +286,7 @@ constexpr struct ContractDescription
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA)},
-    {"TESTEXB", 138, 10000, sizeof(IPO)},
+    {"TESTEXB", 138, 10000, sizeof(TESTEXB)},
     {"TESTEXC", 138, 10000, sizeof(IPO)},
     {"TESTEXD", 155, 10000, sizeof(IPO)},
 #endif

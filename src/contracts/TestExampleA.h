@@ -459,7 +459,7 @@ public:
 		ProposalDataT proposalData;
 		MultiVariablesProposalExtraData multiVarData; // may be skipped when sending TX if not MultiVariables proposal
 	};
-	typedef SET_SHAREHOLDER_PROPOSAL_output SetShareholderProposal_output;
+	typedef QPI::SET_SHAREHOLDER_PROPOSAL_output SetShareholderProposal_output;
 
 	PUBLIC_PROCEDURE(SetShareholderProposal)
 	{
@@ -511,7 +511,7 @@ public:
 			return;
 		}
 
-		// Try to set proposal (checks invocator's rights and general validity of input proposal), returns success as boolean
+		// Try to set proposal (checks invocator's rights and general validity of input proposal), returns proposal index
 		output = qpi(state.proposals).setProposal(qpi.invocator(), input.proposalData);
 
 		if (output != INVALID_PROPOSAL_INDEX)
@@ -637,6 +637,18 @@ public:
 		}
 	}
 
+	typedef NoData GetShareholderProposalFees_input;
+	struct GetShareholderProposalFees_output
+	{
+		sint64 setProposalFee;
+		sint64 setVoteFee;
+	};
+
+	PUBLIC_FUNCTION(GetShareholderProposalFees)
+	{
+		output.setProposalFee = 0;
+		output.setVoteFee = 0;
+	}
 
 	struct GetShareholderProposal_input
 	{
@@ -734,6 +746,47 @@ protected:
 	// MultiVariables proposal option data storage (same number of slots as proposals)
 	Array<MultiVariablesProposalExtraData, 16> multiVariablesProposalData;
 
+
+public:
+	struct SetProposalInOtherContractAsShareholder_input
+	{
+		Array<uint8, 512> proposalDataBuffer;
+		uint16 otherContractIndex;
+	};
+	struct SetProposalInOtherContractAsShareholder_output
+	{
+		uint16 proposalIndex;
+	};
+	struct SetProposalInOtherContractAsShareholder_locals
+	{
+		Array<uint8, 1024> proposalDataBuffer;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(SetProposalInOtherContractAsShareholder)
+	{
+		// User procedure for letting TESTEXB create a shareholder proposal in TESTEXA as shareholder of TESTEXA.
+		// Skipped here: checking that invocator has right to set proposal for this contract (e.g., is contract "admin")
+		copyToBuffer(locals.proposalDataBuffer, input.proposalDataBuffer);
+		output.proposalIndex = qpi.setShareholderProposal(input.otherContractIndex, locals.proposalDataBuffer, qpi.invocationReward());
+	}
+
+	struct SetVotesInOtherContractAsShareholder_input
+	{
+		ProposalMultiVoteDataV1 voteData;
+		uint16 otherContractIndex;
+	};
+	struct SetVotesInOtherContractAsShareholder_output
+	{
+		bit success;
+	};
+
+	PUBLIC_PROCEDURE(SetVotesInOtherContractAsShareholder)
+	{
+		// User procedure for letting TESTEXB cast shareholder votes in TESTEXA as shareholder of TESTEXA.
+		// Skipped here: checking that invocator has right to cast votes for this contract (e.g., is contract "admin")
+		output.success = qpi.setShareholderVotes(input.otherContractIndex, input.voteData, qpi.invocationReward());
+	}
+
 	//---------------------------------------------------------------
 	// COMMON PARTS
 
@@ -754,7 +807,11 @@ protected:
 		REGISTER_USER_PROCEDURE(QueryQpiFunctionsToState, 7);
 		REGISTER_USER_PROCEDURE(RunHeavyComputation, 8);
 
-		// Shareholder proposals: use standard function/proposal indices
+		REGISTER_USER_PROCEDURE(SetProposalInOtherContractAsShareholder, 40);
+		REGISTER_USER_PROCEDURE(SetVotesInOtherContractAsShareholder, 41);
+
+		// Shareholder proposals: use standard function/procedure indices
+		REGISTER_USER_FUNCTION(GetShareholderProposalFees, 65531);
 		REGISTER_USER_FUNCTION(GetShareholderProposalIndices, 65532);
 		REGISTER_USER_FUNCTION(GetShareholderProposal, 65533);
 		REGISTER_USER_FUNCTION(GetShareholderVotes, 65534);
