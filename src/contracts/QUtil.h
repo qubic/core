@@ -260,7 +260,7 @@ public:
     struct BurnQubic_input
     {
         sint64 amount;
-        sint32 contractIndexBurnedFor = -1;
+        sint32 contractIndexBurnedFor;
     };
     struct BurnQubic_output
     {
