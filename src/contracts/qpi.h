@@ -1444,6 +1444,8 @@ namespace QPI
 		// Set given variable to value, allowing to vote with scalar value, voting result is mean value
 		static constexpr uint16 VariableScalarMean = Class::Variable | 0;
 
+		// TODO: support quorum value max / min as voting result
+
 		// Set multiple variables with options yes/no (data stored by contract) -> result is histogram of options
 		static constexpr uint16 MultiVariablesYesNo = Class::MultiVariables | 2;
 
@@ -2538,4 +2540,137 @@ namespace QPI
 	#define SELF id(CONTRACT_INDEX, 0, 0, 0)
 
 	#define SELF_INDEX CONTRACT_INDEX
+
+	//////////
+
+	#define DEFINE_SHAREHOLDER_PROPOSAL_STORAGE(numProposalSlots, assetNameInt64) \
+		typedef ProposalDataYesNo ProposalDataT; \
+		typedef ProposalAndVotingByShareholders<numProposalSlots, assetNameInt64> ProposersAndVotersT; \
+		typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT; \
+		ProposalVotingT proposals
+
+	#define IMPLEMENT_SetShareholderProposal(numFeeStateVariables, setProposalFeeVarOrValue) \
+		typedef ProposalDataT SetShareholderProposal_input; \
+		typedef uint16 SetShareholderProposal_output; \
+		PUBLIC_PROCEDURE(SetShareholderProposal) { \
+			if (input.type != ProposalTypes::VariableYesNo || input.variableOptions.variable >= numFeeStateVariables \
+				|| input.variableOptions.value < 0 || qpi.invocationReward() < setProposalFeeVarOrValue) { \
+				qpi.transfer(qpi.invocator(), qpi.invocationReward()); \
+				output = INVALID_PROPOSAL_INDEX; \
+				return; } \
+			output = qpi(state.proposals).setProposal(qpi.invocator(), input); \
+			if (output == INVALID_PROPOSAL_INDEX) { \
+				qpi.transfer(qpi.invocator(), qpi.invocationReward()); \
+				return;	} \
+			qpi.burn(setProposalFeeVarOrValue); \
+			if (qpi.invocationReward() > setProposalFeeVarOrValue) { \
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - setProposalFeeVarOrValue); } }
+
+	#define IMPLEMENT_GetShareholderProposal() \
+		struct GetShareholderProposal_input { uint16 proposalIndex; }; \
+		struct GetShareholderProposal_output { ProposalDataT proposal; id proposerPubicKey; }; \
+		PUBLIC_FUNCTION(GetShareholderProposal) { \
+			output.proposerPubicKey = qpi(state.proposals).proposerId(input.proposalIndex); \
+			qpi(state.proposals).getProposal(input.proposalIndex, output.proposal); }
+
+	#define IMPLEMENT_GetShareholderProposalIndices() \
+		struct GetShareholderProposalIndices_input { bit activeProposals; sint32 prevProposalIndex; }; \
+		struct GetShareholderProposalIndices_output { uint16 numOfIndices; Array<uint16, 64> indices; }; \
+		PUBLIC_FUNCTION(GetShareholderProposalIndices) {\
+			if (input.activeProposals) { \
+				while ((input.prevProposalIndex = qpi(state.proposals).nextProposalIndex(input.prevProposalIndex, qpi.epoch())) >= 0) { \
+					output.indices.set(output.numOfIndices, input.prevProposalIndex); \
+					++output.numOfIndices; \
+					if (output.numOfIndices == output.indices.capacity()) break; } } \
+			else { \
+				while ((input.prevProposalIndex = qpi(state.proposals).nextFinishedProposalIndex(input.prevProposalIndex)) >= 0) { \
+					output.indices.set(output.numOfIndices, input.prevProposalIndex); \
+					++output.numOfIndices; \
+					if (output.numOfIndices == output.indices.capacity()) break; } } }
+
+	#define IMPLEMENT_GetShareholderProposalFees(setProposalFeeVarOrValue) \
+		typedef NoData GetShareholderProposalFees_input; \
+		struct GetShareholderProposalFees_output { sint64 setProposalFee; sint64 setVoteFee; }; \
+		PUBLIC_FUNCTION(GetShareholderProposalFees) { \
+			output.setProposalFee = setProposalFeeVarOrValue; \
+			output.setVoteFee = 0; }
+
+	#define IMPLEMENT_SetShareholderVotes() \
+		typedef ProposalMultiVoteDataV1 SetShareholderVotes_input; \
+		typedef bit SetShareholderVotes_output; \
+		PUBLIC_PROCEDURE(SetShareholderVotes) { \
+			output = qpi(state.proposals).vote(qpi.invocator(), input); } \
+
+	#define IMPLEMENT_GetShareholderVotes() \
+		struct GetShareholderVotes_input { id voter; uint16 proposalIndex; }; \
+		typedef ProposalMultiVoteDataV1 GetShareholderVotes_output; \
+		PUBLIC_FUNCTION(GetShareholderVotes) { \
+			qpi(state.proposals).getVotes(input.proposalIndex, input.voter,	output); }
+
+	#define IMPLEMENT_GetShareholderVotingResults() \
+		struct GetShareholderVotingResults_input { uint16 proposalIndex; }; \
+		typedef ProposalSummarizedVotingDataV1 GetShareholderVotingResults_output; \
+		PUBLIC_FUNCTION(GetShareholderVotingResults) { \
+			qpi(state.proposals).getVotingSummary(input.proposalIndex, output); }
+
+	#define IMPLEMENT_SET_SHAREHOLDER_PROPOSAL() \
+		struct SET_SHAREHOLDER_PROPOSAL_locals { SetShareholderProposal_input userProcInput; }; \
+		SET_SHAREHOLDER_PROPOSAL_WITH_LOCALS() { \
+			copyFromBuffer(locals.userProcInput, input); \
+			CALL(SetShareholderProposal, locals.userProcInput, output); }
+
+	#define IMPLEMENT_SET_SHAREHOLDER_VOTES() \
+		SET_SHAREHOLDER_VOTES() { \
+			CALL(SetShareholderVotes, input, output); }
+
+	// Define procedures for easily implementing END_EPOCH
+	#define IMPLEMENT_FinalizeShareholderStateVarProposals() \
+		struct FinalizeShareholderProposalSetStateVar_input { \
+			sint32 proposalIndex; ProposalDataT proposal; ProposalSummarizedVotingDataV1 results; \
+			sint32 acceptedOption; 	sint64 accpetedValue; }; \
+		typedef NoData FinalizeShareholderProposalSetStateVar_output; \
+		typedef NoData FinalizeShareholderStateVarProposals_input; \
+		typedef NoData FinalizeShareholderStateVarProposals_output; \
+		struct FinalizeShareholderStateVarProposals_locals { \
+			FinalizeShareholderProposalSetStateVar_input p; uint16 proposalClass; }; \
+		PRIVATE_PROCEDURE_WITH_LOCALS(FinalizeShareholderStateVarProposals) { \
+			locals.p.proposalIndex = -1; \
+			while ((locals.p.proposalIndex = qpi(state.proposals).nextProposalIndex(locals.p.proposalIndex, qpi.epoch())) >= 0) { \
+				if (!qpi(state.proposals).getProposal(locals.p.proposalIndex, locals.p.proposal)) \
+					continue; \
+				locals.proposalClass = ProposalTypes::cls(locals.p.proposal.type); \
+				if (locals.proposalClass == ProposalTypes::Class::Variable || locals.proposalClass == ProposalTypes::Class::MultiVariables) { \
+					if (!qpi(state.proposals).getVotingSummary(locals.p.proposalIndex, locals.p.results)) \
+						continue; \
+					locals.p.acceptedOption = locals.p.results.getAcceptedOption(); \
+					if (locals.p.acceptedOption <= 0) \
+						continue; \
+					locals.p.accpetedValue = locals.p.proposal.variableOptions.value; \
+					CALL(FinalizeShareholderProposalSetStateVar, locals.p, output); } } } \
+		PRIVATE_PROCEDURE(FinalizeShareholderProposalSetStateVar)
+
+	#define IMPLEMENT_DEFAULT_SHAREHOLDER_PROPOSAL_VOTING(numFeeStateVariables, setProposalFeeVarOrValue) \
+		IMPLEMENT_SetShareholderProposal(numFeeStateVariables, setProposalFeeVarOrValue) \
+		IMPLEMENT_GetShareholderProposal() \
+		IMPLEMENT_GetShareholderProposalIndices() \
+		IMPLEMENT_GetShareholderProposalFees(setProposalFeeVarOrValue) \
+		IMPLEMENT_SetShareholderVotes() \
+		IMPLEMENT_GetShareholderVotes() \
+		IMPLEMENT_GetShareholderVotingResults() \
+		IMPLEMENT_SET_SHAREHOLDER_PROPOSAL() \
+		IMPLEMENT_SET_SHAREHOLDER_VOTES()
+
+	#define REGISTER_GetShareholderProposalFees() REGISTER_USER_FUNCTION(GetShareholderProposalFees, 65531)
+	#define REGISTER_GetShareholderProposalIndices() REGISTER_USER_FUNCTION(GetShareholderProposalIndices, 65532)
+	#define REGISTER_GetShareholderProposal() REGISTER_USER_FUNCTION(GetShareholderProposal, 65533)
+	#define REGISTER_GetShareholderVotes() REGISTER_USER_FUNCTION(GetShareholderVotes, 65534)
+	#define REGISTER_GetShareholderVotingResults() REGISTER_USER_FUNCTION(GetShareholderVotingResults, 65535)
+	#define REGISTER_SetShareholderProposal() REGISTER_USER_PROCEDURE(SetShareholderProposal, 65534)
+	#define REGISTER_SetShareholderVotes() REGISTER_USER_PROCEDURE(SetShareholderVotes, 65535)
+
+	#define REGISTER_SHAREHOLDER_PROPSAL_VOTING()  REGISTER_GetShareholderProposalFees() \
+		REGISTER_GetShareholderProposalIndices(); REGISTER_GetShareholderProposal(); \
+		REGISTER_GetShareholderVotes(); REGISTER_GetShareholderVotingResults(); \
+		REGISTER_SetShareholderProposal(); REGISTER_SetShareholderVotes()
+
 }
