@@ -1737,6 +1737,11 @@ static bool getPublicKeyFromIdentity(const unsigned char* identity, unsigned cha
     return true;
 }
 
+static bool getPublicKeyFromIdentity(const char* identity, unsigned char* publicKey)
+{
+    return getPublicKeyFromIdentity((const unsigned char*)identity, publicKey);
+}
+
 static bool getSharedKey(const unsigned char* privateKey, const unsigned char* publicKey, unsigned char* sharedKey)
 { // Secret agreement computation for key exchange using a compressed, 32-byte public key
   // The output is the y-coordinate of privateKey*A, where A is the decoding of the public key publicKey
