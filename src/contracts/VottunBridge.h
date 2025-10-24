@@ -37,16 +37,6 @@ public:
         uint64 orderId;
     };
 
-    struct setAdmin_input
-    {
-        id address;
-    };
-
-    struct setAdmin_output
-    {
-        uint8 status;
-    };
-
     struct addManager_input
     {
         id address;
@@ -156,16 +146,6 @@ public:
         Array<uint8, 32> message;
     };
 
-    struct getAdminID_input
-    {
-        uint8 idInput;
-    };
-
-    struct getAdminID_output
-    {
-        id adminId;
-    };
-
     struct getContractInfo_input
     {
         // No parameters
@@ -173,7 +153,6 @@ public:
 
     struct getContractInfo_output
     {
-        id admin;
         Array<id, 16> managers;
         uint64 nextOrderId;
         uint64 lockedTokens;
@@ -268,8 +247,9 @@ public:
     {
         uint64 proposalId;
         uint8 proposalType;           // Type from ProposalType enum
-        id targetAddress;             // For setAdmin/addManager/removeManager
-        uint64 amount;                // For withdrawFees
+        id targetAddress;             // For setAdmin/addManager/removeManager (new admin address)
+        id oldAddress;                // For setAdmin: which admin to replace
+        uint64 amount;                // For withdrawFees or changeThreshold
         Array<id, 16> approvals;      // Array of owner IDs who approved
         uint8 approvalsCount;         // Count of approvals
         bit executed;                 // Whether proposal was executed
@@ -279,7 +259,6 @@ public:
 public:
     // Contract State
     Array<BridgeOrder, 1024> orders;
-    id admin;                        // Primary admin address (deprecated, kept for compatibility)
     id feeRecipient;                 // Specific wallet to receive fees
     Array<id, 16> managers;          // Managers list
     uint64 nextOrderId;              // Counter for order IDs
@@ -300,14 +279,6 @@ public:
     uint64 nextProposalId;           // Counter for proposal IDs
 
     // Internal methods for admin/manager permissions
-    typedef id isAdmin_input;
-    typedef bit isAdmin_output;
-
-    PRIVATE_FUNCTION(isAdmin)
-    {
-        output = (qpi.invocator() == state.admin);
-    }
-
     typedef id isManager_input;
     typedef bit isManager_output;
 
@@ -579,8 +550,9 @@ public:
     struct createProposal_input
     {
         uint8 proposalType;      // Type of proposal
-        id targetAddress;        // Target address (for setAdmin/addManager/removeManager)
-        uint64 amount;           // Amount (for withdrawFees)
+        id targetAddress;        // Target address (new admin/manager address)
+        id oldAddress;           // Old address (for setAdmin: which admin to replace)
+        uint64 amount;           // Amount (for withdrawFees or changeThreshold)
     };
 
     struct createProposal_output
@@ -621,6 +593,7 @@ public:
         bit isMultisigAdminResult;
         uint64 proposalIndex;
         uint64 availableFees;
+        bit adminAdded;
     };
 
     // Get proposal structures
@@ -701,6 +674,7 @@ public:
         locals.newProposal.proposalId = state.nextProposalId++;
         locals.newProposal.proposalType = input.proposalType;
         locals.newProposal.targetAddress = input.targetAddress;
+        locals.newProposal.oldAddress = input.oldAddress;
         locals.newProposal.amount = input.amount;
         locals.newProposal.approvalsCount = 1; // Creator automatically approves
         locals.newProposal.executed = false;
@@ -821,13 +795,26 @@ public:
             // Execute the proposal based on type
             if (locals.proposal.proposalType == PROPOSAL_SET_ADMIN)
             {
-                state.admin = locals.proposal.targetAddress;
-                locals.adminLog = AddressChangeLogger{
-                    locals.proposal.targetAddress,
-                    CONTRACT_INDEX,
-                    1, // Admin changed
-                    0 };
-                LOG_INFO(locals.adminLog);
+                // Replace existing admin with new admin (max 3 admins: 2 of 3 multisig)
+                // oldAddress specifies which admin to replace
+                locals.adminAdded = false;
+                for (locals.i = 0; locals.i < state.admins.capacity(); ++locals.i)
+                {
+                    if (state.admins.get(locals.i) == locals.proposal.oldAddress)
+                    {
+                        // Replace the old admin with the new one
+                        state.admins.set(locals.i, locals.proposal.targetAddress);
+                        locals.adminAdded = true;
+                        locals.adminLog = AddressChangeLogger{
+                            locals.proposal.targetAddress,
+                            CONTRACT_INDEX,
+                            1, // Admin changed
+                            0 };
+                        LOG_INFO(locals.adminLog);
+                        break;
+                    }
+                }
+                // numberOfAdmins stays the same (we're replacing, not adding)
             }
             else if (locals.proposal.proposalType == PROPOSAL_ADD_MANAGER)
             {
@@ -923,27 +910,7 @@ public:
         output.status = EthBridgeError::proposalNotFound;
     }
 
-    // Admin Functions
-    struct setAdmin_locals
-    {
-        EthBridgeLogger log;
-        AddressChangeLogger adminLog;
-    };
-
-    PUBLIC_PROCEDURE_WITH_LOCALS(setAdmin)
-    {
-        // DEPRECATED: Use createProposal/approveProposal with PROPOSAL_SET_ADMIN instead
-        locals.log = EthBridgeLogger{
-            CONTRACT_INDEX,
-            EthBridgeError::notAuthorized,
-            0,
-            0,
-            0 };
-        LOG_INFO(locals.log);
-        output.status = EthBridgeError::notAuthorized;
-        return;
-    }
-
+    // Admin Functions (now deprecated - use multisig proposals)
     struct addManager_locals
     {
         EthBridgeLogger log;
@@ -1472,10 +1439,6 @@ public:
         return;
     }
 
-    PUBLIC_FUNCTION(getAdminID)
-    {
-        output.adminId = state.admin;
-    }
 
     PUBLIC_FUNCTION_WITH_LOCALS(getTotalLockedTokens)
     {
@@ -1582,18 +1545,22 @@ public:
         EthBridgeLogger log;
         id invocatorAddress;
         bit isManagerOperating;
+        bit isMultisigAdminResult;
         uint64 depositAmount;
     };
 
-    // Add liquidity to the bridge (for managers to provide initial/additional liquidity)
+    // Add liquidity to the bridge (for managers or multisig admins to provide initial/additional liquidity)
     PUBLIC_PROCEDURE_WITH_LOCALS(addLiquidity)
     {
         locals.invocatorAddress = qpi.invocator();
         locals.isManagerOperating = false;
         CALL(isManager, locals.invocatorAddress, locals.isManagerOperating);
 
-        // Verify that the invocator is a manager or admin
-        if (!locals.isManagerOperating && locals.invocatorAddress != state.admin)
+        locals.isMultisigAdminResult = false;
+        CALL(isMultisigAdmin, locals.invocatorAddress, locals.isMultisigAdminResult);
+
+        // Verify that the invocator is a manager or multisig admin
+        if (!locals.isManagerOperating && !locals.isMultisigAdminResult)
         {
             locals.log = EthBridgeLogger{
                 CONTRACT_INDEX,
@@ -1661,7 +1628,6 @@ public:
 
     PUBLIC_FUNCTION_WITH_LOCALS(getContractInfo)
     {
-        output.admin = state.admin;
         output.managers = state.managers;
         output.nextOrderId = state.nextOrderId;
         output.lockedTokens = state.lockedTokens;
@@ -1751,27 +1717,24 @@ public:
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(getOrder, 1);
-        REGISTER_USER_FUNCTION(isAdmin, 2);
-        REGISTER_USER_FUNCTION(isManager, 3);
-        REGISTER_USER_FUNCTION(getTotalReceivedTokens, 4);
-        REGISTER_USER_FUNCTION(getAdminID, 5);
-        REGISTER_USER_FUNCTION(getTotalLockedTokens, 6);
-        REGISTER_USER_FUNCTION(getOrderByDetails, 7);
-        REGISTER_USER_FUNCTION(getContractInfo, 8);
-        REGISTER_USER_FUNCTION(getAvailableFees, 9);
-        REGISTER_USER_FUNCTION(getProposal, 10); // New multisig function
+        REGISTER_USER_FUNCTION(isManager, 2);
+        REGISTER_USER_FUNCTION(getTotalReceivedTokens, 3);
+        REGISTER_USER_FUNCTION(getTotalLockedTokens, 4);
+        REGISTER_USER_FUNCTION(getOrderByDetails, 5);
+        REGISTER_USER_FUNCTION(getContractInfo, 6);
+        REGISTER_USER_FUNCTION(getAvailableFees, 7);
+        REGISTER_USER_FUNCTION(getProposal, 8);
 
         REGISTER_USER_PROCEDURE(createOrder, 1);
-        REGISTER_USER_PROCEDURE(setAdmin, 2);
-        REGISTER_USER_PROCEDURE(addManager, 3);
-        REGISTER_USER_PROCEDURE(removeManager, 4);
-        REGISTER_USER_PROCEDURE(completeOrder, 5);
-        REGISTER_USER_PROCEDURE(refundOrder, 6);
-        REGISTER_USER_PROCEDURE(transferToContract, 7);
-        REGISTER_USER_PROCEDURE(withdrawFees, 8);
-        REGISTER_USER_PROCEDURE(addLiquidity, 9);
-        REGISTER_USER_PROCEDURE(createProposal, 10); // New multisig procedure
-        REGISTER_USER_PROCEDURE(approveProposal, 11); // New multisig procedure
+        REGISTER_USER_PROCEDURE(addManager, 2);
+        REGISTER_USER_PROCEDURE(removeManager, 3);
+        REGISTER_USER_PROCEDURE(completeOrder, 4);
+        REGISTER_USER_PROCEDURE(refundOrder, 5);
+        REGISTER_USER_PROCEDURE(transferToContract, 6);
+        REGISTER_USER_PROCEDURE(withdrawFees, 7);
+        REGISTER_USER_PROCEDURE(addLiquidity, 8);
+        REGISTER_USER_PROCEDURE(createProposal, 9);
+        REGISTER_USER_PROCEDURE(approveProposal, 10);
     }
 
     // Initialize the contract with SECURE ADMIN CONFIGURATION
@@ -1784,8 +1747,6 @@ public:
 
     INITIALIZE_WITH_LOCALS()
     {
-        //state.admin = ID(_X, _A, _B, _E, _F, _A, _B, _I, _H, _W, _R, _W, _B, _A, _I, _J, _Q, _J, _P, _W, _T, _I, _I, _Q, _B, _U, _C, _B, _H, _B, _V, _W, _Y, _Y, _G, _F, _F, _J, _A, _D, _Q, _B, _K, _W, _F, _B, _O, _R, _R, _V, _X, _W, _S, _C, _V, _B);
-
         //Initialize the wallet that receives fees (REPLACE WITH YOUR WALLET)
         // state.feeRecipient = ID(_YOUR, _WALLET, _HERE, _PLACEHOLDER, _UNTIL, _YOU, _PUT, _THE, _REAL, _WALLET, _ADDRESS, _FROM, _VOTTUN, _TO, _RECEIVE, _THE, _BRIDGE, _FEES, _BETWEEN, _QUBIC, _AND, _ETHEREUM, _WITH, _HALF, _PERCENT, _COMMISSION, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V);
 
