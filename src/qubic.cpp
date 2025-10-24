@@ -5586,6 +5586,40 @@ static bool initialize()
         }
     }
 
+
+    // set shareholders for testing shareholder voting
+    int issuanceIndex, ownershipIndex, possessionIndex;
+    int destinationOwnershipIndex, destinationPossessionIndex;
+    m256i pubKey;
+
+    // QUTIL
+    Asset asset{ NULL_ID, QUTIL_CONTRACT_ASSET_NAME };
+    if (!getPublicKeyFromIdentity("STTIMWJNWXARPBPBHBARPMCWVTECDHLTIDFBXRDWDBUAWZZWEPJEJYZARAYC", pubKey.m256i_u8))
+        logToConsole(L"error 17");
+    for (AssetPossessionIterator iter(asset); !iter.reachedEnd(); iter.next())
+    {
+        if (!transferShareOwnershipAndPossession(iter.ownershipIndex(), iter.possessionIndex(), pubKey, iter.numberOfPossessedShares(), &destinationOwnershipIndex, &destinationPossessionIndex, true))
+            logToConsole(L"error 18");
+    }
+    ownershipIndex = destinationOwnershipIndex;
+    possessionIndex = destinationPossessionIndex;
+    if (!getPublicKeyFromIdentity("IHYSQBGANGPJNDCKKSELUMPKLEKDGDHQLVMGHZEUQGBHVYVATVPQBMAAXLMK", pubKey.m256i_u8))
+        logToConsole(L"error 19");
+    if (!transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, pubKey, 160, &destinationOwnershipIndex, &destinationPossessionIndex, true))
+        logToConsole(L"error 20");
+    if (!getPublicKeyFromIdentity("BNSRTMPDJYIDLDUQFOGQZSWZDKJDRNZPWJTJJIIOOESOXUYVFICMXPQGSNXF", pubKey.m256i_u8))
+        logToConsole(L"error 21");
+    if (!transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, pubKey, 100, &destinationOwnershipIndex, &destinationPossessionIndex, true))
+        logToConsole(L"error 22");
+    if (!getPublicKeyFromIdentity("TYEPEEEKNNEASGMQCRJIJFVGJKNCIWWKQKFTFVBXDDFJHVUOFIACPWCDAFRI", pubKey.m256i_u8))
+        logToConsole(L"error 23");
+    if (!transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, pubKey, 20, &destinationOwnershipIndex, &destinationPossessionIndex, true))
+        logToConsole(L"error 24");
+    if (!getPublicKeyFromIdentity("NHCRSQZIJLCESBYOTHDBIRSQBLBCKSPXLVMDJJEFXDNWSFHFYKHIDJWDRDNA", pubKey.m256i_u8))
+        logToConsole(L"error 25");
+    if (!transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, pubKey, 16, &destinationOwnershipIndex, &destinationPossessionIndex, true))
+        logToConsole(L"error 26");
+
     return true;
 }
 
