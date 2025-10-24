@@ -1,3 +1,4 @@
+#define INCLUDE_CONTRACT_TEST_EXAMPLES
 #define SINGLE_COMPILE_UNIT
 
 // #define CCF_BY_ANYONE
@@ -5591,6 +5592,41 @@ static bool initialize()
     int issuanceIndex, ownershipIndex, possessionIndex;
     int destinationOwnershipIndex, destinationPossessionIndex;
     m256i pubKey;
+    // TESTEXA
+    if (!issueAsset(m256i::zero(), (char*)contractDescriptions[TESTEXA_CONTRACT_INDEX].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex))
+        logToConsole(L"error 1");
+    if (!getPublicKeyFromIdentity("STTIMWJNWXARPBPBHBARPMCWVTECDHLTIDFBXRDWDBUAWZZWEPJEJYZARAYC", pubKey.m256i_u8))
+        logToConsole(L"error 2");
+    if (!transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, pubKey, 376, &destinationOwnershipIndex, &destinationPossessionIndex, true))
+        logToConsole(L"error 3");
+    if (!getPublicKeyFromIdentity("IHYSQBGANGPJNDCKKSELUMPKLEKDGDHQLVMGHZEUQGBHVYVATVPQBMAAXLMK", pubKey.m256i_u8))
+        logToConsole(L"error 4");
+    if (!transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, pubKey, 200, &destinationOwnershipIndex, &destinationPossessionIndex, true))
+        logToConsole(L"error 5");
+    if (!getPublicKeyFromIdentity("XZHLBMYNIUBHKEWTGVTSKMXZQRNAQBBYFDBWUKLAXAKYXLVYGFJHYSODXOKC", pubKey.m256i_u8))
+        logToConsole(L"error 6");
+    if (!transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, pubKey, 100, &destinationOwnershipIndex, &destinationPossessionIndex, true))
+        logToConsole(L"error 7");
+
+    // TESTEXB
+    if (!issueAsset(m256i::zero(), (char*)contractDescriptions[TESTEXB_CONTRACT_INDEX].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex))
+        logToConsole(L"error 8");
+    if (!getPublicKeyFromIdentity("STTIMWJNWXARPBPBHBARPMCWVTECDHLTIDFBXRDWDBUAWZZWEPJEJYZARAYC", pubKey.m256i_u8))
+        logToConsole(L"error 9");
+    if (!transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, pubKey, 200, &destinationOwnershipIndex, &destinationPossessionIndex, true))
+        logToConsole(L"error 10");
+    if (!getPublicKeyFromIdentity("IHYSQBGANGPJNDCKKSELUMPKLEKDGDHQLVMGHZEUQGBHVYVATVPQBMAAXLMK", pubKey.m256i_u8))
+        logToConsole(L"error 11");
+    if (!transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, pubKey, 176, &destinationOwnershipIndex, &destinationPossessionIndex, true))
+        logToConsole(L"error 12");
+    if (!getPublicKeyFromIdentity("YPRTKOOMVIESAEEEOFDFGPIQTEZBQBETOGELJWEZJGHHPZPEDTIJWTDHVNQA", pubKey.m256i_u8))
+        logToConsole(L"error 13");
+    if (!transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, pubKey, 160, &destinationOwnershipIndex, &destinationPossessionIndex, true))
+        logToConsole(L"error 14");
+    if (!getPublicKeyFromIdentity("ONEYGXFPEQZLSEWQSAIBAUTKZBIDEILUNWXEIOGWOELTRRPAHBTEVZYCPCLK", pubKey.m256i_u8))
+        logToConsole(L"error 15");
+    if (!transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, pubKey, 140, &destinationOwnershipIndex, &destinationPossessionIndex, true))
+        logToConsole(L"error 16");
 
     // QUTIL
     Asset asset{ NULL_ID, QUTIL_CONTRACT_ASSET_NAME };
