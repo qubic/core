@@ -4,6 +4,7 @@
 #include "contract_testing.h"
 
 constexpr uint16 PROCEDURE_INDEX_BUY_TICKET = 1;
+constexpr uint16 PROCEDURE_INDEX_SET_PRICE = 2;
 constexpr uint16 FUNCTION_INDEX_GET_FEES = 1;
 constexpr uint16 FUNCTION_INDEX_GET_PLAYERS = 2;
 constexpr uint16 FUNCTION_INDEX_GET_WINNERS = 3;
@@ -174,6 +175,19 @@ public:
 		RL::BuyTicket_input input;
 		RL::BuyTicket_output output;
 		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_BUY_TICKET, input, output, user, reward))
+		{
+			output.returnCode = static_cast<uint8>(RL::EReturnCode::UNKNOWN_ERROR);
+		}
+		return output;
+	}
+
+	// Added: wrapper for SetPrice procedure
+	RL::SetPrice_output setPrice(const id& invocator, uint64 newPrice)
+	{
+		RL::SetPrice_input input;
+		input.newPrice = newPrice;
+		RL::SetPrice_output output;
+		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_SET_PRICE, input, output, invocator, 0))
 		{
 			output.returnCode = static_cast<uint8>(RL::EReturnCode::UNKNOWN_ERROR);
 		}
@@ -614,4 +628,225 @@ TEST(ContractRandomLottery, GetState)
 		const RL::GetState_output out2 = ctl.getStateInfo();
 		EXPECT_EQ(out2.currentState, static_cast<uint8>(RL::EState::LOCKED));
 	}
+}
+
+// --- New tests for SetPrice ---
+
+TEST(ContractRandomLottery, SetPrice_AccessControl)
+{
+	ContractTestingRL ctl;
+
+	const uint64 oldPrice = ctl.state()->getTicketPrice();
+	const uint64 newPrice = oldPrice * 2;
+
+	// Random user must not have permission
+	const id randomUser = id::randomValue();
+	increaseEnergy(randomUser, 1);
+
+	const RL::SetPrice_output outDenied = ctl.setPrice(randomUser, newPrice);
+	EXPECT_EQ(outDenied.returnCode, static_cast<uint8>(RL::EReturnCode::ACCESS_DENIED));
+
+	// Price doesn't change immediately nor after EndEpoch
+	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, oldPrice);
+	ctl.EndEpoch();
+	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, oldPrice);
+}
+
+TEST(ContractRandomLottery, SetPrice_ZeroNotAllowed)
+{
+	ContractTestingRL ctl;
+
+	increaseEnergy(RL_DEV_ADDRESS, 1);
+
+	const uint64 oldPrice = ctl.state()->getTicketPrice();
+
+	const RL::SetPrice_output outInvalid = ctl.setPrice(RL_DEV_ADDRESS, 0);
+	EXPECT_EQ(outInvalid.returnCode, static_cast<uint8>(RL::EReturnCode::TICKET_INVALID_PRICE));
+
+	// Price remains unchanged even after EndEpoch
+	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, oldPrice);
+	ctl.EndEpoch();
+	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, oldPrice);
+}
+
+TEST(ContractRandomLottery, SetPrice_AppliesAfterEndEpoch)
+{
+	ContractTestingRL ctl;
+
+	increaseEnergy(RL_DEV_ADDRESS, 1);
+
+	const uint64 oldPrice = ctl.state()->getTicketPrice();
+	const uint64 newPrice = oldPrice * 2;
+
+	const RL::SetPrice_output outOk = ctl.setPrice(RL_DEV_ADDRESS, newPrice);
+	EXPECT_EQ(outOk.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+
+	// Until EndEpoch the price remains unchanged
+	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, oldPrice);
+
+	// Applied after EndEpoch
+	ctl.EndEpoch();
+	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, newPrice);
+
+	// Another EndEpoch without a new SetPrice doesn't change the price
+	ctl.EndEpoch();
+	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, newPrice);
+}
+
+TEST(ContractRandomLottery, SetPrice_OverrideBeforeEndEpoch)
+{
+	ContractTestingRL ctl;
+
+	increaseEnergy(RL_DEV_ADDRESS, 1);
+
+	const uint64 oldPrice = ctl.state()->getTicketPrice();
+	const uint64 firstPrice = oldPrice + 1000;
+	const uint64 secondPrice = oldPrice + 7777;
+
+	// Two SetPrice calls before EndEpoch — the last one should apply
+	EXPECT_EQ(ctl.setPrice(RL_DEV_ADDRESS, firstPrice).returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setPrice(RL_DEV_ADDRESS, secondPrice).returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+
+	// Until EndEpoch the old price remains
+	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, oldPrice);
+
+	ctl.EndEpoch();
+	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, secondPrice);
+}
+
+TEST(ContractRandomLottery, SetPrice_AffectsNextEpochBuys)
+{
+	ContractTestingRL ctl;
+
+	increaseEnergy(RL_DEV_ADDRESS, 1);
+
+	const uint64 oldPrice = ctl.state()->getTicketPrice();
+	const uint64 newPrice = oldPrice * 3;
+
+	// Open selling and buy at the old price
+	ctl.BeginEpoch();
+	const id u1 = id::randomValue();
+	increaseEnergy(u1, oldPrice * 2);
+	{
+		const RL::BuyTicket_output out1 = ctl.buyTicket(u1, oldPrice);
+		EXPECT_EQ(out1.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+	}
+
+	// Set a new price, but before EndEpoch purchases should use the old price
+	{
+		const RL::SetPrice_output setOut = ctl.setPrice(RL_DEV_ADDRESS, newPrice);
+		EXPECT_EQ(setOut.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+	}
+
+	const id u2 = id::randomValue();
+	increaseEnergy(u2, newPrice * 2);
+	{
+		const uint64 balBefore = getBalance(u2);
+		const uint64 playersBefore = ctl.state()->getPlayerCounter();
+		const RL::BuyTicket_output outNow = ctl.buyTicket(u2, newPrice);
+		EXPECT_EQ(outNow.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+		// floor(newPrice/oldPrice) tickets were bought, the remainder was refunded
+		const uint64 bought = newPrice / oldPrice;
+		EXPECT_EQ(ctl.state()->getPlayerCounter(), playersBefore + bought);
+		EXPECT_EQ(getBalance(u2), balBefore - bought * oldPrice);
+	}
+
+	// End the epoch: new price will apply
+	ctl.EndEpoch();
+	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, newPrice);
+
+	// In the next epoch, a purchase at the new price should succeed
+	ctl.BeginEpoch();
+	{
+		const uint64 balBefore = getBalance(u2);
+		const uint64 playersBefore = ctl.state()->getPlayerCounter();
+		const RL::BuyTicket_output outOk = ctl.buyTicket(u2, newPrice);
+		EXPECT_EQ(outOk.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+		EXPECT_EQ(ctl.state()->getPlayerCounter(), playersBefore + 1);
+		EXPECT_EQ(getBalance(u2), balBefore - newPrice);
+	}
+}
+
+TEST(ContractRandomLottery, BuyMultipleTickets_ExactMultiple_NoRemainder)
+{
+	ContractTestingRL ctl;
+	ctl.BeginEpoch();
+	const uint64 price = ctl.state()->getTicketPrice();
+	const id user = id::randomValue();
+	const uint64 k = 7;
+	increaseEnergy(user, price * k);
+	const uint64 playersBefore = ctl.state()->getPlayerCounter();
+	const RL::BuyTicket_output out = ctl.buyTicket(user, price * k);
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), playersBefore + k);
+}
+
+TEST(ContractRandomLottery, BuyMultipleTickets_WithRemainder_Refunded)
+{
+	ContractTestingRL ctl;
+	ctl.BeginEpoch();
+	const uint64 price = ctl.state()->getTicketPrice();
+	const id user = id::randomValue();
+	const uint64 k = 5;
+	const uint64 r = price / 3; // partial remainder
+	increaseEnergy(user, price * k + r);
+	const uint64 balBefore = getBalance(user);
+	const uint64 playersBefore = ctl.state()->getPlayerCounter();
+	const RL::BuyTicket_output out = ctl.buyTicket(user, price * k + r);
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), playersBefore + k);
+	// Remainder refunded, only k * price spent
+	EXPECT_EQ(getBalance(user), balBefore - k * price);
+}
+
+TEST(ContractRandomLottery, BuyMultipleTickets_CapacityPartialRefund)
+{
+	ContractTestingRL ctl;
+	ctl.BeginEpoch();
+	const uint64 price = ctl.state()->getTicketPrice();
+	const uint64 capacity = ctl.getPlayers().players.capacity();
+
+	// Fill almost up to capacity
+	const uint64 toFill = (capacity > 5) ? (capacity - 5) : 0;
+	for (uint64 i = 0; i < toFill; ++i)
+	{
+		const id u = id::randomValue();
+		increaseEnergy(u, price);
+		EXPECT_EQ(ctl.buyTicket(u, price).returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+	}
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), toFill);
+
+	// Try to buy 10 tickets — only remaining 5 accepted, the rest refunded
+	const id buyer = id::randomValue();
+	increaseEnergy(buyer, price * 10);
+	const uint64 balBefore = getBalance(buyer);
+	const RL::BuyTicket_output out = ctl.buyTicket(buyer, price * 10);
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), capacity);
+	EXPECT_EQ(getBalance(buyer), balBefore - price * 5);
+}
+
+TEST(ContractRandomLottery, BuyMultipleTickets_AllSoldOut)
+{
+	ContractTestingRL ctl;
+	ctl.BeginEpoch();
+	const uint64 price = ctl.state()->getTicketPrice();
+	const uint64 capacity = ctl.getPlayers().players.capacity();
+
+	// Fill to capacity
+	for (uint64 i = 0; i < capacity; ++i)
+	{
+		const id u = id::randomValue();
+		increaseEnergy(u, price);
+		EXPECT_EQ(ctl.buyTicket(u, price).returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+	}
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), capacity);
+
+	// Any purchase refunds the full amount and returns ALL_SOLD_OUT code
+	const id buyer = id::randomValue();
+	increaseEnergy(buyer, price * 3);
+	const uint64 balBefore = getBalance(buyer);
+	const RL::BuyTicket_output out = ctl.buyTicket(buyer, price * 3);
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(RL::EReturnCode::TICKET_ALL_SOLD_OUT));
+	EXPECT_EQ(getBalance(buyer), balBefore);
 }

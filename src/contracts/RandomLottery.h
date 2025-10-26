@@ -1,4 +1,5 @@
-﻿/**
+﻿#pragma once
+/**
  * @file RandomLottery.h
  * @brief Random Lottery contract definition: state, data structures, and user / internal
  * procedures.
@@ -8,22 +9,31 @@
  *  - Draws a pseudo-random winner when the epoch ends.
  *  - Distributes fees (team, distribution, burn, winner).
  *  - Records winners' history in a ring-like buffer.
+ *
+ * Notes:
+ *  - Percentages must sum to <= 100; the remainder goes to the winner.
+ *  - Players array stores one entry per ticket, so a single address can appear multiple times.
+ *  - When only one player bought a ticket in the epoch, funds are refunded instead of drawing.
  */
 
 using namespace QPI;
 
-/// Maximum number of players allowed in the lottery.
+/// Maximum number of players allowed in the lottery for a single epoch (one entry == one ticket).
 constexpr uint16 RL_MAX_NUMBER_OF_PLAYERS = 1024;
 
-/// Maximum number of winners kept in the on-chain winners history buffer.
+/// Maximum number of winners stored in the on-chain winners history ring buffer.
 constexpr uint16 RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY = 1024;
 
+/// Default ticket price (denominated in the smallest currency unit).
 constexpr uint64 RL_TICKET_PRICE = 1000000;
 
+/// Team fee percent of epoch revenue (0..100).
 constexpr uint8 RL_TEAM_FEE_PERCENT = 10;
 
+/// Distribution (shareholders/validators) fee percent of epoch revenue (0..100).
 constexpr uint8 RL_SHAREHOLDER_FEE_PERCENT = 20;
 
+/// Burn percent of epoch revenue (0..100).
 constexpr uint8 RL_BURN_PERCENT = 2;
 
 /// Placeholder structure for future extensions.
@@ -51,8 +61,8 @@ public:
 	 */
 	enum class EState : uint8
 	{
-		SELLING,
-		LOCKED,
+		SELLING, // Ticket selling is open
+		LOCKED,  // Ticket selling is closed
 
 		INVALID = 255
 	};
@@ -64,15 +74,18 @@ public:
 	{
 		SUCCESS = 0,
 		// Ticket-related errors
-		TICKET_INVALID_PRICE = 1,
-		TICKET_ALL_SOLD_OUT = 2,
-		TICKET_SELLING_CLOSED = 3,
+		TICKET_INVALID_PRICE = 1,  // Not enough funds to buy at least one ticket / price mismatch
+		TICKET_ALL_SOLD_OUT = 2,   // No free slots left in players array
+		TICKET_SELLING_CLOSED = 3, // Attempted to buy while state is LOCKED
 		// Access-related errors
-		ACCESS_DENIED = 4,
-		// Fee-related errors
-		FEE_INVALID_PERCENT_VALUE = 5,
-		// Fallback
+		ACCESS_DENIED = 4, // Caller is not authorized to perform the action
+
 		UNKNOWN_ERROR = UINT8_MAX
+	};
+
+	struct NextEpochData
+	{
+		uint64 newPrice = 0; // Ticket price to apply after END_EPOCH; 0 means "no change queued"
 	};
 
 	//---- User-facing I/O structures -------------------------------------------------------------
@@ -92,10 +105,10 @@ public:
 
 	struct GetFees_output
 	{
-		uint8 teamFeePercent = 0;
-		uint8 distributionFeePercent = 0;
-		uint8 winnerFeePercent = 0;
-		uint8 burnPercent = 0;
+		uint8 teamFeePercent = 0;         // Team share in percent
+		uint8 distributionFeePercent = 0; // Distribution/shareholders share in percent
+		uint8 winnerFeePercent = 0;       // Winner share in percent
+		uint8 burnPercent = 0;            // Burn share in percent
 		uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
 	};
 
@@ -105,8 +118,8 @@ public:
 
 	struct GetPlayers_output
 	{
-		Array<id, RL_MAX_NUMBER_OF_PLAYERS> players;
-		uint64 playerCounter = 0;
+		Array<id, RL_MAX_NUMBER_OF_PLAYERS> players; // Current epoch ticket holders (duplicates allowed)
+		uint64 playerCounter = 0;                    // Actual count of filled entries
 		uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
 	};
 
@@ -115,16 +128,16 @@ public:
 	 */
 	struct WinnerInfo
 	{
-		id winnerAddress = id::zero();
-		uint64 revenue = 0;
-		uint16 epoch = 0;
-		uint32 tick = 0;
+		id winnerAddress = id::zero(); // Winner address
+		uint64 revenue = 0;            // Payout value sent to the winner for that epoch
+		uint16 epoch = 0;              // Epoch number when winner was recorded
+		uint32 tick = 0;               // Tick when the decision was made
 	};
 
 	struct FillWinnersInfo_input
 	{
-		id winnerAddress = id::zero();
-		uint64 revenue = 0;
+		id winnerAddress = id::zero(); // Winner address to store
+		uint64 revenue = 0;            // Winner payout to store
 	};
 
 	struct FillWinnersInfo_output
@@ -133,7 +146,7 @@ public:
 
 	struct FillWinnersInfo_locals
 	{
-		WinnerInfo winnerInfo = {};
+		WinnerInfo winnerInfo = {}; // Temporary buffer to compose a WinnerInfo record
 	};
 
 	struct GetWinner_input
@@ -142,15 +155,15 @@ public:
 
 	struct GetWinner_output
 	{
-		id winnerAddress = id::zero();
-		uint64 index = 0;
+		id winnerAddress = id::zero(); // Selected winner address (id::zero if none)
+		uint64 index = 0;              // Index into players array
 	};
 
 	struct GetWinner_locals
 	{
-		uint64 randomNum = 0;
-		sint64 i = 0;
-		uint64 j = 0;
+		uint64 randomNum = 0; // Random index candidate in [0, playerCounter)
+		sint64 i = 0;         // Reserved for future iteration logic
+		uint64 j = 0;         // Reserved for future iteration logic
 	};
 
 	struct GetWinners_input
@@ -159,8 +172,8 @@ public:
 
 	struct GetWinners_output
 	{
-		Array<WinnerInfo, RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
-		uint64 winnersCounter = 0;
+		Array<WinnerInfo, RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners; // Ring buffer snapshot
+		uint64 winnersCounter = 0;                                      // Number of valid entries (bounded by capacity)
 		uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
 	};
 
@@ -170,7 +183,7 @@ public:
 
 	struct GetTicketPrice_output
 	{
-		uint64 ticketPrice = 0;
+		uint64 ticketPrice = 0; // Current ticket price
 	};
 
 	struct GetMaxNumberOfPlayers_input
@@ -179,7 +192,7 @@ public:
 
 	struct GetMaxNumberOfPlayers_output
 	{
-		uint64 numberOfPlayers = 0;
+		uint64 numberOfPlayers = 0; // Max capacity of players array
 	};
 
 	struct GetState_input
@@ -188,7 +201,7 @@ public:
 
 	struct GetState_output
 	{
-		uint8 currentState = static_cast<uint8>(EState::INVALID);
+		uint8 currentState = static_cast<uint8>(EState::INVALID); // Current finite state of the lottery
 	};
 
 	struct GetBalance_input
@@ -197,12 +210,28 @@ public:
 
 	struct GetBalance_output
 	{
-		uint64 balance = 0;
+		uint64 balance = 0; // Net balance (incoming - outgoing) for current epoch
 	};
 
+	// Local variables for GetBalance procedure
 	struct GetBalance_locals
 	{
-		Entity entity = {};
+		Entity entity = {}; // Entity accounting snapshot for SELF
+	};
+
+	// Local variables for BuyTicket procedure
+	struct BuyTicket_locals
+	{
+		uint64 price = 0;        // Current ticket price
+		uint64 reward = 0;       // Funds sent with call (invocationReward)
+		uint64 capacity = 0;     // Max capacity of players array
+		uint64 slotsLeft = 0;    // Remaining slots available to fill this epoch
+		uint64 desired = 0;      // How many tickets the caller wants to buy
+		uint64 remainder = 0;    // Change to return (reward % price)
+		uint64 toBuy = 0;        // Actual number of tickets to purchase (bounded by slotsLeft)
+		uint64 unfilled = 0;     // Portion of desired tickets not purchased due to capacity limit
+		uint64 refundAmount = 0; // Total refund: remainder + unfilled * price
+		uint64 i = 0;            // Loop counter
 	};
 
 	struct ReturnAllTickets_input
@@ -214,7 +243,7 @@ public:
 
 	struct ReturnAllTickets_locals
 	{
-		sint64 i = 0;
+		uint64 i = 0; // Loop counter for mass-refund
 	};
 
 	struct END_EPOCH_locals
@@ -231,15 +260,25 @@ public:
 		ReturnAllTickets_output returnAllTicketsOutput = {};
 		ReturnAllTickets_locals returnAllTicketsLocals = {};
 
-		uint64 teamFee = 0;
-		uint64 distributionFee = 0;
-		uint64 winnerAmount = 0;
-		uint64 burnedAmount = 0;
+		uint64 teamFee = 0;         // Team payout portion
+		uint64 distributionFee = 0; // Distribution/shared payout portion
+		uint64 winnerAmount = 0;    // Winner payout portion
+		uint64 burnedAmount = 0;    // Burn portion
 
-		uint64 revenue = 0;
-		Entity entity = {};
+		uint64 revenue = 0; // Epoch revenue = incoming - outgoing
+		Entity entity = {}; // Accounting snapshot
 
-		sint32 i = 0;
+		sint32 i = 0; // Reserved
+	};
+
+	struct SetPrice_input
+	{
+		uint64 newPrice = 0; // New ticket price to be applied at the end of the epoch
+	};
+
+	struct SetPrice_output
+	{
+		uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
 	};
 
 public:
@@ -257,6 +296,7 @@ public:
 		REGISTER_USER_FUNCTION(GetState, 6);
 		REGISTER_USER_FUNCTION(GetBalance, 7);
 		REGISTER_USER_PROCEDURE(BuyTicket, 1);
+		REGISTER_USER_PROCEDURE(SetPrice, 2);
 	}
 
 	/**
@@ -265,25 +305,24 @@ public:
 	 */
 	INITIALIZE()
 	{
-		// Addresses
+		// Set team/developer address (owner and team are the same for now)
 		state.teamAddress = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C, _R, _L,
 		                       _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
-		// Owner address (currently identical to developer address; can be split in future revisions).
 		state.ownerAddress = state.teamAddress;
 
-		// Default fee percentages (sum <= 100; winner percent derived)
+		// Fee configuration (winner gets the remainder)
 		state.teamFeePercent = RL_TEAM_FEE_PERCENT;
 		state.distributionFeePercent = RL_SHAREHOLDER_FEE_PERCENT;
 		state.burnPercent = RL_BURN_PERCENT;
 		state.winnerFeePercent = 100 - state.teamFeePercent - state.distributionFeePercent - state.burnPercent;
 
-		// Default ticket price
+		// Initial ticket price
 		state.ticketPrice = RL_TICKET_PRICE;
 
-		// Start locked
+		// Start in LOCKED state; selling must be explicitly opened with BEGIN_EPOCH
 		state.currentState = EState::LOCKED;
 
-		// Initialize Player index
+		// Reset player counter
 		state.playerCounter = 0;
 	}
 
@@ -295,6 +334,13 @@ public:
 	/**
 	 * @brief Closes epoch: computes revenue, selects winner (if >1 player),
 	 * distributes fees, burns leftover, records winner, then clears players.
+	 *
+	 * Behavior:
+	 *  - If exactly 1 player, refund ticket price (no draw).
+	 *  - If >1 players, compute revenue, select winner with K12-based randomness,
+	 *    split revenue into winner/team/distribution/burn, perform transfers/burn,
+	 *    and store winner snapshot in the ring buffer.
+	 *  - Apply deferred price change for the next epoch if queued.
 	 */
 	END_EPOCH_WITH_LOCALS()
 	{
@@ -307,27 +353,28 @@ public:
 		}
 		else if (state.playerCounter > 1)
 		{
+			// Epoch revenue = incoming - outgoing for this contract
 			qpi.getEntity(SELF, locals.entity);
 			locals.revenue = locals.entity.incomingAmount - locals.entity.outgoingAmount;
 
-			// Winner selection (pseudo-random).
+			// Winner selection (pseudo-random using K12(prevSpectrumDigest)).
 			GetWinner(qpi, state, locals.getWinnerInput, locals.getWinnerOutput, locals.getWinnerLocals);
 
 			if (locals.getWinnerOutput.winnerAddress != id::zero())
 			{
-				// Fee splits
+				// Split revenue by configured percentages
 				locals.winnerAmount = div<uint64>(locals.revenue * state.winnerFeePercent, 100ULL);
 				locals.teamFee = div<uint64>(locals.revenue * state.teamFeePercent, 100ULL);
 				locals.distributionFee = div<uint64>(locals.revenue * state.distributionFeePercent, 100ULL);
 				locals.burnedAmount = div<uint64>(locals.revenue * state.burnPercent, 100ULL);
 
-				// Team fee
+				// Team payout
 				if (locals.teamFee > 0)
 				{
 					qpi.transfer(state.teamAddress, locals.teamFee);
 				}
 
-				// Distribution fee
+				// Distribution payout (equal per validator)
 				if (locals.distributionFee > 0)
 				{
 					qpi.distributeDividends(div<uint64>(locals.distributionFee, uint64(NUMBER_OF_COMPUTORS)));
@@ -339,26 +386,32 @@ public:
 					qpi.transfer(locals.getWinnerOutput.winnerAddress, locals.winnerAmount);
 				}
 
-				// Burn remainder
+				// Burn configured portion
 				if (locals.burnedAmount > 0)
 				{
 					qpi.burn(locals.burnedAmount);
 				}
 
-				// Persist winner record
+				// Store winner snapshot into history (ring buffer)
 				locals.fillWinnersInfoInput.winnerAddress = locals.getWinnerOutput.winnerAddress;
 				locals.fillWinnersInfoInput.revenue = locals.winnerAmount;
 				FillWinnersInfo(qpi, state, locals.fillWinnersInfoInput, locals.fillWinnersInfoOutput, locals.fillWinnersInfoLocals);
 			}
 			else
 			{
-				// Return funds to players if no winner could be selected (should be impossible).
+				// Fallback: if winner couldn't be selected (should not happen), refund all tickets
 				ReturnAllTickets(qpi, state, locals.returnAllTicketsInput, locals.returnAllTicketsOutput, locals.returnAllTicketsLocals);
 			}
 		}
 
-		// Prepare for next epoch.
+		// Prepare for next epoch: clear players and apply deferred price if any
 		state.playerCounter = 0;
+
+		if (state.nexEpochData.newPrice != 0)
+		{
+			state.ticketPrice = state.nexEpochData.newPrice;
+			state.nexEpochData.newPrice = 0;
+		}
 	}
 
 	/**
@@ -395,53 +448,107 @@ public:
 	PUBLIC_FUNCTION(GetState) { output.currentState = static_cast<uint8>(state.currentState); }
 	PUBLIC_FUNCTION_WITH_LOCALS(GetBalance)
 	{
+		// Returns balance for current epoch (incoming - outgoing)
 		output.balance = qpi.getEntity(SELF, locals.entity) ? locals.entity.incomingAmount - locals.entity.outgoingAmount : 0;
 	}
 
-	/**
-	 * @brief Attempts to buy a ticket (must send exact price unless zero is forbidden; state must
-	 * be SELLING). Reverts with proper return codes for invalid cases.
-	 */
-	PUBLIC_PROCEDURE(BuyTicket)
+	PUBLIC_PROCEDURE(SetPrice)
 	{
-		// Selling closed
+		// Only team/owner can queue a price change
+		if (qpi.invocator() != state.teamAddress)
+		{
+			output.returnCode = static_cast<uint8>(EReturnCode::ACCESS_DENIED);
+			return;
+		}
+
+		// Zero price is invalid
+		if (input.newPrice == 0)
+		{
+			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_INVALID_PRICE);
+			return;
+		}
+
+		// Defer application until END_EPOCH
+		state.nexEpochData.newPrice = input.newPrice;
+		output.returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+	}
+
+	/**
+	 * @brief Attempts to buy tickets while SELLING state is active.
+	 * Logic:
+	 *  - If locked: refund full invocationReward and return TICKET_SELLING_CLOSED.
+	 *  - If reward < price: refund full reward and return TICKET_INVALID_PRICE.
+	 *  - If no capacity left: refund full reward and return TICKET_ALL_SOLD_OUT.
+	 *  - Otherwise: add up to slotsLeft tickets; refund remainder and unfilled part.
+	 */
+	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicket)
+	{
+		locals.reward = qpi.invocationReward();
+
+		// Selling closed: refund any attached funds and exit
 		if (state.currentState == EState::LOCKED)
 		{
-			if (qpi.invocationReward() > 0)
+			if (locals.reward > 0)
 			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				qpi.transfer(qpi.invocator(), locals.reward);
 			}
 
 			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_SELLING_CLOSED);
 			return;
 		}
 
-		// Price mismatch (validate before any state mutation)
-		if (qpi.invocationReward() != state.ticketPrice)
+		locals.price = state.ticketPrice;
+
+		// Not enough to buy even a single ticket: refund everything
+		if (locals.reward < locals.price)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			if (locals.reward > 0)
+			{
+				qpi.transfer(qpi.invocator(), locals.reward);
+			}
 
 			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_INVALID_PRICE);
 			return;
 		}
 
-		// Capacity full
-		if (state.playerCounter >= state.players.capacity())
+		// Capacity check
+		locals.capacity = state.players.capacity();
+		locals.slotsLeft = (state.playerCounter < locals.capacity) ? (locals.capacity - state.playerCounter) : 0;
+		if (locals.slotsLeft == 0)
 		{
-			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_ALL_SOLD_OUT);
-			if (qpi.invocationReward() > 0)
+			// All sold out: refund full amount
+			if (locals.reward > 0)
 			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				qpi.transfer(qpi.invocator(), locals.reward);
 			}
+			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_ALL_SOLD_OUT);
 			return;
 		}
 
-		// Protect against rewriting existing players (should not happen due to prior checks).
-		if (state.playerCounter < state.players.capacity())
+		// Compute desired number of tickets and change
+		locals.desired = locals.reward / locals.price;                // How many tickets the caller attempts to buy
+		locals.remainder = locals.reward % locals.price;              // Change to return
+		locals.toBuy = min<uint64>(locals.desired, locals.slotsLeft); // Do not exceed available slots
+
+		// Add tickets (the same address may be inserted multiple times)
+		for (locals.i = 0; locals.i < locals.toBuy; ++locals.i)
 		{
-			state.players.set(state.playerCounter, qpi.invocator());
-			state.playerCounter = min<uint64>(state.playerCounter + 1, state.players.capacity());
+			if (state.playerCounter < locals.capacity)
+			{
+				state.players.set(state.playerCounter, qpi.invocator());
+				state.playerCounter = min<uint64>(state.playerCounter + 1, locals.capacity);
+			}
 		}
+
+		// Refund change and unfilled portion (if desired > slotsLeft)
+		locals.unfilled = locals.desired - locals.toBuy;
+		locals.refundAmount = locals.remainder + (locals.unfilled * locals.price);
+		if (locals.refundAmount > 0)
+		{
+			qpi.transfer(qpi.invocator(), locals.refundAmount);
+		}
+
+		output.returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
 	}
 
 private:
@@ -452,16 +559,18 @@ private:
 	{
 		if (input.winnerAddress == id::zero())
 		{
-			return;
+			return; // Nothing to store
 		}
 
+		// Use ring-buffer indexing to avoid overflow (overwrite oldest entries)
 		state.winnersCounter = mod<uint64>(state.winnersCounter, state.winners.capacity());
 
 		locals.winnerInfo.winnerAddress = input.winnerAddress;
 		locals.winnerInfo.revenue = input.revenue;
 		locals.winnerInfo.epoch = qpi.epoch();
 		locals.winnerInfo.tick = qpi.tick();
-		state.winners.set(state.winnersCounter++, locals.winnerInfo);
+		state.winners.set(state.winnersCounter, locals.winnerInfo);
+		++state.winnersCounter;
 	}
 
 	/**
@@ -474,15 +583,17 @@ private:
 			return;
 		}
 
+		// Compute pseudo-random index based on K12(prevSpectrumDigest)
 		locals.randomNum = mod<uint64>(qpi.K12(qpi.getPrevSpectrumDigest()).u64._0, state.playerCounter);
 
-		// Direct indexing for Array
+		// Index directly into players array
 		output.winnerAddress = state.players.get(locals.randomNum);
 		output.index = locals.randomNum;
 	}
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(ReturnAllTickets)
 	{
+		// Refund ticket price to each recorded player (one transfer per ticket entry)
 		for (locals.i = 0; locals.i < state.playerCounter; ++locals.i)
 		{
 			qpi.transfer(state.players.get(locals.i), state.ticketPrice);
@@ -532,7 +643,15 @@ protected:
 	 */
 	uint64 ticketPrice = 0;
 
+	/**
+	 * @brief Number of players (tickets sold) in the current epoch.
+	 */
 	uint64 playerCounter = 0;
+
+	/**
+	 * @brief Data structure for deferred changes to apply at the end of the epoch.
+	 */
+	NextEpochData nexEpochData = {};
 
 	/**
 	 * @brief Set of players participating in the current lottery epoch.
