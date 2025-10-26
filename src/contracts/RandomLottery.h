@@ -525,8 +525,8 @@ public:
 		}
 
 		// Compute desired number of tickets and change
-		locals.desired = locals.reward / locals.price;                // How many tickets the caller attempts to buy
-		locals.remainder = locals.reward % locals.price;              // Change to return
+		locals.desired = div<uint64>(locals.reward, locals.price);    // How many tickets the caller attempts to buy
+		locals.remainder = mod<uint64>(locals.reward, locals.price);              // Change to return
 		locals.toBuy = min<uint64>(locals.desired, locals.slotsLeft); // Do not exceed available slots
 
 		// Add tickets (the same address may be inserted multiple times)
