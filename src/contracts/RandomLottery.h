@@ -1,5 +1,4 @@
-﻿#pragma once
-/**
+﻿/**
  * @file RandomLottery.h
  * @brief Random Lottery contract definition: state, data structures, and user / internal
  * procedures.
