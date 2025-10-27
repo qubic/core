@@ -9,6 +9,8 @@
 #include "platform/debugging.h"
 #include "platform/memory.h"
 
+#include "assets/assets.h"
+
 #include "contract_core/contract_def.h"
 #include "contract_core/stack_buffer.h"
 #include "contract_core/contract_action_tracker.h"
@@ -183,6 +185,18 @@ static bool initContractExec()
         return false;
 
     return true;
+}
+
+static void initializeContractErrors()
+{
+    // At initialization, all contract errors are set to 0 (= no error).
+    // If IPO failed (number of contract shares in universe != NUMBER_OF_COMPUTERS), the error status needs to be set accordingly.
+    for (unsigned int contractIndex = 1; contractIndex < contractCount; ++contractIndex)
+    {
+        long long numShares = numberOfShares({ m256i::zero(), *(uint64*)contractDescriptions[contractIndex].assetName });
+        if (numShares != NUMBER_OF_COMPUTORS)
+            contractError[contractIndex] = ContractErrorIPOFailed;
+    }
 }
 
 static void deinitContractExec()
