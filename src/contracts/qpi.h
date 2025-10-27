@@ -2075,7 +2075,7 @@ namespace QPI
 
 		inline sint64 burn(
 			sint64 amount,
-			sint32 contractIndexBurnedFor = -1 // contract index to burn for, allows to burn for other contracts
+			sint32 contractIndexBurnedFor = 0 // contract index to burn for, allows to burn for other contracts
 		) const; // if the provided index is invalid (< 1 or >= contractCount), the Qus are burned for the currentContractIndex
 
 		inline bool distributeDividends( //  Attempts to pay dividends

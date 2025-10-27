@@ -260,9 +260,17 @@ public:
     struct BurnQubic_input
     {
         sint64 amount;
-        sint32 contractIndexBurnedFor;
     };
     struct BurnQubic_output
+    {
+        sint64 amount;
+    };
+
+    struct BurnQubicForContract_input
+    {
+        sint32 contractIndexBurnedFor;
+    };
+    struct BurnQubicForContract_output
     {
         sint64 amount;
     };
@@ -850,7 +858,7 @@ public:
     /**
     * Practicing burning qubic in the QChurch
     * @param the amount of qubic to burn
-    * @return the amount of qubic has burned, < 0 if failed to burn
+    * @return the amount of qubic that was burned, < 0 if failed to burn
     */
     PUBLIC_PROCEDURE(BurnQubic)
     {
@@ -873,10 +881,36 @@ public:
         }
         if (qpi.invocationReward() > input.amount) // send more than qu to burn
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.amount); // return the changes
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.amount); // return the change
         }
-        qpi.burn(input.amount, input.contractIndexBurnedFor);
-        output.amount = input.amount;
+        // if qpi.burn() succeeds, it returns the remaining amount of QUTIL's Qu balance (>= 0), otherwise some value < 0
+        output.amount = qpi.burn(input.amount);
+        if (output.amount >= 0)
+            output.amount = input.amount;
+        else
+            output.amount = -1;
+        return;
+    }
+
+    /**
+    * Burn the qubic passed as invocation reward for the contract specified in the input
+    * @param contractIndexBurnedFor the contract index to burn for
+    * @return the amount of qubic that was burned, < 0 if failed to burn
+    */
+    PUBLIC_PROCEDURE(BurnQubicForContract)
+    {
+        if (qpi.invocationReward() <= 0) // not sending enough qu to burn
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.amount = -1;
+            return;
+        }
+        // if qpi.burn() succeeds, it returns the remaining amount of QUTIL's Qu balance (>= 0), otherwise some value < 0
+        output.amount = qpi.burn(qpi.invocationReward(), input.contractIndexBurnedFor);
+        if (output.amount >= 0)
+            output.amount = qpi.invocationReward();
+        else
+            output.amount = -1;
         return;
     }
 
@@ -1463,6 +1497,7 @@ public:
         REGISTER_USER_PROCEDURE(Vote, 5);
         REGISTER_USER_PROCEDURE(CancelPoll, 6);
         REGISTER_USER_PROCEDURE(DistributeQuToShareholders, 7);
+        REGISTER_USER_PROCEDURE(BurnQubicForContract, 8);
 
         REGISTER_SHAREHOLDER_PROPOSAL_VOTING();
     }
