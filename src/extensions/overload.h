@@ -831,6 +831,9 @@ struct Overload {
             addr.sin_port = htons(TcpConfigData->AccessPoint.StationPort);
             addr.sin_addr.s_addr = INADDR_ANY;
 
+            int opt = 1;
+            setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&opt, sizeof(opt));
+
             if (bind(sock, (sockaddr*)&addr, sizeof(addr)) == SOCKET_ERROR) {
                 logToConsole(L"Failed to bind socket!");
                 closesocket(sock);
