@@ -5523,8 +5523,14 @@ static bool initialize()
     }
 
     // fix missing contract shares
-    for (unsigned int contractIndex = 1; contractIndex < contractCount; ++contractIndex)
+    unsigned int contractIndicesWithMissingShares[3] = {
+        6, // GQMPROP
+        7, // SWATCH
+        8, // CCF
+    };
+    for (unsigned int i = 0; i < 3; ++i)
     {
+        unsigned int contractIndex = contractIndicesWithMissingShares[i];
         // query number of shares in universe
         long long numShares = numberOfShares({ m256i::zero(), *(uint64*)contractDescriptions[contractIndex].assetName });
         if (numShares < NUMBER_OF_COMPUTORS)
