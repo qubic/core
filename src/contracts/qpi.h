@@ -2544,10 +2544,12 @@ namespace QPI
 	//////////
 
 	#define DEFINE_SHAREHOLDER_PROPOSAL_STORAGE(numProposalSlots, assetNameInt64) \
-		typedef ProposalDataYesNo ProposalDataT; \
-		typedef ProposalAndVotingByShareholders<numProposalSlots, assetNameInt64> ProposersAndVotersT; \
-		typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT; \
-		ProposalVotingT proposals
+		public: \
+			typedef ProposalDataYesNo ProposalDataT; \
+			typedef ProposalAndVotingByShareholders<numProposalSlots, assetNameInt64> ProposersAndVotersT; \
+			typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT; \
+		protected: \
+			ProposalVotingT proposals
 
 	#define IMPLEMENT_SetShareholderProposal(numFeeStateVariables, setProposalFeeVarOrValue) \
 		typedef ProposalDataT SetShareholderProposal_input; \
