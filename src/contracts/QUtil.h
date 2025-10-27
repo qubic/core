@@ -1284,6 +1284,7 @@ public:
         state.pollCreationFee = QUTIL_POLL_CREATION_FEE;
         state.pollVoteFee = QUTIL_VOTE_FEE;
         state.distributeQuToShareholderFeePerShareholder = QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER;
+        state.shareholderProposalFee = 100;
     }
 
     // Deactivate delay function
