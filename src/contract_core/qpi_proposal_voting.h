@@ -143,12 +143,12 @@ namespace QPI
 		};
 
 		// Setup proposal in proposal index. Asset possession at this point in time defines the right to vote.
-		void setupNewProposal(const QpiContextFunctionCall& qpi, const id& proposerId, uint16 propsalIdx)
+		void setupNewProposal(const QpiContextFunctionCall& qpi, const id& proposerId, uint16 proposalIdx)
 		{
-			if (propsalIdx >= maxProposals || isZero(proposerId))
+			if (proposalIdx >= maxProposals || isZero(proposerId))
 				return;
 
-			currentProposalProposers[propsalIdx] = proposerId;
+			currentProposalProposers[proposalIdx] = proposerId;
 
 			// prepare temporary array to gather shareholder info
 			struct Shareholder
@@ -218,7 +218,7 @@ namespace QPI
 				const Shareholder& shareholder = shareholders[shareholderIdx];
 				for (int shareIdx = 0; shareIdx < shareholder.shares; ++shareIdx)
 				{
-					currentProposalShareholders[propsalIdx][voteIdx] = shareholder.possessor;
+					currentProposalShareholders[proposalIdx][voteIdx] = shareholder.possessor;
 					++voteIdx;
 				}
 			}

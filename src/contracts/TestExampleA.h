@@ -314,7 +314,7 @@ protected:
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
 		// calling qpi.releaseShares() and qpi.acquireShares() is forbidden in *_SHARES callbacks
-		// and should return with an error immeditately
+		// and should return with an error immediately
 		ASSERT(qpi.releaseShares(input.asset, input.owner, input.possessor, input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
@@ -329,7 +329,7 @@ protected:
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
 		// calling qpi.releaseShares() and qpi.acquireShares() is forbidden in *_SHARES callbacks
-		// and should return with an error immeditately
+		// and should return with an error immediately
 		ASSERT(qpi.releaseShares(input.asset, input.owner, input.possessor, input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
@@ -344,7 +344,7 @@ protected:
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
 		// calling qpi.releaseShares() and qpi.acquireShares() is forbidden in *_SHARES callbacks
-		// and should return with an error immeditately
+		// and should return with an error immediately
 		ASSERT(qpi.releaseShares(input.asset, input.owner, input.possessor, input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
@@ -359,7 +359,7 @@ protected:
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
 		// calling qpi.releaseShares() and qpi.acquireShares() is forbidden in *_SHARES callbacks
-		// and should return with an error immeditately
+		// and should return with an error immediately
 		ASSERT(qpi.releaseShares(input.asset, input.owner, input.possessor, input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
@@ -507,7 +507,7 @@ public:
 			break;
 
 		default:
-			// this forbids other proposals including transfers and all future propsals classes not implemented yet
+			// this forbids other proposals including transfers and all future proposals classes not implemented yet
 			return;
 		}
 
@@ -712,7 +712,7 @@ public:
 		copyFromBuffer(locals.userProcInput, input);
 		CALL(SetShareholderProposal, locals.userProcInput, output);
 
-		// bug-checking: qpi.setSharehodler*() must fail
+		// bug-checking: qpi.setShareholder*() must fail
 		ASSERT(!qpi.setShareholderVotes(10, ProposalMultiVoteDataV1(), qpi.invocationReward()));
 		ASSERT(qpi.setShareholderProposal(10, input, qpi.invocationReward()) == INVALID_PROPOSAL_INDEX);
 	}
@@ -722,7 +722,7 @@ public:
 		CALL(SetShareholderVotes, input, output);
 
 #ifdef NO_UEFI
-		// bug-checking: qpi.setSharehodler*() must fail
+		// bug-checking: qpi.setShareholder*() must fail
 		ASSERT(!qpi.setShareholderVotes(10, input, qpi.invocationReward()));
 		ASSERT(qpi.setShareholderProposal(10, SET_SHAREHOLDER_PROPOSAL_input(), qpi.invocationReward()) == INVALID_PROPOSAL_INDEX);
 #endif

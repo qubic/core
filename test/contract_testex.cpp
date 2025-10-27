@@ -180,37 +180,37 @@ public:
         return output.issuedNumberOfShares;
     }
 
-    sint64 transferShareOwnershipAndPossessionQx(const Asset& asset, const id& currentOwnerAndPossesor, const id& newOwnerAndPossesor, sint64 numberOfShares)
+    sint64 transferShareOwnershipAndPossessionQx(const Asset& asset, const id& currentOwnerAndPossessor, const id& newOwnerAndPossessor, sint64 numberOfShares)
     {
         QX::TransferShareOwnershipAndPossession_input input;
         QX::TransferShareOwnershipAndPossession_output output;
         
         input.assetName = asset.assetName;
         input.issuer = asset.issuer;
-        input.newOwnerAndPossessor = newOwnerAndPossesor;
+        input.newOwnerAndPossessor = newOwnerAndPossessor;
         input.numberOfShares = numberOfShares;
         
-        invokeUserProcedure(QX_CONTRACT_INDEX, 2, input, output, currentOwnerAndPossesor, qxFees.transferFee);
+        invokeUserProcedure(QX_CONTRACT_INDEX, 2, input, output, currentOwnerAndPossessor, qxFees.transferFee);
         
         return output.transferredNumberOfShares;
     }
 
     template <typename StateStruct>
-    sint64 transferShareOwnershipAndPossession(const Asset& asset, const id& currentOwnerAndPossesor, const id& newOwnerAndPossesor, sint64 numberOfShares)
+    sint64 transferShareOwnershipAndPossession(const Asset& asset, const id& currentOwnerAndPossessor, const id& newOwnerAndPossessor, sint64 numberOfShares)
     {
         typename StateStruct::TransferShareOwnershipAndPossession_input input;
         typename StateStruct::TransferShareOwnershipAndPossession_output output;
 
         input.asset = asset;
-        input.newOwnerAndPossessor = newOwnerAndPossesor;
+        input.newOwnerAndPossessor = newOwnerAndPossessor;
         input.numberOfShares = numberOfShares;
 
-        invokeUserProcedure(StateStruct::__contract_index, 2, input, output, currentOwnerAndPossesor, 0);
+        invokeUserProcedure(StateStruct::__contract_index, 2, input, output, currentOwnerAndPossessor, 0);
 
         return output.transferredNumberOfShares;
     }
 
-    sint64 transferShareManagementRightsQx(const Asset& asset, const id& currentOwnerAndPossesor, sint64 numberOfShares, unsigned int newManagingContractIndex, sint64 fee = 0)
+    sint64 transferShareManagementRightsQx(const Asset& asset, const id& currentOwnerAndPossessor, sint64 numberOfShares, unsigned int newManagingContractIndex, sint64 fee = 0)
     {
         QX::TransferShareManagementRights_input input;
         QX::TransferShareManagementRights_output output;
@@ -219,13 +219,13 @@ public:
         input.newManagingContractIndex = newManagingContractIndex;
         input.numberOfShares = numberOfShares;
 
-        invokeUserProcedure(QX_CONTRACT_INDEX, 9, input, output, currentOwnerAndPossesor, fee);
+        invokeUserProcedure(QX_CONTRACT_INDEX, 9, input, output, currentOwnerAndPossessor, fee);
 
         return output.transferredNumberOfShares;
     }
 
     template <typename StateStruct>
-    sint64 transferShareManagementRights(const Asset& asset, const id& currentOwnerAndPossesor, sint64 numberOfShares, unsigned int newManagingContractIndex, sint64 fee = 0)
+    sint64 transferShareManagementRights(const Asset& asset, const id& currentOwnerAndPossessor, sint64 numberOfShares, unsigned int newManagingContractIndex, sint64 fee = 0)
     {
         typename StateStruct::TransferShareManagementRights_input input;
         typename StateStruct::TransferShareManagementRights_output output;
@@ -234,7 +234,7 @@ public:
         input.newManagingContractIndex = newManagingContractIndex;
         input.numberOfShares = numberOfShares;
 
-        invokeUserProcedure(StateStruct::__contract_index, 3, input, output, currentOwnerAndPossesor, fee);
+        invokeUserProcedure(StateStruct::__contract_index, 3, input, output, currentOwnerAndPossessor, fee);
 
         return output.transferredNumberOfShares;
     }
@@ -257,23 +257,23 @@ public:
 
     
     template <typename StateStruct>
-    sint64 acquireShareManagementRights(const Asset& asset, const id& currentOwnerAndPossesor, sint64 numberOfShares, unsigned int prevManagingContractIndex, sint64 fee = 0, const id& originator = NULL_ID)
+    sint64 acquireShareManagementRights(const Asset& asset, const id& currentOwnerAndPossessor, sint64 numberOfShares, unsigned int prevManagingContractIndex, sint64 fee = 0, const id& originator = NULL_ID)
     {
         typename StateStruct::AcquireShareManagementRights_input input;
         typename StateStruct::AcquireShareManagementRights_output output;
 
         input.asset = asset;
-        input.ownerAndPossessor = currentOwnerAndPossesor;
+        input.ownerAndPossessor = currentOwnerAndPossessor;
         input.oldManagingContractIndex = prevManagingContractIndex;
         input.numberOfShares = numberOfShares;
 
         invokeUserProcedure(StateStruct::__contract_index, 6, input, output,
-            (isZero(originator)) ? currentOwnerAndPossesor : originator, fee);
+            (isZero(originator)) ? currentOwnerAndPossessor : originator, fee);
 
         return output.transferredNumberOfShares;
     }
 
-    sint64 getTestExAsShareManagementRightsByInvokingTestExB(const Asset& asset, const id& currentOwnerAndPossesor, sint64 numberOfShares, sint64 fee = 0)
+    sint64 getTestExAsShareManagementRightsByInvokingTestExB(const Asset& asset, const id& currentOwnerAndPossessor, sint64 numberOfShares, sint64 fee = 0)
     {
         TESTEXB::GetTestExampleAShareManagementRights_input input;
         TESTEXB::GetTestExampleAShareManagementRights_output output;
@@ -281,12 +281,12 @@ public:
         input.asset = asset;
         input.numberOfShares = numberOfShares;
 
-        invokeUserProcedure(TESTEXB::__contract_index, 7, input, output, currentOwnerAndPossesor, fee);
+        invokeUserProcedure(TESTEXB::__contract_index, 7, input, output, currentOwnerAndPossessor, fee);
 
         return output.transferredNumberOfShares;
     }
 
-    sint64 getTestExAsShareManagementRightsByInvokingTestExC(const Asset& asset, const id& currentOwnerAndPossesor, sint64 numberOfShares, sint64 fee = 0)
+    sint64 getTestExAsShareManagementRightsByInvokingTestExC(const Asset& asset, const id& currentOwnerAndPossessor, sint64 numberOfShares, sint64 fee = 0)
     {
         TESTEXC::GetTestExampleAShareManagementRights_input input;
         TESTEXC::GetTestExampleAShareManagementRights_output output;
@@ -294,7 +294,7 @@ public:
         input.asset = asset;
         input.numberOfShares = numberOfShares;
 
-        invokeUserProcedure(TESTEXC::__contract_index, 7, input, output, currentOwnerAndPossesor, fee);
+        invokeUserProcedure(TESTEXC::__contract_index, 7, input, output, currentOwnerAndPossessor, fee);
 
         return output.transferredNumberOfShares;
     }
@@ -573,7 +573,7 @@ TEST(ContractTestEx, QpiReleaseShares)
     const sint64 totalShareCount = 1000000000;
     const sint64 transferShareCount = totalShareCount/4;
 
-    // make sure the enities have enough qu
+    // make sure the entities have enough qu
     increaseEnergy(USER1, test.qxFees.assetIssuanceFee * 10);
     increaseEnergy(USER2, test.qxFees.assetIssuanceFee * 10);
     increaseEnergy(USER3, test.qxFees.assetIssuanceFee * 10);
@@ -726,7 +726,7 @@ TEST(ContractTestEx, QpiAcquireShares)
     const sint64 totalShareCount = 100000000;
     const sint64 transferShareCount = totalShareCount / 4;
     
-    // make sure the enities have enough qu
+    // make sure the entities have enough qu
     increaseEnergy(USER1, test.qxFees.assetIssuanceFee * 10);
     increaseEnergy(USER2, test.qxFees.assetIssuanceFee * 10);
     increaseEnergy(USER3, test.qxFees.assetIssuanceFee * 10);
@@ -906,7 +906,7 @@ TEST(ContractTestEx, GetManagementRightsByInvokingOtherContractsRelease)
     const sint64 totalShareCount = 1000000;
     const sint64 transferShareCount = totalShareCount / 5;
 
-    // make sure the enities have enough qu
+    // make sure the entities have enough qu
     increaseEnergy(USER1, test.qxFees.assetIssuanceFee * 10);
     increaseEnergy(USER2, test.qxFees.assetIssuanceFee * 10);
     increaseEnergy(USER3, test.qxFees.assetIssuanceFee * 10);

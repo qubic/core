@@ -161,7 +161,7 @@ protected:
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
 		// calling qpi.releaseShares() and qpi.acquireShares() is forbidden in *_SHARES callbacks
-		// and should return with an error immeditately
+		// and should return with an error immediately
 		ASSERT(qpi.releaseShares(input.asset, input.owner, input.possessor, input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
@@ -176,7 +176,7 @@ protected:
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
 		// calling qpi.releaseShares() and qpi.acquireShares() is forbidden in *_SHARES callbacks
-		// and should return with an error immeditately
+		// and should return with an error immediately
 		ASSERT(qpi.releaseShares(input.asset, input.owner, input.possessor, input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
@@ -191,7 +191,7 @@ protected:
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
 		// calling qpi.releaseShares() and qpi.acquireShares() is forbidden in *_SHARES callbacks
-		// and should return with an error immeditately
+		// and should return with an error immediately
 		ASSERT(qpi.releaseShares(input.asset, input.owner, input.possessor, input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
@@ -206,7 +206,7 @@ protected:
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
 		// calling qpi.releaseShares() and qpi.acquireShares() is forbidden in *_SHARES callbacks
-		// and should return with an error immeditately
+		// and should return with an error immediately
 		ASSERT(qpi.releaseShares(input.asset, input.owner, input.possessor, input.numberOfShares,
 			input.otherContractIndex, input.otherContractIndex, qpi.invocationReward()) == INVALID_AMOUNT);
 		ASSERT(qpi.acquireShares(input.asset, input.owner, qpi.invocator(), input.numberOfShares,
@@ -421,7 +421,7 @@ public:
 			break;
 
 		default:
-			// this forbids all other proposals including transfers, multi-variable, general, and all future propsals classes
+			// this forbids all other proposals including transfers, multi-variable, general, and all future proposals classes
 			return;
 		}
 
@@ -438,18 +438,18 @@ public:
 		ProposalDataT proposal;
 		ProposalSummarizedVotingDataV1 results;
 		sint32 acceptedOption;
-		sint64 accpetedValue;
+		sint64 acceptedValue;
 	};
 	typedef NoData FinalizeShareholderProposalSetStateVar_output;
 
 	PRIVATE_PROCEDURE(FinalizeShareholderProposalSetStateVar)
 	{
 		if (input.proposal.variableOptions.variable == 0)
-			state.fee1 = input.accpetedValue;
+			state.fee1 = input.acceptedValue;
 		else if (input.proposal.variableOptions.variable == 1)
-			state.fee2 = input.accpetedValue;
+			state.fee2 = input.acceptedValue;
 		else if (input.proposal.variableOptions.variable == 2)
-			state.fee3 = input.accpetedValue;
+			state.fee3 = input.acceptedValue;
 	}
 
 	typedef NoData FinalizeShareholderStateVarProposals_input;
@@ -484,7 +484,7 @@ public:
 					if (locals.p.results.totalVotesCasted < QUORUM)
 						continue;
 
-					locals.p.accpetedValue = locals.p.results.scalarVotingResult;
+					locals.p.acceptedValue = locals.p.results.scalarVotingResult;
 				}
 				else
 				{
@@ -493,7 +493,7 @@ public:
 						continue;
 
 					// option 0 is "no change", option 1 has index 0 in variableOptions
-					locals.p.accpetedValue = locals.p.proposal.variableOptions.values.get(locals.p.acceptedOption - 1);
+					locals.p.acceptedValue = locals.p.proposal.variableOptions.values.get(locals.p.acceptedOption - 1);
 				}
 
 				CALL(FinalizeShareholderProposalSetStateVar, locals.p, output);
@@ -580,6 +580,6 @@ public:
 		REGISTER_USER_PROCEDURE(SetProposalInOtherContractAsShareholder, 40);
 		REGISTER_USER_PROCEDURE(SetVotesInOtherContractAsShareholder, 41);
 
-		REGISTER_SHAREHOLDER_PROPSAL_VOTING();
+		REGISTER_SHAREHOLDER_PROPOSAL_VOTING();
 	}
 };

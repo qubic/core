@@ -1457,7 +1457,7 @@ namespace QPI
 		// contract) -> result is histogram of options
 		static constexpr uint16 MultiVariablesFourOptions = Class::MultiVariables | 4;
 
-		// Contruct type from class + number of options (no checking if type is valid)
+		// Construct type from class + number of options (no checking if type is valid)
 		static constexpr uint16 type(uint16 cls, uint16 options)
 		{
 			return cls | options;
@@ -1487,8 +1487,8 @@ namespace QPI
 	struct ProposalDataV1
 	{
 		// URL explaining proposal, zero-terminated string.
-		Array<uint8, 256> url;	
-		
+		Array<uint8, 256> url;
+
 		// Epoch, when proposal is active. For setProposal(), 0 means to clear proposal and non-zero means the current epoch.
 		uint16 epoch;
 
@@ -1693,7 +1693,7 @@ namespace QPI
 	template <uint16 proposalSlotCount = NUMBER_OF_COMPUTORS>
 	struct ProposalAndVotingByComputors;
 
-	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting for computors only and creating/chaning proposals for anyone.
+	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting for computors only and creating/changing proposals for anyone.
 	template <uint16 proposalSlotCount>
 	struct ProposalByAnyoneVotingByComputors;
 
@@ -2113,7 +2113,7 @@ namespace QPI
 		* @brief Add/change/cancel shareholder proposal as shareholder of another contract.
 		* @param contractIndex Index of the other contract, that SELF is shareholder of and that the proposal is about.
 		* @param proposalDataBuffer Buffer for passing the contract-dependent proposal data. You may use copyToBuffer() to fill it.
-		* @param invocationReward Invocation reaward sent to contractIndex when invoking it's procedure.
+		* @param invocationReward Invocation reward sent to contractIndex when invoking it's procedure.
 		* @return Proposal index on success, INVALID_PROPOSAL_INDEX on error.
 		* @note Invokes SET_SHAREHOLDER_PROPOSAL of contractIndex without checking shareholder status and proposalDataBuffer.
 		*/
@@ -2127,7 +2127,7 @@ namespace QPI
 		* @brief Add/change/cancel shareholder vote(s) in another contract.
 		* @param contractIndex Index of the other contract, that SELF is shareholder of and that the proposal is about.
 		* @param shareholderVoteData Vote(s) to cast. See ProposalMultiVoteDataV1 for details.
-		* @param invocationReward Invocation reaward sent to contractIndex when invoking it's procedure.
+		* @param invocationReward Invocation reward sent to contractIndex when invoking it's procedure.
 		* @return Proposal index on success, INVALID_PROPOSAL_INDEX on error.
 		* @note Invokes SET_SHAREHOLDER_VOTES of contractIndex without checking shareholder status and shareholderVoteData.
 		*/
@@ -2627,7 +2627,7 @@ namespace QPI
 	#define IMPLEMENT_FinalizeShareholderStateVarProposals() \
 		struct FinalizeShareholderProposalSetStateVar_input { \
 			sint32 proposalIndex; ProposalDataT proposal; ProposalSummarizedVotingDataV1 results; \
-			sint32 acceptedOption; 	sint64 accpetedValue; }; \
+			sint32 acceptedOption; 	sint64 acceptedValue; }; \
 		typedef NoData FinalizeShareholderProposalSetStateVar_output; \
 		typedef NoData FinalizeShareholderStateVarProposals_input; \
 		typedef NoData FinalizeShareholderStateVarProposals_output; \
@@ -2645,7 +2645,7 @@ namespace QPI
 					locals.p.acceptedOption = locals.p.results.getAcceptedOption(); \
 					if (locals.p.acceptedOption <= 0) \
 						continue; \
-					locals.p.accpetedValue = locals.p.proposal.variableOptions.value; \
+					locals.p.acceptedValue = locals.p.proposal.variableOptions.value; \
 					CALL(FinalizeShareholderProposalSetStateVar, locals.p, output); } } } \
 		PRIVATE_PROCEDURE(FinalizeShareholderProposalSetStateVar)
 
@@ -2668,7 +2668,7 @@ namespace QPI
 	#define REGISTER_SetShareholderProposal() REGISTER_USER_PROCEDURE(SetShareholderProposal, 65534)
 	#define REGISTER_SetShareholderVotes() REGISTER_USER_PROCEDURE(SetShareholderVotes, 65535)
 
-	#define REGISTER_SHAREHOLDER_PROPSAL_VOTING()  REGISTER_GetShareholderProposalFees() \
+	#define REGISTER_SHAREHOLDER_PROPOSAL_VOTING()  REGISTER_GetShareholderProposalFees() \
 		REGISTER_GetShareholderProposalIndices(); REGISTER_GetShareholderProposal(); \
 		REGISTER_GetShareholderVotes(); REGISTER_GetShareholderVotingResults(); \
 		REGISTER_SetShareholderProposal(); REGISTER_SetShareholderVotes()

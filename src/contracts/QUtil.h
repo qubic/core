@@ -1398,19 +1398,19 @@ public:
         switch (input.proposal.variableOptions.variable)
         {
         case 0:
-            state.smt1InvocationFee = input.accpetedValue;
+            state.smt1InvocationFee = input.acceptedValue;
             break;
         case 1:
-            state.pollCreationFee = input.accpetedValue;
+            state.pollCreationFee = input.acceptedValue;
             break;
         case 2:
-            state.pollVoteFee = input.accpetedValue;
+            state.pollVoteFee = input.acceptedValue;
             break;
         case 3:
-            state.distributeQuToShareholderFeePerShareholder = input.accpetedValue;
+            state.distributeQuToShareholderFeePerShareholder = input.acceptedValue;
             break;
         case 4:
-            state.shareholderProposalFee = input.accpetedValue;
+            state.shareholderProposalFee = input.acceptedValue;
             break;
         }
     }
@@ -1436,6 +1436,6 @@ public:
         REGISTER_USER_PROCEDURE(CancelPoll, 6);
         REGISTER_USER_PROCEDURE(DistributeQuToShareholders, 7);
 
-        REGISTER_SHAREHOLDER_PROPSAL_VOTING();
+        REGISTER_SHAREHOLDER_PROPOSAL_VOTING();
     }
 };
