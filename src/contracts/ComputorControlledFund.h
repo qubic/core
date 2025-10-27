@@ -13,8 +13,8 @@ struct CCF : public ContractBase
 	// and apply for funding multiple times.
 	typedef ProposalDataYesNo ProposalDataT;
 
-	// Anyone can set a proposal, but only computors have right vote.
-	typedef ProposalByAnyoneVotingByComputors<100> ProposersAndVotersT;
+	// Only computors can set a proposal and vote. Up to 100 proposals are supported simultaneously.
+    typedef ProposalAndVotingByComputors<100> ProposersAndVotersT;
 
 	// Proposal and voting storage type
 	typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT;
@@ -305,5 +305,6 @@ public:
 	}
 
 };
+
 
 
