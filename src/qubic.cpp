@@ -5522,6 +5522,20 @@ static bool initialize()
         }
     }
 
+    // fix missing contract shares
+    for (unsigned int contractIndex = 1; contractIndex < contractCount; ++contractIndex)
+    {
+        // query number of shares in universe
+        long long numShares = numberOfShares({ m256i::zero(), *(uint64*)contractDescriptions[contractIndex].assetName });
+        if (numShares < NUMBER_OF_COMPUTORS)
+        {
+            // issue missing shares and give them to contract itself
+            int issuanceIndex, ownershipIndex, possessionIndex, dstOwnershipIndex, dstPossessionIndex;
+            issueAsset(m256i::zero(), (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS - numShares, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex);
+            transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, m256i{ contractIndex, 0ULL, 0ULL, 0ULL }, NUMBER_OF_COMPUTORS - numShares, &dstOwnershipIndex, &dstPossessionIndex, /*lock=*/true);
+        }
+    }
+
     return true;
 }
 
