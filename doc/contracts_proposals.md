@@ -375,8 +375,9 @@ typedef uint16 SetShareholderProposal_output;
 PUBLIC_PROCEDURE(SetShareholderProposal)
 {
     // check proposal input and fees
-    if (input.type != ProposalTypes::VariableYesNo || input.variableOptions.variable >= numFeeStateVariables
-        || input.variableOptions.value < 0 || qpi.invocationReward() < setProposalFeeVarOrValue)
+    if (qpi.invocationReward() < setProposalFeeVarOrValue || (input.epoch
+        && (input.type != ProposalTypes::VariableYesNo || input.variableOptions.variable >= numFeeStateVariables
+            || input.variableOptions.value < 0)))
     {
         // error -> reimburse invocation reward
         qpi.transfer(qpi.invocator(), qpi.invocationReward());

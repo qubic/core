@@ -2555,8 +2555,9 @@ namespace QPI
 		typedef ProposalDataT SetShareholderProposal_input; \
 		typedef uint16 SetShareholderProposal_output; \
 		PUBLIC_PROCEDURE(SetShareholderProposal) { \
-			if (input.type != ProposalTypes::VariableYesNo || input.variableOptions.variable >= numFeeStateVariables \
-				|| input.variableOptions.value < 0 || qpi.invocationReward() < setProposalFeeVarOrValue) { \
+			if (qpi.invocationReward() < setProposalFeeVarOrValue || (input.epoch \
+				&& (input.type != ProposalTypes::VariableYesNo || input.variableOptions.variable >= numFeeStateVariables \
+					|| input.variableOptions.value < 0))) { \
 				qpi.transfer(qpi.invocator(), qpi.invocationReward()); \
 				output = INVALID_PROPOSAL_INDEX; \
 				return; } \
