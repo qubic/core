@@ -407,11 +407,22 @@ public:
         QUTILPoll default_poll;  // default values if not found
     };
 
-    typedef NoData GetPollFees_input;
-    struct GetPollFees_output
+    typedef NoData GetFees_input;
+    struct GetFees_output
     {
+        sint64 smt1InvocationFee;
         sint64 pollCreationFee;
         sint64 pollVoteFee;
+        sint64 distributeQuToShareholderFeePerShareholder;
+        sint64 shareholderProposalFee;
+
+        // Placeholder for future fees, preventing incompatibilities for some extensions
+        sint64 _futureFeePlaceholder0;
+        sint64 _futureFeePlaceholder1;
+        sint64 _futureFeePlaceholder2;
+        sint64 _futureFeePlaceholder3;
+        sint64 _futureFeePlaceholder4;
+        sint64 _futureFeePlaceholder5;
     };
 
     struct END_EPOCH_locals
@@ -1246,10 +1257,13 @@ public:
         }
     }
 
-    PUBLIC_FUNCTION(GetPollFees)
+    PUBLIC_FUNCTION(GetFees)
     {
+        output.smt1InvocationFee = state.smt1InvocationFee;
         output.pollCreationFee = state.pollCreationFee;
         output.pollVoteFee = state.pollVoteFee;
+        output.distributeQuToShareholderFeePerShareholder = state.distributeQuToShareholderFeePerShareholder;
+        output.shareholderProposalFee = state.shareholderProposalFee;
     }
 
     /**
@@ -1426,7 +1440,7 @@ public:
         REGISTER_USER_FUNCTION(GetPollsByCreator, 4);
         REGISTER_USER_FUNCTION(GetCurrentPollId, 5);
         REGISTER_USER_FUNCTION(GetPollInfo, 6);
-        REGISTER_USER_FUNCTION(GetPollFees, 7);
+        REGISTER_USER_FUNCTION(GetFees, 7);
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
         REGISTER_USER_PROCEDURE(BurnQubic, 2);
