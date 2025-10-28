@@ -52,6 +52,7 @@ elseif(IS_MSVC)
     )
 endif()
 
+find_package(Threads REQUIRED)
 # Link with platform libraries
 # if(BUILD_TESTS)
 #   # When building for tests, link only with platform_common and platform_os
@@ -67,6 +68,7 @@ endif()
     platform_common
     platform_efi
     c++ c++abi
+    Threads::Threads
   )
 # endif()
 
