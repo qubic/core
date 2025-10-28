@@ -2604,6 +2604,41 @@ static void processTickTransactionOracleReplyReveal(const OracleReplyRevealTrans
     // TODO
 }
 
+static void printDebugTx(const Transaction* transaction, unsigned int systemTick)
+{
+    CHAR16 debugMessage[256];
+    CHAR16 id[61];
+    setText(debugMessage, L"[DBG] Tx: ");
+    appendText(debugMessage, L"SysTick: ");
+    appendNumber(debugMessage, systemTick, false);
+    appendText(debugMessage, L"TxTick: ");
+    appendNumber(debugMessage, transaction->tick, false);
+    addDebugMessage(debugMessage);
+
+    getIdentity(transaction->sourcePublicKey.m256i_u8, id, true);
+    setText(debugMessage, L"Src: ");
+    appendText(debugMessage, id);
+    addDebugMessage(debugMessage);
+
+
+    getIdentity(transaction->destinationPublicKey.m256i_u8, id, true);
+    setText(debugMessage, L"Dst: ");
+    appendText(debugMessage, id);
+    addDebugMessage(debugMessage);
+
+    setText(debugMessage, L"Ammount: ");
+    appendNumber(debugMessage, transaction->amount, false);
+    addDebugMessage(debugMessage);
+
+    setText(debugMessage, L"InputType: ");
+    appendNumber(debugMessage, transaction->inputType, false);
+    addDebugMessage(debugMessage);
+
+    setText(debugMessage, L"InputSize: ");
+    appendNumber(debugMessage, transaction->inputSize, false);
+    addDebugMessage(debugMessage);
+}
+
 static void processTickTransaction(const Transaction* transaction, const m256i& transactionDigest, const m256i& dataLock, unsigned long long processorNumber)
 {
     PROFILE_SCOPE();
@@ -2612,6 +2647,10 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
     ASSERT(transaction->tick == system.tick);
+    if (transaction->tick != system.tick)
+    {
+        printDebugTx(transaction, system.tick);
+    }
 
     // Record the tx with digest
     ts.transactionsDigestAccess.acquireLock();
@@ -2930,6 +2969,11 @@ static void processTick(unsigned long long processorNumber)
                     Transaction* transaction = ts.tickTransactions(tsCurrentTickTransactionOffsets[transactionIndex]);
                     ASSERT(transaction->checkValidity());
                     ASSERT(transaction->tick == system.tick);
+                    if (transaction->tick != system.tick)
+                    {
+                        printDebugTx(transaction, system.tick);
+                    }
+
                     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
                     if (spectrumIndex >= 0)
                     {
