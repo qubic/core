@@ -4021,6 +4021,63 @@ static bool loadAllNodeStates()
     logToConsole(L"Loading old logger...");
     logger.loadLastLoggingStates(directory);
 #endif
+
+    // Debug info
+    static constexpr unsigned int debugTickNumber = 35501337;
+    unsigned short tickEpoch = 0;
+    const unsigned long long* tsReqTickTransactionOffsets;
+    if (ts.tickInCurrentEpochStorage(debugTickNumber))
+    {
+        tickEpoch = system.epoch;
+        tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(debugTickNumber);
+    }
+    else if (ts.tickInPreviousEpochStorage(debugTickNumber))
+    {
+        addDebugMessage(L"[DBG] ts.tickInPreviousEpochStorage");
+    }
+
+    if (tickEpoch != 0)
+    {
+        unsigned int tickTransactionIndices[NUMBER_OF_TRANSACTIONS_PER_TICK];
+        unsigned int numberOfTickTransactions;
+        for (numberOfTickTransactions = 0; numberOfTickTransactions < NUMBER_OF_TRANSACTIONS_PER_TICK; numberOfTickTransactions++)
+        {
+            tickTransactionIndices[numberOfTickTransactions] = numberOfTickTransactions;
+        }
+        while (numberOfTickTransactions)
+        {
+            const unsigned int index = random(numberOfTickTransactions);
+            {
+                unsigned long long tickTransactionOffset = tsReqTickTransactionOffsets[tickTransactionIndices[index]];
+                if (tickTransactionOffset)
+                {
+                    const Transaction* transaction = ts.tickTransactions(tickTransactionOffset);
+                    if (transaction->tick == debugTickNumber && transaction->checkValidity())
+                    {
+                        //enqueueResponse(peer, transaction->totalSize(), BROADCAST_TRANSACTION, header->dejavu(), (void*)transaction);
+
+                        printDebugTx(transaction, debugTickNumber);
+                    }
+                    else
+                    {
+                        // tick storage messed up -> indicates bug such as buffer overflow
+#if !defined(NDEBUG)
+                        CHAR16 dbgMsg[200];
+                        setText(dbgMsg, L"Invalid transaction found in processRequestTickTransactions(), tick ");
+                        appendNumber(dbgMsg, debugTickNumber, FALSE);
+                        addDebugMessage(dbgMsg);
+                        ts.checkStateConsistencyWithAssert();
+#endif
+                    }
+                }
+            }
+
+            tickTransactionIndices[index] = tickTransactionIndices[--numberOfTickTransactions];
+        }
+        addDebugMessage(L"[DBG] Dumping tick transaction DONE.");
+    }
+
+
     return true;
 }
 
