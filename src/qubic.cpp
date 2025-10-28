@@ -14,14 +14,14 @@
 #include "platform/msvc_polyfill.h"
 #endif
 
-////////////////// USER CONFIGURABLE OPTIONS (default is for local testnet without swap feature) \\\\\\\\\\\\\\\\
+////////////////// USER CONFIGURABLE OPTIONS (default is for mainnet with swap feature) \\\\\\\\\\\\\\\\
 
-#define TESTNET // COMMENT this line if you want to compile for mainnet
+// #define TESTNET // COMMENT this line if you want to compile for mainnet
 
 // this option enables using disk as RAM to reduce hardware requirement for qubic core node
 // it is highly recommended to enable this option if you want to run a full mainnet node on SSD
 // UNCOMMENT this line to enable it
-// #define USE_SWAP
+#define USE_SWAP
 
 //////////////////////////////////////////////////////////////
 
