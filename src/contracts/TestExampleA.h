@@ -470,45 +470,48 @@ public:
 		output = INVALID_PROPOSAL_INDEX;
 
 		// custom checks
-		switch (ProposalTypes::cls(input.proposalData.type))
+		if (input.proposalData.epoch != 0)
 		{
-		case ProposalTypes::Class::MultiVariables:
-			// check input
-			if (!input.multiVarData.isValid())
-				return;
+			switch (ProposalTypes::cls(input.proposalData.type))
+			{
+			case ProposalTypes::Class::MultiVariables:
+				// check input
+				if (!input.multiVarData.isValid())
+					return;
 
-			// check that proposed values are in valid range
-			if (input.multiVarData.hasValueDummyStateVariable1 && input.multiVarData.optionYesValues.dummyStateVariable1 > 1000000000000llu)
-				return;
-			if (input.multiVarData.hasValueDummyStateVariable2 && input.multiVarData.optionYesValues.dummyStateVariable2 > 1000000llu)
-				return;
-			if (input.multiVarData.hasValueDummyStateVariable3 && (input.multiVarData.optionYesValues.dummyStateVariable3 > 100 || input.multiVarData.optionYesValues.dummyStateVariable3 < -100))
-				return;
+				// check that proposed values are in valid range
+				if (input.multiVarData.hasValueDummyStateVariable1 && input.multiVarData.optionYesValues.dummyStateVariable1 > 1000000000000llu)
+					return;
+				if (input.multiVarData.hasValueDummyStateVariable2 && input.multiVarData.optionYesValues.dummyStateVariable2 > 1000000llu)
+					return;
+				if (input.multiVarData.hasValueDummyStateVariable3 && (input.multiVarData.optionYesValues.dummyStateVariable3 > 100 || input.multiVarData.optionYesValues.dummyStateVariable3 < -100))
+					return;
 
-			break;
+				break;
 
-		case ProposalTypes::Class::Variable:
-			// check that variable index is in valid range
-			if (input.proposalData.variableOptions.variable >= 3)
+			case ProposalTypes::Class::Variable:
+				// check that variable index is in valid range
+				if (input.proposalData.variableOptions.variable >= 3)
+					return;
+
+				// check that proposed value is in valid range
+				if (input.proposalData.variableOptions.variable == 0 && input.proposalData.variableOptions.value > 1000000000000llu)
+					return;
+				if (input.proposalData.variableOptions.variable == 1 && input.proposalData.variableOptions.value > 1000000llu)
+					return;
+				if (input.proposalData.variableOptions.variable == 2 && (input.proposalData.variableOptions.value > 100 || input.proposalData.variableOptions.value < -100))
+					return;
+
+				break;
+
+			case ProposalTypes::Class::GeneralOptions:
+				// allow without check
+				break;
+
+			default:
+				// this forbids other proposals including transfers and all future propsasl classes not implemented yet
 				return;
-
-			// check that proposed value is in valid range
-			if (input.proposalData.variableOptions.variable == 0 && input.proposalData.variableOptions.value > 1000000000000llu)
-				return;
-			if (input.proposalData.variableOptions.variable == 1 && input.proposalData.variableOptions.value > 1000000llu)
-				return;
-			if (input.proposalData.variableOptions.variable == 2 && (input.proposalData.variableOptions.value > 100 || input.proposalData.variableOptions.value < -100))
-				return;
-
-			break;
-
-		case ProposalTypes::Class::GeneralOptions:
-			// allow without check
-			break;
-
-		default:
-			// this forbids other proposals including transfers and all future proposals classes not implemented yet
-			return;
+			}
 		}
 
 		// Try to set proposal (checks invocator's rights and general validity of input proposal), returns proposal index

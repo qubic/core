@@ -392,37 +392,40 @@ public:
 		output = INVALID_PROPOSAL_INDEX;
 
 		// custom checks
-		switch (ProposalTypes::cls(input.proposalData.type))
+		if (input.proposalData.epoch != 0)
 		{
-		case ProposalTypes::Class::Variable:
-			// check that variable index is in valid range
-			if (input.proposalData.variableOptions.variable >= 3)
-				return;
-
-			// check that proposed value is in valid range
-			// (in this example, it is independent of the variable index; all fees must be positive)
-			locals.optionCount = ProposalTypes::optionCount(input.proposalData.type);
-			if (locals.optionCount == 0)
+			switch (ProposalTypes::cls(input.proposalData.type))
 			{
-				// votes are scalar values
-				if (input.proposalData.variableScalar.minValue < 0
-					|| input.proposalData.variableScalar.maxValue < 0
-					|| input.proposalData.variableScalar.proposedValue < 0)
+			case ProposalTypes::Class::Variable:
+				// check that variable index is in valid range
+				if (input.proposalData.variableOptions.variable >= 3)
 					return;
-			}
-			else
-			{
-				// votes are option indices (option 0 is no change, value i is option i + 1)
-				for (locals.i = 0; locals.i < locals.optionCount - 1; ++locals.i)
-					if (input.proposalData.variableOptions.values.get(locals.i) < 0)
+
+				// check that proposed value is in valid range
+				// (in this example, it is independent of the variable index; all fees must be positive)
+				locals.optionCount = ProposalTypes::optionCount(input.proposalData.type);
+				if (locals.optionCount == 0)
+				{
+					// votes are scalar values
+					if (input.proposalData.variableScalar.minValue < 0
+						|| input.proposalData.variableScalar.maxValue < 0
+						|| input.proposalData.variableScalar.proposedValue < 0)
 						return;
+				}
+				else
+				{
+					// votes are option indices (option 0 is no change, value i is option i + 1)
+					for (locals.i = 0; locals.i < locals.optionCount - 1; ++locals.i)
+						if (input.proposalData.variableOptions.values.get(locals.i) < 0)
+							return;
+				}
+
+				break;
+
+			default:
+				// this forbids all other proposals including transfers, multi-variable, general, and all future propsasl classes
+				return;
 			}
-
-			break;
-
-		default:
-			// this forbids all other proposals including transfers, multi-variable, general, and all future proposals classes
-			return;
 		}
 
 		// Try to set proposal (checks invocator's rights and general validity of input proposal), returns proposal index
