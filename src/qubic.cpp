@@ -14,14 +14,14 @@
 #include "platform/msvc_polyfill.h"
 #endif
 
-////////////////// USER CONFIGURABLE OPTIONS (default is for local testnet without swap feature) \\\\\\\\\\\\\\\\
+////////////////// USER CONFIGURABLE OPTIONS (default is for mainnet with swap feature) \\\\\\\\\\\\\\\\
 
-#define TESTNET // COMMENT this line if you want to compile for mainnet
+// #define TESTNET // COMMENT this line if you want to compile for mainnet
 
 // this option enables using disk as RAM to reduce hardware requirement for qubic core node
 // it is highly recommended to enable this option if you want to run a full mainnet node on SSD
 // UNCOMMENT this line to enable it
-// #define USE_SWAP
+#define USE_SWAP
 
 //////////////////////////////////////////////////////////////
 
@@ -131,7 +131,6 @@
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 5000
 constexpr unsigned long long TARGET_MAINTHREAD_LOOP_DURATION = 30; // mcs, it is the target duration of the main thread loop
-
 
 struct Processor : public CustomStack
 {
