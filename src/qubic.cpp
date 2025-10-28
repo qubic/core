@@ -7138,6 +7138,15 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             misalignedState = 2;
                         }
                         logToConsole(L"MISALIGNED STATE DETECTED");
+                        setText(message, L"numberOfKnownNextTickTransactions = ");
+                        appendNumber(message, numberOfKnownNextTickTransactions, TRUE);
+                        appendText(message, L" numberOfNextTickTransactions = ");
+                        appendNumber(message, numberOfNextTickTransactions, TRUE);
+                        appendText(message, L" gTickTotalNumberOfComputors = ");
+                        appendNumber(message, gTickTotalNumberOfComputors, TRUE);
+                        appendText(message, L" gTickNumberOfComputors = ");
+                        appendNumber(message, gTickNumberOfComputors, TRUE);
+
                         if (misalignedState == 2)
                         {
                             // print health status and stop repeated logging to debug.log
