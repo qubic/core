@@ -4512,15 +4512,15 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                                         // only count votes that matched etalonTick
                                         voteCounter.registerNewVote(tick->tick, tick->computorIndex);
                                     }
-                                    else
-                                    {
-                                        setText(gVoteCountDebgMessage, L"[DBG]saltedTransactionBodyDigest ");
-                                        appendNumber(gVoteCountDebgMessage, tick->saltedTransactionBodyDigest, false);
+                                    //else
+                                    //{
+                                    //    setText(gVoteCountDebgMessage, L"[DBG]saltedTransactionBodyDigest ");
+                                    //    appendNumber(gVoteCountDebgMessage, tick->saltedTransactionBodyDigest, false);
 
-                                        appendText(gVoteCountDebgMessage, L" vs ");
-                                        appendNumber(gVoteCountDebgMessage, saltedDigest.m256i_u32[0], false);
-                                        addDebugMessage(gVoteCountDebgMessage);
-                                    }
+                                    //    appendText(gVoteCountDebgMessage, L" vs ");
+                                    //    appendNumber(gVoteCountDebgMessage, saltedDigest.m256i_u32[0], false);
+                                    //    addDebugMessage(gVoteCountDebgMessage);
+                                    //}
                                 }
                                 else // If expectedNextTickTransactionDigest changes to to empty due to time-out,
                                      // we count votes anyway, otherwise we may end up with no or very few votes
