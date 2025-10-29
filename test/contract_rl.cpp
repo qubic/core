@@ -5,6 +5,7 @@
 
 constexpr uint16 PROCEDURE_INDEX_BUY_TICKET = 1;
 constexpr uint16 PROCEDURE_INDEX_SET_PRICE = 2;
+constexpr uint16 PROCEDURE_INDEX_SET_SCHEDULE = 3;
 constexpr uint16 FUNCTION_INDEX_GET_FEES = 1;
 constexpr uint16 FUNCTION_INDEX_GET_PLAYERS = 2;
 constexpr uint16 FUNCTION_INDEX_GET_WINNERS = 3;
@@ -12,14 +13,20 @@ constexpr uint16 FUNCTION_INDEX_GET_TICKET_PRICE = 4;
 constexpr uint16 FUNCTION_INDEX_GET_MAX_NUM_PLAYERS = 5;
 constexpr uint16 FUNCTION_INDEX_GET_STATE = 6;
 constexpr uint16 FUNCTION_INDEX_GET_BALANCE = 7;
+constexpr uint16 FUNCTION_INDEX_GET_NEXT_EPOCH_DATA = 8;
+constexpr uint16 FUNCTION_INDEX_GET_DRAW_HOUR = 9;
+constexpr uint16 FUNCTION_INDEX_GET_SCHEDULE = 10;
 
 static const id RL_DEV_ADDRESS = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C,
                                     _R, _L, _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
 
+constexpr uint8 RL_ANY_DAY_DRAW_SCHEDULE = 0xFF;
+
 // Equality operator for comparing WinnerInfo objects
 bool operator==(const RL::WinnerInfo& left, const RL::WinnerInfo& right)
 {
-	return left.winnerAddress == right.winnerAddress && left.revenue == right.revenue && left.epoch == right.epoch && left.tick == right.tick;
+	return left.winnerAddress == right.winnerAddress && left.revenue == right.revenue && left.epoch == right.epoch && left.tick == right.tick &&
+	       left.dayOfWeek == right.dayOfWeek;
 }
 
 // Test helper that exposes internal state assertions
@@ -88,9 +95,15 @@ public:
 		}
 	}
 
+	void setScheduleMask(uint8 newMask) { schedule = newMask; }
+
 	uint64 getPlayerCounter() const { return playerCounter; }
 
 	uint64 getTicketPrice() const { return ticketPrice; }
+
+	uint8 getScheduleMask() const { return schedule; }
+
+	uint8 getDrawHourInternal() const { return drawHour; }
 };
 
 class ContractTestingRL : protected ContractTesting
@@ -170,6 +183,33 @@ public:
 		return output;
 	}
 
+	// Wrapper for public function RL::GetNextEpochData
+	RL::GetNextEpochData_output getNextEpochData()
+	{
+		RL::GetNextEpochData_input input;
+		RL::GetNextEpochData_output output;
+		callFunction(RL_CONTRACT_INDEX, FUNCTION_INDEX_GET_NEXT_EPOCH_DATA, input, output);
+		return output;
+	}
+
+	// Wrapper for public function RL::GetDrawHour
+	RL::GetDrawHour_output getDrawHour()
+	{
+		RL::GetDrawHour_input input;
+		RL::GetDrawHour_output output;
+		callFunction(RL_CONTRACT_INDEX, FUNCTION_INDEX_GET_DRAW_HOUR, input, output);
+		return output;
+	}
+
+	// Wrapper for public function RL::GetSchedule
+	RL::GetSchedule_output getSchedule()
+	{
+		RL::GetSchedule_input input;
+		RL::GetSchedule_output output;
+		callFunction(RL_CONTRACT_INDEX, FUNCTION_INDEX_GET_SCHEDULE, input, output);
+		return output;
+	}
+
 	RL::BuyTicket_output buyTicket(const id& user, uint64 reward)
 	{
 		RL::BuyTicket_input input;
@@ -194,9 +234,24 @@ public:
 		return output;
 	}
 
+	// Added: wrapper for SetSchedule procedure
+	RL::SetSchedule_output setSchedule(const id& invocator, uint8 newSchedule)
+	{
+		RL::SetSchedule_input input;
+		input.newSchedule = newSchedule;
+		RL::SetSchedule_output output;
+		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_SET_SCHEDULE, input, output, invocator, 0))
+		{
+			output.returnCode = static_cast<uint8>(RL::EReturnCode::UNKNOWN_ERROR);
+		}
+		return output;
+	}
+
 	void BeginEpoch() { callSystemProcedure(RL_CONTRACT_INDEX, BEGIN_EPOCH); }
 
 	void EndEpoch() { callSystemProcedure(RL_CONTRACT_INDEX, END_EPOCH); }
+
+	void BeginTick() { callSystemProcedure(RL_CONTRACT_INDEX, BEGIN_TICK); }
 
 	// Returns the SELF contract account address
 	id rlSelf() { return id(RL_CONTRACT_INDEX, 0, 0, 0); }
@@ -226,6 +281,61 @@ public:
 	{
 		const RL::GetBalance_output out = ctl.getBalanceInfo();
 		EXPECT_EQ(out.balance, getBalance(contractAddress));
+	}
+
+	void setCurrentHour(uint8 hour)
+	{
+		updateTime();
+		utcTime.Hour = hour;
+		updateQpiTime();
+	}
+
+	// New: set full date and hour
+	void setDateTime(uint16 year, uint8 month, uint8 day, uint8 hour)
+	{
+		updateTime();
+		utcTime.Year = year;
+		utcTime.Month = month;
+		utcTime.Day = day;
+		utcTime.Hour = hour;
+		utcTime.Minute = 0;
+		utcTime.Second = 0;
+		utcTime.Nanosecond = 0;
+		updateQpiTime();
+	}
+
+	// New: perform many BEGIN_TICK calls to ensure one execution when tick % 100 == 0
+	void forceBeginTick()
+	{
+		system.tick = system.tick + (RL_TICK_UPDATE_PERIOD - mod(system.tick, static_cast<uint32>(RL_TICK_UPDATE_PERIOD)));
+
+		BeginTick();
+	}
+
+	// New: helper to advance one day ahead and try to draw at 12:00
+	void advanceOneDayAndDraw()
+	{
+		// Use a safe base month to avoid invalid dates: January 2025
+		static uint16 y = 2025;
+		static uint8 m = 1;
+		static uint8 d = 10; // start from 10th
+		// advance one day within January bounds
+		d = static_cast<uint8>(d + 1);
+		if (d > 31)
+		{
+			d = 1; // wrap within month for simplicity in tests
+		}
+		setDateTime(y, m, d, 12);
+		forceBeginTick();
+	}
+
+	void forceSchedule(uint8 scheduleMask)
+	{
+		state()->setScheduleMask(scheduleMask);
+		// increaseEnergy(RL_DEV_ADDRESS, 1);
+		// BeginEpoch();
+		// EXPECT_EQ(setSchedule(RL_DEV_ADDRESS, scheduleMask).returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+		// EndEpoch();
 	}
 };
 
@@ -328,7 +438,8 @@ TEST(ContractRandomLottery, BuyTicket)
 	EXPECT_EQ(ctl.state()->getPlayerCounter(), userCount * 2);
 }
 
-TEST(ContractRandomLottery, EndEpoch)
+// Updated: payout is triggered by BEGIN_TICK with schedule/time, not by END_EPOCH
+TEST(ContractRandomLottery, DrawAndPayout_BeginTick)
 {
 	ContractTestingRL ctl;
 
@@ -342,18 +453,22 @@ TEST(ContractRandomLottery, EndEpoch)
 	const uint8 burnPercent = fees.burnPercent;                    // Burn percent
 	const uint8 winnerPercent = fees.winnerFeePercent;             // Winner payout percent
 
-	// --- Scenario 1: No players (should just lock and clear silently) ---
+	// Ensure schedule allows draw any day
+	ctl.forceSchedule(RL_ANY_DAY_DRAW_SCHEDULE);
+
+	// --- Scenario 1: No players (should just clear silently) ---
 	{
 		ctl.BeginEpoch();
 		EXPECT_EQ(ctl.state()->getPlayerCounter(), 0u);
 
 		RL::GetWinners_output before = ctl.getWinners();
-		EXPECT_EQ(before.winnersCounter, 0u);
+		const uint64 winnersBefore = before.winnersCounter;
 
-		ctl.EndEpoch();
+		// Need to move to a new day and call BEGIN_TICK to allow draw
+		ctl.advanceOneDayAndDraw();
 
 		RL::GetWinners_output after = ctl.getWinners();
-		EXPECT_EQ(after.winnersCounter, 0u);
+		EXPECT_EQ(after.winnersCounter, winnersBefore);
 		EXPECT_EQ(ctl.state()->getPlayerCounter(), 0u);
 	}
 
@@ -370,14 +485,17 @@ TEST(ContractRandomLottery, EndEpoch)
 		EXPECT_EQ(ctl.state()->getPlayerCounter(), 1u);
 		EXPECT_EQ(getBalance(solo), balanceBefore - ticketPrice);
 
-		ctl.EndEpoch();
+		const uint64 winnersBeforeCount = ctl.getWinners().winnersCounter;
+
+		ctl.advanceOneDayAndDraw();
 
 		// Refund happened
 		EXPECT_EQ(getBalance(solo), balanceBefore);
 		EXPECT_EQ(ctl.state()->getPlayerCounter(), 0u);
 
 		const RL::GetWinners_output winners = ctl.getWinners();
-		EXPECT_EQ(winners.winnersCounter, 0u);
+		// No new winners appended
+		EXPECT_EQ(winners.winnersCounter, winnersBeforeCount);
 	}
 
 	// --- Scenario 3: Multiple players (winner chosen, fees processed, remainder burned) ---
@@ -414,16 +532,16 @@ TEST(ContractRandomLottery, EndEpoch)
 		const RL::GetWinners_output winnersBefore = ctl.getWinners();
 		const uint64 winnersCountBefore = winnersBefore.winnersCounter;
 
-		ctl.EndEpoch();
+		ctl.advanceOneDayAndDraw();
 
-		// Players reset after epoch end
+		// Players reset after draw
 		EXPECT_EQ(ctl.state()->getPlayerCounter(), 0u);
 
 		const RL::GetWinners_output winnersAfter = ctl.getWinners();
 		EXPECT_EQ(winnersAfter.winnersCounter, winnersCountBefore + 1);
 
 		// Newly appended winner info
-		const RL::WinnerInfo wi = winnersAfter.winners.get(winnersCountBefore);
+		const RL::WinnerInfo wi = winnersAfter.winners.get(mod(winnersCountBefore, winnersAfter.winners.capacity()));
 		EXPECT_NE(wi.winnerAddress, id::zero());
 		EXPECT_EQ(wi.revenue, (ticketPrice * N * winnerPercent) / 100);
 
@@ -456,7 +574,7 @@ TEST(ContractRandomLottery, EndEpoch)
 		EXPECT_EQ(getBalance(contractAddress), burnExpected);
 	}
 
-	// --- Scenario 4: Several consecutive epochs (winners accumulate, balances consistent) ---
+	// --- Scenario 4: Several consecutive draws (winners accumulate, balances consistent) ---
 	{
 		const uint32 rounds = 3;
 		const uint32 playersPerRound = 6 * 2; // even number to mimic duplicates if desired
@@ -495,14 +613,14 @@ TEST(ContractRandomLottery, EndEpoch)
 			const uint64 contractBefore = getBalance(contractAddress);
 			const uint64 teamBalBeforeRound = getBalance(RL_DEV_ADDRESS);
 
-			ctl.EndEpoch();
+			ctl.advanceOneDayAndDraw();
 
 			// Winners should increase by exactly one
 			const RL::GetWinners_output wOut = ctl.getWinners();
 			EXPECT_EQ(wOut.winnersCounter, winnersBefore + 1);
 
 			// Validate winner entry
-			const RL::WinnerInfo newWi = wOut.winners.get(winnersBefore);
+			const RL::WinnerInfo newWi = wOut.winners.get(mod(winnersBefore, wOut.winners.capacity()));
 			EXPECT_NE(newWi.winnerAddress, id::zero());
 			EXPECT_EQ(newWi.revenue, (contractBefore * winnerPercent) / 100);
 
@@ -567,17 +685,19 @@ TEST(ContractRandomLottery, GetBalance)
 		ctl.expectContractBalanceEqualsGetBalance(ctl, contractAddress);
 	}
 
-	// Before ending the epoch, balance equals the total cost of tickets
+	// Before draw, balance equals the total cost of tickets
 	{
 		const RL::GetBalance_output outBefore = ctl.getBalanceInfo();
 		EXPECT_EQ(outBefore.balance, ticketPrice * K);
 	}
 
-	// End epoch and verify expected remaining amount against contract balance and function output
+	// Trigger draw and verify expected remaining amount against contract balance and function output
 	const uint64 contractBalanceBefore = getBalance(contractAddress);
 	const RL::GetFees_output fees = ctl.getFees();
 
-	ctl.EndEpoch();
+	// Ensure schedule allows draw and perform it
+	ctl.forceSchedule(RL_ANY_DAY_DRAW_SCHEDULE);
+	ctl.advanceOneDayAndDraw();
 
 	const RL::GetBalance_output outAfter = ctl.getBalanceInfo();
 	const uint64 envAfter = getBalance(contractAddress);
@@ -600,7 +720,7 @@ TEST(ContractRandomLottery, GetMaxNumberOfPlayers)
 	ContractTestingRL ctl;
 
 	const RL::GetMaxNumberOfPlayers_output out = ctl.getMaxNumberOfPlayers();
-	// Compare against the players array capacity, fetched via GetPlayers
+	// Compare against the known constant via GetPlayers capacity
 	const RL::GetPlayers_output playersOut = ctl.getPlayers();
 	EXPECT_EQ(static_cast<unsigned>(out.numberOfPlayers), static_cast<unsigned>(playersOut.players.capacity()));
 }
@@ -622,7 +742,7 @@ TEST(ContractRandomLottery, GetState)
 		EXPECT_EQ(out1.currentState, static_cast<uint8>(RL::EState::SELLING));
 	}
 
-	// After EndEpoch — back to LOCKED
+	// After END_EPOCH — back to LOCKED (selling disabled until next epoch)
 	ctl.EndEpoch();
 	{
 		const RL::GetState_output out2 = ctl.getStateInfo();
@@ -630,7 +750,7 @@ TEST(ContractRandomLottery, GetState)
 	}
 }
 
-// --- New tests for SetPrice ---
+// --- New tests for SetPrice and NextEpochData ---
 
 TEST(ContractRandomLottery, SetPrice_AccessControl)
 {
@@ -646,7 +766,7 @@ TEST(ContractRandomLottery, SetPrice_AccessControl)
 	const RL::SetPrice_output outDenied = ctl.setPrice(randomUser, newPrice);
 	EXPECT_EQ(outDenied.returnCode, static_cast<uint8>(RL::EReturnCode::ACCESS_DENIED));
 
-	// Price doesn't change immediately nor after EndEpoch
+	// Price doesn't change immediately nor after END_EPOCH implicitly
 	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, oldPrice);
 	ctl.EndEpoch();
 	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, oldPrice);
@@ -663,7 +783,7 @@ TEST(ContractRandomLottery, SetPrice_ZeroNotAllowed)
 	const RL::SetPrice_output outInvalid = ctl.setPrice(RL_DEV_ADDRESS, 0);
 	EXPECT_EQ(outInvalid.returnCode, static_cast<uint8>(RL::EReturnCode::TICKET_INVALID_PRICE));
 
-	// Price remains unchanged even after EndEpoch
+	// Price remains unchanged even after END_EPOCH
 	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, oldPrice);
 	ctl.EndEpoch();
 	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, oldPrice);
@@ -681,14 +801,20 @@ TEST(ContractRandomLottery, SetPrice_AppliesAfterEndEpoch)
 	const RL::SetPrice_output outOk = ctl.setPrice(RL_DEV_ADDRESS, newPrice);
 	EXPECT_EQ(outOk.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
 
-	// Until EndEpoch the price remains unchanged
+	// Check NextEpochData reflects pending change
+	EXPECT_EQ(ctl.getNextEpochData().nextEpochData.newPrice, newPrice);
+
+	// Until END_EPOCH the price remains unchanged
 	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, oldPrice);
 
-	// Applied after EndEpoch
+	// Applied after END_EPOCH
 	ctl.EndEpoch();
 	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, newPrice);
 
-	// Another EndEpoch without a new SetPrice doesn't change the price
+	// NextEpochData cleared
+	EXPECT_EQ(ctl.getNextEpochData().nextEpochData.newPrice, 0u);
+
+	// Another END_EPOCH without a new SetPrice doesn't change the price
 	ctl.EndEpoch();
 	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, newPrice);
 }
@@ -703,11 +829,14 @@ TEST(ContractRandomLottery, SetPrice_OverrideBeforeEndEpoch)
 	const uint64 firstPrice = oldPrice + 1000;
 	const uint64 secondPrice = oldPrice + 7777;
 
-	// Two SetPrice calls before EndEpoch — the last one should apply
+	// Two SetPrice calls before END_EPOCH — the last one should apply
 	EXPECT_EQ(ctl.setPrice(RL_DEV_ADDRESS, firstPrice).returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
 	EXPECT_EQ(ctl.setPrice(RL_DEV_ADDRESS, secondPrice).returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
 
-	// Until EndEpoch the old price remains
+	// NextEpochData shows the last queued value
+	EXPECT_EQ(ctl.getNextEpochData().nextEpochData.newPrice, secondPrice);
+
+	// Until END_EPOCH the old price remains
 	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, oldPrice);
 
 	ctl.EndEpoch();
@@ -732,10 +861,11 @@ TEST(ContractRandomLottery, SetPrice_AffectsNextEpochBuys)
 		EXPECT_EQ(out1.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
 	}
 
-	// Set a new price, but before EndEpoch purchases should use the old price
+	// Set a new price, but before END_EPOCH purchases should use the old price logic (split by old price)
 	{
 		const RL::SetPrice_output setOut = ctl.setPrice(RL_DEV_ADDRESS, newPrice);
 		EXPECT_EQ(setOut.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+		EXPECT_EQ(ctl.getNextEpochData().nextEpochData.newPrice, newPrice);
 	}
 
 	const id u2 = id::randomValue();
@@ -751,11 +881,11 @@ TEST(ContractRandomLottery, SetPrice_AffectsNextEpochBuys)
 		EXPECT_EQ(getBalance(u2), balBefore - bought * oldPrice);
 	}
 
-	// End the epoch: new price will apply
+	// END_EPOCH: new price will apply
 	ctl.EndEpoch();
 	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, newPrice);
 
-	// In the next epoch, a purchase at the new price should succeed
+	// In the next epoch, a purchase at the new price should succeed exactly once per price
 	ctl.BeginEpoch();
 	{
 		const uint64 balBefore = getBalance(u2);
@@ -849,4 +979,52 @@ TEST(ContractRandomLottery, BuyMultipleTickets_AllSoldOut)
 	const RL::BuyTicket_output out = ctl.buyTicket(buyer, price * 3);
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(RL::EReturnCode::TICKET_ALL_SOLD_OUT));
 	EXPECT_EQ(getBalance(buyer), balBefore);
+}
+
+// functions related to schedule and draw hour
+
+TEST(ContractRandomLottery, GetSchedule_And_SetSchedule)
+{
+	ContractTestingRL ctl;
+
+	// Default schedule set on initialize: Wednesday bit must be set
+	const RL::GetSchedule_output s0 = ctl.getSchedule();
+	EXPECT_NE(s0.schedule, 0u);
+
+	// Access control: random user cannot set schedule
+	const id rnd = id::randomValue();
+	increaseEnergy(rnd, 1);
+	const RL::SetSchedule_output outDenied = ctl.setSchedule(rnd, RL_ANY_DAY_DRAW_SCHEDULE);
+	EXPECT_EQ(outDenied.returnCode, static_cast<uint8>(RL::EReturnCode::ACCESS_DENIED));
+
+	// Invalid value: zero mask not allowed
+	increaseEnergy(RL_DEV_ADDRESS, 1);
+	const RL::SetSchedule_output outInvalid = ctl.setSchedule(RL_DEV_ADDRESS, 0);
+	EXPECT_EQ(outInvalid.returnCode, static_cast<uint8>(RL::EReturnCode::INVALID_VALUE));
+
+	// Valid update queues into NextEpochData and applies after END_EPOCH
+	const uint8 newMask = 0x5A; // some non-zero mask
+	const RL::SetSchedule_output outOk = ctl.setSchedule(RL_DEV_ADDRESS, newMask);
+	EXPECT_EQ(outOk.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.getNextEpochData().nextEpochData.schedule, newMask);
+
+	// Not applied yet
+	EXPECT_NE(ctl.getSchedule().schedule, newMask);
+
+	// Apply
+	ctl.EndEpoch();
+	EXPECT_EQ(ctl.getSchedule().schedule, newMask);
+	EXPECT_EQ(ctl.getNextEpochData().nextEpochData.schedule, 0u);
+}
+
+TEST(ContractRandomLottery, GetDrawHour_DefaultAfterBeginEpoch)
+{
+	ContractTestingRL ctl;
+
+	// Initially drawHour is 0
+	EXPECT_EQ(ctl.getDrawHour().drawHour, 0u);
+
+	// After BeginEpoch default is 11
+	ctl.BeginEpoch();
+	EXPECT_EQ(ctl.getDrawHour().drawHour, 11u);
 }

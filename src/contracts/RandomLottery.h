@@ -39,6 +39,8 @@ constexpr uint8 RL_INVALID_DAY = 255;
 
 constexpr uint8 RL_INVALID_HOUR = 255;
 
+constexpr uint8 RL_TICK_UPDATE_PERIOD = 100;
+
 namespace RLUtils
 {
 	static void getCurrentDayOfWeek(const QpiContextFunctionCall& qpi, uint8& dayOfWeek)
@@ -323,6 +325,15 @@ public:
 		uint8 drawHour = RL_INVALID_HOUR;
 	};
 
+	// New: expose current schedule mask
+	struct GetSchedule_input
+	{
+	};
+	struct GetSchedule_output
+	{
+		uint8 schedule = 0;
+	};
+
 public:
 	/**
 	 * @brief Registers all externally callable functions and procedures with their numeric
@@ -339,6 +350,7 @@ public:
 		REGISTER_USER_FUNCTION(GetBalance, 7);
 		REGISTER_USER_FUNCTION(GetNextEpochData, 8);
 		REGISTER_USER_FUNCTION(GetDrawHour, 9);
+		REGISTER_USER_FUNCTION(GetSchedule, 10);
 		REGISTER_USER_PROCEDURE(BuyTicket, 1);
 		REGISTER_USER_PROCEDURE(SetPrice, 2);
 		REGISTER_USER_PROCEDURE(SetSchedule, 3);
@@ -410,7 +422,7 @@ public:
 	BEGIN_TICK_WITH_LOCALS()
 	{
 		// Only process once every 100 ticks
-		if (mod(qpi.tick(), 100u) != 0)
+		if (mod(qpi.tick(), static_cast<uint32>(RL_TICK_UPDATE_PERIOD)) != 0)
 		{
 			return;
 		}
@@ -553,6 +565,7 @@ public:
 	PUBLIC_FUNCTION(GetState) { output.currentState = static_cast<uint8>(state.currentState); }
 	PUBLIC_FUNCTION(GetNextEpochData) { output.nextEpochData = state.nexEpochData; }
 	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.drawHour; }
+	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.schedule; }
 	PUBLIC_FUNCTION_WITH_LOCALS(GetBalance) { RLUtils::getSCRevenue(qpi, locals.entity, output.balance); }
 
 	PUBLIC_PROCEDURE(SetPrice)
