@@ -1249,13 +1249,25 @@ static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
 static void processRequestContractFunction(Peer* peer, const unsigned long long processorNumber, RequestResponseHeader* header)
 {
     // TODO: Invoked function may enter endless loop, so a timeout (and restart) is required for request processing threads
-
     RequestContractFunction* request = header->getPayload<RequestContractFunction>();
+
+    CHAR16 dbgMsg[200];
+    {
+        setText(dbgMsg, L"processRequestContractFunction: contractIdx ");
+        appendNumber(dbgMsg, request->contractIndex, true);
+        appendText(dbgMsg, L", inputType ");
+        appendNumber(dbgMsg, request->inputType, true);
+        appendText(dbgMsg, L", size ");
+        appendNumber(dbgMsg, request->inputSize, true);
+        addDebugMessage(dbgMsg);
+    }
+
     if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestContractFunction) + request->inputSize
         || !request->contractIndex || request->contractIndex >= contractCount
         || system.epoch < contractDescriptions[request->contractIndex].constructionEpoch
         || !contractUserFunctions[request->contractIndex][request->inputType])
     {
+        addDebugMessage(L"enq1");
         enqueueResponse(peer, 0, RespondContractFunction::type, header->dejavu(), NULL);
     }
     else
@@ -1265,12 +1277,14 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
         if (errorCode == NoContractError)
         {
             // success: respond with function output
+            addDebugMessage(L"enq2");
             enqueueResponse(peer, qpiContext.outputSize, RespondContractFunction::type, header->dejavu(), qpiContext.outputBuffer);
         }
         else
         {
             // error: respond with empty output, send TryAgain if the function was stopped to resolve a potential
             // deadlock
+            addDebugMessage(L"enq3");
             unsigned char type = RespondContractFunction::type;
             if (errorCode == ContractErrorStoppedToResolveDeadlock)
                 type = TryAgain::type;
