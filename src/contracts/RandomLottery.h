@@ -488,7 +488,18 @@ public:
 				RLUtils::getSCRevenue(qpi, locals.entity, locals.revenue);
 
 				// Winner selection (pseudo-random using K12(prevSpectrumDigest)).
-				getRandomPlayer(state, qpi, locals.randomNum, locals.winnerAddress);
+				{
+					locals.winnerAddress = id::zero();
+
+					if (state.playerCounter != 0)
+					{
+						// Compute pseudo-random index based on K12(prevSpectrumDigest)
+						locals.randomNum = mod(qpi.K12(qpi.getPrevSpectrumDigest()).u64._0, state.playerCounter);
+
+						// Index directly into players array
+						locals.winnerAddress = state.players.get(locals.randomNum);
+					}
+				}
 
 				if (locals.winnerAddress != id::zero())
 				{
@@ -861,22 +872,6 @@ protected:
 	}
 
 	static void enableBuyTicket(RL& state, bool bEnable) { state.currentState = bEnable ? EState::SELLING : EState::LOCKED; }
-
-	static void getRandomPlayer(const RL& state, const QpiContextProcedureCall& qpi, uint64& randomNum, id& winnerAddress)
-	{
-		winnerAddress = id::zero();
-
-		if (state.playerCounter == 0)
-		{
-			return;
-		}
-
-		// Compute pseudo-random index based on K12(prevSpectrumDigest)
-		randomNum = mod(qpi.K12(qpi.getPrevSpectrumDigest()).u64._0, state.playerCounter);
-
-		// Index directly into players array
-		winnerAddress = state.players.get(randomNum);
-	}
 
 	static void getWinnerCounter(const RL& state, uint64& outCounter) { outCounter = mod(state.winnersCounter, state.winners.capacity()); }
 };
