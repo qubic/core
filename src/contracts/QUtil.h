@@ -268,7 +268,7 @@ public:
 
     struct BurnQubicForContract_input
     {
-        sint32 contractIndexBurnedFor;
+        uint32 contractIndexBurnedFor;
     };
     struct BurnQubicForContract_output
     {

@@ -40,7 +40,7 @@ static long long& contractFeeReserve(unsigned int contractIndex)
     return ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex];
 }
 
-long long QPI::QpiContextProcedureCall::burn(long long amount, int contractIndexBurnedFor) const
+long long QPI::QpiContextProcedureCall::burn(long long amount, unsigned int contractIndexBurnedFor) const
 {
     if (amount < 0 || amount > MAX_AMOUNT)
     {
