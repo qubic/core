@@ -55,6 +55,12 @@ GLOBAL_VAR_DECL ContractExecErrorData contractExecutionErrorData[contractCount];
 GLOBAL_VAR_DECL ReadWriteLock contractStateLock[contractCount];
 GLOBAL_VAR_DECL unsigned char* contractStates[contractCount];
 GLOBAL_VAR_DECL volatile long long contractTotalExecutionTicks[contractCount];
+// Two arrays to accumulate and save the contract execution ticks for two consecutive phases.
+// contractExecutionTicksPerPhase[contractExecutionTicksActiveArrayIndex] is used to accumulate the contract execution ticks for the current phase n.
+// contractExecutionTicksPerPhase[!contractExecutionTicksActiveArrayIndex] saves the contract execution ticks from the previous phase n-1 that are sent out as transactions in phase n.
+// TODO: check if we need any locks
+GLOBAL_VAR_DECL volatile long long contractExecutionTicksPerPhase[2][contractCount];
+GLOBAL_VAR_DECL volatile bool contractExecutionTicksActiveArrayIndex;
 
 // Contract error state, persistent and only set on error of procedure (TODO: only execute procedures if NoContractError)
 GLOBAL_VAR_DECL unsigned int contractError[contractCount];
@@ -166,6 +172,9 @@ static bool initContractExec()
     contractLocalsStackLockWaitingCountMax = 0;
 
     setMem((void*)contractTotalExecutionTicks, sizeof(contractTotalExecutionTicks), 0);
+    setMem((void*)contractExecutionTicksPerPhase, sizeof(contractExecutionTicksPerPhase), 0);
+    contractExecutionTicksActiveArrayIndex = 0;
+
     setMem((void*)contractError, sizeof(contractError), 0);
     setMem((void*)contractExecutionErrorData, sizeof(contractExecutionErrorData), 0);
     for (int i = 0; i < contractCount; ++i)
