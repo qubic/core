@@ -862,7 +862,7 @@ protected:
 
 	static void enableBuyTicket(RL& state, bool bEnable) { state.currentState = bEnable ? EState::SELLING : EState::LOCKED; }
 
-	static void getRandomPlayer(const RL& state, const QpiContextFunctionCall& qpi, uint64& randomNum, id& winnerAddress)
+	static void getRandomPlayer(const RL& state, const QpiContextProcedureCall& qpi, uint64& randomNum, id& winnerAddress)
 	{
 		winnerAddress = id::zero();
 
