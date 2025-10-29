@@ -1277,7 +1277,15 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
         if (errorCode == NoContractError)
         {
             // success: respond with function output
-            addDebugMessage(L"enq2");
+            {
+                setText(dbgMsg, L"enq2: outputSize ");
+                appendNumber(dbgMsg, qpiContext.outputSize, true);
+                appendText(dbgMsg, L", packet type ");
+                appendNumber(dbgMsg, RespondContractFunction::type, true);
+                appendText(dbgMsg, L", dejavu ");
+                appendNumber(dbgMsg, header->dejavu(), true);
+                addDebugMessage(dbgMsg);
+            }
             enqueueResponse(peer, qpiContext.outputSize, RespondContractFunction::type, header->dejavu(), qpiContext.outputBuffer);
         }
         else
@@ -6914,6 +6922,19 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     while (responseQueueElementTail != responseQueueElementHead)
                     {
                         RequestResponseHeader* responseHeader = (RequestResponseHeader*)&responseQueueBuffer[responseQueueElements[responseQueueElementTail].offset];
+                        if (responseHeader->size() == 56)
+                        {
+                            CHAR16 dbgMsg[200];
+                            {
+                                setText(dbgMsg, L"main loop: size ");
+                                appendNumber(dbgMsg, responseHeader->size(), true);
+                                appendText(dbgMsg, L", type ");
+                                appendNumber(dbgMsg, responseHeader->type(), true);
+                                appendText(dbgMsg, L", dejavu ");
+                                appendNumber(dbgMsg, responseHeader->dejavu(), true);
+                                addDebugMessage(dbgMsg);
+                            }
+                        }
                         if (responseQueueElements[responseQueueElementTail].peer)
                         {
                             push(responseQueueElements[responseQueueElementTail].peer, responseHeader);

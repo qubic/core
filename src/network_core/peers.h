@@ -264,6 +264,19 @@ static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
         else
         {
             // Add message to buffer
+            if (requestResponseHeader->size() == 56)
+            {
+                CHAR16 dbgMsg[200];
+                {
+                    setText(dbgMsg, L"push: size ");
+                    appendNumber(dbgMsg, requestResponseHeader->size(), true);
+                    appendText(dbgMsg, L", type ");
+                    appendNumber(dbgMsg, requestResponseHeader->type(), true);
+                    appendText(dbgMsg, L", dejavu ");
+                    appendNumber(dbgMsg, requestResponseHeader->dejavu(), true);
+                    addDebugMessage(dbgMsg);
+                }
+            }
             copyMem(&peer->dataToTransmit[peer->dataToTransmitSize], requestResponseHeader, requestResponseHeader->size());
             peer->dataToTransmitSize += requestResponseHeader->size();
             peer->trackDejavu(requestResponseHeader->dejavu());
@@ -347,6 +360,20 @@ static void pushToFullNodes(RequestResponseHeader* requestResponseHeader, int nu
 static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
 {
     PROFILE_SCOPE();
+
+    if (responseHeader->size() == 56)
+    {
+        CHAR16 dbgMsg[200];
+        {
+            setText(dbgMsg, L"enqueueResponse: size ");
+            appendNumber(dbgMsg, responseHeader->size(), true);
+            appendText(dbgMsg, L", type ");
+            appendNumber(dbgMsg, responseHeader->type(), true);
+            appendText(dbgMsg, L", dejavu ");
+            appendNumber(dbgMsg, responseHeader->dejavu(), true);
+            addDebugMessage(dbgMsg);
+        }
+    }
 
     ACQUIRE(responseQueueHeadLock);
 
