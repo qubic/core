@@ -253,6 +253,15 @@ public:
         sint64 amount;
     };
 
+    struct QueryFeeReserve_input
+    {
+        uint32 contractIndex;
+    };
+    struct QueryFeeReserve_output
+    {
+        sint64 reserveAmount;
+    };
+
     typedef Asset GetTotalNumberOfAssetShares_input;
     typedef sint64 GetTotalNumberOfAssetShares_output;
 
@@ -854,7 +863,7 @@ public:
 
     /**
     * Burn the qubic passed as invocation reward for the contract specified in the input
-    * @param contractIndexBurnedFor the contract index to burn for
+    * @param the contract index to burn for
     * @return the amount of qubic that was burned, < 0 if failed to burn
     */
     PUBLIC_PROCEDURE(BurnQubicForContract)
@@ -872,6 +881,16 @@ public:
         else
             output.amount = -1;
         return;
+    }
+
+    /**
+    * Query the amount of qubic in the fee reserve of the specified contract
+    * @param the contract index to query
+    * @return the amount of qubic in the reserve
+    */
+    PUBLIC_FUNCTION(QueryFeeReserve)
+    {
+        output.reserveAmount = qpi.queryFeeReserve(input.contractIndex);
     }
 
     /**
@@ -1386,6 +1405,7 @@ public:
         REGISTER_USER_FUNCTION(GetPollsByCreator, 4);
         REGISTER_USER_FUNCTION(GetCurrentPollId, 5);
         REGISTER_USER_FUNCTION(GetPollInfo, 6);
+        REGISTER_USER_FUNCTION(QueryFeeReserve, 7);
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
         REGISTER_USER_PROCEDURE(BurnQubic, 2);
