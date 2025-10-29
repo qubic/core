@@ -62,9 +62,11 @@ public:
 	{
 		EXPECT_EQ(output.returnCode, static_cast<uint8>(EReturnCode::SUCCESS));
 		EXPECT_EQ(output.winners.capacity(), winners.capacity());
-		EXPECT_EQ(output.winnersCounter, winnersCounter);
 
-		for (uint64 i = 0; i < winnersCounter; ++i)
+		const uint64 expectedCount = mod(winnersCounter, winners.capacity());
+		EXPECT_EQ(output.winnersCounter, expectedCount);
+
+		for (uint64 i = 0; i < expectedCount; ++i)
 		{
 			EXPECT_EQ(output.winners.get(i), winners.get(i));
 		}

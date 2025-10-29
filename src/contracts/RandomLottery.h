@@ -203,7 +203,7 @@ public:
 	struct GetWinners_output
 	{
 		Array<WinnerInfo, RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners; // Ring buffer snapshot
-		uint64 winnersCounter = 0;                                      // Number of valid entries (bounded by capacity)
+		uint64 winnersCounter = 0;                                      // Number of valid entries = (totalWinners % capacity)
 		uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
 	};
 
