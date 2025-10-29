@@ -51,22 +51,15 @@ constexpr uint8 RL_DEFAULT_DRAW_HOUR = 11; // 11:00 UTC
 
 namespace RLUtils
 {
-	// Returns current day-of-week in range [0..6], with 0 = WEDNESDAY according to platform mapping.
-	static void getCurrentDayOfWeek(const QpiContextFunctionCall& qpi, uint8& dayOfWeek)
-	{
-		dayOfWeek = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
-	}
-
 	// Packs current date into a compact stamp (Y/M/D) used to ensure a single action per calendar day.
-	static void makeDateStamp(const QpiContextFunctionCall& qpi, uint32& res)
+	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res)
 	{
-		res = static_cast<uint32>(qpi.year() << 9 | qpi.month() << 5 | qpi.day());
+		res = static_cast<uint32>(year << 9 | month << 5 | day);
 	}
 
 	// Reads current net on-chain balance of SELF (incoming - outgoing).
-	static void getSCRevenue(const QpiContextFunctionCall& qpi, Entity& entity, uint64& revenue)
+	static void getSCRevenue(const Entity& entity, uint64& revenue)
 	{
-		qpi.getEntity(SELF, entity);
 		revenue = entity.incomingAmount - entity.outgoingAmount;
 	}
 
@@ -415,9 +408,9 @@ public:
 		}
 
 		// Mark the current date as already processed to avoid immediate draw on the same calendar day
-		RLUtils::getCurrentDayOfWeek(qpi, state.lastDrawDay);
+		state.lastDrawDay = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
 		state.lastDrawHour = state.drawHour;
-		RLUtils::makeDateStamp(qpi, state.lastDrawDateStamp);
+		RLUtils::makeDateStamp(qpi.year(), qpi.month(), qpi.day(), state.lastDrawDateStamp);
 
 		// Open selling for the new epoch
 		enableBuyTicket(state, true);
@@ -440,7 +433,7 @@ public:
 		}
 
 		// Snapshot current day/hour
-		RLUtils::getCurrentDayOfWeek(qpi, locals.currentDayOfWeek);
+		locals.currentDayOfWeek = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
 		locals.currentHour = qpi.hour();
 
 		// Do nothing before the configured draw hour
@@ -450,7 +443,7 @@ public:
 		}
 
 		// Ensure only one action per calendar day (UTC)
-		RLUtils::makeDateStamp(qpi, locals.currentDateStamp);
+		RLUtils::makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
 		if (state.lastDrawDateStamp == locals.currentDateStamp)
 		{
 			return;
@@ -485,7 +478,8 @@ public:
 			else
 			{
 				// Current contract net balance = incoming - outgoing for this contract
-				RLUtils::getSCRevenue(qpi, locals.entity, locals.revenue);
+				qpi.getEntity(SELF, locals.entity);
+				RLUtils::getSCRevenue(locals.entity, locals.revenue);
 
 				// Winner selection (pseudo-random using K12(prevSpectrumDigest)).
 				{
@@ -587,7 +581,11 @@ public:
 	PUBLIC_FUNCTION(GetNextEpochData) { output.nextEpochData = state.nexEpochData; }
 	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.drawHour; }
 	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.schedule; }
-	PUBLIC_FUNCTION_WITH_LOCALS(GetBalance) { RLUtils::getSCRevenue(qpi, locals.entity, output.balance); }
+	PUBLIC_FUNCTION_WITH_LOCALS(GetBalance)
+	{
+		qpi.getEntity(SELF, locals.entity);
+		RLUtils::getSCRevenue(locals.entity, output.balance);
+	}
 
 	PUBLIC_PROCEDURE(SetPrice)
 	{
@@ -726,7 +724,7 @@ private:
 		locals.winnerInfo.revenue = input.revenue;
 		locals.winnerInfo.epoch = qpi.epoch();
 		locals.winnerInfo.tick = qpi.tick();
-		RLUtils::getCurrentDayOfWeek(qpi, locals.winnerInfo.dayOfWeek);
+		locals.winnerInfo.dayOfWeek = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
 
 		state.winners.set(locals.insertIdx, locals.winnerInfo);
 	}
