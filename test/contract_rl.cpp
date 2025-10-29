@@ -23,13 +23,14 @@ static const id RL_DEV_ADDRESS = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, 
 constexpr uint8 RL_ANY_DAY_DRAW_SCHEDULE = 0xFF;
 
 // Equality operator for comparing WinnerInfo objects
+// Compares all fields (address, revenue, epoch, tick, dayOfWeek)
 bool operator==(const RL::WinnerInfo& left, const RL::WinnerInfo& right)
 {
 	return left.winnerAddress == right.winnerAddress && left.revenue == right.revenue && left.epoch == right.epoch && left.tick == right.tick &&
 	       left.dayOfWeek == right.dayOfWeek;
 }
 
-// Test helper that exposes internal state assertions
+// Test helper that exposes internal state assertions and utilities
 class RLChecker : public RL
 {
 public:
@@ -175,6 +176,7 @@ public:
 	}
 
 	// Wrapper for public function RL::GetBalance
+	// Returns current contract on-chain balance (incoming - outgoing)
 	RL::GetBalance_output getBalanceInfo()
 	{
 		RL::GetBalance_input input;
@@ -290,7 +292,7 @@ public:
 		updateQpiTime();
 	}
 
-	// New: set full date and hour
+	// New: set full date and hour (UTC), then sync QPI time
 	void setDateTime(uint16 year, uint8 month, uint8 day, uint8 hour)
 	{
 		updateTime();
@@ -304,7 +306,7 @@ public:
 		updateQpiTime();
 	}
 
-	// New: perform many BEGIN_TICK calls to ensure one execution when tick % 100 == 0
+	// New: advance to the next tick boundary where tick % RL_TICK_UPDATE_PERIOD == 0 and run BEGIN_TICK once
 	void forceBeginTick()
 	{
 		system.tick = system.tick + (RL_TICK_UPDATE_PERIOD - mod(system.tick, static_cast<uint32>(RL_TICK_UPDATE_PERIOD)));
@@ -312,7 +314,7 @@ public:
 		BeginTick();
 	}
 
-	// New: helper to advance one day ahead and try to draw at 12:00
+	// New: helper to advance one calendar day and perform a scheduled draw at 12:00 UTC
 	void advanceOneDayAndDraw()
 	{
 		// Use a safe base month to avoid invalid dates: January 2025
@@ -329,13 +331,11 @@ public:
 		forceBeginTick();
 	}
 
+	// Force schedule mask directly in state (bypasses external call, suitable for tests)
 	void forceSchedule(uint8 scheduleMask)
 	{
 		state()->setScheduleMask(scheduleMask);
-		// increaseEnergy(RL_DEV_ADDRESS, 1);
-		// BeginEpoch();
-		// EXPECT_EQ(setSchedule(RL_DEV_ADDRESS, scheduleMask).returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
-		// EndEpoch();
+		// NOTE: we do not call SetSchedule here to avoid epoch transitions in tests.
 	}
 };
 
@@ -438,7 +438,7 @@ TEST(ContractRandomLottery, BuyTicket)
 	EXPECT_EQ(ctl.state()->getPlayerCounter(), userCount * 2);
 }
 
-// Updated: payout is triggered by BEGIN_TICK with schedule/time, not by END_EPOCH
+// Updated: payout is triggered by BEGIN_TICK with schedule/time gating, not by END_EPOCH
 TEST(ContractRandomLottery, DrawAndPayout_BeginTick)
 {
 	ContractTestingRL ctl;
@@ -456,7 +456,7 @@ TEST(ContractRandomLottery, DrawAndPayout_BeginTick)
 	// Ensure schedule allows draw any day
 	ctl.forceSchedule(RL_ANY_DAY_DRAW_SCHEDULE);
 
-	// --- Scenario 1: No players (should just clear silently) ---
+	// --- Scenario 1: No players (nothing to payout, no winner recorded) ---
 	{
 		ctl.BeginEpoch();
 		EXPECT_EQ(ctl.state()->getPlayerCounter(), 0u);
@@ -498,7 +498,7 @@ TEST(ContractRandomLottery, DrawAndPayout_BeginTick)
 		EXPECT_EQ(winners.winnersCounter, winnersBeforeCount);
 	}
 
-	// --- Scenario 3: Multiple players (winner chosen, fees processed, remainder burned) ---
+	// --- Scenario 3: Multiple players (winner chosen, fees processed, correct remaining on contract) ---
 	{
 		ctl.BeginEpoch();
 
@@ -644,7 +644,7 @@ TEST(ContractRandomLottery, DrawAndPayout_BeginTick)
 				EXPECT_EQ(b, expected);
 			}
 
-			// Team fee for the whole contract balance of the round
+			// Team fee for the whole round's contract balance
 			const uint64 teamFee = (contractBefore * teamPercent) / 100;
 			teamAccrued += teamFee;
 			EXPECT_EQ(getBalance(RL_DEV_ADDRESS), teamBalBeforeRound + teamFee);
@@ -987,7 +987,7 @@ TEST(ContractRandomLottery, GetSchedule_And_SetSchedule)
 {
 	ContractTestingRL ctl;
 
-	// Default schedule set on initialize: Wednesday bit must be set
+	// Default schedule set on initialize must include Wednesday (bit 0)
 	const RL::GetSchedule_output s0 = ctl.getSchedule();
 	EXPECT_NE(s0.schedule, 0u);
 
@@ -1003,7 +1003,7 @@ TEST(ContractRandomLottery, GetSchedule_And_SetSchedule)
 	EXPECT_EQ(outInvalid.returnCode, static_cast<uint8>(RL::EReturnCode::INVALID_VALUE));
 
 	// Valid update queues into NextEpochData and applies after END_EPOCH
-	const uint8 newMask = 0x5A; // some non-zero mask
+	const uint8 newMask = 0x5A; // some non-zero mask (bits set for selected days)
 	const RL::SetSchedule_output outOk = ctl.setSchedule(RL_DEV_ADDRESS, newMask);
 	EXPECT_EQ(outOk.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
 	EXPECT_EQ(ctl.getNextEpochData().nextEpochData.schedule, newMask);
@@ -1021,10 +1021,10 @@ TEST(ContractRandomLottery, GetDrawHour_DefaultAfterBeginEpoch)
 {
 	ContractTestingRL ctl;
 
-	// Initially drawHour is 0
+	// Initially drawHour is 0 (not configured)
 	EXPECT_EQ(ctl.getDrawHour().drawHour, 0u);
 
-	// After BeginEpoch default is 11
+	// After BeginEpoch default is 11 UTC
 	ctl.BeginEpoch();
-	EXPECT_EQ(ctl.getDrawHour().drawHour, 11u);
+	EXPECT_EQ(ctl.getDrawHour().drawHour, RL_DEFAULT_DRAW_HOUR);
 }

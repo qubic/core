@@ -5,7 +5,7 @@
  *
  * This header declares the RL (Random Lottery) contract which:
  *  - Sells tickets during a SELLING epoch.
- *  - Draws a pseudo-random winner when the epoch ends.
+ *  - Draws a pseudo-random winner when the epoch ends or at scheduled intra-epoch draws.
  *  - Distributes fees (team, distribution, burn, winner).
  *  - Records winners' history in a ring-like buffer.
  *
@@ -13,6 +13,8 @@
  *  - Percentages must sum to <= 100; the remainder goes to the winner.
  *  - Players array stores one entry per ticket, so a single address can appear multiple times.
  *  - When only one player bought a ticket in the epoch, funds are refunded instead of drawing.
+ *  - Day-of-week mapping used here is 0..6 where 0 = WEDNESDAY, 1 = THURSDAY, ..., 6 = TUESDAY.
+ *  - Schedule uses a 7-bit mask aligned to the mapping above (bit 0 -> WEDNESDAY, bit 6 -> TUESDAY).
  */
 
 using namespace QPI;
@@ -35,24 +37,33 @@ constexpr uint8 RL_SHAREHOLDER_FEE_PERCENT = 20;
 /// Burn percent of epoch revenue (0..100).
 constexpr uint8 RL_BURN_PERCENT = 2;
 
+/// Sentinel for "no valid day".
 constexpr uint8 RL_INVALID_DAY = 255;
 
+/// Sentinel for "no valid hour".
 constexpr uint8 RL_INVALID_HOUR = 255;
 
+/// Throttling period: process BEGIN_TICK logic once per this many ticks.
 constexpr uint8 RL_TICK_UPDATE_PERIOD = 100;
+
+/// Default draw hour (UTC).
+constexpr uint8 RL_DEFAULT_DRAW_HOUR = 11; // 11:00 UTC
 
 namespace RLUtils
 {
+	// Returns current day-of-week in range [0..6], with 0 = WEDNESDAY according to platform mapping.
 	static void getCurrentDayOfWeek(const QpiContextFunctionCall& qpi, uint8& dayOfWeek)
 	{
 		dayOfWeek = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
 	}
 
+	// Packs current date into a compact stamp (Y/M/D) used to ensure a single action per calendar day.
 	static void makeDateStamp(const QpiContextFunctionCall& qpi, uint32& res)
 	{
 		res = static_cast<uint32>(qpi.year() << 9 | qpi.month() << 5 | qpi.day());
 	}
 
+	// Reads current net on-chain balance of SELF (incoming - outgoing).
 	static void getSCRevenue(const QpiContextFunctionCall& qpi, Entity& entity, uint64& revenue)
 	{
 		qpi.getEntity(SELF, entity);
@@ -119,7 +130,7 @@ public:
 	struct NextEpochData
 	{
 		uint64 newPrice = 0; // Ticket price to apply after END_EPOCH; 0 means "no change queued"
-		uint8 schedule = 0;
+		uint8 schedule = 0;  // Schedule bitmask (bit 0 = WEDNESDAY, ..., bit 6 = TUESDAY); applied after END_EPOCH
 	};
 
 	//---- User-facing I/O structures -------------------------------------------------------------
@@ -228,7 +239,7 @@ public:
 
 	struct GetBalance_output
 	{
-		uint64 balance = 0; // Net balance (incoming - outgoing) for current epoch
+		uint64 balance = 0; // Current contract net balance (incoming - outgoing)
 	};
 
 	// Local variables for GetBalance procedure
@@ -393,21 +404,21 @@ public:
 	{
 		if (state.schedule == 0)
 		{
-			// Default to WEDNESDAY if no schedule is set
+			// Default to WEDNESDAY if no schedule is set (bit 0)
 			state.schedule = 1 << WEDNESDAY;
 		}
 
 		if (state.drawHour == 0)
 		{
-			state.drawHour = 11; // Default to 11 UTC
+			state.drawHour = RL_DEFAULT_DRAW_HOUR; // Default draw hour (UTC)
 		}
 
-		// Mark the current day as already processed to avoid immediate toggling on the same day
+		// Mark the current date as already processed to avoid immediate draw on the same calendar day
 		RLUtils::getCurrentDayOfWeek(qpi, state.lastDrawDay);
 		state.lastDrawHour = state.drawHour;
-		// Force lastDrawDateStamp to today's date to prevent reprocessing
 		RLUtils::makeDateStamp(qpi, state.lastDrawDateStamp);
 
+		// Open selling for the new epoch
 		enableBuyTicket(state, true);
 	}
 
@@ -421,23 +432,23 @@ public:
 
 	BEGIN_TICK_WITH_LOCALS()
 	{
-		// Only process once every 100 ticks
+		// Throttle: run logic only once per RL_TICK_UPDATE_PERIOD ticks
 		if (mod(qpi.tick(), static_cast<uint32>(RL_TICK_UPDATE_PERIOD)) != 0)
 		{
 			return;
 		}
 
-		// Compute current day and hour
+		// Snapshot current day/hour
 		RLUtils::getCurrentDayOfWeek(qpi, locals.currentDayOfWeek);
 		locals.currentHour = qpi.hour();
 
-		// Only consider actions at or after the configured draw hour
+		// Do nothing before the configured draw hour
 		if (locals.currentHour < state.drawHour)
 		{
 			return;
 		}
 
-		// Allow only one state change action per calendar day
+		// Ensure only one action per calendar day (UTC)
 		RLUtils::makeDateStamp(qpi, locals.currentDateStamp);
 		if (state.lastDrawDateStamp == locals.currentDateStamp)
 		{
@@ -447,21 +458,21 @@ public:
 		locals.isWednesday = (locals.currentDayOfWeek == WEDNESDAY);
 		locals.isScheduledToday = ((state.schedule & (1u << locals.currentDayOfWeek)) != 0);
 
-		// Two-Wednesdays rule takes precedence over schedule:
-		// - First Wednesday (epoch start) is handled in BEGIN_EPOCH (we mark the day as processed),
-		// - Second (and any subsequent) Wednesday always performs draw and closes selling,
-		// - On other days, we draw only if the day is in schedule and re-open selling afterwards.
+		// Two-Wednesdays rule:
+		// - First Wednesday (epoch start) is "consumed" in BEGIN_EPOCH (we set lastDrawDateStamp),
+		// - Any subsequent Wednesday performs a draw and leaves selling CLOSED until next BEGIN_EPOCH,
+		// - Any other day performs a draw only if included in schedule and then re-opens selling.
 		if (!locals.isWednesday && !locals.isScheduledToday)
 		{
-			return; // Non-Wednesday day that is not in schedule: nothing to do
+			return; // Non-Wednesday day that is not scheduled: nothing to do
 		}
 
-		// Mark as processed for this calendar day and snapshot time
+		// Mark today's action and timestamp
 		state.lastDrawDay = locals.currentDayOfWeek;
 		state.lastDrawHour = locals.currentHour;
 		state.lastDrawDateStamp = locals.currentDateStamp;
 
-		// Disable for current draw period
+		// Temporarily close selling for the draw
 		enableBuyTicket(state, false);
 
 		// Draw
@@ -526,8 +537,7 @@ public:
 
 		clearStateOnEndDraw(state);
 
-		// Re-enable ticket buying if today is not Wednesday
-		// On Wednesdays, selling remains closed until next BEGIN_EPOCH
+		// Resume selling unless today is Wednesday (remains closed until next epoch)
 		enableBuyTicket(state, !locals.isWednesday);
 	}
 
@@ -688,6 +698,7 @@ public:
 private:
 	/**
 	 * @brief Internal: records a winner into the cyclic winners array.
+	 * Overwrites oldest entries when capacity is exceeded (ring buffer).
 	 */
 	PRIVATE_PROCEDURE_WITH_LOCALS(FillWinnersInfo)
 	{
@@ -710,7 +721,7 @@ private:
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(ReturnAllTickets)
 	{
-		// Refund ticket price to each recorded player (one transfer per ticket entry)
+		// Refund ticket price to each recorded ticket entry (1 transfer per entry)
 		for (locals.i = 0; locals.i < state.playerCounter; ++locals.i)
 		{
 			qpi.transfer(state.players.get(locals.i), state.ticketPrice);
@@ -764,9 +775,13 @@ protected:
 	 */
 	uint64 winnersCounter = 0;
 
+	/**
+	 * @brief Date/time guard for draw operations.
+	 * lastDrawDateStamp prevents more than one action per calendar day (UTC).
+	 */
 	uint8 lastDrawDay = RL_INVALID_DAY;
 	uint8 lastDrawHour = RL_INVALID_HOUR;
-	uint32 lastDrawDateStamp = 0; // calendar day marker to prevent multiple actions per day
+	uint32 lastDrawDateStamp = 0; // Compact YYYY/MM/DD marker
 
 	/**
 	 * @brief Percentage of the revenue allocated to the team.
@@ -792,20 +807,28 @@ protected:
 	 */
 	uint8 burnPercent = 0;
 
+	/**
+	 * @brief Schedule bitmask: bit 0 = WEDNESDAY, 1 = THURSDAY, ..., 6 = TUESDAY.
+	 * If a bit is set, a draw may occur on that day (subject to drawHour and daily guard).
+	 * Wednesday also follows the "Two-Wednesdays rule" (selling stays closed after Wednesday draw).
+	 */
 	uint8 schedule = 0;
 
+	/**
+	 * @brief UTC hour [0..23] when a draw is allowed to run (daily time gate).
+	 */
 	uint8 drawHour = 0;
 
 	/**
 	 * @brief Current state of the lottery contract.
-	 * Can be either SELLING (tickets available) or LOCKED (epoch closed).
+	 * SELLING: tickets available; LOCKED: selling closed.
 	 */
 	EState currentState = EState::LOCKED;
 
 protected:
 	static void clearStateOnEndEpoch(RL& state)
 	{
-		// Prepare for next epoch: clear players and apply deferred price if any
+		// Prepare for next epoch: clear players and reset daily guards
 		state.playerCounter = 0;
 
 		state.lastDrawHour = RL_INVALID_HOUR;
@@ -815,18 +838,20 @@ protected:
 
 	static void clearStateOnEndDraw(RL& state)
 	{
-		// Prepare for next draw period: clear players
+		// After each draw period, clear current tickets
 		state.playerCounter = 0;
 	}
 
 	static void applyNextEpochData(RL& state)
 	{
+		// Apply deferred ticket price (if any)
 		if (state.nexEpochData.newPrice != 0)
 		{
 			state.ticketPrice = state.nexEpochData.newPrice;
 			state.nexEpochData.newPrice = 0;
 		}
 
+		// Apply deferred schedule (if any)
 		if (state.nexEpochData.schedule != 0)
 		{
 			state.schedule = state.nexEpochData.schedule;
