@@ -49,26 +49,6 @@ constexpr uint8 RL_TICK_UPDATE_PERIOD = 100;
 /// Default draw hour (UTC).
 constexpr uint8 RL_DEFAULT_DRAW_HOUR = 11; // 11:00 UTC
 
-namespace RLUtils
-{
-	// Packs current date into a compact stamp (Y/M/D) used to ensure a single action per calendar day.
-	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res)
-	{
-		res = static_cast<uint32>(year << 9 | month << 5 | day);
-	}
-
-	// Reads current net on-chain balance of SELF (incoming - outgoing).
-	static void getSCRevenue(const Entity& entity, uint64& revenue)
-	{
-		revenue = entity.incomingAmount - entity.outgoingAmount;
-	}
-
-	template<typename T> static constexpr const T& min(const T& a, const T& b)
-	{
-		return (a < b) ? a : b;
-	}
-}; // namespace RLUtils
-
 /// Placeholder structure for future extensions.
 struct RL2
 {
@@ -410,7 +390,7 @@ public:
 		// Mark the current date as already processed to avoid immediate draw on the same calendar day
 		state.lastDrawDay = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
 		state.lastDrawHour = state.drawHour;
-		RLUtils::makeDateStamp(qpi.year(), qpi.month(), qpi.day(), state.lastDrawDateStamp);
+		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), state.lastDrawDateStamp);
 
 		// Open selling for the new epoch
 		enableBuyTicket(state, true);
@@ -443,7 +423,7 @@ public:
 		}
 
 		// Ensure only one action per calendar day (UTC)
-		RLUtils::makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
+		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
 		if (state.lastDrawDateStamp == locals.currentDateStamp)
 		{
 			return;
@@ -479,7 +459,7 @@ public:
 			{
 				// Current contract net balance = incoming - outgoing for this contract
 				qpi.getEntity(SELF, locals.entity);
-				RLUtils::getSCRevenue(locals.entity, locals.revenue);
+				getSCRevenue(locals.entity, locals.revenue);
 
 				// Winner selection (pseudo-random using K12(prevSpectrumDigest)).
 				{
@@ -563,7 +543,7 @@ public:
 	PUBLIC_FUNCTION(GetPlayers)
 	{
 		output.players = state.players;
-		output.playerCounter = RLUtils::min(state.playerCounter, state.players.capacity());
+		output.playerCounter = min(state.playerCounter, state.players.capacity());
 	}
 
 	/**
@@ -584,7 +564,7 @@ public:
 	PUBLIC_FUNCTION_WITH_LOCALS(GetBalance)
 	{
 		qpi.getEntity(SELF, locals.entity);
-		RLUtils::getSCRevenue(locals.entity, output.balance);
+		getSCRevenue(locals.entity, output.balance);
 	}
 
 	PUBLIC_PROCEDURE(SetPrice)
@@ -681,7 +661,7 @@ public:
 		// Compute desired number of tickets and change
 		locals.desired = div(locals.reward, locals.price);             // How many tickets the caller attempts to buy
 		locals.remainder = mod(locals.reward, locals.price);           // Change to return
-		locals.toBuy = RLUtils::min(locals.desired, locals.slotsLeft); // Do not exceed available slots
+		locals.toBuy = min(locals.desired, locals.slotsLeft); // Do not exceed available slots
 
 		// Add tickets (the same address may be inserted multiple times)
 		for (locals.i = 0; locals.i < locals.toBuy; ++locals.i)
@@ -689,7 +669,7 @@ public:
 			if (state.playerCounter < locals.capacity)
 			{
 				state.players.set(state.playerCounter, qpi.invocator());
-				state.playerCounter = RLUtils::min(state.playerCounter + 1, locals.capacity);
+				state.playerCounter = min(state.playerCounter + 1, locals.capacity);
 			}
 		}
 
@@ -872,4 +852,12 @@ protected:
 	static void enableBuyTicket(RL& state, bool bEnable) { state.currentState = bEnable ? EState::SELLING : EState::LOCKED; }
 
 	static void getWinnerCounter(const RL& state, uint64& outCounter) { outCounter = mod(state.winnersCounter, state.winners.capacity()); }
+
+	// Packs current date into a compact stamp (Y/M/D) used to ensure a single action per calendar day.
+	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
+
+	// Reads current net on-chain balance of SELF (incoming - outgoing).
+	static void getSCRevenue(const Entity& entity, uint64& revenue) { revenue = entity.incomingAmount - entity.outgoingAmount; }
+
+	template<typename T> static constexpr const T& min(const T& a, const T& b) { return (a < b) ? a : b; }
 };
