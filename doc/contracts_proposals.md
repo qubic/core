@@ -1,29 +1,29 @@
 # Proposal voting
 
-Proposals voting is the the on-chain way of decision-making.
+Proposal voting is the the on-chain way of decision-making.
 It is implemented in smart contracts with support of the QPI.
 
 There are some general characteristics of the proposal voting:
 
 - Proposal voting is implemented in smart contracts.
 - A new proposal is open for voting until the end of the epoch. After the epoch transition, it changes its state from active to finished.
-- Each proposal has a type and some types of proposals commonly trigger action (such as setting a contract state variable of transferring QUs to another entity) after the end of the epoch if the proposal is accepted by getting enough votes.
+- Each proposal has a type and some types of proposals commonly trigger action (such as setting a contract state variable or transferring QUs to another entity) after the end of the epoch if the proposal is accepted by getting enough votes.
 - The proposer entity can have at most one proposal at a time. Setting a new proposal with the same seed will overwrite the previous one.
 - Number of simultaneous proposals per epoch is limited as configured by the contract. The data structures storing the proposal and voting state are stored as a part of the contract state.
-- In this data storage, which commonly named `state.proposals`, and the function/procedure interface, each proposal is identified by an proposal index.
+- In this data storage, commonly named `state.proposals`, and the function/procedure interface, each proposal is identified by a proposal index.
 - The types of proposals that are allowed are restricted as configured by the contract.
 - The common types of proposals have a predefined set of options that the voters can vote for. Option 0 is always "no change".
 - Each vote, which is connected to each voter entity, can have a value (most commonly an option index) or `NO_VOTE_VALUE` (which means abstaining).
 - The entities that are allowed to create/change/cancel proposals are configured by the contract dev. The same applies to the entities that are allowed to vote. Checking eligibility is done by the proposal QPI functions provided.
-- The common rule for accepting a proposal option (the one with most votes) is that at lease 2/3 of the eligible votes have been casted and that at least the option gets more than 1/3 of the eligible votes.
+- The common rule for accepting a proposal option (the one with most votes) is that at least 2/3 of the eligible votes have been casted and that at least the option gets more than 1/3 of the eligible votes.
 - Depending on the required features, different data structures can be used. The most lightweight option (in terms of storage, compute, and network bandwidth) is supporting yes/no proposals only (2 options).
 
 In the following, we first address the application that is most relevant for contract devs, which is shareholder voting about state variables, such as fees.
 
 1. [Introduction to Shareholder Proposals](#introduction-to-shareholder-proposals)
-1. [Understanding Shareholder Proposal Voting Implementation](#understanding-shareholder-proposal-voting-implementation)
-1. [Voting by computors](#voting-by-computors)
-1. [Proposal types](#proposal-types)
+2. [Understanding Shareholder Proposal Voting Implementation](#understanding-shareholder-proposal-voting-implementation)
+3. [Voting by Computors](#voting-by-computors)
+4. [Proposal Types](#proposal-types)
 
 
 ## Introduction to Shareholder Proposals
@@ -41,11 +41,11 @@ Next to the general characteristics described in the section above, shareholder 
 
 - Only contract shareholders can propose and vote.
 - There is one vote per share, so one shareholder can have multiple votes.
-- A shareholder can distribute his votes to multiple vote values.
-- Shares can be sold during the epoch. The right to vote in an active proposal isn't sold with the share, but the right to vote is fixed to the entities possession the share in the moment of creating/changing the proposal.
+- A shareholder can distribute their votes to multiple vote values.
+- Shares can be sold during the epoch. The right to vote in an active proposal isn't sold with the share, but the right to vote is fixed to the entities possessing the share in the moment of creating/changing the proposal.
 - Contracts can be shareholders of other contracts. For that case, there are special requirements to facilitate voting and creating proposals discussed [here](#contracts-as-shareholders-of-other-contracts).
 - Standardized interface to reuse existing tools for shareholder voting in new contracts.
-- Macros for implementing the most common use cases as easy as possible.
+- Macros for implementing the most common use cases as easily as possible.
 
 
 ### The easiest way to support shareholder voting
@@ -282,7 +282,7 @@ With `ProposalDataT` your have the following options:
 - `ProposalDataV1<true>`: Support scalar voting and multi-option voting. This leads to the highest resource requirements, because 8 bytes of storage are required per proposal and voter.
 
 `ProposersAndVotersT` defines the class used to manage rights to propose and vote. It's important that you pass the correct asset name of your contract. Otherwise it won't find the right shareholders.
-The number of proposal slots linearly scales the storage and digest compute requirements. So we recommend to use a quite lowe number here, similar to the number of variables that can be set in your state.
+The number of proposal slots linearly scales the storage and digest compute requirements. So we recommend to use a quite low number here, similar to the number of variables that can be set in your state.
 
 `ProposalVotingT` combines `ProposersAndVotersT` and `ProposalDataT` into the class used for storing all proposal and voting data.
 It is instantiated as `state.proposals`.

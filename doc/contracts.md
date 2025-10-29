@@ -557,7 +557,7 @@ In consequence, the procedure is executed but with `qpi.invocationReward() == 0`
 
 Proposals and voting are the on-chain way of decision-making, implemented in contracts.
 The function, macros, and data structures provided by the QPI for implementing proposal voting in smart contracts are quite complex.
-That is why they are described in [separate document](contracts_proposals.md).
+That is why they are described in a [separate document](contracts_proposals.md).
 
 CFB has an alternative idea for proposal-free voting on shareholder variables that is supposed to be used in the contracts QX, RANDOM, and MLM.
 It has not been implemented yet.

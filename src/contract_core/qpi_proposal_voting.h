@@ -270,7 +270,7 @@ namespace QPI
 		}
 
 		// Get new index of existing used proposal of proposer if any; only pass valid proposers!
-		// Returns proposal index or INVALID_PROPOSAL_INDEX if there is no proposal for given proposer..
+		// Returns proposal index or INVALID_PROPOSAL_INDEX if there is no proposal for given proposer.
 		uint16 getExistingProposalIndex(const QpiContextFunctionCall& qpi, const id& proposerId) const
 		{
 			if (isZero(proposerId))
