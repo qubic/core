@@ -33,6 +33,18 @@ bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, QPI::Entity& entity
     }
 }
 
+long long QPI::QpiContextFunctionCall::queryFeeReserve(unsigned int contractIndex) const
+{
+    if (contractIndex < 1 || contractIndex >= contractCount)
+        contractIndex = _currentContractIndex;
+
+    contractStateLock[0].acquireRead();
+    long long reserveAmount = ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex];
+    contractStateLock[0].releaseRead();
+
+    return reserveAmount;
+}
+
 // Return reference to fee reserve of contract for changing its value (data stored in state of contract 0)
 static long long& contractFeeReserve(unsigned int contractIndex)
 {

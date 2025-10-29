@@ -2040,6 +2040,10 @@ namespace QPI
 		inline uint8 year(
 		) const; // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
 
+		// return the amount of Qu in the fee reserve for the specified contract
+		// if the provided index is invalid (< 1 or >= contractCount) the currentContractIndex is used instead
+		inline sint64 queryFeeReserve(uint32 contractIndex = 0) const;
+
 		// Access proposal functions with qpi(proposalVotingObject).func().
 		template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 		inline QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType> operator()(
