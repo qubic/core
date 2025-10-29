@@ -193,6 +193,7 @@ public:
 	struct FillWinnersInfo_locals
 	{
 		WinnerInfo winnerInfo = {}; // Temporary buffer to compose a WinnerInfo record
+		uint64 insertIdx = 0;       // Index in ring buffer where to insert new winner
 	};
 
 	struct GetWinners_input
@@ -483,8 +484,7 @@ public:
 			}
 			else
 			{
-				// Epoch revenue = incoming - outgoing for this contract
-				qpi.getEntity(SELF, locals.entity);
+				// Current contract net balance = incoming - outgoing for this contract
 				RLUtils::getSCRevenue(qpi, locals.entity, locals.revenue);
 
 				// Winner selection (pseudo-random using K12(prevSpectrumDigest)).
@@ -567,7 +567,7 @@ public:
 	PUBLIC_FUNCTION(GetWinners)
 	{
 		output.winners = state.winners;
-		output.winnersCounter = RLUtils::min(state.winnersCounter, state.winners.capacity());
+		getWinnerCounter(state, output.winnersCounter);
 	}
 
 	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.ticketPrice; }
@@ -707,16 +707,17 @@ private:
 			return; // Nothing to store
 		}
 
-		// Use ring-buffer indexing to avoid overflow (overwrite oldest entries)
-		state.winnersCounter = mod(state.winnersCounter, state.winners.capacity());
+		// Compute ring-buffer index without clamping the total counter
+		getWinnerCounter(state, locals.insertIdx);
+		++state.winnersCounter;
 
 		locals.winnerInfo.winnerAddress = input.winnerAddress;
 		locals.winnerInfo.revenue = input.revenue;
 		locals.winnerInfo.epoch = qpi.epoch();
 		locals.winnerInfo.tick = qpi.tick();
 		RLUtils::getCurrentDayOfWeek(qpi, locals.winnerInfo.dayOfWeek);
-		state.winners.set(state.winnersCounter, locals.winnerInfo);
-		++state.winnersCounter;
+
+		state.winners.set(locals.insertIdx, locals.winnerInfo);
 	}
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(ReturnAllTickets)
@@ -876,4 +877,6 @@ protected:
 		// Index directly into players array
 		winnerAddress = state.players.get(randomNum);
 	}
+
+	static void getWinnerCounter(const RL& state, uint64& outCounter) { outCounter = mod(state.winnersCounter, state.winners.capacity()); }
 };

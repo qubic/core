@@ -20,7 +20,7 @@ constexpr uint16 FUNCTION_INDEX_GET_SCHEDULE = 10;
 static const id RL_DEV_ADDRESS = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C,
                                     _R, _L, _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
 
-constexpr uint8 RL_ANY_DAY_DRAW_SCHEDULE = 0xFF;
+constexpr uint8 RL_ANY_DAY_DRAW_SCHEDULE = 0xFF; // 0xFF sets bits 0..6 (WED..TUE); bit 7 is unused/ignored by logic
 
 // Equality operator for comparing WinnerInfo objects
 // Compares all fields (address, revenue, epoch, tick, dayOfWeek)
