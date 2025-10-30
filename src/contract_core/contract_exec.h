@@ -218,6 +218,15 @@ static void deinitContractExec()
     contractActionTracker.freeBuffer();
 }
 
+static void switchContractExecutionTicksArray()
+{
+    if (system.tick % NUMBER_OF_COMPUTORS == 0)
+    {
+        contractExecutionTicksActiveArrayIndex = !contractExecutionTicksActiveArrayIndex;
+        setMem((void*)contractExecutionTicksPerPhase[contractExecutionTicksActiveArrayIndex], sizeof(contractExecutionTicksPerPhase[contractExecutionTicksActiveArrayIndex]), 0);
+    }
+}
+
 // Acquire lock of an currently unused stack (may block if all in use)
 // stacksToIgnore > 0 can be passed by low priority tasks to keep some stacks reserved for high prio purposes.
 static void acquireContractLocalsStack(int& stackIdx, unsigned int stacksToIgnore = 0)
