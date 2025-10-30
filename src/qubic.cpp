@@ -5803,7 +5803,7 @@ static bool initialize()
 
         lastExpectedTickTransactionDigest = m256i::zero();
 
-        //Init custom mining data. Reset function will be called in beginEpoch()
+        // Init custom mining data. Reset function will be called in beginEpoch()
         customMiningInitialize();
 
         beginEpoch();
@@ -5813,6 +5813,9 @@ static bool initialize()
 
 #if TICK_STORAGE_AUTOSAVE_MODE
         bool canLoadFromFile = loadAllNodeStates();
+
+        // loading might have changed system.tick, so restart pendingTxsPool 
+        pendingTxsPool.beginEpoch(system.tick);
 #else
         bool canLoadFromFile = false;
 #endif

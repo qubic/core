@@ -82,7 +82,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 266
+#define VERSION_B 265
 #define VERSION_C 1
 
 // Epoch and initial tick for node startup
