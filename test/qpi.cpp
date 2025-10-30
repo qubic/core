@@ -7,6 +7,9 @@
 // workaround for name clash with stdlib
 #define system qubicSystemStruct
 
+// make test example contracts available in all compile units
+#define INCLUDE_CONTRACT_TEST_EXAMPLES
+
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
 
