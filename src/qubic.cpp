@@ -3243,6 +3243,8 @@ static void processTick(unsigned long long processorNumber)
                         }
                     }
 
+                    // TODO: include execution fees tx for phase n - 1 (i.e. from contractExecutionTicksPerPhase[!contractExecutionTicksActiveArrayIndex])
+
                     for (; nextTxIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; ++nextTxIndex)
                     {
                         broadcastedFutureTickData.tickData.transactionDigests[nextTxIndex] = m256i::zero();
@@ -5005,6 +5007,8 @@ static void tickProcessor(void*)
 
                                 updateNumberOfTickTransactions();
                                 pendingTxsPool.incrementFirstStoredTick();
+                                
+                                switchContractExecutionTicksArray();
 
                                 bool isBeginEpoch = false;
                                 if (epochTransitionState == 1)
