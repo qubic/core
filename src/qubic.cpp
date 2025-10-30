@@ -3662,6 +3662,104 @@ static void initializeFirstTick()
 
 #if TICK_STORAGE_AUTOSAVE_MODE
 
+static void printDebugTx(const Transaction* transaction, unsigned int systemTick)
+{
+    CHAR16 debugMessage[256];
+    CHAR16 id[61];
+    setText(debugMessage, L"[DBG] Tx: ");
+    appendText(debugMessage, L"SysTick: ");
+    appendNumber(debugMessage, systemTick, false);
+    appendText(debugMessage, L"TxTick: ");
+    appendNumber(debugMessage, transaction->tick, false);
+    logToConsole(debugMessage);
+
+    getIdentity(transaction->sourcePublicKey.m256i_u8, id, true);
+    setText(debugMessage, L"Src: ");
+    appendText(debugMessage, id);
+    logToConsole(debugMessage);
+
+
+    getIdentity(transaction->destinationPublicKey.m256i_u8, id, true);
+    setText(debugMessage, L"Dst: ");
+    appendText(debugMessage, id);
+    logToConsole(debugMessage);
+
+    setText(debugMessage, L"Ammount: ");
+    appendNumber(debugMessage, transaction->amount, false);
+    logToConsole(debugMessage);
+
+    setText(debugMessage, L"InputType: ");
+    appendNumber(debugMessage, transaction->inputType, false);
+    logToConsole(debugMessage);
+
+    setText(debugMessage, L"InputSize: ");
+    appendNumber(debugMessage, transaction->inputSize, false);
+    logToConsole(debugMessage);
+}
+
+static void printTickInfo(Tick* tick)
+{
+    CHAR16 debugMessage[256];
+    CHAR16 id[61];
+    setText(debugMessage, L"-SysTick: ");
+    appendNumber(debugMessage, tick->tick, false);
+    logToConsole(debugMessage);
+
+    setText(debugMessage, L"-millisecond: ");
+    appendNumber(debugMessage, *((unsigned long long*) & tick->millisecond), false);
+    logToConsole(debugMessage);
+
+    setText(debugMessage, L"-prevSpectrumDigest: ");
+    getIdentity(tick->prevSpectrumDigest.m256i_u8, id, true);
+    appendText(debugMessage, id);
+    logToConsole(debugMessage);
+
+    setText(debugMessage, L"-prevUniverseDigest: ");
+    getIdentity(tick->prevUniverseDigest.m256i_u8, id, true);
+    appendText(debugMessage, id);
+    logToConsole(debugMessage);
+
+    setText(debugMessage, L"-prevComputerDigest: ");
+    getIdentity(tick->prevComputerDigest.m256i_u8, id, true);
+    appendText(debugMessage, id);
+    logToConsole(debugMessage);
+
+    setText(debugMessage, L"-prevComputerDigest: ");
+    getIdentity(tick->prevComputerDigest.m256i_u8, id, true);
+    appendText(debugMessage, id);
+    logToConsole(debugMessage);
+
+    setText(debugMessage, L"-saltedSpectrumDigest: ");
+    getIdentity(tick->saltedSpectrumDigest.m256i_u8, id, true);
+    appendText(debugMessage, id);
+    logToConsole(debugMessage);
+
+    setText(debugMessage, L"-saltedUniverseDigest: ");
+    getIdentity(tick->saltedUniverseDigest.m256i_u8, id, true);
+    appendText(debugMessage, id);
+    logToConsole(debugMessage);
+
+    setText(debugMessage, L"-saltedComputerDigest: ");
+    getIdentity(tick->saltedComputerDigest.m256i_u8, id, true);
+    appendText(debugMessage, id);
+    logToConsole(debugMessage);
+
+    setText(debugMessage, L"-transactionDigest: ");
+    getIdentity(tick->transactionDigest.m256i_u8, id, true);
+    appendText(debugMessage, id);
+    logToConsole(debugMessage);
+
+    setText(debugMessage, L"-saltedTransactionBodyDigest: ");
+    appendNumber(debugMessage, tick->prevTransactionBodyDigest, false);
+    logToConsole(debugMessage);
+
+    setText(debugMessage, L"-expectedNextTickTransactionDigest: ");
+    getIdentity(tick->expectedNextTickTransactionDigest.m256i_u8, id, true);
+    appendText(debugMessage, id);
+    logToConsole(debugMessage);
+}
+
+
 // Invalid snapshot data
 static bool invalidateNodeStates(CHAR16* directory)
 {
@@ -3816,6 +3914,36 @@ static bool saveAllNodeStates()
 #if ENABLED_LOGGING
     logger.saveCurrentLoggingStates(directory);
 #endif
+
+    // Debug info
+    m256i universeDigest;
+    getUniverseDigest(universeDigest);
+    CHAR16 digestChars[60 + 1];
+
+    m256i computerDigest;
+    getComputerDigest(computerDigest);
+
+    CHAR16 dbgMsg[128];
+    getIdentity(universeDigest.m256i_u8, digestChars, true);
+    setText(dbgMsg, L"[DBG]Load:UniverseDigest: ");
+    appendText(message, digestChars);
+    appendText(message, L".");
+    logToConsole(dbgMsg);
+
+    getIdentity(computerDigest.m256i_u8, digestChars, true);
+    setText(dbgMsg, L"[DBG]Load:ComputerDigest: ");
+    appendText(message, digestChars);
+    appendText(message, L".");
+    logToConsole(dbgMsg);
+
+    m256i saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
+    getIdentity(computerDigest.m256i_u8, digestChars, true);
+    setText(dbgMsg, L"[DBG]Load:saltedSpectrumDigest: ");
+    appendText(message, digestChars);
+    appendText(message, L".");
+    logToConsole(dbgMsg);
+
+
     return true;
 }
 
@@ -3841,6 +3969,7 @@ static bool loadAllNodeStates()
         logToConsole(L"Failed to load tick storage");
         return false;
     }
+
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = L'0';
