@@ -2398,7 +2398,8 @@ protected:
 
 	struct getUserCreatedCollection_locals
 	{
-		uint32 _r, cnt, _t;
+		uint32 _r, cnt;
+		sint32 _t;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getUserCreatedCollection)
@@ -2430,7 +2431,8 @@ protected:
 
 	struct getUserCreatedNFT_locals
 	{
-		uint32 _r, cnt, _t;
+		uint32 _r, cnt;
+		sint32 _t;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getUserCreatedNFT)
