@@ -5,6 +5,7 @@
 #include "platform/memory_util.h"
 #include "platform/concurrency.h"
 #include "platform/console_logging.h"
+#include "platform/debugging.h"
 
 #include "spectrum/spectrum.h"
 
