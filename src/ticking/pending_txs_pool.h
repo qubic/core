@@ -266,10 +266,12 @@ public:
             {
                 if (*getDigestPtr(tickIndex, txIndex) == digest)
                 {
-                    //CHAR16 dbgMsgBuf[100];
-                    //setText(dbgMsgBuf, L"tx with the same digest already exists for tick ");
-                    //appendNumber(dbgMsgBuf, tx->tick, FALSE);
-                    //addDebugMessage(dbgMsgBuf);
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                    CHAR16 dbgMsgBuf[100];
+                    setText(dbgMsgBuf, L"tx with the same digest already exists for tick ");
+                    appendNumber(dbgMsgBuf, tx->tick, FALSE);
+                    addDebugMessage(dbgMsgBuf);
+#endif
                     goto end_add_function;
                 }
             }
