@@ -167,7 +167,6 @@ public:
 
 	struct logoutInSystem_input
 	{
-		bit useQXMR; // 0 = use qubic, 1 = use QXMR tokens
 	};
 
 	struct logoutInSystem_output
@@ -533,15 +532,16 @@ protected:
 		}
 
 		state.registers.get(qpi.invocator(), locals.tokenType);
-		if (input.useQXMR)
+
+		if (locals.tokenType == 1)
 		{
-			if (locals.tokenType != 2)
-			{
-				output.returnCode = QRAFFLE_INVALID_TOKEN_TYPE;
-				locals.log = QRAFFLELogger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_invalidTokenType, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
+			// Use qubic for logout
+			locals.refundAmount = QRAFFLE_REGISTER_AMOUNT - QRAFFLE_LOGOUT_FEE;
+			qpi.transfer(qpi.invocator(), locals.refundAmount);
+			state.epochRevenue += QRAFFLE_LOGOUT_FEE;
+		}
+		else if (locals.tokenType == 2)
+		{
 			// Use QXMR tokens for logout
 			locals.refundAmount = QRAFFLE_QXMR_REGISTER_AMOUNT - QRAFFLE_QXMR_LOGOUT_FEE;
 			
@@ -564,20 +564,6 @@ protected:
 			}
 			
 			state.epochQXMRRevenue += QRAFFLE_QXMR_LOGOUT_FEE;
-		}
-		else
-		{
-			if (locals.tokenType != 1)
-			{
-				output.returnCode = QRAFFLE_INVALID_TOKEN_TYPE;
-				locals.log = QRAFFLELogger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_invalidTokenType, 0 };
-				LOG_INFO(locals.log);
-				return ;
-			}
-			// Use qubic for logout
-			locals.refundAmount = QRAFFLE_REGISTER_AMOUNT - QRAFFLE_LOGOUT_FEE;
-			qpi.transfer(qpi.invocator(), locals.refundAmount);
-			state.epochRevenue += QRAFFLE_LOGOUT_FEE;
 		}
 
 		state.registers.removeByKey(qpi.invocator());

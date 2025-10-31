@@ -233,12 +233,11 @@ public:
         return output;
     }
 
-    QRAFFLE::logoutInSystem_output logoutInSystem(const id& user, bit useQXMR)
+    QRAFFLE::logoutInSystem_output logoutInSystem(const id& user)
     {
         QRAFFLE::logoutInSystem_input input;
         QRAFFLE::logoutInSystem_output output;
         
-        input.useQXMR = useQXMR;
         invokeUserProcedure(QRAFFLE_CONTRACT_INDEX, 2, input, output, user, 0);
         return output;
     }
@@ -484,7 +483,7 @@ TEST(ContractQraffle, LogoutInSystem)
     // Test successful logout
     for (const auto& user : users)
     {
-        auto result = qraffle.logoutInSystem(user, 0);
+        auto result = qraffle.logoutInSystem(user);
         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
         EXPECT_EQ(getBalance(user), QRAFFLE_REGISTER_AMOUNT - QRAFFLE_LOGOUT_FEE);
         qraffle.getState()->unregisterChecker(user, --registerCount);
@@ -492,7 +491,7 @@ TEST(ContractQraffle, LogoutInSystem)
 
     // Test unregistered user logout
     qraffle.getState()->unregisterChecker(users[0], registerCount);
-    auto result = qraffle.logoutInSystem(users[0], 0);
+    auto result = qraffle.logoutInSystem(users[0]);
     EXPECT_EQ(result.returnCode, QRAFFLE_UNREGISTERED);
 }
 
@@ -1253,7 +1252,7 @@ TEST(ContractQraffle, LogoutInSystemWithQXMR)
     for (const auto& user : users)
     {
         increaseEnergy(user, 1000);
-        auto result = qraffle.logoutInSystem(user, 1); // useQXMR = 1
+        auto result = qraffle.logoutInSystem(user); 
         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
         
         // Check that user received QXMR refund
@@ -1266,7 +1265,7 @@ TEST(ContractQraffle, LogoutInSystemWithQXMR)
 
     // Test unregistered user logout with QXMR
     increaseEnergy(users[0], 1000);
-    auto result = qraffle.logoutInSystem(users[0], 1);
+    auto result = qraffle.logoutInSystem(users[0]);
     EXPECT_EQ(result.returnCode, QRAFFLE_UNREGISTERED);
 }
 
@@ -1310,14 +1309,14 @@ TEST(ContractQraffle, MixedRegistrationAndLogout)
         if (i % 2 == 0)
         {
             // Logout with qubic
-            auto result = qraffle.logoutInSystem(users[i], 0); // useQXMR = 0
+            auto result = qraffle.logoutInSystem(users[i]); 
             EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
             EXPECT_EQ(getBalance(users[i]), QRAFFLE_REGISTER_AMOUNT - QRAFFLE_LOGOUT_FEE);
         }
         else
         {
             // Logout with QXMR
-            auto result = qraffle.logoutInSystem(users[i], 1); // useQXMR = 1
+            auto result = qraffle.logoutInSystem(users[i]);
             EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
             
             uint64 expectedRefund = QRAFFLE_QXMR_REGISTER_AMOUNT - QRAFFLE_QXMR_LOGOUT_FEE;
@@ -1348,8 +1347,8 @@ TEST(ContractQraffle, QXMRInvalidTokenType)
     registerCount++;
 
     // Try to logout with QXMR when registered with qubic
-    auto result = qraffle.logoutInSystem(users[0], 1); // useQXMR = 1, but registered with qubic
-    EXPECT_EQ(result.returnCode, QRAFFLE_INVALID_TOKEN_TYPE);
+    auto result = qraffle.logoutInSystem(users[0]); 
+    EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
 
     // Register user with QXMR (token type 2)
     increaseEnergy(users[1], 1000);
@@ -1358,13 +1357,10 @@ TEST(ContractQraffle, QXMRInvalidTokenType)
     qraffle.registerInSystem(users[1], 0, 1);
     registerCount++;
 
-    // Try to logout with qubic when registered with QXMR
-    result = qraffle.logoutInSystem(users[1], 0); // useQXMR = 0, but registered with QXMR
-    EXPECT_EQ(result.returnCode, QRAFFLE_INVALID_TOKEN_TYPE);
-
-    // Correct logout should work
-    result = qraffle.logoutInSystem(users[1], 1); // useQXMR = 1, registered with QXMR
+    // Try to logout
+    result = qraffle.logoutInSystem(users[1]); 
     EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
+
     registerCount--;
 }
 
@@ -1394,7 +1390,7 @@ TEST(ContractQraffle, QXMRRevenueDistribution)
     // Logout some users to generate QXMR revenue
     for (size_t i = 0; i < users.size(); ++i)
     {
-        auto result = qraffle.logoutInSystem(users[i], 1);
+        auto result = qraffle.logoutInSystem(users[i]);
         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
         expectedQXMRRevenue += QRAFFLE_QXMR_LOGOUT_FEE;
         registerCount--;
