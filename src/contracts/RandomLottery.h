@@ -49,6 +49,8 @@ constexpr uint8 RL_TICK_UPDATE_PERIOD = 100;
 /// Default draw hour (UTC).
 constexpr uint8 RL_DEFAULT_DRAW_HOUR = 11; // 11:00 UTC
 
+constexpr uint8 RL_DEFAULT_SCHEDULE = 1 << WEDNESDAY | 1 << FRIDAY | 1 << SUNDAY; // Draws on WED, FRI, SUN
+
 /// Placeholder structure for future extensions.
 struct RL2
 {
@@ -368,7 +370,7 @@ public:
 		state.playerCounter = 0;
 
 		// Default schedule: WEDNESDAY
-		state.schedule = 1 << WEDNESDAY;
+		state.schedule = RL_DEFAULT_SCHEDULE;
 	}
 
 	/**
@@ -379,7 +381,7 @@ public:
 		if (state.schedule == 0)
 		{
 			// Default to WEDNESDAY if no schedule is set (bit 0)
-			state.schedule = 1 << WEDNESDAY;
+			state.schedule = RL_DEFAULT_SCHEDULE;
 		}
 
 		if (state.drawHour == 0)
