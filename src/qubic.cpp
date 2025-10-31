@@ -2884,6 +2884,12 @@ static void processTick(unsigned long long processorNumber)
     // tick of the epoch in any case.
     if (system.tick == system.initialTick && (TICK_IS_FIRST_TICK_OF_EPOCH || system.epoch > EPOCH))
     {
+        {
+            // this is the very first logging event of the epoch
+            // hint message for 3rd party services the start of the epoch
+            DummyCustomMessage dcm{ CUSTOM_MESSAGE_OP_START_EPOCH };
+            logger.logCustomMessage(dcm);
+        }
         PROFILE_NAMED_SCOPE_BEGIN("processTick(): INITIALIZE");
         logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
         contractProcessorPhase = INITIALIZE;
@@ -3532,7 +3538,12 @@ static void endEpoch()
     }
 
     assetsEndEpoch();
-
+    {
+        // this is the last logging event of the epoch
+        // a hint message for 3rd party services the end of the epoch
+        DummyCustomMessage dcm{ CUSTOM_MESSAGE_OP_END_EPOCH };
+        logger.logCustomMessage(dcm);
+    }
     logger.updateTick(system.tick);
 #if PAUSE_BEFORE_CLEAR_MEMORY
     // re-open request processors for other services to query
