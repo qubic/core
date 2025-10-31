@@ -119,7 +119,7 @@ static void printDebugMessages()
 }
 
 // Add a message for logging from arbitrary thread
-static void addDebugMessage(const CHAR16* msg)
+void addDebugMessage(const CHAR16* msg)
 {
     ACQUIRE_WITHOUT_DEBUG_LOGGING(debugLogLock);
     if (debugMessageCount < 128)
