@@ -107,6 +107,11 @@ private:
         long long outTotalTransactionSize;
         unsigned long long outNextTickTransactionOffset;
         // may need to store more meta data here to verify consistency when loading (ie: some nodes have different configs and can't use the saved files)
+        unsigned char saveTickDataDigest[32];
+        unsigned char saveTicksDigest[32];
+        unsigned char saveTickTransactionOffsetsDigest[32];
+        unsigned char saveTransactionsDigest[32];
+
     } metaData;
     inline static unsigned long long lastCheckTransactionOffset = 0; // use for save/load transaction state
     void prepareMetaDataFilename(short epoch)
@@ -143,6 +148,9 @@ private:
         {
             return false;
         }
+
+        KangarooTwelve((unsigned char*)tickDataPtr, totalWriteSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalWriteSize, metaData.saveTickDataDigest, 32);
+
         return true;
     }
     bool saveTicks(unsigned long long nTick, CHAR16* directory = NULL)
@@ -153,6 +161,7 @@ private:
         {
             return false;
         }
+        KangarooTwelve((unsigned char*)ticksPtr, totalWriteSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalWriteSize, metaData.saveTicksDigest, 32);
         return true;
     }
     bool saveTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
@@ -163,6 +172,7 @@ private:
         {
             return false;
         }
+        KangarooTwelve((unsigned char*)tickTransactionOffsetsPtr, totalWriteSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalWriteSize, metaData.saveTickTransactionOffsetsDigest, 32);
         return true;
     }
     bool saveTransactions(unsigned long long nTick, long long& outTotalTransactionSize, unsigned long long& outNextTickTransactionOffset, CHAR16* directory = NULL)
@@ -198,13 +208,15 @@ private:
         // saving from the first tx of from tick to the last tx of (totick)
         long long totalWriteSize = toPtr;
         unsigned char* ptr = tickTransactionsPtr;
-        auto sz = saveLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, totalWriteSize, (unsigned char*)ptr, directory);
+        auto sz = saveLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, totalWriteSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalWriteSize, (unsigned char*)ptr, directory);
         if (sz != totalWriteSize)
         {
             outTotalTransactionSize = -1;
             return false;
         }
         outTotalTransactionSize = totalWriteSize;
+
+        KangarooTwelve((unsigned char*)ptr, totalWriteSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalWriteSize, metaData.saveTransactionsDigest, 32);
 
         return true;
     }
@@ -235,6 +247,43 @@ private:
 #endif
         return true;
     }
+
+    bool checkDigestMatched(unsigned char* digest, unsigned char* expectedDigest, long long sizeInByte)
+    {
+        for (long long i = 0; i < sizeInByte; i++)
+        {
+            if (digest[i] != expectedDigest[i])
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    bool verifyDigest(unsigned char* data, long long dataSize, unsigned char* expectedDigest)
+    {
+        unsigned char dataDigest[32];
+        KangarooTwelve((unsigned char*)data, dataSize, dataDigest, 32);
+
+        if (checkDigestMatched(dataDigest, expectedDigest, 32))
+        {
+            return true;
+        }
+        CHAR16 debugMessage[256];
+        CHAR16 id[61];
+
+        getIdentity(dataDigest, id, true);
+        setText(debugMessage, L"Mismatched Digest: ");
+        appendText(debugMessage, id);
+        appendText(debugMessage, L" vs ");
+        getIdentity(dataDigest, id, true);
+        appendText(debugMessage, id);
+
+        addDebugMessage(debugMessage);
+
+        return false;
+    }
+
     bool loadTickData(unsigned long long nTick, CHAR16* directory = NULL)
     {
         long long totalLoadSize = nTick * sizeof(TickData);
@@ -243,6 +292,13 @@ private:
         {
             return false;
         }
+
+        if (!verifyDigest((unsigned char*)tickDataPtr, totalLoadSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalLoadSize, metaData.saveTickDataDigest))
+        {
+            logToConsole(L"loadTickData digest mismatched");
+            return false;
+        }
+
         return true;
     }
     bool loadTicks(unsigned long long nTick, CHAR16* directory = NULL)
@@ -253,6 +309,13 @@ private:
         {
             return false;
         }
+
+        if(!verifyDigest((unsigned char*)ticksPtr, totalLoadSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalLoadSize, metaData.saveTicksDigest))
+        {
+            logToConsole(L"loadTicks digest mismatched");
+            return false;
+        }
+
         return true;
     }
     bool loadTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
@@ -261,6 +324,11 @@ private:
         auto sz = loadLargeFile(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, totalLoadSize, (unsigned char*)tickTransactionOffsetsPtr, directory);
         if (sz != totalLoadSize)
         {
+            return false;
+        }
+        if (!verifyDigest((unsigned char*)tickTransactionOffsetsPtr, totalLoadSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalLoadSize, metaData.saveTickTransactionOffsetsDigest))
+        {
+            logToConsole(L"loadTickTransactionOffsets digest mismatched");
             return false;
         }
         return true;
@@ -273,6 +341,12 @@ private:
         {
             return false;
         }
+        if (!verifyDigest((unsigned char*)ptr, totalLoadSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalLoadSize, metaData.saveTransactionsDigest))
+        {
+            logToConsole(L"loadTransactions digest mismatched");
+            return false;
+        }
+
         return true;
     }
 #endif
@@ -350,6 +424,30 @@ public:
             return 1;
         }
 
+        CHAR16 debugMessage[256];
+        CHAR16 id[61];
+
+        getIdentity(metaData.saveTicksDigest, id, true);
+        setText(debugMessage, L"saveTicksDigest: ");
+        appendText(debugMessage, id);
+        addDebugMessage(debugMessage);
+
+        getIdentity(metaData.saveTickDataDigest, id, true);
+        setText(debugMessage, L"saveTickDataDigest: ");
+        appendText(debugMessage, id);
+        addDebugMessage(debugMessage);
+
+        getIdentity(metaData.saveTickTransactionOffsetsDigest, id, true);
+        setText(debugMessage, L"saveTickTransactionOffsetsDigest: ");
+        appendText(debugMessage, id);
+        addDebugMessage(debugMessage);
+
+        getIdentity(metaData.saveTransactionsDigest, id, true);
+        setText(debugMessage, L"saveTransactionsDigest: ");
+        appendText(debugMessage, id);
+        addDebugMessage(debugMessage);
+
+
         return 0;
     }
 
@@ -408,6 +506,31 @@ public:
             initMetaData(epoch);
             return 2;
         }
+
+        CHAR16 debugMessage[256];
+        CHAR16 id[61];
+        addDebugMessage(L"Loaded tick storage sussceffully.");
+
+        getIdentity(metaData.saveTicksDigest, id, true);
+        setText(debugMessage, L"loadTicksDigest: ");
+        appendText(debugMessage, id);
+        addDebugMessage(debugMessage);
+
+        getIdentity(metaData.saveTickDataDigest, id, true);
+        setText(debugMessage, L"loadTickDataDigest: ");
+        appendText(debugMessage, id);
+        addDebugMessage(debugMessage);
+
+        getIdentity(metaData.saveTickTransactionOffsetsDigest, id, true);
+        setText(debugMessage, L"loadTickTransactionOffsetsDigest: ");
+        appendText(debugMessage, id);
+        addDebugMessage(debugMessage);
+
+        getIdentity(metaData.saveTransactionsDigest, id, true);
+        setText(debugMessage, L"loadTransactionsDigest: ");
+        appendText(debugMessage, id);
+        addDebugMessage(debugMessage);
+
         return 0;
     }
 
@@ -415,6 +538,7 @@ public:
     bool saveInvalidateData(unsigned int epoch, CHAR16* directory = NULL)
     {
         MetaData invalidMetaData;
+        setMem(&invalidMetaData, sizeof(invalidMetaData), 0);
         invalidMetaData.epoch = 0;
         invalidMetaData.tickBegin = 0;
         invalidMetaData.tickEnd = 0;
