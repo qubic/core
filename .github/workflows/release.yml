@@ -1,0 +1,56 @@
+name: Release
+on:
+  push:
+    tags: ["*"]
+
+env:
+    RELEASE_BUILD_DIR: "build"
+    BUILD_CONFIGURATION: "Release"
+
+jobs:
+  build-linux:
+    uses: ./.github/workflows/linux-build.yml
+    with:
+      configuration: "Release"
+      build_dir: "build"
+
+  build-windows:
+    uses: ./.github/workflows/windows-build.yml
+    with:
+      configuration: "Release"
+
+  publish-linux:
+    needs: build-linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Linux build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: QubicLiteLinuxBuild-${{ env.BUILD_CONFIGURATION }}
+          path: ${{ env.RELEASE_BUILD_DIR }}
+
+      - name: Create release package
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Mainnet Executable Release ${{ github.ref_name }}"
+          body: "Mainnet release of Qubic Core Lite executables."
+          files: ${{ env.RELEASE_BUILD_DIR }}/src/Qubic
+        env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-windows:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Windows build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: QubicLiteWindowsBuild-${{ env.BUILD_CONFIGURATION }}
+          path: ${{ env.RELEASE_BUILD_DIR }}
+
+      - name: Create Windows release package
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.RELEASE_BUILD_DIR }}/**/x64/Release/Qubic.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

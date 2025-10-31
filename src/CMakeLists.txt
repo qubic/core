@@ -26,6 +26,14 @@ add_executable(
   ${ASM_OBJ}
 )
 
+if(TESTNET)
+    target_compile_definitions(Qubic PRIVATE TESTNET)
+endif()
+
+if(CMAKE_NO_USE_SWAP)
+    target_compile_definitions(Qubic PRIVATE CMAKE_NO_USE_SWAP)
+endif()
+
 # Set specific properties for assembly files to avoid C++ flags being applied
 set_source_files_properties(platform/custom_stack.nasm PROPERTIES
     COMPILE_FLAGS ""

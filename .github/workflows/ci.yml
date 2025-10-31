@@ -1,0 +1,16 @@
+name: CI
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+jobs:
+  build-linux:
+    uses: ./.github/workflows/linux-build.yml
+    with:
+      configuration: Release
+
+  build-windows:
+    uses: ./.github/workflows/windows-build.yml
+    with:
+      configuration: Release

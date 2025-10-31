@@ -1,0 +1,69 @@
+name: deploy.yml
+
+on:
+  workflow_call:
+    inputs:
+      configuration:
+        description: "Build configuration"
+        required: true
+        default: "Release"
+        type: string
+      build-dir:
+        description: "Build directory"
+        required: false
+        default: "build"
+        type: string
+      epoch:
+        description: "Epoch number"
+        required: true
+        type: number
+      epoch-file:
+        description: "Path to epoch file"
+        required: true
+        type: string
+
+jobs:
+  build-linux:
+    uses: ./.github/workflows/linux-build.yml
+    with:
+      configuration: "Release"
+      build_dir: "build"
+
+  deploy-linux:
+    needs: build-linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Linux build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: QubicLiteLinuxBuild-${{ inputs.configuration }}
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Deploy to multiple servers
+        run: |
+          # Check if there are no build artifacts then exit
+            if [ ! -f "${{ inputs.build-dir }}/src/Qubic" ]; then
+              echo "Build artifact not found!"
+              exit 1
+            fi
+          
+          # Check if there are no servers then exit
+            if [ -z "${{ secrets.SERVERS }}" ]; then
+              echo "No servers specified for deployment."
+              exit 0
+            fi
+          
+          # Loop through each server and deploy
+          for server in ${{ secrets.SERVERS }}; do
+            echo "Deploying to $server..."
+            scp ${{ inputs.build-dir }}/src/Qubic $server:/home/${server#*@}/epoch_${{ inputs.epoch }}/Qubic
+            ssh -o StrictHostKeyChecking=no $server /bin/bash << 'EOF'
+              # Start deployment commands here
+              touch ok.txt
+            EOF
+          done
