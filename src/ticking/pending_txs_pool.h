@@ -258,6 +258,21 @@ public:
             unsigned int tickIndex = tickToIndex(tx->tick);
             const unsigned int transactionSize = tx->totalSize();
 
+            // check if tx with same digest already exists
+            m256i digest;
+            KangarooTwelve(tx, transactionSize, &digest, sizeof(m256i));
+            for (unsigned int txIndex = 0; txIndex < numSavedTxsPerTick[tickIndex]; ++txIndex)
+            {
+                if (*getDigestPtr(tickIndex, txIndex) == digest)
+                {
+                    CHAR16 dbgMsgBuf[100];
+                    setText(dbgMsgBuf, L"tx with the same digest already exists for tick ");
+                    appendNumber(dbgMsgBuf, tx->tick, FALSE);
+                    addDebugMessage(dbgMsgBuf);
+                    goto end_add_function;
+                }
+            }
+
             sint64 priority = calculateTxPriority(tx);
             if (priority > 0)
             {
@@ -265,10 +280,8 @@ public:
 
                 if (numSavedTxsPerTick[tickIndex] < maxNumTxsPerTick)
                 {
-                    KangarooTwelve(tx, transactionSize, getDigestPtr(tickIndex, numSavedTxsPerTick[tickIndex]), sizeof(m256i));
-
+                    copyMem(getDigestPtr(tickIndex, numSavedTxsPerTick[tickIndex]), &digest, sizeof(m256i));
                     copyMem(getTxPtr(tickIndex, numSavedTxsPerTick[tickIndex]), tx, transactionSize);
-
                     txsPriorities->add(povIndex, numSavedTxsPerTick[tickIndex], priority);
 
                     numSavedTxsPerTick[tickIndex]++;
@@ -286,8 +299,7 @@ public:
                             txsPriorities->remove(lowestElementIndex);
                             txsPriorities->add(povIndex, replacedTxIndex, priority);
 
-                            KangarooTwelve(tx, transactionSize, getDigestPtr(tickIndex, replacedTxIndex), sizeof(m256i));
-
+                            copyMem(getDigestPtr(tickIndex, replacedTxIndex), &digest, sizeof(m256i));
                             copyMem(getTxPtr(tickIndex, replacedTxIndex), tx, transactionSize);
 
                             txAdded = true;
@@ -326,13 +338,15 @@ public:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
             else
             {
-                CHAR16 dbgMsgBuf[300];
+                CHAR16 dbgMsgBuf[100];
                 setText(dbgMsgBuf, L"tx with priority 0 was rejected for tick ");
                 appendNumber(dbgMsgBuf, tx->tick, FALSE);
                 addDebugMessage(dbgMsgBuf);
             }
 #endif
         }
+
+    end_add_function:
         RELEASE(lock);
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
