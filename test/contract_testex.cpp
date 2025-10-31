@@ -11,6 +11,7 @@ static const id TESTEXC_CONTRACT_ID(TESTEXC_CONTRACT_INDEX, 0, 0, 0);
 static const id USER1(123, 456, 789, 876);
 static const id USER2(42, 424, 4242, 42424);
 static const id USER3(98, 76, 54, 3210);
+static const id USER4(9878, 7645, 541, 3210);
 
 void checkPreManagementRightsTransferInput(const PreManagementRightsTransfer_input& observed, const PreManagementRightsTransfer_input& expected)
 {
@@ -66,6 +67,16 @@ public:
     {
         return this->prevPostAcquireSharesInput;
     }
+
+    void checkVariablesSetByProposal(
+        uint64 expectedVariable1,
+        uint32 expectedVariable2,
+        sint8 expectedVariable3) const
+    {
+        EXPECT_EQ(this->dummyStateVariable1, expectedVariable1);
+        EXPECT_EQ(this->dummyStateVariable2, expectedVariable2);
+        EXPECT_EQ(this->dummyStateVariable3, expectedVariable3);
+    }
 };
 
 class StateCheckerTestExampleB : public TESTEXB
@@ -99,6 +110,16 @@ public:
     const PostManagementRightsTransfer_input& getPostAcquireInput() const
     {
         return this->prevPostAcquireSharesInput;
+    }
+
+    void checkVariablesSetByProposal(
+        sint64 expectedVariable1,
+        sint64 expectedVariable2,
+        sint64 expectedVariable3) const
+    {
+        EXPECT_EQ(this->fee1, expectedVariable1);
+        EXPECT_EQ(this->fee2, expectedVariable2);
+        EXPECT_EQ(this->fee3, expectedVariable3);
     }
 };
 
@@ -159,37 +180,37 @@ public:
         return output.issuedNumberOfShares;
     }
 
-    sint64 transferShareOwnershipAndPossessionQx(const Asset& asset, const id& currentOwnerAndPossesor, const id& newOwnerAndPossesor, sint64 numberOfShares)
+    sint64 transferShareOwnershipAndPossessionQx(const Asset& asset, const id& currentOwnerAndPossessor, const id& newOwnerAndPossessor, sint64 numberOfShares)
     {
         QX::TransferShareOwnershipAndPossession_input input;
         QX::TransferShareOwnershipAndPossession_output output;
         
         input.assetName = asset.assetName;
         input.issuer = asset.issuer;
-        input.newOwnerAndPossessor = newOwnerAndPossesor;
+        input.newOwnerAndPossessor = newOwnerAndPossessor;
         input.numberOfShares = numberOfShares;
         
-        invokeUserProcedure(QX_CONTRACT_INDEX, 2, input, output, currentOwnerAndPossesor, qxFees.transferFee);
+        invokeUserProcedure(QX_CONTRACT_INDEX, 2, input, output, currentOwnerAndPossessor, qxFees.transferFee);
         
         return output.transferredNumberOfShares;
     }
 
     template <typename StateStruct>
-    sint64 transferShareOwnershipAndPossession(const Asset& asset, const id& currentOwnerAndPossesor, const id& newOwnerAndPossesor, sint64 numberOfShares)
+    sint64 transferShareOwnershipAndPossession(const Asset& asset, const id& currentOwnerAndPossessor, const id& newOwnerAndPossessor, sint64 numberOfShares)
     {
         typename StateStruct::TransferShareOwnershipAndPossession_input input;
         typename StateStruct::TransferShareOwnershipAndPossession_output output;
 
         input.asset = asset;
-        input.newOwnerAndPossessor = newOwnerAndPossesor;
+        input.newOwnerAndPossessor = newOwnerAndPossessor;
         input.numberOfShares = numberOfShares;
 
-        invokeUserProcedure(StateStruct::__contract_index, 2, input, output, currentOwnerAndPossesor, 0);
+        invokeUserProcedure(StateStruct::__contract_index, 2, input, output, currentOwnerAndPossessor, 0);
 
         return output.transferredNumberOfShares;
     }
 
-    sint64 transferShareManagementRightsQx(const Asset& asset, const id& currentOwnerAndPossesor, sint64 numberOfShares, unsigned int newManagingContractIndex, sint64 fee = 0)
+    sint64 transferShareManagementRightsQx(const Asset& asset, const id& currentOwnerAndPossessor, sint64 numberOfShares, unsigned int newManagingContractIndex, sint64 fee = 0)
     {
         QX::TransferShareManagementRights_input input;
         QX::TransferShareManagementRights_output output;
@@ -198,13 +219,13 @@ public:
         input.newManagingContractIndex = newManagingContractIndex;
         input.numberOfShares = numberOfShares;
 
-        invokeUserProcedure(QX_CONTRACT_INDEX, 9, input, output, currentOwnerAndPossesor, fee);
+        invokeUserProcedure(QX_CONTRACT_INDEX, 9, input, output, currentOwnerAndPossessor, fee);
 
         return output.transferredNumberOfShares;
     }
 
     template <typename StateStruct>
-    sint64 transferShareManagementRights(const Asset& asset, const id& currentOwnerAndPossesor, sint64 numberOfShares, unsigned int newManagingContractIndex, sint64 fee = 0)
+    sint64 transferShareManagementRights(const Asset& asset, const id& currentOwnerAndPossessor, sint64 numberOfShares, unsigned int newManagingContractIndex, sint64 fee = 0)
     {
         typename StateStruct::TransferShareManagementRights_input input;
         typename StateStruct::TransferShareManagementRights_output output;
@@ -213,7 +234,7 @@ public:
         input.newManagingContractIndex = newManagingContractIndex;
         input.numberOfShares = numberOfShares;
 
-        invokeUserProcedure(StateStruct::__contract_index, 3, input, output, currentOwnerAndPossesor, fee);
+        invokeUserProcedure(StateStruct::__contract_index, 3, input, output, currentOwnerAndPossessor, fee);
 
         return output.transferredNumberOfShares;
     }
@@ -236,23 +257,23 @@ public:
 
     
     template <typename StateStruct>
-    sint64 acquireShareManagementRights(const Asset& asset, const id& currentOwnerAndPossesor, sint64 numberOfShares, unsigned int prevManagingContractIndex, sint64 fee = 0, const id& originator = NULL_ID)
+    sint64 acquireShareManagementRights(const Asset& asset, const id& currentOwnerAndPossessor, sint64 numberOfShares, unsigned int prevManagingContractIndex, sint64 fee = 0, const id& originator = NULL_ID)
     {
         typename StateStruct::AcquireShareManagementRights_input input;
         typename StateStruct::AcquireShareManagementRights_output output;
 
         input.asset = asset;
-        input.ownerAndPossessor = currentOwnerAndPossesor;
+        input.ownerAndPossessor = currentOwnerAndPossessor;
         input.oldManagingContractIndex = prevManagingContractIndex;
         input.numberOfShares = numberOfShares;
 
         invokeUserProcedure(StateStruct::__contract_index, 6, input, output,
-            (isZero(originator)) ? currentOwnerAndPossesor : originator, fee);
+            (isZero(originator)) ? currentOwnerAndPossessor : originator, fee);
 
         return output.transferredNumberOfShares;
     }
 
-    sint64 getTestExAsShareManagementRightsByInvokingTestExB(const Asset& asset, const id& currentOwnerAndPossesor, sint64 numberOfShares, sint64 fee = 0)
+    sint64 getTestExAsShareManagementRightsByInvokingTestExB(const Asset& asset, const id& currentOwnerAndPossessor, sint64 numberOfShares, sint64 fee = 0)
     {
         TESTEXB::GetTestExampleAShareManagementRights_input input;
         TESTEXB::GetTestExampleAShareManagementRights_output output;
@@ -260,12 +281,12 @@ public:
         input.asset = asset;
         input.numberOfShares = numberOfShares;
 
-        invokeUserProcedure(TESTEXB::__contract_index, 7, input, output, currentOwnerAndPossesor, fee);
+        invokeUserProcedure(TESTEXB::__contract_index, 7, input, output, currentOwnerAndPossessor, fee);
 
         return output.transferredNumberOfShares;
     }
 
-    sint64 getTestExAsShareManagementRightsByInvokingTestExC(const Asset& asset, const id& currentOwnerAndPossesor, sint64 numberOfShares, sint64 fee = 0)
+    sint64 getTestExAsShareManagementRightsByInvokingTestExC(const Asset& asset, const id& currentOwnerAndPossessor, sint64 numberOfShares, sint64 fee = 0)
     {
         TESTEXC::GetTestExampleAShareManagementRights_input input;
         TESTEXC::GetTestExampleAShareManagementRights_output output;
@@ -273,7 +294,7 @@ public:
         input.asset = asset;
         input.numberOfShares = numberOfShares;
 
-        invokeUserProcedure(TESTEXC::__contract_index, 7, input, output, currentOwnerAndPossesor, fee);
+        invokeUserProcedure(TESTEXC::__contract_index, 7, input, output, currentOwnerAndPossessor, fee);
 
         return output.transferredNumberOfShares;
     }
@@ -341,7 +362,208 @@ public:
         else
             return -2;
     }
+
+    template <typename StateStruct>
+    uint16 setShareholderProposal(const id& originator, const typename StateStruct::SetShareholderProposal_input& input)
+    {
+        typename StateStruct::SetShareholderProposal_output output;
+        EXPECT_TRUE(invokeUserProcedure(StateStruct::__contract_index, 65534, input, output, originator, 0));
+        return output;
+    }
+
+    template <typename StateStruct>
+    bool setShareholderVotes(const id& originator, uint16 proposalIndex, const typename StateStruct::ProposalDataT& proposalData, sint64 voteValue)
+    {
+        // Contract procedure expects ProposalMultiVoteDataV1, but ProposalSingleVoteDataV1 is compatible
+        ProposalSingleVoteDataV1 input{ proposalIndex, proposalData.type, proposalData.tick, voteValue };
+        typename StateStruct::SetShareholderVotes_output output;
+        invokeUserProcedure(StateStruct::__contract_index, 65535, input, output, originator, 0, false);
+        return output;
+    }
+
+    template <typename StateStruct>
+    bool setShareholderVotes(const id& originator, uint16 proposalIndex, const typename StateStruct::ProposalDataT& proposalData,
+        const std::vector<std::pair<sint64, uint32>>& voteValueCountPairs)
+    {
+        ASSERT(voteValueCountPairs.size() <= 8);
+        ProposalMultiVoteDataV1 input{ proposalIndex, proposalData.type, proposalData.tick };
+        input.voteValues.set(0, NO_VOTE_VALUE); // default with no voteValueCountPairs (vote count 0): set all to no votes
+        for (size_t i = 0; i < voteValueCountPairs.size(); ++i)
+        {
+            input.voteValues.set(i, voteValueCountPairs[i].first);
+            input.voteCounts.set(i, voteValueCountPairs[i].second);
+        }
+        typename StateStruct::SetShareholderVotes_output output;
+        invokeUserProcedure(StateStruct::__contract_index, 65535, input, output, originator, 0);
+        return output;
+    }
+
+    template <typename StateStruct>
+    std::vector<uint16> getShareholderProposalIndices(bit activeProposals)
+    {
+        typename StateStruct::GetShareholderProposalIndices_input input{ activeProposals, -1 };
+        typename StateStruct::GetShareholderProposalIndices_output output;
+        std::vector<uint16> indices;
+        do
+        {
+            callFunction(StateStruct::__contract_index, 65532, input, output);
+            for (uint16 i = 0; i < output.numOfIndices; ++i)
+                indices.push_back(output.indices.get(i));
+        } while (output.numOfIndices == output.indices.capacity());
+        return indices;
+    }
+
+    template <typename StateStruct>
+    StateStruct::GetShareholderProposal_output getShareholderProposal(uint16 proposalIndex)
+    {
+        typename StateStruct::GetShareholderProposal_input input{ proposalIndex };
+        typename StateStruct::GetShareholderProposal_output output;
+        callFunction(StateStruct::__contract_index, 65533, input, output);
+        return output;
+    }
+
+    template <typename StateStruct>
+    ProposalMultiVoteDataV1 getShareholderVotes(uint16 proposalIndex, const	id& voter)
+    {
+        typename StateStruct::GetShareholderVotes_input input{ voter, proposalIndex };
+        typename StateStruct::GetShareholderVotes_output output;
+        callFunction(StateStruct::__contract_index, 65534, input, output);
+        return output;
+    }
+
+    template <typename StateStruct>
+    ProposalSummarizedVotingDataV1 getShareholderVotingResults(uint16 proposalIndex)
+    {
+        typename StateStruct::GetShareholderVotingResults_input input{ proposalIndex };
+        typename StateStruct::GetShareholderVotingResults_output output;
+        callFunction(StateStruct::__contract_index, 65535, input, output);
+        return output;
+    }
+
+    uint16 setupShareholderProposalTestExA(
+        const id& proposer, uint16 type,
+        bool setVar1 = false, uint64 valueVar1 = 0,
+        bool setVar2 = false, uint32 valueVar2 = 0,
+        bool setVar3 = false, sint8 valueVar3 = 0,
+        bool expectSuccess = true)
+    {
+        TESTEXA::SetShareholderProposal_input input;
+        setMemory(input, 0);
+        input.proposalData.epoch = system.epoch;
+        input.proposalData.type = type;
+        switch (ProposalTypes::cls(type))
+        {
+        case ProposalTypes::Class::Variable:
+        {
+            if (setVar1)
+            {
+                EXPECT_FALSE(setVar2);
+                EXPECT_FALSE(setVar3);
+                input.proposalData.variableOptions.variable = 0;
+                input.proposalData.variableOptions.value = valueVar1;
+            }
+            else if (setVar2)
+            {
+                EXPECT_FALSE(setVar1);
+                EXPECT_FALSE(setVar3);
+                input.proposalData.variableOptions.variable = 1;
+                input.proposalData.variableOptions.value = valueVar2;
+            }
+            else if (setVar3)
+            {
+                EXPECT_FALSE(setVar1);
+                EXPECT_FALSE(setVar2);
+                input.proposalData.variableOptions.variable = 2;
+                input.proposalData.variableOptions.value = valueVar3;
+            }
+            break;
+        }
+        case ProposalTypes::Class::MultiVariables:
+            input.multiVarData.hasValueDummyStateVariable1 = setVar1;
+            input.multiVarData.hasValueDummyStateVariable2 = setVar2;
+            input.multiVarData.hasValueDummyStateVariable3 = setVar3;
+            input.multiVarData.optionYesValues.dummyStateVariable1 = valueVar1;
+            input.multiVarData.optionYesValues.dummyStateVariable2 = valueVar2;
+            input.multiVarData.optionYesValues.dummyStateVariable3 = valueVar3;
+            break;
+        }
+        uint16 proposalIdx = this->setShareholderProposal<TESTEXA>(proposer, input);
+        if (expectSuccess)
+            EXPECT_NE((int)proposalIdx, (int)INVALID_PROPOSAL_INDEX);
+        else
+            EXPECT_EQ((int)proposalIdx, (int)INVALID_PROPOSAL_INDEX);
+        return proposalIdx;
+    }
+
+    template <typename StateStruct, typename FullProposalDataT>
+    uint16 setProposalInOtherContractAsShareholder(const id& originator, uint16 otherContractIndex, const FullProposalDataT& fullProposalData)
+    {
+        typename StateStruct::SetProposalInOtherContractAsShareholder_input input;
+        copyToBuffer(input, fullProposalData);
+        input.otherContractIndex = otherContractIndex;
+        typename StateStruct::SetProposalInOtherContractAsShareholder_output output;
+        invokeUserProcedure(StateStruct::__contract_index, 40, input, output, originator, 0);
+        return output.proposalIndex;
+    }
+
+    template <typename StateStruct, typename ProposalDataT>
+    bool setVotesInOtherContractAsShareholder(const id& originator, uint16 otherContractIndex, uint16 proposalIndex, const ProposalDataT& proposalData,
+        const std::vector<std::pair<sint64, uint32>>& voteValueCountPairs)
+    {
+        ASSERT(voteValueCountPairs.size() <= 8);
+        typename StateStruct::SetVotesInOtherContractAsShareholder_input input{ {proposalIndex, proposalData.type, proposalData.tick} };
+        input.otherContractIndex = otherContractIndex;
+        input.voteData.voteValues.set(0, NO_VOTE_VALUE); // default with no voteValueCountPairs (vote count 0): set all to no votes
+        for (size_t i = 0; i < voteValueCountPairs.size(); ++i)
+        {
+            input.voteData.voteValues.set(i, voteValueCountPairs[i].first);
+            input.voteData.voteCounts.set(i, voteValueCountPairs[i].second);
+        }
+        typename StateStruct::SetVotesInOtherContractAsShareholder_output output;
+        invokeUserProcedure(StateStruct::__contract_index, 41, input, output, originator, 0);
+        return output.success;
+    }
+
+    void endEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(TESTEXD_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+        callSystemProcedure(TESTEXC_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+        callSystemProcedure(TESTEXB_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+        callSystemProcedure(TESTEXA_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+        callSystemProcedure(QX_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+    }
 };
+
+void checkVoteCounts(const ProposalMultiVoteDataV1& votes, const std::vector<std::pair<sint64, uint32>>& expectedVoteValueCountPairs)
+{
+    std::vector<std::pair<sint64, uint32>> expectedPairsNotFound = expectedVoteValueCountPairs;
+    for (int i = 0; i < votes.voteCounts.capacity(); ++i)
+    {
+        sint64 value = votes.voteValues.get(i);
+        uint32 count = votes.voteCounts.get(i);
+        std::pair<sint64, uint32> pair(value, count);
+        auto it = std::find(expectedPairsNotFound.begin(), expectedPairsNotFound.end(), pair);
+        if (it != expectedPairsNotFound.end())
+        {
+            // value-count pair found
+            expectedPairsNotFound.erase(it);
+        }
+        else if (count)
+        {
+            FAIL() << "Error: unexpected vote value/count pair " << value << "/" << count;
+        }
+    }
+    for (const auto& it : expectedPairsNotFound)
+    {
+        FAIL() << "Error: missing vote value/count pair " << it.first << "/" << it.second;
+    }
+}
+
+bool operator==(const TESTEXA::MultiVariablesProposalExtraData& p1, const TESTEXA::MultiVariablesProposalExtraData& p2)
+{
+    return memcmp(&p1, &p2, sizeof(p1)) == 0;
+}
+
 
 TEST(ContractTestEx, QpiReleaseShares)
 {
@@ -351,7 +573,7 @@ TEST(ContractTestEx, QpiReleaseShares)
     const sint64 totalShareCount = 1000000000;
     const sint64 transferShareCount = totalShareCount/4;
 
-    // make sure the enities have enough qu
+    // make sure the entities have enough qu
     increaseEnergy(USER1, test.qxFees.assetIssuanceFee * 10);
     increaseEnergy(USER2, test.qxFees.assetIssuanceFee * 10);
     increaseEnergy(USER3, test.qxFees.assetIssuanceFee * 10);
@@ -504,7 +726,7 @@ TEST(ContractTestEx, QpiAcquireShares)
     const sint64 totalShareCount = 100000000;
     const sint64 transferShareCount = totalShareCount / 4;
     
-    // make sure the enities have enough qu
+    // make sure the entities have enough qu
     increaseEnergy(USER1, test.qxFees.assetIssuanceFee * 10);
     increaseEnergy(USER2, test.qxFees.assetIssuanceFee * 10);
     increaseEnergy(USER3, test.qxFees.assetIssuanceFee * 10);
@@ -684,7 +906,7 @@ TEST(ContractTestEx, GetManagementRightsByInvokingOtherContractsRelease)
     const sint64 totalShareCount = 1000000;
     const sint64 transferShareCount = totalShareCount / 5;
 
-    // make sure the enities have enough qu
+    // make sure the entities have enough qu
     increaseEnergy(USER1, test.qxFees.assetIssuanceFee * 10);
     increaseEnergy(USER2, test.qxFees.assetIssuanceFee * 10);
     increaseEnergy(USER3, test.qxFees.assetIssuanceFee * 10);
@@ -1325,4 +1547,467 @@ TEST(ContractTestEx, BurnAssets)
         EXPECT_EQ(1000000 - 100, numberOfShares(asset, { USER1, QX_CONTRACT_INDEX }));
         EXPECT_EQ(1000000 - 100, numberOfShares(asset, { USER1, QX_CONTRACT_INDEX }, { USER1, QX_CONTRACT_INDEX }));
     }
+}
+
+TEST(ContractTestEx, ShareholderProposals)
+{
+    ContractTestingTestEx test;
+    uint16 proposalIdx = 0;
+
+    system.epoch = 200;
+
+    increaseEnergy(USER1, 12345678);
+    increaseEnergy(USER2, 31427);
+    increaseEnergy(USER3, 218000);
+    increaseEnergy(USER4, 218000);
+    increaseEnergy(TESTEXA_CONTRACT_ID, 987654321);
+    increaseEnergy(TESTEXB_CONTRACT_ID, 19283764);
+
+    // issue contract shares
+    std::vector<std::pair<m256i, unsigned int>> sharesTestExA{
+        {USER1, 356},
+        {USER2, 200},
+        {TESTEXB_CONTRACT_ID, 100},
+        {USER3, 20}
+    };
+    issueContractShares(TESTEXA_CONTRACT_INDEX, sharesTestExA);
+
+    // enable that TESTEXA accepts transfer for 0 fee
+    test.setPreAcquireSharesOutput<TESTEXA>(true, 0);
+
+    // transfer management rights of some shares to other contract to cover case of multiple asset records of single possessor
+    const Asset TESTEXA_ASSET{ NULL_ID, assetNameFromString("TESTEXA") };
+    EXPECT_EQ(test.transferShareManagementRightsQx(TESTEXA_ASSET, USER2, 50, TESTEXA_CONTRACT_INDEX), 50);
+    EXPECT_EQ(numberOfShares(TESTEXA_ASSET, { USER1, QX_CONTRACT_INDEX }, { USER1, QX_CONTRACT_INDEX }), 356);
+    EXPECT_EQ(numberOfShares(TESTEXA_ASSET, { USER2, QX_CONTRACT_INDEX }, { USER2, QX_CONTRACT_INDEX }), 150);
+    EXPECT_EQ(numberOfShares(TESTEXA_ASSET, { USER2, TESTEXA_CONTRACT_INDEX }, { USER2, TESTEXA_CONTRACT_INDEX }), 50);
+    EXPECT_EQ(numberOfShares(TESTEXA_ASSET, { TESTEXB_CONTRACT_ID, QX_CONTRACT_INDEX }, { TESTEXB_CONTRACT_ID, QX_CONTRACT_INDEX }), 100);
+    EXPECT_EQ(numberOfShares(TESTEXA_ASSET, { USER3, QX_CONTRACT_INDEX }, { USER3, QX_CONTRACT_INDEX }), 20);
+    EXPECT_EQ(numberOfShares(TESTEXA_ASSET, { USER4, QX_CONTRACT_INDEX }, { USER4, QX_CONTRACT_INDEX }), 0);
+
+    // fail: 4 options not supported with Yes/No proposals
+    test.setupShareholderProposalTestExA(USER2, ProposalTypes::FourOptions, false, 0, false, 0, false, 0, false);
+
+    // fail: no right, because no shareholder
+    test.setupShareholderProposalTestExA(USER4, ProposalTypes::ThreeOptions, false, 0, false, 0, false, 0, false);
+
+    // fail: transfer not allowed
+    test.setupShareholderProposalTestExA(USER2, ProposalTypes::TransferYesNo, false, 0, false, 0, false, 0, false);
+
+    // fail: invalid value of variable
+    test.setupShareholderProposalTestExA(USER2, ProposalTypes::VariableYesNo, false, 0, false, 0, true, 120, false);
+
+    // check that no active/inactive proposals
+    EXPECT_EQ(test.getShareholderProposalIndices<TESTEXA>(true).size(), 0);
+    EXPECT_EQ(test.getShareholderProposalIndices<TESTEXA>(false).size(), 0);
+
+    // success: set var3 with single-var proposal
+    proposalIdx = test.setupShareholderProposalTestExA(USER2, ProposalTypes::VariableYesNo, false, 0, false, 0, true, 100, true);
+
+    // check that no active/inactive proposals
+    auto proposalIndices = test.getShareholderProposalIndices<TESTEXA>(true);
+    EXPECT_TRUE(proposalIndices.size() == 1 && proposalIndices[0] == proposalIdx);
+    EXPECT_EQ(test.getShareholderProposalIndices<TESTEXA>(false).size(), 0);
+
+    // fail: try to get non-existing proposal
+    auto fullProposalData = test.getShareholderProposal<TESTEXA>(proposalIdx + 1);
+    EXPECT_EQ(fullProposalData.proposerPubicKey, NULL_ID);
+    EXPECT_EQ((int)fullProposalData.proposal.type, 0);
+
+    // success: get existing proposal
+    fullProposalData = test.getShareholderProposal<TESTEXA>(proposalIdx);
+    EXPECT_EQ(fullProposalData.proposerPubicKey, USER2);
+    EXPECT_EQ((int)fullProposalData.proposal.type, (int)ProposalTypes::VariableYesNo);
+    auto proposal = fullProposalData.proposal;
+
+    // fail: try to get shareholder votes of user who is no shareholder
+    auto votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER4);
+    EXPECT_EQ((int)votes.proposalType, 0);
+
+    // fail: try to get shareholder votes of non-existing proposal
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx + 1, USER1);
+    EXPECT_EQ((int)votes.proposalType, 0);
+
+    // success: get shareholder votes of user who is no shareholder
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER1);
+    EXPECT_EQ((int)votes.proposalType, (int)proposal.type);
+    EXPECT_EQ((int)votes.proposalIndex, (int)proposalIdx);
+    EXPECT_EQ(votes.proposalTick, proposal.tick);
+    checkVoteCounts(votes, {});
+
+    // set all votes of USER1 to option 0 with single-vote struct
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER1, proposalIdx, proposal, 0));
+
+    // get shareholder votes of user who is no shareholder and check that they are correct
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER1);
+    EXPECT_EQ((int)votes.proposalType, (int)proposal.type);
+    checkVoteCounts(votes, { {0, 356} });
+
+    // set 50 votes of USER2 to option 0 and 150 to option 1
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER2, proposalIdx, proposal, { {0, 50}, {1, 150} }));
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER2);
+    EXPECT_EQ((int)votes.proposalType, (int)proposal.type);
+    checkVoteCounts(votes, { {0, 50}, {1, 150} });
+
+    // fail: set 51 votes of USER2 to option 1 and 150 to option 0 (more votes than shares)
+    EXPECT_FALSE(test.setShareholderVotes<TESTEXA>(USER2, proposalIdx, proposal, { {1, 51}, {0, 150} }));
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER2);
+    EXPECT_EQ((int)votes.proposalType, (int)proposal.type);
+    checkVoteCounts(votes, { {0, 50}, {1, 150} });
+
+    // set 20 votes of USER2 to option 0 and 30 to option 1 (some votes unused)
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER2, proposalIdx, proposal, { {0, 20}, {1, 30} }));
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER2);
+    EXPECT_EQ((int)votes.proposalType, (int)proposal.type);
+    checkVoteCounts(votes, { {0, 20}, {1, 30} });
+
+    // fail: try to get voting results of invalid proposal
+    auto results = test.getShareholderVotingResults<TESTEXA>(proposalIdx + 1);
+    EXPECT_EQ(results.totalVotesAuthorized, 0);
+
+    // check voting results
+    results = test.getShareholderVotingResults<TESTEXA>(proposalIdx);
+    EXPECT_EQ(results.totalVotesAuthorized, 676);
+    EXPECT_EQ((int)results.optionCount, 2);
+    EXPECT_EQ(results.optionVoteCount.get(0), 20 + 356);
+    EXPECT_EQ(results.optionVoteCount.get(1), 30);
+    EXPECT_EQ(results.totalVotesCasted, 20 + 356 + 30);
+    EXPECT_EQ(results.getAcceptedOption(), -1);
+    EXPECT_EQ(results.getMostVotedOption(), 0);
+
+    // set 1 vote of USER3 to option 0 and 19 to option 1
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER3, proposalIdx, proposal, { {0, 1}, {1, 19} }));
+
+    // change votes of USER1
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER1, proposalIdx, proposal, { {0, 300}, {1, 50} }));
+
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER3);
+    EXPECT_EQ((int)votes.proposalType, (int)proposal.type);
+    checkVoteCounts(votes, { {0, 1}, {1, 19} });
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER2);
+    checkVoteCounts(votes, { {0, 20}, {1, 30} });
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER1);
+    checkVoteCounts(votes, { {0, 300}, {1, 50} });
+
+    results = test.getShareholderVotingResults<TESTEXA>(proposalIdx);
+    EXPECT_EQ(results.totalVotesAuthorized, 676);
+    EXPECT_EQ((int)results.optionCount, 2);
+    EXPECT_EQ(results.optionVoteCount.get(0), 1 + 20 + 300);
+    EXPECT_EQ(results.optionVoteCount.get(1), 19 + 30 + 50);
+    EXPECT_EQ(results.totalVotesCasted, 1 + 20 + 300 + 19 + 30 + 50);
+    EXPECT_EQ(results.getAcceptedOption(), -1);
+    EXPECT_EQ(results.getMostVotedOption(), 0);
+
+    // withdraw votes of USER1 and USER3
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER1, proposalIdx, proposal, std::vector<std::pair<sint64, uint32>>()));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER3, proposalIdx, proposal, NO_VOTE_VALUE));
+
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER3);
+    checkVoteCounts(votes, {});
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER2);
+    checkVoteCounts(votes, { {0, 20}, {1, 30} });
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER1);
+    checkVoteCounts(votes, {});
+
+    results = test.getShareholderVotingResults<TESTEXA>(proposalIdx);
+    EXPECT_EQ(results.totalVotesAuthorized, 676);
+    EXPECT_EQ(results.optionVoteCount.get(0), 20);
+    EXPECT_EQ(results.optionVoteCount.get(1), 30);
+    EXPECT_EQ(results.totalVotesCasted, 20 + 30);
+    EXPECT_EQ(results.getAcceptedOption(), -1);
+    EXPECT_EQ(results.getMostVotedOption(), 1);
+
+    // fail: try to set all votes of USER2 to invalid value with single-vote struct
+    // (uses Multi-Vote internally for testing compatibility, so votes of the user are reset)
+    EXPECT_FALSE(test.setShareholderVotes<TESTEXA>(USER2, proposalIdx, proposal, 4));
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER2);
+    checkVoteCounts(votes, {});
+
+    // fail: try to set votes of invalid proposal index
+    EXPECT_FALSE(test.setShareholderVotes<TESTEXA>(USER2, 0xffff, proposal, { { 0, 111 } }));
+
+    // fail: try to set votes of inactive proposal
+    ++system.epoch;
+    EXPECT_FALSE(test.setShareholderVotes<TESTEXA>(USER2, proposalIdx, proposal, { { 0, 111 } }));
+    --system.epoch;
+
+    // fail: try to set votes of with wrong proposal type
+    proposal.type = ProposalTypes::VariableThreeValues;
+    EXPECT_FALSE(test.setShareholderVotes<TESTEXA>(USER2, proposalIdx, proposal, { { 0, 111 } }));
+    proposal.type = ProposalTypes::VariableYesNo;
+
+    // fail: try to set votes of with wrong proposal tick
+    ++proposal.tick;
+    EXPECT_FALSE(test.setShareholderVotes<TESTEXA>(USER2, proposalIdx, proposal, { { 0, 111 } }));
+    --proposal.tick;
+
+    // fail: try to set votes for USER4 who is no shareholder
+    EXPECT_FALSE(test.setShareholderVotes<TESTEXA>(USER4, proposalIdx, proposal, { { 0, 111 } }));
+
+    // success: set votes with duplicate values in array
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER2, proposalIdx, proposal, { { 0, 111 }, {1, 10}, {0, 22}, {1, 3} }));
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER2);
+    checkVoteCounts(votes, { {0, 133}, {1, 13} });
+
+    // fail: try to set votes of USER2 to invalid value with multi-vote struct
+    // (votes of the user are reset)
+    EXPECT_FALSE(test.setShareholderVotes<TESTEXA>(USER2, proposalIdx, proposal, { {0, 12}, {1, 23}, {2, 34} }));
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, USER2);
+    checkVoteCounts(votes, {});
+
+    // voting of TESTEXB as shareholder of TESTEXA (originator not checked by procedure)
+    // user procedure TESTEXB::setVotesInOtherContractAsShareholder
+    EXPECT_TRUE(test.setVotesInOtherContractAsShareholder<TESTEXB>(USER4, TESTEXA_CONTRACT_INDEX, proposalIdx, proposal, { {0, 10}, {1, 20}, {0, 70} }));
+    votes = test.getShareholderVotes<TESTEXA>(proposalIdx, TESTEXB_CONTRACT_ID);
+    checkVoteCounts(votes, { {0, 80}, {1, 20} });
+
+    results = test.getShareholderVotingResults<TESTEXA>(proposalIdx);
+    EXPECT_EQ(results.totalVotesAuthorized, 676);
+    EXPECT_EQ(results.optionVoteCount.get(0), 80);
+    EXPECT_EQ(results.optionVoteCount.get(1), 20);
+    EXPECT_EQ(results.totalVotesCasted, 100);
+    EXPECT_EQ(results.getAcceptedOption(), -1);
+    EXPECT_EQ(results.getMostVotedOption(), 0);
+
+    //////////////////////////////////////////////////////
+    // create new shareholder proposal in TESTEXA as shareholder TESTEXB
+    TESTEXA::SetShareholderProposal_input setShareholderProposalInput2;
+    setShareholderProposalInput2.proposalData.type = ProposalTypes::MultiVariablesYesNo;
+    setShareholderProposalInput2.proposalData.epoch = system.epoch;
+    setMemory(setShareholderProposalInput2.multiVarData, 0);
+
+    // fails to create proposal, because multiVarData is invalid (originator not checked by procedure)
+    uint16 proposalIdx2 = test.setProposalInOtherContractAsShareholder<TESTEXB>(USER4, TESTEXA_CONTRACT_INDEX, setShareholderProposalInput2);
+    EXPECT_EQ((int)proposalIdx2, (int)INVALID_PROPOSAL_INDEX);
+
+    // create proposal (originator not checked by procedure)
+    setShareholderProposalInput2.multiVarData.hasValueDummyStateVariable1 = true;
+    setShareholderProposalInput2.multiVarData.hasValueDummyStateVariable2 = true;
+    setShareholderProposalInput2.multiVarData.hasValueDummyStateVariable3 = true;
+    setShareholderProposalInput2.multiVarData.optionYesValues.dummyStateVariable1 = 1;
+    setShareholderProposalInput2.multiVarData.optionYesValues.dummyStateVariable2 = 2;
+    setShareholderProposalInput2.multiVarData.optionYesValues.dummyStateVariable3 = 3;
+    proposalIdx2 = test.setProposalInOtherContractAsShareholder<TESTEXB>(USER4, TESTEXA_CONTRACT_INDEX, setShareholderProposalInput2);
+
+    // get and check new proposal
+    auto fullProposalData2 = test.getShareholderProposal<TESTEXA>(proposalIdx2);
+    EXPECT_EQ(fullProposalData2.proposerPubicKey, TESTEXB_CONTRACT_ID);
+    EXPECT_EQ((int)fullProposalData2.proposal.type, (int)ProposalTypes::MultiVariablesYesNo);
+    auto proposal2 = fullProposalData2.proposal;
+    EXPECT_EQ(fullProposalData2.multiVarData, setShareholderProposalInput2.multiVarData);
+
+    // cast votes
+    EXPECT_TRUE(test.setVotesInOtherContractAsShareholder<TESTEXB>(USER4, TESTEXA_CONTRACT_INDEX, proposalIdx2, proposal2, { {1, 90} }));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER1, proposalIdx2, proposal2, { {0, 50}, {1, 260} }));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER2, proposalIdx2, proposal2, { {0, 10}, {1, 160} }));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER3, proposalIdx2, proposal2, { {0, 1}, {1, 15} }));
+    results = test.getShareholderVotingResults<TESTEXA>(proposalIdx2);
+    EXPECT_EQ(results.totalVotesAuthorized, 676);
+    EXPECT_EQ(results.optionVoteCount.get(0), 61);
+    EXPECT_EQ(results.optionVoteCount.get(1), 525);
+    EXPECT_EQ(results.getAcceptedOption(), 1);
+    EXPECT_EQ(results.totalVotesCasted, 61 + 525);
+
+    // test proposal listing function (2 active, 0 inactive)
+    proposalIndices = test.getShareholderProposalIndices<TESTEXA>(true);
+    EXPECT_TRUE(proposalIndices.size() == 2 && proposalIndices[0] == proposalIdx && proposalIndices[1] == proposalIdx2);
+    EXPECT_EQ(test.getShareholderProposalIndices<TESTEXA>(false).size(), 0);
+
+    // test that variables are set correctly after epoch switch
+    test.getStateTestExampleA()->checkVariablesSetByProposal(0, 0, 0);
+    test.endEpoch();
+    ++system.epoch;
+    test.getStateTestExampleA()->checkVariablesSetByProposal(1, 2, 3);
+
+    // test proposal listing function (2 inactive by USER2/TESTEXB, 0 active)
+    proposalIndices = test.getShareholderProposalIndices<TESTEXA>(false);
+    EXPECT_TRUE(proposalIndices.size() == 2 && proposalIndices[0] == proposalIdx && proposalIndices[1] == proposalIdx2);
+    EXPECT_EQ(test.getShareholderProposalIndices<TESTEXA>(true).size(), 0);
+
+    // Setup proposal to change variable 1
+    uint16 proposalIdxA1 = test.setupShareholderProposalTestExA(USER1, ProposalTypes::VariableYesNo, true, 13);
+    EXPECT_NE((int)proposalIdxA1, (int)INVALID_PROPOSAL_INDEX);
+    auto proposalDataA1 = test.getShareholderProposal<TESTEXA>(proposalIdxA1);
+    auto proposalA1 = proposalDataA1.proposal;
+    EXPECT_EQ((int)proposalA1.type, (int)ProposalTypes::VariableYesNo);
+
+    // Setup proposal to change variable 2 and 3
+    uint16 proposalIdxA2 = test.setupShareholderProposalTestExA(USER2, ProposalTypes::MultiVariablesYesNo, false, 0, true, 4, true, 5);
+    EXPECT_NE((int)proposalIdxA2, (int)INVALID_PROPOSAL_INDEX);
+    auto proposalDataA2 = test.getShareholderProposal<TESTEXA>(proposalIdxA2);
+    auto proposalA2 = proposalDataA2.proposal;
+    EXPECT_EQ((int)proposalA2.type, (int)ProposalTypes::MultiVariablesYesNo);
+    EXPECT_EQ(proposalDataA2.proposerPubicKey, USER2);
+    EXPECT_EQ(proposalDataA2.multiVarData.optionYesValues.dummyStateVariable2, 4);
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER2, proposalIdxA2, proposalA2, { {0, 3} }));
+    checkVoteCounts(test.getShareholderVotes<TESTEXA>(proposalIdxA2, USER2), { {0, 3} });
+
+    // Overwrite proposal to change variable 2 and 3
+    proposalIdxA2 = test.setupShareholderProposalTestExA(USER2, ProposalTypes::MultiVariablesYesNo, false, 0, true, 1337, true, 42);
+    EXPECT_NE((int)proposalIdxA2, (int)INVALID_PROPOSAL_INDEX);
+    checkVoteCounts(test.getShareholderVotes<TESTEXA>(proposalIdxA2, USER2), {});
+
+    ///////////////////////////////////////////////////////////////
+    // Proposals in TestExB
+
+    // issue contract shares
+    std::vector<std::pair<m256i, unsigned int>> sharesTestExB{
+        {TESTEXA_CONTRACT_ID, 256},
+        {USER2, 200},
+        {USER3, 100},
+        {USER4, 120}
+    };
+    issueContractShares(TESTEXB_CONTRACT_INDEX, sharesTestExB);
+    const Asset TESTEXB_ASSET{ NULL_ID, assetNameFromString("TESTEXB") };
+    EXPECT_EQ(numberOfShares(TESTEXB_ASSET, { TESTEXA_CONTRACT_ID, QX_CONTRACT_INDEX }, { TESTEXA_CONTRACT_ID, QX_CONTRACT_INDEX }), 256);
+    EXPECT_EQ(numberOfShares(TESTEXB_ASSET, { USER2, QX_CONTRACT_INDEX }, { USER2, QX_CONTRACT_INDEX }), 200);
+    EXPECT_EQ(numberOfShares(TESTEXB_ASSET, { USER3, QX_CONTRACT_INDEX }, { USER3, QX_CONTRACT_INDEX }), 100);
+    EXPECT_EQ(numberOfShares(TESTEXB_ASSET, { USER4, QX_CONTRACT_INDEX }, { USER4, QX_CONTRACT_INDEX }), 120);
+    EXPECT_EQ(numberOfShares(TESTEXB_ASSET, { USER1, QX_CONTRACT_INDEX }, { USER1, QX_CONTRACT_INDEX }), 0);
+
+    // Create scalar variable proposal
+    TESTEXB::ProposalDataT proposalB1;
+    proposalB1.epoch = system.epoch;
+    proposalB1.type = ProposalTypes::VariableScalarMean;
+    proposalB1.variableScalar.variable = 0;
+    proposalB1.variableScalar.minValue = 0;
+    proposalB1.variableScalar.maxValue = MAX_AMOUNT;
+    proposalB1.variableScalar.proposedValue = 1000;
+    uint16 proposalIdxB1 = test.setShareholderProposal<TESTEXB>(USER2, { proposalB1 });
+    EXPECT_NE((int)proposalIdxB1, (int)INVALID_PROPOSAL_INDEX);
+    auto proposalDataB1 = test.getShareholderProposal<TESTEXB>(proposalIdxB1);
+    proposalB1 = proposalDataB1.proposal; // needed to set tick
+    EXPECT_EQ((int)proposalDataB1.proposal.type, (int)ProposalTypes::VariableScalarMean);
+    EXPECT_EQ(proposalDataB1.proposerPubicKey, USER2);
+    EXPECT_EQ(proposalDataB1.proposal.variableScalar.maxValue, MAX_AMOUNT);
+    EXPECT_EQ(proposalDataB1.proposal.variableScalar.proposedValue, 1000);
+
+    // Create multi-option variable proposal as shareholder TESTEXA
+    TESTEXB::ProposalDataT proposalB2;
+    proposalB2.epoch = system.epoch;
+    proposalB2.type = ProposalTypes::VariableFourValues;
+    proposalB2.variableOptions.variable = 1;
+    proposalB2.variableOptions.values.set(0, 100);
+    proposalB2.variableOptions.values.set(1, 1000);
+    proposalB2.variableOptions.values.set(2, 10000);
+    proposalB2.variableOptions.values.set(3, 100000);
+    uint16 proposalIdxB2 = test.setProposalInOtherContractAsShareholder<TESTEXA>(USER1, TESTEXB_CONTRACT_INDEX, TESTEXB::SetShareholderProposal_input{ proposalB2 });
+    EXPECT_NE((int)proposalIdxB2, (int)INVALID_PROPOSAL_INDEX);
+    auto proposalDataB2 = test.getShareholderProposal<TESTEXB>(proposalIdxB2);
+    proposalB2 = proposalDataB2.proposal; // needed to set tick
+    EXPECT_EQ((int)proposalDataB2.proposal.type, (int)ProposalTypes::VariableFourValues);
+    EXPECT_EQ(proposalDataB2.proposerPubicKey, TESTEXA_CONTRACT_ID);
+    EXPECT_EQ(proposalDataB2.proposal.variableOptions.variable, 1);
+    EXPECT_EQ(proposalDataB2.proposal.variableOptions.values.get(0), 100);
+    EXPECT_EQ(proposalDataB2.proposal.variableOptions.values.get(1), 1000);
+    EXPECT_EQ(proposalDataB2.proposal.variableOptions.values.get(2), 10000);
+    EXPECT_EQ(proposalDataB2.proposal.variableOptions.values.get(3), 100000);
+
+    // cast votes in A1
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER1, proposalIdxA1, proposalA1, { {0, 60}, {1, 270} }));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER2, proposalIdxA1, proposalA1, { {0, 15}, {1, 180} }));
+    EXPECT_TRUE(test.setVotesInOtherContractAsShareholder<TESTEXB>(USER4, TESTEXA_CONTRACT_INDEX, proposalIdxA1, proposalA1, { {1, 80}, {0, 15} }));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER3, proposalIdxA1, proposalA1, { {0, 9}, {1, 11} }));
+    results = test.getShareholderVotingResults<TESTEXA>(proposalIdxA1);
+    EXPECT_EQ(results.totalVotesAuthorized, 676);
+    EXPECT_EQ(results.optionVoteCount.get(0), 99);
+    EXPECT_EQ(results.optionVoteCount.get(1), 541);
+    EXPECT_EQ(results.getAcceptedOption(), 1);
+    EXPECT_EQ(results.totalVotesCasted, 99 + 541);
+
+    // cast votes in A2
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER1, proposalIdxA2, proposalA2, { {0, 150}, {1, 150} }));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER2, proposalIdxA2, proposalA2, { {0, 100}, {1, 100} }));
+    EXPECT_TRUE(test.setVotesInOtherContractAsShareholder<TESTEXB>(USER4, TESTEXA_CONTRACT_INDEX, proposalIdxA2, proposalA2, { {1, 50}, {0, 50} }));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER3, proposalIdxA2, proposalA2, { {0, 10}, {1, 10} }));
+    results = test.getShareholderVotingResults<TESTEXA>(proposalIdxA2);
+    EXPECT_EQ(results.totalVotesAuthorized, 676);
+    EXPECT_EQ(results.optionVoteCount.get(0), 310);
+    EXPECT_EQ(results.optionVoteCount.get(1), 310);
+    EXPECT_EQ(results.getAcceptedOption(), 0);
+    EXPECT_EQ(results.totalVotesCasted, 620);
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER1, proposalIdxA2, proposalA2, { {0, 0}, {1, 350} }));
+    results = test.getShareholderVotingResults<TESTEXA>(proposalIdxA2);
+    EXPECT_EQ(results.totalVotesAuthorized, 676);
+    EXPECT_EQ(results.optionVoteCount.get(0), 160);
+    EXPECT_EQ(results.optionVoteCount.get(1), 510);
+    EXPECT_EQ(results.getAcceptedOption(), 1);
+    EXPECT_EQ(results.totalVotesCasted, 670);
+
+    // cast votes in B1
+    EXPECT_TRUE(test.setVotesInOtherContractAsShareholder<TESTEXA>(USER1, TESTEXB_CONTRACT_INDEX, proposalIdxB1, proposalB1, { {0, 10}, {100, 20}, {1000, 200}, {10000, 10}, {100000, 5}, {1000000, 5}, {10000000, 2}, {100000000, 2} }));
+    checkVoteCounts(test.getShareholderVotes<TESTEXB>(proposalIdxB1, TESTEXA_CONTRACT_ID), { {0, 10}, {100, 20}, {1000, 200}, {10000, 10}, {100000, 5}, {1000000, 5}, {10000000, 2}, {100000000, 2} });
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXB>(USER2, proposalIdxB1, proposalB1, { {100, 200} }));
+    checkVoteCounts(test.getShareholderVotes<TESTEXB>(proposalIdxB1, USER2), { {100, 200} });
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXB>(USER3, proposalIdxB1, proposalB1, { {150, 90}, {200, 10} }));
+    checkVoteCounts(test.getShareholderVotes<TESTEXB>(proposalIdxB1, USER3), { {150, 90}, {200, 10} });
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXB>(USER4, proposalIdxB1, proposalB1, { {300, 99}, {11974, 1} }));
+    checkVoteCounts(test.getShareholderVotes<TESTEXB>(proposalIdxB1, USER4), { {300, 99}, {11974, 1} });
+    results = test.getShareholderVotingResults<TESTEXB>(proposalIdxB1);
+    EXPECT_EQ(results.totalVotesAuthorized, 676);
+    EXPECT_EQ((int)results.optionCount, 0);
+    EXPECT_EQ(results.scalarVotingResult, 345381);
+    EXPECT_EQ(results.totalVotesCasted, 654);
+
+    // cast votes in B2
+    EXPECT_TRUE(test.setVotesInOtherContractAsShareholder<TESTEXA>(USER1, TESTEXB_CONTRACT_INDEX, proposalIdxB2, proposalB2, { {0, 10}, {1, 20}, {2, 30}, {3, 40} }));
+    checkVoteCounts(test.getShareholderVotes<TESTEXB>(proposalIdxB2, TESTEXA_CONTRACT_ID), { {0, 10}, {1, 20}, {2, 30}, {3, 40} });
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXB>(USER2, proposalIdxB2, proposalB2, { {0, 20}, {1, 30}, {2, 40}, {3, 50}, {4, 3} }));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXB>(USER3, proposalIdxB2, proposalB2, { {0, 5}, {1, 10}, {2, 15}, {3, 20}, {4, 2} }));
+    EXPECT_TRUE(test.setShareholderVotes<TESTEXB>(USER4, proposalIdxB2, proposalB2, { {0, 25}, {1, 20}, {2, 15}, {3, 10} }));
+    results = test.getShareholderVotingResults<TESTEXB>(proposalIdxB2);
+    EXPECT_EQ(results.totalVotesAuthorized, 676);
+    EXPECT_EQ(results.optionVoteCount.get(0), 60);
+    EXPECT_EQ(results.optionVoteCount.get(1), 80);
+    EXPECT_EQ(results.optionVoteCount.get(2), 100);
+    EXPECT_EQ(results.optionVoteCount.get(3), 120);
+    EXPECT_EQ(results.optionVoteCount.get(4), 5);
+    EXPECT_EQ(results.getAcceptedOption(), -1);
+    EXPECT_EQ(results.totalVotesCasted, 365);
+    EXPECT_TRUE(test.setVotesInOtherContractAsShareholder<TESTEXA>(USER1, TESTEXB_CONTRACT_INDEX, proposalIdxB2, proposalB2, { {0, 45}, {1, 50}, {2, 55}, {3, 50}, {4, 5} }));
+    results = test.getShareholderVotingResults<TESTEXB>(proposalIdxB2);
+    EXPECT_EQ(results.optionVoteCount.get(0), 95);
+    EXPECT_EQ(results.optionVoteCount.get(1), 110);
+    EXPECT_EQ(results.optionVoteCount.get(2), 125);
+    EXPECT_EQ(results.optionVoteCount.get(3), 130);
+    EXPECT_EQ(results.optionVoteCount.get(4), 10);
+    EXPECT_EQ(results.getAcceptedOption(), -1);
+    EXPECT_EQ(results.totalVotesCasted, 470);
+    EXPECT_TRUE(test.setVotesInOtherContractAsShareholder<TESTEXA>(USER1, TESTEXB_CONTRACT_INDEX, proposalIdxB2, proposalB2, { {0, 5}, {1, 5}, {2, 5}, {3, 240} }));
+    results = test.getShareholderVotingResults<TESTEXB>(proposalIdxB2);
+    EXPECT_EQ(results.optionVoteCount.get(0), 55);
+    EXPECT_EQ(results.optionVoteCount.get(1), 65);
+    EXPECT_EQ(results.optionVoteCount.get(2), 75);
+    EXPECT_EQ(results.optionVoteCount.get(3), 320);
+    EXPECT_EQ(results.optionVoteCount.get(4), 5);
+    EXPECT_EQ(results.getAcceptedOption(), 3);
+    EXPECT_EQ(results.totalVotesCasted, 520);
+
+    // test proposal listing function in TESTEXA: 1 inactive by TESTEXB, 2 active by USER2/USER1
+    proposalIndices = test.getShareholderProposalIndices<TESTEXA>(false);
+    EXPECT_TRUE(proposalIndices.size() == 1 && proposalIndices[0] == proposalIdx2);
+    proposalIndices = test.getShareholderProposalIndices<TESTEXA>(true);
+    EXPECT_TRUE(proposalIndices.size() == 2 && proposalIndices[0] == proposalIdxA2 && proposalIndices[1] == proposalIdxA1);
+
+    // test proposal listing function in TESTEXB: 0 inactive, 2 active by USER1/TESTEXA
+    proposalIndices = test.getShareholderProposalIndices<TESTEXB>(false);
+    EXPECT_TRUE(proposalIndices.size() == 0);
+    proposalIndices = test.getShareholderProposalIndices<TESTEXB>(true);
+    EXPECT_TRUE(proposalIndices.size() == 2 && proposalIndices[0] == proposalIdxB1 && proposalIndices[1] == proposalIdxB2);
+
+    // test that variables are set correctly after epoch switch
+    test.getStateTestExampleA()->checkVariablesSetByProposal(1, 2, 3);
+    test.getStateTestExampleB()->checkVariablesSetByProposal(0, 0, 0);
+    test.endEpoch();
+    ++system.epoch;
+    test.getStateTestExampleA()->checkVariablesSetByProposal(13, 1337, 42);
+    test.getStateTestExampleB()->checkVariablesSetByProposal(345381, 10000, 0);
+
+    // test proposal listing function in TESTEXA: 3 inactive by TESTEXB/USER2/USER1, 0 active
+    EXPECT_TRUE(test.getShareholderProposalIndices<TESTEXA>(false).size() == 3);
+    EXPECT_TRUE(test.getShareholderProposalIndices<TESTEXA>(true).size() == 0);
+
+    // test proposal listing function in TESTEXB: 2 inactive by USER1/TESTEXA, 0 active
+    EXPECT_TRUE(test.getShareholderProposalIndices<TESTEXB>(false).size() == 2);
+    EXPECT_TRUE(test.getShareholderProposalIndices<TESTEXB>(true).size() == 0);
 }
