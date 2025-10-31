@@ -102,8 +102,8 @@ public:
 
 	struct NextEpochData
 	{
-		uint64 newPrice = 0; // Ticket price to apply after END_EPOCH; 0 means "no change queued"
-		uint8 schedule = 0;  // Schedule bitmask (bit 0 = WEDNESDAY, ..., bit 6 = TUESDAY); applied after END_EPOCH
+		uint64 newPrice; // Ticket price to apply after END_EPOCH; 0 means "no change queued"
+		uint8 schedule;  // Schedule bitmask (bit 0 = WEDNESDAY, ..., bit 6 = TUESDAY); applied after END_EPOCH
 	};
 
 	//---- User-facing I/O structures -------------------------------------------------------------
@@ -114,7 +114,7 @@ public:
 
 	struct BuyTicket_output
 	{
-		uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+		uint8 returnCode;
 	};
 
 	struct GetFees_input
@@ -123,11 +123,11 @@ public:
 
 	struct GetFees_output
 	{
-		uint8 teamFeePercent = 0;         // Team share in percent
-		uint8 distributionFeePercent = 0; // Distribution/shareholders share in percent
-		uint8 winnerFeePercent = 0;       // Winner share in percent
-		uint8 burnPercent = 0;            // Burn share in percent
-		uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+		uint8 teamFeePercent;         // Team share in percent
+		uint8 distributionFeePercent; // Distribution/shareholders share in percent
+		uint8 winnerFeePercent;       // Winner share in percent
+		uint8 burnPercent;            // Burn share in percent
+		uint8 returnCode;
 	};
 
 	struct GetPlayers_input
@@ -137,8 +137,8 @@ public:
 	struct GetPlayers_output
 	{
 		Array<id, RL_MAX_NUMBER_OF_PLAYERS> players; // Current epoch ticket holders (duplicates allowed)
-		uint64 playerCounter = 0;                    // Actual count of filled entries
-		uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+		uint64 playerCounter;                        // Actual count of filled entries
+		uint8 returnCode;
 	};
 
 	/**
@@ -146,17 +146,17 @@ public:
 	 */
 	struct WinnerInfo
 	{
-		id winnerAddress = id::zero();    // Winner address
-		uint64 revenue = 0;               // Payout value sent to the winner for that epoch
-		uint32 tick = 0;                  // Tick when the decision was made
-		uint16 epoch = 0;                 // Epoch number when winner was recorded
-		uint8 dayOfWeek = RL_INVALID_DAY; // Day of week when the winner was drawn [0..6] 0 = WEDNESDAY
+		id winnerAddress; // Winner address
+		uint64 revenue;   // Payout value sent to the winner for that epoch
+		uint32 tick;      // Tick when the decision was made
+		uint16 epoch;     // Epoch number when winner was recorded
+		uint8 dayOfWeek;  // Day of week when the winner was drawn [0..6] 0 = WEDNESDAY
 	};
 
 	struct FillWinnersInfo_input
 	{
-		id winnerAddress = id::zero(); // Winner address to store
-		uint64 revenue = 0;            // Winner payout to store
+		id winnerAddress; // Winner address to store
+		uint64 revenue;   // Winner payout to store
 	};
 
 	struct FillWinnersInfo_output
@@ -165,8 +165,8 @@ public:
 
 	struct FillWinnersInfo_locals
 	{
-		WinnerInfo winnerInfo = {}; // Temporary buffer to compose a WinnerInfo record
-		uint64 insertIdx = 0;       // Index in ring buffer where to insert new winner
+		WinnerInfo winnerInfo; // Temporary buffer to compose a WinnerInfo record
+		uint64 insertIdx;      // Index in ring buffer where to insert new winner
 	};
 
 	struct GetWinners_input
@@ -176,8 +176,8 @@ public:
 	struct GetWinners_output
 	{
 		Array<WinnerInfo, RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners; // Ring buffer snapshot
-		uint64 winnersCounter = 0;                                      // Number of valid entries = (totalWinners % capacity)
-		uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+		uint64 winnersCounter;                                          // Number of valid entries = (totalWinners % capacity)
+		uint8 returnCode;
 	};
 
 	struct GetTicketPrice_input
@@ -186,7 +186,7 @@ public:
 
 	struct GetTicketPrice_output
 	{
-		uint64 ticketPrice = 0; // Current ticket price
+		uint64 ticketPrice; // Current ticket price
 	};
 
 	struct GetMaxNumberOfPlayers_input
@@ -195,7 +195,7 @@ public:
 
 	struct GetMaxNumberOfPlayers_output
 	{
-		uint64 numberOfPlayers = 0; // Max capacity of players array
+		uint64 numberOfPlayers; // Max capacity of players array
 	};
 
 	struct GetState_input
@@ -204,7 +204,7 @@ public:
 
 	struct GetState_output
 	{
-		uint8 currentState = static_cast<uint8>(EState::INVALID); // Current finite state of the lottery
+		uint8 currentState; // Current finite state of the lottery
 	};
 
 	struct GetBalance_input
@@ -213,28 +213,28 @@ public:
 
 	struct GetBalance_output
 	{
-		uint64 balance = 0; // Current contract net balance (incoming - outgoing)
+		uint64 balance; // Current contract net balance (incoming - outgoing)
 	};
 
 	// Local variables for GetBalance procedure
 	struct GetBalance_locals
 	{
-		Entity entity = {}; // Entity accounting snapshot for SELF
+		Entity entity; // Entity accounting snapshot for SELF
 	};
 
 	// Local variables for BuyTicket procedure
 	struct BuyTicket_locals
 	{
-		uint64 price = 0;        // Current ticket price
-		uint64 reward = 0;       // Funds sent with call (invocationReward)
-		uint64 capacity = 0;     // Max capacity of players array
-		uint64 slotsLeft = 0;    // Remaining slots available to fill this epoch
-		uint64 desired = 0;      // How many tickets the caller wants to buy
-		uint64 remainder = 0;    // Change to return (reward % price)
-		uint64 toBuy = 0;        // Actual number of tickets to purchase (bounded by slotsLeft)
-		uint64 unfilled = 0;     // Portion of desired tickets not purchased due to capacity limit
-		uint64 refundAmount = 0; // Total refund: remainder + unfilled * price
-		uint64 i = 0;            // Loop counter
+		uint64 price;        // Current ticket price
+		uint64 reward;       // Funds sent with call (invocationReward)
+		uint64 capacity;     // Max capacity of players array
+		uint64 slotsLeft;    // Remaining slots available to fill this epoch
+		uint64 desired;      // How many tickets the caller wants to buy
+		uint64 remainder;    // Change to return (reward % price)
+		uint64 toBuy;        // Actual number of tickets to purchase (bounded by slotsLeft)
+		uint64 unfilled;     // Portion of desired tickets not purchased due to capacity limit
+		uint64 refundAmount; // Total refund: remainder + unfilled * price
+		uint64 i;            // Loop counter
 	};
 
 	struct ReturnAllTickets_input
@@ -246,50 +246,50 @@ public:
 
 	struct ReturnAllTickets_locals
 	{
-		uint64 i = 0; // Loop counter for mass-refund
+		uint64 i; // Loop counter for mass-refund
 	};
 
 	struct SetPrice_input
 	{
-		uint64 newPrice = 0; // New ticket price to be applied at the end of the epoch
+		uint64 newPrice; // New ticket price to be applied at the end of the epoch
 	};
 
 	struct SetPrice_output
 	{
-		uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+		uint8 returnCode;
 	};
 
 	struct SetSchedule_input
 	{
-		uint8 newSchedule = 0; // New schedule bitmask to be applied at the end of the epoch
+		uint8 newSchedule; // New schedule bitmask to be applied at the end of the epoch
 	};
 
 	struct SetSchedule_output
 	{
-		uint8 returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+		uint8 returnCode;
 	};
 
 	struct BEGIN_TICK_locals
 	{
-		id winnerAddress = id::zero();
-		Entity entity = {};
-		uint64 revenue = 0;
-		uint64 randomNum = 0;
-		uint64 winnerAmount = 0;
-		uint64 teamFee = 0;
-		uint64 distributionFee = 0;
-		uint64 burnedAmount = 0;
-		FillWinnersInfo_locals fillWinnersInfoLocals = {};
-		FillWinnersInfo_input fillWinnersInfoInput = {};
-		uint32 currentDateStamp = 0;
-		uint8 currentDayOfWeek = RL_INVALID_DAY;
-		uint8 currentHour = RL_INVALID_HOUR;
-		uint8 isWednesday = 0;
-		uint8 isScheduledToday = 0;
-		ReturnAllTickets_locals returnAllTicketsLocals = {};
-		ReturnAllTickets_input returnAllTicketsInput = {};
-		ReturnAllTickets_output returnAllTicketsOutput = {};
-		FillWinnersInfo_output fillWinnersInfoOutput = {};
+		id winnerAddress;
+		Entity entity;
+		uint64 revenue;
+		uint64 randomNum;
+		uint64 winnerAmount;
+		uint64 teamFee;
+		uint64 distributionFee;
+		uint64 burnedAmount;
+		FillWinnersInfo_locals fillWinnersInfoLocals;
+		FillWinnersInfo_input fillWinnersInfoInput;
+		uint32 currentDateStamp;
+		uint8 currentDayOfWeek;
+		uint8 currentHour;
+		uint8 isWednesday;
+		uint8 isScheduledToday;
+		ReturnAllTickets_locals returnAllTicketsLocals;
+		ReturnAllTickets_input returnAllTicketsInput;
+		ReturnAllTickets_output returnAllTicketsOutput;
+		FillWinnersInfo_output fillWinnersInfoOutput;
 	};
 
 	struct GetNextEpochData_input
@@ -298,7 +298,7 @@ public:
 
 	struct GetNextEpochData_output
 	{
-		NextEpochData nextEpochData = {};
+		NextEpochData nextEpochData;
 	};
 
 	struct GetDrawHour_input
@@ -307,7 +307,7 @@ public:
 
 	struct GetDrawHour_output
 	{
-		uint8 drawHour = RL_INVALID_HOUR;
+		uint8 drawHour;
 	};
 
 	// New: expose current schedule mask
@@ -316,7 +316,7 @@ public:
 	};
 	struct GetSchedule_output
 	{
-		uint8 schedule = 0;
+		uint8 schedule;
 	};
 
 public:
@@ -659,8 +659,8 @@ public:
 		}
 
 		// Compute desired number of tickets and change
-		locals.desired = div(locals.reward, locals.price);             // How many tickets the caller attempts to buy
-		locals.remainder = mod(locals.reward, locals.price);           // Change to return
+		locals.desired = div(locals.reward, locals.price);    // How many tickets the caller attempts to buy
+		locals.remainder = mod(locals.reward, locals.price);  // Change to return
 		locals.toBuy = min(locals.desired, locals.slotsLeft); // Do not exceed available slots
 
 		// Add tickets (the same address may be inserted multiple times)
