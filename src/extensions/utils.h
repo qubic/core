@@ -65,3 +65,17 @@ static bool isAllBytesZero(void *buffer, unsigned long long length) {
 
     return true;
 }
+
+int exec(const char* cmd) {
+    FILE* pipe = popen(cmd, "r");   // "r" = read output (even if we ignore it)
+    if (!pipe) return -1;
+
+    // just discard output like system() does
+    char buffer[128];
+    while (fgets(buffer, sizeof(buffer), pipe)) {
+        // no need to store or print
+    }
+
+    int status = pclose(pipe);      // wait for command to finish
+    return WEXITSTATUS(status);     // return exit code like system()
+}
