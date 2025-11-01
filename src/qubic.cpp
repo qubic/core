@@ -3706,16 +3706,185 @@ static void initializeFirstTick()
 
 #if TICK_STORAGE_AUTOSAVE_MODE
 
+static void dumpCurrentTickTx()
+{
+    // Debug info
+    unsigned int debugTickNumber = system.tick;
+    unsigned short tickEpoch = 0;
+    const unsigned long long* tsReqTickTransactionOffsets;
+    if (ts.tickInCurrentEpochStorage(debugTickNumber))
+    {
+        tickEpoch = system.epoch;
+        tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(debugTickNumber);
+    }
+    else if (ts.tickInPreviousEpochStorage(debugTickNumber))
+    {
+        addDebugMessage(L"[DBG] ts.tickInPreviousEpochStorage");
+    }
+
+    if (tickEpoch != 0)
+    {
+        unsigned int tickTransactionIndices[NUMBER_OF_TRANSACTIONS_PER_TICK];
+        unsigned int numberOfTickTransactions;
+        for (numberOfTickTransactions = 0; numberOfTickTransactions < NUMBER_OF_TRANSACTIONS_PER_TICK; numberOfTickTransactions++)
+        {
+            tickTransactionIndices[numberOfTickTransactions] = numberOfTickTransactions;
+        }
+        while (numberOfTickTransactions)
+        {
+            const unsigned int index = random(numberOfTickTransactions);
+            {
+                unsigned long long tickTransactionOffset = tsReqTickTransactionOffsets[tickTransactionIndices[index]];
+                if (tickTransactionOffset)
+                {
+                    const Transaction* transaction = ts.tickTransactions(tickTransactionOffset);
+                    if (transaction->tick == debugTickNumber && transaction->checkValidity())
+                    {
+                        //enqueueResponse(peer, transaction->totalSize(), BROADCAST_TRANSACTION, header->dejavu(), (void*)transaction);
+
+                        printDebugTx(transaction, debugTickNumber);
+                    }
+                    else
+                    {
+                        // tick storage messed up -> indicates bug such as buffer overflow
+#if !defined(NDEBUG)
+                        CHAR16 dbgMsg[200];
+                        setText(dbgMsg, L"Invalid transaction found in processRequestTickTransactions(), tick ");
+                        appendNumber(dbgMsg, debugTickNumber, FALSE);
+                        addDebugMessage(dbgMsg);
+                        ts.checkStateConsistencyWithAssert();
+#endif
+                    }
+                }
+            }
+
+            tickTransactionIndices[index] = tickTransactionIndices[--numberOfTickTransactions];
+        }
+        addDebugMessage(L"[DBG] Dumping tick transaction DONE.");
+    }
+}
+
 // Invalid snapshot data
 static bool invalidateNodeStates(CHAR16* directory)
 {
     return ts.saveInvalidateData(system.epoch, directory);
 }
 
+// Dump all data for debugging
+static void dumpAllStateData()
+{
+    CHAR16 digestChars[60 + 1];
+    CHAR16 dbgMsg[256];
+    unsigned char digest[32];
+
+    dumpCurrentTickTx();
+
+    ts.dumpAllState((unsigned long long)system.tick);
+
+    //long long savedSize = save(fileName, SPECTRUM_CAPACITY * sizeof(EntityRecord), (unsigned char*)spectrum, directory);
+    computeDigest((unsigned char*)spectrum, SPECTRUM_CAPACITY * sizeof(EntityRecord), digest);
+    getIdentity(digest, digestChars, true);
+    setText(dbgMsg, L"[DBG][AllState] Spectrum digest: ");
+    appendText(dbgMsg, digestChars);
+    addDebugMessage(dbgMsg);
+
+    // long long savedSize = save(fileName, ASSETS_CAPACITY * sizeof(AssetRecord), (unsigned char*)assets, directory);
+    computeDigest((unsigned char*)assets, ASSETS_CAPACITY * sizeof(AssetRecord), digest);
+    getIdentity(digest, digestChars, true);
+    setText(dbgMsg, L"[DBG][AllState] Universe digest: ");
+    appendText(dbgMsg, digestChars);
+    addDebugMessage(dbgMsg);
+
+    unsigned long long totalSize = 0;
+
+    addDebugMessage(L"[DBG][AllState] Computor: ");
+    unsigned long long contractStateSize = 0;
+    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
+    {
+        contractStateLock[contractIndex].acquireRead();
+        computeDigest(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, digest);
+        contractStateLock[contractIndex].releaseRead();
+        
+        setText(dbgMsg, L"[DBG][AllState] Contract ");
+        appendNumber(dbgMsg, contractIndex, false);
+        appendText(dbgMsg, L" : ");
+        getIdentity(digest, digestChars, true);
+        appendText(dbgMsg, digestChars);
+        addDebugMessage(dbgMsg);
+    }
+
+    // long long savedSize = save(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system, directory);
+    computeDigest((unsigned char*)&system, sizeof(system), digest);
+    getIdentity(digest, digestChars, true);
+    setText(dbgMsg, L"[DBG][AllState] System digest: ");
+    appendText(dbgMsg, digestChars);
+    addDebugMessage(dbgMsg);
+
+    // savedSize = save(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer, directory);
+    computeDigest((unsigned char*)&nodeStateBuffer, sizeof(nodeStateBuffer), digest);
+    getIdentity(digest, digestChars, true);
+    setText(dbgMsg, L"[DBG][AllState] NodeStateBuffer digest: ");
+    appendText(dbgMsg, digestChars);
+    addDebugMessage(dbgMsg);
+
+    //
+    //savedSize = save(SPECTRUM_DIGEST_FILE_NAME, spectrumDigestsSizeInByte, (unsigned char*)spectrumDigests, directory);
+    computeDigest((unsigned char*)spectrumDigests, spectrumDigestsSizeInByte, digest);
+    getIdentity(digest, digestChars, true);
+    setText(dbgMsg, L"[DBG][AllState] SpectrumDigests digest: ");
+    appendText(dbgMsg, digestChars);
+    addDebugMessage(dbgMsg);
+
+    // savedSize = save(UNIVERSE_DIGEST_FILE_NAME, assetDigestsSizeInBytes, (unsigned char*)assetDigests, directory);
+    computeDigest((unsigned char*)assetDigests, assetDigestsSizeInBytes, digest);
+    getIdentity(digest, digestChars, true);
+    setText(dbgMsg, L"[DBG][AllState] UniverseDigest digest: ");
+    appendText(dbgMsg, digestChars);
+    addDebugMessage(dbgMsg);
+
+    // savedSize = save(COMPUTER_DIGEST_FILE_NAME, contractStateDigestsSizeInBytes, (unsigned char*)contractStateDigests, directory);
+    computeDigest((unsigned char*)contractStateDigests, contractStateDigestsSizeInBytes, digest);
+    getIdentity(digest, digestChars, true);
+    setText(dbgMsg, L"[DBG][AllState] ComputerDigest digest: ");
+    appendText(dbgMsg, digestChars);
+    addDebugMessage(dbgMsg);
+
+    //savedSize = save(MINER_SOL_FLAG_FILE_NAME, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (unsigned char*)minerSolutionFlags, directory);
+    computeDigest((unsigned char*)minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, digest);
+    getIdentity(digest, digestChars, true);
+    setText(dbgMsg, L"[DBG][AllState] MinerSolutionFlags digest: ");
+    appendText(dbgMsg, digestChars);
+    addDebugMessage(dbgMsg);
+
+#if ADDON_TX_STATUS_REQUEST
+    //long long savedSize = save(TX_STATUS_SNAPSHOT_FILE_NAME, sizeof(txStatusData), (unsigned char*)&txStatusData, directory);
+    computeDigest((unsigned char*)&txStatusData, sizeof(txStatusData), digest);
+    getIdentity(digest, digestChars, true);
+    setText(dbgMsg, L"[DBG][AllState] TxStatusData digest: ");
+    appendText(dbgMsg, digestChars);
+    addDebugMessage(dbgMsg);
+
+    computeDigest((unsigned char*)confirmedTx, numberOfTransactions * sizeof(ConfirmedTx), digest);
+    getIdentity(digest, digestChars, true);
+    setText(dbgMsg, L"[DBG][AllState] ConfirmedTx digest: ");
+    appendText(dbgMsg, digestChars);
+    addDebugMessage(dbgMsg);
+#endif
+
+}
+
 // can only called from main thread
 static bool saveAllNodeStates()
 {
     PROFILE_SCOPE();
+    CHAR16 dbgMsg[256];
+
+    addDebugMessage(L"[DBG]saveAllNodeStates0");
+    dumpAllStateData();
+
+    setText(dbgMsg, L"numberTickTransactions: ");
+    appendNumber(dbgMsg, numberTickTransactions, true);
+    addDebugMessage(dbgMsg);
 
     CHAR16 directory[16];
     setText(directory, L"ep");
@@ -3870,11 +4039,17 @@ static bool saveAllNodeStates()
         return false;
     }
 
+    addDebugMessage(L"[DBG]saveAllNodeStatesEnd");
+    dumpAllStateData();
+
     return true;
 }
 
+
 static bool loadAllNodeStates()
 {
+    CHAR16 dbgMsg[256];
+
     CHAR16 directory[16];
     setText(directory, L"ep");
     appendNumber(directory, system.epoch, false);
@@ -3895,6 +4070,21 @@ static bool loadAllNodeStates()
         logToConsole(L"Failed to load tick storage");
         return false;
     }
+
+    static unsigned short SYSTEM_SNAPSHOT_FILE_NAME[] = L"system.snp";
+    long long loadedSize2 = load(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system, directory);
+    if (loadedSize2 != sizeof(system))
+    {
+        logToConsole(L"Failed to load system");
+        return false;
+    }
+    updateNumberOfTickTransactions();
+
+    addDebugMessage(L"[DBG]Tx right after ts and system");
+    setText(dbgMsg, L"numberTickTransactions: ");
+    appendNumber(dbgMsg, numberTickTransactions, true);
+    addDebugMessage(dbgMsg);
+
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = L'0';
@@ -3962,15 +4152,6 @@ static bool loadAllNodeStates()
         }
     }
 
-    static unsigned short SYSTEM_SNAPSHOT_FILE_NAME[] = L"system.snp";
-    loadedSize = load(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system, directory);
-    if (loadedSize != sizeof(system))
-    {
-        logToConsole(L"Failed to load system");
-        return false;
-    }
-    updateNumberOfTickTransactions();
-
     setMem(assetChangeFlags, sizeof(assetChangeFlags), 0);
     setMem(spectrumChangeFlags, sizeof(spectrumChangeFlags), 0);
     CHAR16 SPECTRUM_DIGEST_FILE_NAME[] = L"snapshotSpectrumDigest";
@@ -4022,61 +4203,8 @@ static bool loadAllNodeStates()
     logger.loadLastLoggingStates(directory);
 #endif
 
-    // Debug info
-    static constexpr unsigned int debugTickNumber = 35501337;
-    unsigned short tickEpoch = 0;
-    const unsigned long long* tsReqTickTransactionOffsets;
-    if (ts.tickInCurrentEpochStorage(debugTickNumber))
-    {
-        tickEpoch = system.epoch;
-        tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(debugTickNumber);
-    }
-    else if (ts.tickInPreviousEpochStorage(debugTickNumber))
-    {
-        addDebugMessage(L"[DBG] ts.tickInPreviousEpochStorage");
-    }
-
-    if (tickEpoch != 0)
-    {
-        unsigned int tickTransactionIndices[NUMBER_OF_TRANSACTIONS_PER_TICK];
-        unsigned int numberOfTickTransactions;
-        for (numberOfTickTransactions = 0; numberOfTickTransactions < NUMBER_OF_TRANSACTIONS_PER_TICK; numberOfTickTransactions++)
-        {
-            tickTransactionIndices[numberOfTickTransactions] = numberOfTickTransactions;
-        }
-        while (numberOfTickTransactions)
-        {
-            const unsigned int index = random(numberOfTickTransactions);
-            {
-                unsigned long long tickTransactionOffset = tsReqTickTransactionOffsets[tickTransactionIndices[index]];
-                if (tickTransactionOffset)
-                {
-                    const Transaction* transaction = ts.tickTransactions(tickTransactionOffset);
-                    if (transaction->tick == debugTickNumber && transaction->checkValidity())
-                    {
-                        //enqueueResponse(peer, transaction->totalSize(), BROADCAST_TRANSACTION, header->dejavu(), (void*)transaction);
-
-                        printDebugTx(transaction, debugTickNumber);
-                    }
-                    else
-                    {
-                        // tick storage messed up -> indicates bug such as buffer overflow
-#if !defined(NDEBUG)
-                        CHAR16 dbgMsg[200];
-                        setText(dbgMsg, L"Invalid transaction found in processRequestTickTransactions(), tick ");
-                        appendNumber(dbgMsg, debugTickNumber, FALSE);
-                        addDebugMessage(dbgMsg);
-                        ts.checkStateConsistencyWithAssert();
-#endif
-                    }
-                }
-            }
-
-            tickTransactionIndices[index] = tickTransactionIndices[--numberOfTickTransactions];
-        }
-        addDebugMessage(L"[DBG] Dumping tick transaction DONE.");
-    }
-
+    addDebugMessage(L"[DBG]loadAllNodeStatesEnd");
+    dumpAllStateData();
 
     return true;
 }
