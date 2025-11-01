@@ -18,6 +18,43 @@ static unsigned short SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[] = L"snapshotT
 static unsigned short SNAPSHOT_TRANSACTIONS_FILE_NAME[] = L"snapshotTickTransaction.???";
 #endif
 constexpr unsigned short INVALIDATED_TICK_DATA = 0xffff;
+
+// Digest of long long size
+static constexpr long long MAX_DIGEST_BUFFER = 8;
+static void computeDigest(unsigned char* data, long long totalSize, unsigned char* digest)
+{
+
+    const unsigned long long maxSizePerChunk = 0xFFFFFFFFLL;
+    if (totalSize < maxSizePerChunk)
+    {
+        KangarooTwelve(data, (unsigned int)totalSize, digest, 32);
+        return;
+    }
+
+    long long partitions = (totalSize + maxSizePerChunk - 1) / maxSizePerChunk;
+    if (partitions > MAX_DIGEST_BUFFER)
+    {
+        totalSize = MAX_DIGEST_BUFFER * maxSizePerChunk;
+        addDebugMessage(L"Partitions is greater than MAX_DIGEST_BUFFER");
+    }
+
+    unsigned char* buffer = data;
+    unsigned char digestBuffer[MAX_DIGEST_BUFFER * 32];
+    int chunkId = 0;
+    unsigned long long totalReadSize = 0;
+    while (totalSize)
+    {
+        const unsigned long long readSize = maxSizePerChunk < totalSize ? maxSizePerChunk : totalSize;
+        KangarooTwelve(buffer, (unsigned int)readSize, &digestBuffer[chunkId * 32], 32);
+        buffer += readSize;
+        totalSize -= readSize;
+        chunkId++;
+    }
+
+    KangarooTwelve(digestBuffer, (unsigned int)sizeof(digestBuffer), digest, 32);
+
+}
+
 // Encapsulated tick storage of current epoch that can additionally keep the last ticks of the previous epoch.
 // The number of ticks to keep from the previous epoch is TICKS_TO_KEEP_FROM_PRIOR_EPOCH (defined in public_settings.h).
 //
@@ -149,7 +186,7 @@ private:
             return false;
         }
 
-        KangarooTwelve((unsigned char*)tickDataPtr, totalWriteSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalWriteSize, metaData.saveTickDataDigest, 32);
+        computeDigest((unsigned char*)tickDataPtr, totalWriteSize, metaData.saveTickDataDigest);
 
         return true;
     }
@@ -161,7 +198,7 @@ private:
         {
             return false;
         }
-        KangarooTwelve((unsigned char*)ticksPtr, totalWriteSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalWriteSize, metaData.saveTicksDigest, 32);
+        computeDigest((unsigned char*)ticksPtr, totalWriteSize, metaData.saveTicksDigest);
         return true;
     }
     bool saveTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
@@ -172,7 +209,7 @@ private:
         {
             return false;
         }
-        KangarooTwelve((unsigned char*)tickTransactionOffsetsPtr, totalWriteSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalWriteSize, metaData.saveTickTransactionOffsetsDigest, 32);
+        computeDigest((unsigned char*)tickTransactionOffsetsPtr, totalWriteSize, metaData.saveTickTransactionOffsetsDigest);
         return true;
     }
     bool saveTransactions(unsigned long long nTick, long long& outTotalTransactionSize, unsigned long long& outNextTickTransactionOffset, CHAR16* directory = NULL)
@@ -208,7 +245,7 @@ private:
         // saving from the first tx of from tick to the last tx of (totick)
         long long totalWriteSize = toPtr;
         unsigned char* ptr = tickTransactionsPtr;
-        auto sz = saveLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, totalWriteSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalWriteSize, (unsigned char*)ptr, directory);
+        auto sz = saveLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, totalWriteSize, (unsigned char*)ptr, directory);
         if (sz != totalWriteSize)
         {
             outTotalTransactionSize = -1;
@@ -216,7 +253,7 @@ private:
         }
         outTotalTransactionSize = totalWriteSize;
 
-        KangarooTwelve((unsigned char*)ptr, totalWriteSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalWriteSize, metaData.saveTransactionsDigest, 32);
+        computeDigest((unsigned char*)ptr, totalWriteSize, metaData.saveTransactionsDigest);
 
         return true;
     }
@@ -263,7 +300,7 @@ private:
     bool verifyDigest(unsigned char* data, long long dataSize, unsigned char* expectedDigest)
     {
         unsigned char dataDigest[32];
-        KangarooTwelve((unsigned char*)data, dataSize, dataDigest, 32);
+        computeDigest((unsigned char*)data, dataSize, dataDigest);
 
         if (checkDigestMatched(dataDigest, expectedDigest, 32))
         {
@@ -293,7 +330,7 @@ private:
             return false;
         }
 
-        if (!verifyDigest((unsigned char*)tickDataPtr, totalLoadSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalLoadSize, metaData.saveTickDataDigest))
+        if (!verifyDigest((unsigned char*)tickDataPtr, totalLoadSize, metaData.saveTickDataDigest))
         {
             logToConsole(L"loadTickData digest mismatched");
             return false;
@@ -310,7 +347,7 @@ private:
             return false;
         }
 
-        if(!verifyDigest((unsigned char*)ticksPtr, totalLoadSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalLoadSize, metaData.saveTicksDigest))
+        if(!verifyDigest((unsigned char*)ticksPtr, totalLoadSize , metaData.saveTicksDigest))
         {
             logToConsole(L"loadTicks digest mismatched");
             return false;
@@ -326,7 +363,7 @@ private:
         {
             return false;
         }
-        if (!verifyDigest((unsigned char*)tickTransactionOffsetsPtr, totalLoadSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalLoadSize, metaData.saveTickTransactionOffsetsDigest))
+        if (!verifyDigest((unsigned char*)tickTransactionOffsetsPtr, totalLoadSize , metaData.saveTickTransactionOffsetsDigest))
         {
             logToConsole(L"loadTickTransactionOffsets digest mismatched");
             return false;
@@ -341,7 +378,7 @@ private:
         {
             return false;
         }
-        if (!verifyDigest((unsigned char*)ptr, totalLoadSize > 0xFFFFFFFFULL ? 0xFFFFFFFF : totalLoadSize, metaData.saveTransactionsDigest))
+        if (!verifyDigest((unsigned char*)ptr, totalLoadSize, metaData.saveTransactionsDigest))
         {
             logToConsole(L"loadTransactions digest mismatched");
             return false;
@@ -349,11 +386,127 @@ private:
 
         return true;
     }
+
+    void dumpAllState(MetaData metaData)
+    {
+        CHAR16 digestChars[60 + 1];
+        CHAR16 dbgMsg[256];
+        unsigned char digest[32];
+
+        setText(dbgMsg, L"[DBG][AllState][tsMeta] Epoch: ");
+        appendNumber(dbgMsg, metaData.epoch, false);
+        addDebugMessage(dbgMsg);
+
+        setText(dbgMsg, L"[DBG][AllState][tsMeta] tickEnd: ");
+        appendNumber(dbgMsg, metaData.tickBegin, false);
+        addDebugMessage(dbgMsg);
+
+        setText(dbgMsg, L"[DBG][AllState][tsMeta] tickEnd: ");
+        appendNumber(dbgMsg, metaData.tickEnd, false);
+        addDebugMessage(dbgMsg);
+
+        setText(dbgMsg, L"[DBG][AllState][tsMeta] outTotalTransactionSize: ");
+        appendNumber(dbgMsg, metaData.outTotalTransactionSize, false);
+        addDebugMessage(dbgMsg);
+
+        setText(dbgMsg, L"[DBG][AllState][tsMeta] outNextTickTransactionOffset: ");
+        appendNumber(dbgMsg, metaData.outNextTickTransactionOffset, false);
+        addDebugMessage(dbgMsg);
+    }
 #endif
     
 
 public:
 #if TICK_STORAGE_AUTOSAVE_MODE
+    void dumpAllState(unsigned long long toTick)
+    {
+        // outTotalTransactionSize, outNextTickTransactionOffset
+        CHAR16 digestChars[60 + 1];
+        CHAR16 dbgMsg[256];
+        unsigned char digest[32];
+
+        unsigned long long nTick = toTick - tickBegin + 1;
+        unsigned long long toPtr = 0;
+        unsigned long long outNextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
+        unsigned long long tmpLastCheckTransactionOffset = 0;
+        {
+            tmpLastCheckTransactionOffset = tickBegin > tmpLastCheckTransactionOffset ? tickBegin : lastCheckTransactionOffset;
+            // find the offset
+            {
+                unsigned long long maxOffset = FIRST_TICK_TRANSACTION_OFFSET;
+                unsigned int tick = 0;
+                for (tick = toTick; tick >= tmpLastCheckTransactionOffset; tick--)
+                {
+                    for (int idx = NUMBER_OF_TRANSACTIONS_PER_TICK - 1; idx >= 0; idx--)
+                    {
+                        if (this->tickTransactionOffsets(tick, idx))
+                        {
+                            unsigned long long offset = this->tickTransactionOffsets(tick, idx);
+                            Transaction* tx = (Transaction*)(tickTransactionsPtr + offset);
+                            unsigned long long tmp = offset + tx->totalSize();
+                            if (tmp > maxOffset)
+                            {
+                                maxOffset = tmp;
+                                tmpLastCheckTransactionOffset = tick;
+                            }
+                        }
+                    }
+                }
+                toPtr = maxOffset;
+                outNextTickTransactionOffset = maxOffset;
+            }
+        }
+
+        // saving from the first tx of from tick to the last tx of (totick)
+        long long dumpTickTransactionsSize = toPtr;
+
+        setText(dbgMsg, L"[DBG][AllState] tickBegin: ");
+        appendNumber(dbgMsg, tickBegin, false);
+        addDebugMessage(dbgMsg);
+
+        setText(dbgMsg, L"[DBG][AllState] toTick: ");
+        appendNumber(dbgMsg, toTick, false);
+        addDebugMessage(dbgMsg);
+
+        setText(dbgMsg, L"[DBG][AllState] nTick: ");
+        appendNumber(dbgMsg, nTick, false);
+        addDebugMessage(dbgMsg);
+
+        setText(dbgMsg, L"[DBG][AllState] tickTransactionsSize: ");
+        appendNumber(dbgMsg, dumpTickTransactionsSize, false);
+        addDebugMessage(dbgMsg);
+
+        setText(dbgMsg, L"[DBG][AllState] outNextTickTransactionOffset: ");
+        appendNumber(dbgMsg, outNextTickTransactionOffset, false);
+        addDebugMessage(dbgMsg);
+
+        computeDigest((unsigned char*)tickDataPtr, nTick * sizeof(TickData), digest);
+        getIdentity(digest, digestChars, true);
+        setText(dbgMsg, L"[DBG][AllState] tickDataPtr digest: ");
+        appendText(dbgMsg, digestChars);
+        addDebugMessage(dbgMsg);
+
+        computeDigest((unsigned char*)ticksPtr, nTick * sizeof(Tick) * NUMBER_OF_COMPUTORS, digest);
+        getIdentity(digest, digestChars, true);
+        setText(dbgMsg, L"[DBG][AllState] ticksPtr digest: ");
+        appendText(dbgMsg, digestChars);
+        addDebugMessage(dbgMsg);
+
+        computeDigest((unsigned char*)tickTransactionOffsetsPtr, nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK, digest);
+        getIdentity(digest, digestChars, true);
+        setText(dbgMsg, L"[DBG][AllState] tickTransactionOffsetsPtr digest: ");
+        appendText(dbgMsg, digestChars);
+        addDebugMessage(dbgMsg);
+
+        computeDigest((unsigned char*)tickTransactionsPtr, dumpTickTransactionsSize, digest);
+        getIdentity(digest, digestChars, true);
+        setText(dbgMsg, L"[DBG][AllState] tickTransactionsPtr digest: ");
+        appendText(dbgMsg, digestChars);
+        addDebugMessage(dbgMsg);
+
+        dumpAllState(metaData);
+    }
+
     unsigned int getPreloadTick() const
     {
         return metaData.tickEnd;
