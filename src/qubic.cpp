@@ -2606,6 +2606,7 @@ static void processTickTransactionOracleReplyReveal(const OracleReplyRevealTrans
 
 static void printDebugTx(const Transaction* transaction, unsigned int systemTick)
 {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
     CHAR16 debugMessage[256];
     CHAR16 id[61];
     setText(debugMessage, L"[DBG] Tx: ");
@@ -2637,6 +2638,8 @@ static void printDebugTx(const Transaction* transaction, unsigned int systemTick
     setText(debugMessage, L"InputSize: ");
     appendNumber(debugMessage, transaction->inputSize, false);
     addDebugMessage(debugMessage);
+#endif
+
 }
 
 static void processTickTransaction(const Transaction* transaction, const m256i& transactionDigest, const m256i& dataLock, unsigned long long processorNumber)
@@ -3708,6 +3711,7 @@ static void initializeFirstTick()
 
 static void dumpCurrentTickTx()
 {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
     // Debug info
     unsigned int debugTickNumber = system.tick;
     unsigned short tickEpoch = 0;
@@ -3762,6 +3766,7 @@ static void dumpCurrentTickTx()
         }
         addDebugMessage(L"[DBG] Dumping tick transaction DONE.");
     }
+#endif
 }
 
 // Invalid snapshot data
@@ -3773,6 +3778,7 @@ static bool invalidateNodeStates(CHAR16* directory)
 // Dump all data for debugging
 static void dumpAllStateData()
 {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
     CHAR16 digestChars[60 + 1];
     CHAR16 dbgMsg[256];
     unsigned char digest[32];
@@ -3871,6 +3877,8 @@ static void dumpAllStateData()
     addDebugMessage(dbgMsg);
 #endif
 
+#endif
+
 }
 
 // can only called from main thread
@@ -3879,12 +3887,7 @@ static bool saveAllNodeStates()
     PROFILE_SCOPE();
     CHAR16 dbgMsg[256];
 
-    addDebugMessage(L"[DBG]saveAllNodeStates0");
     dumpAllStateData();
-
-    setText(dbgMsg, L"numberTickTransactions: ");
-    appendNumber(dbgMsg, numberTickTransactions, true);
-    addDebugMessage(dbgMsg);
 
     CHAR16 directory[16];
     setText(directory, L"ep");
@@ -4039,7 +4042,6 @@ static bool saveAllNodeStates()
         return false;
     }
 
-    addDebugMessage(L"[DBG]saveAllNodeStatesEnd");
     dumpAllStateData();
 
     return true;
@@ -4080,10 +4082,12 @@ static bool loadAllNodeStates()
     }
     updateNumberOfTickTransactions();
 
+#if !defined(NDEBUG) && !defined(NO_UEFI)
     addDebugMessage(L"[DBG]Tx right after ts and system");
     setText(dbgMsg, L"numberTickTransactions: ");
     appendNumber(dbgMsg, numberTickTransactions, true);
     addDebugMessage(dbgMsg);
+#endif
 
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = L'0';
@@ -4203,7 +4207,6 @@ static bool loadAllNodeStates()
     logger.loadLastLoggingStates(directory);
 #endif
 
-    addDebugMessage(L"[DBG]loadAllNodeStatesEnd");
     dumpAllStateData();
 
     return true;
@@ -4715,6 +4718,7 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                             }
                             else
                             {
+#if !defined(NDEBUG)
                                 setText(gVoteCountDebgMessage, L"[DBG]saltedComputerDigest ");
                                 getIdentity(tick->saltedComputerDigest.m256i_u8, digestChars, true);
                                 appendText(gVoteCountDebgMessage, digestChars);
@@ -4723,10 +4727,12 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                                 getIdentity(saltedDigest.m256i_u8, digestChars, true);
                                 appendText(gVoteCountDebgMessage, digestChars);
                                 addDebugMessage(gVoteCountDebgMessage);
+#endif
                             }
                         }
                         else
                         {
+#if !defined(NDEBUG)
                             setText(gVoteCountDebgMessage, L"[DBG]saltedUniverseDigest ");
                             getIdentity(tick->saltedUniverseDigest.m256i_u8, digestChars, true);
                             appendText(gVoteCountDebgMessage, digestChars);
@@ -4735,10 +4741,12 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                             getIdentity(saltedDigest.m256i_u8, digestChars, true);
                             appendText(gVoteCountDebgMessage, digestChars);
                             addDebugMessage(gVoteCountDebgMessage);
+#endif
                         }
                     }
                     else
                     {
+#if !defined(NDEBUG)
                         setText(gVoteCountDebgMessage, L"[DBG]saltedSpectrumDigest ");
                         getIdentity(tick->saltedSpectrumDigest.m256i_u8, digestChars, true);
                         appendText(gVoteCountDebgMessage, digestChars);
@@ -4747,10 +4755,12 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                         getIdentity(saltedDigest.m256i_u8, digestChars, true);
                         appendText(gVoteCountDebgMessage, digestChars);
                         addDebugMessage(gVoteCountDebgMessage);
+#endif
                     }
                 }
                 else
                 {
+#if !defined(NDEBUG)
                     setText(gVoteCountDebgMessage, L"[DBG]saltedResourceTestingDigest ");
                     getIdentity(tick->prevSpectrumDigest.m256i_u8, digestChars, true);
                     appendText(gVoteCountDebgMessage, digestChars);
@@ -4759,11 +4769,13 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                     getIdentity(saltedDigest.m256i_u8, digestChars, true);
                     appendText(gVoteCountDebgMessage, digestChars);
                     addDebugMessage(gVoteCountDebgMessage);
+#endif
 
                 }
             }
             else
             {
+#if !defined(NDEBUG)
                 setText(gVoteCountDebgMessage, L"[DBG]ms ");
                 appendNumber(gVoteCountDebgMessage, tick->millisecond, false);
                 appendText(gVoteCountDebgMessage, L" vs ");
@@ -4806,6 +4818,7 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                 getIdentity(etalonTick.transactionDigest.m256i_u8, digestChars, true);
                 appendText(gVoteCountDebgMessage, digestChars);
                 addDebugMessage(gVoteCountDebgMessage);
+#endif
             }
         }
         ts.ticks.releaseLock(i);
