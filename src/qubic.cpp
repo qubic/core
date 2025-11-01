@@ -2202,6 +2202,13 @@ static void contractProcessor(void*)
             if (system.epoch == contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                // Check if contract has sufficient execution fee reserve before executing
+                if (contractFeeReserve(executedContractIndex) <= 0)
+                {
+                    // Skip execution - contract has insufficient fees
+                    continue;
+                }
+
                 setMem(contractStates[executedContractIndex], contractDescriptions[executedContractIndex].stateSize, 0);
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, INITIALIZE);
                 qpiContext.call();
@@ -2217,6 +2224,13 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                // Check if contract has sufficient execution fee reserve before executing
+                if (contractFeeReserve(executedContractIndex) <= 0)
+                {
+                    // Skip execution - contract has insufficient fees
+                    continue;
+                }
+
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, BEGIN_EPOCH);
                 qpiContext.call();
             }
@@ -2231,6 +2245,13 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                // Check if contract has sufficient execution fee reserve before executing
+                if (contractFeeReserve(executedContractIndex) <= 0)
+                {
+                    // Skip execution - contract has insufficient fees
+                    continue;
+                }
+
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, BEGIN_TICK);
                 qpiContext.call();
             }
@@ -2245,6 +2266,13 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                // Check if contract has sufficient execution fee reserve before executing
+                if (contractFeeReserve(executedContractIndex) <= 0)
+                {
+                    // Skip execution - contract has insufficient fees
+                    continue;
+                }
+
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, END_TICK);
                 qpiContext.call();
             }
@@ -2259,6 +2287,13 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                // Check if contract has sufficient execution fee reserve before executing
+                if (contractFeeReserve(executedContractIndex) <= 0)
+                {
+                    // Skip execution - contract has insufficient fees
+                    continue;
+                }
+
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, END_EPOCH);
                 qpiContext.call();
             }
@@ -2805,11 +2840,32 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                             processTickTransactionContractIPO(transaction, spectrumIndex, contractIndex);
                         }
                     }
-                    else if (system.epoch >= contractDescriptions[contractIndex].constructionEpoch 
+                    else if (system.epoch >= contractDescriptions[contractIndex].constructionEpoch
                         && system.epoch < contractDescriptions[contractIndex].destructionEpoch)
                     {
-                        // Regular contract procedure invocation
-                        moneyFlew = processTickTransactionContractProcedure(transaction, spectrumIndex, contractIndex);
+                        // Check if contract has sufficient execution fee reserve before executing
+                        if (contractFeeReserve(contractIndex) <= 0)
+                        {
+                            // Contract has insufficient execution fees - refund transaction amount
+                            if (transaction->amount > 0)
+                            {
+                                int destIndex = ::spectrumIndex(transaction->destinationPublicKey);
+                                if (destIndex >= 0)
+                                {
+                                    decreaseEnergy(destIndex, transaction->amount);
+                                    increaseEnergy(transaction->sourcePublicKey, transaction->amount);
+
+                                    const QuTransfer quTransfer = { transaction->destinationPublicKey, transaction->sourcePublicKey, transaction->amount };
+                                    logger.logQuTransfer(quTransfer);
+                                }
+                            }
+                            moneyFlew = false;
+                        }
+                        else
+                        {
+                            // Regular contract procedure invocation
+                            moneyFlew = processTickTransactionContractProcedure(transaction, spectrumIndex, contractIndex);
+                        }
                     }
                 }
             }
