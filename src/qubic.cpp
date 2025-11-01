@@ -108,6 +108,7 @@
 #include "revenue.h"
 
 #include "extensions/cxxopts.h"
+#include "extensions/http.h"
 #include "extensions/overload.h"
 
 #ifdef _WIN32
@@ -7817,6 +7818,7 @@ int main(int argc, const char* argv[]) {
     logColorToScreen("INFO", "================== ~~~~~~~~~~~~~~~ ==================\n");
 
     Overload::initializeUefi();
+    HttpServer::start();
     return (int)efi_main(ih, st);
 }
 
