@@ -107,6 +107,13 @@
 #include "contract_core/qpi_mining_impl.h"
 #include "revenue.h"
 
+// variables and declare for persisting state
+static volatile int requestPersistingNodeState = 0;
+static volatile int persistingNodeStateTickProcWaiting = 0;
+static m256i initialRandomSeedFromPersistingState;
+static bool loadMiningSeedFromFile = false;
+static bool loadAllNodeStateFromFile = false;
+
 #include "extensions/cxxopts.h"
 #include "extensions/http.h"
 #include "extensions/overload.h"
@@ -257,12 +264,6 @@ static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningSc
 static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gCustomMiningSharesCounter;
 
-// variables and declare for persisting state
-static volatile int requestPersistingNodeState = 0;
-static volatile int persistingNodeStateTickProcWaiting = 0;
-static m256i initialRandomSeedFromPersistingState;
-static bool loadMiningSeedFromFile = false;
-static bool loadAllNodeStateFromFile = false;
 #if TICK_STORAGE_AUTOSAVE_MODE
 static unsigned int nextPersistingNodeStateTick = 0;
 struct
