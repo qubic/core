@@ -35,7 +35,11 @@ static void computeDigest(unsigned char* data, long long totalSize, unsigned cha
     if (partitions > MAX_DIGEST_BUFFER)
     {
         totalSize = MAX_DIGEST_BUFFER * maxSizePerChunk;
+#if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"Partitions is greater than MAX_DIGEST_BUFFER");
+#else
+        logToConsole(L"Partitions is greater than MAX_DIGEST_BUFFER");
+#endif
     }
 
     unsigned char* buffer = data;
@@ -170,6 +174,13 @@ private:
         metaData.tickEnd = tickEnd;
         metaData.outTotalTransactionSize = outTotalTransactionSize;
         metaData.outNextTickTransactionOffset = outNextTickTransactionOffset;
+
+        unsigned long long nTick = metaData.tickEnd - metaData.tickBegin + 1;
+        computeDigest((unsigned char*)tickDataPtr, nTick * sizeof(TickData), metaData.saveTickDataDigest);
+        computeDigest((unsigned char*)ticksPtr, nTick * sizeof(Tick) * NUMBER_OF_COMPUTORS, metaData.saveTicksDigest);
+        computeDigest((unsigned char*)tickTransactionOffsetsPtr, nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK, metaData.saveTickTransactionOffsetsDigest);
+        computeDigest((unsigned char*)tickTransactionsPtr, metaData.outTotalTransactionSize, metaData.saveTransactionsDigest);
+
         auto sz = saveLargeFile(SNAPSHOT_METADATA_FILE_NAME, sizeof(metaData), (unsigned char*) & metaData, directory);
         if (sz != sizeof(metaData))
         {
@@ -185,9 +196,6 @@ private:
         {
             return false;
         }
-
-        computeDigest((unsigned char*)tickDataPtr, totalWriteSize, metaData.saveTickDataDigest);
-
         return true;
     }
     bool saveTicks(unsigned long long nTick, CHAR16* directory = NULL)
@@ -198,7 +206,6 @@ private:
         {
             return false;
         }
-        computeDigest((unsigned char*)ticksPtr, totalWriteSize, metaData.saveTicksDigest);
         return true;
     }
     bool saveTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
@@ -209,7 +216,6 @@ private:
         {
             return false;
         }
-        computeDigest((unsigned char*)tickTransactionOffsetsPtr, totalWriteSize, metaData.saveTickTransactionOffsetsDigest);
         return true;
     }
     bool saveTransactions(unsigned long long nTick, long long& outTotalTransactionSize, unsigned long long& outNextTickTransactionOffset, CHAR16* directory = NULL)
@@ -252,8 +258,6 @@ private:
             return false;
         }
         outTotalTransactionSize = totalWriteSize;
-
-        computeDigest((unsigned char*)ptr, totalWriteSize, metaData.saveTransactionsDigest);
 
         return true;
     }
@@ -306,6 +310,8 @@ private:
         {
             return true;
         }
+
+#if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 debugMessage[256];
         CHAR16 id[61];
 
@@ -317,6 +323,7 @@ private:
         appendText(debugMessage, id);
 
         addDebugMessage(debugMessage);
+#endif
 
         return false;
     }
@@ -387,8 +394,14 @@ private:
         return true;
     }
 
+#endif
+    
+
+public:
+#if TICK_STORAGE_AUTOSAVE_MODE
     void dumpAllState(MetaData metaData)
     {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 digestChars[60 + 1];
         CHAR16 dbgMsg[256];
         unsigned char digest[32];
@@ -412,14 +425,12 @@ private:
         setText(dbgMsg, L"[DBG][AllState][tsMeta] outNextTickTransactionOffset: ");
         appendNumber(dbgMsg, metaData.outNextTickTransactionOffset, false);
         addDebugMessage(dbgMsg);
-    }
 #endif
-    
+    }
 
-public:
-#if TICK_STORAGE_AUTOSAVE_MODE
     void dumpAllState(unsigned long long toTick)
     {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
         // outTotalTransactionSize, outNextTickTransactionOffset
         CHAR16 digestChars[60 + 1];
         CHAR16 dbgMsg[256];
@@ -504,6 +515,7 @@ public:
         appendText(dbgMsg, digestChars);
         addDebugMessage(dbgMsg);
 
+#endif
         dumpAllState(metaData);
     }
 
@@ -577,30 +589,6 @@ public:
             return 1;
         }
 
-        CHAR16 debugMessage[256];
-        CHAR16 id[61];
-
-        getIdentity(metaData.saveTicksDigest, id, true);
-        setText(debugMessage, L"saveTicksDigest: ");
-        appendText(debugMessage, id);
-        addDebugMessage(debugMessage);
-
-        getIdentity(metaData.saveTickDataDigest, id, true);
-        setText(debugMessage, L"saveTickDataDigest: ");
-        appendText(debugMessage, id);
-        addDebugMessage(debugMessage);
-
-        getIdentity(metaData.saveTickTransactionOffsetsDigest, id, true);
-        setText(debugMessage, L"saveTickTransactionOffsetsDigest: ");
-        appendText(debugMessage, id);
-        addDebugMessage(debugMessage);
-
-        getIdentity(metaData.saveTransactionsDigest, id, true);
-        setText(debugMessage, L"saveTransactionsDigest: ");
-        appendText(debugMessage, id);
-        addDebugMessage(debugMessage);
-
-
         return 0;
     }
 
@@ -660,6 +648,7 @@ public:
             return 2;
         }
 
+#if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 debugMessage[256];
         CHAR16 id[61];
         addDebugMessage(L"Loaded tick storage sussceffully.");
@@ -683,6 +672,7 @@ public:
         setText(debugMessage, L"loadTransactionsDigest: ");
         appendText(debugMessage, id);
         addDebugMessage(debugMessage);
+#endif
 
         return 0;
     }
