@@ -4,8 +4,8 @@ on:
     tags: ["*"]
 
 env:
-    RELEASE_BUILD_DIR: "build"
-    BUILD_CONFIGURATION: "Release"
+  RELEASE_BUILD_DIR: "build"
+  BUILD_CONFIGURATION: "Release"
 
 jobs:
   build-linux:
@@ -36,7 +36,7 @@ jobs:
           body: "Mainnet release of Qubic Core Lite executables."
           files: ${{ env.RELEASE_BUILD_DIR }}/src/Qubic
         env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-windows:
     needs: build-windows

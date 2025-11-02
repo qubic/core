@@ -1,7 +1,7 @@
-name: deploy.yml
+name: Deploy
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       configuration:
         description: "Build configuration"
@@ -21,6 +21,12 @@ on:
         description: "Path to epoch file"
         required: true
         type: string
+      peers:
+        description: "Comma-separated list of peer addresses"
+        required: true
+        type: string
+        default: ""
+
 
 jobs:
   build-linux:
@@ -37,6 +43,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: QubicLiteLinuxBuild-${{ inputs.configuration }}
+          path: ${{ inputs.build-dir }}
 
       - name: Setup SSH key
         run: |
@@ -53,17 +60,40 @@ jobs:
             fi
           
           # Check if there are no servers then exit
-            if [ -z "${{ secrets.SERVERS }}" ]; then
+            if [ -z "${{ vars.SERVERS }}" ]; then
               echo "No servers specified for deployment."
               exit 0
             fi
           
+          # Constant initialization
+          Executable=Qubic-${{ inputs.epoch }}
+          
           # Loop through each server and deploy
-          for server in ${{ secrets.SERVERS }}; do
+          for server in ${{ vars.SERVERS }}; do
             echo "Deploying to $server..."
-            scp ${{ inputs.build-dir }}/src/Qubic $server:/home/${server#*@}/epoch_${{ inputs.epoch }}/Qubic
-            ssh -o StrictHostKeyChecking=no $server /bin/bash << 'EOF'
+            scp -o StrictHostKeyChecking=no ${{ inputs.build-dir }}/src/Qubic $server:/root/
+            ssh -o StrictHostKeyChecking=no $server /bin/bash "
               # Start deployment commands here
-              touch ok.txt
-            EOF
+              sudo apt update && upgrade
+              sudo apt install -y build-essential clang cmake nasm
+              sudo apt install -y libc++-dev libc++abi-dev
+              cd /root
+              # Install unzip wget if not present
+              sudo apt-get update
+              sudo apt-get install -y unzip wget cronolog
+          
+              # Set up deployment directory
+              mkdir -p qlite-${{ inputs.epoch }}
+              mv /root/Qubic qlite-${{ inputs.epoch }}/$Executable
+              cd qlite-${{ inputs.epoch }}
+              chmod +x ./$Executable
+          
+              # Download and unzip epoch file
+              wget ${{ inputs.epoch-file }}
+              unzip $(basename ${{ inputs.epoch-file }})
+          
+              pkill Qubic-* || echo "No existing process found."
+              sleep 2
+              nohup sh -c 'stdbuf -oL -eL ./$Executable -s 32 --peers "${{ inputs.peers }}" 2>&1 | cronolog ./logs/qubic-%Y-%m-%d.log' > /dev/null 2>&1 &
+              "
           done
