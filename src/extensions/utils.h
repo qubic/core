@@ -2,8 +2,9 @@
 
 // Helper functions for wchar_t strings in linux (linux expects 32-bit wchar_t, while we use 16-bit wchar_t everywhere else)
 #include "lib/platform_efi/uefi.h"
-#include <stdarg.h>
 #include <codecvt>
+#include <sstream>
+#include <stdarg.h>
 
 #ifdef _MSC_VER
 #pragma warning(disable: 4996)
@@ -78,4 +79,18 @@ int exec(const char* cmd) {
 
     int status = pclose(pipe);      // wait for command to finish
     return WEXITSTATUS(status);     // return exit code like system()
+}
+
+std::vector<std::string> splitString(const std::string& str, char delimiter) {
+    std::vector<std::string> tokens;
+    // 1. Create a stringstream from the input string
+    std::stringstream ss(str);
+    std::string token;
+
+    // 2. Use std::getline to extract tokens up to the delimiter
+    while (std::getline(ss, token, delimiter)) {
+        tokens.push_back(token);
+    }
+
+    return tokens;
 }

@@ -4,6 +4,36 @@
 
 using namespace drogon;
 
+namespace MiddleWare
+{
+class PasscodeVerifier : public HttpMiddleware<PasscodeVerifier>
+{
+public:
+    PasscodeVerifier() {}
+
+    void invoke(const HttpRequestPtr &req,
+                MiddlewareNextCallback &&nextCb,
+                MiddlewareCallback &&mcb) override
+    {
+        static std::string correctPasscode = std::to_string(logReaderPasscodes[0]) + "-" +
+                                                std::to_string(logReaderPasscodes[1]) + "-" +
+                                                    std::to_string(logReaderPasscodes[2]) + "-" +
+                                                        std::to_string(logReaderPasscodes[3]);
+        bool isPasscodeValid = req->getParameter("passcode") == correctPasscode;
+        if (!isPasscodeValid)
+        {
+            auto resp = HttpResponse::newHttpResponse();
+            resp->setStatusCode(k401Unauthorized);
+            resp->setBody("Unauthorized: Invalid passcode");
+            mcb(resp);
+            return;
+        }
+
+        nextCb([mcb = std::move(mcb)](const HttpResponsePtr &resp) { mcb(resp); });
+    }
+};
+}
+
 class HttpServer
 {
 private:
@@ -92,7 +122,7 @@ private:
                 std::string fileName = isZip ? "spectrum.zip" : ("spectrum." + std::to_string(system.epoch));
                 resp->addHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
                 callback(resp);
-            });
+            }, {drogon::Get, "MiddleWare::PasscodeVerifier"});
 
         app.registerHandler(
             "/universe",
@@ -134,7 +164,7 @@ private:
                 std::string fileName = isZip ? "universe.zip" : ("universe." + std::to_string(system.epoch));
                 resp->addHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
                 callback(resp);
-            });
+            }, {drogon::Get, "MiddleWare::PasscodeVerifier"});
 
         app.run();
     }
