@@ -107,12 +107,16 @@
 #include "contract_core/qpi_mining_impl.h"
 #include "revenue.h"
 
+#include <csignal>
+
 // variables and declare for persisting state
 static volatile int requestPersistingNodeState = 0;
 static volatile int persistingNodeStateTickProcWaiting = 0;
 static m256i initialRandomSeedFromPersistingState;
 static bool loadMiningSeedFromFile = false;
 static bool loadAllNodeStateFromFile = false;
+
+static volatile int shutDownNode = 0;
 
 #include "extensions/cxxopts.h"
 #include "extensions/http.h"
@@ -157,7 +161,6 @@ struct Processor : public CustomStack
 // Dynamic peers that can be added using command line
 std::vector<IPv4Address> knownPublicPeersDynamic;
 
-static volatile int shutDownNode = 0;
 static volatile unsigned char mainAuxStatus = 0;
 static volatile unsigned char isVirtualMachine = 0; // indicate that it is running on VM, to avoid running some functions for BM  (for testing and developing purposes)
 static volatile bool forceRefreshPeerList = false;
@@ -7614,7 +7617,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #ifdef ENABLE_PROFILING
             gProfilingDataCollector.writeToFile();
 #endif
-
+            QubicHttpServer::stop();
             setText(message, L"Qubic ");
             appendQubicVersion(message);
             appendText(message, L" is shut down.");
@@ -7625,8 +7628,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
     {
         logToConsole(L"Initialization fails!");
     }
-
-    deinitialize();
+    //deinitialize();
 
     bs->Stall(1000000);
     // if (!shutDownNode)
@@ -7819,8 +7821,10 @@ int main(int argc, const char* argv[]) {
     logColorToScreen("INFO", "================== ~~~~~~~~~~~~~~~ ==================\n");
 
     Overload::initializeUefi();
-    HttpServer::start();
-    return (int)efi_main(ih, st);
+    QubicHttpServer::start();
+    auto status = (int)efi_main(ih, st);
+    std::raise(SIGTERM);
+    return status;
 }
 
 

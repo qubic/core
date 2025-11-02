@@ -3,6 +3,7 @@
 // Helper functions for wchar_t strings in linux (linux expects 32-bit wchar_t, while we use 16-bit wchar_t everywhere else)
 #include "lib/platform_efi/uefi.h"
 #include <codecvt>
+#include <iomanip>
 #include <sstream>
 #include <stdarg.h>
 
@@ -93,4 +94,29 @@ std::vector<std::string> splitString(const std::string& str, char delimiter) {
     }
 
     return tokens;
+}
+
+static void hexToByte(const std::string& hex, const int sizeInByte, unsigned char* out)
+{
+    if (hex.length() != sizeInByte * 2)
+    {
+        throw std::invalid_argument("Hex string length does not match the expected size");
+    }
+
+    for (size_t i = 0; i < sizeInByte; ++i)
+    {
+        out[i] = std::stoi(hex.substr(i * 2, 2), nullptr, 16);
+    }
+}
+
+
+static std::string byteToHex(const unsigned char* byteArray, size_t sizeInByte)
+{
+    std::ostringstream oss;
+    for (size_t i = 0; i < sizeInByte; ++i)
+    {
+        oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(byteArray[i]);
+    }
+    return oss.str();
+
 }
