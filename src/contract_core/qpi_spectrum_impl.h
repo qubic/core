@@ -66,6 +66,14 @@ long long QPI::QpiContextProcedureCall::burn(long long amount, unsigned int cont
         return -amount;
     }
 
+    if (contractIndexBurnedFor < 1 || contractIndexBurnedFor >= contractCount)
+        contractIndexBurnedFor = _currentContractIndex;
+
+    if (contractError[contractIndexBurnedFor] == ContractErrorIPOFailed)
+    {
+        return -amount;
+    }
+
     const long long remainingAmount = energy(index) - amount;
 
     if (remainingAmount < 0)
@@ -75,9 +83,6 @@ long long QPI::QpiContextProcedureCall::burn(long long amount, unsigned int cont
 
     if (decreaseEnergy(index, amount))
     {
-        if (contractIndexBurnedFor < 1 || contractIndexBurnedFor >= contractCount)
-            contractIndexBurnedFor = _currentContractIndex;
-
         contractStateLock[0].acquireWrite();
         contractFeeReserve(contractIndexBurnedFor) += amount;
         contractStateLock[0].releaseWrite();
