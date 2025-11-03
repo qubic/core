@@ -1638,7 +1638,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 respond.status = SpecialCommandSaveSnapshotRequestAndResponse::UNKNOWN_FAILURE;
                 respond.currentTick = 0;
 
-#if TICK_STORAGE_AUTOSAVE_MODE == 2
+#if TICK_STORAGE_AUTOSAVE_MODE
                 if (requestPersistingNodeState)
                 {
                     respond.status = SpecialCommandSaveSnapshotRequestAndResponse::SAVING_IN_PROGRESS;
@@ -6387,7 +6387,7 @@ static void processKeyPresses()
         case 0x12:
         {
             logToConsole(L"Pressed F8 key");
-#if TICK_STORAGE_AUTOSAVE_MODE == 2
+#if TICK_STORAGE_AUTOSAVE_MODE
             ATOMIC_STORE32(requestPersistingNodeState, 1);
 #else
             logToConsole(L"Manual trigger saving snapshot is disabled.");
