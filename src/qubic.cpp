@@ -1633,26 +1633,26 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 
             case SPECIAL_COMMAND_SAVE_SNAPSHOT:
             {
-                SpecialCommandSaveSnapshotRequestAndResponse respond;
-                respond.everIncreasingNonceAndCommandType = request->everIncreasingNonceAndCommandType;
-                respond.status = SpecialCommandSaveSnapshotRequestAndResponse::UNKNOWN_FAILURE;
-                respond.currentTick = 0;
+                SpecialCommandSaveSnapshotRequestAndResponse response;
+                response.everIncreasingNonceAndCommandType = request->everIncreasingNonceAndCommandType;
+                response.status = SpecialCommandSaveSnapshotRequestAndResponse::UNKNOWN_FAILURE;
+                response.currentTick = 0;
 
 #if TICK_STORAGE_AUTOSAVE_MODE
                 if (requestPersistingNodeState)
                 {
-                    respond.status = SpecialCommandSaveSnapshotRequestAndResponse::SAVING_IN_PROGRESS;
+                    response.status = SpecialCommandSaveSnapshotRequestAndResponse::SAVING_IN_PROGRESS;
                 }
                 else
                 {
                     ATOMIC_STORE32(requestPersistingNodeState, 1);
-                    respond.currentTick = system.tick;
-                    respond.status = SpecialCommandSaveSnapshotRequestAndResponse::SAVING_TRIGGERED;
+                    response.currentTick = system.tick;
+                    response.status = SpecialCommandSaveSnapshotRequestAndResponse::SAVING_TRIGGERED;
                 }
 #else
-                respond.status = SpecialCommandSaveSnapshotRequestAndResponse::REMOTE_SAVE_MODE_DISABLE;
+                response.status = SpecialCommandSaveSnapshotRequestAndResponse::REMOTE_SAVE_MODE_DISABLED;
 #endif
-                enqueueResponse(peer, sizeof(SpecialCommandSaveSnapshotRequestAndResponse), SpecialCommand::type, header->dejavu(), &respond);
+                enqueueResponse(peer, sizeof(SpecialCommandSaveSnapshotRequestAndResponse), SpecialCommand::type, header->dejavu(), &response);
             }
             break;
 

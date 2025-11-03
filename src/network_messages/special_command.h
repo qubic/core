@@ -92,7 +92,7 @@ struct SpecialCommandSaveSnapshotRequestAndResponse
     {
         SAVING_TRIGGERED = 0,
         SAVING_IN_PROGRESS,
-        REMOTE_SAVE_MODE_DISABLE,
+        REMOTE_SAVE_MODE_DISABLED,
         UNKNOWN_FAILURE,
     };
 
