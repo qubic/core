@@ -6387,7 +6387,11 @@ static void processKeyPresses()
         case 0x12:
         {
             logToConsole(L"Pressed F8 key");
+#if TICK_STORAGE_AUTOSAVE_MODE == 2
             ATOMIC_STORE32(requestPersistingNodeState, 1);
+#else
+            logToConsole(L"Manual trigger saving snapshot is disabled.");
+#endif
         }
         break;
 
