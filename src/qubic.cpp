@@ -417,6 +417,7 @@ static void getComputerDigest(m256i& digest)
 
                 // K12 of state is included in contract execution time
                 _interlockedadd64(&contractTotalExecutionTicks[digestIndex], executionTicks);
+                _interlockedadd64(&contractExecutionTicksPerPhase[contractExecutionTicksActiveArrayIndex][digestIndex], executionTicks);
 
                 // Gather data for comparing different versions of K12
                 if (K12MeasurementsCount < 500)

@@ -967,7 +967,9 @@ private:
             contractLocalsStack[_stackIndex].free();
             ASSERT(contractLocalsStack[_stackIndex].size() == 0);
         }
-        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
+        const unsigned long long executionTicks = __rdtsc() - startTick;
+        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], executionTicks);
+        _interlockedadd64(&contractExecutionTicksPerPhase[contractExecutionTicksActiveArrayIndex][_currentContractIndex], executionTicks);
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
@@ -1069,7 +1071,10 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         // run procedure
         const unsigned long long startTick = __rdtsc();
         contractUserProcedures[_currentContractIndex][inputType](*this, contractStates[_currentContractIndex], inputBuffer, outputBuffer, localsBuffer);
-        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
+        
+        const unsigned long long executionTicks = __rdtsc() - startTick;
+        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], executionTicks);
+        _interlockedadd64(&contractExecutionTicksPerPhase[contractExecutionTicksActiveArrayIndex][_currentContractIndex], executionTicks);
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
