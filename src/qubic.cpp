@@ -1630,6 +1630,32 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 enqueueResponse(peer, sizeof(SpecialCommandSetConsoleLoggingModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
             }
             break;
+
+            case SPECIAL_COMMAND_SAVE_SNAPSHOT:
+            {
+                SpecialCommandSaveSnapshotRequestAndResponse respond;
+                respond.everIncreasingNonceAndCommandType = request->everIncreasingNonceAndCommandType;
+                respond.status = SpecialCommandSaveSnapshotRequestAndResponse::UNKNOWN_FAILURE;
+                respond.currentTick = 0;
+
+#if TICK_STORAGE_AUTOSAVE_MODE == 2
+                if (requestPersistingNodeState)
+                {
+                    respond.status = SpecialCommandSaveSnapshotRequestAndResponse::SAVING_IN_PROGRESS;
+                }
+                else
+                {
+                    ATOMIC_STORE32(requestPersistingNodeState, 1);
+                    respond.currentTick = system.tick;
+                    respond.status = SpecialCommandSaveSnapshotRequestAndResponse::SAVING_TRIGGERED;
+                }
+#else
+                respond.status = SpecialCommandSaveSnapshotRequestAndResponse::REMOTE_SAVE_MODE_DISABLE;
+#endif
+                enqueueResponse(peer, sizeof(SpecialCommandSaveSnapshotRequestAndResponse), SpecialCommand::type, header->dejavu(), &respond);
+            }
+            break;
+
             }
         }
     }
@@ -6361,7 +6387,7 @@ static void processKeyPresses()
         case 0x12:
         {
             logToConsole(L"Pressed F8 key");
-            requestPersistingNodeState = 1;
+            ATOMIC_STORE32(requestPersistingNodeState, 1);
         }
         break;
 
@@ -6932,7 +6958,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         // Start auto save if nextAutoSaveTick == system.tick (or if the main loop has missed nextAutoSaveTick)
                         if (system.tick >= nextPersistingNodeStateTick)
                         {
-                            requestPersistingNodeState = 1;
+                            ATOMIC_STORE32(requestPersistingNodeState, 1);
                             while (system.tick >= nextPersistingNodeStateTick)
                             {
                                 nextPersistingNodeStateTick += TICK_STORAGE_AUTOSAVE_TICK_PERIOD;
@@ -6956,7 +6982,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #ifdef ENABLE_PROFILING
                     gProfilingDataCollector.writeToFile();
 #endif
-                    requestPersistingNodeState = 0;
+                    ATOMIC_STORE32(requestPersistingNodeState, 0);
                     logToConsole(L"Complete saving all node states");
                 }
 #if TICK_STORAGE_AUTOSAVE_MODE == 1
