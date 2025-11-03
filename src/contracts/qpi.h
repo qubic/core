@@ -2077,10 +2077,13 @@ namespace QPI
 			sint64 offeredTransferFee
 		) const; // Returns payed fee on success (>= 0), -requestedFee if offeredTransferFee or contract balance is not sufficient, INVALID_AMOUNT in case of other error.
 
+		// Burns Qus from the current contract's balance to fill the contract fee reserve of the contract specified via contractIndexBurnedFor.
+		// If the provided index is invalid (< 1 or >= contractCount), the Qus are burned for the currentContractIndex.
+		// Returns the remaining balance (>= 0) of the current contract if the burning is successful. A negative return value indicates failure.  
 		inline sint64 burn(
 			sint64 amount,
-			uint32 contractIndexBurnedFor = 0 // contract index to burn for, allows to burn for other contracts
-		) const; // if the provided index is invalid (< 1 or >= contractCount), the Qus are burned for the currentContractIndex
+			uint32 contractIndexBurnedFor = 0
+		) const; 
 
 		inline bool distributeDividends( //  Attempts to pay dividends
 			sint64 amountPerShare // Total amount will be 676x of this

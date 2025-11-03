@@ -897,7 +897,10 @@ public:
         if (output.amount >= 0)
             output.amount = input.amount;
         else
+        {
+            qpi.transfer(qpi.invocator(), input.amount); // refund in case of failure to burn
             output.amount = -1;
+        }
         return;
     }
 
@@ -919,7 +922,10 @@ public:
         if (output.amount >= 0)
             output.amount = qpi.invocationReward();
         else
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward()); // refund in case of failure to burn
             output.amount = -1;
+        }
         return;
     }
 
