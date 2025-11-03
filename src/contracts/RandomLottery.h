@@ -725,97 +725,97 @@ protected:
 	 * @brief Circular buffer storing the history of winners.
 	 * Maximum capacity is defined by RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY.
 	 */
-	Array<WinnerInfo, RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners = {};
+	Array<WinnerInfo, RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
 
 	/**
 	 * @brief Set of players participating in the current lottery epoch.
 	 * Maximum capacity is defined by RL_MAX_NUMBER_OF_PLAYERS.
 	 */
-	Array<id, RL_MAX_NUMBER_OF_PLAYERS> players = {};
+	Array<id, RL_MAX_NUMBER_OF_PLAYERS> players;
 
 	/**
 	 * @brief Address of the team managing the lottery contract.
 	 * Initialized to a zero address.
 	 */
-	id teamAddress = id::zero();
+	id teamAddress;
 
 	/**
 	 * @brief Address of the owner of the lottery contract.
 	 * Initialized to a zero address.
 	 */
-	id ownerAddress = id::zero();
+	id ownerAddress;
 
 	/**
 	 * @brief Data structure for deferred changes to apply at the end of the epoch.
 	 */
-	NextEpochData nexEpochData = {};
+	NextEpochData nexEpochData;
 
 	/**
 	 * @brief Price of a single lottery ticket.
 	 * Value is in the smallest currency unit (e.g., cents).
 	 */
-	uint64 ticketPrice = 0;
+	uint64 ticketPrice;
 
 	/**
 	 * @brief Number of players (tickets sold) in the current epoch.
 	 */
-	uint64 playerCounter = 0;
+	uint64 playerCounter;
 
 	/**
 	 * @brief Index pointing to the next empty slot in the winners array.
 	 * Used for maintaining the circular buffer of winners.
 	 */
-	uint64 winnersCounter = 0;
+	uint64 winnersCounter;
 
 	/**
 	 * @brief Date/time guard for draw operations.
 	 * lastDrawDateStamp prevents more than one action per calendar day (UTC).
 	 */
-	uint8 lastDrawDay = RL_INVALID_DAY;
-	uint8 lastDrawHour = RL_INVALID_HOUR;
-	uint32 lastDrawDateStamp = 0; // Compact YYYY/MM/DD marker
+	uint8 lastDrawDay;
+	uint8 lastDrawHour;
+	uint32 lastDrawDateStamp; // Compact YYYY/MM/DD marker
 
 	/**
 	 * @brief Percentage of the revenue allocated to the team.
 	 * Value is between 0 and 100.
 	 */
-	uint8 teamFeePercent = 0;
+	uint8 teamFeePercent;
 
 	/**
 	 * @brief Percentage of the revenue allocated for distribution.
 	 * Value is between 0 and 100.
 	 */
-	uint8 distributionFeePercent = 0;
+	uint8 distributionFeePercent;
 
 	/**
 	 * @brief Percentage of the revenue allocated to the winner.
 	 * Automatically calculated as the remainder after other fees.
 	 */
-	uint8 winnerFeePercent = 0;
+	uint8 winnerFeePercent;
 
 	/**
 	 * @brief Percentage of the revenue to be burned.
 	 * Value is between 0 and 100.
 	 */
-	uint8 burnPercent = 0;
+	uint8 burnPercent;
 
 	/**
 	 * @brief Schedule bitmask: bit 0 = WEDNESDAY, 1 = THURSDAY, ..., 6 = TUESDAY.
 	 * If a bit is set, a draw may occur on that day (subject to drawHour and daily guard).
 	 * Wednesday also follows the "Two-Wednesdays rule" (selling stays closed after Wednesday draw).
 	 */
-	uint8 schedule = 0;
+	uint8 schedule;
 
 	/**
 	 * @brief UTC hour [0..23] when a draw is allowed to run (daily time gate).
 	 */
-	uint8 drawHour = 0;
+	uint8 drawHour;
 
 	/**
 	 * @brief Current state of the lottery contract.
 	 * SELLING: tickets available; LOCKED: selling closed.
 	 */
-	EState currentState = EState::LOCKED;
+	EState currentState;
 
 protected:
 	static void clearStateOnEndEpoch(RL& state)
