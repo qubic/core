@@ -25,6 +25,10 @@
 
 //////////////////////////////////////////////////////////////
 
+#ifdef CMAKE_NO_USE_SWAP
+#undef USE_SWAP
+#endif
+
 #define REAL_NODE
 #define NO_UEFI
 #define SINGLE_COMPILE_UNIT
@@ -426,6 +430,15 @@ static inline bool isMainMode()
 static inline bool isTestnet()
 {
 #ifdef TESTNET
+    return true;
+#else
+    return false;
+#endif
+}
+
+static inline bool isUsingSwap()
+{
+#ifdef USE_SWAP
     return true;
 #else
     return false;
@@ -7783,6 +7796,7 @@ void processArgs(int argc, const char* argv[]) {
 #else
     logColorToScreen("INFO", "This node is running as MAINNET");
 #endif
+    logColorToScreen("INFO", "Swap usage is " + std::string(isUsingSwap() ? "ENABLED" : "DISABLED"));
     logColorToScreen("INFO", "Total RAM required " + std::to_string(getTotalRam() / (1024 * 1024 * 1024)) + " GB");
 
     cxxopts::Options options("Qubic Core Lite", "The lite version of Qubic Core that can run directly on the OS without a UEFI environment.");

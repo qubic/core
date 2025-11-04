@@ -1,6 +1,6 @@
 # Qubic Core Lite
 
-[![Build](https://github.com/hackerby888/qubic-core-lite/actions/workflows/efi-build-develop.yml/badge.svg?branch=main)](https://github.com/hackerby888/qubic-core-lite/actions/workflows/efi-build-develop.yml)
+[![Build](https://github.com/hackerby888/qubic-core-lite/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/hackerby888/qubic-core-lite/actions/workflows/ci.yml)
 
 The lite version of Qubic Core that can run directly on the OS without a UEFI environment.
 
@@ -45,9 +45,26 @@ To run a qubic **mainnet** node, you need the following spec:
 
 ### Local Testnet
 
-Do nothing — the default settings are already configured for local testnet single-node mode.
+**Local Testnet Single Node**
+
+In `qubic.cpp`
+
+**1.** Uncomment `// #define TESTNET`
+
+```cpp
+// #define TESTNET // COMMENT this line if you want to compile for mainnet
+
+// this option enables using disk as RAM to reduce hardware requirement for qubic core node
+// it is highly recommended to enable this option if you want to run a full mainnet node on SSD
+// UNCOMMENT this line to enable it
+#define USE_SWAP
+```
+
+**2.** Build
 
 **Local Testnet Multiple Nodes**
+
+Afer single node steps please do:
 
 In `private_settings.h`, split the 676 seeds in `broadcastedComputorSeeds` into `computorSeeds` across your nodes (e.g., 300 seeds in node 1, the remaining 376 seeds in node 2):
 
@@ -70,24 +87,11 @@ static const unsigned char knownPublicPeers[][4] = {
 
 ### Mainnet
 
-In `qubic.cpp`
+Make sure you have commented `#define TESTNET`
 
-**1.** Comment out `#define TESTNET`
+**1.** Add public peers from https://app.qubic.li/network/live to `knownPublicPeers` in `private_settings.h` or add via command line `--peers`
 
-**2.** Uncomment out `#define USE_SWAP`
-
-```cpp
-// #define TESTNET // COMMENT this line if you want to compile for mainnet
-
-// this option enables using disk as RAM to reduce hardware requirement for qubic core node
-// it is highly recommended to enable this option if you want to run a full mainnet node on SSD
-// UNCOMMENT this line to enable it
-#define USE_SWAP
-```
-
-**3.** Add public peers from https://app.qubic.li/network/live to `knownPublicPeers` in `private_settings.h` or add via command line `--peers`
-
-**4.** Prepare the epoch files (blockchain state).
+**2.** Prepare the epoch files (blockchain state).
 
 They should be named and structured as follows:
 
@@ -107,10 +111,11 @@ They should be named and structured as follows:
 ./contract00xx.XXX
 ./spectrum.XXX
 ./universe.XXX
-./system
 ```
 
 Place all of these files in the same directory where you plan to launch the `Qubic` binary.
+
+**3.** Build
 
 ## Build
 
@@ -158,6 +163,3 @@ Delete the **system** file at your current working folder, it may make your node
 ## Donate The Project
 
 QUBIC Wallet: QPROLAPACSPVBDQADRXXKRGZMXADUAEXXJIQNWPGWFUFUAITRXMHVODDLGBK
-
-
-

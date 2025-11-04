@@ -252,7 +252,7 @@ static void processRequestConfirmedTx(long long processorNumber, Peer *peer, Req
 // can only be called from main thread
 static bool saveStateTxStatus(const unsigned int numberOfTransactions, CHAR16* directory)
 {
-    static unsigned short TX_STATUS_SNAPSHOT_FILE_NAME[] = L"snapshotTxStatusData";
+    static wchar_t TX_STATUS_SNAPSHOT_FILE_NAME[] = L"snapshotTxStatusData";
     long long savedSize = save(TX_STATUS_SNAPSHOT_FILE_NAME, sizeof(txStatusData), (unsigned char*)&txStatusData, directory);
     if (savedSize != sizeof(txStatusData))
     {
@@ -260,7 +260,7 @@ static bool saveStateTxStatus(const unsigned int numberOfTransactions, CHAR16* d
         return false;
     }
 
-    static unsigned short CONFIRMED_TX_SNAPSHOT_FILE_NAME[] = L"snapshotConfirmedTx";
+    static wchar_t CONFIRMED_TX_SNAPSHOT_FILE_NAME[] = L"snapshotConfirmedTx";
     savedSize = saveLargeFile(CONFIRMED_TX_SNAPSHOT_FILE_NAME, numberOfTransactions*sizeof(ConfirmedTx), (unsigned char*)confirmedTx, directory);
     if (savedSize != numberOfTransactions * sizeof(ConfirmedTx))
     {
@@ -274,7 +274,7 @@ static bool saveStateTxStatus(const unsigned int numberOfTransactions, CHAR16* d
 // numberOfTransactions must be known before calling this
 static bool loadStateTxStatus(const unsigned int numberOfTransactions, CHAR16* directory)
 {
-    static unsigned short TX_STATUS_SNAPSHOT_FILE_NAME[] = L"snapshotTxStatusData";
+    static wchar_t TX_STATUS_SNAPSHOT_FILE_NAME[] = L"snapshotTxStatusData";
     long long loadedSize = load(TX_STATUS_SNAPSHOT_FILE_NAME, sizeof(txStatusData), (unsigned char*)&txStatusData, directory);
     if (loadedSize != sizeof(txStatusData))
     {
@@ -284,7 +284,7 @@ static bool loadStateTxStatus(const unsigned int numberOfTransactions, CHAR16* d
 
     if (numberOfTransactions)
     {
-        static unsigned short CONFIRMED_TX_SNAPSHOT_FILE_NAME[] = L"snapshotConfirmedTx";
+        static wchar_t CONFIRMED_TX_SNAPSHOT_FILE_NAME[] = L"snapshotConfirmedTx";
         loadedSize = loadLargeFile(CONFIRMED_TX_SNAPSHOT_FILE_NAME, numberOfTransactions * sizeof(ConfirmedTx), (unsigned char*)confirmedTx, directory);
         if (loadedSize != numberOfTransactions * sizeof(ConfirmedTx))
         {
