@@ -7,6 +7,7 @@
 #define _InterlockedExchange8(target, val) __atomic_exchange_n(target, val, __ATOMIC_SEQ_CST)
 #define _InterlockedIncrement64(target) __atomic_add_fetch(target, 1, __ATOMIC_SEQ_CST)
 #define _InterlockedAnd64(target, val) __atomic_fetch_and(target, val, __ATOMIC_SEQ_CST)
+#define _InterlockedExchange(target, val) __atomic_exchange_n(target, val, __ATOMIC_SEQ_CST)
 #define _InterlockedExchange64(target, val) __atomic_exchange_n(target, val, __ATOMIC_SEQ_CST)
 static long long _InterlockedCompareExchange64(volatile long long *target, long long exchange, long long comparand) {
     if (__atomic_compare_exchange_n(target, &comparand, exchange, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
@@ -113,8 +114,12 @@ public:
 
 #define ATOMIC_STORE8(target, val) _InterlockedExchange8(&target, val)
 // long in windows is 32bits
+#ifdef _MSC_VER
 static_assert(sizeof(long) == 4, "Size of long for _InterlockedExchange is 4 bytes");
 #define ATOMIC_STORE32(target, val) _InterlockedExchange((volatile long*)&target, val)
+#else
+#define ATOMIC_STORE32(target, val) _InterlockedExchange((volatile int*)&target, val)
+#endif
 #define ATOMIC_INC64(target) _InterlockedIncrement64(&target)
 #define ATOMIC_AND64(target, val) _InterlockedAnd64(&target, val)
 #define ATOMIC_STORE64(target, val) _InterlockedExchange64(&target, val)

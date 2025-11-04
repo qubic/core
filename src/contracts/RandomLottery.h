@@ -470,7 +470,7 @@ public:
 					if (state.playerCounter != 0)
 					{
 						// Compute pseudo-random index based on K12(prevSpectrumDigest)
-						locals.randomNum = mod(qpi.K12(qpi.getPrevSpectrumDigest()).u64._0, state.playerCounter);
+						locals.randomNum = mod(qpi.K12(qpi.getPrevSpectrumDigest()).u64._0, (uint64_t)state.playerCounter);
 
 						// Index directly into players array
 						locals.winnerAddress = state.players.get(locals.randomNum);
