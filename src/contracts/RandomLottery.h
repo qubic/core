@@ -822,6 +822,7 @@ protected:
 	{
 		// Prepare for next epoch: clear players and reset daily guards
 		state.playerCounter = 0;
+		state.players.setAll(id::zero());
 
 		state.lastDrawHour = RL_INVALID_HOUR;
 		state.lastDrawDay = RL_INVALID_DAY;
