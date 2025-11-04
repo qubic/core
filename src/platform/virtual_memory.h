@@ -5,6 +5,7 @@
 #include "platform/time.h"
 #include "platform/memory_util.h"
 #include "platform/debugging.h"
+#include "platform/file_io.h"
 
 #include "four_q.h"
 #include "kangaroo_twelve.h"
