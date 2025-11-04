@@ -119,7 +119,6 @@ static bool loadAllNodeStateFromFile = false;
 static volatile int shutDownNode = 0;
 
 #include "extensions/cxxopts.h"
-#include "extensions/http.h"
 #include "extensions/overload.h"
 
 #ifdef _WIN32
@@ -300,6 +299,8 @@ static bool saveRevenueComponents(CHAR16* directory = NULL);
 #endif
 
 BroadcastFutureTickData broadcastedFutureTickData;
+
+#include "extensions/http.h"
 
 static struct
 {

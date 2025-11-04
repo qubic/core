@@ -66,6 +66,8 @@ private:
                 json["epoch"] = system.epoch;
                 json["tick"] = system.tick;
                 json["initialTick"] = system.initialTick;
+                json["alignedVotes"] = gTickNumberOfComputors;
+                json["misalignedVotes"] = gTickTotalNumberOfComputors - gTickNumberOfComputors;
                 auto resp = HttpResponse::newHttpJsonResponse(json);
                 callback(resp);
             });
