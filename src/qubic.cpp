@@ -5598,6 +5598,8 @@ static bool initialize()
         logToConsole(L"error 17");
     for (AssetPossessionIterator iter(asset); !iter.reachedEnd(); iter.next())
     {
+        if (!iter.numberOfPossessedShares())
+            continue;
         if (!transferShareOwnershipAndPossession(iter.ownershipIndex(), iter.possessionIndex(), pubKey, iter.numberOfPossessedShares(), &destinationOwnershipIndex, &destinationPossessionIndex, true))
             logToConsole(L"error 18");
     }
