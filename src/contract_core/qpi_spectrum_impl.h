@@ -33,11 +33,9 @@ bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, QPI::Entity& entity
     }
 }
 
-long long QPI::QpiContextFunctionCall::queryFeeReserve(unsigned int contractIndex) const
+// Return the amount in the fee reserve of the specified contract (data stored in state of contract 0).
+static long long getContractFeeReserve(unsigned int contractIndex)
 {
-    if (contractIndex < 1 || contractIndex >= contractCount)
-        contractIndex = _currentContractIndex;
-
     contractStateLock[0].acquireRead();
     long long reserveAmount = ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex];
     contractStateLock[0].releaseRead();
@@ -45,11 +43,32 @@ long long QPI::QpiContextFunctionCall::queryFeeReserve(unsigned int contractInde
     return reserveAmount;
 }
 
-// Return reference to fee reserve of contract for changing its value (data stored in state of contract 0)
-static long long& contractFeeReserve(unsigned int contractIndex)
+// Set the amount in the fee reserve of the specified contract to a new value (data stored in state of contract 0).
+// This also sets the contractStateChangeFlag of contract 0.
+static void setContractFeeReserve(unsigned int contractIndex, long long newValue)
 {
+    contractStateLock[0].acquireWrite();
     contractStateChangeFlags[0] |= 1ULL;
-    return ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex];
+    ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex] = newValue;
+    contractStateLock[0].releaseWrite();
+}
+
+// Add the given amount to the amount in the fee reserve of the specified contract (data stored in state of contract 0).
+// This also sets the contractStateChangeFlag of contract 0.
+static void addToContractFeeReserve(unsigned int contractIndex, long long addAmount)
+{
+    contractStateLock[0].acquireWrite();
+    contractStateChangeFlags[0] |= 1ULL;
+    ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex] += addAmount;
+    contractStateLock[0].releaseWrite();
+}
+
+long long QPI::QpiContextFunctionCall::queryFeeReserve(unsigned int contractIndex) const
+{
+    if (contractIndex < 1 || contractIndex >= contractCount)
+        contractIndex = _currentContractIndex;
+
+    return getContractFeeReserve(contractIndex);
 }
 
 long long QPI::QpiContextProcedureCall::burn(long long amount, unsigned int contractIndexBurnedFor) const
@@ -83,9 +102,7 @@ long long QPI::QpiContextProcedureCall::burn(long long amount, unsigned int cont
 
     if (decreaseEnergy(index, amount))
     {
-        contractStateLock[0].acquireWrite();
-        contractFeeReserve(contractIndexBurnedFor) += amount;
-        contractStateLock[0].releaseWrite();
+        addToContractFeeReserve(contractIndexBurnedFor, amount);
 
         const Burning burning = { _currentContractId , amount, contractIndexBurnedFor };
         logger.logBurning(burning);

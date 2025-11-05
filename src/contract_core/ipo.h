@@ -182,9 +182,7 @@ static void finishIPOs()
 
             if (finalPrice > 0)
             {
-                contractStateLock[0].acquireWrite();
-                contractFeeReserve(contractIndex) = finalPrice * NUMBER_OF_COMPUTORS;
-                contractStateLock[0].releaseWrite();
+                setContractFeeReserve(contractIndex, finalPrice * NUMBER_OF_COMPUTORS);
             }
             else
             {
