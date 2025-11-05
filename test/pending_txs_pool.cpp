@@ -420,7 +420,7 @@ TEST(TestPendingTxsPool, TxsPrioritizationMoreThanMaxTxs)
     pendingTxsPool.deinit();
 }
 
-TEST(TestPendingTxsPool, TxsPrioritizationDuplicateTxs)
+TEST(TestPendingTxsPool, RejectDuplicateTxs)
 {
     TestPendingTxsPool pendingTxsPool;
     unsigned long long seed = 9532;
@@ -436,26 +436,26 @@ TEST(TestPendingTxsPool, TxsPrioritizationDuplicateTxs)
 
     pendingTxsPool.beginEpoch(firstEpochTick0);
 
-    // add duplicate transactions: same dest, src, and amount
+    // try to add duplicate transactions: same dest, src, amount, tick, input size/type
     m256i dest{ 562, 789, 234, 121 };
     m256i src{ 0, 0, 0, NUM_INITIALIZED_ENTITIES / 3 };
     long long amount = 1;
-    for (unsigned int t = 0; t < numTxs; ++t)
-        EXPECT_TRUE(pendingTxsPool.addTransaction(firstEpochTick0, amount, /*inputSize=*/0, &dest, & src));
 
-    EXPECT_EQ(pendingTxsPool.getTotalNumberOfPendingTxs(firstEpochTick0 - 1), numTxs);
-    EXPECT_EQ(pendingTxsPool.getNumberOfPendingTickTxs(firstEpochTick0), numTxs);
+    // first add should succeed, all others should fail
+    EXPECT_TRUE(pendingTxsPool.addTransaction(firstEpochTick0, amount, /*inputSize=*/0, &dest, &src));
+    for (unsigned int t = 1; t < numTxs; ++t)
+        EXPECT_FALSE(pendingTxsPool.addTransaction(firstEpochTick0, amount, /*inputSize=*/0, &dest, &src));
 
-    for (unsigned int t = 0; t < numTxs; ++t)
-    {
-        Transaction* tx = pendingTxsPool.getTx(firstEpochTick0, t);
-        EXPECT_TRUE(tx->checkValidity());
-        EXPECT_EQ(tx->amount, amount);
-        EXPECT_EQ(tx->tick, firstEpochTick0);
-        EXPECT_EQ(static_cast<unsigned int>(tx->inputSize), 0U);
-        EXPECT_TRUE(tx->destinationPublicKey == dest);
-        EXPECT_TRUE(tx->sourcePublicKey == src);
-    }
+    EXPECT_EQ(pendingTxsPool.getTotalNumberOfPendingTxs(firstEpochTick0 - 1), 1);
+    EXPECT_EQ(pendingTxsPool.getNumberOfPendingTickTxs(firstEpochTick0), 1);
+
+    Transaction* tx = pendingTxsPool.getTx(firstEpochTick0, 0);
+    EXPECT_TRUE(tx->checkValidity());
+    EXPECT_EQ(tx->amount, amount);
+    EXPECT_EQ(tx->tick, firstEpochTick0);
+    EXPECT_EQ(static_cast<unsigned int>(tx->inputSize), 0U);
+    EXPECT_TRUE(tx->destinationPublicKey == dest);
+    EXPECT_TRUE(tx->sourcePublicKey == src);
 
     pendingTxsPool.deinit();
 }
