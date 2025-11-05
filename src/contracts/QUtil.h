@@ -1288,6 +1288,16 @@ public:
         CALL(FinalizeShareholderStateVarProposals, input, output);
     }
 
+    INITIALIZE()
+    {
+        // init fee state variables (only called in gtest, because INITIALIZE has been added a long time after IPO)
+        state.smt1InvocationFee = QUTIL_STM1_INVOCATION_FEE;
+        state.pollCreationFee = QUTIL_POLL_CREATION_FEE;
+        state.pollVoteFee = QUTIL_VOTE_FEE;
+        state.distributeQuToShareholderFeePerShareholder = QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER;
+        state.shareholderProposalFee = 100;
+    }
+
     BEGIN_EPOCH()
     {
         state.dfMiningSeed = qpi.getPrevSpectrumDigest();
