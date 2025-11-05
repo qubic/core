@@ -42,7 +42,7 @@ The execution fee system checks whether a contract has positive `executionFeeRes
 
 **User functions** (read-only queries) are always available regardless of executionFeeReserve. They are defined with `PUBLIC_FUNCTION()` or `PRIVATE_FUNCTION()` macros, provide read-only access to contract state, and cannot modify state or trigger procedures.
 
-**Contract-to-contract callbacks** execute without checking the recipient's fees. When Contract A calls Contract B (via `qpi.transfer()`, `INVOKE_OTHER_CONTRACT_PROCEDURE`, or asset transfers), only Contract A needs positive executionFeeReserve. This applies to all callbacks like `POST_INCOMING_TRANSFER`, `PRE_ACQUIRE_SHARES`, ... (For a full list see [here](doc/contracts.md#System-procedures)). Contract A initiated the operation, so Contract A pays for all resulting execution including callbacks in Contract B.
+**Contract-to-contract callbacks** execute without checking the recipient's fees. When Contract A calls Contract B (via `qpi.transfer()`, `INVOKE_OTHER_CONTRACT_PROCEDURE`, or asset transfers), only Contract A needs positive executionFeeReserve. This applies to all callbacks like `POST_INCOMING_TRANSFER`, `PRE_ACQUIRE_SHARES`, ... (Full list available [here](contracts.md#System-procedures), marcros with index >= 6 ). Contract A initiated the operation, so Contract A pays for all resulting execution including callbacks in Contract B.
 
 Example: Contract A (executionFeeReserve = 1000) transfers 500 QU to Contract B (executionFeeReserve = 0). Contract A's procedure executes, money transfers from A to B, and Contract B's `POST_INCOMING_TRANSFER` executes—all paid for by Contract A's fees.
 
