@@ -36,6 +36,9 @@
 #define system qsystem
 #endif
 
+// #define CCF_BY_ANYONE
+// #define RL_V1
+
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
@@ -1747,6 +1750,32 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 enqueueResponse(peer, sizeof(SpecialCommandSetConsoleLoggingModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
             }
             break;
+
+            case SPECIAL_COMMAND_SAVE_SNAPSHOT:
+            {
+                SpecialCommandSaveSnapshotRequestAndResponse response;
+                response.everIncreasingNonceAndCommandType = request->everIncreasingNonceAndCommandType;
+                response.status = SpecialCommandSaveSnapshotRequestAndResponse::UNKNOWN_FAILURE;
+                response.currentTick = 0;
+
+#if TICK_STORAGE_AUTOSAVE_MODE
+                if (requestPersistingNodeState)
+                {
+                    response.status = SpecialCommandSaveSnapshotRequestAndResponse::SAVING_IN_PROGRESS;
+                }
+                else
+                {
+                    ATOMIC_STORE32(requestPersistingNodeState, 1);
+                    response.currentTick = system.tick;
+                    response.status = SpecialCommandSaveSnapshotRequestAndResponse::SAVING_TRIGGERED;
+                }
+#else
+                response.status = SpecialCommandSaveSnapshotRequestAndResponse::REMOTE_SAVE_MODE_DISABLED;
+#endif
+                enqueueResponse(peer, sizeof(SpecialCommandSaveSnapshotRequestAndResponse), SpecialCommand::type, header->dejavu(), &response);
+            }
+            break;
+
             }
         }
     }
@@ -3038,8 +3067,14 @@ static void processTick(unsigned long long processorNumber)
     // tick of the epoch in any case.
     if (system.tick == system.initialTick && (TICK_IS_FIRST_TICK_OF_EPOCH || system.epoch > EPOCH))
     {
-        PROFILE_NAMED_SCOPE_BEGIN("processTick(): INITIALIZE");
-        logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
+        {
+            // this is the very first logging event of the epoch
+            // hint message for 3rd party services the start of the epoch
+            logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
+            DummyCustomMessage dcm{ CUSTOM_MESSAGE_OP_START_EPOCH };
+            logger.logCustomMessage(dcm);
+        }
+        PROFILE_NAMED_SCOPE_BEGIN("processTick(): INITIALIZE");        
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
         WAIT_WHILE(contractProcessorState);
@@ -3738,7 +3773,12 @@ static void endEpoch()
     }
 
     assetsEndEpoch();
-
+    {
+        // this is the last logging event of the epoch
+        // a hint message for 3rd party services the end of the epoch
+        DummyCustomMessage dcm{ CUSTOM_MESSAGE_OP_END_EPOCH };
+        logger.logCustomMessage(dcm);
+    }
     logger.updateTick(system.tick);
 #if PAUSE_BEFORE_CLEAR_MEMORY
     // re-open request processors for other services to query
@@ -6091,6 +6131,26 @@ static bool initialize()
         }
     }
 
+    // fix missing contract shares
+    unsigned int contractIndicesWithMissingShares[3] = {
+        6, // GQMPROP
+        7, // SWATCH
+        8, // CCF
+    };
+    for (unsigned int i = 0; i < 3; ++i)
+    {
+        unsigned int contractIndex = contractIndicesWithMissingShares[i];
+        // query number of shares in universe
+        long long numShares = numberOfShares({ m256i::zero(), *(uint64*)contractDescriptions[contractIndex].assetName });
+        if (numShares < NUMBER_OF_COMPUTORS)
+        {
+            // issue missing shares and give them to contract itself
+            int issuanceIndex, ownershipIndex, possessionIndex, dstOwnershipIndex, dstPossessionIndex;
+            issueAsset(m256i::zero(), (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS - numShares, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex);
+            transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, m256i{ contractIndex, 0ULL, 0ULL, 0ULL }, NUMBER_OF_COMPUTORS - numShares, &dstOwnershipIndex, &dstPossessionIndex, /*lock=*/true);
+        }
+    }
+
     return true;
 }
 
@@ -6910,7 +6970,11 @@ static void processKeyPresses()
         case 0x12:
         {
             logToConsole(L"Pressed F8 key");
-            requestPersistingNodeState = 1;
+#if TICK_STORAGE_AUTOSAVE_MODE
+            ATOMIC_STORE32(requestPersistingNodeState, 1);
+#else
+            logToConsole(L"Manual trigger saving snapshot is disabled.");
+#endif
         }
         break;
 
@@ -7481,7 +7545,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         // Start auto save if nextAutoSaveTick == system.tick (or if the main loop has missed nextAutoSaveTick)
                         if (system.tick >= nextPersistingNodeStateTick)
                         {
-                            requestPersistingNodeState = 1;
+                            ATOMIC_STORE32(requestPersistingNodeState, 1);
                             while (system.tick >= nextPersistingNodeStateTick)
                             {
                                 nextPersistingNodeStateTick += TICK_STORAGE_AUTOSAVE_TICK_PERIOD;
@@ -7505,7 +7569,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #ifdef ENABLE_PROFILING
                     gProfilingDataCollector.writeToFile();
 #endif
-                    requestPersistingNodeState = 0;
+                    ATOMIC_STORE32(requestPersistingNodeState, 0);
                     logToConsole(L"Complete saving all node states");
                 }
 #if TICK_STORAGE_AUTOSAVE_MODE == 1
