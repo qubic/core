@@ -3070,11 +3070,11 @@ static void processTick(unsigned long long processorNumber)
         {
             // this is the very first logging event of the epoch
             // hint message for 3rd party services the start of the epoch
+            logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
             DummyCustomMessage dcm{ CUSTOM_MESSAGE_OP_START_EPOCH };
             logger.logCustomMessage(dcm);
         }
-        PROFILE_NAMED_SCOPE_BEGIN("processTick(): INITIALIZE");
-        logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
+        PROFILE_NAMED_SCOPE_BEGIN("processTick(): INITIALIZE");        
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
         WAIT_WHILE(contractProcessorState);
