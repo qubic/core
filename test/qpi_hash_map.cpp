@@ -6,14 +6,7 @@
 
 #include "gtest/gtest.h"
 
-namespace QPI
-{
-	struct QpiContextProcedureCall;
-	struct QpiContextFunctionCall;
-}
-typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
-typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
-
+#include "../src/contract_core/pre_qpi_def.h"
 #include "../src/contracts/qpi.h"
 #include "../src/common_buffers.h"
 #include "../src/contract_core/qpi_hash_map_impl.h"

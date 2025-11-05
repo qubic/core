@@ -448,9 +448,11 @@ static void deinitSpectrum()
     if (spectrumDigests)
     {
         freePool(spectrumDigests);
+        spectrumDigests = nullptr;
     }
     if (spectrum)
     {
         freePool(spectrum);
+        spectrum = nullptr;
     }
 }

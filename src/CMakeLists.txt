@@ -41,6 +41,10 @@ if(TESTNET)
     target_compile_definitions(Qubic PRIVATE TESTNET)
 endif()
 
+if(ONLY_LOGGING)
+    target_compile_definitions(Qubic PRIVATE ONLY_LOGGING)
+endif()
+
 if(CMAKE_NO_USE_SWAP)
     target_compile_definitions(Qubic PRIVATE CMAKE_NO_USE_SWAP)
 endif()

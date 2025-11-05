@@ -35,7 +35,6 @@ jobs:
       # Install dependencies
       - name: Install CMake and dependencies
         run: |
-          sudo apt update && sudo apt upgrade -y
           sudo apt install -y clang cmake nasm
           sudo apt install -y libc++-dev libc++abi-dev zip unzip
 

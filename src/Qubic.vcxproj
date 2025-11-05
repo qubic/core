@@ -26,6 +26,7 @@
     <ClInclude Include="contracts\Qdraw.h" />
     <ClInclude Include="contracts\Qswap.h" />
     <ClInclude Include="contracts\RandomLottery.h" />
+    <ClInclude Include="contracts\RandomLottery_v1.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
     <ClInclude Include="contracts\EmptyTemplate.h" />
     <ClInclude Include="contracts\GeneralQuorumProposal.h" />
@@ -50,6 +51,7 @@
     <ClInclude Include="contract_core\contract_def.h" />
     <ClInclude Include="contract_core\contract_exec.h" />
     <ClInclude Include="contract_core\ipo.h" />
+    <ClInclude Include="contract_core\pre_qpi_def.h" />
     <ClInclude Include="contract_core\qpi_asset_impl.h" />
     <ClInclude Include="contract_core\qpi_collection_impl.h" />
     <ClInclude Include="contract_core\qpi_ipo_impl.h" />
