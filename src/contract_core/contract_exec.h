@@ -222,10 +222,13 @@ static void deinitContractExec()
     contractActionTracker.freeBuffer();
 }
 
-static void switchContractExecutionTicksArray()
+static void switchContractExecutionTimeArray()
 {
     if (system.tick % NUMBER_OF_COMPUTORS == 0)
     {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        addDebugMessage(L"Switched contract execution time array for new accumulation phase");
+#endif
         contractExecutionTimeActiveArrayIndex = !contractExecutionTimeActiveArrayIndex;
         setMem((void*)contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex], sizeof(contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex]), 0);
     }
