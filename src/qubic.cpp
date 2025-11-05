@@ -5565,6 +5565,9 @@ static bool initialize()
         }
     }
 
+
+    // TODO: delete this whole patch code after e186
+    logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
     // fix missing contract shares
     unsigned int contractIndicesWithMissingShares[3] = {
         6, // GQMPROP
