@@ -5009,7 +5009,7 @@ static void tickProcessor(void*)
                                 updateNumberOfTickTransactions();
                                 pendingTxsPool.incrementFirstStoredTick();
                                 
-                                switchContractExecutionTicksArray();
+                                switchContractExecutionTimeArray();
 
                                 bool isBeginEpoch = false;
                                 if (epochTransitionState == 1)
