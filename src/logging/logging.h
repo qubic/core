@@ -191,6 +191,7 @@ struct Burning
 {
     m256i sourcePublicKey;
     long long amount;
+    unsigned int contractIndexBurnedFor;
 
     char _terminator; // Only data before "_terminator" are logged
 };

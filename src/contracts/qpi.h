@@ -2040,6 +2040,10 @@ namespace QPI
 		inline uint8 year(
 		) const; // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
 
+		// Return the amount of Qu in the fee reserve for the specified contract.
+		// If the provided index is invalid (< 1 or >= contractCount) the currentContractIndex is used instead.
+		inline sint64 queryFeeReserve(uint32 contractIndex = 0) const;
+
 		// Access proposal functions with qpi(proposalVotingObject).func().
 		template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 		inline QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType> operator()(
@@ -2073,9 +2077,13 @@ namespace QPI
 			sint64 offeredTransferFee
 		) const; // Returns payed fee on success (>= 0), -requestedFee if offeredTransferFee or contract balance is not sufficient, INVALID_AMOUNT in case of other error.
 
+		// Burns Qus from the current contract's balance to fill the contract fee reserve of the contract specified via contractIndexBurnedFor.
+		// If the provided index is invalid (< 1 or >= contractCount), the Qus are burned for the currentContractIndex.
+		// Returns the remaining balance (>= 0) of the current contract if the burning is successful. A negative return value indicates failure.  
 		inline sint64 burn(
-			sint64 amount
-		) const;
+			sint64 amount,
+			uint32 contractIndexBurnedFor = 0
+		) const; 
 
 		inline bool distributeDividends( //  Attempts to pay dividends
 			sint64 amountPerShare // Total amount will be 676x of this

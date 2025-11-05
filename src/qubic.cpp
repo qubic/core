@@ -5435,6 +5435,7 @@ static bool initialize()
         }
     }
 
+    initializeContractErrors();
     initializeContracts();
 
     if (loadMiningSeedFromFile)
