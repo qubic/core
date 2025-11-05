@@ -2203,7 +2203,7 @@ static void contractProcessor(void*)
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
                 // Check if contract has sufficient execution fee reserve before executing
-                if (contractFeeReserve(executedContractIndex) <= 0)
+                if (getContractFeeReserve(executedContractIndex) <= 0)
                 {
                     // Skip execution - contract has insufficient fees
                     continue;
@@ -2225,7 +2225,7 @@ static void contractProcessor(void*)
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
                 // Check if contract has sufficient execution fee reserve before executing
-                if (contractFeeReserve(executedContractIndex) <= 0)
+                if (getContractFeeReserve(executedContractIndex) <= 0)
                 {
                     // Skip execution - contract has insufficient fees
                     continue;
@@ -2246,7 +2246,7 @@ static void contractProcessor(void*)
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
                 // Check if contract has sufficient execution fee reserve before executing
-                if (contractFeeReserve(executedContractIndex) <= 0)
+                if (getContractFeeReserve(executedContractIndex) <= 0)
                 {
                     // Skip execution - contract has insufficient fees
                     continue;
@@ -2267,7 +2267,7 @@ static void contractProcessor(void*)
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
                 // Check if contract has sufficient execution fee reserve before executing
-                if (contractFeeReserve(executedContractIndex) <= 0)
+                if (getContractFeeReserve(executedContractIndex) <= 0)
                 {
                     // Skip execution - contract has insufficient fees
                     continue;
@@ -2288,7 +2288,7 @@ static void contractProcessor(void*)
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
                 // Check if contract has sufficient execution fee reserve before executing
-                if (contractFeeReserve(executedContractIndex) <= 0)
+                if (getContractFeeReserve(executedContractIndex) <= 0)
                 {
                     // Skip execution - contract has insufficient fees
                     continue;
@@ -2844,7 +2844,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                         && system.epoch < contractDescriptions[contractIndex].destructionEpoch)
                     {
                         // Check if contract has sufficient execution fee reserve before executing
-                        if (contractFeeReserve(contractIndex) <= 0)
+                        if (getContractFeeReserve(contractIndex) <= 0)
                         {
                             // Contract has insufficient execution fees - refund transaction amount
                             if (transaction->amount > 0)
