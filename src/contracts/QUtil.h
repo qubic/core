@@ -913,7 +913,6 @@ public:
     {
         if (qpi.invocationReward() <= 0) // not sending enough qu to burn
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.amount = -1;
             return;
         }
