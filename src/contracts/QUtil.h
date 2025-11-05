@@ -1301,17 +1301,6 @@ public:
     BEGIN_EPOCH()
     {
         state.dfMiningSeed = qpi.getPrevSpectrumDigest();
-
-        // init fee state variables
-        // TODO: remove this in next epoch
-        if (qpi.epoch() == 186)
-        {
-            state.smt1InvocationFee = QUTIL_STM1_INVOCATION_FEE;
-            state.pollCreationFee = QUTIL_POLL_CREATION_FEE;
-            state.pollVoteFee = QUTIL_VOTE_FEE;
-            state.distributeQuToShareholderFeePerShareholder = QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER;
-            state.shareholderProposalFee = 100;
-        }
     }
 
     // Deactivate delay function
