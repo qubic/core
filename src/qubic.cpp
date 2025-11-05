@@ -416,8 +416,8 @@ static void getComputerDigest(m256i& digest)
                 contractStateLock[digestIndex].releaseRead();
 
                 // K12 of state is included in contract execution time
-                _interlockedadd64(&contractTotalExecutionTicks[digestIndex], executionTicks);
-                _interlockedadd64(&contractExecutionTicksPerPhase[contractExecutionTicksActiveArrayIndex][digestIndex], executionTicks);
+                _interlockedadd64(&contractTotalExecutionTime[digestIndex], executionTicks);
+                _interlockedadd64(&contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex][digestIndex], executionTicks);
 
                 // Gather data for comparing different versions of K12
                 if (K12MeasurementsCount < 500)
@@ -3205,7 +3205,7 @@ static void processTick(unsigned long long processorNumber)
                         }
                     }
 
-                    // TODO: include execution fees tx for phase n - 1 (i.e. from contractExecutionTicksPerPhase[!contractExecutionTicksActiveArrayIndex])
+                    // TODO: include execution fees tx for phase n - 1 (i.e. from contractExecutionTimePerPhase[!contractExecutionTimeActiveArrayIndex])
 
                     for (; nextTxIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; ++nextTxIndex)
                     {
@@ -5866,7 +5866,7 @@ static void logInfo()
         appendText(message, L"?");
     }
     appendText(message, L" mcs | Total Qx execution time = ");
-    appendNumber(message, contractTotalExecutionTicks[QX_CONTRACT_INDEX] * 1000 / frequency, TRUE);
+    appendNumber(message, contractTotalExecutionTime[QX_CONTRACT_INDEX] * 1000 / frequency, TRUE);
     appendText(message, L" ms | Solution process time = ");
     appendNumber(message, solutionTotalExecutionTicks * 1000 / frequency, TRUE);
     appendText(message, L" ms | Spectrum reorg time = ");

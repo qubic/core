@@ -54,13 +54,17 @@ GLOBAL_VAR_DECL ContractExecErrorData contractExecutionErrorData[contractCount];
 
 GLOBAL_VAR_DECL ReadWriteLock contractStateLock[contractCount];
 GLOBAL_VAR_DECL unsigned char* contractStates[contractCount];
-GLOBAL_VAR_DECL volatile long long contractTotalExecutionTicks[contractCount];
-// Two arrays to accumulate and save the contract execution ticks for two consecutive phases.
-// contractExecutionTicksPerPhase[contractExecutionTicksActiveArrayIndex] is used to accumulate the contract execution ticks for the current phase n.
-// contractExecutionTicksPerPhase[!contractExecutionTicksActiveArrayIndex] saves the contract execution ticks from the previous phase n-1 that are sent out as transactions in phase n.
+
+// Total contract execution time (as CPU clock cycles) accumulated over the whole runtime of the node (reset on restart, includes contract functions).
+GLOBAL_VAR_DECL volatile long long contractTotalExecutionTime[contractCount];
+// Two arrays to accumulate and save the contract execution time (as CPU clock cycles) for two consecutive phases.
+// This only includes actions that are charged an execution fee (digest computation, system procedures, user procedures).
+// contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex] is used to accumulate the contract execution ticks for the current phase n.
+// contractExecutionTimePerPhase[!contractExecutionTimeActiveArrayIndex] saves the contract execution ticks from the previous phase n-1 that are sent out as transactions in phase n.
 // TODO: check if we need any locks
-GLOBAL_VAR_DECL volatile long long contractExecutionTicksPerPhase[2][contractCount];
-GLOBAL_VAR_DECL volatile bool contractExecutionTicksActiveArrayIndex;
+// TODO: check if this overflows with CPU clock cycles, if it does, save in different unit (e.g. milliseconds)
+GLOBAL_VAR_DECL volatile long long contractExecutionTimePerPhase[2][contractCount];
+GLOBAL_VAR_DECL volatile bool contractExecutionTimeActiveArrayIndex;
 
 // Contract error state, persistent and only set on error of procedure (TODO: only execute procedures if NoContractError)
 GLOBAL_VAR_DECL unsigned int contractError[contractCount];
@@ -171,9 +175,9 @@ static bool initContractExec()
     contractLocalsStackLockWaitingCount = 0;
     contractLocalsStackLockWaitingCountMax = 0;
 
-    setMem((void*)contractTotalExecutionTicks, sizeof(contractTotalExecutionTicks), 0);
-    setMem((void*)contractExecutionTicksPerPhase, sizeof(contractExecutionTicksPerPhase), 0);
-    contractExecutionTicksActiveArrayIndex = 0;
+    setMem((void*)contractTotalExecutionTime, sizeof(contractTotalExecutionTime), 0);
+    setMem((void*)contractExecutionTimePerPhase, sizeof(contractExecutionTimePerPhase), 0);
+    contractExecutionTimeActiveArrayIndex = 0;
 
     setMem((void*)contractError, sizeof(contractError), 0);
     setMem((void*)contractExecutionErrorData, sizeof(contractExecutionErrorData), 0);
@@ -222,8 +226,8 @@ static void switchContractExecutionTicksArray()
 {
     if (system.tick % NUMBER_OF_COMPUTORS == 0)
     {
-        contractExecutionTicksActiveArrayIndex = !contractExecutionTicksActiveArrayIndex;
-        setMem((void*)contractExecutionTicksPerPhase[contractExecutionTicksActiveArrayIndex], sizeof(contractExecutionTicksPerPhase[contractExecutionTicksActiveArrayIndex]), 0);
+        contractExecutionTimeActiveArrayIndex = !contractExecutionTimeActiveArrayIndex;
+        setMem((void*)contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex], sizeof(contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex]), 0);
     }
 }
 
@@ -944,7 +948,7 @@ private:
         // acquire state for writing (may block)
         contractStateLock[_currentContractIndex].acquireWrite();
 
-        const unsigned long long startTick = __rdtsc();
+        const unsigned long long startTime = __rdtsc();
         unsigned short localsSize = contractSystemProcedureLocalsSizes[_currentContractIndex][systemProcId];
         if (localsSize == sizeof(QPI::NoData))
         {
@@ -967,9 +971,9 @@ private:
             contractLocalsStack[_stackIndex].free();
             ASSERT(contractLocalsStack[_stackIndex].size() == 0);
         }
-        const unsigned long long executionTicks = __rdtsc() - startTick;
-        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], executionTicks);
-        _interlockedadd64(&contractExecutionTicksPerPhase[contractExecutionTicksActiveArrayIndex][_currentContractIndex], executionTicks);
+        const unsigned long long executionTime = __rdtsc() - startTime;
+        _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], executionTime);
+        _interlockedadd64(&contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex][_currentContractIndex], executionTime);
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
@@ -1069,12 +1073,12 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         contractStateLock[_currentContractIndex].acquireWrite();
 
         // run procedure
-        const unsigned long long startTick = __rdtsc();
+        const unsigned long long startTime = __rdtsc();
         contractUserProcedures[_currentContractIndex][inputType](*this, contractStates[_currentContractIndex], inputBuffer, outputBuffer, localsBuffer);
         
-        const unsigned long long executionTicks = __rdtsc() - startTick;
-        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], executionTicks);
-        _interlockedadd64(&contractExecutionTicksPerPhase[contractExecutionTicksActiveArrayIndex][_currentContractIndex], executionTicks);
+        const unsigned long long executionTime = __rdtsc() - startTime;
+        _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], executionTime);
+        _interlockedadd64(&contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex][_currentContractIndex], executionTime);
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
@@ -1203,9 +1207,9 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         __qpiAcquireStateForReading(_currentContractIndex);
 
         // run function
-        const unsigned long long startTick = __rdtsc();
+        const unsigned long long startTime = __rdtsc();
         contractUserFunctions[_currentContractIndex][inputType](*this, contractStates[_currentContractIndex], inputBuffer, outputBuffer, localsBuffer);
-        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
+        _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], __rdtsc() - startTime);
 
         // release lock of contract state
         __qpiReleaseStateForReading(_currentContractIndex);
