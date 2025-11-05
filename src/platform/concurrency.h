@@ -73,6 +73,9 @@ public:
     END_WAIT_WHILE()
 
 #define ATOMIC_STORE8(target, val) _InterlockedExchange8(&target, val)
+// long in windows is 32bits
+static_assert(sizeof(long) == 4, "Size of long for _InterlockedExchange is 4 bytes");
+#define ATOMIC_STORE32(target, val) _InterlockedExchange((volatile long*)&target, val)
 #define ATOMIC_INC64(target) _InterlockedIncrement64(&target)
 #define ATOMIC_AND64(target, val) _InterlockedAnd64(&target, val)
 #define ATOMIC_STORE64(target, val) _InterlockedExchange64(&target, val)

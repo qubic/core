@@ -167,7 +167,7 @@ private:
     }
     bool saveTransactions(unsigned long long nTick, long long& outTotalTransactionSize, unsigned long long& outNextTickTransactionOffset, CHAR16* directory = NULL)
     {
-        unsigned int toTick = tickBegin + (unsigned int)(nTick);
+        unsigned int toTick = tickBegin + (unsigned int)(nTick) - 1;
         unsigned long long toPtr = 0;
         outNextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
         lastCheckTransactionOffset = tickBegin > lastCheckTransactionOffset ? tickBegin : lastCheckTransactionOffset;
