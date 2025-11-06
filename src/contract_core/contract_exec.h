@@ -329,6 +329,13 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
 {
     ASSERT(otherContractIndex < _currentContractIndex);
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
+
+    // Check if called contract is in an error state
+    if (contractError[otherContractIndex] != NoContractError)
+    {
+        __qpiAbort(contractError[otherContractIndex]);
+    }
+
     char * buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextFunctionCall));
     if (!buffer)
     {
@@ -1145,6 +1152,12 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
 
         ASSERT(_currentContractIndex < contractCount);
         ASSERT(contractUserFunctions[_currentContractIndex][inputType]);
+
+        // Check if contract is in an error state before executing function
+        if (contractError[_currentContractIndex] != NoContractError)
+        {
+            return contractError[_currentContractIndex];
+        }
 
         // reserve stack for this processor (may block)
         constexpr unsigned int stacksNotUsedToReserveThemForStateWriter = 1;
