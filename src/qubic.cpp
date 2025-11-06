@@ -2189,6 +2189,12 @@ static void contractProcessor(void*)
                     // Skip execution - contract has insufficient fees
                     continue;
                 }
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
+                    continue;
+                }
 
                 setMem(contractStates[executedContractIndex], contractDescriptions[executedContractIndex].stateSize, 0);
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, INITIALIZE);
@@ -2209,6 +2215,12 @@ static void contractProcessor(void*)
                 if (getContractFeeReserve(executedContractIndex) <= 0)
                 {
                     // Skip execution - contract has insufficient fees
+                    continue;
+                }
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
                     continue;
                 }
 
@@ -2232,6 +2244,12 @@ static void contractProcessor(void*)
                     // Skip execution - contract has insufficient fees
                     continue;
                 }
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
+                    continue;
+                }
 
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, BEGIN_TICK);
                 qpiContext.call();
@@ -2253,6 +2271,12 @@ static void contractProcessor(void*)
                     // Skip execution - contract has insufficient fees
                     continue;
                 }
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
+                    continue;
+                }
 
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, END_TICK);
                 qpiContext.call();
@@ -2272,6 +2296,12 @@ static void contractProcessor(void*)
                 if (getContractFeeReserve(executedContractIndex) <= 0)
                 {
                     // Skip execution - contract has insufficient fees
+                    continue;
+                }
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
                     continue;
                 }
 
@@ -2816,10 +2846,10 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                     else if (system.epoch >= contractDescriptions[contractIndex].constructionEpoch
                         && system.epoch < contractDescriptions[contractIndex].destructionEpoch)
                     {
-                        // Check if contract has sufficient execution fee reserve before executing
-                        if (getContractFeeReserve(contractIndex) <= 0)
+                        // Check if contract has sufficient execution fee reserve and is not in an error state
+                        if (getContractFeeReserve(contractIndex) <= 0 || contractError[contractIndex] != NoContractError)
                         {
-                            // Contract has insufficient execution fees - refund transaction amount
+                            // Contract has insufficient execution fees or is in error state - refund transaction amount
                             if (transaction->amount > 0)
                             {
                                 int destIndex = ::spectrumIndex(transaction->destinationPublicKey);
