@@ -343,6 +343,13 @@ const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructProce
     // A contract can only run a procedure of a contract with a lower index, exceptions are callback system procedures
     ASSERT(procContractIndex < _currentContractIndex || contractCallbacksRunning != NoContractCallback);
 
+    // Check if called contract is in an error state
+    if (contractError[procContractIndex] != NoContractError)
+    {
+        // TODO: Consider adding a separate error code for calling a contract in error state
+        __qpiAbort(contractError[procContractIndex]);
+    }
+
     char* buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextProcedureCall));
     if (!buffer)
     {
