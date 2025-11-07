@@ -74,6 +74,15 @@ struct QUTILLogger
     sint8 _terminator; // Only data before "_terminator" are logged
 };
 
+struct QUTILSendTomanyBenchmarkLog
+{
+    uint32 contractId; // to distinguish bw SCs
+    uint32 padding;
+    id startId;
+    sint64 dstCount;
+    sint8 _terminator; // Only data before "_terminator" are logged
+};
+
 // Deactivate logger for delay function
 #if 0
 struct QUTILDFLogger
@@ -255,6 +264,7 @@ public:
         uint64 useNext;
         uint64 totalNumTransfers;
         QUTILLogger logger;
+        QUTILSendTomanyBenchmarkLog logBenchmark;
     };
 
     struct BurnQubic_input
@@ -829,10 +839,16 @@ public:
             output.returnCode = QUTIL_STM1_INVALID_AMOUNT_NUMBER;
             return;
         }
-
         // Loop through the number of addresses and do the transfers
         locals.currentId = qpi.invocator();
         locals.useNext = 1;
+
+        locals.logBenchmark.startId = qpi.invocator();
+        locals.logBenchmark.dstCount = input.dstCount;
+        LOG_INFO(locals.logBenchmark);
+
+        LOG_PAUSE();
+        
         while (output.dstCount < input.dstCount)
         {
             if (locals.useNext == 1)
@@ -853,6 +869,7 @@ public:
                 output.total += 1;
             }
         }
+        LOG_RESUME();
 
         // Return the change if there is any
         if (output.total < qpi.invocationReward())
