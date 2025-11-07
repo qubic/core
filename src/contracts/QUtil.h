@@ -61,6 +61,7 @@ constexpr uint64 QUTILLogTypeMaxPollsReached = 22;                  // Max epoch
 // Fee per shareholder for DistributeQuToShareholders() (initial value)
 constexpr sint64 QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER = 5;
 
+constexpr uint32 QUTIL_STMB_LOG_TYPE = 100001; // for bob to index
 
 struct QUTILLogger
 {
@@ -71,6 +72,15 @@ struct QUTILLogger
     sint64 amt;
     uint32 logtype;
     // Other data go here
+    sint8 _terminator; // Only data before "_terminator" are logged
+};
+
+struct QUTILSendToManyBenchmarkLog
+{
+    uint32 contractId; // to distinguish bw SCs
+    uint32 logType;
+    id startId;
+    sint64 dstCount;
     sint8 _terminator; // Only data before "_terminator" are logged
 };
 
@@ -255,6 +265,7 @@ public:
         uint64 useNext;
         uint64 totalNumTransfers;
         QUTILLogger logger;
+        QUTILSendToManyBenchmarkLog logBenchmark;
     };
 
     struct BurnQubic_input
@@ -829,10 +840,17 @@ public:
             output.returnCode = QUTIL_STM1_INVALID_AMOUNT_NUMBER;
             return;
         }
-
         // Loop through the number of addresses and do the transfers
         locals.currentId = qpi.invocator();
         locals.useNext = 1;
+
+        locals.logBenchmark.startId = qpi.invocator();
+        locals.logBenchmark.logType = QUTIL_STMB_LOG_TYPE;
+        locals.logBenchmark.dstCount = input.dstCount;
+        LOG_INFO(locals.logBenchmark);
+
+        LOG_PAUSE();
+        
         while (output.dstCount < input.dstCount)
         {
             if (locals.useNext == 1)
@@ -853,6 +871,7 @@ public:
                 output.total += 1;
             }
         }
+        LOG_RESUME();
 
         // Return the change if there is any
         if (output.total < qpi.invocationReward())

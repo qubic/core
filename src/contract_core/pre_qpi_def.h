@@ -35,6 +35,8 @@ template <typename T> static void __logContractDebugMessage(unsigned int, T&);
 template <typename T> static void __logContractErrorMessage(unsigned int, T&);
 template <typename T> static void __logContractInfoMessage(unsigned int, T&);
 template <typename T> static void __logContractWarningMessage(unsigned int, T&);
+static void __pauseLogMessage();
+static void __resumeLogMessage();
 
 // Get buffer for temporary use. Can only be used in contract procedures / tick processor / contract processor!
 // Always returns the same one buffer, no concurrent access!
