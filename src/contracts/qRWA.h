@@ -61,6 +61,8 @@ constexpr uint64 QRWA_POLL_STATUS_PASSED_EXECUTED = 2; // poll inactive, result 
 constexpr uint64 QRWA_POLL_STATUS_FAILED_VOTE = 3; // poll inactive, result is NO
 constexpr uint64 QRWA_POLL_STATUS_PASSED_FAILED_EXECUTION = 4; // poll inactive, result is YES but failed to release asset
 
+// QX Fee for releasing management rights
+constexpr sint64 QRWA_RELEASE_MANAGEMENT_FEE = 100;
 
 // LOG TYPES
 constexpr uint64 QRWA_LOG_TYPE_DISTRIBUTION = 1;
@@ -81,6 +83,7 @@ constexpr uint64 QRWA_LOG_TYPE_INCOMING_REVENUE_B = 10;
 
 struct QRWA : public ContractBase
 {
+    friend class ContractTestingQRWA;
     /***************************************************/
     /******************** STRUCTS **********************/
     /***************************************************/
@@ -326,15 +329,14 @@ public:
                         }
                     }
                 }
-
-                // Pay Zoxx the entire remainder of the pool
-                locals.movedSharesPayout = state.mQmineDividendPool;
-                if (locals.movedSharesPayout > 0 && state.mCurrentGovParams.zoxxAddress != NULL_ID)
-                {
-                    qpi.transfer(state.mCurrentGovParams.zoxxAddress, locals.movedSharesPayout);
-                    state.mQmineDividendPool = 0;
-                    state.mTotalQmineDistributed = QPI::sadd(state.mTotalQmineDistributed, locals.movedSharesPayout);
-                }
+            }
+            // Pay Zoxx the entire remainder of the pool
+            locals.movedSharesPayout = state.mQmineDividendPool;
+            if (locals.movedSharesPayout > 0 && state.mCurrentGovParams.zoxxAddress != NULL_ID)
+            {
+                qpi.transfer(state.mCurrentGovParams.zoxxAddress, locals.movedSharesPayout);
+                state.mQmineDividendPool = 0;
+                state.mTotalQmineDistributed = QPI::sadd(state.mTotalQmineDistributed, locals.movedSharesPayout);
             }
         } // End QMINE distribution
 
@@ -486,6 +488,7 @@ public:
         //id iterVoter;
         GetQmineBalanceOf_input gqbo_in;
         GetQmineBalanceOf_output gqbo_out;
+        GetQmineBalanceOf_locals gqbo_locals;
         QrwaGovProposal poll;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(VoteGovParams)
@@ -497,7 +500,7 @@ public:
 
         // Get voter's current QMINE balance
         locals.gqbo_in.holder = qpi.invocator();
-        CALL(GetQmineBalanceOf, locals.gqbo_in, locals.gqbo_out);
+        CALL(GetQmineBalanceOf, locals.gqbo_in, locals.gqbo_out, locals.gqbo_locals);
         locals.currentBalance = (locals.gqbo_out.balance > 0) ? static_cast<uint64>(locals.gqbo_out.balance) : 0;
 
         if (locals.currentBalance <= 0)
@@ -1245,6 +1248,8 @@ public:
         Array<uint64, QRWA_MAX_ASSET_POLLS> assetPollVotesNo;
         uint64 assetPassed;
 
+        sint64 releaseFeeResult; // For releaseShares fee
+
         QrwaLogger logger;
         uint64 epoch;
 
@@ -1457,8 +1462,38 @@ public:
 
                             if (locals.transferResult >= 0)
                             {
-                                state.mTreasuryBalance = (state.mTreasuryBalance > locals.poll.amount) ? (state.mTreasuryBalance - locals.poll.amount) : 0;
-                                locals.transferSuccess = 1;
+                                // Check if Pool A has enough funds for the QX management transfer fee
+                                if (state.mRevenuePoolA >= QRWA_RELEASE_MANAGEMENT_FEE)
+                                {
+                                    // Release management rights from this SC to QX
+                                    locals.releaseFeeResult = qpi.releaseShares(
+                                        locals.poll.asset,
+                                        locals.poll.destination, // new owner
+                                        locals.poll.destination, // new possessor
+                                        locals.poll.amount,
+                                        QX_CONTRACT_INDEX,
+                                        QX_CONTRACT_INDEX,
+                                        QRWA_RELEASE_MANAGEMENT_FEE
+                                    );
+
+                                    if (locals.releaseFeeResult >= 0)
+                                    {
+                                        state.mTreasuryBalance = (state.mTreasuryBalance > locals.poll.amount) ? (state.mTreasuryBalance - locals.poll.amount) : 0;
+                                        // Deduct *actual* fee from revenue pool A
+                                        state.mRevenuePoolA = (state.mRevenuePoolA > (uint64)locals.releaseFeeResult) ? (state.mRevenuePoolA - (uint64)locals.releaseFeeResult) : 0;
+                                        locals.transferSuccess = 1;
+                                    }
+                                    else
+                                    {
+                                        // Failed to release management (e.g., QX rejected it)
+                                        locals.transferSuccess = 0;
+                                    }
+                                }
+                                else
+                                {
+                                    // Not enough fee in Pool A, fail the management transfer
+                                    locals.transferSuccess = 0;
+                                }
                             }
                         }
                     }
@@ -1475,9 +1510,39 @@ public:
 
                                 if (locals.transferResult >= 0)
                                 {
-                                    locals.currentAssetBalance = (locals.currentAssetBalance > locals.poll.amount) ? (locals.currentAssetBalance - locals.poll.amount) : 0;
-                                    state.mGeneralAssetBalances.set(locals.poll.asset, locals.currentAssetBalance);
-                                    locals.transferSuccess = 1;
+                                    // Check if Pool A has enough funds for the QX management transfer fee
+                                    if (state.mRevenuePoolA >= QRWA_RELEASE_MANAGEMENT_FEE)
+                                    {
+                                        // Release management rights from this SC to QX
+                                        locals.releaseFeeResult = qpi.releaseShares(
+                                            locals.poll.asset,
+                                            locals.poll.destination, // new owner
+                                            locals.poll.destination, // new possessor
+                                            locals.poll.amount,
+                                            QX_CONTRACT_INDEX,
+                                            QX_CONTRACT_INDEX,
+                                            QRWA_RELEASE_MANAGEMENT_FEE
+                                        );
+
+                                        if (locals.releaseFeeResult >= 0)
+                                        {
+                                            locals.currentAssetBalance = (locals.currentAssetBalance > locals.poll.amount) ? (locals.currentAssetBalance - locals.poll.amount) : 0;
+                                            state.mGeneralAssetBalances.set(locals.poll.asset, locals.currentAssetBalance);
+                                            // Deduct *actual* fee from revenue pool A
+                                            state.mRevenuePoolA = (state.mRevenuePoolA > (uint64)locals.releaseFeeResult) ? (state.mRevenuePoolA - (uint64)locals.releaseFeeResult) : 0;
+                                            locals.transferSuccess = 1;
+                                        }
+                                        else
+                                        {
+                                            // Failed to release management
+                                            locals.transferSuccess = 0;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // Not enough fee in Pool A, fail the management transfer
+                                        locals.transferSuccess = 0;
+                                    }
                                 }
                             }
                         }
@@ -1567,7 +1632,7 @@ public:
             if (locals.msSinceLastPayout >= QRWA_MIN_PAYOUT_INTERVAL_MS)
             {
                 // Trigger distribution
-                CALL(DistributeRewards, locals.dr_in, locals.dr_out);
+                CALL(DistributeRewards, locals.dr_in, locals.dr_out, locals.dr_locals);
             }
         }
     }
@@ -1601,6 +1666,17 @@ public:
             locals.logger.valueB = input.type;
             LOG_INFO(locals.logger);
         }
+    }
+
+    PRE_ACQUIRE_SHARES()
+    {
+        // Allow any entity to transfer asset management rights to this contract
+        output.requestedFee = 0;
+        output.allowTransfer = true;
+    }
+
+    POST_ACQUIRE_SHARES()
+    {
     }
 
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
