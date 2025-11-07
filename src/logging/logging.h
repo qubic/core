@@ -287,6 +287,7 @@ private:
     inline static unsigned int lastUpdatedTick; // tick number that the system has generated all log
     inline static unsigned int currentTxId;
     inline static unsigned int currentTick;
+    inline static bool isPausing;
 
     static unsigned long long getLogId(const char* ptr)
     {
@@ -332,6 +333,7 @@ private:
     static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
     {
 #if ENABLED_LOGGING
+        if (isPausing) return;
         char buffer[LOG_HEADER_SIZE];
         tx.addLogId();
         logBuf.set(logId, logBufferTail, LOG_HEADER_SIZE + messageSize);
@@ -581,6 +583,7 @@ public:
         m256i zeroHash = m256i::zero();
         XKCP::KangarooTwelve_Update(&k12, zeroHash.m256i_u8, 32); // init tick, feed zero hash
 #endif
+        isPausing = false;
 #endif
     }
 
@@ -599,6 +602,7 @@ public:
         tx.commitAndCleanCurrentTxToLogId();
         ASSERT(mapTxToLogId.size() == (_tick - tickBegin + 1));
         lastUpdatedTick = _tick;
+        isPausing = false;
 #endif
     }
     
@@ -857,6 +861,16 @@ public:
 #endif
     }
 
+    void pause()
+    {
+        isPausing = true;
+    }
+
+    void resume()
+    {
+        isPausing = false;
+    }
+
     // get logging content from log ID
     static void processRequestLog(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header);
 
@@ -895,4 +909,14 @@ template <typename T>
 static void __logContractWarningMessage(unsigned int size, T& msg)
 {
     logger.__logContractWarningMessage(size, msg);
+}
+
+static void __pauseLogMessage()
+{
+    logger.pause();
+}
+
+static void __resumeLogMessage()
+{
+    logger.resume();
 }
