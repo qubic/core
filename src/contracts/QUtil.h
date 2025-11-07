@@ -61,6 +61,7 @@ constexpr uint64 QUTILLogTypeMaxPollsReached = 22;                  // Max epoch
 // Fee per shareholder for DistributeQuToShareholders() (initial value)
 constexpr sint64 QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER = 5;
 
+constexpr uint32 QUTIL_STMB_LOG_TYPE = 100001; // for bob to index
 
 struct QUTILLogger
 {
@@ -77,7 +78,7 @@ struct QUTILLogger
 struct QUTILSendTomanyBenchmarkLog
 {
     uint32 contractId; // to distinguish bw SCs
-    uint32 padding;
+    uint32 logType;
     id startId;
     sint64 dstCount;
     sint8 _terminator; // Only data before "_terminator" are logged
@@ -844,6 +845,7 @@ public:
         locals.useNext = 1;
 
         locals.logBenchmark.startId = qpi.invocator();
+        locals.logBenchmark.logType = QUTIL_STMB_LOG_TYPE;
         locals.logBenchmark.dstCount = input.dstCount;
         LOG_INFO(locals.logBenchmark);
 
