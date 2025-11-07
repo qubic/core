@@ -28,6 +28,7 @@ std::vector<m256i> publicKeys;
 std::vector<m256i> nonces;
 std::vector<std::vector<unsigned int>> scoreResults;
 std::vector<std::vector<unsigned long long>> scoreProcessingTimes;
+unsigned int processedSamplesCount = 0;
 
 // Recursive template to process each element in scoreSettings
 template <unsigned long long i>
@@ -171,11 +172,11 @@ int generateSamples(std::string sampleFileName, unsigned int numberOfSamples, bo
             }
             else
             {
-                miningSeeds[i] = hexToByte(sampleString[i][0], 32);
+                hexToByte(sampleString[i][0], 32, miningSeeds[i].m256i_u8);
             }
 
-            publicKeys[i] = hexToByte(sampleString[i][1], 32);
-            nonces[i] = hexToByte(sampleString[i][2], 32);
+            hexToByte(sampleString[i][1], 32, publicKeys[i].m256i_u8);
+            hexToByte(sampleString[i][2], 32, nonces[i].m256i_u8);
         }
         std::cout << "Read sample file DONE " << std::endl;
     }
@@ -237,12 +238,13 @@ void generateScore(
         scoreFile.close();
     }
 
+
     // Prepare memory for generated scores
     unsigned long long totalSamples = nonces.size();
     scoreResults.resize(totalSamples);
     scoreProcessingTimes.resize(totalSamples);
 
-    bool writeFilePerSample = true;
+    bool writeFilePerSample = false;
 #pragma omp parallel for num_threads(threadsCount)
     for (int i = 0; i < totalSamples; ++i)
     {
@@ -260,12 +262,16 @@ void generateScore(
         process<numberOfGeneratedSetting>(miningSeeds[i].m256i_u8, publicKeys[i].m256i_u8, nonces[i].m256i_u8, i, writeFilePerSample);
 #pragma omp critical
         {
-            std::cout << "Processed sample " << i << "." << std::endl;
+            processedSamplesCount++;
+            if (processedSamplesCount % 16 == 0)
+            {
+                std::cout << "\rProcessed  " << processedSamplesCount << " / " << totalSamples;
+            }
         }
     }
 
     // Write to a general file
-    std::cout << "Generate scores DONE. Collect all into a file..." << std::endl;
+    std::cout << "\nGenerate scores DONE. Collect all into a file..." << std::endl;
     scoreFile.open(outputFile, std::ios::app);
     if (!scoreFile.is_open())
     {
