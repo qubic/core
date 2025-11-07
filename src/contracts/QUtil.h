@@ -75,7 +75,7 @@ struct QUTILLogger
     sint8 _terminator; // Only data before "_terminator" are logged
 };
 
-struct QUTILSendTomanyBenchmarkLog
+struct QUTILSendToManyBenchmarkLog
 {
     uint32 contractId; // to distinguish bw SCs
     uint32 logType;
@@ -265,7 +265,7 @@ public:
         uint64 useNext;
         uint64 totalNumTransfers;
         QUTILLogger logger;
-        QUTILSendTomanyBenchmarkLog logBenchmark;
+        QUTILSendToManyBenchmarkLog logBenchmark;
     };
 
     struct BurnQubic_input
