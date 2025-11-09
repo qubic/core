@@ -2545,7 +2545,6 @@ public:
     QtryGOV mQtryGov;
 
     typedef ProposalDataYesNo ProposalDataT;
-    // Shareholders of TESTEXA have right to propose and vote. Only 16 slots provided.
     typedef ProposalAndVotingByShareholders<8, QTRY_CONTRACT_ASSET_NAME> ProposersAndVotersT;
     // Proposal and voting storage type
     typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT;
