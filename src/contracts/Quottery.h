@@ -11,6 +11,7 @@ constexpr unsigned long long QUOTTERY_HARD_CAP_CREATOR_FEE = 50; // 5%
 
 constexpr unsigned long long QUOTTERY_TICK_TO_KEEP_AFTER_END = 100ULL;
 
+constexpr uint64 QTRY_CONTRACT_ASSET_NAME = 1498567761ULL;
 // logging enum
 struct QuotteryLogger
 {
@@ -154,16 +155,6 @@ public:
         uint64 opWholeSharePriceInUSD;
     } mOperationParams;
 
-    // gov struct
-    struct QtryGOV // votable by shareholders
-    {
-        uint64 mShareHolderFee;
-        uint64 mBurnFee;
-        uint64 mOperationFee;
-        id mOperationId;
-    };
-    QtryGOV mQtryGov;
-
     struct OrderInfo
     {
         uint64 eid;
@@ -204,7 +195,6 @@ public:
     uint64 mOracleRevenue;
 
     uint64 mBurnedAmount;
-
 
     /**************************************/
     /************UTIL FUNCTIONS************/
@@ -2521,5 +2511,136 @@ public:
     END_TICK_WITH_LOCALS()
     {
         //TODO: placeholder for oracle machine checking
+    }
+
+    /* GOV/PROPOSAL AREA */
+    
+    // gov struct
+    struct QtryGOV // votable by shareholders
+    {
+        uint64 mShareHolderFee;
+        uint64 mBurnFee;
+        uint64 mOperationFee;
+        id mOperationId;
+        bool isValid()
+        {
+            return mShareHolderFee < QUOTTERY_PERCENT_DENOMINATOR &&
+                mBurnFee < QUOTTERY_PERCENT_DENOMINATOR &&
+                mOperationFee < QUOTTERY_PERCENT_DENOMINATOR &&
+                (mShareHolderFee + mBurnFee + mOperationFee) < QUOTTERY_PERCENT_DENOMINATOR &&
+                mOperationId != NULL_ID;
+        }
+    };
+    QtryGOV mQtryGov;
+
+    typedef ProposalDataYesNo ProposalDataT;
+    // Shareholders of TESTEXA have right to propose and vote. Only 16 slots provided.
+    typedef ProposalAndVotingByShareholders<8, QTRY_CONTRACT_ASSET_NAME> ProposersAndVotersT;
+    // Proposal and voting storage type
+    typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT;
+    // Proposal storage
+    ProposalVotingT proposals;
+    // MultiVariables proposal option data storage (same number of slots as proposals)
+    Array<QtryGOV, 8> multiVariablesProposalData;
+
+    struct SetShareholderProposal_input
+    {
+        ProposalDataT proposalData;
+        QtryGOV govStruct;
+    };
+    typedef QPI::SET_SHAREHOLDER_PROPOSAL_output SetShareholderProposal_output;
+
+    // Procedures:
+
+    PUBLIC_PROCEDURE(SetShareholderProposal)
+    {
+        // - fee can be handled as you like
+        // - input.proposalData.epoch == 0 means clearing a proposal
+
+        // default return code: failure
+        output = INVALID_PROPOSAL_INDEX;
+
+        // check input
+        if (!input.govStruct.isValid()) return;
+
+        // Try to set proposal (checks invocator's rights and general validity of input proposal), returns proposal index
+        output = qpi(state.proposals).setProposal(qpi.invocator(), input.proposalData);
+
+        if (output != INVALID_PROPOSAL_INDEX)
+        {
+            // success
+            if (ProposalTypes::cls(input.proposalData.type) == ProposalTypes::Class::MultiVariables)
+            {
+                // store custom data of multi-variable proposal in array (at position proposalIdx)
+                state.multiVariablesProposalData.set(output, input.govStruct);
+            }
+        }
+    }
+
+    IMPLEMENT_SetShareholderVotes()
+
+    typedef NoData FinalizeGovProposal_input;
+    typedef NoData FinalizeGovProposal_output;
+    struct FinalizeGovProposal_locals
+    {
+        sint32 proposalIndex;
+        ProposalDataT proposal;
+        ProposalSummarizedVotingDataV1 results;
+        QtryGOV newQtryGovParams;
+    };
+    PRIVATE_PROCEDURE_WITH_LOCALS(FinalizeGovProposal)
+    {
+        locals.proposalIndex = -1;
+        while ((locals.proposalIndex = qpi(state.proposals).nextProposalIndex(locals.proposalIndex, qpi.epoch())) >= 0)
+        {
+            if (!qpi(state.proposals).getProposal(locals.proposalIndex, locals.proposal))
+                continue;
+
+            // handle MultiVariables proposal type
+            if (ProposalTypes::cls(locals.proposal.type) == ProposalTypes::Class::MultiVariables)
+            {
+                // Get voting results and check if conditions for proposal acceptance are met
+                if (!qpi(state.proposals).getVotingSummary(locals.proposalIndex, locals.results))
+                    continue;
+
+                // Check if the yes option (1) has been accepted
+                if (locals.results.getAcceptedOption() == 1)
+                {
+                    locals.newQtryGovParams = state.multiVariablesProposalData.get(locals.proposalIndex);
+                    copyFromBuffer(state.mQtryGov, locals.newQtryGovParams);
+                }
+            }
+        }
+    }
+    // FUNCTIONs:
+
+    IMPLEMENT_GetShareholderProposalIndices()
+
+    IMPLEMENT_GetShareholderProposalFees(0)
+
+    IMPLEMENT_GetShareholderVotes()
+
+    IMPLEMENT_GetShareholderVotingResults()
+
+    struct GetShareholderProposal_input
+    {
+        uint16 proposalIndex;
+    };
+    struct GetShareholderProposal_output
+    {
+        ProposalDataT proposal;
+        id proposerPubicKey;
+        QtryGOV newQtryGovParams;
+    };
+
+    PUBLIC_FUNCTION(GetShareholderProposal)
+    {
+        // On error, output.proposal.type is set to 0
+        output.proposerPubicKey = qpi(state.proposals).proposerId(input.proposalIndex);
+        qpi(state.proposals).getProposal(input.proposalIndex, output.proposal);
+        if (ProposalTypes::cls(output.proposal.type) == ProposalTypes::Class::MultiVariables)
+        {
+            output.newQtryGovParams = state.multiVariablesProposalData.get(input.proposalIndex);
+        }
     }
 };
