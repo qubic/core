@@ -6,12 +6,13 @@ struct QTF2
 
 static constexpr uint64 QTF_MAX_NUMBER_OF_PLAYERS = 1024;
 static constexpr uint64 QTF_RANDOM_VALUES_COUNT = 4;
+static constexpr uint64 QTF_MAX_RANDOM_VALUE = 30;
 static constexpr uint64 QTF_TICKET_PRICE = 1000000;
 
 static id QTF_ADDRESS_DEV_TEAM = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C,
                                     _R, _L, _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
 
-using QTFRandomValues = Array<uint64, QTF_RANDOM_VALUES_COUNT>;
+using QTFRandomValues = Array<uint8, QTF_RANDOM_VALUES_COUNT>;
 using QFTWinnerPlayers = Array<id, QTF_MAX_NUMBER_OF_PLAYERS>;
 
 struct QTF : public ContractBase
@@ -218,6 +219,7 @@ protected:
 			tmpValue ^= tmpValue << 25;
 			tmpValue ^= tmpValue >> 27;
 			tmpValue *= 2685821657736338717ULL;
+			tmpValue = mod(tmpValue, QTF_MAX_RANDOM_VALUE) + 1;
 			output.set(index, tmpValue);
 		}
 	}

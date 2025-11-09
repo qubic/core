@@ -285,6 +285,12 @@
     <ClInclude Include="contracts\RandomLottery.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\QReservePool.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\QThirtyFour.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contract_core\pre_qpi_def.h">
       <Filter>contract_core</Filter>
     </ClInclude>
