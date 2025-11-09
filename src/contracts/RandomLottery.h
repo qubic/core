@@ -528,6 +528,20 @@ public:
 		enableBuyTicket(state, !locals.isWednesday);
 	}
 
+	POST_INCOMING_TRANSFER()
+	{
+		switch (input.type)
+		{
+			case TransferType::standardTransaction:
+				// Return any funds sent via standard transaction
+				if (qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+			default: break;
+		}
+	}
+
 	/**
 	 * @brief Returns currently configured fee percentages.
 	 */
