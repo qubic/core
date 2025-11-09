@@ -39,7 +39,7 @@ public:
         state->mOperationParams.eligibleCreators.cleanup();
         state->mOperationParams.eligibleOracles.cleanup();
         state->mOperationParams.discountedFeeForUsers.cleanup();
-        state->mOperationParams.wholeSharePriceInQU = 100000;
+        state->mOperationParams.opwholeSharePrice = 100000;
         setMemory(state->mQtryGov, 0);
         state->mQtryGov.mOperationId = owner;
         state->mQtryGov.mBurnFee = 0;
