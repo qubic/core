@@ -2430,6 +2430,16 @@ public:
         REGISTER_USER_PROCEDURE(UpdateFeeDiscountList, 10);
         REGISTER_USER_PROCEDURE(UpdateFeePerDay, 11);
 
+        // Shareholder proposals: use standard function/procedure indices
+        REGISTER_USER_FUNCTION(GetShareholderProposalFees, 65531);
+        REGISTER_USER_FUNCTION(GetShareholderProposalIndices, 65532);
+        REGISTER_USER_FUNCTION(GetShareholderProposal, 65533);
+        REGISTER_USER_FUNCTION(GetShareholderVotes, 65534);
+        REGISTER_USER_FUNCTION(GetShareholderVotingResults, 65535);
+
+        REGISTER_USER_PROCEDURE(SetShareholderProposal, 65534);
+        REGISTER_USER_PROCEDURE(SetShareholderVotes, 65535);
+
     }
 
     BEGIN_EPOCH()
@@ -2511,6 +2521,7 @@ public:
     END_TICK_WITH_LOCALS()
     {
         //TODO: placeholder for oracle machine checking
+        CALL(FinalizeGovProposal, input, output);
     }
 
     /* GOV/PROPOSAL AREA */
