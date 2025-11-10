@@ -1,9 +1,5 @@
 ﻿using namespace QPI;
 
-struct QTF2
-{
-};
-
 static constexpr uint64 QTF_MAX_NUMBER_OF_PLAYERS = 1024;
 static constexpr uint64 QTF_RANDOM_VALUES_COUNT = 4;
 static constexpr uint64 QTF_MAX_RANDOM_VALUE = 30;
@@ -14,6 +10,10 @@ static id QTF_ADDRESS_DEV_TEAM = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, 
 
 using QTFRandomValues = Array<uint8, QTF_RANDOM_VALUES_COUNT>;
 using QFTWinnerPlayers = Array<id, QTF_MAX_NUMBER_OF_PLAYERS>;
+
+struct QTF2
+{
+};
 
 struct QTF : public ContractBase
 {
