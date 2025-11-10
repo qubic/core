@@ -28,23 +28,40 @@ public:
         initEmptyUniverse();
         INIT_CONTRACT(QUOTTERY);
         callSystemProcedure(QUOTTERY_CONTRACT_INDEX, INITIALIZE);
-        owner = id(0, 1, 2, 3);
-        increaseEnergy(owner, 1000000000ULL);
         beginEpoch();
         updateEtalonTime(0);
 
         // initialize for gtest
         auto state = getState();
-        state->mOperationParams.feePerDay = 11337;
-        state->mOperationParams.eligibleCreators.cleanup();
-        state->mOperationParams.eligibleOracles.cleanup();
-        state->mOperationParams.discountedFeeForUsers.cleanup();
-        state->mOperationParams.opwholeSharePrice = 100000;
-        setMemory(state->mQtryGov, 0);
-        state->mQtryGov.mOperationId = owner;
-        state->mQtryGov.mBurnFee = 0;
-        state->mQtryGov.mOperationFee = 0;
-        state->mQtryGov.mShareHolderFee = 0;
+        QpiContextUserProcedureCall qpi(QUOTTERY_CONTRACT_INDEX, id::zero(), 0);
+        {
+            state->mOperationParams.feePerDay = 11337;
+            state->mOperationParams.eligibleCreators.cleanup();
+            state->mOperationParams.eligibleOracles.cleanup();
+            state->mOperationParams.discountedFeeForUsers.cleanup();
+            setMemory(state->mQtryGov, 0);
+            state->mQtryGov.mOperationId = ID(_M, _E, _F, _K, _Y, _F, _C, _D, _X, _D, _U, _I, _L, _C, _A, _J,
+                _K, _O, _I, _K, _W, _Q, _A, _P, _E, _N, _J, _D, _U, _H, _S, _S,
+                _Y, _P, _B, _R, _W, _F, _O, _T, _L, _A, _L, _I, _L, _A, _Y, _W,
+                _Q, _F, _D, _S, _I, _T, _J, _E); // testnet ARB
+            state->mQtryGov.mBurnFee = 0;
+            state->mQtryGov.mOperationFee = 0; // 0.5%
+            state->mQtryGov.mShareHolderFee = 0; // 1%
+            state->mRecentActiveEvent.setAll(NULL_INDEX);
+            id qtryId = id(QUOTTERY_CONTRACT_INDEX, 0, 0, 0);
+            // for test only
+            qpi.issueAsset(1146312017, qtryId, 0, 1000000000000000ULL, 0);
+            state->QUSD.assetName = 1146312017;
+            state->QUSD.issuer = qtryId;
+            state->wholeSharePrice = 100000;
+            qpi.transferShareOwnershipAndPossession(state->QUSD.assetName, state->QUSD.issuer, qtryId, qtryId, 1000000000000000ULL, state->mQtryGov.mOperationId); // transfer all to GO
+        }
+
+        owner = state->mQtryGov.mOperationId;
+        increaseEnergy(owner, 1000000000ULL);
+        auto b0 = balanceUSD(owner);
+        EXPECT_TRUE(b0 == 1000000000000000ULL);
+        qpi.freeBuffer();
     }
     QUOTTERY* getState()
     {
@@ -65,6 +82,22 @@ public:
         increaseEnergy(caller, amount + 1); // give caller some coins
         QUOTTERY::CreateEvent_output ceo;
         invokeUserProcedure(QUOTTERY_CONTRACT_INDEX, 1, cei, ceo, caller, amount);
+    }
+
+    // transfer both ownership and possession
+    void transferQUSD(const id from, const id to, const long long amount)
+    {
+        auto state = getState();
+        QpiContextUserProcedureCall qpi(QUOTTERY_CONTRACT_INDEX, from, 0);
+        qpi.transferShareOwnershipAndPossession(state->QUSD.assetName, state->QUSD.issuer, from, from, amount, to);
+        qpi.freeBuffer();
+    }
+
+    long long balanceUSD(id pk)
+    {
+        return numberOfShares(getState()->QUSD,
+            { pk, QUOTTERY_CONTRACT_INDEX },
+            { pk, QUOTTERY_CONTRACT_INDEX });
     }
 
     void AddAskOrder(uint64 eid, uint64 amount, uint64 option, uint64 price, const id& caller, sint64 amountQUs = 0)
@@ -383,8 +416,6 @@ TEST(QTRYTest, CreateEvent)
         cei.qei.option0Desc.set(i, v_o0[i]);
         cei.qei.option1Desc.set(i, v_o1[i]);
     }
-    cei.qei.assetIssuer = id::zero();
-    cei.qei.assetName = 0;
     auto state = qtry.getState();
     qtry.CreateEvent(cei, creators[0], state->mOperationParams.feePerDay);
     EXPECT_TRUE(state->mCurrentEventID == 1);
@@ -416,8 +447,6 @@ TEST(QTRYTest, CreateEvent)
         cei.qei.option0Desc.set(i, v_o0[i]);
         cei.qei.option1Desc.set(i, v_o1[i]);
     }
-    cei.qei.assetIssuer = id::zero();
-    cei.qei.assetName = 0;
     qtry.CreateEvent(cei, creators[0], state->mOperationParams.feePerDay);
     EXPECT_TRUE(state->mCurrentEventID == 1); // not increase
 
@@ -487,8 +516,6 @@ TEST(QTRYTest, MatchingOrders)
         cei.qei.option0Desc.set(i, v_o0[i]);
         cei.qei.option1Desc.set(i, v_o1[i]);
     }
-    cei.qei.assetIssuer = id::zero();
-    cei.qei.assetName = 0;
     
     qtry.CreateEvent(cei, creators[0], state->mOperationParams.feePerDay);
     
@@ -496,7 +523,9 @@ TEST(QTRYTest, MatchingOrders)
     for (int i = 0; i < 16; i++)
     {
         traders[i] = id::randomValue();
-        increaseEnergy(traders[i], 100LL * 1000000000LL);
+        increaseEnergy(traders[i], 100000000000LL);
+        qtry.transferQUSD(qtry.owner, traders[i], 100000000000LL);
+        EXPECT_TRUE(qtry.balanceUSD(traders[i]) == 100000000000LL);
     }
     // bid: 100 shares option 0 for 40000
     qtry.AddBidOrder(0, 100, 0, 40000ULL, traders[0]);
@@ -537,8 +566,8 @@ TEST(QTRYTest, MatchingOrders)
     // b1 balance: 100B - 100*60000 + 40*30000
     qtry.RemoveAskOrder(0, 40, 1, 40000, traders[1]);
     qtry.AddAskOrder(0, 40, 1, 20000, traders[1]);
-    sint64 b0_bal = getBalance(traders[0]);
-    sint64 b1_bal = getBalance(traders[1]);
+    sint64 b0_bal = qtry.balanceUSD(traders[0]);
+    sint64 b1_bal = qtry.balanceUSD(traders[1]);
     EXPECT_TRUE(b0_bal == (100000000000ULL - 100LL * 40000 + 40ULL * 70000));
     EXPECT_TRUE(b1_bal == (100000000000ULL - 100LL * 60000 + 40ULL * 30000));
 
@@ -580,7 +609,7 @@ TEST(QTRYTest, MatchingOrders)
     //normal matching order, T0 ask 10 option 0 at 40k
     // T4 bid 10 option 0 at 41k => match at 40k
     qtry.AddBidOrder(0, 10, 0, 71000ULL, traders[4]);
-    sint64 b4_bal = getBalance(traders[4]);
+    sint64 b4_bal = qtry.balanceUSD(traders[4]);
     EXPECT_TRUE(b4_bal == (100000000000ULL - 10 * 70000));
     key = QUOTTERY::MakePosKey(traders[4], 0, 0);
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
@@ -597,7 +626,7 @@ TEST(QTRYTest, MatchingOrders)
     qtry.AddAskOrder(0, 53, 0, 40000, traders[2]);
     qtry.AddAskOrder(0, 10, 0, 50000, traders[4]);
     qtry.AddBidOrder(0, 163, 0, 50000, traders[5]);
-    sint64 b5_bal = getBalance(traders[5]);
+    sint64 b5_bal = qtry.balanceUSD(traders[5]);
     EXPECT_TRUE(b5_bal == (100000000000ULL - 50 * 20000 - 50 * 30000 - 53 * 40000 - 10 * 50000));
     key = QUOTTERY::MakePosKey(traders[5], 0, 0);
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
@@ -609,7 +638,7 @@ TEST(QTRYTest, MatchingOrders)
     qtry.AddBidOrder(0, 53, 0, 40000, traders[2]);
     qtry.AddBidOrder(0, 10, 0, 50000, traders[4]);
     qtry.AddAskOrder(0, 163, 0, 20000, traders[5]);
-    b5_bal = getBalance(traders[5]);
+    b5_bal = qtry.balanceUSD(traders[5]);
     EXPECT_TRUE(b5_bal == (100000000000ULL));
 
     qtry.CreateEvent(cei, creators[1], state->mOperationParams.feePerDay);
@@ -628,7 +657,7 @@ TEST(QTRYTest, MatchingOrders)
     qtry.AddAskOrder(1, 106, 0, 50000, traders[4]);
     qtry.AddAskOrder(1, 206, 0, 50000, traders[6]);
     qtry.AddBidOrder(1, 50 + 50 + 53 + 106 + 206, 0, 50000, traders[8]);
-    auto b8_bal = getBalance(traders[8]);
+    auto b8_bal = qtry.balanceUSD(traders[8]);
     EXPECT_TRUE(b8_bal == (100000000000ULL - 50*20000 - 50 * 30000 - 53 * 40000 - 106 * 50000 - 206 * 50000));
 
     qtry.AddBidOrder(1, 50, 0, 20000, traders[1]);
@@ -637,14 +666,14 @@ TEST(QTRYTest, MatchingOrders)
     qtry.AddBidOrder(1, 10, 0, 50000, traders[7]);
     auto b8_before = b8_bal;
     qtry.AddAskOrder(1, 50 + 50 + 53 + 10, 0, 20000, traders[8]);
-    b8_bal = getBalance(traders[8]);
+    b8_bal = qtry.balanceUSD(traders[8]);
     EXPECT_TRUE(b8_bal == (b8_before + 50 * 20000 + 50 *30000 + 53 * 40000 + 10 * 50000));
 
     b8_before = b8_bal;
     qtry.AddAskOrder(1, 1, 0, 20000, traders[5], 1000);
     qtry.AddAskOrder(1, 2, 0, 20000, traders[7], 1000);
     qtry.AddAskOrder(1, 1, 0, 20000, traders[8], 1000);
-    b8_bal = getBalance(traders[8]);
+    b8_bal = qtry.balanceUSD(traders[8]);
     EXPECT_TRUE(b8_before == b8_bal); // expect refund
     qtry.RemoveAskOrder(1, 1, 0, 20000, traders[8], 1000);
     qtry.RemoveAskOrder(10, 1, 0, 20000, traders[8], 1000);
@@ -664,7 +693,7 @@ TEST(QTRYTest, MatchingOrders)
     auto value = state->mABOrders.element(index);
     EXPECT_TRUE(value.amount == 10);
     EXPECT_TRUE(value.entity == traders[8]);
-    b8_bal = getBalance(traders[8]);
+    b8_bal = qtry.balanceUSD(traders[8]);
     b8_before = b8_bal;
     qtry.RemoveAskOrder(1, 10, 0, 50001, traders[8]);
     qtry.AddAskOrder(1, 3, 1, 90000, traders[1]);
@@ -673,7 +702,7 @@ TEST(QTRYTest, MatchingOrders)
     qtry.AddAskOrder(1, 4, 1, 90001, traders[3]);
     qtry.AddAskOrder(1, 5, 1, 90003, traders[5]);
     qtry.AddBidOrder(1, 9 + 4 + 5, 1, 90003, traders[8]);
-    b8_bal = getBalance(traders[8]);
+    b8_bal = qtry.balanceUSD(traders[8]);
     EXPECT_TRUE(b8_bal == b8_before - 6 * 90000 - 7 * 90001 - 5 * 90003);
 
     key = QUOTTERY::MakePosKey(traders[8], 1, 1);
@@ -727,9 +756,9 @@ TEST(QTRYTest, MatchingOrders)
     EXPECT_TRUE(elem.entity == traders[8]);
 
     qtry.AddBidOrder(2, 10, 0, 10000, traders[1]);
-    auto prev_b1_bal = getBalance(traders[1]);
+    auto prev_b1_bal = qtry.balanceUSD(traders[1]);
     qtry.RemoveBidOrder(2, 10, 0, 10000, traders[1]);
-    b1_bal = getBalance(traders[1]);
+    b1_bal = qtry.balanceUSD(traders[1]);
     EXPECT_TRUE(b1_bal - prev_b1_bal == 100000);
 }
 
@@ -747,6 +776,9 @@ TEST(QTRYTest, CompleteCycle)
         oracles[i] = id::randomValue();
         increaseEnergy(creators[i], 100LL * 1000000000LL);
         increaseEnergy(oracles[i], 100LL * 1000000000LL);
+
+        qtry.transferQUSD(qtry.owner, creators[i], 100000000000LL);
+        qtry.transferQUSD(qtry.owner, oracles[i], 100000000000LL);
     }
     auto state = qtry.getState();
     uint64 ops = 1; //add
@@ -760,6 +792,7 @@ TEST(QTRYTest, CompleteCycle)
     {
         traders[i] = id::randomValue();
         increaseEnergy(traders[i], 100LL * 1000000000LL);
+        qtry.transferQUSD(qtry.owner, traders[i], 100000000000LL);
     }
 
     for (int i = 0; i < 8; i++) cei.qei.oracleId.set(i, oracles[i]);
@@ -788,8 +821,6 @@ TEST(QTRYTest, CompleteCycle)
         cei.qei.option0Desc.set(i, v_o0[i]);
         cei.qei.option1Desc.set(i, v_o1[i]);
     }
-    cei.qei.assetIssuer = id::zero();
-    cei.qei.assetName = 0;
 
     qtry.CreateEvent(cei, creators[0], state->mOperationParams.feePerDay);
     srand(0);
@@ -799,7 +830,7 @@ TEST(QTRYTest, CompleteCycle)
     sint64 total = 0;
     for (int i = 0; i < 16; i++)
     {
-        total += getBalance(traders[i]);
+        total += qtry.balanceUSD(traders[i]);
     }
 
     for (int i = 0; i < 10000; i++)
@@ -863,11 +894,11 @@ TEST(QTRYTest, CompleteCycle)
     index = state->mABOrders.headIndex(key, 0);
     EXPECT_TRUE(index == NULL_INDEX);
 
-    qtryBal = getBalance(qtryID);
+    qtryBal = qtry.balanceUSD(qtryID);
     total = 0;
     for (int i = 0; i < 16; i++)
     {
-        total += getBalance(traders[i]);
+        total += qtry.balanceUSD(traders[i]);
     }
     EXPECT_TRUE(total == 16 * 1000000000LL * 100LL);
 }
@@ -933,6 +964,9 @@ TEST(QTRYTest, CreateEventOverflow)
         oracles[i] = id::randomValue();
         increaseEnergy(creators[i], 100LL * 1000000000LL);
         increaseEnergy(oracles[i], 100LL * 1000000000LL);
+
+        qtry.transferQUSD(qtry.owner, creators[i], 100000000000LL);
+        qtry.transferQUSD(qtry.owner, oracles[i], 100000000000LL);
     }
     auto state = qtry.getState();
     uint64 ops = 1; //add
@@ -946,6 +980,7 @@ TEST(QTRYTest, CreateEventOverflow)
     {
         traders[i] = id::randomValue();
         increaseEnergy(traders[i], 100LL * 1000000000LL);
+        qtry.transferQUSD(qtry.owner, traders[i], 100000000000LL);
     }
 
     for (int i = 0; i < 8; i++) cei.qei.oracleId.set(i, oracles[i]);
@@ -974,8 +1009,6 @@ TEST(QTRYTest, CreateEventOverflow)
         cei.qei.option0Desc.set(i, v_o0[i]);
         cei.qei.option1Desc.set(i, v_o1[i]);
     }
-    cei.qei.assetIssuer = id::zero();
-    cei.qei.assetName = 0;
 
     for (int i = 0; i < QUOTTERY_MAX_EVENT * 2; i++)
     {
@@ -999,6 +1032,9 @@ TEST(QTRYTest, ResolveEvent)
         oracles[i] = id::randomValue();
         increaseEnergy(creators[i], 100LL * 1000000000LL);
         increaseEnergy(oracles[i], 100LL * 1000000000LL);
+
+        qtry.transferQUSD(qtry.owner, creators[i], 100000000000LL);
+        qtry.transferQUSD(qtry.owner, oracles[i], 100000000000LL);
     }
     auto state = qtry.getState();
     uint64 ops = 1; //add
@@ -1012,6 +1048,7 @@ TEST(QTRYTest, ResolveEvent)
     {
         traders[i] = id::randomValue();
         increaseEnergy(traders[i], 100LL * 1000000000LL);
+        qtry.transferQUSD(qtry.owner, traders[i], 100000000000LL);
     }
 
     for (int i = 0; i < 8; i++) cei.qei.oracleId.set(i, oracles[i]);
@@ -1042,8 +1079,6 @@ TEST(QTRYTest, ResolveEvent)
         cei.qei.option0Desc.set(i, v_o0[i]);
         cei.qei.option1Desc.set(i, v_o1[i]);
     }
-    cei.qei.assetIssuer = id::zero();
-    cei.qei.assetName = 0;
 
     qtry.CreateEvent(cei, creators[0], state->mOperationParams.feePerDay);
     srand(0);
@@ -1074,11 +1109,11 @@ TEST(QTRYTest, ResolveEvent)
     // result 0 win
     qtry.ResolveEvent(0, 0);
 
-    qtryBal = getBalance(qtryID);
+    qtryBal = qtry.balanceUSD(qtryID);
     total = 0;
     for (int i = 0; i < 16; i++)
     {
-        total += getBalance(traders[i]);
+        total += qtry.balanceUSD(traders[i]);
     }
     EXPECT_TRUE(total == 16 * 1000000000LL * 100LL);
 }

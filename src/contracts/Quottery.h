@@ -738,7 +738,7 @@ public:
             state.mPaylist.set(input.eid, locals.pl);
         }
 
-        if (qpi.transferShareOwnershipAndPossession(state.QUSD.assetName, state.QUSD.issuer, SELF, SELF, locals.total - locals.feeTotal, input.receiver) != locals.total - locals.feeTotal)
+        if (qpi.transferShareOwnershipAndPossession(state.QUSD.assetName, state.QUSD.issuer, SELF, SELF, locals.total - locals.feeTotal, input.receiver) < 0)
         {
             // TODO: critical error
         }
@@ -1543,7 +1543,7 @@ public:
         {
             return;
         }
-        if (qpi.transferShareOwnershipAndPossession(state.QUSD.assetName, state.QUSD.issuer, qpi.invocator(), qpi.invocator(), locals.totalCost, SELF) != locals.totalCost)
+        if (qpi.transferShareOwnershipAndPossession(state.QUSD.assetName, state.QUSD.issuer, qpi.invocator(), qpi.invocator(), locals.totalCost, SELF) < 0)
         {
             // critical error
             return;
@@ -2412,29 +2412,39 @@ public:
 
     }
 
+    typedef NoData Reinit_input;
+    typedef NoData Reinit_output;
+    // public but no register, can't be invoke directly
+    PUBLIC_PROCEDURE(Reinit) 
+    {
+        state.mOperationParams.feePerDay = 11337;
+        state.mOperationParams.eligibleCreators.cleanup();
+        state.mOperationParams.eligibleOracles.cleanup();
+        state.mOperationParams.discountedFeeForUsers.cleanup();
+        setMemory(state.mQtryGov, 0);
+        state.mQtryGov.mOperationId = ID(_M, _E, _F, _K, _Y, _F, _C, _D, _X, _D, _U, _I, _L, _C, _A, _J,
+            _K, _O, _I, _K, _W, _Q, _A, _P, _E, _N, _J, _D, _U, _H, _S, _S,
+            _Y, _P, _B, _R, _W, _F, _O, _T, _L, _A, _L, _I, _L, _A, _Y, _W,
+            _Q, _F, _D, _S, _I, _T, _J, _E); // testnet ARB
+        state.mQtryGov.mBurnFee = 1;
+        state.mQtryGov.mOperationFee = 5; // 0.5%
+        state.mQtryGov.mShareHolderFee = 10; // 1%
+        state.mRecentActiveEvent.setAll(NULL_INDEX);
+
+        // for test only
+        qpi.issueAsset(1146312017, SELF, 0, 1000000000000000ULL, 0);
+        state.QUSD.assetName = 1146312017;
+        state.QUSD.issuer = SELF;
+        state.wholeSharePrice = 100000;
+        qpi.transferShareOwnershipAndPossession(state.QUSD.assetName, state.QUSD.issuer, SELF, SELF, 1000000000000000ULL, state.mQtryGov.mOperationId); // transfer all to GO
+    }
+
     BEGIN_EPOCH()
     {
         // TODO: reinitialize after proposal getting passed
         if (qpi.epoch() == 186)
         {
-            state.mOperationParams.feePerDay = 11337;
-            state.mOperationParams.eligibleCreators.cleanup();
-            state.mOperationParams.eligibleOracles.cleanup();
-            state.mOperationParams.discountedFeeForUsers.cleanup();
-            setMemory(state.mQtryGov, 0);
-            state.mQtryGov.mOperationId = ID(_M, _E, _F, _K, _Y, _F, _C, _D, _X, _D, _U, _I, _L, _C, _A, _J,
-                _K, _O, _I, _K, _W, _Q, _A, _P, _E, _N, _J, _D, _U, _H, _S, _S,
-                _Y, _P, _B, _R, _W, _F, _O, _T, _L, _A, _L, _I, _L, _A, _Y, _W,
-                _Q, _F, _D, _S, _I, _T, _J, _E); // testnet ARB
-            state.mQtryGov.mBurnFee = 1;
-            state.mQtryGov.mOperationFee = 5; // 0.5%
-            state.mQtryGov.mShareHolderFee = 10; // 1%
-            state.mRecentActiveEvent.setAll(NULL_INDEX);
-
-            // for test only
-            state.QUSD.assetName = 1146312017;
-            state.QUSD.issuer = SELF;
-            state.wholeSharePrice = 10000;
+            CALL(Reinit, input, output);
         }
     }
 
@@ -2467,7 +2477,7 @@ public:
                 if (locals.iter.numberOfPossessedShares() > 0)
                 {
                     locals.payout = smul(locals.payoutPerShare, (uint64)locals.iter.numberOfPossessedShares());
-                    if (qpi.transferShareOwnershipAndPossession(state.QUSD.assetName, state.QUSD.issuer, SELF, SELF, locals.payout, locals.iter.possessor()) != locals.payout)
+                    if (qpi.transferShareOwnershipAndPossession(state.QUSD.assetName, state.QUSD.issuer, SELF, SELF, locals.payout, locals.iter.possessor())  < 0)
                     {
                         //critical error
                     }
@@ -2478,7 +2488,7 @@ public:
         if (state.mOperationRevenue > state.mDistributedOperationRevenue)
         {
             locals.payout = state.mOperationRevenue - state.mDistributedOperationRevenue;
-            if (qpi.transferShareOwnershipAndPossession(state.QUSD.assetName, state.QUSD.issuer, SELF, SELF, locals.payout, state.mQtryGov.mOperationId) != locals.payout)
+            if (qpi.transferShareOwnershipAndPossession(state.QUSD.assetName, state.QUSD.issuer, SELF, SELF, locals.payout, state.mQtryGov.mOperationId) < 0)
             {
                 //critical error
             }
