@@ -2174,15 +2174,6 @@ namespace QPI
 		bool __qpiCallSystemProc(unsigned int otherContractIndex, InputType& input, OutputType& output, sint64 invocationReward) const;
 		inline void __qpiNotifyPostIncomingTransfer(const id& source, const id& dest, sint64 amount, uint8 type) const;
 
-		// quick util to refund to invocator
-        inline void refundIfPossible() const
-        {
-            if (invocationReward())
-            {
-                transfer(invocator(), invocationReward());
-            }
-        }
-
 	protected:
 		// Construction is done in core, not allowed in contracts
 		QpiContextProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward, unsigned char entryPoint) : QpiContextFunctionCall(contractIndex, originator, invocationReward, entryPoint) {}

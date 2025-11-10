@@ -47,6 +47,7 @@ public:
             state->mQtryGov.mBurnFee = 0;
             state->mQtryGov.mOperationFee = 0; // 0.5%
             state->mQtryGov.mShareHolderFee = 0; // 1%
+            state->mQtryGov.mAntiSpamAmount = 0;
             state->mRecentActiveEvent.setAll(NULL_INDEX);
             id qtryId = id(QUOTTERY_CONTRACT_INDEX, 0, 0, 0);
             // for test only

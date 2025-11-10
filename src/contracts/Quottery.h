@@ -216,6 +216,13 @@ public:
         QtryEventInfo qei;
     };
 
+    inline static bool AntiSpam(const QPI::QpiContextProcedureCall& qpi, const sint64 antiSpamAmount)
+    {
+        if (qpi.invocationReward() < antiSpamAmount) return false;
+        if (qpi.invocationReward() > antiSpamAmount) qpi.transfer(qpi.invocator(), qpi.invocationReward() - antiSpamAmount);
+        return true;
+    }
+
     /**
      * @brief Retrieves the metadata for a specific event.
      * @param eventId The unique identifier of the event.
@@ -1169,7 +1176,7 @@ public:
      */
     PUBLIC_PROCEDURE_WITH_LOCALS(AddToAskOrder)
     {
-        qpi.refundIfPossible();
+        AntiSpam(qpi, state.mQtryGov.mAntiSpamAmount);
 
         locals.oi.eid = input.eventId;
         locals.oi.option = input.option;
@@ -1307,7 +1314,7 @@ public:
      */
     PUBLIC_PROCEDURE_WITH_LOCALS(RemoveAskOrder)
     {
-        qpi.refundIfPossible();
+        AntiSpam(qpi, state.mQtryGov.mAntiSpamAmount);
         locals.vei.eventId = input.eventId;
         CALL(ValidateEvent, locals.vei, locals.veo);
         if (!locals.veo.isValid)
@@ -1411,7 +1418,7 @@ public:
      */
     PUBLIC_PROCEDURE_WITH_LOCALS(RemoveBidOrder)
     {
-        qpi.refundIfPossible();
+        AntiSpam(qpi, state.mQtryGov.mAntiSpamAmount);
 
         locals.vei.eventId = input.eventId;
         CALL(ValidateEvent, locals.vei, locals.veo);
@@ -1519,7 +1526,7 @@ public:
      */
     PUBLIC_PROCEDURE_WITH_LOCALS(AddToBidOrder)
     {
-        qpi.refundIfPossible();
+        AntiSpam(qpi, state.mQtryGov.mAntiSpamAmount);
         locals.vei.eventId = input.eventId;
         CALL(ValidateEvent, locals.vei, locals.veo);
         if (!locals.veo.isValid)
@@ -1941,7 +1948,7 @@ public:
         {
             locals.log = QuotteryLogger{ 0, QTRY_INVALID_USER ,0 };
             LOG_WARNING(locals.log);
-            qpi.refundIfPossible();
+            AntiSpam(qpi, state.mQtryGov.mAntiSpamAmount);
             return;
         }
 
@@ -1949,7 +1956,7 @@ public:
         {
             locals.log = QuotteryLogger{ 0, QTRY_OUT_OF_MEMORY ,0 };
             LOG_WARNING(locals.log);
-            qpi.refundIfPossible();
+            AntiSpam(qpi, state.mQtryGov.mAntiSpamAmount);
             return;
         }
 
@@ -1958,7 +1965,7 @@ public:
         {
             locals.log = QuotteryLogger{ 0, QTRY_NOT_ELIGIBLE_USER ,0 };
             LOG_WARNING(locals.log);
-            qpi.refundIfPossible();
+            AntiSpam(qpi, state.mQtryGov.mAntiSpamAmount);
             return;
         }
 
@@ -1971,7 +1978,7 @@ public:
                 {
                     locals.log = QuotteryLogger{ 0, QTRY_NOT_ELIGIBLE_ORACLE ,0 };
                     LOG_WARNING(locals.log);
-                    qpi.refundIfPossible();
+                    AntiSpam(qpi, state.mQtryGov.mAntiSpamAmount);
                     return;
                 }
             }
@@ -1982,7 +1989,7 @@ public:
         {
             locals.log = QuotteryLogger{ 0, QTRY_INVALID_DATETIME ,0 };
             LOG_WARNING(locals.log);
-            qpi.refundIfPossible();
+            AntiSpam(qpi, state.mQtryGov.mAntiSpamAmount);
             return;
         }
 
@@ -1996,7 +2003,7 @@ public:
         {
             locals.log = QuotteryLogger{ 0, QTRY_INSUFFICIENT_FUND ,0 };
             LOG_WARNING(locals.log);
-            qpi.refundIfPossible();
+            AntiSpam(qpi, state.mQtryGov.mAntiSpamAmount);
             return;
         }
 
@@ -2055,7 +2062,7 @@ public:
      */
     PUBLIC_PROCEDURE_WITH_LOCALS(PublishResult)
     {
-        qpi.refundIfPossible();
+        AntiSpam(qpi, state.mQtryGov.mAntiSpamAmount);
         // only allow users to publish result
         if (qpi.invocator() != qpi.originator())
         {
@@ -2251,7 +2258,7 @@ public:
      */
     PUBLIC_PROCEDURE(UpdateCreatorList)
     {
-        qpi.refundIfPossible();
+        AntiSpam(qpi, state.mQtryGov.mAntiSpamAmount);
         if (qpi.invocator() != state.mQtryGov.mOperationId) return;
         if (input.ci.feeRate > QUOTTERY_HARD_CAP_CREATOR_FEE || input.ci.feeRate < 0) return;
         if (input.ops == 0)
@@ -2295,7 +2302,7 @@ public:
      */
     PUBLIC_PROCEDURE(UpdateOracleList)
     {
-        qpi.refundIfPossible();
+        AntiSpam(qpi, state.mQtryGov.mAntiSpamAmount);
         if (qpi.invocator() != state.mQtryGov.mOperationId) return;
         if (input.oi.feeRate > QUOTTERY_HARD_CAP_CREATOR_FEE || input.oi.feeRate < 0) return;
         if (input.ops == 0)
@@ -2340,7 +2347,7 @@ public:
      */
     PUBLIC_PROCEDURE(UpdateFeeDiscountList)
     {
-        qpi.refundIfPossible();
+        AntiSpam(qpi, state.mQtryGov.mAntiSpamAmount);
         if (qpi.invocator() != state.mQtryGov.mOperationId) return;
         if (input.ops == 0)
         {
@@ -2366,7 +2373,7 @@ public:
      */
     PUBLIC_PROCEDURE(UpdateFeePerDay)
     {
-        qpi.refundIfPossible();
+        AntiSpam(qpi, state.mQtryGov.mAntiSpamAmount);
         if (qpi.invocator() != state.mQtryGov.mOperationId) return;
         state.mOperationParams.feePerDay = input.newFee;
     }
@@ -2533,6 +2540,7 @@ public:
         uint64 mShareHolderFee;
         uint64 mBurnFee;
         uint64 mOperationFee;
+        sint64 mAntiSpamAmount;
         id mOperationId;
         bool isValid()
         {
@@ -2568,6 +2576,11 @@ public:
         // - fee can be handled as you like
         // - input.proposalData.epoch == 0 means clearing a proposal
 
+        if (ProposalTypes::cls(input.proposalData.type) != ProposalTypes::Class::MultiVariables) // not support
+        {
+            return;
+        }
+
         // default return code: failure
         output = INVALID_PROPOSAL_INDEX;
 
@@ -2589,6 +2602,9 @@ public:
     }
 
     IMPLEMENT_SetShareholderVotes()
+    
+    IMPLEMENT_SET_SHAREHOLDER_PROPOSAL();
+    IMPLEMENT_SET_SHAREHOLDER_VOTES();
 
     typedef NoData FinalizeGovProposal_input;
     typedef NoData FinalizeGovProposal_output;
@@ -2617,8 +2633,7 @@ public:
                 // Check if the yes option (1) has been accepted
                 if (locals.results.getAcceptedOption() == 1)
                 {
-                    locals.newQtryGovParams = state.multiVariablesProposalData.get(locals.proposalIndex);
-                    copyFromBuffer(state.mQtryGov, locals.newQtryGovParams);
+                    state.mQtryGov = state.multiVariablesProposalData.get(locals.proposalIndex);
                 }
             }
         }
