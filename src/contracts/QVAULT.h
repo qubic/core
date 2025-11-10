@@ -3514,7 +3514,7 @@ public:
                     locals.lockedFund = 0;
                     for (locals._t = state.numberOfQEarnP - 1; locals._t >= 0; locals._t--)
                     {
-                        if (state.QEarnP.get(locals._t).result == 0 && state.QEarnP.get(locals._t).proposedEpoch + 54 == qpi.epoch())
+                        if (state.QEarnP.get(locals._t).result == 0 && state.QEarnP.get(locals._t).proposedEpoch + 54 <= qpi.epoch() && state.QEarnP.get(locals._t).proposedEpoch + 54 + state.QEarnP.get(locals._t).numberOfEpoch > qpi.epoch())
                         {
                             locals.lockedFund += state.QEarnP.get(locals._t).assignedFundPerEpoch;
                         }
