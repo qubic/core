@@ -2391,6 +2391,7 @@ public:
         REGISTER_USER_FUNCTION(GetOracleList, 8);
         REGISTER_USER_FUNCTION(GetEventInfoBatch, 9);
         REGISTER_USER_FUNCTION(GetUserPosition, 10);
+        REGISTER_USER_FUNCTION(GetApprovedAmount, 11);
 
         // PROCEDURE
         REGISTER_USER_PROCEDURE(CreateEvent, 1);
@@ -2399,6 +2400,8 @@ public:
         REGISTER_USER_PROCEDURE(AddToBidOrder, 4);
         REGISTER_USER_PROCEDURE(RemoveBidOrder, 5);
         REGISTER_USER_PROCEDURE(PublishResult, 6);
+        REGISTER_USER_PROCEDURE(TransferQUSD, 7);
+        
 
         // operation team proc
         REGISTER_USER_PROCEDURE(ResolveEvent, 7);
@@ -2690,5 +2693,26 @@ public:
             { input.pk, SELF_INDEX },
             { input.pk, SELF_INDEX }
         );
+    }
+
+    struct TransferQUSD_input
+    {
+        id receiver;
+        sint64 amount;
+    };
+    struct TransferQUSD_output
+    {
+        uint64 amount;
+    };
+    PUBLIC_PROCEDURE(TransferQUSD) // that is managed by this SC
+    {
+        if (qpi.transferShareOwnershipAndPossession(state.QUSD.assetName, state.QUSD.issuer, qpi.invocator(), qpi.invocator(), input.amount, input.receiver) < 0)
+        {
+            output.amount = -1;
+        }
+        else
+        {
+            output.amount = input.amount;
+        }
     }
 };
