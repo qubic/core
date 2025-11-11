@@ -2183,12 +2183,9 @@ static void contractProcessor(void*)
             if (system.epoch == contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                // Check if contract has sufficient execution fee reserve before executing
-                if (getContractFeeReserve(executedContractIndex) <= 0)
-                {
-                    // Skip execution - contract has insufficient fees
-                    continue;
-                }
+                // INITIALIZE is called right after IPO, hence no check for executionFeeReserve is needed.
+                // A failed IPO is indicated by a contractError and INITIALIZE is not executed.
+
                 // Check if contract is in an error state
                 if (contractError[executedContractIndex] != NoContractError)
                 {
@@ -2211,12 +2208,9 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                // Check if contract has sufficient execution fee reserve before executing
-                if (getContractFeeReserve(executedContractIndex) <= 0)
-                {
-                    // Skip execution - contract has insufficient fees
-                    continue;
-                }
+                // BEGIN_EPOCH runs even with a non-positive executionFeeReserve
+                // to keep SC in a valid state.
+
                 // Check if contract is in an error state
                 if (contractError[executedContractIndex] != NoContractError)
                 {
@@ -2292,12 +2286,9 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                // Check if contract has sufficient execution fee reserve before executing
-                if (getContractFeeReserve(executedContractIndex) <= 0)
-                {
-                    // Skip execution - contract has insufficient fees
-                    continue;
-                }
+                // END_EPOCH runs even with a non-positive executionFeeReserve
+                // to keep SC in a valid state.
+
                 // Check if contract is in an error state
                 if (contractError[executedContractIndex] != NoContractError)
                 {
