@@ -2212,7 +2212,8 @@ static void contractProcessor(void*)
                 // to keep SC in a valid state.
 
                 // Check if contract is in an error state
-                if (contractError[executedContractIndex] != NoContractError)
+                if (contractError[executedContractIndex] != NoContractError
+                    && contractError[executedContractIndex] != ContractErrorCalledContractInsufficientFees)
                 {
                     // Skip execution - contract is in error state
                     continue;
@@ -2290,7 +2291,8 @@ static void contractProcessor(void*)
                 // to keep SC in a valid state.
 
                 // Check if contract is in an error state
-                if (contractError[executedContractIndex] != NoContractError)
+                if (contractError[executedContractIndex] != NoContractError
+                    && contractError[executedContractIndex] != ContractErrorCalledContractInsufficientFees)
                 {
                     // Skip execution - contract is in error state
                     continue;
