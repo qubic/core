@@ -2177,10 +2177,13 @@ static void contractProcessor(void*)
             if (system.epoch == contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                // Check if contract has sufficient execution fee reserve before executing
-                if (getContractFeeReserve(executedContractIndex) <= 0)
+                // INITIALIZE is called right after IPO, hence no check for executionFeeReserve is needed.
+                // A failed IPO is indicated by a contractError and INITIALIZE is not executed.
+
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
                 {
-                    // Skip execution - contract has insufficient fees
+                    // Skip execution - contract is in error state
                     continue;
                 }
 
@@ -2199,10 +2202,14 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                // Check if contract has sufficient execution fee reserve before executing
-                if (getContractFeeReserve(executedContractIndex) <= 0)
+                // BEGIN_EPOCH runs even with a non-positive executionFeeReserve
+                // to keep SC in a valid state.
+
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError
+                    && contractError[executedContractIndex] != ContractErrorCalledContractInsufficientFees)
                 {
-                    // Skip execution - contract has insufficient fees
+                    // Skip execution - contract is in error state
                     continue;
                 }
 
@@ -2226,6 +2233,12 @@ static void contractProcessor(void*)
                     // Skip execution - contract has insufficient fees
                     continue;
                 }
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
+                    continue;
+                }
 
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, BEGIN_TICK);
                 qpiContext.call();
@@ -2247,6 +2260,12 @@ static void contractProcessor(void*)
                     // Skip execution - contract has insufficient fees
                     continue;
                 }
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
+                    continue;
+                }
 
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, END_TICK);
                 qpiContext.call();
@@ -2262,10 +2281,14 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
-                // Check if contract has sufficient execution fee reserve before executing
-                if (getContractFeeReserve(executedContractIndex) <= 0)
+                // END_EPOCH runs even with a non-positive executionFeeReserve
+                // to keep SC in a valid state.
+
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError
+                    && contractError[executedContractIndex] != ContractErrorCalledContractInsufficientFees)
                 {
-                    // Skip execution - contract has insufficient fees
+                    // Skip execution - contract is in error state
                     continue;
                 }
 
@@ -2804,10 +2827,10 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                     else if (system.epoch >= contractDescriptions[contractIndex].constructionEpoch
                         && system.epoch < contractDescriptions[contractIndex].destructionEpoch)
                     {
-                        // Check if contract has sufficient execution fee reserve before executing
-                        if (getContractFeeReserve(contractIndex) <= 0)
+                        // Check if contract has sufficient execution fee reserve and is not in an error state
+                        if (getContractFeeReserve(contractIndex) <= 0 || contractError[contractIndex] != NoContractError)
                         {
-                            // Contract has insufficient execution fees - refund transaction amount
+                            // Contract has insufficient execution fees or is in error state - refund transaction amount
                             if (transaction->amount > 0)
                             {
                                 int destIndex = ::spectrumIndex(transaction->destinationPublicKey);
