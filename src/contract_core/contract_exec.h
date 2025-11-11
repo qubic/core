@@ -36,6 +36,7 @@ enum ContractError
     ContractErrorTimeout,
     ContractErrorStoppedToResolveDeadlock, // only returned by function call, not set to contractError
     ContractErrorIPOFailed, // IPO failed i.e. final price was 0. This contract is not constructed.
+    ContractErrorCalledContractInsufficientFees, // Contract called another contract with non-positive executionFeeReserve.
 };
 
 // Used to store: locals and for first invocation level also input and output
@@ -67,6 +68,8 @@ GLOBAL_VAR_DECL unsigned int contractError[contractCount];
 // access to contractStateChangeFlags thread-safe
 GLOBAL_VAR_DECL unsigned long long* contractStateChangeFlags GLOBAL_VAR_INIT(nullptr);
 
+// Forward declaration for getContractFeeReserve (defined in qpi_spectrum_impl.h)
+static long long getContractFeeReserve(unsigned int contractIndex);
 
 // Contract system procedures that serve as callbacks, such as PRE_ACQUIRE_SHARES,
 // break the rule that contracts can only call other contracts with lower index.
@@ -355,6 +358,15 @@ const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructProce
     {
         // TODO: Consider adding a separate error code for calling a contract in error state
         __qpiAbort(contractError[procContractIndex]);
+    }
+
+    // Check if called contract has sufficient execution fee reserve
+    // If not, the called contract won't be able to pay for its digest computation
+    if (getContractFeeReserve(procContractIndex) <= 0)
+    {
+        // Abort execution: this marks the calling contract with ContractErrorCalledContractInsufficientFees
+        // TODO: Add recovery mechanism when called contract gets fees recharged
+        __qpiAbort(ContractErrorCalledContractInsufficientFees);
     }
 
     char* buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextProcedureCall));
