@@ -482,8 +482,6 @@ protected:
                 break;
             }
 
-            locals.nextElementIndex = state._bidOrders.nextElementIndex(locals.elementIndex);
-
             locals.tempBidOrder = state._bidOrders.element(locals.elementIndex);
             if (input.numberOfMBonds <= locals.tempBidOrder.numberOfMBonds)
             {
@@ -539,11 +537,9 @@ protected:
                     state._totalEarnedAmount += locals.fee;
                     state._earnedAmountFromTrade += locals.fee;
                 }
-                state._bidOrders.remove(locals.elementIndex);
+                locals.elementIndex = state._bidOrders.remove(locals.elementIndex);
                 input.numberOfMBonds -= locals.tempBidOrder.numberOfMBonds;
             }
-            
-            locals.elementIndex = locals.nextElementIndex;
         }
 
         if (state._askOrders.population(locals.mbondIdentity) == 0)
@@ -644,7 +640,6 @@ protected:
         MBondInfo tempMbondInfo;
         id mbondIdentity;
         sint64 elementIndex;
-        sint64 nextElementIndex;
         sint64 fee;
         _Order tempAskOrder;
         _Order tempBidOrder;
@@ -681,8 +676,6 @@ protected:
             {
                 break;
             }
-
-            locals.nextElementIndex = state._askOrders.nextElementIndex(locals.elementIndex);
 
             locals.tempAskOrder = state._askOrders.element(locals.elementIndex);
             if (input.numberOfMBonds <= locals.tempAskOrder.numberOfMBonds)
@@ -750,11 +743,9 @@ protected:
                     qpi.transfer(qpi.invocator(), locals.tempAskOrder.numberOfMBonds * (input.price + state._askOrders.priority(locals.elementIndex)));   // ask orders priotiry is always negative
                 }
 
-                state._askOrders.remove(locals.elementIndex);
+                locals.elementIndex = state._askOrders.remove(locals.elementIndex);
                 input.numberOfMBonds -= locals.tempAskOrder.numberOfMBonds;
             }
-
-            locals.elementIndex = locals.nextElementIndex;
         }
 
         if (state._bidOrders.population(locals.mbondIdentity) == 0)
@@ -1232,7 +1223,6 @@ protected:
         AssetOwnershipIterator assetIt;
         id mbondIdentity;
         sint64 elementIndex;
-        sint64 nextElementIndex;
     };
 
     BEGIN_EPOCH_WITH_LOCALS()
@@ -1265,17 +1255,13 @@ protected:
             locals.elementIndex = state._askOrders.headIndex(locals.mbondIdentity);
             while (locals.elementIndex != NULL_INDEX)
             {
-                locals.nextElementIndex = state._askOrders.nextElementIndex(locals.elementIndex);
-                state._askOrders.remove(locals.elementIndex);
-                locals.elementIndex = locals.nextElementIndex;
+                locals.elementIndex = state._askOrders.remove(locals.elementIndex);
             }
 
             locals.elementIndex = state._bidOrders.headIndex(locals.mbondIdentity);
             while (locals.elementIndex != NULL_INDEX)
             {
-                locals.nextElementIndex = state._bidOrders.nextElementIndex(locals.elementIndex);
-                state._bidOrders.remove(locals.elementIndex);
-                locals.elementIndex = locals.nextElementIndex;
+                locals.elementIndex = state._bidOrders.remove(locals.elementIndex);
             }
         }
 
