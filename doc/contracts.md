@@ -613,6 +613,10 @@ However there are situations where you want to change your SC.
 
 ### Bugfix
 A bugfix is possible at any time. It can be applied during the epoch (if no state is changed) or must be coordinated with an epoch update.
+Such state changes are preferably done by extending the state with new data structures at the end while existing state variables remain unchanged.
+This provides an easy way to extend the state files with 0 at the end (via command line during epoch transition) and initializing the new state variables in the `BEGIN_EPOCH` procedure.
+If this is not possible, the state file can be adjusted with an external tool that computors apply during epoch transition.
+This external tool can be written in C++, Python or Bash and the source code has to be public.
 
 ### New Features
 If you want to add new features, this needs to be approved by the computors again. Please refer to the [Deployment](#deployment) for the needed steps. The IPO is not anymore needed for an update of your SC.
