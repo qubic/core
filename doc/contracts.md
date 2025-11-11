@@ -243,9 +243,12 @@ They are defined with the following macros:
 8. `POST_RELEASE_SHARES()`: Called after asset management rights were transferred from this contract to another contract that called `qpi.acquireShare()`
 9. `POST_ACQUIRE_SHARES()`: Called after asset management rights were transferred to this contract from another contract that called `qpi.releaseShare()`.
 10. `POST_INCOMING_TRANSFER()`: Called after QUs have been transferred to this contract. [More details...](#callback-post_incoming_transfer)
+11. `SET_SHAREHOLDER_PROPOSAL()`: Called if another contracts tries to set a shareholder proposal in this contract by calling `qpi.setShareholderProposal()`.
+12. `SET_SHAREHOLDER_VOTES()`: Called if another contracts tries to set a shareholder proposal in this contract by calling `qpi.setShareholderVotes()`.
 
 System procedures 1 to 5 have no input and output.
 The input and output of system procedures 6 to 9 are discussed in the section about [management rights transfer](#management-rights-transfer).
+The system procedure 11 and 12 are discussed in the section about [contracts as shareholder of other contracts](contracts_proposals.md#contracts-as-shareholders-of-other-contracts)
 
 The contract state is passed to each of the procedures as a reference named `state`.
 And it can be modified (in contrast to contract functions).
@@ -294,6 +297,10 @@ QX rejects all attempts (`qpi.acquireShares()`) of other contracts to acquire ri
 ### Referencing of asset shares
 
 TODO
+
+In the universe, NULL_ID is only used for owner / possessor for temporary entries during the IPO between issuing a contract asset and transferring the ownership/possession.
+Further, NULL_ID is used for burning asset shares by transferring ownership / possession to NULL_ID.
+
 
 ### Management rights transfer
 
@@ -546,6 +553,16 @@ That is, calls to these QPI procedures will fail to prevent nested callbacks.
 If you invoke a user procedure from the callback, the fee / invocation reward cannot be transferred.
 In consequence, the procedure is executed but with `qpi.invocationReward() == 0`.
 
+### Proposals and voting
+
+Proposals and voting are the on-chain way of decision-making, implemented in contracts.
+The function, macros, and data structures provided by the QPI for implementing proposal voting in smart contracts are quite complex.
+That is why they are described in a [separate document](contracts_proposals.md).
+
+CFB has an alternative idea for proposal-free voting on shareholder variables that is supposed to be used in the contracts QX, RANDOM, and MLM.
+It has not been implemented yet.
+https://github.com/qubic/core/issues/574
+
 
 ## Restrictions of C++ Language Features
 
@@ -596,6 +613,10 @@ However there are situations where you want to change your SC.
 
 ### Bugfix
 A bugfix is possible at any time. It can be applied during the epoch (if no state is changed) or must be coordinated with an epoch update.
+Such state changes are preferably done by extending the state with new data structures at the end while existing state variables remain unchanged.
+This provides an easy way to extend the state files with 0 at the end (via command line during epoch transition) and initializing the new state variables in the `BEGIN_EPOCH` procedure.
+If this is not possible, the state file can be adjusted with an external tool that computors apply during epoch transition.
+This external tool can be written in C++, Python or Bash and the source code has to be public.
 
 ### New Features
 If you want to add new features, this needs to be approved by the computors again. Please refer to the [Deployment](#deployment) for the needed steps. The IPO is not anymore needed for an update of your SC.
