@@ -2400,7 +2400,6 @@ public:
         REGISTER_USER_PROCEDURE(AddToBidOrder, 4);
         REGISTER_USER_PROCEDURE(RemoveBidOrder, 5);
         REGISTER_USER_PROCEDURE(PublishResult, 6);
-        REGISTER_USER_PROCEDURE(TransferQUSD, 7);
         
 
         // operation team proc
@@ -2409,6 +2408,9 @@ public:
         REGISTER_USER_PROCEDURE(UpdateOracleList, 9);
         REGISTER_USER_PROCEDURE(UpdateFeeDiscountList, 10);
         REGISTER_USER_PROCEDURE(UpdateFeePerDay, 11);
+
+        // QUSD
+        REGISTER_USER_PROCEDURE(TransferQUSD, 12);
 
         // Shareholder proposals: use standard function/procedure indices
         REGISTER_USER_FUNCTION(GetShareholderProposalFees, 65531);
