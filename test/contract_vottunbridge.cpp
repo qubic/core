@@ -474,9 +474,8 @@ struct MockVottunBridgeOrder
     uint8 mockEthAddress[64];  // Simulated eth address
 };
 
-struct MockVottunBridgeState 
+struct MockVottunBridgeState
 {
-    id admin;
     id feeRecipient;
     uint64 nextOrderId;
     uint64 lockedTokens;
@@ -489,6 +488,10 @@ struct MockVottunBridgeState
     uint32 sourceChain;
     MockVottunBridgeOrder orders[1024];
     id managers[16];
+    // Multisig state
+    id admins[16];              // List of multisig admins
+    uint8 numberOfAdmins;       // Number of active admins (3)
+    uint8 requiredApprovals;    // Required approvals threshold (2 of 3)
 };
 
 // Mock QPI Context for testing
@@ -544,8 +547,16 @@ protected:
         // Initialize a complete contract state
         contractState = {};
 
-        // Set up admin and initial configuration
-        contractState.admin = TEST_ADMIN;
+        // Set up multisig admins and initial configuration
+        contractState.admins[0] = TEST_ADMIN;
+        contractState.admins[1] = id(201, 0, 0, 0);
+        contractState.admins[2] = id(202, 0, 0, 0);
+        for (int i = 3; i < 16; ++i)
+        {
+            contractState.admins[i] = NULL_ID;
+        }
+        contractState.numberOfAdmins = 3;
+        contractState.requiredApprovals = 2;
         contractState.feeRecipient = id(200, 0, 0, 0);
         contractState.nextOrderId = 1;
         contractState.lockedTokens = 5000000;  // 5M tokens locked
@@ -719,22 +730,23 @@ TEST_F(VottunBridgeFunctionalTest, AdminFunctionsSimulation)
     {
         mockContext.setInvocator(TEST_ADMIN);
 
-        // Old setAdmin function should return notAuthorized (error 9)
-        bool isCurrentAdmin = (mockContext.mockInvocator == contractState.admin);
-        EXPECT_TRUE(isCurrentAdmin); // User is admin
+        // Old setAdmin/addManager functions should return notAuthorized (error 9)
+        bool isCurrentAdmin = (mockContext.mockInvocator == contractState.admins[0]);
+        EXPECT_TRUE(isCurrentAdmin); // User is multisig admin
 
-        // But direct setAdmin call should still fail (deprecated)
+        // But direct setAdmin/addManager calls should still fail (deprecated)
         uint8 expectedErrorCode = 9; // notAuthorized
         EXPECT_EQ(expectedErrorCode, 9);
     }
 
-    // Test multisig proposal system for admin changes
+    // Test multisig proposal system for admin changes (REPLACE admin, not add)
     {
         // Simulate multisig admin 1 creating a proposal
         id multisigAdmin1 = TEST_ADMIN;
         id multisigAdmin2(201, 0, 0, 0);
         id multisigAdmin3(202, 0, 0, 0);
         id newAdmin(150, 0, 0, 0);
+        id oldAdminToReplace = multisigAdmin3; // Replace admin3 with newAdmin
 
         mockContext.setInvocator(multisigAdmin1);
 
@@ -761,19 +773,36 @@ TEST_F(VottunBridgeFunctionalTest, AdminFunctionsSimulation)
             // Threshold reached (2 of 3), execute proposal
             if (approvalsCount >= 2)
             {
-                // Execute: change admin
-                id oldAdmin = contractState.admin;
-                contractState.admin = newAdmin;
+                // Execute: REPLACE admin3 with newAdmin
+                // Find and replace the old admin
+                for (int i = 0; i < 3; ++i)
+                {
+                    if (contractState.admins[i] == oldAdminToReplace)
+                    {
+                        contractState.admins[i] = newAdmin;
+                        break;
+                    }
+                }
 
-                EXPECT_EQ(contractState.admin, newAdmin);
-                EXPECT_NE(contractState.admin, oldAdmin);
+                // Verify replacement
+                bool foundNewAdmin = false;
+                bool foundOldAdmin = false;
+                for (int i = 0; i < 3; ++i)
+                {
+                    if (contractState.admins[i] == newAdmin) foundNewAdmin = true;
+                    if (contractState.admins[i] == oldAdminToReplace) foundOldAdmin = true;
+                }
+
+                EXPECT_TRUE(foundNewAdmin);
+                EXPECT_FALSE(foundOldAdmin); // Old admin should be gone
+                EXPECT_EQ(contractState.numberOfAdmins, 3); // Still 3 admins
             }
         }
     }
 
     // Test multisig proposal for adding manager
     {
-        id multisigAdmin1 = contractState.admin; // Use new admin from previous test
+        id multisigAdmin1 = contractState.admins[0];
         id multisigAdmin2(201, 0, 0, 0);
         id newManager(160, 0, 0, 0);
 
@@ -816,7 +845,7 @@ TEST_F(VottunBridgeFunctionalTest, FeeWithdrawalSimulation)
 
     // Test case 1: Multisig admins withdrawing fees via proposal
     {
-        id multisigAdmin1 = contractState.admin;
+        id multisigAdmin1 = contractState.admins[0];
         id multisigAdmin2(201, 0, 0, 0);
 
         mockContext.setInvocator(multisigAdmin1);
@@ -868,7 +897,7 @@ TEST_F(VottunBridgeFunctionalTest, FeeWithdrawalSimulation)
 
     // Test case 3: Old direct withdrawFees call should fail
     {
-        mockContext.setInvocator(contractState.admin);
+        mockContext.setInvocator(contractState.admins[0]);
 
         // Direct call to withdrawFees should return notAuthorized (deprecated)
         uint8 expectedErrorCode = 9; // notAuthorized
@@ -1411,7 +1440,7 @@ TEST_F(VottunBridgeFunctionalTest, NonOwnerProposalRejection)
     mockContext.setInvocator(multisigAdmin1);
 
     isMultisigAdmin = false;
-    for (uint64 i = 0; i < 3; ++i)
+    for (uint64 i = 0; i < numberOfAdmins; ++i)
     {
         if (adminsList.get(i) == multisigAdmin1)
         {

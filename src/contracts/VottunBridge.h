@@ -132,6 +132,7 @@ public:
         Array<uint8, 64> memo;               // Notes or metadata
         uint32 sourceChain;                  // Source chain identifier
         id qubicDestination;
+        uint8 status;                        // Order status (0=pending, 1=completed, 2=refunded)
     };
 
     struct getOrder_input
@@ -518,6 +519,7 @@ public:
                 locals.orderResp.amount = locals.order.amount;
                 locals.orderResp.sourceChain = state.sourceChain;
                 locals.orderResp.qubicDestination = locals.order.qubicDestination;
+                locals.orderResp.status = locals.order.status;
 
                 locals.log = EthBridgeLogger{
                     CONTRACT_INDEX,
