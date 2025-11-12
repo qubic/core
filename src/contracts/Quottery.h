@@ -26,11 +26,13 @@ struct QuotteryTradeLogger
     uint32 _contractIndex;
     uint32 _type; // Assign a random unique (per contract) number to distinguish messages of different types
     id A, B;
+    uint64 eid;
+    uint64 option;
+    uint64 padding0;
+    uint64 padding1;
     sint64 amount;
     sint64 price0;
     sint64 price1;
-    uint64 eid;
-    uint64 option;
     char _terminator; // Only data before "_terminator" are logged
 };
 
@@ -43,12 +45,12 @@ struct QuotteryTradeLogger
 #define QTRY_INVALID_POSITION 7
 #define QTRY_OUT_OF_MEMORY 8
 
-#define QTRY_MATCH_TYPE_0 8 // A0,B0
-#define QTRY_MATCH_TYPE_1 9 // A1,B1
-#define QTRY_MATCH_TYPE_2 10 // A0,A1
-#define QTRY_MATCH_TYPE_3 11 // B0,B1
-#define QTRY_ADD_BID 12
-#define QTRY_ADD_ASK 13
+#define QTRY_MATCH_TYPE_0 100008 // A0,B0
+#define QTRY_MATCH_TYPE_1 100009 // A1,B1
+#define QTRY_MATCH_TYPE_2 100010 // A0,A1
+#define QTRY_MATCH_TYPE_3 100011 // B0,B1
+#define QTRY_ADD_BID 100012
+#define QTRY_ADD_ASK 100013
 
 // macros:
 #define ASK_BIT 0
@@ -857,7 +859,7 @@ public:
             {
                 locals.matchedPrice = locals.A0.price;
             }
-            locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_0, locals.A0.qo.entity, locals.B0.qo.entity, locals.matchedAmount, locals.matchedPrice, 0, input.eventId, 0, 0 };
+            locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_0, locals.A0.qo.entity, locals.B0.qo.entity, input.eventId, 0, 0, 0, locals.matchedAmount, locals.matchedPrice, 0, 0 };
             LOG_INFO(locals.log);
 
             locals.ti.amount = smul((uint64)locals.matchedPrice, (uint64)locals.matchedAmount);
@@ -924,7 +926,7 @@ public:
             {
                 locals.matchedPrice = locals.A1.price;
             }
-            locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_1, locals.A1.qo.entity, locals.B1.qo.entity, locals.matchedAmount, locals.matchedPrice, 0, input.eventId, 1, 0 };
+            locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_1, locals.A1.qo.entity, locals.B1.qo.entity, input.eventId, 1, 0, 0, locals.matchedAmount, locals.matchedPrice, 0, 0 };
             LOG_INFO(locals.log);
 
             locals.ti.amount = smul((uint64)locals.matchedPrice, (uint64)locals.matchedAmount);
@@ -996,7 +998,7 @@ public:
                 locals.matchedPrice1 = state.wholeSharePrice - locals.A0.price;
             }
 
-            locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_2, locals.A0.qo.entity, locals.A1.qo.entity, locals.matchedAmount, locals.matchedPrice0, locals.matchedPrice1, input.eventId, 2, 0 };
+            locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_2, locals.A0.qo.entity, locals.A1.qo.entity, input.eventId, 2, 0, 0, locals.matchedAmount, locals.matchedPrice0, locals.matchedPrice1, 0 };
             LOG_INFO(locals.log);
 
             locals.ti.amount = smul(locals.matchedPrice0, locals.matchedAmount);
@@ -1066,7 +1068,7 @@ public:
                 locals.matchedPrice0 = locals.B0.price;
                 locals.matchedPrice1 = state.wholeSharePrice - locals.B0.price;
             }
-            locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_3, locals.B0.qo.entity, locals.B1.qo.entity, locals.matchedAmount, locals.matchedPrice0, locals.matchedPrice1, input.eventId, 2, 0 };
+            locals.log = QuotteryTradeLogger{ 0, QTRY_MATCH_TYPE_3, locals.B0.qo.entity, locals.B1.qo.entity, input.eventId, 2, 0, 0, locals.matchedAmount, locals.matchedPrice0, locals.matchedPrice1, 0 };
             LOG_INFO(locals.log);
             // update position
 
@@ -1213,7 +1215,7 @@ public:
             return;
         }
 
-        locals.tradeLog = QuotteryTradeLogger{ 0, QTRY_ADD_ASK, qpi.invocator(), NULL_ID, (sint64)input.amount, (sint64)input.price, 0, input.eventId, input.option, 0 };
+        locals.tradeLog = QuotteryTradeLogger{ 0, QTRY_ADD_ASK, qpi.invocator(), NULL_ID, input.eventId, input.option, 0, 0, (sint64)input.amount, (sint64)input.price, 0, 0 };
         LOG_INFO(locals.tradeLog);
 
         locals.key = MakeOrderKey(input.eventId, input.option, ASK_BIT);
@@ -1562,7 +1564,7 @@ public:
 
         
 
-        locals.log = QuotteryTradeLogger{ 0, QTRY_ADD_BID, qpi.invocator(), NULL_ID, (sint64)input.amount, (sint64)input.price, 0, input.eventId, input.option, 0 };
+        locals.log = QuotteryTradeLogger{ 0, QTRY_ADD_BID, qpi.invocator(), NULL_ID, input.eventId, input.option, 0, 0, (sint64)input.amount, (sint64)input.price, 0, 0 };
         LOG_INFO(locals.log);
 
         locals.key = MakeOrderKey(input.eventId, input.option, BID_BIT);
