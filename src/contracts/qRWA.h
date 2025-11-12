@@ -216,12 +216,14 @@ public:
         uint64 beginBalance;
         uint64 endBalance;
         uint64 eligibleBalance;
-        uint64 amountPerQmineShare;
-        uint64 eligiblePayout;
+        // Use uint128 for all payout accounting
+        uint128 scaledPayout_128;
+        uint128 eligiblePayout_128;
+        uint128 totalEligiblePaid_128;
+        uint128 movedSharesPayout_128;
+        uint128 qmineDividendPool_128;
+        uint64 payout_u64; // Temporary var for casting just before transfer
         uint64 foundEnd;
-        uint64 totalEligiblePaid;
-        uint64 movedSharesPayout;
-
         QrwaLogger logger;
     };
     PRIVATE_PROCEDURE_WITH_LOCALS(DistributeRewards)
@@ -280,64 +282,83 @@ public:
         // Distribute QMINE rewards
         if (state.mQmineDividendPool > 0 && state.mPayoutTotalQmineBegin > 0)
         {
-            // Calculate per-share amount based on total shares at begin epoch
-            locals.amountPerQmineShare = QPI::div<uint64>(state.mQmineDividendPool, state.mPayoutTotalQmineBegin);
+            locals.totalEligiblePaid_128 = 0;
+            locals.qminePayoutIndex = NULL_INDEX; // Start iteration
+            locals.qmineDividendPool_128 = state.mQmineDividendPool; // Create 128-bit copy for accounting
 
-            if (locals.amountPerQmineShare > 0)
+            // pay eligible holders
+            while (true)
             {
-                locals.totalEligiblePaid = 0;
-                locals.qminePayoutIndex = NULL_INDEX; // Start iteration
-
-                // pay eligible holders
-                while (true)
+                locals.qminePayoutIndex = state.mPayoutBeginBalances.nextElementIndex(locals.qminePayoutIndex);
+                if (locals.qminePayoutIndex == NULL_INDEX)
                 {
-                    locals.qminePayoutIndex = state.mPayoutBeginBalances.nextElementIndex(locals.qminePayoutIndex);
-                    if (locals.qminePayoutIndex == NULL_INDEX)
+                    break;
+                }
+
+                locals.holder = state.mPayoutBeginBalances.key(locals.qminePayoutIndex);
+                locals.beginBalance = state.mPayoutBeginBalances.value(locals.qminePayoutIndex);
+
+                locals.foundEnd = state.mPayoutEndBalances.get(locals.holder, locals.endBalance) ? 1 : 0;
+                if (locals.foundEnd == 0)
+                {
+                    locals.endBalance = 0;
+                }
+
+                locals.eligibleBalance = (locals.beginBalance < locals.endBalance) ? locals.beginBalance : locals.endBalance;
+
+                if (locals.eligibleBalance > 0)
+                {
+                    // Payout = (EligibleBalance * DividendPool) / PayoutBase
+                    locals.scaledPayout_128 = (uint128)locals.eligibleBalance * (uint128)state.mQmineDividendPool;
+                    locals.eligiblePayout_128 = QPI::div<uint128>(locals.scaledPayout_128, state.mPayoutTotalQmineBegin);
+
+                    if (locals.eligiblePayout_128 > (uint128)0 && locals.eligiblePayout_128 <= locals.qmineDividendPool_128)
                     {
+                        // Cast to uint64 ONLY at the moment of transfer
+                        locals.payout_u64 = locals.eligiblePayout_128.low;
+
+                        // Check if the cast truncated the value (if high part was set)
+                        if (locals.eligiblePayout_128.high == 0 && locals.payout_u64 > 0)
+                        {
+                            qpi.transfer(locals.holder, (sint64)locals.payout_u64);
+
+                            locals.qmineDividendPool_128 -= locals.eligiblePayout_128;
+                            state.mTotalQmineDistributed = QPI::sadd(state.mTotalQmineDistributed, locals.payout_u64);
+                            locals.totalEligiblePaid_128 += locals.eligiblePayout_128;
+                        }
+                    }
+                    else if (locals.eligiblePayout_128 > locals.qmineDividendPool_128)
+                    {
+                        // Payout is larger than the remaining pool
+                        locals.payout_u64 = locals.qmineDividendPool_128.low; // Get remaining pool
+
+                        if (locals.qmineDividendPool_128.high == 0 && locals.payout_u64 > 0)
+                        {
+                            qpi.transfer(locals.holder, (sint64)locals.payout_u64);
+                            state.mTotalQmineDistributed = QPI::sadd(state.mTotalQmineDistributed, locals.payout_u64);
+                            locals.totalEligiblePaid_128 += locals.qmineDividendPool_128;
+                        }
+                        locals.qmineDividendPool_128 = 0;
                         break;
-                    }
-
-                    locals.holder = state.mPayoutBeginBalances.key(locals.qminePayoutIndex);
-                    locals.beginBalance = state.mPayoutBeginBalances.value(locals.qminePayoutIndex);
-
-                    locals.foundEnd = state.mPayoutEndBalances.get(locals.holder, locals.endBalance) ? 1 : 0;
-                    if (locals.foundEnd == 0)
-                    {
-                        locals.endBalance = 0;
-                    }
-
-                    locals.eligibleBalance = (locals.beginBalance < locals.endBalance) ? locals.beginBalance : locals.endBalance;
-
-                    if (locals.eligibleBalance > 0)
-                    {
-                        locals.eligiblePayout = QPI::smul(locals.eligibleBalance, locals.amountPerQmineShare);
-                        if (locals.eligiblePayout > 0 && locals.eligiblePayout <= state.mQmineDividendPool)
-                        {
-                            qpi.transfer(locals.holder, locals.eligiblePayout);
-                            state.mQmineDividendPool -= locals.eligiblePayout;
-                            state.mTotalQmineDistributed = QPI::sadd(state.mTotalQmineDistributed, locals.eligiblePayout);
-                            locals.totalEligiblePaid = QPI::sadd(locals.totalEligiblePaid, locals.eligiblePayout);
-                        }
-                        else if (locals.eligiblePayout > state.mQmineDividendPool)
-                        {
-                            // pay out remaining pool and stop
-                            qpi.transfer(locals.holder, state.mQmineDividendPool);
-                            state.mTotalQmineDistributed = QPI::sadd(state.mTotalQmineDistributed, state.mQmineDividendPool);
-                            locals.totalEligiblePaid = QPI::sadd(locals.totalEligiblePaid, state.mQmineDividendPool);
-                            state.mQmineDividendPool = 0;
-                            break;
-                        }
                     }
                 }
             }
+
             // Pay Zoxx the entire remainder of the pool
-            locals.movedSharesPayout = state.mQmineDividendPool;
-            if (locals.movedSharesPayout > 0 && state.mCurrentGovParams.zoxxAddress != NULL_ID)
+            locals.movedSharesPayout_128 = locals.qmineDividendPool_128;
+            if (locals.movedSharesPayout_128 > (uint128)0 && state.mCurrentGovParams.zoxxAddress != NULL_ID)
             {
-                qpi.transfer(state.mCurrentGovParams.zoxxAddress, locals.movedSharesPayout);
-                state.mQmineDividendPool = 0;
-                state.mTotalQmineDistributed = QPI::sadd(state.mTotalQmineDistributed, locals.movedSharesPayout);
+                locals.payout_u64 = locals.movedSharesPayout_128.low;
+                if (locals.movedSharesPayout_128.high == 0 && locals.payout_u64 > 0)
+                {
+                    qpi.transfer(state.mCurrentGovParams.zoxxAddress, (sint64)locals.payout_u64);
+                    state.mTotalQmineDistributed = QPI::sadd(state.mTotalQmineDistributed, locals.payout_u64);
+                }
+                locals.qmineDividendPool_128 = 0;
             }
+
+            // Update the 64-bit state variable from the 128-bit local
+            state.mQmineDividendPool = locals.qmineDividendPool_128.low;
         } // End QMINE distribution
 
         // Distribute qRWA shareholder rewards
