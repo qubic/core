@@ -169,11 +169,7 @@
 #define CONTRACT_INDEX RL_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE RL
 #define CONTRACT_STATE2_TYPE RL2
-#ifdef RL_V1
-    #include "contracts/RandomLottery_v1.h"
-#else
-    #include "contracts/RandomLottery.h"
-#endif
+#include "contracts/RandomLottery.h"
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE

@@ -534,7 +534,7 @@ PUBLIC_FUNCTION(GetShareholderVotes)
 }
 ```
 
-#### User Procedure GetShareholderVotingResults
+#### User Function GetShareholderVotingResults
 
 `IMPLEMENT_GetShareholderVotingResults()` provides the function returning the overall voting results of a proposal:
 
@@ -571,7 +571,7 @@ Similarly, a custom user procedure `SetVotesInOtherContractAsShareholder` calls 
 
 #### System Procedure SET_SHAREHOLDER_PROPOSAL
 
-`IMPLEMENT_SET_SHAREHOLDER_PROPOSAL()` adds a system procedure invoked when `qpi.setShareholderProposal()` is called in another contract that is shareholder of your and wants to create/change/cancel a shareholder proposal in your contract.
+`IMPLEMENT_SET_SHAREHOLDER_PROPOSAL()` adds a system procedure invoked when `qpi.setShareholderProposal()` is called in another contract that is shareholder of your contract and wants to create/change/cancel a shareholder proposal in your contract.
 The input is a generic buffer of 1024 bytes size that is copied into the input structure of `SetShareholderProposal` before calling this procedure.
 `SetShareholderProposal_input` may be custom defined, as in multi-variable proposals. That is why a generic buffer is needed in the cross-contract interaction.
 
@@ -600,7 +600,7 @@ The input and output of `SET_SHAREHOLDER_PROPOSAL` are defined as follows in `qp
 
 #### System Procedure SET_SHAREHOLDER_VOTES
 
-`IMPLEMENT_SET_SHAREHOLDER_VOTES()` adds a system procedure invoked when `qpi.setShareholderVotes()` is called in another contract that is shareholder of your and wants to set shareholder votes in your contract.
+`IMPLEMENT_SET_SHAREHOLDER_VOTES()` adds a system procedure invoked when `qpi.setShareholderVotes()` is called in another contract that is shareholder of your contract and wants to set shareholder votes in your contract.
 It simply calls the user procedure `SetShareholderVotes`. Input and output are the same.
 
 ```C++
