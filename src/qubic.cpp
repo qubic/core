@@ -36,7 +36,6 @@
 #define system qsystem
 #endif
 
-// #define CCF_BY_ANYONE
 // #define RL_V1
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
@@ -6131,6 +6130,9 @@ static bool initialize()
         }
     }
 
+
+    // TODO: delete this whole patch code after e186
+    logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
     // fix missing contract shares
     unsigned int contractIndicesWithMissingShares[3] = {
         6, // GQMPROP
