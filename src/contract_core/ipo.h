@@ -180,9 +180,14 @@ static void finishIPOs()
             }
             contractStateLock[contractIndex].releaseRead();
 
-            contractStateLock[0].acquireWrite();
-            contractFeeReserve(contractIndex) = finalPrice * NUMBER_OF_COMPUTORS;
-            contractStateLock[0].releaseWrite();
+            if (finalPrice > 0)
+            {
+                setContractFeeReserve(contractIndex, finalPrice * NUMBER_OF_COMPUTORS);
+            }
+            else
+            {
+                contractError[contractIndex] = ContractErrorIPOFailed;
+            }
         }
     }
 }

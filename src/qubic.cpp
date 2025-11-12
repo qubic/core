@@ -1,7 +1,5 @@
 #define SINGLE_COMPILE_UNIT
 
-// #define RL_V1
-
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
@@ -5437,6 +5435,7 @@ static bool initialize()
         }
     }
 
+    initializeContractErrors();
     initializeContracts();
 
     if (loadMiningSeedFromFile)
@@ -5561,29 +5560,6 @@ static bool initialize()
         {
             gFullExternalEventTime[i].startTime = convertWeekTimeFromPackedData(gFullExternalComputationTimes[i][0]);
             gFullExternalEventTime[i].endTime = convertWeekTimeFromPackedData(gFullExternalComputationTimes[i][1]);
-        }
-    }
-
-
-    // TODO: delete this whole patch code after e186
-    logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
-    // fix missing contract shares
-    unsigned int contractIndicesWithMissingShares[3] = {
-        6, // GQMPROP
-        7, // SWATCH
-        8, // CCF
-    };
-    for (unsigned int i = 0; i < 3; ++i)
-    {
-        unsigned int contractIndex = contractIndicesWithMissingShares[i];
-        // query number of shares in universe
-        long long numShares = numberOfShares({ m256i::zero(), *(uint64*)contractDescriptions[contractIndex].assetName });
-        if (numShares < NUMBER_OF_COMPUTORS)
-        {
-            // issue missing shares and give them to contract itself
-            int issuanceIndex, ownershipIndex, possessionIndex, dstOwnershipIndex, dstPossessionIndex;
-            issueAsset(m256i::zero(), (char*)contractDescriptions[contractIndex].assetName, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, NUMBER_OF_COMPUTORS - numShares, QX_CONTRACT_INDEX, &issuanceIndex, &ownershipIndex, &possessionIndex);
-            transferShareOwnershipAndPossession(ownershipIndex, possessionIndex, m256i{ contractIndex, 0ULL, 0ULL, 0ULL }, NUMBER_OF_COMPUTORS - numShares, &dstOwnershipIndex, &dstPossessionIndex, /*lock=*/true);
         }
     }
 
