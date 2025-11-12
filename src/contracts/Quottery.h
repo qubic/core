@@ -1993,8 +1993,8 @@ public:
             return;
         }
 
-        locals.duration = input.qei.endDate - locals.dtNow;
-        locals.duration = divUp(locals.duration, 86400000ULL); // 86400000 ms per day
+        locals.duration = input.qei.endDate.durationMicrosec(locals.dtNow);
+        locals.duration = divUp(locals.duration, 86400000000ULL); // 86400000000 us per day
 
         locals.fee = smul(locals.duration, state.mOperationParams.feePerDay);
 
@@ -2157,7 +2157,8 @@ public:
             return;
         }
         locals.dtNow = qpi.now();
-        locals.dtThreshold = locals.qei.endDate + 24ULL * 3600000ULL;
+        locals.dtThreshold = locals.qei.endDate;
+        locals.dtThreshold.addDays(1);
         if (locals.dtNow < locals.dtThreshold) // game operator can only resolve the game 1 day after endDate
         {
             return;

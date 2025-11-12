@@ -59,7 +59,7 @@ public:
         }
 
         owner = state->mQtryGov.mOperationId;
-        increaseEnergy(owner, 1000000000ULL);
+        increaseEnergy(owner, 1000000000LL);
         auto b0 = balanceUSD(owner);
         EXPECT_TRUE(b0 == 1000000000000000ULL);
         qpi.freeBuffer();
@@ -230,15 +230,8 @@ public:
 
 static QPI::DateAndTime wrapped_now()
 {
-    QPI::DateAndTime result;
-    result.year = etalonTick.year;
-    result.month = etalonTick.month;
-    result.day = etalonTick.day;
-    result.hour = etalonTick.hour;
-    result.minute = etalonTick.minute;
-    result.second = etalonTick.second;
-    result.millisecond = etalonTick.millisecond;
-    return result;
+    return QPI::DateAndTime(etalonTick.year + 2000, etalonTick.month, etalonTick.day,
+        etalonTick.hour, etalonTick.minute, etalonTick.second, etalonTick.millisecond);
 }
 
 TEST(QTRYTest, MakeCreatorAndOracleList)
@@ -395,14 +388,17 @@ TEST(QTRYTest, CreateEvent)
     
     // normal event
     DateAndTime dt = wrapped_now();
-    DateAndTime dt_close = dt + 3600000ULL; // + 1 hour
-    DateAndTime dt_end = dt + 3600000ULL * 2; // + 1 hour
+    DateAndTime dt_close = dt; 
+    dt_close.addMicrosec(3600000000LL); // + 1 hour
+    DateAndTime dt_end = dt;
+    dt_end.addMicrosec(3600000000LL * 2ULL); // + 2 hour
 
     std::string desc = "This is a test event from GTEST. Test event 2025-09-01";
     std::string opt0 = "Awesome test";
     std::string opt1 = "Perfect test";
     cei.qei.eid = -1;
-    cei.qei.openDate = dt + (-1000000);
+    cei.qei.openDate = dt;
+    cei.qei.openDate.addMicrosec(-1000000000LL);
     cei.qei.closeDate = dt_close;
     cei.qei.endDate = dt_end;
     std::vector<id> v_desc(4, id::zero());
@@ -436,9 +432,9 @@ TEST(QTRYTest, CreateEvent)
     memset(&cei.qei, 0, sizeof(cei.qei));
     for (int i = 0; i < 8; i++) cei.qei.oracleId.set(i, oracles[i]);
     cei.qei.eid = -1;
-    cei.qei.openDate = dt + (-1000000);
-    cei.qei.closeDate = dt + (-1000000);
-    cei.qei.endDate = dt + (-2000000);
+    cei.qei.openDate = dt; cei.qei.openDate.addMicrosec(-1000000000LL);
+    cei.qei.closeDate = dt; cei.qei.closeDate.addMicrosec(-1000000000LL);
+    cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(-2000000000LL);
     memcpy(v_desc[0].m256i_i8, desc.data(), desc.size());
     memcpy(v_o0[0].m256i_i8, opt0.data(), opt0.size());
     memcpy(v_o1[0].m256i_i8, opt1.data(), opt1.size());
@@ -461,7 +457,7 @@ TEST(QTRYTest, CreateEvent)
     EXPECT_TRUE(state->mCurrentEventID == 1); // not increase
 
     // lack of fund
-    cei.qei.openDate = dt + (-1000000);
+    cei.qei.openDate = dt; cei.qei.openDate.addMicrosec(-1000000000LL);
     cei.qei.closeDate = dt_close;
     cei.qei.endDate = dt_end;
     for (int i = 0; i < 8; i++) cei.qei.oracleId.set(i, oracles[i]);
@@ -495,14 +491,16 @@ TEST(QTRYTest, MatchingOrders)
 
     // normal event
     DateAndTime dt = wrapped_now();
-    DateAndTime dt_close = dt + 3600000ULL; // + 1 hour
-    DateAndTime dt_end = dt + 3600000ULL * 2; // + 1 hour
+    DateAndTime dt_close = dt;
+    dt_close.addMicrosec(3600000000LL); // + 1 hour
+    DateAndTime dt_end = dt;
+    dt_end.addMicrosec(3600000000LL * 2ULL); // + 2 hour
 
     std::string desc = "This is a test event from GTEST. Test event 2025-09-01";
     std::string opt0 = "Awesome test";
     std::string opt1 = "Perfect test";
     cei.qei.eid = -1;
-    cei.qei.openDate = dt + (-1000000);
+    cei.qei.openDate = dt; cei.qei.openDate.addMicrosec(-1000000000LL);
     cei.qei.closeDate = dt_close;
     cei.qei.endDate = dt_end;
     std::vector<id> v_desc(4, id::zero());
@@ -800,14 +798,17 @@ TEST(QTRYTest, CompleteCycle)
 
     // normal event
     DateAndTime dt = wrapped_now();
-    DateAndTime dt_close = dt + 3600000ULL; // + 1 hour
-    DateAndTime dt_end = dt + 3600000ULL * 2; // + 2 hour
+    DateAndTime dt_close = dt;
+    dt_close.addMicrosec(3600000000LL); // + 1 hour
+    DateAndTime dt_end = dt;
+    dt_end.addMicrosec(3600000000LL * 2ULL); // + 2 hour
 
     std::string desc = "This is a test event from GTEST. Test event 2025-09-01";
     std::string opt0 = "Awesome test";
     std::string opt1 = "Perfect test";
     cei.qei.eid = -1;
-    cei.qei.openDate = dt + (-1000000);
+    cei.qei.openDate = dt;
+    cei.qei.openDate.addMicrosec(-1000000000LL);
     cei.qei.closeDate = dt_close;
     cei.qei.endDate = dt_end;
     std::vector<id> v_desc(4, id::zero());
@@ -988,14 +989,17 @@ TEST(QTRYTest, CreateEventOverflow)
 
     // normal event
     DateAndTime dt = wrapped_now();
-    DateAndTime dt_close = dt + 3600000ULL; // + 1 hour
-    DateAndTime dt_end = dt + 3600000ULL * 2; // + 2 hour
+    DateAndTime dt_close = dt;
+    dt_close.addMicrosec(3600000000LL); // + 1 hour
+    DateAndTime dt_end = dt;
+    dt_end.addMicrosec(3600000000LL * 2ULL); // + 2 hour
 
     std::string desc = "This is a test event from GTEST. Test event 2025-09-01";
     std::string opt0 = "Awesome test";
     std::string opt1 = "Perfect test";
     cei.qei.eid = -1;
-    cei.qei.openDate = dt + (-1000000);
+    cei.qei.openDate = dt;
+    cei.qei.openDate.addMicrosec(-1000000000LL);
     cei.qei.closeDate = dt_close;
     cei.qei.endDate = dt_end;
     std::vector<id> v_desc(4, id::zero());
@@ -1058,14 +1062,17 @@ TEST(QTRYTest, ResolveEvent)
 
     // normal event
     DateAndTime dt = wrapped_now();
-    DateAndTime dt_close = dt + 3600000ULL; // + 1 hour
-    DateAndTime dt_end = dt + 3600000ULL * 2; // + 2 hour
+    DateAndTime dt_close = dt;
+    dt_close.addMicrosec(3600000000LL); // + 1 hour
+    DateAndTime dt_end = dt;
+    dt_end.addMicrosec(3600000000LL * 2ULL); // + 2 hour
 
     std::string desc = "This is a test event from GTEST. Test event 2025-09-01";
     std::string opt0 = "Awesome test";
     std::string opt1 = "Perfect test";
     cei.qei.eid = -1;
-    cei.qei.openDate = dt + (-1000000);
+    cei.qei.openDate = dt;
+    cei.qei.openDate.addMicrosec(-1000000000LL);
     cei.qei.closeDate = dt_close;
     cei.qei.endDate = dt_end;
     std::vector<id> v_desc(4, id::zero());
