@@ -37,5 +37,12 @@ public:
         return nullptr;
     }
 
-    // TODO: Add caluclation of Quorum value
+    void processReports()
+    {
+        // TODO: Implement processing logic
+        // 1. For each contract, sort reports from all computors
+        // 2. Calculate quorum value
+        // 3. Deduct quorum value from executionFeeReserve
+        // 4. Reset executionFeeReportCollector for next phase
+    }
 };

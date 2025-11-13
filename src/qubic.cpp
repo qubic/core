@@ -5164,8 +5164,10 @@ static void tickProcessor(void*)
 
                                 updateNumberOfTickTransactions();
                                 pendingTxsPool.incrementFirstStoredTick();
-                                
+
                                 switchContractExecutionTimeArray();
+                                // TODO: Check if we need a offset to wait for the last executionFeeReports
+                                // executionFeeReportCollector.processReports();
 
                                 bool isBeginEpoch = false;
                                 if (epochTransitionState == 1)
