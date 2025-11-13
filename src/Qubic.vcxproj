@@ -77,6 +77,7 @@
     <ClInclude Include="network_messages\contract.h" />
     <ClInclude Include="network_messages\custom_mining.h" />
     <ClInclude Include="network_messages\entity.h" />
+    <ClInclude Include="network_messages\execution_fees.h" />
     <ClInclude Include="network_messages\header.h" />
     <ClInclude Include="network_messages\logging.h" />
     <ClInclude Include="network_messages\public_peers.h" />
@@ -121,6 +122,7 @@
     <ClInclude Include="ticking\ticking.h" />
     <ClInclude Include="ticking\tick_storage.h" />
     <ClInclude Include="ticking\pending_txs_pool.h" />
+    <ClInclude Include="ticking\execution_fee_counter.h" />
     <ClInclude Include="vote_counter.h" />
   </ItemGroup>
   <ItemGroup>

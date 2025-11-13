@@ -268,6 +268,9 @@
     <ClInclude Include="network_messages\custom_mining.h">
       <Filter>network_messages</Filter>
     </ClInclude>
+    <ClInclude Include="network_messages\execution_fees.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
     <ClInclude Include="platform\virtual_memory.h" />
     <ClInclude Include="platform\profiling.h">
       <Filter>platform</Filter>
@@ -277,6 +280,9 @@
       <Filter>contract_core</Filter>
     </ClInclude>
     <ClInclude Include="ticking\pending_txs_pool.h">
+      <Filter>ticking</Filter>
+    </ClInclude>
+    <ClInclude Include="ticking\execution_fee_counter.h">
       <Filter>ticking</Filter>
     </ClInclude>
     <ClInclude Include="contracts\Qdraw.h">
