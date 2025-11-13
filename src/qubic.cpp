@@ -58,7 +58,7 @@
 #include "ticking/ticking.h"
 #include "contract_core/qpi_ticking_impl.h"
 #include "vote_counter.h"
-#include "ticking/execution_fee_counter.h"
+#include "ticking/execution_fee_report_collector.h"
 #include "network_messages/execution_fees.h"
 
 #include "contract_core/ipo.h"
@@ -133,7 +133,7 @@ static unsigned short ownComputorIndicesMapping[sizeof(computorSeeds) / sizeof(c
 
 static TickStorage ts;
 static VoteCounter voteCounter;
-static ExecutionFeeCounter executionFeeCounter;
+static ExecutionFeeReportCollector executionFeeReportCollector;
 static TickData nextTickData;
 static PendingTxsPool pendingTxsPool;
 
@@ -2825,7 +2825,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                                         // Store execution fee reports from this computor
                                         for (unsigned int i = 0; i < numEntries; i++)
                                         {
-                                            executionFeeCounter.storeReport(entries[i].contractIndex, computorIndex, entries[i].executionFee);
+                                            executionFeeReportCollector.storeReport(entries[i].contractIndex, computorIndex, entries[i].executionFee);
                                         }
                                     }
                                 }
@@ -3568,7 +3568,7 @@ static void beginEpoch()
     ts.beginEpoch(system.initialTick);
     pendingTxsPool.beginEpoch(system.initialTick);
     voteCounter.init();
-    executionFeeCounter.init(); // TODO: Adjust depending on procedures regarding executionFee during epoch change
+    executionFeeReportCollector.init(); // TODO: Adjust depending on procedures regarding executionFee during epoch change
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
     pendingTxsPool.checkStateConsistencyWithAssert();

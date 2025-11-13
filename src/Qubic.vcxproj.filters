@@ -282,7 +282,7 @@
     <ClInclude Include="ticking\pending_txs_pool.h">
       <Filter>ticking</Filter>
     </ClInclude>
-    <ClInclude Include="ticking\execution_fee_counter.h">
+    <ClInclude Include="ticking\execution_fee_report_collector.h">
       <Filter>ticking</Filter>
     </ClInclude>
     <ClInclude Include="contracts\Qdraw.h">

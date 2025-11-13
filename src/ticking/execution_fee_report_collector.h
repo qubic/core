@@ -3,7 +3,7 @@
 #include "network_messages/execution_fees.h"
 #include "contract_core/contract_def.h"
 
-class ExecutionFeeCounter
+class ExecutionFeeReportCollector
 {
 private:
     long long executionFeeReports[contractCount][NUMBER_OF_COMPUTORS];
