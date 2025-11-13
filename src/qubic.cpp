@@ -2782,7 +2782,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
                 case EXECUTION_FEE_REPORT_INPUT_TYPE:
                 {
-                    if (transaction->amount == 0
+                    if (transaction->amount == ExecutionFeeReportTransactionPrefix::minAmount()
                         && transaction->inputSize >= ExecutionFeeReportTransactionPrefix::minInputSize()
                         && transaction->inputSize <= (sizeof(unsigned int) + contractCount * sizeof(ContractExecutionFeeEntry) + sizeof(m256i)))
                     {
@@ -3022,7 +3022,7 @@ static bool makeAndBroadCastExecutionFeeTransaction(int i, BroadcastFutureTickDa
     sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, signaturePtr);
 
     // Broadcast ExecutionFeeReport
-    unsigned int transactionSize = sizeToHash + sizeof(ExecutionFeeReportTransactionPostfix::dataLock);
+    unsigned int transactionSize = sizeToHash + sizeof(ExecutionFeeReportTransactionPostfix::signature);
     enqueueResponse(NULL, transactionSize, BROADCAST_TRANSACTION, 0, &payload);
 
     // Copy the content of this exectuion fee report to local memory

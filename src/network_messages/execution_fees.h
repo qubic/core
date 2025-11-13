@@ -14,7 +14,7 @@ struct ContractExecutionFeeEntry
     long long executionFee;          // executionTime * multiplier
 };
 
-static_assert(sizeof(ContractExecutionFeeEntry) == 4 + 4 + 8, "ContractExecutionFeeEntry size must be 12 bytes");
+static_assert(sizeof(ContractExecutionFeeEntry) == 4 + 4 + 8, "ContractExecutionFeeEntry size must be 16 bytes");
 
 // Variable-length transaction for reporting execution fees
 // Layout: ExecutionFeeReportTransactionPrefix + array of ContractExecutionFeeEntry + ExecutionFeeReportTransactionPostfix
@@ -51,5 +51,7 @@ struct ExecutionFeeReportPayload
 {
     ExecutionFeeReportTransactionPrefix transaction;
     ContractExecutionFeeEntry entries[contractCount];
-    ExecutionFeeReportTransactionPostfix postfix;  // Reserve space for signature
+    ExecutionFeeReportTransactionPostfix postfix;
 };
+
+static_assert( sizeof(ExecutionFeeReportPayload) == 84 + 4 /* padding */ + (contractCount * 16) + 32 +64, "ExecutionFeeReportPayload has wrong struct size");
