@@ -58,6 +58,7 @@
 #include "ticking/ticking.h"
 #include "contract_core/qpi_ticking_impl.h"
 #include "vote_counter.h"
+#include "network_messages/execution_fees.h"
 
 #include "contract_core/ipo.h"
 #include "contract_core/qpi_ipo_impl.h"
@@ -85,6 +86,7 @@
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
+#define EXECUTION_FEE_REPORT_PUBLICATION_OFFSET 2 // Must be 2+
 #define TIME_ACCURACY 5000
 constexpr unsigned long long TARGET_MAINTHREAD_LOOP_DURATION = 30; // mcs, it is the target duration of the main thread loop
 
@@ -254,6 +256,7 @@ static struct
     unsigned char signature[SIGNATURE_SIZE];
 } voteCounterPayload;
 
+static ExecutionFeeReportPayload executionFeeReportPayload;
 
 static struct
 {
@@ -2921,6 +2924,81 @@ static bool makeAndBroadcastCustomMiningTransaction(int i, BroadcastFutureTickDa
     return false;
 }
 
+static bool makeAndBroadCastExecutionFeeTransaction(int i, BroadcastFutureTickData& td, int txSlot)
+{
+    PROFILE_NAMED_SCOPE("processTick(): broadcast execution fee tx");
+    ASSERT(txSlot < NUMBER_OF_TRANSACTIONS_PER_TICK);
+
+    auto& payload = executionFeeReportPayload;
+    payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
+    payload.transaction.destinationPublicKey = m256i::zero();
+    payload.transaction.amount = 0;
+    payload.transaction.tick = system.tick + EXECUTION_FEE_REPORT_PUBLICATION_OFFSET;
+    payload.transaction.inputType = ExecutionFeeReportTransactionPrefix::transactionType();
+    payload.transaction.phaseNumber = (system.tick / NUMBER_OF_COMPUTORS) - 1;
+
+    // Build array with execution fee entries
+    unsigned int entryCount = 0;
+    const int prevPhaseIndex = !contractExecutionTimeActiveArrayIndex;
+    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
+    {
+        long long executionTime = contractExecutionTimePerPhase[prevPhaseIndex][contractIndex];
+        if (executionTime > 0)
+        {
+            payload.entries[entryCount].contractIndex = contractIndex;
+            payload.entries[entryCount].executionFee = executionTime * EXECTUION_TIME_MULTIPLIER;
+            entryCount++;
+        }
+    }
+
+    // Return if no contract was executed during last phase
+    if (entryCount <=0)
+    {
+        return false;
+    }
+
+    // Calculate input size based on actual number of entries
+    payload.transaction.inputSize = (unsigned short)(sizeof(payload.transaction.phaseNumber) + (entryCount * sizeof(ContractExecutionFeeEntry)) + sizeof(ExecutionFeeReportTransactionPostfix::dataLock));
+
+    // Calculate the correct datalock position as this is a variable length package
+    m256i* datalockPtr = (m256i*) ((unsigned char*)&payload) + sizeof(ExecutionFeeReportTransactionPrefix) + (entryCount * sizeof(ContractExecutionFeeEntry));
+    *datalockPtr = td.tickData.timelock;
+
+    // Calculate the correct position of the signature as this is a variable length package
+    unsigned char* signaturePtr = ((unsigned char*)datalockPtr) + sizeof(ExecutionFeeReportTransactionPostfix::dataLock);
+
+    unsigned char digest[32];
+    unsigned int sizeToHash =  sizeof(Transaction) + payload.transaction.inputSize;
+    KangarooTwelve(&payload, sizeToHash,  digest, sizeof(digest));
+    sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, signaturePtr);
+
+    // Broadcast ExecutionFeeReport
+    unsigned int transactionSize = sizeToHash + sizeof(ExecutionFeeReportTransactionPostfix::dataLock);
+    enqueueResponse(NULL, transactionSize, BROADCAST_TRANSACTION, 0, &payload);
+
+    // Copy the content of this exectuion fee report to local memory
+    unsigned int tickIndex = ts.tickToIndexCurrentEpoch(td.tickData.tick);
+    KangarooTwelve(&payload, transactionSize, digest, sizeof(digest));
+    auto* tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
+    if (txSlot < NUMBER_OF_TRANSACTIONS_PER_TICK) // valid slot
+    {
+        // TODO: refactor function add transaction to txStorage
+        ts.tickTransactions.acquireLock();
+        if (!tsReqTickTransactionOffsets[txSlot]) // not yet have value
+        {
+            if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch) //have enough space
+            {
+                td.tickData.transactionDigests[txSlot] = m256i(digest);
+                tsReqTickTransactionOffsets[txSlot] = ts.nextTickTransactionOffset;
+                copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), &payload, transactionSize);
+                ts.nextTickTransactionOffset += transactionSize;
+            }
+        }
+        ts.tickTransactions.releaseLock();
+    }
+    return true;
+}
+
 OPTIMIZE_OFF()
 static void processTick(unsigned long long processorNumber)
 {
@@ -3260,8 +3338,13 @@ static void processTick(unsigned long long processorNumber)
                             nextTxIndex++;
                         }
                     }
-
-                    // TODO: include execution fees tx for phase n - 1 (i.e. from contractExecutionTimePerPhase[!contractExecutionTimeActiveArrayIndex])
+                    {
+                        // include execution fees tx for phase n - 1 (i.e. from contractExecutionTimePerPhase[!contractExecutionTimeActiveArrayIndex])
+                        if (makeAndBroadCastExecutionFeeTransaction(i, broadcastedFutureTickData, nextTxIndex))
+                            {
+                                nextTxIndex++;
+                            }
+                    }
 
                     for (; nextTxIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; ++nextTxIndex)
                     {

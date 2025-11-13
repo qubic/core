@@ -10,10 +10,11 @@ constexpr int EXECUTION_FEE_REPORT_INPUT_TYPE = 9;
 struct ContractExecutionFeeEntry
 {
     unsigned int contractIndex;      // Contract index
+    unsigned int _padding;           // 4 bytes
     long long executionFee;          // executionTime * multiplier
 };
 
-static_assert(sizeof(ContractExecutionFeeEntry) == 4 + 8, "ContractExecutionFeeEntry size must be 12 bytes");
+static_assert(sizeof(ContractExecutionFeeEntry) == 4 + 4 + 8, "ContractExecutionFeeEntry size must be 12 bytes");
 
 // Variable-length transaction for reporting execution fees
 // Layout: ExecutionFeeReportTransactionPrefix + array of ContractExecutionFeeEntry + ExecutionFeeReportTransactionPostfix
@@ -40,5 +41,15 @@ struct ExecutionFeeReportTransactionPrefix : public Transaction
 
 struct ExecutionFeeReportTransactionPostfix
 {
+    m256i dataLock;
     unsigned char signature[SIGNATURE_SIZE];
+};
+
+// Payload structure for execution fee transaction
+// Note: postfix is written at variable position based on actual entry count, not at fixed position
+struct ExecutionFeeReportPayload
+{
+    ExecutionFeeReportTransactionPrefix transaction;
+    ContractExecutionFeeEntry entries[contractCount];
+    ExecutionFeeReportTransactionPostfix postfix;  // Reserve space for signature
 };
