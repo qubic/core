@@ -2780,6 +2780,55 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                 }
                 break;
 
+                case EXECUTION_FEE_REPORT_INPUT_TYPE:
+                {
+                    if (transaction->amount == 0
+                        && transaction->inputSize >= ExecutionFeeReportTransactionPrefix::minInputSize()
+                        && transaction->inputSize <= (sizeof(unsigned int) + contractCount * sizeof(ContractExecutionFeeEntry) + sizeof(m256i)))
+                    {
+                        // Validate that transaction comes from tick leader
+                        int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
+                        if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex])
+                        {
+                            // Extract prefix to get phase number
+                            const auto* prefix = (const ExecutionFeeReportTransactionPrefix*)transaction;
+
+                            // Calculate number of entries
+                            const unsigned int payloadSize = transaction->inputSize - sizeof(prefix->phaseNumber) - sizeof(m256i);
+                            const unsigned int numEntries = payloadSize / sizeof(ContractExecutionFeeEntry);
+
+                            // Validate that size matches an exact number of entries
+                            if (payloadSize % sizeof(ContractExecutionFeeEntry) == 0)
+                            {
+                                // Extract dataLock from transaction (at end of variable payload, before signature)
+                                const unsigned char* dataLockPtr = transaction->inputPtr() + transaction->inputSize - sizeof(m256i);
+                                m256i txDataLock = *((m256i*)dataLockPtr);
+
+                                if (txDataLock == dataLock)
+                                {
+                                    // Validate entries
+                                    const auto* entries = (const ContractExecutionFeeEntry*)(transaction->inputPtr() + sizeof(prefix->phaseNumber));
+                                    bool valid = true;
+                                    for (unsigned int i = 0; i < numEntries; i++)
+                                    {
+                                        if (entries[i].contractIndex >= contractCount || entries[i].executionFee <= 0)
+                                        {
+                                            valid = false;
+                                            break;
+                                        }
+                                    }
+
+                                    if (valid)
+                                    {
+                                        // TODO: Store/process the execution fee data
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+
                 }
             }
             else
