@@ -31,6 +31,7 @@
     <ClCompile Include="file_io.cpp" />
     <ClCompile Include="virtual_memory.cpp" />
     <ClCompile Include="custom_mining.cpp" />
+    <ClCompile Include="execution_fees.cpp" />
     <ClCompile Include="contract_qutil.cpp" />
     <ClCompile Include="revenue.cpp" />
     <ClCompile Include="time.cpp" />
