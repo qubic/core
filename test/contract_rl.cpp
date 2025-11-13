@@ -117,6 +117,7 @@ public:
 		initEmptySpectrum();
 		initEmptyUniverse();
 		INIT_CONTRACT(RL);
+		system.epoch = contractDescriptions[RL_CONTRACT_INDEX].constructionEpoch;
 		callSystemProcedure(RL_CONTRACT_INDEX, INITIALIZE);
 	}
 
@@ -340,6 +341,24 @@ public:
 		// NOTE: we do not call SetSchedule here to avoid epoch transitions in tests.
 	}
 };
+
+TEST(ContractRandomLottery, PostIncomingTransfer)
+{
+	ContractTestingRL ctl;
+	static constexpr uint64 transferAmount = 123456789;
+
+	const id sender = id::randomValue();
+	increaseEnergy(sender, transferAmount);
+	EXPECT_EQ(getBalance(sender), transferAmount);
+
+	const id contractAddress = ctl.rlSelf();
+	EXPECT_EQ(getBalance(contractAddress), 0);
+
+	notifyContractOfIncomingTransfer(sender, contractAddress, transferAmount, QPI::TransferType::standardTransaction);
+
+	EXPECT_EQ(getBalance(sender), transferAmount);
+	EXPECT_EQ(getBalance(contractAddress), 0);
+}
 
 TEST(ContractRandomLottery, GetFees)
 {

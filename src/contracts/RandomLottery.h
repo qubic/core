@@ -534,9 +534,9 @@ public:
 		{
 			case TransferType::standardTransaction:
 				// Return any funds sent via standard transaction
-				if (qpi.invocationReward() > 0)
+				if (input.amount > 0)
 				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					qpi.transfer(input.sourceId, input.amount);
 				}
 			default: break;
 		}
@@ -836,7 +836,7 @@ protected:
 	{
 		// Prepare for next epoch: clear players and reset daily guards
 		state.playerCounter = 0;
-		state.players.setAll(id::zero());
+		setMemory(state.players, 0);
 
 		state.lastDrawHour = RL_INVALID_HOUR;
 		state.lastDrawDay = RL_INVALID_DAY;
@@ -847,6 +847,7 @@ protected:
 	{
 		// After each draw period, clear current tickets
 		state.playerCounter = 0;
+		setMemory(state.players, 0);
 	}
 
 	static void applyNextEpochData(RL& state)
