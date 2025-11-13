@@ -29,9 +29,9 @@ static const Asset QRWA_QMINE_ASSET_INIT =
     297666170193ULL
 };
 
-// Zoxx's Address for receiving rewards from moved QMINE tokens
+// QMINE DEV's Address for receiving rewards from moved QMINE tokens
 // ZOXXIDCZIMGCECCFAXDDCMBBXCDAQJIHGOOATAFPSBFIOFOYECFKUFPBEMWC
-static const id QRWA_ZOXX_ADDRESS_DEFAULT = ID(_Z, _O, _X, _X, _I, _D, _C, _Z, _I, _M, _G, _C, _E, _C, _C, _F,
+static const id QRWA_QMINE_DEV_ADDRESS_DEFAULT = ID(_Z, _O, _X, _X, _I, _D, _C, _Z, _I, _M, _G, _C, _E, _C, _C, _F,
     _A, _X, _D, _D, _C, _M, _B, _B, _X, _C, _D, _A, _Q, _J, _I, _H,
     _G, _O, _O, _A, _T, _A, _F, _P, _S, _B, _F, _I, _O, _F, _O, _Y,
     _E, _C, _F, _K, _U, _F, _P, _B);
@@ -89,7 +89,7 @@ struct QRWA : public ContractBase
     /***************************************************/
 
     // votable governance parameters for the contract.
-    struct QrwaGovParams
+    struct qRWAGovParams
     {
         // Addresses
         id mAdminAddress; // Only the admin can create release polls
@@ -97,7 +97,7 @@ struct QRWA : public ContractBase
         id electricityAddress;
         id maintenanceAddress;
         id reinvestmentAddress;
-        id zoxxAddress; // Address to receive rewards for moved QMINE during epoch
+        id qmineDevAddress; // Address to receive rewards for moved QMINE during epoch
 
         // MINING FEE Percentages
         uint64 electricityPercent;
@@ -106,12 +106,12 @@ struct QRWA : public ContractBase
     };
 
     // Represents a governance poll in a rotating buffer
-    struct QrwaGovProposal
+    struct qRWAGovProposal
     {
         uint64 proposalId; // The unique, increasing ID
         uint64 status; // 0=Empty, 1=Active, 2=Passed, 3=Failed
         uint64 score; // Final score, count at END_EPOCH
-        QrwaGovParams params; // The actual proposal data
+        qRWAGovParams params; // The actual proposal data
     };
 
     // Represents a poll to release assets from the treasury or dividend pool.
@@ -128,7 +128,7 @@ struct QRWA : public ContractBase
     };
 
     // Logger for general contract events.
-    struct QrwaLogger
+    struct qRWALogger
     {
         uint64 contractId;
         uint64 logType;
@@ -153,10 +153,10 @@ protected:
     uint64 mPayoutTotalQmineBegin; // Total QMINE shares from the last epoch's beginning
 
     // Votable Parameters
-    QrwaGovParams mCurrentGovParams; // The live, active parameters
+    qRWAGovParams mCurrentGovParams; // The live, active parameters
 
     // Voting state for governance parameters (voted by QMINE holders)
-    Array<QrwaGovProposal, QRWA_MAX_GOV_POLLS> mGovPolls;
+    Array<qRWAGovProposal, QRWA_MAX_GOV_POLLS> mGovPolls;
     HashMap<id, uint64, QRWA_MAX_QMINE_HOLDERS> mShareholderVoteMap; // Maps QMINE holder -> Gov Poll slot index
     uint64 mCurrentGovProposalId;
     uint64 mNewGovPollsThisEpoch;
@@ -181,11 +181,11 @@ protected:
 
     // Processed dividend pools awaiting distribution
     uint64 mQmineDividendPool; // QUs for QMINE holders
-    uint64 mQrwaDividendPool; // QUs for qRWA shareholders
+    uint64 mQRWADividendPool; // QUs for qRWA shareholders
 
     // Total distributed tracking
     uint64 mTotalQmineDistributed;
-    uint64 mTotalQrwaDistributed;
+    uint64 mTotalQRWADistributed;
 
 public:
     /***************************************************/
@@ -207,7 +207,7 @@ public:
         uint64 totalDistribution;
         uint64 qminePayout;
         uint64 qrwaPayout;
-        uint64 amountPerQrwaShare;
+        uint64 amountPerQRWAShare;
         uint64 distributedAmount;
 
         // QMINE Payout locals
@@ -224,7 +224,7 @@ public:
         uint128 qmineDividendPool_128;
         uint64 payout_u64; // Temporary var for casting just before transfer
         uint64 foundEnd;
-        QrwaLogger logger;
+        qRWALogger logger;
     };
     PRIVATE_PROCEDURE_WITH_LOCALS(DistributeRewards)
     {
@@ -233,46 +233,46 @@ public:
 
         // Calculate and pay out governance fees from Pool A (mined funds)
         // gov_percentage = electricity_percent + maintenance_percent + reinvestment_percent
-        locals.totalGovPercent = QPI::sadd(QPI::sadd(state.mCurrentGovParams.electricityPercent, state.mCurrentGovParams.maintenancePercent), state.mCurrentGovParams.reinvestmentPercent);
+        locals.totalGovPercent = sadd(sadd(state.mCurrentGovParams.electricityPercent, state.mCurrentGovParams.maintenancePercent), state.mCurrentGovParams.reinvestmentPercent);
         locals.totalFeeAmount = 0;
 
         if (locals.totalGovPercent > 0 && locals.totalGovPercent <= QRWA_PERCENT_DENOMINATOR && state.mRevenuePoolA > 0)
         {
-            locals.electricityPayout = QPI::div<uint64>(QPI::smul(state.mRevenuePoolA, state.mCurrentGovParams.electricityPercent), QRWA_PERCENT_DENOMINATOR);
+            locals.electricityPayout = div<uint64>(smul(state.mRevenuePoolA, state.mCurrentGovParams.electricityPercent), QRWA_PERCENT_DENOMINATOR);
             if (locals.electricityPayout > 0 && state.mCurrentGovParams.electricityAddress != NULL_ID)
             {
                 qpi.transfer(state.mCurrentGovParams.electricityAddress, locals.electricityPayout);
-                locals.totalFeeAmount = QPI::sadd(locals.totalFeeAmount, locals.electricityPayout);
+                locals.totalFeeAmount = sadd(locals.totalFeeAmount, locals.electricityPayout);
             }
 
-            locals.maintenancePayout = QPI::div<uint64>(QPI::smul(state.mRevenuePoolA, state.mCurrentGovParams.maintenancePercent), QRWA_PERCENT_DENOMINATOR);
+            locals.maintenancePayout = div<uint64>(smul(state.mRevenuePoolA, state.mCurrentGovParams.maintenancePercent), QRWA_PERCENT_DENOMINATOR);
             if (locals.maintenancePayout > 0 && state.mCurrentGovParams.maintenanceAddress != NULL_ID)
             {
                 qpi.transfer(state.mCurrentGovParams.maintenanceAddress, locals.maintenancePayout);
-                locals.totalFeeAmount = QPI::sadd(locals.totalFeeAmount, locals.maintenancePayout);
+                locals.totalFeeAmount = sadd(locals.totalFeeAmount, locals.maintenancePayout);
             }
 
-            locals.reinvestmentPayout = QPI::div<uint64>(QPI::smul(state.mRevenuePoolA, state.mCurrentGovParams.reinvestmentPercent), QRWA_PERCENT_DENOMINATOR);
+            locals.reinvestmentPayout = div<uint64>(smul(state.mRevenuePoolA, state.mCurrentGovParams.reinvestmentPercent), QRWA_PERCENT_DENOMINATOR);
             if (locals.reinvestmentPayout > 0 && state.mCurrentGovParams.reinvestmentAddress != NULL_ID)
             {
                 qpi.transfer(state.mCurrentGovParams.reinvestmentAddress, locals.reinvestmentPayout);
-                locals.totalFeeAmount = QPI::sadd(locals.totalFeeAmount, locals.reinvestmentPayout);
+                locals.totalFeeAmount = sadd(locals.totalFeeAmount, locals.reinvestmentPayout);
             }
             state.mRevenuePoolA = (state.mRevenuePoolA > locals.totalFeeAmount) ? (state.mRevenuePoolA - locals.totalFeeAmount) : 0;
         }
 
         // Calculate total distribution pool
         locals.Y_revenue = state.mRevenuePoolA; // Remaining Pool A after fees
-        locals.totalDistribution = QPI::sadd(locals.Y_revenue, state.mRevenuePoolB);
+        locals.totalDistribution = sadd(locals.Y_revenue, state.mRevenuePoolB);
 
         // Allocate to QMINE and qRWA pools
         if (locals.totalDistribution > 0)
         {
-            locals.qminePayout = QPI::div<uint64>(QPI::smul(locals.totalDistribution, QRWA_QMINE_HOLDER_PERCENT), QRWA_PERCENT_DENOMINATOR);
+            locals.qminePayout = div<uint64>(smul(locals.totalDistribution, QRWA_QMINE_HOLDER_PERCENT), QRWA_PERCENT_DENOMINATOR);
             locals.qrwaPayout = locals.totalDistribution - locals.qminePayout; // Avoid potential rounding errors
 
-            state.mQmineDividendPool = QPI::sadd(state.mQmineDividendPool, locals.qminePayout);
-            state.mQrwaDividendPool = QPI::sadd(state.mQrwaDividendPool, locals.qrwaPayout);
+            state.mQmineDividendPool = sadd(state.mQmineDividendPool, locals.qminePayout);
+            state.mQRWADividendPool = sadd(state.mQRWADividendPool, locals.qrwaPayout);
 
             // Reset revenue pools after allocation
             state.mRevenuePoolA = 0;
@@ -310,7 +310,7 @@ public:
                 {
                     // Payout = (EligibleBalance * DividendPool) / PayoutBase
                     locals.scaledPayout_128 = (uint128)locals.eligibleBalance * (uint128)state.mQmineDividendPool;
-                    locals.eligiblePayout_128 = QPI::div<uint128>(locals.scaledPayout_128, state.mPayoutTotalQmineBegin);
+                    locals.eligiblePayout_128 = div<uint128>(locals.scaledPayout_128, state.mPayoutTotalQmineBegin);
 
                     if (locals.eligiblePayout_128 > (uint128)0 && locals.eligiblePayout_128 <= locals.qmineDividendPool_128)
                     {
@@ -323,7 +323,7 @@ public:
                             qpi.transfer(locals.holder, (sint64)locals.payout_u64);
 
                             locals.qmineDividendPool_128 -= locals.eligiblePayout_128;
-                            state.mTotalQmineDistributed = QPI::sadd(state.mTotalQmineDistributed, locals.payout_u64);
+                            state.mTotalQmineDistributed = sadd(state.mTotalQmineDistributed, locals.payout_u64);
                             locals.totalEligiblePaid_128 += locals.eligiblePayout_128;
                         }
                     }
@@ -335,7 +335,7 @@ public:
                         if (locals.qmineDividendPool_128.high == 0 && locals.payout_u64 > 0)
                         {
                             qpi.transfer(locals.holder, (sint64)locals.payout_u64);
-                            state.mTotalQmineDistributed = QPI::sadd(state.mTotalQmineDistributed, locals.payout_u64);
+                            state.mTotalQmineDistributed = sadd(state.mTotalQmineDistributed, locals.payout_u64);
                             locals.totalEligiblePaid_128 += locals.qmineDividendPool_128;
                         }
                         locals.qmineDividendPool_128 = 0;
@@ -344,15 +344,15 @@ public:
                 }
             }
 
-            // Pay Zoxx the entire remainder of the pool
+            // Pay QMINE DEV the entire remainder of the pool
             locals.movedSharesPayout_128 = locals.qmineDividendPool_128;
-            if (locals.movedSharesPayout_128 > (uint128)0 && state.mCurrentGovParams.zoxxAddress != NULL_ID)
+            if (locals.movedSharesPayout_128 > (uint128)0 && state.mCurrentGovParams.qmineDevAddress != NULL_ID)
             {
                 locals.payout_u64 = locals.movedSharesPayout_128.low;
                 if (locals.movedSharesPayout_128.high == 0 && locals.payout_u64 > 0)
                 {
-                    qpi.transfer(state.mCurrentGovParams.zoxxAddress, (sint64)locals.payout_u64);
-                    state.mTotalQmineDistributed = QPI::sadd(state.mTotalQmineDistributed, locals.payout_u64);
+                    qpi.transfer(state.mCurrentGovParams.qmineDevAddress, (sint64)locals.payout_u64);
+                    state.mTotalQmineDistributed = sadd(state.mTotalQmineDistributed, locals.payout_u64);
                 }
                 locals.qmineDividendPool_128 = 0;
             }
@@ -362,16 +362,16 @@ public:
         } // End QMINE distribution
 
         // Distribute qRWA shareholder rewards
-        if (state.mQrwaDividendPool > 0)
+        if (state.mQRWADividendPool > 0)
         {
-            locals.amountPerQrwaShare = QPI::div<uint64>(state.mQrwaDividendPool, NUMBER_OF_COMPUTORS);
-            if (locals.amountPerQrwaShare > 0)
+            locals.amountPerQRWAShare = div<uint64>(state.mQRWADividendPool, NUMBER_OF_COMPUTORS);
+            if (locals.amountPerQRWAShare > 0)
             {
-                if (qpi.distributeDividends(static_cast<sint64>(locals.amountPerQrwaShare)))
+                if (qpi.distributeDividends(static_cast<sint64>(locals.amountPerQRWAShare)))
                 {
-                    locals.distributedAmount = QPI::smul(locals.amountPerQrwaShare, static_cast<uint64>(NUMBER_OF_COMPUTORS));
-                    state.mQrwaDividendPool -= locals.distributedAmount;
-                    state.mTotalQrwaDistributed = QPI::sadd(state.mTotalQrwaDistributed, locals.distributedAmount);
+                    locals.distributedAmount = smul(locals.amountPerQRWAShare, static_cast<uint64>(NUMBER_OF_COMPUTORS));
+                    state.mQRWADividendPool -= locals.distributedAmount;
+                    state.mTotalQRWADistributed = sadd(state.mTotalQRWADistributed, locals.distributedAmount);
                 }
             }
         }
@@ -414,7 +414,7 @@ public:
     {
         sint64 transferResult;
         sint64 balance;
-        QrwaLogger logger;
+        qRWALogger logger;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(DonateToTreasury)
     {
@@ -476,7 +476,7 @@ public:
 
         if (locals.transferResult >= 0) // Transfer successful
         {
-            state.mTreasuryBalance = QPI::sadd(state.mTreasuryBalance, input.amount);
+            state.mTreasuryBalance = sadd(state.mTreasuryBalance, input.amount);
             output.status = QRWA_STATUS_SUCCESS;
         }
         else
@@ -491,7 +491,7 @@ public:
     // Governance: Param Voting
     struct VoteGovParams_input
     {
-        QrwaGovParams proposal;
+        qRWAGovParams proposal;
     };
     struct VoteGovParams_output
     {
@@ -504,13 +504,13 @@ public:
         uint64 i;
         uint64 foundProposal;
         uint64 proposalIndex;
-        QrwaLogger logger;
+        qRWALogger logger;
         //sint64 iterIndex;
         //id iterVoter;
         GetQmineBalanceOf_input gqbo_in;
         GetQmineBalanceOf_output gqbo_out;
         GetQmineBalanceOf_locals gqbo_locals;
-        QrwaGovProposal poll;
+        qRWAGovProposal poll;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(VoteGovParams)
     {
@@ -538,7 +538,7 @@ public:
         }
 
         // Validate proposal percentages
-        if (QPI::sadd(QPI::sadd(input.proposal.electricityPercent, input.proposal.maintenancePercent), input.proposal.reinvestmentPercent) > QRWA_PERCENT_DENOMINATOR)
+        if (sadd(sadd(input.proposal.electricityPercent, input.proposal.maintenancePercent), input.proposal.reinvestmentPercent) > QRWA_PERCENT_DENOMINATOR)
         {
             output.status = QRWA_STATUS_FAILURE_INVALID_INPUT;
             locals.logger.logType = QRWA_LOG_TYPE_ERROR;
@@ -603,14 +603,14 @@ public:
         // Check if the current proposal matches any existing unique proposal
         for (locals.i = 0; locals.i < QRWA_MAX_GOV_POLLS; locals.i++)
         {
-            QrwaGovParams existing = state.mGovPolls.get(locals.i).params;
+            qRWAGovParams existing = state.mGovPolls.get(locals.i).params;
             uint64 status = state.mGovPolls.get(locals.i).status;
 
             if (status == QRWA_POLL_STATUS_ACTIVE &&
                 existing.electricityAddress == input.proposal.electricityAddress &&
                 existing.maintenanceAddress == input.proposal.maintenanceAddress &&
                 existing.reinvestmentAddress == input.proposal.reinvestmentAddress &&
-                existing.zoxxAddress == input.proposal.zoxxAddress &&
+                existing.qmineDevAddress == input.proposal.qmineDevAddress &&
                 existing.mAdminAddress == input.proposal.mAdminAddress &&
                 existing.electricityPercent == input.proposal.electricityPercent &&
                 existing.maintenancePercent == input.proposal.maintenancePercent &&
@@ -682,7 +682,7 @@ public:
     {
         uint64 newPollIndex;
         AssetReleaseProposal newPoll;
-        QrwaLogger logger;
+        qRWALogger logger;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(CreateAssetReleasePoll)
     {
@@ -777,7 +777,7 @@ public:
         // uint64 diff;
         AssetReleaseProposal poll;
         uint64 pollIndex;
-        QrwaLogger logger;
+        qRWALogger logger;
         uint64 foundPoll;
         bit_64 voterBitfield;
         bit_64 voterOptions;
@@ -952,7 +952,7 @@ public:
         sint64 transferResult;
         sint64 balance;
         uint64 currentAssetBalance;
-        QrwaLogger logger;
+        qRWALogger logger;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(DepositGeneralAsset)
     {
@@ -1010,7 +1010,7 @@ public:
         if (locals.transferResult >= 0) // Transfer successful
         {
             state.mGeneralAssetBalances.get(input.asset, locals.currentAssetBalance); // 0 if not exist
-            locals.currentAssetBalance = QPI::sadd(locals.currentAssetBalance, input.amount);
+            locals.currentAssetBalance = sadd(locals.currentAssetBalance, input.amount);
             state.mGeneralAssetBalances.set(input.asset, locals.currentAssetBalance);
             output.status = QRWA_STATUS_SUCCESS;
         }
@@ -1029,7 +1029,7 @@ public:
 
     // Governance: Param Voting
     typedef NoData GetGovParams_input;
-    typedef QrwaGovParams GetGovParams_output;
+    typedef qRWAGovParams GetGovParams_output;
     PUBLIC_FUNCTION(GetGovParams)
     {
         output = state.mCurrentGovParams;
@@ -1041,7 +1041,7 @@ public:
     };
     struct GetGovPoll_output
     {
-        QrwaGovProposal proposal;
+        qRWAGovProposal proposal;
         uint64 status; // 0=NotFound, 1=Found
     };
     struct GetGovPoll_locals
@@ -1122,19 +1122,19 @@ public:
         output.revenuePoolA = state.mRevenuePoolA;
         output.revenuePoolB = state.mRevenuePoolB;
         output.qmineDividendPool = state.mQmineDividendPool;
-        output.qrwaDividendPool = state.mQrwaDividendPool;
+        output.qrwaDividendPool = state.mQRWADividendPool;
     }
 
     typedef NoData GetTotalDistributed_input;
     struct GetTotalDistributed_output
     {
         uint64 totalQmineDistributed;
-        uint64 totalQrwaDistributed;
+        uint64 totalQRWADistributed;
     };
     PUBLIC_FUNCTION(GetTotalDistributed)
     {
         output.totalQmineDistributed = state.mTotalQmineDistributed;
-        output.totalQrwaDistributed = state.mTotalQrwaDistributed;
+        output.totalQRWADistributed = state.mTotalQRWADistributed;
     }
 
     /***************************************************/
@@ -1153,7 +1153,7 @@ public:
         state.mCurrentGovParams.electricityAddress = QRWA_QMINE_ASSET_INIT.issuer; // Electricity address set by default, subject to change via Gov Voting
         state.mCurrentGovParams.maintenanceAddress = QRWA_QMINE_ASSET_INIT.issuer; // Maintenance address set by default, subject to change via Gov Voting
         state.mCurrentGovParams.reinvestmentAddress = QRWA_QMINE_ASSET_INIT.issuer; // Reinvestment address set by default, subject to change via Gov Voting
-        state.mCurrentGovParams.zoxxAddress = QRWA_ZOXX_ADDRESS_DEFAULT; // Default Zoxx address
+        state.mCurrentGovParams.qmineDevAddress = QRWA_QMINE_DEV_ADDRESS_DEFAULT; // Default QMINE_DEV address
         state.mCurrentGovParams.electricityPercent = 350;
         state.mCurrentGovParams.maintenancePercent = 50;
         state.mCurrentGovParams.reinvestmentPercent = 100;
@@ -1167,11 +1167,11 @@ public:
         state.mRevenuePoolA = 0;
         state.mRevenuePoolB = 0;
         state.mQmineDividendPool = 0;
-        state.mQrwaDividendPool = 0;
+        state.mQRWADividendPool = 0;
 
         // Initialize total distributed
         state.mTotalQmineDistributed = 0;
-        state.mTotalQrwaDistributed = 0;
+        state.mTotalQRWADistributed = 0;
 
         // Initialize maps/arrays
         state.mBeginEpochBalances.reset();
@@ -1191,7 +1191,7 @@ public:
     {
         AssetPossessionIterator iter;
         uint64 balance;
-        QrwaLogger logger;
+        qRWALogger logger;
     };
     BEGIN_EPOCH_WITH_LOCALS()
     {
@@ -1214,7 +1214,7 @@ public:
                 {
                     if (state.mBeginEpochBalances.set(locals.iter.possessor(), locals.balance) != NULL_INDEX)
                     {
-                        state.mTotalQmineBeginEpoch = QPI::sadd(state.mTotalQmineBeginEpoch, locals.balance);
+                        state.mTotalQmineBeginEpoch = sadd(state.mTotalQmineBeginEpoch, locals.balance);
                     }
                     else
                     {
@@ -1271,7 +1271,7 @@ public:
 
         sint64 releaseFeeResult; // For releaseShares fee
 
-        QrwaLogger logger;
+        qRWALogger logger;
         uint64 epoch;
 
         sint64 copyIndex;
@@ -1337,7 +1337,7 @@ public:
                     if (state.mGovPolls.get(locals.proposalIndex).status == QRWA_POLL_STATUS_ACTIVE)
                     {
                         locals.currentScore = locals.govPollScores.get(locals.proposalIndex);
-                        locals.govPollScores.set(locals.proposalIndex, QPI::sadd(locals.currentScore, locals.votingPower));
+                        locals.govPollScores.set(locals.proposalIndex, sadd(locals.currentScore, locals.votingPower));
                     }
                 }
             }
@@ -1364,7 +1364,7 @@ public:
         locals.quorumThreshold = 0;
         if (locals.totalQminePower > 0)
         {
-            locals.quorumThreshold = QPI::div<uint64>(QPI::sadd(QPI::smul(locals.totalQminePower, 2ULL), 2ULL), 3ULL);
+            locals.quorumThreshold = div<uint64>(sadd(smul(locals.totalQminePower, 2ULL), 2ULL), 3ULL);
         }
 
         // Finalize Gov Vote (check against 2/3 quorum)
@@ -1386,7 +1386,7 @@ public:
         // Update status for all active gov polls (for history)
         for (locals.i = 0; locals.i < QRWA_MAX_GOV_POLLS; locals.i++)
         {
-            QrwaGovProposal poll = state.mGovPolls.get(locals.i);
+            qRWAGovProposal poll = state.mGovPolls.get(locals.i);
             if (poll.status == QRWA_POLL_STATUS_ACTIVE)
             {
                 poll.score = locals.govPollScores.get(locals.i);
@@ -1440,12 +1440,12 @@ public:
                         if (locals.voterOptions.get(locals.i_asset) == 1) // Voted Yes
                         {
                             locals.yesVotes = locals.assetPollVotesYes.get(locals.i_asset);
-                            locals.assetPollVotesYes.set(locals.i_asset, QPI::sadd(locals.yesVotes, locals.votingPower));
+                            locals.assetPollVotesYes.set(locals.i_asset, sadd(locals.yesVotes, locals.votingPower));
                         }
                         else // Voted No
                         {
                             locals.noVotes = locals.assetPollVotesNo.get(locals.i_asset);
-                            locals.assetPollVotesNo.set(locals.i_asset, QPI::sadd(locals.noVotes, locals.votingPower));
+                            locals.assetPollVotesNo.set(locals.i_asset, sadd(locals.noVotes, locals.votingPower));
                         }
                     }
                 }
@@ -1660,7 +1660,7 @@ public:
 
     struct POST_INCOMING_TRANSFER_locals
     {
-        QrwaLogger logger;
+        qRWALogger logger;
     };
     POST_INCOMING_TRANSFER_WITH_LOCALS()
     {
@@ -1668,7 +1668,7 @@ public:
         if (input.sourceId.u64._1 == 0 && input.sourceId.u64._2 == 0 && input.sourceId.u64._3 == 0 && input.sourceId.u64._0 != 0)
         {
             // Source is likely a contract (e.g., QX transfer) -> Pool A
-            state.mRevenuePoolA = QPI::sadd(state.mRevenuePoolA, static_cast<uint64>(input.amount));
+            state.mRevenuePoolA = sadd(state.mRevenuePoolA, static_cast<uint64>(input.amount));
             locals.logger.contractId = CONTRACT_INDEX;
             locals.logger.logType = QRWA_LOG_TYPE_INCOMING_REVENUE_A;
             locals.logger.primaryId = input.sourceId;
@@ -1679,7 +1679,7 @@ public:
         else if (input.sourceId != NULL_ID)
         {
             // Source is likely a user (EOA) -> Pool B
-            state.mRevenuePoolB = QPI::sadd(state.mRevenuePoolB, static_cast<uint64>(input.amount));
+            state.mRevenuePoolB = sadd(state.mRevenuePoolB, static_cast<uint64>(input.amount));
             locals.logger.contractId = CONTRACT_INDEX;
             locals.logger.logType = QRWA_LOG_TYPE_INCOMING_REVENUE_B;
             locals.logger.primaryId = input.sourceId;

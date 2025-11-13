@@ -19,7 +19,7 @@ static const id FEE_ADDR_M = id::randomValue(); // Maintenance fees address
 static const id FEE_ADDR_R = id::randomValue(); // Reinvestment fees address
 
 // pseudo test address for QMINE developer
-static const id ZOXX_ADDR_TEST = id::randomValue();
+static const id QMINE_DEV_ADDR_TEST = id::randomValue();
 
 // Test accounts for holders and users
 static const id HOLDER_A = id::randomValue();
@@ -38,7 +38,7 @@ static constexpr uint64 QX_MGT_TRANSFER_FEE = 0ull; // Fee for QX::TransferShare
 static constexpr sint64 QUTIL_STM1_FEE = 10LL; // QUTIL SendToManyV1 fee (QUTIL_STM1_INVOCATION_FEE)
 
 
-enum QrwaFunctionIds
+enum qRWAFunctionIds
 {
     QRWA_FUNC_GET_GOV_PARAMS = 1,
     QRWA_FUNC_GET_GOV_POLL = 2,
@@ -48,7 +48,7 @@ enum QrwaFunctionIds
     QRWA_FUNC_GET_TOTAL_DISTRIBUTED = 6
 };
 
-enum QrwaProcedureIds
+enum qRWAProcedureIds
 {
     QRWA_PROC_DONATE_TO_TREASURY = 3,
     QRWA_PROC_VOTE_GOV_PARAMS = 4,
@@ -96,7 +96,7 @@ public:
 
         // Set the TEST Governance Params
         state->mCurrentGovParams.mAdminAddress = ADMIN_ADDRESS;
-        state->mCurrentGovParams.zoxxAddress = ZOXX_ADDR_TEST;
+        state->mCurrentGovParams.qmineDevAddress = QMINE_DEV_ADDR_TEST;
 
         // Fee addresses
         state->mCurrentGovParams.electricityAddress = FEE_ADDR_E;
@@ -184,7 +184,7 @@ public:
         return output.status;
     }
 
-    uint64 voteGovParams(const id& from, const QRWA::QrwaGovParams& params)
+    uint64 voteGovParams(const id& from, const QRWA::qRWAGovParams& params)
     {
         QRWA::VoteGovParams_input input{ params };
         QRWA::VoteGovParams_output output;
@@ -218,7 +218,7 @@ public:
 
     // QRWA Wrappers
 
-    QRWA::QrwaGovParams getGovParams()
+    QRWA::qRWAGovParams getGovParams()
     {
         QRWA::GetGovParams_input input;
         QRWA::GetGovParams_output output;
@@ -276,7 +276,7 @@ TEST(ContractQRWA, Initialization)
     // Check gov params (set in test constructor)
     auto params = qrwa.getGovParams();
     EXPECT_EQ(params.mAdminAddress, ADMIN_ADDRESS);
-    EXPECT_EQ(params.zoxxAddress, ZOXX_ADDR_TEST);
+    EXPECT_EQ(params.qmineDevAddress, QMINE_DEV_ADDR_TEST);
     EXPECT_EQ(params.electricityAddress, FEE_ADDR_E);
     EXPECT_EQ(params.maintenanceAddress, FEE_ADDR_M);
     EXPECT_EQ(params.reinvestmentAddress, FEE_ADDR_R);
@@ -294,7 +294,7 @@ TEST(ContractQRWA, Initialization)
 
     auto distTotals = qrwa.getTotalDistributed();
     EXPECT_EQ(distTotals.totalQmineDistributed, 0);
-    EXPECT_EQ(distTotals.totalQrwaDistributed, 0);
+    EXPECT_EQ(distTotals.totalQRWADistributed, 0);
 }
 
 
@@ -352,19 +352,19 @@ TEST(ContractQRWA, Governance_VoteGovParams_And_EndEpochCount)
     EXPECT_EQ(qrwa.voteGovParams(USER_D, {}), QRWA_STATUS_FAILURE_NOT_AUTHORIZED);
 
     // Invalid params (Admin NULL_ID)
-    QRWA::QrwaGovParams invalidParams = qrwa.getGovParams();
+    QRWA::qRWAGovParams invalidParams = qrwa.getGovParams();
     invalidParams.mAdminAddress = NULL_ID;
     EXPECT_EQ(qrwa.voteGovParams(HOLDER_A, invalidParams), QRWA_STATUS_FAILURE_INVALID_INPUT);
 
     // Create new poll and vote for it
-    QRWA::QrwaGovParams paramsA = qrwa.getGovParams();
+    QRWA::qRWAGovParams paramsA = qrwa.getGovParams();
     paramsA.electricityPercent = 100; // Change one param
 
     EXPECT_EQ(qrwa.voteGovParams(HOLDER_A, paramsA), QRWA_STATUS_SUCCESS); // Poll 0
     EXPECT_EQ(qrwa.voteGovParams(HOLDER_B, paramsA), QRWA_STATUS_SUCCESS); // Vote for Poll 0
 
     // Change vote
-    QRWA::QrwaGovParams paramsB = qrwa.getGovParams();
+    QRWA::qRWAGovParams paramsB = qrwa.getGovParams();
     paramsB.maintenancePercent = 100; // Change another param
 
     EXPECT_EQ(qrwa.voteGovParams(HOLDER_A, paramsB), QRWA_STATUS_SUCCESS); // Poll 1
@@ -642,12 +642,12 @@ TEST(ContractQRWA, Payout_FullDistribution)
     // Y_revenue = 1,000,000 - 500,000 = 500,000
     // totalDistribution = 500,000 (Y) + 0 (B) = 500,000
     // mQmineDividendPool = 500k * 90% = 450,000
-    // mQrwaDividendPool = 500k * 10% = 50,000
+    // mQRWADividendPool = 500k * 10% = 50,000
 
     // qRWA Payout (50,000 QUs)
     uint64 qrwaPerShare = 50000 / NUMBER_OF_COMPUTORS; // 73
     auto distTotals = qrwa.getTotalDistributed();
-    EXPECT_EQ(distTotals.totalQrwaDistributed, qrwaPerShare * NUMBER_OF_COMPUTORS); // 73 * 676 = 49328
+    EXPECT_EQ(distTotals.totalQRWADistributed, qrwaPerShare * NUMBER_OF_COMPUTORS); // 73 * 676 = 49328
 
     // QMINE Payout (450,000 QUs)
     // mPayoutTotalQmineBegin = 1,000,000
@@ -665,12 +665,12 @@ TEST(ContractQRWA, Payout_FullDistribution)
     // H3 Payout: 0
     // Issuer Payout: (400,000 * 450,000) / 1,000,000 = 180,000
     // Total Eligible Paid = 67,500 + 135,000 + 180,000 = 382,500
-    // Zoxx Payout (Remainder) = 450,000 - 382,500 = 67,500
+    // QMINE_DEV Payout (Remainder) = 450,000 - 382,500 = 67,500
 
     EXPECT_EQ(getBalance(HOLDER_A), 1000000 + 67500);
     EXPECT_EQ(getBalance(HOLDER_B), 1000000 + 135000);
     EXPECT_EQ(getBalance(HOLDER_C), 1000000 + 0);
-    EXPECT_EQ(getBalance(ZOXX_ADDR_TEST), 67500);
+    EXPECT_EQ(getBalance(QMINE_DEV_ADDR_TEST), 67500);
 
     // Re-check balances
     EXPECT_EQ(getBalance(HOLDER_B), 1000000 + 135000);
@@ -735,7 +735,7 @@ TEST(ContractQRWA, Payout_SnapshotLogic)
     // Payout Calculation (Epoch 1):
     // Pool A: 1,000,000 -> Fees (50%) = 500,000 -> Y_revenue = 500,000
     // mQmineDividendPool (90%): 450,000
-    // mQrwaDividendPool (10%): 50,000
+    // mQRWADividendPool (10%): 50,000
 
     // Payouts:
     // A: (500 * 450,000) / 3,500 = 64,285
@@ -744,7 +744,7 @@ TEST(ContractQRWA, Payout_SnapshotLogic)
     // D: 0
     // Issuer: 0
     // totalEligiblePaid = 192,856
-    // movedSharesPayout (Zoxx) = 450,000 - 192,856 = 257,144
+    // movedSharesPayout (QMINE_DEV) = 450,000 - 192,856 = 257,144
 
     // Trigger Payout
     etalonTick.year = 25; etalonTick.month = 11; etalonTick.day = 14; // Next Friday
@@ -757,7 +757,7 @@ TEST(ContractQRWA, Payout_SnapshotLogic)
     EXPECT_EQ(getBalance(HOLDER_B), 1000000 + 0);
     EXPECT_EQ(getBalance(HOLDER_C), 1000000 + 128571);
     EXPECT_EQ(getBalance(USER_D), 1000000 + 0);
-    EXPECT_EQ(getBalance(ZOXX_ADDR_TEST), 257144);
+    EXPECT_EQ(getBalance(QMINE_DEV_ADDR_TEST), 257144);
 
     // Check C's balance again
     EXPECT_EQ(getBalance(HOLDER_C), 1000000 + 128571);
@@ -798,7 +798,7 @@ TEST(ContractQRWA, Payout_SnapshotLogic)
     // C: (500 * 450,000) / 3,500 = 64,285
     // D: (1000 * 450,000) / 3,500 = 128,571
     // totalEligiblePaid = 257,141
-    // movedSharesPayout (Zoxx) = 450,000 - 257,141 = 192,859
+    // movedSharesPayout (QMINE_DEV) = 450,000 - 257,141 = 192,859
 
     // Trigger Payout 2
     etalonTick.year = 25; etalonTick.month = 11; etalonTick.day = 21; // Next Friday
@@ -816,7 +816,7 @@ TEST(ContractQRWA, Payout_SnapshotLogic)
     // D: Base + payout1 + payout2
     EXPECT_EQ(getBalance(USER_D), 1000000 + 0 + 128571);
     // QMINE dev: payout1 + payout2
-    EXPECT_EQ(getBalance(ZOXX_ADDR_TEST), 257144 + 192859);
+    EXPECT_EQ(getBalance(QMINE_DEV_ADDR_TEST), 257144 + 192859);
 }
 
 TEST(ContractQRWA, Payout_FullDistribution2)
@@ -899,12 +899,12 @@ TEST(ContractQRWA, Payout_FullDistribution2)
     // Y_revenue = 3,000,000 - 1,500,000 = 1,500,000
     // totalDistribution = 1,500,000 (Y) + 0 (B) = 1,500,000
     // mQmineDividendPool = 1.5M * 90% = 1,350,000
-    // mQrwaDividendPool = 1.5M * 10% = 150,000
+    // mQRWADividendPool = 1.5M * 10% = 150,000
 
     // qRWA Payout (150,000 QUs)
     uint64 qrwaPerShare = 150000 / NUMBER_OF_COMPUTORS; // 150000 / 676 = 221
     auto distTotals = qrwa.getTotalDistributed();
-    EXPECT_EQ(distTotals.totalQrwaDistributed, qrwaPerShare * NUMBER_OF_COMPUTORS); // 221 * 676 = 149416
+    EXPECT_EQ(distTotals.totalQRWADistributed, qrwaPerShare * NUMBER_OF_COMPUTORS); // 221 * 676 = 149416
 
     // QMINE Payout (1,350,000 QUs)
     // mPayoutTotalQmineBegin = 1,000,000 (A:200k, B:300k, C:100k, Issuer:400k)
@@ -927,7 +927,7 @@ TEST(ContractQRWA, Payout_FullDistribution2)
     EXPECT_EQ(getBalance(HOLDER_A), 1000000 + 202500);
     EXPECT_EQ(getBalance(HOLDER_B), 1000000 + 405000);
     EXPECT_EQ(getBalance(HOLDER_C), 1000000 + 0);
-    EXPECT_EQ(getBalance(ZOXX_ADDR_TEST), 202500);
+    EXPECT_EQ(getBalance(QMINE_DEV_ADDR_TEST), 202500);
 
     // Re-check B's balance
     EXPECT_EQ(getBalance(HOLDER_B), 1000000 + 405000);
