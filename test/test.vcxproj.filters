@@ -42,6 +42,7 @@
     <ClCompile Include="fourq.cpp" />
     <ClCompile Include="contract_qbond.cpp" />
     <ClCompile Include="pending_txs_pool.cpp" />
+    <ClCompile Include="sorting.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />

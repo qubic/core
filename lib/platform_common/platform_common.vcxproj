@@ -20,6 +20,7 @@
     <ClInclude Include="processor.h" />
     <ClInclude Include="compiler_warnings.h" />
     <ClInclude Include="sleep.h" />
+    <ClInclude Include="sorting.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="edk2_mdepkg\Library\BaseLib\LongJump.c" />
