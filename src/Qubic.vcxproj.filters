@@ -126,6 +126,9 @@
     <ClInclude Include="contracts\QBond.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\QIP.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contract_core\contract_def.h">
       <Filter>contract_core</Filter>
     </ClInclude>
