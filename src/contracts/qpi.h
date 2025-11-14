@@ -372,7 +372,12 @@ namespace QPI
 		* @param seconds Number of seconds to add. May be negative and abs(seconds) may be > 60.
 		* @param millisecs Number of millisecs to add. May be negative and abs(millisecs) may be > 1000.
 		* @param microsecsDuringMillisec Number of millisecs to add. May be negative and abs(microsecsDuringMillisec) may be > 1000.
-		* @return Returns if update of date and time was successful. Error cases: starting with invalid date, overflow.
+		* @return Returns if update of date and time was successful. Error cases: Overflow, starting with invalid date (see below).
+		*
+		* This function requires a valid date to start with if it needs to change the date. If less than 1 day is added/subtracted
+		* and the date does not flip due to the added/subtracted time (hours/minutes/seconds etc.), `add()` succeeds even with an
+		* invalid date. Thus, for example if you want to accumulate short periods of time, you may use `add()` with an invalid date
+		* such as 0000-00-00. However, it will fail and return false if you the accumulated time exceeds 23:59:59.999'999.
 		*/
 		bool add(sint64 years, sint64 months, sint64 days, sint64 hours, sint64 minutes, sint64 seconds, sint64 millisecs = 0, sint64 microsecsDuringMillisec = 0)
 		{
@@ -664,14 +669,15 @@ namespace QPI
 
 	protected:
 		// condensed binary 8-byte representation supporting fast comparison:
-		// - year: 16 bits (highest significance in 8-byte number)
-		// - month: 4 bits
-		// - day: 5 bits
-		// - hour: 5 bits
-		// - minute: 6 bits
-		// - second: 6 bits
-		// - millisecond: 10 bits
-		// - microsecondDuringMillisecond: 10 bits (lowest significance in 8-byte number)
+		// - padding/reserved: 2 bits (most significant bits in 8-byte number, bits 62-63)
+		// - year: 16 bits (bits 46-61)
+		// - month: 4 bits (bits 42-45)
+		// - day: 5 bits (bits 37-41)
+		// - hour: 5 bits (bits 32-36)
+		// - minute: 6 bits (bits 26-31)
+		// - second: 6 bits (bits 20-25)
+		// - millisecond: 10 bits (bits 10-19)
+		// - microsecondDuringMillisecond: 10 bits (lowest significance in 8-byte number, bits 0-9)
 		uint64 value;
 
 		/// Adds valToAdd to valInAndOut and returns true if there is no overflow. Otherwise, returns false.
