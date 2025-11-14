@@ -90,3 +90,4 @@ struct ExecutionFeeReportPayload
 };
 
 static_assert( sizeof(ExecutionFeeReportPayload) == 84 + 4 /* padding */ + (contractCount * 16) + 32 +64, "ExecutionFeeReportPayload has wrong struct size");
+static_assert( sizeof(ExecutionFeeReportPayload) <= sizeof(Transaction) + MAX_INPUT_SIZE + SIGNATURE_SIZE, "ExecutionFeeReportPayload is bigger than max transaction size. Currently max 61 SC are supported by the report");
