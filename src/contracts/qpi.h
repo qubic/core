@@ -457,14 +457,44 @@ namespace QPI
 			if (!isValid())
 				return false;
 
-			// TODO: speed-up processing large number of days (multiple years)
-			//while (days >= 365)
-			//{
-			//}
-			//while (days <= -365)
-			//{
-			//}
+			// speed-up processing large number of days (400 years and more)
+			// (400 years allways have the same number of leap years and days)
+			constexpr sint64 daysPer400years = 97ll * 366ll + 303ll * 365ll;
+			if (days >= daysPer400years || days <= -daysPer400years)
+			{
+				sint64 factor400years = days / daysPer400years;
+				sint64 daysProcessed = factor400years * daysPer400years;
+				newYear += factor400years * 400;
+				days -= daysProcessed;
+			}
 
+			// speed-up processing large number of days (more than 1 year)
+			if (days >= 365)
+			{
+				sint64 yShift = (newMonth >= 3) ? 1 : 0;
+				while (days >= 365)
+				{
+					sint64 daysInYear = DateAndTime::isLeapYear(newYear + yShift) ? 366 : 365;
+					if (days < daysInYear)
+						break;
+					++newYear;
+					days -= daysInYear;
+				}
+			}
+			else if (days <= -365)
+			{
+				sint64 yShift = (newMonth >= 3) ? 0 : -1;
+				while (days <= -365)
+				{
+					sint64 daysInYear = DateAndTime::isLeapYear(newYear + yShift) ? -366 : -365;
+					if (days > daysInYear)
+						break;
+					--newYear;
+					days -= daysInYear;
+				}
+			}
+
+			// general processing of any number of days
 			while (days > 0)
 			{
 				// update day and month

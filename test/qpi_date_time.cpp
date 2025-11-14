@@ -344,6 +344,31 @@ TEST(DateAndTimeTest, Addition)
     d1.setDate(2025, 3, 31);
     EXPECT_TRUE(d1.add(0, 0, -31));
     EXPECT_EQ(d1, DateAndTime(2025, 2, 28));
+    d1.setDate(2024, 2, 28);
+    EXPECT_TRUE(d1.add(0, 0, 366));
+    EXPECT_EQ(d1, DateAndTime(2025, 2, 28));
+    EXPECT_TRUE(d1.add(0, 0, -366));
+    EXPECT_EQ(d1, DateAndTime(2024, 2, 28));
+    d1.setDate(2024, 2, 29);
+    EXPECT_TRUE(d1.add(0, 0, 365));
+    EXPECT_EQ(d1, DateAndTime(2025, 2, 28));
+    EXPECT_TRUE(d1.add(0, 0, -365));
+    EXPECT_EQ(d1, DateAndTime(2024, 2, 29));
+    d1.setDate(2024, 2, 29);
+    EXPECT_TRUE(d1.add(0, 0, 366));
+    EXPECT_EQ(d1, DateAndTime(2025, 3, 1));
+    EXPECT_TRUE(d1.add(0, 0, -366));
+    EXPECT_EQ(d1, DateAndTime(2024, 2, 29));
+    d1.setDate(2024, 3, 1);
+    EXPECT_TRUE(d1.add(0, 0, 365));
+    EXPECT_EQ(d1, DateAndTime(2025, 3, 1));
+    EXPECT_TRUE(d1.add(0, 0, -365));
+    EXPECT_EQ(d1, DateAndTime(2024, 3, 1));
+    d1.setDate(2024, 3, 1);
+    EXPECT_TRUE(d1.add(0, 0, 366));
+    EXPECT_EQ(d1, DateAndTime(2025, 3, 2));
+    EXPECT_TRUE(d1.add(0, 0, -366));
+    EXPECT_EQ(d1, DateAndTime(2024, 3, 1));
 
     // changing date only using months count
     d1.setDate(2025, 10, 31);
@@ -458,7 +483,46 @@ TEST(DateAndTimeTest, Addition)
     EXPECT_TRUE(d1.addMicrosec(-2002));
     EXPECT_EQ(d1, DateAndTime(2030, 12, 30, 23, 59, 59, 997, 999));
 
-    // TODO: test error cases
+    // test speedup of adding large number of days
+    d1.set(2000, 1, 1, 0, 0, 0);
+    EXPECT_TRUE(d1.addDays(366));
+    EXPECT_EQ(d1, DateAndTime(2001, 1, 1, 0, 0, 0));
+    EXPECT_TRUE(d1.addDays(-366 - 365));
+    EXPECT_EQ(d1, DateAndTime(1999, 1, 1, 0, 0, 0));
+    d1.set(2000, 3, 1, 0, 0, 0);
+    EXPECT_TRUE(d1.addDays(365));
+    EXPECT_EQ(d1, DateAndTime(2001, 3, 1, 0, 0, 0));
+    EXPECT_TRUE(d1.addDays(-365));
+    EXPECT_EQ(d1, DateAndTime(2000, 3, 1, 0, 0, 0));
+    EXPECT_TRUE(d1.addDays(-366));
+    EXPECT_EQ(d1, DateAndTime(1999, 3, 1, 0, 0, 0));
+    EXPECT_TRUE(d1.addDays(3 * 366 + 7 * 365)); // leap years: 2000, 2004, 2008
+    EXPECT_EQ(d1, DateAndTime(2009, 3, 1, 0, 0, 0));
+    EXPECT_TRUE(d1.addDays(7 * 366 + 23 * 365)); // leap years: 2012, 2016, 2020, 2024, 2028, 2032, 2036
+    EXPECT_EQ(d1, DateAndTime(2039, 3, 1, 0, 0, 0));
+    EXPECT_TRUE(d1.addDays(-(3 * 366 + 12 * 365))); // leap years: 2028, 2032, 2036 (2024 not included due to date after Feb)
+    EXPECT_EQ(d1, DateAndTime(2024, 3, 1, 0, 0, 0));
+    d1.set(2039, 2, 28, 0, 0, 0);
+    EXPECT_TRUE(d1.addDays(-(4 * 366 + 11 * 365))); // leap years: 2024, 2028, 2032, 2036
+    EXPECT_EQ(d1, DateAndTime(2024, 2, 28, 0, 0, 0));
+    EXPECT_TRUE(d1.addDays(97 * 366 + 303 * 365)); // 400 years always have the same number of leap years
+    EXPECT_EQ(d1, DateAndTime(2424, 2, 28, 0, 0, 0));
+    EXPECT_TRUE(d1.addDays(2 * 366 + 3 * 365)); // leap years: 2424, 2028
+    EXPECT_EQ(d1, DateAndTime(2429, 2, 28, 0, 0, 0));
+    EXPECT_TRUE(d1.addDays(97 * 366 + 304 * 365)); // 400 years always have the same number of leap years + 1 year
+    EXPECT_EQ(d1, DateAndTime(2830, 2, 28, 0, 0, 0));
+    EXPECT_TRUE(d1.addDays(-3 * (97 * 366 + 303 * 365))); // 400 years always have the same number of leap years
+    EXPECT_EQ(d1, DateAndTime(1630, 2, 28, 0, 0, 0));
+    EXPECT_TRUE(d1.addDays((97 * 366 + 303 * 365) + 365 + 1)); // + 400 years + 1 year (2031) + 1 day
+    EXPECT_EQ(d1, DateAndTime(2031, 3, 1, 0, 0, 0));
+
+    // test some error cases
+    EXPECT_FALSE(d1.addDays(366 * 66000));
+    EXPECT_FALSE(d1.add(INT64_MAX - 1000, 0, 0));
+    EXPECT_FALSE(d1.add(0, INT64_MAX, 0));
+    d1.setTime(0, 0, 0, 0, 999);
+    EXPECT_FALSE(d1.add(0, 0, 0, 0, 0, 0, 0, INT64_MAX - 998));
+    EXPECT_FALSE(d1.add(0, 0, 0, 0, 0, 0, INT64_MIN, INT64_MIN));
 }
 
 uint64 microSeconds(uint64 days, uint64 hours, uint64 minutes, uint64 seconds, uint64 milli, uint64 micro)
