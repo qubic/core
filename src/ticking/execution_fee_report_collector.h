@@ -1,7 +1,9 @@
 #pragma once
 #include "platform/memory.h"
+#include "platform/quorum_value.h"
 #include "network_messages/execution_fees.h"
 #include "contract_core/contract_def.h"
+#include "contract_core/qpi_spectrum_impl.h"
 
 class ExecutionFeeReportCollector
 {
@@ -107,10 +109,17 @@ public:
 
     void processReports()
     {
-        // TODO: Implement processing logic
-        // 1. For each contract, sort reports from all computors
-        // 2. Calculate quorum value
-        // 3. Deduct quorum value from executionFeeReserve
-        // 4. Reset executionFeeReportCollector for next phase
+        // TODO: Add logging event for quorum value deductions
+        for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
+        {
+            long long quorumValue = calculateAscendingQuorumValue(executionFeeReports[contractIndex], NUMBER_OF_COMPUTORS);
+
+            if (quorumValue > 0)
+            {
+                addToContractFeeReserve(contractIndex, -quorumValue);
+            }
+        }
+
+        reset();
     }
 };
