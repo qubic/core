@@ -18,6 +18,7 @@
 #include "public_settings.h"
 #include "kangaroo_twelve.h"
 #include "vote_counter.h"
+#include "network_messages/execution_fees.h"
 
 // Mempool that saves pending transactions (txs) of all entities.
 // This is a kind of singleton class with only static members (so all instances refer to the same data).
@@ -25,7 +26,7 @@ class PendingTxsPool
 {
 protected:
     // The PendingTxsPool will always leave space for the two protocol-level txs (tick votes and custom mining).
-    static constexpr unsigned int maxNumTxsPerTick = NUMBER_OF_TRANSACTIONS_PER_TICK - 2;
+    static constexpr unsigned int maxNumTxsPerTick = NUMBER_OF_TRANSACTIONS_PER_TICK - 3;
     static constexpr unsigned long long maxNumTxsTotal = PENDING_TXS_POOL_NUM_TICKS * maxNumTxsPerTick;
 
     // Sizes of different buffers in bytes
@@ -82,7 +83,7 @@ protected:
             if (balance > 0)
             {
                 if (isZero(tx->destinationPublicKey) && tx->amount == 0LL
-                    && (tx->inputType == VOTE_COUNTER_INPUT_TYPE || tx->inputType == CustomMiningSolutionTransaction::transactionType()))
+                    && (tx->inputType == VOTE_COUNTER_INPUT_TYPE || tx->inputType == CustomMiningSolutionTransaction::transactionType() || tx->inputType == ExecutionFeeReportTransactionPrefix::transactionType()))
                 {
                     // protocol-level tx always have max priority
                     return INT64_MAX;
