@@ -528,6 +528,20 @@ public:
 		enableBuyTicket(state, !locals.isWednesday);
 	}
 
+	POST_INCOMING_TRANSFER()
+	{
+		switch (input.type)
+		{
+			case TransferType::standardTransaction:
+				// Return any funds sent via standard transaction
+				if (input.amount > 0)
+				{
+					qpi.transfer(input.sourceId, input.amount);
+				}
+			default: break;
+		}
+	}
+
 	/**
 	 * @brief Returns currently configured fee percentages.
 	 */
@@ -822,7 +836,7 @@ protected:
 	{
 		// Prepare for next epoch: clear players and reset daily guards
 		state.playerCounter = 0;
-		state.players.setAll(id::zero());
+		setMemory(state.players, 0);
 
 		state.lastDrawHour = RL_INVALID_HOUR;
 		state.lastDrawDay = RL_INVALID_DAY;
@@ -833,6 +847,7 @@ protected:
 	{
 		// After each draw period, clear current tickets
 		state.playerCounter = 0;
+		setMemory(state.players, 0);
 	}
 
 	static void applyNextEpochData(RL& state)
