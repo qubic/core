@@ -32,10 +32,45 @@ struct ExecutionFeeReportTransactionPrefix : public Transaction
 
     static constexpr unsigned short minInputSize()
     {
-        return sizeof(unsigned int);  // At least phase number
+        return sizeof(phaseNumber);
+    }
+
+    static constexpr unsigned short maxInputSize()
+    {
+        return sizeof(phaseNumber) + sizeof(_padding) + contractCount * sizeof(ContractExecutionFeeEntry) + sizeof(m256i);
+    }
+
+    static bool isValidExecutionFeeReport(const Transaction* transaction)
+    {
+        return transaction->amount == minAmount()
+            && transaction->inputSize >= minInputSize()
+            && transaction->inputSize <= maxInputSize();
+    }
+
+    static unsigned int getPayloadSize(const Transaction* transaction)
+    {
+        const auto* prefix = (const ExecutionFeeReportTransactionPrefix*)transaction;
+        return transaction->inputSize - sizeof(prefix->phaseNumber) - sizeof(prefix->_padding) - sizeof(m256i);
+    }
+
+    static unsigned int getNumEntries(const Transaction* transaction)
+    {
+        return getPayloadSize(transaction) / sizeof(ContractExecutionFeeEntry);
+    }
+
+    static bool isValidEntryAlignment(const Transaction* transaction)
+    {
+        return (getPayloadSize(transaction) % sizeof(ContractExecutionFeeEntry)) == 0;
+    }
+
+    static const ContractExecutionFeeEntry* getEntries(const Transaction* transaction)
+    {
+        const auto* prefix = (const ExecutionFeeReportTransactionPrefix*)transaction;
+        return (const ContractExecutionFeeEntry*)(transaction->inputPtr() + sizeof(prefix->phaseNumber) + sizeof(prefix->_padding));
     }
 
     unsigned int phaseNumber;        // Phase this report is for (tick / NUMBER_OF_COMPUTORS)
+    unsigned int _padding;
     // Followed by variable number of ContractExecutionFeeEntry structures
 };
 

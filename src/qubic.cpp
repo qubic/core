@@ -2784,54 +2784,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
                 case EXECUTION_FEE_REPORT_INPUT_TYPE:
                 {
-                    if (transaction->amount == ExecutionFeeReportTransactionPrefix::minAmount()
-                        && transaction->inputSize >= ExecutionFeeReportTransactionPrefix::minInputSize()
-                        && transaction->inputSize <= (sizeof(unsigned int) + contractCount * sizeof(ContractExecutionFeeEntry) + sizeof(m256i)))
-                    {
-                        // Validate that transaction comes from tick leader
-                        int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
-                        if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex])
-                        {
-                            // Extract prefix to get phase number
-                            const auto* prefix = (const ExecutionFeeReportTransactionPrefix*)transaction;
-
-                            // Calculate number of entries
-                            const unsigned int payloadSize = transaction->inputSize - sizeof(prefix->phaseNumber) - sizeof(m256i);
-                            const unsigned int numEntries = payloadSize / sizeof(ContractExecutionFeeEntry);
-
-                            // Validate that size matches an exact number of entries
-                            if (payloadSize % sizeof(ContractExecutionFeeEntry) == 0)
-                            {
-                                // Extract dataLock from transaction (at end of variable payload, before signature)
-                                const unsigned char* dataLockPtr = transaction->inputPtr() + transaction->inputSize - sizeof(m256i);
-                                m256i txDataLock = *((m256i*)dataLockPtr);
-
-                                if (txDataLock == dataLock)
-                                {
-                                    // Validate entries
-                                    const auto* entries = (const ContractExecutionFeeEntry*)(transaction->inputPtr() + sizeof(prefix->phaseNumber));
-                                    bool valid = true;
-                                    for (unsigned int i = 0; i < numEntries; i++)
-                                    {
-                                        if (entries[i].contractIndex >= contractCount || entries[i].executionFee <= 0)
-                                        {
-                                            valid = false;
-                                            break;
-                                        }
-                                    }
-
-                                    if (valid)
-                                    {
-                                        // Store execution fee reports from this computor
-                                        for (unsigned int i = 0; i < numEntries; i++)
-                                        {
-                                            executionFeeReportCollector.storeReport(entries[i].contractIndex, computorIndex, entries[i].executionFee);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    executionFeeReportCollector.processTransactionData(transaction, dataLock);
                 }
                 break;
 
@@ -3013,10 +2966,10 @@ static bool makeAndBroadCastExecutionFeeTransaction(int i, BroadcastFutureTickDa
     }
 
     // Calculate input size based on actual number of entries
-    payload.transaction.inputSize = (unsigned short)(sizeof(payload.transaction.phaseNumber) + (entryCount * sizeof(ContractExecutionFeeEntry)) + sizeof(ExecutionFeeReportTransactionPostfix::dataLock));
+    payload.transaction.inputSize = (unsigned short)(sizeof(payload.transaction.phaseNumber) + sizeof(payload.transaction._padding) + (entryCount * sizeof(ContractExecutionFeeEntry)) + sizeof(ExecutionFeeReportTransactionPostfix::dataLock));
 
     // Calculate the correct datalock position as this is a variable length package
-    m256i* datalockPtr = (m256i*) ((unsigned char*)&payload) + sizeof(ExecutionFeeReportTransactionPrefix) + (entryCount * sizeof(ContractExecutionFeeEntry));
+    m256i* datalockPtr = (m256i*)(((unsigned char*)&payload) + sizeof(ExecutionFeeReportTransactionPrefix) + (entryCount * sizeof(ContractExecutionFeeEntry)));
     *datalockPtr = td.tickData.timelock;
 
     // Calculate the correct position of the signature as this is a variable length package
