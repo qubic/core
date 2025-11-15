@@ -16,11 +16,9 @@ constexpr uint32 QRAFFLE_SHRAEHOLDER_FEE = 3; // percent
 constexpr uint32 QRAFFLE_MAX_EPOCH = 65536;
 constexpr uint32 QRAFFLE_MAX_PROPOSAL_EPOCH = 128;
 constexpr uint32 QRAFFLE_MAX_MEMBER = 65536;
-constexpr uint32 QRAFFLE_QXMR_DISTRIBUTION_FEE = 67600;
 constexpr uint32 QRAFFLE_DEFAULT_QRAFFLE_AMOUNT = 10000000ull;
 constexpr uint32 QRAFFLE_MIN_QRAFFLE_AMOUNT = 1000000ull;
 constexpr uint32 QRAFFLE_MAX_QRAFFLE_AMOUNT = 1000000000ull;
-constexpr uint32 QRAFFLE_QXMR_DISTRIBUTION_FEE_PERCENT = 67600;
 
 constexpr sint32 QRAFFLE_SUCCESS = 0;
 constexpr sint32 QRAFFLE_INSUFFICIENT_FUND = 1;
@@ -28,7 +26,7 @@ constexpr sint32 QRAFFLE_ALREADY_REGISTERED = 2;
 constexpr sint32 QRAFFLE_UNREGISTERED = 3;
 constexpr sint32 QRAFFLE_MAX_PROPOSAL_EPOCH_REACHED = 4;
 constexpr sint32 QRAFFLE_INVALID_PROPOSAL = 5;
-constexpr sint32 QRAFFLE_FAILED_TO_DEPOSITE = 6;
+constexpr sint32 QRAFFLE_FAILED_TO_DEPOSIT = 6;
 constexpr sint32 QRAFFLE_ALREADY_VOTED = 7;
 constexpr sint32 QRAFFLE_INVALID_TOKEN_RAFFLE = 8;
 constexpr sint32 QRAFFLE_INVALID_OFFSET_OR_LIMIT = 9;
@@ -207,22 +205,22 @@ public:
 		sint32 returnCode;
 	};
 
-	struct depositeInQuRaffle_input
+	struct depositInQuRaffle_input
 	{
 		
 	};
 
-	struct depositeInQuRaffle_output
+	struct depositInQuRaffle_output
 	{
 		sint32 returnCode;
 	};
 
-	struct depositeInTokenRaffle_input
+	struct depositInTokenRaffle_input
 	{
 		uint32 indexOfTokenRaffle;
 	};
 
-	struct depositeInTokenRaffle_output
+	struct depositInTokenRaffle_output
 	{
 		sint32 returnCode;
 	};
@@ -265,7 +263,7 @@ public:
 		uint64 totalRegisterAmount;
 		uint64 totalFeeAmount;
 		uint64 totalWinnerAmount;
-		uint64 lagestWinnerAmount;
+		uint64 largestWinnerAmount;
 		uint32 numberOfRegisters;
 		uint32 numberOfProposals;
 		uint32 numberOfQuRaffleMembers;
@@ -374,29 +372,29 @@ protected:
 
 	HashMap <id, uint8, QRAFFLE_MAX_MEMBER> registers;
 
-	struct proposalInfo {
+	struct ProposalInfo {
 		Asset token;
 		id proposer;
 		uint64 entryAmount;
 		uint32 nYes;
 		uint32 nNo;
 	};
-	Array <proposalInfo, QRAFFLE_MAX_PROPOSAL_EPOCH> proposals;
+	Array <ProposalInfo, QRAFFLE_MAX_PROPOSAL_EPOCH> proposals;
 
-	struct votedId {
+	struct VotedId {
 		id user;
 		bit status;
 	};
-	HashMap <uint32, Array <votedId, QRAFFLE_MAX_MEMBER>, QRAFFLE_MAX_PROPOSAL_EPOCH> voteStatus;
-	Array <votedId, QRAFFLE_MAX_MEMBER> tmpVoteStatus;
+	HashMap <uint32, Array <VotedId, QRAFFLE_MAX_MEMBER>, QRAFFLE_MAX_PROPOSAL_EPOCH> voteStatus;
+	Array <VotedId, QRAFFLE_MAX_MEMBER> tmpVoteStatus;
 	Array <uint32, QRAFFLE_MAX_PROPOSAL_EPOCH> numberOfVotedInProposal;
 	Array <id, QRAFFLE_MAX_MEMBER> quRaffleMembers;
 
-	struct activeTokenRaffleInfo {
+	struct ActiveTokenRaffleInfo {
 		Asset token;
 		uint64 entryAmount;
 	};
-	Array <activeTokenRaffleInfo, QRAFFLE_MAX_PROPOSAL_EPOCH> activeTokenRaffle;
+	Array <ActiveTokenRaffleInfo, QRAFFLE_MAX_PROPOSAL_EPOCH> activeTokenRaffle;
 	HashMap <uint32, Array <id, QRAFFLE_MAX_MEMBER>, QRAFFLE_MAX_PROPOSAL_EPOCH> tokenRaffleMembers;
 	Array <uint32, QRAFFLE_MAX_PROPOSAL_EPOCH> numberOfTokenRaffleMembers;
 	Array <id, QRAFFLE_MAX_MEMBER> tmpTokenRaffleMembers;
@@ -410,7 +408,7 @@ protected:
 		uint32 winnerIndex;
 	};
 	Array <QuRaffleInfo, QRAFFLE_MAX_EPOCH> QuRaffles;
-	struct tokenRaffleInfo
+	struct TokenRaffleInfo
 	{
 		id epochWinner;
 		Asset token;
@@ -419,13 +417,13 @@ protected:
 		uint32 winnerIndex;
 		uint32 epoch;
 	};
-	Array <tokenRaffleInfo, 1048576> tokenRaffle;
+	Array <TokenRaffleInfo, 1048576> tokenRaffle;
 	HashMap <id, uint64, QRAFFLE_MAX_MEMBER> quRaffleEntryAmount;
 	HashSet <id, 1024> shareholdersList;
 
 	id initialRegister1, initialRegister2, initialRegister3, initialRegister4, initialRegister5;
 	id charityAddress, feeAddress, QXMRIssuer;
-	uint64 epochRevenue, epochQXMRRevenue, qREAmount, totalBurnAmount, totalCharityAmount, totalShareholderAmount, totalRegisterAmount, totalFeeAmount, totalWinnerAmount, lagestWinnerAmount;
+	uint64 epochRevenue, epochQXMRRevenue, qREAmount, totalBurnAmount, totalCharityAmount, totalShareholderAmount, totalRegisterAmount, totalFeeAmount, totalWinnerAmount, largestWinnerAmount;
 	uint32 numberOfRegisters, numberOfQuRaffleMembers, numberOfEntryAmountSubmitted, numberOfProposals, numberOfActiveTokenRaffle, numberOfEndedTokenRaffle;
 
 	struct registerInSystem_locals
@@ -606,7 +604,7 @@ protected:
 
 	struct submitProposal_locals
 	{
-		proposalInfo proposal;
+		ProposalInfo proposal;
 		QRAFFLELogger log;
 	};
 
@@ -639,8 +637,8 @@ protected:
 
 	struct voteInProposal_locals
 	{
-		proposalInfo proposal;
-		votedId votedId;
+		ProposalInfo proposal;
+		VotedId votedId;
 		uint32 i;
 		QRAFFLELogger log;
 	};
@@ -719,13 +717,13 @@ protected:
 		LOG_INFO(locals.log);
 	}
 
-	struct depositeInQuRaffle_locals
+	struct depositInQuRaffle_locals
 	{
 		uint32 i;
 		QRAFFLELogger log;
 	};
 
-	PUBLIC_PROCEDURE_WITH_LOCALS(depositeInQuRaffle)
+	PUBLIC_PROCEDURE_WITH_LOCALS(depositInQuRaffle)
 	{
 		if (state.numberOfQuRaffleMembers >= QRAFFLE_MAX_MEMBER)
 		{
@@ -767,13 +765,13 @@ protected:
 		LOG_INFO(locals.log);
 	}
 
-	struct depositeInTokenRaffle_locals
+	struct depositInTokenRaffle_locals
 	{
 		uint32 i;
 		QRAFFLELogger log;
 	};
 
-	PUBLIC_PROCEDURE_WITH_LOCALS(depositeInTokenRaffle)
+	PUBLIC_PROCEDURE_WITH_LOCALS(depositInTokenRaffle)
 	{
 		if (qpi.invocationReward() < QRAFFLE_TRANSFER_SHARE_FEE)
 		{
@@ -799,7 +797,7 @@ protected:
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
-			output.returnCode = QRAFFLE_FAILED_TO_DEPOSITE;
+			output.returnCode = QRAFFLE_FAILED_TO_DEPOSIT;
 			locals.log = QRAFFLELogger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_transferFailed, 0 };
 			LOG_INFO(locals.log);
 			return ;
@@ -996,7 +994,7 @@ protected:
 		output.totalRegisterAmount = state.totalRegisterAmount;
 		output.totalFeeAmount = state.totalFeeAmount;
 		output.totalWinnerAmount = state.totalWinnerAmount;
-		output.lagestWinnerAmount = state.lagestWinnerAmount;
+		output.largestWinnerAmount = state.largestWinnerAmount;
 		output.numberOfRegisters = state.numberOfRegisters;
 		output.numberOfProposals = state.numberOfProposals;
 		output.numberOfQuRaffleMembers = state.numberOfQuRaffleMembers;
@@ -1008,6 +1006,11 @@ protected:
 	
 	PUBLIC_FUNCTION(getActiveProposal)
 	{
+		if (input.indexOfProposal >= state.numberOfProposals)
+		{
+			output.returnCode = QRAFFLE_INVALID_PROPOSAL;
+			return ;
+		}
 		output.tokenName = state.proposals.get(input.indexOfProposal).token.assetName;
 		output.tokenIssuer = state.proposals.get(input.indexOfProposal).token.issuer;
 		output.proposer = state.proposals.get(input.indexOfProposal).proposer;
@@ -1019,6 +1022,11 @@ protected:
 	
 	PUBLIC_FUNCTION(getEndedTokenRaffle)
 	{
+		if (input.indexOfRaffle >= state.numberOfEndedTokenRaffle)
+		{
+			output.returnCode = QRAFFLE_INVALID_TOKEN_RAFFLE;
+			return ;
+		}
 		output.epochWinner = state.tokenRaffle.get(input.indexOfRaffle).epochWinner;
 		output.tokenName = state.tokenRaffle.get(input.indexOfRaffle).token.assetName;
 		output.tokenIssuer = state.tokenRaffle.get(input.indexOfRaffle).token.issuer;
@@ -1078,6 +1086,11 @@ protected:
 
 	PUBLIC_FUNCTION(getActiveTokenRaffle)
 	{
+		if (input.indexOfTokenRaffle >= state.numberOfActiveTokenRaffle)
+		{
+			output.returnCode = QRAFFLE_INVALID_TOKEN_RAFFLE;
+			return ;
+		}
 		output.tokenName = state.activeTokenRaffle.get(input.indexOfTokenRaffle).token.assetName;
 		output.tokenIssuer = state.activeTokenRaffle.get(input.indexOfTokenRaffle).token.issuer;
 		output.entryAmount = state.activeTokenRaffle.get(input.indexOfTokenRaffle).entryAmount;
@@ -1142,8 +1155,8 @@ protected:
 		REGISTER_USER_PROCEDURE(submitEntryAmount, 3);
 		REGISTER_USER_PROCEDURE(submitProposal, 4);
 		REGISTER_USER_PROCEDURE(voteInProposal, 5);
-		REGISTER_USER_PROCEDURE(depositeInQuRaffle, 6);
-		REGISTER_USER_PROCEDURE(depositeInTokenRaffle, 7);
+		REGISTER_USER_PROCEDURE(depositInQuRaffle, 6);
+		REGISTER_USER_PROCEDURE(depositInTokenRaffle, 7);
 		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 8);
 	}
 
@@ -1166,25 +1179,17 @@ protected:
 		state.numberOfRegisters = 5;
 	}
 
-	struct BEGIN_EPOCH_locals
-	{
-	};
-
-	BEGIN_EPOCH_WITH_LOCALS()
-	{
-	}
-	
 	struct END_EPOCH_locals
 	{
-		proposalInfo proposal;
+		ProposalInfo proposal;
 		QuRaffleInfo qraffle;
-		tokenRaffleInfo tRaffle;
-		activeTokenRaffleInfo acTokenRaffle;
+		TokenRaffleInfo tRaffle;
+		ActiveTokenRaffleInfo acTokenRaffle;
 		AssetPossessionIterator iter;
 		Asset QraffleAsset;
 		id digest, winner, shareholder;
 		sint64 idx;
-		uint64 sumOfEntryAmountSubmitted, r, winnerRevenue, burnAmount, charityRevenue, shareholderRevenue, registerRevenue, fee;
+		uint64 sumOfEntryAmountSubmitted, r, winnerRevenue, burnAmount, charityRevenue, shareholderRevenue, registerRevenue, fee, oneCompRev;
 		uint32 i, j, winnerIndex;
 		QRAFFLELogger log;
 		QRAFFLEEmptyTokenRaffleLogger emptyTokenRafflelog;
@@ -1196,8 +1201,9 @@ protected:
 
 	END_EPOCH_WITH_LOCALS()
 	{
-		qpi.distributeDividends(div(state.epochRevenue, 676ull));
-		state.epochRevenue -= div(state.epochRevenue, 676ull) * 676;
+		locals.oneCompRev = div(state.epochRevenue, 676ull);
+		qpi.distributeDividends(locals.oneCompRev);
+		state.epochRevenue -= locals.oneCompRev * 676;
 
 		locals.digest = qpi.getPrevSpectrumDigest();
 		locals.r = (qpi.numberOfTickTransactions() + 1) * locals.digest.u64._0 + (qpi.second()) * locals.digest.u64._1 + locals.digest.u64._2;
@@ -1213,12 +1219,6 @@ protected:
 			locals.registerRevenue = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_REGISTER_FEE, 100ull);
 			locals.fee = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_FEE, 100ull);
 			locals.winnerRevenue = state.qREAmount * state.numberOfQuRaffleMembers - locals.burnAmount - locals.charityRevenue - div(locals.shareholderRevenue, 676ull) * 676 - div(locals.registerRevenue, state.numberOfRegisters * 1ull) * state.numberOfRegisters - locals.fee;
-			
-			// Log QXMR revenue adjustment if applicable
-			if (state.epochQXMRRevenue > 0)
-			{
-				locals.winnerRevenue -= QRAFFLE_QXMR_DISTRIBUTION_FEE_PERCENT;
-			}
 
 			// Log detailed revenue distribution information
 			locals.revenueLog = QRAFFLERevenueLogger{ 
@@ -1248,9 +1248,9 @@ protected:
 			state.totalRegisterAmount += div(locals.registerRevenue, state.numberOfRegisters * 1ull) * state.numberOfRegisters;
 			state.totalFeeAmount += locals.fee;
 			state.totalWinnerAmount += locals.winnerRevenue;
-			if (locals.winnerRevenue > state.lagestWinnerAmount)
+			if (locals.winnerRevenue > state.largestWinnerAmount)
 			{
-				state.lagestWinnerAmount = locals.winnerRevenue;
+				state.largestWinnerAmount = locals.winnerRevenue;
 			}
 
 			locals.idx = state.registers.nextElementIndex(NULL_INDEX);
@@ -1281,7 +1281,7 @@ protected:
 			};
 			LOG_INFO(locals.endEpochLog);
 
-			if (state.epochQXMRRevenue > 676)
+			if (state.epochQXMRRevenue >= 676)
 			{
 				// Process QRAFFLE asset shareholders and log
 				locals.QraffleAsset.assetName = QRAFFLE_ASSET_NAME;
@@ -1438,6 +1438,7 @@ protected:
 		}
 
 		state.numberOfVotedInProposal.setAll(0);
+		state.tokenRaffleMembers.reset();
 		state.quRaffleEntryAmount.reset();
 		state.shareholdersList.reset();
 		state.voteStatus.reset();
@@ -1445,9 +1446,6 @@ protected:
 		state.numberOfProposals = 0;
 		state.numberOfQuRaffleMembers = 0;
 		state.registers.cleanupIfNeeded();
-		state.shareholdersList.cleanupIfNeeded();
-		state.quRaffleEntryAmount.cleanupIfNeeded();
-		state.voteStatus.cleanupIfNeeded();
 	}
 
 	PRE_ACQUIRE_SHARES()

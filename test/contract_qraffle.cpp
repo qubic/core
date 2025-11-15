@@ -131,7 +131,7 @@ public:
         EXPECT_EQ(totalRegisterAmount, expectedRegister);
         EXPECT_EQ(totalFeeAmount, expectedFee);
         EXPECT_EQ(totalWinnerAmount, expectedWinner);
-        EXPECT_EQ(lagestWinnerAmount, expectedLargestWinner);
+        EXPECT_EQ(largestWinnerAmount, expectedLargestWinner);
         EXPECT_EQ(numberOfRegisters, expectedRegisters);
         EXPECT_EQ(numberOfProposals, expectedProposals);
         EXPECT_EQ(numberOfQuRaffleMembers, expectedQuMembers);
@@ -275,19 +275,19 @@ public:
         return output;
     }
 
-    QRAFFLE::depositeInQuRaffle_output depositeInQuRaffle(const id& user, uint64 amount)
+    QRAFFLE::depositInQuRaffle_output depositInQuRaffle(const id& user, uint64 amount)
     {
-        QRAFFLE::depositeInQuRaffle_input input;
-        QRAFFLE::depositeInQuRaffle_output output;
+        QRAFFLE::depositInQuRaffle_input input;
+        QRAFFLE::depositInQuRaffle_output output;
         
         invokeUserProcedure(QRAFFLE_CONTRACT_INDEX, 6, input, output, user, amount);
         return output;
     }
 
-    QRAFFLE::depositeInTokenRaffle_output depositeInTokenRaffle(const id& user, uint32 raffleIndex, uint64 amount)
+    QRAFFLE::depositInTokenRaffle_output depositInTokenRaffle(const id& user, uint32 raffleIndex, uint64 amount)
     {
-        QRAFFLE::depositeInTokenRaffle_input input;
-        QRAFFLE::depositeInTokenRaffle_output output;
+        QRAFFLE::depositInTokenRaffle_input input;
+        QRAFFLE::depositInTokenRaffle_output output;
         
         input.indexOfTokenRaffle = raffleIndex;
         invokeUserProcedure(QRAFFLE_CONTRACT_INDEX, 7, input, output, user, amount);
@@ -662,7 +662,7 @@ TEST(ContractQraffle, VoteInProposal)
     EXPECT_EQ(result.returnCode, QRAFFLE_INVALID_PROPOSAL);
 }
 
-TEST(ContractQraffle, DepositeInQuRaffle)
+TEST(ContractQraffle, depositInQuRaffle)
 {
     ContractTestingQraffle qraffle;
     
@@ -682,7 +682,7 @@ TEST(ContractQraffle, DepositeInQuRaffle)
     for (const auto& user : users)
     {
         increaseEnergy(user, qraffle.getState()->getQuRaffleEntryAmount());
-        auto result = qraffle.depositeInQuRaffle(user, qraffle.getState()->getQuRaffleEntryAmount());
+        auto result = qraffle.depositInQuRaffle(user, qraffle.getState()->getQuRaffleEntryAmount());
         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
         qraffle.getState()->quRaffleMemberChecker(user, ++memberCount);
     }
@@ -690,16 +690,16 @@ TEST(ContractQraffle, DepositeInQuRaffle)
     // Test insufficient funds
     id poorUser = getUser(9999);
     increaseEnergy(poorUser, qraffle.getState()->getQuRaffleEntryAmount() - 1);
-    auto result = qraffle.depositeInQuRaffle(poorUser, qraffle.getState()->getQuRaffleEntryAmount() - 1);
+    auto result = qraffle.depositInQuRaffle(poorUser, qraffle.getState()->getQuRaffleEntryAmount() - 1);
     EXPECT_EQ(result.returnCode, QRAFFLE_INSUFFICIENT_FUND);
 
     // Test already registered
     increaseEnergy(users[0], qraffle.getState()->getQuRaffleEntryAmount());
-    result = qraffle.depositeInQuRaffle(users[0], qraffle.getState()->getQuRaffleEntryAmount());
+    result = qraffle.depositInQuRaffle(users[0], qraffle.getState()->getQuRaffleEntryAmount());
     EXPECT_EQ(result.returnCode, QRAFFLE_ALREADY_REGISTERED);
 }
 
-TEST(ContractQraffle, DepositeInTokenRaffle)
+TEST(ContractQraffle, DepositInTokenRaffle)
 {
     ContractTestingQraffle qraffle;
     
@@ -753,7 +753,7 @@ TEST(ContractQraffle, DepositeInTokenRaffle)
         EXPECT_EQ(qraffle.TransferShareManagementRights(issuer, assetName, QRAFFLE_CONTRACT_INDEX, 1000000, user), 1000000);
         EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QRAFFLE_CONTRACT_INDEX, QRAFFLE_CONTRACT_INDEX), 1000000);
 
-        auto result = qraffle.depositeInTokenRaffle(user, 0, QRAFFLE_TRANSFER_SHARE_FEE);
+        auto result = qraffle.depositInTokenRaffle(user, 0, QRAFFLE_TRANSFER_SHARE_FEE);
         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
         memberCount++;
         qraffle.getState()->tokenRaffleMemberChecker(0, user, memberCount);
@@ -762,19 +762,19 @@ TEST(ContractQraffle, DepositeInTokenRaffle)
     // Test insufficient funds
     id poorUser = getUser(9999);
     increaseEnergy(poorUser, QRAFFLE_TRANSFER_SHARE_FEE - 1);
-    auto result = qraffle.depositeInTokenRaffle(poorUser, 0, QRAFFLE_TRANSFER_SHARE_FEE - 1);
+    auto result = qraffle.depositInTokenRaffle(poorUser, 0, QRAFFLE_TRANSFER_SHARE_FEE - 1);
     EXPECT_EQ(result.returnCode, QRAFFLE_INSUFFICIENT_FUND);
 
     // Test insufficient Token
     id poorUser2 = getUser(8888);
     increaseEnergy(poorUser2, QRAFFLE_TRANSFER_SHARE_FEE);
     qraffle.transferShareOwnershipAndPossession(issuer, assetName, issuer, 999999, poorUser2);
-    result = qraffle.depositeInTokenRaffle(poorUser2, 0, QRAFFLE_TRANSFER_SHARE_FEE);
-    EXPECT_EQ(result.returnCode, QRAFFLE_FAILED_TO_DEPOSITE);
+    result = qraffle.depositInTokenRaffle(poorUser2, 0, QRAFFLE_TRANSFER_SHARE_FEE);
+    EXPECT_EQ(result.returnCode, QRAFFLE_FAILED_TO_DEPOSIT);
 
     // Test invalid token raffle index
     increaseEnergy(users[0], QRAFFLE_TRANSFER_SHARE_FEE);
-    result = qraffle.depositeInTokenRaffle(users[0], 999, QRAFFLE_TRANSFER_SHARE_FEE);
+    result = qraffle.depositInTokenRaffle(users[0], 999, QRAFFLE_TRANSFER_SHARE_FEE);
     EXPECT_EQ(result.returnCode, QRAFFLE_INVALID_TOKEN_RAFFLE);
 }
 
@@ -868,17 +868,41 @@ TEST(ContractQraffle, GetFunctions)
     for (size_t i = 0; i < users.size() / 3; ++i)
     {
         increaseEnergy(users[i], qraffle.getState()->getQuRaffleEntryAmount());
-        auto result = qraffle.depositeInQuRaffle(users[i], qraffle.getState()->getQuRaffleEntryAmount());
+        auto result = qraffle.depositInQuRaffle(users[i], qraffle.getState()->getQuRaffleEntryAmount());
         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
         memberCount++;
     }
+
+    // Test 1: getActiveProposal function
+    {
+        // Test with valid proposal indices
+        for (uint32 i = 0; i < proposalCount; ++i)
+        {
+            auto proposal = qraffle.getActiveProposal(i);
+            EXPECT_EQ(proposal.returnCode, QRAFFLE_SUCCESS);
+            EXPECT_EQ(proposal.tokenName, (i % 2 == 0) ? assetName1 : assetName2);
+            EXPECT_EQ(proposal.tokenIssuer, issuer);
+            EXPECT_GT(proposal.entryAmount, 0);
+            EXPECT_GE(proposal.nYes, 0);
+            EXPECT_GE(proposal.nNo, 0);
+        }
+        
+        // Test with invalid proposal index (beyond available proposals)
+        auto invalidProposal = qraffle.getActiveProposal(proposalCount + 10);
+        EXPECT_EQ(invalidProposal.returnCode, QRAFFLE_INVALID_PROPOSAL);
+        
+        // Test with very large proposal index
+        auto largeIndexProposal = qraffle.getActiveProposal(UINT32_MAX);
+        EXPECT_EQ(largeIndexProposal.returnCode, QRAFFLE_INVALID_PROPOSAL);
+    }
+
 
     // End epoch to create some ended raffles
     qraffle.endEpoch();
 
     // ===== DETAILED TEST CASES FOR EACH GETTER FUNCTION =====
 
-    // Test 1: getRegisters function
+    // Test 2: getRegisters function
     {
         // Test with valid offset and limit
         auto registers = qraffle.getRegisters(0, 10);
@@ -901,7 +925,7 @@ TEST(ContractQraffle, GetFunctions)
         EXPECT_EQ(registers5.returnCode, QRAFFLE_SUCCESS);
     }
 
-    // Test 2: getAnalytics function
+    // Test 3: getAnalytics function
     {
         auto analytics = qraffle.getAnalytics();
         EXPECT_EQ(analytics.returnCode, QRAFFLE_SUCCESS);
@@ -913,7 +937,7 @@ TEST(ContractQraffle, GetFunctions)
         EXPECT_GE(analytics.totalRegisterAmount, 0);
         EXPECT_GE(analytics.totalFeeAmount, 0);
         EXPECT_GE(analytics.totalWinnerAmount, 0);
-        EXPECT_GE(analytics.lagestWinnerAmount, 0);
+        EXPECT_GE(analytics.largestWinnerAmount, 0);
         EXPECT_EQ(analytics.numberOfRegisters, registerCount);
         EXPECT_EQ(analytics.numberOfProposals, 0);
         EXPECT_EQ(analytics.numberOfQuRaffleMembers, 0);
@@ -925,7 +949,7 @@ TEST(ContractQraffle, GetFunctions)
         qraffle.getState()->analyticsChecker(analytics.totalBurnAmount, analytics.totalCharityAmount, 
                                             analytics.totalShareholderAmount, analytics.totalRegisterAmount,
                                             analytics.totalFeeAmount, analytics.totalWinnerAmount, 
-                                            analytics.lagestWinnerAmount, analytics.numberOfRegisters,
+                                            analytics.largestWinnerAmount, analytics.numberOfRegisters,
                                             analytics.numberOfProposals, analytics.numberOfQuRaffleMembers,
                                             analytics.numberOfActiveTokenRaffle, analytics.numberOfEndedTokenRaffle,
                                             analytics.numberOfEntryAmountSubmitted);
@@ -965,7 +989,7 @@ TEST(ContractQraffle, GetFunctions)
         EXPECT_EQ(analytics.totalRegisterAmount, expectedTotalRegisterAmount);
         EXPECT_EQ(analytics.totalFeeAmount, expectedTotalFeeAmount);
         EXPECT_EQ(analytics.totalWinnerAmount, expectedTotalWinnerAmount);
-        EXPECT_EQ(analytics.lagestWinnerAmount, expectedLargestWinnerAmount);
+        EXPECT_EQ(analytics.largestWinnerAmount, expectedLargestWinnerAmount);
         
         // Validate counters
         EXPECT_EQ(analytics.numberOfRegisters, registerCount);
@@ -976,30 +1000,7 @@ TEST(ContractQraffle, GetFunctions)
         EXPECT_EQ(analytics.numberOfEntryAmountSubmitted, 0); // Entry amounts are cleared after epoch end
         
     }
-
-    // Test 3: getActiveProposal function
-    {
-        // Test with valid proposal indices
-        for (uint32 i = 0; i < proposalCount; ++i)
-        {
-            auto proposal = qraffle.getActiveProposal(i);
-            EXPECT_EQ(proposal.returnCode, QRAFFLE_SUCCESS);
-            EXPECT_EQ(proposal.tokenName, (i % 2 == 0) ? assetName1 : assetName2);
-            EXPECT_EQ(proposal.tokenIssuer, issuer);
-            EXPECT_GT(proposal.entryAmount, 0);
-            EXPECT_GE(proposal.nYes, 0);
-            EXPECT_GE(proposal.nNo, 0);
-        }
-        
-        // Test with invalid proposal index (beyond available proposals)
-        auto invalidProposal = qraffle.getActiveProposal(proposalCount + 10);
-        EXPECT_EQ(invalidProposal.returnCode, QRAFFLE_SUCCESS); // Note: This might return success with default values
-        
-        // Test with very large proposal index
-        auto largeIndexProposal = qraffle.getActiveProposal(UINT32_MAX);
-        EXPECT_EQ(largeIndexProposal.returnCode, QRAFFLE_SUCCESS);
-    }
-
+    
     // Test 4: getEndedTokenRaffle function
     {
         // Test with valid raffle indices (if any ended raffles exist)
@@ -1012,6 +1013,14 @@ TEST(ContractQraffle, GetFunctions)
             EXPECT_GT(endedRaffle.numberOfMembers, 0);
             EXPECT_GE(endedRaffle.epoch, 0);
         }
+        
+        // Test with invalid raffle index (beyond available ended raffles)
+        auto invalidEndedRaffle = qraffle.getEndedTokenRaffle(qraffle.getState()->getNumberOfEndedTokenRaffle() + 10);
+        EXPECT_EQ(invalidEndedRaffle.returnCode, QRAFFLE_INVALID_TOKEN_RAFFLE);
+        
+        // Test with very large raffle index
+        auto largeIndexEndedRaffle = qraffle.getEndedTokenRaffle(UINT32_MAX);
+        EXPECT_EQ(largeIndexEndedRaffle.returnCode, QRAFFLE_INVALID_TOKEN_RAFFLE);
     }
 
     // Test 5: getEpochRaffleIndexes function
@@ -1067,11 +1076,11 @@ TEST(ContractQraffle, GetFunctions)
         
         // Test with invalid raffle index (beyond available active raffles)
         auto invalidActiveRaffle = qraffle.getActiveTokenRaffle(qraffle.getState()->getNumberOfActiveTokenRaffle() + 10);
-        EXPECT_EQ(invalidActiveRaffle.returnCode, QRAFFLE_SUCCESS); // Note: This might return success with default values
+        EXPECT_EQ(invalidActiveRaffle.returnCode, QRAFFLE_INVALID_TOKEN_RAFFLE);
         
         // Test with very large raffle index
         auto largeIndexActiveRaffle = qraffle.getActiveTokenRaffle(UINT32_MAX);
-        EXPECT_EQ(largeIndexActiveRaffle.returnCode, QRAFFLE_SUCCESS);
+        EXPECT_EQ(largeIndexActiveRaffle.returnCode, QRAFFLE_INVALID_TOKEN_RAFFLE);
     }
 }
 
@@ -1125,7 +1134,7 @@ TEST(ContractQraffle, EndEpoch)
     for (const auto& user : users)
     {
         increaseEnergy(user, qraffle.getState()->getQuRaffleEntryAmount());
-        qraffle.depositeInQuRaffle(user, qraffle.getState()->getQuRaffleEntryAmount());
+        qraffle.depositInQuRaffle(user, qraffle.getState()->getQuRaffleEntryAmount());
     }
 
     // Deposit in token raffles
@@ -1149,8 +1158,8 @@ TEST(ContractQraffle, EndEpoch)
         EXPECT_EQ(qraffle.TransferShareManagementRights(issuer, assetName1, QRAFFLE_CONTRACT_INDEX, 1000000, user), 1000000);
         EXPECT_EQ(qraffle.TransferShareManagementRights(issuer, assetName2, QRAFFLE_CONTRACT_INDEX, 2000000, user), 2000000);
 
-        qraffle.depositeInTokenRaffle(user, 0, QRAFFLE_TRANSFER_SHARE_FEE);
-        qraffle.depositeInTokenRaffle(user, 1, QRAFFLE_TRANSFER_SHARE_FEE);
+        qraffle.depositInTokenRaffle(user, 0, QRAFFLE_TRANSFER_SHARE_FEE);
+        qraffle.depositInTokenRaffle(user, 1, QRAFFLE_TRANSFER_SHARE_FEE);
     }
 
     // Check that QuRaffle was processed
@@ -1401,7 +1410,7 @@ TEST(ContractQraffle, QXMRRevenueDistribution)
 
     // Test QXMR revenue distribution during epoch end
     increaseEnergy(users[0], QRAFFLE_DEFAULT_QRAFFLE_AMOUNT);
-    qraffle.depositeInQuRaffle(users[0], QRAFFLE_DEFAULT_QRAFFLE_AMOUNT);
+    qraffle.depositInQuRaffle(users[0], QRAFFLE_DEFAULT_QRAFFLE_AMOUNT);
 
     qraffle.endEpoch();
     EXPECT_EQ(qraffle.getState()->getEpochQXMRRevenue(), expectedQXMRRevenue - div(expectedQXMRRevenue, 676ull) * 676);
