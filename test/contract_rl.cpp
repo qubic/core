@@ -107,6 +107,8 @@ public:
 	uint8 getScheduleMask() const { return schedule; }
 
 	uint8 getDrawHourInternal() const { return drawHour; }
+
+	uint32 getLastDrawDateStamp() const { return lastDrawDateStamp; }
 };
 
 class ContractTestingRL : protected ContractTesting
@@ -341,6 +343,56 @@ public:
 		// NOTE: we do not call SetSchedule here to avoid epoch transitions in tests.
 	}
 };
+
+TEST(ContractRandomLottery, DefaultInitTimeGuardSkipsPlaceholderDate)
+{
+	ContractTestingRL ctl;
+
+	const uint64 ticketPrice = ctl.state()->getTicketPrice();
+
+	// Allow draws every day so weekday logic does not block BEGIN_TICK
+	ctl.forceSchedule(RL_ANY_DAY_DRAW_SCHEDULE);
+
+	// Simulate the placeholder 2022-04-13 QPI date during initialization
+	ctl.setDateTime(2022, 4, 13, RL_DEFAULT_DRAW_HOUR + 1);
+	ctl.BeginEpoch();
+	EXPECT_EQ(ctl.getStateInfo().currentState, static_cast<uint8>(RL::EState::LOCKED));
+
+	// Selling is blocked until a valid date arrives
+	const id blockedBuyer = id::randomValue();
+	increaseEnergy(blockedBuyer, ticketPrice);
+	const RL::BuyTicket_output denied = ctl.buyTicket(blockedBuyer, ticketPrice);
+	EXPECT_EQ(denied.returnCode, static_cast<uint8>(RL::EReturnCode::TICKET_SELLING_CLOSED));
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), 0u);
+
+	const uint64 winnersBefore = ctl.getWinners().winnersCounter;
+
+	// BEGIN_TICK should detect the placeholder date and skip processing, but remember the sentinel day
+	ctl.forceBeginTick();
+	EXPECT_EQ(ctl.state()->getLastDrawDateStamp(), RL_DEFAULT_INIT_TIME);
+	EXPECT_EQ(ctl.getStateInfo().currentState, static_cast<uint8>(RL::EState::LOCKED));
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), 0u);
+	EXPECT_EQ(ctl.getWinners().winnersCounter, winnersBefore);
+
+	// First valid day re-opens selling but still skips the draw
+	ctl.setDateTime(2025, 1, 10, RL_DEFAULT_DRAW_HOUR + 1);
+	ctl.forceBeginTick();
+	EXPECT_EQ(ctl.getStateInfo().currentState, static_cast<uint8>(RL::EState::SELLING));
+	EXPECT_NE(ctl.state()->getLastDrawDateStamp(), RL_DEFAULT_INIT_TIME);
+
+	const id playerA = id::randomValue();
+	const id playerB = id::randomValue();
+	ctl.increaseAndBuy(ctl, playerA, ticketPrice);
+	ctl.increaseAndBuy(ctl, playerB, ticketPrice);
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), 2u);
+
+	// The immediate next valid day should run the actual draw
+	ctl.setDateTime(2025, 1, 11, RL_DEFAULT_DRAW_HOUR + 1);
+	ctl.forceBeginTick();
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), 0u);
+	EXPECT_EQ(ctl.getWinners().winnersCounter, winnersBefore + 1);
+	EXPECT_NE(ctl.state()->getLastDrawDateStamp(), RL_DEFAULT_INIT_TIME);
+}
 
 TEST(ContractRandomLottery, PostIncomingTransfer)
 {
