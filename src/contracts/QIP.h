@@ -122,41 +122,47 @@ protected:
 	uint32 transferRightsFee;
 public:
 
+    struct getICOInfo_locals
+    {
+        ICOInfo ico;
+    };
+
     PUBLIC_FUNCTION(getICOInfo)
     {
-        output.creatorOfICO = state.icos.get(input.indexOfICO).creatorOfICO;
-        output.issuer = state.icos.get(input.indexOfICO).issuer;
-        output.address1 = state.icos.get(input.indexOfICO).address1;
-        output.address2 = state.icos.get(input.indexOfICO).address2;
-        output.address3 = state.icos.get(input.indexOfICO).address3;
-        output.address4 = state.icos.get(input.indexOfICO).address4;
-        output.address5 = state.icos.get(input.indexOfICO).address5;
-        output.address6 = state.icos.get(input.indexOfICO).address6;
-        output.address7 = state.icos.get(input.indexOfICO).address7;
-        output.address8 = state.icos.get(input.indexOfICO).address8;
-        output.address9 = state.icos.get(input.indexOfICO).address9;
-        output.address10 = state.icos.get(input.indexOfICO).address10;
-        output.assetName = state.icos.get(input.indexOfICO).assetName;
-        output.price1 = state.icos.get(input.indexOfICO).price1;
-        output.price2 = state.icos.get(input.indexOfICO).price2;
-        output.price3 = state.icos.get(input.indexOfICO).price3;
-        output.saleAmountForPhase1 = state.icos.get(input.indexOfICO).saleAmountForPhase1;
-        output.saleAmountForPhase2 = state.icos.get(input.indexOfICO).saleAmountForPhase2;
-        output.saleAmountForPhase3 = state.icos.get(input.indexOfICO).saleAmountForPhase3;
-        output.remainingAmountForPhase1 = state.icos.get(input.indexOfICO).remainingAmountForPhase1;
-        output.remainingAmountForPhase2 = state.icos.get(input.indexOfICO).remainingAmountForPhase2;
-        output.remainingAmountForPhase3 = state.icos.get(input.indexOfICO).remainingAmountForPhase3;
-        output.percent1 = state.icos.get(input.indexOfICO).percent1;
-        output.percent2 = state.icos.get(input.indexOfICO).percent2;
-        output.percent3 = state.icos.get(input.indexOfICO).percent3;
-        output.percent4 = state.icos.get(input.indexOfICO).percent4;
-        output.percent5 = state.icos.get(input.indexOfICO).percent5;
-        output.percent6 = state.icos.get(input.indexOfICO).percent6;
-        output.percent7 = state.icos.get(input.indexOfICO).percent7;
-        output.percent8 = state.icos.get(input.indexOfICO).percent8;
-        output.percent9 = state.icos.get(input.indexOfICO).percent9;
-        output.percent10 = state.icos.get(input.indexOfICO).percent10;
-        output.startEpoch = state.icos.get(input.indexOfICO).startEpoch;
+        locals.ico = state.icos.get(input.indexOfICO);
+        output.creatorOfICO = locals.ico.creatorOfICO;
+        output.issuer = locals.ico.issuer;
+        output.address1 = locals.ico.address1;
+        output.address2 = locals.ico.address2;
+        output.address3 = locals.ico.address3;
+        output.address4 = locals.ico.address4;
+        output.address5 = locals.ico.address5;
+        output.address6 = locals.ico.address6;
+        output.address7 = locals.ico.address7;
+        output.address8 = locals.ico.address8;
+        output.address9 = locals.ico.address9;
+        output.address10 = locals.ico.address10;
+        output.assetName = locals.ico.assetName;
+        output.price1 = locals.ico.price1;
+        output.price2 = locals.ico.price2;
+        output.price3 = locals.ico.price3;
+        output.saleAmountForPhase1 = locals.ico.saleAmountForPhase1;
+        output.saleAmountForPhase2 = locals.ico.saleAmountForPhase2;
+        output.saleAmountForPhase3 = locals.ico.saleAmountForPhase3;
+        output.remainingAmountForPhase1 = locals.ico.remainingAmountForPhase1;
+        output.remainingAmountForPhase2 = locals.ico.remainingAmountForPhase2;
+        output.remainingAmountForPhase3 = locals.ico.remainingAmountForPhase3;
+        output.percent1 = locals.ico.percent1;
+        output.percent2 = locals.ico.percent2;
+        output.percent3 = locals.ico.percent3;
+        output.percent4 = locals.ico.percent4;
+        output.percent5 = locals.ico.percent5;
+        output.percent6 = locals.ico.percent6;
+        output.percent7 = locals.ico.percent7;
+        output.percent8 = locals.ico.percent8;
+        output.percent9 = locals.ico.percent9;
+        output.percent10 = locals.ico.percent10;
+        output.startEpoch = locals.ico.startEpoch;
     }
 
     struct createICO_locals
@@ -217,7 +223,7 @@ public:
             output.returnCode = QIPLogInfo::QIP_invalidTransfer;
             return;
         }
-        if (state.numberOfICO + 1 >= QIP_MAX_NUMBER_OF_ICO)
+        if (state.numberOfICO >= QIP_MAX_NUMBER_OF_ICO)
         {
             locals.log._contractIndex = SELF_INDEX;
             locals.log._type = QIPLogInfo::QIP_overflowICO;
