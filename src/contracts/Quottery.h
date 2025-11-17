@@ -2451,12 +2451,10 @@ public:
         state.mQtryGov.mShareHolderFee = 10; // 1%
         state.mRecentActiveEvent.setAll(NULL_INDEX);
 
-        // for test only
-        qpi.issueAsset(1146312017, SELF, 0, 1000000000000000ULL, 0);
-        state.QUSD.assetName = 1146312017;
-        state.QUSD.issuer = SELF;
+        // temp replacement for qusd
+        state.QUSD.assetName = 310652322119ULL; // GARTH
+        state.QUSD.issuer = ID(_G, _A, _R, _T, _H, _F, _A, _N, _X, _M, _P, _X, _M, _D, _P, _E, _Z, _F, _Q, _P, _W, _F, _P, _Y, _M, _H, _O, _A, _W, _T, _K, _I, _L, _I, _N, _C, _T, _R, _M, _V, _L, _F, _F, _V, _A, _T, _K, _V, _J, _R, _K, _E, _D, _Y, _X, _G);
         state.wholeSharePrice = 100000;
-        qpi.transferShareOwnershipAndPossession(state.QUSD.assetName, state.QUSD.issuer, SELF, SELF, 1000000000000000ULL, state.mQtryGov.mOperationId); // transfer all to GO
     }
 
     BEGIN_EPOCH()
