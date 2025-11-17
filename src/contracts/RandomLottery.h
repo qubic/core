@@ -288,6 +288,7 @@ public:
 		uint32 currentDateStamp;
 		uint8 currentDayOfWeek;
 		uint8 currentHour;
+		uint8 wednesdayDay;
 		uint8 isWednesday;
 		uint8 isScheduledToday;
 		ReturnAllTickets_locals returnAllTicketsLocals;
@@ -416,6 +417,8 @@ public:
 
 		// Snapshot current hour
 		locals.currentHour = qpi.hour();
+		locals.currentDayOfWeek = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
+		locals.isWednesday = locals.currentDayOfWeek == WEDNESDAY;
 
 		// Do nothing before the configured draw hour
 		if (locals.currentHour < state.drawHour)
@@ -440,9 +443,14 @@ public:
 		{
 			enableBuyTicket(state, true);
 
-			// First valid date processed: just mark it and return
-			state.lastDrawDateStamp = locals.currentDateStamp;
-			return;
+			if (locals.isWednesday)
+			{
+				state.lastDrawDateStamp = locals.currentDateStamp;
+			}
+			else
+			{
+				state.lastDrawDateStamp = 0;
+			}
 		}
 
 		if (state.lastDrawDateStamp == locals.currentDateStamp)
@@ -450,8 +458,6 @@ public:
 			return;
 		}
 
-		locals.currentDayOfWeek = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
-		locals.isWednesday = (locals.currentDayOfWeek == WEDNESDAY);
 		locals.isScheduledToday = ((state.schedule & (1u << locals.currentDayOfWeek)) != 0);
 
 		// Two-Wednesdays rule:
