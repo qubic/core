@@ -127,7 +127,7 @@ public:
         ICOInfo ico;
     };
 
-    PUBLIC_FUNCTION(getICOInfo)
+    PUBLIC_FUNCTION_WITH_LOCALS(getICOInfo)
     {
         locals.ico = state.icos.get(input.indexOfICO);
         output.creatorOfICO = locals.ico.creatorOfICO;
