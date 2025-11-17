@@ -458,7 +458,7 @@ namespace QPI
 				return false;
 
 			// speed-up processing large number of days (400 years and more)
-			// (400 years allways have the same number of leap years and days)
+			// (400 years always have the same number of leap years and days)
 			constexpr sint64 daysPer400years = 97ll * 366ll + 303ll * 365ll;
 			if (days >= daysPer400years || days <= -daysPer400years)
 			{
