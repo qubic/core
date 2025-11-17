@@ -1843,6 +1843,8 @@ public:
     struct GetActiveEvent_locals
     {
         sint64 i;
+        DateAndTime now;
+        QtryEventInfo qei;
     };
     /**
      * @brief PUBLIC VIEW FUNCTION
@@ -1856,9 +1858,12 @@ public:
         output.count = 0;
         for (locals.i = 0; locals.i < QUOTTERY_MAX_EVENT && output.count < 128; locals.i++)
         {
-            if (state.mEventInfo.contains(state.mRecentActiveEvent.get(locals.i)))
+            if (state.mEventInfo.get(state.mRecentActiveEvent.get(locals.i), locals.qei))
             {
-                output.activeId.set(output.count++, state.mRecentActiveEvent.get(locals.i));
+                if (locals.qei.closeDate > qpi.now())
+                {
+                    output.activeId.set(output.count++, state.mRecentActiveEvent.get(locals.i));
+                }
             }
         }
     }
