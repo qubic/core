@@ -288,7 +288,6 @@ public:
 		uint32 currentDateStamp;
 		uint8 currentDayOfWeek;
 		uint8 currentHour;
-		uint8 wednesdayDay;
 		uint8 isWednesday;
 		uint8 isScheduledToday;
 		ReturnAllTickets_locals returnAllTicketsLocals;
