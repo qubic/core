@@ -2723,4 +2723,8 @@ public:
             output.amount = input.amount;
         }
     }
+    PRE_ACQUIRE_SHARES()
+    {
+        output.allowTransfer = true;
+    }
 };
