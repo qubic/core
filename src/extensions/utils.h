@@ -2,8 +2,11 @@
 
 // Helper functions for wchar_t strings in linux (linux expects 32-bit wchar_t, while we use 16-bit wchar_t everywhere else)
 #include "lib/platform_efi/uefi.h"
-#include <stdarg.h>
 #include <codecvt>
+#include <iomanip>
+#include <sstream>
+#include <stdarg.h>
+#include <vector>
 
 #ifdef _MSC_VER
 #pragma warning(disable: 4996)
@@ -64,4 +67,59 @@ static bool isAllBytesZero(void *buffer, unsigned long long length) {
     }
 
     return true;
+}
+
+#ifdef __linux__
+static int exec(const char* cmd) {
+    FILE* pipe = popen(cmd, "r");   // "r" = read output (even if we ignore it)
+    if (!pipe) return -1;
+
+    // just discard output like system() does
+    char buffer[128];
+    while (fgets(buffer, sizeof(buffer), pipe)) {
+        // no need to store or print
+    }
+
+    int status = pclose(pipe);      // wait for command to finish
+    return WEXITSTATUS(status);     // return exit code like system()
+}
+#endif
+
+static std::vector<std::string> splitString(const std::string& str, char delimiter) {
+    std::vector<std::string> tokens;
+    // 1. Create a stringstream from the input string
+    std::stringstream ss(str);
+    std::string token;
+
+    // 2. Use std::getline to extract tokens up to the delimiter
+    while (std::getline(ss, token, delimiter)) {
+        tokens.push_back(token);
+    }
+
+    return tokens;
+}
+
+static void hexToByte(const std::string& hex, const int sizeInByte, unsigned char* out)
+{
+    if (hex.length() != sizeInByte * 2)
+    {
+        throw std::invalid_argument("Hex string length does not match the expected size");
+    }
+
+    for (size_t i = 0; i < sizeInByte; ++i)
+    {
+        out[i] = std::stoi(hex.substr(i * 2, 2), nullptr, 16);
+    }
+}
+
+
+static std::string byteToHex(const unsigned char* byteArray, size_t sizeInByte)
+{
+    std::ostringstream oss;
+    for (size_t i = 0; i < sizeInByte; ++i)
+    {
+        oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(byteArray[i]);
+    }
+    return oss.str();
+
 }

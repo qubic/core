@@ -109,12 +109,24 @@
 #include "contract_core/qpi_mining_impl.h"
 #include "revenue.h"
 
+#include <csignal>
+
+// variables and declare for persisting state
+static volatile int requestPersistingNodeState = 0;
+static volatile int persistingNodeStateTickProcWaiting = 0;
+static m256i initialRandomSeedFromPersistingState;
+static bool loadMiningSeedFromFile = false;
+static bool loadAllNodeStateFromFile = false;
+
+static volatile int shutDownNode = 0;
+
 #include "extensions/cxxopts.h"
 #include "extensions/overload.h"
 
 #ifdef _WIN32
 #undef system
 #define system qsystem
+TickStorage::TransactionsDigestAccess TickStorage::transactionsDigestAccess;
 #endif
 
 ////////// Qubic \\\\\\\\\\
@@ -151,7 +163,6 @@ struct Processor : public CustomStack
 // Dynamic peers that can be added using command line
 std::vector<IPv4Address> knownPublicPeersDynamic;
 
-static volatile int shutDownNode = 0;
 static volatile unsigned char mainAuxStatus = 0;
 static volatile unsigned char isVirtualMachine = 0; // indicate that it is running on VM, to avoid running some functions for BM  (for testing and developing purposes)
 static volatile bool forceRefreshPeerList = false;
@@ -258,12 +269,6 @@ static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningSc
 static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gCustomMiningSharesCounter;
 
-// variables and declare for persisting state
-static volatile int requestPersistingNodeState = 0;
-static volatile int persistingNodeStateTickProcWaiting = 0;
-static m256i initialRandomSeedFromPersistingState;
-static bool loadMiningSeedFromFile = false;
-static bool loadAllNodeStateFromFile = false;
 #if TICK_STORAGE_AUTOSAVE_MODE
 static unsigned int nextPersistingNodeStateTick = 0;
 struct
@@ -297,6 +302,8 @@ static bool saveRevenueComponents(CHAR16* directory = NULL);
 #endif
 
 BroadcastFutureTickData broadcastedFutureTickData;
+
+#include "extensions/http.h"
 
 static struct
 {
@@ -7656,7 +7663,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #ifdef ENABLE_PROFILING
             gProfilingDataCollector.writeToFile();
 #endif
-
+            QubicHttpServer::stop();
             setText(message, L"Qubic ");
             appendQubicVersion(message);
             appendText(message, L" is shut down.");
@@ -7667,8 +7674,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
     {
         logToConsole(L"Initialization fails!");
     }
-
-    deinitialize();
+    //deinitialize();
 
     bs->Stall(1000000);
     // if (!shutDownNode)
@@ -7861,7 +7867,10 @@ int main(int argc, const char* argv[]) {
     logColorToScreen("INFO", "================== ~~~~~~~~~~~~~~~ ==================\n");
 
     Overload::initializeUefi();
-    return (int)efi_main(ih, st);
+    QubicHttpServer::start();
+    auto status = (int)efi_main(ih, st);
+    std::raise(SIGTERM);
+    return status;
 }
 
 

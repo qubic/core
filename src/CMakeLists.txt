@@ -5,6 +5,9 @@ project(qubic_core CXX ASM_NASM)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Enable FetchContent module
+include(FetchContent)
+
 # Include directories
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_SOURCE_DIR}/lib/)
@@ -18,6 +21,14 @@ add_custom_command(
     DEPENDS ${ASM_FILE}
     COMMENT "Assembling ${ASM_FILE}"
 )
+
+# Extra libraries
+FetchContent_Declare(
+        drogon
+        GIT_REPOSITORY https://github.com/drogonframework/drogon.git
+        GIT_TAG v1.9.11
+)
+FetchContent_MakeAvailable(drogon)
 
 # Define the shared library (matches Visual Studio DynamicLibrary configuration)
 add_executable(
@@ -80,7 +91,7 @@ find_package(Threads REQUIRED)
     platform_common
     platform_efi
     c++ c++abi
-    Threads::Threads
+    Threads::Threads drogon
   )
 # endif()
 
