@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <sstream>
 #include <stdarg.h>
+#include <vector>
 
 #ifdef _MSC_VER
 #pragma warning(disable: 4996)
@@ -69,7 +70,7 @@ static bool isAllBytesZero(void *buffer, unsigned long long length) {
 }
 
 #ifdef __linux__
-int exec(const char* cmd) {
+static int exec(const char* cmd) {
     FILE* pipe = popen(cmd, "r");   // "r" = read output (even if we ignore it)
     if (!pipe) return -1;
 
@@ -84,7 +85,7 @@ int exec(const char* cmd) {
 }
 #endif
 
-std::vector<std::string> splitString(const std::string& str, char delimiter) {
+static std::vector<std::string> splitString(const std::string& str, char delimiter) {
     std::vector<std::string> tokens;
     // 1. Create a stringstream from the input string
     std::stringstream ss(str);
