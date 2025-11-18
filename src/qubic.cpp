@@ -127,6 +127,7 @@ static volatile int shutDownNode = 0;
 #ifdef _WIN32
 #undef system
 #define system qsystem
+TickStorage::TransactionsDigestAccess TickStorage::transactionsDigestAccess;
 #endif
 
 ////////// Qubic \\\\\\\\\\

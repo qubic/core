@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef __linux__
+
 #include <drogon/drogon.h>
 #include "ticking/tick_storage.h"
 
@@ -345,3 +347,17 @@ public:
         drogon::app().quit();
     }
 };
+#else
+class QubicHttpServer
+{
+public:
+	static void start(int port = 41841)
+	{
+		// No-op on non-Linux platforms
+	}
+	static void stop()
+	{
+		// No-op on non-Linux platforms
+	}
+};
+#endif

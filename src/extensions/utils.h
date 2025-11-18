@@ -68,6 +68,7 @@ static bool isAllBytesZero(void *buffer, unsigned long long length) {
     return true;
 }
 
+#ifdef __linux__
 int exec(const char* cmd) {
     FILE* pipe = popen(cmd, "r");   // "r" = read output (even if we ignore it)
     if (!pipe) return -1;
@@ -81,6 +82,7 @@ int exec(const char* cmd) {
     int status = pclose(pipe);      // wait for command to finish
     return WEXITSTATUS(status);     // return exit code like system()
 }
+#endif
 
 std::vector<std::string> splitString(const std::string& str, char delimiter) {
     std::vector<std::string> tokens;
