@@ -7,6 +7,8 @@
 
 using namespace drogon;
 
+static unsigned long long httpPasscodes[4] = {};
+
 namespace MiddleWare
 {
 class PasscodeVerifier : public HttpMiddleware<PasscodeVerifier>
@@ -18,10 +20,10 @@ public:
                 MiddlewareNextCallback &&nextCb,
                 MiddlewareCallback &&mcb) override
     {
-        static std::string correctPasscode = std::to_string(logReaderPasscodes[0]) + "-" +
-                                                std::to_string(logReaderPasscodes[1]) + "-" +
-                                                    std::to_string(logReaderPasscodes[2]) + "-" +
-                                                        std::to_string(logReaderPasscodes[3]);
+        static std::string correctPasscode = std::to_string(httpPasscodes[0]) + "-" +
+                                                std::to_string(httpPasscodes[1]) + "-" +
+                                                    std::to_string(httpPasscodes[2]) + "-" +
+                                                        std::to_string(httpPasscodes[3]);
         bool isPasscodeValid = req->getParameter("passcode") == correctPasscode;
         if (!isPasscodeValid)
         {

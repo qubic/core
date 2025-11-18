@@ -7794,6 +7794,8 @@ void processArgs(int argc, const char* argv[]) {
         ("t,threads", "Total Threads will be used by the core", cxxopts::value<int>())
         ("d,ticking-delay", "Delay ticking process by milliseconds", cxxopts::value<int>())
         ("l,solution-threads", "Threads that will be used by the core to process solution", cxxopts::value<int>())
+        ("rp, reader-passcode", "Passcode to access log reader", cxxopts::value<std::string>())
+        ("hp, http-passcode", "Passcode to access http server", cxxopts::value<std::string>())
         ("s,security-tick", "Core will verify state after x tick, to reduce computational to the node", cxxopts::value<int>()->default_value("1"));
     auto result = options.parse(argc, argv);
 
@@ -7840,6 +7842,54 @@ void processArgs(int argc, const char* argv[]) {
     if (result.count("rebuild-tx-hashmap"))
     {
         rebuildTxHashmap = true;
+    }
+
+    if (result.count("reader-passcode")) {
+        std::string passcodeStr = result["reader-passcode"].as<std::string>();
+        std::stringstream ss(passcodeStr);
+        std::string token;
+        size_t index = 0;
+        while (std::getline(ss, token, '-') && index < 4) {
+            try {
+                unsigned long long passcode = std::stoull(token);
+                logReaderPasscodes[index++] = passcode;
+            } catch (const std::exception& e) {
+                logColorToScreen("ERROR", "Invalid passcode: " + token);
+                exit(1);
+            }
+        }
+
+        // Print passcodes for verification
+        std::string textLog = "Log reader passcodes set to: ";
+        textLog += std::to_string(logReaderPasscodes[0]) + " " +
+                   std::to_string(logReaderPasscodes[1]) + " " +
+                   std::to_string(logReaderPasscodes[2]) + " " +
+                   std::to_string(logReaderPasscodes[3]);
+        logColorToScreen("INFO", textLog);
+    }
+
+    if (result.count("http-passcode")) {
+        std::string passcodeStr = result["http-passcode"].as<std::string>();
+        std::stringstream ss(passcodeStr);
+        std::string token;
+        size_t index = 0;
+        while (std::getline(ss, token, '-') && index < 4) {
+            try {
+                unsigned long long passcode = std::stoull(token);
+                httpPasscodes[index++] = passcode;
+            } catch (const std::exception& e) {
+                logColorToScreen("ERROR", "Invalid passcode: " + token);
+                exit(1);
+            }
+        }
+
+        // Print passcodes for verification
+        std::string textLog = "Http passcodes set to: ";
+        textLog += std::to_string(httpPasscodes[0]) + " " +
+                   std::to_string(httpPasscodes[1]) + " " +
+                   std::to_string(httpPasscodes[2]) + " " +
+                   std::to_string(httpPasscodes[3]);
+        logColorToScreen("INFO", textLog);
     }
 
     if (result.count("mode")) {
