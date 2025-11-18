@@ -55,6 +55,7 @@ enum qRWAProcedureIds
     QRWA_PROC_CREATE_ASSET_RELEASE_POLL = 5,
     QRWA_PROC_VOTE_ASSET_RELEASE = 6,
     QRWA_PROC_DEPOSIT_GENERAL_ASSET = 7,
+    QRWA_PROC_REVOKE_ASSET = 8,
 };
 
 enum QxProcedureIds
@@ -214,6 +215,19 @@ public:
         QRWA::DepositGeneralAsset_output output;
         invokeUserProcedure(QRWA_CONTRACT_INDEX, QRWA_PROC_DEPOSIT_GENERAL_ASSET, input, output, from, 0);
         return output.status;
+    }
+
+    QRWA::revokeAssetManagementRights_output revokeAssetManagementRights(const id& from, const Asset& asset, sint64 numberOfShares)
+    {
+        QRWA::revokeAssetManagementRights_input input;
+        input.asset = asset;
+        input.numberOfShares = numberOfShares;
+
+        QRWA::revokeAssetManagementRights_output output;
+        memset(&output, 0, sizeof(output));
+
+        invokeUserProcedure(QRWA_CONTRACT_INDEX, QRWA_PROC_REVOKE_ASSET, input, output, from, QRWA_RELEASE_MANAGEMENT_FEE);
+        return output;
     }
 
     // QRWA Wrappers
@@ -517,6 +531,120 @@ TEST(ContractQRWA, Governance_AssetReleasePolls)
     poll = qrwa.getAssetReleasePoll(2);
     EXPECT_EQ(poll.proposal.status, QRWA_POLL_STATUS_PASSED_FAILED_EXECUTION);
     EXPECT_EQ(qrwa.getTreasuryBalance(), 900); // Unchanged
+}
+
+TEST(ContractQRWA, Governance_AssetRelease_FailAndRevoke)
+{
+    ContractTestingQRWA qrwa;
+
+    const sint64 initialEnergy = 1000000000;
+    increaseEnergy(HOLDER_A, initialEnergy);
+    increaseEnergy(HOLDER_B, initialEnergy);
+    increaseEnergy(ADMIN_ADDRESS, initialEnergy + QX_ISSUE_ASSET_FEE);
+    increaseEnergy(DESTINATION_ADDR, initialEnergy);
+
+    const sint64 treasuryAmount = 1000;
+    const sint64 voterShares = 1000000;
+    const sint64 releaseAmount = 500;
+
+    qrwa.issueAsset(QMINE_ISSUER, QMINE_ASSET.assetName, voterShares + treasuryAmount);
+
+    qrwa.transferAsset(QMINE_ISSUER, HOLDER_A, QMINE_ASSET, 700000);
+    qrwa.transferAsset(QMINE_ISSUER, HOLDER_B, QMINE_ASSET, 300000);
+
+    // Give qRWA management rights over the treasury shares
+    qrwa.transferManagementRights(QMINE_ISSUER, QMINE_ASSET, treasuryAmount, QRWA_CONTRACT_INDEX);
+
+    // Verify management rights were transferred
+    EXPECT_EQ(numberOfShares(QMINE_ASSET, { QMINE_ISSUER, QRWA_CONTRACT_INDEX },
+                                          { QMINE_ISSUER, QRWA_CONTRACT_INDEX }), treasuryAmount);
+
+    // Donate the shares to the treasury
+    EXPECT_EQ(qrwa.donateToTreasury(QMINE_ISSUER, treasuryAmount), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.getTreasuryBalance(), treasuryAmount);
+
+    // Verify Revenue Pool A (for fees) is empty.
+    auto divBalances = qrwa.getDividendBalances();
+    EXPECT_EQ(divBalances.revenuePoolA, 0);
+
+    qrwa.beginEpoch();
+    // Total voting power = 1,000,000 (HOLDER_A + HOLDER_B)
+    // Quorum = (1,000,000 * 2 / 3) + 1 = 666,667
+
+    QRWA::CreateAssetReleasePoll_input pollInput = {};
+    pollInput.proposalName = id::randomValue();
+    pollInput.asset = QMINE_ASSET;
+    pollInput.amount = releaseAmount;
+    pollInput.destination = DESTINATION_ADDR;
+
+    // create poll
+    auto pollOut = qrwa.createAssetReleasePoll(ADMIN_ADDRESS, pollInput);
+    EXPECT_EQ(pollOut.status, QRWA_STATUS_SUCCESS);
+    uint64 pollId = pollOut.proposalId;
+
+    // HOLDER_A votes YES, passing the poll (700k > 666k quorum)
+    EXPECT_EQ(qrwa.voteAssetRelease(HOLDER_A, pollId, 1), QRWA_STATUS_SUCCESS);
+
+    qrwa.endEpoch();
+
+    // Check poll status
+    // It should have passed the vote but failed execution (due to lack of 100 QUs fee for QX management transfer)
+    auto poll = qrwa.getAssetReleasePoll(pollId);
+    EXPECT_EQ(poll.proposal.status, QRWA_POLL_STATUS_PASSED_FAILED_EXECUTION);
+    EXPECT_EQ(poll.proposal.votesYes, 700000);
+
+    // Check SC asset state
+    // Asserts the INTERNAL counter is now decreased
+    EXPECT_EQ(qrwa.getTreasuryBalance(), treasuryAmount - releaseAmount); // 1000 - 500 = 500
+
+    // the SC balance is decreased
+    sint64 scOwnedBalance = numberOfShares(QMINE_ASSET,
+        { id(QRWA_CONTRACT_INDEX, 0, 0, 0), QRWA_CONTRACT_INDEX },
+        { id(QRWA_CONTRACT_INDEX, 0, 0, 0), QRWA_CONTRACT_INDEX });
+    EXPECT_EQ(scOwnedBalance, treasuryAmount - releaseAmount); // 1000 - 500 = 500
+
+    // DESTINATION_ADDR should now owns the shares, but they are MANAGED by qRWA
+    sint64 destManagedByQrwa = numberOfShares(QMINE_ASSET,
+        { DESTINATION_ADDR, QRWA_CONTRACT_INDEX },
+        { DESTINATION_ADDR, QRWA_CONTRACT_INDEX });
+    EXPECT_EQ(destManagedByQrwa, releaseAmount); // 500 shares are stuck
+
+    // DESTINATION_ADDR should have 0 shares managed by QX
+    sint64 destManagedByQx = numberOfShares(QMINE_ASSET,
+        { DESTINATION_ADDR, QX_CONTRACT_INDEX },
+        { DESTINATION_ADDR, QX_CONTRACT_INDEX });
+    EXPECT_EQ(destManagedByQx, 0);
+
+    // Test Revoke
+    qrwa.beginEpoch();
+
+    // Fund DESTINATION_ADDR with the fee for the revoke procedure
+    increaseEnergy(DESTINATION_ADDR, QRWA_RELEASE_MANAGEMENT_FEE);
+    sint64 destBalanceBeforeRevoke = getBalance(DESTINATION_ADDR);
+
+    // DESTINATION_ADDR calls revokeAssetManagementRights
+    auto revokeOut = qrwa.revokeAssetManagementRights(DESTINATION_ADDR, QMINE_ASSET, releaseAmount);
+
+    // check the outcome
+    EXPECT_EQ(revokeOut.status, QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(revokeOut.transferredNumberOfShares, releaseAmount);
+
+    // check final on-chain asset state
+    // DESTINATION_ADDR should be no longer have shares managed by qRWA
+    destManagedByQrwa = numberOfShares(QMINE_ASSET,
+        { DESTINATION_ADDR, QRWA_CONTRACT_INDEX },
+        { DESTINATION_ADDR, QRWA_CONTRACT_INDEX });
+    EXPECT_EQ(destManagedByQrwa, 0);
+
+    // DESTINATION_ADDR's shares should now be managed by QX
+    destManagedByQx = numberOfShares(QMINE_ASSET,
+        { DESTINATION_ADDR, QX_CONTRACT_INDEX },
+        { DESTINATION_ADDR, QX_CONTRACT_INDEX });
+    EXPECT_EQ(destManagedByQx, releaseAmount);
+
+    // check if the fee was paid by the user
+    sint64 destBalanceAfterRevoke = getBalance(DESTINATION_ADDR);
+    EXPECT_EQ(destBalanceAfterRevoke, destBalanceBeforeRevoke - QRWA_RELEASE_MANAGEMENT_FEE);
 }
 
 TEST(ContractQRWA, Treasury_Donation)

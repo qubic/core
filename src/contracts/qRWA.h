@@ -1023,6 +1023,113 @@ public:
         LOG_INFO(locals.logger);
     }
 
+    struct revokeAssetManagementRights_input
+    {
+        Asset asset;
+        sint64 numberOfShares;
+    };
+    struct revokeAssetManagementRights_output
+    {
+        sint64 transferredNumberOfShares;
+        uint64 status;
+    };
+    struct revokeAssetManagementRights_locals
+    {
+        qRWALogger logger;
+        sint64 managedBalance;
+        sint64 result;
+    };
+    PUBLIC_PROCEDURE_WITH_LOCALS(revokeAssetManagementRights)
+    {
+        // This procedure allows a user to revoke asset management rights from qRWA
+        // and transfer them back to QX, which is the default manager for trading
+        // Ref: MSVAULT
+
+        output.status = QRWA_STATUS_FAILURE_GENERAL;
+        output.transferredNumberOfShares = 0;
+
+        locals.logger.contractId = CONTRACT_INDEX;
+        locals.logger.primaryId = qpi.invocator();
+        locals.logger.valueA = input.asset.assetName;
+        locals.logger.valueB = input.numberOfShares;
+
+        if (qpi.invocationReward() < (sint64)QRWA_RELEASE_MANAGEMENT_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.transferredNumberOfShares = 0;
+            output.status = QRWA_STATUS_FAILURE_INSUFFICIENT_FEE;
+            locals.logger.logType = QRWA_LOG_TYPE_ERROR;
+            locals.logger.valueB = output.status;
+            LOG_INFO(locals.logger);
+            return;
+        }
+
+        if (qpi.invocationReward() > (sint64)QRWA_RELEASE_MANAGEMENT_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)QRWA_RELEASE_MANAGEMENT_FEE);
+        }
+
+        // must transfer a positive number of shares.
+        if (input.numberOfShares <= 0)
+        {
+            // Refund the fee if params are invalid
+            qpi.transfer(qpi.invocator(), (sint64)QRWA_RELEASE_MANAGEMENT_FEE);
+            output.transferredNumberOfShares = 0;
+            output.status = QRWA_STATUS_FAILURE_INVALID_INPUT;
+            locals.logger.logType = QRWA_LOG_TYPE_ERROR;
+            locals.logger.valueB = output.status;
+            LOG_INFO(locals.logger);
+            return;
+        }
+
+        // Check if qRWA actually manages the specified number of shares for the caller.
+        locals.managedBalance = qpi.numberOfShares(
+            input.asset,
+            { qpi.invocator(), SELF_INDEX },
+            { qpi.invocator(), SELF_INDEX }
+        );
+
+        if (locals.managedBalance < input.numberOfShares)
+        {
+            // The user is trying to revoke more shares than are managed by qRWA.
+            output.transferredNumberOfShares = 0;
+            output.status = QRWA_STATUS_FAILURE_INSUFFICIENT_BALANCE;
+            locals.logger.logType = QRWA_LOG_TYPE_ERROR;
+            locals.logger.valueB = output.status;
+            LOG_INFO(locals.logger);
+        }
+        else
+        {
+            // The balance check passed. Proceed to release the management rights to QX.
+            locals.result = qpi.releaseShares(
+                input.asset,
+                qpi.invocator(), // owner
+                qpi.invocator(), // possessor
+                input.numberOfShares,
+                QX_CONTRACT_INDEX,   // destination ownership managing contract
+                QX_CONTRACT_INDEX,   // destination possession managing contract
+                QRWA_RELEASE_MANAGEMENT_FEE // offered fee to QX
+            );
+
+            if (locals.result < 0)
+            {
+                // Transfer failed
+                output.transferredNumberOfShares = 0;
+                output.status = QRWA_STATUS_FAILURE_TRANSFER_FAILED;
+                locals.logger.logType = QRWA_LOG_TYPE_ERROR;
+            }
+            else
+            {
+                // Success, the fee was spent.
+                output.transferredNumberOfShares = input.numberOfShares;
+                output.status = QRWA_STATUS_SUCCESS;
+                locals.logger.logType = QRWA_LOG_TYPE_ADMIN_ACTION; // Or a more specific type
+            }
+            locals.logger.valueB = output.status;
+            LOG_INFO(locals.logger);
+        }
+    }
+
     /***************************************************/
     /***************** PUBLIC FUNCTIONS ****************/
     /***************************************************/
@@ -1271,6 +1378,11 @@ public:
 
         sint64 releaseFeeResult; // For releaseShares fee
 
+        uint64 ownershipTransferred;
+        uint64 managementTransferred;
+        uint64 feePaid;
+        uint64 sufficientFunds;
+
         qRWALogger logger;
         uint64 epoch;
 
@@ -1466,8 +1578,11 @@ public:
                 locals.poll.votesYes = locals.yesVotes;
                 locals.poll.votesNo = locals.noVotes;
 
-                // locals.assetPassed = 0;
-                locals.transferSuccess = 0;
+                locals.ownershipTransferred = 0;
+                locals.managementTransferred = 0;
+                locals.feePaid = 0;
+                locals.sufficientFunds = 0;
+
 
                 if (locals.yesVotes >= locals.quorumThreshold) // YES wins
                 {
@@ -1477,13 +1592,17 @@ public:
                         // Release from treasury
                         if (state.mTreasuryBalance >= locals.poll.amount)
                         {
+                            locals.sufficientFunds = 1;
                             locals.transferResult = qpi.transferShareOwnershipAndPossession(
                                 state.mQmineAsset.assetName, state.mQmineAsset.issuer,
                                 SELF, SELF, locals.poll.amount, locals.poll.destination);
 
-                            if (locals.transferResult >= 0)
+                            if (locals.transferResult >= 0) // ownership transfer succeeded
                             {
-                                // Check if Pool A has enough funds for the QX management transfer fee
+                                locals.ownershipTransferred = 1;
+                                // Decrement internal balance
+                                state.mTreasuryBalance = (state.mTreasuryBalance > locals.poll.amount) ? (state.mTreasuryBalance - locals.poll.amount) : 0;
+
                                 if (state.mRevenuePoolA >= QRWA_RELEASE_MANAGEMENT_FEE)
                                 {
                                     // Release management rights from this SC to QX
@@ -1497,44 +1616,41 @@ public:
                                         QRWA_RELEASE_MANAGEMENT_FEE
                                     );
 
-                                    if (locals.releaseFeeResult >= 0)
+                                    if (locals.releaseFeeResult >= 0) // management transfer succeeded
                                     {
-                                        state.mTreasuryBalance = (state.mTreasuryBalance > locals.poll.amount) ? (state.mTreasuryBalance - locals.poll.amount) : 0;
-                                        // Deduct *actual* fee from revenue pool A
+                                        locals.managementTransferred = 1;
+                                        locals.feePaid = 1;
                                         state.mRevenuePoolA = (state.mRevenuePoolA > (uint64)locals.releaseFeeResult) ? (state.mRevenuePoolA - (uint64)locals.releaseFeeResult) : 0;
-                                        locals.transferSuccess = 1;
                                     }
-                                    else
-                                    {
-                                        // Failed to release management (e.g., QX rejected it)
-                                        locals.transferSuccess = 0;
-                                    }
-                                }
-                                else
-                                {
-                                    // Not enough fee in Pool A, fail the management transfer
-                                    locals.transferSuccess = 0;
+                                    // else: Management transfer failed (shares are "stuck").
+                                    // The destination ID still owns the transferred asset, but the SC management is currently under qRWA.
+                                    // The destination ID must use revokeAssetManagementRights to transfer the asset's SC management to QX
                                 }
                             }
                         }
                     }
-                    else
+                    else // Asset is from mGeneralAssetBalances
                     {
-                        // Release from dividend asset pool (mGeneralAssetBalances)
                         if (state.mGeneralAssetBalances.get(locals.poll.asset, locals.currentAssetBalance))
                         {
                             if (locals.currentAssetBalance >= locals.poll.amount)
                             {
+                                locals.sufficientFunds = 1;
+                                // Ownership Transfer
                                 locals.transferResult = qpi.transferShareOwnershipAndPossession(
                                     locals.poll.asset.assetName, locals.poll.asset.issuer,
                                     SELF, SELF, locals.poll.amount, locals.poll.destination);
 
-                                if (locals.transferResult >= 0)
+                                if (locals.transferResult >= 0) // Ownership transfer tucceeded
                                 {
-                                    // Check if Pool A has enough funds for the QX management transfer fee
+                                    locals.ownershipTransferred = 1;
+                                    // Decrement internal balance
+                                    locals.currentAssetBalance = (locals.currentAssetBalance > locals.poll.amount) ? (locals.currentAssetBalance - locals.poll.amount) : 0;
+                                    state.mGeneralAssetBalances.set(locals.poll.asset, locals.currentAssetBalance);
+
                                     if (state.mRevenuePoolA >= QRWA_RELEASE_MANAGEMENT_FEE)
                                     {
-                                        // Release management rights from this SC to QX
+                                        // Management Transfer
                                         locals.releaseFeeResult = qpi.releaseShares(
                                             locals.poll.asset,
                                             locals.poll.destination, // new owner
@@ -1545,32 +1661,20 @@ public:
                                             QRWA_RELEASE_MANAGEMENT_FEE
                                         );
 
-                                        if (locals.releaseFeeResult >= 0)
+                                        if (locals.releaseFeeResult >= 0) // management transfer succeeded
                                         {
-                                            locals.currentAssetBalance = (locals.currentAssetBalance > locals.poll.amount) ? (locals.currentAssetBalance - locals.poll.amount) : 0;
-                                            state.mGeneralAssetBalances.set(locals.poll.asset, locals.currentAssetBalance);
-                                            // Deduct *actual* fee from revenue pool A
+                                            locals.managementTransferred = 1;
+                                            locals.feePaid = 1;
                                             state.mRevenuePoolA = (state.mRevenuePoolA > (uint64)locals.releaseFeeResult) ? (state.mRevenuePoolA - (uint64)locals.releaseFeeResult) : 0;
-                                            locals.transferSuccess = 1;
                                         }
-                                        else
-                                        {
-                                            // Failed to release management
-                                            locals.transferSuccess = 0;
-                                        }
-                                    }
-                                    else
-                                    {
-                                        // Not enough fee in Pool A, fail the management transfer
-                                        locals.transferSuccess = 0;
                                     }
                                 }
                             }
                         }
                     }
 
-                    // Log execution result
-                    if (locals.transferSuccess == 1)
+                    locals.transferSuccess = locals.ownershipTransferred & locals.managementTransferred & locals.feePaid;
+                    if (locals.transferSuccess == 1) // All steps succeeded
                     {
                         locals.logger.logType = QRWA_LOG_TYPE_ASSET_POLL_EXECUTED;
                         locals.logger.valueB = QRWA_STATUS_SUCCESS;
@@ -1579,7 +1683,19 @@ public:
                     else
                     {
                         locals.logger.logType = QRWA_LOG_TYPE_ERROR;
-                        locals.logger.valueB = (state.mTreasuryBalance < locals.poll.amount) ? QRWA_STATUS_FAILURE_INSUFFICIENT_BALANCE : QRWA_STATUS_FAILURE_TRANSFER_FAILED;
+                        if (locals.sufficientFunds == 0)
+                        {
+                            locals.logger.valueB = QRWA_STATUS_FAILURE_INSUFFICIENT_BALANCE;
+                        }
+                        else if (locals.ownershipTransferred == 0)
+                        {
+                            locals.logger.valueB = QRWA_STATUS_FAILURE_TRANSFER_FAILED;
+                        }
+                        else
+                        {
+                            // This is the stuck shares case
+                            locals.logger.valueB = QRWA_STATUS_FAILURE_TRANSFER_FAILED;
+                        }
                         locals.poll.status = QRWA_POLL_STATUS_PASSED_FAILED_EXECUTION;
                     }
                     locals.logger.contractId = CONTRACT_INDEX;
@@ -1587,7 +1703,7 @@ public:
                     locals.logger.valueA = locals.poll.proposalId;
                     LOG_INFO(locals.logger);
                 }
-                else
+                else // Vote failed (NO wins or < quorum)
                 {
                     locals.poll.status = QRWA_POLL_STATUS_FAILED_VOTE;
                 }
@@ -1708,6 +1824,7 @@ public:
         REGISTER_USER_PROCEDURE(CreateAssetReleasePoll, 5);
         REGISTER_USER_PROCEDURE(VoteAssetRelease, 6);
         REGISTER_USER_PROCEDURE(DepositGeneralAsset, 7);
+        REGISTER_USER_PROCEDURE(revokeAssetManagementRights, 8);
 
         // FUNCTIONS
         REGISTER_USER_FUNCTION(GetGovParams, 1);
