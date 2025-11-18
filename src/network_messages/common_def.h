@@ -45,6 +45,27 @@ typedef union m256i
 
 #endif
 
+constexpr uint8_t ORACLE_QUERY_TYPE_CONTRACT_QUERY = 0;
+constexpr uint8_t ORACLE_QUERY_TYPE_CONTRACT_SUBSCRIPTION = 1;
+constexpr uint8_t ORACLE_QUERY_TYPE_USER_QUERY = 2;
+
+constexpr uint8_t ORACLE_QUERY_STATUS_UNKNOWN = 0;     ///< Query not found / valid.
+constexpr uint8_t ORACLE_QUERY_STATUS_PENDING = 1;     ///< Query is being processed.
+constexpr uint8_t ORACLE_QUERY_STATUS_COMMITTED = 2;   ///< The quorum has commited to a oracle reply, but it has not been revealed yet.
+constexpr uint8_t ORACLE_QUERY_STATUS_SUCCESS = 3;     ///< The oracle reply has been confirmed and is available.
+constexpr uint8_t ORACLE_QUERY_STATUS_FAILURE = 4;     ///< No valid oracle reply is available (set by timeout or disagreement).
+
+// Fine-grained status flags returned by oracle machine nodes
+constexpr uint16_t ORACLE_FLAG_REPLY_PENDING = 0;   ///< Oracle machine hasn't replied yet to the query.
+constexpr uint16_t ORACLE_FLAG_REPLY_RECEIVED = 1;  ///< Oracle machine successfully got reply from the oracle.
+constexpr uint16_t ORACLE_FLAG_INVALID_ORACLE = 2;  ///< Oracle machine reported that oracle (data source) in query was invalid.
+constexpr uint16_t ORACLE_FLAG_ORACLE_UNAVAIL = 4;  ///< Oracle machine reported that oracle isn't available at the moment.
+constexpr uint16_t ORACLE_FLAG_INVALID_TIME = 8;    ///< Oracle machine reported that time in query was invalid.
+constexpr uint16_t ORACLE_FLAG_INVALID_PLACE = 16;  ///< Oracle machine reported that place in query was invalid.
+constexpr uint16_t ORACLE_FLAG_INVALID_ARG = 32;    ///< Oracle machine reported that an argument in query was invalid.
+constexpr uint16_t ORACLE_FLAG_DISAGREE = 64;       ///< The number of replys commits is sufficient (>= 451), but they disagree about the reply value.
+constexpr uint16_t ORACLE_FLAG_TIMEOUT = 128;       ///< The weren't enough reply commit tx before timeout (< 451).
+
 typedef union IPv4Address
 {
     uint8_t     u8[4];

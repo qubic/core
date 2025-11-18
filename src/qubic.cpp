@@ -1,5 +1,7 @@
 #define SINGLE_COMPILE_UNIT
 
+#define INCLUDE_CONTRACT_TEST_EXAMPLES
+
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
@@ -66,7 +68,9 @@
 
 #include "files/files.h"
 #include "mining/mining.h"
-#include "oracles/oracle_machines.h"
+
+#include "oracle_core/oracle_engine.h"
+#include "contract_core/qpi_oracle_impl.h"
 
 #include "contract_core/qpi_mining_impl.h"
 #include "revenue.h"
@@ -1661,6 +1665,19 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
     }
 }
 
+static void processOracleMachineReply(Peer* peer, RequestResponseHeader* header)
+{
+    // TODO: make sure to only accept these messages from outgoing connections to OM nodes (for example by checking flag in peer struct here)
+    auto* msg = header->getPayload<OracleMachineReply>();
+    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(OracleMachineReply))
+    {
+        // TODO: discuss how to handle multiple disagreeing replies from multiple OM nodes
+        // get interface from oracle query data
+        // check size
+        // store in pending reply storage (commit tx will be published in processTick() later)
+    }
+}
+
 // a tracker to detect if a thread is crashed
 static void checkinTime(unsigned long long processorNumber)
 {
@@ -2137,6 +2154,11 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
+                case OracleMachineReply::type:
+                {
+                    processOracleMachineReply(peer, header);
+                }
+
 #if ADDON_TX_STATUS_REQUEST
                 /* qli: process RequestTxStatus message */
                 case REQUEST_TX_STATUS:
@@ -2604,7 +2626,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     }
 }
 
-static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTransaction* transaction)
+static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTransactionPrefix* transaction)
 {
     PROFILE_SCOPE();
 
@@ -2715,12 +2737,12 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                 }
                 break;
 
-                case OracleReplyCommitTransaction::transactionType():
+                case OracleReplyCommitTransactionPrefix::transactionType():
                 {
                     if (computorIndex(transaction->sourcePublicKey) >= 0
-                        && transaction->inputSize == sizeof(OracleReplyCommitTransaction))
+                        && transaction->inputSize >= OracleReplyCommitTransactionPrefix::minInputSize())
                     {
-                        processTickTransactionOracleReplyCommit((OracleReplyCommitTransaction*)transaction);
+                        processTickTransactionOracleReplyCommit((OracleReplyCommitTransactionPrefix*)transaction);
                     }
                 }
                 break;
@@ -2728,10 +2750,17 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                 case OracleReplyRevealTransactionPrefix::transactionType():
                 {
                     if (computorIndex(transaction->sourcePublicKey) >= 0
-                        && transaction->inputSize >= sizeof(OracleReplyRevealTransactionPrefix) + sizeof(OracleReplyRevealTransactionPostfix))
+                        && transaction->inputSize >= OracleReplyRevealTransactionPrefix::minInputSize())
                     {
+                        // TODO: fix size check by defining minInputSize
                         processTickTransactionOracleReplyReveal((OracleReplyRevealTransactionPrefix*)transaction);
                     }
+                }
+                break;
+
+                case OracleUserQueryTransactionPrefix::transactionType():
+                {
+                    // TODO
                 }
                 break;
 
@@ -6872,13 +6901,17 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     while (responseQueueElementTail != responseQueueElementHead)
                     {
                         RequestResponseHeader* responseHeader = (RequestResponseHeader*)&responseQueueBuffer[responseQueueElements[responseQueueElementTail].offset];
-                        if (responseQueueElements[responseQueueElementTail].peer)
+                        if (responseQueueElements[responseQueueElementTail].peer == 0)
                         {
-                            push(responseQueueElements[responseQueueElementTail].peer, responseHeader);
+                            pushToSeveral(responseHeader);
+                        }
+                        else if (responseQueueElements[responseQueueElementTail].peer == (Peer*)1)
+                        {
+                            pushToOracleMachineNodes(responseHeader);
                         }
                         else
                         {
-                            pushToSeveral(responseHeader);
+                            push(responseQueueElements[responseQueueElementTail].peer, responseHeader);
                         }
                         responseQueueBufferTail += responseHeader->size();
                         if (responseQueueBufferTail > RESPONSE_QUEUE_BUFFER_SIZE - BUFFER_SIZE)

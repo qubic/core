@@ -343,6 +343,11 @@ static void pushToFullNodes(RequestResponseHeader* requestResponseHeader, int nu
     }
 }
 
+static void pushToOracleMachineNodes(RequestResponseHeader* requestResponseHeader)
+{
+    // TODO
+}
+
 // Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
 static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
 {

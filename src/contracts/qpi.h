@@ -148,6 +148,9 @@ namespace QPI
 	 */
 	struct DateAndTime
 	{
+		/// Return instance with current time (defined in qpi_ticking_impl.h)
+		static inline DateAndTime now();
+
 		/// Init with value 0 (no valid date).
 		DateAndTime()
 		{
@@ -2532,6 +2535,23 @@ namespace QPI
 			uint32 IPOContractIndex,
 			sint64 price,
 			uint32 quantity
+		) const;
+
+		/**
+		* @brief Initiate oracle query that will lead to nofitication later.
+		* @param query Details about which oracle to query for which information, as defined by a specific oracle interface.
+		* @param timeoutSeconds Maximum number of seconds to wait for reply.
+		* @return Oracle query ID that can be used to get the status of the query, or 0 on error.
+		*
+		* This will automatically burn the oracle query fee as defined by the oracle interface (burning without
+		* adding to the contract's execution fee reserve). It will fail if the contract doesn't have enough QU.
+		* The interface-specific notification callback will be executed when the reply is available or after
+		* the timeout.
+		*/
+		template <typename OracleInterface>
+		inline uint64 queryOracle(
+			const OracleInterface::OracleQuery& query,
+			uint16 timeoutSeconds = 60
 		) const;
 
 		inline sint64 releaseShares(

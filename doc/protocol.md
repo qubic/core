@@ -60,9 +60,29 @@ The type number is the identifier used in `RequestResponseHeader` (defined in `h
 - `RespondCustomMiningSolutionVerification`, type 63, defined in `custom_mining.h`.
 - `SpecialCommand`, type 255, defined in `special_command.h`.
 
+Message types used in communication channel between core node and oracle machine node:
+- `OracleMachineQuery`, type 190, defined in `src/oracle_core/core_om_network_messages.h`
+- `OracleMachineReply`, type 191, defined in `src/oracle_core/core_om_network_messages.h`
+
 Addon messages (supported if addon is enabled):
 - `REQUEST_TX_STATUS`, type 201, defined in `src/addons/tx_status_request.h`.
 - `RESPOND_TX_STATUS`, type 202, defined in `src/addons/tx_status_request.h`.
+
+
+## List of special transaction types
+
+Transactions with destination `NULL_ID` (32 bytes all-zero) are handled by the system.
+The following transaction types (`tx->inputType`) are defined:
+
+- Vote counter transaction, type 1, defined in `src/vote_counter.h`.
+- `MiningSolutionTransaction`, type 2, defined in `src/mining/mining.h`.
+- `FileHeaderTransaction`, type 3, defined in `src/files/files.h`.
+- `FileFragmentTransactionPrefix`, type 4, defined in `src/files/files.h`.
+- `FileTrailerTransaction`, type 5, defined in `src/files/files.h`.
+- `OracleReplyCommitTransactionPrefix`, type 6, defined in `src/oracle_core/oracle_transactions.h`.
+- `OracleReplyRevealTransactionPrefix`, type 7, defined in `src/oracle_core/oracle_transactions.h`.
+- `CustomMiningSolutionTransaction`, type 8, defined in `src/mining/mining.h`.
+- `OracleUserQueryTransactionPrefix`, type 9, defined in `src/oracle_core/oracle_transactions.h`.
 
 
 ## Peer Sharing

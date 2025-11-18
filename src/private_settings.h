@@ -27,6 +27,10 @@ static const unsigned char whiteListPeers[][4] = {
 };
 */
 
+static const unsigned char oracleMachineIPs[][4] = {
+     {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
+};
+
 #define ENABLE_QUBIC_LOGGING_EVENT 0 // turn on logging events
 
 #if ENABLE_QUBIC_LOGGING_EVENT

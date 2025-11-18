@@ -176,12 +176,6 @@
     <ClInclude Include="contracts\ComputorControlledFund.h">
       <Filter>contracts</Filter>
     </ClInclude>
-    <ClInclude Include="oracles\Price.h">
-      <Filter>oracles</Filter>
-    </ClInclude>
-    <ClInclude Include="oracles\oracle_machines.h">
-      <Filter>oracles</Filter>
-    </ClInclude>
     <ClInclude Include="files\files.h">
       <Filter>files</Filter>
     </ClInclude>
@@ -224,7 +218,6 @@
     <ClInclude Include="contracts\TestExampleB.h">
       <Filter>contracts</Filter>
     </ClInclude>
-    <ClInclude Include="platform\memory-util.h" />
     <ClInclude Include="ticking\ticking.h">
       <Filter>ticking</Filter>
     </ClInclude>
@@ -288,6 +281,27 @@
     <ClInclude Include="contract_core\pre_qpi_def.h">
       <Filter>contract_core</Filter>
     </ClInclude>
+    <ClInclude Include="oracle_core\oracle_engine.h">
+      <Filter>oracle_core</Filter>
+    </ClInclude>
+    <ClInclude Include="oracle_core\core_om_network_messages.h">
+      <Filter>oracle_core</Filter>
+    </ClInclude>
+    <ClInclude Include="oracle_core\oracle_interfaces_def.h">
+      <Filter>oracle_core</Filter>
+    </ClInclude>
+    <ClInclude Include="oracle_core\oracle_transactions.h">
+      <Filter>oracle_core</Filter>
+    </ClInclude>
+    <ClInclude Include="oracle_interfaces\Price.h">
+      <Filter>oracle_interfaces</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\memory_util.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\qpi_oracle_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
@@ -308,9 +322,6 @@
     <Filter Include="addons">
       <UniqueIdentifier>{d409258b-a63c-443f-8c7a-918c14f192a6}</UniqueIdentifier>
     </Filter>
-    <Filter Include="oracles">
-      <UniqueIdentifier>{74ae36a2-d776-43e9-a6b9-f41412f5fdd2}</UniqueIdentifier>
-    </Filter>
     <Filter Include="files">
       <UniqueIdentifier>{ed6ee181-230c-46ac-91bd-234b9081e36f}</UniqueIdentifier>
     </Filter>
@@ -328,6 +339,12 @@
     </Filter>
     <Filter Include="spectrum">
       <UniqueIdentifier>{2f27aed7-b9b8-4b8c-a70a-90f18385b167}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="oracle_interfaces">
+      <UniqueIdentifier>{ec5bb5e9-cc03-4d2f-bbe4-40d60c3df1c8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="oracle_core">
+      <UniqueIdentifier>{a42dd6f2-617c-4fbc-b3ec-f51975e5c447}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
