@@ -28,6 +28,7 @@
     <ClCompile Include="contract_qbay.cpp" />
     <ClCompile Include="contract_nostromo.cpp" />
     <ClCompile Include="contract_rl.cpp" />
+    <ClCompile Include="contract_ccf.cpp" />
     <ClCompile Include="file_io.cpp" />
     <ClCompile Include="virtual_memory.cpp" />
     <ClCompile Include="custom_mining.cpp" />
