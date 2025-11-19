@@ -77,6 +77,11 @@ struct Peer
         return (lastActiveTick >= system.tick - 100);
     }
 
+    bool isOracleMachineNode() const
+    {
+        return isOMNode;
+    }
+
     // store a dejavu number into local list
     void trackDejavu(unsigned int dejavu)
     {
@@ -356,7 +361,21 @@ static void pushToFullNodes(RequestResponseHeader* requestResponseHeader, int nu
 
 static void pushToOracleMachineNodes(RequestResponseHeader* requestResponseHeader)
 {
-    // TODO
+    if (NUMBER_OF_OM_NODE_CONNECTIONS > 0)
+    {
+        unsigned short numberOfSuitablePeers = 0;
+        for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS && numberOfSuitablePeers < NUMBER_OF_OM_NODE_CONNECTIONS; i++)
+        {
+            if (peers[i].isOracleMachineNode()
+                && peers[i].tcp4Protocol
+                && peers[i].isConnectedAccepted
+                && !peers[i].isClosing)
+            {
+                push(&peers[i], requestResponseHeader);
+                numberOfSuitablePeers++;
+            }
+        }
+    }
 }
 
 // Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
@@ -576,6 +595,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
         {
             // outgoing connection
             peers[i].isIncommingConnection = FALSE;
+
             if (peers[i].connectAcceptToken.CompletionToken.Status)
             {
                 // connection rejected
@@ -939,12 +959,8 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
             // Check if this slot is for OM node
             if (i >= NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS)
             {
-                unsigned int omNodeIndex = i - NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS;
-                if (omNodeIndex < NUMBER_OF_OM_NODE_CONNECTIONS)
-                {
-                    peers[i].isOMNode = TRUE;
-                    peers[i].address = omIPv4Address[i];
-                }
+                peers[i].isOMNode = TRUE;
+                peers[i].address = omIPv4Address[i - NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS];
             }
             else
             {

@@ -6718,8 +6718,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                 for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
                 {
-                    // handle new connections
-                    if (peerConnectionNewlyEstablished(i))
+                    // handle new connections. For Oracle Machine, not need the ExchangePublicPeers
+                    if (peerConnectionNewlyEstablished(i) && !peers[i].isOracleMachineNode())
                     {
                         // new connection established:
                         // prepare and send ExchangePublicPeers message
