@@ -77,6 +77,11 @@ struct Peer
         return (lastActiveTick >= system.tick - 100);
     }
 
+    bool isOracleMachineNode() const
+    {
+        return isOMNode;
+    }
+
     // store a dejavu number into local list
     void trackDejavu(unsigned int dejavu)
     {
@@ -284,7 +289,7 @@ static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
 }
 
 // Add message to sending buffer of custom filtered (and random) peer, can only called from main thread (not thread-safe).
-static void pushCustom(RequestResponseHeader* requestResponseHeader, int numberOfReceivers, bool filterFullNode)
+static void pushCustom(RequestResponseHeader* requestResponseHeader, int numberOfReceivers, bool filterFullNode, bool filterOracleMachineNode = false)
 {
     unsigned short suitablePeerIndices[NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS];
     unsigned short numberOfSuitablePeers = 0;
@@ -292,7 +297,27 @@ static void pushCustom(RequestResponseHeader* requestResponseHeader, int numberO
     {
         if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && peers[i].exchangedPublicPeers && !peers[i].isClosing)
         {
-            if ((filterFullNode && peers[i].isFullNode()) || (!filterFullNode))
+            bool peerShouldBeAdded = false;
+
+            // All filters are turned off
+            if (!filterFullNode && !filterOracleMachineNode)
+            {
+                peerShouldBeAdded = true;
+            }
+            else
+            {
+                if (filterFullNode && peers[i].isFullNode())
+                {
+                    peerShouldBeAdded = true;
+                }
+
+                if (filterOracleMachineNode && peers[i].isOracleMachineNode())
+                {
+                    peerShouldBeAdded = true;
+                }
+            }
+
+            if (peerShouldBeAdded)
             {
                 suitablePeerIndices[numberOfSuitablePeers++] = i;
             }
@@ -356,7 +381,10 @@ static void pushToFullNodes(RequestResponseHeader* requestResponseHeader, int nu
 
 static void pushToOracleMachineNodes(RequestResponseHeader* requestResponseHeader)
 {
-    // TODO
+    if (NUMBER_OF_OM_NODE_CONNECTIONS > 0)
+    {
+        pushCustom(requestResponseHeader, NUMBER_OF_OM_NODE_CONNECTIONS, false, true);
+    }
 }
 
 // Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
@@ -938,12 +966,8 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
             // Check if this slot is for OM node
             if (i >= NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS)
             {
-                unsigned int omNodeIndex = i - NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS;
-                if (omNodeIndex < NUMBER_OF_OM_NODE_CONNECTIONS)
-                {
-                    peers[i].isOMNode = TRUE;
-                    peers[i].address = omIPv4Address[i];
-                }
+                peers[i].isOMNode = TRUE;
+                peers[i].address = omIPv4Address[i];
             }
             else
             {
