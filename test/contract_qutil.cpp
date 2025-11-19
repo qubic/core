@@ -13,6 +13,9 @@ public:
         callSystemProcedure(QUTIL_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
+
+        // init fees
+        callSystemProcedure(QUTIL_CONTRACT_INDEX, INITIALIZE, true);
     }
 
     void beginEpoch(bool expectSuccess = true)
@@ -544,7 +547,9 @@ TEST(QUtilTest, VoterListUpdateAndCompaction) {
     vote_inputA.address = voterA;
     vote_inputA.amount = min_amount;
     vote_inputA.chosen_option = 0;
-    qutil.vote(voterA, vote_inputA, QUTIL_VOTE_FEE);
+    EXPECT_TRUE(qutil.vote(voterA, vote_inputA, QUTIL_VOTE_FEE).success);
+
+    EXPECT_EQ(getBalance(voterA), min_amount + QUTIL_VOTE_FEE);
 
     QUTIL::Vote_input vote_inputB;
     vote_inputB.poll_id = poll_id0;
