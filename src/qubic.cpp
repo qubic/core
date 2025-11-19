@@ -5560,6 +5560,17 @@ static bool initialize()
         logToConsole(message);
     }
 
+    if (NUMBER_OF_OM_NODE_CONNECTIONS > 0)
+    {
+        logToConsole(L"Populating oracle machine node ...");
+        numberOfOMPeers = 0;
+        for (unsigned int i = 0; i < NUMBER_OF_OM_NODE_CONNECTIONS; i++)
+        {
+            const IPv4Address& peer_ip = *reinterpret_cast<const IPv4Address*>(oracleMachineIPs[i]);
+            copyMem(&omIPv4Address[numberOfOMPeers++], &peer_ip, sizeof(IPv4Address));
+        }
+    }
+
     logToConsole(L"Init TCP...");
     if (!initTcp4(PORT))
         return false;
@@ -6801,7 +6812,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && !peers[i].isClosing)
                         {
-                            if (!peers[i].isFullNode())
+                            // Skip FullNode and OM nodes
+                            if (!peers[i].isFullNode() && !peers[i].isOMNode)
                             {
                                 suitablePeerIndices[numberOfSuitablePeers++] = i;
                             }
