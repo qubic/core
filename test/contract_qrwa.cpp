@@ -3,6 +3,7 @@
 #include "contract_testing.h"
 #include "test_util.h"
 
+#define ENABLE_BALANCE_DEBUG 0
 
 // Pseudo IDs (for testing only)
 
@@ -1067,4 +1068,590 @@ TEST(ContractQRWA, Payout_FullDistribution2)
     EXPECT_EQ(divBalances.revenuePoolB, 0);
     EXPECT_EQ(divBalances.qmineDividendPool, 0); // QMINE dev gets the remainder
     EXPECT_EQ(divBalances.qrwaDividendPool, 150000 - (qrwaPerShare * NUMBER_OF_COMPUTORS)); // Dust (584)
+}
+
+TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
+{
+    ContractTestingQRWA qrwa;
+
+    /* --- SETUP --- */
+
+    etalonTick.year = 25;   // 2025
+    etalonTick.month = 11;  // November
+    etalonTick.day = 7;     // 7th (Friday)
+    etalonTick.hour = 12;
+    etalonTick.minute = 1;
+    etalonTick.second = 0;
+    etalonTick.millisecond = 0;
+
+    // Constants
+    const sint64 TOTAL_SUPPLY = 1000000000000LL; // 1,000,000,000,000 = 1 Trillion
+    const sint64 TREASURY_INIT = 150000000000LL; // 150 Billion
+    const sint64 SHAREHOLDERS_TOTAL = 850000000000LL; // 850 Billion
+    const sint64 SHAREHOLDER_AMT = SHAREHOLDERS_TOTAL / 5; // 170 Billion each
+    const sint64 REVENUE_AMT = 10000000LL; // 10 Million QUs per epoch revenue
+
+    // Known Pool Amounts derived from REVENUE_AMT and 50% total fees
+    // Revenue 10M -> Fees 5M -> Net 5M
+    const sint64 QMINE_POOL_AMT = 4500000LL; // 90% of 5M
+    const sint64 QRWA_POOL_AMT_BASE = 500000LL; // 10% of 5M
+
+    const sint64 QRWA_TOTAL_SHARES = 676LL;
+
+    // Track dust for qRWA pool to calculate accurate rates per epoch
+    sint64 currentQrwaDust = 0;
+    sint64 currentQXReleaseFee = 0;
+
+    auto getQrwaRateForEpoch = [&](sint64 poolAmount) -> sint64 {
+        sint64 totalPool = poolAmount + currentQrwaDust;
+        sint64 rate = totalPool / QRWA_TOTAL_SHARES;
+        currentQrwaDust = totalPool % QRWA_TOTAL_SHARES; // Update dust for next epoch
+        return rate;
+        };
+
+    // Entities
+    const id S1 = id::randomValue(); // Hybrid: Holds QMINE + qRWA shares
+    const id S2 = id::randomValue(); // Control QMINE: Holds only QMINE
+    const id S3 = id::randomValue(); // QMINE only
+    const id S4 = id::randomValue(); // QMINE only
+    const id S5 = id::randomValue(); // QMINE only
+    const id Q1 = id::randomValue(); // Control qRWA: Holds only qRWA shares
+    const id Q2 = id::randomValue(); // qRWA only
+
+    // Energy Funding
+    increaseEnergy(QMINE_ISSUER, QX_ISSUE_ASSET_FEE * 2 + 100000000);
+    increaseEnergy(TREASURY_HOLDER, 100000000);
+    increaseEnergy(S1, 100000000);
+    increaseEnergy(S2, 100000000);
+    increaseEnergy(S3, 100000000);
+    increaseEnergy(S4, 100000000);
+    increaseEnergy(S5, 100000000);
+    increaseEnergy(Q1, 100000000);
+    increaseEnergy(Q2, 100000000);
+    increaseEnergy(DESTINATION_ADDR, 1000000);
+    increaseEnergy(ADMIN_ADDRESS, 1000000);
+
+    // Issue QMINE
+    qrwa.issueAsset(QMINE_ISSUER, QMINE_ASSET.assetName, TOTAL_SUPPLY);
+
+    // Distribute to Treasury Holder
+    qrwa.transferAsset(QMINE_ISSUER, TREASURY_HOLDER, QMINE_ASSET, TREASURY_INIT);
+
+    // Distribute to 5 Shareholders (170B each)
+    qrwa.transferAsset(QMINE_ISSUER, S1, QMINE_ASSET, SHAREHOLDER_AMT);
+    qrwa.transferAsset(QMINE_ISSUER, S2, QMINE_ASSET, SHAREHOLDER_AMT);
+    qrwa.transferAsset(QMINE_ISSUER, S3, QMINE_ASSET, SHAREHOLDER_AMT);
+    qrwa.transferAsset(QMINE_ISSUER, S4, QMINE_ASSET, SHAREHOLDER_AMT);
+    qrwa.transferAsset(QMINE_ISSUER, S5, QMINE_ASSET, SHAREHOLDER_AMT);
+
+    // Issue and Distribute qrwa Contract Shares
+    std::vector<std::pair<m256i, unsigned int>> qrwaShares{
+            {S1, 200},
+            {Q1, 200},
+            {Q2, 276}
+    };
+    issueContractShares(QRWA_CONTRACT_INDEX, qrwaShares);
+
+    // Snapshot balances
+    std::map<id, sint64> prevBalances;
+    auto snapshotBalances = [&]() {
+        prevBalances[S1] = getBalance(S1);
+        prevBalances[S2] = getBalance(S2);
+        prevBalances[S3] = getBalance(S3);
+        prevBalances[S4] = getBalance(S4);
+        prevBalances[S5] = getBalance(S5);
+        prevBalances[Q1] = getBalance(Q1);
+        prevBalances[Q2] = getBalance(Q2);
+        prevBalances[DESTINATION_ADDR] = getBalance(DESTINATION_ADDR);
+        };
+    snapshotBalances();
+
+    // Helper to calculate exact QMINE payout matching contract logic
+    // Payout = (EligibleBalance * DividendPool) / PayoutBase
+    auto calculateQminePayout = [&](sint64 balance, sint64 payoutBase, sint64 poolAmount) -> sint64 {
+        if (payoutBase == 0) return 0;
+        // Contract uses: div<uint128>((uint128)balance * pool, totalEligible)
+        // We mimic that integer math here
+        uint128 res = (uint128)balance * (uint128)poolAmount;
+        res = res / (uint128)payoutBase;
+        return (sint64)res.low;
+        };
+
+    // Helper that uses the calculated rate for the current epoch
+    auto calculateQrwaPayout = [&](sint64 shares, sint64 currentRate) -> sint64 {
+        return shares * currentRate;
+        };
+
+#if ENABLE_BALANCE_DEBUG
+    auto print_balances = [&]()
+        {
+            std::cout << "\n--- Current Balances ---" << std::endl;
+            std::cout << "S1: " << getBalance(S1) << std::endl;
+            std::cout << "S2: " << getBalance(S2) << std::endl;
+            std::cout << "S3: " << getBalance(S3) << std::endl;
+            std::cout << "S4: " << getBalance(S4) << std::endl;
+            std::cout << "S5: " << getBalance(S5) << std::endl;
+            std::cout << "Q1: " << getBalance(Q1) << std::endl;
+            std::cout << "Q2: " << getBalance(Q2) << std::endl;
+            std::cout << "Dest: " << getBalance(DESTINATION_ADDR) << std::endl;
+            std::cout << "Treasury: " << getBalance(TREASURY_HOLDER) << std::endl;
+            std::cout << "Dev: " << getBalance(QMINE_DEV_ADDR_TEST) << std::endl;
+            std::cout << "------------------------\n" << std::endl;
+        };
+
+    std::cout << "PRE-EPOCH 1\n";
+    print_balances();
+#endif
+    // epoch 1
+    qrwa.beginEpoch();
+
+    //Shareholders Exchange
+    qrwa.transferAsset(S1, S2, QMINE_ASSET, 10000000000LL);
+    qrwa.transferAsset(S3, S4, QMINE_ASSET, 5000000000LL);
+
+    // Treasury Donation
+    qrwa.transferManagementRights(TREASURY_HOLDER, QMINE_ASSET, 10, QRWA_CONTRACT_INDEX);
+    EXPECT_EQ(qrwa.donateToTreasury(TREASURY_HOLDER, 10), QRWA_STATUS_SUCCESS);
+
+    //Revenue
+    qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), REVENUE_AMT);
+
+    qrwa.endEpoch();
+
+    // Checks Ep 1
+    etalonTick.day += 7;
+    qrwa.resetPayoutTime();
+    qrwa.endTick();
+
+#if ENABLE_BALANCE_DEBUG
+    std::cout << "END-EPOCH 1\n";
+    print_balances();
+#endif
+
+    // Contract holds 10 shares. Base = Total Supply - 10
+    sint64 payoutBaseEp1 = TOTAL_SUPPLY - 10;
+    sint64 qrwaRateEp1 = getQrwaRateForEpoch(QRWA_POOL_AMT_BASE); // Standard pool for Ep 1
+
+    sint64 divS1 = calculateQminePayout(160000000000LL, payoutBaseEp1, QMINE_POOL_AMT);
+    sint64 divS2 = calculateQminePayout(170000000000LL, payoutBaseEp1, QMINE_POOL_AMT);
+    sint64 divS3 = calculateQminePayout(165000000000LL, payoutBaseEp1, QMINE_POOL_AMT);
+    sint64 divS4 = calculateQminePayout(170000000000LL, payoutBaseEp1, QMINE_POOL_AMT);
+    sint64 divS5 = calculateQminePayout(170000000000LL, payoutBaseEp1, QMINE_POOL_AMT);
+
+    sint64 divQS1 = calculateQrwaPayout(200, qrwaRateEp1);
+    sint64 divQQ1 = calculateQrwaPayout(200, qrwaRateEp1);
+    sint64 divQQ2 = calculateQrwaPayout(276, qrwaRateEp1);
+
+    EXPECT_EQ(getBalance(S1), prevBalances[S1] + divS1 + divQS1);
+    EXPECT_EQ(getBalance(S2), prevBalances[S2] + divS2);
+    EXPECT_EQ(getBalance(S3), prevBalances[S3] + divS3);
+    EXPECT_EQ(getBalance(S4), prevBalances[S4] + divS4);
+    EXPECT_EQ(getBalance(S5), prevBalances[S5] + divS5);
+    EXPECT_EQ(getBalance(Q1), prevBalances[Q1] + divQQ1);
+    EXPECT_EQ(getBalance(Q2), prevBalances[Q2] + divQQ2);
+
+    snapshotBalances();
+
+#if ENABLE_BALANCE_DEBUG
+    std::cout << "PRE-EPOCH 2\n";
+    print_balances();
+#endif
+
+    // epoch 2
+    qrwa.beginEpoch();
+
+    // Treasury Donation (Remaining)
+    sint64 treasuryRemaining = TREASURY_INIT - 10;
+    qrwa.transferManagementRights(TREASURY_HOLDER, QMINE_ASSET, treasuryRemaining, QRWA_CONTRACT_INDEX);
+    EXPECT_EQ(qrwa.donateToTreasury(TREASURY_HOLDER, treasuryRemaining), QRWA_STATUS_SUCCESS);
+
+    // Exchange
+    qrwa.transferAsset(S1, S2, QMINE_ASSET, 10000000000LL);
+    qrwa.transferAsset(S2, S3, QMINE_ASSET, 10000000000LL);
+    qrwa.transferAsset(S3, S4, QMINE_ASSET, 10000000000LL);
+    qrwa.transferAsset(S4, S5, QMINE_ASSET, 10000000000LL);
+
+    // Revenue
+    qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), REVENUE_AMT);
+
+    // Release Poll
+    QRWA::CreateAssetReleasePoll_input pollInput;
+    pollInput.proposalName = id::randomValue();
+    pollInput.asset = QMINE_ASSET;
+    pollInput.amount = 1000;
+    pollInput.destination = DESTINATION_ADDR;
+
+    auto pollOut = qrwa.createAssetReleasePoll(ADMIN_ADDRESS, pollInput);
+    uint64 pollIdEp2 = pollOut.proposalId;
+
+    EXPECT_EQ(qrwa.voteAssetRelease(S1, pollIdEp2, 1), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteAssetRelease(S2, pollIdEp2, 1), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteAssetRelease(S3, pollIdEp2, 1), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteAssetRelease(S4, pollIdEp2, 1), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteAssetRelease(S5, pollIdEp2, 1), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteAssetRelease(Q1, pollIdEp2, 1), QRWA_STATUS_FAILURE_NOT_AUTHORIZED);
+
+    qrwa.endEpoch();
+
+    // Checks Ep 2
+    etalonTick.day += 7;
+    qrwa.resetPayoutTime();
+    qrwa.endTick();
+
+#if ENABLE_BALANCE_DEBUG
+    std::cout << "END-EPOCH 2\n";
+    print_balances();
+#endif
+
+    auto pollResultEp2 = qrwa.getAssetReleasePoll(pollIdEp2);
+    EXPECT_EQ(pollResultEp2.proposal.status, QRWA_POLL_STATUS_PASSED_EXECUTED);
+    EXPECT_EQ(numberOfShares(QMINE_ASSET, { DESTINATION_ADDR, QX_CONTRACT_INDEX }), 1000);
+
+    // Calculate Pools based on Revenue - 100 QU Fee
+    sint64 netRevenueEp2 = REVENUE_AMT - 100;
+    sint64 feeAmtEp2 = (netRevenueEp2 * 500) / 1000; // 50% fees
+    sint64 distributableEp2 = netRevenueEp2 - feeAmtEp2;
+    sint64 qminePoolEp2 = (distributableEp2 * 900) / 1000;
+    sint64 qrwaPoolEp2 = distributableEp2 - qminePoolEp2;
+
+    // Correct Base: TOTAL_SUPPLY - 10 (Shares held by SC at START of epoch)
+    sint64 payoutBaseEp2 = TOTAL_SUPPLY - 10;
+
+    sint64 qrwaRateEp2 = getQrwaRateForEpoch(qrwaPoolEp2);
+
+    divS1 = calculateQminePayout(150000000000LL, payoutBaseEp2, qminePoolEp2);
+    divS2 = calculateQminePayout(180000000000LL, payoutBaseEp2, qminePoolEp2);
+    divS3 = calculateQminePayout(165000000000LL, payoutBaseEp2, qminePoolEp2);
+    divS4 = calculateQminePayout(175000000000LL, payoutBaseEp2, qminePoolEp2);
+    divS5 = calculateQminePayout(170000000000LL, payoutBaseEp2, qminePoolEp2);
+
+    divQS1 = calculateQrwaPayout(200, qrwaRateEp2);
+    divQQ1 = calculateQrwaPayout(200, qrwaRateEp2);
+    divQQ2 = calculateQrwaPayout(276, qrwaRateEp2);
+
+    EXPECT_EQ(getBalance(S1), prevBalances[S1] + divS1 + divQS1);
+    EXPECT_EQ(getBalance(S2), prevBalances[S2] + divS2);
+    EXPECT_EQ(getBalance(S3), prevBalances[S3] + divS3);
+    EXPECT_EQ(getBalance(S4), prevBalances[S4] + divS4);
+    EXPECT_EQ(getBalance(S5), prevBalances[S5] + divS5);
+    EXPECT_EQ(getBalance(Q1), prevBalances[Q1] + divQQ1);
+    EXPECT_EQ(getBalance(Q2), prevBalances[Q2] + divQQ2);
+
+    snapshotBalances();
+
+#if ENABLE_BALANCE_DEBUG
+    std::cout << " PRE-EPOCH 3\n";
+    print_balances();
+#endif
+
+    // epoch 3
+    qrwa.beginEpoch();
+
+    // Exchange
+    qrwa.transferAsset(S1, S2, QMINE_ASSET, 5000000000LL);
+    qrwa.transferAsset(S2, S3, QMINE_ASSET, 5000000000LL);
+    qrwa.transferAsset(S3, S4, QMINE_ASSET, 5000000000LL);
+    qrwa.transferAsset(S4, S5, QMINE_ASSET, 5000000000LL);
+
+    // Revenue
+    qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), REVENUE_AMT);
+
+    // Release Poll
+    pollInput.amount = 500;
+    pollInput.proposalName = id::randomValue();
+    pollOut = qrwa.createAssetReleasePoll(ADMIN_ADDRESS, pollInput);
+    uint64 pollIdEp3 = pollOut.proposalId;
+
+    EXPECT_EQ(qrwa.voteAssetRelease(S1, pollIdEp3, 1), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteAssetRelease(S2, pollIdEp3, 1), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteAssetRelease(S3, pollIdEp3, 1), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteAssetRelease(S4, pollIdEp3, 1), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteAssetRelease(S5, pollIdEp3, 1), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteAssetRelease(Q1, pollIdEp3, 1), QRWA_STATUS_FAILURE_NOT_AUTHORIZED);
+
+    // Gov Vote
+    QRWA::qRWAGovParams newParams = qrwa.getGovParams();
+    newParams.electricityPercent = 300;
+    newParams.maintenancePercent = 100;
+
+    newParams.mAdminAddress = ADMIN_ADDRESS;
+    newParams.qmineDevAddress = QMINE_DEV_ADDR_TEST;
+    newParams.electricityAddress = FEE_ADDR_E;
+    newParams.maintenanceAddress = FEE_ADDR_M;
+    newParams.reinvestmentAddress = FEE_ADDR_R;
+
+    EXPECT_EQ(qrwa.voteGovParams(S1, newParams), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteGovParams(S2, newParams), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteGovParams(S3, newParams), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteGovParams(S4, newParams), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteGovParams(S5, newParams), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteGovParams(Q1, newParams), QRWA_STATUS_FAILURE_NOT_AUTHORIZED);
+
+    qrwa.endEpoch();
+
+    // Checks Ep 3
+    etalonTick.day += 7;
+    qrwa.resetPayoutTime();
+    qrwa.endTick();
+
+#if ENABLE_BALANCE_DEBUG
+    std::cout << " END-EPOCH 3\n";
+    print_balances();
+#endif
+
+    auto pollResultEp3 = qrwa.getAssetReleasePoll(pollIdEp3);
+    EXPECT_EQ(pollResultEp3.proposal.status, QRWA_POLL_STATUS_PASSED_EXECUTED);
+    EXPECT_EQ(numberOfShares(QMINE_ASSET, { DESTINATION_ADDR, QX_CONTRACT_INDEX }), 1000 + 500);
+
+    auto activeParams = qrwa.getGovParams();
+    EXPECT_EQ(activeParams.electricityPercent, 300);
+    EXPECT_EQ(activeParams.maintenancePercent, 100);
+
+    // Calculate Pools based on Revenue - 100 QU Fee
+    sint64 netRevenueEp3 = REVENUE_AMT - 100;
+    sint64 feeAmtEp3 = (netRevenueEp3 * 500) / 1000; // 50% fees still (params update next epoch)
+    sint64 distributableEp3 = netRevenueEp3 - feeAmtEp3;
+    sint64 qminePoolEp3 = (distributableEp3 * 900) / 1000;
+    sint64 qrwaPoolEp3 = distributableEp3 - qminePoolEp3;
+
+    // Contract released 1000 + 500. Balance = 150B - 1500.
+    sint64 payoutBaseEp3 = TOTAL_SUPPLY - (TREASURY_INIT - 1500);
+
+    sint64 qrwaRateEp3 = getQrwaRateForEpoch(qrwaPoolEp3);
+
+    divS1 = calculateQminePayout(145000000000LL, payoutBaseEp3, qminePoolEp3);
+    divS2 = calculateQminePayout(180000000000LL, payoutBaseEp3, qminePoolEp3);
+    divS3 = calculateQminePayout(165000000000LL, payoutBaseEp3, qminePoolEp3);
+    divS4 = calculateQminePayout(175000000000LL, payoutBaseEp3, qminePoolEp3);
+    divS5 = calculateQminePayout(180000000000LL, payoutBaseEp3, qminePoolEp3);
+
+    divQS1 = calculateQrwaPayout(200, qrwaRateEp3);
+    divQQ1 = calculateQrwaPayout(200, qrwaRateEp3);
+    divQQ2 = calculateQrwaPayout(276, qrwaRateEp3);
+
+    EXPECT_EQ(getBalance(S1), prevBalances[S1] + divS1 + divQS1);
+    EXPECT_EQ(getBalance(S2), prevBalances[S2] + divS2);
+    EXPECT_EQ(getBalance(S3), prevBalances[S3] + divS3);
+    EXPECT_EQ(getBalance(S4), prevBalances[S4] + divS4);
+    EXPECT_EQ(getBalance(S5), prevBalances[S5] + divS5);
+    EXPECT_EQ(getBalance(Q1), prevBalances[Q1] + divQQ1);
+    EXPECT_EQ(getBalance(Q2), prevBalances[Q2] + divQQ2);
+
+    snapshotBalances();
+
+#if ENABLE_BALANCE_DEBUG
+    std::cout << " PRE-EPOCH 4\n";
+    print_balances();
+#endif
+
+    // epoch 4 (no transfers)
+    qrwa.beginEpoch();
+    qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), REVENUE_AMT);
+    qrwa.endEpoch();
+
+    // Checks Ep 4
+    etalonTick.day += 7;
+    qrwa.resetPayoutTime();
+    qrwa.endTick();
+
+#if ENABLE_BALANCE_DEBUG
+    std::cout << " END-EPOCH 4\n";
+    print_balances();
+#endif
+
+    // Payout base remains same as previous epoch (no new releases)
+    sint64 payoutBaseEp4 = payoutBaseEp3;
+    // Revenue is full 10M (no releases)
+    sint64 qminePoolEp4 = QMINE_POOL_AMT;
+
+    sint64 qrwaRateEp4 = getQrwaRateForEpoch(QRWA_POOL_AMT_BASE);
+
+    divS1 = calculateQminePayout(145000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS2 = calculateQminePayout(180000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS3 = calculateQminePayout(165000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS4 = calculateQminePayout(175000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS5 = calculateQminePayout(185000000000LL, payoutBaseEp4, qminePoolEp4);
+
+    divQS1 = calculateQrwaPayout(200, qrwaRateEp4);
+    divQQ1 = calculateQrwaPayout(200, qrwaRateEp4);
+    divQQ2 = calculateQrwaPayout(276, qrwaRateEp4);
+
+    EXPECT_EQ(getBalance(S1), prevBalances[S1] + divS1 + divQS1);
+    EXPECT_EQ(getBalance(S2), prevBalances[S2] + divS2);
+    EXPECT_EQ(getBalance(S3), prevBalances[S3] + divS3);
+    EXPECT_EQ(getBalance(S4), prevBalances[S4] + divS4);
+    EXPECT_EQ(getBalance(S5), prevBalances[S5] + divS5);
+    EXPECT_EQ(getBalance(Q1), prevBalances[Q1] + divQQ1);
+    EXPECT_EQ(getBalance(Q2), prevBalances[Q2] + divQQ2);
+
+    snapshotBalances();
+
+#if ENABLE_BALANCE_DEBUG
+    std::cout << " PRE-EPOCH 5\n";
+    print_balances();
+#endif
+
+    // epoch 5
+    qrwa.beginEpoch();
+    qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), REVENUE_AMT);
+
+    // Release Poll
+    pollInput.amount = 100;
+    pollInput.proposalName = id::randomValue();
+    pollOut = qrwa.createAssetReleasePoll(ADMIN_ADDRESS, pollInput);
+    uint64 pollIdEp5 = pollOut.proposalId;
+
+    // Vote NO (3/5 Majority)
+    EXPECT_EQ(qrwa.voteAssetRelease(S1, pollIdEp5, 0), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteAssetRelease(S2, pollIdEp5, 0), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteAssetRelease(S3, pollIdEp5, 0), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteAssetRelease(S4, pollIdEp5, 1), QRWA_STATUS_SUCCESS);
+    EXPECT_EQ(qrwa.voteAssetRelease(S5, pollIdEp5, 1), QRWA_STATUS_SUCCESS);
+
+    qrwa.endEpoch();
+
+    // Checks Ep 5
+    etalonTick.day += 7;
+    qrwa.resetPayoutTime();
+    qrwa.endTick();
+
+#if ENABLE_BALANCE_DEBUG
+    std::cout << " END-EPOCH 5\n";
+    print_balances();
+#endif
+
+    auto pollResultEp5 = qrwa.getAssetReleasePoll(pollIdEp5);
+    EXPECT_EQ(pollResultEp5.proposal.status, QRWA_POLL_STATUS_FAILED_VOTE);
+    EXPECT_EQ(numberOfShares(QMINE_ASSET, { DESTINATION_ADDR, QX_CONTRACT_INDEX }), 1500); // Unchanged
+
+    // Failed vote = No release = No fee = Full Revenue. Base unchanged.
+    sint64 qrwaRateEp5 = getQrwaRateForEpoch(QRWA_POOL_AMT_BASE);
+
+    divS1 = calculateQminePayout(145000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS2 = calculateQminePayout(180000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS3 = calculateQminePayout(165000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS4 = calculateQminePayout(175000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS5 = calculateQminePayout(185000000000LL, payoutBaseEp4, qminePoolEp4);
+
+    divQS1 = calculateQrwaPayout(200, qrwaRateEp5);
+    divQQ1 = calculateQrwaPayout(200, qrwaRateEp5);
+    divQQ2 = calculateQrwaPayout(276, qrwaRateEp5);
+
+    EXPECT_EQ(getBalance(S1), prevBalances[S1] + divS1 + divQS1);
+    EXPECT_EQ(getBalance(S2), prevBalances[S2] + divS2);
+    EXPECT_EQ(getBalance(S3), prevBalances[S3] + divS3);
+    EXPECT_EQ(getBalance(S4), prevBalances[S4] + divS4);
+    EXPECT_EQ(getBalance(S5), prevBalances[S5] + divS5);
+    EXPECT_EQ(getBalance(Q1), prevBalances[Q1] + divQQ1);
+    EXPECT_EQ(getBalance(Q2), prevBalances[Q2] + divQQ2);
+
+    snapshotBalances();
+
+#if ENABLE_BALANCE_DEBUG
+    std::cout << " PRE-EPOCH 6\n";
+    print_balances();
+#endif
+
+    // epoch 6
+    qrwa.beginEpoch();
+
+    // Revenue
+    qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), REVENUE_AMT);
+
+    // Create Gov Proposal
+    QRWA::qRWAGovParams failParams = qrwa.getGovParams();
+    failParams.reinvestmentPercent = 200;
+
+    // Only S1 votes (< 20% supply). Quorum fail
+    EXPECT_EQ(qrwa.voteGovParams(S1, failParams), QRWA_STATUS_SUCCESS);
+
+    qrwa.endEpoch();
+
+    // Checks Ep 6
+    etalonTick.day += 7;
+    qrwa.resetPayoutTime();
+    qrwa.endTick();
+
+#if ENABLE_BALANCE_DEBUG
+    std::cout << " END-EPOCH 6\n";
+    print_balances();
+#endif
+
+    auto paramsEp6 = qrwa.getGovParams();
+    EXPECT_EQ(paramsEp6.reinvestmentPercent, 100);
+    EXPECT_NE(paramsEp6.reinvestmentPercent, 200);
+
+    sint64 qrwaRateEp6 = getQrwaRateForEpoch(QRWA_POOL_AMT_BASE);
+
+    divS1 = calculateQminePayout(145000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS2 = calculateQminePayout(180000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS3 = calculateQminePayout(165000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS4 = calculateQminePayout(175000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS5 = calculateQminePayout(185000000000LL, payoutBaseEp4, qminePoolEp4);
+
+    divQS1 = calculateQrwaPayout(200, qrwaRateEp6);
+    divQQ1 = calculateQrwaPayout(200, qrwaRateEp6);
+    divQQ2 = calculateQrwaPayout(276, qrwaRateEp6);
+
+    EXPECT_EQ(getBalance(S1), prevBalances[S1] + divS1 + divQS1);
+    EXPECT_EQ(getBalance(S2), prevBalances[S2] + divS2);
+    EXPECT_EQ(getBalance(S3), prevBalances[S3] + divS3);
+    EXPECT_EQ(getBalance(S4), prevBalances[S4] + divS4);
+    EXPECT_EQ(getBalance(S5), prevBalances[S5] + divS5);
+    EXPECT_EQ(getBalance(Q1), prevBalances[Q1] + divQQ1);
+    EXPECT_EQ(getBalance(Q2), prevBalances[Q2] + divQQ2);
+
+    snapshotBalances();
+
+#if ENABLE_BALANCE_DEBUG
+    std::cout << " PRE-EPOCH 7\n";
+    print_balances();
+#endif
+
+    // epoch 7
+    qrwa.beginEpoch();
+
+    // Revenue
+    qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), REVENUE_AMT);
+
+    // Create poll, no votes
+    pollInput.amount = 100;
+    pollInput.proposalName = id::randomValue();
+    pollOut = qrwa.createAssetReleasePoll(ADMIN_ADDRESS, pollInput);
+    uint64 pollIdEp7 = pollOut.proposalId;
+
+    qrwa.endEpoch();
+
+    // Checks Ep 7
+    etalonTick.day += 7;
+    qrwa.resetPayoutTime();
+    qrwa.endTick();
+
+#if ENABLE_BALANCE_DEBUG
+    std::cout << " END-EPOCH 7\n";
+    print_balances();
+#endif
+
+    auto pollResultEp7 = qrwa.getAssetReleasePoll(pollIdEp7);
+    EXPECT_EQ(pollResultEp7.proposal.status, QRWA_POLL_STATUS_FAILED_VOTE);
+
+    sint64 qrwaRateEp7 = getQrwaRateForEpoch(QRWA_POOL_AMT_BASE);
+
+    divS1 = calculateQminePayout(145000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS2 = calculateQminePayout(180000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS3 = calculateQminePayout(165000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS4 = calculateQminePayout(175000000000LL, payoutBaseEp4, qminePoolEp4);
+    divS5 = calculateQminePayout(185000000000LL, payoutBaseEp4, qminePoolEp4);
+
+    divQS1 = calculateQrwaPayout(200, qrwaRateEp7);
+    divQQ1 = calculateQrwaPayout(200, qrwaRateEp7);
+    divQQ2 = calculateQrwaPayout(276, qrwaRateEp7);
+
+    EXPECT_EQ(getBalance(S1), prevBalances[S1] + divS1 + divQS1);
+    EXPECT_EQ(getBalance(S2), prevBalances[S2] + divS2);
+    EXPECT_EQ(getBalance(S3), prevBalances[S3] + divS3);
+    EXPECT_EQ(getBalance(S4), prevBalances[S4] + divS4);
+    EXPECT_EQ(getBalance(S5), prevBalances[S5] + divS5);
+    EXPECT_EQ(getBalance(Q1), prevBalances[Q1] + divQQ1);
+    EXPECT_EQ(getBalance(Q2), prevBalances[Q2] + divQQ2);
 }
