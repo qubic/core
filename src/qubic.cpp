@@ -1667,7 +1667,12 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 
 static void processOracleMachineReply(Peer* peer, RequestResponseHeader* header)
 {
-    // TODO: make sure to only accept these messages from outgoing connections to OM nodes (for example by checking flag in peer struct here)
+    // Ignore message fron non oracle machine node
+    if (!peer->isOracleMachineNode())
+    {
+        return;
+    }
+
     auto* msg = header->getPayload<OracleMachineReply>();
     if (header->size() >= sizeof(RequestResponseHeader) + sizeof(OracleMachineReply))
     {
