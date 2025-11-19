@@ -6,18 +6,8 @@
 // Transaction input type for execution fee reporting
 constexpr int EXECUTION_FEE_REPORT_INPUT_TYPE = 9;
 
-// Entry for a single contract's execution fee
-struct ContractExecutionFeeEntry
-{
-    unsigned int contractIndex;      // Contract index
-    unsigned int _padding;           // 4 bytes
-    long long executionFee;          // executionTime * multiplier
-};
-
-static_assert(sizeof(ContractExecutionFeeEntry) == 4 + 4 + 8, "ContractExecutionFeeEntry size must be 16 bytes");
-
 // Variable-length transaction for reporting execution fees
-// Layout: ExecutionFeeReportTransactionPrefix + array of ContractExecutionFeeEntry + ExecutionFeeReportTransactionPostfix
+// Layout: ExecutionFeeReportTransactionPrefix + contractIndices[numEntries] + [alignment padding] + executionFees[numEntries] + ExecutionFeeReportTransactionPostfix
 struct ExecutionFeeReportTransactionPrefix : public Transaction
 {
     static constexpr unsigned char transactionType()
@@ -37,7 +27,11 @@ struct ExecutionFeeReportTransactionPrefix : public Transaction
 
     static constexpr unsigned short maxInputSize()
     {
-        return sizeof(phaseNumber) + sizeof(_padding) + contractCount * sizeof(ContractExecutionFeeEntry) + sizeof(m256i);
+        // phaseNumber + numEntries + contractIndices[contractCount] + alignment + executionFees[contractCount] + dataLock
+        unsigned int indicesSize = contractCount * sizeof(unsigned int);
+        unsigned int alignmentPadding = (contractCount % 2 == 1) ? sizeof(unsigned int) : 0;
+        unsigned int feesSize = contractCount * sizeof(long long);
+        return sizeof(phaseNumber) + sizeof(numEntries) + indicesSize + alignmentPadding + feesSize + sizeof(m256i);
     }
 
     static bool isValidExecutionFeeReport(const Transaction* transaction)
@@ -47,31 +41,52 @@ struct ExecutionFeeReportTransactionPrefix : public Transaction
             && transaction->inputSize <= maxInputSize();
     }
 
-    static unsigned int getPayloadSize(const Transaction* transaction)
-    {
-        const auto* prefix = (const ExecutionFeeReportTransactionPrefix*)transaction;
-        return transaction->inputSize - sizeof(prefix->phaseNumber) - sizeof(prefix->_padding) - sizeof(m256i);
-    }
-
     static unsigned int getNumEntries(const Transaction* transaction)
     {
-        return getPayloadSize(transaction) / sizeof(ContractExecutionFeeEntry);
+        const auto* prefix = (const ExecutionFeeReportTransactionPrefix*)transaction;
+        return prefix->numEntries;
     }
 
     static bool isValidEntryAlignment(const Transaction* transaction)
     {
-        return (getPayloadSize(transaction) % sizeof(ContractExecutionFeeEntry)) == 0;
+        const auto* prefix = (const ExecutionFeeReportTransactionPrefix*)transaction;
+        unsigned int numEntries = prefix->numEntries;
+
+        // Calculate expected payload size
+        unsigned int indicesSize = numEntries * sizeof(unsigned int);
+        unsigned int alignmentPadding = (numEntries % 2 == 1) ? sizeof(unsigned int) : 0;
+        unsigned int feesSize = numEntries * sizeof(long long);
+        unsigned int expectedPayloadSize = indicesSize + alignmentPadding + feesSize;
+
+        // Actual payload size (inputSize - phaseNumber - numEntries - dataLock)
+        unsigned int actualPayloadSize = transaction->inputSize - sizeof(prefix->phaseNumber) - sizeof(prefix->numEntries) - sizeof(m256i);
+
+        return actualPayloadSize == expectedPayloadSize;
     }
 
-    static const ContractExecutionFeeEntry* getEntries(const Transaction* transaction)
+    static const unsigned int* getContractIndices(const Transaction* transaction)
     {
         const auto* prefix = (const ExecutionFeeReportTransactionPrefix*)transaction;
-        return (const ContractExecutionFeeEntry*)(transaction->inputPtr() + sizeof(prefix->phaseNumber) + sizeof(prefix->_padding));
+        return (const unsigned int*)(transaction->inputPtr() + sizeof(prefix->phaseNumber) + sizeof(prefix->numEntries));
+    }
+
+    static const long long* getExecutionFees(const Transaction* transaction)
+    {
+        const auto* prefix = (const ExecutionFeeReportTransactionPrefix*)transaction;
+        unsigned int numEntries = prefix->numEntries;
+        unsigned int indicesSize = numEntries * sizeof(unsigned int);
+        unsigned int alignmentPadding = (numEntries % 2 == 1) ? sizeof(unsigned int) : 0;
+
+        const unsigned char* afterPrefix = transaction->inputPtr() + sizeof(prefix->phaseNumber) + sizeof(prefix->numEntries);
+        return (const long long*)(afterPrefix + indicesSize + alignmentPadding);
     }
 
     unsigned int phaseNumber;        // Phase this report is for (tick / NUMBER_OF_COMPUTORS)
-    unsigned int _padding;
-    // Followed by variable number of ContractExecutionFeeEntry structures
+    unsigned int numEntries;         // Number of contract entries in this report
+    // Followed by:
+    // - unsigned int contractIndices[numEntries]
+    // - [0 or 4 bytes alignment padding for executionFees array]
+    // - long long executionFees[numEntries]
 };
 
 struct ExecutionFeeReportTransactionPostfix
@@ -85,9 +100,54 @@ struct ExecutionFeeReportTransactionPostfix
 struct ExecutionFeeReportPayload
 {
     ExecutionFeeReportTransactionPrefix transaction;
-    ContractExecutionFeeEntry entries[contractCount];
+    unsigned int contractIndices[contractCount];
+    long long executionFees[contractCount];  // Compiler auto-aligns to 8 bytes
     ExecutionFeeReportTransactionPostfix postfix;
 };
 
-static_assert( sizeof(ExecutionFeeReportPayload) == 84 + 4 /* padding */ + (contractCount * 16) + 32 +64, "ExecutionFeeReportPayload has wrong struct size");
-static_assert( sizeof(ExecutionFeeReportPayload) <= sizeof(Transaction) + MAX_INPUT_SIZE + SIGNATURE_SIZE, "ExecutionFeeReportPayload is bigger than max transaction size. Currently max 61 SC are supported by the report");
+// Calculate expected size: Transaction(84) + phaseNumber(4) + numEntries(4) + contractIndices + alignment + executionFees + dataLock(32) + signature(64)
+static_assert( sizeof(ExecutionFeeReportPayload) == sizeof(Transaction) + sizeof(unsigned int) + sizeof(unsigned int) + (contractCount * sizeof(unsigned int)) + ((contractCount % 2 == 1) ? sizeof(unsigned int) : 0) + (contractCount * sizeof(long long)) + sizeof(m256i) + SIGNATURE_SIZE, "ExecutionFeeReportPayload has wrong struct size");
+static_assert( sizeof(ExecutionFeeReportPayload) <= sizeof(Transaction) + MAX_INPUT_SIZE + SIGNATURE_SIZE, "ExecutionFeeReportPayload is bigger than max transaction size. Currently max 82 SC are supported by the report");
+
+// Builds the execution fee report payload from contract execution times
+// Returns the number of entries added (0 if no contracts were executed)
+static inline unsigned int buildExecutionFeeReportPayload(
+    ExecutionFeeReportPayload& payload,
+    const long long* contractExecutionTimes,
+    const unsigned int phaseNumber,
+    const long long multiplier
+)
+{
+    payload.transaction.phaseNumber = phaseNumber;
+
+    // Build arrays with contract indices and execution fees
+    unsigned int entryCount = 0;
+    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
+    {
+        long long executionTime = contractExecutionTimes[contractIndex];
+        if (executionTime > 0)
+        {
+            payload.contractIndices[entryCount] = contractIndex;
+            payload.executionFees[entryCount] = executionTime * multiplier;
+            entryCount++;
+        }
+    }
+    payload.transaction.numEntries = entryCount;
+
+    // Return if no contract was executed
+    if (entryCount == 0)
+    {
+        return 0;
+    }
+
+    // Compact the executionFees to the correct position (right after contractIndices[entryCount] + alignment)
+    unsigned int alignmentPadding = (entryCount % 2 == 1) ? sizeof(unsigned int) : 0;
+    unsigned char* afterPrefix = ((unsigned char*)&payload) + sizeof(ExecutionFeeReportTransactionPrefix);
+    unsigned char* compactFeesPosition = afterPrefix + (entryCount * sizeof(unsigned int)) + alignmentPadding;
+    copyMem(compactFeesPosition, payload.executionFees, entryCount * sizeof(long long));
+
+    // Calculate and set input size based on actual number of entries
+    payload.transaction.inputSize = (unsigned short)(sizeof(payload.transaction.phaseNumber) + sizeof(payload.transaction.numEntries) + (entryCount * sizeof(unsigned int)) + alignmentPadding + (entryCount * sizeof(long long)) + sizeof(ExecutionFeeReportTransactionPostfix::dataLock));
+
+    return entryCount;
+}

@@ -6,10 +6,13 @@
 // Helper to create a valid baseline test transaction with given entries
 static Transaction* createTestTransaction(unsigned char* buffer, size_t bufferSize,
                                           unsigned int numEntries,
-                                          const ContractExecutionFeeEntry* entries)
+                                          const unsigned int* contractIndices,
+                                          const long long* executionFees)
 {
+    unsigned int alignmentPadding = (numEntries % 2 == 1) ? sizeof(unsigned int) : 0;
     const unsigned int inputSize = sizeof(unsigned int) + sizeof(unsigned int) +
-                                    (numEntries * sizeof(ContractExecutionFeeEntry)) +
+                                    (numEntries * sizeof(unsigned int)) + alignmentPadding +
+                                    (numEntries * sizeof(long long)) +
                                     sizeof(m256i);
 
     if (sizeof(Transaction) + inputSize > bufferSize)
@@ -27,15 +30,21 @@ static Transaction* createTestTransaction(unsigned char* buffer, size_t bufferSi
 
     unsigned char* inputPtr = tx->inputPtr();
     *(unsigned int*)inputPtr = 5; // phaseNumber
-    *(unsigned int*)(inputPtr + 4) = 0; // padding
+    *(unsigned int*)(inputPtr + 4) = numEntries;
 
-    ContractExecutionFeeEntry* txEntries = (ContractExecutionFeeEntry*)(inputPtr + 8);
+    unsigned int* txIndices = (unsigned int*)(inputPtr + 8);
     for (unsigned int i = 0; i < numEntries; i++)
     {
-        txEntries[i] = entries[i];
+        txIndices[i] = contractIndices[i];
     }
 
-    m256i* dataLock = (m256i*)(inputPtr + 8 + (numEntries * sizeof(ContractExecutionFeeEntry)));
+    long long* txFees = (long long*)(inputPtr + 8 + (numEntries * sizeof(unsigned int)) + alignmentPadding);
+    for (unsigned int i = 0; i < numEntries; i++)
+    {
+        txFees[i] = executionFees[i];
+    }
+
+    m256i* dataLock = (m256i*)(inputPtr + 8 + (numEntries * sizeof(unsigned int)) + alignmentPadding + (numEntries * sizeof(long long)));
     *dataLock = m256i::zero();
 
     return tx;
@@ -97,32 +106,30 @@ TEST(ExecutionFeeReportCollector, BoundaryValidation) {
 
 TEST(ExecutionFeeReportTransaction, ParseValidTransaction) {
     unsigned char buffer[512];
-    ContractExecutionFeeEntry entries[2] = {
-        {0, 0, 1000},
-        {1, 0, 2000}
-    };
+    unsigned int contractIndices[2] = {0, 1};
+    long long executionFees[2] = {1000, 2000};
 
-    Transaction* tx = createTestTransaction(buffer, sizeof(buffer), 2, entries);
+    Transaction* tx = createTestTransaction(buffer, sizeof(buffer), 2, contractIndices, executionFees);
     ASSERT_NE(tx, nullptr);
 
     EXPECT_TRUE(ExecutionFeeReportTransactionPrefix::isValidExecutionFeeReport(tx));
     EXPECT_TRUE(ExecutionFeeReportTransactionPrefix::isValidEntryAlignment(tx));
     EXPECT_EQ(ExecutionFeeReportTransactionPrefix::getNumEntries(tx), 2u);
 
-    const ContractExecutionFeeEntry* parsedEntries = ExecutionFeeReportTransactionPrefix::getEntries(tx);
-    EXPECT_EQ(parsedEntries[0].contractIndex, 0u);
-    EXPECT_EQ(parsedEntries[0].executionFee, 1000);
-    EXPECT_EQ(parsedEntries[1].contractIndex, 1u);
-    EXPECT_EQ(parsedEntries[1].executionFee, 2000);
+    const unsigned int* parsedIndices = ExecutionFeeReportTransactionPrefix::getContractIndices(tx);
+    const long long* parsedFees = ExecutionFeeReportTransactionPrefix::getExecutionFees(tx);
+    EXPECT_EQ(parsedIndices[0], 0u);
+    EXPECT_EQ(parsedFees[0], 1000);
+    EXPECT_EQ(parsedIndices[1], 1u);
+    EXPECT_EQ(parsedFees[1], 2000);
 }
 
 TEST(ExecutionFeeReportTransaction, RejectNonZeroAmount) {
     unsigned char buffer[512];
-    ContractExecutionFeeEntry entries[1] = {
-        {0, 0, 1000}
-    };
+    unsigned int contractIndices[1] = {0};
+    long long executionFees[1] = {1000};
 
-    Transaction* tx = createTestTransaction(buffer, sizeof(buffer), 1, entries);
+    Transaction* tx = createTestTransaction(buffer, sizeof(buffer), 1, contractIndices, executionFees);
     ASSERT_NE(tx, nullptr);
 
     // Valid initially
@@ -137,18 +144,17 @@ TEST(ExecutionFeeReportTransaction, RejectNonZeroAmount) {
 
 TEST(ExecutionFeeReportTransaction, RejectMisalignedEntries) {
     unsigned char buffer[512];
-    ContractExecutionFeeEntry entries[1] = {
-        {0, 0, 1000}
-    };
+    unsigned int contractIndices[1] = {0};
+    long long executionFees[1] = {1000};
 
-    Transaction* tx = createTestTransaction(buffer, sizeof(buffer), 1, entries);
+    Transaction* tx = createTestTransaction(buffer, sizeof(buffer), 1, contractIndices, executionFees);
     ASSERT_NE(tx, nullptr);
 
     // Valid initially
     EXPECT_TRUE(ExecutionFeeReportTransactionPrefix::isValidEntryAlignment(tx));
 
     // Break alignment by adding 1 byte to inputSize
-    // Payload size will no longer be divisible by sizeof(ContractExecutionFeeEntry)
+    // Payload size will no longer match expected size for numEntries
     tx->inputSize += 1;
 
     // Should now have invalid alignment
@@ -160,49 +166,39 @@ TEST(ExecutionFeeReportCollector, ValidateReportEntries) {
     collector.init();
 
     // Valid entries
-    ContractExecutionFeeEntry validEntries[2] = {
-        {0, 0, 1000},
-        {1, 0, 2000}
-    };
-    EXPECT_TRUE(collector.validateReportEntries(validEntries, 2));
+    unsigned int validIndices[2] = {0, 1};
+    long long validFees[2] = {1000, 2000};
+    EXPECT_TRUE(collector.validateReportEntries(validIndices, validFees, 2));
 
     // Invalid: contractIndex >= contractCount
-    ContractExecutionFeeEntry invalidContract[1] = {
-        {contractCount, 0, 1000}
-    };
-    EXPECT_FALSE(collector.validateReportEntries(invalidContract, 1));
+    unsigned int invalidContractIndices[1] = {contractCount};
+    long long invalidContractFees[1] = {1000};
+    EXPECT_FALSE(collector.validateReportEntries(invalidContractIndices, invalidContractFees, 1));
 
     // Invalid: executionFee <= 0
-    ContractExecutionFeeEntry zeroFee[1] = {
-        {0, 0, 0}
-    };
-    EXPECT_FALSE(collector.validateReportEntries(zeroFee, 1));
+    unsigned int zeroFeeIndices[1] = {0};
+    long long zeroFees[1] = {0};
+    EXPECT_FALSE(collector.validateReportEntries(zeroFeeIndices, zeroFees, 1));
 
-    ContractExecutionFeeEntry negativeFee[1] = {
-        {0, 0, -100}
-    };
-    EXPECT_FALSE(collector.validateReportEntries(negativeFee, 1));
+    unsigned int negativeFeeIndices[1] = {0};
+    long long negativeFees[1] = {-100};
+    EXPECT_FALSE(collector.validateReportEntries(negativeFeeIndices, negativeFees, 1));
 
     // Invalid: one good entry, one bad
-    ContractExecutionFeeEntry mixedEntries[2] = {
-        {0, 0, 1000},
-        {contractCount + 5, 0, 2000}
-    };
-    EXPECT_FALSE(collector.validateReportEntries(mixedEntries, 2));
+    unsigned int mixedIndices[2] = {0, contractCount + 5};
+    long long mixedFees[2] = {1000, 2000};
+    EXPECT_FALSE(collector.validateReportEntries(mixedIndices, mixedFees, 2));
 }
 
 TEST(ExecutionFeeReportCollector, StoreReportEntries) {
     ExecutionFeeReportCollector collector;
     collector.init();
 
-    ContractExecutionFeeEntry entries[3] = {
-        {0, 0, 1000},
-        {2, 0, 3000},
-        {5, 0, 7000}
-    };
+    unsigned int contractIndices[3] = {0, 2, 5};
+    long long executionFees[3] = {1000, 3000, 7000};
 
     unsigned int computorIndex = 10;
-    collector.storeReportEntries(entries, 3, computorIndex);
+    collector.storeReportEntries(contractIndices, executionFees, 3, computorIndex);
 
     // Verify entries were stored at correct positions
     long long* reports0 = collector.getReportsForContract(0);
@@ -224,24 +220,19 @@ TEST(ExecutionFeeReportCollector, MultipleComputorsReporting) {
     collector.init();
 
     // Computor 0 reports for contracts 0 and 1
-    ContractExecutionFeeEntry comp0Entries[2] = {
-        {0, 0, 1000},
-        {1, 0, 2000}
-    };
-    collector.storeReportEntries(comp0Entries, 2, 0);
+    unsigned int comp0Indices[2] = {0, 1};
+    long long comp0Fees[2] = {1000, 2000};
+    collector.storeReportEntries(comp0Indices, comp0Fees, 2, 0);
 
     // Computor 5 reports for contracts 0 and 2 (different fee for contract 0)
-    ContractExecutionFeeEntry comp5Entries[2] = {
-        {0, 0, 1500},
-        {2, 0, 3000}
-    };
-    collector.storeReportEntries(comp5Entries, 2, 5);
+    unsigned int comp5Indices[2] = {0, 2};
+    long long comp5Fees[2] = {1500, 3000};
+    collector.storeReportEntries(comp5Indices, comp5Fees, 2, 5);
 
     // Computor 10 reports for contract 1 (different fee than computor 0)
-    ContractExecutionFeeEntry comp10Entries[1] = {
-        {1, 0, 2500}
-    };
-    collector.storeReportEntries(comp10Entries, 1, 10);
+    unsigned int comp10Indices[1] = {1};
+    long long comp10Fees[1] = {2500};
+    collector.storeReportEntries(comp10Indices, comp10Fees, 1, 10);
 
     // Verify contract 0 has reports from computors 0 and 5
     long long* reports0 = collector.getReportsForContract(0);
@@ -260,4 +251,59 @@ TEST(ExecutionFeeReportCollector, MultipleComputorsReporting) {
     EXPECT_EQ(reports2[0], 0);
     EXPECT_EQ(reports2[5], 3000);
     EXPECT_EQ(reports2[10], 0);
+}
+
+TEST(ExecutionFeeReportBuilder, BuildAndParseEvenEntries) {
+    ExecutionFeeReportPayload payload;
+    long long contractTimes[contractCount] = {0};
+    contractTimes[0] = 100;
+    contractTimes[1] = 200;
+
+    unsigned int entryCount = buildExecutionFeeReportPayload(payload, contractTimes, 5, 1000);
+    EXPECT_EQ(entryCount, 2u);
+
+    // Verify transaction is valid and parseable
+    Transaction* tx = (Transaction*)&payload;
+    EXPECT_TRUE(ExecutionFeeReportTransactionPrefix::isValidEntryAlignment(tx));
+    EXPECT_EQ(ExecutionFeeReportTransactionPrefix::getNumEntries(tx), 2u);
+
+    const unsigned int* indices = ExecutionFeeReportTransactionPrefix::getContractIndices(tx);
+    const long long* fees = ExecutionFeeReportTransactionPrefix::getExecutionFees(tx);
+    EXPECT_EQ(indices[0], 0u);
+    EXPECT_EQ(fees[0], 100000);
+    EXPECT_EQ(indices[1], 1u);
+    EXPECT_EQ(fees[1], 200000);
+}
+
+TEST(ExecutionFeeReportBuilder, BuildAndParseOddEntries) {
+    ExecutionFeeReportPayload payload;
+    long long contractTimes[contractCount] = {0};
+    contractTimes[0] = 100;
+    contractTimes[2] = 300;
+    contractTimes[5] = 600;
+
+    unsigned int entryCount = buildExecutionFeeReportPayload(payload, contractTimes, 10, 500);
+    EXPECT_EQ(entryCount, 3u);
+
+    // Verify transaction is valid and parseable (with alignment padding)
+    Transaction* tx = (Transaction*)&payload;
+    EXPECT_TRUE(ExecutionFeeReportTransactionPrefix::isValidEntryAlignment(tx));
+    EXPECT_EQ(ExecutionFeeReportTransactionPrefix::getNumEntries(tx), 3u);
+
+    const unsigned int* indices = ExecutionFeeReportTransactionPrefix::getContractIndices(tx);
+    const long long* fees = ExecutionFeeReportTransactionPrefix::getExecutionFees(tx);
+    EXPECT_EQ(indices[0], 0u);
+    EXPECT_EQ(fees[0], 50000);
+    EXPECT_EQ(indices[1], 2u);
+    EXPECT_EQ(fees[1], 150000);
+    EXPECT_EQ(indices[2], 5u);
+    EXPECT_EQ(fees[2], 300000);
+}
+
+TEST(ExecutionFeeReportBuilder, NoEntriesReturnsZero) {
+    ExecutionFeeReportPayload payload;
+    long long contractTimes[contractCount] = {0};
+
+    unsigned int entryCount = buildExecutionFeeReportPayload(payload, contractTimes, 7, 1000);
+    EXPECT_EQ(entryCount, 0u);
 }

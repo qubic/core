@@ -37,11 +37,11 @@ public:
         return nullptr;
     }
 
-    bool validateReportEntries(const ContractExecutionFeeEntry* entries, unsigned int numEntries)
+    bool validateReportEntries(const unsigned int* contractIndices, const long long* executionFees, unsigned int numEntries)
     {
         for (unsigned int i = 0; i < numEntries; i++)
         {
-            if (entries[i].contractIndex >= contractCount || entries[i].executionFee <= 0)
+            if (contractIndices[i] >= contractCount || executionFees[i] <= 0)
             {
                 return false;
             }
@@ -49,11 +49,11 @@ public:
         return true;
     }
 
-    void storeReportEntries(const ContractExecutionFeeEntry* entries, unsigned int numEntries, unsigned int computorIndex)
+    void storeReportEntries(const unsigned int* contractIndices, const long long* executionFees, unsigned int numEntries, unsigned int computorIndex)
     {
         for (unsigned int i = 0; i < numEntries; i++)
         {
-            storeReport(entries[i].contractIndex, computorIndex, entries[i].executionFee);
+            storeReport(contractIndices[i], computorIndex, executionFees[i]);
         }
     }
 
@@ -94,15 +94,16 @@ public:
         }
 
         const unsigned int numEntries = ExecutionFeeReportTransactionPrefix::getNumEntries(transaction);
-        const auto* entries = ExecutionFeeReportTransactionPrefix::getEntries(transaction);
+        const unsigned int* contractIndices = ExecutionFeeReportTransactionPrefix::getContractIndices(transaction);
+        const long long* executionFees = ExecutionFeeReportTransactionPrefix::getExecutionFees(transaction);
 
-        if (!validateReportEntries(entries, numEntries))
+        if (!validateReportEntries(contractIndices, executionFees, numEntries))
         {
             // Report contains invalid entries. E.g., Entry with negative fees or invalid contractIndex.
             return;
         }
 
-        storeReportEntries(entries, numEntries, computorIndex);
+        storeReportEntries(contractIndices, executionFees, numEntries, computorIndex);
 #endif
     }
 

@@ -2943,33 +2943,24 @@ static bool makeAndBroadCastExecutionFeeTransaction(int i, BroadcastFutureTickDa
     payload.transaction.amount = 0;
     payload.transaction.tick = system.tick + EXECUTION_FEE_REPORT_PUBLICATION_OFFSET;
     payload.transaction.inputType = ExecutionFeeReportTransactionPrefix::transactionType();
-    payload.transaction.phaseNumber = (system.tick / NUMBER_OF_COMPUTORS) - 1;
 
-    // Build array with execution fee entries
-    unsigned int entryCount = 0;
+    // Build the payload with contract execution times
     const int prevPhaseIndex = !contractExecutionTimeActiveArrayIndex;
-    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
-    {
-        long long executionTime = contractExecutionTimePerPhase[prevPhaseIndex][contractIndex];
-        if (executionTime > 0)
-        {
-            payload.entries[entryCount].contractIndex = contractIndex;
-            payload.entries[entryCount].executionFee = executionTime * EXECTUION_TIME_MULTIPLIER;
-            entryCount++;
-        }
-    }
+    unsigned int entryCount = buildExecutionFeeReportPayload(
+        payload,
+        contractExecutionTimePerPhase[prevPhaseIndex],
+        (system.tick / NUMBER_OF_COMPUTORS) - 1,
+        EXECTUION_TIME_MULTIPLIER
+    );
 
     // Return if no contract was executed during last phase
-    if (entryCount <=0)
+    if (entryCount == 0)
     {
         return false;
     }
 
-    // Calculate input size based on actual number of entries
-    payload.transaction.inputSize = (unsigned short)(sizeof(payload.transaction.phaseNumber) + sizeof(payload.transaction._padding) + (entryCount * sizeof(ContractExecutionFeeEntry)) + sizeof(ExecutionFeeReportTransactionPostfix::dataLock));
-
-    // Calculate the correct datalock position as this is a variable length package
-    m256i* datalockPtr = (m256i*)(((unsigned char*)&payload) + sizeof(ExecutionFeeReportTransactionPrefix) + (entryCount * sizeof(ContractExecutionFeeEntry)));
+    // Set datalock at the end of the compacted payload
+    m256i* datalockPtr = (m256i*)(payload.transaction.inputPtr() + payload.transaction.inputSize - sizeof(m256i));
     *datalockPtr = td.tickData.timelock;
 
     // Calculate the correct position of the signature as this is a variable length package
