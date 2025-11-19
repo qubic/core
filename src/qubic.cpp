@@ -36,6 +36,8 @@
 #define system qsystem
 #endif
 
+// #define NO_QIP
+
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
@@ -107,12 +109,24 @@
 #include "contract_core/qpi_mining_impl.h"
 #include "revenue.h"
 
+#include <csignal>
+
+// variables and declare for persisting state
+static volatile int requestPersistingNodeState = 0;
+static volatile int persistingNodeStateTickProcWaiting = 0;
+static m256i initialRandomSeedFromPersistingState;
+static bool loadMiningSeedFromFile = false;
+static bool loadAllNodeStateFromFile = false;
+
+static volatile int shutDownNode = 0;
+
 #include "extensions/cxxopts.h"
 #include "extensions/overload.h"
 
 #ifdef _WIN32
 #undef system
 #define system qsystem
+TickStorage::TransactionsDigestAccess TickStorage::transactionsDigestAccess;
 #endif
 
 ////////// Qubic \\\\\\\\\\
@@ -149,7 +163,6 @@ struct Processor : public CustomStack
 // Dynamic peers that can be added using command line
 std::vector<IPv4Address> knownPublicPeersDynamic;
 
-static volatile int shutDownNode = 0;
 static volatile unsigned char mainAuxStatus = 0;
 static volatile unsigned char isVirtualMachine = 0; // indicate that it is running on VM, to avoid running some functions for BM  (for testing and developing purposes)
 static volatile bool forceRefreshPeerList = false;
@@ -256,12 +269,6 @@ static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningSc
 static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gCustomMiningSharesCounter;
 
-// variables and declare for persisting state
-static volatile int requestPersistingNodeState = 0;
-static volatile int persistingNodeStateTickProcWaiting = 0;
-static m256i initialRandomSeedFromPersistingState;
-static bool loadMiningSeedFromFile = false;
-static bool loadAllNodeStateFromFile = false;
 #if TICK_STORAGE_AUTOSAVE_MODE
 static unsigned int nextPersistingNodeStateTick = 0;
 struct
@@ -295,6 +302,8 @@ static bool saveRevenueComponents(CHAR16* directory = NULL);
 #endif
 
 BroadcastFutureTickData broadcastedFutureTickData;
+
+#include "extensions/http.h"
 
 static struct
 {
@@ -7654,7 +7663,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #ifdef ENABLE_PROFILING
             gProfilingDataCollector.writeToFile();
 #endif
-
+            QubicHttpServer::stop();
             setText(message, L"Qubic ");
             appendQubicVersion(message);
             appendText(message, L" is shut down.");
@@ -7665,8 +7674,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
     {
         logToConsole(L"Initialization fails!");
     }
-
-    deinitialize();
+    //deinitialize();
 
     bs->Stall(1000000);
     // if (!shutDownNode)
@@ -7786,6 +7794,8 @@ void processArgs(int argc, const char* argv[]) {
         ("t,threads", "Total Threads will be used by the core", cxxopts::value<int>())
         ("d,ticking-delay", "Delay ticking process by milliseconds", cxxopts::value<int>())
         ("l,solution-threads", "Threads that will be used by the core to process solution", cxxopts::value<int>())
+        ("rp, reader-passcode", "Passcode to access log reader", cxxopts::value<std::string>())
+        ("hp, http-passcode", "Passcode to access http server", cxxopts::value<std::string>())
         ("s,security-tick", "Core will verify state after x tick, to reduce computational to the node", cxxopts::value<int>()->default_value("1"));
     auto result = options.parse(argc, argv);
 
@@ -7834,6 +7844,54 @@ void processArgs(int argc, const char* argv[]) {
         rebuildTxHashmap = true;
     }
 
+    if (result.count("reader-passcode")) {
+        std::string passcodeStr = result["reader-passcode"].as<std::string>();
+        std::stringstream ss(passcodeStr);
+        std::string token;
+        size_t index = 0;
+        while (std::getline(ss, token, '-') && index < 4) {
+            try {
+                unsigned long long passcode = std::stoull(token);
+                logReaderPasscodes[index++] = passcode;
+            } catch (const std::exception& e) {
+                logColorToScreen("ERROR", "Invalid passcode: " + token);
+                exit(1);
+            }
+        }
+
+        // Print passcodes for verification
+        std::string textLog = "Log reader passcodes set to: ";
+        textLog += std::to_string(logReaderPasscodes[0]) + " " +
+                   std::to_string(logReaderPasscodes[1]) + " " +
+                   std::to_string(logReaderPasscodes[2]) + " " +
+                   std::to_string(logReaderPasscodes[3]);
+        logColorToScreen("INFO", textLog);
+    }
+
+    if (result.count("http-passcode")) {
+        std::string passcodeStr = result["http-passcode"].as<std::string>();
+        std::stringstream ss(passcodeStr);
+        std::string token;
+        size_t index = 0;
+        while (std::getline(ss, token, '-') && index < 4) {
+            try {
+                unsigned long long passcode = std::stoull(token);
+                httpPasscodes[index++] = passcode;
+            } catch (const std::exception& e) {
+                logColorToScreen("ERROR", "Invalid passcode: " + token);
+                exit(1);
+            }
+        }
+
+        // Print passcodes for verification
+        std::string textLog = "Http passcodes set to: ";
+        textLog += std::to_string(httpPasscodes[0]) + " " +
+                   std::to_string(httpPasscodes[1]) + " " +
+                   std::to_string(httpPasscodes[2]) + " " +
+                   std::to_string(httpPasscodes[3]);
+        logColorToScreen("INFO", textLog);
+    }
+
     if (result.count("mode")) {
         std::vector<std::string> validModes = {"mainnet", "testnet"};
         std::string modeStr = result["mode"].as<std::string>();
@@ -7859,7 +7917,10 @@ int main(int argc, const char* argv[]) {
     logColorToScreen("INFO", "================== ~~~~~~~~~~~~~~~ ==================\n");
 
     Overload::initializeUefi();
-    return (int)efi_main(ih, st);
+    QubicHttpServer::start();
+    auto status = (int)efi_main(ih, st);
+    std::raise(SIGTERM);
+    return status;
 }
 
 

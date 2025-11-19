@@ -1381,7 +1381,7 @@ public:
     } tickTransactions;
 
     // Struct for access the transaction using its digest. It contains the offset in tickTransactionsPtr
-    struct TransactionsDigestAccess
+    static struct TransactionsDigestAccess
     {
         inline static void acquireLock()
         {

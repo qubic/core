@@ -6,6 +6,7 @@
 
 #include "contract_testing.h"
 
+#include <algorithm>
 #include <type_traits>
 
 
