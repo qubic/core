@@ -1,13 +1,13 @@
 #pragma once
 
+static unsigned long long httpPasscodes[4] = {};
+
 #ifdef __linux__
 
 #include <drogon/drogon.h>
 #include "ticking/tick_storage.h"
 
 using namespace drogon;
-
-static unsigned long long httpPasscodes[4] = {};
 
 namespace MiddleWare
 {
