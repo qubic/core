@@ -113,7 +113,9 @@ long long QPI::QpiContextProcedureCall::burn(long long amount, unsigned int cont
 
 long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long long amount) const
 {
-    if (contractCallbacksRunning & ContractCallbackPostIncomingTransfer)
+    // Transfer to contract is forbidden inside POST_INCOMING_TRANSFER to prevent nested callbacks
+    if (contractCallbacksRunning & ContractCallbackPostIncomingTransfer
+        && destination.u64._0 < contractCount && !destination.u64._1 && !destination.u64._2 && !destination.u64._3)
     {
         return INVALID_AMOUNT;
     }

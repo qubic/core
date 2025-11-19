@@ -181,6 +181,20 @@
 #define CONTRACT_STATE2_TYPE QBOND2
 #include "contracts/QBond.h"
 
+#ifndef NO_QIP
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QIP_CONTRACT_INDEX 18
+#define CONTRACT_INDEX QIP_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QIP
+#define CONTRACT_STATE2_TYPE QIP2
+#include "contracts/QIP.h"
+
+#endif
+
 // new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -283,6 +297,9 @@ constexpr struct ContractDescription
     {"QDRAW", 179, 10000, sizeof(QDRAW)}, // proposal in epoch 177, IPO in 178, construction and first use in 179
     {"RL", 182, 10000, sizeof(RL)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
     {"QBOND", 182, 10000, sizeof(QBOND)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
+#ifndef NO_QIP
+    {"QIP", 189, 10000, sizeof(QIP)}, // proposal in epoch 187, IPO in 188, construction and first use in 189
+#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA)},
@@ -395,6 +412,9 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDRAW);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(RL);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QBOND);
+#ifndef NO_QIP
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QIP);
+#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
