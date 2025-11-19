@@ -17,11 +17,14 @@
 #include "kangaroo_twelve.h"
 
 #include "text_output.h"
+#include "private_settings.h"
 
 
 #define DEJAVU_SWAP_LIMIT 1000000
 #define DISSEMINATION_MULTIPLIER 6
-#define NUMBER_OF_OUTGOING_CONNECTIONS 8
+#define NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS 8
+#define NUMBER_OF_OM_NODE_CONNECTIONS (sizeof(oracleMachineIPs) / sizeof(oracleMachineIPs[0]))
+#define NUMBER_OF_OUTGOING_CONNECTIONS (NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS + NUMBER_OF_OM_NODE_CONNECTIONS)
 #define NUMBER_OF_INCOMING_CONNECTIONS 88
 #define MAX_NUMBER_OF_PUBLIC_PEERS 1024
 #define REQUEST_QUEUE_BUFFER_SIZE 1073741824
@@ -31,7 +34,7 @@
 #define NUMBER_OF_PUBLIC_PEERS_TO_KEEP 10
 #define NUMBER_OF_WHITE_LIST_PEERS sizeof(whiteListPeers) / sizeof(whiteListPeers[0])
 #define NUMBER_OF_INCOMING_CONNECTIONS_RESERVED_FOR_WHITELIST_IPS 16
-static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
+static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
 
 static volatile bool listOfPeersIsStatic = false;
 
@@ -56,6 +59,9 @@ struct Peer
     // Indicate the peer is incomming connection type
     BOOLEAN isIncommingConnection;
 
+    // Indicate the peer is OM connection type which is a subtype of outgoing connection
+    BOOLEAN isOMNode;
+
     // Extra data to determine if this peer is a fullnode
     // Note: an **active fullnode** is a peer that is able to reply valid tick data, tick vote to this node after getting requested
     // If a peer is an active fullnode, it will receive more requests from this node than others, as well as longer alive connection time.
@@ -69,6 +75,11 @@ struct Peer
     bool isFullNode() const
     {
         return (lastActiveTick >= system.tick - 100);
+    }
+
+    bool isOracleMachineNode() const
+    {
+        return isOMNode;
     }
 
     // store a dejavu number into local list
@@ -107,6 +118,7 @@ struct Peer
         exchangedPublicPeers = FALSE;
         isClosing = FALSE;
         isIncommingConnection = FALSE;
+        isOMNode = FALSE;
         dataToTransmitSize = 0;
         lastActiveTick = 0;
         trackRequestedCounter = 0;
@@ -130,6 +142,10 @@ static int numberOfAcceptedIncommingConnection = 0;
 static volatile char publicPeersLock = 0;
 static unsigned int numberOfPublicPeers = 0;
 static PublicPeer publicPeers[MAX_NUMBER_OF_PUBLIC_PEERS];
+
+static volatile char omPeersLock = 0;
+static unsigned int numberOfOMPeers = 0;
+IPv4Address omIPv4Address[NUMBER_OF_OM_NODE_CONNECTIONS];
 
 static unsigned long long* dejavu0 = NULL;
 static unsigned long long* dejavu1 = NULL;
@@ -345,7 +361,21 @@ static void pushToFullNodes(RequestResponseHeader* requestResponseHeader, int nu
 
 static void pushToOracleMachineNodes(RequestResponseHeader* requestResponseHeader)
 {
-    // TODO
+    if (NUMBER_OF_OM_NODE_CONNECTIONS > 0)
+    {
+        unsigned short numberOfSuitablePeers = 0;
+        for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS && numberOfSuitablePeers < NUMBER_OF_OM_NODE_CONNECTIONS; i++)
+        {
+            if (peers[i].isOracleMachineNode()
+                && peers[i].tcp4Protocol
+                && peers[i].isConnectedAccepted
+                && !peers[i].isClosing)
+            {
+                push(&peers[i], requestResponseHeader);
+                numberOfSuitablePeers++;
+            }
+        }
+    }
 }
 
 // Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
@@ -564,6 +594,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
         {
             // outgoing connection
             peers[i].isIncommingConnection = FALSE;
+
             if (peers[i].connectAcceptToken.CompletionToken.Status)
             {
                 // connection rejected
@@ -923,10 +954,20 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
         if (i < NUMBER_OF_OUTGOING_CONNECTIONS)
         {
             // outgoing connection:
-            // randomly select public peer and try to connect if we do not
-            // yet have an outgoing connection to it
-            peers[i].address = publicPeers[random(numberOfPublicPeers)].address;
             peers[i].isIncommingConnection = FALSE;
+            // Check if this slot is for OM node
+            if (i >= NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS)
+            {
+                peers[i].isOMNode = TRUE;
+                peers[i].address = omIPv4Address[i - NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS];
+            }
+            else
+            {
+                peers[i].isOMNode = FALSE;
+                // randomly select public peer and try to connect if we do not
+                // yet have an outgoing connection to it
+                peers[i].address = publicPeers[random(numberOfPublicPeers)].address;
+            }
 
             if (peers[i].address.u32 != 0)
             {
