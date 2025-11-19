@@ -6,13 +6,13 @@
 
 #define OPERATOR "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
-static unsigned char computorSeeds[676][55 + 1] = {
+static unsigned char computorSeeds[][55 + 1] = {
 };
 
-static unsigned char broadcastedComputorSeeds[676][55 + 1] = {};
+static unsigned char broadcastedComputorSeeds[][55 + 1] = {};
 
 // If you want to fund any of your custom seeds with initial spectrum, add them here.
-static unsigned char customSeeds[676][55 + 1] = {};
+static unsigned char customSeeds[][55 + 1] = {};
 
 // number of private ips for computor's internal services
 // these are the first N ip in knownPublicPeers, these IPs will never be shared or deleted
