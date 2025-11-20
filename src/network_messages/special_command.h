@@ -85,4 +85,21 @@ struct SpecialCommandSetConsoleLoggingModeRequestAndResponse
     unsigned char padding[7];
 };
 
+#define SPECIAL_COMMAND_SAVE_SNAPSHOT 18ULL // F8 key
+struct SpecialCommandSaveSnapshotRequestAndResponse
+{
+    enum
+    {
+        SAVING_TRIGGERED = 0,
+        SAVING_IN_PROGRESS,
+        REMOTE_SAVE_MODE_DISABLED,
+        UNKNOWN_FAILURE,
+    };
+
+    unsigned long long everIncreasingNonceAndCommandType;
+    unsigned int currentTick;
+    unsigned char status;
+    unsigned char padding[3];
+};
+
 #pragma pack(pop)

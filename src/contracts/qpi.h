@@ -127,191 +127,628 @@ namespace QPI
 	template <typename T1, typename T2>
 	inline void copyMemory(T1& dst, const T2& src);
 
+	// Copy object src into buffer dst. The size of the dst buffer must be grater or equal to the size of src object.
+	// If dst size is greater than src size and setTailToZero is true, set the part of dst to zero that follows
+	// behind the copy of src.
+	template <typename T1, typename T2>
+	inline void copyToBuffer(T1& dst, const T2& src, bool setTailToZero = false);
+
+	// Set object dst from buffer src. The size of the src buffer must be grater or equal to the size of dst object.
+	template <typename T1, typename T2>
+	inline void copyFromBuffer(T1& dst, const T2& src);
+
 	// Set all memory of dst to byte value.
 	template <typename T>
 	inline void setMemory(T& dst, uint8 value);
 
+	/**
+	 * Date and time (up to microsecond precision, year range from 0 to 65535, 8-byte representation)
+	 *
+	 * May contain invalid dates. Follows Gregorian calendar, implementing leap years but no leap seconds.
+	 */
 	struct DateAndTime
 	{
-		// --- Member Variables ---
-		unsigned short millisecond;
-		unsigned char second;
-		unsigned char minute;
-		unsigned char hour;
-		unsigned char day;
-		unsigned char month;
-		unsigned char year;
+		/// Init with value 0 (no valid date).
+		DateAndTime()
+		{
+			value = 0;
+		}
 
-		// --- Public Member Operators ---
+		/// Init object with date/time. See `set()` for info about parameters.
+		DateAndTime(uint64 year, uint64 month, uint64 day, uint64 hour = 0, uint64 minute = 0, uint64 second = 0, uint64 millisec = 0, uint64 microsecDuringMillisec = 0)
+		{
+			set(year, month, day, hour, minute, second, millisec, microsecDuringMillisec);
+		}
+
+		/// Copy object
+		DateAndTime(const DateAndTime& other)
+		{
+			value = other.value;
+		}
+
+		/// Assign object
+		DateAndTime& operator = (const DateAndTime& other)
+		{
+			value = other.value;
+			return *this;
+		}
 
 		/**
-		 * @brief Checks if this date is earlier than the 'other' date.
-		 */
+		* @brief Set date and time value without checking if it is valid.
+		* @param year	Year of the date (without offset). Should be in range 0 to 65335.
+		* @param month	Month of the date. Should be in range 1 to 12 to be valid.
+		* @param day	Day of the month. Should be in range 1 to 31/30/29/28 to be valid, depending on year and month.
+		* @param hour	Hour during the day. Should be in range 0 to 23 to be valid.
+		* @param minute	Minute during the hour. Should be in range 0 to 59 to be valid.
+		* @param second	Second during the minute. Should be in range 0 to 59 to be valid.
+		* @param millisec Millisecond during the second. Should be in range 0 to 999 to be valid.
+		* @param microsecDuringMillisec Microsecond during the millisecond. Should be in range 0 to 999 to be valid.
+		*/
+		inline void set(uint64 year, uint64 month, uint64 day, uint64 hour, uint64 minute, uint64 second, uint64 millisec = 0, uint64 microsecDuringMillisec = 0)
+		{
+			value = (year << 46) | (month << 42) | (day << 37)
+				| (hour << 32) | (minute << 26) | (second << 20)
+				| (millisec << 10) | (microsecDuringMillisec);
+		}
+
+		/// Set date/time if valid (returns true). Otherwise returns false.
+		bool setIfValid(uint64 year, uint64 month, uint64 day, uint64 hour, uint64 minute, uint64 second, uint64 millisec = 0, uint64 microsecDuringMillisec = 0)
+		{
+			if (!isValid(year, month, day, hour, minute, second, millisec, microsecDuringMillisec))
+				return false;
+			set(year, month, day, hour, minute, second, millisec, microsecDuringMillisec);
+			return true;
+		}
+
+		/**
+		* @brief Set date value without checking if it is valid.
+		* @param year	Year of the date (without offset). Should be in range 0 to 65335.
+		* @param month	Month of the date. Should be in range 1 to 12 to be valid.
+		* @param day	Day of the month. Should be in range 1 to 31/30/29/28 to be valid, depending on year and month.
+		*/
+		inline void setDate(uint64 year, uint64 month, uint64 day)
+		{
+			// clear bits of current date (only keep 37 bits of time) before setting new date
+			value &= 0x1fffffffff;
+			value |= (year << 46) | (month << 42) | (day << 37);
+		}
+
+		/**
+		* @brief Set time without checking if it is valid.
+		* @param hour	Hour during the day. Should be in range 0 to 23 to be valid.
+		* @param minute	Minute during the hour. Should be in range 0 to 59 to be valid.
+		* @param second	Second during the minute. Should be in range 0 to 59 to be valid.
+		* @param millisec Millisecond during the second. Should be in range 0 to 999 to be valid.
+		* @param microsecDuringMillisec Microsecond during the millisecond. Should be in range 0 to 999 to be valid.
+		*/
+		inline void setTime(uint64 hour, uint64 minute, uint64 second, uint64 millisec = 0, uint64 microsecDuringMillisec = 0)
+		{
+			// clear bits of current time (only keep 25 bits of date) before setting new time
+			value &= (0x1ffffffllu << 37llu);
+			value |= (hour << 32) | (minute << 26) | (second << 20)
+				| (millisec << 10) | (microsecDuringMillisec);
+		}
+
+		/// Return year of date/time (range 0 to 65535).
+		uint16 getYear() const
+		{
+			return static_cast<uint16>(value >> 46);
+		}
+
+		/// Return month of date/time (range 1 to 12 if valid).
+		uint8 getMonth() const
+		{
+			return static_cast<uint8>(value >> 42) & 0b1111;
+		}
+
+		/// Return month of date/time (range 1 to 31/30/29/28 depending on month if valid).
+		uint8 getDay() const
+		{
+			return static_cast<uint8>(value >> 37) & 0b11111;
+		}
+
+		/// Return hour of date/time (range 0 to 23 if valid).
+		uint8 getHour() const
+		{
+			return static_cast<uint8>(value >> 32) & 0b11111;
+		}
+
+		/// Return minute of date/time (range 0 to 59 if valid).
+		uint8 getMinute() const
+		{
+			return static_cast<uint8>(value >> 26) & 0b111111;
+		}
+
+		/// Return second of date/time (range 0 to 59 if valid).
+		uint8 getSecond() const
+		{
+			return static_cast<uint8>(value >> 20) & 0b111111;
+		}
+
+		/// Return millisecond of date/time (range 0 to 999 if valid).
+		uint16 getMillisec() const
+		{
+			return static_cast<uint16>(value >> 10) & 0b1111111111;
+		}
+
+		/// Return microsecond in current millisecond of date/time (range 0 to 999 if valid).
+		uint16 getMicrosecDuringMillisec() const
+		{
+			return static_cast<uint16>(value) & 0b1111111111;
+		}
+
+		/// Check if this instance contains a valid date and time.
+		bool isValid() const
+		{
+			return isValid(getYear(), getMonth(), getDay(), getHour(), getMinute(), getSecond(), getMillisec(), getMicrosecDuringMillisec());
+		}
+
+		/// Check if a year is a leap year.
+		static bool isLeapYear(uint64 year)
+		{
+			if (year % 4 != 0)
+				return false;
+			if (year % 100 == 0)
+			{
+				if (year % 400 == 0)
+					return true;
+				else
+					return false;
+			}
+			return true;
+		}
+
+		/// Return the number of days in a month of a specific year.
+		static uint8 daysInMonth(uint64 year, uint64 month)
+		{
+			const int daysInMonth[] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+			if (month < 1 || month > 12)
+				return 0;
+			if (month == 2 && DateAndTime::isLeapYear(year))
+				return 29;
+			else
+				return daysInMonth[month];
+		};
+
+		/// Check if the date and time given by parameters is valid.
+		static inline bool isValid(uint64 year, uint64 month, uint64 day, uint64 hour, uint64 minute, uint64 second, uint64 millisec, uint64 microsecDuringMillisec)
+		{
+			if (year > 0xffffu)
+				return false;
+			if (month > 12 || month == 0)
+				return false;
+			if (day > 31 || day == 0)
+				return false;
+			if ((day == 31) && (month != 1) && (month != 3) && (month != 5) && (month != 7) && (month != 8) && (month != 10) && (month != 12))
+				return false;
+			if ((day == 30) && (month == 2))
+				return false;
+			if ((day == 29) && (month == 2) && !isLeapYear(year))
+				return false;
+			if (hour >= 24)
+				return false;
+			if (minute >= 60)
+				return false;
+			if (second >= 60)
+				return false;
+			if (millisec >= 1000)
+				return false;
+			if (microsecDuringMillisec >= 1000)
+				return false;
+			return true;
+		}
+
+		/// Checks if this date is earlier than the `other` date.
 		bool operator<(const DateAndTime& other) const
 		{
-			if (year != other.year) return year < other.year;
-			if (month != other.month) return month < other.month;
-			if (day != other.day) return day < other.day;
-			if (hour != other.hour) return hour < other.hour;
-			if (minute != other.minute) return minute < other.minute;
-			if (second != other.second) return second < other.second;
-			return millisecond < other.millisecond;
+			return value < other.value;
 		}
 
-		/**
-		 * @brief Checks if this date is later than the 'other' date.
-		 */
+		/// Checks if this date is later than the `other` date.
 		bool operator>(const DateAndTime& other) const
 		{
-			return other < *this; // Reuses the operator< on the 'other' object
+			return value > other.value;
 		}
 
-		/**
-		 * @brief Checks if this date is identical to the 'other' date.
-		 */
+		/// Checks if this date is identical to the `other` date.
 		bool operator==(const DateAndTime& other) const
 		{
-			return year == other.year &&
-				month == other.month &&
-				day == other.day &&
-				hour == other.hour &&
-				minute == other.minute &&
-				second == other.second &&
-				millisecond == other.millisecond;
+			return value == other.value;
+		}
+
+		/// Checks if this date is different from the `other` date.
+		bool operator!=(const DateAndTime& other) const
+		{
+			return value != other.value;
 		}
 
 		/**
-		 * @brief Computes the difference between this date and 'other' in milliseconds.
-		 */
-		long long operator-(const DateAndTime& other) const
+		* Change date and time by adding a combination of time units.
+		* @param years Number of years to add. May be negative.
+		* @param months Number of months to add. May be negative and abs(months) may be > 12.
+		* @param days Number of days to add. May be negative and abs(days) may be > 365.
+		* @param hours Number of hours to add. May be negative and abs(hours) may be > 24.
+		* @param minutes Number of minutes to add. May be negative and abs(minutes) may be > 60.
+		* @param seconds Number of seconds to add. May be negative and abs(seconds) may be > 60.
+		* @param millisecs Number of millisecs to add. May be negative and abs(millisecs) may be > 1000.
+		* @param microsecsDuringMillisec Number of millisecs to add. May be negative and abs(microsecsDuringMillisec) may be > 1000.
+		* @return Returns if update of date and time was successful. Error cases: Overflow, starting with invalid date (see below).
+		*
+		* This function requires a valid date to start with if it needs to change the date. If less than 1 day is added/subtracted
+		* and the date does not flip due to the added/subtracted time (hours/minutes/seconds etc.), `add()` succeeds even with an
+		* invalid date. Thus, for example if you want to accumulate short periods of time, you may use `add()` with an invalid date
+		* such as 0000-00-00. However, it will fail and return false if you the accumulated time exceeds 23:59:59.999'999.
+		*/
+		bool add(sint64 years, sint64 months, sint64 days, sint64 hours, sint64 minutes, sint64 seconds, sint64 millisecs = 0, sint64 microsecsDuringMillisec = 0)
 		{
-			// A member function can access private members of other instances of the same class.
-			return this->toMilliseconds() - other.toMilliseconds();
-		}
+			sint64 newMicrosec = getMicrosecDuringMillisec();
+			sint64 newMillisec = getMillisec();
+			sint64 newSec = getSecond();
+			sint64 newMinute = getMinute();
+			sint64 newHour = getHour();
+			sint64 millisecCarry = 0, secCarry = 0, minuteCarry = 0, hourCarry = 0, dayCarry = 0;
 
-		/**
-		 * @brief Adds a duration in milliseconds to the current date/time.
-		 * @param msToAdd The number of milliseconds to add. Can be negative.
-		 * @return A new DateAndTime object representing the result.
-		 */
-		DateAndTime operator+(long long msToAdd) const
-		{
-			long long totalMs = this->toMilliseconds() + msToAdd;
-
-			DateAndTime result = { 0,0,0,0,0,0,0 };
-
-			// Handle negative totalMs (dates before the epoch) if necessary
-			// For this implementation, we assume resulting dates are >= year 2000
-			if (totalMs < 0) totalMs = 0;
-
-			long long days = totalMs / 86400000LL;
-			long long msInDay = totalMs % 86400000LL;
-
-			// Calculate time part
-			result.hour = (unsigned char)(msInDay / 3600000LL);
-			msInDay %= 3600000LL;
-			result.minute = (unsigned char)(msInDay / 60000LL);
-			msInDay %= 60000LL;
-			result.second = (unsigned char)(msInDay / 1000LL);
-			result.millisecond = (unsigned short)(msInDay % 1000LL);
-
-			// Calculate date part from total days since epoch
-			unsigned char currentYear = 0;
-			while (true)
+			// update microseconds (checking for overflow)
+			if (microsecsDuringMillisec &&
+				!addAndComputeCarry(newMicrosec, millisecCarry, 1000, microsecsDuringMillisec))
 			{
-				long long daysThisYear = isLeap(currentYear) ? 366 : 365;
-				if (days >= daysThisYear)
+				return false;
+			}
+
+			// update milliseconds (checking for overflow)
+			if ((millisecs || millisecCarry) &&
+				!addAndComputeCarry(newMillisec, secCarry, 1000, millisecs, millisecCarry))
+			{
+				return false;
+			}
+
+			// update seconds (checking for overflow)
+			if ((seconds || secCarry) &&
+				!addAndComputeCarry(newSec, minuteCarry, 60, seconds, secCarry))
+			{
+				return false;
+			}
+
+			// update minutes (checking for overflow)
+			if ((minutes | minuteCarry) &&
+				!addAndComputeCarry(newMinute, hourCarry, 60, minutes, minuteCarry))
+			{
+				return false;
+			}
+
+			// update hours (checking for overflow)
+			if ((hours | hourCarry) &&
+				!addAndComputeCarry(newHour, dayCarry, 24, hours, hourCarry))
+			{
+				return false;
+			}
+
+			// set time
+			if (this->isValid())
+			{
+				ASSERT(isValid(getYear(), getMonth(), getDay(), newHour, newMinute, newSec, newMillisec, newMicrosec));
+			}
+			setTime(newHour, newMinute, newSec, newMillisec, newMicrosec);
+
+			// update date if needed
+			if (dayCarry || days || months || years)
+			{
+				if (dayCarry && !addWithoutOverflow(days, dayCarry))
+					return false;
+				return add(years, months, days);
+			}
+
+			return true;
+		}
+
+		/**
+		* Change date by adding number of days, months, and years.
+		* @param years Number of years to add. May be negative.
+		* @param months Number of months to add. May be negative and abs(months) may be > 12.
+		* @param days Number of days to add. May be negative and abs(days) may be > 365.
+		* @return Returns if update of date was successful. Error cases: starting with invalid date, overflow.
+		*/
+		bool add(sint64 years, sint64 months, sint64 days)
+		{
+			sint64 newDay = getDay();
+			sint64 newMonth = getMonth();
+			sint64 newYear = getYear();
+
+			if (!isValid())
+				return false;
+
+			// speed-up processing large number of days (400 years and more)
+			// (400 years always have the same number of leap years and days)
+			constexpr sint64 daysPer400years = 97ll * 366ll + 303ll * 365ll;
+			if (days >= daysPer400years || days <= -daysPer400years)
+			{
+				sint64 factor400years = days / daysPer400years;
+				sint64 daysProcessed = factor400years * daysPer400years;
+				newYear += factor400years * 400;
+				days -= daysProcessed;
+			}
+
+			// speed-up processing large number of days (more than 1 year)
+			if (days >= 365)
+			{
+				sint64 yShift = (newMonth >= 3) ? 1 : 0;
+				while (days >= 365)
 				{
-					days -= daysThisYear;
-					currentYear++;
+					sint64 daysInYear = DateAndTime::isLeapYear(newYear + yShift) ? 366 : 365;
+					if (days < daysInYear)
+						break;
+					++newYear;
+					days -= daysInYear;
+				}
+			}
+			else if (days <= -365)
+			{
+				sint64 yShift = (newMonth >= 3) ? 0 : -1;
+				while (days <= -365)
+				{
+					sint64 daysInYear = DateAndTime::isLeapYear(newYear + yShift) ? -366 : -365;
+					if (days > daysInYear)
+						break;
+					--newYear;
+					days -= daysInYear;
+				}
+			}
+
+			// general processing of any number of days
+			while (days > 0)
+			{
+				// update day and month
+				const sint64 monthDays = daysInMonth(newYear, newMonth);
+				if (days >= monthDays)
+				{
+					// 1 month or more -> skip current month
+					++newMonth;
+					days -= monthDays;
 				}
 				else
 				{
-					break;
+					// less than one month -> update day (and month if needed)
+					newDay += days;
+					days = 0;
+					if (newDay > monthDays)
+					{
+						++newMonth;
+						newDay -= monthDays;
+					}
+				}
+				// update year if needed
+				if (newMonth > 12)
+				{
+					newMonth = 1;
+					++newYear;
+				}
+				// check if day exists in month
+				if (newDay > 28)
+				{
+					const sint64 monthDays = daysInMonth(newYear, newMonth);
+					if (newDay > monthDays)
+					{
+						ASSERT(newDay <= 31);
+						ASSERT(newMonth < 12);
+						newDay -= monthDays;
+						newMonth += 1;
+					}
 				}
 			}
-			result.year = currentYear;
-
-			unsigned char currentMonth = 1;
-			const int daysInMonth[] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
-			while (true)
+			while (days < 0)
 			{
-				long long daysThisMonth = daysInMonth[currentMonth];
-				if (currentMonth == 2 && isLeap(result.year))
+				// update day and month
+				if (-days < newDay)
 				{
-					daysThisMonth = 29;
-				}
-				if (days >= daysThisMonth)
-				{
-					days -= daysThisMonth;
-					currentMonth++;
+					// new date is in current month
+					newDay += days;
+					days = 0;
 				}
 				else
 				{
-					break;
-				}
-			}
-			ASSERT(days <= 31);
-			result.month = currentMonth;
-			result.day = (unsigned char)(days) + 1; // days is 0-indexed, day is 1-indexed
-
-			return result;
-		}
-
-		DateAndTime& operator+=(long long msToAdd)
-		{
-			*this = *this + msToAdd; // Reuse operator+ and assign the result back to this object
-			return *this;
-		}
-
-		DateAndTime& operator-=(long long msToSubtract)
-		{
-			*this = *this + (-msToSubtract); // Reuse operator+ with a negative value
-			return *this;
-		}
-
-	private:
-		// --- Private Helper Functions ---
-
-		/**
-		 * @brief A static helper to check if a year (yy format) is a leap year.
-		 */
-		static bool isLeap(unsigned char yr) {
-			// here we only handle the case where yr is in range [00 to 99]
-			return (2000 + yr) % 4 == 0;
-		}
-
-		/**
-		 * @brief Helper to convert this specific DateAndTime instance to total milliseconds since Jan 1, 2000.
-		 */
-		long long toMilliseconds() const {
-			long long totalDays = 0;
-
-			// Add days for full years passed since 2000
-			for (unsigned char y = 0; y < year; ++y) {
-				totalDays += isLeap(y) ? 366 : 365;
-			}
-
-			// Add days for full months passed in the current year
-			const int daysInMonth[] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
-			for (unsigned char m = 1; m < month; ++m) {
-				totalDays += daysInMonth[m];
-				if (m == 2 && isLeap(year)) {
-					totalDays += 1;
+					// new date is before current month
+					--newMonth;
+					if (newMonth < 1)
+					{
+						--newYear;
+						newMonth = 12;
+					}
+					const sint64 monthDays = daysInMonth(newYear, newMonth);
+					if (-days >= monthDays)
+					{
+						// at least one month back -> keep day (month was already updated before)
+						days += monthDays;
+					}
+					else
+					{
+						// less than one month -> update day
+						newDay += monthDays + days;
+						days = 0;
+					}
 				}
 			}
 
-			// Add days in the current month
-			totalDays += day - 1;
+			// add month that were passed to this function
+			if (months)
+			{
+				// Add months to newMonth, getting years carry. Months are computed in 0-11 instead of 1-12.
+				sint64 yearsCarry = 0;
+				--newMonth;
+				if (!addAndComputeCarry(newMonth, yearsCarry, 12, months))
+					return false;
+				++newMonth;
+				if (yearsCarry && !addWithoutOverflow(newYear, yearsCarry))
+					return false;
+			}
+			
+			// add years passed to function
+			if (years && !addWithoutOverflow(newYear, years))
+				return false;
 
-			// Convert total days and the time part to milliseconds
-			long long totalMs = totalDays * 86400000LL; // 24 * 60 * 60 * 1000
-			totalMs += hour * 3600000LL;     // 60 * 60 * 1000
-			totalMs += minute * 60000LL;       // 60 * 1000
-			totalMs += second * 1000LL;
-			totalMs += millisecond;
+			// check that day exists in final month
+			if (newDay > 28)
+			{
+				const sint64 monthDays = daysInMonth(newYear, newMonth);
+				if (newDay > monthDays)
+				{
+					ASSERT(newDay <= 31);
+					ASSERT(newMonth < 12);
+					newDay -= monthDays;
+					newMonth += 1;
+				}
+			}
 
-			return totalMs;
+			// check if year is outside supported range
+			if (newYear < 0 || newYear > 0xffff)
+				return false;
+
+			ASSERT(isValid(newYear, newMonth, newDay, getHour(), getMinute(), getSecond(), getMillisec(), getMicrosecDuringMillisec()));
+			setDate(newYear, newMonth, newDay);
+
+			return true;
+		}
+
+		/**
+		* Convenience function for adding a number of days.
+		* @param days Number of days to add. May be negative and abs(days) may be > 365.
+		* @return Returns if update of date was successful. Error cases: starting with invalid date, overflow.
+		*/
+		bool addDays(sint64 days)
+		{
+			return add(0, 0, days);
+		}
+
+		/**
+		* Convenience function for adding a number of microseconds.
+		* @param days Number of microsecs to add. May be negative and abs(microsecs) may be > 1000000.
+		* @return Returns if update of date was successful. Error cases: starting with invalid date, overflow.
+		*/
+		bool addMicrosec(sint64 microsec)
+		{
+			return add(0, 0, 0, 0, 0, 0, 0, microsec);
+		}
+
+		/**
+		* Compute duration between this and dt in microseconds. Returns UINT64_MAX if dt or this is invalid.
+		*/
+		uint64 durationMicrosec(const DateAndTime& dt) const
+		{
+			if (!isValid() || !dt.isValid())
+				return UINT64_MAX;
+
+			if (value == dt.value)
+				return 0;
+
+			DateAndTime begin = *this;
+			DateAndTime end = dt;
+			if (begin > end)
+			{
+				begin = dt;
+				end = *this;
+			}
+
+			sint64 microDiff = end.getMicrosecDuringMillisec() - begin.getMicrosecDuringMillisec();
+			sint64 milliDiff = end.getMillisec() - begin.getMillisec();
+			sint64 secondDiff = end.getSecond() - begin.getSecond();
+			sint64 minuteDiff = end.getMinute() - begin.getMinute();
+			sint64 hourDiff = end.getHour() - begin.getHour();
+
+			// compute the microsec offset needed to sync the time of t0 and t1 (may be negative)
+			sint64 totalMicrosec = ((((((hourDiff * 60) + minuteDiff) * 60) + secondDiff) * 1000) + milliDiff) * 1000 + microDiff;
+			bool okay = begin.add(0, 0, 0, hourDiff, minuteDiff, secondDiff, milliDiff, microDiff);
+			ASSERT(okay);
+			ASSERT((begin.value & 0x1fffffffff) == (end.value & 0x1fffffffff));
+			ASSERT(begin.value <= end.value);
+
+			// heuristic iterative algorithm for computing the days
+			if (begin.value != end.value)
+			{
+				sint64 totalDays = 0;
+				for (int i = 0; i < 10 && begin.value != end.value; ++i)
+				{
+					sint64 dayDiff = end.getDay() - begin.getDay();
+					sint64 monthDiff = end.getMonth() - begin.getMonth();
+					sint64 yearDiff = end.getYear() - begin.getYear();
+					sint64 days = yearDiff * 365 + monthDiff * 28; // days may be negative
+					if (!days)
+						days = dayDiff;
+					totalDays += days;
+					okay = begin.add(0, 0, days);
+					ASSERT(okay);
+				}
+				if (begin.value != end.value)
+					return UINT64_MAX;
+				ASSERT(totalDays >= 0);
+				totalMicrosec += totalDays * (24llu * 60llu * 60 * 1000 * 1000);
+			}
+
+			ASSERT(totalMicrosec >= 0);
+			return totalMicrosec;
+		}
+
+		/**
+		* Compute duration between this and dt in full days. Returns UINT64_MAX if dt or this is invalid.
+		*/
+		uint64 durationDays(const DateAndTime& dt) const
+		{
+			uint64 ret = durationMicrosec(dt);
+			if (ret != UINT64_MAX)
+				ret /= (24llu * 60llu * 60llu * 1000llu * 1000llu);
+			return ret;
+		}
+
+	protected:
+		// condensed binary 8-byte representation supporting fast comparison:
+		// - padding/reserved: 2 bits (most significant bits in 8-byte number, bits 62-63)
+		// - year: 16 bits (bits 46-61)
+		// - month: 4 bits (bits 42-45)
+		// - day: 5 bits (bits 37-41)
+		// - hour: 5 bits (bits 32-36)
+		// - minute: 6 bits (bits 26-31)
+		// - second: 6 bits (bits 20-25)
+		// - millisecond: 10 bits (bits 10-19)
+		// - microsecondDuringMillisecond: 10 bits (lowest significance in 8-byte number, bits 0-9)
+		uint64 value;
+
+		/// Adds valToAdd to valInAndOut and returns true if there is no overflow. Otherwise, returns false.
+		static bool addWithoutOverflow(sint64& valInAndOut, sint64 valToAdd)
+		{
+			sint64 sum = valInAndOut + valToAdd;
+			if (valInAndOut < 0 && valToAdd < 0 && sum > 0) // negative overflow
+				return false;
+			if (valInAndOut > 0 && valToAdd > 0 && sum < 0) // positive overflow
+				return false;
+			valInAndOut = sum;
+			return true;
+		}
+
+		// Add of up to 2 values to low significance value (such as milliseconds) and split it
+		// into high significance carry (for example in seconds) and low significance value (milliseconds).
+		// All low and high values may be positive or negative.
+		static bool addAndComputeCarry(sint64& low, sint64& highCarryOut, sint64 lowToHighFactor, sint64 lowAdd1, sint64 lowAdd2 = 0)
+		{
+			if (!addWithoutOverflow(low, lowAdd1))
+				return false;
+
+			if (lowAdd2 != 0 && !addWithoutOverflow(low, lowAdd2))
+				return false;
+
+			if (low == 0)
+			{
+				highCarryOut = 0;
+			}
+			else if (low > 0)
+			{
+				highCarryOut = low / lowToHighFactor;
+				low %= lowToHighFactor;
+			}
+			else // (low < 0)
+			{
+				highCarryOut = (low - lowToHighFactor + 1) / lowToHighFactor;
+				low = low - highCarryOut * lowToHighFactor;
+				ASSERT(low < lowToHighFactor);
+			}
+			return true;
 		}
 	};
 
@@ -1242,7 +1679,7 @@ namespace QPI
 	//////////
 	
 	constexpr uint16 INVALID_PROPOSAL_INDEX = 0xffff;
-	constexpr uint32 INVALID_VOTER_INDEX = 0xffffffff;
+	constexpr uint32 INVALID_VOTE_INDEX = 0xffffffff;
 	constexpr sint64 NO_VOTE_VALUE = 0x8000000000000000;
 
 	// Single vote for all types of proposals defined in August 2024.
@@ -1265,6 +1702,35 @@ namespace QPI
 	};
 	static_assert(sizeof(ProposalSingleVoteDataV1) == 16, "Unexpected struct size.");
 
+	// For casting multiple votes for all types of proposals defined in August 2024.
+	// This makes sense for shareholder voting, where a single shareholder may own multiple shares, allowing to cast
+	// multiple votes. With this structs, the votes may be individually distributed to multiple options/values.
+	// Input data for contract procedure call, compatible with ProposalSingleVoteDataV1. That is, to cast all votes
+	// of a shareholder with the same value, just set element 0 of voteValues and leave/set the rest to zero (including
+	// the voteCounts).
+	struct ProposalMultiVoteDataV1
+	{
+		// Index of proposal the vote is about (can be requested with proposal voting API)
+		uint16 proposalIndex;
+
+		// Type of proposal, see ProposalTypes
+		uint16 proposalType;
+
+		// Tick when proposal has been set (to make sure that proposal version known by the voter matches the current version).
+		uint32 proposalTick;
+
+		// Value of vote. NO_VOTE_VALUE means no vote for every type.
+		// For proposals types with multiple options, 0 is no, 1 to N are the other options in order of definition in proposal.
+		// For scalar proposal types the value is passed directly.
+		Array<sint64, 8> voteValues;
+
+		// Count of votes to cast for the corresponding voteValues.
+		// For compatibility with ProposalSingleVoteDataV1, voteCounts.get(0) == 0 means all votes of the voter. In
+		// the other elements, 0 means no votes for the given value.
+		Array<uint32, 8> voteCounts;
+	};
+	static_assert(sizeof(ProposalMultiVoteDataV1) == 104, "Unexpected struct size.");
+
 	// Voting result summary for all types of proposals defined in August 2024.
 	// Output data for contract function call for getting voting results.
 	struct ProposalSummarizedVotingDataV1
@@ -1278,11 +1744,11 @@ namespace QPI
 		// Tick when proposal has been set (useful for checking if cached ProposalData is still up to date).
 		uint32 proposalTick;
 
-		// Number of voter who have the right to vote
-		uint32 authorizedVoters;
+		// Maximal number of votes (number of voters who have the right to vote if there aren't multiple votes per voter)
+		uint32 totalVotesAuthorized;
 
 		// Number of total votes casted
-		uint32 totalVotes;
+		uint32 totalVotesCasted;
 
 		// Voting results
 		union
@@ -1294,10 +1760,46 @@ namespace QPI
 			sint64 scalarVotingResult;
 		};
 
+		// Return index of most voted option or -1 if this is scalar voting
+		sint32 getMostVotedOption() const
+		{
+			if (optionCount == 0)
+				return -1;
+			sint32 mostVotedOptionIndex = 0;
+			uint32 mostVotedOptionVotes = optionVoteCount.get(0);
+			for (sint32 optionIndex = 1; optionIndex < optionCount; ++optionIndex)
+			{
+				uint32 optionVotes = optionVoteCount.get(optionIndex);
+				if (mostVotedOptionVotes < optionVotes)
+				{
+					mostVotedOptionVotes = optionVotes;
+					mostVotedOptionIndex = optionIndex;
+				}
+			}
+			return mostVotedOptionIndex;
+		}
+
+		// Return index of option accepted by quorum or -1 if none is accepted
+		sint32 getAcceptedOption(uint32 totalVotesThresh = QUORUM, uint32 mostVotedThreshold = QUORUM/2) const
+		{
+			if (totalVotesCasted >= totalVotesThresh)
+			{
+				sint32 opt = getMostVotedOption();
+				if (opt >= 0 && optionVoteCount.get(opt) > mostVotedThreshold)
+					return opt;
+			}
+			return -1;
+		}
+
 		ProposalSummarizedVotingDataV1() = default;
 		ProposalSummarizedVotingDataV1(const ProposalSummarizedVotingDataV1& src)
 		{
 			copyMemory(*this, src);
+		}
+		ProposalSummarizedVotingDataV1& operator=(const ProposalSummarizedVotingDataV1& src)
+		{
+			copyMemory(*this, src);
+			return *this;
 		}
 	};
 	static_assert(sizeof(ProposalSummarizedVotingDataV1) == 16 + 8*4, "Unexpected struct size.");
@@ -1320,9 +1822,15 @@ namespace QPI
 			// Propose to set variable to a value. Supported options: 2 <= N <= 5 with ProposalDataV1; N == 0 means scalar voting.
 			static constexpr uint16 Variable = 0x200;
 
+			// Propose to set multiple variables. Supported options: 2 <= N <= 8 with ProposalDataV1
+			static constexpr uint16 MultiVariables = 0x300;
+
 			// Propose to transfer amount to address in a specific epoch. Supported options: 1 with ProposalDataV1.
 			static constexpr uint16 TransferInEpoch = 0x400;
 		};
+
+		// Invalid proposal type returned to encode error in some interfaces
+		static constexpr uint16 Invalid = 0;
 
 		// Options yes and no without extra data -> result is histogram of options
 		static constexpr uint16 YesNo = Class::GeneralOptions | 2;
@@ -1363,8 +1871,20 @@ namespace QPI
 		// Set given variable to value, allowing to vote with scalar value, voting result is mean value
 		static constexpr uint16 VariableScalarMean = Class::Variable | 0;
 
+		// TODO: support quorum value max / min as voting result
 
-		// Contruct type from class + number of options (no checking if type is valid)
+		// Set multiple variables with options yes/no (data stored by contract) -> result is histogram of options
+		static constexpr uint16 MultiVariablesYesNo = Class::MultiVariables | 2;
+
+		// Set multiple variables with 3 options "no change" / "values A" / "values B" (data stored by contract)
+		// -> result is histogram of options
+		static constexpr uint16 MultiVariablesThreeOptions = Class::MultiVariables | 3;
+
+		// Set multiple variables with 4 options "no change" / "values A" / "values B" / "values C" (data stored by
+		// contract) -> result is histogram of options
+		static constexpr uint16 MultiVariablesFourOptions = Class::MultiVariables | 4;
+
+		// Construct type from class + number of options (no checking if type is valid)
 		static constexpr uint16 type(uint16 cls, uint16 options)
 		{
 			return cls | options;
@@ -1394,8 +1914,8 @@ namespace QPI
 	struct ProposalDataV1
 	{
 		// URL explaining proposal, zero-terminated string.
-		Array<uint8, 256> url;	
-		
+		Array<uint8, 256> url;
+
 		// Epoch, when proposal is active. For setProposal(), 0 means to clear proposal and non-zero means the current epoch.
 		uint16 epoch;
 
@@ -1454,6 +1974,7 @@ namespace QPI
 			switch (cls)
 			{
 			case ProposalTypes::Class::GeneralOptions:
+			case ProposalTypes::Class::MultiVariables:
 				okay = options >= 2 && options <= 8;
 				break;
 			case ProposalTypes::Class::Transfer:
@@ -1507,6 +2028,11 @@ namespace QPI
 		{
 			copyMemory(*this, src);
 		}
+		ProposalDataV1<SupportScalarVotes>& operator=(const ProposalDataV1<SupportScalarVotes>& src)
+		{
+			copyMemory(*this, src);
+			return *this;
+		}
 	};
 	static_assert(sizeof(ProposalDataV1<true>) == 256 + 8 + 64, "Unexpected struct size.");
 
@@ -1555,7 +2081,8 @@ namespace QPI
 			switch (cls)
 			{
 			case ProposalTypes::Class::GeneralOptions:
-				okay = options >= 2 && options <= 3;
+			case ProposalTypes::Class::MultiVariables:
+				okay = options >= 2 && options <= 3; // 3 options can be encoded in the yes/no type of storage as well
 				break;
 			case ProposalTypes::Class::Transfer:
 				okay = (options == 2 && !isZero(transfer.destination) && transfer.amount >= 0);
@@ -1569,6 +2096,17 @@ namespace QPI
 
 		// Whether to support scalar votes next to option votes.
 		static constexpr bool supportScalarVotes = false;
+
+		ProposalDataYesNo() = default;
+		ProposalDataYesNo(const ProposalDataYesNo& src)
+		{
+			copyMemory(*this, src);
+		}
+		ProposalDataYesNo& operator=(const ProposalDataYesNo& src)
+		{
+			copyMemory(*this, src);
+			return *this;
+		}
 	};
 	static_assert(sizeof(ProposalDataYesNo) == 256 + 8 + 40, "Unexpected struct size.");
 
@@ -1582,11 +2120,12 @@ namespace QPI
 	template <uint16 proposalSlotCount = NUMBER_OF_COMPUTORS>
 	struct ProposalAndVotingByComputors;
 
-	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting for computors only and creating/chaning proposals for anyone.
+	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting for computors only and creating/changing proposals for anyone.
 	template <uint16 proposalSlotCount>
 	struct ProposalByAnyoneVotingByComputors;
 
-	template <unsigned int maxShareholders>
+	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting and setting proposals for contract shareholders only.
+	template <uint16 proposalSlotCount, uint64 contractAssetName>
 	struct ProposalAndVotingByShareholders;
 
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
@@ -1609,17 +2148,17 @@ namespace QPI
 	{
 	public:
 		static constexpr uint16 maxProposals = ProposerAndVoterHandlingT::maxProposals;
-		static constexpr uint32 maxVoters = ProposerAndVoterHandlingT::maxVoters;
+		static constexpr uint32 maxVotes = ProposerAndVoterHandlingT::maxVotes;
 
 		typedef ProposerAndVoterHandlingT ProposerAndVoterHandlingType;
 		typedef ProposalDataT ProposalDataType;
 		typedef ProposalWithAllVoteData<
 			ProposalDataT,
-			maxVoters
+			maxVotes
 		> ProposalAndVotesDataType;
 
 		static_assert(maxProposals <= INVALID_PROPOSAL_INDEX);
-		static_assert(maxVoters <= INVALID_VOTER_INDEX);
+		static_assert(maxVotes <= INVALID_VOTE_INDEX);
 
 		// Handling of who has the right to propose and to vote + proposal / voter indices
 		ProposerAndVoterHandlingType proposersAndVoters;
@@ -1637,13 +2176,16 @@ namespace QPI
 	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 	struct QpiContextProposalFunctionCall
 	{
-		// Get proposal with given index if index is valid and proposal is set (epoch > 0)
+		// Get proposal with given index if index is valid and proposal is set (epoch > 0). On error returns false and sets proposal.type = 0.
 		bool getProposal(uint16 proposalIndex, ProposalDataType& proposal) const;
 
-		// Get data of single vote
-		bool getVote(uint16 proposalIndex, uint32 voterIndex, ProposalSingleVoteDataV1& vote) const;
+		// Get data of single vote. On error returns false and sets vote.proposalType = 0.
+		bool getVote(uint16 proposalIndex, uint32 voteIndex, ProposalSingleVoteDataV1& vote) const;
 
-		// Get summary of all votes casted
+		// Get data of votes of a given voter. On error returns false and sets votes.proposalType = 0.
+		bool getVotes(uint16 proposalIndex, const id& voter, ProposalMultiVoteDataV1& votes) const;
+
+		// Get summary of all votes casted. On error returns false and sets votingSummary.totalVotesAuthorized = 0.
 		bool getVotingSummary(uint16 proposalIndex, ProposalSummarizedVotingDataV1& votingSummary) const;
 
 		// Return index of existing proposal or INVALID_PROPOSAL_INDEX if there is no proposal by given proposer
@@ -1652,11 +2194,19 @@ namespace QPI
 		// Return proposer ID of given proposal index or NULL_ID if there is no proposal at this index
 		id proposerId(uint16 proposalIndex) const;
 
-		// Return voter index for given ID or INVALID_VOTER_INDEX if ID has no right to vote
-		uint32 voterIndex(const id& voterId) const;
+		// Return vote index for given ID or INVALID_VOTE_INDEX if ID has no right to vote. If the voter has multiple
+		// votes, this returns the first index. All votes of a voter are stored consecutively.
+		// If voters are shareholders, proposalIndex must be passed. If voters are computors, proposalIndex is ignored.
+		uint32 voteIndex(const id& voterId, uint16 proposalIndex = 0) const;
 
-		// Return ID for given voter index or NULL_ID if index is invalid
-		id voterId(uint32 voterIndex) const;
+		// Return ID for given vote index or NULL_ID if index is invalid.
+		// If voters are shareholders, proposalIndex must be passed. If voters are computors, proposalIndex is ignored.
+		id voterId(uint32 voteIndex, uint16 proposalIndex = 0) const;
+
+		// Return count of votes of a voter if his first vote index is passed. Otherwise return the number of votes
+		// including this and the following indices. Returns 0 if an invalid index is passed.
+		// If voters are shareholders, proposalIndex must be passed. If voters are computors, proposalIndex is ignored.
+		uint32 voteCount(uint32 voteIndex, uint16 proposalIndex = 0) const;
 
 		// Return next proposal index of proposals of given epoch (default: current epoch)
 		// or -1 if there are not any more such proposals behind the passed index.
@@ -1705,11 +2255,27 @@ namespace QPI
 		// Cast vote for proposal with index vote.proposalIndex if voter has right to vote, the proposal's epoch
 		// is the current epoch, vote.proposalType and vote.proposalTick match the corresponding proposal's values,
 		// and vote.voteValue is valid for the proposal type.
+		// If voter has multiple votes (possible in shareholder voting), cast all votes of voter with the same value.
 		// This can be used to remove a previous vote by vote.voteValue = NO_VOTE_VALUE.
 		// Return whether vote has been casted.
 		bool vote(
 			const id& voter,
 			const ProposalSingleVoteDataV1& vote
+		);
+
+		// Cast votes for proposal with index votes.proposalIndex if voter has right to vote, the proposal's epoch
+		// is the current epoch, votes.proposalType and votes.proposalTick match the corresponding proposal's values,
+		// the votes.voteValues are valid for the proposal type, and the sum of votes.voteCounts does not exceed the
+		// number of votes available to the voter.
+		// If any vote value is invalid, all votes of the voter are set to NO_VOTE_VALUE.
+		// This can be used to remove previous votes by using a vote value of NO_VOTE_VALUE or a total vote count less
+		// than the number of votes available to the voter.
+		// For compatibility with ProposalSingleVoteDataV1, all votes are set with votes.voteValues.get(0) if the sum
+		// of votes.voteCounts is 0.
+		// Return whether the votes have been casted.
+		bool vote(
+			const id& voter,
+			const ProposalMultiVoteDataV1& votes
 		);
 
 		// ProposalVoting type to work with
@@ -1901,6 +2467,10 @@ namespace QPI
 		inline uint8 year(
 		) const; // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
 
+		// Return the amount of Qu in the fee reserve for the specified contract.
+		// If the provided index is invalid (< 1 or >= contractCount) the currentContractIndex is used instead.
+		inline sint64 queryFeeReserve(uint32 contractIndex = 0) const;
+
 		// Access proposal functions with qpi(proposalVotingObject).func().
 		template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 		inline QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType> operator()(
@@ -1934,9 +2504,13 @@ namespace QPI
 			sint64 offeredTransferFee
 		) const; // Returns payed fee on success (>= 0), -requestedFee if offeredTransferFee or contract balance is not sufficient, INVALID_AMOUNT in case of other error.
 
+		// Burns Qus from the current contract's balance to fill the contract fee reserve of the contract specified via contractIndexBurnedFor.
+		// If the provided index is invalid (< 1 or >= contractCount), the Qus are burned for the currentContractIndex.
+		// Returns the remaining balance (>= 0) of the current contract if the burning is successful. A negative return value indicates failure.  
 		inline sint64 burn(
-			sint64 amount
-		) const;
+			sint64 amount,
+			uint32 contractIndexBurnedFor = 0
+		) const; 
 
 		inline bool distributeDividends( //  Attempts to pay dividends
 			sint64 amountPerShare // Total amount will be 676x of this
@@ -1970,6 +2544,34 @@ namespace QPI
 			sint64 offeredTransferFee
 		) const; // Returns payed fee on success (>= 0), -requestedFee if offeredTransferFee or contract balance is not sufficient, INVALID_AMOUNT in case of other error.
 
+		/**
+		* @brief Add/change/cancel shareholder proposal as shareholder of another contract.
+		* @param contractIndex Index of the other contract, that SELF is shareholder of and that the proposal is about.
+		* @param proposalDataBuffer Buffer for passing the contract-dependent proposal data. You may use copyToBuffer() to fill it.
+		* @param invocationReward Invocation reward sent to contractIndex when invoking it's procedure.
+		* @return Proposal index on success, INVALID_PROPOSAL_INDEX on error.
+		* @note Invokes SET_SHAREHOLDER_PROPOSAL of contractIndex without checking shareholder status and proposalDataBuffer.
+		*/
+		inline uint16 setShareholderProposal(
+			uint16 contractIndex,
+			const Array<uint8, 1024>& proposalDataBuffer,
+			sint64 invocationReward
+		) const;
+
+		/**
+		* @brief Add/change/cancel shareholder vote(s) in another contract.
+		* @param contractIndex Index of the other contract, that SELF is shareholder of and that the proposal is about.
+		* @param shareholderVoteData Vote(s) to cast. See ProposalMultiVoteDataV1 for details.
+		* @param invocationReward Invocation reward sent to contractIndex when invoking it's procedure.
+		* @return Proposal index on success, INVALID_PROPOSAL_INDEX on error.
+		* @note Invokes SET_SHAREHOLDER_VOTES of contractIndex without checking shareholder status and shareholderVoteData.
+		*/
+		inline bool setShareholderVotes(
+			uint16 contractIndex,
+			const ProposalMultiVoteDataV1& shareholderVoteData,
+			sint64 invocationReward
+		) const;
+
 		inline sint64 transfer( // Attempts to transfer energy from this qubic
 			const id& destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
 			sint64 amount // Energy amount to transfer, must be in [0..1'000'000'000'000'000] range
@@ -1996,7 +2598,7 @@ namespace QPI
 		inline void* __qpiAcquireStateForWriting(unsigned int contractIndex) const;
 		inline void __qpiReleaseStateForWriting(unsigned int contractIndex) const;
 		template <unsigned int sysProcId, typename InputType, typename OutputType>
-		void __qpiCallSystemProc(unsigned int otherContractIndex, InputType& input, OutputType& output, sint64 invocationReward) const;
+		bool __qpiCallSystemProc(unsigned int otherContractIndex, InputType& input, OutputType& output, sint64 invocationReward) const;
 		inline void __qpiNotifyPostIncomingTransfer(const id& source, const id& dest, sint64 amount, uint8 type) const;
 
 	protected:
@@ -2064,6 +2666,18 @@ namespace QPI
 		uint8 type;
 	};
 
+	// Input of SET_SHAREHOLDER_PROPOSAL system procedure (buffer for passing the contract-dependent proposal data)
+	typedef Array<uint8, 1024> SET_SHAREHOLDER_PROPOSAL_input;
+
+	// Output of SET_SHAREHOLDER_PROPOSAL system procedure (proposal index, or INVALID_PROPOSAL_INDEX on error)
+	typedef uint16 SET_SHAREHOLDER_PROPOSAL_output;
+
+	// Input of SET_SHAREHOLDER_VOTES system procedure (vote data)
+	typedef ProposalMultiVoteDataV1 SET_SHAREHOLDER_VOTES_input;
+
+	// Output of SET_SHAREHOLDER_VOTES system procedure (success flag)
+	typedef bit SET_SHAREHOLDER_VOTES_output;
+
 	//////////
 	
 	struct ContractBase
@@ -2088,6 +2702,10 @@ namespace QPI
 		static void __postReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __postIncomingTransferEmpty = 1, __postIncomingTransferLocalsSize = sizeof(NoData) };
 		static void __postIncomingTransfer(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __setShareholderProposalEmpty = 1, __setShareholderProposalLocalsSize = sizeof(NoData) };
+		static void __setShareholderProposal(const QpiContextProcedureCall&, void*, void*, void*) {}
+		enum { __setShareholderVotesEmpty = 1, __setShareholderVotesLocalsSize = sizeof(NoData) };
+		static void __setShareholderVotes(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __acceptOracleTrueReplyEmpty = 1, __acceptOracleTrueReplyLocalsSize = sizeof(NoData) };
 		static void __acceptOracleTrueReply(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __acceptOracleFalseReplyEmpty = 1, __acceptOracleFalseReplyLocalsSize = sizeof(NoData) };
@@ -2203,6 +2821,31 @@ namespace QPI
         NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_INCOMING_TRANSFER, __postIncomingTransfer, PostIncomingTransfer_input, \
                                       NoData)
 
+	// Define contract system procedure called when another contract tries to set/change/cancel a proposal through
+	// qpi.setShareholderProposal(). See `doc/contracts.md` for details.
+	#define SET_SHAREHOLDER_PROPOSAL() \
+        NO_IO_SYSTEM_PROC(SET_SHAREHOLDER_PROPOSAL, __setShareholderProposal, SET_SHAREHOLDER_PROPOSAL_input, \
+						  SET_SHAREHOLDER_PROPOSAL_output)
+
+	// Define contract system procedure called when another contract tries to set/change/cancel a proposal through
+	// qpi.setShareholderProposal(). Provides zeroed instance of SET_SHAREHOLDER_PROPOSAL_locals struct. See
+	// `doc/contracts.md` for details.
+	#define SET_SHAREHOLDER_PROPOSAL_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(SET_SHAREHOLDER_PROPOSAL, __setShareholderProposal, SET_SHAREHOLDER_PROPOSAL_input, \
+						              SET_SHAREHOLDER_PROPOSAL_output)
+
+	// Define contract system procedure called when another contract tries to set/change/cancel a vote through
+	// qpi.setShareholderVotes(). See `doc/contracts.md` for details.
+	#define SET_SHAREHOLDER_VOTES() \
+        NO_IO_SYSTEM_PROC(SET_SHAREHOLDER_VOTES, __setShareholderVotes, SET_SHAREHOLDER_VOTES_input, \
+						  SET_SHAREHOLDER_VOTES_output)
+
+	// Define contract system procedure called when another contract tries to set/change/cancel a vote through
+	// qpi.setShareholderVotes(). Provides zeroed instance of SET_SHAREHOLDER_VOTES_locals struct. See
+	// `doc/contracts.md` for details.
+	#define SET_SHAREHOLDER_VOTES_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(SET_SHAREHOLDER_VOTES, __setShareholderVotes, SET_SHAREHOLDER_VOTES_input, \
+						              SET_SHAREHOLDER_VOTES_output)
 
 	#define EXPAND() \
       public: \
@@ -2217,6 +2860,10 @@ namespace QPI
 	#define LOG_INFO(message) __logContractInfoMessage(CONTRACT_INDEX, message);
 
 	#define LOG_WARNING(message) __logContractWarningMessage(CONTRACT_INDEX, message);
+
+	#define LOG_PAUSE() __pauseLogMessage();
+
+	#define LOG_RESUME() __resumeLogMessage();
 
 	#define PRIVATE_FUNCTION(function) \
 		private: \
@@ -2332,4 +2979,140 @@ namespace QPI
 	#define SELF id(CONTRACT_INDEX, 0, 0, 0)
 
 	#define SELF_INDEX CONTRACT_INDEX
+
+	//////////
+
+	#define DEFINE_SHAREHOLDER_PROPOSAL_STORAGE(numProposalSlots, assetNameInt64) \
+		public: \
+			typedef ProposalDataYesNo ProposalDataT; \
+			typedef ProposalAndVotingByShareholders<numProposalSlots, assetNameInt64> ProposersAndVotersT; \
+			typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT; \
+		protected: \
+			ProposalVotingT proposals
+
+	#define IMPLEMENT_SetShareholderProposal(numFeeStateVariables, setProposalFeeVarOrValue) \
+		typedef ProposalDataT SetShareholderProposal_input; \
+		typedef uint16 SetShareholderProposal_output; \
+		PUBLIC_PROCEDURE(SetShareholderProposal) { \
+			if (qpi.invocationReward() < setProposalFeeVarOrValue || (input.epoch \
+				&& (input.type != ProposalTypes::VariableYesNo || input.variableOptions.variable >= numFeeStateVariables \
+					|| input.variableOptions.value < 0))) { \
+				qpi.transfer(qpi.invocator(), qpi.invocationReward()); \
+				output = INVALID_PROPOSAL_INDEX; \
+				return; } \
+			output = qpi(state.proposals).setProposal(qpi.invocator(), input); \
+			if (output == INVALID_PROPOSAL_INDEX) { \
+				qpi.transfer(qpi.invocator(), qpi.invocationReward()); \
+				return;	} \
+			qpi.burn(setProposalFeeVarOrValue); \
+			if (qpi.invocationReward() > setProposalFeeVarOrValue) { \
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - setProposalFeeVarOrValue); } }
+
+	#define IMPLEMENT_GetShareholderProposal() \
+		struct GetShareholderProposal_input { uint16 proposalIndex; }; \
+		struct GetShareholderProposal_output { ProposalDataT proposal; id proposerPubicKey; }; \
+		PUBLIC_FUNCTION(GetShareholderProposal) { \
+			output.proposerPubicKey = qpi(state.proposals).proposerId(input.proposalIndex); \
+			qpi(state.proposals).getProposal(input.proposalIndex, output.proposal); }
+
+	#define IMPLEMENT_GetShareholderProposalIndices() \
+		struct GetShareholderProposalIndices_input { bit activeProposals; sint32 prevProposalIndex; }; \
+		struct GetShareholderProposalIndices_output { uint16 numOfIndices; Array<uint16, 64> indices; }; \
+		PUBLIC_FUNCTION(GetShareholderProposalIndices) {\
+			if (input.activeProposals) { \
+				while ((input.prevProposalIndex = qpi(state.proposals).nextProposalIndex(input.prevProposalIndex, qpi.epoch())) >= 0) { \
+					output.indices.set(output.numOfIndices, input.prevProposalIndex); \
+					++output.numOfIndices; \
+					if (output.numOfIndices == output.indices.capacity()) break; } } \
+			else { \
+				while ((input.prevProposalIndex = qpi(state.proposals).nextFinishedProposalIndex(input.prevProposalIndex)) >= 0) { \
+					output.indices.set(output.numOfIndices, input.prevProposalIndex); \
+					++output.numOfIndices; \
+					if (output.numOfIndices == output.indices.capacity()) break; } } }
+
+	#define IMPLEMENT_GetShareholderProposalFees(setProposalFeeVarOrValue) \
+		typedef NoData GetShareholderProposalFees_input; \
+		struct GetShareholderProposalFees_output { sint64 setProposalFee; sint64 setVoteFee; }; \
+		PUBLIC_FUNCTION(GetShareholderProposalFees) { \
+			output.setProposalFee = setProposalFeeVarOrValue; \
+			output.setVoteFee = 0; }
+
+	#define IMPLEMENT_SetShareholderVotes() \
+		typedef ProposalMultiVoteDataV1 SetShareholderVotes_input; \
+		typedef bit SetShareholderVotes_output; \
+		PUBLIC_PROCEDURE(SetShareholderVotes) { \
+			output = qpi(state.proposals).vote(qpi.invocator(), input); } \
+
+	#define IMPLEMENT_GetShareholderVotes() \
+		struct GetShareholderVotes_input { id voter; uint16 proposalIndex; }; \
+		typedef ProposalMultiVoteDataV1 GetShareholderVotes_output; \
+		PUBLIC_FUNCTION(GetShareholderVotes) { \
+			qpi(state.proposals).getVotes(input.proposalIndex, input.voter,	output); }
+
+	#define IMPLEMENT_GetShareholderVotingResults() \
+		struct GetShareholderVotingResults_input { uint16 proposalIndex; }; \
+		typedef ProposalSummarizedVotingDataV1 GetShareholderVotingResults_output; \
+		PUBLIC_FUNCTION(GetShareholderVotingResults) { \
+			qpi(state.proposals).getVotingSummary(input.proposalIndex, output); }
+
+	#define IMPLEMENT_SET_SHAREHOLDER_PROPOSAL() \
+		struct SET_SHAREHOLDER_PROPOSAL_locals { SetShareholderProposal_input userProcInput; }; \
+		SET_SHAREHOLDER_PROPOSAL_WITH_LOCALS() { \
+			copyFromBuffer(locals.userProcInput, input); \
+			CALL(SetShareholderProposal, locals.userProcInput, output); }
+
+	#define IMPLEMENT_SET_SHAREHOLDER_VOTES() \
+		SET_SHAREHOLDER_VOTES() { \
+			CALL(SetShareholderVotes, input, output); }
+
+	// Define procedures for easily implementing END_EPOCH
+	#define IMPLEMENT_FinalizeShareholderStateVarProposals() \
+		struct FinalizeShareholderProposalSetStateVar_input { \
+			sint32 proposalIndex; ProposalDataT proposal; ProposalSummarizedVotingDataV1 results; \
+			sint32 acceptedOption; 	sint64 acceptedValue; }; \
+		typedef NoData FinalizeShareholderProposalSetStateVar_output; \
+		typedef NoData FinalizeShareholderStateVarProposals_input; \
+		typedef NoData FinalizeShareholderStateVarProposals_output; \
+		struct FinalizeShareholderStateVarProposals_locals { \
+			FinalizeShareholderProposalSetStateVar_input p; uint16 proposalClass; }; \
+		PRIVATE_PROCEDURE_WITH_LOCALS(FinalizeShareholderStateVarProposals) { \
+			locals.p.proposalIndex = -1; \
+			while ((locals.p.proposalIndex = qpi(state.proposals).nextProposalIndex(locals.p.proposalIndex, qpi.epoch())) >= 0) { \
+				if (!qpi(state.proposals).getProposal(locals.p.proposalIndex, locals.p.proposal)) \
+					continue; \
+				locals.proposalClass = ProposalTypes::cls(locals.p.proposal.type); \
+				if (locals.proposalClass == ProposalTypes::Class::Variable || locals.proposalClass == ProposalTypes::Class::MultiVariables) { \
+					if (!qpi(state.proposals).getVotingSummary(locals.p.proposalIndex, locals.p.results)) \
+						continue; \
+					locals.p.acceptedOption = locals.p.results.getAcceptedOption(); \
+					if (locals.p.acceptedOption <= 0) \
+						continue; \
+					locals.p.acceptedValue = locals.p.proposal.variableOptions.value; \
+					CALL(FinalizeShareholderProposalSetStateVar, locals.p, output); } } } \
+		PRIVATE_PROCEDURE(FinalizeShareholderProposalSetStateVar)
+
+	#define IMPLEMENT_DEFAULT_SHAREHOLDER_PROPOSAL_VOTING(numFeeStateVariables, setProposalFeeVarOrValue) \
+		IMPLEMENT_SetShareholderProposal(numFeeStateVariables, setProposalFeeVarOrValue) \
+		IMPLEMENT_GetShareholderProposal() \
+		IMPLEMENT_GetShareholderProposalIndices() \
+		IMPLEMENT_GetShareholderProposalFees(setProposalFeeVarOrValue) \
+		IMPLEMENT_SetShareholderVotes() \
+		IMPLEMENT_GetShareholderVotes() \
+		IMPLEMENT_GetShareholderVotingResults() \
+		IMPLEMENT_SET_SHAREHOLDER_PROPOSAL() \
+		IMPLEMENT_SET_SHAREHOLDER_VOTES()
+
+	#define REGISTER_GetShareholderProposalFees() REGISTER_USER_FUNCTION(GetShareholderProposalFees, 65531)
+	#define REGISTER_GetShareholderProposalIndices() REGISTER_USER_FUNCTION(GetShareholderProposalIndices, 65532)
+	#define REGISTER_GetShareholderProposal() REGISTER_USER_FUNCTION(GetShareholderProposal, 65533)
+	#define REGISTER_GetShareholderVotes() REGISTER_USER_FUNCTION(GetShareholderVotes, 65534)
+	#define REGISTER_GetShareholderVotingResults() REGISTER_USER_FUNCTION(GetShareholderVotingResults, 65535)
+	#define REGISTER_SetShareholderProposal() REGISTER_USER_PROCEDURE(SetShareholderProposal, 65534)
+	#define REGISTER_SetShareholderVotes() REGISTER_USER_PROCEDURE(SetShareholderVotes, 65535)
+
+	#define REGISTER_SHAREHOLDER_PROPOSAL_VOTING()  REGISTER_GetShareholderProposalFees() \
+		REGISTER_GetShareholderProposalIndices(); REGISTER_GetShareholderProposal(); \
+		REGISTER_GetShareholderVotes(); REGISTER_GetShareholderVotingResults(); \
+		REGISTER_SetShareholderProposal(); REGISTER_SetShareholderVotes()
+
 }

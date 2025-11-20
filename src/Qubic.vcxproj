@@ -43,6 +43,7 @@
     <ClInclude Include="contracts\Nostromo.h" />
     <ClInclude Include="contracts\Qraffle.h" />
     <ClInclude Include="contracts\QBond.h" />
+    <ClInclude Include="contracts\QIP.h" />
     <ClInclude Include="contracts\TestExampleA.h" />
     <ClInclude Include="contracts\TestExampleB.h" />
     <ClInclude Include="contracts\TestExampleC.h" />
@@ -51,6 +52,7 @@
     <ClInclude Include="contract_core\contract_def.h" />
     <ClInclude Include="contract_core\contract_exec.h" />
     <ClInclude Include="contract_core\ipo.h" />
+    <ClInclude Include="contract_core\pre_qpi_def.h" />
     <ClInclude Include="contract_core\qpi_asset_impl.h" />
     <ClInclude Include="contract_core\qpi_collection_impl.h" />
     <ClInclude Include="contract_core\qpi_ipo_impl.h" />
@@ -120,6 +122,7 @@
     <ClInclude Include="platform\time.h" />
     <ClInclude Include="ticking\ticking.h" />
     <ClInclude Include="ticking\tick_storage.h" />
+    <ClInclude Include="ticking\pending_txs_pool.h" />
     <ClInclude Include="vote_counter.h" />
   </ItemGroup>
   <ItemGroup>

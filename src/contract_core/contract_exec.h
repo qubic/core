@@ -9,6 +9,8 @@
 #include "platform/debugging.h"
 #include "platform/memory.h"
 
+#include "assets/assets.h"
+
 #include "contract_core/contract_def.h"
 #include "contract_core/stack_buffer.h"
 #include "contract_core/contract_action_tracker.h"
@@ -32,6 +34,7 @@ enum ContractError
     ContractErrorTooManyActions,
     ContractErrorTimeout,
     ContractErrorStoppedToResolveDeadlock, // only returned by function call, not set to contractError
+    ContractErrorIPOFailed, // IPO failed i.e. final price was 0. This contract is not constructed.
 };
 
 // Used to store: locals and for first invocation level also input and output
@@ -72,6 +75,7 @@ enum ContractCallbacksRunningFlags
     NoContractCallback = 0,
     ContractCallbackManagementRightsTransfer = 1,
     ContractCallbackPostIncomingTransfer = 2,
+    ContractCallbackShareholderProposalAndVoting = 4,
 };
 
 
@@ -181,6 +185,18 @@ static bool initContractExec()
         return false;
 
     return true;
+}
+
+static void initializeContractErrors()
+{
+    // At initialization, all contract errors are set to 0 (= no error).
+    // If IPO failed (number of contract shares in universe != NUMBER_OF_COMPUTERS), the error status needs to be set accordingly.
+    for (unsigned int contractIndex = 1; contractIndex < contractCount; ++contractIndex)
+    {
+        long long numShares = numberOfShares({ m256i::zero(), *(uint64*)contractDescriptions[contractIndex].assetName });
+        if (numShares != NUMBER_OF_COMPUTORS)
+            contractError[contractIndex] = ContractErrorIPOFailed;
+    }
 }
 
 static void deinitContractExec()
@@ -609,7 +625,7 @@ void QPI::QpiContextProcedureCall::__qpiReleaseStateForWriting(unsigned int cont
 
 // Used to run a special system procedure from within a contract for example in asset management rights transfer
 template <unsigned int sysProcId, typename InputType, typename OutputType>
-void QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContractIndex, InputType& input, OutputType& output, QPI::sint64 invocationReward) const
+bool QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContractIndex, InputType& input, OutputType& output, QPI::sint64 invocationReward) const
 {
     // Make sure this function is used with an expected combination of sysProcId, input,
     // and output
@@ -619,6 +635,8 @@ void QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
         || (sysProcId == POST_RELEASE_SHARES && sizeof(InputType) == sizeof(QPI::PostManagementRightsTransfer_input) && sizeof(OutputType) == sizeof(QPI::NoData))
         || (sysProcId == POST_ACQUIRE_SHARES && sizeof(InputType) == sizeof(QPI::PostManagementRightsTransfer_input) && sizeof(OutputType) == sizeof(QPI::NoData))
         || (sysProcId == POST_INCOMING_TRANSFER && sizeof(InputType) == sizeof(QPI::PostIncomingTransfer_input) && sizeof(OutputType) == sizeof(QPI::NoData))
+        || (sysProcId == SET_SHAREHOLDER_PROPOSAL && sizeof(InputType) == sizeof(QPI::SET_SHAREHOLDER_PROPOSAL_input) && sizeof(OutputType) == sizeof(QPI::SET_SHAREHOLDER_PROPOSAL_output))
+        || (sysProcId == SET_SHAREHOLDER_VOTES && sizeof(InputType) == sizeof(QPI::SET_SHAREHOLDER_VOTES_input) && sizeof(OutputType) == sizeof(QPI::SET_SHAREHOLDER_VOTES_output))
         , "Unsupported __qpiCallSystemProc() call"
     );
 
@@ -627,7 +645,8 @@ void QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
     ASSERT(sysProcContractIndex < contractCount);
     ASSERT(contractStates[sysProcContractIndex] != nullptr);
     if (sysProcId == PRE_RELEASE_SHARES || sysProcId == PRE_ACQUIRE_SHARES
-        || sysProcId == POST_RELEASE_SHARES || sysProcId == POST_ACQUIRE_SHARES)
+        || sysProcId == POST_RELEASE_SHARES || sysProcId == POST_ACQUIRE_SHARES
+        || sysProcId == SET_SHAREHOLDER_PROPOSAL || sysProcId == SET_SHAREHOLDER_VOTES)
     {
         ASSERT(sysProcContractIndex != _currentContractIndex);
     }
@@ -637,13 +656,21 @@ void QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
 
     // Empty procedures lead to null pointer in contractSystemProcedures -> return default output (all zero/false)
     if (!contractSystemProcedures[sysProcContractIndex][sysProcId])
-        return;
+    {
+        // Returning false informs the caller that the system procedure isn't defined, which is useful if the
+        // zeroed output does not indicate an error but is a valid output value.
+        return false;
+    }
 
     // Set flags of callbacks currently running (to prevent deadlocks and nested calling of QPI functions)
     auto contractCallbacksRunningBefore = contractCallbacksRunning;
     if (sysProcId == POST_INCOMING_TRANSFER)
     {
         contractCallbacksRunning |= ContractCallbackPostIncomingTransfer;
+    }
+    else if (sysProcId == SET_SHAREHOLDER_PROPOSAL || sysProcId == SET_SHAREHOLDER_VOTES)
+    {
+        contractCallbacksRunning |= ContractCallbackShareholderProposalAndVoting;
     }
     else if (sysProcId == PRE_RELEASE_SHARES || sysProcId == PRE_ACQUIRE_SHARES
         || sysProcId == POST_RELEASE_SHARES || sysProcId == POST_ACQUIRE_SHARES)
@@ -676,6 +703,8 @@ void QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
 
     // Restore flags of callbacks currently running
     contractCallbacksRunning = contractCallbacksRunningBefore;
+
+    return true;
 }
 
 // If dest is a contract, notify contract by running system procedure POST_INCOMING_TRANSFER
@@ -692,6 +721,70 @@ void QPI::QpiContextProcedureCall::__qpiNotifyPostIncomingTransfer(const QPI::id
     QPI::NoData output; // output is zeroed in __qpiCallSystemProc
     __qpiCallSystemProc<POST_INCOMING_TRANSFER>(destContractIndex, input, output, 0);
 }
+
+inline uint16 QPI::QpiContextProcedureCall::setShareholderProposal(
+    uint16 contractIndex,
+    const Array<uint8, 1024>& proposalDataBuffer,
+    sint64 invocationReward
+) const
+{
+    // prevent nested calling from callbacks
+    if (contractCallbacksRunning & ContractCallbackShareholderProposalAndVoting)
+    {
+        return INVALID_PROPOSAL_INDEX;
+    }
+
+    // check for invalid inputs
+    if (contractIndex == _currentContractIndex
+        || contractIndex == 0
+        || contractIndex >= contractCount
+        || invocationReward < 0)
+    {
+        return INVALID_PROPOSAL_INDEX;
+    }
+
+    // Copy proposalDataBuffer, because procedures are allowed to change their input
+    Array<uint8, 1024> inputBuffer = proposalDataBuffer;
+
+    // run SET_SHAREHOLDER_PROPOSAL callback in other contract
+    uint16 outputProposalIndex;
+    if (!__qpiCallSystemProc<SET_SHAREHOLDER_PROPOSAL>(contractIndex, inputBuffer, outputProposalIndex, invocationReward))
+        return INVALID_PROPOSAL_INDEX;
+
+    return outputProposalIndex;
+}
+
+inline bool QPI::QpiContextProcedureCall::setShareholderVotes(
+    uint16 contractIndex,
+    const ProposalMultiVoteDataV1& shareholderVoteData,
+    sint64 invocationReward
+) const
+{
+    // prevent nested calling from callbacks
+    if (contractCallbacksRunning & ContractCallbackShareholderProposalAndVoting)
+    {
+        return false;
+    }
+
+    // check for invalid inputs
+    if (contractIndex == _currentContractIndex
+        || contractIndex == 0
+        || contractIndex >= contractCount
+        || invocationReward < 0)
+    {
+        return false;
+    }
+
+    // Copy proposalDataBuffer, because procedures are allowed to change their input
+    ProposalMultiVoteDataV1 inputVote = shareholderVoteData;
+
+    // run SET_SHAREHOLDER_VOTES callback in other contract
+    bit success; // initialized with zero by __qpiCallSystemProc
+    __qpiCallSystemProc<SET_SHAREHOLDER_VOTES>(contractIndex, inputVote, success, invocationReward);
+
+    return success;
+}
+
 
 // Enter endless loop leading to timeout
 // -> TODO: unlock everything in case of function entry point, maybe retry later in case of deadlock handling

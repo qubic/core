@@ -127,6 +127,9 @@
     <ClInclude Include="contracts\QBond.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\QIP.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contract_core\contract_def.h">
       <Filter>contract_core</Filter>
     </ClInclude>
@@ -277,11 +280,17 @@
     <ClInclude Include="contract_core\qpi_mining_impl.h">
       <Filter>contract_core</Filter>
     </ClInclude>
+    <ClInclude Include="ticking\pending_txs_pool.h">
+      <Filter>ticking</Filter>
+    </ClInclude>
     <ClInclude Include="contracts\Qdraw.h">
       <Filter>contracts</Filter>
     </ClInclude>
     <ClInclude Include="contracts\RandomLottery.h">
       <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\pre_qpi_def.h">
+      <Filter>contract_core</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

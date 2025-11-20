@@ -58,6 +58,10 @@ struct Peer;
 #define ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE 12
 #define CUSTOM_MESSAGE 255
 
+#define CUSTOM_MESSAGE_OP_START_DISTRIBUTE_DIVIDENDS 6217575821008262227ULL // STA_DDIV
+#define CUSTOM_MESSAGE_OP_END_DISTRIBUTE_DIVIDENDS 6217575821008457285ULL //END_DDIV
+#define CUSTOM_MESSAGE_OP_START_EPOCH 4850183582582395987ULL // STA_EPOC
+#define CUSTOM_MESSAGE_OP_END_EPOCH 4850183582582591045ULL //END_EPOC
 /*
 * STRUCTS FOR LOGGING
 */
@@ -73,6 +77,7 @@ struct AssetIssuance
 {
     m256i issuerPublicKey;
     long long numberOfShares;
+    long long managingContractIndex;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
@@ -86,6 +91,7 @@ struct AssetOwnershipChange
     m256i destinationPublicKey;
     m256i issuerPublicKey;
     long long numberOfShares;
+    long long managingContractIndex;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
@@ -99,6 +105,7 @@ struct AssetPossessionChange
     m256i destinationPublicKey;
     m256i issuerPublicKey;
     long long numberOfShares;
+    long long managingContractIndex;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
@@ -184,6 +191,7 @@ struct Burning
 {
     m256i sourcePublicKey;
     long long amount;
+    unsigned int contractIndexBurnedFor;
 
     char _terminator; // Only data before "_terminator" are logged
 };
@@ -279,6 +287,7 @@ private:
     inline static unsigned int lastUpdatedTick; // tick number that the system has generated all log
     inline static unsigned int currentTxId;
     inline static unsigned int currentTick;
+    inline static bool isPausing;
 
     static unsigned long long getLogId(const char* ptr)
     {
@@ -324,6 +333,7 @@ private:
     static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
     {
 #if ENABLED_LOGGING
+        if (isPausing) return;
         char buffer[LOG_HEADER_SIZE];
         tx.addLogId();
         logBuf.set(logId, logBufferTail, LOG_HEADER_SIZE + messageSize);
@@ -573,6 +583,7 @@ public:
         m256i zeroHash = m256i::zero();
         XKCP::KangarooTwelve_Update(&k12, zeroHash.m256i_u8, 32); // init tick, feed zero hash
 #endif
+        isPausing = false;
 #endif
     }
 
@@ -591,6 +602,7 @@ public:
         tx.commitAndCleanCurrentTxToLogId();
         ASSERT(mapTxToLogId.size() == (_tick - tickBegin + 1));
         lastUpdatedTick = _tick;
+        isPausing = false;
 #endif
     }
     
@@ -849,6 +861,16 @@ public:
 #endif
     }
 
+    void pause()
+    {
+        isPausing = true;
+    }
+
+    void resume()
+    {
+        isPausing = false;
+    }
+
     // get logging content from log ID
     static void processRequestLog(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header);
 
@@ -887,4 +909,14 @@ template <typename T>
 static void __logContractWarningMessage(unsigned int size, T& msg)
 {
     logger.__logContractWarningMessage(size, msg);
+}
+
+static void __pauseLogMessage()
+{
+    logger.pause();
+}
+
+static void __resumeLogMessage()
+{
+    logger.resume();
 }

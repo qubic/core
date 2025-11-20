@@ -10,11 +10,17 @@ on:
     branches: [ "main", "develop" ]
     paths:
       - 'src/contracts/*.h'
+      - '!src/contracts/math_lib.h'
+      - '!src/contracts/qpi.h'
+      - '!src/contracts/TestExample*.h'
       - '.github/workflows/contract-verify.yml'
   pull_request:
     branches: [ "main", "develop" ]
     paths:
       - 'src/contracts/*.h'
+      - '!src/contracts/math_lib.h'
+      - '!src/contracts/qpi.h'
+      - '!src/contracts/TestExample*.h'
       - '.github/workflows/contract-verify.yml'
 
 jobs:
@@ -33,6 +39,6 @@ jobs:
           echo "contract-filepaths=$files" >> "$GITHUB_OUTPUT"
       - name: Contract verify action step
         id: verify
-        uses: Franziska-Mueller/qubic-contract-verify@v1.0.0
+        uses: Franziska-Mueller/qubic-contract-verify@v1.0.2
         with:
           filepaths: '${{ steps.filepaths.outputs.contract-filepaths }}'

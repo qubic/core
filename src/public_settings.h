@@ -31,6 +31,9 @@
 #define TICK_DURATION_FOR_ALLOCATION_MS 750
 #define TRANSACTION_SPARSENESS 1
 
+// Number of ticks that are stored in the pending txs pool. This also defines how many ticks in advance a tx can be registered.
+#define PENDING_TXS_POOL_NUM_TICKS (1000 * 60 * 10ULL / TICK_DURATION_FOR_ALLOCATION_MS) // 10 minutes
+
 // Below are 2 variables that are used for auto-F5 feature:
 #define AUTO_FORCE_NEXT_TICK_THRESHOLD 0ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
                                             // to prevent bad actor causing misalignment.
@@ -61,12 +64,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 263
+#define VERSION_B 268
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 182
-#define TICK 34270000
+#define EPOCH 188
+#define TICK 37555000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
