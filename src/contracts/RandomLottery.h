@@ -276,6 +276,7 @@ public:
 	struct BEGIN_TICK_locals
 	{
 		id winnerAddress;
+		m256i mixedSpectrumValue;
 		Entity entity;
 		uint64 revenue;
 		uint64 randomNum;
@@ -492,8 +493,11 @@ public:
 
 					if (state.playerCounter != 0)
 					{
-						// Compute pseudo-random index based on K12(prevSpectrumDigest)
-						locals.randomNum = mod(qpi.K12(qpi.getPrevSpectrumDigest()).u64._0, state.playerCounter);
+						locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
+						locals.mixedSpectrumValue.u64._0 ^= qpi.tick();
+						locals.mixedSpectrumValue.u64._1 ^= state.playerCounter;
+						// Compute pseudo-random index based on K12(prevSpectrumDigest ^ tick)
+						locals.randomNum = mod(qpi.K12(locals.mixedSpectrumValue).u64._0, state.playerCounter);
 
 						// Index directly into players array
 						locals.winnerAddress = state.players.get(locals.randomNum);

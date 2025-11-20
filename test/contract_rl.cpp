@@ -358,6 +358,90 @@ public:
 	void beginEpochWithValidTime() { beginEpochWithDate(2025, 1, 20); }
 };
 
+TEST(ContractRandomLottery, SetPriceAndScheduleApplyNextEpoch)
+{
+	ContractTestingRL ctl;
+	ctl.beginEpochWithValidTime();
+
+	// Default epoch configuration: draws 3 times per week at the default price
+	const uint64 oldPrice = ctl.state()->getTicketPrice();
+	EXPECT_EQ(ctl.getSchedule().schedule, RL_DEFAULT_SCHEDULE);
+
+	// Queue a new price (5,000,000) and limit draws to only Wednesday
+	constexpr uint64 newPrice = 5000000;
+	constexpr uint8 wednesdayOnly = static_cast<uint8>(1 << WEDNESDAY);
+	increaseEnergy(RL_DEV_ADDRESS, 3);
+	EXPECT_EQ(ctl.setPrice(RL_DEV_ADDRESS, newPrice).returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setSchedule(RL_DEV_ADDRESS, wednesdayOnly).returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+
+	const RL::NextEpochData nextDataBefore = ctl.getNextEpochData().nextEpochData;
+	EXPECT_EQ(nextDataBefore.newPrice, newPrice);
+	EXPECT_EQ(nextDataBefore.schedule, wednesdayOnly);
+
+	// Until END_EPOCH the old settings remain active
+	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, oldPrice);
+	EXPECT_EQ(ctl.getSchedule().schedule, RL_DEFAULT_SCHEDULE);
+
+	// Transition closes the epoch and applies both pending changes
+	ctl.EndEpoch();
+	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, newPrice);
+	EXPECT_EQ(ctl.getSchedule().schedule, wednesdayOnly);
+
+	const RL::NextEpochData nextDataAfter = ctl.getNextEpochData().nextEpochData;
+	EXPECT_EQ(nextDataAfter.newPrice, 0u);
+	EXPECT_EQ(nextDataAfter.schedule, 0u);
+
+	// In the next epoch tickets must sell at the updated price
+	ctl.beginEpochWithDate(2025, 1, 15); // Wednesday
+	const id buyer = id::randomValue();
+	increaseEnergy(buyer, newPrice * 2);
+	const uint64 balBefore = getBalance(buyer);
+	const uint64 playersBefore = ctl.state()->getPlayerCounter();
+	const RL::BuyTicket_output buyOut = ctl.buyTicket(buyer, newPrice);
+	EXPECT_EQ(buyOut.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+	const uint64 playersAfterFirstBuy = playersBefore + 1;
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), playersAfterFirstBuy);
+	EXPECT_EQ(getBalance(buyer), balBefore - newPrice);
+
+	// Second user also buys a ticket at the new price
+	const id secondBuyer = id::randomValue();
+	increaseEnergy(secondBuyer, newPrice * 2);
+	const uint64 secondBalBefore = getBalance(secondBuyer);
+	const RL::BuyTicket_output secondBuyOut = ctl.buyTicket(secondBuyer, newPrice);
+	EXPECT_EQ(secondBuyOut.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
+	const uint64 playersAfterBuy = playersAfterFirstBuy + 1;
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), playersAfterBuy);
+	EXPECT_EQ(getBalance(secondBuyer), secondBalBefore - newPrice);
+
+	// Draws should only trigger on Wednesdays now: starting on Wednesday means the draw
+	// is deferred until the next Wednesday in the schedule.
+	const uint64 winnersBefore = ctl.getWinners().winnersCounter;
+	ctl.setDateTime(2025, 1, 15, RL_DEFAULT_DRAW_HOUR + 1); // current Wednesday
+	ctl.forceBeginTick();
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), playersAfterBuy);
+	EXPECT_EQ(ctl.getStateInfo().currentState, static_cast<uint8>(RL::EState::SELLING));
+	EXPECT_EQ(ctl.getWinners().winnersCounter, winnersBefore);
+
+	// No draw on non-scheduled days between Wednesdays
+	ctl.setDateTime(2025, 1, 21, RL_DEFAULT_DRAW_HOUR + 1); // Tuesday next week
+	ctl.forceBeginTick();
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), playersAfterBuy);
+	EXPECT_EQ(ctl.getWinners().winnersCounter, winnersBefore);
+
+	// Next Wednesday processes the draw
+	ctl.setDateTime(2025, 1, 22, RL_DEFAULT_DRAW_HOUR + 1); // next Wednesday
+	ctl.forceBeginTick();
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), 0u);
+	EXPECT_EQ(ctl.getWinners().winnersCounter, winnersBefore + 1);
+	EXPECT_EQ(ctl.getStateInfo().currentState, static_cast<uint8>(RL::EState::LOCKED));
+
+	// After the draw and before the next epoch begins, ticket purchases are blocked
+	const id lockedBuyer = id::randomValue();
+	increaseEnergy(lockedBuyer, newPrice);
+	const RL::BuyTicket_output lockedOut = ctl.buyTicket(lockedBuyer, newPrice);
+	EXPECT_EQ(lockedOut.returnCode, static_cast<uint8>(RL::EReturnCode::TICKET_SELLING_CLOSED));
+}
+
 TEST(ContractRandomLottery, DefaultInitTimeGuardSkipsPlaceholderDate)
 {
 	ContractTestingRL ctl;
