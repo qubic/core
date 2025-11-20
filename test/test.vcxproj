@@ -139,6 +139,7 @@
     <ClCompile Include="contract_gqmprop.cpp" />
     <ClCompile Include="contract_rl.cpp" />
     <ClCompile Include="custom_mining.cpp" />
+    <ClCompile Include="execution_fees.cpp" />
     <ClCompile Include="file_io.cpp" />
     <ClCompile Include="qpi_collection.cpp" />
     <ClCompile Include="qpi_date_time.cpp" />
