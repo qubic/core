@@ -1129,7 +1129,7 @@ protected:
 		}
 		if (state.numberOfEntryAmountSubmitted > 0)
 		{
-			output.entryAverageAmount = div(locals.totalEntryAmount, state.numberOfEntryAmountSubmitted * 1ULL);
+			output.entryAverageAmount = div<uint64>(locals.totalEntryAmount, state.numberOfEntryAmountSubmitted);
 		}
 		else
 		{
@@ -1189,7 +1189,7 @@ protected:
 		Asset QraffleAsset;
 		id digest, winner, shareholder;
 		sint64 idx;
-		uint64 sumOfEntryAmountSubmitted, r, winnerRevenue, burnAmount, charityRevenue, shareholderRevenue, registerRevenue, fee, oneCompRev;
+		uint64 sumOfEntryAmountSubmitted, r, winnerRevenue, burnAmount, charityRevenue, shareholderRevenue, registerRevenue, fee, oneShareholderRev;
 		uint32 i, j, winnerIndex;
 		QRAFFLELogger log;
 		QRAFFLEEmptyTokenRaffleLogger emptyTokenRafflelog;
@@ -1201,9 +1201,9 @@ protected:
 
 	END_EPOCH_WITH_LOCALS()
 	{
-		locals.oneCompRev = div(state.epochRevenue, 676ull);
-		qpi.distributeDividends(locals.oneCompRev);
-		state.epochRevenue -= locals.oneCompRev * 676;
+		locals.oneShareholderRev = div<uint64>(state.epochRevenue, 676);
+		qpi.distributeDividends(locals.oneShareholderRev);
+		state.epochRevenue -= locals.oneShareholderRev * 676;
 
 		locals.digest = qpi.getPrevSpectrumDigest();
 		locals.r = (qpi.numberOfTickTransactions() + 1) * locals.digest.u64._0 + (qpi.second()) * locals.digest.u64._1 + locals.digest.u64._2;
@@ -1213,12 +1213,12 @@ protected:
 		if (state.numberOfQuRaffleMembers > 0)
 		{
 			// Calculate fee distributions
-			locals.burnAmount = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_BURN_FEE, 100ull);
-			locals.charityRevenue = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_CHARITY_FEE, 100ull);
-			locals.shareholderRevenue = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_SHRAEHOLDER_FEE, 100ull);
-			locals.registerRevenue = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_REGISTER_FEE, 100ull);
-			locals.fee = div(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_FEE, 100ull);
-			locals.winnerRevenue = state.qREAmount * state.numberOfQuRaffleMembers - locals.burnAmount - locals.charityRevenue - div(locals.shareholderRevenue, 676ull) * 676 - div(locals.registerRevenue, state.numberOfRegisters * 1ull) * state.numberOfRegisters - locals.fee;
+			locals.burnAmount = div<uint64>(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_BURN_FEE, 100);
+			locals.charityRevenue = div<uint64>(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_CHARITY_FEE, 100);
+			locals.shareholderRevenue = div<uint64>(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_SHRAEHOLDER_FEE, 100);
+			locals.registerRevenue = div<uint64>(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_REGISTER_FEE, 100);
+			locals.fee = div<uint64>(state.qREAmount * state.numberOfQuRaffleMembers * QRAFFLE_FEE, 100);
+			locals.winnerRevenue = state.qREAmount * state.numberOfQuRaffleMembers - locals.burnAmount - locals.charityRevenue - div<uint64>(locals.shareholderRevenue, 676) * 676 - div<uint64>(locals.registerRevenue, state.numberOfRegisters) * state.numberOfRegisters - locals.fee;
 
 			// Log detailed revenue distribution information
 			locals.revenueLog = QRAFFLERevenueLogger{ 
@@ -1226,8 +1226,8 @@ protected:
 				QRAFFLE_revenueDistributed, 
 				locals.burnAmount, 
 				locals.charityRevenue, 
-				div(locals.shareholderRevenue, 676ull) * 676, 
-				div(locals.registerRevenue, state.numberOfRegisters * 1ull) * state.numberOfRegisters, 
+				div<uint64>(locals.shareholderRevenue, 676) * 676, 
+				div<uint64>(locals.registerRevenue, state.numberOfRegisters) * state.numberOfRegisters, 
 				locals.fee, 
 				locals.winnerRevenue, 
 				0 
@@ -1238,14 +1238,14 @@ protected:
 			qpi.transfer(locals.winner, locals.winnerRevenue);
 			qpi.burn(locals.burnAmount);
 			qpi.transfer(state.charityAddress, locals.charityRevenue);
-			qpi.distributeDividends(div(locals.shareholderRevenue, 676ull));
+			qpi.distributeDividends(div<uint64>(locals.shareholderRevenue, 676));
 			qpi.transfer(state.feeAddress, locals.fee);
 
 			// Update total amounts and log largest winner update
 			state.totalBurnAmount += locals.burnAmount;
 			state.totalCharityAmount += locals.charityRevenue;
-			state.totalShareholderAmount += div(locals.shareholderRevenue, 676ull) * 676;
-			state.totalRegisterAmount += div(locals.registerRevenue, state.numberOfRegisters * 1ull) * state.numberOfRegisters;
+			state.totalShareholderAmount += div<uint64>(locals.shareholderRevenue, 676) * 676;
+			state.totalRegisterAmount += div<uint64>(locals.registerRevenue, state.numberOfRegisters) * state.numberOfRegisters;
 			state.totalFeeAmount += locals.fee;
 			state.totalWinnerAmount += locals.winnerRevenue;
 			if (locals.winnerRevenue > state.largestWinnerAmount)
@@ -1256,7 +1256,7 @@ protected:
 			locals.idx = state.registers.nextElementIndex(NULL_INDEX);
 			while (locals.idx != NULL_INDEX)
 			{
-				qpi.transfer(state.registers.key(locals.idx), div(locals.registerRevenue, state.numberOfRegisters * 1ull));
+				qpi.transfer(state.registers.key(locals.idx), div<uint64>(locals.registerRevenue, state.numberOfRegisters));
 				locals.idx = state.registers.nextElementIndex(locals.idx);
 			}
 
@@ -1302,10 +1302,10 @@ protected:
 				while (locals.idx != NULL_INDEX)
 				{
 					locals.shareholder = state.shareholdersList.key(locals.idx);
-					qpi.transferShareOwnershipAndPossession(QRAFFLE_QXMR_ASSET_NAME, state.QXMRIssuer, SELF, SELF, div(state.epochQXMRRevenue, 676ULL), locals.shareholder);
+					qpi.transferShareOwnershipAndPossession(QRAFFLE_QXMR_ASSET_NAME, state.QXMRIssuer, SELF, SELF, div<uint64>(state.epochQXMRRevenue, 676), locals.shareholder);
 					locals.idx = state.shareholdersList.nextElementIndex(locals.idx);
 				}
-				state.epochQXMRRevenue -= div(state.epochQXMRRevenue, 676ULL) * 676;
+				state.epochQXMRRevenue -= div<uint64>(state.epochQXMRRevenue, 676) * 676;
 			}
 		}
 		else 
@@ -1326,12 +1326,12 @@ protected:
 				locals.acTokenRaffle = state.activeTokenRaffle.get(locals.i);
 
 				// Calculate token raffle fee distributions
-				locals.burnAmount = div(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_BURN_FEE, 100ull);
-				locals.charityRevenue = div(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_CHARITY_FEE, 100ull);
-				locals.shareholderRevenue = div(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_SHRAEHOLDER_FEE, 100ull);
-				locals.registerRevenue = div(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_REGISTER_FEE, 100ull);
-				locals.fee = div(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_FEE, 100ull);
-				locals.winnerRevenue = locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) - locals.burnAmount - locals.charityRevenue - div(locals.shareholderRevenue, 676ULL) * 676 - div(locals.registerRevenue, state.numberOfRegisters * 1ull) * state.numberOfRegisters - locals.fee;
+				locals.burnAmount = div<uint64>(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_BURN_FEE, 100);
+				locals.charityRevenue = div<uint64>(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_CHARITY_FEE, 100);
+				locals.shareholderRevenue = div<uint64>(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_SHRAEHOLDER_FEE, 100);
+				locals.registerRevenue = div<uint64>(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_REGISTER_FEE, 100);
+				locals.fee = div<uint64>(locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_FEE, 100);
+				locals.winnerRevenue = locals.acTokenRaffle.entryAmount * state.numberOfTokenRaffleMembers.get(locals.i) - locals.burnAmount - locals.charityRevenue - div<uint64>(locals.shareholderRevenue, 676) * 676 - div<uint64>(locals.registerRevenue, state.numberOfRegisters) * state.numberOfRegisters - locals.fee;
 				
 				// Execute token transfers and log each
 				qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, locals.winnerRevenue, locals.winner);
@@ -1343,14 +1343,14 @@ protected:
 				while (locals.idx != NULL_INDEX)
 				{
 					locals.shareholder = state.shareholdersList.key(locals.idx);
-					qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, div(locals.shareholderRevenue, 676ULL), locals.shareholder);
+					qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, div<uint64>(locals.shareholderRevenue, 676), locals.shareholder);
 					locals.idx = state.shareholdersList.nextElementIndex(locals.idx);
 				}
 
 				locals.idx = state.registers.nextElementIndex(NULL_INDEX);
 				while (locals.idx != NULL_INDEX)
 				{
-					qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, div(locals.registerRevenue, state.numberOfRegisters * 1ull), state.registers.key(locals.idx));
+					qpi.transferShareOwnershipAndPossession(locals.acTokenRaffle.token.assetName, locals.acTokenRaffle.token.issuer, SELF, SELF, div<uint64>(locals.registerRevenue, state.numberOfRegisters), state.registers.key(locals.idx));
 					locals.idx = state.registers.nextElementIndex(locals.idx);
 				}
 
@@ -1399,7 +1399,7 @@ protected:
 		}
 		if (state.numberOfEntryAmountSubmitted > 0)
 		{
-			state.qREAmount = div(locals.sumOfEntryAmountSubmitted, state.numberOfEntryAmountSubmitted * 1ull);
+			state.qREAmount = div<uint64>(locals.sumOfEntryAmountSubmitted, state.numberOfEntryAmountSubmitted);
 		}
 		else
 		{
