@@ -11,114 +11,235 @@ public:
     {
         if (printDetails)
         {
-            std::cout << "Subscriptions (total capacity: " << subscriptions.capacity() << "):" << std::endl;
-            for (uint64 i = 0; i < subscriptions.capacity(); ++i)
+            std::cout << "Active Subscriptions (total capacity: " << activeSubscriptions.capacity() << "):" << std::endl;
+            for (uint64 i = 0; i < activeSubscriptions.capacity(); ++i)
             {
-                const SubscriptionData& sub = subscriptions.get(i);
-                if (!isZero(sub.proposerId))
+                const SubscriptionData& sub = activeSubscriptions.get(i);
+                if (!isZero(sub.destination))
                 {
-                    std::cout << "- Index " << i << ": proposerId=" << sub.proposerId 
-                              << ", isActive=" << (int)sub.isActive
-                              << ", periodType=" << (int)sub.periodType
+                    std::cout << "- Index " << i << ": destination=" << sub.destination 
+                              << ", weeksPerPeriod=" << (int)sub.weeksPerPeriod
                               << ", numberOfPeriods=" << sub.numberOfPeriods
                               << ", amountPerPeriod=" << sub.amountPerPeriod
                               << ", startEpoch=" << sub.startEpoch
                               << ", currentPeriod=" << sub.currentPeriod << std::endl;
                 }
             }
+            std::cout << "Subscription Proposals (total capacity: " << subscriptionProposals.capacity() << "):" << std::endl;
+            for (uint64 i = 0; i < subscriptionProposals.capacity(); ++i)
+            {
+                const SubscriptionProposalData& prop = subscriptionProposals.get(i);
+                if (!isZero(prop.proposerId))
+                {
+                    std::cout << "- Index " << i << ": proposerId=" << prop.proposerId 
+                              << ", destination=" << prop.destination
+                              << ", weeksPerPeriod=" << (int)prop.weeksPerPeriod
+                              << ", numberOfPeriods=" << prop.numberOfPeriods
+                              << ", amountPerPeriod=" << prop.amountPerPeriod
+                              << ", startEpoch=" << prop.startEpoch << std::endl;
+                }
+            }
         }
     }
 
-    sint32 findSubscriptionIndex(const id& proposerId)
+    const SubscriptionData* getActiveSubscriptionByDestination(const id& destination)
     {
-        for (sint32 i = 0; i < subscriptions.capacity(); ++i)
+        for (uint64 i = 0; i < activeSubscriptions.capacity(); ++i)
         {
-            const SubscriptionData& sub = subscriptions.get(i);
-            if (sub.proposerId == proposerId)
-                return i;
-        }
-        return -1;
-    }
-
-    const SubscriptionData* getSubscriptionByProposer(const id& proposerId)
-    {
-        for (uint64 i = 0; i < subscriptions.capacity(); ++i)
-        {
-            const SubscriptionData& sub = subscriptions.get(i);
-            if (sub.proposerId == proposerId)
+            const SubscriptionData& sub = activeSubscriptions.get(i);
+            if (sub.destination == destination && !isZero(sub.destination))
                 return &sub;
         }
         return nullptr;
     }
 
-    bool hasActiveSubscription(const id& proposerId)
+    // Helper to find destination from a proposer's subscription proposal
+    id getDestinationByProposer(const id& proposerId)
     {
-        const SubscriptionData* sub = getSubscriptionByProposer(proposerId);
-        return sub != nullptr && sub->isActive;
+        // Use constant 128 which matches SubscriptionProposalsT capacity
+        for (uint64 i = 0; i < 128; ++i)
+        {
+            const SubscriptionProposalData& prop = subscriptionProposals.get(i);
+            if (prop.proposerId == proposerId && !isZero(prop.proposerId))
+                return prop.destination;
+        }
+        return NULL_ID;
     }
 
-    bool hasSubscription(const id& proposerId)
+    bool hasActiveSubscription(const id& destination)
     {
-        return getSubscriptionByProposer(proposerId) != nullptr;
+        const SubscriptionData* sub = getActiveSubscriptionByDestination(destination);
+        return sub != nullptr;
     }
 
-    sint32 getSubscriptionCurrentPeriod(const id& proposerId)
+
+    sint32 getSubscriptionCurrentPeriod(const id& destination)
     {
-        const SubscriptionData* sub = getSubscriptionByProposer(proposerId);
+        const SubscriptionData* sub = getActiveSubscriptionByDestination(destination);
         return sub != nullptr ? sub->currentPeriod : -1;
     }
 
-    bool getSubscriptionIsActive(const id& proposerId)
+    bool getSubscriptionIsActive(const id& destination)
     {
-        const SubscriptionData* sub = getSubscriptionByProposer(proposerId);
-        return sub != nullptr && sub->isActive;
+        const SubscriptionData* sub = getActiveSubscriptionByDestination(destination);
+        return sub != nullptr;
     }
 
-    uint8 getSubscriptionPeriodType(const id& proposerId)
+    // Overload for backward compatibility - use proposer ID
+    bool getSubscriptionIsActive(const id& proposerId, bool)
     {
-        const SubscriptionData* sub = getSubscriptionByProposer(proposerId);
-        return sub != nullptr ? sub->periodType : 0;
+        return getSubscriptionIsActiveByProposer(proposerId);
     }
 
-    uint32 getSubscriptionNumberOfPeriods(const id& proposerId)
+    uint8 getSubscriptionWeeksPerPeriod(const id& destination)
     {
-        const SubscriptionData* sub = getSubscriptionByProposer(proposerId);
+        const SubscriptionData* sub = getActiveSubscriptionByDestination(destination);
+        return sub != nullptr ? sub->weeksPerPeriod : 0;
+    }
+
+    uint32 getSubscriptionNumberOfPeriods(const id& destination)
+    {
+        const SubscriptionData* sub = getActiveSubscriptionByDestination(destination);
         return sub != nullptr ? sub->numberOfPeriods : 0;
     }
 
-    sint64 getSubscriptionAmountPerPeriod(const id& proposerId)
+    sint64 getSubscriptionAmountPerPeriod(const id& destination)
     {
-        const SubscriptionData* sub = getSubscriptionByProposer(proposerId);
+        const SubscriptionData* sub = getActiveSubscriptionByDestination(destination);
         return sub != nullptr ? sub->amountPerPeriod : 0;
     }
 
-    uint32 getSubscriptionStartEpoch(const id& proposerId)
+    uint32 getSubscriptionStartEpoch(const id& destination)
     {
-        const SubscriptionData* sub = getSubscriptionByProposer(proposerId);
+        const SubscriptionData* sub = getActiveSubscriptionByDestination(destination);
         return sub != nullptr ? sub->startEpoch : 0;
     }
 
     uint32 countActiveSubscriptions()
     {
         uint32 count = 0;
-        for (uint64 i = 0; i < subscriptions.capacity(); ++i)
+        for (uint64 i = 0; i < activeSubscriptions.capacity(); ++i)
         {
-            if (subscriptions.get(i).isActive)
+            if (!isZero(activeSubscriptions.get(i).destination))
                 count++;
         }
         return count;
     }
 
-    uint32 countSubscriptionsByProposer(const id& proposerId)
+    // Helper function to check if proposer has a subscription proposal
+    bool hasSubscriptionProposal(const id& proposerId)
     {
-        uint32 count = 0;
-        for (uint64 i = 0; i < subscriptions.capacity(); ++i)
+        // Use constant 128 which matches SubscriptionProposalsT capacity
+        for (uint64 i = 0; i < 128; ++i)
         {
-            const SubscriptionData& sub = subscriptions.get(i);
-            if (sub.proposerId == proposerId && sub.isActive)
-                count++;
+            const SubscriptionProposalData& prop = subscriptionProposals.get(i);
+            if (prop.proposerId == proposerId && !isZero(prop.proposerId))
+                return true;
         }
-        return count;
+        return false;
+    }
+
+    // Helper function for backward compatibility - finds destination from proposer's proposal and checks active subscription
+    bool hasActiveSubscriptionByProposer(const id& proposerId)
+    {
+        id destination = getDestinationByProposer(proposerId);
+        if (isZero(destination))
+            return false;
+        return hasActiveSubscription(destination);
+    }
+
+    // Helper function that checks both subscription proposals and active subscriptions by proposer
+    bool hasSubscription(const id& proposerId)
+    {
+        return hasSubscriptionProposal(proposerId) || hasActiveSubscriptionByProposer(proposerId);
+    }
+
+    // Helper functions that work with proposer ID (for backward compatibility with tests)
+    bool getSubscriptionIsActiveByProposer(const id& proposerId)
+    {
+        return hasActiveSubscriptionByProposer(proposerId);
+    }
+
+    // Helper to get subscription proposal data by proposer ID
+    const SubscriptionProposalData* getSubscriptionProposalByProposer(const id& proposerId)
+    {
+        // Use constant 128 which matches SubscriptionProposalsT capacity
+        for (uint64 i = 0; i < 128; ++i)
+        {
+            const SubscriptionProposalData& prop = subscriptionProposals.get(i);
+            if (prop.proposerId == proposerId && !isZero(prop.proposerId))
+                return &prop;
+        }
+        return nullptr;
+    }
+
+    uint8 getSubscriptionWeeksPerPeriodByProposer(const id& proposerId)
+    {
+        // First check subscription proposal
+        const SubscriptionProposalData* prop = getSubscriptionProposalByProposer(proposerId);
+        if (prop != nullptr)
+            return prop->weeksPerPeriod;
+        
+        // Then check active subscription
+        id destination = getDestinationByProposer(proposerId);
+        if (!isZero(destination))
+            return getSubscriptionWeeksPerPeriod(destination);
+        
+        return 0;
+    }
+
+    uint32 getSubscriptionNumberOfPeriodsByProposer(const id& proposerId)
+    {
+        // First check subscription proposal
+        const SubscriptionProposalData* prop = getSubscriptionProposalByProposer(proposerId);
+        if (prop != nullptr)
+            return prop->numberOfPeriods;
+        
+        // Then check active subscription
+        id destination = getDestinationByProposer(proposerId);
+        if (!isZero(destination))
+            return getSubscriptionNumberOfPeriods(destination);
+        
+        return 0;
+    }
+
+    sint64 getSubscriptionAmountPerPeriodByProposer(const id& proposerId)
+    {
+        // First check subscription proposal
+        const SubscriptionProposalData* prop = getSubscriptionProposalByProposer(proposerId);
+        if (prop != nullptr)
+            return prop->amountPerPeriod;
+        
+        // Then check active subscription
+        id destination = getDestinationByProposer(proposerId);
+        if (!isZero(destination))
+            return getSubscriptionAmountPerPeriod(destination);
+        
+        return 0;
+    }
+
+    uint32 getSubscriptionStartEpochByProposer(const id& proposerId)
+    {
+        // First check subscription proposal
+        const SubscriptionProposalData* prop = getSubscriptionProposalByProposer(proposerId);
+        if (prop != nullptr)
+            return prop->startEpoch;
+        
+        // Then check active subscription
+        id destination = getDestinationByProposer(proposerId);
+        if (!isZero(destination))
+            return getSubscriptionStartEpoch(destination);
+        
+        return 0;
+    }
+
+    sint32 getSubscriptionCurrentPeriodByProposer(const id& proposerId)
+    {
+        // Only check active subscription (currentPeriod doesn't exist in proposals)
+        id destination = getDestinationByProposer(proposerId);
+        if (isZero(destination))
+            return -1; // No active subscription yet
+        return getSubscriptionCurrentPeriod(destination);
     }
 
     uint32 getMaxSubscriptionEpochs()
@@ -162,11 +283,11 @@ public:
         return output;
     }
 
-    CCF::GetProposal_output getProposal(uint32 proposalIndex, const id& subscriptionProposerId = NULL_ID)
+    CCF::GetProposal_output getProposal(uint32 proposalIndex, const id& subscriptionDestination = NULL_ID)
     {
         CCF::GetProposal_input input;
         input.proposalIndex = (uint16)proposalIndex;
-        input.subscriptionProposerId = subscriptionProposerId;
+        input.subscriptionDestination = subscriptionDestination;
         CCF::GetProposal_output output;
         callFunction(CCF_CONTRACT_INDEX, 2, input, output);
         return output;
@@ -249,7 +370,7 @@ public:
     }
 
     uint32 setupSubscriptionProposal(const id& proposer, const id& destination, sint64 amountPerPeriod, 
-                                      uint32 numberOfPeriods, uint8 periodType, uint32 startEpoch, bool expectSuccess = true)
+                                      uint32 numberOfPeriods, uint8 weeksPerPeriod, uint32 startEpoch, bool expectSuccess = true)
     {
         CCF::SetProposal_input input;
         setMemory(input, 0);
@@ -258,7 +379,7 @@ public:
         input.proposal.transfer.destination = destination;
         input.proposal.transfer.amount = amountPerPeriod;
         input.isSubscription = true;
-        input.periodType = periodType;
+        input.weeksPerPeriod = weeksPerPeriod;
         input.numberOfPeriods = numberOfPeriods;
         input.startEpoch = startEpoch;
         input.amountPerPeriod = amountPerPeriod;
@@ -370,23 +491,24 @@ TEST(ContractCCF, SubscriptionProposalCreation)
 
     // Create a subscription proposal
     uint32 proposalIndex = test.setupSubscriptionProposal(
-        PROPOSER1, ENTITY1, 1000, 12, CCF_SUBSCRIPTION_PERIOD_MONTH, system.epoch + 1);
+        PROPOSER1, ENTITY1, 1000, 12, 4, system.epoch + 1); // 4 weeks per period (monthly)
     EXPECT_NE((int)proposalIndex, (int)INVALID_PROPOSAL_INDEX);
     
-    // Check that subscription was stored
+    // Check that subscription proposal was stored
     auto state = test.getState();
     EXPECT_TRUE(state->hasSubscription(PROPOSER1));
-    EXPECT_TRUE(state->getSubscriptionIsActive(PROPOSER1));
-    EXPECT_EQ(state->getSubscriptionPeriodType(PROPOSER1), CCF_SUBSCRIPTION_PERIOD_MONTH);
-    EXPECT_EQ(state->getSubscriptionNumberOfPeriods(PROPOSER1), 12u);
-    EXPECT_EQ(state->getSubscriptionAmountPerPeriod(PROPOSER1), 1000);
-    EXPECT_EQ(state->getSubscriptionStartEpoch(PROPOSER1), system.epoch + 1);
-    EXPECT_EQ(state->getSubscriptionCurrentPeriod(PROPOSER1), -1);
+    EXPECT_FALSE(state->getSubscriptionIsActiveByProposer(PROPOSER1)); // Not active until accepted
+    EXPECT_EQ(state->getSubscriptionWeeksPerPeriodByProposer(PROPOSER1), 4u);
+    EXPECT_EQ(state->getSubscriptionNumberOfPeriodsByProposer(PROPOSER1), 12u);
+    EXPECT_EQ(state->getSubscriptionAmountPerPeriodByProposer(PROPOSER1), 1000);
+    EXPECT_EQ(state->getSubscriptionStartEpochByProposer(PROPOSER1), system.epoch + 1);
+    EXPECT_EQ(state->getSubscriptionCurrentPeriodByProposer(PROPOSER1), -1);
     
     // Get proposal with subscription data
-    auto proposal = test.getProposal(proposalIndex, PROPOSER1);
+    auto proposal = test.getProposal(proposalIndex, NULL_ID);
     EXPECT_TRUE(proposal.okay);
-    EXPECT_FALSE(isZero(proposal.subscription.proposerId));
+    EXPECT_TRUE(proposal.hasSubscriptionProposal);
+    EXPECT_FALSE(isZero(proposal.subscriptionProposal.proposerId));
 }
 
 TEST(ContractCCF, SubscriptionProposalVotingAndActivation)
@@ -399,7 +521,7 @@ TEST(ContractCCF, SubscriptionProposalVotingAndActivation)
     increaseEnergy(PROPOSER1, 1000000);
     // Create a subscription proposal starting next epoch
     uint32 proposalIndex = test.setupSubscriptionProposal(
-        PROPOSER1, ENTITY1, 1000, 4, CCF_SUBSCRIPTION_PERIOD_WEEK, system.epoch + 1);
+        PROPOSER1, ENTITY1, 1000, 4, 1, system.epoch + 1); // 1 week per period (weekly)
     EXPECT_NE((int)proposalIndex, (int)INVALID_PROPOSAL_INDEX);
         
     // Vote to approve
@@ -408,17 +530,11 @@ TEST(ContractCCF, SubscriptionProposalVotingAndActivation)
     // End epoch
     test.endEpoch();
     
-    // Check subscription is deactivated before voting completes
     auto state = test.getState();
     
-    // Begin next epoch and end it to activate subscription
-    system.epoch = 189;
-    test.beginEpoch();
-    test.endEpoch();
-    
-    // Check subscription is now active
-    EXPECT_TRUE(state->hasActiveSubscription(PROPOSER1));
-    EXPECT_TRUE(state->getSubscriptionIsActive(PROPOSER1));
+    // Check subscription is now active (identified by destination)
+    EXPECT_TRUE(state->hasActiveSubscription(ENTITY1));
+    EXPECT_TRUE(state->getSubscriptionIsActive(ENTITY1));
 }
 
 TEST(ContractCCF, SubscriptionPaymentProcessing)
@@ -431,7 +547,7 @@ TEST(ContractCCF, SubscriptionPaymentProcessing)
     increaseEnergy(PROPOSER1, 1000000);
     // Create subscription starting in epoch 189, weekly payments
     uint32 proposalIndex = test.setupSubscriptionProposal(
-        PROPOSER1, ENTITY1, 500, 4, CCF_SUBSCRIPTION_PERIOD_WEEK, 189);
+        PROPOSER1, ENTITY1, 500, 4, 1, 189); // 1 week per period (weekly)
     EXPECT_NE((int)proposalIndex, (int)INVALID_PROPOSAL_INDEX);
     
     // Approve proposal
@@ -473,7 +589,7 @@ TEST(ContractCCF, SubscriptionPaymentProcessing)
     
     // Check subscription currentPeriod was updated
     auto state = test.getState();
-    EXPECT_EQ(state->getSubscriptionCurrentPeriod(PROPOSER1), 1);
+    EXPECT_EQ(state->getSubscriptionCurrentPeriod(ENTITY1), 1);
 }
 
 TEST(ContractCCF, MultipleSubscriptionPayments)
@@ -486,7 +602,7 @@ TEST(ContractCCF, MultipleSubscriptionPayments)
     increaseEnergy(PROPOSER1, 1000000);
     // Create monthly subscription (4 epochs per period)
     uint32 proposalIndex = test.setupSubscriptionProposal(
-        PROPOSER1, ENTITY1, 1000, 3, CCF_SUBSCRIPTION_PERIOD_MONTH, 189);
+        PROPOSER1, ENTITY1, 1000, 3, 4, 189); // 4 weeks per period (monthly)
     
     test.voteMultipleComputors(proposalIndex, 200, 350);
     // Increase energy for contract to pay for the proposal
@@ -514,7 +630,7 @@ TEST(ContractCCF, MultipleSubscriptionPayments)
     
     // Check subscription completed all periods
     auto state = test.getState();
-    EXPECT_EQ(state->getSubscriptionCurrentPeriod(PROPOSER1), 2);
+    EXPECT_EQ(state->getSubscriptionCurrentPeriod(ENTITY1), 2);
 }
 
 TEST(ContractCCF, PreventMultipleActiveSubscriptions)
@@ -527,14 +643,14 @@ TEST(ContractCCF, PreventMultipleActiveSubscriptions)
     increaseEnergy(PROPOSER1, 1000000);
     // Create first subscription
     uint32 proposalIndex1 = test.setupSubscriptionProposal(
-        PROPOSER1, ENTITY1, 1000, 4, CCF_SUBSCRIPTION_PERIOD_WEEK, 189);
+        PROPOSER1, ENTITY1, 1000, 4, 1, 189); // 1 week per period (weekly)
     EXPECT_NE((int)proposalIndex1, (int)INVALID_PROPOSAL_INDEX);
 
     increaseEnergy(PROPOSER1, 1000000);
-    // Try to create second subscription for same proposer - should fail
+    // Try to create second subscription for same proposer - should overwrite the previous one
     uint32 proposalIndex2 = test.setupSubscriptionProposal(
-        PROPOSER1, ENTITY2, 2000, 4, CCF_SUBSCRIPTION_PERIOD_WEEK, 189, false);
-    EXPECT_EQ((int)proposalIndex2, (int)INVALID_PROPOSAL_INDEX);
+        PROPOSER1, ENTITY2, 2000, 4, 1, 189, true); // 1 week per period (weekly)
+    EXPECT_EQ((int)proposalIndex2, (int)proposalIndex1);
 }
 
 TEST(ContractCCF, CancelSubscription)
@@ -547,7 +663,7 @@ TEST(ContractCCF, CancelSubscription)
     increaseEnergy(PROPOSER1, 1000000);
     // Create subscription
     uint32 proposalIndex = test.setupSubscriptionProposal(
-        PROPOSER1, ENTITY1, 1000, 4, CCF_SUBSCRIPTION_PERIOD_WEEK, 189);
+        PROPOSER1, ENTITY1, 1000, 4, 1, 189); // 1 week per period (weekly)
     EXPECT_NE((int)proposalIndex, (int)INVALID_PROPOSAL_INDEX);
     // Cancel proposal (epoch = 0)
     CCF::SetProposal_input cancelInput;
@@ -555,7 +671,7 @@ TEST(ContractCCF, CancelSubscription)
     cancelInput.proposal.epoch = 0;
     cancelInput.proposal.type = ProposalTypes::TransferYesNo;
     cancelInput.isSubscription = true;
-    cancelInput.periodType = CCF_SUBSCRIPTION_PERIOD_WEEK;
+    cancelInput.weeksPerPeriod = 1; // 1 week per period (weekly)
     cancelInput.numberOfPeriods = 4;
     cancelInput.startEpoch = 189;
     cancelInput.amountPerPeriod = 1000;
@@ -564,8 +680,7 @@ TEST(ContractCCF, CancelSubscription)
     
     // Check subscription was deactivated
     auto state = test.getState();
-    EXPECT_TRUE(state->hasSubscription(PROPOSER1));            // because proposal is not cleared, it is still stored in the subscriptions array
-    EXPECT_FALSE(state->hasActiveSubscription(PROPOSER1));    // because proposal is canceled, subscription is deactivated
+    EXPECT_FALSE(state->hasSubscriptionProposal(PROPOSER1));    // proposal is canceled, so no subscription proposal
 }
 
 TEST(ContractCCF, SubscriptionValidation)
@@ -577,7 +692,7 @@ TEST(ContractCCF, SubscriptionValidation)
     id PROPOSER1 = broadcastedComputors.computors.publicKeys[0];
     increaseEnergy(PROPOSER1, 1000000);
     
-    // Test invalid period type
+    // Test invalid weeksPerPeriod (must be > 0)
     CCF::SetProposal_input input;
     setMemory(input, 0);
     input.proposal.epoch = system.epoch;
@@ -585,7 +700,7 @@ TEST(ContractCCF, SubscriptionValidation)
     input.proposal.transfer.destination = ENTITY1;
     input.proposal.transfer.amount = 1000;
     input.isSubscription = true;
-    input.periodType = 99; // Invalid
+    input.weeksPerPeriod = 0; // Invalid (must be > 0)
     input.numberOfPeriods = 4;
     input.startEpoch = system.epoch + 1;
     input.amountPerPeriod = 1000;
@@ -595,24 +710,26 @@ TEST(ContractCCF, SubscriptionValidation)
 
     // Test start epoch in past
     increaseEnergy(PROPOSER1, 1000000);
-    input.periodType = CCF_SUBSCRIPTION_PERIOD_WEEK;
+    input.weeksPerPeriod = 1; // 1 week per period (weekly)
     input.startEpoch = system.epoch; // Should be > current epoch
     output = test.setProposal(PROPOSER1, input);
     EXPECT_EQ((int)output.proposalIndex, (int)INVALID_PROPOSAL_INDEX);
-
-    // Test zero periods
-    increaseEnergy(PROPOSER1, 1000000);
-    input.startEpoch = system.epoch + 1;
-    input.numberOfPeriods = 0;
-    output = test.setProposal(PROPOSER1, input);
-    EXPECT_EQ((int)output.proposalIndex, (int)INVALID_PROPOSAL_INDEX);
     
-    // Test negative amount
+    // Test that zero numberOfPeriods is allowed (will cancel subscription when accepted)
+    increaseEnergy(PROPOSER1, 1000000);
+    input.weeksPerPeriod = 1;
+    input.startEpoch = system.epoch + 1;
+    input.numberOfPeriods = 0; // Allowed - will cancel subscription
+    input.amountPerPeriod = 1000;
+    output = test.setProposal(PROPOSER1, input);
+    EXPECT_NE((int)output.proposalIndex, (int)INVALID_PROPOSAL_INDEX);
+    
+    // Test that zero amountPerPeriod is allowed (will cancel subscription when accepted)
     increaseEnergy(PROPOSER1, 1000000);
     input.numberOfPeriods = 4;
-    input.amountPerPeriod = -100;
+    input.amountPerPeriod = 0; // Allowed - will cancel subscription
     output = test.setProposal(PROPOSER1, input);
-    EXPECT_EQ((int)output.proposalIndex, (int)INVALID_PROPOSAL_INDEX);
+    EXPECT_NE((int)output.proposalIndex, (int)INVALID_PROPOSAL_INDEX);
 }
 
 TEST(ContractCCF, MultipleProposers)
@@ -628,18 +745,30 @@ TEST(ContractCCF, MultipleProposers)
     
     // Create subscriptions for different proposers
     uint32 proposalIndex1 = test.setupSubscriptionProposal(
-        PROPOSER1, ENTITY1, 1000, 4, CCF_SUBSCRIPTION_PERIOD_WEEK, 189);
+        PROPOSER1, ENTITY1, 1000, 4, 1, 189); // 1 week per period (weekly)
     EXPECT_NE((int)proposalIndex1, (int)INVALID_PROPOSAL_INDEX);
     uint32 proposalIndex2 = test.setupSubscriptionProposal(
-        PROPOSER2, ENTITY2, 2000, 4, CCF_SUBSCRIPTION_PERIOD_WEEK, 189);
+        PROPOSER2, ENTITY2, 2000, 4, 1, 189); // 1 week per period (weekly)
     EXPECT_NE((int)proposalIndex2, (int)INVALID_PROPOSAL_INDEX);
-    
-    // Both should be stored
+
+    // Both proposals need to first be voted in before the subscriptions become active.
     auto state = test.getState();
-    EXPECT_TRUE(state->hasActiveSubscription(PROPOSER1));
-    EXPECT_TRUE(state->hasActiveSubscription(PROPOSER2));
-    EXPECT_EQ(state->countSubscriptionsByProposer(PROPOSER1), 1u);
-    EXPECT_EQ(state->countSubscriptionsByProposer(PROPOSER2), 1u);
+    EXPECT_FALSE(state->hasActiveSubscription(ENTITY1));
+    EXPECT_FALSE(state->hasActiveSubscription(ENTITY2));
+    EXPECT_EQ(state->countActiveSubscriptions(), 0u);
+
+    // Vote in both subscription proposals to activate them
+    test.voteMultipleComputors(proposalIndex1, 200, 400);
+    test.voteMultipleComputors(proposalIndex2, 200, 400);
+
+    // Increase energy so contract can execute the subscriptions
+    increaseEnergy(id(CCF_CONTRACT_INDEX, 0, 0, 0), 10000000);
+    test.endEpoch();
+
+    // Now both should be active subscriptions (by destination)
+    EXPECT_TRUE(state->hasActiveSubscription(ENTITY1));
+    EXPECT_TRUE(state->hasActiveSubscription(ENTITY2));
+    EXPECT_EQ(state->countActiveSubscriptions(), 2u);
 }
 
 TEST(ContractCCF, ProposalRejectedNoQuorum)
@@ -724,7 +853,7 @@ TEST(ContractCCF, SubscriptionMaxEpochsValidation)
     input.proposal.transfer.destination = ENTITY1;
     input.proposal.transfer.amount = 1000;
     input.isSubscription = true;
-    input.periodType = CCF_SUBSCRIPTION_PERIOD_MONTH;
+    input.weeksPerPeriod = 4; // 4 weeks per period (monthly)
     input.numberOfPeriods = 14; // 14 * 4 = 56 epochs > 52 max
     input.startEpoch = system.epoch + 1;
     input.amountPerPeriod = 1000;
@@ -749,7 +878,7 @@ TEST(ContractCCF, SubscriptionExpiration)
     
     // Create weekly subscription with 3 periods
     uint32 proposalIndex = test.setupSubscriptionProposal(
-        PROPOSER1, ENTITY1, 500, 3, CCF_SUBSCRIPTION_PERIOD_WEEK, 189);
+        PROPOSER1, ENTITY1, 500, 3, 1, 189); // 1 week per period (weekly)
     
     test.voteMultipleComputors(proposalIndex, 200, 350);
     // Increase energy for contract to pay for the proposal
@@ -827,7 +956,7 @@ TEST(ContractCCF, SubscriptionSlotReuse)
     
     // Create and cancel a subscription
     uint32 proposalIndex1 = test.setupSubscriptionProposal(
-        PROPOSER1, ENTITY1, 1000, 4, CCF_SUBSCRIPTION_PERIOD_WEEK, 189);
+        PROPOSER1, ENTITY1, 1000, 4, 1, 189); // 1 week per period (weekly)
     EXPECT_NE((int)proposalIndex1, (int)INVALID_PROPOSAL_INDEX);
     
     // Cancel it
@@ -839,7 +968,7 @@ TEST(ContractCCF, SubscriptionSlotReuse)
     cancelInput.proposal.type = ProposalTypes::TransferYesNo;
     cancelInput.proposal.transfer.destination = ENTITY1;
     cancelInput.proposal.transfer.amount = 1000;
-    cancelInput.periodType = CCF_SUBSCRIPTION_PERIOD_WEEK;
+    cancelInput.weeksPerPeriod = 1; // 1 week per period (weekly)
     cancelInput.numberOfPeriods = 4;
     cancelInput.startEpoch = 189;
     cancelInput.amountPerPeriod = 1000;
@@ -851,11 +980,245 @@ TEST(ContractCCF, SubscriptionSlotReuse)
     increaseEnergy(PROPOSER1, 1000000);
 
     uint32 proposalIndex2 = test.setupSubscriptionProposal(
-        PROPOSER1, ENTITY2, 2000, 4, CCF_SUBSCRIPTION_PERIOD_WEEK, 189);
+        PROPOSER1, ENTITY2, 2000, 4, 1, 189); // 1 week per period (weekly)
+    EXPECT_EQ((int)proposalIndex2, (int)proposalIndex1);
+    
+    // Vote in the new subscription proposal to activate it
+    test.voteMultipleComputors(proposalIndex2, 200, 400);
+    // Increase energy for contract to pay for the proposal
+    increaseEnergy(id(CCF_CONTRACT_INDEX, 0, 0, 0), 1000000);
+    test.endEpoch();
+    
+    // Check that subscription was updated (identified by destination)
+    auto state = test.getState();
+    EXPECT_EQ(state->countActiveSubscriptions(), 1u);
+    EXPECT_EQ(state->getSubscriptionAmountPerPeriod(ENTITY2), 2000); // New subscription for ENTITY2
+}
+
+TEST(ContractCCF, CancelSubscriptionByZeroAmount)
+{
+    ContractTestingCCF test;
+    system.epoch = 188;
+    test.beginEpoch();
+    
+    id PROPOSER1 = broadcastedComputors.computors.publicKeys[0];
+    increaseEnergy(PROPOSER1, 1000000);
+    
+    // Create and activate a subscription
+    uint32 proposalIndex = test.setupSubscriptionProposal(
+        PROPOSER1, ENTITY1, 1000, 4, 1, 189); // 1 week per period (weekly)
+    EXPECT_NE((int)proposalIndex, (int)INVALID_PROPOSAL_INDEX);
+    
+    // Vote to approve
+    test.voteMultipleComputors(proposalIndex, 200, 350);
+    // Increase energy for contract to pay for the proposal
+    increaseEnergy(id(CCF_CONTRACT_INDEX, 0, 0, 0), 1000000);
+    test.endEpoch();
+    
+    // Move to start epoch to activate
+    system.epoch = 189;
+    test.beginEpoch();
+    test.endEpoch();
+    
+    // Verify subscription is active
+    auto state = test.getState();
+    EXPECT_TRUE(state->hasActiveSubscription(ENTITY1));
+    EXPECT_EQ(state->getSubscriptionAmountPerPeriod(ENTITY1), 1000);
+    
+    // Propose cancellation by setting amountPerPeriod to 0
+    increaseEnergy(PROPOSER1, 1000000);
+    CCF::SetProposal_input cancelInput;
+    setMemory(cancelInput, 0);
+    cancelInput.proposal.epoch = system.epoch;
+    cancelInput.proposal.type = ProposalTypes::TransferYesNo;
+    cancelInput.proposal.transfer.destination = ENTITY1;
+    cancelInput.proposal.transfer.amount = 0;
+    cancelInput.isSubscription = true;
+    cancelInput.weeksPerPeriod = 1;
+    cancelInput.numberOfPeriods = 4;
+    cancelInput.startEpoch = system.epoch + 1;
+    cancelInput.amountPerPeriod = 0; // Zero amount will cancel subscription
+    
+    uint32 cancelProposalIndex = test.setProposal(PROPOSER1, cancelInput).proposalIndex;
+    EXPECT_NE((int)cancelProposalIndex, (int)INVALID_PROPOSAL_INDEX);
+    
+    // Vote to approve cancellation
+    test.voteMultipleComputors(cancelProposalIndex, 200, 350);
+    // Increase energy for contract
+    increaseEnergy(id(CCF_CONTRACT_INDEX, 0, 0, 0), 1000000);
+    test.endEpoch();
+    
+    // Verify subscription was deleted
+    state = test.getState();
+    EXPECT_FALSE(state->hasActiveSubscription(ENTITY1));
+    EXPECT_EQ(state->countActiveSubscriptions(), 0u);
+}
+
+TEST(ContractCCF, CancelSubscriptionByZeroPeriods)
+{
+    ContractTestingCCF test;
+    system.epoch = 188;
+    test.beginEpoch();
+    
+    id PROPOSER1 = broadcastedComputors.computors.publicKeys[0];
+    increaseEnergy(PROPOSER1, 1000000);
+    
+    // Create and activate a subscription
+    uint32 proposalIndex = test.setupSubscriptionProposal(
+        PROPOSER1, ENTITY1, 1000, 4, 1, 189); // 1 week per period (weekly)
+    EXPECT_NE((int)proposalIndex, (int)INVALID_PROPOSAL_INDEX);
+    
+    // Vote to approve
+    test.voteMultipleComputors(proposalIndex, 200, 350);
+    // Increase energy for contract to pay for the proposal
+    increaseEnergy(id(CCF_CONTRACT_INDEX, 0, 0, 0), 1000000);
+    test.endEpoch();
+    
+    // Move to start epoch to activate
+    system.epoch = 189;
+    test.beginEpoch();
+    test.endEpoch();
+    
+    // Verify subscription is active
+    auto state = test.getState();
+    EXPECT_TRUE(state->hasActiveSubscription(ENTITY1));
+    
+    // Propose cancellation by setting numberOfPeriods to 0
+    increaseEnergy(PROPOSER1, 1000000);
+    CCF::SetProposal_input cancelInput;
+    setMemory(cancelInput, 0);
+    cancelInput.proposal.epoch = system.epoch;
+    cancelInput.proposal.type = ProposalTypes::TransferYesNo;
+    cancelInput.proposal.transfer.destination = ENTITY1;
+    cancelInput.proposal.transfer.amount = 0;
+    cancelInput.isSubscription = true;
+    cancelInput.weeksPerPeriod = 1;
+    cancelInput.numberOfPeriods = 0; // Zero periods will cancel subscription
+    cancelInput.startEpoch = system.epoch + 1;
+    cancelInput.amountPerPeriod = 1000;
+    
+    uint32 cancelProposalIndex = test.setProposal(PROPOSER1, cancelInput).proposalIndex;
+    EXPECT_NE((int)cancelProposalIndex, (int)INVALID_PROPOSAL_INDEX);
+    
+    // Vote to approve cancellation
+    test.voteMultipleComputors(cancelProposalIndex, 200, 350);
+    // Increase energy for contract
+    increaseEnergy(id(CCF_CONTRACT_INDEX, 0, 0, 0), 1000000);
+    test.endEpoch();
+    
+    // Verify subscription was deleted
+    state = test.getState();
+    EXPECT_FALSE(state->hasActiveSubscription(ENTITY1));
+    EXPECT_EQ(state->countActiveSubscriptions(), 0u);
+}
+
+TEST(ContractCCF, SubscriptionWithDifferentWeeksPerPeriod)
+{
+    ContractTestingCCF test;
+    system.epoch = 188;
+    test.beginEpoch();
+    
+    id PROPOSER1 = broadcastedComputors.computors.publicKeys[0];
+    increaseEnergy(PROPOSER1, 1000000);
+    
+    // Create subscription with 2 weeks per period
+    uint32 proposalIndex = test.setupSubscriptionProposal(
+        PROPOSER1, ENTITY1, 1000, 6, 2, 189); // 2 weeks per period, 6 periods
+    EXPECT_NE((int)proposalIndex, (int)INVALID_PROPOSAL_INDEX);
+    
+    // Verify proposal data
+    auto state = test.getState();
+    EXPECT_EQ(state->getSubscriptionWeeksPerPeriodByProposer(PROPOSER1), 2u);
+    EXPECT_EQ(state->getSubscriptionNumberOfPeriodsByProposer(PROPOSER1), 6u);
+    
+    // Vote to approve
+    test.voteMultipleComputors(proposalIndex, 200, 350);
+    // Increase energy for contract
+    increaseEnergy(id(CCF_CONTRACT_INDEX, 0, 0, 0), 1000000);
+    test.endEpoch();
+
+    // Still period -1, no payment yet
+    EXPECT_EQ(state->getSubscriptionCurrentPeriod(ENTITY1), -1);
+    
+    // Move to start epoch
+    system.epoch = 189;
+    test.beginEpoch();
+    test.endEpoch();
+
+    // period 0, it is the first payment period.
+    EXPECT_EQ(state->getSubscriptionCurrentPeriod(ENTITY1), 0);
+    
+    // Verify subscription is active with correct weeksPerPeriod
+    state = test.getState();
+    EXPECT_TRUE(state->hasActiveSubscription(ENTITY1));
+    EXPECT_EQ(state->getSubscriptionWeeksPerPeriod(ENTITY1), 2u);
+    EXPECT_EQ(state->getSubscriptionNumberOfPeriods(ENTITY1), 6u);
+    
+    system.epoch = 190;
+    test.beginEpoch();
+    test.endEpoch();
+    
+    system.epoch = 191;
+    test.beginEpoch();
+    test.endEpoch();
+    
+    // period 1, it is the second payment period.
+    EXPECT_EQ(state->getSubscriptionCurrentPeriod(ENTITY1), 1);
+    
+    sint64 balance = getBalance(ENTITY1);
+    EXPECT_GE(balance, 1000); // Payment was made
+}
+
+TEST(ContractCCF, SubscriptionOverwriteByDestination)
+{
+    ContractTestingCCF test;
+    system.epoch = 188;
+    test.beginEpoch();
+    
+    id PROPOSER1 = broadcastedComputors.computors.publicKeys[0];
+    increaseEnergy(PROPOSER1, 1000000);
+    id PROPOSER2 = broadcastedComputors.computors.publicKeys[1];
+    increaseEnergy(PROPOSER2, 1000000);
+    
+    // PROPOSER1 creates subscription for ENTITY1
+    uint32 proposalIndex1 = test.setupSubscriptionProposal(
+        PROPOSER1, ENTITY1, 1000, 4, 1, 189);
+    EXPECT_NE((int)proposalIndex1, (int)INVALID_PROPOSAL_INDEX);
+    
+    // Vote and activate
+    test.voteMultipleComputors(proposalIndex1, 200, 350);
+    increaseEnergy(id(CCF_CONTRACT_INDEX, 0, 0, 0), 1000000);
+    test.endEpoch();
+    
+    system.epoch = 189;
+    test.beginEpoch();
+    test.endEpoch();
+    
+    // Verify first subscription is active
+    auto state = test.getState();
+    EXPECT_TRUE(state->hasActiveSubscription(ENTITY1));
+    EXPECT_EQ(state->getSubscriptionAmountPerPeriod(ENTITY1), 1000);
+    
+    // PROPOSER2 creates a new subscription proposal for the same destination
+    // This should overwrite the existing subscription when accepted
+    uint32 proposalIndex2 = test.setupSubscriptionProposal(
+        PROPOSER2, ENTITY1, 2000, 6, 2, system.epoch + 1); // Different amount and schedule
     EXPECT_NE((int)proposalIndex2, (int)INVALID_PROPOSAL_INDEX);
     
-    // Check that only one subscription exists for this proposer
-    auto state = test.getState();
-    EXPECT_EQ(state->countSubscriptionsByProposer(PROPOSER1), 1u);
-    EXPECT_EQ(state->getSubscriptionAmountPerPeriod(PROPOSER1), 2000);
+    // Vote and activate the new subscription
+    test.voteMultipleComputors(proposalIndex2, 200, 350);
+    increaseEnergy(id(CCF_CONTRACT_INDEX, 0, 0, 0), 1000000);
+    test.endEpoch();
+    
+    system.epoch = 190;
+    test.beginEpoch();
+    test.endEpoch();
+    
+    // Verify the subscription was overwritten
+    state = test.getState();
+    EXPECT_TRUE(state->hasActiveSubscription(ENTITY1));
+    EXPECT_EQ(state->getSubscriptionAmountPerPeriod(ENTITY1), 2000); // New amount
+    EXPECT_EQ(state->getSubscriptionWeeksPerPeriod(ENTITY1), 2u); // New schedule
+    EXPECT_EQ(state->getSubscriptionNumberOfPeriods(ENTITY1), 6u); // New number of periods
+    EXPECT_EQ(state->countActiveSubscriptions(), 1u); // Still only one subscription per destination
 }

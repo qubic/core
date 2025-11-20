@@ -1,8 +1,6 @@
 using namespace QPI;
 
 constexpr uint32 CCF_MAX_SUBSCRIPTIONS = 8192;
-constexpr uint8 CCF_SUBSCRIPTION_PERIOD_WEEK = 1;
-constexpr uint8 CCF_SUBSCRIPTION_PERIOD_MONTH = 2;
 
 struct CCF2 
 {
@@ -28,11 +26,6 @@ struct CCF : public ContractBase
 		bool okay;
 	};
 
-	struct SetProposal_output
-	{
-		sint32 proposalIndex;
-	};
-
 	struct LatestTransfersEntry
 	{
 		id destination;
@@ -44,23 +37,39 @@ struct CCF : public ContractBase
 
 	typedef Array<LatestTransfersEntry, 128> LatestTransfersT;
 
-	// Subscription data for regular payment proposals
+	// Subscription proposal data (for proposals being voted on)
+	struct SubscriptionProposalData
+	{
+		id proposerId;                  // ID of the proposer (for cancellation checks)
+		id destination;                  // ID of the destination
+		Array<uint8, 256> url;           // URL of the subscription
+		uint8 weeksPerPeriod;			 // Number of weeks between payments (e.g., 1 for weekly, 4 for monthly)
+		uint32 numberOfPeriods;			// Total number of periods (e.g., 12 for 12 periods)
+		uint64 amountPerPeriod;			// Amount in Qubic per period
+		uint32 startEpoch;				// Epoch when subscription should start
+		Array<uint8, 2> _padding0;		// Padding for alignment
+		Array<uint8, 1> _padding1;      // Padding for alignment
+	};
+
+	// Active subscription data (for accepted subscriptions)
 	struct SubscriptionData
 	{
-		id proposerId;                  // ID of the proposer
-		id destination;                 // ID of the destination
-		Array<uint8, 256> url;          // URL of the subscription
-		bit isActive;					// Whether this subscription is active
-		uint8 periodType;				// SubscriptionPeriod::Week or SubscriptionPeriod::Month
-		uint32 numberOfPeriods;			// Total number of periods (e.g., 12 for 12 months)
-		sint64 amountPerPeriod;			// Amount in Qubic per period
+		id destination;                 // ID of the destination (used as key, one per destination)
+		Array<uint8, 256> url;           // URL of the subscription
+		uint8 weeksPerPeriod;			// Number of weeks between payments (e.g., 1 for weekly, 4 for monthly)
+		uint32 numberOfPeriods;			// Total number of periods (e.g., 12 for 12 periods)
+		uint64 amountPerPeriod;			// Amount in Qubic per period
 		uint32 startEpoch;				// Epoch when subscription started (proposal approval epoch)
 		sint32 currentPeriod;			// Current period index (0-based, 0 to numberOfPeriods-1)
+		bit isActive;					// Whether this subscription is active (always true for entries in this array)
 		Array<uint8, 2> _padding;		// Padding for alignment
 	};
 
-	// Array to store subscription data, indexed by proposerId
-	typedef Array<SubscriptionData, CCF_MAX_SUBSCRIPTIONS> SubscriptionsT;
+	// Array to store subscription proposals, one per proposal slot (indexed by proposalIndex)
+	typedef Array<SubscriptionProposalData, 128> SubscriptionProposalsT;
+	
+	// Array to store active subscriptions, indexed by destination ID
+	typedef Array<SubscriptionData, CCF_MAX_SUBSCRIPTIONS> ActiveSubscriptionsT;
 
 	// Regular payment entry (similar to LatestTransfersEntry but for subscriptions)
 	struct RegularPaymentEntry
@@ -71,9 +80,8 @@ struct CCF : public ContractBase
 		uint32 tick;
 		sint32 periodIndex;				// Which period this payment is for (0-based)
 		bool success;
+		Array<uint8, 2> _padding0;
 		Array<uint8, 1> _padding1;
-		Array<uint8, 1> _padding2;
-		Array<uint8, 1> _padding3;
 	};
 
 	typedef Array<RegularPaymentEntry, 128> RegularPaymentsT;
@@ -89,10 +97,11 @@ protected:
 	RegularPaymentsT regularPayments;
 	uint8 lastRegularPaymentsNextOverwriteIdx;
 
-	SubscriptionsT subscriptions;		// Subscription data indexed by proposerId
-
 	uint32 setProposalFee;
 	uint32 maxSubscriptionEpochs;		// Maximum total time range in epochs (configurable)
+
+	SubscriptionProposalsT subscriptionProposals;	// Subscription proposals, one per proposal slot (indexed by proposalIndex)
+	ActiveSubscriptionsT activeSubscriptions;		// Active subscriptions, identified by destination ID
 
 	//----------------------------------------------------------------------------
 	// Define private procedures and functions with input and output
@@ -108,20 +117,23 @@ public:
 		ProposalDataT proposal;
 		// Optional subscription data (only used if isSubscription is true)
 		bit isSubscription;				// Set to true if this is a subscription proposal
-		uint8 periodType;				// SubscriptionPeriod::Week or SubscriptionPeriod::Month
+		uint8 weeksPerPeriod;			// Number of weeks between payments (e.g., 1 for weekly, 4 for monthly)
 		uint32 startEpoch;				// Epoch when subscription starts
 		uint32 numberOfPeriods;			// Total number of periods
-		sint64 amountPerPeriod;			// Amount per period (in Qubic)
+		uint64 amountPerPeriod;			// Amount per period (in Qubic)
 		Array<uint8, 4> _padding;
 	};
 
-	typedef SetProposal_output SetProposal_output;
+	struct SetProposal_output
+	{
+		sint32 proposalIndex;
+	};
 
 	struct SetProposal_locals
 	{
 		uint32 maxEpochsForSubscription;
-		sint32 subIndex, spSlot;
-		SubscriptionData subscriptionData;
+		sint32 subIndex;
+		SubscriptionProposalData subscriptionProposal;
 		ProposalDataT proposal;
 	};
 
@@ -161,22 +173,8 @@ public:
 		// Validate subscription data if provided
 		if (input.isSubscription)
 		{
-			// Validate period type
-			if (input.periodType != CCF_SUBSCRIPTION_PERIOD_WEEK && input.periodType != CCF_SUBSCRIPTION_PERIOD_MONTH)
-			{
-				output.proposalIndex = INVALID_PROPOSAL_INDEX;
-				return;
-			}
-
-			// Validate number of periods
-			if (input.numberOfPeriods == 0)
-			{
-				output.proposalIndex = INVALID_PROPOSAL_INDEX;
-				return;
-			}
-
-			// Validate amount per period
-			if (input.amountPerPeriod <= 0)
+			// Validate weeks per period (must be at least 1)
+			if (input.weeksPerPeriod == 0)
 			{
 				output.proposalIndex = INVALID_PROPOSAL_INDEX;
 				return;
@@ -190,16 +188,8 @@ public:
 			}
 
 			// Calculate maximum epochs for this subscription
-			// Approximate: 1 week ≈ 1 epoch, 1 month ≈ 4 epochs
-			
-			if (input.periodType == CCF_SUBSCRIPTION_PERIOD_WEEK)
-			{
-				locals.maxEpochsForSubscription = input.numberOfPeriods; // 1 week ≈ 1 epoch
-			}
-			else // Month
-			{
-				locals.maxEpochsForSubscription = input.numberOfPeriods * 4; // 1 month ≈ 4 epochs
-			}
+			// Approximate: 1 week ≈ 1 epoch
+			locals.maxEpochsForSubscription = input.numberOfPeriods * input.weeksPerPeriod;
 
 			// Check against maximum allowed subscription time range
 			if (locals.maxEpochsForSubscription > state.maxSubscriptionEpochs)
@@ -212,65 +202,55 @@ public:
 		// Try to set proposal (checks originators rights and general validity of input proposal)
 		output.proposalIndex = qpi(state.proposals).setProposal(qpi.originator(), input.proposal);
 
-		// If proposal was set successfully and it's a subscription, store subscription data
+		// Handle subscription proposals
 		if (output.proposalIndex != INVALID_PROPOSAL_INDEX && input.isSubscription)
 		{
-			// If proposal is being cleared (epoch 0), also cancel any active subscription for this proposer
+			// If proposal is being cleared (epoch 0), clear the subscription proposal
 			if (input.proposal.epoch == 0)
 			{
-				// Find and cancel any subscription for this proposer
-				for (locals.subIndex = 0; locals.subIndex < CCF_MAX_SUBSCRIPTIONS; ++locals.subIndex)
+				// Check if this is a subscription proposal that can be canceled by the proposer
+				if (output.proposalIndex >= 0 && output.proposalIndex < 128) // 128 is the capacity of subscriptionProposals
 				{
-					locals.subscriptionData = state.subscriptions.get(locals.subIndex);
-					if (locals.subscriptionData.proposerId == qpi.originator())
+					locals.subscriptionProposal = state.subscriptionProposals.get(output.proposalIndex);
+					// Only allow cancellation by the proposer
+					// The value of below condition should be always true, but set the else condition for safe
+					if (locals.subscriptionProposal.proposerId == qpi.originator())
 					{
-						locals.subscriptionData.isActive = false;
-						state.subscriptions.set(locals.subIndex, locals.subscriptionData);
+						// Clear the subscription proposal
+						setMemory(locals.subscriptionProposal, 0);
+						state.subscriptionProposals.set(output.proposalIndex, locals.subscriptionProposal);
+					}
+					else
+					{
+						output.proposalIndex = INVALID_PROPOSAL_INDEX;
 					}
 				}
 			}
-			else 
+			else
 			{
-				locals.spSlot = -1;
-				for (locals.subIndex = 0; locals.subIndex < CCF_MAX_SUBSCRIPTIONS; ++locals.subIndex)
-				{
-					locals.subscriptionData = state.subscriptions.get(locals.subIndex);
-
-					// If the proposer has an active subscription, cancel the proposal
-					if (locals.subscriptionData.proposerId == qpi.originator() && locals.subscriptionData.isActive == true)
-					{
-						locals.proposal = input.proposal;
-						locals.proposal.epoch = 0;
-						qpi(state.proposals).setProposal(qpi.originator(), locals.proposal);
-						output.proposalIndex = INVALID_PROPOSAL_INDEX;
-						return;
-					}
-
-					// If the element is inactive, find a free slot
-					if (locals.subscriptionData.isActive == false && locals.spSlot == -1)
-					{
-						locals.spSlot = locals.subIndex;
-					}
-				}
-
-				// If a free slot was found, store the subscription data
-				if (locals.spSlot != -1)
-				{
-					locals.subscriptionData.proposerId = qpi.originator();
-					locals.subscriptionData.destination = input.proposal.transfer.destination;
-					copyMemory(locals.subscriptionData.url, input.proposal.url);
-					locals.subscriptionData.isActive = true;
-					locals.subscriptionData.periodType = input.periodType;
-					locals.subscriptionData.numberOfPeriods = input.numberOfPeriods;
-					locals.subscriptionData.amountPerPeriod = input.amountPerPeriod;
-					locals.subscriptionData.startEpoch = input.startEpoch;
-					locals.subscriptionData.currentPeriod = -1;
-					state.subscriptions.set(locals.spSlot, locals.subscriptionData);
-				}
-				else
-				{
-					output.proposalIndex = INVALID_PROPOSAL_INDEX;
-				}
+				// Check if there's already an active subscription for this destination
+				// Only the proposer can create a new subscription proposal, but any valid proposer
+				// can propose changes to an existing subscription (which will be handled in END_EPOCH)
+				// For now, we allow the proposal to be created - it will overwrite the existing subscription if accepted
+				
+				// Store subscription proposal data in the array indexed by proposalIndex
+				locals.subscriptionProposal.proposerId = qpi.originator();
+				locals.subscriptionProposal.destination = input.proposal.transfer.destination;
+				copyMemory(locals.subscriptionProposal.url, input.proposal.url);
+				locals.subscriptionProposal.weeksPerPeriod = input.weeksPerPeriod;
+				locals.subscriptionProposal.numberOfPeriods = input.numberOfPeriods;
+				locals.subscriptionProposal.amountPerPeriod = input.amountPerPeriod;
+				locals.subscriptionProposal.startEpoch = input.startEpoch;
+				state.subscriptionProposals.set(output.proposalIndex, locals.subscriptionProposal);
+			}
+		}
+		else if (output.proposalIndex != INVALID_PROPOSAL_INDEX && !input.isSubscription)
+		{
+			// Clear any subscription proposal at this index if it exists
+			if (output.proposalIndex >= 0 && output.proposalIndex < 128) // 128 is the capacity of subscriptionProposals
+			{
+				setMemory(locals.subscriptionProposal, 0);
+				state.subscriptionProposals.set(output.proposalIndex, locals.subscriptionProposal);
 			}
 		}
 	}
@@ -320,7 +300,7 @@ public:
 
 	struct GetProposal_input
 	{
-		id subscriptionProposerId;
+		id subscriptionDestination;		// Destination ID to look up active subscription (optional, can be zero)
 		uint16 proposalIndex;
 	};
 	struct GetProposal_output
@@ -329,29 +309,75 @@ public:
 		Array<uint8, 4> _padding0;
 		Array<uint8, 2> _padding1;
 		Array<uint8, 1> _padding2;
-		id proposerPubicKey;
+		id proposerPublicKey;
 		ProposalDataT proposal;
-		SubscriptionData subscription;
+		SubscriptionData subscription;		// Active subscription data if found
+		SubscriptionProposalData subscriptionProposal;	// Subscription proposal data if this is a subscription proposal
+		bit hasSubscriptionProposal;		// True if this proposal has subscription proposal data
+		bit hasActiveSubscription;			// True if an active subscription was found for the destination
 	};
 
 	struct GetProposal_locals
 	{
 		sint32 subIndex;
 		SubscriptionData subscriptionData;
+		SubscriptionProposalData subscriptionProposalData;
+		id destinationToLookup;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetProposal)
 	{
-
-		output.proposerPubicKey = qpi(state.proposals).proposerId(input.proposalIndex);
+		output.proposerPublicKey = qpi(state.proposals).proposerId(input.proposalIndex);
 		output.okay = qpi(state.proposals).getProposal(input.proposalIndex, output.proposal);
-		for (locals.subIndex = 0; locals.subIndex < CCF_MAX_SUBSCRIPTIONS; ++locals.subIndex)
+		output.hasSubscriptionProposal = false;
+		output.hasActiveSubscription = false;
+
+		// Check if this proposal has subscription proposal data
+		if (input.proposalIndex >= 0 && input.proposalIndex < 128) // 128 is the capacity of subscriptionProposals
 		{
-			locals.subscriptionData = state.subscriptions.get(locals.subIndex);
-			if (locals.subscriptionData.proposerId == input.subscriptionProposerId && locals.subscriptionData.isActive == true)
+			locals.subscriptionProposalData = state.subscriptionProposals.get(input.proposalIndex);
+			if (!isZero(locals.subscriptionProposalData.proposerId))
 			{
-				output.subscription = locals.subscriptionData;
-				break;
+				output.subscriptionProposal = locals.subscriptionProposalData;
+				output.hasSubscriptionProposal = true;
+				locals.destinationToLookup = locals.subscriptionProposalData.destination;
+			}
+			else
+			{
+				// Use destination from proposal if available
+				if (ProposalTypes::cls(output.proposal.type) == ProposalTypes::Class::Transfer)
+				{
+					locals.destinationToLookup = output.proposal.transfer.destination;
+				}
+			}
+		}
+		else
+		{
+			// Use destination from proposal if available
+			if (ProposalTypes::cls(output.proposal.type) == ProposalTypes::Class::Transfer)
+			{
+				locals.destinationToLookup = output.proposal.transfer.destination;
+			}
+		}
+
+		// If input provides a destination, use that instead
+		if (!isZero(input.subscriptionDestination))
+		{
+			locals.destinationToLookup = input.subscriptionDestination;
+		}
+
+		// Look up active subscription by destination ID
+		if (!isZero(locals.destinationToLookup))
+		{
+			for (locals.subIndex = 0; locals.subIndex < CCF_MAX_SUBSCRIPTIONS; ++locals.subIndex)
+			{
+				locals.subscriptionData = state.activeSubscriptions.get(locals.subIndex);
+				if (locals.subscriptionData.destination == locals.destinationToLookup && !isZero(locals.subscriptionData.destination))
+				{
+					output.subscription = locals.subscriptionData;
+					output.hasActiveSubscription = true;
+					break;
+				}
 			}
 		}
 	}
@@ -471,11 +497,13 @@ public:
 		LatestTransfersEntry transfer;
 		RegularPaymentEntry regularPayment;
 		SubscriptionData subscription;
-		id proposerPubicKey;
+		SubscriptionProposalData subscriptionProposal;
+		id proposerPublicKey;
 		uint32 currentEpoch;
 		uint32 epochsSinceStart;
 		uint32 epochsPerPeriod;
 		sint32 periodIndex;
+		sint32 existingSubIdx;
 		bit isSubscription;
 	};
 
@@ -492,20 +520,18 @@ public:
 			if (!qpi(state.proposals).getProposal(locals.proposalIndex, locals.proposal))
 				continue;
 
-			locals.proposerPubicKey = qpi(state.proposals).proposerId(locals.proposalIndex);
+			// Check if this is a subscription proposal
 			locals.isSubscription = false;
-			// Inactive the proposal before passed by voting, it will be actived again after passed by voting. if it is not passed by voting, it will not be actived again.
-			for (locals.subIdx = 0; locals.subIdx < CCF_MAX_SUBSCRIPTIONS; ++locals.subIdx)
+			if (locals.proposalIndex >= 0 && locals.proposalIndex < 128) // 128 is the capacity of subscriptionProposals
 			{
-				locals.subscription = state.subscriptions.get(locals.subIdx);
-				if (locals.subscription.proposerId == locals.proposerPubicKey && locals.subscription.isActive == true)
+				locals.subscriptionProposal = state.subscriptionProposals.get(locals.proposalIndex);
+				// Check if this slot has subscription proposal data (non-zero proposerId indicates valid entry)
+				if (!isZero(locals.subscriptionProposal.proposerId))
 				{
-					locals.subscription.isActive = false;
-					state.subscriptions.set(locals.subIdx, locals.subscription);
 					locals.isSubscription = true;
-					break;
 				}
 			}
+
 			// ... and have transfer proposal type
 			if (ProposalTypes::cls(locals.proposal.type) == ProposalTypes::Class::Transfer)
 			{
@@ -526,8 +552,61 @@ public:
 				{
 					if (locals.isSubscription)
 					{
-						locals.subscription.isActive = true;
-						state.subscriptions.set(locals.subIdx, locals.subscription);
+						// Handle subscription proposal acceptance
+						// If amountPerPeriod is 0 or numberOfPeriods is 0, delete the subscription
+						if (locals.subscriptionProposal.amountPerPeriod == 0 || locals.subscriptionProposal.numberOfPeriods == 0)
+						{
+							// Find and delete the subscription by destination ID
+							locals.existingSubIdx = -1;
+							for (locals.subIdx = 0; locals.subIdx < CCF_MAX_SUBSCRIPTIONS; ++locals.subIdx)
+							{
+								locals.subscription = state.activeSubscriptions.get(locals.subIdx);
+								if (locals.subscription.destination == locals.subscriptionProposal.destination && !isZero(locals.subscription.destination))
+								{
+									// Clear the subscription entry
+									setMemory(locals.subscription, 0);
+									state.activeSubscriptions.set(locals.subIdx, locals.subscription);
+									break;
+								}
+							}
+						}
+						else
+						{
+							// Find existing subscription by destination ID or find a free slot
+							locals.existingSubIdx = -1;
+							for (locals.subIdx = 0; locals.subIdx < CCF_MAX_SUBSCRIPTIONS; ++locals.subIdx)
+							{
+								locals.subscription = state.activeSubscriptions.get(locals.subIdx);
+								if (locals.subscription.destination == locals.subscriptionProposal.destination && !isZero(locals.subscription.destination))
+								{
+									locals.existingSubIdx = locals.subIdx;
+									break;
+								}
+								// Track first free slot (zero destination)
+								if (locals.existingSubIdx == -1 && isZero(locals.subscription.destination))
+								{
+									locals.existingSubIdx = locals.subIdx;
+								}
+							}
+
+							// If found existing or free slot, update/create subscription
+							if (locals.existingSubIdx >= 0)
+							{
+								locals.subscription.destination = locals.subscriptionProposal.destination;
+								copyMemory(locals.subscription.url, locals.subscriptionProposal.url);
+								locals.subscription.weeksPerPeriod = locals.subscriptionProposal.weeksPerPeriod;
+								locals.subscription.numberOfPeriods = locals.subscriptionProposal.numberOfPeriods;
+								locals.subscription.amountPerPeriod = locals.subscriptionProposal.amountPerPeriod;
+								locals.subscription.startEpoch = locals.subscriptionProposal.startEpoch; // Use the start epoch from the proposal
+								locals.subscription.currentPeriod = -1; // Reset to -1, will be updated when first payment is made
+								locals.subscription.isActive = true;
+								state.activeSubscriptions.set(locals.existingSubIdx, locals.subscription);
+							}
+						}
+
+						// Clear the subscription proposal
+						setMemory(locals.subscriptionProposal, 0);
+						state.subscriptionProposals.set(locals.proposalIndex, locals.subscriptionProposal);
 					}
 					else 
 					{
@@ -547,42 +626,42 @@ public:
 		}
 
 		// Process active subscriptions for regular payments
-		// Iterate through all subscriptions and check if payment is due
+		// Iterate through all active subscriptions and check if payment is due
 		for (locals.subIdx = 0; locals.subIdx < CCF_MAX_SUBSCRIPTIONS; ++locals.subIdx)
 		{
-			locals.subscription = state.subscriptions.get(locals.subIdx);
+			locals.subscription = state.activeSubscriptions.get(locals.subIdx);
 			
-			// Skip inactive or invalid subscriptions
-			if (!locals.subscription.isActive || locals.subscription.numberOfPeriods == 0)
+			// Skip invalid subscriptions (zero destination indicates empty slot)
+			if (isZero(locals.subscription.destination) || locals.subscription.numberOfPeriods == 0)
 				continue;
 
 			// Check if subscription has expired (all periods completed)
 			if (locals.subscription.currentPeriod >= (sint32)locals.subscription.numberOfPeriods)
+			{
+				locals.subscription.isActive = false; // Mark subscription as inactive so it can be overwritten
+				state.activeSubscriptions.set(locals.subIdx, locals.subscription);
 				continue;
+			}
 
-			// Calculate epochs per period
-			if (locals.subscription.periodType == CCF_SUBSCRIPTION_PERIOD_WEEK)
-			{
-				locals.epochsPerPeriod = 1; // 1 week ≈ 1 epoch
-			}
-			else // Month
-			{
-				locals.epochsPerPeriod = 4; // 1 month ≈ 4 epochs
-			}
+			// Calculate epochs per period (1 week ≈ 1 epoch)
+			locals.epochsPerPeriod = locals.subscription.weeksPerPeriod;
 
 			// Calculate how many epochs have passed since subscription started
 			if (locals.currentEpoch < locals.subscription.startEpoch)
-				continue; // Should not happen, but safety check
+				continue; // Subscription hasn't started yet
 
 			locals.epochsSinceStart = locals.currentEpoch - locals.subscription.startEpoch;
 
 			// Calculate which period we should be in (0-based: 0 = first period, 1 = second period, etc.)
 			// At the start of each period, we make a payment for that period
+			// When startEpoch = 189 and currentEpoch = 189: epochsSinceStart = 0, periodIndex = 0 (first period)
+			// When startEpoch = 189 and currentEpoch = 190: epochsSinceStart = 1, periodIndex = 1 (second period)
 			locals.periodIndex = div<sint32>(locals.epochsSinceStart, locals.epochsPerPeriod);
 
 			// Check if we need to make a payment for the current period
-			// currentPeriod tracks the last period for which payment was made
+			// currentPeriod tracks the last period for which payment was made (or -1 if none)
 			// We make payment at the start of each period, so when periodIndex > currentPeriod
+			// For the first payment: currentPeriod = -1, periodIndex = 0, so we pay for period 0
 			if (locals.periodIndex > locals.subscription.currentPeriod && locals.periodIndex < (sint32)locals.subscription.numberOfPeriods)
 			{
 				// Make payment for the current period
@@ -595,11 +674,11 @@ public:
 
 				// Update subscription current period to the period we just paid for
 				locals.subscription.currentPeriod = locals.periodIndex;
-				state.subscriptions.set(locals.subIdx, locals.subscription);
+				state.activeSubscriptions.set(locals.subIdx, locals.subscription);
 
 				// Add log entry
 				state.regularPayments.set(state.lastRegularPaymentsNextOverwriteIdx, locals.regularPayment);
-				state.lastRegularPaymentsNextOverwriteIdx = (state.lastRegularPaymentsNextOverwriteIdx + 1) & (state.regularPayments.capacity() - 1);
+				state.lastRegularPaymentsNextOverwriteIdx = mod((uint32)(state.lastRegularPaymentsNextOverwriteIdx + 1), (uint32)state.regularPayments.capacity());
 			}
 		}
 	}
