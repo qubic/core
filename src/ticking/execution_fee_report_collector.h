@@ -4,6 +4,7 @@
 #include "network_messages/execution_fees.h"
 #include "contract_core/contract_def.h"
 #include "contract_core/qpi_spectrum_impl.h"
+#include "logging/logging.h"
 
 class ExecutionFeeReportCollector
 {
@@ -117,6 +118,8 @@ public:
             if (quorumValue > 0)
             {
                 addToContractFeeReserve(contractIndex, -quorumValue);
+                ContractReserveDeduction message = {quorumValue, getContractFeeReserve(contractIndex), contractIndex};
+                logger.logContractReserveDeduction(message);
             }
         }
 
