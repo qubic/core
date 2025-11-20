@@ -87,7 +87,6 @@
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
-#define EXECUTION_FEE_REPORT_PUBLICATION_OFFSET 2 // Must be 2+
 #define TIME_ACCURACY 5000
 constexpr unsigned long long TARGET_MAINTHREAD_LOOP_DURATION = 30; // mcs, it is the target duration of the main thread loop
 
@@ -2941,7 +2940,7 @@ static bool makeAndBroadCastExecutionFeeTransaction(int i, BroadcastFutureTickDa
     payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
     payload.transaction.destinationPublicKey = m256i::zero();
     payload.transaction.amount = 0;
-    payload.transaction.tick = system.tick + EXECUTION_FEE_REPORT_PUBLICATION_OFFSET;
+    payload.transaction.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
     payload.transaction.inputType = ExecutionFeeReportTransactionPrefix::transactionType();
 
     // Build the payload with contract execution times
