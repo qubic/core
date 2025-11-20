@@ -122,4 +122,5 @@ static unsigned int gFullExternalComputationTimes[][2] =
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE
 
-#define EXECTUION_TIME_MULTIPLIER 1 // Use values like 1 / 10 for division.
+#define EXECUTION_TIME_MULTIPLIER_NUMERATOR 1
+#define EXECUTION_TIME_MULTIPLIER_DENOMINATOR 1  // Use values like (1, 10) for division by 10

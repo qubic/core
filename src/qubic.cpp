@@ -2950,7 +2950,8 @@ static bool makeAndBroadCastExecutionFeeTransaction(int i, BroadcastFutureTickDa
         payload,
         contractExecutionTimePerPhase[prevPhaseIndex],
         (system.tick / NUMBER_OF_COMPUTORS) - 1,
-        EXECTUION_TIME_MULTIPLIER
+        EXECUTION_TIME_MULTIPLIER_NUMERATOR,
+        EXECUTION_TIME_MULTIPLIER_DENOMINATOR
     );
 
     // Return if no contract was executed during last phase

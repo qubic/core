@@ -259,7 +259,7 @@ TEST(ExecutionFeeReportBuilder, BuildAndParseEvenEntries) {
     contractTimes[0] = 100;
     contractTimes[1] = 200;
 
-    unsigned int entryCount = buildExecutionFeeReportPayload(payload, contractTimes, 5, 1000);
+    unsigned int entryCount = buildExecutionFeeReportPayload(payload, contractTimes, 5, 1, 1);
     EXPECT_EQ(entryCount, 2u);
 
     // Verify transaction is valid and parseable
@@ -270,9 +270,9 @@ TEST(ExecutionFeeReportBuilder, BuildAndParseEvenEntries) {
     const unsigned int* indices = ExecutionFeeReportTransactionPrefix::getContractIndices(tx);
     const long long* fees = ExecutionFeeReportTransactionPrefix::getExecutionFees(tx);
     EXPECT_EQ(indices[0], 0u);
-    EXPECT_EQ(fees[0], 100000);
+    EXPECT_EQ(fees[0], 100);  // (100 * 1) / 1
     EXPECT_EQ(indices[1], 1u);
-    EXPECT_EQ(fees[1], 200000);
+    EXPECT_EQ(fees[1], 200);  // (200 * 1) / 1
 }
 
 TEST(ExecutionFeeReportBuilder, BuildAndParseOddEntries) {
@@ -282,7 +282,7 @@ TEST(ExecutionFeeReportBuilder, BuildAndParseOddEntries) {
     contractTimes[2] = 300;
     contractTimes[5] = 600;
 
-    unsigned int entryCount = buildExecutionFeeReportPayload(payload, contractTimes, 10, 500);
+    unsigned int entryCount = buildExecutionFeeReportPayload(payload, contractTimes, 10, 1, 1);
     EXPECT_EQ(entryCount, 3u);
 
     // Verify transaction is valid and parseable (with alignment padding)
@@ -293,17 +293,57 @@ TEST(ExecutionFeeReportBuilder, BuildAndParseOddEntries) {
     const unsigned int* indices = ExecutionFeeReportTransactionPrefix::getContractIndices(tx);
     const long long* fees = ExecutionFeeReportTransactionPrefix::getExecutionFees(tx);
     EXPECT_EQ(indices[0], 0u);
-    EXPECT_EQ(fees[0], 50000);
+    EXPECT_EQ(fees[0], 100);  // (100 * 1) / 1
     EXPECT_EQ(indices[1], 2u);
-    EXPECT_EQ(fees[1], 150000);
+    EXPECT_EQ(fees[1], 300);  // (300 * 1) / 1
     EXPECT_EQ(indices[2], 5u);
-    EXPECT_EQ(fees[2], 300000);
+    EXPECT_EQ(fees[2], 600);  // (600 * 1) / 1
 }
 
 TEST(ExecutionFeeReportBuilder, NoEntriesReturnsZero) {
     ExecutionFeeReportPayload payload;
     long long contractTimes[contractCount] = {0};
 
-    unsigned int entryCount = buildExecutionFeeReportPayload(payload, contractTimes, 7, 1000);
+    unsigned int entryCount = buildExecutionFeeReportPayload(payload, contractTimes, 7, 1, 1);
     EXPECT_EQ(entryCount, 0u);
+}
+
+TEST(ExecutionFeeReportBuilder, BuildWithDivisionMultiplier) {
+    ExecutionFeeReportPayload payload;
+    long long contractTimes[contractCount] = {0};
+    contractTimes[0] = 100;  // Will become 10 after (100 * 1) / 10
+    contractTimes[1] = 5;    // Will become 0 after (5 * 1) / 10 - should be excluded
+    contractTimes[2] = 25;   // Will become 2 after (25 * 1) / 10
+
+    unsigned int entryCount = buildExecutionFeeReportPayload(payload, contractTimes, 5, 1, 10);
+
+    // Only contracts with non-zero fees after division should be included
+    EXPECT_EQ(entryCount, 2u);  // contracts 0 and 2 (contract 1 becomes 0)
+
+    Transaction* tx = (Transaction*)&payload;
+    EXPECT_TRUE(ExecutionFeeReportTransactionPrefix::isValidEntryAlignment(tx));
+
+    const unsigned int* indices = ExecutionFeeReportTransactionPrefix::getContractIndices(tx);
+    const long long* fees = ExecutionFeeReportTransactionPrefix::getExecutionFees(tx);
+    EXPECT_EQ(indices[0], 0u);
+    EXPECT_EQ(fees[0], 10);  // (100 * 1) / 10
+    EXPECT_EQ(indices[1], 2u);
+    EXPECT_EQ(fees[1], 2);   // (25 * 1) / 10
+}
+
+TEST(ExecutionFeeReportBuilder, BuildWithMultiplicationMultiplier) {
+    ExecutionFeeReportPayload payload;
+    long long contractTimes[contractCount] = {0};
+    contractTimes[0] = 10;
+    contractTimes[3] = 25;
+
+    unsigned int entryCount = buildExecutionFeeReportPayload(payload, contractTimes, 8, 100, 1);
+    EXPECT_EQ(entryCount, 2u);
+
+    const unsigned int* indices = ExecutionFeeReportTransactionPrefix::getContractIndices((Transaction*)&payload);
+    const long long* fees = ExecutionFeeReportTransactionPrefix::getExecutionFees((Transaction*)&payload);
+    EXPECT_EQ(indices[0], 0u);
+    EXPECT_EQ(fees[0], 1000);  // (10 * 100) / 1
+    EXPECT_EQ(indices[1], 3u);
+    EXPECT_EQ(fees[1], 2500);  // (25 * 100) / 1
 }

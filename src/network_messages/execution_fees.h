@@ -113,9 +113,10 @@ static_assert( sizeof(ExecutionFeeReportPayload) <= sizeof(Transaction) + MAX_IN
 // Returns the number of entries added (0 if no contracts were executed)
 static inline unsigned int buildExecutionFeeReportPayload(
     ExecutionFeeReportPayload& payload,
-    const long long* contractExecutionTimes,
+    const volatile long long* contractExecutionTimes,
     const unsigned int phaseNumber,
-    const long long multiplier
+    const long long multiplierNumerator,
+    const long long multiplierDenominator
 )
 {
     payload.transaction.phaseNumber = phaseNumber;
@@ -127,9 +128,13 @@ static inline unsigned int buildExecutionFeeReportPayload(
         long long executionTime = contractExecutionTimes[contractIndex];
         if (executionTime > 0)
         {
-            payload.contractIndices[entryCount] = contractIndex;
-            payload.executionFees[entryCount] = executionTime * multiplier;
-            entryCount++;
+            long long executionFee = (executionTime * multiplierNumerator) / multiplierDenominator;
+            if (executionFee > 0)
+            {
+                payload.contractIndices[entryCount] = contractIndex;
+                payload.executionFees[entryCount] = executionFee;
+                entryCount++;
+            }
         }
     }
     payload.transaction.numEntries = entryCount;
