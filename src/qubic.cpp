@@ -61,6 +61,8 @@
 #include "ticking/ticking.h"
 #include "contract_core/qpi_ticking_impl.h"
 #include "vote_counter.h"
+#include "ticking/execution_fee_report_collector.h"
+#include "network_messages/execution_fees.h"
 
 #include "contract_core/ipo.h"
 #include "contract_core/qpi_ipo_impl.h"
@@ -133,6 +135,7 @@ static unsigned short ownComputorIndicesMapping[sizeof(computorSeeds) / sizeof(c
 
 static TickStorage ts;
 static VoteCounter voteCounter;
+static ExecutionFeeReportCollector executionFeeReportCollector;
 static TickData nextTickData;
 static PendingTxsPool pendingTxsPool;
 
@@ -258,6 +261,7 @@ static struct
     unsigned char signature[SIGNATURE_SIZE];
 } voteCounterPayload;
 
+static ExecutionFeeReportPayload executionFeeReportPayload;
 
 static struct
 {
@@ -2816,6 +2820,12 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                 }
                 break;
 
+                case EXECUTION_FEE_REPORT_INPUT_TYPE:
+                {
+                    executionFeeReportCollector.processTransactionData(transaction, dataLock);
+                }
+                break;
+
                 }
             }
             else
@@ -2958,6 +2968,73 @@ static bool makeAndBroadcastCustomMiningTransaction(int i, BroadcastFutureTickDa
         }
     }
     return false;
+}
+
+static bool makeAndBroadCastExecutionFeeTransaction(int i, BroadcastFutureTickData& td, int txSlot)
+{
+    PROFILE_NAMED_SCOPE("processTick(): broadcast execution fee tx");
+    ASSERT(txSlot < NUMBER_OF_TRANSACTIONS_PER_TICK);
+
+    auto& payload = executionFeeReportPayload;
+    payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
+    payload.transaction.destinationPublicKey = m256i::zero();
+    payload.transaction.amount = 0;
+    payload.transaction.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+    payload.transaction.inputType = ExecutionFeeReportTransactionPrefix::transactionType();
+
+    // Build the payload with contract execution times
+    const int prevPhaseIndex = !contractExecutionTimeActiveArrayIndex;
+    unsigned int entryCount = buildExecutionFeeReportPayload(
+        payload,
+        contractExecutionTimePerPhase[prevPhaseIndex],
+        (system.tick / NUMBER_OF_COMPUTORS) - 1,
+        EXECUTION_TIME_MULTIPLIER_NUMERATOR,
+        EXECUTION_TIME_MULTIPLIER_DENOMINATOR
+    );
+
+    // Return if no contract was executed during last phase
+    if (entryCount == 0)
+    {
+        return false;
+    }
+
+    // Set datalock at the end of the compacted payload
+    m256i* datalockPtr = (m256i*)(payload.transaction.inputPtr() + payload.transaction.inputSize - sizeof(m256i));
+    *datalockPtr = td.tickData.timelock;
+
+    // Calculate the correct position of the signature as this is a variable length package
+    unsigned char* signaturePtr = ((unsigned char*)datalockPtr) + sizeof(ExecutionFeeReportTransactionPostfix::dataLock);
+
+    unsigned char digest[32];
+    unsigned int sizeToHash =  sizeof(Transaction) + payload.transaction.inputSize;
+    KangarooTwelve(&payload, sizeToHash,  digest, sizeof(digest));
+    sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, signaturePtr);
+
+    // Broadcast ExecutionFeeReport
+    unsigned int transactionSize = sizeToHash + sizeof(ExecutionFeeReportTransactionPostfix::signature);
+    enqueueResponse(NULL, transactionSize, BROADCAST_TRANSACTION, 0, &payload);
+
+    // Copy the content of this exectuion fee report to local memory
+    unsigned int tickIndex = ts.tickToIndexCurrentEpoch(td.tickData.tick);
+    KangarooTwelve(&payload, transactionSize, digest, sizeof(digest));
+    auto* tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
+    if (txSlot < NUMBER_OF_TRANSACTIONS_PER_TICK) // valid slot
+    {
+        // TODO: refactor function add transaction to txStorage
+        ts.tickTransactions.acquireLock();
+        if (!tsReqTickTransactionOffsets[txSlot]) // not yet have value
+        {
+            if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch) //have enough space
+            {
+                td.tickData.transactionDigests[txSlot] = m256i(digest);
+                tsReqTickTransactionOffsets[txSlot] = ts.nextTickTransactionOffset;
+                copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), &payload, transactionSize);
+                ts.nextTickTransactionOffset += transactionSize;
+            }
+        }
+        ts.tickTransactions.releaseLock();
+    }
+    return true;
 }
 
 OPTIMIZE_OFF()
@@ -3299,8 +3376,13 @@ static void processTick(unsigned long long processorNumber)
                             nextTxIndex++;
                         }
                     }
-
-                    // TODO: include execution fees tx for phase n - 1 (i.e. from contractExecutionTimePerPhase[!contractExecutionTimeActiveArrayIndex])
+                    {
+                        // include execution fees tx for phase n - 1 (i.e. from contractExecutionTimePerPhase[!contractExecutionTimeActiveArrayIndex])
+                        if (makeAndBroadCastExecutionFeeTransaction(i, broadcastedFutureTickData, nextTxIndex))
+                            {
+                                nextTxIndex++;
+                            }
+                    }
 
                     for (; nextTxIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; ++nextTxIndex)
                     {
@@ -3469,6 +3551,7 @@ static void beginEpoch()
     ts.beginEpoch(system.initialTick);
     pendingTxsPool.beginEpoch(system.initialTick);
     voteCounter.init();
+    executionFeeReportCollector.init(); // TODO: Adjust depending on procedures regarding executionFee during epoch change
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
     pendingTxsPool.checkStateConsistencyWithAssert();
@@ -5064,8 +5147,10 @@ static void tickProcessor(void*)
 
                                 updateNumberOfTickTransactions();
                                 pendingTxsPool.incrementFirstStoredTick();
-                                
+
                                 switchContractExecutionTimeArray();
+                                // TODO: Check if we need a offset to wait for the last executionFeeReports
+                                // executionFeeReportCollector.processReports();
 
                                 bool isBeginEpoch = false;
                                 if (epochTransitionState == 1)
