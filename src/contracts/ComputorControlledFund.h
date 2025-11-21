@@ -61,8 +61,8 @@ struct CCF : public ContractBase
 		uint64 amountPerPeriod;			// Amount in Qubic per period
 		uint32 startEpoch;				// Epoch when subscription started (startEpoch >= proposal approval epoch)
 		sint32 currentPeriod;			// Current period index (0-based, 0 to numberOfPeriods-1)
-		bit isActive;					// Whether this subscription is active (always true for entries in this array)
-		Array<uint8, 2> _padding;		// Padding for alignment
+		Array<uint8, 2> _padding1;		// Padding for alignment
+		Array<uint8, 1> _padding2;		// Padding for alignment
 	};
 
 	// Array to store subscription proposals, one per proposal slot (indexed by proposalIndex)
@@ -600,7 +600,6 @@ public:
 								locals.subscription.amountPerPeriod = locals.subscriptionProposal.amountPerPeriod;
 								locals.subscription.startEpoch = locals.subscriptionProposal.startEpoch; // Use the start epoch from the proposal
 								locals.subscription.currentPeriod = -1; // Reset to -1, will be updated when first payment is made
-								locals.subscription.isActive = true;
 								state.activeSubscriptions.set(locals.existingSubIdx, locals.subscription);
 							}
 						}
