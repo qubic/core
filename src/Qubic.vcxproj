@@ -99,6 +99,7 @@
     <ClInclude Include="platform\console_logging.h" />
     <ClInclude Include="platform\common_types.h" />
     <ClInclude Include="platform\profiling.h" />
+    <ClInclude Include="platform\quorum_value.h" />
     <ClInclude Include="platform\random.h" />
     <ClInclude Include="platform\read_write_lock.h" />
     <ClInclude Include="platform\stack_size_tracker.h" />
