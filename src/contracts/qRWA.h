@@ -1316,6 +1316,11 @@ public:
         {
             for (locals.iter.begin(state.mQmineAsset); !locals.iter.reachedEnd(); locals.iter.next())
             {
+                // Exclude SELF (Treasury) from dividend snapshot
+                if (locals.iter.possessor() == SELF)
+                {
+                    continue;
+                }
                 locals.balance = locals.iter.numberOfPossessedShares();
                 if (locals.balance > 0)
                 {
