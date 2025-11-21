@@ -15,8 +15,7 @@
 #undef MAX_NUMBER_OF_TICKS_PER_EPOCH
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH 3000
 
-// Reduce virtual memory size for testing 
-// X items per page and 1 page on cache
+// Reduce virtual memory size for testing
 #undef LOG_BUFFER_PAGE_SIZE
 #undef PMAP_LOG_PAGE_SIZE
 #undef IMAP_LOG_PAGE_SIZE
