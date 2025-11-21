@@ -47,7 +47,8 @@ jobs:
             -DBUILD_TESTS:BOOL=OFF \
             -DBUILD_BINARY:BOOL=ON \
             -DENABLE_AVX512=OFF \
-            -DUSE_SANITIZER=OFF
+            -DUSE_SANITIZER=OFF \
+            -DONLY_LOGGING=ON
 
       # Build the project
       - name: Build with Make
