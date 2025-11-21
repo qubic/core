@@ -117,8 +117,8 @@ public:
 
             if (quorumValue > 0)
             {
-                addToContractFeeReserve(contractIndex, -quorumValue);
-                ContractReserveDeduction message = {quorumValue, getContractFeeReserve(contractIndex), contractIndex};
+                subtractFromContractFeeReserve(contractIndex, quorumValue);
+                ContractReserveDeduction message = {static_cast<unsigned long long>(quorumValue), getContractFeeReserve(contractIndex), contractIndex};
                 logger.logContractReserveDeduction(message);
             }
         }

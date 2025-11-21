@@ -234,7 +234,7 @@ struct SpectrumStats
 
 struct ContractReserveDeduction
 {
-    long long deductedAmount;
+    unsigned long long deductedAmount;
     long long remainingAmount;
     unsigned int contractIndex;
 };
