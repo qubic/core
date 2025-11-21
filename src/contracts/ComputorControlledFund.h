@@ -41,9 +41,9 @@ struct CCF : public ContractBase
 	struct SubscriptionProposalData
 	{
 		id proposerId;                  // ID of the proposer (for cancellation checks)
-		id destination;                  // ID of the destination
-		Array<uint8, 256> url;           // URL of the subscription
-		uint8 weeksPerPeriod;			 // Number of weeks between payments (e.g., 1 for weekly, 4 for monthly)
+		id destination;                 // ID of the destination
+		Array<uint8, 256> url;          // URL of the subscription
+		uint8 weeksPerPeriod;			// Number of weeks between payments (e.g., 1 for weekly, 4 for monthly)
 		uint32 numberOfPeriods;			// Total number of periods (e.g., 12 for 12 periods)
 		uint64 amountPerPeriod;			// Amount in Qubic per period
 		uint32 startEpoch;				// Epoch when subscription should start
@@ -55,11 +55,11 @@ struct CCF : public ContractBase
 	struct SubscriptionData
 	{
 		id destination;                 // ID of the destination (used as key, one per destination)
-		Array<uint8, 256> url;           // URL of the subscription
+		Array<uint8, 256> url;          // URL of the subscription
 		uint8 weeksPerPeriod;			// Number of weeks between payments (e.g., 1 for weekly, 4 for monthly)
 		uint32 numberOfPeriods;			// Total number of periods (e.g., 12 for 12 periods)
 		uint64 amountPerPeriod;			// Amount in Qubic per period
-		uint32 startEpoch;				// Epoch when subscription started (proposal approval epoch)
+		uint32 startEpoch;				// Epoch when subscription started (startEpoch >= proposal approval epoch)
 		sint32 currentPeriod;			// Current period index (0-based, 0 to numberOfPeriods-1)
 		bit isActive;					// Whether this subscription is active (always true for entries in this array)
 		Array<uint8, 2> _padding;		// Padding for alignment
@@ -181,14 +181,14 @@ public:
 			}
 
 			// Validate start epoch
-			if (input.startEpoch <= qpi.epoch())
+			if (input.startEpoch < qpi.epoch())
 			{
 				output.proposalIndex = INVALID_PROPOSAL_INDEX;
 				return;
 			}
 
 			// Calculate maximum epochs for this subscription
-			// Approximate: 1 week ≈ 1 epoch
+			// 1 week = 1 epoch
 			locals.maxEpochsForSubscription = input.numberOfPeriods * input.weeksPerPeriod;
 
 			// Check against maximum allowed subscription time range
@@ -209,11 +209,11 @@ public:
 			if (input.proposal.epoch == 0)
 			{
 				// Check if this is a subscription proposal that can be canceled by the proposer
-				if (output.proposalIndex >= 0 && output.proposalIndex < 128) // 128 is the capacity of subscriptionProposals
+				if (output.proposalIndex >= 0 && output.proposalIndex < state.subscriptionProposals.capacity())
 				{
 					locals.subscriptionProposal = state.subscriptionProposals.get(output.proposalIndex);
 					// Only allow cancellation by the proposer
-					// The value of below condition should be always true, but set the else condition for safe
+					// The value of below condition should be always true, but set the else condition for safety
 					if (locals.subscriptionProposal.proposerId == qpi.originator())
 					{
 						// Clear the subscription proposal
@@ -247,7 +247,7 @@ public:
 		else if (output.proposalIndex != INVALID_PROPOSAL_INDEX && !input.isSubscription)
 		{
 			// Clear any subscription proposal at this index if it exists
-			if (output.proposalIndex >= 0 && output.proposalIndex < 128) // 128 is the capacity of subscriptionProposals
+			if (output.proposalIndex >= 0 && output.proposalIndex < state.subscriptionProposals.capacity())
 			{
 				setMemory(locals.subscriptionProposal, 0);
 				state.subscriptionProposals.set(output.proposalIndex, locals.subscriptionProposal);
@@ -311,10 +311,11 @@ public:
 		Array<uint8, 1> _padding2;
 		id proposerPublicKey;
 		ProposalDataT proposal;
-		SubscriptionData subscription;		// Active subscription data if found
+		SubscriptionData subscription;					// Active subscription data if found
 		SubscriptionProposalData subscriptionProposal;	// Subscription proposal data if this is a subscription proposal
-		bit hasSubscriptionProposal;		// True if this proposal has subscription proposal data
-		bit hasActiveSubscription;			// True if an active subscription was found for the destination
+		bit hasSubscriptionProposal;					// True if this proposal has subscription proposal data
+		bit hasActiveSubscription;						// True if an active subscription was found for the destination
+		Array<uint8, 4> _padding3;
 	};
 
 	struct GetProposal_locals
@@ -333,7 +334,7 @@ public:
 		output.hasActiveSubscription = false;
 
 		// Check if this proposal has subscription proposal data
-		if (input.proposalIndex >= 0 && input.proposalIndex < 128) // 128 is the capacity of subscriptionProposals
+		if (input.proposalIndex >= 0 && input.proposalIndex < state.subscriptionProposals.capacity())
 		{
 			locals.subscriptionProposalData = state.subscriptionProposals.get(input.proposalIndex);
 			if (!isZero(locals.subscriptionProposalData.proposerId))
@@ -522,7 +523,7 @@ public:
 
 			// Check if this is a subscription proposal
 			locals.isSubscription = false;
-			if (locals.proposalIndex >= 0 && locals.proposalIndex < 128) // 128 is the capacity of subscriptionProposals
+			if (locals.proposalIndex >= 0 && locals.proposalIndex < state.subscriptionProposals.capacity())
 			{
 				locals.subscriptionProposal = state.subscriptionProposals.get(locals.proposalIndex);
 				// Check if this slot has subscription proposal data (non-zero proposerId indicates valid entry)
@@ -635,15 +636,7 @@ public:
 			if (isZero(locals.subscription.destination) || locals.subscription.numberOfPeriods == 0)
 				continue;
 
-			// Check if subscription has expired (all periods completed)
-			if (locals.subscription.currentPeriod >= (sint32)locals.subscription.numberOfPeriods)
-			{
-				locals.subscription.isActive = false; // Mark subscription as inactive so it can be overwritten
-				state.activeSubscriptions.set(locals.subIdx, locals.subscription);
-				continue;
-			}
-
-			// Calculate epochs per period (1 week ≈ 1 epoch)
+			// Calculate epochs per period (1 week = 1 epoch)
 			locals.epochsPerPeriod = locals.subscription.weeksPerPeriod;
 
 			// Calculate how many epochs have passed since subscription started
@@ -678,7 +671,15 @@ public:
 
 				// Add log entry
 				state.regularPayments.set(state.lastRegularPaymentsNextOverwriteIdx, locals.regularPayment);
-				state.lastRegularPaymentsNextOverwriteIdx = mod((uint32)(state.lastRegularPaymentsNextOverwriteIdx + 1), (uint32)state.regularPayments.capacity());
+				state.lastRegularPaymentsNextOverwriteIdx = (uint8)mod<uint32>(state.lastRegularPaymentsNextOverwriteIdx + 1, state.regularPayments.capacity());
+
+				// Check if subscription has expired (all periods completed)
+				if (locals.regularPayment.success && locals.subscription.currentPeriod >= (sint32)locals.subscription.numberOfPeriods - 1)
+				{
+					// Clear the subscription by zeroing out the entry (empty slot is indicated by zero destination)
+					setMemory(locals.subscription, 0);
+					state.activeSubscriptions.set(locals.subIdx, locals.subscription);
+				}
 			}
 		}
 	}
