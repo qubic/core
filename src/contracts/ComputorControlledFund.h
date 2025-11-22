@@ -1,6 +1,6 @@
 using namespace QPI;
 
-constexpr uint32 CCF_MAX_SUBSCRIPTIONS = 8192;
+constexpr uint32 CCF_MAX_SUBSCRIPTIONS = 1024;
 
 struct CCF2 
 {
@@ -44,11 +44,11 @@ struct CCF : public ContractBase
 		id destination;                 // ID of the destination
 		Array<uint8, 256> url;          // URL of the subscription
 		uint8 weeksPerPeriod;			// Number of weeks between payments (e.g., 1 for weekly, 4 for monthly)
+		Array<uint8, 1> _padding0;		// Padding for alignment
+		Array<uint8, 2> _padding1;      // Padding for alignment
 		uint32 numberOfPeriods;			// Total number of periods (e.g., 12 for 12 periods)
 		uint64 amountPerPeriod;			// Amount in Qubic per period
 		uint32 startEpoch;				// Epoch when subscription should start
-		Array<uint8, 2> _padding0;		// Padding for alignment
-		Array<uint8, 1> _padding1;      // Padding for alignment
 	};
 
 	// Active subscription data (for accepted subscriptions)
@@ -57,12 +57,12 @@ struct CCF : public ContractBase
 		id destination;                 // ID of the destination (used as key, one per destination)
 		Array<uint8, 256> url;          // URL of the subscription
 		uint8 weeksPerPeriod;			// Number of weeks between payments (e.g., 1 for weekly, 4 for monthly)
+		Array<uint8, 1> _padding1;		// Padding for alignment
+		Array<uint8, 2> _padding2;		// Padding for alignment
 		uint32 numberOfPeriods;			// Total number of periods (e.g., 12 for 12 periods)
 		uint64 amountPerPeriod;			// Amount in Qubic per period
 		uint32 startEpoch;				// Epoch when subscription started (startEpoch >= proposal approval epoch)
 		sint32 currentPeriod;			// Current period index (0-based, 0 to numberOfPeriods-1)
-		Array<uint8, 2> _padding1;		// Padding for alignment
-		Array<uint8, 1> _padding2;		// Padding for alignment
 	};
 
 	// Array to store subscription proposals, one per proposal slot (indexed by proposalIndex)
@@ -80,8 +80,8 @@ struct CCF : public ContractBase
 		uint32 tick;
 		sint32 periodIndex;				// Which period this payment is for (0-based)
 		bool success;
-		Array<uint8, 2> _padding0;
-		Array<uint8, 1> _padding1;
+		Array<uint8, 1> _padding0;
+		Array<uint8, 2> _padding1;
 	};
 
 	typedef Array<RegularPaymentEntry, 128> RegularPaymentsT;
@@ -94,14 +94,15 @@ protected:
 	LatestTransfersT latestTransfers;
 	uint8 lastTransfersNextOverwriteIdx;
 
-	RegularPaymentsT regularPayments;
-	uint8 lastRegularPaymentsNextOverwriteIdx;
-
 	uint32 setProposalFee;
-	uint32 maxSubscriptionEpochs;		// Maximum total time range in epochs (configurable)
+
+	RegularPaymentsT regularPayments;
 
 	SubscriptionProposalsT subscriptionProposals;	// Subscription proposals, one per proposal slot (indexed by proposalIndex)
 	ActiveSubscriptionsT activeSubscriptions;		// Active subscriptions, identified by destination ID
+
+	uint32 maxSubscriptionEpochs;		// Maximum total time range in epochs (configurable)
+	uint8 lastRegularPaymentsNextOverwriteIdx;
 
 	//----------------------------------------------------------------------------
 	// Define private procedures and functions with input and output
@@ -118,10 +119,10 @@ public:
 		// Optional subscription data (only used if isSubscription is true)
 		bit isSubscription;				// Set to true if this is a subscription proposal
 		uint8 weeksPerPeriod;			// Number of weeks between payments (e.g., 1 for weekly, 4 for monthly)
+		Array<uint8, 2> _padding0;		// Padding for alignment
 		uint32 startEpoch;				// Epoch when subscription starts
 		uint32 numberOfPeriods;			// Total number of periods
 		uint64 amountPerPeriod;			// Amount per period (in Qubic)
-		Array<uint8, 4> _padding;
 	};
 
 	struct SetProposal_output
@@ -521,18 +522,6 @@ public:
 			if (!qpi(state.proposals).getProposal(locals.proposalIndex, locals.proposal))
 				continue;
 
-			// Check if this is a subscription proposal
-			locals.isSubscription = false;
-			if (locals.proposalIndex >= 0 && locals.proposalIndex < state.subscriptionProposals.capacity())
-			{
-				locals.subscriptionProposal = state.subscriptionProposals.get(locals.proposalIndex);
-				// Check if this slot has subscription proposal data (non-zero proposerId indicates valid entry)
-				if (!isZero(locals.subscriptionProposal.proposerId))
-				{
-					locals.isSubscription = true;
-				}
-			}
-
 			// ... and have transfer proposal type
 			if (ProposalTypes::cls(locals.proposal.type) == ProposalTypes::Class::Transfer)
 			{
@@ -551,6 +540,18 @@ public:
 				// Option for transfer has been accepted?
 				if (locals.results.optionVoteCount.get(1) > div<uint32>(QUORUM, 2U))
 				{
+					// Check if this is a subscription proposal
+					locals.isSubscription = false;
+					if (locals.proposalIndex >= 0 && locals.proposalIndex < state.subscriptionProposals.capacity())
+					{
+						locals.subscriptionProposal = state.subscriptionProposals.get(locals.proposalIndex);
+						// Check if this slot has subscription proposal data (non-zero proposerId indicates valid entry)
+						if (!isZero(locals.subscriptionProposal.proposerId))
+						{
+							locals.isSubscription = true;
+						}
+					}
+					
 					if (locals.isSubscription)
 					{
 						// Handle subscription proposal acceptance
