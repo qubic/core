@@ -17,7 +17,7 @@ struct TESTEXD : public ContractBase
 	END_TICK_WITH_LOCALS()
 	{
 		// Query oracle
-		if (qpi.tick() % 5 == 0)
+		//if (qpi.tick() % 5 == 0)
 		{
 			locals.oracleQueryId = qpi.queryOracle<OI::Price>(locals.priceOracleQuery, 20);
 		}
