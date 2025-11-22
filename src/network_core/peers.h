@@ -232,6 +232,14 @@ static void closePeer(Peer* peer)
             peer->isClosing = TRUE;
         }
 
+        // For Oracle machine, forces closing so that can reconnect faster
+        if (peer->isOracleMachineNode() && peer->isClosing)
+        {
+            peer->isConnectingAccepting = FALSE;
+            peer->isReceiving = FALSE;
+            peer->isTransmitting = FALSE;
+        }
+
         if (!peer->isConnectingAccepting && !peer->isReceiving && !peer->isTransmitting)
         {
             bs->CloseProtocol(peer->connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, ih, NULL);
