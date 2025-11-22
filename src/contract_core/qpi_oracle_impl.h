@@ -14,8 +14,8 @@ QPI::uint64 QPI::QpiContextProcedureCall::queryOracle(const OracleInterface::Ora
 
 	// destroy fee (not adding to contracts execution fee reserve)
 	int contractSpectrumIdx = ::spectrumIndex(this->_currentContractId);
-	if (contractSpectrumIdx < 0 || !decreaseEnergy(contractSpectrumIdx, fee))
-		return 0;
+	//if (contractSpectrumIdx < 0 || !decreaseEnergy(contractSpectrumIdx, fee))
+	//	return 0;
 
 	ASSERT(this->_currentContractIndex < 0xffff);
 	QPI::uint16 contractIndex = static_cast<QPI::uint16>(this->_currentContractIndex);
