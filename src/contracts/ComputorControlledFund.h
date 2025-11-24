@@ -121,18 +121,18 @@ public:
 		uint8 weeksPerPeriod;			// Number of weeks between payments (e.g., 1 for weekly, 4 for monthly)
 		Array<uint8, 2> _padding0;		// Padding for alignment
 		uint32 startEpoch;				// Epoch when subscription starts
-		uint32 numberOfPeriods;			// Total number of periods
 		uint64 amountPerPeriod;			// Amount per period (in Qubic)
+		uint32 numberOfPeriods;			// Total number of periods
 	};
 
 	struct SetProposal_output
 	{
-		sint32 proposalIndex;
+		uint16 proposalIndex;
 	};
 
 	struct SetProposal_locals
 	{
-		uint32 maxEpochsForSubscription;
+		uint32 totalEpochsForSubscription;
 		sint32 subIndex;
 		SubscriptionProposalData subscriptionProposal;
 		ProposalDataT proposal;
@@ -188,12 +188,12 @@ public:
 				return;
 			}
 
-			// Calculate maximum epochs for this subscription
+			// Calculate total epochs for this subscription
 			// 1 week = 1 epoch
-			locals.maxEpochsForSubscription = input.numberOfPeriods * input.weeksPerPeriod;
+			locals.totalEpochsForSubscription = input.numberOfPeriods * input.weeksPerPeriod;
 
-			// Check against maximum allowed subscription time range
-			if (locals.maxEpochsForSubscription > state.maxSubscriptionEpochs)
+			// Check against total allowed subscription time range
+			if (locals.totalEpochsForSubscription > state.maxSubscriptionEpochs)
 			{
 				output.proposalIndex = INVALID_PROPOSAL_INDEX;
 				return;
@@ -210,7 +210,7 @@ public:
 			if (input.proposal.epoch == 0)
 			{
 				// Check if this is a subscription proposal that can be canceled by the proposer
-				if (output.proposalIndex >= 0 && output.proposalIndex < state.subscriptionProposals.capacity())
+				if (output.proposalIndex < state.subscriptionProposals.capacity())
 				{
 					locals.subscriptionProposal = state.subscriptionProposals.get(output.proposalIndex);
 					// Only allow cancellation by the proposer
@@ -307,16 +307,14 @@ public:
 	struct GetProposal_output
 	{
 		bit okay;
-		Array<uint8, 4> _padding0;
-		Array<uint8, 2> _padding1;
-		Array<uint8, 1> _padding2;
+		bit hasSubscriptionProposal;					// True if this proposal has subscription proposal data
+		bit hasActiveSubscription;						// True if an active subscription was found for the destination
+		Array<uint8, 1> _padding0;
+		Array<uint8, 4> _padding1;
 		id proposerPublicKey;
 		ProposalDataT proposal;
 		SubscriptionData subscription;					// Active subscription data if found
 		SubscriptionProposalData subscriptionProposal;	// Subscription proposal data if this is a subscription proposal
-		bit hasSubscriptionProposal;					// True if this proposal has subscription proposal data
-		bit hasActiveSubscription;						// True if an active subscription was found for the destination
-		Array<uint8, 4> _padding3;
 	};
 
 	struct GetProposal_locals
@@ -335,7 +333,7 @@ public:
 		output.hasActiveSubscription = false;
 
 		// Check if this proposal has subscription proposal data
-		if (input.proposalIndex >= 0 && input.proposalIndex < state.subscriptionProposals.capacity())
+		if (input.proposalIndex < state.subscriptionProposals.capacity())
 		{
 			locals.subscriptionProposalData = state.subscriptionProposals.get(input.proposalIndex);
 			if (!isZero(locals.subscriptionProposalData.proposerId))
@@ -542,7 +540,7 @@ public:
 				{
 					// Check if this is a subscription proposal
 					locals.isSubscription = false;
-					if (locals.proposalIndex >= 0 && locals.proposalIndex < state.subscriptionProposals.capacity())
+					if (locals.proposalIndex < state.subscriptionProposals.capacity())
 					{
 						locals.subscriptionProposal = state.subscriptionProposals.get(locals.proposalIndex);
 						// Check if this slot has subscription proposal data (non-zero proposerId indicates valid entry)
@@ -671,7 +669,7 @@ public:
 
 				// Add log entry
 				state.regularPayments.set(state.lastRegularPaymentsNextOverwriteIdx, locals.regularPayment);
-				state.lastRegularPaymentsNextOverwriteIdx = (uint8)mod<uint32>(state.lastRegularPaymentsNextOverwriteIdx + 1, state.regularPayments.capacity());
+				state.lastRegularPaymentsNextOverwriteIdx = (uint8)mod<uint64>(state.lastRegularPaymentsNextOverwriteIdx + 1, state.regularPayments.capacity());
 
 				// Check if subscription has expired (all periods completed)
 				if (locals.regularPayment.success && locals.subscription.currentPeriod >= (sint32)locals.subscription.numberOfPeriods - 1)
