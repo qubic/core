@@ -111,7 +111,7 @@ long long QPI::QpiContextProcedureCall::burn(long long amount, unsigned int cont
     return remainingAmount;
 }
 
-long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long long amount) const
+long long QPI::QpiContextProcedureCall::__transfer(const m256i& destination, long long amount, unsigned char transferType) const
 {
     // Transfer to contract is forbidden inside POST_INCOMING_TRANSFER to prevent nested callbacks
     if (contractCallbacksRunning & ContractCallbackPostIncomingTransfer
@@ -146,13 +146,18 @@ long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long 
         if (!contractActionTracker.addQuTransfer(_currentContractId, destination, amount))
             __qpiAbort(ContractErrorTooManyActions);
 
-        __qpiNotifyPostIncomingTransfer(_currentContractId, destination, amount, TransferType::qpiTransfer);
+        __qpiNotifyPostIncomingTransfer(_currentContractId, destination, amount, transferType);
 
         const QuTransfer quTransfer = { _currentContractId , destination , amount };
         logger.logQuTransfer(quTransfer);
     }
 
     return remainingAmount;
+}
+
+long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long long amount) const
+{
+    return __transfer(destination, amount, TransferType::qpiTransfer);
 }
 
 m256i QPI::QpiContextFunctionCall::nextId(const m256i& currentId) const
