@@ -1150,6 +1150,8 @@ protected:
 		switch (input.type)
 		{
 		case TransferType::standardTransaction:
+			qpi.transfer(input.sourceId, input.amount);
+			break;
 		case TransferType::qpiTransfer:
 		case TransferType::revenueDonation:
 			// add amount to _earnedAmount which will be distributed to shareholders in END_TICK
