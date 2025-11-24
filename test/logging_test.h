@@ -15,6 +15,16 @@
 #undef MAX_NUMBER_OF_TICKS_PER_EPOCH
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH 3000
 
+// Reduce virtual memory size for testing
+#undef LOG_BUFFER_PAGE_SIZE
+#undef PMAP_LOG_PAGE_SIZE
+#undef IMAP_LOG_PAGE_SIZE
+#undef VM_NUM_CACHE_PAGE
+#define LOG_BUFFER_PAGE_SIZE 10000000ULL
+#define PMAP_LOG_PAGE_SIZE 1000000ULL
+#define IMAP_LOG_PAGE_SIZE 300ULL
+#define VM_NUM_CACHE_PAGE 1
+
 #include "logging/logging.h"
 
 class LoggingTest
