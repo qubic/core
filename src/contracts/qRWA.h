@@ -1298,6 +1298,51 @@ public:
         }
     }
 
+    typedef NoData GetGeneralAssets_input;
+    struct GetGeneralAssets_output
+    {
+        uint64 count;
+        Array<Asset, QRWA_MAX_ASSETS> assets;
+        Array<uint64, QRWA_MAX_ASSETS> balances;
+    };
+    struct GetGeneralAssets_locals
+    {
+        sint64 iterIndex;
+        Asset currentAsset;
+        uint64 currentBalance;
+    };
+    PUBLIC_FUNCTION_WITH_LOCALS(GetGeneralAssets)
+    {
+        output.count = 0;
+        locals.iterIndex = NULL_INDEX;
+
+        while (true)
+        {
+            locals.iterIndex = state.mGeneralAssetBalances.nextElementIndex(locals.iterIndex);
+
+            if (locals.iterIndex == NULL_INDEX)
+            {
+                break;
+            }
+
+            locals.currentAsset = state.mGeneralAssetBalances.key(locals.iterIndex);
+            locals.currentBalance = state.mGeneralAssetBalances.value(locals.iterIndex);
+
+            // Only return "active" assets (balance > 0)
+            if (locals.currentBalance > 0)
+            {
+                output.assets.set(output.count, locals.currentAsset);
+                output.balances.set(output.count, locals.currentBalance);
+                output.count++;
+
+                if (output.count >= QRWA_MAX_ASSETS)
+                {
+                    break;
+                }
+            }
+        }
+    }
+
     /***************************************************/
     /***************** SYSTEM PROCEDURES ***************/
     /***************************************************/
@@ -1932,5 +1977,6 @@ public:
         REGISTER_USER_FUNCTION(GetActiveAssetReleasePollIds, 7);
         REGISTER_USER_FUNCTION(GetActiveGovPollIds, 8);
         REGISTER_USER_FUNCTION(GetGeneralAssetBalance, 9);
+        REGISTER_USER_FUNCTION(GetGeneralAssets, 10);
     }
 };
