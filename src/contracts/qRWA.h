@@ -1273,6 +1273,31 @@ public:
         }
     }
 
+    struct GetGeneralAssetBalance_input
+    {
+        Asset asset;
+    };
+    struct GetGeneralAssetBalance_output
+    {
+        uint64 balance;
+        uint64 status;
+    };
+    struct GetGeneralAssetBalance_locals
+    {
+        uint64 balance;
+    };
+    PUBLIC_FUNCTION_WITH_LOCALS(GetGeneralAssetBalance) {
+        locals.balance = 0;
+        if (state.mGeneralAssetBalances.get(input.asset, locals.balance)) {
+            output.balance = locals.balance;
+            output.status = 1;
+        }
+        else {
+            output.balance = 0;
+            output.status = 0;
+        }
+    }
+
     /***************************************************/
     /***************** SYSTEM PROCEDURES ***************/
     /***************************************************/
@@ -1906,5 +1931,6 @@ public:
         REGISTER_USER_FUNCTION(GetTotalDistributed, 6);
         REGISTER_USER_FUNCTION(GetActiveAssetReleasePollIds, 7);
         REGISTER_USER_FUNCTION(GetActiveGovPollIds, 8);
+        REGISTER_USER_FUNCTION(GetGeneralAssetBalance, 9);
     }
 };
