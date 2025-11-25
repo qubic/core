@@ -1225,6 +1225,54 @@ public:
         output.totalQRWADistributed = state.mTotalQRWADistributed;
     }
 
+    typedef NoData GetActiveAssetReleasePollIds_input;
+
+    struct GetActiveAssetReleasePollIds_output
+    {
+        uint64 count;
+        Array<uint64, QRWA_MAX_ASSET_POLLS> ids;
+    };
+
+    struct GetActiveAssetReleasePollIds_locals
+    {
+        uint64 i;
+    };
+    PUBLIC_FUNCTION_WITH_LOCALS(GetActiveAssetReleasePollIds)
+    {
+        output.count = 0;
+        for (locals.i = 0; locals.i < QRWA_MAX_ASSET_POLLS; locals.i++)
+        {
+            if (state.mAssetPolls.get(locals.i).status == QRWA_POLL_STATUS_ACTIVE)
+            {
+                output.ids.set(output.count, state.mAssetPolls.get(locals.i).proposalId);
+                output.count++;
+            }
+        }
+    }
+
+    typedef NoData GetActiveGovPollIds_input;
+    struct GetActiveGovPollIds_output
+    {
+        uint64 count;
+        Array<uint64, QRWA_MAX_GOV_POLLS> ids;
+    };
+    struct GetActiveGovPollIds_locals
+    {
+        uint64 i;
+    };
+    PUBLIC_FUNCTION_WITH_LOCALS(GetActiveGovPollIds)
+    {
+        output.count = 0;
+        for (locals.i = 0; locals.i < QRWA_MAX_GOV_POLLS; locals.i++)
+        {
+            if (state.mGovPolls.get(locals.i).status == QRWA_POLL_STATUS_ACTIVE)
+            {
+                output.ids.set(output.count, state.mGovPolls.get(locals.i).proposalId);
+                output.count++;
+            }
+        }
+    }
+
     /***************************************************/
     /***************** SYSTEM PROCEDURES ***************/
     /***************************************************/
@@ -1856,5 +1904,7 @@ public:
         REGISTER_USER_FUNCTION(GetTreasuryBalance, 4);
         REGISTER_USER_FUNCTION(GetDividendBalances, 5);
         REGISTER_USER_FUNCTION(GetTotalDistributed, 6);
+        REGISTER_USER_FUNCTION(GetActiveAssetReleasePollIds, 7);
+        REGISTER_USER_FUNCTION(GetActiveGovPollIds, 8);
     }
 };
