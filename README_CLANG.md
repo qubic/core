@@ -69,10 +69,6 @@ For a example compilation execute the following commands:
     * **Values:** `ON`, `OFF`
     * **Meaning:** `ON` enables code using AVX-512 CPU instructions (requires support), `OFF` disables it.
 
-* **`-D USE_SANITIZER=<ON|OFF>`**
-    * **Values:** `ON`, `OFF`
-    * **Meaning:** `ON` enables linking to santizers when building with clang, `OFF` disables sanitizers.
-
 4.  **Build the Project:**
     Use the CMake `--build` command to invoke the underlying build tool (like `make` or `ninja`).
 
@@ -86,30 +82,6 @@ For a example compilation execute the following commands:
     ```
 
 The output binary will be located at `build/src`
-
-## State
-
-The core binary are finished but for building test are still pending
-
-| Test Module        | Source File             | Status      |
-| :----------------- | :---------------------- | :---------- |
-| Assets             | `assets.cpp`            | Pending     |
-| Common Def         | `common_def.cpp`        | Pending     |
-| Contract Core      | `contract_core.cpp`     | Pending     |
-| Contract qEarn     | `contract_qearn.cpp`    | Pending     |
-| Contract qVault    | `contract_qvault.cpp`   | Pending     |
-| Contract qX        | `contract_qx.cpp`       | Pending     |
-| KangarooTwelve     | `kangaroo_twelve.cpp`   | Pending     |
-| M256               | `m256.cpp`              | **Working** |
-| Math Lib           | `math_lib.cpp`          | **Working** |
-| Network Messages   | `network_messages.cpp`  | **Working** |
-| Platform           | `platform.cpp`          | Pending     |
-| QPI Collection     | `qpi_collection.cpp`    | Pending     |
-| QPI                | `qpi.cpp`               | Pending     |
-| QPI Hash Map       | `qpi_hash_map.cpp`      | Pending     |
-| Score Cache        | `score_cache.cpp`       | Pending     |
-| Score              | `score.cpp`             | Pending     |
-| Spectrum           | `spectrum.cpp`          | Pending     |
 | Stdlib Impl        | `stdlib_impl.cpp`       | Pending     |
 | Tick Storage       | `tick_storage.cpp`      | Pending     |
 | TX Status Request  | `tx_status_request.cpp` | Pending     |
