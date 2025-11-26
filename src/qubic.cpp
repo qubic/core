@@ -5436,6 +5436,10 @@ static bool initialize()
     if (!oracleEngine.init())
         return false;
 
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+    increaseEnergy(id(TESTEXC_CONTRACT_INDEX, 0, 0, 0), 100000000llu);
+#endif
+
     initializeContractErrors();
     initializeContracts();
 
@@ -5900,6 +5904,10 @@ static void logInfo()
 
     logToConsole(message);
 
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+    oracleEngine.logStatus(message);
+    logToConsole(message);
+#endif
 }
 
 static void logHealthStatus()
