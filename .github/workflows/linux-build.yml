@@ -43,7 +43,6 @@ jobs:
       # Configure the project
       - name: Configure with CMake
         run: |
-          CC=clang-20 CXX=clang++-20
           cmake -S . -B ${{ inputs.build_dir }} \
             -DCMAKE_BUILD_TYPE=${{ inputs.configuration }} \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
@@ -51,7 +50,9 @@ jobs:
             -DBUILD_BINARY:BOOL=ON \
             -DENABLE_AVX512=OFF \
             -DUSE_SANITIZER=OFF \
-            -DONLY_LOGGING=ON
+            -DONLY_LOGGING=ON \
+            -DCMAKE_C_COMPILER=clang-20 \
+            -DCMAKE_CXX_COMPILER=clang++-20
 
       # Build the project
       - name: Build with Make
