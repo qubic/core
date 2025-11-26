@@ -8,20 +8,12 @@ struct TESTEXD : public ContractBase
 {
 	struct END_TICK_locals
 	{
-		OI::Price::OracleQuery priceOracleQuery;
-		uint64 oracleQueryId;
 		Entity entity;
 		sint64 balance;
 	};
 
 	END_TICK_WITH_LOCALS()
 	{
-		// Query oracle
-		if (qpi.tick() % 5 == 0)
-		{
-			locals.oracleQueryId = qpi.queryOracle<OI::Price>(locals.priceOracleQuery, 20);
-		}
-
 		// Distribute balance to sharesholders at the end of each tick
 		qpi.getEntity(SELF, locals.entity);
 		locals.balance = locals.entity.incomingAmount - locals.entity.outgoingAmount;

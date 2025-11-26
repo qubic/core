@@ -39,8 +39,8 @@ struct OracleMachineReply
     /// Allow to return error flags in order to simplify debugging (see network_messages/common_def.h for predefined error flags)
     unsigned short oracleMachineErrorFlags;
 
-    unsigned short padding0;
-    unsigned int padding1;
+    unsigned short _padding0;
+    unsigned int _padding1;
 };
 
 // TODO: maybe later extend the protocol to handle subscriptions more efficiently
