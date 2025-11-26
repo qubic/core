@@ -8,7 +8,12 @@
 // Pseudo IDs (for testing only)
 
 // QMINE_ISSUER is is also the ADMIN_ADDRESS
-static const id QMINE_ISSUER = id::randomValue();
+static const id QMINE_ISSUER = ID(
+    _Q, _M, _I, _N, _E, _Q, _Q, _X, _Y, _B, _E, _G, _B, _H, _N, _S,
+    _U, _P, _O, _U, _Y, _D, _I, _Q, _K, _Z, _P, _C, _B, _P, _Q, _I,
+    _I, _H, _U, _U, _Z, _M, _C, _P, _L, _B, _P, _C, _C, _A, _I, _A,
+    _R, _V, _Z, _B, _T, _Y, _K, _G
+);
 static const id ADMIN_ADDRESS = QMINE_ISSUER;
 
 // temporary holder for the initial 150M QMINE supply
@@ -20,7 +25,12 @@ static const id FEE_ADDR_M = id::randomValue(); // Maintenance fees address
 static const id FEE_ADDR_R = id::randomValue(); // Reinvestment fees address
 
 // pseudo test address for QMINE developer
-static const id QMINE_DEV_ADDR_TEST = id::randomValue();
+static const id QMINE_DEV_ADDR_TEST = ID(
+    _Z, _O, _X, _X, _I, _D, _C, _Z, _I, _M, _G, _C, _E, _C, _C, _F,
+    _A, _X, _D, _D, _C, _M, _B, _B, _X, _C, _D, _A, _Q, _J, _I, _H,
+    _G, _O, _O, _A, _T, _A, _F, _P, _S, _B, _F, _I, _O, _F, _O, _Y,
+    _E, _C, _F, _K, _U, _F, _P, _B
+);
 
 // Test accounts for holders and users
 static const id HOLDER_A = id::randomValue();
@@ -93,22 +103,12 @@ public:
         // (Overrides defaults from INITIALIZE() for testing purposes)
         QRWA* state = getState();
 
-        // Set the TEST QMINE asset
-        state->mQmineAsset = QMINE_ASSET;
-
-        // Set the TEST Governance Params
-        state->mCurrentGovParams.mAdminAddress = ADMIN_ADDRESS;
-        state->mCurrentGovParams.qmineDevAddress = QMINE_DEV_ADDR_TEST;
-
         // Fee addresses
+        // Note: We want to check these Fee Addresses separately,
+        // we use different addresses instead of same address as the Admin Address
         state->mCurrentGovParams.electricityAddress = FEE_ADDR_E;
         state->mCurrentGovParams.maintenanceAddress = FEE_ADDR_M;
         state->mCurrentGovParams.reinvestmentAddress = FEE_ADDR_R;
-
-        // Fee percentages (35%, 5%, 10%)
-        state->mCurrentGovParams.electricityPercent = 350; // 35.0%
-        state->mCurrentGovParams.maintenancePercent = 50;  // 5.0%
-        state->mCurrentGovParams.reinvestmentPercent = 100; // 10.0%
     }
 
     QRWA* getState()
