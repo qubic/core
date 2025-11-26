@@ -145,7 +145,7 @@ PUBLIC_PROCEDURE(ProcedureName)
 ### User functions
 
 User functions cannot modify the contract's state, but they are useful to query information from the state, either with the network message `RequestContractFunction`, or by a function or procedure of the same or another contract.
-Functions can be called by procedures, but procedures cannot be called by functions.
+Functions can be called by procedures, but procedures cannot be called by functions. Logging is not allowed inside functions.
 
 A user function has to be defined with one of the following the QPI macros, passing the name of the function: `PUBLIC_FUNCTION(NAME)`, `PUBLIC_FUNCTION_WITH_LOCALS(NAME)`, `PRIVATE_FUNCTION(NAME)`, or `PRIVATE_FUNCTION_WITH_LOCALS(NAME)`.
 
@@ -655,6 +655,7 @@ The file `proposal.cpp` has a lot of examples showing how to use both functions.
 For example, `getProposalIndices()` shows how to call a contract function requiring input and providing output with `runContractFunction()`.
 An example use case of `makeContractTransaction()` can be found in `gqmpropSetProposal()`.
 The function `castVote()` is a more complex example combining both, calling a contract function and invoking a contract procedure.
+
 
 
 
