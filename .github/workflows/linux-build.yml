@@ -36,7 +36,7 @@ jobs:
       - name: Install CMake and dependencies
         run: |
           sudo apt install -y clang cmake nasm
-          sudo apt install -y libc++-dev libc++abi-dev libjsoncpp-dev uuid-dev zlib1g-dev
+          sudo apt install -y libc++-dev libc++abi-dev libjsoncpp-dev uuid-dev zlib1g-dev g++ libstdc++-12-dev
 
       # Configure the project
       - name: Configure with CMake
