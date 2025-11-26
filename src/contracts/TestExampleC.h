@@ -192,6 +192,39 @@ public:
 	}
 
 	//---------------------------------------------------------------
+	// ORACLE TESTING
+
+	struct QueryPriceOracle_input
+	{
+		OI::Price::OracleQuery priceOracleQuery;
+		uint16 timeoutSeconds;
+	};
+	struct QueryPriceOracle_output
+	{
+		uint64 oracleQueryId;
+	};
+
+	PUBLIC_PROCEDURE(QueryPriceOracle)
+	{
+		output.oracleQueryId = qpi.queryOracle<OI::Price>(input.priceOracleQuery, input.timeoutSeconds);
+	}
+
+	struct END_TICK_locals
+	{
+		OI::Price::OracleQuery priceOracleQuery;
+		uint64 oracleQueryId;
+	};
+
+	END_TICK_WITH_LOCALS()
+	{
+		// Query oracle
+		if (qpi.tick() % 2 == 0)
+		{
+			locals.oracleQueryId = qpi.queryOracle<OI::Price>(locals.priceOracleQuery, 20);
+		}
+	}
+
+	//---------------------------------------------------------------
 	// COMMON PARTS
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
@@ -203,5 +236,7 @@ public:
 		REGISTER_USER_PROCEDURE(QpiTransfer, 20);
 		REGISTER_USER_PROCEDURE(QpiDistributeDividends, 21);
 		REGISTER_USER_PROCEDURE(QpiBidInIpo, 30);
+
+		REGISTER_USER_PROCEDURE(QueryPriceOracle, 100);
 	}
 };

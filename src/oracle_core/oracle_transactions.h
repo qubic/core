@@ -11,7 +11,7 @@ struct OracleReplyCommitTransactionItem
 };
 
 // Transaction for committing one or multiple oracle replies. The tx prefix is followed by one or multiple
-// instances of OracleReplyCommitTransactionItem, and subsequently the postfix (signature).
+// instances of OracleReplyCommitTransactionItem as input data, and subsequently the signature.
 struct OracleReplyCommitTransactionPrefix : public Transaction
 {
 	static constexpr unsigned char transactionType()
@@ -43,7 +43,7 @@ struct OracleReplyRevealTransactionPrefix : public Transaction
 };
 
 // Transaction for querying oracle. The tx prefix is followed by the OracleQuery data
-// as defined by the oracle interface, and subsequently the postfix (signature).
+// as defined by the oracle interface, and subsequently the signature.
 struct OracleUserQueryTransactionPrefix : public Transaction
 {
 	static constexpr unsigned char transactionType()
@@ -58,9 +58,4 @@ struct OracleUserQueryTransactionPrefix : public Transaction
 
 	unsigned int oracleInterfaceIndex;
 	unsigned short timeoutSeconds;
-};
-
-struct OracleTransactionPostfix
-{
-	unsigned char signature[SIGNATURE_SIZE];
 };

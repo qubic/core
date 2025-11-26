@@ -1659,10 +1659,7 @@ static void processOracleMachineReply(Peer* peer, RequestResponseHeader* header)
     auto* msg = header->getPayload<OracleMachineReply>();
     if (header->size() >= sizeof(RequestResponseHeader) + sizeof(OracleMachineReply))
     {
-        // TODO: discuss how to handle multiple disagreeing replies from multiple OM nodes
-        // get interface from oracle query data
-        // check size
-        // store in pending reply storage (commit tx will be published in processTick() later)
+        oracleEngine.processOracleMachineReply(msg, header->getPayloadSize());
     }
 }
 
@@ -2614,18 +2611,6 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     }
 }
 
-static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTransactionPrefix* transaction)
-{
-    PROFILE_SCOPE();
-
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transaction != nullptr);
-    ASSERT(transaction->checkValidity());
-    ASSERT(isZero(transaction->destinationPublicKey));
-    ASSERT(transaction->tick == system.tick);
-
-    // TODO
-}
 
 static void processTickTransactionOracleReplyReveal(const OracleReplyRevealTransactionPrefix* transaction)
 {
@@ -2727,11 +2712,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
                 case OracleReplyCommitTransactionPrefix::transactionType():
                 {
-                    if (computorIndex(transaction->sourcePublicKey) >= 0
-                        && transaction->inputSize >= OracleReplyCommitTransactionPrefix::minInputSize())
-                    {
-                        processTickTransactionOracleReplyCommit((OracleReplyCommitTransactionPrefix*)transaction);
-                    }
+                    oracleEngine.processTransactionOracleReplyCommit((OracleReplyCommitTransactionPrefix*)transaction);
                 }
                 break;
 
@@ -5452,6 +5433,9 @@ static bool initialize()
         }
     }
 
+    if (!oracleEngine.init())
+        return false;
+
     initializeContractErrors();
     initializeContracts();
 
@@ -5605,6 +5589,8 @@ static void deinitialize()
 #if ADDON_TX_STATUS_REQUEST
     deinitTxStatusRequestAddOn();
 #endif
+
+    oracleEngine.deinit();
 
     deinitContractExec();
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
