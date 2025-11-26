@@ -17,25 +17,6 @@ constexpr uint64 QRWA_QMINE_HOLDER_PERCENT = 900; // 90.0%
 constexpr uint64 QRWA_QRWA_HOLDER_PERCENT = 100;  // 10.0%
 constexpr uint64 QRWA_PERCENT_DENOMINATOR = 1000; // 100.0%
 
-// QMINE Asset Constant
-// Issuer: QMINEQQXYBEGBHNSUPOUYDIQKZPCBPQIIHUUZMCPLBPCCAIARVZBTYKGFCWM
-// Name: 297666170193 ("QMINE")
-static const Asset QRWA_QMINE_ASSET_INIT =
-{
-    ID(_Q,_M,_I,_N,_E,_Q,_Q,_X,_Y,_B,_E,_G,_B,_H,_N,_S,
-       _U,_P,_O,_U,_Y,_D,_I,_Q,_K,_Z,_P,_C,_B,_P,_Q,_I,
-       _I,_H,_U,_U,_Z,_M,_C,_P,_L,_B,_P,_C,_C,_A,_I,_A,
-       _R,_V,_Z,_B,_T,_Y,_K,_G),
-    297666170193ULL
-};
-
-// QMINE DEV's Address for receiving rewards from moved QMINE tokens
-// ZOXXIDCZIMGCECCFAXDDCMBBXCDAQJIHGOOATAFPSBFIOFOYECFKUFPBEMWC
-static const id QRWA_QMINE_DEV_ADDRESS_DEFAULT = ID(_Z, _O, _X, _X, _I, _D, _C, _Z, _I, _M, _G, _C, _E, _C, _C, _F,
-    _A, _X, _D, _D, _C, _M, _B, _B, _X, _C, _D, _A, _Q, _J, _I, _H,
-    _G, _O, _O, _A, _T, _A, _F, _P, _S, _B, _F, _I, _O, _F, _O, _Y,
-    _E, _C, _F, _K, _U, _F, _P, _B);
-
 // Payout Timing Constants
 constexpr uint64 QRWA_PAYOUT_DAY = FRIDAY; // Friday
 constexpr uint64 QRWA_PAYOUT_HOUR = 12; // 12:00 PM UTC
@@ -1250,17 +1231,54 @@ public:
 
     INITIALIZE()
     {
-        state.mQmineAsset = QRWA_QMINE_ASSET_INIT; // Set the QMINE asset
+        // QMINE Asset Constant
+        // Issuer: QMINEQQXYBEGBHNSUPOUYDIQKZPCBPQIIHUUZMCPLBPCCAIARVZBTYKGFCWM
+        // Name: 297666170193 ("QMINE")
+        state.mQmineAsset.assetName = 297666170193ULL;
+        state.mQmineAsset.issuer = ID(
+            _Q, _M, _I, _N, _E, _Q, _Q, _X, _Y, _B, _E, _G, _B, _H, _N, _S,
+			_U, _P, _O, _U, _Y, _D, _I, _Q, _K, _Z, _P, _C, _B, _P, _Q, _I,
+			_I, _H, _U, _U, _Z, _M, _C, _P, _L, _B, _P, _C, _C, _A, _I, _A,
+			_R, _V, _Z, _B, _T, _Y, _K, _G
+        );
         state.mTreasuryBalance = 0;
         state.mCurrentAssetProposalId = 0;
         setMemory(state.mLastPayoutTime, 0);
 
         // Initialize default governance parameters
-        state.mCurrentGovParams.mAdminAddress = QRWA_QMINE_ASSET_INIT.issuer; // Admin set by default, subject to change via Gov Voting
-        state.mCurrentGovParams.electricityAddress = QRWA_QMINE_ASSET_INIT.issuer; // Electricity address set by default, subject to change via Gov Voting
-        state.mCurrentGovParams.maintenanceAddress = QRWA_QMINE_ASSET_INIT.issuer; // Maintenance address set by default, subject to change via Gov Voting
-        state.mCurrentGovParams.reinvestmentAddress = QRWA_QMINE_ASSET_INIT.issuer; // Reinvestment address set by default, subject to change via Gov Voting
-        state.mCurrentGovParams.qmineDevAddress = QRWA_QMINE_DEV_ADDRESS_DEFAULT; // Default QMINE_DEV address
+        state.mCurrentGovParams.mAdminAddress = ID(
+            _Q, _M, _I, _N, _E, _Q, _Q, _X, _Y, _B, _E, _G, _B, _H, _N, _S,
+            _U, _P, _O, _U, _Y, _D, _I, _Q, _K, _Z, _P, _C, _B, _P, _Q, _I,
+            _I, _H, _U, _U, _Z, _M, _C, _P, _L, _B, _P, _C, _C, _A, _I, _A,
+            _R, _V, _Z, _B, _T, _Y, _K, _G
+        ); // Admin set to QMINE Issuer by default, subject to change via Gov Voting
+        state.mCurrentGovParams.electricityAddress = ID(
+            _Q, _M, _I, _N, _E, _Q, _Q, _X, _Y, _B, _E, _G, _B, _H, _N, _S,
+            _U, _P, _O, _U, _Y, _D, _I, _Q, _K, _Z, _P, _C, _B, _P, _Q, _I,
+            _I, _H, _U, _U, _Z, _M, _C, _P, _L, _B, _P, _C, _C, _A, _I, _A,
+            _R, _V, _Z, _B, _T, _Y, _K, _G
+        ); // Electricity address set to QMINE Issuer by default, subject to change via Gov Voting
+        state.mCurrentGovParams.maintenanceAddress = ID(
+            _Q, _M, _I, _N, _E, _Q, _Q, _X, _Y, _B, _E, _G, _B, _H, _N, _S,
+            _U, _P, _O, _U, _Y, _D, _I, _Q, _K, _Z, _P, _C, _B, _P, _Q, _I,
+            _I, _H, _U, _U, _Z, _M, _C, _P, _L, _B, _P, _C, _C, _A, _I, _A,
+            _R, _V, _Z, _B, _T, _Y, _K, _G
+        ); // Maintenance address set to QMINE Issuer by default, subject to change via Gov Voting
+        state.mCurrentGovParams.reinvestmentAddress = ID(
+            _Q, _M, _I, _N, _E, _Q, _Q, _X, _Y, _B, _E, _G, _B, _H, _N, _S,
+            _U, _P, _O, _U, _Y, _D, _I, _Q, _K, _Z, _P, _C, _B, _P, _Q, _I,
+            _I, _H, _U, _U, _Z, _M, _C, _P, _L, _B, _P, _C, _C, _A, _I, _A,
+            _R, _V, _Z, _B, _T, _Y, _K, _G
+        ); // Reinvestment address set to QMINE Issuer by default, subject to change via Gov Voting
+
+        // QMINE DEV's Address for receiving rewards from moved QMINE tokens
+        // ZOXXIDCZIMGCECCFAXDDCMBBXCDAQJIHGOOATAFPSBFIOFOYECFKUFPBEMWC
+        state.mCurrentGovParams.qmineDevAddress = ID(
+            _Z, _O, _X, _X, _I, _D, _C, _Z, _I, _M, _G, _C, _E, _C, _C, _F,
+            _A, _X, _D, _D, _C, _M, _B, _B, _X, _C, _D, _A, _Q, _J, _I, _H,
+            _G, _O, _O, _A, _T, _A, _F, _P, _S, _B, _F, _I, _O, _F, _O, _Y,
+            _E, _C, _F, _K, _U, _F, _P, _B
+        ); // Default QMINE_DEV address
         state.mCurrentGovParams.electricityPercent = 350;
         state.mCurrentGovParams.maintenancePercent = 50;
         state.mCurrentGovParams.reinvestmentPercent = 100;
