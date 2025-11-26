@@ -181,6 +181,9 @@ class OracleEngine
     // index in replyStates to check next for empty slot (cyclic buffer)
     int32_t replyStatesIndex;
 
+    /// fast lookup of query indices for which oracles are in pending state
+    UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> pendingQueryIndices;
+
     /// fast lookup of reply state indices for which commit tx is pending
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> pendingCommitReplyStateIndices;
 
@@ -219,6 +222,7 @@ public:
         queryStorageBytesUsed = 1; // reserve offset 0 for "no data"
         setMem(contractStatus, sizeof(contractStatus), 0);
         replyStatesIndex = 0;
+        pendingQueryIndices.numValues = 0;
         pendingCommitReplyStateIndices.numValues = 0;
 
         return true;
@@ -264,18 +268,22 @@ public:
     uint64_t startContractQuery(uint16_t contractIndex, uint32_t interfaceIndex, const void* queryData, uint16_t querySize, uint16_t timeoutSeconds)
     {
         // TODO: check that querySize matches registered size
-
-        if (oracleQueryCount >= MAX_ORACLE_QUERIES || queryStorageBytesUsed + querySize > ORACLE_QUERY_STORAGE_SIZE || contractIndex >= MAX_NUMBER_OF_CONTRACTS)
+        // check inputs
+        if (contractIndex >= MAX_NUMBER_OF_CONTRACTS)
             return 0;
 
-        // compute timeout as absolute point in time
-        DateAndTime timeout = DateAndTime::now();
-        if (!timeout.add(0, 0, 0, 0, 0, timeoutSeconds))
+        // check that still have free capacity for the query
+        if (oracleQueryCount >= MAX_ORACLE_QUERIES || pendingQueryIndices.numValues >= MAX_SIMULTANEOUS_ORACLE_QUERIES || queryStorageBytesUsed + querySize > ORACLE_QUERY_STORAGE_SIZE)
             return 0;
 
         // find slot storing temporary reply state
         uint32_t replyStateSlotIdx = getEmptyReplyStateSlot();
         if (replyStateSlotIdx >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
+            return 0;
+
+        // compute timeout as absolute point in time
+        DateAndTime timeout = DateAndTime::now();
+        if (!timeout.add(0, 0, 0, 0, 0, timeoutSeconds))
             return 0;
 
         // get sequential query index of contract in tick
@@ -299,6 +307,9 @@ public:
         ASSERT(!queryIdToIndex->contains(queryId));
         if (queryIdToIndex->set(queryId, oracleQueryCount) == NULL_INDEX)
             return 0;
+
+        // register index of pending query
+        pendingQueryIndices.add(oracleQueryCount);
 
         // init query metatdata (persistent)
         auto& queryMetadata = queries[oracleQueryCount++];
@@ -483,7 +494,15 @@ public:
         }
     }
 
-
+    void logStatus(CHAR16* message) const
+    {
+        setText(message, L"Oracles queries: ");
+        appendNumber(message, pendingCommitReplyStateIndices.numValues, FALSE);
+        appendText(message, " / ");
+        appendNumber(message, pendingQueryIndices.numValues, FALSE);
+        appendText(message, " got replies from OM node");
+        logToConsole(message);
+    }
 };
 
 GLOBAL_VAR_DECL OracleEngine oracleEngine;
