@@ -185,7 +185,7 @@ class OracleEngine
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> pendingCommitReplyStateIndices;
 
     /// fast lookup of oracle query index (sequential position in queries array) from oracle query ID (composed of query tick and other info)
-    QPI::HashMap<uint64_t, uint32_t, MAX_ORACLE_QUERIES> queryIdToIndex;
+    QPI::HashMap<uint64_t, uint32_t, MAX_ORACLE_QUERIES>* queryIdToIndex;
 
     /// Return empty reply state slot or max uint32 value on error
     uint32_t getEmptyReplyStateSlot()
@@ -209,7 +209,8 @@ public:
         // alloc arrays and set to 0
         if (!allocPoolWithErrorLog(L"OracleEngine::queries", MAX_ORACLE_QUERIES * sizeof(*queries), (void**)&queries, __LINE__)
             || !allocPoolWithErrorLog(L"OracleEngine::queryStorage", ORACLE_QUERY_STORAGE_SIZE, (void**)&queryStorage, __LINE__)
-            || !allocPoolWithErrorLog(L"OracleEngine::replyCommitState", MAX_SIMULTANEOUS_ORACLE_QUERIES * sizeof(*replyStates), (void**)&replyStates, __LINE__))
+            || !allocPoolWithErrorLog(L"OracleEngine::replyCommitState", MAX_SIMULTANEOUS_ORACLE_QUERIES * sizeof(*replyStates), (void**)&replyStates, __LINE__)
+            || !allocPoolWithErrorLog(L"OracleEngine::queryIdToIndex", sizeof(*queryIdToIndex), (void**)&queryIdToIndex, __LINE__))
         {
             return false;
         }
@@ -295,8 +296,8 @@ public:
         uint64_t queryId = ((uint64_t)system.tick << 32) | ((uint64_t)contractIndex << 16) | cs.queryIndexInTick;
 
         // map ID to index
-        ASSERT(!queryIdToIndex.contains(queryId));
-        if (queryIdToIndex.set(queryId, oracleQueryCount) == NULL_INDEX)
+        ASSERT(!queryIdToIndex->contains(queryId));
+        if (queryIdToIndex->set(queryId, oracleQueryCount) == NULL_INDEX)
             return 0;
 
         // init query metatdata (persistent)
@@ -351,7 +352,7 @@ public:
 
         // get query index
         uint32_t queryIndex;
-        if (!queryIdToIndex.get(replyMessage->oracleQueryId, queryIndex) || queryIndex >= oracleQueryCount)
+        if (!queryIdToIndex->get(replyMessage->oracleQueryId, queryIndex) || queryIndex >= oracleQueryCount)
             return;
 
         // get query metadata
@@ -468,7 +469,7 @@ public:
         while (size <= transaction->inputSize)
         {
             uint32_t queryIndex;
-            if (!queryIdToIndex.get(item->queryId, queryIndex) || queryIndex >= oracleQueryCount)
+            if (!queryIdToIndex->get(item->queryId, queryIndex) || queryIndex >= oracleQueryCount)
                 continue;
 
             OracleQueryMetadata& oqm = queries[queryIndex];
