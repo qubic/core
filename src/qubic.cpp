@@ -6015,7 +6015,7 @@ static bool initialize()
     }    
     score->loadScoreCache(system.epoch);
 
-    //loadCustomMiningCache(system.epoch);
+    loadCustomMiningCache(system.epoch);
 
     logToConsole(L"Allocating buffers ...");
     if ((!allocPoolWithErrorLog(L"dejavu0", 536870912, (void**)&dejavu0, __LINE__)) ||
@@ -7659,7 +7659,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
             saveSystem();
             score->saveScoreCache(system.epoch);
-            //saveCustomMiningCache(system.epoch);
+            saveCustomMiningCache(system.epoch);
 #ifdef ENABLE_PROFILING
             gProfilingDataCollector.writeToFile();
 #endif

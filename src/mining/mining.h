@@ -427,7 +427,7 @@ public:
         RELEASE(lock);
     }
 
-#ifdef NO_UEFI
+#if defined(NO_UEFI) && !defined(REAL_NODE)
 #else
     /// Save custom mining share cache to file
     void save(CHAR16* filename, CHAR16* directory = NULL)
@@ -1238,7 +1238,7 @@ static int customMiningDeinitialize()
     return 0;
 }
 
-#ifdef NO_UEFI
+#if defined(NO_UEFI) && !defined(REAL_NODE)
 #else
 // Save score cache to SCORE_CACHE_FILE_NAME
 static void saveCustomMiningCache(int epoch, CHAR16* directory = NULL)
