@@ -51,6 +51,8 @@ constexpr uint8 RL_DEFAULT_DRAW_HOUR = 11; // 11:00 UTC
 
 constexpr uint8 RL_DEFAULT_SCHEDULE = 1 << WEDNESDAY | 1 << FRIDAY | 1 << SUNDAY; // Draws on WED, FRI, SUN
 
+constexpr uint32 RL_DEFAULT_INIT_TIME = 22 << 9 | 4 << 5 | 13;
+
 /// Placeholder structure for future extensions.
 struct RL2
 {
@@ -274,6 +276,7 @@ public:
 	struct BEGIN_TICK_locals
 	{
 		id winnerAddress;
+		m256i mixedSpectrumValue;
 		Entity entity;
 		uint64 revenue;
 		uint64 randomNum;
@@ -390,12 +393,10 @@ public:
 		}
 
 		// Mark the current date as already processed to avoid immediate draw on the same calendar day
-		state.lastDrawDay = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
-		state.lastDrawHour = state.drawHour;
 		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), state.lastDrawDateStamp);
 
 		// Open selling for the new epoch
-		enableBuyTicket(state, true);
+		enableBuyTicket(state, state.lastDrawDateStamp != RL_DEFAULT_INIT_TIME);
 	}
 
 	END_EPOCH()
@@ -414,9 +415,10 @@ public:
 			return;
 		}
 
-		// Snapshot current day/hour
-		locals.currentDayOfWeek = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
+		// Snapshot current hour
 		locals.currentHour = qpi.hour();
+		locals.currentDayOfWeek = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
+		locals.isWednesday = locals.currentDayOfWeek == WEDNESDAY;
 
 		// Do nothing before the configured draw hour
 		if (locals.currentHour < state.drawHour)
@@ -426,12 +428,36 @@ public:
 
 		// Ensure only one action per calendar day (UTC)
 		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
+
+		if (locals.currentDateStamp == RL_DEFAULT_INIT_TIME)
+		{
+			enableBuyTicket(state, false);
+
+			// Safety check: avoid processing on uninitialized time but remember that this date was encountered
+			state.lastDrawDateStamp = RL_DEFAULT_INIT_TIME;
+			return;
+		}
+
+		// Set lastDrawDateStamp on first valid date processed
+		if (state.lastDrawDateStamp == RL_DEFAULT_INIT_TIME)
+		{
+			enableBuyTicket(state, true);
+
+			if (locals.isWednesday)
+			{
+				state.lastDrawDateStamp = locals.currentDateStamp;
+			}
+			else
+			{
+				state.lastDrawDateStamp = 0;
+			}
+		}
+
 		if (state.lastDrawDateStamp == locals.currentDateStamp)
 		{
 			return;
 		}
 
-		locals.isWednesday = (locals.currentDayOfWeek == WEDNESDAY);
 		locals.isScheduledToday = ((state.schedule & (1u << locals.currentDayOfWeek)) != 0);
 
 		// Two-Wednesdays rule:
@@ -444,8 +470,6 @@ public:
 		}
 
 		// Mark today's action and timestamp
-		state.lastDrawDay = locals.currentDayOfWeek;
-		state.lastDrawHour = locals.currentHour;
 		state.lastDrawDateStamp = locals.currentDateStamp;
 
 		// Temporarily close selling for the draw
@@ -469,8 +493,11 @@ public:
 
 					if (state.playerCounter != 0)
 					{
-						// Compute pseudo-random index based on K12(prevSpectrumDigest)
-						locals.randomNum = mod(qpi.K12(qpi.getPrevSpectrumDigest()).u64._0, state.playerCounter);
+						locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
+						locals.mixedSpectrumValue.u64._0 ^= qpi.tick();
+						locals.mixedSpectrumValue.u64._1 ^= state.playerCounter;
+						// Compute pseudo-random index based on K12(prevSpectrumDigest ^ tick)
+						locals.randomNum = mod(qpi.K12(locals.mixedSpectrumValue).u64._0, state.playerCounter);
 
 						// Index directly into players array
 						locals.winnerAddress = state.players.get(locals.randomNum);
@@ -526,6 +553,20 @@ public:
 
 		// Resume selling unless today is Wednesday (remains closed until next epoch)
 		enableBuyTicket(state, !locals.isWednesday);
+	}
+
+	POST_INCOMING_TRANSFER()
+	{
+		switch (input.type)
+		{
+			case TransferType::standardTransaction:
+				// Return any funds sent via standard transaction
+				if (input.amount > 0)
+				{
+					qpi.transfer(input.sourceId, input.amount);
+				}
+			default: break;
+		}
 	}
 
 	/**
@@ -822,10 +863,8 @@ protected:
 	{
 		// Prepare for next epoch: clear players and reset daily guards
 		state.playerCounter = 0;
-		state.players.setAll(id::zero());
+		setMemory(state.players, 0);
 
-		state.lastDrawHour = RL_INVALID_HOUR;
-		state.lastDrawDay = RL_INVALID_DAY;
 		state.lastDrawDateStamp = 0;
 	}
 
@@ -833,6 +872,7 @@ protected:
 	{
 		// After each draw period, clear current tickets
 		state.playerCounter = 0;
+		setMemory(state.players, 0);
 	}
 
 	static void applyNextEpochData(RL& state)

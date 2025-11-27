@@ -33,14 +33,45 @@ bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, QPI::Entity& entity
     }
 }
 
-// Return reference to fee reserve of contract for changing its value (data stored in state of contract 0)
-static long long& contractFeeReserve(unsigned int contractIndex)
+// Return the amount in the fee reserve of the specified contract (data stored in state of contract 0).
+static long long getContractFeeReserve(unsigned int contractIndex)
 {
-    contractStateChangeFlags[0] |= 1ULL;
-    return ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex];
+    contractStateLock[0].acquireRead();
+    long long reserveAmount = ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex];
+    contractStateLock[0].releaseRead();
+
+    return reserveAmount;
 }
 
-long long QPI::QpiContextProcedureCall::burn(long long amount) const
+// Set the amount in the fee reserve of the specified contract to a new value (data stored in state of contract 0).
+// This also sets the contractStateChangeFlag of contract 0.
+static void setContractFeeReserve(unsigned int contractIndex, long long newValue)
+{
+    contractStateLock[0].acquireWrite();
+    contractStateChangeFlags[0] |= 1ULL;
+    ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex] = newValue;
+    contractStateLock[0].releaseWrite();
+}
+
+// Add the given amount to the amount in the fee reserve of the specified contract (data stored in state of contract 0).
+// This also sets the contractStateChangeFlag of contract 0.
+static void addToContractFeeReserve(unsigned int contractIndex, long long addAmount)
+{
+    contractStateLock[0].acquireWrite();
+    contractStateChangeFlags[0] |= 1ULL;
+    ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex] += addAmount;
+    contractStateLock[0].releaseWrite();
+}
+
+long long QPI::QpiContextFunctionCall::queryFeeReserve(unsigned int contractIndex) const
+{
+    if (contractIndex < 1 || contractIndex >= contractCount)
+        contractIndex = _currentContractIndex;
+
+    return getContractFeeReserve(contractIndex);
+}
+
+long long QPI::QpiContextProcedureCall::burn(long long amount, unsigned int contractIndexBurnedFor) const
 {
     if (amount < 0 || amount > MAX_AMOUNT)
     {
@@ -54,6 +85,14 @@ long long QPI::QpiContextProcedureCall::burn(long long amount) const
         return -amount;
     }
 
+    if (contractIndexBurnedFor < 1 || contractIndexBurnedFor >= contractCount)
+        contractIndexBurnedFor = _currentContractIndex;
+
+    if (contractError[contractIndexBurnedFor] == ContractErrorIPOFailed)
+    {
+        return -amount;
+    }
+
     const long long remainingAmount = energy(index) - amount;
 
     if (remainingAmount < 0)
@@ -63,20 +102,20 @@ long long QPI::QpiContextProcedureCall::burn(long long amount) const
 
     if (decreaseEnergy(index, amount))
     {
-        contractStateLock[0].acquireWrite();
-        contractFeeReserve(_currentContractIndex) += amount;
-        contractStateLock[0].releaseWrite();
+        addToContractFeeReserve(contractIndexBurnedFor, amount);
 
-        const Burning burning = { _currentContractId , amount };
+        const Burning burning = { _currentContractId , amount, contractIndexBurnedFor };
         logger.logBurning(burning);
     }
 
     return remainingAmount;
 }
 
-long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long long amount) const
+long long QPI::QpiContextProcedureCall::__transfer(const m256i& destination, long long amount, unsigned char transferType) const
 {
-    if (contractCallbacksRunning & ContractCallbackPostIncomingTransfer)
+    // Transfer to contract is forbidden inside POST_INCOMING_TRANSFER to prevent nested callbacks
+    if (contractCallbacksRunning & ContractCallbackPostIncomingTransfer
+        && destination.u64._0 < contractCount && !destination.u64._1 && !destination.u64._2 && !destination.u64._3)
     {
         return INVALID_AMOUNT;
     }
@@ -107,13 +146,18 @@ long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long 
         if (!contractActionTracker.addQuTransfer(_currentContractId, destination, amount))
             __qpiAbort(ContractErrorTooManyActions);
 
-        __qpiNotifyPostIncomingTransfer(_currentContractId, destination, amount, TransferType::qpiTransfer);
+        __qpiNotifyPostIncomingTransfer(_currentContractId, destination, amount, transferType);
 
         const QuTransfer quTransfer = { _currentContractId , destination , amount };
         logger.logQuTransfer(quTransfer);
     }
 
     return remainingAmount;
+}
+
+long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long long amount) const
+{
+    return __transfer(destination, amount, TransferType::qpiTransfer);
 }
 
 m256i QPI::QpiContextFunctionCall::nextId(const m256i& currentId) const
