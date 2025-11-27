@@ -2282,7 +2282,7 @@ protected:
 		if (state.qxEarnedFee > state.qxDistributedAmount)
 		{
 			locals.toDistribute = state.qxEarnedFee - state.qxDistributedAmount;
-			qpi.__transfer(m256i(1, 0, 0, 0), locals.toDistribute, TransferType::revenueDonation);
+			qpi.transfer(m256i(1, 0, 0, 0), locals.toDistribute);
 			state.qxDistributedAmount += locals.toDistribute;
 		}
 
