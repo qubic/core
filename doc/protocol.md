@@ -58,6 +58,8 @@ The type number is the identifier used in `RequestResponseHeader` (defined in `h
 - `RespondCustomMiningData`, type 61, defined in `custom_mining.h`.
 - `RequestedCustomMiningSolutionVerification`, type 62, defined in `custom_mining.h`.
 - `RespondCustomMiningSolutionVerification`, type 63, defined in `custom_mining.h`.
+- `RequestActiveIPOs`, type 64, defined in `contract.h`.
+- `RespondActiveIPO`, type 65, defined in `contract.h`.
 - `SpecialCommand`, type 255, defined in `special_command.h`.
 
 Addon messages (supported if addon is enabled):
@@ -122,4 +124,5 @@ The message is processed as follows, depending on the message type:
 - The solution will be verified and recorded if it does not already exist in the current node.
 
 ## ...
+
 
