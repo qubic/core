@@ -85,7 +85,7 @@ enum QutilProcedureIds
 class ContractTestingQRWA : protected ContractTesting
 {
     // Grant access to protected/private members for setup
-    friend class QRWA;
+    friend struct QRWA;
 
 public:
     ContractTestingQRWA()
@@ -238,7 +238,7 @@ public:
         QRWA::GetGovParams_input input;
         QRWA::GetGovParams_output output;
         callFunction(QRWA_CONTRACT_INDEX, QRWA_FUNC_GET_GOV_PARAMS, input, output);
-        return output;
+        return output.params;
     }
 
     QRWA::GetGovPoll_output getGovPoll(uint64 pollId)
@@ -1084,6 +1084,22 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     etalonTick.second = 0;
     etalonTick.millisecond = 0;
 
+    // Helper to handle month rollovers for this test
+    auto advanceTime7Days = [&]()
+	{
+		etalonTick.day += 7;
+		// Simple logic for Nov/Dec 2025
+		if (etalonTick.month == 11 && etalonTick.day > 30) {
+			etalonTick.day -= 30;
+			etalonTick.month++;
+		}
+		else if (etalonTick.month == 12 && etalonTick.day > 31) {
+			etalonTick.day -= 31;
+			etalonTick.month = 1;
+			etalonTick.year++;
+		}
+	};
+
     // Constants
     const sint64 TOTAL_SUPPLY = 1000000000000LL; // 1,000,000,000,000 = 1 Trillion
     const sint64 TREASURY_INIT = 150000000000LL; // 150 Billion
@@ -1219,7 +1235,7 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     qrwa.endEpoch();
 
     // Checks Ep 1
-    etalonTick.day += 7;
+    advanceTime7Days();
     qrwa.resetPayoutTime();
     qrwa.endTick();
 
@@ -1294,7 +1310,7 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     qrwa.endEpoch();
 
     // Checks Ep 2
-    etalonTick.day += 7;
+    advanceTime7Days();
     qrwa.resetPayoutTime();
     qrwa.endTick();
 
@@ -1390,7 +1406,7 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     qrwa.endEpoch();
 
     // Checks Ep 3
-    etalonTick.day += 7;
+    advanceTime7Days();
     qrwa.resetPayoutTime();
     qrwa.endTick();
 
@@ -1450,7 +1466,7 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     qrwa.endEpoch();
 
     // Checks Ep 4
-    etalonTick.day += 7;
+    advanceTime7Days();
     qrwa.resetPayoutTime();
     qrwa.endTick();
 
@@ -1511,7 +1527,7 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     qrwa.endEpoch();
 
     // Checks Ep 5
-    etalonTick.day += 7;
+    advanceTime7Days();
     qrwa.resetPayoutTime();
     qrwa.endTick();
 
@@ -1568,7 +1584,7 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     qrwa.endEpoch();
 
     // Checks Ep 6
-    etalonTick.day += 7;
+    advanceTime7Days();
     qrwa.resetPayoutTime();
     qrwa.endTick();
 
@@ -1623,7 +1639,7 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     qrwa.endEpoch();
 
     // Checks Ep 7
-    etalonTick.day += 7;
+    advanceTime7Days();
     qrwa.resetPayoutTime();
     qrwa.endTick();
 
