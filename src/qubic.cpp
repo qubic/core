@@ -7045,23 +7045,28 @@ static void processKeyPresses()
             }
             else
             {
-                // mainAuxStatus = (mainAuxStatus + 1) & 3;
-                // setText(message, (isMainMode()) ? L"MAIN" : L"aux");
-                // appendText(message, L"&");
-                // appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
-                // logToConsole(message);
-                mainAuxStatusChangeStack.push_back(1);
-                // Predicted print the status
-                unsigned char predictedStatus = mainAuxStatus;
-                for (int i = 0; i < mainAuxStatusChangeStack.size(); i++)
-                {
-                    predictedStatus = (predictedStatus + 1) & 3;
-                }
-                setText(message, L"Predicted mode after applying all changes in stack: ");
-                appendText(message, (predictedStatus & 1) ? L"MAIN" : L"aux");
-                appendText(message, L"&");
-                appendText(message, (predictedStatus & 2) ? L"MAIN" : L"aux");
-                logToConsole(message);
+               if (isTestnet())
+               {
+                   mainAuxStatus = (mainAuxStatus + 1) & 3;
+                   setText(message, (isMainMode()) ? L"MAIN" : L"aux");
+                   appendText(message, L"&");
+                   appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
+                   logToConsole(message);
+               } else
+               {
+                   mainAuxStatusChangeStack.push_back(1);
+                   // Predicted print the status
+                   unsigned char predictedStatus = mainAuxStatus;
+                   for (int i = 0; i < mainAuxStatusChangeStack.size(); i++)
+                   {
+                       predictedStatus = (predictedStatus + 1) & 3;
+                   }
+                   setText(message, L"Predicted mode after applying all changes in stack: ");
+                   appendText(message, (predictedStatus & 1) ? L"MAIN" : L"aux");
+                   appendText(message, L"&");
+                   appendText(message, (predictedStatus & 2) ? L"MAIN" : L"aux");
+                   logToConsole(message);
+               }
             }
         }
         break;
