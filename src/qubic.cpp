@@ -5598,6 +5598,16 @@ static void tickProcessor(void*, unsigned long long processorNumber)
                                     appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
                                     logToConsole(message);
                                 }
+
+                                // Flip forceDontUseSecurityTick flag based on stack
+                                while (!forceDontUseSecurityTickChangeStack.empty())
+                                {
+                                    forceDontUseSecurityTickChangeStack.pop_back();
+                                    forceDontUseSecurityTick = !forceDontUseSecurityTick;
+                                    setText(message, L"forceDontUseSecurityTick is now ");;
+                                    appendText(message, forceDontUseSecurityTick ? L"ON" : L"OFF");
+                                    logToConsole(message);
+                                }
                             }
                         }
                     }
@@ -6695,9 +6705,10 @@ static void processKeyPresses()
             forceDontCheckComputerDigest = true;
             break;
         case 's':
-            forceDontUseSecurityTick = !forceDontUseSecurityTick;
-            setText(message, L"forceDontUseSecurityTick is now ");;
-            appendText(message, forceDontUseSecurityTick ? L"ON" : L"OFF");
+            forceDontUseSecurityTickChangeStack.push_back(1);
+            // forceDontUseSecurityTick = !forceDontUseSecurityTick;
+            // setText(message, L"forceDontUseSecurityTick is now ");;
+            // appendText(message, forceDontUseSecurityTick ? L"ON" : L"OFF");
             logToConsole(message);
             break;
         }
