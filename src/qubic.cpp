@@ -2549,7 +2549,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
         unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
 #else
         unsigned int solutionScore;
-        if (isRevalidation || isLastTickInEpoch())
+        if (isMainMode() || isRevalidation || isLastTickInEpoch())
         {
             solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
         } else
@@ -3114,7 +3114,8 @@ static void processTick(unsigned long long processorNumber)
         txStatusData.tickTxIndexStart[system.tick - system.initialTick] = numberOfTransactions; // qli: part of tx_status_request add-on
 #endif
 
-        if (isTestnet() || isLastTickInEpoch()) {
+        // Only apply skipping compute solution when in Mainnet with Aux node (except for last tick)
+        if (isMainMode() || isTestnet() || isLastTickInEpoch()) {
             PROFILE_NAMED_SCOPE_BEGIN("processTick(): pre-scan solutions");
             // reset solution task queue
             score->resetTaskQueue();
@@ -5083,10 +5084,14 @@ static void tickProcessor(void*, unsigned long long processorNumber)
                 }
             }
 #else
-            // We must go behind network 1 tick, so do nothing here
-            // Except for last tick in epoch
-            if (isLastTickInEpoch() && !targetNextTickDataDigestIsKnown) {
-                findNextTickDataDigestFromCurrentTickVotes();
+            // If is MAIN node we should always try to find next tick digest from current tick votes
+            // If is not MAIN node, only try to find next tick digest from current tick votes when it is last tick in epoch
+            if (!targetNextTickDataDigestIsKnown)
+            {
+                if (isMainMode() || isLastTickInEpoch())
+                {
+                    findNextTickDataDigestFromCurrentTickVotes();
+                }
             }
 #endif
 
