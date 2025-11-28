@@ -559,6 +559,7 @@ protected:
      */
     struct voteStatusInfo
     {
+        uint64 priceOfIPO;              // IPO price for IPO participation proposals
         uint32 proposalId;              // ID of the proposal voted on
         uint8 proposalType;             // Type of proposal (1-7)
         bit decision;                   // Voting decision (1=yes, 0=no)
@@ -1824,7 +1825,14 @@ protected:
                             state.QCP.set(input.proposalId, locals.updatedQCProposal);
                             break;
                         case 3:
-                            locals.updatedIPOProposal.totalWeight += locals.numberOfYes * input.priceOfIPO;
+                            if (input.yes)
+                            {
+                                locals.updatedIPOProposal.totalWeight += locals.numberOfYes * input.priceOfIPO;
+                            }
+                            else if (locals._r < locals.countOfVote)
+                            {
+                                locals.updatedIPOProposal.totalWeight -= locals.numberOfNo *  locals.newVoteList.get(locals._r).priceOfIPO;
+                            }
                             locals.updatedIPOProposal.numberOfYes += locals.numberOfYes;
                             locals.updatedIPOProposal.numberOfNo += locals.numberOfNo;
                             state.IPOP.set(input.proposalId, locals.updatedIPOProposal);
@@ -1857,6 +1865,7 @@ protected:
                         locals.newVote.proposalId = input.proposalId;
                         locals.newVote.proposalType = input.proposalType;
                         locals.newVote.decision = input.yes;
+                        locals.newVote.priceOfIPO = input.priceOfIPO;
                         if (locals._r < locals.countOfVote)
                         {
                             locals.newVoteList.set(locals._r, locals.newVote);
@@ -1872,6 +1881,7 @@ protected:
                         locals.newVote.proposalId = input.proposalId;
                         locals.newVote.proposalType = input.proposalType;
                         locals.newVote.decision = input.yes;
+                        locals.newVote.priceOfIPO = input.priceOfIPO;
                         locals.newVoteList.set(0, locals.newVote);
                         state.countOfVote.set(qpi.invocator(), 1);
                     }
