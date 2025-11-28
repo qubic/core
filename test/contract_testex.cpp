@@ -143,6 +143,13 @@ public:
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
 
+        // Set fee reserves for all contracts to enable SC-to-SC calls
+        setContractFeeReserve(TESTEXA_CONTRACT_INDEX, 10000000);
+        setContractFeeReserve(TESTEXB_CONTRACT_INDEX, 10000000);
+        setContractFeeReserve(TESTEXC_CONTRACT_INDEX, 10000000);
+        setContractFeeReserve(TESTEXD_CONTRACT_INDEX, 10000000);
+        setContractFeeReserve(QX_CONTRACT_INDEX, 10000000);
+
         checkContractExecCleanup();
 
         // query QX fees
