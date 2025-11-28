@@ -163,6 +163,7 @@ struct Processor : public CustomStack
 // Dynamic peers that can be added using command line
 std::vector<IPv4Address> knownPublicPeersDynamic;
 
+static std::vector<int> mainAuxStatusChangeStack;
 static volatile unsigned char mainAuxStatus = 0;
 static volatile unsigned char isVirtualMachine = 0; // indicate that it is running on VM, to avoid running some functions for BM  (for testing and developing purposes)
 static volatile bool forceRefreshPeerList = false;
@@ -5586,6 +5587,17 @@ static void tickProcessor(void*, unsigned long long processorNumber)
                                     tickTicks[i] = tickTicks[i + 1];
                                 }
                                 tickTicks[sizeof(tickTicks) / sizeof(tickTicks[0]) - 1] = __rdtsc();
+
+                                // Flip mainAux status based on stack
+                                while (!mainAuxStatusChangeStack.empty())
+                                {
+                                    mainAuxStatusChangeStack.pop_back();
+                                    mainAuxStatus = (mainAuxStatus + 1) & 3;
+                                    setText(message, (isMainMode()) ? L"MAIN" : L"aux");
+                                    appendText(message, L"&");
+                                    appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
+                                    logToConsole(message);
+                                }
                             }
                         }
                     }
@@ -7022,10 +7034,22 @@ static void processKeyPresses()
             }
             else
             {
-                mainAuxStatus = (mainAuxStatus + 1) & 3;
-                setText(message, (isMainMode()) ? L"MAIN" : L"aux");
+                // mainAuxStatus = (mainAuxStatus + 1) & 3;
+                // setText(message, (isMainMode()) ? L"MAIN" : L"aux");
+                // appendText(message, L"&");
+                // appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
+                // logToConsole(message);
+                mainAuxStatusChangeStack.push_back(1);
+                // Predicted print the status
+                unsigned char predictedStatus = mainAuxStatus;
+                for (int i = 0; i < mainAuxStatusChangeStack.size(); i++)
+                {
+                    predictedStatus = (predictedStatus + 1) & 3;
+                }
+                setText(message, L"Predicted mode after applying all changes in stack: ");
+                appendText(message, (predictedStatus & 1) ? L"MAIN" : L"aux");
                 appendText(message, L"&");
-                appendText(message, (mainAuxStatus & 2) ? L"MAIN" : L"aux");
+                appendText(message, (predictedStatus & 2) ? L"MAIN" : L"aux");
                 logToConsole(message);
             }
         }
