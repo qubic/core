@@ -1649,8 +1649,8 @@ protected:
         AlloPInfo updatedAlloProposal;              // Updated allocation proposal
         Array<voteStatusInfo, QVAULT_MAX_USER_VOTES> newVoteList;      // Updated vote list for user
         voteStatusInfo newVote;                     // New vote to add
-        uint32 numberOfYes;                         // Number of yes votes to add
-        uint32 numberOfNo;                          // Number of no votes to add
+        sint32 numberOfYes;                         // Number of yes votes to add
+        sint32 numberOfNo;                          // Number of no votes to add
         sint32 _t, _r;                              // Loop counter variables
         uint8 countOfVote;                          // Current vote count for user
         bit statusOfProposal;                       // Whether proposal is still active
