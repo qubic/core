@@ -364,7 +364,7 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
 }
 
 // Called before a contract runs a user procedure of another contract or a system procedure
-const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructProcedureCallContext(unsigned int procContractIndex, QPI::sint64 invocationReward) const
+const QpiContextProcedureCall* QPI::QpiContextProcedureCall::__qpiConstructProcedureCallContext(unsigned int procContractIndex, QPI::sint64 invocationReward, InterContractCallError& callError) const
 {
     ASSERT(_entryPoint != USER_FUNCTION_CALL);
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
@@ -375,17 +375,16 @@ const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructProce
     // Check if called contract is in an error state
     if (contractError[procContractIndex] != NoContractError)
     {
-        // TODO: Consider adding a separate error code for calling a contract in error state
-        __qpiAbort(contractError[procContractIndex]);
+        callError = CallErrorContractInErrorState;
+        return nullptr;
     }
 
     // Check if called contract has sufficient execution fee reserve
     // If not, the called contract won't be able to pay for its digest computation
     if (getContractFeeReserve(procContractIndex) <= 0)
     {
-        // Abort execution: this marks the calling contract with ContractErrorCalledContractInsufficientFees
-        // TODO: Add recovery mechanism when called contract gets fees recharged
-        __qpiAbort(ContractErrorCalledContractInsufficientFees);
+        callError = CallErrorInsufficientFees;
+        return nullptr;
     }
 
     char* buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextProcedureCall));
@@ -404,18 +403,19 @@ const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructProce
         appendNumber(dbgMsgBuf, _stackIndex, FALSE);
         addDebugMessage(dbgMsgBuf);
 #endif
-        // abort execution of contract here
-        __qpiAbort(ContractErrorAllocContextOtherProcedureCallFailed);
+        callError = CallErrorAllocationFailed;
+        return nullptr;
     }
 
     // If transfer isn't possible, set invocation reward to 0
     if (transfer(QPI::id(procContractIndex, 0, 0, 0), invocationReward) < 0)
         invocationReward = 0;
 
+    callError = NoCallError;
     QpiContextProcedureCall& newContext = *reinterpret_cast<QpiContextProcedureCall*>(buffer);
     newContext.init(procContractIndex, _originator, _currentContractId, invocationReward, _entryPoint, _stackIndex);
 
-    return newContext;
+    return &newContext;
 }
 
 // Called after a contract has run a function or procedure of a different contract or a system procedure
@@ -730,7 +730,18 @@ bool QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
     }
 
     // Create context
-    const QpiContextProcedureCall& context = __qpiConstructProcedureCallContext(sysProcContractIndex, invocationReward);
+    InterContractCallError callError;
+    const QpiContextProcedureCall* context = __qpiConstructProcedureCallContext(sysProcContractIndex, invocationReward, callError);
+    if (!context)
+    {
+        // System procedure calls abort on failure to maintain old behavior
+        if (callError == CallErrorInsufficientFees)
+            __qpiAbort(ContractErrorCalledContractInsufficientFees);
+        else if (callError == CallErrorContractInErrorState)
+            __qpiAbort(contractError[sysProcContractIndex]);
+        else
+            __qpiAbort(ContractErrorAllocContextOtherProcedureCallFailed);
+    }
 
     // Get state (lock state for writing if other contract)
     const bool otherContract = sysProcContractIndex != _currentContractIndex;
@@ -744,7 +755,7 @@ bool QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
     setMem(localsBuffer, localsSize, 0);
 
     // Run procedure
-    contractSystemProcedures[sysProcContractIndex][sysProcId](context, state, &input, &output, localsBuffer);
+    contractSystemProcedures[sysProcContractIndex][sysProcId](*context, state, &input, &output, localsBuffer);
 
     // Cleanup: free locals, release state, and free context
     contractLocalsStack[_stackIndex].free();

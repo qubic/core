@@ -143,13 +143,6 @@ public:
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
 
-        // Set fee reserves for all contracts to enable SC-to-SC calls
-        setContractFeeReserve(TESTEXA_CONTRACT_INDEX, 10000000);
-        setContractFeeReserve(TESTEXB_CONTRACT_INDEX, 10000000);
-        setContractFeeReserve(TESTEXC_CONTRACT_INDEX, 10000000);
-        setContractFeeReserve(TESTEXD_CONTRACT_INDEX, 10000000);
-        setContractFeeReserve(QX_CONTRACT_INDEX, 10000000);
-
         checkContractExecCleanup();
 
         // query QX fees
@@ -402,6 +395,15 @@ public:
         }
         typename StateStruct::SetShareholderVotes_output output;
         invokeUserProcedure(StateStruct::__contract_index, 65535, input, output, originator, 0);
+        return output;
+    }
+
+    TESTEXB::TestInterContractCallError_output testInterContractCallError()
+    {
+        TESTEXB::TestInterContractCallError_input input;
+        input.dummy = 0;
+        TESTEXB::TestInterContractCallError_output output;
+        invokeUserProcedure(TESTEXB_CONTRACT_INDEX, 50, input, output, USER1, 0);
         return output;
     }
 
@@ -2017,4 +2019,32 @@ TEST(ContractTestEx, ShareholderProposals)
     // test proposal listing function in TESTEXB: 2 inactive by USER1/TESTEXA, 0 active
     EXPECT_TRUE(test.getShareholderProposalIndices<TESTEXB>(false).size() == 2);
     EXPECT_TRUE(test.getShareholderProposalIndices<TESTEXB>(true).size() == 0);
+}
+
+TEST(ContractTestEx, InterContractCallInsufficientFees)
+{
+    ContractTestingTestEx test;
+    increaseEnergy(USER1, 1000000);
+
+    // First verify call works normally (TestExampleA has fees from constructor)
+    auto output1 = test.testInterContractCallError();
+    EXPECT_EQ(output1.errorCode, QPI::NoCallError);
+    EXPECT_EQ(output1.callSucceeded, 1);
+
+    // Save original fee reserve
+    long long originalFeeReserve = getContractFeeReserve(TESTEXA_CONTRACT_INDEX);
+
+    // Drain TestExampleA's fee reserve
+    setContractFeeReserve(TESTEXA_CONTRACT_INDEX, 0);
+
+    // Verify fee reserve is now 0
+    EXPECT_EQ(getContractFeeReserve(TESTEXA_CONTRACT_INDEX), 0);
+
+    // Try the call again - should fail with insufficient fees
+    auto output2 = test.testInterContractCallError();
+    EXPECT_EQ(output2.errorCode, QPI::CallErrorInsufficientFees);
+    EXPECT_EQ(output2.callSucceeded, 0);
+
+    // Restore fee reserve for other tests
+    setContractFeeReserve(TESTEXA_CONTRACT_INDEX, originalFeeReserve);
 }
