@@ -72,6 +72,31 @@ private:
                 json["initialTick"] = system.initialTick;
                 json["alignedVotes"] = gTickNumberOfComputors;
                 json["misalignedVotes"] = gTickTotalNumberOfComputors - gTickNumberOfComputors;
+                json["mainAuxStatus"] = mainAuxStatus;
+                auto resp = HttpResponse::newHttpJsonResponse(json);
+                callback(resp);
+            });
+
+        app.registerHandler(
+            "/running-ids",
+            [](const HttpRequestPtr &req,
+               std::function<void(const HttpResponsePtr &)> &&callback)
+            {
+                Json::Value json;
+                Json::Value idsJson(Json::arrayValue);
+                for (int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
+                {
+                    CHAR16 id[61] = {};
+                    m256i publicKey = {};
+                    m256i privateKey = {};
+                    m256i subseed = {};
+                    getSubseed(computorSeeds[i], subseed.m256i_u8);
+                    getPrivateKey(subseed.m256i_u8, privateKey.m256i_u8);
+                    getPublicKey(privateKey.m256i_u8, publicKey.m256i_u8);
+                    getIdentity(publicKey.m256i_u8, id, false);
+                    idsJson.append(wchar_to_string(id));
+                }
+                json["runningIds"] = idsJson;
                 auto resp = HttpResponse::newHttpJsonResponse(json);
                 callback(resp);
             });
