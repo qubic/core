@@ -6,7 +6,7 @@
 
 #define OPERATOR "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
-static unsigned char computorSeeds[][55 + 1] = {
+static std::vector<std::string> computorSeeds = {
 };
 
 static unsigned char broadcastedComputorSeeds[][55 + 1] = {};
