@@ -7839,6 +7839,7 @@ void processArgs(int argc, const char* argv[]) {
         ("t,threads", "Total Threads will be used by the core", cxxopts::value<int>())
         ("d,ticking-delay", "Delay ticking process by milliseconds", cxxopts::value<int>())
         ("l,solution-threads", "Threads that will be used by the core to process solution", cxxopts::value<int>())
+        ("sm, node-mode", "Set start mode to Main&aux,....", cxxopts::value<int>())
         ("rp, reader-passcode", "Passcode to access log reader", cxxopts::value<std::string>())
         ("hp, http-passcode", "Passcode to access http server", cxxopts::value<std::string>())
         ("s,security-tick", "Core will verify state after x tick, to reduce computational to the node", cxxopts::value<int>()->default_value("1"));
@@ -7887,6 +7888,14 @@ void processArgs(int argc, const char* argv[]) {
     if (result.count("rebuild-tx-hashmap"))
     {
         rebuildTxHashmap = true;
+    }
+
+    if (result.count("node-mode"))
+    {
+        int mode = result["node-mode"].as<int>();
+        mainAuxStatus = mode;
+        std::string modeString = (isMainMode() ? "MAIN" : "aux") + std::string("&") + ((mainAuxStatus & 2) ? "MAIN" : "aux") + std::string(" mode enabled.");
+        logColorToScreen("INFO", modeString);
     }
 
     if (result.count("reader-passcode")) {
