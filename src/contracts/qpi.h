@@ -2601,6 +2601,13 @@ namespace QPI
 		bool __qpiCallSystemProc(unsigned int otherContractIndex, InputType& input, OutputType& output, sint64 invocationReward) const;
 		inline void __qpiNotifyPostIncomingTransfer(const id& source, const id& dest, sint64 amount, uint8 type) const;
 
+		// Internal version of transfer() that takes the TransferType as additional argument.
+		inline sint64 __transfer( // Attempts to transfer energy from this qubic
+			const id& destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
+			sint64 amount, // Energy amount to transfer, must be in [0..1'000'000'000'000'000] range
+			uint8 transferType // the type of transfer
+		) const; // Returns remaining energy amount; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient amount
+
 	protected:
 		// Construction is done in core, not allowed in contracts
 		QpiContextProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward, unsigned char entryPoint) : QpiContextFunctionCall(contractIndex, originator, invocationReward, entryPoint) {}
@@ -2656,6 +2663,7 @@ namespace QPI
 		constexpr uint8 qpiDistributeDividends = 3;
 		constexpr uint8 revenueDonation = 4;
 		constexpr uint8 ipoBidRefund = 5;
+		constexpr uint8 procedureInvocationByOtherContract = 6;
 	};
 
 	// Input of POST_INCOMING_TRANSFER notification system call

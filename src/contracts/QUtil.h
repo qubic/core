@@ -1265,8 +1265,6 @@ public:
         locals.idx = mod(input.poll_id, QUTIL_MAX_POLL);
         if (state.poll_ids.get(locals.idx) != input.poll_id)
         {
-            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeInvalidPollIdResult };
-            LOG_INFO(locals.logger);
             return;
         }
         output.is_active = state.polls.get(locals.idx).is_active;
@@ -1295,11 +1293,6 @@ public:
                 output.poll_ids.set(output.count, state.poll_ids.get(locals.idx));
                 output.count++;
             }
-        }
-        if (output.count == 0)
-        {
-            locals.logger = QUTILLogger{ 0, 0, qpi.invocator(), SELF, 0, QUTILLogTypeNoPollsByCreator };
-            LOG_INFO(locals.logger);
         }
     }
 
