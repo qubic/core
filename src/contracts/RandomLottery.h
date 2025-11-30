@@ -123,6 +123,8 @@ public:
 		UNKNOWN_ERROR = UINT8_MAX
 	};
 
+	static constexpr uint8 toReturnCode(EReturnCode code) { return static_cast<uint8>(code); }
+
 	struct NextEpochData
 	{
 		uint64 newPrice; // Ticket price to apply after END_EPOCH; 0 means "no change queued"
@@ -148,7 +150,7 @@ public:
 
 	struct BuyTicket_output
 	{
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	struct BuyTicketWithToken_input
@@ -159,7 +161,7 @@ public:
 
 	struct BuyTicketWithToken_output
 	{
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	struct GetFees_input
@@ -172,7 +174,7 @@ public:
 		uint8 distributionFeePercent; // Distribution/shareholders share in percent
 		uint8 winnerFeePercent;       // Winner share in percent
 		uint8 burnPercent;            // Burn share in percent
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	struct GetPlayers_input
@@ -183,7 +185,7 @@ public:
 	{
 		Array<id, RL_MAX_NUMBER_OF_PLAYERS> players; // Current epoch ticket holders (duplicates allowed)
 		uint64 playerCounter;                        // Actual count of filled entries
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	/**
@@ -222,7 +224,7 @@ public:
 	{
 		Array<WinnerInfo, RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners; // Ring buffer snapshot
 		uint64 winnersCounter;                                          // Number of valid entries = (totalWinners % capacity)
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	struct GetTicketPrice_input
@@ -314,7 +316,7 @@ public:
 
 	struct SetPrice_output
 	{
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	struct SetSchedule_input
@@ -324,7 +326,7 @@ public:
 
 	struct SetSchedule_output
 	{
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	struct AddAllowedToken_input
@@ -335,7 +337,7 @@ public:
 
 	struct AddAllowedToken_output
 	{
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	struct AddAllowedToken_locals
@@ -350,7 +352,7 @@ public:
 
 	struct RemoveAllowedToken_output
 	{
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	struct BEGIN_TICK_locals
@@ -429,7 +431,7 @@ public:
 
 	struct SetTokenRewardDivisor_output
 	{
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	struct TransferToken_input
@@ -440,7 +442,7 @@ public:
 
 	struct TransferToken_output
 	{
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	struct TransferToken_locals
@@ -791,20 +793,20 @@ public:
 		// Only team/owner can queue a price change
 		if (qpi.invocator() != state.teamAddress)
 		{
-			output.returnCode = EReturnCode::ACCESS_DENIED;
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
 		// Zero price is invalid
 		if (input.newPrice == 0)
 		{
-			output.returnCode = EReturnCode::TICKET_INVALID_PRICE;
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
 			return;
 		}
 
 		// Defer application until END_EPOCH
 		state.nexEpochData.newPrice = input.newPrice;
-		output.returnCode = EReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE(SetSchedule)
@@ -813,18 +815,18 @@ public:
 
 		if (qpi.invocator() != state.teamAddress)
 		{
-			output.returnCode = EReturnCode::ACCESS_DENIED;
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
 		if (input.newSchedule == 0)
 		{
-			output.returnCode = EReturnCode::INVALID_VALUE;
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
 
 		state.nexEpochData.schedule = input.newSchedule;
-		output.returnCode = EReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(AddAllowedToken)
@@ -833,13 +835,13 @@ public:
 
 		if (qpi.invocator() != state.ownerAddress)
 		{
-			output.returnCode = EReturnCode::ACCESS_DENIED;
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
 		if (input.tokenPrice == 0)
 		{
-			output.returnCode = EReturnCode::TICKET_INVALID_PRICE;
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
 			return;
 		}
 
@@ -847,20 +849,20 @@ public:
 		{
 			locals.tokenData.pricePerTicket = input.tokenPrice;
 			state.allowedTokens.set(input.tokenName, locals.tokenData);
-			output.returnCode = EReturnCode::SUCCESS;
+			output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 			return;
 		}
 
 		if (state.allowedTokens.population() >= state.allowedTokens.capacity())
 		{
-			output.returnCode = EReturnCode::INVALID_VALUE;
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
 
 		locals.tokenData.pricePerTicket = input.tokenPrice;
 		state.allowedTokens.set(input.tokenName, locals.tokenData);
 
-		output.returnCode = EReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE(RemoveAllowedToken)
@@ -869,12 +871,12 @@ public:
 
 		if (qpi.invocator() != state.ownerAddress)
 		{
-			output.returnCode = EReturnCode::ACCESS_DENIED;
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
 		state.allowedTokens.removeByKey(input.tokenName);
-		output.returnCode = EReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE(SetTokenRewardDivisor)
@@ -883,18 +885,18 @@ public:
 
 		if (qpi.invocator() != state.ownerAddress)
 		{
-			output.returnCode = EReturnCode::ACCESS_DENIED;
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
 		if (input.tokenRewardDivisor == 0)
 		{
-			output.returnCode = EReturnCode::INVALID_VALUE;
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
 
 		state.tokenRewardDivisor = input.tokenRewardDivisor;
-		output.returnCode = EReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(TransferToken)
@@ -903,13 +905,13 @@ public:
 
 		if (input.amount == 0)
 		{
-			output.returnCode = EReturnCode::INVALID_VALUE;
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
 
 		if (isZero(input.newOwner))
 		{
-			output.returnCode = EReturnCode::INVALID_VALUE;
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
 
@@ -917,14 +919,14 @@ public:
 
 		if (getNumberOfToken(qpi, locals.ownerAndPossessor) < input.amount)
 		{
-			output.returnCode = EReturnCode::TOKEN_TRANSFER_FAILED;
+			output.returnCode = toReturnCode(EReturnCode::TOKEN_TRANSFER_FAILED);
 			return;
 		}
 
 		qpi.transferShareOwnershipAndPossession(RL_TOKEN_NAME, SELF, locals.ownerAndPossessor, locals.ownerAndPossessor, input.amount,
 		                                        input.newOwner);
 
-		output.returnCode = EReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	/**
@@ -947,7 +949,7 @@ public:
 				qpi.transfer(qpi.invocator(), locals.reward);
 			}
 
-			output.returnCode = EReturnCode::TICKET_SELLING_CLOSED;
+			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
 			return;
 		}
 
@@ -961,7 +963,7 @@ public:
 				qpi.transfer(qpi.invocator(), locals.reward);
 			}
 
-			output.returnCode = EReturnCode::TICKET_INVALID_PRICE;
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
 			return;
 		}
 
@@ -975,7 +977,7 @@ public:
 			{
 				qpi.transfer(qpi.invocator(), locals.reward);
 			}
-			output.returnCode = EReturnCode::TICKET_ALL_SOLD_OUT;
+			output.returnCode = toReturnCode(EReturnCode::TICKET_ALL_SOLD_OUT);
 			return;
 		}
 
@@ -1002,7 +1004,7 @@ public:
 			qpi.transfer(qpi.invocator(), locals.refundAmount);
 		}
 
-		output.returnCode = EReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicketWithToken)
@@ -1012,13 +1014,13 @@ public:
 
 		if (!isSellingOpen(state))
 		{
-			output.returnCode = EReturnCode::TICKET_SELLING_CLOSED;
+			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
 			return;
 		}
 
 		if (!getAllowedToken(state, input.tokenName, locals.tokenData))
 		{
-			output.returnCode = EReturnCode::TOKEN_NOT_ALLOWED;
+			output.returnCode = toReturnCode(EReturnCode::TOKEN_NOT_ALLOWED);
 			return;
 		}
 
@@ -1026,21 +1028,21 @@ public:
 
 		if (locals.price == 0 || input.tokenAmount < locals.price)
 		{
-			output.returnCode = EReturnCode::TICKET_INVALID_PRICE;
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
 			return;
 		}
 
 		locals.slotsLeft = (state.playerCounter < state.players.capacity()) ? (state.players.capacity() - state.playerCounter) : 0;
 		if (locals.slotsLeft == 0)
 		{
-			output.returnCode = EReturnCode::TICKET_ALL_SOLD_OUT;
+			output.returnCode = toReturnCode(EReturnCode::TICKET_ALL_SOLD_OUT);
 			return;
 		}
 
 		// Move tokens from buyer to contract
 		if (qpi.transferShareOwnershipAndPossession(input.tokenName, SELF, qpi.invocator(), qpi.invocator(), input.tokenAmount, SELF) < 0)
 		{
-			output.returnCode = EReturnCode::TOKEN_TRANSFER_FAILED;
+			output.returnCode = toReturnCode(EReturnCode::TOKEN_TRANSFER_FAILED);
 			return;
 		}
 
@@ -1064,7 +1066,7 @@ public:
 			qpi.transferShareOwnershipAndPossession(input.tokenName, SELF, SELF, SELF, locals.refundAmount, qpi.invocator());
 		}
 
-		output.returnCode = EReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 private:

@@ -36,6 +36,11 @@ static uint32 makeDateStamp(uint16 year, uint8 month, uint8 day)
 	return static_cast<uint32>(shortYear << 9 | month << 5 | day);
 }
 
+inline bool operator==(uint8 left, RL::EReturnCode right) { return left == RL::toReturnCode(right); }
+inline bool operator==(RL::EReturnCode left, uint8 right) { return right == left; }
+inline bool operator!=(uint8 left, RL::EReturnCode right) { return !(left == right); }
+inline bool operator!=(RL::EReturnCode left, uint8 right) { return !(right == left); }
+
 // Equality operator for comparing WinnerInfo objects
 // Compares all fields (address, revenue, epoch, tick, dayOfWeek)
 bool operator==(const RL::WinnerInfo& left, const RL::WinnerInfo& right)
@@ -283,7 +288,7 @@ public:
 		RL::BuyTicket_output output;
 		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_BUY_TICKET, input, output, user, reward))
 		{
-			output.returnCode = RL::EReturnCode::UNKNOWN_ERROR;
+			output.returnCode = RL::toReturnCode(RL::EReturnCode::UNKNOWN_ERROR);
 		}
 		return output;
 	}
@@ -294,7 +299,7 @@ public:
 		RL::BuyTicketWithToken_output output;
 		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_BUY_TICKET_WITH_TOKEN, input, output, user, 0))
 		{
-			output.returnCode = RL::EReturnCode::UNKNOWN_ERROR;
+			output.returnCode = RL::toReturnCode(RL::EReturnCode::UNKNOWN_ERROR);
 		}
 		return output;
 	}
@@ -307,7 +312,7 @@ public:
 		RL::SetPrice_output output;
 		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_SET_PRICE, input, output, invocator, 0))
 		{
-			output.returnCode = RL::EReturnCode::UNKNOWN_ERROR;
+			output.returnCode = RL::toReturnCode(RL::EReturnCode::UNKNOWN_ERROR);
 		}
 		return output;
 	}
@@ -320,7 +325,7 @@ public:
 		RL::SetSchedule_output output;
 		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_SET_SCHEDULE, input, output, invocator, 0))
 		{
-			output.returnCode = RL::EReturnCode::UNKNOWN_ERROR;
+			output.returnCode = RL::toReturnCode(RL::EReturnCode::UNKNOWN_ERROR);
 		}
 		return output;
 	}
@@ -331,7 +336,7 @@ public:
 		RL::AddAllowedToken_output output;
 		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_ADD_ALLOWED_TOKEN, input, output, invocator, 0))
 		{
-			output.returnCode = RL::EReturnCode::UNKNOWN_ERROR;
+			output.returnCode = RL::toReturnCode(RL::EReturnCode::UNKNOWN_ERROR);
 		}
 		return output;
 	}
@@ -342,7 +347,7 @@ public:
 		RL::RemoveAllowedToken_output output{};
 		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_REMOVE_ALLOWED_TOKEN, input, output, invocator, reward))
 		{
-			output.returnCode = RL::EReturnCode::UNKNOWN_ERROR;
+			output.returnCode = RL::toReturnCode(RL::EReturnCode::UNKNOWN_ERROR);
 		}
 		return output;
 	}
@@ -353,7 +358,7 @@ public:
 		RL::SetTokenRewardDivisor_output output{};
 		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_SET_TOKEN_REWARD_DIVISOR, input, output, invocator, 0))
 		{
-			output.returnCode = RL::EReturnCode::UNKNOWN_ERROR;
+			output.returnCode = RL::toReturnCode(RL::EReturnCode::UNKNOWN_ERROR);
 		}
 		return output;
 	}
@@ -364,7 +369,7 @@ public:
 		RL::TransferToken_output output{};
 		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_TRANSFER_TOKEN, input, output, invocator, 0))
 		{
-			output.returnCode = RL::EReturnCode::UNKNOWN_ERROR;
+			output.returnCode = RL::toReturnCode(RL::EReturnCode::UNKNOWN_ERROR);
 		}
 		return output;
 	}
