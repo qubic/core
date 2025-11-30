@@ -646,6 +646,14 @@ TEST(ContractQRWA, Governance_AssetRelease_FailAndRevoke)
     // check if the fee was paid by the user
     sint64 destBalanceAfterRevoke = getBalance(DESTINATION_ADDR);
     EXPECT_EQ(destBalanceAfterRevoke, destBalanceBeforeRevoke - QRWA_RELEASE_MANAGEMENT_FEE);
+
+    // Critical check:
+    // Verify that the fee sent to the SC was NOT permanently added to Pool B.
+    // The POST_INCOMING_TRANSFER adds 100 QU to Pool B.
+    // The procedure executes, spends 100 QU to QX, and logic must subtract 100 from Pool B.
+    // Net result for Pool B must be 0.
+    auto finalDivBalances = qrwa.getDividendBalances();
+    EXPECT_EQ(finalDivBalances.revenuePoolB, 0);
 }
 
 TEST(ContractQRWA, Treasury_Donation)

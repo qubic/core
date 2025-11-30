@@ -901,6 +901,19 @@ inline static sint64 GetQmineBalanceOf(const QPI::QpiContextFunctionCall& qpi, c
                 output.transferredNumberOfShares = input.numberOfShares;
                 output.status = QRWA_STATUS_SUCCESS;
                 locals.logger.logType = QRWA_LOG_TYPE_ADMIN_ACTION; // Or a more specific type
+
+                // Since the invocation reward (100 QU) was added to mRevenuePoolB 
+                // via POST_INCOMING_TRANSFER, but we just spent it in releaseShares,
+                // we must remove it from the pool to keep the accountant in sync 
+                // with the actual balance.
+                if (state.mRevenuePoolB >= QRWA_RELEASE_MANAGEMENT_FEE)
+                {
+                    state.mRevenuePoolB -= QRWA_RELEASE_MANAGEMENT_FEE;
+                }
+                //else // this else is unlikely to happen
+                //{
+                //    state.mRevenuePoolB = 0;
+                //}
             }
             locals.logger.valueB = output.status;
             LOG_INFO(locals.logger);
