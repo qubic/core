@@ -53,7 +53,7 @@ constexpr uint8 RL_DEFAULT_SCHEDULE = 1 << WEDNESDAY | 1 << FRIDAY | 1 << SUNDAY
 
 constexpr uint32 RL_DEFAULT_INIT_TIME = 22 << 9 | 4 << 5 | 13;
 
-constexpr uint64 RL_TOKEN_NAME = 0x00544c52ull; // "RLT" little-endian
+constexpr uint64 RL_TOKEN_NAME = 0x4f54544f4cull; // "LOTTO" little-endian
 
 constexpr uint64 RL_DEFAULT_TOKEN_PRICE = 12;
 
@@ -709,7 +709,7 @@ public:
 			}
 		}
 
-		rewardParticipantsWithRLT(qpi, state, locals);
+		rewardParticipantsWithLOTTO(qpi, state, locals);
 
 		clearStateOnEndDraw(state);
 
@@ -1259,7 +1259,7 @@ protected:
 
 	static bool getAllowedToken(const RL& state, uint64 tokenName, TokenData& outToken) { return state.allowedTokens.get(tokenName, outToken); }
 
-	static void rewardParticipantsWithRLT(const QpiContextProcedureCall& qpi, const RL& state, BEGIN_TICK_locals& locals)
+	static void rewardParticipantsWithLOTTO(const QpiContextProcedureCall& qpi, const RL& state, BEGIN_TICK_locals& locals)
 	{
 		if (state.playerCounter == 0)
 		{

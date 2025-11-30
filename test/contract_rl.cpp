@@ -1045,7 +1045,7 @@ TEST(ContractRandomLottery, DrawAndPayout_BeginTick)
 	}
 }
 
-TEST(ContractRandomLottery, ParticipantsReceiveRLTPerTicketOnDraw)
+TEST(ContractRandomLottery, ParticipantsReceiveLOTTOPerTicketOnDraw)
 {
 	ContractTestingRL ctl;
 	ctl.forceSchedule(RL_ANY_DAY_DRAW_SCHEDULE);
