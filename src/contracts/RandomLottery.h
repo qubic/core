@@ -629,9 +629,9 @@ public:
 			locals.hasMultipleParticipants = false;
 			if (state.playerCounter >= 2)
 			{
-				for (uint64 i = 1; i < state.playerCounter; ++i)
+				for (locals.index = 1; locals.index < state.playerCounter; ++locals.index)
 				{
-					if (state.players.get(i) != state.players.get(0))
+					if (state.players.get(locals.index) != state.players.get(0))
 					{
 						locals.hasMultipleParticipants = true;
 						break;
