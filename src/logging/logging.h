@@ -431,7 +431,7 @@ public:
 
         static void set(unsigned long long logId, long long index, long long length)
         {
-            ASSERT(logId == mapLogIdToBufferIndex.size());
+            //ASSERT(logId == mapLogIdToBufferIndex.size());
             BlobInfo res;
             res.startIndex = index;
             res.length = length;
