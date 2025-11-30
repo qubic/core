@@ -358,6 +358,7 @@ public:
 	struct BEGIN_TICK_locals
 	{
 		id winnerAddress;
+		id firstPlayer;
 		m256i mixedSpectrumValue;
 		Entity entity;
 		uint64 revenue;
@@ -628,10 +629,9 @@ public:
 			locals.hasMultipleParticipants = false;
 			if (state.playerCounter >= 2)
 			{
-				const id firstPlayer = state.players.get(0);
 				for (uint64 i = 1; i < state.playerCounter; ++i)
 				{
-					if (state.players.get(i) != firstPlayer)
+					if (state.players.get(i) != state.players.get(0))
 					{
 						locals.hasMultipleParticipants = true;
 						break;
