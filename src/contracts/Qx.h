@@ -1144,5 +1144,22 @@ protected:
 	POST_ACQUIRE_SHARES()
 	{
 	}
+
+	POST_INCOMING_TRANSFER()
+	{
+		switch (input.type)
+		{
+		case TransferType::standardTransaction:
+			qpi.transfer(input.sourceId, input.amount);
+			break;
+		case TransferType::qpiTransfer:
+		case TransferType::revenueDonation:
+			// add amount to _earnedAmount which will be distributed to shareholders in END_TICK
+			state._earnedAmount += input.amount;
+			break;
+		default:
+			break;
+		}
+	}
 };
 
