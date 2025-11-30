@@ -35,6 +35,7 @@ enum ContractError
     ContractErrorTimeout,
     ContractErrorStoppedToResolveDeadlock, // only returned by function call, not set to contractError
     ContractErrorIPOFailed, // IPO failed i.e. final price was 0. This contract is not constructed.
+    ContractErrorCalledContractInsufficientFees, // Contract called another contract with non-positive executionFeeReserve.
 };
 
 // Used to store: locals and for first invocation level also input and output
@@ -73,6 +74,8 @@ GLOBAL_VAR_DECL unsigned int contractError[contractCount];
 // access to contractStateChangeFlags thread-safe
 GLOBAL_VAR_DECL unsigned long long* contractStateChangeFlags GLOBAL_VAR_INIT(nullptr);
 
+// Forward declaration for getContractFeeReserve (defined in qpi_spectrum_impl.h)
+static long long getContractFeeReserve(unsigned int contractIndex);
 
 // Contract system procedures that serve as callbacks, such as PRE_ACQUIRE_SHARES,
 // break the rule that contracts can only call other contracts with lower index.
@@ -329,6 +332,13 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
 {
     ASSERT(otherContractIndex < _currentContractIndex);
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
+
+    // Check if called contract is in an error state
+    if (contractError[otherContractIndex] != NoContractError)
+    {
+        __qpiAbort(contractError[otherContractIndex]);
+    }
+
     char * buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextFunctionCall));
     if (!buffer)
     {
@@ -354,13 +364,28 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
 }
 
 // Called before a contract runs a user procedure of another contract or a system procedure
-const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructProcedureCallContext(unsigned int procContractIndex, QPI::sint64 invocationReward) const
+const QpiContextProcedureCall* QPI::QpiContextProcedureCall::__qpiConstructProcedureCallContext(unsigned int procContractIndex, QPI::sint64 invocationReward, InterContractCallError& callError) const
 {
     ASSERT(_entryPoint != USER_FUNCTION_CALL);
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
 
     // A contract can only run a procedure of a contract with a lower index, exceptions are callback system procedures
     ASSERT(procContractIndex < _currentContractIndex || contractCallbacksRunning != NoContractCallback);
+
+    // Check if called contract is in an error state
+    if (contractError[procContractIndex] != NoContractError)
+    {
+        callError = CallErrorContractInErrorState;
+        return nullptr;
+    }
+
+    // Check if called contract has sufficient execution fee reserve
+    // If not, the called contract won't be able to pay for its digest computation
+    if (getContractFeeReserve(procContractIndex) <= 0)
+    {
+        callError = CallErrorInsufficientFees;
+        return nullptr;
+    }
 
     char* buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextProcedureCall));
     if (!buffer)
@@ -378,18 +403,19 @@ const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructProce
         appendNumber(dbgMsgBuf, _stackIndex, FALSE);
         addDebugMessage(dbgMsgBuf);
 #endif
-        // abort execution of contract here
-        __qpiAbort(ContractErrorAllocContextOtherProcedureCallFailed);
+        callError = CallErrorAllocationFailed;
+        return nullptr;
     }
 
     // If transfer isn't possible, set invocation reward to 0
     if (transfer(QPI::id(procContractIndex, 0, 0, 0), invocationReward) < 0)
         invocationReward = 0;
 
+    callError = NoCallError;
     QpiContextProcedureCall& newContext = *reinterpret_cast<QpiContextProcedureCall*>(buffer);
     newContext.init(procContractIndex, _originator, _currentContractId, invocationReward, _entryPoint, _stackIndex);
 
-    return newContext;
+    return &newContext;
 }
 
 // Called after a contract has run a function or procedure of a different contract or a system procedure
@@ -704,7 +730,18 @@ bool QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
     }
 
     // Create context
-    const QpiContextProcedureCall& context = __qpiConstructProcedureCallContext(sysProcContractIndex, invocationReward);
+    InterContractCallError callError;
+    const QpiContextProcedureCall* context = __qpiConstructProcedureCallContext(sysProcContractIndex, invocationReward, callError);
+    if (!context)
+    {
+        // System procedure calls abort on failure to maintain old behavior
+        if (callError == CallErrorInsufficientFees)
+            __qpiAbort(ContractErrorCalledContractInsufficientFees);
+        else if (callError == CallErrorContractInErrorState)
+            __qpiAbort(contractError[sysProcContractIndex]);
+        else
+            __qpiAbort(ContractErrorAllocContextOtherProcedureCallFailed);
+    }
 
     // Get state (lock state for writing if other contract)
     const bool otherContract = sysProcContractIndex != _currentContractIndex;
@@ -718,7 +755,7 @@ bool QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
     setMem(localsBuffer, localsSize, 0);
 
     // Run procedure
-    contractSystemProcedures[sysProcContractIndex][sysProcId](context, state, &input, &output, localsBuffer);
+    contractSystemProcedures[sysProcContractIndex][sysProcId](*context, state, &input, &output, localsBuffer);
 
     // Cleanup: free locals, release state, and free context
     contractLocalsStack[_stackIndex].free();
@@ -1138,6 +1175,12 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
 
         ASSERT(_currentContractIndex < contractCount);
         ASSERT(contractUserFunctions[_currentContractIndex][inputType]);
+
+        // Check if contract is in an error state before executing function
+        if (contractError[_currentContractIndex] != NoContractError)
+        {
+            return contractError[_currentContractIndex];
+        }
 
         // reserve stack for this processor (may block)
         constexpr unsigned int stacksNotUsedToReserveThemForStateWriter = 1;
