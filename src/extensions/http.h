@@ -107,6 +107,41 @@ private:
             });
 
         app.registerHandler(
+            "/solutions",
+            [](const HttpRequestPtr &req,
+               std::function<void(const HttpResponsePtr &)> &&callback)
+            {
+                Json::Value json(Json::arrayValue);
+                for (unsigned int i = 0; i < system.numberOfSolutions; i++)
+                {
+                    Json::Value solutionJson;
+                    solutionJson["computorPublicKey"] = byteToHex((unsigned char *)&system.solutions[i].computorPublicKey, sizeof(m256i));
+                    solutionJson["miningSeed"] = byteToHex((unsigned char *)&system.solutions[i].miningSeed, sizeof(m256i));
+                    solutionJson["nonce"] = byteToHex((unsigned char *)&system.solutions[i].nonce, sizeof(m256i));
+                    json.append(solutionJson);
+                }
+                auto resp = HttpResponse::newHttpJsonResponse(json);
+                callback(resp);
+            });
+
+        app.registerHandler(
+            "/solution-publish-ticks",
+            [](const HttpRequestPtr &req,
+               std::function<void(const HttpResponsePtr &)> &&callback)
+            {
+                Json::Value json(Json::arrayValue);
+                for (unsigned int i = 0; i < system.numberOfSolutions; i++)
+                {
+                    Json::Value jsonObject;
+                    jsonObject["solutionIndex"] = i;
+                    jsonObject["publishTick"] = solutionPublicationTicks[i];
+                    json.append(jsonObject);
+                }
+                auto resp = HttpResponse::newHttpJsonResponse(json);
+                callback(resp);
+            });
+
+        app.registerHandler(
             "/tick-data/{1}",
             [](const HttpRequestPtr &req,
                std::function<void(const HttpResponsePtr &)> &&callback,
