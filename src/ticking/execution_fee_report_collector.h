@@ -125,4 +125,13 @@ public:
 
         reset();
     }
+
+    bool saveToFile(const CHAR16* fileName, const CHAR16* directory = NULL)
+    {
+        long long savedSize = save(fileName, sizeof(ExecutionFeeReportCollector), (unsigned char*)this, directory);
+        if (savedSize == sizeof(ExecutionFeeReportCollector))
+            return true;
+        else
+            return false;
+    }
 };

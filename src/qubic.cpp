@@ -5297,7 +5297,7 @@ static bool saveComputer(CHAR16* directory)
 {
     logToConsole(L"Saving contract files...");
 
-    const unsigned long long beginningTick = __rdtsc();
+    unsigned long long beginningTick = __rdtsc();
 
     unsigned long long totalSize = 0;
     long long savedSize = 0;
@@ -5318,25 +5318,27 @@ static bool saveComputer(CHAR16* directory)
         }
     }
 
-    logToConsole(L"Saving contract execution fee files...");
-    savedSize += save(CONTRACT_EXEC_FEES_ACC_FILE_NAME, sizeof(contractExecutionTimePerPhase), (unsigned char*)contractExecutionTimePerPhase, directory);
-    if (savedSize != sizeof(contractExecutionTimePerPhase))
-    {
-        return false;
-    }
-    totalSize += savedSize;
-    savedSize = executionFeeReportCollector.save(CONTRACT_EXEC_FEES_REC_FILE_NAME);
-    if (savedSize < 0)
-    {
-        return false;
-    }
-    totalSize += savedSize;
-
     setNumber(message, totalSize, TRUE);
-    appendText(message, L" bytes of the computer data are saved (");
+    appendText(message, L" bytes of the contract state files are saved (");
     appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
     appendText(message, L" microseconds).");
     logToConsole(message);
+
+    logToConsole(L"Saving contract execution fee files...");
+
+    beginningTick = __rdtsc();
+
+    if (!executionTimeAccumulator.saveToFile(CONTRACT_EXEC_FEES_ACC_FILE_NAME, directory))
+        return false;
+
+    if (!executionFeeReportCollector.saveToFile(CONTRACT_EXEC_FEES_REC_FILE_NAME, directory))
+        return false;
+
+    setText(message, L"Accumulated execution times and received fee reports are saved (");
+    appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
+    appendText(message, L" microseconds).");
+    logToConsole(message);
+
     return true;
 }
 
