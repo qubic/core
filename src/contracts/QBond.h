@@ -1318,10 +1318,10 @@ protected:
         }
 
         locals.currentName = 1145979469ULL;   // MBND
-        locals.chunk = (sint8) (48 + div(state._cyclicMbondCounter, (unsigned char) 10));
+        locals.chunk = (sint8) (48 + div(state._cyclicMbondCounter, (uint8) 10));
         locals.currentName |= (uint64)locals.chunk << (4 * 8);
 
-        locals.chunk = (sint8) (48 + mod(state._cyclicMbondCounter, (unsigned char) 10));
+        locals.chunk = (sint8) (48 + mod(state._cyclicMbondCounter, (uint8) 10));
         locals.currentName |= (uint64)locals.chunk << (5 * 8);
 
         locals.tempMbondInfo.name = locals.currentName;
