@@ -107,6 +107,22 @@ private:
             });
 
         app.registerHandler(
+            "/latest-created-tick-info",
+            [](const HttpRequestPtr &req,
+               std::function<void(const HttpResponsePtr &)> &&callback)
+            {
+                Json::Value json;
+                CHAR16 id[61] = {};
+                getIdentity((const unsigned char*)&latestCreatedTickInfo.id, id, false);
+                json["tick"] = latestCreatedTickInfo.tick;
+                json["epoch"] = latestCreatedTickInfo.epoch;
+                json["numberOfTxs"] = latestCreatedTickInfo.numberOfTxs;
+                json["id"] = wchar_to_string(id);
+                auto resp = HttpResponse::newHttpJsonResponse(json);
+                callback(resp);
+            });
+
+        app.registerHandler(
             "/solutions",
             [](const HttpRequestPtr &req,
                std::function<void(const HttpResponsePtr &)> &&callback)

@@ -306,6 +306,14 @@ static bool saveRevenueComponents(CHAR16* directory = NULL);
 
 BroadcastFutureTickData broadcastedFutureTickData;
 
+static struct
+{
+    unsigned int tick;
+    unsigned int epoch;
+    unsigned int numberOfTxs;
+    m256i id;
+} latestCreatedTickInfo;
+
 #include "extensions/http.h"
 
 static struct
@@ -3389,6 +3397,11 @@ static void processTick(unsigned long long processorNumber)
                         }
                     }
 
+                    latestCreatedTickInfo.epoch = system.epoch;
+                    latestCreatedTickInfo.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+                    latestCreatedTickInfo.numberOfTxs = nextTxIndex;
+                    latestCreatedTickInfo.id = computorPublicKeys[ownComputorIndicesMapping[i]];
+
                     for (; nextTxIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; ++nextTxIndex)
                     {
                         broadcastedFutureTickData.tickData.transactionDigests[nextTxIndex] = m256i::zero();
@@ -5796,6 +5809,7 @@ static bool initialize()
     setMem(processors, sizeof(processors), 0);
     setMem(peers, sizeof(peers), 0);
     setMem(publicPeers, sizeof(publicPeers), 0);
+    setMem(&latestCreatedTickInfo, sizeof(latestCreatedTickInfo), 0);
 
     requestedComputors.header.setSize<sizeof(requestedComputors)>();
     requestedComputors.header.setType(RequestComputors::type);
