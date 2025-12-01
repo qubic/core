@@ -113,7 +113,7 @@ static_assert( sizeof(ExecutionFeeReportPayload) <= sizeof(Transaction) + MAX_IN
 // Returns the number of entries added (0 if no contracts were executed)
 static inline unsigned int buildExecutionFeeReportPayload(
     ExecutionFeeReportPayload& payload,
-    const volatile long long* contractExecutionTimes,
+    const long long* contractExecutionTimes,
     const unsigned int phaseNumber,
     const long long multiplierNumerator,
     const long long multiplierDenominator

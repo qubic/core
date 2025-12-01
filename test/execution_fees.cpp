@@ -2,6 +2,7 @@
 
 #include "contract_testing.h"
 #include "../src/ticking/execution_fee_report_collector.h"
+#include "../src/contract_core/execution_time_accumulator.h"
 
 // Helper to create a valid baseline test transaction with given entries
 static Transaction* createTestTransaction(unsigned char* buffer, size_t bufferSize,
@@ -346,4 +347,28 @@ TEST(ExecutionFeeReportBuilder, BuildWithMultiplicationMultiplier) {
     EXPECT_EQ(fees[0], 1000);  // (10 * 100) / 1
     EXPECT_EQ(indices[1], 3u);
     EXPECT_EQ(fees[1], 2500);  // (25 * 100) / 1
+}
+
+TEST(ExecutionTimeAccumulatorTest, AddingAndPhaseSwitching)
+{
+    ExecutionTimeAccumulator accum;
+
+    accum.init();
+
+    accum.addTime(/*contractIndex=*/0, /*time=*/52784);
+    accum.addTime(/*contractIndex=*/contractCount/2, /*time=*/8795);
+
+    accum.startNewAccumulation();
+
+    const long long* prevPhaseTimes = accum.getPrevPhaseAccumulatedTimes();
+
+    for (unsigned int c = 0; c < contractCount; ++c)
+    {
+        if (c == 0)
+            EXPECT_EQ(prevPhaseTimes[c], 52784);
+        else if (c == contractCount / 2)
+            EXPECT_EQ(prevPhaseTimes[c], 8795);
+        else
+            EXPECT_EQ(prevPhaseTimes[c], 0);
+    }
 }
