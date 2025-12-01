@@ -622,8 +622,18 @@ namespace QPI
 		}
 
 		/**
+		* Convenience function for adding a number of milliseconds.
+		* @param millisec Number of milliseconds to add. May be negative and abs(millisec) may be > 1000.
+		* @return Returns if update of date was successful. Error cases: starting with invalid date, overflow.
+		*/
+		bool addMillisec(sint64 millisec)
+		{
+			return add(0, 0, 0, 0, 0, 0, millisec);
+		}
+
+		/**
 		* Convenience function for adding a number of microseconds.
-		* @param days Number of microsecs to add. May be negative and abs(microsecs) may be > 1000000.
+		* @param microsec Number of microsecs to add. May be negative and abs(microsecs) may be > 1000000.
 		* @return Returns if update of date was successful. Error cases: starting with invalid date, overflow.
 		*/
 		bool addMicrosec(sint64 microsec)
@@ -2540,7 +2550,7 @@ namespace QPI
 		/**
 		* @brief Initiate oracle query that will lead to nofitication later.
 		* @param query Details about which oracle to query for which information, as defined by a specific oracle interface.
-		* @param timeoutSeconds Maximum number of seconds to wait for reply.
+		* @param timeoutMillisec Maximum number of milliseconds to wait for reply.
 		* @return Oracle query ID that can be used to get the status of the query, or 0 on error.
 		*
 		* This will automatically burn the oracle query fee as defined by the oracle interface (burning without
@@ -2551,7 +2561,7 @@ namespace QPI
 		template <typename OracleInterface>
 		inline uint64 queryOracle(
 			const OracleInterface::OracleQuery& query,
-			uint16 timeoutSeconds = 60
+			uint32 timeoutMillisec = 60000
 		) const;
 
 		inline sint64 releaseShares(

@@ -22,8 +22,8 @@ struct OracleMachineQuery
     /// Oracle interface, defining query data / reply data format
     unsigned int oracleInterfaceIndex;
 
-    /// Timeout in seconds, defining OM can give up to get reply from oracle (no response needed)
-    unsigned int timeoutInSeconds;
+    /// Timeout in milliseconds, defining OM can give up to get reply from oracle (no response needed)
+    unsigned int timeoutInMilliseconds;
 };
 
 // Message sent from OM Node to Core Node in order to send the oracle reply data (following query).

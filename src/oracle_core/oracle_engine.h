@@ -265,7 +265,7 @@ public:
         // send query to oracle machine node
     }
 
-    uint64_t startContractQuery(uint16_t contractIndex, uint32_t interfaceIndex, const void* queryData, uint16_t querySize, uint16_t timeoutSeconds)
+    uint64_t startContractQuery(uint16_t contractIndex, uint32_t interfaceIndex, const void* queryData, uint16_t querySize, uint32_t timeoutMillisec)
     {
         // TODO: check that querySize matches registered size
         // check inputs
@@ -283,7 +283,7 @@ public:
 
         // compute timeout as absolute point in time
         DateAndTime timeout = DateAndTime::now();
-        if (!timeout.add(0, 0, 0, 0, 0, timeoutSeconds))
+        if (!timeout.addMillisec(timeoutMillisec))
             return 0;
 
         // get sequential query index of contract in tick
@@ -334,19 +334,19 @@ public:
         queryStorageBytesUsed += querySize;
 
         // enqueue query message to oracle machine node
-        enqueuOracleQuery(queryId, interfaceIndex, timeoutSeconds, queryData, querySize);
+        enqueuOracleQuery(queryId, interfaceIndex, timeoutMillisec, queryData, querySize);
 
         return queryId;
     }
 
     // Enqueue oracle machine query message. May be called from tick processor or contract processor only (uses reorgBuffer).
-    void enqueuOracleQuery(uint64_t queryId, uint32_t interfaceIdx, uint16_t timeoutInSeconds, const void* queryData, uint16 querySize)
+    void enqueuOracleQuery(uint64_t queryId, uint32_t interfaceIdx, uint16_t timeoutMillisec, const void* queryData, uint16 querySize)
     {
         // Preapre message payload
         OracleMachineQuery* omq = reinterpret_cast<OracleMachineQuery*>(reorgBuffer);
         omq->oracleQueryId = queryId;
         omq->oracleInterfaceIndex = interfaceIdx;
-        omq->timeoutInSeconds = timeoutInSeconds;
+        omq->timeoutInMilliseconds = timeoutMillisec;
         copyMem(omq + 1, queryData, querySize);
 
         // Enqueue for sending to all oracle machine peers (peer pointer address 0x1 is reserved for that)

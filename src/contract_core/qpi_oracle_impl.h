@@ -5,7 +5,7 @@
 #include "spectrum/spectrum.h"
 
 template <typename OracleInterface>
-QPI::uint64 QPI::QpiContextProcedureCall::queryOracle(const OracleInterface::OracleQuery& query, uint16 timeoutSeconds) const
+QPI::uint64 QPI::QpiContextProcedureCall::queryOracle(const OracleInterface::OracleQuery& query, uint32 timeoutMillisec) const
 {
 	// get fee
 	sint64 fee = OracleInterface::getRequestFee(query);
@@ -20,5 +20,5 @@ QPI::uint64 QPI::QpiContextProcedureCall::queryOracle(const OracleInterface::Ora
 	ASSERT(this->_currentContractIndex < 0xffff);
 	QPI::uint16 contractIndex = static_cast<QPI::uint16>(this->_currentContractIndex);
 
-	return oracleEngine.startContractQuery(contractIndex, OracleInterface::oracleInterfaceIndex, &query, sizeof(query), timeoutSeconds);
+	return oracleEngine.startContractQuery(contractIndex, OracleInterface::oracleInterfaceIndex, &query, sizeof(query), timeoutMillisec);
 }
