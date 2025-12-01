@@ -1,5 +1,7 @@
 #pragma once
 
+#include "platform/file_io.h"
+
 // A class for accumulating contract execution time over a phase.
 // Also saves the accumulation result of the previous phase.
 class ExecutionTimeAccumulator
@@ -12,7 +14,7 @@ private:
     
     // TODO: check if this overflows with CPU clock cycles, if it does, save in different unit (e.g. milliseconds)
     long long contractExecutionTimePerPhase[2][contractCount];
-    bool contractExecutionTimeActiveArrayIndex;
+    bool contractExecutionTimeActiveArrayIndex = 0;
     volatile char lock = 0;
 
 public:
@@ -67,6 +69,15 @@ public:
     const long long* getPrevPhaseAccumulatedTimes()
     {
         return contractExecutionTimePerPhase[!contractExecutionTimeActiveArrayIndex];
+    }
+
+    bool saveToFile(const CHAR16* fileName, const CHAR16* directory = NULL)
+    {
+        long long savedSize = save(fileName, sizeof(ExecutionTimeAccumulator), (unsigned char*)this, directory);
+        if (savedSize == sizeof(ExecutionTimeAccumulator))
+            return true;
+        else
+            return false;
     }
 
 };
