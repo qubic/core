@@ -451,6 +451,27 @@ public:
 		id ownerAndPossessor;
 	};
 
+	struct TransferShareManagementRights_input
+	{
+		uint32 newManagingContractIndex;
+		sint64 numberOfShares;
+	};
+
+	struct TransferShareManagementRights_output
+	{
+		sint64 transferredNumberOfShares;
+		uint8 returnCode;
+	};
+
+	struct TransferShareManagementRights_locals
+	{
+		QX::Fees_input feesInput;
+		QX::Fees_output feesOutput;
+		Asset asset;
+		sint64 releaseResult;
+		uint64 refundableAmount;
+	};
+
 public:
 	/**
 	 * @brief Registers all externally callable functions and procedures with their numeric
@@ -478,6 +499,7 @@ public:
 		REGISTER_USER_PROCEDURE(RemoveAllowedToken, 6);
 		REGISTER_USER_PROCEDURE(SetTokenRewardDivisor, 7);
 		REGISTER_USER_PROCEDURE(TransferToken, 8);
+		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 9);
 	}
 
 	/**
@@ -656,7 +678,9 @@ public:
 					if (state.playerCounter != 0)
 					{
 						locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
-						getRandomU64(state, qpi, locals.mixedSpectrumValue, locals.randomNum);
+						locals.mixedSpectrumValue.u64._0 ^= qpi.tick();
+						locals.mixedSpectrumValue.u64._1 ^= state.playerCounter;
+						locals.randomNum = qpi.K12(locals.mixedSpectrumValue).u64._0;
 						locals.randomNum = mod(locals.randomNum, state.playerCounter);
 
 						// Index directly into players array
@@ -667,10 +691,10 @@ public:
 				if (locals.winnerAddress != id::zero())
 				{
 					// Split revenue by configured percentages
-					locals.winnerAmount = div<uint64>(locals.revenue * state.winnerFeePercent, 100ULL);
-					locals.teamFee = div<uint64>(locals.revenue * state.teamFeePercent, 100ULL);
-					locals.distributionFee = div<uint64>(locals.revenue * state.distributionFeePercent, 100ULL);
-					locals.burnedAmount = div<uint64>(locals.revenue * state.burnPercent, 100ULL);
+					locals.winnerAmount = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.winnerFeePercent)), 100ULL);
+					locals.teamFee = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.teamFeePercent)), 100ULL);
+					locals.distributionFee = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.distributionFeePercent)), 100ULL);
+					locals.burnedAmount = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.burnPercent)), 100ULL);
 
 					// Team payout
 					if (locals.teamFee > 0)
@@ -709,7 +733,22 @@ public:
 			}
 		}
 
-		rewardParticipantsWithLOTTO(qpi, state, locals);
+		// Reward Participants With LOTTO
+		{
+			if (state.playerCounter != 0 && state.tokenRewardDivisor > 0)
+			{
+				if (getAllowedToken(state, RL_TOKEN_NAME, locals.tokenData) && locals.tokenData.pricePerTicket > 0)
+				{
+					locals.rewardPerTicket = max<sint64>(1, div<uint64>(locals.tokenData.pricePerTicket, state.tokenRewardDivisor));
+
+					for (locals.index = 0; locals.index < state.playerCounter; ++locals.index)
+					{
+						qpi.transferShareOwnershipAndPossession(RL_TOKEN_NAME, SELF, SELF, SELF, locals.rewardPerTicket,
+						                                        state.players.get(locals.index));
+					}
+				}
+			}
+		}
 
 		clearStateOnEndDraw(state);
 
@@ -788,7 +827,10 @@ public:
 
 	PUBLIC_PROCEDURE(SetPrice)
 	{
-		returnInvocationReward(qpi);
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
 
 		// Only team/owner can queue a price change
 		if (qpi.invocator() != state.teamAddress)
@@ -811,7 +853,10 @@ public:
 
 	PUBLIC_PROCEDURE(SetSchedule)
 	{
-		returnInvocationReward(qpi);
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
 
 		if (qpi.invocator() != state.teamAddress)
 		{
@@ -831,7 +876,10 @@ public:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(AddAllowedToken)
 	{
-		returnInvocationReward(qpi);
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
 
 		if (qpi.invocator() != state.ownerAddress)
 		{
@@ -867,7 +915,10 @@ public:
 
 	PUBLIC_PROCEDURE(RemoveAllowedToken)
 	{
-		returnInvocationReward(qpi);
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
 
 		if (qpi.invocator() != state.ownerAddress)
 		{
@@ -881,7 +932,10 @@ public:
 
 	PUBLIC_PROCEDURE(SetTokenRewardDivisor)
 	{
-		returnInvocationReward(qpi);
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
 
 		if (qpi.invocator() != state.ownerAddress)
 		{
@@ -901,7 +955,10 @@ public:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(TransferToken)
 	{
-		returnInvocationReward(qpi);
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
 
 		if (input.amount == 0)
 		{
@@ -916,8 +973,8 @@ public:
 		}
 
 		locals.ownerAndPossessor = qpi.invocator() == state.ownerAddress ? SELF : qpi.invocator();
-
-		if (getNumberOfToken(qpi, locals.ownerAndPossessor) < input.amount)
+		if (qpi.numberOfPossessedShares(RL_TOKEN_NAME, SELF, locals.ownerAndPossessor, locals.ownerAndPossessor, SELF_INDEX, SELF_INDEX) <
+		    input.amount)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TOKEN_TRANSFER_FAILED);
 			return;
@@ -927,6 +984,80 @@ public:
 		                                        input.newOwner);
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
+	{
+		if (qpi.invocator() != state.ownerAddress)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			return;
+		}
+
+		if (input.numberOfShares <= 0)
+		{
+			output.transferredNumberOfShares = 0;
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
+
+		locals.asset.assetName = RL_TOKEN_NAME;
+		locals.asset.issuer = SELF;
+
+		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
+
+		if (qpi.invocationReward() < locals.feesOutput.transferFee)
+		{
+			output.transferredNumberOfShares = 0;
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
+
+		if (qpi.numberOfPossessedShares(locals.asset.assetName, locals.asset.issuer, SELF, SELF, SELF_INDEX, SELF_INDEX) < input.numberOfShares)
+		{
+			output.transferredNumberOfShares = 0;
+			output.returnCode = toReturnCode(EReturnCode::TOKEN_TRANSFER_FAILED);
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
+
+		locals.releaseResult = qpi.releaseShares(locals.asset, SELF, SELF, input.numberOfShares, input.newManagingContractIndex,
+		                                         input.newManagingContractIndex, locals.feesOutput.transferFee);
+
+		if (locals.releaseResult < 0)
+		{
+			output.transferredNumberOfShares = 0;
+			output.returnCode = toReturnCode(EReturnCode::TOKEN_TRANSFER_FAILED);
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
+
+		output.transferredNumberOfShares = input.numberOfShares;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+
+		if (qpi.invocationReward() > locals.feesOutput.transferFee)
+		{
+			locals.refundableAmount = qpi.invocationReward() - locals.feesOutput.transferFee;
+			qpi.transfer(qpi.invocator(), locals.refundableAmount);
+		}
 	}
 
 	/**
@@ -998,7 +1129,7 @@ public:
 
 		// Refund change and unfilled portion (if desired > slotsLeft)
 		locals.unfilled = locals.desired - locals.toBuy;
-		locals.refundAmount = locals.remainder + (locals.unfilled * locals.price);
+		locals.refundAmount = locals.remainder + (smul(locals.unfilled, locals.price));
 		if (locals.refundAmount > 0)
 		{
 			qpi.transfer(qpi.invocator(), locals.refundAmount);
@@ -1010,7 +1141,10 @@ public:
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicketWithToken)
 	{
 		// Refund any QU mistakenly attached to a token purchase
-		returnInvocationReward(qpi);
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
 
 		if (!isSellingOpen(state))
 		{
@@ -1060,7 +1194,7 @@ public:
 		}
 
 		locals.unfilled = locals.desired - locals.toBuy;
-		locals.refundAmount = locals.remainder + (locals.unfilled * locals.price);
+		locals.refundAmount = locals.remainder + (smul(locals.unfilled, locals.price));
 		if (locals.refundAmount > 0)
 		{
 			qpi.transferShareOwnershipAndPossession(input.tokenName, SELF, SELF, SELF, locals.refundAmount, qpi.invocator());
@@ -1258,50 +1392,4 @@ protected:
 	template<typename T> static constexpr const T& max(const T& a, const T& b) { return (a > b) ? a : b; }
 
 	static bool getAllowedToken(const RL& state, uint64 tokenName, TokenData& outToken) { return state.allowedTokens.get(tokenName, outToken); }
-
-	static void rewardParticipantsWithLOTTO(const QpiContextProcedureCall& qpi, const RL& state, BEGIN_TICK_locals& locals)
-	{
-		if (state.playerCounter == 0)
-		{
-			return;
-		}
-
-		if (state.tokenRewardDivisor == 0)
-		{
-			return;
-		}
-
-		if (!getAllowedToken(state, RL_TOKEN_NAME, locals.tokenData) || locals.tokenData.pricePerTicket == 0)
-		{
-			return;
-		}
-
-		locals.rewardPerTicket = max<sint64>(1, div<uint64>(locals.tokenData.pricePerTicket, state.tokenRewardDivisor));
-
-		for (locals.index = 0; locals.index < state.playerCounter; ++locals.index)
-		{
-			qpi.transferShareOwnershipAndPossession(RL_TOKEN_NAME, SELF, SELF, SELF, locals.rewardPerTicket, state.players.get(locals.index));
-		}
-	}
-
-	static void returnInvocationReward(const QpiContextProcedureCall& qpi)
-	{
-		// Refund any QU mistakenly attached to a token purchase
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
-	}
-
-	static sint64 getNumberOfToken(const QpiContextFunctionCall& qpi, const id& ownerAndPossessor)
-	{
-		return qpi.numberOfPossessedShares(RL_TOKEN_NAME, SELF, ownerAndPossessor, ownerAndPossessor, SELF_INDEX, SELF_INDEX);
-	}
-
-	static void getRandomU64(const RL& state, const QpiContextFunctionCall& qpi, m256i& spectrumData, uint64& outRandomValue)
-	{
-		spectrumData.u64._0 ^= qpi.tick();
-		spectrumData.u64._1 ^= state.playerCounter;
-		outRandomValue = qpi.K12(spectrumData).u64._0;
-	}
 };

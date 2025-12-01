@@ -11,6 +11,7 @@ constexpr uint16 PROCEDURE_INDEX_ADD_ALLOWED_TOKEN = 5;
 constexpr uint16 PROCEDURE_INDEX_REMOVE_ALLOWED_TOKEN = 6;
 constexpr uint16 PROCEDURE_INDEX_SET_TOKEN_REWARD_DIVISOR = 7;
 constexpr uint16 PROCEDURE_INDEX_TRANSFER_TOKEN = 8;
+constexpr uint16 PROCEDURE_INDEX_TRANSFER_SHARE_MANAGEMENT_RIGHTS = 9;
 constexpr uint16 FUNCTION_INDEX_GET_FEES = 1;
 constexpr uint16 FUNCTION_INDEX_GET_PLAYERS = 2;
 constexpr uint16 FUNCTION_INDEX_GET_WINNERS = 3;
@@ -22,6 +23,7 @@ constexpr uint16 FUNCTION_INDEX_GET_NEXT_EPOCH_DATA = 8;
 constexpr uint16 FUNCTION_INDEX_GET_DRAW_HOUR = 9;
 constexpr uint16 FUNCTION_INDEX_GET_SCHEDULE = 10;
 constexpr uint16 FUNCTION_INDEX_GET_TOKEN_DATA = 11;
+constexpr uint16 QX_FUNCTION_INDEX_FEES = 1;
 constexpr uint8 STATE_SELLING = static_cast<uint8>(RL::EState::SELLING);
 constexpr uint8 STATE_LOCKED = 0u;
 
@@ -175,6 +177,9 @@ public:
 	{
 		initEmptySpectrum();
 		initEmptyUniverse();
+		INIT_CONTRACT(QX);
+		system.epoch = contractDescriptions[QX_CONTRACT_INDEX].constructionEpoch;
+		callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
 		INIT_CONTRACT(RL);
 		system.epoch = contractDescriptions[RL_CONTRACT_INDEX].constructionEpoch;
 		callSystemProcedure(RL_CONTRACT_INDEX, INITIALIZE);
@@ -374,6 +379,26 @@ public:
 		return output;
 	}
 
+	RL::TransferShareManagementRights_output transferShareManagementRights(
+		const id& invocator, uint32 newManagingContractIndex, sint64 numberOfShares, uint64 invocationReward)
+	{
+		RL::TransferShareManagementRights_input input{newManagingContractIndex, numberOfShares};
+		RL::TransferShareManagementRights_output output{};
+		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_TRANSFER_SHARE_MANAGEMENT_RIGHTS, input, output, invocator, invocationReward))
+		{
+			output.returnCode = RL::toReturnCode(RL::EReturnCode::UNKNOWN_ERROR);
+		}
+		return output;
+	}
+
+	uint32 qxTransferFee()
+	{
+		QX::Fees_input input{};
+		QX::Fees_output output{};
+		callFunction(QX_CONTRACT_INDEX, QX_FUNCTION_INDEX_FEES, input, output);
+		return output.transferFee;
+	}
+
 	void BeginEpoch() { callSystemProcedure(RL_CONTRACT_INDEX, BEGIN_EPOCH); }
 
 	void EndEpoch() { callSystemProcedure(RL_CONTRACT_INDEX, END_EPOCH); }
@@ -425,6 +450,11 @@ public:
 	sint64 tokenBalance(uint64 assetName, const id& owner, const id& issuer) const
 	{
 		return numberOfPossessedShares(assetName, issuer, owner, owner, RL_CONTRACT_INDEX, RL_CONTRACT_INDEX);
+	}
+
+	sint64 tokenBalanceWithManagers(uint64 assetName, const id& owner, const id& issuer, uint16 managerIndex) const
+	{
+		return numberOfPossessedShares(assetName, issuer, owner, owner, managerIndex, managerIndex);
 	}
 
 	// Assert contract account balance equals the value returned by RL::GetBalance
@@ -1603,6 +1633,93 @@ TEST(ContractRandomLottery, TransferToken_NoOpForZeroAmountOrRecipient)
 	increaseEnergy(RL_DEV_ADDRESS, 1);
 	ctl.transferToken(RL_DEV_ADDRESS, id::zero(), 1);
 	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractTokensBefore);
+}
+
+TEST(ContractRandomLottery, TransferShareManagementRights_SucceedsAndRefundsRemainder)
+{
+	ContractTestingRL ctl;
+	ctl.beginEpochWithValidTime();
+
+	const uint32 transferFee = ctl.qxTransferFee();
+	const sint64 available = ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
+	ASSERT_GT(available, 10);
+
+	constexpr sint64 transferAmount = 7;
+	constexpr uint64 extraReward = 25;
+	const uint64 invocationReward = transferFee + extraReward;
+
+	increaseEnergy(RL_DEV_ADDRESS, invocationReward);
+	const uint64 ownerBalanceBefore = getBalance(RL_DEV_ADDRESS);
+	const sint64 contractBalanceBefore = ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
+
+	const RL::TransferShareManagementRights_output out =
+		ctl.transferShareManagementRights(RL_DEV_ADDRESS, QX_CONTRACT_INDEX, transferAmount, invocationReward);
+	EXPECT_EQ(out.returnCode, RL::EReturnCode::SUCCESS);
+	EXPECT_EQ(out.transferredNumberOfShares, transferAmount);
+
+	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractBalanceBefore - transferAmount);
+	EXPECT_EQ(ctl.tokenBalanceWithManagers(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf(), QX_CONTRACT_INDEX), transferAmount);
+	EXPECT_EQ(getBalance(RL_DEV_ADDRESS), ownerBalanceBefore - transferFee);
+}
+
+TEST(ContractRandomLottery, TransferShareManagementRights_FailsWhenRewardTooLow)
+{
+	ContractTestingRL ctl;
+	ctl.beginEpochWithValidTime();
+
+	const uint32 transferFee = ctl.qxTransferFee();
+	const uint64 invocationReward =  transferFee > 0 ? transferFee - 1 : 0;
+
+	increaseEnergy(RL_DEV_ADDRESS, invocationReward);
+	const uint64 ownerBalanceBefore = getBalance(RL_DEV_ADDRESS);
+	const sint64 contractBalanceBefore = ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
+
+	const RL::TransferShareManagementRights_output out =
+		ctl.transferShareManagementRights(RL_DEV_ADDRESS, QX_CONTRACT_INDEX, 1, invocationReward);
+	EXPECT_EQ(out.transferredNumberOfShares, 0);
+	EXPECT_EQ(out.returnCode, RL::EReturnCode::INVALID_VALUE);
+	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractBalanceBefore);
+	EXPECT_EQ(getBalance(RL_DEV_ADDRESS), ownerBalanceBefore);
+}
+
+TEST(ContractRandomLottery, TransferShareManagementRights_FailsWhenInsufficientShares)
+{
+	ContractTestingRL ctl;
+	ctl.beginEpochWithValidTime();
+
+	const uint32 transferFee = ctl.qxTransferFee();
+	const sint64 available = ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
+	ASSERT_GT(available, 0);
+
+	const sint64 transferAmount = available + 1;
+	increaseEnergy(RL_DEV_ADDRESS, transferFee);
+	const uint64 ownerBalanceBefore = getBalance(RL_DEV_ADDRESS);
+
+	const RL::TransferShareManagementRights_output out =
+		ctl.transferShareManagementRights(RL_DEV_ADDRESS, QX_CONTRACT_INDEX, transferAmount, transferFee);
+	EXPECT_EQ(out.transferredNumberOfShares, 0);
+	EXPECT_EQ(out.returnCode, RL::EReturnCode::TOKEN_TRANSFER_FAILED);
+	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), available);
+	EXPECT_EQ(getBalance(RL_DEV_ADDRESS), ownerBalanceBefore);
+}
+
+TEST(ContractRandomLottery, TransferShareManagementRights_OnlyOwnerCanInvoke)
+{
+	ContractTestingRL ctl;
+	ctl.beginEpochWithValidTime();
+
+	const uint32 transferFee = ctl.qxTransferFee();
+	const id user = id::randomValue();
+	increaseEnergy(user, transferFee + 10);
+	const uint64 userBalanceBefore = getBalance(user);
+	const sint64 contractBalanceBefore = ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
+
+	const RL::TransferShareManagementRights_output out =
+		ctl.transferShareManagementRights(user, QX_CONTRACT_INDEX, 1, transferFee + 10);
+	EXPECT_EQ(out.transferredNumberOfShares, 0);
+	EXPECT_EQ(out.returnCode, RL::EReturnCode::ACCESS_DENIED);
+	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractBalanceBefore);
+	EXPECT_EQ(getBalance(user), userBalanceBefore);
 }
 
 TEST(ContractRandomLottery, BuyTicketWithToken_ClosedAndNotAllowed)
