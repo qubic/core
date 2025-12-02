@@ -241,11 +241,6 @@ public:
             return -1; // No active subscription yet
         return getSubscriptionCurrentPeriod(destination);
     }
-
-    uint32 getMaxSubscriptionEpochs()
-    {
-        return maxSubscriptionEpochs;
-    }
 };
 
 class ContractTestingCCF : protected ContractTesting
@@ -435,7 +430,6 @@ TEST(ContractCCF, BasicInitialization)
     // Check initial state
     auto fee = test.getProposalFee();
     EXPECT_EQ(fee.proposalFee, 1000000u);
-    EXPECT_EQ(test.getState()->getMaxSubscriptionEpochs(), 52u);
 }
 
 TEST(ContractCCF, RegularProposalAndVoting)

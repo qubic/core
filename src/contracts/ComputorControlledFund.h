@@ -101,7 +101,6 @@ protected:
 	SubscriptionProposalsT subscriptionProposals;	// Subscription proposals, one per proposal slot (indexed by proposalIndex)
 	ActiveSubscriptionsT activeSubscriptions;		// Active subscriptions, identified by destination ID
 
-	uint32 maxSubscriptionEpochs;		// Maximum total time range in epochs (configurable)
 	uint8 lastRegularPaymentsNextOverwriteIdx;
 
 	//----------------------------------------------------------------------------
@@ -193,7 +192,7 @@ public:
 			locals.totalEpochsForSubscription = input.numberOfPeriods * input.weeksPerPeriod;
 
 			// Check against total allowed subscription time range
-			if (locals.totalEpochsForSubscription > state.maxSubscriptionEpochs)
+			if (locals.totalEpochsForSubscription > 52)
 			{
 				output.proposalIndex = INVALID_PROPOSAL_INDEX;
 				return;
@@ -485,7 +484,6 @@ public:
 	INITIALIZE()
 	{
 		state.setProposalFee = 1000000;
-		state.maxSubscriptionEpochs = 52; // Default: 52 epochs (approximately 1 year if 1 epoch ≈ 1 week)
 	}
 
 
