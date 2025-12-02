@@ -2057,7 +2057,7 @@ void checkNetworkMessageOracleMachineQuery(uint64 expectedOracleQueryId, id expe
     EXPECT_EQ(queryDataSize, sizeof(typename OracleInterface::OracleQuery));
     EXPECT_EQ(enqueuedNetworkMessage.omQuery.queryMetadata.oracleInterfaceIndex, OracleInterface::oracleInterfaceIndex);
     EXPECT_EQ(enqueuedNetworkMessage.omQuery.queryMetadata.oracleQueryId, expectedOracleQueryId);
-    EXPECT_EQ(enqueuedNetworkMessage.omQuery.queryMetadata.timeoutInSeconds, expectedTimeout);
+    EXPECT_EQ(enqueuedNetworkMessage.omQuery.queryMetadata.timeoutInMilliseconds, expectedTimeout);
     const auto* q = (const OracleInterface::OracleQuery*)enqueuedNetworkMessage.omQuery.queryData;
     EXPECT_EQ(q->oracle, expectedOracle);
 }
