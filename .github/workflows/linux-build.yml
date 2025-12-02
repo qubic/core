@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       artifact-path: ${{ steps.build.outputs.path }}
     steps:
@@ -35,6 +35,8 @@ jobs:
       # Install dependencies
       - name: Install CMake and dependencies
         run: |
+          sudo apt update
+          wget https://apt.llvm.org/llvm.sh; chmod +x llvm.sh; sudo ./llvm.sh 20;
           sudo apt install -y clang cmake nasm
           sudo apt install -y libc++-dev libc++abi-dev libjsoncpp-dev uuid-dev zlib1g-dev g++ libstdc++-12-dev
 
@@ -47,7 +49,10 @@ jobs:
             -DBUILD_TESTS:BOOL=OFF \
             -DBUILD_BINARY:BOOL=ON \
             -DENABLE_AVX512=OFF \
-            -DUSE_SANITIZER=OFF
+            -DUSE_SANITIZER=OFF \
+            -DONLY_LOGGING=ON \
+            -DCMAKE_C_COMPILER=clang-20 \
+            -DCMAKE_CXX_COMPILER=clang++-20
 
       # Build the project
       - name: Build with Make

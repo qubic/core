@@ -37,6 +37,7 @@
 #include "platform/console_logging.h"
 
 static volatile bool forceDontCheckComputerDigest = false;
+static std::vector<int> forceDontUseSecurityTickChangeStack;
 static volatile bool forceDontUseSecurityTick = false;
 
 //////////// Go Behind Testnet Trick \\\\\\\\

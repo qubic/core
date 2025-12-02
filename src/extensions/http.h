@@ -72,6 +72,87 @@ private:
                 json["initialTick"] = system.initialTick;
                 json["alignedVotes"] = gTickNumberOfComputors;
                 json["misalignedVotes"] = gTickTotalNumberOfComputors - gTickNumberOfComputors;
+                json["mainAuxStatus"] = mainAuxStatus;
+                auto resp = HttpResponse::newHttpJsonResponse(json);
+                callback(resp);
+            });
+
+        app.registerHandler(
+            "/running-ids",
+            [](const HttpRequestPtr &req,
+               std::function<void(const HttpResponsePtr &)> &&callback)
+            {
+                Json::Value json;
+                Json::Value idsJson(Json::arrayValue);
+                for (int i = 0; i < computorSeeds.size(); i++)
+                {
+                    CHAR16 id[61] = {};
+                    m256i publicKey = {};
+                    m256i privateKey = {};
+                    m256i subseed = {};
+                    bool isOk = getSubseed(reinterpret_cast<const unsigned char *>(computorSeeds[i].c_str()), subseed.m256i_u8);
+                    if (!isOk)
+                        continue;
+                    getPrivateKey(subseed.m256i_u8, privateKey.m256i_u8);
+                    getPublicKey(privateKey.m256i_u8, publicKey.m256i_u8);
+                    getIdentity(publicKey.m256i_u8, id, false);
+                    if (publicKey != computorPublicKeys[i])
+                        continue;
+
+                    idsJson.append(wchar_to_string(id));
+                }
+                json["runningIds"] = idsJson;
+                auto resp = HttpResponse::newHttpJsonResponse(json);
+                callback(resp);
+            });
+
+        app.registerHandler(
+            "/latest-created-tick-info",
+            [](const HttpRequestPtr &req,
+               std::function<void(const HttpResponsePtr &)> &&callback)
+            {
+                Json::Value json;
+                CHAR16 id[61] = {};
+                getIdentity((const unsigned char*)&latestCreatedTickInfo.id, id, false);
+                json["tick"] = latestCreatedTickInfo.tick;
+                json["epoch"] = latestCreatedTickInfo.epoch;
+                json["numberOfTxs"] = latestCreatedTickInfo.numberOfTxs;
+                json["id"] = wchar_to_string(id);
+                auto resp = HttpResponse::newHttpJsonResponse(json);
+                callback(resp);
+            });
+
+        app.registerHandler(
+            "/solutions",
+            [](const HttpRequestPtr &req,
+               std::function<void(const HttpResponsePtr &)> &&callback)
+            {
+                Json::Value json(Json::arrayValue);
+                for (unsigned int i = 0; i < system.numberOfSolutions; i++)
+                {
+                    Json::Value solutionJson;
+                    solutionJson["computorPublicKey"] = byteToHex((unsigned char *)&system.solutions[i].computorPublicKey, sizeof(m256i));
+                    solutionJson["miningSeed"] = byteToHex((unsigned char *)&system.solutions[i].miningSeed, sizeof(m256i));
+                    solutionJson["nonce"] = byteToHex((unsigned char *)&system.solutions[i].nonce, sizeof(m256i));
+                    json.append(solutionJson);
+                }
+                auto resp = HttpResponse::newHttpJsonResponse(json);
+                callback(resp);
+            });
+
+        app.registerHandler(
+            "/solution-publish-ticks",
+            [](const HttpRequestPtr &req,
+               std::function<void(const HttpResponsePtr &)> &&callback)
+            {
+                Json::Value json(Json::arrayValue);
+                for (unsigned int i = 0; i < system.numberOfSolutions; i++)
+                {
+                    Json::Value jsonObject;
+                    jsonObject["solutionIndex"] = i;
+                    jsonObject["publishTick"] = solutionPublicationTicks[i];
+                    json.append(jsonObject);
+                }
                 auto resp = HttpResponse::newHttpJsonResponse(json);
                 callback(resp);
             });
