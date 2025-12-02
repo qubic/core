@@ -52,6 +52,7 @@
     <ClInclude Include="contract_core\contract_action_tracker.h" />
     <ClInclude Include="contract_core\contract_def.h" />
     <ClInclude Include="contract_core\contract_exec.h" />
+    <ClInclude Include="contract_core\execution_time_accumulator.h" />
     <ClInclude Include="contract_core\ipo.h" />
     <ClInclude Include="contract_core\pre_qpi_def.h" />
     <ClInclude Include="contract_core\qpi_asset_impl.h" />

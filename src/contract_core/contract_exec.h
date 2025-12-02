@@ -14,6 +14,7 @@
 #include "contract_core/contract_def.h"
 #include "contract_core/stack_buffer.h"
 #include "contract_core/contract_action_tracker.h"
+#include "contract_core/execution_time_accumulator.h"
 
 #include "logging/logging.h"
 #include "common_buffers.h"
@@ -57,14 +58,7 @@ GLOBAL_VAR_DECL unsigned char* contractStates[contractCount];
 
 // Total contract execution time (as CPU clock cycles) accumulated over the whole runtime of the node (reset on restart, includes contract functions).
 GLOBAL_VAR_DECL volatile long long contractTotalExecutionTime[contractCount];
-// Two arrays to accumulate and save the contract execution time (as CPU clock cycles) for two consecutive phases.
-// This only includes actions that are charged an execution fee (digest computation, system procedures, user procedures).
-// contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex] is used to accumulate the contract execution ticks for the current phase n.
-// contractExecutionTimePerPhase[!contractExecutionTimeActiveArrayIndex] saves the contract execution ticks from the previous phase n-1 that are sent out as transactions in phase n.
-// TODO: check if we need any locks
-// TODO: check if this overflows with CPU clock cycles, if it does, save in different unit (e.g. milliseconds)
-GLOBAL_VAR_DECL volatile long long contractExecutionTimePerPhase[2][contractCount];
-GLOBAL_VAR_DECL volatile bool contractExecutionTimeActiveArrayIndex;
+GLOBAL_VAR_DECL ExecutionTimeAccumulator executionTimeAccumulator;
 
 // Contract error state, persistent and only set on error of procedure (TODO: only execute procedures if NoContractError)
 GLOBAL_VAR_DECL unsigned int contractError[contractCount];
@@ -176,8 +170,7 @@ static bool initContractExec()
     contractLocalsStackLockWaitingCountMax = 0;
 
     setMem((void*)contractTotalExecutionTime, sizeof(contractTotalExecutionTime), 0);
-    setMem((void*)contractExecutionTimePerPhase, sizeof(contractExecutionTimePerPhase), 0);
-    contractExecutionTimeActiveArrayIndex = 0;
+    executionTimeAccumulator.init();
 
     setMem((void*)contractError, sizeof(contractError), 0);
     setMem((void*)contractExecutionErrorData, sizeof(contractExecutionErrorData), 0);
@@ -220,18 +213,6 @@ static void deinitContractExec()
     }
 
     contractActionTracker.freeBuffer();
-}
-
-static void switchContractExecutionTimeArray()
-{
-    if (system.tick % NUMBER_OF_COMPUTORS == 0)
-    {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Switched contract execution time array for new accumulation phase");
-#endif
-        contractExecutionTimeActiveArrayIndex = !contractExecutionTimeActiveArrayIndex;
-        setMem((void*)contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex], sizeof(contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex]), 0);
-    }
 }
 
 // Acquire lock of an currently unused stack (may block if all in use)
@@ -976,7 +957,7 @@ private:
         }
         const unsigned long long executionTime = __rdtsc() - startTime;
         _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], executionTime);
-        _interlockedadd64(&contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex][_currentContractIndex], executionTime);
+        executionTimeAccumulator.addTime(_currentContractIndex, executionTime);
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
@@ -1081,7 +1062,7 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         
         const unsigned long long executionTime = __rdtsc() - startTime;
         _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], executionTime);
-        _interlockedadd64(&contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex][_currentContractIndex], executionTime);
+        executionTimeAccumulator.addTime(_currentContractIndex, executionTime);
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
