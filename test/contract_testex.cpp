@@ -2048,3 +2048,32 @@ TEST(ContractTestEx, InterContractCallInsufficientFees)
     // Restore fee reserve for other tests
     setContractFeeReserve(TESTEXA_CONTRACT_INDEX, originalFeeReserve);
 }
+
+TEST(ContractTestEx, SystemCallbacksWithNegativeFeeReserve)
+{
+    ContractTestingTestEx test;
+
+    // Set TESTEXC fee reserve to negative value
+    setContractFeeReserve(TESTEXC_CONTRACT_INDEX, -1000);
+    EXPECT_EQ(getContractFeeReserve(TESTEXC_CONTRACT_INDEX), -1000);
+
+    const auto initialIncomingC = test.getIncomingTransferAmounts<TESTEXC>();
+    const sint64 initialBalanceC = getBalance(TESTEXC_CONTRACT_ID);
+
+    // Give TESTEXB balance to make the transfer
+    increaseEnergy(TESTEXB_CONTRACT_ID, 10000);
+    increaseEnergy(USER1, 10000);
+    const sint64 transferAmount = 5000;
+    EXPECT_TRUE(test.qpiTransfer<TESTEXB>(TESTEXC_CONTRACT_ID, transferAmount, 1000, USER1));
+
+    // Verify callback executed and modified state
+    const auto afterIncomingC = test.getIncomingTransferAmounts<TESTEXC>();
+    EXPECT_EQ(afterIncomingC.qpiTransferAmount, initialIncomingC.qpiTransferAmount + transferAmount);
+    EXPECT_EQ(getBalance(TESTEXC_CONTRACT_ID), initialBalanceC + transferAmount);
+
+    // Verify TESTEXB not in error state
+    EXPECT_EQ(contractError[TESTEXB_CONTRACT_INDEX], NoContractError);
+
+    // Verify TESTEXC fee reserve is still negative
+    EXPECT_LT(getContractFeeReserve(TESTEXC_CONTRACT_INDEX), 0);
+}
