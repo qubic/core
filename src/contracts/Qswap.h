@@ -68,33 +68,26 @@ public:
 		uint32 transferFee; 		// Amount of qus
 
 		uint32 swapFee; 			// 30 -> 0.3%
-		uint32 shareholderFee;		// 27 -> 27%, for SC shareholders
-		uint32 investRewardsFee;	// 3 -> 3%, for Invest & Rewards
-
-		// New fee fields (backwards compatible)
-		uint32 qxFee;				// 5 -> 5%, for QX
-		uint32 burnFee;				// 1 -> 1%, burned
+		uint32 shareholderFee;		// 27 -> 27% of swap fee, for SC shareholders
+		uint32 investRewardsFee;	// 3 -> 3% of swap fee, for Invest & Rewards
+		uint32 qxFee;				// 5 -> 5% of swap fee, for QX
+		uint32 burnFee;				// 1 -> 1% of swap fee, burned
 	};
 
-	struct TeamInfo_input
+	struct InvestRewardsInfo_input
 	{
 	};
-	struct TeamInfo_output
+	struct InvestRewardsInfo_output
 	{
-		uint32 investRewardsFee;	// 3 -> 3%
+		uint32 investRewardsFee;	// 3 -> 3% of swap fee
 		id investRewardsId;
-		uint32 shareholderFee;		// 27 -> 27%
-
-		// New fee fields (backwards compatible)
-		uint32 qxFee;				// 5 -> 5%
-		uint32 burnFee;				// 1 -> 1%
 	};
 
-	struct SetTeamInfo_input
+	struct SetInvestRewardsInfo_input
 	{
 		id newInvestRewardsId;
 	};
-	struct SetTeamInfo_output
+	struct SetInvestRewardsInfo_output
 	{
 		bool success;
 	};
@@ -306,7 +299,6 @@ protected:
 	uint64 shareholderEarnedFee;
 	uint64 shareholderDistributedAmount;
 
-	// NEW variables for updated fee structure (backwards compatible placement)
 	uint32 qxFeeRate;			// 5: 5% of swap fees to QX (base: 100)
 	uint32 burnFeeRate;			// 1: 1% of swap fees burned (base: 100)
 
@@ -813,13 +805,10 @@ protected:
 		);
 	}
 
-	PUBLIC_FUNCTION(TeamInfo)
+	PUBLIC_FUNCTION(InvestRewardsInfo)
 	{
-		output.investRewardsId = state.investRewardsId;
 		output.investRewardsFee = state.investRewardsFeeRate;
-		output.shareholderFee = state.shareholderFeeRate;
-		output.qxFee = state.qxFeeRate;
-		output.burnFee = state.burnFeeRate;
+		output.investRewardsId = state.investRewardsId;
 	}
 
 //
@@ -1460,7 +1449,6 @@ protected:
 		uint128 feeToInvestRewards;
 		uint128 feeToShareholders;
 
-		// New fee variables
 		uint128 feeToQx;
 		uint128 feeToBurn;
 	};
@@ -1555,8 +1543,8 @@ protected:
 			return;
 		}
 
-		// New fee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		// swapFee = quAmountIn * 0.3% (swapFeeRate/10000)
+		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		locals.swapFee = div(uint128(locals.quAmountIn) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
 		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
@@ -1604,8 +1592,6 @@ protected:
 		uint128 swapFee;
 		uint128 feeToInvestRewards;
 		uint128 feeToShareholders;
-
-		// New fee variables
 		uint128 feeToQx;
 		uint128 feeToBurn;
 	};
@@ -1715,8 +1701,8 @@ protected:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.quAmountIn);
 		}
 
-		// New fee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		// swapFee = quAmountIn * 0.3% (swapFeeRate/10000)
+		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		locals.swapFee = div(uint128(locals.quAmountIn) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
 		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
@@ -1766,8 +1752,6 @@ protected:
 		uint128 swapFee;
 		uint128 feeToInvestRewards;
 		uint128 feeToShareholders;
-
-		// New fee variables
 		uint128 feeToQx;
 		uint128 feeToBurn;
 	};
@@ -1890,8 +1874,8 @@ protected:
 		qpi.transfer(qpi.invocator(), locals.quAmountOut);
 		output.quAmountOut = locals.quAmountOut;
 
-		// New fee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		// swapFee = quAmountOutWithFee * 0.3% (swapFeeRate/10000)
+		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		locals.swapFee = div(uint128(locals.quAmountOutWithFee) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
 		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
@@ -1945,8 +1929,6 @@ protected:
 		uint128 swapFee;
 		uint128 feeToInvestRewards;
 		uint128 feeToShareholders;
-
-		// New fee variables
 		uint128 feeToQx;
 		uint128 feeToBurn;
 	};
@@ -2065,8 +2047,8 @@ protected:
 		qpi.transfer(qpi.invocator(), input.quAmountOut);
 		output.assetAmountIn = locals.assetAmountIn;
 
-		// New fee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		// swapFee = quAmountOut * 30/(10_000 - 30)
+		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		locals.swapFee = div(uint128(input.quAmountOut) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate));
 		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
@@ -2169,7 +2151,7 @@ protected:
 		state.shareholderEarnedFee += locals.feesOutput.transferFee;
 	}
 
-	PUBLIC_PROCEDURE(SetTeamInfo)
+	PUBLIC_PROCEDURE(SetInvestRewardsInfo)
 	{
 		output.success = false;
 		if (qpi.invocator() != state.investRewardsId)
@@ -2231,7 +2213,7 @@ protected:
 		REGISTER_USER_FUNCTION(QuoteExactQuOutput, 5);
 		REGISTER_USER_FUNCTION(QuoteExactAssetInput, 6);
 		REGISTER_USER_FUNCTION(QuoteExactAssetOutput, 7);
-		REGISTER_USER_FUNCTION(TeamInfo, 8);
+		REGISTER_USER_FUNCTION(InvestRewardsInfo, 8);
 
 		// procedure
 		REGISTER_USER_PROCEDURE(IssueAsset, 1);
@@ -2243,7 +2225,7 @@ protected:
 		REGISTER_USER_PROCEDURE(SwapQuForExactAsset, 7);
 		REGISTER_USER_PROCEDURE(SwapExactAssetForQu, 8);
 		REGISTER_USER_PROCEDURE(SwapAssetForExactQu, 9);
-		REGISTER_USER_PROCEDURE(SetTeamInfo, 10);
+		REGISTER_USER_PROCEDURE(SetInvestRewardsInfo, 10);
 		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 11);
 	}
 
@@ -2252,7 +2234,7 @@ protected:
 		state.swapFeeRate = 30; 			// 0.3%, must less than 10000
 		state.poolCreationFeeRate = 20; 	// 20%, must less than 100
 
-		// New fee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP providers
+		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP providers
 		state.shareholderFeeRate = 27; 		// 27% of swap fees to SC shareholders
 		state.investRewardsFeeRate = 3;		// 3% of swap fees to Invest & Rewards
 		state.qxFeeRate = 5;				// 5% of swap fees to QX
