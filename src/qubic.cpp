@@ -1344,6 +1344,21 @@ static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
     enqueueResponse(peer, sizeof(respondedEntity), RESPOND_ENTITY, header->dejavu(), &respondedEntity);
 }
 
+static void processRequestActiveIPOs(Peer* peer, RequestResponseHeader* header)
+{
+    RespondActiveIPO response;
+    for (unsigned int contractIndex = 1; contractIndex < contractCount; ++contractIndex)
+    {
+        if (system.epoch == contractDescriptions[contractIndex].constructionEpoch - 1) // IPO happens in the epoch before construction
+        {
+            response.contractIndex = contractIndex;
+            copyMem(response.assetName, contractDescriptions[contractIndex].assetName, 8);
+            enqueueResponse(peer, sizeof(RespondActiveIPO), RespondActiveIPO::type, header->dejavu(), &response);
+        }
+    }
+    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+}
+
 static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
 {
     RespondContractIPO respondContractIPO;
@@ -2170,6 +2185,12 @@ static void requestProcessor(void* ProcedureArgument, unsigned long long process
                 case REQUEST_ENTITY:
                 {
                     processRequestEntity(peer, header);
+                }
+                break;
+
+                case RequestActiveIPOs::type:
+                {
+                    processRequestActiveIPOs(peer, header);
                 }
                 break;
 
