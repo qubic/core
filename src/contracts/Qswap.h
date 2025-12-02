@@ -1526,6 +1526,22 @@ protected:
 			return;
 		}
 
+		// swapFee = quAmountIn * 0.3% (swapFeeRate/10000)
+		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
+		locals.swapFee = div(uint128(locals.quAmountIn) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
+		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToBurn = div(locals.swapFee * uint128(state.burnFeeRate), uint128(QSWAP_FEE_BASE_100));
+
+		// Overflow protection: ensure all fees fit in uint64
+		if (locals.feeToShareholders.high != 0 || locals.feeToQx.high != 0 ||
+		    locals.feeToInvestRewards.high != 0 || locals.feeToBurn.high != 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		}
+
 		// transfer the asset from pool to qpi.invocator()
 		output.assetAmountOut = qpi.transferShareOwnershipAndPossession(
 			input.assetName,
@@ -1543,22 +1559,7 @@ protected:
 			return;
 		}
 
-		// swapFee = quAmountIn * 0.3% (swapFeeRate/10000)
-		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
-		locals.swapFee = div(uint128(locals.quAmountIn) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
-		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToBurn = div(locals.swapFee * uint128(state.burnFeeRate), uint128(QSWAP_FEE_BASE_100));
-
-		// Overflow protection: ensure all fees fit in uint64
-		if (locals.feeToShareholders.high != 0 || locals.feeToQx.high != 0 ||
-		    locals.feeToInvestRewards.high != 0 || locals.feeToBurn.high != 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			return;
-		}
-
+		// update fee state after successful transfer
 		state.shareholderEarnedFee += locals.feeToShareholders.low;
 		state.qxEarnedFee += locals.feeToQx.low;
 		state.investRewardsEarnedFee += locals.feeToInvestRewards.low;
@@ -1678,6 +1679,22 @@ protected:
 			return;
 		}
 
+		// swapFee = quAmountIn * 0.3% (swapFeeRate/10000)
+		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
+		locals.swapFee = div(uint128(locals.quAmountIn) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
+		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToBurn = div(locals.swapFee * uint128(state.burnFeeRate), uint128(QSWAP_FEE_BASE_100));
+
+		// Overflow protection: ensure all fees fit in uint64
+		if (locals.feeToShareholders.high != 0 || locals.feeToQx.high != 0 ||
+		    locals.feeToInvestRewards.high != 0 || locals.feeToBurn.high != 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		}
+
 		// transfer the asset from pool to qpi.invocator()
 		locals.transferredAssetAmount = qpi.transferShareOwnershipAndPossession(
 			input.assetName,
@@ -1701,22 +1718,7 @@ protected:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.quAmountIn);
 		}
 
-		// swapFee = quAmountIn * 0.3% (swapFeeRate/10000)
-		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
-		locals.swapFee = div(uint128(locals.quAmountIn) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
-		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToBurn = div(locals.swapFee * uint128(state.burnFeeRate), uint128(QSWAP_FEE_BASE_100));
-
-		// Overflow protection: ensure all fees fit in uint64
-		if (locals.feeToShareholders.high != 0 || locals.feeToQx.high != 0 ||
-		    locals.feeToInvestRewards.high != 0 || locals.feeToBurn.high != 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			return;
-		}
-
+		// update fee state after successful transfer
 		state.shareholderEarnedFee += locals.feeToShareholders.low;
 		state.qxEarnedFee += locals.feeToQx.low;
 		state.investRewardsEarnedFee += locals.feeToInvestRewards.low;
@@ -1786,7 +1788,6 @@ protected:
 
 		if (locals.poolSlot == -1)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
 		}
 
@@ -1840,6 +1841,22 @@ protected:
 			return;
 		}
 
+		// swapFee = quAmountOutWithFee * 0.3% (swapFeeRate/10000)
+		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
+		locals.swapFee = div(uint128(locals.quAmountOutWithFee) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
+		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToBurn = div(locals.swapFee * uint128(state.burnFeeRate), uint128(QSWAP_FEE_BASE_100));
+
+		// Overflow protection: ensure all fees fit in uint64
+		if (locals.feeToShareholders.high != 0 || locals.feeToQx.high != 0 ||
+		    locals.feeToInvestRewards.high != 0 || locals.feeToBurn.high != 0)
+		{
+			return;
+		}
+
+		// transfer assets from user to pool
 		locals.transferredAssetAmountBefore = qpi.numberOfPossessedShares(
 			input.assetName,
 			input.assetIssuer,
@@ -1865,29 +1882,32 @@ protected:
 			SELF_INDEX
 		);
 
-		// pool does not receive enough asset
+		// pool does not receive enough asset, rollback any received shares
 		if (locals.transferredAssetAmountAfter - locals.transferredAssetAmountBefore < input.assetAmountIn)
 		{
+			// return any shares that were transferred
+			if (locals.transferredAssetAmountAfter > locals.transferredAssetAmountBefore)
+			{
+				qpi.transferShareOwnershipAndPossession(
+					input.assetName,
+					input.assetIssuer,
+					SELF,
+					SELF,
+					locals.transferredAssetAmountAfter - locals.transferredAssetAmountBefore,
+					qpi.invocator()
+				);
+			}
 			return;
 		}
 
 		qpi.transfer(qpi.invocator(), locals.quAmountOut);
 		output.quAmountOut = locals.quAmountOut;
 
-		// swapFee = quAmountOutWithFee * 0.3% (swapFeeRate/10000)
-		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
-		locals.swapFee = div(uint128(locals.quAmountOutWithFee) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
-		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToBurn = div(locals.swapFee * uint128(state.burnFeeRate), uint128(QSWAP_FEE_BASE_100));
-
-		// Overflow protection: ensure all fees fit in uint64
-		if (locals.feeToShareholders.high != 0 || locals.feeToQx.high != 0 ||
-		    locals.feeToInvestRewards.high != 0 || locals.feeToBurn.high != 0)
-		{
-			return;
-		}
+		// update fee state after successful transfers
+		state.shareholderEarnedFee += locals.feeToShareholders.low;
+		state.qxEarnedFee += locals.feeToQx.low;
+		state.investRewardsEarnedFee += locals.feeToInvestRewards.low;
+		state.burnEarnedFee += locals.feeToBurn.low;
 
 		// update pool states
 		locals.poolBasicState.reservedAssetAmount += input.assetAmountIn;
@@ -1896,12 +1916,6 @@ protected:
 		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToQx.low);
 		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToInvestRewards.low);
 		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToBurn.low);
-
-		state.shareholderEarnedFee += locals.feeToShareholders.low;
-		state.qxEarnedFee += locals.feeToQx.low;
-		state.investRewardsEarnedFee += locals.feeToInvestRewards.low;
-		state.burnEarnedFee += locals.feeToBurn.low;
-
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
 
 		// Log SwapExactAssetForQu procedure
@@ -1959,9 +1973,8 @@ protected:
 			}
 		}
 
-		if (locals.poolSlot == -1) 
+		if (locals.poolSlot == -1)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
 		}
 
@@ -2014,6 +2027,21 @@ protected:
 			return;
 		}
 
+		// swapFee = quAmountOut * 30/(10_000 - 30)
+		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
+		locals.swapFee = div(uint128(input.quAmountOut) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate));
+		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToBurn = div(locals.swapFee * uint128(state.burnFeeRate), uint128(QSWAP_FEE_BASE_100));
+
+		// Overflow protection: ensure all fees fit in uint64
+		if (locals.feeToShareholders.high != 0 || locals.feeToQx.high != 0 ||
+		    locals.feeToInvestRewards.high != 0 || locals.feeToBurn.high != 0)
+		{
+			return;
+		}
+
 		locals.transferredAssetAmountBefore = qpi.numberOfPossessedShares(
 			input.assetName,
 			input.assetIssuer,
@@ -2039,29 +2067,28 @@ protected:
 			SELF_INDEX
 		);
 
+		// pool does not receive enough asset, rollback any received shares
 		if (locals.transferredAssetAmountAfter - locals.transferredAssetAmountBefore < locals.assetAmountIn)
 		{
+			// return any shares that were transferred
+			if (locals.transferredAssetAmountAfter > locals.transferredAssetAmountBefore)
+			{
+				qpi.transferShareOwnershipAndPossession(
+					input.assetName,
+					input.assetIssuer,
+					SELF,
+					SELF,
+					locals.transferredAssetAmountAfter - locals.transferredAssetAmountBefore,
+					qpi.invocator()
+				);
+			}
 			return;
 		}
 
 		qpi.transfer(qpi.invocator(), input.quAmountOut);
 		output.assetAmountIn = locals.assetAmountIn;
 
-		// swapFee = quAmountOut * 30/(10_000 - 30)
-		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
-		locals.swapFee = div(uint128(input.quAmountOut) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate));
-		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToBurn = div(locals.swapFee * uint128(state.burnFeeRate), uint128(QSWAP_FEE_BASE_100));
-
-		// Overflow protection: ensure all fees fit in uint64
-		if (locals.feeToShareholders.high != 0 || locals.feeToQx.high != 0 ||
-		    locals.feeToInvestRewards.high != 0 || locals.feeToBurn.high != 0)
-		{
-			return;
-		}
-
+		// update fee state after successful transfers
 		state.shareholderEarnedFee += locals.feeToShareholders.low;
 		state.qxEarnedFee += locals.feeToQx.low;
 		state.investRewardsEarnedFee += locals.feeToInvestRewards.low;
