@@ -35,7 +35,6 @@ enum ContractError
     ContractErrorTimeout,
     ContractErrorStoppedToResolveDeadlock, // only returned by function call, not set to contractError
     ContractErrorIPOFailed, // IPO failed i.e. final price was 0. This contract is not constructed.
-    ContractErrorCalledContractInsufficientFees, // Contract called another contract with non-positive executionFeeReserve.
 };
 
 // Used to store: locals and for first invocation level also input and output
@@ -364,7 +363,7 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
 }
 
 // Called before a contract runs a user procedure of another contract or a system procedure
-const QpiContextProcedureCall* QPI::QpiContextProcedureCall::__qpiConstructProcedureCallContext(unsigned int procContractIndex, QPI::sint64 invocationReward, InterContractCallError& callError) const
+const QpiContextProcedureCall* QPI::QpiContextProcedureCall::__qpiConstructProcedureCallContext(unsigned int procContractIndex, QPI::sint64 invocationReward, InterContractCallError& callError, bool skipFeeCheck) const
 {
     ASSERT(_entryPoint != USER_FUNCTION_CALL);
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
@@ -379,9 +378,8 @@ const QpiContextProcedureCall* QPI::QpiContextProcedureCall::__qpiConstructProce
         return nullptr;
     }
 
-    // Check if called contract has sufficient execution fee reserve
-    // If not, the called contract won't be able to pay for its digest computation
-    if (getContractFeeReserve(procContractIndex) <= 0)
+    // Check if called contract has sufficient execution fee reserve (can be skipped for system callbacks)
+    if (!skipFeeCheck && getContractFeeReserve(procContractIndex) <= 0)
     {
         callError = CallErrorInsufficientFees;
         return nullptr;
@@ -731,13 +729,10 @@ bool QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
 
     // Create context
     InterContractCallError callError;
-    const QpiContextProcedureCall* context = __qpiConstructProcedureCallContext(sysProcContractIndex, invocationReward, callError);
+    const QpiContextProcedureCall* context = __qpiConstructProcedureCallContext(sysProcContractIndex, invocationReward, callError, true);
     if (!context)
     {
-        // System procedure calls abort on failure to maintain old behavior
-        if (callError == CallErrorInsufficientFees)
-            __qpiAbort(ContractErrorCalledContractInsufficientFees);
-        else if (callError == CallErrorContractInErrorState)
+        if (callError == CallErrorContractInErrorState)
             __qpiAbort(contractError[sysProcContractIndex]);
         else
             __qpiAbort(ContractErrorAllocContextOtherProcedureCallFailed);

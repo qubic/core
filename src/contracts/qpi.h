@@ -2604,7 +2604,7 @@ namespace QPI
 
 
 		// Internal functions, calling not allowed in contracts
-		inline const QpiContextProcedureCall* __qpiConstructProcedureCallContext(unsigned int otherContractIndex, sint64 invocationReward, InterContractCallError& callError) const;
+		inline const QpiContextProcedureCall* __qpiConstructProcedureCallContext(unsigned int otherContractIndex, sint64 invocationReward, InterContractCallError& callError, bool skipFeeCheck = false) const;
 		inline void* __qpiAcquireStateForWriting(unsigned int contractIndex) const;
 		inline void __qpiReleaseStateForWriting(unsigned int contractIndex) const;
 		template <unsigned int sysProcId, typename InputType, typename OutputType>
