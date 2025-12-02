@@ -134,4 +134,13 @@ public:
         else
             return false;
     }
+
+    bool loadFromFile(const CHAR16* fileName, const CHAR16* directory = NULL)
+    {
+        long long loadedSize = load(fileName, sizeof(ExecutionFeeReportCollector), (unsigned char*)this, directory);
+        if (loadedSize == sizeof(ExecutionFeeReportCollector))
+            return true;
+        else
+            return false;
+    }
 };

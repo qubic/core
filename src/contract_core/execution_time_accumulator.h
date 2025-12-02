@@ -70,4 +70,13 @@ public:
             return false;
     }
 
+    bool loadFromFile(const CHAR16* fileName, const CHAR16* directory = NULL)
+    {
+        long long loadedSize = load(fileName, sizeof(ExecutionTimeAccumulator), (unsigned char*)this, directory);
+        if (loadedSize == sizeof(ExecutionTimeAccumulator))
+            return true;
+        else
+            return false;
+    }
+
 };
