@@ -21,6 +21,6 @@ namespace OI
 
 	static constexpr uint32_t oracleInferacesCount = sizeof(oracleInferaces) / sizeof(oracleInferaces[0]);
 
-#undef REGISTER_ORACLE_INTERFACE(Interface)
+#undef REGISTER_ORACLE_INTERFACE
 
 }
