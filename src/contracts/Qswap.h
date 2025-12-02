@@ -2258,8 +2258,8 @@ protected:
 
 	INITIALIZE()
 	{
-		state.swapFeeRate = 30; 			// 0.3%, must less than 10000
-		state.poolCreationFeeRate = 20; 	// 20%, must less than 100
+		state.swapFeeRate = 30; 			// 0.3%, must be less than 10000
+		state.poolCreationFeeRate = 20; 	// 20%, must be less than 100
 
 		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP providers
 		state.shareholderFeeRate = 27; 		// 27% of swap fees to SC shareholders
@@ -2275,6 +2275,7 @@ protected:
 	{
 		uint64 toDistribute;
 		uint64 toBurn;
+		uint64 dividendPerComputor;
 	};
 
 	END_TICK_WITH_LOCALS()
@@ -2296,19 +2297,20 @@ protected:
 		}
 
 		// Distribute shareholder fees (to IPO shareholders via dividends)
-		if ((div((state.shareholderEarnedFee - state.shareholderDistributedAmount), 676ULL) > 0) && (state.shareholderEarnedFee > state.shareholderDistributedAmount))
+		if (state.shareholderEarnedFee > state.shareholderDistributedAmount)
 		{
-			if (qpi.distributeDividends(div((state.shareholderEarnedFee - state.shareholderDistributedAmount), 676ULL)))
+			locals.dividendPerComputor = div((state.shareholderEarnedFee - state.shareholderDistributedAmount), 676ULL);
+			if (locals.dividendPerComputor > 0 && qpi.distributeDividends(locals.dividendPerComputor))
 			{
-				state.shareholderDistributedAmount += div((state.shareholderEarnedFee - state.shareholderDistributedAmount), 676ULL) * NUMBER_OF_COMPUTORS;
+				state.shareholderDistributedAmount += locals.dividendPerComputor * NUMBER_OF_COMPUTORS;
 			}
 		}
 
-		// Burn fees by transferring to NULL_ID
+		// Burn fees (adds to contract execution fee reserve)
 		if (state.burnEarnedFee > state.burnedAmount)
 		{
 			locals.toBurn = state.burnEarnedFee - state.burnedAmount;
-			qpi.transfer(NULL_ID, locals.toBurn);
+			qpi.burn(locals.toBurn);
 			state.burnedAmount += locals.toBurn;
 		}
 	}
