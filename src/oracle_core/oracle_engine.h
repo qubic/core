@@ -51,7 +51,7 @@ struct OracleQueryMetadata
 
     union
     {
-        /// used before reply is revealed reveal
+        /// used before reply is revealed
         struct
         {
             uint32_t replyStateIndex;
@@ -267,9 +267,8 @@ public:
 
     uint64_t startContractQuery(uint16_t contractIndex, uint32_t interfaceIndex, const void* queryData, uint16_t querySize, uint32_t timeoutMillisec)
     {
-        // TODO: check that querySize matches registered size
         // check inputs
-        if (contractIndex >= MAX_NUMBER_OF_CONTRACTS)
+        if (contractIndex >= MAX_NUMBER_OF_CONTRACTS || interfaceIndex >= OI::oracleInferacesCount || querySize != OI::oracleInferaces[interfaceIndex].querySize)
             return 0;
 
         // check that still have free capacity for the query
@@ -374,10 +373,14 @@ public:
         // update query status flags
         oqm.statusFlags |= (replyMessage->oracleMachineErrorFlags & ORACLE_FLAG_OM_ERROR_FLAGS);
 
-        // TODO: check reply size vs size expected by interface
+        // check reply size vs size expected by interface
+        ASSERT(oqm.interfaceIndex < OI::oracleInferacesCount);
         uint32_t replySize = replyMessageSize - sizeof(OracleMachineReply);
-        if (replySize > MAX_ORACLE_REPLY_SIZE)
+        if (replySize > MAX_ORACLE_REPLY_SIZE || replySize != OI::oracleInferaces[oqm.interfaceIndex].replySize)
+        {
+            oqm.statusFlags |= ORACLE_FLAG_BAD_SIZE_REPLY;
             return;
+        }
 
         // compute digest of reply data
         const void* replyData = replyMessage + 1;
