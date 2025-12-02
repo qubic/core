@@ -1655,7 +1655,12 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 
 static void processOracleMachineReply(Peer* peer, RequestResponseHeader* header)
 {
-    // TODO: make sure to only accept these messages from outgoing connections to OM nodes (for example by checking flag in peer struct here)
+    // Ignore message fron non oracle machine node
+    if (!peer->isOracleMachineNode())
+    {
+        return;
+    }
+
     auto* msg = header->getPayload<OracleMachineReply>();
     if (header->size() >= sizeof(RequestResponseHeader) + sizeof(OracleMachineReply))
     {
@@ -5531,6 +5536,17 @@ static bool initialize()
         logToConsole(message);
     }
 
+    if (NUMBER_OF_OM_NODE_CONNECTIONS > 0)
+    {
+        logToConsole(L"Populating oracle machine node ...");
+        numberOfOMPeers = 0;
+        for (unsigned int i = 0; i < NUMBER_OF_OM_NODE_CONNECTIONS; i++)
+        {
+            const IPv4Address& peer_ip = *reinterpret_cast<const IPv4Address*>(oracleMachineIPs[i]);
+            copyMem(&omIPv4Address[numberOfOMPeers++], &peer_ip, sizeof(IPv4Address));
+        }
+    }
+
     logToConsole(L"Init TCP...");
     if (!initTcp4(PORT))
         return false;
@@ -6680,8 +6696,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                 for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
                 {
-                    // handle new connections
-                    if (peerConnectionNewlyEstablished(i))
+                    // handle new connections. For Oracle Machine, not need the ExchangePublicPeers
+                    if (peerConnectionNewlyEstablished(i) && !peers[i].isOracleMachineNode())
                     {
                         // new connection established:
                         // prepare and send ExchangePublicPeers message
@@ -6778,7 +6794,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && !peers[i].isClosing)
                         {
-                            if (!peers[i].isFullNode())
+                            // Skip FullNode and OM nodes
+                            if (!peers[i].isFullNode() && !peers[i].isOMNode)
                             {
                                 suitablePeerIndices[numberOfSuitablePeers++] = i;
                             }
