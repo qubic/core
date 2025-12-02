@@ -5348,6 +5348,19 @@ static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
             logToConsole(message);
         }
     }
+    
+    logToConsole(L"All contract files successfully loaded or initialized.");
+
+    logToConsole(L"Loading contract execution fee files...");
+
+    if (!executionTimeAccumulator.loadFromFile(CONTRACT_EXEC_FEES_ACC_FILE_NAME, directory))
+        return false;
+
+    if (!executionFeeReportCollector.loadFromFile(CONTRACT_EXEC_FEES_REC_FILE_NAME, directory))
+        return false;
+
+    logToConsole(L"Accumulated execution times and received fee reports successfully loaded.");
+
     return true;
 }
 
