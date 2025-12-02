@@ -415,20 +415,20 @@ static void getComputerDigest(m256i& digest)
                 // This is currently avoided by calling getComputerDigest() from tick processor only (and in non-concurrent init)
                 contractStateLock[digestIndex].acquireRead();
 
-                const unsigned long long startTick = __rdtsc();
+                const unsigned long long startTime = __rdtsc();
                 KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
-                const unsigned long long executionTicks = __rdtsc() - startTick;
+                const unsigned long long executionTime = __rdtsc() - startTime;
 
                 contractStateLock[digestIndex].releaseRead();
 
                 // K12 of state is included in contract execution time
-                _interlockedadd64(&contractTotalExecutionTime[digestIndex], executionTicks);
-                _interlockedadd64(&contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex][digestIndex], executionTicks);
+                _interlockedadd64(&contractTotalExecutionTime[digestIndex], executionTime);
+                executionTimeAccumulator.addTime(digestIndex, executionTime);
 
                 // Gather data for comparing different versions of K12
                 if (K12MeasurementsCount < 500)
                 {
-                    K12MeasurementsSum += executionTicks;
+                    K12MeasurementsSum += executionTime;
                     K12MeasurementsCount++;
                 }
             }
@@ -2946,14 +2946,15 @@ static bool makeAndBroadCastExecutionFeeTransaction(int i, BroadcastFutureTickDa
     payload.transaction.inputType = ExecutionFeeReportTransactionPrefix::transactionType();
 
     // Build the payload with contract execution times
-    const int prevPhaseIndex = !contractExecutionTimeActiveArrayIndex;
+    executionTimeAccumulator.acquireLock();
     unsigned int entryCount = buildExecutionFeeReportPayload(
         payload,
-        contractExecutionTimePerPhase[prevPhaseIndex],
+        executionTimeAccumulator.getPrevPhaseAccumulatedTimes(),
         (system.tick / NUMBER_OF_COMPUTORS) - 1,
         EXECUTION_TIME_MULTIPLIER_NUMERATOR,
         EXECUTION_TIME_MULTIPLIER_DENOMINATOR
     );
+    executionTimeAccumulator.releaseLock();
 
     // Return if no contract was executed during last phase
     if (entryCount == 0)
@@ -5111,7 +5112,10 @@ static void tickProcessor(void*)
                                 updateNumberOfTickTransactions();
                                 pendingTxsPool.incrementFirstStoredTick();
 
-                                switchContractExecutionTimeArray();
+                                if (system.tick % NUMBER_OF_COMPUTORS == 0)
+                                {
+                                    executionTimeAccumulator.startNewAccumulation();
+                                }
                                 // TODO: Check if we need a offset to wait for the last executionFeeReports
                                 // executionFeeReportCollector.processReports();
 

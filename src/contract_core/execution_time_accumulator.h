@@ -1,0 +1,62 @@
+#pragma once
+
+// A class for accumulating contract execution time over a phase.
+// Also saves the accumulation result of the previous phase.
+class ExecutionTimeAccumulator
+{
+private:
+    // Two arrays to accumulate and save the contract execution time (as CPU clock cycles) for two consecutive phases.
+    // This only includes actions that are charged an execution fee (digest computation, system procedures, user procedures).
+    // contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex] is used to accumulate the contract execution ticks for the current phase n.
+    // contractExecutionTimePerPhase[!contractExecutionTimeActiveArrayIndex] saves the contract execution ticks from the previous phase n-1 that are sent out as transactions in phase n.
+    
+    // TODO: check if this overflows with CPU clock cycles, if it does, save in different unit (e.g. milliseconds)
+    long long contractExecutionTimePerPhase[2][contractCount];
+    bool contractExecutionTimeActiveArrayIndex;
+    volatile char lock = 0;
+
+public:
+    void init()
+    {
+        setMem((void*)contractExecutionTimePerPhase, sizeof(contractExecutionTimePerPhase), 0);
+        contractExecutionTimeActiveArrayIndex = 0;
+
+        ASSERT(lock == 0);
+    }
+
+    void acquireLock()
+    {
+        ACQUIRE(lock);
+    }
+
+    void releaseLock()
+    {
+        RELEASE(lock);
+    }
+
+    void startNewAccumulation()
+    {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        addDebugMessage(L"Switched contract execution time array for new accumulation phase");
+#endif
+        ACQUIRE(lock);
+        contractExecutionTimeActiveArrayIndex = !contractExecutionTimeActiveArrayIndex;
+        setMem((void*)contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex], sizeof(contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex]), 0);
+        RELEASE(lock);
+    }
+
+    void addTime(unsigned int contractIndex, unsigned long long time)
+    {
+        ACQUIRE(lock);
+        contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex][contractIndex] += time;
+        RELEASE(lock);
+    }
+
+    // Returns a pointer to the accumulated times from the previous phase for each contract.
+    // Make sure to acquire the lock before calling this function and only release it when finished accessing the returned data.
+    const long long* getPrevPhaseAccumulatedTimes()
+    {
+        return contractExecutionTimePerPhase[!contractExecutionTimeActiveArrayIndex];
+    }
+
+};
