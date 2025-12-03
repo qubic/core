@@ -109,7 +109,7 @@ void testCalculatePercentile(unsigned int seed)
     std::vector<T> referenceVec = vec;
     std::sort(referenceVec.begin(), referenceVec.end());
 
-    T result = calculatePercentileValue<T, 2, 3, SortingOrder::SortAscending>(vec.data(), vec.size());
+    T result = calculatePercentileValue<T, 2, 3, SortingOrder::SortAscending>(vec.data(), static_cast<unsigned int>(vec.size()));
 
     // Calculate expected index: (676 * 2) / 3 = 450
     unsigned int expectedIndex = (676 * 2) / 3;
