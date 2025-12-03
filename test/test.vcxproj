@@ -135,6 +135,7 @@
     <ClCompile Include="contract_testex.cpp" />
     <ClCompile Include="contract_qbay.cpp" />
     <ClCompile Include="contract_nostromo.cpp" />
+    <ClCompile Include="contract_qraffle.cpp" />
     <ClCompile Include="contract_gqmprop.cpp" />
     <ClCompile Include="contract_rl.cpp" />
     <ClCompile Include="contract_qip.cpp" />
