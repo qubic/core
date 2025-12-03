@@ -1170,6 +1170,7 @@ protected:
 		state.initialRegister4 = ID(_E, _U, _O, _N, _A, _Z, _J, _U, _A, _G, _V, _D, _C, _E, _I, _B, _A, _H, _J, _E, _T, _G, _U, _U, _H, _M, _N, _D, _J, _C, _S, _E, _T, _T, _Q, _V, _G, _Y, _F, _H, _M, _D, _P, _X, _T, _A, _L, _D, _Y, _U, _V, _E, _P, _F, _C, _A);
 		state.initialRegister5 = ID(_S, _L, _C, _J, _C, _C, _U, _X, _G, _K, _N, _V, _A, _D, _F, _B, _E, _A, _Y, _V, _L, _S, _O, _B, _Z, _P, _A, _B, _H, _K, _S, _G, _M, _H, _W, _H, _S, _H, _G, _G, _B, _A, _P, _J, _W, _F, _V, _O, _K, _Z, _J, _P, _F, _L, _X, _D);
 		state.QXMRIssuer = ID(_Q, _X, _M, _R, _T, _K, _A, _I, _I, _G, _L, _U, _R, _E, _P, _I, _Q, _P, _C, _M, _H, _C, _K, _W, _S, _I, _P, _D, _T, _U, _Y, _F, _C, _F, _N, _Y, _X, _Q, _L, _T, _E, _C, _S, _U, _J, _V, _Y, _E, _M, _M, _D, _E, _L, _B, _M, _D);
+		state.feeAddress = ID(_H, _H, _R, _L, _C, _Z, _Q, _V, _G, _O, _M, _G, _X, _G, _F, _P, _H, _T, _R, _H, _H, _D, _W, _A, _E, _U, _X, _C, _N, _D, _L, _Z, _S, _Z, _J, _R, _M, _O, _R, _J, _K, _A, _I, _W, _S, _U, _Y, _R, _N, _X, _I, _H, _H, _O, _W, _D);
 
 		state.registers.set(state.initialRegister1, 0);
 		state.registers.set(state.initialRegister2, 0);
