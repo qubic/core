@@ -65,8 +65,8 @@ The type number is usually available from the network message type via the `stat
 - `SpecialCommand`, type 255, defined in `special_command.h`.
 
 Addon messages (supported if addon is enabled):
-- `REQUEST_TX_STATUS`, type 201, defined in `src/addons/tx_status_request.h`.
-- `RESPOND_TX_STATUS`, type 202, defined in `src/addons/tx_status_request.h`.
+- `RequestTxStatus`, type 201, defined in `src/addons/tx_status_request.h`.
+- `RespondTxStatus`, type 202, defined in `src/addons/tx_status_request.h`.
 
 
 ## Peer Sharing
@@ -126,6 +126,7 @@ The message is processed as follows, depending on the message type:
 - The solution will be verified and recorded if it does not already exist in the current node.
 
 ## ...
+
 
 
 
