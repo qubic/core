@@ -360,7 +360,7 @@ const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructProce
     }
 
     // If transfer isn't possible, set invocation reward to 0
-    if (transfer(QPI::id(procContractIndex, 0, 0, 0), invocationReward) < 0)
+    if (__transfer(QPI::id(procContractIndex, 0, 0, 0), invocationReward, TransferType::procedureInvocationByOtherContract) < 0)
         invocationReward = 0;
 
     QpiContextProcedureCall& newContext = *reinterpret_cast<QpiContextProcedureCall*>(buffer);
