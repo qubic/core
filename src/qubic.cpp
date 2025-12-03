@@ -2160,7 +2160,7 @@ static void requestProcessor(void* ProcedureArgument)
 
 #if ADDON_TX_STATUS_REQUEST
                 /* qli: process RequestTxStatus message */
-                case REQUEST_TX_STATUS:
+                case RequestTxStatus::type():
                 {
                     processRequestConfirmedTx(processorNumber, peer, header);
                 }

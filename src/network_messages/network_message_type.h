@@ -49,5 +49,7 @@ enum NetworkMessageType : unsigned char
     RESPOND_CUSTOM_MINING_SOLUTION_VERIFICATION = 63,
     REQUEST_ACTIVE_IPOS = 64,
     RESPOND_ACTIVE_IPO = 65,
+    REQUEST_TX_STATUS = 201, // tx addon only
+    RESPOND_TX_STATUS = 202, // tx addon only
     SPECIAL_COMMAND = 255,
 };
