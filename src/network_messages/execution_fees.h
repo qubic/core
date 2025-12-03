@@ -31,7 +31,7 @@ struct ExecutionFeeReportTransactionPrefix : public Transaction
         unsigned int indicesSize = contractCount * sizeof(unsigned int);
         unsigned int alignmentPadding = (contractCount % 2 == 1) ? sizeof(unsigned int) : 0;
         unsigned int feesSize = contractCount * sizeof(long long);
-        return sizeof(phaseNumber) + sizeof(numEntries) + indicesSize + alignmentPadding + feesSize + sizeof(m256i);
+        return static_cast<unsigned short>(sizeof(phaseNumber) + sizeof(numEntries) + indicesSize + alignmentPadding + feesSize + sizeof(m256i));
     }
 
     static bool isValidExecutionFeeReport(const Transaction* transaction)
