@@ -70,6 +70,7 @@
     <ClInclude Include="network_core\peers.h" />
     <ClInclude Include="network_core\tcp4.h" />
     <ClInclude Include="network_messages\all.h" />
+    <ClInclude Include="network_messages\network_message_type.h" />
     <ClInclude Include="network_messages\assets.h" />
     <ClInclude Include="network_messages\broadcast_message.h" />
     <ClInclude Include="network_messages\common_def.h" />

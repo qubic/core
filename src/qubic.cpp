@@ -275,7 +275,7 @@ static struct
 static struct
 {
     RequestResponseHeader header;
-    RequestedTickTransactions requestedTickTransactions;
+    RequestTickTransactions requestedTickTransactions;
 } requestedTickTransactions;
 
 static struct {
@@ -803,9 +803,9 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
         && request->tick.millisecond <= 999)
     {
         unsigned char digest[32];
-        request->tick.computorIndex ^= BroadcastTick::type;
+        request->tick.computorIndex ^= BroadcastTick::type();
         KangarooTwelve(&request->tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
-        request->tick.computorIndex ^= BroadcastTick::type;
+        request->tick.computorIndex ^= BroadcastTick::type();
         const bool verifyFourQCurve = true;
         if (verifyTickVoteSignature(broadcastedComputors.computors.publicKeys[request->tick.computorIndex].m256i_u8, digest, request->tick.signature, verifyFourQCurve))
         {
@@ -882,9 +882,9 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
         if (ok)
         {
             unsigned char digest[32];
-            request->tickData.computorIndex ^= BroadcastFutureTickData::type;
+            request->tickData.computorIndex ^= BroadcastFutureTickData::type();
             KangarooTwelve(&request->tickData, sizeof(TickData) - SIGNATURE_SIZE, digest, sizeof(digest));
-            request->tickData.computorIndex ^= BroadcastFutureTickData::type;
+            request->tickData.computorIndex ^= BroadcastFutureTickData::type();
             if (verify(broadcastedComputors.computors.publicKeys[request->tickData.computorIndex].m256i_u8, digest, request->tickData.signature))
             {
                 if (header->isDejavuZero())
@@ -996,11 +996,11 @@ static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
 {
     if (broadcastedComputors.computors.epoch)
     {
-        enqueueResponse(peer, sizeof(broadcastedComputors), BroadcastComputors::type, header->dejavu(), &broadcastedComputors);
+        enqueueResponse(peer, sizeof(broadcastedComputors), BroadcastComputors::type(), header->dejavu(), &broadcastedComputors);
     }
     else
     {
-        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
     }
 }
 
@@ -1047,7 +1047,7 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
                 if (tsTick->epoch == tickEpoch)
                 {
                     ts.ticks.acquireLock(computorIndices[index]);
-                    enqueueResponse(peer, sizeof(Tick), BroadcastTick::type, header->dejavu(), tsTick);
+                    enqueueResponse(peer, sizeof(Tick), BroadcastTick::type(), header->dejavu(), tsTick);
                     ts.ticks.releaseLock(computorIndices[index]);
                 }
             }
@@ -1055,7 +1055,7 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
             computorIndices[index] = computorIndices[--numberOfComputorIndices];
         }
     }
-    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
 }
 
 static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
@@ -1064,17 +1064,17 @@ static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
     TickData* td = ts.tickData.getByTickIfNotEmpty(request->requestedTickData.tick);
     if (td)
     {
-        enqueueResponse(peer, sizeof(TickData), BroadcastFutureTickData::type, header->dejavu(), td);
+        enqueueResponse(peer, sizeof(TickData), BroadcastFutureTickData::type(), header->dejavu(), td);
     }
     else
     {
-        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
     }
 }
 
 static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* header)
 {
-    RequestedTickTransactions* request = header->getPayload<RequestedTickTransactions>();
+    RequestTickTransactions* request = header->getPayload<RequestTickTransactions>();
 
     unsigned short tickEpoch = 0;
     const unsigned long long* tsReqTickTransactionOffsets;
@@ -1128,12 +1128,12 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
             tickTransactionIndices[index] = tickTransactionIndices[--numberOfTickTransactions];
         }
     }
-    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
 }
 
 static void processRequestTransactionInfo(Peer* peer, RequestResponseHeader* header)
 {
-    RequestedTransactionInfo* request = header->getPayload<RequestedTransactionInfo>();
+    RequestTransactionInfo* request = header->getPayload<RequestTransactionInfo>();
     const Transaction* transaction = ts.transactionsDigestAccess.findTransaction(request->txDigest);
     if (transaction)
     {
@@ -1141,13 +1141,13 @@ static void processRequestTransactionInfo(Peer* peer, RequestResponseHeader* hea
     }
     else
     {
-        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
     }
 }
 
 static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* header)
 {
-    CurrentTickInfo currentTickInfo;
+    RespondCurrentTickInfo currentTickInfo;
 
     if (broadcastedComputors.computors.epoch)
     {
@@ -1166,17 +1166,17 @@ static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* hea
     }
     else
     {
-        setMem(&currentTickInfo, sizeof(CurrentTickInfo), 0);
+        setMem(&currentTickInfo, sizeof(RespondCurrentTickInfo), 0);
     }
 
-    enqueueResponse(peer, sizeof(currentTickInfo), RESPOND_CURRENT_TICK_INFO, header->dejavu(), &currentTickInfo);
+    enqueueResponse(peer, sizeof(currentTickInfo), RespondCurrentTickInfo::type(), header->dejavu(), &currentTickInfo);
 }
 
 static void processResponseCurrentTickInfo(Peer* peer, RequestResponseHeader* header)
 {
-    if (header->size() == sizeof(RequestResponseHeader) + sizeof(CurrentTickInfo))
+    if (header->size() == sizeof(RequestResponseHeader) + sizeof(RespondCurrentTickInfo))
     {
-        CurrentTickInfo currentTickInfo = *(header->getPayload< CurrentTickInfo>());
+        RespondCurrentTickInfo currentTickInfo = *(header->getPayload<RespondCurrentTickInfo>());
         // avoid malformed data
         if (currentTickInfo.initialTick == system.initialTick
             && currentTickInfo.epoch == system.epoch 
@@ -1190,9 +1190,9 @@ static void processResponseCurrentTickInfo(Peer* peer, RequestResponseHeader* he
 
 static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
 {
-    RespondedEntity respondedEntity;
+    RespondEntity respondedEntity;
 
-    RequestedEntity* request = header->getPayload<RequestedEntity>();
+    RequestEntity* request = header->getPayload<RequestEntity>();
     respondedEntity.entity.publicKey = request->publicKey;
     // Inside spectrumIndex already have acquire/release lock
     respondedEntity.spectrumIndex = spectrumIndex(respondedEntity.entity.publicKey);
@@ -1217,7 +1217,7 @@ static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
     }
 
 
-    enqueueResponse(peer, sizeof(respondedEntity), RESPOND_ENTITY, header->dejavu(), &respondedEntity);
+    enqueueResponse(peer, sizeof(respondedEntity), RespondEntity::type(), header->dejavu(), &respondedEntity);
 }
 
 static void processRequestActiveIPOs(Peer* peer, RequestResponseHeader* header)
@@ -1229,10 +1229,10 @@ static void processRequestActiveIPOs(Peer* peer, RequestResponseHeader* header)
         {
             response.contractIndex = contractIndex;
             copyMem(response.assetName, contractDescriptions[contractIndex].assetName, 8);
-            enqueueResponse(peer, sizeof(RespondActiveIPO), RespondActiveIPO::type, header->dejavu(), &response);
+            enqueueResponse(peer, sizeof(RespondActiveIPO), RespondActiveIPO::type(), header->dejavu(), &response);
         }
     }
-    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
 }
 
 static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
@@ -1257,7 +1257,7 @@ static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
         contractStateLock[request->contractIndex].releaseRead();
     }
 
-    enqueueResponse(peer, sizeof(respondContractIPO), RespondContractIPO::type, header->dejavu(), &respondContractIPO);
+    enqueueResponse(peer, sizeof(respondContractIPO), RespondContractIPO::type(), header->dejavu(), &respondContractIPO);
 }
 
 static void processRequestContractFunction(Peer* peer, const unsigned long long processorNumber, RequestResponseHeader* header)
@@ -1270,7 +1270,7 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
         || system.epoch < contractDescriptions[request->contractIndex].constructionEpoch
         || !contractUserFunctions[request->contractIndex][request->inputType])
     {
-        enqueueResponse(peer, 0, RespondContractFunction::type, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, RespondContractFunction::type(), header->dejavu(), NULL);
     }
     else
     {
@@ -1279,15 +1279,15 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
         if (errorCode == NoContractError)
         {
             // success: respond with function output
-            enqueueResponse(peer, qpiContext.outputSize, RespondContractFunction::type, header->dejavu(), qpiContext.outputBuffer);
+            enqueueResponse(peer, qpiContext.outputSize, RespondContractFunction::type(), header->dejavu(), qpiContext.outputBuffer);
         }
         else
         {
             // error: respond with empty output, send TryAgain if the function was stopped to resolve a potential
             // deadlock
-            unsigned char type = RespondContractFunction::type;
+            unsigned char type = RespondContractFunction::type();
             if (errorCode == ContractErrorStoppedToResolveDeadlock)
-                type = TryAgain::type;
+                type = TryAgain::type();
             enqueueResponse(peer, 0, type, header->dejavu(), NULL);
         }
     }
@@ -1321,7 +1321,7 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.currentEntityBalanceDustThreshold = (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf;
 
     respondedSystemInfo.targetTickVoteSignature = TARGET_TICK_VOTE_SIGNATURE;
-    enqueueResponse(peer, sizeof(respondedSystemInfo), RESPOND_SYSTEM_INFO, header->dejavu(), &respondedSystemInfo);
+    enqueueResponse(peer, sizeof(respondedSystemInfo), RespondSystemInfo::type(), header->dejavu(), &respondedSystemInfo);
 }
 
 
@@ -1331,8 +1331,8 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
 // to prevent it from being re-sent for verification.
 static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, RequestResponseHeader* header)
 {
-    RequestedCustomMiningSolutionVerification* request = header->getPayload<RequestedCustomMiningSolutionVerification>();
-    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestedCustomMiningSolutionVerification) + SIGNATURE_SIZE)
+    RequestCustomMiningSolutionVerification* request = header->getPayload<RequestCustomMiningSolutionVerification>();
+    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestCustomMiningSolutionVerification) + SIGNATURE_SIZE)
     {
         unsigned char digest[32];
         KangarooTwelve(request, header->size() - sizeof(RequestResponseHeader) - SIGNATURE_SIZE, digest, sizeof(digest));
@@ -1387,7 +1387,7 @@ static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, 
             {
                 respond.status = RespondCustomMiningSolutionVerification::customMiningStateEnded;
             }
-            enqueueResponse(peer, sizeof(respond), RespondCustomMiningSolutionVerification::type, header->dejavu(), &respond);
+            enqueueResponse(peer, sizeof(respond), RespondCustomMiningSolutionVerification::type(), header->dejavu(), &respond);
         }
     }
 }
@@ -1400,8 +1400,8 @@ static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, 
 // For the solution respond, only respond solution that has not been verified yet
 static void processCustomMiningDataRequest(Peer* peer, const unsigned long long processorNumber, RequestResponseHeader* header)
 {
-    RequestedCustomMiningData* request = header->getPayload<RequestedCustomMiningData>();
-    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestedCustomMiningData) + SIGNATURE_SIZE)
+    RequestCustomMiningData* request = header->getPayload<RequestCustomMiningData>();
+    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestCustomMiningData) + SIGNATURE_SIZE)
     {
 
         unsigned char digest[32];
@@ -1410,7 +1410,7 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
         {
             unsigned char* respond = NULL;
             // Request tasks
-            if (request->dataType == RequestedCustomMiningData::taskType)
+            if (request->dataType == RequestCustomMiningData::taskType)
             {
                 // For task type, return all data from the current phase
                 ACQUIRE(gCustomMiningTaskStorageLock);
@@ -1427,16 +1427,16 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                     enqueueResponse(
                         peer,
                         (unsigned int)respondDataSize,
-                        RespondCustomMiningData::type, header->dejavu(), respond);
+                        RespondCustomMiningData::type(), header->dejavu(), respond);
                 }
                 else
                 {
-                    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+                    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
                 }
 
             }
             // Request solutions
-            else if (request->dataType == RequestedCustomMiningData::solutionType)
+            else if (request->dataType == RequestCustomMiningData::solutionType)
             {
                 // For solution type, return all solution from the current phase
                 {
@@ -1489,16 +1489,16 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                     enqueueResponse(
                         peer,
                         (unsigned int)respondDataSize,
-                        RespondCustomMiningData::type, header->dejavu(), respondSolution);
+                        RespondCustomMiningData::type(), header->dejavu(), respondSolution);
                 }
                 else
                 {
-                    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+                    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
                 }
             }
             else // Unknonwn type
             {
-                enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+                enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
             }
         }
     }
@@ -1536,7 +1536,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 response.everIncreasingNonceAndCommandType = _request->everIncreasingNonceAndCommandType;
                 response.epoch = _request->epoch;
                 response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch] : SOLUTION_THRESHOLD_DEFAULT;
-                enqueueResponse(peer, sizeof(SpecialCommandSetSolutionThresholdRequestAndResponse), SpecialCommand::type, header->dejavu(), &response);
+                enqueueResponse(peer, sizeof(SpecialCommandSetSolutionThresholdRequestAndResponse), SpecialCommand::type(), header->dejavu(), &response);
             }
             break;
             case SPECIAL_COMMAND_TOGGLE_MAIN_MODE_REQUEST:
@@ -1550,25 +1550,25 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 {
                     mainAuxStatus = _request->mainModeFlag;                    
                 }
-                enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
+                enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeRequestAndResponse), SpecialCommand::type(), header->dejavu(), _request);
             }
             break;
             case SPECIAL_COMMAND_REFRESH_PEER_LIST:
             {
                 forceRefreshPeerList = true;
-                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type(), header->dejavu(), request); // echo back to indicate success
             }
             break;
             case SPECIAL_COMMAND_FORCE_NEXT_TICK:
             {
                 forceNextTick = true;
-                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type(), header->dejavu(), request); // echo back to indicate success
             }
             break;
             case SPECIAL_COMMAND_REISSUE_VOTE:
             {
                 system.latestCreatedTick--;
-                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type(), header->dejavu(), request); // echo back to indicate success
             }
             break;
             case SPECIAL_COMMAND_SEND_TIME:
@@ -1598,7 +1598,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 SpecialCommandSendTime response;
                 response.everIncreasingNonceAndCommandType = (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_SEND_TIME << 56);
                 copyMem(&response.utcTime, &utcTime, sizeof(response.utcTime)); // caution: response.utcTime is subset of global utcTime (smaller size)
-                enqueueResponse(peer, sizeof(SpecialCommandSendTime), SpecialCommand::type, header->dejavu(), &response);
+                enqueueResponse(peer, sizeof(SpecialCommandSendTime), SpecialCommand::type(), header->dejavu(), &response);
             }
             break;
             case SPECIAL_COMMAND_GET_MINING_SCORE_RANKING:
@@ -1618,7 +1618,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                     sizeof(requestMiningScoreRanking.everIncreasingNonceAndCommandType)
                     + sizeof(requestMiningScoreRanking.numberOfRankings)
                     + sizeof(requestMiningScoreRanking.rankings[0]) * requestMiningScoreRanking.numberOfRankings,
-                    SpecialCommand::type,
+                    SpecialCommand::type(),
                     header->dejavu(),
                     &requestMiningScoreRanking);
             }
@@ -1627,14 +1627,14 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             case SPECIAL_COMMAND_FORCE_SWITCH_EPOCH:
             {
                 forceSwitchEpoch = true;
-                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type(), header->dejavu(), request); // echo back to indicate success
             }
             break;
 
             case SPECIAL_COMMAND_CONTINUE_SWITCH_EPOCH:
             {
                 epochTransitionCleanMemoryFlag = 1;
-                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type(), header->dejavu(), request); // echo back to indicate success
             }
             break;
 
@@ -1642,7 +1642,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             {
                 const auto* _request = header->getPayload<SpecialCommandSetConsoleLoggingModeRequestAndResponse>();
                 consoleLoggingLevel = _request->loggingMode;
-                enqueueResponse(peer, sizeof(SpecialCommandSetConsoleLoggingModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
+                enqueueResponse(peer, sizeof(SpecialCommandSetConsoleLoggingModeRequestAndResponse), SpecialCommand::type(), header->dejavu(), _request);
             }
             break;
 
@@ -1667,7 +1667,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 #else
                 response.status = SpecialCommandSaveSnapshotRequestAndResponse::REMOTE_SAVE_MODE_DISABLED;
 #endif
-                enqueueResponse(peer, sizeof(SpecialCommandSaveSnapshotRequestAndResponse), SpecialCommand::type, header->dejavu(), &response);
+                enqueueResponse(peer, sizeof(SpecialCommandSaveSnapshotRequestAndResponse), SpecialCommand::type(), header->dejavu(), &response);
             }
             break;
 
@@ -1980,31 +1980,31 @@ static void requestProcessor(void* ProcedureArgument)
                 RELEASE(requestQueueTailLock);
                 switch (header->type())
                 {
-                case ExchangePublicPeers::type:
+                case ExchangePublicPeers::type():
                 {
                     processExchangePublicPeers(peer, header);
                 }
                 break;
 
-                case BroadcastMessage::type:
+                case BroadcastMessage::type():
                 {
                     processBroadcastMessage(processorNumber, header);
                 }
                 break;
 
-                case BroadcastComputors::type:
+                case BroadcastComputors::type():
                 {
                     processBroadcastComputors(peer, header);
                 }
                 break;
 
-                case BroadcastTick::type:
+                case BroadcastTick::type():
                 {
                     processBroadcastTick(peer, header);
                 }
                 break;
 
-                case BroadcastFutureTickData::type:
+                case BroadcastFutureTickData::type():
                 {
                     processBroadcastFutureTickData(peer, header);
                 }
@@ -2016,143 +2016,143 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
-                case RequestComputors::type:
+                case RequestComputors::type():
                 {
                     processRequestComputors(peer, header);
                 }
                 break;
 
-                case RequestQuorumTick::type:
+                case RequestQuorumTick::type():
                 {
                     processRequestQuorumTick(peer, header);
                 }
                 break;
 
-                case RequestTickData::type:
+                case RequestTickData::type():
                 {
                     processRequestTickData(peer, header);
                 }
                 break;
 
-                case REQUEST_TICK_TRANSACTIONS:
+                case RequestTickTransactions::type():
                 {
                     processRequestTickTransactions(peer, header);
                 }
                 break;
 
-                case REQUEST_TRANSACTION_INFO:
+                case RequestTransactionInfo::type():
                 {
                     processRequestTransactionInfo(peer, header);
                 }
                 break;
 
-                case REQUEST_CURRENT_TICK_INFO:
+                case RequestCurrentTickInfo::type():
                 {
                     processRequestCurrentTickInfo(peer, header);
                 }
                 break;
 
-                case RESPOND_CURRENT_TICK_INFO:
+                case RespondCurrentTickInfo::type():
                 {
                     processResponseCurrentTickInfo(peer, header);
                 }
                 break;
 
-                case REQUEST_ENTITY:
+                case RequestEntity::type():
                 {
                     processRequestEntity(peer, header);
                 }
                 break;
 
-                case RequestActiveIPOs::type:
+                case RequestActiveIPOs::type():
                 {
                     processRequestActiveIPOs(peer, header);
                 }
                 break;
 
-                case RequestContractIPO::type:
+                case RequestContractIPO::type():
                 {
                     processRequestContractIPO(peer, header);
                 }
                 break;
 
-                case RequestIssuedAssets::type:
+                case RequestIssuedAssets::type():
                 {
                     processRequestIssuedAssets(peer, header);
                 }
                 break;
 
-                case RequestOwnedAssets::type:
+                case RequestOwnedAssets::type():
                 {
                     processRequestOwnedAssets(peer, header);
                 }
                 break;
 
-                case RequestPossessedAssets::type:
+                case RequestPossessedAssets::type():
                 {
                     processRequestPossessedAssets(peer, header);
                 }
                 break;
 
-                case RequestContractFunction::type:
+                case RequestContractFunction::type():
                 {
                     processRequestContractFunction(peer, processorNumber, header);
                 }
                 break;
 
-                case RequestLog::type:
+                case RequestLog::type():
                 {
                     logger.processRequestLog(processorNumber, peer, header);
                 }
                 break;
 
-                case RequestLogIdRangeFromTx::type:
+                case RequestLogIdRangeFromTx::type():
                 {
                     logger.processRequestTxLogInfo(processorNumber, peer, header);
                 }
                 break;
 
-                case RequestAllLogIdRangesFromTick::type:
+                case RequestAllLogIdRangesFromTick::type():
                 {
                     logger.processRequestTickTxLogInfo(processorNumber, peer, header);
                 }
                 break;
 
-                case RequestPruningLog::type:
+                case RequestPruningLog::type():
                 {
                     logger.processRequestPrunePageFile(peer, header);
                 }
                 break;
 
-                case RequestLogStateDigest::type:
+                case RequestLogStateDigest::type():
                 {
                     logger.processRequestGetLogDigest(peer, header);
                 }
                 break;
 
-                case REQUEST_SYSTEM_INFO:
+                case RequestSystemInfo::type():
                 {
                     processRequestSystemInfo(peer, header);
                 }
                 break;
 
-                case RequestAssets::type:
+                case RequestAssets::type():
                 {
                     processRequestAssets(peer, header);
                 }
                 break;
-                case RequestedCustomMiningSolutionVerification::type:
+                case RequestCustomMiningSolutionVerification::type():
                 {
                     processRequestedCustomMiningSolutionVerificationRequest(peer, header);
                 }
                 break;
-                case RequestedCustomMiningData::type:
+                case RequestCustomMiningData::type():
                 {
                     processCustomMiningDataRequest(peer, processorNumber, header);
                 }
                 break;
 
-                case SpecialCommand::type:
+                case SpecialCommand::type():
                 {
                     processSpecialCommand(peer, header);
                 }
@@ -3159,7 +3159,7 @@ static void processTick(unsigned long long processorNumber)
 
                     // This is the tick leader in MAIN mode -> construct future tick data (selecting transactions to
                     // include into tick)
-                    broadcastedFutureTickData.tickData.computorIndex = ownComputorIndices[i] ^ BroadcastFutureTickData::type; // We XOR almost all packets with their type value to make sure an entity cannot be tricked into signing one thing while actually signing something else
+                    broadcastedFutureTickData.tickData.computorIndex = ownComputorIndices[i] ^ BroadcastFutureTickData::type(); // We XOR almost all packets with their type value to make sure an entity cannot be tricked into signing one thing while actually signing something else
                     broadcastedFutureTickData.tickData.epoch = system.epoch;
                     broadcastedFutureTickData.tickData.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
 
@@ -3234,10 +3234,10 @@ static void processTick(unsigned long long processorNumber)
 
                     unsigned char digest[32];
                     KangarooTwelve(&broadcastedFutureTickData.tickData, sizeof(TickData) - SIGNATURE_SIZE, digest, sizeof(digest));
-                    broadcastedFutureTickData.tickData.computorIndex ^= BroadcastFutureTickData::type;
+                    broadcastedFutureTickData.tickData.computorIndex ^= BroadcastFutureTickData::type();
                     sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastedFutureTickData.tickData.signature);
 
-                    enqueueResponse(NULL, sizeof(broadcastedFutureTickData), BroadcastFutureTickData::type, 0, &broadcastedFutureTickData);
+                    enqueueResponse(NULL, sizeof(broadcastedFutureTickData), BroadcastFutureTickData::type(), 0, &broadcastedFutureTickData);
                 }
 
                 system.latestLedTick = system.tick;
@@ -4424,7 +4424,7 @@ static void broadcastTickVotes()
     copyMem(&broadcastTick.tick, &etalonTick, sizeof(Tick));
     for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
     {
-        broadcastTick.tick.computorIndex = ownComputorIndices[i] ^ BroadcastTick::type;
+        broadcastTick.tick.computorIndex = ownComputorIndices[i] ^ BroadcastTick::type();
         broadcastTick.tick.epoch = system.epoch;
         m256i saltedData[2];
         saltedData[0] = computorPublicKeys[ownComputorIndicesMapping[i]];
@@ -4446,11 +4446,11 @@ static void broadcastTickVotes()
 
         unsigned char digest[32];
         KangarooTwelve(&broadcastTick.tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
-        broadcastTick.tick.computorIndex ^= BroadcastTick::type;
+        broadcastTick.tick.computorIndex ^= BroadcastTick::type();
         signTickVote(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastTick.tick.signature);
 
 
-        enqueueResponse(NULL, sizeof(broadcastTick), BroadcastTick::type, 0, &broadcastTick);
+        enqueueResponse(NULL, sizeof(broadcastTick), BroadcastTick::type(), 0, &broadcastTick);
         // NOTE: here we don't copy these votes to memory, instead we wait other nodes echoing these votes back because:
         // - if own votes don't get echoed back, that indicates this node has internet/topo issue, and need to reissue vote (F9)
         // - all votes need to be processed in a single place of code (for further handling)
@@ -5254,13 +5254,13 @@ static bool initialize()
     setMem(publicPeers, sizeof(publicPeers), 0);
 
     requestedComputors.header.setSize<sizeof(requestedComputors)>();
-    requestedComputors.header.setType(RequestComputors::type);
+    requestedComputors.header.setType(RequestComputors::type());
     requestedQuorumTick.header.setSize<sizeof(requestedQuorumTick)>();
-    requestedQuorumTick.header.setType(RequestQuorumTick::type);
+    requestedQuorumTick.header.setType(RequestQuorumTick::type());
     requestedTickData.header.setSize<sizeof(requestedTickData)>();
-    requestedTickData.header.setType(RequestTickData::type);
+    requestedTickData.header.setType(RequestTickData::type());
     requestedTickTransactions.header.setSize<sizeof(requestedTickTransactions)>();
-    requestedTickTransactions.header.setType(REQUEST_TICK_TRANSACTIONS);
+    requestedTickTransactions.header.setType(RequestTickTransactions::type());
     requestedTickTransactions.requestedTickTransactions.tick = 0;
 
     if (!initFilesystem())
@@ -6741,7 +6741,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         RequestResponseHeader* requestHeader = (RequestResponseHeader*)peers[i].dataToTransmit;
                         requestHeader->setSize<sizeof(RequestResponseHeader) + sizeof(ExchangePublicPeers)>();
                         requestHeader->randomizeDejavu();
-                        requestHeader->setType(ExchangePublicPeers::type);
+                        requestHeader->setType(ExchangePublicPeers::type());
                         peers[i].dataToTransmitSize = requestHeader->size();
                         _InterlockedIncrement64(&numberOfDisseminatedRequests);
 
