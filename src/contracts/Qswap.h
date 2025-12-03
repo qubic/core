@@ -2267,8 +2267,8 @@ protected:
 		state.qxFeeRate = 5;				// 5% of swap fees to QX
 		state.burnFeeRate = 1;				// 1% of swap fees burned
 
-		// IRUNQTXZRMLDEENHPRZQPSGPCFACORRUJYSBVJPQEHFCEKLLURVDDJVEXNBL
-		state.investRewardsId = ID(_I, _R, _U, _N, _Q, _T, _X, _Z, _R, _M, _L, _D, _E, _E, _N, _H, _P, _R, _Z, _Q, _P, _S, _G, _P, _C, _F, _A, _C, _O, _R, _R, _U, _J, _Y, _S, _B, _V, _J, _P, _Q, _E, _H, _F, _C, _E, _K, _L, _L, _U, _R, _V, _D, _D, _J, _V, _E);
+		// 
+        state.investRewardsId = ID(_V, _J, _G, _R, _U, _F, _W, _J, _C, _U, _S, _N, _H, _C, _Q, _J, _R, _W, _R, _R, _Y, _X, _A, _U, _E, _J, _F, _C, _V, _H, _Y, _P, _X, _W, _K, _T, _D, _L, _Y, _K, _U, _A, _C, _P, _V, _V, _Y, _B, _G, _O, _L, _V, _C, _J, _S, _F);
 	}
 
 	BEGIN_EPOCH()
@@ -2282,8 +2282,8 @@ protected:
 			state.qxFeeRate = 5;				// 5% of swap fees to QX
 			state.burnFeeRate = 1;				// 1% of swap fees burned
 
-			// TODO: new investRewardsId will follow
-			state.investRewardsId = ID(_I, _R, _U, _N, _Q, _T, _X, _Z, _R, _M, _L, _D, _E, _E, _N, _H, _P, _R, _Z, _Q, _P, _S, _G, _P, _C, _F, _A, _C, _O, _R, _R, _U, _J, _Y, _S, _B, _V, _J, _P, _Q, _E, _H, _F, _C, _E, _K, _L, _L, _U, _R, _V, _D, _D, _J, _V, _E);
+            // VJGRUFWJCUSNHCQJRWRRYXAUEJFCVHYPXWKTDLYKUACPVVYBGOLVCJSF(RONJ)
+            state.investRewardsId = ID(_V, _J, _G, _R, _U, _F, _W, _J, _C, _U, _S, _N, _H, _C, _Q, _J, _R, _W, _R, _R, _Y, _X, _A, _U, _E, _J, _F, _C, _V, _H, _Y, _P, _X, _W, _K, _T, _D, _L, _Y, _K, _U, _A, _C, _P, _V, _V, _Y, _B, _G, _O, _L, _V, _C, _J, _S, _F);
 		}
 	}
 
