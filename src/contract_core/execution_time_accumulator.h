@@ -36,13 +36,14 @@ public:
 
     void startNewAccumulation()
     {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Switched contract execution time array for new accumulation phase");
-#endif
         ACQUIRE(lock);
         contractExecutionTimeActiveArrayIndex = !contractExecutionTimeActiveArrayIndex;
         setMem((void*)contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex], sizeof(contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex]), 0);
         RELEASE(lock);
+
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        addDebugMessage(L"Switched contract execution time array for new accumulation phase");
+#endif
     }
 
     void addTime(unsigned int contractIndex, unsigned long long time)
@@ -50,6 +51,15 @@ public:
         ACQUIRE(lock);
         contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex][contractIndex] += time;
         RELEASE(lock);
+
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        CHAR16 dbgMsgBuf[128];
+        setText(dbgMsgBuf, L"Execution time added for contract ");
+        appendNumber(dbgMsgBuf, contractIndex, FALSE);
+        appendText(dbgMsgBuf, L": ");
+        appendNumber(dbgMsgBuf, time, FALSE);
+        addDebugMessage(dbgMsgBuf);
+#endif
     }
 
     // Returns a pointer to the accumulated times from the previous phase for each contract.
