@@ -1,12 +1,16 @@
 #pragma once
 
+#include "network_message_type.h"
+
+
 // Message struture for request custom mining data
-struct RequestedCustomMiningData
+struct RequestCustomMiningData
 {
-    enum
+    static constexpr unsigned char type()
     {
-        type = 60,
-    };
+        return NetworkMessageType::REQUEST_CUSTOM_MINING_DATA;
+    }
+
     enum
     {
         taskType = 0,
@@ -25,10 +29,11 @@ struct RequestedCustomMiningData
 // Message struture for respond custom mining data
 struct RespondCustomMiningData
 {
-    enum
+    static constexpr unsigned char type()
     {
-        type = 61,
-    };
+        return NetworkMessageType::RESPOND_CUSTOM_MINING_DATA;
+    }
+
     enum
     {
         taskType = 0,
@@ -38,12 +43,13 @@ struct RespondCustomMiningData
     // Ussualy: [CustomMiningRespondDataHeader ... NumberOfItems * ItemSize];
 };
 
-struct RequestedCustomMiningSolutionVerification
+struct RequestCustomMiningSolutionVerification
 {
-    enum
+    static constexpr unsigned char type()
     {
-        type = 62,
-    };
+        return NetworkMessageType::REQUEST_CUSTOM_MINING_SOLUTION_VERIFICATION;
+    }
+
     unsigned long long taskIndex;
     unsigned long long nonce;
     unsigned long long encryptionLevel;
@@ -54,10 +60,11 @@ struct RequestedCustomMiningSolutionVerification
 };
 struct RespondCustomMiningSolutionVerification
 {
-    enum
+    static constexpr unsigned char type()
     {
-        type = 63,
-    };
+        return NetworkMessageType::RESPOND_CUSTOM_MINING_SOLUTION_VERIFICATION;
+    }
+
     enum
     {
         notExisted = 0,             // solution not existed in cache

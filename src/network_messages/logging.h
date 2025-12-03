@@ -12,9 +12,10 @@ struct RequestLog
     unsigned long long fromID;
     unsigned long long toID; // inclusive
 
-    enum {
-        type = 44,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_LOG;
+    }
 };
 
 
@@ -22,9 +23,10 @@ struct RespondLog
 {
     // Variable-size log;
 
-    enum {
-        type = 45,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::RESPOND_LOG;
+    }
 };
 
 
@@ -35,21 +37,23 @@ struct RequestLogIdRangeFromTx
     unsigned int tick;
     unsigned int txId;
 
-    enum {
-        type = 48,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_LOG_ID_RANGE_FROM_TX;
+    }
 };
 
 
 // Response logid ranges from tx hash
-struct ResponseLogIdRangeFromTx
+struct RespondLogIdRangeFromTx
 {
     long long fromLogId;
     long long length;
 
-    enum {
-        type = 49,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::RESPOND_LOG_ID_RANGE_FROM_TX;
+    }
 };
 
 // Request logId ranges (fromLogId, length) of all txs from a tick
@@ -58,21 +62,23 @@ struct RequestAllLogIdRangesFromTick
     unsigned long long passcode[4];
     unsigned int tick;
 
-    enum {
-        type = 50,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_ALL_LOG_ID_RANGES_FROM_TX;
+    }
 };
 
 
 // Response logId ranges (fromLogId, length) of all txs from a tick
-struct ResponseAllLogIdRangesFromTick
+struct RespondAllLogIdRangesFromTick
 {
     long long fromLogId[LOG_TX_PER_TICK];
     long long length[LOG_TX_PER_TICK];
 
-    enum {
-        type = 51,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::RESPOND_ALL_LOG_ID_RANGES_FROM_TX;
+    }
 };
 
 // Request the node to prune logs (to save disk)
@@ -82,18 +88,21 @@ struct RequestPruningLog
     unsigned long long fromLogId;
     unsigned long long toLogId;
 
-    enum {
-        type = 56,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_PRUNING_LOG;
+    }
 };
 
 // Response to above request, 0 if success, otherwise error code will be returned
-struct ResponsePruningLog
+struct RespondPruningLog
 {
     long long success;
-    enum {
-        type = 57,
-    };
+
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::RESPOND_PRUNING_LOG;
+    }
 };
 
 // Request the digest of log event state, given requestedTick
@@ -102,16 +111,19 @@ struct RequestLogStateDigest
     unsigned long long passcode[4];
     unsigned int requestedTick;
 
-    enum {
-        type = 58,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_LOG_STATE_DIGEST;
+    }
 };
 
 // Response above request, a 32 bytes digest
-struct ResponseLogStateDigest
+struct RespondLogStateDigest
 {
     m256i digest;
-    enum {
-        type = 59,
-    };
+
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::RESPOND_LOG_STATE_DIGEST;
+    }
 };

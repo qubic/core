@@ -18,7 +18,7 @@ iteration:
     if (universeIndex >= ASSETS_CAPACITY
         || assets[universeIndex].varStruct.issuance.type == EMPTY)
     {
-        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
     }
     else
     {
@@ -30,7 +30,7 @@ iteration:
             response.universeIndex = universeIndex;
             getSiblings<ASSETS_DEPTH>(response.universeIndex, assetDigests, response.siblings);
 
-            enqueueResponse(peer, sizeof(response), RespondIssuedAssets::type, header->dejavu(), &response);
+            enqueueResponse(peer, sizeof(response), RespondIssuedAssets::type(), header->dejavu(), &response);
         }
 
         universeIndex = (universeIndex + 1) & (ASSETS_CAPACITY - 1);
@@ -55,7 +55,7 @@ iteration:
     if (universeIndex >= ASSETS_CAPACITY
         || assets[universeIndex].varStruct.issuance.type == EMPTY)
     {
-        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
     }
     else
     {
@@ -68,7 +68,7 @@ iteration:
             response.universeIndex = universeIndex;
             getSiblings<ASSETS_DEPTH>(response.universeIndex, assetDigests, response.siblings);
 
-            enqueueResponse(peer, sizeof(response), RespondOwnedAssets::type, header->dejavu(), &response);
+            enqueueResponse(peer, sizeof(response), RespondOwnedAssets::type(), header->dejavu(), &response);
         }
 
         universeIndex = (universeIndex + 1) & (ASSETS_CAPACITY - 1);
@@ -93,7 +93,7 @@ iteration:
     if (universeIndex >= ASSETS_CAPACITY
         || assets[universeIndex].varStruct.issuance.type == EMPTY)
     {
-        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
     }
     else
     {
@@ -107,7 +107,7 @@ iteration:
             response.universeIndex = universeIndex;
             getSiblings<ASSETS_DEPTH>(response.universeIndex, assetDigests, response.siblings);
 
-            enqueueResponse(peer, sizeof(response), RespondPossessedAssets::type, header->dejavu(), &response);
+            enqueueResponse(peer, sizeof(response), RespondPossessedAssets::type(), header->dejavu(), &response);
         }
 
         universeIndex = (universeIndex + 1) & (ASSETS_CAPACITY - 1);
@@ -149,7 +149,7 @@ static void processRequestAssets(Peer* peer, RequestResponseHeader* header)
         RespondAssetsWithSiblings payload;
     } response;
     setMemory(response, 0);
-    response.header.setType(RespondAssets::type);
+    response.header.setType(RespondAssets::type());
     response.header.setDejavu(header->dejavu());
 
     // size of output message depends on whether sibilings are requested
@@ -267,5 +267,5 @@ static void processRequestAssets(Peer* peer, RequestResponseHeader* header)
     break;
     }
 
-    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), nullptr);
+    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), nullptr);
 }

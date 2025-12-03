@@ -2,14 +2,22 @@
 
 #include "common_def.h"
 
-#define REQUEST_SYSTEM_INFO 46
-
-
-#define RESPOND_SYSTEM_INFO 47
+struct RequestSystemInfo
+{
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_SYSTEM_INFO;
+    }
+};
 
 #pragma pack(push, 1)
 struct RespondSystemInfo
 {
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::RESPOND_SYSTEM_INFO;
+    }
+
     short version;
     unsigned short epoch;
     unsigned int tick;

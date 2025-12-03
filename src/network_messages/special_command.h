@@ -7,9 +7,10 @@ struct SpecialCommand
 {
     unsigned long long everIncreasingNonceAndCommandType;
 
-    enum {
-        type = 255,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::SPECIAL_COMMAND;
+    }
 };
 
 #define SPECIAL_COMMAND_SHUT_DOWN 0ULL
