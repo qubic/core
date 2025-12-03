@@ -8,12 +8,12 @@ name: EFIBuild
 on:
   push:
     branches: [ "main", "develop" ]
-    paths:
-      - '!doc/*'
+    paths-ignore:
+      - 'doc/**'
   pull_request:
     branches: [ "main", "develop" ]
-    paths:
-      - '!doc/*'
+    paths-ignore:
+      - 'doc/**'
 
 env:
   # Path to the solution file relative to the root of the project.
