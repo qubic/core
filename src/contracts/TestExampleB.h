@@ -559,6 +559,35 @@ public:
 		output.success = qpi.setShareholderVotes(input.otherContractIndex, input.voteData, qpi.invocationReward());
 	}
 
+	// Test inter-contract call error handling
+	struct TestInterContractCallError_input
+	{
+		uint8 dummy; // Dummy field to avoid zero-size struct
+	};
+
+	struct TestInterContractCallError_output
+	{
+		uint8 errorCode;
+		uint8 callSucceeded; // 1 if call happened, 0 if it was skipped
+	};
+
+	struct TestInterContractCallError_locals
+	{
+		TESTEXA::QueryQpiFunctionsToState_input procInput;
+		TESTEXA::QueryQpiFunctionsToState_output procOutput;
+	};
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(TestInterContractCallError)
+	{
+		// Try to invoke a procedure in TestExampleA
+		// This will fail if TestExampleA has insufficient fees
+		INVOKE_OTHER_CONTRACT_PROCEDURE(TESTEXA, QueryQpiFunctionsToState, locals.procInput, locals.procOutput, 0);
+
+		// interContractCallError is now available from the macro
+		output.errorCode = interContractCallError;
+		output.callSucceeded = (interContractCallError == NoCallError) ? 1 : 0;
+	}
+
 	//---------------------------------------------------------------
 	// COMMON PARTS
 
@@ -582,6 +611,7 @@ public:
 		REGISTER_USER_PROCEDURE(QpiBidInIpo, 30);
 		REGISTER_USER_PROCEDURE(SetProposalInOtherContractAsShareholder, 40);
 		REGISTER_USER_PROCEDURE(SetVotesInOtherContractAsShareholder, 41);
+		REGISTER_USER_PROCEDURE(TestInterContractCallError, 50);
 
 		REGISTER_SHAREHOLDER_PROPOSAL_VOTING();
 	}
