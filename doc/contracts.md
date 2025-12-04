@@ -98,6 +98,8 @@ Each contract must be validated with the following steps:
    However, since workflow runs on PRs require maintainer approval, we highly recommend to either build the tool from source or use the GitHub action provided in the tool's repository to analyze your contract header file before opening your PR.   
 2. The features of the contract have to be extensively tested with automated tests implemented within the Qubic Core's GoogleTest framework.
 3. The contract and testing code must be reviewed by at least one of the Qubic Core devs, ensuring it meets high quality standards.
+   For this, open a pull request on GitHub, add a meaningful description about the new contract and request a review from one of the Core devs (preferred: assign via GitHub, otherwise ping on discord).
+   Disclaimer: The Core devs review for compliance with the restricted C++ language subset and the style guidelines. The contract devs are solely responsible for the correctness of the code, including the safety of the funds. 
 4. Before integrating the contract in the official Qubic Core release, the features of the contract must be tested in a test network with multiple nodes, showing that the contract works well in practice and that the nodes run stable with the contract.
 
 After going through this validation process, a contract can be integrated in official releases of the Qubic Core code.
@@ -655,6 +657,7 @@ The file `proposal.cpp` has a lot of examples showing how to use both functions.
 For example, `getProposalIndices()` shows how to call a contract function requiring input and providing output with `runContractFunction()`.
 An example use case of `makeContractTransaction()` can be found in `gqmpropSetProposal()`.
 The function `castVote()` is a more complex example combining both, calling a contract function and invoking a contract procedure.
+
 
 
 
