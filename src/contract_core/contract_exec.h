@@ -710,7 +710,7 @@ bool QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
 
     // Create context
     InterContractCallError callError;
-    const QpiContextProcedureCall* context = __qpiConstructProcedureCallContext(sysProcContractIndex, invocationReward, callError, true);
+    const QpiContextProcedureCall* context = __qpiConstructProcedureCallContext(sysProcContractIndex, invocationReward, callError, /*skipFeeCheck*/ true);
     if (!context)
     {
         if (callError == CallErrorContractInErrorState)
