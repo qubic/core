@@ -2,7 +2,7 @@
 
 // Number of available smart contracts in the QRP contract.
 static constexpr uint16 QRP_AVAILABLE_SC_NUM = 128;
-static constexpr uint64 QRP_QTF_INDEX = 19;
+static constexpr uint64 QRP_QTF_INDEX = 20;
 
 enum class QRPReturnCode : uint8
 {
@@ -117,7 +117,6 @@ public:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(GetReserve)
 	{
-
 		if (!state.availableSmartContracts.contains(qpi.invocator()))
 		{
 			output.allocatedRevenue = 0;
