@@ -2976,26 +2976,6 @@ namespace QPI
 		qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
 		qpi.__qpiFreeLocals()
 
-	// Transfer invocation reward and invoke of other contract (procedure only)
-	// WARNING: input may be changed by called function
-	#define INVOKE_OTHER_CONTRACT_PROCEDURE(contractStateType, procedure, input, output, invocationReward) \
-		static_assert(sizeof(contractStateType::procedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #procedure "_locals size too large"); \
-		static_assert(!contractStateType::__is_function_##procedure, "INVOKE_OTHER_CONTRACT_PROCEDURE() cannot be used to call functions."); \
-		static_assert(!(contractStateType::__contract_index == CONTRACT_STATE_TYPE::__contract_index), "Use CALL() to call a function/procedure of this contract."); \
-		static_assert(contractStateType::__contract_index < CONTRACT_STATE_TYPE::__contract_index, "You can only call contracts with lower index."); \
-		InterContractCallError interContractCallError; \
-		do { \
-			const QpiContextProcedureCall* __ctx = qpi.__qpiConstructProcedureCallContext(contractStateType::__contract_index, invocationReward, interContractCallError); \
-			if (__ctx) { \
-				contractStateType* __state = (contractStateType*)qpi.__qpiAcquireStateForWriting(contractStateType::__contract_index); \
-				contractStateType::procedure##_locals* __locals = (contractStateType::procedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::procedure##_locals)); \
-				contractStateType::procedure(*__ctx, *__state, input, output, *__locals); \
-				qpi.__qpiFreeLocals(); \
-				qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
-				qpi.__qpiFreeContext(); \
-			} \
-		} while(0)
-
 	// Transfer invocation reward and invoke of other contract (procedure only) with custom error variable name
 	// Use this variant when making multiple inter-contract calls in the same scope
 	// WARNING: input may be changed by called function
@@ -3016,6 +2996,11 @@ namespace QPI
 				qpi.__qpiFreeContext(); \
 			} \
 		} while(0)
+
+	// Transfer invocation reward and invoke of other contract (procedure only)
+	// WARNING: input may be changed by called function
+	#define INVOKE_OTHER_CONTRACT_PROCEDURE(contractStateType, procedure, input, output, invocationReward) \
+		INVOKE_OTHER_CONTRACT_PROCEDURE_E(contractStateType, procedure, input, output, invocationReward, interContractCallError)
 
 	#define QUERY_ORACLE(oracle, query) // TODO
 
