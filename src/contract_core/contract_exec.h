@@ -391,10 +391,10 @@ const QpiContextProcedureCall* QPI::QpiContextProcedureCall::__qpiConstructProce
         invocationReward = 0;
 
     callError = NoCallError;
-    QpiContextProcedureCall& newContext = *reinterpret_cast<QpiContextProcedureCall*>(buffer);
-    newContext.init(procContractIndex, _originator, _currentContractId, invocationReward, _entryPoint, _stackIndex);
+    QpiContextProcedureCall* newContext = reinterpret_cast<QpiContextProcedureCall*>(buffer);
+    newContext->init(procContractIndex, _originator, _currentContractId, invocationReward, _entryPoint, _stackIndex);
 
-    return &newContext;
+    return newContext;
 }
 
 // Called after a contract has run a function or procedure of a different contract or a system procedure
