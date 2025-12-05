@@ -37,12 +37,6 @@ constexpr uint8 RL_SHAREHOLDER_FEE_PERCENT = 20;
 /// Burn percent of epoch revenue (0..100).
 constexpr uint8 RL_BURN_PERCENT = 2;
 
-/// Sentinel for "no valid day".
-constexpr uint8 RL_INVALID_DAY = 255;
-
-/// Sentinel for "no valid hour".
-constexpr uint8 RL_INVALID_HOUR = 255;
-
 /// Throttling period: process BEGIN_TICK logic once per this many ticks.
 constexpr uint8 RL_TICK_UPDATE_PERIOD = 100;
 
@@ -52,6 +46,12 @@ constexpr uint8 RL_DEFAULT_DRAW_HOUR = 11; // 11:00 UTC
 constexpr uint8 RL_DEFAULT_SCHEDULE = 1 << WEDNESDAY | 1 << FRIDAY | 1 << SUNDAY; // Draws on WED, FRI, SUN
 
 constexpr uint32 RL_DEFAULT_INIT_TIME = 22 << 9 | 4 << 5 | 13;
+
+constexpr uint64 RL_LOTTO_TOKEN_NAME = 0x4f54544f4cull; // "LOTTO" little-endian
+
+constexpr uint64 RL_DEFAULT_TOKEN_PRICE = 12;
+
+constexpr uint64 RL_TOKEN_REWARD_DIVISOR = 3;
 
 /// Placeholder structure for future extensions.
 struct RL2
@@ -78,11 +78,18 @@ public:
 	 */
 	enum class EState : uint8
 	{
-		SELLING, // Ticket selling is open
-		LOCKED,  // Ticket selling is closed
-
-		INVALID = UINT8_MAX
+		SELLING = 1 << 0, // Ticket selling is open
 	};
+
+	friend EState operator|(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) | static_cast<uint8>(b)); }
+
+	friend EState operator&(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) & static_cast<uint8>(b)); }
+
+	friend EState operator~(const EState& a) { return static_cast<EState>(~static_cast<uint8>(a)); }
+
+	template<typename T> friend bool operator==(const EState& a, const T& b) { return static_cast<uint8>(a) == b; }
+
+	template<typename T> friend bool operator!=(const EState& a, const T& b) { return !(a == b); }
 
 	/**
 	 * @brief Standardized return / error codes for procedures.
@@ -101,13 +108,23 @@ public:
 		// Value-related errors
 		INVALID_VALUE, // Input value is not acceptable
 
+		// Token-related errors
+		TOKEN_TRANSFER_FAILED, // Token transfer to/from the contract failed
+
 		UNKNOWN_ERROR = UINT8_MAX
 	};
+
+	static constexpr uint8 toReturnCode(EReturnCode code) { return static_cast<uint8>(code); }
 
 	struct NextEpochData
 	{
 		uint64 newPrice; // Ticket price to apply after END_EPOCH; 0 means "no change queued"
 		uint8 schedule;  // Schedule bitmask (bit 0 = WEDNESDAY, ..., bit 6 = TUESDAY); applied after END_EPOCH
+	};
+
+	struct TokenData
+	{
+		uint64 pricePerTicket;
 	};
 
 	//---- User-facing I/O structures -------------------------------------------------------------
@@ -117,6 +134,16 @@ public:
 	};
 
 	struct BuyTicket_output
+	{
+		uint8 returnCode;
+	};
+
+	struct BuyTicketWithToken_input
+	{
+		uint64 tokenAmount;
+	};
+
+	struct BuyTicketWithToken_output
 	{
 		uint8 returnCode;
 	};
@@ -229,7 +256,6 @@ public:
 	// Local variables for BuyTicket procedure
 	struct BuyTicket_locals
 	{
-		uint64 price;        // Current ticket price
 		uint64 reward;       // Funds sent with call (invocationReward)
 		uint64 capacity;     // Max capacity of players array
 		uint64 slotsLeft;    // Remaining slots available to fill this epoch
@@ -238,6 +264,18 @@ public:
 		uint64 toBuy;        // Actual number of tickets to purchase (bounded by slotsLeft)
 		uint64 unfilled;     // Portion of desired tickets not purchased due to capacity limit
 		uint64 refundAmount; // Total refund: remainder + unfilled * price
+		uint64 i;            // Loop counter
+	};
+
+	struct BuyTicketWithToken_locals
+	{
+		uint64 slotsLeft;    // Remaining slots available to fill this epoch
+		uint64 desired;      // How many tickets the caller wants to buy
+		uint64 remainder;    // Change to return (tokenAmount % price)
+		uint64 toBuy;        // Actual number of tickets to purchase (bounded by slotsLeft)
+		uint64 unfilled;     // Portion of desired tickets not purchased due to capacity limit
+		uint64 refundAmount; // Total refund in tokens: remainder + unfilled * price
+		uint64 burnAmount;   // Tokens to burn corresponding to purchased tickets
 		uint64 i;            // Loop counter
 	};
 
@@ -276,14 +314,19 @@ public:
 	struct BEGIN_TICK_locals
 	{
 		id winnerAddress;
+		id firstPlayer;
 		m256i mixedSpectrumValue;
 		Entity entity;
 		uint64 revenue;
 		uint64 randomNum;
+		uint64 shuffleIndex;
+		uint64 swapIndex;
 		uint64 winnerAmount;
 		uint64 teamFee;
 		uint64 distributionFee;
 		uint64 burnedAmount;
+		uint64 index;
+		sint64 rewardPerTicket;
 		FillWinnersInfo_locals fillWinnersInfoLocals;
 		FillWinnersInfo_input fillWinnersInfoInput;
 		uint32 currentDateStamp;
@@ -291,10 +334,12 @@ public:
 		uint8 currentHour;
 		uint8 isWednesday;
 		uint8 isScheduledToday;
+		bit hasMultipleParticipants;
 		ReturnAllTickets_locals returnAllTicketsLocals;
 		ReturnAllTickets_input returnAllTicketsInput;
 		ReturnAllTickets_output returnAllTicketsOutput;
 		FillWinnersInfo_output fillWinnersInfoOutput;
+		uint64 tokenPrice;
 	};
 
 	struct GetNextEpochData_input
@@ -324,6 +369,40 @@ public:
 		uint8 schedule;
 	};
 
+	struct GetTokenData_input
+	{
+	};
+	struct GetTokenData_output
+	{
+		TokenData tokenData;
+	};
+
+	struct SetTokenRewardDivisor_input
+	{
+		uint64 tokenRewardDivisor;
+	};
+
+	struct SetTokenRewardDivisor_output
+	{
+		uint8 returnCode;
+	};
+
+	struct TransferToken_input
+	{
+		id newOwner;
+		uint64 amount;
+	};
+
+	struct TransferToken_output
+	{
+		uint8 returnCode;
+	};
+
+	struct TransferToken_locals
+	{
+		id ownerAndPossessor;
+	};
+
 public:
 	/**
 	 * @brief Registers all externally callable functions and procedures with their numeric
@@ -341,9 +420,14 @@ public:
 		REGISTER_USER_FUNCTION(GetNextEpochData, 8);
 		REGISTER_USER_FUNCTION(GetDrawHour, 9);
 		REGISTER_USER_FUNCTION(GetSchedule, 10);
+		REGISTER_USER_FUNCTION(GetTokenData, 11);
+
 		REGISTER_USER_PROCEDURE(BuyTicket, 1);
 		REGISTER_USER_PROCEDURE(SetPrice, 2);
 		REGISTER_USER_PROCEDURE(SetSchedule, 3);
+		REGISTER_USER_PROCEDURE(BuyTicketWithToken, 4);
+		REGISTER_USER_PROCEDURE(SetTokenRewardDivisor, 7);
+		REGISTER_USER_PROCEDURE(TransferToken, 8);
 	}
 
 	/**
@@ -367,7 +451,7 @@ public:
 		state.ticketPrice = RL_TICKET_PRICE;
 
 		// Start in LOCKED state; selling must be explicitly opened with BEGIN_EPOCH
-		state.currentState = EState::LOCKED;
+		enableBuyTicket(state, false);
 
 		// Reset player counter
 		state.playerCounter = 0;
@@ -397,6 +481,21 @@ public:
 
 		// Open selling for the new epoch
 		enableBuyTicket(state, state.lastDrawDateStamp != RL_DEFAULT_INIT_TIME);
+
+		if (!qpi.isAssetIssued(SELF, RL_LOTTO_TOKEN_NAME))
+		{
+			qpi.issueAsset(RL_LOTTO_TOKEN_NAME, SELF, 0, MAX_AMOUNT, 0);
+		}
+
+		if (state.lottoTokenPrice == 0)
+		{
+			state.lottoTokenPrice = RL_DEFAULT_TOKEN_PRICE;
+		}
+
+		if (state.tokenRewardDivisor == 0)
+		{
+			state.tokenRewardDivisor = RL_TOKEN_REWARD_DIVISOR;
+		}
 	}
 
 	END_EPOCH()
@@ -477,12 +576,46 @@ public:
 
 		// Draw
 		{
-			if (state.playerCounter <= 1)
+			locals.hasMultipleParticipants = false;
+			if (state.playerCounter >= 2)
+			{
+				for (locals.index = 1; locals.index < state.playerCounter; ++locals.index)
+				{
+					if (state.players.get(locals.index) != state.players.get(0))
+					{
+						locals.hasMultipleParticipants = true;
+						break;
+					}
+				}
+			}
+
+			if (!locals.hasMultipleParticipants)
 			{
 				ReturnAllTickets(qpi, state, locals.returnAllTicketsInput, locals.returnAllTicketsOutput, locals.returnAllTicketsLocals);
 			}
 			else
 			{
+				// Deterministically shuffle players before drawing so all nodes observe the same order
+				locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
+				locals.mixedSpectrumValue.u64._0 ^= qpi.tick();
+				locals.mixedSpectrumValue.u64._1 ^= state.playerCounter;
+				locals.randomNum = qpi.K12(locals.mixedSpectrumValue).u64._0;
+
+				for (locals.shuffleIndex = state.playerCounter - 1; locals.shuffleIndex > 0; --locals.shuffleIndex)
+				{
+					locals.randomNum ^= locals.randomNum << 13;
+					locals.randomNum ^= locals.randomNum >> 7;
+					locals.randomNum ^= locals.randomNum << 17;
+					locals.swapIndex = mod(locals.randomNum, locals.shuffleIndex + 1);
+
+					if (locals.swapIndex != locals.shuffleIndex)
+					{
+						locals.firstPlayer = state.players.get(locals.shuffleIndex);
+						state.players.set(locals.shuffleIndex, state.players.get(locals.swapIndex));
+						state.players.set(locals.swapIndex, locals.firstPlayer);
+					}
+				}
+
 				// Current contract net balance = incoming - outgoing for this contract
 				qpi.getEntity(SELF, locals.entity);
 				getSCRevenue(locals.entity, locals.revenue);
@@ -493,11 +626,8 @@ public:
 
 					if (state.playerCounter != 0)
 					{
-						locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
-						locals.mixedSpectrumValue.u64._0 ^= qpi.tick();
-						locals.mixedSpectrumValue.u64._1 ^= state.playerCounter;
-						// Compute pseudo-random index based on K12(prevSpectrumDigest ^ tick)
-						locals.randomNum = mod(qpi.K12(locals.mixedSpectrumValue).u64._0, state.playerCounter);
+						locals.randomNum = qpi.K12(locals.mixedSpectrumValue).u64._0;
+						locals.randomNum = mod(locals.randomNum, state.playerCounter);
 
 						// Index directly into players array
 						locals.winnerAddress = state.players.get(locals.randomNum);
@@ -507,10 +637,10 @@ public:
 				if (locals.winnerAddress != id::zero())
 				{
 					// Split revenue by configured percentages
-					locals.winnerAmount = div<uint64>(locals.revenue * state.winnerFeePercent, 100ULL);
-					locals.teamFee = div<uint64>(locals.revenue * state.teamFeePercent, 100ULL);
-					locals.distributionFee = div<uint64>(locals.revenue * state.distributionFeePercent, 100ULL);
-					locals.burnedAmount = div<uint64>(locals.revenue * state.burnPercent, 100ULL);
+					locals.winnerAmount = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.winnerFeePercent)), 100ULL);
+					locals.teamFee = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.teamFeePercent)), 100ULL);
+					locals.distributionFee = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.distributionFeePercent)), 100ULL);
+					locals.burnedAmount = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.burnPercent)), 100ULL);
 
 					// Team payout
 					if (locals.teamFee > 0)
@@ -548,6 +678,23 @@ public:
 				}
 			}
 		}
+
+		// Reward Participants With LOTTO (disabled)
+		// {
+		// 	if (state.playerCounter != 0 && state.tokenRewardDivisor > 0)
+		// 	{
+		// 		if (state.lottoTokenPrice > 0)
+		// 		{
+		// 			locals.rewardPerTicket = max<sint64>(1, div<uint64>(state.lottoTokenPrice, state.tokenRewardDivisor));
+		//
+		// 			for (locals.index = 0; locals.index < state.playerCounter; ++locals.index)
+		// 			{
+		// 				qpi.transferShareOwnershipAndPossession(RL_LOTTO_TOKEN_NAME, SELF, SELF, SELF, locals.rewardPerTicket,
+		// 				                                        state.players.get(locals.index));
+		// 			}
+		// 		}
+		// 	}
+		// }
 
 		clearStateOnEndDraw(state);
 
@@ -604,6 +751,7 @@ public:
 	PUBLIC_FUNCTION(GetNextEpochData) { output.nextEpochData = state.nexEpochData; }
 	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.drawHour; }
 	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.schedule; }
+	PUBLIC_FUNCTION(GetTokenData) { output.tokenData.pricePerTicket = state.lottoTokenPrice; }
 	PUBLIC_FUNCTION_WITH_LOCALS(GetBalance)
 	{
 		qpi.getEntity(SELF, locals.entity);
@@ -612,41 +760,107 @@ public:
 
 	PUBLIC_PROCEDURE(SetPrice)
 	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
 		// Only team/owner can queue a price change
 		if (qpi.invocator() != state.teamAddress)
 		{
-			output.returnCode = static_cast<uint8>(EReturnCode::ACCESS_DENIED);
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
 		// Zero price is invalid
 		if (input.newPrice == 0)
 		{
-			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_INVALID_PRICE);
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
 			return;
 		}
 
 		// Defer application until END_EPOCH
 		state.nexEpochData.newPrice = input.newPrice;
-		output.returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE(SetSchedule)
 	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
 		if (qpi.invocator() != state.teamAddress)
 		{
-			output.returnCode = static_cast<uint8>(EReturnCode::ACCESS_DENIED);
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
 		if (input.newSchedule == 0)
 		{
-			output.returnCode = static_cast<uint8>(EReturnCode::INVALID_VALUE);
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
 
 		state.nexEpochData.schedule = input.newSchedule;
-		output.returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_PROCEDURE(SetTokenRewardDivisor)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (qpi.invocator() != state.ownerAddress)
+		{
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			return;
+		}
+
+		if (input.tokenRewardDivisor == 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		state.tokenRewardDivisor = input.tokenRewardDivisor;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(TransferToken)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (input.amount == 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		if (isZero(input.newOwner))
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		locals.ownerAndPossessor = qpi.invocator() == state.ownerAddress ? SELF : qpi.invocator();
+		if (qpi.numberOfPossessedShares(RL_LOTTO_TOKEN_NAME, SELF, locals.ownerAndPossessor, locals.ownerAndPossessor, SELF_INDEX, SELF_INDEX) <
+		    input.amount)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TOKEN_TRANSFER_FAILED);
+			return;
+		}
+
+		qpi.transferShareOwnershipAndPossession(RL_LOTTO_TOKEN_NAME, SELF, locals.ownerAndPossessor, locals.ownerAndPossessor, input.amount,
+		                                        input.newOwner);
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	/**
@@ -662,28 +876,26 @@ public:
 		locals.reward = qpi.invocationReward();
 
 		// Selling closed: refund any attached funds and exit
-		if (state.currentState == EState::LOCKED)
+		if (!isSellingOpen(state))
 		{
 			if (locals.reward > 0)
 			{
 				qpi.transfer(qpi.invocator(), locals.reward);
 			}
 
-			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_SELLING_CLOSED);
+			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
 			return;
 		}
 
-		locals.price = state.ticketPrice;
-
 		// Not enough to buy even a single ticket: refund everything
-		if (locals.reward < locals.price)
+		if (locals.reward < state.ticketPrice)
 		{
 			if (locals.reward > 0)
 			{
 				qpi.transfer(qpi.invocator(), locals.reward);
 			}
 
-			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_INVALID_PRICE);
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
 			return;
 		}
 
@@ -697,13 +909,13 @@ public:
 			{
 				qpi.transfer(qpi.invocator(), locals.reward);
 			}
-			output.returnCode = static_cast<uint8>(EReturnCode::TICKET_ALL_SOLD_OUT);
+			output.returnCode = toReturnCode(EReturnCode::TICKET_ALL_SOLD_OUT);
 			return;
 		}
 
 		// Compute desired number of tickets and change
-		locals.desired = div(locals.reward, locals.price);    // How many tickets the caller attempts to buy
-		locals.remainder = mod(locals.reward, locals.price);  // Change to return
+		locals.desired = div(locals.reward, state.ticketPrice);    // How many tickets the caller attempts to buy
+		locals.remainder = mod(locals.reward, state.ticketPrice);  // Change to return
 		locals.toBuy = min(locals.desired, locals.slotsLeft); // Do not exceed available slots
 
 		// Add tickets (the same address may be inserted multiple times)
@@ -718,13 +930,76 @@ public:
 
 		// Refund change and unfilled portion (if desired > slotsLeft)
 		locals.unfilled = locals.desired - locals.toBuy;
-		locals.refundAmount = locals.remainder + (locals.unfilled * locals.price);
+		locals.refundAmount = locals.remainder + (smul(locals.unfilled, state.ticketPrice));
 		if (locals.refundAmount > 0)
 		{
 			qpi.transfer(qpi.invocator(), locals.refundAmount);
 		}
 
-		output.returnCode = static_cast<uint8>(EReturnCode::SUCCESS);
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicketWithToken)
+	{
+		// Refund any QU mistakenly attached to a token purchase
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (!isSellingOpen(state))
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
+			return;
+		}
+
+		if (state.lottoTokenPrice == 0 || input.tokenAmount < state.lottoTokenPrice)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
+			return;
+		}
+
+		locals.slotsLeft = (state.playerCounter < state.players.capacity()) ? (state.players.capacity() - state.playerCounter) : 0;
+		if (locals.slotsLeft == 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_ALL_SOLD_OUT);
+			return;
+		}
+
+		// Move tokens from buyer to contract
+		if (qpi.transferShareOwnershipAndPossession(RL_LOTTO_TOKEN_NAME, SELF, qpi.invocator(), qpi.invocator(), input.tokenAmount, SELF) < 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TOKEN_TRANSFER_FAILED);
+			return;
+		}
+
+		locals.desired = div(input.tokenAmount, state.lottoTokenPrice);
+		locals.remainder = mod(input.tokenAmount, state.lottoTokenPrice);
+		locals.toBuy = min(locals.desired, locals.slotsLeft);
+
+		for (locals.i = 0; locals.i < locals.toBuy; ++locals.i)
+		{
+			if (state.playerCounter < state.players.capacity())
+			{
+				state.players.set(state.playerCounter, qpi.invocator());
+				state.playerCounter = min(state.playerCounter + 1, state.players.capacity());
+			}
+		}
+
+		locals.unfilled = locals.desired - locals.toBuy;
+		locals.refundAmount = locals.remainder + (smul(locals.unfilled, state.lottoTokenPrice));
+		if (locals.refundAmount > 0)
+		{
+			qpi.transferShareOwnershipAndPossession(RL_LOTTO_TOKEN_NAME, SELF, SELF, SELF, locals.refundAmount, qpi.invocator());
+		}
+
+		locals.burnAmount = smul(locals.toBuy, state.lottoTokenPrice);
+		if (locals.burnAmount > 0)
+		{
+			qpi.transferShareOwnershipAndPossession(RL_LOTTO_TOKEN_NAME, SELF, SELF, SELF, locals.burnAmount, NULL_ID);
+		}
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 private:
@@ -858,6 +1133,10 @@ protected:
 	 */
 	EState currentState;
 
+	uint64 lottoTokenPrice;
+
+	uint16 tokenRewardDivisor;
+
 protected:
 	static void clearStateOnEndEpoch(RL& state)
 	{
@@ -892,7 +1171,12 @@ protected:
 		}
 	}
 
-	static void enableBuyTicket(RL& state, bool bEnable) { state.currentState = bEnable ? EState::SELLING : EState::LOCKED; }
+	static void enableBuyTicket(RL& state, bool bEnable)
+	{
+		state.currentState = bEnable ? state.currentState | EState::SELLING : state.currentState & ~EState::SELLING;
+	}
+
+	static bool isSellingOpen(const RL& state) { return (state.currentState & EState::SELLING) != 0; }
 
 	static void getWinnerCounter(const RL& state, uint64& outCounter) { outCounter = mod(state.winnersCounter, state.winners.capacity()); }
 
@@ -903,4 +1187,6 @@ protected:
 	static void getSCRevenue(const Entity& entity, uint64& revenue) { revenue = entity.incomingAmount - entity.outgoingAmount; }
 
 	template<typename T> static constexpr const T& min(const T& a, const T& b) { return (a < b) ? a : b; }
+
+	template<typename T> static constexpr const T& max(const T& a, const T& b) { return (a > b) ? a : b; }
 };
