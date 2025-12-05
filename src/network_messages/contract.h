@@ -3,6 +3,23 @@
 #include "common_def.h"
 
 
+struct RequestActiveIPOs
+{
+    enum {
+        type = 64,
+    };
+};
+
+
+struct RespondActiveIPO
+{
+    unsigned int contractIndex;
+    char assetName[8];
+
+    enum {
+        type = 65,
+    };
+};
 
 struct RequestContractIPO
 {
