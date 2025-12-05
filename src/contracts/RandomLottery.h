@@ -679,22 +679,22 @@ public:
 			}
 		}
 
-		// Reward Participants With LOTTO
-		{
-			if (state.playerCounter != 0 && state.tokenRewardDivisor > 0)
-			{
-				if (state.lottoTokenPrice > 0)
-				{
-					locals.rewardPerTicket = max<sint64>(1, div<uint64>(state.lottoTokenPrice, state.tokenRewardDivisor));
-
-					for (locals.index = 0; locals.index < state.playerCounter; ++locals.index)
-					{
-						qpi.transferShareOwnershipAndPossession(RL_LOTTO_TOKEN_NAME, SELF, SELF, SELF, locals.rewardPerTicket,
-						                                        state.players.get(locals.index));
-					}
-				}
-			}
-		}
+		// Reward Participants With LOTTO (disabled)
+		// {
+		// 	if (state.playerCounter != 0 && state.tokenRewardDivisor > 0)
+		// 	{
+		// 		if (state.lottoTokenPrice > 0)
+		// 		{
+		// 			locals.rewardPerTicket = max<sint64>(1, div<uint64>(state.lottoTokenPrice, state.tokenRewardDivisor));
+		//
+		// 			for (locals.index = 0; locals.index < state.playerCounter; ++locals.index)
+		// 			{
+		// 				qpi.transferShareOwnershipAndPossession(RL_LOTTO_TOKEN_NAME, SELF, SELF, SELF, locals.rewardPerTicket,
+		// 				                                        state.players.get(locals.index));
+		// 			}
+		// 		}
+		// 	}
+		// }
 
 		clearStateOnEndDraw(state);
 

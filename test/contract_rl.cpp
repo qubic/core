@@ -1005,7 +1005,7 @@ TEST(ContractRandomLottery, DrawAndPayout_BeginTick)
 	}
 }
 
-TEST(ContractRandomLottery, ParticipantsReceiveLOTTOPerTicketOnDraw)
+/*TEST(ContractRandomLottery, ParticipantsReceiveLOTTOPerTicketOnDraw)
 {
 	ContractTestingRL ctl;
 	ctl.forceSchedule(RL_ANY_DAY_DRAW_SCHEDULE);
@@ -1043,7 +1043,7 @@ TEST(ContractRandomLottery, ParticipantsReceiveLOTTOPerTicketOnDraw)
 	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, playerA, ctl.rlSelf()), rewardPerTicket * 2);
 	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, playerB, ctl.rlSelf()), rewardPerTicket);
 	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractTokensBefore - (rewardPerTicket * 3));
-}
+}*/
 
 TEST(ContractRandomLottery, GetBalance)
 {
