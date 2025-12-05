@@ -37,12 +37,6 @@ constexpr uint8 RL_SHAREHOLDER_FEE_PERCENT = 20;
 /// Burn percent of epoch revenue (0..100).
 constexpr uint8 RL_BURN_PERCENT = 2;
 
-/// Sentinel for "no valid day".
-constexpr uint8 RL_INVALID_DAY = 255;
-
-/// Sentinel for "no valid hour".
-constexpr uint8 RL_INVALID_HOUR = 255;
-
 /// Throttling period: process BEGIN_TICK logic once per this many ticks.
 constexpr uint8 RL_TICK_UPDATE_PERIOD = 100;
 
