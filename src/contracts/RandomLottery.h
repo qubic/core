@@ -363,6 +363,8 @@ public:
 		Entity entity;
 		uint64 revenue;
 		uint64 randomNum;
+		uint64 shuffleIndex;
+		uint64 swapIndex;
 		uint64 winnerAmount;
 		uint64 teamFee;
 		uint64 distributionFee;
@@ -667,6 +669,27 @@ public:
 			}
 			else
 			{
+				// Deterministically shuffle players before drawing so all nodes observe the same order
+				locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
+				locals.mixedSpectrumValue.u64._0 ^= qpi.tick();
+				locals.mixedSpectrumValue.u64._1 ^= state.playerCounter;
+				locals.randomNum = qpi.K12(locals.mixedSpectrumValue).u64._0;
+
+				for (locals.shuffleIndex = state.playerCounter - 1; locals.shuffleIndex > 0; --locals.shuffleIndex)
+				{
+					locals.randomNum ^= locals.randomNum << 13;
+					locals.randomNum ^= locals.randomNum >> 7;
+					locals.randomNum ^= locals.randomNum << 17;
+					locals.swapIndex = mod(locals.randomNum, locals.shuffleIndex + 1);
+
+					if (locals.swapIndex != locals.shuffleIndex)
+					{
+						locals.firstPlayer = state.players.get(locals.shuffleIndex);
+						state.players.set(locals.shuffleIndex, state.players.get(locals.swapIndex));
+						state.players.set(locals.swapIndex, locals.firstPlayer);
+					}
+				}
+
 				// Current contract net balance = incoming - outgoing for this contract
 				qpi.getEntity(SELF, locals.entity);
 				getSCRevenue(locals.entity, locals.revenue);
@@ -677,9 +700,6 @@ public:
 
 					if (state.playerCounter != 0)
 					{
-						locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
-						locals.mixedSpectrumValue.u64._0 ^= qpi.tick();
-						locals.mixedSpectrumValue.u64._1 ^= state.playerCounter;
 						locals.randomNum = qpi.K12(locals.mixedSpectrumValue).u64._0;
 						locals.randomNum = mod(locals.randomNum, state.playerCounter);
 
