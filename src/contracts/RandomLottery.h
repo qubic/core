@@ -447,27 +447,6 @@ public:
 		id ownerAndPossessor;
 	};
 
-	struct TransferShareManagementRights_input
-	{
-		uint32 newManagingContractIndex;
-		sint64 numberOfShares;
-	};
-
-	struct TransferShareManagementRights_output
-	{
-		sint64 transferredNumberOfShares;
-		uint8 returnCode;
-	};
-
-	struct TransferShareManagementRights_locals
-	{
-		QX::Fees_input feesInput;
-		QX::Fees_output feesOutput;
-		Asset asset;
-		sint64 releaseResult;
-		uint64 refundableAmount;
-	};
-
 public:
 	/**
 	 * @brief Registers all externally callable functions and procedures with their numeric
@@ -495,7 +474,6 @@ public:
 		REGISTER_USER_PROCEDURE(RemoveAllowedToken, 6);
 		REGISTER_USER_PROCEDURE(SetTokenRewardDivisor, 7);
 		REGISTER_USER_PROCEDURE(TransferToken, 8);
-		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 9);
 	}
 
 	/**
@@ -1000,80 +978,6 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
-	{
-		if (qpi.invocator() != state.ownerAddress)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
-			return;
-		}
-
-		if (input.numberOfShares <= 0)
-		{
-			output.transferredNumberOfShares = 0;
-			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return;
-		}
-
-		locals.asset.assetName = RL_TOKEN_NAME;
-		locals.asset.issuer = SELF;
-
-		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
-
-		if (qpi.invocationReward() < locals.feesOutput.transferFee)
-		{
-			output.transferredNumberOfShares = 0;
-			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return;
-		}
-
-		if (qpi.numberOfPossessedShares(locals.asset.assetName, locals.asset.issuer, SELF, SELF, SELF_INDEX, SELF_INDEX) < input.numberOfShares)
-		{
-			output.transferredNumberOfShares = 0;
-			output.returnCode = toReturnCode(EReturnCode::TOKEN_TRANSFER_FAILED);
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return;
-		}
-
-		locals.releaseResult = qpi.releaseShares(locals.asset, SELF, SELF, input.numberOfShares, input.newManagingContractIndex,
-		                                         input.newManagingContractIndex, locals.feesOutput.transferFee);
-
-		if (locals.releaseResult < 0)
-		{
-			output.transferredNumberOfShares = 0;
-			output.returnCode = toReturnCode(EReturnCode::TOKEN_TRANSFER_FAILED);
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return;
-		}
-
-		output.transferredNumberOfShares = input.numberOfShares;
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
-
-		if (qpi.invocationReward() > locals.feesOutput.transferFee)
-		{
-			locals.refundableAmount = qpi.invocationReward() - locals.feesOutput.transferFee;
-			qpi.transfer(qpi.invocator(), locals.refundableAmount);
-		}
-	}
-
 	/**
 	 * @brief Attempts to buy tickets while SELLING state is active.
 	 * Logic:
@@ -1188,7 +1092,7 @@ public:
 		}
 
 		// Move tokens from buyer to contract
-		if (qpi.transferShareOwnershipAndPossession(input.tokenName, SELF, qpi.invocator(), qpi.invocator(), input.tokenAmount, SELF) < 0)
+		if (qpi.transferShareOwnershipAndPossession(input.tokenName, SELF, qpi.invocator(), qpi.invocator(), input.tokenAmount, NULL_ID) < 0)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TOKEN_TRANSFER_FAILED);
 			return;
