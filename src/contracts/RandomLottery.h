@@ -47,13 +47,11 @@ constexpr uint8 RL_DEFAULT_SCHEDULE = 1 << WEDNESDAY | 1 << FRIDAY | 1 << SUNDAY
 
 constexpr uint32 RL_DEFAULT_INIT_TIME = 22 << 9 | 4 << 5 | 13;
 
-constexpr uint64 RL_TOKEN_NAME = 0x4f54544f4cull; // "LOTTO" little-endian
+constexpr uint64 RL_LOTTO_TOKEN_NAME = 0x4f54544f4cull; // "LOTTO" little-endian
 
 constexpr uint64 RL_DEFAULT_TOKEN_PRICE = 12;
 
 constexpr uint64 RL_TOKEN_REWARD_DIVISOR = 3;
-
-constexpr uint16 RL_MAX_ALLOWED_TOKENS = 1024;
 
 /// Placeholder structure for future extensions.
 struct RL2
@@ -111,7 +109,6 @@ public:
 		INVALID_VALUE, // Input value is not acceptable
 
 		// Token-related errors
-		TOKEN_NOT_ALLOWED,     // Attempted to pay with a token that is not supported
 		TOKEN_TRANSFER_FAILED, // Token transfer to/from the contract failed
 
 		UNKNOWN_ERROR = UINT8_MAX
@@ -130,12 +127,6 @@ public:
 		uint64 pricePerTicket;
 	};
 
-	struct OutTokenData
-	{
-		uint64 tokenName;
-		TokenData tokenData;
-	};
-
 	//---- User-facing I/O structures -------------------------------------------------------------
 
 	struct BuyTicket_input
@@ -149,7 +140,6 @@ public:
 
 	struct BuyTicketWithToken_input
 	{
-		uint64 tokenName;
 		uint64 tokenAmount;
 	};
 
@@ -266,7 +256,6 @@ public:
 	// Local variables for BuyTicket procedure
 	struct BuyTicket_locals
 	{
-		uint64 price;        // Current ticket price
 		uint64 reward;       // Funds sent with call (invocationReward)
 		uint64 capacity;     // Max capacity of players array
 		uint64 slotsLeft;    // Remaining slots available to fill this epoch
@@ -280,15 +269,14 @@ public:
 
 	struct BuyTicketWithToken_locals
 	{
-		uint64 price;        // Price per ticket in the chosen token
 		uint64 slotsLeft;    // Remaining slots available to fill this epoch
 		uint64 desired;      // How many tickets the caller wants to buy
 		uint64 remainder;    // Change to return (tokenAmount % price)
 		uint64 toBuy;        // Actual number of tickets to purchase (bounded by slotsLeft)
 		uint64 unfilled;     // Portion of desired tickets not purchased due to capacity limit
 		uint64 refundAmount; // Total refund in tokens: remainder + unfilled * price
+		uint64 burnAmount;   // Tokens to burn corresponding to purchased tickets
 		uint64 i;            // Loop counter
-		TokenData tokenData;
 	};
 
 	struct ReturnAllTickets_input
@@ -323,32 +311,6 @@ public:
 		uint8 returnCode;
 	};
 
-	struct AddAllowedToken_input
-	{
-		uint64 tokenName;
-		uint64 tokenPrice;
-	};
-
-	struct AddAllowedToken_output
-	{
-		uint8 returnCode;
-	};
-
-	struct AddAllowedToken_locals
-	{
-		TokenData tokenData;
-	};
-
-	struct RemoveAllowedToken_input
-	{
-		uint64 tokenName;
-	};
-
-	struct RemoveAllowedToken_output
-	{
-		uint8 returnCode;
-	};
-
 	struct BEGIN_TICK_locals
 	{
 		id winnerAddress;
@@ -377,7 +339,7 @@ public:
 		ReturnAllTickets_input returnAllTicketsInput;
 		ReturnAllTickets_output returnAllTicketsOutput;
 		FillWinnersInfo_output fillWinnersInfoOutput;
-		TokenData tokenData;
+		uint64 tokenPrice;
 	};
 
 	struct GetNextEpochData_input
@@ -412,13 +374,7 @@ public:
 	};
 	struct GetTokenData_output
 	{
-		Array<OutTokenData, RL_MAX_ALLOWED_TOKENS> tokenData;
-	};
-	struct GetTokenData_locals
-	{
-		OutTokenData outTokenData;
-		sint64 hashMapIndex;
-		uint64 arrayIndex;
+		TokenData tokenData;
 	};
 
 	struct SetTokenRewardDivisor_input
@@ -470,8 +426,6 @@ public:
 		REGISTER_USER_PROCEDURE(SetPrice, 2);
 		REGISTER_USER_PROCEDURE(SetSchedule, 3);
 		REGISTER_USER_PROCEDURE(BuyTicketWithToken, 4);
-		REGISTER_USER_PROCEDURE(AddAllowedToken, 5);
-		REGISTER_USER_PROCEDURE(RemoveAllowedToken, 6);
 		REGISTER_USER_PROCEDURE(SetTokenRewardDivisor, 7);
 		REGISTER_USER_PROCEDURE(TransferToken, 8);
 	}
@@ -528,14 +482,14 @@ public:
 		// Open selling for the new epoch
 		enableBuyTicket(state, state.lastDrawDateStamp != RL_DEFAULT_INIT_TIME);
 
-		if (!qpi.isAssetIssued(SELF, RL_TOKEN_NAME))
+		if (!qpi.isAssetIssued(SELF, RL_LOTTO_TOKEN_NAME))
 		{
-			qpi.issueAsset(RL_TOKEN_NAME, SELF, 0, MAX_AMOUNT, 0);
+			qpi.issueAsset(RL_LOTTO_TOKEN_NAME, SELF, 0, MAX_AMOUNT, 0);
 		}
 
-		if (state.allowedTokens.getElementIndex(RL_TOKEN_NAME) == NULL_INDEX)
+		if (state.lottoTokenPrice == 0)
 		{
-			state.allowedTokens.set(RL_TOKEN_NAME, {RL_DEFAULT_TOKEN_PRICE});
+			state.lottoTokenPrice = RL_DEFAULT_TOKEN_PRICE;
 		}
 
 		if (state.tokenRewardDivisor == 0)
@@ -729,13 +683,13 @@ public:
 		{
 			if (state.playerCounter != 0 && state.tokenRewardDivisor > 0)
 			{
-				if (getAllowedToken(state, RL_TOKEN_NAME, locals.tokenData) && locals.tokenData.pricePerTicket > 0)
+				if (state.lottoTokenPrice > 0)
 				{
-					locals.rewardPerTicket = max<sint64>(1, div<uint64>(locals.tokenData.pricePerTicket, state.tokenRewardDivisor));
+					locals.rewardPerTicket = max<sint64>(1, div<uint64>(state.lottoTokenPrice, state.tokenRewardDivisor));
 
 					for (locals.index = 0; locals.index < state.playerCounter; ++locals.index)
 					{
-						qpi.transferShareOwnershipAndPossession(RL_TOKEN_NAME, SELF, SELF, SELF, locals.rewardPerTicket,
+						qpi.transferShareOwnershipAndPossession(RL_LOTTO_TOKEN_NAME, SELF, SELF, SELF, locals.rewardPerTicket,
 						                                        state.players.get(locals.index));
 					}
 				}
@@ -797,20 +751,7 @@ public:
 	PUBLIC_FUNCTION(GetNextEpochData) { output.nextEpochData = state.nexEpochData; }
 	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.drawHour; }
 	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.schedule; }
-	PUBLIC_FUNCTION_WITH_LOCALS(GetTokenData)
-	{
-		locals.arrayIndex = 0;
-
-		locals.hashMapIndex = state.allowedTokens.nextElementIndex(NULL_INDEX);
-		while (locals.hashMapIndex != NULL_INDEX)
-		{
-			locals.outTokenData.tokenName = state.allowedTokens.key(locals.hashMapIndex);
-			locals.outTokenData.tokenData = state.allowedTokens.value(locals.hashMapIndex);
-			output.tokenData.set(locals.arrayIndex++, locals.outTokenData);
-
-			locals.hashMapIndex = state.allowedTokens.nextElementIndex(locals.hashMapIndex);
-		}
-	}
+	PUBLIC_FUNCTION(GetTokenData) { output.tokenData.pricePerTicket = state.lottoTokenPrice; }
 	PUBLIC_FUNCTION_WITH_LOCALS(GetBalance)
 	{
 		qpi.getEntity(SELF, locals.entity);
@@ -866,62 +807,6 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	PUBLIC_PROCEDURE_WITH_LOCALS(AddAllowedToken)
-	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
-
-		if (qpi.invocator() != state.ownerAddress)
-		{
-			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
-			return;
-		}
-
-		if (input.tokenPrice == 0)
-		{
-			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
-			return;
-		}
-
-		if (getAllowedToken(state, input.tokenName, locals.tokenData))
-		{
-			locals.tokenData.pricePerTicket = input.tokenPrice;
-			state.allowedTokens.set(input.tokenName, locals.tokenData);
-			output.returnCode = toReturnCode(EReturnCode::SUCCESS);
-			return;
-		}
-
-		if (state.allowedTokens.population() >= state.allowedTokens.capacity())
-		{
-			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
-			return;
-		}
-
-		locals.tokenData.pricePerTicket = input.tokenPrice;
-		state.allowedTokens.set(input.tokenName, locals.tokenData);
-
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
-	}
-
-	PUBLIC_PROCEDURE(RemoveAllowedToken)
-	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
-
-		if (qpi.invocator() != state.ownerAddress)
-		{
-			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
-			return;
-		}
-
-		state.allowedTokens.removeByKey(input.tokenName);
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
-	}
-
 	PUBLIC_PROCEDURE(SetTokenRewardDivisor)
 	{
 		if (qpi.invocationReward() > 0)
@@ -965,14 +850,14 @@ public:
 		}
 
 		locals.ownerAndPossessor = qpi.invocator() == state.ownerAddress ? SELF : qpi.invocator();
-		if (qpi.numberOfPossessedShares(RL_TOKEN_NAME, SELF, locals.ownerAndPossessor, locals.ownerAndPossessor, SELF_INDEX, SELF_INDEX) <
+		if (qpi.numberOfPossessedShares(RL_LOTTO_TOKEN_NAME, SELF, locals.ownerAndPossessor, locals.ownerAndPossessor, SELF_INDEX, SELF_INDEX) <
 		    input.amount)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TOKEN_TRANSFER_FAILED);
 			return;
 		}
 
-		qpi.transferShareOwnershipAndPossession(RL_TOKEN_NAME, SELF, locals.ownerAndPossessor, locals.ownerAndPossessor, input.amount,
+		qpi.transferShareOwnershipAndPossession(RL_LOTTO_TOKEN_NAME, SELF, locals.ownerAndPossessor, locals.ownerAndPossessor, input.amount,
 		                                        input.newOwner);
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
@@ -1002,10 +887,8 @@ public:
 			return;
 		}
 
-		locals.price = state.ticketPrice;
-
 		// Not enough to buy even a single ticket: refund everything
-		if (locals.reward < locals.price)
+		if (locals.reward < state.ticketPrice)
 		{
 			if (locals.reward > 0)
 			{
@@ -1031,8 +914,8 @@ public:
 		}
 
 		// Compute desired number of tickets and change
-		locals.desired = div(locals.reward, locals.price);    // How many tickets the caller attempts to buy
-		locals.remainder = mod(locals.reward, locals.price);  // Change to return
+		locals.desired = div(locals.reward, state.ticketPrice);    // How many tickets the caller attempts to buy
+		locals.remainder = mod(locals.reward, state.ticketPrice);  // Change to return
 		locals.toBuy = min(locals.desired, locals.slotsLeft); // Do not exceed available slots
 
 		// Add tickets (the same address may be inserted multiple times)
@@ -1047,7 +930,7 @@ public:
 
 		// Refund change and unfilled portion (if desired > slotsLeft)
 		locals.unfilled = locals.desired - locals.toBuy;
-		locals.refundAmount = locals.remainder + (smul(locals.unfilled, locals.price));
+		locals.refundAmount = locals.remainder + (smul(locals.unfilled, state.ticketPrice));
 		if (locals.refundAmount > 0)
 		{
 			qpi.transfer(qpi.invocator(), locals.refundAmount);
@@ -1070,15 +953,7 @@ public:
 			return;
 		}
 
-		if (!getAllowedToken(state, input.tokenName, locals.tokenData))
-		{
-			output.returnCode = toReturnCode(EReturnCode::TOKEN_NOT_ALLOWED);
-			return;
-		}
-
-		locals.price = locals.tokenData.pricePerTicket;
-
-		if (locals.price == 0 || input.tokenAmount < locals.price)
+		if (state.lottoTokenPrice == 0 || input.tokenAmount < state.lottoTokenPrice)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
 			return;
@@ -1092,14 +967,14 @@ public:
 		}
 
 		// Move tokens from buyer to contract
-		if (qpi.transferShareOwnershipAndPossession(input.tokenName, SELF, qpi.invocator(), qpi.invocator(), input.tokenAmount, NULL_ID) < 0)
+		if (qpi.transferShareOwnershipAndPossession(RL_LOTTO_TOKEN_NAME, SELF, qpi.invocator(), qpi.invocator(), input.tokenAmount, SELF) < 0)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TOKEN_TRANSFER_FAILED);
 			return;
 		}
 
-		locals.desired = div(input.tokenAmount, locals.price);
-		locals.remainder = mod(input.tokenAmount, locals.price);
+		locals.desired = div(input.tokenAmount, state.lottoTokenPrice);
+		locals.remainder = mod(input.tokenAmount, state.lottoTokenPrice);
 		locals.toBuy = min(locals.desired, locals.slotsLeft);
 
 		for (locals.i = 0; locals.i < locals.toBuy; ++locals.i)
@@ -1112,10 +987,16 @@ public:
 		}
 
 		locals.unfilled = locals.desired - locals.toBuy;
-		locals.refundAmount = locals.remainder + (smul(locals.unfilled, locals.price));
+		locals.refundAmount = locals.remainder + (smul(locals.unfilled, state.lottoTokenPrice));
 		if (locals.refundAmount > 0)
 		{
-			qpi.transferShareOwnershipAndPossession(input.tokenName, SELF, SELF, SELF, locals.refundAmount, qpi.invocator());
+			qpi.transferShareOwnershipAndPossession(RL_LOTTO_TOKEN_NAME, SELF, SELF, SELF, locals.refundAmount, qpi.invocator());
+		}
+
+		locals.burnAmount = smul(locals.toBuy, state.lottoTokenPrice);
+		if (locals.burnAmount > 0)
+		{
+			qpi.transferShareOwnershipAndPossession(RL_LOTTO_TOKEN_NAME, SELF, SELF, SELF, locals.burnAmount, NULL_ID);
 		}
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
@@ -1252,7 +1133,7 @@ protected:
 	 */
 	EState currentState;
 
-	HashMap<uint64, TokenData, RL_MAX_ALLOWED_TOKENS> allowedTokens;
+	uint64 lottoTokenPrice;
 
 	uint16 tokenRewardDivisor;
 
@@ -1308,6 +1189,4 @@ protected:
 	template<typename T> static constexpr const T& min(const T& a, const T& b) { return (a < b) ? a : b; }
 
 	template<typename T> static constexpr const T& max(const T& a, const T& b) { return (a > b) ? a : b; }
-
-	static bool getAllowedToken(const RL& state, uint64 tokenName, TokenData& outToken) { return state.allowedTokens.get(tokenName, outToken); }
 };

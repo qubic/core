@@ -7,8 +7,6 @@ constexpr uint16 PROCEDURE_INDEX_BUY_TICKET = 1;
 constexpr uint16 PROCEDURE_INDEX_SET_PRICE = 2;
 constexpr uint16 PROCEDURE_INDEX_SET_SCHEDULE = 3;
 constexpr uint16 PROCEDURE_INDEX_BUY_TICKET_WITH_TOKEN = 4;
-constexpr uint16 PROCEDURE_INDEX_ADD_ALLOWED_TOKEN = 5;
-constexpr uint16 PROCEDURE_INDEX_REMOVE_ALLOWED_TOKEN = 6;
 constexpr uint16 PROCEDURE_INDEX_SET_TOKEN_REWARD_DIVISOR = 7;
 constexpr uint16 PROCEDURE_INDEX_TRANSFER_TOKEN = 8;
 constexpr uint16 PROCEDURE_INDEX_TRANSFER_SHARE_MANAGEMENT_RIGHTS = 9;
@@ -38,10 +36,22 @@ static uint32 makeDateStamp(uint16 year, uint8 month, uint8 day)
 	return static_cast<uint32>(shortYear << 9 | month << 5 | day);
 }
 
-inline bool operator==(uint8 left, RL::EReturnCode right) { return left == RL::toReturnCode(right); }
-inline bool operator==(RL::EReturnCode left, uint8 right) { return right == left; }
-inline bool operator!=(uint8 left, RL::EReturnCode right) { return !(left == right); }
-inline bool operator!=(RL::EReturnCode left, uint8 right) { return !(right == left); }
+inline bool operator==(uint8 left, RL::EReturnCode right)
+{
+	return left == RL::toReturnCode(right);
+}
+inline bool operator==(RL::EReturnCode left, uint8 right)
+{
+	return right == left;
+}
+inline bool operator!=(uint8 left, RL::EReturnCode right)
+{
+	return !(left == right);
+}
+inline bool operator!=(RL::EReturnCode left, uint8 right)
+{
+	return !(right == left);
+}
 
 // Equality operator for comparing WinnerInfo objects
 // Compares all fields (address, revenue, epoch, tick, dayOfWeek)
@@ -126,37 +136,6 @@ public:
 
 	void setScheduleMask(uint8 newMask) { schedule = newMask; }
 
-	void expectAllowedToken(uint64 tokenName, uint64 expectedPrice) const
-	{
-		RL::TokenData tokenData{};
-		EXPECT_TRUE(getAllowedToken(*this, tokenName, tokenData));
-		EXPECT_EQ(tokenData.pricePerTicket, expectedPrice);
-	}
-
-	bool hasAllowedToken(uint64 tokenName) const
-	{
-		RL::TokenData tokenData{};
-		return getAllowedToken(*this, tokenName, tokenData);
-	}
-
-	bool tokenDataOutputContains(const RL::GetTokenData_output& out, uint64 tokenName, uint64 expectedPrice) const
-	{
-		for (uint64 i = 0; i < out.tokenData.capacity(); ++i)
-		{
-			const auto entry = out.tokenData.get(i);
-			if (entry.tokenName == 0)
-			{
-				continue;
-			}
-
-			if (entry.tokenName == tokenName)
-			{
-				return entry.tokenData.pricePerTicket == expectedPrice;
-			}
-		}
-		return false;
-	}
-
 	uint64 getPlayerCounter() const { return playerCounter; }
 
 	uint64 getTicketPrice() const { return ticketPrice; }
@@ -168,6 +147,10 @@ public:
 	uint32 getLastDrawDateStamp() const { return lastDrawDateStamp; }
 
 	uint64 getTokenRewardDivisor() const { return tokenRewardDivisor; }
+
+	uint64 getLottoTokenPrice() const { return lottoTokenPrice; }
+
+	void setLottoTokenPrice(uint64 price) { lottoTokenPrice = price; }
 };
 
 class ContractTestingRL : protected ContractTesting
@@ -298,9 +281,9 @@ public:
 		return output;
 	}
 
-	RL::BuyTicketWithToken_output buyTicketWithToken(const id& user, uint64 tokenName, uint64 tokenAmount)
+	RL::BuyTicketWithToken_output buyTicketWithToken(const id& user, uint64 tokenAmount)
 	{
-		RL::BuyTicketWithToken_input input{tokenName, tokenAmount};
+		RL::BuyTicketWithToken_input input{tokenAmount};
 		RL::BuyTicketWithToken_output output;
 		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_BUY_TICKET_WITH_TOKEN, input, output, user, 0))
 		{
@@ -335,28 +318,6 @@ public:
 		return output;
 	}
 
-	RL::AddAllowedToken_output addAllowedToken(const id& invocator, uint64 tokenName, uint64 tokenPrice)
-	{
-		RL::AddAllowedToken_input input{tokenName, tokenPrice};
-		RL::AddAllowedToken_output output;
-		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_ADD_ALLOWED_TOKEN, input, output, invocator, 0))
-		{
-			output.returnCode = RL::toReturnCode(RL::EReturnCode::UNKNOWN_ERROR);
-		}
-		return output;
-	}
-
-	RL::RemoveAllowedToken_output removeAllowedToken(const id& invocator, uint64 tokenName, uint64 reward = 0)
-	{
-		RL::RemoveAllowedToken_input input{tokenName};
-		RL::RemoveAllowedToken_output output{};
-		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_REMOVE_ALLOWED_TOKEN, input, output, invocator, reward))
-		{
-			output.returnCode = RL::toReturnCode(RL::EReturnCode::UNKNOWN_ERROR);
-		}
-		return output;
-	}
-
 	RL::SetTokenRewardDivisor_output setTokenRewardDivisor(const id& invocator, uint64 divisor)
 	{
 		RL::SetTokenRewardDivisor_input input{divisor};
@@ -373,18 +334,6 @@ public:
 		RL::TransferToken_input input{newOwner, amount};
 		RL::TransferToken_output output{};
 		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_TRANSFER_TOKEN, input, output, invocator, 0))
-		{
-			output.returnCode = RL::toReturnCode(RL::EReturnCode::UNKNOWN_ERROR);
-		}
-		return output;
-	}
-
-	RL::TransferShareManagementRights_output transferShareManagementRights(
-		const id& invocator, uint32 newManagingContractIndex, sint64 numberOfShares, uint64 invocationReward)
-	{
-		RL::TransferShareManagementRights_input input{newManagingContractIndex, numberOfShares};
-		RL::TransferShareManagementRights_output output{};
-		if (!invokeUserProcedure(RL_CONTRACT_INDEX, PROCEDURE_INDEX_TRANSFER_SHARE_MANAGEMENT_RIGHTS, input, output, invocator, invocationReward))
 		{
 			output.returnCode = RL::toReturnCode(RL::EReturnCode::UNKNOWN_ERROR);
 		}
@@ -426,25 +375,6 @@ public:
 		increaseEnergy(user, ticketPrice * 2);
 		const RL::BuyTicket_output out = ctl.buyTicket(user, ticketPrice);
 		EXPECT_EQ(out.returnCode, RL::EReturnCode::SUCCESS);
-	}
-
-	uint64 issueManagedTokenToUser(uint64 tokenName, const id& user, uint64 amount)
-	{
-		int issuanceIdx = -1;
-		int ownershipIdx = -1;
-		int possessionIdx = -1;
-
-		char tokenNameBuf[8];
-		encodeTokenName(tokenName, tokenNameBuf);
-		EXPECT_EQ(issueAsset(rlSelf(), tokenNameBuf, 0, CONTRACT_ASSET_UNIT_OF_MEASUREMENT, amount, RL_CONTRACT_INDEX, &issuanceIdx, &ownershipIdx,
-		                       &possessionIdx),
-		          amount);
-
-		int dstOwnershipIdx = -1;
-		int dstPossessionIdx = -1;
-		EXPECT_TRUE(transferShareOwnershipAndPossession(ownershipIdx, possessionIdx, user, amount, &dstOwnershipIdx, &dstPossessionIdx, true));
-
-		return tokenName;
 	}
 
 	sint64 tokenBalance(uint64 assetName, const id& owner, const id& issuer) const
@@ -1083,10 +1013,10 @@ TEST(ContractRandomLottery, ParticipantsReceiveLOTTOPerTicketOnDraw)
 	const uint64 ticketPrice = ctl.state()->getTicketPrice();
 	constexpr uint64 tokenPrice = 15;
 	constexpr uint64 rewardDivisor = 5;
+	ctl.state()->setLottoTokenPrice(tokenPrice);
 	ctl.beginEpochWithValidTime();
 
 	increaseEnergy(RL_DEV_ADDRESS, 1);
-	EXPECT_EQ(ctl.addAllowedToken(RL_DEV_ADDRESS, RL_TOKEN_NAME, tokenPrice).returnCode, RL::EReturnCode::SUCCESS);
 	EXPECT_EQ(ctl.setTokenRewardDivisor(RL_DEV_ADDRESS, rewardDivisor).returnCode, RL::EReturnCode::SUCCESS);
 	EXPECT_EQ(ctl.state()->getTokenRewardDivisor(), rewardDivisor);
 
@@ -1097,22 +1027,22 @@ TEST(ContractRandomLottery, ParticipantsReceiveLOTTOPerTicketOnDraw)
 	increaseEnergy(playerA, ticketPrice * 3);
 	increaseEnergy(playerB, ticketPrice * 2);
 
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, playerA, ctl.rlSelf()), 0);
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, playerB, ctl.rlSelf()), 0);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, playerA, ctl.rlSelf()), 0);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, playerB, ctl.rlSelf()), 0);
 
 	EXPECT_EQ(ctl.buyTicket(playerA, ticketPrice).returnCode, RL::EReturnCode::SUCCESS);
 	EXPECT_EQ(ctl.buyTicket(playerA, ticketPrice).returnCode, RL::EReturnCode::SUCCESS);
 	EXPECT_EQ(ctl.buyTicket(playerB, ticketPrice).returnCode, RL::EReturnCode::SUCCESS);
 	EXPECT_EQ(ctl.state()->getPlayerCounter(), 3u);
 
-	const sint64 contractTokensBefore = ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
+	const sint64 contractTokensBefore = ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
 
 	ctl.advanceOneDayAndDraw();
 
 	EXPECT_EQ(ctl.state()->getPlayerCounter(), 0u);
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, playerA, ctl.rlSelf()), rewardPerTicket * 2);
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, playerB, ctl.rlSelf()), rewardPerTicket);
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractTokensBefore - (rewardPerTicket * 3));
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, playerA, ctl.rlSelf()), rewardPerTicket * 2);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, playerB, ctl.rlSelf()), rewardPerTicket);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractTokensBefore - (rewardPerTicket * 3));
 }
 
 TEST(ContractRandomLottery, GetBalance)
@@ -1484,67 +1414,17 @@ TEST(ContractRandomLottery, GetDrawHour_DefaultAfterBeginEpoch)
 	EXPECT_EQ(ctl.getDrawHour().drawHour, RL_DEFAULT_DRAW_HOUR);
 }
 
-TEST(ContractRandomLottery, DefaultTokenAddedOnBeginEpochAndListed)
+TEST(ContractRandomLottery, LottoTokenPrice_DefaultExposed)
 {
 	ContractTestingRL ctl;
 
-	EXPECT_FALSE(ctl.state()->hasAllowedToken(RL_TOKEN_NAME));
+	EXPECT_EQ(ctl.state()->getLottoTokenPrice(), 0u);
 
 	ctl.beginEpochWithValidTime();
-	EXPECT_TRUE(ctl.state()->hasAllowedToken(RL_TOKEN_NAME));
-	ctl.state()->expectAllowedToken(RL_TOKEN_NAME, RL_DEFAULT_TOKEN_PRICE);
+	EXPECT_EQ(ctl.state()->getLottoTokenPrice(), RL_DEFAULT_TOKEN_PRICE);
 
 	const RL::GetTokenData_output out = ctl.getTokenData();
-	EXPECT_TRUE(ctl.state()->tokenDataOutputContains(out, RL_TOKEN_NAME, RL_DEFAULT_TOKEN_PRICE));
-}
-
-TEST(ContractRandomLottery, AllowedTokens_AddUpdateAndRemove)
-{
-	ContractTestingRL ctl;
-
-	const uint64 tokenName = assetNameFromString("TOKADD");
-	constexpr uint64 initialPrice = 111;
-	constexpr uint64 updatedPrice = 222;
-	const id randomUser = id::randomValue();
-
-	increaseEnergy(randomUser, 1);
-	const RL::AddAllowedToken_output denied = ctl.addAllowedToken(randomUser, tokenName, initialPrice);
-	EXPECT_EQ(denied.returnCode, RL::EReturnCode::ACCESS_DENIED);
-	EXPECT_FALSE(ctl.state()->hasAllowedToken(tokenName));
-
-	increaseEnergy(RL_DEV_ADDRESS, 1);
-	const RL::AddAllowedToken_output invalid = ctl.addAllowedToken(RL_DEV_ADDRESS, tokenName, 0);
-	EXPECT_EQ(invalid.returnCode, RL::EReturnCode::TICKET_INVALID_PRICE);
-	EXPECT_FALSE(ctl.state()->hasAllowedToken(tokenName));
-
-	increaseEnergy(RL_DEV_ADDRESS, 1);
-	const RL::AddAllowedToken_output ok = ctl.addAllowedToken(RL_DEV_ADDRESS, tokenName, initialPrice);
-	EXPECT_EQ(ok.returnCode, RL::EReturnCode::SUCCESS);
-	ctl.state()->expectAllowedToken(tokenName, initialPrice);
-
-	increaseEnergy(RL_DEV_ADDRESS, 1);
-	const RL::AddAllowedToken_output updated = ctl.addAllowedToken(RL_DEV_ADDRESS, tokenName, updatedPrice);
-	EXPECT_EQ(updated.returnCode, RL::EReturnCode::SUCCESS);
-	ctl.state()->expectAllowedToken(tokenName, updatedPrice);
-	const RL::GetTokenData_output outAfterUpdate = ctl.getTokenData();
-	EXPECT_TRUE(ctl.state()->tokenDataOutputContains(outAfterUpdate, tokenName, updatedPrice));
-
-	constexpr uint64 invocationReward = 12345;
-	increaseEnergy(randomUser, invocationReward);
-	const uint64 randomBalanceBefore = getBalance(randomUser);
-	const RL::RemoveAllowedToken_output removeDenied = ctl.removeAllowedToken(randomUser, tokenName, invocationReward);
-	EXPECT_EQ(removeDenied.returnCode, RL::EReturnCode::ACCESS_DENIED);
-	EXPECT_EQ(getBalance(randomUser), randomBalanceBefore);
-	ctl.state()->expectAllowedToken(tokenName, updatedPrice);
-
-	increaseEnergy(RL_DEV_ADDRESS, invocationReward);
-	const uint64 devBalanceBefore = getBalance(RL_DEV_ADDRESS);
-	const RL::RemoveAllowedToken_output removeOk = ctl.removeAllowedToken(RL_DEV_ADDRESS, tokenName, invocationReward);
-	EXPECT_EQ(removeOk.returnCode, RL::EReturnCode::SUCCESS);
-	EXPECT_EQ(getBalance(RL_DEV_ADDRESS), devBalanceBefore);
-	EXPECT_FALSE(ctl.state()->hasAllowedToken(tokenName));
-	const RL::GetTokenData_output outAfterRemove = ctl.getTokenData();
-	EXPECT_FALSE(ctl.state()->tokenDataOutputContains(outAfterRemove, tokenName, updatedPrice));
+	EXPECT_EQ(out.tokenData.pricePerTicket, RL_DEFAULT_TOKEN_PRICE);
 }
 
 TEST(ContractRandomLottery, TokenRewardDivisor_SetAccessAndValidation)
@@ -1577,7 +1457,7 @@ TEST(ContractRandomLottery, TransferToken_OwnerCanDistributeContractTokens)
 	ContractTestingRL ctl;
 	ctl.beginEpochWithValidTime();
 
-	const sint64 contractTokensBefore = ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
+	const sint64 contractTokensBefore = ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
 	ASSERT_GT(contractTokensBefore, 0);
 
 	const id recipient = id::randomValue();
@@ -1586,8 +1466,8 @@ TEST(ContractRandomLottery, TransferToken_OwnerCanDistributeContractTokens)
 	increaseEnergy(RL_DEV_ADDRESS, 1);
 	ctl.transferToken(RL_DEV_ADDRESS, recipient, transferAmount);
 
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, recipient, ctl.rlSelf()), transferAmount);
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractTokensBefore - transferAmount);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, recipient, ctl.rlSelf()), transferAmount);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractTokensBefore - transferAmount);
 }
 
 TEST(ContractRandomLottery, TransferToken_UserCanTransferOwnedTokensAndFailsWhenInsufficient)
@@ -1601,18 +1481,18 @@ TEST(ContractRandomLottery, TransferToken_UserCanTransferOwnedTokensAndFailsWhen
 	increaseEnergy(RL_DEV_ADDRESS, 1);
 	constexpr uint64 seedAmount = 3;
 	ctl.transferToken(RL_DEV_ADDRESS, user, seedAmount);
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, user, ctl.rlSelf()), seedAmount);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, user, ctl.rlSelf()), seedAmount);
 
 	increaseEnergy(user, 1);
 	ctl.transferToken(user, target, seedAmount + 1); // insufficient balance
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, user, ctl.rlSelf()), seedAmount);
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, target, ctl.rlSelf()), 0);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, user, ctl.rlSelf()), seedAmount);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, target, ctl.rlSelf()), 0);
 
 	increaseEnergy(user, 1);
 	constexpr uint64 sendAmount = seedAmount - 1;
 	ctl.transferToken(user, target, sendAmount);
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, user, ctl.rlSelf()), seedAmount - sendAmount);
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, target, ctl.rlSelf()), sendAmount);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, user, ctl.rlSelf()), seedAmount - sendAmount);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, target, ctl.rlSelf()), sendAmount);
 }
 
 TEST(ContractRandomLottery, TransferToken_NoOpForZeroAmountOrRecipient)
@@ -1620,161 +1500,81 @@ TEST(ContractRandomLottery, TransferToken_NoOpForZeroAmountOrRecipient)
 	ContractTestingRL ctl;
 	ctl.beginEpochWithValidTime();
 
-	const sint64 contractTokensBefore = ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
+	const sint64 contractTokensBefore = ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
 	ASSERT_GT(contractTokensBefore, 0);
 
 	const id recipient = id::randomValue();
 
 	increaseEnergy(RL_DEV_ADDRESS, 1);
 	ctl.transferToken(RL_DEV_ADDRESS, recipient, 0);
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractTokensBefore);
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, recipient, ctl.rlSelf()), 0);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractTokensBefore);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, recipient, ctl.rlSelf()), 0);
 
 	increaseEnergy(RL_DEV_ADDRESS, 1);
 	ctl.transferToken(RL_DEV_ADDRESS, id::zero(), 1);
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractTokensBefore);
-}
-
-TEST(ContractRandomLottery, TransferShareManagementRights_SucceedsAndRefundsRemainder)
-{
-	ContractTestingRL ctl;
-	ctl.beginEpochWithValidTime();
-
-	const uint32 transferFee = ctl.qxTransferFee();
-	const sint64 available = ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
-	ASSERT_GT(available, 10);
-
-	constexpr sint64 transferAmount = 7;
-	constexpr uint64 extraReward = 25;
-	const uint64 invocationReward = transferFee + extraReward;
-
-	increaseEnergy(RL_DEV_ADDRESS, invocationReward);
-	const uint64 ownerBalanceBefore = getBalance(RL_DEV_ADDRESS);
-	const sint64 contractBalanceBefore = ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
-
-	const RL::TransferShareManagementRights_output out =
-		ctl.transferShareManagementRights(RL_DEV_ADDRESS, QX_CONTRACT_INDEX, transferAmount, invocationReward);
-	EXPECT_EQ(out.returnCode, RL::EReturnCode::SUCCESS);
-	EXPECT_EQ(out.transferredNumberOfShares, transferAmount);
-
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractBalanceBefore - transferAmount);
-	EXPECT_EQ(ctl.tokenBalanceWithManagers(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf(), QX_CONTRACT_INDEX), transferAmount);
-	EXPECT_EQ(getBalance(RL_DEV_ADDRESS), ownerBalanceBefore - transferFee);
-}
-
-TEST(ContractRandomLottery, TransferShareManagementRights_FailsWhenRewardTooLow)
-{
-	ContractTestingRL ctl;
-	ctl.beginEpochWithValidTime();
-
-	const uint32 transferFee = ctl.qxTransferFee();
-	const uint64 invocationReward =  transferFee > 0 ? transferFee - 1 : 0;
-
-	increaseEnergy(RL_DEV_ADDRESS, invocationReward);
-	const uint64 ownerBalanceBefore = getBalance(RL_DEV_ADDRESS);
-	const sint64 contractBalanceBefore = ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
-
-	const RL::TransferShareManagementRights_output out =
-		ctl.transferShareManagementRights(RL_DEV_ADDRESS, QX_CONTRACT_INDEX, 1, invocationReward);
-	EXPECT_EQ(out.transferredNumberOfShares, 0);
-	EXPECT_EQ(out.returnCode, RL::EReturnCode::INVALID_VALUE);
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractBalanceBefore);
-	EXPECT_EQ(getBalance(RL_DEV_ADDRESS), ownerBalanceBefore);
-}
-
-TEST(ContractRandomLottery, TransferShareManagementRights_FailsWhenInsufficientShares)
-{
-	ContractTestingRL ctl;
-	ctl.beginEpochWithValidTime();
-
-	const uint32 transferFee = ctl.qxTransferFee();
-	const sint64 available = ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
-	ASSERT_GT(available, 0);
-
-	const sint64 transferAmount = available + 1;
-	increaseEnergy(RL_DEV_ADDRESS, transferFee);
-	const uint64 ownerBalanceBefore = getBalance(RL_DEV_ADDRESS);
-
-	const RL::TransferShareManagementRights_output out =
-		ctl.transferShareManagementRights(RL_DEV_ADDRESS, QX_CONTRACT_INDEX, transferAmount, transferFee);
-	EXPECT_EQ(out.transferredNumberOfShares, 0);
-	EXPECT_EQ(out.returnCode, RL::EReturnCode::TOKEN_TRANSFER_FAILED);
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), available);
-	EXPECT_EQ(getBalance(RL_DEV_ADDRESS), ownerBalanceBefore);
-}
-
-TEST(ContractRandomLottery, TransferShareManagementRights_OnlyOwnerCanInvoke)
-{
-	ContractTestingRL ctl;
-	ctl.beginEpochWithValidTime();
-
-	const uint32 transferFee = ctl.qxTransferFee();
-	const id user = id::randomValue();
-	increaseEnergy(user, transferFee + 10);
-	const uint64 userBalanceBefore = getBalance(user);
-	const sint64 contractBalanceBefore = ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
-
-	const RL::TransferShareManagementRights_output out =
-		ctl.transferShareManagementRights(user, QX_CONTRACT_INDEX, 1, transferFee + 10);
-	EXPECT_EQ(out.transferredNumberOfShares, 0);
-	EXPECT_EQ(out.returnCode, RL::EReturnCode::ACCESS_DENIED);
-	EXPECT_EQ(ctl.tokenBalance(RL_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractBalanceBefore);
-	EXPECT_EQ(getBalance(user), userBalanceBefore);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractTokensBefore);
 }
 
 TEST(ContractRandomLottery, BuyTicketWithToken_ClosedAndNotAllowed)
 {
 	ContractTestingRL ctl;
 
-	const uint64 allowedToken = assetNameFromString("TOKCLO");
-	const uint64 notAllowedToken = assetNameFromString("TOKBAD");
 	const id buyer = id::randomValue();
-	constexpr uint64 tokenPrice = 10;
-	constexpr uint64 allowedAmount = tokenPrice * 2;
-	constexpr uint64 disallowedAmount = tokenPrice * 3;
-
+	const uint64 tokenPrice = RL_DEFAULT_TOKEN_PRICE;
+	const uint64 mintedAmount = tokenPrice * 2;
+	const uint64 requestedAmount = mintedAmount + tokenPrice; // More than balance => transfer fails
 	increaseEnergy(buyer, 1);
 	increaseEnergy(RL_DEV_ADDRESS, 1);
-	const uint64 allowedAssetName = ctl.issueManagedTokenToUser(allowedToken, buyer, allowedAmount);
-	const uint64 disallowedAssetName = ctl.issueManagedTokenToUser(notAllowedToken, buyer, disallowedAmount);
-	const sint64 allowedBefore = ctl.tokenBalance(allowedAssetName, buyer, ctl.rlSelf());
-	const sint64 disallowedBefore = ctl.tokenBalance(disallowedAssetName, buyer, ctl.rlSelf());
-
-	EXPECT_EQ(ctl.addAllowedToken(RL_DEV_ADDRESS, allowedToken, 10).returnCode, RL::EReturnCode::SUCCESS);
-
-	const RL::BuyTicketWithToken_output closedOut = ctl.buyTicketWithToken(buyer, allowedToken, tokenPrice);
-	EXPECT_EQ(closedOut.returnCode, RL::EReturnCode::TICKET_SELLING_CLOSED);
-	EXPECT_EQ(ctl.tokenBalance(allowedAssetName, buyer, ctl.rlSelf()), allowedBefore);
 
 	ctl.beginEpochWithValidTime();
-	const RL::BuyTicketWithToken_output notAllowedOut = ctl.buyTicketWithToken(buyer, notAllowedToken, disallowedAmount);
-	EXPECT_EQ(notAllowedOut.returnCode, RL::EReturnCode::TOKEN_NOT_ALLOWED);
-	EXPECT_EQ(ctl.tokenBalance(disallowedAssetName, buyer, ctl.rlSelf()), disallowedBefore);
+	const RL::TransferToken_output fundOut = ctl.transferToken(RL_DEV_ADDRESS, buyer, mintedAmount);
+	EXPECT_EQ(fundOut.returnCode, RL::EReturnCode::SUCCESS);
+
+	ctl.EndEpoch(); // Close selling after funding
+
+	const sint64 lottoBefore = ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, buyer, ctl.rlSelf());
+	const sint64 contractBefore = ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf());
+
+	const RL::BuyTicketWithToken_output closedOut = ctl.buyTicketWithToken(buyer, tokenPrice);
+	EXPECT_EQ(closedOut.returnCode, RL::EReturnCode::TICKET_SELLING_CLOSED);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, buyer, ctl.rlSelf()), lottoBefore);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractBefore);
+
+	ctl.beginEpochWithValidTime();
+	const RL::BuyTicketWithToken_output insufficientOut = ctl.buyTicketWithToken(buyer, requestedAmount);
+	EXPECT_EQ(insufficientOut.returnCode, RL::EReturnCode::TOKEN_TRANSFER_FAILED);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, buyer, ctl.rlSelf()), lottoBefore);
+	EXPECT_EQ(ctl.tokenBalance(RL_LOTTO_TOKEN_NAME, ctl.rlSelf(), ctl.rlSelf()), contractBefore);
 }
 
 TEST(ContractRandomLottery, BuyTicketWithToken_SuccessAndRefundsRemainder)
 {
 	ContractTestingRL ctl;
-	ctl.beginEpochWithValidTime();
-
-	const uint64 tokenName = assetNameFromString("TOKSUC");
-	constexpr uint64 tokenPrice = 5;
-	increaseEnergy(RL_DEV_ADDRESS, 1);
-	EXPECT_EQ(ctl.addAllowedToken(RL_DEV_ADDRESS, tokenName, tokenPrice).returnCode, RL::EReturnCode::SUCCESS);
+	const uint64 tokenName = RL_LOTTO_TOKEN_NAME;
+	const uint64 tokenPrice = RL_DEFAULT_TOKEN_PRICE;
 
 	const id buyer = id::randomValue();
+	const uint64 tokenAmount = tokenPrice * 3 + 2; // buy 3 tickets, refund 2 tokens
 	increaseEnergy(buyer, 1);
-	constexpr uint64 tokenAmount = tokenPrice * 3 + 2; // buy 3 tickets, refund 2 tokens
-	const uint64 assetName = ctl.issueManagedTokenToUser(tokenName, buyer, tokenAmount);
+	increaseEnergy(RL_DEV_ADDRESS, 1);
+
+	ctl.beginEpochWithValidTime();
+
+	const RL::TransferToken_output fundOut = ctl.transferToken(RL_DEV_ADDRESS, buyer, tokenAmount);
+	EXPECT_EQ(fundOut.returnCode, RL::EReturnCode::SUCCESS);
+
+	const uint64 assetName = tokenName;
+
+	const uint64 resolvedTokenPrice = ctl.state()->getLottoTokenPrice();
 	const uint64 playersBefore = ctl.state()->getPlayerCounter();
 	const sint64 buyerTokensBefore = ctl.tokenBalance(assetName, buyer, ctl.rlSelf());
 	const sint64 contractTokensBefore = ctl.tokenBalance(assetName, ctl.rlSelf(), ctl.rlSelf());
 
-	const RL::BuyTicketWithToken_output out = ctl.buyTicketWithToken(buyer, tokenName, tokenAmount);
+	const RL::BuyTicketWithToken_output out = ctl.buyTicketWithToken(buyer, tokenAmount);
 	EXPECT_EQ(out.returnCode, RL::EReturnCode::SUCCESS);
 
 	constexpr uint64 expectedBought = 3;
 	EXPECT_EQ(ctl.state()->getPlayerCounter(), playersBefore + expectedBought);
-	EXPECT_EQ(ctl.tokenBalance(assetName, buyer, ctl.rlSelf()), buyerTokensBefore - expectedBought * tokenPrice);
-	EXPECT_EQ(ctl.tokenBalance(assetName, ctl.rlSelf(), ctl.rlSelf()), contractTokensBefore + expectedBought * tokenPrice);
+	EXPECT_EQ(ctl.tokenBalance(assetName, buyer, ctl.rlSelf()), buyerTokensBefore - expectedBought * resolvedTokenPrice);
+	EXPECT_EQ(ctl.tokenBalance(assetName, ctl.rlSelf(), ctl.rlSelf()), contractTokensBefore);
 }
