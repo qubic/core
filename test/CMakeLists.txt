@@ -25,8 +25,8 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src)
 include_directories(${PROJECT_ROOT_DIR})
 
 
-add_executable(
-  qubic_core_tests
+# Test sources common to all architectures
+set(TEST_SOURCES
   # assets.cpp
   # common_def.cpp
   # contract_core.cpp
@@ -34,9 +34,7 @@ add_executable(
   # contract_qvault.cpp
   # contract_qx.cpp
   # kangaroo_twelve.cpp
-  m256.cpp
   math_lib.cpp
-  network_messages.cpp
   # platform.cpp
   # qpi_collection.cpp
   # qpi.cpp
@@ -50,12 +48,31 @@ add_executable(
   # vote_counter.cpp
 )
 
+# Certain test sources exercise x86-specific intrinsics and codepaths
+# (for example, the AVX/m256 implementation). To keep the test target
+# buildable on non-x86 platforms (like arm64), only append those sources
+# when the build is targeting x86_64. This preserves the original x86
+# test coverage when building on x86, while allowing native non-x86
+# development without intrusive #ifdefs inside the test files.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64")
+  list(APPEND TEST_SOURCES
+    m256.cpp
+    network_messages.cpp
+  )
+endif()
+
+add_executable(qubic_core_tests ${TEST_SOURCES})
+
 # Apply test-specific compiler flags from the centralized detection module
 apply_test_compiler_flags(qubic_core_tests)
 
 # Add additional test-specific flags if needed
 if(IS_CLANG OR IS_GCC)
-  target_compile_options(qubic_core_tests PRIVATE -mrdrnd)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64")
+    target_compile_options(qubic_core_tests PRIVATE -mrdrnd)
+  else()
+    target_compile_options(qubic_core_tests PRIVATE)
+  endif()
 endif()
 
 
