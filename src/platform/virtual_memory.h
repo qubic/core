@@ -919,6 +919,16 @@ public:
             setText(message, L"Fatal Error: Invalid cache page index | Line ");
             appendNumber(message, __LINE__, true);
             logToConsole(message);
+
+            setText(message, L"Requested Page ID: ");
+            appendNumber(message, requested_page_id, true);
+            appendText(message, L"| Max Page ID: ");
+            appendNumber(message, currentPageId, true);
+            logToConsole(message);
+
+            setText(message, L"SwapVm Prefix: ");
+            appendText(message, pageDir);
+            logToConsole(message);
             // Exit program
             exit(1);
         }

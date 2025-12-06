@@ -1143,6 +1143,12 @@ static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
 static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
 {
     RequestQuorumTick* request = header->getPayload<RequestQuorumTick>();
+    // If requesting tick is too far in the future, return end response directly
+    if (request->quorumTick.tick > system.tick + 3)
+    {
+        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+        return;
+    }
 
     unsigned short tickEpoch = 0;
     const Tick* tsCompTicks;
@@ -1193,6 +1199,12 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
 static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
 {
     RequestTickData* request = header->getPayload<RequestTickData>();
+    // If requesting tick is too far in the future, return end response directly
+    if (request->requestedTickData.tick > system.tick + 3)
+    {
+        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+        return;
+    }
     // SWAP: we need atomic here to avoid flush the page while another thread is writing to it
     ts.tickData.acquireLock();
     TickData* td = ts.tickData.getByTickIfNotEmpty(request->requestedTickData.tick);
