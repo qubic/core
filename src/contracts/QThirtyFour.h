@@ -47,9 +47,6 @@ static constexpr uint64 QTF_RESERVE_SOFT_FLOOR_MULT = 20;   // keep at least 20 
 // Baseline overflow split (reserve share in basis points). If spec is updated, adjust here.
 static constexpr uint64 QTF_BASELINE_OVERFLOW_ALPHA_BP = 5000; // 50% reserve / 50% jackpot
 
-// Reserve split between JackpotRebuild and General (50/50 default)
-static constexpr uint64 QTF_RESERVE_SPLIT_JACKPOT_BP = 5000; // 50% to JackpotRebuild, 50% to General
-
 // Default fee percentages (fallback if RL::GetFees fails)
 static constexpr uint64 QTF_DEFAULT_DEV_PERCENT = 10;
 static constexpr uint64 QTF_DEFAULT_DIST_PERCENT = 20;
@@ -148,8 +145,7 @@ public:
 	struct PoolsSnapshot
 	{
 		uint64 jackpot;
-		uint64 reserveGeneral;
-		uint64 reserveJackpot;
+		uint64 reserve; // Total reserve from QRP
 		uint64 targetJackpot;
 		uint8 frActive;
 		uint16 roundsSinceK4;
@@ -361,7 +357,7 @@ public:
 	// CalcReserveTopUp: Calculate safe reserve top-up amount
 	struct CalcReserveTopUp_input
 	{
-		uint64 availableReserve;
+		uint64 totalQRPBalance; // Actual QRP balance (for 10% limit and soft floor)
 		uint64 needed;
 		uint64 perWinnerCapTotal;
 		uint64 ticketPrice;
@@ -373,8 +369,35 @@ public:
 	struct CalcReserveTopUp_locals
 	{
 		uint64 softFloor;
-		uint64 usableReserve;
+		uint64 availableAboveFloor;
 		uint64 maxPerRound;
+	};
+
+	// ProcessTierPayout: Unified tier payout processing (k2/k3)
+	struct ProcessTierPayout_input
+	{
+		uint64 floorPerWinner;  // Floor payout per winner (0.5*P for k2, 5*P for k3)
+		uint64 winnerCount;     // Number of winners in this tier
+		uint64 payoutPool;      // Initial payout pool for this tier
+		uint64 perWinnerCap;    // Per-winner cap (25*P)
+		uint64 totalQRPBalance; // QRP balance for safety limits
+		uint64 ticketPrice;     // Current ticket price
+	};
+	struct ProcessTierPayout_output
+	{
+		uint64 perWinnerPayout; // Calculated per-winner payout
+		uint64 overflow;        // Overflow amount (unused funds)
+		uint64 topUpReceived;   // Amount received from QRP top-up
+	};
+	struct ProcessTierPayout_locals
+	{
+		uint64 floorTotalNeeded;
+		uint64 finalPool;
+		uint64 qrpRequested;
+		CalcReserveTopUp_input calcTopUpInput;
+		CalcReserveTopUp_output calcTopUpOutput;
+		QRP::GetReserve_input qrpGetReserveInput;
+		QRP::GetReserve_output qrpGetReserveOutput;
 	};
 
 	// Ticket Price
@@ -421,6 +444,11 @@ public:
 	struct GetPools_output
 	{
 		PoolsSnapshot pools;
+	};
+	struct GetPools_locals
+	{
+		QRP::GetAvailableReserve_input qrpInput;
+		QRP::GetAvailableReserve_output qrpOutput;
 	};
 
 	// Draw hour
@@ -498,14 +526,14 @@ public:
 		uint64 k3PayoutPool;
 		uint64 k2PerWinner;
 		uint64 k3PerWinner;
-		uint64 topUpK2;
-		uint64 topUpK3;
 		uint64 countK2;
 		uint64 countK3;
 		uint64 countK4;
-		uint64 tmp64a;
-		uint64 tmp64b;
-		uint64 tmp64c;
+		uint64 totalDevRedirectBP;       // Total dev redirect in basis points (base + extra)
+		uint64 totalDistRedirectBP;      // Total dist redirect in basis points (base + extra)
+		uint64 perWinnerCap;             // Per-winner payout cap (25*P)
+		uint64 jackpotPerK4Winner;       // Jackpot share per k4 winner
+		uint64 totalJackpotContribution; // Total amount to add to jackpot
 		uint64 i;
 		uint8 matches;
 		bit shouldActivateFR;
@@ -522,14 +550,17 @@ public:
 		// CALL parameters for GetRandomValues
 		GetRandomValues_input getRandomInput;
 		GetRandomValues_output getRandomOutput;
-		// CALL parameters for CalcReserveTopUp
-		CalcReserveTopUp_input calcTopUpInput;
-		CalcReserveTopUp_output calcTopUpOutput;
-		// CALL_OTHER_CONTRACT parameters for QRP::GetReserve (external reserve pool)
+		// CALL parameters for ProcessTierPayout (unified k2/k3 processing)
+		ProcessTierPayout_input tierPayoutInput;
+		ProcessTierPayout_output tierPayoutOutput;
+		// CALL_OTHER_CONTRACT parameters for QRP (external reserve pool)
 		QRP::GetReserve_input qrpGetReserveInput;
 		QRP::GetReserve_output qrpGetReserveOutput;
-		uint64 qrpRequested;    // Amount requested from QRP
-		uint64 qrpReceived;     // Amount actually received from QRP
+		QRP::GetAvailableReserve_input qrpGetAvailableInput;
+		QRP::GetAvailableReserve_output qrpGetAvailableOutput;
+		uint64 qrpRequested;      // Amount requested from QRP
+		uint64 qrpReceived;       // Amount actually received from QRP
+		uint64 totalQRPBalance;   // Total balance in QRP (for safety limits)
 		RL::GetFees_input feesInput;
 		RL::GetFees_output feesOutput;
 		uint64 dividendPerShare;
@@ -581,8 +612,6 @@ public:
 		state.frRoundsAtOrAboveTarget = 0;
 		state.numberOfPlayers = 0;
 		state.jackpot = 0;
-		state.reserveGeneral = 0;
-		state.reserveJackpotRebuild = 0;
 		state.currentState = STATE_NONE;
 	}
 
@@ -837,11 +866,11 @@ public:
 	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.ticketPrice; }
 	PUBLIC_FUNCTION(GetNextEpochData) { output.nextEpochData = state.nextEpochData; }
 	PUBLIC_FUNCTION(GetWinnerData) { output.winnerData = state.lastWinnerData; }
-	PUBLIC_FUNCTION(GetPools)
+	PUBLIC_FUNCTION_WITH_LOCALS(GetPools)
 	{
 		output.pools.jackpot = state.jackpot;
-		output.pools.reserveGeneral = state.reserveGeneral;
-		output.pools.reserveJackpot = state.reserveJackpotRebuild;
+		CALL_OTHER_CONTRACT_FUNCTION(QRP, GetAvailableReserve, locals.qrpInput, locals.qrpOutput);
+		output.pools.reserve = locals.qrpOutput.availableReserve;
 		output.pools.targetJackpot = state.targetJackpot;
 		output.pools.frActive = state.frActive;
 		output.pools.roundsSinceK4 = state.frRoundsSinceK4;
@@ -941,10 +970,6 @@ protected:
 	uint64 ticketPrice; // active ticket price
 
 	uint64 jackpot; // jackpot balance
-
-	uint64 reserveGeneral; // reserve for floors
-
-	uint64 reserveJackpotRebuild; // reserve earmarked to reseed jackpot
 
 	uint64 targetJackpot; // FR target jackpot
 
