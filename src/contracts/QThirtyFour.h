@@ -1544,7 +1544,12 @@ private:
 	/**
 	 * @brief Calculate safe reserve top-up amount respecting safety limits.
 	 *
-	 * @param input.availableReserve - Current reserve balance
+	 * Safety limits per spec:
+	 * - Max 10% of total QRP reserve per round
+	 * - Soft floor: keep at least 20*P in QRP reserve
+	 * - Per-winner cap: max 25*P per winner
+	 *
+	 * @param input.totalQRPBalance - Actual QRP contract balance (for 10% limit and soft floor)
 	 * @param input.needed - Amount needed for top-up
 	 * @param input.perWinnerCapTotal - Per-winner cap multiplied by winner count
 	 * @param input.ticketPrice - Current ticket price
@@ -1552,39 +1557,31 @@ private:
 	 */
 	PRIVATE_FUNCTION_WITH_LOCALS(CalcReserveTopUp)
 	{
-		if (input.availableReserve == 0)
+		if (input.totalQRPBalance == 0)
 		{
 			output.topUpAmount = 0;
 			return;
 		}
 
-		// Calculate soft floor: keep at least 20 * P in reserve
+		// Calculate soft floor: keep at least 20 * P in total QRP reserve
 		locals.softFloor = smul(input.ticketPrice, QTF_RESERVE_SOFT_FLOOR_MULT);
 
-		// Calculate usable reserve (above soft floor)
-		if (input.availableReserve > locals.softFloor)
+		// Calculate available reserve from QRP (above soft floor)
+		if (input.totalQRPBalance > locals.softFloor)
 		{
-			locals.usableReserve = input.availableReserve - locals.softFloor;
+			locals.availableAboveFloor = input.totalQRPBalance - locals.softFloor;
 		}
 		else
 		{
-			locals.usableReserve = 0;
+			locals.availableAboveFloor = 0;
 		}
 
-		// Calculate max per round (10% of available reserve)
-		locals.maxPerRound = div<uint64>(smul(input.availableReserve, QTF_TOPUP_RESERVE_PCT_BP), 10000);
-
-		// Cap by usable reserve
-		if (locals.maxPerRound > locals.usableReserve)
-		{
-			locals.maxPerRound = locals.usableReserve;
-		}
-
+		// Calculate max per round (10% of total QRP reserve per spec)
+		locals.maxPerRound = div<uint64>(smul(input.totalQRPBalance, QTF_TOPUP_RESERVE_PCT_BP), 10000);
+		// Cap by available above floor
+		locals.maxPerRound = RL::min(locals.maxPerRound, locals.availableAboveFloor);
 		// Cap by per-winner cap
-		if (locals.maxPerRound > input.perWinnerCapTotal)
-		{
-			locals.maxPerRound = input.perWinnerCapTotal;
-		}
+		locals.maxPerRound = RL::min(locals.maxPerRound, input.perWinnerCapTotal);
 
 		// Return min of needed and max allowed
 		if (input.needed < locals.maxPerRound)
