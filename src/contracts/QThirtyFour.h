@@ -48,10 +48,10 @@ static constexpr uint64 QTF_RESERVE_SOFT_FLOOR_MULT = 20;   // keep at least 20 
 static constexpr uint64 QTF_BASELINE_OVERFLOW_ALPHA_BP = 5000; // 50% reserve / 50% jackpot
 
 // Default fee percentages (fallback if RL::GetFees fails)
-static constexpr uint64 QTF_DEFAULT_DEV_PERCENT = 10;
-static constexpr uint64 QTF_DEFAULT_DIST_PERCENT = 20;
-static constexpr uint64 QTF_DEFAULT_BURN_PERCENT = 2;
-static constexpr uint64 QTF_DEFAULT_WINNERS_PERCENT = 68;
+static constexpr uint8 QTF_DEFAULT_DEV_PERCENT = 10;
+static constexpr uint8 QTF_DEFAULT_DIST_PERCENT = 20;
+static constexpr uint8 QTF_DEFAULT_BURN_PERCENT = 2;
+static constexpr uint8 QTF_DEFAULT_WINNERS_PERCENT = 68;
 
 // Maximum attempts to generate unique random value before fallback
 static constexpr uint8 QTF_MAX_RANDOM_GENERATION_ATTEMPTS = 100;
@@ -89,6 +89,8 @@ public:
 
 		MAX_VALUE = UINT8_MAX
 	};
+
+	static constexpr uint8 toReturnCode(const EReturnCode& code) { return static_cast<uint8>(code); };
 
 	enum EState : uint8
 	{
@@ -183,7 +185,7 @@ public:
 	};
 	struct BuyTicket_output
 	{
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 	struct BuyTicket_locals
 	{
@@ -199,7 +201,7 @@ public:
 	};
 	struct SetPrice_output
 	{
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	// Set Schedule
@@ -209,7 +211,7 @@ public:
 	};
 	struct SetSchedule_output
 	{
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	// Set draw hour
@@ -219,7 +221,7 @@ public:
 	};
 	struct SetDrawHour_output
 	{
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	// Set Target Carry (Jackpot target)
@@ -229,7 +231,7 @@ public:
 	};
 	struct SetTargetJackpot_output
 	{
-		EReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	// Return All Tickets (refund all players)
@@ -493,6 +495,25 @@ public:
 		uint8 maskB;
 	};
 
+	struct GetFees_input
+	{
+	};
+
+	struct GetFees_output
+	{
+		uint8 teamFeePercent;         // Team share in percent
+		uint8 distributionFeePercent; // Distribution/shareholders share in percent
+		uint8 winnerFeePercent;       // Winner share in percent
+		uint8 burnPercent;            // Burn share in percent
+		uint8 returnCode;
+	};
+
+	struct GetFees_locals
+	{
+		RL::GetFees_input feesInput;
+		RL::GetFees_output feesOutput;
+	};
+
 	struct SettlementLocals
 	{
 		QTFRandomValues winningValues;
@@ -515,10 +536,6 @@ public:
 		uint64 devPayout;  // Dev after redirects
 		uint64 distPayout; // Distribution after redirects
 		uint64 burnAmount;
-		uint64 devPercent;
-		uint64 distPercent;
-		uint64 burnPercent;
-		uint64 winnersPercent;
 		uint64 devRedirect;
 		uint64 distRedirect;
 		uint64 winnersRake;
@@ -558,11 +575,11 @@ public:
 		QRP::GetReserve_output qrpGetReserveOutput;
 		QRP::GetAvailableReserve_input qrpGetAvailableInput;
 		QRP::GetAvailableReserve_output qrpGetAvailableOutput;
-		uint64 qrpRequested;      // Amount requested from QRP
-		uint64 qrpReceived;       // Amount actually received from QRP
-		uint64 totalQRPBalance;   // Total balance in QRP (for safety limits)
-		RL::GetFees_input feesInput;
-		RL::GetFees_output feesOutput;
+		uint64 qrpRequested;    // Amount requested from QRP
+		uint64 qrpReceived;     // Amount actually received from QRP
+		uint64 totalQRPBalance; // Total balance in QRP (for safety limits)
+		GetFees_input feesInput;
+		GetFees_output feesOutput;
 		uint64 dividendPerShare;
 		Asset rlAsset;
 		AssetPossessionIterator rlIter;
@@ -629,6 +646,7 @@ public:
 		REGISTER_USER_FUNCTION(GetSchedule, 5);
 		REGISTER_USER_FUNCTION(GetDrawHour, 6);
 		REGISTER_USER_FUNCTION(GetState, 7);
+		REGISTER_USER_FUNCTION(GetFees, 8);
 	}
 
 	BEGIN_EPOCH()
@@ -748,7 +766,7 @@ public:
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
-			output.returnCode = EReturnCode::TICKET_SELLING_CLOSED;
+			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
 			return;
 		}
 
@@ -759,7 +777,7 @@ public:
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
-			output.returnCode = EReturnCode::MAX_PLAYERS_REACHED;
+			output.returnCode = toReturnCode(EReturnCode::MAX_PLAYERS_REACHED);
 			return;
 		}
 
@@ -770,7 +788,7 @@ public:
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
-			output.returnCode = EReturnCode::INVALID_TICKET_PRICE;
+			output.returnCode = toReturnCode(EReturnCode::INVALID_TICKET_PRICE);
 			return;
 		}
 
@@ -782,84 +800,84 @@ public:
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
-			output.returnCode = EReturnCode::INVALID_NUMBERS;
+			output.returnCode = toReturnCode(EReturnCode::INVALID_NUMBERS);
 			return;
 		}
 
 		addPlayerInfo(state, qpi.invocator(), input.randomValues);
-		output.returnCode = EReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE(SetPrice)
 	{
 		if (qpi.invocator() != state.ownerAddress)
 		{
-			output.returnCode = EReturnCode::ACCESS_DENIED;
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
 		if (input.newPrice == 0)
 		{
-			output.returnCode = EReturnCode::INVALID_TICKET_PRICE;
+			output.returnCode = toReturnCode(EReturnCode::INVALID_TICKET_PRICE);
 			return;
 		}
 
 		state.nextEpochData.newTicketPrice = input.newPrice;
-		output.returnCode = EReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE(SetSchedule)
 	{
 		if (qpi.invocator() != state.ownerAddress)
 		{
-			output.returnCode = EReturnCode::ACCESS_DENIED;
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
 		if (input.newSchedule == 0)
 		{
-			output.returnCode = EReturnCode::INVALID_VALUE;
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
 
 		state.nextEpochData.newSchedule = input.newSchedule;
-		output.returnCode = EReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE(SetTargetJackpot)
 	{
 		if (qpi.invocator() != state.ownerAddress)
 		{
-			output.returnCode = EReturnCode::ACCESS_DENIED;
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
 		if (input.newTargetJackpot == 0)
 		{
-			output.returnCode = EReturnCode::INVALID_VALUE;
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
 
 		state.nextEpochData.newTargetJackpot = input.newTargetJackpot;
-		output.returnCode = EReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE(SetDrawHour)
 	{
 		if (qpi.invocator() != state.ownerAddress)
 		{
-			output.returnCode = EReturnCode::ACCESS_DENIED;
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
 		if (input.newDrawHour == 0 || input.newDrawHour > 23)
 		{
-			output.returnCode = EReturnCode::INVALID_VALUE;
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
 
 		state.nextEpochData.newDrawHour = input.newDrawHour;
-		output.returnCode = EReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	// Functions
@@ -878,6 +896,25 @@ public:
 	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.schedule; }
 	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.drawHour; }
 	PUBLIC_FUNCTION(GetState) { output.currentState = static_cast<uint8>(state.currentState); }
+	PUBLIC_FUNCTION_WITH_LOCALS(GetFees)
+	{
+		CALL_OTHER_CONTRACT_FUNCTION(RL, GetFees, locals.feesInput, locals.feesOutput);
+		output.teamFeePercent = locals.feesOutput.teamFeePercent;
+		output.distributionFeePercent = locals.feesOutput.distributionFeePercent;
+		output.burnPercent = locals.feesOutput.burnPercent;
+		output.winnerFeePercent = locals.feesOutput.winnerFeePercent;
+
+		// Sanity check: if RL returns invalid fees, use defaults
+		if (output.teamFeePercent == 0 || output.distributionFeePercent == 0 || output.winnerFeePercent == 0)
+		{
+			output.teamFeePercent = QTF_DEFAULT_DEV_PERCENT;
+			output.distributionFeePercent = QTF_DEFAULT_DIST_PERCENT;
+			output.burnPercent = QTF_DEFAULT_BURN_PERCENT;
+			output.winnerFeePercent = QTF_DEFAULT_WINNERS_PERCENT;
+		}
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
 
 protected:
 	static void clearEpochState(QTF& state)
@@ -1020,27 +1057,12 @@ private:
 			return;
 		}
 
-		// Pull fee percents from RL so Distribution matches RL shareholders.
-		// Fallback to default percentages if RL returns zeros.
-		CALL_OTHER_CONTRACT_FUNCTION(RL, GetFees, locals.feesInput, locals.feesOutput);
-		locals.devPercent = locals.feesOutput.teamFeePercent;
-		locals.distPercent = locals.feesOutput.distributionFeePercent;
-		locals.burnPercent = locals.feesOutput.burnPercent;
-		locals.winnersPercent = locals.feesOutput.winnerFeePercent;
+		CALL(GetFees, locals.feesInput, locals.feesOutput);
 
-		// Sanity check: if RL returns invalid fees, use defaults
-		if (locals.devPercent == 0 || locals.distPercent == 0 || locals.winnersPercent == 0)
-		{
-			locals.devPercent = QTF_DEFAULT_DEV_PERCENT;
-			locals.distPercent = QTF_DEFAULT_DIST_PERCENT;
-			locals.burnPercent = QTF_DEFAULT_BURN_PERCENT;
-			locals.winnersPercent = QTF_DEFAULT_WINNERS_PERCENT;
-		}
-
-		locals.winnersBlock = div<uint64>(smul(locals.revenue, locals.winnersPercent), 100);
-		locals.devPayout = div<uint64>(smul(locals.revenue, locals.devPercent), 100);
-		locals.distPayout = div<uint64>(smul(locals.revenue, locals.distPercent), 100);
-		locals.burnAmount = div<uint64>(smul(locals.revenue, locals.burnPercent), 100);
+		locals.winnersBlock = div<uint64>(smul(locals.revenue, static_cast<uint64>(locals.feesOutput.winnerFeePercent)), 100);
+		locals.devPayout = div<uint64>(smul(locals.revenue, static_cast<uint64>(locals.feesOutput.teamFeePercent)), 100);
+		locals.distPayout = div<uint64>(smul(locals.revenue, static_cast<uint64>(locals.feesOutput.distributionFeePercent)), 100);
+		locals.burnAmount = div<uint64>(smul(locals.revenue, static_cast<uint64>(locals.feesOutput.burnPercent)), 100);
 
 		// FR detection and hysteresis logic.
 		// Update hysteresis counter BEFORE activation check to ensure correct deactivation timing.
