@@ -617,6 +617,8 @@ public:
 		output.distributionFeePercent = state.distributionFeePercent;
 		output.winnerFeePercent = state.winnerFeePercent;
 		output.burnPercent = state.burnPercent;
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	/**
@@ -626,6 +628,7 @@ public:
 	{
 		output.players = state.players;
 		output.playerCounter = min(state.playerCounter, state.players.capacity());
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	/**
@@ -635,6 +638,7 @@ public:
 	{
 		output.winners = state.winners;
 		getWinnerCounter(state, output.winnersCounter);
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.ticketPrice; }
@@ -749,9 +753,9 @@ public:
 		}
 
 		// Compute desired number of tickets and change
-		locals.desired = div(locals.reward, state.ticketPrice);    // How many tickets the caller attempts to buy
-		locals.remainder = mod(locals.reward, state.ticketPrice);  // Change to return
-		locals.toBuy = min(locals.desired, locals.slotsLeft); // Do not exceed available slots
+		locals.desired = div(locals.reward, state.ticketPrice);   // How many tickets the caller attempts to buy
+		locals.remainder = mod(locals.reward, state.ticketPrice); // Change to return
+		locals.toBuy = min(locals.desired, locals.slotsLeft);     // Do not exceed available slots
 
 		// Add tickets (the same address may be inserted multiple times)
 		for (locals.i = 0; locals.i < locals.toBuy; ++locals.i)
