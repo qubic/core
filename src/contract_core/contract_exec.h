@@ -1222,7 +1222,7 @@ struct UserProcedureNotification
 // Currently, no output is supported, which may change in the future.
 // The procedure pointer, the expected inputSize, and the expected localsSize, which are passed via
 // UserProcedureNotification, must be consistent. The code using notifications is responible for ensuring that.
-// User cases:
+// Use cases:
 // - oracle notifications (managed by oracleEngine)
 struct QpiContextUserProcedureNotificationCall : public QPI::QpiContextProcedureCall
 {
