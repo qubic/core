@@ -148,6 +148,7 @@ static unsigned int contractProcessorPhase;
 static const Transaction* contractProcessorTransaction = 0; // does not have signature in some cases, see notifyContractOfIncomingTransfer()
 static int contractProcessorTransactionMoneyflew = 0;
 static unsigned char contractProcessorPostIncomingTransferType = 0;
+static const UserProcedureNotification* contractProcessorUserProcedureNotification = 0;
 static EFI_EVENT contractProcessorEvent;
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateDigests);
@@ -2314,6 +2315,20 @@ static void contractProcessor(void*)
         }
 
         contractProcessorTransaction = 0;
+    }
+    break;
+
+    case USER_PROCEDURE_NOTIFICATION_CALL:
+    {
+        const auto* notification = contractProcessorUserProcedureNotification;
+        ASSERT(notification && notification->procedure && notification->inputPtr);
+        ASSERT(notification->inputSize <= MAX_INPUT_SIZE);
+        ASSERT(notification->localsSize <= MAX_SIZE_OF_CONTRACT_LOCALS);
+
+        QpiContextUserProcedureNotificationCall qpiContext(*notification);
+        qpiContext.call();
+
+        contractProcessorUserProcedureNotification = 0;
     }
     break;
     }
