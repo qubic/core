@@ -1114,12 +1114,12 @@ private:
 			locals.distExtraBP = locals.calcExtraOutput.extraBP - locals.devExtraBP; // Handle odd remainder
 
 			// Total redirect BP = base + extra
-			locals.tmp64a = sadd(QTF_FR_DEV_REDIRECT_BP, locals.devExtraBP);
-			locals.tmp64b = sadd(QTF_FR_DIST_REDIRECT_BP, locals.distExtraBP);
+			locals.totalDevRedirectBP = sadd(QTF_FR_DEV_REDIRECT_BP, locals.devExtraBP);
+			locals.totalDistRedirectBP = sadd(QTF_FR_DIST_REDIRECT_BP, locals.distExtraBP);
 
 			// Calculate redirect amounts
-			locals.devRedirect = div<uint64>(smul(locals.revenue, locals.tmp64a), 10000);
-			locals.distRedirect = div<uint64>(smul(locals.revenue, locals.tmp64b), 10000);
+			locals.devRedirect = div<uint64>(smul(locals.revenue, locals.totalDevRedirectBP), 10000);
+			locals.distRedirect = div<uint64>(smul(locals.revenue, locals.totalDistRedirectBP), 10000);
 
 			// Deduct redirects from payouts (capped at available amounts)
 			if (locals.devPayout > locals.devRedirect)
@@ -1192,65 +1192,32 @@ private:
 
 		// Minimum payout floors: ensure k2 winners get >= 0.5*P, k3 winners get >= 5*P.
 		// Top up from Reserve.General if pool insufficient (subject to safety limits).
-		if (locals.countK2 > 0)
-		{
-			// k2 floor: 0.5 * ticketPrice per winner
-			locals.tmp64a = div<uint64>(smul(state.ticketPrice, QTF_K2_FLOOR_MULT), QTF_K2_FLOOR_DIV);
-			locals.tmp64b = smul(locals.tmp64a, locals.countK2);                    // total floor needed
-			locals.tmp64c = smul(state.ticketPrice, QTF_TOPUP_PER_WINNER_CAP_MULT); // per-winner cap (25*P)
+		// First, get total QRP balance for safety limit calculations (10% of total reserve per round).
+		CALL_OTHER_CONTRACT_FUNCTION(QRP, GetAvailableReserve, locals.qrpGetAvailableInput, locals.qrpGetAvailableOutput);
+		locals.totalQRPBalance = locals.qrpGetAvailableOutput.availableReserve;
+		locals.perWinnerCap = smul(state.ticketPrice, QTF_TOPUP_PER_WINNER_CAP_MULT); // 25*P
 
-			if (locals.k2PayoutPool < locals.tmp64b)
-			{
-				// Pool insufficient: top up from reserve (respecting safety limits)
-				locals.calcTopUpInput.availableReserve = state.reserveGeneral;
-				locals.calcTopUpInput.needed = locals.tmp64b - locals.k2PayoutPool;
-				locals.calcTopUpInput.perWinnerCapTotal = smul(locals.tmp64c, locals.countK2);
-				locals.calcTopUpInput.ticketPrice = state.ticketPrice;
-				CALL(CalcReserveTopUp, locals.calcTopUpInput, locals.calcTopUpOutput);
-				locals.topUpK2 = RL::min(locals.calcTopUpOutput.topUpAmount, locals.tmp64b - locals.k2PayoutPool);
-				state.reserveGeneral -= locals.topUpK2;
-				locals.k2PayoutPool = sadd(locals.k2PayoutPool, locals.topUpK2);
-			}
+		// Process k2 tier payout
+		locals.tierPayoutInput.floorPerWinner = div<uint64>(smul(state.ticketPrice, QTF_K2_FLOOR_MULT), QTF_K2_FLOOR_DIV);
+		locals.tierPayoutInput.winnerCount = locals.countK2;
+		locals.tierPayoutInput.payoutPool = locals.k2PayoutPool;
+		locals.tierPayoutInput.perWinnerCap = locals.perWinnerCap;
+		locals.tierPayoutInput.totalQRPBalance = locals.totalQRPBalance;
+		locals.tierPayoutInput.ticketPrice = state.ticketPrice;
+		CALL(ProcessTierPayout, locals.tierPayoutInput, locals.tierPayoutOutput);
+		locals.k2PerWinner = locals.tierPayoutOutput.perWinnerPayout;
+		locals.winnersOverflow = sadd(locals.winnersOverflow, locals.tierPayoutOutput.overflow);
 
-			// Calculate actual per-winner payout (capped at 25*P)
-			locals.k2PerWinner = RL::min(locals.tmp64c, locals.k2PayoutPool / locals.countK2);
-			locals.winnersOverflow = sadd(locals.winnersOverflow, (locals.k2PayoutPool - smul(locals.k2PerWinner, locals.countK2)));
-		}
-		else
-		{
-			// No k2 winners: entire k2 pool becomes overflow
-			locals.winnersOverflow = sadd(locals.winnersOverflow, locals.k2PayoutPool);
-		}
-
-		if (locals.countK3 > 0)
-		{
-			// k3 floor: 5 * ticketPrice per winner
-			locals.tmp64a = smul(state.ticketPrice, QTF_K3_FLOOR_MULT);
-			locals.tmp64b = smul(locals.tmp64a, locals.countK3);                    // total floor needed
-			locals.tmp64c = smul(state.ticketPrice, QTF_TOPUP_PER_WINNER_CAP_MULT); // per-winner cap (25*P)
-
-			if (locals.k3PayoutPool < locals.tmp64b)
-			{
-				// Pool insufficient: top up from reserve (respecting safety limits)
-				locals.calcTopUpInput.availableReserve = state.reserveGeneral;
-				locals.calcTopUpInput.needed = locals.tmp64b - locals.k3PayoutPool;
-				locals.calcTopUpInput.perWinnerCapTotal = smul(locals.tmp64c, locals.countK3);
-				locals.calcTopUpInput.ticketPrice = state.ticketPrice;
-				CALL(CalcReserveTopUp, locals.calcTopUpInput, locals.calcTopUpOutput);
-				locals.topUpK3 = RL::min(locals.calcTopUpOutput.topUpAmount, locals.tmp64b - locals.k3PayoutPool);
-				state.reserveGeneral -= locals.topUpK3;
-				locals.k3PayoutPool = sadd(locals.k3PayoutPool, locals.topUpK3);
-			}
-
-			// Calculate actual per-winner payout (capped at 25*P)
-			locals.k3PerWinner = RL::min(locals.tmp64c, locals.k3PayoutPool / locals.countK3);
-			locals.winnersOverflow = sadd(locals.winnersOverflow, (locals.k3PayoutPool - smul(locals.k3PerWinner, locals.countK3)));
-		}
-		else
-		{
-			// No k3 winners: entire k3 pool becomes overflow
-			locals.winnersOverflow = sadd(locals.winnersOverflow, locals.k3PayoutPool);
-		}
+		// Process k3 tier payout
+		locals.tierPayoutInput.floorPerWinner = smul(state.ticketPrice, QTF_K3_FLOOR_MULT);
+		locals.tierPayoutInput.winnerCount = locals.countK3;
+		locals.tierPayoutInput.payoutPool = locals.k3PayoutPool;
+		locals.tierPayoutInput.perWinnerCap = locals.perWinnerCap;
+		locals.tierPayoutInput.totalQRPBalance = locals.totalQRPBalance;
+		locals.tierPayoutInput.ticketPrice = state.ticketPrice;
+		CALL(ProcessTierPayout, locals.tierPayoutInput, locals.tierPayoutOutput);
+		locals.k3PerWinner = locals.tierPayoutOutput.perWinnerPayout;
+		locals.winnersOverflow = sadd(locals.winnersOverflow, locals.tierPayoutOutput.overflow);
 
 		locals.carryAdd = sadd(locals.carryAdd, locals.winnersRake);
 
@@ -1276,10 +1243,10 @@ private:
 			// k4 payout (jackpot)
 			else if (locals.matches == 4 && locals.countK4 > 0 && state.jackpot > 0)
 			{
-				locals.tmp64a = state.jackpot / locals.countK4;
-				if (locals.tmp64a > 0)
+				locals.jackpotPerK4Winner = state.jackpot / locals.countK4;
+				if (locals.jackpotPerK4Winner > 0)
 				{
-					qpi.transfer(state.players.get(locals.i).player, locals.tmp64a);
+					qpi.transfer(state.players.get(locals.i).player, locals.jackpotPerK4Winner);
 					fillWinnerData(state, state.players.get(locals.i), locals.winningValues, locals.currentEpoch);
 				}
 			}
@@ -1297,10 +1264,19 @@ private:
 			state.frRoundsSinceK4 = 0;
 			state.frRoundsAtOrAboveTarget = 0;
 
-			// Reseed jackpot from Reserve.JackpotRebuild (up to targetJackpot or available balance)
-			locals.tmp64b = RL::min(state.reserveJackpotRebuild, state.targetJackpot);
-			state.jackpot = sadd(state.jackpot, locals.tmp64b);
-			state.reserveJackpotRebuild -= locals.tmp64b;
+			// Reseed jackpot from QReservePool (up to targetJackpot or available reserve)
+			locals.qrpRequested = RL::min(locals.totalQRPBalance, state.targetJackpot);
+			if (locals.qrpRequested > 0)
+			{
+				locals.qrpGetReserveInput.revenue = locals.qrpRequested;
+				INVOKE_OTHER_CONTRACT_PROCEDURE(QRP, GetReserve, locals.qrpGetReserveInput, locals.qrpGetReserveOutput, 0ll);
+
+				if (locals.qrpGetReserveOutput.returnCode == QRPReturnCode::SUCCESS)
+				{
+					locals.qrpReceived = locals.qrpGetReserveOutput.allocatedRevenue;
+					state.jackpot = sadd(state.jackpot, locals.qrpReceived);
+				}
+			}
 		}
 		else
 		{
@@ -1325,13 +1301,14 @@ private:
 		}
 
 		// Add all jackpot contributions: overflow carryAdd + FR redirects (if active)
-		locals.tmp64a = sadd(locals.carryAdd, sadd(locals.devRedirect, locals.distRedirect));
-		state.jackpot = sadd(state.jackpot, locals.tmp64a);
+		locals.totalJackpotContribution = sadd(locals.carryAdd, sadd(locals.devRedirect, locals.distRedirect));
+		state.jackpot = sadd(state.jackpot, locals.totalJackpotContribution);
 
-		// Split reserve overflow between JackpotRebuild and General using configured split ratio
-		locals.tmp64a = div<uint64>(smul(locals.reserveAdd, QTF_RESERVE_SPLIT_JACKPOT_BP), 10000);
-		state.reserveJackpotRebuild = sadd(state.reserveJackpotRebuild, locals.tmp64a);
-		state.reserveGeneral = sadd(state.reserveGeneral, (locals.reserveAdd - locals.tmp64a));
+		// Transfer reserve overflow to QReservePool
+		if (locals.reserveAdd > 0)
+		{
+			qpi.transfer(QTF_RESERVE_POOL_CONTRACT_ID, locals.reserveAdd);
+		}
 
 		if (locals.devPayout > 0)
 		{
@@ -1639,6 +1616,66 @@ private:
 		{
 			output.topUpAmount = locals.maxPerRound;
 		}
+	}
+
+	/**
+	 * @brief Unified tier payout processing for k2/k3 winners.
+	 *
+	 * Handles floor guarantee with QRP top-up if pool is insufficient.
+	 * Calculates per-winner payout (capped at perWinnerCap) and overflow.
+	 *
+	 * @param input.floorPerWinner - Floor payout per winner (0.5*P for k2, 5*P for k3)
+	 * @param input.winnerCount - Number of winners in this tier
+	 * @param input.payoutPool - Initial payout pool for this tier
+	 * @param input.perWinnerCap - Per-winner cap (25*P)
+	 * @param input.totalQRPBalance - QRP balance for safety limits
+	 * @param input.ticketPrice - Current ticket price
+	 * @param output.perWinnerPayout - Calculated per-winner payout
+	 * @param output.overflow - Overflow amount (unused funds)
+	 * @param output.topUpReceived - Amount received from QRP top-up
+	 */
+	PRIVATE_PROCEDURE_WITH_LOCALS(ProcessTierPayout)
+	{
+		output.topUpReceived = 0;
+		output.overflow = 0;
+		output.perWinnerPayout = 0;
+
+		if (input.winnerCount == 0)
+		{
+			// No winners: entire pool becomes overflow
+			output.overflow = input.payoutPool;
+			return;
+		}
+
+		locals.floorTotalNeeded = smul(input.floorPerWinner, input.winnerCount);
+		locals.finalPool = input.payoutPool;
+
+		// Top-up from QRP if pool insufficient for floor guarantee
+		if (input.payoutPool < locals.floorTotalNeeded)
+		{
+			locals.calcTopUpInput.totalQRPBalance = input.totalQRPBalance;
+			locals.calcTopUpInput.needed = locals.floorTotalNeeded - input.payoutPool;
+			locals.calcTopUpInput.perWinnerCapTotal = smul(input.perWinnerCap, input.winnerCount);
+			locals.calcTopUpInput.ticketPrice = input.ticketPrice;
+			CALL(CalcReserveTopUp, locals.calcTopUpInput, locals.calcTopUpOutput);
+
+			locals.qrpRequested = RL::min(locals.calcTopUpOutput.topUpAmount, locals.floorTotalNeeded - input.payoutPool);
+			if (locals.qrpRequested > 0)
+			{
+				locals.qrpGetReserveInput.revenue = locals.qrpRequested;
+				INVOKE_OTHER_CONTRACT_PROCEDURE(QRP, GetReserve, locals.qrpGetReserveInput, locals.qrpGetReserveOutput, 0ll);
+
+				if (locals.qrpGetReserveOutput.returnCode == QRPReturnCode::SUCCESS)
+				{
+					output.topUpReceived = locals.qrpGetReserveOutput.allocatedRevenue;
+					locals.finalPool = sadd(input.payoutPool, output.topUpReceived);
+				}
+			}
+		}
+
+		// Calculate per-winner payout (capped at perWinnerCap)
+		output.perWinnerPayout = RL::min(input.perWinnerCap, locals.finalPool / input.winnerCount);
+		output.overflow = locals.finalPool - smul(output.perWinnerPayout, input.winnerCount);
 	}
 
 	/**
