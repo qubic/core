@@ -57,7 +57,7 @@ void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsi
 {
     const RespondTxStatus* txStatus = (const RespondTxStatus*)data;
 
-    EXPECT_EQ(type, RESPOND_TX_STATUS);
+    EXPECT_EQ(type, RespondTxStatus::type());
     EXPECT_EQ(dejavu, requestMessage.header.dejavu());
     EXPECT_EQ(dataSize, txStatus->size());
 
@@ -88,7 +88,7 @@ static void checkTick(unsigned int tick, unsigned long long seed, unsigned short
 
     // prepare request message
     requestMessage.header.checkAndSetSize(sizeof(requestMessage));
-    requestMessage.header.setType(REQUEST_TX_STATUS);
+    requestMessage.header.setType(RequestTxStatus::type());
     requestMessage.header.setDejavu(seed % UINT_MAX);
     requestMessage.payload.tick = tick;
 
