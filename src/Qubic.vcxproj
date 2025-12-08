@@ -25,6 +25,7 @@
     <ClInclude Include="contracts\ComputorControlledFund.h" />
     <ClInclude Include="contracts\Qdraw.h" />
     <ClInclude Include="contracts\Qswap.h" />
+    <ClInclude Include="contracts\Qswap_old.h" />
     <ClInclude Include="contracts\RandomLottery.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
     <ClInclude Include="contracts\EmptyTemplate.h" />
