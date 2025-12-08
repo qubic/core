@@ -16,7 +16,6 @@ constexpr uint16 FUNCTION_INDEX_GET_BALANCE = 7;
 constexpr uint16 FUNCTION_INDEX_GET_NEXT_EPOCH_DATA = 8;
 constexpr uint16 FUNCTION_INDEX_GET_DRAW_HOUR = 9;
 constexpr uint16 FUNCTION_INDEX_GET_SCHEDULE = 10;
-constexpr uint16 QX_FUNCTION_INDEX_FEES = 1;
 constexpr uint8 STATE_SELLING = static_cast<uint8>(RL::EState::SELLING);
 constexpr uint8 STATE_LOCKED = 0u;
 
@@ -60,8 +59,6 @@ bool operator==(const RL::WinnerInfo& left, const RL::WinnerInfo& right)
 class RLChecker : public RL
 {
 public:
-	void checkTicketPrice(const uint64& price) { EXPECT_EQ(ticketPrice, price); }
-
 	void checkFees(const GetFees_output& fees)
 	{
 		EXPECT_EQ(fees.returnCode, EReturnCode::SUCCESS);
@@ -129,10 +126,6 @@ public:
 	uint64 getPlayerCounter() const { return playerCounter; }
 
 	uint64 getTicketPrice() const { return ticketPrice; }
-
-	uint8 getScheduleMask() const { return schedule; }
-
-	uint8 getDrawHourInternal() const { return drawHour; }
 
 	uint32 getLastDrawDateStamp() const { return lastDrawDateStamp; }
 };
@@ -283,14 +276,6 @@ public:
 		return output;
 	}
 
-	uint32 qxTransferFee()
-	{
-		QX::Fees_input input{};
-		QX::Fees_output output{};
-		callFunction(QX_CONTRACT_INDEX, QX_FUNCTION_INDEX_FEES, input, output);
-		return output.transferFee;
-	}
-
 	void BeginEpoch() { callSystemProcedure(RL_CONTRACT_INDEX, BEGIN_EPOCH); }
 
 	void EndEpoch() { callSystemProcedure(RL_CONTRACT_INDEX, END_EPOCH); }
@@ -325,13 +310,6 @@ public:
 	{
 		const RL::GetBalance_output out = ctl.getBalanceInfo();
 		EXPECT_EQ(out.balance, getBalance(contractAddress));
-	}
-
-	void setCurrentHour(uint8 hour)
-	{
-		updateTime();
-		utcTime.Hour = hour;
-		updateQpiTime();
 	}
 
 	// New: set full date and hour (UTC), then sync QPI time
@@ -702,8 +680,6 @@ TEST(ContractRandomLottery, DrawAndPayout_BeginTick)
 	// Current fee configuration (set in INITIALIZE)
 	const RL::GetFees_output fees = ctl.getFees();
 	const uint8 teamPercent = fees.teamFeePercent;                 // Team commission percent
-	const uint8 distributionPercent = fees.distributionFeePercent; // Distribution (dividends) percent
-	const uint8 burnPercent = fees.burnPercent;                    // Burn percent
 	const uint8 winnerPercent = fees.winnerFeePercent;             // Winner payout percent
 
 	// Ensure schedule allows draw any day
