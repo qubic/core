@@ -3224,6 +3224,14 @@ static void processTick(unsigned long long processorNumber)
         PROFILE_SCOPE_END();
     }
 
+    // The last executionFeeReport for the previous phase is published by comp <NUMBER_OF_COMPUTORS - 1> (0-indexed) in the last tick t1 of the
+    // previous phase (t1 % NUMBER_OF_COMPUTORS == NUMBER_OF_COMPUTORS - 1) for inclusion in tick t2 = t1 + TICK_TRANSACTIONS_PUBLICATION_OFFSET.
+    // Tick t2 corresponds to tick <TICK_TRANSACTIONS_PUBLICATION_OFFSET - 1> of the current phase.
+    if (system.tick % NUMBER_OF_COMPUTORS == TICK_TRANSACTIONS_PUBLICATION_OFFSET - 1)
+    {
+        executionFeeReportCollector.processReports();
+    }
+
     PROFILE_NAMED_SCOPE_BEGIN("processTick(): END_TICK");
     logger.registerNewTx(system.tick, logger.SC_END_TICK_TX);
     contractProcessorPhase = END_TICK;
@@ -5213,8 +5221,6 @@ static void tickProcessor(void*)
                                 {
                                     executionTimeAccumulator.startNewAccumulation();
                                 }
-                                // TODO: Check if we need a offset to wait for the last executionFeeReports
-                                // executionFeeReportCollector.processReports();
 
                                 bool isBeginEpoch = false;
                                 if (epochTransitionState == 1)

@@ -110,7 +110,6 @@ public:
 
     void processReports()
     {
-        // TODO: Add logging event for quorum value deductions
         for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
         {
             long long quorumValue = calculateAscendingQuorumValue(executionFeeReports[contractIndex], NUMBER_OF_COMPUTORS);
