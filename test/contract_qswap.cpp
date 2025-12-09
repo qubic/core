@@ -247,7 +247,7 @@ TEST(ContractSwap, InvestRewardsInfoTest)
 	{
 		QSWAP::InvestRewardsInfo_output info = qswap.investRewardsInfo();
 
-		auto expectIdentity = (const unsigned char*)"IRUNQTXZRMLDEENHPRZQPSGPCFACORRUJYSBVJPQEHFCEKLLURVDDJVEXNBL";
+		auto expectIdentity = (const unsigned char*)"VJGRUFWJCUSNHCQJRWRRYXAUEJFCVHYPXWKTDLYKUACPVVYBGOLVCJSF";
 		m256i expectPubkey;
 		getPublicKeyFromIdentity(expectIdentity, expectPubkey.m256i_u8);
 		EXPECT_EQ(info.investRewardsId, expectPubkey);
@@ -265,7 +265,7 @@ TEST(ContractSwap, InvestRewardsInfoTest)
 		// printf("res1: %d\n", res1);
 		EXPECT_FALSE(res1);
 
-		auto investRewardsIdentity = (const unsigned char*)"IRUNQTXZRMLDEENHPRZQPSGPCFACORRUJYSBVJPQEHFCEKLLURVDDJVEXNBL";
+		auto investRewardsIdentity = (const unsigned char*)"VJGRUFWJCUSNHCQJRWRRYXAUEJFCVHYPXWKTDLYKUACPVVYBGOLVCJSF";
 		m256i investRewardsPubkey;
 		getPublicKeyFromIdentity(investRewardsIdentity, investRewardsPubkey.m256i_u8);
 
