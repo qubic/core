@@ -1334,7 +1334,7 @@ struct QpiContextUserProcedureNotificationCall : public QPI::QpiContextProcedure
         contractLocalsStack[_stackIndex].free();
         ASSERT(contractLocalsStack[_stackIndex].size() == 0);
 
-        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
+        _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], __rdtsc() - startTick);
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
