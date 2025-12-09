@@ -62,6 +62,9 @@ The type number is usually available from the network message type via the `stat
 - `RespondCustomMiningSolutionVerification`, type 63, defined in `custom_mining.h`.
 - `RequestActiveIPOs`, type 64, defined in `contract.h`.
 - `RespondActiveIPO`, type 65, defined in `contract.h`.
+- `RequestOracleData`, type 66, defined in `oracles.h`.
+- `RespondOracleData`, type 67, defined in `oracles.h`.
+
 - `SpecialCommand`, type 255, defined in `special_command.h`.
 
 Message types used in communication channel between core node and oracle machine node:

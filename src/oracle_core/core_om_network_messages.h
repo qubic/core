@@ -14,7 +14,10 @@
 struct OracleMachineQuery
 {
     /// Type to be used in RequestResponseHeader
-    static constexpr unsigned char type = 190;
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::ORACLE_MACHINE_QUERY;
+    }
 
     /// Query ID for later associating reply with query
     unsigned long long oracleQueryId;
@@ -31,7 +34,10 @@ struct OracleMachineQuery
 struct OracleMachineReply
 {
     /// Type to be used in RequestResponseHeader
-    static constexpr unsigned char type = 191;
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::ORACLE_MACHINE_REPLY;
+    }
 
     /// Query ID that links reply with query
     unsigned long long oracleQueryId;

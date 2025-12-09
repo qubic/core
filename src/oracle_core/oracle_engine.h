@@ -366,7 +366,7 @@ public:
         copyMem(omq + 1, queryData, querySize);
 
         // Enqueue for sending to all oracle machine peers (peer pointer address 0x1 is reserved for that)
-        enqueueResponse((Peer*)0x1, sizeof(*omq) + querySize, OracleMachineQuery::type, 0, omq);
+        enqueueResponse((Peer*)0x1, sizeof(*omq) + querySize, OracleMachineQuery::type(), 0, omq);
     }
 
     // CAUTION: Called from request processor, requires locking!

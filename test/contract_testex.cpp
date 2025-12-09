@@ -2050,7 +2050,7 @@ static union
 template <typename OracleInterface>
 void checkNetworkMessageOracleMachineQuery(uint64 expectedOracleQueryId, id expectedOracle, uint32 expectedTimeout)
 {
-    EXPECT_EQ(enqueuedNetworkMessage.header.type(), OracleMachineQuery::type);
+    EXPECT_EQ(enqueuedNetworkMessage.header.type(), OracleMachineQuery::type());
     EXPECT_GT(enqueuedNetworkMessage.header.size(), sizeof(RequestResponseHeader) + sizeof(OracleMachineQuery));
     uint32 queryDataSize = enqueuedNetworkMessage.header.size() - sizeof(RequestResponseHeader) - sizeof(OracleMachineQuery);
     EXPECT_LE(queryDataSize, (uint32)MAX_ORACLE_QUERY_SIZE);

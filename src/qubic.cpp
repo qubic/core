@@ -2166,7 +2166,7 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
-                case OracleMachineReply::type:
+                case OracleMachineReply::type():
                 {
                     processOracleMachineReply(peer, header);
                 }
