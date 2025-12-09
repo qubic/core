@@ -205,7 +205,7 @@
 #define CONTRACT_INDEX QRAFFLE_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QRAFFLE
 #define CONTRACT_STATE2_TYPE QRAFFLE2
-#include "contracts/Qraffle.h"
+#include "contracts/QRaffle.h"
 
 #endif
 
