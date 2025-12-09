@@ -2042,6 +2042,7 @@ static void requestProcessor(void* ProcedureArgument, unsigned long long process
     while (!shutDownNode)
     {
         checkinTime(processorNumber);
+        std::this_thread::sleep_for(std::chrono::microseconds(50));
         // in epoch transition, wait here
         if (epochTransitionState)
         {
