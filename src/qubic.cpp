@@ -239,10 +239,10 @@ struct
 } nodeStateBuffer;
 #endif
 static bool saveContractStateFiles(CHAR16* directory = NULL);
-static bool saveContractExecFeeFiles(CHAR16* directory = NULL);
+static bool saveContractExecFeeFiles(CHAR16* directory = NULL, bool saveAccumulatedTime = false);
 static bool saveSystem(CHAR16* directory = NULL);
 static bool loadContractStateFiles(CHAR16* directory = NULL, bool forceLoadFromFile = false);
-static bool loadContractExecFeeFiles(CHAR16* directory = NULL);
+static bool loadContractExecFeeFiles(CHAR16* directory = NULL, bool loadAccumulatedTime = false);
 static bool saveRevenueComponents(CHAR16* directory = NULL);
 
 #if ENABLED_LOGGING
@@ -3925,7 +3925,7 @@ static bool saveAllNodeStates()
         logToConsole(L"Failed to save contract state files");
         return false;
     }
-    if (!saveContractExecFeeFiles(directory))
+    if (!saveContractExecFeeFiles(directory, /*saveAccumulatedTime=*/true))
     {
         logToConsole(L"Failed to save contract execution fee files");
         return false;
@@ -4070,6 +4070,12 @@ static bool loadAllNodeStates()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
 
+    if (!loadContractStateFiles(directory, /*forceLoadFromFile=*/true))
+    {
+        logToConsole(L"Failed to load contract state files");
+        return false;
+    }
+
     CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 3] = L'0';
     CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 2] = L'0';
@@ -4078,10 +4084,9 @@ static bool loadAllNodeStates()
     CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 3] = L'0';
     CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 2] = L'0';
 
-    const bool forceLoadContractFile = true;
-    if (!loadContractStateFiles(directory, forceLoadContractFile))
+    if (!loadContractExecFeeFiles(directory, /*loadAccumulatedTime=*/true))
     {
-        logToConsole(L"Failed to load computer");
+        logToConsole(L"Failed to load contract execution fee files");
         return false;
     }
 
@@ -5322,17 +5327,18 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
     return true;
 }
 
-static bool loadContractExecFeeFiles(CHAR16* directory)
+static bool loadContractExecFeeFiles(CHAR16* directory, bool loadAccumulatedTime)
 {
     logToConsole(L"Loading contract execution fee files...");
-
-    if (!executionTimeAccumulator.loadFromFile(CONTRACT_EXEC_FEES_ACC_FILE_NAME, directory))
-        return false;
 
     if (!executionFeeReportCollector.loadFromFile(CONTRACT_EXEC_FEES_REC_FILE_NAME, directory))
         return false;
 
-    logToConsole(L"Accumulated execution times and received fee reports successfully loaded.");
+    if (loadAccumulatedTime && !executionTimeAccumulator.loadFromFile(CONTRACT_EXEC_FEES_ACC_FILE_NAME, directory))
+        return false;
+
+    logToConsole(loadAccumulatedTime ? L"Received fee reports and accumulated execution times successfully loaded." 
+        : L"Received fee reports successfully loaded.");
 
     return true;
 }
@@ -5371,19 +5377,20 @@ static bool saveContractStateFiles(CHAR16* directory)
     return true;
 }
 
-static bool saveContractExecFeeFiles(CHAR16* directory)
+static bool saveContractExecFeeFiles(CHAR16* directory, bool saveAccumulatedTime)
 {
     logToConsole(L"Saving contract execution fee files...");
 
     unsigned long long beginningTick = __rdtsc();
 
-    if (!executionTimeAccumulator.saveToFile(CONTRACT_EXEC_FEES_ACC_FILE_NAME, directory))
-        return false;
-
     if (!executionFeeReportCollector.saveToFile(CONTRACT_EXEC_FEES_REC_FILE_NAME, directory))
         return false;
 
-    setText(message, L"Accumulated execution times and received fee reports are saved (");
+    if (saveAccumulatedTime && !executionTimeAccumulator.saveToFile(CONTRACT_EXEC_FEES_ACC_FILE_NAME, directory))
+        return false;
+
+    setText(message, saveAccumulatedTime ? L"Received fee reports and accumulated execution times are saved ("
+        : L"Received fee reports are saved (");
     appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
     appendText(message, L" microseconds).");
     logToConsole(message);
@@ -5630,6 +5637,10 @@ static bool initialize()
             }
             if (!loadContractStateFiles())
                 return false;
+#ifndef START_NETWORK_FROM_SCRATCH
+            if (!loadContractExecFeeFiles())
+                return false;
+#endif
             m256i computerDigest;
             {
                 setText(message, L"Computer digest = ");
@@ -6561,10 +6572,6 @@ static void processKeyPresses()
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
 
             saveContractStateFiles();
-
-            CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 4] = L'0';
-            CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 3] = L'0';
-            CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 2] = L'0';
 
             CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 4] = L'0';
             CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 3] = L'0';
