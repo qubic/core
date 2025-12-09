@@ -123,6 +123,9 @@
     <ClInclude Include="contracts\Nostromo.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\Qraffle.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contracts\QBond.h">
       <Filter>contracts</Filter>
     </ClInclude>
@@ -304,6 +307,12 @@
     </ClInclude>
     <ClInclude Include="contract_core\qpi_oracle_impl.h">
       <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\network_message_type.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\Qswap_old.h">
+      <Filter>contracts</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

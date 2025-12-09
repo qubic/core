@@ -534,7 +534,8 @@ protected:
 		}
 
 		if (input.price <= 0 || input.price >= MAX_AMOUNT
-			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT)
+			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT
+			|| smul(input.price, input.numberOfShares) >= MAX_AMOUNT)
 		{
 			output.addedNumberOfShares = 0;
 		}
@@ -624,8 +625,15 @@ protected:
 
 								state._elementIndex2 = state._entityOrders.nextElementIndex(state._elementIndex2);
 							}
-
-							state._fee = div<sint64>(state._price * state._assetOrder.numberOfShares * state._tradeFee, 1000000000LL) + 1;
+							if (smul(state._price, state._assetOrder.numberOfShares) >= div<sint64>(INT64_MAX, state._tradeFee))
+							{
+								// in this case, traders will pay more fee because it's rounding down, it's better to split the trade into multiple smaller trades
+								state._fee = div<sint64>(state._price * state._assetOrder.numberOfShares, div<sint64>(1000000000LL, state._tradeFee)) + 1;
+							}
+							else
+							{
+								state._fee = div<sint64>(state._price * state._assetOrder.numberOfShares * state._tradeFee, 1000000000LL) + 1;
+							}
 							state._earnedAmount += state._fee;
 							qpi.transfer(qpi.invocator(), state._price * state._assetOrder.numberOfShares - state._fee);
 							qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), state._assetOrder.numberOfShares, state._assetOrder.entity);
@@ -658,8 +666,15 @@ protected:
 
 								state._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
 							}
-
-							state._fee = div<sint64>(state._price * input.numberOfShares * state._tradeFee, 1000000000LL) + 1;
+							if (smul(state._price, input.numberOfShares) >= div<sint64>(INT64_MAX, state._tradeFee))
+							{
+								// in this case, traders will pay more fee because it's rounding down, it's better to split the trade into multiple smaller trades
+								state._fee = div<sint64>(state._price * input.numberOfShares, div<sint64>(1000000000LL, state._tradeFee)) + 1;
+							}
+							else
+							{
+								state._fee = div<sint64>(state._price * input.numberOfShares * state._tradeFee, 1000000000LL) + 1;
+							}
 							state._earnedAmount += state._fee;
 							qpi.transfer(qpi.invocator(), state._price * input.numberOfShares - state._fee);
 							qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.numberOfShares, state._assetOrder.entity);
@@ -696,6 +711,7 @@ protected:
 	{
 		if (input.price <= 0  || input.price >= MAX_AMOUNT
 			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT
+			|| smul(input.price, input.numberOfShares) >= MAX_AMOUNT
 			|| qpi.invocationReward() < smul(input.price, input.numberOfShares))
 		{
 			output.addedNumberOfShares = 0;
@@ -788,7 +804,15 @@ protected:
 							state._elementIndex2 = state._entityOrders.nextElementIndex(state._elementIndex2);
 						}
 
-						state._fee = div<sint64>(state._price * state._assetOrder.numberOfShares * state._tradeFee, 1000000000LL) + 1;
+						if (smul(state._price, state._assetOrder.numberOfShares) >= div<sint64>(INT64_MAX, state._tradeFee))
+						{
+							// in this case, traders will pay more fee because it's rounding down, it's better to split the trade into multiple smaller trades
+							state._fee = div<sint64>(state._price * state._assetOrder.numberOfShares, div<sint64>(1000000000LL, state._tradeFee)) + 1;
+						}
+						else
+						{
+							state._fee = div<sint64>(state._price * state._assetOrder.numberOfShares * state._tradeFee, 1000000000LL) + 1;
+						}
 						state._earnedAmount += state._fee;
 						qpi.transfer(state._assetOrder.entity, state._price * state._assetOrder.numberOfShares - state._fee);
 						qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, state._assetOrder.entity, state._assetOrder.entity, state._assetOrder.numberOfShares, qpi.invocator());
@@ -826,7 +850,15 @@ protected:
 							state._elementIndex = state._entityOrders.nextElementIndex(state._elementIndex);
 						}
 
-						state._fee = div<sint64>(state._price * input.numberOfShares * state._tradeFee, 1000000000LL) + 1;
+						if (smul(state._price, input.numberOfShares) >= div<sint64>(INT64_MAX, state._tradeFee))
+						{
+							// in this case, traders will pay more fee because it's rounding down, it's better to split the trade into multiple smaller trades
+							state._fee = div<sint64>(state._price * input.numberOfShares, div<sint64>(1000000000LL, state._tradeFee)) + 1;
+						}
+						else
+						{
+							state._fee = div<sint64>(state._price * input.numberOfShares * state._tradeFee, 1000000000LL) + 1;
+						}
 						state._earnedAmount += state._fee;
 						qpi.transfer(state._assetOrder.entity, state._price * input.numberOfShares - state._fee);
 						qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, state._assetOrder.entity, state._assetOrder.entity, input.numberOfShares, qpi.invocator());
@@ -870,7 +902,8 @@ protected:
 		}
 
 		if (input.price <= 0 || input.price >= MAX_AMOUNT
-			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT)
+			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT
+			|| smul(input.price, input.numberOfShares) >= MAX_AMOUNT)
 		{
 			output.removedNumberOfShares = 0;
 		}
@@ -957,7 +990,8 @@ protected:
 		}
 
 		if (input.price <= 0 || input.price >= MAX_AMOUNT
-			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT)
+			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT
+			|| smul(input.price, input.numberOfShares) >= MAX_AMOUNT)
 		{
 			output.removedNumberOfShares = 0;
 		}
@@ -1143,6 +1177,23 @@ protected:
 
 	POST_ACQUIRE_SHARES()
 	{
+	}
+
+	POST_INCOMING_TRANSFER()
+	{
+		switch (input.type)
+		{
+		case TransferType::standardTransaction:
+			qpi.transfer(input.sourceId, input.amount);
+			break;
+		case TransferType::qpiTransfer:
+		case TransferType::revenueDonation:
+			// add amount to _earnedAmount which will be distributed to shareholders in END_TICK
+			state._earnedAmount += input.amount;
+			break;
+		default:
+			break;
+		}
 	}
 };
 

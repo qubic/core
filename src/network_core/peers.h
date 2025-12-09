@@ -796,7 +796,7 @@ static void processReceivedData(unsigned int i, unsigned int salt)
                                     {
                                         _InterlockedIncrement64(&numberOfDiscardedRequests);
 
-                                        enqueueResponse(&peers[i], 0, TryAgain::type, requestResponseHeader->dejavu(), NULL);
+                                        enqueueResponse(&peers[i], 0, TryAgain::type(), requestResponseHeader->dejavu(), NULL);
                                     }
                                 }
                                 else

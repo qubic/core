@@ -142,7 +142,11 @@
 #define CONTRACT_INDEX QSWAP_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QSWAP
 #define CONTRACT_STATE2_TYPE QSWAP2
+#ifdef OLD_QSWAP
+#include "contracts/Qswap_old.h"
+#else
 #include "contracts/Qswap.h"
+#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -184,8 +188,6 @@
 #define CONTRACT_STATE2_TYPE QBOND2
 #include "contracts/QBond.h"
 
-#ifndef NO_QIP
-
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
@@ -195,6 +197,18 @@
 #define CONTRACT_STATE_TYPE QIP
 #define CONTRACT_STATE2_TYPE QIP2
 #include "contracts/QIP.h"
+
+#ifndef NO_QRAFFLE
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QRAFFLE_CONTRACT_INDEX 19
+#define CONTRACT_INDEX QRAFFLE_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QRAFFLE
+#define CONTRACT_STATE2_TYPE QRAFFLE2
+#include "contracts/Qraffle.h"
 
 #endif
 
@@ -300,8 +314,9 @@ constexpr struct ContractDescription
     {"QDRAW", 179, 10000, sizeof(QDRAW)}, // proposal in epoch 177, IPO in 178, construction and first use in 179
     {"RL", 182, 10000, sizeof(RL)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
     {"QBOND", 182, 10000, sizeof(QBOND)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
-#ifndef NO_QIP
     {"QIP", 189, 10000, sizeof(QIP)}, // proposal in epoch 187, IPO in 188, construction and first use in 189
+#ifndef NO_QRAFFLE
+    {"QRAFFLE", 192, 10000, sizeof(QRAFFLE)}, // proposal in epoch 190, IPO in 191, construction and first use in 192
 #endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -356,7 +371,8 @@ enum OtherEntryPointIDs
     // Used together with SystemProcedureID values, so there must be no overlap!
     USER_PROCEDURE_CALL = contractSystemProcedureCount + 1,
     USER_FUNCTION_CALL = contractSystemProcedureCount + 2,
-    REGISTER_USER_FUNCTIONS_AND_PROCEDURES_CALL = contractSystemProcedureCount + 3
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES_CALL = contractSystemProcedureCount + 3,
+    USER_PROCEDURE_NOTIFICATION_CALL = contractSystemProcedureCount + 4,
 };
 
 GLOBAL_VAR_DECL SYSTEM_PROCEDURE contractSystemProcedures[contractCount][contractSystemProcedureCount];
@@ -415,8 +431,9 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDRAW);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(RL);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QBOND);
-#ifndef NO_QIP
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QIP);
+#ifndef NO_QRAFFLE
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRAFFLE);
 #endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
