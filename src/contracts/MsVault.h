@@ -2244,21 +2244,26 @@ protected:
                         state.totalRevenue += locals.qubicVault.qubicBalance;
                     }
 
-                    locals.assetVault = state.vaultAssetParts.get(locals.i);
-                    for (locals.k = 0; locals.k < locals.assetVault.numberOfAssetTypes; locals.k++)
-                    {
-                        locals.ab = locals.assetVault.assetBalances.get(locals.k);
-                        if (locals.ab.balance > 0)
-                        {
-                            // Prepare the transfer request to QX
-                            locals.qx_in.assetName = locals.ab.asset.assetName;
-                            locals.qx_in.issuer = locals.ab.asset.issuer;
-                            locals.qx_in.numberOfShares = locals.ab.balance;
-                            locals.qx_in.newOwnerAndPossessor = locals.qxAdress;
+                    // Temporarily disable this code block. To transfer back the assets to QX, we need to pay 100 QUs fee.
+                    // But the SC itself does not have enough funds to do so. We will keep it under the SC, so if the stuck asset
+                    // happens, we just assign it back manually through patches. As long as there are fees needed for releasing
+                    // assets back to QX, the code block below is not applicable.
+                    // locals.assetVault = state.vaultAssetParts.get(locals.i);
+                    // for (locals.k = 0; locals.k < locals.assetVault.numberOfAssetTypes; locals.k++)
+                    // {
+                    //     locals.ab = locals.assetVault.assetBalances.get(locals.k);
+                    //     if (locals.ab.balance > 0)
+                    //     {
+                    //         // Prepare the transfer request to QX
+                    //         locals.qx_in.assetName = locals.ab.asset.assetName;
+                    //         locals.qx_in.issuer = locals.ab.asset.issuer;
+                    //         locals.qx_in.numberOfShares = locals.ab.balance;
+                    //         locals.qx_in.newOwnerAndPossessor = locals.qxAdress;
 
-                            INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareOwnershipAndPossession, locals.qx_in, locals.qx_out, 0);
-                        }
-                    }
+                    //         INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareOwnershipAndPossession, locals.qx_in, locals.qx_out, 0);
+                    //     }
+                    // }
+                    
                     locals.qubicVault.isActive = false;
                     locals.qubicVault.qubicBalance = 0;
                     locals.qubicVault.requiredApprovals = 0;
