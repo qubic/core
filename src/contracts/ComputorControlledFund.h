@@ -321,7 +321,6 @@ public:
 		sint32 subIndex;
 		SubscriptionData subscriptionData;
 		SubscriptionProposalData subscriptionProposalData;
-		id destinationToLookup;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetProposal)
@@ -339,39 +338,16 @@ public:
 			{
 				output.subscriptionProposal = locals.subscriptionProposalData;
 				output.hasSubscriptionProposal = true;
-				locals.destinationToLookup = locals.subscriptionProposalData.destination;
 			}
-			else
-			{
-				// Use destination from proposal if available
-				if (ProposalTypes::cls(output.proposal.type) == ProposalTypes::Class::Transfer)
-				{
-					locals.destinationToLookup = output.proposal.transfer.destination;
-				}
-			}
-		}
-		else
-		{
-			// Use destination from proposal if available
-			if (ProposalTypes::cls(output.proposal.type) == ProposalTypes::Class::Transfer)
-			{
-				locals.destinationToLookup = output.proposal.transfer.destination;
-			}
-		}
-
-		// If input provides a destination, use that instead
-		if (!isZero(input.subscriptionDestination))
-		{
-			locals.destinationToLookup = input.subscriptionDestination;
 		}
 
 		// Look up active subscription by destination ID
-		if (!isZero(locals.destinationToLookup))
+		if (!isZero(input.subscriptionDestination))
 		{
 			for (locals.subIndex = 0; locals.subIndex < CCF_MAX_SUBSCRIPTIONS; ++locals.subIndex)
 			{
 				locals.subscriptionData = state.activeSubscriptions.get(locals.subIndex);
-				if (locals.subscriptionData.destination == locals.destinationToLookup && !isZero(locals.subscriptionData.destination))
+				if (locals.subscriptionData.destination == input.subscriptionDestination && !isZero(locals.subscriptionData.destination))
 				{
 					output.subscription = locals.subscriptionData;
 					output.hasActiveSubscription = true;
