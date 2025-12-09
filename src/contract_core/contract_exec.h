@@ -197,9 +197,13 @@ static bool initContractExec()
 
 static void initializeContractErrors()
 {
+    unsigned int endIndex = contractCount;
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+    endIndex = TESTEXA_CONTRACT_INDEX;
+#endif
     // At initialization, all contract errors are set to 0 (= no error).
     // If IPO failed (number of contract shares in universe != NUMBER_OF_COMPUTERS), the error status needs to be set accordingly.
-    for (unsigned int contractIndex = 1; contractIndex < contractCount; ++contractIndex)
+    for (unsigned int contractIndex = 1; contractIndex < endIndex; ++contractIndex)
     {
         long long numShares = numberOfShares({ m256i::zero(), *(uint64*)contractDescriptions[contractIndex].assetName });
         if (numShares != NUMBER_OF_COMPUTORS)
