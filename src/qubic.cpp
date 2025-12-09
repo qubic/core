@@ -240,9 +240,11 @@ struct
     unsigned char customMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
 } nodeStateBuffer;
 #endif
-static bool saveComputer(CHAR16* directory = NULL);
+static bool saveContractStateFiles(CHAR16* directory = NULL);
+static bool saveContractExecFeeFiles(CHAR16* directory = NULL, bool saveAccumulatedTime = false);
 static bool saveSystem(CHAR16* directory = NULL);
-static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
+static bool loadContractStateFiles(CHAR16* directory = NULL, bool forceLoadFromFile = false);
+static bool loadContractExecFeeFiles(CHAR16* directory = NULL, bool loadAccumulatedTime = false);
 static bool saveRevenueComponents(CHAR16* directory = NULL);
 
 #if ENABLED_LOGGING
@@ -3597,6 +3599,14 @@ static void beginEpoch()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
 
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+
     score->initMemory();
     score->resetTaskQueue();
     setMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
@@ -3957,13 +3967,28 @@ static bool saveAllNodeStates()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
+
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 4] = L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 3] = L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 2] = L'0';
+
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 4] = L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 3] = L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 2] = L'0';
+
     setText(message, L"Saving computer files");
     logToConsole(message);
-    if (!saveComputer(directory))
+    if (!saveContractStateFiles(directory))
     {
-        logToConsole(L"Failed to save computer");
+        logToConsole(L"Failed to save contract state files");
         return false;
     }
+    if (!saveContractExecFeeFiles(directory, /*saveAccumulatedTime=*/true))
+    {
+        logToConsole(L"Failed to save contract execution fee files");
+        return false;
+    }
+
     setText(message, L"Saving system to system.snp");
     logToConsole(message);
 
@@ -4102,10 +4127,24 @@ static bool loadAllNodeStates()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
-    const bool forceLoadContractFile = true;
-    if (!loadComputer(directory, forceLoadContractFile))
+
+    if (!loadContractStateFiles(directory, /*forceLoadFromFile=*/true))
     {
-        logToConsole(L"Failed to load computer");
+        logToConsole(L"Failed to load contract state files");
+        return false;
+    }
+
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 4] = L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 3] = L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 2] = L'0';
+
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 4] = L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 3] = L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 2] = L'0';
+
+    if (!loadContractExecFeeFiles(directory, /*loadAccumulatedTime=*/true))
+    {
+        logToConsole(L"Failed to load contract execution fee files");
         return false;
     }
 
@@ -5300,7 +5339,7 @@ static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 
 // directory: source directory to load the file. Default: NULL - load from root dir /
 // forceLoadFromFile: when loading node states from file, we want to make sure it load from file and ignore constructionEpoch == system.epoch case
-static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
+static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
 {
     logToConsole(L"Loading contract files ...");
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
@@ -5340,17 +5379,36 @@ static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
             logToConsole(message);
         }
     }
+    
+    logToConsole(L"All contract files successfully loaded or initialized.");
+
     return true;
 }
 
-static bool saveComputer(CHAR16* directory)
+static bool loadContractExecFeeFiles(CHAR16* directory, bool loadAccumulatedTime)
+{
+    logToConsole(L"Loading contract execution fee files...");
+
+    if (!executionFeeReportCollector.loadFromFile(CONTRACT_EXEC_FEES_REC_FILE_NAME, directory))
+        return false;
+
+    if (loadAccumulatedTime && !executionTimeAccumulator.loadFromFile(CONTRACT_EXEC_FEES_ACC_FILE_NAME, directory))
+        return false;
+
+    logToConsole(loadAccumulatedTime ? L"Received fee reports and accumulated execution times successfully loaded." 
+        : L"Received fee reports successfully loaded.");
+
+    return true;
+}
+
+static bool saveContractStateFiles(CHAR16* directory)
 {
     logToConsole(L"Saving contract files...");
 
-    const unsigned long long beginningTick = __rdtsc();
+    unsigned long long beginningTick = __rdtsc();
 
-    bool ok = true;
     unsigned long long totalSize = 0;
+    long long savedSize = 0;
 
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
@@ -5359,27 +5417,43 @@ static bool saveComputer(CHAR16* directory)
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
         contractStateLock[contractIndex].acquireRead();
-        long long savedSize = save(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
+        savedSize = save(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
         contractStateLock[contractIndex].releaseRead();
         totalSize += savedSize;
         if (savedSize != contractDescriptions[contractIndex].stateSize)
         {
-            ok = false;
-
-            break;
+            return false;
         }
     }
 
-    if (ok)
-    {
-        setNumber(message, totalSize, TRUE);
-        appendText(message, L" bytes of the computer data are saved (");
-        appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
-        appendText(message, L" microseconds).");
-        logToConsole(message);
-        return true;
-    }
-    return false;
+    setNumber(message, totalSize, TRUE);
+    appendText(message, L" bytes of the contract state files are saved (");
+    appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
+    appendText(message, L" microseconds).");
+    logToConsole(message);
+
+    return true;
+}
+
+static bool saveContractExecFeeFiles(CHAR16* directory, bool saveAccumulatedTime)
+{
+    logToConsole(L"Saving contract execution fee files...");
+
+    unsigned long long beginningTick = __rdtsc();
+
+    if (!executionFeeReportCollector.saveToFile(CONTRACT_EXEC_FEES_REC_FILE_NAME, directory))
+        return false;
+
+    if (saveAccumulatedTime && !executionTimeAccumulator.saveToFile(CONTRACT_EXEC_FEES_ACC_FILE_NAME, directory))
+        return false;
+
+    setText(message, saveAccumulatedTime ? L"Received fee reports and accumulated execution times are saved ("
+        : L"Received fee reports are saved (");
+    appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
+    appendText(message, L" microseconds).");
+    logToConsole(message);
+
+    return true;
 }
 
 static bool saveSystem(CHAR16* directory)
@@ -5619,8 +5693,12 @@ static bool initialize()
                 appendText(message, L".");
                 logToConsole(message);
             }
-            if (!loadComputer())
+            if (!loadContractStateFiles())
                 return false;
+#ifndef START_NETWORK_FROM_SCRATCH
+            if (!loadContractExecFeeFiles())
+                return false;
+#endif
             m256i computerDigest;
             {
                 setText(message, L"Computer digest = ");
@@ -6550,7 +6628,14 @@ static void processKeyPresses()
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
-            saveComputer();
+
+            saveContractStateFiles();
+
+            CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 4] = L'0';
+            CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 3] = L'0';
+            CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 2] = L'0';
+
+            saveContractExecFeeFiles();
 
 #ifdef ENABLE_PROFILING
             gProfilingDataCollector.writeToFile();
@@ -7118,7 +7203,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 }
                 if (computerMustBeSaved)
                 {
-                    saveComputer();
+                    saveContractStateFiles();
+                    saveContractExecFeeFiles();
                     computerMustBeSaved = false;
                 }
 
