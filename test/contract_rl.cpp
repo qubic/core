@@ -223,7 +223,7 @@ public:
 		return output;
 	}
 
-	RL::BuyTicket_output buyTicket(const id& user, uint64 reward)
+	RL::BuyTicket_output buyTicket(const id& user, sint64 reward)
 	{
 		RL::BuyTicket_input input;
 		RL::BuyTicket_output output;
@@ -634,7 +634,7 @@ TEST(ContractRandomLottery, BuyTicket)
 			EXPECT_EQ(ctl.state()->getPlayerCounter(), expectedPlayers);
 
 			// < 0
-			outInvalid = ctl.buyTicket(user, -ticketPrice);
+			outInvalid = ctl.buyTicket(user, -1LL * ticketPrice);
 			EXPECT_NE(outInvalid.returnCode, static_cast<uint8>(RL::EReturnCode::SUCCESS));
 			EXPECT_EQ(ctl.state()->getPlayerCounter(), expectedPlayers);
 		}

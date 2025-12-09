@@ -37,21 +37,21 @@ void qLogger::processRequestLog(unsigned long long processorNumber, Peer* peer, 
             {
                 char* rBuffer = responseBuffers[processorNumber];
                 logBuffer.getMany(rBuffer, startFrom, length);
-                enqueueResponse(peer, (unsigned int)(length), RespondLog::type, header->dejavu(), rBuffer);
+                enqueueResponse(peer, (unsigned int)(length), RespondLog::type(), header->dejavu(), rBuffer);
             }
             else
             {
-                enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+                enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
             }
         }
         else
         {
-            enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+            enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
         }
         return;
     }
 #endif
-    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
 }
 
 void qLogger::processRequestTxLogInfo(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
@@ -65,7 +65,7 @@ void qLogger::processRequestTxLogInfo(unsigned long long processorNumber, Peer* 
         && request->tick >= tickBegin
         )
     {
-        ResponseLogIdRangeFromTx resp;
+        RespondLogIdRangeFromTx resp;
         if (request->tick <= lastUpdatedTick)
         {
             BlobInfo info = tx.getLogIdInfo(processorNumber, request->tick, request->txId);
@@ -79,11 +79,11 @@ void qLogger::processRequestTxLogInfo(unsigned long long processorNumber, Peer* 
             resp.length = -3;
         }
         
-        enqueueResponse(peer, sizeof(ResponseLogIdRangeFromTx), ResponseLogIdRangeFromTx::type, header->dejavu(), &resp);
+        enqueueResponse(peer, sizeof(RespondLogIdRangeFromTx), RespondLogIdRangeFromTx::type(), header->dejavu(), &resp);
         return;
     }
 #endif
-    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
 }
 
 void qLogger::processRequestTickTxLogInfo(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
@@ -97,7 +97,7 @@ void qLogger::processRequestTickTxLogInfo(unsigned long long processorNumber, Pe
         && request->tick >= tickBegin
         )
     {
-        ResponseAllLogIdRangesFromTick* resp = (ResponseAllLogIdRangesFromTick * )responseBuffers[processorNumber];
+        RespondAllLogIdRangesFromTick* resp = (RespondAllLogIdRangesFromTick*)responseBuffers[processorNumber];
         int txId = 0;
         if (request->tick <= lastUpdatedTick)
         {
@@ -112,11 +112,11 @@ void qLogger::processRequestTickTxLogInfo(unsigned long long processorNumber, Pe
                 resp->length[txId] = -3;
             }
         }
-        enqueueResponse(peer, sizeof(ResponseAllLogIdRangesFromTick), ResponseAllLogIdRangesFromTick::type, header->dejavu(), resp);
+        enqueueResponse(peer, sizeof(RespondAllLogIdRangesFromTick), RespondAllLogIdRangesFromTick::type(), header->dejavu(), resp);
         return;
     }
 #endif
-    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
 }
 
 void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* header)
@@ -128,7 +128,7 @@ void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* hea
         && request->passcode[2] == logReaderPasscodes[2]
         && request->passcode[3] == logReaderPasscodes[3])
     {
-        ResponsePruningLog resp;
+        RespondPruningLog resp;
         bool isValidRange = mapLogIdToBufferIndex.isIndexValid(request->fromLogId) && mapLogIdToBufferIndex.isIndexValid(request->toLogId);
         isValidRange &= (request->toLogId >= mapLogIdToBufferIndex.pageCap());
         isValidRange &= (request->toLogId >= request->fromLogId + mapLogIdToBufferIndex.pageCap());
@@ -166,11 +166,11 @@ void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* hea
             }
         }
 
-        enqueueResponse(peer, sizeof(ResponsePruningLog), ResponsePruningLog::type, header->dejavu(), &resp);
+        enqueueResponse(peer, sizeof(RespondPruningLog), RespondPruningLog::type(), header->dejavu(), &resp);
         return;
     }
 #endif
-    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
 }
 
 void qLogger::processRequestGetLogDigest(Peer* peer, RequestResponseHeader* header)
@@ -184,11 +184,11 @@ void qLogger::processRequestGetLogDigest(Peer* peer, RequestResponseHeader* head
         && request->requestedTick >= tickBegin
         && request->requestedTick <= lastUpdatedTick)
     {
-        ResponseLogStateDigest resp;
+        RespondLogStateDigest resp;
         resp.digest = digests[request->requestedTick - tickBegin];
-        enqueueResponse(peer, sizeof(ResponseLogStateDigest), ResponseLogStateDigest::type, header->dejavu(), &resp);
+        enqueueResponse(peer, sizeof(RespondLogStateDigest), RespondLogStateDigest::type(), header->dejavu(), &resp);
         return;
     }
 #endif
-    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
 }

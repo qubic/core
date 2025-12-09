@@ -2,14 +2,18 @@
 
 struct EndResponse
 {
-    enum {
-        type = 35,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::END_RESPONSE;
+    }
 };
 
-struct TryAgain // Must be returned if _dejavu is not 0, and the incoming packet cannot be processed (usually when incoming packets queue is full)
+// Must be returned if _dejavu is not 0, and the incoming packet 
+// cannot be processed (usually when incoming packets queue is full)
+struct TryAgain
 {
-    enum {
-        type = 54,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::TRY_AGAIN;
+    }
 };
