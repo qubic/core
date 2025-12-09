@@ -12,15 +12,13 @@
 
 void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data);
 
-constexpr uint16_t MAX_ORACLE_QUERY_SIZE = MAX_INPUT_SIZE - 8;
-constexpr uint16_t MAX_ORACLE_REPLY_SIZE = MAX_INPUT_SIZE - 8;
 constexpr uint32_t MAX_ORACLE_QUERIES = (1 << 18);
 constexpr uint64_t ORACLE_QUERY_STORAGE_SIZE = MAX_ORACLE_QUERIES * 512;
 constexpr uint32_t MAX_SIMULTANEOUS_ORACLE_QUERIES = 1024;
 
 struct OracleQueryMetadata
 {
-    uint64_t queryId;
+    uint64_t queryId;         ///< Higher 32 bits are query tick, lower are composed of contract ID and index. 0 is reserved for invalid ID.
     uint8_t type;             ///< contract query, user query, subscription (may be by multiple contracts)
     uint8_t status;           ///< overall status (pending -> success or timeout)
     uint16_t statusFlags;     ///< status and error flags (especially as returned by oracle machine connected to this node)
@@ -45,7 +43,7 @@ struct OracleQueryMetadata
         struct
         {
             uint64_t queryStorageOffset;
-            uint32_t subscriptionId; // needs value reserved for "no subscription"
+            uint32_t subscriptionId; ///< 0 is reserved for "no subscription"
         } subscription;
     } typeVar;
 
@@ -60,9 +58,16 @@ struct OracleQueryMetadata
         /// used after after reveal and notification
         struct
         {
-            uint32_t revealTick;
-            uint32_t revealTxIndex;
+            uint32_t revealTick;    ///< tick of first reveal tx (and notification)
+            uint32_t revealTxIndex; ///< tx of reveal tx in tick
         } success;
+
+        /// used after after failure
+        struct
+        {
+            uint16_t totalCommits;
+            uint16_t agreeingCommits;
+        } failure;
     } statusVar;
 };
 
@@ -76,17 +81,19 @@ struct OracleContractStatus
 struct OracleSubscriptionContractStatus
 {
     uint32_t subscriptionId;
-    QPI::DateAndTime nextNotification;
-    uint16_t notificationPeriodMinutes;
     uint16_t contractIndex;
+    uint16_t notificationPeriodMinutes;
+    QPI::DateAndTime nextNotification;
 };
 
 struct OracleSubscriptionMetadata
 {
-    // Number of minutes between consecutive queries, scheduler triggers query in processTick()
-    uint16_t queryPeriodMinutes;
+    uint64_t initialQueryStorageOffset;
 
-    // Offset of DateAndTime timestamp in oracle query data
+    // Number of minutes between consecutive queries, scheduler triggers query in processTick()
+    uint16_t queryIntervalMinutes;
+
+    // Offset of DateAndTime timestamp member variable in oracle query struct
     uint16_t queryTimestampOffset;
 
     // ID of last query

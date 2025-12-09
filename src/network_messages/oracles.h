@@ -1,0 +1,107 @@
+#pragma once
+
+#include "common_def.h"
+
+
+// Options to request oracle queries/replies/subscriptions:
+// - all oracle query IDs of a given tick
+// - all oracle query IDs of user oracle queries of a given tick (subset of 1)
+// - all oracle query IDs of contract oracle queries of a given tick (subset of 1)
+// - all oracle query IDs of queries of a given tick triggered by subscription (subset of 1)
+// - all oracle query IDs that are pending (status is neither success nor failure)
+// - for given oracle query ID: metadata, query, and response if available
+// - subscription info for given oracle subscription ID
+struct RequestOracleData
+{
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_ORACLE_DATA;
+    }
+
+    // type of oracle request
+    static constexpr unsigned int requestAllQueryIdsByTick = 0;
+    static constexpr unsigned int requestUserQueryIdsByTick = 1;
+    static constexpr unsigned int requestContractDirectQueryIdsByTick = 2;
+    static constexpr unsigned int requestContractSubscriptionQueryIdsByTick = 3;
+    static constexpr unsigned int requestPendingQueryIds = 4;
+    static constexpr unsigned int requestQueryAndResponse = 5;
+    static constexpr unsigned int requestSubscription = 6;
+    unsigned int reqType;
+
+    unsigned int _padding;
+
+    // tick, query ID, or subscription ID (depending on reqType)
+    unsigned long long reqTickOrId;
+};
+
+static_assert(sizeof(RequestOracleData) == 16, "Something is wrong with the struct size.");
+
+// Response to RequestOracleData. This is just the header, the payload following depends on resType and is decribed below.
+// The size of the payload can be calculated from the RequestResponseHeader size.
+// One request may be followed by multiple responses, finished by END_RESPONSE.
+struct RespondOracleData
+{
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::RESPOND_ORACLE_DATA;
+    }
+
+    // The payload is an array of 8-byte query IDs.
+    static constexpr unsigned int respondQueryIds = 0;
+
+    // The payload is RespondOracleDataQueryMetadata.
+    static constexpr unsigned int respondQueryMetadata = 1;
+
+    // The payload is the OracleQuery data as defined by the oracle interface type.
+    static constexpr unsigned int respondQueryData = 2;
+
+    // The payload is the OracleReply data as defined by the oracle interface type.
+    static constexpr unsigned int respondReplyData = 3;
+
+    // The payload is RespondOracleDataSubscriptionMetadata.
+    static constexpr unsigned int respondSubscriptionMetadata = 4;
+
+    // The payload is RespondOracleDataQueryMetadata.
+    static constexpr unsigned int respondSubscriptionQueryData = 5;
+
+    // The payload is RespondOracleDataSubscriptionContractMetadata.
+    static constexpr unsigned int respondSubscriptionContractMetadata = 6;
+
+    // type of oracle response
+    unsigned int resType;
+};
+
+static_assert(sizeof(RespondOracleData) == 4, "Something is wrong with the struct size.");
+
+struct RespondOracleDataQueryMetadata
+{
+    uint64_t queryId;
+    uint8_t type;               ///< contract query, user query, subscription (may be by multiple contracts)
+    uint8_t status;             ///< overall status (pending -> success or timeout)
+    uint16_t statusFlags;       ///< status and error flags (especially as returned by oracle machine connected to this node)
+    uint32_t interfaceIndex;
+    uint32_t queryTick;
+    uint64_t timeout;           ///< Timeout in QPI::DateAndTime format
+    m256i queryingEntity;
+    uint32_t subscriptionId;    ///< 0 is reserved for "no subscription"
+    uint32_t revealTick;        ///< Tick of reveal tx. Only available if status is success.
+    uint16_t totalCommits;      ///< Total number of commit tx. Only available if status isn't success.
+    uint16_t agreeingCommits;   ///< Number of agreeing commit tx (biggest group with same digest). Only available if status isn't success.
+};
+
+struct RespondOracleDataSubscriptionMetadata
+{
+    uint16_t queryIntervalMinutes;
+    uint16_t queryTimestampOffset;
+    uint64_t lastQueryQueryId;
+    uint64_t lastRevealQueryId;
+    uint64_t nextQueryTimestamp;
+};
+
+struct RespondOracleDataSubscriptionContractMetadata
+{
+    uint32_t subscriptionId;
+    uint16_t contractIndex;
+    uint16_t notificationIntervalMinutes; 
+    uint64_t nextQueryNotificationTimestamp; ///< Timeout in QPI::DateAndTime format
+};

@@ -53,9 +53,9 @@ struct OracleUserQueryTransactionPrefix : public Transaction
 
 	static constexpr unsigned short minInputSize()
 	{
-		return sizeof(oracleInterfaceIndex) + sizeof(timeoutSeconds);
+		return sizeof(oracleInterfaceIndex) + sizeof(timeoutMilliseconds);
 	}
 
 	unsigned int oracleInterfaceIndex;
-	unsigned short timeoutSeconds;
+	unsigned int timeoutMilliseconds;
 };

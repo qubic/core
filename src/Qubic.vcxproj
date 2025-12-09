@@ -84,12 +84,14 @@
     <ClInclude Include="network_messages\entity.h" />
     <ClInclude Include="network_messages\header.h" />
     <ClInclude Include="network_messages\logging.h" />
+    <ClInclude Include="network_messages\oracles.h" />
     <ClInclude Include="network_messages\public_peers.h" />
     <ClInclude Include="network_messages\special_command.h" />
     <ClInclude Include="network_messages\system_info.h" />
     <ClInclude Include="network_messages\tick.h" />
     <ClInclude Include="network_messages\transactions.h" />
     <ClInclude Include="oracle_core\core_om_network_messages.h" />
+    <ClInclude Include="oracle_core\net_msg_impl.h" />
     <ClInclude Include="oracle_core\oracle_engine.h" />
     <ClInclude Include="oracle_core\oracle_interfaces_def.h" />
     <ClInclude Include="oracle_core\oracle_transactions.h" />

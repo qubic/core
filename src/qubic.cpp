@@ -70,6 +70,7 @@
 #include "mining/mining.h"
 
 #include "oracle_core/oracle_engine.h"
+#include "oracle_core/net_msg_impl.h"
 #include "contract_core/qpi_oracle_impl.h"
 
 #include "contract_core/qpi_mining_impl.h"

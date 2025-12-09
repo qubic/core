@@ -47,6 +47,9 @@ typedef union m256i
 
 #endif
 
+constexpr uint16_t MAX_ORACLE_QUERY_SIZE = MAX_INPUT_SIZE - 8;
+constexpr uint16_t MAX_ORACLE_REPLY_SIZE = MAX_INPUT_SIZE - 8;
+
 constexpr uint8_t ORACLE_QUERY_TYPE_CONTRACT_QUERY = 0;
 constexpr uint8_t ORACLE_QUERY_TYPE_CONTRACT_SUBSCRIPTION = 1;
 constexpr uint8_t ORACLE_QUERY_TYPE_USER_QUERY = 2;
