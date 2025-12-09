@@ -30,8 +30,9 @@ The execution fee system checks whether a contract has positive `executionFeeRes
 |------------|-----------|----------------------------|---------------|
 | System procedures (`BEGIN_TICK`, `END_TICK`, etc.) | System | ✅ Contract must have fees | qubic.cpp |
 | User procedure call | User | ✅ Contract must have positive reserve | qubic.cpp |
-| Contract-to-contract procedure | Contract A | ✅ Called contract (B) must have positive reserve, otherwise caller (A) is marked with error | contract_exec.h |
-| Contract-to-contract callback (`POST_INCOMING_TRANSFER`, etc.) | Contract A | ✅ Called contract (B) must have positive reserve, otherwise caller (A) is marked with error | contract_exec.h |
+| Contract-to-contract procedure | Contract A | ✅ Called contract (B) must have positive reserve, otherwise error is returned to caller | contract_exec.h |
+| Contract-to-contract function | Contract A | ✅ Called contract (B) must have positive reserve, otherwise error is returned to caller | contract_exec.h |
+| Contract-to-contract callback (`POST_INCOMING_TRANSFER`, etc.) | System | ❌ Not checked (callbacks execute regardless of reserve) | contract_exec.h |
 | Epoch transistion system procedures (`BEGIN_EPOCH`, `END_EPOCH`) | System | ❌ Not checked | qubic.cpp |
 | Revenue donation (`POST_INCOMING_TRANSFER`) | System | ❌ Not checked | qubic.cpp |
 | IPO refund (`POST_INCOMING_TRANSFER`) | System | ❌ Not checked | ipo.h |
@@ -45,11 +46,13 @@ The execution fee system checks whether a contract has positive `executionFeeRes
 
 **User functions** (read-only queries) are always available regardless of executionFeeReserve. They are defined with `PUBLIC_FUNCTION()` or `PRIVATE_FUNCTION()` macros, provide read-only access to contract state, and cannot modify state or trigger procedures.
 
-**Contract-to-contract procedure calls** via `INVOKE_OTHER_CONTRACT_PROCEDURE` check that the **called contract (B) has positive executionFeeReserve**. If Contract B has insufficient fees (`executionFeeReserve <= 0`), the call is aborted and **Contract A (the caller) is marked with `ContractErrorCalledContractInsufficientFees`**. This prevents Contract B from executing without being able to pay for its digest computation. Contract developers should use `qpi.queryFeeReserve(contractIndex)` to check the called contract's fee reserve before invoking it.
+**Contract-to-contract procedure calls** via `INVOKE_OTHER_CONTRACT_PROCEDURE` check that the **called contract (B) has positive executionFeeReserve**. If Contract B has insufficient fees (`executionFeeReserve <= 0`), the call fails and returns `CallErrorInsufficientFees` to Contract A. The procedure is not executed, and Contract A can check the error via the `interContractCallError` variable (or a custom error variable when using `INVOKE_OTHER_CONTRACT_PROCEDURE_E`). Contract developers should check the error after invoking procedures or proactively verify the called contract's fee reserve with `qpi.queryFeeReserve(contractIndex)` before invoking it.
 
-**Contract-to-contract callbacks** (`POST_INCOMING_TRANSFER`, `PRE_ACQUIRE_SHARES`, `POST_ACQUIRE_SHARES`, etc.) triggered by Contract A also check that the **called contract (B) has positive executionFeeReserve**. If Contract B has insufficient fees, the operation is aborted and **Contract A is marked with `ContractErrorCalledContractInsufficientFees`**. This ensures Contract B can pay for its digest computation after the callback executes.
+**Contract-to-contract function calls** via `CALL_OTHER_CONTRACT_FUNCTION` also check that the **called contract (B) has positive executionFeeReserve**. If Contract B has insufficient fees or is in an error state, the call fails and returns `CallErrorInsufficientFees` or `CallErrorContractInErrorState` to Contract A. The function is not executed, and Contract A can check the error via the `interContractCallError` variable (or a custom error variable when using `CALL_OTHER_CONTRACT_FUNCTION_E`). This graceful error handling allows Contract A to continue execution and handle failures appropriately.
 
-Example: Contract A (executionFeeReserve = 1000) transfers 500 QU to Contract B (executionFeeReserve = 0). If Contract B has no fees, the transfer is aborted and Contract A is marked with error. Contract developers should check the recipient's fee reserve with `qpi.queryFeeReserve(contractIndex)` before transferring to another contract.
+**Contract-to-contract callbacks** (`POST_INCOMING_TRANSFER`, `PRE_ACQUIRE_SHARES`, `POST_ACQUIRE_SHARES`, etc.) are system-initiated and **do not check executionFeeReserve**. These callbacks execute regardless of the called contract's fee reserve status, allowing contracts to receive system-initiated transfers and notifications even when dormant. This design ensures that contracts can receive revenue donations, IPO refunds, and other system transfers without requiring positive fee reserves.
+
+Example: Contract A (executionFeeReserve = 1000) transfers 500 QU to Contract B (executionFeeReserve = 0) using `qpi.transfer()`. The transfer succeeds and Contract B's `POST_INCOMING_TRANSFER` callback executes regardless of Contract B having no fees, because the callback is system-initiated. However, if Contract A tries to invoke a procedure of Contract B using `INVOKE_OTHER_CONTRACT_PROCEDURE`, the call will fail and return `CallErrorInsufficientFees`. Contract A should check `interContractCallError` after the call and handle the error gracefully (e.g., skip the operation or use fallback logic).
 
 **System-initiated transfers** (revenue donations and IPO refunds) do not require the recipient contract to have positive executionFeeReserve. The `POST_INCOMING_TRANSFER` callback executes regardless of the destination's reserve status. These are system-initiated transfers that contracts didn't request, so contracts should be able to receive system funds even if dormant.
 
@@ -61,7 +64,7 @@ Example: Contract A (executionFeeReserve = 1000) transfers 500 QU to Contract B 
 2. **Burn collected invocation rewards**: Regularly call `qpi.burn()` to replenish executionFeeReserve
 3. **Monitor reserve**: Implement a function to expose current reserve level
 4. **Graceful degradation**: Consider what happens when reserve runs low
-5. **Check before calling other contracts**: Before using `INVOKE_OTHER_CONTRACT_PROCEDURE`, verify the called contract has positive `executionFeeReserve` using `qpi.queryFeeReserve(contractIndex) > 0`. Otherwise, your contract will be marked with `ContractErrorCalledContractInsufficientFees`.
+5. **Handle inter-contract call errors**: After using `INVOKE_OTHER_CONTRACT_PROCEDURE`, check the `interContractCallError` variable to verify the call succeeded. Handle errors gracefully (e.g., skip operations, use fallback logic). You can also proactively verify the called contract has positive `executionFeeReserve` using `qpi.queryFeeReserve(contractIndex) > 0` before calling.
 
 ### For Contract Users
 

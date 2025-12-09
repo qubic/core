@@ -308,7 +308,7 @@ void QPI::QpiContextFunctionCall::__qpiFreeLocals() const
 }
 
 // Called before one contract calls a function of a different contract
-const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex) const
+const QpiContextFunctionCall* QPI::QpiContextFunctionCall::__qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex, InterContractCallError& callError) const
 {
     ASSERT(otherContractIndex < _currentContractIndex);
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
@@ -316,7 +316,8 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
     // Check if called contract is in an error state
     if (contractError[otherContractIndex] != NoContractError)
     {
-        __qpiAbort(contractError[otherContractIndex]);
+        callError = CallErrorContractInErrorState;
+        return nullptr;
     }
 
     char * buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextFunctionCall));
@@ -335,11 +336,13 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
         appendNumber(dbgMsgBuf, _stackIndex, FALSE);
         addDebugMessage(dbgMsgBuf);
 #endif
-        // abort execution of contract here
-        __qpiAbort(ContractErrorAllocContextOtherFunctionCallFailed);
+        callError = CallErrorAllocationFailed;
+        return nullptr;
     }
-    QpiContextFunctionCall& newContext = *reinterpret_cast<QpiContextFunctionCall*>(buffer);
-    newContext.init(otherContractIndex, _originator, _currentContractId, _invocationReward, _entryPoint, _stackIndex);
+
+    callError = NoCallError;
+    QpiContextFunctionCall* newContext = reinterpret_cast<QpiContextFunctionCall*>(buffer);
+    newContext->init(otherContractIndex, _originator, _currentContractId, _invocationReward, _entryPoint, _stackIndex);
     return newContext;
 }
 
