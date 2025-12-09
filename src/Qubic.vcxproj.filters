@@ -123,7 +123,7 @@
     <ClInclude Include="contracts\Nostromo.h">
       <Filter>contracts</Filter>
     </ClInclude>
-    <ClInclude Include="contracts\Qraffle.h">
+    <ClInclude Include="contracts\QRaffle.h">
       <Filter>contracts</Filter>
     </ClInclude>
     <ClInclude Include="contracts\QBond.h">
