@@ -6,8 +6,10 @@ static constexpr uint64 QTF_RANDOM_VALUES_COUNT = 4;
 static constexpr uint64 QTF_MAX_RANDOM_VALUE = 30;
 static constexpr uint64 QTF_TICKET_PRICE = 1000000;
 
-// Baseline split for k2/k3 when FR is OFF (spec leaves this open; choose 50/50 as default).
-static constexpr uint64 QTF_BASE_K3_SHARE_BP = 5000; // basis points of winners block (50.00%).
+// Baseline split for k2/k3 when FR is OFF (per spec: k3=40%, k2=28% of Winners block).
+// Remaining 32% of Winners block goes to overflow.
+static constexpr uint64 QTF_BASE_K3_SHARE_BP = 4000; // 40% of winners block to k3
+static constexpr uint64 QTF_BASE_K2_SHARE_BP = 2800; // 28% of winners block to k2
 
 // --- Fast-Recovery (FR) parameters (spec defaults) --------------------------
 // Fast-Recovery base redirect percentages (always active when FR=ON)
@@ -30,8 +32,6 @@ static constexpr uint64 QTF_FIXED_POINT_SCALE = 1000000; // Scale for fixed-poin
 // p4 = C(4,4) * C(26,0) / C(30,4) = 1 / 27405
 static constexpr uint64 QTF_P4_DENOMINATOR = 27405;   // Denominator for k=4 probability (1/27405)
 static constexpr uint64 QTF_FR_WINNERS_RAKE_BP = 500; // 5% of winners block from k3
-static constexpr uint64 QTF_FR_K3_SHARE_BP = 3500;    // 35% of win_eff to k3
-static constexpr uint64 QTF_FR_K2_SHARE_BP = 6500;    // 65% of win_eff to k2
 static constexpr uint64 QTF_FR_ALPHA_BP = 500;        // alpha = 0.05 -> 95% overflow to jackpot
 static constexpr uint16 QTF_FR_POST_K4_WINDOW_ROUNDS = 50;
 static constexpr uint16 QTF_FR_HYSTERESIS_ROUNDS = 3;
@@ -1146,15 +1146,18 @@ private:
 			locals.winnersRake = div<uint64>(smul(locals.winnersBlock, QTF_FR_WINNERS_RAKE_BP), 10000);
 			locals.winnersBlock -= locals.winnersRake;
 
-			// FR tier split: 35% k3, 65% k2 (tilted toward k2 for stability during FR)
-			locals.k3Pool = div<uint64>(smul(locals.winnersBlock, QTF_FR_K3_SHARE_BP), 10000);
-			locals.k2Pool = locals.winnersBlock - locals.k3Pool;
+			// FR tier split: same as baseline (k3=40%, k2=28% of win_eff)
+			calcK2K3Pool(locals.winnersBlock, locals.k2Pool, locals.k3Pool);
+			// Remaining goes to overflow (will be split with FR alpha: 95% carry, 5% reserve)
+			locals.winnersOverflow = locals.winnersBlock - locals.k3Pool - locals.k2Pool;
 		}
 		else
 		{
-			// Baseline mode: 50/50 split between k2 and k3 (no rake, no redirects)
-			locals.k3Pool = div<uint64>(smul(locals.winnersBlock, QTF_BASE_K3_SHARE_BP), 10000);
-			locals.k2Pool = locals.winnersBlock - locals.k3Pool;
+			// Baseline mode: k3=40%, k2=28% of Winners block
+			// Remaining 32% of Winners block goes to overflow automatically
+			calcK2K3Pool(locals.winnersBlock, locals.k2Pool, locals.k3Pool);
+			// Add baseline overflow (32% of winnersBlock) to winnersOverflow
+			locals.winnersOverflow = locals.winnersBlock - locals.k3Pool - locals.k2Pool;
 		}
 
 		locals.k2PayoutPool = locals.k2Pool; // mutable pools after top-ups
@@ -1755,5 +1758,11 @@ private:
 
 		// Clamp to maximum
 		output.extraBP = RL::min(locals.extraBPTemp, QTF_FR_EXTRA_MAX_BP);
+	}
+
+	static void calcK2K3Pool(uint64 winnersBlock, uint64& outK2Pool, uint64& outK3Pool)
+	{
+		outK3Pool = div<uint64>(smul(winnersBlock, QTF_BASE_K3_SHARE_BP), 10000);
+		outK2Pool = div<uint64>(smul(winnersBlock, QTF_BASE_K2_SHARE_BP), 10000);
 	}
 };
