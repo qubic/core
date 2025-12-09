@@ -12,14 +12,14 @@ namespace OI
 
 #define REGISTER_ORACLE_INTERFACE(Interface) {sizeof(Interface::OracleQuery), sizeof(Interface::OracleReply)}
 
-	const struct {
+	constexpr struct {
 		unsigned long long querySize;
 		unsigned long long replySize;
-	} oracleInferaces[] = {
+	} oracleInterfaces[] = {
 		REGISTER_ORACLE_INTERFACE(Price),
 	};
 
-	static constexpr uint32_t oracleInferacesCount = sizeof(oracleInferaces) / sizeof(oracleInferaces[0]);
+	static constexpr uint32_t oracleInterfacesCount = sizeof(oracleInterfaces) / sizeof(oracleInterfaces[0]);
 
 #undef REGISTER_ORACLE_INTERFACE
 

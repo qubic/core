@@ -53,10 +53,11 @@ constexpr uint8_t ORACLE_QUERY_STATUS_UNKNOWN = 0;     ///< Query not found / va
 constexpr uint8_t ORACLE_QUERY_STATUS_PENDING = 1;     ///< Query is being processed.
 constexpr uint8_t ORACLE_QUERY_STATUS_COMMITTED = 2;   ///< The quorum has commited to a oracle reply, but it has not been revealed yet.
 constexpr uint8_t ORACLE_QUERY_STATUS_SUCCESS = 3;     ///< The oracle reply has been confirmed and is available.
-constexpr uint8_t ORACLE_QUERY_STATUS_FAILURE = 4;     ///< No valid oracle reply is available (set by timeout or disagreement).
+constexpr uint8_t ORACLE_QUERY_STATUS_DISAGREE = 5;    ///< No valid oracle reply is available, because computors disagreed about the value.
+constexpr uint8_t ORACLE_QUERY_STATUS_TIMEOUT = 4;     ///< No valid oracle reply is available and timeout has hit.
 
 // Fine-grained status flags returned by oracle machine nodes
-constexpr uint16_t ORACLE_FLAG_REPLY_PENDING = 0x0;    ///< Oracle machine hasn't replied yet to the query.
+constexpr uint16_t ORACLE_FLAG_REPLY_PENDING = 0x0;    ///< Oracle machine hasn't replied yet to the query. In OracleMachineReply::oracleMachineErrorFlags this means "no error".
 constexpr uint16_t ORACLE_FLAG_INVALID_ORACLE = 0x1;   ///< Oracle machine reported that oracle (data source) in query was invalid.
 constexpr uint16_t ORACLE_FLAG_ORACLE_UNAVAIL = 0x2;   ///< Oracle machine reported that oracle isn't available at the moment.
 constexpr uint16_t ORACLE_FLAG_INVALID_TIME = 0x4;     ///< Oracle machine reported that time in query was invalid.

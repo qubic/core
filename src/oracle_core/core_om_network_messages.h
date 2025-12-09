@@ -16,7 +16,7 @@ struct OracleMachineQuery
     /// Type to be used in RequestResponseHeader
     static constexpr unsigned char type = 190;
 
-    /// Query ID for later accociating reply with query
+    /// Query ID for later associating reply with query
     unsigned long long oracleQueryId;
 
     /// Oracle interface, defining query data / reply data format

@@ -51,13 +51,13 @@ struct OracleQueryMetadata
 
     union
     {
-        /// used before reply is revealed
+        /// used before notification
         struct
         {
             uint32_t replyStateIndex;
         } pending;
 
-        /// used after reply has been revealed
+        /// used after after reveal and notification
         struct
         {
             uint32_t revealTick;
@@ -119,6 +119,12 @@ struct OracleReplyState
     uint16_t totalCommits;
     uint16_t mostCommitsCount;
     m256i mostCommitsDigest;
+
+    uint32_t revealTick;
+    uint32_t revealTxIndex;
+
+    USER_PROCEDURE notificationProcedure;
+    uint32_t notificationLocalsSize;
 };
 
 // 
@@ -265,10 +271,12 @@ public:
         // send query to oracle machine node
     }
 
-    uint64_t startContractQuery(uint16_t contractIndex, uint32_t interfaceIndex, const void* queryData, uint16_t querySize, uint32_t timeoutMillisec)
+    uint64_t startContractQuery(uint16_t contractIndex, uint32_t interfaceIndex,
+        const void* queryData, uint16_t querySize, uint32_t timeoutMillisec,
+        USER_PROCEDURE notificationProcedure, uint32_t notificationLocalsSize)
     {
         // check inputs
-        if (contractIndex >= MAX_NUMBER_OF_CONTRACTS || interfaceIndex >= OI::oracleInferacesCount || querySize != OI::oracleInferaces[interfaceIndex].querySize)
+        if (contractIndex >= MAX_NUMBER_OF_CONTRACTS || interfaceIndex >= OI::oracleInterfacesCount || querySize != OI::oracleInterfaces[interfaceIndex].querySize)
             return 0;
 
         // check that still have free capacity for the query
@@ -310,7 +318,7 @@ public:
         // register index of pending query
         pendingQueryIndices.add(oracleQueryCount);
 
-        // init query metatdata (persistent)
+        // init query metadata (persistent)
         auto& queryMetadata = queries[oracleQueryCount++];
         queryMetadata.queryId = queryId;
         queryMetadata.type = ORACLE_QUERY_TYPE_CONTRACT_QUERY;
@@ -327,21 +335,23 @@ public:
         auto& replyState = replyStates[replyStateSlotIdx];
         setMemory(replyState, 0);
         replyState.queryId = queryId;
+        replyState.notificationProcedure = notificationProcedure;
+        replyState.notificationLocalsSize = notificationLocalsSize;
 
         // copy oracle query data to permanent storage
         copyMem(queryStorage + queryStorageBytesUsed, queryData, querySize);
         queryStorageBytesUsed += querySize;
 
         // enqueue query message to oracle machine node
-        enqueuOracleQuery(queryId, interfaceIndex, timeoutMillisec, queryData, querySize);
+        enqueueOracleQuery(queryId, interfaceIndex, timeoutMillisec, queryData, querySize);
 
         return queryId;
     }
 
     // Enqueue oracle machine query message. May be called from tick processor or contract processor only (uses reorgBuffer).
-    void enqueuOracleQuery(uint64_t queryId, uint32_t interfaceIdx, uint16_t timeoutMillisec, const void* queryData, uint16 querySize)
+    void enqueueOracleQuery(uint64_t queryId, uint32_t interfaceIdx, uint16_t timeoutMillisec, const void* queryData, uint16 querySize)
     {
-        // Preapre message payload
+        // Prepare message payload
         OracleMachineQuery* omq = reinterpret_cast<OracleMachineQuery*>(reorgBuffer);
         omq->oracleQueryId = queryId;
         omq->oracleInterfaceIndex = interfaceIdx;
@@ -374,9 +384,9 @@ public:
         oqm.statusFlags |= (replyMessage->oracleMachineErrorFlags & ORACLE_FLAG_OM_ERROR_FLAGS);
 
         // check reply size vs size expected by interface
-        ASSERT(oqm.interfaceIndex < OI::oracleInferacesCount);
+        ASSERT(oqm.interfaceIndex < OI::oracleInterfacesCount);
         uint32_t replySize = replyMessageSize - sizeof(OracleMachineReply);
-        if (replySize > MAX_ORACLE_REPLY_SIZE || replySize != OI::oracleInferaces[oqm.interfaceIndex].replySize)
+        if (replySize > MAX_ORACLE_REPLY_SIZE || replySize != OI::oracleInterfaces[oqm.interfaceIndex].replySize)
         {
             oqm.statusFlags |= ORACLE_FLAG_BAD_SIZE_REPLY;
             return;
@@ -412,7 +422,7 @@ public:
     }
 
     /// Return array of reply indices and size of array (as output-by-reference parameter). To be used for getReplyCommitTransactionItem().
-    const uint32_t* getPendingReplyCommitTranactionIndices(uint32_t& arraySizeOutput) const
+    const uint32_t* getPendingReplyCommitTransactionIndices(uint32_t& arraySizeOutput) const
     {
         arraySizeOutput = pendingCommitReplyStateIndices.numValues;
         return pendingCommitReplyStateIndices.values;
@@ -422,7 +432,7 @@ public:
     * Return commit items in OracleReplyCommitTransaction.
     * @param computorIdx Index of computor list of computors broadcasted by arbitrator.
     * @param ownComputorIdx Index of computor in local array computorSeeds.
-    * @param replyIdx Index of reply to consider. Use getPendingReplyCommitTranactionIndices() to get an array of those.
+    * @param replyIdx Index of reply to consider. Use getPendingReplyCommitTransactionIndices() to get an array of those.
     * @param txScheduleTick Tick, in which the transaction is supposed to be scheduled.
     * @param commit Pointer to output buffer of commit data in transaction that is being constructed.
     * @return Whether this computor/reply is supposed to be added to tx. If false, commit is untouched.
@@ -495,6 +505,26 @@ public:
             size += sizeof(OracleReplyCommitTransactionItem);
             ++item;
         }
+    }
+
+    void beginEpoch()
+    {
+        // TODO
+        // clean all subscriptions
+        // clean all queries (except for last n ticks in case of seamless transition)
+    }
+
+    bool getOracleQuery(uint64_t queryId, const void* queryData, uint16_t querySize) const
+    {
+        // get query index
+        uint32_t queryIndex;
+        if (!queryIdToIndex->get(queryId, queryIndex) || queryIndex >= oracleQueryCount)
+            return false;
+
+        const auto& queryMetadata = queries[queryIndex];
+        // TODO
+
+        return true;
     }
 
     void logStatus(CHAR16* message) const

@@ -194,19 +194,81 @@ public:
 	//---------------------------------------------------------------
 	// ORACLE TESTING
 
+	// optional: additional of contract data associated with oracle query
+	HashMap<uint64, uint32, 64> oracleQueryExtraData;
+
+	uint32 oracleSubscriptionId;
+
 	struct QueryPriceOracle_input
 	{
 		OI::Price::OracleQuery priceOracleQuery;
-		uint16 timeoutSeconds;
+		uint32 timeoutMilliseconds;
 	};
 	struct QueryPriceOracle_output
 	{
 		uint64 oracleQueryId;
 	};
 
+	typedef void (*MyFuncPtr)(const QPI::QpiContextProcedureCall& qpi, TESTEXC& state, NoData& input, NoData& output, NoData& locals);
+	//output.oracleQueryId = qpi.queryOracle<OI::Price>(input.priceOracleQuery, (MyFuncPtr)0x1);
+
 	PUBLIC_PROCEDURE(QueryPriceOracle)
 	{
-		output.oracleQueryId = qpi.queryOracle<OI::Price>(input.priceOracleQuery, input.timeoutSeconds);
+		output.oracleQueryId = qpi.queryOracle<OI::Price>(input.priceOracleQuery, NotifyPriceOracleReply, input.timeoutMilliseconds);
+		if (output.oracleQueryId != 0)
+		{
+			// example: store additional data realted to oracle query
+			state.oracleQueryExtraData.set(output.oracleQueryId, 0);
+		}
+	}
+
+	struct SubscribePriceOracle_input
+	{
+		OI::Price::OracleQuery priceOracleQuery;
+		uint16 subscriptionIntervalMinutes;
+	};
+	struct SubscribePriceOracle_output
+	{
+		uint32 oracleSubscriptionId;
+	};
+
+	PUBLIC_PROCEDURE(SubscribePriceOracle)
+	{
+		output.oracleSubscriptionId = qpi.subscribeOracle<OI::Price>(input.priceOracleQuery, NotifyPriceOracleReply, input.subscriptionIntervalMinutes);
+		if (output.oracleSubscriptionId != 0)
+		{
+			// success
+		}
+	}
+	
+	typedef OracleNotificationInput<OI::Price> NotifyPriceOracleReply_input;
+	typedef NoData NotifyPriceOracleReply_output;
+	struct NotifyPriceOracleReply_locals
+	{
+		OI::Price::OracleQuery query;
+		uint32 queryExtraData;
+	};
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(NotifyPriceOracleReply)
+	{
+		if (input.status == ORACLE_QUERY_STATUS_SUCCESS)
+		{
+			// get and use query info if needed
+			if (!qpi.getOracleQuery<OI::Price>(input.queryId, locals.query))
+				return;
+			
+			// get and use additional query info stored by contract if needed
+			if (!state.oracleQueryExtraData.get(input.queryId, locals.queryExtraData))
+				return;
+
+			// use example convenience function provided by oracle interface
+			if (!OI::Price::isReplyValid(input.reply))
+				return;
+		}
+		else
+		{
+			// handle failure ...
+		}
 	}
 
 	struct END_TICK_locals
@@ -220,7 +282,7 @@ public:
 		// Query oracle
 		if (qpi.tick() % 2 == 0)
 		{
-			locals.oracleQueryId = qpi.queryOracle<OI::Price>(locals.priceOracleQuery, 20);
+			locals.oracleQueryId = qpi.queryOracle<OI::Price>(locals.priceOracleQuery, NotifyPriceOracleReply, 20000);
 		}
 	}
 

@@ -546,11 +546,11 @@ public:
         callSystemProcedure(QX_CONTRACT_INDEX, END_TICK, expectSuccess);
     }
 
-    uint64 queryPriceOracle(const id& invocator, const id& oracle, uint16 timeoutSeconds)
+    uint64 queryPriceOracle(const id& invocator, const id& oracle, uint32 timeoutMilliseconds)
     {
         TESTEXC::QueryPriceOracle_input input;
         input.priceOracleQuery = { oracle, {}, NULL_ID, NULL_ID };
-        input.timeoutSeconds = timeoutSeconds;
+        input.timeoutMilliseconds = timeoutMilliseconds;
         TESTEXC::QueryPriceOracle_output output;
         EXPECT_TRUE(invokeUserProcedure(TESTEXC_CONTRACT_INDEX, 100, input, output, invocator, 0));
         return output.oracleQueryId;
@@ -2099,7 +2099,7 @@ TEST(ContractTestEx, OracleQuery)
     expectedOracleQueryId = getContractOracleQueryId(system.tick, 2);
     test.endTick();
     ++system.tick;
-    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, id(0, 0, 0, 0), 20);
+    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, id(0, 0, 0, 0), 20000);
 
     expectedOracleQueryId = getContractOracleQueryId(system.tick, 0);
     EXPECT_EQ(test.queryPriceOracle(USER1, id(2, 3, 4, 5), 13), expectedOracleQueryId);
