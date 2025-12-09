@@ -59,7 +59,7 @@ struct Utils
         CHAR16 txHashStr[61] = {0};
         uint8_t digest[32];
         KangarooTwelve(tx,
-                       sizeof(Transaction) + tx->inputSize + 64,
+                       tx->totalSize(),
                        digest,
                        32); // recompute digest for txhash
         getIdentity(digest, txHashStr, true);
@@ -164,7 +164,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         }
         std::vector<uint8_t> signature;
         signature.reserve(SIGNATURE_SIZE);
-        copyMem(signature.data(), broadcastedComputors.computors.signature, SIGNATURE_SIZE);
+        signature.assign(broadcastedComputors.computors.signature, broadcastedComputors.computors.signature + SIGNATURE_SIZE);
         computorObject["epoch"] = epoch;
         computorObject["tickNumber"] = 0;
         computorObject["identities"] = idLists;
@@ -255,7 +255,11 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
         {
             if (localTickData.transactionDigests[i] != m256i::zero())
-                txDigestsJson.append(byteToHex((unsigned char *)&localTickData.transactionDigests[i], sizeof(m256i)));
+            {
+                CHAR16 id[61] = {};
+                getIdentity((unsigned char *)&localTickData.transactionDigests[i], id, true);
+                txDigestsJson.append(wchar_to_string(id));
+            }
         }
         jsonObject["transactionDigests"] = txDigestsJson;
         Json::Value contractFeesJson(Json::arrayValue);
@@ -293,16 +297,12 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         }
 
         std::string txHash = (*json)["hash"].asString();
-        m256i txDigest;
-        hexToByte(txHash, sizeof(m256i), (unsigned char *)&txDigest);
-        Transaction localTransaction;
+        // To upperse txhash
+        std::transform(txHash.begin(), txHash.end(), txHash.begin(), ::toupper);
+        m256i txDigest = {};
+        getPublicKeyFromIdentity(reinterpret_cast<const unsigned char *>(txHash.c_str()), txDigest.m256i_u8);
         TickStorage::transactionsDigestAccess.acquireLock();
         const Transaction *transaction = TickStorage::transactionsDigestAccess.findTransaction(txDigest);
-        if (transaction)
-        {
-            copyMem(&localTransaction, transaction, sizeof(Transaction));
-        }
-        TickStorage::transactionsDigestAccess.releaseLock();
         if (!transaction)
         {
             result["code"] = -1;
@@ -310,11 +310,13 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
             auto resp = HttpResponse::newHttpJsonResponse(result);
             resp->setStatusCode(k404NotFound);
             cb(resp);
+            TickStorage::transactionsDigestAccess.releaseLock();
             return;
         }
-        Json::Value jsonObject = Utils::transactionToJson(&localTransaction);
+        Json::Value jsonObject = Utils::transactionToJson(const_cast<Transaction *>(transaction));
         auto resp = HttpResponse::newHttpJsonResponse(jsonObject);
         cb(resp);
+        TickStorage::transactionsDigestAccess.releaseLock();
     }
 
     inline void getTransactionsForIdentity(const HttpRequestPtr &req,
