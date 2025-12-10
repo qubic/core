@@ -5,11 +5,7 @@ constexpr uint64 QBOND_MBOND_PRICE = 1000000ULL;
 constexpr uint64 QBOND_MAX_QUEUE_SIZE = 10ULL;
 constexpr uint64 QBOND_MIN_MBONDS_TO_STAKE = 10ULL;
 constexpr sint64 QBOND_MBONDS_EMISSION = 1000000000LL;
-constexpr uint64 QBOND_STAKE_LIMIT_PER_EPOCH = 1000000ULL;
-
 constexpr uint16 QBOND_START_EPOCH = 182;
-constexpr uint16 QBOND_CYCLIC_START_EPOCH = 191;
-constexpr uint16 QBOND_FULL_CYCLE_EPOCHS_AMOUNT = 53;
 
 constexpr uint64 QBOND_STAKE_FEE_PERCENT = 50; // 0.5%
 constexpr uint64 QBOND_TRADE_FEE_PERCENT = 3; // 0.03%
@@ -239,6 +235,7 @@ protected:
     uint64 _distributedAmount;
     id _adminAddress;
     id _devAddress;
+
     struct _Order
     {
         id owner;
@@ -247,7 +244,6 @@ protected:
     };
     Collection<_Order, 1048576> _askOrders;
     Collection<_Order, 1048576> _bidOrders;
-    uint8 _cyclicMbondCounter;
 
     struct _NumberOfReservedMBonds_input
     {
@@ -300,7 +296,6 @@ protected:
         uint64 counter;
         sint64 amountToStake;
         uint64 amountAndFee;
-        uint64 stakeLimitPerUser;
         StakeEntry tempStakeEntry;
         MBondInfo tempMbondInfo;
         QEARN::lock_input lock_input;
@@ -315,8 +310,7 @@ protected:
                 || input.quMillions >= MAX_AMOUNT
                 || !state._epochMbondInfoMap.get(qpi.epoch(), locals.tempMbondInfo)
                 || qpi.invocationReward() < 0
-                || (uint64) qpi.invocationReward() < locals.amountAndFee
-                || locals.tempMbondInfo.totalStaked + QBOND_MIN_MBONDS_TO_STAKE > QBOND_STAKE_LIMIT_PER_EPOCH)
+                || (uint64) qpi.invocationReward() < locals.amountAndFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -343,16 +337,10 @@ protected:
             {
                 locals.amountInQueue += state._stakeQueue.get(locals.counter).amount;
             }
-            else
+            else 
             {
-                locals.stakeLimitPerUser = input.quMillions;
-                if (locals.tempMbondInfo.totalStaked + locals.amountInQueue > QBOND_STAKE_LIMIT_PER_EPOCH)
-                {
-                    locals.stakeLimitPerUser = QBOND_STAKE_LIMIT_PER_EPOCH - locals.tempMbondInfo.totalStaked - (locals.amountInQueue - input.quMillions);
-                    qpi.transfer(qpi.invocator(), (input.quMillions - locals.stakeLimitPerUser) * QBOND_MBOND_PRICE);
-                }
                 locals.tempStakeEntry.staker = qpi.invocator();
-                locals.tempStakeEntry.amount = locals.stakeLimitPerUser;
+                locals.tempStakeEntry.amount = input.quMillions;
                 state._stakeQueue.set(locals.counter, locals.tempStakeEntry);
                 break;
             }
@@ -1235,8 +1223,6 @@ protected:
         AssetOwnershipIterator assetIt;
         id mbondIdentity;
         sint64 elementIndex;
-        uint64 counter;
-        _Order tempOrder;
     };
 
     BEGIN_EPOCH_WITH_LOCALS()
@@ -1251,34 +1237,14 @@ protected:
             locals.assetIt.begin(locals.tempAsset);
             while (!locals.assetIt.reachedEnd())
             {
-                if (locals.assetIt.owner() == SELF)
-                {
-                    locals.assetIt.next();
-                    continue;
-                }
                 qpi.transfer(locals.assetIt.owner(), (QBOND_MBOND_PRICE + locals.rewardPerMBond) * locals.assetIt.numberOfOwnedShares());
-
-                if (qpi.epoch() - 53 < QBOND_CYCLIC_START_EPOCH)
-                {
-                    qpi.transferShareOwnershipAndPossession(
+                qpi.transferShareOwnershipAndPossession(
                         locals.tempMbondInfo.name,
                         SELF,
                         locals.assetIt.owner(),
                         locals.assetIt.owner(),
                         locals.assetIt.numberOfOwnedShares(),
                         NULL_ID);
-                }
-                else
-                {
-                    qpi.transferShareOwnershipAndPossession(
-                        locals.tempMbondInfo.name,
-                        SELF,
-                        locals.assetIt.owner(),
-                        locals.assetIt.owner(),
-                        locals.assetIt.numberOfOwnedShares(),
-                        SELF);
-                }
-                
                 locals.assetIt.next();
             }
             state._qearnIncomeAmount = 0;
@@ -1295,49 +1261,28 @@ protected:
             locals.elementIndex = state._bidOrders.headIndex(locals.mbondIdentity);
             while (locals.elementIndex != NULL_INDEX)
             {
-                locals.tempOrder = state._bidOrders.element(locals.elementIndex);
-                qpi.transfer(locals.tempOrder.owner, locals.tempOrder.numberOfMBonds * state._bidOrders.priority(locals.elementIndex));
                 locals.elementIndex = state._bidOrders.remove(locals.elementIndex);
             }
         }
 
-        if (state._cyclicMbondCounter >= QBOND_FULL_CYCLE_EPOCHS_AMOUNT)
-        {
-            state._cyclicMbondCounter = 1;
-        }
-        else
-        {
-            state._cyclicMbondCounter++;
-        }
-
-        if (qpi.epoch() == QBOND_CYCLIC_START_EPOCH)
-        {
-            state._cyclicMbondCounter = 1;
-            for (locals.counter = 1; locals.counter <= QBOND_FULL_CYCLE_EPOCHS_AMOUNT; locals.counter++)
-            {
-                locals.currentName = 1145979469ULL;   // MBND
-
-                locals.chunk = (sint8) (48 + div(locals.counter, 10ULL));
-                locals.currentName |= (uint64)locals.chunk << (4 * 8);
-
-                locals.chunk = (sint8) (48 + mod(locals.counter, 10ULL));
-                locals.currentName |= (uint64)locals.chunk << (5 * 8);
-
-                qpi.issueAsset(locals.currentName, SELF, 0, QBOND_MBONDS_EMISSION, 0);
-            }
-        }
-
         locals.currentName = 1145979469ULL;   // MBND
-        locals.chunk = (sint8) (48 + div(state._cyclicMbondCounter, (uint8) 10));
+
+        locals.chunk = (sint8) (48 + mod(div((uint64)qpi.epoch(), 100ULL), 10ULL));
         locals.currentName |= (uint64)locals.chunk << (4 * 8);
 
-        locals.chunk = (sint8) (48 + mod(state._cyclicMbondCounter, (uint8) 10));
+        locals.chunk = (sint8) (48 + mod(div((uint64)qpi.epoch(), 10ULL), 10ULL));
         locals.currentName |= (uint64)locals.chunk << (5 * 8);
 
-        locals.tempMbondInfo.name = locals.currentName;
-        locals.tempMbondInfo.totalStaked = 0;
-        locals.tempMbondInfo.stakersAmount = 0;
-        state._epochMbondInfoMap.set(qpi.epoch(), locals.tempMbondInfo);
+        locals.chunk = (sint8) (48 + mod((uint64)qpi.epoch(), 10ULL));
+        locals.currentName |= (uint64)locals.chunk << (6 * 8);
+
+        if (qpi.issueAsset(locals.currentName, SELF, 0, QBOND_MBONDS_EMISSION, 0) == QBOND_MBONDS_EMISSION)
+        {
+            locals.tempMbondInfo.name = locals.currentName;
+            locals.tempMbondInfo.totalStaked = 0;
+            locals.tempMbondInfo.stakersAmount = 0;
+            state._epochMbondInfoMap.set(qpi.epoch(), locals.tempMbondInfo);
+        }
 
         locals.emptyEntry.staker = NULL_ID;
         locals.emptyEntry.amount = 0;
@@ -1387,6 +1332,12 @@ protected:
 
             qpi.transfer(state._stakeQueue.get(locals.counter).staker, state._stakeQueue.get(locals.counter).amount * QBOND_MBOND_PRICE);
             state._stakeQueue.set(locals.counter, locals.tempStakeEntry);
+        }
+
+        if (state._epochMbondInfoMap.get(qpi.epoch(), locals.tempMbondInfo))
+        {
+            locals.availableMbonds = qpi.numberOfPossessedShares(locals.tempMbondInfo.name, SELF, SELF, SELF, SELF_INDEX, SELF_INDEX);
+            qpi.transferShareOwnershipAndPossession(locals.tempMbondInfo.name, SELF, SELF, SELF, locals.availableMbonds, NULL_ID);
         }
 
         state._commissionFreeAddresses.cleanupIfNeeded();
