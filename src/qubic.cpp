@@ -3588,7 +3588,6 @@ static void beginEpoch()
     ts.beginEpoch(system.initialTick);
     pendingTxsPool.beginEpoch(system.initialTick);
     voteCounter.init();
-    executionFeeReportCollector.init(); // TODO: Adjust depending on procedures regarding executionFee during epoch change
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
     pendingTxsPool.checkStateConsistencyWithAssert();
@@ -5560,6 +5559,7 @@ static bool initialize()
             return false;
 
         initContractExec();
+        executionFeeReportCollector.init();
         for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
         {
             unsigned long long size = contractDescriptions[contractIndex].stateSize;
