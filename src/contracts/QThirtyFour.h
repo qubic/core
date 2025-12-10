@@ -1,20 +1,20 @@
 using namespace QPI;
 
 // --- Core game parameters ----------------------------------------------------
-static constexpr uint64 QTF_MAX_NUMBER_OF_PLAYERS = 1024;
-static constexpr uint64 QTF_RANDOM_VALUES_COUNT = 4;
-static constexpr uint64 QTF_MAX_RANDOM_VALUE = 30;
-static constexpr uint64 QTF_TICKET_PRICE = 1000000;
+constexpr uint64 QTF_MAX_NUMBER_OF_PLAYERS = 1024;
+constexpr uint64 QTF_RANDOM_VALUES_COUNT = 4;
+constexpr uint64 QTF_MAX_RANDOM_VALUE = 30;
+constexpr uint64 QTF_TICKET_PRICE = 1000000;
 
 // Baseline split for k2/k3 when FR is OFF (per spec: k3=40%, k2=28% of Winners block).
 // Remaining 32% of Winners block goes to overflow.
-static constexpr uint64 QTF_BASE_K3_SHARE_BP = 4000; // 40% of winners block to k3
-static constexpr uint64 QTF_BASE_K2_SHARE_BP = 2800; // 28% of winners block to k2
+constexpr uint64 QTF_BASE_K3_SHARE_BP = 4000; // 40% of winners block to k3
+constexpr uint64 QTF_BASE_K2_SHARE_BP = 2800; // 28% of winners block to k2
 
 // --- Fast-Recovery (FR) parameters (spec defaults) --------------------------
 // Fast-Recovery base redirect percentages (always active when FR=ON)
-static constexpr uint64 QTF_FR_DEV_REDIRECT_BP = 100;  // 1.00% of R (base redirect, always applied)
-static constexpr uint64 QTF_FR_DIST_REDIRECT_BP = 100; // 1.00% of R (base redirect, always applied)
+constexpr uint64 QTF_FR_DEV_REDIRECT_BP = 100;  // 1.00% of R (base redirect, always applied)
+constexpr uint64 QTF_FR_DIST_REDIRECT_BP = 100; // 1.00% of R (base redirect, always applied)
 
 // Deficit-driven extra redirect parameters (dynamic, no hard N threshold)
 // The extra redirect is calculated based on:
@@ -24,48 +24,47 @@ static constexpr uint64 QTF_FR_DIST_REDIRECT_BP = 100; // 1.00% of R (base redir
 //   - Needed gain: g_need = max(0, Δ/H - baseGain)
 //   - Extra percentage: extra_pp = clamp(g_need / R, 0, extra_max)
 //   - Split equally: dev_extra = dist_extra = extra_pp / 2
-static constexpr uint64 QTF_FR_EXTRA_MAX_BP = 70;        // Maximum extra redirect: 0.70% of R total (0.35% each Dev/Dist)
-static constexpr uint64 QTF_FR_GOAL_ROUNDS_CAP = 100;    // Cap on expected rounds horizon H for deficit calculation
-static constexpr uint64 QTF_FIXED_POINT_SCALE = 1000000; // Scale for fixed-point arithmetic (6 decimals precision)
+constexpr uint64 QTF_FR_EXTRA_MAX_BP = 70;        // Maximum extra redirect: 0.70% of R total (0.35% each Dev/Dist)
+constexpr uint64 QTF_FR_GOAL_ROUNDS_CAP = 50;     // Cap on expected rounds horizon H for deficit calculation
+constexpr uint64 QTF_FIXED_POINT_SCALE = 1000000; // Scale for fixed-point arithmetic (6 decimals precision)
 
 // Probability constants for k=4 win (exact combinatorics: 4-of-30)
 // p4 = C(4,4) * C(26,0) / C(30,4) = 1 / 27405
-static constexpr uint64 QTF_P4_DENOMINATOR = 27405;   // Denominator for k=4 probability (1/27405)
-static constexpr uint64 QTF_FR_WINNERS_RAKE_BP = 500; // 5% of winners block from k3
-static constexpr uint64 QTF_FR_ALPHA_BP = 500;        // alpha = 0.05 -> 95% overflow to jackpot
-static constexpr uint16 QTF_FR_POST_K4_WINDOW_ROUNDS = 50;
-static constexpr uint16 QTF_FR_HYSTERESIS_ROUNDS = 3;
+constexpr uint64 QTF_P4_DENOMINATOR = 27405;   // Denominator for k=4 probability (1/27405)
+constexpr uint64 QTF_FR_WINNERS_RAKE_BP = 500; // 5% of winners block from k3
+constexpr uint64 QTF_FR_ALPHA_BP = 500;        // alpha = 0.05 -> 95% overflow to jackpot
+constexpr uint16 QTF_FR_POST_K4_WINDOW_ROUNDS = 50;
+constexpr uint16 QTF_FR_HYSTERESIS_ROUNDS = 3;
 
 // --- Floors and reserve safety ----------------------------------------------
-static constexpr uint64 QTF_K2_FLOOR_MULT = 1; // numerator for 0.5 * P (we divide by 2)
-static constexpr uint64 QTF_K2_FLOOR_DIV = 2;
-static constexpr uint64 QTF_K3_FLOOR_MULT = 5;              // 5 * P
-static constexpr uint64 QTF_TOPUP_PER_WINNER_CAP_MULT = 25; // 25 * P
-static constexpr uint64 QTF_TOPUP_RESERVE_PCT_BP = 1000;    // 10% of reserve per round
-static constexpr uint64 QTF_RESERVE_SOFT_FLOOR_MULT = 20;   // keep at least 20 * P in reserve
+constexpr uint64 QTF_K2_FLOOR_MULT = 1; // numerator for 0.5 * P (we divide by 2)
+constexpr uint64 QTF_K2_FLOOR_DIV = 2;
+constexpr uint64 QTF_K3_FLOOR_MULT = 5;              // 5 * P
+constexpr uint64 QTF_TOPUP_PER_WINNER_CAP_MULT = 25; // 25 * P
+constexpr uint64 QTF_TOPUP_RESERVE_PCT_BP = 1000;    // 10% of reserve per round
+constexpr uint64 QTF_RESERVE_SOFT_FLOOR_MULT = 20;   // keep at least 20 * P in reserve
 
 // Baseline overflow split (reserve share in basis points). If spec is updated, adjust here.
-static constexpr uint64 QTF_BASELINE_OVERFLOW_ALPHA_BP = 5000; // 50% reserve / 50% jackpot
+constexpr uint64 QTF_BASELINE_OVERFLOW_ALPHA_BP = 5000; // 50% reserve / 50% jackpot
 
 // Default fee percentages (fallback if RL::GetFees fails)
-static constexpr uint8 QTF_DEFAULT_DEV_PERCENT = 10;
-static constexpr uint8 QTF_DEFAULT_DIST_PERCENT = 20;
-static constexpr uint8 QTF_DEFAULT_BURN_PERCENT = 2;
-static constexpr uint8 QTF_DEFAULT_WINNERS_PERCENT = 68;
+constexpr uint8 QTF_DEFAULT_DEV_PERCENT = 10;
+constexpr uint8 QTF_DEFAULT_DIST_PERCENT = 20;
+constexpr uint8 QTF_DEFAULT_BURN_PERCENT = 2;
+constexpr uint8 QTF_DEFAULT_WINNERS_PERCENT = 68;
 
 // Maximum attempts to generate unique random value before fallback
-static constexpr uint8 QTF_MAX_RANDOM_GENERATION_ATTEMPTS = 100;
+constexpr uint8 QTF_MAX_RANDOM_GENERATION_ATTEMPTS = 100;
 
-static constexpr uint8 QTF_DEFAULT_SCHEDULE = 1u << WEDNESDAY;
-static constexpr uint8 QTF_DEFAULT_DRAW_HOUR = 11;                        // 11:00 UTC
-static constexpr uint32 QTF_DEFAULT_INIT_TIME = 22u << 9 | 4u << 5 | 13u; // RL_DEFAULT_INIT_TIME
+constexpr uint8 QTF_DEFAULT_SCHEDULE = 1u << WEDNESDAY;
+constexpr uint8 QTF_DEFAULT_DRAW_HOUR = 11;                        // 11:00 UTC
+constexpr uint32 QTF_DEFAULT_INIT_TIME = 22u << 9 | 4u << 5 | 13u; // RL_DEFAULT_INIT_TIME
 
-static const id QTF_ADDRESS_DEV_TEAM =
-    ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C, _R, _L, _W, _E, _T, _H, _N, _G,
-       _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
-static const id QTF_RANDOM_LOTTERY_CONTRACT_ID = id(RL_CONTRACT_INDEX, 0, 0, 0);
-static const uint64 QTF_RANDOM_LOTTERY_ASSET_NAME = *reinterpret_cast<const uint64*>("RL");
-static const id QTF_RESERVE_POOL_CONTRACT_ID = id(QRP_CONTRACT_INDEX, 0, 0, 0);
+const id QTF_ADDRESS_DEV_TEAM = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C, _R,
+                                   _L, _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
+const id QTF_RANDOM_LOTTERY_CONTRACT_ID = id(RL_CONTRACT_INDEX, 0, 0, 0);
+const uint64 QTF_RANDOM_LOTTERY_ASSET_NAME = *reinterpret_cast<const uint64*>("RL");
+const id QTF_RESERVE_POOL_CONTRACT_ID = id(QRP_CONTRACT_INDEX, 0, 0, 0);
 
 using QTFRandomValues = Array<uint8, QTF_RANDOM_VALUES_COUNT>;
 using QFTWinnerPlayers = Array<id, QTF_MAX_NUMBER_OF_PLAYERS>;
