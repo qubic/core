@@ -25,6 +25,7 @@
     <ClInclude Include="contracts\ComputorControlledFund.h" />
     <ClInclude Include="contracts\Qdraw.h" />
     <ClInclude Include="contracts\Qswap.h" />
+    <ClInclude Include="contracts\Qswap_old.h" />
     <ClInclude Include="contracts\RandomLottery.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
     <ClInclude Include="contracts\EmptyTemplate.h" />
@@ -41,6 +42,7 @@
     <ClInclude Include="contracts\QVAULT.h" />
     <ClInclude Include="contracts\QBAY.h" />
     <ClInclude Include="contracts\Nostromo.h" />
+    <ClInclude Include="contracts\QRaffle.h" />
     <ClInclude Include="contracts\QBond.h" />
     <ClInclude Include="contracts\QIP.h" />
     <ClInclude Include="contracts\TestExampleA.h" />
@@ -73,6 +75,7 @@
     <ClInclude Include="network_core\peers.h" />
     <ClInclude Include="network_core\tcp4.h" />
     <ClInclude Include="network_messages\all.h" />
+    <ClInclude Include="network_messages\network_message_type.h" />
     <ClInclude Include="network_messages\assets.h" />
     <ClInclude Include="network_messages\broadcast_message.h" />
     <ClInclude Include="network_messages\common_def.h" />

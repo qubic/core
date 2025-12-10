@@ -30,6 +30,8 @@
 #define MAX_AMOUNT (ISSUANCE_RATE * 1000LL)
 #define MAX_SUPPLY (ISSUANCE_RATE * 200ULL)
 
+#include "network_message_type.h"
+
 
 // If you want to use the network_meassges directory in your project without dependencies to other code,
 // you may define NETWORK_MESSAGES_WITHOUT_CORE_DEPENDENCIES before including any header or change the

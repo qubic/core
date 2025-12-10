@@ -23,9 +23,10 @@ struct BroadcastMessage
     m256i destinationPublicKey;
     m256i gammingNonce;
 
-    enum {
-        type = 1,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::BROADCAST_MESSAGE;
+    }
 };
 
 static_assert(sizeof(BroadcastMessage) == 32 + 32 + 32, "Something is wrong with the struct size.");

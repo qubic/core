@@ -84,7 +84,7 @@ static unsigned short customMiningGetComputorID(const CustomMiningSolutionV2* pS
     return computorID;
 }
 
-static CustomMiningSolutionV2 customMiningVerificationRequestToSolution(RequestedCustomMiningSolutionVerification* pRequest)
+static CustomMiningSolutionV2 customMiningVerificationRequestToSolution(RequestCustomMiningSolutionVerification* pRequest)
 {
     CustomMiningSolutionV2 solution;
     solution.taskIndex = pRequest->taskIndex;
@@ -95,7 +95,7 @@ static CustomMiningSolutionV2 customMiningVerificationRequestToSolution(Requeste
     return solution;
 }
 
-static RespondCustomMiningSolutionVerification customMiningVerificationRequestToRespond(RequestedCustomMiningSolutionVerification* pRequest)
+static RespondCustomMiningSolutionVerification customMiningVerificationRequestToRespond(RequestCustomMiningSolutionVerification* pRequest)
 {
     RespondCustomMiningSolutionVerification respond;
     respond.taskIndex = pRequest->taskIndex;

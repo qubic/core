@@ -1206,3 +1206,94 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         releaseContractLocalsStack(_stackIndex);
     }
 };
+
+
+struct UserProcedureNotification
+{
+    unsigned int contractIndex;
+    USER_PROCEDURE procedure;
+    const void* inputPtr;
+    unsigned short inputSize;
+    unsigned int localsSize;
+};
+
+// QPI context used to call contract user procedure as a notification from qubic core (contract processor).
+// This means, it isn't triggered by a transaction, but following an event after having setup the notification
+// callback in the contract code.
+// Notification user procedures never receive an invocation reward. Invocator is NULL_ID.
+// Currently, no output is supported, which may change in the future.
+// The procedure pointer, the expected inputSize, and the expected localsSize, which are passed via
+// UserProcedureNotification, must be consistent. The code using notifications is responible for ensuring that.
+// Use cases:
+// - oracle notifications (managed by oracleEngine)
+struct QpiContextUserProcedureNotificationCall : public QPI::QpiContextProcedureCall
+{
+    QpiContextUserProcedureNotificationCall(const UserProcedureNotification& notification) : QPI::QpiContextProcedureCall(notif.contractIndex, NULL_ID, 0, USER_PROCEDURE_NOTIFICATION_CALL),  notif(notification)
+    {
+        contractActionTracker.init();
+    }
+
+    // Run user procedure notification
+    void call()
+    {
+        ASSERT(_currentContractIndex < contractCount);
+
+        // Return if nothing to call
+        if (!notif.procedure)
+            return;
+
+        // reserve stack for this processor (may block), needed even if there are no locals, because procedure may call
+        // functions / procedures / notifications that create locals etc.
+        acquireContractLocalsStack(_stackIndex);
+
+        // acquire state for writing (may block)
+        contractStateLock[_currentContractIndex].acquireWrite();
+
+        const unsigned long long startTick = __rdtsc();
+
+        QPI::NoData output;
+        char* input = contractLocalsStack[_stackIndex].allocate(notif.inputSize + notif.localsSize);
+        if (!input)
+        {
+#ifndef NDEBUG
+            CHAR16 dbgMsgBuf[400];
+            setText(dbgMsgBuf, L"QpiContextUserProcedureNotificationCall stack buffer alloc failed in tick ");
+            appendNumber(dbgMsgBuf, system.tick, FALSE);
+            addDebugMessage(dbgMsgBuf);
+            setText(dbgMsgBuf, L"inputSize ");
+            appendNumber(dbgMsgBuf, notif.inputSize, FALSE);
+            appendText(dbgMsgBuf, L", localsSize ");
+            appendNumber(dbgMsgBuf, notif.localsSize, FALSE);
+            appendText(dbgMsgBuf, L", contractIndex ");
+            appendNumber(dbgMsgBuf, _currentContractIndex, FALSE);
+            appendText(dbgMsgBuf, L", stackIndex ");
+            appendNumber(dbgMsgBuf, _stackIndex, FALSE);
+            addDebugMessage(dbgMsgBuf);
+#endif
+            // abort execution of contract here
+            __qpiAbort(ContractErrorAllocInputOutputFailed);
+        }
+        char* locals = input + notif.inputSize;
+        copyMem(input, notif.inputPtr, notif.inputSize);
+        setMem(locals, notif.localsSize, 0);
+
+        // call user procedure
+        notif.procedure(*this, contractStates[_currentContractIndex], input, &output, locals);
+
+        // free data on stack
+        contractLocalsStack[_stackIndex].free();
+        ASSERT(contractLocalsStack[_stackIndex].size() == 0);
+
+        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
+
+        // release lock of contract state and set state to changed
+        contractStateLock[_currentContractIndex].releaseWrite();
+        contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
+
+        // release stack
+        releaseContractLocalsStack(_stackIndex);
+    }
+
+private:
+    const UserProcedureNotification& notif;
+};

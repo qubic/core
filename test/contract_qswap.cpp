@@ -17,7 +17,7 @@ constexpr uint32 QUOTE_EXACT_QU_INPUT_IDX = 4;
 constexpr uint32 QUOTE_EXACT_QU_OUTPUT_IDX = 5;
 constexpr uint32 QUOTE_EXACT_ASSET_INPUT_IDX = 6;
 constexpr uint32 QUOTE_EXACT_ASSET_OUTPUT_IDX = 7;
-constexpr uint32 TEAM_INFO_IDX = 8;
+constexpr uint32 INVEST_REWARDS_INFO_IDX = 8;
 //
 constexpr uint32 ISSUE_ASSET_IDX = 1;
 constexpr uint32 TRANSFER_SHARE_OWNERSHIP_AND_POSSESSION_IDX = 2;
@@ -28,7 +28,7 @@ constexpr uint32 SWAP_EXACT_QU_FOR_ASSET_IDX = 6;
 constexpr uint32 SWAP_QU_FOR_EXACT_ASSET_IDX = 7;
 constexpr uint32 SWAP_EXACT_ASSET_FOR_QU_IDX = 8;
 constexpr uint32 SWAP_ASSET_FOR_EXACT_QU_IDX = 9;
-constexpr uint32 SET_TEAM_INFO_IDX = 10;
+constexpr uint32 SET_INVEST_REWARDS_INFO_IDX = 10;
 constexpr uint32 TRANSFER_SHARE_MANAGEMENT_RIGHTS_IDX = 11;
 
 
@@ -63,18 +63,18 @@ public:
 		return load(filename, sizeof(QSWAP), contractStates[QSWAP_CONTRACT_INDEX]) == sizeof(QSWAP);
 	}
 
-	QSWAP::TeamInfo_output teamInfo()
-    {
-        QSWAP::TeamInfo_input input{};
-		QSWAP::TeamInfo_output output;
-		callFunction(QSWAP_CONTRACT_INDEX, TEAM_INFO_IDX, input, output);
+	QSWAP::InvestRewardsInfo_output investRewardsInfo()
+	{
+		QSWAP::InvestRewardsInfo_input input{};
+		QSWAP::InvestRewardsInfo_output output;
+		callFunction(QSWAP_CONTRACT_INDEX, INVEST_REWARDS_INFO_IDX, input, output);
 		return output;
 	}
 
-	bool setTeamId(const id& issuer, QSWAP::SetTeamInfo_input input)
-    {
-		QSWAP::CreatePool_output output;
-		invokeUserProcedure(QSWAP_CONTRACT_INDEX, SET_TEAM_INFO_IDX, input, output, issuer, 0);
+	bool setInvestRewardsInfo(const id& issuer, QSWAP::SetInvestRewardsInfo_input input)
+	{
+		QSWAP::SetInvestRewardsInfo_output output;
+		invokeUserProcedure(QSWAP_CONTRACT_INDEX, SET_INVEST_REWARDS_INFO_IDX, input, output, issuer, 0);
 		return output.success;
 	}
 
@@ -240,43 +240,43 @@ public:
     }
 };
 
-TEST(ContractSwap, TeamInfoTest)
+TEST(ContractSwap, InvestRewardsInfoTest)
 {
 	ContractTestingQswap qswap;
 
-    {
-		QSWAP::TeamInfo_output team_info = qswap.teamInfo();
+	{
+		QSWAP::InvestRewardsInfo_output info = qswap.investRewardsInfo();
 
-		auto expectIdentity = (const unsigned char*)"IRUNQTXZRMLDEENHPRZQPSGPCFACORRUJYSBVJPQEHFCEKLLURVDDJVEXNBL";
+		auto expectIdentity = (const unsigned char*)"VJGRUFWJCUSNHCQJRWRRYXAUEJFCVHYPXWKTDLYKUACPVVYBGOLVCJSF";
 		m256i expectPubkey;
 		getPublicKeyFromIdentity(expectIdentity, expectPubkey.m256i_u8);
-		EXPECT_EQ(team_info.teamId, expectPubkey);
-		EXPECT_EQ(team_info.teamFee, 20);
-    }
+		EXPECT_EQ(info.investRewardsId, expectPubkey);
+		EXPECT_EQ(info.investRewardsFee, 3);
+	}
 
 	{
-		id newTeamId(6,6,6,6);
-		QSWAP::SetTeamInfo_input input = {newTeamId};
+		id newInvestRewardsId(6,6,6,6);
+		QSWAP::SetInvestRewardsInfo_input input = {newInvestRewardsId};
 
 		id invalidIssuer(1,2,3,4);
 
-        increaseEnergy(invalidIssuer, 100);
-		bool res1 = qswap.setTeamId(invalidIssuer, input);
+		increaseEnergy(invalidIssuer, 100);
+		bool res1 = qswap.setInvestRewardsInfo(invalidIssuer, input);
 		// printf("res1: %d\n", res1);
 		EXPECT_FALSE(res1);
 
-		auto teamIdentity = (const unsigned char*)"IRUNQTXZRMLDEENHPRZQPSGPCFACORRUJYSBVJPQEHFCEKLLURVDDJVEXNBL";
-		m256i teamPubkey;
-		getPublicKeyFromIdentity(teamIdentity, teamPubkey.m256i_u8);
+		auto investRewardsIdentity = (const unsigned char*)"VJGRUFWJCUSNHCQJRWRRYXAUEJFCVHYPXWKTDLYKUACPVVYBGOLVCJSF";
+		m256i investRewardsPubkey;
+		getPublicKeyFromIdentity(investRewardsIdentity, investRewardsPubkey.m256i_u8);
 
-        increaseEnergy(teamPubkey, 100);
-		bool res2 = qswap.setTeamId(teamPubkey, input);
+		increaseEnergy(investRewardsPubkey, 100);
+		bool res2 = qswap.setInvestRewardsInfo(investRewardsPubkey, input);
 		// printf("res2: %d\n", res2);
 		EXPECT_TRUE(res2);
 
-		QSWAP::TeamInfo_output team_info = qswap.teamInfo();
-		EXPECT_EQ(team_info.teamId, newTeamId);
-		// printf("%d\n", team_info.teamId == newTeamId);
+		QSWAP::InvestRewardsInfo_output info = qswap.investRewardsInfo();
+		EXPECT_EQ(info.investRewardsId, newInvestRewardsId);
+		// printf("%d\n", info.investRewardsId == newInvestRewardsId);
 	}
 }
 
@@ -441,8 +441,8 @@ TEST(ContractSwap, SwapExactQuForAsset)
 
         QSWAP::GetPoolBasicState_output psOutput = qswap.getPoolBasicState(issuer, assetName);
         // printf("%lld, %lld, %lld\n", psOutput.reservedAssetAmount, psOutput.reservedQuAmount, psOutput.totalLiquidity);
-		// swapFee is 200_000 * 0.3% = 600, teamFee: 120, protocolFee: 96
-        EXPECT_TRUE(psOutput.reservedQuAmount >= 399784); // 399784 = (400_000 - 120 - 96)
+		// swapFee is 200_000 * 0.3% = 600, shareholders 27%: 162, QX 5%: 30, invest&rewards 3%: 18, burn 1%: 6 = 216
+		EXPECT_TRUE(psOutput.reservedQuAmount >= 399784); // 399784 = (400_000 - 216)
         EXPECT_TRUE(psOutput.reservedAssetAmount >= 50000 ); // 50076
         EXPECT_EQ(psOutput.totalLiquidity, 141421); // liquidity stay the same
     }
