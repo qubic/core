@@ -123,7 +123,7 @@ static inline unsigned int buildExecutionFeeReportPayload(
 
     // Build arrays with contract indices and execution fees
     unsigned int entryCount = 0;
-    for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
+    for (unsigned int contractIndex = 1; contractIndex < contractCount; contractIndex++)
     {
         long long executionTime = contractExecutionTimes[contractIndex];
         if (executionTime > 0)

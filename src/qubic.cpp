@@ -427,8 +427,9 @@ static void getComputerDigest(m256i& digest)
 
                 // K12 of state is included in contract execution time
                 _interlockedadd64(&contractTotalExecutionTime[digestIndex], executionTime);
+                // do not charge contract 0 state digest computation,
                 // only charge execution time if contract is already constructed/not in IPO
-                if (system.epoch >= contractDescriptions[digestIndex].constructionEpoch)
+                if (digestIndex > 0 && system.epoch >= contractDescriptions[digestIndex].constructionEpoch)
                 {
                     executionTimeAccumulator.addTime(digestIndex, executionTime);
                 }
