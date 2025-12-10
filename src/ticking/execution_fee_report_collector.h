@@ -44,7 +44,7 @@ public:
     {
         for (unsigned int i = 0; i < numEntries; i++)
         {
-            if (contractIndices[i] >= contractCount || executionFees[i] <= 0)
+            if (contractIndices[i] == 0 || contractIndices[i] >= contractCount || executionFees[i] <= 0)
             {
                 return false;
             }
@@ -110,7 +110,7 @@ public:
 
     void processReports()
     {
-        for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
+        for (unsigned int contractIndex = 1; contractIndex < contractCount; contractIndex++)
         {
             long long quorumValue = calculateAscendingQuorumValue(executionFeeReports[contractIndex], NUMBER_OF_COMPUTORS);
 
