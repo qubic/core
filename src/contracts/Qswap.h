@@ -2274,7 +2274,7 @@ protected:
 	BEGIN_EPOCH()
 	{
 		// One-time migration of fee structure (contract already initialized)
-		if (qpi.epoch() == 190)
+		if (qpi.epoch() == 191)
 		{
 			// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP providers
 			state.shareholderFeeRate = 27; 		// 27% of swap fees to SC shareholders

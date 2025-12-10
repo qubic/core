@@ -440,3 +440,4 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXD);
 #endif
 }
+
