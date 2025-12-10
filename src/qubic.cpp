@@ -427,7 +427,11 @@ static void getComputerDigest(m256i& digest)
 
                 // K12 of state is included in contract execution time
                 _interlockedadd64(&contractTotalExecutionTime[digestIndex], executionTime);
-                executionTimeAccumulator.addTime(digestIndex, executionTime);
+                // only charge execution time if contract is already constructed/not in IPO
+                if (system.epoch >= contractDescriptions[digestIndex].constructionEpoch)
+                {
+                    executionTimeAccumulator.addTime(digestIndex, executionTime);
+                }
 
                 // Gather data for comparing different versions of K12
                 if (K12MeasurementsCount < 500)
