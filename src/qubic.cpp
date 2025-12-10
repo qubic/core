@@ -5457,11 +5457,6 @@ static void tickProcessor(void*, unsigned long long processorNumber)
                         }
                     }
 
-                    if (system.tick < 38'645'109 + 10)
-                    {
-                        forceDontCheckComputerDigest = true;
-                    }
-
                     unsigned int tickNumberOfComputors = 0, tickTotalNumberOfComputors = 0;
                     m256i quorumComputerDigest = m256i::zero();
                     updateVotesCount(tickNumberOfComputors, tickTotalNumberOfComputors, quorumComputerDigest);
