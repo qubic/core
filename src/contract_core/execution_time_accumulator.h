@@ -1,6 +1,7 @@
 #pragma once
 
 #include "platform/file_io.h"
+#include "platform/time_stamp_counter.h"
 
 // A class for accumulating contract execution time over a phase.
 // Also saves the accumulation result of the previous phase.
@@ -48,10 +49,12 @@ public:
 #endif
     }
 
+    // Converts the input time specified as CPU ticks to microseconds and accumulates it for the current phase. 
     void addTime(unsigned int contractIndex, unsigned long long time)
     {
+        unsigned long long timeMicroSeconds = time * 1000000 / frequency;
         ACQUIRE(lock);
-        contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex][contractIndex] += time;
+        contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex][contractIndex] += timeMicroSeconds;
         RELEASE(lock);
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
@@ -59,7 +62,8 @@ public:
         setText(dbgMsgBuf, L"Execution time added for contract ");
         appendNumber(dbgMsgBuf, contractIndex, FALSE);
         appendText(dbgMsgBuf, L": ");
-        appendNumber(dbgMsgBuf, time, FALSE);
+        appendNumber(dbgMsgBuf, timeMicroSeconds, FALSE);
+        appendText(dbgMsgBuf, L" microseconds");
         addDebugMessage(dbgMsgBuf);
 #endif
     }
