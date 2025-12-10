@@ -1150,7 +1150,7 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
     // If requesting tick is too far in the future, return end response directly
     if (request->quorumTick.tick > system.tick + 3)
     {
-        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
         return;
     }
 
@@ -1206,7 +1206,7 @@ static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
     // If requesting tick is too far in the future, return end response directly
     if (request->requestedTickData.tick > system.tick + 3)
     {
-        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
         return;
     }
     // SWAP: we need atomic here to avoid flush the page while another thread is writing to it
