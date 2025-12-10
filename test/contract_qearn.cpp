@@ -781,12 +781,19 @@ TEST(TestContractQearn, ErrorChecking)
 // attempting to lock triggers gap removal, allowing the lock to succeed.
 // Note: This test is disabled by default because it requires filling many slots (QEARN_MAX_LOCKS - 1)
 // Enable with LARGE_SCALE_TEST >= 4 to run this comprehensive test
+
 #if LARGE_SCALE_TEST >= 4
 TEST(TestContractQearn, GapRemovalOnOverflow)
 {
+    std::cout << "gap removal test. If you want to test this case as soon, please set the QEARN_MAX_LOCKS to a smaller value on the contract." << std::endl;
     ContractTestingQearn qearn;
     
+    system.epoch = contractDescriptions[QEARN_CONTRACT_INDEX].constructionEpoch;
+    qearn.beginEpoch();
+    qearn.endEpoch();
+
     system.epoch = QEARN_INITIAL_EPOCH;
+
     qearn.beginEpoch();
     
     // Create a scenario where we fill up the locker array and create gaps
@@ -807,7 +814,7 @@ TEST(TestContractQearn, GapRemovalOnOverflow)
     for (uint64 i = 0; i < targetEndIndex; ++i)
     {
         id testUser(i, 100, 200, 300);
-        uint64 amount = QEARN_MINIMUM_LOCKING_AMOUNT + (i % 1000) * 1000;
+        uint64 amount = QEARN_MINIMUM_LOCKING_AMOUNT + 1;
         increaseEnergy(testUser, amount);
         EXPECT_TRUE(qearn.lockAndCheck(testUser, amount));
         
@@ -827,7 +834,7 @@ TEST(TestContractQearn, GapRemovalOnOverflow)
     // Note: endIndex doesn't decrease when unlocking, so gaps are created but endIndex stays high
     for (const auto& userToUnlock : usersToUnlock)
     {
-        uint64 unlockAmount = QEARN_MINIMUM_LOCKING_AMOUNT;
+        uint64 unlockAmount = QEARN_MINIMUM_LOCKING_AMOUNT + 1;
         EXPECT_EQ(qearn.unlock(userToUnlock, unlockAmount, system.epoch), QEARN_UNLOCK_SUCCESS);
     }
     
@@ -837,8 +844,8 @@ TEST(TestContractQearn, GapRemovalOnOverflow)
     
     // Step 5: Try to lock one more user - this should trigger overflow check and gap removal
     // After gap removal, the lock should succeed because we created gaps earlier
-    id finalUser(99999, 999, 888, 777);
-    uint64 finalAmount = QEARN_MINIMUM_LOCKING_AMOUNT;
+    id finalUser(targetEndIndex + 1, 100, 200, 300);
+    uint64 finalAmount = QEARN_MINIMUM_LOCKING_AMOUNT + 1;
     increaseEnergy(finalUser, finalAmount);
     
     // The lock should succeed after gap removal
@@ -850,6 +857,7 @@ TEST(TestContractQearn, GapRemovalOnOverflow)
     
     // The lock should succeed because gaps were removed
     EXPECT_EQ(retCode, QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(endIndexAfterGapRemoval, QEARN_MAX_LOCKS - numGapsToCreate);
     EXPECT_LT(endIndexAfterGapRemoval, QEARN_MAX_LOCKS - 1);
     EXPECT_LT(endIndexAfterGapRemoval, endIndexAfterUnlock);  // endIndex should decrease after gap removal
     
