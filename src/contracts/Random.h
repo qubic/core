@@ -1,8 +1,8 @@
 using namespace QPI;
 
-// Max miners to consider for distribution
-#define MAX_RECENT_MINERS 369
-#define ENTROPY_HISTORY_LEN 3 // For 2-tick-back entropy pool
+// Prefer constexpr over #define
+constexpr uint32_t MAX_RECENT_MINERS = 369;
+constexpr uint32_t ENTROPY_HISTORY_LEN = 3; // For 2-tick-back entropy pool
 
 struct RANDOM2
 {
@@ -66,16 +66,17 @@ private:
 	uint32 commitmentCount;
 
 	// Helper functions (static inline)
+	// Remove local variables, pass as arguments if needed
 	static inline void updateEntropyPoolData(RANDOM& stateRef, const bit_4096& newEntropy)
 	{
-		// XOR new entropy into the global pool
-		// Access BitArray internal data through a uint64 pointer cast
 		const uint64* entropyData = reinterpret_cast<const uint64*>(&newEntropy);
-		for (uint32 i = 0; i < 4; i++)
-			stateRef.currentEntropyPool.m256i_u64[i] ^= entropyData[i];
 
-		// Update entropy history (circular buffer)
-		stateRef.entropyHistoryHead = (stateRef.entropyHistoryHead + 1U) % ENTROPY_HISTORY_LEN;
+		for (uint32 i = 0; i < 4; i++)
+		{
+			stateRef.currentEntropyPool.m256i_u64[i] ^= entropyData[i];
+		}
+
+		stateRef.entropyHistoryHead = mod(stateRef.entropyHistoryHead + 1U, ENTROPY_HISTORY_LEN);
 		stateRef.entropyHistory[stateRef.entropyHistoryHead] = stateRef.currentEntropyPool;
 		stateRef.entropyPoolVersion++;
 		stateRef.entropyPoolVersionHistory[stateRef.entropyHistoryHead] = stateRef.entropyPoolVersion;
@@ -83,58 +84,67 @@ private:
 
 	static inline void generateRandomBytesData(const RANDOM& stateRef, uint8* output, uint32 numBytes, uint32 historyIdx, uint32 currentTick)
 	{
-		const m256i selectedPool = stateRef.entropyHistory[(stateRef.entropyHistoryHead + ENTROPY_HISTORY_LEN - historyIdx) % ENTROPY_HISTORY_LEN];
+		const m256i selectedPool = stateRef.entropyHistory[mod(stateRef.entropyHistoryHead + ENTROPY_HISTORY_LEN - historyIdx, ENTROPY_HISTORY_LEN)];
 		m256i tickEntropy;
 		tickEntropy.m256i_u64[0] = static_cast<uint64_t>(currentTick);
 		tickEntropy.m256i_u64[1] = 0;
 		tickEntropy.m256i_u64[2] = 0;
 		tickEntropy.m256i_u64[3] = 0;
 		m256i combinedEntropy;
-		for (uint32 i = 0; i < 4; i++)
-			combinedEntropy.m256i_u64[i] = selectedPool.m256i_u64[i] ^ tickEntropy.m256i_u64[i];
 
-		// Copy bytes from the combined entropy to output
+		for (uint32 i = 0; i < 4; i++)
+		{
+			combinedEntropy.m256i_u64[i] = selectedPool.m256i_u64[i] ^ tickEntropy.m256i_u64[i];
+		}
+
 		for (uint32 i = 0; i < ((numBytes > 32U) ? 32U : numBytes); i++)
+		{
 			output[i] = combinedEntropy.m256i_u8[i];
+		}
 	}
 
 	static inline bool isValidDepositAmountCheck(const RANDOM& stateRef, uint64 amount)
 	{
 		for (uint32 i = 0; i < 16U; i++)
-			if (amount == stateRef.validDepositAmounts[i]) return true;
+		{
+			if (amount == stateRef.validDepositAmounts[i])
+			{
+				return true;
+			}
+		}
 		return false;
 	}
 
-	static inline bool isEqualIdCheck(const id& a, const id& b)
-	{
-		for (uint32 i = 0; i < 32U; i++)
-			if (a.m256i_u8[i] != b.m256i_u8[i]) return false;
-		return true;
+	static inline bool isEqualIdCheck(const id& a, const id& b) 
+	{ 
+		return a == b;
 	}
 
-	static inline bool isZeroIdCheck(const id& value)
-	{
-		for (uint32 i = 0; i < 32U; i++)
-			if (value.m256i_u8[i] != 0) return false;
-		return true;
+	static inline bool isZeroIdCheck(const id& value) 
+	{ 
+		return isZero(value); 
 	}
 
 	static inline bool isZeroBitsCheck(const bit_4096& value)
 	{
-		// Access BitArray internal data through a uint64 pointer cast
 		const uint64* data = reinterpret_cast<const uint64*>(&value);
-		for (uint32 i = 0; i < 64U; i++)
-			if (data[i] != 0) return false;
+		for (uint32 i = 0; i < 64U; i++) {
+			if (data[i] != 0) 
+			{
+				return false;
+			}
+		}
+			
 		return true;
 	}
 
-	// Helper functions (static inline)
 	static inline bool k12CommitmentMatches(const QPI::QpiContextFunctionCall& qpi, const QPI::bit_4096& revealedBits, const QPI::id& committedDigest)
 	{
-		// QPI K12 returns id (m256i)
 		QPI::id computedDigest = qpi.K12(revealedBits);
 		for (QPI::uint32 i = 0; i < 32U; i++)
+		{
 			if (computedDigest.m256i_u8[i] != committedDigest.m256i_u8[i]) return false;
+		}
 		return true;
 	}
 
@@ -227,75 +237,99 @@ public:
 		uint64 price;
 	};
 
+	// Locals structs for WITH_LOCALS macros
+	struct RevealAndCommit_locals {
+		uint32 currentTick;
+		bool hasRevealData;
+		bool hasNewCommit;
+		bool isStoppingMining;
+		sint32 existingIndex;
+		uint32 i;
+		uint32 rm;
+		uint32 lowestIx;
+		bool hashMatches;
+	};
+	struct BuyEntropy_locals {
+		uint32 currentTick;
+		bool eligible;
+		uint64 usedMinerDeposit;
+		uint32 i;
+		uint64 minPrice;
+		uint64 buyerFee;
+		uint32 histIdx;
+		uint64 half;
+	};
+	struct END_EPOCH_locals {
+		uint32 currentTick;
+		uint32 i;
+		uint64 payout;
+	};
+
 	// --------------------------------------------------
-  // Mining: RevealAndCommit 
-	PUBLIC_PROCEDURE(RevealAndCommit)
+	// Mining: RevealAndCommit
+	PUBLIC_PROCEDURE_WITH_LOCALS(RevealAndCommit)
 	{
-		// Process timeouts first
-		uint32 currentTick = qpi.tick();
-		for (uint32 i = 0; i < state.commitmentCount; ) {
-			if (!state.commitments[i].hasRevealed &&
-				currentTick > state.commitments[i].revealDeadlineTick)
+		locals.currentTick = qpi.tick();
+
+		for (locals.i = 0; locals.i < state.commitmentCount; ) 
+		{
+			if (!state.commitments[locals.i].hasRevealed &&
+				locals.currentTick > state.commitments[locals.i].revealDeadlineTick)
 			{
-				uint64 lostDeposit = state.commitments[i].amount;
+				uint64 lostDeposit = state.commitments[locals.i].amount;
 				state.lostDepositsRevenue += lostDeposit;
 				state.totalRevenue += lostDeposit;
 				state.pendingShareholderDistribution += lostDeposit;
 				state.totalSecurityDepositsLocked -= lostDeposit;
-				if (i != state.commitmentCount - 1)
-					state.commitments[i] = state.commitments[state.commitmentCount - 1];
+				if (locals.i != state.commitmentCount - 1)
+					state.commitments[locals.i] = state.commitments[state.commitmentCount - 1];
 				state.commitmentCount--;
 			}
-			else {
-				i++;
+			else 
+			{
+				locals.i++;
 			}
 		}
 
-		// Empty tick handling:
-		if (qpi.numberOfTickTransactions() == -1) {
-			for (uint32 i = 0; i < state.commitmentCount; ) {
-				if (!state.commitments[i].hasRevealed &&
-					state.commitments[i].revealDeadlineTick == qpi.tick())
+		if (qpi.numberOfTickTransactions() == -1) 
+		{
+			for (locals.i = 0; locals.i < state.commitmentCount; ) 
+			{
+				if (!state.commitments[locals.i].hasRevealed &&
+					state.commitments[locals.i].revealDeadlineTick == qpi.tick())
 				{
-					qpi.transfer(state.commitments[i].invocatorId, state.commitments[i].amount);
-					state.totalSecurityDepositsLocked -= state.commitments[i].amount;
-					// Remove this slot by moving last in
-					if (i != state.commitmentCount - 1)
-						state.commitments[i] = state.commitments[state.commitmentCount - 1];
+					qpi.transfer(state.commitments[locals.i].invocatorId, state.commitments[locals.i].amount);
+					state.totalSecurityDepositsLocked -= state.commitments[locals.i].amount;
+					if (locals.i != state.commitmentCount - 1)
+						state.commitments[locals.i] = state.commitments[state.commitmentCount - 1];
 					state.commitmentCount--;
-					// Do not increment i, so the moved entry is checked next
 				}
-				else {
-					i++;
+				else 
+				{
+					locals.i++;
 				}
 			}
-			copyMemory(output, RevealAndCommit_output{});
 			return;
 		}
 
-		const RevealAndCommit_input& inputData = input;
-		id invocatorId = qpi.invocator();
-		uint64 invocatorAmount = qpi.invocationReward();
-		copyMemory(output, RevealAndCommit_output{});
+		locals.hasRevealData = !isZeroBitsCheck(input.revealedBits);
+		locals.hasNewCommit = !isZeroIdCheck(input.committedDigest);
+		locals.isStoppingMining = (qpi.invocationReward() == 0);
 
-		bool hasRevealData = !isZeroBitsCheck(inputData.revealedBits);
-		bool hasNewCommit = !isZeroIdCheck(inputData.committedDigest);
-		bool isStoppingMining = (invocatorAmount == 0);
-
-		// Step 1: Process reveal if provided
-		if (hasRevealData)
+		if (locals.hasRevealData)
 		{
-			for (uint32 i = 0; i < state.commitmentCount; ) {
-				if (!state.commitments[i].hasRevealed &&
-					isEqualIdCheck(state.commitments[i].invocatorId, invocatorId))
+			for (locals.i = 0; locals.i < state.commitmentCount; ) 
+			{
+				if (!state.commitments[locals.i].hasRevealed &&
+					isEqualIdCheck(state.commitments[locals.i].invocatorId, qpi.invocator()))
 				{
-					// Use QPI K12 for cryptographic binding
-					bool hashMatches = k12CommitmentMatches(qpi, inputData.revealedBits, state.commitments[i].digest);
-					if (hashMatches)
+					locals.hashMatches = k12CommitmentMatches(qpi, input.revealedBits, state.commitments[locals.i].digest);
+
+					if (locals.hashMatches)
 					{
-						if (currentTick > state.commitments[i].revealDeadlineTick)
+						if (locals.currentTick > state.commitments[locals.i].revealDeadlineTick)
 						{
-							uint64 lostDeposit = state.commitments[i].amount;
+							uint64 lostDeposit = state.commitments[locals.i].amount;
 							state.lostDepositsRevenue += lostDeposit;
 							state.totalRevenue += lostDeposit;
 							state.pendingShareholderDistribution += lostDeposit;
@@ -303,170 +337,190 @@ public:
 						}
 						else
 						{
-							updateEntropyPoolData(state, inputData.revealedBits);
-
-							qpi.transfer(invocatorId, state.commitments[i].amount);
-
+							updateEntropyPoolData(state, input.revealedBits);
+							qpi.transfer(qpi.invocator(), state.commitments[locals.i].amount);
 							output.revealSuccessful = true;
-							output.depositReturned = state.commitments[i].amount;
-
+							output.depositReturned = state.commitments[locals.i].amount;
 							state.totalReveals++;
-							state.totalSecurityDepositsLocked -= state.commitments[i].amount;
+							state.totalSecurityDepositsLocked -= state.commitments[locals.i].amount;
+							locals.existingIndex = -1;
 
-							// Update RecentMiners (with per-miner freshness)
-							sint32 existingIndex = -1;
-							for (uint32 rm = 0; rm < state.recentMinerCount; ++rm) {
-								if (isEqualIdCheck(state.recentMiners[rm].minerId, invocatorId)) {
-									existingIndex = rm;
+							for (locals.rm = 0; locals.rm < state.recentMinerCount; ++locals.rm) 
+							{
+								if (isEqualIdCheck(state.recentMiners[locals.rm].minerId, qpi.invocator())) 
+								{
+									locals.existingIndex = locals.rm;
 									break;
 								}
 							}
-							if (existingIndex >= 0) {
-								if (state.recentMiners[existingIndex].deposit < state.commitments[i].amount) {
-									state.recentMiners[existingIndex].deposit = state.commitments[i].amount;
-									state.recentMiners[existingIndex].lastEntropyVersion = state.entropyPoolVersion;
+
+							if (locals.existingIndex >= 0) 
+							{
+								if (state.recentMiners[locals.existingIndex].deposit < state.commitments[locals.i].amount) 
+								{
+									state.recentMiners[locals.existingIndex].deposit = state.commitments[locals.i].amount;
+									state.recentMiners[locals.existingIndex].lastEntropyVersion = state.entropyPoolVersion;
 								}
-								state.recentMiners[existingIndex].lastRevealTick = currentTick;
+								state.recentMiners[locals.existingIndex].lastRevealTick = locals.currentTick;
 							}
-							else {
-								if (state.recentMinerCount < MAX_RECENT_MINERS) {
-									state.recentMiners[state.recentMinerCount].minerId = invocatorId;
-									state.recentMiners[state.recentMinerCount].deposit = state.commitments[i].amount;
+							else 
+							{
+								if (state.recentMinerCount < MAX_RECENT_MINERS) 
+								{
+									state.recentMiners[state.recentMinerCount].minerId = qpi.invocator();
+									state.recentMiners[state.recentMinerCount].deposit = state.commitments[locals.i].amount;
 									state.recentMiners[state.recentMinerCount].lastEntropyVersion = state.entropyPoolVersion;
-									state.recentMiners[state.recentMinerCount].lastRevealTick = currentTick;
+									state.recentMiners[state.recentMinerCount].lastRevealTick = locals.currentTick;
 									state.recentMinerCount++;
 								}
-								else {
-									// Overflow: evict
-									uint32 lowestIx = 0;
-									for (uint32 rm = 1; rm < MAX_RECENT_MINERS; ++rm) {
-										if (state.recentMiners[rm].deposit < state.recentMiners[lowestIx].deposit ||
-											(state.recentMiners[rm].deposit == state.recentMiners[lowestIx].deposit &&
-												state.recentMiners[rm].lastEntropyVersion < state.recentMiners[lowestIx].lastEntropyVersion))
-											lowestIx = rm;
-									}
-									if (state.commitments[i].amount > state.recentMiners[lowestIx].deposit ||
-										(state.commitments[i].amount == state.recentMiners[lowestIx].deposit &&
-											state.entropyPoolVersion > state.recentMiners[lowestIx].lastEntropyVersion))
+								else 
+								{
+									locals.lowestIx = 0;
+
+									for (locals.rm = 1; locals.rm < MAX_RECENT_MINERS; ++locals.rm) 
 									{
-										state.recentMiners[lowestIx].minerId = invocatorId;
-										state.recentMiners[lowestIx].deposit = state.commitments[i].amount;
-										state.recentMiners[lowestIx].lastEntropyVersion = state.entropyPoolVersion;
-										state.recentMiners[lowestIx].lastRevealTick = currentTick;
+										if (state.recentMiners[locals.rm].deposit < state.recentMiners[locals.lowestIx].deposit ||
+											(state.recentMiners[locals.rm].deposit == state.recentMiners[locals.lowestIx].deposit &&
+												state.recentMiners[locals.rm].lastEntropyVersion < state.recentMiners[locals.lowestIx].lastEntropyVersion))
+										{
+											locals.lowestIx = locals.rm;
+										}
+									}
+
+									if (state.commitments[locals.i].amount > state.recentMiners[locals.lowestIx].deposit ||
+										(state.commitments[locals.i].amount == state.recentMiners[locals.lowestIx].deposit &&
+											state.entropyPoolVersion > state.recentMiners[locals.lowestIx].lastEntropyVersion))
+									{
+										state.recentMiners[locals.lowestIx].minerId = qpi.invocator();
+										state.recentMiners[locals.lowestIx].deposit = state.commitments[locals.i].amount;
+										state.recentMiners[locals.lowestIx].lastEntropyVersion = state.entropyPoolVersion;
+										state.recentMiners[locals.lowestIx].lastRevealTick = locals.currentTick;
 									}
 								}
 							}
 						}
-						// Compaction after reveal
-						state.totalSecurityDepositsLocked -= state.commitments[i].amount;
-						if (i != state.commitmentCount - 1)
-							state.commitments[i] = state.commitments[state.commitmentCount - 1];
+
+						state.totalSecurityDepositsLocked -= state.commitments[locals.i].amount;
+
+						if (locals.i != state.commitmentCount - 1)
+						{
+							state.commitments[locals.i] = state.commitments[state.commitmentCount - 1];
+						}
 						state.commitmentCount--;
-						// do not increment i so new moved slot is checked
+
 						continue;
 					}
 				}
-				i++;
+				locals.i++;
 			}
 		}
 
-		// Step 2: Process new commitment
-		if (hasNewCommit && !isStoppingMining)
+		if (locals.hasNewCommit && !locals.isStoppingMining)
 		{
-			if (isValidDepositAmountCheck(state, invocatorAmount) && invocatorAmount >= state.minimumSecurityDeposit)
+			if (isValidDepositAmountCheck(state, qpi.invocationReward()) && qpi.invocationReward() >= state.minimumSecurityDeposit)
 			{
 				if (state.commitmentCount < 1024)
 				{
-					state.commitments[state.commitmentCount].digest = inputData.committedDigest;
-					state.commitments[state.commitmentCount].invocatorId = invocatorId;
-					state.commitments[state.commitmentCount].amount = invocatorAmount;
-					state.commitments[state.commitmentCount].commitTick = currentTick;
-					state.commitments[state.commitmentCount].revealDeadlineTick = currentTick + state.revealTimeoutTicks;
+					state.commitments[state.commitmentCount].digest = input.committedDigest;
+					state.commitments[state.commitmentCount].invocatorId = qpi.invocator();
+					state.commitments[state.commitmentCount].amount = qpi.invocationReward();
+					state.commitments[state.commitmentCount].commitTick = locals.currentTick;
+					state.commitments[state.commitmentCount].revealDeadlineTick = locals.currentTick + state.revealTimeoutTicks;
 					state.commitments[state.commitmentCount].hasRevealed = false;
 					state.commitmentCount++;
 					state.totalCommits++;
-					state.totalSecurityDepositsLocked += invocatorAmount;
+					state.totalSecurityDepositsLocked += qpi.invocationReward();
 					output.commitSuccessful = true;
 				}
 			}
 		}
 
-		// Always return random bytes (current pool)
-		generateRandomBytesData(state, output.randomBytes, 32, 0, currentTick); // 0 = current pool
+		generateRandomBytesData(state, output.randomBytes, 32, 0, locals.currentTick);
 		output.entropyVersion = state.entropyPoolVersion;
 	}
 
-	// --------------------------------------------------
-	// BUY ENTROPY / RANDOM BYTES 
-	PUBLIC_PROCEDURE(BuyEntropy)
+	// BUY ENTROPY / RANDOM BYTES
+	PUBLIC_PROCEDURE_WITH_LOCALS(BuyEntropy)
 	{
-		// Process timeouts first
-		uint32 currentTick = qpi.tick();
-		for (uint32 i = 0; i < state.commitmentCount; ) {
-			if (!state.commitments[i].hasRevealed &&
-				currentTick > state.commitments[i].revealDeadlineTick)
+		locals.currentTick = qpi.tick();
+
+		for (locals.i = 0; locals.i < state.commitmentCount; ) 
+		{
+			if (!state.commitments[locals.i].hasRevealed &&
+				locals.currentTick > state.commitments[locals.i].revealDeadlineTick)
 			{
-				uint64 lostDeposit = state.commitments[i].amount;
+				uint64 lostDeposit = state.commitments[locals.i].amount;
 				state.lostDepositsRevenue += lostDeposit;
 				state.totalRevenue += lostDeposit;
 				state.pendingShareholderDistribution += lostDeposit;
 				state.totalSecurityDepositsLocked -= lostDeposit;
-				if (i != state.commitmentCount - 1)
-					state.commitments[i] = state.commitments[state.commitmentCount - 1];
+				if (locals.i != state.commitmentCount - 1)
+				{
+					state.commitments[locals.i] = state.commitments[state.commitmentCount - 1];
+				}
 				state.commitmentCount--;
 			}
-			else {
-				i++;
+			else 
+			{
+				locals.i++;
 			}
 		}
 
-		if (qpi.numberOfTickTransactions() == -1) {
-			copyMemory(output, BuyEntropy_output{});
+		if (qpi.numberOfTickTransactions() == -1) 
+		{
 			output.success = false;
 			return;
 		}
 
-		const BuyEntropy_input& inputData = input;
-		copyMemory(output, BuyEntropy_output{});
 		output.success = false;
-		uint64 buyerFee = qpi.invocationReward();
+		locals.buyerFee = qpi.invocationReward();
+		locals.eligible = false;
+		locals.usedMinerDeposit = 0;
 
-		bool eligible = false;
-		uint64 usedMinerDeposit = 0;
-		for (uint32 i = 0; i < state.recentMinerCount; ++i) {
-			if (state.recentMiners[i].deposit >= inputData.minMinerDeposit &&
-				(currentTick - state.recentMiners[i].lastRevealTick) <= state.revealTimeoutTicks) {
-				eligible = true;
-				usedMinerDeposit = state.recentMiners[i].deposit;
+		for (locals.i = 0; locals.i < state.recentMinerCount; ++locals.i) 
+		{
+			if (state.recentMiners[locals.i].deposit >= input.minMinerDeposit &&
+				(locals.currentTick - state.recentMiners[locals.i].lastRevealTick) <= state.revealTimeoutTicks) 
+			{
+				locals.eligible = true;
+				locals.usedMinerDeposit = state.recentMiners[locals.i].deposit;
 				break;
 			}
 		}
 
-		if (!eligible)
+		if (!locals.eligible)
+		{
 			return;
+		}
 
-		uint64 minPrice = state.pricePerByte
-			* inputData.numberOfBytes
-			* (inputData.minMinerDeposit / state.priceDepositDivisor + 1);
-		if (buyerFee < minPrice)
+		locals.minPrice = state.pricePerByte
+			* input.numberOfBytes
+			* (div(input.minMinerDeposit, state.priceDepositDivisor) + 1);
+
+		if (locals.buyerFee < locals.minPrice)
+		{
 			return;
+		}
 
-		uint32 histIdx = (state.entropyHistoryHead + ENTROPY_HISTORY_LEN - 2) % ENTROPY_HISTORY_LEN;
-		generateRandomBytesData(state, output.randomBytes, (inputData.numberOfBytes > 32 ? 32 : inputData.numberOfBytes), histIdx, currentTick);
-		output.entropyVersion = state.entropyPoolVersionHistory[histIdx];
-		output.usedMinerDeposit = usedMinerDeposit;
-		output.usedPoolVersion = state.entropyPoolVersionHistory[histIdx];
+		locals.histIdx = mod(state.entropyHistoryHead + ENTROPY_HISTORY_LEN - 2, ENTROPY_HISTORY_LEN);
+		generateRandomBytesData(state, output.randomBytes, (input.numberOfBytes > 32 ? 32 : input.numberOfBytes), locals.histIdx, locals.currentTick);
+		output.entropyVersion = state.entropyPoolVersionHistory[locals.histIdx];
+		output.usedMinerDeposit = locals.usedMinerDeposit;
+		output.usedPoolVersion = state.entropyPoolVersionHistory[locals.histIdx];
 		output.success = true;
-		uint64 half = buyerFee / 2;
-		state.minerEarningsPool += half;
-		state.shareholderEarningsPool += (buyerFee - half);
+
+		locals.half = div(locals.buyerFee, (uint64)2);
+		state.minerEarningsPool += locals.half;
+		state.shareholderEarningsPool += (locals.buyerFee - locals.half);
 	}
 
 	// --------------------------------------------------
-// Read-only contract info
+	// Read-only contract info
 	PUBLIC_FUNCTION(GetContractInfo)
 	{
 		uint32 currentTick = qpi.tick();
+		uint32 activeCount = 0;
+		uint32 i;
 
 		output.totalCommits = state.totalCommits;
 		output.totalReveals = state.totalReveals;
@@ -484,25 +538,29 @@ public:
 		output.shareholderEarningsPool = state.shareholderEarningsPool;
 		output.recentMinerCount = state.recentMinerCount;
 
-		for (uint32 i = 0; i < 16; i++)
+		for (i = 0; i < 16; i++)
+		{
 			output.validDepositAmounts[i] = state.validDepositAmounts[i];
+		}
 
-		uint32 activeCount = 0;
-		for (uint32 i = 0; i < state.commitmentCount; i++)
+		for (i = 0; i < state.commitmentCount; i++)
+		{
 			if (!state.commitments[i].hasRevealed)
+			{
 				activeCount++;
+			}
+		}
 		output.activeCommitments = activeCount;
 	}
 
 	PUBLIC_FUNCTION(GetUserCommitments)
 	{
-		const GetUserCommitments_input& inputData = input;
-
-		copyMemory(output, GetUserCommitments_output{});
 		uint32 userCommitmentCount = 0;
-		for (uint32 i = 0; i < state.commitmentCount && userCommitmentCount < 32; i++)
+		uint32 i;
+
+		for (i = 0; i < state.commitmentCount && userCommitmentCount < 32; i++)
 		{
-			if (isEqualIdCheck(state.commitments[i].invocatorId, inputData.userId))
+			if (isEqualIdCheck(state.commitments[i].invocatorId, input.userId))
 			{
 				output.commitments[userCommitmentCount].digest = state.commitments[i].digest;
 				output.commitments[userCommitmentCount].amount = state.commitments[i].amount;
@@ -517,71 +575,73 @@ public:
 
 	PUBLIC_FUNCTION(QueryPrice)
 	{
-		const QueryPrice_input& inputData = input;
 		output.price = state.pricePerByte
-			* inputData.numberOfBytes
-			* (inputData.minMinerDeposit / state.priceDepositDivisor +1);
+			* input.numberOfBytes
+			* (div(input.minMinerDeposit, (uint64)state.priceDepositDivisor) + 1);
 	}
 
-	// --------------------------------------------------
-	  // Epoch End: Distribute pools
-	END_EPOCH()
+	END_EPOCH_WITH_LOCALS()
 	{
-		// Process timeouts first
-		uint32 currentTick = qpi.tick();
-		for (uint32 i = 0; i < state.commitmentCount; ) {
-			if (!state.commitments[i].hasRevealed &&
-				currentTick > state.commitments[i].revealDeadlineTick)
+		locals.currentTick = qpi.tick();
+
+		for (locals.i = 0; locals.i < state.commitmentCount; ) {
+			if (!state.commitments[locals.i].hasRevealed &&
+				locals.currentTick > state.commitments[locals.i].revealDeadlineTick)
 			{
-				uint64 lostDeposit = state.commitments[i].amount;
+				uint64 lostDeposit = state.commitments[locals.i].amount;
 				state.lostDepositsRevenue += lostDeposit;
 				state.totalRevenue += lostDeposit;
 				state.pendingShareholderDistribution += lostDeposit;
 				state.totalSecurityDepositsLocked -= lostDeposit;
-				if (i != state.commitmentCount - 1)
-					state.commitments[i] = state.commitments[state.commitmentCount - 1];
+				if (locals.i != state.commitmentCount - 1)
+				{
+					state.commitments[locals.i] = state.commitments[state.commitmentCount - 1];
+				}
 				state.commitmentCount--;
 			}
-			else {
-				i++;
+			else 
+			{
+				locals.i++;
 			}
 		}
 
-		// Distribute miner pool
-		if (state.minerEarningsPool > 0 && state.recentMinerCount > 0) {
-			uint64 payout = state.minerEarningsPool / state.recentMinerCount;
-			for (uint32 i = 0; i < state.recentMinerCount; ++i) {
-				if (!isZeroIdCheck(state.recentMiners[i].minerId))
-					qpi.transfer(state.recentMiners[i].minerId, payout);
+		if (state.minerEarningsPool > 0 && state.recentMinerCount > 0) 
+		{
+			locals.payout = div(state.minerEarningsPool, (uint64)state.recentMinerCount);
+			for (locals.i = 0; locals.i < state.recentMinerCount; ++locals.i) 
+			{
+				if (!isZeroIdCheck(state.recentMiners[locals.i].minerId))
+				{
+					qpi.transfer(state.recentMiners[locals.i].minerId, locals.payout);
+				}
 			}
 			state.minerEarningsPool = 0;
-			for (uint32 i = 0; i < MAX_RECENT_MINERS; ++i)
-				state.recentMiners[i] = RecentMiner{};
+			for (locals.i = 0; locals.i < MAX_RECENT_MINERS; ++locals.i)
+			{
+				state.recentMiners[locals.i] = RecentMiner{};
+			}
 			state.recentMinerCount = 0;
 		}
 
-		// Distribute to shareholders
-		if (state.shareholderEarningsPool > 0) {
-			qpi.distributeDividends(state.shareholderEarningsPool / NUMBER_OF_COMPUTORS);
+		if (state.shareholderEarningsPool > 0) 
+		{
+			qpi.distributeDividends(div(state.shareholderEarningsPool, (uint64)NUMBER_OF_COMPUTORS));
 			state.shareholderEarningsPool = 0;
 		}
 
-		// Continue current lost deposit distribution as before
 		if (state.pendingShareholderDistribution > 0)
 		{
-			qpi.distributeDividends(state.pendingShareholderDistribution / NUMBER_OF_COMPUTORS);
+			qpi.distributeDividends(div(state.pendingShareholderDistribution, (uint64)NUMBER_OF_COMPUTORS));
 			state.pendingShareholderDistribution = 0;
 		}
 	}
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
-		// READ-ONLY USER FUNCTIONS 
 		REGISTER_USER_FUNCTION(GetContractInfo, 1);
 		REGISTER_USER_FUNCTION(GetUserCommitments, 2);
 		REGISTER_USER_FUNCTION(QueryPrice, 3);
 
-		// USER PROCEDURES 
 		REGISTER_USER_PROCEDURE(RevealAndCommit, 1);
 		REGISTER_USER_PROCEDURE(BuyEntropy, 2);
 	}
@@ -589,34 +649,18 @@ public:
 	INITIALIZE()
 	{
 		state.entropyHistoryHead = 0;
-		for (uint32 i = 0; i < ENTROPY_HISTORY_LEN; ++i) {
-			copyMemory(state.entropyHistory[i], m256i{});
-			state.entropyPoolVersionHistory[i] = 0;
-		}
-		copyMemory(state.currentEntropyPool, m256i{});
-		state.entropyPoolVersion = 0;
-		state.totalCommits = 0;
-		state.totalReveals = 0;
-		state.totalSecurityDepositsLocked = 0;
-		state.minimumSecurityDeposit = 1; // Now allow1 QU
+		state.minimumSecurityDeposit = 1;
 		state.revealTimeoutTicks = 9;
-		state.commitmentCount = 0;
-		state.totalRevenue = 0;
-		state.pendingShareholderDistribution = 0;
-		state.lostDepositsRevenue = 0;
-		state.minerEarningsPool = 0;
-		state.shareholderEarningsPool = 0;
-		state.recentMinerCount = 0;
 		state.pricePerByte = 10;
 		state.priceDepositDivisor = 1000;
-		for (uint32 i = 0; i < 16; i++) {
+
+		for (uint32 i = 0; i < 16; i++) 
+		{
 			state.validDepositAmounts[i] = 1ULL;
 			for (uint32 j = 0; j < i; j++)
+			{
 				state.validDepositAmounts[i] *= 10;
+			}
 		}
-		for (uint32 i = 0; i < 1024; ++i)
-			state.commitments[i] = EntropyCommitment{};
-		for (uint32 i = 0; i < MAX_RECENT_MINERS; ++i)
-			state.recentMiners[i] = RecentMiner{};
 	}
 };
