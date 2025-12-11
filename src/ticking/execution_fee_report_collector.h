@@ -9,7 +9,7 @@
 class ExecutionFeeReportCollector
 {
 private:
-    long long executionFeeReports[contractCount][NUMBER_OF_COMPUTORS];
+    unsigned long long executionFeeReports[contractCount][NUMBER_OF_COMPUTORS];
 
 public:
     void init()
@@ -23,15 +23,15 @@ public:
     }
 
     // Store execution fee report from a computor for a contract
-    void storeReport(unsigned int contractIndex, unsigned int computorIndex, long long executionFee)
+    void storeReport(unsigned int contractIndex, unsigned int computorIndex, unsigned long long executionFee)
     {
-        if (contractIndex < contractCount && computorIndex < NUMBER_OF_COMPUTORS)
+        if (contractIndex > 0 && contractIndex < contractCount && computorIndex < NUMBER_OF_COMPUTORS)
         {
             executionFeeReports[contractIndex][computorIndex] = executionFee;
         }
     }
 
-    long long* getReportsForContract(unsigned int contractIndex)
+    const unsigned long long* getReportsForContract(unsigned int contractIndex)
     {
         if (contractIndex < contractCount)
         {
@@ -40,11 +40,11 @@ public:
         return nullptr;
     }
 
-    bool validateReportEntries(const unsigned int* contractIndices, const long long* executionFees, unsigned int numEntries)
+    bool validateReportEntries(const unsigned int* contractIndices, const unsigned long long* executionFees, unsigned int numEntries)
     {
         for (unsigned int i = 0; i < numEntries; i++)
         {
-            if (contractIndices[i] == 0 || contractIndices[i] >= contractCount || executionFees[i] <= 0)
+            if (contractIndices[i] == 0 || contractIndices[i] >= contractCount || executionFees[i] == 0)
             {
                 return false;
             }
@@ -52,7 +52,7 @@ public:
         return true;
     }
 
-    void storeReportEntries(const unsigned int* contractIndices, const long long* executionFees, unsigned int numEntries, unsigned int computorIndex)
+    void storeReportEntries(const unsigned int* contractIndices, const unsigned long long* executionFees, unsigned int numEntries, unsigned int computorIndex)
     {
         for (unsigned int i = 0; i < numEntries; i++)
         {
@@ -97,7 +97,7 @@ public:
 
         const unsigned int numEntries = ExecutionFeeReportTransactionPrefix::getNumEntries(transaction);
         const unsigned int* contractIndices = ExecutionFeeReportTransactionPrefix::getContractIndices(transaction);
-        const long long* executionFees = ExecutionFeeReportTransactionPrefix::getExecutionFees(transaction);
+        const unsigned long long* executionFees = ExecutionFeeReportTransactionPrefix::getExecutionFees(transaction);
 
         if (!validateReportEntries(contractIndices, executionFees, numEntries))
         {
@@ -140,13 +140,13 @@ public:
             addDebugMessage(dbgMsgBuf);
 #endif
 
-            long long quorumValue = calculateAscendingQuorumValue(executionFeeReports[contractIndex], NUMBER_OF_COMPUTORS);
+            unsigned long long quorumValue = calculateAscendingQuorumValue(executionFeeReports[contractIndex], NUMBER_OF_COMPUTORS);
 
             if (quorumValue > 0)
             {
                 // TODO: enable subtraction after mainnet testing phase
                 // subtractFromContractFeeReserve(contractIndex, quorumValue);
-                ContractReserveDeduction message = {static_cast<unsigned long long>(quorumValue), getContractFeeReserve(contractIndex), contractIndex};
+                ContractReserveDeduction message = { quorumValue, getContractFeeReserve(contractIndex), contractIndex };
                 logger.logContractReserveDeduction(message);
             }
         }
