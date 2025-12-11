@@ -278,6 +278,10 @@ protected:
 
         locals.mbondIdentity = SELF;
         locals.mbondIdentity.u64._3 = locals.tempMbondInfo.name;
+        if (input.epoch >= QBOND_CYCLIC_START_EPOCH)
+        {
+            locals.mbondIdentity.u16._3 = (uint16) input.epoch;
+        }
 
         locals.elementIndex = state._askOrders.headIndex(locals.mbondIdentity, 0);
         while (locals.elementIndex != NULL_INDEX)
@@ -485,6 +489,10 @@ protected:
 
         locals.mbondIdentity = SELF;
         locals.mbondIdentity.u64._3 = locals.tempMbondInfo.name;
+        if (input.epoch >= QBOND_CYCLIC_START_EPOCH)
+        {
+            locals.mbondIdentity.u16._3 = (uint16) input.epoch;
+        }
 
         locals.elementIndex = state._bidOrders.headIndex(locals.mbondIdentity);
         while (locals.elementIndex != NULL_INDEX)
@@ -622,6 +630,10 @@ protected:
 
         locals.mbondIdentity = SELF;
         locals.mbondIdentity.u64._3 = locals.tempMbondInfo.name;
+        if (input.epoch >= QBOND_CYCLIC_START_EPOCH)
+        {
+            locals.mbondIdentity.u16._3 = (uint16) input.epoch;
+        }
 
         locals.elementIndex = state._askOrders.headIndex(locals.mbondIdentity, 0);
         while (locals.elementIndex != NULL_INDEX)
@@ -680,6 +692,10 @@ protected:
 
         locals.mbondIdentity = SELF;
         locals.mbondIdentity.u64._3 = locals.tempMbondInfo.name;
+        if (input.epoch >= QBOND_CYCLIC_START_EPOCH)
+        {
+            locals.mbondIdentity.u16._3 = (uint16) input.epoch;
+        }
 
         locals.elementIndex = state._askOrders.headIndex(locals.mbondIdentity);
         while (locals.elementIndex != NULL_INDEX)
@@ -828,6 +844,10 @@ protected:
 
         locals.mbondIdentity = SELF;
         locals.mbondIdentity.u64._3 = locals.tempMbondInfo.name;
+        if (input.epoch >= QBOND_CYCLIC_START_EPOCH)
+        {
+            locals.mbondIdentity.u16._3 = (uint16) input.epoch;
+        }
 
         locals.elementIndex = state._bidOrders.headIndex(locals.mbondIdentity);
         while (locals.elementIndex != NULL_INDEX)
@@ -985,6 +1005,10 @@ protected:
                 continue;
             }
             locals.mbondIdentity.u64._3 = locals.tempMbondInfo.name;
+            if (locals.epochCounter >= QBOND_CYCLIC_START_EPOCH)
+            {
+                locals.mbondIdentity.u16._3 = (uint16) locals.epochCounter;
+            }
 
             locals.elementIndex = state._askOrders.headIndex(locals.mbondIdentity, 0);
             while (locals.elementIndex != NULL_INDEX && locals.arrayElementIndex < 256)
@@ -1049,6 +1073,10 @@ protected:
 
             locals.mbondIdentity = SELF;
             locals.mbondIdentity.u64._3 = locals.tempMbondInfo.name;
+            if (locals.epoch >= QBOND_CYCLIC_START_EPOCH)
+            {
+                locals.mbondIdentity.u16._3 = (uint16) locals.epoch;
+            }
 
             locals.elementIndex1 = state._askOrders.headIndex(locals.mbondIdentity, 0);
             while (locals.elementIndex1 != NULL_INDEX && locals.arrayElementIndex1 < 256)
@@ -1285,6 +1313,10 @@ protected:
 
             locals.mbondIdentity = SELF;
             locals.mbondIdentity.u64._3 = locals.tempMbondInfo.name;
+            if ((uint16) (qpi.epoch() - 53) >= QBOND_CYCLIC_START_EPOCH)
+            {
+                locals.mbondIdentity.u16._3 = (uint16) (qpi.epoch() - 53);
+            }
 
             locals.elementIndex = state._askOrders.headIndex(locals.mbondIdentity);
             while (locals.elementIndex != NULL_INDEX)
