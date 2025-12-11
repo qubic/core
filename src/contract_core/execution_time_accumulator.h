@@ -13,8 +13,8 @@ private:
     // contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex] is used to accumulate the contract execution ticks for the current phase n.
     // contractExecutionTimePerPhase[!contractExecutionTimeActiveArrayIndex] saves the contract execution ticks from the previous phase n-1 that are sent out as transactions in phase n.
     
-    // TODO: check if this overflows with CPU clock cycles, if it does, save in different unit (e.g. milliseconds)
-    long long contractExecutionTimePerPhase[2][contractCount];
+    // TODO: check if this overflows
+    unsigned long long contractExecutionTimePerPhase[2][contractCount];
     bool contractExecutionTimeActiveArrayIndex = 0;
     volatile char lock = 0;
 
@@ -52,7 +52,7 @@ public:
     // Converts the input time specified as CPU ticks to microseconds and accumulates it for the current phase. 
     void addTime(unsigned int contractIndex, unsigned long long time)
     {
-        unsigned long long timeMicroSeconds = time * 1000000 / frequency;
+        unsigned long long timeMicroSeconds = frequency > 0 ? (time * 1000000 / frequency) : time;
         ACQUIRE(lock);
         contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex][contractIndex] += timeMicroSeconds;
         RELEASE(lock);
@@ -70,7 +70,7 @@ public:
 
     // Returns a pointer to the accumulated times from the previous phase for each contract.
     // Make sure to acquire the lock before calling this function and only release it when finished accessing the returned data.
-    const long long* getPrevPhaseAccumulatedTimes()
+    const unsigned long long* getPrevPhaseAccumulatedTimes()
     {
         return contractExecutionTimePerPhase[!contractExecutionTimeActiveArrayIndex];
     }
