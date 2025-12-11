@@ -112,6 +112,34 @@ public:
     {
         for (unsigned int contractIndex = 1; contractIndex < contractCount; contractIndex++)
         {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            unsigned int numNonZero = 0;
+            int firstNonZero = -1;
+            int lastNonZero = -1;
+            for (unsigned int compIndex = 0; compIndex < NUMBER_OF_COMPUTORS; ++compIndex)
+            {
+                if (executionFeeReports[contractIndex][compIndex] > 0)
+                {
+                    if (firstNonZero == -1)
+                        firstNonZero = compIndex;
+                    lastNonZero = compIndex;
+                    numNonZero++;
+                }
+            }
+
+            CHAR16 dbgMsgBuf[128];
+            setText(dbgMsgBuf, L"Contract ");
+            appendNumber(dbgMsgBuf, contractIndex, FALSE);
+            appendText(dbgMsgBuf, L": ");
+            appendNumber(dbgMsgBuf, numNonZero, FALSE);
+            appendText(dbgMsgBuf, L" non-zero fee reports, first non-zero comp ");
+            appendNumber(dbgMsgBuf, firstNonZero, FALSE);
+            appendText(dbgMsgBuf, L", last non-zero comp ");
+            appendNumber(dbgMsgBuf, lastNonZero, FALSE);
+            appendText(dbgMsgBuf, L" (0-indexed)");
+            addDebugMessage(dbgMsgBuf);
+#endif
+
             long long quorumValue = calculateAscendingQuorumValue(executionFeeReports[contractIndex], NUMBER_OF_COMPUTORS);
 
             if (quorumValue > 0)
