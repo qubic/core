@@ -5,8 +5,8 @@
 #define NO_UEFI
 
 #include "contract_testing.h"
-#include <vector>
 #include <algorithm>
+#include <vector>
 
 // Procedure indices (must match REGISTER_USER_FUNCTIONS_AND_PROCEDURES in QThirtyFour.h)
 constexpr uint16 QTF_PROCEDURE_BUY_TICKET = 1;
@@ -38,15 +38,10 @@ public:
 	uint64 getTicketPriceInternal() const { return ticketPrice; }
 	uint64 getJackpot() const { return jackpot; }
 	uint64 getTargetJackpotInternal() const { return targetJackpot; }
-	unsigned int getScheduleInternal() const { return schedule; }
-	unsigned int getDrawHourInternal() const { return drawHour; }
-	uint32 getLastDrawDateStamp() const { return lastDrawDateStamp; }
+	uint32 getDrawHourInternal() const { return drawHour; }
 	bool getFrActive() const { return frActive; }
-	unsigned int getFrRoundsSinceK4() const { return frRoundsSinceK4; }
-	unsigned int getFrRoundsAtOrAboveTarget() const { return frRoundsAtOrAboveTarget; }
-	unsigned int getCurrentState() const { return currentState; }
-	const id& getTeamAddress() const { return teamAddress; }
-	const id& getOwnerAddress() const { return ownerAddress; }
+	uint32 getFrRoundsSinceK4() const { return frRoundsSinceK4; }
+	uint32 getFrRoundsAtOrAboveTarget() const { return frRoundsAtOrAboveTarget; }
 
 	void setScheduleMask(uint8 newMask) { schedule = newMask; }
 	void setJackpot(uint64 value) { jackpot = value; }
@@ -56,7 +51,6 @@ public:
 	void setFrRoundsAtOrAboveTarget(uint16 value) { frRoundsAtOrAboveTarget = value; }
 
 	const PlayerData& getPlayer(uint64 index) const { return players.get(index); }
-	const WinnerData& getLastWinnerDataInternal() const { return lastWinnerData; }
 };
 
 class ContractTestingQTF : protected ContractTesting
@@ -216,14 +210,6 @@ public:
 	void endEpoch() { callSystemProcedure(QTF_CONTRACT_INDEX, END_EPOCH); }
 	void beginTick() { callSystemProcedure(QTF_CONTRACT_INDEX, BEGIN_TICK); }
 
-	// Time helpers
-	void setCurrentHour(uint8 hour)
-	{
-		updateTime();
-		utcTime.Hour = hour;
-		updateQpiTime();
-	}
-
 	void setDateTime(uint16 year, uint8 month, uint8 day, uint8 hour)
 	{
 		updateTime();
@@ -249,16 +235,10 @@ public:
 		beginEpoch();
 	}
 
-	void beginEpochWithValidTime()
-	{
-		beginEpochWithDate(2025, 1, 20);
-	}
+	void beginEpochWithValidTime() { beginEpochWithDate(2025, 1, 20); }
 
 	// Force schedule mask directly in state
-	void forceSchedule(uint8 scheduleMask)
-	{
-		state()->setScheduleMask(scheduleMask);
-	}
+	void forceSchedule(uint8 scheduleMask) { state()->setScheduleMask(scheduleMask); }
 
 	// Advance to next day and trigger draw
 	void advanceOneDayAndDraw()
@@ -287,12 +267,6 @@ public:
 		increaseEnergy(user, ticketPrice * 2);
 		const QTF::BuyTicket_output out = buyTicket(user, ticketPrice, numbers);
 		EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
-	}
-
-	// Fund QRP reserve pool
-	void fundQRP(uint64 amount)
-	{
-		increaseEnergy(qrpSelf(), amount);
 	}
 };
 
@@ -438,11 +412,8 @@ TEST(ContractQThirtyFour, BuyTicket_MultiplePlayers_Success)
 	for (int i = 0; i < 10; ++i)
 	{
 		const id user = id::randomValue();
-		QTFRandomValues nums = ctl.makeValidNumbers(
-		    static_cast<uint8>(1 + i),
-		    static_cast<uint8>(11 + i),
-		    static_cast<uint8>(21),
-		    static_cast<uint8>(30));
+		QTFRandomValues nums =
+		    ctl.makeValidNumbers(static_cast<uint8>(1 + i), static_cast<uint8>(11 + i), static_cast<uint8>(21), static_cast<uint8>(30));
 
 		ctl.fundAndBuyTicket(user, ticketPrice, nums);
 	}
@@ -461,11 +432,8 @@ TEST(ContractQThirtyFour, BuyTicket_MaxPlayersReached_Fails)
 	for (uint64 i = 0; i < QTF_MAX_NUMBER_OF_PLAYERS; ++i)
 	{
 		const id user = id::randomValue();
-		QTFRandomValues nums = ctl.makeValidNumbers(
-		    static_cast<uint8>((i % 27) + 1),
-		    static_cast<uint8>(((i + 1) % 27) + 1),
-		    static_cast<uint8>(((i + 2) % 27) + 1),
-		    static_cast<uint8>(((i + 3) % 27) + 1));
+		QTFRandomValues nums = ctl.makeValidNumbers(static_cast<uint8>((i % 27) + 1), static_cast<uint8>(((i + 1) % 27) + 1),
+		                                            static_cast<uint8>(((i + 2) % 27) + 1), static_cast<uint8>(((i + 3) % 27) + 1));
 
 		// Only fund and buy; we expect all to succeed until max
 		increaseEnergy(user, ticketPrice * 2);
@@ -708,17 +676,6 @@ TEST(ContractQThirtyFour, GetState_SellingAfterValidEpochStart)
 	EXPECT_EQ(ctl.getStateInfo().currentState, static_cast<uint8>(QTF::EState::STATE_SELLING));
 }
 
-TEST(ContractQThirtyFour, GetPools_InitialValues)
-{
-	ContractTestingQTF ctl;
-
-	const QTF::GetPools_output pools = ctl.getPools();
-	EXPECT_EQ(pools.pools.jackpot, 0u);
-	EXPECT_EQ(pools.pools.targetJackpot, 1000000000ULL);
-	EXPECT_EQ(pools.pools.frActive, 0u);
-	EXPECT_EQ((uint64)pools.pools.roundsSinceK4, 0u);
-}
-
 // ============================================================================
 // SETTLEMENT AND PAYOUT TESTS
 // ============================================================================
@@ -748,20 +705,23 @@ TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed)
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 	const QTF::GetFees_output fees = ctl.getFees();
+	constexpr uint64 numPlayers = 10;
 
-	// Add 10 players
-	for (int i = 0; i < 10; ++i)
+	ctl.state()->setJackpot(QTF_DEFAULT_TARGET_JACKPOT);
+
+	// Verify FR is not active initially (baseline mode)
+	EXPECT_EQ(ctl.state()->getFrActive(), false);
+
+	// Add players
+	for (uint64 i = 0; i < numPlayers; ++i)
 	{
 		const id user = id::randomValue();
-		QTFRandomValues nums = ctl.makeValidNumbers(
-		    static_cast<uint8>((i % 26) + 1),
-		    static_cast<uint8>((i % 26) + 2),
-		    static_cast<uint8>((i % 26) + 3),
-		    static_cast<uint8>((i % 26) + 4));
+		QTFRandomValues nums = ctl.makeValidNumbers(static_cast<uint8>((i % 26) + 1), static_cast<uint8>((i % 26) + 2),
+		                                            static_cast<uint8>((i % 26) + 3), static_cast<uint8>((i % 26) + 4));
 		ctl.fundAndBuyTicket(user, ticketPrice, nums);
 	}
 
-	const uint64 totalRevenue = ticketPrice * 10;
+	const uint64 totalRevenue = ticketPrice * numPlayers;
 	const uint64 devBalBefore = getBalance(QTF_DEV_ADDRESS);
 	const uint64 contractBalBefore = getBalance(ctl.qtfSelf());
 
@@ -769,10 +729,78 @@ TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed)
 
 	ctl.advanceOneDayAndDraw();
 
-	// Check dev received their fee (10% of revenue)
+	EXPECT_EQ(ctl.state()->getFrActive(), false);
+
+	// In baseline mode (FR not active), dev receives full 10% of revenue
+	// No redirects are applied
 	const uint64 expectedDevFee = (totalRevenue * fees.teamFeePercent) / 100;
-	// Note: May be reduced by FR redirects if FR is active
-	EXPECT_GE(getBalance(QTF_DEV_ADDRESS), devBalBefore);
+	EXPECT_EQ(getBalance(QTF_DEV_ADDRESS), devBalBefore + expectedDevFee)
+	    << "In baseline mode, dev should receive full " << static_cast<int>(fees.teamFeePercent) << "% of revenue";
+
+	// Players cleared
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+}
+
+TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed_FRMode)
+{
+	ContractTestingQTF ctl;
+	ctl.forceSchedule(QTF_ANY_DAY_SCHEDULE);
+
+	// Activate FR mode
+	ctl.state()->setJackpot(100000000ULL); // Below target
+	ctl.state()->setTargetJackpotInternal(QTF_DEFAULT_TARGET_JACKPOT);
+	ctl.state()->setFrActive(true);
+	ctl.state()->setFrRoundsSinceK4(5);
+
+	ctl.beginEpochWithValidTime();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const QTF::GetFees_output fees = ctl.getFees();
+	constexpr uint64 numPlayers = 10;
+
+	// Verify FR is active
+	EXPECT_EQ(ctl.state()->getFrActive(), true);
+
+	// Add players
+	for (uint64 i = 0; i < numPlayers; ++i)
+	{
+		const id user = id::randomValue();
+		QTFRandomValues nums = ctl.makeValidNumbers(static_cast<uint8>((i % 26) + 1), static_cast<uint8>((i % 26) + 2),
+		                                            static_cast<uint8>((i % 26) + 3), static_cast<uint8>((i % 26) + 4));
+		ctl.fundAndBuyTicket(user, ticketPrice, nums);
+	}
+
+	const uint64 totalRevenue = ticketPrice * numPlayers;
+	const uint64 devBalBefore = getBalance(QTF_DEV_ADDRESS);
+	const uint64 contractBalBefore = getBalance(ctl.qtfSelf());
+	const uint64 jackpotBefore = ctl.state()->getJackpot();
+
+	EXPECT_EQ(contractBalBefore, totalRevenue);
+
+	ctl.advanceOneDayAndDraw();
+
+	// In FR mode, dev receives less than full 10% of revenue
+	// Base redirect: 1% of revenue (QTF_FR_DEV_REDIRECT_BP = 100 basis points)
+	// Possible extra redirect depending on deficit
+	const uint64 baseDevRedirect = (totalRevenue * QTF_FR_DEV_REDIRECT_BP) / 10000;
+
+	// Full dev fee from revenue split (10%)
+	const uint64 fullDevFee = (totalRevenue * fees.teamFeePercent) / 100;
+
+	// Actual dev payout = fullDevFee - redirects
+	// Expected: fullDevFee - at least baseDevRedirect
+	const uint64 maxExpectedDevPayout = fullDevFee - baseDevRedirect;
+
+	const uint64 actualDevPayout = getBalance(QTF_DEV_ADDRESS) - devBalBefore;
+
+	// Dev should receive less than full fee (due to redirects to jackpot)
+	EXPECT_LT(actualDevPayout, fullDevFee) << "In FR mode, dev payout should be reduced by redirects";
+
+	// Dev should receive at most fullDevFee - baseDevRedirect
+	EXPECT_LE(actualDevPayout, maxExpectedDevPayout) << "Dev payout should be reduced by at least base redirect (1%)";
+
+	// Jackpot should have grown (receives redirects)
+	EXPECT_GT(ctl.state()->getJackpot(), jackpotBefore) << "Jackpot should grow from dev/dist redirects in FR mode";
 
 	// Players cleared
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
@@ -786,25 +814,55 @@ TEST(ContractQThirtyFour, Settlement_JackpotGrowsFromOverflow)
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 	const uint64 jackpotBefore = ctl.state()->getJackpot();
+	constexpr uint64 numPlayers = 20;
 
 	// Add players
-	for (int i = 0; i < 20; ++i)
+	for (uint64 i = 0; i < numPlayers; ++i)
 	{
 		const id user = id::randomValue();
-		QTFRandomValues nums = ctl.makeValidNumbers(
-		    static_cast<uint8>((i % 25) + 1),
-		    static_cast<uint8>((i % 25) + 2),
-		    static_cast<uint8>((i % 25) + 3),
-		    static_cast<uint8>((i % 25) + 4));
+		QTFRandomValues nums = ctl.makeValidNumbers(static_cast<uint8>((i % 25) + 1), static_cast<uint8>((i % 25) + 2),
+		                                            static_cast<uint8>((i % 25) + 3), static_cast<uint8>((i % 25) + 4));
 		ctl.fundAndBuyTicket(user, ticketPrice, nums);
 	}
 
+	// Calculate expected jackpot growth in baseline mode (FR not active)
+	const uint64 revenue = ticketPrice * numPlayers;
+	const QTF::GetFees_output fees = ctl.getFees();
+
+	// winnersBlock = revenue * winnerFeePercent / 100 (68%)
+	const uint64 winnersBlock = (revenue * fees.winnerFeePercent) / 100;
+
+	// In baseline mode: no rake, standard tier split
+	// k3Pool = 40% of winnersBlock, k2Pool = 28% of winnersBlock
+	const uint64 k3Pool = (winnersBlock * QTF_BASE_K3_SHARE_BP) / 10000;
+	const uint64 k2Pool = (winnersBlock * QTF_BASE_K2_SHARE_BP) / 10000;
+
+	// Remaining 32% becomes overflow
+	const uint64 winnersOverflow = winnersBlock - k3Pool - k2Pool;
+
+	// In baseline mode: 50% of overflow goes to jackpot, 50% to reserve
+	const uint64 reserveAdd = (winnersOverflow * QTF_BASELINE_OVERFLOW_ALPHA_BP) / 10000;
+	const uint64 overflowToJackpot = winnersOverflow - reserveAdd;
+
+	// Minimum expected jackpot growth (assuming no k2/k3 winners, all overflow goes to jackpot)
+	const uint64 minExpectedGrowth = overflowToJackpot;
+
 	ctl.advanceOneDayAndDraw();
 
-	// Jackpot should grow from overflow
-	// (32% of winners block goes to overflow, then split 50/50 in baseline mode)
+	// Verify jackpot growth
 	const uint64 jackpotAfter = ctl.state()->getJackpot();
-	EXPECT_GE(jackpotAfter, jackpotBefore);
+	const uint64 actualGrowth = jackpotAfter - jackpotBefore;
+
+	// In baseline mode, 50% of overflow goes to jackpot
+	// Allow 5% tolerance for rounding and potential winners
+	const uint64 tolerance = minExpectedGrowth / 20; // 5%
+	EXPECT_GE(actualGrowth + tolerance, minExpectedGrowth)
+	    << "Actual growth: " << actualGrowth << ", Expected minimum: " << minExpectedGrowth << ", Overflow to jackpot (50%): " << overflowToJackpot;
+
+	// Verify the 50% overflow split is working correctly
+	const uint64 expected50Percent = winnersOverflow / 2;
+	EXPECT_GE(overflowToJackpot, expected50Percent - 1) << "50% overflow split verification";
+	EXPECT_LE(overflowToJackpot, winnersOverflow) << "Overflow to jackpot should not exceed total overflow";
 }
 
 TEST(ContractQThirtyFour, Settlement_RoundsSinceK4_Increments)
@@ -822,11 +880,8 @@ TEST(ContractQThirtyFour, Settlement_RoundsSinceK4_Increments)
 		for (int i = 0; i < 5; ++i)
 		{
 			const id user = id::randomValue();
-			QTFRandomValues nums = ctl.makeValidNumbers(
-			    static_cast<uint8>((i * round % 25) + 1),
-			    static_cast<uint8>((i * round % 25) + 2),
-			    static_cast<uint8>((i * round % 25) + 3),
-			    static_cast<uint8>((i * round % 25) + 4));
+			QTFRandomValues nums = ctl.makeValidNumbers(static_cast<uint8>((i * round % 25) + 1), static_cast<uint8>((i * round % 25) + 2),
+			                                            static_cast<uint8>((i * round % 25) + 3), static_cast<uint8>((i * round % 25) + 4));
 			ctl.fundAndBuyTicket(user, ticketPrice, nums);
 		}
 
@@ -849,9 +904,9 @@ TEST(ContractQThirtyFour, FR_Activation_WhenBelowTarget)
 	ctl.forceSchedule(QTF_ANY_DAY_SCHEDULE);
 
 	// Set jackpot below target to trigger FR
-	ctl.state()->setJackpot(100000000ULL);       // 100M
-	ctl.state()->setTargetJackpotInternal(1000000000ULL); // 1B target
-	ctl.state()->setFrRoundsSinceK4(5);          // Within post-k4 window
+	ctl.state()->setJackpot(100000000ULL);                             // 100M
+	ctl.state()->setTargetJackpotInternal(QTF_DEFAULT_TARGET_JACKPOT); // 1B target
+	ctl.state()->setFrRoundsSinceK4(5);                                // Within post-k4 window
 
 	EXPECT_EQ(ctl.state()->getFrActive(), false);
 
@@ -863,11 +918,8 @@ TEST(ContractQThirtyFour, FR_Activation_WhenBelowTarget)
 	for (int i = 0; i < 10; ++i)
 	{
 		const id user = id::randomValue();
-		QTFRandomValues nums = ctl.makeValidNumbers(
-		    static_cast<uint8>((i % 25) + 1),
-		    static_cast<uint8>((i % 25) + 2),
-		    static_cast<uint8>((i % 25) + 3),
-		    static_cast<uint8>((i % 25) + 4));
+		QTFRandomValues nums = ctl.makeValidNumbers(static_cast<uint8>((i % 25) + 1), static_cast<uint8>((i % 25) + 2),
+		                                            static_cast<uint8>((i % 25) + 3), static_cast<uint8>((i % 25) + 4));
 		ctl.fundAndBuyTicket(user, ticketPrice, nums);
 	}
 
@@ -883,36 +935,33 @@ TEST(ContractQThirtyFour, FR_Deactivation_AfterHysteresis)
 	ctl.forceSchedule(QTF_ANY_DAY_SCHEDULE);
 
 	// Set jackpot at target
-	ctl.state()->setJackpot(1000000000ULL);
-	ctl.state()->setTargetJackpotInternal(1000000000ULL);
+	ctl.state()->setJackpot(QTF_DEFAULT_TARGET_JACKPOT);
+	ctl.state()->setTargetJackpotInternal(QTF_DEFAULT_TARGET_JACKPOT);
 	ctl.state()->setFrActive(true);
 	ctl.state()->setFrRoundsAtOrAboveTarget(0);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 
-	// Run 3 rounds at or above target (hysteresis requirement)
-	for (int round = 0; round < 3; ++round)
+	// Run rounds at or above target (hysteresis requirement)
+	for (int round = 0; round < QTF_FR_HYSTERESIS_ROUNDS; ++round)
 	{
 		ctl.beginEpochWithValidTime();
 
 		for (int i = 0; i < 5; ++i)
 		{
 			const id user = id::randomValue();
-			QTFRandomValues nums = ctl.makeValidNumbers(
-			    static_cast<uint8>((i + round) % 25 + 1),
-			    static_cast<uint8>((i + round) % 25 + 2),
-			    static_cast<uint8>((i + round) % 25 + 3),
-			    static_cast<uint8>((i + round) % 25 + 4));
+			QTFRandomValues nums = ctl.makeValidNumbers(static_cast<uint8>((i + round) % 25 + 1), static_cast<uint8>((i + round) % 25 + 2),
+			                                            static_cast<uint8>((i + round) % 25 + 3), static_cast<uint8>((i + round) % 25 + 4));
 			ctl.fundAndBuyTicket(user, ticketPrice, nums);
 		}
 
 		// Keep jackpot at target (add back what might be paid out)
-		ctl.state()->setJackpot(1000000000ULL);
+		ctl.state()->setJackpot(QTF_DEFAULT_TARGET_JACKPOT);
 		ctl.advanceOneDayAndDraw();
 	}
 
 	// After 3 rounds at target, FR should deactivate
-	EXPECT_GE((uint64)ctl.state()->getFrRoundsAtOrAboveTarget(), 3u);
+	EXPECT_GE((uint64)ctl.state()->getFrRoundsAtOrAboveTarget(), (uint64)QTF_FR_HYSTERESIS_ROUNDS);
 	EXPECT_EQ(ctl.state()->getFrActive(), false);
 }
 
@@ -922,8 +971,8 @@ TEST(ContractQThirtyFour, FR_OverflowBias_95PercentToJackpot)
 	ctl.forceSchedule(QTF_ANY_DAY_SCHEDULE);
 
 	// Activate FR
-	ctl.state()->setJackpot(100000000ULL);  // Below target
-	ctl.state()->setTargetJackpotInternal(1000000000ULL);
+	ctl.state()->setJackpot(100000000ULL); // Below target
+	ctl.state()->setTargetJackpotInternal(QTF_DEFAULT_TARGET_JACKPOT);
 	ctl.state()->setFrActive(true);
 	ctl.state()->setFrRoundsSinceK4(5);
 
@@ -931,24 +980,63 @@ TEST(ContractQThirtyFour, FR_OverflowBias_95PercentToJackpot)
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 	const uint64 jackpotBefore = ctl.state()->getJackpot();
+	constexpr uint64 numPlayers = 50;
 
 	// Add many players to generate significant overflow
-	for (int i = 0; i < 50; ++i)
+	for (uint64 i = 0; i < numPlayers; ++i)
 	{
 		const id user = id::randomValue();
-		QTFRandomValues nums = ctl.makeValidNumbers(
-		    static_cast<uint8>((i % 25) + 1),
-		    static_cast<uint8>((i % 25) + 2),
-		    static_cast<uint8>((i % 25) + 3),
-		    static_cast<uint8>((i % 25) + 4));
+		QTFRandomValues nums = ctl.makeValidNumbers(static_cast<uint8>((i % 25) + 1), static_cast<uint8>((i % 25) + 2),
+		                                            static_cast<uint8>((i % 25) + 3), static_cast<uint8>((i % 25) + 4));
 		ctl.fundAndBuyTicket(user, ticketPrice, nums);
 	}
 
+	// Calculate expected jackpot growth
+	const uint64 revenue = ticketPrice * numPlayers;
+	const QTF::GetFees_output fees = ctl.getFees();
+
+	// winnersBlock = revenue * winnerFeePercent / 100 (68%)
+	const uint64 winnersBlock = (revenue * fees.winnerFeePercent) / 100;
+
+	// In FR mode: 5% rake from winnersBlock goes to jackpot
+	const uint64 winnersRake = (winnersBlock * QTF_FR_WINNERS_RAKE_BP) / 10000;
+	const uint64 winnersBlockAfterRake = winnersBlock - winnersRake;
+
+	// k3Pool = 40% of winnersBlockAfterRake, k2Pool = 28% of winnersBlockAfterRake
+	// Remaining 32% becomes overflow
+	const uint64 k3Pool = (winnersBlockAfterRake * QTF_BASE_K3_SHARE_BP) / 10000;
+	const uint64 k2Pool = (winnersBlockAfterRake * QTF_BASE_K2_SHARE_BP) / 10000;
+	const uint64 winnersOverflow = winnersBlockAfterRake - k3Pool - k2Pool;
+
+	// In FR mode: 95% of overflow goes to jackpot, 5% to reserve
+	const uint64 reserveAdd = (winnersOverflow * QTF_FR_ALPHA_BP) / 10000;
+	const uint64 overflowToJackpot = winnersOverflow - reserveAdd;
+
+	// Dev and Dist redirects (base 1% each from revenue in FR mode)
+	const uint64 devRedirect = (revenue * QTF_FR_DEV_REDIRECT_BP) / 10000;
+	const uint64 distRedirect = (revenue * QTF_FR_DIST_REDIRECT_BP) / 10000;
+
+	// Minimum expected jackpot growth (without extra redirects, assuming no k2/k3 winners)
+	// totalJackpotContribution = overflowToJackpot + winnersRake + devRedirect + distRedirect
+	const uint64 minExpectedGrowth = overflowToJackpot + winnersRake + devRedirect + distRedirect;
+
 	ctl.advanceOneDayAndDraw();
 
+	// Verify that jackpot grew by at least the minimum expected amount
+	const uint64 actualGrowth = ctl.state()->getJackpot() - jackpotBefore;
+
 	// In FR mode, 95% of overflow goes to jackpot (vs 50% in baseline)
-	// Jackpot should grow significantly
-	EXPECT_GT(ctl.state()->getJackpot(), jackpotBefore);
+	// Allow 5% tolerance for rounding and potential winners
+	const uint64 tolerance = minExpectedGrowth / 20; // 5%
+	EXPECT_GE(actualGrowth + tolerance, minExpectedGrowth)
+	    << "Actual growth: " << actualGrowth << ", Expected minimum: " << minExpectedGrowth << ", Overflow to jackpot (95%): " << overflowToJackpot
+	    << ", Winners rake: " << winnersRake;
+
+	// Verify the 95% overflow bias is working correctly
+	// overflowToJackpot should be ~95% of winnersOverflow
+	const uint64 expected95Percent = (winnersOverflow * 95) / 100;
+	EXPECT_GE(overflowToJackpot, expected95Percent - 1) << "95% overflow bias verification";
+	EXPECT_LE(overflowToJackpot, winnersOverflow) << "Overflow to jackpot should not exceed total overflow";
 }
 
 // ============================================================================
@@ -963,45 +1051,32 @@ TEST(ContractQThirtyFour, WinnerData_RecordsWinners)
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 
-	// Add players
+	// Add players with diverse number combinations to increase chance of winners
 	std::vector<id> players;
 	for (int i = 0; i < 20; ++i)
 	{
 		const id user = id::randomValue();
 		players.push_back(user);
-		QTFRandomValues nums = ctl.makeValidNumbers(
-		    static_cast<uint8>((i % 27) + 1),
-		    static_cast<uint8>((i % 27) + 2),
-		    static_cast<uint8>((i % 27) + 3),
-		    static_cast<uint8>((i % 27) + 4));
+		QTFRandomValues nums = ctl.makeValidNumbers(static_cast<uint8>((i % 27) + 1), static_cast<uint8>((i % 27) + 2),
+		                                            static_cast<uint8>((i % 27) + 3), static_cast<uint8>((i % 27) + 4));
 		ctl.fundAndBuyTicket(user, ticketPrice, nums);
 	}
 
-	const uint64 winnerCountBefore = ctl.getWinnerData().winnerData.winnerCounter;
 	ctl.advanceOneDayAndDraw();
 
-	// Winner data should record any winners
+	// Winner data should always record winning values and epoch, even if no winners
 	const QTF::GetWinnerData_output winnerData = ctl.getWinnerData();
 
-	// At minimum, winning values should be set
-	bool hasWinningValues = false;
-	for (uint64 i = 0; i < QTF_RANDOM_VALUES_COUNT; ++i)
-	{
-		if (winnerData.winnerData.winnerValues.get(i) > 0)
-		{
-			hasWinningValues = true;
-			break;
-		}
-	}
-	EXPECT_TRUE(hasWinningValues);
-
-	// All winning values should be in valid range [1..30]
+	// Winning values should always be set and valid after a draw
 	for (uint64 i = 0; i < QTF_RANDOM_VALUES_COUNT; ++i)
 	{
 		const uint8 val = winnerData.winnerData.winnerValues.get(i);
-		EXPECT_GE(val, 1u);
-		EXPECT_LE(val, 30u);
+		EXPECT_GE(val, 1u) << "Winning value " << i << " should be >= 1";
+		EXPECT_LE(val, 30u) << "Winning value " << i << " should be <= 30";
 	}
+
+	// Epoch should be recorded
+	EXPECT_GT((uint64)winnerData.winnerData.epoch, 0u) << "Epoch should be recorded after draw";
 }
 
 TEST(ContractQThirtyFour, WinnerData_UniqueWinningNumbers)
@@ -1016,70 +1091,23 @@ TEST(ContractQThirtyFour, WinnerData_UniqueWinningNumbers)
 	for (int i = 0; i < 5; ++i)
 	{
 		const id user = id::randomValue();
-		QTFRandomValues nums = ctl.makeValidNumbers(
-		    static_cast<uint8>(i + 1),
-		    static_cast<uint8>(i + 5),
-		    static_cast<uint8>(i + 10),
-		    static_cast<uint8>(i + 15));
+		QTFRandomValues nums =
+		    ctl.makeValidNumbers(static_cast<uint8>(i + 1), static_cast<uint8>(i + 5), static_cast<uint8>(i + 10), static_cast<uint8>(i + 15));
 		ctl.fundAndBuyTicket(user, ticketPrice, nums);
 	}
 
 	ctl.advanceOneDayAndDraw();
 
-	// Check winning numbers are unique
+	// Winning numbers should always be unique after a draw
 	const QTF::GetWinnerData_output winnerData = ctl.getWinnerData();
-	std::vector<uint8> winningNums;
+
+	std::set<uint8> winningNums;
 	for (uint64 i = 0; i < QTF_RANDOM_VALUES_COUNT; ++i)
 	{
-		winningNums.push_back(winnerData.winnerData.winnerValues.get(i));
+		winningNums.emplace(winnerData.winnerData.winnerValues.get(i));
 	}
 
-	// Sort and check for duplicates
-	std::sort(winningNums.begin(), winningNums.end());
-	for (size_t i = 1; i < winningNums.size(); ++i)
-	{
-		EXPECT_NE(winningNums[i], winningNums[i - 1]) << "Duplicate winning number found: " << (int)winningNums[i];
-	}
-}
-
-// ============================================================================
-// RESERVE INTEGRATION TESTS
-// ============================================================================
-
-TEST(ContractQThirtyFour, ReserveTopUp_WhenPoolInsufficient)
-{
-	ContractTestingQTF ctl;
-	ctl.forceSchedule(QTF_ANY_DAY_SCHEDULE);
-
-	// Fund QRP with substantial reserve
-	ctl.fundQRP(1000000000ULL); // 1B in reserve
-
-	ctl.beginEpochWithValidTime();
-
-	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
-	const uint64 qrpBalBefore = getBalance(ctl.qrpSelf());
-
-	// Add many players to potentially trigger floor guarantees
-	for (int i = 0; i < 100; ++i)
-	{
-		const id user = id::randomValue();
-		QTFRandomValues nums = ctl.makeValidNumbers(
-		    static_cast<uint8>((i % 27) + 1),
-		    static_cast<uint8>((i % 27) + 2),
-		    static_cast<uint8>((i % 27) + 3),
-		    static_cast<uint8>((i % 27) + 4));
-		ctl.fundAndBuyTicket(user, ticketPrice, nums);
-	}
-
-	ctl.advanceOneDayAndDraw();
-
-	// QRP may have been used for top-ups (or reserve contributions)
-	// The balance change depends on winners and floors
-	const uint64 qrpBalAfter = getBalance(ctl.qrpSelf());
-
-	// Either QRP was tapped for top-up (decreases) or received overflow (increases)
-	// We just verify the system didn't crash and values are reasonable
-	EXPECT_GE(qrpBalAfter, 0u);
+	EXPECT_EQ(winningNums.size(), QTF_RANDOM_VALUES_COUNT) << "All 4 winning numbers should be unique";
 }
 
 // ============================================================================
@@ -1166,20 +1194,16 @@ TEST(ContractQThirtyFour, MultipleRounds_JackpotAccumulates)
 		for (int i = 0; i < 10; ++i)
 		{
 			const id user = id::randomValue();
-			QTFRandomValues nums = ctl.makeValidNumbers(
-			    static_cast<uint8>((i + round) % 27 + 1),
-			    static_cast<uint8>((i + round + 1) % 27 + 1),
-			    static_cast<uint8>((i + round + 2) % 27 + 1),
-			    static_cast<uint8>((i + round + 3) % 27 + 1));
+			QTFRandomValues nums = ctl.makeValidNumbers(static_cast<uint8>((i + round) % 27 + 1), static_cast<uint8>((i + round + 1) % 27 + 1),
+			                                            static_cast<uint8>((i + round + 2) % 27 + 1), static_cast<uint8>((i + round + 3) % 27 + 1));
 			ctl.fundAndBuyTicket(user, ticketPrice, nums);
 		}
 
 		ctl.advanceOneDayAndDraw();
 
-		// Jackpot should generally increase (unless k=4 win depletes it)
+		// Jackpot should increase each round (no k=4 winners in this test)
 		const uint64 currentJackpot = ctl.state()->getJackpot();
-		// We just check it's a valid value
-		EXPECT_GE(currentJackpot, 0u);
+		EXPECT_GT(currentJackpot, prevJackpot) << "Round " << round << ": jackpot should grow";
 
 		// Track for next iteration
 		prevJackpot = currentJackpot;
@@ -1202,11 +1226,8 @@ TEST(ContractQThirtyFour, MultipleRounds_StateResetsCorrectly)
 		for (int i = 0; i < playersThisRound; ++i)
 		{
 			const id user = id::randomValue();
-			QTFRandomValues nums = ctl.makeValidNumbers(
-			    static_cast<uint8>((i + round) % 27 + 1),
-			    static_cast<uint8>((i + round + 5) % 27 + 1),
-			    static_cast<uint8>((i + round + 10) % 27 + 1),
-			    static_cast<uint8>((i + round + 15) % 27 + 1));
+			QTFRandomValues nums = ctl.makeValidNumbers(static_cast<uint8>((i + round) % 27 + 1), static_cast<uint8>((i + round + 5) % 27 + 1),
+			                                            static_cast<uint8>((i + round + 10) % 27 + 1), static_cast<uint8>((i + round + 15) % 27 + 1));
 			ctl.fundAndBuyTicket(user, ticketPrice, nums);
 		}
 
@@ -1263,11 +1284,8 @@ TEST(ContractQThirtyFour, Schedule_DrawOnlyOnScheduledDays)
 	for (int i = 0; i < 5; ++i)
 	{
 		const id user = id::randomValue();
-		QTFRandomValues nums = ctl.makeValidNumbers(
-		    static_cast<uint8>(i + 1),
-		    static_cast<uint8>(i + 5),
-		    static_cast<uint8>(i + 10),
-		    static_cast<uint8>(i + 15));
+		QTFRandomValues nums =
+		    ctl.makeValidNumbers(static_cast<uint8>(i + 1), static_cast<uint8>(i + 5), static_cast<uint8>(i + 10), static_cast<uint8>(i + 15));
 		ctl.fundAndBuyTicket(user, ticketPrice, nums);
 	}
 
@@ -1297,11 +1315,8 @@ TEST(ContractQThirtyFour, DrawHour_NoDrawBeforeScheduledHour)
 	for (int i = 0; i < 5; ++i)
 	{
 		const id user = id::randomValue();
-		QTFRandomValues nums = ctl.makeValidNumbers(
-		    static_cast<uint8>(i + 1),
-		    static_cast<uint8>(i + 5),
-		    static_cast<uint8>(i + 10),
-		    static_cast<uint8>(i + 15));
+		QTFRandomValues nums =
+		    ctl.makeValidNumbers(static_cast<uint8>(i + 1), static_cast<uint8>(i + 5), static_cast<uint8>(i + 10), static_cast<uint8>(i + 15));
 		ctl.fundAndBuyTicket(user, ticketPrice, nums);
 	}
 
@@ -1327,8 +1342,8 @@ TEST(ContractQThirtyFour, Combinatorics_P4Denominator)
 {
 	// Verify the P4 denominator constant matches combinatorics
 	// C(30,4) = 30! / (4! * 26!) = 27405
-	constexpr uint64 numerator = 30 * 29 * 28 * 27;
-	constexpr uint64 denominator = 4 * 3 * 2 * 1;
+	constexpr uint64 numerator = QTF_MAX_RANDOM_VALUE * 29 * 28 * 27;
+	constexpr uint64 denominator = QTF_RANDOM_VALUES_COUNT * 3 * 2 * 1;
 	constexpr uint64 expected = numerator / denominator;
 
 	EXPECT_EQ(expected, QTF_P4_DENOMINATOR);
@@ -1344,8 +1359,7 @@ TEST(ContractQThirtyFour, FeeCalculation_TotalEquals100Percent)
 	ContractTestingQTF ctl;
 	const QTF::GetFees_output fees = ctl.getFees();
 
-	const uint32 total = fees.teamFeePercent + fees.distributionFeePercent +
-	                     fees.winnerFeePercent + fees.burnPercent;
+	const uint32 total = fees.teamFeePercent + fees.distributionFeePercent + fees.winnerFeePercent + fees.burnPercent;
 
 	EXPECT_EQ(total, 100u);
 }

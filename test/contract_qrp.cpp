@@ -76,14 +76,14 @@ public:
 TEST(ContractQReservePool, InitializesOwnerAndDefaultSCList)
 {
 	ContractTestingQRP qrp;
-	auto* state = qrp.state();
+	QRPChecker* state = qrp.state();
 
 	EXPECT_EQ(state->team(), QRP_OWNER_TEAM_ADDRESS);
 	EXPECT_EQ(state->owner(), QRP_OWNER_TEAM_ADDRESS);
 	EXPECT_TRUE(state->hasAvailableSC(QRP_DEFAULT_SC_ID));
 	EXPECT_EQ(state->availableCount(), 1u);
 
-	const auto available = qrp.getAvailableSCs();
+	const QRP::GetAvailableSC_output available = qrp.getAvailableSCs();
 	bool foundDefault = false;
 	for (uint64 i = 0; i < QRP_AVAILABLE_SC_NUM; ++i)
 	{
@@ -103,21 +103,20 @@ TEST(ContractQReservePool, GetReserveEnforcesAuthorizationAndBalance)
 	increaseEnergy(unauthorized, 0);
 	increaseEnergy(QRP_DEFAULT_SC_ID, 0);
 
-
-	auto denied = qrp.getReserve(unauthorized, 100);
+	QRP::GetReserve_output denied = qrp.getReserve(unauthorized, 100);
 	EXPECT_EQ(denied.returnCode, QRPReturnCode::ACCESS_DENIED);
 	EXPECT_EQ(denied.allocatedRevenue, 0ull);
 
 	qrp.fundContract(1000);
 	EXPECT_EQ(getBalance(QRP_CONTRACT_ID), 1000);
 
-	auto granted = qrp.getReserve(QRP_DEFAULT_SC_ID, 600);
+	QRP::GetReserve_output granted = qrp.getReserve(QRP_DEFAULT_SC_ID, 600);
 	EXPECT_EQ(granted.returnCode, QRPReturnCode::SUCCESS);
 	EXPECT_EQ(granted.allocatedRevenue, 600ull);
 	EXPECT_EQ(getBalance(QRP_CONTRACT_ID), 400);
 	EXPECT_EQ(getBalance(QRP_DEFAULT_SC_ID), 600);
 
-	auto insufficient = qrp.getReserve(QRP_DEFAULT_SC_ID, 500);
+	QRP::GetReserve_output insufficient = qrp.getReserve(QRP_DEFAULT_SC_ID, 500);
 	EXPECT_EQ(insufficient.returnCode, QRPReturnCode::INSUFFICIENT_RESERVE);
 	EXPECT_EQ(insufficient.allocatedRevenue, 0ull);
 	EXPECT_EQ(getBalance(QRP_CONTRACT_ID), 400);
@@ -127,7 +126,7 @@ TEST(ContractQReservePool, GetReserveEnforcesAuthorizationAndBalance)
 TEST(ContractQReservePool, OwnerAddsAndRemovesSmartContracts)
 {
 	ContractTestingQRP qrp;
-	auto* state = qrp.state();
+	QRPChecker* state = qrp.state();
 	const uint64 newScIndex = 77;
 	const id newScId(newScIndex, 0, 0, 0);
 	const id outsider(200, 0, 0, 0);
@@ -135,15 +134,15 @@ TEST(ContractQReservePool, OwnerAddsAndRemovesSmartContracts)
 	increaseEnergy(outsider, 0);
 	increaseEnergy(state->owner(), 0);
 
-	auto deniedAdd = qrp.addAvailableSC(outsider, newScIndex);
+	QRP::AddAvailableSC_output deniedAdd = qrp.addAvailableSC(outsider, newScIndex);
 	EXPECT_EQ(deniedAdd.returnCode, QRPReturnCode::ACCESS_DENIED);
 	EXPECT_FALSE(state->hasAvailableSC(newScId));
 
-	auto approvedAdd = qrp.addAvailableSC(state->owner(), newScIndex);
+	QRP::AddAvailableSC_output approvedAdd = qrp.addAvailableSC(state->owner(), newScIndex);
 	EXPECT_EQ(approvedAdd.returnCode, QRPReturnCode::SUCCESS);
 	EXPECT_TRUE(state->hasAvailableSC(newScId));
 
-	auto available = qrp.getAvailableSCs();
+	QRP::GetAvailableSC_output available = qrp.getAvailableSCs();
 	bool foundNew = false;
 	for (uint64 i = 0; i < QRP_AVAILABLE_SC_NUM; ++i)
 	{
@@ -155,11 +154,11 @@ TEST(ContractQReservePool, OwnerAddsAndRemovesSmartContracts)
 	}
 	EXPECT_TRUE(foundNew);
 
-	auto deniedRemove = qrp.removeAvailableSC(outsider, newScIndex);
+	QRP::RemoveAvailableSC_output deniedRemove = qrp.removeAvailableSC(outsider, newScIndex);
 	EXPECT_EQ(deniedRemove.returnCode, QRPReturnCode::ACCESS_DENIED);
 	EXPECT_TRUE(state->hasAvailableSC(newScId));
 
-	auto approvedRemove = qrp.removeAvailableSC(state->owner(), newScIndex);
+	QRP::RemoveAvailableSC_output approvedRemove = qrp.removeAvailableSC(state->owner(), newScIndex);
 	EXPECT_EQ(approvedRemove.returnCode, QRPReturnCode::SUCCESS);
 	EXPECT_FALSE(state->hasAvailableSC(newScId));
 }
