@@ -69,6 +69,39 @@ struct QRWA : public ContractBase
     /******************** STRUCTS **********************/
     /***************************************************/
 
+    struct qRWAAsset
+    {
+        id issuer;
+        uint64 assetName;
+
+        qRWAAsset():
+            issuer(NULL_ID),
+            assetName(0)
+        {
+        }
+
+        qRWAAsset(const Asset& a):
+            issuer(a.issuer),
+            assetName(a.assetName)
+        {
+        }
+
+        operator Asset() const
+        {
+            return { issuer, assetName };
+        }
+
+        bool operator==(const qRWAAsset& other) const
+        {
+            return issuer == other.issuer && assetName == other.assetName;
+        }
+
+        bool operator!=(const qRWAAsset& other) const
+        {
+            return !(*this == other);
+        }
+    };
+
     // votable governance parameters for the contract.
     struct qRWAGovParams
     {
@@ -151,7 +184,7 @@ protected:
 
     // Treasury & Asset Release
     uint64 mTreasuryBalance; // QMINE token balance holds by SC
-    HashMap<Asset, uint64, QRWA_MAX_ASSETS> mGeneralAssetBalances; // Balances for other assets (e.g., SC shares)
+    HashMap<qRWAAsset, uint64, QRWA_MAX_ASSETS> mGeneralAssetBalances; // Balances for other assets (e.g., SC shares)
 
     // Payouts and Dividend Accounting
     DateAndTime mLastPayoutTime; // Tracks the last payout time
@@ -173,7 +206,7 @@ public:
     /*************** PRIVATE PROCEDURES ****************/
     /***************************************************/
 
-inline static sint64 GetQmineBalanceOf(const QPI::QpiContextFunctionCall& qpi, const QRWA& state, const id& holder)
+    inline static sint64 GetQmineBalanceOf(const QPI::QpiContextFunctionCall& qpi, const QRWA& state, const id& holder)
     {
         return qpi.numberOfShares(state.mQmineAsset, AssetOwnershipSelect::byOwner(holder), AssetPossessionSelect::byPossessor(holder));
     }
@@ -730,6 +763,7 @@ inline static sint64 GetQmineBalanceOf(const QPI::QpiContextFunctionCall& qpi, c
         sint64 balance;
         uint64 currentAssetBalance;
         qRWALogger logger;
+        qRWAAsset wrapper;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(DepositGeneralAsset)
     {
@@ -786,9 +820,10 @@ inline static sint64 GetQmineBalanceOf(const QPI::QpiContextFunctionCall& qpi, c
 
         if (locals.transferResult >= 0) // Transfer successful
         {
-            state.mGeneralAssetBalances.get(input.asset, locals.currentAssetBalance); // 0 if not exist
+            locals.wrapper = (qRWAAsset)input.asset;
+            state.mGeneralAssetBalances.get(locals.wrapper, locals.currentAssetBalance); // 0 if not exist
             locals.currentAssetBalance = sadd(locals.currentAssetBalance, input.amount);
-            state.mGeneralAssetBalances.set(input.asset, locals.currentAssetBalance);
+            state.mGeneralAssetBalances.set(locals.wrapper, locals.currentAssetBalance);
             output.status = QRWA_STATUS_SUCCESS;
         }
         else
@@ -1097,10 +1132,12 @@ inline static sint64 GetQmineBalanceOf(const QPI::QpiContextFunctionCall& qpi, c
     struct GetGeneralAssetBalance_locals
     {
         uint64 balance;
+        qRWAAsset wrapper;
     };
     PUBLIC_FUNCTION_WITH_LOCALS(GetGeneralAssetBalance) {
         locals.balance = 0;
-        if (state.mGeneralAssetBalances.get(input.asset, locals.balance)) {
+        locals.wrapper = (qRWAAsset)input.asset;
+        if (state.mGeneralAssetBalances.get(locals.wrapper, locals.balance)) {
             output.balance = locals.balance;
             output.status = 1;
         }
@@ -1120,7 +1157,7 @@ inline static sint64 GetQmineBalanceOf(const QPI::QpiContextFunctionCall& qpi, c
     struct GetGeneralAssets_locals
     {
         sint64 iterIndex;
-        Asset currentAsset;
+        qRWAAsset currentAsset;
         uint64 currentBalance;
     };
     PUBLIC_FUNCTION_WITH_LOCALS(GetGeneralAssets)
@@ -1342,6 +1379,8 @@ inline static sint64 GetQmineBalanceOf(const QPI::QpiContextFunctionCall& qpi, c
         sint64 copyIndex;
         id copyHolder;
         uint64 copyBalance;
+
+        qRWAAsset wrapper;
     };
     END_EPOCH_WITH_LOCALS()
     {
@@ -1584,7 +1623,8 @@ inline static sint64 GetQmineBalanceOf(const QPI::QpiContextFunctionCall& qpi, c
                     }
                     else // Asset is from mGeneralAssetBalances
                     {
-                        if (state.mGeneralAssetBalances.get(locals.poll.asset, locals.currentAssetBalance))
+                        locals.wrapper = (qRWAAsset)locals.poll.asset;
+                        if (state.mGeneralAssetBalances.get(locals.wrapper, locals.currentAssetBalance))
                         {
                             if (locals.currentAssetBalance >= locals.poll.amount)
                             {
@@ -1599,7 +1639,7 @@ inline static sint64 GetQmineBalanceOf(const QPI::QpiContextFunctionCall& qpi, c
                                     locals.ownershipTransferred = 1;
                                     // Decrement internal balance
                                     locals.currentAssetBalance = (locals.currentAssetBalance > locals.poll.amount) ? (locals.currentAssetBalance - locals.poll.amount) : 0;
-                                    state.mGeneralAssetBalances.set(locals.poll.asset, locals.currentAssetBalance);
+                                    state.mGeneralAssetBalances.set(locals.wrapper, locals.currentAssetBalance);
 
                                     if (state.mRevenuePoolA >= QRWA_RELEASE_MANAGEMENT_FEE)
                                     {
