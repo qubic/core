@@ -1819,22 +1819,52 @@ public:
                     locals.electricityPayout = div<uint64>(smul(state.mRevenuePoolA, state.mCurrentGovParams.electricityPercent), QRWA_PERCENT_DENOMINATOR);
                     if (locals.electricityPayout > 0 && state.mCurrentGovParams.electricityAddress != NULL_ID)
                     {
-                        qpi.transfer(state.mCurrentGovParams.electricityAddress, locals.electricityPayout);
-                        locals.totalFeeAmount = sadd(locals.totalFeeAmount, locals.electricityPayout);
+                        if (qpi.transfer(state.mCurrentGovParams.electricityAddress, locals.electricityPayout) >= 0)
+                        {
+                            locals.totalFeeAmount = sadd(locals.totalFeeAmount, locals.electricityPayout);
+                        }
+                        else
+                        {
+                            locals.logger.logType = QRWA_LOG_TYPE_ERROR;
+                            locals.logger.primaryId = state.mCurrentGovParams.electricityAddress;
+                            locals.logger.valueA = locals.electricityPayout;
+                            locals.logger.valueB = QRWA_STATUS_FAILURE_TRANSFER_FAILED;
+                            LOG_INFO(locals.logger);
+                        }
                     }
 
                     locals.maintenancePayout = div<uint64>(smul(state.mRevenuePoolA, state.mCurrentGovParams.maintenancePercent), QRWA_PERCENT_DENOMINATOR);
                     if (locals.maintenancePayout > 0 && state.mCurrentGovParams.maintenanceAddress != NULL_ID)
                     {
-                        qpi.transfer(state.mCurrentGovParams.maintenanceAddress, locals.maintenancePayout);
-                        locals.totalFeeAmount = sadd(locals.totalFeeAmount, locals.maintenancePayout);
+                        if (qpi.transfer(state.mCurrentGovParams.maintenanceAddress, locals.maintenancePayout) >= 0)
+                        {
+                            locals.totalFeeAmount = sadd(locals.totalFeeAmount, locals.maintenancePayout);
+                        }
+                        else
+                        {
+                            locals.logger.logType = QRWA_LOG_TYPE_ERROR;
+                            locals.logger.primaryId = state.mCurrentGovParams.maintenanceAddress;
+                            locals.logger.valueA = locals.maintenancePayout;
+                            locals.logger.valueB = QRWA_STATUS_FAILURE_TRANSFER_FAILED;
+                            LOG_INFO(locals.logger);
+                        }
                     }
 
                     locals.reinvestmentPayout = div<uint64>(smul(state.mRevenuePoolA, state.mCurrentGovParams.reinvestmentPercent), QRWA_PERCENT_DENOMINATOR);
                     if (locals.reinvestmentPayout > 0 && state.mCurrentGovParams.reinvestmentAddress != NULL_ID)
                     {
-                        qpi.transfer(state.mCurrentGovParams.reinvestmentAddress, locals.reinvestmentPayout);
-                        locals.totalFeeAmount = sadd(locals.totalFeeAmount, locals.reinvestmentPayout);
+                        if (qpi.transfer(state.mCurrentGovParams.reinvestmentAddress, locals.reinvestmentPayout) >= 0)
+                        {
+                            locals.totalFeeAmount = sadd(locals.totalFeeAmount, locals.reinvestmentPayout);
+                        }
+                        else
+                        {
+                            locals.logger.logType = QRWA_LOG_TYPE_ERROR;
+                            locals.logger.primaryId = state.mCurrentGovParams.reinvestmentAddress;
+                            locals.logger.valueA = locals.reinvestmentPayout;
+                            locals.logger.valueB = QRWA_STATUS_FAILURE_TRANSFER_FAILED;
+                            LOG_INFO(locals.logger);
+                        }
                     }
                     state.mRevenuePoolA = (state.mRevenuePoolA > locals.totalFeeAmount) ? (state.mRevenuePoolA - locals.totalFeeAmount) : 0;
                 }
@@ -1898,11 +1928,20 @@ public:
                                 // Check if the cast truncated the value (if high part was set)
                                 if (locals.eligiblePayout_128.high == 0 && locals.payout_u64 > 0)
                                 {
-                                    qpi.transfer(locals.holder, (sint64)locals.payout_u64);
-
-                                    locals.qmineDividendPool_128 -= locals.eligiblePayout_128;
-                                    state.mTotalQmineDistributed = sadd(state.mTotalQmineDistributed, locals.payout_u64);
-                                    locals.totalEligiblePaid_128 += locals.eligiblePayout_128;
+                                    if (qpi.transfer(locals.holder, (sint64)locals.payout_u64) >= 0)
+                                    {
+                                        locals.qmineDividendPool_128 -= locals.eligiblePayout_128;
+                                        state.mTotalQmineDistributed = sadd(state.mTotalQmineDistributed, locals.payout_u64);
+                                        locals.totalEligiblePaid_128 += locals.eligiblePayout_128;
+                                    }
+                                    else
+                                    {
+                                        locals.logger.logType = QRWA_LOG_TYPE_ERROR;
+                                        locals.logger.primaryId = locals.holder;
+                                        locals.logger.valueA = locals.payout_u64;
+                                        locals.logger.valueB = QRWA_STATUS_FAILURE_TRANSFER_FAILED;
+                                        LOG_INFO(locals.logger);
+                                    }
                                 }
                             }
                             else if (locals.eligiblePayout_128 > locals.qmineDividendPool_128)
@@ -1912,11 +1951,21 @@ public:
 
                                 if (locals.qmineDividendPool_128.high == 0 && locals.payout_u64 > 0)
                                 {
-                                    qpi.transfer(locals.holder, (sint64)locals.payout_u64);
-                                    state.mTotalQmineDistributed = sadd(state.mTotalQmineDistributed, locals.payout_u64);
-                                    locals.totalEligiblePaid_128 += locals.qmineDividendPool_128;
+                                    if (qpi.transfer(locals.holder, (sint64)locals.payout_u64) >= 0)
+                                    {
+                                        state.mTotalQmineDistributed = sadd(state.mTotalQmineDistributed, locals.payout_u64);
+                                        locals.totalEligiblePaid_128 += locals.qmineDividendPool_128;
+                                        locals.qmineDividendPool_128 = 0; // Pool exhausted
+                                    }
+                                    else
+                                    {
+                                        locals.logger.logType = QRWA_LOG_TYPE_ERROR;
+                                        locals.logger.primaryId = locals.holder;
+                                        locals.logger.valueA = locals.payout_u64;
+                                        locals.logger.valueB = QRWA_STATUS_FAILURE_TRANSFER_FAILED;
+                                        LOG_INFO(locals.logger);
+                                    }
                                 }
-                                locals.qmineDividendPool_128 = 0;
                                 break;
                             }
                         }
@@ -1929,13 +1978,24 @@ public:
                         locals.payout_u64 = locals.movedSharesPayout_128.low;
                         if (locals.movedSharesPayout_128.high == 0 && locals.payout_u64 > 0)
                         {
-                            qpi.transfer(state.mCurrentGovParams.qmineDevAddress, (sint64)locals.payout_u64);
-                            state.mTotalQmineDistributed = sadd(state.mTotalQmineDistributed, locals.payout_u64);
+                            if (qpi.transfer(state.mCurrentGovParams.qmineDevAddress, (sint64)locals.payout_u64) >= 0)
+                            {
+                                state.mTotalQmineDistributed = sadd(state.mTotalQmineDistributed, locals.payout_u64);
+                                locals.qmineDividendPool_128 = 0;
+                            }
+                            else
+                            {
+                                locals.logger.logType = QRWA_LOG_TYPE_ERROR;
+                                locals.logger.primaryId = state.mCurrentGovParams.qmineDevAddress;
+                                locals.logger.valueA = locals.payout_u64;
+                                locals.logger.valueB = QRWA_STATUS_FAILURE_TRANSFER_FAILED;
+                                LOG_INFO(locals.logger);
+                            }
                         }
-                        locals.qmineDividendPool_128 = 0;
                     }
 
                     // Update the 64-bit state variable from the 128-bit local
+                    // If transfers failed, funds remain in qmineDividendPool_128 and will be preserved here.
                     state.mQmineDividendPool = locals.qmineDividendPool_128.low;
                 } // End QMINE distribution
 
@@ -1956,7 +2016,10 @@ public:
 
                 // Update last payout time
                 state.mLastPayoutTime = qpi.now();
+                locals.logger.logType = QRWA_LOG_TYPE_DISTRIBUTION;
+                locals.logger.primaryId = NULL_ID;
                 locals.logger.valueA = 1; // Indicate success
+                locals.logger.valueB = 0;
                 LOG_INFO(locals.logger);
             }
         }
