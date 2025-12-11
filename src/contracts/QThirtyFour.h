@@ -56,6 +56,7 @@ constexpr uint8 QTF_DEFAULT_WINNERS_PERCENT = 68;
 // Maximum attempts to generate unique random value before fallback
 constexpr uint8 QTF_MAX_RANDOM_GENERATION_ATTEMPTS = 100;
 
+constexpr uint64 QTF_DEFAULT_TARGET_JACKPOT = 1000000000ULL; // 1 billion QU (1B)
 constexpr uint8 QTF_DEFAULT_SCHEDULE = 1u << WEDNESDAY;
 constexpr uint8 QTF_DEFAULT_DRAW_HOUR = 11;                        // 11:00 UTC
 constexpr uint32 QTF_DEFAULT_INIT_TIME = 22u << 9 | 4u << 5 | 13u; // RL_DEFAULT_INIT_TIME
@@ -67,7 +68,6 @@ const uint64 QTF_RANDOM_LOTTERY_ASSET_NAME = *reinterpret_cast<const uint64*>("R
 const id QTF_RESERVE_POOL_CONTRACT_ID = id(QRP_CONTRACT_INDEX, 0, 0, 0);
 
 using QTFRandomValues = Array<uint8, QTF_RANDOM_VALUES_COUNT>;
-using QFTWinnerPlayers = Array<id, QTF_MAX_NUMBER_OF_PLAYERS>;
 
 struct QTF2
 {
@@ -513,6 +513,31 @@ public:
 		RL::GetFees_output feesOutput;
 	};
 
+	// EstimateFRJackpotGrowth: Calculate minimum expected jackpot growth in FR mode
+	// Used for testing to verify 95% overflow bias is working correctly
+	struct EstimateFRJackpotGrowth_input
+	{
+		uint64 revenue;        // Total revenue (ticketPrice * numPlayers)
+		uint64 winnersPercent; // Winners block percentage (typically 68)
+	};
+	struct EstimateFRJackpotGrowth_output
+	{
+		uint64 minJackpotGrowth;  // Minimum expected jackpot growth
+		uint64 winnersRake;       // 5% of winners block
+		uint64 overflowToJackpot; // 95% of overflow
+		uint64 devRedirect;       // 1% of revenue
+		uint64 distRedirect;      // 1% of revenue
+	};
+	struct EstimateFRJackpotGrowth_locals
+	{
+		uint64 winnersBlock;
+		uint64 winnersBlockAfterRake;
+		uint64 k3Pool;
+		uint64 k2Pool;
+		uint64 winnersOverflow;
+		uint64 reserveAdd;
+	};
+
 	struct SettlementLocals
 	{
 		QTFRandomValues winningValues;
@@ -618,16 +643,11 @@ public:
 		state.teamAddress = QTF_ADDRESS_DEV_TEAM;
 		state.ownerAddress = state.teamAddress;
 		state.ticketPrice = QTF_TICKET_PRICE;
-		state.targetJackpot = 1000000000ULL;
+		state.targetJackpot = QTF_DEFAULT_TARGET_JACKPOT;
 		state.overflowAlphaBP = QTF_BASELINE_OVERFLOW_ALPHA_BP;
 		state.schedule = QTF_DEFAULT_SCHEDULE;
 		state.drawHour = QTF_DEFAULT_DRAW_HOUR;
 		state.lastDrawDateStamp = QTF_DEFAULT_INIT_TIME;
-		state.frActive = false;
-		state.frRoundsSinceK4 = 0;
-		state.frRoundsAtOrAboveTarget = 0;
-		state.numberOfPlayers = 0;
-		state.jackpot = 0;
 		state.currentState = STATE_NONE;
 	}
 
@@ -916,11 +936,7 @@ public:
 	}
 
 protected:
-	static void clearEpochState(QTF& state)
-	{
-		clearPlayerData(state);
-		clearWinnerData(state);
-	}
+	static void clearEpochState(QTF& state) { clearPlayerData(state); }
 
 	static void applyNextEpochData(QTF& state)
 	{
@@ -969,8 +985,6 @@ protected:
 		return static_cast<uint8>(v & 0x3Fu);
 	}
 
-	static void clearWinnerData(QTF& state) { setMemory(state.lastWinnerData, 0); }
-
 	static void clearPlayerData(QTF& state)
 	{
 		if (state.numberOfPlayers > 0)
@@ -982,10 +996,14 @@ protected:
 
 	static void fillWinnerData(QTF& state, const PlayerData& playerData, const QTFRandomValues& winnerValues, const uint16& epoch)
 	{
-		if (state.lastWinnerData.winnerCounter < state.lastWinnerData.winners.capacity())
+		if (!isZero(playerData.player))
 		{
-			state.lastWinnerData.winners.set(state.lastWinnerData.winnerCounter++, playerData);
+			if (state.lastWinnerData.winnerCounter < state.lastWinnerData.winners.capacity())
+			{
+				state.lastWinnerData.winners.set(state.lastWinnerData.winnerCounter++, playerData);
+			}
 		}
+
 		state.lastWinnerData.winnerValues = winnerValues;
 		state.lastWinnerData.epoch = epoch;
 	}
@@ -1255,6 +1273,10 @@ private:
 
 			++locals.i;
 		}
+
+		// Always save winning values and epoch, even if no winners
+		state.lastWinnerData.winnerValues = locals.winningValues;
+		state.lastWinnerData.epoch = locals.currentEpoch;
 
 		// Post-jackpot (k4) logic: reset counters and reseed if jackpot was hit
 		if (locals.countK4 > 0 && state.jackpot > 0)
