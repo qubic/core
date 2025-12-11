@@ -56,6 +56,7 @@ struct Peer;
 #define SPECTRUM_STATS 10
 #define ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE 11
 #define ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE 12
+#define CONTRACT_RESERVE_DEDUCTION 13
 #define CUSTOM_MESSAGE 255
 
 #define CUSTOM_MESSAGE_OP_START_DISTRIBUTE_DIVIDENDS 6217575821008262227ULL // STA_DDIV
@@ -229,6 +230,13 @@ struct SpectrumStats
     unsigned long long dustThresholdBurnHalf;
     unsigned int numberOfEntities;
     unsigned int entityCategoryPopulations[48];
+};
+
+struct ContractReserveDeduction
+{
+    unsigned long long deductedAmount;
+    long long remainingAmount;
+    unsigned int contractIndex;
 };
 
 
@@ -844,6 +852,13 @@ public:
     {
 #if LOG_SPECTRUM
         logMessage(sizeof(SpectrumStats), SPECTRUM_STATS, &message);
+#endif
+    }
+
+    void logContractReserveDeduction(const ContractReserveDeduction& message)
+    {
+#if LOG_SPECTRUM
+        logMessage(sizeof(ContractReserveDeduction), CONTRACT_RESERVE_DEDUCTION, &message);
 #endif
     }
 

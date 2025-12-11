@@ -7,6 +7,7 @@
 
 #include "../src/contract_core/contract_def.h"
 #include "../src/contract_core/contract_exec.h"
+#include "../src/contract_core/qpi_spectrum_impl.h"
 
 #include "../src/public_settings.h"
 #undef PENDING_TXS_POOL_NUM_TICKS

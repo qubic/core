@@ -4,8 +4,6 @@
 
 #include <type_traits>
 
-
-
 // changing offset simulates changed computor set with changed epoch
 void initComputors(unsigned short computorIdOffset)
 {

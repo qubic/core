@@ -274,8 +274,14 @@
     <ClInclude Include="network_messages\custom_mining.h">
       <Filter>network_messages</Filter>
     </ClInclude>
+    <ClInclude Include="network_messages\execution_fees.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
     <ClInclude Include="platform\virtual_memory.h" />
     <ClInclude Include="platform\profiling.h">
+      <Filter>platform</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\quorum_value.h">
       <Filter>platform</Filter>
     </ClInclude>
     <ClInclude Include="revenue.h" />
@@ -283,6 +289,9 @@
       <Filter>contract_core</Filter>
     </ClInclude>
     <ClInclude Include="ticking\pending_txs_pool.h">
+      <Filter>ticking</Filter>
+    </ClInclude>
+    <ClInclude Include="ticking\execution_fee_report_collector.h">
       <Filter>ticking</Filter>
     </ClInclude>
     <ClInclude Include="contracts\Qdraw.h">
@@ -299,6 +308,9 @@
     </ClInclude>
     <ClInclude Include="contracts\ComputorControlledFund_old.h">
       <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\execution_time_accumulator.h">
+      <Filter>contract_core</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
