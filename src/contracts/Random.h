@@ -1,8 +1,8 @@
 using namespace QPI;
 
-constexpr uint32_t MAX_RECENT_MINERS = 369;
-constexpr uint32_t MAX_COMMITMENTS = 1024;
-constexpr uint32_t ENTROPY_HISTORY_LEN = 3; // For 2-tick-back entropy pool
+constexpr uint32_t RANDOM_MAX_RECENT_MINERS = 369;
+constexpr uint32_t RANDOM_MAX_COMMITMENTS = 1024;
+constexpr uint32_t RANDOM_ENTROPY_HISTORY_LEN = 3; // For 2-tick-back entropy pool
 
 struct RANDOM2
 {
@@ -12,8 +12,8 @@ struct RANDOM : public ContractBase
 {
 private:
 	// Entropy pool history (circular buffer for look-back)
-	m256i entropyHistory[ENTROPY_HISTORY_LEN];
-	uint64 entropyPoolVersionHistory[ENTROPY_HISTORY_LEN];
+	m256i entropyHistory[RANDOM_ENTROPY_HISTORY_LEN];
+	uint64 entropyPoolVersionHistory[RANDOM_ENTROPY_HISTORY_LEN];
 	uint32 entropyHistoryHead; // points to most recent
 
 	// Global entropy pool - combines all revealed entropy
@@ -48,7 +48,7 @@ private:
 		uint64 deposit;
 		uint64 lastEntropyVersion;
 		uint32 lastRevealTick;
-	} recentMiners[MAX_RECENT_MINERS];
+	} recentMiners[RANDOM_MAX_RECENT_MINERS];
 	uint32 recentMinerCount;
 
 	// Valid deposit amounts (powers of 10)
@@ -62,7 +62,7 @@ private:
 		uint32 commitTick;
 		uint32 revealDeadlineTick;
 		bool hasRevealed;
-	} commitments[MAX_COMMITMENTS];
+	} commitments[RANDOM_MAX_COMMITMENTS];
 	uint32 commitmentCount;
 
 	// Helper functions (static inline)
@@ -76,7 +76,7 @@ private:
 			stateRef.currentEntropyPool.m256i_u64[i] ^= entropyData[i];
 		}
 
-		stateRef.entropyHistoryHead = mod(stateRef.entropyHistoryHead + 1U, ENTROPY_HISTORY_LEN);
+		stateRef.entropyHistoryHead = mod(stateRef.entropyHistoryHead + 1U, RANDOM_ENTROPY_HISTORY_LEN);
 		stateRef.entropyHistory[stateRef.entropyHistoryHead] = stateRef.currentEntropyPool;
 		stateRef.entropyPoolVersion++;
 		stateRef.entropyPoolVersionHistory[stateRef.entropyHistoryHead] = stateRef.entropyPoolVersion;
@@ -84,7 +84,7 @@ private:
 
 	static inline void generateRandomBytesData(const RANDOM& stateRef, uint8* output, uint32 numBytes, uint32 historyIdx, uint32 currentTick)
 	{
-		const m256i selectedPool = stateRef.entropyHistory[mod(stateRef.entropyHistoryHead + ENTROPY_HISTORY_LEN - historyIdx, ENTROPY_HISTORY_LEN)];
+		const m256i selectedPool = stateRef.entropyHistory[mod(stateRef.entropyHistoryHead + RANDOM_ENTROPY_HISTORY_LEN - historyIdx, RANDOM_ENTROPY_HISTORY_LEN)];
 		m256i tickEntropy;
 		tickEntropy.m256i_u64[0] = static_cast<uint64_t>(currentTick);
 		tickEntropy.m256i_u64[1] = 0;
@@ -365,7 +365,7 @@ public:
 							}
 							else 
 							{
-								if (state.recentMinerCount < MAX_RECENT_MINERS) 
+								if (state.recentMinerCount < RANDOM_MAX_RECENT_MINERS) 
 								{
 									state.recentMiners[state.recentMinerCount].minerId = qpi.invocator();
 									state.recentMiners[state.recentMinerCount].deposit = state.commitments[locals.i].amount;
@@ -377,7 +377,7 @@ public:
 								{
 									locals.lowestIx = 0;
 
-									for (locals.rm = 1; locals.rm < MAX_RECENT_MINERS; ++locals.rm) 
+									for (locals.rm = 1; locals.rm < RANDOM_MAX_RECENT_MINERS; ++locals.rm) 
 									{
 										if (state.recentMiners[locals.rm].deposit < state.recentMiners[locals.lowestIx].deposit ||
 											(state.recentMiners[locals.rm].deposit == state.recentMiners[locals.lowestIx].deposit &&
@@ -419,7 +419,7 @@ public:
 		{
 			if (isValidDepositAmountCheck(state, qpi.invocationReward()) && qpi.invocationReward() >= state.minimumSecurityDeposit)
 			{
-				if (state.commitmentCount < MAX_COMMITMENTS)
+				if (state.commitmentCount < RANDOM_MAX_COMMITMENTS)
 				{
 					state.commitments[state.commitmentCount].digest = input.committedDigest;
 					state.commitments[state.commitmentCount].invocatorId = qpi.invocator();
@@ -502,7 +502,7 @@ public:
 			return;
 		}
 
-		locals.histIdx = mod(state.entropyHistoryHead + ENTROPY_HISTORY_LEN - 2, ENTROPY_HISTORY_LEN);
+		locals.histIdx = mod(state.entropyHistoryHead + RANDOM_ENTROPY_HISTORY_LEN - 2, RANDOM_ENTROPY_HISTORY_LEN);
 		generateRandomBytesData(state, output.randomBytes, (input.numberOfBytes > 32 ? 32 : input.numberOfBytes), locals.histIdx, locals.currentTick);
 		output.entropyVersion = state.entropyPoolVersionHistory[locals.histIdx];
 		output.usedMinerDeposit = locals.usedMinerDeposit;
@@ -616,7 +616,7 @@ public:
 				}
 			}
 			state.minerEarningsPool = 0;
-			for (locals.i = 0; locals.i < MAX_RECENT_MINERS; ++locals.i)
+			for (locals.i = 0; locals.i < RANDOM_MAX_RECENT_MINERS; ++locals.i)
 			{
 				state.recentMiners[locals.i] = RecentMiner{};
 			}
