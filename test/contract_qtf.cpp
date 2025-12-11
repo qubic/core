@@ -292,7 +292,7 @@ TEST(ContractQThirtyFour, BuyTicket_WhenSellingClosed_RefundsAndFails)
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
 }
 
-TEST(ContractQThirtyFour, BuyTicket_WrongPrice_RefundsAndFails)
+TEST(ContractQThirtyFour, BuyTicket_TooLowPrice_RefundsAndFails)
 {
 	ContractTestingQTF ctl;
 	ctl.beginEpochWithValidTime();
@@ -304,17 +304,37 @@ TEST(ContractQThirtyFour, BuyTicket_WrongPrice_RefundsAndFails)
 
 	QTFRandomValues nums = ctl.makeValidNumbers(1, 2, 3, 4);
 
-	// Test with wrong price (too low)
+	// Test with price too low - should fail and refund
 	const QTF::BuyTicket_output outLow = ctl.buyTicket(user, ticketPrice - 1, nums);
 	EXPECT_EQ(outLow.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_TICKET_PRICE));
-	EXPECT_EQ(getBalance(user), balBefore); // Refunded
-
-	// Test with wrong price (too high)
-	const QTF::BuyTicket_output outHigh = ctl.buyTicket(user, ticketPrice + 1, nums);
-	EXPECT_EQ(outHigh.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_TICKET_PRICE));
-	EXPECT_EQ(getBalance(user), balBefore); // Refunded
+	EXPECT_EQ(getBalance(user), balBefore); // Fully refunded
 
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+}
+
+TEST(ContractQThirtyFour, BuyTicket_OverpaidPrice_AcceptsAndReturnsExcess)
+{
+	ContractTestingQTF ctl;
+	ctl.beginEpochWithValidTime();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	const uint64 overpayment = ticketPrice * 2; // Pay double
+	increaseEnergy(user, overpayment * 2);
+	const uint64 balBefore = getBalance(user);
+
+	QTFRandomValues nums = ctl.makeValidNumbers(1, 2, 3, 4);
+
+	// Test with overpayment - should accept ticket and return excess
+	const QTF::BuyTicket_output outHigh = ctl.buyTicket(user, overpayment, nums);
+	EXPECT_EQ(outHigh.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
+
+	// Should have paid exactly ticketPrice, excess returned
+	const uint64 excess = overpayment - ticketPrice;
+	EXPECT_EQ(getBalance(user), balBefore - ticketPrice) << "User should pay exactly ticket price, excess returned";
+
+	// Ticket should be registered
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 1u);
 }
 
 TEST(ContractQThirtyFour, BuyTicket_InvalidNumbers_OutOfRange_Fails)
