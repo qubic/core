@@ -1,7 +1,7 @@
 using namespace QPI;
 
-// Prefer constexpr over #define
 constexpr uint32_t MAX_RECENT_MINERS = 369;
+constexpr uint32_t MAX_COMMITMENTS = 1024;
 constexpr uint32_t ENTROPY_HISTORY_LEN = 3; // For 2-tick-back entropy pool
 
 struct RANDOM2
@@ -62,7 +62,7 @@ private:
 		uint32 commitTick;
 		uint32 revealDeadlineTick;
 		bool hasRevealed;
-	} commitments[1024];
+	} commitments[MAX_COMMITMENTS];
 	uint32 commitmentCount;
 
 	// Helper functions (static inline)
@@ -419,7 +419,7 @@ public:
 		{
 			if (isValidDepositAmountCheck(state, qpi.invocationReward()) && qpi.invocationReward() >= state.minimumSecurityDeposit)
 			{
-				if (state.commitmentCount < 1024)
+				if (state.commitmentCount < MAX_COMMITMENTS)
 				{
 					state.commitments[state.commitmentCount].digest = input.committedDigest;
 					state.commitments[state.commitmentCount].invocatorId = qpi.invocator();
