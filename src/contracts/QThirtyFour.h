@@ -800,7 +800,7 @@ public:
 			return;
 		}
 
-		if (qpi.invocationReward() != state.ticketPrice)
+		if (qpi.invocationReward() < state.ticketPrice)
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -809,6 +809,13 @@ public:
 
 			output.returnCode = toReturnCode(EReturnCode::INVALID_TICKET_PRICE);
 			return;
+		}
+
+		// If overpaid, accept ticket and return excess to invocator
+		if (qpi.invocationReward() > state.ticketPrice)
+		{
+			const uint64 excess = qpi.invocationReward() - state.ticketPrice;
+			qpi.transfer(qpi.invocator(), excess);
 		}
 
 		locals.validateInput.numbers = input.randomValues;
