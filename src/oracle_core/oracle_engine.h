@@ -116,8 +116,8 @@ struct OracleReplyState
     uint8_t ownReplyData[MAX_ORACLE_REPLY_SIZE + 2];
 
     uint16_t ownReplyCommitExecCount;
-    uint32 ownReplyCommitComputorTxTick[computerSeedsCount];
-    uint32 ownReplyCommitComputorTxExecuted[computerSeedsCount];
+    uint32 ownReplyCommitComputorTxTick[computorSeedsCount];
+    uint32 ownReplyCommitComputorTxExecuted[computorSeedsCount];
 
     m256i replyCommitDigests[NUMBER_OF_COMPUTORS];
     m256i replyCommitKnowledgeProofs[NUMBER_OF_COMPUTORS];
@@ -453,7 +453,7 @@ public:
     {
         // check inputs
         ASSERT(commit);
-        if (ownComputorIdx >= computerSeedsCount || computorIdx >= NUMBER_OF_COMPUTORS || replyIdx >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
+        if (ownComputorIdx >= computorSeedsCount || computorIdx >= NUMBER_OF_COMPUTORS || replyIdx >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
             return false;
 
         // get reply state and check that oracle reply has been received

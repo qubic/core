@@ -130,8 +130,8 @@ static unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
 static unsigned int gTickNumberOfComputors = 0, gTickTotalNumberOfComputors = 0, gFutureTickTotalNumberOfComputors = 0;
 static unsigned int nextTickTransactionsSemaphore = 0, numberOfNextTickTransactions = 0, numberOfKnownNextTickTransactions = 0;
 static unsigned short numberOfOwnComputorIndices;
-static unsigned short ownComputorIndices[computerSeedsCount];
-static unsigned short ownComputorIndicesMapping[computerSeedsCount];
+static unsigned short ownComputorIndices[computorSeedsCount];
+static unsigned short ownComputorIndicesMapping[computorSeedsCount];
 
 static TickStorage ts;
 static VoteCounter voteCounter;
@@ -607,7 +607,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
             }
             else
             {
-                for (unsigned int i = 0; i < computerSeedsCount; i++)
+                for (unsigned int i = 0; i < computorSeedsCount; i++)
                 {
                     if (request->destinationPublicKey == computorPublicKeys[i])
                     {
@@ -753,7 +753,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                 {
                     minerPublicKeys[i] = request->computors.publicKeys[i];
 
-                    for (unsigned int j = 0; j < computerSeedsCount; j++)
+                    for (unsigned int j = 0; j < computorSeedsCount; j++)
                     {
                         if (request->computors.publicKeys[i] == computorPublicKeys[j])
                         {
@@ -2484,7 +2484,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                     logger.logQuTransfer(quTransfer);
                 }
 
-                for (unsigned int i = 0; i < computerSeedsCount; i++)
+                for (unsigned int i = 0; i < computorSeedsCount; i++)
                 {
                     if (transaction->sourcePublicKey == computorPublicKeys[i])
                     {
@@ -2617,7 +2617,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     }
     else
     {
-        for (unsigned int i = 0; i < computerSeedsCount; i++)
+        for (unsigned int i = 0; i < computorSeedsCount; i++)
         {
             if (transaction->sourcePublicKey == computorPublicKeys[i])
             {
@@ -3269,7 +3269,7 @@ static void processTick(unsigned long long processorNumber)
     {
         // Publish solutions that were sent via BroadcastMessage as MiningSolutionTransaction
         PROFILE_NAMED_SCOPE("processTick(): broadcast solutions as tx (from BroadcastMessage)");
-        for (unsigned int i = 0; i < computerSeedsCount; i++)
+        for (unsigned int i = 0; i < computorSeedsCount; i++)
         {
             int solutionIndexToPublish = -1;
 
@@ -3972,7 +3972,7 @@ static bool loadAllNodeStates()
     // update own computor indices
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        for (unsigned int j = 0; j < computerSeedsCount; j++)
+        for (unsigned int j = 0; j < computorSeedsCount; j++)
         {
             if (broadcastedComputors.computors.publicKeys[i] == computorPublicKeys[j])
             {

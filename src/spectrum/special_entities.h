@@ -9,12 +9,12 @@
 #include "private_settings.h"
 #include "public_settings.h"
 
-static constexpr unsigned long long computerSeedsCount = sizeof(computorSeeds) / sizeof(computorSeeds[0]);
+static constexpr unsigned long long computorSeedsCount = sizeof(computorSeeds) / sizeof(computorSeeds[0]);
 
 GLOBAL_VAR_DECL m256i operatorPublicKey;
-GLOBAL_VAR_DECL m256i computorSubseeds[computerSeedsCount];
-GLOBAL_VAR_DECL m256i computorPrivateKeys[computerSeedsCount];
-GLOBAL_VAR_DECL m256i computorPublicKeys[computerSeedsCount];
+GLOBAL_VAR_DECL m256i computorSubseeds[computorSeedsCount];
+GLOBAL_VAR_DECL m256i computorPrivateKeys[computorSeedsCount];
+GLOBAL_VAR_DECL m256i computorPublicKeys[computorSeedsCount];
 GLOBAL_VAR_DECL m256i arbitratorPublicKey;
 GLOBAL_VAR_DECL m256i dispatcherPublicKey;
 
@@ -29,7 +29,7 @@ static bool initSpecialEntities()
         operatorPublicKey.setRandomValue();
     }
 
-    for (unsigned int i = 0; i < computerSeedsCount; i++)
+    for (unsigned int i = 0; i < computorSeedsCount; i++)
     {
         if (!getSubseed(computorSeeds[i], computorSubseeds[i].m256i_u8))
         {
