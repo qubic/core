@@ -166,6 +166,7 @@ struct UnsortedMultiset
         {
             values[idx] = values[numValues];
         }
+        return true;
     }
 };
 
