@@ -638,7 +638,7 @@ protected:
 
 		if (qpi.invocationReward() > NOSTROMO_QX_TOKEN_ISSUANCE_FEE)
 		{
-			qpi.transfer(qpi.invocator(), NOSTROMO_QX_TOKEN_ISSUANCE_FEE - qpi.invocationReward());
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - NOSTROMO_QX_TOKEN_ISSUANCE_FEE);
 		}
 		
 		locals.tmpProject = state.projects.get(input.indexOfProject);
