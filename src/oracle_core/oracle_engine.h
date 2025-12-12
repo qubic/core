@@ -18,7 +18,7 @@ constexpr uint32_t MAX_SIMULTANEOUS_ORACLE_QUERIES = 1024;
 
 struct OracleQueryMetadata
 {
-    uint64_t queryId;         ///< Higher 32 bits are query tick, lower are composed of contract ID and index. 0 is reserved for invalid ID.
+    int64_t queryId;          ///< bits 31-62 encode index in tick, bits 0-30 are index in tick, negative values indicate error
     uint8_t type;             ///< contract query, user query, subscription (may be by multiple contracts)
     uint8_t status;           ///< overall status (pending -> success or timeout)
     uint16_t statusFlags;     ///< status and error flags (especially as returned by oracle machine connected to this node)
@@ -80,7 +80,7 @@ struct OracleContractStatus
 
 struct OracleSubscriptionContractStatus
 {
-    uint32_t subscriptionId;
+    int32_t subscriptionId;
     uint16_t contractIndex;
     uint16_t notificationPeriodMinutes;
     QPI::DateAndTime nextNotification;
@@ -96,11 +96,11 @@ struct OracleSubscriptionMetadata
     // Offset of DateAndTime timestamp member variable in oracle query struct
     uint16_t queryTimestampOffset;
 
-    // ID of last query
-    uint64_t lastQueryId;
+    // Query ID of last query (pending)
+    int64_t lastQueryId;
 
-    // ID of last revealed, for notifying with cached value on new subscription?
-    uint64_t lastRevealId;
+    // Query ID of last revealed query, for notifying with cached value on new subscription?
+    int64_t lastRevealId;
 
     // Timestamp for triggering next query and notifying about timeout if no query was received
     QPI::DateAndTime nextQueryTimestamp;
@@ -109,7 +109,7 @@ struct OracleSubscriptionMetadata
 // State of received OM reply and computor commits for a single oracle query
 struct OracleReplyState
 {
-    uint64_t queryId;
+    int64_t queryId;
 
     m256i ownReplyDigest;
     uint16_t ownReplySize;
@@ -201,7 +201,7 @@ class OracleEngine
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> pendingCommitReplyStateIndices;
 
     /// fast lookup of oracle query index (sequential position in queries array) from oracle query ID (composed of query tick and other info)
-    QPI::HashMap<uint64_t, uint32_t, MAX_ORACLE_QUERIES>* queryIdToIndex;
+    QPI::HashMap<int64_t, uint32_t, MAX_ORACLE_QUERIES>* queryIdToIndex;
 
     /// Return empty reply state slot or max uint32 value on error
     uint32_t getEmptyReplyStateSlot()
@@ -209,7 +209,7 @@ class OracleEngine
         ASSERT(replyStatesIndex < MAX_SIMULTANEOUS_ORACLE_QUERIES);
         for (uint32_t i = 0; i < MAX_SIMULTANEOUS_ORACLE_QUERIES; ++i)
         {
-            if (!replyStates[replyStatesIndex].queryId)
+            if (replyStates[replyStatesIndex].queryId <= 0)
                 return replyStatesIndex;
 
             ++replyStatesIndex;
@@ -269,7 +269,7 @@ public:
     * @param txIndex Index of tx in tick data, for referencing in tick storage.
     * @return Query ID or zero on error.
     */
-    uint64_t startUserQuery(const OracleUserQueryTransactionPrefix* tx, uint32_t txIndex)
+    int64_t startUserQuery(const OracleUserQueryTransactionPrefix* tx, uint32_t txIndex)
     {
         // ASSERT that tx is in tick storage at tx->tick, txIndex.
         // check interface index
@@ -278,27 +278,27 @@ public:
         // send query to oracle machine node
     }
 
-    uint64_t startContractQuery(uint16_t contractIndex, uint32_t interfaceIndex,
+    int64_t startContractQuery(uint16_t contractIndex, uint32_t interfaceIndex,
         const void* queryData, uint16_t querySize, uint32_t timeoutMillisec,
         USER_PROCEDURE notificationProcedure, uint32_t notificationLocalsSize)
     {
         // check inputs
         if (contractIndex >= MAX_NUMBER_OF_CONTRACTS || interfaceIndex >= OI::oracleInterfacesCount || querySize != OI::oracleInterfaces[interfaceIndex].querySize)
-            return 0;
+            return -1;
 
         // check that still have free capacity for the query
         if (oracleQueryCount >= MAX_ORACLE_QUERIES || pendingQueryIndices.numValues >= MAX_SIMULTANEOUS_ORACLE_QUERIES || queryStorageBytesUsed + querySize > ORACLE_QUERY_STORAGE_SIZE)
-            return 0;
+            return -1;
 
         // find slot storing temporary reply state
         uint32_t replyStateSlotIdx = getEmptyReplyStateSlot();
         if (replyStateSlotIdx >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
-            return 0;
+            return -1;
 
         // compute timeout as absolute point in time
         DateAndTime timeout = DateAndTime::now();
         if (!timeout.addMillisec(timeoutMillisec))
-            return 0;
+            return -1;
 
         // get sequential query index of contract in tick
         auto& cs = contractStatus[contractIndex];
@@ -315,12 +315,13 @@ public:
         }
 
         // compose query ID
-        uint64_t queryId = ((uint64_t)system.tick << 32) | ((uint64_t)contractIndex << 16) | cs.queryIndexInTick;
+        // TODO: no contract index and common counter for all contracts
+        int64_t queryId = ((int64_t)system.tick << 31) | ((int64_t)contractIndex << 15) | cs.queryIndexInTick;
 
         // map ID to index
         ASSERT(!queryIdToIndex->contains(queryId));
         if (queryIdToIndex->set(queryId, oracleQueryCount) == NULL_INDEX)
-            return 0;
+            return -1;
 
         // register index of pending query
         pendingQueryIndices.add(oracleQueryCount);
@@ -356,7 +357,7 @@ public:
     }
 
     // Enqueue oracle machine query message. May be called from tick processor or contract processor only (uses reorgBuffer).
-    void enqueueOracleQuery(uint64_t queryId, uint32_t interfaceIdx, uint16_t timeoutMillisec, const void* queryData, uint16 querySize)
+    void enqueueOracleQuery(int64_t queryId, uint32_t interfaceIdx, uint16_t timeoutMillisec, const void* queryData, uint16 querySize)
     {
         // Prepare message payload
         OracleMachineQuery* omq = reinterpret_cast<OracleMachineQuery*>(reorgBuffer);

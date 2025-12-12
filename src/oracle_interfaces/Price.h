@@ -52,6 +52,8 @@ struct Price
 
 		/// Second currency of pair to get the exchange rate for.
 		id currency2;
+
+		// TODO: we may need to add precision reqirements regarding response value (and time?)
 	};
 
 	/// Oracle reply data / output of the oracle machine
@@ -86,7 +88,7 @@ struct Price
 	// - constants supporting with building query
 
 	/// Check if the passed oracle reply is valid
-	static bool isReplyValid(const OracleReply& reply)
+	static bool replyIsValid(const OracleReply& reply)
 	{
 		return reply.numerator > 0 && reply.denominator > 0;
 	}

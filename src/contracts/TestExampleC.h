@@ -206,20 +206,20 @@ public:
 	};
 	struct QueryPriceOracle_output
 	{
-		uint64 oracleQueryId;
+		sint64 oracleQueryId;
 	};
-
-	typedef void (*MyFuncPtr)(const QPI::QpiContextProcedureCall& qpi, TESTEXC& state, NoData& input, NoData& output, NoData& locals);
-	//output.oracleQueryId = qpi.queryOracle<OI::Price>(input.priceOracleQuery, (MyFuncPtr)0x1);
 
 	PUBLIC_PROCEDURE(QueryPriceOracle)
 	{
 		output.oracleQueryId = qpi.queryOracle<OI::Price>(input.priceOracleQuery, NotifyPriceOracleReply, input.timeoutMilliseconds);
-		if (output.oracleQueryId != 0)
+		if (output.oracleQueryId < 0)
 		{
-			// example: store additional data realted to oracle query
-			state.oracleQueryExtraData.set(output.oracleQueryId, 0);
+			// error
+			return;
 		}
+
+		// example: store additional data realted to oracle query
+		state.oracleQueryExtraData.set(output.oracleQueryId, 0);
 	}
 
 	struct SubscribePriceOracle_input
@@ -235,12 +235,12 @@ public:
 	PUBLIC_PROCEDURE(SubscribePriceOracle)
 	{
 		output.oracleSubscriptionId = qpi.subscribeOracle<OI::Price>(input.priceOracleQuery, NotifyPriceOracleReply, input.subscriptionIntervalMinutes);
-		if (output.oracleSubscriptionId != 0)
+		if (output.oracleSubscriptionId < 0)
 		{
-			// success
+			// error
 		}
 	}
-	
+
 	typedef OracleNotificationInput<OI::Price> NotifyPriceOracleReply_input;
 	typedef NoData NotifyPriceOracleReply_output;
 	struct NotifyPriceOracleReply_locals
@@ -262,7 +262,7 @@ public:
 				return;
 
 			// use example convenience function provided by oracle interface
-			if (!OI::Price::isReplyValid(input.reply))
+			if (!OI::Price::replyIsValid(input.reply))
 				return;
 		}
 		else
@@ -274,7 +274,7 @@ public:
 	struct END_TICK_locals
 	{
 		OI::Price::OracleQuery priceOracleQuery;
-		uint64 oracleQueryId;
+		sint64 oracleQueryId;
 	};
 
 	END_TICK_WITH_LOCALS()

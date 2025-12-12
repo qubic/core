@@ -36,7 +36,7 @@ struct RequestOracleData
 
 static_assert(sizeof(RequestOracleData) == 16, "Something is wrong with the struct size.");
 
-// Response to RequestOracleData. This is just the header, the payload following depends on resType and is decribed below.
+// Response to RequestOracleData. This is just the header, the payload following depends on resType and is described below.
 // The size of the payload can be calculated from the RequestResponseHeader size.
 // One request may be followed by multiple responses, finished by END_RESPONSE.
 struct RespondOracleData
@@ -75,7 +75,7 @@ static_assert(sizeof(RespondOracleData) == 4, "Something is wrong with the struc
 
 struct RespondOracleDataQueryMetadata
 {
-    uint64_t queryId;
+    int64_t queryId;
     uint8_t type;               ///< contract query, user query, subscription (may be by multiple contracts)
     uint8_t status;             ///< overall status (pending -> success or timeout)
     uint16_t statusFlags;       ///< status and error flags (especially as returned by oracle machine connected to this node)
@@ -83,7 +83,7 @@ struct RespondOracleDataQueryMetadata
     uint32_t queryTick;
     uint64_t timeout;           ///< Timeout in QPI::DateAndTime format
     m256i queryingEntity;
-    uint32_t subscriptionId;    ///< 0 is reserved for "no subscription"
+    int32_t subscriptionId;     ///< -1 is reserved for "no subscription"
     uint32_t revealTick;        ///< Tick of reveal tx. Only available if status is success.
     uint16_t totalCommits;      ///< Total number of commit tx. Only available if status isn't success.
     uint16_t agreeingCommits;   ///< Number of agreeing commit tx (biggest group with same digest). Only available if status isn't success.
@@ -93,14 +93,14 @@ struct RespondOracleDataSubscriptionMetadata
 {
     uint16_t queryIntervalMinutes;
     uint16_t queryTimestampOffset;
-    uint64_t lastQueryQueryId;
-    uint64_t lastRevealQueryId;
+    int64_t lastQueryQueryId;
+    int64_t lastRevealQueryId;
     uint64_t nextQueryTimestamp;
 };
 
 struct RespondOracleDataSubscriptionContractMetadata
 {
-    uint32_t subscriptionId;
+    int32_t subscriptionId;
     uint16_t contractIndex;
     uint16_t notificationIntervalMinutes; 
     uint64_t nextQueryNotificationTimestamp; ///< Timeout in QPI::DateAndTime format

@@ -2488,19 +2488,19 @@ namespace QPI
 		* @brief Get oracle query by queryId.
 		* @param queryId Identifier of oracle query to get query data from.
 		* @param query Output query data (only set if true is returned).
-		* @return Whether queryId is found and matches the orcale interface.
+		* @return Whether queryId is found and matches the oracle interface.
 		*/
 		template <typename OracleInterface>
-		inline bool getOracleQuery(uint64 queryId, OracleInterface::OracleQuery& query) const;
+		inline bool getOracleQuery(sint64 queryId, OracleInterface::OracleQuery& query) const;
 
 		/**
 		* @brief Get oracle reply by queryId.
 		* @param queryId Identifier of oracle query.
 		* @param reply Output reply data (only set if true is returned).
-		* @return Whether queryId is found, matches the orcale interface, and a valid reply is available.
+		* @return Whether queryId is found, matches the oracle interface, and a valid reply is available.
 		*/
 		template <typename OracleInterface>
-		inline bool getOracleReply(uint64 queryId, OracleInterface::OracleReply& reply) const;
+		inline bool getOracleReply(sint64 queryId, OracleInterface::OracleReply& reply) const;
 
 		/**
 		* @brief Get status of oracle query by queryId.
@@ -2511,11 +2511,11 @@ namespace QPI
 		* - ORACLE_QUERY_STATUS_PENDING: Query is being processed.
 		* - ORACLE_QUERY_STATUS_COMMITTED: The quorum has commited to a oracle reply, but it has not been revealed yet.
 		* - ORACLE_QUERY_STATUS_SUCCESS: The oracle reply has been confirmed and is available.
-		* - ORACLE_QUERY_STATUS_DISAGREE: No valid oracle reply is available, because computors disagreed about the value.
+		* - ORACLE_QUERY_STATUS_UNRESOLVABLE: No valid oracle reply is available, because computors disagreed about the value.
 		* - ORACLE_QUERY_STATUS_TIMEOUT: No valid oracle reply is available and timeout has hit.
 		*/
 		template <typename OracleInterface>
-		inline uint8 getOracleQueryStatus(uint64 queryId) const;
+		inline uint8 getOracleQueryStatus(sint64 queryId) const;
 
 		// Access proposal functions with qpi(proposalVotingObject).func().
 		template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
@@ -2543,7 +2543,7 @@ namespace QPI
 	template <typename OracleInterface>
 	struct OracleNotificationInput
 	{
-		uint64 queryId;			///< ID of the oracle query that led to this notification.
+		sint64 queryId;			///< ID of the oracle query that led to this notification.
 		uint32 subscriptionId;	///< ID of the oracle subscription or 0 in case of a pure oracle query.
 		uint8 status;			///< Oracle query status as defined in `network_messages/common_def.h`
 		typename OracleInterface::OracleReply reply;	///< Oracle reply if status == ORACLE_QUERY_STATUS_SUCCESS
@@ -2593,7 +2593,7 @@ namespace QPI
 		) const;
 
 		/**
-		* @brief Initiate oracle query that will lead to nofitication later.
+		* @brief Initiate oracle query that will lead to notification later.
 		* @param query Details about which oracle to query for which information, as defined by a specific oracle interface.
 		* @param notificationCallback User procedure that shall be executed when the oracle reply is available or an error occurs.
 		* @param timeoutMillisec Maximum number of milliseconds to wait for reply.
@@ -2607,12 +2607,12 @@ namespace QPI
 		* OracleNotificationInput<OracleInterface> and NoData as output.
 		* Success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
 		* If an error happened before the query has been created and sent, input.status is ORACLE_QUERY_STATUS_UNKNOWN
-		* and input.queryID is 0 (invalid).
-		* Other errors that may happend with valid input.queryID are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
-		* input.status == ORACLE_QUERY_STATUS_DISAGREE.
+		* and input.queryID is -1 (invalid).
+		* Other errors that may happen with valid input.queryID are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
+		* input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE.
 		*/
 		template <typename OracleInterface, typename ContractStateType, typename LocalsType>
-		inline uint64 queryOracle(
+		inline sint64 queryOracle(
 			const OracleInterface::OracleQuery& query,
 			void (*notificationCallback)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
 			uint32 timeoutMillisec = 60000
@@ -2646,15 +2646,17 @@ namespace QPI
 		* @brief Subscribe for regularly querying an oracle.
 		* @param query The regular query, which must have a member `DateAndTime timestamp`.
 		* @param notificationCallback User procedure that shall be executed when the oracle reply is available or an error occurs.
-		* @param notificationIntervalInMinutes Number of minutes between consecutive queries/replies. This is also used as a timeout.
+		* @param notificationIntervalInMilliseconds Number of milliseconds between consecutive queries/replies.
+		*			This is also used as a timeout. Currently, only multiples of 60000 are supported and other
+		*			values are rejected with an error.
 		* @param notifyWithPreviousReply Whether to immediately notify this contract with the most up-to-date value if any is available.
-		* @return Oracle subscription ID that can be used to get the status of the subscription, or 0 on error.
+		* @return Oracle subscription ID that can be used to get the status of the subscription, or -1 on error.
 		*
 		* Subscriptions automatically expire at the end of each epoch. So, a common pattern is to call qpi.subscribeOracle()
 		* in BEGIN_EPOCH.
 		*
 		* Subscriptions facilitate shareing common oracle queries among multiple contracts. This saves network ressources and allows
-		* to provide a fixed-price subsciption for the whole epoch, which is usually much cheaper than the exivalent series of
+		* to provide a fixed-price subscription for the whole epoch, which is usually much cheaper than the equivalent series of
 		* individual qpi.queryOracle() calls.
 		*
 		* The qpi.subscribeOracle() call will automatically burn the oracle subscription fee as defined by the oracle interface
@@ -2665,15 +2667,15 @@ namespace QPI
 		* OracleNotificationInput<OracleInterface> and NoData as output.
 		* Success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
 		* If an error happened before the query has been created and sent, input.status is ORACLE_QUERY_STATUS_UNKNOWN
-		* and input.queryID is 0 (invalid).
-		* Other errors that may happend with valid input.queryID are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
-		* input.status == ORACLE_QUERY_STATUS_DISAGREE.
+		* and input.queryID is -1 (invalid).
+		* Other errors that may happen with valid input.queryID are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
+		* input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE.
 		*/
 		template <typename OracleInterface, typename ContractStateType, typename LocalsType>
-		inline uint32 subscribeOracle(
+		inline sint32 subscribeOracle(
 			const OracleInterface::OracleQuery& query,
 			void (*notificationCallback)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
-			uint32 notificationIntervalInMinutes = 1,
+			uint32 notificationIntervalInMilliseconds = 60000,
 			bool notifyWithPreviousReply = true
 		) const;
 
@@ -2707,7 +2709,7 @@ namespace QPI
 
 		/// Unsubscribe oracle based on subscription ID (returning false if oracleSubscriptionId is invalid).
 		inline bool unsubscribeOracle(
-			uint32 oracleSubscriptionId
+			sint32 oracleSubscriptionId
 		) const;
 
 		// Access proposal procedures with qpi(proposalVotingObject).proc().

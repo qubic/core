@@ -31,6 +31,7 @@ struct OracleMachineQuery
 
 // Message sent from OM Node to Core Node in order to send the oracle reply data (following query).
 // Behind this struct, the oracle reply data is attached, with size and content defined by oracleInterfaceIdx of the oracle query.
+// Oracle replies must be set all-0 before setting the member data, making sure that alignment/padding bytes are initialized with 0.
 struct OracleMachineReply
 {
     /// Type to be used in RequestResponseHeader
