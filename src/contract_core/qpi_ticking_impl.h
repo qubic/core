@@ -46,13 +46,21 @@ unsigned char QPI::QpiContextFunctionCall::second() const
 
 QPI::DateAndTime QPI::QpiContextFunctionCall::now() const
 {
-    QPI::DateAndTime result;
-    result.year = etalonTick.year;
-    result.month = etalonTick.month;
-    result.day = etalonTick.day;
-    result.hour = etalonTick.hour;
-    result.minute = etalonTick.minute;
-    result.second = etalonTick.second;
-    result.millisecond = etalonTick.millisecond;
-    return result;
+    return QPI::DateAndTime(etalonTick.year + 2000, etalonTick.month, etalonTick.day,
+        etalonTick.hour, etalonTick.minute, etalonTick.second, etalonTick.millisecond);
+}
+
+m256i QPI::QpiContextFunctionCall::getPrevSpectrumDigest() const
+{
+    return etalonTick.prevSpectrumDigest;
+}
+
+m256i QPI::QpiContextFunctionCall::getPrevUniverseDigest() const
+{
+    return etalonTick.prevUniverseDigest;
+}
+
+m256i QPI::QpiContextFunctionCall::getPrevComputerDigest() const
+{
+    return etalonTick.prevComputerDigest;
 }

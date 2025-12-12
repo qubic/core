@@ -1,15 +1,68 @@
 using namespace QPI;
 
+// Log types enum for QSWAP contract
+enum QSWAPLogInfo {
+    QSWAPAddLiquidity = 4,
+    QSWAPRemoveLiquidity = 5,
+    QSWAPSwapExactQuForAsset = 6,
+    QSWAPSwapQuForExactAsset = 7,
+    QSWAPSwapExactAssetForQu = 8,
+    QSWAPSwapAssetForExactQu = 9,
+	QSWAPFailedDistribution = 10,
+};
+
 // FIXED CONSTANTS
 constexpr uint64 QSWAP_INITIAL_MAX_POOL = 16384;
 constexpr uint64 QSWAP_MAX_POOL = QSWAP_INITIAL_MAX_POOL * X_MULTIPLIER;
 constexpr uint64 QSWAP_MAX_USER_PER_POOL = 256;
-constexpr sint64 QSWAP_MIN_LIQUDITY = 1000;
+constexpr sint64 QSWAP_MIN_LIQUIDITY = 1000;
 constexpr uint32 QSWAP_SWAP_FEE_BASE = 10000;
 constexpr uint32 QSWAP_FEE_BASE_100 = 100;
 
 struct QSWAP2 
 {
+};
+
+// Logging message structures for QSWAP procedures
+struct QSWAPAddLiquidityMessage
+{
+    uint32 _contractIndex;
+    uint32 _type;
+    id assetIssuer;
+    uint64 assetName;
+    sint64 userIncreaseLiquidity;
+    sint64 quAmount;
+    sint64 assetAmount;
+    sint8 _terminator;
+};
+
+struct QSWAPRemoveLiquidityMessage
+{
+    uint32 _contractIndex;
+    uint32 _type;
+    sint64 quAmount;
+    sint64 assetAmount;
+    sint8 _terminator;
+};
+
+struct QSWAPSwapMessage
+{
+    uint32 _contractIndex;
+    uint32 _type;
+    id assetIssuer;
+    uint64 assetName;
+    sint64 assetAmountIn;
+    sint64 assetAmountOut;
+    sint8 _terminator;
+};
+
+struct QSWAPFailedDistributionMessage
+{
+	uint32 _contractIndex;
+	uint32 _type;
+	id dst;
+	uint64 amount;
+	sint8 _terminator;
 };
 
 struct QSWAP : public ContractBase
@@ -25,24 +78,26 @@ public:
 		uint32 transferFee; 		// Amount of qus
 
 		uint32 swapFee; 			// 30 -> 0.3%
-		uint32 protocolFee;			// 20 -> 20%, for ipo share holders
-		uint32 teamFee;				// 20 -> 20%, for dev team 
+		uint32 shareholderFee;		// 27 -> 27% of swap fee, for SC shareholders
+		uint32 investRewardsFee;	// 3 -> 3% of swap fee, for Invest & Rewards
+		uint32 qxFee;				// 5 -> 5% of swap fee, for QX
+		uint32 burnFee;				// 1 -> 1% of swap fee, burned
 	};
 
-	struct TeamInfo_input
+	struct InvestRewardsInfo_input
 	{
 	};
-	struct TeamInfo_output
+	struct InvestRewardsInfo_output
 	{
-		uint32 teamFee;				// 20 -> 20%
-		id teamId;
+		uint32 investRewardsFee;	// 3 -> 3% of swap fee
+		id investRewardsId;
 	};
 
-	struct SetTeamInfo_input
+	struct SetInvestRewardsInfo_input
 	{
-		id newTeamId;
+		id newInvestRewardsId;
 	};
-	struct SetTeamInfo_output
+	struct SetInvestRewardsInfo_output
 	{
 		bool success;
 	};
@@ -57,18 +112,18 @@ public:
 		sint64 poolExists;
 		sint64 reservedQuAmount;
 		sint64 reservedAssetAmount;
-		sint64 totalLiqudity;
+		sint64 totalLiquidity;
 	};
 
-	struct GetLiqudityOf_input
+	struct GetLiquidityOf_input
 	{
 		id assetIssuer;
 		uint64 assetName;
 		id account;
 	};
-	struct GetLiqudityOf_output
+	struct GetLiquidityOf_output
 	{
-		sint64 liqudity;
+		sint64 liquidity;
 	};
 
 	struct QuoteExactQuInput_input
@@ -154,7 +209,7 @@ public:
 	* @param	quAmountMin				Bounds the extent to which the B/A price can go up before the transaction reverts. Must be <= amountADesired.
 	* @param	assetAmountMin			Bounds the extent to which the A/B price can go up before the transaction reverts. Must be <= amountBDesired.
 	*/
-	struct AddLiqudity_input
+	struct AddLiquidity_input
 	{
 		id assetIssuer;
 		uint64 assetName;
@@ -162,23 +217,23 @@ public:
 		sint64 quAmountMin;
 		sint64 assetAmountMin;
 	};
-	struct AddLiqudity_output
+	struct AddLiquidity_output
 	{
-		sint64 userIncreaseLiqudity;
+		sint64 userIncreaseLiquidity;
 		sint64 quAmount;
 		sint64 assetAmount;
 	};
 
-	struct RemoveLiqudity_input
+	struct RemoveLiquidity_input
 	{
 		id assetIssuer;
 		uint64 assetName;
-		sint64 burnLiqudity;
+		sint64 burnLiquidity;
 		sint64 quAmountMin;
 		sint64 assetAmountMin;
 	};
 
-	struct RemoveLiqudity_output 
+	struct RemoveLiquidity_output 
 	{
 		sint64 quAmount;
 		sint64 assetAmount;
@@ -230,35 +285,65 @@ public:
 		sint64 assetAmountIn;
 	};
 
+	struct TransferShareManagementRights_input
+	{
+		Asset asset;
+		sint64 numberOfShares;
+		uint32 newManagingContractIndex;
+	};
+	struct TransferShareManagementRights_output
+	{
+		sint64 transferredNumberOfShares;
+	};
+
 protected:
-	uint32 swapFeeRate; 		// e.g. 30: 0.3% (base: 10_000)
-	uint32 teamFeeRate;			// e.g. 20: 20% (base: 100)
-	uint32 protocolFeeRate; 	// e.g. 20: 20% (base: 100) only charge in qu
-	uint32 poolCreationFeeRate;	// e.g. 10: 10% (base: 100)
-
-	id teamId;
-	uint64 teamEarnedFee;
-	uint64 teamDistributedAmount;
-
-	uint64 protocolEarnedFee;
-	uint64 protocolDistributedAmount;
 
 	struct PoolBasicState
 	{
 		id poolID;
 		sint64 reservedQuAmount;
 		sint64 reservedAssetAmount;
-		sint64 totalLiqudity;
+		sint64 totalLiquidity;
 	};
 
-	struct LiqudityInfo 
+	struct LiquidityInfo
 	{
 		id entity;
-		sint64 liqudity;
+		sint64 liquidity;
 	};
 
+	// -----------------------------
+	// --- state variables begin ---
+	// -----------------------------
+
+	uint32 swapFeeRate; 		// e.g. 30: 0.3% (base: 10_000)
+	uint32 investRewardsFeeRate;// 3: 3% of swap fees to Invest & Rewards (base: 100)
+	uint32 shareholderFeeRate; 	// 27: 27% of swap fees to SC shareholders (base: 100)
+	uint32 poolCreationFeeRate;	// e.g. 10: 10% (base: 100)
+
+	id investRewardsId;
+	uint64 investRewardsEarnedFee;
+	uint64 investRewardsDistributedAmount;
+
+	uint64 shareholderEarnedFee;
+	uint64 shareholderDistributedAmount;
+
 	Array<PoolBasicState, QSWAP_MAX_POOL> mPoolBasicStates;
-	Collection<LiqudityInfo, QSWAP_MAX_POOL * QSWAP_MAX_USER_PER_POOL> mLiquditys;
+	Collection<LiquidityInfo, QSWAP_MAX_POOL* QSWAP_MAX_USER_PER_POOL> mLiquidities;
+
+	uint32 qxFeeRate;			// 5: 5% of swap fees to QX (base: 100)
+	uint32 burnFeeRate;			// 1: 1% of swap fees burned (base: 100)
+
+	uint64 qxEarnedFee;
+	uint64 qxDistributedAmount;
+
+	uint64 burnEarnedFee;		// Total burn fees collected (to be burned in END_TICK)
+	uint64 burnedAmount;		// Total amount actually burned
+
+	// -----------------------------
+	// ---- state variables end ----
+	// -----------------------------
+
 
 	inline static sint64 min(sint64 a, sint64 b) 
 	{
@@ -317,6 +402,8 @@ protected:
 		uint128& tmpRes
 	)
 	{
+		if (amountIn >= MAX_AMOUNT) return -1;
+
 		amountInWithFee = uint128(amountIn) * uint128(QSWAP_SWAP_FEE_BASE - fee);
 		numerator = uint128(reserveOut) * amountInWithFee;
 		denominator = uint128(reserveIn) * uint128(QSWAP_SWAP_FEE_BASE) + amountInWithFee;
@@ -334,17 +421,19 @@ protected:
 	}
 
 	// reserveIn * reserveOut = (reserveIn + x * (1-fee)) * (reserveOut - amountOut)
-	// x = (reserveIn * amountOut)/((1-fee) * (reserveOut - amountOut)
-	inline static sint64 getAmountInTakeFeeFromInToken(sint64& amountOut, sint64& reserveIn, sint64& reserveOut, uint32 fee, uint128& tmpRes)
+	// x = (reserveIn * amountOut * 10000) / ((reserveOut - amountOut) * (10000 - fee))
+	inline static sint64 getAmountInTakeFeeFromInToken(sint64& amountOut, sint64& reserveIn, sint64& reserveOut, uint32 fee, uint128& numerator, uint128& denominator, uint128& tmpRes)
 	{
-		// reserveIn*amountOut/(reserveOut - amountOut)*QSWAP_SWAP_FEE_BASE / (QSWAP_SWAP_FEE_BASE - fee)
-		tmpRes = div(
-			div(
-				uint128(reserveIn) * uint128(amountOut),
-				uint128(reserveOut - amountOut)
-			) * uint128(QSWAP_SWAP_FEE_BASE),
-			uint128(QSWAP_SWAP_FEE_BASE - fee)
-		);
+		if (amountOut >= MAX_AMOUNT) return -1;
+
+		// Calculate full numerator first to avoid premature truncation
+		numerator = uint128(reserveIn) * uint128(amountOut) * uint128(QSWAP_SWAP_FEE_BASE);
+		denominator = uint128(reserveOut - amountOut) * uint128(QSWAP_SWAP_FEE_BASE - fee);
+
+		// Perform single division at the end
+		// Use floor + 1 to ensure user pays at least enough (protects LPs)
+		tmpRes = div(numerator, denominator) + uint128(1);
+
 		if ((tmpRes.high != 0) || (tmpRes.low > 0x7FFFFFFFFFFFFFFF))
 		{
 			return -1;
@@ -357,8 +446,13 @@ protected:
 
 	// (reserveIn + amountIn) * (reserveOut - x) = reserveIn * reserveOut
 	// x = reserveOut * amountIn / (reserveIn + amountIn)
+	// NOTE: Despite the name, this returns the GROSS output (before fee deduction).
+	// The fee parameter is unused here because fee is applied separately by the caller.
+	// This is intentional: the caller needs the gross value for fee distribution calculation.
 	inline static sint64 getAmountOutTakeFeeFromOutToken(sint64& amountIn, sint64& reserveIn, sint64& reserveOut, uint32 fee, uint128& numerator, uint128& denominator, uint128& tmpRes)
 	{
+		if (amountIn >= MAX_AMOUNT) return -1;
+
 		numerator = uint128(reserveOut) * uint128(amountIn);
 		denominator = uint128(reserveIn + amountIn);
 
@@ -374,18 +468,31 @@ protected:
 	}
 
 	// (reserveIn + x) * (reserveOut - amountOut/(1 - fee)) = reserveIn * reserveOut
-	// x = (reserveIn * amountOut ) / (reserveOut * (1-fee) - amountOut)
+	// x = (reserveIn * amountOut * 10000) / (reserveOut * (10000-fee) - amountOut * 10000)
 	inline static sint64 getAmountInTakeFeeFromOutToken(sint64& amountOut, sint64& reserveIn, sint64& reserveOut, uint32 fee, uint128& numerator, uint128& denominator, uint128& tmpRes)
 	{
-		numerator = uint128(reserveIn) * uint128(amountOut);
-		if (div(uint128(reserveOut) * uint128(QSWAP_SWAP_FEE_BASE - fee), uint128(QSWAP_SWAP_FEE_BASE)) < uint128(amountOut))
+		if (amountOut >= MAX_AMOUNT) return -1;
+
+		// Calculate full numerator to avoid premature truncation
+		numerator = uint128(reserveIn) * uint128(amountOut) * uint128(QSWAP_SWAP_FEE_BASE);
+
+		// Check: reserveOut * (1-fee) must be greater than amountOut
+		// Scale reserveOut by (10000-fee) and amountOut by 10000 for comparison
+		// Use tmpRes and denominator temporarily for the comparison
+		tmpRes = uint128(reserveOut) * uint128(QSWAP_SWAP_FEE_BASE - fee);
+		denominator = uint128(amountOut) * uint128(QSWAP_SWAP_FEE_BASE);
+
+		if (tmpRes <= denominator)
 		{
 			return -1;
 		}
-		denominator = div(uint128(reserveOut) * uint128(QSWAP_SWAP_FEE_BASE - fee), uint128(QSWAP_SWAP_FEE_BASE)) - uint128(amountOut);
 
-		tmpRes = div(numerator, denominator);
-		if ((tmpRes.high != 0)|| (tmpRes.low > 0x7FFFFFFFFFFFFFFF))
+		denominator = tmpRes - denominator;
+
+		// Use floor + 1 to ensure user pays at least enough (protects LPs)
+		tmpRes = div(numerator, denominator) + uint128(1);
+
+		if ((tmpRes.high != 0) || (tmpRes.low > 0x7FFFFFFFFFFFFFFF))
 		{
 			return -1;
 		}
@@ -410,8 +517,10 @@ protected:
 		output.poolCreationFee = uint32(div(uint64(locals.feesOutput.assetIssuanceFee) * uint64(state.poolCreationFeeRate), uint64(QSWAP_FEE_BASE_100)));
 		output.transferFee = locals.feesOutput.transferFee;
 		output.swapFee = state.swapFeeRate;
-		output.teamFee = state.teamFeeRate;
-		output.protocolFee = state.protocolFeeRate;
+		output.shareholderFee = state.shareholderFeeRate;
+		output.investRewardsFee = state.investRewardsFeeRate;
+		output.qxFee = state.qxFeeRate;
+		output.burnFee = state.burnFeeRate;
 	}
 
 	struct GetPoolBasicState_locals
@@ -425,7 +534,7 @@ protected:
 	PUBLIC_FUNCTION_WITH_LOCALS(GetPoolBasicState)
 	{
 		output.poolExists = 0;
-		output.totalLiqudity = -1;
+		output.totalLiquidity = -1;
 		output.reservedAssetAmount = -1;
 		output.reservedQuAmount = -1;
 
@@ -459,32 +568,32 @@ protected:
 
 		output.reservedQuAmount = locals.poolBasicState.reservedQuAmount;
 		output.reservedAssetAmount = locals.poolBasicState.reservedAssetAmount;
-		output.totalLiqudity = locals.poolBasicState.totalLiqudity;
+		output.totalLiquidity = locals.poolBasicState.totalLiquidity;
 	}
 
-	struct GetLiqudityOf_locals
+	struct GetLiquidityOf_locals
 	{
 		id poolID;
 		sint64 liqElementIndex;
 	};
 
-	PUBLIC_FUNCTION_WITH_LOCALS(GetLiqudityOf)
+	PUBLIC_FUNCTION_WITH_LOCALS(GetLiquidityOf)
 	{
-		output.liqudity = 0;
+		output.liquidity = 0;
 
 		locals.poolID = input.assetIssuer;
 		locals.poolID.u64._3 = input.assetName;
 
-		locals.liqElementIndex = state.mLiquditys.headIndex(locals.poolID, 0);
+		locals.liqElementIndex = state.mLiquidities.headIndex(locals.poolID, 0);
 
 		while (locals.liqElementIndex != NULL_INDEX)
 		{
-			if (state.mLiquditys.element(locals.liqElementIndex).entity == input.account)
+			if (state.mLiquidities.element(locals.liqElementIndex).entity == input.account)
 			{
-				output.liqudity = state.mLiquditys.element(locals.liqElementIndex).liqudity;
+				output.liquidity = state.mLiquidities.element(locals.liqElementIndex).liquidity;
 				return;
 			}
-			locals.liqElementIndex = state.mLiquditys.nextElementIndex(locals.liqElementIndex);
+			locals.liqElementIndex = state.mLiquidities.nextElementIndex(locals.liqElementIndex);
 		}
 	}
 
@@ -528,8 +637,8 @@ protected:
 
 		locals.poolBasicState = state.mPoolBasicStates.get(locals.poolSlot);
 
-		// no liqudity in the pool
-		if (locals.poolBasicState.totalLiqudity == 0) 
+		// no liquidity in the pool
+		if (locals.poolBasicState.totalLiquidity == 0) 
 		{
 			return;
 		}
@@ -586,8 +695,8 @@ protected:
 
 		locals.poolBasicState = state.mPoolBasicStates.get(locals.poolSlot);
 
-		// no liqudity in the pool
-		if (locals.poolBasicState.totalLiqudity == 0)
+		// no liquidity in the pool
+		if (locals.poolBasicState.totalLiquidity == 0)
 		{
 			return;
 		}
@@ -649,8 +758,8 @@ protected:
 
 		locals.poolBasicState = state.mPoolBasicStates.get(locals.poolSlot);
 
-		// no liqudity in the pool
-		if (locals.poolBasicState.totalLiqudity == 0)
+		// no liquidity in the pool
+		if (locals.poolBasicState.totalLiquidity == 0)
 		{
 			return;
 		}
@@ -685,7 +794,7 @@ protected:
 		PoolBasicState poolBasicState;
 
 		uint32 i0;
-		uint128 i1;
+		uint128 i1, i2, i3;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(QuoteExactAssetOutput)
@@ -718,8 +827,8 @@ protected:
 
 		locals.poolBasicState = state.mPoolBasicStates.get(locals.poolSlot);
 
-		// no liqudity in the pool
-		if (locals.poolBasicState.totalLiqudity == 0)
+		// no liquidity in the pool
+		if (locals.poolBasicState.totalLiquidity == 0)
 		{
 			return;
 		}
@@ -734,14 +843,16 @@ protected:
 			locals.poolBasicState.reservedQuAmount,
 			locals.poolBasicState.reservedAssetAmount,
 			state.swapFeeRate,
-			locals.i1
+			locals.i1,
+			locals.i2,
+			locals.i3
 		);
 	}
 
-	PUBLIC_FUNCTION(TeamInfo)
+	PUBLIC_FUNCTION(InvestRewardsInfo)
 	{
-		output.teamId = state.teamId;
-		output.teamFee = state.teamFeeRate;
+		output.investRewardsFee = state.investRewardsFeeRate;
+		output.investRewardsId = state.investRewardsId;
 	}
 
 //
@@ -800,10 +911,13 @@ protected:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
 		}
-		else if (qpi.invocationReward() > locals.feesOutput.assetIssuanceFee )
+		else
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.feesOutput.assetIssuanceFee);
-			state.protocolEarnedFee += locals.feesOutput.assetIssuanceFee;
+			if (qpi.invocationReward() > locals.feesOutput.assetIssuanceFee)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.feesOutput.assetIssuanceFee);
+			}
+			state.shareholderEarnedFee += locals.feesOutput.assetIssuanceFee;
 		}
 	}
 
@@ -879,7 +993,7 @@ protected:
 		locals.poolBasicState.poolID = locals.poolID;
 		locals.poolBasicState.reservedAssetAmount = 0;
 		locals.poolBasicState.reservedQuAmount = 0;
-		locals.poolBasicState.totalLiqudity = 0;
+		locals.poolBasicState.totalLiquidity = 0;
 
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
 
@@ -887,27 +1001,28 @@ protected:
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.poolCreationFee );
 		}
-		state.protocolEarnedFee += locals.poolCreationFee;
+		state.shareholderEarnedFee += locals.poolCreationFee;
 
 		output.success = true;
 	}
 
 
-	struct AddLiqudity_locals
+	struct AddLiquidity_locals
 	{
+		QSWAPAddLiquidityMessage addLiquidityMessage;
 		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
-		LiqudityInfo tmpLiqudity;
+		LiquidityInfo tmpLiquidity;
 
-		sint64 userLiqudityElementIndex;
+		sint64 userLiquidityElementIndex;
 		sint64 quAmountDesired;
 
 		sint64 quTransferAmount;
 		sint64 assetTransferAmount;
 		sint64 quOptimalAmount;
 		sint64 assetOptimalAmount;
-		sint64 increaseLiqudity;
+		sint64 increaseLiquidity;
 		sint64 reservedAssetAmountBefore;
 		sint64 reservedAssetAmountAfter;
 
@@ -918,13 +1033,13 @@ protected:
 		uint128 i1, i2, i3;
 	};
 
-	PUBLIC_PROCEDURE_WITH_LOCALS(AddLiqudity)
+	PUBLIC_PROCEDURE_WITH_LOCALS(AddLiquidity)
 	{
-		output.userIncreaseLiqudity = 0;
+		output.userIncreaseLiquidity = 0;
 		output.assetAmount = 0;
 		output.quAmount = 0;
 
-		// add liqudity must stake both qu and asset
+		// add liquidity must stake both qu and asset
 		if (qpi.invocationReward() <= 0)
 		{
 			return;
@@ -965,7 +1080,7 @@ protected:
 
 		// check if pool state meet the input condition before desposit 
 		// and confirm the final qu and asset amount to stake
-		if (locals.poolBasicState.totalLiqudity == 0)
+		if (locals.poolBasicState.totalLiquidity == 0)
 		{
 			locals.quTransferAmount = locals.quAmountDesired;
 			locals.assetTransferAmount = input.assetAmountDesired;
@@ -1046,11 +1161,11 @@ protected:
 		}
 
 		// for pool's initial mint 
-		if (locals.poolBasicState.totalLiqudity == 0)
+		if (locals.poolBasicState.totalLiquidity == 0)
 		{
-			locals.increaseLiqudity = sqrt(locals.quTransferAmount, locals.assetTransferAmount, locals.i1, locals.i2, locals.i3);
+			locals.increaseLiquidity = sqrt(locals.quTransferAmount, locals.assetTransferAmount, locals.i1, locals.i2, locals.i3);
 
-			if (locals.increaseLiqudity < QSWAP_MIN_LIQUDITY )
+			if (locals.increaseLiquidity < QSWAP_MIN_LIQUIDITY )
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				return;
@@ -1088,22 +1203,22 @@ protected:
 			}
 
 			// permanently lock the first MINIMUM_LIQUIDITY tokens
-			locals.tmpLiqudity.entity = SELF;
-			locals.tmpLiqudity.liqudity = QSWAP_MIN_LIQUDITY;
-			state.mLiquditys.add(locals.poolID, locals.tmpLiqudity, 0);
+			locals.tmpLiquidity.entity = SELF;
+			locals.tmpLiquidity.liquidity = QSWAP_MIN_LIQUIDITY;
+			state.mLiquidities.add(locals.poolID, locals.tmpLiquidity, 0);
 
-			locals.tmpLiqudity.entity = qpi.invocator();
-			locals.tmpLiqudity.liqudity = locals.increaseLiqudity - QSWAP_MIN_LIQUDITY;
-			state.mLiquditys.add(locals.poolID, locals.tmpLiqudity, 0);
+			locals.tmpLiquidity.entity = qpi.invocator();
+			locals.tmpLiquidity.liquidity = locals.increaseLiquidity - QSWAP_MIN_LIQUIDITY;
+			state.mLiquidities.add(locals.poolID, locals.tmpLiquidity, 0);
 
 			output.quAmount = locals.quTransferAmount;
 			output.assetAmount = locals.assetTransferAmount;
-			output.userIncreaseLiqudity = locals.increaseLiqudity - QSWAP_MIN_LIQUDITY;
+			output.userIncreaseLiquidity = locals.increaseLiquidity - QSWAP_MIN_LIQUIDITY;
 		}
 		else
 		{
 			locals.tmpIncLiq0 = div(
-				uint128(locals.quTransferAmount) * uint128(locals.poolBasicState.totalLiqudity),
+				uint128(locals.quTransferAmount) * uint128(locals.poolBasicState.totalLiquidity),
 				uint128(locals.poolBasicState.reservedQuAmount)
 			);
 			if (locals.tmpIncLiq0.high != 0 || locals.tmpIncLiq0.low > 0x7FFFFFFFFFFFFFFF)
@@ -1112,7 +1227,7 @@ protected:
 				return;
 			}
 			locals.tmpIncLiq1 = div(
-				uint128(locals.assetTransferAmount) * uint128(locals.poolBasicState.totalLiqudity),
+				uint128(locals.assetTransferAmount) * uint128(locals.poolBasicState.totalLiquidity),
 				uint128(locals.poolBasicState.reservedAssetAmount)
 			);
 			if (locals.tmpIncLiq1.high != 0 || locals.tmpIncLiq1.low > 0x7FFFFFFFFFFFFFFF)
@@ -1125,29 +1240,29 @@ protected:
 			// 	quTransferAmount * totalLiquity / reserveQuAmount,
 			// 	assetTransferAmount * totalLiquity / reserveAssetAmount
 			// );
-			locals.increaseLiqudity = min(sint64(locals.tmpIncLiq0.low), sint64(locals.tmpIncLiq1.low));
+			locals.increaseLiquidity = min(sint64(locals.tmpIncLiq0.low), sint64(locals.tmpIncLiq1.low));
 
 			// maybe too little input 
-			if (locals.increaseLiqudity == 0)
+			if (locals.increaseLiquidity == 0)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				return;
 			}
 
-			// find user liqudity index
-			locals.userLiqudityElementIndex = state.mLiquditys.headIndex(locals.poolID, 0);
-			while (locals.userLiqudityElementIndex != NULL_INDEX)
+			// find user liquidity index
+			locals.userLiquidityElementIndex = state.mLiquidities.headIndex(locals.poolID, 0);
+			while (locals.userLiquidityElementIndex != NULL_INDEX)
 			{
-				if(state.mLiquditys.element(locals.userLiqudityElementIndex).entity == qpi.invocator())
+				if(state.mLiquidities.element(locals.userLiquidityElementIndex).entity == qpi.invocator())
 				{
 					break;
 				}
 
-				locals.userLiqudityElementIndex = state.mLiquditys.nextElementIndex(locals.userLiqudityElementIndex);
+				locals.userLiquidityElementIndex = state.mLiquidities.nextElementIndex(locals.userLiquidityElementIndex);
 			}
 
-			// no more space for new liqudity item
-			if ((locals.userLiqudityElementIndex == NULL_INDEX) && ( state.mLiquditys.population() == state.mLiquditys.capacity()))
+			// no more space for new liquidity item
+			if ((locals.userLiquidityElementIndex == NULL_INDEX) && ( state.mLiquidities.population() == state.mLiquidities.capacity()))
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				return;
@@ -1186,29 +1301,39 @@ protected:
 				return;
 			}
 
-			if (locals.userLiqudityElementIndex == NULL_INDEX)
+			if (locals.userLiquidityElementIndex == NULL_INDEX)
 			{
-				locals.tmpLiqudity.entity = qpi.invocator();
-				locals.tmpLiqudity.liqudity = locals.increaseLiqudity;
-				state.mLiquditys.add(locals.poolID, locals.tmpLiqudity, 0);
+				locals.tmpLiquidity.entity = qpi.invocator();
+				locals.tmpLiquidity.liquidity = locals.increaseLiquidity;
+				state.mLiquidities.add(locals.poolID, locals.tmpLiquidity, 0);
 			}
 			else
 			{
-				locals.tmpLiqudity = state.mLiquditys.element(locals.userLiqudityElementIndex);
-				locals.tmpLiqudity.liqudity += locals.increaseLiqudity;
-				state.mLiquditys.replace(locals.userLiqudityElementIndex, locals.tmpLiqudity);
+				locals.tmpLiquidity = state.mLiquidities.element(locals.userLiquidityElementIndex);
+				locals.tmpLiquidity.liquidity += locals.increaseLiquidity;
+				state.mLiquidities.replace(locals.userLiquidityElementIndex, locals.tmpLiquidity);
 			}
 
 			output.quAmount = locals.quTransferAmount;
 			output.assetAmount = locals.assetTransferAmount;
-			output.userIncreaseLiqudity = locals.increaseLiqudity;
+			output.userIncreaseLiquidity = locals.increaseLiquidity;
 		}
 
 		locals.poolBasicState.reservedQuAmount += locals.quTransferAmount;
 		locals.poolBasicState.reservedAssetAmount += locals.assetTransferAmount;
-		locals.poolBasicState.totalLiqudity += locals.increaseLiqudity;
+		locals.poolBasicState.totalLiquidity += locals.increaseLiquidity;
 
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log AddLiquidity procedure
+		locals.addLiquidityMessage._contractIndex = SELF_INDEX;
+		locals.addLiquidityMessage._type = QSWAPAddLiquidity;
+		locals.addLiquidityMessage.assetIssuer = input.assetIssuer;
+		locals.addLiquidityMessage.assetName = input.assetName;
+		locals.addLiquidityMessage.userIncreaseLiquidity = output.userIncreaseLiquidity;
+		locals.addLiquidityMessage.quAmount = output.quAmount;
+		locals.addLiquidityMessage.assetAmount = output.assetAmount;
+		LOG_INFO(locals.addLiquidityMessage);
 
 		if (qpi.invocationReward() > locals.quTransferAmount)
 		{
@@ -1216,20 +1341,21 @@ protected:
 		}
 	}
 
-	struct RemoveLiqudity_locals
+	struct RemoveLiquidity_locals
 	{
+		QSWAPRemoveLiquidityMessage removeLiquidityMessage;
 		id poolID;
 		PoolBasicState poolBasicState;
-		sint64 userLiqudityElementIndex;
+		sint64 userLiquidityElementIndex;
 		sint64 poolSlot;
-		LiqudityInfo userLiqudity;
+		LiquidityInfo userLiquidity;
 		sint64 burnQuAmount;
 		sint64 burnAssetAmount;
 
 		uint32 i0;
 	};
 
-	PUBLIC_PROCEDURE_WITH_LOCALS(RemoveLiqudity)
+	PUBLIC_PROCEDURE_WITH_LOCALS(RemoveLiquidity)
 	{
 		output.quAmount = 0;
 		output.assetAmount = 0;
@@ -1268,45 +1394,45 @@ protected:
 
 		locals.poolBasicState = state.mPoolBasicStates.get(locals.poolSlot);
 
-		locals.userLiqudityElementIndex = state.mLiquditys.headIndex(locals.poolID, 0);
-		while (locals.userLiqudityElementIndex != NULL_INDEX)
+		locals.userLiquidityElementIndex = state.mLiquidities.headIndex(locals.poolID, 0);
+		while (locals.userLiquidityElementIndex != NULL_INDEX)
 		{
-			if(state.mLiquditys.element(locals.userLiqudityElementIndex).entity == qpi.invocator())
+			if(state.mLiquidities.element(locals.userLiquidityElementIndex).entity == qpi.invocator())
 			{
 				break;
 			}
 
-			locals.userLiqudityElementIndex = state.mLiquditys.nextElementIndex(locals.userLiqudityElementIndex);
+			locals.userLiquidityElementIndex = state.mLiquidities.nextElementIndex(locals.userLiquidityElementIndex);
 		}
 
-		if (locals.userLiqudityElementIndex == NULL_INDEX)
+		if (locals.userLiquidityElementIndex == NULL_INDEX)
 		{
 			return;
 		}
 
-		locals.userLiqudity = state.mLiquditys.element(locals.userLiqudityElementIndex);
+		locals.userLiquidity = state.mLiquidities.element(locals.userLiquidityElementIndex);
 
-		// not enough liqudity for burning
-		if (locals.userLiqudity.liqudity < input.burnLiqudity )
+		// not enough liquidity for burning
+		if (locals.userLiquidity.liquidity < input.burnLiquidity )
 		{
 			return;
 		}
 
-		if (locals.poolBasicState.totalLiqudity < input.burnLiqudity )
+		if (locals.poolBasicState.totalLiquidity < input.burnLiquidity )
 		{
 			return;
 		}
 
-		// since burnLiqudity < totalLiqudity, so there will be no overflow risk
+		// since burnLiquidity < totalLiquidity, so there will be no overflow risk
 		locals.burnQuAmount = sint64(div(
-				uint128(input.burnLiqudity) * uint128(locals.poolBasicState.reservedQuAmount),
-				uint128(locals.poolBasicState.totalLiqudity)
+				uint128(input.burnLiquidity) * uint128(locals.poolBasicState.reservedQuAmount),
+				uint128(locals.poolBasicState.totalLiquidity)
 			).low);
 
-		// since burnLiqudity < totalLiqudity, so there will be no overflow risk
+		// since burnLiquidity < totalLiquidity, so there will be no overflow risk
 		locals.burnAssetAmount = sint64(div(
-				uint128(input.burnLiqudity) * uint128(locals.poolBasicState.reservedAssetAmount),
-				uint128(locals.poolBasicState.totalLiqudity)
+				uint128(input.burnLiquidity) * uint128(locals.poolBasicState.reservedAssetAmount),
+				uint128(locals.poolBasicState.totalLiquidity)
 			).low);
 
 
@@ -1329,27 +1455,35 @@ protected:
 		output.quAmount = locals.burnQuAmount;
 		output.assetAmount = locals.burnAssetAmount;
 
-		// modify invocator's liqudity info
-		locals.userLiqudity.liqudity -= input.burnLiqudity;
-		if (locals.userLiqudity.liqudity == 0)
+		// modify invocator's liquidity info
+		locals.userLiquidity.liquidity -= input.burnLiquidity;
+		if (locals.userLiquidity.liquidity == 0)
 		{
-			state.mLiquditys.remove(locals.userLiqudityElementIndex);
+			state.mLiquidities.remove(locals.userLiquidityElementIndex);
 		}
 		else
 		{
-			state.mLiquditys.replace(locals.userLiqudityElementIndex, locals.userLiqudity);
+			state.mLiquidities.replace(locals.userLiquidityElementIndex, locals.userLiquidity);
 		}
 
-		// modify the pool's liqudity info
-		locals.poolBasicState.totalLiqudity -= input.burnLiqudity;
+		// modify the pool's liquidity info
+		locals.poolBasicState.totalLiquidity -= input.burnLiquidity;
 		locals.poolBasicState.reservedQuAmount -= locals.burnQuAmount;
 		locals.poolBasicState.reservedAssetAmount -= locals.burnAssetAmount;
 
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log RemoveLiquidity procedure
+		locals.removeLiquidityMessage._contractIndex = SELF_INDEX;
+		locals.removeLiquidityMessage._type = QSWAPRemoveLiquidity;
+		locals.removeLiquidityMessage.quAmount = output.quAmount;
+		locals.removeLiquidityMessage.assetAmount = output.assetAmount;
+		LOG_INFO(locals.removeLiquidityMessage);
 	}
 
 	struct SwapExactQuForAsset_locals
 	{
+		QSWAPSwapMessage swapMessage;
 		id poolID;
 		sint64 poolSlot;
 		sint64 quAmountIn;
@@ -1359,8 +1493,11 @@ protected:
 		uint32 i0;
 		uint128 i1, i2, i3, i4;
 		uint128 swapFee;
-		uint128 feeToTeam;
-		uint128 feeToProtocol;
+		uint128 feeToInvestRewards;
+		uint128 feeToShareholders;
+
+		uint128 feeToQx;
+		uint128 feeToBurn;
 	};
 
 	// given an input qu amountIn, only execute swap in case (amountOut >= amountOutMin)
@@ -1404,8 +1541,8 @@ protected:
 
 		locals.poolBasicState = state.mPoolBasicStates.get(locals.poolSlot);
 
-		// check the liqudity validity 
-		if (locals.poolBasicState.totalLiqudity == 0)
+		// check the liquidity validity 
+		if (locals.poolBasicState.totalLiquidity == 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
@@ -1436,6 +1573,22 @@ protected:
 			return;
 		}
 
+		// swapFee = quAmountIn * 0.3% (swapFeeRate/10000)
+		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
+		locals.swapFee = div(uint128(locals.quAmountIn) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
+		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToBurn = div(locals.swapFee * uint128(state.burnFeeRate), uint128(QSWAP_FEE_BASE_100));
+
+		// Overflow protection: ensure all fees fit in uint64
+		if (locals.feeToShareholders.high != 0 || locals.feeToQx.high != 0 ||
+		    locals.feeToInvestRewards.high != 0 || locals.feeToBurn.high != 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		}
+
 		// transfer the asset from pool to qpi.invocator()
 		output.assetAmountOut = qpi.transferShareOwnershipAndPossession(
 			input.assetName,
@@ -1453,23 +1606,29 @@ protected:
 			return;
 		}
 
-		// swapFee = quAmountIn * 0.3% (swapFeeRate/10000)
-		// feeToTeam = swapFee * 20% (teamFeeRate/100)
-		// feeToProtocol = (swapFee - feeToTeam) * 20% (protocolFeeRate/100)
-		locals.swapFee = div(uint128(locals.quAmountIn)*uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
-		locals.feeToTeam = div(locals.swapFee * uint128(state.teamFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToProtocol = div((locals.swapFee - locals.feeToTeam) * uint128(state.protocolFeeRate), uint128(QSWAP_FEE_BASE_100));
+		// update fee state after successful transfer
+		state.shareholderEarnedFee += locals.feeToShareholders.low;
+		state.qxEarnedFee += locals.feeToQx.low;
+		state.investRewardsEarnedFee += locals.feeToInvestRewards.low;
+		state.burnEarnedFee += locals.feeToBurn.low;
 
-		state.teamEarnedFee += locals.feeToTeam.low;
-		state.protocolEarnedFee += locals.feeToProtocol.low;
-
-		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - sint64(locals.feeToTeam.low) - sint64(locals.feeToProtocol.low);
+		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - sint64(locals.feeToShareholders.low) - sint64(locals.feeToQx.low) - sint64(locals.feeToInvestRewards.low) - sint64(locals.feeToBurn.low);
 		locals.poolBasicState.reservedAssetAmount -= locals.assetAmountOut;
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log SwapExactQuForAsset procedure
+		locals.swapMessage._contractIndex = SELF_INDEX;
+		locals.swapMessage._type = QSWAPSwapExactQuForAsset;
+		locals.swapMessage.assetIssuer = input.assetIssuer;
+		locals.swapMessage.assetName = input.assetName;
+		locals.swapMessage.assetAmountIn = locals.quAmountIn;
+		locals.swapMessage.assetAmountOut = output.assetAmountOut;
+		LOG_INFO(locals.swapMessage);
 	}
 
 	struct SwapQuForExactAsset_locals
 	{
+		QSWAPSwapMessage swapMessage;
 		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
@@ -1477,10 +1636,12 @@ protected:
 		sint64 transferredAssetAmount;
 
 		uint32 i0;
-		uint128 i1;
+		uint128 i1, i2, i3;
 		uint128 swapFee;
-		uint128 feeToTeam;
-		uint128 feeToProtocol;
+		uint128 feeToInvestRewards;
+		uint128 feeToShareholders;
+		uint128 feeToQx;
+		uint128 feeToBurn;
 	};
 
 	// https://docs.uniswap.org/contracts/v2/reference/smart-contracts/router-02#swaptokensforexacttokens
@@ -1522,8 +1683,8 @@ protected:
 
 		locals.poolBasicState = state.mPoolBasicStates.get(locals.poolSlot);
 
-		// check if there is liqudity in the poool 
-		if (locals.poolBasicState.totalLiqudity == 0)
+		// check if there is liquidity in the poool 
+		if (locals.poolBasicState.totalLiquidity == 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
@@ -1541,7 +1702,9 @@ protected:
 			locals.poolBasicState.reservedQuAmount,
 			locals.poolBasicState.reservedAssetAmount,
 			state.swapFeeRate,
-			locals.i1
+			locals.i1,
+			locals.i2,
+			locals.i3
 		);
 
 		// above call overflow
@@ -1560,6 +1723,22 @@ protected:
 
 		// not meet user's amountIn limit
 		if (locals.quAmountIn > qpi.invocationReward())
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		}
+
+		// swapFee = quAmountIn * 0.3% (swapFeeRate/10000)
+		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
+		locals.swapFee = div(uint128(locals.quAmountIn) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
+		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToBurn = div(locals.swapFee * uint128(state.burnFeeRate), uint128(QSWAP_FEE_BASE_100));
+
+		// Overflow protection: ensure all fees fit in uint64
+		if (locals.feeToShareholders.high != 0 || locals.feeToQx.high != 0 ||
+		    locals.feeToInvestRewards.high != 0 || locals.feeToBurn.high != 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
@@ -1588,23 +1767,29 @@ protected:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.quAmountIn);
 		}
 
-		// swapFee = quAmountIn * 0.3%
-		// feeToTeam = swapFee * 20%
-		// feeToProtocol = (swapFee - feeToTeam) * 20%
-		locals.swapFee = div(uint128(locals.quAmountIn)*uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
-		locals.feeToTeam = div(locals.swapFee * uint128(state.teamFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToProtocol = div((locals.swapFee - locals.feeToTeam) * uint128(state.protocolFeeRate), uint128(QSWAP_FEE_BASE_100));
+		// update fee state after successful transfer
+		state.shareholderEarnedFee += locals.feeToShareholders.low;
+		state.qxEarnedFee += locals.feeToQx.low;
+		state.investRewardsEarnedFee += locals.feeToInvestRewards.low;
+		state.burnEarnedFee += locals.feeToBurn.low;
 
-		state.teamEarnedFee += locals.feeToTeam.low;
-		state.protocolEarnedFee += locals.feeToProtocol.low;
-
-		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - sint64(locals.feeToTeam.low) - sint64(locals.feeToProtocol.low);
+		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - sint64(locals.feeToShareholders.low) - sint64(locals.feeToQx.low) - sint64(locals.feeToInvestRewards.low) - sint64(locals.feeToBurn.low);
 		locals.poolBasicState.reservedAssetAmount -= input.assetAmountOut;
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log SwapQuForExactAsset procedure
+		locals.swapMessage._contractIndex = SELF_INDEX;
+		locals.swapMessage._type = QSWAPSwapQuForExactAsset;
+		locals.swapMessage.assetIssuer = input.assetIssuer;
+		locals.swapMessage.assetName = input.assetName;
+		locals.swapMessage.assetAmountIn = output.quAmountIn;
+		locals.swapMessage.assetAmountOut = input.assetAmountOut;
+		LOG_INFO(locals.swapMessage);
 	}
 
 	struct SwapExactAssetForQu_locals
 	{
+		QSWAPSwapMessage swapMessage;
 		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
@@ -1616,8 +1801,10 @@ protected:
 		uint32 i0;
 		uint128 i1, i2, i3;
 		uint128 swapFee;
-		uint128 feeToTeam;
-		uint128 feeToProtocol;
+		uint128 feeToInvestRewards;
+		uint128 feeToShareholders;
+		uint128 feeToQx;
+		uint128 feeToBurn;
 	};
 
 	// given an amount of asset swap in, only execute swaping if quAmountOut >= input.amountOutMin
@@ -1650,14 +1837,13 @@ protected:
 
 		if (locals.poolSlot == -1)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
 		}
 
 		locals.poolBasicState = state.mPoolBasicStates.get(locals.poolSlot);
 
-		// check the liqudity validity 
-		if (locals.poolBasicState.totalLiqudity == 0)
+		// check the liquidity validity 
+		if (locals.poolBasicState.totalLiquidity == 0)
 		{
 			return;
 		}
@@ -1704,6 +1890,22 @@ protected:
 			return;
 		}
 
+		// swapFee = quAmountOutWithFee * 0.3% (swapFeeRate/10000)
+		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
+		locals.swapFee = div(uint128(locals.quAmountOutWithFee) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
+		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToBurn = div(locals.swapFee * uint128(state.burnFeeRate), uint128(QSWAP_FEE_BASE_100));
+
+		// Overflow protection: ensure all fees fit in uint64
+		if (locals.feeToShareholders.high != 0 || locals.feeToQx.high != 0 ||
+		    locals.feeToInvestRewards.high != 0 || locals.feeToBurn.high != 0)
+		{
+			return;
+		}
+
+		// transfer assets from user to pool
 		locals.transferredAssetAmountBefore = qpi.numberOfPossessedShares(
 			input.assetName,
 			input.assetIssuer,
@@ -1729,36 +1931,55 @@ protected:
 			SELF_INDEX
 		);
 
-		// pool does not receive enough asset
+		// pool does not receive enough asset, rollback any received shares
 		if (locals.transferredAssetAmountAfter - locals.transferredAssetAmountBefore < input.assetAmountIn)
 		{
+			// return any shares that were transferred
+			if (locals.transferredAssetAmountAfter > locals.transferredAssetAmountBefore)
+			{
+				qpi.transferShareOwnershipAndPossession(
+					input.assetName,
+					input.assetIssuer,
+					SELF,
+					SELF,
+					locals.transferredAssetAmountAfter - locals.transferredAssetAmountBefore,
+					qpi.invocator()
+				);
+			}
 			return;
 		}
 
 		qpi.transfer(qpi.invocator(), locals.quAmountOut);
 		output.quAmountOut = locals.quAmountOut;
 
-		// swapFee = quAmountOutWithFee * 0.3%
-		// feeToTeam = swapFee * 20%
-		// feeToProtocol = (swapFee - feeToTeam) * 20%
-		locals.swapFee = div(uint128(locals.quAmountOutWithFee) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
-		locals.feeToTeam = div(locals.swapFee * uint128(state.teamFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToProtocol = div((locals.swapFee - locals.feeToTeam) * uint128(state.protocolFeeRate), uint128(QSWAP_FEE_BASE_100));
+		// update fee state after successful transfers
+		state.shareholderEarnedFee += locals.feeToShareholders.low;
+		state.qxEarnedFee += locals.feeToQx.low;
+		state.investRewardsEarnedFee += locals.feeToInvestRewards.low;
+		state.burnEarnedFee += locals.feeToBurn.low;
 
 		// update pool states
 		locals.poolBasicState.reservedAssetAmount += input.assetAmountIn;
 		locals.poolBasicState.reservedQuAmount -= locals.quAmountOut;
-		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToTeam.low);
-		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToProtocol.low);
-
-		state.teamEarnedFee += locals.feeToTeam.low;
-		state.protocolEarnedFee += locals.feeToProtocol.low;
-
+		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToShareholders.low);
+		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToQx.low);
+		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToInvestRewards.low);
+		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToBurn.low);
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log SwapExactAssetForQu procedure
+		locals.swapMessage._contractIndex = SELF_INDEX;
+		locals.swapMessage._type = QSWAPSwapExactAssetForQu;
+		locals.swapMessage.assetIssuer = input.assetIssuer;
+		locals.swapMessage.assetName = input.assetName;
+		locals.swapMessage.assetAmountIn = input.assetAmountIn;
+		locals.swapMessage.assetAmountOut = output.quAmountOut;
+		LOG_INFO(locals.swapMessage);
 	}
 
 	struct SwapAssetForExactQu_locals
 	{
+		QSWAPSwapMessage swapMessage;
 		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
@@ -1769,8 +1990,10 @@ protected:
 		uint32 i0;
 		uint128 i1, i2, i3;
 		uint128 swapFee;
-		uint128 feeToTeam;
-		uint128 feeToProtocol;
+		uint128 feeToInvestRewards;
+		uint128 feeToShareholders;
+		uint128 feeToQx;
+		uint128 feeToBurn;
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(SwapAssetForExactQu)
@@ -1799,16 +2022,15 @@ protected:
 			}
 		}
 
-		if (locals.poolSlot == -1) 
+		if (locals.poolSlot == -1)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
 		}
 
 		locals.poolBasicState = state.mPoolBasicStates.get(locals.poolSlot);
 
-		// check the liqudity validity 
-		if (locals.poolBasicState.totalLiqudity == 0) 
+		// check the liquidity validity 
+		if (locals.poolBasicState.totalLiquidity == 0) 
 		{
 			return;
 		}
@@ -1854,6 +2076,21 @@ protected:
 			return;
 		}
 
+		// swapFee = quAmountOut * 30/(10_000 - 30)
+		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
+		locals.swapFee = div(uint128(input.quAmountOut) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate));
+		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
+		locals.feeToBurn = div(locals.swapFee * uint128(state.burnFeeRate), uint128(QSWAP_FEE_BASE_100));
+
+		// Overflow protection: ensure all fees fit in uint64
+		if (locals.feeToShareholders.high != 0 || locals.feeToQx.high != 0 ||
+		    locals.feeToInvestRewards.high != 0 || locals.feeToBurn.high != 0)
+		{
+			return;
+		}
+
 		locals.transferredAssetAmountBefore = qpi.numberOfPossessedShares(
 			input.assetName,
 			input.assetIssuer,
@@ -1879,30 +2116,50 @@ protected:
 			SELF_INDEX
 		);
 
+		// pool does not receive enough asset, rollback any received shares
 		if (locals.transferredAssetAmountAfter - locals.transferredAssetAmountBefore < locals.assetAmountIn)
 		{
+			// return any shares that were transferred
+			if (locals.transferredAssetAmountAfter > locals.transferredAssetAmountBefore)
+			{
+				qpi.transferShareOwnershipAndPossession(
+					input.assetName,
+					input.assetIssuer,
+					SELF,
+					SELF,
+					locals.transferredAssetAmountAfter - locals.transferredAssetAmountBefore,
+					qpi.invocator()
+				);
+			}
 			return;
 		}
 
 		qpi.transfer(qpi.invocator(), input.quAmountOut);
 		output.assetAmountIn = locals.assetAmountIn;
 
-		// swapFee = quAmountOut * 30/(10_000 - 30)
-		// feeToTeam = swapFee * 20% (teamFeeRate/100)
-		// feeToProtocol = (swapFee - feeToTeam) * 20% (protocolFeeRate/100)
-		locals.swapFee = div(uint128(input.quAmountOut) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate));
-		locals.feeToTeam = div(locals.swapFee * uint128(state.teamFeeRate), uint128(QSWAP_FEE_BASE_100));
-		locals.feeToProtocol = div((locals.swapFee - locals.feeToTeam) * uint128(state.protocolFeeRate), uint128(QSWAP_FEE_BASE_100));
-
-		state.teamEarnedFee += locals.feeToTeam.low;
-		state.protocolEarnedFee += locals.feeToProtocol.low;
+		// update fee state after successful transfers
+		state.shareholderEarnedFee += locals.feeToShareholders.low;
+		state.qxEarnedFee += locals.feeToQx.low;
+		state.investRewardsEarnedFee += locals.feeToInvestRewards.low;
+		state.burnEarnedFee += locals.feeToBurn.low;
 
 		// update pool states
 		locals.poolBasicState.reservedAssetAmount += locals.assetAmountIn;
 		locals.poolBasicState.reservedQuAmount -= input.quAmountOut;
-		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToTeam.low);
-		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToProtocol.low);
+		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToShareholders.low);
+		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToQx.low);
+		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToInvestRewards.low);
+		locals.poolBasicState.reservedQuAmount -= sint64(locals.feeToBurn.low);
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
+
+		// Log SwapAssetForExactQu procedure
+		locals.swapMessage._contractIndex = SELF_INDEX;
+		locals.swapMessage._type = QSWAPSwapAssetForExactQu;
+		locals.swapMessage.assetIssuer = input.assetIssuer;
+		locals.swapMessage.assetName = input.assetName;
+		locals.swapMessage.assetAmountIn = output.assetAmountIn;
+		locals.swapMessage.assetAmountOut = input.quAmountOut;
+		LOG_INFO(locals.swapMessage);
 	}
 
 	struct TransferShareOwnershipAndPossession_locals
@@ -1962,24 +2219,66 @@ protected:
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
-		else if (qpi.invocationReward() > locals.feesOutput.transferFee)
+		else
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.feesOutput.transferFee);
+			if (qpi.invocationReward() > locals.feesOutput.transferFee)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.feesOutput.transferFee);
+			}
+			state.shareholderEarnedFee += locals.feesOutput.transferFee;
 		}
-
-		state.protocolEarnedFee += locals.feesOutput.transferFee;
 	}
 
-	PUBLIC_PROCEDURE(SetTeamInfo)
+	PUBLIC_PROCEDURE(SetInvestRewardsInfo)
 	{
 		output.success = false;
-		if (qpi.invocator() != state.teamId)
+		if (qpi.invocator() != state.investRewardsId)
 		{
 			return;
 		}
 
-		state.teamId = input.newTeamId;
+		state.investRewardsId = input.newInvestRewardsId;
 		output.success = true;
+	}
+
+	PUBLIC_PROCEDURE(TransferShareManagementRights)
+	{
+		if (qpi.invocationReward() < QSWAP_FEE_BASE_100)
+		{
+			return ;
+		}
+
+		if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer,qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
+		{
+			// not enough shares available
+			output.transferredNumberOfShares = 0;
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+		}
+		else
+		{
+			if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
+				input.newManagingContractIndex, input.newManagingContractIndex, QSWAP_FEE_BASE_100) < 0)
+			{
+				// error
+				output.transferredNumberOfShares = 0;
+				if (qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+			}
+			else
+			{
+				// success
+				output.transferredNumberOfShares = input.numberOfShares;
+				if (qpi.invocationReward() > QSWAP_FEE_BASE_100)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward() -  QSWAP_FEE_BASE_100);
+				}
+			}
+		}
 	}
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
@@ -1987,53 +2286,107 @@ protected:
 		// functions
 		REGISTER_USER_FUNCTION(Fees, 1);
 		REGISTER_USER_FUNCTION(GetPoolBasicState, 2);
-		REGISTER_USER_FUNCTION(GetLiqudityOf, 3);
+		REGISTER_USER_FUNCTION(GetLiquidityOf, 3);
 		REGISTER_USER_FUNCTION(QuoteExactQuInput, 4);
 		REGISTER_USER_FUNCTION(QuoteExactQuOutput, 5);
 		REGISTER_USER_FUNCTION(QuoteExactAssetInput, 6);
 		REGISTER_USER_FUNCTION(QuoteExactAssetOutput, 7);
-		REGISTER_USER_FUNCTION(TeamInfo, 8);
+		REGISTER_USER_FUNCTION(InvestRewardsInfo, 8);
 
 		// procedure
 		REGISTER_USER_PROCEDURE(IssueAsset, 1);
 		REGISTER_USER_PROCEDURE(TransferShareOwnershipAndPossession, 2);
 		REGISTER_USER_PROCEDURE(CreatePool, 3);
-		REGISTER_USER_PROCEDURE(AddLiqudity, 4);
-		REGISTER_USER_PROCEDURE(RemoveLiqudity, 5);
+		REGISTER_USER_PROCEDURE(AddLiquidity, 4);
+		REGISTER_USER_PROCEDURE(RemoveLiquidity, 5);
 		REGISTER_USER_PROCEDURE(SwapExactQuForAsset, 6);
 		REGISTER_USER_PROCEDURE(SwapQuForExactAsset, 7);
 		REGISTER_USER_PROCEDURE(SwapExactAssetForQu, 8);
 		REGISTER_USER_PROCEDURE(SwapAssetForExactQu, 9);
-		REGISTER_USER_PROCEDURE(SetTeamInfo, 10);
+		REGISTER_USER_PROCEDURE(SetInvestRewardsInfo, 10);
+		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 11);
 	}
 
 	INITIALIZE()
 	{
-		state.swapFeeRate = 30; 		// 0.3%, must less than 10000
-		state.poolCreationFeeRate = 20; 	// 20%, must less than 100
-		// earned fee: 20% to team, 80% to (shareholders and stakers), share holders take 16% (20% * 80%), stakers take  64% (80% * 80%)
-		state.teamFeeRate = 20;			// 20%
-		state.protocolFeeRate = 20; 	// 20%, must less than 100
-		// IRUNQTXZRMLDEENHPRZQPSGPCFACORRUJYSBVJPQEHFCEKLLURVDDJVEXNBL
-		state.teamId = ID(_I, _R, _U, _N, _Q, _T, _X, _Z, _R, _M, _L, _D, _E, _E, _N, _H, _P, _R, _Z, _Q, _P, _S, _G, _P, _C, _F, _A, _C, _O, _R, _R, _U, _J, _Y, _S, _B, _V, _J, _P, _Q, _E, _H, _F, _C, _E, _K, _L, _L, _U, _R, _V, _D, _D, _J, _V, _E);
+		state.swapFeeRate = 30; 			// 0.3%, must be less than 10000
+		state.poolCreationFeeRate = 20; 	// 20%, must be less than 100
+
+		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP providers
+		state.shareholderFeeRate = 27; 		// 27% of swap fees to SC shareholders
+		state.investRewardsFeeRate = 3;		// 3% of swap fees to Invest & Rewards
+		state.qxFeeRate = 5;				// 5% of swap fees to QX
+		state.burnFeeRate = 1;				// 1% of swap fees burned
+
+		// 
+        state.investRewardsId = ID(_V, _J, _G, _R, _U, _F, _W, _J, _C, _U, _S, _N, _H, _C, _Q, _J, _R, _W, _R, _R, _Y, _X, _A, _U, _E, _J, _F, _C, _V, _H, _Y, _P, _X, _W, _K, _T, _D, _L, _Y, _K, _U, _A, _C, _P, _V, _V, _Y, _B, _G, _O, _L, _V, _C, _J, _S, _F);
 	}
 
-	END_TICK()
+	struct END_TICK_locals
 	{
-		// distribute team fee
-		if (state.teamEarnedFee > state.teamDistributedAmount)
+		uint64 toDistribute;
+		uint64 toBurn;
+		uint64 dividendPerComputor;
+		sint64 transferredAmount;
+		QSWAPFailedDistributionMessage logMsg;
+	};
+
+	END_TICK_WITH_LOCALS()
+	{
+		// Distribute Invest & Rewards fees
+		if (state.investRewardsEarnedFee > state.investRewardsDistributedAmount)
 		{
-			qpi.transfer(state.teamId, state.teamEarnedFee - state.teamDistributedAmount);
-			state.teamDistributedAmount += state.teamEarnedFee - state.teamDistributedAmount;
+			locals.toDistribute = state.investRewardsEarnedFee - state.investRewardsDistributedAmount;
+			locals.transferredAmount = qpi.transfer(state.investRewardsId, locals.toDistribute);
+			if (locals.transferredAmount < 0)
+			{
+				locals.logMsg._contractIndex = SELF_INDEX;
+				locals.logMsg._type = QSWAPFailedDistribution;
+				locals.logMsg.dst = state.investRewardsId;
+				locals.logMsg.amount = locals.toDistribute;
+				LOG_INFO(locals.logMsg);
+			}
+			else
+				state.investRewardsDistributedAmount += locals.toDistribute;
 		}
 
-		// distribute ipo fee
-		if ((div((state.protocolEarnedFee - state.protocolDistributedAmount), 676ULL) > 0) && (state.protocolEarnedFee > state.protocolDistributedAmount))
+		// Distribute QX fees as donation
+		if (state.qxEarnedFee > state.qxDistributedAmount)
 		{
-			if (qpi.distributeDividends(div((state.protocolEarnedFee - state.protocolDistributedAmount), 676ULL)))
+			locals.toDistribute = state.qxEarnedFee - state.qxDistributedAmount;
+			locals.transferredAmount = qpi.transfer(id(QX_CONTRACT_INDEX, 0, 0, 0), locals.toDistribute);
+			if (locals.transferredAmount < 0)
 			{
-				state.protocolDistributedAmount += div((state.protocolEarnedFee- state.protocolDistributedAmount), 676ULL) * NUMBER_OF_COMPUTORS;
+				locals.logMsg._contractIndex = SELF_INDEX;
+				locals.logMsg._type = QSWAPFailedDistribution;
+				locals.logMsg.dst = id(QX_CONTRACT_INDEX, 0, 0, 0);
+				locals.logMsg.amount = locals.toDistribute;
+				LOG_INFO(locals.logMsg);
+			}
+			else
+				state.qxDistributedAmount += locals.toDistribute;
+		}
+
+		// Distribute shareholder fees (to IPO shareholders via dividends)
+		if (state.shareholderEarnedFee > state.shareholderDistributedAmount)
+		{
+			locals.dividendPerComputor = div((state.shareholderEarnedFee - state.shareholderDistributedAmount), 676ULL);
+			if (locals.dividendPerComputor > 0 && qpi.distributeDividends(locals.dividendPerComputor))
+			{
+				state.shareholderDistributedAmount += locals.dividendPerComputor * NUMBER_OF_COMPUTORS;
 			}
 		}
+
+		// Burn fees (adds to contract execution fee reserve)
+		if (state.burnEarnedFee > state.burnedAmount)
+		{
+			locals.toBurn = state.burnEarnedFee - state.burnedAmount;
+			qpi.burn(locals.toBurn);
+			state.burnedAmount += locals.toBurn;
+		}
 	}
+	PRE_ACQUIRE_SHARES()
+    {
+		output.allowTransfer = true;
+    }
 };

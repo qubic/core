@@ -68,7 +68,8 @@ In order to develop a contract, follow these steps:
     - Design and implement the interfaces of your contract (the user procedures and user functions along with its inputs and outputs).
       The QPI available for implementing the contract is defined in `src/contracts/qpi.h`.
     - Implement the system procedures needed and remove all the system procedures that are not needed by your contract.
-    - Add the short form contract name as a prefix to all global constants (if any).
+    - Follow the general [qubic style guidelines](https://github.com/qubic/core/blob/main/doc/contributing.md#style-guidelines) when writing your code.
+    - Add the short form contract name as a prefix to all global constants, structs and classes (if any).
     - Make sure your code is efficient. Execution time will cost fees in the future.
       Think about the data structures you use, for example if you can use a hash map instead of an array with linear search.
       Check if you can optimize code in loops and especially in nested loops.
@@ -92,10 +93,13 @@ In order to develop a contract, follow these steps:
 ## Review and tests
 
 Each contract must be validated with the following steps:
-1. The contract is verified with a special software tool, ensuring that it complies with the formal requirements mentioned above, such as no use of forbidden C++ features.
-   (Currently, this tool has not been implemented yet. Thus, this check needs to be done during the review in point 3.)
+1. The contract is verified with the [Qubic Contract Verification Tool](https://github.com/Franziska-Mueller/qubic-contract-verify), ensuring that it complies with the formal requirements mentioned above, such as no use of [forbidden C++ features](#restrictions-of-c-language-features).
+   In the `qubic/core` repository, the tool is run automatically as GitHub workflow for PRs to the `develop` and `main` branches (as well as for commits in these branches).
+   However, since workflow runs on PRs require maintainer approval, we highly recommend to either build the tool from source or use the GitHub action provided in the tool's repository to analyze your contract header file before opening your PR.   
 2. The features of the contract have to be extensively tested with automated tests implemented within the Qubic Core's GoogleTest framework.
 3. The contract and testing code must be reviewed by at least one of the Qubic Core devs, ensuring it meets high quality standards.
+   For this, open a pull request on GitHub, add a meaningful description about the new contract and request a review from one of the Core devs (preferred: assign via GitHub, otherwise ping on discord).
+   Disclaimer: The Core devs review for compliance with the restricted C++ language subset and the style guidelines. The contract devs are solely responsible for the correctness of the code, including the safety of the funds. 
 4. Before integrating the contract in the official Qubic Core release, the features of the contract must be tested in a test network with multiple nodes, showing that the contract works well in practice and that the nodes run stable with the contract.
 
 After going through this validation process, a contract can be integrated in official releases of the Qubic Core code.
@@ -105,7 +109,7 @@ After going through this validation process, a contract can be integrated in off
 
 Steps for deploying a contract:
 
-1. Finish development, review, and tests as written above.
+1. Finish development, review, and tests as written above. This includes waiting for approval of your PR by the core dev team. If you need to make any significant changes to the code after the computors accepted your proposal, you will need to make a second proposal. 
 2. A proposal for including your contract into the Qubic Core needs to be prepared.
    We recommend to add your proposal description to https://github.com/qubic/proposal/tree/main/SmartContracts via a pull request (this directory also contains files from other contracts added before, which can be used as a template).
    The proposal description should include a detailed description of your contract (see point 1 of the [Development section](#development)) and the final source code of the contract.
@@ -143,7 +147,7 @@ PUBLIC_PROCEDURE(ProcedureName)
 ### User functions
 
 User functions cannot modify the contract's state, but they are useful to query information from the state, either with the network message `RequestContractFunction`, or by a function or procedure of the same or another contract.
-Functions can be called by procedures, but procedures cannot be called by functions.
+Functions can be called by procedures, but procedures cannot be called by functions. Logging is not allowed inside functions.
 
 A user function has to be defined with one of the following the QPI macros, passing the name of the function: `PUBLIC_FUNCTION(NAME)`, `PUBLIC_FUNCTION_WITH_LOCALS(NAME)`, `PRIVATE_FUNCTION(NAME)`, or `PRIVATE_FUNCTION_WITH_LOCALS(NAME)`.
 
@@ -241,9 +245,12 @@ They are defined with the following macros:
 8. `POST_RELEASE_SHARES()`: Called after asset management rights were transferred from this contract to another contract that called `qpi.acquireShare()`
 9. `POST_ACQUIRE_SHARES()`: Called after asset management rights were transferred to this contract from another contract that called `qpi.releaseShare()`.
 10. `POST_INCOMING_TRANSFER()`: Called after QUs have been transferred to this contract. [More details...](#callback-post_incoming_transfer)
+11. `SET_SHAREHOLDER_PROPOSAL()`: Called if another contracts tries to set a shareholder proposal in this contract by calling `qpi.setShareholderProposal()`.
+12. `SET_SHAREHOLDER_VOTES()`: Called if another contracts tries to set a shareholder proposal in this contract by calling `qpi.setShareholderVotes()`.
 
 System procedures 1 to 5 have no input and output.
 The input and output of system procedures 6 to 9 are discussed in the section about [management rights transfer](#management-rights-transfer).
+The system procedure 11 and 12 are discussed in the section about [contracts as shareholder of other contracts](contracts_proposals.md#contracts-as-shareholders-of-other-contracts)
 
 The contract state is passed to each of the procedures as a reference named `state`.
 And it can be modified (in contrast to contract functions).
@@ -292,6 +299,10 @@ QX rejects all attempts (`qpi.acquireShares()`) of other contracts to acquire ri
 ### Referencing of asset shares
 
 TODO
+
+In the universe, NULL_ID is only used for owner / possessor for temporary entries during the IPO between issuing a contract asset and transferring the ownership/possession.
+Further, NULL_ID is used for burning asset shares by transferring ownership / possession to NULL_ID.
+
 
 ### Management rights transfer
 
@@ -539,16 +550,28 @@ The type of transfer has one of the following values:
 - `TransferType::ipoBidRefund`: This transfer type is triggered if the contract has placed a bid in a contract IPO with `qpi.bidInIPO()` and QUs are refunded.
   This can happen in while executing `qpi.bidInIPO()`, when an IPO bid transaction is processed, and when the IPO is finished at the end of the epoch (after `END_EPOCH()` and before `BEGIN_EPOCH()`).
 
-In the implementation of the callback procedure, you cannot run `qpi.transfer()`, `qpi.distributeDividends()`, and `qpi.bidInIPO()`.
-That is, calls to these QPI procedures will fail to prevent nested callbacks.
+Note that `qpi.invocator()` and `qpi.invocationReward()` will return `0` when called inside of `POST_INCOMING_TRANSFER`. Make sure to use `input.sourceId` and `input.amount` provided via the input struct instead.
+
+In the implementation of the callback procedure, you cannot run `qpi.distributeDividends()` and `qpi.bidInIPO()`. Calling `qpi.transfer()` is only allowed when transferring to a non-contract entity.
+Calls to these QPI procedures will fail to prevent nested callbacks.
 If you invoke a user procedure from the callback, the fee / invocation reward cannot be transferred.
 In consequence, the procedure is executed but with `qpi.invocationReward() == 0`.
+
+### Proposals and voting
+
+Proposals and voting are the on-chain way of decision-making, implemented in contracts.
+The function, macros, and data structures provided by the QPI for implementing proposal voting in smart contracts are quite complex.
+That is why they are described in a [separate document](contracts_proposals.md).
+
+CFB has an alternative idea for proposal-free voting on shareholder variables that is supposed to be used in the contracts QX, RANDOM, and MLM.
+It has not been implemented yet.
+https://github.com/qubic/core/issues/574
 
 
 ## Restrictions of C++ Language Features
 
-It is prohibited to locally instantiating objects or variables on the function call stack.
-Instead, use the function and procedure definition macros with the postfix `_WITH_LOCALS` (see above).
+It is prohibited to locally instantiate objects or variables on the function call stack. This includes loop index variables `for (int i = 0; ...)`.
+Instead, use the function and procedure definition macros with the postfix `_WITH_LOCALS` (see above).  
 In procedures you alternatively may store temporary variables permanently as members of the state.
 
 Defining, casting, and dereferencing pointers is forbidden.
@@ -566,22 +589,25 @@ The division operator `/` and the modulo operator `%` are prohibited to prevent 
 Use `div()` and `mod()` instead, which return zero in case of division by zero.
 
 Strings `"` and chars `'` are forbidden, because they can be used to jump to random memory fragments.
+If you want to use `static_assert` you can do so via the `STATIC_ASSERT` macro defined in `qpi.h` which does not require a string literal.
 
-Variadic arguments are prohibited (character combination `...`).
+Variadic arguments, template parameter packs, and function parameter packs are prohibited (character combination `...`).
 
 Double underscores `__` must not be used in a contract, because these are reserved for internal functions and compiler macros that are prohibited to be used directly.
 For similar reasons, `QpiContext` and `const_cast` are prohibited too.
 
 The scope resolution operator `::` is also prohibited, except for structs, enums, and namespaces defined in contracts and `qpi.h`.
 
-The keywords `typedef` and `union` are prohibited to make the code easier to read and prevent tricking code audits.
+The keyword `union` is prohibited to make the code easier to read and prevent tricking code audits.
+Similarly, the keywords `typedef` and `using` are only allowed in local scope, e.g. inside structs or functions.
+The only exception is `using namespace QPI` which can be used at global scope.
 
 Global variables are not permitted.
-Global constants must begin with the name of the contract state struct.
+Global constants, structs and classes must begin with the name of the contract state struct.
 
 There is a limit for recursion and depth of nested contract function / procedure calls (the limit is 10 at the moment).
 
-The input and output structs of contract user procedures and functions may only use integer and boolean types (such as `uint64`, `sint8`, `bit`) as well as `id`, `Array`, and `BitArray`.
+The input and output structs of contract user procedures and functions may only use integer and boolean types (such as `uint64`, `sint8`, `bit`) as well as `id`, `Array`, and `BitArray`, and struct types containing only allowed types.
 Complex types that may have an inconsistent internal state, such as `Collection`, are forbidden in the public interface of a contract.
 
 
@@ -591,6 +617,10 @@ However there are situations where you want to change your SC.
 
 ### Bugfix
 A bugfix is possible at any time. It can be applied during the epoch (if no state is changed) or must be coordinated with an epoch update.
+Such state changes are preferably done by extending the state with new data structures at the end while existing state variables remain unchanged.
+This provides an easy way to extend the state files with 0 at the end (via command line during epoch transition) and initializing the new state variables in the `BEGIN_EPOCH` procedure.
+If this is not possible, the state file can be adjusted with an external tool that computors apply during epoch transition.
+This external tool can be written in C++, Python or Bash and the source code has to be public.
 
 ### New Features
 If you want to add new features, this needs to be approved by the computors again. Please refer to the [Deployment](#deployment) for the needed steps. The IPO is not anymore needed for an update of your SC.
@@ -627,3 +657,10 @@ The file `proposal.cpp` has a lot of examples showing how to use both functions.
 For example, `getProposalIndices()` shows how to call a contract function requiring input and providing output with `runContractFunction()`.
 An example use case of `makeContractTransaction()` can be found in `gqmpropSetProposal()`.
 The function `castVote()` is a more complex example combining both, calling a contract function and invoking a contract procedure.
+
+
+
+
+
+
+

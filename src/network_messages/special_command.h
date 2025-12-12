@@ -7,9 +7,10 @@ struct SpecialCommand
 {
     unsigned long long everIncreasingNonceAndCommandType;
 
-    enum {
-        type = 255,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::SPECIAL_COMMAND;
+    }
 };
 
 #define SPECIAL_COMMAND_SHUT_DOWN 0ULL
@@ -83,6 +84,23 @@ struct SpecialCommandSetConsoleLoggingModeRequestAndResponse
     unsigned long long everIncreasingNonceAndCommandType;
     unsigned char loggingMode; // 0 disabled, 1 low computational cost, 2 full logging
     unsigned char padding[7];
+};
+
+#define SPECIAL_COMMAND_SAVE_SNAPSHOT 18ULL // F8 key
+struct SpecialCommandSaveSnapshotRequestAndResponse
+{
+    enum
+    {
+        SAVING_TRIGGERED = 0,
+        SAVING_IN_PROGRESS,
+        REMOTE_SAVE_MODE_DISABLED,
+        UNKNOWN_FAILURE,
+    };
+
+    unsigned long long everIncreasingNonceAndCommandType;
+    unsigned int currentTick;
+    unsigned char status;
+    unsigned char padding[3];
 };
 
 #pragma pack(pop)

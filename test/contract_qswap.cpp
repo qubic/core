@@ -12,23 +12,24 @@ static const id QSWAP_CONTRACT_ID(QSWAP_CONTRACT_INDEX, 0, 0, 0);
 
 //constexpr uint32 SWAP_FEE_IDX = 1;
 constexpr uint32 GET_POOL_BASIC_STATE_IDX = 2;
-constexpr uint32 GET_LIQUDITY_OF_IDX = 3;
+constexpr uint32 GET_LIQUIDITY_OF_IDX = 3;
 constexpr uint32 QUOTE_EXACT_QU_INPUT_IDX = 4;
 constexpr uint32 QUOTE_EXACT_QU_OUTPUT_IDX = 5;
 constexpr uint32 QUOTE_EXACT_ASSET_INPUT_IDX = 6;
 constexpr uint32 QUOTE_EXACT_ASSET_OUTPUT_IDX = 7;
-constexpr uint32 TEAM_INFO_IDX = 8;
+constexpr uint32 INVEST_REWARDS_INFO_IDX = 8;
 //
 constexpr uint32 ISSUE_ASSET_IDX = 1;
 constexpr uint32 TRANSFER_SHARE_OWNERSHIP_AND_POSSESSION_IDX = 2;
 constexpr uint32 CREATE_POOL_IDX = 3;
-constexpr uint32 ADD_LIQUDITY_IDX = 4;
-constexpr uint32 REMOVE_LIQUDITY_IDX = 5;
+constexpr uint32 ADD_LIQUIDITY_IDX = 4;
+constexpr uint32 REMOVE_LIQUIDITY_IDX = 5;
 constexpr uint32 SWAP_EXACT_QU_FOR_ASSET_IDX = 6;
 constexpr uint32 SWAP_QU_FOR_EXACT_ASSET_IDX = 7;
 constexpr uint32 SWAP_EXACT_ASSET_FOR_QU_IDX = 8;
 constexpr uint32 SWAP_ASSET_FOR_EXACT_QU_IDX = 9;
-constexpr uint32 SET_TEAM_INFO_IDX = 10;
+constexpr uint32 SET_INVEST_REWARDS_INFO_IDX = 10;
+constexpr uint32 TRANSFER_SHARE_MANAGEMENT_RIGHTS_IDX = 11;
 
 
 class QswapChecker : public QSWAP
@@ -62,39 +63,45 @@ public:
 		return load(filename, sizeof(QSWAP), contractStates[QSWAP_CONTRACT_INDEX]) == sizeof(QSWAP);
 	}
 
-	QSWAP::TeamInfo_output teamInfo(){
-        QSWAP::TeamInfo_input input{};
-		QSWAP::TeamInfo_output output;
-		callFunction(QSWAP_CONTRACT_INDEX, TEAM_INFO_IDX, input, output);
+	QSWAP::InvestRewardsInfo_output investRewardsInfo()
+	{
+		QSWAP::InvestRewardsInfo_input input{};
+		QSWAP::InvestRewardsInfo_output output;
+		callFunction(QSWAP_CONTRACT_INDEX, INVEST_REWARDS_INFO_IDX, input, output);
 		return output;
 	}
 
-	bool setTeamId(const id& issuer, QSWAP::SetTeamInfo_input input){
-		QSWAP::CreatePool_output output;
-		invokeUserProcedure(QSWAP_CONTRACT_INDEX, SET_TEAM_INFO_IDX, input, output, issuer, 0);
+	bool setInvestRewardsInfo(const id& issuer, QSWAP::SetInvestRewardsInfo_input input)
+	{
+		QSWAP::SetInvestRewardsInfo_output output;
+		invokeUserProcedure(QSWAP_CONTRACT_INDEX, SET_INVEST_REWARDS_INFO_IDX, input, output, issuer, 0);
 		return output.success;
 	}
 
-	sint64 issueAsset(const id& issuer, QSWAP::IssueAsset_input input){
+	sint64 issueAsset(const id& issuer, QSWAP::IssueAsset_input input)
+    {
 		QSWAP::IssueAsset_output output;
 		invokeUserProcedure(QSWAP_CONTRACT_INDEX, ISSUE_ASSET_IDX, input, output, issuer, QSWAP_ISSUE_ASSET_FEE);
 		return output.issuedNumberOfShares;
 	}
 
-    sint64 transferAsset(const id& issuer, QSWAP::TransferShareOwnershipAndPossession_input input){
+    sint64 transferAsset(const id& issuer, QSWAP::TransferShareOwnershipAndPossession_input input)
+    {
         QSWAP::TransferShareOwnershipAndPossession_output output;
 		invokeUserProcedure(QSWAP_CONTRACT_INDEX, TRANSFER_SHARE_OWNERSHIP_AND_POSSESSION_IDX, input, output, issuer, QSWAP_TRANSFER_ASSET_FEE);
         return output.transferredAmount;
     }
 
-	bool createPool(const id& issuer, uint64 assetName){
+	bool createPool(const id& issuer, uint64 assetName)
+    {
 		QSWAP::CreatePool_input input{issuer, assetName};
 		QSWAP::CreatePool_output output;
 		invokeUserProcedure(QSWAP_CONTRACT_INDEX, CREATE_POOL_IDX, input, output, issuer, QSWAP_CREATE_POOL_FEE);
 		return output.success;
 	}
 
-	QSWAP::GetPoolBasicState_output getPoolBasicState(const id& issuer, uint64 assetName){
+	QSWAP::GetPoolBasicState_output getPoolBasicState(const id& issuer, uint64 assetName)
+    {
 		QSWAP::GetPoolBasicState_input input{issuer, assetName};
 		QSWAP::GetPoolBasicState_output output;
 
@@ -102,11 +109,12 @@ public:
 		return output;
 	}
 
-	QSWAP::AddLiqudity_output addLiqudity(const id& issuer, QSWAP::AddLiqudity_input input, uint64 inputValue){
-		QSWAP::AddLiqudity_output output;
+	QSWAP::AddLiquidity_output addLiquidity(const id& issuer, QSWAP::AddLiquidity_input input, uint64 inputValue)
+    {
+		QSWAP::AddLiquidity_output output;
 		invokeUserProcedure(
 			QSWAP_CONTRACT_INDEX,
-			ADD_LIQUDITY_IDX,
+			ADD_LIQUIDITY_IDX,
 			input,
 			output,
 			issuer,
@@ -115,11 +123,12 @@ public:
 		return output;
 	}
 
-	QSWAP::RemoveLiqudity_output removeLiqudity(const id& issuer, QSWAP::RemoveLiqudity_input input, uint64 inputValue){
-		QSWAP::RemoveLiqudity_output output;
+	QSWAP::RemoveLiquidity_output removeLiquidity(const id& issuer, QSWAP::RemoveLiquidity_input input, uint64 inputValue)
+    {
+		QSWAP::RemoveLiquidity_output output;
 		invokeUserProcedure(
 			QSWAP_CONTRACT_INDEX,
-			REMOVE_LIQUDITY_IDX,
+			REMOVE_LIQUIDITY_IDX,
 			input,
 			output,
 			issuer,
@@ -128,13 +137,15 @@ public:
 		return output;
 	}
 
-	QSWAP::GetLiqudityOf_output getLiqudityOf(QSWAP::GetLiqudityOf_input input){
-		QSWAP::GetLiqudityOf_output output;
-		callFunction(QSWAP_CONTRACT_INDEX, GET_LIQUDITY_OF_IDX, input, output);
+	QSWAP::GetLiquidityOf_output getLiquidityOf(QSWAP::GetLiquidityOf_input input)
+    {
+		QSWAP::GetLiquidityOf_output output;
+		callFunction(QSWAP_CONTRACT_INDEX, GET_LIQUIDITY_OF_IDX, input, output);
 		return output;
 	}
 
-	QSWAP::SwapExactQuForAsset_output swapExactQuForAsset( const id& issuer, QSWAP::SwapExactQuForAsset_input input, uint64 inputValue) {
+	QSWAP::SwapExactQuForAsset_output swapExactQuForAsset( const id& issuer, QSWAP::SwapExactQuForAsset_input input, uint64 inputValue)
+    {
 		QSWAP::SwapExactQuForAsset_output output;
 		invokeUserProcedure(
 			QSWAP_CONTRACT_INDEX,
@@ -148,7 +159,8 @@ public:
 		return output;
 	}
 
-	QSWAP::SwapQuForExactAsset_output swapQuForExactAsset( const id& issuer, QSWAP::SwapQuForExactAsset_input input, uint64 inputValue) {
+	QSWAP::SwapQuForExactAsset_output swapQuForExactAsset( const id& issuer, QSWAP::SwapQuForExactAsset_input input, uint64 inputValue)
+    {
 		QSWAP::SwapQuForExactAsset_output output;
 		invokeUserProcedure(
 			QSWAP_CONTRACT_INDEX,
@@ -162,7 +174,8 @@ public:
 		return output;
 	}
 
-	QSWAP::SwapExactAssetForQu_output swapExactAssetForQu(const id& issuer, QSWAP::SwapExactAssetForQu_input input, uint64 inputValue) {
+	QSWAP::SwapExactAssetForQu_output swapExactAssetForQu(const id& issuer, QSWAP::SwapExactAssetForQu_input input, uint64 inputValue) 
+    {
 		QSWAP::SwapExactAssetForQu_output output;
 		invokeUserProcedure(
 			QSWAP_CONTRACT_INDEX,
@@ -176,7 +189,8 @@ public:
 		return output;
 	}
 
-	QSWAP::SwapAssetForExactQu_output swapAssetForExactQu(const id& issuer, QSWAP::SwapAssetForExactQu_input input, uint64 inputValue) {
+	QSWAP::SwapAssetForExactQu_output swapAssetForExactQu(const id& issuer, QSWAP::SwapAssetForExactQu_input input, uint64 inputValue) 
+    {
 		QSWAP::SwapAssetForExactQu_output output;
 		invokeUserProcedure(
 			QSWAP_CONTRACT_INDEX,
@@ -190,68 +204,79 @@ public:
 		return output;
 	}
 
-    QSWAP::QuoteExactQuInput_output quoteExactQuInput(QSWAP::QuoteExactQuInput_input input) {
+    QSWAP::TransferShareManagementRights_output transferShareManagementRights(const id& invocator, QSWAP::TransferShareManagementRights_input input, uint64 inputValue)
+    {
+        QSWAP::TransferShareManagementRights_output output;
+        invokeUserProcedure(QSWAP_CONTRACT_INDEX, TRANSFER_SHARE_MANAGEMENT_RIGHTS_IDX, input, output, invocator, inputValue);
+        return output;
+    }
+
+    QSWAP::QuoteExactQuInput_output quoteExactQuInput(QSWAP::QuoteExactQuInput_input input) 
+    {
 		QSWAP::QuoteExactQuInput_output output;
 		callFunction(QSWAP_CONTRACT_INDEX, QUOTE_EXACT_QU_INPUT_IDX, input, output);
 		return output;
     }
 
-    QSWAP::QuoteExactQuOutput_output quoteExactQuOutput(QSWAP::QuoteExactQuOutput_input input) {
+    QSWAP::QuoteExactQuOutput_output quoteExactQuOutput(QSWAP::QuoteExactQuOutput_input input) 
+    {
 		QSWAP::QuoteExactQuOutput_output output;
 		callFunction(QSWAP_CONTRACT_INDEX, QUOTE_EXACT_QU_OUTPUT_IDX, input, output);
 		return output;
     }
 
-    QSWAP::QuoteExactAssetInput_output quoteExactAssetInput(QSWAP::QuoteExactAssetInput_input input){
+    QSWAP::QuoteExactAssetInput_output quoteExactAssetInput(QSWAP::QuoteExactAssetInput_input input)
+    {
 		QSWAP::QuoteExactAssetInput_output output;
 		callFunction(QSWAP_CONTRACT_INDEX, QUOTE_EXACT_ASSET_INPUT_IDX, input, output);
 		return output;
     }
 
-    QSWAP::QuoteExactAssetOutput_output quoteExactAssetOutput(QSWAP::QuoteExactAssetOutput_input input){
+    QSWAP::QuoteExactAssetOutput_output quoteExactAssetOutput(QSWAP::QuoteExactAssetOutput_input input)
+    {
 		QSWAP::QuoteExactAssetOutput_output output;
 		callFunction(QSWAP_CONTRACT_INDEX, QUOTE_EXACT_ASSET_OUTPUT_IDX, input, output);
 		return output;
     }
 };
 
-TEST(ContractSwap, TeamInfoTest)
+TEST(ContractSwap, InvestRewardsInfoTest)
 {
 	ContractTestingQswap qswap;
 
-    {
-		QSWAP::TeamInfo_output team_info = qswap.teamInfo();
+	{
+		QSWAP::InvestRewardsInfo_output info = qswap.investRewardsInfo();
 
-		auto expectIdentity = (const unsigned char*)"IRUNQTXZRMLDEENHPRZQPSGPCFACORRUJYSBVJPQEHFCEKLLURVDDJVEXNBL";
+		auto expectIdentity = (const unsigned char*)"VJGRUFWJCUSNHCQJRWRRYXAUEJFCVHYPXWKTDLYKUACPVVYBGOLVCJSF";
 		m256i expectPubkey;
 		getPublicKeyFromIdentity(expectIdentity, expectPubkey.m256i_u8);
-		EXPECT_EQ(team_info.teamId, expectPubkey);
-		EXPECT_EQ(team_info.teamFee, 20);
-    }
+		EXPECT_EQ(info.investRewardsId, expectPubkey);
+		EXPECT_EQ(info.investRewardsFee, 3);
+	}
 
 	{
-		id newTeamId(6,6,6,6);
-		QSWAP::SetTeamInfo_input input = {newTeamId};
+		id newInvestRewardsId(6,6,6,6);
+		QSWAP::SetInvestRewardsInfo_input input = {newInvestRewardsId};
 
 		id invalidIssuer(1,2,3,4);
 
-        increaseEnergy(invalidIssuer, 100);
-		bool res1 = qswap.setTeamId(invalidIssuer, input);
+		increaseEnergy(invalidIssuer, 100);
+		bool res1 = qswap.setInvestRewardsInfo(invalidIssuer, input);
 		// printf("res1: %d\n", res1);
 		EXPECT_FALSE(res1);
 
-		auto teamIdentity = (const unsigned char*)"IRUNQTXZRMLDEENHPRZQPSGPCFACORRUJYSBVJPQEHFCEKLLURVDDJVEXNBL";
-		m256i teamPubkey;
-		getPublicKeyFromIdentity(teamIdentity, teamPubkey.m256i_u8);
+		auto investRewardsIdentity = (const unsigned char*)"VJGRUFWJCUSNHCQJRWRRYXAUEJFCVHYPXWKTDLYKUACPVVYBGOLVCJSF";
+		m256i investRewardsPubkey;
+		getPublicKeyFromIdentity(investRewardsIdentity, investRewardsPubkey.m256i_u8);
 
-        increaseEnergy(teamPubkey, 100);
-		bool res2 = qswap.setTeamId(teamPubkey, input);
+		increaseEnergy(investRewardsPubkey, 100);
+		bool res2 = qswap.setInvestRewardsInfo(investRewardsPubkey, input);
 		// printf("res2: %d\n", res2);
 		EXPECT_TRUE(res2);
 
-		QSWAP::TeamInfo_output team_info = qswap.teamInfo();
-		EXPECT_EQ(team_info.teamId, newTeamId);
-		// printf("%d\n", team_info.teamId == newTeamId);
+		QSWAP::InvestRewardsInfo_output info = qswap.investRewardsInfo();
+		EXPECT_EQ(info.investRewardsId, newInvestRewardsId);
+		// printf("%d\n", info.investRewardsId == newInvestRewardsId);
 	}
 }
 
@@ -263,7 +288,7 @@ TEST(ContractSwap, QuoteTest)
     uint64 assetName = assetNameFromString("QSWAP0");
     sint64 numberOfShares = 10000 * 1000;
 
-    // issue an asset and create a pool, and init liqudity
+    // issue an asset and create a pool, and init liquidity
     {
         increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
         QSWAP::IssueAsset_input input = { assetName, numberOfShares, 0, 0 };
@@ -275,8 +300,8 @@ TEST(ContractSwap, QuoteTest)
 
         sint64 inputValue = 30*1000;
         increaseEnergy(issuer, inputValue);
-        QSWAP::AddLiqudity_input alInput = { issuer, assetName, 30*1000, 0, 0 };
-        QSWAP::AddLiqudity_output output = qswap.addLiqudity(issuer, alInput, inputValue);
+        QSWAP::AddLiquidity_input alInput = { issuer, assetName, 30*1000, 0, 0 };
+        QSWAP::AddLiquidity_output output = qswap.addLiquidity(issuer, alInput, inputValue);
 
         QSWAP::QuoteExactQuInput_input qi_input = {issuer, assetName, 1000};
         QSWAP::QuoteExactQuInput_output qi_output = qswap.quoteExactQuInput(qi_input);
@@ -306,7 +331,7 @@ TEST(ContractSwap, QuoteTest)
 2. issue duplicate asset
 3. issue asset with invalid input params, such as numberOfShares: 0
 */
-TEST(ContractSwap, IssueAsset)
+TEST(ContractSwap, IssueAssetAndTransferShareManagementRights)
 {
     ContractTestingQswap qswap;
 
@@ -332,6 +357,15 @@ TEST(ContractSwap, IssueAsset)
         EXPECT_EQ(qswap.transferAsset(issuer, ts_input), transferAmount);
         EXPECT_EQ(numberOfPossessedShares(assetName, issuer, newId, newId, QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX), transferAmount);
         // printf("%lld\n", getBalance(QSWAP_CONTRACT_ID));
+        increaseEnergy(issuer, 100);
+        uint64 qswapIdBalance = getBalance(QSWAP_CONTRACT_ID);
+        uint64 issuerBalance = getBalance(issuer);
+        QSWAP::TransferShareManagementRights_input tsr_input = {Asset{issuer, assetName}, transferAmount, QX_CONTRACT_INDEX};
+        EXPECT_EQ(qswap.transferShareManagementRights(issuer, tsr_input, 100).transferredNumberOfShares, transferAmount);
+        EXPECT_EQ(getBalance(id(QX_CONTRACT_INDEX, 0, 0, 0)), 100);
+        EXPECT_EQ(getBalance(QSWAP_CONTRACT_ID), qswapIdBalance);
+        EXPECT_EQ(getBalance(issuer), issuerBalance - 100);
+        EXPECT_EQ(numberOfPossessedShares(assetName, issuer, issuer, issuer, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), transferAmount);
     }
 
     // 1. not enough energy for asset issue fee
@@ -370,7 +404,7 @@ TEST(ContractSwap, SwapExactQuForAsset)
     uint64 assetName = assetNameFromString("QSWAP0");
     sint64 numberOfShares = 10000 * 1000;
 
-	// issue an asset and create a pool, and init liqudity
+	// issue an asset and create a pool, and init liquidity
 	{
 		increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
 		QSWAP::IssueAsset_input input = { assetName, numberOfShares, 0, 0 };
@@ -382,9 +416,9 @@ TEST(ContractSwap, SwapExactQuForAsset)
 
         sint64 inputValue = 200*1000;
         increaseEnergy(issuer, inputValue);
-        QSWAP::AddLiqudity_input alInput = { issuer, assetName, 100*1000, 0, 0 };
-        QSWAP::AddLiqudity_output output = qswap.addLiqudity(issuer, alInput, inputValue);
-        // printf("increase liqudity: %lld, %lld, %lld\n", output.userIncreaseLiqudity, output.assetAmount, output.quAmount);
+        QSWAP::AddLiquidity_input alInput = { issuer, assetName, 100*1000, 0, 0 };
+        QSWAP::AddLiquidity_output output = qswap.addLiquidity(issuer, alInput, inputValue);
+        // printf("increase liquidity: %lld, %lld, %lld\n", output.userIncreaseLiquidity, output.assetAmount, output.quAmount);
     }
 
     {
@@ -406,11 +440,11 @@ TEST(ContractSwap, SwapExactQuForAsset)
         EXPECT_TRUE(output.assetAmountOut <= 50000); // 49924 if swapFee 0.3%
 
         QSWAP::GetPoolBasicState_output psOutput = qswap.getPoolBasicState(issuer, assetName);
-        // printf("%lld, %lld, %lld\n", psOutput.reservedAssetAmount, psOutput.reservedQuAmount, psOutput.totalLiqudity);
-		// swapFee is 200_000 * 0.3% = 600, teamFee: 120, protocolFee: 96
-        EXPECT_TRUE(psOutput.reservedQuAmount >= 399784); // 399784 = (400_000 - 120 - 96)
+        // printf("%lld, %lld, %lld\n", psOutput.reservedAssetAmount, psOutput.reservedQuAmount, psOutput.totalLiquidity);
+		// swapFee is 200_000 * 0.3% = 600, shareholders 27%: 162, QX 5%: 30, invest&rewards 3%: 18, burn 1%: 6 = 216
+		EXPECT_TRUE(psOutput.reservedQuAmount >= 399784); // 399784 = (400_000 - 216)
         EXPECT_TRUE(psOutput.reservedAssetAmount >= 50000 ); // 50076
-        EXPECT_EQ(psOutput.totalLiqudity, 141421); // liqudity stay the same
+        EXPECT_EQ(psOutput.totalLiquidity, 141421); // liquidity stay the same
     }
 }
 
@@ -422,7 +456,7 @@ TEST(ContractSwap, SwapQuForExactAsset)
     uint64 assetName = assetNameFromString("QSWAP0");
     sint64 numberOfShares = 10000 * 1000;
 
-    // issue an asset and create a pool, and init liqudity
+    // issue an asset and create a pool, and init liquidity
     {
         increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
         QSWAP::IssueAsset_input input = { assetName, numberOfShares, 0, 0 };
@@ -434,9 +468,9 @@ TEST(ContractSwap, SwapQuForExactAsset)
 
         sint64 inputValue = 200*1000;
         increaseEnergy(issuer, inputValue);
-        QSWAP::AddLiqudity_input alInput = { issuer, assetName, 100*1000, 0, 0 };
-        QSWAP::AddLiqudity_output output = qswap.addLiqudity(issuer, alInput, inputValue);
-        // printf("increase liqudity: %lld, %lld, %lld\n", output.userIncreaseLiqudity, output.assetAmount, output.quAmount);
+        QSWAP::AddLiquidity_input alInput = { issuer, assetName, 100*1000, 0, 0 };
+        QSWAP::AddLiquidity_output output = qswap.addLiquidity(issuer, alInput, inputValue);
+        // printf("increase liquidity: %lld, %lld, %lld\n", output.userIncreaseLiquidity, output.assetAmount, output.quAmount);
     }
 
     {
@@ -468,7 +502,7 @@ TEST(ContractSwap, SwapExactAssetForQu)
     uint64 assetName = assetNameFromString("QSWAP0");
     sint64 numberOfShares = 10000 * 1000;
 
-    // issue an asset and create a pool, and init liqudity
+    // issue an asset and create a pool, and init liquidity
     {
         increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
         QSWAP::IssueAsset_input input = { assetName, numberOfShares, 0, 0 };
@@ -480,9 +514,9 @@ TEST(ContractSwap, SwapExactAssetForQu)
 
         sint64 inputValue = 200*1000;
         increaseEnergy(issuer, inputValue);
-        QSWAP::AddLiqudity_input alInput = { issuer, assetName, 100*1000, 0, 0 };
-        QSWAP::AddLiqudity_output output = qswap.addLiqudity(issuer, alInput, inputValue);
-        // printf("increase liqudity: %lld, %lld, %lld\n", output.userIncreaseLiqudity, output.assetAmount, output.quAmount);
+        QSWAP::AddLiquidity_input alInput = { issuer, assetName, 100*1000, 0, 0 };
+        QSWAP::AddLiquidity_output output = qswap.addLiquidity(issuer, alInput, inputValue);
+        // printf("increase liquidity: %lld, %lld, %lld\n", output.userIncreaseLiquidity, output.assetAmount, output.quAmount);
     }
 
     {
@@ -511,7 +545,7 @@ TEST(ContractSwap, SwapAssetForExactQu)
     uint64 assetName = assetNameFromString("QSWAP0");
     sint64 numberOfShares = 10000 * 1000;
 
-    // issue an asset and create a pool, and init liqudity
+    // issue an asset and create a pool, and init liquidity
     {
         increaseEnergy(issuer, QSWAP_ISSUE_ASSET_FEE);
         QSWAP::IssueAsset_input input = { assetName, numberOfShares, 0, 0 };
@@ -523,12 +557,12 @@ TEST(ContractSwap, SwapAssetForExactQu)
 
         sint64 inputValue = 200*1000;
         increaseEnergy(issuer, inputValue);
-        QSWAP::AddLiqudity_input alInput = { issuer, assetName, 100*1000, 0, 0 };
-        QSWAP::AddLiqudity_output output = qswap.addLiqudity(issuer, alInput, inputValue);
-        // printf("increase liqudity: %lld, %lld, %lld\n", output.userIncreaseLiqudity, output.assetAmount, output.quAmount);
+        QSWAP::AddLiquidity_input alInput = { issuer, assetName, 100*1000, 0, 0 };
+        QSWAP::AddLiquidity_output output = qswap.addLiquidity(issuer, alInput, inputValue);
+        // printf("increase liquidity: %lld, %lld, %lld\n", output.userIncreaseLiquidity, output.assetAmount, output.quAmount);
 
         // QSWAP::GetPoolBasicState_output gp_output = qswap.getPoolBasicState(issuer, assetName);
-        // printf("%lld, %lld, %lld\n", gp_output.reservedQuAmount, gp_output.reservedAssetAmount, gp_output.totalLiqudity);
+        // printf("%lld, %lld, %lld\n", gp_output.reservedQuAmount, gp_output.reservedAssetAmount, gp_output.totalLiquidity);
     }
 
     {
@@ -600,7 +634,7 @@ TEST(ContractSwap, CreatePool)
         EXPECT_EQ(output.poolExists, true);
         EXPECT_EQ(output.reservedQuAmount, 0);
         EXPECT_EQ(output.reservedAssetAmount, 0);
-        EXPECT_EQ(output.totalLiqudity, 0);
+        EXPECT_EQ(output.totalLiquidity, 0);
     }
 
     // 2. create duplicate pool
@@ -616,7 +650,7 @@ TEST(ContractSwap, CreatePool)
 }
 
 /*
-add liqudity 2 times, and then remove 
+add liquidity 2 times, and then remove 
 */
 TEST(ContractSwap, LiqTest1)
 {
@@ -638,13 +672,13 @@ TEST(ContractSwap, LiqTest1)
 		EXPECT_TRUE(qswap.createPool(issuer, assetName));
 	}
 
-    // 1. add liqudity to a initial pool, first time
+    // 1. add liquidity to a initial pool, first time
     {
         sint64 quStakeAmount = 200*1000;
         sint64 inputValue = quStakeAmount;
         sint64 assetStakeAmount = 100*1000;
         increaseEnergy(issuer, quStakeAmount);
-        QSWAP::AddLiqudity_input addLiqInput = {
+        QSWAP::AddLiquidity_input addLiqInput = {
             issuer,
             assetName,
             assetStakeAmount,
@@ -652,9 +686,9 @@ TEST(ContractSwap, LiqTest1)
             0
         };
 
-        QSWAP::AddLiqudity_output output = qswap.addLiqudity(issuer, addLiqInput, inputValue);
-        // actually, 141421 liqudity add to the pool, but the first 1000 liqudity is retainedd by the pool rather than the staker
-        EXPECT_EQ(output.userIncreaseLiqudity, 140421); 
+        QSWAP::AddLiquidity_output output = qswap.addLiquidity(issuer, addLiqInput, inputValue);
+        // actually, 141421 liquidity add to the pool, but the first 1000 liquidity is retainedd by the pool rather than the staker
+        EXPECT_EQ(output.userIncreaseLiquidity, 140421); 
         EXPECT_EQ(output.quAmount, 200*1000);
         EXPECT_EQ(output.assetAmount, 100*1000);
 
@@ -662,18 +696,18 @@ TEST(ContractSwap, LiqTest1)
         EXPECT_EQ(output2.poolExists, true);
         EXPECT_EQ(output2.reservedQuAmount, 200*1000);
         EXPECT_EQ(output2.reservedAssetAmount, 100*1000);
-        EXPECT_EQ(output2.totalLiqudity, 141421);
-        // printf("pool state: %lld, %lld, %lld\n", output2.reservedQuAmount, output2.reservedAssetAmount, output2.totalLiqudity);
+        EXPECT_EQ(output2.totalLiquidity, 141421);
+        // printf("pool state: %lld, %lld, %lld\n", output2.reservedQuAmount, output2.reservedAssetAmount, output2.totalLiquidity);
 
-        QSWAP::GetLiqudityOf_input getLiqInput = {
+        QSWAP::GetLiquidityOf_input getLiqInput = {
            issuer,
            assetName,
            issuer
         };
-        QSWAP::GetLiqudityOf_output getLiqOutput = qswap.getLiqudityOf(getLiqInput);
-        EXPECT_EQ(getLiqOutput.liqudity, 140421);
+        QSWAP::GetLiquidityOf_output getLiqOutput = qswap.getLiquidityOf(getLiqInput);
+        EXPECT_EQ(getLiqOutput.liquidity, 140421);
 
-        // 2. add liqudity second time
+        // 2. add liquidity second time
         increaseEnergy(issuer, quStakeAmount);
         addLiqInput = {
             issuer,
@@ -683,15 +717,15 @@ TEST(ContractSwap, LiqTest1)
             0
         };
 
-        QSWAP::AddLiqudity_output output3 = qswap.addLiqudity(issuer, addLiqInput, inputValue);
-        EXPECT_EQ(output3.userIncreaseLiqudity, 141421);
+        QSWAP::AddLiquidity_output output3 = qswap.addLiquidity(issuer, addLiqInput, inputValue);
+        EXPECT_EQ(output3.userIncreaseLiquidity, 141421);
         EXPECT_EQ(output3.quAmount, 200*1000);
         EXPECT_EQ(output3.assetAmount, 100*1000);
 
-        getLiqOutput = qswap.getLiqudityOf(getLiqInput);
-        EXPECT_EQ(getLiqOutput.liqudity,  281842); // 140421 + 141421
+        getLiqOutput = qswap.getLiquidityOf(getLiqInput);
+        EXPECT_EQ(getLiqOutput.liquidity,  281842); // 140421 + 141421
 
-        QSWAP::RemoveLiqudity_input rmLiqInput = {
+        QSWAP::RemoveLiquidity_input rmLiqInput = {
             issuer,
             assetName,
             141421,
@@ -699,15 +733,15 @@ TEST(ContractSwap, LiqTest1)
             100*1000, // should lte 1000*100
         };
 
-        // 3. remove liqudity
-        QSWAP::RemoveLiqudity_output rmLiqOutput = qswap.removeLiqudity(issuer, rmLiqInput, 0);
+        // 3. remove liquidity
+        QSWAP::RemoveLiquidity_output rmLiqOutput = qswap.removeLiquidity(issuer, rmLiqInput, 0);
         // printf("qu: %lld, asset: %lld\n", rmLiqOutput.quAmount, rmLiqOutput.assetAmount);
         EXPECT_EQ(rmLiqOutput.quAmount, 1000 * 200);
         EXPECT_EQ(rmLiqOutput.assetAmount, 1000 * 100);
 
-        getLiqOutput = qswap.getLiqudityOf(getLiqInput);
-        // printf("liq: %lld\n", getLiqOutput.liqudity);
-        EXPECT_EQ(getLiqOutput.liqudity,  140421); // 281842 - 141421
+        getLiqOutput = qswap.getLiquidityOf(getLiqInput);
+        // printf("liq: %lld\n", getLiqOutput.liquidity);
+        EXPECT_EQ(getLiqOutput.liquidity,  140421); // 281842 - 141421
     }
 }
 
@@ -732,12 +766,12 @@ TEST(ContractSwap, LiqTest2)
         EXPECT_TRUE(qswap.createPool(issuer, assetName));
     }
 
-    // add liqudity to invalid pool,
+    // add liquidity to invalid pool,
     {
         // decreaseEnergy(getBalance(issuer));
         uint64 quAmount = 1000;
         increaseEnergy(issuer, quAmount);
-        QSWAP::AddLiqudity_input addLiqInput = {
+        QSWAP::AddLiquidity_input addLiqInput = {
             issuer,
             invalidAssetName,
             1000,
@@ -745,16 +779,16 @@ TEST(ContractSwap, LiqTest2)
             0 
         };
         
-        QSWAP::AddLiqudity_output output = qswap.addLiqudity(issuer, addLiqInput, 1000);
-        EXPECT_EQ(output.userIncreaseLiqudity, 0);
+        QSWAP::AddLiquidity_output output = qswap.addLiquidity(issuer, addLiqInput, 1000);
+        EXPECT_EQ(output.userIncreaseLiquidity, 0);
         EXPECT_EQ(output.quAmount, 0);
         EXPECT_EQ(output.assetAmount, 0);
     }
 
-    // add liqudity with asset more than holdings
+    // add liquidity with asset more than holdings
     {
         increaseEnergy(issuer, 1000);
-        QSWAP::AddLiqudity_input addLiqInput = {
+        QSWAP::AddLiquidity_input addLiqInput = {
             issuer,
             assetName,
             1000*1000 + 100, // excced 1000*1000
@@ -762,8 +796,8 @@ TEST(ContractSwap, LiqTest2)
             0 
         };
 
-        QSWAP::AddLiqudity_output output = qswap.addLiqudity(issuer, addLiqInput, 1000);
-        EXPECT_EQ(output.userIncreaseLiqudity, 0);
+        QSWAP::AddLiquidity_output output = qswap.addLiquidity(issuer, addLiqInput, 1000);
+        EXPECT_EQ(output.userIncreaseLiquidity, 0);
         EXPECT_EQ(output.quAmount, 0);
         EXPECT_EQ(output.assetAmount, 0);
     }

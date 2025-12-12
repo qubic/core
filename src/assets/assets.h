@@ -112,7 +112,7 @@ public: // TODO: make protected
             PROFILE_SCOPE();
 
             reset();
-            for (int index = 0; index < ASSETS_CAPACITY; index++)
+            for (int index = ASSETS_CAPACITY - 1; index >= 0; index--)
             {
                 switch (assets[index].varStruct.issuance.type)
                 {
@@ -245,6 +245,7 @@ iteration:
                 AssetIssuance assetIssuance;
                 assetIssuance.issuerPublicKey = issuerPublicKey;
                 assetIssuance.numberOfShares = numberOfShares;
+                assetIssuance.managingContractIndex = managingContractIndex; // any SC can call issueAsset now (eg: QBOND) not just QX
                 *((unsigned long long*) assetIssuance.name) = *((unsigned long long*) name); // Order must be preserved!
                 assetIssuance.numberOfDecimalPlaces = numberOfDecimalPlaces; // Order must be preserved!
                 *((unsigned long long*) assetIssuance.unitOfMeasurement) = *((unsigned long long*) unitOfMeasurement); // Order must be preserved!
@@ -417,8 +418,8 @@ iteration:
             logPM.possessionPublicKey = possessionPublicKey;
             logPM.ownershipPublicKey = ownershipPublicKey;
             logPM.issuerPublicKey = assets[issuanceIndex].varStruct.issuance.publicKey;
-            logOM.sourceContractIndex = assets[sourcePossessionIndex].varStruct.ownership.managingContractIndex;
-            logOM.destinationContractIndex = destinationPossessionManagingContractIndex;
+            logPM.sourceContractIndex = assets[sourcePossessionIndex].varStruct.ownership.managingContractIndex;
+            logPM.destinationContractIndex = destinationPossessionManagingContractIndex;
             logPM.numberOfShares = numberOfShares;
             *((unsigned long long*) & logPM.assetName) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name);  // possible with 7 byte array, because it is followed by memory reserved for terminator byte
             logger.logAssetPossessionManagingContractChange(logPM);
@@ -515,6 +516,7 @@ static bool transferShareOwnershipAndPossession(int sourceOwnershipIndex, int so
         assetOwnershipChange.destinationPublicKey = destinationPublicKey;
         assetOwnershipChange.issuerPublicKey = issuance.publicKey;
         assetOwnershipChange.numberOfShares = numberOfShares;
+        assetOwnershipChange.managingContractIndex = assets[sourceOwnershipIndex].varStruct.ownership.managingContractIndex;
         *((unsigned long long*) & assetOwnershipChange.name) = *((unsigned long long*) & issuance.name); // Order must be preserved!
         assetOwnershipChange.numberOfDecimalPlaces = issuance.numberOfDecimalPlaces; // Order must be preserved!
         *((unsigned long long*) & assetOwnershipChange.unitOfMeasurement) = *((unsigned long long*) & issuance.unitOfMeasurement); // Order must be preserved!
@@ -525,6 +527,7 @@ static bool transferShareOwnershipAndPossession(int sourceOwnershipIndex, int so
         assetPossessionChange.destinationPublicKey = destinationPublicKey;
         assetPossessionChange.issuerPublicKey = issuance.publicKey;
         assetPossessionChange.numberOfShares = numberOfShares;
+        assetPossessionChange.managingContractIndex = assets[sourcePossessionIndex].varStruct.possession.managingContractIndex;
         *((unsigned long long*) & assetPossessionChange.name) = *((unsigned long long*) & issuance.name); // Order must be preserved!
         assetPossessionChange.numberOfDecimalPlaces = issuance.numberOfDecimalPlaces; // Order must be preserved!
         *((unsigned long long*) & assetPossessionChange.unitOfMeasurement) = *((unsigned long long*) & issuance.unitOfMeasurement); // Order must be preserved!
@@ -593,6 +596,7 @@ iteration:
             assetOwnershipChange.destinationPublicKey = destinationPublicKey;
             assetOwnershipChange.issuerPublicKey = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.publicKey;
             assetOwnershipChange.numberOfShares = numberOfShares;
+            assetOwnershipChange.managingContractIndex = assets[sourceOwnershipIndex].varStruct.ownership.managingContractIndex;
             *((unsigned long long*) & assetOwnershipChange.name) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name); // Order must be preserved!
             assetOwnershipChange.numberOfDecimalPlaces = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
             *((unsigned long long*) & assetOwnershipChange.unitOfMeasurement) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!
@@ -603,6 +607,7 @@ iteration:
             assetPossessionChange.destinationPublicKey = destinationPublicKey;
             assetPossessionChange.issuerPublicKey = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.publicKey;
             assetPossessionChange.numberOfShares = numberOfShares;
+            assetPossessionChange.managingContractIndex = assets[sourcePossessionIndex].varStruct.possession.managingContractIndex;
             *((unsigned long long*) & assetPossessionChange.name) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.name); // Order must be preserved!
             assetPossessionChange.numberOfDecimalPlaces = assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.numberOfDecimalPlaces; // Order must be preserved!
             *((unsigned long long*) & assetPossessionChange.unitOfMeasurement) = *((unsigned long long*) & assets[assets[sourceOwnershipIndex].varStruct.ownership.issuanceIndex].varStruct.issuance.unitOfMeasurement); // Order must be preserved!

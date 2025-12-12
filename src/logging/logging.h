@@ -58,6 +58,10 @@ struct Peer;
 #define ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE 12
 #define CUSTOM_MESSAGE 255
 
+#define CUSTOM_MESSAGE_OP_START_DISTRIBUTE_DIVIDENDS 6217575821008262227ULL // STA_DDIV
+#define CUSTOM_MESSAGE_OP_END_DISTRIBUTE_DIVIDENDS 6217575821008457285ULL //END_DDIV
+#define CUSTOM_MESSAGE_OP_START_EPOCH 4850183582582395987ULL // STA_EPOC
+#define CUSTOM_MESSAGE_OP_END_EPOCH 4850183582582591045ULL //END_EPOC
 /*
 * STRUCTS FOR LOGGING
 */
@@ -73,6 +77,7 @@ struct AssetIssuance
 {
     m256i issuerPublicKey;
     long long numberOfShares;
+    long long managingContractIndex;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
@@ -86,6 +91,7 @@ struct AssetOwnershipChange
     m256i destinationPublicKey;
     m256i issuerPublicKey;
     long long numberOfShares;
+    long long managingContractIndex;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
@@ -99,6 +105,7 @@ struct AssetPossessionChange
     m256i destinationPublicKey;
     m256i issuerPublicKey;
     long long numberOfShares;
+    long long managingContractIndex;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
@@ -184,6 +191,7 @@ struct Burning
 {
     m256i sourcePublicKey;
     long long amount;
+    unsigned int contractIndexBurnedFor;
 
     char _terminator; // Only data before "_terminator" are logged
 };
@@ -226,12 +234,8 @@ struct SpectrumStats
 
 /*
  * LOGGING IMPLEMENTATION
+ * For definition of virtual memory sizes, see private_settings.h
  */
-#define LOG_BUFFER_PAGE_SIZE 300000000ULL
-#define PMAP_LOG_PAGE_SIZE 30000000ULL
-#define IMAP_LOG_PAGE_SIZE 10000ULL
-#define VM_NUM_CACHE_PAGE 8
- // Virtual memory with 100'000'000 items per page and 4 pages on cache
 #ifdef NO_UEFI
 #define TEXT_LOGS_AS_NUMBER 0
 #define TEXT_PMAP_AS_NUMBER 0
@@ -279,6 +283,7 @@ private:
     inline static unsigned int lastUpdatedTick; // tick number that the system has generated all log
     inline static unsigned int currentTxId;
     inline static unsigned int currentTick;
+    inline static bool isPausing;
 
     static unsigned long long getLogId(const char* ptr)
     {
@@ -324,6 +329,7 @@ private:
     static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
     {
 #if ENABLED_LOGGING
+        if (isPausing) return;
         char buffer[LOG_HEADER_SIZE];
         tx.addLogId();
         logBuf.set(logId, logBufferTail, LOG_HEADER_SIZE + messageSize);
@@ -573,15 +579,18 @@ public:
         m256i zeroHash = m256i::zero();
         XKCP::KangarooTwelve_Update(&k12, zeroHash.m256i_u8, 32); // init tick, feed zero hash
 #endif
+        isPausing = false;
 #endif
     }
 
+    // updateTick is called right after _tick is processed
     static void updateTick(unsigned int _tick)
     {
 #if ENABLED_LOGGING
         ASSERT((_tick == lastUpdatedTick + 1) || (_tick == tickBegin));
+        ASSERT(_tick >= tickBegin);
 #if LOG_STATE_DIGEST
-        unsigned long long index = lastUpdatedTick - tickBegin;
+        unsigned long long index = _tick - tickBegin;
         XKCP::KangarooTwelve_Final(&k12, digests[index].m256i_u8, (const unsigned char*)"", 0);
         XKCP::KangarooTwelve_Initialize(&k12, 128, 32); // init new k12
         XKCP::KangarooTwelve_Update(&k12, digests[index].m256i_u8, 32); // feed the prev hash back to this
@@ -589,6 +598,7 @@ public:
         tx.commitAndCleanCurrentTxToLogId();
         ASSERT(mapTxToLogId.size() == (_tick - tickBegin + 1));
         lastUpdatedTick = _tick;
+        isPausing = false;
 #endif
     }
     
@@ -847,6 +857,16 @@ public:
 #endif
     }
 
+    void pause()
+    {
+        isPausing = true;
+    }
+
+    void resume()
+    {
+        isPausing = false;
+    }
+
     // get logging content from log ID
     static void processRequestLog(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header);
 
@@ -885,4 +905,14 @@ template <typename T>
 static void __logContractWarningMessage(unsigned int size, T& msg)
 {
     logger.__logContractWarningMessage(size, msg);
+}
+
+static void __pauseLogMessage()
+{
+    logger.pause();
+}
+
+static void __resumeLogMessage()
+{
+    logger.resume();
 }

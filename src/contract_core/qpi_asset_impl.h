@@ -486,6 +486,13 @@ bool QPI::QpiContextProcedureCall::distributeDividends(long long amountPerShare)
         return false;
     }
 
+    // this part of code doesn't perform completed QuTransfers, instead it `decreaseEnergy` all QUs at once and `increaseEnergy` multiple times.
+    // Meanwhile, a QUTransfer requires a pair of both decrease & increase calls.
+    // This behavior will produce different numberOfOutgoingTransfers for the SC index.
+    // 3rd party software needs to catch the HINT message to know the distribute dividends operation
+    DummyCustomMessage dcm{ CUSTOM_MESSAGE_OP_START_DISTRIBUTE_DIVIDENDS };
+    logger.logCustomMessage(dcm);
+
     if (decreaseEnergy(index, amountPerShare * NUMBER_OF_COMPUTORS))
     {
         ACQUIRE(universeLock);
@@ -499,19 +506,22 @@ bool QPI::QpiContextProcedureCall::distributeDividends(long long amountPerShare)
             ASSERT(iter.possessionIndex() < ASSETS_CAPACITY);
 
             const auto& possession = assets[iter.possessionIndex()].varStruct.possession;
-            const long long dividend = amountPerShare * possession.numberOfShares;
 
-            increaseEnergy(possession.publicKey, dividend);
+            if (possession.numberOfShares)
+            {
+                const long long dividend = amountPerShare * possession.numberOfShares;
+                increaseEnergy(possession.publicKey, dividend);
 
-            if (!contractActionTracker.addQuTransfer(_currentContractId, possession.publicKey, dividend))
-                __qpiAbort(ContractErrorTooManyActions);
+                if (!contractActionTracker.addQuTransfer(_currentContractId, possession.publicKey, dividend))
+                    __qpiAbort(ContractErrorTooManyActions);
 
-            __qpiNotifyPostIncomingTransfer(_currentContractId, possession.publicKey, dividend, TransferType::qpiDistributeDividends);
+                __qpiNotifyPostIncomingTransfer(_currentContractId, possession.publicKey, dividend, TransferType::qpiDistributeDividends);
 
-            const QuTransfer quTransfer = { _currentContractId, possession.publicKey, dividend };
-            logger.logQuTransfer(quTransfer);
+                const QuTransfer quTransfer = { _currentContractId, possession.publicKey, dividend };
+                logger.logQuTransfer(quTransfer);
 
-            totalShareCounter += possession.numberOfShares;
+                totalShareCounter += possession.numberOfShares;
+            }
 
             iter.next();
         }
@@ -520,7 +530,8 @@ bool QPI::QpiContextProcedureCall::distributeDividends(long long amountPerShare)
 
         RELEASE(universeLock);
     }
-
+    dcm = DummyCustomMessage{ CUSTOM_MESSAGE_OP_END_DISTRIBUTE_DIVIDENDS };
+    logger.logCustomMessage(dcm);
     return true;
 }
 

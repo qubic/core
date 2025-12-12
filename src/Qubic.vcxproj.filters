@@ -123,6 +123,15 @@
     <ClInclude Include="contracts\Nostromo.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\QRaffle.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\QBond.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\QIP.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contract_core\contract_def.h">
       <Filter>contract_core</Filter>
     </ClInclude>
@@ -270,6 +279,27 @@
       <Filter>platform</Filter>
     </ClInclude>
     <ClInclude Include="revenue.h" />
+    <ClInclude Include="contract_core\qpi_mining_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="ticking\pending_txs_pool.h">
+      <Filter>ticking</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\Qdraw.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\RandomLottery.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\pre_qpi_def.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="network_messages\network_message_type.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\ComputorControlledFund_old.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

@@ -2,6 +2,7 @@
 
 #include "assert.h"
 #include "concurrency.h"
+#include "console_logging.h"
 #include "file_io.h"
 
 

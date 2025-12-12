@@ -16,24 +16,30 @@ struct EntityRecord
 static_assert(sizeof(EntityRecord) == 32 + 2 * 8 + 2 * 4 + 2 * 4, "Something is wrong with the struct size.");
 
 
-#define REQUEST_ENTITY 31
-
-struct RequestedEntity
+struct RequestEntity
 {
     m256i publicKey;
+
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_ENTITY;
+    }
 };
 
-static_assert(sizeof(RequestedEntity) == 32, "Something is wrong with the struct size.");
+static_assert(sizeof(RequestEntity) == 32, "Something is wrong with the struct size.");
 
 
-#define RESPOND_ENTITY 32
-
-struct RespondedEntity
+struct RespondEntity
 {
     EntityRecord entity;
     unsigned int tick;
     int spectrumIndex;
     m256i siblings[SPECTRUM_DEPTH];
+
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::RESPOND_ENTITY;
+    }
 };
 
-static_assert(sizeof(RespondedEntity) == sizeof(EntityRecord) + 4 + 4 + 32 * SPECTRUM_DEPTH, "Something is wrong with the struct size.");
+static_assert(sizeof(RespondEntity) == sizeof(EntityRecord) + 4 + 4 + 32 * SPECTRUM_DEPTH, "Something is wrong with the struct size.");

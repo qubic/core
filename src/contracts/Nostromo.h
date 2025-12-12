@@ -1147,7 +1147,6 @@ protected:
 			{
 				// success
 				output.transferredNumberOfShares = input.numberOfShares;
-				qpi.transfer(id(QX_CONTRACT_INDEX, 0, 0, 0), state.transferRightsFee);
 				if (qpi.invocationReward() > state.transferRightsFee)
 				{
 					qpi.transfer(qpi.invocator(), qpi.invocationReward() -  state.transferRightsFee);

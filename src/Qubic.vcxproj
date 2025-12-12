@@ -23,7 +23,10 @@
     <ClInclude Include="assets\net_msg_impl.h" />
     <ClInclude Include="common_buffers.h" />
     <ClInclude Include="contracts\ComputorControlledFund.h" />
+    <ClInclude Include="contracts\ComputorControlledFund_old.h" />
+    <ClInclude Include="contracts\Qdraw.h" />
     <ClInclude Include="contracts\Qswap.h" />
+    <ClInclude Include="contracts\RandomLottery.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
     <ClInclude Include="contracts\EmptyTemplate.h" />
     <ClInclude Include="contracts\GeneralQuorumProposal.h" />
@@ -39,6 +42,9 @@
     <ClInclude Include="contracts\QVAULT.h" />
     <ClInclude Include="contracts\QBAY.h" />
     <ClInclude Include="contracts\Nostromo.h" />
+    <ClInclude Include="contracts\QRaffle.h" />
+    <ClInclude Include="contracts\QBond.h" />
+    <ClInclude Include="contracts\QIP.h" />
     <ClInclude Include="contracts\TestExampleA.h" />
     <ClInclude Include="contracts\TestExampleB.h" />
     <ClInclude Include="contracts\TestExampleC.h" />
@@ -47,9 +53,11 @@
     <ClInclude Include="contract_core\contract_def.h" />
     <ClInclude Include="contract_core\contract_exec.h" />
     <ClInclude Include="contract_core\ipo.h" />
+    <ClInclude Include="contract_core\pre_qpi_def.h" />
     <ClInclude Include="contract_core\qpi_asset_impl.h" />
     <ClInclude Include="contract_core\qpi_collection_impl.h" />
     <ClInclude Include="contract_core\qpi_ipo_impl.h" />
+    <ClInclude Include="contract_core\qpi_mining_impl.h" />
     <ClInclude Include="contract_core\qpi_spectrum_impl.h" />
     <ClInclude Include="contract_core\qpi_system_impl.h" />
     <ClInclude Include="contract_core\qpi_hash_map_impl.h" />
@@ -64,6 +72,7 @@
     <ClInclude Include="network_core\peers.h" />
     <ClInclude Include="network_core\tcp4.h" />
     <ClInclude Include="network_messages\all.h" />
+    <ClInclude Include="network_messages\network_message_type.h" />
     <ClInclude Include="network_messages\assets.h" />
     <ClInclude Include="network_messages\broadcast_message.h" />
     <ClInclude Include="network_messages\common_def.h" />
@@ -115,6 +124,7 @@
     <ClInclude Include="platform\time.h" />
     <ClInclude Include="ticking\ticking.h" />
     <ClInclude Include="ticking\tick_storage.h" />
+    <ClInclude Include="ticking\pending_txs_pool.h" />
     <ClInclude Include="vote_counter.h" />
   </ItemGroup>
   <ItemGroup>

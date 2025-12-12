@@ -55,7 +55,7 @@ struct QBAYLogger
 {
     uint32 _contractIndex;
     uint32 _type; // Assign a random unique (per contract) number to distinguish messages of different types
-    char _terminator; // Only data before "_terminator" are logged
+	sint8 _terminator; // Only data before "_terminator" are logged
 };
 
 struct QBAY2
@@ -491,14 +491,6 @@ protected:
 		
 	Array<InfoOfNFT, QBAY_MAX_NUMBER_NFT> NFTs;
 
-	/**
-	* @return Current date from core node system
-	*/
-
-	inline static void getCurrentDate(const QPI::QpiContextFunctionCall& qpi, uint32& res) 
-	{
-        QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), res);
-    }
 
 	struct settingCFBAndQubicPrice_locals
 	{
@@ -966,7 +958,7 @@ protected:
 			return;
 		}
 
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
@@ -1033,7 +1025,7 @@ protected:
 			return ;
 		}
 
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
@@ -1109,7 +1101,7 @@ protected:
 			return ;
 		}
 
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
@@ -1247,7 +1239,7 @@ protected:
 			return ;
 		}
 
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
@@ -1322,7 +1314,7 @@ protected:
 			return ;
 		}
 
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.possessedNFT).endTimeOfAuction || locals.curDate <= state.NFTs.get(input.anotherNFT).endTimeOfAuction)
 		{
@@ -1411,7 +1403,7 @@ protected:
 			return ;
 		}
 
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.possessedNFT).endTimeOfAuction || locals.curDate <= state.NFTs.get(input.anotherNFT).endTimeOfAuction)
 		{
@@ -1477,7 +1469,7 @@ protected:
 			return;
 		}
 
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
@@ -1629,7 +1621,7 @@ protected:
 			return;
 		}
 
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
@@ -1728,7 +1720,7 @@ protected:
 			return;
 		}
 
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if(locals.curDate <= state.NFTs.get(input.NFTid).endTimeOfAuction)
 		{
@@ -1824,7 +1816,7 @@ protected:
 			return;
 		}
 
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if(locals.startDate <= locals.curDate || locals.endDate <= locals.startDate)
 		{
@@ -1923,7 +1915,7 @@ protected:
 			return ;
 		}
 
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if(locals.curDate < state.NFTs.get(input.NFTId).startTimeOfAuction || locals.curDate > state.NFTs.get(input.NFTId).endTimeOfAuction)
 		{
@@ -2179,7 +2171,6 @@ protected:
 			{
 				// success
 				output.transferredNumberOfShares = input.numberOfShares;
-				qpi.transfer(id(QX_CONTRACT_INDEX, 0, 0, 0), state.transferRightsFee);
 				if (qpi.invocationReward() > state.transferRightsFee)
 				{
 					qpi.transfer(qpi.invocator(), qpi.invocationReward() -  state.transferRightsFee);
@@ -2200,7 +2191,7 @@ protected:
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getNumberOfNFTForUser)
 	{
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		output.numberOfNFT = 0;
 
@@ -2222,7 +2213,7 @@ protected:
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getInfoOfNFTUserPossessed)
 	{
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		locals.cnt = 0;
 
@@ -2349,7 +2340,7 @@ protected:
 			return ;
 		}
 
-		getCurrentDate(qpi, locals.curDate);
+		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 		locals.cnt = 0;
 		locals._r = 0;
 
@@ -2407,7 +2398,8 @@ protected:
 
 	struct getUserCreatedCollection_locals
 	{
-		uint32 _r, cnt, _t;
+		uint32 _r, cnt;
+		sint32 _t;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getUserCreatedCollection)
@@ -2439,7 +2431,8 @@ protected:
 
 	struct getUserCreatedNFT_locals
 	{
-		uint32 _r, cnt, _t;
+		uint32 _r, cnt;
+		sint32 _t;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getUserCreatedNFT)
@@ -2508,6 +2501,11 @@ protected:
 		state.marketPlaceOwner = ID(_R, _K, _D, _H, _C, _M, _R, _J, _Y, _C, _G, _K, _P, _D, _U, _Y, _R, _X, _G, _D, _Y, _Z, _C, _I, _Z, _I, _T, _A, _H, _Y, _O, _V, _G, _I, _U, _T, _K, _N, _D, _T, _E, _H, _P, _C, _C, _L, _W, _L, _Z, _X, _S, _H, _N, _F, _P, _D);
 		state.transferRightsFee = 1000000;
 
+	}
+
+	BEGIN_EPOCH()
+	{
+		state.transferRightsFee = 100;
 	}
 
 	struct END_EPOCH_locals
