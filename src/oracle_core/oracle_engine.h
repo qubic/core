@@ -71,12 +71,6 @@ struct OracleQueryMetadata
     } statusVar;
 };
 
-// One per contract
-struct OracleContractStatus
-{
-    uint32_t tick;
-    uint16_t queryIndexInTick;
-};
 
 struct OracleSubscriptionContractStatus
 {
@@ -186,8 +180,12 @@ class OracleEngine
     // how many bytes of queryStorage array are already in use / offset for adding new data
     uint64_t queryStorageBytesUsed;
 
-    // status of each contract for assigning IDs
-    OracleContractStatus contractStatus[MAX_NUMBER_OF_CONTRACTS];
+    // state for assigning contract query IDs
+    struct
+    {
+        uint32_t tick;
+        uint32_t queryIndexInTick;
+    } contractQueryIdState;
 
     // state of received OM reply and computor commits for each oracle query (used before reveal)
     OracleReplyState* replyStates;
@@ -234,7 +232,7 @@ public:
 
         oracleQueryCount = 0;
         queryStorageBytesUsed = 1; // reserve offset 0 for "no data"
-        setMem(contractStatus, sizeof(contractStatus), 0);
+        setMem(&contractQueryIdState, sizeof(contractQueryIdState), 0);
         replyStatesIndex = 0;
         pendingQueryIndices.numValues = 0;
         pendingCommitReplyStateIndices.numValues = 0;
@@ -302,22 +300,22 @@ public:
             return -1;
 
         // get sequential query index of contract in tick
-        auto& cs = contractStatus[contractIndex];
+        auto& cs = contractQueryIdState;
         if (cs.tick < system.tick)
         {
             cs.tick = system.tick;
-            cs.queryIndexInTick = 0;
+            cs.queryIndexInTick = NUMBER_OF_TRANSACTIONS_PER_TICK;
         }
         else
         {
-            if (cs.queryIndexInTick == 0xffff)
-                return 0;
+            if (cs.queryIndexInTick >= 0x7FFFFFFF)
+                return -1;
             ++cs.queryIndexInTick;
         }
 
         // compose query ID
-        // TODO: no contract index and common counter for all contracts
-        int64_t queryId = ((int64_t)system.tick << 31) | ((int64_t)contractIndex << 15) | cs.queryIndexInTick;
+        int64_t queryId = ((int64_t)system.tick << 31) | cs.queryIndexInTick;
+        static_assert(((0xFFFFFFFFll << 31) & 0x7FFFFFFFll) == 0ll && ((0xFFFFFFFFll << 31) | 0x7FFFFFFFll) > 0);
 
         // map ID to index
         ASSERT(!queryIdToIndex->contains(queryId));

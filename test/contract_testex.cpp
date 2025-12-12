@@ -2072,9 +2072,9 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
     copyMem(&enqueuedNetworkMessage.omQuery.queryMetadata, data, dataSize);
 }
 
-uint64 getContractOracleQueryId(uint32 tick, uint16 indexInTick, uint16 contractIndex = TESTEXC_CONTRACT_INDEX)
+uint64 getContractOracleQueryId(uint32 tick, uint16 indexInTick)
 {
-    return ((uint64)tick << 32) | ((uint64)contractIndex << 16) | indexInTick;
+    return ((uint64)tick << 31) | (indexInTick + NUMBER_OF_TRANSACTIONS_PER_TICK);
 }
 
 TEST(ContractTestEx, OracleQuery)
