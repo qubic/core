@@ -80,7 +80,7 @@ struct QRWA : public ContractBase
         {
         }
 
-        qRWAAsset(const Asset& a):
+        qRWAAsset(const Asset a):
             issuer(a.issuer),
             assetName(a.assetName)
         {
@@ -91,12 +91,12 @@ struct QRWA : public ContractBase
             return { issuer, assetName };
         }
 
-        bool operator==(const qRWAAsset& other) const
+        bool operator==(const qRWAAsset other) const
         {
             return issuer == other.issuer && assetName == other.assetName;
         }
 
-        bool operator!=(const qRWAAsset& other) const
+        bool operator!=(const qRWAAsset other) const
         {
             return !(*this == other);
         }
@@ -324,6 +324,8 @@ public:
         //id iterVoter;
         qRWAGovProposal poll;
         sint64 rawBalance;
+        qRWAGovParams existing;
+        uint64 status;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(VoteGovParams)
     {
@@ -415,18 +417,18 @@ public:
         // Check if the current proposal matches any existing unique proposal
         for (locals.i = 0; locals.i < QRWA_MAX_GOV_POLLS; locals.i++)
         {
-            qRWAGovParams existing = state.mGovPolls.get(locals.i).params;
-            uint64 status = state.mGovPolls.get(locals.i).status;
+            locals.existing = state.mGovPolls.get(locals.i).params;
+            locals.status = state.mGovPolls.get(locals.i).status;
 
-            if (status == QRWA_POLL_STATUS_ACTIVE &&
-                existing.electricityAddress == input.proposal.electricityAddress &&
-                existing.maintenanceAddress == input.proposal.maintenanceAddress &&
-                existing.reinvestmentAddress == input.proposal.reinvestmentAddress &&
-                existing.qmineDevAddress == input.proposal.qmineDevAddress &&
-                existing.mAdminAddress == input.proposal.mAdminAddress &&
-                existing.electricityPercent == input.proposal.electricityPercent &&
-                existing.maintenancePercent == input.proposal.maintenancePercent &&
-                existing.reinvestmentPercent == input.proposal.reinvestmentPercent)
+            if (locals.status == QRWA_POLL_STATUS_ACTIVE &&
+                locals.existing.electricityAddress == input.proposal.electricityAddress &&
+                locals.existing.maintenanceAddress == input.proposal.maintenanceAddress &&
+                locals.existing.reinvestmentAddress == input.proposal.reinvestmentAddress &&
+                locals.existing.qmineDevAddress == input.proposal.qmineDevAddress &&
+                locals.existing.mAdminAddress == input.proposal.mAdminAddress &&
+                locals.existing.electricityPercent == input.proposal.electricityPercent &&
+                locals.existing.maintenancePercent == input.proposal.maintenancePercent &&
+                locals.existing.reinvestmentPercent == input.proposal.reinvestmentPercent)
             {
                 locals.foundProposal = 1;
                 locals.proposalIndex = locals.i; // This is the proposal we are voting for
@@ -488,7 +490,8 @@ public:
     };
     struct CreateAssetReleasePoll_output
     {
-        uint64 status; uint64 proposalId;
+        uint64 status;
+        uint64 proposalId;
     };
     struct CreateAssetReleasePoll_locals
     {
@@ -835,23 +838,23 @@ public:
         LOG_INFO(locals.logger);
     }
 
-    struct revokeAssetManagementRights_input
+    struct RevokeAssetManagementRights_input
     {
         Asset asset;
         sint64 numberOfShares;
     };
-    struct revokeAssetManagementRights_output
+    struct RevokeAssetManagementRights_output
     {
         sint64 transferredNumberOfShares;
         uint64 status;
     };
-    struct revokeAssetManagementRights_locals
+    struct RevokeAssetManagementRights_locals
     {
         qRWALogger logger;
         sint64 managedBalance;
         sint64 result;
     };
-    PUBLIC_PROCEDURE_WITH_LOCALS(revokeAssetManagementRights)
+    PUBLIC_PROCEDURE_WITH_LOCALS(RevokeAssetManagementRights)
     {
         // This procedure allows a user to revoke asset management rights from qRWA
         // and transfer them back to QX, which is the default manager for trading
@@ -904,6 +907,7 @@ public:
         if (locals.managedBalance < input.numberOfShares)
         {
             // The user is trying to revoke more shares than are managed by qRWA.
+            qpi.transfer(qpi.invocator(), (sint64)QRWA_RELEASE_MANAGEMENT_FEE);
             output.transferredNumberOfShares = 0;
             output.status = QRWA_STATUS_FAILURE_INSUFFICIENT_BALANCE;
             locals.logger.logType = QRWA_LOG_TYPE_ERROR;
@@ -1029,7 +1033,7 @@ public:
         else
         {
             // Clear output if not the poll we're looking for
-            setMemory(output.proposal, 0);;
+            setMemory(output.proposal, 0);
         }
     }
 
@@ -1381,6 +1385,8 @@ public:
         uint64 copyBalance;
 
         qRWAAsset wrapper;
+
+        qRWAGovProposal govPoll;
     };
     END_EPOCH_WITH_LOCALS()
     {
@@ -1391,6 +1397,11 @@ public:
         {
             for (locals.iter.begin(state.mQmineAsset); !locals.iter.reachedEnd(); locals.iter.next())
             {
+                // Exclude SELF (Treasury) from dividend snapshot
+                if (locals.iter.possessor() == SELF)
+                {
+                    continue;
+                }
                 locals.balance = locals.iter.numberOfPossessedShares();
                 if (locals.balance > 0)
                 {
@@ -1490,19 +1501,19 @@ public:
         // Update status for all active gov polls (for history)
         for (locals.i = 0; locals.i < QRWA_MAX_GOV_POLLS; locals.i++)
         {
-            qRWAGovProposal poll = state.mGovPolls.get(locals.i);
-            if (poll.status == QRWA_POLL_STATUS_ACTIVE)
+            locals.govPoll = state.mGovPolls.get(locals.i);
+            if (locals.govPoll.status == QRWA_POLL_STATUS_ACTIVE)
             {
-                poll.score = locals.govPollScores.get(locals.i);
+                locals.govPoll.score = locals.govPollScores.get(locals.i);
                 if (locals.govPassed == 1 && locals.i == locals.topProposalIndex)
                 {
-                    poll.status = QRWA_POLL_STATUS_PASSED_EXECUTED;
+                    locals.govPoll.status = QRWA_POLL_STATUS_PASSED_EXECUTED;
                 }
                 else
                 {
-                    poll.status = QRWA_POLL_STATUS_FAILED_VOTE;
+                    locals.govPoll.status = QRWA_POLL_STATUS_FAILED_VOTE;
                 }
-                state.mGovPolls.set(locals.i, poll);
+                state.mGovPolls.set(locals.i, locals.govPoll);
             }
         }
 
@@ -1780,7 +1791,7 @@ public:
         locals.now = qpi.now();
 
         // Check payout conditions: Correct day, correct hour, and enough time passed
-        if (qpi.dayOfWeek((uint8)(locals.now.getYear() % 100), locals.now.getMonth(), locals.now.getDay()) == QRWA_PAYOUT_DAY &&
+        if (qpi.dayOfWeek((uint8)mod(locals.now.getYear(), (uint16)100), locals.now.getMonth(), locals.now.getDay()) == QRWA_PAYOUT_DAY &&
             locals.now.getHour() == QRWA_PAYOUT_HOUR)
         {
             // check if mLastPayoutTime is 0 (never initialized)
@@ -2075,7 +2086,7 @@ public:
         REGISTER_USER_PROCEDURE(CreateAssetReleasePoll, 5);
         REGISTER_USER_PROCEDURE(VoteAssetRelease, 6);
         REGISTER_USER_PROCEDURE(DepositGeneralAsset, 7);
-        REGISTER_USER_PROCEDURE(revokeAssetManagementRights, 8);
+        REGISTER_USER_PROCEDURE(RevokeAssetManagementRights, 8);
 
         // FUNCTIONS
         REGISTER_USER_FUNCTION(GetGovParams, 1);

@@ -218,13 +218,13 @@ public:
         return output.status;
     }
 
-    QRWA::revokeAssetManagementRights_output revokeAssetManagementRights(const id& from, const Asset& asset, sint64 numberOfShares)
+    QRWA::RevokeAssetManagementRights_output revokeAssetManagementRights(const id& from, const Asset& asset, sint64 numberOfShares)
     {
-        QRWA::revokeAssetManagementRights_input input;
+        QRWA::RevokeAssetManagementRights_input input;
         input.asset = asset;
         input.numberOfShares = numberOfShares;
 
-        QRWA::revokeAssetManagementRights_output output;
+        QRWA::RevokeAssetManagementRights_output output;
         memset(&output, 0, sizeof(output));
 
         invokeUserProcedure(QRWA_CONTRACT_INDEX, QRWA_PROC_REVOKE_ASSET, input, output, from, QRWA_RELEASE_MANAGEMENT_FEE);
