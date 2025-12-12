@@ -49,6 +49,10 @@ enum NetworkMessageType : unsigned char
     RESPOND_CUSTOM_MINING_SOLUTION_VERIFICATION = 63,
     REQUEST_ACTIVE_IPOS = 64,
     RESPOND_ACTIVE_IPO = 65,
+    REQUEST_ORACLE_DATA = 66,
+    RESPOND_ORACLE_DATA = 67,
+    ORACLE_MACHINE_QUERY = 190, // only on communication channel Core node <-> OM node
+    ORACLE_MACHINE_REPLY = 191, // only on communication channel Core node <-> OM node
     REQUEST_TX_STATUS = 201, // tx addon only
     RESPOND_TX_STATUS = 202, // tx addon only
     SPECIAL_COMMAND = 255,

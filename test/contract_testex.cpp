@@ -8,6 +8,7 @@
 static const id TESTEXA_CONTRACT_ID(TESTEXA_CONTRACT_INDEX, 0, 0, 0);
 static const id TESTEXB_CONTRACT_ID(TESTEXB_CONTRACT_INDEX, 0, 0, 0);
 static const id TESTEXC_CONTRACT_ID(TESTEXC_CONTRACT_INDEX, 0, 0, 0);
+static const id TESTEXD_CONTRACT_ID(TESTEXD_CONTRACT_INDEX, 0, 0, 0);
 static const id USER1(123, 456, 789, 876);
 static const id USER2(42, 424, 4242, 42424);
 static const id USER3(98, 76, 54, 3210);
@@ -143,6 +144,8 @@ public:
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
 
+        EXPECT_TRUE(oracleEngine.init());
+
         checkContractExecCleanup();
 
         // query QX fees
@@ -151,6 +154,7 @@ public:
 
     ~ContractTestingTestEx()
     {
+        oracleEngine.deinit();
         checkContractExecCleanup();
     }
 
@@ -531,6 +535,25 @@ public:
         callSystemProcedure(TESTEXB_CONTRACT_INDEX, END_EPOCH, expectSuccess);
         callSystemProcedure(TESTEXA_CONTRACT_INDEX, END_EPOCH, expectSuccess);
         callSystemProcedure(QX_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+    }
+
+    void endTick(bool expectSuccess = true)
+    {
+        callSystemProcedure(TESTEXD_CONTRACT_INDEX, END_TICK, expectSuccess);
+        callSystemProcedure(TESTEXC_CONTRACT_INDEX, END_TICK, expectSuccess);
+        callSystemProcedure(TESTEXB_CONTRACT_INDEX, END_TICK, expectSuccess);
+        callSystemProcedure(TESTEXA_CONTRACT_INDEX, END_TICK, expectSuccess);
+        callSystemProcedure(QX_CONTRACT_INDEX, END_TICK, expectSuccess);
+    }
+
+    uint64 queryPriceOracle(const id& invocator, const id& oracle, uint32 timeoutMilliseconds)
+    {
+        TESTEXC::QueryPriceOracle_input input;
+        input.priceOracleQuery = { oracle, {}, NULL_ID, NULL_ID };
+        input.timeoutMilliseconds = timeoutMilliseconds;
+        TESTEXC::QueryPriceOracle_output output;
+        EXPECT_TRUE(invokeUserProcedure(TESTEXC_CONTRACT_INDEX, 100, input, output, invocator, 0));
+        return output.oracleQueryId;
     }
 };
 
@@ -2010,4 +2033,90 @@ TEST(ContractTestEx, ShareholderProposals)
     // test proposal listing function in TESTEXB: 2 inactive by USER1/TESTEXA, 0 active
     EXPECT_TRUE(test.getShareholderProposalIndices<TESTEXB>(false).size() == 2);
     EXPECT_TRUE(test.getShareholderProposalIndices<TESTEXB>(true).size() == 0);
+}
+
+static union
+{
+    RequestResponseHeader header;
+
+    struct
+    {
+        RequestResponseHeader header;
+        OracleMachineQuery queryMetadata;
+        unsigned char queryData[MAX_ORACLE_QUERY_SIZE];
+    } omQuery;
+} enqueuedNetworkMessage;
+
+template <typename OracleInterface>
+void checkNetworkMessageOracleMachineQuery(uint64 expectedOracleQueryId, id expectedOracle, uint32 expectedTimeout)
+{
+    EXPECT_EQ(enqueuedNetworkMessage.header.type(), OracleMachineQuery::type());
+    EXPECT_GT(enqueuedNetworkMessage.header.size(), sizeof(RequestResponseHeader) + sizeof(OracleMachineQuery));
+    uint32 queryDataSize = enqueuedNetworkMessage.header.size() - sizeof(RequestResponseHeader) - sizeof(OracleMachineQuery);
+    EXPECT_LE(queryDataSize, (uint32)MAX_ORACLE_QUERY_SIZE);
+    EXPECT_EQ(queryDataSize, sizeof(typename OracleInterface::OracleQuery));
+    EXPECT_EQ(enqueuedNetworkMessage.omQuery.queryMetadata.oracleInterfaceIndex, OracleInterface::oracleInterfaceIndex);
+    EXPECT_EQ(enqueuedNetworkMessage.omQuery.queryMetadata.oracleQueryId, expectedOracleQueryId);
+    EXPECT_EQ(enqueuedNetworkMessage.omQuery.queryMetadata.timeoutInMilliseconds, expectedTimeout);
+    const auto* q = (const OracleInterface::OracleQuery*)enqueuedNetworkMessage.omQuery.queryData;
+    EXPECT_EQ(q->oracle, expectedOracle);
+}
+
+static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data)
+{
+    EXPECT_EQ(peer, (Peer*)0x1);
+    EXPECT_LE(dataSize, sizeof(OracleMachineQuery) + MAX_ORACLE_QUERY_SIZE);
+    EXPECT_TRUE(enqueuedNetworkMessage.header.checkAndSetSize(sizeof(RequestResponseHeader) + dataSize));
+    enqueuedNetworkMessage.header.setType(type);
+    enqueuedNetworkMessage.header.setDejavu(dejavu);
+    copyMem(&enqueuedNetworkMessage.omQuery.queryMetadata, data, dataSize);
+}
+
+uint64 getContractOracleQueryId(uint32 tick, uint16 indexInTick)
+{
+    return ((uint64)tick << 31) | (indexInTick + NUMBER_OF_TRANSACTIONS_PER_TICK);
+}
+
+TEST(ContractTestEx, OracleQuery)
+{
+    ContractTestingTestEx test;
+    system.epoch = 200;
+    system.tick = 1234567890;
+
+    //-------------------------------------------------------------------------
+    // Test qpi.queryOracle() and generating message to oracle machine node
+    increaseEnergy(USER1, 100000000);
+    increaseEnergy(TESTEXC_CONTRACT_ID, 100000000);
+
+    uint64 expectedOracleQueryId = getContractOracleQueryId(system.tick, 0);
+    EXPECT_EQ(test.queryPriceOracle(USER1, NULL_ID, 10), expectedOracleQueryId);
+    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, NULL_ID, 10);
+
+    expectedOracleQueryId = getContractOracleQueryId(system.tick, 1);
+    EXPECT_EQ(test.queryPriceOracle(USER1, id(1, 2, 3, 4), 42), expectedOracleQueryId);
+    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, id(1, 2, 3, 4), 42);
+
+    expectedOracleQueryId = getContractOracleQueryId(system.tick, 2);
+    test.endTick();
+    ++system.tick;
+    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, id(0, 0, 0, 0), 20000);
+
+    expectedOracleQueryId = getContractOracleQueryId(system.tick, 0);
+    EXPECT_EQ(test.queryPriceOracle(USER1, id(2, 3, 4, 5), 13), expectedOracleQueryId);
+    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, id(2, 3, 4, 5), 13);
+
+    //-------------------------------------------------------------------------
+    // Test processing of oracle machine node reply message
+    struct
+    {
+        OracleMachineReply metatdata;
+        OI::Price::OracleReply data;
+    } priceOracleMachineReply;
+
+    priceOracleMachineReply.metatdata.oracleMachineErrorFlags = 0;
+    priceOracleMachineReply.metatdata.oracleQueryId = expectedOracleQueryId;
+    priceOracleMachineReply.data.numerator = 1234;
+    priceOracleMachineReply.data.denominator = 1;
+
+    oracleEngine.processOracleMachineReply(&priceOracleMachineReply.metatdata, sizeof(priceOracleMachineReply));
 }
