@@ -3372,9 +3372,9 @@ static void processTick(unsigned long long processorNumber)
                     pendingTxsPool.acquireLock();
                     for (unsigned int tx = 0; tx < numPendingTickTxs; ++tx)
                     {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-                        addDebugMessage(L"pendingTxsPool.get() call in processTick()");
-#endif
+// #if !defined(NDEBUG) && !defined(NO_UEFI)
+//                         addDebugMessage(L"pendingTxsPool.get() call in processTick()");
+// #endif
                         const Transaction* pendingTransaction = pendingTxsPool.getTx(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, tx);
                         if (pendingTransaction)
                         {
@@ -4493,9 +4493,9 @@ static void prepareNextTickTransactions()
         pendingTxsPool.acquireLock();
         for (unsigned int i = 0; i < numPendingTickTxs; ++i)
         {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-            addDebugMessage(L"pendingTxsPool.get() call in prepareNextTickTransactions()");
-#endif
+// #if !defined(NDEBUG) && !defined(NO_UEFI)
+//             addDebugMessage(L"pendingTxsPool.get() call in prepareNextTickTransactions()");
+// #endif
             Transaction* pendingTransaction = pendingTxsPool.getTx(nextTick, i);
             if (pendingTransaction)
             {
