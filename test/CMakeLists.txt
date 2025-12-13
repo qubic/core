@@ -70,8 +70,6 @@ apply_test_compiler_flags(qubic_core_tests)
 if(IS_CLANG OR IS_GCC)
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64")
     target_compile_options(qubic_core_tests PRIVATE -mrdrnd)
-  else()
-    target_compile_options(qubic_core_tests PRIVATE)
   endif()
 endif()
 
