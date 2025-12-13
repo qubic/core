@@ -1,4 +1,4 @@
-﻿#define NO_UEFI
+#define NO_UEFI
 
 #include <cstring>
 #include "contract_testing.h"
@@ -508,5 +508,4 @@ TEST(ContractRandom, OutOfOrderRevealAndCompaction)
 	RANDOM::GetContractInfo_output co{};
 	random.callFunction(0, 1, ci, co);
 	EXPECT_EQ(co.activeCommitments, 0);
-
 }
