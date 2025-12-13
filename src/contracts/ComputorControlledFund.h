@@ -173,13 +173,6 @@ public:
 		// Validate subscription data if provided
 		if (input.isSubscription)
 		{
-			// Validate weeks per period (must be at least 1)
-			if (input.weeksPerPeriod == 0)
-			{
-				output.proposalIndex = INVALID_PROPOSAL_INDEX;
-				return;
-			}
-
 			// Validate start epoch
 			if (input.startEpoch < qpi.epoch())
 			{
