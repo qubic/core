@@ -1,6 +1,6 @@
  #pragma once
 
-// Header file for the inclusion of plartform specific x86/x64 intrinsics header files.
+// Header file for the inclusion of platform specific x86/x64 intrinsics header files.
 //
 // Historically the project included x86 intrinsics headers unconditionally.
 // That causes hard build failures on non-x86 systems (for example Apple
