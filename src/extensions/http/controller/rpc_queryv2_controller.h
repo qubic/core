@@ -138,7 +138,9 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         {
             result["code"] = -1;
             result["message"] = "Invalid JSON";
-            cb(HttpResponse::newHttpJsonResponse(result));
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            cb(res);
             return;
         }
 
@@ -147,7 +149,10 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         {
             result["code"] = -1;
             result["message"] = "Missing epoch field";
-            cb(HttpResponse::newHttpJsonResponse(result));
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            cb(res);
+            return;
             return;
         }
 
@@ -178,8 +183,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         Json::Value result;
         result["tickNumber"] = system.tick;
         result["epoch"] = system.epoch;
-        // TODO: implement intervalInitialTick properly
-        result["intervalInitialTick"] = 0;
+        result["intervalInitialTick"] = system.initialTick;
         cb(HttpResponse::newHttpJsonResponse(result));
     }
 
@@ -204,7 +208,9 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         {
             result["code"] = -1;
             result["message"] = "Invalid JSON";
-            cb(HttpResponse::newHttpJsonResponse(result));
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            cb(res);
             return;
         }
 
@@ -213,7 +219,9 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         {
             result["code"] = -1;
             result["message"] = "Missing tickNumber field";
-            cb(HttpResponse::newHttpJsonResponse(result));
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            cb(res);
             return;
         }
 
@@ -282,7 +290,9 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         {
             result["code"] = -1;
             result["message"] = "Invalid JSON";
-            cb(HttpResponse::newHttpJsonResponse(result));
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            cb(res);
             return;
         }
 
@@ -291,7 +301,9 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         {
             result["code"] = -1;
             result["message"] = "Missing hash field";
-            cb(HttpResponse::newHttpJsonResponse(result));
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            cb(res);
             return;
         }
 
@@ -329,7 +341,9 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         {
             result["code"] = -1;
             result["message"] = "Invalid JSON";
-            cb(HttpResponse::newHttpJsonResponse(result));
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            cb(res);
             return;
         }
 
@@ -338,7 +352,9 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         {
             result["code"] = -1;
             result["message"] = "Missing identity field";
-            cb(HttpResponse::newHttpJsonResponse(result));
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            cb(res);
             return;
         }
 
@@ -359,7 +375,9 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         {
             result["code"] = -1;
             result["message"] = "Invalid identity";
-            cb(HttpResponse::newHttpJsonResponse(result));
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            cb(res);
             return;
         }
 
@@ -517,7 +535,9 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
             Json::Value result;
             result["code"] = -1;
             result["message"] = std::string("Internal server error: ") + e.what();
-            cb(HttpResponse::newHttpJsonResponse(result));
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k500InternalServerError);
+            cb(res);
         }
     }
 
@@ -530,7 +550,9 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         {
             result["code"] = -1;
             result["message"] = "Invalid JSON";
-            cb(HttpResponse::newHttpJsonResponse(result));
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            cb(res);
             return;
         }
 
@@ -539,7 +561,9 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         {
             result["code"] = -1;
             result["message"] = "Missing tickNumber field";
-            cb(HttpResponse::newHttpJsonResponse(result));
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            cb(res);
             return;
         }
 
