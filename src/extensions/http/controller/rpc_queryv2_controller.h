@@ -1,5 +1,6 @@
 #pragma once
 #include "extensions/utils.h"
+#include "../utils.h"
 #include <drogon/HttpController.h>
 
 using namespace drogon;
@@ -70,116 +71,6 @@ public:
     }
 };
 }
-
-struct Utils
-{
-    static TickData *findTickDataFromTxHash(m256i &hash)
-    {
-        TickData localTickData;
-        for (unsigned int tick = system.initialTick; tick <= system.tick; tick++)
-        {
-            TickStorage::tickData.acquireLock();
-            TickData *tickData = TickStorage::tickData.getByTickIfNotEmpty(tick);
-            if (tickData)
-            {
-                copyMem(&localTickData, tickData, sizeof(TickData));
-            }
-            TickStorage::tickData.releaseLock();
-            if (!tickData)
-            {
-                continue;
-            }
-
-            for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
-            {
-                if (localTickData.transactionDigests[i] == hash)
-                {
-                    // found
-                    TickData *result = new TickData();
-                    copyMem(result, &localTickData, sizeof(TickData));
-                    return result;
-                }
-            }
-        }
-
-        return nullptr;
-    }
-
-    static Json::Value transactionToJson(Transaction *tx)
-    {
-        Json::Value jsonObject;
-
-        TickData *tickData = new TickData();
-        TickStorage::tickData.acquireLock();
-        TickData *tmptickData = TickStorage::tickData.getByTickIfNotEmpty(tx->tick);
-        if (!tmptickData)
-        {
-            delete tickData;
-            return jsonObject;
-        }
-        copyMem(tickData, tmptickData, sizeof(TickData));
-        TickStorage::tickData.releaseLock();
-
-        CHAR16 txHashStr[61] = {0};
-        uint8_t digest[32];
-        KangarooTwelve(tx,
-                       tx->totalSize(),
-                       digest,
-                       32); // recompute digest for txhash
-        getIdentity(digest, txHashStr, true);
-        CHAR16 humanId[61] = {0};
-        jsonObject["hash"] = wchar_to_string(txHashStr);
-        jsonObject["amount"] = Json::UInt64(tx->amount);
-        getIdentity((const unsigned char *)&tx->sourcePublicKey, humanId, false);
-        jsonObject["source"] = wchar_to_string(humanId);
-        getIdentity((const unsigned char *)&tx->destinationPublicKey, humanId, false);
-        jsonObject["destination"] = wchar_to_string(humanId);
-        jsonObject["tickNumber"] = tx->tick;
-        jsonObject["timestamp"] = Utils::formatTimestamp(
-            tickData->millisecond,
-            tickData->second,
-            tickData->minute,
-            tickData->hour,
-            tickData->day,
-            tickData->month,
-            tickData->year);
-        jsonObject["inputType"] = tx->inputType;
-        jsonObject["inputSize"] = tx->inputSize;
-        jsonObject["inputData"] = base64_encode(tx->inputPtr(), tx->inputSize);
-        jsonObject["signature"] = base64_encode(tx->signaturePtr(), SIGNATURE_SIZE);
-        jsonObject["moneyFlew"] = tx->amount > 0;
-        delete tickData;
-        return jsonObject;
-    }
-
-    static std::string formatTimestamp(
-        unsigned short millisecond,
-        unsigned char second,
-        unsigned char minute,
-        unsigned char hour,
-        unsigned char day,
-        unsigned char month,
-        unsigned char year // 2000 + year
-    ) {
-        std::tm tm{};
-        tm.tm_year = (2000 + year) - 1900; // years since 1900
-        tm.tm_mon  = month - 1;            // months since January [0–11]
-        tm.tm_mday = day;
-        tm.tm_hour = hour;
-        tm.tm_min  = minute;
-        tm.tm_sec  = second;
-        tm.tm_isdst = 0;                   // no daylight saving
-
-        // Convert to Unix time (UTC)
-#if defined(_WIN32)
-        time_t unixTime = _mkgmtime(&tm);  // Windows UTC
-#else
-        time_t unixTime = timegm(&tm);     // POSIX UTC
-#endif
-
-        return std::to_string(unixTime);
-    }
-};
 
 class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
 {
@@ -293,7 +184,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         jsonObject["epoch"] = localTickData.epoch;
         jsonObject["computorIndex"] = localTickData.computorIndex;
         jsonObject["timelock"] = base64_encode(localTickData.timelock.m256i_u8, 32);
-        jsonObject["timestamp"] = Utils::formatTimestamp(
+        jsonObject["timestamp"] = HttpUtils::formatTimestamp(
             localTickData.millisecond,
             localTickData.second,
             localTickData.minute,
@@ -385,7 +276,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
             TickStorage::transactionsDigestAccess.releaseLock();
             return;
         }
-        Json::Value jsonObject = Utils::transactionToJson(const_cast<Transaction *>(transaction));
+        Json::Value jsonObject = HttpUtils::transactionToJson(const_cast<Transaction *>(transaction));
         auto resp = HttpResponse::newHttpJsonResponse(jsonObject);
         cb(resp);
         TickStorage::transactionsDigestAccess.releaseLock();
@@ -468,7 +359,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
 
                 if (transaction->sourcePublicKey == publicKey)
                 {
-                    Json::Value txJson = Utils::transactionToJson((Transaction *)transaction);
+                    Json::Value txJson = HttpUtils::transactionToJson((Transaction *)transaction);
                     transactions.append(txJson);
                 }
             }
@@ -642,7 +533,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
                 continue;
             }
 
-            Json::Value txJson = Utils::transactionToJson((Transaction *)transaction);
+            Json::Value txJson = HttpUtils::transactionToJson((Transaction *)transaction);
             transactions.append(txJson);
         }
         TickStorage::transactionsDigestAccess.releaseLock();

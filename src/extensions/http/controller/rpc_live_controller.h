@@ -1,122 +1,32 @@
 #pragma once
 #include "extensions/utils.h"
+#include "../utils.h"
 #include <drogon/HttpController.h>
 
 using namespace drogon;
 
 namespace RpcLive
 {
-struct AssetIssuanceType
-{
-    m256i publicKey{};
-    unsigned char type{};
-    char name[7]{}; // Capital letters + digits
-    char numberOfDecimalPlaces{};
-    char unitOfMeasurement[7]{}; // Powers of the corresponding SI base units going in alphabetical order
-};
-
-struct AssetOwnershipType
-{
-    m256i publicKey{};
-    unsigned char type{};
-    char padding[1]{};
-    unsigned short managingContractIndex{};
-    unsigned int issuanceIndex{};
-    long long numberOfShares{};
-};
-
-struct AssetPossessionType
-{
-    m256i publicKey{};
-    unsigned char type{};
-    char padding[1]{};
-    unsigned short managingContractIndex{};
-    unsigned int ownershipIndex{};
-    long long numberOfShares{};
-};
-
-class Utils
-{
-public:
-    static unsigned long long assetNameFromString(const char *assetName)
-    {
-        size_t n = strlen(assetName);
-        unsigned long long integer = 0;
-        copyMem(&integer, assetName, n);
-        return integer;
-    }
-
-    static std::string assetNameFromInt64(unsigned long long assetName)
-    {
-        char buffer[8];
-        copyMem(&buffer, &assetName, sizeof(assetName));
-        buffer[7] = 0;
-        return buffer;
-    }
-
-    static Json::Value issuanceToJson(const AssetIssuanceType *asset)
-    {
-        Json::Value assetJson;
-        Json::Value unitOfMeasurementArray(Json::arrayValue);
-        CHAR16 identity[61] = {};
-        getIdentity((unsigned char *)&asset->publicKey, identity, false);
-        assetJson["issuerIdentity"] = wchar_to_string(identity);
-        assetJson["name"] = std::string(asset->name);
-        assetJson["type"] = ASSET_ISSUANCE;
-        assetJson["numberOfDecimalPlaces"] = asset->numberOfDecimalPlaces;
-        for (int i = 0; i < 8; i++)
-        {
-            unitOfMeasurementArray.append(asset->unitOfMeasurement[i]);
-        }
-        assetJson["unitOfMeasurement"] = unitOfMeasurementArray;
-        return assetJson;
-    }
-
-    static Json::Value ownershipToJson(const AssetOwnershipType *asset)
-    {
-        Json::Value assetJson;
-        CHAR16 identity[61] = {};
-        getIdentity((unsigned char *)&asset->publicKey, identity, false);
-        assetJson["ownerIdentity"] = wchar_to_string(identity);
-        assetJson["type"] = OWNERSHIP;
-        assetJson["managingContractIndex"] = asset->managingContractIndex;
-        assetJson["issuanceIndex"] = asset->issuanceIndex;
-        assetJson["numberOfUnits"] = std::to_string(asset->numberOfShares);
-        return assetJson;
-    }
-
-    static Json::Value possessionToJson(const AssetPossessionType *asset)
-    {
-        Json::Value assetJson;
-        CHAR16 identity[61] = {};
-        getIdentity((unsigned char *)&asset->publicKey, identity, false);
-        assetJson["possessorIdentity"] = wchar_to_string(identity);
-        assetJson["type"] = POSSESSION;
-        assetJson["managingContractIndex"] = asset->managingContractIndex;
-        assetJson["ownershipIndex"] = asset->ownershipIndex;
-        assetJson["numberOfUnits"] = std::to_string(asset->numberOfShares);
-        return assetJson;
-    }
-};
 
 class RpcLiveController : public HttpController<RpcLiveController>
 {
   public:
     METHOD_LIST_BEGIN
-    ADD_METHOD_TO(RpcLiveController::assetsIssuances, "/assets/issuances", Get);
-    ADD_METHOD_TO(RpcLiveController::assetsIssuancesIndex, "/assets/issuances/{index}", Get);
-    ADD_METHOD_TO(RpcLiveController::assetsOwnerships, "/assets/ownerships", Get);
-    ADD_METHOD_TO(RpcLiveController::assetsOwnershipsIndex, "/assets/ownerships/{index}", Get);
-    ADD_METHOD_TO(RpcLiveController::assetsPossessions, "/assets/possessions", Get);
-    ADD_METHOD_TO(RpcLiveController::assetsPossessionsIndex, "/assets/possessions/{index}", Get);
-    ADD_METHOD_TO(RpcLiveController::assetsIdentityIssued, "/assets/{identity}/issued", Get);
-    ADD_METHOD_TO(RpcLiveController::assetsIdentityOwned, "/assets/{identity}/owned", Get);
-    ADD_METHOD_TO(RpcLiveController::assetsIdentityPossessed, "/assets/{identity}/possessed", Get);
-    ADD_METHOD_TO(RpcLiveController::balancesId, "/balances/{id}", Get);
-    ADD_METHOD_TO(RpcLiveController::tickInfo, "/block-height", Get);
-    ADD_METHOD_TO(RpcLiveController::tickInfo, "/tick-info", Get);
-    ADD_METHOD_TO(RpcLiveController::broadcastTransaction, "/broadcast-transaction", Post);
-    ADD_METHOD_TO(RpcLiveController::querySmartContract, "/querySmartContract", Post);
+    ADD_METHOD_TO(RpcLiveController::assetsIssuances, "/live/v1/assets/issuances", Get);
+    ADD_METHOD_TO(RpcLiveController::assetsIssuancesIndex, "/live/v1/assets/issuances/{index}", Get);
+    ADD_METHOD_TO(RpcLiveController::assetsOwnerships, "/live/v1/assets/ownerships", Get);
+    ADD_METHOD_TO(RpcLiveController::assetsOwnershipsIndex, "/live/v1/assets/ownerships/{index}", Get);
+    ADD_METHOD_TO(RpcLiveController::assetsPossessions, "/live/v1/assets/possessions", Get);
+    ADD_METHOD_TO(RpcLiveController::assetsPossessionsIndex, "/live/v1/assets/possessions/{index}", Get);
+    ADD_METHOD_TO(RpcLiveController::assetsIdentityIssued, "/live/v1/assets/{identity}/issued", Get);
+    ADD_METHOD_TO(RpcLiveController::assetsIdentityOwned, "/live/v1/assets/{identity}/owned", Get);
+    ADD_METHOD_TO(RpcLiveController::assetsIdentityPossessed, "/live/v1/assets/{identity}/possessed", Get);
+    ADD_METHOD_TO(RpcLiveController::balancesId, "/live/v1/balances/{id}", Get);
+    ADD_METHOD_TO(RpcLiveController::tickInfo, "/live/v1/block-height", Get);
+    ADD_METHOD_TO(RpcLiveController::tickInfo, "/live/v1/tick-info", Get);
+    ADD_METHOD_TO(RpcLiveController::broadcastTransaction, "/live/v1/broadcast-transaction", Post);
+    ADD_METHOD_TO(RpcLiveController::iposActive, "/live/v1/ipos/active", Get);
+    ADD_METHOD_TO(RpcLiveController::querySmartContract, "/live/v1/querySmartContract", Post);
     METHOD_LIST_END
 
     inline void assetsIssuances(const HttpRequestPtr &req,
@@ -126,8 +36,8 @@ class RpcLiveController : public HttpController<RpcLiveController>
         auto assetName = req->getParameter("assetName");
         Json::Value result;
         Json::Value assetsArray(Json::arrayValue);
-
-        for (unsigned int i = 0; i < ASSETS_CAPACITY; i++)
+        unsigned long long targetUniverseIndex = -1;
+        for (unsigned long long i = 0; i < ASSETS_CAPACITY; i++)
         {
             if (assets[i].varStruct.issuance.type == ISSUANCE)
             {
@@ -144,12 +54,16 @@ class RpcLiveController : public HttpController<RpcLiveController>
                 }
 
                 Json::Value root;
-                Json::Value assetJson = Utils::issuanceToJson((AssetIssuanceType *)&asset);
+                Json::Value assetJson = HttpUtils::issuanceToJson((HttpUtils::AssetIssuanceType *)&asset);
                 root["data"] = assetJson;
                 assetsArray.append(root);
+                targetUniverseIndex = i;
+                break;
             }
         }
         result["assets"] = assetsArray;
+        result["tick"] = system.tick;
+        result["universeIndex"] = Json::UInt64(targetUniverseIndex);
         cb(HttpResponse::newHttpJsonResponse(result));
     }
 
@@ -158,10 +72,10 @@ class RpcLiveController : public HttpController<RpcLiveController>
                                      const std::string &indexStr)
     {
         Json::Value result;
-        unsigned int index = std::stoul(indexStr);
+        unsigned long long index = std::stoull(indexStr);
         if (index >= ASSETS_CAPACITY)
         {
-            result["code"] = -1;
+            result["code"] = 3;
             result["message"] = "Index out of range";
             cb(HttpResponse::newHttpJsonResponse(result));
             return;
@@ -169,15 +83,17 @@ class RpcLiveController : public HttpController<RpcLiveController>
 
         if (assets[index].varStruct.issuance.type != ISSUANCE)
         {
-            result["code"] = -1;
+            result["code"] = 3;
             result["message"] = "No asset issuance at the given index";
             cb(HttpResponse::newHttpJsonResponse(result));
             return;
         }
 
         auto &asset = assets[index].varStruct.issuance;
-        Json::Value assetJson = Utils::issuanceToJson((AssetIssuanceType *)&asset);
+        Json::Value assetJson = HttpUtils::issuanceToJson((HttpUtils::AssetIssuanceType *)&asset);
         result["data"] = assetJson;
+        result["tick"] = system.tick;
+        result["universeIndex"] = Json::UInt64(index);
         cb(HttpResponse::newHttpJsonResponse(result));
     }
 
@@ -187,14 +103,18 @@ class RpcLiveController : public HttpController<RpcLiveController>
         auto issuerIdentity = req->getParameter("issuerIdentity");
         auto assetName = req->getParameter("assetName");
         auto ownerIdentity = req->getParameter("ownerIdentity");
-        int64_t ownershipManagingContract = stoll(req->getParameter("ownershipManagingContract"));
+        int64_t ownershipManagingContract = -1;
+        if (req->getParameter("ownershipManagingContract") != "")
+        {
+            ownershipManagingContract = stoll(req->getParameter("ownershipManagingContract"));
+        }
         Json::Value result;
         Json::Value assetsArray(Json::arrayValue);
 
         m256i issuerPublicKey;
         getPublicKeyFromIdentity(reinterpret_cast<const unsigned char *>(issuerIdentity.c_str()), issuerPublicKey.m256i_u8);
-        auto targetIssuanceIndex = issuanceIndex(issuerPublicKey, Utils::assetNameFromString(assetName.c_str()));
-        for (unsigned int i = 0; i < ASSETS_CAPACITY; i++)
+        auto targetIssuanceIndex = issuanceIndex(issuerPublicKey, HttpUtils::assetNameFromString(assetName.c_str()));
+        for (unsigned long long i = 0; i < ASSETS_CAPACITY; i++)
         {
             if (assets[i].varStruct.ownership.type == OWNERSHIP)
             {
@@ -211,10 +131,9 @@ class RpcLiveController : public HttpController<RpcLiveController>
                 }
 
                 Json::Value root;
-                Json::Value assetJson = Utils::ownershipToJson((AssetOwnershipType *)&asset);
-                // TODO: fill these info
-                root["tick"] = 0;
-                root["universeIndex"] = 0;
+                Json::Value assetJson = HttpUtils::ownershipToJson((HttpUtils::AssetOwnershipType *)&asset);
+                root["tick"] = system.tick;
+                root["universeIndex"] = Json::UInt64(i);
                 root["data"] = assetJson;
                 assetsArray.append(root);
             }
@@ -228,10 +147,10 @@ class RpcLiveController : public HttpController<RpcLiveController>
                                       const std::string &indexStr)
     {
         Json::Value result;
-        unsigned int index = std::stoul(indexStr);
+        unsigned long long index = std::stoull(indexStr);
         if (index >= ASSETS_CAPACITY)
         {
-            result["code"] = -1;
+            result["code"] = 3;
             result["message"] = "Index out of range";
             cb(HttpResponse::newHttpJsonResponse(result));
             return;
@@ -239,18 +158,17 @@ class RpcLiveController : public HttpController<RpcLiveController>
 
         if (assets[index].varStruct.ownership.type != OWNERSHIP)
         {
-            result["code"] = -1;
+            result["code"] = 3;
             result["message"] = "No asset ownership at the given index";
             cb(HttpResponse::newHttpJsonResponse(result));
             return;
         }
 
         auto &asset = assets[index].varStruct.ownership;
-        Json::Value assetJson = Utils::ownershipToJson((AssetOwnershipType *)&asset);
+        Json::Value assetJson = HttpUtils::ownershipToJson((HttpUtils::AssetOwnershipType *)&asset);
         result["data"] = assetJson;
-        // TODO: fill these info
-        result["tick"] = 0;
-        result["universeIndex"] = 0;
+        result["tick"] = system.tick;
+        result["universeIndex"] = Json::UInt64(index);
         cb(HttpResponse::newHttpJsonResponse(result));
     }
 
@@ -261,16 +179,24 @@ class RpcLiveController : public HttpController<RpcLiveController>
         auto assetName = req->getParameter("assetName");
         auto ownerIdentity = req->getParameter("ownerIdentity");
         auto possessorIdentity = req->getParameter("possessorIdentity");
-        int64_t ownershipManagingContract = stoll(req->getParameter("ownershipManagingContract"));
-        int64_t possessionManagingContract = stoll(req->getParameter("possessionManagingContract"));
+        int64_t ownershipManagingContract = -1;
+        int64_t possessionManagingContract = -1;
+        if (req->getParameter("ownershipManagingContract") != "")
+        {
+            ownershipManagingContract = stoll(req->getParameter("ownershipManagingContract"));
+        }
+        if (req->getParameter("possessionManagingContract") != "")
+        {
+            possessionManagingContract = stoll(req->getParameter("possessionManagingContract"));
+        }
         Json::Value result;
         Json::Value assetsArray(Json::arrayValue);
 
         m256i issuerPublicKey;
         getPublicKeyFromIdentity(reinterpret_cast<const unsigned char *>(issuerIdentity.c_str()), issuerPublicKey.m256i_u8);
-        auto targetIssuanceIndex = issuanceIndex(issuerPublicKey, Utils::assetNameFromString(assetName.c_str()));
+        auto targetIssuanceIndex = issuanceIndex(issuerPublicKey, HttpUtils::assetNameFromString(assetName.c_str()));
 
-        for (unsigned int i = 0; i < ASSETS_CAPACITY; i++)
+        for (unsigned long long i = 0; i < ASSETS_CAPACITY; i++)
         {
             if (assets[i].varStruct.possession.type == POSSESSION)
             {
@@ -284,22 +210,20 @@ class RpcLiveController : public HttpController<RpcLiveController>
                     (!ownerIdentity.empty() && identityStr != ownerIdentity) ||
                     (ownershipManagingContract >= 0 && currentOwnershipManagingContractIndex != ownershipManagingContract) ||
                     (possessionManagingContract >= 0 && asset.managingContractIndex != possessionManagingContract) ||
-                    (targetIssuanceIndex >= 0 && currentIssuanceIndex != (unsigned int)targetIssuanceIndex))
+                    (targetIssuanceIndex >= 0 && currentIssuanceIndex != targetIssuanceIndex))
                 {
                     continue;
                 }
 
                 Json::Value root;
-                Json::Value assetJson = Utils::possessionToJson((AssetPossessionType *)&asset);
+                Json::Value assetJson = HttpUtils::possessionToJson((HttpUtils::AssetPossessionType *)&asset);
                 root["data"] = assetJson;
-                // TODO: fill these info
-                root["tick"] = 0;
-                root["universeIndex"] = 0;
+                root["tick"] = system.tick;
+                root["universeIndex"] = Json::UInt64(i);
                 assetsArray.append(root);
             }
-            result["assets"] = assetsArray;
         }
-
+        result["assets"] = assetsArray;
         cb(HttpResponse::newHttpJsonResponse(result));
     }
 
@@ -308,10 +232,10 @@ class RpcLiveController : public HttpController<RpcLiveController>
                                        const std::string &indexStr)
     {
         Json::Value result;
-        unsigned int index = std::stoul(indexStr);
+        unsigned long long index = std::stoull(indexStr);
         if (index >= ASSETS_CAPACITY)
         {
-            result["code"] = -1;
+            result["code"] = 3;
             result["message"] = "Index out of range";
             cb(HttpResponse::newHttpJsonResponse(result));
             return;
@@ -319,18 +243,17 @@ class RpcLiveController : public HttpController<RpcLiveController>
 
         if (assets[index].varStruct.possession.type != POSSESSION)
         {
-            result["code"] = -1;
+            result["code"] = 3;
             result["message"] = "No asset possession at the given index";
             cb(HttpResponse::newHttpJsonResponse(result));
             return;
         }
 
         auto &asset = assets[index].varStruct.possession;
-        Json::Value assetJson = Utils::possessionToJson((AssetPossessionType *)&asset);
+        Json::Value assetJson = HttpUtils::possessionToJson((HttpUtils::AssetPossessionType *)&asset);
         result["data"] = assetJson;
-        // TODO: fill these info
-        result["tick"] = 0;
-        result["universeIndex"] = 0;
+        result["tick"] = system.tick;
+        result["universeIndex"] = Json::UInt64(index);
         cb(HttpResponse::newHttpJsonResponse(result));
     }
 
@@ -344,7 +267,7 @@ class RpcLiveController : public HttpController<RpcLiveController>
         m256i identityPublicKey;
         getPublicKeyFromIdentity(reinterpret_cast<const unsigned char *>(identityStr.c_str()), identityPublicKey.m256i_u8);
 
-        for (unsigned int i = 0; i < ASSETS_CAPACITY; i++)
+        for (unsigned long long i = 0; i < ASSETS_CAPACITY; i++)
         {
             if (assets[i].varStruct.issuance.type == ISSUANCE)
             {
@@ -356,11 +279,11 @@ class RpcLiveController : public HttpController<RpcLiveController>
                 }
 
                 Json::Value root;
-                Json::Value assetJson = Utils::issuanceToJson((AssetIssuanceType *)&asset);
+                Json::Value assetJson = HttpUtils::issuanceToJson((HttpUtils::AssetIssuanceType *)&asset);
                 root["data"] = assetJson;
                 Json::Value info(Json::objectValue);
-                info["tick"] = 0;          // TODO: fill tick
-                info["universeIndex"] = 0; // TODO: fill universe index
+                info["tick"] = system.tick;
+                info["universeIndex"] = Json::UInt64(i);
                 root["info"] = info;
                 assetsArray.append(root);
             }
@@ -379,7 +302,7 @@ class RpcLiveController : public HttpController<RpcLiveController>
         m256i identityPublicKey;
         getPublicKeyFromIdentity(reinterpret_cast<const unsigned char *>(identityStr.c_str()), identityPublicKey.m256i_u8);
 
-        for (unsigned int i = 0; i < ASSETS_CAPACITY; i++)
+        for (unsigned long long i = 0; i < ASSETS_CAPACITY; i++)
         {
             if (assets[i].varStruct.ownership.type == OWNERSHIP)
             {
@@ -391,12 +314,12 @@ class RpcLiveController : public HttpController<RpcLiveController>
                 }
 
                 Json::Value root;
-                Json::Value assetJson = Utils::ownershipToJson((AssetOwnershipType *)&asset);
-                assetJson["issuedAsset"] = Utils::issuanceToJson((AssetIssuanceType *)issuanceAsset);
+                Json::Value assetJson = HttpUtils::ownershipToJson((HttpUtils::AssetOwnershipType *)&asset);
+                assetJson["issuedAsset"] = HttpUtils::issuanceToJson((HttpUtils::AssetIssuanceType *)issuanceAsset);
                 root["data"] = assetJson;
                 Json::Value info(Json::objectValue);
-                info["tick"] = 0;          // TODO: fill tick
-                info["universeIndex"] = 0; // TODO: fill universe index
+                info["tick"] = system.tick;
+                info["universeIndex"] = Json::UInt64(i);
                 root["info"] = info;
                 assetsArray.append(root);
             }
@@ -415,7 +338,7 @@ class RpcLiveController : public HttpController<RpcLiveController>
         m256i identityPublicKey;
         getPublicKeyFromIdentity(reinterpret_cast<const unsigned char *>(identityStr.c_str()), identityPublicKey.m256i_u8);
 
-        for (unsigned int i = 0; i < ASSETS_CAPACITY; i++)
+        for (unsigned long long i = 0; i < ASSETS_CAPACITY; i++)
         {
             if (assets[i].varStruct.possession.type == POSSESSION)
             {
@@ -428,13 +351,13 @@ class RpcLiveController : public HttpController<RpcLiveController>
                 }
 
                 Json::Value root;
-                Json::Value assetJson = Utils::possessionToJson((AssetPossessionType *)&asset);
-                assetJson["ownedAsset"] = Utils::ownershipToJson((AssetOwnershipType *)ownershipAsset);
-                assetJson["ownedAsset"]["issuedAsset"] = Utils::issuanceToJson((AssetIssuanceType *)issuanceAsset);
+                Json::Value assetJson = HttpUtils::possessionToJson((HttpUtils::AssetPossessionType *)&asset);
+                assetJson["ownedAsset"] = HttpUtils::ownershipToJson((HttpUtils::AssetOwnershipType *)ownershipAsset);
+                assetJson["ownedAsset"]["issuedAsset"] = HttpUtils::issuanceToJson((HttpUtils::AssetIssuanceType *)issuanceAsset);
                 root["data"] = assetJson;
                 Json::Value info(Json::objectValue);
-                info["tick"] = 0;          // TODO: fill tick
-                info["universeIndex"] = 0; // TODO: fill universe index
+                info["tick"] = system.tick;
+                info["universeIndex"] = Json::UInt64(i);
                 root["info"] = info;
                 assetsArray.append(root);
             }
@@ -453,8 +376,8 @@ class RpcLiveController : public HttpController<RpcLiveController>
         getPublicKeyFromIdentity(reinterpret_cast<const unsigned char *>(idStr.c_str()), identityPublicKey.m256i_u8);
         auto spectrumInfo = spectrum[spectrumIndex(identityPublicKey)];
         balance["id"] = idStr;
-        balance["balance"] = std::to_string(spectrumInfo.outgoingAmount - spectrumInfo.incomingAmount);
-        balance["validForTick"] = 0;
+        balance["balance"] = std::to_string(spectrumInfo.incomingAmount - spectrumInfo.outgoingAmount);
+        balance["validForTick"] = system.tick;
         balance["latestIncomingTransferTick"] = spectrumInfo.latestIncomingTransferTick;
         balance["latestOutgoingTransferTick"] = spectrumInfo.latestOutgoingTransferTick;
         balance["incomingAmount"] = std::to_string(spectrumInfo.incomingAmount);
@@ -475,6 +398,7 @@ class RpcLiveController : public HttpController<RpcLiveController>
         json["alignedVotes"] = gTickNumberOfComputors;
         json["misalignedVotes"] = gTickTotalNumberOfComputors - gTickNumberOfComputors;
         json["mainAuxStatus"] = mainAuxStatus;
+        json["duration"] = 0;
         auto resp = HttpResponse::newHttpJsonResponse(json);
         cb(resp);
     }
@@ -488,7 +412,7 @@ class RpcLiveController : public HttpController<RpcLiveController>
             auto json = req->getJsonObject();
             if (!json)
             {
-                result["code"] = -1;
+                result["code"] = 3;
                 result["message"] = "Invalid JSON";
                 cb(HttpResponse::newHttpJsonResponse(result));
                 return;
@@ -497,17 +421,30 @@ class RpcLiveController : public HttpController<RpcLiveController>
             std::string txBase64 = (*json)["encodedTransaction"].asString();
             // decode base64
             auto txData = base64_decode(txBase64);
-            Transaction tx;
-            copyMem(&tx, txData.data(), sizeof(Transaction));
-            if (!tx.checkValidity())
+            std::cout << "tx data size: " << txData.size() << std::endl;
+            Transaction *tx = (Transaction*)txData.data();
+            if (!tx->checkValidity())
             {
-                result["code"] = -1;
+                result["code"] = 3;
                 result["message"] = "Invalid validity";
                 cb(HttpResponse::newHttpJsonResponse(result));
                 return;
             }
+            std::cout << "tx json" << HttpUtils::transactionToJson(tx, false) << std::endl;
+            // verify signature
+            {
+                unsigned char digest[32];
+                KangarooTwelve(txData.data(), tx->totalSize() - SIGNATURE_SIZE, digest, sizeof(digest));
+                if (!verify(tx->sourcePublicKey.m256i_u8, digest, tx->signaturePtr()))
+                {
+                    result["code"] = 3;
+                    result["message"] = "Invalid signature";
+                    cb(HttpResponse::newHttpJsonResponse(result));
+                    return;
+                }
+            }
 
-            std::vector<uint8_t> packet(sizeof(RequestResponseHeader) + sizeof(Transaction) + tx.inputSize + SIGNATURE_SIZE);
+            std::vector<uint8_t> packet(sizeof(RequestResponseHeader) + tx->totalSize());
             // Broadcast
             RequestResponseHeader *header = (RequestResponseHeader *)packet.data();
             header->setSize2(packet.size());
@@ -518,9 +455,9 @@ class RpcLiveController : public HttpController<RpcLiveController>
 
             uint8_t digest[32];
             KangarooTwelve(packet.data() + sizeof(RequestResponseHeader),
-                           sizeof(Transaction) + tx.inputSize + 64,
+                           tx->totalSize(),
                            digest,
-                           32); // recompute digest for txhash
+                           32);
             CHAR16 txHash[61] = {};
             getIdentity(digest, txHash, true);
 
@@ -537,6 +474,25 @@ class RpcLiveController : public HttpController<RpcLiveController>
         }
     }
 
+    inline void iposActive(const HttpRequestPtr &req,
+                           std::function<void(const HttpResponsePtr &)> &&cb)
+    {
+        Json::Value result;
+        Json::Value iposArray(Json::arrayValue);
+        for (unsigned int contractIndex = 1; contractIndex < contractCount; ++contractIndex)
+        {
+            if (system.epoch == contractDescriptions[contractIndex].constructionEpoch - 1) // IPO happens in the epoch before construction
+            {
+                Json::Value ipoJson;
+                ipoJson["contractIndex"] = contractIndex;
+                ipoJson["assetName"] = std::string(contractDescriptions[contractIndex].assetName);
+                iposArray.append(ipoJson);
+            }
+        }
+        result["ipos"] = iposArray;
+        cb(HttpResponse::newHttpJsonResponse(result));
+    }
+
     inline void querySmartContract(const HttpRequestPtr &req,
                                    std::function<void(const HttpResponsePtr &)> &&cb)
     {
@@ -546,7 +502,7 @@ class RpcLiveController : public HttpController<RpcLiveController>
             auto json = req->getJsonObject();
             if (!json)
             {
-                result["code"] = -1;
+                result["code"] = 3;
                 result["message"] = "Invalid JSON";
                 cb(HttpResponse::newHttpJsonResponse(result));
                 return;
@@ -556,8 +512,16 @@ class RpcLiveController : public HttpController<RpcLiveController>
             unsigned short inputType = (*json)["inputType"].asUInt();
             unsigned short inputSize = (*json)["inputSize"].asUInt();
             std::string requestData = (*json)["requestData"].asString();
-            std::vector<uint8_t> inputData(inputSize);
-            copyMem(inputData.data(), base64_decode(requestData).data(), inputSize);
+            std::vector<uint8_t> inputData = base64_decode(requestData);
+            if (inputData.size() != inputSize)
+            {
+                result["code"] = 3;
+                result["message"] = "Input size mismatch";
+                auto res = HttpResponse::newHttpJsonResponse(result);
+                res->setStatusCode(k400BadRequest);
+                cb(res);
+                return;
+            }
             QpiContextUserFunctionCall qpiContext(contractIndex);
             auto errorCode = qpiContext.call(inputType, inputData.data(), inputSize);
             if (errorCode == NoContractError)
@@ -566,18 +530,24 @@ class RpcLiveController : public HttpController<RpcLiveController>
                 std::vector<uint8_t> responseData(qpiContext.outputSize);
                 copyMem(responseData.data(), qpiContext.outputBuffer, qpiContext.outputSize);
                 result["responseData"] = base64_encode(responseData);
+                cb(HttpResponse::newHttpJsonResponse(result));
             }
             else
             {
                 result["code"] = -1;
                 result["message"] = "Error calling smart contract function: " + std::to_string(errorCode);
+                auto res = HttpResponse::newHttpJsonResponse(result);
+                res->setStatusCode(k500InternalServerError);
+                cb(res);
             }
         }
         catch (const std::exception &e)
         {
             result["code"] = -1;
             result["message"] = "Exception: " + std::string(e.what());
-            cb(HttpResponse::newHttpJsonResponse(result));
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k500InternalServerError);
+            cb(res);
         }
     }
 };
