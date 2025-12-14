@@ -8,7 +8,6 @@ namespace RpcQueryV2
 {
 struct Utils
 {
-
     static TickData *findTickDataFromTxHash(m256i &hash)
     {
         TickData localTickData;
@@ -81,8 +80,8 @@ struct Utils
             tickData->year);
         jsonObject["inputType"] = tx->inputType;
         jsonObject["inputSize"] = tx->inputSize;
-        jsonObject["inputData"] = byteToHex(tx->inputPtr(), tx->inputSize);
-        jsonObject["signature"] = byteToHex(tx->signaturePtr(), SIGNATURE_SIZE);
+        jsonObject["inputData"] = base64_encode(tx->inputPtr(), tx->inputSize);
+        jsonObject["signature"] = base64_encode(tx->signaturePtr(), SIGNATURE_SIZE);
         jsonObject["moneyFlew"] = tx->amount > 0;
         delete tickData;
         return jsonObject;
@@ -95,24 +94,25 @@ struct Utils
         unsigned char hour,
         unsigned char day,
         unsigned char month,
-        unsigned char year // assume 2000+year
-    )
-    {
-        char buf[32];
+        unsigned char year // 2000 + year
+    ) {
+        std::tm tm{};
+        tm.tm_year = (2000 + year) - 1900; // years since 1900
+        tm.tm_mon  = month - 1;            // months since January [0–11]
+        tm.tm_mday = day;
+        tm.tm_hour = hour;
+        tm.tm_min  = minute;
+        tm.tm_sec  = second;
+        tm.tm_isdst = 0;                   // no daylight saving
 
-        std::snprintf(
-            buf,
-            sizeof(buf),
-            "%04u-%02u-%02u %02u:%02u:%02u.%03u",
-            (unsigned)(2000 + year),
-            (unsigned)month,
-            (unsigned)day,
-            (unsigned)hour,
-            (unsigned)minute,
-            (unsigned)second,
-            (unsigned)millisecond);
+        // Convert to Unix time (UTC)
+#if defined(_WIN32)
+        time_t unixTime = _mkgmtime(&tm);  // Windows UTC
+#else
+        time_t unixTime = timegm(&tm);     // POSIX UTC
+#endif
 
-        return std::string(buf);
+        return std::to_string(unixTime);
     }
 };
 
@@ -162,13 +162,10 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
             getIdentity((const unsigned char *)&pubKey, id, false);
             idLists.append(wchar_to_string(id));
         }
-        std::vector<uint8_t> signature;
-        signature.reserve(SIGNATURE_SIZE);
-        signature.assign(broadcastedComputors.computors.signature, broadcastedComputors.computors.signature + SIGNATURE_SIZE);
         computorObject["epoch"] = epoch;
         computorObject["tickNumber"] = 0;
         computorObject["identities"] = idLists;
-        computorObject["signature"] = base64_encode(signature);
+        computorObject["signature"] = base64_encode(broadcastedComputors.computors.signature, SIGNATURE_SIZE);
         computorLists.append(computorObject);
         result["computorsLists"] = computorLists;
 
@@ -240,17 +237,19 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         }
 
         Json::Value jsonObject;
-        jsonObject["tick"] = localTickData.tick;
+        jsonObject["tickNumber"] = localTickData.tick;
         jsonObject["epoch"] = localTickData.epoch;
         jsonObject["computorIndex"] = localTickData.computorIndex;
-        jsonObject["millisecond"] = localTickData.millisecond;
-        jsonObject["second"] = localTickData.second;
-        jsonObject["minute"] = localTickData.minute;
-        jsonObject["hour"] = localTickData.hour;
-        jsonObject["day"] = localTickData.day;
-        jsonObject["month"] = localTickData.month;
-        jsonObject["year"] = localTickData.year;
-        jsonObject["timelock"] = byteToHex((unsigned char *)&localTickData.timelock, sizeof(m256i));
+        jsonObject["timelock"] = base64_encode(localTickData.timelock.m256i_u8, 32);
+        jsonObject["timestamp"] = Utils::formatTimestamp(
+            localTickData.millisecond,
+            localTickData.second,
+            localTickData.minute,
+            localTickData.hour,
+            localTickData.day,
+            localTickData.month,
+            localTickData.year);
+        jsonObject["varStruct"] = "";
         Json::Value txDigestsJson(Json::arrayValue);
         for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
         {
@@ -268,7 +267,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
             contractFeesJson.append(Json::UInt64(localTickData.contractFees[i]));
         }
         jsonObject["contractFees"] = contractFeesJson;
-        jsonObject["signature"] = byteToHex((unsigned char *)localTickData.signature, SIGNATURE_SIZE);
+        jsonObject["signature"] = base64_encode(localTickData.signature, SIGNATURE_SIZE);
 
         auto resp = HttpResponse::newHttpJsonResponse(jsonObject);
         cb(resp);
@@ -322,7 +321,9 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
     inline void getTransactionsForIdentity(const HttpRequestPtr &req,
                                            std::function<void(const HttpResponsePtr &)> &&cb)
     {
-        Json::Value result;
+        try
+        {
+            Json::Value result;
         auto json = req->getJsonObject();
         if (!json)
         {
@@ -340,6 +341,17 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
             cb(HttpResponse::newHttpJsonResponse(result));
             return;
         }
+
+        // type: map<string,string>
+        auto filters = (*json)["filters"];
+        // type: map<string, Range>
+        auto ranges = (*json)["ranges"];
+        // type
+        // {
+        //     offset: number,
+        //     size: number
+        // }
+        auto pagination = (*json)["pagination"];
 
         std::string identityStr = (*json)["identity"].asString();
         m256i publicKey{};
@@ -383,6 +395,116 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
             }
         }
         TickStorage::transactionsDigestAccess.releaseLock();
+
+        // filter transactions based on filters
+        if (filters.isObject())
+        {
+            Json::Value filteredTransactions(Json::arrayValue);
+            for (unsigned int i = 0; i < transactions.size(); i++)
+            {
+                Json::Value tx = transactions[i];
+                bool match = true;
+                for (const auto &key : filters.getMemberNames())
+                {
+                    if (tx.isMember(key))
+                    {
+                        if (tx[key].asString() != filters[key].asString())
+                        {
+                            match = false;
+                            break;
+                        }
+                    }
+                }
+                if (match)
+                {
+                    filteredTransactions.append(tx);
+                }
+            }
+            transactions = filteredTransactions;
+        }
+        // filter transactions based on ranges
+        if (ranges.isObject())
+        {
+            Json::Value rangedTransactions(Json::arrayValue);
+            for (unsigned int i = 0; i < transactions.size(); i++)
+            {
+                Json::Value tx = transactions[i];
+                bool match = true;
+                for (const auto &key : ranges.getMemberNames())
+                {
+                    if (tx.isMember(key))
+                    {
+                        Json::Value range = ranges[key];
+                        if (range.isObject())
+                        {
+                            if (range.isMember("lt"))
+                            {
+                                if (!(stoull(tx[key].asString()) < stoull(range["lt"].asString())))
+                                {
+                                    match = false;
+                                    break;
+                                }
+                            }
+                            if (range.isMember("gt"))
+                            {
+                                if (!(stoull(tx[key].asString()) > stoull(range["gt"].asString())))
+                                {
+                                    match = false;
+                                    break;
+                                }
+                            }
+                            if (range.isMember("lte"))
+                            {
+                                if (!(stoull(tx[key].asString()) <= stoull(range["lte"].asString())))
+                                {
+                                    match = false;
+                                    break;
+                                }
+                            }
+                            if (range.isMember("gte"))
+                            {
+                                if (!(stoull(tx[key].asString()) >= stoull(range["gte"].asString())))
+                                {
+                                    match = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (match)
+                {
+                    rangedTransactions.append(tx);
+                }
+            }
+            transactions = rangedTransactions;
+        }
+        // apply pagination
+        if (pagination.isObject())
+        {
+            unsigned int offset = 0;
+            unsigned int size = 0;
+            if (pagination.isMember("offset"))
+            {
+                offset = pagination["offset"].asUInt();
+            }
+            offset = std::min(offset, (unsigned int)10000);
+            if (pagination.isMember("size"))
+            {
+                size = pagination["size"].asUInt();
+            } else
+            {
+                size = 10;
+            }
+            size = std::min(size, (unsigned int)1000);
+            Json::Value paginatedTransactions(Json::arrayValue);
+            for (unsigned int i = offset; i < transactions.size() && i < offset + size; i++)
+            {
+                paginatedTransactions.append(transactions[i]);
+            }
+            transactions = paginatedTransactions;
+        }
+
         result["transactions"] = transactions;
         result["validForTick"] = 0;
         result["hits"]["total"] = transactions.size();
@@ -390,6 +512,13 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         result["hits"]["size"] = transactions.size();
         auto resp = HttpResponse::newHttpJsonResponse(result);
         cb(resp);
+        } catch (const std::exception &e)
+        {
+            Json::Value result;
+            result["code"] = -1;
+            result["message"] = std::string("Internal server error: ") + e.what();
+            cb(HttpResponse::newHttpJsonResponse(result));
+        }
     }
 
     inline void getTransactionsForTick(const HttpRequestPtr &req,

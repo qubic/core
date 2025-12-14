@@ -147,6 +147,10 @@ static inline std::string base64_encode(const std::vector<uint8_t> &in) {
     return out;
 }
 
+static inline std::string base64_encode(uint8_t *data, size_t length) {
+    return base64_encode(std::vector<uint8_t>(data, data + length));
+}
+
 static inline std::vector<uint8_t> base64_decode(const std::string &in) {
     static int T[256];
     static bool init = false;
