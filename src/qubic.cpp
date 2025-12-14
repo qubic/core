@@ -1324,6 +1324,16 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.currentEntityBalanceDustThreshold = (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf;
 
     respondedSystemInfo.targetTickVoteSignature = TARGET_TICK_VOTE_SIGNATURE;
+
+    if (broadcastedComputors.computors.epoch != 0)
+    {
+        copyMem(&respondedSystemInfo.computorPacketSignature, broadcastedComputors.computors.signature, 8);
+    }
+    else
+    {
+        respondedSystemInfo.computorPacketSignature = 0;
+    }
+    
     enqueueResponse(peer, sizeof(respondedSystemInfo), RespondSystemInfo::type(), header->dejavu(), &respondedSystemInfo);
 }
 
