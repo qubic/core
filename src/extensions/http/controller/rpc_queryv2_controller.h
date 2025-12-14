@@ -6,6 +6,70 @@ using namespace drogon;
 
 namespace RpcQueryV2
 {
+
+enum StatusCode
+{
+    NotFound = 5,
+};
+
+namespace MiddleWare
+{
+class TickNumberVerifier : public HttpMiddleware<TickNumberVerifier>
+{
+public:
+    TickNumberVerifier() {}
+
+    void invoke(const HttpRequestPtr &req,
+                MiddlewareNextCallback &&nextCb,
+                MiddlewareCallback &&mcb) override
+    {
+        Json::Value result;
+        auto json = req->getJsonObject();
+        if (!json)
+        {
+            result["code"] = 3;
+            result["message"] = "Invalid JSON";
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            mcb(res);
+            return;
+        }
+
+        // check if tickNumber field exists
+        if (!(*json).isMember("tickNumber"))
+        {
+            result["code"] = 3;
+            result["message"] = "Missing tickNumber field";
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            mcb(res);
+            return;
+        }
+
+        unsigned int tickNumber = (*json)["tickNumber"].asUInt64();
+        if (tickNumber > system.tick)
+        {
+            result["code"] = 3;
+            result["message"] = std::format("invalid tick number: rpc error: code = FailedPrecondition desc = requested tick number {} is greater than last processed tick {}", tickNumber, system.tick);
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            mcb(res);
+            return;
+        } else if (tickNumber < system.initialTick)
+        {
+            result["code"] = 3;
+            result["message"] = std::format("invalid tick number: rpc error: code = OutOfRange desc = provided tick number {} was skipped by the system, next available tick is {}", tickNumber, system.initialTick);
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            mcb(res);
+            return;
+        }
+
+        nextCb([mcb = std::move(mcb)](const HttpResponsePtr &resp) { mcb(resp); });
+    }
+};
+}
+
 struct Utils
 {
     static TickData *findTickDataFromTxHash(m256i &hash)
@@ -123,10 +187,10 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
     ADD_METHOD_TO(RpcQueryV2Controller::getComputorListsForEpoch, "/getComputorListsForEpoch", Post);
     ADD_METHOD_TO(RpcQueryV2Controller::getLastProcessedTick, "/getLastProcessedTick", Get);
     ADD_METHOD_TO(RpcQueryV2Controller::getProcessedTickIntervals, "/getProcessedTickIntervals", Get);
-    ADD_METHOD_TO(RpcQueryV2Controller::getTickData, "/getTickData", Post);
+    ADD_METHOD_TO(RpcQueryV2Controller::getTickData, "/getTickData", Post, "RpcQueryV2::MiddleWare::TickNumberVerifier");
     ADD_METHOD_TO(RpcQueryV2Controller::getTransactionByHash, "/getTransactionByHash", Post);
     ADD_METHOD_TO(RpcQueryV2Controller::getTransactionsForIdentity, "/getTransactionsForIdentity", Post);
-    ADD_METHOD_TO(RpcQueryV2Controller::getTransactionsForTick, "/getTransactionsForTick", Post);
+    ADD_METHOD_TO(RpcQueryV2Controller::getTransactionsForTick, "/getTransactionsForTick", Post, "RpcQueryV2::MiddleWare::TickNumberVerifier");
     METHOD_LIST_END
 
     inline void getComputorListsForEpoch(const HttpRequestPtr &req,
@@ -156,7 +220,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
             return;
         }
 
-        unsigned int epoch = (*json)["epoch"].asUInt();
+        unsigned int epoch = (*json)["epoch"].asUInt64();
         Json::Value computorLists(Json::arrayValue);
         Json::Value computorObject;
         Json::Value idLists(Json::arrayValue);
@@ -204,28 +268,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
     {
         Json::Value result;
         auto json = req->getJsonObject();
-        if (!json)
-        {
-            result["code"] = -1;
-            result["message"] = "Invalid JSON";
-            auto res = HttpResponse::newHttpJsonResponse(result);
-            res->setStatusCode(k400BadRequest);
-            cb(res);
-            return;
-        }
-
-        // check if tickNumber field exists
-        if (!(*json).isMember("tickNumber"))
-        {
-            result["code"] = -1;
-            result["message"] = "Missing tickNumber field";
-            auto res = HttpResponse::newHttpJsonResponse(result);
-            res->setStatusCode(k400BadRequest);
-            cb(res);
-            return;
-        }
-
-        unsigned int tickNumber = (*json)["tickNumber"].asUInt();
+        unsigned int tickNumber = (*json)["tickNumber"].asUInt64();
         TickData localTickData;
         TickStorage::tickData.acquireLock();
         TickData *tickData = TickStorage::tickData.getByTickIfNotEmpty(tickNumber);
@@ -236,7 +279,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         TickStorage::tickData.releaseLock();
         if (!tickData)
         {
-            result["code"] = -1;
+            result["code"] = StatusCode::NotFound;
             result["message"] = "Tick data not found";
             auto resp = HttpResponse::newHttpJsonResponse(result);
             resp->setStatusCode(k404NotFound);
@@ -316,7 +359,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         const Transaction *transaction = TickStorage::transactionsDigestAccess.findTransaction(txDigest);
         if (!transaction)
         {
-            result["code"] = -1;
+            result["code"] = StatusCode::NotFound;
             result["message"] = "Transaction not found";
             auto resp = HttpResponse::newHttpJsonResponse(result);
             resp->setStatusCode(k404NotFound);
@@ -504,12 +547,12 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
             unsigned int size = 0;
             if (pagination.isMember("offset"))
             {
-                offset = pagination["offset"].asUInt();
+                offset = pagination["offset"].asUInt64();
             }
             offset = std::min(offset, (unsigned int)10000);
             if (pagination.isMember("size"))
             {
-                size = pagination["size"].asUInt();
+                size = pagination["size"].asUInt64();
             } else
             {
                 size = 10;
@@ -546,28 +589,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
     {
         Json::Value result;
         auto json = req->getJsonObject();
-        if (!json)
-        {
-            result["code"] = -1;
-            result["message"] = "Invalid JSON";
-            auto res = HttpResponse::newHttpJsonResponse(result);
-            res->setStatusCode(k400BadRequest);
-            cb(res);
-            return;
-        }
-
-        // check if tickNumber field exists
-        if (!(*json).isMember("tickNumber"))
-        {
-            result["code"] = -1;
-            result["message"] = "Missing tickNumber field";
-            auto res = HttpResponse::newHttpJsonResponse(result);
-            res->setStatusCode(k400BadRequest);
-            cb(res);
-            return;
-        }
-
-        unsigned int tickNumber = (*json)["tickNumber"].asUInt();
+        unsigned int tickNumber = (*json)["tickNumber"].asUInt64();
         TickData localTickData;
         TickStorage::tickData.acquireLock();
         TickData *tickData = TickStorage::tickData.getByTickIfNotEmpty(tickNumber);
@@ -578,7 +600,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         TickStorage::tickData.releaseLock();
         if (!tickData)
         {
-            result["code"] = -1;
+            result["code"] = StatusCode::NotFound;
             result["message"] = "Tick data not found";
             auto resp = HttpResponse::newHttpJsonResponse(result);
             resp->setStatusCode(k404NotFound);
