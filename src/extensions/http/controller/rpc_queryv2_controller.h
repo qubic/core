@@ -9,6 +9,7 @@ namespace RpcQueryV2
 
 enum StatusCode
 {
+    BadRequest = 3,
     NotFound = 5,
 };
 
@@ -27,7 +28,7 @@ public:
         auto json = req->getJsonObject();
         if (!json)
         {
-            result["code"] = 3;
+            result["code"] = StatusCode::BadRequest;
             result["message"] = "Invalid JSON";
             auto res = HttpResponse::newHttpJsonResponse(result);
             res->setStatusCode(k400BadRequest);
@@ -38,7 +39,7 @@ public:
         // check if tickNumber field exists
         if (!(*json).isMember("tickNumber"))
         {
-            result["code"] = 3;
+            result["code"] = StatusCode::BadRequest;
             result["message"] = "Missing tickNumber field";
             auto res = HttpResponse::newHttpJsonResponse(result);
             res->setStatusCode(k400BadRequest);
@@ -49,7 +50,7 @@ public:
         unsigned int tickNumber = (*json)["tickNumber"].asUInt64();
         if (tickNumber > system.tick)
         {
-            result["code"] = 3;
+            result["code"] = StatusCode::BadRequest;
             result["message"] = std::format("invalid tick number: rpc error: code = FailedPrecondition desc = requested tick number {} is greater than last processed tick {}", tickNumber, system.tick);
             auto res = HttpResponse::newHttpJsonResponse(result);
             res->setStatusCode(k400BadRequest);
@@ -57,7 +58,7 @@ public:
             return;
         } else if (tickNumber < system.initialTick)
         {
-            result["code"] = 3;
+            result["code"] = StatusCode::BadRequest;
             result["message"] = std::format("invalid tick number: rpc error: code = OutOfRange desc = provided tick number {} was skipped by the system, next available tick is {}", tickNumber, system.initialTick);
             auto res = HttpResponse::newHttpJsonResponse(result);
             res->setStatusCode(k400BadRequest);
@@ -351,10 +352,27 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         }
 
         std::string txHash = (*json)["hash"].asString();
+        if (txHash.length() != 60)
+        {
+            result["code"] = StatusCode::BadRequest;
+            result["message"] = std::format("invalid id format: converting id to pubkey: invalid ID length, expected 60, found {}", txHash.length());
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            cb(res);
+            return;
+        }
         // To upperse txhash
         std::transform(txHash.begin(), txHash.end(), txHash.begin(), ::toupper);
         m256i txDigest = {};
-        getPublicKeyFromIdentity(reinterpret_cast<const unsigned char *>(txHash.c_str()), txDigest.m256i_u8);
+        if (!getPublicKeyFromIdentity(reinterpret_cast<const unsigned char *>(txHash.c_str()), txDigest.m256i_u8))
+        {
+            result["code"] = StatusCode::BadRequest;
+            result["message"] = std::format("invalid id format: invalid hash [{}]", txHash);
+            auto res = HttpResponse::newHttpJsonResponse(result);
+            res->setStatusCode(k400BadRequest);
+            cb(res);
+            return;
+        }
         TickStorage::transactionsDigestAccess.acquireLock();
         const Transaction *transaction = TickStorage::transactionsDigestAccess.findTransaction(txDigest);
         if (!transaction)
@@ -382,7 +400,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         auto json = req->getJsonObject();
         if (!json)
         {
-            result["code"] = -1;
+            result["code"] = StatusCode::BadRequest;
             result["message"] = "Invalid JSON";
             auto res = HttpResponse::newHttpJsonResponse(result);
             res->setStatusCode(k400BadRequest);
@@ -393,7 +411,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         // check if identity field exists
         if (!(*json).isMember("identity"))
         {
-            result["code"] = -1;
+            result["code"] = StatusCode::BadRequest;
             result["message"] = "Missing identity field";
             auto res = HttpResponse::newHttpJsonResponse(result);
             res->setStatusCode(k400BadRequest);
@@ -416,8 +434,8 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         m256i publicKey{};
         if (!getPublicKeyFromIdentity(reinterpret_cast<const unsigned char *>(identityStr.c_str()), publicKey.m256i_u8))
         {
-            result["code"] = -1;
-            result["message"] = "Invalid identity";
+            result["code"] = StatusCode::BadRequest;
+            result["message"] = std::format("invalid id format: invalid identity [{}]", identityStr);
             auto res = HttpResponse::newHttpJsonResponse(result);
             res->setStatusCode(k400BadRequest);
             cb(res);
