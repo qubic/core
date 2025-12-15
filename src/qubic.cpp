@@ -7912,6 +7912,7 @@ void processArgs(int argc, const char* argv[]) {
         ("seeds", "Set seeds (IDs) to run on this node (only apply for main node)", cxxopts::value<std::string>())
         ("rp, reader-passcode", "Passcode to access log reader", cxxopts::value<std::string>())
         ("hp, http-passcode", "Passcode to access http server", cxxopts::value<std::string>())
+        ("o, operator", "Operator id", cxxopts::value<std::string>())
         ("s,security-tick", "Core will verify state after x tick, to reduce computational to the node", cxxopts::value<int>()->default_value("1"));
     auto result = options.parse(argc, argv);
 
@@ -8044,6 +8045,18 @@ void processArgs(int argc, const char* argv[]) {
                    std::to_string(httpPasscodes[2]) + " " +
                    std::to_string(httpPasscodes[3]);
         logColorToScreen("INFO", textLog);
+    }
+
+    if (result.count("operator"))
+    {
+        std::string myOperator = result["operator"].as<std::string>();
+        if (myOperator.length() != 60)
+        {
+            logColorToScreen("ERROR", "Invalid operator id length: " + myOperator);
+            exit(1);
+        }
+        OPERATOR = myOperator;
+        logColorToScreen("INFO", "Operator ID " + myOperator);
     }
 
     if (result.count("mode")) {

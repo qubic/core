@@ -24,7 +24,7 @@ GLOBAL_VAR_DECL BroadcastComputors broadcastedComputors;
 
 static bool initSpecialEntities()
 {
-    getPublicKeyFromIdentity((const unsigned char*)OPERATOR, operatorPublicKey.m256i_u8);
+    getPublicKeyFromIdentity((const unsigned char*)OPERATOR.c_str(), operatorPublicKey.m256i_u8);
     if (isZero(operatorPublicKey))
     {
         operatorPublicKey.setRandomValue();

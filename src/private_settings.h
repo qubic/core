@@ -9,7 +9,7 @@
 
 // Do NOT share the data of "Private Settings" section with anybody!!!
 
-#define OPERATOR "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+static std::string OPERATOR = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 static std::vector<std::string> computorSeeds = {
 "eraaastggldisjhoojaekgyimrsddjxbvgaawswfvnvaygqmusnkevv",
