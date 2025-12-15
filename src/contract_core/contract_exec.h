@@ -14,6 +14,7 @@
 #include "contract_core/contract_def.h"
 #include "contract_core/stack_buffer.h"
 #include "contract_core/contract_action_tracker.h"
+#include "contract_core/execution_time_accumulator.h"
 
 #include "logging/logging.h"
 #include "common_buffers.h"
@@ -54,7 +55,10 @@ GLOBAL_VAR_DECL ContractExecErrorData contractExecutionErrorData[contractCount];
 
 GLOBAL_VAR_DECL ReadWriteLock contractStateLock[contractCount];
 GLOBAL_VAR_DECL unsigned char* contractStates[contractCount];
-GLOBAL_VAR_DECL volatile long long contractTotalExecutionTicks[contractCount];
+
+// Total contract execution time (as CPU clock cycles) accumulated over the whole runtime of the node (reset on restart, includes contract functions).
+GLOBAL_VAR_DECL volatile long long contractTotalExecutionTime[contractCount];
+GLOBAL_VAR_DECL ExecutionTimeAccumulator executionTimeAccumulator;
 
 // Contract error state, persistent and only set on error of procedure (TODO: only execute procedures if NoContractError)
 GLOBAL_VAR_DECL unsigned int contractError[contractCount];
@@ -63,6 +67,8 @@ GLOBAL_VAR_DECL unsigned int contractError[contractCount];
 // access to contractStateChangeFlags thread-safe
 GLOBAL_VAR_DECL unsigned long long* contractStateChangeFlags GLOBAL_VAR_INIT(nullptr);
 
+// Forward declaration for getContractFeeReserve (defined in qpi_spectrum_impl.h)
+static long long getContractFeeReserve(unsigned int contractIndex);
 
 // Contract system procedures that serve as callbacks, such as PRE_ACQUIRE_SHARES,
 // break the rule that contracts can only call other contracts with lower index.
@@ -165,7 +171,9 @@ static bool initContractExec()
     contractLocalsStackLockWaitingCount = 0;
     contractLocalsStackLockWaitingCountMax = 0;
 
-    setMem((void*)contractTotalExecutionTicks, sizeof(contractTotalExecutionTicks), 0);
+    setMem((void*)contractTotalExecutionTime, sizeof(contractTotalExecutionTime), 0);
+    executionTimeAccumulator.init();
+
     setMem((void*)contractError, sizeof(contractError), 0);
     setMem((void*)contractExecutionErrorData, sizeof(contractExecutionErrorData), 0);
     for (int i = 0; i < contractCount; ++i)
@@ -189,9 +197,13 @@ static bool initContractExec()
 
 static void initializeContractErrors()
 {
+    unsigned int endIndex = contractCount;
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+    endIndex = TESTEXA_CONTRACT_INDEX;
+#endif
     // At initialization, all contract errors are set to 0 (= no error).
     // If IPO failed (number of contract shares in universe != NUMBER_OF_COMPUTERS), the error status needs to be set accordingly.
-    for (unsigned int contractIndex = 1; contractIndex < contractCount; ++contractIndex)
+    for (unsigned int contractIndex = 1; contractIndex < endIndex; ++contractIndex)
     {
         long long numShares = numberOfShares({ m256i::zero(), *(uint64*)contractDescriptions[contractIndex].assetName });
         if (numShares != NUMBER_OF_COMPUTORS)
@@ -300,10 +312,18 @@ void QPI::QpiContextFunctionCall::__qpiFreeLocals() const
 }
 
 // Called before one contract calls a function of a different contract
-const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex) const
+const QpiContextFunctionCall* QPI::QpiContextFunctionCall::__qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex, InterContractCallError& callError) const
 {
     ASSERT(otherContractIndex < _currentContractIndex);
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
+
+    // Check if called contract is in an error state
+    if (contractError[otherContractIndex] != NoContractError)
+    {
+        callError = CallErrorContractInErrorState;
+        return nullptr;
+    }
+
     char * buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextFunctionCall));
     if (!buffer)
     {
@@ -320,22 +340,38 @@ const QpiContextFunctionCall& QPI::QpiContextFunctionCall::__qpiConstructContext
         appendNumber(dbgMsgBuf, _stackIndex, FALSE);
         addDebugMessage(dbgMsgBuf);
 #endif
-        // abort execution of contract here
-        __qpiAbort(ContractErrorAllocContextOtherFunctionCallFailed);
+        callError = CallErrorAllocationFailed;
+        return nullptr;
     }
-    QpiContextFunctionCall& newContext = *reinterpret_cast<QpiContextFunctionCall*>(buffer);
-    newContext.init(otherContractIndex, _originator, _currentContractId, _invocationReward, _entryPoint, _stackIndex);
+
+    callError = NoCallError;
+    QpiContextFunctionCall* newContext = reinterpret_cast<QpiContextFunctionCall*>(buffer);
+    newContext->init(otherContractIndex, _originator, _currentContractId, _invocationReward, _entryPoint, _stackIndex);
     return newContext;
 }
 
 // Called before a contract runs a user procedure of another contract or a system procedure
-const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructProcedureCallContext(unsigned int procContractIndex, QPI::sint64 invocationReward) const
+const QpiContextProcedureCall* QPI::QpiContextProcedureCall::__qpiConstructProcedureCallContext(unsigned int procContractIndex, QPI::sint64 invocationReward, InterContractCallError& callError, bool skipFeeCheck) const
 {
     ASSERT(_entryPoint != USER_FUNCTION_CALL);
     ASSERT(_stackIndex >= 0 && _stackIndex < NUMBER_OF_CONTRACT_EXECUTION_BUFFERS);
 
     // A contract can only run a procedure of a contract with a lower index, exceptions are callback system procedures
     ASSERT(procContractIndex < _currentContractIndex || contractCallbacksRunning != NoContractCallback);
+
+    // Check if called contract is in an error state
+    if (contractError[procContractIndex] != NoContractError)
+    {
+        callError = CallErrorContractInErrorState;
+        return nullptr;
+    }
+
+    // Check if called contract has sufficient execution fee reserve (can be skipped for system callbacks)
+    if (!skipFeeCheck && getContractFeeReserve(procContractIndex) <= 0)
+    {
+        callError = CallErrorInsufficientFees;
+        return nullptr;
+    }
 
     char* buffer = contractLocalsStack[_stackIndex].allocate(sizeof(QpiContextProcedureCall));
     if (!buffer)
@@ -353,16 +389,17 @@ const QpiContextProcedureCall& QPI::QpiContextProcedureCall::__qpiConstructProce
         appendNumber(dbgMsgBuf, _stackIndex, FALSE);
         addDebugMessage(dbgMsgBuf);
 #endif
-        // abort execution of contract here
-        __qpiAbort(ContractErrorAllocContextOtherProcedureCallFailed);
+        callError = CallErrorAllocationFailed;
+        return nullptr;
     }
 
     // If transfer isn't possible, set invocation reward to 0
     if (__transfer(QPI::id(procContractIndex, 0, 0, 0), invocationReward, TransferType::procedureInvocationByOtherContract) < 0)
         invocationReward = 0;
 
-    QpiContextProcedureCall& newContext = *reinterpret_cast<QpiContextProcedureCall*>(buffer);
-    newContext.init(procContractIndex, _originator, _currentContractId, invocationReward, _entryPoint, _stackIndex);
+    callError = NoCallError;
+    QpiContextProcedureCall* newContext = reinterpret_cast<QpiContextProcedureCall*>(buffer);
+    newContext->init(procContractIndex, _originator, _currentContractId, invocationReward, _entryPoint, _stackIndex);
 
     return newContext;
 }
@@ -679,7 +716,15 @@ bool QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
     }
 
     // Create context
-    const QpiContextProcedureCall& context = __qpiConstructProcedureCallContext(sysProcContractIndex, invocationReward);
+    InterContractCallError callError;
+    const QpiContextProcedureCall* context = __qpiConstructProcedureCallContext(sysProcContractIndex, invocationReward, callError, /*skipFeeCheck=*/ true);
+    if (!context)
+    {
+        if (callError == CallErrorContractInErrorState)
+            __qpiAbort(contractError[sysProcContractIndex]);
+        else
+            __qpiAbort(ContractErrorAllocContextOtherProcedureCallFailed);
+    }
 
     // Get state (lock state for writing if other contract)
     const bool otherContract = sysProcContractIndex != _currentContractIndex;
@@ -693,7 +738,7 @@ bool QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
     setMem(localsBuffer, localsSize, 0);
 
     // Run procedure
-    contractSystemProcedures[sysProcContractIndex][sysProcId](context, state, &input, &output, localsBuffer);
+    contractSystemProcedures[sysProcContractIndex][sysProcId](*context, state, &input, &output, localsBuffer);
 
     // Cleanup: free locals, release state, and free context
     contractLocalsStack[_stackIndex].free();
@@ -926,7 +971,7 @@ private:
         // acquire state for writing (may block)
         contractStateLock[_currentContractIndex].acquireWrite();
 
-        const unsigned long long startTick = __rdtsc();
+        const unsigned long long startTime = __rdtsc();
         unsigned short localsSize = contractSystemProcedureLocalsSizes[_currentContractIndex][systemProcId];
         if (localsSize == sizeof(QPI::NoData))
         {
@@ -949,7 +994,9 @@ private:
             contractLocalsStack[_stackIndex].free();
             ASSERT(contractLocalsStack[_stackIndex].size() == 0);
         }
-        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
+        const unsigned long long executionTime = __rdtsc() - startTime;
+        _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], executionTime);
+        executionTimeAccumulator.addTime(_currentContractIndex, executionTime);
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
@@ -1049,9 +1096,12 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         contractStateLock[_currentContractIndex].acquireWrite();
 
         // run procedure
-        const unsigned long long startTick = __rdtsc();
+        const unsigned long long startTime = __rdtsc();
         contractUserProcedures[_currentContractIndex][inputType](*this, contractStates[_currentContractIndex], inputBuffer, outputBuffer, localsBuffer);
-        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
+        
+        const unsigned long long executionTime = __rdtsc() - startTime;
+        _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], executionTime);
+        executionTimeAccumulator.addTime(_currentContractIndex, executionTime);
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();
@@ -1108,6 +1158,12 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
 
         ASSERT(_currentContractIndex < contractCount);
         ASSERT(contractUserFunctions[_currentContractIndex][inputType]);
+
+        // Check if contract is in an error state before executing function
+        if (contractError[_currentContractIndex] != NoContractError)
+        {
+            return contractError[_currentContractIndex];
+        }
 
         // reserve stack for this processor (may block)
         constexpr unsigned int stacksNotUsedToReserveThemForStateWriter = 1;
@@ -1180,9 +1236,9 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
         __qpiAcquireStateForReading(_currentContractIndex);
 
         // run function
-        const unsigned long long startTick = __rdtsc();
+        const unsigned long long startTime = __rdtsc();
         contractUserFunctions[_currentContractIndex][inputType](*this, contractStates[_currentContractIndex], inputBuffer, outputBuffer, localsBuffer);
-        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
+        _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], __rdtsc() - startTime);
 
         // release lock of contract state
         __qpiReleaseStateForReading(_currentContractIndex);
@@ -1282,7 +1338,9 @@ struct QpiContextUserProcedureNotificationCall : public QPI::QpiContextProcedure
         contractLocalsStack[_stackIndex].free();
         ASSERT(contractLocalsStack[_stackIndex].size() == 0);
 
-        _interlockedadd64(&contractTotalExecutionTicks[_currentContractIndex], __rdtsc() - startTick);
+        const unsigned long long executionTime = __rdtsc() - startTick;
+        _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], executionTime);
+        executionTimeAccumulator.addTime(_currentContractIndex, executionTime);
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();

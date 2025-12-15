@@ -52,6 +52,7 @@
     <ClInclude Include="contract_core\contract_action_tracker.h" />
     <ClInclude Include="contract_core\contract_def.h" />
     <ClInclude Include="contract_core\contract_exec.h" />
+    <ClInclude Include="contract_core\execution_time_accumulator.h" />
     <ClInclude Include="contract_core\ipo.h" />
     <ClInclude Include="contract_core\pre_qpi_def.h" />
     <ClInclude Include="contract_core\qpi_asset_impl.h" />
@@ -81,6 +82,7 @@
     <ClInclude Include="network_messages\contract.h" />
     <ClInclude Include="network_messages\custom_mining.h" />
     <ClInclude Include="network_messages\entity.h" />
+    <ClInclude Include="network_messages\execution_fees.h" />
     <ClInclude Include="network_messages\header.h" />
     <ClInclude Include="network_messages\logging.h" />
     <ClInclude Include="network_messages\public_peers.h" />
@@ -102,6 +104,7 @@
     <ClInclude Include="platform\console_logging.h" />
     <ClInclude Include="platform\common_types.h" />
     <ClInclude Include="platform\profiling.h" />
+    <ClInclude Include="platform\quorum_value.h" />
     <ClInclude Include="platform\random.h" />
     <ClInclude Include="platform\read_write_lock.h" />
     <ClInclude Include="platform\stack_size_tracker.h" />
@@ -125,6 +128,7 @@
     <ClInclude Include="ticking\ticking.h" />
     <ClInclude Include="ticking\tick_storage.h" />
     <ClInclude Include="ticking\pending_txs_pool.h" />
+    <ClInclude Include="ticking\execution_fee_report_collector.h" />
     <ClInclude Include="vote_counter.h" />
   </ItemGroup>
   <ItemGroup>
