@@ -7,6 +7,7 @@ static unsigned long long httpPasscodes[4] = {};
 #include <drogon/drogon.h>
 #include "controller/rpc_queryv2_controller.h"
 #include "controller/rpc_live_controller.h"
+#include "controller/rpc_stats_controller.h"
 #include "ticking/tick_storage.h"
 
 using namespace drogon;
