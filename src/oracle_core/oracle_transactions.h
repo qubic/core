@@ -48,7 +48,7 @@ struct OracleUserQueryTransactionPrefix : public Transaction
 {
 	static constexpr unsigned char transactionType()
 	{
-		return 9; // TODO: Set actual value
+		return 10;
 	}
 
 	static constexpr unsigned short minInputSize()

@@ -89,7 +89,8 @@ The following transaction types (`tx->inputType`) are defined:
 - `OracleReplyCommitTransactionPrefix`, type 6, defined in `src/oracle_core/oracle_transactions.h`.
 - `OracleReplyRevealTransactionPrefix`, type 7, defined in `src/oracle_core/oracle_transactions.h`.
 - `CustomMiningSolutionTransaction`, type 8, defined in `src/mining/mining.h`.
-- `OracleUserQueryTransactionPrefix`, type 9, defined in `src/oracle_core/oracle_transactions.h`.
+- `ExecutionFeeReportTransactionPrefix`, type 9, defined in `src/network_messages/execution_fees.h`.
+- `OracleUserQueryTransactionPrefix`, type 10, defined in `src/oracle_core/oracle_transactions.h`.
 
 
 ## Peer Sharing
