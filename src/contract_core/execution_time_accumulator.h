@@ -2,6 +2,7 @@
 
 #include "platform/file_io.h"
 #include "platform/time_stamp_counter.h"
+#include "../contracts/math_lib.h"
 
 // A class for accumulating contract execution time over a phase.
 // Also saves the accumulation result of the previous phase.
@@ -13,7 +14,6 @@ private:
     // contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex] is used to accumulate the contract execution ticks for the current phase n.
     // contractExecutionTimePerPhase[!contractExecutionTimeActiveArrayIndex] saves the contract execution ticks from the previous phase n-1 that are sent out as transactions in phase n.
     
-    // TODO: check if this overflows
     unsigned long long contractExecutionTimePerPhase[2][contractCount];
     bool contractExecutionTimeActiveArrayIndex = 0;
     volatile char lock = 0;
@@ -49,12 +49,14 @@ public:
 #endif
     }
 
-    // Converts the input time specified as CPU ticks to microseconds and accumulates it for the current phase. 
+    // Converts the input time specified as CPU ticks to microseconds and accumulates it for the current phase.
+    // If the CPU frequency is not available, the time will be added as raw CPU ticks.
     void addTime(unsigned int contractIndex, unsigned long long time)
     {
         unsigned long long timeMicroSeconds = frequency > 0 ? (time * 1000000 / frequency) : time;
         ACQUIRE(lock);
-        contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex][contractIndex] += timeMicroSeconds;
+        contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex][contractIndex] =
+            math_lib::sadd(contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex][contractIndex], timeMicroSeconds);
         RELEASE(lock);
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
