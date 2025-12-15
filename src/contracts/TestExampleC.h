@@ -51,13 +51,13 @@ protected:
 		// This is for the ResolveDeadlockCallbackProcedureAndConcurrentFunction in test/contract_testex.cpp:
 		// 1. Check reuse of already owned write lock of TESTEXA and delay execution in order to make sure that the
 		//    concurrent contract function TESTEXB::CallTextExAFunc() is running or waiting for read lock of TEXTEXA.
-		INVOKE_OTHER_CONTRACT_PROCEDURE(TESTEXA, RunHeavyComputation, locals.heavyComputationInput, locals.heavyComputationOutput, 0);
+		INVOKE_OTHER_CONTRACT_PROCEDURE_E(TESTEXA, RunHeavyComputation, locals.heavyComputationInput, locals.heavyComputationOutput, 0, callError1);
 
 		// 2. Try to invoke procedure of TESTEXB to trigger deadlock (waiting for release of read lock).
 #ifdef NO_UEFI
 		printf("Before wait/deadlock in contract %u procedure\n", CONTRACT_INDEX);
 #endif
-		INVOKE_OTHER_CONTRACT_PROCEDURE(TESTEXB, SetPreAcquireSharesOutput, locals.textExBInput, locals.textExBOutput, 0);
+		INVOKE_OTHER_CONTRACT_PROCEDURE_E(TESTEXB, SetPreAcquireSharesOutput, locals.textExBInput, locals.textExBOutput, 0, callError2);
 #ifdef NO_UEFI
 		printf("After wait/deadlock in contract %u procedure\n", CONTRACT_INDEX);
 #endif

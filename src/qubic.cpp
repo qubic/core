@@ -1,6 +1,7 @@
 #define SINGLE_COMPILE_UNIT
 
 #define INCLUDE_CONTRACT_TEST_EXAMPLES
+// #define OLD_CCF
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
@@ -60,6 +61,8 @@
 #include "ticking/ticking.h"
 #include "contract_core/qpi_ticking_impl.h"
 #include "vote_counter.h"
+#include "ticking/execution_fee_report_collector.h"
+#include "network_messages/execution_fees.h"
 
 #include "contract_core/ipo.h"
 #include "contract_core/qpi_ipo_impl.h"
@@ -135,6 +138,7 @@ static unsigned short ownComputorIndicesMapping[computorSeedsCount];
 
 static TickStorage ts;
 static VoteCounter voteCounter;
+static ExecutionFeeReportCollector executionFeeReportCollector;
 static TickData nextTickData;
 static PendingTxsPool pendingTxsPool;
 
@@ -239,9 +243,11 @@ struct
     unsigned char customMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
 } nodeStateBuffer;
 #endif
-static bool saveComputer(CHAR16* directory = NULL);
+static bool saveContractStateFiles(CHAR16* directory = NULL);
+static bool saveContractExecFeeFiles(CHAR16* directory = NULL, bool saveAccumulatedTime = false);
 static bool saveSystem(CHAR16* directory = NULL);
-static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
+static bool loadContractStateFiles(CHAR16* directory = NULL, bool forceLoadFromFile = false);
+static bool loadContractExecFeeFiles(CHAR16* directory = NULL, bool loadAccumulatedTime = false);
 static bool saveRevenueComponents(CHAR16* directory = NULL);
 
 #if ENABLED_LOGGING
@@ -260,6 +266,7 @@ static struct
     unsigned char signature[SIGNATURE_SIZE];
 } voteCounterPayload;
 
+static ExecutionFeeReportPayload executionFeeReportPayload;
 
 static struct
 {
@@ -402,19 +409,25 @@ static void getComputerDigest(m256i& digest)
                 // This is currently avoided by calling getComputerDigest() from tick processor only (and in non-concurrent init)
                 contractStateLock[digestIndex].acquireRead();
 
-                const unsigned long long startTick = __rdtsc();
+                const unsigned long long startTime = __rdtsc();
                 KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
-                const unsigned long long executionTicks = __rdtsc() - startTick;
+                const unsigned long long executionTime = __rdtsc() - startTime;
 
                 contractStateLock[digestIndex].releaseRead();
 
                 // K12 of state is included in contract execution time
-                _interlockedadd64(&contractTotalExecutionTicks[digestIndex], executionTicks);
+                _interlockedadd64(&contractTotalExecutionTime[digestIndex], executionTime);
+                // do not charge contract 0 state digest computation,
+                // only charge execution time if contract is already constructed/not in IPO
+                if (digestIndex > 0 && system.epoch >= contractDescriptions[digestIndex].constructionEpoch)
+                {
+                    executionTimeAccumulator.addTime(digestIndex, executionTime);
+                }
 
                 // Gather data for comparing different versions of K12
                 if (K12MeasurementsCount < 500)
                 {
-                    K12MeasurementsSum += executionTicks;
+                    K12MeasurementsSum += executionTime;
                     K12MeasurementsCount++;
                 }
             }
@@ -1314,6 +1327,16 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.currentEntityBalanceDustThreshold = (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf;
 
     respondedSystemInfo.targetTickVoteSignature = TARGET_TICK_VOTE_SIGNATURE;
+
+    if (broadcastedComputors.computors.epoch != 0)
+    {
+        copyMem(&respondedSystemInfo.computorPacketSignature, broadcastedComputors.computors.signature, 8);
+    }
+    else
+    {
+        respondedSystemInfo.computorPacketSignature = 0;
+    }
+    
     enqueueResponse(peer, sizeof(respondedSystemInfo), RespondSystemInfo::type(), header->dejavu(), &respondedSystemInfo);
 }
 
@@ -2210,6 +2233,16 @@ static void contractProcessor(void*)
             if (system.epoch == contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                // INITIALIZE is called right after IPO, hence no check for executionFeeReserve is needed.
+                // A failed IPO is indicated by a contractError and INITIALIZE is not executed.
+
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
+                    continue;
+                }
+
                 setMem(contractStates[executedContractIndex], contractDescriptions[executedContractIndex].stateSize, 0);
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, INITIALIZE);
                 qpiContext.call();
@@ -2225,6 +2258,16 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                // BEGIN_EPOCH runs even with a non-positive executionFeeReserve
+                // to keep SC in a valid state.
+
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
+                    continue;
+                }
+
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, BEGIN_EPOCH);
                 qpiContext.call();
             }
@@ -2239,6 +2282,19 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                // Check if contract has sufficient execution fee reserve before executing
+                if (getContractFeeReserve(executedContractIndex) <= 0)
+                {
+                    // Skip execution - contract has insufficient fees
+                    continue;
+                }
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
+                    continue;
+                }
+
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, BEGIN_TICK);
                 qpiContext.call();
             }
@@ -2253,6 +2309,19 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                // Check if contract has sufficient execution fee reserve before executing
+                if (getContractFeeReserve(executedContractIndex) <= 0)
+                {
+                    // Skip execution - contract has insufficient fees
+                    continue;
+                }
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
+                    continue;
+                }
+
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, END_TICK);
                 qpiContext.call();
             }
@@ -2267,6 +2336,16 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                // END_EPOCH runs even with a non-positive executionFeeReserve
+                // to keep SC in a valid state.
+
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
+                    continue;
+                }
+
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, END_EPOCH);
                 qpiContext.call();
             }
@@ -2780,6 +2859,12 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                 }
                 break;
 
+                case EXECUTION_FEE_REPORT_INPUT_TYPE:
+                {
+                    executionFeeReportCollector.processTransactionData(transaction, dataLock);
+                }
+                break;
+
                 }
             }
             else
@@ -2804,11 +2889,32 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                             processTickTransactionContractIPO(transaction, spectrumIndex, contractIndex);
                         }
                     }
-                    else if (system.epoch >= contractDescriptions[contractIndex].constructionEpoch 
+                    else if (system.epoch >= contractDescriptions[contractIndex].constructionEpoch
                         && system.epoch < contractDescriptions[contractIndex].destructionEpoch)
                     {
-                        // Regular contract procedure invocation
-                        moneyFlew = processTickTransactionContractProcedure(transaction, spectrumIndex, contractIndex);
+                        // Check if contract has sufficient execution fee reserve and is not in an error state
+                        if (getContractFeeReserve(contractIndex) <= 0 || contractError[contractIndex] != NoContractError)
+                        {
+                            // Contract has insufficient execution fees or is in error state - refund transaction amount
+                            if (transaction->amount > 0)
+                            {
+                                int destIndex = ::spectrumIndex(transaction->destinationPublicKey);
+                                if (destIndex >= 0)
+                                {
+                                    decreaseEnergy(destIndex, transaction->amount);
+                                    increaseEnergy(transaction->sourcePublicKey, transaction->amount);
+
+                                    const QuTransfer quTransfer = { transaction->destinationPublicKey, transaction->sourcePublicKey, transaction->amount };
+                                    logger.logQuTransfer(quTransfer);
+                                }
+                            }
+                            moneyFlew = false;
+                        }
+                        else
+                        {
+                            // Regular contract procedure invocation
+                            moneyFlew = processTickTransactionContractProcedure(transaction, spectrumIndex, contractIndex);
+                        }
                     }
                 }
             }
@@ -2901,6 +3007,74 @@ static bool makeAndBroadcastCustomMiningTransaction(int i, BroadcastFutureTickDa
         }
     }
     return false;
+}
+
+static bool makeAndBroadcastExecutionFeeTransaction(int i, BroadcastFutureTickData& td, int txSlot)
+{
+    PROFILE_NAMED_SCOPE("processTick(): broadcast execution fee tx");
+    ASSERT(txSlot < NUMBER_OF_TRANSACTIONS_PER_TICK);
+
+    auto& payload = executionFeeReportPayload;
+    payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
+    payload.transaction.destinationPublicKey = m256i::zero();
+    payload.transaction.amount = 0;
+    payload.transaction.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+    payload.transaction.inputType = ExecutionFeeReportTransactionPrefix::transactionType();
+
+    // Build the payload with contract execution times
+    executionTimeAccumulator.acquireLock();
+    unsigned int entryCount = buildExecutionFeeReportPayload(
+        payload,
+        executionTimeAccumulator.getPrevPhaseAccumulatedTimes(),
+        (system.tick / NUMBER_OF_COMPUTORS) - 1,
+        EXECUTION_TIME_MULTIPLIER_NUMERATOR,
+        EXECUTION_TIME_MULTIPLIER_DENOMINATOR
+    );
+    executionTimeAccumulator.releaseLock();
+
+    // Return if no contract was executed during last phase
+    if (entryCount == 0)
+    {
+        return false;
+    }
+
+    // Set datalock at the end of the compacted payload
+    m256i* datalockPtr = (m256i*)(payload.transaction.inputPtr() + payload.transaction.inputSize - sizeof(m256i));
+    *datalockPtr = td.tickData.timelock;
+
+    // Calculate the correct position of the signature as this is a variable length package
+    unsigned char* signaturePtr = ((unsigned char*)datalockPtr) + sizeof(ExecutionFeeReportTransactionPostfix::dataLock);
+
+    unsigned char digest[32];
+    unsigned int sizeToHash =  sizeof(Transaction) + payload.transaction.inputSize;
+    KangarooTwelve(&payload, sizeToHash,  digest, sizeof(digest));
+    sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, signaturePtr);
+
+    // Broadcast ExecutionFeeReport
+    unsigned int transactionSize = sizeToHash + sizeof(ExecutionFeeReportTransactionPostfix::signature);
+    enqueueResponse(NULL, transactionSize, BROADCAST_TRANSACTION, 0, &payload);
+
+    // Copy the content of this exectuion fee report to local memory
+    unsigned int tickIndex = ts.tickToIndexCurrentEpoch(td.tickData.tick);
+    KangarooTwelve(&payload, transactionSize, digest, sizeof(digest));
+    auto* tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
+    if (txSlot < NUMBER_OF_TRANSACTIONS_PER_TICK) // valid slot
+    {
+        // TODO: refactor function add transaction to txStorage
+        ts.tickTransactions.acquireLock();
+        if (!tsReqTickTransactionOffsets[txSlot]) // not yet have value
+        {
+            if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch) //have enough space
+            {
+                td.tickData.transactionDigests[txSlot] = m256i(digest);
+                tsReqTickTransactionOffsets[txSlot] = ts.nextTickTransactionOffset;
+                copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), &payload, transactionSize);
+                ts.nextTickTransactionOffset += transactionSize;
+            }
+        }
+        ts.tickTransactions.releaseLock();
+    }
+    return true;
 }
 
 OPTIMIZE_OFF()
@@ -3066,6 +3240,14 @@ static void processTick(unsigned long long processorNumber)
         PROFILE_SCOPE_END();
     }
 
+    // The last executionFeeReport for the previous phase is published by comp <NUMBER_OF_COMPUTORS - 1> (0-indexed) in the last tick t1 of the
+    // previous phase (t1 % NUMBER_OF_COMPUTORS == NUMBER_OF_COMPUTORS - 1) for inclusion in tick t2 = t1 + TICK_TRANSACTIONS_PUBLICATION_OFFSET.
+    // Tick t2 corresponds to tick <TICK_TRANSACTIONS_PUBLICATION_OFFSET - 1> of the current phase.
+    if (system.tick % NUMBER_OF_COMPUTORS == TICK_TRANSACTIONS_PUBLICATION_OFFSET - 1)
+    {
+        executionFeeReportCollector.processReports();
+    }
+
     PROFILE_NAMED_SCOPE_BEGIN("processTick(): END_TICK");
     logger.registerNewTx(system.tick, logger.SC_END_TICK_TX);
     contractProcessorPhase = END_TICK;
@@ -3201,9 +3383,9 @@ static void processTick(unsigned long long processorNumber)
                     pendingTxsPool.acquireLock();
                     for (unsigned int tx = 0; tx < numPendingTickTxs; ++tx)
                     {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-                        addDebugMessage(L"pendingTxsPool.get() call in processTick()");
-#endif
+// #if !defined(NDEBUG) && !defined(NO_UEFI)
+//                         addDebugMessage(L"pendingTxsPool.get() call in processTick()");
+// #endif
                         const Transaction* pendingTransaction = pendingTxsPool.getTx(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, tx);
                         if (pendingTransaction)
                         {
@@ -3238,6 +3420,13 @@ static void processTick(unsigned long long processorNumber)
                         // insert & broadcast external mining score packet (containing the score for each computor on the last external mining phase)
                         // this type of tx is only broadcasted in internal mining phases
                         if (makeAndBroadcastCustomMiningTransaction(i, broadcastedFutureTickData, nextTxIndex))
+                        {
+                            nextTxIndex++;
+                        }
+                    }
+                    {
+                        // include execution fees tx for phase n - 1
+                        if (makeAndBroadcastExecutionFeeTransaction(i, broadcastedFutureTickData, nextTxIndex))
                         {
                             nextTxIndex++;
                         }
@@ -3432,6 +3621,14 @@ static void beginEpoch()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
 
     score->initMemory();
     score->resetTaskQueue();
@@ -3793,13 +3990,28 @@ static bool saveAllNodeStates()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
+
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 4] = L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 3] = L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 2] = L'0';
+
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 4] = L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 3] = L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 2] = L'0';
+
     setText(message, L"Saving computer files");
     logToConsole(message);
-    if (!saveComputer(directory))
+    if (!saveContractStateFiles(directory))
     {
-        logToConsole(L"Failed to save computer");
+        logToConsole(L"Failed to save contract state files");
         return false;
     }
+    if (!saveContractExecFeeFiles(directory, /*saveAccumulatedTime=*/true))
+    {
+        logToConsole(L"Failed to save contract execution fee files");
+        return false;
+    }
+
     setText(message, L"Saving system to system.snp");
     logToConsole(message);
 
@@ -3938,10 +4150,24 @@ static bool loadAllNodeStates()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
-    const bool forceLoadContractFile = true;
-    if (!loadComputer(directory, forceLoadContractFile))
+
+    if (!loadContractStateFiles(directory, /*forceLoadFromFile=*/true))
     {
-        logToConsole(L"Failed to load computer");
+        logToConsole(L"Failed to load contract state files");
+        return false;
+    }
+
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 4] = L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 3] = L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 2] = L'0';
+
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 4] = L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 3] = L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 2] = L'0';
+
+    if (!loadContractExecFeeFiles(directory, /*loadAccumulatedTime=*/true))
+    {
+        logToConsole(L"Failed to load contract execution fee files");
         return false;
     }
 
@@ -4278,9 +4504,9 @@ static void prepareNextTickTransactions()
         pendingTxsPool.acquireLock();
         for (unsigned int i = 0; i < numPendingTickTxs; ++i)
         {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-            addDebugMessage(L"pendingTxsPool.get() call in prepareNextTickTransactions()");
-#endif
+// #if !defined(NDEBUG) && !defined(NO_UEFI)
+//             addDebugMessage(L"pendingTxsPool.get() call in prepareNextTickTransactions()");
+// #endif
             Transaction* pendingTransaction = pendingTxsPool.getTx(nextTick, i);
             if (pendingTransaction)
             {
@@ -5006,6 +5232,11 @@ static void tickProcessor(void*)
                                 updateNumberOfTickTransactions();
                                 pendingTxsPool.incrementFirstStoredTick();
 
+                                if (system.tick % NUMBER_OF_COMPUTORS == 0)
+                                {
+                                    executionTimeAccumulator.startNewAccumulation();
+                                }
+
                                 bool isBeginEpoch = false;
                                 if (epochTransitionState == 1)
                                 {
@@ -5129,7 +5360,7 @@ static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 
 // directory: source directory to load the file. Default: NULL - load from root dir /
 // forceLoadFromFile: when loading node states from file, we want to make sure it load from file and ignore constructionEpoch == system.epoch case
-static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
+static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
 {
     logToConsole(L"Loading contract files ...");
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
@@ -5169,17 +5400,36 @@ static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
             logToConsole(message);
         }
     }
+    
+    logToConsole(L"All contract files successfully loaded or initialized.");
+
     return true;
 }
 
-static bool saveComputer(CHAR16* directory)
+static bool loadContractExecFeeFiles(CHAR16* directory, bool loadAccumulatedTime)
+{
+    logToConsole(L"Loading contract execution fee files...");
+
+    if (!executionFeeReportCollector.loadFromFile(CONTRACT_EXEC_FEES_REC_FILE_NAME, directory))
+        return false;
+
+    if (loadAccumulatedTime && !executionTimeAccumulator.loadFromFile(CONTRACT_EXEC_FEES_ACC_FILE_NAME, directory))
+        return false;
+
+    logToConsole(loadAccumulatedTime ? L"Received fee reports and accumulated execution times successfully loaded." 
+        : L"Received fee reports successfully loaded.");
+
+    return true;
+}
+
+static bool saveContractStateFiles(CHAR16* directory)
 {
     logToConsole(L"Saving contract files...");
 
-    const unsigned long long beginningTick = __rdtsc();
+    unsigned long long beginningTick = __rdtsc();
 
-    bool ok = true;
     unsigned long long totalSize = 0;
+    long long savedSize = 0;
 
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
@@ -5188,27 +5438,43 @@ static bool saveComputer(CHAR16* directory)
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
         contractStateLock[contractIndex].acquireRead();
-        long long savedSize = save(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
+        savedSize = save(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
         contractStateLock[contractIndex].releaseRead();
         totalSize += savedSize;
         if (savedSize != contractDescriptions[contractIndex].stateSize)
         {
-            ok = false;
-
-            break;
+            return false;
         }
     }
 
-    if (ok)
-    {
-        setNumber(message, totalSize, TRUE);
-        appendText(message, L" bytes of the computer data are saved (");
-        appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
-        appendText(message, L" microseconds).");
-        logToConsole(message);
-        return true;
-    }
-    return false;
+    setNumber(message, totalSize, TRUE);
+    appendText(message, L" bytes of the contract state files are saved (");
+    appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
+    appendText(message, L" microseconds).");
+    logToConsole(message);
+
+    return true;
+}
+
+static bool saveContractExecFeeFiles(CHAR16* directory, bool saveAccumulatedTime)
+{
+    logToConsole(L"Saving contract execution fee files...");
+
+    unsigned long long beginningTick = __rdtsc();
+
+    if (!executionFeeReportCollector.saveToFile(CONTRACT_EXEC_FEES_REC_FILE_NAME, directory))
+        return false;
+
+    if (saveAccumulatedTime && !executionTimeAccumulator.saveToFile(CONTRACT_EXEC_FEES_ACC_FILE_NAME, directory))
+        return false;
+
+    setText(message, saveAccumulatedTime ? L"Received fee reports and accumulated execution times are saved ("
+        : L"Received fee reports are saved (");
+    appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
+    appendText(message, L" microseconds).");
+    logToConsole(message);
+
+    return true;
 }
 
 static bool saveSystem(CHAR16* directory)
@@ -5304,6 +5570,7 @@ static bool initialize()
             return false;
 
         initContractExec();
+        executionFeeReportCollector.init();
         for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
         {
             unsigned long long size = contractDescriptions[contractIndex].stateSize;
@@ -5448,8 +5715,12 @@ static bool initialize()
                 appendText(message, L".");
                 logToConsole(message);
             }
-            if (!loadComputer())
+            if (!loadContractStateFiles())
                 return false;
+#ifndef START_NETWORK_FROM_SCRATCH
+            if (!loadContractExecFeeFiles())
+                return false;
+#endif
             m256i computerDigest;
             {
                 setText(message, L"Computer digest = ");
@@ -5920,7 +6191,7 @@ static void logInfo()
         appendText(message, L"?");
     }
     appendText(message, L" mcs | Total Qx execution time = ");
-    appendNumber(message, contractTotalExecutionTicks[QX_CONTRACT_INDEX] * 1000 / frequency, TRUE);
+    appendNumber(message, contractTotalExecutionTime[QX_CONTRACT_INDEX] * 1000 / frequency, TRUE);
     appendText(message, L" ms | Solution process time = ");
     appendNumber(message, solutionTotalExecutionTicks * 1000 / frequency, TRUE);
     appendText(message, L" ms | Spectrum reorg time = ");
@@ -6403,7 +6674,14 @@ static void processKeyPresses()
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
-            saveComputer();
+
+            saveContractStateFiles();
+
+            CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 4] = L'0';
+            CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 3] = L'0';
+            CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 2] = L'0';
+
+            saveContractExecFeeFiles();
 
 #ifdef ENABLE_PROFILING
             gProfilingDataCollector.writeToFile();
@@ -6544,6 +6822,11 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
     {
         logToConsole(L"Setting up multiprocessing ...");
 
+        #if !defined(NDEBUG)
+        // Set flag to false BEFORE starting any processors to avoid race condition
+        debugLogOnlyMainProcessorRunning = false;
+        #endif
+
         unsigned int computingProcessorNumber;
         EFI_GUID mpServiceProtocolGuid = EFI_MP_SERVICES_PROTOCOL_GUID;
         bs->LocateProtocol(&mpServiceProtocolGuid, NULL, (void**)&mpServicesProtocol);
@@ -6611,10 +6894,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &processors[numberOfProcessors].event);
                     mpServicesProtocol->StartupThisAP(mpServicesProtocol, Processor::runFunction, i, processors[numberOfProcessors].event, 0, &processors[numberOfProcessors], NULL);
-
-                    #if !defined(NDEBUG)
-                    debugLogOnlyMainProcessorRunning = false;
-                    #endif
 
                     if (!solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS]
                         && !solutionProcessorFlags[i])
@@ -6976,7 +7255,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 }
                 if (computerMustBeSaved)
                 {
-                    saveComputer();
+                    saveContractStateFiles();
+                    saveContractExecFeeFiles();
                     computerMustBeSaved = false;
                 }
 

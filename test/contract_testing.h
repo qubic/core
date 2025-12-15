@@ -161,6 +161,7 @@ public:
     contractStates[contractIndex] = (unsigned char*)malloc(stateSize); \
     setMem(contractStates[contractIndex], stateSize, 0); \
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(contractName); \
+    setContractFeeReserve(contractIndex, 10000000); \
 }
 
 static inline long long getBalance(const id& pubKey)

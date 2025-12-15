@@ -23,9 +23,9 @@
     <ClInclude Include="assets\net_msg_impl.h" />
     <ClInclude Include="common_buffers.h" />
     <ClInclude Include="contracts\ComputorControlledFund.h" />
+    <ClInclude Include="contracts\ComputorControlledFund_old.h" />
     <ClInclude Include="contracts\Qdraw.h" />
     <ClInclude Include="contracts\Qswap.h" />
-    <ClInclude Include="contracts\Qswap_old.h" />
     <ClInclude Include="contracts\RandomLottery.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
     <ClInclude Include="contracts\EmptyTemplate.h" />
@@ -52,6 +52,7 @@
     <ClInclude Include="contract_core\contract_action_tracker.h" />
     <ClInclude Include="contract_core\contract_def.h" />
     <ClInclude Include="contract_core\contract_exec.h" />
+    <ClInclude Include="contract_core\execution_time_accumulator.h" />
     <ClInclude Include="contract_core\ipo.h" />
     <ClInclude Include="contract_core\pre_qpi_def.h" />
     <ClInclude Include="contract_core\qpi_asset_impl.h" />
@@ -82,6 +83,7 @@
     <ClInclude Include="network_messages\contract.h" />
     <ClInclude Include="network_messages\custom_mining.h" />
     <ClInclude Include="network_messages\entity.h" />
+    <ClInclude Include="network_messages\execution_fees.h" />
     <ClInclude Include="network_messages\header.h" />
     <ClInclude Include="network_messages\logging.h" />
     <ClInclude Include="network_messages\oracles.h" />
@@ -109,6 +111,7 @@
     <ClInclude Include="platform\common_types.h" />
     <ClInclude Include="platform\memory_util.h" />
     <ClInclude Include="platform\profiling.h" />
+    <ClInclude Include="platform\quorum_value.h" />
     <ClInclude Include="platform\random.h" />
     <ClInclude Include="platform\read_write_lock.h" />
     <ClInclude Include="platform\stack_size_tracker.h" />
@@ -131,6 +134,7 @@
     <ClInclude Include="ticking\ticking.h" />
     <ClInclude Include="ticking\tick_storage.h" />
     <ClInclude Include="ticking\pending_txs_pool.h" />
+    <ClInclude Include="ticking\execution_fee_report_collector.h" />
     <ClInclude Include="vote_counter.h" />
   </ItemGroup>
   <ItemGroup>

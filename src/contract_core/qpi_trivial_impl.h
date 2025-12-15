@@ -4,6 +4,7 @@
 #pragma once
 
 #include "../contracts/qpi.h"
+#include "../contracts/math_lib.h"
 #include "../platform/memory.h"
 #include "../platform/time.h"
 
@@ -107,4 +108,50 @@ m256i QPI::QpiContextFunctionCall::K12(const T& data) const
 	KangarooTwelve(&data, sizeof(data), &digest, sizeof(digest));
 
 	return digest;
+}
+
+//////////
+// safety multiplying a and b and then clamp
+
+inline static QPI::sint64 QPI::smul(QPI::sint64 a, QPI::sint64 b)
+{
+	return math_lib::smul(a, b);
+}
+
+inline static QPI::uint64 QPI::smul(QPI::uint64 a, QPI::uint64 b)
+{
+	return math_lib::smul(a, b);
+}
+
+inline static QPI::sint32 QPI::smul(QPI::sint32 a, QPI::sint32 b)
+{
+	return math_lib::smul(a, b);
+}
+
+inline static QPI::uint32 QPI::smul(QPI::uint32 a, QPI::uint32 b)
+{
+	return math_lib::smul(a, b);
+}
+
+//////////
+// safety adding a and b and then clamp
+
+inline static QPI::sint64 QPI::sadd(QPI::sint64 a, QPI::sint64 b)
+{
+	return math_lib::sadd(a, b);
+}
+
+inline static QPI::uint64 QPI::sadd(QPI::uint64 a, QPI::uint64 b)
+{
+	return math_lib::sadd(a, b);
+}
+
+inline static QPI::sint32 QPI::sadd(QPI::sint32 a, QPI::sint32 b)
+{
+	return math_lib::sadd(a, b);
+}
+
+inline static QPI::uint32 QPI::sadd(QPI::uint32 a, QPI::uint32 b)
+{
+	return math_lib::sadd(a, b);
 }
