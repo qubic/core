@@ -173,13 +173,6 @@ public:
 		// Validate subscription data if provided
 		if (input.isSubscription)
 		{
-			// Validate weeks per period (must be at least 1)
-			if (input.weeksPerPeriod == 0)
-			{
-				output.proposalIndex = INVALID_PROPOSAL_INDEX;
-				return;
-			}
-
 			// Validate start epoch
 			if (input.startEpoch < qpi.epoch())
 			{
@@ -528,7 +521,7 @@ public:
 					{
 						// Handle subscription proposal acceptance
 						// If amountPerPeriod is 0 or numberOfPeriods is 0, delete the subscription
-						if (locals.subscriptionProposal.amountPerPeriod == 0 || locals.subscriptionProposal.numberOfPeriods == 0)
+						if (locals.subscriptionProposal.amountPerPeriod == 0 || locals.subscriptionProposal.numberOfPeriods == 0 || locals.subscriptionProposal.weeksPerPeriod == 0)
 						{
 							// Find and delete the subscription by destination ID
 							locals.existingSubIdx = -1;
