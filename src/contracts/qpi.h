@@ -148,6 +148,9 @@ namespace QPI
 	 */
 	struct DateAndTime
 	{
+		/// Return instance with current time (defined in qpi_ticking_impl.h)
+		static inline DateAndTime now();
+
 		/// Init with value 0 (no valid date).
 		DateAndTime()
 		{
@@ -619,8 +622,18 @@ namespace QPI
 		}
 
 		/**
+		* Convenience function for adding a number of milliseconds.
+		* @param millisec Number of milliseconds to add. May be negative and abs(millisec) may be > 1000.
+		* @return Returns if update of date was successful. Error cases: starting with invalid date, overflow.
+		*/
+		bool addMillisec(sint64 millisec)
+		{
+			return add(0, 0, 0, 0, 0, 0, millisec);
+		}
+
+		/**
 		* Convenience function for adding a number of microseconds.
-		* @param days Number of microsecs to add. May be negative and abs(microsecs) may be > 1000000.
+		* @param microsec Number of microsecs to add. May be negative and abs(microsecs) may be > 1000000.
 		* @return Returns if update of date was successful. Error cases: starting with invalid date, overflow.
 		*/
 		bool addMicrosec(sint64 microsec)
@@ -2471,6 +2484,39 @@ namespace QPI
 		// If the provided index is invalid (< 1 or >= contractCount) the currentContractIndex is used instead.
 		inline sint64 queryFeeReserve(uint32 contractIndex = 0) const;
 
+		/**
+		* @brief Get oracle query by queryId.
+		* @param queryId Identifier of oracle query to get query data from.
+		* @param query Output query data (only set if true is returned).
+		* @return Whether queryId is found and matches the oracle interface.
+		*/
+		template <typename OracleInterface>
+		inline bool getOracleQuery(sint64 queryId, OracleInterface::OracleQuery& query) const;
+
+		/**
+		* @brief Get oracle reply by queryId.
+		* @param queryId Identifier of oracle query.
+		* @param reply Output reply data (only set if true is returned).
+		* @return Whether queryId is found, matches the oracle interface, and a valid reply is available.
+		*/
+		template <typename OracleInterface>
+		inline bool getOracleReply(sint64 queryId, OracleInterface::OracleReply& reply) const;
+
+		/**
+		* @brief Get status of oracle query by queryId.
+		* @param queryId Identifier of oracle query to get query status from.
+		* @return One of the values ORACLE_QUERY_STATUS_* listed below.
+		*
+		* - ORACLE_QUERY_STATUS_UNKNOWN: Query not found / not valid.
+		* - ORACLE_QUERY_STATUS_PENDING: Query is being processed.
+		* - ORACLE_QUERY_STATUS_COMMITTED: The quorum has commited to a oracle reply, but it has not been revealed yet.
+		* - ORACLE_QUERY_STATUS_SUCCESS: The oracle reply has been confirmed and is available.
+		* - ORACLE_QUERY_STATUS_UNRESOLVABLE: No valid oracle reply is available, because computors disagreed about the value.
+		* - ORACLE_QUERY_STATUS_TIMEOUT: No valid oracle reply is available and timeout has hit.
+		*/
+		template <typename OracleInterface>
+		inline uint8 getOracleQueryStatus(sint64 queryId) const;
+
 		// Access proposal functions with qpi(proposalVotingObject).func().
 		template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 		inline QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType> operator()(
@@ -2489,6 +2535,18 @@ namespace QPI
 	protected:
 		// Construction is done in core, not allowed in contracts
 		QpiContextFunctionCall(unsigned int contractIndex, const m256i& originator, long long invocationReward, unsigned char entryPoint) : QpiContext(contractIndex, originator, originator, invocationReward, entryPoint) {}
+	};
+
+	// Used if no locals, input, or output is needed in a procedure or function
+	struct NoData {};
+
+	template <typename OracleInterface>
+	struct OracleNotificationInput
+	{
+		sint64 queryId;			///< ID of the oracle query that led to this notification.
+		uint32 subscriptionId;	///< ID of the oracle subscription or 0 in case of a pure oracle query.
+		uint8 status;			///< Oracle query status as defined in `network_messages/common_def.h`
+		typename OracleInterface::OracleReply reply;	///< Oracle reply if status == ORACLE_QUERY_STATUS_SUCCESS
 	};
 
 	// QPI procedures available to contract procedures (not to contract functions)
@@ -2534,6 +2592,32 @@ namespace QPI
 			uint32 quantity
 		) const;
 
+		/**
+		* @brief Initiate oracle query that will lead to notification later.
+		* @param query Details about which oracle to query for which information, as defined by a specific oracle interface.
+		* @param notificationCallback User procedure that shall be executed when the oracle reply is available or an error occurs.
+		* @param timeoutMillisec Maximum number of milliseconds to wait for reply.
+		* @return Oracle query ID that can be used to get the status of the query, or 0 on error.
+		*
+		* This will automatically burn the oracle query fee as defined by the oracle interface (burning without
+		* adding to the contract's execution fee reserve). It will fail if the contract doesn't have enough QU.
+		*
+		* The notification callback will be executed when the reply is available or on error.
+		* The callback must be a user procedure of the contract calling qpi.queryOracle() with the procedure input type
+		* OracleNotificationInput<OracleInterface> and NoData as output.
+		* Success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
+		* If an error happened before the query has been created and sent, input.status is ORACLE_QUERY_STATUS_UNKNOWN
+		* and input.queryID is -1 (invalid).
+		* Other errors that may happen with valid input.queryID are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
+		* input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE.
+		*/
+		template <typename OracleInterface, typename ContractStateType, typename LocalsType>
+		inline sint64 queryOracle(
+			const OracleInterface::OracleQuery& query,
+			void (*notificationCallback)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
+			uint32 timeoutMillisec = 60000
+		) const;
+
 		inline sint64 releaseShares(
 			const Asset& asset,
 			const id& owner,
@@ -2556,6 +2640,43 @@ namespace QPI
 			uint16 contractIndex,
 			const Array<uint8, 1024>& proposalDataBuffer,
 			sint64 invocationReward
+		) const;
+
+		/**
+		* @brief Subscribe for regularly querying an oracle.
+		* @param query The regular query, which must have a member `DateAndTime timestamp`.
+		* @param notificationCallback User procedure that shall be executed when the oracle reply is available or an error occurs.
+		* @param notificationIntervalInMilliseconds Number of milliseconds between consecutive queries/replies.
+		*			This is also used as a timeout. Currently, only multiples of 60000 are supported and other
+		*			values are rejected with an error.
+		* @param notifyWithPreviousReply Whether to immediately notify this contract with the most up-to-date value if any is available.
+		* @return Oracle subscription ID that can be used to get the status of the subscription, or -1 on error.
+		*
+		* Subscriptions automatically expire at the end of each epoch. So, a common pattern is to call qpi.subscribeOracle()
+		* in BEGIN_EPOCH.
+		*
+		* Subscriptions facilitate shareing common oracle queries among multiple contracts. This saves network ressources and allows
+		* to provide a fixed-price subscription for the whole epoch, which is usually much cheaper than the equivalent series of
+		* individual qpi.queryOracle() calls.
+		*
+		* The qpi.subscribeOracle() call will automatically burn the oracle subscription fee as defined by the oracle interface
+		* (burning without adding to the contract's execution fee reserve). It will fail if the contract doesn't have enough QU.
+		*
+		* The notification callback will be executed when the reply is available or on error.
+		* The callback must be a user procedure of the contract calling qpi.subscribeOracle() with the procedure input type
+		* OracleNotificationInput<OracleInterface> and NoData as output.
+		* Success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
+		* If an error happened before the query has been created and sent, input.status is ORACLE_QUERY_STATUS_UNKNOWN
+		* and input.queryID is -1 (invalid).
+		* Other errors that may happen with valid input.queryID are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
+		* input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE.
+		*/
+		template <typename OracleInterface, typename ContractStateType, typename LocalsType>
+		inline sint32 subscribeOracle(
+			const OracleInterface::OracleQuery& query,
+			void (*notificationCallback)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
+			uint32 notificationIntervalInMilliseconds = 60000,
+			bool notifyWithPreviousReply = true
 		) const;
 
 		/**
@@ -2585,6 +2706,11 @@ namespace QPI
 			sint64 numberOfShares,
 			const id& newOwnerAndPossessor // New owner and possessor. Pass NULL_ID to burn shares (not allowed for contract shares).
 		) const; // Returns remaining number of possessed shares satisfying all the conditions; if the value is less than 0, the attempt has failed, in this case the absolute value equals to the insufficient number, INVALID_AMOUNT indicates another error
+
+		/// Unsubscribe oracle based on subscription ID (returning false if oracleSubscriptionId is invalid).
+		inline bool unsubscribeOracle(
+			sint32 oracleSubscriptionId
+		) const;
 
 		// Access proposal procedures with qpi(proposalVotingObject).proc().
 		template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
@@ -2622,9 +2748,6 @@ namespace QPI
 		// Construction is done in core, not allowed in contracts
 		inline QpiContextForInit(unsigned int contractIndex);
 	};
-
-	// Used if no locals, input, or output is needed in a procedure or function
-	struct NoData {};
 
 	// Management rights transfer: pre-transfer input
 	struct PreManagementRightsTransfer_input

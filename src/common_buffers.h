@@ -15,6 +15,8 @@ constexpr unsigned long long reorgBufferSize = (spectrumSizeInBytes >= universeS
 
 // Buffer used for reorganizing spectrum and universe hash maps, currently also used as scratchpad buffer for contracts
 // Must be large enough to fit any contract, full spectrum, and full universe!
+// No locking! Can be used in tick processor or contract processor.
+// May be only used in main processor if tick/contract processor is paused or not started yet.
 GLOBAL_VAR_DECL void* reorgBuffer GLOBAL_VAR_INIT(nullptr);
 
 static bool initCommonBuffers()

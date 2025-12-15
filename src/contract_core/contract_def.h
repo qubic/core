@@ -15,6 +15,9 @@
 #include "contracts/qpi.h"
 #include "qpi_proposal_voting.h"
 
+// make interfaces to oracles available for all contracts
+#include "oracle_core/oracle_interfaces_def.h"
+
 #define QX_CONTRACT_INDEX 1
 #define CONTRACT_INDEX QX_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QX

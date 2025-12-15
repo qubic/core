@@ -47,6 +47,34 @@ typedef union m256i
 
 #endif
 
+constexpr uint16_t MAX_ORACLE_QUERY_SIZE = MAX_INPUT_SIZE - 8;
+constexpr uint16_t MAX_ORACLE_REPLY_SIZE = MAX_INPUT_SIZE - 8;
+
+constexpr uint8_t ORACLE_QUERY_TYPE_CONTRACT_QUERY = 0;
+constexpr uint8_t ORACLE_QUERY_TYPE_CONTRACT_SUBSCRIPTION = 1;
+constexpr uint8_t ORACLE_QUERY_TYPE_USER_QUERY = 2;
+
+constexpr uint8_t ORACLE_QUERY_STATUS_UNKNOWN = 0;     ///< Query not found / valid.
+constexpr uint8_t ORACLE_QUERY_STATUS_PENDING = 1;     ///< Query is being processed.
+constexpr uint8_t ORACLE_QUERY_STATUS_COMMITTED = 2;   ///< The quorum has commited to a oracle reply, but it has not been revealed yet.
+constexpr uint8_t ORACLE_QUERY_STATUS_SUCCESS = 3;     ///< The oracle reply has been confirmed and is available.
+constexpr uint8_t ORACLE_QUERY_STATUS_UNRESOLVABLE = 5;///< No valid oracle reply is available, because computors disagreed about the value.
+constexpr uint8_t ORACLE_QUERY_STATUS_TIMEOUT = 4;     ///< No valid oracle reply is available and timeout has hit.
+
+// Fine-grained status flags returned by oracle machine nodes
+constexpr uint16_t ORACLE_FLAG_REPLY_PENDING = 0x0;    ///< Oracle machine hasn't replied yet to the query. In OracleMachineReply::oracleMachineErrorFlags this means "no error".
+constexpr uint16_t ORACLE_FLAG_INVALID_ORACLE = 0x1;   ///< Oracle machine reported that oracle (data source) in query was invalid.
+constexpr uint16_t ORACLE_FLAG_ORACLE_UNAVAIL = 0x2;   ///< Oracle machine reported that oracle isn't available at the moment.
+constexpr uint16_t ORACLE_FLAG_INVALID_TIME = 0x4;     ///< Oracle machine reported that time in query was invalid.
+constexpr uint16_t ORACLE_FLAG_INVALID_PLACE = 0x8;    ///< Oracle machine reported that place in query was invalid.
+constexpr uint16_t ORACLE_FLAG_INVALID_ARG = 0x10;     ///< Oracle machine reported that an argument in query was invalid.
+constexpr uint16_t ORACLE_FLAG_OM_ERROR_FLAGS = 0xff;  ///< Mask of all error flags that may be returned by oracle machine response.
+constexpr uint16_t ORACLE_FLAG_REPLY_RECEIVED = 0x100; ///< Oracle engine got valid reply from the oracle machine.
+constexpr uint16_t ORACLE_FLAG_BAD_SIZE_REPLY = 0x200; ///< Oracle engine got reply of wrong size from the oracle machine.
+constexpr uint16_t ORACLE_FLAG_OM_DISAGREE = 0x400;    ///< Oracle engine got different replies from oracle machines.
+constexpr uint16_t ORACLE_FLAG_COMP_DISAGREE = 0x800;  ///< The number of reply commits is sufficient (>= 451 computors), but they disagree about the reply value.
+constexpr uint16_t ORACLE_FLAG_TIMEOUT = 0x1000;       ///< The weren't enough reply commit tx before timeout (< 451).
+
 typedef union IPv4Address
 {
     uint8_t     u8[4];

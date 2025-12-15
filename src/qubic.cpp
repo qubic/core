@@ -1,7 +1,6 @@
 #define SINGLE_COMPILE_UNIT
 
-// #define NO_QRAFFLE
-// #define OLD_QSWAP
+#define INCLUDE_CONTRACT_TEST_EXAMPLES
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
@@ -69,7 +68,10 @@
 
 #include "files/files.h"
 #include "mining/mining.h"
-#include "oracles/oracle_machines.h"
+
+#include "oracle_core/oracle_engine.h"
+#include "oracle_core/net_msg_impl.h"
+#include "contract_core/qpi_oracle_impl.h"
 
 #include "contract_core/qpi_mining_impl.h"
 #include "revenue.h"
@@ -128,8 +130,8 @@ static unsigned long long faultyComputorFlags[(NUMBER_OF_COMPUTORS + 63) / 64];
 static unsigned int gTickNumberOfComputors = 0, gTickTotalNumberOfComputors = 0, gFutureTickTotalNumberOfComputors = 0;
 static unsigned int nextTickTransactionsSemaphore = 0, numberOfNextTickTransactions = 0, numberOfKnownNextTickTransactions = 0;
 static unsigned short numberOfOwnComputorIndices;
-static unsigned short ownComputorIndices[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
-static unsigned short ownComputorIndicesMapping[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
+static unsigned short ownComputorIndices[computorSeedsCount];
+static unsigned short ownComputorIndicesMapping[computorSeedsCount];
 
 static TickStorage ts;
 static VoteCounter voteCounter;
@@ -358,19 +360,6 @@ static void logToConsole(const CHAR16* message)
     else
         outputStringToConsole(timestampedMessage);
 #endif
-}
-
-static int computorIndex(m256i computor)
-{
-    for (int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
-    {
-        if (broadcastedComputors.computors.publicKeys[computorIndex] == computor)
-        {
-            return computorIndex;
-        }
-    }
-
-    return -1;
 }
 
 static inline bool isMainMode()
@@ -618,7 +607,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
             }
             else
             {
-                for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
+                for (unsigned int i = 0; i < computorSeedsCount; i++)
                 {
                     if (request->destinationPublicKey == computorPublicKeys[i])
                     {
@@ -764,7 +753,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                 {
                     minerPublicKeys[i] = request->computors.publicKeys[i];
 
-                    for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
+                    for (unsigned int j = 0; j < computorSeedsCount; j++)
                     {
                         if (request->computors.publicKeys[i] == computorPublicKeys[j])
                         {
@@ -1680,6 +1669,21 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
     }
 }
 
+static void processOracleMachineReply(Peer* peer, RequestResponseHeader* header)
+{
+    // Ignore message fron non oracle machine node
+    if (!peer->isOracleMachineNode())
+    {
+        return;
+    }
+
+    auto* msg = header->getPayload<OracleMachineReply>();
+    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(OracleMachineReply))
+    {
+        oracleEngine.processOracleMachineReply(msg, header->getPayloadSize());
+    }
+}
+
 // a tracker to detect if a thread is crashed
 static void checkinTime(unsigned long long processorNumber)
 {
@@ -2162,6 +2166,11 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
+                case OracleMachineReply::type():
+                {
+                    processOracleMachineReply(peer, header);
+                }
+
 #if ADDON_TX_STATUS_REQUEST
                 /* qli: process RequestTxStatus message */
                 case RequestTxStatus::type():
@@ -2475,7 +2484,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                     logger.logQuTransfer(quTransfer);
                 }
 
-                for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
+                for (unsigned int i = 0; i < computorSeedsCount; i++)
                 {
                     if (transaction->sourcePublicKey == computorPublicKeys[i])
                     {
@@ -2608,7 +2617,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     }
     else
     {
-        for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
+        for (unsigned int i = 0; i < computorSeedsCount; i++)
         {
             if (transaction->sourcePublicKey == computorPublicKeys[i])
             {
@@ -2643,18 +2652,6 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     }
 }
 
-static void processTickTransactionOracleReplyCommit(const OracleReplyCommitTransaction* transaction)
-{
-    PROFILE_SCOPE();
-
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transaction != nullptr);
-    ASSERT(transaction->checkValidity());
-    ASSERT(isZero(transaction->destinationPublicKey));
-    ASSERT(transaction->tick == system.tick);
-
-    // TODO
-}
 
 static void processTickTransactionOracleReplyReveal(const OracleReplyRevealTransactionPrefix* transaction)
 {
@@ -2754,23 +2751,26 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                 }
                 break;
 
-                case OracleReplyCommitTransaction::transactionType():
+                case OracleReplyCommitTransactionPrefix::transactionType():
                 {
-                    if (computorIndex(transaction->sourcePublicKey) >= 0
-                        && transaction->inputSize == sizeof(OracleReplyCommitTransaction))
-                    {
-                        processTickTransactionOracleReplyCommit((OracleReplyCommitTransaction*)transaction);
-                    }
+                    oracleEngine.processTransactionOracleReplyCommit((OracleReplyCommitTransactionPrefix*)transaction);
                 }
                 break;
 
                 case OracleReplyRevealTransactionPrefix::transactionType():
                 {
                     if (computorIndex(transaction->sourcePublicKey) >= 0
-                        && transaction->inputSize >= sizeof(OracleReplyRevealTransactionPrefix) + sizeof(OracleReplyRevealTransactionPostfix))
+                        && transaction->inputSize >= OracleReplyRevealTransactionPrefix::minInputSize())
                     {
+                        // TODO: fix size check by defining minInputSize
                         processTickTransactionOracleReplyReveal((OracleReplyRevealTransactionPrefix*)transaction);
                     }
+                }
+                break;
+
+                case OracleUserQueryTransactionPrefix::transactionType():
+                {
+                    // TODO
                 }
                 break;
 
@@ -3269,7 +3269,7 @@ static void processTick(unsigned long long processorNumber)
     {
         // Publish solutions that were sent via BroadcastMessage as MiningSolutionTransaction
         PROFILE_NAMED_SCOPE("processTick(): broadcast solutions as tx (from BroadcastMessage)");
-        for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
+        for (unsigned int i = 0; i < computorSeedsCount; i++)
         {
             int solutionIndexToPublish = -1;
 
@@ -3972,7 +3972,7 @@ static bool loadAllNodeStates()
     // update own computor indices
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        for (unsigned int j = 0; j < sizeof(computorSeeds) / sizeof(computorSeeds[0]); j++)
+        for (unsigned int j = 0; j < computorSeedsCount; j++)
         {
             if (broadcastedComputors.computors.publicKeys[i] == computorPublicKeys[j])
             {
@@ -5474,6 +5474,13 @@ static bool initialize()
         }
     }
 
+    if (!oracleEngine.init())
+        return false;
+
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+    increaseEnergy(id(TESTEXC_CONTRACT_INDEX, 0, 0, 0), 100000000llu);
+#endif
+
     initializeContractErrors();
     initializeContracts();
 
@@ -5565,6 +5572,17 @@ static bool initialize()
         logToConsole(message);
     }
 
+    if (NUMBER_OF_OM_NODE_CONNECTIONS > 0)
+    {
+        logToConsole(L"Populating oracle machine node ...");
+        numberOfOMPeers = 0;
+        for (unsigned int i = 0; i < NUMBER_OF_OM_NODE_CONNECTIONS; i++)
+        {
+            const IPv4Address& peer_ip = *reinterpret_cast<const IPv4Address*>(oracleMachineIPs[i]);
+            copyMem(&omIPv4Address[numberOfOMPeers++], &peer_ip, sizeof(IPv4Address));
+        }
+    }
+
     logToConsole(L"Init TCP...");
     if (!initTcp4(PORT))
         return false;
@@ -5627,6 +5645,8 @@ static void deinitialize()
 #if ADDON_TX_STATUS_REQUEST
     deinitTxStatusRequestAddOn();
 #endif
+
+    oracleEngine.deinit();
 
     deinitContractExec();
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
@@ -5936,6 +5956,10 @@ static void logInfo()
 
     logToConsole(message);
 
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+    oracleEngine.logStatus(message);
+    logToConsole(message);
+#endif
 }
 
 static void logHealthStatus()
@@ -6708,8 +6732,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                 for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
                 {
-                    // handle new connections
-                    if (peerConnectionNewlyEstablished(i))
+                    // handle new connections. For Oracle Machine, not need the ExchangePublicPeers
+                    if (peerConnectionNewlyEstablished(i) && !peers[i].isOracleMachineNode())
                     {
                         // new connection established:
                         // prepare and send ExchangePublicPeers message
@@ -6806,7 +6830,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         if (peers[i].tcp4Protocol && peers[i].isConnectedAccepted && !peers[i].isClosing)
                         {
-                            if (!peers[i].isFullNode())
+                            // Skip FullNode and OM nodes
+                            if (!peers[i].isFullNode() && !peers[i].isOMNode)
                             {
                                 suitablePeerIndices[numberOfSuitablePeers++] = i;
                             }
@@ -6911,13 +6936,17 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     while (responseQueueElementTail != responseQueueElementHead)
                     {
                         RequestResponseHeader* responseHeader = (RequestResponseHeader*)&responseQueueBuffer[responseQueueElements[responseQueueElementTail].offset];
-                        if (responseQueueElements[responseQueueElementTail].peer)
+                        if (responseQueueElements[responseQueueElementTail].peer == 0)
                         {
-                            push(responseQueueElements[responseQueueElementTail].peer, responseHeader);
+                            pushToSeveral(responseHeader);
+                        }
+                        else if (responseQueueElements[responseQueueElementTail].peer == (Peer*)1)
+                        {
+                            pushToOracleMachineNodes(responseHeader);
                         }
                         else
                         {
-                            pushToSeveral(responseHeader);
+                            push(responseQueueElements[responseQueueElementTail].peer, responseHeader);
                         }
                         responseQueueBufferTail += responseHeader->size();
                         if (responseQueueBufferTail > RESPONSE_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
