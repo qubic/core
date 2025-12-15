@@ -1,6 +1,7 @@
 // Basic math functions (not optimized but with minimal dependencies)
 
 #pragma once
+#include <lib/platform_common/qintrin.h> 
 
 namespace math_lib
 {
