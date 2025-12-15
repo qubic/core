@@ -1344,101 +1344,18 @@ namespace QPI
 	//////////
 	// safety multiplying a and b and then clamp
 	
-	inline static sint64 smul(sint64 a, sint64 b)
-	{
-		sint64 hi, lo;
-		lo = _mul128(a, b, &hi);
-		if (hi != (lo >> 63))
-		{
-			return ((a > 0) == (b > 0)) ? INT64_MAX : INT64_MIN;
-		}
-		return lo;
-	}
-
-	inline static uint64 smul(uint64 a, uint64 b)
-	{
-		uint64 hi, lo;
-		lo = _umul128(a, b, &hi);
-		if (hi != 0)
-		{
-			return UINT64_MAX;
-		}
-		return lo;
-	}
-
-	inline static sint32 smul(sint32 a, sint32 b)
-	{
-		sint64 r = (sint64)(a) * (sint64)(b);
-		if (r < INT32_MIN)
-		{
-			return INT32_MIN;
-		}
-		else if (r > INT32_MAX)
-		{
-			return INT32_MAX;
-		}
-		else
-		{
-			return (sint32)r;
-		}
-	}
-
-	inline static uint32 smul(uint32 a, uint32 b)
-	{
-		uint64 r = (uint64)(a) * (uint64)(b);
-		if (r > UINT32_MAX)
-		{
-			return UINT32_MAX;
-		}
-		return (uint32)r;
-	}
+	inline static sint64 smul(sint64 a, sint64 b);
+	inline static uint64 smul(uint64 a, uint64 b);
+	inline static sint32 smul(sint32 a, sint32 b);
+	inline static uint32 smul(uint32 a, uint32 b);
 
 	//////////
 	// safety adding a and b and then clamp
 
-	inline static sint64 sadd(sint64 a, sint64 b)
-	{
-		sint64 sum = a + b;
-		if (a < 0 && b < 0 && sum > 0) // negative overflow
-			return INT64_MIN;
-		if (a > 0 && b > 0 && sum < 0) // positive overflow
-			return INT64_MAX;
-		return sum;
-	}
-
-	inline static uint64 sadd(uint64 a, uint64 b)
-	{
-		if (UINT64_MAX - a < b)
-			return UINT64_MAX;
-		return a + b;
-	}
-
-	inline static sint32 sadd(sint32 a, sint32 b)
-	{
-		sint64 sum = (sint64)(a) + (sint64)(b);
-		if (sum < INT32_MIN)
-		{
-			return INT32_MIN;
-		}
-		else if (sum > INT32_MAX)
-		{
-			return INT32_MAX;
-		}
-		else
-		{
-			return (sint32)sum;
-		}
-	}
-
-	inline static uint32 sadd(uint32 a, uint32 b)
-	{
-		uint64 sum = (uint64)(a) + (uint64)(b);
-		if (sum > UINT32_MAX)
-		{
-			return UINT32_MAX;
-		}
-		return (uint32)sum;
-	}
+	inline static sint64 sadd(sint64 a, sint64 b);
+	inline static uint64 sadd(uint64 a, uint64 b);
+	inline static sint32 sadd(sint32 a, sint32 b);
+	inline static uint32 sadd(uint32 a, uint32 b);
 
 	// Divide a by b, but return 0 if b is 0 (rounding to lower magnitude in case of integers)
 	template <typename T>
