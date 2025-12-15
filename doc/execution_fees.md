@@ -18,7 +18,7 @@ Contracts can refill their execution fee reserves in the following ways:
 - **External refill via QUtil**: Anyone can refill any contract's reserve by sending QU to the QUtil contract's `BurnQubicForContract` procedure with the target contract index. All sent QU is burned and added to the target contract's reserve.
 - **Legacy QUtil burn**: QUtil provides a `BurnQubic` procedure that burns to QUtil's own reserve specifically.
 
-The execution fee system follows a key principle: **"The Contract Initiating Execution Pays"**. When a user initiates a transaction, the user's destination contract must have a positive executionFeeReserve. When a contract initiates an operation (including any callbacks it triggers), that contract must have positive executionFeeReserve. However, when the system initiates operations (contract-to-contract callbacks, revenue donations, IPO refunds), no execution fees are required.
+The execution fee system follows a key principle: **"The Contract Initiating Execution Pays"**. When a user initiates a transaction, the user's destination contract must have a positive executionFeeReserve. When a contract initiates an operation (including any callbacks it triggers), that contract must have positive executionFeeReserve.
 
 Currently, execution fees are checked (contracts must have `executionFeeReserve > 0`) but **not yet deducted** based on actual computation. Future implementation will measure execution time and resources per procedure call, deduct proportional fees from the reserve.
 
@@ -28,7 +28,7 @@ The execution fee system checks whether a contract has positive `executionFeeRes
 
 | Entry Point | Initiator | executionFeeReserve Checked | Code Location |
 |------------|-----------|----------------------------|---------------|
-| System procedures (`BEGIN_TICK`, `END_TICK`, etc.) | System | ✅ Contract must have fees | qubic.cpp |
+| System procedures (`BEGIN_TICK`, `END_TICK`, etc.) | System | ✅ Contract must have positive reserve | qubic.cpp |
 | User procedure call | User | ✅ Contract must have positive reserve | qubic.cpp |
 | Contract-to-contract procedure | Contract A | ✅ Called contract (B) must have positive reserve, otherwise error is returned to caller | contract_exec.h |
 | Contract-to-contract function | Contract A | ✅ Called contract (B) must have positive reserve, otherwise error is returned to caller | contract_exec.h |

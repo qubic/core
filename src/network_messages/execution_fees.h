@@ -22,7 +22,7 @@ struct ExecutionFeeReportTransactionPrefix : public Transaction
 
     static constexpr unsigned short minInputSize()
     {
-        return sizeof(phaseNumber);
+        return sizeof(phaseNumber) + sizeof(numEntries);
     }
 
     static constexpr unsigned short maxInputSize()
