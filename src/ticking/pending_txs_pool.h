@@ -25,7 +25,7 @@
 class PendingTxsPool
 {
 protected:
-    // The PendingTxsPool will always leave space for the two protocol-level txs (tick votes and custom mining).
+    // The PendingTxsPool will always leave space for the three protocol-level txs (tick votes, custom mining, contract execution fees).
     static constexpr unsigned int maxNumTxsPerTick = NUMBER_OF_TRANSACTIONS_PER_TICK - 3;
     static constexpr unsigned long long maxNumTxsTotal = PENDING_TXS_POOL_NUM_TICKS * maxNumTxsPerTick;
 

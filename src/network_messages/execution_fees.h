@@ -119,7 +119,7 @@ static inline unsigned int buildExecutionFeeReportPayload(
     const unsigned long long multiplierDenominator
 )
 {
-    if (multiplierDenominator == 0)
+    if (multiplierDenominator == 0 || multiplierNumerator == 0)
     {
         return 0;
     }

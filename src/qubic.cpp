@@ -2998,7 +2998,7 @@ static bool makeAndBroadcastCustomMiningTransaction(int i, BroadcastFutureTickDa
     return false;
 }
 
-static bool makeAndBroadCastExecutionFeeTransaction(int i, BroadcastFutureTickData& td, int txSlot)
+static bool makeAndBroadcastExecutionFeeTransaction(int i, BroadcastFutureTickData& td, int txSlot)
 {
     PROFILE_NAMED_SCOPE("processTick(): broadcast execution fee tx");
     ASSERT(txSlot < NUMBER_OF_TRANSACTIONS_PER_TICK);
@@ -3414,11 +3414,11 @@ static void processTick(unsigned long long processorNumber)
                         }
                     }
                     {
-                        // include execution fees tx for phase n - 1 (i.e. from contractExecutionTimePerPhase[!contractExecutionTimeActiveArrayIndex])
-                        if (makeAndBroadCastExecutionFeeTransaction(i, broadcastedFutureTickData, nextTxIndex))
-                            {
-                                nextTxIndex++;
-                            }
+                        // include execution fees tx for phase n - 1
+                        if (makeAndBroadcastExecutionFeeTransaction(i, broadcastedFutureTickData, nextTxIndex))
+                        {
+                            nextTxIndex++;
+                        }
                     }
 
                     for (; nextTxIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; ++nextTxIndex)
