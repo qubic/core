@@ -2322,27 +2322,6 @@ protected:
         state.investRewardsId = ID(_V, _J, _G, _R, _U, _F, _W, _J, _C, _U, _S, _N, _H, _C, _Q, _J, _R, _W, _R, _R, _Y, _X, _A, _U, _E, _J, _F, _C, _V, _H, _Y, _P, _X, _W, _K, _T, _D, _L, _Y, _K, _U, _A, _C, _P, _V, _V, _Y, _B, _G, _O, _L, _V, _C, _J, _S, _F);
 	}
 
-	BEGIN_EPOCH()
-	{
-		// One-time migration of fee structure (contract already initialized)
-		if (qpi.epoch() == 191)
-		{
-			// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP providers
-			state.shareholderFeeRate = 27; 		// 27% of swap fees to SC shareholders
-			state.investRewardsFeeRate = 3;		// 3% of swap fees to Invest & Rewards
-			state.qxFeeRate = 5;				// 5% of swap fees to QX
-			state.burnFeeRate = 1;				// 1% of swap fees burned
-
-			state.qxEarnedFee = 0;
-			state.qxDistributedAmount = 0;
-			state.burnEarnedFee = 0;
-			state.burnedAmount = 0;
-
-            // VJGRUFWJCUSNHCQJRWRRYXAUEJFCVHYPXWKTDLYKUACPVVYBGOLVCJSF(RONJ)
-            state.investRewardsId = ID(_V, _J, _G, _R, _U, _F, _W, _J, _C, _U, _S, _N, _H, _C, _Q, _J, _R, _W, _R, _R, _Y, _X, _A, _U, _E, _J, _F, _C, _V, _H, _Y, _P, _X, _W, _K, _T, _D, _L, _Y, _K, _U, _A, _C, _P, _V, _V, _Y, _B, _G, _O, _L, _V, _C, _J, _S, _F);
-		}
-	}
-
 	struct END_TICK_locals
 	{
 		uint64 toDistribute;

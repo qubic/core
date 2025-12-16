@@ -8,6 +8,7 @@
 
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
+#include "contract_core/qpi_spectrum_impl.h"
 
 #include "../src/contract_core/qpi_ticking_impl.h"
 

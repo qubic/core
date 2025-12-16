@@ -55,11 +55,33 @@ static void setContractFeeReserve(unsigned int contractIndex, long long newValue
 
 // Add the given amount to the amount in the fee reserve of the specified contract (data stored in state of contract 0).
 // This also sets the contractStateChangeFlag of contract 0.
-static void addToContractFeeReserve(unsigned int contractIndex, long long addAmount)
+static void addToContractFeeReserve(unsigned int contractIndex, unsigned long long addAmount)
 {
     contractStateLock[0].acquireWrite();
     contractStateChangeFlags[0] |= 1ULL;
-    ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex] += addAmount;
+    if (addAmount > static_cast<unsigned long long>(INT64_MAX))
+        addAmount = INT64_MAX;
+    ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex] =
+        math_lib::sadd(((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex], static_cast<long long>(addAmount));
+    contractStateLock[0].releaseWrite();
+}
+
+// Subtract the given amount from the amount in the fee reserve of the specified contract (data stored in state of contract 0).
+// This also sets the contractStateChangeFlag of contract 0.
+static void subtractFromContractFeeReserve(unsigned int contractIndex, unsigned long long subtractAmount)
+{
+    contractStateLock[0].acquireWrite();
+    contractStateChangeFlags[0] |= 1ULL;
+
+    long long negativeAddAmount;
+    // The smallest representable INT64 number is INT64_MIN = - INT64_MAX - 1
+    if (subtractAmount > static_cast<unsigned long long>(INT64_MAX))
+        negativeAddAmount = INT64_MIN;
+    else
+        negativeAddAmount = -1LL * static_cast<long long>(subtractAmount);
+
+    ((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex] =
+        math_lib::sadd(((Contract0State*)contractStates[0])->contractFeeReserves[contractIndex], negativeAddAmount);
     contractStateLock[0].releaseWrite();
 }
 

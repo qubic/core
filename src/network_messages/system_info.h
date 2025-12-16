@@ -45,7 +45,7 @@ struct RespondSystemInfo
     unsigned long long currentEntityBalanceDustThreshold;
 
     unsigned int targetTickVoteSignature;
-    unsigned long long _reserve0;
+    unsigned long long computorPacketSignature;
     unsigned long long _reserve1;
     unsigned long long _reserve2;
     unsigned long long _reserve3;

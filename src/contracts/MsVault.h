@@ -2144,6 +2144,84 @@ protected:
         state.liveDepositFee = 0ULL;
     }
 
+    // A patch per user request
+    struct BEGIN_EPOCH_locals {
+        uint64 i;
+        VaultAssetPart assetPart;
+        Asset targetAsset;
+        AssetBalance ab;
+        uint64 amountToAdd;
+        bit found;
+        Vault v;
+    };
+    BEGIN_EPOCH_WITH_LOCALS()
+    {
+        // A patch per user request
+        // check if the epoch is 192
+        if (qpi.epoch() == 192)
+        {
+            locals.v = state.vaults.get(1);
+            // check if vault id == 1 is still active
+            if (locals.v.isActive)
+            {
+                // load the asset part for Vault 1
+                locals.assetPart = state.vaultAssetParts.get(1);
+
+                // set the asset name
+                locals.targetAsset.assetName = 310652322119; // "GARTH"
+
+                // set the asset issuer
+                // String: GARTHFANXMPXMDPEZFQPWFPYMHOAWTKILINCTRMVLFFVATKVJRKEDYXGHJBF
+                locals.targetAsset.issuer = ID(
+                        _G, _A, _R, _T, _H, _F, _A, _N, _X, _M,
+                        _P, _X, _M, _D, _P, _E, _Z, _F, _Q, _P,
+                        _W, _F, _P, _Y, _M, _H, _O, _A, _W, _T,
+                        _K, _I, _L, _I, _N, _C, _T, _R, _M, _V,
+                        _L, _F, _F, _V, _A, _T, _K, _V, _J, _R,
+                        _K, _E, _D, _Y, _X, _G
+                );
+
+                // define the balance
+                locals.amountToAdd = 44341695598;
+                // confirm if the contract actually owns/possesses at least the amount to add
+                if (qpi.numberOfShares(locals.targetAsset, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF)) == (sint64)locals.amountToAdd)
+                {
+                    // check if this asset type already exists in the vault to update balance
+                    locals.found = false;
+                    for (locals.i = 0; locals.i < locals.assetPart.numberOfAssetTypes; locals.i++)
+                    {
+                        locals.ab = locals.assetPart.assetBalances.get(locals.i);
+
+                        if (locals.ab.asset.assetName == locals.targetAsset.assetName &&
+                            locals.ab.asset.issuer == locals.targetAsset.issuer)
+                        {
+                            locals.ab.balance += locals.amountToAdd;
+                            locals.assetPart.assetBalances.set(locals.i, locals.ab);
+                            locals.found = true;
+                            break;
+                        }
+                    }
+
+                    // if not found, add new available slot
+                    if (!locals.found)
+                    {
+                        if (locals.assetPart.numberOfAssetTypes < MSVAULT_MAX_ASSET_TYPES)
+                        {
+                            locals.ab.asset = locals.targetAsset;
+                            locals.ab.balance = locals.amountToAdd;
+
+                            locals.assetPart.assetBalances.set(locals.assetPart.numberOfAssetTypes, locals.ab);
+                            locals.assetPart.numberOfAssetTypes++;
+                        }
+                    }
+
+                    // save to state
+                    state.vaultAssetParts.set(1, locals.assetPart);
+                }
+            }
+        }
+    }
+
     END_EPOCH_WITH_LOCALS()
     {
         locals.qxAdress = id(QX_CONTRACT_INDEX, 0, 0, 0);
@@ -2166,21 +2244,26 @@ protected:
                         state.totalRevenue += locals.qubicVault.qubicBalance;
                     }
 
-                    locals.assetVault = state.vaultAssetParts.get(locals.i);
-                    for (locals.k = 0; locals.k < locals.assetVault.numberOfAssetTypes; locals.k++)
-                    {
-                        locals.ab = locals.assetVault.assetBalances.get(locals.k);
-                        if (locals.ab.balance > 0)
-                        {
-                            // Prepare the transfer request to QX
-                            locals.qx_in.assetName = locals.ab.asset.assetName;
-                            locals.qx_in.issuer = locals.ab.asset.issuer;
-                            locals.qx_in.numberOfShares = locals.ab.balance;
-                            locals.qx_in.newOwnerAndPossessor = locals.qxAdress;
+                    // Temporarily disable this code block. To transfer back the assets to QX, we need to pay 100 QUs fee.
+                    // But the SC itself does not have enough funds to do so. We will keep it under the SC, so if the stuck asset
+                    // happens, we just assign it back manually through patches. As long as there are fees needed for releasing
+                    // assets back to QX, the code block below is not applicable.
+                    // locals.assetVault = state.vaultAssetParts.get(locals.i);
+                    // for (locals.k = 0; locals.k < locals.assetVault.numberOfAssetTypes; locals.k++)
+                    // {
+                    //     locals.ab = locals.assetVault.assetBalances.get(locals.k);
+                    //     if (locals.ab.balance > 0)
+                    //     {
+                    //         // Prepare the transfer request to QX
+                    //         locals.qx_in.assetName = locals.ab.asset.assetName;
+                    //         locals.qx_in.issuer = locals.ab.asset.issuer;
+                    //         locals.qx_in.numberOfShares = locals.ab.balance;
+                    //         locals.qx_in.newOwnerAndPossessor = locals.qxAdress;
 
-                            INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareOwnershipAndPossession, locals.qx_in, locals.qx_out, 0);
-                        }
-                    }
+                    //         INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareOwnershipAndPossession, locals.qx_in, locals.qx_out, 0);
+                    //     }
+                    // }
+                    
                     locals.qubicVault.isActive = false;
                     locals.qubicVault.qubicBalance = 0;
                     locals.qubicVault.requiredApprovals = 0;
