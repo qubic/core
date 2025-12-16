@@ -590,7 +590,7 @@ public:
 		CalculatePrizePools_output calcPoolsOutput;
 	};
 
-	struct SettlementLocals
+	struct SettleEpoch_locals
 	{
 		QTFRandomValues winningValues;
 		ReturnAllTickets_input returnAllTicketsInput;
@@ -667,10 +667,6 @@ public:
 		uint64 rlShares;
 		// Cache for countMatches results to avoid redundant calculations
 		Array<uint8, QTF_MAX_NUMBER_OF_PLAYERS> cachedMatches;
-	};
-
-	struct SettleEpoch_locals : public SettlementLocals
-	{
 	};
 
 	struct END_EPOCH_locals
@@ -1139,10 +1135,7 @@ protected:
 		}
 	}
 
-	static void clearWinerData(QTF& state)
-	{
-		setMemory(state.lastWinnerData, 0);
-	}
+	static void clearWinerData(QTF& state) { setMemory(state.lastWinnerData, 0); }
 
 	static void fillWinnerData(QTF& state, const PlayerData& playerData, const QTFRandomValues& winnerValues, const uint16& epoch)
 	{
@@ -1569,7 +1562,7 @@ private:
 		{
 			locals.randomValue = input.playerValues.get(locals.i);
 			ASSERT(locals.randomValue > 0 && locals.randomValue <= QTF_MAX_RANDOM_VALUE);
-			
+
 			locals.maskA |= 1u << locals.randomValue;
 		}
 
