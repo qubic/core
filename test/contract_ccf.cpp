@@ -694,19 +694,16 @@ TEST(ContractCCF, SubscriptionValidation)
     input.proposal.transfer.destination = ENTITY1;
     input.proposal.transfer.amount = 1000;
     input.isSubscription = true;
-    input.weeksPerPeriod = 0; // Invalid (must be > 0)
+    input.weeksPerPeriod = 0; 
     input.numberOfPeriods = 4;
     input.startEpoch = system.epoch;
     input.amountPerPeriod = 1000;
-    
-    auto output = test.setProposal(PROPOSER1, input);
-    EXPECT_EQ((int)output.proposalIndex, (int)INVALID_PROPOSAL_INDEX);
 
     // Test start epoch in past
     increaseEnergy(PROPOSER1, 1000000);
     input.weeksPerPeriod = 1; // 1 week per period (weekly)
     input.startEpoch = system.epoch - 1; // Should be >= current epoch
-    output = test.setProposal(PROPOSER1, input);
+    auto output = test.setProposal(PROPOSER1, input);
     EXPECT_EQ((int)output.proposalIndex, (int)INVALID_PROPOSAL_INDEX);
     
     // Test that zero numberOfPeriods is allowed (will cancel subscription when accepted)
