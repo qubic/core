@@ -294,6 +294,9 @@
     <ClInclude Include="ticking\execution_fee_report_collector.h">
       <Filter>ticking</Filter>
     </ClInclude>
+    <ClInclude Include="ticking\stable_computor_index.h">
+      <Filter>ticking</Filter>
+    </ClInclude>
     <ClInclude Include="contracts\Qdraw.h">
       <Filter>contracts</Filter>
     </ClInclude>
