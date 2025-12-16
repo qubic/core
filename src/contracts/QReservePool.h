@@ -2,7 +2,7 @@
 
 // Number of available smart contracts in the QRP contract.
 static constexpr uint16 QRP_AVAILABLE_SC_NUM = 128;
-static constexpr uint64 QRP_QTF_INDEX = 20;
+static constexpr uint64 QRP_QTF_INDEX = 21;
 
 enum class QRPReturnCode : uint8
 {
