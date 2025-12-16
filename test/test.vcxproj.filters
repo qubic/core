@@ -46,6 +46,7 @@
     <ClCompile Include="pending_txs_pool.cpp" />
     <ClCompile Include="quorum_value.cpp" />
     <ClCompile Include="sorting.cpp" />
+    <ClCompile Include="oracle_engine.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />
@@ -53,6 +54,7 @@
     <ClInclude Include="contract_testing.h" />
     <ClInclude Include="test_util.h" />
     <ClInclude Include="logging_test.h" />
+    <ClInclude Include="oracle_testing.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

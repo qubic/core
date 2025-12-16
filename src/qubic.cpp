@@ -59,6 +59,8 @@
 #include "logging/net_msg_impl.h"
 
 #include "ticking/ticking.h"
+#include "ticking/tick_storage.h"
+#include "ticking/pending_txs_pool.h"
 #include "contract_core/qpi_ticking_impl.h"
 #include "vote_counter.h"
 #include "ticking/execution_fee_report_collector.h"

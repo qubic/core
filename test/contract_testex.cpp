@@ -4,6 +4,7 @@
 #include <chrono>
 
 #include "contract_testing.h"
+#include "oracle_testing.h"
 
 static const id TESTEXA_CONTRACT_ID(TESTEXA_CONTRACT_INDEX, 0, 0, 0);
 static const id TESTEXB_CONTRACT_ID(TESTEXB_CONTRACT_INDEX, 0, 0, 0);
@@ -2099,48 +2100,6 @@ TEST(ContractTestEx, SystemCallbacksWithNegativeFeeReserve)
 
     // Verify TESTEXC fee reserve is still negative
     EXPECT_LT(getContractFeeReserve(TESTEXC_CONTRACT_INDEX), 0);
-}
-
-static union
-{
-    RequestResponseHeader header;
-
-    struct
-    {
-        RequestResponseHeader header;
-        OracleMachineQuery queryMetadata;
-        unsigned char queryData[MAX_ORACLE_QUERY_SIZE];
-    } omQuery;
-} enqueuedNetworkMessage;
-
-template <typename OracleInterface>
-void checkNetworkMessageOracleMachineQuery(uint64 expectedOracleQueryId, id expectedOracle, uint32 expectedTimeout)
-{
-    EXPECT_EQ(enqueuedNetworkMessage.header.type(), OracleMachineQuery::type());
-    EXPECT_GT(enqueuedNetworkMessage.header.size(), sizeof(RequestResponseHeader) + sizeof(OracleMachineQuery));
-    uint32 queryDataSize = enqueuedNetworkMessage.header.size() - sizeof(RequestResponseHeader) - sizeof(OracleMachineQuery);
-    EXPECT_LE(queryDataSize, (uint32)MAX_ORACLE_QUERY_SIZE);
-    EXPECT_EQ(queryDataSize, sizeof(typename OracleInterface::OracleQuery));
-    EXPECT_EQ(enqueuedNetworkMessage.omQuery.queryMetadata.oracleInterfaceIndex, OracleInterface::oracleInterfaceIndex);
-    EXPECT_EQ(enqueuedNetworkMessage.omQuery.queryMetadata.oracleQueryId, expectedOracleQueryId);
-    EXPECT_EQ(enqueuedNetworkMessage.omQuery.queryMetadata.timeoutInMilliseconds, expectedTimeout);
-    const auto* q = (const OracleInterface::OracleQuery*)enqueuedNetworkMessage.omQuery.queryData;
-    EXPECT_EQ(q->oracle, expectedOracle);
-}
-
-static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data)
-{
-    EXPECT_EQ(peer, (Peer*)0x1);
-    EXPECT_LE(dataSize, sizeof(OracleMachineQuery) + MAX_ORACLE_QUERY_SIZE);
-    EXPECT_TRUE(enqueuedNetworkMessage.header.checkAndSetSize(sizeof(RequestResponseHeader) + dataSize));
-    enqueuedNetworkMessage.header.setType(type);
-    enqueuedNetworkMessage.header.setDejavu(dejavu);
-    copyMem(&enqueuedNetworkMessage.omQuery.queryMetadata, data, dataSize);
-}
-
-uint64 getContractOracleQueryId(uint32 tick, uint16 indexInTick)
-{
-    return ((uint64)tick << 31) | (indexInTick + NUMBER_OF_TRANSACTIONS_PER_TICK);
 }
 
 TEST(ContractTestEx, OracleQuery)

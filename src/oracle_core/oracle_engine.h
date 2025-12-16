@@ -1,14 +1,18 @@
 #pragma once
 
-#include "network_messages/common_def.h"
+#include "contract_core/pre_qpi_def.h"
 #include "contracts/qpi.h"
+#include "oracle_core/oracle_interfaces_def.h"
 
 #include "system.h"
+#include "common_buffers.h"
+#include "spectrum/special_entities.h"
 
 #include "oracle_transactions.h"
 #include "core_om_network_messages.h"
 
 #include "platform/memory_util.h"
+
 
 void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data);
 
@@ -110,8 +114,8 @@ struct OracleReplyState
     uint8_t ownReplyData[MAX_ORACLE_REPLY_SIZE + 2];
 
     uint16_t ownReplyCommitExecCount;
-    uint32 ownReplyCommitComputorTxTick[computorSeedsCount];
-    uint32 ownReplyCommitComputorTxExecuted[computorSeedsCount];
+    uint32_t ownReplyCommitComputorTxTick[computorSeedsCount];
+    uint32_t ownReplyCommitComputorTxExecuted[computorSeedsCount];
 
     m256i replyCommitDigests[NUMBER_OF_COMPUTORS];
     m256i replyCommitKnowledgeProofs[NUMBER_OF_COMPUTORS];
@@ -231,7 +235,7 @@ public:
         }
 
         oracleQueryCount = 0;
-        queryStorageBytesUsed = 1; // reserve offset 0 for "no data"
+        queryStorageBytesUsed = 8; // reserve offset 0 for "no data"
         setMem(&contractQueryIdState, sizeof(contractQueryIdState), 0);
         replyStatesIndex = 0;
         pendingQueryIndices.numValues = 0;
@@ -295,7 +299,7 @@ public:
             return -1;
 
         // compute timeout as absolute point in time
-        DateAndTime timeout = DateAndTime::now();
+        auto timeout = QPI::DateAndTime::now();
         if (!timeout.addMillisec(timeoutMillisec))
             return -1;
 
@@ -319,7 +323,7 @@ public:
 
         // map ID to index
         ASSERT(!queryIdToIndex->contains(queryId));
-        if (queryIdToIndex->set(queryId, oracleQueryCount) == NULL_INDEX)
+        if (queryIdToIndex->set(queryId, oracleQueryCount) == QPI::NULL_INDEX)
             return -1;
 
         // register index of pending query
@@ -340,7 +344,7 @@ public:
 
         // init reply state (temporary until reply is revealed)
         auto& replyState = replyStates[replyStateSlotIdx];
-        setMemory(replyState, 0);
+        setMem(&replyState, sizeof(replyState), 0);
         replyState.queryId = queryId;
         replyState.notificationProcedure = notificationProcedure;
         replyState.notificationLocalsSize = notificationLocalsSize;
@@ -356,7 +360,7 @@ public:
     }
 
     // Enqueue oracle machine query message. May be called from tick processor or contract processor only (uses reorgBuffer).
-    void enqueueOracleQuery(int64_t queryId, uint32_t interfaceIdx, uint16_t timeoutMillisec, const void* queryData, uint16 querySize)
+    void enqueueOracleQuery(int64_t queryId, uint32_t interfaceIdx, uint16_t timeoutMillisec, const void* queryData, uint16_t querySize)
     {
         // Prepare message payload
         OracleMachineQuery* omq = reinterpret_cast<OracleMachineQuery*>(reorgBuffer);
@@ -521,16 +525,36 @@ public:
         // clean all queries (except for last n ticks in case of seamless transition)
     }
 
-    bool getOracleQuery(uint64_t queryId, const void* queryData, uint16_t querySize) const
+    bool getOracleQuery(int64_t queryId, void* queryData, uint16_t querySize) const
     {
         // get query index
         uint32_t queryIndex;
         if (!queryIdToIndex->get(queryId, queryIndex) || queryIndex >= oracleQueryCount)
             return false;
 
+        // check query size
         const auto& queryMetadata = queries[queryIndex];
-        // TODO
+        ASSERT(queryMetadata.interfaceIndex < OI::oracleInterfacesCount);
+        if (querySize != OI::oracleInterfaces[queryMetadata.interfaceIndex].querySize)
+            return false;
 
+        void* querySrcPtr = nullptr;
+        switch (queryMetadata.type)
+        {
+            case ORACLE_QUERY_TYPE_CONTRACT_QUERY:
+            {
+                const auto offset = queryMetadata.typeVar.contract.queryStorageOffset;
+                ASSERT(offset > 0 && offset < queryStorageBytesUsed && queryStorageBytesUsed <= ORACLE_QUERY_STORAGE_SIZE);
+                querySrcPtr = queryStorage + offset;
+                break;
+            }
+            // TODO: support other types
+            default:
+                return false;
+        }
+
+        // Return query data
+        copyMem(queryData, querySrcPtr, querySize);
         return true;
     }
 

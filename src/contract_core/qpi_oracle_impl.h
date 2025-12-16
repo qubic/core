@@ -85,8 +85,7 @@ inline bool QPI::QpiContextProcedureCall::unsubscribeOracle(
 template <typename OracleInterface>
 bool QPI::QpiContextFunctionCall::getOracleQuery(QPI::sint64 queryId, OracleInterface::OracleQuery& query) const
 {
-	// TODO
-	return false;
+	return oracleEngine.getOracleQuery(queryId, &query, sizeof(query));
 }
 
 template <typename OracleInterface>
