@@ -5,6 +5,9 @@ static unsigned long long httpPasscodes[4] = {};
 #ifdef __linux__
 
 #include <drogon/drogon.h>
+#include "controller/rpc_queryv2_controller.h"
+#include "controller/rpc_live_controller.h"
+#include "controller/rpc_stats_controller.h"
 #include "ticking/tick_storage.h"
 
 using namespace drogon;
@@ -58,22 +61,6 @@ private:
             {
                 auto resp = HttpResponse::newHttpResponse();
                 resp->setBody("Hello, World!2");
-                callback(resp);
-            });
-
-        app.registerHandler(
-            "/tick-info",
-            [](const HttpRequestPtr &req,
-               std::function<void(const HttpResponsePtr &)> &&callback)
-            {
-                Json::Value json;
-                json["epoch"] = system.epoch;
-                json["tick"] = system.tick;
-                json["initialTick"] = system.initialTick;
-                json["alignedVotes"] = gTickNumberOfComputors;
-                json["misalignedVotes"] = gTickTotalNumberOfComputors - gTickNumberOfComputors;
-                json["mainAuxStatus"] = mainAuxStatus;
-                auto resp = HttpResponse::newHttpJsonResponse(json);
                 callback(resp);
             });
 

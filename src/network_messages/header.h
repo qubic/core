@@ -33,6 +33,13 @@ public:
         SUPPRESS_WARNINGS_END
     }
 
+    constexpr void setSize2(unsigned int size)
+    {
+        _size[0] = (unsigned char)size;
+        _size[1] = (unsigned char)(size >> 8);
+        _size[2] = (unsigned char)(size >> 16);
+    }
+
     // Set message size with run-time check of size (returns false if message is too big)
     inline bool checkAndSetSize(unsigned int size)
     {

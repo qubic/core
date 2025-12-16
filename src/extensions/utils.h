@@ -121,5 +121,59 @@ static std::string byteToHex(const unsigned char* byteArray, size_t sizeInByte)
         oss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(byteArray[i]);
     }
     return oss.str();
+}
 
+static const char B64_TABLE[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+static inline std::string base64_encode(const std::vector<uint8_t> &in) {
+    std::string out;
+    int val = 0, valb = -6;
+
+    for (uint8_t c : in) {
+        val = (val << 8) + c;
+        valb += 8;
+        while (valb >= 0) {
+            out.push_back(B64_TABLE[(val >> valb) & 0x3F]);
+            valb -= 6;
+        }
+    }
+    if (valb > -6)
+        out.push_back(B64_TABLE[((val << 8) >> (valb + 8)) & 0x3F]);
+
+    while (out.size() % 4)
+        out.push_back('=');
+
+    return out;
+}
+
+static inline std::string base64_encode(uint8_t *data, size_t length) {
+    return base64_encode(std::vector<uint8_t>(data, data + length));
+}
+
+static inline std::vector<uint8_t> base64_decode(const std::string &in) {
+    static int T[256];
+    static bool init = false;
+
+    if (!init) {
+        for (int i = 0; i < 256; i++) T[i] = -1;
+        for (int i = 0; i < 64; i++) T[(unsigned char)B64_TABLE[i]] = i;
+        init = true;
+    }
+
+    std::vector<uint8_t> out;
+    int val = 0, valb = -8;
+
+    for (unsigned char c : in) {
+        if (T[c] == -1) continue;
+        val = (val << 6) + T[c];
+        valb += 6;
+
+        if (valb >= 0) {
+            out.push_back(uint8_t((val >> valb) & 0xFF));
+            valb -= 8;
+        }
+    }
+
+    return out;
 }
