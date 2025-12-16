@@ -426,7 +426,7 @@ public:
     };
 
     struct GetPollInfo_output {
-        uint64 found; // 1 if exists, 0 ig not
+        uint64 found; // 1 if exists, 0 if not
         QUTILPoll poll_info;
         Array<uint8, QUTIL_POLL_GITHUB_URL_MAX_SIZE> poll_link;
     };
@@ -600,6 +600,7 @@ public:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
+            return;
         }
 
         // Make sure that the sum of all amounts does not overflow and is equal to qpi.invocationReward()
@@ -1063,6 +1064,12 @@ public:
         }
         qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.pollVoteFee);
         qpi.burn(state.pollVoteFee);
+
+        if (qpi.invocator() != input.address)
+        {
+            // bad query
+            return;
+        }
 
         locals.idx = mod(input.poll_id, QUTIL_MAX_POLL);
 

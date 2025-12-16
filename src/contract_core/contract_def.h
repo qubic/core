@@ -89,7 +89,11 @@
 #define CONTRACT_INDEX CCF_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE CCF
 #define CONTRACT_STATE2_TYPE CCF2
+#ifdef OLD_CCF
+#include "contracts/ComputorControlledFund_old.h"
+#else
 #include "contracts/ComputorControlledFund.h"
+#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -195,7 +199,17 @@
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
-#define QRP_CONTRACT_INDEX 19
+#define QRAFFLE_CONTRACT_INDEX 19
+#define CONTRACT_INDEX QRAFFLE_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QRAFFLE
+#define CONTRACT_STATE2_TYPE QRAFFLE2
+#include "contracts/QRaffle.h"
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QRP_CONTRACT_INDEX 20
 #define CONTRACT_INDEX QRP_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QRP
 #define CONTRACT_STATE2_TYPE QRP2
@@ -205,7 +219,7 @@
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
-#define QTF_CONTRACT_INDEX 20
+#define QTF_CONTRACT_INDEX 21
 #define CONTRACT_INDEX QTF_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QTF
 #define CONTRACT_STATE2_TYPE QTF2
@@ -214,6 +228,9 @@
 // new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+// forward declaration, defined in qpi_spectrum_impl.h
+static void setContractFeeReserve(unsigned int contractIndex, long long newValue);
+
 constexpr unsigned short TESTEXA_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -314,8 +331,9 @@ constexpr struct ContractDescription
     {"RL", 182, 10000, sizeof(RL)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
     {"QBOND", 182, 10000, sizeof(QBOND)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
     {"QIP", 189, 10000, sizeof(QIP)}, // proposal in epoch 187, IPO in 188, construction and first use in 189
-    {"QRP", 182, 10000, sizeof(IPO)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
-    {"QTF", 182, 10000, sizeof(QTF)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
+    {"QRAFFLE", 192, 10000, sizeof(QRAFFLE)}, // proposal in epoch 190, IPO in 191, construction and first use in 192
+    {"QRP", 200, 10000, sizeof(IPO)}, // proposal in epoch 198, IPO in 199, construction and first use in 200
+    {"QTF", 200, 10000, sizeof(QTF)}, // proposal in epoch 198, IPO in 199, construction and first use in 200
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA)},
@@ -369,7 +387,8 @@ enum OtherEntryPointIDs
     // Used together with SystemProcedureID values, so there must be no overlap!
     USER_PROCEDURE_CALL = contractSystemProcedureCount + 1,
     USER_FUNCTION_CALL = contractSystemProcedureCount + 2,
-    REGISTER_USER_FUNCTIONS_AND_PROCEDURES_CALL = contractSystemProcedureCount + 3
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES_CALL = contractSystemProcedureCount + 3,
+    USER_PROCEDURE_NOTIFICATION_CALL = contractSystemProcedureCount + 4,
 };
 
 GLOBAL_VAR_DECL SYSTEM_PROCEDURE contractSystemProcedures[contractCount][contractSystemProcedureCount];
@@ -429,6 +448,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(RL);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QBOND);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QIP);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRAFFLE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTF);
     // new contracts should be added above this line
@@ -437,5 +457,12 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXB);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXC);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXD);
+
+    // fill execution fee reserves for test contracts
+    setContractFeeReserve(TESTEXA_CONTRACT_INDEX, 10000);
+    setContractFeeReserve(TESTEXB_CONTRACT_INDEX, 10000);
+    setContractFeeReserve(TESTEXC_CONTRACT_INDEX, 10000);
+    setContractFeeReserve(TESTEXD_CONTRACT_INDEX, 10000);
 #endif
 }
+
