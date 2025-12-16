@@ -64,7 +64,7 @@ constexpr uint32 QTF_DEFAULT_INIT_TIME = 22u << 9 | 4u << 5 | 13u; // RL_DEFAULT
 const id QTF_ADDRESS_DEV_TEAM = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C, _R,
                                    _L, _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
 const id QTF_RANDOM_LOTTERY_CONTRACT_ID = id(RL_CONTRACT_INDEX, 0, 0, 0);
-const uint64 QTF_RANDOM_LOTTERY_ASSET_NAME = *reinterpret_cast<const uint64*>("RL");
+constexpr uint64 QTF_RANDOM_LOTTERY_ASSET_NAME = 19538; // RL
 const id QTF_RESERVE_POOL_CONTRACT_ID = id(QRP_CONTRACT_INDEX, 0, 0, 0);
 
 using QTFRandomValues = Array<uint8, QTF_RANDOM_VALUES_COUNT>;
@@ -1501,7 +1501,7 @@ private:
 		// Manual dividend payout to RL shareholders (no extra fee).
 		if (locals.distPayout > 0)
 		{
-			locals.rlAsset.issuer = QTF_RANDOM_LOTTERY_CONTRACT_ID;
+			locals.rlAsset.issuer = id::zero();
 			locals.rlAsset.assetName = QTF_RANDOM_LOTTERY_ASSET_NAME;
 			locals.rlTotalShares = NUMBER_OF_COMPUTORS;
 
