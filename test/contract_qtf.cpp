@@ -64,9 +64,8 @@ public:
 	{
 		ValidateNumbers_input input{};
 		ValidateNumbers_output output{};
-		std::aligned_storage_t<sizeof(ValidateNumbers_locals), alignof(ValidateNumbers_locals)> localsStorage;
-		auto& locals = *reinterpret_cast<ValidateNumbers_locals*>(&localsStorage);
-		setMemory(locals, 0);
+		ValidateNumbers_locals locals{};
+
 		input.numbers = numbers;
 		ValidateNumbers(qpi, *this, input, output, locals);
 		return output;
@@ -76,9 +75,8 @@ public:
 	{
 		GetRandomValues_input input{};
 		GetRandomValues_output output{};
-		std::aligned_storage_t<sizeof(GetRandomValues_locals), alignof(GetRandomValues_locals)> localsStorage;
-		auto& locals = *reinterpret_cast<GetRandomValues_locals*>(&localsStorage);
-		setMemory(locals, 0);
+		GetRandomValues_locals locals{};
+
 		input.seed = seed;
 		GetRandomValues(qpi, *this, input, output, locals);
 		return output;
@@ -89,9 +87,8 @@ public:
 	{
 		CountMatches_input input{};
 		CountMatches_output output{};
-		std::aligned_storage_t<sizeof(CountMatches_locals), alignof(CountMatches_locals)> localsStorage;
-		auto& locals = *reinterpret_cast<CountMatches_locals*>(&localsStorage);
-		setMemory(locals, 0);
+		CountMatches_locals locals{};
+
 		input.playerValues = playerValues;
 		input.winningValues = winningValues;
 		CountMatches(qpi, *this, input, output, locals);
@@ -102,9 +99,8 @@ public:
 	{
 		CheckContractBalance_input input{};
 		CheckContractBalance_output output{};
-		std::aligned_storage_t<sizeof(CheckContractBalance_locals), alignof(CheckContractBalance_locals)> localsStorage;
-		auto& locals = *reinterpret_cast<CheckContractBalance_locals*>(&localsStorage);
-		setMemory(locals, 0);
+		CheckContractBalance_locals locals{};
+
 		input.expectedRevenue = expectedRevenue;
 		CheckContractBalance(qpi, *this, input, output, locals);
 		return output;
@@ -114,9 +110,8 @@ public:
 	{
 		PowerFixedPoint_input input{};
 		PowerFixedPoint_output output{};
-		std::aligned_storage_t<sizeof(PowerFixedPoint_locals), alignof(PowerFixedPoint_locals)> localsStorage;
-		auto& locals = *reinterpret_cast<PowerFixedPoint_locals*>(&localsStorage);
-		setMemory(locals, 0);
+		PowerFixedPoint_locals locals{};
+
 		input.base = base;
 		input.exp = exp;
 		PowerFixedPoint(qpi, *this, input, output, locals);
@@ -127,9 +122,8 @@ public:
 	{
 		CalculateExpectedRoundsToK4_input input{};
 		CalculateExpectedRoundsToK4_output output{};
-		std::aligned_storage_t<sizeof(CalculateExpectedRoundsToK4_locals), alignof(CalculateExpectedRoundsToK4_locals)> localsStorage;
-		auto& locals = *reinterpret_cast<CalculateExpectedRoundsToK4_locals*>(&localsStorage);
-		setMemory(locals, 0);
+		CalculateExpectedRoundsToK4_locals locals{};
+
 		input.N = N;
 		CalculateExpectedRoundsToK4(qpi, *this, input, output, locals);
 		return output;
@@ -140,9 +134,8 @@ public:
 	{
 		CalcReserveTopUp_input input{};
 		CalcReserveTopUp_output output{};
-		std::aligned_storage_t<sizeof(CalcReserveTopUp_locals), alignof(CalcReserveTopUp_locals)> localsStorage;
-		auto& locals = *reinterpret_cast<CalcReserveTopUp_locals*>(&localsStorage);
-		setMemory(locals, 0);
+		CalcReserveTopUp_locals locals{};
+
 		input.totalQRPBalance = totalQRPBalance;
 		input.needed = needed;
 		input.perWinnerCapTotal = perWinnerCapTotal;
@@ -155,9 +148,8 @@ public:
 	{
 		CalculatePrizePools_input input{};
 		CalculatePrizePools_output output{};
-		std::aligned_storage_t<sizeof(CalculatePrizePools_locals), alignof(CalculatePrizePools_locals)> localsStorage;
-		auto& locals = *reinterpret_cast<CalculatePrizePools_locals*>(&localsStorage);
-		setMemory(locals, 0);
+		CalculatePrizePools_locals locals{};
+
 		input.revenue = revenue;
 		input.applyFRRake = applyFRRake;
 		CalculatePrizePools(qpi, *this, input, output, locals);
@@ -168,9 +160,8 @@ public:
 	{
 		CalculateBaseGain_input input{};
 		CalculateBaseGain_output output{};
-		std::aligned_storage_t<sizeof(CalculateBaseGain_locals), alignof(CalculateBaseGain_locals)> localsStorage;
-		auto& locals = *reinterpret_cast<CalculateBaseGain_locals*>(&localsStorage);
-		setMemory(locals, 0);
+		CalculateBaseGain_locals locals{};
+
 		input.revenue = revenue;
 		input.winnersBlock = winnersBlock;
 		CalculateBaseGain(qpi, *this, input, output, locals);
@@ -182,9 +173,8 @@ public:
 	{
 		CalculateExtraRedirectBP_input input{};
 		CalculateExtraRedirectBP_output output{};
-		std::aligned_storage_t<sizeof(CalculateExtraRedirectBP_locals), alignof(CalculateExtraRedirectBP_locals)> localsStorage;
-		auto& locals = *reinterpret_cast<CalculateExtraRedirectBP_locals*>(&localsStorage);
-		setMemory(locals, 0);
+		CalculateExtraRedirectBP_locals locals{};
+
 		input.N = N;
 		input.delta = delta;
 		input.revenue = revenue;
@@ -197,9 +187,8 @@ public:
 	{
 		ReturnAllTickets_input input{};
 		ReturnAllTickets_output output{};
-		std::aligned_storage_t<sizeof(ReturnAllTickets_locals), alignof(ReturnAllTickets_locals)> localsStorage;
-		auto& locals = *reinterpret_cast<ReturnAllTickets_locals*>(&localsStorage);
-		setMemory(locals, 0);
+		ReturnAllTickets_locals locals{};
+
 		ReturnAllTickets(qpi, *this, input, output, locals);
 	}
 
@@ -208,9 +197,8 @@ public:
 	{
 		ProcessTierPayout_input input{};
 		ProcessTierPayout_output output{};
-		std::aligned_storage_t<sizeof(ProcessTierPayout_locals), alignof(ProcessTierPayout_locals)> localsStorage;
-		auto& locals = *reinterpret_cast<ProcessTierPayout_locals*>(&localsStorage);
-		setMemory(locals, 0);
+		ProcessTierPayout_locals locals{};
+
 		input.floorPerWinner = floorPerWinner;
 		input.winnerCount = winnerCount;
 		input.payoutPool = payoutPool;
@@ -228,6 +216,7 @@ public:
 		std::aligned_storage_t<sizeof(SettleEpoch_locals), alignof(SettleEpoch_locals)> localsStorage;
 		auto& locals = *reinterpret_cast<SettleEpoch_locals*>(&localsStorage);
 		setMemory(locals, 0);
+
 		SettleEpoch(qpi, *this, input, output, locals);
 	}
 };
@@ -2383,8 +2372,8 @@ TEST(ContractQThirtyFour, DeterministicWinner_K2K3Payouts_VerifyRevenueSplit)
 
 	QTFRandomValues k3Numbers2 = ctl.makeK3Numbers(winningNumbers);
 	// Ensure two different k3 tickets (avoid identical picks across players).
-	if (k3Numbers2.get(0) == k3Numbers1.get(0) && k3Numbers2.get(1) == k3Numbers1.get(1) && k3Numbers2.get(2) == k3Numbers1.get(2)
-	    && k3Numbers2.get(3) == k3Numbers1.get(3))
+	if (k3Numbers2.get(0) == k3Numbers1.get(0) && k3Numbers2.get(1) == k3Numbers1.get(1) && k3Numbers2.get(2) == k3Numbers1.get(2) &&
+	    k3Numbers2.get(3) == k3Numbers1.get(3))
 	{
 		k3Numbers2 = ctl.makeNumbersWithExactMatches(winningNumbers, 3);
 		// Swap a non-winning position deterministically: replace last entry with next available losing number.
@@ -2401,8 +2390,8 @@ TEST(ContractQThirtyFour, DeterministicWinner_K2K3Payouts_VerifyRevenueSplit)
 
 	QTFRandomValues k2Numbers2 = ctl.makeK2Numbers(winningNumbers);
 	// Make it different from k2Numbers1 while keeping exactly 2 matches.
-	if (k2Numbers2.get(0) == k2Numbers1.get(0) && k2Numbers2.get(1) == k2Numbers1.get(1) && k2Numbers2.get(2) == k2Numbers1.get(2)
-	    && k2Numbers2.get(3) == k2Numbers1.get(3))
+	if (k2Numbers2.get(0) == k2Numbers1.get(0) && k2Numbers2.get(1) == k2Numbers1.get(1) && k2Numbers2.get(2) == k2Numbers1.get(2) &&
+	    k2Numbers2.get(3) == k2Numbers1.get(3))
 	{
 		const QTFRandomValues losing = ctl.makeLosingNumbers(winningNumbers);
 		k2Numbers2.set(2, losing.get(0));
@@ -2412,10 +2401,10 @@ TEST(ContractQThirtyFour, DeterministicWinner_K2K3Payouts_VerifyRevenueSplit)
 
 	QTFRandomValues k2Numbers3 = ctl.makeK2Numbers(winningNumbers);
 	// Make it different from previous k2 tickets while keeping exactly 2 matches.
-	if ((k2Numbers3.get(0) == k2Numbers1.get(0) && k2Numbers3.get(1) == k2Numbers1.get(1) && k2Numbers3.get(2) == k2Numbers1.get(2)
-	     && k2Numbers3.get(3) == k2Numbers1.get(3))
-	    || (k2Numbers3.get(0) == k2Numbers2.get(0) && k2Numbers3.get(1) == k2Numbers2.get(1) && k2Numbers3.get(2) == k2Numbers2.get(2)
-	        && k2Numbers3.get(3) == k2Numbers2.get(3)))
+	if ((k2Numbers3.get(0) == k2Numbers1.get(0) && k2Numbers3.get(1) == k2Numbers1.get(1) && k2Numbers3.get(2) == k2Numbers1.get(2) &&
+	     k2Numbers3.get(3) == k2Numbers1.get(3)) ||
+	    (k2Numbers3.get(0) == k2Numbers2.get(0) && k2Numbers3.get(1) == k2Numbers2.get(1) && k2Numbers3.get(2) == k2Numbers2.get(2) &&
+	     k2Numbers3.get(3) == k2Numbers2.get(3)))
 	{
 		const QTFRandomValues losing = ctl.makeLosingNumbers(winningNumbers);
 		k2Numbers3.set(3, losing.get(2));
