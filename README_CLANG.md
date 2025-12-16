@@ -14,7 +14,7 @@ Potentially it also works with lower versions but isn't tested yet.
 ```
 sudo apt update && upgrade
 sudo apt install -y build-essential clang cmake nasm
-sudo apt install -y libc++-dev libc++abi-dev libjsoncpp-dev uuid-dev zlib1g-dev g++ libstdc++-12-dev
+sudo apt install -y libc++-dev libc++abi-dev libjsoncpp-dev uuid-dev zlib1g-dev g++ libstdc++-12-dev libfmt-dev
 ```
 
 ## Compilation
