@@ -80,6 +80,7 @@ elseif(IS_MSVC)
 endif()
 
 find_package(Threads REQUIRED)
+find_package(fmt REQUIRED)
 # Link with platform libraries
 # if(BUILD_TESTS)
 #   # When building for tests, link only with platform_common and platform_os
@@ -95,7 +96,7 @@ find_package(Threads REQUIRED)
     platform_common
     platform_efi
     c++ c++abi
-    Threads::Threads drogon
+    Threads::Threads drogon fmt::fmt
   )
 # endif()
 

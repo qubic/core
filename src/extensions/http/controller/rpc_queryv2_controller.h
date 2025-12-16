@@ -2,7 +2,7 @@
 #include "extensions/utils.h"
 #include "../utils.h"
 #include <drogon/HttpController.h>
-
+#include <fmt/format.h>
 using namespace drogon;
 
 namespace RpcQueryV2
@@ -52,7 +52,7 @@ public:
         if (tickNumber > system.tick)
         {
             result["code"] = StatusCode::BadRequest;
-            result["message"] = std::format("invalid tick number: rpc error: code = FailedPrecondition desc = requested tick number {} is greater than last processed tick {}", tickNumber, system.tick);
+            result["message"] = fmt::format("invalid tick number: rpc error: code = FailedPrecondition desc = requested tick number {} is greater than last processed tick {}", tickNumber, system.tick);
             auto res = HttpResponse::newHttpJsonResponse(result);
             res->setStatusCode(k400BadRequest);
             mcb(res);
@@ -60,7 +60,7 @@ public:
         } else if (tickNumber < system.initialTick)
         {
             result["code"] = StatusCode::BadRequest;
-            result["message"] = std::format("invalid tick number: rpc error: code = OutOfRange desc = provided tick number {} was skipped by the system, next available tick is {}", tickNumber, system.initialTick);
+            result["message"] = fmt::format("invalid tick number: rpc error: code = OutOfRange desc = provided tick number {} was skipped by the system, next available tick is {}", tickNumber, system.initialTick);
             auto res = HttpResponse::newHttpJsonResponse(result);
             res->setStatusCode(k400BadRequest);
             mcb(res);
@@ -246,7 +246,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         if (txHash.length() != 60)
         {
             result["code"] = StatusCode::BadRequest;
-            result["message"] = std::format("invalid id format: converting id to pubkey: invalid ID length, expected 60, found {}", txHash.length());
+            result["message"] = fmt::format("invalid id format: converting id to pubkey: invalid ID length, expected 60, found {}", txHash.length());
             auto res = HttpResponse::newHttpJsonResponse(result);
             res->setStatusCode(k400BadRequest);
             cb(res);
@@ -258,7 +258,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         if (!getPublicKeyFromIdentity(reinterpret_cast<const unsigned char *>(txHash.c_str()), txDigest.m256i_u8))
         {
             result["code"] = StatusCode::BadRequest;
-            result["message"] = std::format("invalid id format: invalid hash [{}]", txHash);
+            result["message"] = fmt::format("invalid id format: invalid hash [{}]", txHash);
             auto res = HttpResponse::newHttpJsonResponse(result);
             res->setStatusCode(k400BadRequest);
             cb(res);
@@ -326,7 +326,7 @@ class RpcQueryV2Controller : public HttpController<RpcQueryV2Controller>
         if (!getPublicKeyFromIdentity(reinterpret_cast<const unsigned char *>(identityStr.c_str()), publicKey.m256i_u8))
         {
             result["code"] = StatusCode::BadRequest;
-            result["message"] = std::format("invalid id format: invalid identity [{}]", identityStr);
+            result["message"] = fmt::format("invalid id format: invalid identity [{}]", identityStr);
             auto res = HttpResponse::newHttpJsonResponse(result);
             res->setStatusCode(k400BadRequest);
             cb(res);
