@@ -7,14 +7,14 @@ constexpr uint64 QTF_MAX_RANDOM_VALUE = 30;
 constexpr uint64 QTF_TICKET_PRICE = 1000000;
 
 // Baseline split for k2/k3 when FR is OFF (per spec: k3=40%, k2=28% of Winners block).
-// Remaining 32% of Winners block goes to overflow.
+// Initial 32% of Winners block is unallocated; overflow will also include unawarded k2/k3 funds.
 constexpr uint64 QTF_BASE_K3_SHARE_BP = 4000; // 40% of winners block to k3
 constexpr uint64 QTF_BASE_K2_SHARE_BP = 2800; // 28% of winners block to k2
 
 // --- Fast-Recovery (FR) parameters (spec defaults) --------------------------
-// Fast-Recovery base redirect percentages (always active when FR=ON)
-constexpr uint64 QTF_FR_DEV_REDIRECT_BP = 100;  // 1.00% of R (base redirect, always applied)
-constexpr uint64 QTF_FR_DIST_REDIRECT_BP = 100; // 1.00% of R (base redirect, always applied)
+// Fast-Recovery base redirect percentages (applied when FR=ON, capped at available amounts)
+constexpr uint64 QTF_FR_DEV_REDIRECT_BP = 100;  // 1.00% of R (base redirect)
+constexpr uint64 QTF_FR_DIST_REDIRECT_BP = 100; // 1.00% of R (base redirect)
 
 // Deficit-driven extra redirect parameters (dynamic, no hard N threshold)
 // The extra redirect is calculated based on:
@@ -33,8 +33,8 @@ constexpr uint64 QTF_FIXED_POINT_SCALE = 1000000; // Scale for fixed-point arith
 constexpr uint64 QTF_P4_DENOMINATOR = 27405;   // Denominator for k=4 probability (1/27405)
 constexpr uint64 QTF_FR_WINNERS_RAKE_BP = 500; // 5% of winners block from k3
 constexpr uint64 QTF_FR_ALPHA_BP = 500;        // alpha = 0.05 -> 95% overflow to jackpot
-constexpr uint16 QTF_FR_POST_K4_WINDOW_ROUNDS = 50;
-constexpr uint16 QTF_FR_HYSTERESIS_ROUNDS = 3;
+constexpr uint8 QTF_FR_POST_K4_WINDOW_ROUNDS = 50;
+constexpr uint8 QTF_FR_HYSTERESIS_ROUNDS = 3;
 
 // --- Floors and reserve safety ----------------------------------------------
 constexpr uint64 QTF_K2_FLOOR_MULT = 1; // numerator for 0.5 * P (we divide by 2)
@@ -146,7 +146,7 @@ public:
 	struct PoolsSnapshot
 	{
 		uint64 jackpot;
-		uint64 reserve; // Total reserve from QRP
+		uint64 reserve; // Available reserve from QRP (not including locked amounts)
 		uint64 targetJackpot;
 		uint8 frActive;
 		uint16 roundsSinceK4;
@@ -161,7 +161,7 @@ public:
 		PoolsSnapshot pools;
 	};
 
-	// ValidateNumbers: Check if all numbers are valid and unique
+	// ValidateNumbers: Check if all numbers are valid [1..30] and unique
 	struct ValidateNumbers_input
 	{
 		QTFRandomValues numbers; // Numbers to validate
@@ -191,6 +191,7 @@ public:
 		// CALL parameters for ValidateNumbers
 		ValidateNumbers_input validateInput;
 		ValidateNumbers_output validateOutput;
+		uint64 excess;
 	};
 
 	// Set Price
@@ -223,7 +224,7 @@ public:
 		uint8 returnCode;
 	};
 
-	// Set Target Carry (Jackpot target)
+	// Set Target Jackpot
 	struct SetTargetJackpot_input
 	{
 		uint64 newTargetJackpot;
@@ -260,7 +261,7 @@ public:
 		Entity entity;
 	};
 
-	// Calculate Base Gain (FR base carry growth estimation)
+	// Calculate Base Gain (FR base carry growth estimation, excluding extra deficit-driven redirect)
 	struct CalculateBaseGain_input
 	{
 		uint64 revenue;      // Round revenue (N * ticketPrice)
@@ -490,8 +491,9 @@ public:
 	struct CountMatches_locals
 	{
 		uint64 i;
-		uint8 maskA;
-		uint8 maskB;
+		uint32 maskA;
+		uint32 maskB;
+		uint8 randomValue;
 	};
 
 	struct GetFees_input
@@ -538,6 +540,56 @@ public:
 		uint64 reserveAdd;
 	};
 
+	// CalculatePrizePools: Calculate k2/k3 prize pools from revenue
+	// Reusable function for both settlement and estimation
+	struct CalculatePrizePools_input
+	{
+		uint64 revenue;  // Total revenue (ticketPrice * numberOfPlayers)
+		bit applyFRRake; // Whether to apply 5% FR rake
+	};
+	struct CalculatePrizePools_output
+	{
+		uint64 winnersBlock; // Winners block after fees
+		uint64 winnersRake;  // 5% rake (if FR active)
+		uint64 k2Pool;       // 28% of winners block (after rake)
+		uint64 k3Pool;       // 40% of winners block (after rake)
+	};
+	struct CalculatePrizePools_locals
+	{
+		GetFees_input feesInput;
+		GetFees_output feesOutput;
+		uint64 winnersBlockBeforeRake;
+	};
+
+	// EstimatePrizePayouts: Calculate estimated prize payouts for k=2 and k=3 tiers
+	// Based on current ticket sales and number of winners per tier
+	struct EstimatePrizePayouts_input
+	{
+		uint64 k2WinnerCount; // Number of k=2 winners (estimated or actual)
+		uint64 k3WinnerCount; // Number of k=3 winners (estimated or actual)
+	};
+	struct EstimatePrizePayouts_output
+	{
+		uint64 k2PayoutPerWinner; // Estimated payout per k=2 winner
+		uint64 k3PayoutPerWinner; // Estimated payout per k=3 winner
+		uint64 k2MinFloor;        // Minimum guaranteed payout for k=2 (0.5*P)
+		uint64 k3MinFloor;        // Minimum guaranteed payout for k=3 (5*P)
+		uint64 perWinnerCap;      // Maximum payout per winner (25*P)
+		uint64 totalRevenue;      // Total revenue from ticket sales
+		uint64 k2Pool;            // Total pool for k=2 tier
+		uint64 k3Pool;            // Total pool for k=3 tier
+	};
+	struct EstimatePrizePayouts_locals
+	{
+		uint64 revenue;
+		uint64 k2FloorTotal;
+		uint64 k3FloorTotal;
+		uint64 k2PayoutPoolEffective;
+		uint64 k3PayoutPoolEffective;
+		CalculatePrizePools_input calcPoolsInput;
+		CalculatePrizePools_output calcPoolsOutput;
+	};
+
 	struct SettlementLocals
 	{
 		QTFRandomValues winningValues;
@@ -582,6 +634,9 @@ public:
 		uint64 delta;       // Deficit: max(0, targetJackpot - jackpot)
 		uint64 devExtraBP;  // Dev share of extra: extraRedirectBP / 2
 		uint64 distExtraBP; // Dist share of extra: extraRedirectBP / 2
+		// CALL parameters for CalculatePrizePools (shared function)
+		CalculatePrizePools_input calcPoolsInput;
+		CalculatePrizePools_output calcPoolsOutput;
 		// CALL parameters for CalculateBaseGain
 		CalculateBaseGain_input calcBaseGainInput;
 		CalculateBaseGain_output calcBaseGainOutput;
@@ -666,6 +721,7 @@ public:
 		REGISTER_USER_FUNCTION(GetDrawHour, 6);
 		REGISTER_USER_FUNCTION(GetState, 7);
 		REGISTER_USER_FUNCTION(GetFees, 8);
+		REGISTER_USER_FUNCTION(EstimatePrizePayouts, 9);
 	}
 
 	BEGIN_EPOCH()
@@ -811,13 +867,6 @@ public:
 			return;
 		}
 
-		// If overpaid, accept ticket and return excess to invocator
-		if (qpi.invocationReward() > state.ticketPrice)
-		{
-			const uint64 excess = qpi.invocationReward() - state.ticketPrice;
-			qpi.transfer(qpi.invocator(), excess);
-		}
-
 		locals.validateInput.numbers = input.randomValues;
 		CALL(ValidateNumbers, locals.validateInput, locals.validateOutput);
 		if (!locals.validateOutput.isValid)
@@ -831,6 +880,18 @@ public:
 		}
 
 		addPlayerInfo(state, qpi.invocator(), input.randomValues);
+
+		// If overpaid, accept ticket and return excess to invocator.
+		// Important: refund excess ONLY after validation, otherwise invalid tickets could be over-refunded.
+		if (qpi.invocationReward() > state.ticketPrice)
+		{
+			locals.excess = qpi.invocationReward() - state.ticketPrice;
+			if (locals.excess > 0)
+			{
+				qpi.transfer(qpi.invocator(), locals.excess);
+			}
+		}
+
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -942,6 +1003,83 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
+	PUBLIC_FUNCTION_WITH_LOCALS(EstimatePrizePayouts)
+	{
+		// Calculate total revenue from current ticket sales
+		locals.revenue = smul(state.ticketPrice, state.numberOfPlayers);
+		output.totalRevenue = locals.revenue;
+
+		// Set minimum floors and cap
+		output.k2MinFloor = div<uint64>(smul(state.ticketPrice, QTF_K2_FLOOR_MULT), QTF_K2_FLOOR_DIV); // 0.5*P
+		output.k3MinFloor = smul(state.ticketPrice, QTF_K3_FLOOR_MULT);                                // 5*P
+		output.perWinnerCap = smul(state.ticketPrice, QTF_TOPUP_PER_WINNER_CAP_MULT);                  // 25*P
+
+		if (locals.revenue == 0 || state.numberOfPlayers == 0)
+		{
+			// No tickets sold, no payouts
+			output.k2PayoutPerWinner = 0;
+			output.k3PayoutPerWinner = 0;
+			output.k2Pool = 0;
+			output.k3Pool = 0;
+			return;
+		}
+
+		// Use shared CalculatePrizePools function to compute pools
+		locals.calcPoolsInput.revenue = locals.revenue;
+		locals.calcPoolsInput.applyFRRake = state.frActive;
+		CALL(CalculatePrizePools, locals.calcPoolsInput, locals.calcPoolsOutput);
+
+		output.k2Pool = locals.calcPoolsOutput.k2Pool;
+		output.k3Pool = locals.calcPoolsOutput.k3Pool;
+
+		// Calculate k2 payout per winner
+		if (input.k2WinnerCount > 0)
+		{
+			locals.k2FloorTotal = smul(output.k2MinFloor, input.k2WinnerCount);
+			locals.k2PayoutPoolEffective = output.k2Pool;
+
+			// Note: This is an estimate - actual implementation may top up from reserve
+			// If pool insufficient, we show floor; otherwise calculate actual per-winner amount
+			if (locals.k2PayoutPoolEffective >= locals.k2FloorTotal)
+			{
+				output.k2PayoutPerWinner = RL::min(output.perWinnerCap, locals.k2PayoutPoolEffective / input.k2WinnerCount);
+			}
+			else
+			{
+				// Pool insufficient, would need reserve top-up - show floor as estimate
+				output.k2PayoutPerWinner = output.k2MinFloor;
+			}
+		}
+		else
+		{
+			// No winners - show what a single winner would get
+			output.k2PayoutPerWinner = RL::min(output.perWinnerCap, output.k2Pool);
+		}
+
+		// Calculate k3 payout per winner
+		if (input.k3WinnerCount > 0)
+		{
+			locals.k3FloorTotal = smul(output.k3MinFloor, input.k3WinnerCount);
+			locals.k3PayoutPoolEffective = output.k3Pool;
+
+			// Note: This is an estimate - actual implementation may top up from reserve
+			if (locals.k3PayoutPoolEffective >= locals.k3FloorTotal)
+			{
+				output.k3PayoutPerWinner = RL::min(output.perWinnerCap, locals.k3PayoutPoolEffective / input.k3WinnerCount);
+			}
+			else
+			{
+				// Pool insufficient, would need reserve top-up - show floor as estimate
+				output.k3PayoutPerWinner = output.k3MinFloor;
+			}
+		}
+		else
+		{
+			// No winners - show what a single winner would get
+			output.k3PayoutPerWinner = RL::min(output.perWinnerCap, output.k3Pool);
+		}
+	}
+
 protected:
 	static void clearEpochState(QTF& state) { clearPlayerData(state); }
 
@@ -999,6 +1137,11 @@ protected:
 			setMemory(state.players, 0);
 			state.numberOfPlayers = 0;
 		}
+	}
+
+	static void clearWinerData(QTF& state)
+	{
+		setMemory(state.lastWinnerData, 0);
 	}
 
 	static void fillWinnerData(QTF& state, const PlayerData& playerData, const QTFRandomValues& winnerValues, const uint16& epoch)
@@ -1083,13 +1226,13 @@ private:
 
 		CALL(GetFees, locals.feesInput, locals.feesOutput);
 
-		locals.winnersBlock = div<uint64>(smul(locals.revenue, static_cast<uint64>(locals.feesOutput.winnerFeePercent)), 100);
 		locals.devPayout = div<uint64>(smul(locals.revenue, static_cast<uint64>(locals.feesOutput.teamFeePercent)), 100);
 		locals.distPayout = div<uint64>(smul(locals.revenue, static_cast<uint64>(locals.feesOutput.distributionFeePercent)), 100);
 		locals.burnAmount = div<uint64>(smul(locals.revenue, static_cast<uint64>(locals.feesOutput.burnPercent)), 100);
 
 		// FR detection and hysteresis logic.
-		// Update hysteresis counter BEFORE activation check to ensure correct deactivation timing.
+		// Update hysteresis counter BEFORE activation check so deactivation can occur
+		// immediately when reaching the threshold (3 consecutive rounds at/above target).
 		if (state.jackpot >= state.targetJackpot)
 		{
 			state.frRoundsAtOrAboveTarget = sadd(state.frRoundsAtOrAboveTarget, 1);
@@ -1113,6 +1256,20 @@ private:
 			state.frActive = false;
 		}
 
+		// Calculate prize pools using shared function (handles FR rake if active)
+		locals.calcPoolsInput.revenue = locals.revenue;
+		locals.calcPoolsInput.applyFRRake = state.frActive;
+		CALL(CalculatePrizePools, locals.calcPoolsInput, locals.calcPoolsOutput);
+
+		locals.winnersBlock = locals.calcPoolsOutput.winnersBlock;
+		locals.winnersRake = locals.calcPoolsOutput.winnersRake;
+		locals.k2Pool = locals.calcPoolsOutput.k2Pool;
+		locals.k3Pool = locals.calcPoolsOutput.k3Pool;
+
+		// Calculate initial overflow: unallocated funds after k2/k3 allocation (32% baseline)
+		// Additional unawarded k2/k3 funds will be added to this after tier processing
+		locals.winnersOverflow = locals.winnersBlock - locals.k3Pool - locals.k2Pool;
+
 		// Fast-Recovery (FR) mode: redirect portions of Dev/Distribution to jackpot with deficit-driven extra.
 		// Base redirect is always 1% Dev + 1% Dist when FR=ON.
 		// Extra redirect is calculated dynamically based on deficit, expected k4 timing, and ticket volume.
@@ -1123,7 +1280,7 @@ private:
 
 			// Estimate base gain from existing FR mechanisms (without extra)
 			locals.calcBaseGainInput.revenue = locals.revenue;
-			locals.calcBaseGainInput.winnersBlock = locals.winnersBlock;
+			locals.calcBaseGainInput.winnersBlock = locals.calcPoolsOutput.winnersBlock;
 			CALL(CalculateBaseGain, locals.calcBaseGainInput, locals.calcBaseGainOutput);
 
 			// Calculate deficit-driven extra redirect in basis points
@@ -1165,27 +1322,13 @@ private:
 				locals.distRedirect = locals.distPayout;
 				locals.distPayout = 0;
 			}
-
-			// FR rake: take 5% of winners block from k3 tier to accelerate jackpot rebuild
-			locals.winnersRake = div<uint64>(smul(locals.winnersBlock, QTF_FR_WINNERS_RAKE_BP), 10000);
-			locals.winnersBlock -= locals.winnersRake;
-
-			// FR tier split: same as baseline (k3=40%, k2=28% of win_eff)
-			calcK2K3Pool(locals.winnersBlock, locals.k2Pool, locals.k3Pool);
-			// Remaining goes to overflow (will be split with FR alpha: 95% carry, 5% reserve)
-			locals.winnersOverflow = locals.winnersBlock - locals.k3Pool - locals.k2Pool;
-		}
-		else
-		{
-			// Baseline mode: k3=40%, k2=28% of Winners block
-			// Remaining 32% of Winners block goes to overflow automatically
-			calcK2K3Pool(locals.winnersBlock, locals.k2Pool, locals.k3Pool);
-			// Add baseline overflow (32% of winnersBlock) to winnersOverflow
-			locals.winnersOverflow = locals.winnersBlock - locals.k3Pool - locals.k2Pool;
 		}
 
 		locals.k2PayoutPool = locals.k2Pool; // mutable pools after top-ups
 		locals.k3PayoutPool = locals.k3Pool;
+
+		// Reset last-winner snapshot for this settlement (per-round view).
+		clearWinerData(state);
 
 		// Generate winning random values using CALL
 		locals.getRandomInput.seed = qpi.K12(qpi.getPrevSpectrumDigest()).u64._0;
@@ -1222,6 +1365,21 @@ private:
 		// First, get total QRP balance for safety limit calculations (10% of total reserve per round).
 		CALL_OTHER_CONTRACT_FUNCTION(QRP, GetAvailableReserve, locals.qrpGetAvailableInput, locals.qrpGetAvailableOutput);
 		locals.totalQRPBalance = locals.qrpGetAvailableOutput.availableReserve;
+
+		// If a k=4 win happened this round, we will try to reseed the jackpot back up to target after payouts.
+		// To avoid draining the reserve needed for reseed with k2/k3 floor top-ups (QRP is a single pool in this implementation),
+		// limit top-ups to the portion that is above the target jackpot amount.
+		if (locals.countK4 > 0)
+		{
+			if (locals.totalQRPBalance > state.targetJackpot)
+			{
+				locals.totalQRPBalance -= state.targetJackpot;
+			}
+			else
+			{
+				locals.totalQRPBalance = 0;
+			}
+		}
 		locals.perWinnerCap = smul(state.ticketPrice, QTF_TOPUP_PER_WINNER_CAP_MULT); // 25*P
 
 		// Process k2 tier payout
@@ -1296,7 +1454,9 @@ private:
 			state.frRoundsAtOrAboveTarget = 0;
 
 			// Reseed jackpot from QReservePool (up to targetJackpot or available reserve)
-			locals.qrpRequested = RL::min(locals.totalQRPBalance, state.targetJackpot);
+			// Re-query available reserve because k2/k3 top-ups may have reduced it.
+			CALL_OTHER_CONTRACT_FUNCTION(QRP, GetAvailableReserve, locals.qrpGetAvailableInput, locals.qrpGetAvailableOutput);
+			locals.qrpRequested = RL::min(locals.qrpGetAvailableOutput.availableReserve, state.targetJackpot);
 			if (locals.qrpRequested > 0)
 			{
 				locals.qrpGetReserveInput.revenue = locals.qrpRequested;
@@ -1387,9 +1547,8 @@ private:
 	 * @brief Refunds ticket price to all players who bought tickets in the current epoch.
 	 *
 	 * This procedure is used to return funds to all participants, typically in cases where:
-	 * - The round is invalid or cancelled
-	 * - Technical issues prevent proper settlement
-	 * - Only one player participated (cannot draw fairly)
+	 * - Revenue calculation resulted in 0 (overflow or invalid state)
+	 * - Contract balance is insufficient for settlement
 	 *
 	 * Performs one transfer per player entry. After refund, caller should reset numberOfPlayers.
 	 */
@@ -1408,14 +1567,18 @@ private:
 		locals.maskB = 0;
 		for (locals.i = 0; locals.i < input.playerValues.capacity(); ++locals.i)
 		{
-			// Ensure value is in valid range [1..30] to prevent underflow/overflow in bit shift
-			ASSERT(input.playerValues.get(locals.i) > 0 && input.playerValues.get(locals.i) <= QTF_MAX_RANDOM_VALUE);
-			locals.maskA |= (1u << (input.playerValues.get(locals.i) - 1));
+			locals.randomValue = input.playerValues.get(locals.i);
+			ASSERT(locals.randomValue > 0 && locals.randomValue <= QTF_MAX_RANDOM_VALUE);
+			
+			locals.maskA |= 1u << locals.randomValue;
 		}
+
 		for (locals.i = 0; locals.i < input.winningValues.capacity(); ++locals.i)
 		{
-			ASSERT(input.winningValues.get(locals.i) > 0 && input.winningValues.get(locals.i) <= QTF_MAX_RANDOM_VALUE);
-			locals.maskB |= (1u << (input.winningValues.get(locals.i) - 1));
+			locals.randomValue = input.winningValues.get(locals.i);
+			ASSERT(locals.randomValue > 0 && locals.randomValue <= QTF_MAX_RANDOM_VALUE);
+
+			locals.maskB |= 1u << locals.randomValue;
 		}
 		output.matches = bitcount32(locals.maskA & locals.maskB);
 	}
@@ -1710,6 +1873,55 @@ private:
 	}
 
 	/**
+	 * @brief Calculate k2/k3 prize pools from revenue (reusable for settlement and estimation).
+	 *
+	 * This function encapsulates the common logic for calculating prize pools:
+	 * 1. Get fee percentages from RL contract
+	 * 2. Calculate winners block (typically 68% of revenue)
+	 * 3. Apply FR rake if active (5% of winners block)
+	 * 4. Split remaining into k2 (28%) and k3 (40%) pools
+	 *
+	 * @param input.revenue - Total revenue from ticket sales
+	 * @param input.applyFRRake - Whether to apply 5% FR rake
+	 * @param output.winnersBlock - Winners block after rake
+	 * @param output.winnersRake - Amount taken as FR rake (0 if not applied)
+	 * @param output.k2Pool - Prize pool for k=2 tier
+	 * @param output.k3Pool - Prize pool for k=3 tier
+	 */
+	PRIVATE_FUNCTION_WITH_LOCALS(CalculatePrizePools)
+	{
+		if (input.revenue == 0)
+		{
+			output.winnersBlock = 0;
+			output.winnersRake = 0;
+			output.k2Pool = 0;
+			output.k3Pool = 0;
+			return;
+		}
+
+		// Get fee percentages from RL contract
+		CALL(GetFees, locals.feesInput, locals.feesOutput);
+
+		// Calculate winners block (typically 68% of revenue)
+		locals.winnersBlockBeforeRake = div<uint64>(smul(input.revenue, static_cast<uint64>(locals.feesOutput.winnerFeePercent)), 100);
+
+		// Apply FR rake if requested
+		if (input.applyFRRake)
+		{
+			output.winnersRake = div<uint64>(smul(locals.winnersBlockBeforeRake, QTF_FR_WINNERS_RAKE_BP), 10000);
+			output.winnersBlock = locals.winnersBlockBeforeRake - output.winnersRake;
+		}
+		else
+		{
+			output.winnersRake = 0;
+			output.winnersBlock = locals.winnersBlockBeforeRake;
+		}
+
+		// Calculate k2 and k3 pools using shared static function
+		calcK2K3Pool(output.winnersBlock, output.k2Pool, output.k3Pool);
+	}
+
+	/**
 	 * @brief Estimates base carry gain per round from FR mechanisms (without extra redirect).
 	 *
 	 * Includes:
@@ -1730,7 +1942,7 @@ private:
 		// Winners rake: 5% of winners block
 		locals.winnersRake = div<uint64>(smul(input.winnersBlock, QTF_FR_WINNERS_RAKE_BP), 10000);
 
-		// Overflow estimate: assume ~10% of winnersBlock not paid out (conservative)
+		// Overflow estimate: assume ~10% of winnersBlock not paid out (conservative heuristic)
 		// With alpha_fr = 0.05, 95% of overflow goes to carry
 		locals.estimatedOverflow = div<uint64>(input.winnersBlock, 10);
 		locals.overflowToCarry = div<uint64>(smul(locals.estimatedOverflow, 10000 - QTF_FR_ALPHA_BP), 10000);
