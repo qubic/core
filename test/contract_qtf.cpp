@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <set>
+#include <vector>
 
 // Procedure/function indices (must match REGISTER_USER_FUNCTIONS_AND_PROCEDURES in `src/contracts/QThirtyFour.h`).
 constexpr uint16 QTF_PROCEDURE_BUY_TICKET = 1;
@@ -29,6 +30,11 @@ constexpr uint16 QTF_FUNCTION_ESTIMATE_PRIZE_PAYOUTS = 9;
 
 namespace
 {
+	static void issueRlSharesTo(std::vector<std::pair<m256i, unsigned int>>& initialOwnerShares, bool warnOnTooFewShares = true)
+	{
+		issueContractShares(RL_CONTRACT_INDEX, initialOwnerShares, warnOnTooFewShares);
+	}
+
 	static void primeQpiFunctionContext(QpiContextUserFunctionCall& qpi)
 	{
 		QTF::GetTicketPrice_input input{};
@@ -95,6 +101,7 @@ public:
 	void setFrActive(bit value) { frActive = value; }
 	void setFrRoundsSinceK4(uint16 value) { frRoundsSinceK4 = value; }
 	void setFrRoundsAtOrAboveTarget(uint16 value) { frRoundsAtOrAboveTarget = value; }
+	void setOverflowAlphaBP(uint64 value) { overflowAlphaBP = value; }
 
 	const PlayerData& getPlayer(uint64 index) const { return players.get(index); }
 	void addPlayerDirect(const id& playerId, const QTFRandomValues& randomValues) { players.set(numberOfPlayers++, {playerId, randomValues}); }
@@ -433,7 +440,7 @@ public:
 
 	void forceBeginTick()
 	{
-		system.tick = system.tick + (RL_TICK_UPDATE_PERIOD - mod(system.tick, static_cast<uint32>(RL_TICK_UPDATE_PERIOD)));
+		system.tick = system.tick + (RL_TICK_UPDATE_PERIOD - (system.tick % RL_TICK_UPDATE_PERIOD));
 		beginTick();
 	}
 
@@ -452,6 +459,7 @@ public:
 	{
 		state()->setFrActive(false);
 		state()->setFrRoundsSinceK4(QTF_FR_POST_K4_WINDOW_ROUNDS);
+		state()->setOverflowAlphaBP(QTF_BASELINE_OVERFLOW_ALPHA_BP);
 	}
 
 	void forceFREnabledWithinWindow(uint16 roundsSinceK4 = 1)
@@ -506,62 +514,18 @@ public:
 	}
 
 	// Compute the winning numbers that would be generated for a given prevSpectrumDigest.
-	// This mirrors the contract GetRandomValues logic (including collision handling).
+	// Uses the contract GetRandomValues() implementation (so tests don't duplicate RNG logic).
 	// Returns values in generation order (not sorted).
 	QTFRandomValues computeWinningNumbersForDigest(const m256i& digest)
 	{
-		// Replicate QTF's GetRandomValues logic
-		// seed = qpi.K12(digest).u64._0
 		m256i hashResult;
 		KangarooTwelve((const uint8*)&digest, sizeof(m256i), (uint8*)&hashResult, sizeof(m256i));
 		const uint64 seed = hashResult.m256i_u64[0];
 
-		QTFRandomValues result;
-		uint8 used[31] = {0}; // Track used numbers [0..30], we only use [1..30]
-
-		for (uint8 index = 0; index < 4; ++index)
-		{
-			// deriveOne(seed, index, tempValue)
-			uint64 tempValue = seed + 0x9e3779b97f4a7c15ULL * (index + 1);
-			// mix64
-			tempValue ^= tempValue >> 30;
-			tempValue *= 0xbf58476d1ce4e5b9ULL;
-			tempValue ^= tempValue >> 27;
-			tempValue *= 0x94d049bb133111ebULL;
-			tempValue ^= tempValue >> 31;
-
-			uint8 candidate = static_cast<uint8>((tempValue % 30) + 1);
-
-			// Handle collisions with the same regeneration logic as contract
-			uint32 attempts = 0;
-			while (used[candidate] && attempts < 100)
-			{
-				++attempts;
-				tempValue ^= tempValue >> 12;
-				tempValue ^= tempValue << 25;
-				tempValue ^= tempValue >> 27;
-				tempValue *= 2685821657736338717ULL;
-				candidate = static_cast<uint8>((tempValue % 30) + 1);
-			}
-
-			// Fallback: find first unused
-			if (used[candidate])
-			{
-				for (uint8 fallback = 1; fallback <= 30; ++fallback)
-				{
-					if (!used[fallback])
-					{
-						candidate = fallback;
-						break;
-					}
-				}
-			}
-
-			used[candidate] = 1;
-			result.set(index, candidate);
-		}
-
-		return result;
+		QpiContextUserFunctionCall qpi(QTF_CONTRACT_INDEX);
+		primeQpiFunctionContext(qpi);
+		const auto out = state()->callGetRandomValues(qpi, seed);
+		return out.values;
 	}
 
 	struct WinningAndLosing
@@ -967,7 +931,7 @@ TEST(ContractQThirtyFour_Private, ReturnAllTickets_RefundsEachPlayerAndClearsVia
 	ctl.addPlayerDirect(p1, n1);
 	ctl.addPlayerDirect(p2, n2);
 
-	increaseEnergy(ctl.qtfSelf(), static_cast<long long>(ticketPrice * 2));
+	increaseEnergy(ctl.qtfSelf(), ticketPrice * 2);
 	const uint64 balBeforeContract = getBalance(ctl.qtfSelf());
 	const uint64 balBeforeP1 = getBalance(p1);
 	const uint64 balBeforeP2 = getBalance(p2);
@@ -1167,8 +1131,7 @@ TEST(ContractQThirtyFour, BuyTicket_MultiplePlayers_Success)
 	for (int i = 0; i < 10; ++i)
 	{
 		const id user = id::randomValue();
-		QTFRandomValues nums =
-		    ctl.makeValidNumbers(static_cast<uint8>(1 + i), static_cast<uint8>(11 + i), static_cast<uint8>(21), static_cast<uint8>(30));
+		QTFRandomValues nums = ctl.makeValidNumbers(static_cast<uint8>(1 + i), static_cast<uint8>(11 + i), 21, 30);
 
 		ctl.fundAndBuyTicket(user, ticketPrice, nums);
 	}
@@ -1451,22 +1414,6 @@ TEST(ContractQThirtyFour, GetPools_ReserveReflectsQRPAvailable)
 // SETTLEMENT AND PAYOUT TESTS
 // ============================================================================
 
-TEST(ContractQThirtyFour, Settlement_NoPlayers_NoChanges)
-{
-	ContractTestingQTF ctl;
-	ctl.startAnyDayEpoch();
-
-	const uint64 jackpotBefore = ctl.state()->getJackpot();
-	const QTF::GetWinnerData_output winnersBefore = ctl.getWinnerData();
-
-	ctl.triggerDrawTick();
-
-	// No changes when no players
-	EXPECT_EQ(ctl.state()->getJackpot(), jackpotBefore);
-	const QTF::GetWinnerData_output winnersAfter = ctl.getWinnerData();
-	EXPECT_EQ(winnersAfter.winnerData.winnerCounter, winnersBefore.winnerData.winnerCounter);
-}
-
 TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed)
 {
 	ContractTestingQTF ctl;
@@ -1482,7 +1429,13 @@ TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed)
 	const QTF::GetFees_output fees = ctl.getFees();
 	constexpr uint64 numPlayers = 10;
 
-	ctl.state()->setJackpot(QTF_DEFAULT_TARGET_JACKPOT);
+	// Ensure RL shares exist so distribution path is exercised deterministically.
+	const id shareholder1 = id::randomValue();
+	const id shareholder2 = id::randomValue();
+	constexpr uint32 shares1 = NUMBER_OF_COMPUTORS / 3;
+	constexpr uint32 shares2 = NUMBER_OF_COMPUTORS - shares1;
+	std::vector<std::pair<m256i, uint32>> rlShares{{shareholder1, shares1}, {shareholder2, shares2}};
+	issueRlSharesTo(rlShares, false);
 
 	// Verify FR is not active initially (baseline mode)
 	EXPECT_EQ(ctl.state()->getFrActive(), false);
@@ -1492,6 +1445,9 @@ TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed)
 
 	const uint64 totalRevenue = ticketPrice * numPlayers;
 	const uint64 devBalBefore = getBalance(QTF_DEV_ADDRESS);
+	const uint64 sh1Before = getBalance(shareholder1);
+	const uint64 sh2Before = getBalance(shareholder2);
+	const uint64 rlBefore = getBalance(id(RL_CONTRACT_INDEX, 0, 0, 0));
 	const uint64 contractBalBefore = getBalance(ctl.qtfSelf());
 
 	EXPECT_EQ(contractBalBefore, totalRevenue);
@@ -1506,8 +1462,41 @@ TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed)
 	EXPECT_EQ(getBalance(QTF_DEV_ADDRESS), devBalBefore + expectedDevFee)
 	    << "In baseline mode, dev should receive full " << static_cast<int>(fees.teamFeePercent) << "% of revenue";
 
+	// Distribution is paid to RL shareholders with flooring to dividendPerShare and payback remainder to RL contract.
+	const uint64 expectedDistFee = (totalRevenue * fees.distributionFeePercent) / 100;
+	const uint64 dividendPerShare = expectedDistFee / NUMBER_OF_COMPUTORS;
+	const uint64 expectedSh1Gain = static_cast<uint64>(shares1) * dividendPerShare;
+	const uint64 expectedSh2Gain = static_cast<uint64>(shares2) * dividendPerShare;
+	const uint64 expectedPayback = expectedDistFee - (dividendPerShare * NUMBER_OF_COMPUTORS);
+	EXPECT_EQ(getBalance(shareholder1), sh1Before + expectedSh1Gain);
+	EXPECT_EQ(getBalance(shareholder2), sh2Before + expectedSh2Gain);
+	EXPECT_EQ(getBalance(id(RL_CONTRACT_INDEX, 0, 0, 0)), rlBefore + expectedPayback);
+
+	// No winners -> winnersOverflow == winnersBlock. In baseline: 50/50 split reserve/jackpot.
+	const uint64 winnersBlock = (totalRevenue * fees.winnerFeePercent) / 100;
+	const uint64 reserveAdd = (winnersBlock * QTF_BASELINE_OVERFLOW_ALPHA_BP) / 10000;
+	const uint64 expectedJackpotAdd = winnersBlock - reserveAdd;
+	EXPECT_EQ(ctl.state()->getJackpot(), expectedJackpotAdd);
+	EXPECT_EQ(static_cast<uint64>(getBalance(ctl.qtfSelf())), expectedJackpotAdd) << "Contract balance should match carry (jackpot) after settlement";
+
 	// Players cleared
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+}
+
+TEST(ContractQThirtyFour, Settlement_NoPlayers_NoChanges)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	const uint64 jackpotBefore = ctl.state()->getJackpot();
+	const QTF::GetWinnerData_output winnersBefore = ctl.getWinnerData();
+
+	ctl.triggerDrawTick();
+
+	// No changes when no players
+	EXPECT_EQ(ctl.state()->getJackpot(), jackpotBefore);
+	const QTF::GetWinnerData_output winnersAfter = ctl.getWinnerData();
+	EXPECT_EQ(winnersAfter.winnerData.winnerCounter, winnersBefore.winnerData.winnerCounter);
 }
 
 TEST(ContractQThirtyFour, Settlement_InsufficientBalance_ClearsPlayersAndAbortsSettlement)
@@ -1529,7 +1518,7 @@ TEST(ContractQThirtyFour, Settlement_InsufficientBalance_ClearsPlayersAndAbortsS
 	const uint64 totalRevenue = ticketPrice * numPlayers;
 	const int qtfIndex = spectrumIndex(ctl.qtfSelf());
 	ASSERT_GE(qtfIndex, 0);
-	ASSERT_TRUE(decreaseEnergy(qtfIndex, static_cast<long long>(totalRevenue)));
+	ASSERT_TRUE(decreaseEnergy(qtfIndex, totalRevenue));
 	EXPECT_EQ(getBalance(ctl.qtfSelf()), 0);
 
 	ctl.drawWithDigest(testDigest);
@@ -1607,6 +1596,7 @@ TEST(ContractQThirtyFour, Settlement_JackpotGrowsFromOverflow)
 {
 	ContractTestingQTF ctl;
 	ctl.startAnyDayEpoch();
+	ctl.forceFRDisabledForBaseline();
 
 	// Fix RNG so we can deterministically create "no winners" tickets.
 	m256i testDigest = {};
@@ -1647,11 +1637,9 @@ TEST(ContractQThirtyFour, Settlement_JackpotGrowsFromOverflow)
 	const uint64 jackpotAfter = ctl.state()->getJackpot();
 	const uint64 actualGrowth = jackpotAfter - jackpotBefore;
 
-	// In baseline mode, 50% of overflow goes to jackpot
-	// Allow 5% tolerance for rounding and potential winners
-	const uint64 tolerance = minExpectedGrowth / 20; // 5%
-	EXPECT_GE(actualGrowth + tolerance, minExpectedGrowth)
-	    << "Actual growth: " << actualGrowth << ", Expected minimum: " << minExpectedGrowth << ", Overflow to jackpot (50%): " << overflowToJackpot;
+	// Deterministic: losing tickets guarantee no winners, so growth should match exactly.
+	EXPECT_EQ(actualGrowth, minExpectedGrowth) << "Actual growth: " << actualGrowth << ", Expected: " << minExpectedGrowth
+	                                           << ", Overflow to jackpot (50%): " << overflowToJackpot;
 
 	// Verify the 50% overflow split is working correctly
 	const uint64 expected50Percent = winnersOverflow / 2;
@@ -1810,12 +1798,9 @@ TEST(ContractQThirtyFour, FR_OverflowBias_95PercentToJackpot)
 	// Verify that jackpot grew by at least the minimum expected amount
 	const uint64 actualGrowth = ctl.state()->getJackpot() - jackpotBefore;
 
-	// In FR mode, 95% of overflow goes to jackpot (vs 50% in baseline)
-	// Allow 5% tolerance for rounding and potential winners
-	const uint64 tolerance = minExpectedGrowth / 20; // 5%
-	EXPECT_GE(actualGrowth + tolerance, minExpectedGrowth)
-	    << "Actual growth: " << actualGrowth << ", Expected minimum: " << minExpectedGrowth << ", Overflow to jackpot (95%): " << overflowToJackpot
-	    << ", Winners rake: " << winnersRake;
+	// Deterministic: losing tickets guarantee no winners, so growth should match exactly.
+	EXPECT_EQ(actualGrowth, minExpectedGrowth) << "Actual growth: " << actualGrowth << ", Expected: " << minExpectedGrowth
+	                                           << ", Overflow to jackpot (95%): " << overflowToJackpot << ", Winners rake: " << winnersRake;
 
 	// Verify the 95% overflow bias is working correctly
 	// overflowToJackpot should be ~95% of winnersOverflow
@@ -2006,7 +1991,7 @@ TEST(ContractQThirtyFour, Schedule_DrawOnlyOnScheduledDays)
 	ContractTestingQTF ctl;
 
 	// Set schedule to Wednesday only (default)
-	const uint8 wednesdayOnly = static_cast<uint8>(1 << WEDNESDAY);
+	constexpr uint8 wednesdayOnly = 1 << WEDNESDAY;
 	ctl.forceSchedule(wednesdayOnly);
 
 	ctl.beginEpochWithValidTime();
@@ -2269,7 +2254,7 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_DepletesAndReseeds)
 	ctl.state()->setTargetJackpotInternal(QTF_DEFAULT_TARGET_JACKPOT); // 1B target
 	ctl.forceFREnabledWithinWindow(10);
 	// IMPORTANT: internal `state.jackpot` must be backed by actual contract balance, otherwise transfers will fail.
-	increaseEnergy(ctl.qtfSelf(), static_cast<long long>(initialJackpot));
+	increaseEnergy(ctl.qtfSelf(), initialJackpot);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 
@@ -2301,7 +2286,9 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_DepletesAndReseeds)
 	EXPECT_EQ(roundsSinceK4Before, 10u);
 
 	// Trigger settlement using our fixed prevSpectrumDigest
+	const uint64 k4WinnerBefore = getBalance(k4Winner);
 	ctl.drawWithDigest(testDigest);
+	const uint64 k4WinnerAfter = getBalance(k4Winner);
 
 	// Verify k=4 jackpot win behavior:
 	const uint64 jackpotAfter = ctl.state()->getJackpot();
@@ -2322,9 +2309,83 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_DepletesAndReseeds)
 	EXPECT_EQ(winnerData.winnerData.winnerValues.get(2), nums.winning.get(2));
 	EXPECT_EQ(winnerData.winnerData.winnerValues.get(3), nums.winning.get(3));
 
-	// Verify k=4 winner received payout (full jackpot share).
-	const long long k4WinnerBalance = getBalance(k4Winner);
-	EXPECT_GE(k4WinnerBalance, static_cast<long long>(initialJackpot));
+	// Verify k=4 winner received exact payout (jackpotBefore / countK4).
+	EXPECT_EQ(static_cast<uint64>(k4WinnerAfter - k4WinnerBefore), initialJackpot);
+}
+
+TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_MultipleWinners_SplitsEvenly)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	// Ensure QRP has enough reserve to reseed (so settlement completes without relying on carry math).
+	increaseEnergy(ctl.qrpSelf(), QTF_DEFAULT_TARGET_JACKPOT + 1000000ULL);
+
+	m256i testDigest = {};
+	testDigest.m256i_u64[0] = 0xA5A5A5A5A5A5A5A5ULL;
+	const auto nums = ctl.computeWinningAndLosing(testDigest);
+
+	const uint64 initialJackpot = 900000000ULL;
+	ctl.state()->setJackpot(initialJackpot);
+	ctl.forceFREnabledWithinWindow(1);
+	increaseEnergy(ctl.qtfSelf(), initialJackpot);
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+
+	const id w1 = id::randomValue();
+	const id w2 = id::randomValue();
+	ctl.fundAndBuyTicket(w1, ticketPrice, nums.winning);
+	ctl.fundAndBuyTicket(w2, ticketPrice, nums.winning);
+
+	const uint64 w1Before = getBalance(w1);
+	const uint64 w2Before = getBalance(w2);
+
+	ctl.drawWithDigest(testDigest);
+
+	const uint64 expectedPerWinner = initialJackpot / 2;
+	EXPECT_EQ(static_cast<uint64>(getBalance(w1) - w1Before), expectedPerWinner);
+	EXPECT_EQ(static_cast<uint64>(getBalance(w2) - w2Before), expectedPerWinner);
+}
+
+TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_ReseedLimitedByQRP)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+	ctl.forceFRDisabledForBaseline();
+
+	// Fund QRP below target so reseed amount is limited by available reserve.
+	const uint64 qrpFunded = 200000000ULL;
+	increaseEnergy(ctl.qrpSelf(), qrpFunded);
+
+	m256i testDigest = {};
+	testDigest.m256i_u64[0] = 0x0A0B0C0D0E0F1011ULL;
+	const auto nums = ctl.computeWinningAndLosing(testDigest);
+
+	const uint64 initialJackpot = 800000000ULL;
+	ctl.state()->setJackpot(initialJackpot);
+	increaseEnergy(ctl.qtfSelf(), initialJackpot);
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id w1 = id::randomValue();
+	ctl.fundAndBuyTicket(w1, ticketPrice, nums.winning);
+
+	const uint64 qrpBefore = static_cast<uint64>(getBalance(ctl.qrpSelf()));
+	const uint64 w1Before = getBalance(w1);
+
+	ctl.drawWithDigest(testDigest);
+
+	EXPECT_EQ(static_cast<uint64>(getBalance(w1) - w1Before), initialJackpot);
+
+	// With a single winning ticket and baseline overflow split, winnersOverflow == winnersBlock, reserveAdd == winnersBlock/2, carryAdd ==
+	// winnersBlock/2.
+	const QTF::GetFees_output fees = ctl.getFees();
+	const uint64 revenue = ticketPrice;
+	const uint64 winnersBlock = (revenue * fees.winnerFeePercent) / 100;
+	const uint64 reserveAdd = (winnersBlock * QTF_BASELINE_OVERFLOW_ALPHA_BP) / 10000;
+	const uint64 carryAdd = winnersBlock - reserveAdd;
+
+	EXPECT_EQ(ctl.state()->getJackpot(), qrpFunded + carryAdd);
+	EXPECT_EQ(static_cast<uint64>(getBalance(ctl.qrpSelf())), qrpBefore - qrpFunded + reserveAdd);
 }
 
 // Test k=2 and k=3 payouts with deterministic winning numbers
@@ -2386,8 +2447,8 @@ TEST(ContractQThirtyFour, DeterministicWinner_K2K3Payouts_VerifyRevenueSplit)
 	const uint64 expectedK3Pool = (winnersBlock * QTF_BASE_K3_SHARE_BP) / 10000; // 40% of winners block
 
 	// Get balances before settlement
-	const long long k3Winner1Before = getBalance(k3Winner1);
-	const long long k2Winner1Before = getBalance(k2Winner1);
+	const uint64 k3Winner1Before = getBalance(k3Winner1);
+	const uint64 k2Winner1Before = getBalance(k2Winner1);
 
 	// Trigger settlement
 	ctl.drawWithDigest(testDigest);
@@ -2395,14 +2456,14 @@ TEST(ContractQThirtyFour, DeterministicWinner_K2K3Payouts_VerifyRevenueSplit)
 	// Verify winner payouts
 	// k=3 pool split between 2 winners
 	const uint64 expectedK3PayoutPerWinner = expectedK3Pool / 2;
-	const long long k3Winner1After = getBalance(k3Winner1);
-	const long long k3Winner1Gained = k3Winner1After - k3Winner1Before;
+	const uint64 k3Winner1After = getBalance(k3Winner1);
+	const uint64 k3Winner1Gained = k3Winner1After - k3Winner1Before;
 	EXPECT_EQ(static_cast<uint64>(k3Winner1Gained), expectedK3PayoutPerWinner) << "k=3 winner should receive half of k3 pool";
 
 	// k=2 pool split between 3 winners
 	const uint64 expectedK2PayoutPerWinner = expectedK2Pool / 3;
-	const long long k2Winner1After = getBalance(k2Winner1);
-	const long long k2Winner1Gained = k2Winner1After - k2Winner1Before;
+	const uint64 k2Winner1After = getBalance(k2Winner1);
+	const uint64 k2Winner1Gained = k2Winner1After - k2Winner1Before;
 	EXPECT_EQ(static_cast<uint64>(k2Winner1Gained), expectedK2PayoutPerWinner) << "k=2 winner should receive one-third of k2 pool";
 
 	// Verify winning numbers in winner data
@@ -2519,6 +2580,89 @@ TEST(ContractQThirtyFour, ReserveTopUp_FloorGuarantee_VerifyLimits)
 	// or mocking the random number generation to guarantee specific winners.
 }
 
+TEST(ContractQThirtyFour, Settlement_FloorTopUp_Integration_K2K3FloorsMetWhenReserveSufficient)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+	ctl.forceFRDisabledForBaseline();
+
+	// Ensure RL shares exist so distribution path is exercised (and rounding/payback is deterministic).
+	const id shareholder1 = id::randomValue();
+	const id shareholder2 = id::randomValue();
+	constexpr uint32 shares1 = NUMBER_OF_COMPUTORS / 4;
+	constexpr uint32 shares2 = NUMBER_OF_COMPUTORS - shares1;
+	std::vector<std::pair<m256i, uint32>> rlShares{{shareholder1, shares1}, {shareholder2, shares2}};
+	issueRlSharesTo(rlShares, false);
+
+	// Fund QRP enough so both tiers can be topped up to floors under all caps.
+	const uint64 qrpFunding = 100000000ULL; // 100M, 10% cap = 10M, soft floor = 20M.
+	increaseEnergy(ctl.qrpSelf(), qrpFunding);
+
+	m256i testDigest = {};
+	testDigest.m256i_u64[0] = 0x5566778899AABBCCULL;
+	const auto nums = ctl.computeWinningAndLosing(testDigest);
+
+	const uint64 P = ctl.state()->getTicketPriceInternal();
+
+	// Create deterministic winners: 2x k2 winners and 1x k3 winner => pools are small and must be topped up.
+	const id k2w1 = id::randomValue();
+	const id k2w2 = id::randomValue();
+	const id k3w1 = id::randomValue();
+	ctl.fundAndBuyTicket(k2w1, P, ctl.makeK2Numbers(nums.winning, 0));
+	ctl.fundAndBuyTicket(k2w2, P, ctl.makeK2Numbers(nums.winning, 1));
+	ctl.fundAndBuyTicket(k3w1, P, ctl.makeK3Numbers(nums.winning, 2));
+
+	const uint64 qrpBefore = static_cast<uint64>(getBalance(ctl.qrpSelf()));
+	const uint64 qtfBefore = static_cast<uint64>(getBalance(ctl.qtfSelf()));
+	const uint64 k2w1Before = getBalance(k2w1);
+	const uint64 k3w1Before = getBalance(k3w1);
+	const uint64 sh1Before = getBalance(shareholder1);
+	const uint64 sh2Before = getBalance(shareholder2);
+	const uint64 rlBefore = getBalance(id(RL_CONTRACT_INDEX, 0, 0, 0));
+
+	EXPECT_EQ(qtfBefore, 3 * P);
+
+	ctl.drawWithDigest(testDigest);
+
+	// Expected pools and top-ups.
+	const QTF::GetFees_output fees = ctl.getFees();
+	const uint64 revenue = 3 * P;
+	const uint64 winnersBlock = (revenue * fees.winnerFeePercent) / 100;
+	const uint64 k2Pool = (winnersBlock * QTF_BASE_K2_SHARE_BP) / 10000;
+	const uint64 k3Pool = (winnersBlock * QTF_BASE_K3_SHARE_BP) / 10000;
+
+	const uint64 k2Floor = P / 2;
+	const uint64 k3Floor = 5 * P;
+	const uint64 k2TopUp = (k2Floor * 2 > k2Pool) ? (k2Floor * 2 - k2Pool) : 0;
+	const uint64 k3TopUp = (k3Floor > k3Pool) ? (k3Floor - k3Pool) : 0;
+
+	// Winners must receive the floors (no per-winner cap binding in this scenario).
+	EXPECT_EQ(static_cast<uint64>(getBalance(k2w1) - k2w1Before), k2Floor);
+	EXPECT_EQ(static_cast<uint64>(getBalance(k3w1) - k3w1Before), k3Floor);
+
+	// Baseline overflow is the unallocated 32% of winnersBlock (tier pools are fully paid out with floor top-ups, so no extra overflow).
+	const uint64 winnersOverflow = winnersBlock - k2Pool - k3Pool;
+	const uint64 reserveAdd = (winnersOverflow * QTF_BASELINE_OVERFLOW_ALPHA_BP) / 10000;
+	const uint64 carryAdd = winnersOverflow - reserveAdd;
+
+	// Contract balance should match carry (jackpot) after settlement.
+	EXPECT_EQ(ctl.state()->getJackpot(), carryAdd);
+	EXPECT_EQ(static_cast<uint64>(getBalance(ctl.qtfSelf())), carryAdd);
+
+	// QRP: receives reserveAdd, pays out top-ups.
+	EXPECT_EQ(static_cast<uint64>(getBalance(ctl.qrpSelf())), qrpBefore - k2TopUp - k3TopUp + reserveAdd);
+
+	// Distribution: verify two holders and RL payback remainder.
+	const uint64 expectedDistFee = (revenue * fees.distributionFeePercent) / 100;
+	const uint64 dividendPerShare = expectedDistFee / NUMBER_OF_COMPUTORS;
+	const uint64 expectedSh1Gain = static_cast<uint64>(shares1) * dividendPerShare;
+	const uint64 expectedSh2Gain = static_cast<uint64>(shares2) * dividendPerShare;
+	const uint64 expectedPayback = expectedDistFee - (dividendPerShare * NUMBER_OF_COMPUTORS);
+	EXPECT_EQ(getBalance(shareholder1), sh1Before + expectedSh1Gain);
+	EXPECT_EQ(getBalance(shareholder2), sh2Before + expectedSh2Gain);
+	EXPECT_EQ(getBalance(id(RL_CONTRACT_INDEX, 0, 0, 0)), rlBefore + expectedPayback);
+}
+
 // ============================================================================
 // HIGH-DEFICIT FR EXTRA REDIRECTS TESTS
 // ============================================================================
@@ -2599,6 +2743,81 @@ TEST(ContractQThirtyFour, FR_HighDeficit_ExtraRedirectsCalculated)
 	// Note: The exact extra redirect amount depends on complex calculation in CalculateExtraRedirectBP
 	// (QThirtyFour.h:1928-1965), which uses fixed-point arithmetic, power calculations, and horizon capping.
 	// This test verifies the mechanism is active and within bounds.
+}
+
+TEST(ContractQThirtyFour, Settlement_FRMode_ExtraRedirect_ClampsToMax_AndAffectsDevAndDist)
+{
+	ContractTestingQTF ctl;
+	ctl.forceSchedule(QTF_ANY_DAY_SCHEDULE);
+
+	// Ensure RL shares exist so distribution can be asserted.
+	const id shareholder1 = id::randomValue();
+	const id shareholder2 = id::randomValue();
+	constexpr uint32 shares1 = NUMBER_OF_COMPUTORS / 2;
+	constexpr uint32 shares2 = NUMBER_OF_COMPUTORS - shares1;
+	std::vector<std::pair<m256i, uint32>> rlShares{{shareholder1, shares1}, {shareholder2, shares2}};
+	issueRlSharesTo(rlShares, false);
+
+	// Deterministic no-winner tickets.
+	m256i testDigest = {};
+	testDigest.m256i_u64[0] = 0x7777777777777777ULL;
+	const auto nums = ctl.computeWinningAndLosing(testDigest);
+
+	// Force FR on and create an extreme deficit to guarantee extra redirect clamps to max.
+	ctl.state()->setJackpot(0ULL);
+	ctl.state()->setTargetJackpotInternal(1000000000000000ULL); // 1e15
+	ctl.state()->setFrActive(true);
+	ctl.state()->setFrRoundsSinceK4(1);
+
+	ctl.beginEpochWithValidTime();
+
+	const uint64 P = ctl.state()->getTicketPriceInternal();
+	constexpr uint64 numPlayers = 10;
+	ctl.buyRandomTickets(numPlayers, P, nums.losing);
+
+	const QTF::GetFees_output fees = ctl.getFees();
+	const uint64 revenue = P * numPlayers;
+
+	const uint64 devBefore = getBalance(QTF_DEV_ADDRESS);
+	const uint64 sh1Before = getBalance(shareholder1);
+	const uint64 sh2Before = getBalance(shareholder2);
+	const uint64 rlBefore = getBalance(id(RL_CONTRACT_INDEX, 0, 0, 0));
+
+	// Pre-compute expected extra BP using the same private helpers as the contract.
+	QpiContextUserFunctionCall qpi(QTF_CONTRACT_INDEX);
+	primeQpiFunctionContext(qpi);
+	const auto pools = ctl.state()->callCalculatePrizePools(qpi, revenue, true);
+	const auto baseGainOut = ctl.state()->callCalculateBaseGain(qpi, revenue, pools.winnersBlock);
+	const uint64 delta = ctl.state()->getTargetJackpotInternal() - ctl.state()->getJackpot();
+	const auto extraOut = ctl.state()->callCalculateExtraRedirectBP(qpi, numPlayers, delta, revenue, baseGainOut.baseGain);
+	ASSERT_EQ(extraOut.extraBP, QTF_FR_EXTRA_MAX_BP);
+
+	const uint64 devExtraBP = extraOut.extraBP / 2;
+	const uint64 distExtraBP = extraOut.extraBP - devExtraBP;
+	const uint64 totalDevRedirectBP = QTF_FR_DEV_REDIRECT_BP + devExtraBP;
+	const uint64 totalDistRedirectBP = QTF_FR_DIST_REDIRECT_BP + distExtraBP;
+
+	const uint64 fullDevFee = (revenue * fees.teamFeePercent) / 100;
+	const uint64 fullDistFee = (revenue * fees.distributionFeePercent) / 100;
+
+	const uint64 expectedDevRedirect = (revenue * totalDevRedirectBP) / 10000;
+	const uint64 expectedDistRedirect = (revenue * totalDistRedirectBP) / 10000;
+	const uint64 expectedDevPayout = fullDevFee - expectedDevRedirect;
+	const uint64 expectedDistPayout = fullDistFee - expectedDistRedirect;
+
+	ctl.drawWithDigest(testDigest);
+
+	// Dev payout must match exact base+extra redirect math (no caps expected in this scenario).
+	EXPECT_EQ(static_cast<uint64>(getBalance(QTF_DEV_ADDRESS) - devBefore), expectedDevPayout);
+
+	// Distribution must match expectedDistPayout (dividendPerShare flooring + payback).
+	const uint64 dividendPerShare = expectedDistPayout / NUMBER_OF_COMPUTORS;
+	const uint64 expectedSh1Gain = static_cast<uint64>(shares1) * dividendPerShare;
+	const uint64 expectedSh2Gain = static_cast<uint64>(shares2) * dividendPerShare;
+	const uint64 expectedPayback = expectedDistPayout - (dividendPerShare * NUMBER_OF_COMPUTORS);
+	EXPECT_EQ(getBalance(shareholder1), sh1Before + expectedSh1Gain);
+	EXPECT_EQ(getBalance(shareholder2), sh2Before + expectedSh2Gain);
+	EXPECT_EQ(getBalance(id(RL_CONTRACT_INDEX, 0, 0, 0)), rlBefore + expectedPayback);
 }
 
 // ============================================================================
