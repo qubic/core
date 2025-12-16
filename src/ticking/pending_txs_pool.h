@@ -90,9 +90,12 @@ protected:
                 }
                 else
                 {
-                    // calculate tx priority as [balance of src] * [scheduledTick - latestOutgoingTransferTick + 1]
-                    EntityRecord entity = spectrum[sourceIndex];
-                    priority = smul(balance, static_cast<sint64>(tx->tick - entity.latestOutgoingTransferTick + 1));
+                    // Calculate tx priority as: [balance of src] * [scheduledTick - latestTransferTick + 1] with
+                    // latestTransferTick = latestOutgoingTransferTick   if latestOutgoingTransferTick > 0,
+                    // latestTransferTick = latestIncomingTransferTick   otherwise (new entity).
+                    const EntityRecord& entity = spectrum[sourceIndex];
+                    const auto latestTransferTick = (entity.latestOutgoingTransferTick) ? entity.latestOutgoingTransferTick : entity.latestIncomingTransferTick;
+                    priority = smul(balance, static_cast<sint64>(tx->tick - latestTransferTick + 1));
                     // decrease by 1 to make sure no normal tx reaches max priority
                     priority--;
                 }
