@@ -461,6 +461,10 @@ struct ScoreFunction
         unsigned char nextNeuronPlus1s[(maxNumberOfNeurons + numberOfNeighbors + BATCH_SIZE - 1) / BATCH_SIZE * BATCH_SIZE];
         unsigned char nextNeuronMinus1s[(maxNumberOfNeurons + numberOfNeighbors + BATCH_SIZE - 1) / BATCH_SIZE * BATCH_SIZE];
 
+        unsigned char keptNeurons[maxNumberOfNeurons];
+        unsigned long long affectedNeurons[maxNumberOfNeurons];
+        unsigned long long nextAffectedNeurons[maxNumberOfNeurons];
+
         void mutate(unsigned long long mutateStep)
         {
             // Mutation
@@ -495,12 +499,8 @@ struct ScoreFunction
                 // Insert the neuron
                 insertNeuron(synapseIdx);
             }
-
             // Clean the ANN
-            while (scanRedundantNeurons() > 0)
-            {
-                cleanANN();
-            }
+            cleanANN();
         }
 
         // Get the pointer to all outgoing synapse of a neurons
@@ -567,6 +567,7 @@ struct ScoreFunction
             {
                 currentANN.neurons[shiftIdx] = currentANN.neurons[shiftIdx + 1];
                 currentANN.neuronTypes[shiftIdx] = currentANN.neuronTypes[shiftIdx + 1];
+                keptNeurons[shiftIdx] = keptNeurons[shiftIdx + 1];
 
                 // Also shift the synapses
                 copyMem(getSynapses(shiftIdx), getSynapses(shiftIdx + 1), numberOfNeighbors * sizeof(Synapse));
@@ -760,43 +761,119 @@ struct ScoreFunction
         }
 
         // Check which neurons/synapse need to be removed after mutation
-        unsigned long long scanRedundantNeurons()
+        bool scanRedundantNeurons()
         {
+            bool isStructureChanged = false;
             unsigned long long population = currentANN.population;
             Synapse* synapses = currentANN.synapses;
             Neuron* neurons = currentANN.neurons;
             NeuronType* neuronTypes = currentANN.neuronTypes;
 
-            removalNeuronsCount = 0;
-            // After each mutation, we must verify if there are neurons that do not affect the ANN output.
-            // These are neurons that either have all incoming synapse weights as 0,
-            // or all outgoing synapse weights as 0. Such neurons must be removed.
+            unsigned long long affectedCount = 0;
+            unsigned long long nextCount = 0;
+            setMem(keptNeurons, sizeof(keptNeurons), 255);
+
+            // First scan
             for (unsigned long long i = 0; i < population; i++)
             {
-                if (neuronTypes[i] == EVOLUTION_NEURON_TYPE)
+                if (neuronTypes[i] != EVOLUTION_NEURON_TYPE)
                 {
-                    if (isAllOutgoingSynapsesZeros(i) || isAllIncomingSynapsesZeros(i))
+                    continue;
+                }
+
+                if (isAllOutgoingSynapsesZeros(i) || isAllIncomingSynapsesZeros(i))
+                {
+                    keptNeurons[i] = 0;
+                    affectedNeurons[affectedCount++] = i;
+                    isStructureChanged = true;
+                }
+            }
+
+            while (affectedCount > 0)
+            {
+                nextCount = 0;
+                for (unsigned long long affectedIndex = 0; affectedIndex < affectedCount; affectedIndex++)
+                {
+                    unsigned long long i = affectedNeurons[affectedIndex];
+                    // Mark the neuron for removal and set all its incoming and outgoing synapse weights to zero.
+                    // This action isolates the neuron, allowing adjacent neurons to be considered for removal in the next iteration.
+
+                    // Remove outgoing synapse
+                    setMem(getSynapses(i), numberOfNeighbors * sizeof(Synapse), 0);
+
+                    // Scan all its neigbor to remove their outgoing synapse point to the neuron aka incomming synapses of this neuron
+                    for (long long neighborOffset = -(long long)numberOfNeighbors / 2; neighborOffset <= (long long)numberOfNeighbors / 2; neighborOffset++)
                     {
-                        neuronIndices[removalNeuronsCount] = i;
-                        removalNeuronsCount++;
+                        unsigned long long nnIdx = clampNeuronIndex(i, neighborOffset);
+                        Synapse* pNNSynapses = getSynapses(nnIdx);
+
+                        long long synapseIndexOfNN = getIndexInSynapsesBuffer(nnIdx, -neighborOffset);
+                        if (synapseIndexOfNN < 0)
+                        {
+                            continue;
+                        }
+
+                        // Synapse to this i neurons is marked as zero/aka disconnected
+                        if (pNNSynapses[synapseIndexOfNN] != 0)
+                        {
+                            pNNSynapses[synapseIndexOfNN] = 0;
+
+                            // This neuron is not marked as removal yet, record it
+                            if (keptNeurons[nnIdx])
+                            {
+                                nextAffectedNeurons[nextCount++] = nnIdx;
+                            }
+                        }
+                    }
+
+                    // Mark the neurons as removal
+                    affectedCount = 0;
+                    for (unsigned long long k = 0; k < nextCount; ++k)
+                    {
+                        unsigned long long idx = nextAffectedNeurons[k];
+
+                        // Skip already removed or non-evolution neurons
+                        if (!keptNeurons[idx] || neuronTypes[idx] != EVOLUTION_NEURON_TYPE)
+                            continue;
+
+                        // Check if these neurons are needed to be removed
+                        if (isAllOutgoingSynapsesZeros(idx) || isAllIncomingSynapsesZeros(idx))
+                        {
+                            keptNeurons[idx] = 0;
+                            affectedNeurons[affectedCount++] = idx;
+                            isStructureChanged = true;
+                        }
                     }
                 }
             }
-            return removalNeuronsCount;
+
+            return isStructureChanged;
         }
 
         // Remove neurons and synapses that do not affect the ANN
         void cleanANN()
         {
-            // Scan and remove neurons/synapses
-            for (unsigned long long i = 0; i < removalNeuronsCount; i++)
+            // No removal. First scan and probagate to be removed neurons
+            if (!scanRedundantNeurons())
             {
-                unsigned long long neuronIdx = neuronIndices[i];
-                // Remove it from the neuron list. Overwrite data
-                // Remove its synapses in the synapses array
-                removeNeuron(neuronIdx);
+                return;
             }
-            removalNeuronsCount = 0;
+
+            // Remove neurons
+            unsigned long long neuronIdx = 0;
+            while (neuronIdx < currentANN.population)
+            {
+                if (keptNeurons[neuronIdx] == 0)
+                {
+                    // Remove it from the neuron list. Overwrite data
+                    // Remove its synapses in the synapses array
+                    removeNeuron(neuronIdx);
+                }
+                else
+                {
+                    neuronIdx++;
+                }
+            }
         }
 
         void processTick()
