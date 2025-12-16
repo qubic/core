@@ -4,6 +4,28 @@
 
 The lite version of Qubic Core that can run directly on the OS without a UEFI environment.
 
+## Menu
+
+- [Qubic Core Lite](#qubic-core-lite)
+  - [Supporting Networks](#supporting-networks)
+  - [Parameters](#parameters)
+  - [Prerequisites](#prerequisites)
+    - [Local Testnet](#local-testnet)
+    - [Mainnet](#mainnet)
+  - [Build Config](#build-config)
+    - [Local Testnet](#local-testnet-1)
+    - [Mainnet](#mainnet-1)
+  - [Build](#build)
+    - [Windows](#windows)
+    - [Linux](#linux)
+  - [Node State](#node-state)
+  - [Ticking](#ticking)
+  - [RPC](#rpc)
+  - [Tips](#tips)
+  - [FAQs](#faqs)
+  - [Supporting Platform](#supporting-platform)
+  - [Donate The Project](#donate-the-project)
+
 ## Supporting Networks
 
 - [x] Mainnet (Beta)
@@ -141,6 +163,22 @@ Current mainnet state
 ## Ticking
 
 Press **F12** to switch to **MAIN** mode to make the network start ticking (processing transactions).
+
+## RPC
+
+Qubic Core Lite provides a built-in RPC API that enables developers to interact directly with a Lite node with official RPC style, removing the need for an original complex RPC layer.
+
+### Status
+
+- **RPC Live (OK):** `http://localhost:41841/live/v1`
+- **RPC Stats (OK):** `http://localhost:41841/`
+- **RPC Query V2 (OK):** `http://localhost:41841/query/v1`
+- **RPC Archiver V2:** *Deprecated (not implemented)*
+
+### Documentation
+
+https://qubic.github.io/integration/Partners/swagger/qubic-rpc-doc.html?urls.primaryName=Qubic%20RPC%20Live%20Tree  
+> Remember to select the appropriate API definition for each endpoint.
 
 ## Tips
 
