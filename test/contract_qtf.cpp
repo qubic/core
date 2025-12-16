@@ -30,9 +30,9 @@ constexpr uint16 QTF_FUNCTION_ESTIMATE_PRIZE_PAYOUTS = 9;
 
 namespace
 {
-	static void issueRlSharesTo(std::vector<std::pair<m256i, unsigned int>>& initialOwnerShares, bool warnOnTooFewShares = true)
+	static void issueRlSharesTo(std::vector<std::pair<m256i, unsigned int>>& initialOwnerShares)
 	{
-		issueContractShares(RL_CONTRACT_INDEX, initialOwnerShares, warnOnTooFewShares);
+		issueContractShares(RL_CONTRACT_INDEX, initialOwnerShares, false);
 	}
 
 	static void primeQpiFunctionContext(QpiContextUserFunctionCall& qpi)
@@ -1435,7 +1435,7 @@ TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed)
 	constexpr uint32 shares1 = NUMBER_OF_COMPUTORS / 3;
 	constexpr uint32 shares2 = NUMBER_OF_COMPUTORS - shares1;
 	std::vector<std::pair<m256i, uint32>> rlShares{{shareholder1, shares1}, {shareholder2, shares2}};
-	issueRlSharesTo(rlShares, false);
+	issueRlSharesTo(rlShares);
 
 	// Verify FR is not active initially (baseline mode)
 	EXPECT_EQ(ctl.state()->getFrActive(), false);
@@ -1785,22 +1785,38 @@ TEST(ContractQThirtyFour, FR_OverflowBias_95PercentToJackpot)
 	const uint64 reserveAdd = (winnersOverflow * QTF_FR_ALPHA_BP) / 10000;
 	const uint64 overflowToJackpot = winnersOverflow - reserveAdd;
 
-	// Dev and Dist redirects (base 1% each from revenue in FR mode)
-	const uint64 devRedirect = (revenue * QTF_FR_DEV_REDIRECT_BP) / 10000;
-	const uint64 distRedirect = (revenue * QTF_FR_DIST_REDIRECT_BP) / 10000;
+	// Dev and Dist redirects in FR mode: base (1% each) + extra (deficit-driven)
+	// First calculate base gain to pass to extra redirect calculation
+	QpiContextUserFunctionCall qpi(QTF_CONTRACT_INDEX);
+	primeQpiFunctionContext(qpi);
+	const auto baseGainOut = ctl.state()->callCalculateBaseGain(qpi, revenue, winnersBlock);
 
-	// Minimum expected jackpot growth (without extra redirects, assuming no k2/k3 winners)
+	// Calculate extra redirect based on deficit
+	const uint64 delta = ctl.state()->getTargetJackpotInternal() - jackpotBefore;
+	const auto extraOut = ctl.state()->callCalculateExtraRedirectBP(qpi, numPlayers, delta, revenue, baseGainOut.baseGain);
+
+	// Total redirect BP = base + extra (split 50/50 between dev and dist)
+	const uint64 devExtraBP = extraOut.extraBP / 2;
+	const uint64 distExtraBP = extraOut.extraBP - devExtraBP;
+	const uint64 totalDevRedirectBP = QTF_FR_DEV_REDIRECT_BP + devExtraBP;
+	const uint64 totalDistRedirectBP = QTF_FR_DIST_REDIRECT_BP + distExtraBP;
+
+	const uint64 devRedirect = (revenue * totalDevRedirectBP) / 10000;
+	const uint64 distRedirect = (revenue * totalDistRedirectBP) / 10000;
+
+	// Expected jackpot growth (with both base and extra redirects, assuming no k2/k3 winners)
 	// totalJackpotContribution = overflowToJackpot + winnersRake + devRedirect + distRedirect
-	const uint64 minExpectedGrowth = overflowToJackpot + winnersRake + devRedirect + distRedirect;
+	const uint64 expectedGrowth = overflowToJackpot + winnersRake + devRedirect + distRedirect;
 
 	ctl.drawWithDigest(testDigest);
 
-	// Verify that jackpot grew by at least the minimum expected amount
+	// Verify that jackpot grew by the expected amount
 	const uint64 actualGrowth = ctl.state()->getJackpot() - jackpotBefore;
 
 	// Deterministic: losing tickets guarantee no winners, so growth should match exactly.
-	EXPECT_EQ(actualGrowth, minExpectedGrowth) << "Actual growth: " << actualGrowth << ", Expected: " << minExpectedGrowth
-	                                           << ", Overflow to jackpot (95%): " << overflowToJackpot << ", Winners rake: " << winnersRake;
+	EXPECT_EQ(actualGrowth, expectedGrowth) << "Actual growth: " << actualGrowth << ", Expected: " << expectedGrowth
+	                                        << ", Overflow to jackpot (95%): " << overflowToJackpot << ", Winners rake: " << winnersRake
+	                                        << ", Extra redirect BP: " << extraOut.extraBP;
 
 	// Verify the 95% overflow bias is working correctly
 	// overflowToJackpot should be ~95% of winnersOverflow
@@ -2592,7 +2608,7 @@ TEST(ContractQThirtyFour, Settlement_FloorTopUp_Integration_K2K3FloorsMetWhenRes
 	constexpr uint32 shares1 = NUMBER_OF_COMPUTORS / 4;
 	constexpr uint32 shares2 = NUMBER_OF_COMPUTORS - shares1;
 	std::vector<std::pair<m256i, uint32>> rlShares{{shareholder1, shares1}, {shareholder2, shares2}};
-	issueRlSharesTo(rlShares, false);
+	issueRlSharesTo(rlShares);
 
 	// Fund QRP enough so both tiers can be topped up to floors under all caps.
 	const uint64 qrpFunding = 100000000ULL; // 100M, 10% cap = 10M, soft floor = 20M.
@@ -2756,7 +2772,7 @@ TEST(ContractQThirtyFour, Settlement_FRMode_ExtraRedirect_ClampsToMax_AndAffects
 	constexpr uint32 shares1 = NUMBER_OF_COMPUTORS / 2;
 	constexpr uint32 shares2 = NUMBER_OF_COMPUTORS - shares1;
 	std::vector<std::pair<m256i, uint32>> rlShares{{shareholder1, shares1}, {shareholder2, shares2}};
-	issueRlSharesTo(rlShares, false);
+	issueRlSharesTo(rlShares);
 
 	// Deterministic no-winner tickets.
 	m256i testDigest = {};
