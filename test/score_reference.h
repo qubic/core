@@ -114,12 +114,12 @@ struct ScoreReferenceImplementation
 
     void initMemory()
     {
-        allocPoolWithErrorLog(L"ComputeBuffer", sizeof(ComputeInstance) * solutionBufferCount, (void**)&(_computeBuffer), __LINE__);
+        _computeBuffer = new ComputeInstance[solutionBufferCount];
     }
 
     void freeMemory()
     {
-        freePool(_computeBuffer);
+        delete[] _computeBuffer;
     }
 
     ~ScoreReferenceImplementation()
