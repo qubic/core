@@ -801,7 +801,8 @@ TEST(ContractQraffle, TransferShareManagementRights)
 TEST(ContractQraffle, GetFunctions)
 {
     ContractTestingQraffle qraffle;
-    
+    system.epoch = 0;
+
     // Setup: Create test users and register them
     auto users = getRandomUsers(1000, 1000); // Use smaller set for more predictable testing
     uint32 registerCount = 5;
@@ -883,8 +884,8 @@ TEST(ContractQraffle, GetFunctions)
             EXPECT_EQ(proposal.tokenName, (i % 2 == 0) ? assetName1 : assetName2);
             EXPECT_EQ(proposal.tokenIssuer, issuer);
             EXPECT_GT(proposal.entryAmount, 0);
-            EXPECT_GE(proposal.nYes, 0);
-            EXPECT_GE(proposal.nNo, 0);
+            EXPECT_GE(proposal.nYes, 0u);
+            EXPECT_GE(proposal.nNo, 0u);
         }
         
         // Test with invalid proposal index (beyond available proposals)
@@ -941,9 +942,9 @@ TEST(ContractQraffle, GetFunctions)
         EXPECT_EQ(analytics.numberOfRegisters, registerCount);
         EXPECT_EQ(analytics.numberOfProposals, 0);
         EXPECT_EQ(analytics.numberOfQuRaffleMembers, 0);
-        EXPECT_GE(analytics.numberOfActiveTokenRaffle, 0);
-        EXPECT_GE(analytics.numberOfEndedTokenRaffle, 0);
-        EXPECT_EQ(analytics.numberOfEntryAmountSubmitted, 0);
+        EXPECT_GE(analytics.numberOfActiveTokenRaffle, 0u);
+        EXPECT_GE(analytics.numberOfEndedTokenRaffle, 0u);
+        EXPECT_EQ(analytics.numberOfEntryAmountSubmitted, 0u);
         
         // Cross-validate with internal state
         qraffle.getState()->analyticsChecker(analytics.totalBurnAmount, analytics.totalCharityAmount, 
@@ -1010,8 +1011,8 @@ TEST(ContractQraffle, GetFunctions)
             EXPECT_EQ(endedRaffle.returnCode, QRAFFLE_SUCCESS);
             EXPECT_NE(endedRaffle.epochWinner, id(0, 0, 0, 0)); // Winner should be set
             EXPECT_GT(endedRaffle.entryAmount, 0);
-            EXPECT_GT(endedRaffle.numberOfMembers, 0);
-            EXPECT_GE(endedRaffle.epoch, 0);
+            EXPECT_GT(endedRaffle.numberOfMembers, 0u);
+            EXPECT_GE(endedRaffle.epoch, 0u);
         }
         
         // Test with invalid raffle index (beyond available ended raffles)
