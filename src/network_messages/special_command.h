@@ -104,3 +104,11 @@ struct SpecialCommandSaveSnapshotRequestAndResponse
 };
 
 #pragma pack(pop)
+
+#define SPECIAL_COMMAND_SET_EXECUTION_FEE_MULTIPLIER 19ULL
+struct SpecialCommandSetExecutionFeeMultiplierRequestAndResponse
+{
+    unsigned long long everIncreasingNonceAndCommandType;
+    unsigned long long multiplierNumerator;
+    unsigned long long multiplierDenominator;
+};

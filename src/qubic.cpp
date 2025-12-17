@@ -1694,6 +1694,15 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             }
             break;
 
+            case SPECIAL_COMMAND_SET_EXECUTION_FEE_MULTIPLIER:
+            {
+                const auto* _request = header->getPayload<SpecialCommandSetExecutionFeeMultiplierRequestAndResponse>();
+                executionTimeMultiplierNumerator = _request->multiplierNumerator;
+                executionTimeMultiplierDenominator = _request->multiplierDenominator;
+                enqueueResponse(peer, sizeof(SpecialCommandSetExecutionFeeMultiplierRequestAndResponse), SpecialCommand::type(), header->dejavu(), _request);
+            }
+            break;
+
             }
         }
     }
