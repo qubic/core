@@ -72,8 +72,8 @@ constexpr uint16_t ORACLE_FLAG_OM_ERROR_FLAGS = 0xff;  ///< Mask of all error fl
 constexpr uint16_t ORACLE_FLAG_REPLY_RECEIVED = 0x100; ///< Oracle engine got valid reply from the oracle machine.
 constexpr uint16_t ORACLE_FLAG_BAD_SIZE_REPLY = 0x200; ///< Oracle engine got reply of wrong size from the oracle machine.
 constexpr uint16_t ORACLE_FLAG_OM_DISAGREE = 0x400;    ///< Oracle engine got different replies from oracle machines.
-constexpr uint16_t ORACLE_FLAG_COMP_DISAGREE = 0x800;  ///< The number of reply commits is sufficient (>= 451 computors), but they disagree about the reply value.
-constexpr uint16_t ORACLE_FLAG_TIMEOUT = 0x1000;       ///< The weren't enough reply commit tx before timeout (< 451).
+constexpr uint16_t ORACLE_FLAG_COMP_DISAGREE = 0x800;  ///< The reply commits differ too much and no quorum can be reached.
+constexpr uint16_t ORACLE_FLAG_TIMEOUT = 0x1000;       ///< The weren't enough reply commit tx with the same digest before timeout (< 451).
 
 typedef union IPv4Address
 {

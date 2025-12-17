@@ -2834,7 +2834,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
                 case OracleReplyCommitTransactionPrefix::transactionType():
                 {
-                    oracleEngine.processTransactionOracleReplyCommit((OracleReplyCommitTransactionPrefix*)transaction);
+                    oracleEngine.processOracleReplyCommitTransaction((OracleReplyCommitTransactionPrefix*)transaction);
                 }
                 break;
 
@@ -5747,7 +5747,7 @@ static bool initialize()
         }
     }
 
-    if (!oracleEngine.init())
+    if (!oracleEngine.init(computorPublicKeys))
         return false;
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES

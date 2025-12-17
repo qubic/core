@@ -145,7 +145,7 @@ public:
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
 
-        EXPECT_TRUE(oracleEngine.init());
+        EXPECT_TRUE(oracleEngine.init(computorPublicKeys));
 
         checkContractExecCleanup();
 
