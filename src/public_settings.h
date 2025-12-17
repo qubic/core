@@ -1,5 +1,7 @@
 #pragma once
 
+#include "platform/global_var.h"
+
 ////////// Public Settings \\\\\\\\\\
 
 //////////////////////////////////////////////////////////////////////////
@@ -124,5 +126,7 @@ static unsigned int gFullExternalComputationTimes[][2] =
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE
 
-static constexpr unsigned long long EXECUTION_TIME_MULTIPLIER_NUMERATOR = 1ULL;
-static constexpr unsigned long long EXECUTION_TIME_MULTIPLIER_DENOMINATOR = 1ULL;  // Use values like (1, 10) for division by 10
+// Multipliers to convert from raw contract execution time to contract execution fee.
+// Use values like (numerator 1, denominator 10) for division by 10.
+GLOBAL_VAR_DECL unsigned long long executionTimeMultiplierNumerator GLOBAL_VAR_INIT(1ULL);
+GLOBAL_VAR_DECL unsigned long long executionTimeMultiplierDenominator GLOBAL_VAR_INIT(1ULL);

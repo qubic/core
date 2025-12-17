@@ -3023,8 +3023,8 @@ static bool makeAndBroadcastExecutionFeeTransaction(int i, BroadcastFutureTickDa
         payload,
         executionTimeAccumulator.getPrevPhaseAccumulatedTimes(),
         (system.tick / NUMBER_OF_COMPUTORS) - 1,
-        EXECUTION_TIME_MULTIPLIER_NUMERATOR,
-        EXECUTION_TIME_MULTIPLIER_DENOMINATOR
+        executionTimeMultiplierNumerator,
+        executionTimeMultiplierDenominator
     );
     executionTimeAccumulator.releaseLock();
 
