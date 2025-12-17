@@ -89,11 +89,7 @@
 #define CONTRACT_INDEX CCF_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE CCF
 #define CONTRACT_STATE2_TYPE CCF2
-#ifdef OLD_CCF
-#include "contracts/ComputorControlledFund_old.h"
-#else
 #include "contracts/ComputorControlledFund.h"
-#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
