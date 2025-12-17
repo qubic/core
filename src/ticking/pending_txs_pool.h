@@ -18,14 +18,15 @@
 #include "public_settings.h"
 #include "kangaroo_twelve.h"
 #include "vote_counter.h"
+#include "network_messages/execution_fees.h"
 
 // Mempool that saves pending transactions (txs) of all entities.
 // This is a kind of singleton class with only static members (so all instances refer to the same data).
 class PendingTxsPool
 {
 protected:
-    // The PendingTxsPool will always leave space for the two protocol-level txs (tick votes and custom mining).
-    static constexpr unsigned int maxNumTxsPerTick = NUMBER_OF_TRANSACTIONS_PER_TICK - 2;
+    // The PendingTxsPool will always leave space for the three protocol-level txs (tick votes, custom mining, contract execution fees).
+    static constexpr unsigned int maxNumTxsPerTick = NUMBER_OF_TRANSACTIONS_PER_TICK - 3;
     static constexpr unsigned long long maxNumTxsTotal = PENDING_TXS_POOL_NUM_TICKS * maxNumTxsPerTick;
 
     // Sizes of different buffers in bytes
@@ -82,7 +83,7 @@ protected:
             if (balance > 0)
             {
                 if (isZero(tx->destinationPublicKey) && tx->amount == 0LL
-                    && (tx->inputType == VOTE_COUNTER_INPUT_TYPE || tx->inputType == CustomMiningSolutionTransaction::transactionType()))
+                    && (tx->inputType == VOTE_COUNTER_INPUT_TYPE || tx->inputType == CustomMiningSolutionTransaction::transactionType() || tx->inputType == ExecutionFeeReportTransactionPrefix::transactionType()))
                 {
                     // protocol-level tx always have max priority
                     return INT64_MAX;
@@ -186,9 +187,9 @@ public:
     // Return number of transactions scheduled for the specified tick.
     static unsigned int getNumberOfPendingTickTxs(unsigned int tick)
     {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin pendingTxsPool.getNumberOfPendingTickTxs()");
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        addDebugMessage(L"Begin pendingTxsPool.getNumberOfPendingTickTxs()");
+//#endif
         unsigned int res = 0;
         ACQUIRE(lock);
         if (tickInStorage(tick))
@@ -197,23 +198,23 @@ public:
         }
         RELEASE(lock);
 
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        CHAR16 dbgMsgBuf[200];
-        setText(dbgMsgBuf, L"End pendingTxsPool.getNumberOfPendingTickTxs() for tick=");
-        appendNumber(dbgMsgBuf, tick, FALSE);
-        appendText(dbgMsgBuf, L" -> res=");
-        appendNumber(dbgMsgBuf, res, FALSE);
-        addDebugMessage(dbgMsgBuf);
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        CHAR16 dbgMsgBuf[200];
+//        setText(dbgMsgBuf, L"End pendingTxsPool.getNumberOfPendingTickTxs() for tick=");
+//        appendNumber(dbgMsgBuf, tick, FALSE);
+//        appendText(dbgMsgBuf, L" -> res=");
+//        appendNumber(dbgMsgBuf, res, FALSE);
+//        addDebugMessage(dbgMsgBuf);
+//#endif
         return res;
     }
 
     // Return number of transactions scheduled later than the specified tick.
     static unsigned int getTotalNumberOfPendingTxs(unsigned int tick)
     {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin pendingTxsPool.getTotalNumberOfPendingTxs()");
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        addDebugMessage(L"Begin pendingTxsPool.getTotalNumberOfPendingTxs()");
+//#endif
         unsigned int res = 0;
         ACQUIRE(lock);
         if (tickInStorage(tick + 1))
@@ -235,23 +236,23 @@ public:
         }
         RELEASE(lock);
 
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        CHAR16 dbgMsgBuf[200];
-        setText(dbgMsgBuf, L"End pendingTxsPool.getTotalNumberOfPendingTxs() for tick=");
-        appendNumber(dbgMsgBuf, tick, FALSE);
-        appendText(dbgMsgBuf, L" -> res=");
-        appendNumber(dbgMsgBuf, res, FALSE);
-        addDebugMessage(dbgMsgBuf);
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        CHAR16 dbgMsgBuf[200];
+//        setText(dbgMsgBuf, L"End pendingTxsPool.getTotalNumberOfPendingTxs() for tick=");
+//        appendNumber(dbgMsgBuf, tick, FALSE);
+//        appendText(dbgMsgBuf, L" -> res=");
+//        appendNumber(dbgMsgBuf, res, FALSE);
+//        addDebugMessage(dbgMsgBuf);
+//#endif
         return res;
     }
 
     // Check validity of transaction and add to the pool. Return boolean indicating whether transaction was added.
     static bool add(const Transaction* tx)
     {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin pendingTxsPool.add()");
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        addDebugMessage(L"Begin pendingTxsPool.add()");
+//#endif
         bool txAdded = false;
         ACQUIRE(lock);
         if (tx->checkValidity() && tickInStorage(tx->tick))
@@ -352,12 +353,12 @@ public:
     end_add_function:
         RELEASE(lock);
 
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        if (txAdded)
-            addDebugMessage(L"End pendingTxsPool.add(), txAdded true");
-        else
-            addDebugMessage(L"End pendingTxsPool.add(), txAdded false");
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        if (txAdded)
+//            addDebugMessage(L"End pendingTxsPool.add(), txAdded true");
+//        else
+//            addDebugMessage(L"End pendingTxsPool.add(), txAdded false");
+//#endif
         return txAdded;
     }
 

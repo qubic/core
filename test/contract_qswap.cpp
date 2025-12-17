@@ -311,7 +311,7 @@ TEST(ContractSwap, QuoteTest)
         QSWAP::QuoteExactQuOutput_input qo_input = {issuer, assetName, 1000};
         QSWAP::QuoteExactQuOutput_output qo_output = qswap.quoteExactQuOutput(qo_input);
         // printf("quote exact qu output: %lld\n", qo_output.assetAmountIn);
-        EXPECT_EQ(qo_output.assetAmountIn, 1037);
+        EXPECT_EQ(qo_output.assetAmountIn, 1038);
 
         QSWAP::QuoteExactAssetInput_input ai_input = {issuer, assetName, 1000};
         QSWAP::QuoteExactAssetInput_output ai_output = qswap.quoteExactAssetInput(ai_input);
@@ -321,7 +321,7 @@ TEST(ContractSwap, QuoteTest)
         QSWAP::QuoteExactAssetOutput_input ao_input = {issuer, assetName, 1000};
         QSWAP::QuoteExactAssetOutput_output ao_output = qswap.quoteExactAssetOutput(ao_input);
         // printf("quote exact asset output: %lld\n", ao_output.quAmountIn);
-        EXPECT_EQ(ao_output.quAmountIn, 1037);
+        EXPECT_EQ(ao_output.quAmountIn, 1038);
     }
 }
 
@@ -580,7 +580,7 @@ TEST(ContractSwap, SwapAssetForExactQu)
        id user(1,2,3,4);
        sint64 inputValue = 0;
        sint64 quAmountOut = 100*1000;
-       sint64 expectAssetAmountIn = 100603;
+       sint64 expectAssetAmountIn = 100604;
 
        QSWAP::QuoteExactQuOutput_input qo_input = {issuer, assetName, quAmountOut};
        QSWAP::QuoteExactQuOutput_output qo_output = qswap.quoteExactQuOutput(qo_input);

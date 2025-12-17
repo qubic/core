@@ -124,6 +124,8 @@
     <ClCompile Include="contract_qswap.cpp" />
     <ClCompile Include="fourq.cpp" />
     <ClCompile Include="pending_txs_pool.cpp" />
+    <ClCompile Include="quorum_value.cpp" />
+    <ClCompile Include="sorting.cpp" />
     <ClCompile Include="uint128.cpp" />
     <ClCompile Include="assets.cpp" />
     <ClCompile Include="contract_core.cpp" />
@@ -138,8 +140,10 @@
     <ClCompile Include="contract_qraffle.cpp" />
     <ClCompile Include="contract_gqmprop.cpp" />
     <ClCompile Include="contract_rl.cpp" />
+    <ClCompile Include="contract_ccf.cpp" />
     <ClCompile Include="contract_qip.cpp" />
     <ClCompile Include="custom_mining.cpp" />
+    <ClCompile Include="execution_fees.cpp" />
     <ClCompile Include="file_io.cpp" />
     <ClCompile Include="qpi_collection.cpp" />
     <ClCompile Include="qpi_date_time.cpp" />
