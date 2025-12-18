@@ -11,7 +11,6 @@
 
 #include "mining/mining.h"
 
-#include "contracts/qpi.h"
 #include "contracts/math_lib.h"
 #include "contract_core/qpi_collection_impl.h"
 
@@ -94,8 +93,8 @@ protected:
                     // latestTransferTick = latestOutgoingTransferTick   if latestOutgoingTransferTick > 0,
                     // latestTransferTick = latestIncomingTransferTick   otherwise (new entity).
                     const EntityRecord& entity = spectrum[sourceIndex];
-                    const auto latestTransferTick = (entity.latestOutgoingTransferTick) ? entity.latestOutgoingTransferTick : entity.latestIncomingTransferTick;
-                    priority = smul(balance, static_cast<sint64>(tx->tick - latestTransferTick + 1));
+                    const unsigned int latestTransferTick = (entity.latestOutgoingTransferTick) ? entity.latestOutgoingTransferTick : entity.latestIncomingTransferTick;
+                    priority = math_lib::smul(balance, static_cast<sint64>(tx->tick - latestTransferTick + 1));
                     // decrease by 1 to make sure no normal tx reaches max priority
                     priority--;
                 }
