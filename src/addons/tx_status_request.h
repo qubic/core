@@ -209,7 +209,12 @@ static void processRequestConfirmedTx(long long processorNumber, Peer *peer, Req
 
     // only send a response if the node is in higher tick than the requested tx
     if (request->tick >= system.tick)
+    {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        addDebugMessage(L"Request tx status failed because requested tick is >= system.tick");
+#endif
         return;
+    }
 
     int tickIndex;
     if (request->tick >= txStatusData.confirmedTxCurrentEpochBeginTick && request->tick < txStatusData.confirmedTxCurrentEpochBeginTick + MAX_NUMBER_OF_TICKS_PER_EPOCH)
@@ -225,6 +230,9 @@ static void processRequestConfirmedTx(long long processorNumber, Peer *peer, Req
     else
     {
         // tick not available
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        addDebugMessage(L"Request tx status failed because requested tick is not available in previous or current epoch storage");
+#endif
         return;
     }
 
@@ -253,6 +261,14 @@ static void processRequestConfirmedTx(long long processorNumber, Peer *peer, Req
     }
 
     ASSERT(tickTxStatus.size() <= sizeof(tickTxStatus));
+
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+    CHAR16 dbgMsgBuf[100];
+    setText(dbgMsgBuf, L"Sending requested tx status for tick ");
+    appendNumber(dbgMsgBuf, request->tick, FALSE);
+    addDebugMessage(dbgMsgBuf);
+#endif
+
     enqueueResponse(peer, tickTxStatus.size(), RespondTxStatus::type(), header->dejavu(), &tickTxStatus);
 }
 
