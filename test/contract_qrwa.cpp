@@ -98,6 +98,8 @@ public:
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QUTIL);
         callSystemProcedure(QUTIL_CONTRACT_INDEX, INITIALIZE);
+        INIT_CONTRACT(QSWAP);
+        callSystemProcedure(QSWAP_CONTRACT_INDEX, INITIALIZE);
 
         // Custom Initialization for qRWA State
         // (Overrides defaults from INITIALIZE() for testing purposes)
@@ -1678,4 +1680,71 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     EXPECT_EQ(getBalance(S5), prevBalances[S5] + divS5);
     EXPECT_EQ(getBalance(Q1), prevBalances[Q1] + divQQ1);
     EXPECT_EQ(getBalance(Q2), prevBalances[Q2] + divQQ2);
+}
+
+TEST(ContractQRWA, Payout_MultiContractManagement)
+{
+    ContractTestingQRWA qrwa;
+
+    const sint64 totalShares = 1000000;
+    const sint64 qxManagedShares = 700000;
+    const sint64 qswapManagedShares = 300000; // 30% moved to QSWAP management
+
+    // Issue QMINE and give to HOLDER_A
+    // Initially, all 1M shares are managed by QX (default for transfers via QX)
+    increaseEnergy(QMINE_ISSUER, 1000000000);
+    increaseEnergy(HOLDER_A, 1000000); // For fees
+
+    qrwa.issueAsset(QMINE_ISSUER, QMINE_ASSET.assetName, totalShares);
+    qrwa.transferAsset(QMINE_ISSUER, HOLDER_A, QMINE_ASSET, totalShares);
+
+    // Verify initial state managed by QX
+    EXPECT_EQ(numberOfPossessedShares(QMINE_ASSET.assetName, QMINE_ASSET.issuer, HOLDER_A, HOLDER_A, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), totalShares);
+    EXPECT_EQ(numberOfPossessedShares(QMINE_ASSET.assetName, QMINE_ASSET.issuer, HOLDER_A, HOLDER_A, QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX), 0);
+
+    // Transfer management rights of 300k shares to QSWAP
+    // The user (HOLDER_A) remains the Possessor.
+    qrwa.transferManagementRights(HOLDER_A, QMINE_ASSET, qswapManagedShares, QSWAP_CONTRACT_INDEX);
+
+    // Verify the split in management rights
+    // 700k should remain under QX
+    EXPECT_EQ(numberOfPossessedShares(QMINE_ASSET.assetName, QMINE_ASSET.issuer, HOLDER_A, HOLDER_A, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), qxManagedShares);
+    // 300k should now be under QSWAP
+    EXPECT_EQ(numberOfPossessedShares(QMINE_ASSET.assetName, QMINE_ASSET.issuer, HOLDER_A, HOLDER_A, QSWAP_CONTRACT_INDEX, QSWAP_CONTRACT_INDEX), qswapManagedShares);
+
+    qrwa.beginEpoch();
+
+    // Generate Revenue
+    // pool A revenue: 1,000,000 QUs
+    // fees (50%): 500,000
+    // net revenue: 500,000
+    // QMINE pool (90%): 450,000
+    qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), 1000000);
+
+    qrwa.endEpoch();
+
+    // trigger Payout
+    etalonTick.year = 25; etalonTick.month = 11; etalonTick.day = 7; // Friday
+    etalonTick.hour = 12; etalonTick.minute = 1; etalonTick.second = 0;
+    qrwa.resetPayoutTime();
+
+    // snapshot balances for check
+    sint64 balanceBefore = getBalance(HOLDER_A);
+
+    qrwa.endTick();
+
+    // Calculate Expected Payout
+    // Payout = (UserTotalShares * PoolAmount) / TotalSupply
+    // UserTotalShares = 1,000,000 (regardless of manager)
+    // PoolAmount = 450,000
+    // TotalSupply = 1,000,000
+    // Expected = 450,000
+    sint64 expectedPayout = (totalShares * 450000) / totalShares;
+
+    sint64 balanceAfter = getBalance(HOLDER_A);
+
+    // If qRWA only counted QX shares, the payout would be (700k/1M * 450k) = 315,000.
+    // If qRWA counts ALL shares, the payout is 450,000.
+    EXPECT_EQ(balanceAfter - balanceBefore, expectedPayout);
+    EXPECT_EQ(balanceAfter - balanceBefore, 450000);
 }

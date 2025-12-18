@@ -1288,6 +1288,8 @@ public:
         AssetPossessionIterator iter;
         uint64 balance;
         qRWALogger logger;
+        id holder;
+        uint64 existingBalance;
     };
     BEGIN_EPOCH_WITH_LOCALS()
     {
@@ -1311,18 +1313,27 @@ public:
                     continue;
                 }
                 locals.balance = locals.iter.numberOfPossessedShares();
+                locals.holder = locals.iter.possessor();
+
                 if (locals.balance > 0)
                 {
-                    if (state.mBeginEpochBalances.set(locals.iter.possessor(), locals.balance) != NULL_INDEX)
+                    // Check if holder already exists in the map (e.g. from a different manager)
+                    // If so, add to existing balance.
+                    locals.existingBalance = 0;
+                    state.mBeginEpochBalances.get(locals.holder, locals.existingBalance);
+
+                    locals.balance = sadd(locals.existingBalance, locals.balance);
+
+                    if (state.mBeginEpochBalances.set(locals.holder, locals.balance) != NULL_INDEX)
                     {
-                        state.mTotalQmineBeginEpoch = sadd(state.mTotalQmineBeginEpoch, locals.balance);
+                        state.mTotalQmineBeginEpoch = sadd(state.mTotalQmineBeginEpoch, (uint64)locals.iter.numberOfPossessedShares());
                     }
                     else
                     {
                         // Log error - Max holders reached for snapshot
                         locals.logger.contractId = CONTRACT_INDEX;
                         locals.logger.logType = QRWA_LOG_TYPE_ERROR;
-                        locals.logger.primaryId = locals.iter.possessor();
+                        locals.logger.primaryId = locals.holder;
                         locals.logger.valueA = 11; // Error code: Begin Epoch Snapshot full
                         locals.logger.valueB = state.mBeginEpochBalances.population();
                         LOG_INFO(locals.logger);
@@ -1387,6 +1398,9 @@ public:
         qRWAAsset wrapper;
 
         qRWAGovProposal govPoll;
+
+        id holder;
+        uint64 existingBalance;
     };
     END_EPOCH_WITH_LOCALS()
     {
@@ -1403,14 +1417,22 @@ public:
                     continue;
                 }
                 locals.balance = locals.iter.numberOfPossessedShares();
+                locals.holder = locals.iter.possessor();
+
                 if (locals.balance > 0)
                 {
-                    if (state.mEndEpochBalances.set(locals.iter.possessor(), locals.balance) == NULL_INDEX)
+                    // Check if holder already exists (multiple SC management)
+                    locals.existingBalance = 0;
+                    state.mEndEpochBalances.get(locals.holder, locals.existingBalance);
+
+                    locals.balance = sadd(locals.existingBalance, locals.balance);
+
+                    if (state.mEndEpochBalances.set(locals.holder, locals.balance) == NULL_INDEX)
                     {
                         // Log error - Max holders reached for snapshot
                         locals.logger.contractId = CONTRACT_INDEX;
                         locals.logger.logType = QRWA_LOG_TYPE_ERROR;
-                        locals.logger.primaryId = locals.iter.possessor();
+                        locals.logger.primaryId = locals.holder;
                         locals.logger.valueA = 12; // Error code: End Epoch Snapshot full
                         locals.logger.valueB = state.mEndEpochBalances.population();
                         LOG_INFO(locals.logger);
