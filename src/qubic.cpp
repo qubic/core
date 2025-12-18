@@ -1696,10 +1696,20 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 
             case SPECIAL_COMMAND_SET_EXECUTION_FEE_MULTIPLIER:
             {
-                const auto* _request = header->getPayload<SpecialCommandSetExecutionFeeMultiplierRequestAndResponse>();
+                const auto* _request = header->getPayload<SpecialCommandExecutionFeeMultiplierRequestAndResponse>();
                 executionTimeMultiplierNumerator = _request->multiplierNumerator;
                 executionTimeMultiplierDenominator = _request->multiplierDenominator;
-                enqueueResponse(peer, sizeof(SpecialCommandSetExecutionFeeMultiplierRequestAndResponse), SpecialCommand::type(), header->dejavu(), _request);
+                enqueueResponse(peer, sizeof(SpecialCommandExecutionFeeMultiplierRequestAndResponse), SpecialCommand::type(), header->dejavu(), _request);
+            }
+            break;
+
+            case SPECIAL_COMMAND_GET_EXECUTION_FEE_MULTIPLIER:
+            {
+                SpecialCommandExecutionFeeMultiplierRequestAndResponse response;
+                response.everIncreasingNonceAndCommandType = request->everIncreasingNonceAndCommandType;
+                response.multiplierNumerator = executionTimeMultiplierNumerator;
+                response.multiplierDenominator = executionTimeMultiplierDenominator;
+                enqueueResponse(peer, sizeof(SpecialCommandExecutionFeeMultiplierRequestAndResponse), SpecialCommand::type(), header->dejavu(), &response);
             }
             break;
 
