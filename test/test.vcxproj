@@ -41,7 +41,7 @@
       <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>../src;$(MSBuildProjectDirectory);$(MSBuildProjectDirectory)\..\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
       <OpenMPSupport>true</OpenMPSupport>
       <StringPooling>true</StringPooling>
     </ClCompile>
@@ -114,6 +114,9 @@
   <ItemGroup>
     <ClInclude Include="contract_testing.h" />
     <ClInclude Include="logging_test.h" />
+    <ClInclude Include="score_addition_reference.h" />
+    <ClInclude Include="score_common_reference.h" />
+    <ClInclude Include="score_hyperidentity_reference.h" />
     <ClInclude Include="score_params.h" />
     <ClInclude Include="score_reference.h" />
     <ClInclude Include="test_util.h" />

@@ -29,50 +29,98 @@ std::vector<m256i> nonces;
 std::vector<std::vector<unsigned int>> scoreResults;
 std::vector<std::vector<unsigned long long>> scoreProcessingTimes;
 unsigned int processedSamplesCount = 0;
+int gSelectedAlgorithm = 0;
+
+template<typename P>
+void writeParamsHeader(std::ostream& os, const std::string& sep = "-")
+{
+    // Because currently 2 params set shared the same things, incase of new algo have different params
+    // need to make a separate check
+    if constexpr (P::algoType == AlgoType::HyperIdentity)
+    {
+        os << P::numberOfInputNeurons << sep
+            << P::numberOfOutputNeurons << sep
+            << P::numberOfTicks << sep
+            << P::numberOfNeighbors << sep
+            << P::populationThreshold << sep
+            << P::numberOfMutations << sep
+            << P::solutionThreshold;
+    }
+    else if constexpr (P::algoType == AlgoType::Addition)
+    {
+        os << P::numberOfInputNeurons << sep
+            << P::numberOfOutputNeurons << sep
+            << P::numberOfTicks << sep
+            << P::numberOfNeighbors << sep
+            << P::populationThreshold << sep
+            << P::numberOfMutations << sep
+            << P::solutionThreshold;
+    }
+    else
+    {
+        std::cerr << "UNKNOWN ALGO !" << std::endl;
+    }
+}
+
+
+
+template<std::size_t... Is>
+void writeConfigs(std::ostream& oFile, std::index_sequence<Is...>)
+{
+    constexpr std::size_t N = sizeof...(Is);
+
+    switch (gSelectedAlgorithm)
+    {
+    case 0:
+        // HyperIdentity
+        ((writeParamsHeader<typename std::tuple_element_t<Is, ConfigList>::HyperIdentity>(oFile),
+            (Is < N - 1 ? (oFile << ", ", 0) : 0)), ...);
+        break;
+    case 1:
+        // Addition
+        ((writeParamsHeader<typename std::tuple_element_t<Is, ConfigList>::Addition>(oFile),
+            (Is < N - 1 ? (oFile << ", ", 0) : 0)), ...);
+        break;
+    default:
+        break;
+    }
+}
 
 // Recursive template to process each element in scoreSettings
 template <unsigned long long i>
 static void processElement(unsigned char* miningSeed, unsigned char* publicKey, unsigned char* nonce, int threadId, bool writeFile)
 {
-    score_reference::ScoreReferenceImplementation< 
-        kSettings[i][score_params::NUMBER_OF_INPUT_NEURONS],
-        kSettings[i][score_params::NUMBER_OF_OUTPUT_NEURONS],
-        kSettings[i][score_params::NUMBER_OF_TICKS],
-        kSettings[i][score_params::NUMBER_OF_NEIGHBORS],
-        kSettings[i][score_params::POPULATION_THRESHOLD],
-        kSettings[i][score_params::NUMBER_OF_MUTATIONS],
-        kSettings[i][score_params::SOLUTION_THRESHOLD], 
-        1> score;
+    using CurrentConfig = std::tuple_element_t<i, ConfigList>;
+    score_reference::ScoreReferenceImplementation <
+        typename CurrentConfig::HyperIdentity,
+        typename CurrentConfig::Addition
+        > score;
+
     score.initMemory();
     score.initMiningData(miningSeed);
 
     auto t0 = std::chrono::high_resolution_clock::now();
 
-    unsigned int score_value = score(0, publicKey, nonce);
+    unsigned int score_value = 0;
+    
+    switch (gSelectedAlgorithm)
+    {
+        case 0:
+            score_value = score.computeHyperIdentityScore(publicKey, nonce);
+            break;
+        case 1:
+            score_value = score.computeAdditionScore(publicKey, nonce);
+            break;
+        default:
+            score_value = 0;
+            break;
+    }
 
     auto t1 = std::chrono::high_resolution_clock::now();
     auto d = t1 - t0;
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(d);
     scoreResults[threadId][i] = score_value;
     scoreProcessingTimes[threadId][i] = elapsed.count();
-
-    // Write the result
-    if (writeFile)
-    {
-        std::string fileName = "score_" + std::to_string(threadId) + ".txt";
-        std::ofstream output_file(fileName, std::ios::app);
-        if (output_file.is_open())
-        {
-            output_file << kSettings[i][score_params::NUMBER_OF_INPUT_NEURONS] 
-                << "-" << kSettings[i][score_params::NUMBER_OF_OUTPUT_NEURONS]
-                << "-" << kSettings[i][score_params::NUMBER_OF_TICKS]
-                << "-" << kSettings[i][score_params::NUMBER_OF_NEIGHBORS]
-                << "-" << kSettings[i][score_params::POPULATION_THRESHOLD]
-                << "-" << kSettings[i][score_params::NUMBER_OF_MUTATIONS]
-                << ", " << score_value << std::endl;
-            output_file.close();
-        }
-    }
 }
 
 // Main processing function
@@ -216,28 +264,15 @@ void generateScore(
     }
 
     // Number of params settings
-    constexpr unsigned long long numberOfGeneratedSetting = sizeof(kSettings) / sizeof(kSettings[0]);
-    for (unsigned long long i = 0; i < numberOfGeneratedSetting; i++)
-    {
-        for (int j = 0; j < MAX_PARAM_TYPE; j++)
-        {
-            scoreFile << kSettings[i][j];
-            if (j < MAX_PARAM_TYPE - 1)
-            {
-                scoreFile << "-";
-            }
-        }
-        if (i < numberOfGeneratedSetting - 1)
-        {
-            scoreFile << ", ";
-        }
-    }
+    constexpr unsigned long long numberOfGeneratedSetting = CONFIG_COUNT;
+
+    // Write the header config
+    writeConfigs(scoreFile, std::make_index_sequence<std::tuple_size_v<ConfigList>>{});
     scoreFile << std::endl;
     if (scoreFile.is_open())
     {
         scoreFile.close();
     }
-
 
     // Prepare memory for generated scores
     unsigned long long totalSamples = nonces.size();
@@ -290,26 +325,6 @@ void generateScore(
         scoreFile << std::endl;
     }
     scoreFile.close();
-
-    // Print out the processing time in case of 
-    for (int j = 0; j < numberOfGeneratedSetting; j++)
-    {
-        unsigned long long processingTime = 0;
-        for (int i = 0; i < totalSamples; i++)
-        {
-            processingTime += scoreProcessingTimes[i][j];
-        }
-        processingTime = processingTime / totalSamples;
-        std::cout << "Setting " << j 
-            << "NUMBER_OF_INPUT_NEURONS " << kSettings[j][score_params::NUMBER_OF_INPUT_NEURONS] << ", "
-            << "NUMBER_OF_OUTPUT_NEURONS " << kSettings[j][score_params::NUMBER_OF_OUTPUT_NEURONS] << ", "
-            << "NUMBER_OF_NEIGHBORS " << kSettings[j][score_params::NUMBER_OF_NEIGHBORS] << ", "
-            << "NUMBER_OF_TICKS " << kSettings[j][score_params::NUMBER_OF_TICKS] << ", "
-            << "POPULATION_THRESHOLD " << kSettings[j][score_params::POPULATION_THRESHOLD] << ", "
-            << "NUMBER_OF_MUTATIONS " << kSettings[j][score_params::NUMBER_OF_MUTATIONS] << ", "
-            << ": time " << processingTime << " ms"
-            << std::endl;
-    }
 }
 
 void print_random_test_case()
@@ -388,6 +403,10 @@ int main(int argc, char* argv[])
         else if (arg == "--scorefile" || arg == "-o")
         {
             scoreFile = std::string(argv[++i]);
+        }
+        else if (arg == "--algo" || arg == "-a")
+        {
+            gSelectedAlgorithm = std::atoi(argv[++i]);
         }
         else 
         {
