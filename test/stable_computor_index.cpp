@@ -20,7 +20,7 @@ protected:
     m256i makeId(int n)
     {
         m256i id = m256i::zero();
-        id.m256i_u64[0] = n;
+        id.m256i_u64[1] = n;
         return id;
     }
 };
