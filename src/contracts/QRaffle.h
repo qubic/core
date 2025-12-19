@@ -1,12 +1,12 @@
 using namespace QPI;
 
 constexpr uint64 QRAFFLE_REGISTER_AMOUNT = 1000000000ull;
-constexpr uint64 QRAFFLE_QXMR_REGISTER_AMOUNT = 100000000ull;
+constexpr uint64 QRAFFLE_QXMR_REGISTER_AMOUNT = 250000000ull;
 constexpr uint64 QRAFFLE_MAX_QRE_AMOUNT = 1000000000ull;
 constexpr uint64 QRAFFLE_ASSET_NAME = 19505638103142993;
 constexpr uint64 QRAFFLE_QXMR_ASSET_NAME = 1380800593; // QXMR token asset name
 constexpr uint32 QRAFFLE_LOGOUT_FEE = 50000000;
-constexpr uint32 QRAFFLE_QXMR_LOGOUT_FEE = 5000000; // QXMR logout fee
+constexpr uint32 QRAFFLE_QXMR_LOGOUT_FEE = 12500000; // QXMR logout fee
 constexpr uint32 QRAFFLE_TRANSFER_SHARE_FEE = 100;
 constexpr uint32 QRAFFLE_BURN_FEE = 10; // percent
 constexpr uint32 QRAFFLE_REGISTER_FEE = 5; // percent
