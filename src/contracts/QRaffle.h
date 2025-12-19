@@ -515,6 +515,10 @@ protected:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(logoutInSystem)
 	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
 		if (qpi.invocator() == state.initialRegister1 || qpi.invocator() == state.initialRegister2 || qpi.invocator() == state.initialRegister3 || qpi.invocator() == state.initialRegister4 || qpi.invocator() == state.initialRegister5)
 		{
 			output.returnCode = QRAFFLE_INITIAL_REGISTER_CANNOT_LOGOUT;
@@ -579,6 +583,10 @@ protected:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(submitEntryAmount)
 	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
 		if (input.amount < QRAFFLE_MIN_QRAFFLE_AMOUNT || input.amount > QRAFFLE_MAX_QRAFFLE_AMOUNT)
 		{
 			output.returnCode = QRAFFLE_INVALID_ENTRY_AMOUNT;
@@ -611,6 +619,10 @@ protected:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(submitProposal)
 	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
 		if (state.registers.contains(qpi.invocator()) == 0)
 		{
 			output.returnCode = QRAFFLE_UNREGISTERED;
@@ -646,6 +658,10 @@ protected:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(voteInProposal)
 	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
 		if (state.registers.contains(qpi.invocator()) == 0)
 		{
 			output.returnCode = QRAFFLE_UNREGISTERED;
@@ -728,6 +744,10 @@ protected:
 	{
 		if (state.numberOfQuRaffleMembers >= QRAFFLE_MAX_MEMBER)
 		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 			output.returnCode = QRAFFLE_MAX_MEMBER_REACHED;
 			locals.log = QRAFFLELogger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_maxMemberReachedForQuRaffle, 0 };
 			LOG_INFO(locals.log);
@@ -787,6 +807,10 @@ protected:
 		}
 		if (input.indexOfTokenRaffle >= state.numberOfActiveTokenRaffle)
 		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 			output.returnCode = QRAFFLE_INVALID_TOKEN_RAFFLE;
 			locals.log = QRAFFLELogger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_invalidTokenRaffle, 0 };
 			LOG_INFO(locals.log);
@@ -823,6 +847,10 @@ protected:
 	{
 		if (qpi.invocationReward() < QRAFFLE_TRANSFER_SHARE_FEE)
 		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 			locals.log = QRAFFLELogger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_insufficientQubic, 0 };
 			LOG_INFO(locals.log);
 			return ;
