@@ -446,6 +446,10 @@ protected:
 		}
 		if (state.numberOfRegisters >= QRAFFLE_MAX_MEMBER)
 		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 			output.returnCode = QRAFFLE_MAX_MEMBER_REACHED;
 			locals.log = QRAFFLELogger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_maxMemberReached, 0 };
 			LOG_INFO(locals.log);
@@ -454,13 +458,14 @@ protected:
 
 		if (input.useQXMR)
 		{
+			// refund the invocation reward if the user uses QXMR for registration
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 			// Use QXMR tokens for registration
 			if (qpi.numberOfPossessedShares(QRAFFLE_QXMR_ASSET_NAME, state.QXMRIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < QRAFFLE_QXMR_REGISTER_AMOUNT)
 			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
 				output.returnCode = QRAFFLE_INSUFFICIENT_QXMR;
 				locals.log = QRAFFLELogger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_insufficientQXMR, 0 };
 				LOG_INFO(locals.log);
@@ -470,10 +475,6 @@ protected:
 			// Transfer QXMR tokens to the contract
 			if (qpi.transferShareOwnershipAndPossession(QRAFFLE_QXMR_ASSET_NAME, state.QXMRIssuer, qpi.invocator(), qpi.invocator(), QRAFFLE_QXMR_REGISTER_AMOUNT, SELF) < 0)
 			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
 				output.returnCode = QRAFFLE_INSUFFICIENT_QXMR;
 				locals.log = QRAFFLELogger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_insufficientQXMR, 0 };
 				LOG_INFO(locals.log);
