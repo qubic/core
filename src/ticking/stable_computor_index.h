@@ -1,6 +1,7 @@
 #pragma once
 
 #include "platform/m256.h"
+#include "platform/memory.h"
 #include "public_settings.h"
 
 // Minimum buffer size: NUMBER_OF_COMPUTORS * sizeof(m256i) + 2 * NUMBER_OF_COMPUTORS bytes (~23KB)
@@ -21,12 +22,9 @@ static bool calculateStableComputorIndex(
     bool* isIndexTaken = (bool*)(tempComputorList + NUMBER_OF_COMPUTORS);
     bool* isFutureComputorUsed = isIndexTaken + NUMBER_OF_COMPUTORS;
 
-    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-    {
-        tempComputorList[i] = m256i::zero();
-        isIndexTaken[i] = false;
-        isFutureComputorUsed[i] = false;
-    }
+    setMem(tempComputorList, NUMBER_OF_COMPUTORS * sizeof(m256i), 0);
+    setMem(isIndexTaken, NUMBER_OF_COMPUTORS, 0);
+    setMem(isFutureComputorUsed, NUMBER_OF_COMPUTORS, 0);
 
     // Step 1: Requalifying computors keep their current index
     for (unsigned int futureIdx = 0; futureIdx < NUMBER_OF_COMPUTORS; futureIdx++)
@@ -65,10 +63,7 @@ static bool calculateStableComputorIndex(
         }
     }
 
-    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-    {
-        futureComputors[i] = tempComputorList[i];
-    }
+    copyMem(futureComputors, tempComputorList, NUMBER_OF_COMPUTORS * sizeof(m256i));
 
     return true;
 }
