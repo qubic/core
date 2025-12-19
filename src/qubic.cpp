@@ -1694,6 +1694,25 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             }
             break;
 
+            case SPECIAL_COMMAND_SET_EXECUTION_FEE_MULTIPLIER:
+            {
+                const auto* _request = header->getPayload<SpecialCommandExecutionFeeMultiplierRequestAndResponse>();
+                executionTimeMultiplierNumerator = _request->multiplierNumerator;
+                executionTimeMultiplierDenominator = _request->multiplierDenominator;
+                enqueueResponse(peer, sizeof(SpecialCommandExecutionFeeMultiplierRequestAndResponse), SpecialCommand::type(), header->dejavu(), _request);
+            }
+            break;
+
+            case SPECIAL_COMMAND_GET_EXECUTION_FEE_MULTIPLIER:
+            {
+                SpecialCommandExecutionFeeMultiplierRequestAndResponse response;
+                response.everIncreasingNonceAndCommandType = request->everIncreasingNonceAndCommandType;
+                response.multiplierNumerator = executionTimeMultiplierNumerator;
+                response.multiplierDenominator = executionTimeMultiplierDenominator;
+                enqueueResponse(peer, sizeof(SpecialCommandExecutionFeeMultiplierRequestAndResponse), SpecialCommand::type(), header->dejavu(), &response);
+            }
+            break;
+
             }
         }
     }
@@ -3023,8 +3042,8 @@ static bool makeAndBroadcastExecutionFeeTransaction(int i, BroadcastFutureTickDa
         payload,
         executionTimeAccumulator.getPrevPhaseAccumulatedTimes(),
         (system.tick / NUMBER_OF_COMPUTORS) - 1,
-        EXECUTION_TIME_MULTIPLIER_NUMERATOR,
-        EXECUTION_TIME_MULTIPLIER_DENOMINATOR
+        executionTimeMultiplierNumerator,
+        executionTimeMultiplierDenominator
     );
     executionTimeAccumulator.releaseLock();
 
