@@ -128,7 +128,7 @@ public:
 		}
 
 		qpi.getEntity(SELF, locals.entity);
-		locals.checkAmount = max(locals.entity.incomingAmount - locals.entity.outgoingAmount, 0i64);
+		locals.checkAmount = RL::max(locals.entity.incomingAmount - locals.entity.outgoingAmount, 0i64);
 		if (locals.checkAmount == 0 || input.revenue > locals.checkAmount)
 		{
 			output.allocatedRevenue = 0;
@@ -169,7 +169,7 @@ public:
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAvailableReserve)
 	{
 		qpi.getEntity(SELF, locals.entity);
-		output.availableReserve = max(locals.entity.incomingAmount - locals.entity.outgoingAmount, 0i64);
+		output.availableReserve = RL::max(locals.entity.incomingAmount - locals.entity.outgoingAmount, 0i64);
 	}
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAvailableSC)
@@ -184,9 +184,6 @@ public:
 			locals.nextIndex = state.availableSmartContracts.nextElementIndex(locals.nextIndex);
 		}
 	}
-
-protected:
-	template<typename T> static constexpr const T& max(const T& a, const T& b) { return (a > b) ? a : b; }
 
 protected:
 	/**
