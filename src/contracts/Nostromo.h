@@ -692,14 +692,6 @@ protected:
 
 		locals.maxCap = state.fundaraisings.get(input.indexOfFundraising).requiredFunds + div(state.fundaraisings.get(input.indexOfFundraising).requiredFunds * state.fundaraisings.get(input.indexOfFundraising).threshold, 100ULL);
 		locals.minCap = state.fundaraisings.get(input.indexOfFundraising).requiredFunds - div(state.fundaraisings.get(input.indexOfFundraising).requiredFunds * state.fundaraisings.get(input.indexOfFundraising).threshold, 100ULL);
-		if (state.fundaraisings.get(input.indexOfFundraising).raisedFunds + qpi.invocationReward() > locals.maxCap)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
 		if (state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects) && locals.numberOfInvestedProjects >= NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST)
 		{
 			if (qpi.invocationReward() > 0)
@@ -762,6 +754,14 @@ protected:
 
 			if (locals.i < locals.numberOfInvestedProjects)
 			{
+				if (locals.tmpFundraising.raisedFunds + locals.maxInvestmentPerUser - locals.userInvestedAmount > locals.maxCap)
+				{
+					if (qpi.invocationReward() > 0)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					}
+					return ;
+				}
 				if (qpi.invocationReward() + locals.userInvestedAmount > locals.maxInvestmentPerUser)
 				{
 					qpi.transfer(qpi.invocator(), qpi.invocationReward() + locals.userInvestedAmount - locals.maxInvestmentPerUser);
@@ -779,6 +779,14 @@ protected:
 			}
 			else 
 			{
+				if (locals.tmpFundraising.raisedFunds + locals.maxInvestmentPerUser > locals.maxCap)
+				{
+					if (qpi.invocationReward() > 0)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					}
+					return ;
+				}
 				if (qpi.invocationReward() > (sint64)locals.maxInvestmentPerUser)
 				{
 					qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.maxInvestmentPerUser);
@@ -851,6 +859,14 @@ protected:
 
 			if (locals.i < locals.numberOfInvestedProjects)
 			{
+				if (locals.tmpFundraising.raisedFunds + locals.maxInvestmentPerUser - locals.userInvestedAmount > locals.maxCap)
+				{
+					if (qpi.invocationReward() > 0)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					}
+					return ;
+				}
 				if (qpi.invocationReward() + locals.userInvestedAmount > locals.maxInvestmentPerUser)
 				{
 					qpi.transfer(qpi.invocator(), qpi.invocationReward() + locals.userInvestedAmount - locals.maxInvestmentPerUser);
@@ -868,6 +884,14 @@ protected:
 			}
 			else 
 			{
+				if (locals.tmpFundraising.raisedFunds + locals.maxInvestmentPerUser > locals.maxCap)
+				{
+					if (qpi.invocationReward() > 0)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					}
+					return ;
+				}
 				if (qpi.invocationReward() > (sint64)locals.maxInvestmentPerUser)
 				{
 					qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.maxInvestmentPerUser);
@@ -894,6 +918,14 @@ protected:
 		}
 		else if (locals.curDate >= state.fundaraisings.get(input.indexOfFundraising).thirdPhaseStartDate && locals.curDate < state.fundaraisings.get(input.indexOfFundraising).thirdPhaseEndDate)
 		{
+			if (locals.tmpFundraising.raisedFunds + qpi.invocationReward() > locals.maxCap)
+			{
+				if (qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+				return ;
+			}
 			state.investors.get(qpi.invocator(), state.tmpInvestedList);
 			state.numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects);
 
