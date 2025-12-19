@@ -28,6 +28,8 @@ constexpr uint16 QTF_FUNCTION_GET_STATE = 7;
 constexpr uint16 QTF_FUNCTION_GET_FEES = 8;
 constexpr uint16 QTF_FUNCTION_ESTIMATE_PRIZE_PAYOUTS = 9;
 
+using QTFRandomValues = Array<uint8, QTF_RANDOM_VALUES_COUNT>;
+
 namespace
 {
 	static void issueRlSharesTo(std::vector<std::pair<m256i, unsigned int>>& initialOwnerShares)

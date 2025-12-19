@@ -67,8 +67,6 @@ const id QTF_RANDOM_LOTTERY_CONTRACT_ID = id(RL_CONTRACT_INDEX, 0, 0, 0);
 constexpr uint64 QTF_RANDOM_LOTTERY_ASSET_NAME = 19538; // RL
 const id QTF_RESERVE_POOL_CONTRACT_ID = id(QRP_CONTRACT_INDEX, 0, 0, 0);
 
-using QTFRandomValues = Array<uint8, QTF_RANDOM_VALUES_COUNT>;
-
 struct QTF2
 {
 };
@@ -100,13 +98,13 @@ public:
 	struct PlayerData
 	{
 		id player;
-		QTFRandomValues randomValues;
+		Array<uint8, QTF_RANDOM_VALUES_COUNT> randomValues;
 	};
 
 	struct WinnerData
 	{
 		Array<PlayerData, QTF_MAX_NUMBER_OF_PLAYERS> winners;
-		QTFRandomValues winnerValues;
+		Array<uint8, QTF_RANDOM_VALUES_COUNT> winnerValues;
 		uint64 winnerCounter;
 		uint16 epoch;
 	};
@@ -114,7 +112,13 @@ public:
 	struct NextEpochData
 	{
 	public:
-		void clear() { setMemory(*this, 0); }
+		void clear()
+		{
+			newTicketPrice = 0;
+			newTargetJackpot = 0;
+			newSchedule = 0;
+			newDrawHour = 0;
+		}
 
 		void apply(QTF& state) const
 		{
@@ -164,7 +168,7 @@ public:
 	// ValidateNumbers: Check if all numbers are valid [1..30] and unique
 	struct ValidateNumbers_input
 	{
-		QTFRandomValues numbers; // Numbers to validate
+		Array<uint8, QTF_RANDOM_VALUES_COUNT> numbers; // Numbers to validate
 	};
 	struct ValidateNumbers_output
 	{
@@ -180,7 +184,7 @@ public:
 	// Buy Ticket
 	struct BuyTicket_input
 	{
-		QTFRandomValues randomValues;
+		Array<uint8, QTF_RANDOM_VALUES_COUNT> randomValues;
 	};
 	struct BuyTicket_output
 	{
@@ -344,7 +348,7 @@ public:
 	};
 	struct GetRandomValues_output
 	{
-		QTFRandomValues values; // 4 unique random values [1..30]
+		Array<uint8, QTF_RANDOM_VALUES_COUNT> values; // 4 unique random values [1..30]
 	};
 	struct GetRandomValues_locals
 	{
@@ -480,8 +484,8 @@ public:
 
 	struct CountMatches_input
 	{
-		QTFRandomValues playerValues;
-		QTFRandomValues winningValues;
+		Array<uint8, QTF_RANDOM_VALUES_COUNT> playerValues;
+		Array<uint8, QTF_RANDOM_VALUES_COUNT> winningValues;
 	};
 
 	struct CountMatches_output
@@ -592,7 +596,7 @@ public:
 
 	struct SettleEpoch_locals
 	{
-		QTFRandomValues winningValues;
+		Array<uint8, QTF_RANDOM_VALUES_COUNT> winningValues;
 		ReturnAllTickets_input returnAllTicketsInput;
 		ReturnAllTickets_output returnAllTicketsOutput;
 		ReturnAllTickets_locals returnAllTicketsLocals;
@@ -1038,7 +1042,7 @@ public:
 			// If pool insufficient, we show floor; otherwise calculate actual per-winner amount
 			if (locals.k2PayoutPoolEffective >= locals.k2FloorTotal)
 			{
-				output.k2PayoutPerWinner = RL::min(output.perWinnerCap, locals.k2PayoutPoolEffective / input.k2WinnerCount);
+				output.k2PayoutPerWinner = RL::min(output.perWinnerCap, div<uint64>(locals.k2PayoutPoolEffective, input.k2WinnerCount));
 			}
 			else
 			{
@@ -1061,7 +1065,7 @@ public:
 			// Note: This is an estimate - actual implementation may top up from reserve
 			if (locals.k3PayoutPoolEffective >= locals.k3FloorTotal)
 			{
-				output.k3PayoutPerWinner = RL::min(output.perWinnerCap, locals.k3PayoutPoolEffective / input.k3WinnerCount);
+				output.k3PayoutPerWinner = RL::min(output.perWinnerCap, div<uint64>(locals.k3PayoutPoolEffective, input.k3WinnerCount));
 			}
 			else
 			{
@@ -1111,7 +1115,7 @@ protected:
 
 	static void deriveOne(const uint64& r, const uint64& idx, uint64& outValue) { mix64(r + 0x9e3779b97f4a7c15ULL * (idx + 1), outValue); }
 
-	static void addPlayerInfo(QTF& state, const id& playerId, const QTFRandomValues& randomValues)
+	static void addPlayerInfo(QTF& state, const id& playerId, const Array<uint8, QTF_RANDOM_VALUES_COUNT>& randomValues)
 	{
 		state.players.set(state.numberOfPlayers++, {playerId, randomValues});
 	}
@@ -1137,7 +1141,8 @@ protected:
 
 	static void clearWinerData(QTF& state) { setMemory(state.lastWinnerData, 0); }
 
-	static void fillWinnerData(QTF& state, const PlayerData& playerData, const QTFRandomValues& winnerValues, const uint16& epoch)
+	static void fillWinnerData(QTF& state, const PlayerData& playerData, const Array<uint8, QTF_RANDOM_VALUES_COUNT>& winnerValues,
+	                           const uint16& epoch)
 	{
 		if (!isZero(playerData.player))
 		{
@@ -1424,13 +1429,13 @@ private:
 				fillWinnerData(state, state.players.get(locals.i), locals.winningValues, locals.currentEpoch);
 			}
 			// k3 payout
-			else if (locals.matches == 3 && locals.countK3 > 0 && locals.k3PerWinner > 0)
+			if (locals.matches == 3 && locals.countK3 > 0 && locals.k3PerWinner > 0)
 			{
 				qpi.transfer(state.players.get(locals.i).player, locals.k3PerWinner);
 				fillWinnerData(state, state.players.get(locals.i), locals.winningValues, locals.currentEpoch);
 			}
 			// k4 payout (jackpot)
-			else if (locals.matches == 4 && locals.countK4 > 0)
+			if (locals.matches == 4 && locals.countK4 > 0)
 			{
 				if (locals.jackpotPerK4Winner > 0)
 				{
@@ -1704,7 +1709,7 @@ private:
 		for (locals.index = 0; locals.index < output.values.capacity(); ++locals.index)
 		{
 			deriveOne(input.seed, locals.index, locals.tempValue);
-			locals.candidate = static_cast<uint8>(mod(locals.tempValue, QTF_MAX_RANDOM_VALUE) + 1);
+			locals.candidate = static_cast<uint8>(sadd(mod(locals.tempValue, QTF_MAX_RANDOM_VALUE), 1ull));
 
 			locals.attempts = 0;
 			while (locals.used.contains(locals.candidate) && locals.attempts < QTF_MAX_RANDOM_GENERATION_ATTEMPTS)
@@ -1715,7 +1720,7 @@ private:
 				locals.tempValue ^= locals.tempValue << 25;
 				locals.tempValue ^= locals.tempValue >> 27;
 				locals.tempValue *= 2685821657736338717ULL;
-				locals.candidate = static_cast<uint8>(mod(locals.tempValue, QTF_MAX_RANDOM_VALUE) + 1);
+				locals.candidate = static_cast<uint8>(sadd(mod(locals.tempValue, QTF_MAX_RANDOM_VALUE), 1ull));
 			}
 
 			// Fallback: if still duplicate after max attempts, find first unused value
@@ -1871,7 +1876,7 @@ private:
 		}
 
 		// Calculate per-winner payout (capped at perWinnerCap)
-		output.perWinnerPayout = RL::min(input.perWinnerCap, locals.finalPool / input.winnerCount);
+		output.perWinnerPayout = RL::min(input.perWinnerCap, div<uint64>(locals.finalPool, input.winnerCount));
 		output.overflow = locals.finalPool - smul(output.perWinnerPayout, input.winnerCount);
 	}
 
