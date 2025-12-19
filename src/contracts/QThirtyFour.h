@@ -1465,7 +1465,7 @@ private:
 				locals.qrpGetReserveInput.revenue = locals.qrpRequested;
 				INVOKE_OTHER_CONTRACT_PROCEDURE(QRP, GetReserve, locals.qrpGetReserveInput, locals.qrpGetReserveOutput, 0ll);
 
-				if (locals.qrpGetReserveOutput.returnCode == QRPReturnCode::SUCCESS)
+				if (locals.qrpGetReserveOutput.returnCode == QRP::toReturnCode(QRP::EReturnCode::SUCCESS))
 				{
 					locals.qrpReceived = locals.qrpGetReserveOutput.allocatedRevenue;
 					state.jackpot = sadd(state.jackpot, locals.qrpReceived);
@@ -1862,7 +1862,7 @@ private:
 				locals.qrpGetReserveInput.revenue = locals.qrpRequested;
 				INVOKE_OTHER_CONTRACT_PROCEDURE(QRP, GetReserve, locals.qrpGetReserveInput, locals.qrpGetReserveOutput, 0ll);
 
-				if (locals.qrpGetReserveOutput.returnCode == QRPReturnCode::SUCCESS)
+				if (locals.qrpGetReserveOutput.returnCode == QRP::toReturnCode(QRP::EReturnCode::SUCCESS))
 				{
 					output.topUpReceived = locals.qrpGetReserveOutput.allocatedRevenue;
 					locals.finalPool = sadd(input.payoutPool, output.topUpReceived);
