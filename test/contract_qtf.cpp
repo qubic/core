@@ -991,6 +991,24 @@ TEST(ContractQThirtyFour, BuyTicket_TooLowPrice_RefundsAndFails)
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
 }
 
+TEST(ContractQThirtyFour, BuyTicket_ZeroPrice_RefundsAndFails)
+{
+	ContractTestingQTF ctl;
+	ctl.beginEpochWithValidTime();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	increaseEnergy(user, ticketPrice * 2);
+	const uint64 balBefore = getBalance(user);
+
+	const QTFRandomValues nums = ctl.makeValidNumbers(1, 2, 3, 4);
+
+	const QTF::BuyTicket_output out = ctl.buyTicket(user, 0, nums);
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_TICKET_PRICE));
+	EXPECT_EQ(getBalance(user), balBefore); // Fully refunded (0)
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+}
+
 TEST(ContractQThirtyFour, BuyTicket_OverpaidPrice_AcceptsAndReturnsExcess)
 {
 	ContractTestingQTF ctl;
@@ -2002,6 +2020,36 @@ TEST(ContractQThirtyFour, PostIncomingTransfer_StandardTransaction_Refunded)
 // SCHEDULE AND TIME TESTS
 // ============================================================================
 
+TEST(ContractQThirtyFour, Schedule_WednesdayAlwaysDraws_IgnoresScheduleMask)
+{
+	ContractTestingQTF ctl;
+
+	// Exclude Wednesday from schedule mask (e.g., Monday only).
+	constexpr uint8 mondayOnly = 1 << MONDAY;
+	ctl.forceSchedule(mondayOnly);
+
+	ctl.beginEpochWithValidTime();
+
+	const m256i testDigest = {};
+	ctl.setPrevSpectrumDigest(testDigest);
+	const auto nums = ctl.computeWinningAndLosing(testDigest);
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	for (int i = 0; i < 5; ++i)
+	{
+		const id user = id::randomValue();
+		ctl.fundAndBuyTicket(user, ticketPrice, nums.losing);
+	}
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 5u);
+
+	// Wednesday should always trigger a draw at/after draw hour, even if schedule mask does not include it.
+	const uint8 drawHour = ctl.state()->getDrawHourInternal();
+	ctl.setDateTime(2025, 1, 15, drawHour);
+	ctl.forceBeginTick();
+
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+}
+
 TEST(ContractQThirtyFour, Schedule_DrawOnlyOnScheduledDays)
 {
 	ContractTestingQTF ctl;
@@ -2037,6 +2085,57 @@ TEST(ContractQThirtyFour, Schedule_DrawOnlyOnScheduledDays)
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u); // Cleared after draw
 }
 
+TEST(ContractQThirtyFour, Schedule_DrawAtMostOncePerDay_LastDrawDateStampGuards)
+{
+	ContractTestingQTF ctl;
+
+	// Use a non-Wednesday scheduled day so selling is re-enabled after the draw.
+	constexpr uint8 thursdayOnly = 1 << THURSDAY;
+	ctl.forceSchedule(thursdayOnly);
+
+	ctl.beginEpochWithValidTime();
+
+	const m256i testDigest = {};
+	ctl.setPrevSpectrumDigest(testDigest);
+	const auto nums = ctl.computeWinningAndLosing(testDigest);
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	{
+		const id user = id::randomValue();
+		ctl.fundAndBuyTicket(user, ticketPrice, nums.losing);
+	}
+
+	const uint8 drawHour = ctl.state()->getDrawHourInternal();
+
+	// First draw on Thursday.
+	ctl.setDateTime(2025, 1, 16, drawHour);
+	ctl.forceBeginTick();
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+
+	const uint64 jackpotAfterFirst = ctl.state()->getJackpot();
+	const QTF::GetWinnerData_output winnersAfterFirst = ctl.getWinnerData();
+
+	// Buy another ticket on the same date (selling should be open on non-Wednesday).
+	{
+		const id user2 = id::randomValue();
+		ctl.fundAndBuyTicket(user2, ticketPrice, nums.losing);
+	}
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 1u);
+
+	// Second tick on the same date must NOT trigger another draw.
+	ctl.setDateTime(2025, 1, 16, drawHour);
+	ctl.forceBeginTick();
+
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 1u);
+	EXPECT_EQ(ctl.state()->getJackpot(), jackpotAfterFirst);
+	const QTF::GetWinnerData_output winnersAfterSecondAttempt = ctl.getWinnerData();
+	for (uint64 i = 0; i < QTF_RANDOM_VALUES_COUNT; ++i)
+	{
+		EXPECT_EQ(winnersAfterSecondAttempt.winnerData.winnerValues.get(i), winnersAfterFirst.winnerData.winnerValues.get(i));
+	}
+	EXPECT_EQ((uint64)winnersAfterSecondAttempt.winnerData.epoch, (uint64)winnersAfterFirst.winnerData.epoch);
+}
+
 TEST(ContractQThirtyFour, DrawHour_NoDrawBeforeScheduledHour)
 {
 	ContractTestingQTF ctl;
@@ -2065,6 +2164,37 @@ TEST(ContractQThirtyFour, DrawHour_NoDrawBeforeScheduledHour)
 	ctl.setDateTime(2025, 1, 15, drawHour);
 	ctl.forceBeginTick();
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+}
+
+TEST(ContractQThirtyFour, DrawHour_WednesdayDrawClosesTicketSelling)
+{
+	ContractTestingQTF ctl;
+
+	ctl.forceSchedule(QTF_ANY_DAY_SCHEDULE);
+	ctl.beginEpochWithValidTime();
+
+	const m256i testDigest = {};
+	ctl.setPrevSpectrumDigest(testDigest);
+	const auto nums = ctl.computeWinningAndLosing(testDigest);
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	{
+		const id user = id::randomValue();
+		ctl.fundAndBuyTicket(user, ticketPrice, nums.losing);
+	}
+
+	const uint8 drawHour = ctl.state()->getDrawHourInternal();
+	ctl.setDateTime(2025, 1, 15, drawHour);
+	ctl.forceBeginTick();
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+
+	// After a Wednesday draw, selling must remain closed until next epoch.
+	const id lateBuyer = id::randomValue();
+	increaseEnergy(lateBuyer, ticketPrice * 2);
+	const uint64 before = getBalance(lateBuyer);
+	const QTF::BuyTicket_output out = ctl.buyTicket(lateBuyer, ticketPrice, nums.losing);
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::TICKET_SELLING_CLOSED));
+	EXPECT_EQ(getBalance(lateBuyer), before);
 }
 
 // ============================================================================
@@ -2534,66 +2664,114 @@ TEST(ContractQThirtyFour, EstimatePrizePayouts_FRMode_AppliesRakeToPools)
 // RESERVE TOP-UP AND FLOOR GUARANTEE TESTS
 // ============================================================================
 
-TEST(ContractQThirtyFour, ReserveTopUp_FloorGuarantee_VerifyLimits)
+TEST(ContractQThirtyFour, Settlement_PerWinnerCap_AppliesToK3Winner_OverflowAccountsForRemainder)
 {
 	ContractTestingQTF ctl;
 	ctl.startAnyDayEpoch();
+	ctl.forceFRDisabledForBaseline();
 
-	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	// Ensure RL shares exist so distribution payouts leave the contract (otherwise most of distPayout can remain in QTF balance).
+	const id shareholder1 = id::randomValue();
+	const id shareholder2 = id::randomValue();
+	constexpr uint32 shares1 = NUMBER_OF_COMPUTORS / 3;
+	constexpr uint32 shares2 = NUMBER_OF_COMPUTORS - shares1;
+	std::vector<std::pair<m256i, uint32>> rlShares{{shareholder1, shares1}, {shareholder2, shares2}};
+	issueRlSharesTo(rlShares);
 
-	// Add only 2 players to create small prize pools
-	// With 2 tickets, revenue = 2M, winners block = 1.36M (68%)
-	// k2 pool = 1.36M * 28% = 380.8k, k3 pool = 1.36M * 40% = 544k
-	// These are below floor requirements for multiple winners
-	constexpr int numPlayers = 2;
-	for (int i = 0; i < numPlayers; ++i)
-	{
-		const id user = id::randomValue();
-		QTFRandomValues nums =
-		    ctl.makeValidNumbers(static_cast<uint8>(i + 1), static_cast<uint8>(i + 10), static_cast<uint8>(i + 15), static_cast<uint8>(i + 20));
-		ctl.fundAndBuyTicket(user, ticketPrice, nums);
-	}
+	m256i testDigest = {};
+	testDigest.m256i_u64[0] = 0xD1CEB00BD1CEB00BULL;
+	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
-	const QTF::GetPools_output poolsBefore = ctl.getPools();
-	const uint64 revenue = ticketPrice * numPlayers;
+	const uint64 P = ctl.state()->getTicketPriceInternal();
+	const uint64 perWinnerCap = smul(P, QTF_TOPUP_PER_WINNER_CAP_MULT);
 
-	// Calculate expected pools
+	const id k3Winner = id::randomValue();
+	ctl.fundAndBuyTicket(k3Winner, P, ctl.makeK3Numbers(nums.winning, 0));
+
+	constexpr uint64 numLosers = 100;
+	ctl.buyRandomTickets(numLosers, P, nums.losing);
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), numLosers + 1);
+
+	const uint64 qrpBefore = static_cast<uint64>(getBalance(ctl.qrpSelf()));
+	const uint64 k3Before = getBalance(k3Winner);
+
+	ctl.drawWithDigest(testDigest);
+
+	EXPECT_EQ(static_cast<uint64>(getBalance(k3Winner) - k3Before), perWinnerCap);
+
+	// Baseline settlement: with no k2 winners and exactly one k3 winner capped at 25*P,
+	// winnersOverflow ends up being winnersBlock - perWinnerCap.
 	const QTF::GetFees_output fees = ctl.getFees();
-	const uint64 winnersBlock = (revenue * fees.winnerFeePercent) / 100;
-	const uint64 expectedK2Pool = (winnersBlock * QTF_BASE_K2_SHARE_BP) / 10000;
-	const uint64 expectedK3Pool = (winnersBlock * QTF_BASE_K3_SHARE_BP) / 10000;
+	const uint64 revenue = smul(P, numLosers + 1);
+	const uint64 winnersBlock = div<uint64>(smul(revenue, static_cast<uint64>(fees.winnerFeePercent)), 100);
+	const uint64 winnersOverflow = winnersBlock - perWinnerCap;
+	const uint64 reserveAdd = (winnersOverflow * QTF_BASELINE_OVERFLOW_ALPHA_BP) / 10000;
+	const uint64 carryAdd = winnersOverflow - reserveAdd;
 
-	// Verify floors
-	const uint64 k2Floor = ticketPrice * QTF_K2_FLOOR_MULT / QTF_K2_FLOOR_DIV; // 0.5*P = 500k
-	const uint64 k3Floor = ticketPrice * QTF_K3_FLOOR_MULT;                    // 5*P = 5M
+	EXPECT_EQ(ctl.state()->getJackpot(), carryAdd);
+	EXPECT_EQ(static_cast<uint64>(getBalance(ctl.qtfSelf())), carryAdd);
+	EXPECT_EQ(static_cast<uint64>(getBalance(ctl.qrpSelf())), qrpBefore + reserveAdd);
+}
 
-	// If we hypothetically had 2 k2 winners: floor requirement = 2 * 500k = 1M
-	// But k2 pool is only ~380k, so would need ~620k from reserve
-	const uint64 k2FloorTotal2Winners = k2Floor * 2; // 1M
-	EXPECT_LT(expectedK2Pool, k2FloorTotal2Winners) << "k2 pool should be insufficient for 2 winners with floor";
+TEST(ContractQThirtyFour, Settlement_FloorTopUp_LimitedBySafetyCaps_PayoutBelowFloor)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+	ctl.forceFRDisabledForBaseline();
 
-	// If we hypothetically had 1 k3 winner: floor requirement = 5M
-	// But k3 pool is only ~544k, so would need ~4.46M from reserve
-	EXPECT_LT(expectedK3Pool, k3Floor) << "k3 pool should be insufficient for 1 winner with floor";
+	// Ensure RL shares exist so distribution payouts leave the contract (otherwise most of distPayout can remain in QTF balance).
+	const id shareholder1 = id::randomValue();
+	const id shareholder2 = id::randomValue();
+	constexpr uint32 shares1 = NUMBER_OF_COMPUTORS / 2;
+	constexpr uint32 shares2 = NUMBER_OF_COMPUTORS - shares1;
+	std::vector<std::pair<m256i, uint32>> rlShares{{shareholder1, shares1}, {shareholder2, shares2}};
+	issueRlSharesTo(rlShares);
 
-	// Per-winner cap verification
-	const uint64 perWinnerCap = ticketPrice * QTF_TOPUP_PER_WINNER_CAP_MULT; // 25M
-	EXPECT_EQ(perWinnerCap, 25000000ULL);
+	// Fund QRP just above soft floor so top-up is limited by both 10% cap and soft floor.
+	const uint64 P = ctl.state()->getTicketPriceInternal();
+	const uint64 softFloor = smul(P, QTF_RESERVE_SOFT_FLOOR_MULT); // 20*P
+	const uint64 qrpFunding = softFloor + 5 * P;                  // 25*P
+	increaseEnergy(ctl.qrpSelf(), qrpFunding);
 
-	// Reserve safety limits
-	const uint64 softFloor = ticketPrice * QTF_RESERVE_SOFT_FLOOR_MULT; // 20*P = 20M
-	EXPECT_EQ(softFloor, 20000000ULL);
+	m256i testDigest = {};
+	testDigest.m256i_u64[0] = 0x0DDC0FFEE0DDF00DULL;
+	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
-	// Note: In actual settlement with winners, the ProcessTierPayout function (QThirtyFour.h:1795-1837)
-	// would call CalcReserveTopUp (lines 1740-1777) to determine how much to request from QRP.
-	// The top-up is capped at:
-	// 1. 10% of QRP balance per round (QTF_TOPUP_RESERVE_PCT_BP)
-	// 2. Soft floor: don't deplete QRP below 20*P (QTF_RESERVE_SOFT_FLOOR_MULT)
-	// 3. Per-winner cap: max 25*P per winner (QTF_TOPUP_PER_WINNER_CAP_MULT)
+	const id k3Winner = id::randomValue();
+	ctl.fundAndBuyTicket(k3Winner, P, ctl.makeK3Numbers(nums.winning, 0));
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 1u);
 
-	// This test verifies the floor requirements exist and are calculated correctly.
-	// Full integration test would require actual winner detection (probabilistic)
-	// or mocking the random number generation to guarantee specific winners.
+	const uint64 qrpBefore = static_cast<uint64>(getBalance(ctl.qrpSelf()));
+	const uint64 k3Before = getBalance(k3Winner);
+
+	ctl.drawWithDigest(testDigest);
+
+	const QTF::GetFees_output fees = ctl.getFees();
+	const uint64 revenue = P;
+	const uint64 winnersBlock = div<uint64>(smul(revenue, static_cast<uint64>(fees.winnerFeePercent)), 100);
+	const uint64 k3Pool = (winnersBlock * QTF_BASE_K3_SHARE_BP) / 10000;
+	const uint64 k3Floor = smul(P, QTF_K3_FLOOR_MULT);
+	const uint64 needed = k3Floor - k3Pool;
+	const uint64 availableAboveFloor = qrpBefore - softFloor;                     // 5*P
+	const uint64 maxPerRound = (qrpBefore * QTF_TOPUP_RESERVE_PCT_BP) / 10000;    // 10% of total
+	const uint64 perWinnerCapTotal = smul(P, QTF_TOPUP_PER_WINNER_CAP_MULT);      // 25*P
+	const uint64 maxAllowed = std::min(std::min(maxPerRound, availableAboveFloor), perWinnerCapTotal); // 2.5*P
+	const uint64 expectedTopUp = std::min(needed, maxAllowed);
+	const uint64 expectedPayout = k3Pool + expectedTopUp;
+
+	EXPECT_LT(expectedPayout, k3Floor);
+	EXPECT_EQ(static_cast<uint64>(getBalance(k3Winner) - k3Before), expectedPayout);
+
+	// With no k2 winners and k3 pool fully paid (top-ups only increase payouts),
+	// winnersOverflow equals winnersBlock - k3Pool.
+	const uint64 winnersOverflow = winnersBlock - k3Pool;
+	const uint64 reserveAdd = (winnersOverflow * QTF_BASELINE_OVERFLOW_ALPHA_BP) / 10000;
+	const uint64 carryAdd = winnersOverflow - reserveAdd;
+
+	EXPECT_EQ(ctl.state()->getJackpot(), carryAdd);
+	EXPECT_EQ(static_cast<uint64>(getBalance(ctl.qtfSelf())), carryAdd);
+	EXPECT_EQ(static_cast<uint64>(getBalance(ctl.qrpSelf())), qrpBefore - expectedTopUp + reserveAdd);
+	EXPECT_GE(static_cast<uint64>(getBalance(ctl.qrpSelf())), softFloor);
 }
 
 TEST(ContractQThirtyFour, Settlement_FloorTopUp_Integration_K2K3FloorsMetWhenReserveSufficient)
@@ -2903,17 +3081,12 @@ TEST(ContractQThirtyFour, FR_PostK4WindowExpiry_DoesNotReactivateWhenWindowExpir
 
 	// After settlement (deterministic: no k=4 win is possible):
 	// - roundsSinceK4 should increment to 50
-	// - FR should remain active this round (activation check happens BEFORE increment)
-	// But in the NEXT round, FR won't activate because roundsSinceK4 >= 50
+	// - Next round starts outside the FR post-k4 window.
 
 	const uint64 roundsSinceK4After = ctl.state()->getFrRoundsSinceK4();
 	EXPECT_EQ(roundsSinceK4After, QTF_FR_POST_K4_WINDOW_ROUNDS) << "Counter should increment to 50 after draw";
 
-	// FR activation logic (QThirtyFour.h:1236-1245):
-	// shouldActivateFR = (jackpot < target) AND (roundsSinceK4 < 50)
-	// At roundsSinceK4 = 50, condition is false, so FR won't activate in next round
-
-	// Run one more round: FR cannot re-activate, so state should not change
+	// Run one more round: FR must be OFF because roundsSinceK4 >= 50.
 	ctl.beginEpochWithValidTime();
 
 	for (int i = 0; i < numPlayers; ++i)
@@ -2927,32 +3100,11 @@ TEST(ContractQThirtyFour, FR_PostK4WindowExpiry_DoesNotReactivateWhenWindowExpir
 	// After second round:
 	// - Jackpot still below target
 	// - roundsSinceK4 = 51 (>= 50)
+	// - FR is forced OFF outside the window.
 	EXPECT_EQ(ctl.state()->getFrRoundsSinceK4(), QTF_FR_POST_K4_WINDOW_ROUNDS + 1);
+	EXPECT_EQ(ctl.state()->getFrActive(), false);
 
-	// Important: FR deactivation logic (QThirtyFour.h:1236-1245)
-	// FR.frActive is set to TRUE only if: (jackpot < target AND roundsSinceK4 < 50)
-	// FR.frActive is set to FALSE only if: frRoundsAtOrAboveTarget >= 3
-	// Otherwise, frActive retains its previous state.
-	//
-	// In this test:
-	// - shouldActivateFR = false (because roundsSinceK4 >= 50)
-	// - frRoundsAtOrAboveTarget = 0 (because jackpot < target)
-	// - Neither activation nor deactivation condition met
-	// - FR remains in previous state (true)
-	//
-	// This means FR doesn't automatically deactivate when window expires,
-	// but it won't RE-ACTIVATE in future rounds while roundsSinceK4 >= 50.
-
-	// The key behavior verified by this test:
-	// Once roundsSinceK4 >= 50, FR will NOT be re-activated (shouldActivateFR = false)
-	// even if jackpot drops below target again. FR stays in whatever state it was.
-
-	// To fully deactivate FR after window expiry, jackpot must reach target
-	// and stay there for 3 rounds (hysteresis). Let's verify that FR won't re-activate:
-
-	const bool frActiveBeforeThirdRound = ctl.state()->getFrActive();
-
-	// Run a third round - FR should remain in same state (no re-activation)
+	// Run a third round to ensure FR stays OFF while still outside the window.
 	ctl.beginEpochWithValidTime();
 	for (int i = 0; i < numPlayers; ++i)
 	{
@@ -2961,13 +3113,6 @@ TEST(ContractQThirtyFour, FR_PostK4WindowExpiry_DoesNotReactivateWhenWindowExpir
 	}
 	ctl.drawWithDigest(testDigest);
 
-	// FR state should not change (no re-activation possible when roundsSinceK4 >= 50)
-	EXPECT_EQ(ctl.state()->getFrActive(), frActiveBeforeThirdRound) << "FR should not re-activate when roundsSinceK4 >= 50, even if jackpot < target";
 	EXPECT_EQ(ctl.state()->getFrRoundsSinceK4(), QTF_FR_POST_K4_WINDOW_ROUNDS + 2);
-
-	// This test verifies the post-k4 window mechanism:
-	// FR can only be ACTIVATED within 50 rounds after last k=4 win.
-	// After 50 rounds, FR won't re-activate regardless of jackpot level,
-	// until the next k=4 win resets the counter.
-	// However, if FR was already active, it stays active until hysteresis deactivates it.
+	EXPECT_EQ(ctl.state()->getFrActive(), false);
 }
