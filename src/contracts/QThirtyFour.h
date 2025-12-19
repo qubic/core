@@ -57,7 +57,7 @@ constexpr uint8 QTF_DEFAULT_WINNERS_PERCENT = 68;
 constexpr uint8 QTF_MAX_RANDOM_GENERATION_ATTEMPTS = 100;
 
 constexpr uint64 QTF_DEFAULT_TARGET_JACKPOT = 1000000000ULL; // 1 billion QU (1B)
-constexpr uint8 QTF_DEFAULT_SCHEDULE = 1u << WEDNESDAY;
+constexpr uint8 QTF_DEFAULT_SCHEDULE = 1 << SATURDAY | 1u << WEDNESDAY;
 constexpr uint8 QTF_DEFAULT_DRAW_HOUR = 11;                        // 11:00 UTC
 constexpr uint32 QTF_DEFAULT_INIT_TIME = 22u << 9 | 4u << 5 | 13u; // RL_DEFAULT_INIT_TIME
 
@@ -1243,6 +1243,11 @@ private:
 		{
 			state.frActive = true;
 		}
+		else if (state.frRoundsSinceK4 >= QTF_FR_POST_K4_WINDOW_ROUNDS)
+		{
+			// Outside post-k4 window: FR must be OFF.
+			state.frActive = false;
+		}
 		else if (state.frRoundsAtOrAboveTarget >= QTF_FR_HYSTERESIS_ROUNDS)
 		{
 			// Deactivate FR after target held for hysteresis rounds
@@ -1358,10 +1363,9 @@ private:
 		// First, get total QRP balance for safety limit calculations (10% of total reserve per round).
 		CALL_OTHER_CONTRACT_FUNCTION(QRP, GetAvailableReserve, locals.qrpGetAvailableInput, locals.qrpGetAvailableOutput);
 		locals.totalQRPBalance = locals.qrpGetAvailableOutput.availableReserve;
-
-		// If a k=4 win happened this round, we will try to reseed the jackpot back up to target after payouts.
-		// To avoid draining the reserve needed for reseed with k2/k3 floor top-ups (QRP is a single pool in this implementation),
-		// limit top-ups to the portion that is above the target jackpot amount.
+		// If a k=4 win happened this round, the jackpot reseed must not be blocked by floor top-ups.
+		// We emulate reserve partitioning by limiting k2/k3 top-ups to the portion of QRP above targetJackpot.
+		// This guarantees that if QRP had >= targetJackpot before settlement, reseed can still reach target after payouts.
 		if (locals.countK4 > 0)
 		{
 			if (locals.totalQRPBalance > state.targetJackpot)
@@ -1399,6 +1403,13 @@ private:
 
 		locals.carryAdd = sadd(locals.carryAdd, locals.winnersRake);
 
+		// Compute k=4 jackpot payout per winner once.
+		locals.jackpotPerK4Winner = 0;
+		if (locals.countK4 > 0)
+		{
+			locals.jackpotPerK4Winner = div(state.jackpot, locals.countK4);
+		}
+
 		// Second pass: payout loop using cached match results (avoids redundant countMatches calls)
 		// (Optimization: reduces player iteration from 4 passes to 2 passes + eliminates duplicate countMatches)
 		locals.i = 0;
@@ -1419,14 +1430,13 @@ private:
 				fillWinnerData(state, state.players.get(locals.i), locals.winningValues, locals.currentEpoch);
 			}
 			// k4 payout (jackpot)
-			else if (locals.matches == 4 && locals.countK4 > 0 && state.jackpot > 0)
+			else if (locals.matches == 4 && locals.countK4 > 0)
 			{
-				locals.jackpotPerK4Winner = state.jackpot / locals.countK4;
 				if (locals.jackpotPerK4Winner > 0)
 				{
 					qpi.transfer(state.players.get(locals.i).player, locals.jackpotPerK4Winner);
-					fillWinnerData(state, state.players.get(locals.i), locals.winningValues, locals.currentEpoch);
 				}
+				fillWinnerData(state, state.players.get(locals.i), locals.winningValues, locals.currentEpoch);
 			}
 
 			++locals.i;
@@ -1437,7 +1447,7 @@ private:
 		state.lastWinnerData.epoch = locals.currentEpoch;
 
 		// Post-jackpot (k4) logic: reset counters and reseed if jackpot was hit
-		if (locals.countK4 > 0 && state.jackpot > 0)
+		if (locals.countK4 > 0)
 		{
 			// Jackpot was paid out in combined loop above, now deplete it
 			state.jackpot = 0;
