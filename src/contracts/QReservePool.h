@@ -4,21 +4,24 @@
 static constexpr uint16 QRP_AVAILABLE_SC_NUM = 128;
 static constexpr uint64 QRP_QTF_INDEX = 21;
 
-enum class QRPReturnCode : uint8
-{
-	SUCCESS = 0,
-	ACCESS_DENIED = 1,
-	INSUFFICIENT_RESERVE = 2,
-
-	MAX_VALUE = UINT8_MAX
-};
-
 struct QRP2
 {
 };
 
 struct QRP : public ContractBase
 {
+public:
+	enum class EReturnCode : uint8
+	{
+		SUCCESS = 0,
+		ACCESS_DENIED = 1,
+		INSUFFICIENT_RESERVE = 2,
+
+		MAX_VALUE = UINT8_MAX
+	};
+
+	static constexpr uint8 toReturnCode(const EReturnCode& code) { return static_cast<uint8>(code); };
+
 public:
 	// Get Reserve
 	struct GetReserve_input
@@ -30,7 +33,7 @@ public:
 	{
 		// How much revenue is allocated to SC
 		uint64 allocatedRevenue;
-		QRPReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	struct GetReserve_locals
@@ -47,7 +50,7 @@ public:
 
 	struct AddAvailableSC_output
 	{
-		QRPReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	// Remove Available Smart Contract
@@ -58,7 +61,7 @@ public:
 
 	struct RemoveAvailableSC_output
 	{
-		QRPReturnCode returnCode;
+		uint8 returnCode;
 	};
 
 	// Get Available Reserve
@@ -120,7 +123,7 @@ public:
 		if (!state.availableSmartContracts.contains(qpi.invocator()))
 		{
 			output.allocatedRevenue = 0;
-			output.returnCode = QRPReturnCode::ACCESS_DENIED;
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
@@ -129,12 +132,12 @@ public:
 		if (locals.checkAmount == 0 || input.revenue > locals.checkAmount)
 		{
 			output.allocatedRevenue = 0;
-			output.returnCode = QRPReturnCode::INSUFFICIENT_RESERVE;
+			output.returnCode = toReturnCode(EReturnCode::INSUFFICIENT_RESERVE);
 			return;
 		}
 
 		output.allocatedRevenue = input.revenue;
-		output.returnCode = QRPReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 
 		qpi.transfer(qpi.invocator(), output.allocatedRevenue);
 	}
@@ -143,24 +146,24 @@ public:
 	{
 		if (qpi.invocator() != state.ownerAddress)
 		{
-			output.returnCode = QRPReturnCode::ACCESS_DENIED;
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
 		state.availableSmartContracts.add(id(input.scIndex, 0, 0, 0));
-		output.returnCode = QRPReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE(RemoveAvailableSC)
 	{
 		if (qpi.invocator() != state.ownerAddress)
 		{
-			output.returnCode = QRPReturnCode::ACCESS_DENIED;
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
 		state.availableSmartContracts.remove(id(input.scIndex, 0, 0, 0));
-		output.returnCode = QRPReturnCode::SUCCESS;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAvailableReserve)

@@ -332,8 +332,8 @@ constexpr struct ContractDescription
     {"QBOND", 182, 10000, sizeof(QBOND)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
     {"QIP", 189, 10000, sizeof(QIP)}, // proposal in epoch 187, IPO in 188, construction and first use in 189
     {"QRAFFLE", 192, 10000, sizeof(QRAFFLE)}, // proposal in epoch 190, IPO in 191, construction and first use in 192
-    {"QRP", 200, 10000, sizeof(IPO)}, // proposal in epoch 198, IPO in 199, construction and first use in 200
-    {"QTF", 200, 10000, sizeof(QTF)}, // proposal in epoch 198, IPO in 199, construction and first use in 200
+    {"QRP", 194, 10000, sizeof(IPO)}, // proposal in epoch 192, IPO in 193, construction and first use in 194
+    {"QTF", 194, 10000, sizeof(QTF)}, // proposal in epoch 192, IPO in 193, construction and first use in 194
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA)},

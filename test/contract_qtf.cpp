@@ -481,6 +481,7 @@ public:
 		constexpr uint8 m = 1;
 		constexpr uint8 d = 10;
 		setDateTime(y, m, d, 12);
+		__pauseLogMessage();
 		forceBeginTick();
 	}
 
