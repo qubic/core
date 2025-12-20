@@ -37,6 +37,7 @@ struct ScoreHyperIdentity
     static_assert(numberOfNeighbors < ((1ULL << 63) - 1), "numberOfNeighbors must be in long long range");
     static_assert(BATCH_SIZE_X8 % 8 == 0, "BATCH_SIZE must be be divided by 8");
 
+
     // Intermediate data
     struct InitValue
     {

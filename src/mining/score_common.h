@@ -180,17 +180,17 @@ static void random2(
 
 // Clamp the neuron value
 template  <typename T>
-static T clampNeuron(T val)
+static char clampNeuron(T val)
 {
-    if (val > NEURON_VALUE_LIMIT)
+    if (val > 1)
     {
-        return NEURON_VALUE_LIMIT;
+        return 1;
     }
-    else if (val < -NEURON_VALUE_LIMIT)
+    else if (val < -1)
     {
-        return -NEURON_VALUE_LIMIT;
+        return -1;
     }
-    return val;
+    return static_cast<char>(val);
 }
 
 static void extract64Bits(unsigned long long number, char* output)
@@ -392,5 +392,15 @@ static inline __m256i load256Bits(const unsigned char* array, unsigned long long
 
 }
 #endif
+
+template <unsigned long long bitCount>
+void toTenaryBits(long long A, char* bits)
+{
+    for (unsigned long long i = 0; i < bitCount; ++i)
+    {
+        char bitValue = static_cast<char>((A >> i) & 1);
+        bits[i] = (bitValue == 0) ? -1 : bitValue;
+    }
+}
 
 }
