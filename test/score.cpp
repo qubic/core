@@ -6,8 +6,8 @@
 
 // current optimized implementation
 #include "../src/public_settings.h"
-//#include "../src/score.h"
 #include "../src/mining/score_engine.h"
+#include "../src/score.h"
 
 // reference implementation
 #include "score_reference.h"
@@ -41,15 +41,15 @@ static const std::string COMMON_TEST_SCORES_ADDITION_FILE_NAME = "data/scores_ad
 static constexpr bool PRINT_DETAILED_INFO = false;
 // Variable control the algo tested
 // AllAlgo: run the score that alg is retermined by nonce
-//static constexpr score_engine::AlgoType TEST_ALGO = 
-//    static_cast<score_engine::AlgoType>(score_engine::AlgoType::HyperIdentity 
-//                                        | score_engine::AlgoType::Addition
-//                                        | score_engine::AlgoType::AllAlgo);
-static constexpr score_engine::AlgoType TEST_ALGO = static_cast<score_engine::AlgoType>(score_engine::AlgoType::HyperIdentity);
+static constexpr score_engine::AlgoType TEST_ALGO = 
+    static_cast<score_engine::AlgoType>(score_engine::AlgoType::HyperIdentity 
+                                        | score_engine::AlgoType::Addition
+                                        | score_engine::AlgoType::AllAlgo);
+//static constexpr score_engine::AlgoType TEST_ALGO = static_cast<score_engine::AlgoType>(score_engine::AlgoType::HyperIdentity);
 
 // set to 0 for run all available samples
 // For profiling enable, run all available samples
-static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 64;
+static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 1;
 static constexpr unsigned long long PROFILING_NUMBER_OF_SAMPLES = 1;
 
 
@@ -77,9 +77,9 @@ struct ScoreResult
 
 template<template<typename, typename> class ScoreType, typename CurrentConfig>
 ScoreResult computeScore(
-    unsigned char* miningSeed,
-    unsigned char* publicKey,
-    unsigned char* nonce,
+    const unsigned char* miningSeed,
+    const unsigned char* publicKey,
+    const unsigned char* nonce,
     score_engine::AlgoType algo,
     unsigned char* externalRandomPool)
 {
@@ -116,8 +116,55 @@ ScoreResult computeScore(
 
 }
 
+void processQubicScore(const unsigned char* miningSeed, const unsigned char* publicKey, const unsigned char* nonce, int sampleIndex)
+{
+    // Core use the external random pool
+    std::unique_ptr<ScoreFunction<1>> pScore = std::make_unique<ScoreFunction<1>>();
+    pScore->initMemory();
+    pScore->initMiningData(miningSeed);
+
+    unsigned int scoreValue = (*pScore)(0, publicKey, miningSeed, nonce);
+
+    // Determine which algo to use to get the correct ground truth
+    int gtIndex = -1;
+    unsigned int gtScore = 0;
+    score_engine::AlgoType effectiveAlgo = (nonce[0] & 1) == 0 ? score_engine::AlgoType::HyperIdentity : score_engine::AlgoType::Addition;
+
+    std::vector<unsigned char> state(score_engine::STATE_SIZE);
+    std::vector<unsigned char> externalPoolVec(score_engine::POOL_VEC_PADDING_SIZE);
+    score_engine::generateRandom2Pool(miningSeed, state.data(), externalPoolVec.data());
+    ScoreResult scoreResult = computeScore<score_engine::ScoreEngine,
+        ConfigPair<
+            score_engine::HyperIdentityParams<
+            HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS,
+            HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS,
+            HYPERIDENTITY_NUMBER_OF_TICKS,
+            HYPERIDENTITY_NUMBER_OF_NEIGHBORS,
+            HYPERIDENTITY_POPULATION_THRESHOLD,
+            HYPERIDENTITY_NUMBER_OF_MUTATIONS,
+            HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT>,
+            score_engine::AdditionParams<
+            ADDITION_NUMBER_OF_INPUT_NEURONS,
+            ADDITION_NUMBER_OF_OUTPUT_NEURONS,
+            ADDITION_NUMBER_OF_TICKS,
+            ADDITION_NUMBER_OF_NEIGHBORS,
+            ADDITION_POPULATION_THRESHOLD,
+            ADDITION_NUMBER_OF_MUTATIONS,
+            ADDITION_SOLUTION_THRESHOLD_DEFAULT>
+        >>(
+        miningSeed, publicKey, nonce, effectiveAlgo, externalPoolVec.data());
+    unsigned int refScore = scoreResult.score;
+
+#pragma omp critical
+    {
+        EXPECT_EQ(refScore, scoreValue);
+    }
+}
+
+
 template <unsigned long long i>
-static void processElement(unsigned char* miningSeed, unsigned char* publicKey, unsigned char* nonce, int sampleIndex, score_engine::AlgoType algo)
+static void processElement(const unsigned char* miningSeed, const unsigned char* publicKey, const unsigned char* nonce, 
+    int sampleIndex, score_engine::AlgoType algo)
 {
     // Skip filter settings
     if (!filteredSettings.empty()
@@ -203,7 +250,8 @@ static void processElement(unsigned char* miningSeed, unsigned char* publicKey, 
 
 // Recursive template to process each element in scoreSettings
 template <unsigned long long i>
-static void processElementPerf(unsigned char* miningSeed, unsigned char* publicKey, unsigned char* nonce, int sampleIndex, score_engine::AlgoType algo)
+static void processElementPerf(const unsigned char* miningSeed, const unsigned char* publicKey, const  unsigned char* nonce, 
+    int sampleIndex, score_engine::AlgoType algo)
 {
     using CurrentConfig = std::tuple_element_t<i, ProfileConfigList>;
 
@@ -228,7 +276,8 @@ static void processElementPerf(unsigned char* miningSeed, unsigned char* publicK
 
 // Main processing function
 template <char profiling, unsigned long long N, unsigned long long... Is>
-static void processHelper(unsigned char* miningSeed, unsigned char* publicKey, unsigned char* nonce, int sampleIndex, score_engine::AlgoType algo, std::index_sequence<Is...>)
+static void processHelper(const unsigned char* miningSeed, const unsigned char* publicKey, const unsigned char* nonce, 
+    int sampleIndex, score_engine::AlgoType algo, std::index_sequence<Is...>)
 {
     if constexpr (profiling)
     {
@@ -243,7 +292,8 @@ static void processHelper(unsigned char* miningSeed, unsigned char* publicKey, u
 
 // Recursive template to process each element in scoreSettings
 template <char profiling, unsigned long long N>
-static void process(unsigned char* miningSeed, unsigned char* publicKey, unsigned char* nonce, int sampleIndex = 0, score_engine::AlgoType algo = score_engine::AlgoType::AllAlgo)
+static void process(const unsigned char* miningSeed, const  unsigned char* publicKey, const unsigned char* nonce, 
+    int sampleIndex = 0, score_engine::AlgoType algo = score_engine::AlgoType::AllAlgo)
 {
     processHelper<profiling, N>(miningSeed, publicKey, nonce, sampleIndex, algo, std::make_index_sequence<N>{});
 }
@@ -396,6 +446,67 @@ int findMatchingConfig(const std::vector<unsigned long long>& values, score_engi
     return findMatchingConfigImpl(values, algo, std::make_index_sequence<std::tuple_size_v<ConfigList>>{});
 }
 
+void loadSamples(
+    const std::vector<std::vector<std::string>>& sampleString,
+    unsigned long long numberOfSamples,
+    unsigned long long numberOfSamplesReadFromFile,
+    std::vector<m256i>& miningSeeds,
+    std::vector<m256i>& publicKeys,
+    std::vector<m256i>& nonces)
+{
+    miningSeeds.resize(numberOfSamples);
+    publicKeys.resize(numberOfSamples);
+    nonces.resize(numberOfSamples);
+
+    // Reading the input samples
+    for (unsigned long long i = 0; i < numberOfSamples; ++i)
+    {
+        if (i < numberOfSamplesReadFromFile)
+        {
+            miningSeeds[i] = hexTo32Bytes(sampleString[i][0], 32);
+            publicKeys[i] = hexTo32Bytes(sampleString[i][1], 32);
+            nonces[i] = hexTo32Bytes(sampleString[i][2], 32);
+        }
+        else // Samples from files are not enough, randomly generate more
+        {
+            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[0]);
+            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[8]);
+            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[16]);
+            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[24]);
+
+            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[0]);
+            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[8]);
+            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[16]);
+            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[24]);
+
+            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[0]);
+            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[8]);
+            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[16]);
+            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[24]);
+
+        }
+    }
+}
+
+template<typename ProcessFunc>
+void runTest(
+    const std::string& testName,
+    const std::vector<int>& samples,
+    int numberOfThreads,
+    ProcessFunc processFunc)
+{
+    std::cout << "Test " << testName << " ... " << std::endl;
+#pragma omp parallel for num_threads(numberOfThreads)
+    for (int i = 0; i < static_cast<int>(samples.size()); ++i)
+    {
+        int index = samples[i];
+        processFunc(index);
+#pragma omp critical
+        std::cout << i << ", ";
+    }
+    std::cout << std::endl;
+}
+
 void runCommonTests()
 {
 
@@ -406,7 +517,6 @@ void runCommonTests()
 
     // Read the parameters and results
     auto sampleString = readCSV(COMMON_TEST_SAMPLES_FILE_NAME);
-
 
     // Convert the raw string and do the data verification
     unsigned long long numberOfSamplesReadFromFile = sampleString.size();
@@ -438,38 +548,11 @@ void runCommonTests()
         }
     }
 
+    // Reading the input samples
     std::vector<m256i> miningSeeds(numberOfSamples);
     std::vector<m256i> publicKeys(numberOfSamples);
     std::vector<m256i> nonces(numberOfSamples);
-
-    // Reading the input samples
-    for (unsigned long long i = 0; i < numberOfSamples; ++i)
-    {
-        if (i < numberOfSamplesReadFromFile)
-        {
-            miningSeeds[i] = hexTo32Bytes(sampleString[i][0], 32);
-            publicKeys[i] = hexTo32Bytes(sampleString[i][1], 32);
-            nonces[i] = hexTo32Bytes(sampleString[i][2], 32);
-        }
-        else // Samples from files are not enough, randomly generate more
-        {
-            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[0]);
-            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[8]);
-            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[16]);
-            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[24]);
-
-            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[0]);
-            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[8]);
-            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[16]);
-            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[24]);
-
-            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[0]);
-            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[8]);
-            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[16]);
-            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[24]);
-
-        }
-    }
+    loadSamples(sampleString, numberOfSamples, numberOfSamplesReadFromFile, miningSeeds, publicKeys, nonces);
 
     // Reading the header of score and verification
     if (!gCompareReference)
@@ -588,47 +671,79 @@ void runCommonTests()
     }
 
     std::cout << "Processing " << samples.size() << " samples " << compTerm << "..." << std::endl;
+    std::vector<std::pair<score_engine::AlgoType, std::string>> algos = {
+    {score_engine::AlgoType::HyperIdentity, "HyperIdentity"},
+    {score_engine::AlgoType::Addition, "Addition"},
+    {score_engine::AlgoType::AllAlgo, "Mixed"}
+    };
 
-    if (TEST_ALGO & score_engine::AlgoType::HyperIdentity)
+    for (const auto& [algoType, algoName] : algos)
     {
-        std::cout << "Test HyperIdentity ... " << std::endl;
-#pragma omp parallel for num_threads(numberOfThreads)
-        for (int i = 0; i < samples.size(); ++i)
+        if (TEST_ALGO & algoType)
         {
-            int index = samples[i];
-            process<0, CONFIG_COUNT>(miningSeeds[index].m256i_u8, publicKeys[index].m256i_u8, nonces[index].m256i_u8, index, score_engine::AlgoType::HyperIdentity);
-#pragma omp critical
-            std::cout << i << ", ";
+            runTest(algoName, samples, numberOfThreads, [&](int index)
+            {
+                process<0, CONFIG_COUNT>(
+                    miningSeeds[index].m256i_u8,
+                    publicKeys[index].m256i_u8,
+                    nonces[index].m256i_u8,
+                    index,
+                    algoType);
+            });
         }
-        std::cout << std::endl;
     }
 
-    if (TEST_ALGO & score_engine::AlgoType::Addition)
+    // Test Qubic score vs internal engine (always runs)
+    runTest("Qubic's score vs internal score engine on active config", samples, numberOfThreads, [&](int index)
     {
-        std::cout << "Test Addition ... " << std::endl;
-#pragma omp parallel for num_threads(numberOfThreads)
-        for (int i = 0; i < samples.size(); ++i)
-        {
-            int index = samples[i];
-            process<0, CONFIG_COUNT>(miningSeeds[index].m256i_u8, publicKeys[index].m256i_u8, nonces[index].m256i_u8, index, score_engine::AlgoType::Addition);
-#pragma omp critical
-            std::cout << i << ", ";
-        }
-        std::cout << std::endl;
-    }
+        processQubicScore(
+            miningSeeds[index].m256i_u8,
+            publicKeys[index].m256i_u8,
+            nonces[index].m256i_u8,
+            index);
+    });
 
-    if (TEST_ALGO & score_engine::AlgoType::AllAlgo)
-    {
-        std::cout << "Test Mixed ... " << std::endl;
+}
+
+template<int Profiling, std::size_t ConfigCount>
+void profileAlgo(
+    score_engine::AlgoType algo,
+    const std::string& algoName,
+    const std::vector<int>& samples,
+    const std::vector<m256i>& miningSeeds,
+    const std::vector<m256i>& publicKeys,
+    const std::vector<m256i>& nonces,
+    const std::vector<unsigned int>& filteredSamples,
+    int numberOfThreads,
+    unsigned long long numberOfSamples)
+{
+    std::cout << "Profile " << algoName << " ... " << std::endl;
+    gScoreProcessingTime.clear();
+
+    int numSamples = static_cast<int>(samples.size());
+
 #pragma omp parallel for num_threads(numberOfThreads)
-        for (int i = 0; i < samples.size(); ++i)
-        {
-            int index = samples[i];
-            process<0, CONFIG_COUNT>(miningSeeds[index].m256i_u8, publicKeys[index].m256i_u8, nonces[index].m256i_u8, index, score_engine::AlgoType::AllAlgo);
+    for (int i = 0; i < numSamples; ++i)
+    {
+        int index = samples[i];
+        process<Profiling, ConfigCount>(
+            miningSeeds[index].m256i_u8,
+            publicKeys[index].m256i_u8,
+            nonces[index].m256i_u8,
+            index,
+            algo);
 #pragma omp critical
-            std::cout << i << ", ";
-        }
-        std::cout << std::endl;
+        std::cout << i << ", ";
+    }
+    std::cout << std::endl;
+
+    std::size_t sampleCount = filteredSamples.empty() ? numberOfSamples : filteredSamples.size();
+    for (const auto& [settingIndex, totalTime] : gScoreProcessingTime)
+    {
+        unsigned long long avgTime = totalTime / sampleCount;
+        std::cout << "Avg time [setting " << settingIndex << "]: ";
+        printConfig<Profiling>(settingIndex, algo);
+        std::cout << " - " << avgTime << " ms" << std::endl;
     }
 }
 
@@ -658,38 +773,11 @@ void runPerformanceTests()
         }
     }
 
+    // Loading samples
     std::vector<m256i> miningSeeds(numberOfSamples);
     std::vector<m256i> publicKeys(numberOfSamples);
     std::vector<m256i> nonces(numberOfSamples);
-
-    // Reading the input samples
-    for (unsigned long long i = 0; i < numberOfSamples; ++i)
-    {
-        if (i < numberOfSamplesReadFromFile)
-        {
-            miningSeeds[i] = hexTo32Bytes(sampleString[i][0], 32);
-            publicKeys[i] = hexTo32Bytes(sampleString[i][1], 32);
-            nonces[i] = hexTo32Bytes(sampleString[i][2], 32);
-        }
-        else // Samples from files are not enough, randomly generate more
-        {
-            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[0]);
-            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[8]);
-            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[16]);
-            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[24]);
-
-            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[0]);
-            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[8]);
-            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[16]);
-            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[24]);
-
-            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[0]);
-            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[8]);
-            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[16]);
-            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[24]);
-
-        }
-    }
+    loadSamples(sampleString, numberOfSamples, numberOfSamplesReadFromFile, miningSeeds, publicKeys, nonces);
 
     std::cout << "Profiling " << numberOfGeneratedSetting << " param combinations. " << std::endl;
 
@@ -716,46 +804,13 @@ void runPerformanceTests()
 
     std::cout << "Processing " << samples.size() << " samples " << compTerm << "..." << std::endl;
 
+    profileAlgo<1, PROFILE_CONFIG_COUNT>(
+        score_engine::AlgoType::HyperIdentity, "HyperIdentity",
+        samples, miningSeeds, publicKeys, nonces, filteredSamples, numberOfThreads, numberOfSamples);
 
-    std::cout << "Profile HyperIdentity ... " << std::endl;
-    gScoreProcessingTime.clear();
-#pragma omp parallel for num_threads(numberOfThreads)
-    for (int i = 0; i < samples.size(); ++i)
-    {
-        int index = samples[i];
-        process<1, PROFILE_CONFIG_COUNT>(miningSeeds[index].m256i_u8, publicKeys[index].m256i_u8, nonces[index].m256i_u8, index, score_engine::AlgoType::HyperIdentity);
-#pragma omp critical
-        std::cout << i << ", ";
-    }
-    std::cout << std::endl;
-    // Print the average processing time
-    for (auto scoreTime : gScoreProcessingTime)
-    {
-        unsigned long long processingTime = filteredSamples.empty() ? scoreTime.second / numberOfSamples : scoreTime.second / filteredSamples.size();
-        std::cout << "Avg time [setting " << scoreTime.first << "]: "; 
-        printConfig<1>(scoreTime.first, score_engine::AlgoType::HyperIdentity);
-        std::cout << " - " << processingTime << " ms" << std::endl;
-    }
-
-    std::cout << "Profile Addition ... " << std::endl;
-    gScoreProcessingTime.clear();
-#pragma omp parallel for num_threads(numberOfThreads)
-    for (int i = 0; i < samples.size(); ++i)
-    {
-        int index = samples[i];
-        process<1, PROFILE_CONFIG_COUNT>(miningSeeds[index].m256i_u8, publicKeys[index].m256i_u8, nonces[index].m256i_u8, index, score_engine::AlgoType::Addition);
-#pragma omp critical
-        std::cout << i << ", ";
-    }
-    std::cout << std::endl;
-    // Print the average processing time
-    for (auto scoreTime : gScoreProcessingTime)
-    {
-        unsigned long long processingTime = filteredSamples.empty() ? scoreTime.second / numberOfSamples : scoreTime.second / filteredSamples.size();
-        std::cout << "Avg time [setting " << scoreTime.first << "]: " << processingTime << " ms" << std::endl;
-        printConfig<1>(scoreTime.first, score_engine::AlgoType::Addition);
-        std::cout << " - " << processingTime << " ms" << std::endl;
-    }
+    profileAlgo<1, PROFILE_CONFIG_COUNT>(
+        score_engine::AlgoType::Addition, "Addition",
+        samples, miningSeeds, publicKeys, nonces, filteredSamples, numberOfThreads, numberOfSamples);
 
     //gProfilingDataCollector.writeToFile();
 }

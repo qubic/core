@@ -41,7 +41,7 @@ struct Miner
 
     std::vector<unsigned char> poolVec;
 
-    void initialize(unsigned char miningSeed[32])
+    void initialize(const unsigned char miningSeed[32])
     {
         // Init random2 pool with mining seed
         poolVec.resize(score_reference::POOL_VEC_PADDING_SIZE);
@@ -104,7 +104,7 @@ struct Miner
 
     long long neuronValueBuffer[maxNumberOfNeurons];
 
-    void mutate(unsigned char nonce[32], unsigned long long mutateStep)
+    void mutate(const unsigned char nonce[32], unsigned long long mutateStep)
     {
         // Mutation
         unsigned long long population = currentANN.population;
@@ -640,7 +640,7 @@ struct Miner
         }
     }
 
-    unsigned int initializeANN(unsigned char* publicKey, unsigned char* nonce)
+    unsigned int initializeANN(const unsigned char* publicKey, const unsigned char* nonce)
     {
         unsigned char hash[32];
         unsigned char combined[64];
@@ -725,7 +725,7 @@ struct Miner
         return R;
     }
 
-    unsigned int computeScore(unsigned char* publicKey, unsigned char* nonce)
+    unsigned int computeScore(const unsigned char* publicKey, const unsigned char* nonce)
     {
         // Initialize
         unsigned int bestR = initializeANN(publicKey, nonce);
@@ -769,7 +769,7 @@ struct Miner
     }
 
     // Main function for mining
-    bool findSolution(unsigned char* publicKey, unsigned char* nonce)
+    bool findSolution(const unsigned char* publicKey, const unsigned char* nonce)
     {
         // Check score
         unsigned int score = computeScore(publicKey, nonce);
