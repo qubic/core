@@ -321,6 +321,9 @@
     <ClInclude Include="mining\score_hyperidentity.h">
       <Filter>mining</Filter>
     </ClInclude>
+    <ClInclude Include="mining\score_addition.h">
+      <Filter>mining</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

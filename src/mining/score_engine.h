@@ -2,6 +2,7 @@
 
 
 #include "score_hyperidentity.h"
+#include "score_addition.h"
 
 namespace score_engine
 {
@@ -10,6 +11,7 @@ template<typename HyperIdentityParamsT, typename AdditionParamsT>
 struct ScoreEngine
 {
     ScoreHyperIdentity<HyperIdentityParamsT> _hyperIdentityScore;
+    ScoreAddition<AdditionParamsT> _additionScore;
 
     void initMemory()
     {
@@ -27,26 +29,24 @@ struct ScoreEngine
         return _hyperIdentityScore.computeScore(publicKey, nonce, randomPool);
     }
 
-    // TODO: add this score later
     unsigned int computeAdditionScore(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* randomPool)
     {
-        return 0;
-        //return _additionScore->computeScore(publicKey, nonce, randomPool);
+        return _additionScore.computeScore(publicKey, nonce, randomPool);
     }
 
     unsigned int computeScore(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* randomPool)
     {
         // TODO: switch algorithm depend on nonce
-        return computeHyperIdentityScore(publicKey, nonce, randomPool);
+        //return computeHyperIdentityScore(publicKey, nonce, randomPool);
 
-        //if ((nonce[0] & 1) == 0)
-        //{
-        //    return computeHyperIdentityScore(publicKey, nonce, randomPool);
-        //}
-        //else
-        //{
-        //    return computeAdditionScore(publicKey, nonce, randomPool);
-        //}
+        if ((nonce[0] & 1) == 0)
+        {
+            return computeHyperIdentityScore(publicKey, nonce, randomPool);
+        }
+        else
+        {
+            return computeAdditionScore(publicKey, nonce, randomPool);
+        }
         return 0;
     }
 
