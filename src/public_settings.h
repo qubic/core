@@ -101,7 +101,7 @@ static constexpr unsigned long long ADDITION_NUMBER_OF_OUTPUT_NEURONS = 8;    //
 static constexpr unsigned long long ADDITION_NUMBER_OF_TICKS = 1000;               // N
 static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
 static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 150;
-static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_MUTATIONS; // P
+static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = ADDITION_NUMBER_OF_INPUT_NEURONS + ADDITION_NUMBER_OF_OUTPUT_NEURONS + ADDITION_NUMBER_OF_MUTATIONS; // P
 static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 87381; // 8 * ( 2^14 ) * 2 / 3
 
 static constexpr long long NEURON_VALUE_LIMIT = 1LL;

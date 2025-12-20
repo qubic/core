@@ -69,6 +69,7 @@ struct AdditionParams
 
 //=================================================================================================
 // Defines and constants
+static constexpr unsigned int INVALID_SCORE_VALUE = 0xFFFFFFFFU;
 static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 
 constexpr unsigned char INPUT_NEURON_TYPE = 0;

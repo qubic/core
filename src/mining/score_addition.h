@@ -1,5 +1,7 @@
 #pragma once
 
+#include "score_common.h"
+
 namespace score_engine
 {
 
@@ -851,18 +853,6 @@ struct ScoreAddition
         }
         return bestR;
     }
-
-    bool findSolution(unsigned char* publicKey, unsigned char* nonce)
-    {
-        unsigned int score = computeScore(publicKey, nonce);
-        if (score >= solutionThreshold)
-        {
-            return true;
-        }
-
-        return false;
-    }
-
 };
 
 }
