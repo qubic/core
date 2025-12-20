@@ -129,13 +129,13 @@ struct ScoreFunction
     {
         // TODO: need to change this
         //return (solutionScore >= 0 && solutionScore <= numberOfOutputNeurons);
-        return solutionScore >= 0;
+        return (solutionScore >= 0 && solutionScore < score_engine::INVALID_SCORE_VALUE);
     }
     bool isGoodScore(unsigned int solutionScore, int threshold)
     {
         // TODO: need to change this
         //return (threshold <= numberOfOutputNeurons) && (solutionScore >= (unsigned int)threshold);
-        return (solutionScore >= (unsigned int)threshold);
+        return (threshold <= score_engine::INVALID_SCORE_VALUE) && (solutionScore >= (unsigned int)threshold);
     }
 
     unsigned int computeScore(const unsigned long long solutionBufIdx, const m256i& publicKey, const m256i& nonce)
@@ -161,7 +161,7 @@ struct ScoreFunction
         {
             // TODO: need to change this
             // return numberOfOutputNeurons + 1; // return invalid score
-            return 0;
+            return score_engine::INVALID_SCORE_VALUE;
         }
 
         int score = 0;

@@ -16,10 +16,11 @@ struct ScoreEngine
     void initMemory()
     {
         setMem(&_hyperIdentityScore, sizeof(ScoreHyperIdentity<HyperIdentityParamsT>), 0);
+        setMem(&_additionScore, sizeof(ScoreAddition<AdditionParamsT>), 0);
     }
 
     // Unused function
-    void initMiningData(unsigned char* randomPool)
+    void initMiningData(const unsigned char* randomPool)
     {
 
     }
@@ -47,7 +48,6 @@ struct ScoreEngine
         {
             return computeAdditionScore(publicKey, nonce, randomPool);
         }
-        return 0;
     }
 
     // returns last computed output neurons, only returns 256 non-zero neurons, neuron values are compressed to bit
