@@ -10,7 +10,7 @@ namespace score_reference
 constexpr unsigned long long POOL_VEC_SIZE = (((1ULL << 32) + 64)) >> 3; // 2^32+64 bits ~ 512MB
 constexpr unsigned long long POOL_VEC_PADDING_SIZE = (POOL_VEC_SIZE + 200 - 1) / 200 * 200; // padding for multiple of 200
 
-void generateRandom2Pool(unsigned char miningSeed[32], unsigned char* pool)
+void generateRandom2Pool(const unsigned char miningSeed[32], unsigned char* pool)
 {
     unsigned char state[200];
     // same pool to be used by all computors/candidates and pool content changing each phase

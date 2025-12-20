@@ -25,24 +25,24 @@ struct ScoreReferenceImplementation
         _hyperIdentityScore = std::make_unique<HyperIdentityScore>();
         _additionScore = std::make_unique<AdditionScore>();
     }
-    void initMiningData(unsigned char* miningSeed)
+    void initMiningData(const unsigned char* miningSeed)
     {
         _hyperIdentityScore->initialize(miningSeed);
         _additionScore->initialize(miningSeed);
     }
 
-    unsigned int computeHyperIdentityScore(unsigned char* publicKey, unsigned char* nonce, unsigned char* randomPool = nullptr)
+    unsigned int computeHyperIdentityScore(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* randomPool = nullptr)
     {
         return _hyperIdentityScore->computeScore(publicKey, nonce);
     }
 
-    unsigned int computeAdditionScore(unsigned char* publicKey, unsigned char* nonce, unsigned char* randomPool = nullptr)
+    unsigned int computeAdditionScore(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* randomPool = nullptr)
     {
         return _additionScore->computeScore(publicKey, nonce);
     }
 
     // Return score depend on the nonce
-    unsigned int computeScore(unsigned char* publicKey, unsigned char* nonce, unsigned char* randomPool = nullptr)
+    unsigned int computeScore(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* randomPool = nullptr)
     {
         if ((nonce[0] & 1) == 0)
         {
