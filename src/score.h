@@ -135,7 +135,7 @@ struct ScoreFunction
     {
         // TODO: need to change this
         //return (threshold <= numberOfOutputNeurons) && (solutionScore >= (unsigned int)threshold);
-        return (threshold <= score_engine::INVALID_SCORE_VALUE) && (solutionScore >= (unsigned int)threshold);
+        return (threshold < score_engine::INVALID_SCORE_VALUE) && (solutionScore >= (unsigned int)threshold);
     }
 
     unsigned int computeScore(const unsigned long long solutionBufIdx, const m256i& publicKey, const m256i& nonce)
