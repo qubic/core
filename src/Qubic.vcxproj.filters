@@ -315,6 +315,12 @@
     <ClInclude Include="mining\score_common.h">
       <Filter>mining</Filter>
     </ClInclude>
+    <ClInclude Include="mining\score_engine.h">
+      <Filter>mining</Filter>
+    </ClInclude>
+    <ClInclude Include="mining\score_hyperidentity.h">
+      <Filter>mining</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

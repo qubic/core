@@ -182,13 +182,6 @@ static int nContractProcessorIDs = 0;
 static int nSolutionProcessorIDs = 0;
 
 static ScoreFunction<
-    NUMBER_OF_INPUT_NEURONS,
-    NUMBER_OF_OUTPUT_NEURONS,
-    NUMBER_OF_TICKS,
-    NUMBER_OF_NEIGHBORS,
-    POPULATION_THRESHOLD,
-    NUMBER_OF_MUTATIONS,
-    SOLUTION_THRESHOLD_DEFAULT,
     NUMBER_OF_SOLUTION_PROCESSORS
 > * score = nullptr;
 static volatile char solutionsLock = 0;
@@ -695,7 +688,9 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                         if (k == system.numberOfSolutions)
                                         {
                                             unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
-                                            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
+                                            // TODO: verified this, support set threshold from cli
+                                            //const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
+                                            const int threshold = ((solution_nonce.m256i_u8[0] & 1) == 0) ? HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT : ADDITION_SOLUTION_THRESHOLD_DEFAULT;
                                             if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
                                                 && score->isValidScore(solutionScore)
                                                 && score->isGoodScore(solutionScore, threshold))
@@ -1330,7 +1325,9 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.numberOfTransactions = numberOfTransactions;
 
     respondedSystemInfo.randomMiningSeed = score->currentRandomSeed;
-    respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
+    // TODO: sopport array of solution threshold
+    //respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
+    respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;
 
     respondedSystemInfo.totalSpectrumAmount = spectrumInfo.totalAmount;
     respondedSystemInfo.currentEntityBalanceDustThreshold = (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf;
@@ -1560,7 +1557,9 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 SpecialCommandSetSolutionThresholdRequestAndResponse response;
                 response.everIncreasingNonceAndCommandType = _request->everIncreasingNonceAndCommandType;
                 response.epoch = _request->epoch;
-                response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch] : SOLUTION_THRESHOLD_DEFAULT;
+                // TODO: support setting both threshold from cli
+                //response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch] : SOLUTION_THRESHOLD_DEFAULT;
+                response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch] : HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;
                 enqueueResponse(peer, sizeof(SpecialCommandSetSolutionThresholdRequestAndResponse), SpecialCommand::type(), header->dejavu(), &response);
             }
             break;
@@ -2559,8 +2558,9 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
         {
             resourceTestingDigest ^= solutionScore;
             KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
-
-            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
+            // TODO: support threshold from cli
+            //const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
+            const int threshold = ((transaction->nonce.m256i_u8[0] & 1) == 0) ? HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT : ADDITION_SOLUTION_THRESHOLD_DEFAULT;
             if (score->isGoodScore(solutionScore, threshold))
             {
                 // Solution deposit return
@@ -3659,8 +3659,13 @@ static void beginEpoch()
     minimumComputorScore = 0;
     minimumCandidateScore = 0;
 
-    if (system.epoch < MAX_NUMBER_EPOCH && (solutionThreshold[system.epoch] <= 0 || solutionThreshold[system.epoch] > NUMBER_OF_OUTPUT_NEURONS)) { // invalid threshold
-        solutionThreshold[system.epoch] = SOLUTION_THRESHOLD_DEFAULT;
+    // TODO: support 2 array of solution threshold
+    //if (system.epoch < MAX_NUMBER_EPOCH && (solutionThreshold[system.epoch] <= 0 || solutionThreshold[system.epoch] > NUMBER_OF_OUTPUT_NEURONS)) { // invalid threshold
+    //    solutionThreshold[system.epoch] = SOLUTION_THRESHOLD_DEFAULT;
+    //}
+    if (system.epoch < MAX_NUMBER_EPOCH && (solutionThreshold[system.epoch] <= 0 || solutionThreshold[system.epoch] > HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS))
+    { // invalid threshold
+        solutionThreshold[system.epoch] = HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;
     }
 
     system.latestOperatorNonce = 0;
