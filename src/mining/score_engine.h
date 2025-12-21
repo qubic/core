@@ -39,14 +39,17 @@ struct ScoreEngine
     unsigned int computeScore(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* randomPool)
     {
         lastNonceByte0 = nonce[0];
-        if ((nonce[0] & 1) == 0)
-        {
-            return computeHyperIdentityScore(publicKey, nonce, randomPool);
-        }
-        else
-        {
-            return computeAdditionScore(publicKey, nonce, randomPool);
-        }
+
+        // Test config hyper identity only
+        return computeHyperIdentityScore(publicKey, nonce, randomPool);
+        //if ((nonce[0] & 1) == 0)
+        //{
+        //    return computeHyperIdentityScore(publicKey, nonce, randomPool);
+        //}
+        //else
+        //{
+        //    return computeAdditionScore(publicKey, nonce, randomPool);
+        //}
     }
 
     // returns last computed output neurons, only returns 256 non-zero neurons, neuron values are compressed to bit
