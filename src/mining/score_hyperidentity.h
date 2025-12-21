@@ -1197,43 +1197,19 @@ struct ScoreHyperIdentity
         return score;
     }
 
-    // returns last computed output neurons, only returns 256 non-zero neurons, neuron values are compressed to bit
-    m256i getLastOutput()
+    // returns last computed output neurons, only returns non-zero neurons,
+    // non-zero neurons will be packed in bits until requestedSizeInBytes is hitted or no more output neurons
+    int getLastOutput(unsigned char* requestedOutput, int requestedSizeInBytes)
     {
-        unsigned long long population = bestANN.population;
-        Neuron* neurons = bestANN.neurons;
-        NeuronType* neuronTypes = bestANN.neuronTypes;
-        int count = 0;
-        int byteCount = 0;
-        uint8_t A = 0;
-        m256i result;
-        result = m256i::zero();
-
-        for (unsigned long long i = 0; i < population; i++)
-        {
-            if (neuronTypes[i] == OUTPUT_NEURON_TYPE)
-            {
-                if (neurons[i])
-                {
-                    uint8_t v = (neurons[i] > 0);
-                    v = v << (7 - count);
-                    A |= v;
-                    if (++count == 8)
-                    {
-                        result.m256i_u8[byteCount++] = A;
-                        A = 0;
-                        count = 0;
-                        if (byteCount >= 32)
-                        {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        return result;
+        return 0;
+        //return getLastOutput(
+        //    bestANN.neurons,
+        //    bestANN.neuronTypes,
+        //    bestANN.population,
+        //    requestedOutput,
+        //    requestedSizeInBytes);
     }
+
 };
 
 }

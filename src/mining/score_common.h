@@ -395,13 +395,60 @@ static inline __m256i load256Bits(const unsigned char* array, unsigned long long
 #endif
 
 template <unsigned long long bitCount>
-void toTenaryBits(long long A, char* bits)
+static void toTenaryBits(long long A, char* bits)
 {
     for (unsigned long long i = 0; i < bitCount; ++i)
     {
         char bitValue = static_cast<char>((A >> i) & 1);
         bits[i] = (bitValue == 0) ? -1 : bitValue;
     }
+}
+
+static int getLastOutput(
+    const unsigned char* data,
+    const unsigned char* dataType,
+    const unsigned long long dataSize,
+    unsigned char* requestedOutput, 
+    int requestedSizeInBytes)
+{
+    setMem(requestedOutput, requestedSizeInBytes, 0);
+
+    int byteCount = 0;
+    int bitCount = 0;
+    unsigned char currentByte = 0;
+
+    for (unsigned long long i = 0; i < dataSize && byteCount < requestedSizeInBytes; i++)
+    {
+        if (dataType[i] == OUTPUT_NEURON_TYPE)
+        {
+            // Skip zero data
+            if (data[i] == 0)
+            {
+                continue;
+            }
+
+            // Pack sign bit: 1 if positive, 0 if negative
+            unsigned char bit = (data[i] > 0) ? 1 : 0;
+            currentByte |= (bit << (7 - bitCount));
+            bitCount++;
+
+            // Byte complete
+            if (bitCount == 8)
+            {
+                requestedOutput[byteCount++] = currentByte;
+                currentByte = 0;
+                bitCount = 0;
+            }
+        }
+    }
+
+    // Write final partial byte if any bits were set
+    if (bitCount > 0 && byteCount < requestedSizeInBytes)
+    {
+        requestedOutput[byteCount++] = currentByte;
+    }
+
+    return byteCount;
 }
 
 }
