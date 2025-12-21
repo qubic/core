@@ -12,6 +12,7 @@ struct ScoreEngine
 {
     ScoreHyperIdentity<HyperIdentityParamsT> _hyperIdentityScore;
     ScoreAddition<AdditionParamsT> _additionScore;
+    unsigned char lastNonceByte0;
 
     void initMemory()
     {
@@ -37,9 +38,7 @@ struct ScoreEngine
 
     unsigned int computeScore(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* randomPool)
     {
-        // TODO: switch algorithm depend on nonce
-        //return computeHyperIdentityScore(publicKey, nonce, randomPool);
-
+        lastNonceByte0 = nonce[0];
         if ((nonce[0] & 1) == 0)
         {
             return computeHyperIdentityScore(publicKey, nonce, randomPool);
@@ -51,40 +50,20 @@ struct ScoreEngine
     }
 
     // returns last computed output neurons, only returns 256 non-zero neurons, neuron values are compressed to bit
-    // TODO: support later
+    //
     m256i getLastOutput()
     {
         m256i result;
         result = m256i::zero();
-
-        //unsigned long long population = bestANN.population;
-        //Neuron* neurons = bestANN.neurons;
-        //NeuronType* neuronTypes = bestANN.neuronTypes;
-        //int count = 0;
-        //int byteCount = 0;
-        //uint8_t A = 0;
-        //for (unsigned long long i = 0; i < population; i++)
-        //{
-        //    if (neuronTypes[i] == OUTPUT_NEURON_TYPE)
-        //    {
-        //        if (neurons[i])
-        //        {
-        //            uint8_t v = (neurons[i] > 0);
-        //            v = v << (7 - count);
-        //            A |= v;
-        //            if (++count == 8)
-        //            {
-        //                result.m256i_u8[byteCount++] = A;
-        //                A = 0;
-        //                count = 0;
-        //                if (byteCount >= 32)
-        //                {
-        //                    break;
-        //                }
-        //            }
-        //        }
-        //    }
-        //}
+        if ((lastNonceByte0 & 1) == 0)
+        {
+            _hyperIdentityScore.getLastOutput(result.m256i_u8, 32);
+        }
+        else
+        {
+            // TODO: support later
+            // _additionScore.getLastOutput(result.m256i_u8, 32);
+        }
 
         return result;
     }
