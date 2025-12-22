@@ -325,125 +325,122 @@ public:
 		locals.isStoppingMining = (qpi.invocationReward() == 0);
 
 		// If reveal provided: search for matching commitment(s) by this invocator
-		if (locals.hasRevealData)
+		for (locals.i = 0; locals.i < state.commitmentCount;)
 		{
-			for (locals.i = 0; locals.i < state.commitmentCount;)
+			locals.cmt = state.commitments.get(locals.i);
+			if (!locals.cmt.hasRevealed && isEqualIdCheck(locals.cmt.invocatorId, qpi.invocator()))
 			{
-				locals.cmt = state.commitments.get(locals.i);
-				if (!locals.cmt.hasRevealed && isEqualIdCheck(locals.cmt.invocatorId, qpi.invocator()))
-				{
-					// Compare stored digest to precomputed K12(revealedBits)
-					locals.hashMatches = (locals.cmt.digest == locals.revealedDigest);
+				// Compare stored digest to precomputed K12(revealedBits)
+				locals.hashMatches = (locals.cmt.digest == locals.revealedDigest);
 
-					if (locals.hashMatches)
+				if (locals.hashMatches)
+				{
+					// If reveal too late, deposit is forfeited; otherwise update entropy pool and refund.
+					if (locals.currentTick > locals.cmt.revealDeadlineTick)
 					{
-						// If reveal too late, deposit is forfeited; otherwise update entropy pool and refund.
-						if (locals.currentTick > locals.cmt.revealDeadlineTick)
+						locals.lostDeposit = locals.cmt.amount;
+						state.lostDepositsRevenue += locals.lostDeposit;
+						state.totalRevenue += locals.lostDeposit;
+						state.pendingShareholderDistribution += locals.lostDeposit;
+						output.revealSuccessful = false;
+					}
+					else
+					{
+						// Apply the 256-bit digest to the pool by XORing the 4 x 64-bit lanes.
+						// This avoids inspecting bit_4096 internals and keeps everything QPI-compliant.
+						state.currentEntropyPool.u64._0 ^= locals.revealedDigest.u64._0;
+						state.currentEntropyPool.u64._1 ^= locals.revealedDigest.u64._1;
+						state.currentEntropyPool.u64._2 ^= locals.revealedDigest.u64._2;
+						state.currentEntropyPool.u64._3 ^= locals.revealedDigest.u64._3;
+
+						// Advance circular history with copy of new pool and bump version.
+						state.entropyHistoryHead = (state.entropyHistoryHead + 1) & (RANDOM_ENTROPY_HISTORY_LEN - 1);
+						state.entropyHistory.set(state.entropyHistoryHead, state.currentEntropyPool);
+
+						state.entropyPoolVersion++;
+						state.entropyPoolVersionHistory.set(state.entropyHistoryHead, state.entropyPoolVersion);
+
+						// Refund deposit to invocator and update stats.
+						qpi.transfer(qpi.invocator(), locals.cmt.amount);
+						output.revealSuccessful = true;
+						output.depositReturned = locals.cmt.amount;
+						state.totalReveals++;
+						state.totalSecurityDepositsLocked -= locals.cmt.amount;
+
+						// Maintain recentMiners LRU: update existing entry, append if space, or replace lowest.
+						locals.existingIndex = -1;
+						for (locals.rm = 0; locals.rm < state.recentMinerCount; ++locals.rm)
 						{
-							locals.lostDeposit = locals.cmt.amount;
-							state.lostDepositsRevenue += locals.lostDeposit;
-							state.totalRevenue += locals.lostDeposit;
-							state.pendingShareholderDistribution += locals.lostDeposit;
-							output.revealSuccessful = false;
+							locals.recentMinerA = state.recentMiners.get(locals.rm);
+							if (isEqualIdCheck(locals.recentMinerA.minerId, qpi.invocator()))
+							{
+								locals.existingIndex = locals.rm;
+								break;
+							}
+						}
+						if (locals.existingIndex >= 0)
+						{
+							// update stored recent miner entry
+							locals.recentMinerA = state.recentMiners.get(locals.existingIndex);
+							if (locals.recentMinerA.deposit < locals.cmt.amount)
+							{
+								locals.recentMinerA.deposit = locals.cmt.amount;
+								locals.recentMinerA.lastEntropyVersion = state.entropyPoolVersion;
+							}
+							locals.recentMinerA.lastRevealTick = locals.currentTick;
+							state.recentMiners.set(locals.existingIndex, locals.recentMinerA);
+						}
+						else if (state.recentMinerCount < RANDOM_MAX_RECENT_MINERS)
+						{
+							// append new recent miner
+							locals.recentMinerA.minerId = qpi.invocator();
+							locals.recentMinerA.deposit = locals.cmt.amount;
+							locals.recentMinerA.lastEntropyVersion = state.entropyPoolVersion;
+							locals.recentMinerA.lastRevealTick = locals.currentTick;
+							state.recentMiners.set(state.recentMinerCount, locals.recentMinerA);
+							state.recentMinerCount++;
 						}
 						else
 						{
-							// Apply the 256-bit digest to the pool by XORing the 4 x 64-bit lanes.
-							// This avoids inspecting bit_4096 internals and keeps everything QPI-compliant.
-							state.currentEntropyPool.u64._0 ^= locals.revealedDigest.u64._0;
-							state.currentEntropyPool.u64._1 ^= locals.revealedDigest.u64._1;
-							state.currentEntropyPool.u64._2 ^= locals.revealedDigest.u64._2;
-							state.currentEntropyPool.u64._3 ^= locals.revealedDigest.u64._3;
-
-							// Advance circular history with copy of new pool and bump version.
-							state.entropyHistoryHead = (state.entropyHistoryHead + 1) & (RANDOM_ENTROPY_HISTORY_LEN - 1);
-							state.entropyHistory.set(state.entropyHistoryHead, state.currentEntropyPool);
-
-							state.entropyPoolVersion++;
-							state.entropyPoolVersionHistory.set(state.entropyHistoryHead, state.entropyPoolVersion);
-
-							// Refund deposit to invocator and update stats.
-							qpi.transfer(qpi.invocator(), locals.cmt.amount);
-							output.revealSuccessful = true;
-							output.depositReturned = locals.cmt.amount;
-							state.totalReveals++;
-							state.totalSecurityDepositsLocked -= locals.cmt.amount;
-
-							// Maintain recentMiners LRU: update existing entry, append if space, or replace lowest.
-							locals.existingIndex = -1;
-							for (locals.rm = 0; locals.rm < state.recentMinerCount; ++locals.rm)
+							// Find lowest-ranked miner and replace if current qualifies
+							locals.lowestIx = 0;
+							for (locals.rm = 1; locals.rm < RANDOM_MAX_RECENT_MINERS; ++locals.rm)
 							{
 								locals.recentMinerA = state.recentMiners.get(locals.rm);
-								if (isEqualIdCheck(locals.recentMinerA.minerId, qpi.invocator()))
+								locals.recentMinerB = state.recentMiners.get(locals.lowestIx);
+								if (locals.recentMinerA.deposit < locals.recentMinerB.deposit ||
+									(locals.recentMinerA.deposit == locals.recentMinerB.deposit && locals.recentMinerA.lastEntropyVersion < locals.recentMinerB.lastEntropyVersion))
 								{
-									locals.existingIndex = locals.rm;
-									break;
+									locals.lowestIx = locals.rm;
 								}
 							}
-							if (locals.existingIndex >= 0)
+							locals.recentMinerA = state.recentMiners.get(locals.lowestIx);
+							if (
+								locals.cmt.amount > locals.recentMinerA.deposit ||
+								(locals.cmt.amount == locals.recentMinerA.deposit && state.entropyPoolVersion > locals.recentMinerA.lastEntropyVersion)
+								)
 							{
-								// update stored recent miner entry
-								locals.recentMinerA = state.recentMiners.get(locals.existingIndex);
-								if (locals.recentMinerA.deposit < locals.cmt.amount)
-								{
-									locals.recentMinerA.deposit = locals.cmt.amount;
-									locals.recentMinerA.lastEntropyVersion = state.entropyPoolVersion;
-								}
-								locals.recentMinerA.lastRevealTick = locals.currentTick;
-								state.recentMiners.set(locals.existingIndex, locals.recentMinerA);
-							}
-							else if (state.recentMinerCount < RANDOM_MAX_RECENT_MINERS)
-							{
-								// append new recent miner
 								locals.recentMinerA.minerId = qpi.invocator();
 								locals.recentMinerA.deposit = locals.cmt.amount;
 								locals.recentMinerA.lastEntropyVersion = state.entropyPoolVersion;
 								locals.recentMinerA.lastRevealTick = locals.currentTick;
-								state.recentMiners.set(state.recentMinerCount, locals.recentMinerA);
-								state.recentMinerCount++;
-							}
-							else
-							{
-								// Find lowest-ranked miner and replace if current qualifies
-								locals.lowestIx = 0;
-								for (locals.rm = 1; locals.rm < RANDOM_MAX_RECENT_MINERS; ++locals.rm)
-								{
-									locals.recentMinerA = state.recentMiners.get(locals.rm);
-									locals.recentMinerB = state.recentMiners.get(locals.lowestIx);
-									if (locals.recentMinerA.deposit < locals.recentMinerB.deposit ||
-										(locals.recentMinerA.deposit == locals.recentMinerB.deposit && locals.recentMinerA.lastEntropyVersion < locals.recentMinerB.lastEntropyVersion))
-									{
-										locals.lowestIx = locals.rm;
-									}
-								}
-								locals.recentMinerA = state.recentMiners.get(locals.lowestIx);
-								if (
-									locals.cmt.amount > locals.recentMinerA.deposit ||
-									(locals.cmt.amount == locals.recentMinerA.deposit && state.entropyPoolVersion > locals.recentMinerA.lastEntropyVersion)
-									)
-								{
-									locals.recentMinerA.minerId = qpi.invocator();
-									locals.recentMinerA.deposit = locals.cmt.amount;
-									locals.recentMinerA.lastEntropyVersion = state.entropyPoolVersion;
-									locals.recentMinerA.lastRevealTick = locals.currentTick;
-									state.recentMiners.set(locals.lowestIx, locals.recentMinerA);
-								}
+								state.recentMiners.set(locals.lowestIx, locals.recentMinerA);
 							}
 						}
-
-						// Remove commitment (swap with last) and continue scanning without incrementing i.
-						state.totalSecurityDepositsLocked -= locals.cmt.amount;
-						if (locals.i != state.commitmentCount - 1)
-						{
-							locals.cmt = state.commitments.get(state.commitmentCount - 1);
-							state.commitments.set(locals.i, locals.cmt);
-						}
-						state.commitmentCount--;
-						continue;
 					}
+
+					// Remove commitment (swap with last) and continue scanning without incrementing i.
+					state.totalSecurityDepositsLocked -= locals.cmt.amount;
+					if (locals.i != state.commitmentCount - 1)
+					{
+						locals.cmt = state.commitments.get(state.commitmentCount - 1);
+						state.commitments.set(locals.i, locals.cmt);
+					}
+					state.commitmentCount--;
+					continue;
 				}
-				locals.i++;
 			}
+			locals.i++;
 		}
 
 		// If caller provided a new commitment (invocationReward used as deposit) and not stopping mining,
@@ -735,17 +732,14 @@ public:
 			}
 			state.recentMinerCount = 0;
 		}
-		// Distribute shareholder earnings (if any)
-		if (state.shareholderEarningsPool > 0)
+
+		// Distribute any pending shareholder distribution (from earnings and/or lost deposits)
+		uint64 totalShareholderPayout = state.shareholderEarningsPool + state.pendingShareholderDistribution;
+		if (totalShareholderPayout > 0)
 		{
-			qpi.distributeDividends(div(state.shareholderEarningsPool, (uint64)NUMBER_OF_COMPUTORS));
-			state.shareholderEarningsPool = 0;
-		}
-		// Distribute any pending shareholder distribution (from lost deposits)
-		if (state.pendingShareholderDistribution > 0)
-		{
-			qpi.distributeDividends(div(state.pendingShareholderDistribution, (uint64)NUMBER_OF_COMPUTORS));
-			state.pendingShareholderDistribution = 0;
+		    qpi.distributeDividends(div(totalShareholderPayout, (uint64)NUMBER_OF_COMPUTORS));
+		    state.shareholderEarningsPool = 0;
+		    state.pendingShareholderDistribution = 0;
 		}
 	}
 
