@@ -687,8 +687,8 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                         {
                                             unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
                                             // TODO[score]: verified this, support set threshold from cli
-                                            //const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
-                                            const int threshold = ((solution_nonce.m256i_u8[0] & 1) == 0) ? HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT : ADDITION_SOLUTION_THRESHOLD_DEFAULT;
+                                            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;
+                                            //const int threshold = ((solution_nonce.m256i_u8[0] & 1) == 0) ? HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT : ADDITION_SOLUTION_THRESHOLD_DEFAULT;
                                             if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
                                                 && score->isValidScore(solutionScore)
                                                 && score->isGoodScore(solutionScore, threshold))
@@ -2557,8 +2557,8 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
             resourceTestingDigest ^= solutionScore;
             KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
             // TODO[score]: support threshold from cli
-            //const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : SOLUTION_THRESHOLD_DEFAULT;
-            const int threshold = ((transaction->nonce.m256i_u8[0] & 1) == 0) ? HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT : ADDITION_SOLUTION_THRESHOLD_DEFAULT;
+            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch] : HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;
+            //const int threshold = ((transaction->nonce.m256i_u8[0] & 1) == 0) ? HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT : ADDITION_SOLUTION_THRESHOLD_DEFAULT;
             if (score->isGoodScore(solutionScore, threshold))
             {
                 // Solution deposit return
