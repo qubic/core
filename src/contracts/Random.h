@@ -97,6 +97,12 @@ private:
 	{
 		return isZero(value);
 	}
+	
+	static inline uint64 calculatePrice(const RANDOM& state, uint32 numberOfBytes, uint64 minMinerDeposit)
+	{
+	    return state.pricePerByte * numberOfBytes *
+	        (div(minMinerDeposit, state.priceDepositDivisor) + 1ULL);
+	}
 
 public:
 	// --- Inputs / outputs for user-facing procedures and functions ---
@@ -569,8 +575,7 @@ public:
 	    }
 	
 	    // Compute minimum price and check buyer fee
-	    locals.minPrice = state.pricePerByte * input.numberOfBytes *
-	        (div(input.minMinerDeposit, state.priceDepositDivisor) + 1);
+        locals.minPrice = calculatePrice(state, input.numberOfBytes, input.minMinerDeposit);
 	
 	    if (locals.buyerFee < locals.minPrice)
 	    {
@@ -607,7 +612,7 @@ public:
 	    output.success = true;
 	
 	    // Split fee: half to miners pool, half to shareholders
-	    locals.half = div(locals.buyerFee, (uint64)2);
+	    locals.half = div(locals.buyerFee, 2ULL);
 	    state.minerEarningsPool += locals.half;
 	    state.shareholderEarningsPool += (locals.buyerFee - locals.half);
 	}
@@ -634,10 +639,8 @@ public:
 		output.recentMinerCount = state.recentMinerCount;
 
 		// Copy valid deposit amounts
-		for (locals.i = 0; locals.i < RANDOM_VALID_DEPOSIT_AMOUNTS; ++locals.i)
-		{
-			output.validDepositAmounts.set(locals.i, state.validDepositAmounts.get(locals.i));
-		}
+		copyMemory(output.validDepositAmounts, state.validDepositAmounts);
+		
 		// Count active commitments
 		for (locals.i = 0; locals.i < state.commitmentCount; ++locals.i)
 		{
@@ -674,8 +677,7 @@ public:
 	// QueryPrice: compute price for a buyer based on requested bytes and min miner deposit
 	PUBLIC_FUNCTION(QueryPrice)
 	{
-		output.price = state.pricePerByte * input.numberOfBytes *
-			(div(input.minMinerDeposit, (uint64)state.priceDepositDivisor) + 1);
+		output.price = calculatePrice(state, input.numberOfBytes, input.minMinerDeposit);
 	}
 
 	// END_EPOCH: sweep expired commitments and distribute earnings to recent miners and shareholders
