@@ -513,103 +513,106 @@ public:
 	// - Charges buyer and returns requested bytes from slightly older pool version
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyEntropy)
 	{
-		locals.currentTick = qpi.tick();
-
-		// Sweep expired commitments (same logic as above)
-		for (locals.i = 0; locals.i < state.commitmentCount;)
-		{
-			locals.cmt = state.commitments.get(locals.i);
-			if (!locals.cmt.hasRevealed && locals.currentTick > locals.cmt.revealDeadlineTick)
-			{
-				locals.lostDeposit = locals.cmt.amount;
-				state.lostDepositsRevenue += locals.lostDeposit;
-				state.totalRevenue += locals.lostDeposit;
-				state.pendingShareholderDistribution += locals.lostDeposit;
-				state.totalSecurityDepositsLocked -= locals.lostDeposit;
-				if (locals.i != state.commitmentCount - 1)
-				{
-					locals.cmt = state.commitments.get(state.commitmentCount - 1);
-					state.commitments.set(locals.i, locals.cmt);
-				}
-				state.commitmentCount--;
-			}
-			else
-			{
-				locals.i++;
-			}
-		}
-
-		// Disallow in early-epoch mode
-		if (qpi.numberOfTickTransactions() == -1)
-		{
-			output.success = false;
-			return;
-		}
-
-		output.success = false;
-		locals.buyerFee = qpi.invocationReward();
-		locals.eligible = false;
-		locals.usedMinerDeposit = 0;
-
-		// Find an eligible recent miner whose deposit >= minMinerDeposit and who revealed recently
-		for (locals.i = 0; locals.i < state.recentMinerCount; ++locals.i)
-		{
-			locals.recentMinerTemp = state.recentMiners.get(locals.i);
-			if (locals.recentMinerTemp.deposit >= input.minMinerDeposit &&
-				(locals.currentTick - locals.recentMinerTemp.lastRevealTick) <= state.revealTimeoutTicks)
-			{
-				locals.eligible = true;
-				locals.usedMinerDeposit = locals.recentMinerTemp.deposit;
-				break;
-			}
-		}
-
-		if (!locals.eligible)
-		{
-			return;
-		}
-
-		// Compute minimum price and check buyer fee
-		locals.minPrice = state.pricePerByte * input.numberOfBytes *
-			(div(input.minMinerDeposit, state.priceDepositDivisor) + 1);
-
-		if (locals.buyerFee < locals.minPrice)
-		{
-			return;
-		}
-
-		// Use the previous-but-one history entry for purchased entropy (to avoid last-second reveals)
-		locals.histIdx = (state.entropyHistoryHead + RANDOM_ENTROPY_HISTORY_LEN - 2) & (RANDOM_ENTROPY_HISTORY_LEN - 1);
-
-		// Produce requested bytes (bounded by RANDOM_RANDOMBYTES_LEN)
-		for (locals.i = 0; locals.i < ((input.numberOfBytes > RANDOM_RANDOMBYTES_LEN) ? RANDOM_RANDOMBYTES_LEN : input.numberOfBytes); ++locals.i)
-		{
-			output.randomBytes.set(
-				locals.i,
-				static_cast<uint8_t>(
-					(
-						(
-							(locals.i < 8) ? state.entropyHistory.get(locals.histIdx).u64._0 :
-							(locals.i < 16) ? state.entropyHistory.get(locals.histIdx).u64._1 :
-							(locals.i < 24) ? state.entropyHistory.get(locals.histIdx).u64._2 :
-							state.entropyHistory.get(locals.histIdx).u64._3
-							) >> (8 * (locals.i & 7))
-						) & 0xFF
-					) ^
-				(locals.i < 8 ? static_cast<uint8_t>((static_cast<uint64_t>(locals.currentTick) >> (8 * locals.i)) & 0xFF) : 0)
-			);
-		}
-
-		// Return metadata and split buyer fee
-		output.entropyVersion = state.entropyPoolVersionHistory.get(locals.histIdx);
-		output.usedMinerDeposit = locals.usedMinerDeposit;
-		output.usedPoolVersion = state.entropyPoolVersionHistory.get(locals.histIdx);
-		output.success = true;
-
-		// Split fee: half to miners pool, half to shareholders
-		locals.half = div(locals.buyerFee, (uint64)2);
-		state.minerEarningsPool += locals.half;
-		state.shareholderEarningsPool += (locals.buyerFee - locals.half);
+	    locals.currentTick = qpi.tick();
+	
+	    // Sweep expired commitments
+	    for (locals.i = 0; locals.i < state.commitmentCount;)
+	    {
+	        locals.cmt = state.commitments.get(locals.i);
+	        if (!locals.cmt.hasRevealed && locals.currentTick > locals.cmt.revealDeadlineTick)
+	        {
+	            locals.lostDeposit = locals.cmt.amount;
+	            state.lostDepositsRevenue += locals.lostDeposit;
+	            state.totalRevenue += locals.lostDeposit;
+	            state.pendingShareholderDistribution += locals.lostDeposit;
+	            state.totalSecurityDepositsLocked -= locals.lostDeposit;
+	            if (locals.i != state.commitmentCount - 1)
+	            {
+	                locals.cmt = state.commitments.get(state.commitmentCount - 1);
+	                state.commitments.set(locals.i, locals.cmt);
+	            }
+	            state.commitmentCount--;
+	        }
+	        else
+	        {
+	            locals.i++;
+	        }
+	    }
+	
+	    // Disallow in early-epoch mode -- refund buyer
+	    if (qpi.numberOfTickTransactions() == -1)
+	    {
+	        output.success = false;
+	        qpi.transfer(qpi.invocator(), qpi.invocationReward()); // <-- refund buyer
+	        return;
+	    }
+	
+	    output.success = false;
+	    locals.buyerFee = qpi.invocationReward();
+	    locals.eligible = false;
+	    locals.usedMinerDeposit = 0;
+	
+	    // Find an eligible recent miner whose deposit >= minMinerDeposit and who revealed recently
+	    for (locals.i = 0; locals.i < state.recentMinerCount; ++locals.i)
+	    {
+	        locals.recentMinerTemp = state.recentMiners.get(locals.i);
+	        if (locals.recentMinerTemp.deposit >= input.minMinerDeposit &&
+	            (locals.currentTick - locals.recentMinerTemp.lastRevealTick) <= state.revealTimeoutTicks)
+	        {
+	            locals.eligible = true;
+	            locals.usedMinerDeposit = locals.recentMinerTemp.deposit;
+	            break;
+	        }
+	    }
+	
+	    if (!locals.eligible)
+	    {
+	        qpi.transfer(qpi.invocator(), qpi.invocationReward()); // <-- refund buyer (no entropy available)
+	        return;
+	    }
+	
+	    // Compute minimum price and check buyer fee
+	    locals.minPrice = state.pricePerByte * input.numberOfBytes *
+	        (div(input.minMinerDeposit, state.priceDepositDivisor) + 1);
+	
+	    if (locals.buyerFee < locals.minPrice)
+	    {
+	        qpi.transfer(qpi.invocator(), qpi.invocationReward()); // <-- refund buyer (not enough fee)
+	        return;
+	    }
+	
+	    // Use the previous-but-one history entry for purchased entropy (to avoid last-second reveals)
+	    locals.histIdx = (state.entropyHistoryHead + RANDOM_ENTROPY_HISTORY_LEN - 2) & (RANDOM_ENTROPY_HISTORY_LEN - 1);
+	
+	    // Produce requested bytes (bounded by RANDOM_RANDOMBYTES_LEN)
+	    for (locals.i = 0; locals.i < ((input.numberOfBytes > RANDOM_RANDOMBYTES_LEN) ? RANDOM_RANDOMBYTES_LEN : input.numberOfBytes); ++locals.i)
+	    {
+	        output.randomBytes.set(
+	            locals.i,
+	            static_cast<uint8_t>(
+	                (
+	                    (
+	                        (locals.i < 8)   ? state.entropyHistory.get(locals.histIdx).u64._0 :
+	                        (locals.i < 16)  ? state.entropyHistory.get(locals.histIdx).u64._1 :
+	                        (locals.i < 24)  ? state.entropyHistory.get(locals.histIdx).u64._2 :
+	                                           state.entropyHistory.get(locals.histIdx).u64._3
+	                    ) >> (8 * (locals.i & 7))
+	                ) & 0xFF
+	            ) ^
+	            (locals.i < 8 ? static_cast<uint8_t>((static_cast<uint64_t>(locals.currentTick) >> (8 * locals.i)) & 0xFF) : 0)
+	        );
+	    }
+	
+	    // Return entropy pool/version info and signal success
+	    output.entropyVersion = state.entropyPoolVersionHistory.get(locals.histIdx);
+	    output.usedMinerDeposit = locals.usedMinerDeposit;
+	    output.usedPoolVersion = state.entropyPoolVersionHistory.get(locals.histIdx);
+	    output.success = true;
+	
+	    // Split fee: half to miners pool, half to shareholders
+	    locals.half = div(locals.buyerFee, (uint64)2);
+	    state.minerEarningsPool += locals.half;
+	    state.shareholderEarningsPool += (locals.buyerFee - locals.half);
 	}
 
 	// GetContractInfo: return public state summary
