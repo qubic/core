@@ -186,7 +186,6 @@ struct UnsortedMultiset
 };
 
 
-// TODO: locking, implement hash function for queryIdToIndex based on tick
 template <uint16_t ownComputorSeedsCount>
 class OracleEngine
 {
@@ -245,6 +244,9 @@ protected:
     /// array of ownComputorSeedsCount public keys (mainly for testing, in EFI core this points to computorPublicKeys from special_entities.h)
     const m256i* ownComputorPublicKeys;
 
+    /// lock for preventing race conditions in concurrent execution
+    mutable volatile char lock;
+
     /// Return empty reply state slot or max uint32 value on error
     uint32_t getEmptyReplyStateSlot()
     {
@@ -268,9 +270,11 @@ protected:
     }
 
 public:
+    /// Initialize object, passing array of own computor public keys (with number of elements given by template param ownComputorSeedsCount).
     bool init(const m256i* ownComputorPublicKeys)
     {
         this->ownComputorPublicKeys = ownComputorPublicKeys;
+        lock = 0;
 
         // alloc arrays and set to 0
         if (!allocPoolWithErrorLog(L"OracleEngine::queries", MAX_ORACLE_QUERIES * sizeof(*queries), (void**)&queries, __LINE__)
@@ -307,11 +311,13 @@ public:
 
     void save() const
     {
+        LockGuard lockGuard(lock);
         // save state (excluding queryIdToIndex and unused parts of large buffers)
     }
 
     void load()
     {
+        LockGuard lockGuard(lock);
         // load state (excluding queryIdToIndex and unused parts of large buffers)
         // init queryIdToIndex
     }
@@ -327,6 +333,10 @@ public:
         // ASSERT that tx is in tick storage at tx->tick, txIndex.
         // check interface index
         // check size of payload vs expected query of given interface
+
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
+
         // add to query storage
         // send query to oracle machine node
     }
@@ -338,6 +348,9 @@ public:
         // check inputs
         if (contractIndex >= MAX_NUMBER_OF_CONTRACTS || interfaceIndex >= OI::oracleInterfacesCount || querySize != OI::oracleInterfaces[interfaceIndex].querySize)
             return -1;
+
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
 
         // check that still have free capacity for the query
         if (oracleQueryCount >= MAX_ORACLE_QUERIES || pendingQueryIndices.numValues >= MAX_SIMULTANEOUS_ORACLE_QUERIES || queryStorageBytesUsed + querySize > ORACLE_QUERY_STORAGE_SIZE)
@@ -411,8 +424,9 @@ public:
         return queryId;
     }
 
+protected:
     // Enqueue oracle machine query message. May be called from tick processor or contract processor only (uses reorgBuffer).
-    void enqueueOracleQuery(int64_t queryId, uint32_t interfaceIdx, uint32_t timeoutMillisec, const void* queryData, uint16_t querySize)
+    static void enqueueOracleQuery(int64_t queryId, uint32_t interfaceIdx, uint32_t timeoutMillisec, const void* queryData, uint16_t querySize)
     {
         // Prepare message payload
         OracleMachineQuery* omq = reinterpret_cast<OracleMachineQuery*>(reorgBuffer);
@@ -425,6 +439,7 @@ public:
         enqueueResponse((Peer*)0x1, sizeof(*omq) + querySize, OracleMachineQuery::type(), 0, omq);
     }
 
+public:
     // CAUTION: Called from request processor, requires locking!
     void processOracleMachineReply(const OracleMachineReply* replyMessage, uint32_t replyMessageSize)
     {
@@ -432,6 +447,9 @@ public:
         ASSERT(replyMessage);
         if (replyMessageSize < sizeof(OracleMachineReply))
             return;
+
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
 
         // get query index
         uint32_t queryIndex;
@@ -514,6 +532,9 @@ public:
         uint16_t commitsCount = 0;
         constexpr uint16_t maxCommitsCount = MAX_INPUT_SIZE / sizeof(OracleReplyCommitTransactionItem);
 
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
+
         // consider queries with pending commit tx, specifically the reply data indices of those
         const unsigned int replyIdxCount = pendingCommitReplyStateIndices.numValues;
         const unsigned int* replyIndices = pendingCommitReplyStateIndices.values;
@@ -591,6 +612,9 @@ public:
         int compIdx = computorIndex(transaction->sourcePublicKey);
         if (compIdx < 0)
             return false;
+
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
 
         // process the N commits in this tx
         const OracleReplyCommitTransactionItem* item = (const OracleReplyCommitTransactionItem*)transaction->inputPtr();
@@ -694,6 +718,9 @@ public:
 
     void beginEpoch()
     {
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
+
         // TODO
         // clean all subscriptions
         // clean all queries (except for last n ticks in case of seamless transition)
@@ -701,6 +728,9 @@ public:
 
     bool getOracleQuery(int64_t queryId, void* queryData, uint16_t querySize) const
     {
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
+
         // get query index
         uint32_t queryIndex;
         if (!queryIdToIndex->get(queryId, queryIndex) || queryIndex >= oracleQueryCount)
