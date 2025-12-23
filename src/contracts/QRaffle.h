@@ -887,7 +887,6 @@ protected:
 			{
 				// success
 				output.transferredNumberOfShares = input.numberOfShares;
-				qpi.transfer(id(QX_CONTRACT_INDEX, 0, 0, 0), QRAFFLE_TRANSFER_SHARE_FEE);
 				if (qpi.invocationReward() > QRAFFLE_TRANSFER_SHARE_FEE)
 				{
 					qpi.transfer(qpi.invocator(), qpi.invocationReward() -  QRAFFLE_TRANSFER_SHARE_FEE);
