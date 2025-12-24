@@ -19,6 +19,7 @@ constexpr uint32 QRAFFLE_MAX_MEMBER = 65536;
 constexpr uint32 QRAFFLE_DEFAULT_QRAFFLE_AMOUNT = 10000000ull;
 constexpr uint32 QRAFFLE_MIN_QRAFFLE_AMOUNT = 1000000ull;
 constexpr uint32 QRAFFLE_MAX_QRAFFLE_AMOUNT = 1000000000ull;
+constexpr uint32 QRAFFLE_MIN_TOKEN_RAFFLE_AMOUNT = 100000;
 
 constexpr sint32 QRAFFLE_SUCCESS = 0;
 constexpr sint32 QRAFFLE_INSUFFICIENT_FUND = 1;
@@ -622,6 +623,13 @@ protected:
 		if (qpi.invocationReward() > 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+		if (input.entryAmount < QRAFFLE_MIN_TOKEN_RAFFLE_AMOUNT)
+		{
+			output.returnCode = QRAFFLE_INVALID_ENTRY_AMOUNT;
+			locals.log = QRAFFLELogger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_invalidEntryAmount, 0 };
+			LOG_INFO(locals.log);
+			return ;
 		}
 		if (state.registers.contains(qpi.invocator()) == 0)
 		{
