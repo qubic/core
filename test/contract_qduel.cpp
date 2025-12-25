@@ -391,15 +391,20 @@ TEST(ContractQDuel, ConnectToRoomPaysRLDividendsToShareholders)
 	const id shareholder1 = id::randomValue();
 	const id shareholder2 = id::randomValue();
 	const id shareholder3 = id::randomValue();
+	constexpr unsigned int rlSharesOwner1 = 100;
+	constexpr unsigned int rlSharesOwner2 = 200;
+	constexpr unsigned int rlSharesOwner3 = 376;
 	std::vector<std::pair<m256i, unsigned int>> rlShares{
-	    {shareholder1, 100},
-	    {shareholder2, 200},
-	    {shareholder3, 376},
+	    {shareholder1, rlSharesOwner1},
+	    {shareholder2, rlSharesOwner2},
+	    {shareholder3, rlSharesOwner3},
 	};
 	issueContractShares(RL_CONTRACT_INDEX, rlShares);
 
+	constexpr uint8 shareholdersFeePercentBps = 10;
 	increaseEnergy(qduel.state()->team(), 1);
-	EXPECT_EQ(qduel.setPercentFees(qduel.state()->team(), 0, 0, 10).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_EQ(qduel.setPercentFees(qduel.state()->team(), 0, 0, shareholdersFeePercentBps).returnCode,
+	          QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
 	const id host = id::randomValue();
 	const id joiner = id::randomValue();
@@ -410,7 +415,8 @@ TEST(ContractQDuel, ConnectToRoomPaysRLDividendsToShareholders)
 	EXPECT_EQ(qduel.createRoom(host, NULL_ID, duelAmount).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
 	QDUEL::CalculateRevenue_output revenueOutput{};
-	qduel.state()->calculateRevenue(duelAmount * 2, revenueOutput);
+	constexpr uint64 duelPayoutAmount = duelAmount * 2;
+	qduel.state()->calculateRevenue(duelPayoutAmount, revenueOutput);
 	const uint64 dividendPerShare = revenueOutput.shareholdersFee / NUMBER_OF_COMPUTORS;
 
 	const uint64 shareholder1Before = getBalance(shareholder1);
