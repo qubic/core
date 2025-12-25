@@ -83,6 +83,10 @@ struct ScoreFunction
 
         // Make sure all padding data is set as zeros
         setMem(_computeBuffer, sizeof(_computeBuffer), 0);
+        for (int i = 0; i < solutionBufferCount; i++)
+        {
+            _computeBuffer[i].initMemory();
+        }
 
         for (int i = 0; i < solutionBufferCount; i++)
         {
