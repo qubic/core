@@ -120,7 +120,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="common_def.cpp" />
-    <ClCompile Include="contract_qduel.cpp" />
     <ClCompile Include="contract_qbond.cpp" />
     <ClCompile Include="contract_qswap.cpp" />
     <ClCompile Include="fourq.cpp" />
@@ -141,6 +140,7 @@
     <ClCompile Include="contract_qraffle.cpp" />
     <ClCompile Include="contract_gqmprop.cpp" />
     <ClCompile Include="contract_rl.cpp" />
+    <ClCompile Include="contract_qduel.cpp" />
     <ClCompile Include="contract_ccf.cpp" />
     <ClCompile Include="contract_qip.cpp" />
     <ClCompile Include="custom_mining.cpp" />
