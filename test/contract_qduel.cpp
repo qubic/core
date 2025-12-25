@@ -1,6 +1,6 @@
 #define NO_UEFI
 #define _ALLOW_KEYWORD_MACROS
-#define private public
+#define private protected
 #include "contract_testing.h"
 #undef private
 #undef _ALLOW_KEYWORD_MACROS
