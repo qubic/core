@@ -384,6 +384,47 @@ TEST(ContractQDuel, ConnectToRoomRefundsOverpayment)
 	}
 }
 
+TEST(ContractQDuel, ConnectToRoomPaysRLDividendsToShareholders)
+{
+	ContractTestingQDuel qduel;
+
+	const id shareholder1 = id::randomValue();
+	const id shareholder2 = id::randomValue();
+	const id shareholder3 = id::randomValue();
+	std::vector<std::pair<m256i, unsigned int>> rlShares{
+	    {shareholder1, 100},
+	    {shareholder2, 200},
+	    {shareholder3, 376},
+	};
+	issueContractShares(RL_CONTRACT_INDEX, rlShares);
+
+	increaseEnergy(qduel.state()->team(), 1);
+	EXPECT_EQ(qduel.setPercentFees(qduel.state()->team(), 0, 0, 10).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	const id host = id::randomValue();
+	const id joiner = id::randomValue();
+	constexpr uint64 duelAmount = 67600ULL;
+	increaseEnergy(host, duelAmount);
+	increaseEnergy(joiner, duelAmount);
+
+	EXPECT_EQ(qduel.createRoom(host, NULL_ID, duelAmount).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	QDUEL::CalculateRevenue_output revenueOutput{};
+	qduel.state()->calculateRevenue(duelAmount * 2, revenueOutput);
+	const uint64 dividendPerShare = revenueOutput.shareholdersFee / NUMBER_OF_COMPUTORS;
+
+	const uint64 shareholder1Before = getBalance(shareholder1);
+	const uint64 shareholder2Before = getBalance(shareholder2);
+	const uint64 shareholder3Before = getBalance(shareholder3);
+
+	EXPECT_EQ(qduel.connectToRoom(joiner, qduel.state()->firstRoom().roomId, duelAmount).returnCode,
+	          QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	EXPECT_EQ(getBalance(shareholder1), shareholder1Before + dividendPerShare * rlShares[0].second);
+	EXPECT_EQ(getBalance(shareholder2), shareholder2Before + dividendPerShare * rlShares[1].second);
+	EXPECT_EQ(getBalance(shareholder3), shareholder3Before + dividendPerShare * rlShares[2].second);
+}
+
 TEST(ContractQDuel, EndTickRefundsOnlyAfterTtl)
 {
 	ContractTestingQDuel qduel;

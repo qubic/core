@@ -7,7 +7,8 @@ constexpr uint8 QDUEL_BURN_FEE_PERCENT_BPS = 30;         // 0.3% * QDUEL_PERCENT
 constexpr uint8 QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS = 25; // 0.25% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_PERCENT_SCALE = 100;
 constexpr uint8 QDUEL_TTL_HOURS = 2;
-constexpr uint8 QDUEL_TICK_UPDATE_PERIOD = 10; // Process TICK logic once per this many ticks
+constexpr uint8 QDUEL_TICK_UPDATE_PERIOD = 10;            // Process TICK logic once per this many ticks
+constexpr uint64 QDUEL_RANDOM_LOTTERY_ASSET_NAME = 19538; // RL
 
 struct QDUEL2
 {
@@ -92,6 +93,31 @@ public:
 		uint64 winner;
 	};
 
+	struct TransferToShareholders_input
+	{
+		uint64 amount;
+	};
+
+	struct TransferToShareholders_output
+	{
+		uint64 remainder;
+	};
+
+	struct TransferToShareholders_locals
+	{
+		Entity entity;
+		uint64 shareholdersCount;
+		uint64 perShareholderAmount;
+		uint64 remainder;
+		sint64 index;
+		Asset rlAsset;
+		uint64 dividendPerShare;
+		AssetPossessionIterator rlIter;
+		uint64 rlShares;
+		uint64 transferredAmount;
+		sint64 toTransfer;
+	};
+
 	struct ConnectToRoom_input
 	{
 		id roomId;
@@ -109,6 +135,8 @@ public:
 		GetWinnerPlayer_output getWinnerPlayer_output;
 		CalculateRevenue_input calculateRevenue_input;
 		CalculateRevenue_output calculateRevenue_output;
+		TransferToShareholders_input transferToShareholders_input;
+		TransferToShareholders_output transferToShareholders_output;
 		id winner;
 		uint64 returnAmount;
 		uint64 amount;
@@ -388,7 +416,14 @@ public:
 		}
 		if (locals.calculateRevenue_output.shareholdersFee > 0)
 		{
-			qpi.distributeDividends(div(locals.calculateRevenue_output.shareholdersFee, 676ULL));
+			locals.transferToShareholders_input.amount = locals.calculateRevenue_output.shareholdersFee;
+
+			CALL(TransferToShareholders, locals.transferToShareholders_input, locals.transferToShareholders_output);
+
+			if (locals.transferToShareholders_output.remainder > 0)
+			{
+				qpi.burn(locals.transferToShareholders_output.remainder);
+			}
 		}
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
@@ -515,5 +550,39 @@ private:
 		output.shareholdersFee =
 		    smul(div(div<uint64>(smul(input.amount, static_cast<uint64>(state.shareholdersFeePercentBps)), QDUEL_PERCENT_SCALE), 676ULL), 676ULL);
 		output.winner = input.amount - (output.devFee + output.burnFee + output.shareholdersFee);
+	}
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(TransferToShareholders)
+	{
+		if (input.amount == 0)
+		{
+			return;
+		}
+
+		locals.rlAsset.issuer = id::zero();
+		locals.rlAsset.assetName = QDUEL_RANDOM_LOTTERY_ASSET_NAME;
+
+		locals.dividendPerShare = div<uint64>(input.amount, NUMBER_OF_COMPUTORS);
+		if (locals.dividendPerShare == 0)
+		{
+			return;
+		}
+
+		locals.rlIter.begin(locals.rlAsset);
+		while (!locals.rlIter.reachedEnd())
+		{
+			locals.rlShares = static_cast<uint64>(locals.rlIter.numberOfPossessedShares());
+			if (locals.rlShares > 0)
+			{
+				locals.toTransfer = static_cast<sint64>(smul(locals.rlShares, locals.dividendPerShare));
+				if (qpi.transfer(locals.rlIter.possessor(), locals.toTransfer) >= 0)
+				{
+					locals.transferredAmount += locals.toTransfer;
+				}
+			}
+			locals.rlIter.next();
+		}
+
+		output.remainder = input.amount - locals.transferredAmount;
 	}
 };
