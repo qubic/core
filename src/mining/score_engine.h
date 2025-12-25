@@ -18,6 +18,9 @@ struct ScoreEngine
     {
         setMem(&_hyperIdentityScore, sizeof(ScoreHyperIdentity<HyperIdentityParamsT>), 0);
         setMem(&_additionScore, sizeof(ScoreAddition<AdditionParamsT>), 0);
+
+        _hyperIdentityScore.initMemory();
+        _additionScore.initMemory();
     }
 
     // Unused function

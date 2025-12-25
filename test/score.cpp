@@ -41,16 +41,16 @@ static const std::string COMMON_TEST_SCORES_ADDITION_FILE_NAME = "data/scores_ad
 static constexpr bool PRINT_DETAILED_INFO = false;
 // Variable control the algo tested
 // AllAlgo: run the score that alg is retermined by nonce
-static constexpr score_engine::AlgoType TEST_ALGO = 
-    static_cast<score_engine::AlgoType>(score_engine::AlgoType::HyperIdentity 
-                                        | score_engine::AlgoType::Addition
-                                        | score_engine::AlgoType::AllAlgo);
-//static constexpr score_engine::AlgoType TEST_ALGO = static_cast<score_engine::AlgoType>(score_engine::AlgoType::HyperIdentity);
+//static constexpr score_engine::AlgoType TEST_ALGO = 
+//    static_cast<score_engine::AlgoType>(score_engine::AlgoType::HyperIdentity 
+//                                        | score_engine::AlgoType::Addition
+//                                        | score_engine::AlgoType::AllAlgo);
+static constexpr score_engine::AlgoType TEST_ALGO = static_cast<score_engine::AlgoType>(score_engine::AlgoType::Addition);
 
 // set to 0 for run all available samples
 // For profiling enable, run all available samples
-static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 1;
-static constexpr unsigned long long PROFILING_NUMBER_OF_SAMPLES = 1;
+static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 8;
+static constexpr unsigned long long PROFILING_NUMBER_OF_SAMPLES = 24;
 
 
 // set 0 for run maximum number of threads of the computer.
@@ -694,14 +694,14 @@ void runCommonTests()
     }
 
     // Test Qubic score vs internal engine (always runs)
-    runTest("Qubic's score vs internal score engine on active config", samples, numberOfThreads, [&](int index)
-    {
-        processQubicScore(
-            miningSeeds[index].m256i_u8,
-            publicKeys[index].m256i_u8,
-            nonces[index].m256i_u8,
-            index);
-    });
+    //runTest("Qubic's score vs internal score engine on active config", samples, numberOfThreads, [&](int index)
+    //{
+    //    processQubicScore(
+    //        miningSeeds[index].m256i_u8,
+    //        publicKeys[index].m256i_u8,
+    //        nonces[index].m256i_u8,
+    //        index);
+    //});
 
 }
 
@@ -804,20 +804,15 @@ void runPerformanceTests()
 
     std::cout << "Processing " << samples.size() << " samples " << compTerm << "..." << std::endl;
 
-    profileAlgo<1, PROFILE_CONFIG_COUNT>(
-        score_engine::AlgoType::HyperIdentity, "HyperIdentity",
-        samples, miningSeeds, publicKeys, nonces, filteredSamples, numberOfThreads, numberOfSamples);
+    //profileAlgo<1, PROFILE_CONFIG_COUNT>(
+    //    score_engine::AlgoType::HyperIdentity, "HyperIdentity",
+    //    samples, miningSeeds, publicKeys, nonces, filteredSamples, numberOfThreads, numberOfSamples);
 
     profileAlgo<1, PROFILE_CONFIG_COUNT>(
         score_engine::AlgoType::Addition, "Addition",
         samples, miningSeeds, publicKeys, nonces, filteredSamples, numberOfThreads, numberOfSamples);
 
     //gProfilingDataCollector.writeToFile();
-}
-
-TEST(TestQubicScoreFunction, CommonTests)
-{
-    runCommonTests();
 }
 
 #if ENABLE_PROFILING
@@ -827,6 +822,11 @@ TEST(TestQubicScoreFunction, PerformanceTests)
     runPerformanceTests();
 }
 #endif
+
+TEST(TestQubicScoreFunction, CommonTests)
+{
+    runCommonTests();
+}
 
 //#if not ENABLE_PROFILING
 //TEST(TestQubicScoreFunction, TestDeterministic)

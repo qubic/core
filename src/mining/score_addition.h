@@ -1,10 +1,9 @@
-#pragma once
+﻿#pragma once
 
 #include "score_common.h"
 
 namespace score_engine
 {
-
 template <typename Params>
 struct ScoreAddition
 {
@@ -27,6 +26,14 @@ struct ScoreAddition
     static constexpr unsigned long long paddingNumberOfSynapses =
         (maxNumberOfSynapses + 31) / 32 * 32; // padding to multiple of 32
 
+#if defined(__AVX512F__)
+    static constexpr unsigned long long BATCH_SIZE = 64;
+#else // AVX2 path
+    static constexpr unsigned long long BATCH_SIZE = 32;
+#endif
+    static constexpr unsigned long long PADDED_SAMPLES =
+        ((trainingSetSize + BATCH_SIZE - 1) / BATCH_SIZE) * BATCH_SIZE;
+
     static_assert(
         maxNumberOfSynapses <= (0xFFFFFFFFFFFFFFFF << 1ULL),
         "maxNumberOfSynapses must less than or equal MAX_UINT64/2");
@@ -34,66 +41,82 @@ struct ScoreAddition
     static_assert(
         populationThreshold > numberOfNeurons,
         "populationThreshold must be greater than numberOfNeurons");
+    static_assert(
+        PADDED_SAMPLES% BATCH_SIZE == 0,
+        "PADDED_SAMPLES must be a multiple of BATCH_SIZE");
+    static_assert(
+        trainingSetSize <= 0xFFFFFFFF,
+        "trainingSetSize must fit in unsigned int for sampleMapping");
 
-    void initialize(unsigned char miningSeed[32])
-    {
-    }
-
-    // Training set
-    struct TraningPair
-    {
-        char input[numberOfInputNeurons]; // numberOfInputNeurons / 2 bits of A , and B (values: -1 or +1)
-        char output[numberOfOutputNeurons];  // numberOfOutputNeurons bits of C (values: -1 or +1)
-    } trainingSet[trainingSetSize];       // training set size: 2^K
-
-    struct Synapse
-    {
-        char weight;
-    };
-
-    // Data for running the ANN
-    struct Neuron
-    {
-        enum Type
-        {
-            kInput,
-            kOutput,
-            kEvolution,
-        };
-        Type type;
-        char value;
-        bool markForRemoval;
-    };
+    typedef char Synapse;
+    typedef char Neuron;
 
     // Data for roll back
     struct ANN
     {
-        Neuron neurons[maxNumberOfNeurons];
+        unsigned char neuronTypes[maxNumberOfNeurons];
         Synapse synapses[maxNumberOfSynapses];
         unsigned long long population;
     };
-    ANN bestANN;
-    ANN currentANN;
 
     // Intermediate data
     struct InitValue
     {
         unsigned long long outputNeuronPositions[numberOfOutputNeurons];
-        unsigned long long synapseWeight[paddingNumberOfSynapses / 32]; // each 64bits elements will
-        // decide value of 32 synapses
+        unsigned long long synapseWeight[paddingNumberOfSynapses / 32]; // each 64bits elements will decide value of 32 synapses
         unsigned long long synpaseMutation[numberOfMutations];
     };
     static constexpr unsigned long long paddingInitValueSizeInBytes = (sizeof(InitValue) + 64 - 1) / 64 * 64;
 
     unsigned char paddingInitValue[paddingInitValueSizeInBytes];
 
+    // Training set
+    alignas(64) char trainingInputs[numberOfInputNeurons * PADDED_SAMPLES];
+    alignas(64) char trainingOutputs[numberOfOutputNeurons * PADDED_SAMPLES];
+
+    // For accessing neuron values of multiple samples
+    char* neuronValues;
+    char* prevNeuronValues;
+    alignas(64) char neuronValuesBuffer0[maxNumberOfNeurons * PADDED_SAMPLES];
+    alignas(64) char neuronValuesBuffer1[maxNumberOfNeurons * PADDED_SAMPLES];
+
+    // Incoming synapses
+    alignas(64) unsigned int incomingSource[maxNumberOfNeurons * maxNumberOfNeighbors];
+    alignas(64) Synapse incomingSynapses[maxNumberOfNeurons * maxNumberOfNeighbors];
+    unsigned int incomingCount[maxNumberOfNeurons];
+
+    // For tracking/compacting sample after each tick
+    alignas(64) unsigned int sampleMapping[PADDED_SAMPLES];
+    alignas(64) unsigned int sampleScores[PADDED_SAMPLES];
+    unsigned long long activeCount;
+
+    // Indices caching look up
     unsigned long long neuronIndices[numberOfNeurons];
-    char previousNeuronValue[maxNumberOfNeurons];
-
     unsigned long long outputNeuronIndices[numberOfOutputNeurons];
-    char outputNeuronExpectedValue[numberOfOutputNeurons];
+    unsigned long long outputNeuronIdxCache[numberOfOutputNeurons];
+    unsigned long long numCachedOutputs;
 
-    long long neuronValueBuffer[maxNumberOfNeurons];
+    // Buffers for cleaning up
+    unsigned long long removalNeurons[maxNumberOfNeurons];
+    unsigned long long numberOfRedundantNeurons;
+
+    // ANN structure
+    ANN bestANN;
+    ANN currentANN;
+
+    // Temp buffers
+    char inputBits[numberOfInputNeurons];
+    char outputBits[numberOfOutputNeurons];
+
+    void initMemory()
+    {
+        generateTrainingSet();
+    }
+
+
+    void initialize(unsigned char miningSeed[32])
+    {
+    }
 
     unsigned long long getActualNeighborCount() const
     {
@@ -177,7 +200,17 @@ struct ScoreAddition
         return offsetToBufferIndex(neighborOffset);
     }
 
-
+    void cacheOutputNeuronIndices()
+    {
+        numCachedOutputs = 0;
+        for (unsigned long long i = 0; i < currentANN.population; i++)
+        {
+            if (currentANN.neuronTypes[i] == OUTPUT_NEURON_TYPE)
+            {
+                outputNeuronIdxCache[numCachedOutputs++] = i;
+            }
+        }
+    }
 
     void mutate(unsigned long long mutateStep)
     {
@@ -211,12 +244,12 @@ struct ScoreAddition
             weightChange = 1;
         }
 
-        char newWeight = synapses[synapseFullBufferIdx].weight + weightChange;
+        char newWeight = synapses[synapseFullBufferIdx] + weightChange;
 
         // Valid weight. Update it
         if (newWeight >= -1 && newWeight <= 1)
         {
-            synapses[synapseFullBufferIdx].weight = newWeight;
+            synapses[synapseFullBufferIdx] = newWeight;
         }
         else // Invalid weight. Insert a neuron
         {
@@ -243,22 +276,7 @@ struct ScoreAddition
     // rightmost neuron continues at the leftmost neuron.
     unsigned long long clampNeuronIndex(long long neuronIdx, long long value)
     {
-        unsigned long long population = currentANN.population;
-        ASSERT(value > -(long long)population && value < (long long)population
-            && "clampNeuronIndex: |value| must be less than population");
-
-        long long nnIndex = 0;
-        // Calculate the neuron index (ring structure)
-        if (value >= 0)
-        {
-            nnIndex = neuronIdx + value;
-        }
-        else
-        {
-            nnIndex = neuronIdx + population + value;
-        }
-        nnIndex = nnIndex % population;
-        return (unsigned long long)nnIndex;
+        return clampCirculatingIndex((long long)currentANN.population, neuronIdx, value);
     }
 
 
@@ -295,7 +313,7 @@ struct ScoreAddition
                 {
                     pNNSynapses[k] = pNNSynapses[k + 1];
                 }
-                pNNSynapses[endSynapseBufferIdx - 1].weight = 0;
+                pNNSynapses[endSynapseBufferIdx - 1] = 0;
             }
             else
             {
@@ -303,14 +321,14 @@ struct ScoreAddition
                 {
                     pNNSynapses[k] = pNNSynapses[k - 1];
                 }
-                pNNSynapses[startSynapseBufferIdx].weight = 0;
+                pNNSynapses[startSynapseBufferIdx] = 0;
             }
         }
 
         // Shift the synapse array and the neuron array
         for (unsigned long long shiftIdx = neuronIdx; shiftIdx < currentANN.population - 1; shiftIdx++)
         {
-            currentANN.neurons[shiftIdx] = currentANN.neurons[shiftIdx + 1];
+            currentANN.neuronTypes[shiftIdx] = currentANN.neuronTypes[shiftIdx + 1];
 
             // Also shift the synapses
             copyMem(
@@ -355,27 +373,24 @@ struct ScoreAddition
         ASSERT(synapseIndex >= oldStartSynapseBufferIdx && synapseIndex < oldEndSynapseBufferIdx);
 
         Synapse* synapses = currentANN.synapses;
-        Neuron* neurons = currentANN.neurons;
+        unsigned char* neuronTypes = currentANN.neuronTypes;
         unsigned long long& population = currentANN.population;
 
         // Copy original neuron to the inserted one and set it as  Neuron::kEvolution type
-        Neuron insertNeuron;
-        insertNeuron = neurons[neuronIndex];
-        insertNeuron.type = Neuron::kEvolution;
         unsigned long long insertedNeuronIdx = neuronIndex + 1;
 
-        char originalWeight = synapses[synapseFullBufferIdx].weight;
+        char originalWeight = synapses[synapseFullBufferIdx];
 
         // Insert the neuron into array, population increased one, all neurons next to original one
         // need to shift right
         for (unsigned long long i = population; i > neuronIndex; --i)
         {
-            neurons[i] = neurons[i - 1];
+            neuronTypes[i] = neuronTypes[i - 1];
 
             // Also shift the synapses to the right
             copyMem(getSynapses(i), getSynapses(i - 1), maxNumberOfNeighbors * sizeof(Synapse));
         }
-        neurons[insertedNeuronIdx] = insertNeuron;
+        neuronTypes[insertedNeuronIdx] = EVOLUTION_NEURON_TYPE;
         population++;
 
         // Recalculate after population change
@@ -387,7 +402,7 @@ struct ScoreAddition
         Synapse* pInsertNeuronSynapse = getSynapses(insertedNeuronIdx);
         for (unsigned long long synIdx = 0; synIdx < maxNumberOfNeighbors; ++synIdx)
         {
-            pInsertNeuronSynapse[synIdx].weight = 0;
+            pInsertNeuronSynapse[synIdx] = 0;
         }
 
         // Copy the outgoing synapse of original neuron
@@ -401,7 +416,7 @@ struct ScoreAddition
             {
                 // Decrease idx by one because the new neuron is inserted directly to the right of
                 // the original one.
-                pInsertNeuronSynapse[synapseIndex - 1].weight = originalWeight;
+                pInsertNeuronSynapse[synapseIndex - 1] = originalWeight;
             }
             // If the incoming neuron of the original synapse if not contained in the neighbors of
             // the inserted neuron, don't add the synapse.
@@ -412,7 +427,7 @@ struct ScoreAddition
             // In this case, the incoming neuron of the synapse is for sure contained in the
             // neighbors of the inserted neuron and has the same idx (right side neighbors of
             // inserted neuron = right side neighbors of original neuron before insertion).
-            pInsertNeuronSynapse[synapseIndex].weight = originalWeight;
+            pInsertNeuronSynapse[synapseIndex] = originalWeight;
         }
 
         // The change of synapse only impact neuron in [originalNeuronIdx - actualNeighbors / 2
@@ -457,7 +472,7 @@ struct ScoreAddition
                 // Incomming synapse from original neuron -> inserted neuron must be zero
                 if (delta == -1)
                 {
-                    pUpdatedSynapses[insertedNeuronIdxInNeigborList].weight = 0;
+                    pUpdatedSynapses[insertedNeuronIdxInNeigborList] = 0;
                 }
             }
             else // Case: neurons in range [inserted N4 N5 N6], left synapses will be affected
@@ -478,21 +493,20 @@ struct ScoreAddition
     {
         unsigned long long population = currentANN.population;
         Synapse* synapses = currentANN.synapses;
-        Neuron* neurons = currentANN.neurons;
+        unsigned char* neuronTypes = currentANN.neuronTypes;
 
         unsigned long long startSynapseBufferIdx = getSynapseStartIndex();
         unsigned long long endSynapseBufferIdx = getSynapseEndIndex();
         long long leftCount = (long long)getLeftNeighborCount();
         long long rightCount = (long long)getRightNeighborCount();
 
-        unsigned long long numberOfRedundantNeurons = 0;
+        numberOfRedundantNeurons = 0;
         // After each mutation, we must verify if there are neurons that do not affect the ANN
         // output. These are neurons that either have all incoming synapse weights as 0, or all
         // outgoing synapse weights as 0. Such neurons must be removed.
         for (unsigned long long i = 0; i < population; i++)
         {
-            neurons[i].markForRemoval = false;
-            if (neurons[i].type == Neuron::kEvolution)
+            if (neuronTypes[i] == EVOLUTION_NEURON_TYPE)
             {
                 bool allOutGoingZeros = true;
                 bool allIncommingZeros = true;
@@ -500,7 +514,7 @@ struct ScoreAddition
                 // Loop though its synapses for checkout outgoing synapses
                 for (unsigned long long m = startSynapseBufferIdx; m < endSynapseBufferIdx; m++)
                 {
-                    char synapseW = synapses[i * maxNumberOfNeighbors + m].weight;
+                    char synapseW = synapses[i * maxNumberOfNeighbors + m];
                     if (synapseW != 0)
                     {
                         allOutGoingZeros = false;
@@ -519,7 +533,7 @@ struct ScoreAddition
                     {
                         continue;
                     }
-                    char synapseW = getSynapses(nnIdx)[synapseIdx].weight;
+                    char synapseW = getSynapses(nnIdx)[synapseIdx];
 
                     if (synapseW != 0)
                     {
@@ -529,7 +543,7 @@ struct ScoreAddition
                 }
                 if (allOutGoingZeros || allIncommingZeros)
                 {
-                    neurons[i].markForRemoval = true;
+                    removalNeurons[numberOfRedundantNeurons] = i;
                     numberOfRedundantNeurons++;
                 }
             }
@@ -540,196 +554,618 @@ struct ScoreAddition
     // Remove neurons and synapses that do not affect the ANN
     void cleanANN()
     {
-        Neuron* neurons = currentANN.neurons;
         unsigned long long& population = currentANN.population;
 
         // Scan and remove neurons/synapses
-        unsigned long long neuronIdx = 0;
-        while (neuronIdx < population)
+        for (unsigned long long i = 0; i < numberOfRedundantNeurons; i++)
         {
-            if (neurons[neuronIdx].markForRemoval)
+            // Remove it from the neuron list. Overwrite data
+            // Remove its synapses in the synapses array
+            removeNeuron(removalNeurons[i]);
+            // The index is sorted, just reduce the index
+            for (unsigned long long j = i + 1; j < numberOfRedundantNeurons; j++)
             {
-                // Remove it from the neuron list. Overwrite data
-                // Remove its synapses in the synapses array
-                removeNeuron(neuronIdx);
-            }
-            else
-            {
-                neuronIdx++;
+                removalNeurons[j]--;
             }
         }
     }
 
     void processTick()
     {
+
         unsigned long long population = currentANN.population;
-        Neuron* neurons = currentANN.neurons;
+        unsigned char* neuronTypes = currentANN.neuronTypes;
 
-        // Memset value of current one
-        setMem(neuronValueBuffer, sizeof(neuronValueBuffer), 0);
+        unsigned long long activeSamplePad = ((activeCount + BATCH_SIZE - 1) / BATCH_SIZE) * BATCH_SIZE;
 
-        // Loop though all neurons
-        unsigned long long startSynapseBufferIdx = getSynapseStartIndex();
-        unsigned long long endSynapseBufferIdx = getSynapseEndIndex();
+#if defined(__AVX512F__)
 
-        for (unsigned long long n = 0; n < population; ++n)
+        const __m512i one16 = _mm512_set1_epi16(1);
+        const __m512i negOne16 = _mm512_set1_epi16(-1);
+        const __m512i packLoc = _mm512_setr_epi64(0, 2, 4, 6, 1, 3, 5, 7);
+
+        for (unsigned long long targetNeuron = 0; targetNeuron < population; targetNeuron++)
+        {
+            if (neuronTypes[targetNeuron] == INPUT_NEURON_TYPE)
+                continue;
+
+            unsigned int numIncoming = incomingCount[targetNeuron];
+            const unsigned long long targetNeuronOffset = targetNeuron * maxNumberOfNeighbors;
+            for (unsigned long long s = 0; s < activeSamplePad; s += BATCH_SIZE)
+            {
+                __m512i acc0 = _mm512_setzero_si512();  // samples 0-31 (int16)
+                __m512i acc1 = _mm512_setzero_si512();  // samples 32-63 (int16)
+                for (unsigned int i = 0; i < numIncoming; i++)
+                {
+                    unsigned int srcNeuron = incomingSource[targetNeuronOffset + i];
+                    __m512i weight512 = _mm512_set1_epi8(incomingSynapses[targetNeuronOffset + i]);
+
+                    // Load 64 source neuron values
+                    //__m512i srcValues = _mm512_load_si512((__m512i*)&neuronValues[srcNeuron][s]);
+                    __m512i srcValues = _mm512_loadu_si512((__m512i*)&prevNeuronValues[srcNeuron * PADDED_SAMPLES + s]);
+
+                    __mmask64 negMask = _mm512_movepi8_mask(weight512);
+                    __m512i negated = _mm512_sub_epi8(_mm512_setzero_si512(), srcValues);
+                    __m512i product = _mm512_mask_blend_epi8(negMask, srcValues, negated);
+
+                    // Sign-extend char to int16 and accumulate
+                    __m256i lo = _mm512_extracti64x4_epi64(product, 0);
+                    __m256i hi = _mm512_extracti64x4_epi64(product, 1);
+
+                    acc0 = _mm512_add_epi16(acc0, _mm512_cvtepi8_epi16(lo));
+                    acc1 = _mm512_add_epi16(acc1, _mm512_cvtepi8_epi16(hi));
+                }
+
+                // Clamp to [-1, 1]
+                acc0 = _mm512_max_epi16(acc0, negOne16);
+                acc0 = _mm512_min_epi16(acc0, one16);
+                acc1 = _mm512_max_epi16(acc1, negOne16);
+                acc1 = _mm512_min_epi16(acc1, one16);
+
+                // Pack int16 back to int8
+                __m512i packed = _mm512_packs_epi16(acc0, acc1);
+
+                // Fix lane ordering after packs
+                packed = _mm512_permutexvar_epi64(packLoc, packed);
+
+                _mm512_storeu_si512((__m512i*)&neuronValues[targetNeuron * PADDED_SAMPLES + s], packed);
+            }
+        }
+
+#else
+
+        const __m256i one16 = _mm256_set1_epi16(1);
+        const __m256i negOne16 = _mm256_set1_epi16(-1);
+
+        for (unsigned long long targetNeuron = 0; targetNeuron < population; targetNeuron++)
+        {
+            if (neuronTypes[targetNeuron] == INPUT_NEURON_TYPE)
+                continue;
+
+            unsigned int numIncoming = incomingCount[targetNeuron];
+            const unsigned long long targetNeuronOffset = targetNeuron * maxNumberOfNeighbors;
+            for (unsigned long long s = 0; s < activeSamplePad; s += BATCH_SIZE)
+            {
+                __m256i acc0 = _mm256_setzero_si256();  // samples 0-15 (int16)
+                __m256i acc1 = _mm256_setzero_si256();  // samples 16-31 (int16)
+                for (unsigned int i = 0; i < numIncoming; i++)
+                {
+                    unsigned int srcNeuron = incomingSource[targetNeuronOffset + i];
+                    __m256i weight256 = _mm256_set1_epi8(incomingSynapses[targetNeuronOffset + i]);
+
+                    // Load 32 source neuron values
+                    __m256i srcValues = _mm256_loadu_si256((__m256i*)&prevNeuronValues[srcNeuron * PADDED_SAMPLES + s]);
+
+                    __m256i negated = _mm256_sub_epi8(_mm256_setzero_si256(), srcValues);
+                    __m256i product = _mm256_blendv_epi8(srcValues, negated, weight256);
+
+                    // Sign-extend char to int16 and accumulate
+                    __m128i lo = _mm256_castsi256_si128(product);
+                    __m128i hi = _mm256_extracti128_si256(product, 1);
+
+                    acc0 = _mm256_add_epi16(acc0, _mm256_cvtepi8_epi16(lo));
+                    acc1 = _mm256_add_epi16(acc1, _mm256_cvtepi8_epi16(hi));
+                }
+
+                // Clamp to [-1, 1]
+                acc0 = _mm256_max_epi16(acc0, negOne16);
+                acc0 = _mm256_min_epi16(acc0, one16);
+                acc1 = _mm256_max_epi16(acc1, negOne16);
+                acc1 = _mm256_min_epi16(acc1, one16);
+
+                // Pack int16 back to int8
+                __m256i packed = _mm256_packs_epi16(acc0, acc1);
+
+                // Fix lane ordering after packs. (3, 1, 2, 0)
+                packed = _mm256_permute4x64_epi64(packed, 0xD8); // 0xD8: (3 << 6) | (1 << 4) | (2 << 2) | 0
+
+                _mm256_storeu_si256((__m256i*)&neuronValues[targetNeuron * PADDED_SAMPLES + s], packed);
+            }
+        }
+#endif
+
+    }
+    void loadTrainingData()
+    {
+        unsigned long long population = currentANN.population;
+
+        // Load input neuron values from training data
+        unsigned long long inputIdx = 0;
+        for (unsigned long long n = 0; n < population; n++)
+        {
+            if (currentANN.neuronTypes[n] == INPUT_NEURON_TYPE)
+            {
+                copyMem(&neuronValues[n * PADDED_SAMPLES], &trainingInputs[inputIdx * PADDED_SAMPLES], PADDED_SAMPLES);
+                inputIdx++;
+            }
+            else
+            {
+                // Non-input neurons: clear to zero
+                setMem(&neuronValues[n * PADDED_SAMPLES], PADDED_SAMPLES, 0);
+            }
+        }
+
+    }
+
+    // Convert the outgoing synapse to incomming style
+    void convertToIncomingSynapses()
+    {
+        unsigned long long population = currentANN.population;
+        Synapse* synapses = currentANN.synapses;
+
+        unsigned long long startIdx = getSynapseStartIndex();
+        unsigned long long endIdx = getSynapseEndIndex();
+
+        // Clear counts
+        setMem(incomingCount, sizeof(incomingCount), 0);
+
+        // Convert outgoing synapses to incoming ones
+        for (unsigned long long n = 0; n < population; n++)
         {
             const Synapse* kSynapses = getSynapses(n);
-            long long neuronValue = neurons[n].value;
-            // Scan through all neighbor neurons and sum all connected neurons.
-            for (unsigned long long m = startSynapseBufferIdx; m < endSynapseBufferIdx; m++)
+            for (unsigned long long synIdx = startIdx; synIdx < endIdx; synIdx++)
             {
-                char synapseWeight = kSynapses[m].weight;
-                long long offset = bufferIndexToOffset(m);
-                unsigned long long nnIndex = clampNeuronIndex(static_cast<long long>(n), offset);
+                char weight = kSynapses[synIdx];
+                if (weight == 0) continue;
 
-                // Weight-sum
-                neuronValueBuffer[nnIndex] += synapseWeight * neuronValue;
-            }
-        }
+                long long offset = bufferIndexToOffset(synIdx);
+                unsigned long long nnIndex = clampNeuronIndex((long long)n, offset);
 
-        // Clamp the neuron value
-        for (unsigned long long n = 0; n < population; ++n)
-        {
-            // Only non input neurons are updated
-            if (Neuron::kInput != neurons[n].type)
-            {
-                char neuronValue = clampNeuron(neuronValueBuffer[n]);
-                neurons[n].value = neuronValue;
+                unsigned int idx = incomingCount[nnIndex]++;
+                incomingSynapses[nnIndex * maxNumberOfNeighbors + idx] = weight;
+
+                // Cache the incomming neuron
+                incomingSource[nnIndex * maxNumberOfNeighbors + idx] = (unsigned int)n;
             }
         }
     }
-    void loadTrainingData(unsigned long long trainingIndex)
+
+    // Compute the score of a sample
+    void computeSampleScore(unsigned long long sampleLocation)
+    {
+        unsigned int origSample = sampleMapping[sampleLocation];
+        unsigned int score = 0;
+
+        for (unsigned long long i = 0; i < numCachedOutputs; i++)
+        {
+            unsigned long long neuronIdx = outputNeuronIdxCache[i];
+            char actual = neuronValues[neuronIdx * PADDED_SAMPLES + sampleLocation];
+            char expected = trainingOutputs[i * PADDED_SAMPLES + origSample];
+
+            if (actual == expected)
+            {
+                score++;
+            }
+        }
+
+        sampleScores[origSample] = score;
+    }
+
+    void compactActiveSamplesWithScoring(unsigned long long& s, unsigned long long& writePos, unsigned long long population)
+    {
+        while (s < activeCount)
+        {
+            bool allUnchanged = true;
+            for (unsigned long long n = 0; n < population && allUnchanged; n++)
+            {
+                if (neuronValues[n * PADDED_SAMPLES + s] != prevNeuronValues[n * PADDED_SAMPLES + s])
+                {
+                    allUnchanged = false;
+                }
+            }
+
+            bool allOutputsNonZero = true;
+            for (unsigned long long i = 0; i < numCachedOutputs && allOutputsNonZero; i++)
+            {
+                unsigned long long n = outputNeuronIdxCache[i];
+                if (neuronValues[n * PADDED_SAMPLES + s] == 0)
+                {
+                    allOutputsNonZero = false;
+                }
+            }
+
+            bool isDone = allUnchanged || allOutputsNonZero;
+
+            if (isDone)
+            {
+                // Score this sample
+                unsigned int origSample = sampleMapping[s];
+                for (unsigned long long i = 0; i < numCachedOutputs; i++)
+                {
+                    unsigned long long n = outputNeuronIdxCache[i];
+                    if (neuronValues[n * PADDED_SAMPLES + s] == trainingOutputs[i * PADDED_SAMPLES + origSample])
+                    {
+                        sampleScores[origSample]++;
+                    }
+                }
+            }
+            else
+            {
+                // Compact
+                if (writePos != s)
+                {
+                    sampleMapping[writePos] = sampleMapping[s];
+                    for (unsigned long long n = 0; n < population; n++)
+                    {
+                        neuronValues[n * PADDED_SAMPLES + writePos] = neuronValues[n * PADDED_SAMPLES + s];
+                        prevNeuronValues[n * PADDED_SAMPLES + writePos] = prevNeuronValues[n * PADDED_SAMPLES + s];
+                    }
+                }
+                writePos++;
+            }
+            s++;
+        }
+    }
+
+    bool compactActiveSamplesWithScoringSIMD()
     {
         unsigned long long population = currentANN.population;
-        Neuron* neurons = currentANN.neurons;
-
-        const auto& data = trainingSet[trainingIndex];
-        // Load the input neuron value
-        unsigned long long inputIndex = 0;
-        for (unsigned long long n = 0; n < population; ++n)
+        unsigned long long writePos = 0;
+        unsigned long long s = 0;
+#if defined(__AVX512F__)
+        const __m512i allOnes = _mm512_set1_epi8(-1);
+        while (s + BATCH_SIZE <= activeCount)
         {
-            // Init as zeros
-            neurons[n].value = 0;
-            if (Neuron::kInput == neurons[n].type)
+            // Check 1: All neurons unchanged (curr == prev)
+            // unchangedMask = 1 if unchanged
+            __m512i unchangedVec = allOnes;
+            for (unsigned long long n = 0; n < population; n++)
             {
-                neurons[n].value = data.input[inputIndex];
-                inputIndex++;
+                __m512i curr = _mm512_loadu_si512((__m512i*)&neuronValues[n * PADDED_SAMPLES + s]);
+                __m512i prev = _mm512_loadu_si512((__m512i*)&prevNeuronValues[n * PADDED_SAMPLES + s]);
+                __m512i diff = _mm512_xor_si512(curr, prev);
+                unchangedVec = _mm512_andnot_si512(diff, unchangedVec);
             }
-        }
+            unsigned long long unchangedMask = (unsigned long long)_mm512_cmpeq_epi8_mask(unchangedVec, allOnes);
 
-        // Load the expected output value
-        copyMem(outputNeuronExpectedValue, data.output, sizeof(outputNeuronExpectedValue[0]) * numberOfOutputNeurons);
+            // Check 2: All output neurons non-zero
+            unsigned long long allOutputsNonZeroMask = ~0ULL;
+            for (unsigned long long i = 0; i < numCachedOutputs; i++)
+            {
+                unsigned long long n = outputNeuronIdxCache[i];
+                __m512i val = _mm512_loadu_si512((__m512i*)&neuronValues[n * PADDED_SAMPLES + s]);
+                __mmask64 nonZeroMask = _mm512_test_epi8_mask(val, val);
+                allOutputsNonZeroMask &= (unsigned long long)nonZeroMask;
+            }
+
+            // exitMask: 1 = sample is done, 0 = sample still need to continue ticking
+            unsigned long long exitMask = unchangedMask | allOutputsNonZeroMask;
+            // activeMask: 1 = sample still active
+            unsigned long long activeMask = ~exitMask;
+
+            // There is sample should be stopped and score
+            if (exitMask != 0)
+            {
+                for (unsigned long long i = 0; i < numCachedOutputs; i++)
+                {
+                    unsigned long long n = outputNeuronIdxCache[i];
+                    // Score each exiting sample
+                    unsigned long long tempExitMask = exitMask;
+                    while (tempExitMask != 0)
+                    {
+                        unsigned long long bitPos = countTrailingZeros64(tempExitMask);
+                        unsigned int origSample = sampleMapping[s + bitPos];
+                        char actualVal = neuronValues[n * PADDED_SAMPLES + s + bitPos];
+                        char expectedVal = trainingOutputs[i * PADDED_SAMPLES + origSample];
+                        if (actualVal == expectedVal)
+                        {
+                            sampleScores[origSample]++;
+                        }
+                        tempExitMask = _blsr_u64(tempExitMask); // Clear processed bit
+                    }
+                }
+            }
+
+            // Compact samples, move the unscore/active to the front
+            unsigned int activeInBatch = popcnt64(activeMask);
+            // All samples are active, just copy if needed
+            if (activeInBatch == BATCH_SIZE)
+            {
+                // Positions are adjusted
+                if (writePos != s)
+                {
+                    copyMem(&sampleMapping[writePos], &sampleMapping[s], 64 * sizeof(unsigned int));
+                    unsigned long long baseIdx = 0;
+                    for (unsigned long long n = 0; n < population; n++, baseIdx += PADDED_SAMPLES)
+                    {
+                        copyMem(&neuronValues[baseIdx + writePos], &neuronValues[baseIdx + s], BATCH_SIZE);
+                        copyMem(&prevNeuronValues[baseIdx + writePos], &prevNeuronValues[baseIdx + s], BATCH_SIZE);
+                    }
+                }
+                writePos += BATCH_SIZE;
+            }
+            else if (activeInBatch > 0) // mixing inactive an avtive
+            {
+                __mmask64 kActive = (__mmask64)activeMask;
+
+                // Load 4 blocks of 16 samples to adjust the sample index
+                static_assert(BATCH_SIZE / 16 == 4, "Compress loop assumes BATCH_SIZE / 16 == 4");
+                int offset = 0;
+                for (unsigned long long blockId = 0; blockId < BATCH_SIZE; blockId +=16)
+                {
+                    __mmask16 k16 = (__mmask16)((activeMask >> blockId) & 0xFFFF);
+                    __m512i map = _mm512_loadu_si512((__m512i*)&sampleMapping[s + blockId]);
+                    __m512i compressed = _mm512_maskz_compress_epi32(k16, map);
+                    _mm512_storeu_si512((__m512i*)&sampleMapping[writePos + offset], compressed);
+                    offset += popcnt32(k16);
+                }
+
+
+                // Adjust the neurons and previous neuron values
+                unsigned long long baseIdx = 0;
+                for (unsigned long long n = 0; n < population; n++, baseIdx += PADDED_SAMPLES)
+                {
+                    __m512i curr = _mm512_loadu_si512((__m512i*)&neuronValues[baseIdx + s]);
+                    __m512i prev = _mm512_loadu_si512((__m512i*)&prevNeuronValues[baseIdx + s]);
+
+                    __m512i compCurr = _mm512_maskz_compress_epi8(kActive, curr);
+                    __m512i compPrev = _mm512_maskz_compress_epi8(kActive, prev);
+
+                    _mm512_storeu_si512((__m512i*)&neuronValues[baseIdx + writePos], compCurr);
+                    _mm512_storeu_si512((__m512i*)&prevNeuronValues[baseIdx + writePos], compPrev);
+                }
+
+                writePos += activeInBatch;
+            }
+            // activeInBatch == 0, all samples done, no compaction needed
+            s += BATCH_SIZE;
+        }
+#else
+        const __m256i allOnes = _mm256_set1_epi8(-1);
+        const __m256i allZeros = _mm256_setzero_si256();
+        while (s + BATCH_SIZE <= activeCount)
+        {
+            // Check 1: All neurons unchanged (curr == prev)
+            // unchangedMask = 1 if unchanged
+            __m256i unchangedVec = allOnes;
+            for (unsigned long long n = 0; n < population; n++)
+            {
+                __m256i curr = _mm256_loadu_si256((__m256i*)&neuronValues[n * PADDED_SAMPLES + s]);
+                __m256i prev = _mm256_loadu_si256((__m256i*)&prevNeuronValues[n * PADDED_SAMPLES + s]);
+                __m256i diff = _mm256_xor_si256(curr, prev);
+                unchangedVec = _mm256_andnot_si256(diff, unchangedVec);
+            }
+            unsigned int unchangedMask = (unsigned int)_mm256_movemask_epi8(_mm256_cmpeq_epi8(unchangedVec, allOnes));
+
+            // Check 2: All output neurons non-zero
+            unsigned int allOutputsNonZeroMask = ~0U;
+            for (unsigned long long i = 0; i < numCachedOutputs; i++)
+            {
+                unsigned long long n = outputNeuronIdxCache[i];
+                __m256i val = _mm256_loadu_si256((__m256i*) & neuronValues[n * PADDED_SAMPLES + s]);
+                __m256i isZero = _mm256_cmpeq_epi8(val, allZeros);
+                unsigned int zeroMask = (unsigned int)_mm256_movemask_epi8(isZero);
+                allOutputsNonZeroMask &= ~zeroMask;
+            }
+
+            // exitMask: 1 = sample is done, 0 = sample still need to continue ticking
+            unsigned int exitMask = unchangedMask | allOutputsNonZeroMask;
+            // activeMask: 1 = sample still active
+            unsigned int activeMask = ~exitMask;
+
+            // There is sample should be stopped and score
+            if (exitMask != 0)
+            {
+                for (unsigned long long i = 0; i < numCachedOutputs; i++)
+                {
+                    unsigned long long n = outputNeuronIdxCache[i];
+                    // Score each exiting sample
+                    unsigned int tempExitMask = exitMask;
+                    while (tempExitMask != 0)
+                    {
+                        unsigned int bitPos = countTrailingZeros32(tempExitMask);
+                        unsigned int origSample = sampleMapping[s + bitPos];
+                        char actualVal = neuronValues[n * PADDED_SAMPLES + s + bitPos];
+                        char expectedVal = trainingOutputs[i * PADDED_SAMPLES + origSample];
+                        if (actualVal == expectedVal)
+                        {
+                            sampleScores[origSample]++;
+                        }
+                        tempExitMask = _blsr_u32(tempExitMask); // Clear processed bit
+                    }
+                }
+            }
+
+            // Compact samples, move the unscore/active to the front
+            int activeInBatch = popcnt32(activeMask);
+            // All samples are active, just copy if needed
+            if (activeInBatch == BATCH_SIZE)
+            {
+                // Positions are adjusted
+                if (writePos != s)
+                {
+                    copyMem(&sampleMapping[writePos], &sampleMapping[s], BATCH_SIZE * sizeof(unsigned int));
+                    unsigned long long baseIdx = 0;
+                    for (unsigned long long n = 0; n < population; n++, baseIdx += PADDED_SAMPLES)
+                    {
+                        copyMem(&neuronValues[baseIdx + writePos], &neuronValues[baseIdx + s], BATCH_SIZE);
+                        copyMem(&prevNeuronValues[baseIdx + writePos], &prevNeuronValues[baseIdx + s], BATCH_SIZE);
+                    }
+                }
+                writePos += BATCH_SIZE;
+            }
+            else if (activeInBatch > 0) // mixing inactive an avtive
+            {
+                unsigned int mask = (unsigned int)activeMask;
+                unsigned int writeOffset = 0;
+                while (mask != 0)
+                {
+                    uint32_t i = countTrailingZeros32(mask);
+                    sampleMapping[writePos + writeOffset] = sampleMapping[s + i];
+                    writeOffset++;
+                    mask = _blsr_u32(mask); // clear processed bit
+                }
+
+                // Separate update for better caching
+                for (unsigned long long n = 0; n < population; n++)
+                {
+                    unsigned long long baseIdx = n * PADDED_SAMPLES;
+                    mask = (unsigned int)activeMask;
+                    writeOffset = 0;
+                    while (mask != 0)
+                    {
+                        unsigned int i = countTrailingZeros32(mask);
+                        neuronValues[baseIdx + writePos + writeOffset] = neuronValues[baseIdx + s + i];
+                        prevNeuronValues[baseIdx + writePos + writeOffset] = prevNeuronValues[baseIdx + s + i];
+                        writeOffset++;
+                        mask = _blsr_u32(mask);
+                    }
+                }
+
+                writePos += activeInBatch;
+            }
+            // activeInBatch == 0, all samples done, no compaction needed
+            s += BATCH_SIZE;
+        }
+#endif
+
+        // Process remained samples with scalar version
+        compactActiveSamplesWithScoring(s, writePos, population);
+
+        activeCount = writePos;
+        return (activeCount == 0);
     }
+
     // Tick simulation only runs on one ANN
-    void runTickSimulation(unsigned long long trainingIndex)
+    void runTickSimulation()
     {
+        PROFILE_NAMED_SCOPE("runTickSimulation");
+
         unsigned long long population = currentANN.population;
-        Neuron* neurons = currentANN.neurons;
+        //Neuron* neurons = currentANN.neurons;
+        unsigned char* neuronTypes = currentANN.neuronTypes;
 
-        // Load the training set and fill ANN value
-        loadTrainingData(trainingIndex);
-
-        // Save the neuron value for comparison
-        for (unsigned long long i = 0; i < population; ++i)
         {
-            // Backup the neuron value
-            previousNeuronValue[i] = neurons[i].value;
+            PROFILE_NAMED_SCOPE("runTickSimulation:PrepareData");
+            for (unsigned long long i = 0; i < trainingSetSize; i++)
+            {
+                sampleMapping[i] = (unsigned int)i;
+                sampleScores[i] = 0;
+            }
+            activeCount = trainingSetSize;
+
+            // Load the training set and fill ANN value
+            loadTrainingData();
+            copyMem(prevNeuronValues, neuronValues, population * PADDED_SAMPLES);
+
+            // Cache the location of ouput neurons
+            cacheOutputNeuronIndices();
+
+            // Transpose the synpase
+            convertToIncomingSynapses();
         }
 
-        for (unsigned long long tick = 0; tick < numberOfTicks; ++tick)
         {
-            processTick();
-            // Check exit conditions:
-            // - N ticks have passed (already in for loop)
-            // - All neuron values are unchanged
-            // - All output neurons have non-zero values
-            bool allNeuronsUnchanged = true;
-            bool allOutputNeuronsIsNonZeros = true;
-            for (unsigned long long n = 0; n < population; ++n)
+            PROFILE_NAMED_SCOPE("runTickSimulation:Ticking");
+            for (unsigned long long tick = 0; tick < numberOfTicks; ++tick)
             {
-                // Neuron unchanged check
-                if (previousNeuronValue[n] != neurons[n].value)
+                // No more ANN to infer aka stop condition of all samples are hit
+                if (activeCount == 0)
                 {
-                    allNeuronsUnchanged = false;
+                    break;
                 }
 
-                // Ouput neuron value check
-                if (neurons[n].type == Neuron::kOutput && neurons[n].value == 0)
+                swapCurrentPreviousNeuronPointers();
+
                 {
-                    allOutputNeuronsIsNonZeros = false;
+                    PROFILE_NAMED_SCOPE("Ticking:processTick");
+                    processTick();
                 }
-            }
 
-            if (allOutputNeuronsIsNonZeros || allNeuronsUnchanged)
-            {
-                break;
-            }
-
-            // Copy the neuron value
-            for (unsigned long long n = 0; n < population; ++n)
-            {
-                previousNeuronValue[n] = neurons[n].value;
+                // Move samples that not exit to suitable consition
+                {
+                    PROFILE_NAMED_SCOPE("Ticking:compactActiveSamplesWithScoring");
+                    if (compactActiveSamplesWithScoringSIMD())
+                    {
+                        break;
+                    }
+                }
             }
         }
-    }
 
-    unsigned int computeMatchingOutput()
-    {
-        unsigned long long population = currentANN.population;
-        Neuron* neurons = currentANN.neurons;
-
-        // Compute the non-matching value R between output neuron value and initial value
-        // Because the output neuron order never changes, the order is preserved
-        unsigned int R = 0;
-        unsigned long long outputIdx = 0;
-        for (unsigned long long i = 0; i < population; i++)
+        // Full tick simulation finish, compute score of each remained samples
+        for (unsigned long long i = 0; i < activeCount; i++)
         {
-            if (neurons[i].type == Neuron::kOutput)
-            {
-                if (neurons[i].value == outputNeuronExpectedValue[outputIdx])
-                {
-                    R++;
-                }
-                outputIdx++;
-            }
+            computeSampleScore(i);
         }
-        return R;
     }
 
     // Generate all 2^K possible (A, B, C) pairs
     void generateTrainingSet()
     {
         static constexpr long long boundValue = (1LL << (numberOfInputNeurons / 2)) / 2;
-        unsigned long long index = 0;
+        setMem(trainingInputs, sizeof(trainingInputs), 0);
+        setMem(trainingOutputs, sizeof(trainingOutputs), 0);
+        unsigned long long sampleIdx = 0;
         for (long long A = -boundValue; A < boundValue; A++)
         {
             for (long long B = -boundValue; B < boundValue; B++)
             {
                 long long C = A + B;
 
-                toTenaryBits<numberOfInputNeurons / 2>(A, trainingSet[index].input);
-                toTenaryBits<numberOfInputNeurons / 2>(
-                    B, trainingSet[index].input + numberOfInputNeurons / 2);
-                toTenaryBits<numberOfOutputNeurons>(C, trainingSet[index].output);
-                index++;
+                toTenaryBits<numberOfInputNeurons / 2>(A, inputBits);
+                toTenaryBits<numberOfInputNeurons / 2>(B, inputBits + numberOfInputNeurons / 2);
+                toTenaryBits<numberOfOutputNeurons>(C, outputBits);
+
+                for (unsigned long long n = 0; n < numberOfInputNeurons; n++)
+                {
+                    trainingInputs[n * PADDED_SAMPLES + sampleIdx] = inputBits[n];
+                }
+
+                for (unsigned long long n = 0; n < numberOfOutputNeurons; n++)
+                {
+                    trainingOutputs[n * PADDED_SAMPLES + sampleIdx] = outputBits[n];
+                }
+                sampleIdx++;
             }
         }
+
+    }
+
+    unsigned int getTotalSamplesScore()
+    {
+        unsigned int total = 0;
+        for (unsigned long long i = 0; i < trainingSetSize; i++)
+        {
+            total += sampleScores[i];
+        }
+        return total;
     }
 
     unsigned int inferANN()
     {
         unsigned int score = 0;
-        for (unsigned long long i = 0; i < trainingSetSize; ++i)
-        {
-            // Ticks simulation
-            runTickSimulation(i);
+        runTickSimulation();
+        score = getTotalSamplesScore();
 
-            // Compute R
-            unsigned int R = computeMatchingOutput();
-            score += R;
-        }
         return score;
+    }
+
+    void swapCurrentPreviousNeuronPointers()
+    {
+        char* tmp = neuronValues;
+        neuronValues = prevNeuronValues;
+        prevNeuronValues = tmp;
     }
 
     unsigned int initializeANN(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* randomPool)
@@ -742,13 +1178,15 @@ struct ScoreAddition
 
         unsigned long long& population = currentANN.population;
         Synapse* synapses = currentANN.synapses;
-        Neuron* neurons = currentANN.neurons;
+        unsigned char* neuronTypes = currentANN.neuronTypes;
 
         // Initialization
         population = numberOfNeurons;
+        neuronValues = neuronValuesBuffer0;
+        prevNeuronValues = neuronValuesBuffer1;
 
         // Generate all 2^K possible (A, B, C) pairs
-        generateTrainingSet();
+        //generateTrainingSet();
 
         // Initalize with nonce and public key
         random2(hash, randomPool, (unsigned char*)&paddingInitValue, sizeof(paddingInitValue));
@@ -757,7 +1195,7 @@ struct ScoreAddition
         for (unsigned long long i = 0; i < population; ++i)
         {
             neuronIndices[i] = i;
-            neurons[i].type = Neuron::kInput;
+            neuronTypes[i] = INPUT_NEURON_TYPE;
         }
 
         InitValue* initValue = (InitValue*)paddingInitValue;
@@ -767,7 +1205,7 @@ struct ScoreAddition
             unsigned long long outputNeuronIdx = initValue->outputNeuronPositions[i] % neuronCount;
 
             // Fill the neuron type
-            neurons[neuronIndices[outputNeuronIdx]].type = Neuron::kOutput;
+            neuronTypes[neuronIndices[outputNeuronIdx]] = OUTPUT_NEURON_TYPE;
             outputNeuronIndices[i] = neuronIndices[outputNeuronIdx];
 
             // This index is used, copy the end of indices array to current position and decrease
@@ -794,7 +1232,7 @@ struct ScoreAddition
         {
             for (unsigned long long j = 0; j < 32; ++j)
             {
-                synapses[32 * i + j].weight = extractWeight(initValue->synapseWeight[i], j);
+                synapses[32 * i + j] = extractWeight(initValue->synapseWeight[i], j);
             }
         }
 
@@ -805,7 +1243,7 @@ struct ScoreAddition
             unsigned long long lastBlock = maxNumberOfSynapses / 32;
             for (unsigned long long j = 0; j < remainder; ++j)
             {
-                synapses[32 * lastBlock + j].weight = extractWeight(initValue->synapseWeight[lastBlock], j);
+                synapses[32 * lastBlock + j] = extractWeight(initValue->synapseWeight[lastBlock], j);
             }
         }
 

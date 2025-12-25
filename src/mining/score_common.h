@@ -1,5 +1,6 @@
 #pragma once
 
+#include "platform/profiling.h"
 #include "platform/memory_util.h"
 #include "platform/m256.h"
 #include "platform/concurrency.h"
@@ -83,15 +84,41 @@ constexpr unsigned long long STATE_SIZE = 200;
 //=================================================================================================
 // Helper functions
 
+
+
 #if defined(_MSC_VER)
 
 #define popcnt32(x)  static_cast<int>(__popcnt(static_cast<unsigned int>(x)))
 #define popcnt64(x)  static_cast<int>(__popcnt64(static_cast<unsigned long long>(x)))
 
+static inline unsigned long long countTrailingZeros64(unsigned long long x)
+{
+    unsigned long index;
+    _BitScanForward64(&index, x);
+    return index;
+}
+
+static inline unsigned int countTrailingZeros32(unsigned int x)
+{
+    unsigned long index;
+    _BitScanForward(&index, x);
+    return index;
+}
+
 #else
 
 #define popcnt32(x)  __builtin_popcount  (static_cast<unsigned int>(x))
 #define popcnt64(x)  __builtin_popcountll(static_cast<unsigned long long>(x))
+
+static inline unsigned long long countTrailingZeros64(unsigned long long x)
+{
+    return __builtin_ctzll(x);
+}
+
+static inline unsigned int countTrailingZero32(unsigned int x)
+{
+    return __builtin_ctz(x);
+}
 
 #endif
 
@@ -408,7 +435,7 @@ static int getLastOutput(
     const unsigned char* data,
     const unsigned char* dataType,
     const unsigned long long dataSize,
-    unsigned char* requestedOutput, 
+    unsigned char* requestedOutput,
     int requestedSizeInBytes)
 {
     setMem(requestedOutput, requestedSizeInBytes, 0);
@@ -449,6 +476,24 @@ static int getLastOutput(
     }
 
     return byteCount;
+}
+
+// Clamp the index in cirulate
+// This only work with |value| < population
+static inline unsigned long long clampCirculatingIndex(
+    long long population,
+    long long neuronIdx,
+    long long value)
+{
+    long long nnIndex = neuronIdx + value;
+
+    // Get the signed bit and decide if we should increase population
+    nnIndex += (population & (nnIndex >> 63));
+
+    // Subtract population if idx >= population
+    long long over = nnIndex - population;
+    nnIndex -= (population & ~(over >> 63));
+    return (unsigned long long)nnIndex;
 }
 
 }

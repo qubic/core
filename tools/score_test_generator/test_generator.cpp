@@ -36,7 +36,7 @@ void writeParamsHeader(std::ostream& os, const std::string& sep = "-")
 {
     // Because currently 2 params set shared the same things, incase of new algo have different params
     // need to make a separate check
-    if constexpr (P::algoType == AlgoType::HyperIdentity)
+    if constexpr (P::algoType == score_engine::AlgoType::HyperIdentity)
     {
         os << P::numberOfInputNeurons << sep
             << P::numberOfOutputNeurons << sep
@@ -46,7 +46,7 @@ void writeParamsHeader(std::ostream& os, const std::string& sep = "-")
             << P::numberOfMutations << sep
             << P::solutionThreshold;
     }
-    else if constexpr (P::algoType == AlgoType::Addition)
+    else if constexpr (P::algoType == score_engine::AlgoType::Addition)
     {
         os << P::numberOfInputNeurons << sep
             << P::numberOfOutputNeurons << sep
