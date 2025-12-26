@@ -17,21 +17,6 @@ static const id QDUEL_TEAM_ADDRESS =
     ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C, _R, _L, _W, _E, _T, _H, _N, _G,
        _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
 
-static void setDeterministicTimeAndTick(uint32 tick = QDUEL_TICK_UPDATE_PERIOD, uint16 year = 2025, uint8 month = 1, uint8 day = 1, uint8 hour = 0)
-{
-	setMemory(utcTime, 0);
-	utcTime.Year = year;
-	utcTime.Month = month;
-	utcTime.Day = day;
-	utcTime.Hour = hour;
-	utcTime.Minute = 0;
-	utcTime.Second = 0;
-	utcTime.Nanosecond = 0;
-	updateQpiTime();
-	system.tick = tick;
-	etalonTick.prevSpectrumDigest = m256i::zero();
-}
-
 class QDuelChecker : public QDUEL
 {
 public:
@@ -42,6 +27,8 @@ public:
 	uint8 burnFee() const { return burnFeePercentBps; }
 	uint8 shareholdersFee() const { return shareholdersFeePercentBps; }
 	uint64 minDuelAmount() const { return minimumDuelAmount; }
+	void setState(EState newState) { currentState = newState; }
+	EState getState() const { return currentState; }
 
 	RoomInfo firstRoom() const
 	{
@@ -161,6 +148,27 @@ public:
 	void endTick() { callSystemProcedure(QDUEL_CONTRACT_INDEX, END_TICK); }
 
 	void endEpoch() { callSystemProcedure(QDUEL_CONTRACT_INDEX, END_EPOCH); }
+
+	void forceEndTick()
+	{
+		system.tick = system.tick + (QDUEL_TICK_UPDATE_PERIOD - mod(system.tick, static_cast<uint32>(QDUEL_TICK_UPDATE_PERIOD)));
+
+		endTick();
+	}
+
+	void setDeterministicTime(uint16 year = 2025, uint8 month = 1, uint8 day = 1, uint8 hour = 0)
+	{
+		setMemory(utcTime, 0);
+		utcTime.Year = year;
+		utcTime.Month = month;
+		utcTime.Day = day;
+		utcTime.Hour = hour;
+		utcTime.Minute = 0;
+		utcTime.Second = 0;
+		utcTime.Nanosecond = 0;
+		updateQpiTime();
+		etalonTick.prevSpectrumDigest = m256i::zero();
+	}
 };
 
 TEST(ContractQDuel, InitializeDefaults)
@@ -179,6 +187,9 @@ TEST(ContractQDuel, CreateRoomRejectsInsufficientAmount)
 {
 	ContractTestingQDuel qduel;
 
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
+
 	const id host = id::randomValue();
 	increaseEnergy(host, QDUEL_MINIMUM_DUEL_AMOUNT);
 
@@ -189,9 +200,60 @@ TEST(ContractQDuel, CreateRoomRejectsInsufficientAmount)
 	EXPECT_EQ(qduel.state()->roomCount(), 0ull);
 }
 
+TEST(ContractQDuel, CreateRoomBlockedWhenLocked)
+{
+	ContractTestingQDuel qduel;
+
+	const id host = id::randomValue();
+	increaseEnergy(host, QDUEL_MINIMUM_DUEL_AMOUNT);
+	qduel.state()->setState(QDUEL::EState::LOCKED);
+
+	const uint64 balanceBefore = getBalance(host);
+	const QDUEL::CreateRoom_output& createOut = qduel.createRoom(host, NULL_ID, QDUEL_MINIMUM_DUEL_AMOUNT);
+	EXPECT_EQ(createOut.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::STATE_LOCKED));
+	EXPECT_EQ(getBalance(host), balanceBefore);
+	EXPECT_EQ(qduel.state()->roomCount(), 0ull);
+}
+
+TEST(ContractQDuel, CreateRoomLockedUntilValidTime)
+{
+	ContractTestingQDuel qduel;
+
+	// Set default time
+	qduel.setDeterministicTime(2022, 4, 13);
+	qduel.forceEndTick();
+
+	const id host = id::randomValue();
+	const id joiner = id::randomValue();
+	increaseEnergy(host, QDUEL_MINIMUM_DUEL_AMOUNT * 2);
+	increaseEnergy(joiner, QDUEL_MINIMUM_DUEL_AMOUNT * 2);
+
+	EXPECT_EQ(qduel.state()->getState() & QDUEL::EState::WAIT_TIME, QDUEL::EState::WAIT_TIME);
+
+	const uint64 hostBalance = getBalance(host);
+	const QDUEL::CreateRoom_output& lockedOut = qduel.createRoom(host, NULL_ID, QDUEL_MINIMUM_DUEL_AMOUNT);
+	EXPECT_EQ(lockedOut.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::STATE_LOCKED));
+	EXPECT_EQ(getBalance(host), hostBalance);
+	EXPECT_EQ(qduel.state()->roomCount(), 0ull);
+
+	qduel.setDeterministicTime(2025, 5, 1, 0);
+	qduel.forceEndTick();
+	EXPECT_EQ(qduel.state()->getState() & QDUEL::EState::WAIT_TIME, QDUEL::EState::NONE);
+
+	const QDUEL::CreateRoom_output& createOut = qduel.createRoom(host, NULL_ID, QDUEL_MINIMUM_DUEL_AMOUNT);
+	EXPECT_EQ(createOut.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_EQ(qduel.state()->roomCount(), 1ull);
+
+	const QDUEL::ConnectToRoom_output& connectOut = qduel.connectToRoom(joiner, qduel.state()->firstRoom().roomId, QDUEL_MINIMUM_DUEL_AMOUNT);
+	EXPECT_EQ(connectOut.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+}
+
 TEST(ContractQDuel, CreateRoomListedInGetRooms)
 {
 	ContractTestingQDuel qduel;
+
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
 
 	const id host = id::randomValue();
 	const id allowed = id::randomValue();
@@ -278,6 +340,9 @@ TEST(ContractQDuel, ConnectToRoomRejectsInvalidRequests)
 {
 	ContractTestingQDuel qduel;
 
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
+
 	const id host = id::randomValue();
 	const id intruder = id::randomValue();
 	increaseEnergy(host, QDUEL_MINIMUM_DUEL_AMOUNT * 2);
@@ -301,9 +366,36 @@ TEST(ContractQDuel, ConnectToRoomRejectsInvalidRequests)
 	EXPECT_EQ(getBalance(host), hostBalance);
 }
 
+TEST(ContractQDuel, ConnectToRoomBlockedWhenLocked)
+{
+	ContractTestingQDuel qduel;
+
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
+
+	const id host = id::randomValue();
+	const id joiner = id::randomValue();
+	increaseEnergy(host, QDUEL_MINIMUM_DUEL_AMOUNT * 2);
+	increaseEnergy(joiner, QDUEL_MINIMUM_DUEL_AMOUNT * 2);
+
+	EXPECT_EQ(qduel.createRoom(host, NULL_ID, QDUEL_MINIMUM_DUEL_AMOUNT).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	const id& roomId = qduel.state()->firstRoom().roomId;
+	qduel.state()->setState(QDUEL::EState::LOCKED);
+
+	const uint64 joinerBalance = getBalance(joiner);
+	const QDUEL::ConnectToRoom_output& connectOut = qduel.connectToRoom(joiner, roomId, QDUEL_MINIMUM_DUEL_AMOUNT);
+	EXPECT_EQ(connectOut.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::STATE_LOCKED));
+	EXPECT_EQ(getBalance(joiner), joinerBalance);
+	EXPECT_TRUE(qduel.state()->hasRoom(roomId));
+}
+
 TEST(ContractQDuel, ConnectToRoomSuccessPaysWinner)
 {
 	ContractTestingQDuel qduel;
+
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
 
 	const id host = id::randomValue();
 	const id joiner = id::randomValue();
@@ -347,6 +439,9 @@ TEST(ContractQDuel, ConnectToRoomRefundsOverpayment)
 {
 	ContractTestingQDuel qduel;
 
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
+
 	const id host = id::randomValue();
 	const id joiner = id::randomValue();
 	increaseEnergy(host, QDUEL_MINIMUM_DUEL_AMOUNT * 2);
@@ -387,6 +482,9 @@ TEST(ContractQDuel, ConnectToRoomRefundsOverpayment)
 TEST(ContractQDuel, ConnectToRoomPaysRLDividendsToShareholders)
 {
 	ContractTestingQDuel qduel;
+
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
 
 	const id shareholder1 = id::randomValue();
 	const id shareholder2 = id::randomValue();
@@ -438,7 +536,8 @@ TEST(ContractQDuel, EndTickRefundsOnlyAfterTtl)
 	const id host = id::randomValue();
 	increaseEnergy(host, QDUEL_MINIMUM_DUEL_AMOUNT * 2);
 
-	setDeterministicTimeAndTick();
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
 
 	const uint64 balanceBefore = getBalance(host);
 	const QDUEL::CreateRoom_output& createOut = qduel.createRoom(host, NULL_ID, QDUEL_MINIMUM_DUEL_AMOUNT);
@@ -446,12 +545,12 @@ TEST(ContractQDuel, EndTickRefundsOnlyAfterTtl)
 	EXPECT_EQ(qduel.state()->roomCount(), 1ull);
 	EXPECT_EQ(getBalance(host), balanceBefore - QDUEL_MINIMUM_DUEL_AMOUNT);
 
-	qduel.endTick();
+	qduel.forceEndTick();
 	EXPECT_EQ(qduel.state()->roomCount(), 1ull);
 	EXPECT_EQ(getBalance(host), balanceBefore - QDUEL_MINIMUM_DUEL_AMOUNT);
 
-	setDeterministicTimeAndTick(20, 2025, 1, 1, QDUEL_TTL_HOURS + 1);
-	qduel.endTick();
+	qduel.setDeterministicTime(2025, 1, 1, QDUEL_TTL_HOURS + 1);
+	qduel.forceEndTick();
 	EXPECT_EQ(qduel.state()->roomCount(), 0ull);
 	EXPECT_EQ(getBalance(host), balanceBefore);
 }
@@ -459,6 +558,9 @@ TEST(ContractQDuel, EndTickRefundsOnlyAfterTtl)
 TEST(ContractQDuel, EndEpochRefundsAllRooms)
 {
 	ContractTestingQDuel qduel;
+
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
 
 	const id host1 = id::randomValue();
 	const id host2 = id::randomValue();

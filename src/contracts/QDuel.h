@@ -4,7 +4,7 @@ constexpr uint32 QDUEL_MAX_NUMBER_OF_ROOMS = 512;
 constexpr uint64 QDUEL_MINIMUM_DUEL_AMOUNT = 10000;
 constexpr uint8 QDUEL_DEV_FEE_PERCENT_BPS = 15;          // 0.15% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_BURN_FEE_PERCENT_BPS = 30;         // 0.3% * QDUEL_PERCENT_SCALE
-constexpr uint8 QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS = 25; // 0.25% * QDUEL_PERCENT_SCALE
+constexpr uint8 QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS = 55; // 0.55% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_PERCENT_SCALE = 100;
 constexpr uint8 QDUEL_TTL_HOURS = 2;
 constexpr uint8 QDUEL_TICK_UPDATE_PERIOD = 10;            // Process TICK logic once per this many ticks
@@ -17,6 +17,23 @@ struct QDUEL2
 struct QDUEL : public ContractBase
 {
 public:
+	enum class EState : uint8
+	{
+		NONE = 0,
+		WAIT_TIME = 1 << 0,
+
+		LOCKED = WAIT_TIME
+	};
+
+	friend EState operator|(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) | static_cast<uint8>(b)); }
+	friend EState operator&(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) & static_cast<uint8>(b)); }
+	friend EState operator~(const EState& a) { return static_cast<EState>(~static_cast<uint8>(a)); }
+	template<typename T> friend bool operator==(const EState& a, const T& b) { return static_cast<uint8>(a) == b; }
+	template<typename T> friend bool operator!=(const EState& a, const T& b) { return !(a == b); }
+
+	static EState removeStateFlag(EState state, EState flag) { return state & ~flag; }
+	static EState addStateFlag(EState state, EState flag) { return state | flag; }
+
 	enum class EReturnCode : uint8
 	{
 		SUCCESS,
@@ -31,6 +48,8 @@ public:
 		ROOM_FAILED_GET_WINNER,
 		ROOM_ACCESS_DENIED,
 		ROOM_FAILED_CALCULATE_REVENUE,
+
+		STATE_LOCKED,
 
 		UNKNOWN_ERROR = UINT8_MAX
 	};
@@ -214,6 +233,7 @@ public:
 		sint64 roomIndex;
 		RoomInfo room;
 		DateAndTime threshold;
+		uint32 currentTimestamp;
 	};
 
 	struct END_EPOCH_locals
@@ -248,6 +268,8 @@ public:
 		state.shareholdersFeePercentBps = QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS;
 
 		state.ttlHours = QDUEL_TTL_HOURS;
+
+		state.currentState = EState::LOCKED;
 	}
 
 	END_TICK_WITH_LOCALS()
@@ -255,6 +277,15 @@ public:
 		if (mod<uint32>(qpi.tick(), QDUEL_TICK_UPDATE_PERIOD) != 0)
 		{
 			return;
+		}
+
+		if ((state.currentState & EState::WAIT_TIME) != EState::NONE)
+		{
+			RL::makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentTimestamp);
+			if (RL_DEFAULT_INIT_TIME < locals.currentTimestamp)
+			{
+				state.currentState = removeStateFlag(state.currentState, EState::WAIT_TIME);
+			}
 		}
 
 		locals.roomIndex = state.rooms.nextElementIndex(NULL_INDEX);
@@ -285,11 +316,19 @@ public:
 			locals.roomIndex = state.rooms.nextElementIndex(locals.roomIndex);
 		}
 
-		state.rooms.reset();
+		clearState(state);
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(CreateRoom)
 	{
+		if ((state.currentState & EState::LOCKED) != EState::NONE)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+
+			output.returnCode = toReturnCode(EReturnCode::STATE_LOCKED);
+			return;
+		}
+
 		if (qpi.invocationReward() < state.minimumDuelAmount)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -334,6 +373,14 @@ public:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(ConnectToRoom)
 	{
+		if ((state.currentState & EState::LOCKED) != EState::NONE)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+
+			output.returnCode = toReturnCode(EReturnCode::STATE_LOCKED);
+			return;
+		}
+
 		if (!state.rooms.get(input.roomId, locals.room))
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -519,11 +566,18 @@ protected:
 	uint8 burnFeePercentBps;
 	uint8 shareholdersFeePercentBps;
 	uint8 ttlHours;
+	EState currentState;
 
 protected:
 	template<typename T> static constexpr const T& min(const T& a, const T& b) { return (a < b) ? a : b; }
 	template<typename T> static constexpr const T& max(const T& a, const T& b) { return (a > b) ? a : b; }
 	static constexpr const m256i& max(const m256i& a, const m256i& b) { return (a < b) ? b : a; }
+
+	static void clearState(QDUEL& state)
+	{
+		state.currentState = EState::LOCKED;
+		state.rooms.reset();
+	}
 
 private:
 	PRIVATE_FUNCTION_WITH_LOCALS(GetWinnerPlayer)
