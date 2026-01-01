@@ -9,65 +9,9 @@ If you find such protocol violations in the code, feel free to [contribute](cont
 
 ## List of network message types
 
-The network message types are defined in `src/network_messages/`.
-This is its current list ordered by type number.
+The network message types are defined in a single `enum` in [src/network_messages/network_message_type.h](https://github.com/qubic/core/blob/main/src/network_messages/network_message_type.h).
 The type number is the identifier used in `RequestResponseHeader` (defined in `header.h`).
-All type numbers are defined in a single `enum` in the header `network_message_type.h` to give an easily accessible overview.
 The type number is usually available from the network message type via the `static constexpr unsigned char type()` method.
-
-- `ExchangePublicPeers`, type 0, defined in `public_peers.h`.
-- `BroadcastMessage`, type 1, defined in `broadcast_message.h`.
-- `BroadcastComputors`, type 2, defined in `computors.h`.
-- `BroadcastTick`, type 3, defined in `tick.h`.
-- `BroadcastFutureTickData`, type 8, defined in `tick.h`.
-- `RequestComputors`, type 11, defined in `computors.h`.
-- `RequestQuorumTick`, type 14, defined in `tick.h`.
-- `RequestTickData`, type 16, defined in `tick.h`.
-- `BROADCAST_TRANSACTION`, type 24, defined in `transactions.h`.
-- `RequestTransactionInfo`, type 26, defined in `transactions.h`.
-- `RequestCurrentTickInfo`, type 27, defined in `tick.h`.
-- `RespondCurrentTickInfo`, type 28, defined in `tick.h`.
-- `RequestTickTransactions`, type 29, defined in `transactions.h`.
-- `RequestedEntity`, type 31, defined in `entity.h`.
-- `RespondedEntity`, type 32, defined in `entity.h`.
-- `RequestContractIPO`, type 33, defined in `contract.h`.
-- `RespondContractIPO`, type 34, defined in `contract.h`.
-- `EndResponse`, type 35, defined in `common_response.h`.
-- `RequestIssuedAssets`, type 36, defined in `assets.h`.
-- `RespondIssuedAssets`, type 37, defined in `assets.h`.
-- `RequestOwnedAssets`, type 38, defined in `assets.h`.
-- `RespondOwnedAssets`, type 39, defined in `assets.h`.
-- `RequestPossessedAssets`, type 40, defined in `assets.h`.
-- `RespondPossessedAssets`, type 41, defined in `assets.h`.
-- `RequestContractFunction`, type 42, defined in `contract.h`.
-- `RespondContractFunction`, type 43, defined in `contract.h`.
-- `RequestLog`, type 44, defined in `logging.h`.
-- `RespondLog`, type 45, defined in `logging.h`.
-- `RequestSystemInfo`, type 46, defined in `system_info.h`.
-- `RespondSystemInfo`, type 47, defined in `system_info.h`.
-- `RequestLogIdRangeFromTx`, type 48, defined in `logging.h`.
-- `ResponseLogIdRangeFromTx`, type 49, defined in `logging.h`.
-- `RequestAllLogIdRangesFromTick`, type 50, defined in `logging.h`.
-- `ResponseAllLogIdRangesFromTick`, type 51, defined in `logging.h`.
-- `RequestAssets`, type 52, defined in `assets.h`.
-- `RespondAssets` and `RespondAssetsWithSiblings`, type 53, defined in `assets.h`.
-- `TryAgain`, type 54, defined in `common_response.h`.
-- `RequestPruningLog`, type 56, defined in `logging.h`.
-- `ResponsePruningLog`, type 57, defined in `logging.h`.
-- `RequestLogStateDigest`, type 58, defined in `logging.h`.
-- `ResponseLogStateDigest`, type 59, defined in `logging.h`.
-- `RequestedCustomMiningData`, type 60, defined in `custom_mining.h`.
-- `RespondCustomMiningData`, type 61, defined in `custom_mining.h`.
-- `RequestedCustomMiningSolutionVerification`, type 62, defined in `custom_mining.h`.
-- `RespondCustomMiningSolutionVerification`, type 63, defined in `custom_mining.h`.
-- `RequestActiveIPOs`, type 64, defined in `contract.h`.
-- `RespondActiveIPO`, type 65, defined in `contract.h`.
-- `SpecialCommand`, type 255, defined in `special_command.h`.
-
-Addon messages (supported if addon is enabled):
-- `RequestTxStatus`, type 201, defined in `src/addons/tx_status_request.h`.
-- `RespondTxStatus`, type 202, defined in `src/addons/tx_status_request.h`.
-
 
 ## Peer Sharing
 
@@ -126,6 +70,7 @@ The message is processed as follows, depending on the message type:
 - The solution will be verified and recorded if it does not already exist in the current node.
 
 ## ...
+
 
 
 
