@@ -1239,6 +1239,21 @@ protected:
 		locals.winnerIndex = (uint32)mod(locals.r, state.numberOfQuRaffleMembers * 1ull);
 		locals.winner = state.quRaffleMembers.get(locals.winnerIndex);
 
+		// Get QRAFFLE asset shareholders
+		locals.QraffleAsset.assetName = QRAFFLE_ASSET_NAME;
+		locals.QraffleAsset.issuer = NULL_ID;
+		locals.iter.begin(locals.QraffleAsset);
+		while (!locals.iter.reachedEnd())
+		{
+			locals.shareholder = locals.iter.possessor();
+			if (state.shareholdersList.contains(locals.shareholder) == 0)
+			{
+				state.shareholdersList.add(locals.shareholder);
+			}
+
+			locals.iter.next();
+		}
+
 		if (state.numberOfQuRaffleMembers > 0)
 		{
 			// Calculate fee distributions
@@ -1312,21 +1327,6 @@ protected:
 
 			if (state.epochQXMRRevenue >= 676)
 			{
-				// Process QRAFFLE asset shareholders and log
-				locals.QraffleAsset.assetName = QRAFFLE_ASSET_NAME;
-				locals.QraffleAsset.issuer = NULL_ID;
-				locals.iter.begin(locals.QraffleAsset);
-				while (!locals.iter.reachedEnd())
-				{
-					locals.shareholder = locals.iter.possessor();
-					if (state.shareholdersList.contains(locals.shareholder) == 0)
-					{
-						state.shareholdersList.add(locals.shareholder);
-					}
-
-					locals.iter.next();
-				}
-
 				locals.idx = state.shareholdersList.nextElementIndex(NULL_INDEX);
 				while (locals.idx != NULL_INDEX)
 				{
