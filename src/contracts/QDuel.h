@@ -211,21 +211,23 @@ public:
 		sint64 toTransfer;
 	};
 
-	struct FinalizeRoomAfterMatch_input
+	struct FinalizeRoom_input
 	{
 		id roomId;
 		id owner;
+		uint64 roomAmount;
+		bit includeLocked;
 	};
 
-	struct FinalizeRoomAfterMatch_output
+	struct FinalizeRoom_output
 	{
 		uint8 returnCode;
 	};
 
-	struct FinalizeRoomAfterMatch_locals
+	struct FinalizeRoom_locals
 	{
 		UserData userData;
-		uint64 remainingDeposit;
+		uint64 availableDeposit;
 		CreateRoomRecord_input createRoomInput;
 		CreateRoomRecord_output createRoomOutput;
 		ComputeNextStake_input nextStakeInput;
@@ -251,8 +253,8 @@ public:
 		CalculateRevenue_output calculateRevenue_output;
 		TransferToShareholders_input transferToShareholders_input;
 		TransferToShareholders_output transferToShareholders_output;
-		FinalizeRoomAfterMatch_input finalizeInput;
-		FinalizeRoomAfterMatch_output finalizeOutput;
+		FinalizeRoom_input finalizeInput;
+		FinalizeRoom_output finalizeOutput;
 		id winner;
 		uint64 returnAmount;
 		uint64 amount;
@@ -401,8 +403,8 @@ public:
 		sint64 roomIndex;
 		uint32 currentTimestamp;
 		uint64 elapsedSeconds;
-		RefundAndRemoveUser_input refundInput;
-		RefundAndRemoveUser_output refundOutput;
+		FinalizeRoom_input finalizeInput;
+		FinalizeRoom_output finalizeOutput;
 	};
 
 	struct END_EPOCH_locals
@@ -492,10 +494,11 @@ public:
 			locals.elapsedSeconds = div(locals.room.lastUpdate.durationMicrosec(locals.now), 1000000ULL);
 			if (locals.elapsedSeconds >= locals.room.closeTimer)
 			{
-				locals.refundInput.owner = locals.room.owner;
-				locals.refundInput.roomAmount = locals.room.amount;
-				locals.refundInput.roomIndex = locals.roomIndex;
-				CALL(RefundAndRemoveUser, locals.refundInput, locals.refundOutput);
+				locals.finalizeInput.roomId = locals.room.roomId;
+				locals.finalizeInput.owner = locals.room.owner;
+				locals.finalizeInput.roomAmount = locals.room.amount;
+				locals.finalizeInput.includeLocked = true;
+				CALL(FinalizeRoom, locals.finalizeInput, locals.finalizeOutput);
 			}
 			else
 			{
@@ -714,7 +717,9 @@ public:
 
 		locals.finalizeInput.roomId = input.roomId;
 		locals.finalizeInput.owner = locals.room.owner;
-		CALL(FinalizeRoomAfterMatch, locals.finalizeInput, locals.finalizeOutput);
+		locals.finalizeInput.roomAmount = 0;
+		locals.finalizeInput.includeLocked = false;
+		CALL(FinalizeRoom, locals.finalizeInput, locals.finalizeOutput);
 		output.returnCode = locals.finalizeOutput.returnCode;
 	}
 
@@ -962,66 +967,75 @@ private:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	PRIVATE_PROCEDURE_WITH_LOCALS(FinalizeRoomAfterMatch)
+	PRIVATE_PROCEDURE_WITH_LOCALS(FinalizeRoom)
 	{
 		state.rooms.removeByKey(input.roomId);
 
-		if (state.users.get(input.owner, locals.userData))
+		if (!state.users.get(input.owner, locals.userData))
 		{
-			locals.remainingDeposit = locals.userData.depositedAmount;
-			if (locals.remainingDeposit == 0)
+			if (input.roomAmount > 0)
 			{
-				state.users.removeByKey(locals.userData.userId);
-				output.returnCode = toReturnCode(EReturnCode::SUCCESS);
-				return;
+				qpi.transfer(input.owner, input.roomAmount);
 			}
-
-			locals.nextStakeInput.stake = locals.userData.stake;
-			locals.nextStakeInput.raiseStep = locals.userData.raiseStep;
-			locals.nextStakeInput.maxStake = locals.userData.maxStake;
-			computeNextStake(locals.nextStakeInput, locals.nextStakeOutput);
-			if (locals.nextStakeOutput.returnCode != toReturnCode(EReturnCode::SUCCESS))
-			{
-				qpi.transfer(locals.userData.userId, locals.remainingDeposit);
-				state.users.removeByKey(locals.userData.userId);
-				output.returnCode = locals.nextStakeOutput.returnCode;
-				return;
-			}
-
-			if (locals.nextStakeOutput.nextStake > locals.remainingDeposit)
-			{
-				qpi.transfer(locals.userData.userId, locals.remainingDeposit);
-				state.users.removeByKey(locals.userData.userId);
-				output.returnCode = toReturnCode(EReturnCode::SUCCESS);
-				return;
-			}
-
-			if (locals.nextStakeOutput.nextStake < state.minimumDuelAmount)
-			{
-				qpi.transfer(locals.userData.userId, locals.remainingDeposit);
-				state.users.removeByKey(locals.userData.userId);
-				output.returnCode = toReturnCode(EReturnCode::SUCCESS);
-				return;
-			}
-
-			locals.createRoomInput.owner = locals.userData.userId;
-			locals.createRoomInput.allowedPlayer = locals.userData.allowedPlayer;
-			locals.createRoomInput.amount = locals.nextStakeOutput.nextStake;
-			CALL(CreateRoomRecord, locals.createRoomInput, locals.createRoomOutput);
-			if (locals.createRoomOutput.returnCode != toReturnCode(EReturnCode::SUCCESS))
-			{
-				qpi.transfer(locals.userData.userId, locals.remainingDeposit);
-				state.users.removeByKey(locals.userData.userId);
-				output.returnCode = toReturnCode(EReturnCode::SUCCESS);
-				return;
-			}
-
-			locals.userData.roomId = locals.createRoomOutput.roomId;
-			locals.userData.depositedAmount = locals.remainingDeposit - locals.nextStakeOutput.nextStake;
-			locals.userData.locked = locals.nextStakeOutput.nextStake;
-			locals.userData.stake = locals.nextStakeOutput.nextStake;
-			state.users.set(locals.userData.userId, locals.userData);
+			output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+			return;
 		}
+
+		locals.availableDeposit = locals.userData.depositedAmount;
+		if (input.includeLocked)
+		{
+			locals.availableDeposit += locals.userData.locked;
+		}
+
+		if (locals.availableDeposit == 0)
+		{
+			state.users.removeByKey(locals.userData.userId);
+			output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+			return;
+		}
+
+		locals.nextStakeInput.stake = locals.userData.stake;
+		locals.nextStakeInput.raiseStep = locals.userData.raiseStep;
+		locals.nextStakeInput.maxStake = locals.userData.maxStake;
+		computeNextStake(locals.nextStakeInput, locals.nextStakeOutput);
+		if (locals.nextStakeOutput.returnCode != toReturnCode(EReturnCode::SUCCESS))
+		{
+			qpi.transfer(locals.userData.userId, locals.availableDeposit);
+			state.users.removeByKey(locals.userData.userId);
+			output.returnCode = locals.nextStakeOutput.returnCode;
+			return;
+		}
+
+		if (locals.nextStakeOutput.nextStake > locals.availableDeposit)
+		{
+			locals.nextStakeOutput.nextStake = locals.availableDeposit;
+		}
+
+		if (locals.nextStakeOutput.nextStake < state.minimumDuelAmount)
+		{
+			qpi.transfer(locals.userData.userId, locals.availableDeposit);
+			state.users.removeByKey(locals.userData.userId);
+			output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+			return;
+		}
+
+		locals.createRoomInput.owner = locals.userData.userId;
+		locals.createRoomInput.allowedPlayer = locals.userData.allowedPlayer;
+		locals.createRoomInput.amount = locals.nextStakeOutput.nextStake;
+		CALL(CreateRoomRecord, locals.createRoomInput, locals.createRoomOutput);
+		if (locals.createRoomOutput.returnCode != toReturnCode(EReturnCode::SUCCESS))
+		{
+			qpi.transfer(locals.userData.userId, locals.availableDeposit);
+			state.users.removeByKey(locals.userData.userId);
+			output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+			return;
+		}
+
+		locals.userData.roomId = locals.createRoomOutput.roomId;
+		locals.userData.depositedAmount = locals.availableDeposit - locals.nextStakeOutput.nextStake;
+		locals.userData.locked = locals.nextStakeOutput.nextStake;
+		locals.userData.stake = locals.nextStakeOutput.nextStake;
+		state.users.set(locals.userData.userId, locals.userData);
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
