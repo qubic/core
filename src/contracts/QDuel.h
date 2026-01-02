@@ -378,23 +378,6 @@ public:
 		uint64 freeAmount;
 	};
 
-	struct RefundAndRemoveUser_input
-	{
-		id owner;
-		uint64 roomAmount;
-		sint64 roomIndex;
-	};
-
-	struct RefundAndRemoveUser_output
-	{
-	};
-
-	struct RefundAndRemoveUser_locals
-	{
-		UserData userData;
-		uint64 refundAmount;
-	};
-
 	struct END_TICK_locals
 	{
 		UserData userData;
@@ -405,17 +388,6 @@ public:
 		uint64 elapsedSeconds;
 		FinalizeRoom_input finalizeInput;
 		FinalizeRoom_output finalizeOutput;
-	};
-
-	struct END_EPOCH_locals
-	{
-		sint64 roomIndex;
-		RoomInfo room;
-		UserData userData;
-		sint64 userIndex;
-		uint64 refundAmount;
-		RefundAndRemoveUser_input refundInput;
-		RefundAndRemoveUser_output refundOutput;
 	};
 
 public:
@@ -511,21 +483,6 @@ public:
 		}
 
 		state.firstTick = false;
-	}
-
-	END_EPOCH_WITH_LOCALS()
-	{
-		locals.roomIndex = state.rooms.nextElementIndex(NULL_INDEX);
-		while (locals.roomIndex != NULL_INDEX)
-		{
-			locals.room = state.rooms.value(locals.roomIndex);
-			locals.refundInput.owner = locals.room.owner;
-			locals.refundInput.roomAmount = locals.room.amount;
-			locals.refundInput.roomIndex = locals.roomIndex;
-			CALL(RefundAndRemoveUser, locals.refundInput, locals.refundOutput);
-
-			locals.roomIndex = state.rooms.nextElementIndex(locals.roomIndex);
-		}
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(CreateRoom)
@@ -913,25 +870,6 @@ protected:
 	static uint64_t usubSatu64(uint64 a, uint64 b) { return (a < b) ? 0 : (a - b); }
 
 private:
-	PRIVATE_PROCEDURE_WITH_LOCALS(RefundAndRemoveUser)
-	{
-		if (state.users.get(input.owner, locals.userData))
-		{
-			locals.refundAmount = locals.userData.depositedAmount + locals.userData.locked;
-			if (locals.refundAmount > 0)
-			{
-				qpi.transfer(input.owner, locals.refundAmount);
-			}
-			state.users.removeByKey(input.owner);
-		}
-		else
-		{
-			qpi.transfer(input.owner, input.roomAmount);
-		}
-
-		state.rooms.removeByIndex(input.roomIndex);
-	}
-
 	PRIVATE_PROCEDURE_WITH_LOCALS(CreateRoomRecord)
 	{
 		if (state.rooms.population() >= state.rooms.capacity())
