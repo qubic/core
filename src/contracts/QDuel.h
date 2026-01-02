@@ -463,6 +463,11 @@ public:
 			}
 		}
 
+		if ((state.currentState & EState::LOCKED) != EState::NONE)
+		{
+			return;
+		}
+
 		locals.roomIndex = state.rooms.nextElementIndex(NULL_INDEX);
 		while (locals.roomIndex != NULL_INDEX)
 		{
@@ -494,19 +499,6 @@ public:
 			CALL(RefundAndRemoveUser, locals.refundInput, locals.refundOutput);
 
 			locals.roomIndex = state.rooms.nextElementIndex(locals.roomIndex);
-		}
-
-		locals.userIndex = state.users.nextElementIndex(NULL_INDEX);
-		while (locals.userIndex != NULL_INDEX)
-		{
-			locals.userData = state.users.value(locals.userIndex);
-			locals.refundAmount = locals.userData.depositedAmount + locals.userData.locked;
-			if (locals.refundAmount > 0)
-			{
-				qpi.transfer(locals.userData.userId, locals.refundAmount);
-			}
-			state.users.removeByIndex(locals.userIndex);
-			locals.userIndex = state.users.nextElementIndex(locals.userIndex);
 		}
 
 		clearState(state);
@@ -870,8 +862,6 @@ protected:
 	static void clearState(QDUEL& state)
 	{
 		state.currentState = EState::LOCKED;
-		state.rooms.reset();
-		state.users.reset();
 	}
 
 	static void computeNextStake(const ComputeNextStake_input& input, ComputeNextStake_output& output)
