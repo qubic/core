@@ -65,7 +65,8 @@ public:
 		id owner;
 		id allowedPlayer; // If zero, anyone can join
 		uint64 amount;
-		DateAndTime creationTimestamp;
+		uint64 closeTimer;
+		DateAndTime lastUpdate;
 	};
 
 	struct UserData
@@ -396,9 +397,10 @@ public:
 	{
 		UserData userData;
 		RoomInfo room;
-		DateAndTime threshold;
+		DateAndTime now;
 		sint64 roomIndex;
 		uint32 currentTimestamp;
+		uint64 elapsedSeconds;
 		RefundAndRemoveUser_input refundInput;
 		RefundAndRemoveUser_output refundOutput;
 	};
@@ -443,7 +445,11 @@ public:
 		state.shareholdersFeePercentBps = QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS;
 
 		state.ttlHours = QDUEL_TTL_HOURS;
+	}
 
+	BEGIN_EPOCH()
+	{
+		state.firstTick = true;
 		state.currentState = EState::LOCKED;
 	}
 
@@ -472,19 +478,36 @@ public:
 		while (locals.roomIndex != NULL_INDEX)
 		{
 			locals.room = state.rooms.value(locals.roomIndex);
-			locals.threshold = locals.room.creationTimestamp;
-			locals.threshold.add(0, 0, 0, state.ttlHours, 0, 0);
+			locals.now = qpi.now();
 
-			if (locals.threshold < qpi.now() || locals.threshold == qpi.now())
+			/**
+			 * The interval between the end of the epoch and the first valid tick can be large.
+			 * To do this, we restore the time before the room was closed.
+			 */
+			if (state.firstTick)
+			{
+				locals.room.lastUpdate = locals.now;
+			}
+
+			locals.elapsedSeconds = div(locals.room.lastUpdate.durationMicrosec(locals.now), 1000000ULL);
+			if (locals.elapsedSeconds >= locals.room.closeTimer)
 			{
 				locals.refundInput.owner = locals.room.owner;
 				locals.refundInput.roomAmount = locals.room.amount;
 				locals.refundInput.roomIndex = locals.roomIndex;
 				CALL(RefundAndRemoveUser, locals.refundInput, locals.refundOutput);
 			}
+			else
+			{
+				locals.room.closeTimer = usubSatu64(locals.room.closeTimer, locals.elapsedSeconds);
+				locals.room.lastUpdate = locals.now;
+				state.rooms.set(locals.room.roomId, locals.room);
+			}
 
 			locals.roomIndex = state.rooms.nextElementIndex(locals.roomIndex);
 		}
+
+		state.firstTick = false;
 	}
 
 	END_EPOCH_WITH_LOCALS()
@@ -500,8 +523,6 @@ public:
 
 			locals.roomIndex = state.rooms.nextElementIndex(locals.roomIndex);
 		}
-
-		clearState(state);
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(CreateRoom)
@@ -852,17 +873,13 @@ protected:
 	uint8 burnFeePercentBps;
 	uint8 shareholdersFeePercentBps;
 	uint8 ttlHours;
+	uint8 firstTick;
 	EState currentState;
 
 protected:
 	template<typename T> static constexpr const T& min(const T& a, const T& b) { return (a < b) ? a : b; }
 	template<typename T> static constexpr const T& max(const T& a, const T& b) { return (a > b) ? a : b; }
 	static constexpr const m256i& max(const m256i& a, const m256i& b) { return (a < b) ? b : a; }
-
-	static void clearState(QDUEL& state)
-	{
-		state.currentState = EState::LOCKED;
-	}
 
 	static void computeNextStake(const ComputeNextStake_input& input, ComputeNextStake_output& output)
 	{
@@ -887,6 +904,8 @@ protected:
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
+
+	static uint64_t usubSatu64(uint64 a, uint64 b) { return (a < b) ? 0 : (a - b); }
 
 private:
 	PRIVATE_PROCEDURE_WITH_LOCALS(RefundAndRemoveUser)
@@ -929,7 +948,8 @@ private:
 		locals.newRoom.owner = input.owner;
 		locals.newRoom.allowedPlayer = input.allowedPlayer;
 		locals.newRoom.amount = input.amount;
-		locals.newRoom.creationTimestamp = qpi.now();
+		locals.newRoom.closeTimer = static_cast<uint32>(state.ttlHours) * 3600U;
+		locals.newRoom.lastUpdate = qpi.now();
 
 		if (state.rooms.set(locals.roomId, locals.newRoom) == NULL_INDEX)
 		{
