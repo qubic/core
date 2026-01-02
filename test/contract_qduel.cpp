@@ -205,6 +205,98 @@ public:
 	}
 };
 
+namespace
+{
+	bool findPlayersForWinner(ContractTestingQDuel& qduel, bool wantPlayer1Win, id& player1, id& player2)
+	{
+		for (uint64 i = 1; i < 10000; ++i)
+		{
+			const id candidate1(i, 0, 0, 0);
+			const id candidate2(i + 1, 0, 0, 0);
+			const id winner = qduel.state()->computeWinner(candidate1, candidate2);
+			if (winner == (wantPlayer1Win ? candidate1 : candidate2))
+			{
+				player1 = candidate1;
+				player2 = candidate2;
+				return true;
+			}
+		}
+		return false;
+	}
+
+	void runFullGameCycleWithFees(ContractTestingQDuel& qduel, const id& player1, const id& player2, const id& expectedWinner)
+	{
+		// Setup shareholders
+		const id shareholder1 = id::randomValue();
+		const id shareholder2 = id::randomValue();
+		constexpr unsigned int rlSharesOwner1 = 100;
+		constexpr unsigned int rlSharesOwner2 = 576;
+		std::vector<std::pair<m256i, unsigned int>> rlShares{
+		    {shareholder1, rlSharesOwner1},
+		    {shareholder2, rlSharesOwner2},
+		};
+		issueContractShares(RL_CONTRACT_INDEX, rlShares);
+
+		// Set fees
+		constexpr uint8 devFee = 15;
+		constexpr uint8 burnFee = 30;
+		constexpr uint8 shareholdersFee = 55;
+		increaseEnergy(qduel.state()->team(), 1);
+		EXPECT_EQ(qduel.setPercentFees(qduel.state()->team(), devFee, burnFee, shareholdersFee).returnCode,
+		          QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+		// Setup: Give players initial balance
+		constexpr uint64 duelAmount = 100000ULL;
+		increaseEnergy(player1, duelAmount);
+		increaseEnergy(player2, duelAmount);
+		const uint64 player1Before = getBalance(player1);
+		const uint64 player2Before = getBalance(player2);
+
+		const uint64 teamBefore = getBalance(qduel.state()->team());
+		const uint64 shareholder1Before = getBalance(shareholder1);
+		const uint64 shareholder2Before = getBalance(shareholder2);
+
+		// Create room and play
+		EXPECT_EQ(qduel.createRoom(player1, NULL_ID, duelAmount, 1, duelAmount, duelAmount).returnCode,
+		          QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+		const uint64 player1AfterCreateRoom = getBalance(player1);
+
+
+		const id winner = qduel.state()->computeWinner(player1, player2);
+		EXPECT_EQ(winner, expectedWinner);
+
+		// Calculate expected revenue distribution
+		QDUEL::CalculateRevenue_output revenueOutput{};
+		qduel.state()->calculateRevenue(duelAmount * 2, revenueOutput);
+
+		// Player 2 joins
+		EXPECT_EQ(qduel.connectToRoom(player2, qduel.state()->firstRoom().roomId, duelAmount).returnCode,
+		          QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+		const uint64 player2AfterConnectToRoom = getBalance(player2);
+
+
+		// Check fee distribution
+		EXPECT_EQ(getBalance(qduel.state()->team()), teamBefore + revenueOutput.devFee);
+
+		// Check shareholder dividends
+		const uint64 dividendPerShare = revenueOutput.shareholdersFee / NUMBER_OF_COMPUTORS;
+		EXPECT_EQ(getBalance(shareholder1), shareholder1Before + dividendPerShare * rlSharesOwner1);
+		EXPECT_EQ(getBalance(shareholder2), shareholder2Before + dividendPerShare * rlSharesOwner2);
+
+		// Check winner gets correct amount
+		if (winner == player1)
+		{
+			EXPECT_EQ(getBalance(player1), player1AfterCreateRoom + revenueOutput.winner);
+			EXPECT_EQ(getBalance(player2), player2Before - duelAmount);
+		}
+		else
+		{
+			EXPECT_EQ(getBalance(player1), player1Before - duelAmount);
+			EXPECT_EQ(getBalance(player2), (player2Before - duelAmount) + revenueOutput.winner);
+		}
+	}
+} // namespace
+
 TEST(ContractQDuel, InitializeDefaults)
 {
 	ContractTestingQDuel qduel;
@@ -681,4 +773,396 @@ TEST(ContractQDuel, PrivateFunctionCalculateRevenueComputesFees)
 	EXPECT_EQ(revenueOutput.burnFee, expectedBurn);
 	EXPECT_EQ(revenueOutput.shareholdersFee, expectedShare);
 	EXPECT_EQ(revenueOutput.winner, expectedWinner);
+}
+
+// ============================================================================
+// FULL GAME CYCLE TESTS
+// ============================================================================
+
+TEST(ContractQDuel, FullGameCycle_SimpleGame)
+{
+	ContractTestingQDuel qduel;
+
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
+
+	const id player1 = id::randomValue();
+	const id player2 = id::randomValue();
+
+	// Setup: Give players initial balance
+	constexpr uint64 initialBalance = QDUEL_MINIMUM_DUEL_AMOUNT * 10;
+	increaseEnergy(player1, initialBalance);
+	increaseEnergy(player2, initialBalance);
+
+	// Disable fees for simplicity
+	increaseEnergy(qduel.state()->team(), 1);
+	EXPECT_EQ(qduel.setPercentFees(qduel.state()->team(), 0, 0, 0).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	// Player 1 creates a room
+	constexpr uint64 stake = QDUEL_MINIMUM_DUEL_AMOUNT;
+	const uint64 player1BalanceBefore = getBalance(player1);
+	const QDUEL::CreateRoom_output& createOut = qduel.createRoom(player1, NULL_ID, stake, 1, stake, stake);
+	EXPECT_EQ(createOut.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_EQ(getBalance(player1), player1BalanceBefore - stake);
+	EXPECT_EQ(qduel.state()->roomCount(), 1ull);
+
+	// Get room info
+	const QDUEL::RoomInfo& room = qduel.state()->firstRoom();
+	EXPECT_EQ(room.owner, player1);
+	EXPECT_EQ(room.amount, stake);
+	EXPECT_EQ(room.allowedPlayer, NULL_ID);
+
+	// Player 2 connects to the room
+	const id winner = qduel.state()->computeWinner(player1, player2);
+	const uint64 player2BalanceBefore = getBalance(player2);
+	const QDUEL::ConnectToRoom_output& connectOut = qduel.connectToRoom(player2, room.roomId, stake);
+	EXPECT_EQ(connectOut.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	// Room should be removed after the game
+	EXPECT_EQ(qduel.state()->roomCount(), 0ull);
+
+	// Winner should receive the total stake
+	const uint64 expectedWinnings = stake * 2;
+	if (winner == player1)
+	{
+		EXPECT_EQ(getBalance(player1), player1BalanceBefore + stake); // lost stake but won total
+		EXPECT_EQ(getBalance(player2), player2BalanceBefore - stake);
+	}
+	else
+	{
+		EXPECT_EQ(getBalance(player1), player1BalanceBefore - stake);
+		EXPECT_EQ(getBalance(player2), player2BalanceBefore + stake); // lost stake but won total
+	}
+}
+
+TEST(ContractQDuel, FullGameCycle_WithDeposits)
+{
+	ContractTestingQDuel qduel;
+
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
+
+	const id player = id::randomValue();
+
+	// Setup: Give player initial balance
+	constexpr uint64 initialBalance = QDUEL_MINIMUM_DUEL_AMOUNT * 100;
+	increaseEnergy(player, initialBalance);
+
+	// Disable fees for simplicity
+	increaseEnergy(qduel.state()->team(), 1);
+	EXPECT_EQ(qduel.setPercentFees(qduel.state()->team(), 0, 0, 0).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	// Player creates a room with extra deposit
+	constexpr uint64 stake = QDUEL_MINIMUM_DUEL_AMOUNT;
+	constexpr uint64 extraDeposit = stake * 3;
+	constexpr uint64 totalReward = stake + extraDeposit;
+
+	const uint64 playerBalanceBefore = getBalance(player);
+	const QDUEL::CreateRoom_output& createOut = qduel.createRoom(player, NULL_ID, stake, 1, stake, totalReward);
+	EXPECT_EQ(createOut.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	// Check user profile
+	QDUEL::UserData userData{};
+	EXPECT_TRUE(qduel.state()->getUserData(player, userData));
+	EXPECT_EQ(userData.depositedAmount, extraDeposit);
+	EXPECT_EQ(userData.locked, stake);
+	EXPECT_EQ(userData.stake, stake);
+
+	// Player's balance should be reduced by total reward
+	EXPECT_EQ(getBalance(player), playerBalanceBefore - totalReward);
+
+	// Additional deposit to existing user
+	constexpr uint64 additionalDeposit = stake * 2;
+	increaseEnergy(player, additionalDeposit);
+	const QDUEL::Deposit_output& depositOut = qduel.deposit(player, additionalDeposit);
+	EXPECT_EQ(depositOut.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	// Check updated user profile
+	EXPECT_TRUE(qduel.state()->getUserData(player, userData));
+	EXPECT_EQ(userData.depositedAmount, extraDeposit + additionalDeposit);
+	EXPECT_EQ(userData.locked, stake);
+
+	// Withdraw some funds
+	constexpr uint64 withdrawAmount = stake;
+	const uint64 balanceBeforeWithdraw = getBalance(player);
+	const QDUEL::Withdraw_output& withdrawOut = qduel.withdraw(player, withdrawAmount);
+	EXPECT_EQ(withdrawOut.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_EQ(getBalance(player), balanceBeforeWithdraw + withdrawAmount);
+
+	// Check updated user profile
+	EXPECT_TRUE(qduel.state()->getUserData(player, userData));
+	EXPECT_EQ(userData.depositedAmount, extraDeposit + additionalDeposit - withdrawAmount);
+
+	// Room should still exist
+	EXPECT_EQ(qduel.state()->roomCount(), 1ull);
+}
+
+TEST(ContractQDuel, FullGameCycle_WithdrawInsufficientFunds)
+{
+	ContractTestingQDuel qduel;
+
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
+
+	const id player = id::randomValue();
+
+	// Setup: Give player initial balance
+	constexpr uint64 initialBalance = QDUEL_MINIMUM_DUEL_AMOUNT * 10;
+	increaseEnergy(player, initialBalance);
+
+	// Player creates a room with extra deposit
+	constexpr uint64 stake = QDUEL_MINIMUM_DUEL_AMOUNT;
+	constexpr uint64 extraDeposit = stake * 2;
+	constexpr uint64 totalReward = stake + extraDeposit;
+
+	const QDUEL::CreateRoom_output& createOut = qduel.createRoom(player, NULL_ID, stake, 1, stake, totalReward);
+	EXPECT_EQ(createOut.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	QDUEL::UserData userData{};
+	EXPECT_TRUE(qduel.state()->getUserData(player, userData));
+	EXPECT_EQ(userData.depositedAmount, extraDeposit);
+	EXPECT_EQ(userData.locked, stake);
+
+	// Try to withdraw more than deposited (should fail)
+	const uint64 withdrawAmount = extraDeposit + 1;
+	const uint64 balanceBeforeWithdraw = getBalance(player);
+	const QDUEL::Withdraw_output& withdrawOut = qduel.withdraw(player, withdrawAmount);
+	EXPECT_EQ(withdrawOut.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::INSUFFICIENT_FREE_DEPOSIT));
+	EXPECT_EQ(getBalance(player), balanceBeforeWithdraw);
+
+	// User data should remain unchanged
+	EXPECT_TRUE(qduel.state()->getUserData(player, userData));
+	EXPECT_EQ(userData.depositedAmount, extraDeposit);
+
+	// Try to withdraw zero (should fail)
+	const QDUEL::Withdraw_output& withdrawZeroOut = qduel.withdraw(player, 0);
+	EXPECT_EQ(withdrawZeroOut.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::INSUFFICIENT_FREE_DEPOSIT));
+}
+
+TEST(ContractQDuel, FullGameCycle_MultipleRounds)
+{
+	ContractTestingQDuel qduel;
+
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
+
+	const id player1 = id::randomValue();
+	const id player2 = id::randomValue();
+
+	// Setup: Give players initial balance
+	constexpr uint64 initialBalance = QDUEL_MINIMUM_DUEL_AMOUNT * 100;
+	increaseEnergy(player1, initialBalance);
+	increaseEnergy(player2, initialBalance);
+
+	// Disable fees for simplicity
+	increaseEnergy(qduel.state()->team(), 1);
+	EXPECT_EQ(qduel.setPercentFees(qduel.state()->team(), 0, 0, 0).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	// Round 1: Player 1 creates room, Player 2 joins
+	constexpr uint64 stake = QDUEL_MINIMUM_DUEL_AMOUNT;
+	EXPECT_EQ(qduel.createRoom(player1, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	id roomId1 = qduel.state()->firstRoom().roomId;
+	EXPECT_EQ(qduel.connectToRoom(player2, roomId1, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_EQ(qduel.state()->roomCount(), 0ull);
+
+	// Round 2: Player 2 creates room, Player 1 joins
+	EXPECT_EQ(qduel.createRoom(player2, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	id roomId2 = qduel.state()->firstRoom().roomId;
+	EXPECT_EQ(qduel.connectToRoom(player1, roomId2, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_EQ(qduel.state()->roomCount(), 0ull);
+
+	// Round 3: Player 1 creates room, Player 2 joins
+	EXPECT_EQ(qduel.createRoom(player1, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	id roomId3 = qduel.state()->firstRoom().roomId;
+	EXPECT_EQ(qduel.connectToRoom(player2, roomId3, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_EQ(qduel.state()->roomCount(), 0ull);
+
+	// Both players should have balance changes from wins/losses
+	const uint64 player1Final = getBalance(player1);
+	const uint64 player2Final = getBalance(player2);
+
+	// Total balance should be conserved (no fees)
+	EXPECT_EQ(player1Final + player2Final, initialBalance * 2);
+}
+
+TEST(ContractQDuel, FullGameCycle_AutoRoomCreationAfterWin)
+{
+	ContractTestingQDuel qduel;
+
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
+
+	const id player1 = id::randomValue();
+	const id player2 = id::randomValue();
+
+	// Setup: Give players initial balance
+	constexpr uint64 initialBalance = QDUEL_MINIMUM_DUEL_AMOUNT * 100;
+	increaseEnergy(player1, initialBalance);
+	increaseEnergy(player2, initialBalance);
+
+	// Disable fees for simplicity
+	increaseEnergy(qduel.state()->team(), 1);
+	EXPECT_EQ(qduel.setPercentFees(qduel.state()->team(), 0, 0, 0).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	// Player 1 creates room with raiseStep=2 and extra deposit
+	constexpr uint64 stake = QDUEL_MINIMUM_DUEL_AMOUNT;
+	constexpr uint64 raiseStep = 2;
+	constexpr uint64 maxStake = stake * 8;
+	constexpr uint64 extraDeposit = stake * 10;
+	constexpr uint64 totalReward = stake + extraDeposit;
+
+	EXPECT_EQ(qduel.createRoom(player1, NULL_ID, stake, raiseStep, maxStake, totalReward).returnCode,
+	          QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	const id roomId = qduel.state()->firstRoom().roomId;
+	const id winner = qduel.state()->computeWinner(player1, player2);
+
+	// Player 2 joins and completes the game
+	EXPECT_EQ(qduel.connectToRoom(player2, roomId, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	// Check if winner is player1 and has enough deposit for next round
+	if (winner == player1)
+	{
+		// Player 1 won, should have new room created automatically with doubled stake
+		EXPECT_EQ(qduel.state()->roomCount(), 1ull);
+
+		const QDUEL::RoomInfo& newRoom = qduel.state()->firstRoom();
+		EXPECT_EQ(newRoom.owner, player1);
+		EXPECT_EQ(newRoom.amount, stake * raiseStep); // stake doubled
+
+		// Check user data
+		QDUEL::UserData userData{};
+		EXPECT_TRUE(qduel.state()->getUserData(player1, userData));
+		EXPECT_EQ(userData.locked, stake * raiseStep);
+		EXPECT_EQ(userData.stake, stake * raiseStep);
+		EXPECT_GT(userData.depositedAmount, 0ull); // Should have remaining deposit
+	}
+	else
+	{
+		// Player 1 lost, check if removed or new room created based on remaining deposit
+		QDUEL::UserData userData{};
+		bool hasUserData = qduel.state()->getUserData(player1, userData);
+		// Player should be removed if insufficient funds for next round
+		if (!hasUserData)
+		{
+			EXPECT_EQ(qduel.state()->roomCount(), 0ull);
+		}
+	}
+}
+
+TEST(ContractQDuel, FullGameCycle_EndEpochWithDeposits)
+{
+	ContractTestingQDuel qduel;
+
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
+
+	const id player1 = id::randomValue();
+	const id player2 = id::randomValue();
+	const id player3 = id::randomValue();
+
+	// Setup: Give players initial balance
+	constexpr uint64 initialBalance = QDUEL_MINIMUM_DUEL_AMOUNT * 10;
+	increaseEnergy(player1, initialBalance);
+	increaseEnergy(player2, initialBalance);
+	increaseEnergy(player3, initialBalance);
+
+	// Create multiple rooms with deposits
+	constexpr uint64 stake = QDUEL_MINIMUM_DUEL_AMOUNT;
+	constexpr uint64 extraDeposit = stake * 2;
+
+	const uint64 player1Before = getBalance(player1);
+	const uint64 player2Before = getBalance(player2);
+	const uint64 player3Before = getBalance(player3);
+
+	EXPECT_EQ(qduel.createRoom(player1, NULL_ID, stake, 1, stake, stake + extraDeposit).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_EQ(qduel.createRoom(player2, NULL_ID, stake, 1, stake, stake + extraDeposit).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_EQ(qduel.createRoom(player3, NULL_ID, stake, 1, stake, stake + extraDeposit).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	EXPECT_EQ(qduel.state()->roomCount(), 3ull);
+
+	// Verify user data exists for all players
+	QDUEL::UserData userData{};
+	EXPECT_TRUE(qduel.state()->getUserData(player1, userData));
+	EXPECT_EQ(userData.depositedAmount, extraDeposit);
+	EXPECT_EQ(userData.locked, stake);
+
+	// End epoch - should refund all deposits and locked amounts
+	qduel.endEpoch();
+
+	// All rooms should be removed
+	EXPECT_EQ(qduel.state()->roomCount(), 0ull);
+
+	// All users should be removed
+	EXPECT_FALSE(qduel.state()->getUserData(player1, userData));
+	EXPECT_FALSE(qduel.state()->getUserData(player2, userData));
+	EXPECT_FALSE(qduel.state()->getUserData(player3, userData));
+
+	// All players should get their full deposits back
+	EXPECT_EQ(getBalance(player1), player1Before);
+	EXPECT_EQ(getBalance(player2), player2Before);
+	EXPECT_EQ(getBalance(player3), player3Before);
+}
+
+TEST(ContractQDuel, FullGameCycle_WithFees_WinnerPlayer1)
+{
+	ContractTestingQDuel qduel;
+
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
+
+	id player1{};
+	id player2{};
+	ASSERT_TRUE(findPlayersForWinner(qduel, true, player1, player2));
+	runFullGameCycleWithFees(qduel, player1, player2, player1);
+}
+
+TEST(ContractQDuel, FullGameCycle_WithFees_WinnerPlayer2)
+{
+	ContractTestingQDuel qduel;
+
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
+
+	id player1{};
+	id player2{};
+	ASSERT_TRUE(findPlayersForWinner(qduel, false, player1, player2));
+	runFullGameCycleWithFees(qduel, player1, player2, player2);
+}
+
+TEST(ContractQDuel, FullGameCycle_DepositWithoutUser)
+{
+	ContractTestingQDuel qduel;
+
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
+
+	const id player = id::randomValue();
+
+	// Setup: Give player initial balance
+	constexpr uint64 initialBalance = QDUEL_MINIMUM_DUEL_AMOUNT * 10;
+	increaseEnergy(player, initialBalance);
+
+	// Try to deposit without creating a user first
+	const uint64 playerBefore = getBalance(player);
+	const QDUEL::Deposit_output& depositOut = qduel.deposit(player, QDUEL_MINIMUM_DUEL_AMOUNT);
+	EXPECT_EQ(depositOut.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::USER_NOT_FOUND));
+
+	// Balance should be refunded
+	EXPECT_EQ(getBalance(player), playerBefore);
+}
+
+TEST(ContractQDuel, FullGameCycle_WithdrawWithoutUser)
+{
+	ContractTestingQDuel qduel;
+
+	qduel.setDeterministicTime();
+	qduel.forceEndTick();
+
+	const id player = id::randomValue();
+	increaseEnergy(player, 1);
+
+	// Try to withdraw without creating a user first
+	const QDUEL::Withdraw_output& withdrawOut = qduel.withdraw(player, QDUEL_MINIMUM_DUEL_AMOUNT);
+	EXPECT_EQ(withdrawOut.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::USER_NOT_FOUND));
 }

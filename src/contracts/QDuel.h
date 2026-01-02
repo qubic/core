@@ -5,9 +5,9 @@ constexpr uint64 QDUEL_MINIMUM_DUEL_AMOUNT = 10000;
 constexpr uint8 QDUEL_DEV_FEE_PERCENT_BPS = 15;          // 0.15% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_BURN_FEE_PERCENT_BPS = 30;         // 0.3% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS = 55; // 0.55% * QDUEL_PERCENT_SCALE
-constexpr uint8 QDUEL_PERCENT_SCALE = 100;
+constexpr uint8 QDUEL_PERCENT_SCALE = 1000;
 constexpr uint8 QDUEL_TTL_HOURS = 2;
-constexpr uint8 QDUEL_TICK_UPDATE_PERIOD = 10;            // Process TICK logic once per this many ticks
+constexpr uint8 QDUEL_TICK_UPDATE_PERIOD = 100;           // Process TICK logic once per this many ticks
 constexpr uint64 QDUEL_RANDOM_LOTTERY_ASSET_NAME = 19538; // RL
 
 struct QDUEL2
@@ -408,6 +408,8 @@ public:
 		sint64 roomIndex;
 		RoomInfo room;
 		UserData userData;
+		sint64 userIndex;
+		uint64 refundAmount;
 		RefundAndRemoveUser_input refundInput;
 		RefundAndRemoveUser_output refundOutput;
 	};
@@ -492,6 +494,19 @@ public:
 			CALL(RefundAndRemoveUser, locals.refundInput, locals.refundOutput);
 
 			locals.roomIndex = state.rooms.nextElementIndex(locals.roomIndex);
+		}
+
+		locals.userIndex = state.users.nextElementIndex(NULL_INDEX);
+		while (locals.userIndex != NULL_INDEX)
+		{
+			locals.userData = state.users.value(locals.userIndex);
+			locals.refundAmount = locals.userData.depositedAmount + locals.userData.locked;
+			if (locals.refundAmount > 0)
+			{
+				qpi.transfer(locals.userData.userId, locals.refundAmount);
+			}
+			state.users.removeByIndex(locals.userIndex);
+			locals.userIndex = state.users.nextElementIndex(locals.userIndex);
 		}
 
 		clearState(state);
