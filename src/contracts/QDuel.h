@@ -6,7 +6,7 @@ constexpr uint8 QDUEL_DEV_FEE_PERCENT_BPS = 15;          // 0.15% * QDUEL_PERCEN
 constexpr uint8 QDUEL_BURN_FEE_PERCENT_BPS = 30;         // 0.3% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS = 55; // 0.55% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_PERCENT_SCALE = 1000;
-constexpr uint8 QDUEL_TTL_HOURS = 2;
+constexpr uint8 QDUEL_TTL_HOURS = 3;
 constexpr uint8 QDUEL_TICK_UPDATE_PERIOD = 100;           // Process TICK logic once per this many ticks
 constexpr uint64 QDUEL_RANDOM_LOTTERY_ASSET_NAME = 19538; // RL
 
@@ -879,7 +879,7 @@ private:
 			return;
 		}
 
-		locals.roomId = qpi.K12(qpi.tick() ^ state.rooms.population() ^ input.owner.u64._0);
+		locals.roomId = qpi.K12(qpi.tick() ^ state.rooms.population() ^ input.owner.u64._0 ^ input.owner.u64._1 ^ input.owner.u64._2 ^ input.owner.u64._3);
 		if (state.rooms.contains(locals.roomId))
 		{
 			output.returnCode = toReturnCode(EReturnCode::ROOM_FAILED_CREATE);
