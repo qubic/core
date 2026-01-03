@@ -20,11 +20,11 @@ static const id QDUEL_TEAM_ADDRESS =
     ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C, _R, _L, _W, _E, _T, _H, _N, _G,
        _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
 
-class QpiContextUserFunctionCallWithInvocator : public QPI::QpiContextFunctionCall
+class QpiContextUserFunctionCallWithInvocator : public QpiContextFunctionCall
 {
 public:
 	QpiContextUserFunctionCallWithInvocator(unsigned int contractIndex, const id& invocator)
-	    : QPI::QpiContextFunctionCall(contractIndex, invocator, 0, USER_FUNCTION_CALL)
+	    : QpiContextFunctionCall(contractIndex, invocator, 0, USER_FUNCTION_CALL)
 	{}
 };
 
@@ -82,7 +82,7 @@ public:
 		CalculateRevenue(qpi, *this, revenueInput, output, revenueLocals);
 	}
 
-	QDUEL::GetUserProfile_output getUserProfileFor(const id& user) const
+	GetUserProfile_output getUserProfileFor(const id& user) const
 	{
 		QpiContextUserFunctionCallWithInvocator qpi(QDUEL_CONTRACT_INDEX, user);
 		GetUserProfile_input input{};
@@ -226,6 +226,7 @@ public:
 
 	// Control time and tick for deterministic tests.
 	void setTick(uint32 tick) { system.tick = tick; }
+	uint32 getTick() const { return system.tick; }
 
 	void forceEndTick()
 	{
@@ -342,6 +343,51 @@ namespace
 	}
 } // namespace
 
+TEST(ContractQDuel, EndEpochKeepsDepositWhileRoomsRecreatedEachEpoch)
+{
+	ContractTestingQDuel qduel;
+	qduel.state()->setState(QDUEL::EState::NONE);
+	qduel.setDeterministicTime(2025, 1, 1, 0);
+
+	const id owner(40, 0, 0, 0);
+	const uint64 stake = qduel.state()->minDuelAmount();
+	const uint64 epochs = 3;
+	const uint64 reward = stake + (stake * epochs);
+	increaseEnergy(owner, reward);
+
+	EXPECT_EQ(qduel.createRoom(owner, NULL_ID, stake, 1, stake, reward).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	QDUEL::UserData ownerData{};
+	ASSERT_TRUE(qduel.state()->getUserData(owner, ownerData));
+	uint64 expectedDeposit = ownerData.depositedAmount;
+	id currentRoomId = ownerData.roomId;
+
+	for (uint32 epoch = 0; epoch < epochs; ++epoch)
+	{
+		qduel.beginEpoch();
+		qduel.endEpoch();
+		qduel.setTick(qduel.getTick() + 1);
+
+		QDUEL::UserData afterEndEpoch{};
+		ASSERT_TRUE(qduel.state()->getUserData(owner, afterEndEpoch));
+		EXPECT_EQ(afterEndEpoch.depositedAmount, expectedDeposit);
+		EXPECT_EQ(afterEndEpoch.roomId, currentRoomId);
+
+		qduel.state()->setState(QDUEL::EState::NONE);
+
+		const id opponent(200 + epoch, 0, 0, 0);
+		increaseEnergy(opponent, stake);
+		EXPECT_EQ(qduel.connectToRoom(opponent, currentRoomId, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+		ASSERT_TRUE(qduel.state()->getUserData(owner, ownerData));
+		EXPECT_NE(ownerData.roomId, currentRoomId);
+		EXPECT_EQ(ownerData.locked, stake);
+		expectedDeposit -= stake;
+		EXPECT_EQ(ownerData.depositedAmount, expectedDeposit);
+		currentRoomId = ownerData.roomId;
+	}
+}
+
 TEST(ContractQDuel, BeginEpochKeepsRoomsAndUsers)
 {
 	ContractTestingQDuel qduel;
@@ -406,7 +452,7 @@ TEST(ContractQDuel, FirstTickAfterUnlockResetsTimerStart)
 
 	const QDUEL::RoomInfo unlockedRoom = qduel.state()->firstRoom();
 	EXPECT_EQ(unlockedRoom.closeTimer, initialCloseTimer);
-	const QPI::DateAndTime expectedNow(2022, 4, 14, 2, 0, 0);
+	const DateAndTime expectedNow(2022, 4, 14, 2, 0, 0);
 	EXPECT_EQ(unlockedRoom.lastUpdate, expectedNow);
 }
 
@@ -505,7 +551,7 @@ TEST(ContractQDuel, EndTickSkipsNonPeriodTicks)
 	const QDUEL::RoomInfo roomAfterProcessed = qduel.state()->firstRoom();
 	// Close timer should have decreased by one hour and lastUpdate bumped.
 	EXPECT_EQ(roomAfterProcessed.closeTimer, roomBefore.closeTimer - 3600ULL);
-	const QPI::DateAndTime expectedNow(2025, 1, 1, 1, 0, 0);
+	const DateAndTime expectedNow(2025, 1, 1, 1, 0, 0);
 	EXPECT_EQ(roomAfterProcessed.lastUpdate, expectedNow);
 }
 
@@ -628,7 +674,7 @@ TEST(ContractQDuel, CreateRoomStoresRoomAndUser)
 	EXPECT_EQ(room.allowedPlayer, allowed);
 	EXPECT_EQ(room.amount, stake);
 	EXPECT_EQ(room.closeTimer, static_cast<uint64>(qduel.state()->ttl()) * 3600ULL);
-	const QPI::DateAndTime expectedNow(2025, 1, 1, 0, 0, 0);
+	const DateAndTime expectedNow(2025, 1, 1, 0, 0, 0);
 	EXPECT_EQ(room.lastUpdate, expectedNow);
 
 	QDUEL::UserData user{};
