@@ -132,6 +132,7 @@ public:
 	{
 		RoomInfo newRoom;
 		id roomId;
+		uint64 attempt;
 	};
 
 	struct ComputeNextStake_input
@@ -879,8 +880,20 @@ private:
 			return;
 		}
 
-		locals.roomId = qpi.K12(qpi.tick() ^ state.rooms.population() ^ input.owner.u64._0 ^ input.owner.u64._1 ^ input.owner.u64._2 ^ input.owner.u64._3);
-		if (state.rooms.contains(locals.roomId))
+		locals.attempt = 0;
+		while (locals.attempt < 8)
+		{
+			locals.roomId = qpi.K12(m256i(qpi.tick() ^ state.rooms.population() ^ input.owner.u64._0 ^ locals.attempt,
+			                              input.owner.u64._1 ^ input.allowedPlayer.u64._0 ^ (locals.attempt << 1),
+			                              input.owner.u64._2 ^ input.allowedPlayer.u64._1 ^ (locals.attempt << 2),
+			                              input.owner.u64._3 ^ input.amount ^ (locals.attempt << 3)));
+			if (!state.rooms.contains(locals.roomId))
+			{
+				break;
+			}
+			++locals.attempt;
+		}
+		if (locals.attempt >= 8)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ROOM_FAILED_CREATE);
 			output.roomId = id::zero();

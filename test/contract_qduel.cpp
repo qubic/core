@@ -725,6 +725,7 @@ TEST(ContractQDuel, CreateRoomRejectsWhenRoomsFull)
 	for (uint32 i = 0; i < QDUEL_MAX_NUMBER_OF_ROOMS; ++i)
 	{
 		const id owner(100 + i, 0, 0, 0);
+		qduel.setTick(i);
 		increaseEnergy(owner, stake);
 		const auto output = qduel.createRoom(owner, NULL_ID, stake, 1, stake, stake);
 		EXPECT_EQ(output.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS)) << "at[" << i << "]";
@@ -819,6 +820,8 @@ TEST(ContractQDuel, ConnectFinalizeCreatesRoomFromDeposit)
 
 	EXPECT_EQ(qduel.createRoom(owner, NULL_ID, stake, 1, 0, stake * 2).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	const QDUEL::RoomInfo roomBefore = qduel.state()->firstRoom();
+
+	qduel.setTick(10);
 
 	EXPECT_EQ(qduel.connectToRoom(opponent, roomBefore.roomId, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
