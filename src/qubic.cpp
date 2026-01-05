@@ -138,7 +138,6 @@ static unsigned short numberOfOwnComputorIndices;
 static unsigned short ownComputorIndices[computorSeedsCount];
 static unsigned short ownComputorIndicesMapping[computorSeedsCount];
 
-static TickStorage ts;
 static VoteCounter voteCounter;
 static ExecutionFeeReportCollector executionFeeReportCollector;
 static TickData nextTickData;

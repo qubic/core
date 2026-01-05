@@ -7,6 +7,7 @@
 #include "system.h"
 #include "common_buffers.h"
 #include "spectrum/special_entities.h"
+#include "ticking/tick_storage.h"
 
 #include "oracle_transactions.h"
 #include "core_om_network_messages.h"
