@@ -8,6 +8,7 @@
 #include "common_buffers.h"
 #include "spectrum/special_entities.h"
 #include "ticking/tick_storage.h"
+#include "contract_core/contract_exec.h"
 
 #include "oracle_transactions.h"
 #include "core_om_network_messages.h"
@@ -83,6 +84,8 @@ struct OracleSubscriptionContractStatus
     uint16_t contractIndex;
     uint16_t notificationPeriodMinutes;
     QPI::DateAndTime nextNotification;
+    USER_PROCEDURE notificationProcedure;
+    uint32_t notificationLocalsSize;
 };
 
 struct OracleSubscriptionMetadata
@@ -129,6 +132,7 @@ struct OracleReplyState
     uint16_t mostCommitsHistIdx;
     uint16_t totalCommits;
 
+    uint32_t expectedRevealTxTick;
     uint32_t revealTick;
     uint32_t revealTxIndex;
 
@@ -210,8 +214,11 @@ protected:
         uint32_t queryIndexInTick;
     } contractQueryIdState;
 
+    // data type of state of received OM reply and computor commits for single oracle query (used before reveal)
+    typedef OracleReplyState<ownComputorSeedsCount> ReplyState;
+
     // state of received OM reply and computor commits for each oracle query (used before reveal)
-    OracleReplyState<ownComputorSeedsCount>* replyStates;
+    ReplyState* replyStates;
 
     // index in replyStates to check next for empty slot (cyclic buffer)
     int32_t replyStatesIndex;
@@ -224,9 +231,6 @@ protected:
 
     /// fast lookup of reply state indices for which reveal tx is pending
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> pendingRevealReplyStateIndices;
-
-    /// fast lookup of query indices for which the contract should be notified
-    UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> notificationQueryIndicies;
 
     struct {
         /// total number of successful oracle queries
@@ -244,6 +248,9 @@ protected:
 
     /// array of ownComputorSeedsCount public keys (mainly for testing, in EFI core this points to computorPublicKeys from special_entities.h)
     const m256i* ownComputorPublicKeys;
+
+    /// buffer used to store input for contract notifications
+    uint8_t contractNotificationInputBuffer[16 + MAX_ORACLE_REPLY_SIZE];
 
     /// lock for preventing race conditions in concurrent execution
     mutable volatile char lock;
@@ -293,7 +300,6 @@ public:
         pendingQueryIndices.numValues = 0;
         pendingCommitReplyStateIndices.numValues = 0;
         pendingRevealReplyStateIndices.numValues = 0;
-        notificationQueryIndicies.numValues = 0;
         setMem(&stats, sizeof(stats), 0);
 
         return true;
@@ -407,7 +413,7 @@ public:
         queryMetadata.statusVar.pending.replyStateIndex = replyStateSlotIdx;
 
         // init reply state (temporary until reply is revealed)
-        auto& replyState = replyStates[replyStateSlotIdx];
+        ReplyState& replyState = replyStates[replyStateSlotIdx];
         setMem(&replyState, sizeof(replyState), 0);
         replyState.queryId = queryId;
         replyState.notificationProcedure = notificationProcedure;
@@ -438,6 +444,41 @@ protected:
 
         // Enqueue for sending to all oracle machine peers (peer pointer address 0x1 is reserved for that)
         enqueueResponse((Peer*)0x1, sizeof(*omq) + querySize, OracleMachineQuery::type(), 0, omq);
+    }
+
+    void notifyContractsIfAny(const OracleQueryMetadata& oqm, const ReplyState& replyState, const void* replyData = nullptr)
+    {
+        ASSERT(oqm.queryId == replyState.queryId);
+        if (!replyState.notificationProcedure || oqm.type == ORACLE_QUERY_TYPE_USER_QUERY)
+            return;
+
+        const auto replySize = OI::oracleInterfaces[oqm.interfaceIndex].replySize;
+        ASSERT(16 + replySize < 0xffff);
+
+        UserProcedureNotification notification;
+        if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_QUERY)
+        {
+            // setup notification
+            notification.contractIndex = oqm.typeVar.contract.queryingContract;
+            notification.procedure = replyState.notificationProcedure;
+            notification.inputSize = (uint16_t)(16 + replySize);
+            notification.inputPtr = contractNotificationInputBuffer;
+            notification.localsSize = replyState.notificationLocalsSize;
+            setMem(contractNotificationInputBuffer, notification.inputSize, 0);
+            *(int64_t*)(contractNotificationInputBuffer + 0) = oqm.queryId;
+            *(uint32_t*)(contractNotificationInputBuffer + 8) = 0;
+            *(uint32_t*)(contractNotificationInputBuffer + 12) = oqm.status;
+            if (replyData)
+            {
+                copyMem(contractNotificationInputBuffer + 16, replyData, replySize);
+            }
+
+            // run notification
+            QpiContextUserProcedureNotificationCall qpiContext(notification);
+            qpiContext.call();
+        }
+
+        // TODO: handle subscriptions
     }
 
 public:
@@ -482,7 +523,7 @@ public:
         // get reply state
         const auto replyStateIdx = oqm.statusVar.pending.replyStateIndex;
         ASSERT(replyStateIdx < MAX_SIMULTANEOUS_ORACLE_QUERIES);
-        auto& replyState = replyStates[replyStateIdx];
+        ReplyState& replyState = replyStates[replyStateIdx];
         ASSERT(replyState.queryId == replyMessage->oracleQueryId);
 
         // return if we already got a reply
@@ -546,7 +587,7 @@ public:
             const unsigned int replyIdx = replyIndices[idx];
             if (replyIdx >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
                 continue;
-            auto& replyState = replyStates[replyIdx];
+            ReplyState& replyState = replyStates[replyIdx];
             if (replyState.queryId <= 0 || replyState.ownReplySize == 0)
                 continue;
 
@@ -571,7 +612,7 @@ public:
             // signal to schedule tx for given tick
             replyState.ownReplyCommitComputorTxTick[ownComputorIdx] = txScheduleTick;
 
-            // we have compelted adding this commit
+            // we have completed adding this commit
             ++commitsCount;
         }
 
@@ -579,7 +620,7 @@ public:
         if (!commitsCount)
             return 0;
 
-        // finish all of tx except for source public key and signature
+        // finish all of tx except for signature
         tx->sourcePublicKey = ownComputorPublicKeys[ownComputorIdx];
         tx->destinationPublicKey = m256i::zero();
         tx->amount = 0;
@@ -610,7 +651,7 @@ public:
             return false;
 
         // get computor index
-        int compIdx = computorIndex(transaction->sourcePublicKey);
+        const int compIdx = computorIndex(transaction->sourcePublicKey);
         if (compIdx < 0)
             return false;
 
@@ -622,7 +663,7 @@ public:
         uint32_t size = sizeof(OracleReplyCommitTransactionItem);
         while (size <= transaction->inputSize)
         {
-            // get and check query_id
+            // get and check query index
             uint32_t queryIndex;
             if (!queryIdToIndex->get(item->queryId, queryIndex) || queryIndex >= oracleQueryCount)
                 continue;
@@ -635,7 +676,7 @@ public:
             // get reply state
             const auto replyStateIdx = oqm.statusVar.pending.replyStateIndex;
             ASSERT(replyStateIdx < MAX_SIMULTANEOUS_ORACLE_QUERIES);
-            auto& replyState = replyStates[replyStateIdx];
+            ReplyState& replyState = replyStates[replyStateIdx];
             ASSERT(replyState.queryId == item->queryId);
 
             // ignore commit if we already have processed a commit by this computor
@@ -696,16 +737,21 @@ public:
             else if (replyState.totalCommits - mostCommitsCount > NUMBER_OF_COMPUTORS - QUORUM)
             {
                 // more than 1/3 of commits don't vote for most voted digest -> getting quorum isn't possible
-                // -> switch to status UNRESOLVABLE and cleanup data of pending reply immediately (no info for revenue required)
+                // -> switch to status UNRESOLVABLE
                 oqm.status = ORACLE_QUERY_STATUS_UNRESOLVABLE;
                 oqm.statusFlags |= ORACLE_FLAG_COMP_DISAGREE;
                 oqm.statusVar.failure.agreeingCommits = mostCommitsCount;
                 oqm.statusVar.failure.totalCommits = replyState.totalCommits;
-                notificationQueryIndicies.add(queryIndex);
                 pendingQueryIndices.removeByValue(queryIndex);
+                ++stats.unresolvableCount;
+
+                // run contract notification(s) if needed
+                notifyContractsIfAny(oqm, replyState);
+
+                // cleanup data of pending reply immediately (no info for revenue required)
                 pendingCommitReplyStateIndices.removeByValue(replyStateIdx);
                 freeReplyStateSlot(replyStateIdx);
-                ++stats.unresolvableCount;
+
                 // TODO: send log event ORACLE_QUERY with queryId, query starter, interface, type, status
             }
 
@@ -716,6 +762,197 @@ public:
 
         return true;
     }
+
+    /**
+    * Prepare OracleReplyRevealTransaction in txBuffer, setting all except signature.
+    *
+    * @param txBuffer Buffer for constructing the transaction. Size must be at least MAX_TRANSACTION_SIZE bytes.
+    * @param ownComputorIdx Index of computor in local array computorSeeds.
+    * @param txScheduleTick Tick, in which the transaction is supposed to be scheduled.
+    * @param startIdx Index returned by the previous call of this function if more than one tx is required.
+    * @return 0 if no tx needs to be sent; any other value indicates that another tx needs to be created and it
+    *         should be passed as the start index for the next call of this function
+    *
+    * Called from tick processor.
+    */
+    uint32_t getReplyRevealTransaction(void* txBuffer, uint16_t ownComputorIdx, uint32_t txScheduleTick, uint32_t startIdx = 0)
+    {
+        // check inputs
+        ASSERT(txBuffer);
+        if (ownComputorIdx >= ownComputorSeedsCount || txScheduleTick <= system.tick)
+            return 0;
+
+        // init data pointer
+        auto* tx = reinterpret_cast<OracleReplyRevealTransactionPrefix*>(txBuffer);
+        void* txReplyData = tx + 1;
+
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
+
+        // consider queries with pending reveal tx, specifically the reply data indices of those
+        const unsigned int replyIdxCount = pendingRevealReplyStateIndices.numValues;
+        const unsigned int* replyIndices = pendingRevealReplyStateIndices.values;
+        unsigned int idx = startIdx;
+        for (; idx < replyIdxCount; ++idx)
+        {
+            // get reply state and check that oracle reply has been received and a quorum has formed about the value
+            const unsigned int replyIdx = replyIndices[idx];
+            if (replyIdx >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
+                continue;
+            ReplyState& replyState = replyStates[replyIdx];
+            if (replyState.queryId <= 0 || replyState.ownReplySize == 0)
+                continue;
+            const uint16_t mostCommitsCount = replyState.replyCommitHistogramCount[replyState.mostCommitsHistIdx];
+            ASSERT(replyState.mostCommitsHistIdx < NUMBER_OF_COMPUTORS && mostCommitsCount <= NUMBER_OF_COMPUTORS);
+            if (mostCommitsCount < QUORUM)
+                continue;
+
+            // tx already scheduled or seen?
+            if (replyState.expectedRevealTxTick >= system.tick) // TODO: > or >= ?
+                continue;
+
+            // check if local view is the quorum view
+            const m256i quorumCommitDigest = replyState.replyCommitDigests[replyState.replyCommitHistogramIdx[replyState.mostCommitsHistIdx]];
+            if (quorumCommitDigest != replyState.ownReplyDigest)
+                continue;
+
+            // set all of tx except for signature
+            tx->sourcePublicKey = ownComputorPublicKeys[ownComputorIdx];
+            tx->destinationPublicKey = m256i::zero();
+            tx->amount = 0;
+            tx->tick = txScheduleTick;
+            tx->inputType = OracleReplyRevealTransactionPrefix::transactionType();
+            tx->inputSize = sizeof(tx->queryId) + replyState.ownReplySize;
+            tx->queryId = replyState.queryId;
+            copyMem(txReplyData, replyState.ownReplyData, replyState.ownReplySize);
+
+            // remember that we have scheduled reveal of this reply
+            replyState.expectedRevealTxTick = txScheduleTick;
+
+            // return non-zero in order instruct caller to call this function again with the returned startIdx
+            return idx + 1;
+        }
+
+        // currently no reply reveal needed -> signal to skip tx
+        return 0;
+    }
+
+protected:
+    // Check oracle reply reveal transaction. Returns reply state if okay or NULL otherwise. Also sets output param queryIndexOutput.
+    // Caller is responsible for locking.
+    ReplyState* checkReplyRevealTransaction(const OracleReplyRevealTransactionPrefix* transaction, uint32_t* queryIndexOutput = nullptr) const
+    {
+        // check precondition for calling with ASSERTs
+        ASSERT(transaction != nullptr);
+        ASSERT(transaction->checkValidity());
+        ASSERT(transaction->inputType == OracleReplyRevealTransactionPrefix::transactionType());
+        ASSERT(isZero(transaction->destinationPublicKey));
+
+        // check size of tx
+        if (transaction->inputSize < OracleReplyRevealTransactionPrefix::minInputSize())
+            return nullptr;
+
+        // check that tx source is computor
+        if (computorIndex(transaction->sourcePublicKey) < 0)
+            return nullptr;
+
+        // get and check query index
+        uint32_t queryIndex;
+        if (!queryIdToIndex->get(transaction->queryId, queryIndex) || queryIndex >= oracleQueryCount)
+            return nullptr;
+
+        // get query metadata and check state
+        OracleQueryMetadata& oqm = queries[queryIndex];
+        if (oqm.status != ORACLE_QUERY_STATUS_COMMITTED)
+            return nullptr;
+
+        // check reply size vs size expected by interface
+        ASSERT(oqm.interfaceIndex < OI::oracleInterfacesCount);
+        const uint16_t replySize = transaction->inputSize - sizeof(transaction->queryId);
+        if (replySize != OI::oracleInterfaces[oqm.interfaceIndex].replySize)
+        {
+            oqm.statusFlags |= ORACLE_FLAG_BAD_SIZE_REVEAL;
+            return nullptr;
+        }
+
+        // get reply state
+        const auto replyStateIdx = oqm.statusVar.pending.replyStateIndex;
+        ASSERT(replyStateIdx < MAX_SIMULTANEOUS_ORACLE_QUERIES);
+        ReplyState& replyState = replyStates[replyStateIdx];
+        ASSERT(replyState.queryId == transaction->queryId);
+
+        // compute digest of reply in reveal tx
+        const void* replyData = transaction + 1;
+        m256i revealDigest;
+        KangarooTwelve(replyData, replySize, revealDigest.m256i_u8, 32);
+
+        // check that revealed reply matches the quorum digest
+        const m256i quorumCommitDigest = replyState.replyCommitDigests[replyState.replyCommitHistogramIdx[replyState.mostCommitsHistIdx]];
+        ASSERT(!isZero(quorumCommitDigest));
+        if (revealDigest != quorumCommitDigest)
+            return nullptr;
+
+        // set output param
+        if (queryIndexOutput)
+            *queryIndexOutput = queryIndex;
+
+        return &replyState;
+    }
+
+public:
+    // Called by request processor when a tx is received in order to minimize sending of reveal tx.
+    void announceExpectedRevealTransaction(const OracleReplyRevealTransactionPrefix* transaction)
+    {
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
+
+        // check tx and get reply state
+        ReplyState* replyState = checkReplyRevealTransaction(transaction);
+        if (!replyState)
+            return;
+
+        // update tick when reveal is expected
+        if (!replyState->expectedRevealTxTick || replyState->expectedRevealTxTick > transaction->tick)
+            replyState->expectedRevealTxTick = transaction->tick;
+    }
+
+    // Called from tick processor.
+    bool processOracleReplyRevealTransaction(const OracleReplyRevealTransactionPrefix* transaction, uint32_t txSlotInTickData)
+    {
+        ASSERT(txSlotInTickData < NUMBER_OF_TRANSACTIONS_PER_TICK);
+        ASSERT(transaction->tick == system.tick);
+
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
+
+        // check tx and get reply state + query metadata
+        uint32_t queryIndex;
+        ReplyState* replyState = checkReplyRevealTransaction(transaction, &queryIndex);
+        if (!replyState)
+            return false;
+        OracleQueryMetadata& oqm = queries[queryIndex];
+        const auto replyStateIdx = oqm.statusVar.pending.replyStateIndex;
+
+        // TODO: check knowledge proofs of all computors and add revenue points for computors who sent correct commit tx fastest
+
+        // update state
+        oqm.statusVar.success.revealTick = transaction->tick;
+        oqm.statusVar.success.revealTxIndex = txSlotInTickData;
+        oqm.status = ORACLE_QUERY_STATUS_SUCCESS;
+        pendingQueryIndices.removeByValue(queryIndex);
+        ++stats.successCount;
+
+        // run contract notification(s) if needed
+        const void* replyData = transaction + 1;
+        notifyContractsIfAny(oqm, *replyState, replyData);
+
+        // cleanup data of pending reply
+        pendingRevealReplyStateIndices.removeByValue(replyStateIdx);
+        freeReplyStateSlot(replyStateIdx);
+
+        return true;
+    }
+
 
     void beginEpoch()
     {

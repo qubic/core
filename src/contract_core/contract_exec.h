@@ -1282,7 +1282,7 @@ struct UserProcedureNotification
 // - oracle notifications (managed by oracleEngine)
 struct QpiContextUserProcedureNotificationCall : public QPI::QpiContextProcedureCall
 {
-    QpiContextUserProcedureNotificationCall(const UserProcedureNotification& notification) : QPI::QpiContextProcedureCall(notif.contractIndex, NULL_ID, 0, USER_PROCEDURE_NOTIFICATION_CALL),  notif(notification)
+    QpiContextUserProcedureNotificationCall(const UserProcedureNotification& notification) : QPI::QpiContextProcedureCall(notification.contractIndex, NULL_ID, 0, USER_PROCEDURE_NOTIFICATION_CALL),  notif(notification)
     {
         contractActionTracker.init();
     }

@@ -47,8 +47,8 @@ typedef union m256i
 
 #endif
 
-constexpr uint16_t MAX_ORACLE_QUERY_SIZE = MAX_INPUT_SIZE - 8;
-constexpr uint16_t MAX_ORACLE_REPLY_SIZE = MAX_INPUT_SIZE - 8;
+constexpr uint16_t MAX_ORACLE_QUERY_SIZE = MAX_INPUT_SIZE - 16;
+constexpr uint16_t MAX_ORACLE_REPLY_SIZE = MAX_INPUT_SIZE - 16;
 
 constexpr uint8_t ORACLE_QUERY_TYPE_CONTRACT_QUERY = 0;
 constexpr uint8_t ORACLE_QUERY_TYPE_CONTRACT_SUBSCRIPTION = 1;
@@ -74,6 +74,7 @@ constexpr uint16_t ORACLE_FLAG_BAD_SIZE_REPLY = 0x200; ///< Oracle engine got re
 constexpr uint16_t ORACLE_FLAG_OM_DISAGREE = 0x400;    ///< Oracle engine got different replies from oracle machines.
 constexpr uint16_t ORACLE_FLAG_COMP_DISAGREE = 0x800;  ///< The reply commits differ too much and no quorum can be reached.
 constexpr uint16_t ORACLE_FLAG_TIMEOUT = 0x1000;       ///< The weren't enough reply commit tx with the same digest before timeout (< 451).
+constexpr uint16_t ORACLE_FLAG_BAD_SIZE_REVEAL = 0x200; ///< Reply in a reveal tx had wrong size.
 
 typedef union IPv4Address
 {

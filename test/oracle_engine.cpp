@@ -9,6 +9,7 @@ struct OracleEngineTest : public LoggingTest
 	{
 		EXPECT_TRUE(initCommonBuffers());
 		EXPECT_TRUE(initSpecialEntities());
+		EXPECT_TRUE(initContractExec());
 
 		// init computors
 		for (int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
@@ -29,6 +30,7 @@ struct OracleEngineTest : public LoggingTest
 	~OracleEngineTest()
 	{
 		deinitCommonBuffers();
+		deinitContractExec();
 	}
 };
 
@@ -152,6 +154,9 @@ TEST(OracleEngine, ContractQuerySuccess)
 	EXPECT_TRUE(oracleEngine2.processOracleReplyCommitTransaction(replyCommitTx));
 	EXPECT_TRUE(oracleEngine3.processOracleReplyCommitTransaction(replyCommitTx));
 
+	// no reveal yet
+	EXPECT_EQ(oracleEngine1.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 0), 0);
+
 	//-------------------------------------------------------------------------
 	// create and process enough reply commit tx to trigger reval tx
 
@@ -216,6 +221,20 @@ TEST(OracleEngine, ContractQuerySuccess)
 			oracleEngine3.checkPendingState(queryId, 451, 76, ORACLE_QUERY_STATUS_COMMITTED);
 		}
 	}
+
+	//-------------------------------------------------------------------------
+	// reply reveal tx
+	
+	// success for one tx
+	EXPECT_EQ(oracleEngine1.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 0), 1);
+	EXPECT_EQ(oracleEngine1.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 1), 0);
+
+	// second call does not provide the same tx again
+	EXPECT_EQ(oracleEngine1.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 0), 0);
+
+	system.tick += 3;
+	auto* replyRevealTx = (OracleReplyRevealTransactionPrefix*)txBuffer;
+	oracleEngine1.processOracleReplyRevealTransaction(replyRevealTx, 0);
 }
 
 TEST(OracleEngine, ContractQueryUnresolvable)

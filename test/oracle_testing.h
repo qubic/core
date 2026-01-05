@@ -7,6 +7,7 @@
 
 #include "oracle_core/oracle_engine.h"
 #include "contract_core/qpi_ticking_impl.h"
+#include "contract_core/qpi_spectrum_impl.h"
 
 
 union EnqueuedNetworkMessage
