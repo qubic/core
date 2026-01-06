@@ -31,7 +31,7 @@ struct RequestOracleData
     unsigned int _padding;
 
     // tick, query ID, or subscription ID (depending on reqType)
-    unsigned long long reqTickOrId;
+    long long reqTickOrId;
 };
 
 static_assert(sizeof(RequestOracleData) == 16, "Something is wrong with the struct size.");
@@ -79,23 +79,25 @@ struct RespondOracleDataQueryMetadata
     uint8_t type;               ///< contract query, user query, subscription (may be by multiple contracts)
     uint8_t status;             ///< overall status (pending -> success or timeout)
     uint16_t statusFlags;       ///< status and error flags (especially as returned by oracle machine connected to this node)
-    uint32_t interfaceIndex;
     uint32_t queryTick;
-    uint64_t timeout;           ///< Timeout in QPI::DateAndTime format
     m256i queryingEntity;
+    uint64_t timeout;           ///< Timeout in QPI::DateAndTime format
+    uint32_t interfaceIndex;
     int32_t subscriptionId;     ///< -1 is reserved for "no subscription"
     uint32_t revealTick;        ///< Tick of reveal tx. Only available if status is success.
     uint16_t totalCommits;      ///< Total number of commit tx. Only available if status isn't success.
     uint16_t agreeingCommits;   ///< Number of agreeing commit tx (biggest group with same digest). Only available if status isn't success.
 };
 
+static_assert(sizeof(RespondOracleDataQueryMetadata) == 72, "Unexpected struct size");
+
 struct RespondOracleDataSubscriptionMetadata
 {
-    uint16_t queryIntervalMinutes;
-    uint16_t queryTimestampOffset;
     int64_t lastQueryQueryId;
     int64_t lastRevealQueryId;
     uint64_t nextQueryTimestamp;
+    uint16_t queryIntervalMinutes;
+    uint16_t queryTimestampOffset;
 };
 
 struct RespondOracleDataSubscriptionContractMetadata

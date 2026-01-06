@@ -2182,11 +2182,13 @@ static void requestProcessor(void* ProcedureArgument)
                     processRequestAssets(peer, header);
                 }
                 break;
+
                 case RequestCustomMiningSolutionVerification::type():
                 {
                     processRequestedCustomMiningSolutionVerificationRequest(peer, header);
                 }
                 break;
+
                 case RequestCustomMiningData::type():
                 {
                     processCustomMiningDataRequest(peer, processorNumber, header);
@@ -2203,6 +2205,13 @@ static void requestProcessor(void* ProcedureArgument)
                 {
                     processOracleMachineReply(peer, header);
                 }
+                break;
+
+                case RequestOracleData::type():
+                {
+                    oracleEngine.processRequestOracleData(peer, header);
+                }
+                break;
 
 #if ADDON_TX_STATUS_REQUEST
                 /* qli: process RequestTxStatus message */

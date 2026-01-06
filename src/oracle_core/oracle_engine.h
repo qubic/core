@@ -1105,6 +1105,8 @@ public:
         appendNumber(message, stats.unresolvableCount, FALSE);
         logToConsole(message);
     }
+
+    void processRequestOracleData(Peer* peer, RequestResponseHeader* header) const;
 };
 
 GLOBAL_VAR_DECL OracleEngine<computorSeedsCount> oracleEngine;
