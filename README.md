@@ -1,5 +1,5 @@
 # qubic - node
-Qubic Node Source Code - this repository contains the source code of a full qubic node.
+Qubic Core Node Source Code - this repository contains the source code of a full qubic node.
 
 > MAIN (current version running qubic) <br>
 > [![EFIBuild](https://github.com/qubic/core/actions/workflows/efi-build-develop.yml/badge.svg?branch=main)](https://github.com/qubic/core/actions/workflows/efi-build-develop.yml)
@@ -9,13 +9,14 @@ Qubic Node Source Code - this repository contains the source code of a full qubi
 
 ## Prerequisites
 To run a qubic node, you need the following spec:
-- Bare Metal Server/Computer with at least 8 Cores (high CPU frequency with AVX2 support). AVX-512 support is recommended; check supported CPUs [here](https://www.epey.co.uk/cpu/e/YTozOntpOjUwOTc7YToxOntpOjA7czo2OiI0Mjg1NzUiO31pOjUwOTk7YToyOntpOjA7czoxOiI4IjtpOjE7czoyOiIzMiI7fWk6NTA4ODthOjY6e2k6MDtzOjY6IjQ1NjE1MCI7aToxO3M6NzoiMjM4Nzg2MSI7aToyO3M6NzoiMTkzOTE5OSI7aTozO3M6NzoiMTUwMjg4MyI7aTo0O3M6NzoiMjA2Nzk5MyI7aTo1O3M6NzoiMjE5OTc1OSI7fX1fYjowOw==/)
+- Bare Metal Server/Computer with at least 8 Cores (high CPU frequency with AVX2 support). AVX-512 support is recommended - by the end of 2026 only AVX512 will be supported
+- Recommended CPU: AMD Epyc 9274F or better
 - At least 2TB of RAM
 - 1Gb/s synchronous internet connection
 - A NVME disk to store data (via NVMe M.2)
 - UEFI Bios 
 
-> You will need the current `spectrum, universe, and contract` files to be able to start Qubic. The latest files can be found in our #computor-operator channel on the Qubic Discord server: https://discord.gg/qubic (inquire there for the files).
+> You will need the current `spectrum, universe, and contract` files to be able to start Qubic. The latest files can be downloaded from [https://storage.qubic.li/network](https://storage.qubic.li/network) or ask in our #computor-operator channel on the Qubic Discord server: https://discord.gg/qubic.
 
 ### Prepare your Disk
 1. Your Qubic Boot device should be formatted as FAT32 with the label QUBIC.
@@ -40,16 +41,7 @@ echo -e "o\nY\nd\nn\n\n\n+200G\n\nt\n\nef00\nw\nY" | gdisk /dev/sda
 ```
 /contract0000.XXX
 /contract0001.XXX
-/contract0002.XXX
-/contract0003.XXX
-/contract0004.XXX
-/contract0005.XXX
-/contract0006.XXX
-/contract0007.XXX
-/contract0008.XXX
-/contract0009.XXX
-/contract0010.XXX
-/contract0011.XXX
+/contractYYYY.XXX
 /spectrum.XXX
 /system
 /universe.XXX
@@ -60,17 +52,7 @@ echo -e "o\nY\nd\nn\n\n\n+200G\n\nt\n\nef00\nw\nY" | gdisk /dev/sda
 ```
 - contract0000.XXX => must be the current contract #0 file. XXX must be replaced with the current epoch. (e.g. `contract0000.114`)
 - contract0001.XXX => must be the current contract #1 file. XXX must be replaced with the current epoch. (e.g. `contract0001.114`). Data from Qx.
-- contract0002.XXX => must be the current contract #2 file. XXX must be replaced with the current epoch. (e.g. `contract0002.114`). Data from Quottery.
-- contract0003.XXX => must be the current contract #3 file. XXX must be replaced with the current epoch. (e.g. `contract0003.114`). Data from Random.
-- contract0004.XXX => must be the current contract #4 file. XXX must be replaced with the current epoch. (e.g. `contract0004.114`). Data from QUtil.
-- contract0005.XXX => must be the current contract #5 file. XXX must be replaced with the current epoch. (e.g. `contract0005.114`). Data from MyLastMatch.
-- contract0006.XXX => must be the current contract #6 file. XXX must be replaced with the current epoch. (e.g. `contract0006.114`). Data from GQMPROPO.
-- contract0007.XXX => must be the current contract #7 file. XXX must be replaced with the current epoch. (e.g. `contract0007.114`). Data from Swatch.
-- contract0008.XXX => must be the current contract #8 file. XXX must be replaced with the current epoch. (e.g. `contract0008.114`). Data from CCF.
-- contract0009.XXX => must be the current contract #9 file. XXX must be replaced with the current epoch. (e.g. `contract0009.114`). Data from QEarn.
-- contract0010.XXX => must be the current contract #10 file. XXX must be replaced with the current epoch. (e.g. `contract0010.114`). Data from QVault.
-- contract0011.XXX => must be the current contract #10 file. XXX must be replaced with the current epoch. (e.g. `contract0011.114`). Data from MSVault.
-- Other contract files with the same format as above. For now, we have 6 contracts.
+- contractYYYY.XXX => must be the current contract #YYYY file. XXX must be replaced with the current epoch. (e.g. `contract0002.114`). State data from all contracts.
 - universe.XXX => must be the current universe file. XXX must be replaced with the current epoch. (e.g `universe.114`)
 - spectrum.XXX => must be the current spectrum file. XXX must be replaced with the current epoch. (e.g `spectrum.114`)
 - system => to start from scratch, use an empty file. (e.g. `touch system`)
@@ -97,19 +79,21 @@ Qubic.efi
 
 > To make it easier, you can copy & paste our prepared initial disk from https://github.com/qubic/core/blob/main/doc/qubic-initial-disk.zip
 
-> If you have multiple network interfaces, you may disconnect these before starting qubic.
+> If you have multiple network interfaces, you may disconnect these before starting qubic. [Here you see how](https://github.com/qubic/integration/blob/main/Computor-Setup/Disconnect-Unneeded-Devices.md).
 
 ### Prepare your Server
 To run Qubic on your server you need the following:
 - UEFI Bios
 - Enabled Network Stack in Bios
 - Your USB Stick/SSD should be the boot device
+- We advice to not disable any CPU virtualization or multi threading
 
 ## General Process of deploying a node
 1. Find knownPublicPeers public peers (e.g. from: https://app.qubic.li/network/live)
-2. Set the needed parameters inside src/private_settings.h (https://github.com/qubic/core/blob/main/src/private_settings.h)
-3. Compile Source to EFI
-4. Start EFI Application on your Computer
+2. Set the needed parameters inside [src/private_settings.h](https://github.com/qubic/core/blob/main/src/private_settings.h)
+3. Compile Source to EFI (Release build)
+4. Copy the binary to your server
+5. Start your server with the EFI Application
 
 
 ## How to run a Listening Node
@@ -128,12 +112,12 @@ static unsigned char computorSeeds[][55 + 1] = {
 };
 ```
 2. Add your Operator Identity.
-The Operator Identity is used to identify the Operator. The Operator can send Commands to your Node.
+The Operator Identity is used to identify the Operator. Many remote commands are only allowed when they are signed by the Operator seed. Use the [CLI](https://github.com/qubic/qubic-cli) to send remote commands.
 ```c++
 #define OPERATOR "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 ```
 3. Add static IPs of known public peers (can be obtained from https://app.qubic.li/network/live).
-Ideally, add at least 4 including your own IP.
+Ideally, add at least 4. Include also the public IP of your server. This IP Address will be propagated to other Qubic nodes.
 ```c++
 static const unsigned char knownPublicPeers[][4] = {
   {12,13,14,12}
@@ -167,3 +151,4 @@ We cannot support you in any case. You are welcome to provide updates, bug fixes
 - [Custom mining](doc/custom_mining.md)
 - [Seamless epoch transition](SEAMLESS.md)
 - [Proposals and voting](doc/contracts_proposals.md)
+

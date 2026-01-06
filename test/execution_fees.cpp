@@ -354,6 +354,7 @@ TEST(ExecutionTimeAccumulatorTest, AddingAndPhaseSwitching)
     ExecutionTimeAccumulator accum;
 
     accum.init();
+    frequency = 0; // Bypass microseconds conversion
 
     accum.addTime(/*contractIndex=*/0, /*time=*/52784);
     accum.addTime(/*contractIndex=*/contractCount/2, /*time=*/8795);
