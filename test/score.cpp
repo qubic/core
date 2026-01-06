@@ -2,7 +2,7 @@
 
 #include "gtest/gtest.h"
 
-#define ENABLE_PROFILING 1
+#define ENABLE_PROFILING 0
 
 // current optimized implementation
 #include "../src/public_settings.h"
@@ -41,15 +41,15 @@ static const std::string COMMON_TEST_SCORES_ADDITION_FILE_NAME = "data/scores_ad
 static constexpr bool PRINT_DETAILED_INFO = false;
 // Variable control the algo tested
 // AllAlgo: run the score that alg is retermined by nonce
-//static constexpr score_engine::AlgoType TEST_ALGO = 
-//    static_cast<score_engine::AlgoType>(score_engine::AlgoType::HyperIdentity 
-//                                        | score_engine::AlgoType::Addition
-//                                        | score_engine::AlgoType::AllAlgo);
-static constexpr score_engine::AlgoType TEST_ALGO = static_cast<score_engine::AlgoType>(score_engine::AlgoType::Addition);
+static constexpr score_engine::AlgoType TEST_ALGO = 
+    static_cast<score_engine::AlgoType>(score_engine::AlgoType::HyperIdentity 
+                                        | score_engine::AlgoType::Addition
+                                        | score_engine::AlgoType::AllAlgo);
+//static constexpr score_engine::AlgoType TEST_ALGO = static_cast<score_engine::AlgoType>(score_engine::AlgoType::Addition);
 
 // set to 0 for run all available samples
 // For profiling enable, run all available samples
-static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 1024;
+static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 16;
 static constexpr unsigned long long PROFILING_NUMBER_OF_SAMPLES = 48;
 
 
@@ -495,16 +495,28 @@ void runTest(
     int numberOfThreads,
     ProcessFunc processFunc)
 {
-    std::cout << "Test " << testName << " ... " << std::endl;
+    std::cout << "Test " << testName << " ..." << std::endl;
+    int proccessedSamples = 0;
 #pragma omp parallel for num_threads(numberOfThreads)
     for (int i = 0; i < static_cast<int>(samples.size()); ++i)
     {
         int index = samples[i];
         processFunc(index);
 #pragma omp critical
-        std::cout << i << ", ";
+        proccessedSamples++;
+        std::cout << "\r-Processed: " << proccessedSamples << " / " << static_cast<int>(samples.size()) << "    " << std::flush;
     }
     std::cout << std::endl;
+}
+
+static std::vector<std::vector<std::string>> readSampleAsStr(const std::string& filename)
+{
+    std::vector<std::vector<std::string>> sampleString = readCSV(COMMON_TEST_SAMPLES_FILE_NAME);
+
+    // Remove header
+    sampleString.erase(sampleString.begin());
+
+    return sampleString;
 }
 
 void runCommonTests()
@@ -516,9 +528,7 @@ void runCommonTests()
     constexpr unsigned long long numberOfGeneratedSetting = CONFIG_COUNT;
 
     // Read the parameters and results
-    auto sampleString = readCSV(COMMON_TEST_SAMPLES_FILE_NAME);
-    // Remove header
-    sampleString.erase(sampleString.begin());
+    auto sampleString = readSampleAsStr(COMMON_TEST_SAMPLES_FILE_NAME);
 
     // Convert the raw string and do the data verification
     unsigned long long numberOfSamplesReadFromFile = sampleString.size();
@@ -696,14 +706,14 @@ void runCommonTests()
     }
 
     // Test Qubic score vs internal engine (always runs)
-    //runTest("Qubic's score vs internal score engine on active config", samples, numberOfThreads, [&](int index)
-    //{
-    //    processQubicScore(
-    //        miningSeeds[index].m256i_u8,
-    //        publicKeys[index].m256i_u8,
-    //        nonces[index].m256i_u8,
-    //        index);
-    //});
+    runTest("Qubic's score vs internal score engine on active config", samples, numberOfThreads, [&](int index)
+    {
+        processQubicScore(
+            miningSeeds[index].m256i_u8,
+            publicKeys[index].m256i_u8,
+            nonces[index].m256i_u8,
+            index);
+    });
 
 }
 
@@ -723,7 +733,7 @@ void profileAlgo(
     gScoreProcessingTime.clear();
 
     int numSamples = static_cast<int>(samples.size());
-
+    int proccessedSamples = 0;
 #pragma omp parallel for num_threads(numberOfThreads)
     for (int i = 0; i < numSamples; ++i)
     {
@@ -735,7 +745,8 @@ void profileAlgo(
             index,
             algo);
 #pragma omp critical
-        std::cout << i << ", ";
+        proccessedSamples++;
+        std::cout << "\r-Processed: " << proccessedSamples << " / " << numSamples << "    " << std::flush;
     }
     std::cout << std::endl;
 
@@ -757,9 +768,7 @@ void runPerformanceTests()
     constexpr unsigned long long numberOfGeneratedSetting = PROFILE_CONFIG_COUNT;
 
     // Read the parameters and results
-    auto sampleString = readCSV(COMMON_TEST_SAMPLES_FILE_NAME);
-    // Remove header
-    sampleString.erase(sampleString.begin());
+    auto sampleString = readSampleAsStr(COMMON_TEST_SAMPLES_FILE_NAME);
 
     // Convert the raw string and do the data verification
     unsigned long long numberOfSamplesReadFromFile = sampleString.size();
@@ -808,15 +817,19 @@ void runPerformanceTests()
 
     std::cout << "Processing " << samples.size() << " samples " << compTerm << "..." << std::endl;
 
-    //profileAlgo<1, PROFILE_CONFIG_COUNT>(
-    //    score_engine::AlgoType::HyperIdentity, "HyperIdentity",
-    //    samples, miningSeeds, publicKeys, nonces, filteredSamples, numberOfThreads, numberOfSamples);
+    profileAlgo<1, PROFILE_CONFIG_COUNT>(
+        score_engine::AlgoType::HyperIdentity, "HyperIdentity",
+        samples, miningSeeds, publicKeys, nonces, filteredSamples, numberOfThreads, numberOfSamples);
 
     profileAlgo<1, PROFILE_CONFIG_COUNT>(
         score_engine::AlgoType::Addition, "Addition",
         samples, miningSeeds, publicKeys, nonces, filteredSamples, numberOfThreads, numberOfSamples);
 
-    //gProfilingDataCollector.writeToFile();
+    profileAlgo<1, PROFILE_CONFIG_COUNT>(
+        score_engine::AlgoType::AllAlgo, "Mixed",
+        samples, miningSeeds, publicKeys, nonces, filteredSamples, numberOfThreads, numberOfSamples);
+
+    gProfilingDataCollector.writeToFile();
 }
 
 #if ENABLE_PROFILING
@@ -832,84 +845,74 @@ TEST(TestQubicScoreFunction, CommonTests)
     runCommonTests();
 }
 
-//#if not ENABLE_PROFILING
-//TEST(TestQubicScoreFunction, TestDeterministic)
-//{
-//    constexpr int NUMBER_OF_THREADS = 4;
-//    constexpr int NUMBER_OF_PHASES = 2;
-//    constexpr int NUMBER_OF_SAMPLES = 4;
-//
-//    // Read the parameters and results
-//    auto sampleString = readCSV(COMMON_TEST_SAMPLES_FILE_NAME);
-//    ASSERT_FALSE(sampleString.empty());
-//
-//    // Convert the raw string and do the data verification
-//    unsigned long long numberOfSamples = sampleString.size();
-//    if (COMMON_TEST_NUMBER_OF_SAMPLES > 0)
-//    {
-//        numberOfSamples = std::min(COMMON_TEST_NUMBER_OF_SAMPLES, numberOfSamples);
-//    }
-//
-//    std::vector<m256i> miningSeeds(numberOfSamples);
-//    std::vector<m256i> publicKeys(numberOfSamples);
-//    std::vector<m256i> nonces(numberOfSamples);
-//
-//    // Reading the input samples
-//    for (unsigned long long i = 0; i < numberOfSamples; ++i)
-//    {
-//        miningSeeds[i] = hexTo32Bytes(sampleString[i][0], 32);
-//        publicKeys[i] = hexTo32Bytes(sampleString[i][1], 32);
-//        nonces[i] = hexTo32Bytes(sampleString[i][2], 32);
-//    }
-//
-//    auto pScore = std::make_unique<ScoreFunction<
-//        ::NUMBER_OF_INPUT_NEURONS,
-//        ::NUMBER_OF_OUTPUT_NEURONS,
-//        ::NUMBER_OF_TICKS,
-//        ::NUMBER_OF_NEIGHBORS,
-//        ::POPULATION_THRESHOLD,
-//        ::NUMBER_OF_MUTATIONS,
-//        ::SOLUTION_THRESHOLD,
-//        NUMBER_OF_THREADS
-//        >>();
-//    pScore->initMemory();
-//
-//    // Run with 4 mining seeds, each run 4 separate threads and the result need to matched
-//    int scores[NUMBER_OF_PHASES][NUMBER_OF_THREADS * NUMBER_OF_SAMPLES] = { 0 };
-//    for (unsigned long long i = 0; i < NUMBER_OF_PHASES; ++i)
-//    {
-//        pScore->initMiningData(miningSeeds[i]);
-//
-//#pragma omp parallel for num_threads(NUMBER_OF_THREADS)
-//        for (int threadId = 0; threadId < NUMBER_OF_THREADS; ++threadId)
-//        {
-//            if (threadId % 2 == 0)
-//            {
-//                for (int sampleId = 0; sampleId < NUMBER_OF_SAMPLES; ++sampleId)
-//                {
-//                    scores[i][threadId * NUMBER_OF_SAMPLES + sampleId] = (*pScore)(threadId, publicKeys[sampleId], miningSeeds[i], nonces[sampleId]);
-//                }
-//            }
-//            else
-//            {
-//                for (int sampleId = NUMBER_OF_SAMPLES - 1; sampleId >= 0; --sampleId)
-//                {
-//                    scores[i][threadId * NUMBER_OF_SAMPLES + sampleId] = (*pScore)(threadId, publicKeys[sampleId], miningSeeds[i], nonces[sampleId]);
-//                }
-//            }
-//        }
-//    }
-//
-//    // Each threads run with the same samples but the order is reversed. Expect the scores are matched.
-//    for (unsigned long long i = 0; i < NUMBER_OF_PHASES; ++i)
-//    {
-//        for (int threadId = 0; threadId < NUMBER_OF_THREADS - 1; ++threadId)
-//        {
-//            for (int sampleId = 0; sampleId < NUMBER_OF_SAMPLES; ++sampleId)
-//            {
-//                EXPECT_EQ(scores[i][threadId * NUMBER_OF_SAMPLES + sampleId], scores[i][(threadId + 1) * NUMBER_OF_SAMPLES + sampleId]);
-//            }
-//        }
-//    }
-//}
-//#endif
+#if not ENABLE_PROFILING
+TEST(TestQubicScoreFunction, TestDeterministic)
+{
+    constexpr int NUMBER_OF_THREADS = 4;
+    constexpr int NUMBER_OF_PHASES = 2;
+    constexpr int NUMBER_OF_SAMPLES = 4;
+
+    // Read the parameters and results
+    auto sampleString = readSampleAsStr(COMMON_TEST_SAMPLES_FILE_NAME);
+
+    // Convert the raw string and do the data verification
+    unsigned long long numberOfSamples = sampleString.size();
+    if (COMMON_TEST_NUMBER_OF_SAMPLES > 0)
+    {
+        numberOfSamples = std::min(COMMON_TEST_NUMBER_OF_SAMPLES, numberOfSamples);
+    }
+
+    std::vector<m256i> miningSeeds(numberOfSamples);
+    std::vector<m256i> publicKeys(numberOfSamples);
+    std::vector<m256i> nonces(numberOfSamples);
+
+    // Reading the input samples
+    for (unsigned long long i = 0; i < numberOfSamples; ++i)
+    {
+        miningSeeds[i] = hexTo32Bytes(sampleString[i][0], 32);
+        publicKeys[i] = hexTo32Bytes(sampleString[i][1], 32);
+        nonces[i] = hexTo32Bytes(sampleString[i][2], 32);
+    }
+
+    std::unique_ptr<ScoreFunction<NUMBER_OF_THREADS>> pScore = std::make_unique<ScoreFunction<NUMBER_OF_THREADS>>();
+    pScore->initMemory();
+
+    // Run with 4 mining seeds, each run 4 separate threads and the result need to matched
+    int scores[NUMBER_OF_PHASES][NUMBER_OF_THREADS * NUMBER_OF_SAMPLES] = { 0 };
+    for (unsigned long long i = 0; i < NUMBER_OF_PHASES; ++i)
+    {
+        pScore->initMiningData(miningSeeds[i]);
+
+#pragma omp parallel for num_threads(NUMBER_OF_THREADS)
+        for (int threadId = 0; threadId < NUMBER_OF_THREADS; ++threadId)
+        {
+            if (threadId % 2 == 0)
+            {
+                for (int sampleId = 0; sampleId < NUMBER_OF_SAMPLES; ++sampleId)
+                {
+                    scores[i][threadId * NUMBER_OF_SAMPLES + sampleId] = (*pScore)(threadId, publicKeys[sampleId], miningSeeds[i], nonces[sampleId]);
+                }
+            }
+            else
+            {
+                for (int sampleId = NUMBER_OF_SAMPLES - 1; sampleId >= 0; --sampleId)
+                {
+                    scores[i][threadId * NUMBER_OF_SAMPLES + sampleId] = (*pScore)(threadId, publicKeys[sampleId], miningSeeds[i], nonces[sampleId]);
+                }
+            }
+        }
+    }
+
+    // Each threads run with the same samples but the order is reversed. Expect the scores are matched.
+    for (unsigned long long i = 0; i < NUMBER_OF_PHASES; ++i)
+    {
+        for (int threadId = 0; threadId < NUMBER_OF_THREADS - 1; ++threadId)
+        {
+            for (int sampleId = 0; sampleId < NUMBER_OF_SAMPLES; ++sampleId)
+            {
+                EXPECT_EQ(scores[i][threadId * NUMBER_OF_SAMPLES + sampleId], scores[i][(threadId + 1) * NUMBER_OF_SAMPLES + sampleId]);
+            }
+        }
+    }
+}
+#endif
