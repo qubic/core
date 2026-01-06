@@ -940,6 +940,57 @@ public:
         return true;
     }
 
+    // Called once per tick from the tick processor.
+    void processTimeouts()
+    {
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
+
+        // consider peinding queries
+        const uint32_t queryIdxCount = pendingQueryIndices.numValues;
+        const uint32_t* queryIndices = pendingQueryIndices.values;
+        const QPI::DateAndTime now = QPI::DateAndTime::now();
+        for (uint32_t i = 0; i < queryIdxCount; ++i)
+        {
+            // get query data
+            const uint32_t queryIndex = queryIndices[i];
+            ASSERT(queryIndex < oracleQueryCount);
+            OracleQueryMetadata& oqm = queries[queryIndex];
+            ASSERT(oqm.status == ORACLE_QUERY_STATUS_PENDING || oqm.status == ORACLE_QUERY_STATUS_COMMITTED);
+
+            // check for timeout
+            if (oqm.timeout < now)
+            {
+                // get reply state
+                const auto replyStateIdx = oqm.statusVar.pending.replyStateIndex;
+                ASSERT(replyStateIdx < MAX_SIMULTANEOUS_ORACLE_QUERIES);
+                ReplyState& replyState = replyStates[replyStateIdx];
+                ASSERT(replyState.queryId == oqm.queryId);
+                const uint16_t mostCommitsCount = replyState.replyCommitHistogramCount[replyState.mostCommitsHistIdx];
+                ASSERT(replyState.mostCommitsHistIdx < NUMBER_OF_COMPUTORS && mostCommitsCount <= NUMBER_OF_COMPUTORS);
+
+                // update state to TIMEOUT
+                oqm.status = ORACLE_QUERY_STATUS_TIMEOUT;
+                oqm.statusFlags |= ORACLE_FLAG_TIMEOUT;
+                oqm.statusVar.failure.agreeingCommits = mostCommitsCount;
+                oqm.statusVar.failure.totalCommits = replyState.totalCommits;
+                pendingQueryIndices.removeByValue(queryIndex);
+                ++stats.timeoutCount;
+
+                // cleanup reply state
+                pendingCommitReplyStateIndices.removeByValue(replyStateIdx);
+                pendingRevealReplyStateIndices.removeByValue(replyStateIdx);
+                freeReplyStateSlot(replyStateIdx);
+
+                // schedule contract notification(s) if needed
+                if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
+                    notificationQueryIndicies.add(queryIndex);
+
+                // TODO: send log event ORACLE_QUERY with queryId, query starter, interface, type, status
+            }
+        }
+    }
+
     /**
     * @brief Get info for notfying contracts. Call until nullptr is returned.
     * @return Pointer to notification info or nullptr if no notifications are needed.

@@ -405,6 +405,60 @@ TEST(OracleEngine, ContractQueryUnresolvable)
 	EXPECT_EQ(oracleEngine1.getNotification(), nullptr);
 }
 
+TEST(OracleEngine, ContractQueryTimeout)
+{
+	OracleEngineTest test;
+
+	// simulate one node
+	const m256i* allCompPubKeys = broadcastedComputors.computors.publicKeys;
+	OracleEngineWithInitAndDeinit<676> oracleEngine1(allCompPubKeys);
+
+	OI::Price::OracleQuery priceQuery;
+	priceQuery.oracle = m256i(10, 20, 30, 40);
+	priceQuery.currency1 = m256i(20, 30, 40, 50);
+	priceQuery.currency2 = m256i(30, 40, 50, 60);
+	priceQuery.timestamp = QPI::DateAndTime::now();
+	QPI::uint32 interfaceIndex = 0;
+	QPI::uint16 contractIndex = 2;
+	QPI::uint32 timeout = 10000;
+	const QPI::uint32 notificationProcId = 12345;
+	EXPECT_TRUE(userProcedureRegistry->add(notificationProcId, { dummyNotificationProc, 1, 1024, 128, 1 }));
+
+	//-------------------------------------------------------------------------
+	// start contract query / check message to OM node
+	QPI::sint64 queryId = oracleEngine1.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId);
+	checkNetworkMessageOracleMachineQuery<OI::Price>(queryId, priceQuery.oracle, timeout);
+
+	//-------------------------------------------------------------------------
+	// get query contract data
+	OI::Price::OracleQuery priceQueryReturned;
+	EXPECT_TRUE(oracleEngine1.getOracleQuery(queryId, &priceQueryReturned, sizeof(priceQueryReturned)));
+	EXPECT_EQ(memcmp(&priceQueryReturned, &priceQuery, sizeof(priceQuery)), 0);
+
+	//-------------------------------------------------------------------------
+	// timeout: no response from OM node
+	++system.tick;
+	++etalonTick.hour;
+	oracleEngine1.processTimeouts();
+
+	//-------------------------------------------------------------------------
+	// notifications
+	const OracleNotificationData* notification = oracleEngine1.getNotification();
+	EXPECT_NE(notification, nullptr);
+	EXPECT_EQ((int)notification->contractIndex, (int)contractIndex);
+	EXPECT_EQ(notification->procedureId, notificationProcId);
+	EXPECT_EQ((int)notification->inputSize, sizeof(OracleNotificationInput<OI::Price>));
+	const auto* notificationInput = (const OracleNotificationInput<OI::Price>*) & notification->inputBuffer;
+	EXPECT_EQ(notificationInput->queryId, queryId);
+	EXPECT_EQ(notificationInput->status, ORACLE_QUERY_STATUS_TIMEOUT);
+	EXPECT_EQ(notificationInput->subscriptionId, 0);
+	EXPECT_EQ(notificationInput->reply.numerator, 0);
+	EXPECT_EQ(notificationInput->reply.denominator, 0);
+
+	// no additional notifications
+	EXPECT_EQ(oracleEngine1.getNotification(), nullptr);
+}
+
 /*
 Tests:
 - oracleEngine.getReplyCommitTransaction() with more than 1 commit / tx
