@@ -8,7 +8,6 @@
 #include "common_buffers.h"
 #include "spectrum/special_entities.h"
 #include "ticking/tick_storage.h"
-#include "contract_core/contract_exec.h"
 
 #include "oracle_transactions.h"
 #include "core_om_network_messages.h"
@@ -144,6 +143,14 @@ struct OracleRevenueCounter
     uint32_t computorRevPoints[NUMBER_OF_COMPUTORS];
 };
 
+struct OracleNotificationData
+{
+    uint32_t procedureId;
+    uint16_t contractIndex;
+    uint16_t inputSize;
+    uint8_t inputBuffer[16 + MAX_ORACLE_REPLY_SIZE];
+};
+
 // Array with fast insert and remove, for which order of entries does not matter. Entry duplicates are possible.
 template <typename T, unsigned int N>
 struct UnsortedMultiset
@@ -230,6 +237,9 @@ protected:
     /// fast lookup of reply state indices for which reveal tx is pending
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> pendingRevealReplyStateIndices;
 
+    // fast lookup of query indices for which the contract should be notified
+    UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> notificationQueryIndicies;
+
     struct {
         /// total number of successful oracle queries
         unsigned long long successCount;
@@ -247,8 +257,8 @@ protected:
     /// array of ownComputorSeedsCount public keys (mainly for testing, in EFI core this points to computorPublicKeys from special_entities.h)
     const m256i* ownComputorPublicKeys;
 
-    /// buffer used to store input for contract notifications
-    uint8_t contractNotificationInputBuffer[16 + MAX_ORACLE_REPLY_SIZE];
+    /// buffer used to store output of getNotification()
+    OracleNotificationData notificationOutputBuffer;
 
     /// lock for preventing race conditions in concurrent execution
     mutable volatile char lock;
@@ -298,6 +308,7 @@ public:
         pendingQueryIndices.numValues = 0;
         pendingCommitReplyStateIndices.numValues = 0;
         pendingRevealReplyStateIndices.numValues = 0;
+        notificationQueryIndicies.numValues = 0;
         setMem(&stats, sizeof(stats), 0);
 
         return true;
@@ -441,44 +452,6 @@ protected:
 
         // Enqueue for sending to all oracle machine peers (peer pointer address 0x1 is reserved for that)
         enqueueResponse((Peer*)0x1, sizeof(*omq) + querySize, OracleMachineQuery::type(), 0, omq);
-    }
-
-    void notifyContractsIfAny(const OracleQueryMetadata& oqm, const void* replyData = nullptr)
-    {
-        /*
-        // TODO: change to run in contract prcocessor -> move parts to qubic.cpp
-        ASSERT(oqm.queryId == replyState.queryId);
-        if (oqm.type == ORACLE_QUERY_TYPE_USER_QUERY)
-            return;
-
-        const auto replySize = OI::oracleInterfaces[oqm.interfaceIndex].replySize;
-        ASSERT(16 + replySize < 0xffff);
-
-        UserProcedureNotification notification;
-        if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_QUERY)
-        {
-            // setup notification
-            notification.contractIndex = oqm.typeVar.contract.queryingContract;
-            notification.procedure = replyState.notificationProcedure;
-            notification.inputSize = (uint16_t)(16 + replySize);
-            notification.inputPtr = contractNotificationInputBuffer;
-            notification.localsSize = replyState.notificationLocalsSize;
-            setMem(contractNotificationInputBuffer, notification.inputSize, 0);
-            *(int64_t*)(contractNotificationInputBuffer + 0) = oqm.queryId;
-            *(uint32_t*)(contractNotificationInputBuffer + 8) = 0;
-            *(uint32_t*)(contractNotificationInputBuffer + 12) = oqm.status;
-            if (replyData)
-            {
-                copyMem(contractNotificationInputBuffer + 16, replyData, replySize);
-            }
-
-            // run notification
-            QpiContextUserProcedureNotificationCall qpiContext(notification);
-            qpiContext.call();
-        }
-
-        // TODO: handle subscriptions
-        */
     }
 
 public:
@@ -745,12 +718,13 @@ public:
                 pendingQueryIndices.removeByValue(queryIndex);
                 ++stats.unresolvableCount;
 
-                // run contract notification(s) if needed
-                notifyContractsIfAny(oqm);
-
                 // cleanup data of pending reply immediately (no info for revenue required)
                 pendingCommitReplyStateIndices.removeByValue(replyStateIdx);
                 freeReplyStateSlot(replyStateIdx);
+
+                // schedule contract notification(s) if needed
+                if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
+                    notificationQueryIndicies.add(queryIndex);
 
                 // TODO: send log event ORACLE_QUERY with queryId, query starter, interface, type, status
             }
@@ -899,6 +873,19 @@ protected:
         return &replyState;
     }
 
+    const void* getReplyDataFromTickTransactionStorage(const OracleQueryMetadata& queryMetadata) const
+    {
+        const uint32_t tick = queryMetadata.statusVar.success.revealTick;
+        const uint32_t txSlotInTickData = queryMetadata.statusVar.success.revealTxIndex;
+        ASSERT(txSlotInTickData < NUMBER_OF_TRANSACTIONS_PER_TICK);
+        const unsigned long long* tsTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(tick);
+        const auto* transaction = (OracleReplyRevealTransactionPrefix*)ts.tickTransactions.ptr(tsTickTransactionOffsets[txSlotInTickData]);
+        ASSERT(queryMetadata.queryId == transaction->queryId);
+        ASSERT(queryMetadata.interfaceIndex < OI::oracleInterfacesCount);
+        ASSERT(transaction->inputSize - sizeof(transaction->queryId) == OI::oracleInterfaces[queryMetadata.interfaceIndex].replySize);
+        return transaction + 1;
+    }
+
 public:
     // Called by request processor when a tx is received in order to minimize sending of reveal tx.
     void announceExpectedRevealTransaction(const OracleReplyRevealTransactionPrefix* transaction)
@@ -935,24 +922,71 @@ public:
 
         // TODO: check knowledge proofs of all computors and add revenue points for computors who sent correct commit tx fastest
 
-        // update state
+        // update state to SUCCESS
         oqm.statusVar.success.revealTick = transaction->tick;
         oqm.statusVar.success.revealTxIndex = txSlotInTickData;
         oqm.status = ORACLE_QUERY_STATUS_SUCCESS;
         pendingQueryIndices.removeByValue(queryIndex);
         ++stats.successCount;
 
-        // run contract notification(s) if needed
-        const void* replyData = transaction + 1;
-        notifyContractsIfAny(oqm, replyData);
-
-        // cleanup data of pending reply
+        // cleanup reply state
         pendingRevealReplyStateIndices.removeByValue(replyStateIdx);
         freeReplyStateSlot(replyStateIdx);
+
+        // schedule contract notification(s) if needed
+        if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
+            notificationQueryIndicies.add(queryIndex);
 
         return true;
     }
 
+    /**
+    * @brief Get info for notfying contracts. Call until nullptr is returned.
+    * @return Pointer to notification info or nullptr if no notifications are needed.
+    * 
+    * Only to be used in tick processor! No concurrent use supported. Uses one internal buffer for returned data.
+    */
+    const OracleNotificationData* getNotification()
+    {
+        // currently no notifications needed?
+        if (!notificationQueryIndicies.numValues)
+            return nullptr;
+
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
+
+        // get index and update list
+        const uint32_t queryIndex = notificationQueryIndicies.values[0];
+        notificationQueryIndicies.removeByIndex(0);
+
+        // get query metadata
+        const OracleQueryMetadata& oqm = queries[queryIndex];
+        ASSERT(oqm.type == ORACLE_QUERY_TYPE_CONTRACT_QUERY);
+
+        const auto replySize = OI::oracleInterfaces[oqm.interfaceIndex].replySize;
+        ASSERT(16 + replySize < 0xffff);
+
+        if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_QUERY)
+        {
+            // setup notification
+            notificationOutputBuffer.contractIndex = oqm.typeVar.contract.queryingContract;
+            notificationOutputBuffer.procedureId = oqm.typeVar.contract.notificationProcId;
+            notificationOutputBuffer.inputSize = (uint16_t)(16 + replySize);
+            setMem(notificationOutputBuffer.inputBuffer, notificationOutputBuffer.inputSize, 0);
+            *(int64_t*)(notificationOutputBuffer.inputBuffer + 0) = oqm.queryId;
+            *(uint32_t*)(notificationOutputBuffer.inputBuffer + 8) = 0;
+            *(uint32_t*)(notificationOutputBuffer.inputBuffer + 12) = oqm.status;
+            if (oqm.status == ORACLE_QUERY_STATUS_SUCCESS)
+            {
+                const void* replySrcPtr = getReplyDataFromTickTransactionStorage(oqm);
+                copyMem(notificationOutputBuffer.inputBuffer + 16, replySrcPtr, replySize);
+            }
+        }
+
+        // TODO: handle subscriptions
+
+        return &notificationOutputBuffer;
+    }
 
     void beginEpoch()
     {

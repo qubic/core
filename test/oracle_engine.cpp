@@ -10,6 +10,7 @@ struct OracleEngineTest : public LoggingTest
 		EXPECT_TRUE(initCommonBuffers());
 		EXPECT_TRUE(initSpecialEntities());
 		EXPECT_TRUE(initContractExec());
+		EXPECT_TRUE(ts.init());
 
 		// init computors
 		for (int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
@@ -25,12 +26,14 @@ struct OracleEngineTest : public LoggingTest
 		etalonTick.hour = 16;
 		etalonTick.minute = 51;
 		etalonTick.second = 12;
+		ts.beginEpoch(system.tick);
 	}
 
 	~OracleEngineTest()
 	{
 		deinitCommonBuffers();
 		deinitContractExec();
+		ts.deinit();
 	}
 };
 
@@ -157,6 +160,9 @@ TEST(OracleEngine, ContractQuerySuccess)
 	// no reveal yet
 	EXPECT_EQ(oracleEngine1.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 0), 0);
 
+	// no notifications
+	EXPECT_EQ(oracleEngine1.getNotification(), nullptr);
+
 	//-------------------------------------------------------------------------
 	// create and process enough reply commit tx to trigger reval tx
 
@@ -234,7 +240,26 @@ TEST(OracleEngine, ContractQuerySuccess)
 
 	system.tick += 3;
 	auto* replyRevealTx = (OracleReplyRevealTransactionPrefix*)txBuffer;
-	oracleEngine1.processOracleReplyRevealTransaction(replyRevealTx, 0);
+	const unsigned int txIndex = 10;
+	addOracleTransactionToTickStorage(replyRevealTx, txIndex);
+	oracleEngine1.processOracleReplyRevealTransaction(replyRevealTx, txIndex);
+
+	//-------------------------------------------------------------------------
+	// notifications
+	const OracleNotificationData* notification = oracleEngine1.getNotification();
+	EXPECT_NE(notification, nullptr);
+	EXPECT_EQ((int)notification->contractIndex, (int)contractIndex);
+	EXPECT_EQ(notification->procedureId, notificationProcId);
+	EXPECT_EQ((int)notification->inputSize, sizeof(OracleNotificationInput<OI::Price>));
+	const auto* notificationInput = (const OracleNotificationInput<OI::Price>*) & notification->inputBuffer;
+	EXPECT_EQ(notificationInput->queryId, replyRevealTx->queryId);
+	EXPECT_EQ(notificationInput->status, ORACLE_QUERY_STATUS_SUCCESS);
+	EXPECT_EQ(notificationInput->subscriptionId, 0);
+	EXPECT_EQ(notificationInput->reply.numerator, 1234);
+	EXPECT_EQ(notificationInput->reply.denominator, 1);
+
+	// no additional notifications
+	EXPECT_EQ(oracleEngine1.getNotification(), nullptr);
 }
 
 TEST(OracleEngine, ContractQueryUnresolvable)
@@ -361,6 +386,23 @@ TEST(OracleEngine, ContractQueryUnresolvable)
 			oracleEngine3.checkStatus(queryId, ORACLE_QUERY_STATUS_UNRESOLVABLE);
 		}
 	}
+
+	//-------------------------------------------------------------------------
+	// notifications
+	const OracleNotificationData* notification = oracleEngine1.getNotification();
+	EXPECT_NE(notification, nullptr);
+	EXPECT_EQ((int)notification->contractIndex, (int)contractIndex);
+	EXPECT_EQ(notification->procedureId, notificationProcId);
+	EXPECT_EQ((int)notification->inputSize, sizeof(OracleNotificationInput<OI::Price>));
+	const auto* notificationInput = (const OracleNotificationInput<OI::Price>*) & notification->inputBuffer;
+	EXPECT_EQ(notificationInput->queryId, queryId);
+	EXPECT_EQ(notificationInput->status, ORACLE_QUERY_STATUS_UNRESOLVABLE);
+	EXPECT_EQ(notificationInput->subscriptionId, 0);
+	EXPECT_EQ(notificationInput->reply.numerator, 0);
+	EXPECT_EQ(notificationInput->reply.denominator, 0);
+
+	// no additional notifications
+	EXPECT_EQ(oracleEngine1.getNotification(), nullptr);
 }
 
 /*

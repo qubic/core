@@ -3,6 +3,12 @@
 // Include this first, to ensure "logging/logging.h" isn't included before the custom LOG_BUFFER_SIZE has been defined
 #include "logging_test.h"
 
+#undef MAX_NUMBER_OF_TICKS_PER_EPOCH
+#define MAX_NUMBER_OF_TICKS_PER_EPOCH 50
+#undef TICKS_TO_KEEP_FROM_PRIOR_EPOCH
+#define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 5
+#include "ticking/tick_storage.h"
+
 #include "gtest/gtest.h"
 
 #include "oracle_core/oracle_engine.h"
@@ -52,4 +58,17 @@ static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char typ
 static inline QPI::uint64 getContractOracleQueryId(QPI::uint32 tick, QPI::uint32 indexInTick)
 {
     return ((QPI::uint64)tick << 31) | (indexInTick + NUMBER_OF_TRANSACTIONS_PER_TICK);
+}
+
+static void addOracleTransactionToTickStorage(const Transaction* tx, unsigned int txIndex)
+{
+    const unsigned int txSize = tx->totalSize();
+    auto* offsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(tx->tick);
+    if (ts.nextTickTransactionOffset + txSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
+    {
+        EXPECT_EQ(offsets[txIndex], 0);
+        offsets[txIndex] = ts.nextTickTransactionOffset;
+        copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), tx, txSize);
+        ts.nextTickTransactionOffset += txSize;
+    }
 }
