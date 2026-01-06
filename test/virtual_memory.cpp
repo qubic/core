@@ -56,7 +56,7 @@ TEST(TestVirtualMemory, TestVirtualMemory_NativeChar) {
     }
     test_vm.deinit();
 
-    deInitFileSystem();
+    //deInitFileSystem();
 }
 
 #define IMAX_BITS(m) ((m)/((m)%255+1) / 255%255*8 + 7-86/((m)%255+12))
@@ -119,7 +119,7 @@ TEST(TestVirtualMemory, TestVirtualMemory_NativeU64) {
     }
     test_vm.deinit();
 
-    deInitFileSystem();
+    //deInitFileSystem();
 }
 
 TickData randTick()
@@ -186,7 +186,7 @@ TEST(TestVirtualMemory, TestVirtualMemory_TickStruct) {
     }
     test_vm.deinit();
 
-    deInitFileSystem();
+    //deInitFileSystem();
 }
 
 TEST(TestVirtualMemory, TestVirtualMemory_SpecialCases) {
@@ -243,5 +243,5 @@ TEST(TestVirtualMemory, TestVirtualMemory_SpecialCases) {
 
     test_vm.deinit();
 
-    deInitFileSystem();
+    //deInitFileSystem();
 }
