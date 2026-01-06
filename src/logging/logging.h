@@ -374,6 +374,7 @@ public:
     static constexpr unsigned int SC_BEGIN_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 2;
     static constexpr unsigned int SC_END_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 3;
     static constexpr unsigned int SC_END_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 4;
+    static constexpr unsigned int SC_NOTIFICATION_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 5;
 
 #if ENABLED_LOGGING
     // Struct to map log buffer from log id    

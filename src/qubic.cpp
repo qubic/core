@@ -158,7 +158,8 @@ static unsigned int contractProcessorPhase;
 static const Transaction* contractProcessorTransaction = 0; // does not have signature in some cases, see notifyContractOfIncomingTransfer()
 static int contractProcessorTransactionMoneyflew = 0;
 static unsigned char contractProcessorPostIncomingTransferType = 0;
-static const UserProcedureNotification* contractProcessorUserProcedureNotification = 0;
+static const UserProcedureRegistry::UserProcedureData* contractProcessorUserProcedureNotificationProc = 0;
+static const void* contractProcessorUserProcedureNotificationInput = 0;
 static EFI_EVENT contractProcessorEvent;
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateDigests);
@@ -995,6 +996,14 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 }
             }
             ts.tickData.releaseLock();
+
+            // shortcut: oracle reply reveal transactions are analyzed immediately after receiving them (before execution of the tx),
+            // in order to minimize the number of reveal transaction (one per oracle query is enough, so no reveal tx is generated
+            // after one has been seen)
+            if (isZero(request->destinationPublicKey) && request->inputType == OracleReplyRevealTransactionPrefix::transactionType())
+            {
+                oracleEngine.announceExpectedRevealTransaction((OracleReplyRevealTransactionPrefix*)request);
+            }
         }
     }
 }
@@ -2412,15 +2421,17 @@ static void contractProcessor(void*)
 
     case USER_PROCEDURE_NOTIFICATION_CALL:
     {
-        const auto* notification = contractProcessorUserProcedureNotification;
-        ASSERT(notification && notification->procedure && notification->inputPtr);
+        const auto* notification = contractProcessorUserProcedureNotificationProc;
+        ASSERT(notification && notification->procedure);
         ASSERT(notification->inputSize <= MAX_INPUT_SIZE);
         ASSERT(notification->localsSize <= MAX_SIZE_OF_CONTRACT_LOCALS);
+        ASSERT(contractProcessorUserProcedureNotificationInput);
 
         QpiContextUserProcedureNotificationCall qpiContext(*notification);
-        qpiContext.call();
+        qpiContext.call(contractProcessorUserProcedureNotificationInput);
 
-        contractProcessorUserProcedureNotification = 0;
+        contractProcessorUserProcedureNotificationProc = 0;
+        contractProcessorUserProcedureNotificationInput = 0;
     }
     break;
     }
@@ -2732,21 +2743,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     }
 }
 
-
-static void processTickTransactionOracleReplyReveal(const OracleReplyRevealTransactionPrefix* transaction)
-{
-    PROFILE_SCOPE();
-
-    ASSERT(nextTickData.epoch == system.epoch);
-    ASSERT(transaction != nullptr);
-    ASSERT(transaction->checkValidity());
-    ASSERT(isZero(transaction->destinationPublicKey));
-    ASSERT(transaction->tick == system.tick);
-
-    // TODO
-}
-
-static void processTickTransaction(const Transaction* transaction, const m256i& transactionDigest, const m256i& dataLock, unsigned long long processorNumber)
+static void processTickTransaction(const Transaction* transaction, unsigned int transactionIndex, unsigned long long processorNumber)
 {
     PROFILE_SCOPE();
 
@@ -2754,6 +2751,9 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
     ASSERT(transaction != nullptr);
     ASSERT(transaction->checkValidity());
     ASSERT(transaction->tick == system.tick);
+
+    const m256i& transactionDigest = nextTickData.transactionDigests[transactionIndex];
+    const m256i& dataLock = nextTickData.timelock;
 
     // Record the tx with digest
     ts.transactionsDigestAccess.acquireLock();
@@ -2839,12 +2839,7 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
 
                 case OracleReplyRevealTransactionPrefix::transactionType():
                 {
-                    if (computorIndex(transaction->sourcePublicKey) >= 0
-                        && transaction->inputSize >= OracleReplyRevealTransactionPrefix::minInputSize())
-                    {
-                        // TODO: fix size check by defining minInputSize
-                        processTickTransactionOracleReplyReveal((OracleReplyRevealTransactionPrefix*)transaction);
-                    }
+                    oracleEngine.processOracleReplyRevealTransaction((OracleReplyRevealTransactionPrefix*)transaction, transactionIndex);
                 }
                 break;
 
@@ -3227,7 +3222,7 @@ static void processTick(unsigned long long processorNumber)
                 {
                     Transaction* transaction = ts.tickTransactions(tsCurrentTickTransactionOffsets[transactionIndex]);
                     logger.registerNewTx(transaction->tick, transactionIndex);
-                    processTickTransaction(transaction, nextTickData.transactionDigests[transactionIndex], nextTickData.timelock, processorNumber);
+                    processTickTransaction(transaction, transactionIndex, processorNumber);
                 }
                 else
                 {
@@ -3239,6 +3234,28 @@ static void processTick(unsigned long long processorNumber)
             }
         }
         PROFILE_SCOPE_END();
+    }
+
+    // Check for oracle query timeouts (may schedule notification)
+    oracleEngine.processTimeouts();
+
+    // Notify contracts about successfully obtained oracle replies and about errors (using contract processor)
+    const OracleNotificationData* oracleNotification = oracleEngine.getNotification();
+    while (oracleNotification)
+    {
+        PROFILE_NAMED_SCOPE("processTick(): run oracle contract notification");
+        logger.registerNewTx(system.tick, logger.SC_NOTIFICATION_TX);
+        contractProcessorUserProcedureNotificationProc = userProcedureRegistry->get(oracleNotification->procedureId);
+        contractProcessorUserProcedureNotificationInput = oracleNotification->inputBuffer;
+        ASSERT(contractProcessorUserProcedureNotificationProc);
+        ASSERT(contractProcessorUserProcedureNotificationProc->contractIndex == oracleNotification->contractIndex);
+        ASSERT(contractProcessorUserProcedureNotificationProc->inputSize == oracleNotification->inputSize);
+        ASSERT(contractProcessorUserProcedureNotificationInput);
+        contractProcessorPhase = USER_PROCEDURE_NOTIFICATION_CALL;
+        contractProcessorState = 1;
+        WAIT_WHILE(contractProcessorState);
+
+        oracleNotification = oracleEngine.getNotification();
     }
 
     // The last executionFeeReport for the previous phase is published by comp <NUMBER_OF_COMPUTORS - 1> (0-indexed) in the last tick t1 of the
@@ -3452,6 +3469,55 @@ static void processTick(unsigned long long processorNumber)
             }
 
             break;
+        }
+    }
+
+    // Publish oracle reply commit and reveal transactions (uses reorgBuffer for constructing packets)
+    if (isMainMode())
+    {
+        const auto txTick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+        unsigned char digest[32];
+        {
+            PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reply transactions");
+            auto* tx = (OracleReplyCommitTransactionPrefix*)reorgBuffer;
+            for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+            {
+                const auto ownCompIdx = ownComputorIndicesMapping[i];
+                const auto overallCompIdx = ownComputorIndices[i];
+                unsigned int retCode = 0;
+                do
+                {
+                    // create reply commit transaction in tx (without signature), returning:
+                    // - 0 if no tx was created (no need to send reply commits)
+                    // - UINT32_MAX if we all pending reply commits fitted into this one tx
+                    // - otherwise, an index value that has to be passed to the next call for building another tx
+                    retCode = oracleEngine.getReplyCommitTransaction(tx, overallCompIdx, ownCompIdx, txTick, retCode);
+                    if (!retCode)
+                        break;
+
+                    // sign and broadcast tx
+                    KangarooTwelve(tx, sizeof(Transaction) + tx->inputSize, digest, sizeof(digest));
+                    sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest, tx->signaturePtr());
+                    enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                }
+                while (retCode != UINT32_MAX);
+            }
+        }
+
+        {
+            PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reveal transactions");
+            auto* tx = (OracleReplyRevealTransactionPrefix*)reorgBuffer;
+            // create reply reveal transaction in tx (without signature), returning:
+            // - 0 if no tx was created (no need to send reply commits)
+            // - otherwise, an index value that has to be passed to the next call for building another tx
+            unsigned int retCode = 0;
+            while ((retCode = oracleEngine.getReplyRevealTransaction(tx, 0, txTick, retCode)) != 0)
+            {
+                // sign and broadcast tx
+                KangarooTwelve(tx, sizeof(Transaction) + tx->inputSize, digest, sizeof(digest));
+                sign(computorSubseeds[0].m256i_u8, computorPublicKeys[0].m256i_u8, digest, tx->signaturePtr());
+                enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+            }
         }
     }
 
