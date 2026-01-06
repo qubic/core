@@ -92,16 +92,16 @@ TEST(OracleEngine, ContractQuerySuccess)
 	QPI::uint32 interfaceIndex = 0;
 	QPI::uint16 contractIndex = 1;
 	QPI::uint32 timeout = 30000;
-	USER_PROCEDURE notificationProc = dummyNotificationProc;
-	QPI::uint32 notificationLocalsSize = 128;
+	const QPI::uint32 notificationProcId = 12345;
+	EXPECT_TRUE(userProcedureRegistry->add(notificationProcId, { dummyNotificationProc, 1, 128, 128, 1 }));
 
 	//-------------------------------------------------------------------------
 	// start contract query / check message to OM node
-	QPI::sint64 queryId = oracleEngine1.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProc, notificationLocalsSize);
+	QPI::sint64 queryId = oracleEngine1.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId);
 	EXPECT_EQ(queryId, getContractOracleQueryId(system.tick, 0));
 	checkNetworkMessageOracleMachineQuery<OI::Price>(queryId, priceQuery.oracle, timeout);
-	EXPECT_EQ(queryId, oracleEngine2.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProc, notificationLocalsSize));
-	EXPECT_EQ(queryId, oracleEngine3.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProc, notificationLocalsSize));
+	EXPECT_EQ(queryId, oracleEngine2.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId));
+	EXPECT_EQ(queryId, oracleEngine3.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId));
 
 	//-------------------------------------------------------------------------
 	// get query contract data
@@ -256,15 +256,15 @@ TEST(OracleEngine, ContractQueryUnresolvable)
 	QPI::uint32 interfaceIndex = 0;
 	QPI::uint16 contractIndex = 2;
 	QPI::uint32 timeout = 120000;
-	USER_PROCEDURE notificationProc = dummyNotificationProc;
-	QPI::uint32 notificationLocalsSize = 1024;
+	const QPI::uint32 notificationProcId = 12345;
+	EXPECT_TRUE(userProcedureRegistry->add(notificationProcId, { dummyNotificationProc, 1, 1024, 128, 1 }));
 
 	//-------------------------------------------------------------------------
 	// start contract query / check message to OM node
-	QPI::sint64 queryId = oracleEngine1.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProc, notificationLocalsSize);
+	QPI::sint64 queryId = oracleEngine1.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId);
 	EXPECT_EQ(queryId, getContractOracleQueryId(system.tick, 0));
-	EXPECT_EQ(queryId, oracleEngine2.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProc, notificationLocalsSize));
-	EXPECT_EQ(queryId, oracleEngine3.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProc, notificationLocalsSize));
+	EXPECT_EQ(queryId, oracleEngine2.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId));
+	EXPECT_EQ(queryId, oracleEngine3.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId));
 	checkNetworkMessageOracleMachineQuery<OI::Price>(queryId, priceQuery.oracle, timeout);
 
 	//-------------------------------------------------------------------------

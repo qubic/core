@@ -43,6 +43,7 @@ struct OracleQueryMetadata
         struct
         {
             uint64_t queryStorageOffset;
+            uint32_t notificationProcId;
             uint16_t queryingContract;
         } contract;
 
@@ -135,9 +136,6 @@ struct OracleReplyState
     uint32_t expectedRevealTxTick;
     uint32_t revealTick;
     uint32_t revealTxIndex;
-
-    USER_PROCEDURE notificationProcedure;
-    uint32_t notificationLocalsSize;
 };
 
 // 
@@ -350,7 +348,7 @@ public:
 
     int64_t startContractQuery(uint16_t contractIndex, uint32_t interfaceIndex,
         const void* queryData, uint16_t querySize, uint32_t timeoutMillisec,
-        USER_PROCEDURE notificationProcedure, uint32_t notificationLocalsSize)
+        unsigned int notificationProcId)
     {
         // check inputs
         if (contractIndex >= MAX_NUMBER_OF_CONTRACTS || interfaceIndex >= OI::oracleInterfacesCount || querySize != OI::oracleInterfaces[interfaceIndex].querySize)
@@ -410,14 +408,13 @@ public:
         queryMetadata.timeout = timeout;
         queryMetadata.typeVar.contract.queryingContract = contractIndex;
         queryMetadata.typeVar.contract.queryStorageOffset = queryStorageBytesUsed;
+        queryMetadata.typeVar.contract.notificationProcId = notificationProcId;
         queryMetadata.statusVar.pending.replyStateIndex = replyStateSlotIdx;
 
         // init reply state (temporary until reply is revealed)
         ReplyState& replyState = replyStates[replyStateSlotIdx];
         setMem(&replyState, sizeof(replyState), 0);
         replyState.queryId = queryId;
-        replyState.notificationProcedure = notificationProcedure;
-        replyState.notificationLocalsSize = notificationLocalsSize;
 
         // copy oracle query data to permanent storage
         copyMem(queryStorage + queryStorageBytesUsed, queryData, querySize);
@@ -446,10 +443,12 @@ protected:
         enqueueResponse((Peer*)0x1, sizeof(*omq) + querySize, OracleMachineQuery::type(), 0, omq);
     }
 
-    void notifyContractsIfAny(const OracleQueryMetadata& oqm, const ReplyState& replyState, const void* replyData = nullptr)
+    void notifyContractsIfAny(const OracleQueryMetadata& oqm, const void* replyData = nullptr)
     {
+        /*
+        // TODO: change to run in contract prcocessor -> move parts to qubic.cpp
         ASSERT(oqm.queryId == replyState.queryId);
-        if (!replyState.notificationProcedure || oqm.type == ORACLE_QUERY_TYPE_USER_QUERY)
+        if (oqm.type == ORACLE_QUERY_TYPE_USER_QUERY)
             return;
 
         const auto replySize = OI::oracleInterfaces[oqm.interfaceIndex].replySize;
@@ -479,6 +478,7 @@ protected:
         }
 
         // TODO: handle subscriptions
+        */
     }
 
 public:
@@ -746,7 +746,7 @@ public:
                 ++stats.unresolvableCount;
 
                 // run contract notification(s) if needed
-                notifyContractsIfAny(oqm, replyState);
+                notifyContractsIfAny(oqm);
 
                 // cleanup data of pending reply immediately (no info for revenue required)
                 pendingCommitReplyStateIndices.removeByValue(replyStateIdx);
@@ -944,7 +944,7 @@ public:
 
         // run contract notification(s) if needed
         const void* replyData = transaction + 1;
-        notifyContractsIfAny(oqm, *replyState, replyData);
+        notifyContractsIfAny(oqm, replyData);
 
         // cleanup data of pending reply
         pendingRevealReplyStateIndices.removeByValue(replyStateIdx);

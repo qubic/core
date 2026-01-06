@@ -211,7 +211,7 @@ public:
 
 	PUBLIC_PROCEDURE(QueryPriceOracle)
 	{
-		output.oracleQueryId = qpi.queryOracle<OI::Price>(input.priceOracleQuery, NotifyPriceOracleReply, input.timeoutMilliseconds);
+		output.oracleQueryId = QUERY_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.timeoutMilliseconds);
 		if (output.oracleQueryId < 0)
 		{
 			// error
@@ -234,7 +234,7 @@ public:
 
 	PUBLIC_PROCEDURE(SubscribePriceOracle)
 	{
-		output.oracleSubscriptionId = qpi.subscribeOracle<OI::Price>(input.priceOracleQuery, NotifyPriceOracleReply, input.subscriptionIntervalMinutes);
+		output.oracleSubscriptionId = SUBSCRIBE_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.subscriptionIntervalMinutes, true);
 		if (output.oracleSubscriptionId < 0)
 		{
 			// error
@@ -282,7 +282,7 @@ public:
 		// Query oracle
 		if (qpi.tick() % 2 == 0)
 		{
-			locals.oracleQueryId = qpi.queryOracle<OI::Price>(locals.priceOracleQuery, NotifyPriceOracleReply, 20000);
+			locals.oracleQueryId = QUERY_ORACLE(OI::Price, locals.priceOracleQuery, NotifyPriceOracleReply, 20000);
 		}
 	}
 
@@ -300,5 +300,7 @@ public:
 		REGISTER_USER_PROCEDURE(QpiBidInIpo, 30);
 
 		REGISTER_USER_PROCEDURE(QueryPriceOracle, 100);
+
+		REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyPriceOracleReply);
 	}
 };

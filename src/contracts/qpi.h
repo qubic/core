@@ -2519,32 +2519,6 @@ namespace QPI
 			uint32 quantity
 		) const;
 
-		/**
-		* @brief Initiate oracle query that will lead to notification later.
-		* @param query Details about which oracle to query for which information, as defined by a specific oracle interface.
-		* @param notificationCallback User procedure that shall be executed when the oracle reply is available or an error occurs.
-		* @param timeoutMillisec Maximum number of milliseconds to wait for reply.
-		* @return Oracle query ID that can be used to get the status of the query, or 0 on error.
-		*
-		* This will automatically burn the oracle query fee as defined by the oracle interface (burning without
-		* adding to the contract's execution fee reserve). It will fail if the contract doesn't have enough QU.
-		*
-		* The notification callback will be executed when the reply is available or on error.
-		* The callback must be a user procedure of the contract calling qpi.queryOracle() with the procedure input type
-		* OracleNotificationInput<OracleInterface> and NoData as output.
-		* Success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
-		* If an error happened before the query has been created and sent, input.status is ORACLE_QUERY_STATUS_UNKNOWN
-		* and input.queryID is -1 (invalid).
-		* Other errors that may happen with valid input.queryID are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
-		* input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE.
-		*/
-		template <typename OracleInterface, typename ContractStateType, typename LocalsType>
-		inline sint64 queryOracle(
-			const OracleInterface::OracleQuery& query,
-			void (*notificationCallback)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
-			uint32 timeoutMillisec = 60000
-		) const;
-
 		inline sint64 releaseShares(
 			const Asset& asset,
 			const id& owner,
@@ -2567,43 +2541,6 @@ namespace QPI
 			uint16 contractIndex,
 			const Array<uint8, 1024>& proposalDataBuffer,
 			sint64 invocationReward
-		) const;
-
-		/**
-		* @brief Subscribe for regularly querying an oracle.
-		* @param query The regular query, which must have a member `DateAndTime timestamp`.
-		* @param notificationCallback User procedure that shall be executed when the oracle reply is available or an error occurs.
-		* @param notificationIntervalInMilliseconds Number of milliseconds between consecutive queries/replies.
-		*			This is also used as a timeout. Currently, only multiples of 60000 are supported and other
-		*			values are rejected with an error.
-		* @param notifyWithPreviousReply Whether to immediately notify this contract with the most up-to-date value if any is available.
-		* @return Oracle subscription ID that can be used to get the status of the subscription, or -1 on error.
-		*
-		* Subscriptions automatically expire at the end of each epoch. So, a common pattern is to call qpi.subscribeOracle()
-		* in BEGIN_EPOCH.
-		*
-		* Subscriptions facilitate shareing common oracle queries among multiple contracts. This saves network ressources and allows
-		* to provide a fixed-price subscription for the whole epoch, which is usually much cheaper than the equivalent series of
-		* individual qpi.queryOracle() calls.
-		*
-		* The qpi.subscribeOracle() call will automatically burn the oracle subscription fee as defined by the oracle interface
-		* (burning without adding to the contract's execution fee reserve). It will fail if the contract doesn't have enough QU.
-		*
-		* The notification callback will be executed when the reply is available or on error.
-		* The callback must be a user procedure of the contract calling qpi.subscribeOracle() with the procedure input type
-		* OracleNotificationInput<OracleInterface> and NoData as output.
-		* Success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
-		* If an error happened before the query has been created and sent, input.status is ORACLE_QUERY_STATUS_UNKNOWN
-		* and input.queryID is -1 (invalid).
-		* Other errors that may happen with valid input.queryID are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
-		* input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE.
-		*/
-		template <typename OracleInterface, typename ContractStateType, typename LocalsType>
-		inline sint32 subscribeOracle(
-			const OracleInterface::OracleQuery& query,
-			void (*notificationCallback)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
-			uint32 notificationIntervalInMilliseconds = 60000,
-			bool notifyWithPreviousReply = true
 		) const;
 
 		/**
@@ -2654,6 +2591,25 @@ namespace QPI
 		bool __qpiCallSystemProc(unsigned int otherContractIndex, InputType& input, OutputType& output, sint64 invocationReward) const;
 		inline void __qpiNotifyPostIncomingTransfer(const id& source, const id& dest, sint64 amount, uint8 type) const;
 
+		// Internal version of QUERY_ORACLE (macro ensures that proc pointer and id match)
+		template <typename OracleInterface, typename ContractStateType, typename LocalsType>
+		inline sint64 __qpiQueryOracle(
+			const OracleInterface::OracleQuery& query,
+			void (*notificationProcPtr)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
+			unsigned int notificationProcId,
+			uint32 timeoutMillisec
+		) const;
+
+		// Internal version of SUBSCRIBE_ORACLE (macro ensures that proc pointer and id match)
+		template <typename OracleInterface, typename ContractStateType, typename LocalsType>
+		inline sint32 __qpiSubscribeOracle(
+			const OracleInterface::OracleQuery& query,
+			void (*notificationProcPtr)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
+			unsigned int notificationProcId,
+			uint32 notificationIntervalInMilliseconds = 60000,
+			bool notifyWithPreviousReply = true
+		) const;
+
 		// Internal version of transfer() that takes the TransferType as additional argument.
 		inline sint64 __transfer( // Attempts to transfer energy from this qubic
 			const id& destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
@@ -2671,6 +2627,7 @@ namespace QPI
 	{
 		inline void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short, unsigned int) const;
 		inline void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short, unsigned int) const;
+		inline void __registerUserProcedureNotification(USER_PROCEDURE, unsigned int, unsigned short, unsigned short, unsigned int) const;
 
 		// Construction is done in core, not allowed in contracts
 		inline QpiContextForInit(unsigned int contractIndex);
@@ -2941,7 +2898,7 @@ namespace QPI
 
 	#define PRIVATE_PROCEDURE_WITH_LOCALS(procedure) \
 		private: \
-			enum { __is_function_##procedure = false }; \
+			enum { __is_function_##procedure = false, __id_##procedure = (CONTRACT_INDEX << 22) | __LINE__ }; \
 			inline static void procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##procedure(qpi, state, input, output, locals); } \
 			static void __impl_##procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals)
 
@@ -2963,7 +2920,7 @@ namespace QPI
 
 	#define PUBLIC_PROCEDURE_WITH_LOCALS(procedure) \
 		public: \
-			enum { __is_function_##procedure = false }; \
+			enum { __is_function_##procedure = false, __id_##procedure = (CONTRACT_INDEX << 22) | __LINE__ }; \
 			inline static void procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##procedure(qpi, state, input, output, locals); } \
 			static void __impl_##procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals)
 
@@ -2988,6 +2945,14 @@ namespace QPI
 		static_assert(sizeof(userProcedure##_input) <= 65535, #userProcedure "_input size too large"); \
 		static_assert(sizeof(userProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #userProcedure "_locals size too large"); \
 		qpi.__registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output), sizeof(userProcedure##_locals));
+
+	// Register procedure for notifications (such as oracle reply notification)
+	#define REGISTER_USER_PROCEDURE_NOTIFICATION(userProcedure) \
+		static_assert(!__is_function_##userProcedure, #userProcedure " is function"); \
+		static_assert(sizeof(userProcedure##_output) <= 65535, #userProcedure "_output size too large"); \
+		static_assert(sizeof(userProcedure##_input) <= 65535, #userProcedure "_input size too large"); \
+		static_assert(sizeof(userProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #userProcedure "_locals size too large"); \
+		qpi.__registerUserProcedureNotification((USER_PROCEDURE)userProcedure, __id_##userProcedure, sizeof(userProcedure##_input), sizeof(userProcedure##_output), sizeof(userProcedure##_locals));
 
 	// Call function or procedure of current contract (without changing invocation reward)
 	// WARNING: input may be changed by called function
@@ -3052,7 +3017,59 @@ namespace QPI
 	#define INVOKE_OTHER_CONTRACT_PROCEDURE(contractStateType, procedure, input, output, invocationReward) \
 		INVOKE_OTHER_CONTRACT_PROCEDURE_E(contractStateType, procedure, input, output, invocationReward, interContractCallError)
 
-	#define QUERY_ORACLE(oracle, query) // TODO
+	/**
+	* @brief Initiate oracle query that will lead to notification later.
+	* @param query Details about which oracle to query for which information, as defined by a specific oracle interface.
+	* @param userProcNotification User procedure that shall be executed when the oracle reply is available or an error occurs.
+	* @param timeoutMillisec Maximum number of milliseconds to wait for reply.
+	* @return Oracle query ID that can be used to get the status of the query, or 0 on error.
+	*
+	* This will automatically burn the oracle query fee as defined by the oracle interface (burning without
+	* adding to the contract's execution fee reserve). It will fail if the contract doesn't have enough QU.
+	*
+	* The notification callback will be executed when the reply is available or on error.
+	* The callback must be a user procedure of the contract calling qpi.queryOracle() with the procedure input type
+	* OracleNotificationInput<OracleInterface> and NoData as output. The procedure must be registered with
+	* REGISTER_USER_PROCEDURE_NOTIFICATION() in REGISTER_USER_FUNCTIONS_AND_PROCEDURES().
+	* Success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
+	* If an error happened before the query has been created and sent, input.status is ORACLE_QUERY_STATUS_UNKNOWN
+	* and input.queryID is -1 (invalid).
+	* Other errors that may happen with valid input.queryID are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
+	* input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE.
+	*/
+	#define QUERY_ORACLE(OracleInterface, query, userProcNotification, timeoutMillisec) qpi.__qpiQueryOracle<OracleInterface>(query, userProcNotification, __id_##userProcNotification, timeoutMillisec)
+
+	/**
+	* @brief Subscribe for regularly querying an oracle.
+	* @param query The regular query, which must have a member `DateAndTime timestamp`.
+	* @param notificationCallback User procedure that shall be executed when the oracle reply is available or an error occurs.
+	* @param notificationIntervalInMilliseconds Number of milliseconds between consecutive queries/replies.
+	*			This is also used as a timeout. Currently, only multiples of 60000 are supported and other
+	*			values are rejected with an error.
+	* @param notifyWithPreviousReply Whether to immediately notify this contract with the most up-to-date value if any is available.
+	* @return Oracle subscription ID that can be used to get the status of the subscription, or -1 on error.
+	*
+	* Subscriptions automatically expire at the end of each epoch. So, a common pattern is to call qpi.subscribeOracle()
+	* in BEGIN_EPOCH.
+	*
+	* Subscriptions facilitate shareing common oracle queries among multiple contracts. This saves network ressources and allows
+	* to provide a fixed-price subscription for the whole epoch, which is usually much cheaper than the equivalent series of
+	* individual qpi.queryOracle() calls.
+	*
+	* The qpi.subscribeOracle() call will automatically burn the oracle subscription fee as defined by the oracle interface
+	* (burning without adding to the contract's execution fee reserve). It will fail if the contract doesn't have enough QU.
+	*
+	* The notification callback will be executed when the reply is available or on error.
+	* The callback must be a user procedure of the contract calling qpi.subscribeOracle() with the procedure input type
+	* OracleNotificationInput<OracleInterface> and NoData as output. The procedure must be registered with
+	* REGISTER_USER_PROCEDURE_NOTIFICATION() in REGISTER_USER_FUNCTIONS_AND_PROCEDURES().
+	* Success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
+	* If an error happened before the query has been created and sent, input.status is ORACLE_QUERY_STATUS_UNKNOWN
+	* and input.queryID is -1 (invalid).
+	* Other errors that may happen with valid input.queryID are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
+	* input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE.
+	*/
+	#define SUBSCRIBE_ORACLE(OracleInterface, query, userProcNotification, notificationIntervalInMilliseconds, notifyWithPreviousReply) qpi.__qpiSubscribeOracle<OracleInterface>(query, userProcNotification, __id_##userProcNotification, notificationIntervalInMilliseconds, notifyWithPreviousReply)
 
 	#define SELF id(CONTRACT_INDEX, 0, 0, 0)
 

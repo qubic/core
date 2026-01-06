@@ -192,6 +192,12 @@ static bool initContractExec()
     if (!contractActionTracker.allocBuffer())
         return false;
 
+    if (!allocPoolWithErrorLog(L"userProcedureRegistry", sizeof(*userProcedureRegistry), (void**)&userProcedureRegistry, __LINE__))
+    {
+        return false;
+    }
+    userProcedureRegistry->init();
+
     return true;
 }
 
@@ -217,6 +223,9 @@ static void deinitContractExec()
     {
         freePool(contractStateChangeFlags);
     }
+
+    if (userProcedureRegistry)
+        freePool(userProcedureRegistry);
 
     contractActionTracker.freeBuffer();
 }
@@ -917,6 +926,16 @@ void QPI::QpiContextForInit::__registerUserProcedure(USER_PROCEDURE userProcedur
     contractUserProcedureLocalsSizes[_currentContractIndex][inputType] = localsSize;
 }
 
+void QPI::QpiContextForInit::__registerUserProcedureNotification(USER_PROCEDURE userProcedure, unsigned int procedureId, unsigned short inputSize, unsigned short outputSize, unsigned int localsSize) const
+{
+    ASSERT(userProcedureRegistry);
+    if (!userProcedureRegistry->add(procedureId, { userProcedure, _currentContractIndex, localsSize, inputSize, outputSize }))
+    {
+#if !defined(NDEBUG)
+        addDebugMessage(L"__registerUserProcedureNotification() failed. You should increase MAX_CONTRACT_PROCEDURES_REGISTERED.");
+#endif
+    }
+}
 
 
 // QPI context used to call contract system procedure from qubic core (contract processor)
@@ -1279,7 +1298,7 @@ struct UserProcedureNotification
 // The procedure pointer, the expected inputSize, and the expected localsSize, which are passed via
 // UserProcedureNotification, must be consistent. The code using notifications is responible for ensuring that.
 // Use cases:
-// - oracle notifications (managed by oracleEngine)
+// - oracle notifications (managed by oracleEngine and userProcedureRegistry)
 struct QpiContextUserProcedureNotificationCall : public QPI::QpiContextProcedureCall
 {
     QpiContextUserProcedureNotificationCall(const UserProcedureNotification& notification) : QPI::QpiContextProcedureCall(notification.contractIndex, NULL_ID, 0, USER_PROCEDURE_NOTIFICATION_CALL),  notif(notification)
