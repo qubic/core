@@ -21,35 +21,36 @@ constexpr uint32_t MAX_ORACLE_QUERIES = (1 << 18);
 constexpr uint64_t ORACLE_QUERY_STORAGE_SIZE = MAX_ORACLE_QUERIES * 512;
 constexpr uint32_t MAX_SIMULTANEOUS_ORACLE_QUERIES = 1024;
 
+#pragma pack(push, 4)
 struct OracleQueryMetadata
 {
     int64_t queryId;          ///< bits 31-62 encode index in tick, bits 0-30 are index in tick, negative values indicate error
     uint8_t type;             ///< contract query, user query, subscription (may be by multiple contracts)
     uint8_t status;           ///< overall status (pending -> success or timeout)
     uint16_t statusFlags;     ///< status and error flags (especially as returned by oracle machine connected to this node)
-    uint32_t interfaceIndex;
     uint32_t queryTick;
     QPI::DateAndTime timeout;
+    uint32_t interfaceIndex;
 
     union
     {
         struct
         {
-            m256i queryingEntity;
             uint32_t queryTxIndex; // query tx index in tick
+            m256i queryingEntity;
         } user;
 
         struct
         {
-            uint64_t queryStorageOffset;
             uint32_t notificationProcId;
+            uint64_t queryStorageOffset;
             uint16_t queryingContract;
         } contract;
 
         struct
         {
-            uint64_t queryStorageOffset;
             uint32_t subscriptionId; ///< 0 is reserved for "no subscription"
+            uint64_t queryStorageOffset;
         } subscription;
     } typeVar;
 
@@ -76,6 +77,9 @@ struct OracleQueryMetadata
         } failure;
     } statusVar;
 };
+#pragma pack(pop)
+
+static_assert(sizeof(OracleQueryMetadata) == 72, "Unexpected struct size");
 
 
 struct OracleSubscriptionContractStatus
