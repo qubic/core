@@ -23,7 +23,6 @@
     <ClInclude Include="assets\net_msg_impl.h" />
     <ClInclude Include="common_buffers.h" />
     <ClInclude Include="contracts\ComputorControlledFund.h" />
-    <ClInclude Include="contracts\ComputorControlledFund_old.h" />
     <ClInclude Include="contracts\Qdraw.h" />
     <ClInclude Include="contracts\Qswap.h" />
     <ClInclude Include="contracts\RandomLottery.h" />
@@ -135,6 +134,7 @@
     <ClInclude Include="ticking\tick_storage.h" />
     <ClInclude Include="ticking\pending_txs_pool.h" />
     <ClInclude Include="ticking\execution_fee_report_collector.h" />
+    <ClInclude Include="ticking\stable_computor_index.h" />
     <ClInclude Include="vote_counter.h" />
   </ItemGroup>
   <ItemGroup>
