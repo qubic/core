@@ -49,8 +49,8 @@ static constexpr score_engine::AlgoType TEST_ALGO = static_cast<score_engine::Al
 
 // set to 0 for run all available samples
 // For profiling enable, run all available samples
-static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 8;
-static constexpr unsigned long long PROFILING_NUMBER_OF_SAMPLES = 24;
+static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 1024;
+static constexpr unsigned long long PROFILING_NUMBER_OF_SAMPLES = 48;
 
 
 // set 0 for run maximum number of threads of the computer.
@@ -517,6 +517,8 @@ void runCommonTests()
 
     // Read the parameters and results
     auto sampleString = readCSV(COMMON_TEST_SAMPLES_FILE_NAME);
+    // Remove header
+    sampleString.erase(sampleString.begin());
 
     // Convert the raw string and do the data verification
     unsigned long long numberOfSamplesReadFromFile = sampleString.size();
@@ -756,6 +758,8 @@ void runPerformanceTests()
 
     // Read the parameters and results
     auto sampleString = readCSV(COMMON_TEST_SAMPLES_FILE_NAME);
+    // Remove header
+    sampleString.erase(sampleString.begin());
 
     // Convert the raw string and do the data verification
     unsigned long long numberOfSamplesReadFromFile = sampleString.size();
