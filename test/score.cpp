@@ -41,11 +41,11 @@ static const std::string COMMON_TEST_SCORES_ADDITION_FILE_NAME = "data/scores_ad
 static constexpr bool PRINT_DETAILED_INFO = false;
 // Variable control the algo tested
 // AllAlgo: run the score that alg is retermined by nonce
-static constexpr score_engine::AlgoType TEST_ALGO = 
-    static_cast<score_engine::AlgoType>(score_engine::AlgoType::HyperIdentity 
-                                        | score_engine::AlgoType::Addition
-                                        | score_engine::AlgoType::AllAlgo);
-//static constexpr score_engine::AlgoType TEST_ALGO = static_cast<score_engine::AlgoType>(score_engine::AlgoType::Addition);
+static std::vector<std::pair<score_engine::AlgoType, std::string>> TEST_ALGOS = {
+    {score_engine::AlgoType::HyperIdentity, "HyperIdentity"},
+    {score_engine::AlgoType::Addition, "Addition"},
+    {score_engine::AlgoType::MaxAlgoCount, "Mixed"},
+};
 
 // set to 0 for run all available samples
 // For profiling enable, run all available samples
@@ -511,7 +511,7 @@ void runTest(
 
 static std::vector<std::vector<std::string>> readSampleAsStr(const std::string& filename)
 {
-    std::vector<std::vector<std::string>> sampleString = readCSV(COMMON_TEST_SAMPLES_FILE_NAME);
+    std::vector<std::vector<std::string>> sampleString = readCSV(filename);
 
     // Remove header
     sampleString.erase(sampleString.begin());
@@ -683,26 +683,18 @@ void runCommonTests()
     }
 
     std::cout << "Processing " << samples.size() << " samples " << compTerm << "..." << std::endl;
-    std::vector<std::pair<score_engine::AlgoType, std::string>> algos = {
-    {score_engine::AlgoType::HyperIdentity, "HyperIdentity"},
-    {score_engine::AlgoType::Addition, "Addition"},
-    {score_engine::AlgoType::AllAlgo, "Mixed"}
-    };
 
-    for (const auto& [algoType, algoName] : algos)
+    for (const auto& [algoType, algoName] : TEST_ALGOS)
     {
-        if (TEST_ALGO & algoType)
+        runTest(algoName, samples, numberOfThreads, [&](int index)
         {
-            runTest(algoName, samples, numberOfThreads, [&](int index)
-            {
-                process<0, CONFIG_COUNT>(
-                    miningSeeds[index].m256i_u8,
-                    publicKeys[index].m256i_u8,
-                    nonces[index].m256i_u8,
-                    index,
-                    algoType);
-            });
-        }
+            process<0, CONFIG_COUNT>(
+                miningSeeds[index].m256i_u8,
+                publicKeys[index].m256i_u8,
+                nonces[index].m256i_u8,
+                index,
+                algoType);
+        });
     }
 
     // Test Qubic score vs internal engine (always runs)
@@ -826,7 +818,7 @@ void runPerformanceTests()
         samples, miningSeeds, publicKeys, nonces, filteredSamples, numberOfThreads, numberOfSamples);
 
     profileAlgo<1, PROFILE_CONFIG_COUNT>(
-        score_engine::AlgoType::AllAlgo, "Mixed",
+        score_engine::AlgoType::MaxAlgoCount, "Mixed",
         samples, miningSeeds, publicKeys, nonces, filteredSamples, numberOfThreads, numberOfSamples);
 
     gProfilingDataCollector.writeToFile();

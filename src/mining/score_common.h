@@ -11,9 +11,9 @@ namespace score_engine
 
 enum AlgoType
 {
-    HyperIdentity = 1 << 0,
-    Addition = 1 << 1,
-    AllAlgo = 1 << 2
+    HyperIdentity = 0,
+    Addition = 1,
+    MaxAlgoCount // for counting current supported ago
 };
 
 // =============================================================================
