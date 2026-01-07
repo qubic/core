@@ -128,6 +128,7 @@
     <ClInclude Include="ticking\tick_storage.h" />
     <ClInclude Include="ticking\pending_txs_pool.h" />
     <ClInclude Include="ticking\execution_fee_report_collector.h" />
+    <ClInclude Include="ticking\stable_computor_index.h" />
     <ClInclude Include="vote_counter.h" />
   </ItemGroup>
   <ItemGroup>

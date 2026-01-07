@@ -971,13 +971,15 @@ private:
         // acquire state for writing (may block)
         contractStateLock[_currentContractIndex].acquireWrite();
 
-        const unsigned long long startTime = __rdtsc();
+        unsigned long long startTime, endTime;
         unsigned short localsSize = contractSystemProcedureLocalsSizes[_currentContractIndex][systemProcId];
         if (localsSize == sizeof(QPI::NoData))
         {
             // no locals -> call
             QPI::NoData locals;
+            startTime = __rdtsc();
             contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex], input, output, &locals);
+            endTime = __rdtsc();
         }
         else
         {
@@ -988,13 +990,15 @@ private:
             setMem(localsBuffer, localsSize, 0);
 
             // call system proc
+            startTime = __rdtsc();
             contractSystemProcedures[_currentContractIndex][systemProcId](*this, contractStates[_currentContractIndex], input, output, localsBuffer);
+            endTime = __rdtsc();
 
             // free data on stack
             contractLocalsStack[_stackIndex].free();
             ASSERT(contractLocalsStack[_stackIndex].size() == 0);
         }
-        const unsigned long long executionTime = __rdtsc() - startTime;
+        const unsigned long long executionTime = endTime - startTime;
         _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], executionTime);
         executionTimeAccumulator.addTime(_currentContractIndex, executionTime);
 
@@ -1303,8 +1307,6 @@ struct QpiContextUserProcedureNotificationCall : public QPI::QpiContextProcedure
         // acquire state for writing (may block)
         contractStateLock[_currentContractIndex].acquireWrite();
 
-        const unsigned long long startTick = __rdtsc();
-
         QPI::NoData output;
         char* input = contractLocalsStack[_stackIndex].allocate(notif.inputSize + notif.localsSize);
         if (!input)
@@ -1332,15 +1334,15 @@ struct QpiContextUserProcedureNotificationCall : public QPI::QpiContextProcedure
         setMem(locals, notif.localsSize, 0);
 
         // call user procedure
+        const unsigned long long startTick = __rdtsc();
         notif.procedure(*this, contractStates[_currentContractIndex], input, &output, locals);
+        const unsigned long long executionTime = __rdtsc() - startTick;
+        _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], executionTime);
+        executionTimeAccumulator.addTime(_currentContractIndex, executionTime);
 
         // free data on stack
         contractLocalsStack[_stackIndex].free();
         ASSERT(contractLocalsStack[_stackIndex].size() == 0);
-
-        const unsigned long long executionTime = __rdtsc() - startTick;
-        _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], executionTime);
-        executionTimeAccumulator.addTime(_currentContractIndex, executionTime);
 
         // release lock of contract state and set state to changed
         contractStateLock[_currentContractIndex].releaseWrite();

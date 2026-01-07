@@ -144,6 +144,7 @@
     <ClCompile Include="contract_qip.cpp" />
     <ClCompile Include="custom_mining.cpp" />
     <ClCompile Include="execution_fees.cpp" />
+    <ClCompile Include="stable_computor_index.cpp" />
     <ClCompile Include="file_io.cpp" />
     <ClCompile Include="qpi_collection.cpp" />
     <ClCompile Include="qpi_date_time.cpp" />
