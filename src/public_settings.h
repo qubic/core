@@ -57,7 +57,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
 // If this flag is 0, the node will try to fetch data of the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
 // If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
-#define START_NETWORK_FROM_SCRATCH 0
+#define START_NETWORK_FROM_SCRATCH 1
 
 // Addons: If you don't know it, leave it 0.
 #define ADDON_TX_STATUS_REQUEST 0
@@ -130,3 +130,4 @@ static unsigned int gFullExternalComputationTimes[][2] =
 // Use values like (numerator 1, denominator 10) for division by 10.
 GLOBAL_VAR_DECL unsigned long long executionTimeMultiplierNumerator GLOBAL_VAR_INIT(1ULL);
 GLOBAL_VAR_DECL unsigned long long executionTimeMultiplierDenominator GLOBAL_VAR_INIT(1ULL);
+
