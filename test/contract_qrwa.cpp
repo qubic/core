@@ -188,7 +188,7 @@ public:
         return output.status;
     }
 
-    uint64 voteGovParams(const id& from, const QRWA::qRWAGovParams& params)
+    uint64 voteGovParams(const id& from, const QRWA::QRWAGovParams& params)
     {
         QRWA::VoteGovParams_input input{ params };
         QRWA::VoteGovParams_output output;
@@ -235,7 +235,7 @@ public:
 
     // QRWA Wrappers
 
-    QRWA::qRWAGovParams getGovParams()
+    QRWA::QRWAGovParams getGovParams()
     {
         QRWA::GetGovParams_input input;
         QRWA::GetGovParams_output output;
@@ -369,19 +369,19 @@ TEST(ContractQRWA, Governance_VoteGovParams_And_EndEpochCount)
     EXPECT_EQ(qrwa.voteGovParams(USER_D, {}), QRWA_STATUS_FAILURE_NOT_AUTHORIZED);
 
     // Invalid params (Admin NULL_ID)
-    QRWA::qRWAGovParams invalidParams = qrwa.getGovParams();
+    QRWA::QRWAGovParams invalidParams = qrwa.getGovParams();
     invalidParams.mAdminAddress = NULL_ID;
     EXPECT_EQ(qrwa.voteGovParams(HOLDER_A, invalidParams), QRWA_STATUS_FAILURE_INVALID_INPUT);
 
     // Create new poll and vote for it
-    QRWA::qRWAGovParams paramsA = qrwa.getGovParams();
+    QRWA::QRWAGovParams paramsA = qrwa.getGovParams();
     paramsA.electricityPercent = 100; // Change one param
 
     EXPECT_EQ(qrwa.voteGovParams(HOLDER_A, paramsA), QRWA_STATUS_SUCCESS); // Poll 0
     EXPECT_EQ(qrwa.voteGovParams(HOLDER_B, paramsA), QRWA_STATUS_SUCCESS); // Vote for Poll 0
 
     // Change vote
-    QRWA::qRWAGovParams paramsB = qrwa.getGovParams();
+    QRWA::QRWAGovParams paramsB = qrwa.getGovParams();
     paramsB.maintenancePercent = 100; // Change another param
 
     EXPECT_EQ(qrwa.voteGovParams(HOLDER_A, paramsB), QRWA_STATUS_SUCCESS); // Poll 1
@@ -1396,7 +1396,7 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     EXPECT_EQ(qrwa.voteAssetRelease(Q1, pollIdEp3, 1), QRWA_STATUS_FAILURE_NOT_AUTHORIZED);
 
     // Gov Vote
-    QRWA::qRWAGovParams newParams = qrwa.getGovParams();
+    QRWA::QRWAGovParams newParams = qrwa.getGovParams();
     newParams.electricityPercent = 300;
     newParams.maintenancePercent = 100;
 
@@ -1585,7 +1585,7 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), REVENUE_AMT);
 
     // Create Gov Proposal
-    QRWA::qRWAGovParams failParams = qrwa.getGovParams();
+    QRWA::QRWAGovParams failParams = qrwa.getGovParams();
     failParams.reinvestmentPercent = 200;
 
     // Only S1 votes (< 20% supply). Quorum fail

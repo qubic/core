@@ -69,41 +69,35 @@ struct QRWA : public ContractBase
     /******************** STRUCTS **********************/
     /***************************************************/
 
-    struct qRWAAsset
+    struct QRWAAsset
     {
         id issuer;
         uint64 assetName;
-
-        qRWAAsset():
-            issuer(NULL_ID),
-            assetName(0)
-        {
-        }
-
-        qRWAAsset(const Asset a):
-            issuer(a.issuer),
-            assetName(a.assetName)
-        {
-        }
 
         operator Asset() const
         {
             return { issuer, assetName };
         }
 
-        bool operator==(const qRWAAsset other) const
+        bool operator==(const QRWAAsset other) const
         {
             return issuer == other.issuer && assetName == other.assetName;
         }
 
-        bool operator!=(const qRWAAsset other) const
+        bool operator!=(const QRWAAsset other) const
         {
-            return !(*this == other);
+            return issuer != other.issuer || assetName != other.assetName;
+        }
+
+        inline void setFrom(const Asset& asset)
+        {
+            issuer = asset.issuer;
+            assetName = asset.assetName;
         }
     };
 
     // votable governance parameters for the contract.
-    struct qRWAGovParams
+    struct QRWAGovParams
     {
         // Addresses
         id mAdminAddress; // Only the admin can create release polls
@@ -120,12 +114,12 @@ struct QRWA : public ContractBase
     };
 
     // Represents a governance poll in a rotating buffer
-    struct qRWAGovProposal
+    struct QRWAGovProposal
     {
         uint64 proposalId; // The unique, increasing ID
         uint64 status; // 0=Empty, 1=Active, 2=Passed, 3=Failed
         uint64 score; // Final score, count at END_EPOCH
-        qRWAGovParams params; // The actual proposal data
+        QRWAGovParams params; // The actual proposal data
     };
 
     // Represents a poll to release assets from the treasury or dividend pool.
@@ -142,7 +136,7 @@ struct QRWA : public ContractBase
     };
 
     // Logger for general contract events.
-    struct qRWALogger
+    struct QRWALogger
     {
         uint64 contractId;
         uint64 logType;
@@ -167,10 +161,10 @@ protected:
     uint64 mPayoutTotalQmineBegin; // Total QMINE shares from the last epoch's beginning
 
     // Votable Parameters
-    qRWAGovParams mCurrentGovParams; // The live, active parameters
+    QRWAGovParams mCurrentGovParams; // The live, active parameters
 
     // Voting state for governance parameters (voted by QMINE holders)
-    Array<qRWAGovProposal, QRWA_MAX_GOV_POLLS> mGovPolls;
+    Array<QRWAGovProposal, QRWA_MAX_GOV_POLLS> mGovPolls;
     HashMap<id, uint64, QRWA_MAX_QMINE_HOLDERS> mShareholderVoteMap; // Maps QMINE holder -> Gov Poll slot index
     uint64 mCurrentGovProposalId;
     uint64 mNewGovPollsThisEpoch;
@@ -184,7 +178,7 @@ protected:
 
     // Treasury & Asset Release
     uint64 mTreasuryBalance; // QMINE token balance holds by SC
-    HashMap<qRWAAsset, uint64, QRWA_MAX_ASSETS> mGeneralAssetBalances; // Balances for other assets (e.g., SC shares)
+    HashMap<QRWAAsset, uint64, QRWA_MAX_ASSETS> mGeneralAssetBalances; // Balances for other assets (e.g., SC shares)
 
     // Payouts and Dividend Accounting
     DateAndTime mLastPayoutTime; // Tracks the last payout time
@@ -203,16 +197,6 @@ protected:
 
 public:
     /***************************************************/
-    /*************** PRIVATE PROCEDURES ****************/
-    /***************************************************/
-
-    inline static sint64 GetQmineBalanceOf(const QPI::QpiContextFunctionCall& qpi, const QRWA& state, const id& holder)
-    {
-        return qpi.numberOfShares(state.mQmineAsset, AssetOwnershipSelect::byOwner(holder), AssetPossessionSelect::byPossessor(holder));
-    }
-
-
-    /***************************************************/
     /**************** PUBLIC PROCEDURES ****************/
     /***************************************************/
 
@@ -229,7 +213,7 @@ public:
     {
         sint64 transferResult;
         sint64 balance;
-        qRWALogger logger;
+        QRWALogger logger;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(DonateToTreasury)
     {
@@ -306,7 +290,7 @@ public:
     // Governance: Param Voting
     struct VoteGovParams_input
     {
-        qRWAGovParams proposal;
+        QRWAGovParams proposal;
     };
     struct VoteGovParams_output
     {
@@ -319,12 +303,12 @@ public:
         uint64 i;
         uint64 foundProposal;
         uint64 proposalIndex;
-        qRWALogger logger;
+        QRWALogger logger;
         //sint64 iterIndex;
         //id iterVoter;
-        qRWAGovProposal poll;
+        QRWAGovProposal poll;
         sint64 rawBalance;
-        qRWAGovParams existing;
+        QRWAGovParams existing;
         uint64 status;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(VoteGovParams)
@@ -335,7 +319,7 @@ public:
         locals.logger.primaryId = qpi.invocator();
 
         // Get voter's current QMINE balance
-        locals.rawBalance = GetQmineBalanceOf(qpi, state, qpi.invocator());
+        locals.rawBalance = qpi.numberOfShares(state.mQmineAsset, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator()));
         locals.currentBalance = (locals.rawBalance > 0) ? static_cast<uint64>(locals.rawBalance) : 0;
 
         if (locals.currentBalance <= 0)
@@ -376,39 +360,6 @@ public:
             }
             return;
         }
-
-        // Removed O(N) loop that iterated all voters.
-        //// Re-check balances for all existing voters
-        //locals.iterIndex = NULL_INDEX;
-        //while (true)
-        //{
-        //    locals.iterIndex = state.mShareholderVoteMap.nextElementIndex(locals.iterIndex);
-        //    if (locals.iterIndex == NULL_INDEX)
-        //    {
-        //        break;
-        //    }
-
-        //    locals.iterVoter = state.mShareholderVoteMap.key(locals.iterIndex);
-        //    if (locals.iterVoter == qpi.invocator())
-        //    {
-        //        continue; // Skip self, will process later
-        //    }
-
-        //    locals.gqbo_in.holder = locals.iterVoter;
-        //    CALL(GetQmineBalanceOf, locals.gqbo_in, locals.gqbo_out);
-        //    uint64 iterCurrentBalance = (locals.gqbo_out.balance > 0) ? static_cast<uint64>(locals.gqbo_out.balance) : 0;
-
-        //    state.mGovVoterBalances.get(locals.iterVoter, locals.votedBalance); // Voted balance must exist
-
-        //    if (iterCurrentBalance < locals.votedBalance)
-        //    {
-        //        locals.diff = locals.votedBalance - iterCurrentBalance;
-        //        state.mShareholderVoteMap.get(locals.iterVoter, locals.proposalIndex);
-        //        locals.oldProposalScore = state.mGovProposalScores.get(locals.proposalIndex);
-        //        state.mGovProposalScores.set(locals.proposalIndex, (locals.oldProposalScore > locals.diff) ? locals.oldProposalScore - locals.diff : 0);
-        //        state.mGovVoterBalances.set(locals.iterVoter, iterCurrentBalance);
-        //    }
-        //}
 
         // Now process the new/updated vote
         locals.foundProposal = 0;
@@ -497,7 +448,7 @@ public:
     {
         uint64 newPollIndex;
         AssetReleaseProposal newPoll;
-        qRWALogger logger;
+        QRWALogger logger;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(CreateAssetReleasePoll)
     {
@@ -592,7 +543,7 @@ public:
         // uint64 diff;
         AssetReleaseProposal poll;
         uint64 pollIndex;
-        qRWALogger logger;
+        QRWALogger logger;
         uint64 foundPoll;
         bit_64 voterBitfield;
         bit_64 voterOptions;
@@ -623,7 +574,7 @@ public:
         }
 
         // Get voter's current QMINE balance
-        locals.rawBalance = GetQmineBalanceOf(qpi, state, qpi.invocator());
+        locals.rawBalance = qpi.numberOfShares(state.mQmineAsset, AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator()));
         locals.currentBalance = (locals.rawBalance > 0) ? static_cast<uint64>(locals.rawBalance) : 0;
 
 
@@ -678,56 +629,6 @@ public:
             return;
         }
 
-        //// Re-check balances for all existing voters
-        //locals.iterIndex = NULL_INDEX;
-        //while (true)
-        //{
-        //    locals.iterIndex = state.mAssetProposalVoterMap.nextElementIndex(locals.iterIndex);
-        //    if (locals.iterIndex == NULL_INDEX)
-        //    {
-        //        break;
-        //    }
-
-        //    locals.iterVoter = state.mAssetProposalVoterMap.key(locals.iterIndex);
-        //    if (locals.iterVoter == qpi.invocator())
-        //    {
-        //        continue; // Skip self
-        //    }
-
-        //    locals.gqbo_in.holder = locals.iterVoter;
-        //    CALL(GetQmineBalanceOf, locals.gqbo_in, locals.gqbo_out);
-        //    uint64 iterCurrentBalance = (locals.gqbo_out.balance > 0) ? static_cast<uint64>(locals.gqbo_out.balance) : 0;
-
-        //    state.mAssetVoterBalanceMap.get(locals.iterVoter, locals.votedBalance); // Must exist
-
-        //    if (iterCurrentBalance < locals.votedBalance)
-        //    {
-        //        locals.diff = locals.votedBalance - iterCurrentBalance;
-        //        state.mAssetProposalVoterMap.get(locals.iterVoter, locals.voterBitfield);
-        //        state.mAssetVoteOptions.get(locals.iterVoter, locals.voterOptions);
-
-        //        for (locals.i = 0; locals.i < MAX_ASSET_PROPOSALS; locals.i++)
-        //        {
-        //            if (locals.voterBitfield.get(locals.i) == 1)
-        //            {
-        //                locals.iterPollIndex = locals.i;
-        //                locals.iterOption = locals.voterOptions.get(locals.iterPollIndex);
-        //                if (locals.iterOption == 1) // Voted Yes
-        //                {
-        //                    locals.yesVotes = state.mAssetProposalVotesYes.get(locals.iterPollIndex);
-        //                    state.mAssetProposalVotesYes.set(locals.iterPollIndex, (locals.yesVotes > locals.diff) ? locals.yesVotes - locals.diff : 0);
-        //                }
-        //                else // Voted No
-        //                {
-        //                    locals.noVotes = state.mAssetProposalVotesNo.get(locals.iterPollIndex);
-        //                    state.mAssetProposalVotesNo.set(locals.iterPollIndex, (locals.noVotes > locals.diff) ? locals.noVotes - locals.diff : 0);
-        //                }
-        //            }
-        //        }
-        //        state.mAssetVoterBalanceMap.set(locals.iterVoter, iterCurrentBalance);
-        //    }
-        //}
-
         // Now process the new vote
         //locals.votedBalance = 0;
         state.mAssetProposalVoterMap.get(qpi.invocator(), locals.voterBitfield); // Get or default (all 0s)
@@ -765,8 +666,8 @@ public:
         sint64 transferResult;
         sint64 balance;
         uint64 currentAssetBalance;
-        qRWALogger logger;
-        qRWAAsset wrapper;
+        QRWALogger logger;
+        QRWAAsset wrapper;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(DepositGeneralAsset)
     {
@@ -823,7 +724,7 @@ public:
 
         if (locals.transferResult >= 0) // Transfer successful
         {
-            locals.wrapper = (qRWAAsset)input.asset;
+            locals.wrapper.setFrom(input.asset);
             state.mGeneralAssetBalances.get(locals.wrapper, locals.currentAssetBalance); // 0 if not exist
             locals.currentAssetBalance = sadd(locals.currentAssetBalance, input.amount);
             state.mGeneralAssetBalances.set(locals.wrapper, locals.currentAssetBalance);
@@ -850,7 +751,7 @@ public:
     };
     struct RevokeAssetManagementRights_locals
     {
-        qRWALogger logger;
+        QRWALogger logger;
         sint64 managedBalance;
         sint64 result;
     };
@@ -967,7 +868,7 @@ public:
     struct GetGovParams_input {};
     struct GetGovParams_output
     {
-        qRWAGovParams params;
+        QRWAGovParams params;
     };
     PUBLIC_FUNCTION(GetGovParams)
     {
@@ -980,7 +881,7 @@ public:
     };
     struct GetGovPoll_output
     {
-        qRWAGovProposal proposal;
+        QRWAGovProposal proposal;
         uint64 status; // 0=NotFound, 1=Found
     };
     struct GetGovPoll_locals
@@ -1136,11 +1037,11 @@ public:
     struct GetGeneralAssetBalance_locals
     {
         uint64 balance;
-        qRWAAsset wrapper;
+        QRWAAsset wrapper;
     };
     PUBLIC_FUNCTION_WITH_LOCALS(GetGeneralAssetBalance) {
         locals.balance = 0;
-        locals.wrapper = (qRWAAsset)input.asset;
+        locals.wrapper.setFrom(input.asset);
         if (state.mGeneralAssetBalances.get(locals.wrapper, locals.balance)) {
             output.balance = locals.balance;
             output.status = 1;
@@ -1161,7 +1062,7 @@ public:
     struct GetGeneralAssets_locals
     {
         sint64 iterIndex;
-        qRWAAsset currentAsset;
+        QRWAAsset currentAsset;
         uint64 currentBalance;
     };
     PUBLIC_FUNCTION_WITH_LOCALS(GetGeneralAssets)
@@ -1287,7 +1188,7 @@ public:
     {
         AssetPossessionIterator iter;
         uint64 balance;
-        qRWALogger logger;
+        QRWALogger logger;
         id holder;
         uint64 existingBalance;
     };
@@ -1388,16 +1289,16 @@ public:
         uint64 feePaid;
         uint64 sufficientFunds;
 
-        qRWALogger logger;
+        QRWALogger logger;
         uint64 epoch;
 
         sint64 copyIndex;
         id copyHolder;
         uint64 copyBalance;
 
-        qRWAAsset wrapper;
+        QRWAAsset wrapper;
 
-        qRWAGovProposal govPoll;
+        QRWAGovProposal govPoll;
 
         id holder;
         uint64 existingBalance;
@@ -1656,7 +1557,7 @@ public:
                     }
                     else // Asset is from mGeneralAssetBalances
                     {
-                        locals.wrapper = (qRWAAsset)locals.poll.asset;
+                        locals.wrapper.setFrom(locals.poll.asset);
                         if (state.mGeneralAssetBalances.get(locals.wrapper, locals.currentAssetBalance))
                         {
                             if (locals.currentAssetBalance >= locals.poll.amount)
@@ -1806,7 +1707,7 @@ public:
         uint128 qmineDividendPool_128;
         uint64 payout_u64;
         uint64 foundEnd;
-        qRWALogger logger;
+        QRWALogger logger;
     };
     END_TICK_WITH_LOCALS()
     {
@@ -2060,7 +1961,7 @@ public:
 
     struct POST_INCOMING_TRANSFER_locals
     {
-        qRWALogger logger;
+        QRWALogger logger;
     };
     POST_INCOMING_TRANSFER_WITH_LOCALS()
     {
