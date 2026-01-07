@@ -299,13 +299,10 @@ public:
     struct VoteGovParams_locals
     {
         uint64 currentBalance;
-        //uint64 diff;
         uint64 i;
         uint64 foundProposal;
         uint64 proposalIndex;
         QRWALogger logger;
-        //sint64 iterIndex;
-        //id iterVoter;
         QRWAGovProposal poll;
         sint64 rawBalance;
         QRWAGovParams existing;
@@ -540,15 +537,12 @@ public:
     struct VoteAssetRelease_locals
     {
         uint64 currentBalance;
-        // uint64 diff;
         AssetReleaseProposal poll;
         uint64 pollIndex;
         QRWALogger logger;
         uint64 foundPoll;
         bit_64 voterBitfield;
         bit_64 voterOptions;
-        // sint64 iterIndex;
-        // id iterVoter;
         sint64 rawBalance;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(VoteAssetRelease)
@@ -630,7 +624,6 @@ public:
         }
 
         // Now process the new vote
-        //locals.votedBalance = 0;
         state.mAssetProposalVoterMap.get(qpi.invocator(), locals.voterBitfield); // Get or default (all 0s)
         state.mAssetVoteOptions.get(qpi.invocator(), locals.voterOptions);
 
@@ -850,10 +843,6 @@ public:
                 {
                     state.mRevenuePoolB -= QRWA_RELEASE_MANAGEMENT_FEE;
                 }
-                //else // this else is unlikely to happen
-                //{
-                //    state.mRevenuePoolB = 0;
-                //}
             }
             locals.logger.valueB = output.status;
             LOG_INFO(locals.logger);
