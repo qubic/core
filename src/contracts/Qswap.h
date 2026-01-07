@@ -2378,7 +2378,7 @@ protected:
         state.investRewardsId = ID(_V, _J, _G, _R, _U, _F, _W, _J, _C, _U, _S, _N, _H, _C, _Q, _J, _R, _W, _R, _R, _Y, _X, _A, _U, _E, _J, _F, _C, _V, _H, _Y, _P, _X, _W, _K, _T, _D, _L, _Y, _K, _U, _A, _C, _P, _V, _V, _Y, _B, _G, _O, _L, _V, _C, _J, _S, _F);
 	}
 
-	struct END_EPOCH_locals
+	struct END_TICK_locals
 	{
 		uint64 toDistribute;
 		uint64 toBurn;
@@ -2387,7 +2387,7 @@ protected:
 		QSWAPFailedDistributionMessage logMsg;
 	};
 
-	END_EPOCH_WITH_LOCALS()
+	END_TICK_WITH_LOCALS()
 	{
 		// Distribute Invest & Rewards fees
 		if (state.investRewardsEarnedFee > state.investRewardsDistributedAmount)
