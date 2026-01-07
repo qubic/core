@@ -282,6 +282,15 @@ public:
 		// Query oracle
 		if (qpi.tick() % 2 == 0)
 		{
+			// Setup query (in extra scope limit scope of using namespace Ch
+			{
+				using namespace Ch;
+				locals.priceOracleQuery.oracle = OI::Price::getMockOracleId();
+				locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+				locals.priceOracleQuery.currency2 = id(U, S, D, null, null);
+				locals.priceOracleQuery.timestamp = qpi.now();
+			}
+
 			locals.oracleQueryId = QUERY_ORACLE(OI::Price, locals.priceOracleQuery, NotifyPriceOracleReply, 20000);
 		}
 	}
