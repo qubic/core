@@ -70,6 +70,22 @@ namespace QPI
 
 	constexpr sint64 INVALID_AMOUNT = 0x8000000000000000;
 
+	// Characters for building strings (for example in constructor of id / m256i)
+	namespace Ch
+	{
+		enum : char
+		{
+			null = 0,
+			space = ' ', slash = '/', backslash = '\\', dot = '.', comma = ',', colon = ':', semicolon = ';',
+			a = 'a', b = 'b', c = 'c', d = 'd', e = 'e', f = 'f', g = 'g', h = 'h', i = 'i', j = 'j', k = 'k', l = 'l', m = 'm',
+			n = 'n', o = 'o', p = 'p', q = 'q', r = 'r', s = 's', t = 't', u = 'u', v = 'v', w = 'w', x = 'x', y = 'y', z = 'z',
+			A = 'A', B = 'B', C = 'C', D = 'D', E = 'E', F = 'F', G = 'G', H = 'H', I = 'I', J = 'J', K = 'K', L = 'L', M = 'M',
+			N = 'N', O = 'O', P = 'P', Q = 'Q', R = 'R', S = 'S', T = 'T', U = 'U', V = 'V', W = 'W', X = 'X', Y = 'Y', Z = 'Z',
+			_0 = '0', _1 = '1', _2 = '2', _3 = '3', _4 = '4', _5 = '5', _6 = '6', _7 = '7', _8 = '8', _9 = '9',
+		};
+	}
+
+	// Letters for defining identity with ID function
 	constexpr long long _A = 0;
 	constexpr long long _B = 1;
 	constexpr long long _C = 2;

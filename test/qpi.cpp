@@ -343,6 +343,32 @@ TEST(TestCoreQPI, Mod) {
     EXPECT_EQ(QPI::mod(2, -1), 0);
 }
 
+TEST(TestCoreQPI, IdFromCharacters)
+{
+    using namespace QPI::Ch;
+
+    QPI::id test('t', 'e', s, t, '!');
+    EXPECT_EQ(std::string((char*)test.m256i_i8), std::string("test!"));
+
+    test = QPI::id(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z, space, dot, comma, colon, semicolon, null);
+    EXPECT_EQ(std::string((char*)test.m256i_i8), std::string("abcdefghijklmnopqrstuvwxyz .,:;"));
+
+    test = QPI::id(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, slash, backslash);
+    EXPECT_EQ(std::string((char*)test.m256i_i8), std::string("ABCDEFGHIJKLMNOPQRSTUVWXYZ/\\"));
+
+    test = QPI::id(_0, _1, _2, _3, _4, _5, _6, _7, _8, _9);
+    EXPECT_EQ(std::string((char*)test.m256i_i8), std::string("0123456789"));
+
+    test = QPI::id(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    EXPECT_TRUE(isZero(test));
+
+    test = QPI::id(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, space);
+    EXPECT_EQ(test.i8._31, ' ');
+    test.m256i_i8[31] = 0;
+    EXPECT_TRUE(isZero(test));
+}
+
+
 struct ContractExecInitDeinitGuard
 {
     ContractExecInitDeinitGuard()
