@@ -2124,7 +2124,7 @@ TEST(ContractTestEx, OracleQuery)
     expectedOracleQueryId = getContractOracleQueryId(system.tick, 2);
     test.endTick();
     ++system.tick;
-    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, id(0, 0, 0, 0), 20000);
+    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, OI::Price::getMockOracleId(), 20000);
 
     expectedOracleQueryId = getContractOracleQueryId(system.tick, 0);
     EXPECT_EQ(test.queryPriceOracle(USER1, id(2, 3, 4, 5), 13), expectedOracleQueryId);
