@@ -70,6 +70,9 @@ struct AdditionParams
 
 //=================================================================================================
 // Defines and constants
+static constexpr unsigned int DEFAUL_SOLUTION_THRESHOLD[AlgoType::MaxAlgoCount] = { 
+    HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT, 
+    ADDITION_SOLUTION_THRESHOLD_DEFAULT};
 static constexpr unsigned int INVALID_SCORE_VALUE = 0xFFFFFFFFU;
 static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 
@@ -494,6 +497,42 @@ static inline unsigned long long clampCirculatingIndex(
     long long over = nnIndex - population;
     nnIndex -= (population & ~(over >> 63));
     return (unsigned long long)nnIndex;
+}
+
+// Get the solution threshold depend on nonce
+// In case of not provided threholdBuffer, just return the default value
+static AlgoType getAlgoType(const unsigned char* nonce)
+{
+    AlgoType selectedAgo = ((nonce[0] & 1) == 0) ? AlgoType::HyperIdentity : AlgoType::Addition;
+    return selectedAgo;
+}
+
+// Verify if the solution threshold is valid
+static bool checkAlgoThreshold(int threshold, AlgoType algo)
+{
+    if (threshold <= 0)
+    {
+        return false;
+    }
+
+    switch (algo)
+    {
+    case AlgoType::HyperIdentity:
+        if (threshold > HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS)
+        {
+            return false;
+        }
+        break;
+    case AlgoType::Addition:
+        if (threshold > ADDITION_NUMBER_OF_OUTPUT_NEURONS * (1U << ADDITION_NUMBER_OF_INPUT_NEURONS))
+        {
+            return false;
+        }
+        break;
+    default:
+        return false;
+    }
+    return true;
 }
 
 }

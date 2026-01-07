@@ -129,17 +129,29 @@ struct ScoreFunction
         return success;
     }
 
-    bool isValidScore(unsigned int solutionScore)
+    bool isValidScore(unsigned int solutionScore, score_engine::AlgoType selectedAlgo)
     {
         // TODO: need to change this
         //return (solutionScore >= 0 && solutionScore <= numberOfOutputNeurons);
-        return (solutionScore >= 0 && solutionScore < score_engine::INVALID_SCORE_VALUE);
+        if (selectedAlgo == score_engine::AlgoType::HyperIdentity)
+        {
+            return (solutionScore >= 0) 
+                && (solutionScore <= HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS)
+                && (solutionScore != score_engine::INVALID_SCORE_VALUE);
+        }
+        else if (selectedAlgo == score_engine::AlgoType::Addition)
+        {
+            return (solutionScore >= 0 )
+                && (solutionScore <= ADDITION_NUMBER_OF_OUTPUT_NEURONS * (1ULL << ADDITION_NUMBER_OF_INPUT_NEURONS))
+                && (solutionScore != score_engine::INVALID_SCORE_VALUE);
+        }
+        return false;
     }
-    bool isGoodScore(unsigned int solutionScore, int threshold)
+    bool isGoodScore(unsigned int solutionScore, int threshold, score_engine::AlgoType selectedAlgo)
     {
         // TODO: need to change this
         //return (threshold <= numberOfOutputNeurons) && (solutionScore >= (unsigned int)threshold);
-        return (threshold < score_engine::INVALID_SCORE_VALUE) && (solutionScore >= (unsigned int)threshold);
+        return checkAlgoThreshold(threshold, selectedAlgo) && (solutionScore >= (unsigned int)threshold);
     }
 
     unsigned int computeScore(const unsigned long long solutionBufIdx, const m256i& publicKey, const m256i& nonce)
