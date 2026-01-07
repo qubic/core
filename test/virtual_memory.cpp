@@ -55,8 +55,6 @@ TEST(TestVirtualMemory, TestVirtualMemory_NativeChar) {
         EXPECT_TRUE(test_vm[index] == arr[index]);
     }
     test_vm.deinit();
-
-    deInitFileSystem();
 }
 
 #define IMAX_BITS(m) ((m)/((m)%255+1) / 255%255*8 + 7-86/((m)%255+12))
@@ -118,8 +116,6 @@ TEST(TestVirtualMemory, TestVirtualMemory_NativeU64) {
         EXPECT_TRUE(test_vm[index] == arr[index]);
     }
     test_vm.deinit();
-
-    deInitFileSystem();
 }
 
 TickData randTick()
@@ -185,8 +181,6 @@ TEST(TestVirtualMemory, TestVirtualMemory_TickStruct) {
         EXPECT_TRUE(tickEqual(test_vm[index], arr[index]));
     }
     test_vm.deinit();
-
-    deInitFileSystem();
 }
 
 TEST(TestVirtualMemory, TestVirtualMemory_SpecialCases) {
@@ -242,6 +236,4 @@ TEST(TestVirtualMemory, TestVirtualMemory_SpecialCases) {
     }
 
     test_vm.deinit();
-
-    deInitFileSystem();
 }
