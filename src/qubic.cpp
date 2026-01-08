@@ -6330,7 +6330,7 @@ static void logInfo()
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     oracleEngine.logStatus(message);
-    logToConsole(message);
+    //logToConsole(message);
 #endif
 }
 

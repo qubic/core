@@ -271,18 +271,57 @@ public:
 		}
 	}
 
+	// MOCK ORACLE TESTING
+	typedef OracleNotificationInput<OI::Mock> NotifyMockOracleReply_input;
+	typedef NoData NotifyMockOracleReply_output;
+	struct NotifyMockOracleReply_locals
+	{
+		OI::Mock::OracleQuery query;
+		uint32 queryExtraData;
+	};
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(NotifyMockOracleReply)
+	{
+		if (input.status == ORACLE_QUERY_STATUS_SUCCESS)
+		{
+			// get and use query info
+			if (!qpi.getOracleQuery<OI::Mock>(input.queryId, locals.query))
+			{
+				return;
+			}
+			if (!OI::Mock::replyIsValid(locals.query, input.reply))
+			{
+				return;
+			}
+		}
+		else
+		{
+			// handle failure ...
+		}
+	}
+
 	struct END_TICK_locals
 	{
 		OI::Price::OracleQuery priceOracleQuery;
 		sint64 oracleQueryId;
+
+		OI::Mock::OracleQuery mockOracleQuery;
+		sint64 mockOracleQueryId;
 	};
 
 	END_TICK_WITH_LOCALS()
 	{
 		// Query oracle
-		if (qpi.tick() % 2 == 0)
+		//if (qpi.tick() % 2 == 0)
+		//{
+		//	locals.oracleQueryId = QUERY_ORACLE(OI::Price, locals.priceOracleQuery, NotifyPriceOracleReply, 20000);
+		//}
+
+		// Mock oracle
+		if (qpi.tick() % 2)
 		{
-			locals.oracleQueryId = QUERY_ORACLE(OI::Price, locals.priceOracleQuery, NotifyPriceOracleReply, 20000);
+			locals.mockOracleQuery.value = qpi.tick();
+			locals.oracleQueryId = QUERY_ORACLE(OI::Mock, locals.mockOracleQuery, NotifyMockOracleReply, 20000);
 		}
 	}
 
@@ -302,5 +341,6 @@ public:
 		REGISTER_USER_PROCEDURE(QueryPriceOracle, 100);
 
 		REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyPriceOracleReply);
+		REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyMockOracleReply);
 	}
 };

@@ -27,4 +27,6 @@ namespace OI
 
 #undef REGISTER_ORACLE_INTERFACE
 
+#define ENABLE_ORACLE_STATS_RECORD 1
+
 }
