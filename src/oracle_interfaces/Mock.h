@@ -41,4 +41,10 @@ struct Mock
 	{
 		return 1000;
 	}
+
+	/// Check if the passed oracle reply is valid
+	static bool replyIsValid(const OracleQuery& querry, const OracleReply& reply)
+	{
+		return (reply.echoedValue == querry.value) && (reply.doubledValue == 2 * querry.value);
+	}
 };

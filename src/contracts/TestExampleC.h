@@ -271,6 +271,7 @@ public:
 		}
 	}
 
+	// MOCK ORACLE TESTING
 	typedef OracleNotificationInput<OI::Mock> NotifyMockOracleReply_input;
 	typedef NoData NotifyMockOracleReply_output;
 	struct NotifyMockOracleReply_locals
@@ -290,12 +291,15 @@ public:
 			ASSERT(locals.query.value == input.reply.echoedValue);
 			ASSERT(locals.query.value == input.reply.doubledValue / 2);
 
+			if (!OI::Mock::replyIsValid(locals.query, input.reply))
+			{
+				return;
+			}
 			// TODO: log
 		}
 		else
 		{
 			// handle failure ...
-
 			// TODO: log
 		}
 	}

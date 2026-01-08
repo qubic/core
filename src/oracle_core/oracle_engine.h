@@ -255,6 +255,19 @@ protected:
         unsigned long long unresolvableCount;
     } stats;
 
+#if ENABLE_ORACLE_STATS_RECORD
+    struct
+    {
+        unsigned long long queryCount;
+        unsigned long long replyCount;
+        unsigned long long validCount;
+
+        // Extra data buffer
+        unsigned long long extraData[4];
+
+    } oracleStats[OI::oracleInterfacesCount]; // stats per oracle. 
+#endif
+
     /// fast lookup of oracle query index (sequential position in queries array) from oracle query ID (composed of query tick and other info)
     QPI::HashMap<int64_t, uint32_t, MAX_ORACLE_QUERIES>* queryIdToIndex;
 
@@ -314,6 +327,10 @@ public:
         pendingRevealReplyStateIndices.numValues = 0;
         notificationQueryIndicies.numValues = 0;
         setMem(&stats, sizeof(stats), 0);
+
+#if ENABLE_ORACLE_STATS_RECORD
+        setMem(&oracleStats, sizeof(oracleStats), 0);
+#endif
 
         return true;
     }
@@ -440,6 +457,11 @@ public:
 
         // TODO: send log event ORACLE_QUERY with queryId, query starter, interface, type, status
 
+        // Debug logging
+#if ENABLE_ORACLE_STATS_RECORD
+        oracleStats[queryMetadata.interfaceIndex].queryCount++;
+#endif
+
         return queryId;
     }
 
@@ -520,6 +542,43 @@ public:
 
         // add reply state to set of indices with pending commit tx
         pendingCommitReplyStateIndices.add(replyStateIdx);
+
+#if ENABLE_ORACLE_STATS_RECORD
+        // Update the stats for each type of oracles
+        const uint32_t ifaceIdx = oqm.interfaceIndex;
+        oracleStats[ifaceIdx].replyCount++;
+        // Now only record contract querry
+        if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_QUERY)
+        {
+            const void* queryData = queryStorage + oqm.typeVar.contract.queryStorageOffset;
+
+            bool valid = false;
+            switch (ifaceIdx)
+            {
+            case 0:  // Price
+                valid = OI::Price::replyIsValid(*(const OI::Price::OracleReply*)replyData);
+                oracleStats[ifaceIdx].extraData[0] = ((const OI::Price::OracleReply*)replyData)->denominator;
+                oracleStats[ifaceIdx].extraData[1] = ((const OI::Price::OracleReply*)replyData)->numerator;
+                break;
+            case 1:  // Mock
+                valid = OI::Mock::replyIsValid(
+                    *(const OI::Mock::OracleQuery*)queryData,
+                    *(const OI::Mock::OracleReply*)replyData);
+                // Get some extra data
+                oracleStats[ifaceIdx].extraData[0] = ((const OI::Mock::OracleQuery*)queryData)->value;
+                oracleStats[ifaceIdx].extraData[1] = ((const OI::Mock::OracleReply*)replyData)->echoedValue;
+                oracleStats[ifaceIdx].extraData[2] = ((const OI::Mock::OracleReply*)replyData)->doubledValue;
+                break;
+            default: // unknown
+                break;
+            }
+            if (valid)
+            {
+                oracleStats[ifaceIdx].validCount++;
+            }
+        }
+#endif
+
     }
 
     /**
@@ -1104,6 +1163,31 @@ public:
         appendText(message, ", unresolvable ");
         appendNumber(message, stats.unresolvableCount, FALSE);
         logToConsole(message);
+
+#if ENABLE_ORACLE_STATS_RECORD
+        // Show per-interface oracle stats
+        for (uint32_t i = 0; i < OI::oracleInterfacesCount; i++)
+        {
+            setText(message, L"Oracle[");
+            appendNumber(message, i, FALSE);
+            appendText(message, L"]: queries=");
+            appendNumber(message, oracleStats[i].queryCount, FALSE);
+            appendText(message, L", replies=");
+            appendNumber(message, oracleStats[i].replyCount, FALSE);
+            appendText(message, L", valid=");
+            appendNumber(message, oracleStats[i].validCount, FALSE);
+            appendText(message, L", data=");
+            appendNumber(message, oracleStats[i].extraData[0], TRUE);
+            if (i == 1)
+            {
+                appendText(message, L", ");
+                appendNumber(message, oracleStats[i].extraData[1], TRUE);
+                appendText(message, L", ");
+                appendNumber(message, oracleStats[i].extraData[2], TRUE);
+            }
+#endif
+            logToConsole(message);
+        }
     }
 
     void processRequestOracleData(Peer* peer, RequestResponseHeader* header) const;
