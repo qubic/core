@@ -1,16 +1,16 @@
 ﻿using namespace QPI;
 
 // Number of available smart contracts in the QRP contract.
-static constexpr uint16 QRP_AVAILABLE_SC_NUM = 128;
-static constexpr uint64 QRP_QTF_INDEX = 21;
+constexpr uint16 QRP_ALLOWED_SC_NUM = 128;
+constexpr uint64 QRP_QTF_INDEX = QRP_CONTRACT_INDEX + 1;
+constexpr uint64 QRP_REMOVAL_THRESHOLD_PERCENT = 75;
 
 struct QRP2
 {
 };
 
-struct QRP : public ContractBase
+struct QRP : ContractBase
 {
-public:
 	enum class EReturnCode : uint8
 	{
 		SUCCESS = 0,
@@ -22,44 +22,43 @@ public:
 
 	static constexpr uint8 toReturnCode(const EReturnCode& code) { return static_cast<uint8>(code); };
 
-public:
 	// Get Reserve
-	struct GetReserve_input
+	struct WithdrawReserve_input
 	{
 		uint64 revenue;
 	};
 
-	struct GetReserve_output
+	struct WithdrawReserve_output
 	{
 		// How much revenue is allocated to SC
 		uint64 allocatedRevenue;
 		uint8 returnCode;
 	};
 
-	struct GetReserve_locals
+	struct WithdrawReserve_locals
 	{
 		Entity entity;
 		uint64 checkAmount;
 	};
 
-	// Add Available Smart Contract
-	struct AddAvailableSC_input
+	// Add Allowed Smart Contract
+	struct AddAllowedSC_input
 	{
 		uint64 scIndex;
 	};
 
-	struct AddAvailableSC_output
+	struct AddAllowedSC_output
 	{
 		uint8 returnCode;
 	};
 
-	// Remove Available Smart Contract
-	struct RemoveAvailableSC_input
+	// Remove Allowed Smart Contract
+	struct RemoveAllowedSC_input
 	{
 		uint64 scIndex;
 	};
 
-	struct RemoveAvailableSC_output
+	struct RemoveAllowedSC_output
 	{
 		uint8 returnCode;
 	};
@@ -79,23 +78,22 @@ public:
 		Entity entity;
 	};
 
-	// Get Available Smart Contract
-	struct GetAvailableSC_input
+	// Get Allowed Smart Contract
+	struct GetAllowedSC_input
 	{
 	};
 
-	struct GetAvailableSC_output
+	struct GetAllowedSC_output
 	{
-		Array<id, QRP_AVAILABLE_SC_NUM> availableSCs;
+		Array<id, QRP_ALLOWED_SC_NUM> allowedSC;
 	};
 
-	struct GetAvailableSC_locals
+	struct GetAllowedSC_locals
 	{
 		sint64 nextIndex;
 		uint64 arrayIndex;
 	};
 
-public:
 	INITIALIZE()
 	{
 		// Set team/developer address (owner and team are the same for now)
@@ -103,24 +101,26 @@ public:
 		                       _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
 		state.ownerAddress = state.teamAddress;
 
-		// Adds QTF to the list of available smart contracts.
-		state.availableSmartContracts.add(id(QRP_QTF_INDEX, 0, 0, 0));
+		// Adds QTF to the list of allowed smart contracts.
+		state.allowedSmartContracts.add(id(QRP_QTF_INDEX, 0, 0, 0));
 	}
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		// Procedures
-		REGISTER_USER_PROCEDURE(GetReserve, 1);
-		REGISTER_USER_PROCEDURE(AddAvailableSC, 2);
-		REGISTER_USER_PROCEDURE(RemoveAvailableSC, 3);
+		REGISTER_USER_PROCEDURE(WithdrawReserve, 1);
+		REGISTER_USER_PROCEDURE(AddAllowedSC, 2);
+		REGISTER_USER_PROCEDURE(RemoveAllowedSC, 3);
 		// Functions
 		REGISTER_USER_FUNCTION(GetAvailableReserve, 1);
-		REGISTER_USER_FUNCTION(GetAvailableSC, 2);
+		REGISTER_USER_FUNCTION(GetAllowedSC, 2);
 	}
 
-	PUBLIC_PROCEDURE_WITH_LOCALS(GetReserve)
+	END_EPOCH() { state.allowedSmartContracts.cleanup(); }
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(WithdrawReserve)
 	{
-		if (!state.availableSmartContracts.contains(qpi.invocator()))
+		if (!state.allowedSmartContracts.contains(qpi.invocator()))
 		{
 			output.allocatedRevenue = 0;
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
@@ -142,7 +142,7 @@ public:
 		qpi.transfer(qpi.invocator(), output.allocatedRevenue);
 	}
 
-	PUBLIC_PROCEDURE(AddAvailableSC)
+	PUBLIC_PROCEDURE(AddAllowedSC)
 	{
 		if (qpi.invocator() != state.ownerAddress)
 		{
@@ -150,11 +150,11 @@ public:
 			return;
 		}
 
-		state.availableSmartContracts.add(id(input.scIndex, 0, 0, 0));
+		state.allowedSmartContracts.add(id(input.scIndex, 0, 0, 0));
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	PUBLIC_PROCEDURE(RemoveAvailableSC)
+	PUBLIC_PROCEDURE(RemoveAllowedSC)
 	{
 		if (qpi.invocator() != state.ownerAddress)
 		{
@@ -162,8 +162,10 @@ public:
 			return;
 		}
 
-		state.availableSmartContracts.remove(id(input.scIndex, 0, 0, 0));
+		state.allowedSmartContracts.remove(id(input.scIndex, 0, 0, 0));
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+
+		state.allowedSmartContracts.cleanupIfNeeded(QRP_REMOVAL_THRESHOLD_PERCENT);
 	}
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAvailableReserve)
@@ -172,16 +174,16 @@ public:
 		output.availableReserve = RL::max(locals.entity.incomingAmount - locals.entity.outgoingAmount, 0i64);
 	}
 
-	PUBLIC_FUNCTION_WITH_LOCALS(GetAvailableSC)
+	PUBLIC_FUNCTION_WITH_LOCALS(GetAllowedSC)
 	{
 		locals.arrayIndex = 0;
 		locals.nextIndex = -1;
 
-		locals.nextIndex = state.availableSmartContracts.nextElementIndex(locals.nextIndex);
+		locals.nextIndex = state.allowedSmartContracts.nextElementIndex(locals.nextIndex);
 		while (locals.nextIndex != NULL_INDEX)
 		{
-			output.availableSCs.set(locals.arrayIndex++, state.availableSmartContracts.key(locals.nextIndex));
-			locals.nextIndex = state.availableSmartContracts.nextElementIndex(locals.nextIndex);
+			output.allowedSC.set(locals.arrayIndex++, state.allowedSmartContracts.key(locals.nextIndex));
+			locals.nextIndex = state.allowedSmartContracts.nextElementIndex(locals.nextIndex);
 		}
 	}
 
@@ -198,5 +200,5 @@ protected:
 	 */
 	id ownerAddress;
 
-	HashSet<id, QRP_AVAILABLE_SC_NUM> availableSmartContracts;
+	HashSet<id, QRP_ALLOWED_SC_NUM> allowedSmartContracts;
 };
