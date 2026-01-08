@@ -71,9 +71,8 @@ struct QTF2
 {
 };
 
-struct QTF : public ContractBase
+struct QTF : ContractBase
 {
-public:
 	enum class EReturnCode : uint8
 	{
 		SUCCESS,
@@ -111,7 +110,6 @@ public:
 
 	struct NextEpochData
 	{
-	public:
 		void clear()
 		{
 			newTicketPrice = 0;
@@ -140,7 +138,6 @@ public:
 			}
 		}
 
-	public:
 		uint64 newTicketPrice;
 		uint64 newTargetJackpot;
 		uint8 newSchedule;
@@ -402,8 +399,8 @@ public:
 		uint64 qrpRequested;
 		CalcReserveTopUp_input calcTopUpInput;
 		CalcReserveTopUp_output calcTopUpOutput;
-		QRP::GetReserve_input qrpGetReserveInput;
-		QRP::GetReserve_output qrpGetReserveOutput;
+		QRP::WithdrawReserve_input qrpGetReserveInput;
+		QRP::WithdrawReserve_output qrpGetReserveOutput;
 	};
 
 	// Ticket Price
@@ -654,8 +651,8 @@ public:
 		ProcessTierPayout_input tierPayoutInput;
 		ProcessTierPayout_output tierPayoutOutput;
 		// CALL_OTHER_CONTRACT parameters for QRP (external reserve pool)
-		QRP::GetReserve_input qrpGetReserveInput;
-		QRP::GetReserve_output qrpGetReserveOutput;
+		QRP::WithdrawReserve_input qrpGetReserveInput;
+		QRP::WithdrawReserve_output qrpGetReserveOutput;
 		QRP::GetAvailableReserve_input qrpGetAvailableInput;
 		QRP::GetAvailableReserve_output qrpGetAvailableOutput;
 		uint64 qrpRequested;    // Amount requested from QRP
@@ -691,7 +688,6 @@ public:
 		bit isScheduledToday;
 	};
 
-public:
 	// Contract lifecycle methods
 	INITIALIZE()
 	{
@@ -1156,7 +1152,6 @@ protected:
 		state.lastWinnerData.epoch = epoch;
 	}
 
-protected:
 	WinnerData lastWinnerData; // last winners snapshot
 
 	NextEpochData nextEpochData; // queued config (ticket price)
@@ -1468,7 +1463,7 @@ private:
 			if (locals.qrpRequested > 0)
 			{
 				locals.qrpGetReserveInput.revenue = locals.qrpRequested;
-				INVOKE_OTHER_CONTRACT_PROCEDURE(QRP, GetReserve, locals.qrpGetReserveInput, locals.qrpGetReserveOutput, 0ll);
+				INVOKE_OTHER_CONTRACT_PROCEDURE(QRP, WithdrawReserve, locals.qrpGetReserveInput, locals.qrpGetReserveOutput, 0ll);
 
 				if (locals.qrpGetReserveOutput.returnCode == QRP::toReturnCode(QRP::EReturnCode::SUCCESS))
 				{
@@ -1865,7 +1860,7 @@ private:
 			if (locals.qrpRequested > 0)
 			{
 				locals.qrpGetReserveInput.revenue = locals.qrpRequested;
-				INVOKE_OTHER_CONTRACT_PROCEDURE(QRP, GetReserve, locals.qrpGetReserveInput, locals.qrpGetReserveOutput, 0ll);
+				INVOKE_OTHER_CONTRACT_PROCEDURE(QRP, WithdrawReserve, locals.qrpGetReserveInput, locals.qrpGetReserveOutput, 0ll);
 
 				if (locals.qrpGetReserveOutput.returnCode == QRP::toReturnCode(QRP::EReturnCode::SUCCESS))
 				{

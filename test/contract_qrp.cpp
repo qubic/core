@@ -4,11 +4,11 @@
 
 // Procedure/function indices (must match REGISTER_USER_FUNCTIONS_AND_PROCEDURES in `src/contracts/QReservePool.h`).
 constexpr uint16 QRP_PROC_GET_RESERVE = 1;
-constexpr uint16 QRP_PROC_ADD_AVAILABLE_SC = 2;
-constexpr uint16 QRP_PROC_REMOVE_AVAILABLE_SC = 3;
+constexpr uint16 QRP_PROC_ADD_ALLOWED_SC = 2;
+constexpr uint16 QRP_PROC_REMOVE_ALLOWED_SC = 3;
 
 constexpr uint16 QRP_FUNC_GET_AVAILABLE_RESERVE = 1;
-constexpr uint16 QRP_FUNC_GET_AVAILABLE_SCS = 2;
+constexpr uint16 QRP_FUNC_GET_ALLOWED_SC = 2;
 
 static const id QRP_CONTRACT_ID(QRP_CONTRACT_INDEX, 0, 0, 0);
 static const id QRP_DEFAULT_SC_ID(QRP_QTF_INDEX, 0, 0, 0);
@@ -21,8 +21,8 @@ class QRPChecker : public QRP
 public:
 	const id& team() const { return teamAddress; }
 	const id& owner() const { return ownerAddress; }
-	bool hasAvailableSC(const id& sc) const { return availableSmartContracts.contains(sc); }
-	uint64 availableCount() const { return availableSmartContracts.population(); }
+	bool hasAllowedSC(const id& sc) const { return allowedSmartContracts.contains(sc); }
+	uint64 allowedCount() const { return allowedSmartContracts.population(); }
 };
 
 class ContractTestingQRP : protected ContractTesting
@@ -43,27 +43,27 @@ public:
 	void fund(const id& account, uint64 amount) { increaseEnergy(account, amount); }
 	void fundQrp(uint64 amount) { fund(QRP_CONTRACT_ID, amount); }
 
-	QRP::GetReserve_output getReserve(const id& invocator, uint64 revenue, sint64 attachedAmount = 0)
+	QRP::WithdrawReserve_output withdrawReserveReserve(const id& invocator, uint64 revenue, sint64 attachedAmount = 0)
 	{
-		QRP::GetReserve_input input{revenue};
-		QRP::GetReserve_output output{};
+		QRP::WithdrawReserve_input input{revenue};
+		QRP::WithdrawReserve_output output{};
 		invokeUserProcedure(QRP_CONTRACT_INDEX, QRP_PROC_GET_RESERVE, input, output, invocator, attachedAmount);
 		return output;
 	}
 
-	QRP::AddAvailableSC_output addAvailableSC(const id& invocator, uint64 scIndex)
+	QRP::AddAllowedSC_output addAllowedSC(const id& invocator, uint64 scIndex)
 	{
-		QRP::AddAvailableSC_input input{scIndex};
-		QRP::AddAvailableSC_output output{};
-		invokeUserProcedure(QRP_CONTRACT_INDEX, QRP_PROC_ADD_AVAILABLE_SC, input, output, invocator, 0);
+		QRP::AddAllowedSC_input input{scIndex};
+		QRP::AddAllowedSC_output output{};
+		invokeUserProcedure(QRP_CONTRACT_INDEX, QRP_PROC_ADD_ALLOWED_SC, input, output, invocator, 0);
 		return output;
 	}
 
-	QRP::RemoveAvailableSC_output removeAvailableSC(const id& invocator, uint64 scIndex)
+	QRP::RemoveAllowedSC_output removeAllowedSC(const id& invocator, uint64 scIndex)
 	{
-		QRP::RemoveAvailableSC_input input{scIndex};
-		QRP::RemoveAvailableSC_output output{};
-		invokeUserProcedure(QRP_CONTRACT_INDEX, QRP_PROC_REMOVE_AVAILABLE_SC, input, output, invocator, 0);
+		QRP::RemoveAllowedSC_input input{scIndex};
+		QRP::RemoveAllowedSC_output output{};
+		invokeUserProcedure(QRP_CONTRACT_INDEX, QRP_PROC_REMOVE_ALLOWED_SC, input, output, invocator, 0);
 		return output;
 	}
 
@@ -75,20 +75,20 @@ public:
 		return output;
 	}
 
-	QRP::GetAvailableSC_output getAvailableSCs() const
+	QRP::GetAllowedSC_output getAllowedSC() const
 	{
-		QRP::GetAvailableSC_input input{};
-		QRP::GetAvailableSC_output output{};
-		callFunction(QRP_CONTRACT_INDEX, QRP_FUNC_GET_AVAILABLE_SCS, input, output);
+		QRP::GetAllowedSC_input input{};
+		QRP::GetAllowedSC_output output{};
+		callFunction(QRP_CONTRACT_INDEX, QRP_FUNC_GET_ALLOWED_SC, input, output);
 		return output;
 	}
 };
 
-static bool containsAvailableSC(const QRP::GetAvailableSC_output& available, const id& sc)
+static bool containsAllowedSC(const QRP::GetAllowedSC_output& allowed, const id& sc)
 {
-	for (uint64 i = 0; i < QRP_AVAILABLE_SC_NUM; ++i)
+	for (uint64 i = 0; i < QRP_ALLOWED_SC_NUM; ++i)
 	{
-		if (available.availableSCs.get(i) == sc)
+		if (allowed.allowedSC.get(i) == sc)
 		{
 			return true;
 		}
@@ -96,34 +96,34 @@ static bool containsAvailableSC(const QRP::GetAvailableSC_output& available, con
 	return false;
 }
 
-TEST(ContractQReservePool, GetReserveEnforcesAuthorizationAndBalance)
+TEST(ContractQReservePool, WithdrawReserveEnforcesAuthorizationAndBalance)
 {
 	ContractTestingQRP qrp;
 	const id unauthorized = id::randomValue();
 	qrp.fund(unauthorized, 0);
 	qrp.fund(QRP_DEFAULT_SC_ID, 0);
 
-	QRP::GetReserve_output denied = qrp.getReserve(unauthorized, 100);
+	QRP::WithdrawReserve_output denied = qrp.withdrawReserveReserve(unauthorized, 100);
 	EXPECT_EQ(denied.returnCode, QRP::toReturnCode(QRP::EReturnCode::ACCESS_DENIED));
 	EXPECT_EQ(denied.allocatedRevenue, 0ull);
 
 	qrp.fundQrp(1000);
 	EXPECT_EQ(qrp.balanceQrp(), 1000);
 
-	QRP::GetReserve_output granted = qrp.getReserve(QRP_DEFAULT_SC_ID, 600);
+	QRP::WithdrawReserve_output granted = qrp.withdrawReserveReserve(QRP_DEFAULT_SC_ID, 600);
 	EXPECT_EQ(granted.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
 	EXPECT_EQ(granted.allocatedRevenue, 600ull);
 	EXPECT_EQ(qrp.balanceQrp(), 400);
 	EXPECT_EQ(qrp.balanceOf(QRP_DEFAULT_SC_ID), 600);
 
-	QRP::GetReserve_output insufficient = qrp.getReserve(QRP_DEFAULT_SC_ID, 500);
+	QRP::WithdrawReserve_output insufficient = qrp.withdrawReserveReserve(QRP_DEFAULT_SC_ID, 500);
 	EXPECT_EQ(insufficient.returnCode, QRP::toReturnCode(QRP::EReturnCode::INSUFFICIENT_RESERVE));
 	EXPECT_EQ(insufficient.allocatedRevenue, 0ull);
 	EXPECT_EQ(qrp.balanceQrp(), 400);
 	EXPECT_EQ(qrp.balanceOf(QRP_DEFAULT_SC_ID), 600);
 }
 
-TEST(ContractQReservePool, GetReserve_ZeroAndExactRemaining)
+TEST(ContractQReservePool, WithdrawReserve_ZeroAndExactRemaining)
 {
 	ContractTestingQRP qrp;
 	qrp.fund(QRP_DEFAULT_SC_ID, 0);
@@ -132,13 +132,13 @@ TEST(ContractQReservePool, GetReserve_ZeroAndExactRemaining)
 	EXPECT_EQ(qrp.balanceQrp(), 1000);
 
 	// Zero request should not move funds.
-	const QRP::GetReserve_output zero = qrp.getReserve(QRP_DEFAULT_SC_ID, 0);
+	const QRP::WithdrawReserve_output zero = qrp.withdrawReserveReserve(QRP_DEFAULT_SC_ID, 0);
 	EXPECT_EQ(zero.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
 	EXPECT_EQ(zero.allocatedRevenue, 0ull);
 	EXPECT_EQ(qrp.balanceQrp(), 1000);
 
 	// Exact remaining should succeed and drain the reserve.
-	const QRP::GetReserve_output exact = qrp.getReserve(QRP_DEFAULT_SC_ID, 1000);
+	const QRP::WithdrawReserve_output exact = qrp.withdrawReserveReserve(QRP_DEFAULT_SC_ID, 1000);
 	EXPECT_EQ(exact.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
 	EXPECT_EQ(exact.allocatedRevenue, 1000ull);
 	EXPECT_EQ(qrp.balanceQrp(), 0);
@@ -156,24 +156,24 @@ TEST(ContractQReservePool, OwnerAddsAndRemovesSmartContracts)
 	qrp.fund(outsider, 0);
 	qrp.fund(state->owner(), 0);
 
-	QRP::AddAvailableSC_output deniedAdd = qrp.addAvailableSC(outsider, newScIndex);
+	QRP::AddAllowedSC_output deniedAdd = qrp.addAllowedSC(outsider, newScIndex);
 	EXPECT_EQ(deniedAdd.returnCode, QRP::toReturnCode(QRP::EReturnCode::ACCESS_DENIED));
-	EXPECT_FALSE(state->hasAvailableSC(newScId));
+	EXPECT_FALSE(state->hasAllowedSC(newScId));
 
-	QRP::AddAvailableSC_output approvedAdd = qrp.addAvailableSC(state->owner(), newScIndex);
+	QRP::AddAllowedSC_output approvedAdd = qrp.addAllowedSC(state->owner(), newScIndex);
 	EXPECT_EQ(approvedAdd.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
-	EXPECT_TRUE(state->hasAvailableSC(newScId));
+	EXPECT_TRUE(state->hasAllowedSC(newScId));
 
-	QRP::GetAvailableSC_output available = qrp.getAvailableSCs();
-	EXPECT_TRUE(containsAvailableSC(available, newScId));
+	QRP::GetAllowedSC_output allowed = qrp.getAllowedSC();
+	EXPECT_TRUE(containsAllowedSC(allowed, newScId));
 
-	QRP::RemoveAvailableSC_output deniedRemove = qrp.removeAvailableSC(outsider, newScIndex);
+	QRP::RemoveAllowedSC_output deniedRemove = qrp.removeAllowedSC(outsider, newScIndex);
 	EXPECT_EQ(deniedRemove.returnCode, QRP::toReturnCode(QRP::EReturnCode::ACCESS_DENIED));
-	EXPECT_TRUE(state->hasAvailableSC(newScId));
+	EXPECT_TRUE(state->hasAllowedSC(newScId));
 
-	QRP::RemoveAvailableSC_output approvedRemove = qrp.removeAvailableSC(state->owner(), newScIndex);
+	QRP::RemoveAllowedSC_output approvedRemove = qrp.removeAllowedSC(state->owner(), newScIndex);
 	EXPECT_EQ(approvedRemove.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
-	EXPECT_FALSE(state->hasAvailableSC(newScId));
+	EXPECT_FALSE(state->hasAllowedSC(newScId));
 }
 
 TEST(ContractQReservePool, OwnerAddRemove_IdempotencyAndBounds)
@@ -186,22 +186,22 @@ TEST(ContractQReservePool, OwnerAddRemove_IdempotencyAndBounds)
 	const id newScId(newScIndex, 0, 0, 0);
 	qrp.fund(newScId, 0);
 
-	EXPECT_FALSE(state->hasAvailableSC(newScId));
+	EXPECT_FALSE(state->hasAllowedSC(newScId));
 
 	// This test focuses on idempotency (repeat add/remove) while keeping authorization valid.
 	// Add twice: first should succeed, second should not change membership (return code may be SUCCESS or specific).
-	const auto add1 = qrp.addAvailableSC(state->owner(), newScIndex);
+	const auto add1 = qrp.addAllowedSC(state->owner(), newScIndex);
 	EXPECT_EQ(add1.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
-	EXPECT_TRUE(state->hasAvailableSC(newScId));
+	EXPECT_TRUE(state->hasAllowedSC(newScId));
 
-	const auto add2 = qrp.addAvailableSC(state->owner(), newScIndex);
-	EXPECT_TRUE(state->hasAvailableSC(newScId));
+	const auto add2 = qrp.addAllowedSC(state->owner(), newScIndex);
+	EXPECT_TRUE(state->hasAllowedSC(newScId));
 
 	// Remove twice: first should succeed, second should keep it removed (return code may be SUCCESS or specific).
-	const auto rem1 = qrp.removeAvailableSC(state->owner(), newScIndex);
+	const auto rem1 = qrp.removeAllowedSC(state->owner(), newScIndex);
 	EXPECT_EQ(rem1.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
-	EXPECT_FALSE(state->hasAvailableSC(newScId));
+	EXPECT_FALSE(state->hasAllowedSC(newScId));
 
-	const auto rem2 = qrp.removeAvailableSC(state->owner(), newScIndex);
-	EXPECT_FALSE(state->hasAvailableSC(newScId));
+	const auto rem2 = qrp.removeAllowedSC(state->owner(), newScIndex);
+	EXPECT_FALSE(state->hasAllowedSC(newScId));
 }
