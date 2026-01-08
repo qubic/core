@@ -9,6 +9,7 @@ constexpr uint8 QDUEL_PERCENT_SCALE = 1000;
 constexpr uint8 QDUEL_TTL_HOURS = 3;
 constexpr uint8 QDUEL_TICK_UPDATE_PERIOD = 100;           // Process TICK logic once per this many ticks
 constexpr uint64 QDUEL_RANDOM_LOTTERY_ASSET_NAME = 19538; // RL
+constexpr uint64 QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT = 75;
 
 struct QDUEL2
 {
@@ -426,6 +427,12 @@ public:
 	{
 		state.firstTick = true;
 		state.currentState = EState::LOCKED;
+	}
+
+	END_EPOCH()
+	{
+		state.rooms.cleanup();
+		state.users.cleanup();
 	}
 
 	END_TICK_WITH_LOCALS()
@@ -989,6 +996,9 @@ private:
 		state.users.set(locals.userData.userId, locals.userData);
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+
+		state.rooms.cleanupIfNeeded(QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT);
+		state.users.cleanupIfNeeded(QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT);
 	}
 
 private:
