@@ -60,6 +60,7 @@ public:
         RELEASE(lock);
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
+        /*
         CHAR16 dbgMsgBuf[128];
         setText(dbgMsgBuf, L"Execution time added for contract ");
         appendNumber(dbgMsgBuf, contractIndex, FALSE);
@@ -67,6 +68,7 @@ public:
         appendNumber(dbgMsgBuf, timeMicroSeconds, FALSE);
         appendText(dbgMsgBuf, L" microseconds");
         addDebugMessage(dbgMsgBuf);
+        */
 #endif
     }
 
