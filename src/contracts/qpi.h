@@ -2472,7 +2472,9 @@ namespace QPI
 	{
 		sint64 queryId;			///< ID of the oracle query that led to this notification.
 		uint32 subscriptionId;	///< ID of the oracle subscription or 0 in case of a pure oracle query.
-		uint32 status;			///< Oracle query status as defined in `network_messages/common_def.h`
+		uint8 status;			///< Oracle query status as defined in `network_messages/common_def.h`
+		uint8 __reserved0;
+		uint16 __reserved1;
 		typename OracleInterface::OracleReply reply;	///< Oracle reply if status == ORACLE_QUERY_STATUS_SUCCESS
 	};
 
