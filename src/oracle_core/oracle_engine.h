@@ -465,6 +465,21 @@ public:
         oracleStats[queryMetadata.interfaceIndex].queryCount++;
 #endif
 
+#if !defined(NDEBUG)
+        CHAR16 dbgMsg[200];
+        setText(dbgMsg, L"oracleEngine.startContractQuery(), tick ");
+        appendNumber(dbgMsg, system.tick, FALSE);
+        appendText(dbgMsg, ", queryId ");
+        appendNumber(dbgMsg, queryId, FALSE);
+        appendText(dbgMsg, ", interfaceIndex ");
+        appendNumber(dbgMsg, interfaceIndex, FALSE);
+        appendText(dbgMsg, ", timeout ");
+        appendDateAndTime(dbgMsg, timeout);
+        appendText(dbgMsg, ", now ");
+        appendDateAndTime(dbgMsg, QPI::DateAndTime::now());
+        addDebugMessage(dbgMsg);
+#endif
+
         return queryId;
     }
 
@@ -595,6 +610,16 @@ public:
         }
 #endif
 
+#if !defined(NDEBUG)
+        CHAR16 dbgMsg[200];
+        setText(dbgMsg, L"oracleEngine.processOracleMachineReply(), tick ");
+        appendNumber(dbgMsg, system.tick, FALSE);
+        appendText(dbgMsg, ", queryId ");
+        appendNumber(dbgMsg, oqm.queryId, FALSE);
+        appendText(dbgMsg, ", interfaceIndex ");
+        appendNumber(dbgMsg, oqm.interfaceIndex, FALSE);
+        addDebugMessage(dbgMsg);
+#endif
     }
 
     /**
@@ -1158,6 +1183,10 @@ public:
                 appendNumber(dbgMsg, system.tick, FALSE);
                 appendText(dbgMsg, ", queryId ");
                 appendNumber(dbgMsg, oqm.queryId, FALSE);
+                appendText(dbgMsg, ", timeout ");
+                appendDateAndTime(dbgMsg, oqm.timeout);
+                appendText(dbgMsg, ", now ");
+                appendDateAndTime(dbgMsg, now);
                 addDebugMessage(dbgMsg);
 #endif
             }
