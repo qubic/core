@@ -369,6 +369,10 @@ static void pushToFullNodes(RequestResponseHeader* requestResponseHeader, int nu
 
 static void pushToOracleMachineNodes(RequestResponseHeader* requestResponseHeader)
 {
+#if !defined(NDEBUG)
+    // TODO: cleanup this debug code when OM connection is fully stable
+    setText(::message, L"pushToOracleMachineNodes(): ");
+#endif
     if (NUMBER_OF_OM_NODE_CONNECTIONS > 0)
     {
         unsigned short numberOfSuitablePeers = 0;
@@ -379,11 +383,17 @@ static void pushToOracleMachineNodes(RequestResponseHeader* requestResponseHeade
                 && peers[i].isConnectedAccepted
                 && !peers[i].isClosing)
             {
+#if !defined(NDEBUG)
+                appendIPv4Address(::message, peers[i].address);
+#endif
                 push(&peers[i], requestResponseHeader);
                 numberOfSuitablePeers++;
             }
         }
     }
+#if !defined(NDEBUG)
+    addDebugMessage(::message);
+#endif
 }
 
 // Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.

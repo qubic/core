@@ -903,6 +903,25 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                     enqueueResponse(NULL, header);
                 }
 
+#if !defined(NDEBUG) && 1
+                unsigned int txCount = 0;
+                for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
+                {
+                    if (!isZero(request->tickData.transactionDigests[transactionIndex]))
+                    {
+                        txCount++;
+                    }
+                }
+                CHAR16 dbgMsg1[200];
+                setText(dbgMsg1, L"processBroadcastFutureTickData(), current tick ");
+                appendNumber(dbgMsg1, system.tick, FALSE);
+                appendText(dbgMsg1, ", tickData.tick ");
+                appendNumber(dbgMsg1, request->tickData.tick, FALSE);
+                appendText(dbgMsg1, ", tx count ");
+                appendNumber(dbgMsg1, txCount, FALSE);
+                addDebugMessage(dbgMsg1);
+#endif
+
                 ts.tickData.acquireLock();
                 TickData& td = ts.tickData.getByTickInCurrentEpoch(request->tickData.tick);
                 if (td.epoch != INVALIDATED_TICK_DATA)
@@ -959,12 +978,26 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
 {
     Transaction* request = header->getPayload<Transaction>();
     const unsigned int transactionSize = request->totalSize();
+
+#if !defined(NDEBUG) && 1
+    // TODO: remove this debug code when the OM pipeline is fully stable
+    CHAR16 dbgMsg[200];
+    setText(dbgMsg, L"processBroadcastTransaction(), tick ");
+    appendNumber(dbgMsg, system.tick, FALSE);
+#endif
+
     if (request->checkValidity() && transactionSize == header->size() - sizeof(RequestResponseHeader))
     {
+#if !defined(NDEBUG) && 1
+        appendText(dbgMsg, L" valid");
+#endif
         unsigned char digest[32];
         KangarooTwelve(request, transactionSize - SIGNATURE_SIZE, digest, sizeof(digest));
         if (verify(request->sourcePublicKey.m256i_u8, digest, request->signaturePtr()))
         {
+#if !defined(NDEBUG) && 1
+            appendText(dbgMsg, L" verified");
+#endif
             if (header->isDejavuZero())
             {
                 enqueueResponse(NULL, header);
@@ -1005,10 +1038,26 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
             // after one has been seen)
             if (isZero(request->destinationPublicKey) && request->inputType == OracleReplyRevealTransactionPrefix::transactionType())
             {
+#if !defined(NDEBUG) && 1
+                appendText(dbgMsg, L" reveal");
+                addDebugMessage(dbgMsg);
+#endif
                 oracleEngine.announceExpectedRevealTransaction((OracleReplyRevealTransactionPrefix*)request);
+            }
+
+            if (isZero(request->destinationPublicKey) && request->inputType == OracleReplyCommitTransactionPrefix::transactionType())
+            {
+#if !defined(NDEBUG) && 0
+                appendText(dbgMsg, L" commit");
+                addDebugMessage(dbgMsg);
+#endif
             }
         }
     }
+
+#if !defined(NDEBUG) && 0
+    addDebugMessage(dbgMsg);
+#endif
 }
 
 static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
@@ -2791,6 +2840,27 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
     ts.transactionsDigestAccess.insertTransaction(transactionDigest, transaction);
     ts.transactionsDigestAccess.releaseLock();
 
+#if !defined(NDEBUG)
+    if (isZero(transaction->destinationPublicKey))
+    {
+        CHAR16 dbgMsg[200];
+        /*
+        if (transaction->inputType == OracleReplyCommitTransactionPrefix::transactionType())
+        {
+            setText(dbgMsg, L"OracleReplyCommitTransaction found in processTickTransaction(), tick ");
+            appendNumber(dbgMsg, system.tick, FALSE);
+            addDebugMessage(dbgMsg);
+        }
+        */
+        if (transaction->inputType == OracleReplyRevealTransactionPrefix::transactionType())
+        {
+            setText(dbgMsg, L"OracleReplyRevealTransaction found in processTickTransaction(), tick ");
+            appendNumber(dbgMsg, system.tick, FALSE);
+            addDebugMessage(dbgMsg);
+        }
+    }
+#endif
+
     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
     if (spectrumIndex >= 0)
     {
@@ -3342,6 +3412,21 @@ static void processTick(unsigned long long processorNumber)
     getUniverseDigest(etalonTick.saltedUniverseDigest);
     getComputerDigest(etalonTick.saltedComputerDigest);
 
+#if !defined(NDEBUG) && 1
+    {
+        CHAR16 dbgMsg[500];
+        setText(dbgMsg, L"pending tx: tick/count");
+        for (unsigned int i = system.tick; i < system.tick + 10; ++i)
+        {
+            appendText(dbgMsg, " ");
+            appendNumber(dbgMsg, i, FALSE);
+            appendText(dbgMsg, "/");
+            appendNumber(dbgMsg, pendingTxsPool.getNumberOfPendingTickTxs(i), FALSE);
+        }
+        addDebugMessage(dbgMsg);
+    }
+#endif
+
     // prepare custom mining shares packet ONCE
     if (isMainMode())
     {
@@ -3512,6 +3597,7 @@ static void processTick(unsigned long long processorNumber)
             PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reply transactions");
             const auto txTick = system.tick + ORACLE_REPLY_COMMIT_PUBLICATION_OFFSET;
             auto* tx = (OracleReplyCommitTransactionPrefix*)reorgBuffer;
+            unsigned int txCount = 0;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
                 const auto ownCompIdx = ownComputorIndicesMapping[i];
@@ -3531,9 +3617,39 @@ static void processTick(unsigned long long processorNumber)
                     KangarooTwelve(tx, sizeof(Transaction) + tx->inputSize, digest, sizeof(digest));
                     sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest, tx->signaturePtr());
                     enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                    ++txCount;
                 }
                 while (retCode != UINT32_MAX);
             }
+
+#if !defined(NDEBUG)
+            if (txCount)
+            {
+                CHAR16 dbgMsg[300];
+                setText(dbgMsg, L"oracleEngine.getReplyCommitTransaction(), tick ");
+                appendNumber(dbgMsg, system.tick, FALSE);
+                appendText(dbgMsg, ", txScheduleTick ");
+                appendNumber(dbgMsg, txTick, FALSE);
+                for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+                {
+                    if (txTick % NUMBER_OF_COMPUTORS == ownComputorIndices[i])
+                    {
+                        appendText(dbgMsg, " (I am tick leader)");
+                    }
+                }
+                appendText(dbgMsg, ", total number of tx ");
+                appendNumber(dbgMsg, txCount, FALSE);
+                appendText(dbgMsg, ", last tx queryId");
+                unsigned short commitCount = tx->inputSize / sizeof(OracleReplyCommitTransactionItem);
+                auto* commits = reinterpret_cast<OracleReplyCommitTransactionItem*>(tx->inputPtr());
+                for (unsigned short i = 0; i < commitCount; ++i)
+                {
+                    appendText(dbgMsg, " ");
+                    appendNumber(dbgMsg, commits[i].queryId, FALSE);
+                }
+                addDebugMessage(dbgMsg);
+            }
+#endif
         }
 
         {

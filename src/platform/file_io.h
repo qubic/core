@@ -34,7 +34,9 @@ static EFI_FILE_PROTOCOL* root = NULL;
 class AsyncFileIO;
 static AsyncFileIO* gAsyncFileIO = NULL;
 
+#ifndef NDEBUG
 static void addDebugMessage(const CHAR16* msg);
+#endif
 
 static long long getFileSize(CHAR16* fileName, CHAR16* directory = NULL)
 {
