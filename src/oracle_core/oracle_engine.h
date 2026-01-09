@@ -715,7 +715,7 @@ public:
         appendNumber(dbgMsg, computorIdx, FALSE);
         appendText(dbgMsg, ", commitsCount ");
         appendNumber(dbgMsg, commitsCount, FALSE);
-        appendText(dbgMsg, ", queryId ");
+        appendText(dbgMsg, ", queryId");
         for (int i = 0; i < commitsCount; ++i)
         {
             appendText(dbgMsg, " ");
