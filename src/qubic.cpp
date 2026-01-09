@@ -957,12 +957,25 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
 {
     Transaction* request = header->getPayload<Transaction>();
     const unsigned int transactionSize = request->totalSize();
+
+#if !defined(NDEBUG)
+    CHAR16 dbgMsg[200];
+    setText(dbgMsg, L"processBroadcastTransaction(), tick ");
+    appendNumber(dbgMsg, system.tick, FALSE);
+#endif
+
     if (request->checkValidity() && transactionSize == header->size() - sizeof(RequestResponseHeader))
     {
+#if !defined(NDEBUG)
+        appendText(dbgMsg, L" valid");
+#endif
         unsigned char digest[32];
         KangarooTwelve(request, transactionSize - SIGNATURE_SIZE, digest, sizeof(digest));
         if (verify(request->sourcePublicKey.m256i_u8, digest, request->signaturePtr()))
         {
+#if !defined(NDEBUG)
+            appendText(dbgMsg, L" verified");
+#endif
             if (header->isDejavuZero())
             {
                 enqueueResponse(NULL, header);
@@ -1004,9 +1017,23 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
             if (isZero(request->destinationPublicKey) && request->inputType == OracleReplyRevealTransactionPrefix::transactionType())
             {
                 oracleEngine.announceExpectedRevealTransaction((OracleReplyRevealTransactionPrefix*)request);
+#if !defined(NDEBUG)
+                appendText(dbgMsg, L" reveal");
+#endif
+            }
+
+            if (isZero(request->destinationPublicKey) && request->inputType == OracleReplyCommitTransactionPrefix::transactionType())
+            {
+#if !defined(NDEBUG)
+                appendText(dbgMsg, L" commit");
+#endif
             }
         }
     }
+
+#if !defined(NDEBUG)
+    addDebugMessage(dbgMsg);
+#endif
 }
 
 static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
@@ -2789,6 +2816,16 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
     ts.transactionsDigestAccess.insertTransaction(transactionDigest, transaction);
     ts.transactionsDigestAccess.releaseLock();
 
+#if !defined(NDEBUG)
+    if (isZero(transaction->destinationPublicKey) && transaction->inputType == OracleReplyCommitTransactionPrefix::transactionType())
+    {
+        CHAR16 dbgMsg[200];
+        setText(dbgMsg, L"OracleReplyCommitTransaction found in processTickTransaction(), tick ");
+        appendNumber(dbgMsg, system.tick, FALSE);
+        addDebugMessage(dbgMsg);
+    }
+#endif
+
     const int spectrumIndex = ::spectrumIndex(transaction->sourcePublicKey);
     if (spectrumIndex >= 0)
     {
@@ -3437,6 +3474,15 @@ static void processTick(unsigned long long processorNumber)
                         const Transaction* pendingTransaction = pendingTxsPool.getTx(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, tx);
                         if (pendingTransaction)
                         {
+#if !defined(NDEBUG)
+                            if (isZero(pendingTransaction->destinationPublicKey) && pendingTransaction->inputType == OracleReplyCommitTransactionPrefix::transactionType())
+                            {
+                                CHAR16 dbgMsg[200];
+                                setText(dbgMsg, L"OracleReplyCommitTransaction added to futureTickData, tick ");
+                                appendNumber(dbgMsg, system.tick, FALSE);
+                                addDebugMessage(dbgMsg);
+                            }
+#endif
                             ASSERT(pendingTransaction->checkValidity());
                             const unsigned int transactionSize = pendingTransaction->totalSize();
                             ts.tickTransactions.acquireLock();
