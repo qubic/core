@@ -194,6 +194,17 @@ public:
 	//---------------------------------------------------------------
 	// ORACLE TESTING
 
+	struct NotificationLog
+	{
+		uint32 contractIndex;
+		uint8 interface;
+		uint8 status;
+		uint16 dataCheck;
+		sint64 data;
+		sint64 queryId;
+		sint8 _terminator; // Only data before "_terminator" are logged
+	};
+
 	// optional: additional of contract data associated with oracle query
 	HashMap<uint64, uint32, 64> oracleQueryExtraData;
 
@@ -247,10 +258,14 @@ public:
 	{
 		OI::Price::OracleQuery query;
 		uint32 queryExtraData;
+		NotificationLog notificationLog;
 	};
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(NotifyPriceOracleReply)
 	{
+		locals.notificationLog = NotificationLog{CONTRACT_INDEX, OI::Price::oracleInterfaceIndex, input.status, OI::Price::replyIsValid(input.reply), input.reply.numerator, input.queryId };
+		LOG_INFO(locals.notificationLog);
+
 		if (input.status == ORACLE_QUERY_STATUS_SUCCESS)
 		{
 			// get and use query info if needed
@@ -278,26 +293,27 @@ public:
 	{
 		OI::Mock::OracleQuery query;
 		uint32 queryExtraData;
+		NotificationLog notificationLog;
 	};
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(NotifyMockOracleReply)
 	{
+		locals.notificationLog = NotificationLog{ CONTRACT_INDEX, OI::Mock::oracleInterfaceIndex, input.status, 0, (sint64)input.reply.echoedValue, input.queryId };
+
 		if (input.status == ORACLE_QUERY_STATUS_SUCCESS)
 		{
-			// get and use query info
-			if (!qpi.getOracleQuery<OI::Mock>(input.queryId, locals.query))
+			// success
+			if (qpi.getOracleQuery<OI::Mock>(input.queryId, locals.query))
 			{
-				return;
-			}
-			if (!OI::Mock::replyIsValid(locals.query, input.reply))
-			{
-				return;
+				locals.notificationLog.dataCheck = OI::Mock::replyIsValid(locals.query, input.reply);
 			}
 		}
 		else
 		{
 			// handle failure ...
 		}
+
+		LOG_INFO(locals.notificationLog);
 	}
 
 	struct END_TICK_locals
