@@ -8,6 +8,7 @@
 #include "common_buffers.h"
 #include "spectrum/special_entities.h"
 #include "ticking/tick_storage.h"
+#include "logging/logging.h"
 
 #include "oracle_transactions.h"
 #include "core_om_network_messages.h"
@@ -455,7 +456,9 @@ public:
         // enqueue query message to oracle machine node
         enqueueOracleQuery(queryId, interfaceIndex, timeoutMillisec, queryData, querySize);
 
-        // TODO: send log event ORACLE_QUERY with queryId, query starter, interface, type, status
+        // log status change
+        OracleQueryStatusChange logEvent{ m256i(contractIndex, 0, 0, 0), queryId, interfaceIndex, queryMetadata.type, queryMetadata.status };
+        logger.logOracleQueryStatusChange(logEvent);
 
         // Debug logging
 #if ENABLE_ORACLE_STATS_RECORD
@@ -478,6 +481,19 @@ protected:
 
         // Enqueue for sending to all oracle machine peers (peer pointer address 0x1 is reserved for that)
         enqueueResponse((Peer*)0x1, sizeof(*omq) + querySize, OracleMachineQuery::type(), 0, omq);
+    }
+
+    void logQueryStatusChange(const OracleQueryMetadata& oqm) const
+    {
+        m256i queryingEntitiy = m256i::zero();
+        if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_QUERY)
+            queryingEntitiy.u64._0 = oqm.typeVar.contract.queryingContract;
+        else if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_SUBSCRIPTION)
+            queryingEntitiy.u64._0 = oqm.typeVar.subscription.subscriptionId;
+        else if (oqm.type == ORACLE_QUERY_TYPE_USER_QUERY)
+            queryingEntitiy = oqm.typeVar.user.queryingEntity;
+        OracleQueryStatusChange logEvent{ queryingEntitiy, oqm.queryId, oqm.interfaceIndex, oqm.type, oqm.status };
+        logger.logOracleQueryStatusChange(logEvent);
     }
 
 public:
@@ -761,13 +777,15 @@ public:
             if (mostCommitsCount >= QUORUM)
             {
                 // enough commits for the reply reveal transaction
-                // -> switch to status COMMITTED
                 if (oqm.status != ORACLE_QUERY_STATUS_COMMITTED)
                 {
+                    // -> switch to status COMMITTED
                     oqm.status = ORACLE_QUERY_STATUS_COMMITTED;
                     pendingCommitReplyStateIndices.removeByValue(replyStateIdx);
                     pendingRevealReplyStateIndices.add(replyStateIdx);
-                    // TODO: send log event ORACLE_QUERY with queryId, query starter, interface, type, status
+
+                    // log status change
+                    logQueryStatusChange(oqm);
                 }
             }
             else if (replyState.totalCommits - mostCommitsCount > NUMBER_OF_COMPUTORS - QUORUM)
@@ -789,7 +807,8 @@ public:
                 if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
                     notificationQueryIndicies.add(queryIndex);
 
-                // TODO: send log event ORACLE_QUERY with queryId, query starter, interface, type, status
+                // log status change
+                logQueryStatusChange(oqm);
             }
 
             // go to next commit in tx
@@ -1000,6 +1019,9 @@ public:
         if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
             notificationQueryIndicies.add(queryIndex);
 
+        // log status change
+        logQueryStatusChange(oqm);
+
         return true;
     }
 
@@ -1049,7 +1071,8 @@ public:
                 if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
                     notificationQueryIndicies.add(queryIndex);
 
-                // TODO: send log event ORACLE_QUERY with queryId, query starter, interface, type, status
+                // log status change
+                logQueryStatusChange(oqm);
             }
         }
     }
