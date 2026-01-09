@@ -18,7 +18,7 @@ struct Peer;
 
 #define LOG_CONTRACTS (LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES)
 
-#if LOG_SPECTRUM | LOG_UNIVERSE | LOG_CONTRACTS | LOG_CUSTOM_MESSAGES
+#if LOG_SPECTRUM | LOG_UNIVERSE | LOG_CONTRACTS | LOG_CUSTOM_MESSAGES | LOG_ORACLES
 #define ENABLED_LOGGING 1
 #else
 #define ENABLED_LOGGING 0
@@ -57,6 +57,7 @@ struct Peer;
 #define ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE 11
 #define ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE 12
 #define CONTRACT_RESERVE_DEDUCTION 13
+#define ORACLE_QUERY_STATUS_CHANGE 14
 #define CUSTOM_MESSAGE 255
 
 #define CUSTOM_MESSAGE_OP_START_DISTRIBUTE_DIVIDENDS 6217575821008262227ULL // STA_DDIV
@@ -239,6 +240,16 @@ struct ContractReserveDeduction
     unsigned int contractIndex;
 };
 
+struct OracleQueryStatusChange
+{
+    m256i queryingEntity;
+    long long queryId;
+    unsigned int interfaceIndex;
+    unsigned char type;
+    unsigned char status;
+
+    char _terminator; // Only data before "_terminator" are logged
+};
 
 /*
  * LOGGING IMPLEMENTATION
@@ -860,6 +871,13 @@ public:
     {
 #if LOG_SPECTRUM
         logMessage(sizeof(ContractReserveDeduction), CONTRACT_RESERVE_DEDUCTION, &message);
+#endif
+    }
+
+    void logOracleQueryStatusChange(const OracleQueryStatusChange& message)
+    {
+#if LOG_ORACLES
+        logMessage(offsetof(OracleQueryStatusChange, _terminator), ORACLE_QUERY_STATUS_CHANGE, &message);
 #endif
     }
 
