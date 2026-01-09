@@ -146,7 +146,7 @@ public:
             {
                 // TODO: enable subtraction after mainnet testing phase
                 // subtractFromContractFeeReserve(contractIndex, quorumValue);
-                ContractReserveDeduction message = { quorumValue, getContractFeeReserve(contractIndex), contractIndex };
+                ContractReserveDeduction message = { quorumValue, getContractFeeReserve(contractIndex), contractIndex, 0 };
                 logger.logContractReserveDeduction(message);
             }
         }

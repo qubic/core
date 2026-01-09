@@ -231,6 +231,7 @@ struct SpectrumStats
     unsigned long long dustThresholdBurnHalf;
     unsigned int numberOfEntities;
     unsigned int entityCategoryPopulations[48];
+    unsigned int _padding;
 };
 
 struct ContractReserveDeduction
@@ -238,6 +239,7 @@ struct ContractReserveDeduction
     unsigned long long deductedAmount;
     long long remainingAmount;
     unsigned int contractIndex;
+    unsigned int _padding;
 };
 
 struct OracleQueryStatusChange
