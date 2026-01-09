@@ -371,6 +371,7 @@ static void logToConsole(const CHAR16* message)
 #endif
 }
 
+
 static inline bool isMainMode()
 {
     return (mainAuxStatus & 1) == 1;
@@ -1734,6 +1735,7 @@ static void processOracleMachineReply(Peer* peer, RequestResponseHeader* header)
     if (header->size() >= sizeof(RequestResponseHeader) + sizeof(OracleMachineReply))
     {
         oracleEngine.processOracleMachineReply(msg, header->getPayloadSize());
+        peer->lastOMActivityTime = __rdtsc();
     }
 }
 
@@ -7188,6 +7190,42 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     // reconnect if this peer slot has no active connection
                     peerReconnectIfInactive(i, PORT);
+
+                    if (peers[i].isOracleMachineNode())
+                    {
+                        if (ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS > 0
+                            && peers[i].connectionStartTime > 0
+                            && peers[i].isConnectingAccepting 
+                            && ((__rdtsc() - peers[i].connectionStartTime) / frequency > ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS))
+                        {
+#if !defined(NDEBUG)
+                            addDebugMessageOM(L"Connection from Accepting State to Accepted State took too long.");
+                            peerOMLogStatus(i);
+#endif
+                            closePeer(&peers[i], ORACLE_MACHINE_GRACEFULL_CLOSE_RETIRES);
+                        }
+
+                        constexpr unsigned long long OM_INACTIVITY_TIMEOUT_SECS = 300;  // 1.5 minutes // 5 minutes
+                        if (peers[i].isConnectedAccepted &&
+                            !peers[i].isClosing &&
+                            peers[i].lastOMActivityTime > 0 &&
+                            ((__rdtsc() - peers[i].lastOMActivityTime) / frequency > OM_INACTIVITY_TIMEOUT_SECS))
+                        {
+#if !defined(NDEBUG)
+                            addDebugMessageOM(L"Connection inactive for some minutes, forcing reconnect.");
+
+                            CHAR16 omDbgMsg[128];
+                            setText(omDbgMsg, L"Closing stale connection, lastActivity=");
+                            appendNumber(omDbgMsg, (unsigned int)((__rdtsc() - peers[i].lastOMActivityTime) / frequency), FALSE);
+                            appendText(omDbgMsg, L" secs ago");
+                            addDebugMessage(omDbgMsg);
+
+                            peerOMLogStatus(i);
+#endif
+                            closePeer(&peers[i], ORACLE_MACHINE_GRACEFULL_CLOSE_RETIRES);
+                        }
+                    }
+
                 }
 
 #if !TICK_STORAGE_AUTOSAVE_MODE
@@ -7371,7 +7409,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     forceRefreshPeerList = false;
                     for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
                     {
-                        closePeer(&peers[i]);
+                        if (!peers[i].isOracleMachineNode())
+                        {
+                            closePeer(&peers[i]);
+                        }
                     }
                 }
 

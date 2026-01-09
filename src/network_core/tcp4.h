@@ -60,6 +60,7 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
             option.SendBufferSize = BUFFER_SIZE;
             option.KeepAliveProbes = 1;
             option.EnableWindowScaling = TRUE;
+
             configData.ControlOption = &option;
 
             if ((status = (*tcp4Protocol)->Configure(*tcp4Protocol, &configData))
