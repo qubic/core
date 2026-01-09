@@ -24,7 +24,7 @@ static void printDebugMessages()
 // static void addDebugMessage(const CHAR16* msg){} // empty impl
 #else
 
-static CHAR16 debugMessage[128][16384];
+static CHAR16 debugMessage[1024][16384];
 static int debugMessageCount = 0;
 static char volatile debugLogLock = 0;
 static bool volatile debugLogOnlyMainProcessorRunning = true;
@@ -125,7 +125,7 @@ static void printDebugMessages()
 static void addDebugMessage(const CHAR16* msg)
 {
     ACQUIRE_WITHOUT_DEBUG_LOGGING(debugLogLock);
-    if (debugMessageCount < 128)
+    if (debugMessageCount < 1024)
     {
         setText(debugMessage[debugMessageCount], msg);
         ++debugMessageCount;
@@ -143,7 +143,7 @@ static void addDebugMessage(const CHAR16* msg)
 static void addDebugMessageAssert(const char* message, const char* file, const unsigned int lineNumber)
 {
     ACQUIRE_WITHOUT_DEBUG_LOGGING(debugLogLock);
-    if (debugMessageCount < 128)
+    if (debugMessageCount < 1024)
     {
         setText(debugMessage[debugMessageCount], L"Assertion failed: ");
         appendText(debugMessage[debugMessageCount], message);
