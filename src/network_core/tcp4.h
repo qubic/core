@@ -20,7 +20,7 @@ static EFI_HANDLE peerChildHandle = NULL;
 static EFI_IPv4_ADDRESS nodeAddress;
 
 
-static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsigned short port, EFI_TCP4_PROTOCOL** tcp4Protocol)
+static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsigned short port, EFI_TCP4_PROTOCOL** tcp4Protocol, unsigned int connectionTimeout = 0)
 {
     EFI_STATUS status;
     EFI_HANDLE childHandle = NULL;
@@ -60,6 +60,10 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
             option.SendBufferSize = BUFFER_SIZE;
             option.KeepAliveProbes = 1;
             option.EnableWindowScaling = TRUE;
+            if (connectionTimeout > 0)
+            {
+                option.ConnectionTimeout = connectionTimeout;
+            }
             configData.ControlOption = &option;
 
             if ((status = (*tcp4Protocol)->Configure(*tcp4Protocol, &configData))

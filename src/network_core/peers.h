@@ -962,6 +962,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
         // peer slot without active connection
         if (i < NUMBER_OF_OUTGOING_CONNECTIONS)
         {
+            unsigned int connectionTimeout = 0;
             // outgoing connection:
             peers[i].isIncommingConnection = FALSE;
             // Check if this slot is for OM node
@@ -969,6 +970,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
             {
                 peers[i].isOMNode = TRUE;
                 peers[i].address = omIPv4Address[i - NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS];
+                connectionTimeout = 5;
             }
             else
             {
@@ -990,7 +992,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                 }
                 if (j == NUMBER_OF_OUTGOING_CONNECTIONS)
                 {
-                    if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address.u8, port, &peers[i].tcp4Protocol))
+                    if (peers[i].connectAcceptToken.NewChildHandle = getTcp4Protocol(peers[i].address.u8, port, &peers[i].tcp4Protocol, connectionTimeout))
                     {
                         peers[i].receiveData.FragmentTable[0].FragmentBuffer = peers[i].receiveBuffer;
 
