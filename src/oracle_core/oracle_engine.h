@@ -680,6 +680,25 @@ public:
         tx->inputType = OracleReplyCommitTransactionPrefix::transactionType();
         tx->inputSize = commitsCount * sizeof(OracleReplyCommitTransactionItem);
 
+#if !defined(NDEBUG)
+        CHAR16 dbgMsg[200];
+        setText(dbgMsg, L"oracleEngine.getReplyCommitTransaction(), tick ");
+        appendNumber(dbgMsg, system.tick, FALSE);
+        appendText(dbgMsg, ", txScheduleTick ");
+        appendNumber(dbgMsg, txScheduleTick, FALSE);
+        appendText(dbgMsg, ", computorIdx ");
+        appendNumber(dbgMsg, computorIdx, FALSE);
+        appendText(dbgMsg, ", commitsCount ");
+        appendNumber(dbgMsg, commitsCount, FALSE);
+        appendText(dbgMsg, ", queryId ");
+        for (int i = 0; i < commitsCount; ++i)
+        {
+            appendText(dbgMsg, " ");
+            appendNumber(dbgMsg, commits[i].queryId, FALSE);
+        }
+        addDebugMessage(dbgMsg);
+#endif
+
         // if we had to break from the loop early, return and signal to call this again for creating another
         // tx with the start index we return here
         if (idx < replyIdxCount)
@@ -706,6 +725,15 @@ public:
         const int compIdx = computorIndex(transaction->sourcePublicKey);
         if (compIdx < 0)
             return false;
+
+#if !defined(NDEBUG)
+        CHAR16 dbgMsg[800];
+        setText(dbgMsg, L"oracleEngine.processOracleReplyCommitTransaction(), tick ");
+        appendNumber(dbgMsg, system.tick, FALSE);
+        appendText(dbgMsg, ", computorIdx ");
+        appendNumber(dbgMsg, compIdx, FALSE);
+        appendText(dbgMsg, ", queryId ");
+#endif
 
         // lock for accessing engine data
         LockGuard lockGuard(lock);
@@ -811,10 +839,23 @@ public:
                 logQueryStatusChange(oqm);
             }
 
+#if !defined(NDEBUG)
+            appendNumber(dbgMsg, item->queryId, FALSE);
+            appendText(dbgMsg, " (");
+            appendNumber(dbgMsg, mostCommitsCount, FALSE);
+            appendText(dbgMsg, ":");
+            appendNumber(dbgMsg, replyState.totalCommits - mostCommitsCount, FALSE);
+            appendText(dbgMsg, ")");
+#endif
+
             // go to next commit in tx
             size += sizeof(OracleReplyCommitTransactionItem);
             ++item;
         }
+
+#if !defined(NDEBUG)
+        addDebugMessage(dbgMsg);
+#endif
 
         return true;
     }
@@ -884,6 +925,19 @@ public:
 
             // remember that we have scheduled reveal of this reply
             replyState.expectedRevealTxTick = txScheduleTick;
+
+#if !defined(NDEBUG)
+            CHAR16 dbgMsg[200];
+            setText(dbgMsg, L"oracleEngine.getReplyRevealTransaction(), tick ");
+            appendNumber(dbgMsg, system.tick, FALSE);
+            appendText(dbgMsg, ", txScheduleTick ");
+            appendNumber(dbgMsg, txScheduleTick, FALSE);
+            appendText(dbgMsg, ", queryId ");
+            appendNumber(dbgMsg, replyState.queryId, FALSE);
+            appendText(dbgMsg, ", computorIdx ");
+            appendNumber(dbgMsg, computorIndex(tx->sourcePublicKey), FALSE);
+            addDebugMessage(dbgMsg);
+#endif
 
             // return non-zero in order instruct caller to call this function again with the returned startIdx
             return idx + 1;
@@ -983,6 +1037,19 @@ public:
         // update tick when reveal is expected
         if (!replyState->expectedRevealTxTick || replyState->expectedRevealTxTick > transaction->tick)
             replyState->expectedRevealTxTick = transaction->tick;
+
+#if !defined(NDEBUG)
+        CHAR16 dbgMsg[200];
+        setText(dbgMsg, L"oracleEngine.announceExpectedRevealTransaction(), tick ");
+        appendNumber(dbgMsg, system.tick, FALSE);
+        appendText(dbgMsg, ", queryId ");
+        appendNumber(dbgMsg, replyState->queryId, FALSE);
+        appendText(dbgMsg, ", computorIdx ");
+        appendNumber(dbgMsg, computorIndex(transaction->sourcePublicKey), FALSE);
+        appendText(dbgMsg, ", expectedRevealTxTick ");
+        appendNumber(dbgMsg, replyState->expectedRevealTxTick, FALSE);
+        addDebugMessage(dbgMsg);
+#endif
     }
 
     // Called from tick processor.
@@ -1021,6 +1088,17 @@ public:
 
         // log status change
         logQueryStatusChange(oqm);
+
+#if !defined(NDEBUG)
+        CHAR16 dbgMsg[200];
+        setText(dbgMsg, L"oracleEngine.processOracleReplyRevealTransaction(), tick ");
+        appendNumber(dbgMsg, system.tick, FALSE);
+        appendText(dbgMsg, ", queryId ");
+        appendNumber(dbgMsg, replyState->queryId, FALSE);
+        appendText(dbgMsg, ", computorIdx ");
+        appendNumber(dbgMsg, computorIndex(transaction->sourcePublicKey), FALSE);
+        addDebugMessage(dbgMsg);
+#endif
 
         return true;
     }
@@ -1073,6 +1151,15 @@ public:
 
                 // log status change
                 logQueryStatusChange(oqm);
+
+#if !defined(NDEBUG)
+                CHAR16 dbgMsg[200];
+                setText(dbgMsg, L"oracleEngine.processTimeouts(), tick ");
+                appendNumber(dbgMsg, system.tick, FALSE);
+                appendText(dbgMsg, ", queryId ");
+                appendNumber(dbgMsg, oqm.queryId, FALSE);
+                addDebugMessage(dbgMsg);
+#endif
             }
         }
     }
