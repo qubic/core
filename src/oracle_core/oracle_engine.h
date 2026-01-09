@@ -1112,7 +1112,7 @@ public:
             setMem(notificationOutputBuffer.inputBuffer, notificationOutputBuffer.inputSize, 0);
             *(int64_t*)(notificationOutputBuffer.inputBuffer + 0) = oqm.queryId;
             *(uint32_t*)(notificationOutputBuffer.inputBuffer + 8) = 0;
-            *(uint32_t*)(notificationOutputBuffer.inputBuffer + 12) = oqm.status;
+            *(uint8_t*)(notificationOutputBuffer.inputBuffer + 12) = oqm.status;
             if (oqm.status == ORACLE_QUERY_STATUS_SUCCESS)
             {
                 const void* replySrcPtr = getReplyDataFromTickTransactionStorage(oqm);
