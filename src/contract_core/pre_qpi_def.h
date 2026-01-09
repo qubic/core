@@ -27,6 +27,9 @@ constexpr unsigned short MAX_NESTED_CONTRACT_CALLS = 10;
 // Size of the contract action tracker, limits the number of transfers that one contract call can execute.
 constexpr unsigned long long CONTRACT_ACTION_TRACKER_SIZE = 16 * 1024 * 1024;
 
+// Maximum number of contract procedures that may be registered, e.g. for user procedure notifications
+constexpr unsigned int MAX_CONTRACT_PROCEDURES_REGISTERED = 16 * 1024;
+
 
 static void __beginFunctionOrProcedure(const unsigned int); // TODO: more human-readable form of function ID?
 static void __endFunctionOrProcedure(const unsigned int);

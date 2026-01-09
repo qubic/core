@@ -4,6 +4,7 @@
 #include <chrono>
 
 #include "contract_testing.h"
+#include "oracle_testing.h"
 
 static const id TESTEXA_CONTRACT_ID(TESTEXA_CONTRACT_INDEX, 0, 0, 0);
 static const id TESTEXB_CONTRACT_ID(TESTEXB_CONTRACT_INDEX, 0, 0, 0);
@@ -144,7 +145,7 @@ public:
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
 
-        EXPECT_TRUE(oracleEngine.init());
+        EXPECT_TRUE(oracleEngine.init(computorPublicKeys));
 
         checkContractExecCleanup();
 
@@ -2101,48 +2102,6 @@ TEST(ContractTestEx, SystemCallbacksWithNegativeFeeReserve)
     EXPECT_LT(getContractFeeReserve(TESTEXC_CONTRACT_INDEX), 0);
 }
 
-static union
-{
-    RequestResponseHeader header;
-
-    struct
-    {
-        RequestResponseHeader header;
-        OracleMachineQuery queryMetadata;
-        unsigned char queryData[MAX_ORACLE_QUERY_SIZE];
-    } omQuery;
-} enqueuedNetworkMessage;
-
-template <typename OracleInterface>
-void checkNetworkMessageOracleMachineQuery(uint64 expectedOracleQueryId, id expectedOracle, uint32 expectedTimeout)
-{
-    EXPECT_EQ(enqueuedNetworkMessage.header.type(), OracleMachineQuery::type());
-    EXPECT_GT(enqueuedNetworkMessage.header.size(), sizeof(RequestResponseHeader) + sizeof(OracleMachineQuery));
-    uint32 queryDataSize = enqueuedNetworkMessage.header.size() - sizeof(RequestResponseHeader) - sizeof(OracleMachineQuery);
-    EXPECT_LE(queryDataSize, (uint32)MAX_ORACLE_QUERY_SIZE);
-    EXPECT_EQ(queryDataSize, sizeof(typename OracleInterface::OracleQuery));
-    EXPECT_EQ(enqueuedNetworkMessage.omQuery.queryMetadata.oracleInterfaceIndex, OracleInterface::oracleInterfaceIndex);
-    EXPECT_EQ(enqueuedNetworkMessage.omQuery.queryMetadata.oracleQueryId, expectedOracleQueryId);
-    EXPECT_EQ(enqueuedNetworkMessage.omQuery.queryMetadata.timeoutInMilliseconds, expectedTimeout);
-    const auto* q = (const OracleInterface::OracleQuery*)enqueuedNetworkMessage.omQuery.queryData;
-    EXPECT_EQ(q->oracle, expectedOracle);
-}
-
-static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data)
-{
-    EXPECT_EQ(peer, (Peer*)0x1);
-    EXPECT_LE(dataSize, sizeof(OracleMachineQuery) + MAX_ORACLE_QUERY_SIZE);
-    EXPECT_TRUE(enqueuedNetworkMessage.header.checkAndSetSize(sizeof(RequestResponseHeader) + dataSize));
-    enqueuedNetworkMessage.header.setType(type);
-    enqueuedNetworkMessage.header.setDejavu(dejavu);
-    copyMem(&enqueuedNetworkMessage.omQuery.queryMetadata, data, dataSize);
-}
-
-uint64 getContractOracleQueryId(uint32 tick, uint16 indexInTick)
-{
-    return ((uint64)tick << 31) | (indexInTick + NUMBER_OF_TRANSACTIONS_PER_TICK);
-}
-
 TEST(ContractTestEx, OracleQuery)
 {
     ContractTestingTestEx test;
@@ -2165,7 +2124,7 @@ TEST(ContractTestEx, OracleQuery)
     expectedOracleQueryId = getContractOracleQueryId(system.tick, 2);
     test.endTick();
     ++system.tick;
-    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, id(0, 0, 0, 0), 20000);
+    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, OI::Price::getMockOracleId(), 20000);
 
     expectedOracleQueryId = getContractOracleQueryId(system.tick, 0);
     EXPECT_EQ(test.queryPriceOracle(USER1, id(2, 3, 4, 5), 13), expectedOracleQueryId);
