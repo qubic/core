@@ -1201,13 +1201,12 @@ struct ScoreHyperIdentity
     // non-zero neurons will be packed in bits until requestedSizeInBytes is hitted or no more output neurons
     int getLastOutput(unsigned char* requestedOutput, int requestedSizeInBytes)
     {
-        return 0;
-        //return getLastOutput(
-        //    bestANN.neurons,
-        //    bestANN.neuronTypes,
-        //    bestANN.population,
-        //    requestedOutput,
-        //    requestedSizeInBytes);
+        return extractLastOutput(
+            (const unsigned char*)bestANN.neurons,
+            bestANN.neuronTypes,
+            bestANN.population,
+            requestedOutput,
+            requestedSizeInBytes);
     }
 
 };

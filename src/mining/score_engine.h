@@ -53,21 +53,15 @@ struct ScoreEngine
     }
 
     // returns last computed output neurons, only returns 256 non-zero neurons, neuron values are compressed to bit
-    //
     m256i getLastOutput()
     {
+        // Only hyperidentity score support
         m256i result;
         result = m256i::zero();
         if ((lastNonceByte0 & 1) == 0)
         {
             _hyperIdentityScore.getLastOutput(result.m256i_u8, 32);
         }
-        else
-        {
-            // TODO: support later
-            // _additionScore.getLastOutput(result.m256i_u8, 32);
-        }
-
         return result;
     }
 

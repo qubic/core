@@ -13,6 +13,10 @@ m256i QPI::QpiContextFunctionCall::computeMiningFunction(const m256i miningSeed,
     {
         score_qpi->initMiningData(miningSeed);
     }
-    (*score_qpi)(0, publicKey, miningSeed, nonce);
+    m256i hyperIdentityNonce = nonce;
+    // Currently, only hyperidentity scoring support the last output
+    hyperIdentityNonce.m256i_u8[0] = (hyperIdentityNonce.m256i_u8[0] & 0xFE);
+    ASSERT((hyperIdentityNonce.m256i_u8[0] & 1) == 0);
+    (*score_qpi)(0, publicKey, miningSeed, hyperIdentityNonce);
     return score_qpi->getLastOutput(0);
 }

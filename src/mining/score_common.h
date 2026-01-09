@@ -434,7 +434,7 @@ static void toTenaryBits(long long A, char* bits)
     }
 }
 
-static int getLastOutput(
+static int extractLastOutput(
     const unsigned char* data,
     const unsigned char* dataType,
     const unsigned long long dataSize,
