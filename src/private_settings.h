@@ -31,7 +31,7 @@ static const unsigned char oracleMachineIPs[][4] = {
      {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
 };
 
-#define ENABLE_QUBIC_LOGGING_EVENT 0 // turn on logging events
+#define ENABLE_QUBIC_LOGGING_EVENT 1 // turn on logging events
 
 // Virtual memory settings for logging
 #define LOG_BUFFER_PAGE_SIZE 300000000ULL
