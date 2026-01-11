@@ -688,7 +688,6 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                         if (k == system.numberOfSolutions)
                                         {
                                             unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
-                                            // TODO[score]: verified this, support set threshold from cli
                                             score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(solution_nonce.m256i_u8);
                                             const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? 
                                                 solutionThreshold[system.epoch][selectedAlgo] 
@@ -1327,7 +1326,6 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.numberOfTransactions = numberOfTransactions;
 
     respondedSystemInfo.randomMiningSeed = score->currentRandomSeed;
-    // TODO[score]: sopport array of solution threshold
     respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch][score_engine::AlgoType::HyperIdentity] : HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;
     respondedSystemInfo.solutionAdditionalThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch][score_engine::AlgoType::Addition] : ADDITION_SOLUTION_THRESHOLD_DEFAULT;
 
@@ -1554,7 +1552,6 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 // can only set future epoch
                 if (_request->epoch > system.epoch && _request->epoch < MAX_NUMBER_EPOCH)
                 {
-                    //TODO[score] Fix this
                     if (_request->algoType == score_engine::AlgoType::HyperIdentity)
                     {
                         solutionThreshold[_request->epoch][score_engine::AlgoType::HyperIdentity] = _request->threshold;
@@ -1572,8 +1569,6 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 response.everIncreasingNonceAndCommandType = _request->everIncreasingNonceAndCommandType;
                 response.epoch = _request->epoch;
                 response.algoType = _request->algoType;
-                // TODO[score]: support setting both threshold from cli
-                //response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch] : SOLUTION_THRESHOLD_DEFAULT;
                 if (_request->algoType == score_engine::AlgoType::HyperIdentity)
                 {
                     response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch][score_engine::AlgoType::HyperIdentity] : HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;
@@ -2586,7 +2581,6 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
         {
             resourceTestingDigest ^= solutionScore;
             KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
-            // TODO[score]: support threshold from cli
             const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ?
                 solutionThreshold[system.epoch][selectedAlgo]
                 : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
@@ -3688,11 +3682,6 @@ static void beginEpoch()
     minimumComputorScore = 0;
     minimumCandidateScore = 0;
 
-    // TODO[score]: support 2 array of solution threshold
-    //if (system.epoch < MAX_NUMBER_EPOCH && (solutionThreshold[system.epoch] <= 0 || solutionThreshold[system.epoch] > NUMBER_OF_OUTPUT_NEURONS)) { // invalid threshold
-    //    solutionThreshold[system.epoch] = SOLUTION_THRESHOLD_DEFAULT;
-    //}
-    // invalid threshold
     if (system.epoch < MAX_NUMBER_EPOCH && !score_engine::checkAlgoThreshold(solutionThreshold[system.epoch][score_engine::AlgoType::HyperIdentity], score_engine::AlgoType::HyperIdentity))
     { 
         solutionThreshold[system.epoch][score_engine::AlgoType::HyperIdentity] = HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;

@@ -131,8 +131,6 @@ struct ScoreFunction
 
     bool isValidScore(unsigned int solutionScore, score_engine::AlgoType selectedAlgo)
     {
-        // TODO: need to change this
-        //return (solutionScore >= 0 && solutionScore <= numberOfOutputNeurons);
         if (selectedAlgo == score_engine::AlgoType::HyperIdentity)
         {
             return (solutionScore >= 0) 
@@ -149,8 +147,6 @@ struct ScoreFunction
     }
     bool isGoodScore(unsigned int solutionScore, int threshold, score_engine::AlgoType selectedAlgo)
     {
-        // TODO: need to change this
-        //return (threshold <= numberOfOutputNeurons) && (solutionScore >= (unsigned int)threshold);
         return checkAlgoThreshold(threshold, selectedAlgo) && (solutionScore >= (unsigned int)threshold);
     }
 
@@ -175,8 +171,6 @@ struct ScoreFunction
 
         if (isZero(miningSeed) || miningSeed != currentRandomSeed)
         {
-            // TODO: need to change this
-            // return numberOfOutputNeurons + 1; // return invalid score
             return score_engine::INVALID_SCORE_VALUE;
         }
 
