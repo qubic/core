@@ -94,14 +94,16 @@ constexpr unsigned long long STATE_SIZE = 200;
 #define popcnt32(x)  static_cast<int>(__popcnt(static_cast<unsigned int>(x)))
 #define popcnt64(x)  static_cast<int>(__popcnt64(static_cast<unsigned long long>(x)))
 
-static inline unsigned long long countTrailingZeros64(unsigned long long x)
+// Does not handle the x = 0. Expect check zeros before usage
+static inline unsigned long long countTrailingZerosAssumeNonZero64(unsigned long long x)
 {
     unsigned long index;
     _BitScanForward64(&index, x);
     return index;
 }
 
-static inline unsigned int countTrailingZeros32(unsigned int x)
+// Does not handle the x = 0. Expect check zeros before usage
+static inline unsigned int countTrailingZerosAssumeNonZero32(unsigned int x)
 {
     unsigned long index;
     _BitScanForward(&index, x);
@@ -113,12 +115,14 @@ static inline unsigned int countTrailingZeros32(unsigned int x)
 #define popcnt32(x)  __builtin_popcount  (static_cast<unsigned int>(x))
 #define popcnt64(x)  __builtin_popcountll(static_cast<unsigned long long>(x))
 
-static inline unsigned long long countTrailingZeros64(unsigned long long x)
+// Does not handle the x = 0. Expect check zeros before usage
+static inline unsigned long long countTrailingZerosAssumeNonZero64(unsigned long long x)
 {
     return __builtin_ctzll(x);
 }
 
-static inline unsigned int countTrailingZero32(unsigned int x)
+// Does not handle the x = 0. Expect check zeros before usage
+static inline unsigned int countTrailingZerosAssumeNonZero32(unsigned int x)
 {
     return __builtin_ctz(x);
 }

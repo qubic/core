@@ -863,7 +863,7 @@ struct ScoreAddition
                     unsigned long long tempExitMask = exitMask;
                     while (tempExitMask != 0)
                     {
-                        unsigned long long bitPos = countTrailingZeros64(tempExitMask);
+                        unsigned long long bitPos = countTrailingZerosAssumeNonZero64(tempExitMask);
                         unsigned int origSample = sampleMapping[s + bitPos];
                         char actualVal = neuronValues[n * PADDED_SAMPLES + s + bitPos];
                         char expectedVal = trainingOutputs[i * PADDED_SAMPLES + origSample];
@@ -884,12 +884,27 @@ struct ScoreAddition
                 // Positions are adjusted
                 if (writePos != s)
                 {
-                    copyMem(&sampleMapping[writePos], &sampleMapping[s], 64 * sizeof(unsigned int));
-                    unsigned long long baseIdx = 0;
-                    for (unsigned long long n = 0; n < population; n++, baseIdx += PADDED_SAMPLES)
+                    // Each copy 16 samples, need 4 times to copy full 64 samples
+                    static_assert(BATCH_SIZE / 16 == 4, "Compress loop assumes BATCH_SIZE / 16 == 4");
+                    __m512i map0 = _mm512_loadu_si512((__m512i*)&sampleMapping[s + 0]);
+                    __m512i map1 = _mm512_loadu_si512((__m512i*)&sampleMapping[s + 16]);
+                    __m512i map2 = _mm512_loadu_si512((__m512i*)&sampleMapping[s + 32]);
+                    __m512i map3 = _mm512_loadu_si512((__m512i*)&sampleMapping[s + 48]);
+                    _mm512_storeu_si512((__m512i*)&sampleMapping[writePos + 0], map0);
+                    _mm512_storeu_si512((__m512i*)&sampleMapping[writePos + 16], map1);
+                    _mm512_storeu_si512((__m512i*)&sampleMapping[writePos + 32], map2);
+                    _mm512_storeu_si512((__m512i*)&sampleMapping[writePos + 48], map3);
+
+                    // Neuron is char, 1 copy is enough
+                    for (unsigned long long n = 0; n < population; n++)
                     {
-                        copyMem(&neuronValues[baseIdx + writePos], &neuronValues[baseIdx + s], BATCH_SIZE);
-                        copyMem(&prevNeuronValues[baseIdx + writePos], &prevNeuronValues[baseIdx + s], BATCH_SIZE);
+                        unsigned long long baseIdx = n * PADDED_SAMPLES;
+
+                        __m512i curr = _mm512_loadu_si512((__m512i*)&neuronValues[baseIdx + s]);
+                        __m512i prev = _mm512_loadu_si512((__m512i*)&prevNeuronValues[baseIdx + s]);
+
+                        _mm512_storeu_si512((__m512i*)&neuronValues[baseIdx + writePos], curr);
+                        _mm512_storeu_si512((__m512i*)&prevNeuronValues[baseIdx + writePos], prev);
                     }
                 }
                 writePos += BATCH_SIZE;
@@ -973,7 +988,7 @@ struct ScoreAddition
                     unsigned int tempExitMask = exitMask;
                     while (tempExitMask != 0)
                     {
-                        unsigned int bitPos = countTrailingZeros32(tempExitMask);
+                        unsigned int bitPos = countTrailingZerosAssumeNonZero32(tempExitMask);
                         unsigned int origSample = sampleMapping[s + bitPos];
                         char actualVal = neuronValues[n * PADDED_SAMPLES + s + bitPos];
                         char expectedVal = trainingOutputs[i * PADDED_SAMPLES + origSample];
@@ -994,13 +1009,29 @@ struct ScoreAddition
                 // Positions are adjusted
                 if (writePos != s)
                 {
-                    copyMem(&sampleMapping[writePos], &sampleMapping[s], BATCH_SIZE * sizeof(unsigned int));
-                    unsigned long long baseIdx = 0;
-                    for (unsigned long long n = 0; n < population; n++, baseIdx += PADDED_SAMPLES)
+                    // Each copy 8 samples, need 4 times to copy full 32 samples
+                    static_assert(BATCH_SIZE / 8 == 4, "Compress loop assumes BATCH_SIZE / 8 == 4");
+                    __m256i map0 = _mm256_loadu_si256((__m256i*) & sampleMapping[s + 0]);
+                    __m256i map1 = _mm256_loadu_si256((__m256i*) & sampleMapping[s + 8]);
+                    __m256i map2 = _mm256_loadu_si256((__m256i*) & sampleMapping[s + 16]);
+                    __m256i map3 = _mm256_loadu_si256((__m256i*) & sampleMapping[s + 24]);
+                    _mm256_storeu_si256((__m256i*)& sampleMapping[writePos + 0], map0);
+                    _mm256_storeu_si256((__m256i*)& sampleMapping[writePos + 8], map1);
+                    _mm256_storeu_si256((__m256i*)& sampleMapping[writePos + 16], map2);
+                    _mm256_storeu_si256((__m256i*)& sampleMapping[writePos + 24], map3);
+
+                    // Neuron is char, 1 copy is enough
+                    for (unsigned long long n = 0; n < population; n++)
                     {
-                        copyMem(&neuronValues[baseIdx + writePos], &neuronValues[baseIdx + s], BATCH_SIZE);
-                        copyMem(&prevNeuronValues[baseIdx + writePos], &prevNeuronValues[baseIdx + s], BATCH_SIZE);
+                        unsigned long long baseIdx = n * PADDED_SAMPLES;
+
+                        __m256i curr = _mm256_loadu_si256((__m256i*) & neuronValues[baseIdx + s]);
+                        __m256i prev = _mm256_loadu_si256((__m256i*) & prevNeuronValues[baseIdx + s]);
+
+                        _mm256_storeu_si256((__m256i*) & neuronValues[baseIdx + writePos], curr);
+                        _mm256_storeu_si256((__m256i*) & prevNeuronValues[baseIdx + writePos], prev);
                     }
+
                 }
                 writePos += BATCH_SIZE;
             }
@@ -1010,7 +1041,7 @@ struct ScoreAddition
                 unsigned int writeOffset = 0;
                 while (mask != 0)
                 {
-                    uint32_t i = countTrailingZeros32(mask);
+                    uint32_t i = countTrailingZerosAssumeNonZero32(mask);
                     sampleMapping[writePos + writeOffset] = sampleMapping[s + i];
                     writeOffset++;
                     mask = _blsr_u32(mask); // clear processed bit
@@ -1024,7 +1055,7 @@ struct ScoreAddition
                     writeOffset = 0;
                     while (mask != 0)
                     {
-                        unsigned int i = countTrailingZeros32(mask);
+                        unsigned int i = countTrailingZerosAssumeNonZero32(mask);
                         neuronValues[baseIdx + writePos + writeOffset] = neuronValues[baseIdx + s + i];
                         prevNeuronValues[baseIdx + writePos + writeOffset] = prevNeuronValues[baseIdx + s + i];
                         writeOffset++;
@@ -1049,14 +1080,14 @@ struct ScoreAddition
     // Tick simulation only runs on one ANN
     void runTickSimulation()
     {
-        PROFILE_NAMED_SCOPE("runTickSimulation");
+        // PROFILE_NAMED_SCOPE("runTickSimulation");
 
         unsigned long long population = currentANN.population;
         //Neuron* neurons = currentANN.neurons;
         unsigned char* neuronTypes = currentANN.neuronTypes;
 
         {
-            PROFILE_NAMED_SCOPE("runTickSimulation:PrepareData");
+            // PROFILE_NAMED_SCOPE("runTickSimulation:PrepareData");
             for (unsigned long long i = 0; i < trainingSetSize; i++)
             {
                 sampleMapping[i] = (unsigned int)i;
@@ -1076,7 +1107,7 @@ struct ScoreAddition
         }
 
         {
-            PROFILE_NAMED_SCOPE("runTickSimulation:Ticking");
+            // PROFILE_NAMED_SCOPE("runTickSimulation:Ticking");
             for (unsigned long long tick = 0; tick < numberOfTicks; ++tick)
             {
                 // No more ANN to infer aka stop condition of all samples are hit
@@ -1088,13 +1119,13 @@ struct ScoreAddition
                 swapCurrentPreviousNeuronPointers();
 
                 {
-                    PROFILE_NAMED_SCOPE("Ticking:processTick");
+                    // PROFILE_NAMED_SCOPE("Ticking:processTick");
                     processTick();
                 }
 
                 // Move samples that not exit to suitable consition
                 {
-                    PROFILE_NAMED_SCOPE("Ticking:compactActiveSamplesWithScoring");
+                    // PROFILE_NAMED_SCOPE("Ticking:compactActiveSamplesWithScoring");
                     if (compactActiveSamplesWithScoringSIMD())
                     {
                         break;
