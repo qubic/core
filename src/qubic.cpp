@@ -3582,14 +3582,17 @@ static void processTick(unsigned long long processorNumber)
             }
 
 #if !defined(NDEBUG)
-            CHAR16 dbgMsg[200];
-            setText(dbgMsg, L"oracleEngine.getReplyCommitTransaction(), tick ");
-            appendNumber(dbgMsg, system.tick, FALSE);
-            appendText(dbgMsg, ", txScheduleTick ");
-            appendNumber(dbgMsg, txTick, FALSE);
-            appendText(dbgMsg, ", total number of tx ");
-            appendNumber(dbgMsg, txCount, FALSE);
-            addDebugMessage(dbgMsg);
+            if (txCount)
+            {
+                CHAR16 dbgMsg[200];
+                setText(dbgMsg, L"oracleEngine.getReplyCommitTransaction(), tick ");
+                appendNumber(dbgMsg, system.tick, FALSE);
+                appendText(dbgMsg, ", txScheduleTick ");
+                appendNumber(dbgMsg, txTick, FALSE);
+                appendText(dbgMsg, ", total number of tx ");
+                appendNumber(dbgMsg, txCount, FALSE);
+                addDebugMessage(dbgMsg);
+            }
 #endif
         }
 
