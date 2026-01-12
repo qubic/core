@@ -252,9 +252,9 @@ public:
     // Check validity of transaction and add to the pool. Return boolean indicating whether transaction was added.
     static bool add(const Transaction* tx)
     {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin pendingTxsPool.add()");
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        addDebugMessage(L"Begin pendingTxsPool.add()");
+//#endif
         bool txAdded = false;
         ACQUIRE(lock);
         if (tx->checkValidity() && tickInStorage(tx->tick))
@@ -351,16 +351,29 @@ public:
             }
 #endif
         }
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        else
+        {
+            CHAR16 dbgMsgBuf[100];
+            setText(dbgMsgBuf, L"tx failed (tx->checkValidity() && tickInStorage(tx->tick)): tick ");
+            appendNumber(dbgMsgBuf, tx->tick, FALSE);
+            appendText(dbgMsgBuf, L", amount ");
+            appendNumber(dbgMsgBuf, tx->amount, FALSE);
+            appendText(dbgMsgBuf, L", inputSize ");
+            appendNumber(dbgMsgBuf, tx->inputSize, FALSE);
+            addDebugMessage(dbgMsgBuf);
+        }
+#endif
 
     end_add_function:
         RELEASE(lock);
 
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        if (txAdded)
-            addDebugMessage(L"End pendingTxsPool.add(), txAdded true");
-        else
-            addDebugMessage(L"End pendingTxsPool.add(), txAdded false");
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        if (txAdded)
+//            addDebugMessage(L"End pendingTxsPool.add(), txAdded true");
+//        else
+//            addDebugMessage(L"End pendingTxsPool.add(), txAdded false");
+//#endif
         return txAdded;
     }
 

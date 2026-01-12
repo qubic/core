@@ -2347,6 +2347,7 @@ static void contractProcessor(void*)
     {
         for (executedContractIndex = 1; executedContractIndex < contractCount; executedContractIndex++)
         {
+            auto t0 = __rdtsc();
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
@@ -2365,6 +2366,19 @@ static void contractProcessor(void*)
 
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, BEGIN_TICK);
                 qpiContext.call();
+            }
+            auto t1 = __rdtsc();
+            auto millisec = (t1 - t0) * 1000 / frequency;
+            if (millisec > 10)
+            {
+                CHAR16 dbgMsg[200];
+                setText(dbgMsg, L"contractProcessor() -> BEGIN_TICK, tick ");
+                appendNumber(dbgMsg, system.tick, FALSE);
+                appendText(dbgMsg, ", contract ");
+                appendNumber(dbgMsg, executedContractIndex, FALSE);
+                appendText(dbgMsg, ", milliseconds ");
+                appendNumber(dbgMsg, millisec, FALSE);
+                addDebugMessage(dbgMsg);
             }
         }
     }
