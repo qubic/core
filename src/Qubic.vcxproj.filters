@@ -312,6 +312,9 @@
     <ClInclude Include="contract_core\execution_time_accumulator.h">
       <Filter>contract_core</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\qRWA.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
