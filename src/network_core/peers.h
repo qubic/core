@@ -634,6 +634,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                 penalizePublicPeerRejectedConnection(peers[i].address);
                 closePeer(&peers[i]);
 
+#if !defined(NDEBUG)
                 if (peers[i].isOracleMachineNode())
                 {
                     CHAR16 omDbgMsg[64];
@@ -641,6 +642,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                     appendNumber(omDbgMsg, peers[i].connectAcceptToken.CompletionToken.Status, false);
                     addDebugMessage(omDbgMsg);
                 }
+#endif
             }
             else
             {
@@ -648,22 +650,26 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                 if (peers[i].isClosing)
                 {
                     closePeer(&peers[i]);
+#if !defined(NDEBUG)
                     if (peers[i].isOracleMachineNode())
                     {
                         CHAR16 omDbgMsg[64];
                         setText(omDbgMsg, L"OM: peerConnectionNewlyEstablished - Closing Peer ");
                         addDebugMessage(omDbgMsg);
                     }
+#endif
                 }
                 else
                 {
                     peers[i].isConnectedAccepted = TRUE;
+#if !defined(NDEBUG)
                     if (peers[i].isOracleMachineNode())
                     {
                         CHAR16 omDbgMsg[64];
                         setText(omDbgMsg, L"OM: peerConnectionNewlyEstablished - ConnectedAccepted ");
                         addDebugMessage(omDbgMsg);
                     }
+#endif
                 }
             }
         }
@@ -995,6 +1001,7 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
 }
 static void peerOMLogStatus(unsigned int i)
 {
+#if !defined(NDEBUG)
     if (peers[i].isOracleMachineNode())
     {
         if (peers[i].tcp4Protocol)
@@ -1020,6 +1027,7 @@ static void peerOMLogStatus(unsigned int i)
             }
         }
     }
+#endif
 }
 
 static void peerReconnectIfInactive(unsigned int i, unsigned short port)
@@ -1097,10 +1105,12 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                     }
                     else
                     {
+#if !defined(NDEBUG)
                         if (peers[i].isOMNode)
                         {
                             addDebugMessage(L"OM: peerReconnectIfInactive - getTcp4Protocol failed");
                         }
+#endif
                         peers[i].tcp4Protocol = NULL;
                     }
                 }

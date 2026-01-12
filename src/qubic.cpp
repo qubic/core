@@ -7193,8 +7193,11 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         peers[i].isConnectingAccepting &&
                         ((__rdtsc() - peers[i].connectionStartTime) / frequency > 5))
                     {
+#if !defined(NDEBUG)
                         addDebugMessage(L"***OM: Connection from Accepting State took too long.");
                         peerOMLogStatus(i);
+#endif
+                        logToConsole(L"***OM: Connection from Accepting State took too long.");
                     }
                 }
 
