@@ -958,7 +958,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
     Transaction* request = header->getPayload<Transaction>();
     const unsigned int transactionSize = request->totalSize();
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && 0
     CHAR16 dbgMsg[200];
     setText(dbgMsg, L"processBroadcastTransaction(), tick ");
     appendNumber(dbgMsg, system.tick, FALSE);
@@ -966,14 +966,14 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
 
     if (request->checkValidity() && transactionSize == header->size() - sizeof(RequestResponseHeader))
     {
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && 0
         appendText(dbgMsg, L" valid");
 #endif
         unsigned char digest[32];
         KangarooTwelve(request, transactionSize - SIGNATURE_SIZE, digest, sizeof(digest));
         if (verify(request->sourcePublicKey.m256i_u8, digest, request->signaturePtr()))
         {
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && 0
             appendText(dbgMsg, L" verified");
 #endif
             if (header->isDejavuZero())
@@ -1017,21 +1017,21 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
             if (isZero(request->destinationPublicKey) && request->inputType == OracleReplyRevealTransactionPrefix::transactionType())
             {
                 oracleEngine.announceExpectedRevealTransaction((OracleReplyRevealTransactionPrefix*)request);
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && 0
                 appendText(dbgMsg, L" reveal");
 #endif
             }
 
             if (isZero(request->destinationPublicKey) && request->inputType == OracleReplyCommitTransactionPrefix::transactionType())
             {
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && 0
                 appendText(dbgMsg, L" commit");
 #endif
             }
         }
     }
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && 0
     addDebugMessage(dbgMsg);
 #endif
 }
@@ -3556,6 +3556,7 @@ static void processTick(unsigned long long processorNumber)
         {
             PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reply transactions");
             auto* tx = (OracleReplyCommitTransactionPrefix*)reorgBuffer;
+            unsigned int txCount = 0;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
                 const auto ownCompIdx = ownComputorIndicesMapping[i];
@@ -3575,9 +3576,21 @@ static void processTick(unsigned long long processorNumber)
                     KangarooTwelve(tx, sizeof(Transaction) + tx->inputSize, digest, sizeof(digest));
                     sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest, tx->signaturePtr());
                     enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                    ++txCount;
                 }
                 while (retCode != UINT32_MAX);
             }
+
+#if !defined(NDEBUG)
+            CHAR16 dbgMsg[200];
+            setText(dbgMsg, L"oracleEngine.getReplyCommitTransaction(), tick ");
+            appendNumber(dbgMsg, system.tick, FALSE);
+            appendText(dbgMsg, ", txScheduleTick ");
+            appendNumber(dbgMsg, txTick, FALSE);
+            appendText(dbgMsg, ", total number of tx ");
+            appendNumber(dbgMsg, txCount, FALSE);
+            addDebugMessage(dbgMsg);
+#endif
         }
 
         {

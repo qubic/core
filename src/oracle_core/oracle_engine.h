@@ -705,7 +705,7 @@ public:
         tx->inputType = OracleReplyCommitTransactionPrefix::transactionType();
         tx->inputSize = commitsCount * sizeof(OracleReplyCommitTransactionItem);
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && 0
         CHAR16 dbgMsg[200];
         setText(dbgMsg, L"oracleEngine.getReplyCommitTransaction(), tick ");
         appendNumber(dbgMsg, system.tick, FALSE);
