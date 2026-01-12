@@ -61,7 +61,6 @@ struct Peer
 
     // Indicate the peer is OM connection type which is a subtype of outgoing connection
     BOOLEAN isOMNode;
-    unsigned long long connectionStartTime;
 
     // Extra data to determine if this peer is a fullnode
     // Note: an **active fullnode** is a peer that is able to reply valid tick data, tick vote to this node after getting requested
@@ -614,14 +613,6 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                 peers[i].connectAcceptToken.CompletionToken.Status = -1;
                 penalizePublicPeerRejectedConnection(peers[i].address);
                 closePeer(&peers[i]);
-
-                if (peers[i].isOracleMachineNode())
-                {
-                    CHAR16 omDbgMsg[64];
-                    setText(omDbgMsg, L"OM: peerConnectionNewlyEstablished - CompletionToken.Status: ");
-                    appendNumber(omDbgMsg, peers[i].connectAcceptToken.CompletionToken.Status, false);
-                    addDebugMessage(omDbgMsg);
-                }
             }
             else
             {
@@ -629,22 +620,10 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                 if (peers[i].isClosing)
                 {
                     closePeer(&peers[i]);
-                    if (peers[i].isOracleMachineNode())
-                    {
-                        CHAR16 omDbgMsg[64];
-                        setText(omDbgMsg, L"OM: peerConnectionNewlyEstablished - Closing Peer ");
-                        addDebugMessage(omDbgMsg);
-                    }
                 }
                 else
                 {
                     peers[i].isConnectedAccepted = TRUE;
-                    if (peers[i].isOracleMachineNode())
-                    {
-                        CHAR16 omDbgMsg[64];
-                        setText(omDbgMsg, L"OM: peerConnectionNewlyEstablished - ConnectedAccepted ");
-                        addDebugMessage(omDbgMsg);
-                    }
                 }
             }
         }
@@ -974,32 +953,6 @@ static void peerReceiveAndTransmit(unsigned int i, unsigned int salt)
         transmitData(i, salt);
     }
 }
-static void peerOMLogStatus(unsigned int i)
-{
-    if (peers[i].isOracleMachineNode())
-    {
-        if (peers[i].tcp4Protocol)
-        {
-            EFI_TCP4_CONNECTION_STATE state;
-            EFI_STATUS status;
-            status = peers[i].tcp4Protocol->GetModeData(peers[i].tcp4Protocol, &state, NULL, NULL, NULL, NULL);
-            if (EFI_SUCCESS == status)
-            {
-                CHAR16 omDbgMsg[64];
-                setText(omDbgMsg, L"OM: peerOMLogStatus - State: ");
-                appendNumber(omDbgMsg, state, false);
-                addDebugMessage(omDbgMsg);
-            }
-            else
-            {
-                CHAR16 omDbgMsg[64];
-                setText(omDbgMsg, L"OM: peerOMLogStatus - GetModeData Failed: ");
-                appendNumber(omDbgMsg, status, false);
-                addDebugMessage(omDbgMsg);
-            }
-        }
-    }
-}
 
 static void peerReconnectIfInactive(unsigned int i, unsigned short port)
 {
@@ -1046,14 +999,6 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
 
                         if (status = peers[i].tcp4Protocol->Connect(peers[i].tcp4Protocol, (EFI_TCP4_CONNECTION_TOKEN*)&peers[i].connectAcceptToken))
                         {
-                            if (peers[i].isOMNode)
-                            {
-                                CHAR16 omDbgMsg[64];
-                                setText(omDbgMsg, L"OM: peerReconnectIfInactive - Connected failed. Status: ");
-                                appendNumber(omDbgMsg, status, false);
-                                addDebugMessage(omDbgMsg);
-                            }
-
                             logStatusToConsole(L"EFI_TCP4_PROTOCOL.Connect() fails", status, __LINE__);
 
                             bs->CloseProtocol(peers[i].connectAcceptToken.NewChildHandle, &tcp4ProtocolGuid, ih, NULL);
@@ -1063,19 +1008,10 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                         else
                         {
                             peers[i].isConnectingAccepting = TRUE;
-                            if (peers[i].isOMNode)
-                            {
-                                peers[i].connectionStartTime = __rdtsc();
-                                addDebugMessage(L"OM: peerReconnectIfInactive - isConnectingAccepting.");
-                            }
                         }
                     }
                     else
                     {
-                        if (peers[i].isOMNode)
-                        {
-                            addDebugMessage(L"OM: peerReconnectIfInactive - getTcp4Protocol failed");
-                        }
                         peers[i].tcp4Protocol = NULL;
                     }
                 }
