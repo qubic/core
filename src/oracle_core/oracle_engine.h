@@ -749,7 +749,15 @@ public:
         // get computor index
         const int compIdx = computorIndex(transaction->sourcePublicKey);
         if (compIdx < 0)
+        {
+#if !defined(NDEBUG)
+            CHAR16 dbgMsg[800];
+            setText(dbgMsg, L"oracleEngine.processOracleReplyCommitTransaction(), tick ");
+            appendNumber(dbgMsg, system.tick, FALSE);
+            appendText(dbgMsg, ", source is no computor!");
+#endif
             return false;
+        }
 
 #if !defined(NDEBUG)
         CHAR16 dbgMsg[800];

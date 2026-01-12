@@ -958,7 +958,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
     Transaction* request = header->getPayload<Transaction>();
     const unsigned int transactionSize = request->totalSize();
 
-#if !defined(NDEBUG) && 0
+#if !defined(NDEBUG) && 1
     CHAR16 dbgMsg[200];
     setText(dbgMsg, L"processBroadcastTransaction(), tick ");
     appendNumber(dbgMsg, system.tick, FALSE);
@@ -966,14 +966,14 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
 
     if (request->checkValidity() && transactionSize == header->size() - sizeof(RequestResponseHeader))
     {
-#if !defined(NDEBUG) && 0
+#if !defined(NDEBUG) && 1
         appendText(dbgMsg, L" valid");
 #endif
         unsigned char digest[32];
         KangarooTwelve(request, transactionSize - SIGNATURE_SIZE, digest, sizeof(digest));
         if (verify(request->sourcePublicKey.m256i_u8, digest, request->signaturePtr()))
         {
-#if !defined(NDEBUG) && 0
+#if !defined(NDEBUG) && 1
             appendText(dbgMsg, L" verified");
 #endif
             if (header->isDejavuZero())
@@ -1017,15 +1017,17 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
             if (isZero(request->destinationPublicKey) && request->inputType == OracleReplyRevealTransactionPrefix::transactionType())
             {
                 oracleEngine.announceExpectedRevealTransaction((OracleReplyRevealTransactionPrefix*)request);
-#if !defined(NDEBUG) && 0
+#if !defined(NDEBUG) && 1
                 appendText(dbgMsg, L" reveal");
+                addDebugMessage(dbgMsg);
 #endif
             }
 
             if (isZero(request->destinationPublicKey) && request->inputType == OracleReplyCommitTransactionPrefix::transactionType())
             {
-#if !defined(NDEBUG) && 0
+#if !defined(NDEBUG) && 1
                 appendText(dbgMsg, L" commit");
+                addDebugMessage(dbgMsg);
 #endif
             }
         }

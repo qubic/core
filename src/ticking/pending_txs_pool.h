@@ -252,9 +252,9 @@ public:
     // Check validity of transaction and add to the pool. Return boolean indicating whether transaction was added.
     static bool add(const Transaction* tx)
     {
-//#if !defined(NDEBUG) && !defined(NO_UEFI)
-//        addDebugMessage(L"Begin pendingTxsPool.add()");
-//#endif
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        addDebugMessage(L"Begin pendingTxsPool.add()");
+#endif
         bool txAdded = false;
         ACQUIRE(lock);
         if (tx->checkValidity() && tickInStorage(tx->tick))
@@ -355,12 +355,12 @@ public:
     end_add_function:
         RELEASE(lock);
 
-//#if !defined(NDEBUG) && !defined(NO_UEFI)
-//        if (txAdded)
-//            addDebugMessage(L"End pendingTxsPool.add(), txAdded true");
-//        else
-//            addDebugMessage(L"End pendingTxsPool.add(), txAdded false");
-//#endif
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        if (txAdded)
+            addDebugMessage(L"End pendingTxsPool.add(), txAdded true");
+        else
+            addDebugMessage(L"End pendingTxsPool.add(), txAdded false");
+#endif
         return txAdded;
     }
 
