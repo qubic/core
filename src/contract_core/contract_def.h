@@ -215,6 +215,16 @@
 
 #endif
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define PULSE_CONTRACT_INDEX 22
+#define CONTRACT_INDEX PULSE_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE PULSE
+#define CONTRACT_STATE2_TYPE PULSE2
+#include "contracts/Pulse.h"
+
 // new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -325,6 +335,7 @@ constexpr struct ContractDescription
 #ifndef NO_QRWA
     {"QRWA", 197, 10000, sizeof(QRWA)}, // proposal in epoch 195, IPO in 196, construction and first use in 197
 #endif
+	{"PULSE", 200, 10000, sizeof(PULSE)}, // proposal in epoch 198, IPO in 199, construction and first use in 200
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA)},
@@ -443,6 +454,7 @@ static void initializeContracts()
 #ifndef NO_QRWA
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRWA);
 #endif
+	REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(PULSE);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);

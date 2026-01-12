@@ -1,0 +1,944 @@
+/**
+ * @file Pulse.h
+ * @brief Pulse lottery contract: 6 unique digits out of 9 with fixed QHeart rewards.
+ *
+ * Mechanics:
+ *  - Tickets are sold during SELLING state (1 ticket per call).
+ *  - Draw is triggered on scheduled days after drawHour (UTC).
+ *  - Ticket revenue (QHeart asset) is split by configured percents; remainder stays in contract.
+ *  - Fixed rewards are paid from the contract QHeart balance ("Pulse wallet").
+ *  - If contract balance exceeds cap, excess is sent to QHeart wallet.
+ */
+
+using namespace QPI;
+
+constexpr uint16 PULSE_MAX_NUMBER_OF_PLAYERS = 1024;
+constexpr uint8 PULSE_PLAYER_DIGITS = 6;
+constexpr uint8 PULSE_WINNING_DIGITS = 9;
+constexpr uint8 PULSE_MAX_DIGIT = 9;
+constexpr uint64 PULSE_TICKET_PRICE_DEFAULT = 200000;
+constexpr uint64 PULSE_QHEART_ASSET_NAME = 92712259110993ULL; // "QHEART"
+constexpr uint8 PULSE_DEFAULT_DEV_PERCENT = 10;
+constexpr uint8 PULSE_DEFAULT_BURN_PERCENT = 5;
+constexpr uint8 PULSE_DEFAULT_SHAREHOLDERS_PERCENT = 5;
+constexpr uint8 PULSE_DEFAULT_QHEART_PERCENT = 5;
+constexpr uint64 PULSE_DEFAULT_QHEART_HOLD_LIMIT = 2000000000ULL;
+constexpr uint8 PULSE_TICK_UPDATE_PERIOD = 100;
+constexpr uint8 PULSE_DEFAULT_DRAW_HOUR = 11; // 11:00 UTC
+constexpr uint8 PULSE_DEFAULT_SCHEDULE = 1 << WEDNESDAY | 1 << FRIDAY | 1 << SUNDAY;
+constexpr uint32 PULSE_DEFAULT_INIT_TIME = 22 << 9 | 4 << 5 | 13;
+
+const id PULSE_QHEART_ISSUER = ID(_S, _S, _G, _X, _S, _L, _S, _X, _F, _E, _J, _O, _O, _B, _T, _Z, _W, _V, _D, _S, _R, _C, _E, _F, _G, _X, _N, _D, _Y,
+                                  _U, _V, _D, _X, _M, _Q, _A, _L, _X, _L, _B, _X, _G, _D, _C, _R, _X, _T, _K, _F, _Z, _I, _O, _T, _G, _Z, _F);
+constexpr uint64 PULSE_CONTRACT_ASSET_NAME = 297750254928ULL; // "PULSE"
+
+struct PULSE2
+{
+};
+
+struct PULSE : public ContractBase
+{
+public:
+	enum class EState : uint8
+	{
+		SELLING = 1 << 0,
+	};
+
+	friend EState operator|(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) | static_cast<uint8>(b)); }
+	friend EState operator&(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) & static_cast<uint8>(b)); }
+	friend EState operator~(const EState& a) { return static_cast<EState>(~static_cast<uint8>(a)); }
+	template<typename T> friend bool operator==(const EState& a, const T& b) { return static_cast<uint8>(a) == b; }
+	template<typename T> friend bool operator!=(const EState& a, const T& b) { return !(a == b); }
+
+	enum class EReturnCode : uint8
+	{
+		SUCCESS,
+		TICKET_INVALID_PRICE,
+		TICKET_ALL_SOLD_OUT,
+		TICKET_SELLING_CLOSED,
+		INVALID_NUMBERS,
+		ACCESS_DENIED,
+		INVALID_VALUE,
+		UNKNOWN_ERROR = UINT8_MAX
+	};
+
+	static constexpr uint8 toReturnCode(const EReturnCode& code) { return static_cast<uint8>(code); };
+
+	struct Ticket
+	{
+		id player;
+		Array<uint8, PULSE_PLAYER_DIGITS + 2> digits;
+	};
+
+	struct NextEpochData
+	{
+		void clear()
+		{
+			hasNewPrice = false;
+			hasNewSchedule = false;
+			hasNewDrawHour = false;
+			hasNewFee = false;
+			hasNewQHeartHoldLimit = false;
+			newPrice = 0;
+			newSchedule = 0;
+			newDrawHour = 0;
+			newDevPercent = 0;
+			newBurnPercent = 0;
+			newShareholdersPercent = 0;
+			newQHeartPercent = 0;
+			newQHeartHoldLimit = 0;
+		}
+
+		void apply(PULSE& state) const
+		{
+			if (hasNewPrice)
+			{
+				state.ticketPrice = newPrice;
+			}
+			if (hasNewSchedule)
+			{
+				state.schedule = newSchedule;
+			}
+			if (hasNewDrawHour)
+			{
+				state.drawHour = newDrawHour;
+			}
+			if (hasNewFee)
+			{
+				state.devPercent = newDevPercent;
+				state.burnPercent = newBurnPercent;
+				state.shareholdersPercent = newShareholdersPercent;
+				state.qheartPercent = newQHeartPercent;
+			}
+			if (hasNewQHeartHoldLimit)
+			{
+				state.qheartHoldLimit = newQHeartHoldLimit;
+			}
+		}
+
+		bit hasNewPrice;
+		bit hasNewSchedule;
+		bit hasNewDrawHour;
+		bit hasNewFee;
+		bit hasNewQHeartHoldLimit;
+		uint64 newPrice;
+		uint8 newSchedule;
+		uint8 newDrawHour;
+		uint8 newDevPercent;
+		uint8 newBurnPercent;
+		uint8 newShareholdersPercent;
+		uint8 newQHeartPercent;
+		uint64 newQHeartHoldLimit;
+	};
+
+	struct ValidateDigits_input
+	{
+		Array<uint8, PULSE_PLAYER_DIGITS + 2> digits;
+	};
+	struct ValidateDigits_output
+	{
+		bit isValid;
+	};
+	struct ValidateDigits_locals
+	{
+		HashSet<uint8, PULSE_MAX_DIGIT + 7> seen;
+		uint8 idx;
+		uint8 value;
+	};
+
+	struct BuyTicket_input
+	{
+		Array<uint8, PULSE_PLAYER_DIGITS + 2> digits;
+	};
+
+	struct BuyTicket_output
+	{
+		uint8 returnCode;
+	};
+
+	struct BuyTicket_locals
+	{
+		uint64 reward;
+		uint64 capacity;
+		uint64 slotsLeft;
+		sint64 userBalance;
+		sint64 transferResult;
+		Ticket ticket;
+		ValidateDigits_input validateInput;
+		ValidateDigits_output validateOutput;
+	};
+
+	struct GetTicketPrice_input
+	{
+	};
+	struct GetTicketPrice_output
+	{
+		uint64 ticketPrice;
+	};
+
+	struct GetSchedule_input
+	{
+	};
+	struct GetSchedule_output
+	{
+		uint8 schedule;
+	};
+
+	struct GetDrawHour_input
+	{
+	};
+	struct GetDrawHour_output
+	{
+		uint8 drawHour;
+	};
+
+	struct GetFees_input
+	{
+	};
+	struct GetFees_output
+	{
+		uint8 devPercent;
+		uint8 burnPercent;
+		uint8 shareholdersPercent;
+		uint8 qheartPercent;
+		uint8 returnCode;
+	};
+
+	struct GetQHeartHoldLimit_input
+	{
+	};
+	struct GetQHeartHoldLimit_output
+	{
+		uint64 qheartHoldLimit;
+	};
+
+	struct GetQHeartWallet_input
+	{
+	};
+	struct GetQHeartWallet_output
+	{
+		id wallet;
+	};
+
+	struct GetWinningDigits_input
+	{
+	};
+	struct GetWinningDigits_output
+	{
+		Array<uint8, PULSE_WINNING_DIGITS + 7> digits;
+	};
+
+	struct GetBalance_input
+	{
+	};
+	struct GetBalance_output
+	{
+		uint64 balance;
+	};
+	struct GetBalance_locals
+	{
+		sint64 balance;
+	};
+
+	struct SetPrice_input
+	{
+		uint64 newPrice;
+	};
+	struct SetPrice_output
+	{
+		uint8 returnCode;
+	};
+
+	struct SetSchedule_input
+	{
+		uint8 newSchedule;
+	};
+	struct SetSchedule_output
+	{
+		uint8 returnCode;
+	};
+
+	struct SetDrawHour_input
+	{
+		uint8 newDrawHour;
+	};
+	struct SetDrawHour_output
+	{
+		uint8 returnCode;
+	};
+
+	struct SetFees_input
+	{
+		uint8 devPercent;
+		uint8 burnPercent;
+		uint8 shareholdersPercent;
+		uint8 qheartPercent;
+	};
+	struct SetFees_output
+	{
+		uint8 returnCode;
+	};
+
+	struct SetQHeartHoldLimit_input
+	{
+		uint64 newQHeartHoldLimit;
+	};
+	struct SetQHeartHoldLimit_output
+	{
+		uint8 returnCode;
+	};
+
+	struct SetQHeartWallet_input
+	{
+		id newWallet;
+	};
+	struct SetQHeartWallet_output
+	{
+		uint8 returnCode;
+	};
+
+	struct GetRandomDigits_input
+	{
+		uint64 seed;
+	};
+	struct GetRandomDigits_output
+	{
+		Array<uint8, PULSE_WINNING_DIGITS + 7> digits;
+	};
+	struct GetRandomDigits_locals
+	{
+		uint64 tempValue;
+		uint8 index;
+		uint8 candidate;
+		uint8 attempts;
+		uint8 fallback;
+		HashSet<uint8, PULSE_MAX_DIGIT + 7> used;
+	};
+
+	struct SettleRound_input
+	{
+	};
+	struct SettleRound_output
+	{
+	};
+	struct SettleRound_locals
+	{
+		uint64 i;
+		uint64 j;
+		sint64 roundRevenue;
+		sint64 devAmount;
+		sint64 burnAmount;
+		sint64 shareholdersAmount;
+		sint64 qheartAmount;
+		sint64 balanceSigned;
+		uint64 balance;
+		uint64 prize;
+		uint64 leftAlignedReward;
+		uint64 anyPositionReward;
+		uint8 leftAlignedMatches;
+		uint8 anyPositionMatches;
+		uint16 winningMask;
+		m256i mixedSpectrumValue;
+		uint64 randomSeed;
+		Asset qheartAsset;
+		AssetPossessionIterator qheartIter;
+		uint64 totalShares;
+		uint64 dividendPerShare;
+		uint64 holderShares;
+		Asset shareholdersAsset;
+		AssetPossessionIterator shareholdersIter;
+		sint64 shareholdersTotalShares;
+		sint64 shareholdersDividendPerShare;
+		sint64 shareholdersHolderShares;
+		GetRandomDigits_input randomInput;
+		GetRandomDigits_output randomOutput;
+		Ticket ticket;
+	};
+
+	struct BEGIN_TICK_locals
+	{
+		uint32 currentDateStamp;
+		uint8 currentDayOfWeek;
+		uint8 currentHour;
+		uint8 isWednesday;
+		uint8 isScheduledToday;
+		SettleRound_locals settleLocals;
+		SettleRound_input settleInput;
+		SettleRound_output settleOutput;
+	};
+
+public:
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+	{
+		REGISTER_USER_FUNCTION(GetTicketPrice, 1);
+		REGISTER_USER_FUNCTION(GetSchedule, 2);
+		REGISTER_USER_FUNCTION(GetDrawHour, 3);
+		REGISTER_USER_FUNCTION(GetFees, 4);
+		REGISTER_USER_FUNCTION(GetQHeartHoldLimit, 5);
+		REGISTER_USER_FUNCTION(GetQHeartWallet, 6);
+		REGISTER_USER_FUNCTION(GetWinningDigits, 7);
+		REGISTER_USER_FUNCTION(GetBalance, 8);
+
+		REGISTER_USER_PROCEDURE(BuyTicket, 1);
+		REGISTER_USER_PROCEDURE(SetPrice, 2);
+		REGISTER_USER_PROCEDURE(SetSchedule, 3);
+		REGISTER_USER_PROCEDURE(SetDrawHour, 4);
+		REGISTER_USER_PROCEDURE(SetFees, 5);
+		REGISTER_USER_PROCEDURE(SetQHeartHoldLimit, 6);
+	}
+
+	INITIALIZE()
+	{
+		state.teamAddress = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C, _R, _L,
+		                       _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
+
+		state.ticketPrice = PULSE_TICKET_PRICE_DEFAULT;
+		state.devPercent = PULSE_DEFAULT_DEV_PERCENT;
+		state.burnPercent = PULSE_DEFAULT_BURN_PERCENT;
+		state.shareholdersPercent = PULSE_DEFAULT_SHAREHOLDERS_PERCENT;
+		state.qheartPercent = PULSE_DEFAULT_QHEART_PERCENT;
+		state.qheartHoldLimit = PULSE_DEFAULT_QHEART_HOLD_LIMIT;
+
+		state.schedule = PULSE_DEFAULT_SCHEDULE;
+		state.drawHour = PULSE_DEFAULT_DRAW_HOUR;
+		state.lastDrawDateStamp = PULSE_DEFAULT_INIT_TIME;
+		state.ticketCounter = 0;
+		setMemory(state.tickets, 0);
+		setMemory(state.lastWinningDigits, 0);
+		state.nextEpochData.clear();
+
+		enableBuyTicket(state, false);
+	}
+
+	BEGIN_EPOCH()
+	{
+		if (state.schedule == 0)
+		{
+			state.schedule = PULSE_DEFAULT_SCHEDULE;
+		}
+		if (state.drawHour == 0)
+		{
+			state.drawHour = PULSE_DEFAULT_DRAW_HOUR;
+		}
+
+		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), state.lastDrawDateStamp);
+		enableBuyTicket(state, state.lastDrawDateStamp != PULSE_DEFAULT_INIT_TIME);
+	}
+
+	END_EPOCH()
+	{
+		enableBuyTicket(state, false);
+		clearStateOnEndEpoch(state);
+		state.nextEpochData.apply(state);
+		state.nextEpochData.clear();
+	}
+
+	BEGIN_TICK_WITH_LOCALS()
+	{
+		if (mod(qpi.tick(), static_cast<uint32>(PULSE_TICK_UPDATE_PERIOD)) != 0)
+		{
+			return;
+		}
+
+		locals.currentHour = qpi.hour();
+		locals.currentDayOfWeek = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
+		locals.isWednesday = locals.currentDayOfWeek == WEDNESDAY;
+
+		if (locals.currentHour < state.drawHour)
+		{
+			return;
+		}
+
+		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
+
+		if (locals.currentDateStamp == PULSE_DEFAULT_INIT_TIME)
+		{
+			enableBuyTicket(state, false);
+			state.lastDrawDateStamp = PULSE_DEFAULT_INIT_TIME;
+			return;
+		}
+
+		if (state.lastDrawDateStamp == PULSE_DEFAULT_INIT_TIME)
+		{
+			enableBuyTicket(state, true);
+			if (locals.isWednesday)
+			{
+				state.lastDrawDateStamp = locals.currentDateStamp;
+			}
+			else
+			{
+				state.lastDrawDateStamp = 0;
+			}
+		}
+
+		if (state.lastDrawDateStamp == locals.currentDateStamp)
+		{
+			return;
+		}
+
+		locals.isScheduledToday = ((state.schedule & (1u << locals.currentDayOfWeek)) != 0);
+		if (!locals.isWednesday && !locals.isScheduledToday)
+		{
+			return;
+		}
+
+		state.lastDrawDateStamp = locals.currentDateStamp;
+		enableBuyTicket(state, false);
+
+		SettleRound(qpi, state, locals.settleInput, locals.settleOutput, locals.settleLocals);
+
+		clearStateOnEndDraw(state);
+		enableBuyTicket(state, !locals.isWednesday);
+	}
+
+	POST_INCOMING_TRANSFER()
+	{
+		switch (input.type)
+		{
+			case TransferType::standardTransaction:
+				if (input.amount > 0)
+				{
+					qpi.transfer(input.sourceId, input.amount);
+				}
+			default: break;
+		}
+	}
+
+	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.ticketPrice; }
+	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.schedule; }
+	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.drawHour; }
+	PUBLIC_FUNCTION(GetQHeartHoldLimit) { output.qheartHoldLimit = state.qheartHoldLimit; }
+	PUBLIC_FUNCTION(GetQHeartWallet) { output.wallet = PULSE_QHEART_ISSUER; }
+	PUBLIC_FUNCTION(GetWinningDigits) { output.digits = state.lastWinningDigits; }
+
+	PUBLIC_FUNCTION(GetFees)
+	{
+		output.devPercent = state.devPercent;
+		output.burnPercent = state.burnPercent;
+		output.shareholdersPercent = state.shareholdersPercent;
+		output.qheartPercent = state.qheartPercent;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_FUNCTION_WITH_LOCALS(GetBalance)
+	{
+		locals.balance = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, SELF_INDEX, SELF_INDEX);
+		output.balance = (locals.balance > 0) ? static_cast<uint64>(locals.balance) : 0;
+	}
+
+	PUBLIC_PROCEDURE(SetPrice)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (qpi.invocator() != PULSE_QHEART_ISSUER)
+		{
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			return;
+		}
+
+		if (input.newPrice == 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
+			return;
+		}
+
+		state.nextEpochData.hasNewPrice = true;
+		state.nextEpochData.newPrice = input.newPrice;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_PROCEDURE(SetSchedule)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (qpi.invocator() != PULSE_QHEART_ISSUER)
+		{
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			return;
+		}
+
+		if (input.newSchedule == 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		state.nextEpochData.hasNewSchedule = true;
+		state.nextEpochData.newSchedule = input.newSchedule;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_PROCEDURE(SetDrawHour)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (qpi.invocator() != PULSE_QHEART_ISSUER)
+		{
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			return;
+		}
+
+		if (input.newDrawHour > 23)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		state.nextEpochData.hasNewDrawHour = true;
+		state.nextEpochData.newDrawHour = input.newDrawHour;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_PROCEDURE(SetFees)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (qpi.invocator() != PULSE_QHEART_ISSUER)
+		{
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			return;
+		}
+
+		if (input.devPercent + input.burnPercent + input.shareholdersPercent + input.qheartPercent > 100)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		state.nextEpochData.hasNewFee = true;
+		state.nextEpochData.newDevPercent = input.devPercent;
+		state.nextEpochData.newBurnPercent = input.burnPercent;
+		state.nextEpochData.newShareholdersPercent = input.shareholdersPercent;
+		state.nextEpochData.newQHeartPercent = input.qheartPercent;
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_PROCEDURE(SetQHeartHoldLimit)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (qpi.invocator() != PULSE_QHEART_ISSUER)
+		{
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			return;
+		}
+
+		state.nextEpochData.hasNewQHeartHoldLimit = true;
+		state.nextEpochData.newQHeartHoldLimit = input.newQHeartHoldLimit;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicket)
+	{
+		locals.reward = qpi.invocationReward();
+		if (locals.reward > 0)
+		{
+			qpi.transfer(qpi.invocator(), locals.reward);
+		}
+
+		if (!isSellingOpen(state))
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
+			return;
+		}
+
+		locals.validateInput.digits = input.digits;
+		CALL(ValidateDigits, locals.validateInput, locals.validateOutput);
+		if (!locals.validateOutput.isValid)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_NUMBERS);
+			return;
+		}
+
+		locals.capacity = state.tickets.capacity();
+		locals.slotsLeft = (state.ticketCounter < locals.capacity) ? (locals.capacity - state.ticketCounter) : 0;
+		if (locals.slotsLeft == 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_ALL_SOLD_OUT);
+			return;
+		}
+
+		locals.userBalance =
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
+		if (locals.userBalance < static_cast<sint64>(state.ticketPrice))
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
+			return;
+		}
+
+		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, qpi.invocator(),
+		                                                                qpi.invocator(), static_cast<sint64>(state.ticketPrice), SELF);
+		if (locals.transferResult < 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
+			return;
+		}
+
+		locals.ticket.player = qpi.invocator();
+		locals.ticket.digits = input.digits;
+		state.tickets.set(state.ticketCounter, locals.ticket);
+		state.ticketCounter = min(state.ticketCounter + 1, locals.capacity);
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+private:
+	PRIVATE_FUNCTION_WITH_LOCALS(ValidateDigits)
+	{
+		output.isValid = true;
+		for (locals.idx = 0; locals.idx < PULSE_PLAYER_DIGITS; ++locals.idx)
+		{
+			locals.value = input.digits.get(locals.idx);
+			if (locals.value > PULSE_MAX_DIGIT)
+			{
+				output.isValid = false;
+				return;
+			}
+			if (locals.seen.contains(locals.value))
+			{
+				output.isValid = false;
+				return;
+			}
+			locals.seen.add(locals.value);
+		}
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(GetRandomDigits)
+	{
+		for (locals.index = 0; locals.index < PULSE_WINNING_DIGITS; ++locals.index)
+		{
+			deriveOne(input.seed, locals.index, locals.tempValue);
+			locals.candidate = static_cast<uint8>(mod(locals.tempValue, static_cast<uint64>(PULSE_MAX_DIGIT + 1)));
+
+			locals.attempts = 0;
+			while (locals.used.contains(locals.candidate) && locals.attempts < 100)
+			{
+				++locals.attempts;
+				locals.tempValue ^= locals.tempValue >> 12;
+				locals.tempValue ^= locals.tempValue << 25;
+				locals.tempValue ^= locals.tempValue >> 27;
+				locals.tempValue *= 2685821657736338717ULL;
+				locals.candidate = static_cast<uint8>(mod(locals.tempValue, static_cast<uint64>(PULSE_MAX_DIGIT + 1)));
+			}
+
+			if (locals.used.contains(locals.candidate))
+			{
+				for (locals.fallback = 0; locals.fallback <= PULSE_MAX_DIGIT; ++locals.fallback)
+				{
+					if (!locals.used.contains(locals.fallback))
+					{
+						locals.candidate = locals.fallback;
+						break;
+					}
+				}
+			}
+
+			locals.used.add(locals.candidate);
+			output.digits.set(locals.index, locals.candidate);
+		}
+	}
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(SettleRound)
+	{
+		if (state.ticketCounter == 0)
+		{
+			return;
+		}
+
+		locals.roundRevenue = static_cast<sint64>(smul(state.ticketPrice, state.ticketCounter));
+		locals.devAmount = div(smul(locals.roundRevenue, static_cast<sint64>(state.devPercent)), 100LL);
+		locals.burnAmount = div(smul(locals.roundRevenue, static_cast<sint64>(state.burnPercent)), 100LL);
+		locals.shareholdersAmount = div(smul(locals.roundRevenue, static_cast<sint64>(state.shareholdersPercent)), 100LL);
+		locals.qheartAmount = div(smul(locals.roundRevenue, static_cast<sint64>(state.qheartPercent)), 100LL);
+
+		if (locals.devAmount > 0)
+		{
+			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, static_cast<sint64>(locals.devAmount),
+			                                        state.teamAddress);
+		}
+		if (locals.shareholdersAmount > 0)
+		{
+			locals.shareholdersAsset.issuer = id::zero();
+			locals.shareholdersAsset.assetName = PULSE_CONTRACT_ASSET_NAME;
+			locals.shareholdersTotalShares = NUMBER_OF_COMPUTORS;
+
+			locals.shareholdersDividendPerShare = div(locals.shareholdersAmount, locals.shareholdersTotalShares);
+			if (locals.shareholdersDividendPerShare > 0)
+			{
+				locals.shareholdersIter.begin(locals.shareholdersAsset);
+				while (!locals.shareholdersIter.reachedEnd())
+				{
+					locals.shareholdersHolderShares = locals.shareholdersIter.numberOfPossessedShares();
+					if (locals.shareholdersHolderShares > 0)
+					{
+						qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF,
+						                                        smul(locals.shareholdersHolderShares, locals.shareholdersDividendPerShare),
+						                                        locals.shareholdersIter.possessor());
+					}
+					locals.shareholdersIter.next();
+				}
+			}
+		}
+		if (locals.burnAmount > 0)
+		{
+			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, static_cast<sint64>(locals.burnAmount),
+			                                        NULL_ID);
+		}
+		if (locals.qheartAmount > 0)
+		{
+			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, locals.qheartAmount,
+			                                        PULSE_QHEART_ISSUER);
+		}
+
+		locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
+		locals.randomSeed = qpi.K12(locals.mixedSpectrumValue).u64._0;
+		locals.randomInput.seed = locals.randomSeed;
+		CALL(GetRandomDigits, locals.randomInput, locals.randomOutput);
+		state.lastWinningDigits = locals.randomOutput.digits;
+
+		for (locals.i = 0; locals.i < PULSE_WINNING_DIGITS; ++locals.i)
+		{
+			locals.winningMask = static_cast<uint16>(locals.winningMask | (1u << state.lastWinningDigits.get(locals.i)));
+		}
+
+		locals.balanceSigned = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, SELF_INDEX, SELF_INDEX);
+		locals.balance = (locals.balanceSigned > 0) ? static_cast<uint64>(locals.balanceSigned) : 0;
+
+		for (locals.i = 0; locals.i < state.ticketCounter; ++locals.i)
+		{
+			locals.leftAlignedMatches = 0;
+			locals.anyPositionMatches = 0;
+			locals.ticket = state.tickets.get(locals.i);
+			for (locals.j = 0; locals.j < PULSE_PLAYER_DIGITS; ++locals.j)
+			{
+				if (locals.ticket.digits.get(locals.j) == state.lastWinningDigits.get(locals.j))
+				{
+					++locals.leftAlignedMatches;
+				}
+				if ((locals.winningMask & (1u << locals.ticket.digits.get(locals.j))) != 0)
+				{
+					++locals.anyPositionMatches;
+				}
+			}
+
+			locals.leftAlignedReward = getLeftAlignedReward(locals.leftAlignedMatches);
+			locals.anyPositionReward = getAnyPositionReward(locals.anyPositionMatches);
+			locals.prize = max(locals.leftAlignedReward, locals.anyPositionReward);
+
+			if (locals.prize > 0 && locals.balance >= locals.prize)
+			{
+				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, static_cast<sint64>(locals.prize),
+				                                        locals.ticket.player);
+				locals.balance -= locals.prize;
+			}
+		}
+
+		locals.balanceSigned = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, SELF_INDEX, SELF_INDEX);
+		locals.balance = (locals.balanceSigned > 0) ? static_cast<uint64>(locals.balanceSigned) : 0;
+
+		if (state.qheartHoldLimit > 0 && locals.balance > state.qheartHoldLimit)
+		{
+			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF,
+			                                        static_cast<sint64>(locals.balance - state.qheartHoldLimit), PULSE_QHEART_ISSUER);
+		}
+	}
+
+public:
+	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
+
+	template<typename T> static constexpr T min(const T& a, const T& b) { return (a < b) ? a : b; }
+	template<typename T> static constexpr T max(const T& a, const T& b) { return a > b ? a : b; }
+
+	static void deriveOne(const uint64& r, const uint64& idx, uint64& outValue) { mix64(r + 0x9e3779b97f4a7c15ULL * (idx + 1), outValue); }
+
+	static void mix64(const uint64& x, uint64& outValue)
+	{
+		outValue = x;
+		outValue ^= outValue >> 30;
+		outValue *= 0xbf58476d1ce4e5b9ULL;
+		outValue ^= outValue >> 27;
+		outValue *= 0x94d049bb133111ebULL;
+		outValue ^= outValue >> 31;
+	}
+
+protected:
+	Array<Ticket, PULSE_MAX_NUMBER_OF_PLAYERS> tickets;
+	Array<uint8, PULSE_WINNING_DIGITS + 7> lastWinningDigits;
+	uint64 ticketCounter;
+	uint64 ticketPrice;
+	uint64 qheartHoldLimit;
+	uint32 lastDrawDateStamp;
+	uint8 devPercent;
+	uint8 burnPercent;
+	uint8 shareholdersPercent;
+	uint8 qheartPercent;
+	uint8 schedule;
+	uint8 drawHour;
+	EState currentState;
+	id teamAddress;
+	NextEpochData nextEpochData;
+
+protected:
+	static void clearStateOnEndEpoch(PULSE& state)
+	{
+		clearStateOnEndDraw(state);
+		state.lastDrawDateStamp = 0;
+	}
+
+	static void clearStateOnEndDraw(PULSE& state)
+	{
+		state.ticketCounter = 0;
+		setMemory(state.tickets, 0);
+	}
+
+	static void enableBuyTicket(PULSE& state, bool bEnable)
+	{
+		state.currentState = bEnable ? state.currentState | EState::SELLING : state.currentState & ~EState::SELLING;
+	}
+
+	static bool isSellingOpen(const PULSE& state) { return (state.currentState & EState::SELLING) != 0; }
+
+	static uint64 getLeftAlignedReward(uint8 matches)
+	{
+		switch (matches)
+		{
+			case 6: return 2400;
+			case 5: return 600;
+			case 4: return 150;
+			case 3: return 30;
+			case 2: return 8;
+			case 1: return 1;
+			default: return 0;
+		}
+	}
+
+	static uint64 getAnyPositionReward(uint8 matches)
+	{
+		switch (matches)
+		{
+			case 6: return 0;
+			case 5: return 400;
+			case 4: return 50;
+			case 3: return 8;
+			case 2: return 2;
+			case 1: return 0;
+			default: return 0;
+		}
+	}
+};
