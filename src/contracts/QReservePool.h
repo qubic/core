@@ -22,7 +22,7 @@ struct QRP : ContractBase
 
 	static constexpr uint8 toReturnCode(const EReturnCode& code) { return static_cast<uint8>(code); };
 
-	// Get Reserve
+	// Withdraw Reserve
 	struct WithdrawReserve_input
 	{
 		uint64 revenue;
