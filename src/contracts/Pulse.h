@@ -336,7 +336,9 @@ public:
 		uint64 leftAlignedReward;
 		uint64 anyPositionReward;
 		uint8 leftAlignedMatches;
+		uint8 leftAlignedMatchesAtOffset;
 		uint8 anyPositionMatches;
+		uint8 leftAlignedOffset;
 		uint16 winningMask;
 		m256i mixedSpectrumValue;
 		uint64 randomSeed;
@@ -825,12 +827,23 @@ private:
 			locals.leftAlignedMatches = 0;
 			locals.anyPositionMatches = 0;
 			locals.ticket = state.tickets.get(locals.i);
+			for (locals.leftAlignedOffset = 0; locals.leftAlignedOffset + PULSE_PLAYER_DIGITS <= PULSE_WINNING_DIGITS; ++locals.leftAlignedOffset)
+			{
+				locals.leftAlignedMatchesAtOffset = 0;
+				for (locals.j = 0; locals.j < PULSE_PLAYER_DIGITS; ++locals.j)
+				{
+					if (locals.ticket.digits.get(locals.j) == state.lastWinningDigits.get(locals.leftAlignedOffset + locals.j))
+					{
+						++locals.leftAlignedMatchesAtOffset;
+					}
+				}
+				if (locals.leftAlignedMatchesAtOffset > locals.leftAlignedMatches)
+				{
+					locals.leftAlignedMatches = locals.leftAlignedMatchesAtOffset;
+				}
+			}
 			for (locals.j = 0; locals.j < PULSE_PLAYER_DIGITS; ++locals.j)
 			{
-				if (locals.ticket.digits.get(locals.j) == state.lastWinningDigits.get(locals.j))
-				{
-					++locals.leftAlignedMatches;
-				}
 				if ((locals.winningMask & (1u << locals.ticket.digits.get(locals.j))) != 0)
 				{
 					++locals.anyPositionMatches;
