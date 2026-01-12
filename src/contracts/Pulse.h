@@ -764,10 +764,10 @@ private:
 		}
 
 		locals.roundRevenue = static_cast<sint64>(smul(state.ticketPrice, state.ticketCounter));
-		locals.devAmount = div(smul(locals.roundRevenue, static_cast<sint64>(state.devPercent)), 100LL);
-		locals.burnAmount = div(smul(locals.roundRevenue, static_cast<sint64>(state.burnPercent)), 100LL);
-		locals.shareholdersAmount = div(smul(locals.roundRevenue, static_cast<sint64>(state.shareholdersPercent)), 100LL);
-		locals.qheartAmount = div(smul(locals.roundRevenue, static_cast<sint64>(state.qheartPercent)), 100LL);
+		locals.devAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.devPercent)), 100LL);
+		locals.burnAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.burnPercent)), 100LL);
+		locals.shareholdersAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.shareholdersPercent)), 100LL);
+		locals.qheartAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.qheartPercent)), 100LL);
 
 		if (locals.devAmount > 0)
 		{
@@ -780,7 +780,7 @@ private:
 			locals.shareholdersAsset.assetName = PULSE_CONTRACT_ASSET_NAME;
 			locals.shareholdersTotalShares = NUMBER_OF_COMPUTORS;
 
-			locals.shareholdersDividendPerShare = div(locals.shareholdersAmount, locals.shareholdersTotalShares);
+			locals.shareholdersDividendPerShare = div<sint64>(locals.shareholdersAmount, locals.shareholdersTotalShares);
 			if (locals.shareholdersDividendPerShare > 0)
 			{
 				locals.shareholdersIter.begin(locals.shareholdersAsset);
