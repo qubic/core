@@ -1,6 +1,6 @@
 #define SINGLE_COMPILE_UNIT
 
-// #define OLD_CCF
+// #define NO_QRWA
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
@@ -61,6 +61,7 @@
 #include "contract_core/qpi_ticking_impl.h"
 #include "vote_counter.h"
 #include "ticking/execution_fee_report_collector.h"
+#include "ticking/stable_computor_index.h"
 #include "network_messages/execution_fees.h"
 
 #include "contract_core/ipo.h"
@@ -428,10 +429,11 @@ static void getComputerDigest(m256i& digest)
                 _interlockedadd64(&contractTotalExecutionTime[digestIndex], executionTime);
                 // do not charge contract 0 state digest computation,
                 // only charge execution time if contract is already constructed/not in IPO
-                if (digestIndex > 0 && system.epoch >= contractDescriptions[digestIndex].constructionEpoch)
-                {
-                    executionTimeAccumulator.addTime(digestIndex, executionTime);
-                }
+                // TODO: enable this after adding proper tracking of contract state writes
+                //if (digestIndex > 0 && system.epoch >= contractDescriptions[digestIndex].constructionEpoch)
+                //{
+                //    executionTimeAccumulator.addTime(digestIndex, executionTime);
+                //}
 
                 // Gather data for comparing different versions of K12
                 if (K12MeasurementsCount < 500)
@@ -1693,6 +1695,25 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 response.status = SpecialCommandSaveSnapshotRequestAndResponse::REMOTE_SAVE_MODE_DISABLED;
 #endif
                 enqueueResponse(peer, sizeof(SpecialCommandSaveSnapshotRequestAndResponse), SpecialCommand::type(), header->dejavu(), &response);
+            }
+            break;
+
+            case SPECIAL_COMMAND_SET_EXECUTION_FEE_MULTIPLIER:
+            {
+                const auto* _request = header->getPayload<SpecialCommandExecutionFeeMultiplierRequestAndResponse>();
+                executionTimeMultiplierNumerator = _request->multiplierNumerator;
+                executionTimeMultiplierDenominator = _request->multiplierDenominator;
+                enqueueResponse(peer, sizeof(SpecialCommandExecutionFeeMultiplierRequestAndResponse), SpecialCommand::type(), header->dejavu(), _request);
+            }
+            break;
+
+            case SPECIAL_COMMAND_GET_EXECUTION_FEE_MULTIPLIER:
+            {
+                SpecialCommandExecutionFeeMultiplierRequestAndResponse response;
+                response.everIncreasingNonceAndCommandType = request->everIncreasingNonceAndCommandType;
+                response.multiplierNumerator = executionTimeMultiplierNumerator;
+                response.multiplierDenominator = executionTimeMultiplierDenominator;
+                enqueueResponse(peer, sizeof(SpecialCommandExecutionFeeMultiplierRequestAndResponse), SpecialCommand::type(), header->dejavu(), &response);
             }
             break;
 
@@ -3025,8 +3046,8 @@ static bool makeAndBroadcastExecutionFeeTransaction(int i, BroadcastFutureTickDa
         payload,
         executionTimeAccumulator.getPrevPhaseAccumulatedTimes(),
         (system.tick / NUMBER_OF_COMPUTORS) - 1,
-        EXECUTION_TIME_MULTIPLIER_NUMERATOR,
-        EXECUTION_TIME_MULTIPLIER_DENOMINATOR
+        executionTimeMultiplierNumerator,
+        executionTimeMultiplierDenominator
     );
     executionTimeAccumulator.releaseLock();
 
@@ -5247,6 +5268,11 @@ static void tickProcessor(void*)
 
                                     // Save the file of revenue. This blocking save can be called from any thread
                                     saveRevenueComponents(NULL);
+
+                                    // Reorder futureComputors so requalifying computors keep their index
+                                    // This is needed for correct execution fee reporting across epoch boundaries
+                                    static_assert(reorgBufferSize >= stableComputorIndexBufferSize(), "reorgBuffer too small for stable computor index");
+                                    calculateStableComputorIndex(system.futureComputors, broadcastedComputors.computors.publicKeys, reorgBuffer);
 
                                     // instruct main loop to save system and wait until it is done
                                     systemMustBeSaved = true;

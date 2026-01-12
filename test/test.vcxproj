@@ -121,6 +121,7 @@
   <ItemGroup>
     <ClCompile Include="common_def.cpp" />
     <ClCompile Include="contract_qbond.cpp" />
+    <ClCompile Include="contract_qrwa.cpp" />
     <ClCompile Include="contract_qswap.cpp" />
     <ClCompile Include="fourq.cpp" />
     <ClCompile Include="pending_txs_pool.cpp" />
@@ -146,6 +147,7 @@
     <ClCompile Include="contract_qip.cpp" />
     <ClCompile Include="custom_mining.cpp" />
     <ClCompile Include="execution_fees.cpp" />
+    <ClCompile Include="stable_computor_index.cpp" />
     <ClCompile Include="file_io.cpp" />
     <ClCompile Include="qpi_collection.cpp" />
     <ClCompile Include="qpi_date_time.cpp" />

@@ -104,3 +104,13 @@ struct SpecialCommandSaveSnapshotRequestAndResponse
 };
 
 #pragma pack(pop)
+
+#define SPECIAL_COMMAND_SET_EXECUTION_FEE_MULTIPLIER 19ULL
+#define SPECIAL_COMMAND_GET_EXECUTION_FEE_MULTIPLIER 20ULL
+// This struct is used as response for the get command and as request and response for the set command.
+struct SpecialCommandExecutionFeeMultiplierRequestAndResponse
+{
+    unsigned long long everIncreasingNonceAndCommandType;
+    unsigned long long multiplierNumerator;
+    unsigned long long multiplierDenominator;
+};

@@ -35,6 +35,7 @@
     <ClCompile Include="virtual_memory.cpp" />
     <ClCompile Include="custom_mining.cpp" />
     <ClCompile Include="execution_fees.cpp" />
+    <ClCompile Include="stable_computor_index.cpp" />
     <ClCompile Include="contract_qutil.cpp" />
     <ClCompile Include="revenue.cpp" />
     <ClCompile Include="time.cpp" />
@@ -48,6 +49,7 @@
     <ClCompile Include="pending_txs_pool.cpp" />
     <ClCompile Include="quorum_value.cpp" />
     <ClCompile Include="sorting.cpp" />
+    <ClCompile Include="contract_qrwa.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />
