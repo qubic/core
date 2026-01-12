@@ -134,6 +134,7 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		{
 			const uint16_t replySize = (uint16_t)OI::oracleInterfaces[oqm.interfaceIndex].replySize;
 			const void* replyData = getReplyDataFromTickTransactionStorage(oqm);
+			copyMem(payload, replyData, replySize);
 			response->resType = RespondOracleData::respondReplyData;
 			enqueueResponse(peer, sizeof(RespondOracleData) + replySize,
 				RespondOracleData::type(), header->dejavu(), response);
