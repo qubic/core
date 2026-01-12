@@ -1045,13 +1045,13 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
 
                         if (status = peers[i].tcp4Protocol->Connect(peers[i].tcp4Protocol, (EFI_TCP4_CONNECTION_TOKEN*)&peers[i].connectAcceptToken))
                         {
-                            if (peers[i].isOMNode)
-                            {
-                                CHAR16 omDbgMsg[64];
-                                setText(omDbgMsg, L"OM: peerReconnectIfInactive - Connected failed. Status: ");
-                                appendNumber(omDbgMsg, status, false);
-                                addDebugMessage(omDbgMsg);
-                            }
+                            //if (peers[i].isOMNode)
+                            //{
+                            //    CHAR16 omDbgMsg[64];
+                            //    setText(omDbgMsg, L"OM: peerReconnectIfInactive - Connected failed. Status: ");
+                            //    appendNumber(omDbgMsg, status, false);
+                            //    addDebugMessage(omDbgMsg);
+                            //}
 
                             logStatusToConsole(L"EFI_TCP4_PROTOCOL.Connect() fails", status, __LINE__);
 
@@ -1065,7 +1065,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                             if (peers[i].isOMNode)
                             {
                                 peers[i].connectionStartTime = __rdtsc();
-                                addDebugMessage(L"OM: peerReconnectIfInactive - isConnectingAccepting.");
+                                //addDebugMessage(L"OM: peerReconnectIfInactive - isConnectingAccepting.");
                             }
                         }
                     }
