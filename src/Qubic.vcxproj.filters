@@ -294,6 +294,9 @@
     <ClInclude Include="ticking\execution_fee_report_collector.h">
       <Filter>ticking</Filter>
     </ClInclude>
+    <ClInclude Include="ticking\stable_computor_index.h">
+      <Filter>ticking</Filter>
+    </ClInclude>
     <ClInclude Include="contracts\Qdraw.h">
       <Filter>contracts</Filter>
     </ClInclude>
@@ -311,6 +314,9 @@
     </ClInclude>
     <ClInclude Include="contract_core\execution_time_accumulator.h">
       <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\qRWA.h">
+      <Filter>contracts</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
