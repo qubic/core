@@ -493,19 +493,6 @@ public:
 		enableBuyTicket(state, !locals.isWednesday);
 	}
 
-	POST_INCOMING_TRANSFER()
-	{
-		switch (input.type)
-		{
-			case TransferType::standardTransaction:
-				if (input.amount > 0)
-				{
-					qpi.transfer(input.sourceId, input.amount);
-				}
-			default: break;
-		}
-	}
-
 	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.ticketPrice; }
 	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.schedule; }
 	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.drawHour; }
