@@ -1007,6 +1007,8 @@ static void peerOMLogStatus(unsigned int i)
                 CHAR16 omDbgMsg[64];
                 setText(omDbgMsg, L"OM: peerOMLogStatus - State: ");
                 appendNumber(omDbgMsg, state, false);
+                appendText(omDbgMsg, L",add:");
+                appendIPv4Address(omDbgMsg, peers[i].address);
                 addDebugMessage(omDbgMsg);
             }
             else
@@ -1040,6 +1042,8 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                 peers[i].isOMNode = TRUE;
                 peers[i].address = omIPv4Address[i - NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS];
                 connectionTimeout = 5;
+                // Mark it as failure
+                peers[i].connectAcceptToken.CompletionToken.Status = -1;
             }
             else
             {
