@@ -370,21 +370,43 @@ static void pushToFullNodes(RequestResponseHeader* requestResponseHeader, int nu
 
 static void pushToOracleMachineNodes(RequestResponseHeader* requestResponseHeader)
 {
+    setText(::message, L"pushToOracleMachineNodes(): ");
     if (NUMBER_OF_OM_NODE_CONNECTIONS > 0)
     {
         unsigned short numberOfSuitablePeers = 0;
         for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS && numberOfSuitablePeers < NUMBER_OF_OM_NODE_CONNECTIONS; i++)
         {
-            if (peers[i].isOracleMachineNode()
-                && peers[i].tcp4Protocol
-                && peers[i].isConnectedAccepted
-                && !peers[i].isClosing)
+            if (peers[i].isOracleMachineNode())
             {
-                push(&peers[i], requestResponseHeader);
-                numberOfSuitablePeers++;
+                if (peers[i].tcp4Protocol
+                    && peers[i].isConnectedAccepted
+                    && !peers[i].isClosing)
+                {
+                    appendIPv4Address(::message, peers[i].address);
+
+                    push(&peers[i], requestResponseHeader);
+                    numberOfSuitablePeers++;
+                }
+                else
+                {
+                    appendText(::message, L" peer is not active, ");
+                    if (NULL == peers[i].tcp4Protocol)
+                    {
+                        appendText(::message, L", NULL tcp4Protocol");
+                    }
+                    if (!peers[i].isConnectedAccepted)
+                    {
+                        appendText(::message, L", NOT isConnectedAccepted");
+                    }
+                    if (peers[i].isClosing)
+                    {
+                        appendText(::message, L", isClosing");
+                    }
+                }
             }
         }
     }
+    addDebugMessage(::message);
 }
 
 // Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
