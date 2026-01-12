@@ -7399,7 +7399,31 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         }
                         else if (responseQueueElements[responseQueueElementTail].peer == (Peer*)1)
                         {
+#if 0
+                            // send query to OM node
                             pushToOracleMachineNodes(responseHeader);
+#else
+                            // bypass OM node for mock oracle
+                            if (responseHeader->checkPayloadSize(sizeof(OracleMachineQuery) + sizeof(OI::Mock::OracleQuery)))
+                            {
+                                struct TheMockQuery
+                                {
+                                    OracleMachineQuery header;
+                                    OI::Mock::OracleQuery data;
+                                };
+                                const TheMockQuery* query = responseHeader->getPayload<TheMockQuery>();
+                                struct
+                                {
+                                    OracleMachineReply header;
+                                    OI::Mock::OracleReply data;
+                                } reply;
+                                reply.header.oracleQueryId = query->header.oracleQueryId;
+                                reply.header.oracleMachineErrorFlags = 0;
+                                reply.data.echoedValue = query->data.value;
+                                reply.data.doubledValue = query->data.value * 2;
+                                oracleEngine.processOracleMachineReply(&reply.header, sizeof(reply));
+                            }
+#endif
                         }
                         else
                         {
