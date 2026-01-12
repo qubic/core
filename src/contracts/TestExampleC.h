@@ -334,7 +334,7 @@ public:
 		//}
 
 		// Mock oracle
-		if (qpi.tick() % 2)
+		if (qpi.tick() % 10 == 9)
 		{
 			locals.mockOracleQuery.value = qpi.tick();
 			locals.oracleQueryId = QUERY_ORACLE(OI::Mock, locals.mockOracleQuery, NotifyMockOracleReply, 20000);
