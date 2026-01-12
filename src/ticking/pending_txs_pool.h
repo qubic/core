@@ -354,13 +354,19 @@ public:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         else
         {
-            CHAR16 dbgMsgBuf[100];
+            CHAR16 dbgMsgBuf[150];
             setText(dbgMsgBuf, L"tx failed (tx->checkValidity() && tickInStorage(tx->tick)): tick ");
             appendNumber(dbgMsgBuf, tx->tick, FALSE);
             appendText(dbgMsgBuf, L", amount ");
             appendNumber(dbgMsgBuf, tx->amount, FALSE);
+            appendText(dbgMsgBuf, L", inputType ");
+            appendNumber(dbgMsgBuf, tx->inputType, FALSE);
             appendText(dbgMsgBuf, L", inputSize ");
             appendNumber(dbgMsgBuf, tx->inputSize, FALSE);
+            appendText(dbgMsgBuf, L", dst[0] ");
+            appendNumber(dbgMsgBuf, tx->destinationPublicKey.u64._0, FALSE);
+            appendText(dbgMsgBuf, L", src[0] ");
+            appendNumber(dbgMsgBuf, tx->sourcePublicKey.u64._0, FALSE);
             addDebugMessage(dbgMsgBuf);
         }
 #endif
