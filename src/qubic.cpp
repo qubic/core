@@ -95,6 +95,8 @@
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
+#define ORACLE_REPLY_COMMIT_PUBLICATION_OFFSET 5
+#define ORACLE_REPLY_REVEAL_PUBLICATION_OFFSET 3
 #define TIME_ACCURACY 5000
 constexpr unsigned long long TARGET_MAINTHREAD_LOOP_DURATION = 30; // mcs, it is the target duration of the main thread loop
 
@@ -3505,10 +3507,10 @@ static void processTick(unsigned long long processorNumber)
     // Publish oracle reply commit and reveal transactions (uses reorgBuffer for constructing packets)
     if (isMainMode())
     {
-        const auto txTick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
         unsigned char digest[32];
         {
             PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reply transactions");
+            const auto txTick = system.tick + ORACLE_REPLY_COMMIT_PUBLICATION_OFFSET;
             auto* tx = (OracleReplyCommitTransactionPrefix*)reorgBuffer;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
@@ -3537,6 +3539,7 @@ static void processTick(unsigned long long processorNumber)
         {
             PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reveal transactions");
             auto* tx = (OracleReplyRevealTransactionPrefix*)reorgBuffer;
+            const auto txTick = system.tick + ORACLE_REPLY_REVEAL_PUBLICATION_OFFSET;
             // create reply reveal transaction in tx (without signature), returning:
             // - 0 if no tx was created (no need to send reply commits)
             // - otherwise, an index value that has to be passed to the next call for building another tx
