@@ -1016,11 +1016,11 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
             // after one has been seen)
             if (isZero(request->destinationPublicKey) && request->inputType == OracleReplyRevealTransactionPrefix::transactionType())
             {
-                oracleEngine.announceExpectedRevealTransaction((OracleReplyRevealTransactionPrefix*)request);
 #if !defined(NDEBUG) && 1
                 appendText(dbgMsg, L" reveal");
                 addDebugMessage(dbgMsg);
 #endif
+                oracleEngine.announceExpectedRevealTransaction((OracleReplyRevealTransactionPrefix*)request);
             }
 
             if (isZero(request->destinationPublicKey) && request->inputType == OracleReplyCommitTransactionPrefix::transactionType())
