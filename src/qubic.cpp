@@ -2836,12 +2836,14 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
     if (isZero(transaction->destinationPublicKey))
     {
         CHAR16 dbgMsg[200];
+        /*
         if (transaction->inputType == OracleReplyCommitTransactionPrefix::transactionType())
         {
             setText(dbgMsg, L"OracleReplyCommitTransaction found in processTickTransaction(), tick ");
             appendNumber(dbgMsg, system.tick, FALSE);
             addDebugMessage(dbgMsg);
         }
+        */
         if (transaction->inputType == OracleReplyRevealTransactionPrefix::transactionType())
         {
             setText(dbgMsg, L"OracleReplyRevealTransaction found in processTickTransaction(), tick ");

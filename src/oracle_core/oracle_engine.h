@@ -760,7 +760,7 @@ public:
             return false;
         }
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && 0
         CHAR16 dbgMsg[800];
         setText(dbgMsg, L"oracleEngine.processOracleReplyCommitTransaction(), tick ");
         appendNumber(dbgMsg, system.tick, FALSE);
@@ -848,6 +848,20 @@ public:
 
                     // log status change
                     logQueryStatusChange(oqm);
+
+#if !defined(NDEBUG) && 1
+                    CHAR16 dbgMsg1[200];
+                    setText(dbgMsg1, L"oracleEngine.processOracleReplyCommitTransaction(), tick ");
+                    appendNumber(dbgMsg1, system.tick, FALSE);
+                    appendText(dbgMsg1, ", queryId ");
+                    appendNumber(dbgMsg1, oqm.queryId, FALSE);
+                    appendText(dbgMsg1, " (");
+                    appendNumber(dbgMsg1, mostCommitsCount, FALSE);
+                    appendText(dbgMsg1, ":");
+                    appendNumber(dbgMsg1, replyState.totalCommits - mostCommitsCount, FALSE);
+                    appendText(dbgMsg1, ") -> COMMITTED");
+                    addDebugMessage(dbgMsg1);
+#endif
                 }
             }
             else if (replyState.totalCommits - mostCommitsCount > NUMBER_OF_COMPUTORS - QUORUM)
@@ -871,9 +885,23 @@ public:
 
                 // log status change
                 logQueryStatusChange(oqm);
+
+#if !defined(NDEBUG) && 1
+                CHAR16 dbgMsg1[200];
+                setText(dbgMsg1, L"oracleEngine.processOracleReplyCommitTransaction(), tick ");
+                appendNumber(dbgMsg1, system.tick, FALSE);
+                appendText(dbgMsg1, ", queryId ");
+                appendNumber(dbgMsg1, oqm.queryId, FALSE);
+                appendText(dbgMsg1, " (");
+                appendNumber(dbgMsg1, mostCommitsCount, FALSE);
+                appendText(dbgMsg1, ":");
+                appendNumber(dbgMsg1, replyState.totalCommits - mostCommitsCount, FALSE);
+                appendText(dbgMsg1, ") -> UNRESOLVABLE");
+                addDebugMessage(dbgMsg1);
+#endif
             }
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && 0
             appendNumber(dbgMsg, item->queryId, FALSE);
             appendText(dbgMsg, " (");
             appendNumber(dbgMsg, mostCommitsCount, FALSE);
@@ -883,7 +911,7 @@ public:
 #endif
         }
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && 0
         addDebugMessage(dbgMsg);
 #endif
 
