@@ -3576,10 +3576,10 @@ static void processTick(unsigned long long processorNumber)
     // Publish oracle reply commit and reveal transactions (uses reorgBuffer for constructing packets)
     if (isMainMode())
     {
-        const auto txTick = system.tick + 10;
         unsigned char digest[32];
         {
             PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reply transactions");
+            const auto txTick = system.tick + 10;
             auto* tx = (OracleReplyCommitTransactionPrefix*)reorgBuffer;
             unsigned int txCount = 0;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
@@ -3624,6 +3624,7 @@ static void processTick(unsigned long long processorNumber)
         {
             PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reveal transactions");
             auto* tx = (OracleReplyRevealTransactionPrefix*)reorgBuffer;
+            const auto txTick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
             // create reply reveal transaction in tx (without signature), returning:
             // - 0 if no tx was created (no need to send reply commits)
             // - otherwise, an index value that has to be passed to the next call for building another tx
