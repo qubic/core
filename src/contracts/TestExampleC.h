@@ -334,10 +334,10 @@ public:
 		//}
 
 		// Mock oracle
-		if (qpi.tick() % 10 == 9)
+		if (qpi.tick() % 100 == 9)
 		{
 			locals.mockOracleQuery.value = qpi.tick();
-			locals.oracleQueryId = QUERY_ORACLE(OI::Mock, locals.mockOracleQuery, NotifyMockOracleReply, 20000);
+			locals.oracleQueryId = QUERY_ORACLE(OI::Mock, locals.mockOracleQuery, NotifyMockOracleReply, 10*20000);
 		}
 	}
 
