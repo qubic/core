@@ -57,9 +57,10 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		for (unsigned int msgIdx = 0; msgIdx < numMessages; ++msgIdx)
 		{
 			unsigned int idxInMsg = 0;
-			for (; idxInMsg < maxQueryIdCount && idIdx < pendingQueryIndices.numValues; ++idxInMsg)
+			for (; idxInMsg < maxQueryIdCount && idIdx < pendingQueryIndices.numValues; ++idxInMsg, ++idIdx)
 			{
-				payloadQueryIds[idxInMsg] = pendingQueryIndices.values[idIdx];
+				const uint32_t queryIndex = pendingQueryIndices.values[idIdx];
+				payloadQueryIds[idxInMsg] = queries[queryIndex].queryId;
 			}
 			enqueueResponse(peer, sizeof(RespondOracleData) + idxInMsg * 8,
 				RespondOracleData::type(), header->dejavu(), response);
