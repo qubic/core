@@ -1125,7 +1125,7 @@ public:
         setText(dbgMsg, L"oracleEngine.processOracleReplyRevealTransaction(), tick ");
         appendNumber(dbgMsg, system.tick, FALSE);
         appendText(dbgMsg, ", queryId ");
-        appendNumber(dbgMsg, replyState->queryId, FALSE);
+        appendNumber(dbgMsg, oqm.queryId, FALSE);
         appendText(dbgMsg, ", computorIdx ");
         appendNumber(dbgMsg, computorIndex(transaction->sourcePublicKey), FALSE);
         addDebugMessage(dbgMsg);
