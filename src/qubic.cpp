@@ -1025,7 +1025,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
 
             if (isZero(request->destinationPublicKey) && request->inputType == OracleReplyCommitTransactionPrefix::transactionType())
             {
-#if !defined(NDEBUG) && 1
+#if !defined(NDEBUG) && 0
                 appendText(dbgMsg, L" commit");
                 addDebugMessage(dbgMsg);
 #endif
@@ -2833,12 +2833,21 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
     ts.transactionsDigestAccess.releaseLock();
 
 #if !defined(NDEBUG)
-    if (isZero(transaction->destinationPublicKey) && transaction->inputType == OracleReplyCommitTransactionPrefix::transactionType())
+    if (isZero(transaction->destinationPublicKey))
     {
         CHAR16 dbgMsg[200];
-        setText(dbgMsg, L"OracleReplyCommitTransaction found in processTickTransaction(), tick ");
-        appendNumber(dbgMsg, system.tick, FALSE);
-        addDebugMessage(dbgMsg);
+        if (transaction->inputType == OracleReplyCommitTransactionPrefix::transactionType())
+        {
+            setText(dbgMsg, L"OracleReplyCommitTransaction found in processTickTransaction(), tick ");
+            appendNumber(dbgMsg, system.tick, FALSE);
+            addDebugMessage(dbgMsg);
+        }
+        if (transaction->inputType == OracleReplyRevealTransactionPrefix::transactionType())
+        {
+            setText(dbgMsg, L"OracleReplyRevealTransaction found in processTickTransaction(), tick ");
+            appendNumber(dbgMsg, system.tick, FALSE);
+            addDebugMessage(dbgMsg);
+        }
     }
 #endif
 
