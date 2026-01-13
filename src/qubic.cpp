@@ -901,6 +901,25 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
                     enqueueResponse(NULL, header);
                 }
 
+#if !defined(NDEBUG) && 1
+                unsigned int txCount = 0;
+                for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
+                {
+                    if (!isZero(request->tickData.transactionDigests[transactionIndex]))
+                    {
+                        txCount++;
+                    }
+                }
+                CHAR16 dbgMsg1[200];
+                setText(dbgMsg1, L"processBroadcastFutureTickData(), current tick ");
+                appendNumber(dbgMsg1, system.tick, FALSE);
+                appendText(dbgMsg1, ", tickData.tick ");
+                appendNumber(dbgMsg1, request->tickData.tick, FALSE);
+                appendText(dbgMsg1, ", tx count ");
+                appendNumber(dbgMsg1, txCount, FALSE);
+                addDebugMessage(dbgMsg1);
+#endif
+
                 ts.tickData.acquireLock();
                 TickData& td = ts.tickData.getByTickInCurrentEpoch(request->tickData.tick);
                 if (td.epoch != INVALIDATED_TICK_DATA)
@@ -3617,6 +3636,10 @@ static void processTick(unsigned long long processorNumber)
                 appendText(dbgMsg, ", txScheduleTick ");
                 appendNumber(dbgMsg, txTick, FALSE);
                 appendText(dbgMsg, ", total number of tx ");
+                appendNumber(dbgMsg, txCount, FALSE);
+                auto* commits = reinterpret_cast<OracleReplyCommitTransactionItem*>(tx->inputPtr());
+                appendText(dbgMsg, ", last tx first queryId ");
+                appendNumber(dbgMsg, commits[0].queryId, FALSE);
                 appendNumber(dbgMsg, txCount, FALSE);
                 addDebugMessage(dbgMsg);
             }
