@@ -751,10 +751,11 @@ public:
         if (compIdx < 0)
         {
 #if !defined(NDEBUG)
-            CHAR16 dbgMsg[800];
+            CHAR16 dbgMsg[120];
             setText(dbgMsg, L"oracleEngine.processOracleReplyCommitTransaction(), tick ");
             appendNumber(dbgMsg, system.tick, FALSE);
             appendText(dbgMsg, ", source is no computor!");
+            addDebugMessage(dbgMsg);
 #endif
             return false;
         }
