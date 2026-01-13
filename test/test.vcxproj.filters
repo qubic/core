@@ -44,7 +44,6 @@
     <ClCompile Include="uint128.cpp" />
     <ClCompile Include="fourq.cpp" />
     <ClCompile Include="contract_qbond.cpp" />
-    <ClCompile Include="contract_qrp.cpp" />
     <ClCompile Include="contract_pulse.cpp" />
     <ClCompile Include="pending_txs_pool.cpp" />
     <ClCompile Include="quorum_value.cpp" />
