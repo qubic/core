@@ -3576,7 +3576,7 @@ static void processTick(unsigned long long processorNumber)
     // Publish oracle reply commit and reveal transactions (uses reorgBuffer for constructing packets)
     if (isMainMode())
     {
-        const auto txTick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+        const auto txTick = system.tick + 10;
         unsigned char digest[32];
         {
             PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reply transactions");
