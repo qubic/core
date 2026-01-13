@@ -159,7 +159,6 @@ public:
 	struct BuyTicket_locals
 	{
 		uint64 reward;
-		uint64 capacity;
 		uint64 slotsLeft;
 		sint64 userBalance;
 		sint64 transferResult;
@@ -234,10 +233,6 @@ public:
 	struct GetBalance_output
 	{
 		uint64 balance;
-	};
-	struct GetBalance_locals
-	{
-		sint64 balance;
 	};
 
 	struct SetPrice_input
@@ -404,10 +399,6 @@ public:
 		state.schedule = PULSE_DEFAULT_SCHEDULE;
 		state.drawHour = PULSE_DEFAULT_DRAW_HOUR;
 		state.lastDrawDateStamp = PULSE_DEFAULT_INIT_TIME;
-		state.ticketCounter = 0;
-		setMemory(state.tickets, 0);
-		setMemory(state.lastWinningDigits, 0);
-		state.nextEpochData.clear();
 
 		enableBuyTicket(state, false);
 	}
@@ -487,7 +478,7 @@ public:
 		state.lastDrawDateStamp = locals.currentDateStamp;
 		enableBuyTicket(state, false);
 
-		SettleRound(qpi, state, locals.settleInput, locals.settleOutput, locals.settleLocals);
+		CALL(SettleRound, locals.settleInput, locals.settleOutput);
 
 		clearStateOnEndDraw(state);
 		enableBuyTicket(state, !locals.isWednesday);
@@ -509,10 +500,9 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	PUBLIC_FUNCTION_WITH_LOCALS(GetBalance)
+	PUBLIC_FUNCTION(GetBalance)
 	{
-		locals.balance = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, SELF_INDEX, SELF_INDEX);
-		output.balance = (locals.balance > 0) ? static_cast<uint64>(locals.balance) : 0;
+		output.balance = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, SELF_INDEX, SELF_INDEX);
 	}
 
 	PUBLIC_PROCEDURE(SetPrice)
@@ -655,8 +645,7 @@ public:
 			return;
 		}
 
-		locals.capacity = state.tickets.capacity();
-		locals.slotsLeft = (state.ticketCounter < locals.capacity) ? (locals.capacity - state.ticketCounter) : 0;
+		locals.slotsLeft = (state.ticketCounter < state.tickets.capacity()) ? (state.tickets.capacity() - state.ticketCounter) : 0;
 		if (locals.slotsLeft == 0)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TICKET_ALL_SOLD_OUT);
@@ -682,7 +671,7 @@ public:
 		locals.ticket.player = qpi.invocator();
 		locals.ticket.digits = input.digits;
 		state.tickets.set(state.ticketCounter, locals.ticket);
-		state.ticketCounter = min(state.ticketCounter + 1, locals.capacity);
+		state.ticketCounter = min(state.ticketCounter + 1, state.tickets.capacity());
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
@@ -837,7 +826,7 @@ private:
 				}
 			}
 
-			locals.leftAlignedReward = getLeftAlignedReward(locals.leftAlignedMatches);
+			locals.leftAlignedReward = getLeftAlignedReward(state, locals.leftAlignedMatches);
 			locals.anyPositionReward = getAnyPositionReward(locals.anyPositionMatches);
 			locals.prize = max(locals.leftAlignedReward, locals.anyPositionReward);
 
@@ -914,11 +903,11 @@ protected:
 
 	static bool isSellingOpen(const PULSE& state) { return (state.currentState & EState::SELLING) != 0; }
 
-	static uint64 getLeftAlignedReward(uint8 matches)
+	static uint64 getLeftAlignedReward(const PULSE& state, uint8 matches)
 	{
 		switch (matches)
 		{
-			case 6: return 2400;
+			case 6: return 2400 * state.ticketPrice;
 			case 5: return 600;
 			case 4: return 150;
 			case 3: return 30;
@@ -932,7 +921,7 @@ protected:
 	{
 		switch (matches)
 		{
-			case 6: return 0;
+			case 6: return 1500;
 			case 5: return 400;
 			case 4: return 50;
 			case 3: return 8;
