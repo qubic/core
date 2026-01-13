@@ -177,23 +177,23 @@ public:
     // Acquire lock for returned pointers to transactions or digests.
     inline static void acquireLock()
     {
-        addDebugMessage(L"pendingTxsPool.acquireLock()");
+        //addDebugMessage(L"pendingTxsPool.acquireLock()");
         ACQUIRE(lock);
     }
 
     // Release lock for returned pointers to transactions or digests.
     inline static void releaseLock()
     {
-        addDebugMessage(L"pendingTxsPool.releaseLock()");
+        //addDebugMessage(L"pendingTxsPool.releaseLock()");
         RELEASE(lock);
     }
 
     // Return number of transactions scheduled for the specified tick.
     static unsigned int getNumberOfPendingTickTxs(unsigned int tick)
     {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin pendingTxsPool.getNumberOfPendingTickTxs()");
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        addDebugMessage(L"Begin pendingTxsPool.getNumberOfPendingTickTxs()");
+//#endif
         unsigned int res = 0;
         ACQUIRE(lock);
         if (tickInStorage(tick))
@@ -202,23 +202,23 @@ public:
         }
         RELEASE(lock);
 
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        CHAR16 dbgMsgBuf[200];
-        setText(dbgMsgBuf, L"End pendingTxsPool.getNumberOfPendingTickTxs() for tick=");
-        appendNumber(dbgMsgBuf, tick, FALSE);
-        appendText(dbgMsgBuf, L" -> res=");
-        appendNumber(dbgMsgBuf, res, FALSE);
-        addDebugMessage(dbgMsgBuf);
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        CHAR16 dbgMsgBuf[200];
+//        setText(dbgMsgBuf, L"End pendingTxsPool.getNumberOfPendingTickTxs() for tick=");
+//        appendNumber(dbgMsgBuf, tick, FALSE);
+//        appendText(dbgMsgBuf, L" -> res=");
+//        appendNumber(dbgMsgBuf, res, FALSE);
+//        addDebugMessage(dbgMsgBuf);
+//#endif
         return res;
     }
 
     // Return number of transactions scheduled later than the specified tick.
     static unsigned int getTotalNumberOfPendingTxs(unsigned int tick)
     {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin pendingTxsPool.getTotalNumberOfPendingTxs()");
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        addDebugMessage(L"Begin pendingTxsPool.getTotalNumberOfPendingTxs()");
+//#endif
         unsigned int res = 0;
         ACQUIRE(lock);
         if (tickInStorage(tick + 1))
@@ -240,14 +240,14 @@ public:
         }
         RELEASE(lock);
 
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        CHAR16 dbgMsgBuf[200];
-        setText(dbgMsgBuf, L"End pendingTxsPool.getTotalNumberOfPendingTxs() for tick=");
-        appendNumber(dbgMsgBuf, tick, FALSE);
-        appendText(dbgMsgBuf, L" -> res=");
-        appendNumber(dbgMsgBuf, res, FALSE);
-        addDebugMessage(dbgMsgBuf);
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        CHAR16 dbgMsgBuf[200];
+//        setText(dbgMsgBuf, L"End pendingTxsPool.getTotalNumberOfPendingTxs() for tick=");
+//        appendNumber(dbgMsgBuf, tick, FALSE);
+//        appendText(dbgMsgBuf, L" -> res=");
+//        appendNumber(dbgMsgBuf, res, FALSE);
+//        addDebugMessage(dbgMsgBuf);
+//#endif
         return res;
     }
 
