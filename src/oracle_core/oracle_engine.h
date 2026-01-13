@@ -766,7 +766,7 @@ public:
         // process the N commits in this tx
         const OracleReplyCommitTransactionItem* item = (const OracleReplyCommitTransactionItem*)transaction->inputPtr();
         uint32_t size = sizeof(OracleReplyCommitTransactionItem);
-        while (size <= transaction->inputSize)
+        for (; size <= transaction->inputSize; size += sizeof(OracleReplyCommitTransactionItem), ++item)
         {
             // get and check query index
             uint32_t queryIndex;
@@ -872,10 +872,6 @@ public:
             appendNumber(dbgMsg, replyState.totalCommits - mostCommitsCount, FALSE);
             appendText(dbgMsg, ")");
 #endif
-
-            // go to next commit in tx
-            size += sizeof(OracleReplyCommitTransactionItem);
-            ++item;
         }
 
 #if !defined(NDEBUG)
