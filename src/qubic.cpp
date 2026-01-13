@@ -1734,6 +1734,7 @@ static void processOracleMachineReply(Peer* peer, RequestResponseHeader* header)
     if (header->size() >= sizeof(RequestResponseHeader) + sizeof(OracleMachineReply))
     {
         oracleEngine.processOracleMachineReply(msg, header->getPayloadSize());
+        peer->lastOMActivityTime = __rdtsc();
     }
 }
 
@@ -7189,16 +7190,34 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     // reconnect if this peer slot has no active connection
                     peerReconnectIfInactive(i, PORT);
 
-                    if (peers[i].isOracleMachineNode() &&
-                        peers[i].isConnectingAccepting &&
-                        ((__rdtsc() - peers[i].connectionStartTime) / frequency > ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS))
+                    if (peers[i].isOracleMachineNode())
                     {
-                        logToConsole(L"OM: Connection from Accepting State to Accepted State took too long.");
+                        if (peers[i].isConnectingAccepting &&
+                            ((__rdtsc() - peers[i].connectionStartTime) / frequency > ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS))
+                        {
+                            logToConsole(L"OM: Connection from Accepting State to Accepted State took too long.");
 #if !defined(NDEBUG)
-                        peerOMLogStatus(i);
+                            addDebugMessage(L"OM: Connection from Accepting State to Accepted State took too long.");
+                            peerOMLogStatus(i);
 #endif
-                        closePeer(&peers[i]);
+                            closePeer(&peers[i]);
+                        }
+
+                        constexpr unsigned long long OM_INACTIVITY_TIMEOUT_SECS = 300;  // 5 minutes
+                        if (peers[i].isConnectedAccepted &&
+                            !peers[i].isClosing &&
+                            peers[i].lastOMActivityTime > 0 &&
+                            ((__rdtsc() - peers[i].lastOMActivityTime) / frequency > OM_INACTIVITY_TIMEOUT_SECS))
+                        {
+                            logToConsole(L"OM: Connection inactive for 5+ minutes, forcing reconnect.");
+#if !defined(NDEBUG)
+                            addDebugMessage(L"OM: Connection inactive for 5+ minutes, forcing reconnect.");
+                            peerOMLogStatus(i);
+#endif
+                            closePeer(&peers[i]);
+                        }
                     }
+
                 }
 
 #if !TICK_STORAGE_AUTOSAVE_MODE

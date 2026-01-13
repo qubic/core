@@ -64,6 +64,7 @@ struct Peer
     // Indicate the peer is OM connection type which is a subtype of outgoing connection
     BOOLEAN isOMNode;
     unsigned long long connectionStartTime;
+    unsigned long long lastOMActivityTime;
 
     // Extra data to determine if this peer is a fullnode
     // Note: an **active fullnode** is a peer that is able to reply valid tick data, tick vote to this node after getting requested
@@ -122,6 +123,7 @@ struct Peer
         isClosing = FALSE;
         isIncommingConnection = FALSE;
         isOMNode = FALSE;
+        lastOMActivityTime = 0;
         dataToTransmitSize = 0;
         lastActiveTick = 0;
         trackRequestedCounter = 0;
@@ -664,14 +666,15 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                 else
                 {
                     peers[i].isConnectedAccepted = TRUE;
-#if !defined(NDEBUG)
                     if (peers[i].isOracleMachineNode())
                     {
+                        peers[i].lastOMActivityTime = __rdtsc();
+#if !defined(NDEBUG)
                         CHAR16 omDbgMsg[64];
                         setText(omDbgMsg, L"OM: peerConnectionNewlyEstablished - ConnectedAccepted ");
                         addDebugMessage(omDbgMsg);
-                    }
 #endif
+                    }
                 }
             }
         }
