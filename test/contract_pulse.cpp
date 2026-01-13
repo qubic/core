@@ -944,6 +944,58 @@ TEST(ContractPulse_Gameplay, MultipleRoundsMultiplePlayers)
 	}
 }
 
+TEST(ContractPulse_Gameplay, ProRataPayoutWhenBalanceInsufficient)
+{
+	ContractTestingPulse ctl;
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(2000000);
+
+	EXPECT_EQ(ctl.setFees(PULSE_QHEART_ISSUER, 0, 0, 0, 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setPrice(PULSE_QHEART_ISSUER, 1).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	ctl.endEpoch();
+
+	ctl.setDateTime(2025, 1, 9, 12);
+	ctl.beginEpoch();
+
+	static constexpr uint64 preFund = 1000;
+	const uint64 ticketPrice = ctl.getTicketPrice().ticketPrice;
+	ctl.transferQHeart(issuance, ctl.pulseSelf(), preFund);
+
+	const m256i digest(0x1234ULL, 0x5678ULL, 0x9ABCULL, 0xDEF0ULL);
+	etalonTick.prevSpectrumDigest = digest;
+	const Array<uint8, PULSE_WINNING_DIGITS + 7>& winning = deriveWinningDigits(ctl, digest);
+	const uint8 missing = findMissingDigit(winning);
+
+	const Array<uint8, PULSE_PLAYER_DIGITS + 2> ticketA =
+	    makePlayerDigits(winning.get(0), winning.get(1), winning.get(2), winning.get(3), winning.get(4), winning.get(5));
+	const Array<uint8, PULSE_PLAYER_DIGITS + 2> ticketB =
+	    makePlayerDigits(winning.get(0), winning.get(2), winning.get(4), winning.get(6), winning.get(8), missing);
+
+	const id playerA = id::randomValue();
+	const id playerB = id::randomValue();
+	ctl.transferQHeart(issuance, playerA, ticketPrice);
+	ctl.transferQHeart(issuance, playerB, ticketPrice);
+	EXPECT_EQ(ctl.buyTicket(playerA, ticketA).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.buyTicket(playerB, ticketB).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+
+	const uint64 balanceAfterBuyA = ctl.qheartBalanceOf(playerA);
+	const uint64 balanceAfterBuyB = ctl.qheartBalanceOf(playerB);
+	const uint64 contractBefore = ctl.qheartBalanceOf(ctl.pulseSelf());
+	const uint64 prizeA = computeExpectedPrize(ctl.state(), winning, ticketA);
+	const uint64 prizeB = computeExpectedPrize(ctl.state(), winning, ticketB);
+	const uint64 totalPrize = prizeA + prizeB;
+	ASSERT_GT(totalPrize, contractBefore);
+
+	const uint64 expectedA = (prizeA * contractBefore) / totalPrize;
+	const uint64 expectedB = (prizeB * contractBefore) / totalPrize;
+
+	ctl.setDateTime(2025, 1, 10, 12);
+	ctl.forceBeginTick();
+
+	EXPECT_EQ(ctl.qheartBalanceOf(playerA), balanceAfterBuyA + expectedA);
+	EXPECT_EQ(ctl.qheartBalanceOf(playerB), balanceAfterBuyB + expectedB);
+	EXPECT_EQ(ctl.qheartBalanceOf(ctl.pulseSelf()), contractBefore - (expectedA + expectedB));
+}
+
 TEST(ContractPulse_Gameplay, FeesDistributedToDevShareholdersAndQHeartWallet)
 {
 	ContractTestingPulse ctl;

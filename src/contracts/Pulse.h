@@ -322,7 +322,6 @@ public:
 	struct SettleRound_locals
 	{
 		uint64 i;
-		uint64 j;
 		sint64 roundRevenue;
 		sint64 devAmount;
 		sint64 burnAmount;
@@ -331,12 +330,8 @@ public:
 		sint64 balanceSigned;
 		uint64 balance;
 		uint64 prize;
-		uint64 leftAlignedReward;
-		uint64 anyPositionReward;
-		uint8 leftAlignedMatches;
-		uint8 leftAlignedMatchesAtOffset;
-		uint8 anyPositionMatches;
-		uint8 leftAlignedOffset;
+		uint64 totalPrize;
+		uint64 availableBalance;
 		uint16 winningMask;
 		m256i mixedSpectrumValue;
 		uint64 randomSeed;
@@ -801,37 +796,25 @@ private:
 		locals.balanceSigned = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, SELF_INDEX, SELF_INDEX);
 		locals.balance = (locals.balanceSigned > 0) ? static_cast<uint64>(locals.balanceSigned) : 0;
 
+		locals.totalPrize = 0;
 		for (locals.i = 0; locals.i < state.ticketCounter; ++locals.i)
 		{
-			locals.leftAlignedMatches = 0;
-			locals.anyPositionMatches = 0;
 			locals.ticket = state.tickets.get(locals.i);
-			for (locals.leftAlignedOffset = 0; locals.leftAlignedOffset + PULSE_PLAYER_DIGITS <= PULSE_WINNING_DIGITS; ++locals.leftAlignedOffset)
-			{
-				locals.leftAlignedMatchesAtOffset = 0;
-				for (locals.j = 0; locals.j < PULSE_PLAYER_DIGITS; ++locals.j)
-				{
-					if (locals.ticket.digits.get(locals.j) == state.lastWinningDigits.get(locals.leftAlignedOffset + locals.j))
-					{
-						++locals.leftAlignedMatchesAtOffset;
-					}
-				}
-				if (locals.leftAlignedMatchesAtOffset > locals.leftAlignedMatches)
-				{
-					locals.leftAlignedMatches = locals.leftAlignedMatchesAtOffset;
-				}
-			}
-			for (locals.j = 0; locals.j < PULSE_PLAYER_DIGITS; ++locals.j)
-			{
-				if ((locals.winningMask & (1u << locals.ticket.digits.get(locals.j))) != 0)
-				{
-					++locals.anyPositionMatches;
-				}
-			}
+			locals.prize = computePrize(state, locals.ticket, state.lastWinningDigits, locals.winningMask);
+			locals.totalPrize += locals.prize;
+		}
 
-			locals.leftAlignedReward = getLeftAlignedReward(state, locals.leftAlignedMatches);
-			locals.anyPositionReward = getAnyPositionReward(locals.anyPositionMatches);
-			locals.prize = max(locals.leftAlignedReward, locals.anyPositionReward);
+		locals.availableBalance = locals.balance;
+		for (locals.i = 0; locals.i < state.ticketCounter; ++locals.i)
+		{
+			locals.ticket = state.tickets.get(locals.i);
+			locals.prize = computePrize(state, locals.ticket, state.lastWinningDigits, locals.winningMask);
+
+			if (locals.totalPrize > 0 && locals.availableBalance < locals.totalPrize)
+			{
+				locals.prize = div<uint64>(smul(static_cast<sint64>(locals.prize), static_cast<sint64>(locals.availableBalance)),
+				                           static_cast<sint64>(locals.totalPrize));
+			}
 
 			if (locals.prize > 0 && locals.balance >= locals.prize)
 			{
@@ -932,5 +915,46 @@ protected:
 			case 1: return 0;
 			default: return 0;
 		}
+	}
+
+	static uint64 computePrize(const PULSE& state, const Ticket& ticket, const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winningDigits,
+	                           uint16 winningMask)
+	{
+		uint8 leftAlignedMatches = 0;
+		uint8 leftAlignedMatchesAtOffset = 0;
+		uint8 anyPositionMatches = 0;
+		uint8 leftAlignedOffset = 0;
+		uint64 leftAlignedReward = 0;
+		uint64 anyPositionReward = 0;
+		uint64 prize = 0;
+
+		for (leftAlignedOffset = 0; leftAlignedOffset + PULSE_PLAYER_DIGITS <= PULSE_WINNING_DIGITS; ++leftAlignedOffset)
+		{
+			leftAlignedMatchesAtOffset = 0;
+			for (uint8 j = 0; j < PULSE_PLAYER_DIGITS; ++j)
+			{
+				if (ticket.digits.get(j) == winningDigits.get(leftAlignedOffset + j))
+				{
+					++leftAlignedMatchesAtOffset;
+				}
+			}
+			if (leftAlignedMatchesAtOffset > leftAlignedMatches)
+			{
+				leftAlignedMatches = leftAlignedMatchesAtOffset;
+			}
+		}
+
+		for (uint8 j = 0; j < PULSE_PLAYER_DIGITS; ++j)
+		{
+			if ((winningMask & (1u << ticket.digits.get(j))) != 0)
+			{
+				++anyPositionMatches;
+			}
+		}
+
+		leftAlignedReward = getLeftAlignedReward(state, leftAlignedMatches);
+		anyPositionReward = getAnyPositionReward(anyPositionMatches);
+		prize = max(leftAlignedReward, anyPositionReward);
+		return prize;
 	}
 };
