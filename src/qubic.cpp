@@ -7191,13 +7191,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     if (peers[i].isOracleMachineNode() &&
                         peers[i].isConnectingAccepting &&
-                        ((__rdtsc() - peers[i].connectionStartTime) / frequency > 5))
+                        ((__rdtsc() - peers[i].connectionStartTime) / frequency > ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS))
                     {
+                        logToConsole(L"OM: Connection from Accepting State to Accepted State took too long.");
 #if !defined(NDEBUG)
-                        addDebugMessage(L"***OM: Connection from Accepting State took too long.");
                         peerOMLogStatus(i);
 #endif
-                        logToConsole(L"***OM: Connection from Accepting State took too long.");
+                        closePeer(&peers[i]);
                     }
                 }
 
