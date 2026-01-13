@@ -14,8 +14,11 @@ using namespace QPI;
 
 constexpr uint16 PULSE_MAX_NUMBER_OF_PLAYERS = 1024;
 constexpr uint8 PULSE_PLAYER_DIGITS = 6;
+constexpr uint8 PULSE_PLAYER_DIGITS_ALIGNED = PULSE_PLAYER_DIGITS + 2;
 constexpr uint8 PULSE_WINNING_DIGITS = 9;
+constexpr uint8 PULSE_WINNING_DIGITS_ALIGNED = PULSE_WINNING_DIGITS + 7;
 constexpr uint8 PULSE_MAX_DIGIT = 9;
+constexpr uint8 PULSE_MAX_DIGIT_ALIGNED = PULSE_MAX_DIGIT + 7;
 constexpr uint64 PULSE_TICKET_PRICE_DEFAULT = 200000;
 constexpr uint64 PULSE_QHEART_ASSET_NAME = 92712259110993ULL; // "QHEART"
 constexpr uint8 PULSE_DEFAULT_DEV_PERCENT = 10;
@@ -67,7 +70,7 @@ public:
 	struct Ticket
 	{
 		id player;
-		Array<uint8, PULSE_PLAYER_DIGITS + 2> digits;
+		Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> digits;
 	};
 
 	struct NextEpochData
@@ -133,7 +136,7 @@ public:
 
 	struct ValidateDigits_input
 	{
-		Array<uint8, PULSE_PLAYER_DIGITS + 2> digits;
+		Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> digits;
 	};
 	struct ValidateDigits_output
 	{
@@ -141,14 +144,14 @@ public:
 	};
 	struct ValidateDigits_locals
 	{
-		HashSet<uint8, PULSE_MAX_DIGIT + 7> seen;
+		HashSet<uint8, PULSE_MAX_DIGIT_ALIGNED> seen;
 		uint8 idx;
 		uint8 value;
 	};
 
 	struct BuyTicket_input
 	{
-		Array<uint8, PULSE_PLAYER_DIGITS + 2> digits;
+		Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> digits;
 	};
 
 	struct BuyTicket_output
@@ -224,7 +227,7 @@ public:
 	};
 	struct GetWinningDigits_output
 	{
-		Array<uint8, PULSE_WINNING_DIGITS + 7> digits;
+		Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> digits;
 	};
 
 	struct GetBalance_input
@@ -298,7 +301,7 @@ public:
 	};
 	struct GetRandomDigits_output
 	{
-		Array<uint8, PULSE_WINNING_DIGITS + 7> digits;
+		Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> digits;
 	};
 	struct GetRandomDigits_locals
 	{
@@ -307,7 +310,7 @@ public:
 		uint8 candidate;
 		uint8 attempts;
 		uint8 fallback;
-		HashSet<uint8, PULSE_MAX_DIGIT + 7> used;
+		HashSet<uint8, PULSE_MAX_DIGIT_ALIGNED> used;
 	};
 
 	struct SettleRound_input
