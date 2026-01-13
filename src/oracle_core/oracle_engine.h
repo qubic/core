@@ -951,6 +951,7 @@ protected:
         return &replyState;
     }
 
+    // Caller is responsible for locking.
     const void* getReplyDataFromTickTransactionStorage(const OracleQueryMetadata& queryMetadata) const
     {
         const uint32_t tick = queryMetadata.statusVar.success.revealTick;
@@ -1131,11 +1132,10 @@ public:
         // clean all queries (except for last n ticks in case of seamless transition)
     }
 
-    bool getOracleQuery(int64_t queryId, void* queryData, uint16_t querySize) const
+protected:
+    // Caller is responsible for locking.
+    bool getOracleQueryWithoutLocking(int64_t queryId, void* queryData, uint16_t querySize) const
     {
-        // lock for accessing engine data
-        LockGuard lockGuard(lock);
-
         // get query index
         uint32_t queryIndex;
         if (!queryIdToIndex->get(queryId, queryIndex) || queryIndex >= oracleQueryCount)
@@ -1166,6 +1166,16 @@ public:
         copyMem(queryData, querySrcPtr, querySize);
         return true;
     }
+
+public:
+    bool getOracleQuery(int64_t queryId, void* queryData, uint16_t querySize) const
+    {
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
+
+        return getOracleQueryWithoutLocking(queryId, queryData, querySize);
+    }
+
 
     void logStatus(CHAR16* message) const
     {

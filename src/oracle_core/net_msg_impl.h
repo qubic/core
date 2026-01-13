@@ -123,7 +123,7 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		// get and send query data
 		const uint16_t querySize = (uint16_t)OI::oracleInterfaces[oqm.interfaceIndex].querySize;
 		ASSERT(querySize <= payloadBufferSize);
-		if (getOracleQuery(queryId, payload, querySize))
+		if (getOracleQueryWithoutLocking(queryId, payload, querySize))
 		{
 			response->resType = RespondOracleData::respondQueryData;
 			enqueueResponse(peer, sizeof(RespondOracleData) + querySize,
