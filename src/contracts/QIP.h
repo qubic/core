@@ -464,21 +464,6 @@ public:
         state.transferRightsFee = 100;
 	}
 
-    struct BEGIN_EPOCH_locals
-    {
-        ICOInfo ico;
-    };
-
-    BEGIN_EPOCH_WITH_LOCALS()
-    {
-        if (qpi.epoch() == 196)
-        {
-            locals.ico = state.icos.get(0);
-            locals.ico.remainingAmountForPhase3 = qpi.numberOfPossessedShares(locals.ico.assetName, locals.ico.issuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
-            state.icos.set(0, locals.ico);
-        }
-    }
-
 	struct END_EPOCH_locals
 	{
         ICOInfo ico;
