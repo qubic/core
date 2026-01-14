@@ -18,6 +18,7 @@ constexpr uint8 PULSE_PLAYER_DIGITS_ALIGNED = PULSE_PLAYER_DIGITS + 2;
 constexpr uint8 PULSE_WINNING_DIGITS = PULSE_PLAYER_DIGITS;
 constexpr uint8 PULSE_WINNING_DIGITS_ALIGNED = PULSE_PLAYER_DIGITS_ALIGNED;
 constexpr uint8 PULSE_MAX_DIGIT = 9;
+constexpr uint8 PULSE_MAX_DIGIT_ALIGNED = PULSE_MAX_DIGIT + 7;
 constexpr uint64 PULSE_TICKET_PRICE_DEFAULT = 200000;
 constexpr uint64 PULSE_QHEART_ASSET_NAME = 92712259110993ULL; // "QHEART"
 constexpr uint8 PULSE_DEFAULT_DEV_PERCENT = 10;
@@ -311,15 +312,14 @@ public:
 	struct ComputePrize_locals
 	{
 		uint8 leftAlignedMatches;
-		uint8 leftAlignedMatchesAtOffset;
 		uint8 anyPositionMatches;
 		uint8 j;
 		uint8 digitValue;
 		uint64 leftAlignedReward;
 		uint64 anyPositionReward;
 		uint64 prize;
-		uint16 ticketMask;
-		uint16 winningMask;
+		Array<uint8, PULSE_MAX_DIGIT_ALIGNED> ticketCounts;
+		Array<uint8, PULSE_MAX_DIGIT_ALIGNED> winningCounts;
 	};
 
 	struct SettleRound_input
@@ -892,34 +892,26 @@ protected:
 
 		for (locals.j = 0; locals.j < PULSE_PLAYER_DIGITS; ++locals.j)
 		{
-			if (ticket.digits.get(locals.j) == winningDigits.get(locals.j))
+			if (ticket.digits.get(locals.j) != winningDigits.get(locals.j))
 			{
-				++locals.leftAlignedMatchesAtOffset;
+				break;
 			}
-			else
-			{
-				locals.leftAlignedMatchesAtOffset = 0;
-			}
-
-			locals.leftAlignedMatches = max(locals.leftAlignedMatches, locals.leftAlignedMatchesAtOffset);
+			++locals.leftAlignedMatches;
 		}
 
-		for (locals.j = 0; locals.j < PULSE_WINNING_DIGITS; ++locals.j)
-		{
-			locals.winningMask = static_cast<uint16>(locals.winningMask | (1u << winningDigits.get(locals.j)));
-		}
-
+		STATIC_ASSERT(PULSE_PLAYER_DIGITS == PULSE_WINNING_DIGITS, "PULSE_PLAYER_DIGITS == PULSE_WINNING_DIGITS");
 		for (locals.j = 0; locals.j < PULSE_PLAYER_DIGITS; ++locals.j)
 		{
 			locals.digitValue = ticket.digits.get(locals.j);
-			locals.ticketMask = static_cast<uint16>(locals.ticketMask | (1u << locals.digitValue));
+			locals.ticketCounts.set(locals.digitValue, locals.ticketCounts.get(locals.digitValue) + 1);
+
+			locals.digitValue = winningDigits.get(locals.j);
+			locals.winningCounts.set(locals.digitValue, locals.winningCounts.get(locals.digitValue) + 1);
 		}
 
-		locals.ticketMask = static_cast<uint16>(locals.ticketMask & locals.winningMask);
-		while (locals.ticketMask != 0)
+		for (locals.digitValue = 0; locals.digitValue <= PULSE_MAX_DIGIT; ++locals.digitValue)
 		{
-			locals.anyPositionMatches += static_cast<uint8>(locals.ticketMask & 1u);
-			locals.ticketMask = static_cast<uint16>(locals.ticketMask >> 1);
+			locals.anyPositionMatches += min<uint8>(locals.ticketCounts.get(locals.digitValue), locals.winningCounts.get(locals.digitValue));
 		}
 
 		locals.leftAlignedReward = getLeftAlignedReward(state, locals.leftAlignedMatches);
