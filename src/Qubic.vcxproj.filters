@@ -324,6 +324,9 @@
     <ClInclude Include="mining\score_addition.h">
       <Filter>mining</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\qRWA.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

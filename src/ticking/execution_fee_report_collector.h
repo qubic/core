@@ -144,8 +144,7 @@ public:
 
             if (quorumValue > 0)
             {
-                // TODO: enable subtraction after mainnet testing phase
-                // subtractFromContractFeeReserve(contractIndex, quorumValue);
+                subtractFromContractFeeReserve(contractIndex, quorumValue);
                 ContractReserveDeduction message = { quorumValue, getContractFeeReserve(contractIndex), contractIndex };
                 logger.logContractReserveDeduction(message);
             }
