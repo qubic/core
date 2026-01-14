@@ -20,6 +20,7 @@ constexpr uint8 PULSE_WINNING_DIGITS_ALIGNED = PULSE_PLAYER_DIGITS_ALIGNED;
 constexpr uint8 PULSE_MAX_DIGIT = 9;
 constexpr uint8 PULSE_MAX_DIGIT_ALIGNED = PULSE_MAX_DIGIT + 7;
 constexpr uint64 PULSE_TICKET_PRICE_DEFAULT = 200000;
+constexpr uint16 PULSE_MAX_NUMBER_OF_WINNERS_IN_HISTORY = 1024;
 constexpr uint64 PULSE_QHEART_ASSET_NAME = 92712259110993ULL; // "QHEART"
 constexpr uint8 PULSE_DEFAULT_DEV_PERCENT = 10;
 constexpr uint8 PULSE_DEFAULT_BURN_PERCENT = 5;
@@ -237,6 +238,37 @@ public:
 		uint64 balance;
 	};
 
+	struct WinnerInfo
+	{
+		id winnerAddress;
+		uint64 revenue;
+		uint16 epoch;
+	};
+
+	struct FillWinnersInfo_input
+	{
+		id winnerAddress;
+		uint64 revenue;
+	};
+	struct FillWinnersInfo_output
+	{
+	};
+	struct FillWinnersInfo_locals
+	{
+		WinnerInfo winnerInfo;
+		uint64 insertIdx;
+	};
+
+	struct GetWinners_input
+	{
+	};
+	struct GetWinners_output
+	{
+		Array<WinnerInfo, PULSE_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
+		uint64 winnersCounter;
+		uint8 returnCode;
+	};
+
 	struct SetPrice_input
 	{
 		uint64 newPrice;
@@ -352,6 +384,8 @@ public:
 		GetRandomDigits_output randomOutput;
 		Ticket ticket;
 		ComputePrize_locals computePrizeLocals;
+		FillWinnersInfo_input fillWinnersInfoInput;
+		FillWinnersInfo_output fillWinnersInfoOutput;
 	};
 
 	struct BEGIN_TICK_locals
@@ -376,6 +410,7 @@ public:
 		REGISTER_USER_FUNCTION(GetQHeartWallet, 6);
 		REGISTER_USER_FUNCTION(GetWinningDigits, 7);
 		REGISTER_USER_FUNCTION(GetBalance, 8);
+		REGISTER_USER_FUNCTION(GetWinners, 9);
 
 		REGISTER_USER_PROCEDURE(BuyTicket, 1);
 		REGISTER_USER_PROCEDURE(SetPrice, 2);
@@ -504,6 +539,13 @@ public:
 	PUBLIC_FUNCTION(GetBalance)
 	{
 		output.balance = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, SELF_INDEX, SELF_INDEX);
+	}
+
+	PUBLIC_FUNCTION(GetWinners)
+	{
+		output.winners = state.winners;
+		getWinnerCounter(state, output.winnersCounter);
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE(SetPrice)
@@ -789,6 +831,10 @@ private:
 				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, static_cast<sint64>(locals.prize),
 				                                        locals.ticket.player);
 				locals.balance -= locals.prize;
+
+				locals.fillWinnersInfoInput.winnerAddress = locals.ticket.player;
+				locals.fillWinnersInfoInput.revenue = locals.prize;
+				CALL(FillWinnersInfo, locals.fillWinnersInfoInput, locals.fillWinnersInfoOutput);
 			}
 		}
 
@@ -800,6 +846,23 @@ private:
 			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF,
 			                                        static_cast<sint64>(locals.balance - state.qheartHoldLimit), PULSE_QHEART_ISSUER);
 		}
+	}
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(FillWinnersInfo)
+	{
+		if (input.winnerAddress == id::zero())
+		{
+			return;
+		}
+
+		getWinnerCounter(state, locals.insertIdx);
+		++state.winnersCounter;
+
+		locals.winnerInfo.winnerAddress = input.winnerAddress;
+		locals.winnerInfo.revenue = input.revenue;
+		locals.winnerInfo.epoch = qpi.epoch();
+
+		state.winners.set(locals.insertIdx, locals.winnerInfo);
 	}
 
 public:
@@ -821,6 +884,7 @@ public:
 	}
 
 protected:
+	Array<WinnerInfo, PULSE_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
 	Array<Ticket, PULSE_MAX_NUMBER_OF_PLAYERS> tickets;
 	Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> lastWinningDigits;
 	uint64 ticketCounter;
@@ -836,6 +900,7 @@ protected:
 	EState currentState;
 	id teamAddress;
 	NextEpochData nextEpochData;
+	uint64 winnersCounter;
 
 protected:
 	static void clearStateOnEndEpoch(PULSE& state)
@@ -856,6 +921,8 @@ protected:
 	}
 
 	static bool isSellingOpen(const PULSE& state) { return (state.currentState & EState::SELLING) != 0; }
+
+	static void getWinnerCounter(const PULSE& state, uint64& outCounter) { outCounter = mod(state.winnersCounter, state.winners.capacity()); }
 
 	static uint64 getLeftAlignedReward(const PULSE& state, uint8 matches)
 	{

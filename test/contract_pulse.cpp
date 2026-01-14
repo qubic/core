@@ -5,7 +5,6 @@
 #undef private
 #undef _ALLOW_KEYWORD_MACROS
 
-#include <set>
 #include <vector>
 
 // Procedure/function indices (must match REGISTER_USER_FUNCTIONS_AND_PROCEDURES in `src/contracts/Pulse.h`).
@@ -24,6 +23,7 @@ constexpr uint16 PULSE_FUNCTION_GET_QHEART_HOLD_LIMIT = 5;
 constexpr uint16 PULSE_FUNCTION_GET_QHEART_WALLET = 6;
 constexpr uint16 PULSE_FUNCTION_GET_WINNING_DIGITS = 7;
 constexpr uint16 PULSE_FUNCTION_GET_BALANCE = 8;
+constexpr uint16 PULSE_FUNCTION_GET_WINNERS = 9;
 
 namespace
 {
@@ -221,6 +221,14 @@ public:
 		PULSE::GetBalance_input input{};
 		PULSE::GetBalance_output output{};
 		callFunction(PULSE_CONTRACT_INDEX, PULSE_FUNCTION_GET_BALANCE, input, output);
+		return output;
+	}
+
+	PULSE::GetWinners_output getWinners()
+	{
+		PULSE::GetWinners_input input{};
+		PULSE::GetWinners_output output{};
+		callFunction(PULSE_CONTRACT_INDEX, PULSE_FUNCTION_GET_WINNERS, input, output);
 		return output;
 	}
 
@@ -775,6 +783,52 @@ TEST(ContractPulse_Public, GetBalanceReportsQHeartWalletBalance)
 	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
 	ctl.transferQHeart(issuance, ctl.pulseSelf(), 12345);
 	EXPECT_EQ(ctl.getBalance().balance, 12345u);
+}
+
+TEST(ContractPulse_Public, GetWinnersReportsPaidTickets)
+{
+	ContractTestingPulse ctl;
+	ctl.issuePulseSharesTo(id::randomValue(), NUMBER_OF_COMPUTORS);
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
+
+	EXPECT_EQ(ctl.setFees(PULSE_QHEART_ISSUER, 0, 0, 0, 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setPrice(PULSE_QHEART_ISSUER, 1).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	ctl.endEpoch();
+
+	ctl.setDateTime(2025, 1, 9, 12);
+	ctl.beginEpoch();
+
+	ctl.transferQHeart(issuance, ctl.pulseSelf(), 10000);
+	const m256i digest(0x2222ULL, 0x3333ULL, 0x4444ULL, 0x5555ULL);
+	etalonTick.prevSpectrumDigest = digest;
+	const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winning = deriveWinningDigits(ctl, digest);
+	const uint8 missing = findMissingDigit(winning);
+
+	const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> ticketA =
+	    makePlayerDigits(winning.get(0), winning.get(1), winning.get(2), winning.get(3), winning.get(4), winning.get(5));
+	const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> ticketB =
+	    makePlayerDigits(winning.get(0), winning.get(1), winning.get(2), missing, missing, missing);
+
+	const id playerA = id::randomValue();
+	const id playerB = id::randomValue();
+	ctl.transferQHeart(issuance, playerA, 1);
+	ctl.transferQHeart(issuance, playerB, 1);
+	EXPECT_EQ(ctl.buyTicket(playerA, ticketA).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.buyTicket(playerB, ticketB).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+
+	const uint64 prizeA = ctl.state()->callComputePrize(winning, ticketA);
+	const uint64 prizeB = ctl.state()->callComputePrize(winning, ticketB);
+
+	ctl.setDateTime(2025, 1, 10, 12);
+	ctl.forceBeginTick();
+
+	const PULSE::GetWinners_output& winners = ctl.getWinners();
+	EXPECT_EQ(winners.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(winners.winnersCounter, 2u);
+	EXPECT_EQ(winners.winners.get(0).winnerAddress, playerA);
+	EXPECT_EQ(winners.winners.get(0).revenue, prizeA);
+	EXPECT_EQ(winners.winners.get(1).winnerAddress, playerB);
+	EXPECT_EQ(winners.winners.get(1).revenue, prizeB);
 }
 
 // ============================================================================
