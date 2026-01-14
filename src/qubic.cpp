@@ -7212,6 +7212,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             logToConsole(L"OM: Connection inactive for 5+ minutes, forcing reconnect.");
 #if !defined(NDEBUG)
                             addDebugMessage(L"OM: Connection inactive for 5+ minutes, forcing reconnect.");
+
+                            CHAR16 omDbgMsg[128];
+                            setText(omDbgMsg, L"OM: Closing stale connection, lastActivity=");
+                            appendNumber(omDbgMsg, (unsigned int)((__rdtsc() - peers[i].lastOMActivityTime) / frequency), FALSE);
+                            appendText(omDbgMsg, L" secs ago");
+                            addDebugMessage(omDbgMsg);
+
                             peerOMLogStatus(i);
 #endif
                             closePeer(&peers[i]);
@@ -7468,7 +7475,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     loggingTick = curTimeTick;
 
-                    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS; i++)
+                    for (unsigned int i = NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS; i < NUMBER_OF_OUTGOING_CONNECTIONS; i++)
                     {
                         peerOMLogStatus(i);
                     }
