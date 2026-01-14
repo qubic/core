@@ -1,5 +1,6 @@
 #define NO_UEFI
 #define _ALLOW_KEYWORD_MACROS 1
+// Allow tests to call internal helpers without changing production visibility.
 #define private protected
 #include "contract_testing.h"
 #undef private
@@ -28,12 +29,14 @@ constexpr uint16 PULSE_FUNCTION_GET_WINNERS = 9;
 
 namespace
 {
+	// QPI contexts must be primed with a call to satisfy internal checks.
 	void primeQpiFunctionContext(QpiContextUserFunctionCall& qpi)
 	{
 		PULSE::GetTicketPrice_input input{};
 		qpi.call(PULSE_FUNCTION_GET_TICKET_PRICE, &input, sizeof(input));
 	}
 
+	// Use a safe call to seed procedure context for private calls.
 	void primeQpiProcedureContext(QpiContextUserProcedureCall& qpi)
 	{
 		PULSE::SetDrawHour_input input{};
@@ -347,6 +350,7 @@ public:
 
 	void forceBeginTick()
 	{
+		// Align to update period so BEGIN_TICK evaluates draw logic.
 		system.tick = system.tick + (PULSE_TICK_UPDATE_PERIOD - (system.tick % PULSE_TICK_UPDATE_PERIOD));
 		beginTick();
 	}
@@ -397,6 +401,7 @@ private:
 
 namespace
 {
+	// Mirror contract RNG path so tests can assert deterministic winners.
 	Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> deriveWinningDigits(ContractTestingPulse& ctl, const m256i& digest)
 	{
 		m256i hashResult;
@@ -431,6 +436,7 @@ namespace
 // STATIC + PRIVATE METHOD TESTS
 // ============================================================================
 
+// Regression coverage for deterministic helpers used by draw logic.
 TEST(ContractPulse_Static, MakeDateStampMinMaxAndMixingAreDeterministic)
 {
 	uint32 stamp = 0;
@@ -452,6 +458,7 @@ TEST(ContractPulse_Static, MakeDateStampMinMaxAndMixingAreDeterministic)
 	EXPECT_NE(d1, d2);
 }
 
+// Guard state flag transitions used to open/close ticket sales.
 TEST(ContractPulse_Static, SellingFlagToggles)
 {
 	ContractTestingPulse ctl;
@@ -461,6 +468,7 @@ TEST(ContractPulse_Static, SellingFlagToggles)
 	EXPECT_FALSE(ctl.state()->isSelling());
 }
 
+// Ensure reward multipliers stay aligned with contract constants.
 TEST(ContractPulse_Static, RewardTablesMatchContractConstants)
 {
 	ContractTestingPulse ctl;
@@ -481,6 +489,7 @@ TEST(ContractPulse_Static, RewardTablesMatchContractConstants)
 	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(0), 0u);
 }
 
+// Prevent stale config from leaking across epochs.
 TEST(ContractPulse_Private, NextEpochDataClearResetsFlagsAndValues)
 {
 	PULSE::NextEpochData data{};
@@ -514,6 +523,7 @@ TEST(ContractPulse_Private, NextEpochDataClearResetsFlagsAndValues)
 	EXPECT_EQ(data.newQHeartHoldLimit, 0u);
 }
 
+// Confirm deferred config applies only at epoch boundary.
 TEST(ContractPulse_Private, NextEpochDataApplyUpdatesState)
 {
 	ContractTestingPulse ctl;
@@ -543,6 +553,7 @@ TEST(ContractPulse_Private, NextEpochDataApplyUpdatesState)
 	EXPECT_EQ(ctl.state()->getQHeartHoldLimitInternal(), 999u);
 }
 
+// Reject invalid digits early to keep prize logic safe.
 TEST(ContractPulse_Private, ValidateDigitsOutOfRange)
 {
 	ContractTestingPulse ctl;
@@ -559,6 +570,7 @@ TEST(ContractPulse_Private, ValidateDigitsOutOfRange)
 	EXPECT_FALSE(ctl.state()->callValidateDigits(qpi, outOfRange).isValid);
 }
 
+// Keep RNG output deterministic for auditability.
 TEST(ContractPulse_Private, GetRandomDigitsDeterministic)
 {
 	ContractTestingPulse ctl;
@@ -578,6 +590,7 @@ TEST(ContractPulse_Private, GetRandomDigitsDeterministic)
 	}
 }
 
+// Ensure draw/epoch cleanup fully clears round state.
 TEST(ContractPulse_Private, ClearStateHelpersResetTicketData)
 {
 	ContractTestingPulse ctl;
@@ -592,6 +605,7 @@ TEST(ContractPulse_Private, ClearStateHelpersResetTicketData)
 	EXPECT_EQ(ctl.state()->getLastDrawDateStamp(), 0u);
 }
 
+// Validate settlement updates winners and pays prizes.
 TEST(ContractPulse_Private, SettleRoundUpdatesWinningDigitsAndPaysPrize)
 {
 	ContractTestingPulse ctl;
@@ -633,6 +647,7 @@ TEST(ContractPulse_Private, SettleRoundUpdatesWinningDigitsAndPaysPrize)
 // PUBLIC FUNCTIONS AND PROCEDURES
 // ============================================================================
 
+// Confirm defaults are visible through the public API after init.
 TEST(ContractPulse_Public, GettersReturnDefaultsAfterInitialize)
 {
 	ContractTestingPulse ctl;
@@ -657,6 +672,7 @@ TEST(ContractPulse_Public, GettersReturnDefaultsAfterInitialize)
 	EXPECT_EQ(ctl.getQHeartWallet().wallet, PULSE_QHEART_ISSUER);
 }
 
+// Guard admin-only price changes and deferred apply.
 TEST(ContractPulse_Public, SetPriceGuardsAccessAndAppliesOnEndEpoch)
 {
 	ContractTestingPulse ctl;
@@ -670,6 +686,7 @@ TEST(ContractPulse_Public, SetPriceGuardsAccessAndAppliesOnEndEpoch)
 	EXPECT_EQ(ctl.state()->getTicketPriceInternal(), 555u);
 }
 
+// Ensure schedule validation and deferred apply are enforced.
 TEST(ContractPulse_Public, SetScheduleValidatesAndAppliesOnEndEpoch)
 {
 	ContractTestingPulse ctl;
@@ -683,6 +700,7 @@ TEST(ContractPulse_Public, SetScheduleValidatesAndAppliesOnEndEpoch)
 	EXPECT_EQ(ctl.state()->getScheduleInternal(), 0x7Fu);
 }
 
+// Ensure draw hour range checks and deferred apply are enforced.
 TEST(ContractPulse_Public, SetDrawHourValidatesAndAppliesOnEndEpoch)
 {
 	ContractTestingPulse ctl;
@@ -696,6 +714,7 @@ TEST(ContractPulse_Public, SetDrawHourValidatesAndAppliesOnEndEpoch)
 	EXPECT_EQ(ctl.state()->getDrawHourInternal(), 9u);
 }
 
+// Protect against invalid fee splits and apply on epoch end.
 TEST(ContractPulse_Public, SetFeesValidatesAndAppliesOnEndEpoch)
 {
 	ContractTestingPulse ctl;
@@ -715,6 +734,7 @@ TEST(ContractPulse_Public, SetFeesValidatesAndAppliesOnEndEpoch)
 	EXPECT_EQ(ctl.state()->getQHeartPercentInternal(), 4u);
 }
 
+// Ensure hold-limit changes do not affect the current round.
 TEST(ContractPulse_Public, SetQHeartHoldLimitAppliesOnEndEpoch)
 {
 	ContractTestingPulse ctl;
@@ -726,6 +746,7 @@ TEST(ContractPulse_Public, SetQHeartHoldLimitAppliesOnEndEpoch)
 	EXPECT_EQ(ctl.state()->getQHeartHoldLimitInternal(), 1234u);
 }
 
+// Prevent ticket purchases outside the selling window.
 TEST(ContractPulse_Public, BuyTicketWhenSellingClosedFails)
 {
 	ContractTestingPulse ctl;
@@ -733,6 +754,7 @@ TEST(ContractPulse_Public, BuyTicketWhenSellingClosedFails)
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::TICKET_SELLING_CLOSED));
 }
 
+// Reject malformed tickets before funds are transferred.
 TEST(ContractPulse_Public, BuyTicketValidatesDigits)
 {
 	ContractTestingPulse ctl;
@@ -747,6 +769,7 @@ TEST(ContractPulse_Public, BuyTicketValidatesDigits)
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::INVALID_NUMBERS));
 }
 
+// Enforce hard cap on ticket count.
 TEST(ContractPulse_Public, BuyTicketFailsWhenSoldOut)
 {
 	ContractTestingPulse ctl;
@@ -758,6 +781,7 @@ TEST(ContractPulse_Public, BuyTicketFailsWhenSoldOut)
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::TICKET_ALL_SOLD_OUT));
 }
 
+// Avoid unintended debt when buyer lacks funds.
 TEST(ContractPulse_Public, BuyTicketFailsWithInsufficientBalance)
 {
 	ContractTestingPulse ctl;
@@ -772,6 +796,7 @@ TEST(ContractPulse_Public, BuyTicketFailsWithInsufficientBalance)
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::TICKET_INVALID_PRICE));
 }
 
+// Validate successful purchase moves funds and stores ticket.
 TEST(ContractPulse_Public, BuyTicketSucceedsAndMovesQHeart)
 {
 	ContractTestingPulse ctl;
@@ -792,6 +817,7 @@ TEST(ContractPulse_Public, BuyTicketSucceedsAndMovesQHeart)
 	EXPECT_EQ(ctl.qheartBalanceOf(ctl.pulseSelf()), contractBefore + PULSE_TICKET_PRICE_DEFAULT);
 }
 
+// Prevent random purchases outside the selling window.
 TEST(ContractPulse_Public, BuyRandomTicketsFailsWhenSellingClosed)
 {
 	ContractTestingPulse ctl;
@@ -800,6 +826,7 @@ TEST(ContractPulse_Public, BuyRandomTicketsFailsWhenSellingClosed)
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::TICKET_SELLING_CLOSED));
 }
 
+// Reject empty batch requests to avoid no-op transfers.
 TEST(ContractPulse_Public, BuyRandomTicketsRejectsZeroCount)
 {
 	ContractTestingPulse ctl;
@@ -811,6 +838,7 @@ TEST(ContractPulse_Public, BuyRandomTicketsRejectsZeroCount)
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::INVALID_VALUE));
 }
 
+// Enforce capacity checks for batch purchases.
 TEST(ContractPulse_Public, BuyRandomTicketsFailsWhenSoldOut)
 {
 	ContractTestingPulse ctl;
@@ -823,6 +851,7 @@ TEST(ContractPulse_Public, BuyRandomTicketsFailsWhenSoldOut)
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::TICKET_ALL_SOLD_OUT));
 }
 
+// Avoid partial batch purchases when balance is insufficient.
 TEST(ContractPulse_Public, BuyRandomTicketsFailsWithInsufficientBalance)
 {
 	ContractTestingPulse ctl;
@@ -837,6 +866,7 @@ TEST(ContractPulse_Public, BuyRandomTicketsFailsWithInsufficientBalance)
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::TICKET_INVALID_PRICE));
 }
 
+// Validate batch purchase moves funds and mints tickets.
 TEST(ContractPulse_Public, BuyRandomTicketsSucceedsAndMovesQHeart)
 {
 	ContractTestingPulse ctl;
@@ -880,6 +910,7 @@ TEST(ContractPulse_Public, BuyRandomTicketsSucceedsAndMovesQHeart)
 	}
 }
 
+// Ensure balance getter reflects actual QHeart wallet holdings.
 TEST(ContractPulse_Public, GetBalanceReportsQHeartWalletBalance)
 {
 	ContractTestingPulse ctl;
@@ -888,6 +919,7 @@ TEST(ContractPulse_Public, GetBalanceReportsQHeartWalletBalance)
 	EXPECT_EQ(ctl.getBalance().balance, 12345u);
 }
 
+// Confirm winner history records paid prizes.
 TEST(ContractPulse_Public, GetWinnersReportsPaidTickets)
 {
 	ContractTestingPulse ctl;
@@ -938,6 +970,7 @@ TEST(ContractPulse_Public, GetWinnersReportsPaidTickets)
 // SYSTEM PROCEDURES
 // ============================================================================
 
+// Ensure epoch start repairs defaults and opens selling.
 TEST(ContractPulse_System, BeginEpochRestoresDefaultsAndOpensSelling)
 {
 	ContractTestingPulse ctl;
@@ -951,6 +984,7 @@ TEST(ContractPulse_System, BeginEpochRestoresDefaultsAndOpensSelling)
 	EXPECT_TRUE(ctl.state()->isSelling());
 }
 
+// Ensure epoch end applies pending config and clears state.
 TEST(ContractPulse_System, EndEpochAppliesPendingChangesAndClearsState)
 {
 	ContractTestingPulse ctl;
@@ -966,6 +1000,7 @@ TEST(ContractPulse_System, EndEpochAppliesPendingChangesAndClearsState)
 	EXPECT_EQ(ctl.state()->getTicketPriceInternal(), 999u);
 }
 
+// Validate scheduled draw trigger path.
 TEST(ContractPulse_System, BeginTickRunsDrawOnScheduledDay)
 {
 	ContractTestingPulse ctl;
@@ -985,6 +1020,7 @@ TEST(ContractPulse_System, BeginTickRunsDrawOnScheduledDay)
 	expectWinningDigitsInRange(ctl.state()->getLastWinningDigits());
 }
 
+// Exercise multi-round lifecycle across multiple players.
 TEST(ContractPulse_Gameplay, MultipleRoundsMultiplePlayers)
 {
 	ContractTestingPulse ctl;
@@ -1063,6 +1099,7 @@ TEST(ContractPulse_Gameplay, MultipleRoundsMultiplePlayers)
 	}
 }
 
+// Guard pro-rata payout logic when balance is short.
 TEST(ContractPulse_Gameplay, ProRataPayoutWhenBalanceInsufficient)
 {
 	ContractTestingPulse ctl;
@@ -1115,6 +1152,7 @@ TEST(ContractPulse_Gameplay, ProRataPayoutWhenBalanceInsufficient)
 	EXPECT_EQ(ctl.qheartBalanceOf(ctl.pulseSelf()), contractBefore - (expectedA + expectedB));
 }
 
+// Validate fee distribution to dev, shareholders, and QHeart wallet.
 TEST(ContractPulse_Gameplay, FeesDistributedToDevShareholdersAndQHeartWallet)
 {
 	ContractTestingPulse ctl;
@@ -1164,6 +1202,7 @@ TEST(ContractPulse_Gameplay, FeesDistributedToDevShareholdersAndQHeartWallet)
 	EXPECT_EQ(ctl.qheartBalanceOf(PULSE_QHEART_ISSUER), qheartWalletBefore + expectedQHeart);
 }
 
+// Ensure excess balance is swept to QHeart wallet after settlement.
 TEST(ContractPulse_Gameplay, QHeartHoldLimitExcessTransferred)
 {
 	ContractTestingPulse ctl;

@@ -43,6 +43,7 @@ struct PULSE2
 struct PULSE : public ContractBase
 {
 public:
+	// Bitmask for runtime state flags.
 	enum class EState : uint8
 	{
 		SELLING = 1 << 0,
@@ -54,6 +55,7 @@ public:
 	template<typename T> friend bool operator==(const EState& a, const T& b) { return static_cast<uint8>(a) == b; }
 	template<typename T> friend bool operator!=(const EState& a, const T& b) { return !(a == b); }
 
+	// Public return codes for user procedures/functions.
 	enum class EReturnCode : uint8
 	{
 		SUCCESS,
@@ -68,12 +70,14 @@ public:
 
 	static constexpr uint8 toReturnCode(const EReturnCode& code) { return static_cast<uint8>(code); };
 
+	// Ticket payload stored per round; digits use QPI-aligned storage.
 	struct Ticket
 	{
 		id player;
 		Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> digits;
 	};
 
+	// Deferred settings applied at END_EPOCH to avoid mid-round changes.
 	struct NextEpochData
 	{
 		void clear()
@@ -279,6 +283,7 @@ public:
 		uint64 balance;
 	};
 
+	// Winner history entry returned by GetWinners.
 	struct WinnerInfo
 	{
 		id winnerAddress;
@@ -491,6 +496,7 @@ public:
 
 	BEGIN_TICK_WITH_LOCALS()
 	{
+		// Throttle draw checks to reduce per-tick cost.
 		if (mod(qpi.tick(), static_cast<uint32>(PULSE_TICK_UPDATE_PERIOD)) != 0)
 		{
 			return;
@@ -547,13 +553,20 @@ public:
 		enableBuyTicket(state, !locals.isWednesday);
 	}
 
+	// Returns current ticket price in QHeart units.
 	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.ticketPrice; }
+	// Returns current draw schedule bitmask.
 	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.schedule; }
+	// Returns draw hour in UTC.
 	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.drawHour; }
+	// Returns QHeart balance cap retained by the contract.
 	PUBLIC_FUNCTION(GetQHeartHoldLimit) { output.qheartHoldLimit = state.qheartHoldLimit; }
+	// Returns the designated QHeart issuer wallet.
 	PUBLIC_FUNCTION(GetQHeartWallet) { output.wallet = PULSE_QHEART_ISSUER; }
+	// Returns digits from the last settled draw.
 	PUBLIC_FUNCTION(GetWinningDigits) { output.digits = state.lastWinningDigits; }
 
+	// Returns current fee split configuration.
 	PUBLIC_FUNCTION(GetFees)
 	{
 		output.devPercent = state.devPercent;
@@ -563,11 +576,13 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
+	// Returns contract QHeart balance held in the Pulse wallet.
 	PUBLIC_FUNCTION(GetBalance)
 	{
 		output.balance = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, SELF_INDEX, SELF_INDEX);
 	}
 
+	// Returns the winners ring buffer and total winners counter.
 	PUBLIC_FUNCTION(GetWinners)
 	{
 		output.winners = state.winners;
@@ -575,6 +590,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
+	// Schedules a new ticket price for the next epoch (owner-only).
 	PUBLIC_PROCEDURE(SetPrice)
 	{
 		if (qpi.invocationReward() > 0)
@@ -599,6 +615,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
+	// Schedules a new draw schedule bitmask for the next epoch (owner-only).
 	PUBLIC_PROCEDURE(SetSchedule)
 	{
 		if (qpi.invocationReward() > 0)
@@ -623,6 +640,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
+	// Schedules a new draw hour in UTC for the next epoch (owner-only).
 	PUBLIC_PROCEDURE(SetDrawHour)
 	{
 		if (qpi.invocationReward() > 0)
@@ -647,6 +665,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
+	// Schedules new fee splits for the next epoch (owner-only).
 	PUBLIC_PROCEDURE(SetFees)
 	{
 		if (qpi.invocationReward() > 0)
@@ -675,6 +694,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
+	// Schedules a new QHeart hold limit for the next epoch (owner-only).
 	PUBLIC_PROCEDURE(SetQHeartHoldLimit)
 	{
 		if (qpi.invocationReward() > 0)
@@ -693,6 +713,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
+	// Buys a single ticket; transfers ticket price from invocator.
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicket)
 	{
 		locals.reward = qpi.invocationReward();
@@ -746,6 +767,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
+	// Buys multiple random tickets; transfers total price from invocator.
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyRandomTickets)
 	{
 		locals.reward = qpi.invocationReward();
@@ -824,6 +846,7 @@ private:
 
 	PRIVATE_FUNCTION_WITH_LOCALS(GetRandomDigits)
 	{
+		// Derive each digit independently to avoid shared PRNG state.
 		for (locals.index = 0; locals.index < PULSE_WINNING_DIGITS; ++locals.index)
 		{
 			deriveOne(input.seed, locals.index, locals.tempValue);
@@ -910,6 +933,7 @@ private:
 
 			if (locals.totalPrize > 0 && locals.availableBalance < locals.totalPrize)
 			{
+				// Pro-rate payouts when the contract balance cannot cover all prizes.
 				locals.prize = div<uint64>(smul(static_cast<sint64>(locals.prize), static_cast<sint64>(locals.availableBalance)),
 				                           static_cast<sint64>(locals.totalPrize));
 			}
@@ -954,11 +978,13 @@ private:
 	}
 
 public:
+	// Encodes YYYY/MM/DD into a compact sortable date stamp.
 	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
 
 	template<typename T> static constexpr T min(const T& a, const T& b) { return (a < b) ? a : b; }
 	template<typename T> static constexpr T max(const T& a, const T& b) { return a > b ? a : b; }
 
+	// Per-index mix to deterministically expand a single seed.
 	static void deriveOne(const uint64& r, const uint64& idx, uint64& outValue) { mix64(r + 0x9e3779b97f4a7c15ULL * (idx + 1), outValue); }
 
 	static void mix64(const uint64& x, uint64& outValue)
@@ -972,12 +998,17 @@ public:
 	}
 
 protected:
+	// Ring buffer of recent winners; index is winnersCounter % capacity.
 	Array<WinnerInfo, PULSE_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
+	// Tickets for the current round; valid range is [0, ticketCounter).
 	Array<Ticket, PULSE_MAX_NUMBER_OF_PLAYERS> tickets;
+	// Last settled winning digits; undefined before the first draw.
 	Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> lastWinningDigits;
 	uint64 ticketCounter;
 	uint64 ticketPrice;
+	// Contract balance above this cap is swept to the QHeart wallet after settlement.
 	uint64 qheartHoldLimit;
+	// Date stamp of the most recent draw; PULSE_DEFAULT_INIT_TIME is a bootstrap sentinel.
 	uint32 lastDrawDateStamp;
 	uint8 devPercent;
 	uint8 burnPercent;
@@ -988,6 +1019,7 @@ protected:
 	EState currentState;
 	id teamAddress;
 	NextEpochData nextEpochData;
+	// Monotonic winner count used to rotate the winners ring buffer.
 	uint64 winnersCounter;
 
 protected:
@@ -1069,6 +1101,7 @@ protected:
 			locals.anyPositionMatches += min<uint8>(locals.ticketCounts.get(locals.digitValue), locals.winningCounts.get(locals.digitValue));
 		}
 
+		// Reward the best of left-aligned or any-position matches to avoid double counting.
 		locals.leftAlignedReward = getLeftAlignedReward(state, locals.leftAlignedMatches);
 		locals.anyPositionReward = getAnyPositionReward(state, locals.anyPositionMatches);
 		locals.prize = max(locals.leftAlignedReward, locals.anyPositionReward);
