@@ -851,6 +851,7 @@ TEST(ContractPulse_Public, BuyRandomTicketsSucceedsAndMovesQHeart)
 
 	const uint64 userBefore = ctl.qheartBalanceOf(user);
 	const uint64 contractBefore = ctl.qheartBalanceOf(ctl.pulseSelf());
+	etalonTick.prevSpectrumDigest = m256i(0xAAAABBBBULL, 0xCCCCDDDDULL, 0x11112222ULL, 0x33334444ULL);
 
 	const PULSE::BuyRandomTickets_output out = ctl.buyRandomTickets(user, ticketCount);
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
@@ -858,6 +859,7 @@ TEST(ContractPulse_Public, BuyRandomTicketsSucceedsAndMovesQHeart)
 	EXPECT_EQ(ctl.qheartBalanceOf(user), userBefore - totalPrice);
 	EXPECT_EQ(ctl.qheartBalanceOf(ctl.pulseSelf()), contractBefore + totalPrice);
 
+	std::set<uint32> seen;
 	for (uint16 i = 0; i < ticketCount; ++i)
 	{
 		const PULSE::Ticket ticket = ctl.state()->getTicket(i);
@@ -866,6 +868,15 @@ TEST(ContractPulse_Public, BuyRandomTicketsSucceedsAndMovesQHeart)
 		primeQpiFunctionContext(qpi);
 		const PULSE::ValidateDigits_output validated = ctl.state()->callValidateDigits(qpi, ticket.digits);
 		EXPECT_TRUE(validated.isValid);
+
+		uint32 key = 0;
+		uint32 mul = 1;
+		for (uint64 d = 0; d < PULSE_PLAYER_DIGITS; ++d)
+		{
+			key += static_cast<uint32>(ticket.digits.get(d)) * mul;
+			mul *= 10;
+		}
+		EXPECT_TRUE(seen.insert(key).second);
 	}
 }
 
