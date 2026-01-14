@@ -201,8 +201,6 @@
 #define CONTRACT_STATE2_TYPE QRAFFLE2
 #include "contracts/QRaffle.h"
 
-#ifndef NO_QRWA
-
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
@@ -212,8 +210,6 @@
 #define CONTRACT_STATE_TYPE QRWA
 #define CONTRACT_STATE2_TYPE QRWA2
 #include "contracts/qRWA.h"
-
-#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -342,9 +338,7 @@ constexpr struct ContractDescription
     {"QBOND", 182, 10000, sizeof(QBOND)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
     {"QIP", 189, 10000, sizeof(QIP)}, // proposal in epoch 187, IPO in 188, construction and first use in 189
     {"QRAFFLE", 192, 10000, sizeof(QRAFFLE)}, // proposal in epoch 190, IPO in 191, construction and first use in 192
-#ifndef NO_QRWA
     {"QRWA", 197, 10000, sizeof(QRWA)}, // proposal in epoch 195, IPO in 196, construction and first use in 197
-#endif
 	{"QRP", 198, 10000, sizeof(IPO)}, // proposal in epoch 196, IPO in 197, construction and first use in 198
 	{"QTF", 198, 10000, sizeof(QTF)}, // proposal in epoch 196, IPO in 197, construction and first use in 198
     // new contracts should be added above this line
@@ -462,9 +456,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QBOND);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QIP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRAFFLE);
-#ifndef NO_QRWA
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRWA);
-#endif
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTF);
     // new contracts should be added above this line
