@@ -47,6 +47,7 @@
     <ClCompile Include="pending_txs_pool.cpp" />
     <ClCompile Include="quorum_value.cpp" />
     <ClCompile Include="sorting.cpp" />
+    <ClCompile Include="contract_qrwa.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />

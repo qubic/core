@@ -464,6 +464,21 @@ public:
         state.transferRightsFee = 100;
 	}
 
+    struct BEGIN_EPOCH_locals
+    {
+        ICOInfo ico;
+    };
+
+    BEGIN_EPOCH_WITH_LOCALS()
+    {
+        if (qpi.epoch() == 196)
+        {
+            locals.ico = state.icos.get(0);
+            locals.ico.remainingAmountForPhase3 = qpi.numberOfPossessedShares(locals.ico.assetName, locals.ico.issuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
+            state.icos.set(0, locals.ico);
+        }
+    }
+
 	struct END_EPOCH_locals
 	{
         ICOInfo ico;
@@ -477,20 +492,19 @@ public:
             locals.ico = state.icos.get(locals.idx);
             if (locals.ico.startEpoch == qpi.epoch() && locals.ico.remainingAmountForPhase1 > 0)
             {
+                locals.ico.remainingAmountForPhase2 += locals.ico.remainingAmountForPhase1; 
                 locals.ico.remainingAmountForPhase1 = 0;
-                locals.ico.remainingAmountForPhase2 += locals.ico.remainingAmountForPhase1;
                 state.icos.set(locals.idx, locals.ico);
             }
             if (locals.ico.startEpoch + 1 == qpi.epoch() && locals.ico.remainingAmountForPhase2 > 0)
             {
-                locals.ico.remainingAmountForPhase2 = 0;
                 locals.ico.remainingAmountForPhase3 += locals.ico.remainingAmountForPhase2;
+                locals.ico.remainingAmountForPhase2 = 0;
                 state.icos.set(locals.idx, locals.ico);
             }
             if (locals.ico.startEpoch + 2 == qpi.epoch() && locals.ico.remainingAmountForPhase3 > 0)
             {
                 qpi.transferShareOwnershipAndPossession(locals.ico.assetName, locals.ico.issuer, SELF, SELF, locals.ico.remainingAmountForPhase3, locals.ico.creatorOfICO);
-                locals.ico.remainingAmountForPhase3 = 0;
                 state.icos.set(locals.idx, state.icos.get(state.numberOfICO - 1));
                 state.numberOfICO--;
             }
