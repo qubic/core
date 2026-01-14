@@ -520,7 +520,7 @@ TEST(ContractPulse_Private, NextEpochDataApplyUpdatesState)
 	EXPECT_EQ(ctl.state()->getQHeartHoldLimitInternal(), 999u);
 }
 
-TEST(ContractPulse_Private, ValidateDigitsRejectsDuplicateAndOutOfRange)
+TEST(ContractPulse_Private, ValidateDigitsOutOfRange)
 {
 	ContractTestingPulse ctl;
 	QpiContextUserFunctionCall qpi(PULSE_CONTRACT_INDEX);
