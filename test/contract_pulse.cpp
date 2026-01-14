@@ -41,9 +41,9 @@ namespace
 		ASSERT_EQ(contractError[PULSE_CONTRACT_INDEX], 0);
 	}
 
-	Array<uint8, PULSE_PLAYER_DIGITS + 2> makePlayerDigits(uint8 d0, uint8 d1, uint8 d2, uint8 d3, uint8 d4, uint8 d5)
+	Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> makePlayerDigits(uint8 d0, uint8 d1, uint8 d2, uint8 d3, uint8 d4, uint8 d5)
 	{
-		Array<uint8, PULSE_PLAYER_DIGITS + 2> digits = {};
+		Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> digits = {};
 		digits.set(0, d0);
 		digits.set(1, d1);
 		digits.set(2, d2);
@@ -53,7 +53,7 @@ namespace
 		return digits;
 	}
 
-	void expectWinningDigitsUniqueAndInRange(const Array<uint8, PULSE_WINNING_DIGITS + 7>& digits)
+	void expectWinningDigitsUniqueAndInRange(const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& digits)
 	{
 		std::set<uint8> seen;
 		for (uint64 i = 0; i < PULSE_WINNING_DIGITS; ++i)
@@ -81,7 +81,7 @@ public:
 	uint8 getShareholdersPercentInternal() const { return shareholdersPercent; }
 	uint8 getQHeartPercentInternal() const { return qheartPercent; }
 	const id& getTeamAddressInternal() const { return teamAddress; }
-	const Array<uint8, PULSE_WINNING_DIGITS + 7>& getLastWinningDigits() const { return lastWinningDigits; }
+	const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& getLastWinningDigits() const { return lastWinningDigits; }
 
 	void setTicketCounter(uint64 value) { ticketCounter = value; }
 	void setTicketPriceInternal(uint64 value) { ticketPrice = value; }
@@ -89,11 +89,11 @@ public:
 	void setLastDrawDateStamp(uint32 value) { lastDrawDateStamp = value; }
 	void setScheduleInternal(uint8 value) { schedule = value; }
 	void setDrawHourInternal(uint8 value) { drawHour = value; }
-	void setLastWinningDigits(const Array<uint8, PULSE_WINNING_DIGITS + 7>& digits) { lastWinningDigits = digits; }
+	void setLastWinningDigits(const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& digits) { lastWinningDigits = digits; }
 
 	NextEpochData& nextEpochDataRef() { return nextEpochData; }
 
-	void setTicketDirect(uint64 index, const id& player, const Array<uint8, PULSE_PLAYER_DIGITS + 2>& digits)
+	void setTicketDirect(uint64 index, const id& player, const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED>& digits)
 	{
 		Ticket ticket;
 		ticket.player = player;
@@ -104,7 +104,7 @@ public:
 	void forceSelling(bool enable) { enableBuyTicket(*this, enable); }
 	bool isSelling() const { return isSellingOpen(*this); }
 
-	ValidateDigits_output callValidateDigits(const QPI::QpiContextFunctionCall& qpi, const Array<uint8, PULSE_PLAYER_DIGITS + 2>& digits) const
+	ValidateDigits_output callValidateDigits(const QPI::QpiContextFunctionCall& qpi, const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED>& digits) const
 	{
 		ValidateDigits_input input{};
 		ValidateDigits_output output{};
@@ -138,7 +138,7 @@ public:
 	void callClearStateOnEndDraw() { clearStateOnEndDraw(*this); }
 	void callClearStateOnEndEpoch() { clearStateOnEndEpoch(*this); }
 	uint64 callGetLeftAlignedReward(uint8 matches) const { return getLeftAlignedReward(*this, matches); }
-	uint64 callGetAnyPositionReward(uint8 matches) const { return getAnyPositionReward(matches); }
+	uint64 callGetAnyPositionReward(uint8 matches) const { return getAnyPositionReward(*this, matches); }
 };
 
 class ContractTestingPulse : protected ContractTesting
@@ -220,7 +220,7 @@ public:
 		return output;
 	}
 
-	PULSE::BuyTicket_output buyTicket(const id& user, const Array<uint8, PULSE_PLAYER_DIGITS + 2>& digits)
+	PULSE::BuyTicket_output buyTicket(const id& user, const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED>& digits)
 	{
 		ensureUserEnergy(user);
 		PULSE::BuyTicket_input input{};
@@ -370,7 +370,7 @@ private:
 
 namespace
 {
-	Array<uint8, PULSE_WINNING_DIGITS + 7> deriveWinningDigits(ContractTestingPulse& ctl, const m256i& digest)
+	Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> deriveWinningDigits(ContractTestingPulse& ctl, const m256i& digest)
 	{
 		m256i hashResult;
 		KangarooTwelve(reinterpret_cast<const uint8*>(&digest), sizeof(m256i), reinterpret_cast<uint8*>(&hashResult), sizeof(m256i));
@@ -381,7 +381,7 @@ namespace
 		return ctl.state()->callGetRandomDigits(qpiFunc, seed).digits;
 	}
 
-	uint8 findMissingDigit(const Array<uint8, PULSE_WINNING_DIGITS + 7>& winning)
+	uint8 findMissingDigit(const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winning)
 	{
 		bool seen[PULSE_MAX_DIGIT + 1] = {};
 		for (uint64 i = 0; i < PULSE_WINNING_DIGITS; ++i)
@@ -398,8 +398,8 @@ namespace
 		return 0;
 	}
 
-	uint64 computeExpectedPrize(PULSEChecker* state, const Array<uint8, PULSE_WINNING_DIGITS + 7>& winning,
-	                            const Array<uint8, PULSE_PLAYER_DIGITS + 2>& digits)
+	uint64 computeExpectedPrize(PULSEChecker* state, const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winning,
+	                            const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED>& digits)
 	{
 		uint8 leftAlignedMatches = 0;
 		for (uint8 offset = 0; offset + PULSE_PLAYER_DIGITS <= PULSE_WINNING_DIGITS; ++offset)
@@ -476,19 +476,19 @@ TEST(ContractPulse_Static, SellingFlagToggles)
 TEST(ContractPulse_Static, RewardTablesMatchContractConstants)
 {
 	ContractTestingPulse ctl;
-	EXPECT_EQ(ctl.state()->callGetLeftAlignedReward(6), 2400u * ctl.getTicketPrice().ticketPrice);
-	EXPECT_EQ(ctl.state()->callGetLeftAlignedReward(5), 600u);
-	EXPECT_EQ(ctl.state()->callGetLeftAlignedReward(4), 150u);
-	EXPECT_EQ(ctl.state()->callGetLeftAlignedReward(3), 30u);
-	EXPECT_EQ(ctl.state()->callGetLeftAlignedReward(2), 8u);
-	EXPECT_EQ(ctl.state()->callGetLeftAlignedReward(1), 1u);
+	EXPECT_EQ(ctl.state()->callGetLeftAlignedReward(6), 2000u * ctl.getTicketPrice().ticketPrice);
+	EXPECT_EQ(ctl.state()->callGetLeftAlignedReward(5), 300u * ctl.getTicketPrice().ticketPrice);
+	EXPECT_EQ(ctl.state()->callGetLeftAlignedReward(4), 60u * ctl.getTicketPrice().ticketPrice);
+	EXPECT_EQ(ctl.state()->callGetLeftAlignedReward(3), 20u * ctl.getTicketPrice().ticketPrice);
+	EXPECT_EQ(ctl.state()->callGetLeftAlignedReward(2), 4u * ctl.getTicketPrice().ticketPrice);
+	EXPECT_EQ(ctl.state()->callGetLeftAlignedReward(1), 1u * ctl.getTicketPrice().ticketPrice);
 	EXPECT_EQ(ctl.state()->callGetLeftAlignedReward(0), 0u);
 
-	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(6), 1500u);
-	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(5), 400u);
-	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(4), 50u);
-	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(3), 8u);
-	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(2), 2u);
+	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(6), 150u * ctl.getTicketPrice().ticketPrice);
+	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(5), 30u * ctl.getTicketPrice().ticketPrice);
+	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(4), 8u * ctl.getTicketPrice().ticketPrice);
+	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(3), 2u * ctl.getTicketPrice().ticketPrice);
+	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(2), 0u);
 	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(1), 0u);
 	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(0), 0u);
 }
@@ -561,17 +561,17 @@ TEST(ContractPulse_Private, ValidateDigitsRejectsDuplicateAndOutOfRange)
 	QpiContextUserFunctionCall qpi(PULSE_CONTRACT_INDEX);
 	primeQpiFunctionContext(qpi);
 
-	const Array<uint8, PULSE_PLAYER_DIGITS + 2>& ok = makePlayerDigits(0, 1, 2, 3, 4, 5);
+	const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED>& ok = makePlayerDigits(0, 1, 2, 3, 4, 5);
 	EXPECT_TRUE(ctl.state()->callValidateDigits(qpi, ok).isValid);
 
-	const Array<uint8, PULSE_PLAYER_DIGITS + 2>& dup = makePlayerDigits(0, 1, 2, 3, 4, 4);
+	const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED>& dup = makePlayerDigits(0, 1, 2, 3, 4, 4);
 	EXPECT_FALSE(ctl.state()->callValidateDigits(qpi, dup).isValid);
 
-	const Array<uint8, PULSE_PLAYER_DIGITS + 2>& outOfRange = makePlayerDigits(0, 1, 2, 3, 4, 10);
+	const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED>& outOfRange = makePlayerDigits(0, 1, 2, 3, 4, 10);
 	EXPECT_FALSE(ctl.state()->callValidateDigits(qpi, outOfRange).isValid);
 }
 
-TEST(ContractPulse_Private, GetRandomDigitsDeterministicAndUnique)
+TEST(ContractPulse_Private, GetRandomDigitsDeterministic)
 {
 	ContractTestingPulse ctl;
 	QpiContextUserFunctionCall qpi(PULSE_CONTRACT_INDEX);
@@ -581,7 +581,7 @@ TEST(ContractPulse_Private, GetRandomDigitsDeterministicAndUnique)
 	const PULSE::GetRandomDigits_output& out1 = ctl.state()->callGetRandomDigits(qpi, seed);
 	const PULSE::GetRandomDigits_output& out2 = ctl.state()->callGetRandomDigits(qpi, seed);
 
-	std::set<uint8> seen;
+	std::vector<uint8> seen;
 	for (uint64 i = 0; i < PULSE_WINNING_DIGITS; ++i)
 	{
 		const uint8 v1 = out1.digits.get(i);
@@ -624,10 +624,10 @@ TEST(ContractPulse_Private, SettleRoundUpdatesWinningDigitsAndPaysPrize)
 
 	QpiContextUserFunctionCall qpiFunc(PULSE_CONTRACT_INDEX);
 	primeQpiFunctionContext(qpiFunc);
-	const Array<uint8, PULSE_WINNING_DIGITS + 7>& winning = ctl.state()->callGetRandomDigits(qpiFunc, seed).digits;
+	const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winning = ctl.state()->callGetRandomDigits(qpiFunc, seed).digits;
 
 	const id player = id::randomValue();
-	const Array<uint8, PULSE_PLAYER_DIGITS + 2>& ticketDigits =
+	const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED>& ticketDigits =
 	    makePlayerDigits(winning.get(0), winning.get(1), winning.get(2), winning.get(3), winning.get(4), winning.get(5));
 
 	ctl.state()->setTicketDirect(0, player, ticketDigits);
@@ -895,10 +895,10 @@ TEST(ContractPulse_Gameplay, MultipleRoundsMultiplePlayers)
 
 		const m256i digest(0x1111ULL + r, 0x2222ULL + r, 0x3333ULL + r, 0x4444ULL + r);
 		etalonTick.prevSpectrumDigest = digest;
-		const Array<uint8, PULSE_WINNING_DIGITS + 7>& winning = deriveWinningDigits(ctl, digest);
+		const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winning = deriveWinningDigits(ctl, digest);
 
 		const uint8 missing = findMissingDigit(winning);
-		const Array<uint8, PULSE_PLAYER_DIGITS + 2> tickets[] = {
+		const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> tickets[] = {
 		    makePlayerDigits(winning.get(0), winning.get(1), winning.get(2), winning.get(3), winning.get(4), winning.get(5)),
 		    makePlayerDigits(winning.get(1), winning.get(2), winning.get(3), winning.get(4), winning.get(5), winning.get(6)),
 		    makePlayerDigits(winning.get(2), winning.get(3), winning.get(4), winning.get(5), winning.get(6), winning.get(7)),
@@ -962,12 +962,12 @@ TEST(ContractPulse_Gameplay, ProRataPayoutWhenBalanceInsufficient)
 
 	const m256i digest(0x1234ULL, 0x5678ULL, 0x9ABCULL, 0xDEF0ULL);
 	etalonTick.prevSpectrumDigest = digest;
-	const Array<uint8, PULSE_WINNING_DIGITS + 7>& winning = deriveWinningDigits(ctl, digest);
+	const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winning = deriveWinningDigits(ctl, digest);
 	const uint8 missing = findMissingDigit(winning);
 
-	const Array<uint8, PULSE_PLAYER_DIGITS + 2> ticketA =
+	const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> ticketA =
 	    makePlayerDigits(winning.get(0), winning.get(1), winning.get(2), winning.get(3), winning.get(4), winning.get(5));
-	const Array<uint8, PULSE_PLAYER_DIGITS + 2> ticketB =
+	const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> ticketB =
 	    makePlayerDigits(winning.get(0), winning.get(2), winning.get(4), winning.get(6), winning.get(8), missing);
 
 	const id playerA = id::randomValue();
@@ -1064,13 +1064,13 @@ TEST(ContractPulse_Gameplay, QHeartHoldLimitExcessTransferred)
 
 	const id player = id::randomValue();
 	ctl.transferQHeart(issuance, player, ticketPrice);
-	const Array<uint8, PULSE_PLAYER_DIGITS + 2> digits = makePlayerDigits(0, 1, 2, 3, 4, 5);
+	const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> digits = makePlayerDigits(0, 1, 2, 3, 4, 5);
 	const PULSE::BuyTicket_output out = ctl.buyTicket(player, digits);
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 
 	const m256i digest(0x11112222ULL, 0x33334444ULL, 0x55556666ULL, 0x77778888ULL);
 	etalonTick.prevSpectrumDigest = digest;
-	const Array<uint8, PULSE_WINNING_DIGITS + 7>& winning = deriveWinningDigits(ctl, digest);
+	const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winning = deriveWinningDigits(ctl, digest);
 	const uint64 prize = computeExpectedPrize(ctl.state(), winning, digits);
 
 	const uint64 walletBefore = ctl.qheartBalanceOf(PULSE_QHEART_ISSUER);

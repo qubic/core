@@ -1,6 +1,6 @@
 /**
  * @file Pulse.h
- * @brief Pulse lottery contract: 6 unique digits out of 9 with fixed QHeart rewards.
+ * @brief Pulse lottery contract: 6 digits per ticket, winning digits are 6 draws from 0..9.
  *
  * Mechanics:
  *  - Tickets are sold during SELLING state (1 ticket per call).
@@ -15,10 +15,9 @@ using namespace QPI;
 constexpr uint16 PULSE_MAX_NUMBER_OF_PLAYERS = 1024;
 constexpr uint8 PULSE_PLAYER_DIGITS = 6;
 constexpr uint8 PULSE_PLAYER_DIGITS_ALIGNED = PULSE_PLAYER_DIGITS + 2;
-constexpr uint8 PULSE_WINNING_DIGITS = 9;
-constexpr uint8 PULSE_WINNING_DIGITS_ALIGNED = PULSE_WINNING_DIGITS + 7;
+constexpr uint8 PULSE_WINNING_DIGITS = PULSE_PLAYER_DIGITS;
+constexpr uint8 PULSE_WINNING_DIGITS_ALIGNED = PULSE_PLAYER_DIGITS_ALIGNED;
 constexpr uint8 PULSE_MAX_DIGIT = 9;
-constexpr uint8 PULSE_MAX_DIGIT_ALIGNED = PULSE_MAX_DIGIT + 7;
 constexpr uint64 PULSE_TICKET_PRICE_DEFAULT = 200000;
 constexpr uint64 PULSE_QHEART_ASSET_NAME = 92712259110993ULL; // "QHEART"
 constexpr uint8 PULSE_DEFAULT_DEV_PERCENT = 10;
@@ -144,7 +143,6 @@ public:
 	};
 	struct ValidateDigits_locals
 	{
-		HashSet<uint8, PULSE_MAX_DIGIT_ALIGNED> seen;
 		uint8 idx;
 		uint8 value;
 	};
@@ -308,9 +306,6 @@ public:
 		uint64 tempValue;
 		uint8 index;
 		uint8 candidate;
-		uint8 attempts;
-		uint8 fallback;
-		HashSet<uint8, PULSE_MAX_DIGIT_ALIGNED> used;
 	};
 
 	struct ComputePrize_locals
@@ -318,11 +313,13 @@ public:
 		uint8 leftAlignedMatches;
 		uint8 leftAlignedMatchesAtOffset;
 		uint8 anyPositionMatches;
-		uint8 leftAlignedOffset;
 		uint8 j;
+		uint8 digitValue;
 		uint64 leftAlignedReward;
 		uint64 anyPositionReward;
 		uint64 prize;
+		uint16 ticketMask;
+		uint16 winningMask;
 	};
 
 	struct SettleRound_input
@@ -344,14 +341,8 @@ public:
 		uint64 prize;
 		uint64 totalPrize;
 		uint64 availableBalance;
-		uint16 winningMask;
 		m256i mixedSpectrumValue;
 		uint64 randomSeed;
-		Asset qheartAsset;
-		AssetPossessionIterator qheartIter;
-		uint64 totalShares;
-		uint64 dividendPerShare;
-		uint64 holderShares;
 		Asset shareholdersAsset;
 		AssetPossessionIterator shareholdersIter;
 		sint64 shareholdersTotalShares;
@@ -370,7 +361,6 @@ public:
 		uint8 currentHour;
 		uint8 isWednesday;
 		uint8 isScheduledToday;
-		SettleRound_locals settleLocals;
 		SettleRound_input settleInput;
 		SettleRound_output settleOutput;
 	};
@@ -699,12 +689,6 @@ private:
 				output.isValid = false;
 				return;
 			}
-			if (locals.seen.contains(locals.value))
-			{
-				output.isValid = false;
-				return;
-			}
-			locals.seen.add(locals.value);
 		}
 	}
 
@@ -715,30 +699,6 @@ private:
 			deriveOne(input.seed, locals.index, locals.tempValue);
 			locals.candidate = static_cast<uint8>(mod(locals.tempValue, static_cast<uint64>(PULSE_MAX_DIGIT + 1)));
 
-			locals.attempts = 0;
-			while (locals.used.contains(locals.candidate) && locals.attempts < 100)
-			{
-				++locals.attempts;
-				locals.tempValue ^= locals.tempValue >> 12;
-				locals.tempValue ^= locals.tempValue << 25;
-				locals.tempValue ^= locals.tempValue >> 27;
-				locals.tempValue *= 2685821657736338717ULL;
-				locals.candidate = static_cast<uint8>(mod(locals.tempValue, static_cast<uint64>(PULSE_MAX_DIGIT + 1)));
-			}
-
-			if (locals.used.contains(locals.candidate))
-			{
-				for (locals.fallback = 0; locals.fallback <= PULSE_MAX_DIGIT; ++locals.fallback)
-				{
-					if (!locals.used.contains(locals.fallback))
-					{
-						locals.candidate = locals.fallback;
-						break;
-					}
-				}
-			}
-
-			locals.used.add(locals.candidate);
 			output.digits.set(locals.index, locals.candidate);
 		}
 	}
@@ -801,11 +761,6 @@ private:
 		CALL(GetRandomDigits, locals.randomInput, locals.randomOutput);
 		state.lastWinningDigits = locals.randomOutput.digits;
 
-		for (locals.i = 0; locals.i < PULSE_WINNING_DIGITS; ++locals.i)
-		{
-			locals.winningMask = static_cast<uint16>(locals.winningMask | (1u << state.lastWinningDigits.get(locals.i)));
-		}
-
 		locals.balanceSigned = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, SELF_INDEX, SELF_INDEX);
 		locals.balance = (locals.balanceSigned > 0) ? static_cast<uint64>(locals.balanceSigned) : 0;
 
@@ -813,7 +768,7 @@ private:
 		for (locals.i = 0; locals.i < state.ticketCounter; ++locals.i)
 		{
 			locals.ticket = state.tickets.get(locals.i);
-			locals.prize = computePrize(state, locals.ticket, state.lastWinningDigits, locals.winningMask, locals.computePrizeLocals);
+			locals.prize = computePrize(state, locals.ticket, state.lastWinningDigits, locals.computePrizeLocals);
 			locals.totalPrize += locals.prize;
 		}
 
@@ -821,7 +776,7 @@ private:
 		for (locals.i = 0; locals.i < state.ticketCounter; ++locals.i)
 		{
 			locals.ticket = state.tickets.get(locals.i);
-			locals.prize = computePrize(state, locals.ticket, state.lastWinningDigits, locals.winningMask, locals.computePrizeLocals);
+			locals.prize = computePrize(state, locals.ticket, state.lastWinningDigits, locals.computePrizeLocals);
 
 			if (locals.totalPrize > 0 && locals.availableBalance < locals.totalPrize)
 			{
@@ -867,7 +822,7 @@ public:
 
 protected:
 	Array<Ticket, PULSE_MAX_NUMBER_OF_PLAYERS> tickets;
-	Array<uint8, PULSE_WINNING_DIGITS + 7> lastWinningDigits;
+	Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> lastWinningDigits;
 	uint64 ticketCounter;
 	uint64 ticketPrice;
 	uint64 qheartHoldLimit;
@@ -906,67 +861,69 @@ protected:
 	{
 		switch (matches)
 		{
-			case 6: return 2400 * state.ticketPrice;
-			case 5: return 600;
-			case 4: return 150;
-			case 3: return 30;
-			case 2: return 8;
-			case 1: return 1;
+			case 6: return 2000 * state.ticketPrice;
+			case 5: return 300 * state.ticketPrice;
+			case 4: return 60 * state.ticketPrice;
+			case 3: return 20 * state.ticketPrice;
+			case 2: return 4 * state.ticketPrice;
+			case 1: return 1 * state.ticketPrice;
 			default: return 0;
 		}
 	}
 
-	static uint64 getAnyPositionReward(uint8 matches)
+	static uint64 getAnyPositionReward(const PULSE& state, uint8 matches)
 	{
 		switch (matches)
 		{
-			case 6: return 1500;
-			case 5: return 400;
-			case 4: return 50;
-			case 3: return 8;
-			case 2: return 2;
-			case 1: return 0;
+			case 6: return 150 * state.ticketPrice;
+			case 5: return 30 * state.ticketPrice;
+			case 4: return 8 * state.ticketPrice;
+			case 3: return 2 * state.ticketPrice;
+			case 2:
+			case 1:
 			default: return 0;
 		}
 	}
 
 	static uint64 computePrize(const PULSE& state, const Ticket& ticket, const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winningDigits,
-	                           uint16 winningMask, ComputePrize_locals& locals)
+	                           ComputePrize_locals& locals)
 	{
-		locals.leftAlignedMatches = 0;
-		locals.leftAlignedMatchesAtOffset = 0;
-		locals.anyPositionMatches = 0;
-		locals.leftAlignedOffset = 0;
-		locals.leftAlignedReward = 0;
-		locals.anyPositionReward = 0;
-		locals.prize = 0;
+		setMemory(locals, 0);
 
-		for (locals.leftAlignedOffset = 0; locals.leftAlignedOffset + PULSE_PLAYER_DIGITS <= PULSE_WINNING_DIGITS; ++locals.leftAlignedOffset)
+		for (locals.j = 0; locals.j < PULSE_PLAYER_DIGITS; ++locals.j)
 		{
-			locals.leftAlignedMatchesAtOffset = 0;
-			for (locals.j = 0; locals.j < PULSE_PLAYER_DIGITS; ++locals.j)
+			if (ticket.digits.get(locals.j) == winningDigits.get(locals.j))
 			{
-				if (ticket.digits.get(locals.j) == winningDigits.get(locals.leftAlignedOffset + locals.j))
-				{
-					++locals.leftAlignedMatchesAtOffset;
-				}
+				++locals.leftAlignedMatchesAtOffset;
 			}
-			if (locals.leftAlignedMatchesAtOffset > locals.leftAlignedMatches)
+			else
 			{
-				locals.leftAlignedMatches = locals.leftAlignedMatchesAtOffset;
+				locals.leftAlignedMatchesAtOffset = 0;
 			}
+
+			locals.leftAlignedMatches = max(locals.leftAlignedMatches, locals.leftAlignedMatchesAtOffset);
+		}
+
+		for (locals.j = 0; locals.j < PULSE_WINNING_DIGITS; ++locals.j)
+		{
+			locals.winningMask = static_cast<uint16>(locals.winningMask | (1u << winningDigits.get(locals.j)));
 		}
 
 		for (locals.j = 0; locals.j < PULSE_PLAYER_DIGITS; ++locals.j)
 		{
-			if ((winningMask & (1u << ticket.digits.get(locals.j))) != 0)
-			{
-				++locals.anyPositionMatches;
-			}
+			locals.digitValue = ticket.digits.get(locals.j);
+			locals.ticketMask = static_cast<uint16>(locals.ticketMask | (1u << locals.digitValue));
+		}
+
+		locals.ticketMask = static_cast<uint16>(locals.ticketMask & locals.winningMask);
+		while (locals.ticketMask != 0)
+		{
+			locals.anyPositionMatches += static_cast<uint8>(locals.ticketMask & 1u);
+			locals.ticketMask = static_cast<uint16>(locals.ticketMask >> 1);
 		}
 
 		locals.leftAlignedReward = getLeftAlignedReward(state, locals.leftAlignedMatches);
-		locals.anyPositionReward = getAnyPositionReward(locals.anyPositionMatches);
+		locals.anyPositionReward = getAnyPositionReward(state, locals.anyPositionMatches);
 		locals.prize = max(locals.leftAlignedReward, locals.anyPositionReward);
 		return locals.prize;
 	}
