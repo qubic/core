@@ -931,7 +931,7 @@ protected:
 	}
 
 	static uint64 computePrize(const PULSE& state, const Ticket& ticket, const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winningDigits,
-	                           uint16 winningMask, SettleRound_locals::ComputePrize_locals& locals)
+	                           uint16 winningMask, ComputePrize_locals& locals)
 	{
 		locals.leftAlignedMatches = 0;
 		locals.leftAlignedMatchesAtOffset = 0;
