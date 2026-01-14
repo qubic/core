@@ -14,6 +14,7 @@ constexpr uint16 PULSE_PROCEDURE_SET_SCHEDULE = 3;
 constexpr uint16 PULSE_PROCEDURE_SET_DRAW_HOUR = 4;
 constexpr uint16 PULSE_PROCEDURE_SET_FEES = 5;
 constexpr uint16 PULSE_PROCEDURE_SET_QHEART_HOLD_LIMIT = 6;
+constexpr uint16 PULSE_PROCEDURE_BUY_RANDOM_TICKETS = 7;
 
 constexpr uint16 PULSE_FUNCTION_GET_TICKET_PRICE = 1;
 constexpr uint16 PULSE_FUNCTION_GET_SCHEDULE = 2;
@@ -79,6 +80,7 @@ public:
 	uint8 getQHeartPercentInternal() const { return qheartPercent; }
 	const id& getTeamAddressInternal() const { return teamAddress; }
 	const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& getLastWinningDigits() const { return lastWinningDigits; }
+	Ticket getTicket(uint64 index) const { return tickets.get(index); }
 
 	void setTicketCounter(uint64 value) { ticketCounter = value; }
 	void setTicketPriceInternal(uint64 value) { ticketPrice = value; }
@@ -239,6 +241,19 @@ public:
 		input.digits = digits;
 		PULSE::BuyTicket_output output{};
 		if (!invokeUserProcedure(PULSE_CONTRACT_INDEX, PULSE_PROCEDURE_BUY_TICKET, input, output, user, 0))
+		{
+			output.returnCode = static_cast<uint8>(PULSE::EReturnCode::UNKNOWN_ERROR);
+		}
+		return output;
+	}
+
+	PULSE::BuyRandomTickets_output buyRandomTickets(const id& user, uint16 count)
+	{
+		ensureUserEnergy(user);
+		PULSE::BuyRandomTickets_input input{};
+		input.count = count;
+		PULSE::BuyRandomTickets_output output{};
+		if (!invokeUserProcedure(PULSE_CONTRACT_INDEX, PULSE_PROCEDURE_BUY_RANDOM_TICKETS, input, output, user, 0))
 		{
 			output.returnCode = static_cast<uint8>(PULSE::EReturnCode::UNKNOWN_ERROR);
 		}
@@ -775,6 +790,83 @@ TEST(ContractPulse_Public, BuyTicketSucceedsAndMovesQHeart)
 	EXPECT_EQ(ctl.state()->getTicketCounter(), 1u);
 	EXPECT_EQ(ctl.qheartBalanceOf(user), userBefore - PULSE_TICKET_PRICE_DEFAULT);
 	EXPECT_EQ(ctl.qheartBalanceOf(ctl.pulseSelf()), contractBefore + PULSE_TICKET_PRICE_DEFAULT);
+}
+
+TEST(ContractPulse_Public, BuyRandomTicketsFailsWhenSellingClosed)
+{
+	ContractTestingPulse ctl;
+	const id user = id::randomValue();
+	const PULSE::BuyRandomTickets_output out = ctl.buyRandomTickets(user, 1);
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::TICKET_SELLING_CLOSED));
+}
+
+TEST(ContractPulse_Public, BuyRandomTicketsRejectsZeroCount)
+{
+	ContractTestingPulse ctl;
+	ctl.setDateTime(2025, 1, 10, 12);
+	ctl.beginEpoch();
+
+	const id user = id::randomValue();
+	const PULSE::BuyRandomTickets_output out = ctl.buyRandomTickets(user, 0);
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::INVALID_VALUE));
+}
+
+TEST(ContractPulse_Public, BuyRandomTicketsFailsWhenSoldOut)
+{
+	ContractTestingPulse ctl;
+	ctl.setDateTime(2025, 1, 10, 12);
+	ctl.beginEpoch();
+	ctl.state()->setTicketCounter(PULSE_MAX_NUMBER_OF_PLAYERS - 1);
+
+	const id user = id::randomValue();
+	const PULSE::BuyRandomTickets_output out = ctl.buyRandomTickets(user, 2);
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::TICKET_ALL_SOLD_OUT));
+}
+
+TEST(ContractPulse_Public, BuyRandomTicketsFailsWithInsufficientBalance)
+{
+	ContractTestingPulse ctl;
+	ctl.setDateTime(2025, 1, 10, 12);
+	ctl.beginEpoch();
+
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
+	const id user = id::randomValue();
+	ctl.transferQHeart(issuance, user, PULSE_TICKET_PRICE_DEFAULT);
+
+	const PULSE::BuyRandomTickets_output out = ctl.buyRandomTickets(user, 2);
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::TICKET_INVALID_PRICE));
+}
+
+TEST(ContractPulse_Public, BuyRandomTicketsSucceedsAndMovesQHeart)
+{
+	ContractTestingPulse ctl;
+	ctl.setDateTime(2025, 1, 10, 12);
+	ctl.beginEpoch();
+
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
+	const id user = id::randomValue();
+	static constexpr uint16 ticketCount = 3;
+	static constexpr uint64 totalPrice = static_cast<uint64>(ticketCount) * PULSE_TICKET_PRICE_DEFAULT;
+	ctl.transferQHeart(issuance, user, totalPrice);
+
+	const uint64 userBefore = ctl.qheartBalanceOf(user);
+	const uint64 contractBefore = ctl.qheartBalanceOf(ctl.pulseSelf());
+
+	const PULSE::BuyRandomTickets_output out = ctl.buyRandomTickets(user, ticketCount);
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.state()->getTicketCounter(), static_cast<uint64>(ticketCount));
+	EXPECT_EQ(ctl.qheartBalanceOf(user), userBefore - totalPrice);
+	EXPECT_EQ(ctl.qheartBalanceOf(ctl.pulseSelf()), contractBefore + totalPrice);
+
+	for (uint16 i = 0; i < ticketCount; ++i)
+	{
+		const PULSE::Ticket ticket = ctl.state()->getTicket(i);
+		EXPECT_EQ(ticket.player, user);
+		QpiContextUserFunctionCall qpi(PULSE_CONTRACT_INDEX);
+		primeQpiFunctionContext(qpi);
+		const PULSE::ValidateDigits_output validated = ctl.state()->callValidateDigits(qpi, ticket.digits);
+		EXPECT_TRUE(validated.isValid);
+	}
 }
 
 TEST(ContractPulse_Public, GetBalanceReportsQHeartWalletBalance)

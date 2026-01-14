@@ -170,6 +170,47 @@ public:
 		ValidateDigits_output validateOutput;
 	};
 
+	struct GetRandomDigits_input
+	{
+		uint64 seed;
+	};
+	struct GetRandomDigits_output
+	{
+		Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> digits;
+	};
+	struct GetRandomDigits_locals
+	{
+		uint64 tempValue;
+		uint8 index;
+		uint8 candidate;
+	};
+
+	struct BuyRandomTickets_input
+	{
+		uint16 count;
+	};
+
+	struct BuyRandomTickets_output
+	{
+		uint8 returnCode;
+	};
+
+	struct BuyRandomTickets_locals
+	{
+		uint64 reward;
+		uint64 slotsLeft;
+		sint64 userBalance;
+		sint64 transferResult;
+		uint64 totalPrice;
+		m256i mixedSpectrumValue;
+		uint64 randomSeed;
+		uint64 tempSeed;
+		uint16 i;
+		Ticket ticket;
+		GetRandomDigits_input randomInput;
+		GetRandomDigits_output randomOutput;
+	};
+
 	struct GetTicketPrice_input
 	{
 	};
@@ -326,21 +367,6 @@ public:
 		uint8 returnCode;
 	};
 
-	struct GetRandomDigits_input
-	{
-		uint64 seed;
-	};
-	struct GetRandomDigits_output
-	{
-		Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> digits;
-	};
-	struct GetRandomDigits_locals
-	{
-		uint64 tempValue;
-		uint8 index;
-		uint8 candidate;
-	};
-
 	struct ComputePrize_locals
 	{
 		uint8 leftAlignedMatches;
@@ -418,6 +444,7 @@ public:
 		REGISTER_USER_PROCEDURE(SetDrawHour, 4);
 		REGISTER_USER_PROCEDURE(SetFees, 5);
 		REGISTER_USER_PROCEDURE(SetQHeartHoldLimit, 6);
+		REGISTER_USER_PROCEDURE(BuyRandomTickets, 7);
 	}
 
 	INITIALIZE()
@@ -715,6 +742,67 @@ public:
 		locals.ticket.digits = input.digits;
 		state.tickets.set(state.ticketCounter, locals.ticket);
 		state.ticketCounter = min(state.ticketCounter + 1, state.tickets.capacity());
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(BuyRandomTickets)
+	{
+		locals.reward = qpi.invocationReward();
+		if (locals.reward > 0)
+		{
+			qpi.transfer(qpi.invocator(), locals.reward);
+		}
+
+		if (!isSellingOpen(state))
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
+			return;
+		}
+
+		if (input.count == 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		locals.slotsLeft = (state.ticketCounter < state.tickets.capacity()) ? (state.tickets.capacity() - state.ticketCounter) : 0;
+		if (locals.slotsLeft < input.count)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_ALL_SOLD_OUT);
+			return;
+		}
+
+		locals.totalPrice = smul(static_cast<uint64>(input.count), state.ticketPrice);
+		locals.userBalance =
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
+		if (locals.userBalance < static_cast<sint64>(locals.totalPrice))
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
+			return;
+		}
+
+		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, qpi.invocator(),
+		                                                                qpi.invocator(), static_cast<sint64>(locals.totalPrice), SELF);
+		if (locals.transferResult < 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
+			return;
+		}
+
+		locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
+		locals.randomSeed = qpi.K12(locals.mixedSpectrumValue).u64._0;
+		for (locals.i = 0; locals.i < input.count; ++locals.i)
+		{
+			deriveOne(locals.randomSeed, locals.i, locals.tempSeed);
+			locals.randomInput.seed = locals.tempSeed;
+			CALL(GetRandomDigits, locals.randomInput, locals.randomOutput);
+
+			locals.ticket.player = qpi.invocator();
+			locals.ticket.digits = locals.randomOutput.digits;
+			state.tickets.set(state.ticketCounter, locals.ticket);
+			state.ticketCounter = min(state.ticketCounter + 1, state.tickets.capacity());
+		}
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
