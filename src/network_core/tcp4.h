@@ -20,7 +20,7 @@ static EFI_HANDLE peerChildHandle = NULL;
 static EFI_IPv4_ADDRESS nodeAddress;
 
 
-static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsigned short port, EFI_TCP4_PROTOCOL** tcp4Protocol, unsigned int connectionTimeout = 0)
+static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsigned short port, EFI_TCP4_PROTOCOL** tcp4Protocol, unsigned int connectionTimeout = 0, bool experimentSetting = false)
 {
     EFI_STATUS status;
     EFI_HANDLE childHandle = NULL;
@@ -64,6 +64,18 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
             {
                 option.ConnectionTimeout = connectionTimeout;
             }
+
+            if (experimentSetting)
+            {
+                option.DataRetries = 8;                   // More retries for packet loss
+                option.KeepAliveProbes = 3;               // 3 probes before declaring dead
+                option.KeepAliveTime = 60;                // Start keepalive after 60s idle
+                option.KeepAliveInterval = 10;            // 10s between probes
+
+                option.EnableWindowScaling = TRUE;
+                option.EnableSelectiveAck = TRUE;
+            }
+
             configData.ControlOption = &option;
 
             if ((status = (*tcp4Protocol)->Configure(*tcp4Protocol, &configData))
