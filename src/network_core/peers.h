@@ -34,7 +34,7 @@
 #define NUMBER_OF_PUBLIC_PEERS_TO_KEEP 10
 #define NUMBER_OF_WHITE_LIST_PEERS sizeof(whiteListPeers) / sizeof(whiteListPeers[0])
 #define NUMBER_OF_INCOMING_CONNECTIONS_RESERVED_FOR_WHITELIST_IPS 16
-static constexpr unsigned int ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS = 5; // Config timout for connecting attemp to OM
+static constexpr unsigned int ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS = 0; // Config timout for connecting attemp to OM
 
 static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
 
