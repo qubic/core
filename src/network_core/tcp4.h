@@ -67,13 +67,12 @@ static EFI_HANDLE getTcp4Protocol(const unsigned char* remoteAddress, const unsi
 
             if (experimentSetting)
             {
-                option.DataRetries = 8;                   // More retries for packet loss
+                //option.DataRetries = 8;                   // More retries for packet loss
                 option.KeepAliveProbes = 3;               // 3 probes before declaring dead
                 option.KeepAliveTime = 60;                // Start keepalive after 60s idle
                 option.KeepAliveInterval = 10;            // 10s between probes
 
-                option.EnableWindowScaling = TRUE;
-                option.EnableSelectiveAck = TRUE;
+                //option.EnableSelectiveAck = TRUE;
             }
 
             configData.ControlOption = &option;
