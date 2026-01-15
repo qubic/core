@@ -7203,7 +7203,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             closePeer(&peers[i]);
                         }
 
-                        constexpr unsigned long long OM_INACTIVITY_TIMEOUT_SECS = 300;  // 5 minutes
+                        constexpr unsigned long long OM_INACTIVITY_TIMEOUT_SECS = 90;  // 1.5 minutes
                         if (peers[i].isConnectedAccepted &&
                             !peers[i].isClosing &&
                             peers[i].lastOMActivityTime > 0 &&

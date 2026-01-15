@@ -1075,17 +1075,6 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                 connectionTimeout = ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS;
                 // Mark it as failure
                 peers[i].connectAcceptToken.CompletionToken.Status = -1;
-
-#if !defined(NDEBUG)
-                CHAR16 omDbgMsg[128];
-                setText(omDbgMsg, L"OM: Attempting connection to ");
-                appendIPv4Address(omDbgMsg, peers[i].address);
-                appendText(omDbgMsg, L" peer[");
-                appendNumber(omDbgMsg, i, FALSE);
-                appendText(omDbgMsg, L"]");
-                addDebugMessage(omDbgMsg);
-#endif
-
             }
             else
             {
@@ -1129,6 +1118,16 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                             if (peers[i].isOracleMachineNode())
                             {
                                 peers[i].connectionStartTime = __rdtsc();
+#if !defined(NDEBUG)
+                                // Log only when actually starting a new connection
+                                CHAR16 omDbgMsg[128];
+                                setText(omDbgMsg, L"OM: Starting connection to ");
+                                appendIPv4Address(omDbgMsg, peers[i].address);
+                                appendText(omDbgMsg, L" peer[");
+                                appendNumber(omDbgMsg, i, FALSE);
+                                appendText(omDbgMsg, L"]");
+                                addDebugMessage(omDbgMsg);
+#endif
                             }
                         }
                     }
