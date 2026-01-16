@@ -249,11 +249,20 @@ protected:
         /// total number of successful oracle queries
         unsigned long long successCount;
 
+        /// sum of ticks that were required to reach the success state
+        unsigned long long successTicksSum;
+
         /// total number of timeout oracle queries
         unsigned long long timeoutCount;
 
-        /// total number of timeout oracle queries
+        /// total number of unresolvable oracle queries
         unsigned long long unresolvableCount;
+
+        /// total number of oracle queries that reached commit state
+        unsigned long long commitCount;
+
+        /// sum of ticks that were required to reach the commit state
+        unsigned long long commitTicksSum;
     } stats;
 
 #if ENABLE_ORACLE_STATS_RECORD
@@ -783,6 +792,8 @@ public:
                     oqm.status = ORACLE_QUERY_STATUS_COMMITTED;
                     pendingCommitReplyStateIndices.removeByValue(replyStateIdx);
                     pendingRevealReplyStateIndices.add(replyStateIdx);
+                    ++stats.commitCount;
+                    stats.commitTicksSum += (system.tick - oqm.queryTick);
 
                     // log status change
                     logQueryStatusChange(oqm);
@@ -1007,6 +1018,7 @@ public:
         oqm.status = ORACLE_QUERY_STATUS_SUCCESS;
         pendingQueryIndices.removeByValue(queryIndex);
         ++stats.successCount;
+        stats.successTicksSum += (oqm.statusVar.success.revealTick - oqm.queryTick);
 
         // cleanup reply state
         pendingRevealReplyStateIndices.removeByValue(replyStateIdx);
@@ -1223,9 +1235,22 @@ public:
     {
         setText(message, L"Oracles queries: pending ");
         appendNumber(message, pendingCommitReplyStateIndices.numValues, FALSE);
-        appendText(message, " / ");
+        appendText(message, " (");
+        // print how many ticks it takes on average until the commit status is reached (until 451 commit tx got executed)
+        unsigned long long ticks10perCommit = (stats.commitCount) ? (stats.commitTicksSum * 10 / stats.commitCount) : 0;
+        appendNumber(message, ticks10perCommit / 10, FALSE);
+        appendText(message, ".");
+        appendNumber(message, ticks10perCommit % 10, FALSE);
+        appendText(message, " ticks) / ");
         appendNumber(message, pendingRevealReplyStateIndices.numValues, FALSE);
-        appendText(message, " / ");
+        appendText(message, " (");
+        // print how many ticks it takes on average between commit and success (ticks until 1 reveal tx got executed)
+        unsigned long long ticks10perSuccess = (stats.successCount) ? (stats.successTicksSum * 10 / stats.successCount) : 0;
+        unsigned long long ticks10perReveal = ticks10perSuccess - ticks10perCommit;
+        appendNumber(message, ticks10perReveal / 10, FALSE);
+        appendText(message, ".");
+        appendNumber(message, ticks10perReveal % 10, FALSE);
+        appendText(message, " ticks) / ");
         appendNumber(message, pendingQueryIndices.numValues, FALSE);
         appendText(message, ", successful ");
         appendNumber(message, stats.successCount, FALSE);
