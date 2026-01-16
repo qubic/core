@@ -19,16 +19,18 @@ struct BroadcastComputors
 {
     Computors computors;
 
-    enum {
-        type = 2,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::BROADCAST_COMPUTORS;
+    }
 };
 
 
 struct RequestComputors
 {
-    enum {
-        type = 11,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_COMPUTORS;
+    }
 };
 

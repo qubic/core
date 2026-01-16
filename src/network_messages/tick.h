@@ -43,9 +43,10 @@ struct BroadcastTick
 {
     Tick tick;
 
-    enum {
-        type = 3,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::BROADCAST_TICK;
+    }
 };
 
 
@@ -78,9 +79,10 @@ struct BroadcastFutureTickData
 {
     TickData tickData;
 
-    enum {
-        type = 8,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::BROADCAST_FUTURE_TICK_DATA;
+    }
 };
 
 
@@ -95,9 +97,10 @@ struct RequestQuorumTick
 {
     RequestedQuorumTick quorumTick;
 
-    enum {
-        type = 14,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_QUORUM_TICK;
+    }
 };
 
 
@@ -111,17 +114,21 @@ struct RequestTickData
 {
     RequestedTickData requestedTickData;
 
-    enum {
-        type = 16,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_TICK_DATA;
+    }
 };
 
+struct RequestCurrentTickInfo
+{
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_CURRENT_TICK_INFO;
+    }
+};
 
-#define REQUEST_CURRENT_TICK_INFO 27
-
-#define RESPOND_CURRENT_TICK_INFO 28
-
-struct CurrentTickInfo
+struct RespondCurrentTickInfo
 {
     unsigned short tickDuration;
     unsigned short epoch;
@@ -129,5 +136,10 @@ struct CurrentTickInfo
     unsigned short numberOfAlignedVotes;
     unsigned short numberOfMisalignedVotes;
     unsigned int initialTick;
+
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::RESPOND_CURRENT_TICK_INFO;
+    }
 };
 

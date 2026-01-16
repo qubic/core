@@ -1,5 +1,7 @@
 #define SINGLE_COMPILE_UNIT
 
+// #define NO_QRWA
+
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
@@ -58,6 +60,9 @@
 #include "ticking/ticking.h"
 #include "contract_core/qpi_ticking_impl.h"
 #include "vote_counter.h"
+#include "ticking/execution_fee_report_collector.h"
+#include "ticking/stable_computor_index.h"
+#include "network_messages/execution_fees.h"
 
 #include "contract_core/ipo.h"
 #include "contract_core/qpi_ipo_impl.h"
@@ -130,6 +135,7 @@ static unsigned short ownComputorIndicesMapping[sizeof(computorSeeds) / sizeof(c
 
 static TickStorage ts;
 static VoteCounter voteCounter;
+static ExecutionFeeReportCollector executionFeeReportCollector;
 static TickData nextTickData;
 static PendingTxsPool pendingTxsPool;
 
@@ -148,6 +154,7 @@ static unsigned int contractProcessorPhase;
 static const Transaction* contractProcessorTransaction = 0; // does not have signature in some cases, see notifyContractOfIncomingTransfer()
 static int contractProcessorTransactionMoneyflew = 0;
 static unsigned char contractProcessorPostIncomingTransferType = 0;
+static const UserProcedureNotification* contractProcessorUserProcedureNotification = 0;
 static EFI_EVENT contractProcessorEvent;
 static m256i contractStateDigests[MAX_NUMBER_OF_CONTRACTS * 2 - 1];
 const unsigned long long contractStateDigestsSizeInBytes = sizeof(contractStateDigests);
@@ -233,9 +240,11 @@ struct
     unsigned char customMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
 } nodeStateBuffer;
 #endif
-static bool saveComputer(CHAR16* directory = NULL);
+static bool saveContractStateFiles(CHAR16* directory = NULL);
+static bool saveContractExecFeeFiles(CHAR16* directory = NULL, bool saveAccumulatedTime = false);
 static bool saveSystem(CHAR16* directory = NULL);
-static bool loadComputer(CHAR16* directory = NULL, bool forceLoadFromFile = false);
+static bool loadContractStateFiles(CHAR16* directory = NULL, bool forceLoadFromFile = false);
+static bool loadContractExecFeeFiles(CHAR16* directory = NULL, bool loadAccumulatedTime = false);
 static bool saveRevenueComponents(CHAR16* directory = NULL);
 
 #if ENABLED_LOGGING
@@ -254,6 +263,7 @@ static struct
     unsigned char signature[SIGNATURE_SIZE];
 } voteCounterPayload;
 
+static ExecutionFeeReportPayload executionFeeReportPayload;
 
 static struct
 {
@@ -275,7 +285,7 @@ static struct
 static struct
 {
     RequestResponseHeader header;
-    RequestedTickTransactions requestedTickTransactions;
+    RequestTickTransactions requestedTickTransactions;
 } requestedTickTransactions;
 
 static struct {
@@ -409,19 +419,26 @@ static void getComputerDigest(m256i& digest)
                 // This is currently avoided by calling getComputerDigest() from tick processor only (and in non-concurrent init)
                 contractStateLock[digestIndex].acquireRead();
 
-                const unsigned long long startTick = __rdtsc();
+                const unsigned long long startTime = __rdtsc();
                 KangarooTwelve(contractStates[digestIndex], (unsigned int)size, &contractStateDigests[digestIndex], 32);
-                const unsigned long long executionTicks = __rdtsc() - startTick;
+                const unsigned long long executionTime = __rdtsc() - startTime;
 
                 contractStateLock[digestIndex].releaseRead();
 
                 // K12 of state is included in contract execution time
-                _interlockedadd64(&contractTotalExecutionTicks[digestIndex], executionTicks);
+                _interlockedadd64(&contractTotalExecutionTime[digestIndex], executionTime);
+                // do not charge contract 0 state digest computation,
+                // only charge execution time if contract is already constructed/not in IPO
+                // TODO: enable this after adding proper tracking of contract state writes
+                //if (digestIndex > 0 && system.epoch >= contractDescriptions[digestIndex].constructionEpoch)
+                //{
+                //    executionTimeAccumulator.addTime(digestIndex, executionTime);
+                //}
 
                 // Gather data for comparing different versions of K12
                 if (K12MeasurementsCount < 500)
                 {
-                    K12MeasurementsSum += executionTicks;
+                    K12MeasurementsSum += executionTime;
                     K12MeasurementsCount++;
                 }
             }
@@ -803,9 +820,9 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
         && request->tick.millisecond <= 999)
     {
         unsigned char digest[32];
-        request->tick.computorIndex ^= BroadcastTick::type;
+        request->tick.computorIndex ^= BroadcastTick::type();
         KangarooTwelve(&request->tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
-        request->tick.computorIndex ^= BroadcastTick::type;
+        request->tick.computorIndex ^= BroadcastTick::type();
         const bool verifyFourQCurve = true;
         if (verifyTickVoteSignature(broadcastedComputors.computors.publicKeys[request->tick.computorIndex].m256i_u8, digest, request->tick.signature, verifyFourQCurve))
         {
@@ -882,9 +899,9 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
         if (ok)
         {
             unsigned char digest[32];
-            request->tickData.computorIndex ^= BroadcastFutureTickData::type;
+            request->tickData.computorIndex ^= BroadcastFutureTickData::type();
             KangarooTwelve(&request->tickData, sizeof(TickData) - SIGNATURE_SIZE, digest, sizeof(digest));
-            request->tickData.computorIndex ^= BroadcastFutureTickData::type;
+            request->tickData.computorIndex ^= BroadcastFutureTickData::type();
             if (verify(broadcastedComputors.computors.publicKeys[request->tickData.computorIndex].m256i_u8, digest, request->tickData.signature))
             {
                 if (header->isDejavuZero())
@@ -996,11 +1013,11 @@ static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
 {
     if (broadcastedComputors.computors.epoch)
     {
-        enqueueResponse(peer, sizeof(broadcastedComputors), BroadcastComputors::type, header->dejavu(), &broadcastedComputors);
+        enqueueResponse(peer, sizeof(broadcastedComputors), BroadcastComputors::type(), header->dejavu(), &broadcastedComputors);
     }
     else
     {
-        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
     }
 }
 
@@ -1047,7 +1064,7 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
                 if (tsTick->epoch == tickEpoch)
                 {
                     ts.ticks.acquireLock(computorIndices[index]);
-                    enqueueResponse(peer, sizeof(Tick), BroadcastTick::type, header->dejavu(), tsTick);
+                    enqueueResponse(peer, sizeof(Tick), BroadcastTick::type(), header->dejavu(), tsTick);
                     ts.ticks.releaseLock(computorIndices[index]);
                 }
             }
@@ -1055,7 +1072,7 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
             computorIndices[index] = computorIndices[--numberOfComputorIndices];
         }
     }
-    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
 }
 
 static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
@@ -1064,17 +1081,17 @@ static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
     TickData* td = ts.tickData.getByTickIfNotEmpty(request->requestedTickData.tick);
     if (td)
     {
-        enqueueResponse(peer, sizeof(TickData), BroadcastFutureTickData::type, header->dejavu(), td);
+        enqueueResponse(peer, sizeof(TickData), BroadcastFutureTickData::type(), header->dejavu(), td);
     }
     else
     {
-        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
     }
 }
 
 static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* header)
 {
-    RequestedTickTransactions* request = header->getPayload<RequestedTickTransactions>();
+    RequestTickTransactions* request = header->getPayload<RequestTickTransactions>();
 
     unsigned short tickEpoch = 0;
     const unsigned long long* tsReqTickTransactionOffsets;
@@ -1128,12 +1145,12 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
             tickTransactionIndices[index] = tickTransactionIndices[--numberOfTickTransactions];
         }
     }
-    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
 }
 
 static void processRequestTransactionInfo(Peer* peer, RequestResponseHeader* header)
 {
-    RequestedTransactionInfo* request = header->getPayload<RequestedTransactionInfo>();
+    RequestTransactionInfo* request = header->getPayload<RequestTransactionInfo>();
     const Transaction* transaction = ts.transactionsDigestAccess.findTransaction(request->txDigest);
     if (transaction)
     {
@@ -1141,13 +1158,13 @@ static void processRequestTransactionInfo(Peer* peer, RequestResponseHeader* hea
     }
     else
     {
-        enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
     }
 }
 
 static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* header)
 {
-    CurrentTickInfo currentTickInfo;
+    RespondCurrentTickInfo currentTickInfo;
 
     if (broadcastedComputors.computors.epoch)
     {
@@ -1166,17 +1183,17 @@ static void processRequestCurrentTickInfo(Peer* peer, RequestResponseHeader* hea
     }
     else
     {
-        setMem(&currentTickInfo, sizeof(CurrentTickInfo), 0);
+        setMem(&currentTickInfo, sizeof(RespondCurrentTickInfo), 0);
     }
 
-    enqueueResponse(peer, sizeof(currentTickInfo), RESPOND_CURRENT_TICK_INFO, header->dejavu(), &currentTickInfo);
+    enqueueResponse(peer, sizeof(currentTickInfo), RespondCurrentTickInfo::type(), header->dejavu(), &currentTickInfo);
 }
 
 static void processResponseCurrentTickInfo(Peer* peer, RequestResponseHeader* header)
 {
-    if (header->size() == sizeof(RequestResponseHeader) + sizeof(CurrentTickInfo))
+    if (header->size() == sizeof(RequestResponseHeader) + sizeof(RespondCurrentTickInfo))
     {
-        CurrentTickInfo currentTickInfo = *(header->getPayload< CurrentTickInfo>());
+        RespondCurrentTickInfo currentTickInfo = *(header->getPayload<RespondCurrentTickInfo>());
         // avoid malformed data
         if (currentTickInfo.initialTick == system.initialTick
             && currentTickInfo.epoch == system.epoch 
@@ -1190,9 +1207,9 @@ static void processResponseCurrentTickInfo(Peer* peer, RequestResponseHeader* he
 
 static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
 {
-    RespondedEntity respondedEntity;
+    RespondEntity respondedEntity;
 
-    RequestedEntity* request = header->getPayload<RequestedEntity>();
+    RequestEntity* request = header->getPayload<RequestEntity>();
     respondedEntity.entity.publicKey = request->publicKey;
     // Inside spectrumIndex already have acquire/release lock
     respondedEntity.spectrumIndex = spectrumIndex(respondedEntity.entity.publicKey);
@@ -1217,7 +1234,22 @@ static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
     }
 
 
-    enqueueResponse(peer, sizeof(respondedEntity), RESPOND_ENTITY, header->dejavu(), &respondedEntity);
+    enqueueResponse(peer, sizeof(respondedEntity), RespondEntity::type(), header->dejavu(), &respondedEntity);
+}
+
+static void processRequestActiveIPOs(Peer* peer, RequestResponseHeader* header)
+{
+    RespondActiveIPO response;
+    for (unsigned int contractIndex = 1; contractIndex < contractCount; ++contractIndex)
+    {
+        if (system.epoch == contractDescriptions[contractIndex].constructionEpoch - 1) // IPO happens in the epoch before construction
+        {
+            response.contractIndex = contractIndex;
+            copyMem(response.assetName, contractDescriptions[contractIndex].assetName, 8);
+            enqueueResponse(peer, sizeof(RespondActiveIPO), RespondActiveIPO::type(), header->dejavu(), &response);
+        }
+    }
+    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
 }
 
 static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
@@ -1242,7 +1274,7 @@ static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
         contractStateLock[request->contractIndex].releaseRead();
     }
 
-    enqueueResponse(peer, sizeof(respondContractIPO), RespondContractIPO::type, header->dejavu(), &respondContractIPO);
+    enqueueResponse(peer, sizeof(respondContractIPO), RespondContractIPO::type(), header->dejavu(), &respondContractIPO);
 }
 
 static void processRequestContractFunction(Peer* peer, const unsigned long long processorNumber, RequestResponseHeader* header)
@@ -1255,7 +1287,7 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
         || system.epoch < contractDescriptions[request->contractIndex].constructionEpoch
         || !contractUserFunctions[request->contractIndex][request->inputType])
     {
-        enqueueResponse(peer, 0, RespondContractFunction::type, header->dejavu(), NULL);
+        enqueueResponse(peer, 0, RespondContractFunction::type(), header->dejavu(), NULL);
     }
     else
     {
@@ -1264,15 +1296,15 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
         if (errorCode == NoContractError)
         {
             // success: respond with function output
-            enqueueResponse(peer, qpiContext.outputSize, RespondContractFunction::type, header->dejavu(), qpiContext.outputBuffer);
+            enqueueResponse(peer, qpiContext.outputSize, RespondContractFunction::type(), header->dejavu(), qpiContext.outputBuffer);
         }
         else
         {
             // error: respond with empty output, send TryAgain if the function was stopped to resolve a potential
             // deadlock
-            unsigned char type = RespondContractFunction::type;
+            unsigned char type = RespondContractFunction::type();
             if (errorCode == ContractErrorStoppedToResolveDeadlock)
-                type = TryAgain::type;
+                type = TryAgain::type();
             enqueueResponse(peer, 0, type, header->dejavu(), NULL);
         }
     }
@@ -1306,7 +1338,17 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.currentEntityBalanceDustThreshold = (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf;
 
     respondedSystemInfo.targetTickVoteSignature = TARGET_TICK_VOTE_SIGNATURE;
-    enqueueResponse(peer, sizeof(respondedSystemInfo), RESPOND_SYSTEM_INFO, header->dejavu(), &respondedSystemInfo);
+
+    if (broadcastedComputors.computors.epoch != 0)
+    {
+        copyMem(&respondedSystemInfo.computorPacketSignature, broadcastedComputors.computors.signature, 8);
+    }
+    else
+    {
+        respondedSystemInfo.computorPacketSignature = 0;
+    }
+    
+    enqueueResponse(peer, sizeof(respondedSystemInfo), RespondSystemInfo::type(), header->dejavu(), &respondedSystemInfo);
 }
 
 
@@ -1316,8 +1358,8 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
 // to prevent it from being re-sent for verification.
 static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, RequestResponseHeader* header)
 {
-    RequestedCustomMiningSolutionVerification* request = header->getPayload<RequestedCustomMiningSolutionVerification>();
-    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestedCustomMiningSolutionVerification) + SIGNATURE_SIZE)
+    RequestCustomMiningSolutionVerification* request = header->getPayload<RequestCustomMiningSolutionVerification>();
+    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestCustomMiningSolutionVerification) + SIGNATURE_SIZE)
     {
         unsigned char digest[32];
         KangarooTwelve(request, header->size() - sizeof(RequestResponseHeader) - SIGNATURE_SIZE, digest, sizeof(digest));
@@ -1372,7 +1414,7 @@ static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, 
             {
                 respond.status = RespondCustomMiningSolutionVerification::customMiningStateEnded;
             }
-            enqueueResponse(peer, sizeof(respond), RespondCustomMiningSolutionVerification::type, header->dejavu(), &respond);
+            enqueueResponse(peer, sizeof(respond), RespondCustomMiningSolutionVerification::type(), header->dejavu(), &respond);
         }
     }
 }
@@ -1385,8 +1427,8 @@ static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, 
 // For the solution respond, only respond solution that has not been verified yet
 static void processCustomMiningDataRequest(Peer* peer, const unsigned long long processorNumber, RequestResponseHeader* header)
 {
-    RequestedCustomMiningData* request = header->getPayload<RequestedCustomMiningData>();
-    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestedCustomMiningData) + SIGNATURE_SIZE)
+    RequestCustomMiningData* request = header->getPayload<RequestCustomMiningData>();
+    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestCustomMiningData) + SIGNATURE_SIZE)
     {
 
         unsigned char digest[32];
@@ -1395,7 +1437,7 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
         {
             unsigned char* respond = NULL;
             // Request tasks
-            if (request->dataType == RequestedCustomMiningData::taskType)
+            if (request->dataType == RequestCustomMiningData::taskType)
             {
                 // For task type, return all data from the current phase
                 ACQUIRE(gCustomMiningTaskStorageLock);
@@ -1412,16 +1454,16 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                     enqueueResponse(
                         peer,
                         (unsigned int)respondDataSize,
-                        RespondCustomMiningData::type, header->dejavu(), respond);
+                        RespondCustomMiningData::type(), header->dejavu(), respond);
                 }
                 else
                 {
-                    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+                    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
                 }
 
             }
             // Request solutions
-            else if (request->dataType == RequestedCustomMiningData::solutionType)
+            else if (request->dataType == RequestCustomMiningData::solutionType)
             {
                 // For solution type, return all solution from the current phase
                 {
@@ -1474,16 +1516,16 @@ static void processCustomMiningDataRequest(Peer* peer, const unsigned long long 
                     enqueueResponse(
                         peer,
                         (unsigned int)respondDataSize,
-                        RespondCustomMiningData::type, header->dejavu(), respondSolution);
+                        RespondCustomMiningData::type(), header->dejavu(), respondSolution);
                 }
                 else
                 {
-                    enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+                    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
                 }
             }
             else // Unknonwn type
             {
-                enqueueResponse(peer, 0, EndResponse::type, header->dejavu(), NULL);
+                enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
             }
         }
     }
@@ -1521,7 +1563,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 response.everIncreasingNonceAndCommandType = _request->everIncreasingNonceAndCommandType;
                 response.epoch = _request->epoch;
                 response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch] : SOLUTION_THRESHOLD_DEFAULT;
-                enqueueResponse(peer, sizeof(SpecialCommandSetSolutionThresholdRequestAndResponse), SpecialCommand::type, header->dejavu(), &response);
+                enqueueResponse(peer, sizeof(SpecialCommandSetSolutionThresholdRequestAndResponse), SpecialCommand::type(), header->dejavu(), &response);
             }
             break;
             case SPECIAL_COMMAND_TOGGLE_MAIN_MODE_REQUEST:
@@ -1535,25 +1577,25 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 {
                     mainAuxStatus = _request->mainModeFlag;                    
                 }
-                enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
+                enqueueResponse(peer, sizeof(SpecialCommandToggleMainModeRequestAndResponse), SpecialCommand::type(), header->dejavu(), _request);
             }
             break;
             case SPECIAL_COMMAND_REFRESH_PEER_LIST:
             {
                 forceRefreshPeerList = true;
-                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type(), header->dejavu(), request); // echo back to indicate success
             }
             break;
             case SPECIAL_COMMAND_FORCE_NEXT_TICK:
             {
                 forceNextTick = true;
-                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type(), header->dejavu(), request); // echo back to indicate success
             }
             break;
             case SPECIAL_COMMAND_REISSUE_VOTE:
             {
                 system.latestCreatedTick--;
-                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type(), header->dejavu(), request); // echo back to indicate success
             }
             break;
             case SPECIAL_COMMAND_SEND_TIME:
@@ -1583,7 +1625,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 SpecialCommandSendTime response;
                 response.everIncreasingNonceAndCommandType = (request->everIncreasingNonceAndCommandType & 0xFFFFFFFFFFFFFF) | (SPECIAL_COMMAND_SEND_TIME << 56);
                 copyMem(&response.utcTime, &utcTime, sizeof(response.utcTime)); // caution: response.utcTime is subset of global utcTime (smaller size)
-                enqueueResponse(peer, sizeof(SpecialCommandSendTime), SpecialCommand::type, header->dejavu(), &response);
+                enqueueResponse(peer, sizeof(SpecialCommandSendTime), SpecialCommand::type(), header->dejavu(), &response);
             }
             break;
             case SPECIAL_COMMAND_GET_MINING_SCORE_RANKING:
@@ -1603,7 +1645,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                     sizeof(requestMiningScoreRanking.everIncreasingNonceAndCommandType)
                     + sizeof(requestMiningScoreRanking.numberOfRankings)
                     + sizeof(requestMiningScoreRanking.rankings[0]) * requestMiningScoreRanking.numberOfRankings,
-                    SpecialCommand::type,
+                    SpecialCommand::type(),
                     header->dejavu(),
                     &requestMiningScoreRanking);
             }
@@ -1612,14 +1654,14 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             case SPECIAL_COMMAND_FORCE_SWITCH_EPOCH:
             {
                 forceSwitchEpoch = true;
-                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type(), header->dejavu(), request); // echo back to indicate success
             }
             break;
 
             case SPECIAL_COMMAND_CONTINUE_SWITCH_EPOCH:
             {
                 epochTransitionCleanMemoryFlag = 1;
-                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type, header->dejavu(), request); // echo back to indicate success
+                enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type(), header->dejavu(), request); // echo back to indicate success
             }
             break;
 
@@ -1627,9 +1669,54 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
             {
                 const auto* _request = header->getPayload<SpecialCommandSetConsoleLoggingModeRequestAndResponse>();
                 consoleLoggingLevel = _request->loggingMode;
-                enqueueResponse(peer, sizeof(SpecialCommandSetConsoleLoggingModeRequestAndResponse), SpecialCommand::type, header->dejavu(), _request);
+                enqueueResponse(peer, sizeof(SpecialCommandSetConsoleLoggingModeRequestAndResponse), SpecialCommand::type(), header->dejavu(), _request);
             }
             break;
+
+            case SPECIAL_COMMAND_SAVE_SNAPSHOT:
+            {
+                SpecialCommandSaveSnapshotRequestAndResponse response;
+                response.everIncreasingNonceAndCommandType = request->everIncreasingNonceAndCommandType;
+                response.status = SpecialCommandSaveSnapshotRequestAndResponse::UNKNOWN_FAILURE;
+                response.currentTick = 0;
+
+#if TICK_STORAGE_AUTOSAVE_MODE
+                if (requestPersistingNodeState)
+                {
+                    response.status = SpecialCommandSaveSnapshotRequestAndResponse::SAVING_IN_PROGRESS;
+                }
+                else
+                {
+                    ATOMIC_STORE32(requestPersistingNodeState, 1);
+                    response.currentTick = system.tick;
+                    response.status = SpecialCommandSaveSnapshotRequestAndResponse::SAVING_TRIGGERED;
+                }
+#else
+                response.status = SpecialCommandSaveSnapshotRequestAndResponse::REMOTE_SAVE_MODE_DISABLED;
+#endif
+                enqueueResponse(peer, sizeof(SpecialCommandSaveSnapshotRequestAndResponse), SpecialCommand::type(), header->dejavu(), &response);
+            }
+            break;
+
+            case SPECIAL_COMMAND_SET_EXECUTION_FEE_MULTIPLIER:
+            {
+                const auto* _request = header->getPayload<SpecialCommandExecutionFeeMultiplierRequestAndResponse>();
+                executionTimeMultiplierNumerator = _request->multiplierNumerator;
+                executionTimeMultiplierDenominator = _request->multiplierDenominator;
+                enqueueResponse(peer, sizeof(SpecialCommandExecutionFeeMultiplierRequestAndResponse), SpecialCommand::type(), header->dejavu(), _request);
+            }
+            break;
+
+            case SPECIAL_COMMAND_GET_EXECUTION_FEE_MULTIPLIER:
+            {
+                SpecialCommandExecutionFeeMultiplierRequestAndResponse response;
+                response.everIncreasingNonceAndCommandType = request->everIncreasingNonceAndCommandType;
+                response.multiplierNumerator = executionTimeMultiplierNumerator;
+                response.multiplierDenominator = executionTimeMultiplierDenominator;
+                enqueueResponse(peer, sizeof(SpecialCommandExecutionFeeMultiplierRequestAndResponse), SpecialCommand::type(), header->dejavu(), &response);
+            }
+            break;
+
             }
         }
     }
@@ -1939,31 +2026,31 @@ static void requestProcessor(void* ProcedureArgument)
                 RELEASE(requestQueueTailLock);
                 switch (header->type())
                 {
-                case ExchangePublicPeers::type:
+                case ExchangePublicPeers::type():
                 {
                     processExchangePublicPeers(peer, header);
                 }
                 break;
 
-                case BroadcastMessage::type:
+                case BroadcastMessage::type():
                 {
                     processBroadcastMessage(processorNumber, header);
                 }
                 break;
 
-                case BroadcastComputors::type:
+                case BroadcastComputors::type():
                 {
                     processBroadcastComputors(peer, header);
                 }
                 break;
 
-                case BroadcastTick::type:
+                case BroadcastTick::type():
                 {
                     processBroadcastTick(peer, header);
                 }
                 break;
 
-                case BroadcastFutureTickData::type:
+                case BroadcastFutureTickData::type():
                 {
                     processBroadcastFutureTickData(peer, header);
                 }
@@ -1975,137 +2062,143 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
-                case RequestComputors::type:
+                case RequestComputors::type():
                 {
                     processRequestComputors(peer, header);
                 }
                 break;
 
-                case RequestQuorumTick::type:
+                case RequestQuorumTick::type():
                 {
                     processRequestQuorumTick(peer, header);
                 }
                 break;
 
-                case RequestTickData::type:
+                case RequestTickData::type():
                 {
                     processRequestTickData(peer, header);
                 }
                 break;
 
-                case REQUEST_TICK_TRANSACTIONS:
+                case RequestTickTransactions::type():
                 {
                     processRequestTickTransactions(peer, header);
                 }
                 break;
 
-                case REQUEST_TRANSACTION_INFO:
+                case RequestTransactionInfo::type():
                 {
                     processRequestTransactionInfo(peer, header);
                 }
                 break;
 
-                case REQUEST_CURRENT_TICK_INFO:
+                case RequestCurrentTickInfo::type():
                 {
                     processRequestCurrentTickInfo(peer, header);
                 }
                 break;
 
-                case RESPOND_CURRENT_TICK_INFO:
+                case RespondCurrentTickInfo::type():
                 {
                     processResponseCurrentTickInfo(peer, header);
                 }
                 break;
 
-                case REQUEST_ENTITY:
+                case RequestEntity::type():
                 {
                     processRequestEntity(peer, header);
                 }
                 break;
 
-                case RequestContractIPO::type:
+                case RequestActiveIPOs::type():
+                {
+                    processRequestActiveIPOs(peer, header);
+                }
+                break;
+
+                case RequestContractIPO::type():
                 {
                     processRequestContractIPO(peer, header);
                 }
                 break;
 
-                case RequestIssuedAssets::type:
+                case RequestIssuedAssets::type():
                 {
                     processRequestIssuedAssets(peer, header);
                 }
                 break;
 
-                case RequestOwnedAssets::type:
+                case RequestOwnedAssets::type():
                 {
                     processRequestOwnedAssets(peer, header);
                 }
                 break;
 
-                case RequestPossessedAssets::type:
+                case RequestPossessedAssets::type():
                 {
                     processRequestPossessedAssets(peer, header);
                 }
                 break;
 
-                case RequestContractFunction::type:
+                case RequestContractFunction::type():
                 {
                     processRequestContractFunction(peer, processorNumber, header);
                 }
                 break;
 
-                case RequestLog::type:
+                case RequestLog::type():
                 {
                     logger.processRequestLog(processorNumber, peer, header);
                 }
                 break;
 
-                case RequestLogIdRangeFromTx::type:
+                case RequestLogIdRangeFromTx::type():
                 {
                     logger.processRequestTxLogInfo(processorNumber, peer, header);
                 }
                 break;
 
-                case RequestAllLogIdRangesFromTick::type:
+                case RequestAllLogIdRangesFromTick::type():
                 {
                     logger.processRequestTickTxLogInfo(processorNumber, peer, header);
                 }
                 break;
 
-                case RequestPruningLog::type:
+                case RequestPruningLog::type():
                 {
                     logger.processRequestPrunePageFile(peer, header);
                 }
                 break;
 
-                case RequestLogStateDigest::type:
+                case RequestLogStateDigest::type():
                 {
                     logger.processRequestGetLogDigest(peer, header);
                 }
                 break;
 
-                case REQUEST_SYSTEM_INFO:
+                case RequestSystemInfo::type():
                 {
                     processRequestSystemInfo(peer, header);
                 }
                 break;
 
-                case RequestAssets::type:
+                case RequestAssets::type():
                 {
                     processRequestAssets(peer, header);
                 }
                 break;
-                case RequestedCustomMiningSolutionVerification::type:
+                case RequestCustomMiningSolutionVerification::type():
                 {
                     processRequestedCustomMiningSolutionVerificationRequest(peer, header);
                 }
                 break;
-                case RequestedCustomMiningData::type:
+                case RequestCustomMiningData::type():
                 {
                     processCustomMiningDataRequest(peer, processorNumber, header);
                 }
                 break;
 
-                case SpecialCommand::type:
+                case SpecialCommand::type():
                 {
                     processSpecialCommand(peer, header);
                 }
@@ -2113,7 +2206,7 @@ static void requestProcessor(void* ProcedureArgument)
 
 #if ADDON_TX_STATUS_REQUEST
                 /* qli: process RequestTxStatus message */
-                case REQUEST_TX_STATUS:
+                case RequestTxStatus::type():
                 {
                     processRequestConfirmedTx(processorNumber, peer, header);
                 }
@@ -2150,6 +2243,16 @@ static void contractProcessor(void*)
             if (system.epoch == contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                // INITIALIZE is called right after IPO, hence no check for executionFeeReserve is needed.
+                // A failed IPO is indicated by a contractError and INITIALIZE is not executed.
+
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
+                    continue;
+                }
+
                 setMem(contractStates[executedContractIndex], contractDescriptions[executedContractIndex].stateSize, 0);
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, INITIALIZE);
                 qpiContext.call();
@@ -2165,6 +2268,16 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                // BEGIN_EPOCH runs even with a non-positive executionFeeReserve
+                // to keep SC in a valid state.
+
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
+                    continue;
+                }
+
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, BEGIN_EPOCH);
                 qpiContext.call();
             }
@@ -2179,6 +2292,19 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                // Check if contract has sufficient execution fee reserve before executing
+                if (getContractFeeReserve(executedContractIndex) <= 0)
+                {
+                    // Skip execution - contract has insufficient fees
+                    continue;
+                }
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
+                    continue;
+                }
+
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, BEGIN_TICK);
                 qpiContext.call();
             }
@@ -2193,6 +2319,19 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                // Check if contract has sufficient execution fee reserve before executing
+                if (getContractFeeReserve(executedContractIndex) <= 0)
+                {
+                    // Skip execution - contract has insufficient fees
+                    continue;
+                }
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
+                    continue;
+                }
+
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, END_TICK);
                 qpiContext.call();
             }
@@ -2207,6 +2346,16 @@ static void contractProcessor(void*)
             if (system.epoch >= contractDescriptions[executedContractIndex].constructionEpoch
                 && system.epoch < contractDescriptions[executedContractIndex].destructionEpoch)
             {
+                // END_EPOCH runs even with a non-positive executionFeeReserve
+                // to keep SC in a valid state.
+
+                // Check if contract is in an error state
+                if (contractError[executedContractIndex] != NoContractError)
+                {
+                    // Skip execution - contract is in error state
+                    continue;
+                }
+
                 QpiContextSystemProcedureCall qpiContext(executedContractIndex, END_EPOCH);
                 qpiContext.call();
             }
@@ -2267,6 +2416,20 @@ static void contractProcessor(void*)
         }
 
         contractProcessorTransaction = 0;
+    }
+    break;
+
+    case USER_PROCEDURE_NOTIFICATION_CALL:
+    {
+        const auto* notification = contractProcessorUserProcedureNotification;
+        ASSERT(notification && notification->procedure && notification->inputPtr);
+        ASSERT(notification->inputSize <= MAX_INPUT_SIZE);
+        ASSERT(notification->localsSize <= MAX_SIZE_OF_CONTRACT_LOCALS);
+
+        QpiContextUserProcedureNotificationCall qpiContext(*notification);
+        qpiContext.call();
+
+        contractProcessorUserProcedureNotification = 0;
     }
     break;
     }
@@ -2715,6 +2878,12 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                 }
                 break;
 
+                case EXECUTION_FEE_REPORT_INPUT_TYPE:
+                {
+                    executionFeeReportCollector.processTransactionData(transaction, dataLock);
+                }
+                break;
+
                 }
             }
             else
@@ -2739,11 +2908,32 @@ static void processTickTransaction(const Transaction* transaction, const m256i& 
                             processTickTransactionContractIPO(transaction, spectrumIndex, contractIndex);
                         }
                     }
-                    else if (system.epoch >= contractDescriptions[contractIndex].constructionEpoch 
+                    else if (system.epoch >= contractDescriptions[contractIndex].constructionEpoch
                         && system.epoch < contractDescriptions[contractIndex].destructionEpoch)
                     {
-                        // Regular contract procedure invocation
-                        moneyFlew = processTickTransactionContractProcedure(transaction, spectrumIndex, contractIndex);
+                        // Check if contract has sufficient execution fee reserve and is not in an error state
+                        if (getContractFeeReserve(contractIndex) <= 0 || contractError[contractIndex] != NoContractError)
+                        {
+                            // Contract has insufficient execution fees or is in error state - refund transaction amount
+                            if (transaction->amount > 0)
+                            {
+                                int destIndex = ::spectrumIndex(transaction->destinationPublicKey);
+                                if (destIndex >= 0)
+                                {
+                                    decreaseEnergy(destIndex, transaction->amount);
+                                    increaseEnergy(transaction->sourcePublicKey, transaction->amount);
+
+                                    const QuTransfer quTransfer = { transaction->destinationPublicKey, transaction->sourcePublicKey, transaction->amount };
+                                    logger.logQuTransfer(quTransfer);
+                                }
+                            }
+                            moneyFlew = false;
+                        }
+                        else
+                        {
+                            // Regular contract procedure invocation
+                            moneyFlew = processTickTransactionContractProcedure(transaction, spectrumIndex, contractIndex);
+                        }
                     }
                 }
             }
@@ -2838,6 +3028,74 @@ static bool makeAndBroadcastCustomMiningTransaction(int i, BroadcastFutureTickDa
     return false;
 }
 
+static bool makeAndBroadcastExecutionFeeTransaction(int i, BroadcastFutureTickData& td, int txSlot)
+{
+    PROFILE_NAMED_SCOPE("processTick(): broadcast execution fee tx");
+    ASSERT(txSlot < NUMBER_OF_TRANSACTIONS_PER_TICK);
+
+    auto& payload = executionFeeReportPayload;
+    payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
+    payload.transaction.destinationPublicKey = m256i::zero();
+    payload.transaction.amount = 0;
+    payload.transaction.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+    payload.transaction.inputType = ExecutionFeeReportTransactionPrefix::transactionType();
+
+    // Build the payload with contract execution times
+    executionTimeAccumulator.acquireLock();
+    unsigned int entryCount = buildExecutionFeeReportPayload(
+        payload,
+        executionTimeAccumulator.getPrevPhaseAccumulatedTimes(),
+        (system.tick / NUMBER_OF_COMPUTORS) - 1,
+        executionTimeMultiplierNumerator,
+        executionTimeMultiplierDenominator
+    );
+    executionTimeAccumulator.releaseLock();
+
+    // Return if no contract was executed during last phase
+    if (entryCount == 0)
+    {
+        return false;
+    }
+
+    // Set datalock at the end of the compacted payload
+    m256i* datalockPtr = (m256i*)(payload.transaction.inputPtr() + payload.transaction.inputSize - sizeof(m256i));
+    *datalockPtr = td.tickData.timelock;
+
+    // Calculate the correct position of the signature as this is a variable length package
+    unsigned char* signaturePtr = ((unsigned char*)datalockPtr) + sizeof(ExecutionFeeReportTransactionPostfix::dataLock);
+
+    unsigned char digest[32];
+    unsigned int sizeToHash =  sizeof(Transaction) + payload.transaction.inputSize;
+    KangarooTwelve(&payload, sizeToHash,  digest, sizeof(digest));
+    sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, signaturePtr);
+
+    // Broadcast ExecutionFeeReport
+    unsigned int transactionSize = sizeToHash + sizeof(ExecutionFeeReportTransactionPostfix::signature);
+    enqueueResponse(NULL, transactionSize, BROADCAST_TRANSACTION, 0, &payload);
+
+    // Copy the content of this exectuion fee report to local memory
+    unsigned int tickIndex = ts.tickToIndexCurrentEpoch(td.tickData.tick);
+    KangarooTwelve(&payload, transactionSize, digest, sizeof(digest));
+    auto* tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
+    if (txSlot < NUMBER_OF_TRANSACTIONS_PER_TICK) // valid slot
+    {
+        // TODO: refactor function add transaction to txStorage
+        ts.tickTransactions.acquireLock();
+        if (!tsReqTickTransactionOffsets[txSlot]) // not yet have value
+        {
+            if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch) //have enough space
+            {
+                td.tickData.transactionDigests[txSlot] = m256i(digest);
+                tsReqTickTransactionOffsets[txSlot] = ts.nextTickTransactionOffset;
+                copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), &payload, transactionSize);
+                ts.nextTickTransactionOffset += transactionSize;
+            }
+        }
+        ts.tickTransactions.releaseLock();
+    }
+    return true;
+}
+
 OPTIMIZE_OFF()
 static void processTick(unsigned long long processorNumber)
 {
@@ -2884,8 +3142,14 @@ static void processTick(unsigned long long processorNumber)
     // tick of the epoch in any case.
     if (system.tick == system.initialTick && (TICK_IS_FIRST_TICK_OF_EPOCH || system.epoch > EPOCH))
     {
-        PROFILE_NAMED_SCOPE_BEGIN("processTick(): INITIALIZE");
-        logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
+        {
+            // this is the very first logging event of the epoch
+            // hint message for 3rd party services the start of the epoch
+            logger.registerNewTx(system.tick, logger.SC_INITIALIZE_TX);
+            DummyCustomMessage dcm{ CUSTOM_MESSAGE_OP_START_EPOCH };
+            logger.logCustomMessage(dcm);
+        }
+        PROFILE_NAMED_SCOPE_BEGIN("processTick(): INITIALIZE");        
         contractProcessorPhase = INITIALIZE;
         contractProcessorState = 1;
         WAIT_WHILE(contractProcessorState);
@@ -2993,6 +3257,14 @@ static void processTick(unsigned long long processorNumber)
             }
         }
         PROFILE_SCOPE_END();
+    }
+
+    // The last executionFeeReport for the previous phase is published by comp <NUMBER_OF_COMPUTORS - 1> (0-indexed) in the last tick t1 of the
+    // previous phase (t1 % NUMBER_OF_COMPUTORS == NUMBER_OF_COMPUTORS - 1) for inclusion in tick t2 = t1 + TICK_TRANSACTIONS_PUBLICATION_OFFSET.
+    // Tick t2 corresponds to tick <TICK_TRANSACTIONS_PUBLICATION_OFFSET - 1> of the current phase.
+    if (system.tick % NUMBER_OF_COMPUTORS == TICK_TRANSACTIONS_PUBLICATION_OFFSET - 1)
+    {
+        executionFeeReportCollector.processReports();
     }
 
     PROFILE_NAMED_SCOPE_BEGIN("processTick(): END_TICK");
@@ -3106,7 +3378,7 @@ static void processTick(unsigned long long processorNumber)
 
                     // This is the tick leader in MAIN mode -> construct future tick data (selecting transactions to
                     // include into tick)
-                    broadcastedFutureTickData.tickData.computorIndex = ownComputorIndices[i] ^ BroadcastFutureTickData::type; // We XOR almost all packets with their type value to make sure an entity cannot be tricked into signing one thing while actually signing something else
+                    broadcastedFutureTickData.tickData.computorIndex = ownComputorIndices[i] ^ BroadcastFutureTickData::type(); // We XOR almost all packets with their type value to make sure an entity cannot be tricked into signing one thing while actually signing something else
                     broadcastedFutureTickData.tickData.epoch = system.epoch;
                     broadcastedFutureTickData.tickData.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
 
@@ -3130,9 +3402,9 @@ static void processTick(unsigned long long processorNumber)
                     pendingTxsPool.acquireLock();
                     for (unsigned int tx = 0; tx < numPendingTickTxs; ++tx)
                     {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-                        addDebugMessage(L"pendingTxsPool.get() call in processTick()");
-#endif
+// #if !defined(NDEBUG) && !defined(NO_UEFI)
+//                         addDebugMessage(L"pendingTxsPool.get() call in processTick()");
+// #endif
                         const Transaction* pendingTransaction = pendingTxsPool.getTx(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, tx);
                         if (pendingTransaction)
                         {
@@ -3171,6 +3443,13 @@ static void processTick(unsigned long long processorNumber)
                             nextTxIndex++;
                         }
                     }
+                    {
+                        // include execution fees tx for phase n - 1
+                        if (makeAndBroadcastExecutionFeeTransaction(i, broadcastedFutureTickData, nextTxIndex))
+                        {
+                            nextTxIndex++;
+                        }
+                    }
 
                     for (; nextTxIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; ++nextTxIndex)
                     {
@@ -3181,10 +3460,10 @@ static void processTick(unsigned long long processorNumber)
 
                     unsigned char digest[32];
                     KangarooTwelve(&broadcastedFutureTickData.tickData, sizeof(TickData) - SIGNATURE_SIZE, digest, sizeof(digest));
-                    broadcastedFutureTickData.tickData.computorIndex ^= BroadcastFutureTickData::type;
+                    broadcastedFutureTickData.tickData.computorIndex ^= BroadcastFutureTickData::type();
                     sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastedFutureTickData.tickData.signature);
 
-                    enqueueResponse(NULL, sizeof(broadcastedFutureTickData), BroadcastFutureTickData::type, 0, &broadcastedFutureTickData);
+                    enqueueResponse(NULL, sizeof(broadcastedFutureTickData), BroadcastFutureTickData::type(), 0, &broadcastedFutureTickData);
                 }
 
                 system.latestLedTick = system.tick;
@@ -3362,6 +3641,14 @@ static void beginEpoch()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
 
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+
     score->initMemory();
     score->resetTaskQueue();
     setMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
@@ -3532,7 +3819,12 @@ static void endEpoch()
     }
 
     assetsEndEpoch();
-
+    {
+        // this is the last logging event of the epoch
+        // a hint message for 3rd party services the end of the epoch
+        DummyCustomMessage dcm{ CUSTOM_MESSAGE_OP_END_EPOCH };
+        logger.logCustomMessage(dcm);
+    }
     logger.updateTick(system.tick);
 #if PAUSE_BEFORE_CLEAR_MEMORY
     // re-open request processors for other services to query
@@ -3717,13 +4009,28 @@ static bool saveAllNodeStates()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
+
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 4] = L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 3] = L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 2] = L'0';
+
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 4] = L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 3] = L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 2] = L'0';
+
     setText(message, L"Saving computer files");
     logToConsole(message);
-    if (!saveComputer(directory))
+    if (!saveContractStateFiles(directory))
     {
-        logToConsole(L"Failed to save computer");
+        logToConsole(L"Failed to save contract state files");
         return false;
     }
+    if (!saveContractExecFeeFiles(directory, /*saveAccumulatedTime=*/true))
+    {
+        logToConsole(L"Failed to save contract execution fee files");
+        return false;
+    }
+
     setText(message, L"Saving system to system.snp");
     logToConsole(message);
 
@@ -3862,10 +4169,24 @@ static bool loadAllNodeStates()
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
-    const bool forceLoadContractFile = true;
-    if (!loadComputer(directory, forceLoadContractFile))
+
+    if (!loadContractStateFiles(directory, /*forceLoadFromFile=*/true))
     {
-        logToConsole(L"Failed to load computer");
+        logToConsole(L"Failed to load contract state files");
+        return false;
+    }
+
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 4] = L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 3] = L'0';
+    CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 2] = L'0';
+
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 4] = L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 3] = L'0';
+    CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 2] = L'0';
+
+    if (!loadContractExecFeeFiles(directory, /*loadAccumulatedTime=*/true))
+    {
+        logToConsole(L"Failed to load contract execution fee files");
         return false;
     }
 
@@ -4202,9 +4523,9 @@ static void prepareNextTickTransactions()
         pendingTxsPool.acquireLock();
         for (unsigned int i = 0; i < numPendingTickTxs; ++i)
         {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-            addDebugMessage(L"pendingTxsPool.get() call in prepareNextTickTransactions()");
-#endif
+// #if !defined(NDEBUG) && !defined(NO_UEFI)
+//             addDebugMessage(L"pendingTxsPool.get() call in prepareNextTickTransactions()");
+// #endif
             Transaction* pendingTransaction = pendingTxsPool.getTx(nextTick, i);
             if (pendingTransaction)
             {
@@ -4366,7 +4687,7 @@ static void broadcastTickVotes()
     copyMem(&broadcastTick.tick, &etalonTick, sizeof(Tick));
     for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
     {
-        broadcastTick.tick.computorIndex = ownComputorIndices[i] ^ BroadcastTick::type;
+        broadcastTick.tick.computorIndex = ownComputorIndices[i] ^ BroadcastTick::type();
         broadcastTick.tick.epoch = system.epoch;
         m256i saltedData[2];
         saltedData[0] = computorPublicKeys[ownComputorIndicesMapping[i]];
@@ -4388,11 +4709,11 @@ static void broadcastTickVotes()
 
         unsigned char digest[32];
         KangarooTwelve(&broadcastTick.tick, sizeof(Tick) - SIGNATURE_SIZE, digest, sizeof(digest));
-        broadcastTick.tick.computorIndex ^= BroadcastTick::type;
+        broadcastTick.tick.computorIndex ^= BroadcastTick::type();
         signTickVote(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastTick.tick.signature);
 
 
-        enqueueResponse(NULL, sizeof(broadcastTick), BroadcastTick::type, 0, &broadcastTick);
+        enqueueResponse(NULL, sizeof(broadcastTick), BroadcastTick::type(), 0, &broadcastTick);
         // NOTE: here we don't copy these votes to memory, instead we wait other nodes echoing these votes back because:
         // - if own votes don't get echoed back, that indicates this node has internet/topo issue, and need to reissue vote (F9)
         // - all votes need to be processed in a single place of code (for further handling)
@@ -4929,6 +5250,11 @@ static void tickProcessor(void*)
                                 updateNumberOfTickTransactions();
                                 pendingTxsPool.incrementFirstStoredTick();
 
+                                if (system.tick % NUMBER_OF_COMPUTORS == 0)
+                                {
+                                    executionTimeAccumulator.startNewAccumulation();
+                                }
+
                                 bool isBeginEpoch = false;
                                 if (epochTransitionState == 1)
                                 {
@@ -4941,6 +5267,11 @@ static void tickProcessor(void*)
 
                                     // Save the file of revenue. This blocking save can be called from any thread
                                     saveRevenueComponents(NULL);
+
+                                    // Reorder futureComputors so requalifying computors keep their index
+                                    // This is needed for correct execution fee reporting across epoch boundaries
+                                    static_assert(reorgBufferSize >= stableComputorIndexBufferSize(), "reorgBuffer too small for stable computor index");
+                                    calculateStableComputorIndex(system.futureComputors, broadcastedComputors.computors.publicKeys, reorgBuffer);
 
                                     // instruct main loop to save system and wait until it is done
                                     systemMustBeSaved = true;
@@ -5052,7 +5383,7 @@ static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 
 // directory: source directory to load the file. Default: NULL - load from root dir /
 // forceLoadFromFile: when loading node states from file, we want to make sure it load from file and ignore constructionEpoch == system.epoch case
-static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
+static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
 {
     logToConsole(L"Loading contract files ...");
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
@@ -5092,17 +5423,36 @@ static bool loadComputer(CHAR16* directory, bool forceLoadFromFile)
             logToConsole(message);
         }
     }
+    
+    logToConsole(L"All contract files successfully loaded or initialized.");
+
     return true;
 }
 
-static bool saveComputer(CHAR16* directory)
+static bool loadContractExecFeeFiles(CHAR16* directory, bool loadAccumulatedTime)
+{
+    logToConsole(L"Loading contract execution fee files...");
+
+    if (!executionFeeReportCollector.loadFromFile(CONTRACT_EXEC_FEES_REC_FILE_NAME, directory))
+        return false;
+
+    if (loadAccumulatedTime && !executionTimeAccumulator.loadFromFile(CONTRACT_EXEC_FEES_ACC_FILE_NAME, directory))
+        return false;
+
+    logToConsole(loadAccumulatedTime ? L"Received fee reports and accumulated execution times successfully loaded." 
+        : L"Received fee reports successfully loaded.");
+
+    return true;
+}
+
+static bool saveContractStateFiles(CHAR16* directory)
 {
     logToConsole(L"Saving contract files...");
 
-    const unsigned long long beginningTick = __rdtsc();
+    unsigned long long beginningTick = __rdtsc();
 
-    bool ok = true;
     unsigned long long totalSize = 0;
+    long long savedSize = 0;
 
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
@@ -5111,27 +5461,43 @@ static bool saveComputer(CHAR16* directory)
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 7] = (contractIndex % 100) / 10 + L'0';
         CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 6] = contractIndex % 10 + L'0';
         contractStateLock[contractIndex].acquireRead();
-        long long savedSize = save(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
+        savedSize = save(CONTRACT_FILE_NAME, contractDescriptions[contractIndex].stateSize, contractStates[contractIndex], directory);
         contractStateLock[contractIndex].releaseRead();
         totalSize += savedSize;
         if (savedSize != contractDescriptions[contractIndex].stateSize)
         {
-            ok = false;
-
-            break;
+            return false;
         }
     }
 
-    if (ok)
-    {
-        setNumber(message, totalSize, TRUE);
-        appendText(message, L" bytes of the computer data are saved (");
-        appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
-        appendText(message, L" microseconds).");
-        logToConsole(message);
-        return true;
-    }
-    return false;
+    setNumber(message, totalSize, TRUE);
+    appendText(message, L" bytes of the contract state files are saved (");
+    appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
+    appendText(message, L" microseconds).");
+    logToConsole(message);
+
+    return true;
+}
+
+static bool saveContractExecFeeFiles(CHAR16* directory, bool saveAccumulatedTime)
+{
+    logToConsole(L"Saving contract execution fee files...");
+
+    unsigned long long beginningTick = __rdtsc();
+
+    if (!executionFeeReportCollector.saveToFile(CONTRACT_EXEC_FEES_REC_FILE_NAME, directory))
+        return false;
+
+    if (saveAccumulatedTime && !executionTimeAccumulator.saveToFile(CONTRACT_EXEC_FEES_ACC_FILE_NAME, directory))
+        return false;
+
+    setText(message, saveAccumulatedTime ? L"Received fee reports and accumulated execution times are saved ("
+        : L"Received fee reports are saved (");
+    appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
+    appendText(message, L" microseconds).");
+    logToConsole(message);
+
+    return true;
 }
 
 static bool saveSystem(CHAR16* directory)
@@ -5195,13 +5561,13 @@ static bool initialize()
     setMem(publicPeers, sizeof(publicPeers), 0);
 
     requestedComputors.header.setSize<sizeof(requestedComputors)>();
-    requestedComputors.header.setType(RequestComputors::type);
+    requestedComputors.header.setType(RequestComputors::type());
     requestedQuorumTick.header.setSize<sizeof(requestedQuorumTick)>();
-    requestedQuorumTick.header.setType(RequestQuorumTick::type);
+    requestedQuorumTick.header.setType(RequestQuorumTick::type());
     requestedTickData.header.setSize<sizeof(requestedTickData)>();
-    requestedTickData.header.setType(RequestTickData::type);
+    requestedTickData.header.setType(RequestTickData::type());
     requestedTickTransactions.header.setSize<sizeof(requestedTickTransactions)>();
-    requestedTickTransactions.header.setType(REQUEST_TICK_TRANSACTIONS);
+    requestedTickTransactions.header.setType(RequestTickTransactions::type());
     requestedTickTransactions.requestedTickTransactions.tick = 0;
 
     if (!initFilesystem())
@@ -5227,6 +5593,7 @@ static bool initialize()
             return false;
 
         initContractExec();
+        executionFeeReportCollector.init();
         for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
         {
             unsigned long long size = contractDescriptions[contractIndex].stateSize;
@@ -5288,7 +5655,7 @@ static bool initialize()
 
         lastExpectedTickTransactionDigest = m256i::zero();
 
-        //Init custom mining data. Reset function will be called in beginEpoch()
+        // Init custom mining data. Reset function will be called in beginEpoch()
         customMiningInitialize();
 
         beginEpoch();
@@ -5298,6 +5665,9 @@ static bool initialize()
 
 #if TICK_STORAGE_AUTOSAVE_MODE
         bool canLoadFromFile = loadAllNodeStates();
+
+        // loading might have changed system.tick, so restart pendingTxsPool 
+        pendingTxsPool.beginEpoch(system.tick);
 #else
         bool canLoadFromFile = false;
 #endif
@@ -5368,8 +5738,12 @@ static bool initialize()
                 appendText(message, L".");
                 logToConsole(message);
             }
-            if (!loadComputer())
+            if (!loadContractStateFiles())
                 return false;
+#ifndef START_NETWORK_FROM_SCRATCH
+            if (!loadContractExecFeeFiles())
+                return false;
+#endif
             m256i computerDigest;
             {
                 setText(message, L"Computer digest = ");
@@ -5394,6 +5768,7 @@ static bool initialize()
         }
     }
 
+    initializeContractErrors();
     initializeContracts();
 
     if (loadMiningSeedFromFile)
@@ -5808,7 +6183,7 @@ static void logInfo()
         appendText(message, L"?");
     }
     appendText(message, L" mcs | Total Qx execution time = ");
-    appendNumber(message, contractTotalExecutionTicks[QX_CONTRACT_INDEX] * 1000 / frequency, TRUE);
+    appendNumber(message, contractTotalExecutionTime[QX_CONTRACT_INDEX] * 1000 / frequency, TRUE);
     appendText(message, L" ms | Solution process time = ");
     appendNumber(message, solutionTotalExecutionTicks * 1000 / frequency, TRUE);
     appendText(message, L" ms | Spectrum reorg time = ");
@@ -6287,7 +6662,14 @@ static void processKeyPresses()
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
             CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 2] = L'0';
-            saveComputer();
+
+            saveContractStateFiles();
+
+            CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 4] = L'0';
+            CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 3] = L'0';
+            CONTRACT_EXEC_FEES_REC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_REC_FILE_NAME[0]) - 2] = L'0';
+
+            saveContractExecFeeFiles();
 
 #ifdef ENABLE_PROFILING
             gProfilingDataCollector.writeToFile();
@@ -6315,7 +6697,11 @@ static void processKeyPresses()
         case 0x12:
         {
             logToConsole(L"Pressed F8 key");
-            requestPersistingNodeState = 1;
+#if TICK_STORAGE_AUTOSAVE_MODE
+            ATOMIC_STORE32(requestPersistingNodeState, 1);
+#else
+            logToConsole(L"Manual trigger saving snapshot is disabled.");
+#endif
         }
         break;
 
@@ -6424,6 +6810,11 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
     {
         logToConsole(L"Setting up multiprocessing ...");
 
+        #if !defined(NDEBUG)
+        // Set flag to false BEFORE starting any processors to avoid race condition
+        debugLogOnlyMainProcessorRunning = false;
+        #endif
+
         unsigned int computingProcessorNumber;
         EFI_GUID mpServiceProtocolGuid = EFI_MP_SERVICES_PROTOCOL_GUID;
         bs->LocateProtocol(&mpServiceProtocolGuid, NULL, (void**)&mpServicesProtocol);
@@ -6491,10 +6882,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     createEvent(EVT_NOTIFY_SIGNAL, TPL_CALLBACK, shutdownCallback, NULL, &processors[numberOfProcessors].event);
                     mpServicesProtocol->StartupThisAP(mpServicesProtocol, Processor::runFunction, i, processors[numberOfProcessors].event, 0, &processors[numberOfProcessors], NULL);
-
-                    #if !defined(NDEBUG)
-                    debugLogOnlyMainProcessorRunning = false;
-                    #endif
 
                     if (!solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS]
                         && !solutionProcessorFlags[i])
@@ -6663,7 +7050,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         RequestResponseHeader* requestHeader = (RequestResponseHeader*)peers[i].dataToTransmit;
                         requestHeader->setSize<sizeof(RequestResponseHeader) + sizeof(ExchangePublicPeers)>();
                         requestHeader->randomizeDejavu();
-                        requestHeader->setType(ExchangePublicPeers::type);
+                        requestHeader->setType(ExchangePublicPeers::type());
                         peers[i].dataToTransmitSize = requestHeader->size();
                         _InterlockedIncrement64(&numberOfDisseminatedRequests);
 
@@ -6851,7 +7238,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 }
                 if (computerMustBeSaved)
                 {
-                    saveComputer();
+                    saveContractStateFiles();
+                    saveContractExecFeeFiles();
                     computerMustBeSaved = false;
                 }
 
@@ -6886,7 +7274,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         // Start auto save if nextAutoSaveTick == system.tick (or if the main loop has missed nextAutoSaveTick)
                         if (system.tick >= nextPersistingNodeStateTick)
                         {
-                            requestPersistingNodeState = 1;
+                            ATOMIC_STORE32(requestPersistingNodeState, 1);
                             while (system.tick >= nextPersistingNodeStateTick)
                             {
                                 nextPersistingNodeStateTick += TICK_STORAGE_AUTOSAVE_TICK_PERIOD;
@@ -6910,7 +7298,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #ifdef ENABLE_PROFILING
                     gProfilingDataCollector.writeToFile();
 #endif
-                    requestPersistingNodeState = 0;
+                    ATOMIC_STORE32(requestPersistingNodeState, 0);
                     logToConsole(L"Complete saving all node states");
                 }
 #if TICK_STORAGE_AUTOSAVE_MODE == 1

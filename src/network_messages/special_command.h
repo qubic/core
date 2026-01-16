@@ -7,9 +7,10 @@ struct SpecialCommand
 {
     unsigned long long everIncreasingNonceAndCommandType;
 
-    enum {
-        type = 255,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::SPECIAL_COMMAND;
+    }
 };
 
 #define SPECIAL_COMMAND_SHUT_DOWN 0ULL
@@ -85,4 +86,31 @@ struct SpecialCommandSetConsoleLoggingModeRequestAndResponse
     unsigned char padding[7];
 };
 
+#define SPECIAL_COMMAND_SAVE_SNAPSHOT 18ULL // F8 key
+struct SpecialCommandSaveSnapshotRequestAndResponse
+{
+    enum
+    {
+        SAVING_TRIGGERED = 0,
+        SAVING_IN_PROGRESS,
+        REMOTE_SAVE_MODE_DISABLED,
+        UNKNOWN_FAILURE,
+    };
+
+    unsigned long long everIncreasingNonceAndCommandType;
+    unsigned int currentTick;
+    unsigned char status;
+    unsigned char padding[3];
+};
+
 #pragma pack(pop)
+
+#define SPECIAL_COMMAND_SET_EXECUTION_FEE_MULTIPLIER 19ULL
+#define SPECIAL_COMMAND_GET_EXECUTION_FEE_MULTIPLIER 20ULL
+// This struct is used as response for the get command and as request and response for the set command.
+struct SpecialCommandExecutionFeeMultiplierRequestAndResponse
+{
+    unsigned long long everIncreasingNonceAndCommandType;
+    unsigned long long multiplierNumerator;
+    unsigned long long multiplierDenominator;
+};

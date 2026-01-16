@@ -5,26 +5,27 @@
 #include "platform/memory_util.h"
 #include "platform/concurrency.h"
 #include "platform/console_logging.h"
+#include "platform/debugging.h"
 
 #include "spectrum/spectrum.h"
 
 #include "mining/mining.h"
 
-#include "contracts/qpi.h"
 #include "contracts/math_lib.h"
 #include "contract_core/qpi_collection_impl.h"
 
 #include "public_settings.h"
 #include "kangaroo_twelve.h"
 #include "vote_counter.h"
+#include "network_messages/execution_fees.h"
 
 // Mempool that saves pending transactions (txs) of all entities.
 // This is a kind of singleton class with only static members (so all instances refer to the same data).
 class PendingTxsPool
 {
 protected:
-    // The PendingTxsPool will always leave space for the two protocol-level txs (tick votes and custom mining).
-    static constexpr unsigned int maxNumTxsPerTick = NUMBER_OF_TRANSACTIONS_PER_TICK - 2;
+    // The PendingTxsPool will always leave space for the three protocol-level txs (tick votes, custom mining, contract execution fees).
+    static constexpr unsigned int maxNumTxsPerTick = NUMBER_OF_TRANSACTIONS_PER_TICK - 3;
     static constexpr unsigned long long maxNumTxsTotal = PENDING_TXS_POOL_NUM_TICKS * maxNumTxsPerTick;
 
     // Sizes of different buffers in bytes
@@ -81,16 +82,19 @@ protected:
             if (balance > 0)
             {
                 if (isZero(tx->destinationPublicKey) && tx->amount == 0LL
-                    && (tx->inputType == VOTE_COUNTER_INPUT_TYPE || tx->inputType == CustomMiningSolutionTransaction::transactionType()))
+                    && (tx->inputType == VOTE_COUNTER_INPUT_TYPE || tx->inputType == CustomMiningSolutionTransaction::transactionType() || tx->inputType == ExecutionFeeReportTransactionPrefix::transactionType()))
                 {
                     // protocol-level tx always have max priority
                     return INT64_MAX;
                 }
                 else
                 {
-                    // calculate tx priority as [balance of src] * [scheduledTick - latestOutgoingTransferTick + 1]
-                    EntityRecord entity = spectrum[sourceIndex];
-                    priority = smul(balance, static_cast<sint64>(tx->tick - entity.latestOutgoingTransferTick + 1));
+                    // Calculate tx priority as: [balance of src] * [scheduledTick - latestTransferTick + 1] with
+                    // latestTransferTick = latestOutgoingTransferTick   if latestOutgoingTransferTick > 0,
+                    // latestTransferTick = latestIncomingTransferTick   otherwise (new entity).
+                    const EntityRecord& entity = spectrum[sourceIndex];
+                    const unsigned int latestTransferTick = (entity.latestOutgoingTransferTick) ? entity.latestOutgoingTransferTick : entity.latestIncomingTransferTick;
+                    priority = math_lib::smul(balance, static_cast<sint64>(tx->tick - latestTransferTick + 1));
                     // decrease by 1 to make sure no normal tx reaches max priority
                     priority--;
                 }
@@ -185,9 +189,9 @@ public:
     // Return number of transactions scheduled for the specified tick.
     static unsigned int getNumberOfPendingTickTxs(unsigned int tick)
     {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin pendingTxsPool.getNumberOfPendingTickTxs()");
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        addDebugMessage(L"Begin pendingTxsPool.getNumberOfPendingTickTxs()");
+//#endif
         unsigned int res = 0;
         ACQUIRE(lock);
         if (tickInStorage(tick))
@@ -196,23 +200,23 @@ public:
         }
         RELEASE(lock);
 
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        CHAR16 dbgMsgBuf[200];
-        setText(dbgMsgBuf, L"End pendingTxsPool.getNumberOfPendingTickTxs() for tick=");
-        appendNumber(dbgMsgBuf, tick, FALSE);
-        appendText(dbgMsgBuf, L" -> res=");
-        appendNumber(dbgMsgBuf, res, FALSE);
-        addDebugMessage(dbgMsgBuf);
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        CHAR16 dbgMsgBuf[200];
+//        setText(dbgMsgBuf, L"End pendingTxsPool.getNumberOfPendingTickTxs() for tick=");
+//        appendNumber(dbgMsgBuf, tick, FALSE);
+//        appendText(dbgMsgBuf, L" -> res=");
+//        appendNumber(dbgMsgBuf, res, FALSE);
+//        addDebugMessage(dbgMsgBuf);
+//#endif
         return res;
     }
 
     // Return number of transactions scheduled later than the specified tick.
     static unsigned int getTotalNumberOfPendingTxs(unsigned int tick)
     {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin pendingTxsPool.getTotalNumberOfPendingTxs()");
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        addDebugMessage(L"Begin pendingTxsPool.getTotalNumberOfPendingTxs()");
+//#endif
         unsigned int res = 0;
         ACQUIRE(lock);
         if (tickInStorage(tick + 1))
@@ -234,29 +238,46 @@ public:
         }
         RELEASE(lock);
 
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        CHAR16 dbgMsgBuf[200];
-        setText(dbgMsgBuf, L"End pendingTxsPool.getTotalNumberOfPendingTxs() for tick=");
-        appendNumber(dbgMsgBuf, tick, FALSE);
-        appendText(dbgMsgBuf, L" -> res=");
-        appendNumber(dbgMsgBuf, res, FALSE);
-        addDebugMessage(dbgMsgBuf);
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        CHAR16 dbgMsgBuf[200];
+//        setText(dbgMsgBuf, L"End pendingTxsPool.getTotalNumberOfPendingTxs() for tick=");
+//        appendNumber(dbgMsgBuf, tick, FALSE);
+//        appendText(dbgMsgBuf, L" -> res=");
+//        appendNumber(dbgMsgBuf, res, FALSE);
+//        addDebugMessage(dbgMsgBuf);
+//#endif
         return res;
     }
 
     // Check validity of transaction and add to the pool. Return boolean indicating whether transaction was added.
     static bool add(const Transaction* tx)
     {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        addDebugMessage(L"Begin pendingTxsPool.add()");
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        addDebugMessage(L"Begin pendingTxsPool.add()");
+//#endif
         bool txAdded = false;
         ACQUIRE(lock);
         if (tx->checkValidity() && tickInStorage(tx->tick))
         {
             unsigned int tickIndex = tickToIndex(tx->tick);
             const unsigned int transactionSize = tx->totalSize();
+
+            // check if tx with same digest already exists
+            m256i digest;
+            KangarooTwelve(tx, transactionSize, &digest, sizeof(m256i));
+            for (unsigned int txIndex = 0; txIndex < numSavedTxsPerTick[tickIndex]; ++txIndex)
+            {
+                if (*getDigestPtr(tickIndex, txIndex) == digest)
+                {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                    CHAR16 dbgMsgBuf[100];
+                    setText(dbgMsgBuf, L"tx with the same digest already exists for tick ");
+                    appendNumber(dbgMsgBuf, tx->tick, FALSE);
+                    addDebugMessage(dbgMsgBuf);
+#endif
+                    goto end_add_function;
+                }
+            }
 
             sint64 priority = calculateTxPriority(tx);
             if (priority > 0)
@@ -265,10 +286,8 @@ public:
 
                 if (numSavedTxsPerTick[tickIndex] < maxNumTxsPerTick)
                 {
-                    KangarooTwelve(tx, transactionSize, getDigestPtr(tickIndex, numSavedTxsPerTick[tickIndex]), sizeof(m256i));
-
+                    copyMem(getDigestPtr(tickIndex, numSavedTxsPerTick[tickIndex]), &digest, sizeof(m256i));
                     copyMem(getTxPtr(tickIndex, numSavedTxsPerTick[tickIndex]), tx, transactionSize);
-
                     txsPriorities->add(povIndex, numSavedTxsPerTick[tickIndex], priority);
 
                     numSavedTxsPerTick[tickIndex]++;
@@ -286,8 +305,7 @@ public:
                             txsPriorities->remove(lowestElementIndex);
                             txsPriorities->add(povIndex, replacedTxIndex, priority);
 
-                            KangarooTwelve(tx, transactionSize, getDigestPtr(tickIndex, replacedTxIndex), sizeof(m256i));
-
+                            copyMem(getDigestPtr(tickIndex, replacedTxIndex), &digest, sizeof(m256i));
                             copyMem(getTxPtr(tickIndex, replacedTxIndex), tx, transactionSize);
 
                             txAdded = true;
@@ -326,21 +344,23 @@ public:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
             else
             {
-                CHAR16 dbgMsgBuf[300];
+                CHAR16 dbgMsgBuf[100];
                 setText(dbgMsgBuf, L"tx with priority 0 was rejected for tick ");
                 appendNumber(dbgMsgBuf, tx->tick, FALSE);
                 addDebugMessage(dbgMsgBuf);
             }
 #endif
         }
+
+    end_add_function:
         RELEASE(lock);
 
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-        if (txAdded)
-            addDebugMessage(L"End pendingTxsPool.add(), txAdded true");
-        else
-            addDebugMessage(L"End pendingTxsPool.add(), txAdded false");
-#endif
+//#if !defined(NDEBUG) && !defined(NO_UEFI)
+//        if (txAdded)
+//            addDebugMessage(L"End pendingTxsPool.add(), txAdded true");
+//        else
+//            addDebugMessage(L"End pendingTxsPool.add(), txAdded false");
+//#endif
         return txAdded;
     }
 

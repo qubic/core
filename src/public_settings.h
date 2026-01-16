@@ -1,5 +1,7 @@
 #pragma once
 
+#include "platform/global_var.h"
+
 ////////// Public Settings \\\\\\\\\\
 
 //////////////////////////////////////////////////////////////////////////
@@ -64,12 +66,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 264
+#define VERSION_B 274
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 183
-#define TICK 34815000
+#define EPOCH 196
+#define TICK 42232000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "MEFKYFCDXDUILCAJKOIKWQAPENJDUHSSYPBRWFOTLALILAYWQFDSITJELLHG"
@@ -83,6 +85,8 @@ static unsigned short SCORE_CACHE_FILE_NAME[] = L"score.???";
 static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
 static unsigned short CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"custom_revenue.eoe";
 static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining_cache.???";
+static unsigned short CONTRACT_EXEC_FEES_ACC_FILE_NAME[] = L"contract_exec_fees_acc.???";
+static unsigned short CONTRACT_EXEC_FEES_REC_FILE_NAME[] = L"contract_exec_fees_rec.???";
 
 static constexpr unsigned long long NUMBER_OF_INPUT_NEURONS = 512;     // K
 static constexpr unsigned long long NUMBER_OF_OUTPUT_NEURONS = 512;    // L
@@ -124,3 +128,9 @@ static unsigned int gFullExternalComputationTimes[][2] =
 
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE
+
+// Multipliers to convert from raw contract execution time to contract execution fee.
+// Use values like (numerator 1, denominator 10) for division by 10.
+GLOBAL_VAR_DECL unsigned long long executionTimeMultiplierNumerator GLOBAL_VAR_INIT(1ULL);
+GLOBAL_VAR_DECL unsigned long long executionTimeMultiplierDenominator GLOBAL_VAR_INIT(1ULL);
+

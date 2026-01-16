@@ -318,7 +318,7 @@ public:
 	{
 		output.okay = qpi(state.proposals).getVote(
 			input.proposalIndex,
-			qpi(state.proposals).voterIndex(input.voter),
+			qpi(state.proposals).voteIndex(input.voter),
 			output.vote);
 	}
 
@@ -396,7 +396,7 @@ public:
 					if (qpi(state.proposals).getVotingSummary(locals.proposalIndex, locals.results))
 					{
 						// The total number of votes needs to be at least the quorum
-						if (locals.results.totalVotes >= QUORUM)
+						if (locals.results.totalVotesCasted >= QUORUM)
 						{
 							// Find most voted option
 							locals.mostVotedOptionIndex = 0;

@@ -9,6 +9,7 @@
 #include "../platform/memory_util.h"
 
 #include "../network_messages/header.h"
+#include "../network_messages/network_message_type.h"
 
 #include "../public_settings.h"
 #include "../system.h"
@@ -39,20 +40,27 @@ static struct
 } txStatusData;
 
 
-#define REQUEST_TX_STATUS 201
-
 struct RequestTxStatus
 {
     unsigned int tick;
+
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_TX_STATUS;
+    }
 };
 
 static_assert(sizeof(RequestTxStatus) == 4, "unexpected size");
 
-#define RESPOND_TX_STATUS 202
 
 #pragma pack(push, 1)
 struct RespondTxStatus
 {
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::RESPOND_TX_STATUS;
+    }
+
     unsigned int currentTickOfNode;
     unsigned int tick;
     unsigned int txCount;
@@ -245,7 +253,7 @@ static void processRequestConfirmedTx(long long processorNumber, Peer *peer, Req
     }
 
     ASSERT(tickTxStatus.size() <= sizeof(tickTxStatus));
-    enqueueResponse(peer, tickTxStatus.size(), RESPOND_TX_STATUS, header->dejavu(), &tickTxStatus);
+    enqueueResponse(peer, tickTxStatus.size(), RespondTxStatus::type(), header->dejavu(), &tickTxStatus);
 }
 
 #if TICK_STORAGE_AUTOSAVE_MODE

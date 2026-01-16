@@ -154,6 +154,11 @@ public:
         EXPECT_EQ(result.averageBurnedPercent, div(sumBurnedPercent, system.epoch - 138ULL));
         EXPECT_EQ(result.averageRewardedPercent, div(sumRewardedPercent, system.epoch - 138ULL));
     }
+
+    QEARN::EpochIndexInfo getEpochIndex(uint32 epoch) const
+    {
+        return _epochIndex.get(epoch);
+    }
 };
 
 class ContractTestingQearn : protected ContractTesting
@@ -770,6 +775,101 @@ TEST(TestContractQearn, ErrorChecking)
     // finally, test success case
     EXPECT_EQ(qearn.unlock(otherUser, QEARN_MINIMUM_LOCKING_AMOUNT, system.epoch), QEARN_UNLOCK_SUCCESS);
 }
+
+// Test case for gap removal logic in overflow check (lines 635-656 in Qearn.h)
+// This test verifies that when the locker array is near capacity and contains gaps,
+// attempting to lock triggers gap removal, allowing the lock to succeed.
+// Note: This test is disabled by default because it requires filling many slots (QEARN_MAX_LOCKS - 1)
+// Enable with LARGE_SCALE_TEST >= 4 to run this comprehensive test
+
+#if LARGE_SCALE_TEST >= 4
+TEST(TestContractQearn, GapRemovalOnOverflow)
+{
+    std::cout << "gap removal test. If you want to test this case as soon, please set the QEARN_MAX_LOCKS to a smaller value on the contract." << std::endl;
+    ContractTestingQearn qearn;
+    
+    system.epoch = contractDescriptions[QEARN_CONTRACT_INDEX].constructionEpoch;
+    qearn.beginEpoch();
+    qearn.endEpoch();
+
+    system.epoch = QEARN_INITIAL_EPOCH;
+
+    qearn.beginEpoch();
+    
+    // Create a scenario where we fill up the locker array and create gaps
+    // Strategy: Fill up to near capacity, unlock some to create gaps, 
+    // then try to lock again which triggers gap removal
+    
+    const uint64 numGapsToCreate = 100;  // Create some gaps by unlocking
+    // Fill up to QEARN_MAX_LOCKS - 1 so that after unlocking (which doesn't change endIndex),
+    // the next lock attempt will trigger the overflow check (endIndex >= QEARN_MAX_LOCKS - 1)
+    const uint64 targetEndIndex = QEARN_MAX_LOCKS - 1;
+    
+    std::vector<id> usersToUnlock;
+    usersToUnlock.reserve(numGapsToCreate);
+    
+    // Step 1: Fill up the array to near capacity
+    // We'll fill up to targetEndIndex, then unlock some to create gaps
+    // The endIndex will stay high, so when we try to lock again, it will trigger overflow check
+    for (uint64 i = 0; i < targetEndIndex; ++i)
+    {
+        id testUser(i, 100, 200, 300);
+        uint64 amount = QEARN_MINIMUM_LOCKING_AMOUNT + 1;
+        increaseEnergy(testUser, amount);
+        EXPECT_TRUE(qearn.lockAndCheck(testUser, amount));
+        
+        // Store some users to unlock later (to create gaps)
+        if (i < numGapsToCreate)
+        {
+            usersToUnlock.push_back(testUser);
+        }
+    }
+    
+    // Step 2: Verify we're near capacity
+    QearnChecker* state = qearn.getState();
+    uint32 endIndexBeforeUnlock = state->getEpochIndex(system.epoch).endIndex;
+    EXPECT_GE(endIndexBeforeUnlock, targetEndIndex);
+    
+    // Step 3: Unlock some users to create gaps in the locker array
+    // Note: endIndex doesn't decrease when unlocking, so gaps are created but endIndex stays high
+    for (const auto& userToUnlock : usersToUnlock)
+    {
+        uint64 unlockAmount = QEARN_MINIMUM_LOCKING_AMOUNT + 1;
+        EXPECT_EQ(qearn.unlock(userToUnlock, unlockAmount, system.epoch), QEARN_UNLOCK_SUCCESS);
+    }
+    
+    // Step 4: Verify endIndex is still high (gaps created but not removed yet)
+    uint32 endIndexAfterUnlock = state->getEpochIndex(system.epoch).endIndex;
+    EXPECT_EQ(endIndexAfterUnlock, endIndexBeforeUnlock);  // endIndex doesn't change on unlock
+    
+    // Step 5: Try to lock one more user - this should trigger overflow check and gap removal
+    // After gap removal, the lock should succeed because we created gaps earlier
+    id finalUser(targetEndIndex + 1, 100, 200, 300);
+    uint64 finalAmount = QEARN_MINIMUM_LOCKING_AMOUNT + 1;
+    increaseEnergy(finalUser, finalAmount);
+    
+    // The lock should succeed after gap removal
+    sint32 retCode = qearn.lock(finalUser, finalAmount);
+    
+    // Verify that gap removal happened and lock succeeded
+    // After gap removal, endIndex should be less than QEARN_MAX_LOCKS - 1
+    uint32 endIndexAfterGapRemoval = state->getEpochIndex(system.epoch).endIndex;
+    
+    // The lock should succeed because gaps were removed
+    EXPECT_EQ(retCode, QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(endIndexAfterGapRemoval, QEARN_MAX_LOCKS - numGapsToCreate);
+    EXPECT_LT(endIndexAfterGapRemoval, QEARN_MAX_LOCKS - 1);
+    EXPECT_LT(endIndexAfterGapRemoval, endIndexAfterUnlock);  // endIndex should decrease after gap removal
+    
+    // Verify the locker array is consistent after gap removal
+    qearn.getState()->checkLockerArray(true, false);
+    
+    // Verify the final user's lock was successful
+    EXPECT_EQ(qearn.getUserLockedInfo(system.epoch, finalUser), finalAmount);
+    
+    qearn.endEpoch();
+}
+#endif
 
 void testRandomLockWithoutUnlock(const uint16 numEpochs, const unsigned int totalUsers, const unsigned int maxUserLocking)
 {

@@ -1058,7 +1058,7 @@ TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenCheck
         increaseEnergy(user, 180000000000);
         uint8 tierLevel = nostromoTestCaseC.getState()->getTierLevel(user);
 
-        if (ct = 4000)
+        if (ct >= 4000)
         {
             // Phase 2 Investment
             utcTime.Year = 2025;
@@ -1411,7 +1411,7 @@ TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenCheck
         increaseEnergy(user, 180000000000);
         uint8 tierLevel = nostromoTestCaseC.getState()->getTierLevel(user);
 
-        if (ct = 4000)
+        if (ct >= 4000)
         {
 
             // Phase 2 Investment
@@ -1589,7 +1589,7 @@ TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenCheck
         increaseEnergy(user, 180000000000);
         uint8 tierLevel = nostromoTestCaseC.getState()->getTierLevel(user);
 
-        if (ct = 4000)
+        if (ct >= 4000)
         {
 
             // Phase 2 Investment

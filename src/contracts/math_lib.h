@@ -1,6 +1,7 @@
 // Basic math functions (not optimized but with minimal dependencies)
 
 #pragma once
+#include <lib/platform_common/qintrin.h> 
 
 namespace math_lib
 {
@@ -64,6 +65,105 @@ inline constexpr unsigned long long findNextPowerOf2(unsigned long long num)
     num++;
 
     return num;
+}
+
+//////////
+// safety multiplying a and b and then clamp
+
+inline static long long smul(long long a, long long b)
+{
+	long long hi, lo;
+	lo = _mul128(a, b, &hi);
+	if (hi != (lo >> 63))
+	{
+		return ((a > 0) == (b > 0)) ? INT64_MAX : INT64_MIN;
+	}
+	return lo;
+}
+
+inline static unsigned long long smul(unsigned long long a, unsigned long long b)
+{
+	unsigned long long hi, lo;
+	lo = _umul128(a, b, &hi);
+	if (hi != 0)
+	{
+		return UINT64_MAX;
+	}
+	return lo;
+}
+
+inline static int smul(int a, int b)
+{
+	long long r = (long long)(a) * (long long)(b);
+	if (r < INT32_MIN)
+	{
+		return INT32_MIN;
+	}
+	else if (r > INT32_MAX)
+	{
+		return INT32_MAX;
+	}
+	else
+	{
+		return (int)r;
+	}
+}
+
+inline static unsigned int smul(unsigned int a, unsigned int b)
+{
+	unsigned long long r = (unsigned long long)(a) * (unsigned long long)(b);
+	if (r > UINT32_MAX)
+	{
+		return UINT32_MAX;
+	}
+	return (unsigned int)r;
+}
+
+//////////
+// safety adding a and b and then clamp
+
+inline static long long sadd(long long a, long long b)
+{
+	long long sum = a + b;
+	if (a < 0 && b < 0 && sum > 0) // negative overflow
+		return INT64_MIN;
+	if (a > 0 && b > 0 && sum < 0) // positive overflow
+		return INT64_MAX;
+	return sum;
+}
+
+inline static unsigned long long sadd(unsigned long long a, unsigned long long b)
+{
+	if (UINT64_MAX - a < b)
+		return UINT64_MAX;
+	return a + b;
+}
+
+inline static int sadd(int a, int b)
+{
+	long long sum = (long long)(a)+(long long)(b);
+	if (sum < INT32_MIN)
+	{
+		return INT32_MIN;
+	}
+	else if (sum > INT32_MAX)
+	{
+		return INT32_MAX;
+	}
+	else
+	{
+		return (int)sum;
+	}
+}
+
+inline static unsigned int sadd(unsigned int a, unsigned int b)
+{
+	unsigned long long sum = (unsigned long long)(a)+(unsigned long long)(b);
+	if (sum > UINT32_MAX)
+	{
+		return UINT32_MAX;
+	}
+	return (unsigned int)sum;
 }
 
 }

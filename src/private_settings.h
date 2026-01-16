@@ -29,6 +29,12 @@ static const unsigned char whiteListPeers[][4] = {
 
 #define ENABLE_QUBIC_LOGGING_EVENT 0 // turn on logging events
 
+// Virtual memory settings for logging
+#define LOG_BUFFER_PAGE_SIZE 300000000ULL
+#define PMAP_LOG_PAGE_SIZE 30000000ULL
+#define IMAP_LOG_PAGE_SIZE 10000ULL
+#define VM_NUM_CACHE_PAGE 8
+
 #if ENABLE_QUBIC_LOGGING_EVENT
 // DO NOT MODIFY THIS AREA UNLESS YOU ARE DEVELOPING LOGGING FEATURES
 #define LOG_UNIVERSE 1
@@ -56,7 +62,7 @@ static unsigned long long logReaderPasscodes[4] = {
 // 0: disable
 // 1: save tick storage every TICK_STORAGE_AUTOSAVE_TICK_PERIOD ticks, only AUX mode
 // 2: save tick storage only when pressing the `F8` key or it is requested remotely
-#define TICK_STORAGE_AUTOSAVE_MODE 0 
+#define TICK_STORAGE_AUTOSAVE_MODE 0
 // NOTE: Strategy to pick TICK_STORAGE_AUTOSAVE_TICK_PERIOD:
 // Although the default value is 1000, there is a chance that your node can be misaligned at tick XXXX2000,XXXX3000,XXXX4000,... 
 // Perform state persisting when your node is misaligned will also make your node misaligned after resuming.

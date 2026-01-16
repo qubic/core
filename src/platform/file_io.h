@@ -8,10 +8,10 @@
 #include <lib/platform_common/processor.h>
 #include <lib/platform_common/compiler_optimization.h>
 #include <lib/platform_efi/uefi.h>
+
 #include "console_logging.h"
 #include "concurrency.h"
 #include "memory.h"
-#include "debugging.h"
 
 // If you get an error reading and writing files, set the chunk sizes below to
 // the cluster size set for formatting you disk. If you have no idea about the
@@ -33,7 +33,9 @@ static constexpr int ASYNC_FILE_IO_MAX_QUEUE_ITEMS = (1ULL << ASYNC_FILE_IO_MAX_
 static EFI_FILE_PROTOCOL* root = NULL;
 class AsyncFileIO;
 static AsyncFileIO* gAsyncFileIO = NULL;
+
 static void addDebugMessage(const CHAR16* msg);
+
 static long long getFileSize(CHAR16* fileName, CHAR16* directory = NULL)
 {
 #ifdef NO_UEFI

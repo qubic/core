@@ -3,6 +3,18 @@
 #include "contract_testing.h"
 
 std::string assetNameFromInt64(uint64 assetName);
+std::string getCurrentMbondIndex(uint16_t epoch)
+{
+    if (epoch < QBOND_CYCLIC_START_EPOCH)
+    {
+        return std::to_string(epoch);
+    }
+    else
+    {
+        uint16_t index = (epoch - QBOND_CYCLIC_START_EPOCH + 1) % 53 == 0 ? 53 : (epoch - QBOND_CYCLIC_START_EPOCH + 1) % 53;
+        return index < 10 ? std::string("0").append(std::to_string(index)) : std::to_string(index);
+    }
+}
 const id adminAddress = ID(_B, _O, _N, _D, _A, _A, _F, _B, _U, _G, _H, _E, _L, _A, _N, _X, _G, _H, _N, _L, _M, _S, _U, _I, _V, _B, _K, _B, _H, _A, _Y, _E, _Q, _S, _Q, _B, _V, _P, _V, _N, _B, _H, _L, _F, _J, _I, _A, _Z, _F, _Q, _C, _W, _W, _B, _V, _E);
 const id testAddress1 = ID(_H, _O, _G, _T, _K, _D, _N, _D, _V, _U, _U, _Z, _U, _F, _L, _A, _M, _L, _V, _B, _L, _Z, _D, _S, _G, _D, _D, _A, _E, _B, _E, _K, _K, _L, _N, _Z, _J, _B, _W, _S, _C, _A, _M, _D, _S, _X, _T, _C, _X, _A, _M, _A, _X, _U, _D, _F);
 const id testAddress2 = ID(_E, _Q, _M, _B, _B, _V, _Y, _G, _Z, _O, _F, _U, _I, _H, _E, _X, _F, _O, _X, _K, _T, _F, _T, _A, _N, _E, _K, _B, _X, _L, _B, _X, _H, _A, _Y, _D, _F, _F, _M, _R, _E, _E, _M, _R, _Q, _E, _V, _A, _D, _Y, _M, _M, _E, _W, _A, _C);
@@ -166,7 +178,7 @@ public:
 
 TEST(ContractQBond, Stake)
 {
-    system.epoch = QBOND_START_EPOCH;
+    system.epoch = QBOND_CYCLIC_START_EPOCH;
     ContractTestingQBond qbond;
     qbond.beginEpoch();
 
@@ -175,24 +187,24 @@ TEST(ContractQBond, Stake)
 
     // scenario 1: testAddress1 want to stake 50 millions, but send to sc 30 millions
     qbond.stake(testAddress1, 50, 30000000LL);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(std::to_string(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 0);
 
     // scenario 2: testAddress1 want to stake 50 millions, but send to sc 50 millions (without commission)
     qbond.stake(testAddress1, 50, 50000000LL);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(std::to_string(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 0);
 
     // scenario 3: testAddress1 want to stake 50 millions and send full amount with commission
     qbond.stake(testAddress1, 50, 50250000LL);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(std::to_string(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 50LL);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 50LL);
 
     // scenario 4.1: testAddress2 want to stake 5 millions, recieve 0 MBonds, because minimum is 10 and 5 were put in queue
     qbond.stake(testAddress2, 5, 5025000);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(std::to_string(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 0);
 
     // scenario 4.2: testAddress1 want to stake 7 millions, testAddress1 recieve 7 MBonds and testAddress2 recieve 5 MBonds, because the total qu millions in the queue became more than 10
     qbond.stake(testAddress1, 7, 7035000);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(std::to_string(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 57);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(std::to_string(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 5);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 57);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 5);
 }
 
 
@@ -202,19 +214,19 @@ TEST(ContractQBond, TransferMBondOwnershipAndPossession)
     qbond.beginEpoch();
     increaseEnergy(testAddress1, 1000000000);
     qbond.stake(testAddress1, 50, 50250000);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(std::to_string(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 50);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 50);
 
     // scenario 1: not enough gas, 100 needed
     EXPECT_EQ(qbond.transfer(testAddress1, testAddress2, system.epoch, 10, 50).transferredMBonds, 0);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(std::to_string(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 0);
 
     // scenario 2: enough gas, not enough mbonds
     EXPECT_EQ(qbond.transfer(testAddress1, testAddress2, system.epoch, 70, 100).transferredMBonds, 0);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(std::to_string(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 0);
 
     // scenario 3: success
     EXPECT_EQ(qbond.transfer(testAddress1, testAddress2, system.epoch, 40, 100).transferredMBonds, 40);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(std::to_string(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 40);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 40);
 }
 
 TEST(ContractQBond, AddRemoveAskOrder)
@@ -231,10 +243,10 @@ TEST(ContractQBond, AddRemoveAskOrder)
     EXPECT_EQ(qbond.addAskOrder(testAddress1, system.epoch, 1500000, 30, 0).addedMBondsAmount, 30);
     // not enough free mbonds
     EXPECT_EQ(qbond.transfer(testAddress1, testAddress2, system.epoch, 21, 100).transferredMBonds, 0);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(std::to_string(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 0);
     // successful transfer
     EXPECT_EQ(qbond.transfer(testAddress1, testAddress2, system.epoch, 20, 100).transferredMBonds, 20);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(std::to_string(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 20);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 20);
 
     // scenario 3: no orders to remove at this price
     EXPECT_EQ(qbond.removeAskOrder(testAddress1, system.epoch, 1400000, 30, 0).removedMBondsAmount, 0);
@@ -244,7 +256,7 @@ TEST(ContractQBond, AddRemoveAskOrder)
     EXPECT_EQ(qbond.transfer(testAddress1, testAddress2, system.epoch, 1, 100).transferredMBonds, 0);
     EXPECT_EQ(qbond.removeAskOrder(testAddress1, system.epoch, 1500000, 5, 0).removedMBondsAmount, 5);
     EXPECT_EQ(qbond.transfer(testAddress1, testAddress2, system.epoch, 5, 100).transferredMBonds, 5);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(std::to_string(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 25);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 25);
 
     EXPECT_EQ(qbond.removeAskOrder(testAddress1, system.epoch, 1500000, 500, 0).removedMBondsAmount, 25);
 }
@@ -265,8 +277,8 @@ TEST(ContractQBond, AddRemoveBidOrder)
 
     // scenario 3: testAddress1 add ask order which matches the bid order
     EXPECT_EQ(qbond.addAskOrder(testAddress1, system.epoch, 1500000, 3, 0).addedMBondsAmount, 3);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(std::to_string(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 47);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(std::to_string(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 3);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 47);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 3);
 
     // scenario 3: no orders to remove at this price
     EXPECT_EQ(qbond.removeBidOrder(testAddress2, system.epoch, 1400000, 30, 0).removedMBondsAmount, 0);
@@ -290,36 +302,36 @@ TEST(ContractQBond, AddRemoveBidOrder)
 
     // all orders sorted by price, therefore the element with index 0 contains an order with a price of 1500000
     auto orders = qbond.getOrders(system.epoch, 0, 0);
-    EXPECT_EQ(orders.askOrders.get(0).epoch, 182);
+    EXPECT_EQ(orders.askOrders.get(0).epoch, (sint64) QBOND_CYCLIC_START_EPOCH);
     EXPECT_EQ(orders.askOrders.get(0).numberOfMBonds, 3);
     EXPECT_EQ(orders.askOrders.get(0).owner, testAddress2);
     EXPECT_EQ(orders.askOrders.get(0).price, 1500000);
 
-    EXPECT_EQ(orders.bidOrders.get(0).epoch, 182);
+    EXPECT_EQ(orders.bidOrders.get(0).epoch, (sint64) QBOND_CYCLIC_START_EPOCH);
     EXPECT_EQ(orders.bidOrders.get(0).numberOfMBonds, 10);
     EXPECT_EQ(orders.bidOrders.get(0).owner, testAddress1);
     EXPECT_EQ(orders.bidOrders.get(0).price, 1400000);
 
     // with offset
     orders = qbond.getOrders(system.epoch, 1, 1);
-    EXPECT_EQ(orders.askOrders.get(0).epoch, 182);
+    EXPECT_EQ(orders.askOrders.get(0).epoch, (sint64)QBOND_CYCLIC_START_EPOCH);
     EXPECT_EQ(orders.askOrders.get(0).numberOfMBonds, 5);
     EXPECT_EQ(orders.askOrders.get(0).owner, testAddress1);
     EXPECT_EQ(orders.askOrders.get(0).price, 1600000);
 
-    EXPECT_EQ(orders.bidOrders.get(0).epoch, 182);
+    EXPECT_EQ(orders.bidOrders.get(0).epoch, (sint64)QBOND_CYCLIC_START_EPOCH);
     EXPECT_EQ(orders.bidOrders.get(0).numberOfMBonds, 5);
     EXPECT_EQ(orders.bidOrders.get(0).owner, testAddress2);
     EXPECT_EQ(orders.bidOrders.get(0).price, 1300000);
 
     // user orders
     auto userOrders = qbond.getUserOrders(testAddress1, 0, 0);
-    EXPECT_EQ(userOrders.askOrders.get(0).epoch, 182);
+    EXPECT_EQ(userOrders.askOrders.get(0).epoch, (sint64)QBOND_CYCLIC_START_EPOCH);
     EXPECT_EQ(userOrders.askOrders.get(0).numberOfMBonds, 5);
     EXPECT_EQ(userOrders.askOrders.get(0).owner, testAddress1);
     EXPECT_EQ(userOrders.askOrders.get(0).price, 1600000);
 
-    EXPECT_EQ(userOrders.bidOrders.get(0).epoch, 182);
+    EXPECT_EQ(userOrders.bidOrders.get(0).epoch, (sint64)QBOND_CYCLIC_START_EPOCH);
     EXPECT_EQ(userOrders.bidOrders.get(0).numberOfMBonds, 10);
     EXPECT_EQ(userOrders.bidOrders.get(0).owner, testAddress1);
     EXPECT_EQ(userOrders.bidOrders.get(0).price, 1400000);
@@ -419,14 +431,14 @@ TEST(ContractQBond, GetMBondsTable)
     qbond.stake(testAddress2, 20, 20100000);
 
     auto table = qbond.getMBondsTable();
-    EXPECT_EQ(table.info.get(0).epoch, 182);
-    EXPECT_EQ(table.info.get(1).epoch, 183);
+    EXPECT_EQ(table.info.get(0).epoch, (sint64)QBOND_CYCLIC_START_EPOCH);
+    EXPECT_EQ(table.info.get(1).epoch, (sint64)QBOND_CYCLIC_START_EPOCH + 1);
     EXPECT_EQ(table.info.get(2).epoch, 0);
 
     auto userMBonds = qbond.getUserMBonds(testAddress1);
     EXPECT_EQ(userMBonds.totalMBondsAmount, 60);
-    EXPECT_EQ(userMBonds.mbonds.get(0).epoch, 182);
+    EXPECT_EQ(userMBonds.mbonds.get(0).epoch, (sint64)QBOND_CYCLIC_START_EPOCH);
     EXPECT_EQ(userMBonds.mbonds.get(0).amount, 50);
-    EXPECT_EQ(userMBonds.mbonds.get(1).epoch, 183);
+    EXPECT_EQ(userMBonds.mbonds.get(1).epoch, (sint64)QBOND_CYCLIC_START_EPOCH + 1);
     EXPECT_EQ(userMBonds.mbonds.get(1).amount, 10);
 }
