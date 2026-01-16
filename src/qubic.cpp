@@ -7204,15 +7204,15 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             closePeer(&peers[i]);
                         }
 
-                        constexpr unsigned long long OM_INACTIVITY_TIMEOUT_SECS = 90;  // 1.5 minutes
+                        constexpr unsigned long long OM_INACTIVITY_TIMEOUT_SECS = 300;  // 1.5 minutes // 5 minutes
                         if (peers[i].isConnectedAccepted &&
                             !peers[i].isClosing &&
                             peers[i].lastOMActivityTime > 0 &&
                             ((__rdtsc() - peers[i].lastOMActivityTime) / frequency > OM_INACTIVITY_TIMEOUT_SECS))
                         {
-                            logToConsole(L"OM: Connection inactive for 5+ minutes, forcing reconnect.");
+                            logToConsole(L"OM: Connection inactive for some minutes, forcing reconnect.");
 #if !defined(NDEBUG)
-                            addDebugMessage(L"OM: Connection inactive for 5+ minutes, forcing reconnect.");
+                            addDebugMessage(L"OM: Connection inactive for some minutes, forcing reconnect.");
 
                             CHAR16 omDbgMsg[128];
                             setText(omDbgMsg, L"OM: Closing stale connection, lastActivity=");
