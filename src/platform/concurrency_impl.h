@@ -11,6 +11,8 @@
 
 #ifndef NDEBUG
 
+static unsigned long long debugTickProcessorLoopCounter = 0;
+
 BusyWaitingTracker::BusyWaitingTracker(const char* expr, const char* file, unsigned int line)
 {
 #ifdef NO_UEFI
@@ -69,6 +71,8 @@ void BusyWaitingTracker::pause()
         appendNumber(msgBuffer, mLine, false);
         appendText(msgBuffer, ", processor #");
         appendNumber(msgBuffer, getRunningProcessorID(), false);
+        appendText(msgBuffer, ", tick proc loop counter");
+        appendNumber(msgBuffer, debugTickProcessorLoopCounter, false);
         addDebugMessage(msgBuffer);
         if (isMainProcessor())
             printDebugMessages();

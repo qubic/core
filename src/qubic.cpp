@@ -5545,6 +5545,7 @@ static void tickProcessor(void*)
         }
         tickerLoopNumerator += __rdtsc() - curTimeTick;
         tickerLoopDenominator++;
+        debugTickProcessorLoopCounter++;
     }
 }
 OPTIMIZE_ON()
@@ -7203,6 +7204,23 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (ts.nextTickTransactionOffset + MAX_TRANSACTION_SIZE > ts.tickTransactions.storageSpaceCurrentEpoch)
                 {
                     logToConsole(L"Transaction storage is full!!!");
+                }
+                {
+                    // check pendingTxsPool lock padding
+                    int nonZero = 0;
+                    for (int i = 0; i < sizeof(pendingTxsPool.lockPadding1); ++i)
+                    {
+                        if (pendingTxsPool.lockPadding1[i])
+                            ++nonZero;
+                        if (pendingTxsPool.lockPadding2[i])
+                            nonZero;
+                    }
+                    if (nonZero)
+                    {
+                        forceLogToConsoleAsAddDebugMessage = true;
+                        logToConsole(L"Buffer overflow around pendingTxsPool.lock detected!");
+                        forceLogToConsoleAsAddDebugMessage = false;
+                    }
                 }
 
                 const unsigned long long curTimeTick = __rdtsc();
