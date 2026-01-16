@@ -51,8 +51,16 @@ protected:
     // buffersBeginIndex corresponds to firstStoredTick
     inline static unsigned int buffersBeginIndex = 0;
 
+public:
+
+    inline static char lockPadding1[256];
+
     // Lock for securing the data in the PendingTxsPool
     inline static volatile char lock = 0;
+
+    inline static char lockPadding2[256];
+
+protected:
 
     // Priority queues for transactions in each saved tick
     inline static Collection<unsigned int, txsPrioritiesCapacity>* txsPriorities;
@@ -144,6 +152,9 @@ public:
         }
 
         ASSERT(lock == 0);
+
+        setMem(lockPadding1, sizeof(lockPadding1), 0);
+        setMem(lockPadding2, sizeof(lockPadding2), 0);
 
         setMem(tickTransactionsBuffer, tickTransactionsSize, 0);
         setMem(txsDigestsBuffer, txsDigestsSize, 0);
