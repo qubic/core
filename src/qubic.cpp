@@ -95,6 +95,7 @@
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
+#define ORACLE_REPLY_COMMIT_PUBLICATION_OFFSET 5
 #define TIME_ACCURACY 5000
 constexpr unsigned long long TARGET_MAINTHREAD_LOOP_DURATION = 30; // mcs, it is the target duration of the main thread loop
 
@@ -3427,7 +3428,7 @@ static void processTick(unsigned long long processorNumber)
     {
         CHAR16 dbgMsg[500];
         setText(dbgMsg, L"pending tx: tick/count");
-        for (unsigned int i = system.tick; i < system.tick + 10; ++i)
+        for (unsigned int i = system.tick; i < system.tick + ORACLE_REPLY_COMMIT_PUBLICATION_OFFSET; ++i)
         {
             appendText(dbgMsg, " ");
             appendNumber(dbgMsg, i, FALSE);
@@ -3606,7 +3607,7 @@ static void processTick(unsigned long long processorNumber)
         unsigned char digest[32];
         {
             PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reply transactions");
-            const auto txTick = system.tick + 10;
+            const auto txTick = system.tick + ORACLE_REPLY_COMMIT_PUBLICATION_OFFSET;
             auto* tx = (OracleReplyCommitTransactionPrefix*)reorgBuffer;
             unsigned int txCount = 0;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
