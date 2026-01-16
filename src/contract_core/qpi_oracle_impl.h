@@ -99,13 +99,10 @@ bool QPI::QpiContextFunctionCall::getOracleQuery(QPI::sint64 queryId, OracleInte
 template <typename OracleInterface>
 bool QPI::QpiContextFunctionCall::getOracleReply(QPI::sint64 queryId, OracleInterface::OracleReply& reply) const
 {
-	// TODO
-	return false;
+	return oracleEngine.getOracleReply(queryId, &reply, sizeof(reply));
 }
 
-template <typename OracleInterface>
 inline QPI::uint8 QPI::QpiContextFunctionCall::getOracleQueryStatus(sint64 queryId) const
 {
-	// TODO
-	return ORACLE_QUERY_STATUS_UNKNOWN;
+	return oracleEngine.getOracleReplygetOracleQueryStatus(queryId);
 }

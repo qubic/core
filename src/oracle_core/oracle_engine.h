@@ -1176,6 +1176,48 @@ public:
         return getOracleQueryWithoutLocking(queryId, queryData, querySize);
     }
 
+    bool getOracleReply(int64_t queryId, void* replyData, uint16_t replySize) const
+    {
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
+
+        // get query index
+        uint32_t queryIndex;
+        if (!queryIdToIndex->get(queryId, queryIndex) || queryIndex >= oracleQueryCount)
+            return false;
+
+        // check status
+        const auto& queryMetadata = queries[queryIndex];
+        if (queryMetadata.status != ORACLE_QUERY_STATUS_SUCCESS)
+            return false;
+
+        // check query size
+        ASSERT(queryMetadata.interfaceIndex < OI::oracleInterfacesCount);
+        if (replySize != OI::oracleInterfaces[queryMetadata.interfaceIndex].replySize)
+            return false;
+
+        // get reply data from tick transaction storage
+        const void* replySrcPtr = getReplyDataFromTickTransactionStorage(queryMetadata);
+
+        // return reply data
+        copyMem(replyData, replySrcPtr, replySize);
+        return true;
+    }
+
+    uint8_t getOracleReplygetOracleQueryStatus(int64_t queryId) const
+    {
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
+
+        // get query index
+        uint32_t queryIndex;
+        if (!queryIdToIndex->get(queryId, queryIndex) || queryIndex >= oracleQueryCount)
+            return ORACLE_QUERY_STATUS_UNKNOWN;
+
+        // return status
+        const auto& queryMetadata = queries[queryIndex];
+        return queryMetadata.status;
+    }
 
     void logStatus(CHAR16* message) const
     {

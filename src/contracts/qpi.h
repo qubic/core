@@ -2457,7 +2457,6 @@ namespace QPI
 		* - ORACLE_QUERY_STATUS_UNRESOLVABLE: No valid oracle reply is available, because computors disagreed about the value.
 		* - ORACLE_QUERY_STATUS_TIMEOUT: No valid oracle reply is available and timeout has hit.
 		*/
-		template <typename OracleInterface>
 		inline uint8 getOracleQueryStatus(sint64 queryId) const;
 
 		// Access proposal functions with qpi(proposalVotingObject).func().
@@ -2747,10 +2746,6 @@ namespace QPI
 		static void __acceptOracleUnknownReply(const QpiContextProcedureCall&, void*, void*) {}
 		enum { __expandEmpty = 1 };
 		static void __expand(const QpiContextProcedureCall& qpi, void*, void*) {}
-	};
-
-	struct OracleBase
-	{
 	};
 
 	// Internal macro for defining the system procedure macros

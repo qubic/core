@@ -292,6 +292,7 @@ public:
 	struct NotifyMockOracleReply_locals
 	{
 		OI::Mock::OracleQuery query;
+		OI::Mock::OracleReply reply;
 		uint32 queryExtraData;
 		NotificationLog notificationLog;
 	};
@@ -300,6 +301,7 @@ public:
 	{
 		locals.notificationLog = NotificationLog{ CONTRACT_INDEX, OI::Mock::oracleInterfaceIndex, input.status, 0, (sint64)input.reply.echoedValue, input.queryId };
 
+		ASSERT(qpi.getOracleQueryStatus(input.queryId) == input.status);
 		if (input.status == ORACLE_QUERY_STATUS_SUCCESS)
 		{
 			// success
@@ -310,10 +312,16 @@ public:
 
 				locals.notificationLog.dataCheck = OI::Mock::replyIsValid(locals.query, input.reply);
 			}
+			ASSERT(qpi.getOracleQueryStatus(input.queryId) == ORACLE_QUERY_STATUS_SUCCESS);
+			ASSERT(qpi.getOracleReply<OI::Mock>(input.queryId, locals.reply));
+			ASSERT(locals.reply.echoedValue == input.reply.echoedValue);
+			ASSERT(locals.reply.doubledValue == input.reply.doubledValue);
 		}
 		else
 		{
 			// handle failure ...
+			ASSERT(qpi.getOracleQueryStatus(input.queryId) == ORACLE_QUERY_STATUS_TIMEOUT || qpi.getOracleQueryStatus(input.queryId) == ORACLE_QUERY_STATUS_UNRESOLVABLE);
+			ASSERT(!qpi.getOracleReply<OI::Mock>(input.queryId, locals.reply));
 		}
 
 		LOG_INFO(locals.notificationLog);
@@ -341,6 +349,7 @@ public:
 			}
 
 			locals.oracleQueryId = QUERY_ORACLE(OI::Price, locals.priceOracleQuery, NotifyPriceOracleReply, 20000);
+			ASSERT(qpi.getOracleQueryStatus(locals.oracleQueryId) == ORACLE_QUERY_STATUS_PENDING);
 		}
 		if (qpi.tick() % 2 == 1)
 		{
