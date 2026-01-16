@@ -351,10 +351,11 @@ public:
 			locals.oracleQueryId = QUERY_ORACLE(OI::Price, locals.priceOracleQuery, NotifyPriceOracleReply, 20000);
 			ASSERT(qpi.getOracleQueryStatus(locals.oracleQueryId) == ORACLE_QUERY_STATUS_PENDING);
 		}
-		if (qpi.tick() % 2 == 1)
+		// Mock oracle
+		if (qpi.tick() % 10 == 9)
 		{
 			locals.mockOracleQuery.value = qpi.tick();
-			QUERY_ORACLE(OI::Mock, locals.mockOracleQuery, NotifyMockOracleReply, 8000);
+			QUERY_ORACLE(OI::Mock, locals.mockOracleQuery, NotifyMockOracleReply, 60000);
 		}
 	}
 
