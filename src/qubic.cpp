@@ -3535,15 +3535,6 @@ static void processTick(unsigned long long processorNumber)
                         const Transaction* pendingTransaction = pendingTxsPool.getTx(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, tx);
                         if (pendingTransaction)
                         {
-#if !defined(NDEBUG)
-                            if (isZero(pendingTransaction->destinationPublicKey) && pendingTransaction->inputType == OracleReplyCommitTransactionPrefix::transactionType())
-                            {
-                                CHAR16 dbgMsg[200];
-                                setText(dbgMsg, L"OracleReplyCommitTransaction added to futureTickData, tick ");
-                                appendNumber(dbgMsg, system.tick, FALSE);
-                                addDebugMessage(dbgMsg);
-                            }
-#endif
                             ASSERT(pendingTransaction->checkValidity());
                             const unsigned int transactionSize = pendingTransaction->totalSize();
                             ts.tickTransactions.acquireLock();
@@ -3654,7 +3645,7 @@ static void processTick(unsigned long long processorNumber)
                 {
                     if (txTick % NUMBER_OF_COMPUTORS == ownComputorIndices[i])
                     {
-                        appendText(dbgMsg, "(I am tick leader) ");
+                        appendText(dbgMsg, " (I am tick leader)");
                     }
                 }
                 appendText(dbgMsg, ", total number of tx ");
