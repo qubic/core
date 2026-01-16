@@ -7201,7 +7201,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             addDebugMessage(L"OM: Connection from Accepting State to Accepted State took too long.");
                             peerOMLogStatus(i);
 #endif
-                            closePeer(&peers[i]);
+                            closePeer(&peers[i], 500);
                         }
 
                         constexpr unsigned long long OM_INACTIVITY_TIMEOUT_SECS = 300;  // 1.5 minutes // 5 minutes
@@ -7222,7 +7222,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                             peerOMLogStatus(i);
 #endif
-                            closePeer(&peers[i]);
+                            closePeer(&peers[i], 500);
                         }
                     }
 

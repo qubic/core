@@ -225,7 +225,7 @@ static bool isPrivateIp(const unsigned char address[4])
     return false;
 }
 
-static void closePeer(Peer* peer)
+static void closePeer(Peer* peer, unsigned long long timoutCloseGracefullyMs = 0)
 {
     PROFILE_SCOPE();
     ASSERT(isMainProcessor());
@@ -233,7 +233,44 @@ static void closePeer(Peer* peer)
     {
         if (!peer->isClosing)
         {
-            EFI_STATUS status;
+            EFI_STATUS status = EFI_SUCCESS;
+
+            // Decide to close gracefully with Close()
+            if (timoutCloseGracefullyMs > 0)
+            {
+                EFI_TCP4_CLOSE_TOKEN closeToken;
+                bs->SetMem(&closeToken, sizeof(EFI_TCP4_CLOSE_TOKEN), 0);
+                status = bs->CreateEvent(0, TPL_CALLBACK, NULL, NULL, &closeToken.CompletionToken.Event);
+                closeToken.AbortOnClose = TRUE; // quickly close by send RST then don't care anymore
+                status = peer->tcp4Protocol->Close(peer->tcp4Protocol, &closeToken);
+                if (status == EFI_SUCCESS)
+                {
+                    // Poll until close or timeout
+                    bool isTimeout = false;
+                    unsigned long long startTime = __rdtsc();
+                    while ((bs->CheckEvent(closeToken.CompletionToken.Event) == EFI_NOT_READY) && !isTimeout)
+                    {
+                        isTimeout = (__rdtsc() - startTime) * 1000 / frequency > timoutCloseGracefullyMs;
+                        peer->tcp4Protocol->Poll(peer->tcp4Protocol);
+                        bs->Stall(50);
+                    }
+                    bs->CloseEvent(closeToken.CompletionToken.Event);
+#ifndef NDEBUG
+                    if (isTimeout)
+                    {
+                        CHAR16 debugMessage[64];
+                        setText(debugMessage, L"Warning: Peer close gracefully timeout. IP ");
+                        appendIPv4Address(debugMessage, peer->address);
+                        addDebugMessage(debugMessage);
+                    }
+#endif
+                }
+                else
+                {
+                    logStatusToConsole(L"EFI_TCP4_PROTOCOL.Close() fails", status, __LINE__);
+                }
+            }
+
             if (status = peer->tcp4Protocol->Configure(peer->tcp4Protocol, NULL))
             {
                 logStatusToConsole(L"EFI_TCP4_PROTOCOL.Configure() fails", status, __LINE__);
