@@ -1074,7 +1074,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                 peers[i].isOMNode = TRUE;
                 peers[i].address = omIPv4Address[i - NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS];
                 connectionTimeout = ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS;
-                experimentSetting = true;
+                //experimentSetting = true;
 
                 // Mark it as failure
                 peers[i].connectAcceptToken.CompletionToken.Status = -1;
