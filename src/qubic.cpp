@@ -3423,6 +3423,21 @@ static void processTick(unsigned long long processorNumber)
     getUniverseDigest(etalonTick.saltedUniverseDigest);
     getComputerDigest(etalonTick.saltedComputerDigest);
 
+#if !defined(NDEBUG)
+    {
+        CHAR16 dbgMsg[500];
+        setText(dbgMsg, L"pending tx: tick/count");
+        for (unsigned int i = system.tick; i < system.tick + 10; ++i)
+        {
+            appendText(dbgMsg, " ");
+            appendNumber(dbgMsg, i, FALSE);
+            appendText(dbgMsg, "/");
+            appendNumber(dbgMsg, pendingTxsPool.getNumberOfPendingTickTxs(i), FALSE);
+        }
+        addDebugMessage(dbgMsg);
+    }
+#endif
+
     // prepare custom mining shares packet ONCE
     if (isMainMode())
     {
@@ -3635,12 +3650,23 @@ static void processTick(unsigned long long processorNumber)
                 appendNumber(dbgMsg, system.tick, FALSE);
                 appendText(dbgMsg, ", txScheduleTick ");
                 appendNumber(dbgMsg, txTick, FALSE);
+                for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+                {
+                    if (txTick % NUMBER_OF_COMPUTORS == ownComputorIndices[i])
+                    {
+                        appendText(dbgMsg, "(I am tick leader) ");
+                    }
+                }
                 appendText(dbgMsg, ", total number of tx ");
                 appendNumber(dbgMsg, txCount, FALSE);
+                appendText(dbgMsg, ", last tx queryId");
+                unsigned short commitCount = tx->inputSize / sizeof(OracleReplyCommitTransactionItem);
                 auto* commits = reinterpret_cast<OracleReplyCommitTransactionItem*>(tx->inputPtr());
-                appendText(dbgMsg, ", last tx first queryId ");
-                appendNumber(dbgMsg, commits[0].queryId, FALSE);
-                appendNumber(dbgMsg, txCount, FALSE);
+                for (unsigned short i = 0; i < commitCount; ++i)
+                {
+                    appendText(dbgMsg, " ");
+                    appendNumber(dbgMsg, commits[i].queryId, FALSE);
+                }
                 addDebugMessage(dbgMsg);
             }
 #endif
