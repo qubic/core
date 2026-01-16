@@ -26,3 +26,9 @@ src/Qubic.vcxproj
 .claude/settings.local.json
 src/Qubic.vcxproj
 test/CMakeLists.txt
+ANALISIS_STATUS_3.md
+.gitignore
+node.md
+report.md
+claude.md
+RESUMEN_REVISION.md

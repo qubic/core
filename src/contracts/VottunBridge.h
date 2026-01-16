@@ -373,10 +373,6 @@ public:
             return;
         }
 
-        // Accumulate fees in their respective variables
-        state._earnedFees += locals.requiredFeeEth;
-        state._earnedFeesQubic += locals.requiredFeeQubic;
-
         // Create the order
         locals.newOrder.orderId = state.nextOrderId++;
         locals.newOrder.qubicSender = qpi.invocator();
@@ -427,6 +423,10 @@ public:
                 state.orders.set(locals.i, locals.newOrder);
                 locals.slotFound = true;
 
+                // Accumulate fees only after order is successfully created
+                state._earnedFees += locals.requiredFeeEth;
+                state._earnedFeesQubic += locals.requiredFeeQubic;
+
                 locals.log = EthBridgeLogger{
                     CONTRACT_INDEX,
                     0, // No error
@@ -447,7 +447,7 @@ public:
             locals.cleanedSlots = 0;
             for (locals.j = 0; locals.j < state.orders.capacity(); ++locals.j)
             {
-                if (state.orders.get(locals.j).status == 2) // Completed or Refunded
+                if (state.orders.get(locals.j).status == 1 || state.orders.get(locals.j).status == 2) // Completed or Refunded
                 {
                     // Create empty order to overwrite
                     locals.emptyOrder.status = 255; // Mark as empty
@@ -468,6 +468,10 @@ public:
                     { // Empty slot
                         state.orders.set(locals.i, locals.newOrder);
                         locals.slotFound = true;
+
+                        // Accumulate fees only after order is successfully created
+                        state._earnedFees += locals.requiredFeeEth;
+                        state._earnedFeesQubic += locals.requiredFeeQubic;
 
                         locals.log = EthBridgeLogger{
                             CONTRACT_INDEX,
@@ -521,14 +525,6 @@ public:
                 locals.orderResp.qubicDestination = locals.order.qubicDestination;
                 locals.orderResp.status = locals.order.status;
 
-                locals.log = EthBridgeLogger{
-                    CONTRACT_INDEX,
-                    0, // No error
-                    locals.order.orderId,
-                    locals.order.amount,
-                    0 };
-                LOG_INFO(locals.log);
-
                 output.status = 0; // Success
                 output.order = locals.orderResp;
                 return;
@@ -536,13 +532,6 @@ public:
         }
 
         // If order not found
-        locals.log = EthBridgeLogger{
-            CONTRACT_INDEX,
-            EthBridgeError::orderNotFound,
-            input.orderId,
-            0, // No amount involved
-            0 };
-        LOG_INFO(locals.log);
         output.status = 1; // Error
     }
 
@@ -566,10 +555,15 @@ public:
     struct createProposal_locals
     {
         EthBridgeLogger log;
+        id invocatorAddress;
         uint64 i;
+        uint64 j;
         bit slotFound;
         AdminProposal newProposal;
+        AdminProposal emptyProposal;
         bit isMultisigAdminResult;
+        uint64 freeSlots;
+        uint64 cleanedSlots;
     };
 
     // Approve proposal structures
@@ -587,6 +581,7 @@ public:
     struct approveProposal_locals
     {
         EthBridgeLogger log;
+        id invocatorAddress;
         AddressChangeLogger adminLog;
         AdminProposal proposal;
         uint64 i;
@@ -619,8 +614,8 @@ public:
     PUBLIC_PROCEDURE_WITH_LOCALS(createProposal)
     {
         // Verify that the invocator is a multisig admin
-        id invocator = qpi.invocator();
-        CALL(isMultisigAdmin, invocator, locals.isMultisigAdminResult);
+        locals.invocatorAddress = qpi.invocator();
+        CALL(isMultisigAdmin, locals.invocatorAddress, locals.isMultisigAdminResult);
         if (!locals.isMultisigAdminResult)
         {
             locals.log = EthBridgeLogger{
@@ -648,28 +643,88 @@ public:
             return;
         }
 
-        // Find an empty slot for the proposal
+        // Count free slots and find an empty slot for the proposal
         locals.slotFound = false;
+        locals.freeSlots = 0;
         for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
         {
             if (!state.proposals.get(locals.i).active && state.proposals.get(locals.i).proposalId == 0)
             {
-                locals.slotFound = true;
-                break;
+                locals.freeSlots++;
+                if (!locals.slotFound)
+                {
+                    locals.slotFound = true;
+                    // Don't break, continue counting free slots
+                }
             }
         }
 
+        // If found slot but less than 5 free slots, cleanup executed proposals
+        if (locals.slotFound && locals.freeSlots < 5)
+        {
+            locals.cleanedSlots = 0;
+            for (locals.j = 0; locals.j < state.proposals.capacity(); ++locals.j)
+            {
+                if (state.proposals.get(locals.j).executed)
+                {
+                    // Clear executed proposal
+                    locals.emptyProposal.proposalId = 0;
+                    locals.emptyProposal.proposalType = 0;
+                    locals.emptyProposal.approvalsCount = 0;
+                    locals.emptyProposal.executed = false;
+                    locals.emptyProposal.active = false;
+                    state.proposals.set(locals.j, locals.emptyProposal);
+                    locals.cleanedSlots++;
+                }
+            }
+        }
+
+        // If no slot found at all, try cleanup and search again
         if (!locals.slotFound)
         {
-            locals.log = EthBridgeLogger{
-                CONTRACT_INDEX,
-                EthBridgeError::maxProposalsReached,
-                0,
-                0,
-                0 };
-            LOG_INFO(locals.log);
-            output.status = EthBridgeError::maxProposalsReached;
-            return;
+            // Attempt cleanup of executed proposals
+            locals.cleanedSlots = 0;
+            for (locals.j = 0; locals.j < state.proposals.capacity(); ++locals.j)
+            {
+                if (state.proposals.get(locals.j).executed)
+                {
+                    // Clear executed proposal
+                    locals.emptyProposal.proposalId = 0;
+                    locals.emptyProposal.proposalType = 0;
+                    locals.emptyProposal.approvalsCount = 0;
+                    locals.emptyProposal.executed = false;
+                    locals.emptyProposal.active = false;
+                    state.proposals.set(locals.j, locals.emptyProposal);
+                    locals.cleanedSlots++;
+                }
+            }
+
+            // Try to find slot again after cleanup
+            if (locals.cleanedSlots > 0)
+            {
+                for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
+                {
+                    if (!state.proposals.get(locals.i).active && state.proposals.get(locals.i).proposalId == 0)
+                    {
+                        locals.slotFound = true;
+                        break;
+                    }
+                }
+            }
+
+            // If still no slot available
+            if (!locals.slotFound)
+            {
+                locals.log = EthBridgeLogger{
+                    CONTRACT_INDEX,
+                    EthBridgeError::maxProposalsReached,
+                    0,
+                    0,
+                    0 };
+                LOG_INFO(locals.log);
+                output.status = EthBridgeError::maxProposalsReached;
+                return;
+            }
         }
 
         // Create the new proposal
@@ -704,8 +759,8 @@ public:
     PUBLIC_PROCEDURE_WITH_LOCALS(approveProposal)
     {
         // Verify that the invocator is a multisig admin
-        id invocator = qpi.invocator();
-        CALL(isMultisigAdmin, invocator, locals.isMultisigAdminResult);
+        locals.invocatorAddress = qpi.invocator();
+        CALL(isMultisigAdmin, locals.invocatorAddress, locals.isMultisigAdminResult);
         if (!locals.isMultisigAdminResult)
         {
             locals.log = EthBridgeLogger{
@@ -868,7 +923,8 @@ public:
             else if (locals.proposal.proposalType == PROPOSAL_CHANGE_THRESHOLD)
             {
                 // Amount field is used to store new threshold
-                if (locals.proposal.amount > 0 && locals.proposal.amount <= (uint64)state.numberOfAdmins)
+                // Hard limit: minimum threshold is 2 to maintain multisig security
+                if (locals.proposal.amount >= 2 && locals.proposal.amount <= (uint64)state.numberOfAdmins)
                 {
                     state.requiredApprovals = (uint8)locals.proposal.amount;
                 }
@@ -962,13 +1018,6 @@ public:
 
     PUBLIC_FUNCTION_WITH_LOCALS(getTotalReceivedTokens)
     {
-        locals.log = EthBridgeLogger{
-            CONTRACT_INDEX,
-            0,                         // No error
-            0,                         // No order ID involved
-            state.totalReceivedTokens, // Amount of total tokens
-            0 };
-        LOG_INFO(locals.log);
         output.totalTokens = state.totalReceivedTokens;
     }
 
@@ -1130,6 +1179,9 @@ public:
         bit orderFound;
         BridgeOrder order;
         uint64 i;
+        uint64 feeEth;
+        uint64 feeQubic;
+        uint64 totalRefund;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(refundOrder)
@@ -1198,15 +1250,39 @@ public:
             // Only refund if tokens were received
             if (!locals.order.tokensReceived)
             {
-                // No tokens to return - simply cancel the order
+                // No tokens to return, but refund fees
+                // Calculate fees to refund
+                locals.feeEth = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
+                locals.feeQubic = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
+                locals.totalRefund = locals.feeEth + locals.feeQubic;
+
+                // Deduct fees from earned fees (return them to user)
+                state._earnedFees -= locals.feeEth;
+                state._earnedFeesQubic -= locals.feeQubic;
+
+                // Transfer fees back to user
+                if (qpi.transfer(locals.order.qubicSender, locals.totalRefund) < 0)
+                {
+                    locals.log = EthBridgeLogger{
+                        CONTRACT_INDEX,
+                        EthBridgeError::transferFailed,
+                        input.orderId,
+                        locals.totalRefund,
+                        0 };
+                    LOG_INFO(locals.log);
+                    output.status = EthBridgeError::transferFailed;
+                    return;
+                }
+
+                // Mark order as refunded
                 locals.order.status = 2;
                 state.orders.set(locals.i, locals.order);
-                
+
                 locals.log = EthBridgeLogger{
                     CONTRACT_INDEX,
                     0,
                     input.orderId,
-                    0,
+                    locals.totalRefund,
                     0 };
                 LOG_INFO(locals.log);
                 output.status = 0;
@@ -1241,14 +1317,25 @@ public:
                 return;
             }
 
-            // Return tokens to original sender
-            if (qpi.transfer(locals.order.qubicSender, locals.order.amount) < 0)
+            // Calculate fees to refund
+            locals.feeEth = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
+            locals.feeQubic = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
+
+            // Deduct fees from earned fees (return them to user)
+            state._earnedFees -= locals.feeEth;
+            state._earnedFeesQubic -= locals.feeQubic;
+
+            // Calculate total refund: amount + fees
+            locals.totalRefund = locals.order.amount + locals.feeEth + locals.feeQubic;
+
+            // Return tokens + fees to original sender
+            if (qpi.transfer(locals.order.qubicSender, locals.totalRefund) < 0)
             {
                 locals.log = EthBridgeLogger{
                     CONTRACT_INDEX,
                     EthBridgeError::transferFailed,
                     input.orderId,
-                    locals.order.amount,
+                    locals.totalRefund,
                     0 };
                 LOG_INFO(locals.log);
                 output.status = EthBridgeError::transferFailed;
@@ -1258,7 +1345,9 @@ public:
             // Update locked tokens balance
             state.lockedTokens -= locals.order.amount;
         }
-        
+        // Note: For EVM to Qubic orders, tokens were already transferred in completeOrder
+        // No refund needed on Qubic side (fees were paid on Ethereum side)
+
         // Mark as refunded
         locals.order.status = 2;
         state.orders.set(locals.i, locals.order);
@@ -1444,16 +1533,6 @@ public:
 
     PUBLIC_FUNCTION_WITH_LOCALS(getTotalLockedTokens)
     {
-        // Log for debugging
-        locals.log = EthBridgeLogger{
-            CONTRACT_INDEX,
-            0,                  // No error
-            0,                  // No order ID involved
-            state.lockedTokens, // Amount of locked tokens
-            0 };
-        LOG_INFO(locals.log);
-
-        // Assign the value of lockedTokens to the output
         output.totalLockedTokens = state.lockedTokens;
     }
 
