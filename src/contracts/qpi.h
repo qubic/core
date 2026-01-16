@@ -2434,7 +2434,7 @@ namespace QPI
 		* @return Whether queryId is found and matches the oracle interface.
 		*/
 		template <typename OracleInterface>
-		inline bool getOracleQuery(sint64 queryId, OracleInterface::OracleQuery& query) const;
+		inline bool getOracleQuery(sint64 queryId, typename OracleInterface::OracleQuery& query) const;
 
 		/**
 		* @brief Get oracle reply by queryId.
@@ -2443,7 +2443,7 @@ namespace QPI
 		* @return Whether queryId is found, matches the oracle interface, and a valid reply is available.
 		*/
 		template <typename OracleInterface>
-		inline bool getOracleReply(sint64 queryId, OracleInterface::OracleReply& reply) const;
+		inline bool getOracleReply(sint64 queryId, typename OracleInterface::OracleReply& reply) const;
 
 		/**
 		* @brief Get status of oracle query by queryId.
@@ -2610,7 +2610,7 @@ namespace QPI
 		// Internal version of QUERY_ORACLE (macro ensures that proc pointer and id match)
 		template <typename OracleInterface, typename ContractStateType, typename LocalsType>
 		inline sint64 __qpiQueryOracle(
-			const OracleInterface::OracleQuery& query,
+			const typename OracleInterface::OracleQuery& query,
 			void (*notificationProcPtr)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
 			unsigned int notificationProcId,
 			uint32 timeoutMillisec
@@ -2619,7 +2619,7 @@ namespace QPI
 		// Internal version of SUBSCRIBE_ORACLE (macro ensures that proc pointer and id match)
 		template <typename OracleInterface, typename ContractStateType, typename LocalsType>
 		inline sint32 __qpiSubscribeOracle(
-			const OracleInterface::OracleQuery& query,
+			const typename OracleInterface::OracleQuery& query,
 			void (*notificationProcPtr)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
 			unsigned int notificationProcId,
 			uint32 notificationIntervalInMilliseconds = 60000,
