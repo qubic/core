@@ -3638,7 +3638,7 @@ static void processTick(unsigned long long processorNumber)
 #if !defined(NDEBUG)
             if (txCount)
             {
-                CHAR16 dbgMsg[200];
+                CHAR16 dbgMsg[300];
                 setText(dbgMsg, L"oracleEngine.getReplyCommitTransaction(), tick ");
                 appendNumber(dbgMsg, system.tick, FALSE);
                 appendText(dbgMsg, ", txScheduleTick ");

@@ -367,7 +367,7 @@ public:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         else
         {
-            CHAR16 dbgMsgBuf[150];
+            CHAR16 dbgMsgBuf[250];
             setText(dbgMsgBuf, L"tx failed (tx->checkValidity() && tickInStorage(tx->tick)): tick ");
             appendNumber(dbgMsgBuf, tx->tick, FALSE);
             appendText(dbgMsgBuf, L", amount ");
