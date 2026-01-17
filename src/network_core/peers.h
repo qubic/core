@@ -35,6 +35,8 @@
 #define NUMBER_OF_WHITE_LIST_PEERS sizeof(whiteListPeers) / sizeof(whiteListPeers[0])
 #define NUMBER_OF_INCOMING_CONNECTIONS_RESERVED_FOR_WHITELIST_IPS 16
 static constexpr unsigned int ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS = 15; // Config timout for connecting attemp to OM
+static constexpr unsigned int ORACLE_MACHINE_TRANSMITING_TIMEOUT_SECS = 30; // Transmitting timeout to OM
+static constexpr unsigned int ORACLE_MACHINE_GRACEFULL_CLOSE_TIMEOUT_MILLISECS = 500; // Gracefull close timeout for connecting attemp to OM
 
 static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
 
@@ -65,6 +67,7 @@ struct Peer
     BOOLEAN isOMNode;
     unsigned long long connectionStartTime;
     unsigned long long lastOMActivityTime;
+    unsigned long long omTransmitStartTime;
     EFI_STATUS lastOMStatus;
 
     // Extra data to determine if this peer is a fullnode
@@ -128,6 +131,7 @@ struct Peer
         lastOMActivityTime = 0;
         connectionStartTime = 0;
         lastOMStatus = EFI_SUCCESS;
+        omTransmitStartTime = 0;
 
         dataToTransmitSize = 0;
         lastActiveTick = 0;
@@ -973,6 +977,27 @@ static void processTransmittedData(unsigned int i, unsigned int salt)
 
     if (((unsigned long long)peers[i].tcp4Protocol) > 1)
     {
+        // Special treatment for OM, make sure we close peer when the transmitting is stucked
+        if (peers[i].isOracleMachineNode() && peers[i].isTransmitting && peers[i].omTransmitStartTime > 0)
+        {
+            unsigned long long elapsedSecs = (__rdtsc() - peers[i].omTransmitStartTime) / frequency;
+            if (elapsedSecs > ORACLE_MACHINE_TRANSMITING_TIMEOUT_SECS)
+            {
+#ifndef NDEBUG
+                CHAR16 msg[128];
+                setText(msg, L"OM: Transmit timeout (");
+                appendNumber(msg, elapsedSecs, FALSE);
+                appendText(msg, L"s), forcing close for peer ");
+                appendNumber(msg, i, FALSE);
+                addDebugMessage(msg);
+#endif
+                peers[i].isTransmitting = FALSE;
+                peers[i].omTransmitStartTime = 0; // mark as invalid
+                closePeer(&peers[i]);
+                return;  // Exit early
+            }
+        }
+
         // check if transmission is completed
         if (peers[i].transmitToken.CompletionToken.Status != -1)
         {
@@ -1030,6 +1055,10 @@ static void transmitData(unsigned int i, unsigned int salt)
                 else
                 {
                     peers[i].isTransmitting = TRUE;
+                    if (peers[i].isOracleMachineNode())
+                    {
+                        peers[i].omTransmitStartTime = __rdtsc();
+                    }
                 }
             }
         }
@@ -1055,7 +1084,7 @@ static void peerOMLogStatus(unsigned int i)
 #if !defined(NDEBUG)
     if (peers[i].isOracleMachineNode())
     {
-        CHAR16 omDbgMsg[128];
+        CHAR16 omDbgMsg[256];
         setText(omDbgMsg, L"OM: peerOMLogStatus");
         if (peers[i].tcp4Protocol)
         {
@@ -1067,6 +1096,12 @@ static void peerOMLogStatus(unsigned int i)
 
             appendText(omDbgMsg, L", isClosing: ");
             appendNumber(omDbgMsg, peers[i].isClosing, FALSE);
+
+            appendText(omDbgMsg, L", isTransmitting: ");
+            appendNumber(omDbgMsg, peers[i].isTransmitting, FALSE);
+
+            appendText(omDbgMsg, L", isReceiving: ");
+            appendNumber(omDbgMsg, peers[i].isReceiving, FALSE);
 
             appendText(omDbgMsg, L", address: ");
             appendIPv4Address(omDbgMsg, peers[i].address);

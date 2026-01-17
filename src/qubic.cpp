@@ -7193,15 +7193,16 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     if (peers[i].isOracleMachineNode())
                     {
                         if (ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS > 0
-                            && peers[i].isConnectingAccepting &&
-                            ((__rdtsc() - peers[i].connectionStartTime) / frequency > ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS))
+                            && peers[i].connectionStartTime > 0
+                            && peers[i].isConnectingAccepting 
+                            && ((__rdtsc() - peers[i].connectionStartTime) / frequency > ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS))
                         {
                             logToConsole(L"OM: Connection from Accepting State to Accepted State took too long.");
 #if !defined(NDEBUG)
                             addDebugMessage(L"OM: Connection from Accepting State to Accepted State took too long.");
                             peerOMLogStatus(i);
 #endif
-                            closePeer(&peers[i], 500);
+                            closePeer(&peers[i], ORACLE_MACHINE_GRACEFULL_CLOSE_TIMEOUT_MILLISECS);
                         }
 
                         constexpr unsigned long long OM_INACTIVITY_TIMEOUT_SECS = 300;  // 1.5 minutes // 5 minutes
@@ -7222,7 +7223,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                             peerOMLogStatus(i);
 #endif
-                            closePeer(&peers[i], 500);
+                            closePeer(&peers[i], ORACLE_MACHINE_GRACEFULL_CLOSE_TIMEOUT_MILLISECS);
                         }
                     }
 
