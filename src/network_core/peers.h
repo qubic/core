@@ -237,6 +237,8 @@ static void closePeer(Peer* peer, unsigned long long timoutCloseGracefullyMs = 0
     {
         if (!peer->isClosing)
         {
+            peer->isClosing = TRUE;
+
             EFI_STATUS status = EFI_SUCCESS;
 
             // Decide to close gracefully with Close()
@@ -279,8 +281,6 @@ static void closePeer(Peer* peer, unsigned long long timoutCloseGracefullyMs = 0
             {
                 logStatusToConsole(L"EFI_TCP4_PROTOCOL.Configure() fails", status, __LINE__);
             }
-
-            peer->isClosing = TRUE;
         }
 
         // For Oracle machine, forces closing so that can reconnect faster
