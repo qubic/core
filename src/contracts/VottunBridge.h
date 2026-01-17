@@ -1370,6 +1370,7 @@ public:
         BridgeOrder order;
         bit orderFound;
         uint64 i;
+        uint64 depositAmount;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(transferToContract)
@@ -1471,21 +1472,24 @@ public:
         // Only for Qubic-to-Ethereum orders need to receive tokens
         if (locals.order.fromQubicToEthereum)
         {
-            if (qpi.transfer(SELF, input.amount) < 0)
+            // Tokens must be provided with the invocation (invocationReward)
+            locals.depositAmount = qpi.invocationReward();
+            if (locals.depositAmount != input.amount)
             {
-                output.status = EthBridgeError::transferFailed;
                 locals.log = EthBridgeLogger{
                     CONTRACT_INDEX,
-                    EthBridgeError::transferFailed,
+                    EthBridgeError::invalidAmount,
                     input.orderId,
                     input.amount,
                     0 };
                 LOG_INFO(locals.log);
+                output.status = EthBridgeError::invalidAmount;
                 return;
             }
 
             // Tokens go directly to lockedTokens for this order
-            state.lockedTokens += input.amount;
+            state.lockedTokens += locals.depositAmount;
+            state.totalReceivedTokens += locals.depositAmount;
             
             // Mark tokens as received AND locked
             locals.order.tokensReceived = true;
