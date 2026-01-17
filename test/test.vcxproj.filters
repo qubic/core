@@ -50,9 +50,6 @@
     <ClInclude Include="logging_test.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
     <Filter Include="core">
       <UniqueIdentifier>{b544a744-99a4-4a9d-b445-211aabef63f2}</UniqueIdentifier>
     </Filter>
@@ -61,5 +58,8 @@
     <MASM Include="..\src\platform\custom_stack.asm">
       <Filter>core</Filter>
     </MASM>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
 </Project>

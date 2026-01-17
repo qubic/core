@@ -369,7 +369,7 @@ public:
                 input.amount,
                 0 };
             LOG_INFO(locals.log);
-            output.status = 2; // Error
+            output.status = EthBridgeError::insufficientTransactionFee;
             return;
         }
 
