@@ -42,6 +42,31 @@ static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_REGULAR_OUTGOING_CONNE
 
 static volatile bool listOfPeersIsStatic = false;
 
+// TODO: this is for debug only remove it after finish
+#if !defined(NDEBUG)
+static void addDebugMessageOM(const CHAR16* msg)
+{
+    CHAR16 timestampedMsg[512];
+    timestampedMsg[0] = (utcTime.Year % 100) / 10 + L'0';
+    timestampedMsg[1] = utcTime.Year % 10 + L'0';
+    timestampedMsg[2] = utcTime.Month / 10 + L'0';
+    timestampedMsg[3] = utcTime.Month % 10 + L'0';
+    timestampedMsg[4] = utcTime.Day / 10 + L'0';
+    timestampedMsg[5] = utcTime.Day % 10 + L'0';
+    timestampedMsg[6] = utcTime.Hour / 10 + L'0';
+    timestampedMsg[7] = utcTime.Hour % 10 + L'0';
+    timestampedMsg[8] = utcTime.Minute / 10 + L'0';
+    timestampedMsg[9] = utcTime.Minute % 10 + L'0';
+    timestampedMsg[10] = utcTime.Second / 10 + L'0';
+    timestampedMsg[11] = utcTime.Second % 10 + L'0';
+    timestampedMsg[12] = ' ';
+    timestampedMsg[13] = 0;
+
+    appendText(timestampedMsg, msg);
+    appendText(timestampedMsg, L"\r\n");
+    addDebugMessage(timestampedMsg);
+}
+#endif
 
 struct Peer
 {
@@ -238,7 +263,6 @@ static void closePeer(Peer* peer, unsigned long long timoutCloseGracefullyMs = 0
         if (!peer->isClosing)
         {
             peer->isClosing = TRUE;
-
             EFI_STATUS status = EFI_SUCCESS;
 
             // Decide to close gracefully with Close()
@@ -267,7 +291,7 @@ static void closePeer(Peer* peer, unsigned long long timoutCloseGracefullyMs = 0
                         CHAR16 debugMessage[64];
                         setText(debugMessage, L"Warning: Peer close gracefully timeout. IP ");
                         appendIPv4Address(debugMessage, peer->address);
-                        addDebugMessage(debugMessage);
+                        addDebugMessageOM(debugMessage);
                     }
 #endif
                 }
@@ -456,7 +480,7 @@ static void pushToOracleMachineNodes(RequestResponseHeader* requestResponseHeade
             }
         }
     }
-    addDebugMessage(::message);
+    addDebugMessageOM(::message);
 }
 
 // Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
@@ -690,7 +714,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                     CHAR16 omDbgMsg[64];
                     setText(omDbgMsg, L"OM: peerConnectionNewlyEstablished - CompletionToken.Status: ");
                     appendNumber(omDbgMsg, peers[i].connectAcceptToken.CompletionToken.Status, false);
-                    addDebugMessage(omDbgMsg);
+                    addDebugMessageOM(omDbgMsg);
                 }
 #endif
             }
@@ -705,7 +729,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                     {
                         CHAR16 omDbgMsg[64];
                         setText(omDbgMsg, L"OM: peerConnectionNewlyEstablished - Closing Peer ");
-                        addDebugMessage(omDbgMsg);
+                        addDebugMessageOM(omDbgMsg);
                     }
 #endif
                 }
@@ -722,7 +746,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                         appendText(omDbgMsg, L" peer[");
                         appendNumber(omDbgMsg, i, FALSE);
                         appendText(omDbgMsg, L"]");
-                        addDebugMessage(omDbgMsg);
+                        addDebugMessageOM(omDbgMsg);
 #endif
                     }
                 }
@@ -989,7 +1013,7 @@ static void processTransmittedData(unsigned int i, unsigned int salt)
                 appendNumber(msg, elapsedSecs, FALSE);
                 appendText(msg, L"s), forcing close for peer ");
                 appendNumber(msg, i, FALSE);
-                addDebugMessage(msg);
+                addDebugMessageOM(msg);
 #endif
                 peers[i].isTransmitting = FALSE;
                 peers[i].omTransmitStartTime = 0; // mark as invalid
@@ -1120,7 +1144,7 @@ static void peerOMLogStatus(unsigned int i)
                 appendNumber(omDbgMsg, status, false);
             }
         }
-        addDebugMessage(omDbgMsg);
+        addDebugMessageOM(omDbgMsg);
     }
 #endif
 }
@@ -1201,7 +1225,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
 //                                appendText(omDbgMsg, L" peer[");
 //                                appendNumber(omDbgMsg, i, FALSE);
 //                                appendText(omDbgMsg, L"]");
-//                                addDebugMessage(omDbgMsg);
+//                                addDebugMessageOM(omDbgMsg);
 //#endif
                             }
                         }
@@ -1211,7 +1235,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
 #if !defined(NDEBUG)
                         if (peers[i].isOMNode)
                         {
-                            addDebugMessage(L"OM: peerReconnectIfInactive - getTcp4Protocol failed");
+                            addDebugMessageOM(L"OM: peerReconnectIfInactive - getTcp4Protocol failed");
                         }
 #endif
                         peers[i].tcp4Protocol = NULL;

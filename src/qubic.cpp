@@ -371,6 +371,7 @@ static void logToConsole(const CHAR16* message)
 #endif
 }
 
+
 static inline bool isMainMode()
 {
     return (mainAuxStatus & 1) == 1;
@@ -7197,9 +7198,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             && peers[i].isConnectingAccepting 
                             && ((__rdtsc() - peers[i].connectionStartTime) / frequency > ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS))
                         {
-                            logToConsole(L"OM: Connection from Accepting State to Accepted State took too long.");
 #if !defined(NDEBUG)
-                            addDebugMessage(L"OM: Connection from Accepting State to Accepted State took too long.");
+                            addDebugMessageOM(L"OM: Connection from Accepting State to Accepted State took too long.");
                             peerOMLogStatus(i);
 #endif
                             closePeer(&peers[i], ORACLE_MACHINE_GRACEFULL_CLOSE_TIMEOUT_MILLISECS);
@@ -7211,9 +7211,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             peers[i].lastOMActivityTime > 0 &&
                             ((__rdtsc() - peers[i].lastOMActivityTime) / frequency > OM_INACTIVITY_TIMEOUT_SECS))
                         {
-                            logToConsole(L"OM: Connection inactive for some minutes, forcing reconnect.");
 #if !defined(NDEBUG)
-                            addDebugMessage(L"OM: Connection inactive for some minutes, forcing reconnect.");
+                            addDebugMessageOM(L"OM: Connection inactive for some minutes, forcing reconnect.");
 
                             CHAR16 omDbgMsg[128];
                             setText(omDbgMsg, L"OM: Closing stale connection, lastActivity=");
