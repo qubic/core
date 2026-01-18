@@ -42,6 +42,10 @@ static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_REGULAR_OUTGOING_CONNE
 
 static volatile bool listOfPeersIsStatic = false;
 
+#define OM_RETRY_COUNT(dejavu) ((dejavu) >> 24)
+#define OM_SET_RETRY_COUNT(dejavu, count) (((dejavu) & 0x00FFFFFF) | ((count) << 24))
+#define OM_MAX_RETRIES 3
+
 // TODO: this is for debug only remove it after finish
 #if !defined(NDEBUG)
 static void addDebugMessageOM(const CHAR16* msg)
@@ -442,47 +446,6 @@ static void pushToFullNodes(RequestResponseHeader* requestResponseHeader, int nu
     }
 }
 
-static void pushToOracleMachineNodes(RequestResponseHeader* requestResponseHeader)
-{
-    setText(::message, L"pushToOracleMachineNodes(): ");
-    if (NUMBER_OF_OM_NODE_CONNECTIONS > 0)
-    {
-        unsigned short numberOfSuitablePeers = 0;
-        for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS && numberOfSuitablePeers < NUMBER_OF_OM_NODE_CONNECTIONS; i++)
-        {
-            if (peers[i].isOracleMachineNode())
-            {
-                if (peers[i].tcp4Protocol
-                    && peers[i].isConnectedAccepted
-                    && !peers[i].isClosing)
-                {
-                    appendIPv4Address(::message, peers[i].address);
-
-                    push(&peers[i], requestResponseHeader);
-                    numberOfSuitablePeers++;
-                }
-                else
-                {
-                    appendText(::message, L" peer is not active, ");
-                    if (NULL == peers[i].tcp4Protocol)
-                    {
-                        appendText(::message, L", NULL tcp4Protocol");
-                    }
-                    if (!peers[i].isConnectedAccepted)
-                    {
-                        appendText(::message, L", NOT isConnectedAccepted");
-                    }
-                    if (peers[i].isClosing)
-                    {
-                        appendText(::message, L", isClosing");
-                    }
-                }
-            }
-        }
-    }
-    addDebugMessageOM(::message);
-}
-
 // Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
 static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
 {
@@ -510,6 +473,79 @@ static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
 
     RELEASE(responseQueueHeadLock);
 }
+
+
+static void pushToOracleMachineNodes(RequestResponseHeader* requestResponseHeader)
+{
+    setText(::message, L"pushToOracleMachineNodes(): ");
+    if (NUMBER_OF_OM_NODE_CONNECTIONS > 0)
+    {
+        bool pushedToAny = false;
+        unsigned short numberOfSuitablePeers = 0;
+
+        // Heuristic pick the first byte of dejavu for tracking the retries
+        // Clear the dejavu retry if first bytes is greater than OM_MAX_RETRIES
+        // Incase of first bytes is 1 .. OM_MAX_RETRIES, we retrie fewer
+        // Currently is 0 when creating a querry, so it is not a problem
+        unsigned int currentDejavu = requestResponseHeader->dejavu();
+        if (OM_RETRY_COUNT(currentDejavu) > OM_MAX_RETRIES)
+        {
+            requestResponseHeader->setDejavu(currentDejavu & 0x00FFFFFF);
+        }
+
+        for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS && numberOfSuitablePeers < NUMBER_OF_OM_NODE_CONNECTIONS; i++)
+        {
+            if (peers[i].isOracleMachineNode())
+            {
+                if (peers[i].tcp4Protocol
+                    && peers[i].isConnectedAccepted
+                    && !peers[i].isClosing)
+                {
+                    appendIPv4Address(::message, peers[i].address);
+                    push(&peers[i], requestResponseHeader);
+                    numberOfSuitablePeers++;
+                    pushedToAny = true;
+                }
+                else
+                {
+                    appendText(::message, L" peer is not active");
+                    if (NULL == peers[i].tcp4Protocol)
+                        appendText(::message, L", NULL tcp4Protocol");
+                    if (!peers[i].isConnectedAccepted)
+                        appendText(::message, L", NOT isConnectedAccepted");
+                    if (peers[i].isClosing)
+                        appendText(::message, L", isClosing");
+                }
+            }
+        }
+
+        // Re-enqueue if no OM peer was ready.
+        if (!pushedToAny)
+        {
+            unsigned int retryCount = OM_RETRY_COUNT(requestResponseHeader->dejavu());
+            if (retryCount < OM_MAX_RETRIES)
+            {
+                requestResponseHeader->setDejavu(
+                    OM_SET_RETRY_COUNT(requestResponseHeader->dejavu(), retryCount + 1));
+
+                appendText(::message, L" - REQUEUE retry ");
+                appendNumber(::message, retryCount + 1, FALSE);
+                appendText(::message, L"/");
+                appendNumber(::message, OM_MAX_RETRIES, FALSE);
+
+                enqueueResponse((Peer*)1, requestResponseHeader);
+            }
+            else
+            {
+                appendText(::message, L" - DROPPED after ");
+                appendNumber(::message, OM_MAX_RETRIES, FALSE);
+                appendText(::message, L" retries");
+            }
+        }
+    }
+    addDebugMessageOM(::message);
+}
+
 
 // Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
 static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data)
