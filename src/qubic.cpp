@@ -7476,10 +7476,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     loggingTick = curTimeTick;
 
-                    for (unsigned int i = NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS; i < NUMBER_OF_OUTGOING_CONNECTIONS; i++)
-                    {
-                        peerOMLogStatus(i);
-                    }
+                    //for (unsigned int i = NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS; i < NUMBER_OF_OUTGOING_CONNECTIONS; i++)
+                    //{
+                    //    peerOMLogStatus(i);
+                    //}
 
                     logInfo();
 
