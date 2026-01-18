@@ -3509,6 +3509,8 @@ static void processTick(unsigned long long processorNumber)
     {
         const auto txTick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
         unsigned char digest[32];
+        // [OM Debug] Temporary disable oracle transactions to isolate network issue
+#if 0 
         {
             PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reply transactions");
             auto* tx = (OracleReplyCommitTransactionPrefix*)reorgBuffer;
@@ -3535,6 +3537,7 @@ static void processTick(unsigned long long processorNumber)
                 while (retCode != UINT32_MAX);
             }
         }
+#endif
 
         {
             PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reveal transactions");
