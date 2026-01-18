@@ -36,7 +36,7 @@
 #define NUMBER_OF_INCOMING_CONNECTIONS_RESERVED_FOR_WHITELIST_IPS 16
 static constexpr unsigned int ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS = 15; // Config timout for connecting attemp to OM
 static constexpr unsigned int ORACLE_MACHINE_TRANSMITING_TIMEOUT_SECS = 30; // Transmitting timeout to OM
-static constexpr unsigned int ORACLE_MACHINE_GRACEFULL_CLOSE_TIMEOUT_MILLISECS = 500; // Gracefull close timeout for connecting attemp to OM
+static constexpr unsigned int ORACLE_MACHINE_GRACEFULL_CLOSE_RETIRES = 3; // Gracefull close retries for connecting attemp to OM
 
 static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
 
@@ -258,7 +258,7 @@ static bool isPrivateIp(const unsigned char address[4])
     return false;
 }
 
-static void closePeer(Peer* peer, unsigned long long timoutCloseGracefullyMs = 0)
+static void closePeer(Peer* peer, int closeGracefullyRetries = 0)
 {
     PROFILE_SCOPE();
     ASSERT(isMainProcessor());
@@ -270,7 +270,7 @@ static void closePeer(Peer* peer, unsigned long long timoutCloseGracefullyMs = 0
             EFI_STATUS status = EFI_SUCCESS;
 
             // Decide to close gracefully with Close()
-            if (timoutCloseGracefullyMs > 0)
+            if (closeGracefullyRetries > 0)
             {
                 EFI_TCP4_CLOSE_TOKEN closeToken;
                 bs->SetMem(&closeToken, sizeof(EFI_TCP4_CLOSE_TOKEN), 0);
@@ -279,25 +279,16 @@ static void closePeer(Peer* peer, unsigned long long timoutCloseGracefullyMs = 0
                 status = peer->tcp4Protocol->Close(peer->tcp4Protocol, &closeToken);
                 if (status == EFI_SUCCESS)
                 {
-                    // Poll until close or timeout
-                    bool isTimeout = false;
-                    unsigned long long startTime = __rdtsc();
-                    while ((bs->CheckEvent(closeToken.CompletionToken.Event) == EFI_NOT_READY) && !isTimeout)
+                    // Poll a few times (non-blocking) - hopefully RST will arrive the 
+                    for (int i = 0; i < closeGracefullyRetries; i++)
                     {
-                        isTimeout = (__rdtsc() - startTime) * 1000 / frequency > timoutCloseGracefullyMs;
                         peer->tcp4Protocol->Poll(peer->tcp4Protocol);
-                        bs->Stall(50);
+                        if (bs->CheckEvent(closeToken.CompletionToken.Event) != EFI_NOT_READY)
+                        {
+                            break;
+                        }
                     }
                     bs->CloseEvent(closeToken.CompletionToken.Event);
-#ifndef NDEBUG
-                    if (isTimeout)
-                    {
-                        CHAR16 debugMessage[64];
-                        setText(debugMessage, L"Warning: Peer close gracefully timeout. IP ");
-                        appendIPv4Address(debugMessage, peer->address);
-                        addDebugMessageOM(debugMessage);
-                    }
-#endif
                 }
                 else
                 {
