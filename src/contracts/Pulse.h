@@ -13,6 +13,7 @@
 using namespace QPI;
 
 constexpr uint16 PULSE_MAX_NUMBER_OF_PLAYERS = 1024;
+constexpr uint16 PULSE_MAX_NUMBER_OF_AUTO_PARTICIPANTS = PULSE_MAX_NUMBER_OF_PLAYERS / 2;
 constexpr uint8 PULSE_PLAYER_DIGITS = 6;
 constexpr uint8 PULSE_PLAYER_DIGITS_ALIGNED = PULSE_PLAYER_DIGITS + 2;
 constexpr uint8 PULSE_WINNING_DIGITS = PULSE_PLAYER_DIGITS;
@@ -31,6 +32,8 @@ constexpr uint8 PULSE_TICK_UPDATE_PERIOD = 100;
 constexpr uint8 PULSE_DEFAULT_DRAW_HOUR = 11; // 11:00 UTC
 constexpr uint8 PULSE_DEFAULT_SCHEDULE = 1 << WEDNESDAY | 1 << FRIDAY | 1 << SUNDAY;
 constexpr uint32 PULSE_DEFAULT_INIT_TIME = 22 << 9 | 4 << 5 | 13;
+constexpr uint16 PULSE_DEFAULT_MAX_AUTO_TICKETS_PER_USER = PULSE_MAX_NUMBER_OF_PLAYERS;
+constexpr uint64 PULSE_CLEANUP_THRESHOLD = 75;
 
 const id PULSE_QHEART_ISSUER = ID(_S, _S, _G, _X, _S, _L, _S, _X, _F, _E, _J, _O, _O, _B, _T, _Z, _W, _V, _D, _S, _R, _C, _E, _F, _G, _X, _N, _D, _Y,
                                   _U, _V, _D, _X, _M, _Q, _A, _L, _X, _L, _B, _X, _G, _D, _C, _R, _X, _T, _K, _F, _Z, _I, _O, _T, _G, _Z, _F);
@@ -62,9 +65,12 @@ public:
 		TICKET_INVALID_PRICE,
 		TICKET_ALL_SOLD_OUT,
 		TICKET_SELLING_CLOSED,
+		AUTO_PARTICIPANTS_FULL,
 		INVALID_NUMBERS,
 		ACCESS_DENIED,
 		INVALID_VALUE,
+		TRANSFER_TO_PULSE_FAILED,
+		TRANSFER_FROM_PULSE_FAILED,
 		UNKNOWN_ERROR = UINT8_MAX
 	};
 
@@ -75,6 +81,13 @@ public:
 	{
 		id player;
 		Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> digits;
+	};
+
+	struct AutoParticipant
+	{
+		id player;
+		sint64 deposit;
+		uint16 desiredTickets;
 	};
 
 	// Deferred settings applied at END_EPOCH to avoid mid-round changes.
@@ -165,7 +178,6 @@ public:
 
 	struct BuyTicket_locals
 	{
-		uint64 reward;
 		uint64 slotsLeft;
 		sint64 userBalance;
 		sint64 transferResult;
@@ -189,6 +201,63 @@ public:
 		uint8 candidate;
 	};
 
+	struct PrepareRandomTickets_input
+	{
+		uint16 count;
+	};
+
+	struct PrepareRandomTickets_output
+	{
+		uint8 returnCode;
+		uint16 count;
+	};
+
+	struct PrepareRandomTickets_locals
+	{
+		uint64 slotsLeft;
+	};
+
+	struct ChargeTicketsFromPlayer_input
+	{
+		id player;
+		uint16 count;
+	};
+
+	struct ChargeTicketsFromPlayer_output
+	{
+		uint8 returnCode;
+	};
+
+	struct ChargeTicketsFromPlayer_locals
+	{
+		sint64 userBalance;
+		sint64 transferResult;
+		uint64 totalPrice;
+	};
+
+	struct AllocateRandomTickets_input
+	{
+		id player;
+		uint16 count;
+	};
+
+	struct AllocateRandomTickets_output
+	{
+		uint8 returnCode;
+	};
+
+	struct AllocateRandomTickets_locals
+	{
+		uint64 slotsLeft;
+		m256i mixedSpectrumValue;
+		uint64 randomSeed;
+		uint64 tempSeed;
+		uint16 i;
+		Ticket ticket;
+		GetRandomDigits_input randomInput;
+		GetRandomDigits_output randomOutput;
+	};
+
 	struct BuyRandomTickets_input
 	{
 		uint16 count;
@@ -201,11 +270,76 @@ public:
 
 	struct BuyRandomTickets_locals
 	{
-		uint64 reward;
-		uint64 slotsLeft;
+		PrepareRandomTickets_input prepareInput;
+		PrepareRandomTickets_output prepareOutput;
+		ChargeTicketsFromPlayer_input chargeInput;
+		ChargeTicketsFromPlayer_output chargeOutput;
+		AllocateRandomTickets_input allocateInput;
+		AllocateRandomTickets_output allocateOutput;
+	};
+
+	struct FindAutoParticipant_input
+	{
+		id player;
+	};
+	struct FindAutoParticipant_output
+	{
+		bit found;
+		sint64 index;
+	};
+	struct FindAutoParticipant_locals
+	{
+		sint64 elementIndex;
+	};
+
+	struct GetAutoParticipation_input
+	{
+	};
+	struct GetAutoParticipation_output
+	{
+		uint64 deposit;
+		uint16 desiredTickets;
+		uint8 returnCode;
+	};
+	struct GetAutoParticipation_locals
+	{
+		AutoParticipant entry;
+	};
+
+	struct GetAutoStats_input
+	{
+	};
+	struct GetAutoStats_output
+	{
+		uint16 autoParticipantsCounter;
+		uint64 totalAutoDeposits;
+		sint64 autoStartIndex;
+		uint16 maxAutoTicketsPerUser;
+		uint8 returnCode;
+	};
+
+	struct DepositAutoParticipation_input
+	{
+		sint64 amount;
+		sint16 desiredTickets;
+		bit buyNow;
+	};
+	struct DepositAutoParticipation_output
+	{
+		uint8 returnCode;
+	};
+	struct DepositAutoParticipation_locals
+	{
 		sint64 userBalance;
 		sint64 transferResult;
-		uint64 totalPrice;
+		AutoParticipant entry;
+		sint64 insertIndex;
+		sint64 totalPrice;
+		uint64 slotsLeft;
+		uint64 affordable;
+		uint64 toBuy;
+		uint64 spend;
+		uint64 seedIndex;
 		m256i mixedSpectrumValue;
 		uint64 randomSeed;
 		uint64 tempSeed;
@@ -213,6 +347,51 @@ public:
 		Ticket ticket;
 		GetRandomDigits_input randomInput;
 		GetRandomDigits_output randomOutput;
+		BuyRandomTickets_input buyRandomTicketsInput;
+		BuyRandomTickets_output buyRandomTicketsOutput;
+	};
+
+	struct WithdrawAutoParticipation_input
+	{
+		sint64 amount;
+	};
+	struct WithdrawAutoParticipation_output
+	{
+		uint8 returnCode;
+	};
+	struct WithdrawAutoParticipation_locals
+	{
+		sint64 transferResult;
+		AutoParticipant entry;
+		sint64 removedIndex;
+		sint64 withdrawAmount;
+	};
+
+	struct SetAutoConfig_input
+	{
+		sint16 desiredTickets;
+	};
+	struct SetAutoConfig_output
+	{
+		uint8 returnCode;
+	};
+	struct SetAutoConfig_locals
+	{
+		sint64 insertIndex;
+		sint64 removedIndex;
+		AutoParticipant entry;
+		uint16 desiredValue;
+		FindAutoParticipant_input findInput;
+		FindAutoParticipant_output findOutput;
+	};
+
+	struct SetAutoLimits_input
+	{
+		uint16 maxTicketsPerUser;
+	};
+	struct SetAutoLimits_output
+	{
+		uint8 returnCode;
 	};
 
 	struct GetTicketPrice_input
@@ -404,6 +583,7 @@ public:
 		uint64 prize;
 		uint64 totalPrize;
 		uint64 availableBalance;
+		uint64 reservedBalance;
 		m256i mixedSpectrumValue;
 		uint64 randomSeed;
 		Asset shareholdersAsset;
@@ -419,6 +599,23 @@ public:
 		FillWinnersInfo_output fillWinnersInfoOutput;
 	};
 
+	struct ProcessAutoTickets_input
+	{
+	};
+	struct ProcessAutoTickets_output
+	{
+	};
+	struct ProcessAutoTickets_locals
+	{
+		sint64 currentIndex;
+		sint64 slotsLeft;
+		uint64 affordable;
+		sint64 toBuy;
+		AutoParticipant entry;
+		AllocateRandomTickets_input allocateInput;
+		AllocateRandomTickets_output allocateOutput;
+	};
+
 	struct BEGIN_TICK_locals
 	{
 		uint32 currentDateStamp;
@@ -428,6 +625,14 @@ public:
 		uint8 isScheduledToday;
 		SettleRound_input settleInput;
 		SettleRound_output settleOutput;
+		ProcessAutoTickets_input autoTicketsInput;
+		ProcessAutoTickets_output autoTicketsOutput;
+	};
+
+	struct BEGIN_EPOCH_locals
+	{
+		ProcessAutoTickets_input autoTicketsInput;
+		ProcessAutoTickets_output autoTicketsOutput;
 	};
 
 public:
@@ -442,6 +647,8 @@ public:
 		REGISTER_USER_FUNCTION(GetWinningDigits, 7);
 		REGISTER_USER_FUNCTION(GetBalance, 8);
 		REGISTER_USER_FUNCTION(GetWinners, 9);
+		REGISTER_USER_FUNCTION(GetAutoParticipation, 10);
+		REGISTER_USER_FUNCTION(GetAutoStats, 11);
 
 		REGISTER_USER_PROCEDURE(BuyTicket, 1);
 		REGISTER_USER_PROCEDURE(SetPrice, 2);
@@ -450,6 +657,10 @@ public:
 		REGISTER_USER_PROCEDURE(SetFees, 5);
 		REGISTER_USER_PROCEDURE(SetQHeartHoldLimit, 6);
 		REGISTER_USER_PROCEDURE(BuyRandomTickets, 7);
+		REGISTER_USER_PROCEDURE(DepositAutoParticipation, 8);
+		REGISTER_USER_PROCEDURE(WithdrawAutoParticipation, 9);
+		REGISTER_USER_PROCEDURE(SetAutoConfig, 10);
+		REGISTER_USER_PROCEDURE(SetAutoLimits, 11);
 	}
 
 	INITIALIZE()
@@ -468,10 +679,12 @@ public:
 		state.drawHour = PULSE_DEFAULT_DRAW_HOUR;
 		state.lastDrawDateStamp = PULSE_DEFAULT_INIT_TIME;
 
+		state.maxAutoTicketsPerUser = PULSE_DEFAULT_MAX_AUTO_TICKETS_PER_USER;
+
 		enableBuyTicket(state, false);
 	}
 
-	BEGIN_EPOCH()
+	BEGIN_EPOCH_WITH_LOCALS()
 	{
 		if (state.schedule == 0)
 		{
@@ -484,6 +697,10 @@ public:
 
 		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), state.lastDrawDateStamp);
 		enableBuyTicket(state, state.lastDrawDateStamp != PULSE_DEFAULT_INIT_TIME);
+		if (state.lastDrawDateStamp != PULSE_DEFAULT_INIT_TIME)
+		{
+			CALL(ProcessAutoTickets, locals.autoTicketsInput, locals.autoTicketsOutput);
+		}
 	}
 
 	END_EPOCH()
@@ -523,6 +740,7 @@ public:
 		if (state.lastDrawDateStamp == PULSE_DEFAULT_INIT_TIME)
 		{
 			enableBuyTicket(state, true);
+			CALL(ProcessAutoTickets, locals.autoTicketsInput, locals.autoTicketsOutput);
 			if (locals.isWednesday)
 			{
 				state.lastDrawDateStamp = locals.currentDateStamp;
@@ -551,6 +769,10 @@ public:
 
 		clearStateOnEndDraw(state);
 		enableBuyTicket(state, !locals.isWednesday);
+		if (!locals.isWednesday)
+		{
+			CALL(ProcessAutoTickets, locals.autoTicketsInput, locals.autoTicketsOutput);
+		}
 	}
 
 	// Returns current ticket price in QHeart units.
@@ -587,6 +809,31 @@ public:
 	{
 		output.winners = state.winners;
 		getWinnerCounter(state, output.winnersCounter);
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	/// Returns auto-participation settings for the invocator.
+	/// @return Current deposit, config fields, and status code.
+	PUBLIC_FUNCTION_WITH_LOCALS(GetAutoParticipation)
+	{
+		if (!state.autoParticipants.get(qpi.invocator(), locals.entry))
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		output.deposit = locals.entry.deposit;
+		output.desiredTickets = locals.entry.desiredTickets;
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	/// Returns global auto-participation limits and counters.
+	/// @return Current counters, limits, and status code.
+	PUBLIC_FUNCTION(GetAutoStats)
+	{
+		output.autoParticipantsCounter = static_cast<uint16>(state.autoParticipants.population());
+		output.maxAutoTicketsPerUser = state.maxAutoTicketsPerUser;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -713,13 +960,229 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
+	/** Deposits QHeart into the contract for automatic ticket purchases.
+	 * @param amount QHeart amount to reserve for auto participation.
+	 * @param desiredTickets Number of tickets to buy per draw
+	 * @param buyNow When true, tries to buy immediately if selling is open.
+	 * @return Status code describing the result.
+	 */
+	PUBLIC_PROCEDURE_WITH_LOCALS(DepositAutoParticipation)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (state.autoParticipants.population() >= state.autoParticipants.capacity())
+		{
+			output.returnCode = toReturnCode(EReturnCode::AUTO_PARTICIPANTS_FULL);
+			return;
+		}
+
+		if (input.amount == 0 || input.desiredTickets == 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		if (state.maxAutoTicketsPerUser != 0)
+		{
+			input.desiredTickets = min(input.desiredTickets, state.maxAutoTicketsPerUser);
+		}
+
+		locals.userBalance =
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
+		input.amount = min(locals.userBalance, input.amount);
+
+		locals.totalPrice = smul(state.ticketPrice, static_cast<sint64>(input.desiredTickets));
+
+		if (input.amount < locals.totalPrice)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
+			return;
+		}
+
+		if (input.buyNow && isSellingOpen(state))
+		{
+			locals.buyRandomTicketsInput.count = input.desiredTickets;
+			CALL(BuyRandomTickets, locals.buyRandomTicketsInput, locals.buyRandomTicketsOutput);
+			if (locals.buyRandomTicketsOutput.returnCode != toReturnCode(EReturnCode::SUCCESS))
+			{
+				output.returnCode = locals.buyRandomTicketsOutput.returnCode;
+				return;
+			}
+
+			input.buyNow = false;
+			input.amount = input.amount - locals.totalPrice;
+
+			// The entire deposit was spent
+			if (input.amount <= 0)
+			{
+				output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+				return;
+			}
+		}
+
+		state.autoParticipants.get(qpi.invocator(), locals.entry);
+		locals.entry.player = qpi.invocator();
+
+		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, qpi.invocator(),
+		                                                                qpi.invocator(), input.amount, SELF);
+		if (locals.transferResult < 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TRANSFER_TO_PULSE_FAILED);
+			return;
+		}
+
+		locals.entry.deposit = sadd(locals.entry.deposit, input.amount);
+		if (input.desiredTickets > 0)
+		{
+			locals.entry.desiredTickets = input.desiredTickets;
+		}
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	/// Withdraws QHeart from the invocator's auto-participation deposit.
+	/// @param amount QHeart amount to withdraw; 0 withdraws the full deposit.
+	/// @return Status code describing the result.
+	PUBLIC_PROCEDURE_WITH_LOCALS(WithdrawAutoParticipation)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (!state.autoParticipants.contains(qpi.invocator()))
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		if (!state.autoParticipants.get(qpi.invocator(), locals.entry))
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		locals.withdrawAmount = (input.amount <= 0) ? locals.entry.deposit : min(input.amount, locals.entry.deposit);
+
+		if (locals.withdrawAmount == 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		locals.transferResult =
+		    qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, locals.withdrawAmount, qpi.invocator());
+		if (locals.transferResult < 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TRANSFER_FROM_PULSE_FAILED);
+			return;
+		}
+
+		locals.entry.deposit -= locals.withdrawAmount;
+
+		if (locals.entry.deposit <= 0)
+		{
+			state.autoParticipants.removeByKey(qpi.invocator());
+			state.autoParticipants.cleanupIfNeeded(PULSE_CLEANUP_THRESHOLD);
+		}
+		else
+		{
+			state.autoParticipants.set(qpi.invocator(), locals.entry);
+		}
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	/// Sets auto-participation config for the invocator.
+	/// @param desiredTickets Signed: -1 ignore, 0 disable, >0 set new value.
+	/// @param minTicketsToBuy Signed: -1 ignore, 0 disable, >0 set new value.
+	/// @return Status code describing the result.
+	PUBLIC_PROCEDURE_WITH_LOCALS(SetAutoConfig)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (input.desiredTickets < -1)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		if (!state.autoParticipants.contains(qpi.invocator()))
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		input.desiredTickets = min(input.desiredTickets, state.maxAutoTicketsPerUser);
+
+		state.autoParticipants.get(qpi.invocator(), locals.entry);
+
+		locals.desiredValue = locals.entry.desiredTickets;
+
+		if (input.desiredTickets != -1)
+		{
+			if (input.desiredTickets < 0)
+			{
+				output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+				return;
+			}
+			locals.desiredValue = static_cast<uint16>(input.desiredTickets);
+		}
+
+		locals.entry.desiredTickets = locals.desiredValue;
+
+		if (locals.entry.deposit == 0 && locals.entry.desiredTickets == 0)
+		{
+			locals.removedIndex = state.autoParticipants.removeByKey(qpi.invocator());
+			state.autoParticipants.cleanupIfNeeded(PULSE_CLEANUP_THRESHOLD);
+		}
+		else
+		{
+			state.autoParticipants.set(qpi.invocator(), locals.entry);
+		}
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	/// Sets auto-participation limits (owner-only).
+	/// @param maxTicketsPerUser Max tickets per user; 0 disables the limit.
+	/// @param maxDepositPerUser Max deposit per user; 0 disables the limit.
+	/// @return Status code describing the result.
+	PUBLIC_PROCEDURE(SetAutoLimits)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (qpi.invocator() != PULSE_QHEART_ISSUER)
+		{
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			return;
+		}
+
+		if (input.maxTicketsPerUser != 0 && input.maxTicketsPerUser > PULSE_MAX_NUMBER_OF_PLAYERS)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		state.maxAutoTicketsPerUser = input.maxTicketsPerUser;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
 	// Buys a single ticket; transfers ticket price from invocator.
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicket)
 	{
-		locals.reward = qpi.invocationReward();
-		if (locals.reward > 0)
+		if (qpi.invocationReward() > 0)
 		{
-			qpi.transfer(qpi.invocator(), locals.reward);
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
 		if (!isSellingOpen(state))
@@ -736,7 +1199,7 @@ public:
 			return;
 		}
 
-		locals.slotsLeft = (state.ticketCounter < state.tickets.capacity()) ? (state.tickets.capacity() - state.ticketCounter) : 0;
+		locals.slotsLeft = getSlotsLeft(state);
 		if (locals.slotsLeft == 0)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TICKET_ALL_SOLD_OUT);
@@ -745,14 +1208,14 @@ public:
 
 		locals.userBalance =
 		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
-		if (locals.userBalance < static_cast<sint64>(state.ticketPrice))
+		if (locals.userBalance < state.ticketPrice)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
 			return;
 		}
 
 		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, qpi.invocator(),
-		                                                                qpi.invocator(), static_cast<sint64>(state.ticketPrice), SELF);
+		                                                                qpi.invocator(), state.ticketPrice, SELF);
 		if (locals.transferResult < 0)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
@@ -762,7 +1225,7 @@ public:
 		locals.ticket.player = qpi.invocator();
 		locals.ticket.digits = input.digits;
 		state.tickets.set(state.ticketCounter, locals.ticket);
-		state.ticketCounter = min(state.ticketCounter + 1, state.tickets.capacity());
+		state.ticketCounter = min(static_cast<uint64>(state.ticketCounter) + 1ull, state.tickets.capacity());
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
@@ -770,66 +1233,101 @@ public:
 	// Buys multiple random tickets; transfers total price from invocator.
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyRandomTickets)
 	{
-		locals.reward = qpi.invocationReward();
-		if (locals.reward > 0)
+		if (qpi.invocationReward() > 0)
 		{
-			qpi.transfer(qpi.invocator(), locals.reward);
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (!isSellingOpen(state))
+		locals.prepareInput.count = input.count;
+		CALL(PrepareRandomTickets, locals.prepareInput, locals.prepareOutput);
+		if (locals.prepareOutput.returnCode != toReturnCode(EReturnCode::SUCCESS))
 		{
-			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
+			output.returnCode = locals.prepareOutput.returnCode;
 			return;
 		}
 
-		if (input.count == 0)
+		locals.chargeInput.player = qpi.invocator();
+		locals.chargeInput.count = locals.prepareOutput.count;
+		CALL(ChargeTicketsFromPlayer, locals.chargeInput, locals.chargeOutput);
+		if (locals.chargeOutput.returnCode != toReturnCode(EReturnCode::SUCCESS))
 		{
-			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			output.returnCode = locals.chargeOutput.returnCode;
 			return;
 		}
 
-		locals.slotsLeft = (state.ticketCounter < state.tickets.capacity()) ? (state.tickets.capacity() - state.ticketCounter) : 0;
-		if (locals.slotsLeft < input.count)
-		{
-			output.returnCode = toReturnCode(EReturnCode::TICKET_ALL_SOLD_OUT);
-			return;
-		}
+		locals.allocateInput.player = qpi.invocator();
+		locals.allocateInput.count = locals.prepareOutput.count;
+		CALL(AllocateRandomTickets, locals.allocateInput, locals.allocateOutput);
 
-		locals.totalPrice = smul(static_cast<uint64>(input.count), state.ticketPrice);
-		locals.userBalance =
-		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
-		if (locals.userBalance < static_cast<sint64>(locals.totalPrice))
-		{
-			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
-			return;
-		}
-
-		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, qpi.invocator(),
-		                                                                qpi.invocator(), static_cast<sint64>(locals.totalPrice), SELF);
-		if (locals.transferResult < 0)
-		{
-			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
-			return;
-		}
-
-		locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
-		locals.randomSeed = qpi.K12(locals.mixedSpectrumValue).u64._0;
-		for (locals.i = 0; locals.i < input.count; ++locals.i)
-		{
-			deriveOne(locals.randomSeed, locals.i, locals.tempSeed);
-			locals.randomInput.seed = locals.tempSeed;
-			CALL(GetRandomDigits, locals.randomInput, locals.randomOutput);
-
-			locals.ticket.player = qpi.invocator();
-			locals.ticket.digits = locals.randomOutput.digits;
-			state.tickets.set(state.ticketCounter, locals.ticket);
-			state.ticketCounter = min(state.ticketCounter + 1, state.tickets.capacity());
-		}
-
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		output.returnCode = locals.allocateOutput.returnCode;
 	}
 
 private:
+	PRIVATE_PROCEDURE_WITH_LOCALS(ProcessAutoTickets)
+	{
+		if (!isSellingOpen(state) || state.autoParticipants.population() == 0)
+		{
+			return;
+		}
+
+		locals.slotsLeft = getSlotsLeft(state);
+		if (locals.slotsLeft == 0)
+		{
+			return;
+		}
+
+		locals.currentIndex = state.autoParticipants.nextElementIndex(NULL_INDEX);
+		while (locals.currentIndex != NULL_INDEX)
+		{
+			locals.slotsLeft = getSlotsLeft(state);
+			if (locals.slotsLeft == 0)
+			{
+				break;
+			}
+
+			locals.entry = state.autoParticipants.value(locals.currentIndex);
+
+			locals.affordable = div<sint64>(locals.entry.deposit, state.ticketPrice);
+			if (locals.affordable == 0)
+			{
+				state.autoParticipants.removeByIndex(locals.currentIndex);
+				locals.currentIndex = state.autoParticipants.nextElementIndex(locals.currentIndex);
+				continue;
+			}
+
+			locals.toBuy = static_cast<sint64>(min(locals.affordable, static_cast<uint64>(locals.entry.desiredTickets)));
+			locals.toBuy = min(locals.toBuy, locals.slotsLeft);
+			if (locals.toBuy <= 0)
+			{
+				locals.currentIndex = state.autoParticipants.nextElementIndex(locals.currentIndex);
+				continue;
+			}
+
+			locals.allocateInput.player = locals.entry.player;
+			locals.allocateInput.count = static_cast<uint16>(locals.toBuy);
+			CALL(AllocateRandomTickets, locals.allocateInput, locals.allocateOutput);
+			if (locals.allocateOutput.returnCode != toReturnCode(EReturnCode::SUCCESS))
+			{
+				locals.currentIndex = state.autoParticipants.nextElementIndex(locals.currentIndex);
+				continue;
+			}
+
+			locals.entry.deposit -= smul(locals.toBuy, state.ticketPrice);
+			if (locals.entry.deposit <= 0)
+			{
+				state.autoParticipants.removeByIndex(locals.currentIndex);
+			}
+			else
+			{
+				state.autoParticipants.set(locals.entry.player, locals.entry);
+			}
+
+			locals.currentIndex = state.autoParticipants.nextElementIndex(locals.currentIndex);
+		}
+
+		state.autoParticipants.cleanupIfNeeded(PULSE_CLEANUP_THRESHOLD);
+	}
+
 	PRIVATE_FUNCTION_WITH_LOCALS(ValidateDigits)
 	{
 		output.isValid = true;
@@ -863,7 +1361,7 @@ private:
 			return;
 		}
 
-		locals.roundRevenue = static_cast<sint64>(smul(state.ticketPrice, state.ticketCounter));
+		locals.roundRevenue = smul(state.ticketPrice, state.ticketCounter);
 		locals.devAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.devPercent)), 100LL);
 		locals.burnAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.burnPercent)), 100LL);
 		locals.shareholdersAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.shareholdersPercent)), 100LL);
@@ -871,8 +1369,7 @@ private:
 
 		if (locals.devAmount > 0)
 		{
-			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, static_cast<sint64>(locals.devAmount),
-			                                        state.teamAddress);
+			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, locals.devAmount, state.teamAddress);
 		}
 		if (locals.shareholdersAmount > 0)
 		{
@@ -899,8 +1396,7 @@ private:
 		}
 		if (locals.burnAmount > 0)
 		{
-			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, static_cast<sint64>(locals.burnAmount),
-			                                        NULL_ID);
+			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, locals.burnAmount, NULL_ID);
 		}
 		if (locals.qheartAmount > 0)
 		{
@@ -925,7 +1421,6 @@ private:
 			locals.totalPrize += locals.prize;
 		}
 
-		locals.availableBalance = locals.balance;
 		for (locals.i = 0; locals.i < state.ticketCounter; ++locals.i)
 		{
 			locals.ticket = state.tickets.get(locals.i);
@@ -977,6 +1472,99 @@ private:
 		state.winners.set(locals.insertIdx, locals.winnerInfo);
 	}
 
+	PRIVATE_PROCEDURE_WITH_LOCALS(PrepareRandomTickets)
+	{
+		if (input.count == 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			output.count = 0;
+			return;
+		}
+
+		if (!isSellingOpen(state))
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
+			output.count = 0;
+			return;
+		}
+
+		locals.slotsLeft = getSlotsLeft(state);
+		output.count = min(input.count, static_cast<uint16>(locals.slotsLeft));
+		if (output.count == 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_ALL_SOLD_OUT);
+			return;
+		}
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(ChargeTicketsFromPlayer)
+	{
+		if (input.count == 0 || input.player == id::zero())
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		locals.totalPrice = smul(static_cast<sint64>(input.count), state.ticketPrice);
+		locals.userBalance =
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, input.player, input.player, SELF_INDEX, SELF_INDEX);
+		if (locals.userBalance < static_cast<sint64>(locals.totalPrice))
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
+			return;
+		}
+
+		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, input.player, input.player,
+		                                                                static_cast<sint64>(locals.totalPrice), SELF);
+		if (locals.transferResult < 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TRANSFER_TO_PULSE_FAILED);
+			return;
+		}
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(AllocateRandomTickets)
+	{
+		if (input.count == 0 || input.player == id::zero())
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		if (!isSellingOpen(state))
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
+			return;
+		}
+
+		locals.slotsLeft = getSlotsLeft(state);
+		if (locals.slotsLeft < input.count)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_ALL_SOLD_OUT);
+			return;
+		}
+
+		locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
+		locals.randomSeed = qpi.K12(locals.mixedSpectrumValue).u64._0;
+		for (locals.i = 0; locals.i < input.count; ++locals.i)
+		{
+			deriveOne(locals.randomSeed, locals.i, locals.tempSeed);
+			locals.randomInput.seed = locals.tempSeed;
+			CALL(GetRandomDigits, locals.randomInput, locals.randomOutput);
+
+			locals.ticket.player = input.player;
+			locals.ticket.digits = locals.randomOutput.digits;
+			state.tickets.set(state.ticketCounter, locals.ticket);
+			state.ticketCounter = min(static_cast<uint64>(state.ticketCounter) + 1ULL, state.tickets.capacity());
+		}
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
 public:
 	// Encodes YYYY/MM/DD into a compact sortable date stamp.
 	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
@@ -997,15 +1585,24 @@ public:
 		outValue ^= outValue >> 31;
 	}
 
+	static sint64 getSlotsLeft(const PULSE& state)
+	{
+		return state.ticketCounter < state.tickets.capacity() ? (state.tickets.capacity() - state.ticketCounter) : 0;
+	}
+
 protected:
 	// Ring buffer of recent winners; index is winnersCounter % capacity.
 	Array<WinnerInfo, PULSE_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
 	// Tickets for the current round; valid range is [0, ticketCounter).
 	Array<Ticket, PULSE_MAX_NUMBER_OF_PLAYERS> tickets;
+	// Auto-buy participants keyed by user id.
+	HashMap<id, AutoParticipant, PULSE_MAX_NUMBER_OF_AUTO_PARTICIPANTS> autoParticipants;
 	// Last settled winning digits; undefined before the first draw.
 	Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> lastWinningDigits;
-	uint64 ticketCounter;
-	uint64 ticketPrice;
+	sint64 ticketCounter;
+	sint64 ticketPrice;
+	// Per-user auto-purchase limits; 0 means unlimited.
+	sint16 maxAutoTicketsPerUser;
 	// Contract balance above this cap is swept to the QHeart wallet after settlement.
 	uint64 qheartHoldLimit;
 	// Date stamp of the most recent draw; PULSE_DEFAULT_INIT_TIME is a bootstrap sentinel.
