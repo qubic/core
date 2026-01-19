@@ -167,7 +167,7 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		p->timeoutNoRevealCount = stats.timeoutNoRevealCount;
 		p->oracleMachineRepliesDisagreeCount = stats.oracleMachineRepliesDisagreeCount;
 		p->oracleMachineReplyAvgMilliTicksPerQuery = (stats.oracleMachineReplyCount) ? stats.oracleMachineReplyTicksSum * 1000 / stats.oracleMachineReplyCount : 0;
-		p->commitAvgMilliTicksPerQuery = (stats.commitCount) ? stats.successTicksSum * 1000 / stats.successCount : 0;
+		p->commitAvgMilliTicksPerQuery = (stats.commitCount) ? stats.commitTicksSum * 1000 / stats.commitCount : 0;
 		p->successAvgMilliTicksPerQuery = (stats.successCount) ? stats.successTicksSum * 1000 / stats.successCount : 0;
 		p->timeoutAvgMilliTicksPerQuery = (totalTimeouts) ? stats.timeoutTicksSum * 1000 / totalTimeouts : 0;
 

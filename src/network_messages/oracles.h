@@ -121,6 +121,7 @@ struct RespondOracleDataQueryStatistics
     uint64_t pendingRevealCount;
 
     uint64_t successfulCount;
+    uint64_t revealTxCount;
 
     uint64_t unresolvableCount;
 
