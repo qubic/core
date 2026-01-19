@@ -410,12 +410,27 @@ public:
         LOG_INFO(locals.log);
     }
 
-    PUBLIC_PROCEDURE(TransferShareManagementRights)
+    struct TransferShareManagementRights_locals
+    {
+        ICOInfo ico;
+        uint32 i;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
 	{
 		if (qpi.invocationReward() < state.transferRightsFee)
 		{
 			return ;
 		}
+
+        for (locals.i = 0 ; locals.i < state.numberOfICO; locals.i++)
+        {
+            locals.ico = state.icos.get(locals.i);
+            if (locals.ico.issuer == input.asset.issuer && locals.ico.assetName == input.asset.assetName) 
+            {
+                return ;
+            }
+        }
 
 		if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer,qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
 		{
@@ -467,12 +482,12 @@ public:
 	struct END_EPOCH_locals
 	{
         ICOInfo ico;
-        uint32 idx;
+        sint32 idx;
 	};
 
 	END_EPOCH_WITH_LOCALS()
 	{
-		for(locals.idx = 0; locals.idx < state.numberOfICO; locals.idx++)
+		for(locals.idx = 0; locals.idx < (sint32)state.numberOfICO; locals.idx++)
 		{
             locals.ico = state.icos.get(locals.idx);
             if (locals.ico.startEpoch == qpi.epoch() && locals.ico.remainingAmountForPhase1 > 0)
@@ -487,11 +502,15 @@ public:
                 locals.ico.remainingAmountForPhase2 = 0;
                 state.icos.set(locals.idx, locals.ico);
             }
-            if (locals.ico.startEpoch + 2 == qpi.epoch() && locals.ico.remainingAmountForPhase3 > 0)
+            if (locals.ico.startEpoch + 2 == qpi.epoch())
             {
-                qpi.transferShareOwnershipAndPossession(locals.ico.assetName, locals.ico.issuer, SELF, SELF, locals.ico.remainingAmountForPhase3, locals.ico.creatorOfICO);
+                if (locals.ico.remainingAmountForPhase3 > 0) 
+                {
+                    qpi.transferShareOwnershipAndPossession(locals.ico.assetName, locals.ico.issuer, SELF, SELF, locals.ico.remainingAmountForPhase3, locals.ico.creatorOfICO);
+                }
                 state.icos.set(locals.idx, state.icos.get(state.numberOfICO - 1));
                 state.numberOfICO--;
+                locals.idx--;
             }
 		}
 	}

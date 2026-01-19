@@ -1426,11 +1426,19 @@ TEST(ContractQIP, TransferShareManagementRights)
     // Transfer management rights
     sint64 transferAmount = 100000;
     
-    increaseEnergy(creator, QIP_TRANSFER_RIGHTS_FEE);
+    increaseEnergy(creator, QIP_TRANSFER_RIGHTS_FEE * 2);
+    QIP.endEpoch();
+    system.epoch += 1;
+    QIP.endEpoch();
+    system.epoch += 1;
     sint64 transferred = QIP.transferShareManagementRights(creator, asset, transferAmount, QX_CONTRACT_INDEX, QIP_TRANSFER_RIGHTS_FEE);
+    EXPECT_EQ(transferred, 0);
+    QIP.endEpoch();
+    transferred = QIP.transferShareManagementRights(creator, asset, transferAmount, QX_CONTRACT_INDEX, QIP_TRANSFER_RIGHTS_FEE);
     EXPECT_EQ(transferred, transferAmount);
     
     // Verify shares were transferred
-    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, QIP_CONTRACT_ID, QIP_CONTRACT_ID, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), totalShares - transferAmount);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, QIP_CONTRACT_ID, QIP_CONTRACT_ID, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, creator, creator, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), totalShares - transferAmount);
 }
 
