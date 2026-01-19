@@ -157,7 +157,7 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		p->pendingCount = pendingQueryIndices.numValues;
 		p->pendingOracleMachineCount = pendingQueryIndices.numValues - pendingCommitReplyStateIndices.numValues - pendingRevealReplyStateIndices.numValues;
 		p->pendingCommitCount = pendingCommitReplyStateIndices.numValues;
-		p->pendingReplyCount = pendingRevealReplyStateIndices.numValues;
+		p->pendingRevealCount = pendingRevealReplyStateIndices.numValues;
 		p->successfulCount = stats.successCount;
 		p->unresolvableCount = stats.unresolvableCount;
 		const uint64_t totalTimeouts = stats.timeoutNoReplyCount + stats.timeoutNoCommitCount + stats.timeoutNoReplyCount;

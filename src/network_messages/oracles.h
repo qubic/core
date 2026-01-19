@@ -118,7 +118,7 @@ struct RespondOracleDataQueryStatistics
     uint64_t pendingCount;
     uint64_t pendingOracleMachineCount;
     uint64_t pendingCommitCount;
-    uint64_t pendingReplyCount;
+    uint64_t pendingRevealCount;
 
     uint64_t successfulCount;
 
