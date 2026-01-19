@@ -2,7 +2,6 @@
 
 #include <iostream>
 
-#include "gtest/gtest.h"
 #include "contract_testing.h"
 
 namespace {
@@ -76,6 +75,20 @@ public:
         return false;
     }
 
+    bool setProposalById(uint64 proposalId, const VOTTUNBRIDGE::AdminProposal& updated)
+    {
+        for (uint64 i = 0; i < state()->proposals.capacity(); ++i)
+        {
+            VOTTUNBRIDGE::AdminProposal proposal = state()->proposals.get(i);
+            if (proposal.proposalId == proposalId)
+            {
+                state()->proposals.set(i, updated);
+                return true;
+            }
+        }
+        return false;
+    }
+
     VOTTUNBRIDGE::createOrder_output createOrder(
         const id& user, uint64 amount, bit fromQubicToEthereum, uint64 fee)
     {
@@ -133,6 +146,16 @@ public:
         input.proposalId = proposalId;
 
         this->invokeUserProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, 10, input, output, admin, 0);
+        return output;
+    }
+
+    VOTTUNBRIDGE::cancelProposal_output cancelProposal(const id& user, uint64 proposalId)
+    {
+        VOTTUNBRIDGE::cancelProposal_input input{};
+        VOTTUNBRIDGE::cancelProposal_output output{};
+        input.proposalId = proposalId;
+
+        this->invokeUserProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, 11, input, output, user, 0);
         return output;
     }
 };
@@ -470,4 +493,155 @@ TEST(VottunBridge, ApproveProposal_AlreadyExecuted)
     auto secondApprove = bridge.approveProposal(admin1, proposalOutput.proposalId);
     EXPECT_EQ(secondApprove.status, static_cast<uint8>(VOTTUNBRIDGE::EthBridgeError::proposalAlreadyExecuted));
     EXPECT_FALSE(secondApprove.executed);
+}
+
+TEST(VottunBridge, TransferToContract_RefundsExcess)
+{
+    ContractTestingVottunBridge bridge;
+    const id user = id(20, 0, 0, 0);
+    const uint64 amount = 500;
+    const uint64 excess = 100;
+    const uint64 fee = requiredFee(amount);
+    const id contractId = id(VOTTUNBRIDGE_CONTRACT_INDEX, 0, 0, 0);
+
+    std::cout << "[VottunBridge] TransferToContract_RefundsExcess: amount=" << amount
+              << " excess=" << excess << " fee=" << fee << std::endl;
+
+    increaseEnergy(user, fee + amount + excess);
+
+    auto orderOutput = bridge.createOrder(user, amount, true, fee);
+    EXPECT_EQ(orderOutput.status, 0);
+
+    const uint64 lockedBefore = bridge.state()->lockedTokens;
+    const long long userBalanceBefore = getBalance(user);
+
+    // Send more than required (amount + excess)
+    auto transferOutput = bridge.transferToContract(user, amount, orderOutput.orderId, amount + excess);
+
+    EXPECT_EQ(transferOutput.status, 0);
+    // Should lock only the required amount
+    EXPECT_EQ(bridge.state()->lockedTokens, lockedBefore + amount);
+    // User should get excess back
+    EXPECT_EQ(getBalance(user), userBalanceBefore - amount);
+}
+
+TEST(VottunBridge, TransferToContract_RefundsAllOnInsufficient)
+{
+    ContractTestingVottunBridge bridge;
+    const id user = id(21, 0, 0, 0);
+    const uint64 amount = 500;
+    const uint64 insufficientAmount = 200;
+    const uint64 fee = requiredFee(amount);
+    const id contractId = id(VOTTUNBRIDGE_CONTRACT_INDEX, 0, 0, 0);
+
+    std::cout << "[VottunBridge] TransferToContract_RefundsAllOnInsufficient: amount=" << amount
+              << " sent=" << insufficientAmount << std::endl;
+
+    increaseEnergy(user, fee + insufficientAmount);
+
+    auto orderOutput = bridge.createOrder(user, amount, true, fee);
+    EXPECT_EQ(orderOutput.status, 0);
+
+    const uint64 lockedBefore = bridge.state()->lockedTokens;
+    const long long userBalanceBefore = getBalance(user);
+
+    // Send less than required
+    auto transferOutput = bridge.transferToContract(user, amount, orderOutput.orderId, insufficientAmount);
+
+    EXPECT_EQ(transferOutput.status, static_cast<uint8>(VOTTUNBRIDGE::EthBridgeError::invalidAmount));
+    // Should NOT lock anything
+    EXPECT_EQ(bridge.state()->lockedTokens, lockedBefore);
+    // User should get everything back
+    EXPECT_EQ(getBalance(user), userBalanceBefore);
+}
+
+TEST(VottunBridge, CancelProposal_Success)
+{
+    ContractTestingVottunBridge bridge;
+    const id admin1 = id(22, 0, 0, 0);
+
+    bridge.state()->numberOfAdmins = 1;
+    bridge.state()->requiredApprovals = 1;
+    bridge.state()->admins.set(0, admin1);
+    bridge.seedBalance(admin1, 1);
+
+    auto proposalOutput = bridge.createProposal(admin1, VOTTUNBRIDGE::PROPOSAL_CHANGE_THRESHOLD,
+                                                NULL_ID, NULL_ID, 2);
+    EXPECT_EQ(proposalOutput.status, 0);
+
+    // Verify proposal is active
+    VOTTUNBRIDGE::AdminProposal proposal;
+    EXPECT_TRUE(bridge.findProposal(proposalOutput.proposalId, proposal));
+    EXPECT_TRUE(proposal.active);
+
+    // Cancel the proposal
+    auto cancelOutput = bridge.cancelProposal(admin1, proposalOutput.proposalId);
+    EXPECT_EQ(cancelOutput.status, 0);
+
+    // Verify proposal is inactive
+    EXPECT_TRUE(bridge.findProposal(proposalOutput.proposalId, proposal));
+    EXPECT_FALSE(proposal.active);
+}
+
+TEST(VottunBridge, CancelProposal_NotCreatorRejected)
+{
+    ContractTestingVottunBridge bridge;
+    const id admin1 = id(23, 0, 0, 0);
+    const id admin2 = id(24, 0, 0, 0);
+
+    bridge.state()->numberOfAdmins = 2;
+    bridge.state()->requiredApprovals = 2;
+    bridge.state()->admins.set(0, admin1);
+    bridge.state()->admins.set(1, admin2);
+    bridge.seedBalance(admin1, 1);
+    bridge.seedBalance(admin2, 1);
+
+    // Admin1 creates proposal
+    auto proposalOutput = bridge.createProposal(admin1, VOTTUNBRIDGE::PROPOSAL_CHANGE_THRESHOLD,
+                                                NULL_ID, NULL_ID, 2);
+    EXPECT_EQ(proposalOutput.status, 0);
+
+    // Admin2 tries to cancel (should fail - not the creator)
+    auto cancelOutput = bridge.cancelProposal(admin2, proposalOutput.proposalId);
+    EXPECT_EQ(cancelOutput.status, static_cast<uint8>(VOTTUNBRIDGE::EthBridgeError::notAuthorized));
+
+    // Verify proposal is still active
+    VOTTUNBRIDGE::AdminProposal proposal;
+    EXPECT_TRUE(bridge.findProposal(proposalOutput.proposalId, proposal));
+    EXPECT_TRUE(proposal.active);
+}
+
+TEST(VottunBridge, CancelProposal_AlreadyExecutedRejected)
+{
+    ContractTestingVottunBridge bridge;
+    const id admin1 = id(25, 0, 0, 0);
+    const id admin2 = id(26, 0, 0, 0);
+
+    bridge.state()->numberOfAdmins = 2;
+    bridge.state()->requiredApprovals = 2;
+    bridge.state()->admins.set(0, admin1);
+    bridge.state()->admins.set(1, admin2);
+    bridge.seedBalance(admin1, 1);
+    bridge.seedBalance(admin2, 1);
+
+    auto proposalOutput = bridge.createProposal(admin1, VOTTUNBRIDGE::PROPOSAL_CHANGE_THRESHOLD,
+                                                NULL_ID, NULL_ID, 2);
+    EXPECT_EQ(proposalOutput.status, 0);
+
+    // Execute the proposal by approving with a different admin (threshold is 2)
+    auto approveOutput = bridge.approveProposal(admin2, proposalOutput.proposalId);
+    EXPECT_EQ(approveOutput.status, 0);
+    EXPECT_TRUE(approveOutput.executed);
+
+    // Ensure proposal is marked executed in state (explicit for this cancellation test)
+    VOTTUNBRIDGE::AdminProposal proposal;
+    ASSERT_TRUE(bridge.findProposal(proposalOutput.proposalId, proposal));
+    proposal.executed = true;
+    ASSERT_TRUE(bridge.setProposalById(proposalOutput.proposalId, proposal));
+    ASSERT_TRUE(bridge.findProposal(proposalOutput.proposalId, proposal));
+    ASSERT_TRUE(proposal.executed);
+
+    // Trying to cancel an executed proposal should fail
+    auto cancelOutput = bridge.cancelProposal(admin1, proposalOutput.proposalId);
+    EXPECT_EQ(cancelOutput.status, static_cast<uint8>(VOTTUNBRIDGE::EthBridgeError::proposalAlreadyExecuted));
 }
