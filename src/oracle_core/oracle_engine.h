@@ -282,6 +282,9 @@ protected:
 
         /// total number of oracle machin replies that disagree with the first reply received for a query
         unsigned long long oracleMachineRepliesDisagreeCount;
+
+        /// total number of reply reveal transactions
+        unsigned long long revealTxCount;
     } stats;
 
 #if ENABLE_ORACLE_STATS_RECORD
@@ -1157,6 +1160,10 @@ public:
         // lock for accessing engine data
         LockGuard lockGuard(lock);
 
+        // track how many reveal tx are processed in total for later optimizing code to achieve minimal overall
+        // oracle reply latency with low number of reveal tx
+        ++stats.revealTxCount;
+
         // check tx and get reply state + query metadata
         uint32_t queryIndex;
         ReplyState* replyState = checkReplyRevealTransaction(transaction, &queryIndex);
@@ -1448,24 +1455,30 @@ public:
         appendNumber(message, pendingRevealReplyStateIndices.numValues, FALSE);
         // print how many ticks it takes on average until success (ticks until 1 reveal tx got executed)
         appendQuotientWithOneDecimal(message, stats.successTicksSum, stats.successCount);
-        appendText(message, " ticks), ");
-        appendText(message, ", successful ");
+        appendText(message, " ticks), successful ");
         appendNumber(message, stats.successCount, FALSE);
         appendText(message, ", unresolvable ");
         appendNumber(message, stats.unresolvableCount, FALSE);
         appendText(message, ", timeout ");
-        const uint64_t totalTimeouts = stats.timeoutNoReplyCount + stats.timeoutNoCommitCount + stats.timeoutNoReplyCount;
+        const uint64_t totalTimeouts = stats.timeoutNoReplyCount + stats.timeoutNoCommitCount + stats.timeoutNoRevealCount;
         appendNumber(message, totalTimeouts, FALSE);
         appendText(message, " (OM ");
         appendNumber(message, stats.timeoutNoReplyCount, FALSE);
-        appendText(message, " ; commit ");
+        appendText(message, "; commit ");
         appendNumber(message, stats.timeoutNoCommitCount, FALSE);
-        appendText(message, " ; reveal ");
+        appendText(message, "; reveal ");
         appendNumber(message, stats.timeoutNoRevealCount, FALSE);
-        appendText(message, " ; ticks ");
+        appendText(message, "; ticks ");
         appendQuotientWithOneDecimal(message, stats.timeoutTicksSum, totalTimeouts);
         appendText(message, "), conflicting OM replies ");
         appendNumber(message, stats.oracleMachineRepliesDisagreeCount, FALSE);
+        appendText(message, "), query slots occupied ");
+        appendNumber(message, oracleQueryCount * 100 / MAX_ORACLE_QUERIES, FALSE);
+        appendText(message, "%, query storage occupied ");
+        appendNumber(message, queryStorageBytesUsed * 100 / ORACLE_QUERY_STORAGE_SIZE, FALSE);
+        appendText(message, "%");
+        appendQuotientWithOneDecimal(message, stats.revealTxCount, stats.successCount);
+        appendText(message, " reveal tx per success");
         logToConsole(message);
 
 #if ENABLE_ORACLE_STATS_RECORD
