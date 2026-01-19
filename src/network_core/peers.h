@@ -38,6 +38,7 @@ static constexpr unsigned int ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS = 15; // Co
 static constexpr unsigned int ORACLE_MACHINE_TRANSMITING_TIMEOUT_SECS = 30; // Transmitting timeout to OM
 static constexpr unsigned int ORACLE_MACHINE_GRACEFULL_CLOSE_RETIRES = 3; // Gracefull close retries for connecting attemp to OM
 static constexpr unsigned long long OM_RECONNECT_COOLDOWN_SECS = 5;
+static constexpr unsigned char OM_RECV_MAX_RETRIES = 3;
 
 static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
 
@@ -100,6 +101,7 @@ struct Peer
     unsigned long long omTransmitStartTime;
     EFI_STATUS lastOMStatus;
     unsigned long long lastOMCloseTime;
+    unsigned char omRecvRetryCount;
 
     // Extra data to determine if this peer is a fullnode
     // Note: an **active fullnode** is a peer that is able to reply valid tick data, tick vote to this node after getting requested
@@ -164,6 +166,7 @@ struct Peer
         lastOMStatus = EFI_SUCCESS;
         omTransmitStartTime = 0;
         lastOMCloseTime = 0;
+        omRecvRetryCount = 0;
 
         dataToTransmitSize = 0;
         lastActiveTick = 0;
@@ -934,6 +937,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
     return false;
 }
 
+static void receiveData(unsigned int i, unsigned int salt);
 // This function process all data that arrive in FragmentBuffer.
 // based on RequestResponseHeader to determine whether the received packet is completed or not
 // if it receives a completed packet, it will copy the packet to requestQueueElements to process later in requestProcessors
@@ -948,9 +952,39 @@ static void processReceivedData(unsigned int i, unsigned int salt)
             peers[i].isReceiving = FALSE;
             if (peers[i].receiveToken.CompletionToken.Status)
             {
-#ifndef NDEBUG
-                if (peers[i].isOracleMachineNode())
+                EFI_STATUS recvStatus = peers[i].receiveToken.CompletionToken.Status;
+                // Check for transient errors on OM connections that may be retryable
+                // EFI_ABORTED = 0x8000000000000015, EFI_NO_MAPPING = 0x8000000000000069
+                constexpr EFI_STATUS EFI_ERR_ABORTED = 0x8000000000000015ULL;
+                constexpr EFI_STATUS EFI_ERR_NO_MAPPING = 0x8000000000000069ULL;
+
+                if (peers[i].isOracleMachineNode() )
                 {
+                    if((recvStatus == EFI_ERR_ABORTED || recvStatus == EFI_ERR_NO_MAPPING) &&
+                    peers[i].omRecvRetryCount < OM_RECV_MAX_RETRIES)
+                    {
+                        peers[i].omRecvRetryCount++;
+#ifndef NDEBUG
+                        CHAR16 omDbgMsg[128];
+                        setText(omDbgMsg, L"OM: processReceivedData - specific error, status=");
+                        appendNumber(omDbgMsg, recvStatus, FALSE);
+                        appendText(omDbgMsg, L", retry ");
+                        appendNumber(omDbgMsg, peers[i].omRecvRetryCount, FALSE);
+                        appendText(omDbgMsg, L"/");
+                        appendNumber(omDbgMsg, OM_RECV_MAX_RETRIES, FALSE);
+                        appendText(omDbgMsg, L", peer[");
+                        appendNumber(omDbgMsg, i, FALSE);
+                        appendText(omDbgMsg, L"]");
+                        addDebugMessageOM(omDbgMsg);
+#endif
+                        // Reset status and re-initiate receive
+                        peers[i].receiveToken.CompletionToken.Status = -1;
+                        receiveData(i, salt);
+                        return;
+                    }
+
+                    // Non-retryable error or max retries exceeded
+#ifndef NDEBUG
                     CHAR16 omDbgMsg[128];
                     setText(omDbgMsg, L"OM: processReceivedData - callback error, status=");
                     appendNumber(omDbgMsg, peers[i].receiveToken.CompletionToken.Status, FALSE);
@@ -967,6 +1001,13 @@ static void processReceivedData(unsigned int i, unsigned int salt)
             else
             {
                 peers[i].receiveToken.CompletionToken.Status = -1;
+
+                // Reset retry counter on successful receive
+                if (peers[i].isOracleMachineNode())
+                {
+                    peers[i].omRecvRetryCount = 0;
+                }
+
                 if (peers[i].isClosing)
                 {
 #ifndef NDEBUG
