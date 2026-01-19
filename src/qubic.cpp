@@ -3416,7 +3416,7 @@ static void processTick(unsigned long long processorNumber)
     {
         CHAR16 dbgMsg[500];
         setText(dbgMsg, L"pending tx: tick/count");
-        for (unsigned int i = system.tick; i < system.tick + 10; ++i)
+        for (unsigned int i = system.tick; i < system.tick + ORACLE_REPLY_COMMIT_PUBLICATION_OFFSET; ++i)
         {
             appendText(dbgMsg, " ");
             appendNumber(dbgMsg, i, FALSE);
