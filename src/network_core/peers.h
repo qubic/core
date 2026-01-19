@@ -267,6 +267,27 @@ static void closePeer(Peer* peer, int closeGracefullyRetries = 0)
         if (!peer->isClosing)
         {
             peer->isClosing = TRUE;
+#ifndef NDEBUG
+            if (peer->isOracleMachineNode())
+            {
+                unsigned int peerIdx = (unsigned int)(peer - peers);
+                CHAR16 omDbgMsg[256];
+                setText(omDbgMsg, L"OM: closePeer ENTERED - peer[");
+                appendNumber(omDbgMsg, peerIdx, FALSE);
+                appendText(omDbgMsg, L"], Accepting=");
+                appendNumber(omDbgMsg, peer->isConnectingAccepting, FALSE);
+                appendText(omDbgMsg, L", Accepted=");
+                appendNumber(omDbgMsg, peer->isConnectedAccepted, FALSE);
+                appendText(omDbgMsg, L", isTransmitting=");
+                appendNumber(omDbgMsg, peer->isTransmitting, FALSE);
+                appendText(omDbgMsg, L", isReceiving=");
+                appendNumber(omDbgMsg, peer->isReceiving, FALSE);
+                appendText(omDbgMsg, L", gracefulRetries=");
+                appendNumber(omDbgMsg, closeGracefullyRetries, FALSE);
+                addDebugMessageOM(omDbgMsg);
+            }
+#endif
+
             EFI_STATUS status = EFI_SUCCESS;
 
             // Decide to close gracefully with Close()
@@ -325,6 +346,18 @@ static void closePeer(Peer* peer, int closeGracefullyRetries = 0)
                 numberOfAcceptedIncommingConnection--;
                 ASSERT(numberOfAcceptedIncommingConnection >= 0);
             }
+#ifndef NDEBUG
+            if (peer->isOracleMachineNode())
+            {
+                unsigned int peerIdx = (unsigned int)(peer - peers);
+                CHAR16 omDbgMsg[128];
+                setText(omDbgMsg, L"OM: closePeer RESET - peer[");
+                appendNumber(omDbgMsg, peerIdx, FALSE);
+                appendText(omDbgMsg, L"] fully closed and reset");
+                addDebugMessageOM(omDbgMsg);
+            }
+#endif
+
             peer->reset();
         }
     }
@@ -870,6 +903,19 @@ static void processReceivedData(unsigned int i, unsigned int salt)
             peers[i].isReceiving = FALSE;
             if (peers[i].receiveToken.CompletionToken.Status)
             {
+#ifndef NDEBUG
+                if (peers[i].isOracleMachineNode())
+                {
+                    CHAR16 omDbgMsg[128];
+                    setText(omDbgMsg, L"OM: processReceivedData - callback error, status=");
+                    appendNumber(omDbgMsg, peers[i].receiveToken.CompletionToken.Status, FALSE);
+                    appendText(omDbgMsg, L", peer[");
+                    appendNumber(omDbgMsg, i, FALSE);
+                    appendText(omDbgMsg, L"]");
+                    addDebugMessageOM(omDbgMsg);
+                }
+#endif
+
                 peers[i].receiveToken.CompletionToken.Status = -1;
                 closePeer(&peers[i]);
             }
@@ -878,6 +924,16 @@ static void processReceivedData(unsigned int i, unsigned int salt)
                 peers[i].receiveToken.CompletionToken.Status = -1;
                 if (peers[i].isClosing)
                 {
+#ifndef NDEBUG
+                    if (peers[i].isOracleMachineNode())
+                    {
+                        CHAR16 omDbgMsg[128];
+                        setText(omDbgMsg, L"OM: processReceivedData - recv OK but isClosing, peer[");
+                        appendNumber(omDbgMsg, i, FALSE);
+                        appendText(omDbgMsg, L"]");
+                        addDebugMessageOM(omDbgMsg);
+                    }
+#endif
                     closePeer(&peers[i]);
                 }
                 else
@@ -995,6 +1051,21 @@ static void receiveData(unsigned int i, unsigned int salt)
                     if ((status = peers[i].tcp4Protocol->GetModeData(peers[i].tcp4Protocol, &state, NULL, NULL, NULL, NULL))
                         || state == Tcp4StateClosed)
                     {
+#ifndef NDEBUG
+                        if (peers[i].isOracleMachineNode())
+                        {
+                            CHAR16 omDbgMsg[128];
+                            setText(omDbgMsg, L"OM: receiveData Receive() failed, status=");
+                            appendNumber(omDbgMsg, status, FALSE);
+                            appendText(omDbgMsg, L" (FIN=");
+                            appendNumber(omDbgMsg, EFI_CONNECTION_FIN, FALSE);
+                            appendText(omDbgMsg, L"), peer[");
+                            appendNumber(omDbgMsg, i, FALSE);
+                            appendText(omDbgMsg, L"]");
+                            addDebugMessageOM(omDbgMsg);
+                        }
+#endif
+
                         closePeer(&peers[i]);
                     }
                     else
@@ -1056,6 +1127,15 @@ static void processTransmittedData(unsigned int i, unsigned int salt)
             if (peers[i].transmitToken.CompletionToken.Status)
             {
                 // transmission error
+#ifndef NDEBUG
+                if (peers[i].isOracleMachineNode())
+                {
+                    CHAR16 omDbgMsg[128];
+                    setText(omDbgMsg, L"OM: processTransmittedData - callback error, status=");
+                    appendNumber(omDbgMsg, peers[i].transmitToken.CompletionToken.Status, FALSE);
+                    addDebugMessageOM(omDbgMsg);
+                }
+#endif
                 peers[i].transmitToken.CompletionToken.Status = -1;
                 closePeer(&peers[i]);
             }
@@ -1064,10 +1144,25 @@ static void processTransmittedData(unsigned int i, unsigned int salt)
                 peers[i].transmitToken.CompletionToken.Status = -1;
                 if (peers[i].isClosing)
                 {
+#ifndef NDEBUG
+                    if (peers[i].isOracleMachineNode())
+                    {
+                        addDebugMessageOM(L"OM: processTransmittedData - transmit OK but isClosing, closing peer");
+                    }
+#endif
                     closePeer(&peers[i]);
                 }
                 else
                 {
+#ifndef NDEBUG
+                    if (peers[i].isOracleMachineNode())
+                    {
+                        CHAR16 omDbgMsg[128];
+                        setText(omDbgMsg, L"OM: processTransmittedData - transmit completed OK, bytes=");
+                        appendNumber(omDbgMsg, peers[i].transmitData.DataLength, FALSE);
+                        addDebugMessageOM(omDbgMsg);
+                    }
+#endif
                     // success
                     numberOfTransmittedBytes += peers[i].transmitData.DataLength;
                 }
@@ -1090,6 +1185,20 @@ static void transmitData(unsigned int i, unsigned int salt)
             if ((status = peers[i].tcp4Protocol->GetModeData(peers[i].tcp4Protocol, &state, NULL, NULL, NULL, NULL))
                 || state == Tcp4StateClosed)
             {
+#ifndef NDEBUG
+                if (peers[i].isOracleMachineNode())
+                {
+                    CHAR16 omDbgMsg[256];
+                    setText(omDbgMsg, L"OM: transmitData closing - GetModeData failed or Tcp4StateClosed. status=");
+                    appendNumber(omDbgMsg, status, FALSE);
+                    appendText(omDbgMsg, L", state=");
+                    appendNumber(omDbgMsg, state, FALSE);
+                    appendText(omDbgMsg, L", peer[");
+                    appendNumber(omDbgMsg, i, FALSE);
+                    appendText(omDbgMsg, L"]");
+                    addDebugMessageOM(omDbgMsg);
+                }
+#endif
                 closePeer(&peers[i]);
             }
             else
@@ -1100,7 +1209,16 @@ static void transmitData(unsigned int i, unsigned int salt)
                 if (status = peers[i].tcp4Protocol->Transmit(peers[i].tcp4Protocol, &peers[i].transmitToken))
                 {
                     logStatusToConsole(L"EFI_TCP4_PROTOCOL.Transmit() fails", status, __LINE__);
-
+                    
+#ifndef NDEBUG
+                    if (peers[i].isOracleMachineNode())
+                    {
+                        CHAR16 omDbgMsg[128];
+                        setText(omDbgMsg, L"OM: transmitData - Transmit() failed, status=");
+                        appendNumber(omDbgMsg, status, FALSE);
+                        addDebugMessageOM(omDbgMsg);
+                    }
+#endif
                     closePeer(&peers[i]);
                 }
                 else
@@ -1108,6 +1226,13 @@ static void transmitData(unsigned int i, unsigned int salt)
                     peers[i].isTransmitting = TRUE;
                     if (peers[i].isOracleMachineNode())
                     {
+#ifndef NDEBUG
+                        CHAR16 omDbgMsg[128];
+                        setText(omDbgMsg, L"OM: transmitData - Transmit started, size=");
+                        appendNumber(omDbgMsg, peers[i].transmitData.DataLength, FALSE);
+                        addDebugMessageOM(omDbgMsg);
+#endif
+
                         peers[i].omTransmitStartTime = __rdtsc();
                     }
                 }
