@@ -1,1484 +1,473 @@
 #define NO_UEFI
 
-#include <random>
-#include <map>
+#include <iostream>
+
 #include "gtest/gtest.h"
 #include "contract_testing.h"
 
-#define PRINT_TEST_INFO 0
+namespace {
+constexpr unsigned short PROCEDURE_CREATE_ORDER = 1;
+constexpr unsigned short PROCEDURE_TRANSFER_TO_CONTRACT = 6;
 
-// VottunBridge test constants
-static const id VOTTUN_CONTRACT_ID(15, 0, 0, 0); // Assuming index 15
-static const id TEST_USER_1 = id(1, 0, 0, 0);
-static const id TEST_USER_2 = id(2, 0, 0, 0);
-static const id TEST_ADMIN = id(100, 0, 0, 0);
-static const id TEST_MANAGER = id(102, 0, 0, 0);
-
-// Test fixture for VottunBridge
-class VottunBridgeTest : public ::testing::Test
+uint64 requiredFee(uint64 amount)
 {
-protected:
-    void SetUp() override
-    {
-        // Test setup will be minimal due to system constraints
-    }
-
-    void TearDown() override
-    {
-        // Clean up after tests
-    }
-};
-
-// Test 1: Basic constants and configuration
-TEST_F(VottunBridgeTest, BasicConstants)
-{
-    // Test that basic types and constants work
-    const uint32 expectedFeeBillionths = 5000000; // 0.5%
-    EXPECT_EQ(expectedFeeBillionths, 5000000);
-
-    // Test fee calculation logic
-    uint64 amount = 1000000;
-    uint64 calculatedFee = (amount * expectedFeeBillionths) / 1000000000ULL;
-    EXPECT_EQ(calculatedFee, 5000); // 0.5% of 1,000,000
+    // Total fee is 0.5% (ETH) + 0.5% (Qubic) = 1% of amount
+    return 2 * ((amount * 5000000ULL) / 1000000000ULL);
+}
 }
 
-// Test 2: ID operations
-TEST_F(VottunBridgeTest, IdOperations)
-{
-    id testId1(1, 0, 0, 0);
-    id testId2(2, 0, 0, 0);
-    id nullId = NULL_ID;
-
-    EXPECT_NE(testId1, testId2);
-    EXPECT_NE(testId1, nullId);
-    EXPECT_EQ(nullId, NULL_ID);
-}
-
-// Test 3: Array bounds and capacity validation
-TEST_F(VottunBridgeTest, ArrayValidation)
-{
-    // Test Array type basic functionality
-    Array<uint8, 64> testEthAddress;
-
-    // Test capacity
-    EXPECT_EQ(testEthAddress.capacity(), 64);
-
-    // Test setting and getting values
-    for (uint64 i = 0; i < 42; ++i)
-    {  // Ethereum addresses are 42 chars
-        testEthAddress.set(i, (uint8)(65 + (i % 26))); // ASCII A-Z pattern
-    }
-
-    // Verify values were set correctly
-    for (uint64 i = 0; i < 42; ++i)
-    {
-        uint8 expectedValue = (uint8)(65 + (i % 26));
-        EXPECT_EQ(testEthAddress.get(i), expectedValue);
-    }
-}
-
-// Test 4: Order status enumeration
-TEST_F(VottunBridgeTest, OrderStatusTypes)
-{
-    // Test order status values
-    const uint8 STATUS_CREATED = 0;
-    const uint8 STATUS_COMPLETED = 1;
-    const uint8 STATUS_REFUNDED = 2;
-    const uint8 STATUS_EMPTY = 255;
-
-    EXPECT_EQ(STATUS_CREATED, 0);
-    EXPECT_EQ(STATUS_COMPLETED, 1);
-    EXPECT_EQ(STATUS_REFUNDED, 2);
-    EXPECT_EQ(STATUS_EMPTY, 255);
-}
-
-// Test 5: Basic data structure sizes
-TEST_F(VottunBridgeTest, DataStructureSizes)
-{
-    // Ensure critical structures have expected sizes
-    EXPECT_GT(sizeof(id), 0);
-    EXPECT_EQ(sizeof(uint64), 8);
-    EXPECT_EQ(sizeof(uint32), 4);
-    EXPECT_EQ(sizeof(uint8), 1);
-    EXPECT_EQ(sizeof(bit), 1);
-    EXPECT_EQ(sizeof(sint8), 1);
-}
-
-// Test 6: Bit manipulation and boolean logic
-TEST_F(VottunBridgeTest, BooleanLogic)
-{
-    bit testBit1 = true;
-    bit testBit2 = false;
-
-    EXPECT_TRUE(testBit1);
-    EXPECT_FALSE(testBit2);
-    EXPECT_NE(testBit1, testBit2);
-}
-
-// Test 7: Error code constants
-TEST_F(VottunBridgeTest, ErrorCodes)
-{
-    // Test that error codes are in expected ranges
-    const uint32 ERROR_INVALID_AMOUNT = 2;
-    const uint32 ERROR_INSUFFICIENT_FEE = 3;
-    const uint32 ERROR_ORDER_NOT_FOUND = 4;
-    const uint32 ERROR_NOT_AUTHORIZED = 9;
-    const uint32 ERROR_PROPOSAL_NOT_FOUND = 11;
-    const uint32 ERROR_NOT_OWNER = 14;
-    const uint32 ERROR_MAX_PROPOSALS_REACHED = 15;
-
-    EXPECT_GT(ERROR_INVALID_AMOUNT, 0);
-    EXPECT_GT(ERROR_INSUFFICIENT_FEE, ERROR_INVALID_AMOUNT);
-    EXPECT_GT(ERROR_ORDER_NOT_FOUND, ERROR_INSUFFICIENT_FEE); // Fixed: should be GT not LT
-    EXPECT_GT(ERROR_NOT_AUTHORIZED, ERROR_ORDER_NOT_FOUND);
-    EXPECT_GT(ERROR_PROPOSAL_NOT_FOUND, ERROR_NOT_AUTHORIZED);
-    EXPECT_GT(ERROR_NOT_OWNER, ERROR_PROPOSAL_NOT_FOUND);
-    EXPECT_GT(ERROR_MAX_PROPOSALS_REACHED, ERROR_NOT_OWNER);
-}
-
-// Test 8: Mathematical operations
-TEST_F(VottunBridgeTest, MathematicalOperations) 
-{
-    // Test division operations (using div function instead of / operator)
-    uint64 dividend = 1000000;
-    uint64 divisor = 1000000000ULL;
-    uint64 multiplier = 5000000;
-
-    uint64 result = (dividend * multiplier) / divisor;
-    EXPECT_EQ(result, 5000);
-
-    // Test edge case: zero division would return 0 in Qubic
-    // Note: This test validates our understanding of div() behavior
-    uint64 zeroResult = (dividend * 0) / divisor;
-    EXPECT_EQ(zeroResult, 0);
-}
-
-// Test 9: String and memory patterns
-TEST_F(VottunBridgeTest, MemoryPatterns)
-{
-    // Test memory initialization patterns
-    Array<uint8, 16> testArray;
-
-    // Set known pattern
-    for (uint64 i = 0; i < testArray.capacity(); ++i)
-    {
-        testArray.set(i, (uint8)(i % 256));
-    }
-
-    // Verify pattern
-    for (uint64 i = 0; i < testArray.capacity(); ++i)
-    {
-        EXPECT_EQ(testArray.get(i), (uint8)(i % 256));
-    }
-}
-
-// Test 10: Contract index validation
-TEST_F(VottunBridgeTest, ContractIndexValidation)
-{
-    // Validate contract index is in expected range
-    const uint32 EXPECTED_CONTRACT_INDEX = 15; // Based on contract_def.h
-    const uint32 MAX_CONTRACTS = 32; // Reasonable upper bound
-
-    EXPECT_GT(EXPECTED_CONTRACT_INDEX, 0);
-    EXPECT_LT(EXPECTED_CONTRACT_INDEX, MAX_CONTRACTS);
-}
-
-// Test 11: Asset name validation
-TEST_F(VottunBridgeTest, AssetNameValidation)
-{
-    // Test asset name constraints (max 7 characters, A-Z, 0-9)
-    const char* validNames[] = 
-    { 
-        "VBRIDGE", "VOTTUN", "BRIDGE", "VTN", "A", "TEST123" 
-    };
-    const int nameCount = sizeof(validNames) / sizeof(validNames[0]);
-
-    for (int i = 0; i < nameCount; ++i)
-    {
-        const char* name = validNames[i];
-        size_t length = strlen(name);
-
-        EXPECT_LE(length, 7); // Max 7 characters
-        EXPECT_GT(length, 0); // At least 1 character
-
-        // First character should be A-Z
-        EXPECT_GE(name[0], 'A');
-        EXPECT_LE(name[0], 'Z');
-    }
-}
-
-// Test 12: Memory limits and constraints
-TEST_F(VottunBridgeTest, MemoryConstraints)
-{
-    // Test contract state size limits
-    const uint64 MAX_CONTRACT_STATE_SIZE = 1073741824; // 1GB
-    const uint64 ORDERS_CAPACITY = 1024;
-    const uint64 MANAGERS_CAPACITY = 16;
-
-    // Ensure our expected sizes are reasonable
-    size_t estimatedOrdersSize = ORDERS_CAPACITY * 128; // Rough estimate per order
-    size_t estimatedManagersSize = MANAGERS_CAPACITY * 32; // ID size
-    size_t estimatedTotalSize = estimatedOrdersSize + estimatedManagersSize + 1024; // Extra for other fields
-
-    EXPECT_LT(estimatedTotalSize, MAX_CONTRACT_STATE_SIZE);
-    EXPECT_EQ(ORDERS_CAPACITY, 1024);
-    EXPECT_EQ(MANAGERS_CAPACITY, 16);
-}
-
-// AGREGAR estos tests adicionales al final de tu contract_vottunbridge.cpp
-
-// Test 13: Order creation simulation
-TEST_F(VottunBridgeTest, OrderCreationLogic)
-{
-    // Simulate the logic that would happen in createOrder
-    uint64 orderAmount = 1000000;
-    uint64 feeBillionths = 5000000;
-
-    // Calculate fees as the contract would
-    uint64 requiredFeeEth = (orderAmount * feeBillionths) / 1000000000ULL;
-    uint64 requiredFeeQubic = (orderAmount * feeBillionths) / 1000000000ULL;
-    uint64 totalRequiredFee = requiredFeeEth + requiredFeeQubic;
-
-    // Verify fee calculation
-    EXPECT_EQ(requiredFeeEth, 5000); // 0.5% of 1,000,000
-    EXPECT_EQ(requiredFeeQubic, 5000); // 0.5% of 1,000,000
-    EXPECT_EQ(totalRequiredFee, 10000); // 1% total
-
-    // Test different amounts
-    struct 
-    {
-        uint64 amount;
-        uint64 expectedTotalFee;
-    } testCases[] =
-    {
-        {100000, 1000},      // 100K → 1K fee
-        {500000, 5000},      // 500K → 5K fee  
-        {2000000, 20000},    // 2M → 20K fee
-        {10000000, 100000}   // 10M → 100K fee
-    };
-
-    for (const auto& testCase : testCases)
-    {
-        uint64 calculatedFee = 2 * ((testCase.amount * feeBillionths) / 1000000000ULL);
-        EXPECT_EQ(calculatedFee, testCase.expectedTotalFee);
-    }
-}
-
-// Test 14: Order state transitions
-TEST_F(VottunBridgeTest, OrderStateTransitions)
-{
-    // Test valid state transitions
-    const uint8 STATE_CREATED = 0;
-    const uint8 STATE_COMPLETED = 1;
-    const uint8 STATE_REFUNDED = 2;
-    const uint8 STATE_EMPTY = 255;
-
-    // Valid transitions: CREATED → COMPLETED
-    EXPECT_NE(STATE_CREATED, STATE_COMPLETED);
-    EXPECT_LT(STATE_CREATED, STATE_COMPLETED);
-
-    // Valid transitions: CREATED → REFUNDED
-    EXPECT_NE(STATE_CREATED, STATE_REFUNDED);
-    EXPECT_LT(STATE_CREATED, STATE_REFUNDED);
-
-    // Invalid transitions: COMPLETED → REFUNDED (should not happen)
-    EXPECT_NE(STATE_COMPLETED, STATE_REFUNDED);
-
-    // Empty state is special
-    EXPECT_GT(STATE_EMPTY, STATE_REFUNDED);
-}
-
-// Test 15: Direction flags and validation
-TEST_F(VottunBridgeTest, TransferDirections)
-{
-    bit fromQubicToEthereum = true;
-    bit fromEthereumToQubic = false;
-
-    EXPECT_TRUE(fromQubicToEthereum);
-    EXPECT_FALSE(fromEthereumToQubic);
-    EXPECT_NE(fromQubicToEthereum, fromEthereumToQubic);
-
-    // Test logical operations
-    bit bothDirections = fromQubicToEthereum || fromEthereumToQubic;
-    bit neitherDirection = !fromQubicToEthereum && !fromEthereumToQubic;
-
-    EXPECT_TRUE(bothDirections);
-    EXPECT_FALSE(neitherDirection);
-}
-
-// Test 16: Ethereum address format validation
-TEST_F(VottunBridgeTest, EthereumAddressFormat)
-{
-    Array<uint8, 64> ethAddress;
-
-    // Simulate valid Ethereum address (0x + 40 hex chars)
-    ethAddress.set(0, '0');
-    ethAddress.set(1, 'x');
-
-    // Fill with hex characters (0-9, A-F)
-    const char hexChars[] = "0123456789ABCDEF";
-    for (int i = 2; i < 42; ++i)
-    {
-        ethAddress.set(i, hexChars[i % 16]);
-    }
-
-    // Verify format
-    EXPECT_EQ(ethAddress.get(0), '0');
-    EXPECT_EQ(ethAddress.get(1), 'x');
-
-    // Verify hex characters
-    for (int i = 2; i < 42; ++i)
-    {
-        uint8 ch = ethAddress.get(i);
-        EXPECT_TRUE((ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'F'));
-    }
-}
-
-// Test 17: Manager array operations
-TEST_F(VottunBridgeTest, ManagerArrayOperations)
-{
-    Array<id, 16> managers;
-    const id NULL_MANAGER = NULL_ID;
-
-    // Initialize all managers as NULL
-    for (uint64 i = 0; i < managers.capacity(); ++i)
-    {
-        managers.set(i, NULL_MANAGER);
-    }
-
-    // Add managers
-    id manager1(101, 0, 0, 0);
-    id manager2(102, 0, 0, 0);
-    id manager3(103, 0, 0, 0);
-
-    managers.set(0, manager1);
-    managers.set(1, manager2);
-    managers.set(2, manager3);
-
-    // Verify managers were added
-    EXPECT_EQ(managers.get(0), manager1);
-    EXPECT_EQ(managers.get(1), manager2);
-    EXPECT_EQ(managers.get(2), manager3);
-    EXPECT_EQ(managers.get(3), NULL_MANAGER); // Still empty
-
-    // Test manager search
-    bool foundManager1 = false;
-    for (uint64 i = 0; i < managers.capacity(); ++i)
-    {
-        if (managers.get(i) == manager1)
-        {
-            foundManager1 = true;
-            break;
-        }
-    }
-    EXPECT_TRUE(foundManager1);
-
-    // Remove a manager
-    managers.set(1, NULL_MANAGER);
-    EXPECT_EQ(managers.get(1), NULL_MANAGER);
-    EXPECT_NE(managers.get(0), NULL_MANAGER);
-    EXPECT_NE(managers.get(2), NULL_MANAGER);
-}
-
-// Test 18: Token balance calculations
-TEST_F(VottunBridgeTest, TokenBalanceCalculations)
-{
-    uint64 totalReceived = 10000000;
-    uint64 lockedTokens = 6000000;
-    uint64 earnedFees = 50000;
-    uint64 distributedFees = 30000;
-
-    // Calculate available tokens
-    uint64 availableTokens = totalReceived - lockedTokens;
-    EXPECT_EQ(availableTokens, 4000000);
-
-    // Calculate available fees
-    uint64 availableFees = earnedFees - distributedFees;
-    EXPECT_EQ(availableFees, 20000);
-
-    // Test edge cases
-    EXPECT_GE(totalReceived, lockedTokens); // Should never be negative
-    EXPECT_GE(earnedFees, distributedFees); // Should never be negative
-
-    // Test zero balances
-    uint64 zeroBalance = 0;
-    EXPECT_EQ(zeroBalance - zeroBalance, 0);
-}
-
-// Test 19: Order ID generation and uniqueness
-TEST_F(VottunBridgeTest, OrderIdGeneration)
-{
-    uint64 nextOrderId = 1;
-
-    // Simulate order ID generation
-    uint64 order1Id = nextOrderId++;
-    uint64 order2Id = nextOrderId++;
-    uint64 order3Id = nextOrderId++;
-
-    EXPECT_EQ(order1Id, 1);
-    EXPECT_EQ(order2Id, 2);
-    EXPECT_EQ(order3Id, 3);
-    EXPECT_EQ(nextOrderId, 4);
-
-    // Ensure uniqueness
-    EXPECT_NE(order1Id, order2Id);
-    EXPECT_NE(order2Id, order3Id);
-    EXPECT_NE(order1Id, order3Id);
-
-    // Test with larger numbers
-    nextOrderId = 1000000;
-    uint64 largeOrderId = nextOrderId++;
-    EXPECT_EQ(largeOrderId, 1000000);
-    EXPECT_EQ(nextOrderId, 1000001);
-}
-
-// Test 20: Contract limits and boundaries
-TEST_F(VottunBridgeTest, ContractLimits)
-{
-    // Test maximum values
-    const uint64 MAX_UINT64 = 0xFFFFFFFFFFFFFFFFULL;
-    const uint32 MAX_UINT32 = 0xFFFFFFFFU;
-    const uint8 MAX_UINT8 = 0xFF;
-
-    EXPECT_EQ(MAX_UINT8, 255);
-    EXPECT_GT(MAX_UINT32, MAX_UINT8);
-    EXPECT_GT(MAX_UINT64, MAX_UINT32);
-
-    // Test order capacity limits
-    const uint64 ORDERS_CAPACITY = 1024;
-    const uint64 MANAGERS_CAPACITY = 16;
-
-    // Ensure we don't exceed array bounds
-    EXPECT_LT(0, ORDERS_CAPACITY);
-    EXPECT_LT(0, MANAGERS_CAPACITY);
-    EXPECT_LT(MANAGERS_CAPACITY, ORDERS_CAPACITY);
-
-    // Test fee calculation limits
-    const uint64 MAX_TRADE_FEE = 1000000000ULL; // 100%
-    const uint64 ACTUAL_TRADE_FEE = 5000000ULL; // 0.5%
-
-    EXPECT_LT(ACTUAL_TRADE_FEE, MAX_TRADE_FEE);
-    EXPECT_GT(ACTUAL_TRADE_FEE, 0);
-}
-// REEMPLAZA el código funcional anterior con esta versión corregida:
-
-// Mock structures for testing
-struct MockVottunBridgeOrder 
-{
-    uint64 orderId;
-    id qubicSender;
-    id qubicDestination;
-    uint64 amount;
-    uint8 status;
-    bit fromQubicToEthereum;
-    uint8 mockEthAddress[64];  // Simulated eth address
-};
-
-struct MockVottunBridgeState
-{
-    id feeRecipient;
-    uint64 nextOrderId;
-    uint64 lockedTokens;
-    uint64 totalReceivedTokens;
-    uint32 _tradeFeeBillionths;
-    uint64 _earnedFees;
-    uint64 _distributedFees;
-    uint64 _earnedFeesQubic;
-    uint64 _distributedFeesQubic;
-    uint32 sourceChain;
-    MockVottunBridgeOrder orders[1024];
-    id managers[16];
-    // Multisig state
-    id admins[16];              // List of multisig admins
-    uint8 numberOfAdmins;       // Number of active admins (3)
-    uint8 requiredApprovals;    // Required approvals threshold (2 of 3)
-};
-
-// Mock QPI Context for testing
-class MockQpiContext
+class ContractTestingVottunBridge : protected ContractTesting
 {
 public:
-    id mockInvocator = TEST_USER_1;
-    sint64 mockInvocationReward = 10000;
-    id mockOriginator = TEST_USER_1;
+    using ContractTesting::invokeUserProcedure;
 
-    void setInvocator(const id& invocator) { mockInvocator = invocator; }
-    void setInvocationReward(sint64 reward) { mockInvocationReward = reward; }
-    void setOriginator(const id& originator) { mockOriginator = originator; }
+    ContractTestingVottunBridge()
+    {
+        initEmptySpectrum();
+        initEmptyUniverse();
+        INIT_CONTRACT(VOTTUNBRIDGE);
+        callSystemProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, INITIALIZE);
+    }
+
+    VOTTUNBRIDGE* state()
+    {
+        return reinterpret_cast<VOTTUNBRIDGE*>(contractStates[VOTTUNBRIDGE_CONTRACT_INDEX]);
+    }
+
+    bool findOrder(uint64 orderId, VOTTUNBRIDGE::BridgeOrder& out)
+    {
+        for (uint64 i = 0; i < state()->orders.capacity(); ++i)
+        {
+            VOTTUNBRIDGE::BridgeOrder order = state()->orders.get(i);
+            if (order.orderId == orderId)
+            {
+                out = order;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool findProposal(uint64 proposalId, VOTTUNBRIDGE::AdminProposal& out)
+    {
+        for (uint64 i = 0; i < state()->proposals.capacity(); ++i)
+        {
+            VOTTUNBRIDGE::AdminProposal proposal = state()->proposals.get(i);
+            if (proposal.proposalId == proposalId)
+            {
+                out = proposal;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool setOrderById(uint64 orderId, const VOTTUNBRIDGE::BridgeOrder& updated)
+    {
+        for (uint64 i = 0; i < state()->orders.capacity(); ++i)
+        {
+            VOTTUNBRIDGE::BridgeOrder order = state()->orders.get(i);
+            if (order.orderId == orderId)
+            {
+                state()->orders.set(i, updated);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    VOTTUNBRIDGE::createOrder_output createOrder(
+        const id& user, uint64 amount, bit fromQubicToEthereum, uint64 fee)
+    {
+        VOTTUNBRIDGE::createOrder_input input{};
+        VOTTUNBRIDGE::createOrder_output output{};
+        input.qubicDestination = id(9, 0, 0, 0);
+        input.amount = amount;
+        input.fromQubicToEthereum = fromQubicToEthereum;
+        for (uint64 i = 0; i < 42; ++i)
+        {
+            input.ethAddress.set(i, static_cast<uint8>('A'));
+        }
+
+        this->invokeUserProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, PROCEDURE_CREATE_ORDER,
+                                  input, output, user, static_cast<sint64>(fee));
+        return output;
+    }
+
+    void seedBalance(const id& user, uint64 amount)
+    {
+        increaseEnergy(user, amount);
+    }
+
+    VOTTUNBRIDGE::transferToContract_output transferToContract(
+        const id& user, uint64 amount, uint64 orderId, uint64 invocationReward)
+    {
+        VOTTUNBRIDGE::transferToContract_input input{};
+        VOTTUNBRIDGE::transferToContract_output output{};
+        input.amount = amount;
+        input.orderId = orderId;
+
+        this->invokeUserProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, PROCEDURE_TRANSFER_TO_CONTRACT,
+                                  input, output, user, static_cast<sint64>(invocationReward));
+        return output;
+    }
+
+    VOTTUNBRIDGE::createProposal_output createProposal(
+        const id& admin, uint8 proposalType, const id& target, const id& oldAddress, uint64 amount)
+    {
+        VOTTUNBRIDGE::createProposal_input input{};
+        VOTTUNBRIDGE::createProposal_output output{};
+        input.proposalType = proposalType;
+        input.targetAddress = target;
+        input.oldAddress = oldAddress;
+        input.amount = amount;
+
+        this->invokeUserProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, 9, input, output, admin, 0);
+        return output;
+    }
+
+    VOTTUNBRIDGE::approveProposal_output approveProposal(const id& admin, uint64 proposalId)
+    {
+        VOTTUNBRIDGE::approveProposal_input input{};
+        VOTTUNBRIDGE::approveProposal_output output{};
+        input.proposalId = proposalId;
+
+        this->invokeUserProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, 10, input, output, admin, 0);
+        return output;
+    }
 };
 
-// Helper functions for creating test data
-MockVottunBridgeOrder createEmptyOrder()
+TEST(VottunBridge, CreateOrder_RequiresFee)
 {
-    MockVottunBridgeOrder order = {};
-    order.status = 255;  // Empty
-    order.orderId = 0;
-    order.amount = 0;
-    order.qubicSender = NULL_ID;
-    order.qubicDestination = NULL_ID;
-    return order;
+    ContractTestingVottunBridge bridge;
+    const id user = id(1, 0, 0, 0);
+    const uint64 amount = 1000;
+    const uint64 fee = requiredFee(amount);
+
+    std::cout << "[VottunBridge] CreateOrder_RequiresFee: amount=" << amount
+              << " fee=" << fee << " (sending fee-1)" << std::endl;
+
+    increaseEnergy(user, fee - 1);
+    auto output = bridge.createOrder(user, amount, true, fee - 1);
+    EXPECT_EQ(output.status, static_cast<uint8>(VOTTUNBRIDGE::EthBridgeError::insufficientTransactionFee));
 }
 
-MockVottunBridgeOrder createTestOrder(uint64 orderId, uint64 amount, bool fromQubicToEth = true)
+TEST(VottunBridge, TransferToContract_RejectsMissingReward)
 {
-    MockVottunBridgeOrder order = {};
-    order.orderId = orderId;
-    order.qubicSender = TEST_USER_1;
-    order.qubicDestination = TEST_USER_2;
-    order.amount = amount;
-    order.status = 0;  // Created
-    order.fromQubicToEthereum = fromQubicToEth;
+    ContractTestingVottunBridge bridge;
+    const id user = id(2, 0, 0, 0);
+    const uint64 amount = 200;
+    const uint64 fee = requiredFee(amount);
+    const id contractId = id(VOTTUNBRIDGE_CONTRACT_INDEX, 0, 0, 0);
 
-    // Set mock Ethereum address
-    for (int i = 0; i < 42; ++i)
-    {
-        order.mockEthAddress[i] = (uint8)('A' + (i % 26));
-    }
+    std::cout << "[VottunBridge] TransferToContract_RejectsMissingReward: amount=" << amount
+              << " fee=" << fee << " reward=0 contractBalanceSeed=1000" << std::endl;
 
-    return order;
+    // Seed balances: user only has fees; contract already has balance > amount
+    increaseEnergy(user, fee);
+    increaseEnergy(contractId, 1000);
+
+    auto orderOutput = bridge.createOrder(user, amount, true, fee);
+    EXPECT_EQ(orderOutput.status, 0);
+
+    const uint64 lockedBefore = bridge.state()->lockedTokens;
+    const long long contractBalanceBefore = getBalance(contractId);
+    const long long userBalanceBefore = getBalance(user);
+
+    auto transferOutput = bridge.transferToContract(user, amount, orderOutput.orderId, 0);
+
+    EXPECT_EQ(transferOutput.status, static_cast<uint8>(VOTTUNBRIDGE::EthBridgeError::invalidAmount));
+    EXPECT_EQ(bridge.state()->lockedTokens, lockedBefore);
+    EXPECT_EQ(getBalance(contractId), contractBalanceBefore);
+    EXPECT_EQ(getBalance(user), userBalanceBefore);
 }
 
-// Advanced test fixture with contract state simulation
-class VottunBridgeFunctionalTest : public ::testing::Test
+TEST(VottunBridge, TransferToContract_AcceptsExactReward)
 {
-protected:
-    void SetUp() override
-    {
-        // Initialize a complete contract state
-        contractState = {};
+    ContractTestingVottunBridge bridge;
+    const id user = id(3, 0, 0, 0);
+    const uint64 amount = 500;
+    const uint64 fee = requiredFee(amount);
+    const id contractId = id(VOTTUNBRIDGE_CONTRACT_INDEX, 0, 0, 0);
 
-        // Set up multisig admins and initial configuration
-        contractState.admins[0] = TEST_ADMIN;
-        contractState.admins[1] = id(201, 0, 0, 0);
-        contractState.admins[2] = id(202, 0, 0, 0);
-        for (int i = 3; i < 16; ++i)
-        {
-            contractState.admins[i] = NULL_ID;
-        }
-        contractState.numberOfAdmins = 3;
-        contractState.requiredApprovals = 2;
-        contractState.feeRecipient = id(200, 0, 0, 0);
-        contractState.nextOrderId = 1;
-        contractState.lockedTokens = 5000000;  // 5M tokens locked
-        contractState.totalReceivedTokens = 10000000;  // 10M total received
-        contractState._tradeFeeBillionths = 5000000;  // 0.5%
-        contractState._earnedFees = 50000;
-        contractState._distributedFees = 30000;
-        contractState._earnedFeesQubic = 25000;
-        contractState._distributedFeesQubic = 15000;
-        contractState.sourceChain = 0;
+    std::cout << "[VottunBridge] TransferToContract_AcceptsExactReward: amount=" << amount
+              << " fee=" << fee << " reward=amount" << std::endl;
 
-        // Initialize orders array as empty
-        for (uint64 i = 0; i < 1024; ++i)
-        {
-            contractState.orders[i] = createEmptyOrder();
-        }
+    increaseEnergy(user, fee + amount);
 
-        // Initialize managers array
-        for (int i = 0; i < 16; ++i)
-        {
-            contractState.managers[i] = NULL_ID;
-        }
-        contractState.managers[0] = TEST_MANAGER;  // Add initial manager
+    auto orderOutput = bridge.createOrder(user, amount, true, fee);
+    EXPECT_EQ(orderOutput.status, 0);
 
-        // Set up mock context
-        mockContext.setInvocator(TEST_USER_1);
-        mockContext.setInvocationReward(10000);
-    }
+    const uint64 lockedBefore = bridge.state()->lockedTokens;
+    const long long contractBalanceBefore = getBalance(contractId);
 
-    void TearDown() override
-    {
-        // Cleanup
-    }
+    auto transferOutput = bridge.transferToContract(user, amount, orderOutput.orderId, amount);
 
-protected:
-    MockVottunBridgeState contractState;
-    MockQpiContext mockContext;
-};
-
-// Test 21: CreateOrder function simulation
-TEST_F(VottunBridgeFunctionalTest, CreateOrderFunctionSimulation)
-{
-    // Test input
-    uint64 orderAmount = 1000000;
-    uint64 feeBillionths = contractState._tradeFeeBillionths;
-
-    // Calculate expected fees
-    uint64 expectedFeeEth = (orderAmount * feeBillionths) / 1000000000ULL;
-    uint64 expectedFeeQubic = (orderAmount * feeBillionths) / 1000000000ULL;
-    uint64 totalExpectedFee = expectedFeeEth + expectedFeeQubic;
-
-    // Test case 1: Valid order creation (Qubic to Ethereum)
-    {
-        // Simulate sufficient invocation reward
-        mockContext.setInvocationReward(totalExpectedFee);
-
-        // Simulate createOrder logic
-        bool validAmount = (orderAmount > 0);
-        bool sufficientFee = (mockContext.mockInvocationReward >= static_cast<sint64>(totalExpectedFee));
-        bool fromQubicToEth = true;
-
-        EXPECT_TRUE(validAmount);
-        EXPECT_TRUE(sufficientFee);
-
-        if (validAmount && sufficientFee)
-        {
-            // Simulate successful order creation
-            uint64 newOrderId = contractState.nextOrderId++;
-
-            // Update state
-            contractState._earnedFees += expectedFeeEth;
-            contractState._earnedFeesQubic += expectedFeeQubic;
-
-            EXPECT_EQ(newOrderId, 1);
-            EXPECT_EQ(contractState.nextOrderId, 2);
-            EXPECT_EQ(contractState._earnedFees, 50000 + expectedFeeEth);
-            EXPECT_EQ(contractState._earnedFeesQubic, 25000 + expectedFeeQubic);
-        }
-    }
-
-    // Test case 2: Invalid amount (zero)
-    {
-        uint64 invalidAmount = 0;
-        bool validAmount = (invalidAmount > 0);
-        EXPECT_FALSE(validAmount);
-
-        // Should return error status 1
-        uint8 expectedStatus = validAmount ? 0 : 1;
-        EXPECT_EQ(expectedStatus, 1);
-    }
-
-    // Test case 3: Insufficient fee
-    {
-        mockContext.setInvocationReward(totalExpectedFee - 1);  // One unit short
-
-        bool sufficientFee = (mockContext.mockInvocationReward >= static_cast<sint64>(totalExpectedFee));
-        EXPECT_FALSE(sufficientFee);
-
-        // Should return error status 2
-        uint8 expectedStatus = sufficientFee ? 0 : 2;
-        EXPECT_EQ(expectedStatus, 2);
-    }
+    EXPECT_EQ(transferOutput.status, 0);
+    EXPECT_EQ(bridge.state()->lockedTokens, lockedBefore + amount);
+    EXPECT_EQ(getBalance(contractId), contractBalanceBefore + amount);
 }
 
-// Test 22: CompleteOrder function simulation
-TEST_F(VottunBridgeFunctionalTest, CompleteOrderFunctionSimulation)
+TEST(VottunBridge, TransferToContract_OrderNotFound)
 {
-    // Set up: Create an order first
-    auto testOrder = createTestOrder(1, 1000000, false);  // EVM to Qubic
-    contractState.orders[0] = testOrder;
+    ContractTestingVottunBridge bridge;
+    const id user = id(5, 0, 0, 0);
+    const uint64 amount = 100;
 
-    // Test case 1: Manager completing order
-    {
-        mockContext.setInvocator(TEST_MANAGER);
+    bridge.seedBalance(user, amount);
 
-        // Simulate isManager check
-        bool isManagerOperating = (mockContext.mockInvocator == TEST_MANAGER);
-        EXPECT_TRUE(isManagerOperating);
-
-        // Simulate order retrieval
-        bool orderFound = (contractState.orders[0].orderId == 1);
-        EXPECT_TRUE(orderFound);
-
-        // Check order status (should be 0 = Created)
-        bool validOrderState = (contractState.orders[0].status == 0);
-        EXPECT_TRUE(validOrderState);
-
-        if (isManagerOperating && orderFound && validOrderState)
-        {
-            // Simulate order completion logic
-            uint64 netAmount = contractState.orders[0].amount;
-
-            if (!contractState.orders[0].fromQubicToEthereum)
-            {
-                // EVM to Qubic: Transfer tokens to destination
-                bool sufficientLockedTokens = (contractState.lockedTokens >= netAmount);
-                EXPECT_TRUE(sufficientLockedTokens);
-
-                if (sufficientLockedTokens)
-                {
-                    contractState.lockedTokens -= netAmount;
-                    contractState.orders[0].status = 1;  // Completed
-
-                    EXPECT_EQ(contractState.orders[0].status, 1);
-                    EXPECT_EQ(contractState.lockedTokens, 5000000 - netAmount);
-                }
-            }
-        }
-    }
-
-    // Test case 2: Non-manager trying to complete order
-    {
-        mockContext.setInvocator(TEST_USER_1);  // Regular user, not manager
-
-        bool isManagerOperating = (mockContext.mockInvocator == TEST_MANAGER);
-        EXPECT_FALSE(isManagerOperating);
-
-        // Should return error (only managers can complete)
-        uint8 expectedErrorCode = 1;  // onlyManagersCanCompleteOrders
-        EXPECT_EQ(expectedErrorCode, 1);
-    }
+    auto output = bridge.transferToContract(user, amount, 9999, amount);
+    EXPECT_EQ(output.status, static_cast<uint8>(VOTTUNBRIDGE::EthBridgeError::orderNotFound));
 }
 
-// Test 23: Admin Functions with Multisig (UPDATED FOR MULTISIG)
-TEST_F(VottunBridgeFunctionalTest, AdminFunctionsSimulation)
+TEST(VottunBridge, TransferToContract_InvalidAmountMismatch)
 {
-    // NOTE: Admin functions now require multisig proposals
-    // Old direct calls to setAdmin/addManager/removeManager/withdrawFees are DEPRECATED
+    ContractTestingVottunBridge bridge;
+    const id user = id(6, 0, 0, 0);
+    const uint64 amount = 100;
+    const uint64 fee = requiredFee(amount);
 
-    // Test that old admin functions are now disabled
-    {
-        mockContext.setInvocator(TEST_ADMIN);
+    bridge.seedBalance(user, fee + amount + 1);
 
-        // Old setAdmin/addManager functions should return notAuthorized (error 9)
-        bool isCurrentAdmin = (mockContext.mockInvocator == contractState.admins[0]);
-        EXPECT_TRUE(isCurrentAdmin); // User is multisig admin
+    auto orderOutput = bridge.createOrder(user, amount, true, fee);
+    EXPECT_EQ(orderOutput.status, 0);
 
-        // But direct setAdmin/addManager calls should still fail (deprecated)
-        uint8 expectedErrorCode = 9; // notAuthorized
-        EXPECT_EQ(expectedErrorCode, 9);
-    }
-
-    // Test multisig proposal system for admin changes (REPLACE admin, not add)
-    {
-        // Simulate multisig admin 1 creating a proposal
-        id multisigAdmin1 = TEST_ADMIN;
-        id multisigAdmin2(201, 0, 0, 0);
-        id multisigAdmin3(202, 0, 0, 0);
-        id newAdmin(150, 0, 0, 0);
-        id oldAdminToReplace = multisigAdmin3; // Replace admin3 with newAdmin
-
-        mockContext.setInvocator(multisigAdmin1);
-
-        // Simulate isMultisigAdmin check
-        bool isMultisigAdminCheck = true; // Assume admin1 is multisig admin
-        EXPECT_TRUE(isMultisigAdminCheck);
-
-        if (isMultisigAdminCheck)
-        {
-            // Create proposal: PROPOSAL_SET_ADMIN = 1
-            uint8 proposalType = 1; // PROPOSAL_SET_ADMIN
-            uint64 proposalId = 1;
-            uint8 approvalsCount = 1; // Creator auto-approves
-
-            EXPECT_EQ(approvalsCount, 1);
-            EXPECT_LT(approvalsCount, 2); // Threshold not reached yet
-
-            // Simulate admin2 approving
-            mockContext.setInvocator(multisigAdmin2);
-            approvalsCount++; // Now 2 approvals
-
-            EXPECT_EQ(approvalsCount, 2);
-
-            // Threshold reached (2 of 3), execute proposal
-            if (approvalsCount >= 2)
-            {
-                // Execute: REPLACE admin3 with newAdmin
-                // Find and replace the old admin
-                for (int i = 0; i < 3; ++i)
-                {
-                    if (contractState.admins[i] == oldAdminToReplace)
-                    {
-                        contractState.admins[i] = newAdmin;
-                        break;
-                    }
-                }
-
-                // Verify replacement
-                bool foundNewAdmin = false;
-                bool foundOldAdmin = false;
-                for (int i = 0; i < 3; ++i)
-                {
-                    if (contractState.admins[i] == newAdmin) foundNewAdmin = true;
-                    if (contractState.admins[i] == oldAdminToReplace) foundOldAdmin = true;
-                }
-
-                EXPECT_TRUE(foundNewAdmin);
-                EXPECT_FALSE(foundOldAdmin); // Old admin should be gone
-                EXPECT_EQ(contractState.numberOfAdmins, 3); // Still 3 admins
-            }
-        }
-    }
-
-    // Test multisig proposal for adding manager
-    {
-        id multisigAdmin1 = contractState.admins[0];
-        id multisigAdmin2(201, 0, 0, 0);
-        id newManager(160, 0, 0, 0);
-
-        mockContext.setInvocator(multisigAdmin1);
-
-        // Create proposal: PROPOSAL_ADD_MANAGER = 2
-        uint8 proposalType = 2;
-        uint64 proposalId = 2;
-        uint8 approvalsCount = 1;
-
-        // Admin2 approves
-        mockContext.setInvocator(multisigAdmin2);
-        approvalsCount++;
-
-        // Execute: add manager
-        if (approvalsCount >= 2)
-        {
-            contractState.managers[1] = newManager;
-            EXPECT_EQ(contractState.managers[1], newManager);
-        }
-    }
-
-    // Test unauthorized access (non-multisig admin)
-    {
-        mockContext.setInvocator(TEST_USER_1); // Regular user
-
-        bool isMultisigAdmin = false; // User is not in multisig admins list
-        EXPECT_FALSE(isMultisigAdmin);
-
-        // Should return error code 14 (notOwner/notMultisigAdmin)
-        uint8 expectedErrorCode = 14;
-        EXPECT_EQ(expectedErrorCode, 14);
-    }
+    auto output = bridge.transferToContract(user, amount + 1, orderOutput.orderId, amount + 1);
+    EXPECT_EQ(output.status, static_cast<uint8>(VOTTUNBRIDGE::EthBridgeError::invalidAmount));
 }
 
-// Test 24: Fee withdrawal simulation (UPDATED FOR MULTISIG)
-TEST_F(VottunBridgeFunctionalTest, FeeWithdrawalSimulation)
+TEST(VottunBridge, TransferToContract_InvalidOrderState)
 {
-    uint64 withdrawAmount = 15000;  // Less than available fees
+    ContractTestingVottunBridge bridge;
+    const id user = id(7, 0, 0, 0);
+    const uint64 amount = 150;
+    const uint64 fee = requiredFee(amount);
 
-    // Test case 1: Multisig admins withdrawing fees via proposal
-    {
-        id multisigAdmin1 = contractState.admins[0];
-        id multisigAdmin2(201, 0, 0, 0);
+    bridge.seedBalance(user, fee + amount);
 
-        mockContext.setInvocator(multisigAdmin1);
+    auto orderOutput = bridge.createOrder(user, amount, true, fee);
+    EXPECT_EQ(orderOutput.status, 0);
 
-        uint64 availableFees = contractState._earnedFees - contractState._distributedFees;
-        EXPECT_EQ(availableFees, 20000);  // 50000 - 30000
+    VOTTUNBRIDGE::BridgeOrder order{};
+    ASSERT_TRUE(bridge.findOrder(orderOutput.orderId, order));
+    order.status = 1; // completed
+    ASSERT_TRUE(bridge.setOrderById(orderOutput.orderId, order));
 
-        bool sufficientFees = (withdrawAmount <= availableFees);
-        bool validAmount = (withdrawAmount > 0);
-
-        EXPECT_TRUE(sufficientFees);
-        EXPECT_TRUE(validAmount);
-
-        // Create proposal: PROPOSAL_WITHDRAW_FEES = 4
-        uint8 proposalType = 4;
-        uint64 proposalId = 3;
-        uint8 approvalsCount = 1; // Creator approves
-
-        // Admin2 approves
-        mockContext.setInvocator(multisigAdmin2);
-        approvalsCount++;
-
-        // Threshold reached, execute withdrawal
-        if (approvalsCount >= 2 && sufficientFees && validAmount)
-        {
-            // Simulate fee withdrawal
-            contractState._distributedFees += withdrawAmount;
-
-            EXPECT_EQ(contractState._distributedFees, 45000);  // 30000 + 15000
-
-            uint64 newAvailableFees = contractState._earnedFees - contractState._distributedFees;
-            EXPECT_EQ(newAvailableFees, 5000);  // 50000 - 45000
-        }
-    }
-
-    // Test case 2: Proposal with insufficient fees should not execute
-    {
-        uint64 excessiveAmount = 25000;  // More than remaining available fees
-        uint64 currentAvailableFees = contractState._earnedFees - contractState._distributedFees;
-
-        bool sufficientFees = (excessiveAmount <= currentAvailableFees);
-        EXPECT_FALSE(sufficientFees);
-
-        // Even with 2 approvals, execution should fail due to insufficient fees
-        // The proposal executes but transfer fails
-        uint8 expectedErrorCode = 6;  // insufficientLockedTokens (reused for fees)
-        EXPECT_EQ(expectedErrorCode, 6);
-    }
-
-    // Test case 3: Old direct withdrawFees call should fail
-    {
-        mockContext.setInvocator(contractState.admins[0]);
-
-        // Direct call to withdrawFees should return notAuthorized (deprecated)
-        uint8 expectedErrorCode = 9; // notAuthorized
-        EXPECT_EQ(expectedErrorCode, 9);
-    }
+    auto output = bridge.transferToContract(user, amount, orderOutput.orderId, amount);
+    EXPECT_EQ(output.status, static_cast<uint8>(VOTTUNBRIDGE::EthBridgeError::invalidOrderState));
 }
 
-// Test 25: Order search and retrieval simulation
-TEST_F(VottunBridgeFunctionalTest, OrderSearchSimulation)
+TEST(VottunBridge, CreateOrder_CleansCompletedAndRefundedSlots)
 {
-    // Set up multiple orders
-    contractState.orders[0] = createTestOrder(10, 1000000, true);
-    contractState.orders[1] = createTestOrder(11, 2000000, false);
-    contractState.orders[2] = createTestOrder(12, 500000, true);
+    ContractTestingVottunBridge bridge;
+    const id user = id(4, 0, 0, 0);
+    const uint64 amount = 1000;
+    const uint64 fee = requiredFee(amount);
 
-    // Test getOrder function simulation
+    VOTTUNBRIDGE::BridgeOrder filledOrder{};
+    filledOrder.orderId = 1;
+    filledOrder.amount = amount;
+    filledOrder.status = 1; // completed
+    filledOrder.fromQubicToEthereum = true;
+    filledOrder.qubicSender = user;
+
+    for (uint64 i = 0; i < bridge.state()->orders.capacity(); ++i)
     {
-        uint64 searchOrderId = 11;
-        bool found = false;
-        MockVottunBridgeOrder foundOrder = {};
-
-        // Simulate order search
-        for (int i = 0; i < 1024; ++i)
-        {
-            if (contractState.orders[i].orderId == searchOrderId &&
-                contractState.orders[i].status != 255)
-            {
-                found = true;
-                foundOrder = contractState.orders[i];
-                break;
-            }
-        }
-
-        EXPECT_TRUE(found);
-        EXPECT_EQ(foundOrder.orderId, 11);
-        EXPECT_EQ(foundOrder.amount, 2000000);
-        EXPECT_FALSE(foundOrder.fromQubicToEthereum);
+        filledOrder.orderId = i + 1;
+        filledOrder.status = (i % 2 == 0) ? 1 : 2; // completed/refunded
+        bridge.state()->orders.set(i, filledOrder);
     }
 
-    // Test search for non-existent order
-    {
-        uint64 nonExistentOrderId = 999;
-        bool found = false;
+    increaseEnergy(user, fee);
+    auto output = bridge.createOrder(user, amount, true, fee);
+    EXPECT_EQ(output.status, 0);
 
-        for (int i = 0; i < 1024; ++i)
-        {
-            if (contractState.orders[i].orderId == nonExistentOrderId &&
-                contractState.orders[i].status != 255)
-            {
-                found = true;
-                break;
-            }
-        }
+    VOTTUNBRIDGE::BridgeOrder createdOrder{};
+    EXPECT_TRUE(bridge.findOrder(output.orderId, createdOrder));
+    EXPECT_EQ(createdOrder.status, 0);
 
-        EXPECT_FALSE(found);
-
-        // Should return error status 1 (order not found)
-        uint8 expectedStatus = found ? 0 : 1;
-        EXPECT_EQ(expectedStatus, 1);
-    }
-}
-
-TEST_F(VottunBridgeFunctionalTest, ContractInfoSimulation)
-{
-    // Simulate getContractInfo function
-    {
-        // Count orders and empty slots
-        uint64 totalOrdersFound = 0;
         uint64 emptySlots = 0;
-
-        for (uint64 i = 0; i < 1024; ++i)
+    for (uint64 i = 0; i < bridge.state()->orders.capacity(); ++i)
         {
-            if (contractState.orders[i].status == 255)
+        if (bridge.state()->orders.get(i).status == 255)
             {
                 emptySlots++;
             }
-            else
-            {
-                totalOrdersFound++;
-            }
-        }
-
-        // Initially should be mostly empty
-        EXPECT_GT(emptySlots, totalOrdersFound);
-
-        // Validate contract state (use actual values, not expected modifications)
-        EXPECT_EQ(contractState.nextOrderId, 1);  // Should still be 1 initially
-        EXPECT_EQ(contractState.lockedTokens, 5000000);  // Should be initial value
-        EXPECT_EQ(contractState.totalReceivedTokens, 10000000);
-        EXPECT_EQ(contractState._tradeFeeBillionths, 5000000);
-
-        // Test that the state values are sensible
-        EXPECT_GT(contractState.totalReceivedTokens, contractState.lockedTokens);
-        EXPECT_GT(contractState._tradeFeeBillionths, 0);
-        EXPECT_LT(contractState._tradeFeeBillionths, 1000000000ULL); // Less than 100%
     }
+    EXPECT_GT(emptySlots, 0);
 }
 
-// Test 27: Edge cases and error scenarios
-TEST_F(VottunBridgeFunctionalTest, EdgeCasesAndErrors)
+TEST(VottunBridge, CreateProposal_CleansExecutedProposalsWhenFull)
 {
-    // Test zero amounts
+    ContractTestingVottunBridge bridge;
+    const id admin1 = id(10, 0, 0, 0);
+    const id admin2 = id(11, 0, 0, 0);
+
+    bridge.state()->numberOfAdmins = 2;
+    bridge.state()->requiredApprovals = 2;
+    bridge.state()->admins.set(0, admin1);
+    bridge.state()->admins.set(1, admin2);
+    for (uint64 i = 2; i < bridge.state()->admins.capacity(); ++i)
     {
-        uint64 zeroAmount = 0;
-        bool validAmount = (zeroAmount > 0);
-        EXPECT_FALSE(validAmount);
+        bridge.state()->admins.set(i, NULL_ID);
     }
 
-    // Test boundary conditions
+    bridge.seedBalance(admin1, 1);
+    bridge.seedBalance(admin2, 1);
+
+    VOTTUNBRIDGE::AdminProposal proposal{};
+    proposal.approvalsCount = 1;
+    proposal.active = true;
+    proposal.executed = false;
+    for (uint64 i = 0; i < bridge.state()->proposals.capacity(); ++i)
     {
-        // Test with exactly enough fees
-        uint64 amount = 1000000;
-        uint64 exactFee = 2 * ((amount * contractState._tradeFeeBillionths) / 1000000000ULL);
-
-        mockContext.setInvocationReward(exactFee);
-        bool sufficientFee = (mockContext.mockInvocationReward >= static_cast<sint64>(exactFee));
-        EXPECT_TRUE(sufficientFee);
-
-        // Test with one unit less
-        mockContext.setInvocationReward(exactFee - 1);
-        bool insufficientFee = (mockContext.mockInvocationReward >= static_cast<sint64>(exactFee));
-        EXPECT_FALSE(insufficientFee);
+        proposal.proposalId = i + 1;
+        proposal.executed = (i % 2 == 0);
+        bridge.state()->proposals.set(i, proposal);
     }
 
-    // Test manager validation
+    auto output = bridge.createProposal(admin1, VOTTUNBRIDGE::PROPOSAL_CHANGE_THRESHOLD,
+                                        NULL_ID, NULL_ID, 2);
+
+    EXPECT_EQ(output.status, 0);
+
+    VOTTUNBRIDGE::AdminProposal createdProposal{};
+    EXPECT_TRUE(bridge.findProposal(output.proposalId, createdProposal));
+    EXPECT_TRUE(createdProposal.active);
+    EXPECT_FALSE(createdProposal.executed);
+
+    uint64 clearedSlots = 0;
+    for (uint64 i = 0; i < bridge.state()->proposals.capacity(); ++i)
     {
-        // Valid manager
-        bool isManager = (contractState.managers[0] == TEST_MANAGER);
-        EXPECT_TRUE(isManager);
-
-        // Invalid manager (empty slot)
-        bool isNotManager = (contractState.managers[5] == NULL_ID);
-        EXPECT_TRUE(isNotManager);
-    }
-}
-
-// SECURITY TESTS FOR KS-VB-F-01 FIX
-TEST_F(VottunBridgeTest, SecurityRefundValidation)
-{
-    struct TestOrder
-    {
-        uint64 orderId;
-        uint64 amount;
-        uint8 status;
-        bit fromQubicToEthereum;
-        bit tokensReceived;
-        bit tokensLocked;
-    };
-
-    TestOrder order;
-    order.orderId = 1;
-    order.amount = 1000000;
-    order.status = 0;
-    order.fromQubicToEthereum = true;
-    order.tokensReceived = false;
-    order.tokensLocked = false;
-
-    EXPECT_FALSE(order.tokensReceived);
-    EXPECT_FALSE(order.tokensLocked);
-
-    order.tokensReceived = true;
-    order.tokensLocked = true;
-    bool canRefund = (order.tokensReceived && order.tokensLocked);
-    EXPECT_TRUE(canRefund);
-
-    TestOrder orderNoTokens;
-    orderNoTokens.tokensReceived = false;
-    orderNoTokens.tokensLocked = false;
-    bool canRefundNoTokens = orderNoTokens.tokensReceived;
-    EXPECT_FALSE(canRefundNoTokens);
-}
-
-TEST_F(VottunBridgeTest, ExploitPreventionTest)
-{
-    uint64 contractLiquidity = 1000000;
-    
-    struct TestOrder
-    {
-        uint64 orderId;
-        uint64 amount;
-        bit tokensReceived;
-        bit tokensLocked;
-        bit fromQubicToEthereum;
-    };
-    
-    TestOrder maliciousOrder;
-    maliciousOrder.orderId = 999;
-    maliciousOrder.amount = 500000;
-    maliciousOrder.tokensReceived = false;
-    maliciousOrder.tokensLocked = false;
-    maliciousOrder.fromQubicToEthereum = true;
-    
-    bool oldVulnerableCheck = (contractLiquidity >= maliciousOrder.amount);
-    EXPECT_TRUE(oldVulnerableCheck);
-    
-    bool newSecureCheck = (maliciousOrder.tokensReceived && 
-                          maliciousOrder.tokensLocked &&
-                          contractLiquidity >= maliciousOrder.amount);
-    EXPECT_FALSE(newSecureCheck);
-    
-    TestOrder legitimateOrder;
-    legitimateOrder.orderId = 1;
-    legitimateOrder.amount = 200000;
-    legitimateOrder.tokensReceived = true;
-    legitimateOrder.tokensLocked = true;
-    legitimateOrder.fromQubicToEthereum = true;
-    
-    bool legitimateRefund = (legitimateOrder.tokensReceived && 
-                            legitimateOrder.tokensLocked &&
-                            contractLiquidity >= legitimateOrder.amount);
-    EXPECT_TRUE(legitimateRefund);
-}
-
-TEST_F(VottunBridgeTest, TransferFlowValidation)
-{
-    uint64 mockLockedTokens = 500000;
-    
-    struct TestOrder
-    {
-        uint64 orderId;
-        uint64 amount;
-        uint8 status;
-        bit tokensReceived;
-        bit tokensLocked;
-        bit fromQubicToEthereum;
-    };
-    
-    TestOrder order;
-    order.orderId = 1;
-    order.amount = 100000;
-    order.status = 0;
-    order.tokensReceived = false;
-    order.tokensLocked = false;
-    order.fromQubicToEthereum = true;
-    
-    bool refundAllowed = order.tokensReceived;
-    EXPECT_FALSE(refundAllowed);
-    
-    order.tokensReceived = true;
-    order.tokensLocked = true;
-    mockLockedTokens += order.amount;
-    
-    EXPECT_TRUE(order.tokensReceived);
-    EXPECT_TRUE(order.tokensLocked);
-    EXPECT_EQ(mockLockedTokens, 600000);
-    
-    refundAllowed = (order.tokensReceived && order.tokensLocked && 
-                    mockLockedTokens >= order.amount);
-    EXPECT_TRUE(refundAllowed);
-    
-    if (refundAllowed)
-    {
-        mockLockedTokens -= order.amount;
-        order.status = 2;
-    }
-    
-    EXPECT_EQ(mockLockedTokens, 500000);
-    EXPECT_EQ(order.status, 2);
-}
-
-// MULTISIG ADVANCED TESTS
-
-// Test 28: Multiple simultaneous proposals
-TEST_F(VottunBridgeFunctionalTest, MultipleProposalsSimultaneous)
-{
-    id multisigAdmin1 = TEST_ADMIN;
-    id multisigAdmin2(201, 0, 0, 0);
-    id multisigAdmin3(202, 0, 0, 0);
-
-    // Create 3 different proposals at the same time
-    mockContext.setInvocator(multisigAdmin1);
-
-    // Proposal 1: Add manager
-    uint64 proposal1Id = 1;
-    uint8 proposal1Type = 2; // PROPOSAL_ADD_MANAGER
-    id newManager1(160, 0, 0, 0);
-    uint8 proposal1Approvals = 1; // Creator approves
-
-    EXPECT_EQ(proposal1Approvals, 1);
-
-    // Proposal 2: Withdraw fees
-    uint64 proposal2Id = 2;
-    uint8 proposal2Type = 4; // PROPOSAL_WITHDRAW_FEES
-    uint64 withdrawAmount = 10000;
-    uint8 proposal2Approvals = 1; // Creator approves
-
-    EXPECT_EQ(proposal2Approvals, 1);
-
-    // Proposal 3: Set new admin
-    uint64 proposal3Id = 3;
-    uint8 proposal3Type = 1; // PROPOSAL_SET_ADMIN
-    id newAdmin(150, 0, 0, 0);
-    uint8 proposal3Approvals = 1; // Creator approves
-
-    EXPECT_EQ(proposal3Approvals, 1);
-
-    // Verify all proposals are pending
-    EXPECT_LT(proposal1Approvals, 2); // Not executed yet
-    EXPECT_LT(proposal2Approvals, 2); // Not executed yet
-    EXPECT_LT(proposal3Approvals, 2); // Not executed yet
-
-    // Admin2 approves proposal 1 (add manager)
-    mockContext.setInvocator(multisigAdmin2);
-    proposal1Approvals++;
-
-    EXPECT_EQ(proposal1Approvals, 2); // Threshold reached
-
-    // Execute proposal 1
-    if (proposal1Approvals >= 2)
-    {
-        contractState.managers[1] = newManager1;
-        EXPECT_EQ(contractState.managers[1], newManager1);
-    }
-
-    // Admin3 approves proposal 2 (withdraw fees)
-    mockContext.setInvocator(multisigAdmin3);
-    proposal2Approvals++;
-
-    EXPECT_EQ(proposal2Approvals, 2); // Threshold reached
-
-    // Execute proposal 2
-    uint64 availableFees = contractState._earnedFees - contractState._distributedFees;
-    if (proposal2Approvals >= 2 && withdrawAmount <= availableFees)
-    {
-        contractState._distributedFees += withdrawAmount;
-        EXPECT_EQ(contractState._distributedFees, 30000 + withdrawAmount);
-    }
-
-    // Proposal 3 still pending (only 1 approval)
-    EXPECT_LT(proposal3Approvals, 2);
-
-    // Verify proposals executed independently
-    EXPECT_EQ(contractState.managers[1], newManager1); // Proposal 1 executed
-    EXPECT_EQ(contractState._distributedFees, 40000); // Proposal 2 executed
-    EXPECT_NE(contractState.admin, newAdmin); // Proposal 3 NOT executed
-}
-
-// Test 29: Change threshold proposal
-TEST_F(VottunBridgeFunctionalTest, ChangeThresholdProposal)
-{
-    id multisigAdmin1 = TEST_ADMIN;
-    id multisigAdmin2(201, 0, 0, 0);
-
-    // Initial threshold is 2 (2 of 3)
-    uint8 currentThreshold = 2;
-    uint8 numberOfAdmins = 3;
-
-    EXPECT_EQ(currentThreshold, 2);
-
-    mockContext.setInvocator(multisigAdmin1);
-
-    // Create proposal: PROPOSAL_CHANGE_THRESHOLD = 5
-    uint8 proposalType = 5; // PROPOSAL_CHANGE_THRESHOLD
-    uint64 newThreshold = 3; // Change to 3 of 3 (stored in amount field)
-    uint64 proposalId = 10;
-    uint8 approvalsCount = 1;
-
-    EXPECT_EQ(approvalsCount, 1);
-
-    // Validate new threshold is valid
-    bool validThreshold = (newThreshold > 0 && newThreshold <= numberOfAdmins);
-    EXPECT_TRUE(validThreshold);
-
-    // Admin2 approves
-    mockContext.setInvocator(multisigAdmin2);
-    approvalsCount++;
-
-    EXPECT_EQ(approvalsCount, 2);
-
-    // Execute: change threshold
-    if (approvalsCount >= currentThreshold && validThreshold)
-    {
-        currentThreshold = (uint8)newThreshold;
-        EXPECT_EQ(currentThreshold, 3);
-    }
-
-    // Verify threshold changed
-    EXPECT_EQ(currentThreshold, 3);
-
-    // Now test that threshold 3 is required
-    // Create another proposal
-    mockContext.setInvocator(multisigAdmin1);
-    uint64 newProposalId = 11;
-    uint8 newProposalApprovals = 1;
-
-    // Admin2 approves (now 2 approvals)
-    mockContext.setInvocator(multisigAdmin2);
-    newProposalApprovals++;
-
-    EXPECT_EQ(newProposalApprovals, 2);
-
-    // With new threshold of 3, proposal should NOT execute yet
-    bool shouldExecute = (newProposalApprovals >= currentThreshold);
-    EXPECT_FALSE(shouldExecute);
-
-    // Need one more approval (Admin3)
-    id multisigAdmin3(202, 0, 0, 0);
-    mockContext.setInvocator(multisigAdmin3);
-    newProposalApprovals++;
-
-    EXPECT_EQ(newProposalApprovals, 3);
-
-    // Now it should execute
-    shouldExecute = (newProposalApprovals >= currentThreshold);
-    EXPECT_TRUE(shouldExecute);
-}
-
-// Test 30: Double approval prevention
-TEST_F(VottunBridgeFunctionalTest, DoubleApprovalPrevention)
-{
-    id multisigAdmin1 = TEST_ADMIN;
-    id multisigAdmin2(201, 0, 0, 0);
-
-    mockContext.setInvocator(multisigAdmin1);
-
-    // Create proposal
-    uint8 proposalType = 2; // PROPOSAL_ADD_MANAGER
-    id newManager(160, 0, 0, 0);
-    uint64 proposalId = 20;
-
-    // Simulate proposal creation (admin1 auto-approves)
-    Array<id, 16> approvalsList;
-    uint8 approvalsCount = 0;
-
-    // Admin1 creates and auto-approves
-    approvalsList.set(approvalsCount, multisigAdmin1);
-    approvalsCount++;
-
-    EXPECT_EQ(approvalsCount, 1);
-    EXPECT_EQ(approvalsList.get(0), multisigAdmin1);
-
-    // Admin1 tries to approve AGAIN (should be prevented)
-    bool alreadyApproved = false;
-    for (uint64 i = 0; i < approvalsCount; ++i)
-    {
-        if (approvalsList.get(i) == multisigAdmin1)
+        VOTTUNBRIDGE::AdminProposal p = bridge.state()->proposals.get(i);
+        if (!p.active && p.proposalId == 0)
         {
-            alreadyApproved = true;
-            break;
+            clearedSlots++;
         }
     }
-
-    EXPECT_TRUE(alreadyApproved);
-
-    // If already approved, don't increment
-    if (alreadyApproved)
-    {
-        // Return error (proposalAlreadyApproved = 13)
-        uint8 errorCode = 13;
-        EXPECT_EQ(errorCode, 13);
-    }
-    else
-    {
-        // This should NOT happen
-        approvalsCount++;
-        FAIL() << "Admin was able to approve twice!";
-    }
-
-    // Verify count didn't increase
-    EXPECT_EQ(approvalsCount, 1);
-
-    // Admin2 approves (should succeed)
-    mockContext.setInvocator(multisigAdmin2);
-
-    alreadyApproved = false;
-    for (uint64 i = 0; i < approvalsCount; ++i)
-    {
-        if (approvalsList.get(i) == multisigAdmin2)
-        {
-            alreadyApproved = true;
-            break;
-        }
-    }
-
-    EXPECT_FALSE(alreadyApproved); // Admin2 hasn't approved yet
-
-    if (!alreadyApproved)
-    {
-        approvalsList.set(approvalsCount, multisigAdmin2);
-        approvalsCount++;
-    }
-
-    EXPECT_EQ(approvalsCount, 2);
-    EXPECT_EQ(approvalsList.get(1), multisigAdmin2);
-
-    // Threshold reached (2 of 3)
-    bool thresholdReached = (approvalsCount >= 2);
-    EXPECT_TRUE(thresholdReached);
-
-    // Execute proposal
-    if (thresholdReached)
-    {
-        contractState.managers[1] = newManager;
-        EXPECT_EQ(contractState.managers[1], newManager);
-    }
+    EXPECT_GT(clearedSlots, 0);
 }
 
-// Test 31: Non-owner trying to create proposal
-TEST_F(VottunBridgeFunctionalTest, NonOwnerProposalRejection)
+TEST(VottunBridge, CreateProposal_InvalidTypeRejected)
 {
-    id regularUser = TEST_USER_1;
-    id multisigAdmin1 = TEST_ADMIN;
+    ContractTestingVottunBridge bridge;
+    const id admin1 = id(10, 0, 0, 0);
 
-    mockContext.setInvocator(regularUser);
+    bridge.state()->numberOfAdmins = 1;
+    bridge.state()->requiredApprovals = 1;
+    bridge.state()->admins.set(0, admin1);
+    bridge.seedBalance(admin1, 1);
 
-    // Check if invocator is multisig admin
-    bool isMultisigAdmin = false;
-
-    // Simulate checking against admin list (capacity must be power of 2)
-    Array<id, 4> adminsList;
-    adminsList.set(0, multisigAdmin1);
-    adminsList.set(1, id(201, 0, 0, 0));
-    adminsList.set(2, id(202, 0, 0, 0));
-    adminsList.set(3, NULL_ID); // Unused slot
-
-    uint8 numberOfAdmins = 3;
-    for (uint64 i = 0; i < numberOfAdmins; ++i)
-    {
-        if (adminsList.get(i) == regularUser)
-        {
-            isMultisigAdmin = true;
-            break;
-        }
-    }
-
-    EXPECT_FALSE(isMultisigAdmin);
-
-    // If not admin, reject proposal creation
-    if (!isMultisigAdmin)
-    {
-        uint8 errorCode = 14; // notOwner
-        EXPECT_EQ(errorCode, 14);
-    }
-    else
-    {
-        FAIL() << "Regular user was able to create proposal!";
-    }
-
-    // Verify multisig admin CAN create proposal
-    mockContext.setInvocator(multisigAdmin1);
-
-    isMultisigAdmin = false;
-    for (uint64 i = 0; i < numberOfAdmins; ++i)
-    {
-        if (adminsList.get(i) == multisigAdmin1)
-        {
-            isMultisigAdmin = true;
-            break;
-        }
-    }
-
-    EXPECT_TRUE(isMultisigAdmin);
-
-    if (isMultisigAdmin)
-    {
-        // Proposal created successfully
-        uint64 proposalId = 30;
-        uint8 status = 0; // Success
-        EXPECT_EQ(status, 0);
-        EXPECT_EQ(proposalId, 30);
-    }
+    auto output = bridge.createProposal(admin1, 99, NULL_ID, NULL_ID, 0);
+    EXPECT_EQ(output.status, static_cast<uint8>(VOTTUNBRIDGE::EthBridgeError::invalidAmount));
 }
 
-TEST_F(VottunBridgeTest, StateConsistencyTests)
+TEST(VottunBridge, ApproveProposal_NotOwnerRejected)
 {
-    uint64 initialLockedTokens = 1000000;
-    uint64 orderAmount = 250000;
+    ContractTestingVottunBridge bridge;
+    const id admin1 = id(10, 0, 0, 0);
+    const id admin2 = id(11, 0, 0, 0);
+    const id outsider = id(99, 0, 0, 0);
 
-    uint64 afterTransfer = initialLockedTokens + orderAmount;
-    EXPECT_EQ(afterTransfer, 1250000);
-    
-    uint64 afterRefund = afterTransfer - orderAmount;
-    EXPECT_EQ(afterRefund, initialLockedTokens);
-    
-    uint64 order1Amount = 100000;
-    uint64 order2Amount = 200000;
-    
-    uint64 afterOrder1 = initialLockedTokens + order1Amount;
-    uint64 afterOrder2 = afterOrder1 + order2Amount;
-    EXPECT_EQ(afterOrder2, 1300000);
-    
-    uint64 afterRefundOrder1 = afterOrder2 - order1Amount;
-    EXPECT_EQ(afterRefundOrder1, 1200000);
+    bridge.state()->numberOfAdmins = 2;
+    bridge.state()->requiredApprovals = 2;
+    bridge.state()->admins.set(0, admin1);
+    bridge.state()->admins.set(1, admin2);
+    bridge.seedBalance(admin1, 1);
+    bridge.seedBalance(admin2, 1);
+    bridge.seedBalance(outsider, 1);
+
+    auto proposalOutput = bridge.createProposal(admin1, VOTTUNBRIDGE::PROPOSAL_CHANGE_THRESHOLD,
+                                                NULL_ID, NULL_ID, 2);
+    EXPECT_EQ(proposalOutput.status, 0);
+
+    auto approveOutput = bridge.approveProposal(outsider, proposalOutput.proposalId);
+    EXPECT_EQ(approveOutput.status, static_cast<uint8>(VOTTUNBRIDGE::EthBridgeError::notOwner));
+    EXPECT_FALSE(approveOutput.executed);
+}
+
+TEST(VottunBridge, ApproveProposal_DoubleApprovalRejected)
+{
+    ContractTestingVottunBridge bridge;
+    const id admin1 = id(10, 0, 0, 0);
+    const id admin2 = id(11, 0, 0, 0);
+
+    bridge.state()->numberOfAdmins = 2;
+    bridge.state()->requiredApprovals = 2;
+    bridge.state()->admins.set(0, admin1);
+    bridge.state()->admins.set(1, admin2);
+    bridge.seedBalance(admin1, 1);
+    bridge.seedBalance(admin2, 1);
+
+    auto proposalOutput = bridge.createProposal(admin1, VOTTUNBRIDGE::PROPOSAL_CHANGE_THRESHOLD,
+                                                NULL_ID, NULL_ID, 2);
+    EXPECT_EQ(proposalOutput.status, 0);
+
+    auto approveOutput = bridge.approveProposal(admin1, proposalOutput.proposalId);
+    EXPECT_EQ(approveOutput.status, static_cast<uint8>(VOTTUNBRIDGE::EthBridgeError::proposalAlreadyApproved));
+    EXPECT_FALSE(approveOutput.executed);
+}
+
+TEST(VottunBridge, ApproveProposal_ExecutesChangeThreshold)
+{
+    ContractTestingVottunBridge bridge;
+    const id admin1 = id(10, 0, 0, 0);
+    const id admin2 = id(11, 0, 0, 0);
+
+    bridge.state()->numberOfAdmins = 2;
+    bridge.state()->requiredApprovals = 2;
+    bridge.state()->admins.set(0, admin1);
+    bridge.state()->admins.set(1, admin2);
+    bridge.seedBalance(admin1, 1);
+    bridge.seedBalance(admin2, 1);
+
+    auto proposalOutput = bridge.createProposal(admin1, VOTTUNBRIDGE::PROPOSAL_CHANGE_THRESHOLD,
+                                                NULL_ID, NULL_ID, 2);
+    EXPECT_EQ(proposalOutput.status, 0);
+
+    auto approveOutput = bridge.approveProposal(admin2, proposalOutput.proposalId);
+    EXPECT_EQ(approveOutput.status, 0);
+    EXPECT_TRUE(approveOutput.executed);
+    EXPECT_EQ(bridge.state()->requiredApprovals, 2);
+}
+
+TEST(VottunBridge, ApproveProposal_ProposalNotFound)
+{
+    ContractTestingVottunBridge bridge;
+    const id admin1 = id(12, 0, 0, 0);
+
+    bridge.state()->numberOfAdmins = 1;
+    bridge.state()->requiredApprovals = 1;
+    bridge.state()->admins.set(0, admin1);
+    bridge.seedBalance(admin1, 1);
+
+    auto output = bridge.approveProposal(admin1, 12345);
+    EXPECT_EQ(output.status, static_cast<uint8>(VOTTUNBRIDGE::EthBridgeError::proposalNotFound));
+    EXPECT_FALSE(output.executed);
+}
+
+TEST(VottunBridge, ApproveProposal_AlreadyExecuted)
+{
+    ContractTestingVottunBridge bridge;
+    const id admin1 = id(13, 0, 0, 0);
+    const id admin2 = id(14, 0, 0, 0);
+
+    bridge.state()->numberOfAdmins = 2;
+    bridge.state()->requiredApprovals = 2;
+    bridge.state()->admins.set(0, admin1);
+    bridge.state()->admins.set(1, admin2);
+    bridge.seedBalance(admin1, 1);
+    bridge.seedBalance(admin2, 1);
+
+    auto proposalOutput = bridge.createProposal(admin1, VOTTUNBRIDGE::PROPOSAL_CHANGE_THRESHOLD,
+                                                NULL_ID, NULL_ID, 2);
+    EXPECT_EQ(proposalOutput.status, 0);
+
+    auto approveOutput = bridge.approveProposal(admin2, proposalOutput.proposalId);
+    EXPECT_EQ(approveOutput.status, 0);
+    EXPECT_TRUE(approveOutput.executed);
+
+    auto secondApprove = bridge.approveProposal(admin1, proposalOutput.proposalId);
+    EXPECT_EQ(secondApprove.status, static_cast<uint8>(VOTTUNBRIDGE::EthBridgeError::proposalAlreadyExecuted));
+    EXPECT_FALSE(secondApprove.executed);
 }
