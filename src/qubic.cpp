@@ -4670,6 +4670,7 @@ static unsigned int countCurrentTickVote()
 // - 1 tx per source publickey per tick
 // - 128 txs per computor publickey per tick
 // Note requestedTickTransactions.transactionFlags are set to 0 for tx we want to request and 1 for tx we are not interested in
+OPTIMIZE_OFF()
 static void prepareNextTickTransactions()
 {
     const unsigned int nextTick = system.tick + 1;
@@ -4792,6 +4793,7 @@ static void prepareNextTickTransactions()
     }
     nextTickTransactionsSemaphore = 0;
 }
+OPTIMIZE_ON()
 
 
 // Computes the digest of all tx bodies of a certain tick and saves it in etalonTick (4 bytes)
@@ -6221,6 +6223,7 @@ static void deinitialize()
     customMiningDeinitialize();
 }
 
+OPTIMIZE_OFF()
 static void logInfo()
 {
     if (consoleLoggingLevel == 0)
@@ -6466,6 +6469,7 @@ static void logInfo()
     //logToConsole(message);
 #endif
 }
+OPTIMIZE_ON()
 
 static void logHealthStatus()
 {
