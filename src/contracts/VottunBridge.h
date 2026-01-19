@@ -659,15 +659,17 @@ public:
             }
         }
 
-        // If found slot but less than 5 free slots, cleanup executed proposals
+        // If found slot but less than 5 free slots, cleanup executed or inactive proposals
         if (locals.slotFound && locals.freeSlots < 5)
         {
             locals.cleanedSlots = 0;
             for (locals.j = 0; locals.j < state.proposals.capacity(); ++locals.j)
             {
-                if (state.proposals.get(locals.j).executed)
+                // Clean executed proposals OR inactive proposals with a proposalId (failed/abandoned)
+                if (state.proposals.get(locals.j).executed ||
+                    (!state.proposals.get(locals.j).active && state.proposals.get(locals.j).proposalId > 0))
                 {
-                    // Clear executed proposal
+                    // Clear proposal
                     locals.emptyProposal.proposalId = 0;
                     locals.emptyProposal.proposalType = 0;
                     locals.emptyProposal.approvalsCount = 0;
@@ -682,13 +684,15 @@ public:
         // If no slot found at all, try cleanup and search again
         if (!locals.slotFound)
         {
-            // Attempt cleanup of executed proposals
+            // Attempt cleanup of executed or inactive proposals
             locals.cleanedSlots = 0;
             for (locals.j = 0; locals.j < state.proposals.capacity(); ++locals.j)
             {
-                if (state.proposals.get(locals.j).executed)
+                // Clean executed proposals OR inactive proposals with a proposalId (failed/abandoned)
+                if (state.proposals.get(locals.j).executed ||
+                    (!state.proposals.get(locals.j).active && state.proposals.get(locals.j).proposalId > 0))
                 {
-                    // Clear executed proposal
+                    // Clear proposal
                     locals.emptyProposal.proposalId = 0;
                     locals.emptyProposal.proposalType = 0;
                     locals.emptyProposal.approvalsCount = 0;
@@ -966,6 +970,96 @@ public:
         }
 
         output.status = EthBridgeError::proposalNotFound;
+    }
+
+    // Cancel proposal structures
+    struct cancelProposal_input
+    {
+        uint64 proposalId;
+    };
+
+    struct cancelProposal_output
+    {
+        uint8 status;
+    };
+
+    struct cancelProposal_locals
+    {
+        EthBridgeLogger log;
+        AdminProposal proposal;
+        uint64 i;
+        bit found;
+    };
+
+    // Cancel a proposal (only the creator can cancel)
+    PUBLIC_PROCEDURE_WITH_LOCALS(cancelProposal)
+    {
+        // Find the proposal
+        locals.found = false;
+        for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
+        {
+            locals.proposal = state.proposals.get(locals.i);
+            if (locals.proposal.proposalId == input.proposalId && locals.proposal.active)
+            {
+                locals.found = true;
+                break;
+            }
+        }
+
+        if (!locals.found)
+        {
+            locals.log = EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::proposalNotFound,
+                input.proposalId,
+                0,
+                0 };
+            LOG_INFO(locals.log);
+            output.status = EthBridgeError::proposalNotFound;
+            return;
+        }
+
+        // Check if already executed
+        if (locals.proposal.executed)
+        {
+            locals.log = EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::proposalAlreadyExecuted,
+                input.proposalId,
+                0,
+                0 };
+            LOG_INFO(locals.log);
+            output.status = EthBridgeError::proposalAlreadyExecuted;
+            return;
+        }
+
+        // Verify that the invocator is the creator (first approver)
+        if (locals.proposal.approvals.get(0) != qpi.invocator())
+        {
+            locals.log = EthBridgeLogger{
+                CONTRACT_INDEX,
+                EthBridgeError::notAuthorized,
+                input.proposalId,
+                0,
+                0 };
+            LOG_INFO(locals.log);
+            output.status = EthBridgeError::notAuthorized;
+            return;
+        }
+
+        // Cancel the proposal by marking it as inactive
+        locals.proposal.active = false;
+        state.proposals.set(locals.i, locals.proposal);
+
+        locals.log = EthBridgeLogger{
+            CONTRACT_INDEX,
+            0, // No error
+            input.proposalId,
+            0,
+            0 };
+        LOG_INFO(locals.log);
+
+        output.status = 0; // Success
     }
 
     // Admin Functions (now deprecated - use multisig proposals)
@@ -1474,8 +1568,15 @@ public:
         {
             // Tokens must be provided with the invocation (invocationReward)
             locals.depositAmount = qpi.invocationReward();
-            if (locals.depositAmount != input.amount)
+
+            // Check if user sent enough tokens
+            if (locals.depositAmount < input.amount)
             {
+                // Not enough - refund everything and return error
+                if (locals.depositAmount > 0)
+                {
+                    qpi.transfer(qpi.invocator(), locals.depositAmount);
+                }
                 locals.log = EthBridgeLogger{
                     CONTRACT_INDEX,
                     EthBridgeError::invalidAmount,
@@ -1487,9 +1588,15 @@ public:
                 return;
             }
 
-            // Tokens go directly to lockedTokens for this order
-            state.lockedTokens += locals.depositAmount;
-            state.totalReceivedTokens += locals.depositAmount;
+            // Lock only the required amount
+            state.lockedTokens += input.amount;
+            state.totalReceivedTokens += input.amount;
+
+            // Refund excess if user sent too much
+            if (locals.depositAmount > input.amount)
+            {
+                qpi.transfer(qpi.invocator(), locals.depositAmount - input.amount);
+            }
             
             // Mark tokens as received AND locked
             locals.order.tokensReceived = true;
@@ -1820,6 +1927,7 @@ public:
         REGISTER_USER_PROCEDURE(addLiquidity, 8);
         REGISTER_USER_PROCEDURE(createProposal, 9);
         REGISTER_USER_PROCEDURE(approveProposal, 10);
+        REGISTER_USER_PROCEDURE(cancelProposal, 11);
     }
 
     // Initialize the contract with SECURE ADMIN CONFIGURATION
