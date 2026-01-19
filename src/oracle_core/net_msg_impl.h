@@ -148,6 +148,35 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		// TODO
 		break;
 
+	case RequestOracleData::requestQueryStatistics:
+	{
+		// prepare response
+		response->resType = RespondOracleData::respondQueryStatistics;
+		auto* p = (RespondOracleDataQueryStatistics*)payload;
+		setMemory(*p, 0);
+		p->pendingCount = pendingQueryIndices.numValues;
+		p->pendingOracleMachineCount = pendingQueryIndices.numValues - pendingCommitReplyStateIndices.numValues - pendingRevealReplyStateIndices.numValues;
+		p->pendingCommitCount = pendingCommitReplyStateIndices.numValues;
+		p->pendingReplyCount = pendingRevealReplyStateIndices.numValues;
+		p->successfulCount = stats.successCount;
+		p->unresolvableCount = stats.unresolvableCount;
+		const uint64_t totalTimeouts = stats.timeoutNoReplyCount + stats.timeoutNoCommitCount + stats.timeoutNoReplyCount;
+		p->timeoutCount = totalTimeouts;
+		p->timeoutNoReplyCount = stats.timeoutNoReplyCount;
+		p->timeoutNoCommitCount = stats.timeoutNoCommitCount;
+		p->timeoutNoRevealCount = stats.timeoutNoRevealCount;
+		p->oracleMachineRepliesDisagreeCount = stats.oracleMachineRepliesDisagreeCount;
+		p->oracleMachineReplyAvgMilliTicksPerQuery = (stats.oracleMachineReplyCount) ? stats.oracleMachineReplyTicksSum * 1000 / stats.oracleMachineReplyCount : 0;
+		p->commitAvgMilliTicksPerQuery = (stats.commitCount) ? stats.successTicksSum * 1000 / stats.successCount : 0;
+		p->successAvgMilliTicksPerQuery = (stats.successCount) ? stats.successTicksSum * 1000 / stats.successCount : 0;
+		p->timeoutAvgMilliTicksPerQuery = (totalTimeouts) ? stats.timeoutTicksSum * 1000 / totalTimeouts : 0;
+
+		// send response
+		enqueueResponse(peer, sizeof(RespondOracleData) + sizeof(RespondOracleDataQueryStatistics),
+			RespondOracleData::type(), header->dejavu(), response);
+		break;
+	}
+
 	}
 
 	enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), nullptr);

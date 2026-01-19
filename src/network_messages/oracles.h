@@ -11,6 +11,7 @@
 // - all oracle query IDs that are pending (status is neither success nor failure)
 // - for given oracle query ID: metadata, query, and response if available
 // - subscription info for given oracle subscription ID
+// - query statistics of this node (counts and durations)
 struct RequestOracleData
 {
     static constexpr unsigned char type()
@@ -26,6 +27,7 @@ struct RequestOracleData
     static constexpr unsigned int requestPendingQueryIds = 4;
     static constexpr unsigned int requestQueryAndResponse = 5;
     static constexpr unsigned int requestSubscription = 6;
+    static constexpr unsigned int requestQueryStatistics = 7;
     unsigned int reqType;
 
     unsigned int _padding;
@@ -67,6 +69,9 @@ struct RespondOracleData
     // The payload is RespondOracleDataSubscriptionContractMetadata.
     static constexpr unsigned int respondSubscriptionContractMetadata = 6;
 
+    // The payload is RespondOracleDataQueryStatistics.
+    static constexpr unsigned int respondQueryStatistics = 7;
+
     // type of oracle response
     unsigned int resType;
 };
@@ -106,4 +111,36 @@ struct RespondOracleDataSubscriptionContractMetadata
     uint16_t contractIndex;
     uint16_t notificationIntervalMinutes; 
     uint64_t nextQueryNotificationTimestamp; ///< Timeout in QPI::DateAndTime format
+};
+
+struct RespondOracleDataQueryStatistics
+{
+    uint64_t pendingCount;
+    uint64_t pendingOracleMachineCount;
+    uint64_t pendingCommitCount;
+    uint64_t pendingReplyCount;
+
+    uint64_t successfulCount;
+
+    uint64_t unresolvableCount;
+
+    uint64_t timeoutCount;
+    uint64_t timeoutNoReplyCount;
+    uint64_t timeoutNoCommitCount;
+    uint64_t timeoutNoRevealCount;
+
+    /// For how many queries multiple OM nodes connected to this Core node sent differing replies
+    uint64_t oracleMachineRepliesDisagreeCount;
+
+    /// How many thousandth ticks it takes on average until the OM reply is received
+    uint64_t oracleMachineReplyAvgMilliTicksPerQuery;
+
+    /// How many thousandth ticks it takes on average until the commit status is reached (until 451 commit tx got executed)
+    uint64_t commitAvgMilliTicksPerQuery;
+
+    /// How many thousandth ticks it takes on average until until success (ticks until 1 reveal tx got executed)
+    uint64_t successAvgMilliTicksPerQuery;
+
+    /// How many thousandth ticks it takes on average until until timeout (only considering cases in which timeout happened)
+    uint64_t timeoutAvgMilliTicksPerQuery;
 };

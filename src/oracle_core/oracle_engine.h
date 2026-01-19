@@ -253,17 +253,35 @@ protected:
         /// sum of ticks that were required to reach the success state
         unsigned long long successTicksSum;
 
-        /// total number of timeout oracle queries
-        unsigned long long timeoutCount;
+        /// total number of timeout oracle queries without reply from oracle machine
+        unsigned long long timeoutNoReplyCount;
+
+        /// total number of timeout oracle queries without commit quorum
+        unsigned long long timeoutNoCommitCount;
+
+        /// total number of timeout oracle queries without reveal
+        unsigned long long timeoutNoRevealCount;
+
+        /// sum of ticks until timeout of all timeout cases
+        unsigned long long timeoutTicksSum;
 
         /// total number of unresolvable oracle queries
         unsigned long long unresolvableCount;
+
+        /// total number of oracle queries that got oracle machine reply locally
+        unsigned long long oracleMachineReplyCount;
+
+        /// sum of ticks that were required to get oracle machine reply locally
+        unsigned long long oracleMachineReplyTicksSum;
 
         /// total number of oracle queries that reached commit state
         unsigned long long commitCount;
 
         /// sum of ticks that were required to reach the commit state
         unsigned long long commitTicksSum;
+
+        /// total number of oracle machin replies that disagree with the first reply received for a query
+        unsigned long long oracleMachineRepliesDisagreeCount;
     } stats;
 
 #if ENABLE_ORACLE_STATS_RECORD
@@ -571,7 +589,10 @@ public:
         {
             // if the digests don't match, set an error flag
             if (replyDigest != replyState.ownReplyDigest)
+            {
                 oqm.statusFlags |= ORACLE_FLAG_OM_DISAGREE;
+                ++stats.oracleMachineRepliesDisagreeCount;
+            }
             return;
         }
 
@@ -580,6 +601,10 @@ public:
         replyState.ownReplyDigest = replyDigest;
         replyState.ownReplySize = replySize;
         oqm.statusFlags |= ORACLE_FLAG_REPLY_RECEIVED;
+
+        // update statistics
+        ++stats.oracleMachineReplyCount;
+        stats.oracleMachineReplyTicksSum += (system.tick - oqm.queryTick);
 
         // add reply state to set of indices with pending commit tx
         pendingCommitReplyStateIndices.add(replyStateIdx);
@@ -1204,13 +1229,21 @@ public:
                 const uint16_t mostCommitsCount = replyState.replyCommitHistogramCount[replyState.mostCommitsHistIdx];
                 ASSERT(replyState.mostCommitsHistIdx < NUMBER_OF_COMPUTORS && mostCommitsCount <= NUMBER_OF_COMPUTORS);
 
+                // update statistics
+                stats.timeoutTicksSum += (system.tick - oqm.queryTick);
+                if (oqm.status == ORACLE_QUERY_STATUS_COMMITTED)
+                    ++stats.timeoutNoRevealCount;
+                else if (oqm.statusFlags & ORACLE_FLAG_REPLY_RECEIVED)
+                    ++stats.timeoutNoCommitCount;
+                else
+                    ++stats.timeoutNoReplyCount;
+
                 // update state to TIMEOUT
                 oqm.status = ORACLE_QUERY_STATUS_TIMEOUT;
                 oqm.statusFlags |= ORACLE_FLAG_TIMEOUT;
                 oqm.statusVar.failure.agreeingCommits = mostCommitsCount;
                 oqm.statusVar.failure.totalCommits = replyState.totalCommits;
                 pendingQueryIndices.removeByValue(queryIndex);
-                ++stats.timeoutCount;
 
                 // cleanup reply state
                 pendingCommitReplyStateIndices.removeByValue(replyStateIdx);
@@ -1387,31 +1420,52 @@ public:
 
     void logStatus(CHAR16* message) const
     {
+        auto appendQuotientWithOneDecimal = [](CHAR16* message, uint64_t dividend, uint64_t divisor)
+        {
+            unsigned long long quotient10 = (divisor) ? (dividend * 10 / divisor) : 0;
+            appendText(message, ", ");
+            appendNumber(message, quotient10 / 10, FALSE);
+            appendText(message, ".");
+            appendNumber(message, quotient10 % 10, FALSE);
+        };
+
+
         setText(message, L"Oracles queries: pending ");
-        appendNumber(message, pendingCommitReplyStateIndices.numValues, FALSE);
-        appendText(message, " (");
-        // print how many ticks it takes on average until the commit status is reached (until 451 commit tx got executed)
-        unsigned long long ticks10perCommit = (stats.commitCount) ? (stats.commitTicksSum * 10 / stats.commitCount) : 0;
-        appendNumber(message, ticks10perCommit / 10, FALSE);
-        appendText(message, ".");
-        appendNumber(message, ticks10perCommit % 10, FALSE);
-        appendText(message, " ticks) / ");
-        appendNumber(message, pendingRevealReplyStateIndices.numValues, FALSE);
-        appendText(message, " (");
-        // print how many ticks it takes on average between commit and success (ticks until 1 reveal tx got executed)
-        unsigned long long ticks10perSuccess = (stats.successCount) ? (stats.successTicksSum * 10 / stats.successCount) : 0;
-        unsigned long long ticks10perReveal = ticks10perSuccess - ticks10perCommit;
-        appendNumber(message, ticks10perReveal / 10, FALSE);
-        appendText(message, ".");
-        appendNumber(message, ticks10perReveal % 10, FALSE);
-        appendText(message, " ticks) / ");
+        // print total number of pending queries
         appendNumber(message, pendingQueryIndices.numValues, FALSE);
+        // print number of pending queries currently waiting for OM reply
+        appendText(message, " (OM ");
+        appendNumber(message, pendingQueryIndices.numValues - pendingCommitReplyStateIndices.numValues - pendingRevealReplyStateIndices.numValues, FALSE);
+        // print how many ticks it takes on average until the OM reply is received
+        appendQuotientWithOneDecimal(message, stats.oracleMachineReplyTicksSum, stats.oracleMachineReplyCount);
+        appendText(message, " ticks; commit ");
+        // print number of pending queries currently waiting for commit status
+        appendNumber(message, pendingCommitReplyStateIndices.numValues, FALSE);
+        // print how many ticks it takes on average until the commit status is reached (until 451 commit tx got executed)
+        appendQuotientWithOneDecimal(message, stats.commitTicksSum, stats.commitCount);
+        appendText(message, " ticks; reveal ");
+        // print number of pending queries currently waiting for reveal transaction
+        appendNumber(message, pendingRevealReplyStateIndices.numValues, FALSE);
+        // print how many ticks it takes on average until success (ticks until 1 reveal tx got executed)
+        appendQuotientWithOneDecimal(message, stats.successTicksSum, stats.successCount);
+        appendText(message, " ticks), ");
         appendText(message, ", successful ");
         appendNumber(message, stats.successCount, FALSE);
-        appendText(message, ", timeout ");
-        appendNumber(message, stats.timeoutCount, FALSE);
         appendText(message, ", unresolvable ");
         appendNumber(message, stats.unresolvableCount, FALSE);
+        appendText(message, ", timeout ");
+        const uint64_t totalTimeouts = stats.timeoutNoReplyCount + stats.timeoutNoCommitCount + stats.timeoutNoReplyCount;
+        appendNumber(message, totalTimeouts, FALSE);
+        appendText(message, " (OM ");
+        appendNumber(message, stats.timeoutNoReplyCount, FALSE);
+        appendText(message, " ; commit ");
+        appendNumber(message, stats.timeoutNoCommitCount, FALSE);
+        appendText(message, " ; reveal ");
+        appendNumber(message, stats.timeoutNoRevealCount, FALSE);
+        appendText(message, " ; ticks ");
+        appendQuotientWithOneDecimal(message, stats.timeoutTicksSum, totalTimeouts);
+        appendText(message, "), conflicting OM replies ");
+        appendNumber(message, stats.oracleMachineRepliesDisagreeCount, FALSE);
         logToConsole(message);
 
 #if ENABLE_ORACLE_STATS_RECORD
