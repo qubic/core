@@ -160,7 +160,7 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		p->pendingRevealCount = pendingRevealReplyStateIndices.numValues;
 		p->successfulCount = stats.successCount;
 		p->unresolvableCount = stats.unresolvableCount;
-		const uint64_t totalTimeouts = stats.timeoutNoReplyCount + stats.timeoutNoCommitCount + stats.timeoutNoReplyCount;
+		const uint64_t totalTimeouts = stats.timeoutNoReplyCount + stats.timeoutNoCommitCount + stats.timeoutNoRevealCount;
 		p->timeoutCount = totalTimeouts;
 		p->timeoutNoReplyCount = stats.timeoutNoReplyCount;
 		p->timeoutNoCommitCount = stats.timeoutNoCommitCount;
@@ -170,6 +170,7 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		p->commitAvgMilliTicksPerQuery = (stats.commitCount) ? stats.commitTicksSum * 1000 / stats.commitCount : 0;
 		p->successAvgMilliTicksPerQuery = (stats.successCount) ? stats.successTicksSum * 1000 / stats.successCount : 0;
 		p->timeoutAvgMilliTicksPerQuery = (totalTimeouts) ? stats.timeoutTicksSum * 1000 / totalTimeouts : 0;
+		p->revealTxCount = stats.revealTxCount;
 
 		// send response
 		enqueueResponse(peer, sizeof(RespondOracleData) + sizeof(RespondOracleDataQueryStatistics),
