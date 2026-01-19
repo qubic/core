@@ -992,8 +992,8 @@ static void processReceivedData(unsigned int i, unsigned int salt)
                     appendNumber(omDbgMsg, i, FALSE);
                     appendText(omDbgMsg, L"]");
                     addDebugMessageOM(omDbgMsg);
-                }
 #endif
+                }
 
                 peers[i].receiveToken.CompletionToken.Status = -1;
                 closePeer(&peers[i]);
