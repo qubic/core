@@ -207,10 +207,12 @@ public:
 //#endif
         unsigned int res = 0;
         ACQUIRE(lock);
+        debugPendingTxsPoolLockLocation = 1;
         if (tickInStorage(tick))
         {
             res = numSavedTxsPerTick[tickToIndex(tick)];
         }
+        debugPendingTxsPoolLockLocation = 0;
         RELEASE(lock);
 
 //#if !defined(NDEBUG) && !defined(NO_UEFI)
@@ -232,6 +234,7 @@ public:
 //#endif
         unsigned int res = 0;
         ACQUIRE(lock);
+        debugPendingTxsPoolLockLocation = 2;
         if (tickInStorage(tick + 1))
         {
             unsigned int startIndex = tickToIndex(tick + 1);
@@ -249,6 +252,7 @@ public:
                     res += numSavedTxsPerTick[t];
             }
         }
+        debugPendingTxsPoolLockLocation = 0;
         RELEASE(lock);
 
 //#if !defined(NDEBUG) && !defined(NO_UEFI)
@@ -270,6 +274,7 @@ public:
 //#endif
         bool txAdded = false;
         ACQUIRE(lock);
+        debugPendingTxsPoolLockLocation = 3;
         if (tx->checkValidity() && tickInStorage(tx->tick))
         {
             unsigned int tickIndex = tickToIndex(tx->tick);
@@ -385,6 +390,7 @@ public:
 #endif
 
     end_add_function:
+        debugPendingTxsPoolLockLocation = 0;
         RELEASE(lock);
 
 //#if !defined(NDEBUG) && !defined(NO_UEFI)
@@ -437,6 +443,7 @@ public:
     static void incrementFirstStoredTick()
     {
         ACQUIRE(lock);
+        debugPendingTxsPoolLockLocation = 4;
 
         // set memory at buffersBeginIndex to 0 
         unsigned long long numTxsBeforeBegin = buffersBeginIndex * maxNumTxsPerTick;
@@ -451,6 +458,7 @@ public:
         firstStoredTick++;
         buffersBeginIndex = (buffersBeginIndex + 1) % PENDING_TXS_POOL_NUM_TICKS;
 
+        debugPendingTxsPoolLockLocation = 0;
         RELEASE(lock);
     }
 
@@ -460,6 +468,7 @@ public:
         addDebugMessage(L"Begin pendingTxsPool.beginEpoch()");
 #endif
         ACQUIRE(lock);
+        debugPendingTxsPoolLockLocation = 5;
         if (tickInStorage(newInitialTick))
         {
             unsigned int newInitialIndex = tickToIndex(newInitialTick);
@@ -511,6 +520,7 @@ public:
 
         firstStoredTick = newInitialTick;
 
+        debugPendingTxsPoolLockLocation = 0;
         RELEASE(lock);
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
@@ -522,6 +532,7 @@ public:
     static void checkStateConsistencyWithAssert()
     {
         ACQUIRE(lock);
+        debugPendingTxsPoolLockLocation = 6;
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"Begin tsxPool.checkStateConsistencyWithAssert()");
@@ -576,6 +587,7 @@ public:
             }
         }
 
+        debugPendingTxsPoolLockLocation = 0;
         RELEASE(lock);
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
