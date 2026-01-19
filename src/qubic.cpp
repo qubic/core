@@ -5545,7 +5545,9 @@ static void tickProcessor(void*)
         }
         tickerLoopNumerator += __rdtsc() - curTimeTick;
         tickerLoopDenominator++;
+#ifndef NDEBUG
         debugTickProcessorLoopCounter++;
+#endif
     }
 }
 OPTIMIZE_ON()
@@ -7217,9 +7219,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
                     if (nonZero)
                     {
+#ifndef NDEBUG
                         forceLogToConsoleAsAddDebugMessage = true;
+#endif
                         logToConsole(L"Buffer overflow around pendingTxsPool.lock detected!");
+#ifndef NDEBUG
                         forceLogToConsoleAsAddDebugMessage = false;
+#endif
                     }
                 }
 
