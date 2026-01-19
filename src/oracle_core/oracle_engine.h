@@ -200,6 +200,48 @@ struct UnsortedMultiset
     }
 };
 
+struct OracleEngineStatistics
+{
+    /// total number of successful oracle queries
+    unsigned long long successCount;
+
+    /// sum of ticks that were required to reach the success state
+    unsigned long long successTicksSum;
+
+    /// total number of timeout oracle queries without reply from oracle machine
+    unsigned long long timeoutNoReplyCount;
+
+    /// total number of timeout oracle queries without commit quorum
+    unsigned long long timeoutNoCommitCount;
+
+    /// total number of timeout oracle queries without reveal
+    unsigned long long timeoutNoRevealCount;
+
+    /// sum of ticks until timeout of all timeout cases
+    unsigned long long timeoutTicksSum;
+
+    /// total number of unresolvable oracle queries
+    unsigned long long unresolvableCount;
+
+    /// total number of oracle queries that got oracle machine reply locally
+    unsigned long long oracleMachineReplyCount;
+
+    /// sum of ticks that were required to get oracle machine reply locally
+    unsigned long long oracleMachineReplyTicksSum;
+
+    /// total number of oracle queries that reached commit state
+    unsigned long long commitCount;
+
+    /// sum of ticks that were required to reach the commit state
+    unsigned long long commitTicksSum;
+
+    /// total number of oracle machin replies that disagree with the first reply received for a query
+    unsigned long long oracleMachineRepliesDisagreeCount;
+
+    /// total number of reply reveal transactions
+    unsigned long long revealTxCount;
+};
+
 
 template <uint16_t ownComputorSeedsCount>
 class OracleEngine
@@ -245,46 +287,7 @@ protected:
     // fast lookup of query indices for which the contract should be notified
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> notificationQueryIndicies;
 
-    struct {
-        /// total number of successful oracle queries
-        unsigned long long successCount;
-
-        /// sum of ticks that were required to reach the success state
-        unsigned long long successTicksSum;
-
-        /// total number of timeout oracle queries without reply from oracle machine
-        unsigned long long timeoutNoReplyCount;
-
-        /// total number of timeout oracle queries without commit quorum
-        unsigned long long timeoutNoCommitCount;
-
-        /// total number of timeout oracle queries without reveal
-        unsigned long long timeoutNoRevealCount;
-
-        /// sum of ticks until timeout of all timeout cases
-        unsigned long long timeoutTicksSum;
-
-        /// total number of unresolvable oracle queries
-        unsigned long long unresolvableCount;
-
-        /// total number of oracle queries that got oracle machine reply locally
-        unsigned long long oracleMachineReplyCount;
-
-        /// sum of ticks that were required to get oracle machine reply locally
-        unsigned long long oracleMachineReplyTicksSum;
-
-        /// total number of oracle queries that reached commit state
-        unsigned long long commitCount;
-
-        /// sum of ticks that were required to reach the commit state
-        unsigned long long commitTicksSum;
-
-        /// total number of oracle machin replies that disagree with the first reply received for a query
-        unsigned long long oracleMachineRepliesDisagreeCount;
-
-        /// total number of reply reveal transactions
-        unsigned long long revealTxCount;
-    } stats;
+    OracleEngineStatistics stats;
 
 #if ENABLE_ORACLE_STATS_RECORD
     struct
@@ -380,18 +383,11 @@ public:
             freePool(replyStates);
     }
 
-    void save() const
-    {
-        LockGuard lockGuard(lock);
-        // save state (excluding queryIdToIndex and unused parts of large buffers)
-    }
+    /// Save current state to snapshot files. Can only be called from main processor!
+    bool saveSnapshot(unsigned short epoch, CHAR16* directory) const;
 
-    void load()
-    {
-        LockGuard lockGuard(lock);
-        // load state (excluding queryIdToIndex and unused parts of large buffers)
-        // init queryIdToIndex
-    }
+    /// Load state from snapshot files. Can only be called from main processor!
+    bool loadSnapshot(unsigned short epoch, CHAR16* directory);
 
     /**
     * Check and start user query based on transaction (should be called from tick processor).

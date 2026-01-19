@@ -362,6 +362,9 @@
     <ClInclude Include="contracts\SupplyWatcher_old.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="oracle_core\snapshot_files.h">
+      <Filter>oracle_core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
