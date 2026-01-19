@@ -65,6 +65,8 @@ protected:
     // Priority queues for transactions in each saved tick
     inline static Collection<unsigned int, txsPrioritiesCapacity>* txsPriorities;
 
+    OPTIMIZE_OFF()
+
     static void cleanupTxsPriorities(unsigned int tickIndex)
     {
         sint64 elementIndex = txsPriorities->headIndex(m256i{ tickIndex, 0, 0, 0 });
@@ -581,4 +583,5 @@ public:
 #endif
     }
 
+    OPTIMIZE_ON()
 };
