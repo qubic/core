@@ -37,6 +37,7 @@
 static constexpr unsigned int ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS = 15; // Config timout for connecting attemp to OM
 static constexpr unsigned int ORACLE_MACHINE_TRANSMITING_TIMEOUT_SECS = 30; // Transmitting timeout to OM
 static constexpr unsigned int ORACLE_MACHINE_GRACEFULL_CLOSE_RETIRES = 3; // Gracefull close retries for connecting attemp to OM
+static constexpr unsigned long long OM_RECONNECT_COOLDOWN_SECS = 5;
 
 static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
 
@@ -98,6 +99,7 @@ struct Peer
     unsigned long long lastOMActivityTime;
     unsigned long long omTransmitStartTime;
     EFI_STATUS lastOMStatus;
+    unsigned long long lastOMCloseTime;
 
     // Extra data to determine if this peer is a fullnode
     // Note: an **active fullnode** is a peer that is able to reply valid tick data, tick vote to this node after getting requested
@@ -161,6 +163,7 @@ struct Peer
         connectionStartTime = 0;
         lastOMStatus = EFI_SUCCESS;
         omTransmitStartTime = 0;
+        lastOMCloseTime = 0;
 
         dataToTransmitSize = 0;
         lastActiveTick = 0;
@@ -294,41 +297,47 @@ static void closePeer(Peer* peer, int closeGracefullyRetries = 0)
     {
         if (!peer->isClosing)
         {
-            // For OM peers: re-enqueue pending data before closing
-            if (peer->isOracleMachineNode() && peer->dataToTransmitSize > 0)
+            if (peer->isOracleMachineNode())
             {
-                unsigned int offset = 0;
-                unsigned int requeuedCount = 0;
-                while (offset < peer->dataToTransmitSize)
+                // Track close time for OM nodes to enable reconnection cooldown
+                peer->lastOMCloseTime = __rdtsc();
+
+                // For OM peers: re-enqueue pending data before closing
+                if (peer->dataToTransmitSize > 0)
                 {
-                    RequestResponseHeader* header = (RequestResponseHeader*)(peer->dataToTransmit + offset);
-                    unsigned int msgSize = header->size();
-                    if (msgSize > 0 && offset + msgSize <= peer->dataToTransmitSize)
+                    unsigned int offset = 0;
+                    unsigned int requeuedCount = 0;
+                    while (offset < peer->dataToTransmitSize)
                     {
-                        enqueueResponse((Peer*)1, header);
-                        requeuedCount++;
-                        offset += msgSize;
+                        RequestResponseHeader* header = (RequestResponseHeader*)(peer->dataToTransmit + offset);
+                        unsigned int msgSize = header->size();
+                        if (msgSize > 0 && offset + msgSize <= peer->dataToTransmitSize)
+                        {
+                            enqueueResponse((Peer*)1, header);
+                            requeuedCount++;
+                            offset += msgSize;
+                        }
+                        else
+                        {
+                            break;  // Invalid header, stop
+                        }
                     }
-                    else
-                    {
-                        break;  // Invalid header, stop
-                    }
-                }
 #ifndef NDEBUG
-                if (requeuedCount > 0)
-                {
-                    unsigned int peerIdx = (unsigned int)(peer - peers);
-                    CHAR16 omDbgMsg[128];
-                    setText(omDbgMsg, L"OM: closePeer REQUEUE - peer[");
-                    appendNumber(omDbgMsg, peerIdx, FALSE);
-                    appendText(omDbgMsg, L"] requeued ");
-                    appendNumber(omDbgMsg, requeuedCount, FALSE);
-                    appendText(omDbgMsg, L" pending msg(s), bytes=");
-                    appendNumber(omDbgMsg, peer->dataToTransmitSize, FALSE);
-                    addDebugMessageOM(omDbgMsg);
-                }
+                    if (requeuedCount > 0)
+                    {
+                        unsigned int peerIdx = (unsigned int)(peer - peers);
+                        CHAR16 omDbgMsg[128];
+                        setText(omDbgMsg, L"OM: closePeer REQUEUE - peer[");
+                        appendNumber(omDbgMsg, peerIdx, FALSE);
+                        appendText(omDbgMsg, L"] requeued ");
+                        appendNumber(omDbgMsg, requeuedCount, FALSE);
+                        appendText(omDbgMsg, L" pending msg(s), bytes=");
+                        appendNumber(omDbgMsg, peer->dataToTransmitSize, FALSE);
+                        addDebugMessageOM(omDbgMsg);
+                    }
 #endif
-                peer->dataToTransmitSize = 0;  // Clear after re-enqueue
+                    peer->dataToTransmitSize = 0;  // Clear after re-enqueue
+                }
             }
             peer->isClosing = TRUE;
 #ifndef NDEBUG
@@ -1362,6 +1371,30 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
 
                 // Mark it as failure
                 peers[i].connectAcceptToken.CompletionToken.Status = -1;
+
+                // Reconnection cooldown: prevent rapid reconnect cycles of the OM
+                if (peers[i].lastOMCloseTime > 0)
+                {
+                    unsigned long long elapsedSecs = (__rdtsc() - peers[i].lastOMCloseTime) / frequency;
+                    if (elapsedSecs < OM_RECONNECT_COOLDOWN_SECS)
+                    {
+#if !defined(NDEBUG)
+                        // Only log occasionally to avoid spam
+                        static unsigned long long lastCooldownLog = 0;
+                        if (__rdtsc() - lastCooldownLog > frequency * 10)  // Log at most every 10 seconds
+                        {
+                            CHAR16 msg[128];
+                            setText(msg, L"OM: Reconnect cooldown, ");
+                            appendNumber(msg, OM_RECONNECT_COOLDOWN_SECS - elapsedSecs, FALSE);
+                            appendText(msg, L"s remaining");
+                            addDebugMessageOM(msg);
+                            lastCooldownLog = __rdtsc();
+                        }
+#endif
+                        return;  // Still in cooldown, don't attempt reconnection yet
+                    }
+                }
+
             }
             else
             {
