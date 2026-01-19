@@ -335,6 +335,9 @@
     <ClInclude Include="oracle_interfaces\Mock.h">
       <Filter>oracle_interfaces</Filter>
     </ClInclude>
+    <ClInclude Include="oracle_core\snapshot_files.h">
+      <Filter>oracle_core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">

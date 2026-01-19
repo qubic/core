@@ -96,6 +96,7 @@
     <ClInclude Include="oracle_core\oracle_engine.h" />
     <ClInclude Include="oracle_core\oracle_interfaces_def.h" />
     <ClInclude Include="oracle_core\oracle_transactions.h" />
+    <ClInclude Include="oracle_core\snapshot_files.h" />
     <ClInclude Include="oracle_interfaces\Mock.h" />
     <ClInclude Include="oracle_interfaces\Price.h" />
     <ClInclude Include="platform\assert.h" />
