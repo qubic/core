@@ -230,7 +230,9 @@ namespace QPI
 			if (pov.population > 32 && iterations_count > pov.population / 4)
 			{
 				// make balanced binary search tree to get better performance
+#if 0
 				pov.bstRootIndex = _rebuild(pov.bstRootIndex);
+#endif
 			}
 		}
 		return newElementIdx;
