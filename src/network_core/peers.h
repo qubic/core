@@ -433,8 +433,17 @@ static void closePeer(Peer* peer, int closeGracefullyRetries = 0)
                 addDebugMessageOM(omDbgMsg);
             }
 #endif
+            // Save OM close time before reset
+            // TODO: consider memsetting outside and reset reserve the value
+            unsigned long long savedOMCloseTime = peer->lastOMCloseTime;
+            bool wasOMNode = peer->isOracleMachineNode();
 
             peer->reset();
+
+            if (wasOMNode)
+            {
+                peer->lastOMCloseTime = savedOMCloseTime;
+            }
         }
     }
 }
@@ -1394,6 +1403,9 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
     EFI_STATUS status;
     if (!peers[i].tcp4Protocol)
     {
+        // Save OM close time before reset (for cooldown to work)
+        unsigned long long savedOMCloseTime = peers[i].lastOMCloseTime;
+
         peers[i].reset();
         // peer slot without active connection
         if (i < NUMBER_OF_OUTGOING_CONNECTIONS)
@@ -1409,6 +1421,9 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                 peers[i].address = omIPv4Address[i - NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS];
                 //connectionTimeout = ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS;
                 //experimentSetting = true;
+
+                // Restore OM close time for cooldown check
+                peers[i].lastOMCloseTime = savedOMCloseTime;
 
                 // Mark it as failure
                 peers[i].connectAcceptToken.CompletionToken.Status = -1;
