@@ -1466,13 +1466,12 @@ public:
         appendNumber(message, totalTimeouts, FALSE);
         appendText(message, " (OM ");
         appendNumber(message, stats.timeoutNoReplyCount, FALSE);
-        appendText(message, "; commit ");
+        appendText(message, ", commit ");
         appendNumber(message, stats.timeoutNoCommitCount, FALSE);
-        appendText(message, "; reveal ");
+        appendText(message, ", reveal ");
         appendNumber(message, stats.timeoutNoRevealCount, FALSE);
-        appendText(message, "; ticks ");
         appendQuotientWithOneDecimal(message, stats.timeoutTicksSum, totalTimeouts);
-        appendText(message, "), conflicting OM replies ");
+        appendText(message, " ticks), conflicting OM replies ");
         appendNumber(message, stats.oracleMachineRepliesDisagreeCount, FALSE);
         appendText(message, "), query slots occupied ");
         appendNumber(message, oracleQueryCount * 100 / MAX_ORACLE_QUERIES, FALSE);
