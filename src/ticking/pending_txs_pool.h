@@ -277,16 +277,21 @@ public:
         debugPendingTxsPoolLockLocation = 3;
         if (tx->checkValidity() && tickInStorage(tx->tick))
         {
+            debugPendingTxsPoolLockLocation = 301;
             unsigned int tickIndex = tickToIndex(tx->tick);
             const unsigned int transactionSize = tx->totalSize();
 
             // check if tx with same digest already exists
+            debugPendingTxsPoolLockLocation = 302;
             m256i digest;
             KangarooTwelve(tx, transactionSize, &digest, sizeof(m256i));
+            debugPendingTxsPoolLockLocation = 303;
             for (unsigned int txIndex = 0; txIndex < numSavedTxsPerTick[tickIndex]; ++txIndex)
             {
+                debugPendingTxsPoolLockLocation = 3035;
                 if (*getDigestPtr(tickIndex, txIndex) == digest)
                 {
+                    debugPendingTxsPoolLockLocation = 304;
 #if !defined(NDEBUG) && !defined(NO_UEFI)
                     CHAR16 dbgMsgBuf[100];
                     setText(dbgMsgBuf, L"tx with the same digest already exists for tick ");
@@ -297,33 +302,45 @@ public:
                 }
             }
 
+            debugPendingTxsPoolLockLocation = 305;
             sint64 priority = calculateTxPriority(tx);
             if (priority > 0)
             {
+                debugPendingTxsPoolLockLocation = 306;
                 m256i povIndex{ tickIndex, 0, 0, 0 };
 
                 if (numSavedTxsPerTick[tickIndex] < maxNumTxsPerTick)
                 {
+                    debugPendingTxsPoolLockLocation = 307;
                     copyMem(getDigestPtr(tickIndex, numSavedTxsPerTick[tickIndex]), &digest, sizeof(m256i));
+                    debugPendingTxsPoolLockLocation = 308;
                     copyMem(getTxPtr(tickIndex, numSavedTxsPerTick[tickIndex]), tx, transactionSize);
+                    debugPendingTxsPoolLockLocation = 309;
                     txsPriorities->add(povIndex, numSavedTxsPerTick[tickIndex], priority);
+                    debugPendingTxsPoolLockLocation = 310;
 
                     numSavedTxsPerTick[tickIndex]++;
                     txAdded = true;
                 }
                 else
                 {
+                    debugPendingTxsPoolLockLocation = 311;
                     // check if priority is higher than lowest priority tx in this tick and replace in this case
                     sint64 lowestElementIndex = txsPriorities->tailIndex(povIndex);
                     if (lowestElementIndex != NULL_INDEX)
                     {
+                        debugPendingTxsPoolLockLocation = 312;
                         if (txsPriorities->priority(lowestElementIndex) < priority)
                         {
+                            debugPendingTxsPoolLockLocation = 313;
                             unsigned int replacedTxIndex = txsPriorities->element(lowestElementIndex);
                             txsPriorities->remove(lowestElementIndex);
+                            debugPendingTxsPoolLockLocation = 314;
                             txsPriorities->add(povIndex, replacedTxIndex, priority);
 
+                            debugPendingTxsPoolLockLocation = 315;
                             copyMem(getDigestPtr(tickIndex, replacedTxIndex), &digest, sizeof(m256i));
+                            debugPendingTxsPoolLockLocation = 316;
                             copyMem(getTxPtr(tickIndex, replacedTxIndex), tx, transactionSize);
 
                             txAdded = true;
@@ -331,6 +348,7 @@ public:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
                         else
                         {
+                            debugPendingTxsPoolLockLocation = 317;
                             CHAR16 dbgMsgBuf[300];
                             setText(dbgMsgBuf, L"tx could not be added, already saved ");
                             appendNumber(dbgMsgBuf, numSavedTxsPerTick[tickIndex], FALSE);
@@ -347,6 +365,7 @@ public:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
                     else
                     {
+                        debugPendingTxsPoolLockLocation = 318;
                         // debug log, this should never happen
                         CHAR16 dbgMsgBuf[300];
                         setText(dbgMsgBuf, L"maximum number of txs ");
@@ -362,6 +381,7 @@ public:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
             else
             {
+                debugPendingTxsPoolLockLocation = 319;
                 CHAR16 dbgMsgBuf[100];
                 setText(dbgMsgBuf, L"tx with priority 0 was rejected for tick ");
                 appendNumber(dbgMsgBuf, tx->tick, FALSE);
@@ -372,6 +392,7 @@ public:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         else
         {
+            debugPendingTxsPoolLockLocation = 320;
             CHAR16 dbgMsgBuf[250];
             setText(dbgMsgBuf, L"tx failed (tx->checkValidity() && tickInStorage(tx->tick)): tick ");
             appendNumber(dbgMsgBuf, tx->tick, FALSE);
