@@ -823,7 +823,6 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                 // connection rejected
                 peers[i].connectAcceptToken.CompletionToken.Status = -1;
                 penalizePublicPeerRejectedConnection(peers[i].address);
-                closePeer(&peers[i]);
 
 #if !defined(NDEBUG)
                 if (peers[i].isOracleMachineNode())
@@ -834,13 +833,14 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                     addDebugMessageOM(omDbgMsg);
                 }
 #endif
+                closePeer(&peers[i]);
+
             }
             else
             {
                 peers[i].connectAcceptToken.CompletionToken.Status = -1;
                 if (peers[i].isClosing)
                 {
-                    closePeer(&peers[i]);
 #if !defined(NDEBUG)
                     if (peers[i].isOracleMachineNode())
                     {
@@ -849,6 +849,7 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                         addDebugMessageOM(omDbgMsg);
                     }
 #endif
+                    closePeer(&peers[i]);
                 }
                 else
                 {
