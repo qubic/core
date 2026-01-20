@@ -915,7 +915,9 @@ public:
             }
             else if (locals.proposal.proposalType == PROPOSAL_WITHDRAW_FEES)
             {
-                locals.availableFees = state._earnedFees - state._distributedFees;
+                locals.availableFees = (state._earnedFees > state._distributedFees)
+                                          ? (state._earnedFees - state._distributedFees)
+                                          : 0;
                 if (locals.proposal.amount <= locals.availableFees && locals.proposal.amount > 0)
                 {
                     if (qpi.transfer(state.feeRecipient, locals.proposal.amount) >= 0)
@@ -1273,9 +1275,11 @@ public:
         bit orderFound;
         BridgeOrder order;
         uint64 i;
-        uint64 feeEth;
-        uint64 feeQubic;
+        uint64 feeOperator;
+        uint64 feeNetwork;
         uint64 totalRefund;
+        uint64 availableFeesOperator;
+        uint64 availableFeesNetwork;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(refundOrder)
@@ -1346,13 +1350,25 @@ public:
             {
                 // No tokens to return, but refund fees
                 // Calculate fees to refund
-                locals.feeEth = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
-                locals.feeQubic = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
-                locals.totalRefund = locals.feeEth + locals.feeQubic;
+                locals.feeOperator = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
+                locals.feeNetwork = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
 
-                // Deduct fees from earned fees (return them to user)
-                state._earnedFees -= locals.feeEth;
-                state._earnedFeesQubic -= locals.feeQubic;
+                // UNDERFLOW PROTECTION: Calculate available fees (not yet distributed)
+                locals.availableFeesOperator = (state._earnedFees > state._distributedFees)
+                    ? (state._earnedFees - state._distributedFees)
+                    : 0;
+                locals.availableFeesNetwork = (state._earnedFeesQubic > state._distributedFeesQubic)
+                    ? (state._earnedFeesQubic - state._distributedFeesQubic)
+                    : 0;
+
+                // Only refund fees that haven't been distributed yet
+                locals.feeOperator = (locals.feeOperator <= locals.availableFeesOperator) ? locals.feeOperator : locals.availableFeesOperator;
+                locals.feeNetwork = (locals.feeNetwork <= locals.availableFeesNetwork) ? locals.feeNetwork : locals.availableFeesNetwork;
+                locals.totalRefund = locals.feeOperator + locals.feeNetwork;
+
+                // Deduct fees from earned fees (return them to user) - now safe from underflow
+                state._earnedFees -= locals.feeOperator;
+                state._earnedFeesQubic -= locals.feeNetwork;
 
                 // Transfer fees back to user
                 if (qpi.transfer(locals.order.qubicSender, locals.totalRefund) < 0)
@@ -1412,15 +1428,27 @@ public:
             }
 
             // Calculate fees to refund
-            locals.feeEth = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
-            locals.feeQubic = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
+            locals.feeOperator = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
+            locals.feeNetwork = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
 
-            // Deduct fees from earned fees (return them to user)
-            state._earnedFees -= locals.feeEth;
-            state._earnedFeesQubic -= locals.feeQubic;
+            // UNDERFLOW PROTECTION: Calculate available fees (not yet distributed)
+            locals.availableFeesOperator = (state._earnedFees > state._distributedFees)
+                ? (state._earnedFees - state._distributedFees)
+                : 0;
+            locals.availableFeesNetwork = (state._earnedFeesQubic > state._distributedFeesQubic)
+                ? (state._earnedFeesQubic - state._distributedFeesQubic)
+                : 0;
+
+            // Only refund fees that haven't been distributed yet
+            locals.feeOperator = (locals.feeOperator <= locals.availableFeesOperator) ? locals.feeOperator : locals.availableFeesOperator;
+            locals.feeNetwork = (locals.feeNetwork <= locals.availableFeesNetwork) ? locals.feeNetwork : locals.availableFeesNetwork;
+
+            // Deduct fees from earned fees (return them to user) - now safe from underflow
+            state._earnedFees -= locals.feeOperator;
+            state._earnedFeesQubic -= locals.feeNetwork;
 
             // Calculate total refund: amount + fees
-            locals.totalRefund = locals.order.amount + locals.feeEth + locals.feeQubic;
+            locals.totalRefund = locals.order.amount + locals.feeOperator + locals.feeNetwork;
 
             // Return tokens + fees to original sender
             if (qpi.transfer(locals.order.qubicSender, locals.totalRefund) < 0)
@@ -1807,7 +1835,9 @@ public:
 
     PUBLIC_FUNCTION(getAvailableFees)
     {
-        output.availableFees = state._earnedFees - state._distributedFees;
+        output.availableFees = (state._earnedFees > state._distributedFees)
+                                 ? (state._earnedFees - state._distributedFees)
+                                 : 0;
         output.totalEarnedFees = state._earnedFees;
         output.totalDistributedFees = state._distributedFees;
     }
@@ -1876,7 +1906,9 @@ public:
 
     END_TICK_WITH_LOCALS()
     {
-        locals.feesToDistributeInThisTick = state._earnedFeesQubic - state._distributedFeesQubic;
+        locals.feesToDistributeInThisTick = (state._earnedFeesQubic > state._distributedFeesQubic)
+                                              ? (state._earnedFeesQubic - state._distributedFeesQubic)
+                                              : 0;
 
         if (locals.feesToDistributeInThisTick > 0)
         {
@@ -1894,7 +1926,9 @@ public:
         }
 
         // Distribution of Vottun fees to feeRecipient
-        locals.vottunFeesToDistribute = state._earnedFees - state._distributedFees;
+        locals.vottunFeesToDistribute = (state._earnedFees > state._distributedFees)
+                                          ? (state._earnedFees - state._distributedFees)
+                                          : 0;
 
         if (locals.vottunFeesToDistribute > 0 && state.feeRecipient != 0)
         {
