@@ -437,12 +437,15 @@ static void closePeer(Peer* peer, int closeGracefullyRetries = 0)
             // TODO: consider memsetting outside and reset reserve the value
             unsigned long long savedOMCloseTime = peer->lastOMCloseTime;
             bool wasOMNode = peer->isOracleMachineNode();
+            unsigned int peerIndex = (unsigned int)(peer - peers);
 
             peer->reset();
 
             if (wasOMNode)
             {
                 peer->lastOMCloseTime = savedOMCloseTime;
+                peer->isOMNode = TRUE;
+                peer->address = omIPv4Address[peerIndex - NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS];
             }
         }
     }
