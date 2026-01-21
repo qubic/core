@@ -858,40 +858,72 @@ public:
             {
                 // Replace existing admin with new admin (max 3 admins: 2 of 3 multisig)
                 // oldAddress specifies which admin to replace
+
+                // SECURITY: Check that targetAddress is not already an admin (prevent duplicates)
                 locals.adminAdded = false;
-                for (locals.i = 0; locals.i < state.admins.capacity(); ++locals.i)
+                for (locals.i = 0; locals.i < (uint64)state.numberOfAdmins; ++locals.i)
                 {
-                    if (state.admins.get(locals.i) == locals.proposal.oldAddress)
+                    if (state.admins.get(locals.i) == locals.proposal.targetAddress)
                     {
-                        // Replace the old admin with the new one
-                        state.admins.set(locals.i, locals.proposal.targetAddress);
-                        locals.adminAdded = true;
-                        locals.adminLog = AddressChangeLogger{
-                            locals.proposal.targetAddress,
-                            CONTRACT_INDEX,
-                            1, // Admin changed
-                            0 };
-                        LOG_INFO(locals.adminLog);
+                        // targetAddress is already an admin, reject to prevent duplicate voting power
+                        locals.adminAdded = true; // Reuse flag to indicate rejection
                         break;
+                    }
+                }
+
+                // Only proceed if targetAddress is not already an admin
+                if (!locals.adminAdded)
+                {
+                    for (locals.i = 0; locals.i < state.admins.capacity(); ++locals.i)
+                    {
+                        if (state.admins.get(locals.i) == locals.proposal.oldAddress)
+                        {
+                            // Replace the old admin with the new one
+                            state.admins.set(locals.i, locals.proposal.targetAddress);
+                            locals.adminAdded = true;
+                            locals.adminLog = AddressChangeLogger{
+                                locals.proposal.targetAddress,
+                                CONTRACT_INDEX,
+                                1, // Admin changed
+                                0 };
+                            LOG_INFO(locals.adminLog);
+                            break;
+                        }
                     }
                 }
                 // numberOfAdmins stays the same (we're replacing, not adding)
             }
             else if (locals.proposal.proposalType == PROPOSAL_ADD_MANAGER)
             {
-                // Find empty slot in managers
+                // SECURITY: Check that targetAddress is not already a manager (prevent duplicates)
+                locals.adminAdded = false;
                 for (locals.i = 0; locals.i < state.managers.capacity(); ++locals.i)
                 {
-                    if (state.managers.get(locals.i) == NULL_ID)
+                    if (state.managers.get(locals.i) == locals.proposal.targetAddress)
                     {
-                        state.managers.set(locals.i, locals.proposal.targetAddress);
-                        locals.adminLog = AddressChangeLogger{
-                            locals.proposal.targetAddress,
-                            CONTRACT_INDEX,
-                            2, // Manager added
-                            0 };
-                        LOG_INFO(locals.adminLog);
+                        // targetAddress is already a manager, reject
+                        locals.adminAdded = true;
                         break;
+                    }
+                }
+
+                // Only proceed if targetAddress is not already a manager
+                if (!locals.adminAdded)
+                {
+                    // Find empty slot in managers
+                    for (locals.i = 0; locals.i < state.managers.capacity(); ++locals.i)
+                    {
+                        if (state.managers.get(locals.i) == NULL_ID)
+                        {
+                            state.managers.set(locals.i, locals.proposal.targetAddress);
+                            locals.adminLog = AddressChangeLogger{
+                                locals.proposal.targetAddress,
+                                CONTRACT_INDEX,
+                                2, // Manager added
+                                0 };
+                            LOG_INFO(locals.adminLog);
+                            break;
+                        }
                     }
                 }
             }
@@ -1930,7 +1962,7 @@ public:
                                           ? (state._earnedFees - state._distributedFees)
                                           : 0;
 
-        if (locals.vottunFeesToDistribute > 0 && state.feeRecipient != 0)
+        if (locals.vottunFeesToDistribute > 0 && state.feeRecipient != NULL_ID)
         {
             if (qpi.transfer(state.feeRecipient, locals.vottunFeesToDistribute))
             {
@@ -1974,8 +2006,8 @@ public:
 
     INITIALIZE_WITH_LOCALS()
     {
-        //Initialize the wallet that receives fees (REPLACE WITH YOUR WALLET)
-        // state.feeRecipient = ID(_YOUR, _WALLET, _HERE, _PLACEHOLDER, _UNTIL, _YOU, _PUT, _THE, _REAL, _WALLET, _ADDRESS, _FROM, _VOTTUN, _TO, _RECEIVE, _THE, _BRIDGE, _FEES, _BETWEEN, _QUBIC, _AND, _ETHEREUM, _WITH, _HALF, _PERCENT, _COMMISSION, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V);
+        // Initialize the wallet that receives operator fees (Vottun)
+        state.feeRecipient = ID(_W, _N, _J, _B, _D, _V, _U, _C, _V, _P, _I, _W, _X, _B, _M, _R, _C, _K, _Z, _E, _C, _Y, _L, _G, _E, _V, _A, _D, _S, _Q, _M, _Y, _S, _R, _F, _Q, _I, _U, _S, _V, _O, _G, _C, _G, _M, _K, _P, _I, _Y, _J, _F, _C, _Z, _F, _B, _A);
 
         // Initialize the orders array. Good practice to zero first.
         locals.emptyOrder = {};         // Sets all fields to 0 (including orderId and status).
