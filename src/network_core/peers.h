@@ -261,34 +261,6 @@ static bool isPrivateIp(const unsigned char address[4])
     return false;
 }
 
-// Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
-static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
-{
-    PROFILE_SCOPE();
-
-    ACQUIRE(responseQueueHeadLock);
-
-    if ((responseQueueBufferHead >= responseQueueBufferTail || responseQueueBufferHead + responseHeader->size() < responseQueueBufferTail)
-        && (unsigned short)(responseQueueElementHead + 1) != responseQueueElementTail)
-    {
-        ASSERT(responseQueueElementHead < RESPONSE_QUEUE_LENGTH);
-        ASSERT(responseQueueBufferHead < RESPONSE_QUEUE_BUFFER_SIZE);
-        ASSERT(responseQueueBufferHead + responseHeader->size() < RESPONSE_QUEUE_BUFFER_SIZE);
-
-        responseQueueElements[responseQueueElementHead].offset = responseQueueBufferHead;
-        copyMem(&responseQueueBuffer[responseQueueBufferHead], responseHeader, responseHeader->size());
-        responseQueueBufferHead += responseHeader->size();
-        responseQueueElements[responseQueueElementHead].peer = peer;
-        if (responseQueueBufferHead > RESPONSE_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
-        {
-            responseQueueBufferHead = 0;
-        }
-        responseQueueElementHead++;
-    }
-
-    RELEASE(responseQueueHeadLock);
-}
-
 static void closePeer(Peer* peer, int closeGracefullyRetries = 0)
 {
     PROFILE_SCOPE();
@@ -301,43 +273,6 @@ static void closePeer(Peer* peer, int closeGracefullyRetries = 0)
             {
                 // Track close time for OM nodes to enable reconnection cooldown
                 peer->lastOMCloseTime = __rdtsc();
-
-                // For OM peers: re-enqueue pending data before closing
-                if (peer->dataToTransmitSize > 0)
-                {
-                    unsigned int offset = 0;
-                    unsigned int requeuedCount = 0;
-                    while (offset < peer->dataToTransmitSize)
-                    {
-                        RequestResponseHeader* header = (RequestResponseHeader*)(peer->dataToTransmit + offset);
-                        unsigned int msgSize = header->size();
-                        if (msgSize > 0 && offset + msgSize <= peer->dataToTransmitSize)
-                        {
-                            enqueueResponse((Peer*)1, header);
-                            requeuedCount++;
-                            offset += msgSize;
-                        }
-                        else
-                        {
-                            break;  // Invalid header, stop
-                        }
-                    }
-#ifndef NDEBUG
-                    if (requeuedCount > 0)
-                    {
-                        unsigned int peerIdx = (unsigned int)(peer - peers);
-                        CHAR16 omDbgMsg[128];
-                        setText(omDbgMsg, L"OM: closePeer REQUEUE - peer[");
-                        appendNumber(omDbgMsg, peerIdx, FALSE);
-                        appendText(omDbgMsg, L"] requeued ");
-                        appendNumber(omDbgMsg, requeuedCount, FALSE);
-                        appendText(omDbgMsg, L" pending msg(s), bytes=");
-                        appendNumber(omDbgMsg, peer->dataToTransmitSize, FALSE);
-                        addDebugMessageOM(omDbgMsg);
-                    }
-#endif
-                    peer->dataToTransmitSize = 0;  // Clear after re-enqueue
-                }
             }
             peer->isClosing = TRUE;
 #ifndef NDEBUG
@@ -553,6 +488,34 @@ static void pushToFullNodes(RequestResponseHeader* requestResponseHeader, int nu
         const bool filterFullNode = true;
         pushCustom(requestResponseHeader, numberOfReceivers, filterFullNode);
     }
+}
+
+// Add message to response queue of specific peer. If peer is NULL, it will be sent to random peers. Can be called from any thread.
+static void enqueueResponse(Peer* peer, RequestResponseHeader* responseHeader)
+{
+    PROFILE_SCOPE();
+
+    ACQUIRE(responseQueueHeadLock);
+
+    if ((responseQueueBufferHead >= responseQueueBufferTail || responseQueueBufferHead + responseHeader->size() < responseQueueBufferTail)
+        && (unsigned short)(responseQueueElementHead + 1) != responseQueueElementTail)
+    {
+        ASSERT(responseQueueElementHead < RESPONSE_QUEUE_LENGTH);
+        ASSERT(responseQueueBufferHead < RESPONSE_QUEUE_BUFFER_SIZE);
+        ASSERT(responseQueueBufferHead + responseHeader->size() < RESPONSE_QUEUE_BUFFER_SIZE);
+
+        responseQueueElements[responseQueueElementHead].offset = responseQueueBufferHead;
+        copyMem(&responseQueueBuffer[responseQueueBufferHead], responseHeader, responseHeader->size());
+        responseQueueBufferHead += responseHeader->size();
+        responseQueueElements[responseQueueElementHead].peer = peer;
+        if (responseQueueBufferHead > RESPONSE_QUEUE_BUFFER_SIZE - BUFFER_SIZE)
+        {
+            responseQueueBufferHead = 0;
+        }
+        responseQueueElementHead++;
+    }
+
+    RELEASE(responseQueueHeadLock);
 }
 
 
