@@ -580,9 +580,9 @@ public:
 		sint64 qheartAmount;
 		sint64 balanceSigned;
 		uint64 balance;
+		uint64 availableBalance;
 		uint64 prize;
 		uint64 totalPrize;
-		uint64 availableBalance;
 		uint64 reservedBalance;
 		m256i mixedSpectrumValue;
 		uint64 randomSeed;
@@ -979,7 +979,7 @@ public:
 			return;
 		}
 
-		if (input.amount == 0 || input.desiredTickets == 0)
+		if (input.amount <= 0 || input.desiredTickets <= 0)
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
@@ -1040,6 +1040,7 @@ public:
 			locals.entry.desiredTickets = input.desiredTickets;
 		}
 
+		state.autoParticipants.set(qpi.invocator(), locals.entry);
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -1411,7 +1412,7 @@ private:
 		state.lastWinningDigits = locals.randomOutput.digits;
 
 		locals.balanceSigned = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, SELF_INDEX, SELF_INDEX);
-		locals.balance = (locals.balanceSigned > 0) ? static_cast<uint64>(locals.balanceSigned) : 0;
+		locals.balance = max(locals.balanceSigned, 0LL);
 
 		locals.totalPrize = 0;
 		for (locals.i = 0; locals.i < state.ticketCounter; ++locals.i)
@@ -1421,6 +1422,7 @@ private:
 			locals.totalPrize += locals.prize;
 		}
 
+		locals.availableBalance = locals.balance;
 		for (locals.i = 0; locals.i < state.ticketCounter; ++locals.i)
 		{
 			locals.ticket = state.tickets.get(locals.i);
