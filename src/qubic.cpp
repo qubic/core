@@ -7412,7 +7412,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     forceRefreshPeerList = false;
                     for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
                     {
-                        closePeer(&peers[i]);
+                        if (!peers[i].isOracleMachineNode())
+                        {
+                            closePeer(&peers[i]);
+                        }
                     }
                 }
 
