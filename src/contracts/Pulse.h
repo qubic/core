@@ -1138,7 +1138,7 @@ public:
 
 		locals.entry.desiredTickets = locals.desiredValue;
 
-		if (locals.entry.deposit == 0 && locals.entry.desiredTickets == 0)
+		if (locals.entry.deposit == 0)
 		{
 			locals.removedIndex = state.autoParticipants.removeByKey(qpi.invocator());
 			state.autoParticipants.cleanupIfNeeded(PULSE_CLEANUP_THRESHOLD);
