@@ -1098,7 +1098,7 @@ public:
 	}
 
 	/// Sets auto-participation config for the invocator.
-	/// @param desiredTickets Signed: -1 ignore, 0 disable, >0 set new value.
+	/// @param desiredTickets Signed: -1 ignore, >0 set new value.
 	/// @param minTicketsToBuy Signed: -1 ignore, 0 disable, >0 set new value.
 	/// @return Status code describing the result.
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetAutoConfig)
@@ -1120,7 +1120,10 @@ public:
 			return;
 		}
 
-		input.desiredTickets = min(input.desiredTickets, state.maxAutoTicketsPerUser);
+		if (input.desiredTickets > 0 && state.maxAutoTicketsPerUser != 0)
+		{
+			input.desiredTickets = min(input.desiredTickets, static_cast<sint16>(state.maxAutoTicketsPerUser));
+		}
 
 		state.autoParticipants.get(qpi.invocator(), locals.entry);
 
@@ -1128,7 +1131,7 @@ public:
 
 		if (input.desiredTickets != -1)
 		{
-			if (input.desiredTickets < 0)
+			if (input.desiredTickets <= 0)
 			{
 				output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 				return;

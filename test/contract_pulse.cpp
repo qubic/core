@@ -1526,8 +1526,8 @@ TEST(ContractPulse_Public, SetAutoConfigValidatesAndClamps)
 	EXPECT_EQ(static_cast<uint32>(entry.desiredTickets), 2u);
 }
 
-// Allow disabling auto tickets with desiredTickets = 0.
-TEST(ContractPulse_Public, SetAutoConfigDisablesDesiredTickets)
+// Reject desiredTickets = 0 updates.
+TEST(ContractPulse_Public, SetAutoConfigRejectsZeroDesiredTickets)
 {
 	ContractTestingPulse ctl;
 	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
@@ -1537,24 +1537,11 @@ TEST(ContractPulse_Public, SetAutoConfigDisablesDesiredTickets)
 	ctl.transferQHeart(issuance, user, amount);
 
 	EXPECT_EQ(ctl.depositAutoParticipation(user, amount, 2, false).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(ctl.setAutoConfig(user, 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setAutoConfig(user, 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::INVALID_VALUE));
 
 	const PULSE::GetAutoParticipation_output entry = ctl.getAutoParticipation(user);
 	EXPECT_EQ(entry.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(static_cast<uint32>(entry.desiredTickets), 0u);
-}
-
-// Remove entry when both deposit and desired tickets are zero.
-TEST(ContractPulse_Public, SetAutoConfigRemovesEmptyEntry)
-{
-	ContractTestingPulse ctl;
-	const id user = id::randomValue();
-	ctl.state()->setAutoParticipant(user, 0, 1);
-
-	EXPECT_EQ(ctl.setAutoConfig(user, 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-
-	const PULSE::GetAutoParticipation_output entry = ctl.getAutoParticipation(user);
-	EXPECT_EQ(entry.returnCode, static_cast<uint8>(PULSE::EReturnCode::INVALID_VALUE));
+	EXPECT_EQ(static_cast<uint32>(entry.desiredTickets), 2u);
 }
 
 // Reject config updates for users without auto participation.
