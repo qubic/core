@@ -199,6 +199,11 @@ static unsigned long long K12MeasurementsCount = 0;
 static unsigned long long K12MeasurementsSum = 0;
 static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
+static constexpr unsigned int gScoreMultiplier[score_engine::AlgoType::MaxAlgoCount] =
+{
+    HYPERIDENTITY_SOLUTION_MULTIPLER,   // HyperIdentity
+    ADDITION_SOLUTION_MULTIPLER         // Addition
+};
 
 // Custom mining related variables and constants
 static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
@@ -2633,7 +2638,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                 {
                     if (transaction->sourcePublicKey == minerPublicKeys[minerIndex])
                     {
-                        minerScores[minerIndex]++;
+                        minerScores[minerIndex] += gScoreMultiplier[selectedAlgo];
 
                         break;
                     }
@@ -2642,7 +2647,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                     && numberOfMiners < MAX_NUMBER_OF_MINERS)
                 {
                     minerPublicKeys[numberOfMiners] = transaction->sourcePublicKey;
-                    minerScores[numberOfMiners++] = 1;
+                    minerScores[numberOfMiners++] = gScoreMultiplier[selectedAlgo];
                 }
 
                 const m256i tmpPublicKey = minerPublicKeys[minerIndex];
