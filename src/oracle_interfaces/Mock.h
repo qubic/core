@@ -43,8 +43,8 @@ struct Mock
 	}
 
 	/// Check if the passed oracle reply is valid
-	static bool replyIsValid(const OracleQuery& querry, const OracleReply& reply)
+	static bool replyIsValid(const OracleQuery& query, const OracleReply& reply)
 	{
-		return (reply.echoedValue == querry.value) && (reply.doubledValue == 2 * querry.value);
+		return (reply.echoedValue == query.value) && (reply.doubledValue == 2 * query.value);
 	}
 };
