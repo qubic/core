@@ -12,7 +12,6 @@
 #ifndef NDEBUG
 
 static unsigned long long debugTickProcessorLoopCounter = 0;
-static unsigned long long debugPendingTxsPoolLockLocation = 0;
 
 BusyWaitingTracker::BusyWaitingTracker(const char* expr, const char* file, unsigned int line)
 {
@@ -72,10 +71,8 @@ void BusyWaitingTracker::pause()
         appendNumber(msgBuffer, mLine, false);
         appendText(msgBuffer, ", processor #");
         appendNumber(msgBuffer, getRunningProcessorID(), false);
-        appendText(msgBuffer, ", tick proc loop counter ");
+        appendText(msgBuffer, ", tick proc loop counter");
         appendNumber(msgBuffer, debugTickProcessorLoopCounter, false);
-        appendText(msgBuffer, ", pendingTxsPoolLockLocation ");
-        appendNumber(msgBuffer, debugPendingTxsPoolLockLocation, false);
         addDebugMessage(msgBuffer);
         if (isMainProcessor())
             printDebugMessages();

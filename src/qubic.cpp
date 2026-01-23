@@ -3517,7 +3517,6 @@ static void processTick(unsigned long long processorNumber)
                     unsigned int nextTxIndex = 0;
                     unsigned int numPendingTickTxs = pendingTxsPool.getNumberOfPendingTickTxs(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET);
                     pendingTxsPool.acquireLock();
-                    debugPendingTxsPoolLockLocation = 7;
                     for (unsigned int tx = 0; tx < numPendingTickTxs; ++tx)
                     {
 // #if !defined(NDEBUG) && !defined(NO_UEFI)
@@ -3547,7 +3546,6 @@ static void processTick(unsigned long long processorNumber)
                             break;
                         }
                     }
-                    debugPendingTxsPoolLockLocation = 0;
                     pendingTxsPool.releaseLock();
 
                     {
@@ -4727,7 +4725,6 @@ static void prepareNextTickTransactions()
 
         unsigned int numPendingTickTxs = pendingTxsPool.getNumberOfPendingTickTxs(nextTick);
         pendingTxsPool.acquireLock();
-        debugPendingTxsPoolLockLocation = 8;
         for (unsigned int i = 0; i < numPendingTickTxs; ++i)
         {
 // #if !defined(NDEBUG) && !defined(NO_UEFI)
@@ -4773,7 +4770,6 @@ static void prepareNextTickTransactions()
                 }
             }
         }
-        debugPendingTxsPoolLockLocation = 0;
         pendingTxsPool.releaseLock();
 
         // At this point unknownTransactions is set to 1 for all transactions that are unknown
