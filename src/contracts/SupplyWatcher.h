@@ -18,7 +18,7 @@ struct SWATCH : public ContractBase
         sint64 target, adjustedTotal;
         sint64 burn6, burn7, burn8;
         sint64 leftover;
-        uint32 count;
+        sint64 count;
     };
 
     BEGIN_EPOCH_WITH_LOCALS()
@@ -33,7 +33,7 @@ struct SWATCH : public ContractBase
                 locals.reserve7 = qpi.queryFeeReserve(7);
                 locals.reserve8 = qpi.queryFeeReserve(8);
 
-                locals.target = (locals.reserve6 + locals.reserve7 + locals.reserve8 + locals.ownBalance) / 3;
+                locals.target = QPI::div(locals.reserve6 + locals.reserve7 + locals.reserve8 + locals.ownBalance, 3LL);
 
                 // Exclude reserves already above target and recalculate
                 locals.count = 3;
@@ -43,7 +43,7 @@ struct SWATCH : public ContractBase
                 if (locals.reserve8 < locals.target) locals.adjustedTotal += locals.reserve8; else locals.count--;
 
                 if (locals.count > 0)
-                    locals.target = locals.adjustedTotal / locals.count;
+                    locals.target = QPI::div(locals.adjustedTotal, locals.count);
 
                 locals.burn6 = (locals.target > locals.reserve6) ? (locals.target - locals.reserve6) : 0;
                 locals.burn7 = (locals.target > locals.reserve7) ? (locals.target - locals.reserve7) : 0;
@@ -52,9 +52,9 @@ struct SWATCH : public ContractBase
                 locals.leftover = locals.ownBalance - locals.burn6 - locals.burn7 - locals.burn8;
                 if (locals.leftover > 0)
                 {
-                    locals.burn6 += locals.leftover / 3;
-                    locals.burn7 += locals.leftover / 3;
-                    locals.burn8 += locals.leftover / 3;
+                    locals.burn6 += QPI::div(locals.leftover, 3LL);
+                    locals.burn7 += QPI::div(locals.leftover, 3LL);
+                    locals.burn8 += QPI::div(locals.leftover, 3LL);
                 }
 
                 if (locals.burn6 > 0) qpi.burn(locals.burn6, 6);
