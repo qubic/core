@@ -185,14 +185,12 @@ namespace QPI
 	template <typename T, uint64 L>
 	sint64 Collection<T, L>::_addPovElement(const sint64 povIndex, const T value, const sint64 priority)
 	{
-		debugPendingTxsPoolLockLocation = 4000;
 		const sint64 newElementIdx = _population++;
 		auto& newElement = _elements[newElementIdx].init(value, priority, povIndex);
 		auto& pov = _povs[povIndex];
 
 		if (pov.population == 0)
 		{
-			debugPendingTxsPoolLockLocation = 4001;
 			pov.population = 1;
 			pov.headIndex = newElementIdx;
 			pov.tailIndex = newElementIdx;
@@ -200,10 +198,8 @@ namespace QPI
 		}
 		else
 		{
-			debugPendingTxsPoolLockLocation = 4002;
 			int iterations_count = 0;
 			sint64 parentIdx = _searchElement(pov.bstRootIndex, priority, &iterations_count);
-			debugPendingTxsPoolLockLocation = 4003;
 			if (_elements[parentIdx].priority >= priority)
 			{
 				_elements[parentIdx].bstRightIndex = newElementIdx;
@@ -212,12 +208,10 @@ namespace QPI
 			{
 				_elements[parentIdx].bstLeftIndex = newElementIdx;
 			}
-			debugPendingTxsPoolLockLocation = 4004;
 			newElement.bstParentIndex = parentIdx;
 			pov.population++;
 
 
-			debugPendingTxsPoolLockLocation = 4005;
 			if (_elements[pov.headIndex].priority < priority)
 			{
 				pov.headIndex = newElementIdx;
@@ -226,7 +220,6 @@ namespace QPI
 			{
 				pov.tailIndex = newElementIdx;
 			}
-			debugPendingTxsPoolLockLocation = 4006;
 			if (pov.population > 32 && iterations_count > pov.population / 4)
 			{
 				// make balanced binary search tree to get better performance
@@ -525,62 +518,48 @@ namespace QPI
 	template <typename T, uint64 L>
 	uint64 Collection<T, L>::_getEncodedPovOccupationFlags(const uint64* povOccupationFlags, const sint64 povIndex) const
 	{
-		debugPendingTxsPoolLockLocation = 5000;
 		const sint64 offset = (povIndex & 31) << 1;
 		uint64 flags = povOccupationFlags[povIndex >> 5] >> offset;
 		if (offset > 0)
 		{
 			flags |= povOccupationFlags[((povIndex + 32) & (L - 1)) >> 5] << (2 * _nEncodedFlags - offset);
 		}
-		debugPendingTxsPoolLockLocation = 5001;
 		return flags;
 	}
 
 	template <typename T, uint64 L>
 	sint64 Collection<T, L>::add(const id& pov, T element, sint64 priority)
 	{
-		debugPendingTxsPoolLockLocation = 3000;
 		if (_population < capacity())
 		{
 			// search in pov hash map
 			sint64 markedForRemovalIndexForReuse = NULL_INDEX;
 			sint64 povIndex = pov.u64._0 & (L - 1);
-			debugPendingTxsPoolLockLocation = 3001;
 			for (sint64 counter = 0; counter < L; counter += 32)
 			{
-				debugPendingTxsPoolA = counter;
 				uint64 flags = _getEncodedPovOccupationFlags(_povOccupationFlags, povIndex);
-				debugPendingTxsPoolB = flags;
-				debugPendingTxsPoolLockLocation = 3002;
 				for (auto i = 0; i < _nEncodedFlags; i++, flags >>= 2)
 				{
-					debugPendingTxsPoolC = i;
 					switch (flags & 3ULL)
 					{
 					case 0:
-						debugPendingTxsPoolLockLocation = 3003;
 						// empty hash map entry -> pov isn't in map yet
 						// If we have already seen an entry marked for removal, reuse this slot because it is closer to the hash index
 						if (markedForRemovalIndexForReuse != NULL_INDEX)
 							goto reuse_slot;
 						// ... otherwise mark as occupied and init new priority queue with 1 element
-						debugPendingTxsPoolLockLocation = 3004;
 						_povOccupationFlags[povIndex >> 5] |= (1ULL << ((povIndex & 31) << 1));
 						_povs[povIndex].value = pov;
-						debugPendingTxsPoolLockLocation = 3005;
 						return _addPovElement(povIndex, element, priority);
 					case 1:
-						debugPendingTxsPoolLockLocation = 3006;
 						if (_povs[povIndex].value == pov)
 						{
 							// found pov entry -> insert element in priority queue of pov
 							return _addPovElement(povIndex, element, priority);
 						}
-						debugPendingTxsPoolLockLocation = 3007;
 						break;
 					case 2:
 						// marked for removal -> reuse slot (first slot we see) later if we are sure that key isn't in the set
-						debugPendingTxsPoolLockLocation = 3008;
 						if (markedForRemovalIndexForReuse == NULL_INDEX)
 							markedForRemovalIndexForReuse = povIndex;
 						break;
@@ -591,21 +570,17 @@ namespace QPI
 
 			if (markedForRemovalIndexForReuse != NULL_INDEX)
 			{
-				debugPendingTxsPoolLockLocation = 3009;
 			reuse_slot:
 				// Reuse slot marked for removal: put pov key here and set flags from 2 to 1.
 				// But don't decrement _markRemovalCounter, because it is used to check if cleanup() is needed.
 				// Without cleanup, we don't get new unoccupied slots and at least lookup of povs that aren't contained in the set
 				// stays slow.
-				debugPendingTxsPoolLockLocation = 3010;
 				povIndex = markedForRemovalIndexForReuse;
 				_povOccupationFlags[povIndex >> 5] ^= (3ULL << ((povIndex & 31) << 1));
 				_povs[povIndex].value = pov;
-				debugPendingTxsPoolLockLocation = 3011;
 				return _addPovElement(povIndex, element, priority);
 			}
 		}
-		debugPendingTxsPoolLockLocation = 3012;
 		return NULL_INDEX;
 	}
 

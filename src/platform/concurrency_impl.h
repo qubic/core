@@ -12,6 +12,7 @@
 #ifndef NDEBUG
 
 static unsigned long long debugTickProcessorLoopCounter = 0;
+static unsigned long long debugPendingTxsPoolLockLocation = 0;
 
 BusyWaitingTracker::BusyWaitingTracker(const char* expr, const char* file, unsigned int line)
 {
@@ -75,12 +76,6 @@ void BusyWaitingTracker::pause()
         appendNumber(msgBuffer, debugTickProcessorLoopCounter, false);
         appendText(msgBuffer, ", pendingTxsPoolLockLocation ");
         appendNumber(msgBuffer, debugPendingTxsPoolLockLocation, false);
-        appendText(msgBuffer, ", A ");
-        appendNumber(msgBuffer, debugPendingTxsPoolA, false);
-        appendText(msgBuffer, ", B ");
-        appendNumber(msgBuffer, debugPendingTxsPoolB, false);
-        appendText(msgBuffer, ", C ");
-        appendNumber(msgBuffer, debugPendingTxsPoolC, false);
         addDebugMessage(msgBuffer);
         if (isMainProcessor())
             printDebugMessages();
