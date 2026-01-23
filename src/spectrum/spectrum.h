@@ -110,13 +110,21 @@ static void logSpectrumStats()
 }
 
 // Build and log variable-size DustBurning log message.
-// Assumes to be used tick processor or contract processor only, so can use reorgBuffer.
 struct DustBurnLogger
 {
+    // TODO: better use 0xffff (when proved to be stable with logging)
+    static constexpr unsigned short maxEntries = 1000;
+
     DustBurnLogger()
     {
-        buf = (DustBurning*)reorgBuffer;
+        buf = (DustBurning*)commonBuffers.acquireBuffer(2 + maxEntries * sizeof(DustBurning::Entity));
+        ASSERT(buf);
         buf->numberOfBurns = 0;
+    }
+
+    ~DustBurnLogger()
+    {
+        commonBuffers.releaseBuffer(buf);
     }
 
     // Add burned amount of of entity, may send buffered message to logging.
@@ -126,7 +134,7 @@ struct DustBurnLogger
         e.publicKey = publicKey;
         e.amount = amount;
 
-        if (buf->numberOfBurns == 1000) // TODO: better use 0xffff (when proved to be stable with logging)
+        if (buf->numberOfBurns == maxEntries)
             finished();
     }
 
@@ -149,8 +157,8 @@ static void reorganizeSpectrum()
 
     unsigned long long spectrumReorgStartTick = __rdtsc();
 
-    EntityRecord* reorgSpectrum = (EntityRecord*)reorgBuffer;
-    setMem(reorgSpectrum, SPECTRUM_CAPACITY * sizeof(EntityRecord), 0);
+    EntityRecord* reorgSpectrum = (EntityRecord*)commonBuffers.acquireBuffer(spectrumSizeInBytes);
+    setMem(reorgSpectrum, spectrumSizeInBytes, 0);
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {
         if (spectrum[i].incomingAmount - spectrum[i].outgoingAmount)
@@ -171,6 +179,7 @@ static void reorganizeSpectrum()
         }
     }
     copyMem(spectrum, reorgSpectrum, SPECTRUM_CAPACITY * sizeof(EntityRecord));
+    commonBuffers.releaseBuffer(reorgSpectrum);
 
     unsigned int digestIndex;
     for (digestIndex = 0; digestIndex < SPECTRUM_CAPACITY; digestIndex++)
@@ -252,36 +261,21 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
 #if LOG_SPECTRUM
             logSpectrumStats();
 #endif
+
+            // Burn the dust and log the burns. The extra scope is needed to make sure that DurstBurnLogger is
+            // destructed (and its common buffer is released) before reorganizeSpectrum() is called.
+            {
 #if LOG_SPECTRUM
-            DustBurnLogger dbl;
+                DustBurnLogger dbl;
 #endif
 
-            if (dustThresholdBurnAll > 0)
-            {
-                // Burn every balance with balance < dustThresholdBurnAll
-                for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
+                if (dustThresholdBurnAll > 0)
                 {
-                    const unsigned long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
-                    if (balance <= dustThresholdBurnAll && balance)
+                    // Burn every balance with balance < dustThresholdBurnAll
+                    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
                     {
-                        spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
-#if LOG_SPECTRUM
-                        dbl.addDustBurn(spectrum[i].publicKey, balance);
-#endif
-                    }
-                }
-            }
-
-            if (dustThresholdBurnHalf > 0)
-            {
-                // Burn every second balance with balance < dustThresholdBurnHalf
-                unsigned int countBurnCanadiates = 0;
-                for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
-                {
-                    const unsigned long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
-                    if (balance <= dustThresholdBurnHalf && balance)
-                    {
-                        if (++countBurnCanadiates & 1)
+                        const unsigned long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
+                        if (balance <= dustThresholdBurnAll && balance)
                         {
                             spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
 #if LOG_SPECTRUM
@@ -290,12 +284,32 @@ static void increaseEnergy(const m256i& publicKey, long long amount)
                         }
                     }
                 }
-            }
+
+                if (dustThresholdBurnHalf > 0)
+                {
+                    // Burn every second balance with balance < dustThresholdBurnHalf
+                    unsigned int countBurnCanadiates = 0;
+                    for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
+                    {
+                        const unsigned long long balance = spectrum[i].incomingAmount - spectrum[i].outgoingAmount;
+                        if (balance <= dustThresholdBurnHalf && balance)
+                        {
+                            if (++countBurnCanadiates & 1)
+                            {
+                                spectrum[i].outgoingAmount = spectrum[i].incomingAmount;
+#if LOG_SPECTRUM
+                                dbl.addDustBurn(spectrum[i].publicKey, balance);
+#endif
+                            }
+                        }
+                    }
+                }
 
 #if LOG_SPECTRUM
-            // Finished dust burning (pass message to log)
-            dbl.finished();
+                // Finished dust burning (pass message to log)
+                dbl.finished();
 #endif
+            }
 
             // Remove entries with balance zero from hash map
             reorganizeSpectrum();

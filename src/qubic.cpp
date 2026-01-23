@@ -90,6 +90,7 @@
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define TIME_ACCURACY 5000
 constexpr unsigned long long TARGET_MAINTHREAD_LOOP_DURATION = 30; // mcs, it is the target duration of the main thread loop
+constexpr unsigned int COMMON_BUFFERS_COUNT = 2;
 
 
 struct Processor : public CustomStack
@@ -5297,8 +5298,10 @@ static void tickProcessor(void*)
 
                                     // Reorder futureComputors so requalifying computors keep their index
                                     // This is needed for correct execution fee reporting across epoch boundaries
-                                    static_assert(reorgBufferSize >= stableComputorIndexBufferSize(), "reorgBuffer too small for stable computor index");
+                                    static_assert(defaultCommonBuffersSize >= stableComputorIndexBufferSize(), "commonBuffers too small for stable computor index");
+                                    void* reorgBuffer = commonBuffers.acquireBuffer(stableComputorIndexBufferSize());
                                     calculateStableComputorIndex(system.futureComputors, broadcastedComputors.computors.publicKeys, reorgBuffer);
+                                    commonBuffers.releaseBuffer(reorgBuffer);
 
                                     // instruct main loop to save system and wait until it is done
                                     systemMustBeSaved = true;
@@ -5613,7 +5616,7 @@ static bool initialize()
         if (!initSpectrum())
             return false;
 
-        if (!initCommonBuffers())
+        if (!commonBuffers.init(COMMON_BUFFERS_COUNT))
             return false;
 
         if (!initAssets())
@@ -5939,7 +5942,7 @@ static void deinitialize()
 
     deinitAssets();
     deinitSpectrum();
-    deinitCommonBuffers();
+    commonBuffers.deinit();
 
     logger.deinitLogging();
 
@@ -6398,6 +6401,12 @@ static void logHealthStatus()
     appendNumber(message, contractLocalsStack[0].capacity(), TRUE);
     appendText(message, L" | max processors waiting ");
     appendNumber(message, contractLocalsStackLockWaitingCountMax, TRUE);
+    logToConsole(message);
+
+    setText(message, L"Common buffers: invalid release ");
+    appendNumber(message, commonBuffers.getInvalidReleaseCount(), FALSE);
+    appendText(message, L", max waiting processors ");
+    appendNumber(message, commonBuffers.getMaxWaitingProcessorCount(), FALSE);
     logToConsole(message);
 
     setText(message, L"Connections:");
