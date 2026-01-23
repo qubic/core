@@ -1427,6 +1427,199 @@ public:
         return queryMetadata.status;
     }
 
+
+    // Useful for debugging, but expensive: check that everything is as expected.
+    void checkStateConsistencyWithAssert() const
+    {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        addDebugMessage(L"Begin oracleEngine.checkStateConsistencyWithAssert()");
+        __ScopedScratchpad scratchpad(1000, /*initZero=*/true);
+        CHAR16* dbgMsgBuf = (CHAR16*)scratchpad.ptr;
+        logStatus(dbgMsgBuf);
+        addDebugMessage(dbgMsgBuf);
+#endif
+
+        ASSERT(queries);
+        ASSERT(queryStorage);
+        ASSERT(queryIdToIndex);
+        ASSERT(replyStates);
+        ASSERT(oracleQueryCount <= MAX_ORACLE_QUERIES);
+        ASSERT(queryStorageBytesUsed <= ORACLE_QUERY_STORAGE_SIZE);
+        ASSERT(oracleQueryCount == queryIdToIndex->population());
+        ASSERT(contractQueryIdState.tick <= system.tick);
+        ASSERT(contractQueryIdState.queryIndexInTick < NUMBER_OF_TRANSACTIONS_PER_TICK);
+
+        uint64_t successCount = 0;
+        uint64_t timeoutCount = 0;
+        uint64_t unresolvableCount = 0;
+        uint64_t pendingCount = 0;
+        uint64_t committedCount = 0;
+        uint64_t storageBytesUsed = 8;
+        for (uint32_t queryIndex = 0; queryIndex < oracleQueryCount; ++queryIndex)
+        {
+            const OracleQueryMetadata& oqm = queries[queryIndex];
+            ASSERT(oqm.interfaceIndex < OI::oracleInterfacesCount);
+            ASSERT(oqm.queryId);
+            uint32_t idx = 0;
+            ASSERT(queryIdToIndex->get(oqm.queryId, idx) && idx == queryIndex);
+            ASSERT(oqm.queryTick <= system.tick);
+            ASSERT(oqm.queryId >> 31 == oqm.queryTick);
+            ASSERT(oqm.timeout.isValid());
+            switch (oqm.type)
+            {
+            case ORACLE_QUERY_TYPE_CONTRACT_QUERY:
+                ASSERT(oqm.typeVar.contract.queryingContract > 0 && oqm.typeVar.contract.queryingContract < MAX_NUMBER_OF_CONTRACTS);
+                ASSERT(oqm.typeVar.contract.queryStorageOffset < queryStorageBytesUsed && oqm.typeVar.contract.queryStorageOffset > 0);
+                storageBytesUsed += OI::oracleInterfaces[oqm.interfaceIndex].querySize;
+                break;
+            case ORACLE_QUERY_TYPE_CONTRACT_SUBSCRIPTION:
+                // TODO
+                break;
+            case ORACLE_QUERY_TYPE_USER_QUERY:
+                ASSERT(!isZero(oqm.typeVar.user.queryingEntity));
+                ASSERT(oqm.typeVar.user.queryTxIndex < NUMBER_OF_TRANSACTIONS_PER_TICK);
+                // TODO: check vs tick storage?
+                break;
+            default:
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                CHAR16* dbgMsgBuf = (CHAR16*)scratchpad.ptr;
+                setText(dbgMsgBuf, L"Unexpected oracle query type ");
+                appendNumber(dbgMsgBuf, oqm.status, FALSE);
+                addDebugMessage(dbgMsgBuf);
+#endif
+                break;
+            }
+
+            // shared status checks
+            const ReplyState* replyState = nullptr;
+            uint16_t agreeingCommits = 0;
+            switch (oqm.status)
+            {
+            case ORACLE_QUERY_STATUS_PENDING:
+            case ORACLE_QUERY_STATUS_COMMITTED:
+                ASSERT(oqm.statusVar.pending.replyStateIndex < MAX_SIMULTANEOUS_ORACLE_QUERIES);
+                replyState = replyStates + oqm.statusVar.pending.replyStateIndex;
+                ASSERT(replyState->queryId == oqm.queryId);
+                ASSERT(replyState->ownReplySize == 0 || replyState->ownReplySize == OI::oracleInterfaces[oqm.interfaceIndex].replySize);
+                ASSERT(replyState->mostCommitsHistIdx < NUMBER_OF_COMPUTORS);
+                agreeingCommits = replyState->replyCommitHistogramCount[replyState->mostCommitsHistIdx];
+                ASSERT(agreeingCommits <= replyState->totalCommits);
+                ASSERT(replyState->totalCommits <= NUMBER_OF_COMPUTORS);
+                break;
+            case ORACLE_QUERY_STATUS_UNRESOLVABLE:
+            case ORACLE_QUERY_STATUS_TIMEOUT:
+                ASSERT(oqm.statusVar.failure.agreeingCommits < QUORUM);
+                ASSERT(oqm.statusVar.failure.totalCommits <= NUMBER_OF_COMPUTORS);
+                ASSERT(oqm.statusVar.failure.agreeingCommits <= oqm.statusVar.failure.totalCommits);
+                break;
+            }
+
+            // specific status checks
+            switch (oqm.status)
+            {
+            case ORACLE_QUERY_STATUS_PENDING:
+                ++pendingCount;
+                ASSERT(agreeingCommits < QUORUM);
+                break;
+            case ORACLE_QUERY_STATUS_COMMITTED:
+                ++committedCount;
+                ASSERT(agreeingCommits >= QUORUM);
+                break;
+            case ORACLE_QUERY_STATUS_SUCCESS:
+                ++successCount;
+                ASSERT(oqm.statusVar.success.revealTick <= system.tick);
+                ASSERT(oqm.statusVar.success.revealTxIndex < NUMBER_OF_TRANSACTIONS_PER_TICK);
+                break;
+            case ORACLE_QUERY_STATUS_UNRESOLVABLE:
+                ++unresolvableCount;
+                ASSERT(oqm.statusVar.failure.totalCommits - oqm.statusVar.failure.agreeingCommits > NUMBER_OF_COMPUTORS - QUORUM);
+                break;
+            case ORACLE_QUERY_STATUS_TIMEOUT:
+                ++timeoutCount;
+                break;
+            default:
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                CHAR16* dbgMsgBuf = (CHAR16*)scratchpad.ptr;
+                setText(dbgMsgBuf, L"Unexpected oracle query state ");
+                appendNumber(dbgMsgBuf, oqm.status, FALSE);
+                addDebugMessage(dbgMsgBuf);
+#endif
+                break;
+            }
+        }
+        for (uint32_t queryIndex = oracleQueryCount; queryIndex < MAX_ORACLE_QUERIES; ++queryIndex)
+        {
+            const OracleQueryMetadata& oqm = queries[queryIndex];
+            ASSERT(!oqm.queryId);
+            ASSERT(!oqm.status);
+        }
+
+        ASSERT(queryStorageBytesUsed == storageBytesUsed);
+        ASSERT(oracleQueryCount == pendingCount + committedCount + successCount + timeoutCount + unresolvableCount);
+        ASSERT(committedCount == stats.commitCount);
+        ASSERT(committedCount == pendingRevealReplyStateIndices.numValues);
+        ASSERT(pendingCount + committedCount == pendingQueryIndices.numValues);
+        ASSERT(successCount == stats.successCount);
+        ASSERT(timeoutCount == stats.timeoutNoCommitCount + stats.timeoutNoReplyCount + stats.timeoutNoReplyCount);
+        ASSERT(unresolvableCount == stats.unresolvableCount);
+
+        // check pending queries index
+        uint32_t queryIdxCount = pendingQueryIndices.numValues;
+        const uint32_t* queryIndices = pendingQueryIndices.values;
+        for (uint32_t i = 0; i < queryIdxCount; ++i)
+        {
+            const uint32_t queryIndex = queryIndices[i];
+            ASSERT(queryIndex < oracleQueryCount);
+            const OracleQueryMetadata& oqm = queries[queryIndex];
+            ASSERT(oqm.status == ORACLE_QUERY_STATUS_PENDING || oqm.status == ORACLE_QUERY_STATUS_COMMITTED);
+        }
+
+        // check index of reply states with pending reply commit quroum
+        uint32_t replyIdxCount = pendingCommitReplyStateIndices.numValues;
+        const uint32_t* replyIndices = pendingCommitReplyStateIndices.values;
+        for (uint32_t idx = 0; idx < replyIdxCount; ++idx)
+        {
+            const uint32_t replyIdx = replyIndices[idx];
+            ASSERT(replyIdx < MAX_SIMULTANEOUS_ORACLE_QUERIES);
+            const ReplyState& replyState = replyStates[replyIdx];
+            ASSERT(replyState.queryId);
+            uint32_t queryIndex = 0;
+            ASSERT(queryIdToIndex->get(replyState.queryId, queryIndex) && queryIndex < oracleQueryCount);
+            const OracleQueryMetadata& oqm = queries[queryIndex];
+            ASSERT(oqm.status == ORACLE_QUERY_STATUS_PENDING);
+        }
+
+        // check index of reply states with pending reply reveal tx
+        replyIdxCount = pendingRevealReplyStateIndices.numValues;
+        replyIndices = pendingRevealReplyStateIndices.values;
+        for (uint32_t idx = 0; idx < replyIdxCount; ++idx)
+        {
+            const uint32_t replyIdx = replyIndices[idx];
+            ASSERT(replyIdx < MAX_SIMULTANEOUS_ORACLE_QUERIES);
+            const ReplyState& replyState = replyStates[replyIdx];
+            ASSERT(replyState.queryId);
+            uint32_t queryIndex = 0;
+            ASSERT(queryIdToIndex->get(replyState.queryId, queryIndex) && queryIndex < oracleQueryCount);
+            const OracleQueryMetadata& oqm = queries[queryIndex];
+            ASSERT(oqm.status == ORACLE_QUERY_STATUS_COMMITTED);
+        }
+
+        // check index of pending notifications
+        queryIdxCount = notificationQueryIndicies.numValues;
+        queryIndices = notificationQueryIndicies.values;
+        for (uint32_t i = 0; i < queryIdxCount; ++i)
+        {
+            const uint32_t queryIndex = queryIndices[i];
+            ASSERT(queryIndex < oracleQueryCount);
+            const OracleQueryMetadata& oqm = queries[queryIndex];
+            ASSERT(oqm.status != ORACLE_QUERY_STATUS_PENDING);
+        }
+
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        addDebugMessage(L"End oracleEngine.checkStateConsistencyWithAssert()");
+#endif
+    }
+
     void logStatus(CHAR16* message) const
     {
         auto appendQuotientWithOneDecimal = [](CHAR16* message, uint64_t dividend, uint64_t divisor)

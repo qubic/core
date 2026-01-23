@@ -4315,7 +4315,10 @@ static bool saveAllNodeStates()
         return false;
     }
 
-    if (oracleEngine.saveSnapshot(system.epoch, directory) != 0)
+#if !defined(NDEBUG)
+    oracleEngine.checkStateConsistencyWithAssert();
+#endif
+    if (oracleEngine.saveSnapshot(system.epoch, directory))
     {
         return false;
     }
@@ -4482,6 +4485,14 @@ static bool loadAllNodeStates()
         logToConsole(L"Failed to load miner solution flag");
         return false;
     }
+
+    if (oracleEngine.loadSnapshot(system.epoch, directory))
+    {
+        return false;
+    }
+#if !defined(NDEBUG)
+    oracleEngine.checkStateConsistencyWithAssert();
+#endif
 
 #if ADDON_TX_STATUS_REQUEST
     if (!loadStateTxStatus(numberOfTransactions, directory))
