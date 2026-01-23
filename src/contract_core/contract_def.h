@@ -335,6 +335,7 @@ constexpr struct ContractDescription
 #ifndef NO_QRWA
     {"QRWA", 197, 10000, sizeof(QRWA)}, // proposal in epoch 195, IPO in 196, construction and first use in 197
 #endif
+    {"VOTTUN", 197, 10000, sizeof(VOTTUNBRIDGE)}, // proposal in epoch 195, IPO in 196, construction and first use in 197
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA)},

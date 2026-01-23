@@ -105,7 +105,7 @@ static constexpr unsigned int SOLUTION_THRESHOLD_DEFAULT = 321;
 // include commonly needed definitions
 #include "network_messages/common_def.h"
 
-#define TESTNET_EPOCH_DURATION 3000
+#define TESTNET_EPOCH_DURATION 86  // ~10 minutes with 7 second ticks (86 * 7 = 602 seconds)
 #define MAX_NUMBER_OF_TICKS_PER_EPOCH (TESTNET_EPOCH_DURATION + 5)
 
 
