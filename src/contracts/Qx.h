@@ -573,7 +573,8 @@ protected:
 						state._entityOrders.replace(state._elementIndex, state._entityOrder);
 
 						state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName, -input.price);
-						while (true) // Impossible for the corresponding asset order to not exist
+						//while (true) // Impossible for the corresponding asset order to not exist
+						while (state._elementIndex != NULL_INDEX)
 						{
 							state._assetOrder = state._assetOrders.element(state._elementIndex);
 							if (state._assetOrder.entity == qpi.invocator())
@@ -612,7 +613,8 @@ protected:
 							state._elementIndex = state._assetOrders.remove(state._elementIndex);
 
 							state._elementIndex2 = state._entityOrders.headIndex(state._assetOrder.entity, state._price);
-							while (true) // Impossible for the corresponding entity order to not exist
+							//while (true) // Impossible for the corresponding entity order to not exist
+							while (state._elementIndex != NULL_INDEX)
 							{
 								state._entityOrder = state._entityOrders.element(state._elementIndex2);
 								if (state._entityOrder.assetName == input.assetName
@@ -652,7 +654,8 @@ protected:
 							state._assetOrders.replace(state._elementIndex, state._assetOrder);
 
 							state._elementIndex = state._entityOrders.headIndex(state._assetOrder.entity, state._price);
-							while (true) // Impossible for the corresponding entity order to not exist
+							//while (true) // Impossible for the corresponding entity order to not exist
+							while (state._elementIndex != NULL_INDEX)
 							{
 								state._entityOrder = state._entityOrders.element(state._elementIndex);
 								if (state._entityOrder.assetName == input.assetName
@@ -751,7 +754,8 @@ protected:
 					state._entityOrders.replace(state._elementIndex, state._entityOrder);
 
 					state._elementIndex = state._assetOrders.tailIndex(state._issuerAndAssetName, input.price);
-					while (true) // Impossible for the corresponding asset order to not exist
+					//while (true) // Impossible for the corresponding asset order to not exist
+					while (state._elementIndex != NULL_INDEX)
 					{
 						state._assetOrder = state._assetOrders.element(state._elementIndex);
 						if (state._assetOrder.entity == qpi.invocator())
@@ -790,7 +794,8 @@ protected:
 						state._elementIndex = state._assetOrders.remove(state._elementIndex);
 
 						state._elementIndex2 = state._entityOrders.headIndex(state._assetOrder.entity, -state._price);
-						while (true) // Impossible for the corresponding entity order to not exist
+						//while (true) // Impossible for the corresponding entity order to not exist
+						while (state._elementIndex != NULL_INDEX)
 						{
 							state._entityOrder = state._entityOrders.element(state._elementIndex2);
 							if (state._entityOrder.assetName == input.assetName
@@ -835,7 +840,8 @@ protected:
 						state._assetOrders.replace(state._elementIndex, state._assetOrder);
 
 						state._elementIndex = state._entityOrders.headIndex(state._assetOrder.entity, -state._price);
-						while (true) // Impossible for the corresponding entity order to not exist
+						//while (true) // Impossible for the corresponding entity order to not exist
+						while (state._elementIndex != NULL_INDEX)
 						{
 							state._entityOrder = state._entityOrders.element(state._elementIndex);
 							if (state._entityOrder.assetName == input.assetName
@@ -943,7 +949,8 @@ protected:
 						}
 
 						state._elementIndex = state._assetOrders.headIndex(state._issuerAndAssetName, -input.price);
-						while (true) // Impossible for the corresponding asset order to not exist
+						//while (true) // Impossible for the corresponding asset order to not exist
+						while (state._elementIndex != NULL_INDEX)
 						{
 							state._assetOrder = state._assetOrders.element(state._elementIndex);
 							if (state._assetOrder.entity == qpi.invocator())
@@ -1031,7 +1038,8 @@ protected:
 						}
 
 						state._elementIndex = state._assetOrders.tailIndex(state._issuerAndAssetName, input.price);
-						while (true) // Impossible for the corresponding asset order to not exist
+						//while (true) // Impossible for the corresponding asset order to not exist
+						while (state._elementIndex != NULL_INDEX)
 						{
 							state._assetOrder = state._assetOrders.element(state._elementIndex);
 							if (state._assetOrder.entity == qpi.invocator())
