@@ -631,9 +631,11 @@ public:
     bool saveCurrentLoggingStates(CHAR16* dir)
     {
 #if ENABLED_LOGGING
-        unsigned char* buffer = (unsigned char*)__scratchpad();        
-        static_assert(reorgBufferSize >= LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
-            + sizeof(digests) + 600, "scratchpad is too small");
+        constexpr auto bufferSize = LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
+            + sizeof(digests) + 600;
+        static_assert(defaultCommonBuffersSize >= bufferSize, "commonBuffer size is too small");
+        __ScopedScratchpad scratchpad(bufferSize, /*initZero=*/false);
+        unsigned char* buffer = (unsigned char*)scratchpad.ptr;
         unsigned long long writeSz = 0;
         // copy currentPage of log buffer ~ 100MiB
         unsigned long long sz = logBuffer.dumpVMState(buffer);
@@ -668,7 +670,7 @@ public:
         *((unsigned int*)buffer) = currentTxId; buffer += 4;
         *((unsigned int*)buffer) = currentTick; buffer += 4;
         writeSz += 8 + 8 + 4 + 4 + 4 + 4;
-        buffer = (unsigned char*)__scratchpad(); // reset back to original pos
+        buffer = (unsigned char*)scratchpad.ptr; // reset back to original pos
         sz = save(L"logEventState.db", writeSz, buffer, dir);
         if (sz != writeSz)
         {
@@ -683,9 +685,11 @@ public:
     void loadLastLoggingStates(CHAR16* dir)
     {
 #if ENABLED_LOGGING
-        unsigned char* buffer = (unsigned char*)__scratchpad();
-        static_assert(reorgBufferSize >= LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
-            + sizeof(digests) + 600, "scratchpad is too small");
+        constexpr auto bufferSize = LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
+            + sizeof(digests) + 600;
+        static_assert(defaultCommonBuffersSize >= bufferSize, "commonBuffer size is too small");
+        __ScopedScratchpad scratchpad(bufferSize, /*initZero=*/false);
+        unsigned char* buffer = (unsigned char*)scratchpad.ptr;
         CHAR16 fileName[] = L"logEventState.db";
         const long long fileSz = getFileSize(fileName, dir);
         if (fileSz == -1)

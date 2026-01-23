@@ -511,18 +511,24 @@ public:
     }
 
 protected:
-    // Enqueue oracle machine query message. May be called from tick processor or contract processor only (uses reorgBuffer).
+    // Enqueue oracle machine query message.
     static void enqueueOracleQuery(int64_t queryId, uint32_t interfaceIdx, uint32_t timeoutMillisec, const void* queryData, uint16_t querySize)
     {
+        // Acquire buffer for building payload
+        const unsigned int payloadSize = sizeof(OracleMachineQuery) + querySize;
+        OracleMachineQuery* omq = reinterpret_cast<OracleMachineQuery*>(commonBuffers.acquireBuffer(payloadSize));
+
         // Prepare message payload
-        OracleMachineQuery* omq = reinterpret_cast<OracleMachineQuery*>(reorgBuffer);
         omq->oracleQueryId = queryId;
         omq->oracleInterfaceIndex = interfaceIdx;
         omq->timeoutInMilliseconds = timeoutMillisec;
         copyMem(omq + 1, queryData, querySize);
 
         // Enqueue for sending to all oracle machine peers (peer pointer address 0x1 is reserved for that)
-        enqueueResponse((Peer*)0x1, sizeof(*omq) + querySize, OracleMachineQuery::type(), 0, omq);
+        enqueueResponse((Peer*)0x1, payloadSize, OracleMachineQuery::type(), 0, omq);
+
+        // Release buffer
+        commonBuffers.releaseBuffer(omq);
     }
 
     void logQueryStatusChange(const OracleQueryMetadata& oqm) const

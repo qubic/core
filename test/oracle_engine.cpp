@@ -7,7 +7,7 @@ struct OracleEngineTest : public LoggingTest
 {
 	OracleEngineTest()
 	{
-		EXPECT_TRUE(initCommonBuffers());
+		EXPECT_TRUE(commonBuffers.init(1, sizeof(OracleMachineQuery) + MAX_ORACLE_QUERY_SIZE));
 		EXPECT_TRUE(initSpecialEntities());
 		EXPECT_TRUE(initContractExec());
 		EXPECT_TRUE(ts.init());
@@ -31,7 +31,7 @@ struct OracleEngineTest : public LoggingTest
 
 	~OracleEngineTest()
 	{
-		deinitCommonBuffers();
+		commonBuffers.deinit();
 		deinitContractExec();
 		ts.deinit();
 	}
