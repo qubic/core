@@ -4354,7 +4354,10 @@ static bool saveAllNodeStates()
         return false;
     }
 
-    if (oracleEngine.saveSnapshot(system.epoch, directory) != 0)
+#if !defined(NDEBUG)
+    oracleEngine.checkStateConsistencyWithAssert();
+#endif
+    if (!oracleEngine.saveSnapshot(system.epoch, directory))
     {
         return false;
     }
@@ -4521,6 +4524,14 @@ static bool loadAllNodeStates()
         logToConsole(L"Failed to load miner solution flag");
         return false;
     }
+
+    if (!oracleEngine.loadSnapshot(system.epoch, directory))
+    {
+        return false;
+    }
+#if !defined(NDEBUG)
+    oracleEngine.checkStateConsistencyWithAssert();
+#endif
 
 #if ADDON_TX_STATUS_REQUEST
     if (!loadStateTxStatus(numberOfTransactions, directory))
@@ -5875,7 +5886,9 @@ static bool initialize()
         {
             return false;
         }
-            
+
+        if (!oracleEngine.init(computorPublicKeys))
+            return false;
 
 #if ADDON_TX_STATUS_REQUEST
         if (!initTxStatusRequestAddOn())
@@ -6017,9 +6030,6 @@ static bool initialize()
             logToConsole(L"Loaded node state from snapshot, if you want to start from scratch please delete all snapshot files.");
         }
     }
-
-    if (!oracleEngine.init(computorPublicKeys))
-        return false;
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     increaseEnergy(id(TESTEXC_CONTRACT_INDEX, 0, 0, 0), 100000000llu);

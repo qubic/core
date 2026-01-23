@@ -123,6 +123,11 @@ bool OracleEngine<ownComputorSeedsCount>::loadSnapshot(unsigned short epoch, CHA
     copyMemory(pendingRevealReplyStateIndices, engineData.pendingRevealReplyStateIndices);
     copyMemory(notificationQueryIndicies, engineData.notificationQueryIndicies);
     copyMemory(stats, engineData.stats);
+    if (oracleQueryCount > MAX_ORACLE_QUERIES || queryStorageBytesUsed > ORACLE_QUERY_STORAGE_SIZE)
+    {
+        logToConsole(L"Oracle engine data is invalid!");
+        return false;
+    }
 
 
     logToConsole(L"Loading oracle query metadata ...");
@@ -133,6 +138,11 @@ bool OracleEngine<ownComputorSeedsCount>::loadSnapshot(unsigned short epoch, CHA
         logToConsole(L"Failed to load oracle query metadata!");
         return false;
     }
+    if (oracleQueryCount < MAX_ORACLE_QUERIES)
+    {
+        unsigned long long sizeToZero = (MAX_ORACLE_QUERIES - oracleQueryCount) * sizeof(*queries);
+        setMem(queries + oracleQueryCount, sizeToZero, 0);
+    }
 
     logToConsole(L"Loading oracle query data storage ...");
     sizeToLoad = queryStorageBytesUsed;
@@ -142,6 +152,11 @@ bool OracleEngine<ownComputorSeedsCount>::loadSnapshot(unsigned short epoch, CHA
     {
         logToConsole(L"Failed to load oracle query data storage!");
         return false;
+    }
+    if (queryStorageBytesUsed < ORACLE_QUERY_STORAGE_SIZE)
+    {
+        unsigned long long sizeToZero = ORACLE_QUERY_STORAGE_SIZE - queryStorageBytesUsed;
+        setMem(queryStorage + queryStorageBytesUsed, sizeToZero, 0);
     }
 
     logToConsole(L"Loading oracle reply states ...");
@@ -159,6 +174,7 @@ bool OracleEngine<ownComputorSeedsCount>::loadSnapshot(unsigned short epoch, CHA
         queryIdToIndex->set(queries[queryIndex].queryId, queryIndex);
 
     logToConsole(L"Successfully loaded all oracle engine data from snapshot!");
+    return true;
 }
 
 #else
