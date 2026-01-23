@@ -527,14 +527,14 @@ protected:
 
     void logQueryStatusChange(const OracleQueryMetadata& oqm) const
     {
-        m256i queryingEntitiy = m256i::zero();
+        m256i queryingEntity = m256i::zero();
         if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_QUERY)
-            queryingEntitiy.u64._0 = oqm.typeVar.contract.queryingContract;
+            queryingEntity.u64._0 = oqm.typeVar.contract.queryingContract;
         else if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_SUBSCRIPTION)
-            queryingEntitiy.u64._0 = oqm.typeVar.subscription.subscriptionId;
+            queryingEntity.u64._0 = oqm.typeVar.subscription.subscriptionId;
         else if (oqm.type == ORACLE_QUERY_TYPE_USER_QUERY)
-            queryingEntitiy = oqm.typeVar.user.queryingEntity;
-        OracleQueryStatusChange logEvent{ queryingEntitiy, oqm.queryId, oqm.interfaceIndex, oqm.type, oqm.status };
+            queryingEntity = oqm.typeVar.user.queryingEntity;
+        OracleQueryStatusChange logEvent{ queryingEntity, oqm.queryId, oqm.interfaceIndex, oqm.type, oqm.status };
         logger.logOracleQueryStatusChange(logEvent);
     }
 
@@ -612,7 +612,7 @@ public:
         // Update the stats for each type of oracles
         const uint32_t ifaceIdx = oqm.interfaceIndex;
         oracleStats[ifaceIdx].replyCount++;
-        // Now only record contract querry
+        // Now only record contract query
         if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_QUERY)
         {
             const void* queryData = queryStorage + oqm.typeVar.contract.queryStorageOffset;
@@ -1209,7 +1209,7 @@ public:
         // lock for accessing engine data
         LockGuard lockGuard(lock);
 
-        // consider peinding queries
+        // consider pending queries
         const uint32_t queryIdxCount = pendingQueryIndices.numValues;
         const uint32_t* queryIndices = pendingQueryIndices.values;
         const QPI::DateAndTime now = QPI::DateAndTime::now();
@@ -1277,7 +1277,7 @@ public:
     }
 
     /**
-    * @brief Get info for notfying contracts. Call until nullptr is returned.
+    * @brief Get info for notifying contracts. Call until nullptr is returned.
     * @return Pointer to notification info or nullptr if no notifications are needed.
     * 
     * Only to be used in tick processor! No concurrent use supported. Uses one internal buffer for returned data.
