@@ -142,6 +142,7 @@
     <ClCompile Include="contract_rl.cpp" />
     <ClCompile Include="contract_ccf.cpp" />
     <ClCompile Include="contract_qip.cpp" />
+    <ClCompile Include="contract_qusino.cpp" />
     <ClCompile Include="custom_mining.cpp" />
     <ClCompile Include="execution_fees.cpp" />
     <ClCompile Include="stable_computor_index.cpp" />
