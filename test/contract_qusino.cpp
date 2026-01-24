@@ -359,3 +359,149 @@ TEST(ContractQUSINO, buyQST_InsufficientFunds)
     QUSINO::buyQST_output output = QUSINO.buyQST(buyer, buyAmount, 0, insufficientReward);
     EXPECT_EQ(output.returnCode, QusinoinsufficientFunds);
 }
+
+TEST(ContractQUSINO, buyQST_InsufficientQSC)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    // Use QST asset from contract initialization
+    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _, _B, _V, _G, _B, _S, _U, _Q, _G);
+    uint64 qstAssetName = 13153214312341;
+    sint64 totalShares = 1000000;
+    
+    increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
+    EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
+    
+    increaseEnergy(qstIssuer, QUSINO_TRANSFER_ASSET_FEE);
+    EXPECT_EQ(QUSINO.transferAsset(qstIssuer, QUSINO_CONTRACT_ID, qstAssetName, qstIssuer, 100000), 100000);
+    
+    Asset asset;
+    asset.assetName = qstAssetName;
+    asset.issuer = qstIssuer;
+    increaseEnergy(qstIssuer, QUSINO_TRANSFER_RIGHTS_FEE);
+    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, totalShares, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), totalShares);
+    
+    id buyer = QUSINO_testUser2;
+    uint64 buyAmount = 1000;
+    
+    increaseEnergy(buyer, 1);
+    QUSINO::buyQST_output output = QUSINO.buyQST(buyer, buyAmount, 1, 1);
+    EXPECT_EQ(output.returnCode, QusinoinsufficientQSC);
+}
+
+TEST(ContractQUSINO, earnSTAR_Success)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id user = QUSINO_testUser1;
+    uint64 amount = 1000;
+    sint64 requiredReward = amount * QUSINO_STAR_PRICE;
+    
+    increaseEnergy(user, requiredReward);
+    
+    QUSINO::earnSTAR_output output = QUSINO.earnSTAR(user, amount, requiredReward);
+    EXPECT_EQ(output.returnCode, QusinoSuccess);
+    
+    // Check user's STAR amount
+    QUSINO::getUserAssetVolume_output userVolume = QUSINO.getUserAssetVolume(user);
+    EXPECT_EQ(userVolume.STARAmount, amount);
+    
+    // Check SC info
+    QUSINO::getSCInfo_output scInfo = QUSINO.getSCInfo();
+    EXPECT_EQ(scInfo.STARCirclatingSupply, amount);
+    EXPECT_EQ(scInfo.epochRevenue, requiredReward);
+}
+
+TEST(ContractQUSINO, earnSTAR_InsufficientFunds)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id user = QUSINO_testUser1;
+    uint64 amount = 1000;
+    sint64 insufficientReward = amount * QUSINO_STAR_PRICE - 1;
+    
+    increaseEnergy(user, insufficientReward);
+    
+    QUSINO::earnSTAR_output output = QUSINO.earnSTAR(user, amount, insufficientReward);
+    EXPECT_EQ(output.returnCode, QusinoinsufficientFunds);
+}
+
+TEST(ContractQUSINO, earnQSC_Success)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    // Use QST asset from contract initialization
+    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _, _B, _V, _G, _B, _S, _U, _Q, _G);
+    uint64 qstAssetName = 13153214312341;
+    sint64 totalShares = 1000000;
+    
+    increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
+    EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
+    
+    Asset asset;
+    asset.assetName = qstAssetName;
+    asset.issuer = qstIssuer;
+    increaseEnergy(qstIssuer, QUSINO_TRANSFER_RIGHTS_FEE);
+    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, totalShares, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), totalShares);
+    
+    id user = QUSINO_testUser2;
+    uint64 amount = 5000;
+    
+    // Transfer QST to user first
+    increaseEnergy(qstIssuer, QUSINO_TRANSFER_ASSET_FEE);
+    EXPECT_EQ(QUSINO.transferAsset(qstIssuer, user, qstAssetName, qstIssuer, amount), amount);
+    
+    increaseEnergy(user, 1);
+    QUSINO::earnQSC_output output = QUSINO.earnQSC(user, amount, 1);
+    EXPECT_EQ(output.returnCode, QusinoSuccess);
+    
+    // Check user's QSC and STAR amounts (should get bonus STAR)
+    QUSINO::getUserAssetVolume_output userVolume = QUSINO.getUserAssetVolume(user);
+    EXPECT_EQ(userVolume.QSCAmount, amount);
+    EXPECT_EQ(userVolume.STARAmount, QUSINO_STAR_BONUS_FOR_QSC);
+    
+    // Check SC info
+    QUSINO::getSCInfo_output scInfo = QUSINO.getSCInfo();
+    EXPECT_EQ(scInfo.QSCCirclatingSupply, amount);
+    EXPECT_EQ(scInfo.STARCirclatingSupply, QUSINO_STAR_BONUS_FOR_QSC);
+}
+
+TEST(ContractQUSINO, saleQST_Success)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    // Use QST asset from contract initialization
+    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _, _B, _V, _G, _B, _S, _U, _Q, _G);
+    uint64 qstAssetName = 13153214312341;
+    sint64 totalShares = 1000000;
+    
+    increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
+    EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
+    
+    Asset asset;
+    asset.assetName = qstAssetName;
+    asset.issuer = qstIssuer;
+    increaseEnergy(qstIssuer, QUSINO_TRANSFER_RIGHTS_FEE);
+    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, totalShares, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), totalShares);
+    
+    id user = QUSINO_testUser2;
+    uint64 amount = 5000;
+    
+    // Transfer QST to user first
+    increaseEnergy(qstIssuer, QUSINO_TRANSFER_ASSET_FEE);
+    EXPECT_EQ(QUSINO.transferAsset(qstIssuer, user, qstAssetName, qstIssuer, amount), amount);
+    
+    sint64 balanceBefore = getBalance(user);
+    increaseEnergy(user, 1);
+    QUSINO::saleQST_output output = QUSINO.saleQST(user, amount, 1);
+    EXPECT_EQ(output.returnCode, QusinoSuccess);
+    
+    // Check user received Qubic
+    sint64 balanceAfter = getBalance(user);
+    sint64 expectedPayment = amount * QUSINO_QST_PRICE_FOR_SALE;
+    EXPECT_EQ(balanceAfter - balanceBefore, expectedPayment);
+    
+    // Check QSTAmountForSale increased
+    QUSINO::getSCInfo_output scInfo = QUSINO.getSCInfo();
+    EXPECT_EQ(scInfo.QSTAmountForSale, 100000 + amount);
+}
