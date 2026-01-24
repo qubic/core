@@ -1,3 +1,5 @@
+#include "qpi.h"
+
 using namespace QPI;
 
 // Log types enum for QSWAP contract
@@ -340,6 +342,9 @@ protected:
 	uint64 burnEarnedFee;		// Total burn fees collected (to be burned in END_TICK)
 	uint64 burnedAmount;		// Total amount actually burned
 
+	uint32 cachedIssuanceFee;
+	uint32 cachedTransferFee;
+
 	// -----------------------------
 	// ---- state variables end ----
 	// -----------------------------
@@ -360,15 +365,26 @@ protected:
 
 		prod = uint128(a) * uint128(b);
 
-		// (prod + 1) / 2;
-		z = div(prod+uint128(1), uint128(2));
-		y = prod;
+		y = uint128(0);
 
-		while(z < y)
+		z = uint128(1) << uint128(0, 126);
+		while (z > prod)
 		{
-			y = z;
-			// (prod / z + z) / 2;
-			z = div((div(prod, z) + z), uint128(2));
+			z >>= uint128(0, 2);
+		}
+
+		while (z)
+		{
+			if (prod >= y + z)
+			{
+				prod -= y + z;
+				y = (y >> uint128(0, 1)) + z;
+			}
+			else
+			{
+				y >>= uint128(0, 1);
+			}
+			z >>= uint128(0, 2);
 		}
 
 		return sint64(y.low);
@@ -502,20 +518,11 @@ protected:
 		}
 	}
 
-	struct Fees_locals
+	PUBLIC_FUNCTION(Fees)
 	{
-		QX::Fees_input feesInput;
-		QX::Fees_output feesOutput;
-	};
-
-	PUBLIC_FUNCTION_WITH_LOCALS(Fees)
-	{
-
-		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
-
-		output.assetIssuanceFee = locals.feesOutput.assetIssuanceFee;
-		output.poolCreationFee = uint32(div(uint64(locals.feesOutput.assetIssuanceFee) * uint64(state.poolCreationFeeRate), uint64(QSWAP_FEE_BASE_100)));
-		output.transferFee = locals.feesOutput.transferFee;
+		output.assetIssuanceFee = state.cachedIssuanceFee;
+		output.poolCreationFee = uint32(div(uint64(state.cachedIssuanceFee) * uint64(state.poolCreationFeeRate), uint64(QSWAP_FEE_BASE_100)));
+		output.transferFee = state.cachedTransferFee;
 		output.swapFee = state.swapFeeRate;
 		output.shareholderFee = state.shareholderFeeRate;
 		output.investRewardsFee = state.investRewardsFeeRate;
@@ -857,19 +864,11 @@ protected:
 
 //
 // procedure
-// 
-	struct IssueAsset_locals
+//
+	PUBLIC_PROCEDURE(IssueAsset)
 	{
-		QX::Fees_input feesInput;
-		QX::Fees_output feesOutput;
-	};
-
-	PUBLIC_PROCEDURE_WITH_LOCALS(IssueAsset)
-	{
-		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
-
 		output.issuedNumberOfShares = 0;
-		if ((qpi.invocationReward() < locals.feesOutput.assetIssuanceFee)) 
+		if ((qpi.invocationReward() < state.cachedIssuanceFee)) 
 		{
 			if (qpi.invocationReward() > 0) 
 			{
@@ -913,11 +912,11 @@ protected:
 		}
 		else
 		{
-			if (qpi.invocationReward() > locals.feesOutput.assetIssuanceFee)
+			if (qpi.invocationReward() > state.cachedIssuanceFee)
 			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.feesOutput.assetIssuanceFee);
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.cachedIssuanceFee);
 			}
-			state.shareholderEarnedFee += locals.feesOutput.assetIssuanceFee;
+			state.shareholderEarnedFee += state.cachedIssuanceFee;
 		}
 	}
 
@@ -926,8 +925,6 @@ protected:
 		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
-		QX::Fees_input feesInput;
-		QX::Fees_output feesOutput;
 		uint32 poolCreationFee;
 
 		uint32 i0, i1;
@@ -939,8 +936,7 @@ protected:
 	{
 		output.success = false;
 
-		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
-		locals.poolCreationFee = uint32(div(uint64(locals.feesOutput.assetIssuanceFee) * uint64(state.poolCreationFeeRate), uint64(QSWAP_FEE_BASE_100)));
+		locals.poolCreationFee = uint32(div(uint64(state.cachedIssuanceFee) * uint64(state.poolCreationFeeRate), uint64(QSWAP_FEE_BASE_100)));
 
 		// fee check
 		if(qpi.invocationReward() < locals.poolCreationFee )
@@ -2176,19 +2172,11 @@ protected:
 		LOG_INFO(locals.swapMessage);
 	}
 
-	struct TransferShareOwnershipAndPossession_locals
-	{
-		QX::Fees_input feesInput;
-		QX::Fees_output feesOutput;
-	};
-
-	PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareOwnershipAndPossession)
+	PUBLIC_PROCEDURE(TransferShareOwnershipAndPossession)
 	{
 		output.transferredAmount = 0;
 
-		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
-
-		if (qpi.invocationReward() < locals.feesOutput.transferFee)
+		if (qpi.invocationReward() < state.cachedTransferFee)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
@@ -2235,11 +2223,11 @@ protected:
 		}
 		else
 		{
-			if (qpi.invocationReward() > locals.feesOutput.transferFee)
+			if (qpi.invocationReward() > state.cachedTransferFee)
 			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.feesOutput.transferFee);
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.cachedTransferFee);
 			}
-			state.shareholderEarnedFee += locals.feesOutput.transferFee;
+			state.shareholderEarnedFee += state.cachedTransferFee;
 		}
 	}
 
@@ -2288,39 +2276,13 @@ protected:
 				input.numberOfShares,
 				input.newManagingContractIndex,
 				input.newManagingContractIndex,
-				0
+				locals.reward
 			);
 
-			if (locals.result != INVALID_AMOUNT)
+			if (locals.result != INVALID_AMOUNT && locals.result >= 0)
 			{
-				if (locals.result == 0)
-				{
-					// success, fee = 0
-					locals.success = true;
-				}
-				else if (locals.result < 0)
-				{
-					locals.requiredFee = -locals.result;
-
-					if (locals.reward >= locals.requiredFee)
-					{
-						locals.result = qpi.releaseShares(
-							input.asset,
-							qpi.invocator(),
-							qpi.invocator(),
-							input.numberOfShares,
-							input.newManagingContractIndex,
-							input.newManagingContractIndex,
-							locals.requiredFee
-						);
-
-						if (locals.result != INVALID_AMOUNT)
-						{
-							locals.success = true;
-							locals.refundAmount = locals.reward - locals.result;
-						}
-					}
-				}
+				locals.success = true;
+				locals.refundAmount = locals.reward - locals.result;
 			}
 		}
 
@@ -2376,6 +2338,23 @@ protected:
 		ASSERT(state.shareholderFeeRate + state.investRewardsFeeRate + state.qxFeeRate + state.burnFeeRate <= 100);
 		// 
         state.investRewardsId = ID(_V, _J, _G, _R, _U, _F, _W, _J, _C, _U, _S, _N, _H, _C, _Q, _J, _R, _W, _R, _R, _Y, _X, _A, _U, _E, _J, _F, _C, _V, _H, _Y, _P, _X, _W, _K, _T, _D, _L, _Y, _K, _U, _A, _C, _P, _V, _V, _Y, _B, _G, _O, _L, _V, _C, _J, _S, _F);
+	}
+
+	struct BEGIN_EPOCH_locals
+	{
+		QX::Fees_input feesInput;
+		QX::Fees_output feesOutput;
+	};
+
+	BEGIN_EPOCH_WITH_LOCALS()
+	{
+		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
+
+		if (interContractCallError == NoCallError)
+		{
+			state.cachedIssuanceFee = locals.feesOutput.assetIssuanceFee;
+			state.cachedTransferFee = locals.feesOutput.transferFee;
+		}
 	}
 
 	struct END_TICK_locals
