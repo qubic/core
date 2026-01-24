@@ -1,5 +1,3 @@
-#include "qpi.h"
-
 using namespace QPI;
 
 // Log types enum for QSWAP contract
