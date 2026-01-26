@@ -3623,14 +3623,15 @@ static void processTick(unsigned long long processorNumber)
         }
     }
 
-    // Publish oracle reply commit and reveal transactions (uses reorgBuffer for constructing packets)
+    // Publish oracle reply commit and reveal transactions
     if (isMainMode())
     {
         unsigned char digest[32];
+        void* txBuffer = commonBuffers.acquireBuffer(MAX_TRANSACTION_SIZE);
         {
             PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reply transactions");
             const auto txTick = system.tick + ORACLE_REPLY_COMMIT_PUBLICATION_OFFSET;
-            auto* tx = (OracleReplyCommitTransactionPrefix*)reorgBuffer;
+            auto* tx = (OracleReplyCommitTransactionPrefix*)txBuffer;
             unsigned int txCount = 0;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
             {
@@ -3688,7 +3689,7 @@ static void processTick(unsigned long long processorNumber)
 
         {
             PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reveal transactions");
-            auto* tx = (OracleReplyRevealTransactionPrefix*)reorgBuffer;
+            auto* tx = (OracleReplyRevealTransactionPrefix*)txBuffer;
             const auto txTick = system.tick + ORACLE_REPLY_REVEAL_PUBLICATION_OFFSET;
             // create reply reveal transaction in tx (without signature), returning:
             // - 0 if no tx was created (no need to send reply commits)
@@ -3702,6 +3703,8 @@ static void processTick(unsigned long long processorNumber)
                 enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
             }
         }
+
+        commonBuffers.releaseBuffer(txBuffer);
     }
 
     if (isMainMode())
