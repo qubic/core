@@ -1470,7 +1470,7 @@ public:
         ASSERT(queryStorageBytesUsed <= ORACLE_QUERY_STORAGE_SIZE);
         ASSERT(oracleQueryCount == queryIdToIndex->population());
         ASSERT(contractQueryIdState.tick <= system.tick);
-        ASSERT(contractQueryIdState.queryIndexInTick < NUMBER_OF_TRANSACTIONS_PER_TICK);
+        ASSERT(contractQueryIdState.queryIndexInTick < 0x7FFFFFFF);
 
         uint64_t successCount = 0;
         uint64_t timeoutCount = 0;

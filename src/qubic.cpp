@@ -4319,7 +4319,7 @@ static bool saveAllNodeStates()
 #if !defined(NDEBUG)
     oracleEngine.checkStateConsistencyWithAssert();
 #endif
-    if (oracleEngine.saveSnapshot(system.epoch, directory))
+    if (!oracleEngine.saveSnapshot(system.epoch, directory))
     {
         return false;
     }
