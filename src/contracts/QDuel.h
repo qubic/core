@@ -1,15 +1,15 @@
 ﻿using namespace QPI;
 
-constexpr uint32 QDUEL_MAX_NUMBER_OF_ROOMS = 512;
-constexpr uint64 QDUEL_MINIMUM_DUEL_AMOUNT = 10000;
+constexpr uint16 QDUEL_MAX_NUMBER_OF_ROOMS = 512;
+constexpr uint16 QDUEL_MINIMUM_DUEL_AMOUNT = 10000;
 constexpr uint8 QDUEL_DEV_FEE_PERCENT_BPS = 15;          // 0.15% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_BURN_FEE_PERCENT_BPS = 30;         // 0.3% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS = 55; // 0.55% * QDUEL_PERCENT_SCALE
-constexpr uint8 QDUEL_PERCENT_SCALE = 1000;
+constexpr uint16 QDUEL_PERCENT_SCALE = 1000;
 constexpr uint8 QDUEL_TTL_HOURS = 3;
 constexpr uint8 QDUEL_TICK_UPDATE_PERIOD = 100;           // Process TICK logic once per this many ticks
-constexpr uint64 QDUEL_RANDOM_LOTTERY_ASSET_NAME = 19538; // RL
-constexpr uint64 QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT = 75;
+constexpr uint16 QDUEL_RANDOM_LOTTERY_ASSET_NAME = 19538; // RL
+constexpr uint16 QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT = 75;
 
 struct QDUEL2
 {
@@ -65,7 +65,7 @@ public:
 		id roomId;
 		id owner;
 		id allowedPlayer; // If zero, anyone can join
-		uint64 amount;
+		sint64 amount;
 		uint64 closeTimer;
 		DateAndTime lastUpdate;
 	};
@@ -75,11 +75,11 @@ public:
 		id userId;
 		id roomId;
 		id allowedPlayer;
-		uint64 depositedAmount;
-		uint64 locked;
-		uint64 stake;
-		uint64 raiseStep;
-		uint64 maxStake;
+		sint64 depositedAmount;
+		sint64 locked;
+		sint64 stake;
+		sint64 raiseStep;
+		sint64 maxStake;
 	};
 
 	struct AddUserData_input
@@ -87,10 +87,10 @@ public:
 		id userId;
 		id roomId;
 		id allowedPlayer;
-		uint64 depositedAmount;
-		uint64 stake;
-		uint64 raiseStep;
-		uint64 maxStake;
+		sint64 depositedAmount;
+		sint64 stake;
+		sint64 raiseStep;
+		sint64 maxStake;
 	};
 
 	struct AddUserData_output
@@ -106,9 +106,9 @@ public:
 	struct CreateRoom_input
 	{
 		id allowedPlayer; // If zero, anyone can join
-		uint64 stake;
-		uint64 raiseStep;
-		uint64 maxStake;
+		sint64 stake;
+		sint64 raiseStep;
+		sint64 maxStake;
 	};
 
 	struct CreateRoom_output
@@ -120,7 +120,7 @@ public:
 	{
 		id owner;
 		id allowedPlayer;
-		uint64 amount;
+		sint64 amount;
 	};
 
 	struct CreateRoomRecord_output
@@ -138,14 +138,14 @@ public:
 
 	struct ComputeNextStake_input
 	{
-		uint64 stake;
-		uint64 raiseStep;
-		uint64 maxStake;
+		sint64 stake;
+		sint64 raiseStep;
+		sint64 maxStake;
 	};
 
 	struct ComputeNextStake_output
 	{
-		uint64 nextStake;
+		sint64 nextStake;
 		uint8 returnCode;
 	};
 
@@ -229,7 +229,7 @@ public:
 	struct FinalizeRoom_locals
 	{
 		UserData userData;
-		uint64 availableDeposit;
+		sint64 availableDeposit;
 		CreateRoomRecord_input createRoomInput;
 		CreateRoomRecord_output createRoomOutput;
 		ComputeNextStake_input nextStakeInput;
@@ -272,7 +272,7 @@ public:
 		uint8 devFeePercentBps;
 		uint8 burnFeePercentBps;
 		uint8 shareholdersFeePercentBps;
-		uint8 percentScale;
+		uint16 percentScale;
 		uint64 returnCode;
 	};
 
@@ -366,7 +366,7 @@ public:
 
 	struct Withdraw_input
 	{
-		uint64 amount;
+		sint64 amount;
 	};
 
 	struct Withdraw_output
@@ -377,7 +377,7 @@ public:
 	struct Withdraw_locals
 	{
 		UserData userData;
-		uint64 freeAmount;
+		sint64 freeAmount;
 	};
 
 	struct END_TICK_locals
@@ -703,7 +703,7 @@ public:
 
 		locals.totalPercent = static_cast<uint16>(input.devFeePercentBps) + static_cast<uint16>(input.burnFeePercentBps) +
 		                      static_cast<uint16>(input.shareholdersFeePercentBps);
-		locals.totalPercent = div(locals.totalPercent, static_cast<uint16>(QDUEL_PERCENT_SCALE));
+		locals.totalPercent = div(locals.totalPercent, QDUEL_PERCENT_SCALE);
 
 		if (locals.totalPercent >= 100)
 		{
@@ -838,7 +838,7 @@ protected:
 	HashMap<id, RoomInfo, QDUEL_MAX_NUMBER_OF_ROOMS> rooms;
 	HashMap<id, UserData, QDUEL_MAX_NUMBER_OF_ROOMS> users;
 	id teamAddress;
-	uint64 minimumDuelAmount;
+	sint64 minimumDuelAmount;
 	uint8 devFeePercentBps;
 	uint8 burnFeePercentBps;
 	uint8 shareholdersFeePercentBps;
@@ -855,9 +855,9 @@ protected:
 	{
 		output.nextStake = input.stake;
 
-		if (input.raiseStep > 1)
+		if (input.raiseStep > 1LL)
 		{
-			if (input.maxStake > 0 && input.stake > 0 && input.raiseStep > div(input.maxStake, input.stake))
+			if (input.maxStake > 0LL && input.stake > 0LL && input.raiseStep > div<sint64>(input.maxStake, input.stake))
 			{
 				output.nextStake = input.maxStake;
 			}
