@@ -5853,7 +5853,9 @@ static bool initialize()
         {
             return false;
         }
-            
+
+        if (!oracleEngine.init(computorPublicKeys))
+            return false;
 
 #if ADDON_TX_STATUS_REQUEST
         if (!initTxStatusRequestAddOn())
@@ -5995,9 +5997,6 @@ static bool initialize()
             logToConsole(L"Loaded node state from snapshot, if you want to start from scratch please delete all snapshot files.");
         }
     }
-
-    if (!oracleEngine.init(computorPublicKeys))
-        return false;
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     increaseEnergy(id(TESTEXC_CONTRACT_INDEX, 0, 0, 0), 100000000llu);
