@@ -349,10 +349,27 @@ public:
         // alloc arrays and set to 0
         if (!allocPoolWithErrorLog(L"OracleEngine::queries", MAX_ORACLE_QUERIES * sizeof(*queries), (void**)&queries, __LINE__)
             || !allocPoolWithErrorLog(L"OracleEngine::queryStorage", ORACLE_QUERY_STORAGE_SIZE, (void**)&queryStorage, __LINE__)
-            || !allocPoolWithErrorLog(L"OracleEngine::replyCommitState", MAX_SIMULTANEOUS_ORACLE_QUERIES * sizeof(*replyStates), (void**)&replyStates, __LINE__)
+            || !allocPoolWithErrorLog(L"OracleEngine::replyStates", MAX_SIMULTANEOUS_ORACLE_QUERIES * sizeof(*replyStates), (void**)&replyStates, __LINE__)
             || !allocPoolWithErrorLog(L"OracleEngine::queryIdToIndex", sizeof(*queryIdToIndex), (void**)&queryIdToIndex, __LINE__))
         {
             return false;
+        }
+
+        reset();
+
+        return true;
+    }
+
+    /// Delete all queries, reply states, statistics etc.
+    void reset()
+    {
+        ASSERT(queries && queryStorage && replyStates && queryIdToIndex);
+        if (oracleQueryCount || queryStorageBytesUsed > 8 || queryIdToIndex->population())
+        {
+            setMem(queries, MAX_ORACLE_QUERIES * sizeof(*queries), 0);
+            setMem(queryStorage, ORACLE_QUERY_STORAGE_SIZE, 0);
+            setMem(replyStates, MAX_SIMULTANEOUS_ORACLE_QUERIES * sizeof(*replyStates), 0);
+            queryIdToIndex->reset();
         }
 
         oracleQueryCount = 0;
@@ -368,8 +385,6 @@ public:
 #if ENABLE_ORACLE_STATS_RECORD
         setMem(&oracleStats, sizeof(oracleStats), 0);
 #endif
-
-        return true;
     }
 
     void deinit()
@@ -1330,14 +1345,22 @@ public:
         return &notificationOutputBuffer;
     }
 
+    // Drop all queries of the previous epoch.
     void beginEpoch()
     {
         // lock for accessing engine data
         LockGuard lockGuard(lock);
 
+        reset();
+
         // TODO
         // clean all subscriptions
-        // clean all queries (except for last n ticks in case of seamless transition)
+        // Issue: For some queries at the end of the epoch, the notification is never called, possible solutions:
+        // - notify timeout or another error at end of epoch
+        // - save state of oracle engine also for start from scratch
+        // in the future we may:
+        // - keep all non-pending queries of the last n ticks in case of seamless transition
+        // - keep info of all pending queries as well
     }
 
 protected:
