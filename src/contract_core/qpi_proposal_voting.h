@@ -157,6 +157,7 @@ namespace QPI
 				sint64 shares;
 			};
 			__ScopedScratchpad scratchpad(sizeof(Shareholder)* maxVotes, /*initZero=*/true);
+			ASSERT(scratchpad.ptr);
 			Shareholder* shareholders = reinterpret_cast<Shareholder*>(scratchpad.ptr);
 			int lastShareholderIdx = -1;
 

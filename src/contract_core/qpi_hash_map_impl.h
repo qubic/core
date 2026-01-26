@@ -289,6 +289,7 @@ namespace QPI
 
 		// Init buffers
 		__ScopedScratchpad scratchpad(sizeof(_elements) + sizeof(_occupationFlags), /*initZero=*/true);
+		ASSERT(scratchpad.ptr);
 		auto* _elementsBuffer = reinterpret_cast<Element*>(scratchpad.ptr);
 		auto* _occupationFlagsBuffer = reinterpret_cast<uint64*>(_elementsBuffer + L);
 		auto* _stackBuffer = reinterpret_cast<sint64*>(
@@ -616,6 +617,7 @@ namespace QPI
 
 		// Init buffers
 		__ScopedScratchpad scratchpad(sizeof(_keys) + sizeof(_occupationFlags), /*initZero=*/true);
+		ASSERT(scratchpad.ptr);
 		auto* _keyBuffer = reinterpret_cast<KeyT*>(scratchpad.ptr);
 		auto* _occupationFlagsBuffer = reinterpret_cast<uint64*>(_keyBuffer + L);
 		auto* _stackBuffer = reinterpret_cast<sint64*>(

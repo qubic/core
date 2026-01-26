@@ -158,6 +158,7 @@ static void reorganizeSpectrum()
     unsigned long long spectrumReorgStartTick = __rdtsc();
 
     EntityRecord* reorgSpectrum = (EntityRecord*)commonBuffers.acquireBuffer(spectrumSizeInBytes);
+    ASSERT(reorgSpectrum);
     setMem(reorgSpectrum, spectrumSizeInBytes, 0);
     for (unsigned int i = 0; i < SPECTRUM_CAPACITY; i++)
     {

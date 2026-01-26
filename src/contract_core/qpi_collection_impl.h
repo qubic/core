@@ -617,6 +617,7 @@ namespace QPI
 
 		// Init buffers
 		__ScopedScratchpad scratchpad(sizeof(_povs) + sizeof(_povOccupationFlags), /*initZero=*/true);
+		ASSERT(scratchpad.ptr);
 		auto* _povsBuffer = reinterpret_cast<PoV*>(scratchpad.ptr);
 		auto* _povOccupationFlagsBuffer = reinterpret_cast<uint64*>(_povsBuffer + L);
 		auto* _stackBuffer = reinterpret_cast<sint64*>(

@@ -621,6 +621,7 @@ public:
             + sizeof(digests) + 600;
         static_assert(defaultCommonBuffersSize >= bufferSize, "commonBuffer size is too small");
         __ScopedScratchpad scratchpad(bufferSize, /*initZero=*/false);
+        ASSERT(scratchpad.ptr);
         unsigned char* buffer = (unsigned char*)scratchpad.ptr;
         unsigned long long writeSz = 0;
         // copy currentPage of log buffer ~ 100MiB
@@ -676,6 +677,7 @@ public:
         static_assert(defaultCommonBuffersSize >= bufferSize, "commonBuffer size is too small");
         __ScopedScratchpad scratchpad(bufferSize, /*initZero=*/false);
         unsigned char* buffer = (unsigned char*)scratchpad.ptr;
+        ASSERT(scratchpad.ptr);
         CHAR16 fileName[] = L"logEventState.db";
         const long long fileSz = getFileSize(fileName, dir);
         if (fileSz == -1)

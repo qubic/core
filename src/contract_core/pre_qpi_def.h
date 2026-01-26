@@ -42,7 +42,7 @@ static void __resumeLogMessage();
 static void* __acquireScratchpad(unsigned long long size, bool initZero);
 static void __releaseScratchpad(void* ptr);
 
-// Create an instance on the stack to a acquire a scratchpad buffer.
+// Create an instance on the stack to acquire a scratchpad buffer.
 // When the scope is left, the scratchpad is released automatically.
 struct __ScopedScratchpad
 {

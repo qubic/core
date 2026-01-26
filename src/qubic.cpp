@@ -5300,6 +5300,7 @@ static void tickProcessor(void*)
                                     // This is needed for correct execution fee reporting across epoch boundaries
                                     static_assert(defaultCommonBuffersSize >= stableComputorIndexBufferSize(), "commonBuffers too small for stable computor index");
                                     void* reorgBuffer = commonBuffers.acquireBuffer(stableComputorIndexBufferSize());
+                                    ASSERT(reorgBuffer);
                                     calculateStableComputorIndex(system.futureComputors, broadcastedComputors.computors.publicKeys, reorgBuffer);
                                     commonBuffers.releaseBuffer(reorgBuffer);
 
