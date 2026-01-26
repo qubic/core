@@ -310,7 +310,7 @@ public:
 
                             txAdded = true;
                         }
-#if !defined(NDEBUG) && !defined(NO_UEFI)
+#if !defined(NDEBUG) && !defined(NO_UEFI) && 0
                         else
                         {
                             CHAR16 dbgMsgBuf[300];
