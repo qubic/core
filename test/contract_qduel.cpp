@@ -39,7 +39,7 @@ public:
 	uint8 devFee() const { return devFeePercentBps; }
 	uint8 burnFee() const { return burnFeePercentBps; }
 	uint8 shareholdersFee() const { return shareholdersFeePercentBps; }
-	uint64 minDuelAmount() const { return minimumDuelAmount; }
+	sint64 minDuelAmount() const { return minimumDuelAmount; }
 	void setState(EState newState) { currentState = newState; }
 	EState getState() const { return currentState; }
 	// Helper to fetch user record without exposing contract internals.
@@ -109,7 +109,7 @@ public:
 	// Access helper for the underlying contract state.
 	QDuelChecker* state() { return reinterpret_cast<QDuelChecker*>(contractStates[QDUEL_CONTRACT_INDEX]); }
 
-	QDUEL::CreateRoom_output createRoom(const id& user, const id& allowedPlayer, uint64 stake, uint64 raiseStep, uint64 maxStake, sint64 reward)
+	QDUEL::CreateRoom_output createRoom(const id& user, const id& allowedPlayer, sint64 stake, sint64 raiseStep, sint64 maxStake, sint64 reward)
 	{
 		QDUEL::CreateRoom_input input{allowedPlayer, stake, raiseStep, maxStake};
 		QDUEL::CreateRoom_output output;
@@ -205,7 +205,7 @@ public:
 		return output;
 	}
 
-	QDUEL::Withdraw_output withdraw(const id& user, uint64 amount, sint64 reward = 0)
+	QDUEL::Withdraw_output withdraw(const id& user, sint64 amount, sint64 reward = 0)
 	{
 		QDUEL::Withdraw_input input{amount};
 		QDUEL::Withdraw_output output;
@@ -294,7 +294,7 @@ namespace
 		          QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
 		// Setup: give both players enough balance to cover the duel.
-		constexpr uint64 duelAmount = 100000ULL;
+		constexpr sint64 duelAmount = 100000ULL;
 		increaseEnergy(player1, duelAmount);
 		increaseEnergy(player2, duelAmount);
 		const uint64 player1Before = getBalance(player1);
@@ -350,7 +350,7 @@ TEST(ContractQDuel, EndEpochKeepsDepositWhileRoomsRecreatedEachEpoch)
 	qduel.setDeterministicTime(2025, 1, 1, 0);
 
 	const id owner(40, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	const uint64 epochs = 3;
 	const uint64 reward = stake + (stake * epochs);
 	increaseEnergy(owner, reward);
@@ -396,7 +396,7 @@ TEST(ContractQDuel, BeginEpochKeepsRoomsAndUsers)
 	qduel.setDeterministicTime(2022, 4, 13, 0);
 
 	const id owner(1, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	// Give the owner enough balance to create a room.
 	increaseEnergy(owner, stake);
 
@@ -425,7 +425,7 @@ TEST(ContractQDuel, FirstTickAfterUnlockResetsTimerStart)
 	qduel.setDeterministicTime(2022, 4, 13, 0);
 
 	const id owner(2, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	// Fund owner so the room creation succeeds.
 	increaseEnergy(owner, stake);
 
@@ -464,7 +464,7 @@ TEST(ContractQDuel, EndTickExpiresRoomCreatesNewWhenDepositAvailable)
 	qduel.setDeterministicTime(2025, 1, 1, 0);
 
 	const id owner(3, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	// Fund owner with enough to re-create room after finalize.
 	increaseEnergy(owner, stake);
 
@@ -497,7 +497,7 @@ TEST(ContractQDuel, EndTickExpiresRoomWithoutAvailableDepositRemovesUser)
 	qduel.setDeterministicTime(2025, 1, 1, 0);
 
 	const id owner(4, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	// Fund owner just enough to create the initial room.
 	increaseEnergy(owner, stake);
 
@@ -528,7 +528,7 @@ TEST(ContractQDuel, EndTickSkipsNonPeriodTicks)
 	qduel.setDeterministicTime(2025, 1, 1, 0);
 
 	const id owner(5, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	// Fund owner to create a room.
 	increaseEnergy(owner, stake);
 
@@ -564,7 +564,7 @@ TEST(ContractQDuel, LockedStateBlocksCreateAndConnect)
 
 	const id owner(6, 0, 0, 0);
 	const id other(7, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	// Fund owner to create the baseline room.
 	increaseEnergy(owner, stake);
 
@@ -590,7 +590,7 @@ TEST(ContractQDuel, EndTickRecreatesRoomWithUpdatedStake)
 	qduel.setDeterministicTime(2025, 1, 1, 0);
 
 	const id owner(8, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	// Fund owner so next stake can be doubled.
 	increaseEnergy(owner, stake * 2);
 
@@ -623,7 +623,7 @@ TEST(ContractQDuel, ConnectFinalizeIgnoresLockedAmount)
 
 	const id owner(9, 0, 0, 0);
 	const id opponent(10, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	// Fund both players so creation and join can proceed.
 	increaseEnergy(owner, stake);
 	increaseEnergy(opponent, stake);
@@ -645,7 +645,7 @@ TEST(ContractQDuel, InitializeDefaults)
 	ContractTestingQDuel qduel;
 
 	EXPECT_EQ(qduel.state()->team(), QDUEL_TEAM_ADDRESS);
-	EXPECT_EQ(qduel.state()->minDuelAmount(), QDUEL_MINIMUM_DUEL_AMOUNT);
+	EXPECT_EQ(qduel.state()->minDuelAmount(), static_cast<uint64>(QDUEL_MINIMUM_DUEL_AMOUNT));
 	EXPECT_EQ(qduel.state()->devFee(), QDUEL_DEV_FEE_PERCENT_BPS);
 	EXPECT_EQ(qduel.state()->burnFee(), QDUEL_BURN_FEE_PERCENT_BPS);
 	EXPECT_EQ(qduel.state()->shareholdersFee(), QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS);
@@ -662,7 +662,7 @@ TEST(ContractQDuel, CreateRoomStoresRoomAndUser)
 
 	const id owner(11, 0, 0, 0);
 	const id allowed(12, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	const uint64 reward = stake + 5000;
 	increaseEnergy(owner, reward);
 
@@ -710,7 +710,7 @@ TEST(ContractQDuel, CreateRoomRejectsMaxStakeBelowStake)
 	qduel.state()->setState(QDUEL::EState::NONE);
 
 	const id owner(14, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	const uint64 reward = stake;
 	increaseEnergy(owner, reward);
 
@@ -724,7 +724,7 @@ TEST(ContractQDuel, CreateRoomRejectsRewardBelowMinimum)
 	qduel.state()->setState(QDUEL::EState::NONE);
 
 	const id owner(15, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	const uint64 reward = qduel.state()->minDuelAmount() - 1;
 	increaseEnergy(owner, reward);
 
@@ -754,7 +754,7 @@ TEST(ContractQDuel, CreateRoomRejectsDuplicateUser)
 	qduel.state()->setState(QDUEL::EState::NONE);
 
 	const id owner(17, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	increaseEnergy(owner, stake * 2);
 
 	EXPECT_EQ(qduel.createRoom(owner, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
@@ -767,7 +767,7 @@ TEST(ContractQDuel, CreateRoomRejectsWhenRoomsFull)
 	ContractTestingQDuel qduel;
 	qduel.state()->setState(QDUEL::EState::NONE);
 
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	for (uint32 i = 0; i < QDUEL_MAX_NUMBER_OF_ROOMS; ++i)
 	{
 		const id owner(100 + i, 0, 0, 0);
@@ -790,7 +790,7 @@ TEST(ContractQDuel, ConnectToRoomRejectsMissingRoom)
 	qduel.state()->setState(QDUEL::EState::NONE);
 
 	const id player(18, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	increaseEnergy(player, stake);
 
 	EXPECT_EQ(qduel.connectToRoom(player, id(999, 0, 0, 0), stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::ROOM_NOT_FOUND));
@@ -804,7 +804,7 @@ TEST(ContractQDuel, ConnectToRoomRejectsNotAllowedPlayer)
 	const id owner(19, 0, 0, 0);
 	const id allowed(20, 0, 0, 0);
 	const id other(21, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	increaseEnergy(owner, stake);
 	increaseEnergy(other, stake);
 
@@ -821,7 +821,7 @@ TEST(ContractQDuel, ConnectToRoomRejectsInsufficientReward)
 
 	const id owner(22, 0, 0, 0);
 	const id opponent(23, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	increaseEnergy(owner, stake);
 	increaseEnergy(opponent, stake - 1);
 
@@ -841,7 +841,7 @@ TEST(ContractQDuel, ConnectToRoomRefundsExcessRewardForLoser)
 	id opponent;
 	ASSERT_TRUE(findPlayersForWinner(qduel, true, owner, opponent));
 
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	const uint64 reward = stake + 5000;
 	increaseEnergy(owner, stake);
 	increaseEnergy(opponent, reward);
@@ -860,7 +860,7 @@ TEST(ContractQDuel, ConnectFinalizeCreatesRoomFromDeposit)
 
 	const id owner(24, 0, 0, 0);
 	const id opponent(25, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	increaseEnergy(owner, stake * 2);
 	increaseEnergy(opponent, stake);
 
@@ -933,7 +933,7 @@ TEST(ContractQDuel, SetPercentFeesAccessDeniedAndGetPercentFees)
 	EXPECT_EQ(after.devFeePercentBps, before.devFeePercentBps);
 	EXPECT_EQ(after.burnFeePercentBps, before.burnFeePercentBps);
 	EXPECT_EQ(after.shareholdersFeePercentBps, before.shareholdersFeePercentBps);
-	EXPECT_EQ(after.percentScale, before.percentScale);
+	EXPECT_EQ(static_cast<uint32>(after.percentScale), static_cast<uint32>(before.percentScale));
 }
 
 TEST(ContractQDuel, SetPercentFeesUpdatesState)
@@ -947,7 +947,7 @@ TEST(ContractQDuel, SetPercentFeesUpdatesState)
 	EXPECT_EQ(output.devFeePercentBps, 1);
 	EXPECT_EQ(output.burnFeePercentBps, 2);
 	EXPECT_EQ(output.shareholdersFeePercentBps, 3);
-	EXPECT_EQ(output.percentScale, QDUEL_PERCENT_SCALE);
+	EXPECT_EQ(static_cast<uint32>(output.percentScale), static_cast<uint32>(QDUEL_PERCENT_SCALE));
 	EXPECT_EQ(output.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 }
 
@@ -987,7 +987,7 @@ TEST(ContractQDuel, GetRoomsReturnsActiveRooms)
 
 	const id owner1(30, 0, 0, 0);
 	const id owner2(31, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	increaseEnergy(owner1, stake);
 	increaseEnergy(owner2, stake);
 
@@ -1031,7 +1031,7 @@ TEST(ContractQDuel, GetUserProfileReportsUserData)
 	EXPECT_EQ(missing.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::USER_NOT_FOUND));
 
 	const id owner(32, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	increaseEnergy(owner, stake + 200);
 
 	EXPECT_EQ(qduel.createRoom(owner, NULL_ID, stake, 2, stake * 2, stake + 200).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
@@ -1061,7 +1061,7 @@ TEST(ContractQDuel, DepositValidationsAndUpdatesBalance)
 	EXPECT_EQ(getBalance(missingUser), missingBefore);
 
 	const id owner(34, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	increaseEnergy(owner, stake);
 	EXPECT_EQ(qduel.createRoom(owner, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
@@ -1085,7 +1085,7 @@ TEST(ContractQDuel, WithdrawValidationsAndTransfers)
 	EXPECT_EQ(qduel.withdraw(missingUser, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::USER_NOT_FOUND));
 
 	const id owner(36, 0, 0, 0);
-	const uint64 stake = qduel.state()->minDuelAmount();
+	const sint64 stake = qduel.state()->minDuelAmount();
 	increaseEnergy(owner, stake + 1000);
 	EXPECT_EQ(qduel.createRoom(owner, NULL_ID, stake, 1, stake, stake + 1000).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 

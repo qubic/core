@@ -303,6 +303,12 @@
     <ClInclude Include="contracts\RandomLottery.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\QReservePool.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\QThirtyFour.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contracts\QDuel.h">
       <Filter>contracts</Filter>
     </ClInclude>
