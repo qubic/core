@@ -195,7 +195,17 @@ private:
             toPtr = maxOffset;
             outNextTickTransactionOffset = maxOffset;
         }
-        
+
+        setText(message, L"toTick ");
+        appendNumber(message, toTick, TRUE);
+        appendText(message, L", nTick ");
+        appendNumber(message, nTick, TRUE);
+        appendText(message, L", lastCheckTransactionOffset ");
+        appendNumber(message, lastCheckTransactionOffset, TRUE);
+        appendText(message, L", nextTickTransactionOffset ");
+        appendNumber(message, nextTickTransactionOffset, TRUE);
+        logToConsole(message);
+
         // saving from the first tx of from tick to the last tx of (totick)
         long long totalWriteSize = toPtr;
         unsigned char* ptr = tickTransactionsPtr;
@@ -334,6 +344,15 @@ public:
             return 3;
         }
         logToConsole(L"Saving transactions");
+
+        setText(message, L"tickBegin ");
+        appendNumber(message, tickBegin, TRUE);
+        appendText(message, L", tickSave ");
+        appendNumber(message, tick, TRUE);
+        appendText(message, L", nTick ");
+        appendNumber(message, nTick, TRUE);
+        logToConsole(message);
+
         long long outTotalTransactionSize = 0;
         unsigned long long outNextTickTransactionOffset = 0;
         if (!saveTransactions(nTick, outTotalTransactionSize, outNextTickTransactionOffset, directory))
@@ -403,6 +422,16 @@ public:
         }
 
         logToConsole(L"Loading transactions...");
+        setText(message, L"tickBegin ");
+        appendNumber(message, metaData.tickBegin, TRUE);
+        appendText(message, L", tickLoad ");
+        appendNumber(message, metaData.tickEnd, TRUE);
+        appendText(message, L", nTick ");
+        appendNumber(message, nTick, TRUE);
+        appendText(message, L", nextTickTransactionOffset ");
+        appendNumber(message, nextTickTransactionOffset, TRUE);
+        logToConsole(message);
+
         if (!loadTransactions(nTick, metaData.outTotalTransactionSize, directory))
         {
             logToConsole(L"Failed to load loadTransactions");
