@@ -4168,6 +4168,10 @@ static bool saveAllNodeStates()
 {
     PROFILE_SCOPE();
 
+#if !defined(NDEBUG)
+    forceLogToConsoleAsAddDebugMessage = true;
+#endif
+
     CHAR16 directory[16];
     setText(directory, L"ep");
     appendNumber(directory, system.epoch, false);
@@ -4334,11 +4338,20 @@ static bool saveAllNodeStates()
 #if ENABLED_LOGGING
     logger.saveCurrentLoggingStates(directory);
 #endif
+
+#if !defined(NDEBUG)
+    forceLogToConsoleAsAddDebugMessage = false;
+#endif
+
     return true;
 }
 
 static bool loadAllNodeStates()
 {
+#if !defined(NDEBUG)
+    forceLogToConsoleAsAddDebugMessage = true;
+#endif
+
     CHAR16 directory[16];
     setText(directory, L"ep");
     appendNumber(directory, system.epoch, false);
@@ -4507,6 +4520,11 @@ static bool loadAllNodeStates()
     logToConsole(L"Loading old logger...");
     logger.loadLastLoggingStates(directory);
 #endif
+
+#if !defined(NDEBUG)
+    forceLogToConsoleAsAddDebugMessage = false;
+#endif
+
     return true;
 }
 
@@ -6481,10 +6499,7 @@ static void logInfo()
 
     logToConsole(message);
 
-#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
-    oracleEngine.logStatus(message);
-    //logToConsole(message);
-#endif
+    oracleEngine.logStatus();
 }
 OPTIMIZE_ON()
 
