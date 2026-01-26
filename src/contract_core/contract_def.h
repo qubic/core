@@ -235,6 +235,7 @@
 #define CONTRACT_STATE2_TYPE QTF2
 #include "contracts/QThirtyFour.h"
 
+#ifndef NO_QDUEL
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
@@ -244,6 +245,7 @@
 #define CONTRACT_STATE_TYPE QDUEL
 #define CONTRACT_STATE2_TYPE QDUEL2
 #include "contracts/QDuel.h"
+#endif // NO_QDUEL
 
 // new contracts should be added above this line
 
@@ -355,7 +357,9 @@ constexpr struct ContractDescription
     {"QRWA", 197, 10000, sizeof(QRWA)}, // proposal in epoch 195, IPO in 196, construction and first use in 197
 	{"QRP", 199, 10000, sizeof(IPO)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
 	{"QTF", 199, 10000, sizeof(QTF)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
+#ifndef NO_QDUEL
     {"QDUEL", 199, 10000, sizeof(QDUEL)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
+#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA)},
@@ -472,7 +476,9 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QIP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRAFFLE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRWA);
+#ifndef NO_QDUEL
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDUEL);
+#endif
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTF);
     // new contracts should be added above this line
