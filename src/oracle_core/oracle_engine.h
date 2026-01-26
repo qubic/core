@@ -5,7 +5,6 @@
 #include "oracle_core/oracle_interfaces_def.h"
 
 #include "system.h"
-#include "common_buffers.h"
 #include "spectrum/special_entities.h"
 #include "ticking/tick_storage.h"
 #include "logging/logging.h"
@@ -312,6 +311,9 @@ protected:
     /// buffer used to store output of getNotification()
     OracleNotificationData notificationOutputBuffer;
 
+    /// buffer used by enqueueOracleQuery()
+    uint8_t enqueueOracleQueryBuffer[sizeof(OracleMachineQuery) + MAX_ORACLE_QUERY_SIZE];
+
     /// lock for preventing race conditions in concurrent execution
     mutable volatile char lock;
 
@@ -526,14 +528,15 @@ public:
     }
 
 protected:
-    // Enqueue oracle machine query message.
-    static void enqueueOracleQuery(int64_t queryId, uint32_t interfaceIdx, uint32_t timeoutMillisec, const void* queryData, uint16_t querySize)
+    // Enqueue oracle machine query message. Cannot be run concurrently. Caller must acquire engine lock!
+    void enqueueOracleQuery(int64_t queryId, uint32_t interfaceIdx, uint32_t timeoutMillisec, const void* queryData, uint16_t querySize)
     {
-        // Acquire buffer for building payload
+        // Check input size and compute total payload size
+        ASSERT(querySize <= MAX_ORACLE_QUERY_SIZE);
         const unsigned int payloadSize = sizeof(OracleMachineQuery) + querySize;
-        OracleMachineQuery* omq = reinterpret_cast<OracleMachineQuery*>(commonBuffers.acquireBuffer(payloadSize));
 
         // Prepare message payload
+        OracleMachineQuery* omq = reinterpret_cast<OracleMachineQuery*>(enqueueOracleQueryBuffer);
         omq->oracleQueryId = queryId;
         omq->oracleInterfaceIndex = interfaceIdx;
         omq->timeoutInMilliseconds = timeoutMillisec;
@@ -541,9 +544,6 @@ protected:
 
         // Enqueue for sending to all oracle machine peers (peer pointer address 0x1 is reserved for that)
         enqueueResponse((Peer*)0x1, payloadSize, OracleMachineQuery::type(), 0, omq);
-
-        // Release buffer
-        commonBuffers.releaseBuffer(omq);
     }
 
     void logQueryStatusChange(const OracleQueryMetadata& oqm) const
