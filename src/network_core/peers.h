@@ -328,6 +328,18 @@ static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
         if (peer->dataToTransmitSize + requestResponseHeader->size() > BUFFER_SIZE)
         {
             // Buffer is full, which indicates a problem
+#ifndef NDEBUG
+            {
+                CHAR16 debugMessage[256];
+                setText(debugMessage, L"Warning: Peer transmit buffer overflow. IP: ");
+                appendIPv4Address(debugMessage, peer->address);
+                appendText(debugMessage, L" | dataToTransmitSize: ");
+                appendNumber(debugMessage, peer->dataToTransmitSize, true);
+                appendText(debugMessage, L" | requestResponseHeader->size(): ");
+                appendNumber(debugMessage, requestResponseHeader->size(), true);
+                addDebugMessage(debugMessage);
+            }
+#endif
             closePeer(peer);
         }
         else
