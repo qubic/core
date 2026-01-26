@@ -28,6 +28,7 @@
     <ClCompile Include="contract_testex.cpp" />
     <ClCompile Include="contract_qbay.cpp" />
     <ClCompile Include="contract_nostromo.cpp" />
+    <ClCompile Include="contract_qduel.cpp" />
     <ClCompile Include="contract_rl.cpp" />
     <ClCompile Include="contract_ccf.cpp" />
     <ClCompile Include="contract_qip.cpp" />
@@ -57,6 +58,9 @@
     <ClInclude Include="contract_testing.h" />
     <ClInclude Include="test_util.h" />
     <ClInclude Include="logging_test.h" />
+    <ClInclude Include="score_common_reference.h" />
+    <ClInclude Include="score_hyperidentity_reference.h" />
+    <ClInclude Include="score_addition_reference.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
