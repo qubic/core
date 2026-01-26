@@ -778,9 +778,6 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Packs current date into a compact stamp (Y/M/D) used to ensure a single action per calendar day.
-	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
-
 private:
 	/**
 	 * @brief Internal: records a winner into the cyclic winners array.

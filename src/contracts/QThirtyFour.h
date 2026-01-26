@@ -852,7 +852,7 @@ struct QTF : ContractBase
 			return;
 		}
 
-		if (qpi.invocationReward() < state.ticketPrice)
+		if (qpi.invocationReward() < static_cast<sint64>(state.ticketPrice))
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -879,7 +879,7 @@ struct QTF : ContractBase
 
 		// If overpaid, accept ticket and return excess to invocator.
 		// Important: refund excess ONLY after validation, otherwise invalid tickets could be over-refunded.
-		if (qpi.invocationReward() > state.ticketPrice)
+		if (qpi.invocationReward() > static_cast<sint64>(state.ticketPrice))
 		{
 			locals.excess = qpi.invocationReward() - state.ticketPrice;
 			if (locals.excess > 0)
