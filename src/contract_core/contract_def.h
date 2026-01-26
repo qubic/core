@@ -79,7 +79,11 @@
 #define CONTRACT_INDEX SWATCH_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE SWATCH
 #define CONTRACT_STATE2_TYPE SWATCH2
+#ifdef OLD_SWATCH
+#include "contracts/SupplyWatcher_old.h"
+#else
 #include "contracts/SupplyWatcher.h"
+#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
