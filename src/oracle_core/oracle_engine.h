@@ -1456,10 +1456,11 @@ public:
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"Begin oracleEngine.checkStateConsistencyWithAssert()");
+        forceLogToConsoleAsAddDebugMessage = true;
+        logStatus();
+        forceLogToConsoleAsAddDebugMessage = false;
         __ScopedScratchpad scratchpad(1000, /*initZero=*/true);
         CHAR16* dbgMsgBuf = (CHAR16*)scratchpad.ptr;
-        logStatus(dbgMsgBuf);
-        addDebugMessage(dbgMsgBuf);
 #endif
 
         ASSERT(queries);
@@ -1505,7 +1506,6 @@ public:
                 break;
             default:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-                CHAR16* dbgMsgBuf = (CHAR16*)scratchpad.ptr;
                 setText(dbgMsgBuf, L"Unexpected oracle query type ");
                 appendNumber(dbgMsgBuf, oqm.status, FALSE);
                 addDebugMessage(dbgMsgBuf);
@@ -1562,7 +1562,6 @@ public:
                 break;
             default:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-                CHAR16* dbgMsgBuf = (CHAR16*)scratchpad.ptr;
                 setText(dbgMsgBuf, L"Unexpected oracle query state ");
                 appendNumber(dbgMsgBuf, oqm.status, FALSE);
                 addDebugMessage(dbgMsgBuf);
@@ -1579,12 +1578,12 @@ public:
 
         ASSERT(queryStorageBytesUsed == storageBytesUsed);
         ASSERT(oracleQueryCount == pendingCount + committedCount + successCount + timeoutCount + unresolvableCount);
-        ASSERT(committedCount == stats.commitCount);
-        ASSERT(committedCount == pendingRevealReplyStateIndices.numValues);
-        ASSERT(pendingCount + committedCount == pendingQueryIndices.numValues);
+        ASSERT(committedCount == pendingRevealReplyStateIndices.numValues); // currently in committed state
+        ASSERT(pendingCount + committedCount == pendingQueryIndices.numValues); // not finished (no success / failure)
         ASSERT(successCount == stats.successCount);
-        ASSERT(timeoutCount == stats.timeoutNoCommitCount + stats.timeoutNoReplyCount + stats.timeoutNoReplyCount);
+        ASSERT(timeoutCount == stats.timeoutNoReplyCount + stats.timeoutNoCommitCount + stats.timeoutNoRevealCount);
         ASSERT(unresolvableCount == stats.unresolvableCount);
+        ASSERT(committedCount + successCount + stats.timeoutNoRevealCount == stats.commitCount);
 
         // check pending queries index
         uint32_t queryIdxCount = pendingQueryIndices.numValues;
@@ -1643,7 +1642,7 @@ public:
 #endif
     }
 
-    void logStatus(CHAR16* message) const
+    void logStatus() const
     {
         auto appendQuotientWithOneDecimal = [](CHAR16* message, uint64_t dividend, uint64_t divisor)
         {
