@@ -4487,7 +4487,7 @@ static bool loadAllNodeStates()
         return false;
     }
 
-    if (oracleEngine.loadSnapshot(system.epoch, directory))
+    if (!oracleEngine.loadSnapshot(system.epoch, directory))
     {
         return false;
     }
