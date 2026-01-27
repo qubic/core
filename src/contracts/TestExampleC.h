@@ -337,7 +337,7 @@ public:
 	END_TICK_WITH_LOCALS()
 	{
 		// Query oracles
-		if (qpi.tick() % 10 == 0)
+		if (0) //(qpi.tick() % 10 == 0)
 		{
 			// Setup query (in extra scope limit scope of using namespace Ch
 			{
@@ -352,7 +352,7 @@ public:
 			ASSERT(qpi.getOracleQueryStatus(locals.oracleQueryId) == ORACLE_QUERY_STATUS_PENDING);
 		}
 		// Mock oracle
-		if (qpi.tick() % 10 == 9)
+		if (0) //(qpi.tick() % 10 == 9)
 		{
 			locals.mockOracleQuery.value = qpi.tick();
 			QUERY_ORACLE(OI::Mock, locals.mockOracleQuery, NotifyMockOracleReply, 60000);
