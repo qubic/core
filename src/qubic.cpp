@@ -4972,6 +4972,15 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
     {
         ts.ticks.acquireLock(i);
 
+#if !defined(NDEBUG)
+        CHAR16 dbgMsg[300];
+        CHAR16 digestChars[60 + 1];
+        bool saltedRessourceDigestErrorPrinted = false;
+        bool saltedSpectrumDigestErrorPrinted = false;
+        bool saltedUniverseDigestErrorPrinted = false;
+        bool saltedComputerDigestErrorPrinted = false;
+#endif
+
         const Tick* tick = &tsCompTicks[i];
         if (tick->epoch == system.epoch)
         {
@@ -5024,9 +5033,67 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                                     voteCounter.registerNewVote(tick->tick, tick->computorIndex);
                                 }
                             }
+#if !defined(NDEBUG)
+                            else
+                            {
+                                if (!saltedComputerDigestErrorPrinted)
+                                {
+                                    setText(dbgMsg, L"saltedComputerDigest mismatch! QuorumTick ");
+                                    getIdentity(tick->saltedComputerDigest.m256i_u8, digestChars, true);
+                                    appendText(dbgMsg, digestChars);
+                                    appendText(dbgMsg, L", local");
+                                    getIdentity(saltedDigest.m256i_u8, digestChars, true);
+                                    appendText(dbgMsg, digestChars);
+                                    saltedComputerDigestErrorPrinted = true;
+                                }
+                            }
+#endif
+                        }
+#if !defined(NDEBUG)
+                        else
+                        {
+                            if (!saltedUniverseDigestErrorPrinted)
+                            {
+                                setText(dbgMsg, L"saltedUniverseDigest mismatch! QuorumTick ");
+                                getIdentity(tick->saltedUniverseDigest.m256i_u8, digestChars, true);
+                                appendText(dbgMsg, digestChars);
+                                appendText(dbgMsg, L", local");
+                                getIdentity(saltedDigest.m256i_u8, digestChars, true);
+                                appendText(dbgMsg, digestChars);
+                                saltedUniverseDigestErrorPrinted = true;
+                            }
+                        }
+#endif
+                    }
+#if !defined(NDEBUG)
+                    else
+                    {
+                        if (!saltedSpectrumDigestErrorPrinted)
+                        {
+                            setText(dbgMsg, L"saltedSpectrumDigest mismatch! QuorumTick ");
+                            getIdentity(tick->saltedSpectrumDigest.m256i_u8, digestChars, true);
+                            appendText(dbgMsg, digestChars);
+                            appendText(dbgMsg, L", local");
+                            getIdentity(saltedDigest.m256i_u8, digestChars, true);
+                            appendText(dbgMsg, digestChars);
+                            saltedSpectrumDigestErrorPrinted = true;
                         }
                     }
+#endif
                 }
+#if !defined(NDEBUG)
+                else
+                {
+                    if (!saltedRessourceDigestErrorPrinted)
+                    {
+                        setText(dbgMsg, L"saltedResourceTestingDigest mismatch! QuorumTick ");
+                        appendNumber(dbgMsg, tick->saltedResourceTestingDigest, TRUE);
+                        appendText(dbgMsg, L", local");
+                        appendNumber(dbgMsg, saltedDigest.m256i_u32[0], TRUE);
+                        saltedRessourceDigestErrorPrinted = true;
+                    }
+                }
+#endif
             }
         }
         ts.ticks.releaseLock(i);
