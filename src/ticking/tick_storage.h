@@ -781,7 +781,7 @@ public:
                 const m256i& digest = tickData.transactionDigests[transactionIdx];
                 ASSERT((!offset) == isZero(digest));
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-                if ((!offset) == isZero(digest))
+                if ((!offset) != isZero(digest))
                 {
                     setText(dbgMsgBuf, L"Error in cur. epoch tickData / tickTransactionOffsets ");
                     appendNumber(dbgMsgBuf, transactionIdx, FALSE);
@@ -791,8 +791,14 @@ public:
                     appendNumber(dbgMsgBuf, transactionIdx, FALSE);
                     appendText(dbgMsgBuf, L": offset ");
                     appendNumber(dbgMsgBuf, offset, FALSE);
-                    appendText(dbgMsgBuf, L", digest.u64._0 ");
+                    appendText(dbgMsgBuf, L", digest.u64 ");
                     appendNumber(dbgMsgBuf, digest.u64._0, FALSE);
+                    appendText(dbgMsgBuf, L" ");
+                    appendNumber(dbgMsgBuf, digest.u64._1, FALSE);
+                    appendText(dbgMsgBuf, L" ");
+                    appendNumber(dbgMsgBuf, digest.u64._2, FALSE);
+                    appendText(dbgMsgBuf, L" ");
+                    appendNumber(dbgMsgBuf, digest.u64._3, FALSE);
                     addDebugMessage(dbgMsgBuf);
 
                     if (offset)
