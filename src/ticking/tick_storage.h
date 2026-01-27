@@ -200,10 +200,12 @@ private:
         appendNumber(message, toTick, TRUE);
         appendText(message, L", nTick ");
         appendNumber(message, nTick, TRUE);
-        appendText(message, L", lastCheckTransactionOffset ");
+        appendText(message, L", lastCheckTransactionOffset(tick) ");
         appendNumber(message, lastCheckTransactionOffset, TRUE);
         appendText(message, L", nextTickTransactionOffset ");
         appendNumber(message, nextTickTransactionOffset, TRUE);
+        appendText(message, L", totalWriteSize ");
+        appendNumber(message, toPtr, TRUE);
         logToConsole(message);
 
         // saving from the first tx of from tick to the last tx of (totick)
@@ -442,6 +444,7 @@ public:
         // init digest hash map (and do some consistency checks with ASSERT)
         for (unsigned int tickId = tickBegin; tickId < tickEnd; ++tickId)
         {
+            unsigned int txCount = 0;
             const TickData& tickData = TickDataAccess::getByTickInCurrentEpoch(tickId);
             ASSERT(tickData.epoch == 0 || tickData.epoch == INVALIDATED_TICK_DATA || (tickData.tick == tickId));
             const unsigned long long* tickOffsets = TickTransactionOffsetsAccess::getByTickInCurrentEpoch(tickId);
@@ -457,8 +460,15 @@ public:
                     ASSERT(transaction->tick == tickId);
                     ASSERT(!transactionsDigestAccess.findTransaction(digest));
                     transactionsDigestAccess.insertTransaction(digest, transaction);
+                    ++txCount;
                 }
             }
+
+            setText(message, L"tick ");
+            appendNumber(message, tickId, FALSE);
+            appendText(message, L", transactions ");
+            appendNumber(message, txCount, TRUE);
+            logToConsole(message);
         }
 
         return 0;
