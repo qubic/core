@@ -1114,22 +1114,22 @@ public:
             _R, _V, _Z, _B, _T, _Y, _K, _G
         ); // Admin set to QMINE Issuer by default, subject to change via Gov Voting
         state.mCurrentGovParams.electricityAddress = ID(
-            _Q, _M, _I, _N, _E, _Q, _Q, _X, _Y, _B, _E, _G, _B, _H, _N, _S,
-            _U, _P, _O, _U, _Y, _D, _I, _Q, _K, _Z, _P, _C, _B, _P, _Q, _I,
-            _I, _H, _U, _U, _Z, _M, _C, _P, _L, _B, _P, _C, _C, _A, _I, _A,
-            _R, _V, _Z, _B, _T, _Y, _K, _G
+            _M, _Z, _P, _T, _Y, _A, _P, _N, _C, _D, _K, _U, _O, _G, _I, _A,
+            _Z, _C, _T, _E, _R, _U, _Q, _U, _R, _I, _X, _C, _H, _V, _F, _W,
+            _B, _C, _R, _N, _C, _J, _P, _G, _H, _A, _B, _S, _S, _V, _Q, _H,
+            _R, _S, _J, _O, _P, _U, _N, _B, _F, _U, _V, _G
         ); // Electricity address set to QMINE Issuer by default, subject to change via Gov Voting
         state.mCurrentGovParams.maintenanceAddress = ID(
-            _Q, _M, _I, _N, _E, _Q, _Q, _X, _Y, _B, _E, _G, _B, _H, _N, _S,
-            _U, _P, _O, _U, _Y, _D, _I, _Q, _K, _Z, _P, _C, _B, _P, _Q, _I,
-            _I, _H, _U, _U, _Z, _M, _C, _P, _L, _B, _P, _C, _C, _A, _I, _A,
-            _R, _V, _Z, _B, _T, _Y, _K, _G
-        ); // Maintenance address set to QMINE Issuer by default, subject to change via Gov Voting
+            _Z, _F, _P, _Y, _I, _R, _A, _Q, _A, _P, _N, _K, _N, _E, _D, _D,
+            _W, _G, _K, _N, _K, _J, _Q, _I, _Y, _C, _F, _B, _J, _R, _L, _G,
+            _V, _Q, _O, _T, _Y, _N, _W, _O, _G, _C, _N, _P, _P, _B, _Z, _K,
+            _J, _P, _G, _D, _C, _A, _N, _E, _O, _C, _F, _D
+        );// Maintenance address set to QMINE Issuer by default, subject to change via Gov Voting
         state.mCurrentGovParams.reinvestmentAddress = ID(
-            _Q, _M, _I, _N, _E, _Q, _Q, _X, _Y, _B, _E, _G, _B, _H, _N, _S,
-            _U, _P, _O, _U, _Y, _D, _I, _Q, _K, _Z, _P, _C, _B, _P, _Q, _I,
-            _I, _H, _U, _U, _Z, _M, _C, _P, _L, _B, _P, _C, _C, _A, _I, _A,
-            _R, _V, _Z, _B, _T, _Y, _K, _G
+            _M, _D, _U, _X, _D, _C, _V, _I, _D, _G, _H, _T, _J, _G, _H, _E,
+            _S, _A, _P, _R, _A, _Q, _G, _I, _H, _Y, _F, _D, _D, _I, _S, _T,
+            _T, _K, _F, _G, _K, _O, _I, _O, _T, _B, _U, _N, _M, _P, _N, _Q,
+            _J, _I, _Y, _W, _A, _B, _M, _G, _W, _A, _Z, _F
         ); // Reinvestment address set to QMINE Issuer by default, subject to change via Gov Voting
 
         // QMINE DEV's Address for receiving rewards from moved QMINE tokens
