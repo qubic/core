@@ -778,6 +778,38 @@ public:
             for (unsigned int transactionIdx = 0; transactionIdx < NUMBER_OF_TRANSACTIONS_PER_TICK; ++transactionIdx)
             {
                 unsigned long long offset = tickOffsets[transactionIdx];
+                const m256i& digest = tickData.transactionDigests[transactionIdx];
+                ASSERT((!offset) == isZero(digest));
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                if ((!offset) == isZero(digest))
+                {
+                    setText(dbgMsgBuf, L"Error in cur. epoch tickData / tickTransactionOffsets ");
+                    appendNumber(dbgMsgBuf, transactionIdx, FALSE);
+                    appendText(dbgMsgBuf, L" in tick ");
+                    appendNumber(dbgMsgBuf, tickId, FALSE);
+                    appendText(dbgMsgBuf, L", index ");
+                    appendNumber(dbgMsgBuf, transactionIdx, FALSE);
+                    appendText(dbgMsgBuf, L": offset ");
+                    appendNumber(dbgMsgBuf, offset, FALSE);
+                    appendText(dbgMsgBuf, L", digest.u64._0 ");
+                    appendNumber(dbgMsgBuf, digest.u64._0, FALSE);
+                    addDebugMessage(dbgMsgBuf);
+
+                    if (offset)
+                    {
+                        const Transaction* transaction = TickTransactionsAccess::ptr(offset);
+                        setText(dbgMsgBuf, L"t->tick ");
+                        appendNumber(dbgMsgBuf, transaction->tick, FALSE);
+                        appendText(dbgMsgBuf, L", t->inputSize ");
+                        appendNumber(dbgMsgBuf, transaction->inputSize, FALSE);
+                        appendText(dbgMsgBuf, L", t->inputType ");
+                        appendNumber(dbgMsgBuf, transaction->inputType, FALSE);
+                        appendText(dbgMsgBuf, L", t->amount ");
+                        appendNumber(dbgMsgBuf, transaction->amount, TRUE);
+                        addDebugMessage(dbgMsgBuf);
+                    }
+                }
+#endif
                 if (offset)
                 {
                     Transaction* transaction = TickTransactionsAccess::ptr(offset);
