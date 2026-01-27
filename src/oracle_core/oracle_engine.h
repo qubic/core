@@ -1456,9 +1456,10 @@ public:
     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"Begin oracleEngine.checkStateConsistencyWithAssert()");
+        bool forceLogToConsoleAsAddDebugMessageBefore = forceLogToConsoleAsAddDebugMessage;
         forceLogToConsoleAsAddDebugMessage = true;
         logStatus();
-        forceLogToConsoleAsAddDebugMessage = false;
+        forceLogToConsoleAsAddDebugMessage = forceLogToConsoleAsAddDebugMessageBefore;
         __ScopedScratchpad scratchpad(1000, /*initZero=*/true);
         CHAR16* dbgMsgBuf = (CHAR16*)scratchpad.ptr;
 #endif
