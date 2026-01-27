@@ -132,7 +132,7 @@ struct SpectrumTest : public LoggingTest
             _rdrand64_step(&seed);
         rnd64.seed(seed);
         EXPECT_TRUE(initSpectrum());
-        EXPECT_TRUE(initCommonBuffers());
+        EXPECT_TRUE(commonBuffers.init(1));
         system.tick = 15700000;
         clearSpectrum();
         antiDustCornerCase = false;
@@ -141,7 +141,7 @@ struct SpectrumTest : public LoggingTest
     ~SpectrumTest()
     {
         deinitSpectrum();
-        deinitCommonBuffers();
+        commonBuffers.deinit();
     }
 
     void clearSpectrum()

@@ -24,8 +24,10 @@
     <ClInclude Include="common_buffers.h" />
     <ClInclude Include="contracts\ComputorControlledFund.h" />
     <ClInclude Include="contracts\Qdraw.h" />
+    <ClInclude Include="contracts\qRWA.h" />
     <ClInclude Include="contracts\Qswap.h" />
     <ClInclude Include="contracts\RandomLottery.h" />
+    <ClInclude Include="contracts\QDuel.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
     <ClInclude Include="contracts\EmptyTemplate.h" />
     <ClInclude Include="contracts\GeneralQuorumProposal.h" />
@@ -44,6 +46,9 @@
     <ClInclude Include="contracts\QRaffle.h" />
     <ClInclude Include="contracts\QBond.h" />
     <ClInclude Include="contracts\QIP.h" />
+    <ClInclude Include="contracts\SupplyWatcher_old.h" />
+    <ClInclude Include="contracts\QReservePool.h" />
+    <ClInclude Include="contracts\QThirtyFour.h" />
     <ClInclude Include="contracts\TestExampleA.h" />
     <ClInclude Include="contracts\TestExampleB.h" />
     <ClInclude Include="contracts\TestExampleC.h" />
@@ -70,6 +75,10 @@
     <ClInclude Include="logging\logging.h" />
     <ClInclude Include="logging\net_msg_impl.h" />
     <ClInclude Include="mining\mining.h" />
+    <ClInclude Include="mining\score_addition.h" />
+    <ClInclude Include="mining\score_common.h" />
+    <ClInclude Include="mining\score_engine.h" />
+    <ClInclude Include="mining\score_hyperidentity.h" />
     <ClInclude Include="network_core\peers.h" />
     <ClInclude Include="network_core\tcp4.h" />
     <ClInclude Include="network_messages\all.h" />

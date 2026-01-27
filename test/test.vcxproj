@@ -41,7 +41,7 @@
       <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>../src;$(MSBuildProjectDirectory);$(MSBuildProjectDirectory)\..\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
       <OpenMPSupport>true</OpenMPSupport>
       <StringPooling>true</StringPooling>
     </ClCompile>
@@ -115,6 +115,9 @@
     <ClInclude Include="contract_testing.h" />
     <ClInclude Include="logging_test.h" />
     <ClInclude Include="oracle_testing.h" />
+    <ClInclude Include="score_addition_reference.h" />
+    <ClInclude Include="score_common_reference.h" />
+    <ClInclude Include="score_hyperidentity_reference.h" />
     <ClInclude Include="score_params.h" />
     <ClInclude Include="score_reference.h" />
     <ClInclude Include="test_util.h" />
@@ -122,6 +125,7 @@
   <ItemGroup>
     <ClCompile Include="common_def.cpp" />
     <ClCompile Include="contract_qbond.cpp" />
+    <ClCompile Include="contract_qrwa.cpp" />
     <ClCompile Include="contract_qswap.cpp" />
     <ClCompile Include="fourq.cpp" />
     <ClCompile Include="pending_txs_pool.cpp" />
@@ -142,6 +146,9 @@
     <ClCompile Include="contract_qraffle.cpp" />
     <ClCompile Include="contract_gqmprop.cpp" />
     <ClCompile Include="contract_rl.cpp" />
+    <ClCompile Include="contract_qduel.cpp" />
+    <ClCompile Include="contract_qrp.cpp" />
+    <ClCompile Include="contract_qtf.cpp" />
     <ClCompile Include="contract_ccf.cpp" />
     <ClCompile Include="contract_qip.cpp" />
     <ClCompile Include="custom_mining.cpp" />

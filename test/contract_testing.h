@@ -34,7 +34,7 @@ public:
 #ifdef __AVX512F__
         initAVX512FourQConstants();
 #endif
-        initCommonBuffers();
+        commonBuffers.init(1);
         initContractExec();
         initSpecialEntities();
 
@@ -47,7 +47,7 @@ public:
         deinitSpecialEntities();
         deinitAssets();
         deinitSpectrum();
-        deinitCommonBuffers();
+        commonBuffers.deinit();
         deinitContractExec();
         for (unsigned int i = 0; i < contractCount; ++i)
         {
