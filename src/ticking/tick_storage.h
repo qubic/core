@@ -834,8 +834,8 @@ public:
                         appendNumber(dbgMsgBuf, transaction->amount, TRUE);
                         addDebugMessage(dbgMsgBuf);
 
-                        addDebugMessage(L"Skipping to check more transactions and ticks");
-                        goto leave_test;
+                        //addDebugMessage(L"Skipping to check more transactions and ticks");
+                        //goto leave_test;
                     }
 #endif
 

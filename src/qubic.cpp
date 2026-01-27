@@ -4322,11 +4322,15 @@ static bool saveAllNodeStates()
 
 #if !defined(NDEBUG)
     oracleEngine.checkStateConsistencyWithAssert();
+    ts.checkStateConsistencyWithAssert();
 #endif
     if (!oracleEngine.saveSnapshot(system.epoch, directory))
     {
         return false;
     }
+#if !defined(NDEBUG)
+    ts.checkStateConsistencyWithAssert();
+#endif
 
 #if ADDON_TX_STATUS_REQUEST
     if (!saveStateTxStatus(numberOfTransactions, directory))
@@ -4500,12 +4504,16 @@ static bool loadAllNodeStates()
         return false;
     }
 
+#if !defined(NDEBUG)
+    ts.checkStateConsistencyWithAssert();
+#endif
     if (!oracleEngine.loadSnapshot(system.epoch, directory))
     {
         return false;
     }
 #if !defined(NDEBUG)
     oracleEngine.checkStateConsistencyWithAssert();
+    ts.checkStateConsistencyWithAssert();
 #endif
 
 #if ADDON_TX_STATUS_REQUEST
