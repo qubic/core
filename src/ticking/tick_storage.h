@@ -438,6 +438,29 @@ public:
             initMetaData(epoch);
             return 2;
         }
+
+        // init digest hash map (and do some consistency checks with ASSERT)
+        for (unsigned int tickId = tickBegin; tickId < tickEnd; ++tickId)
+        {
+            const TickData& tickData = TickDataAccess::getByTickInCurrentEpoch(tickId);
+            ASSERT(tickData.epoch == 0 || tickData.epoch == INVALIDATED_TICK_DATA || (tickData.tick == tickId));
+            const unsigned long long* tickOffsets = TickTransactionOffsetsAccess::getByTickInCurrentEpoch(tickId);
+            for (unsigned int transactionIdx = 0; transactionIdx < NUMBER_OF_TRANSACTIONS_PER_TICK; ++transactionIdx)
+            {
+                const unsigned long long offset = tickOffsets[transactionIdx];
+                const m256i& digest = tickData.transactionDigests[transactionIdx];
+                ASSERT((!offset) == isZero(digest));
+                if (offset)
+                {
+                    const Transaction* transaction = TickTransactionsAccess::ptr(offset);
+                    ASSERT(transaction->checkValidity());
+                    ASSERT(transaction->tick == tickId);
+                    ASSERT(!transactionsDigestAccess.findTransaction(digest));
+                    transactionsDigestAccess.insertTransaction(digest, transaction);
+                }
+            }
+        }
+
         return 0;
     }
 
