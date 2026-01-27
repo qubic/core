@@ -442,7 +442,7 @@ public:
         }
 
         // init digest hash map (and do some consistency checks with ASSERT)
-        for (unsigned int tickId = tickBegin; tickId < tickEnd; ++tickId)
+        for (unsigned int tickId = metaData.tickBegin; tickId < metaData.tickEnd; ++tickId)
         {
             unsigned int txCount = 0;
             const TickData& tickData = TickDataAccess::getByTickInCurrentEpoch(tickId);
