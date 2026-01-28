@@ -1955,9 +1955,11 @@ public:
     POST_INCOMING_TRANSFER_WITH_LOCALS()
     {
         // Differentiate revenue streams based on source type
-        if (input.sourceId.u64._1 == 0 && input.sourceId.u64._2 == 0 && input.sourceId.u64._3 == 0 && input.sourceId.u64._0 != 0)
+        // Only deposit to Pool A if source is QUTIL
+        // All other transfers (users or other contracts) go to Pool B
+        if (input.sourceId == id(QUTIL_CONTRACT_INDEX, 0, 0, 0))
         {
-            // Source is likely a contract (e.g., QX transfer) -> Pool A
+            // Source is explicitly QUTIL -> Pool A
             state.mRevenuePoolA = sadd(state.mRevenuePoolA, static_cast<uint64>(input.amount));
             locals.logger.contractId = CONTRACT_INDEX;
             locals.logger.logType = QRWA_LOG_TYPE_INCOMING_REVENUE_A;
@@ -1968,7 +1970,7 @@ public:
         }
         else if (input.sourceId != NULL_ID)
         {
-            // Source is likely a user (EOA) -> Pool B
+            // Source is NOT QUTIL (User or other Contract) -> Pool B
             state.mRevenuePoolB = sadd(state.mRevenuePoolB, static_cast<uint64>(input.amount));
             locals.logger.contractId = CONTRACT_INDEX;
             locals.logger.logType = QRWA_LOG_TYPE_INCOMING_REVENUE_B;
