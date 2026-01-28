@@ -43,11 +43,13 @@ public:
             spectrum[NUM_INITIALIZED_ENTITIES + i].publicKey = m256i{ 0, 0, 0, NUM_INITIALIZED_ENTITIES + i + 1 };
         }
         updateSpectrumInfo();
+        commonBuffers.init(1, sizeof(*txsPriorities));
     }
 
     ~TestPendingTxsPool()
     {
         deinitSpectrum();
+        commonBuffers.deinit();
     }
 
     static constexpr unsigned int getMaxNumTxsPerTick()

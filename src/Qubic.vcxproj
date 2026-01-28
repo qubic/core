@@ -27,6 +27,7 @@
     <ClInclude Include="contracts\qRWA.h" />
     <ClInclude Include="contracts\Qswap.h" />
     <ClInclude Include="contracts\RandomLottery.h" />
+    <ClInclude Include="contracts\QDuel.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
     <ClInclude Include="contracts\EmptyTemplate.h" />
     <ClInclude Include="contracts\GeneralQuorumProposal.h" />
@@ -45,6 +46,9 @@
     <ClInclude Include="contracts\QRaffle.h" />
     <ClInclude Include="contracts\QBond.h" />
     <ClInclude Include="contracts\QIP.h" />
+    <ClInclude Include="contracts\SupplyWatcher_old.h" />
+    <ClInclude Include="contracts\QReservePool.h" />
+    <ClInclude Include="contracts\QThirtyFour.h" />
     <ClInclude Include="contracts\TestExampleA.h" />
     <ClInclude Include="contracts\TestExampleB.h" />
     <ClInclude Include="contracts\TestExampleC.h" />

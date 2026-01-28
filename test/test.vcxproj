@@ -144,6 +144,9 @@
     <ClCompile Include="contract_qraffle.cpp" />
     <ClCompile Include="contract_gqmprop.cpp" />
     <ClCompile Include="contract_rl.cpp" />
+    <ClCompile Include="contract_qduel.cpp" />
+    <ClCompile Include="contract_qrp.cpp" />
+    <ClCompile Include="contract_qtf.cpp" />
     <ClCompile Include="contract_ccf.cpp" />
     <ClCompile Include="contract_qip.cpp" />
     <ClCompile Include="custom_mining.cpp" />

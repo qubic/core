@@ -79,7 +79,11 @@
 #define CONTRACT_INDEX SWATCH_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE SWATCH
 #define CONTRACT_STATE2_TYPE SWATCH2
+#ifdef OLD_SWATCH
+#include "contracts/SupplyWatcher_old.h"
+#else
 #include "contracts/SupplyWatcher.h"
+#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -211,6 +215,54 @@
 #define CONTRACT_STATE2_TYPE QRWA2
 #include "contracts/qRWA.h"
 
+#ifndef NO_QRP
+
+constexpr unsigned short qrpContractIndex = CONTRACT_INDEX + 1;
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QRP_CONTRACT_INDEX qrpContractIndex
+#define CONTRACT_INDEX QRP_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QRP
+#define CONTRACT_STATE2_TYPE QRP2
+#include "contracts/QReservePool.h"
+
+#endif // NO_QRP
+
+#ifndef NO_QTF
+
+constexpr unsigned short qtfContractIndex = CONTRACT_INDEX + 1;
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QTF_CONTRACT_INDEX qtfContractIndex
+#define CONTRACT_INDEX QTF_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QTF
+#define CONTRACT_STATE2_TYPE QTF2
+#include "contracts/QThirtyFour.h"
+
+#endif // NO_QTF
+
+#ifndef NO_QDUEL
+
+constexpr unsigned short qduelContractIndex = CONTRACT_INDEX + 1;
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QDUEL_CONTRACT_INDEX qduelContractIndex
+#define CONTRACT_INDEX QDUEL_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QDUEL
+#define CONTRACT_STATE2_TYPE QDUEL2
+#include "contracts/QDuel.h"
+
+#endif // NO_QDUEL
+
 // new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -319,6 +371,15 @@ constexpr struct ContractDescription
     {"QIP", 189, 10000, sizeof(QIP)}, // proposal in epoch 187, IPO in 188, construction and first use in 189
     {"QRAFFLE", 192, 10000, sizeof(QRAFFLE)}, // proposal in epoch 190, IPO in 191, construction and first use in 192
     {"QRWA", 197, 10000, sizeof(QRWA)}, // proposal in epoch 195, IPO in 196, construction and first use in 197
+#ifndef NO_QRP
+	{"QRP", 199, 10000, sizeof(IPO)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
+#endif
+#ifndef NO_QTF
+	{"QTF", 199, 10000, sizeof(QTF)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
+#endif
+#ifndef NO_QDUEL
+    {"QDUEL", 199, 10000, sizeof(QDUEL)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
+#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA)},
@@ -435,6 +496,15 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QIP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRAFFLE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRWA);
+#ifndef NO_QRP
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRP);
+#endif
+#ifndef NO_QTF
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTF);
+#endif
+#ifndef NO_QDUEL
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDUEL);
+#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);

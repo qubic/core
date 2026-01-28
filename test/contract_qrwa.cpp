@@ -283,7 +283,109 @@ public:
         return output;
     }
 
+    void issueContractSharesHelper(unsigned int contractIndex, std::vector<std::pair<m256i, unsigned int>>& shares)
+    {
+        issueContractShares(contractIndex, shares);
+    }
+
+    void createQswapPool(const id& source, const id& assetIssuer, uint64 assetName, sint64 fee)
+    {
+        QSWAP::CreatePool_input input{ assetIssuer, assetName };
+        QSWAP::CreatePool_output output;
+        invokeUserProcedure(QSWAP_CONTRACT_INDEX, 3, input, output, source, fee);
+    }
+
+    void getQswapFees(QSWAP::Fees_output& output)
+    {
+        QSWAP::Fees_input input;
+        callFunction(QSWAP_CONTRACT_INDEX, 1, input, output);
+    }
+
+    void runQswapEndTick()
+    {
+        callSystemProcedure(QSWAP_CONTRACT_INDEX, END_TICK);
+    }
+
 };
+
+TEST(ContractQRWA, QswapDividend_PoolB)
+{
+    ContractTestingQRWA qrwa;
+
+    // Create QRWA Shareholders
+    const id QRWA_SH1 = id::randomValue();
+    increaseEnergy(QRWA_SH1, 100000000);
+
+    std::vector<std::pair<m256i, unsigned int>> qrwaShares{
+        {QRWA_SH1, NUMBER_OF_COMPUTORS}
+    };
+
+    qrwa.issueContractSharesHelper(QRWA_CONTRACT_INDEX, qrwaShares);
+
+    //create QMINE Shareholders
+    const id QMINE_HOLDER = id::randomValue();
+    increaseEnergy(QMINE_HOLDER, 100000000);
+    qrwa.issueAsset(QMINE_ISSUER, QMINE_ASSET.assetName, 1000000);
+    qrwa.transferAsset(QMINE_ISSUER, QMINE_HOLDER, QMINE_ASSET, 1000000);
+
+
+    // Create QSWAP Shares and deposit them to QRWA
+    // QRWA owns 100 shares. Random holder owns the rest (576)
+    const id QSWAP_OTHER_HOLDER = id::randomValue();
+    std::vector<std::pair<m256i, unsigned int>> qswapShares{
+        {id(QRWA_CONTRACT_INDEX, 0, 0, 0), 100},
+        {QSWAP_OTHER_HOLDER, 576}
+    };
+    qrwa.issueContractSharesHelper(QSWAP_CONTRACT_INDEX, qswapShares);
+
+    // now generate Revenue in QSWAP
+
+    const id TRADER = id::randomValue();
+    const id ASSET_ISSUER = id::randomValue();
+    const uint64 ASSET_NAME = assetNameFromString("TSTCOIN");
+
+    increaseEnergy(TRADER, 10000000000);
+    increaseEnergy(ASSET_ISSUER, 10000000000);
+
+    QSWAP::Fees_output qswapFees;
+    qrwa.getQswapFees(qswapFees);
+
+    // issue asset on QX
+    qrwa.issueAsset(ASSET_ISSUER, ASSET_NAME, 1000000000);
+
+    // Create Pool on QSWAP
+    // This generates 'poolCreationFee' for QSWAP shareholders, generating substantial revenue
+    qrwa.createQswapPool(ASSET_ISSUER, ASSET_ISSUER, ASSET_NAME, qswapFees.poolCreationFee);
+
+    // We skip AddLiquidity/Swap expectations as the pool creation fee
+    // alone is sufficient to test dividend routing
+
+    uint64 totalShareholderRevenue = qswapFees.poolCreationFee;
+
+    // Dividend Distribution
+
+    // Get QRWA dividend balances BEFORE
+    auto qrwaDivsBefore = qrwa.getDividendBalances();
+    EXPECT_EQ(qrwaDivsBefore.revenuePoolA, 0);
+    EXPECT_EQ(qrwaDivsBefore.revenuePoolB, 0);
+
+    // Run END_TICK for QSWAP to distribute dividends
+    qrwa.runQswapEndTick();
+
+    // Calculate expected dividend for QRWA (100 shares)
+    // (TotalRevenue / 676) * 100
+    uint64 expectedDividend = totalShareholderRevenue / NUMBER_OF_COMPUTORS * 100;
+
+    // Get QRWA Dividend Balances AFTER
+    auto qrwaDivsAfter = qrwa.getDividendBalances();
+
+    // Verify Dividend Routing
+    // Pool A should be 0 (Only QUTIL transfers go here)
+    EXPECT_EQ(qrwaDivsAfter.revenuePoolA, 0);
+
+    // Pool B should contain the dividend from QSWAP
+    EXPECT_EQ(qrwaDivsAfter.revenuePoolB, expectedDividend);
+}
 
 
 TEST(ContractQRWA, Initialization)

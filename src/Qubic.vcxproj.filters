@@ -303,6 +303,15 @@
     <ClInclude Include="contracts\RandomLottery.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\QReservePool.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\QThirtyFour.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\QDuel.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contract_core\pre_qpi_def.h">
       <Filter>contract_core</Filter>
     </ClInclude>
@@ -325,6 +334,9 @@
       <Filter>mining</Filter>
     </ClInclude>
     <ClInclude Include="contracts\qRWA.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\SupplyWatcher_old.h">
       <Filter>contracts</Filter>
     </ClInclude>
   </ItemGroup>

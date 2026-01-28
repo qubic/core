@@ -28,6 +28,7 @@
     <ClCompile Include="contract_testex.cpp" />
     <ClCompile Include="contract_qbay.cpp" />
     <ClCompile Include="contract_nostromo.cpp" />
+    <ClCompile Include="contract_qduel.cpp" />
     <ClCompile Include="contract_rl.cpp" />
     <ClCompile Include="contract_ccf.cpp" />
     <ClCompile Include="contract_qip.cpp" />
@@ -44,6 +45,8 @@
     <ClCompile Include="uint128.cpp" />
     <ClCompile Include="fourq.cpp" />
     <ClCompile Include="contract_qbond.cpp" />
+    <ClCompile Include="contract_qrp.cpp" />
+    <ClCompile Include="contract_qtf.cpp" />
     <ClCompile Include="pending_txs_pool.cpp" />
     <ClCompile Include="quorum_value.cpp" />
     <ClCompile Include="sorting.cpp" />
