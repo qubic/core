@@ -248,6 +248,143 @@ struct
     unsigned int numberOfTransactions;
     unsigned char customMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
 } nodeStateBuffer;
+
+// Snapshot digest data for verification (saved to separate file)
+static constexpr unsigned int QUBIC_SNAPSHOT_DIGEST_MAGIC = 0x51444754; // Magic number for checking corruption of disgest file
+struct QubicSnapshotDigestData {
+    unsigned int magic;  // For format validation
+    unsigned char systemDigest[32];
+    unsigned char nodeStateDigest[32];
+    unsigned char spectrumDigest[32];
+    unsigned char universeDigest[32];
+    unsigned char spectrumDigestsDigest[32];  // Merkle tree digests
+    unsigned char universeDigestsDigest[32];   // Merkle tree digests
+    unsigned char contractDigestsDigest[32];   // Merkle tree digests
+    unsigned char minerSolutionFlagsDigest[32];
+    unsigned long long systemSize;
+    unsigned long long nodeStateSize;
+    unsigned long long spectrumSize;
+    unsigned long long universeSize;
+    unsigned long long spectrumDigestsSize;
+    unsigned long long universeDigestsSize;
+    unsigned long long contractDigestsSize;
+    unsigned long long minerSolutionFlagsSize;
+};
+static QubicSnapshotDigestData qubicSnapshotDigest;
+static bool qubicSnapshotDigestValid = false;
+
+// Helper function to compute K12 digest
+// TODO: move this and the one of tick storage to common place
+static void computeSnapshotDigest(const unsigned char* data, unsigned long long dataSize, unsigned char* digestOut)
+{
+    if (dataSize <= 0xFFFFFFFFULL)
+    {
+        KangarooTwelve(data, (unsigned int)dataSize, digestOut, 32);
+    }
+    else
+    {
+        // Hash in chunks for very large data (>4GB)
+        unsigned char chunkDigest[32];
+        unsigned long long offset = 0;
+        constexpr unsigned long long chunkSize = 0x80000000ULL; // 2GB chunks
+
+        KangarooTwelve(data, (unsigned int)chunkSize, digestOut, 32);
+        offset += chunkSize;
+
+        while (offset < dataSize)
+        {
+            unsigned long long remaining = dataSize - offset;
+            unsigned int thisChunkSize = (remaining > chunkSize) ? (unsigned int)chunkSize : (unsigned int)remaining;
+            KangarooTwelve(data + offset, thisChunkSize, chunkDigest, 32);
+            for (int i = 0; i < 32; i++) { digestOut[i] ^= chunkDigest[i]; }
+            offset += thisChunkSize;
+        }
+    }
+}
+
+// Log digest to console
+static void logSnapshotDigest(const CHAR16* prefix, const unsigned char* digest)
+{
+    CHAR16 id[61];
+    getIdentity(digest, id, true);
+    setText(message, prefix);
+    appendText(message, id);
+    logToConsole(message);
+}
+
+// Compare two digests
+static bool snapshotDigestsMatch(const unsigned char* d1, const unsigned char* d2)
+{
+    for (int i = 0; i < 32; i++)
+    {
+        if (d1[i] != d2[i])
+            return false;
+    }
+    return true;
+}
+
+// Verify digest after loading
+static bool verifySnapshotDigest(const unsigned char* data, unsigned long long dataSize, const unsigned char* expectedDigest, const CHAR16* dataName)
+{
+    unsigned char loadedDigest[32];
+    computeSnapshotDigest(data, dataSize, loadedDigest);
+
+    if (!snapshotDigestsMatch(loadedDigest, expectedDigest))
+    {
+        setText(message, L"[LOAD] DIGEST MISMATCH: ");
+        appendText(message, dataName);
+        logToConsole(message);
+        logSnapshotDigest(L"  Expected: ", expectedDigest);
+        logSnapshotDigest(L"  Got:      ", loadedDigest);
+        return false;
+    }
+
+    setText(message, L"[LOAD] Digest OK: ");
+    appendText(message, dataName);
+    logToConsole(message);
+    return true;
+}
+
+// Save qubic snapshot digest to file
+static bool saveQubicSnapshotDigest(CHAR16* directory = NULL)
+{
+    qubicSnapshotDigest.magic = QUBIC_SNAPSHOT_DIGEST_MAGIC;
+    CHAR16 SNAPSHOT_DIGEST_FILE_NAME[] = L"snapshotQubicDigest";
+    long long sz = save(SNAPSHOT_DIGEST_FILE_NAME, sizeof(qubicSnapshotDigest), (unsigned char*)&qubicSnapshotDigest, directory);
+    if (sz != sizeof(qubicSnapshotDigest))
+    {
+        logToConsole(L"[SAVE] Warning: Failed to save qubic digest file");
+        return false;
+    }
+    logToConsole(L"[SAVE] Qubic digest file saved successfully");
+    return true;
+}
+
+// Load qubic snapshot digest from file
+static bool loadQubicSnapshotDigest(CHAR16* directory = NULL)
+{
+    setMem(&qubicSnapshotDigest, sizeof(qubicSnapshotDigest), 0);
+    qubicSnapshotDigestValid = false;
+
+    CHAR16 SNAPSHOT_DIGEST_FILE_NAME[] = L"snapshotQubicDigest";
+    long long sz = load(SNAPSHOT_DIGEST_FILE_NAME, sizeof(qubicSnapshotDigest), (unsigned char*)&qubicSnapshotDigest, directory);
+    if (sz != sizeof(qubicSnapshotDigest))
+    {
+        logToConsole(L"[LOAD] No qubic digest file found (old snapshot) - verification skipped");
+        return false;
+    }
+
+    if (qubicSnapshotDigest.magic != QUBIC_SNAPSHOT_DIGEST_MAGIC)
+    {
+        logToConsole(L"[LOAD] Qubic digest file has invalid magic - verification skipped");
+        setMem(&qubicSnapshotDigest, sizeof(qubicSnapshotDigest), 0);
+        return false;
+    }
+
+    qubicSnapshotDigestValid = true;
+    logToConsole(L"[LOAD] Qubic digest file loaded - verification enabled");
+    return true;
+}
 #endif
 static bool saveContractStateFiles(CHAR16* directory = NULL);
 static bool saveContractExecFeeFiles(CHAR16* directory = NULL, bool saveAccumulatedTime = false);
@@ -4190,6 +4327,13 @@ static bool saveAllNodeStates()
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 4] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 3] = L'0';
     SPECTRUM_FILE_NAME[sizeof(SPECTRUM_FILE_NAME) / sizeof(SPECTRUM_FILE_NAME[0]) - 2] = L'0';
+
+    // Compute digest BEFORE saving spectrum
+    constexpr unsigned long long spectrumDataSize = SPECTRUM_CAPACITY * sizeof(EntityRecord);
+    computeSnapshotDigest((unsigned char*)spectrum, spectrumDataSize, qubicSnapshotDigest.spectrumDigest);
+    qubicSnapshotDigest.spectrumSize = spectrumDataSize;
+    logSnapshotDigest(L"[SAVE] spectrum digest: ", qubicSnapshotDigest.spectrumDigest);
+
     setText(message, L"Saving spectrum to ");
     appendText(message, directory); appendText(message, L"/");
     appendText(message, SPECTRUM_FILE_NAME);
@@ -4203,6 +4347,13 @@ static bool saveAllNodeStates()
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 4] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = L'0';
+
+    // Compute digest BEFORE saving universe
+    constexpr unsigned long long universeDataSize = ASSETS_CAPACITY * sizeof(AssetRecord);
+    computeSnapshotDigest((unsigned char*)assets, universeDataSize, qubicSnapshotDigest.universeDigest);
+    qubicSnapshotDigest.universeSize = universeDataSize;
+    logSnapshotDigest(L"[SAVE] universe digest: ", qubicSnapshotDigest.universeDigest);
+
     setText(message, L"Saving universe to ");
     appendText(message, directory); appendText(message, L"/");
     appendText(message, UNIVERSE_FILE_NAME);
@@ -4241,6 +4392,11 @@ static bool saveAllNodeStates()
     setText(message, L"Saving system to system.snp");
     logToConsole(message);
 
+    // Compute digest BEFORE saving
+    computeSnapshotDigest((unsigned char*)&system, sizeof(system), qubicSnapshotDigest.systemDigest);
+    qubicSnapshotDigest.systemSize = sizeof(system);
+    logSnapshotDigest(L"[SAVE] system digest: ", qubicSnapshotDigest.systemDigest);
+
     static unsigned short SYSTEM_SNAPSHOT_FILE_NAME[] = L"system.snp";
     long long savedSize = save(SYSTEM_SNAPSHOT_FILE_NAME, sizeof(system), (unsigned char*)&system, directory);
     if (savedSize != sizeof(system))
@@ -4267,6 +4423,11 @@ static bool saveAllNodeStates()
     voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
     gCustomMiningSharesCounter.saveAllDataToArray(nodeStateBuffer.customMiningSharesCounterData);
 
+    // Compute digest BEFORE saving
+    computeSnapshotDigest((unsigned char*)&nodeStateBuffer, sizeof(nodeStateBuffer), qubicSnapshotDigest.nodeStateDigest);
+    qubicSnapshotDigest.nodeStateSize = sizeof(nodeStateBuffer);
+    logSnapshotDigest(L"[SAVE] nodeState digest: ", qubicSnapshotDigest.nodeStateDigest);
+
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
     savedSize = save(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer, directory);
     logToConsole(L"Saving mining states");
@@ -4275,7 +4436,12 @@ static bool saveAllNodeStates()
         logToConsole(L"Failed to save etalon tick and other states");
         return false;
     }
-    
+
+    // Compute digest BEFORE saving spectrum digests (Merkle tree)
+    computeSnapshotDigest((unsigned char*)spectrumDigests, spectrumDigestsSizeInByte, qubicSnapshotDigest.spectrumDigestsDigest);
+    qubicSnapshotDigest.spectrumDigestsSize = spectrumDigestsSizeInByte;
+    logSnapshotDigest(L"[SAVE] spectrumDigests digest: ", qubicSnapshotDigest.spectrumDigestsDigest);
+
     CHAR16 SPECTRUM_DIGEST_FILE_NAME[] = L"snapshotSpectrumDigest";
     savedSize = save(SPECTRUM_DIGEST_FILE_NAME, spectrumDigestsSizeInByte, (unsigned char*)spectrumDigests, directory);
     logToConsole(L"Saving spectrum digests");
@@ -4284,6 +4450,11 @@ static bool saveAllNodeStates()
         logToConsole(L"Failed to save spectrum digest");
         return false;
     }
+
+    // Compute digest BEFORE saving universe digests (Merkle tree)
+    computeSnapshotDigest((unsigned char*)assetDigests, assetDigestsSizeInBytes, qubicSnapshotDigest.universeDigestsDigest);
+    qubicSnapshotDigest.universeDigestsSize = assetDigestsSizeInBytes;
+    logSnapshotDigest(L"[SAVE] universeDigests digest: ", qubicSnapshotDigest.universeDigestsDigest);
 
     CHAR16 UNIVERSE_DIGEST_FILE_NAME[] = L"snapshotUniverseDigest";
     savedSize = save(UNIVERSE_DIGEST_FILE_NAME, assetDigestsSizeInBytes, (unsigned char*)assetDigests, directory);
@@ -4294,6 +4465,11 @@ static bool saveAllNodeStates()
         return false;
     }
 
+    // Compute digest BEFORE saving contract digests (Merkle tree)
+    computeSnapshotDigest((unsigned char*)contractStateDigests, contractStateDigestsSizeInBytes, qubicSnapshotDigest.contractDigestsDigest);
+    qubicSnapshotDigest.contractDigestsSize = contractStateDigestsSizeInBytes;
+    logSnapshotDigest(L"[SAVE] contractDigests digest: ", qubicSnapshotDigest.contractDigestsDigest);
+
     CHAR16 COMPUTER_DIGEST_FILE_NAME[] = L"snapshotComputerDigest";
     savedSize = save(COMPUTER_DIGEST_FILE_NAME, contractStateDigestsSizeInBytes, (unsigned char*)contractStateDigests, directory);
     logToConsole(L"Saving computer digests");
@@ -4302,6 +4478,11 @@ static bool saveAllNodeStates()
         logToConsole(L"Failed to save computer digest");
         return false;
     }
+
+    // Compute digest BEFORE saving miner solution flags
+    computeSnapshotDigest((unsigned char*)minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, qubicSnapshotDigest.minerSolutionFlagsDigest);
+    qubicSnapshotDigest.minerSolutionFlagsSize = NUMBER_OF_MINER_SOLUTION_FLAGS / 8;
+    logSnapshotDigest(L"[SAVE] minerSolutionFlags digest: ", qubicSnapshotDigest.minerSolutionFlagsDigest);
 
     CHAR16 MINER_SOL_FLAG_FILE_NAME[] = L"snapshotMinerSolutionFlag";
     logToConsole(L"Saving miner solution flags");
@@ -4343,6 +4524,21 @@ static bool saveAllNodeStates()
     logger.saveCurrentLoggingStates(directory);
 #endif
 
+    // Save qubic snapshot digest file for verification
+    saveQubicSnapshotDigest(directory);
+
+    // Summary of all qubic digests saved
+    logToConsole(L"=== QUBIC SNAPSHOT SAVE COMPLETE ===");
+    logSnapshotDigest(L"  system:         ", qubicSnapshotDigest.systemDigest);
+    logSnapshotDigest(L"  nodeState:      ", qubicSnapshotDigest.nodeStateDigest);
+    logSnapshotDigest(L"  spectrum:       ", qubicSnapshotDigest.spectrumDigest);
+    logSnapshotDigest(L"  universe:       ", qubicSnapshotDigest.universeDigest);
+    logSnapshotDigest(L"  spectrumDigests:", qubicSnapshotDigest.spectrumDigestsDigest);
+    logSnapshotDigest(L"  universeDigests:", qubicSnapshotDigest.universeDigestsDigest);
+    logSnapshotDigest(L"  contractDigests:", qubicSnapshotDigest.contractDigestsDigest);
+    logSnapshotDigest(L"  minerSolFlags:  ", qubicSnapshotDigest.minerSolutionFlagsDigest);
+    logToConsole(L"====================================");
+
 #if !defined(NDEBUG)
     forceLogToConsoleAsAddDebugMessage = false;
 #endif
@@ -4371,6 +4567,9 @@ static bool loadAllNodeStates()
         logToConsole(L"Found epoch snapshot directory. Using node states snapshot.");
     }
 
+    // Try to load qubic digest file (for verification)
+    loadQubicSnapshotDigest(directory);
+
     if (ts.tryLoadFromFile(system.epoch, directory) != 0)
     {
         logToConsole(L"Failed to load tick storage");
@@ -4385,6 +4584,25 @@ static bool loadAllNodeStates()
         return false;
     }
 
+    // Verify spectrum digest if digest file was loaded
+    if (qubicSnapshotDigestValid)
+    {
+        constexpr unsigned long long spectrumDataSize = SPECTRUM_CAPACITY * sizeof(EntityRecord);
+        if (qubicSnapshotDigest.spectrumSize != spectrumDataSize)
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: spectrum expected ");
+            appendNumber(message, qubicSnapshotDigest.spectrumSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, spectrumDataSize, TRUE);
+            logToConsole(message);
+            return false;
+        }
+        if (!verifySnapshotDigest((unsigned char*)spectrum, spectrumDataSize, qubicSnapshotDigest.spectrumDigest, L"spectrum"))
+        {
+            return false;
+        }
+    }
+
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 4] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = L'0';
@@ -4392,6 +4610,25 @@ static bool loadAllNodeStates()
     {
         logToConsole(L"Failed to load universe");
         return false;
+    }
+
+    // Verify universe digest if digest file was loaded
+    if (qubicSnapshotDigestValid)
+    {
+        constexpr unsigned long long universeDataSize = ASSETS_CAPACITY * sizeof(AssetRecord);
+        if (qubicSnapshotDigest.universeSize != universeDataSize)
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: universe expected ");
+            appendNumber(message, qubicSnapshotDigest.universeSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, universeDataSize, TRUE);
+            logToConsole(message);
+            return false;
+        }
+        if (!verifySnapshotDigest((unsigned char*)assets, universeDataSize, qubicSnapshotDigest.universeDigest, L"universe"))
+        {
+            return false;
+        }
     }
 
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
@@ -4425,6 +4662,25 @@ static bool loadAllNodeStates()
         logToConsole(L"Failed to load mining state");
         return false;
     }
+
+    // Verify nodeState digest if digest file was loaded
+    if (qubicSnapshotDigestValid)
+    {
+        if (qubicSnapshotDigest.nodeStateSize != sizeof(nodeStateBuffer))
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: nodeState expected ");
+            appendNumber(message, qubicSnapshotDigest.nodeStateSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, sizeof(nodeStateBuffer), TRUE);
+            logToConsole(message);
+            return false;
+        }
+        if (!verifySnapshotDigest((unsigned char*)&nodeStateBuffer, sizeof(nodeStateBuffer), qubicSnapshotDigest.nodeStateDigest, L"nodeState"))
+        {
+            return false;
+        }
+    }
+
     copyMem(&etalonTick, &nodeStateBuffer.etalonTick, sizeof(etalonTick));
     copyMem((void*)minerPublicKeys, nodeStateBuffer.minerPublicKeys, sizeof(minerPublicKeys));
     copyMem((void*)minerScores, nodeStateBuffer.minerScores, sizeof(minerScores));
@@ -4464,6 +4720,25 @@ static bool loadAllNodeStates()
         logToConsole(L"Failed to load system");
         return false;
     }
+
+    // Verify system digest if digest file was loaded
+    if (qubicSnapshotDigestValid)
+    {
+        if (qubicSnapshotDigest.systemSize != sizeof(system))
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: system expected ");
+            appendNumber(message, qubicSnapshotDigest.systemSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, sizeof(system), TRUE);
+            logToConsole(message);
+            return false;
+        }
+        if (!verifySnapshotDigest((unsigned char*)&system, sizeof(system), qubicSnapshotDigest.systemDigest, L"system"))
+        {
+            return false;
+        }
+    }
+
     updateNumberOfTickTransactions();
 
     setMem(assetChangeFlags, sizeof(assetChangeFlags), 0);
@@ -4477,6 +4752,24 @@ static bool loadAllNodeStates()
         return false;
     }
 
+    // Verify spectrumDigests digest if digest file was loaded
+    if (qubicSnapshotDigestValid)
+    {
+        if (qubicSnapshotDigest.spectrumDigestsSize != spectrumDigestsSizeInByte)
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: spectrumDigests expected ");
+            appendNumber(message, qubicSnapshotDigest.spectrumDigestsSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, spectrumDigestsSizeInByte, TRUE);
+            logToConsole(message);
+            return false;
+        }
+        if (!verifySnapshotDigest((unsigned char*)spectrumDigests, spectrumDigestsSizeInByte, qubicSnapshotDigest.spectrumDigestsDigest, L"spectrumDigests"))
+        {
+            return false;
+        }
+    }
+
     CHAR16 UNIVERSE_DIGEST_FILE_NAME[] = L"snapshotUniverseDigest";
     loadedSize = load(UNIVERSE_DIGEST_FILE_NAME, assetDigestsSizeInBytes, (unsigned char*)assetDigests, directory);
     logToConsole(L"Loading universe digests");
@@ -4484,6 +4777,24 @@ static bool loadAllNodeStates()
     {
         logToConsole(L"Failed to load universe digest");
         return false;
+    }
+
+    // Verify universeDigests digest if digest file was loaded
+    if (qubicSnapshotDigestValid)
+    {
+        if (qubicSnapshotDigest.universeDigestsSize != assetDigestsSizeInBytes)
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: universeDigests expected ");
+            appendNumber(message, qubicSnapshotDigest.universeDigestsSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, assetDigestsSizeInBytes, TRUE);
+            logToConsole(message);
+            return false;
+        }
+        if (!verifySnapshotDigest((unsigned char*)assetDigests, assetDigestsSizeInBytes, qubicSnapshotDigest.universeDigestsDigest, L"universeDigests"))
+        {
+            return false;
+        }
     }
 
     CHAR16 COMPUTER_DIGEST_FILE_NAME[] = L"snapshotComputerDigest";
@@ -4495,6 +4806,24 @@ static bool loadAllNodeStates()
         return false;
     }
 
+    // Verify contractDigests digest if digest file was loaded
+    if (qubicSnapshotDigestValid)
+    {
+        if (qubicSnapshotDigest.contractDigestsSize != contractStateDigestsSizeInBytes)
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: contractDigests expected ");
+            appendNumber(message, qubicSnapshotDigest.contractDigestsSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, contractStateDigestsSizeInBytes, TRUE);
+            logToConsole(message);
+            return false;
+        }
+        if (!verifySnapshotDigest((unsigned char*)contractStateDigests, contractStateDigestsSizeInBytes, qubicSnapshotDigest.contractDigestsDigest, L"contractDigests"))
+        {
+            return false;
+        }
+    }
+
     CHAR16 MINER_SOL_FLAG_FILE_NAME[] = L"snapshotMinerSolutionFlag";
     logToConsole(L"Loading miner solution flags");
     loadedSize = load(MINER_SOL_FLAG_FILE_NAME, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (unsigned char*)minerSolutionFlags, directory);
@@ -4502,6 +4831,24 @@ static bool loadAllNodeStates()
     {
         logToConsole(L"Failed to load miner solution flag");
         return false;
+    }
+
+    // Verify minerSolutionFlags digest if digest file was loaded
+    if (qubicSnapshotDigestValid)
+    {
+        if (qubicSnapshotDigest.minerSolutionFlagsSize != NUMBER_OF_MINER_SOLUTION_FLAGS / 8)
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: minerSolFlags expected ");
+            appendNumber(message, qubicSnapshotDigest.minerSolutionFlagsSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, TRUE);
+            logToConsole(message);
+            return false;
+        }
+        if (!verifySnapshotDigest((unsigned char*)minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, qubicSnapshotDigest.minerSolutionFlagsDigest, L"minerSolFlags"))
+        {
+            return false;
+        }
     }
 
 #if !defined(NDEBUG)
@@ -4528,6 +4875,25 @@ static bool loadAllNodeStates()
     logToConsole(L"Loading old logger...");
     logger.loadLastLoggingStates(directory);
 #endif
+
+    // Summary of all qubic digests loaded (if digest file was found)
+    if (qubicSnapshotDigestValid)
+    {
+        logToConsole(L"=== QUBIC SNAPSHOT LOAD COMPLETE ===");
+        logSnapshotDigest(L"  system:         ", qubicSnapshotDigest.systemDigest);
+        logSnapshotDigest(L"  nodeState:      ", qubicSnapshotDigest.nodeStateDigest);
+        logSnapshotDigest(L"  spectrum:       ", qubicSnapshotDigest.spectrumDigest);
+        logSnapshotDigest(L"  universe:       ", qubicSnapshotDigest.universeDigest);
+        logSnapshotDigest(L"  spectrumDigests:", qubicSnapshotDigest.spectrumDigestsDigest);
+        logSnapshotDigest(L"  universeDigests:", qubicSnapshotDigest.universeDigestsDigest);
+        logSnapshotDigest(L"  contractDigests:", qubicSnapshotDigest.contractDigestsDigest);
+        logSnapshotDigest(L"  minerSolFlags:  ", qubicSnapshotDigest.minerSolutionFlagsDigest);
+        logToConsole(L"====================================");
+    }
+    else
+    {
+        logToConsole(L"=== QUBIC SNAPSHOT LOAD COMPLETE (no digest file, verification skipped) ===");
+    }
 
 #if !defined(NDEBUG)
     forceLogToConsoleAsAddDebugMessage = false;
