@@ -225,6 +225,7 @@ static CustomMiningSharesCounter gCustomMiningSharesCounter;
 // variables and declare for persisting state
 static volatile int requestPersistingNodeState = 0;
 static volatile int persistingNodeStateTickProcWaiting = 0;
+static volatile long persistingNodeStateWaitingRequestProcessors = 0;  // Counter for request processors waiting during save
 static m256i initialRandomSeedFromPersistingState;
 static bool loadMiningSeedFromFile = false;
 static bool loadAllNodeStateFromFile = false;
@@ -2188,6 +2189,15 @@ static void requestProcessor(void* ProcedureArgument)
             }
             END_WAIT_WHILE();
             _InterlockedDecrement(&epochTransitionWaitingRequestProcessors);
+        }
+
+        // Wait during state persistence to prevent race condition with save operations
+        // (requestProcessor can modify ts.ticks, ts.tickData, ts.tickTransactions)
+        if (requestPersistingNodeState)
+        {
+            _InterlockedIncrement(&persistingNodeStateWaitingRequestProcessors);
+            WAIT_WHILE(requestPersistingNodeState);
+            _InterlockedDecrement(&persistingNodeStateWaitingRequestProcessors);
         }
 
         // try to compute a solution if any is queued and this thread is assigned to compute solution
@@ -8063,7 +8073,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
                 }
 #endif
-                if (requestPersistingNodeState == 1 && persistingNodeStateTickProcWaiting == 1)
+                if (requestPersistingNodeState == 1
+                    && persistingNodeStateTickProcWaiting == 1
+                    && persistingNodeStateWaitingRequestProcessors == nRequestProcessorIDs)
                 {
                     // Saving node state takes a lot of time -> Close peer connections before to signal that
                     // the peers should connect to another node.
