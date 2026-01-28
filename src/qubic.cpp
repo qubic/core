@@ -5822,8 +5822,9 @@ static void tickProcessor(void*)
     }
 #endif
 
+    // When loading from snapshot, initialize latestProcessedTick to system.tick
+    unsigned int latestProcessedTick = loadAllNodeStateFromFile ? system.tick : 0;
     loadAllNodeStateFromFile = false;
-    unsigned int latestProcessedTick = 0;
     while (!shutDownNode)
     {
         PROFILE_NAMED_SCOPE("tickProcessor(): loop iteration");
