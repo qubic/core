@@ -551,62 +551,89 @@ public:
     // (1) check current meta data state
     // (2) write all missing chunks to disk
     // (3) update metadata state
+    
+    // Lock order: tickData -> tickTransactions
+    void acquireAllLocks()
+    {
+        tickData.acquireLock();
+        tickTransactions.acquireLock();
+    }
+
+    // Unlock order: tickTransactions -> tickData
+    void releaseAllLocks()
+    {
+        tickTransactions.releaseLock();
+        tickData.releaseLock();
+    }
+
     int trySaveToFile(unsigned int epoch, unsigned int tick, CHAR16* directory = NULL)
-    {   
+    {
         if (tick <= tickBegin) {
             return 6;
         }
         unsigned long long nTick = tick - tickBegin + 1; // inclusive [tickBegin, tick]
         prepareFilenames(epoch);
 
-        logToConsole(L"Saving tick data...");
-        tickData.acquireLock();
-        if (!saveTickData(nTick, directory))
-        {
-            tickData.releaseLock();
-            logToConsole(L"Failed to save tickData");
-            return 5;
-        }
-        tickData.releaseLock();
+        // Acquire both locks to ensure consistent snapshot
+        logToConsole(L"Acquiring locks for snapshot...");
+        acquireAllLocks();
 
-        logToConsole(L"Saving quorum ticks");
-        for (int i = 0; i < NUMBER_OF_COMPUTORS; i++) ticks.acquireLock(i);
-        if (!saveTicks(nTick, directory))
-        {
-            for (int i = 0; i < NUMBER_OF_COMPUTORS; i++) ticks.releaseLock(i);
-            logToConsole(L"Failed to save Ticks");
-            return 4;
-        }
-        for (int i = 0; i < NUMBER_OF_COMPUTORS; i++) ticks.releaseLock(i);
-
-
-        tickTransactions.acquireLock();
-        logToConsole(L"Saving tick transaction offset");
-        if (!saveTickTransactionOffsets(nTick, directory))
-        {
-            tickTransactions.releaseLock();
-            logToConsole(L"Failed to save transactionOffset");
-            return 3;
-        }
-        logToConsole(L"Saving transactions");
-
-        setText(message, L"tickBegin ");
-        appendNumber(message, tickBegin, TRUE);
-        appendText(message, L", tickSave ");
-        appendNumber(message, tick, TRUE);
-        appendText(message, L", nTick ");
-        appendNumber(message, nTick, TRUE);
-        logToConsole(message);
-
+        int result = 0;
         long long outTotalTransactionSize = 0;
         unsigned long long outNextTickTransactionOffset = 0;
-        if (!saveTransactions(nTick, outTotalTransactionSize, outNextTickTransactionOffset, directory))
+
+        logToConsole(L"Saving tick data...");
+        if (!saveTickData(nTick, directory))
         {
-            tickTransactions.releaseLock();
-            logToConsole(L"Failed to save transactions");
-            return 2;
+            logToConsole(L"Failed to save tickData");
+            result = 5;
         }
-        tickTransactions.releaseLock();
+        else
+        {
+            logToConsole(L"Saving quorum ticks");
+            if (!saveTicks(nTick, directory))
+            {
+                logToConsole(L"Failed to save Ticks");
+                result = 4;
+            }
+            else
+            {
+                logToConsole(L"Saving tick transaction offset");
+                if (!saveTickTransactionOffsets(nTick, directory))
+                {
+                    logToConsole(L"Failed to save transactionOffset");
+                    result = 3;
+                }
+                else
+                {
+                    logToConsole(L"Saving transactions");
+                    setText(message, L"tickBegin ");
+                    appendNumber(message, tickBegin, TRUE);
+                    appendText(message, L", tickSave ");
+                    appendNumber(message, tick, TRUE);
+                    appendText(message, L", nTick ");
+                    appendNumber(message, nTick, TRUE);
+                    logToConsole(message);
+
+                    if (!saveTransactions(nTick, outTotalTransactionSize, outNextTickTransactionOffset, directory))
+                    {
+                        logToConsole(L"Failed to save transactions");
+                        result = 2;
+                    }
+                }
+            }
+        }
+
+        // Release all locks AFTER all data operations
+        releaseAllLocks();
+
+        if (result != 0)
+        {
+            logToConsole(L"All locks released after failure");
+            return result;
+        }
+
+        logToConsole(L"All locks released after saving data");
 
         logToConsole(L"Saving meta data");
         if (!saveMetaData(epoch, tick, outTotalTransactionSize, outNextTickTransactionOffset, directory))
