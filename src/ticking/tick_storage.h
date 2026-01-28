@@ -411,6 +411,18 @@ private:
     bool loadTickData(unsigned long long nTick, CHAR16* directory = NULL)
     {
         unsigned long long totalLoadSize = nTick * sizeof(TickData);
+
+        // Verify size matches what was saved
+        if (digestDataValid && digestData.tickDataSize != totalLoadSize)
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: tickData expected ");
+            appendNumber(message, digestData.tickDataSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, totalLoadSize, TRUE);
+            logToConsole(message);
+            return false;
+        }
+
         auto sz = loadLargeFile(SNAPSHOT_TICK_DATA_FILE_NAME, totalLoadSize, (unsigned char*)tickDataPtr, directory);
         if (sz != (long long)totalLoadSize)
         {
@@ -430,6 +442,18 @@ private:
     bool loadTicks(unsigned long long nTick, CHAR16* directory = NULL)
     {
         unsigned long long totalLoadSize = nTick * sizeof(Tick) * NUMBER_OF_COMPUTORS;
+
+        // Verify size matches what was saved
+        if (digestDataValid && digestData.ticksSize != totalLoadSize)
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: ticks expected ");
+            appendNumber(message, digestData.ticksSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, totalLoadSize, TRUE);
+            logToConsole(message);
+            return false;
+        }
+
         auto sz = loadLargeFile(SNAPSHOT_TICKS_FILE_NAME, totalLoadSize, (unsigned char*)ticksPtr, directory);
         if (sz != (long long)totalLoadSize)
         {
@@ -449,6 +473,18 @@ private:
     bool loadTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
     {
         unsigned long long totalLoadSize = nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+
+        // Verify size matches what was saved
+        if (digestDataValid && digestData.tickTransactionOffsetsSize != totalLoadSize)
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: tickTxOffsets expected ");
+            appendNumber(message, digestData.tickTransactionOffsetsSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, totalLoadSize, TRUE);
+            logToConsole(message);
+            return false;
+        }
+
         auto sz = loadLargeFile(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, totalLoadSize, (unsigned char*)tickTransactionOffsetsPtr, directory);
         if (sz != (long long)totalLoadSize)
         {
@@ -467,6 +503,17 @@ private:
     }
     bool loadTransactions(unsigned long long nTick, unsigned long long totalLoadSize, CHAR16* directory = NULL)
     {
+        // Verify size matches what was saved
+        if (digestDataValid && digestData.transactionsSize != totalLoadSize)
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: transactions expected ");
+            appendNumber(message, digestData.transactionsSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, totalLoadSize, TRUE);
+            logToConsole(message);
+            return false;
+        }
+
         unsigned char* ptr = tickTransactionsPtr;
         auto sz = loadLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, totalLoadSize, (unsigned char*)ptr, directory);
         if (sz != (long long)totalLoadSize)
@@ -577,6 +624,15 @@ public:
         logDigest(L"  ticks:        ", digestData.ticksDigest);
         logDigest(L"  tickTxOffsets:", digestData.tickTransactionOffsetsDigest);
         logDigest(L"  transactions: ", digestData.transactionsDigest);
+        setText(message, L"  Sizes: tickData=");
+        appendNumber(message, digestData.tickDataSize, TRUE);
+        appendText(message, L", ticks=");
+        appendNumber(message, digestData.ticksSize, TRUE);
+        appendText(message, L", txOffsets=");
+        appendNumber(message, digestData.tickTransactionOffsetsSize, TRUE);
+        appendText(message, L", tx=");
+        appendNumber(message, digestData.transactionsSize, TRUE);
+        logToConsole(message);
         logToConsole(L"==================================");
 
         return 0;
@@ -689,6 +745,15 @@ public:
             logDigest(L"  ticks:        ", digestData.ticksDigest);
             logDigest(L"  tickTxOffsets:", digestData.tickTransactionOffsetsDigest);
             logDigest(L"  transactions: ", digestData.transactionsDigest);
+            setText(message, L"  Sizes: tickData=");
+            appendNumber(message, digestData.tickDataSize, TRUE);
+            appendText(message, L", ticks=");
+            appendNumber(message, digestData.ticksSize, TRUE);
+            appendText(message, L", txOffsets=");
+            appendNumber(message, digestData.tickTransactionOffsetsSize, TRUE);
+            appendText(message, L", tx=");
+            appendNumber(message, digestData.transactionsSize, TRUE);
+            logToConsole(message);
             logToConsole(L"==================================");
         }
         else
