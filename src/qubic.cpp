@@ -4406,6 +4406,20 @@ static bool saveAllNodeStates()
 
     setText(message, L"Saving computer files");
     logToConsole(message);
+
+#if !defined(NDEBUG)
+    // Debug:  BEFORE saving contract state files
+    {
+        m256i computerDigest;
+        getComputerDigest(computerDigest);
+        CHAR16 digestChars[60 + 1];
+        getIdentity(computerDigest.m256i_u8, digestChars, true);
+        setText(message, L"[SAVE] Computer digest (before saving): ");
+        appendText(message, digestChars);
+        logToConsole(message);
+    }
+#endif
+
     if (!saveContractStateFiles(directory))
     {
         logToConsole(L"Failed to save contract state files");
@@ -4436,6 +4450,67 @@ static bool saveAllNodeStates()
     score->saveScoreCache(system.epoch, directory);
     
     copyMem(&nodeStateBuffer.etalonTick, &etalonTick, sizeof(etalonTick));
+
+#if !defined(NDEBUG)
+    // Debug: ALL etalonTick digests
+    {
+        CHAR16 digestChars[60 + 1];
+
+        setText(message, L"[SAVE] === ETALONTICK STATE ===");
+        logToConsole(message);
+
+        setText(message, L"[SAVE] etalonTick.tick: ");
+        appendNumber(message, etalonTick.tick, FALSE);
+        appendText(message, L", epoch: ");
+        appendNumber(message, etalonTick.epoch, FALSE);
+        logToConsole(message);
+
+        setText(message, L"[SAVE] etalonTick.prevSpectrumDigest: ");
+        getIdentity(etalonTick.prevSpectrumDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[SAVE] etalonTick.prevUniverseDigest: ");
+        getIdentity(etalonTick.prevUniverseDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[SAVE] etalonTick.prevComputerDigest: ");
+        getIdentity(etalonTick.prevComputerDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[SAVE] etalonTick.saltedSpectrumDigest: ");
+        getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[SAVE] etalonTick.saltedUniverseDigest: ");
+        getIdentity(etalonTick.saltedUniverseDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[SAVE] etalonTick.saltedComputerDigest: ");
+        getIdentity(etalonTick.saltedComputerDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[SAVE] etalonTick.transactionDigest: ");
+        getIdentity(etalonTick.transactionDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[SAVE] system.tick: ");
+        appendNumber(message, system.tick, FALSE);
+        appendText(message, L", system.epoch: ");
+        appendNumber(message, system.epoch, FALSE);
+        logToConsole(message);
+
+        setText(message, L"[SAVE] === END ETALONTICK STATE ===");
+        logToConsole(message);
+    }
+#endif
+
     copyMem(nodeStateBuffer.minerPublicKeys, (void*)minerPublicKeys, sizeof(minerPublicKeys));
     copyMem(nodeStateBuffer.minerScores, (void*)minerScores, sizeof(minerScores));
     copyMem(nodeStateBuffer.competitorPublicKeys, (void*)competitorPublicKeys, sizeof(competitorPublicKeys));
@@ -4669,6 +4744,21 @@ static bool loadAllNodeStates()
         return false;
     }
 
+#if !defined(NDEBUG)
+    // Debug: Computer digest AFTER loading contract state files
+    {
+        // Force recomputation of all contract digests
+        setMem(contractStateChangeFlags, MAX_NUMBER_OF_CONTRACTS / 8, 0xFF);
+        m256i computerDigest;
+        getComputerDigest(computerDigest);
+        CHAR16 digestChars[60 + 1];
+        getIdentity(computerDigest.m256i_u8, digestChars, true);
+        setText(message, L"[LOAD] Computer digest (from loaded files): ");
+        appendText(message, digestChars);
+        logToConsole(message);
+    }
+#endif
+
     CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 3] = L'0';
     CONTRACT_EXEC_FEES_ACC_FILE_NAME[sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME) / sizeof(CONTRACT_EXEC_FEES_ACC_FILE_NAME[0]) - 2] = L'0';
@@ -4710,6 +4800,61 @@ static bool loadAllNodeStates()
     }
 
     copyMem(&etalonTick, &nodeStateBuffer.etalonTick, sizeof(etalonTick));
+
+#if !defined(NDEBUG)
+    // Debug: Log ALL etalonTick digests after loading 
+    {
+        CHAR16 digestChars[60 + 1];
+
+        setText(message, L"[LOAD] === ETALONTICK STATE ===");
+        logToConsole(message);
+
+        setText(message, L"[LOAD] etalonTick.tick: ");
+        appendNumber(message, etalonTick.tick, FALSE);
+        appendText(message, L", epoch: ");
+        appendNumber(message, etalonTick.epoch, FALSE);
+        logToConsole(message);
+
+        setText(message, L"[LOAD] etalonTick.prevSpectrumDigest: ");
+        getIdentity(etalonTick.prevSpectrumDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[LOAD] etalonTick.prevUniverseDigest: ");
+        getIdentity(etalonTick.prevUniverseDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[LOAD] etalonTick.prevComputerDigest: ");
+        getIdentity(etalonTick.prevComputerDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[LOAD] etalonTick.saltedSpectrumDigest: ");
+        getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[LOAD] etalonTick.saltedUniverseDigest: ");
+        getIdentity(etalonTick.saltedUniverseDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[LOAD] etalonTick.saltedComputerDigest: ");
+        getIdentity(etalonTick.saltedComputerDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[LOAD] etalonTick.transactionDigest: ");
+        getIdentity(etalonTick.transactionDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[LOAD] === END ETALONTICK STATE ===");
+        logToConsole(message);
+    }
+#endif
+
     copyMem((void*)minerPublicKeys, nodeStateBuffer.minerPublicKeys, sizeof(minerPublicKeys));
     copyMem((void*)minerScores, nodeStateBuffer.minerScores, sizeof(minerScores));
     copyMem((void*)competitorPublicKeys, nodeStateBuffer.competitorPublicKeys, sizeof(competitorPublicKeys));
@@ -4766,6 +4911,19 @@ static bool loadAllNodeStates()
             return false;
         }
     }
+
+#if !defined(NDEBUG)
+    // Debug: Log system state after loading
+    {
+        setText(message, L"[LOAD] system.tick: ");
+        appendNumber(message, system.tick, FALSE);
+        appendText(message, L", system.epoch: ");
+        appendNumber(message, system.epoch, FALSE);
+        appendText(message, L", system.initialTick: ");
+        appendNumber(message, system.initialTick, FALSE);
+        logToConsole(message);
+    }
+#endif
 
     updateNumberOfTickTransactions();
 
@@ -4852,6 +5010,18 @@ static bool loadAllNodeStates()
         }
     }
 
+#if !defined(NDEBUG)
+    // Debug: Log the Computer digest from loaded contractStateDigests
+    {
+        const m256i& loadedComputerDigest = contractStateDigests[(MAX_NUMBER_OF_CONTRACTS * 2 - 1) - 1];
+        CHAR16 digestChars[60 + 1];
+        setText(message, L"[LOAD] Computer digest (from contractStateDigests file): ");
+        getIdentity(loadedComputerDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+    }
+#endif
+
     CHAR16 MINER_SOL_FLAG_FILE_NAME[] = L"snapshotMinerSolutionFlag";
     logToConsole(L"Loading miner solution flags");
     loadedSize = load(MINER_SOL_FLAG_FILE_NAME, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (unsigned char*)minerSolutionFlags, directory);
@@ -4924,6 +5094,51 @@ static bool loadAllNodeStates()
     }
 
 #if !defined(NDEBUG)
+    // Final verification: Compute and log current state digests for comparison
+    {
+        CHAR16 digestChars[60 + 1];
+
+        logToConsole(L"[LOAD] === FINAL STATE VERIFICATION ===");
+
+        // Recompute spectrum digest
+        m256i spectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
+        setText(message, L"[LOAD] Spectrum root digest: ");
+        getIdentity(spectrumDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        // Recompute universe digest
+        m256i universeDigest = assetDigests[(ASSETS_CAPACITY * 2 - 1) - 1];
+        setText(message, L"[LOAD] Universe root digest: ");
+        getIdentity(universeDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        // Recompute computer digest from contract states
+        setMem(contractStateChangeFlags, MAX_NUMBER_OF_CONTRACTS / 8, 0xFF);
+        m256i computerDigest;
+        getComputerDigest(computerDigest);
+        setText(message, L"[LOAD] Computer digest (recomputed): ");
+        getIdentity(computerDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        // Compare with etalonTick values
+        setText(message, L"[LOAD] etalonTick.saltedSpectrumDigest matches spectrum root: ");
+        appendText(message, (etalonTick.saltedSpectrumDigest == spectrumDigest) ? L"YES" : L"NO");
+        logToConsole(message);
+
+        setText(message, L"[LOAD] etalonTick.saltedUniverseDigest matches universe root: ");
+        appendText(message, (etalonTick.saltedUniverseDigest == universeDigest) ? L"YES" : L"NO");
+        logToConsole(message);
+
+        setText(message, L"[LOAD] etalonTick.saltedComputerDigest matches computer digest: ");
+        appendText(message, (etalonTick.saltedComputerDigest == computerDigest) ? L"YES" : L"NO");
+        logToConsole(message);
+
+        logToConsole(L"[LOAD] === END FINAL STATE VERIFICATION ===");
+    }
+
     forceLogToConsoleAsAddDebugMessage = false;
 #endif
 
