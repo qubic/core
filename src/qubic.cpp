@@ -3719,6 +3719,15 @@ static void processTick(unsigned long long processorNumber)
                     sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastedFutureTickData.tickData.signature);
 
                     enqueueResponse(NULL, sizeof(broadcastedFutureTickData), BroadcastFutureTickData::type(), 0, &broadcastedFutureTickData);
+
+                    // Testing: Also update local tick storage to ensure consistency
+                    ts.tickData.acquireLock();
+                    TickData& td = ts.tickData.getByTickInCurrentEpoch(broadcastedFutureTickData.tickData.tick);
+                    if (td.epoch != system.epoch)
+                    {
+                        copyMem(&td, &broadcastedFutureTickData.tickData, sizeof(TickData));
+                    }
+                    ts.tickData.releaseLock();
                 }
 
                 system.latestLedTick = system.tick;
