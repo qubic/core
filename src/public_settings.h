@@ -104,6 +104,10 @@ static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 150;
 static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = ADDITION_NUMBER_OF_INPUT_NEURONS + ADDITION_NUMBER_OF_OUTPUT_NEURONS + ADDITION_NUMBER_OF_MUTATIONS; // P
 static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 74200;
 
+// Multipler of score
+static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;
+static constexpr unsigned int ADDITION_SOLUTION_MULTIPLER = 1;
+
 static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 
 
