@@ -559,6 +559,7 @@ public:
         uint64 i;
         uint64 j;
         bit slotFound;
+        uint64 slotIndex;
         AdminProposal newProposal;
         AdminProposal emptyProposal;
         bit isMultisigAdminResult;
@@ -646,6 +647,7 @@ public:
         // Count free slots and find an empty slot for the proposal
         locals.slotFound = false;
         locals.freeSlots = 0;
+        locals.slotIndex = 0;
         for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
         {
             if (!state.proposals.get(locals.i).active && state.proposals.get(locals.i).proposalId == 0)
@@ -654,6 +656,7 @@ public:
                 if (!locals.slotFound)
                 {
                     locals.slotFound = true;
+                    locals.slotIndex = locals.i; // Save the slot index
                     // Don't break, continue counting free slots
                 }
             }
@@ -711,6 +714,7 @@ public:
                     if (!state.proposals.get(locals.i).active && state.proposals.get(locals.i).proposalId == 0)
                     {
                         locals.slotFound = true;
+                        locals.slotIndex = locals.i; // Save the slot index
                         break;
                     }
                 }
@@ -745,7 +749,7 @@ public:
         locals.newProposal.approvals.set(0, qpi.invocator());
 
         // Store the proposal
-        state.proposals.set(locals.i, locals.newProposal);
+        state.proposals.set(locals.slotIndex, locals.newProposal);
 
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
