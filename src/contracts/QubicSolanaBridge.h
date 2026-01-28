@@ -241,55 +241,52 @@ protected:
 	}
 
 	// Check if caller is admin or has pauser role
-	inline static bool isAdminOrPauser(const QSB& state, const id& who)
+	inline static bool isAdminOrPauser(const QSB& state, const id& who, uint32 i)
 	{
 		if (isAdmin(state, who))
 			return true;
 
-		for (uint32 i = 0; i < state.pausers.capacity(); ++i)
+		for (i = 0; i < state.pausers.capacity(); ++i)
 		{
-			const RoleEntry entry = state.pausers.get(i);
-			if (entry.active && entry.account == who)
+			if (state.pausers.get(i).active && state.pausers.get(i).account == who)
 				return true;
 		}
 		return false;
 	}
 
 	// Find oracle index; returns NULL_INDEX if not found
-	inline static sint32 findOracleIndex(const QSB& state, const id& account)
+	inline static sint32 findOracleIndex(const QSB& state, const id& account, uint32 i)
 	{
-		for (uint32 i = 0; i < state.oracles.capacity(); ++i)
+		for (i = 0; i < state.oracles.capacity(); ++i)
 		{
-			const RoleEntry entry = state.oracles.get(i);
-			if (entry.active && entry.account == account)
+			if (state.oracles.get(i).active && state.oracles.get(i).account == account)
 				return (sint32)i;
 		}
 		return NULL_INDEX;
 	}
 
 	// Find pauser index; returns NULL_INDEX if not found
-	inline static sint32 findPauserIndex(const QSB& state, const id& account)
+	inline static sint32 findPauserIndex(const QSB& state, const id& account, uint32 i)
 	{
-		for (uint32 i = 0; i < state.pausers.capacity(); ++i)
+		for (i = 0; i < state.pausers.capacity(); ++i)
 		{
-			const RoleEntry entry = state.pausers.get(i);
-			if (entry.active && entry.account == account)
+			if (state.pausers.get(i).active && state.pausers.get(i).account == account)
 				return (sint32)i;
 		}
 		return NULL_INDEX;
 	}
 
 	// Mark an orderHash as filled (idempotent, linear storage)
-	inline static void markOrderFilled(QSB& state, const OrderHash& hash)
+	inline static void markOrderFilled(QSB& state, const OrderHash& hash, uint32 i, uint32 j, bool same, FilledOrderEntry& entry)
 	{
 		// First, see if it already exists
-		for (uint32 i = 0; i < state.filledOrders.capacity(); ++i)
+		for (i = 0; i < state.filledOrders.capacity(); ++i)
 		{
-			FilledOrderEntry entry = state.filledOrders.get(i);
+			entry = state.filledOrders.get(i);
 			if (entry.used)
 			{
-				bool same = true;
-				for (uint32 j = 0; j < hash.capacity(); ++j)
+				same = true;
+				for (j = 0; j < hash.capacity(); ++j)
 				{
 					if (entry.hash.get(j) != hash.get(j))
 					{
@@ -303,9 +300,9 @@ protected:
 		}
 
 		// Otherwise, insert into first free slot (or overwrite slot 0 as fallback)
-		for (uint32 i = 0; i < state.filledOrders.capacity(); ++i)
+		for (i = 0; i < state.filledOrders.capacity(); ++i)
 		{
-			FilledOrderEntry entry = state.filledOrders.get(i);
+			entry = state.filledOrders.get(i);
 			if (!entry.used)
 			{
 				entry.hash = hash;
@@ -316,23 +313,22 @@ protected:
 		}
 
 		// If storage is full, overwrite slot 0 (still provides replay protection for recent orders)
-		FilledOrderEntry entry;
 		entry.hash = hash;
 		entry.used = true;
 		state.filledOrders.set(0, entry);
 	}
 
 	// Check whether an orderHash has already been filled
-	inline static bit isOrderFilled(const QSB& state, const OrderHash& hash)
+	inline static bit isOrderFilled(const QSB& state, const OrderHash& hash, uint32 i, uint32 j, bool same, FilledOrderEntry& entry)
 	{
-		for (uint32 i = 0; i < state.filledOrders.capacity(); ++i)
+		for (i = 0; i < state.filledOrders.capacity(); ++i)
 		{
-			const FilledOrderEntry entry = state.filledOrders.get(i);
+			entry = state.filledOrders.get(i);
 			if (!entry.used)
 				continue;
 
-			bool same = true;
-			for (uint32 j = 0; j < hash.capacity(); ++j)
+			same = true;
+			for (j = 0; j < hash.capacity(); ++j)
 			{
 				if (entry.hash.get(j) != hash.get(j))
 				{
@@ -347,12 +343,11 @@ protected:
 	}
 
 	// Find index of locked order by nonce; returns NULL_INDEX if not found
-	inline static sint32 findLockedOrderIndexByNonce(const QSB& state, uint32 nonce)
+	inline static sint32 findLockedOrderIndexByNonce(const QSB& state, uint32 nonce, uint32 i)
 	{
-		for (uint32 i = 0; i < state.lockedOrders.capacity(); ++i)
+		for (i = 0; i < state.lockedOrders.capacity(); ++i)
 		{
-			const LockedOrderEntry entry = state.lockedOrders.get(i);
-			if (entry.active && entry.nonce == nonce)
+			if (state.lockedOrders.get(i).active && state.lockedOrders.get(i).nonce == nonce)
 				return (sint32)i;
 		}
 		return NULL_INDEX;
@@ -417,7 +412,7 @@ public:
 		// Funds equal to `amount` now remain locked in the contract balance
 
 		// Ensure nonce unused
-		if (findLockedOrderIndexByNonce(state, input.nonce) != NULL_INDEX)
+		if (findLockedOrderIndexByNonce(state, input.nonce, 0) != NULL_INDEX)
 		{
 			// Nonce already used; reject
 			qpi.transfer(qpi.invocator(), input.amount);
@@ -498,7 +493,7 @@ public:
 		}
 
 		// Find existing order by nonce
-		locals.idx = findLockedOrderIndexByNonce(state, input.nonce);
+		locals.idx = findLockedOrderIndexByNonce(state, input.nonce, 0);
 		if (locals.idx == NULL_INDEX)
 		{
 			return;
@@ -548,6 +543,7 @@ public:
 		OrderHash hash;
 		uint32 validSignatureCount;
 		uint32 requiredSignatures;
+		FilledOrderEntry entry;
 		Array<id, QSB_MAX_ORACLES> seenSigners;
 		SignatureData sig;
 		uint32 seenCount;
@@ -560,6 +556,7 @@ public:
 		uint64 protocolFeeAmount;
 		uint64 oracleFeeAmount;
 		uint64 recipientAmount;
+		bool same;
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(Unlock)
@@ -595,7 +592,7 @@ public:
 		output.orderHash = locals.hash;
 
 		// Ensure orderHash not yet filled
-		if (isOrderFilled(state, locals.hash))
+		if (isOrderFilled(state, locals.hash, 0, 0, 0, locals.entry))
 		{
 			return;
 		}
@@ -627,7 +624,7 @@ public:
 			locals.sig = input.signatures.get(locals.i);
 
 			// Check signer is authorized oracle
-			if (findOracleIndex(state, locals.sig.signer) == NULL_INDEX)
+			if (findOracleIndex(state, locals.sig.signer, 0) == NULL_INDEX)
 				return; // unknown signer -> fail fast
 
 			// Check duplicates
@@ -713,7 +710,7 @@ public:
 		}
 
 		// Mark order as filled
-		markOrderFilled(state, locals.hash);
+		markOrderFilled(state, locals.hash, 0, 0, 0, locals.entry);
 		output.success = true;
 	}
 
@@ -786,7 +783,7 @@ public:
 
 		if (input.role == (uint8)Role::Oracle)
 		{
-			if (findOracleIndex(state, input.account) != NULL_INDEX)
+			if (findOracleIndex(state, input.account, 0) != NULL_INDEX)
 			{
 				output.success = true;
 				return;
@@ -808,7 +805,7 @@ public:
 		}
 		else if (input.role == (uint8)Role::Pauser)
 		{
-			if (findPauserIndex(state, input.account) != NULL_INDEX)
+			if (findPauserIndex(state, input.account, 0) != NULL_INDEX)
 			{
 				output.success = true;
 				return;
@@ -851,7 +848,7 @@ public:
 
 		if (input.role == (uint8)Role::Oracle)
 		{
-			locals.idx = findOracleIndex(state, input.account);
+			locals.idx = findOracleIndex(state, input.account, 0);
 			if (locals.idx != NULL_INDEX)
 			{
 				locals.entry = state.oracles.get((uint32)locals.idx);
@@ -864,7 +861,7 @@ public:
 		}
 		else if (input.role == (uint8)Role::Pauser)
 		{
-			locals.idx = findPauserIndex(state, input.account);
+			locals.idx = findPauserIndex(state, input.account, 0);
 			if (locals.idx != NULL_INDEX)
 			{
 				locals.entry = state.pausers.get((uint32)locals.idx);
@@ -884,7 +881,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (!isAdminOrPauser(state, qpi.invocator()))
+		if (!isAdminOrPauser(state, qpi.invocator(), 0))
 		{
 			return;
 		}
@@ -902,7 +899,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (!isAdminOrPauser(state, qpi.invocator()))
+		if (!isAdminOrPauser(state, qpi.invocator(), 0))
 		{
 			return;
 		}
