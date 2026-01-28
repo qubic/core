@@ -3517,6 +3517,19 @@ static void processTick(unsigned long long processorNumber)
 
                     unsigned int nextTxIndex = 0;
                     unsigned int numPendingTickTxs = pendingTxsPool.getNumberOfPendingTickTxs(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET);
+#if !defined(NDEBUG)
+                    // Log when tick leader has NO pending transactions - indicates potential issue after LOAD
+                    if (numPendingTickTxs == 0)
+                    {
+                        setText(message, L"[TICK LEADER] NO pendingTxs! Creating tickData for tick=");
+                        appendNumber(message, system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, FALSE);
+                        appendText(message, L" at system.tick=");
+                        appendNumber(message, system.tick, FALSE);
+                        appendText(message, L" computorIdx=");
+                        appendNumber(message, ownComputorIndices[i], FALSE);
+                        logToConsole(message);
+                    }
+#endif
                     pendingTxsPool.acquireLock();
                     for (unsigned int tx = 0; tx < numPendingTickTxs; ++tx)
                     {
@@ -4250,8 +4263,28 @@ static bool saveAllNodeStates()
     }
     
     score->saveScoreCache(system.epoch, directory);
-    
+
     copyMem(&nodeStateBuffer.etalonTick, &etalonTick, sizeof(etalonTick));
+
+#if !defined(NDEBUG)
+    {
+        CHAR16 digestChars[60 + 1];
+        setText(message, L"[SAVE] tick=");
+        appendNumber(message, system.tick, FALSE);
+        appendText(message, L" Spectrum: ");
+        getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[SAVE] Universe: ");
+        getIdentity(etalonTick.saltedUniverseDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        appendText(message, L" Computer: ");
+        getIdentity(etalonTick.saltedComputerDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+    }
+#endif
     copyMem(nodeStateBuffer.minerPublicKeys, (void*)minerPublicKeys, sizeof(minerPublicKeys));
     copyMem(nodeStateBuffer.minerScores, (void*)minerScores, sizeof(minerScores));
     copyMem(nodeStateBuffer.competitorPublicKeys, (void*)competitorPublicKeys, sizeof(competitorPublicKeys));
@@ -4426,6 +4459,27 @@ static bool loadAllNodeStates()
         return false;
     }
     copyMem(&etalonTick, &nodeStateBuffer.etalonTick, sizeof(etalonTick));
+
+#if !defined(NDEBUG)
+    {
+        CHAR16 digestChars[60 + 1];
+        setText(message, L"[LOAD] tick=");
+        appendNumber(message, etalonTick.tick, FALSE);
+        appendText(message, L" Spectrum: ");
+        getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+
+        setText(message, L"[LOAD] Universe: ");
+        getIdentity(etalonTick.saltedUniverseDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        appendText(message, L" Computer: ");
+        getIdentity(etalonTick.saltedComputerDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+    }
+#endif
+
     copyMem((void*)minerPublicKeys, nodeStateBuffer.minerPublicKeys, sizeof(minerPublicKeys));
     copyMem((void*)minerScores, nodeStateBuffer.minerScores, sizeof(minerScores));
     copyMem((void*)competitorPublicKeys, nodeStateBuffer.competitorPublicKeys, sizeof(competitorPublicKeys));
@@ -5078,12 +5132,20 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                     {
                         if (!saltedSpectrumDigestErrorPrinted)
                         {
-                            setText(dbgMsg, L"saltedSpectrumDigest mismatch! QuorumTick ");
+                            setText(dbgMsg, L"saltedSpectrumDigest mismatch! tick=");
+                            appendNumber(dbgMsg, system.tick, FALSE);
+                            appendText(dbgMsg, L" vote=");
                             getIdentity(tick->saltedSpectrumDigest.m256i_u8, digestChars, true);
                             appendText(dbgMsg, digestChars);
-                            appendText(dbgMsg, L", local");
+                            appendText(dbgMsg, L" local=");
                             getIdentity(saltedDigest.m256i_u8, digestChars, true);
                             appendText(dbgMsg, digestChars);
+                            logToConsole(dbgMsg);
+                            // Also log the raw etalonTick digest for comparison
+                            setText(dbgMsg, L"  etalonTick.saltedSpectrumDigest=");
+                            getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
+                            appendText(dbgMsg, digestChars);
+                            logToConsole(dbgMsg);
                             saltedSpectrumDigestErrorPrinted = true;
                         }
                     }
@@ -5213,8 +5275,25 @@ static void tickProcessor(void*)
     }
 #endif
 
+    const bool wasLoadedFromSnapshot = loadAllNodeStateFromFile;
     loadAllNodeStateFromFile = false;
     unsigned int latestProcessedTick = 0;
+
+#if !defined(NDEBUG)
+    if (wasLoadedFromSnapshot)
+    {
+        CHAR16 digestChars[60 + 1];
+        setText(message, L"[LOAD INIT] After LOAD: system.tick=");
+        appendNumber(message, system.tick, FALSE);
+        appendText(message, L" latestProcessedTick=");
+        appendNumber(message, latestProcessedTick, FALSE);
+        appendText(message, L" digest: ");
+        getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
+        appendText(message, digestChars);
+        logToConsole(message);
+    }
+#endif
+
     while (!shutDownNode)
     {
         PROFILE_NAMED_SCOPE("tickProcessor(): loop iteration");
@@ -5234,16 +5313,79 @@ static void tickProcessor(void*)
 
             if (system.tick > latestProcessedTick)
             {
+#if !defined(NDEBUG)
+                bool logThisTick = wasLoadedFromSnapshot && (latestProcessedTick == 0);  // First tick after LOAD
+#endif
                 // State persist: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
                 // thus, pausing here and doing the state persisting is the best choice.
                 if (requestPersistingNodeState)
                 {
+#if !defined(NDEBUG)
+                    logThisTick = true;  // Also log when SAVE is triggered
+                    CHAR16 digestChars[60 + 1];
+                    setText(message, L"[SAVE TRIGGER] tick=");
+                    appendNumber(message, system.tick, FALSE);
+                    appendText(message, L" latestProcessedTick=");
+                    appendNumber(message, latestProcessedTick, FALSE);
+                    logToConsole(message);
+#endif
                     persistingNodeStateTickProcWaiting = 1;
                     WAIT_WHILE(requestPersistingNodeState);
                     persistingNodeStateTickProcWaiting = 0;
                 }
+
+#if !defined(NDEBUG)
+                if (logThisTick)
+                {
+                    CHAR16 digestChars[60 + 1];
+                    // Log tick leader info
+                    unsigned int tickLeaderIndex = system.tick % NUMBER_OF_COMPUTORS;
+                    bool isOwnComputorLeader = false;
+                    for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+                    {
+                        if (ownComputorIndices[i] == tickLeaderIndex)
+                        {
+                            isOwnComputorLeader = true;
+                            break;
+                        }
+                    }
+                    setText(message, L"[BEFORE processTick] tick=");
+                    appendNumber(message, system.tick, FALSE);
+                    appendText(message, L" leader=");
+                    appendNumber(message, tickLeaderIndex, FALSE);
+                    appendText(message, isOwnComputorLeader ? L" (THIS NODE)" : L" (other)");
+                    appendText(message, L" ownComputors=");
+                    appendNumber(message, numberOfOwnComputorIndices, FALSE);
+                    logToConsole(message);
+
+                    setText(message, L"[BEFORE processTick] digest: ");
+                    getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
+                    appendText(message, digestChars);
+                    logToConsole(message);
+                }
+#endif
                 processTick(processorNumber);
                 latestProcessedTick = system.tick;
+#if !defined(NDEBUG)
+                if (logThisTick)
+                {
+                    CHAR16 digestChars[60 + 1];
+                    setText(message, L"[AFTER processTick] tick=");
+                    appendNumber(message, system.tick, FALSE);
+                    appendText(message, L" Spectrum: ");
+                    getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
+                    appendText(message, digestChars);
+                    logToConsole(message);
+
+                    setText(message, L"[AFTER processTick] Universe: ");
+                    getIdentity(etalonTick.saltedUniverseDigest.m256i_u8, digestChars, true);
+                    appendText(message, digestChars);
+                    appendText(message, L" Computer: ");
+                    getIdentity(etalonTick.saltedComputerDigest.m256i_u8, digestChars, true);
+                    appendText(message, digestChars);
+                    logToConsole(message);
+                }
+#endif
             }
 
             if (gFutureTickTotalNumberOfComputors > NUMBER_OF_COMPUTORS - QUORUM)

@@ -10,6 +10,8 @@
 #include "platform/global_var.h"
 
 #include "public_settings.h"
+#include "kangaroo_twelve.h"
+#include "four_q.h"
 
 #if TICK_STORAGE_AUTOSAVE_MODE
 static unsigned short SNAPSHOT_METADATA_FILE_NAME[] = L"snapshotMetadata.???";
@@ -17,6 +19,7 @@ static unsigned short SNAPSHOT_TICK_DATA_FILE_NAME[] = L"snapshotTickdata.???";
 static unsigned short SNAPSHOT_TICKS_FILE_NAME[] = L"snapshotTicks.???";
 static unsigned short SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[] = L"snapshotTickTransactionOffsets.???";
 static unsigned short SNAPSHOT_TRANSACTIONS_FILE_NAME[] = L"snapshotTickTransaction.???";
+static unsigned short SNAPSHOT_DIGEST_FILE_NAME[] = L"snapshotDigest.???";  // Separate file for digest verification
 #endif
 constexpr unsigned short INVALIDATED_TICK_DATA = 0xffff;
 // Encapsulated tick storage of current epoch that can additionally keep the last ticks of the previous epoch.
@@ -107,9 +110,102 @@ private:
         unsigned int tickEnd;
         long long outTotalTransactionSize;
         unsigned long long outNextTickTransactionOffset;
-        // may need to store more meta data here to verify consistency when loading (ie: some nodes have different configs and can't use the saved files)
     } metaData;
+
+    // Separate structure for digest verification (saved to different file)
+    static constexpr unsigned int DIGEST_DATA_MAGIC = 0x44494754; // Magic number for checking correption itself
+    struct DigestData {
+        unsigned int magic;  // For format validation
+        unsigned char tickDataDigest[32];
+        unsigned char ticksDigest[32];
+        unsigned char tickTransactionOffsetsDigest[32];
+        unsigned char transactionsDigest[32];
+        unsigned long long tickDataSize;
+        unsigned long long ticksSize;
+        unsigned long long tickTransactionOffsetsSize;
+        unsigned long long transactionsSize;
+    };
+    inline static DigestData digestData;
+    inline static bool digestDataValid = false;  // True if digest file was loaded successfully
     inline static unsigned long long lastCheckTransactionOffset = 0; // use for save/load transaction state
+
+    
+    // Digest Verification Helpers
+    // Compute K12 digest, handling large data by hashing in chunks
+    void computeDigest(const unsigned char* data, unsigned long long dataSize, unsigned char* digestOut)
+    {
+        if (dataSize <= 0xFFFFFFFFULL)
+        {
+            KangarooTwelve(data, (unsigned int)dataSize, digestOut, 32);
+        }
+        else
+        {
+            // Hash in chunks for very large data (>4GB)
+            unsigned char chunkDigest[32];
+            unsigned long long offset = 0;
+            constexpr unsigned long long chunkSize = 0x80000000ULL; // 2GB chunks
+
+            KangarooTwelve(data, (unsigned int)chunkSize, digestOut, 32);
+            offset += chunkSize;
+
+            while (offset < dataSize)
+            {
+                unsigned long long remaining = dataSize - offset;
+                unsigned int thisChunkSize = (remaining > chunkSize) ? (unsigned int)chunkSize : (unsigned int)remaining;
+                KangarooTwelve(data + offset, thisChunkSize, chunkDigest, 32);
+                for (int i = 0; i < 32; i++) { digestOut[i] ^= chunkDigest[i]; }
+                offset += thisChunkSize;
+            }
+        }
+    }
+
+    // Compare two digests
+    bool digestsMatch(const unsigned char* d1, const unsigned char* d2)
+    {
+        for (int i = 0; i < 32; i++) 
+        { 
+            if (d1[i] != d2[i]) 
+                return false;
+        }
+        return true;
+    }
+
+    // Log digest to console and debug
+    void logDigest(const CHAR16* prefix, const unsigned char* digest)
+    {
+        CHAR16 id[61];
+        getIdentity(digest, id, true);
+        setText(message, prefix);
+        appendText(message, id);
+        logToConsole(message);
+#ifndef NDEBUG
+        addDebugMessage(message);
+#endif
+    }
+
+    // Verify digest after loading
+    bool verifyDigest(const unsigned char* data, unsigned long long dataSize, const unsigned char* expectedDigest, const CHAR16* dataName)
+    {
+        unsigned char loadedDigest[32];
+        computeDigest(data, dataSize, loadedDigest);
+
+        if (!digestsMatch(loadedDigest, expectedDigest))
+        {
+            setText(message, L"[LOAD] DIGEST MISMATCH: ");
+            appendText(message, dataName);
+            logToConsole(message);
+            logDigest(L"  Expected: ", expectedDigest);
+            logDigest(L"  Got:      ", loadedDigest);
+            return false;
+        }
+
+        setText(message, L"[LOAD] Digest OK: ");
+        appendText(message, dataName);
+        logToConsole(message);
+        logDigest(L"  Digest: ", loadedDigest);
+        return true;
+    }
+
     void prepareMetaDataFilename(short epoch)
     {
         addEpochToFileName(SNAPSHOT_METADATA_FILE_NAME, sizeof(SNAPSHOT_METADATA_FILE_NAME) / sizeof(SNAPSHOT_METADATA_FILE_NAME[0]), epoch);
@@ -121,6 +217,46 @@ private:
         addEpochToFileName(SNAPSHOT_TICKS_FILE_NAME, sizeof(SNAPSHOT_TICKS_FILE_NAME) / sizeof(SNAPSHOT_TICKS_FILE_NAME[0]), epoch);
         addEpochToFileName(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, sizeof(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME) / sizeof(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME[0]), epoch);
         addEpochToFileName(SNAPSHOT_TRANSACTIONS_FILE_NAME, sizeof(SNAPSHOT_TRANSACTIONS_FILE_NAME) / sizeof(SNAPSHOT_TRANSACTIONS_FILE_NAME[0]), epoch);
+        addEpochToFileName(SNAPSHOT_DIGEST_FILE_NAME, sizeof(SNAPSHOT_DIGEST_FILE_NAME) / sizeof(SNAPSHOT_DIGEST_FILE_NAME[0]), epoch);
+    }
+
+    // Save digest data to separate file
+    bool saveDigestData(CHAR16* directory = NULL)
+    {
+        digestData.magic = DIGEST_DATA_MAGIC;
+        auto sz = saveLargeFile(SNAPSHOT_DIGEST_FILE_NAME, sizeof(digestData), (unsigned char*)&digestData, directory);
+        if (sz != sizeof(digestData))
+        {
+            logToConsole(L"[SAVE] Warning: Failed to save digest file");
+            return false;
+        }
+        logToConsole(L"[SAVE] Digest file saved successfully");
+        return true;
+    }
+
+    // Load digest data from separate file (optional - for verification)
+    bool loadDigestData(CHAR16* directory = NULL)
+    {
+        setMem(&digestData, sizeof(digestData), 0);
+        digestDataValid = false;
+
+        auto sz = loadLargeFile(SNAPSHOT_DIGEST_FILE_NAME, sizeof(digestData), (unsigned char*)&digestData, directory);
+        if (sz != sizeof(digestData))
+        {
+            logToConsole(L"[LOAD] No digest file found (old snapshot) - verification skipped");
+            return false;
+        }
+
+        if (digestData.magic != DIGEST_DATA_MAGIC)
+        {
+            logToConsole(L"[LOAD] Digest file has invalid magic - verification skipped");
+            setMem(&digestData, sizeof(digestData), 0);
+            return false;
+        }
+
+        digestDataValid = true;
+        logToConsole(L"[LOAD] Digest file loaded - verification enabled");
+        return true;
     }
     bool saveMetaData(short epoch, unsigned int tickEnd, long long outTotalTransactionSize, unsigned long long outNextTickTransactionOffset, CHAR16* directory = NULL)
     {
@@ -138,9 +274,15 @@ private:
     }
     bool saveTickData(unsigned long long nTick, CHAR16* directory = NULL)
     {
-        long long totalWriteSize = nTick * sizeof(TickData);
+        unsigned long long totalWriteSize = nTick * sizeof(TickData);
+
+        // Compute digest BEFORE writing
+        computeDigest((unsigned char*)tickDataPtr, totalWriteSize, digestData.tickDataDigest);
+        digestData.tickDataSize = totalWriteSize;
+        logDigest(L"[SAVE] tickData digest: ", digestData.tickDataDigest);
+
         auto sz = saveLargeFile(SNAPSHOT_TICK_DATA_FILE_NAME, totalWriteSize, (unsigned char*)tickDataPtr, directory);
-        if (sz != totalWriteSize)
+        if (sz != (long long)totalWriteSize)
         {
             return false;
         }
@@ -148,9 +290,15 @@ private:
     }
     bool saveTicks(unsigned long long nTick, CHAR16* directory = NULL)
     {
-        long long totalWriteSize = nTick * sizeof(Tick) * NUMBER_OF_COMPUTORS;
+        unsigned long long totalWriteSize = nTick * sizeof(Tick) * NUMBER_OF_COMPUTORS;
+
+        // Compute digest BEFORE writing
+        computeDigest((unsigned char*)ticksPtr, totalWriteSize, digestData.ticksDigest);
+        digestData.ticksSize = totalWriteSize;
+        logDigest(L"[SAVE] ticks digest: ", digestData.ticksDigest);
+
         auto sz = saveLargeFile(SNAPSHOT_TICKS_FILE_NAME, totalWriteSize, (unsigned char*)ticksPtr, directory);
-        if (sz != totalWriteSize)
+        if (sz != (long long)totalWriteSize)
         {
             return false;
         }
@@ -158,9 +306,15 @@ private:
     }
     bool saveTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
     {
-        long long totalWriteSize = nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+        unsigned long long totalWriteSize = nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+
+        // Compute digest BEFORE writing
+        computeDigest((unsigned char*)tickTransactionOffsetsPtr, totalWriteSize, digestData.tickTransactionOffsetsDigest);
+        digestData.tickTransactionOffsetsSize = totalWriteSize;
+        logDigest(L"[SAVE] tickTxOffsets digest: ", digestData.tickTransactionOffsetsDigest);
+
         auto sz = saveLargeFile(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, totalWriteSize, (unsigned char*)tickTransactionOffsetsPtr, directory);
-        if (sz != totalWriteSize)
+        if (sz != (long long)totalWriteSize)
         {
             return false;
         }
@@ -168,7 +322,7 @@ private:
     }
     bool saveTransactions(unsigned long long nTick, long long& outTotalTransactionSize, unsigned long long& outNextTickTransactionOffset, CHAR16* directory = NULL)
     {
-        unsigned int toTick = tickBegin + (unsigned int)(nTick) - 1;
+        unsigned int toTick = tickBegin + (unsigned int)(nTick);
         unsigned long long toPtr = 0;
         outNextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
         lastCheckTransactionOffset = tickBegin > lastCheckTransactionOffset ? tickBegin : lastCheckTransactionOffset;
@@ -209,10 +363,16 @@ private:
         logToConsole(message);
 
         // saving from the first tx of from tick to the last tx of (totick)
-        long long totalWriteSize = toPtr;
+        unsigned long long totalWriteSize = toPtr;
         unsigned char* ptr = tickTransactionsPtr;
+
+        // Compute digest befro writing
+        computeDigest(ptr, totalWriteSize, digestData.transactionsDigest);
+        digestData.transactionsSize = totalWriteSize;
+        logDigest(L"[SAVE] transactions digest: ", digestData.transactionsDigest);
+
         auto sz = saveLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, totalWriteSize, (unsigned char*)ptr, directory);
-        if (sz != totalWriteSize)
+        if (sz != (long long)totalWriteSize)
         {
             outTotalTransactionSize = -1;
             return false;
@@ -250,41 +410,124 @@ private:
     }
     bool loadTickData(unsigned long long nTick, CHAR16* directory = NULL)
     {
-        long long totalLoadSize = nTick * sizeof(TickData);
+        unsigned long long totalLoadSize = nTick * sizeof(TickData);
+
+        // Verify size matches what was saved
+        if (digestDataValid && digestData.tickDataSize != totalLoadSize)
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: tickData expected ");
+            appendNumber(message, digestData.tickDataSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, totalLoadSize, TRUE);
+            logToConsole(message);
+            return false;
+        }
+
         auto sz = loadLargeFile(SNAPSHOT_TICK_DATA_FILE_NAME, totalLoadSize, (unsigned char*)tickDataPtr, directory);
-        if (sz != totalLoadSize)
+        if (sz != (long long)totalLoadSize)
         {
             return false;
+        }
+
+        // Verify digest if digest file was loaded
+        if (digestDataValid)
+        {
+            if (!verifyDigest((unsigned char*)tickDataPtr, totalLoadSize, digestData.tickDataDigest, L"tickData"))
+            {
+                return false;
+            }
         }
         return true;
     }
     bool loadTicks(unsigned long long nTick, CHAR16* directory = NULL)
     {
-        long long totalLoadSize = nTick * sizeof(Tick) * NUMBER_OF_COMPUTORS;
+        unsigned long long totalLoadSize = nTick * sizeof(Tick) * NUMBER_OF_COMPUTORS;
+
+        // Verify size matches what was saved
+        if (digestDataValid && digestData.ticksSize != totalLoadSize)
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: ticks expected ");
+            appendNumber(message, digestData.ticksSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, totalLoadSize, TRUE);
+            logToConsole(message);
+            return false;
+        }
+
         auto sz = loadLargeFile(SNAPSHOT_TICKS_FILE_NAME, totalLoadSize, (unsigned char*)ticksPtr, directory);
-        if (sz != totalLoadSize)
+        if (sz != (long long)totalLoadSize)
         {
             return false;
+        }
+
+        // Verify digest if digest file was loaded
+        if (digestDataValid)
+        {
+            if (!verifyDigest((unsigned char*)ticksPtr, totalLoadSize, digestData.ticksDigest, L"ticks"))
+            {
+                return false;
+            }
         }
         return true;
     }
     bool loadTickTransactionOffsets(unsigned long long nTick, CHAR16* directory = NULL)
     {
-        long long totalLoadSize = nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+        unsigned long long totalLoadSize = nTick * sizeof(tickTransactionOffsetsPtr[0]) * NUMBER_OF_TRANSACTIONS_PER_TICK;
+
+        // Verify size matches what was saved
+        if (digestDataValid && digestData.tickTransactionOffsetsSize != totalLoadSize)
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: tickTxOffsets expected ");
+            appendNumber(message, digestData.tickTransactionOffsetsSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, totalLoadSize, TRUE);
+            logToConsole(message);
+            return false;
+        }
+
         auto sz = loadLargeFile(SNAPSHOT_TICK_TRANSACTION_OFFSET_FILE_NAME, totalLoadSize, (unsigned char*)tickTransactionOffsetsPtr, directory);
-        if (sz != totalLoadSize)
+        if (sz != (long long)totalLoadSize)
         {
             return false;
+        }
+
+        // Verify digest if digest file was loaded
+        if (digestDataValid)
+        {
+            if (!verifyDigest((unsigned char*)tickTransactionOffsetsPtr, totalLoadSize, digestData.tickTransactionOffsetsDigest, L"tickTxOffsets"))
+            {
+                return false;
+            }
         }
         return true;
     }
     bool loadTransactions(unsigned long long nTick, unsigned long long totalLoadSize, CHAR16* directory = NULL)
     {
+        // Verify size matches what was saved
+        if (digestDataValid && digestData.transactionsSize != totalLoadSize)
+        {
+            setText(message, L"[LOAD] SIZE MISMATCH: transactions expected ");
+            appendNumber(message, digestData.transactionsSize, TRUE);
+            appendText(message, L" got ");
+            appendNumber(message, totalLoadSize, TRUE);
+            logToConsole(message);
+            return false;
+        }
+
         unsigned char* ptr = tickTransactionsPtr;
         auto sz = loadLargeFile(SNAPSHOT_TRANSACTIONS_FILE_NAME, totalLoadSize, (unsigned char*)ptr, directory);
-        if (sz != totalLoadSize)
+        if (sz != (long long)totalLoadSize)
         {
             return false;
+        }
+
+        // Verify digest if digest file was loaded
+        if (digestDataValid)
+        {
+            if (!verifyDigest(ptr, totalLoadSize, digestData.transactionsDigest, L"transactions"))
+            {
+                return false;
+            }
         }
         return true;
     }
@@ -308,62 +551,91 @@ public:
     // (1) check current meta data state
     // (2) write all missing chunks to disk
     // (3) update metadata state
+    
+    // Lock order: tickData -> tickTransactions -> ticks
+    void acquireAllLocks()
+    {
+        tickData.acquireLock();
+        tickTransactions.acquireLock();
+        for (int i = 0; i < NUMBER_OF_COMPUTORS; i++) ticks.acquireLock(i);
+    }
+
+    // Unlock order: ticks -> tickTransactions -> tickData
+    void releaseAllLocks()
+    {
+        for (int i = 0; i < NUMBER_OF_COMPUTORS; i++) ticks.releaseLock(i);
+        tickTransactions.releaseLock();
+        tickData.releaseLock();
+    }
+
     int trySaveToFile(unsigned int epoch, unsigned int tick, CHAR16* directory = NULL)
-    {   
+    {
         if (tick <= tickBegin) {
             return 6;
         }
         unsigned long long nTick = tick - tickBegin + 1; // inclusive [tickBegin, tick]
         prepareFilenames(epoch);
 
-        logToConsole(L"Saving tick data...");
-        tickData.acquireLock();
-        if (!saveTickData(nTick, directory))
-        {
-            tickData.releaseLock();
-            logToConsole(L"Failed to save tickData");
-            return 5;
-        }
-        tickData.releaseLock();
+        // Acquire both locks to ensure consistent snapshot
+        logToConsole(L"Acquiring locks for snapshot...");
+        acquireAllLocks();
 
-        logToConsole(L"Saving quorum ticks");
-        for (int i = 0; i < NUMBER_OF_COMPUTORS; i++) ticks.acquireLock(i);
-        if (!saveTicks(nTick, directory))
-        {
-            for (int i = 0; i < NUMBER_OF_COMPUTORS; i++) ticks.releaseLock(i);
-            logToConsole(L"Failed to save Ticks");
-            return 4;
-        }
-        for (int i = 0; i < NUMBER_OF_COMPUTORS; i++) ticks.releaseLock(i);
-
-
-        tickTransactions.acquireLock();
-        logToConsole(L"Saving tick transaction offset");
-        if (!saveTickTransactionOffsets(nTick, directory))
-        {
-            tickTransactions.releaseLock();
-            logToConsole(L"Failed to save transactionOffset");
-            return 3;
-        }
-        logToConsole(L"Saving transactions");
-
-        setText(message, L"tickBegin ");
-        appendNumber(message, tickBegin, TRUE);
-        appendText(message, L", tickSave ");
-        appendNumber(message, tick, TRUE);
-        appendText(message, L", nTick ");
-        appendNumber(message, nTick, TRUE);
-        logToConsole(message);
-
+        int result = 0;
         long long outTotalTransactionSize = 0;
         unsigned long long outNextTickTransactionOffset = 0;
-        if (!saveTransactions(nTick, outTotalTransactionSize, outNextTickTransactionOffset, directory))
+
+        logToConsole(L"Saving tick data...");
+        if (!saveTickData(nTick, directory))
         {
-            tickTransactions.releaseLock();
-            logToConsole(L"Failed to save transactions");
-            return 2;
+            logToConsole(L"Failed to save tickData");
+            result = 5;
         }
-        tickTransactions.releaseLock();
+        else
+        {
+            logToConsole(L"Saving quorum ticks");
+            if (!saveTicks(nTick, directory))
+            {
+                logToConsole(L"Failed to save Ticks");
+                result = 4;
+            }
+            else
+            {
+                logToConsole(L"Saving tick transaction offset");
+                if (!saveTickTransactionOffsets(nTick, directory))
+                {
+                    logToConsole(L"Failed to save transactionOffset");
+                    result = 3;
+                }
+                else
+                {
+                    logToConsole(L"Saving transactions");
+                    setText(message, L"tickBegin ");
+                    appendNumber(message, tickBegin, TRUE);
+                    appendText(message, L", tickSave ");
+                    appendNumber(message, tick, TRUE);
+                    appendText(message, L", nTick ");
+                    appendNumber(message, nTick, TRUE);
+                    logToConsole(message);
+
+                    if (!saveTransactions(nTick, outTotalTransactionSize, outNextTickTransactionOffset, directory))
+                    {
+                        logToConsole(L"Failed to save transactions");
+                        result = 2;
+                    }
+                }
+            }
+        }
+
+        // Release all locks AFTER all data operations
+        releaseAllLocks();
+
+        if (result != 0)
+        {
+            logToConsole(L"All locks released after failure");
+            return result;
+        }
+
+        logToConsole(L"All locks released after saving data");
 
         logToConsole(L"Saving meta data");
         if (!saveMetaData(epoch, tick, outTotalTransactionSize, outNextTickTransactionOffset, directory))
@@ -371,6 +643,26 @@ public:
             logToConsole(L"Failed to save metaData");
             return 1;
         }
+
+        // Save digest data to separate file
+        saveDigestData(directory);
+
+        // Summary of all digests saved
+        logToConsole(L"=== TICK STORAGE SAVE COMPLETE ===");
+        logDigest(L"  tickData:     ", digestData.tickDataDigest);
+        logDigest(L"  ticks:        ", digestData.ticksDigest);
+        logDigest(L"  tickTxOffsets:", digestData.tickTransactionOffsetsDigest);
+        logDigest(L"  transactions: ", digestData.transactionsDigest);
+        setText(message, L"  Sizes: tickData=");
+        appendNumber(message, digestData.tickDataSize, TRUE);
+        appendText(message, L", ticks=");
+        appendNumber(message, digestData.ticksSize, TRUE);
+        appendText(message, L", txOffsets=");
+        appendNumber(message, digestData.tickTransactionOffsetsSize, TRUE);
+        appendText(message, L", tx=");
+        appendNumber(message, digestData.transactionsSize, TRUE);
+        logToConsole(message);
+        logToConsole(L"==================================");
 
         return 0;
     }
@@ -398,6 +690,9 @@ public:
         nextTickTransactionOffset = metaData.outNextTickTransactionOffset;
         unsigned long long nTick = metaData.tickEnd - metaData.tickBegin + 1;
         prepareFilenames(epoch);
+
+        // Try to load digest file (for verification)
+        loadDigestData(directory);
 
         logToConsole(L"Loading tick data...");
         if (!loadTickData(nTick, directory))
@@ -471,6 +766,30 @@ public:
             logToConsole(message);
         }
 
+        // Summary of all digests loaded (if digest file was found)
+        if (digestDataValid)
+        {
+            logToConsole(L"=== TICK STORAGE LOAD COMPLETE ===");
+            logDigest(L"  tickData:     ", digestData.tickDataDigest);
+            logDigest(L"  ticks:        ", digestData.ticksDigest);
+            logDigest(L"  tickTxOffsets:", digestData.tickTransactionOffsetsDigest);
+            logDigest(L"  transactions: ", digestData.transactionsDigest);
+            setText(message, L"  Sizes: tickData=");
+            appendNumber(message, digestData.tickDataSize, TRUE);
+            appendText(message, L", ticks=");
+            appendNumber(message, digestData.ticksSize, TRUE);
+            appendText(message, L", txOffsets=");
+            appendNumber(message, digestData.tickTransactionOffsetsSize, TRUE);
+            appendText(message, L", tx=");
+            appendNumber(message, digestData.transactionsSize, TRUE);
+            logToConsole(message);
+            logToConsole(L"==================================");
+        }
+        else
+        {
+            logToConsole(L"=== TICK STORAGE LOAD COMPLETE (no digest file, verification skipped) ===");
+        }
+
         return 0;
     }
 
@@ -478,11 +797,7 @@ public:
     bool saveInvalidateData(unsigned int epoch, CHAR16* directory = NULL)
     {
         MetaData invalidMetaData;
-        invalidMetaData.epoch = 0;
-        invalidMetaData.tickBegin = 0;
-        invalidMetaData.tickEnd = 0;
-        invalidMetaData.outTotalTransactionSize = 0;
-        invalidMetaData.outNextTickTransactionOffset = 0;
+        setMem(&invalidMetaData, sizeof(invalidMetaData), 0);
         prepareMetaDataFilename(epoch);
         auto sz = saveLargeFile(SNAPSHOT_METADATA_FILE_NAME, sizeof(invalidMetaData), (unsigned char*)&invalidMetaData, directory);
         if (sz != sizeof(invalidMetaData))
