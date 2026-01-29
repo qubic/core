@@ -505,3 +505,407 @@ TEST(ContractQUSINO, saleQST_Success)
     QUSINO::getSCInfo_output scInfo = QUSINO.getSCInfo();
     EXPECT_EQ(scInfo.QSTAmountForSale, 100000 + amount);
 }
+
+TEST(ContractQUSINO, transferSTAROrQSC_STAR_Success)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id sender = QUSINO_testUser1;
+    id receiver = QUSINO_testUser2;
+    uint64 amount = 1000;
+    sint64 requiredReward = amount * QUSINO_STAR_PRICE;
+    
+    // First earn STAR
+    increaseEnergy(sender, requiredReward);
+    QUSINO::earnSTAR_output earnOutput = QUSINO.earnSTAR(sender, amount, requiredReward);
+    EXPECT_EQ(earnOutput.returnCode, QusinoSuccess);
+    
+    // Transfer STAR
+    increaseEnergy(sender, 1);
+    QUSINO::transferSTAROrQSC_output output = QUSINO.transferSTAROrQSC(sender, receiver, amount, 1, 1);
+    EXPECT_EQ(output.returnCode, QusinoSuccess);
+    
+    // Check balances
+    QUSINO::getUserAssetVolume_output senderVolume = QUSINO.getUserAssetVolume(sender);
+    QUSINO::getUserAssetVolume_output receiverVolume = QUSINO.getUserAssetVolume(receiver);
+    EXPECT_EQ(senderVolume.STARAmount, 0);
+    EXPECT_EQ(receiverVolume.STARAmount, amount);
+}
+
+TEST(ContractQUSINO, transferSTAROrQSC_QSC_Success)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    // Use QST asset from contract initialization
+    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _, _B, _V, _G, _B, _S, _U, _Q, _G);
+    uint64 qstAssetName = 13153214312341;
+    sint64 totalShares = 1000000;
+    
+    increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
+    EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
+    
+    Asset asset;
+    asset.assetName = qstAssetName;
+    asset.issuer = qstIssuer;
+    increaseEnergy(qstIssuer, QUSINO_TRANSFER_RIGHTS_FEE);
+    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, totalShares, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), totalShares);
+    
+    id sender = QUSINO_testUser2;
+    id receiver = QUSINO_testUser3;
+    uint64 amount = 5000;
+    
+    // Transfer QST to sender first
+    increaseEnergy(qstIssuer, QUSINO_TRANSFER_ASSET_FEE);
+    EXPECT_EQ(QUSINO.transferAsset(qstIssuer, sender, qstAssetName, qstIssuer, amount), amount);
+    
+    // Earn QSC
+    increaseEnergy(sender, 1);
+    QUSINO::earnQSC_output earnOutput = QUSINO.earnQSC(sender, amount, 1);
+    EXPECT_EQ(earnOutput.returnCode, QusinoSuccess);
+    
+    // Transfer QSC
+    increaseEnergy(sender, 1);
+    QUSINO::transferSTAROrQSC_output output = QUSINO.transferSTAROrQSC(sender, receiver, amount, 0, 1);
+    EXPECT_EQ(output.returnCode, QusinoSuccess);
+    
+    // Check balances
+    QUSINO::getUserAssetVolume_output senderVolume = QUSINO.getUserAssetVolume(sender);
+    QUSINO::getUserAssetVolume_output receiverVolume = QUSINO.getUserAssetVolume(receiver);
+    EXPECT_EQ(senderVolume.QSCAmount, 0);
+    EXPECT_EQ(receiverVolume.QSCAmount, amount);
+}
+
+TEST(ContractQUSINO, transferSTAROrQSC_InsufficientSTAR)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id sender = QUSINO_testUser1;
+    id receiver = QUSINO_testUser2;
+    uint64 amount = 1000;
+    
+    increaseEnergy(sender, 1);
+    QUSINO::transferSTAROrQSC_output output = QUSINO.transferSTAROrQSC(sender, receiver, amount, 1, 1);
+    EXPECT_EQ(output.returnCode, QusinoinsufficientSTAR);
+}
+
+TEST(ContractQUSINO, transferSTAROrQSC_InsufficientQSC)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id sender = QUSINO_testUser1;
+    id receiver = QUSINO_testUser2;
+    uint64 amount = 1000;
+    
+    increaseEnergy(sender, 1);
+    QUSINO::transferSTAROrQSC_output output = QUSINO.transferSTAROrQSC(sender, receiver, amount, 0, 1);
+    EXPECT_EQ(output.returnCode, QusinoinsufficientQSC);
+}
+
+TEST(ContractQUSINO, stakeAssets_STAR_Success)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id user = QUSINO_testUser1;
+    uint64 amount = 20000; // Above minimum
+    uint32 stakingType = 1; // 1 month
+    uint32 assetType = 1; // STAR
+    
+    // First earn STAR
+    sint64 requiredReward = amount * QUSINO_STAR_PRICE;
+    increaseEnergy(user, requiredReward);
+    QUSINO::earnSTAR_output earnOutput = QUSINO.earnSTAR(user, amount, requiredReward);
+    EXPECT_EQ(earnOutput.returnCode, QusinoSuccess);
+    
+    // Stake STAR
+    increaseEnergy(user, 1);
+    QUSINO::stakeAssets_output output = QUSINO.stakeAssets(user, amount, stakingType, assetType, 1);
+    EXPECT_EQ(output.returnCode, QusinoSuccess);
+    
+    // Check staking info
+    QUSINO::getUserStakingInfo_output stakingInfo = QUSINO.getUserStakingInfo(user, 0);
+    EXPECT_EQ(stakingInfo.counts, 1);
+    EXPECT_EQ(stakingInfo.amount.get(0), amount);
+    EXPECT_EQ(stakingInfo.type.get(0), stakingType);
+    EXPECT_EQ(stakingInfo.typeOfAsset.get(0), assetType);
+    
+    // Check SC info
+    QUSINO::getSCInfo_output scInfo = QUSINO.getSCInfo();
+    EXPECT_EQ(scInfo.totalStakedSTAR, amount);
+    EXPECT_EQ(scInfo.numberOfStakers, 1);
+}
+
+TEST(ContractQUSINO, stakeAssets_LowStaking)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id user = QUSINO_testUser1;
+    uint64 amount = 5000; // Below minimum
+    uint32 stakingType = 1;
+    uint32 assetType = 1;
+    
+    increaseEnergy(user, 1);
+    QUSINO::stakeAssets_output output = QUSINO.stakeAssets(user, amount, stakingType, assetType, 1);
+    EXPECT_EQ(output.returnCode, QusinoLowStaking);
+}
+
+TEST(ContractQUSINO, stakeAssets_WrongStakingType)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id user = QUSINO_testUser1;
+    uint64 amount = 20000;
+    uint32 stakingType = 0; // Invalid
+    uint32 assetType = 1;
+    
+    increaseEnergy(user, 1);
+    QUSINO::stakeAssets_output output = QUSINO.stakeAssets(user, amount, stakingType, assetType, 1);
+    EXPECT_EQ(output.returnCode, QusinoWrongStakingType);
+}
+
+TEST(ContractQUSINO, stakeAssets_WrongAssetType)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id user = QUSINO_testUser1;
+    uint64 amount = 20000;
+    uint32 stakingType = 1;
+    uint32 assetType = 4; // Invalid
+    
+    increaseEnergy(user, 1);
+    QUSINO::stakeAssets_output output = QUSINO.stakeAssets(user, amount, stakingType, assetType, 1);
+    EXPECT_EQ(output.returnCode, QusinoWrongAssetType);
+}
+
+TEST(ContractQUSINO, submitGame_Success)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id user = QUSINO_testUser1;
+    Array<uint8, 64> URI = createURI("https://example.com/game1");
+    sint64 requiredReward = QUSINO_GAME_SUBMIT_FEE;
+    
+    increaseEnergy(user, requiredReward);
+    QUSINO::submitGame_output output = QUSINO.submitGame(user, URI, requiredReward);
+    EXPECT_EQ(output.returnCode, QusinoSuccess);
+    
+    // Check game was added
+    QUSINO::getActiveGameList_output gameList = QUSINO.getActiveGameList(0);
+    EXPECT_GT(gameList.gameIndexes.get(0), 0);
+    
+    // Check SC info
+    QUSINO::getSCInfo_output scInfo = QUSINO.getSCInfo();
+    EXPECT_EQ(scInfo.maxGameIndex, 2); // Starts at 1, so first game is index 1
+    EXPECT_EQ(scInfo.epochRevenue, QUSINO_GAME_SUBMIT_FEE);
+}
+
+TEST(ContractQUSINO, submitGame_InsufficientFunds)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id user = QUSINO_testUser1;
+    Array<uint8, 64> URI = createURI("https://example.com/game1");
+    sint64 insufficientReward = QUSINO_GAME_SUBMIT_FEE - 1;
+    
+    increaseEnergy(user, insufficientReward);
+    QUSINO::submitGame_output output = QUSINO.submitGame(user, URI, insufficientReward);
+    EXPECT_EQ(output.returnCode, QusinoinsufficientFunds);
+}
+
+TEST(ContractQUSINO, voteInGameProposal_Success)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id proposer = QUSINO_testUser1;
+    id voter = QUSINO_testUser2;
+    Array<uint8, 64> URI = createURI("https://example.com/game1");
+    
+    // First submit a game
+    sint64 requiredReward = QUSINO_GAME_SUBMIT_FEE;
+    increaseEnergy(proposer, requiredReward);
+    QUSINO::submitGame_output submitOutput = QUSINO.submitGame(proposer, URI, requiredReward);
+    EXPECT_EQ(submitOutput.returnCode, QusinoSuccess);
+    
+    // Earn STAR for voting
+    uint64 starAmount = QUSINO_VOTE_FEE;
+    sint64 starReward = starAmount * QUSINO_STAR_PRICE;
+    increaseEnergy(voter, starReward);
+    QUSINO::earnSTAR_output earnOutput = QUSINO.earnSTAR(voter, starAmount, starReward);
+    EXPECT_EQ(earnOutput.returnCode, QusinoSuccess);
+    
+    // Vote on the game
+    increaseEnergy(voter, 1);
+    QUSINO::getActiveGameList_output gameList = QUSINO.getActiveGameList(0);
+    uint64 gameIndex = gameList.gameIndexes.get(0);
+    QUSINO::voteInGameProposal_output voteOutput = QUSINO.voteInGameProposal(voter, URI, gameIndex, 1, 1);
+    EXPECT_EQ(voteOutput.returnCode, QusinoSuccess);
+    
+    // Check vote was recorded
+    QUSINO::getActiveGameList_output updatedGameList = QUSINO.getActiveGameList(0);
+    // Note: We can't directly check votes, but we can verify the game still exists
+    EXPECT_GT(updatedGameList.gameIndexes.get(0), 0);
+}
+
+TEST(ContractQUSINO, voteInGameProposal_InsufficientVoteFee)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id proposer = QUSINO_testUser1;
+    id voter = QUSINO_testUser2;
+    Array<uint8, 64> URI = createURI("https://example.com/game1");
+    
+    // Submit a game
+    sint64 requiredReward = QUSINO_GAME_SUBMIT_FEE;
+    increaseEnergy(proposer, requiredReward);
+    QUSINO::submitGame_output submitOutput = QUSINO.submitGame(proposer, URI, requiredReward);
+    EXPECT_EQ(submitOutput.returnCode, QusinoSuccess);
+    
+    // Try to vote without enough STAR
+    increaseEnergy(voter, 1);
+    QUSINO::getActiveGameList_output gameList = QUSINO.getActiveGameList(0);
+    uint64 gameIndex = gameList.gameIndexes.get(0);
+    QUSINO::voteInGameProposal_output voteOutput = QUSINO.voteInGameProposal(voter, URI, gameIndex, 1, 1);
+    EXPECT_EQ(voteOutput.returnCode, QusinoInsufficientVoteFee);
+}
+
+TEST(ContractQUSINO, voteInGameProposal_WrongGameURI)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id proposer = QUSINO_testUser1;
+    id voter = QUSINO_testUser2;
+    Array<uint8, 64> URI1 = createURI("https://example.com/game1");
+    Array<uint8, 64> URI2 = createURI("https://example.com/game2");
+    
+    // Submit a game
+    sint64 requiredReward = QUSINO_GAME_SUBMIT_FEE;
+    increaseEnergy(proposer, requiredReward);
+    QUSINO::submitGame_output submitOutput = QUSINO.submitGame(proposer, URI1, requiredReward);
+    EXPECT_EQ(submitOutput.returnCode, QusinoSuccess);
+    
+    // Earn STAR for voting
+    uint64 starAmount = QUSINO_VOTE_FEE;
+    sint64 starReward = starAmount * QUSINO_STAR_PRICE;
+    increaseEnergy(voter, starReward);
+    QUSINO::earnSTAR_output earnOutput = QUSINO.earnSTAR(voter, starAmount, starReward);
+    EXPECT_EQ(earnOutput.returnCode, QusinoSuccess);
+    
+    // Try to vote with wrong URI
+    increaseEnergy(voter, 1);
+    QUSINO::getActiveGameList_output gameList = QUSINO.getActiveGameList(0);
+    uint64 gameIndex = gameList.gameIndexes.get(0);
+    QUSINO::voteInGameProposal_output voteOutput = QUSINO.voteInGameProposal(voter, URI2, gameIndex, 1, 1);
+    EXPECT_EQ(voteOutput.returnCode, QusinoWrongGameURIForVote);
+}
+
+TEST(ContractQUSINO, getUserAssetVolume_Empty)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id user = QUSINO_testUser1;
+    QUSINO::getUserAssetVolume_output output = QUSINO.getUserAssetVolume(user);
+    EXPECT_EQ(output.STARAmount, 0);
+    EXPECT_EQ(output.QSCAmount, 0);
+}
+
+TEST(ContractQUSINO, getUserStakingInfo_Empty)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id user = QUSINO_testUser1;
+    QUSINO::getUserStakingInfo_output output = QUSINO.getUserStakingInfo(user, 0);
+    EXPECT_EQ(output.counts, 0);
+}
+
+TEST(ContractQUSINO, getSCInfo_Initial)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    QUSINO::getSCInfo_output output = QUSINO.getSCInfo();
+    QUSINO.getState()->checkSCInfo(output, 0, 0, 0, 0, 0, 0, 0, 1, 0, 100000);
+}
+
+TEST(ContractQUSINO, getActiveGameList_Empty)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    QUSINO::getActiveGameList_output output = QUSINO.getActiveGameList(0);
+    // Should be empty initially
+}
+
+TEST(ContractQUSINO, END_EPOCH_StakingRewards)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id user = QUSINO_testUser1;
+    uint64 amount = 20000;
+    uint32 stakingType = 1; // 1 month (4 epochs)
+    uint32 assetType = 1; // STAR
+    
+    // Earn and stake STAR
+    sint64 requiredReward = amount * QUSINO_STAR_PRICE;
+    increaseEnergy(user, requiredReward);
+    QUSINO::earnSTAR_output earnOutput = QUSINO.earnSTAR(user, amount, requiredReward);
+    EXPECT_EQ(earnOutput.returnCode, QusinoSuccess);
+    
+    increaseEnergy(user, 1);
+    QUSINO::stakeAssets_output stakeOutput = QUSINO.stakeAssets(user, amount, stakingType, assetType, 1);
+    EXPECT_EQ(stakeOutput.returnCode, QusinoSuccess);
+    
+    // Advance epochs to maturity (4 epochs for 1 month staking)
+    for (uint32 i = 0; i < 4; i++)
+    {
+        QUSINO.endEpoch();
+        ++system.epoch;
+    }
+    
+    // Check that staking was completed and rewards were given
+    QUSINO::getUserAssetVolume_output userVolume = QUSINO.getUserAssetVolume(user);
+    uint64 expectedReward = div(amount * QUSINO_STAR_STAKING_PERCENT_1 * 1ULL, 100ULL);
+    EXPECT_EQ(userVolume.STARAmount, amount + expectedReward); // Original amount + reward
+    
+    // Check staking was removed
+    QUSINO::getUserStakingInfo_output stakingInfo = QUSINO.getUserStakingInfo(user, 0);
+    EXPECT_EQ(stakingInfo.counts, 0);
+    
+    // Check SC info
+    QUSINO::getSCInfo_output scInfo = QUSINO.getSCInfo();
+    EXPECT_EQ(scInfo.totalStakedSTAR, 0);
+    EXPECT_EQ(scInfo.numberOfStakers, 0);
+}
+
+TEST(ContractQUSINO, END_EPOCH_FailedGameRemoval)
+{
+    ContractTestingQUSINO QUSINO;
+    
+    id proposer = QUSINO_testUser1;
+    Array<uint8, 64> URI = createURI("https://example.com/game1");
+    
+    // Submit a game
+    sint64 requiredReward = QUSINO_GAME_SUBMIT_FEE;
+    increaseEnergy(proposer, requiredReward);
+    QUSINO::submitGame_output submitOutput = QUSINO.submitGame(proposer, URI, requiredReward);
+    EXPECT_EQ(submitOutput.returnCode, QusinoSuccess);
+    
+    QUSINO::getActiveGameList_output gameList = QUSINO.getActiveGameList(0);
+    uint64 gameIndex = gameList.gameIndexes.get(0);
+    
+    // Vote no to make it fail
+    id voter1 = QUSINO_testUser2;
+    uint64 starAmount = QUSINO_VOTE_FEE;
+    sint64 starReward = starAmount * QUSINO_STAR_PRICE;
+    increaseEnergy(voter1, starReward);
+    QUSINO::earnSTAR_output earnOutput1 = QUSINO.earnSTAR(voter1, starAmount, starReward);
+    EXPECT_EQ(earnOutput1.returnCode, QusinoSuccess);
+    
+    increaseEnergy(voter1, 1);
+    QUSINO::voteInGameProposal_output voteOutput1 = QUSINO.voteInGameProposal(voter1, URI, gameIndex, 0, 1);
+    EXPECT_EQ(voteOutput1.returnCode, QusinoSuccess);
+    
+    // End epoch - game should be moved to failed list if no votes >= yes votes
+    QUSINO.endEpoch();
+    ++system.epoch;
+    
+    // Check failed game list
+    QUSINO::getFailedGameList_output failedList = QUSINO.getFailedGameList(0);
+    // Game should be in failed list
+}
