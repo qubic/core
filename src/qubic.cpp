@@ -3352,30 +3352,7 @@ static void processTick(unsigned long long processorNumber)
 {
     PROFILE_SCOPE();
 
-    if (system.tick > system.initialTick)
-    {
-        etalonTick.prevResourceTestingDigest = resourceTestingDigest;
-        etalonTick.prevSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
-        getUniverseDigest(etalonTick.prevUniverseDigest);
-        getComputerDigest(etalonTick.prevComputerDigest);
-        etalonTick.prevTransactionBodyDigest = etalonTick.saltedTransactionBodyDigest;
-
-#if !defined(NDEBUG)
-        {
-            CHAR16 dbgMsg[200];
-            CHAR16 digestChars[60 + 1];
-            setText(dbgMsg, L"[ETALON UPDATE] processTick updated prev digests for tick ");
-            appendNumber(dbgMsg, system.tick, FALSE);
-            addDebugMessage(dbgMsg);
-
-            setText(dbgMsg, L"[ETALON UPDATE] prevComputerDigest: ");
-            getIdentity(etalonTick.prevComputerDigest.m256i_u8, digestChars, true);
-            appendText(dbgMsg, digestChars);
-            addDebugMessage(dbgMsg);
-        }
-#endif
-    }
-    else if (system.tick == system.initialTick) // the first tick of an epoch
+    if (system.tick == system.initialTick) // the first tick of an epoch
     {
         // RULE: prevDigests of tick T are the digests of tick T-1, so epoch number doesn't matter.
         // For seamless transition, spectrum and universe and computer have been changed after endEpoch event
@@ -3396,11 +3373,6 @@ static void processTick(unsigned long long processorNumber)
         }
 #endif
     }
-    else
-    {
-        // it should never go here
-    }
-
     // Ensure to only call INITIALIZE and BEGIN_EPOCH once per epoch:
     // system.initialTick usually is the first tick of the epoch, except when the network is restarted
     // from scratch with a new TICK (which shall be indicated by TICK_IS_FIRST_TICK_OF_EPOCH == 0).
@@ -6844,6 +6816,29 @@ static void tickProcessor(void*)
                                 }
 
                                 system.tick++;
+
+                                if (system.tick > system.initialTick)
+                                {
+                                    // Test here: we move the update of previous digests to after the tick is advanced
+                                    etalonTick.prevResourceTestingDigest = resourceTestingDigest;
+                                    etalonTick.prevSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
+                                    getUniverseDigest(etalonTick.prevUniverseDigest);
+                                    getComputerDigest(etalonTick.prevComputerDigest);
+                                    etalonTick.prevTransactionBodyDigest = etalonTick.saltedTransactionBodyDigest;
+#if !defined(NDEBUG)
+                                    {
+                                        CHAR16 dbgMsg[200];
+                                        CHAR16 digestChars[60 + 1];
+                                        setText(dbgMsg, L"[TICK ADVANCE] Updated prevDigests for tick ");
+                                        appendNumber(dbgMsg, system.tick, FALSE);
+                                        addDebugMessage(dbgMsg);
+                                        setText(dbgMsg, L"[TICK ADVANCE] New prevComputerDigest: ");
+                                        getIdentity(etalonTick.prevComputerDigest.m256i_u8, digestChars, true);
+                                        appendText(dbgMsg, digestChars);
+                                        addDebugMessage(dbgMsg);
+                                    }
+#endif
+                                }
 
 #if !defined(NDEBUG)
                                 {
