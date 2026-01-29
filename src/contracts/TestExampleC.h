@@ -332,30 +332,56 @@ public:
 		OI::Price::OracleQuery priceOracleQuery;
 		OI::Mock::OracleQuery mockOracleQuery;
 		sint64 oracleQueryId;
+		uint32 c;
+		NotificationLog notificationLog;
 	};
 
 	END_TICK_WITH_LOCALS()
 	{
 		// Query oracles
-		if (qpi.tick() % 10 == 0)
+		if (qpi.tick() % 11 == 1)
 		{
-			// Setup query (in extra scope limit scope of using namespace Ch
+			for (locals.c = (qpi.tick() % 5) + 1; locals.c > 0; --locals.c)
 			{
-				using namespace Ch;
-				locals.priceOracleQuery.oracle = OI::Price::getMockOracleId();
-				locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
-				locals.priceOracleQuery.currency2 = id(U, S, D, null, null);
-				locals.priceOracleQuery.timestamp = qpi.now();
-			}
+				// Setup query (in extra scope limit scope of using namespace Ch
+				if (locals.c % 3 == 0)
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getMockOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(U, S, D, null, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
+				else if (locals.c % 3 == 1)
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getMockOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(E, T, H, null, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
+				else
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getCoingeckoOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
 
-			locals.oracleQueryId = QUERY_ORACLE(OI::Price, locals.priceOracleQuery, NotifyPriceOracleReply, 20000);
-			ASSERT(qpi.getOracleQueryStatus(locals.oracleQueryId) == ORACLE_QUERY_STATUS_PENDING);
+				locals.oracleQueryId = QUERY_ORACLE(OI::Price, locals.priceOracleQuery, NotifyPriceOracleReply, 60000);
+				ASSERT(qpi.getOracleQueryStatus(locals.oracleQueryId) == ORACLE_QUERY_STATUS_PENDING);
+
+				locals.notificationLog = NotificationLog{ CONTRACT_INDEX, OI::Price::oracleInterfaceIndex, ORACLE_QUERY_STATUS_PENDING, 0, 0, locals.oracleQueryId };
+			}
 		}
 		if (qpi.tick() % 2 == 1)
 		{
 			locals.mockOracleQuery.value = qpi.tick();
-			QUERY_ORACLE(OI::Mock, locals.mockOracleQuery, NotifyMockOracleReply, 8000);
+			QUERY_ORACLE(OI::Mock, locals.mockOracleQuery, NotifyMockOracleReply, 60000);
+			locals.notificationLog = NotificationLog{ CONTRACT_INDEX, OI::Mock::oracleInterfaceIndex, ORACLE_QUERY_STATUS_PENDING, 0, qpi.tick(), locals.oracleQueryId};
 		}
+		LOG_INFO(locals.notificationLog);
 	}
 
 	//---------------------------------------------------------------
