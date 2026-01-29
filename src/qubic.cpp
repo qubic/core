@@ -3325,6 +3325,21 @@ static void processTick(unsigned long long processorNumber)
         getUniverseDigest(etalonTick.prevUniverseDigest);
         getComputerDigest(etalonTick.prevComputerDigest);
         etalonTick.prevTransactionBodyDigest = etalonTick.saltedTransactionBodyDigest;
+
+#if !defined(NDEBUG)
+        {
+            CHAR16 dbgMsg[200];
+            CHAR16 digestChars[60 + 1];
+            setText(dbgMsg, L"[ETALON UPDATE] processTick updated prev digests for tick ");
+            appendNumber(dbgMsg, system.tick, FALSE);
+            addDebugMessage(dbgMsg);
+
+            setText(dbgMsg, L"[ETALON UPDATE] prevComputerDigest: ");
+            getIdentity(etalonTick.prevComputerDigest.m256i_u8, digestChars, true);
+            appendText(dbgMsg, digestChars);
+            addDebugMessage(dbgMsg);
+        }
+#endif
     }
     else if (system.tick == system.initialTick) // the first tick of an epoch
     {
@@ -3550,6 +3565,21 @@ static void processTick(unsigned long long processorNumber)
 
     getUniverseDigest(etalonTick.saltedUniverseDigest);
     getComputerDigest(etalonTick.saltedComputerDigest);
+
+#if !defined(NDEBUG)
+    {
+        CHAR16 dbgMsg[200];
+        CHAR16 digestChars[60 + 1];
+        setText(dbgMsg, L"[ETALON UPDATE] processTick updated salted digests for tick ");
+        appendNumber(dbgMsg, system.tick, FALSE);
+        addDebugMessage(dbgMsg);
+
+        setText(dbgMsg, L"[ETALON UPDATE] saltedComputerDigest: ");
+        getIdentity(etalonTick.saltedComputerDigest.m256i_u8, digestChars, true);
+        appendText(dbgMsg, digestChars);
+        addDebugMessage(dbgMsg);
+    }
+#endif
 
 #if !defined(NDEBUG) && 1
     {
@@ -5619,6 +5649,103 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
 {
     const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
     const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
+
+#if !defined(NDEBUG)
+    // Log first vote details once per tick for debugging
+    static unsigned int lastVoteDebugTick = 0;
+    if (lastVoteDebugTick != system.tick)
+    {
+        lastVoteDebugTick = system.tick;
+
+        CHAR16 dbgMsg[300];
+        CHAR16 digestChars[60 + 1];
+
+        setText(dbgMsg, L"[VOTE DEBUG] updateVotesCount for tick ");
+        appendNumber(dbgMsg, system.tick, FALSE);
+        appendText(dbgMsg, L", epoch ");
+        appendNumber(dbgMsg, system.epoch, FALSE);
+        addDebugMessage(dbgMsg);
+
+        // Find first valid vote and log its details
+        for (unsigned int j = 0; j < NUMBER_OF_COMPUTORS; j++)
+        {
+            const Tick* firstVote = &tsCompTicks[j];
+            if (firstVote->epoch == system.epoch)
+            {
+                setText(dbgMsg, L"[VOTE DEBUG] First vote from computor ");
+                appendNumber(dbgMsg, j, FALSE);
+                appendText(dbgMsg, L", tick=");
+                appendNumber(dbgMsg, firstVote->tick, FALSE);
+                addDebugMessage(dbgMsg);
+
+                setText(dbgMsg, L"[VOTE DEBUG] Vote.time: ");
+                appendNumber(dbgMsg, firstVote->year, FALSE);
+                appendText(dbgMsg, L"/");
+                appendNumber(dbgMsg, firstVote->month, FALSE);
+                appendText(dbgMsg, L"/");
+                appendNumber(dbgMsg, firstVote->day, FALSE);
+                appendText(dbgMsg, L" ");
+                appendNumber(dbgMsg, firstVote->hour, FALSE);
+                appendText(dbgMsg, L":");
+                appendNumber(dbgMsg, firstVote->minute, FALSE);
+                appendText(dbgMsg, L":");
+                appendNumber(dbgMsg, firstVote->second, FALSE);
+                appendText(dbgMsg, L".");
+                appendNumber(dbgMsg, firstVote->millisecond, FALSE);
+                addDebugMessage(dbgMsg);
+
+                setText(dbgMsg, L"[VOTE DEBUG] Local.time: ");
+                appendNumber(dbgMsg, etalonTick.year, FALSE);
+                appendText(dbgMsg, L"/");
+                appendNumber(dbgMsg, etalonTick.month, FALSE);
+                appendText(dbgMsg, L"/");
+                appendNumber(dbgMsg, etalonTick.day, FALSE);
+                appendText(dbgMsg, L" ");
+                appendNumber(dbgMsg, etalonTick.hour, FALSE);
+                appendText(dbgMsg, L":");
+                appendNumber(dbgMsg, etalonTick.minute, FALSE);
+                appendText(dbgMsg, L":");
+                appendNumber(dbgMsg, etalonTick.second, FALSE);
+                appendText(dbgMsg, L".");
+                appendNumber(dbgMsg, etalonTick.millisecond, FALSE);
+                addDebugMessage(dbgMsg);
+
+                setText(dbgMsg, L"[VOTE DEBUG] Vote.prevSpectrumDigest: ");
+                getIdentity(firstVote->prevSpectrumDigest.m256i_u8, digestChars, true);
+                appendText(dbgMsg, digestChars);
+                addDebugMessage(dbgMsg);
+
+                setText(dbgMsg, L"[VOTE DEBUG] Local.prevSpectrumDigest: ");
+                getIdentity(etalonTick.prevSpectrumDigest.m256i_u8, digestChars, true);
+                appendText(dbgMsg, digestChars);
+                addDebugMessage(dbgMsg);
+
+                setText(dbgMsg, L"[VOTE DEBUG] Vote.prevComputerDigest: ");
+                getIdentity(firstVote->prevComputerDigest.m256i_u8, digestChars, true);
+                appendText(dbgMsg, digestChars);
+                addDebugMessage(dbgMsg);
+
+                setText(dbgMsg, L"[VOTE DEBUG] Local.prevComputerDigest: ");
+                getIdentity(etalonTick.prevComputerDigest.m256i_u8, digestChars, true);
+                appendText(dbgMsg, digestChars);
+                addDebugMessage(dbgMsg);
+
+                setText(dbgMsg, L"[VOTE DEBUG] Vote.transactionDigest: ");
+                getIdentity(firstVote->transactionDigest.m256i_u8, digestChars, true);
+                appendText(dbgMsg, digestChars);
+                addDebugMessage(dbgMsg);
+
+                setText(dbgMsg, L"[VOTE DEBUG] Local.transactionDigest: ");
+                getIdentity(etalonTick.transactionDigest.m256i_u8, digestChars, true);
+                appendText(dbgMsg, digestChars);
+                addDebugMessage(dbgMsg);
+
+                break;
+            }
+        }
+    }
+#endif
+
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
         ts.ticks.acquireLock(i);
@@ -5689,12 +5816,9 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                             {
                                 if (!saltedComputerDigestErrorPrinted)
                                 {
-                                    setText(dbgMsg, L"saltedComputerDigest mismatch! QuorumTick ");
-                                    getIdentity(tick->saltedComputerDigest.m256i_u8, digestChars, true);
-                                    appendText(dbgMsg, digestChars);
-                                    appendText(dbgMsg, L", local");
-                                    getIdentity(saltedDigest.m256i_u8, digestChars, true);
-                                    appendText(dbgMsg, digestChars);
+                                    setText(dbgMsg, L"[SALTED MISMATCH] saltedComputerDigest! computor=");
+                                    appendNumber(dbgMsg, i, FALSE);
+                                    addDebugMessage(dbgMsg);
                                     saltedComputerDigestErrorPrinted = true;
                                 }
                             }
@@ -5705,12 +5829,9 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                         {
                             if (!saltedUniverseDigestErrorPrinted)
                             {
-                                setText(dbgMsg, L"saltedUniverseDigest mismatch! QuorumTick ");
-                                getIdentity(tick->saltedUniverseDigest.m256i_u8, digestChars, true);
-                                appendText(dbgMsg, digestChars);
-                                appendText(dbgMsg, L", local");
-                                getIdentity(saltedDigest.m256i_u8, digestChars, true);
-                                appendText(dbgMsg, digestChars);
+                                setText(dbgMsg, L"[SALTED MISMATCH] saltedUniverseDigest! computor=");
+                                appendNumber(dbgMsg, i, FALSE);
+                                addDebugMessage(dbgMsg);
                                 saltedUniverseDigestErrorPrinted = true;
                             }
                         }
@@ -5721,12 +5842,9 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                     {
                         if (!saltedSpectrumDigestErrorPrinted)
                         {
-                            setText(dbgMsg, L"saltedSpectrumDigest mismatch! QuorumTick ");
-                            getIdentity(tick->saltedSpectrumDigest.m256i_u8, digestChars, true);
-                            appendText(dbgMsg, digestChars);
-                            appendText(dbgMsg, L", local");
-                            getIdentity(saltedDigest.m256i_u8, digestChars, true);
-                            appendText(dbgMsg, digestChars);
+                            setText(dbgMsg, L"[SALTED MISMATCH] saltedSpectrumDigest! computor=");
+                            appendNumber(dbgMsg, i, FALSE);
+                            addDebugMessage(dbgMsg);
                             saltedSpectrumDigestErrorPrinted = true;
                         }
                     }
@@ -5737,10 +5855,9 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                 {
                     if (!saltedRessourceDigestErrorPrinted)
                     {
-                        setText(dbgMsg, L"saltedResourceTestingDigest mismatch! QuorumTick ");
-                        appendNumber(dbgMsg, tick->saltedResourceTestingDigest, TRUE);
-                        appendText(dbgMsg, L", local");
-                        appendNumber(dbgMsg, saltedDigest.m256i_u32[0], TRUE);
+                        setText(dbgMsg, L"[SALTED MISMATCH] saltedResourceTestingDigest! computor=");
+                        appendNumber(dbgMsg, i, FALSE);
+                        addDebugMessage(dbgMsg);
                         saltedRessourceDigestErrorPrinted = true;
                     }
                 }
@@ -5899,6 +6016,25 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
         }
         ts.ticks.releaseLock(i);
     }
+
+#if !defined(NDEBUG)
+    // Log vote counting summary
+    static unsigned int lastSummaryTick = 0;
+    if (lastSummaryTick != system.tick && (tickTotalNumberOfComputors > 0 || tickNumberOfComputors > 0))
+    {
+        lastSummaryTick = system.tick;
+        CHAR16 summaryMsg[200];
+        setText(summaryMsg, L"[VOTE SUMMARY] tick=");
+        appendNumber(summaryMsg, system.tick, FALSE);
+        appendText(summaryMsg, L", aligned=");
+        appendNumber(summaryMsg, tickNumberOfComputors, FALSE);
+        appendText(summaryMsg, L", total=");
+        appendNumber(summaryMsg, tickTotalNumberOfComputors, FALSE);
+        appendText(summaryMsg, L", misaligned=");
+        appendNumber(summaryMsg, tickTotalNumberOfComputors - tickNumberOfComputors, FALSE);
+        addDebugMessage(summaryMsg);
+    }
+#endif
 }
 
 // try to resend tick votes if local system.tick gets stuck for too long
