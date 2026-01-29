@@ -2,6 +2,8 @@
 
 #include "oracle_testing.h"
 
+#include "platform/random.h"
+
 
 struct OracleEngineTest : public LoggingTest
 {
@@ -70,6 +72,27 @@ struct OracleEngineWithInitAndDeinit : public OracleEngine<ownComputorSeedsCount
 		EXPECT_LT(queryIndex, this->oracleQueryCount);
 		const OracleQueryMetadata& oqm = this->queries[queryIndex];
 		EXPECT_EQ(oqm.status, expectedStatus);
+	}
+
+	// Test findFirstQueryIndexOfTick(). Ticks must be sorted!
+	void testFindFirstQueryIndexOfTick(const std::vector<uint32_t>& ticks)
+	{
+		// setup pseudo-queries
+		this->oracleQueryCount = 0;
+		for (auto tick : ticks)
+			this->queries[this->oracleQueryCount++].queryTick = tick;
+
+		// test function with all values in range
+		uint32_t minValue = (ticks.empty()) ? 0 : ticks.front() - 1;
+		uint32_t maxValue = (ticks.empty()) ? 2 : ticks.back() + 1;
+		for (uint32 value = minValue; value <= maxValue; ++value)
+		{
+			auto it = std::find(ticks.begin(), ticks.end(), value);
+			uint32_t expectedIndex = (it == ticks.end()) ? UINT32_MAX : uint32(it - ticks.begin());
+			EXPECT_EQ(this->findFirstQueryIndexOfTick(value), expectedIndex);
+		}
+
+		this->reset();
 	}
 };
 
@@ -465,3 +488,49 @@ Tests:
 - processOracleReplyCommitTransaction wihtout get getReplyCommitTransaction
 - trigger failure
 */
+
+TEST(OracleEngine, FindFirstQueryIndexOfTick)
+{
+	OracleEngineTest test;
+	OracleEngineWithInitAndDeinit<676> oracleEngine(broadcastedComputors.computors.publicKeys);
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 1 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 2 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 3 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 1, 1 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 1, 2 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 1, 3 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 2, 2 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 2, 3 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 3, 3 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 1, 1, 1 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 1, 1, 2 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 1, 1, 3 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 1, 1, 4 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 1, 2, 4 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 2, 3, 4 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 2, 4, 8 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 1, 8, 8, 8 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 100, 105, 108, 109 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 100, 100, 105, 108, 109 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 100, 105, 105, 108, 109 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 100, 105, 108, 108, 109 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 100, 105, 108, 109, 109 });
+	oracleEngine.testFindFirstQueryIndexOfTick({ 100, 100, 100, 100, 100, 105, 105, 105, 108, 109, 109 });
+
+	// random test
+	std::vector<uint32_t> ticks;
+	uint32_t ticksWithQueries = random(100) + 1;
+	uint32_t prevTick = 100;
+	for (uint32_t i = 0; i < ticksWithQueries; ++i)
+	{
+		const uint32_t tick = prevTick + random(10);
+		const uint32_t queriesInTick = random(100) + 1;
+		for (uint32_t j = 0; j < queriesInTick; ++j)
+		{
+			ticks.push_back(tick);
+		}
+		prevTick = tick;
+	}
+	oracleEngine.testFindFirstQueryIndexOfTick(ticks);
+}

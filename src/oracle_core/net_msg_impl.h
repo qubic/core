@@ -14,7 +14,7 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		return;
 
 	// prepare buffer
-	constexpr int maxQueryIdCount = 2;
+	constexpr int maxQueryIdCount = 2; // TODO: increase value after testing
 	constexpr int payloadBufferSize = math_lib::max((int)math_lib::max(MAX_ORACLE_QUERY_SIZE, MAX_ORACLE_REPLY_SIZE), maxQueryIdCount * 8);
 	static_assert(payloadBufferSize >= sizeof(RespondOracleDataQueryMetadata), "Buffer too small.");
 	static_assert(payloadBufferSize < 32 * 1024, "Large alloc in stack may need reconsideration.");
@@ -33,7 +33,27 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 
 	case RequestOracleData::requestAllQueryIdsByTick:
 	{
-		// TODO
+		// send query IDs of queries of a given tick, splitting the array in multiple messages if needed
+		if (request->reqTickOrId >= UINT32_MAX)
+			break;
+		const unsigned int tick = (unsigned int)request->reqTickOrId;
+		unsigned int queryIndex = findFirstQueryIndexOfTick(tick);
+		if (queryIndex == UINT32_MAX)
+			break;
+		response->resType = RespondOracleData::respondQueryIds;
+		bool moreQueries = true;
+		do
+		{
+			unsigned int idxInMsg = 0;
+			for (; idxInMsg < maxQueryIdCount && moreQueries; ++idxInMsg)
+			{
+				payloadQueryIds[idxInMsg] = queries[queryIndex].queryId;
+				++queryIndex;
+				moreQueries = queryIndex < oracleQueryCount && queries[queryIndex].queryTick == tick;
+			}
+			enqueueResponse(peer, sizeof(RespondOracleData) + idxInMsg * 8,
+				RespondOracleData::type(), header->dejavu(), response);
+		} while (moreQueries);
 		break;
 	}
 
@@ -51,6 +71,7 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 
 	case RequestOracleData::requestPendingQueryIds:
 	{
+		// send query IDs of pending queries, splitting the array in multiple messages if needed
 		response->resType = RespondOracleData::respondQueryIds;
 		const unsigned int numMessages = (pendingQueryIndices.numValues + maxQueryIdCount - 1) / maxQueryIdCount;
 		unsigned int idIdx = 0;

@@ -339,6 +339,41 @@ protected:
         setMem(&replyStates[replyStateIdx], sizeof(*replyStates), 0);
     }
 
+    uint32_t findFirstQueryIndexOfTick(uint32_t tick) const
+    {
+        // precondition: queries is sorted by tick
+#if !defined(NDEBUG)
+        for (uint32_t t = 1; t < oracleQueryCount; ++t)
+            ASSERT(queries[t].queryTick >= queries[t - 1].queryTick);
+#endif
+
+        if (!oracleQueryCount || tick < queries[0].queryTick || tick > queries[oracleQueryCount - 1].queryTick)
+            return UINT32_MAX;
+
+        uint32_t lower = 0;
+        uint32_t upper = oracleQueryCount - 1;
+
+        // invariants:
+        // 1. lower <= upper
+        // 2. queries[lower].queryTick <= tick
+        // 2. tick <= queries[upper].queryTick
+        while (upper - lower > 1)
+        {
+            uint32_t mid = (lower + upper) / 2;
+            if (queries[mid].queryTick < tick)
+                lower = mid;
+            else
+                upper = mid;
+        }
+
+        if (queries[lower].queryTick == tick)
+            return lower;
+        else if (queries[upper].queryTick == tick)
+            return upper;
+        else
+            return UINT32_MAX;
+    }
+
 public:
     /// Initialize object, passing array of own computor public keys (with number of elements given by template param ownComputorSeedsCount).
     bool init(const m256i* ownComputorPublicKeys)
