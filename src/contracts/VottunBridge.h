@@ -592,6 +592,7 @@ public:
         uint64 proposalIndex;
         uint64 availableFees;
         bit adminAdded;
+        uint64 managerCount;
     };
 
     // Get proposal structures
@@ -901,6 +902,7 @@ public:
             {
                 // SECURITY: Check that targetAddress is not already a manager (prevent duplicates)
                 locals.adminAdded = false;
+                locals.managerCount = 0;
                 for (locals.i = 0; locals.i < state.managers.capacity(); ++locals.i)
                 {
                     if (state.managers.get(locals.i) == locals.proposal.targetAddress)
@@ -909,9 +911,19 @@ public:
                         locals.adminAdded = true;
                         break;
                     }
+                    if (state.managers.get(locals.i) != NULL_ID)
+                    {
+                        locals.managerCount++;
+                    }
                 }
 
-                // Only proceed if targetAddress is not already a manager
+                // LIMIT: Check that we don't exceed 3 managers
+                if (locals.managerCount >= 3)
+                {
+                    locals.adminAdded = true; // Reject if already 3 managers
+                }
+
+                // Only proceed if targetAddress is not already a manager and limit not reached
                 if (!locals.adminAdded)
                 {
                     // Find empty slot in managers
