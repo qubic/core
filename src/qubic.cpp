@@ -5991,6 +5991,14 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
     }
 #endif
 
+#if !defined(NDEBUG)
+    // Counters for salted digest mismatches - counted per tick, printed in summary
+    int saltedResourceMismatchCount = 0;
+    int saltedSpectrumMismatchCount = 0;
+    int saltedUniverseMismatchCount = 0;
+    int saltedComputerMismatchCount = 0;
+#endif
+
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
         ts.ticks.acquireLock(i);
@@ -5998,10 +6006,6 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
 #if !defined(NDEBUG)
         CHAR16 dbgMsg[300];
         CHAR16 digestChars[60 + 1];
-        bool saltedRessourceDigestErrorPrinted = false;
-        bool saltedSpectrumDigestErrorPrinted = false;
-        bool saltedUniverseDigestErrorPrinted = false;
-        bool saltedComputerDigestErrorPrinted = false;
 #endif
 
         const Tick* tick = &tsCompTicks[i];
@@ -6078,52 +6082,28 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
 #if !defined(NDEBUG)
                             else
                             {
-                                if (!saltedComputerDigestErrorPrinted)
-                                {
-                                    setText(dbgMsg, L"[SALTED MISMATCH] saltedComputerDigest! computor=");
-                                    appendNumber(dbgMsg, i, FALSE);
-                                    addDebugMessage(dbgMsg);
-                                    saltedComputerDigestErrorPrinted = true;
-                                }
+                                saltedComputerMismatchCount++;
                             }
 #endif
                         }
 #if !defined(NDEBUG)
                         else
                         {
-                            if (!saltedUniverseDigestErrorPrinted)
-                            {
-                                setText(dbgMsg, L"[SALTED MISMATCH] saltedUniverseDigest! computor=");
-                                appendNumber(dbgMsg, i, FALSE);
-                                addDebugMessage(dbgMsg);
-                                saltedUniverseDigestErrorPrinted = true;
-                            }
+                            saltedUniverseMismatchCount++;
                         }
 #endif
                     }
 #if !defined(NDEBUG)
                     else
                     {
-                        if (!saltedSpectrumDigestErrorPrinted)
-                        {
-                            setText(dbgMsg, L"[SALTED MISMATCH] saltedSpectrumDigest! computor=");
-                            appendNumber(dbgMsg, i, FALSE);
-                            addDebugMessage(dbgMsg);
-                            saltedSpectrumDigestErrorPrinted = true;
-                        }
+                        saltedSpectrumMismatchCount++;
                     }
 #endif
                 }
 #if !defined(NDEBUG)
                 else
                 {
-                    if (!saltedRessourceDigestErrorPrinted)
-                    {
-                        setText(dbgMsg, L"[SALTED MISMATCH] saltedResourceTestingDigest! computor=");
-                        appendNumber(dbgMsg, i, FALSE);
-                        addDebugMessage(dbgMsg);
-                        saltedRessourceDigestErrorPrinted = true;
-                    }
+                    saltedResourceMismatchCount++;
                 }
 #endif
             }
@@ -6288,6 +6268,21 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
         appendText(summaryMsg, L", misaligned=");
         appendNumber(summaryMsg, tickTotalNumberOfComputors - tickNumberOfComputors, FALSE);
         addDebugMessage(summaryMsg);
+
+        // Print salted mismatch counts if any occurred
+        int totalSaltedMismatches = saltedResourceMismatchCount + saltedSpectrumMismatchCount + saltedUniverseMismatchCount + saltedComputerMismatchCount;
+        if (totalSaltedMismatches > 0)
+        {
+            setText(summaryMsg, L"[SALTED MISMATCH] resource=");
+            appendNumber(summaryMsg, saltedResourceMismatchCount, FALSE);
+            appendText(summaryMsg, L", spectrum=");
+            appendNumber(summaryMsg, saltedSpectrumMismatchCount, FALSE);
+            appendText(summaryMsg, L", universe=");
+            appendNumber(summaryMsg, saltedUniverseMismatchCount, FALSE);
+            appendText(summaryMsg, L", computer=");
+            appendNumber(summaryMsg, saltedComputerMismatchCount, FALSE);
+            addDebugMessage(summaryMsg);
+        }
     }
 #endif
 }
