@@ -6398,7 +6398,7 @@ static void tickProcessor(void*)
 #endif
 
     const bool wasLoadedFromSnapshot = loadAllNodeStateFromFile;
-    unsigned int latestProcessedTick = wasLoadedFromSnapshot ? (system.tick > system.initialTick ? system.tick - 1 : 0) : 0;
+    unsigned int latestProcessedTick = wasLoadedFromSnapshot ? system.tick : 0;
 #if !defined(NDEBUG)
     if (wasLoadedFromSnapshot)
     {
@@ -6407,7 +6407,7 @@ static void tickProcessor(void*)
         appendNumber(dbgMsg, latestProcessedTick, FALSE);
         appendText(dbgMsg, L" (system.tick=");
         appendNumber(dbgMsg, system.tick, FALSE);
-        appendText(dbgMsg, L") to allow re-processing current tick for saltedDigests update");
+        appendText(dbgMsg, L") to prevent re-processing current tick");
         addDebugMessage(dbgMsg);
     }
 #endif
@@ -6445,16 +6445,15 @@ static void tickProcessor(void*)
                     addDebugMessage(dbgMsg);
                 }
 #endif
-                // State persist: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
-                // thus, pausing here and doing the state persisting is the best choice.
+                processTick(processorNumber);
+                latestProcessedTick = system.tick;
+
                 if (requestPersistingNodeState)
                 {
                     persistingNodeStateTickProcWaiting = 1;
                     WAIT_WHILE(requestPersistingNodeState);
                     persistingNodeStateTickProcWaiting = 0;
                 }
-                processTick(processorNumber);
-                latestProcessedTick = system.tick;
             }
 
             if (gFutureTickTotalNumberOfComputors > NUMBER_OF_COMPUTORS - QUORUM)
