@@ -6397,9 +6397,8 @@ static void tickProcessor(void*)
     }
 #endif
 
-    // When loading from snapshot, initialize latestProcessedTick to system.tick
     const bool wasLoadedFromSnapshot = loadAllNodeStateFromFile;
-    unsigned int latestProcessedTick = wasLoadedFromSnapshot ? system.tick : 0;
+    unsigned int latestProcessedTick = wasLoadedFromSnapshot ? (system.tick > system.initialTick ? system.tick - 1 : 0) : 0;
 #if !defined(NDEBUG)
     if (wasLoadedFromSnapshot)
     {
@@ -6408,7 +6407,7 @@ static void tickProcessor(void*)
         appendNumber(dbgMsg, latestProcessedTick, FALSE);
         appendText(dbgMsg, L" (system.tick=");
         appendNumber(dbgMsg, system.tick, FALSE);
-        appendText(dbgMsg, L") to prevent re-processing current tick");
+        appendText(dbgMsg, L") to allow re-processing current tick for saltedDigests update");
         addDebugMessage(dbgMsg);
     }
 #endif
