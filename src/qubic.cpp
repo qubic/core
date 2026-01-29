@@ -4465,6 +4465,23 @@ static bool saveAllNodeStates()
         appendNumber(message, etalonTick.epoch, FALSE);
         logToConsole(message);
 
+        // Log time fields
+        setText(message, L"[SAVE] etalonTick.time: ");
+        appendNumber(message, etalonTick.year, FALSE);
+        appendText(message, L"/");
+        appendNumber(message, etalonTick.month, FALSE);
+        appendText(message, L"/");
+        appendNumber(message, etalonTick.day, FALSE);
+        appendText(message, L" ");
+        appendNumber(message, etalonTick.hour, FALSE);
+        appendText(message, L":");
+        appendNumber(message, etalonTick.minute, FALSE);
+        appendText(message, L":");
+        appendNumber(message, etalonTick.second, FALSE);
+        appendText(message, L".");
+        appendNumber(message, etalonTick.millisecond, FALSE);
+        logToConsole(message);
+
         setText(message, L"[SAVE] etalonTick.prevSpectrumDigest: ");
         getIdentity(etalonTick.prevSpectrumDigest.m256i_u8, digestChars, true);
         appendText(message, digestChars);
@@ -4813,6 +4830,23 @@ static bool loadAllNodeStates()
         appendNumber(message, etalonTick.tick, FALSE);
         appendText(message, L", epoch: ");
         appendNumber(message, etalonTick.epoch, FALSE);
+        logToConsole(message);
+
+        // Log time fields
+        setText(message, L"[LOAD] etalonTick.time: ");
+        appendNumber(message, etalonTick.year, FALSE);
+        appendText(message, L"/");
+        appendNumber(message, etalonTick.month, FALSE);
+        appendText(message, L"/");
+        appendNumber(message, etalonTick.day, FALSE);
+        appendText(message, L" ");
+        appendNumber(message, etalonTick.hour, FALSE);
+        appendText(message, L":");
+        appendNumber(message, etalonTick.minute, FALSE);
+        appendText(message, L":");
+        appendNumber(message, etalonTick.second, FALSE);
+        appendText(message, L".");
+        appendNumber(message, etalonTick.millisecond, FALSE);
         logToConsole(message);
 
         setText(message, L"[LOAD] etalonTick.prevSpectrumDigest: ");
@@ -5712,6 +5746,156 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                 }
 #endif
             }
+#if !defined(NDEBUG)
+            else
+            {
+                // Initial comparison failed - log which field doesn't match
+                // Log first 3 mismatched votes for debugging
+                static unsigned int lastMismatchLogTick = 0;
+                static int mismatchLogCount = 0;
+
+                // Reset counter when tick changes
+                if (lastMismatchLogTick != system.tick)
+                {
+                    lastMismatchLogTick = system.tick;
+                    mismatchLogCount = 0;
+                }
+
+                if (mismatchLogCount < 3)
+                {
+                    mismatchLogCount++;
+
+                    setText(dbgMsg, L"[VOTE MISMATCH #");
+                    appendNumber(dbgMsg, mismatchLogCount, FALSE);
+                    appendText(dbgMsg, L"] computor=");
+                    appendNumber(dbgMsg, i, FALSE);
+                    appendText(dbgMsg, L", tick=");
+                    appendNumber(dbgMsg, tick->tick, FALSE);
+                    appendText(dbgMsg, L", epoch=");
+                    appendNumber(dbgMsg, tick->epoch, FALSE);
+                    addDebugMessage(dbgMsg);
+
+                    // Check time fields
+                    if (*((unsigned long long*) & tick->millisecond) != *((unsigned long long*) & etalonTick.millisecond))
+                    {
+                        setText(dbgMsg, L"  -> Time DIFFERS! Vote: ");
+                        appendNumber(dbgMsg, tick->year, FALSE);
+                        appendText(dbgMsg, L"/");
+                        appendNumber(dbgMsg, tick->month, FALSE);
+                        appendText(dbgMsg, L"/");
+                        appendNumber(dbgMsg, tick->day, FALSE);
+                        appendText(dbgMsg, L" ");
+                        appendNumber(dbgMsg, tick->hour, FALSE);
+                        appendText(dbgMsg, L":");
+                        appendNumber(dbgMsg, tick->minute, FALSE);
+                        appendText(dbgMsg, L":");
+                        appendNumber(dbgMsg, tick->second, FALSE);
+                        appendText(dbgMsg, L".");
+                        appendNumber(dbgMsg, tick->millisecond, FALSE);
+                        appendText(dbgMsg, L" | Local: ");
+                        appendNumber(dbgMsg, etalonTick.year, FALSE);
+                        appendText(dbgMsg, L"/");
+                        appendNumber(dbgMsg, etalonTick.month, FALSE);
+                        appendText(dbgMsg, L"/");
+                        appendNumber(dbgMsg, etalonTick.day, FALSE);
+                        appendText(dbgMsg, L" ");
+                        appendNumber(dbgMsg, etalonTick.hour, FALSE);
+                        appendText(dbgMsg, L":");
+                        appendNumber(dbgMsg, etalonTick.minute, FALSE);
+                        appendText(dbgMsg, L":");
+                        appendNumber(dbgMsg, etalonTick.second, FALSE);
+                        appendText(dbgMsg, L".");
+                        appendNumber(dbgMsg, etalonTick.millisecond, FALSE);
+                        addDebugMessage(dbgMsg);
+                    }
+                    else
+                    {
+                        setText(dbgMsg, L"  -> Time OK");
+                        addDebugMessage(dbgMsg);
+                    }
+
+                    // Check prevSpectrumDigest
+                    if (tick->prevSpectrumDigest != etalonTick.prevSpectrumDigest)
+                    {
+                        setText(dbgMsg, L"  -> prevSpectrumDigest DIFFERS!");
+                        addDebugMessage(dbgMsg);
+                        setText(dbgMsg, L"     Vote: ");
+                        getIdentity(tick->prevSpectrumDigest.m256i_u8, digestChars, true);
+                        appendText(dbgMsg, digestChars);
+                        addDebugMessage(dbgMsg);
+                        setText(dbgMsg, L"     Local: ");
+                        getIdentity(etalonTick.prevSpectrumDigest.m256i_u8, digestChars, true);
+                        appendText(dbgMsg, digestChars);
+                        addDebugMessage(dbgMsg);
+                    }
+                    else
+                    {
+                        setText(dbgMsg, L"  -> prevSpectrumDigest OK");
+                        addDebugMessage(dbgMsg);
+                    }
+
+                    // Check prevUniverseDigest
+                    if (tick->prevUniverseDigest != etalonTick.prevUniverseDigest)
+                    {
+                        setText(dbgMsg, L"  -> prevUniverseDigest DIFFERS!");
+                        addDebugMessage(dbgMsg);
+                        setText(dbgMsg, L"     Vote: ");
+                        getIdentity(tick->prevUniverseDigest.m256i_u8, digestChars, true);
+                        appendText(dbgMsg, digestChars);
+                        addDebugMessage(dbgMsg);
+                        setText(dbgMsg, L"     Local: ");
+                        getIdentity(etalonTick.prevUniverseDigest.m256i_u8, digestChars, true);
+                        appendText(dbgMsg, digestChars);
+                        addDebugMessage(dbgMsg);
+                    }
+                    else
+                    {
+                        setText(dbgMsg, L"  -> prevUniverseDigest OK");
+                        addDebugMessage(dbgMsg);
+                    }
+
+                    // Check prevComputerDigest
+                    if (tick->prevComputerDigest != etalonTick.prevComputerDigest)
+                    {
+                        setText(dbgMsg, L"  -> prevComputerDigest DIFFERS!");
+                        addDebugMessage(dbgMsg);
+                        setText(dbgMsg, L"     Vote: ");
+                        getIdentity(tick->prevComputerDigest.m256i_u8, digestChars, true);
+                        appendText(dbgMsg, digestChars);
+                        addDebugMessage(dbgMsg);
+                        setText(dbgMsg, L"     Local: ");
+                        getIdentity(etalonTick.prevComputerDigest.m256i_u8, digestChars, true);
+                        appendText(dbgMsg, digestChars);
+                        addDebugMessage(dbgMsg);
+                    }
+                    else
+                    {
+                        setText(dbgMsg, L"  -> prevComputerDigest OK");
+                        addDebugMessage(dbgMsg);
+                    }
+
+                    // Check transactionDigest
+                    if (tick->transactionDigest != etalonTick.transactionDigest)
+                    {
+                        setText(dbgMsg, L"  -> transactionDigest DIFFERS!");
+                        addDebugMessage(dbgMsg);
+                        setText(dbgMsg, L"     Vote: ");
+                        getIdentity(tick->transactionDigest.m256i_u8, digestChars, true);
+                        appendText(dbgMsg, digestChars);
+                        addDebugMessage(dbgMsg);
+                        setText(dbgMsg, L"     Local: ");
+                        getIdentity(etalonTick.transactionDigest.m256i_u8, digestChars, true);
+                        appendText(dbgMsg, digestChars);
+                        addDebugMessage(dbgMsg);
+                    }
+                    else
+                    {
+                        setText(dbgMsg, L"  -> transactionDigest OK");
+                        addDebugMessage(dbgMsg);
+                    }
+                }
+            }
+#endif
         }
         ts.ticks.releaseLock(i);
     }
@@ -5823,7 +6007,20 @@ static void tickProcessor(void*)
 #endif
 
     // When loading from snapshot, initialize latestProcessedTick to system.tick
-    unsigned int latestProcessedTick = loadAllNodeStateFromFile ? system.tick : 0;
+    const bool wasLoadedFromSnapshot = loadAllNodeStateFromFile;
+    unsigned int latestProcessedTick = wasLoadedFromSnapshot ? system.tick : 0;
+#if !defined(NDEBUG)
+    if (wasLoadedFromSnapshot)
+    {
+        CHAR16 dbgMsg[200];
+        setText(dbgMsg, L"[SNAPSHOT LOAD] latestProcessedTick initialized to ");
+        appendNumber(dbgMsg, latestProcessedTick, FALSE);
+        appendText(dbgMsg, L" (system.tick=");
+        appendNumber(dbgMsg, system.tick, FALSE);
+        appendText(dbgMsg, L") to prevent re-processing current tick");
+        addDebugMessage(dbgMsg);
+    }
+#endif
     loadAllNodeStateFromFile = false;
     while (!shutDownNode)
     {
@@ -5844,6 +6041,20 @@ static void tickProcessor(void*)
 
             if (system.tick > latestProcessedTick)
             {
+#if !defined(NDEBUG)
+                static unsigned int lastLoggedProcessTick = 0;
+                if (lastLoggedProcessTick != system.tick)
+                {
+                    lastLoggedProcessTick = system.tick;
+                    CHAR16 dbgMsg[200];
+                    setText(dbgMsg, L"[TICK PROC] Processing tick ");
+                    appendNumber(dbgMsg, system.tick, FALSE);
+                    appendText(dbgMsg, L" (latestProcessedTick was ");
+                    appendNumber(dbgMsg, latestProcessedTick, FALSE);
+                    appendText(dbgMsg, L")");
+                    addDebugMessage(dbgMsg);
+                }
+#endif
                 // State persist: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
                 // thus, pausing here and doing the state persisting is the best choice.
                 if (requestPersistingNodeState)
@@ -8376,6 +8587,81 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             misalignedState = 2;
                         }
                         logToConsole(L"MISALIGNED STATE DETECTED");
+#if !defined(NDEBUG)
+                        if (misalignedState == 1)
+                        {
+                            // First time misaligned - dump full etalonTick state for debugging
+                            CHAR16 dbgMsg[300];
+                            CHAR16 digestChars[60 + 1];
+
+                            setText(dbgMsg, L"[MISALIGN DEBUG] Votes: aligned=");
+                            appendNumber(dbgMsg, gTickNumberOfComputors, FALSE);
+                            appendText(dbgMsg, L", total=");
+                            appendNumber(dbgMsg, gTickTotalNumberOfComputors, FALSE);
+                            appendText(dbgMsg, L", misaligned=");
+                            appendNumber(dbgMsg, gTickTotalNumberOfComputors - gTickNumberOfComputors, FALSE);
+                            addDebugMessage(dbgMsg);
+
+                            setText(dbgMsg, L"[MISALIGN DEBUG] system.tick=");
+                            appendNumber(dbgMsg, system.tick, FALSE);
+                            appendText(dbgMsg, L", etalonTick.tick=");
+                            appendNumber(dbgMsg, etalonTick.tick, FALSE);
+                            appendText(dbgMsg, L", epoch=");
+                            appendNumber(dbgMsg, system.epoch, FALSE);
+                            addDebugMessage(dbgMsg);
+
+                            setText(dbgMsg, L"[MISALIGN DEBUG] etalonTick.time: ");
+                            appendNumber(dbgMsg, etalonTick.year, FALSE);
+                            appendText(dbgMsg, L"/");
+                            appendNumber(dbgMsg, etalonTick.month, FALSE);
+                            appendText(dbgMsg, L"/");
+                            appendNumber(dbgMsg, etalonTick.day, FALSE);
+                            appendText(dbgMsg, L" ");
+                            appendNumber(dbgMsg, etalonTick.hour, FALSE);
+                            appendText(dbgMsg, L":");
+                            appendNumber(dbgMsg, etalonTick.minute, FALSE);
+                            appendText(dbgMsg, L":");
+                            appendNumber(dbgMsg, etalonTick.second, FALSE);
+                            appendText(dbgMsg, L".");
+                            appendNumber(dbgMsg, etalonTick.millisecond, FALSE);
+                            addDebugMessage(dbgMsg);
+
+                            setText(dbgMsg, L"[MISALIGN DEBUG] prevSpectrumDigest: ");
+                            getIdentity(etalonTick.prevSpectrumDigest.m256i_u8, digestChars, true);
+                            appendText(dbgMsg, digestChars);
+                            addDebugMessage(dbgMsg);
+
+                            setText(dbgMsg, L"[MISALIGN DEBUG] prevUniverseDigest: ");
+                            getIdentity(etalonTick.prevUniverseDigest.m256i_u8, digestChars, true);
+                            appendText(dbgMsg, digestChars);
+                            addDebugMessage(dbgMsg);
+
+                            setText(dbgMsg, L"[MISALIGN DEBUG] prevComputerDigest: ");
+                            getIdentity(etalonTick.prevComputerDigest.m256i_u8, digestChars, true);
+                            appendText(dbgMsg, digestChars);
+                            addDebugMessage(dbgMsg);
+
+                            setText(dbgMsg, L"[MISALIGN DEBUG] saltedSpectrumDigest: ");
+                            getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
+                            appendText(dbgMsg, digestChars);
+                            addDebugMessage(dbgMsg);
+
+                            setText(dbgMsg, L"[MISALIGN DEBUG] saltedUniverseDigest: ");
+                            getIdentity(etalonTick.saltedUniverseDigest.m256i_u8, digestChars, true);
+                            appendText(dbgMsg, digestChars);
+                            addDebugMessage(dbgMsg);
+
+                            setText(dbgMsg, L"[MISALIGN DEBUG] saltedComputerDigest: ");
+                            getIdentity(etalonTick.saltedComputerDigest.m256i_u8, digestChars, true);
+                            appendText(dbgMsg, digestChars);
+                            addDebugMessage(dbgMsg);
+
+                            setText(dbgMsg, L"[MISALIGN DEBUG] transactionDigest: ");
+                            getIdentity(etalonTick.transactionDigest.m256i_u8, digestChars, true);
+                            appendText(dbgMsg, digestChars);
+                            addDebugMessage(dbgMsg);
+                        }
+#endif
                         if (misalignedState == 2)
                         {
                             // print health status and stop repeated logging to debug.log
