@@ -961,7 +961,6 @@ public:
                 // more than 1/3 of commits don't vote for most voted digest -> getting quorum isn't possible
                 // -> switch to status UNRESOLVABLE
                 oqm.status = ORACLE_QUERY_STATUS_UNRESOLVABLE;
-                oqm.statusFlags |= ORACLE_FLAG_COMP_DISAGREE;
                 oqm.statusVar.failure.agreeingCommits = mostCommitsCount;
                 oqm.statusVar.failure.totalCommits = replyState.totalCommits;
                 pendingQueryIndices.removeByValue(queryIndex);
@@ -1299,7 +1298,6 @@ public:
 
                 // update state to TIMEOUT
                 oqm.status = ORACLE_QUERY_STATUS_TIMEOUT;
-                oqm.statusFlags |= ORACLE_FLAG_TIMEOUT;
                 oqm.statusVar.failure.agreeingCommits = mostCommitsCount;
                 oqm.statusVar.failure.totalCommits = replyState.totalCommits;
                 pendingQueryIndices.removeByValue(queryIndex);
