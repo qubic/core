@@ -249,13 +249,18 @@ public:
 	struct AllocateRandomTickets_locals
 	{
 		uint64 slotsLeft;
-		m256i mixedSpectrumValue;
 		uint64 randomSeed;
 		uint64 tempSeed;
 		uint16 i;
 		Ticket ticket;
 		GetRandomDigits_input randomInput;
 		GetRandomDigits_output randomOutput;
+
+		struct RandomData
+		{
+			m256i prevSpectrumDigest;
+			AllocateRandomTickets_input allocateInput;
+		} randomData;
 	};
 
 	struct BuyRandomTickets_input
@@ -380,7 +385,6 @@ public:
 		sint64 insertIndex;
 		sint64 removedIndex;
 		AutoParticipant entry;
-		uint16 desiredValue;
 		FindAutoParticipant_input findInput;
 		FindAutoParticipant_output findOutput;
 	};
@@ -392,6 +396,11 @@ public:
 	struct SetAutoLimits_output
 	{
 		uint8 returnCode;
+	};
+	struct SetAutoLimits_locals
+	{
+		AutoParticipant autoParticipant;
+		sint64 index;
 	};
 
 	struct GetTicketPrice_input
@@ -609,7 +618,7 @@ public:
 	{
 		sint64 currentIndex;
 		sint64 slotsLeft;
-		uint64 affordable;
+		sint64 affordable;
 		sint64 toBuy;
 		AutoParticipant entry;
 		AllocateRandomTickets_input allocateInput;
@@ -962,7 +971,7 @@ public:
 
 	/** Deposits QHeart into the contract for automatic ticket purchases.
 	 * @param amount QHeart amount to reserve for auto participation.
-	 * @param desiredTickets Number of tickets to buy per draw
+	 * @param desiredTickets Number of tickets to buy per draw.
 	 * @param buyNow When true, tries to buy immediately if selling is open.
 	 * @return Status code describing the result.
 	 */
@@ -985,9 +994,9 @@ public:
 			return;
 		}
 
-		if (state.maxAutoTicketsPerUser != 0)
+		if (state.maxAutoTicketsPerUser > 0)
 		{
-			input.desiredTickets = min(input.desiredTickets, state.maxAutoTicketsPerUser);
+			input.desiredTickets = min(input.desiredTickets, static_cast<sint16>(state.maxAutoTicketsPerUser));
 		}
 
 		locals.userBalance =
@@ -995,7 +1004,6 @@ public:
 		input.amount = min(locals.userBalance, input.amount);
 
 		locals.totalPrice = smul(state.ticketPrice, static_cast<sint64>(input.desiredTickets));
-
 		if (input.amount < locals.totalPrice)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
@@ -1099,7 +1107,6 @@ public:
 
 	/// Sets auto-participation config for the invocator.
 	/// @param desiredTickets Signed: -1 ignore, >0 set new value.
-	/// @param minTicketsToBuy Signed: -1 ignore, 0 disable, >0 set new value.
 	/// @return Status code describing the result.
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetAutoConfig)
 	{
@@ -1108,46 +1115,29 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (input.desiredTickets < -1)
-		{
-			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
-			return;
-		}
-
 		if (!state.autoParticipants.contains(qpi.invocator()))
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
-
-		if (input.desiredTickets > 0 && state.maxAutoTicketsPerUser != 0)
+		input.desiredTickets = max<sint16>(input.desiredTickets, -1);
+		if (input.desiredTickets == 0)
 		{
-			input.desiredTickets = min(input.desiredTickets, static_cast<sint16>(state.maxAutoTicketsPerUser));
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
 		}
 
-		state.autoParticipants.get(qpi.invocator(), locals.entry);
-
-		locals.desiredValue = locals.entry.desiredTickets;
-
-		if (input.desiredTickets != -1)
+		if (input.desiredTickets > 0)
 		{
-			if (input.desiredTickets <= 0)
+			if (state.maxAutoTicketsPerUser > 0)
 			{
-				output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
-				return;
+				input.desiredTickets = min(input.desiredTickets, static_cast<sint16>(state.maxAutoTicketsPerUser));
 			}
-			locals.desiredValue = static_cast<uint16>(input.desiredTickets);
-		}
 
-		locals.entry.desiredTickets = locals.desiredValue;
+			state.autoParticipants.get(qpi.invocator(), locals.entry);
 
-		if (locals.entry.deposit == 0)
-		{
-			locals.removedIndex = state.autoParticipants.removeByKey(qpi.invocator());
-			state.autoParticipants.cleanupIfNeeded(PULSE_CLEANUP_THRESHOLD);
-		}
-		else
-		{
+			// Update desired tickets if specified
+			locals.entry.desiredTickets = static_cast<uint16>(input.desiredTickets);
 			state.autoParticipants.set(qpi.invocator(), locals.entry);
 		}
 
@@ -1158,7 +1148,7 @@ public:
 	/// @param maxTicketsPerUser Max tickets per user; 0 disables the limit.
 	/// @param maxDepositPerUser Max deposit per user; 0 disables the limit.
 	/// @return Status code describing the result.
-	PUBLIC_PROCEDURE(SetAutoLimits)
+	PUBLIC_PROCEDURE_WITH_LOCALS(SetAutoLimits)
 	{
 		if (qpi.invocationReward() > 0)
 		{
@@ -1171,14 +1161,30 @@ public:
 			return;
 		}
 
-		if (input.maxTicketsPerUser != 0 && input.maxTicketsPerUser > PULSE_MAX_NUMBER_OF_PLAYERS)
+		if (state.maxAutoTicketsPerUser == input.maxTicketsPerUser)
 		{
-			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 			return;
 		}
 
+		input.maxTicketsPerUser = min(input.maxTicketsPerUser, PULSE_MAX_NUMBER_OF_PLAYERS);
+
 		state.maxAutoTicketsPerUser = input.maxTicketsPerUser;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+
+		// Update existing entries to comply with the new limit.
+		if (state.maxAutoTicketsPerUser > 0)
+		{
+			locals.index = state.autoParticipants.nextElementIndex(NULL_INDEX);
+			while (locals.index != NULL_INDEX)
+			{
+				locals.autoParticipant = state.autoParticipants.value(locals.index);
+				locals.autoParticipant.desiredTickets = min(locals.autoParticipant.desiredTickets, state.maxAutoTicketsPerUser);
+				state.autoParticipants.replace(state.autoParticipants.key(locals.index), locals.autoParticipant);
+
+				locals.index = state.autoParticipants.nextElementIndex(locals.index);
+			}
+		}
 	}
 
 	// Buys a single ticket; transfers ticket price from invocator.
@@ -1274,12 +1280,6 @@ private:
 			return;
 		}
 
-		locals.slotsLeft = getSlotsLeft(state);
-		if (locals.slotsLeft == 0)
-		{
-			return;
-		}
-
 		locals.currentIndex = state.autoParticipants.nextElementIndex(NULL_INDEX);
 		while (locals.currentIndex != NULL_INDEX)
 		{
@@ -1299,7 +1299,16 @@ private:
 				continue;
 			}
 
-			locals.toBuy = static_cast<sint64>(min(locals.affordable, static_cast<uint64>(locals.entry.desiredTickets)));
+			locals.toBuy = locals.affordable;
+			if (state.maxAutoTicketsPerUser > 0)
+			{
+				locals.toBuy = min(locals.toBuy, static_cast<sint64>(state.maxAutoTicketsPerUser));
+			}
+			if (locals.entry.desiredTickets > 0)
+			{
+				locals.toBuy = min(locals.toBuy, static_cast<sint64>(locals.entry.desiredTickets));
+			}
+
 			locals.toBuy = min(locals.toBuy, locals.slotsLeft);
 			if (locals.toBuy <= 0)
 			{
@@ -1352,7 +1361,7 @@ private:
 		for (locals.index = 0; locals.index < PULSE_WINNING_DIGITS; ++locals.index)
 		{
 			deriveOne(input.seed, locals.index, locals.tempValue);
-			locals.candidate = static_cast<uint8>(mod(locals.tempValue, static_cast<uint64>(PULSE_MAX_DIGIT + 1)));
+			locals.candidate = static_cast<uint8>(mod(locals.tempValue, PULSE_MAX_DIGIT + 1ULL));
 
 			output.digits.set(locals.index, locals.candidate);
 		}
@@ -1553,8 +1562,10 @@ private:
 			return;
 		}
 
-		locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
-		locals.randomSeed = qpi.K12(locals.mixedSpectrumValue).u64._0;
+		locals.randomData.prevSpectrumDigest = qpi.getPrevSpectrumDigest();
+		locals.randomData.allocateInput = input;
+
+		locals.randomSeed = qpi.K12(locals.randomData).u64._0;
 		for (locals.i = 0; locals.i < input.count; ++locals.i)
 		{
 			deriveOne(locals.randomSeed, locals.i, locals.tempSeed);
@@ -1564,7 +1575,7 @@ private:
 			locals.ticket.player = input.player;
 			locals.ticket.digits = locals.randomOutput.digits;
 			state.tickets.set(state.ticketCounter, locals.ticket);
-			state.ticketCounter = min(static_cast<uint64>(state.ticketCounter) + 1ULL, state.tickets.capacity());
+			state.ticketCounter = min(state.ticketCounter + 1LL, static_cast<sint64>(state.tickets.capacity()));
 		}
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
@@ -1607,7 +1618,7 @@ protected:
 	sint64 ticketCounter;
 	sint64 ticketPrice;
 	// Per-user auto-purchase limits; 0 means unlimited.
-	sint16 maxAutoTicketsPerUser;
+	uint16 maxAutoTicketsPerUser;
 	// Contract balance above this cap is swept to the QHeart wallet after settlement.
 	uint64 qheartHoldLimit;
 	// Date stamp of the most recent draw; PULSE_DEFAULT_INIT_TIME is a bootstrap sentinel.
