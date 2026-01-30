@@ -260,6 +260,7 @@ public:
 		{
 			m256i prevSpectrumDigest;
 			AllocateRandomTickets_input allocateInput;
+			sint64 ticketCounter;
 		} randomData;
 	};
 
@@ -1564,6 +1565,7 @@ private:
 
 		locals.randomData.prevSpectrumDigest = qpi.getPrevSpectrumDigest();
 		locals.randomData.allocateInput = input;
+		locals.randomData.ticketCounter = state.ticketCounter;
 
 		locals.randomSeed = qpi.K12(locals.randomData).u64._0;
 		for (locals.i = 0; locals.i < input.count; ++locals.i)
