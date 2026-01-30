@@ -101,9 +101,8 @@ public:
 
 	void setTicketDirect(uint64 index, const id& player, const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED>& digits)
 	{
-		Ticket ticket;
-		ticket.player = player;
-		ticket.digits = digits;
+		Ticket ticket{player, digits};
+
 		tickets.set(index, ticket);
 	}
 
@@ -606,6 +605,22 @@ TEST(ContractPulse_Static, RewardTablesMatchContractConstants)
 	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(0), 0u);
 }
 
+// Ensure computePrize picks the higher of left-aligned or any-position rewards.
+TEST(ContractPulse_Static, ComputePrizeSelectsBestReward)
+{
+	ContractTestingPulse ctl;
+	const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> winning = makePlayerDigits(0, 1, 2, 3, 4, 5);
+
+	const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> exact = makePlayerDigits(0, 1, 2, 3, 4, 5);
+	EXPECT_EQ(ctl.state()->callComputePrize(winning, exact), 2000u * ctl.getTicketPrice().ticketPrice);
+
+	const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> permuted = makePlayerDigits(5, 4, 3, 2, 1, 0);
+	EXPECT_EQ(ctl.state()->callComputePrize(winning, permuted), 150u * ctl.getTicketPrice().ticketPrice);
+
+	const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> none = makePlayerDigits(9, 9, 9, 9, 9, 9);
+	EXPECT_EQ(ctl.state()->callComputePrize(winning, none), 0u);
+}
+
 // Prevent stale config from leaking across epochs.
 TEST(ContractPulse_Private, NextEpochDataClearResetsFlagsAndValues)
 {
@@ -688,6 +703,21 @@ TEST(ContractPulse_Private, GetRandomDigitsDeterministic)
 		EXPECT_EQ(v1, v2);
 		EXPECT_LE(v1, PULSE_MAX_DIGIT);
 	}
+}
+
+// Validate digit range checks for ticket input.
+TEST(ContractPulse_Private, ValidateDigitsAcceptsRangeAndRejectsOutOfRange)
+{
+	ContractTestingPulse ctl;
+	QpiContextUserFunctionCall qpi(PULSE_CONTRACT_INDEX);
+	primeQpiFunctionContext(qpi);
+
+	const PULSE::ValidateDigits_output valid = ctl.state()->callValidateDigits(qpi, makePlayerDigits(0, 1, 2, 3, 4, 5));
+	EXPECT_TRUE(valid.isValid);
+
+	const uint8 invalidValue = static_cast<uint8>(PULSE_MAX_DIGIT + 1);
+	const PULSE::ValidateDigits_output invalid = ctl.state()->callValidateDigits(qpi, makePlayerDigits(0, 1, 2, 3, 4, invalidValue));
+	EXPECT_FALSE(invalid.isValid);
 }
 
 // Validate PrepareRandomTickets error cases.
@@ -1111,7 +1141,7 @@ TEST(ContractPulse_Public, BuyRandomTicketsSucceedsAndMovesQHeart)
 
 	const PULSE::BuyRandomTickets_output out = ctl.buyRandomTickets(user, ticketCount);
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(ctl.state()->getTicketCounter(), static_cast<uint64>(ticketCount));
+	EXPECT_EQ(ctl.state()->getTicketCounter(), static_cast<uint64>(static_cast<uint32>(ticketCount)));
 	EXPECT_EQ(ctl.qheartBalanceOf(user), userBefore - totalPrice);
 	EXPECT_EQ(ctl.qheartBalanceOf(ctl.pulseSelf()), contractBefore + totalPrice);
 
@@ -1327,7 +1357,7 @@ TEST(ContractPulse_Public, DepositAutoParticipationBuyNowConsumesAllAndSkipsDepo
 	const uint64 contractBefore = ctl.qheartBalanceOf(ctl.pulseSelf());
 	const PULSE::DepositAutoParticipation_output out = ctl.depositAutoParticipation(user, totalPrice, desiredTickets, true);
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(ctl.state()->getTicketCounter(), static_cast<uint64>(desiredTickets));
+	EXPECT_EQ(ctl.state()->getTicketCounter(), static_cast<uint64>(static_cast<uint32>(desiredTickets)));
 	EXPECT_EQ(ctl.qheartBalanceOf(user), userBefore - totalPrice);
 	EXPECT_EQ(ctl.qheartBalanceOf(ctl.pulseSelf()), contractBefore + totalPrice);
 
@@ -1354,7 +1384,7 @@ TEST(ContractPulse_Public, DepositAutoParticipationBuyNowStoresRemainder)
 	const uint64 contractBefore = ctl.qheartBalanceOf(ctl.pulseSelf());
 	const PULSE::DepositAutoParticipation_output out = ctl.depositAutoParticipation(user, amount, desiredTickets, true);
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(ctl.state()->getTicketCounter(), static_cast<uint64>(desiredTickets));
+	EXPECT_EQ(ctl.state()->getTicketCounter(), static_cast<uint64>(static_cast<uint32>(desiredTickets)));
 
 	const PULSE::GetAutoParticipation_output entry = ctl.getAutoParticipation(user);
 	EXPECT_EQ(entry.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
@@ -1611,6 +1641,15 @@ TEST(ContractPulse_Public, GetBalanceReportsQHeartWalletBalance)
 	EXPECT_EQ(ctl.getBalance().balance, 12345u);
 }
 
+// Report empty winner history before any draws.
+TEST(ContractPulse_Public, GetWinnersReportsEmptyWhenNoWinners)
+{
+	ContractTestingPulse ctl;
+	const PULSE::GetWinners_output winners = ctl.getWinners();
+	EXPECT_EQ(winners.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(winners.winnersCounter, 0u);
+}
+
 // Confirm winner history records paid prizes.
 TEST(ContractPulse_Public, GetWinnersReportsPaidTickets)
 {
@@ -1734,6 +1773,46 @@ TEST(ContractPulse_System, EndEpochAppliesPendingChangesAndClearsState)
 	EXPECT_EQ(ctl.state()->getLastDrawDateStamp(), 0u);
 	EXPECT_FALSE(ctl.state()->isSelling());
 	EXPECT_EQ(ctl.state()->getTicketPriceInternal(), 999u);
+}
+
+// Ensure draw is skipped before the configured draw hour.
+TEST(ContractPulse_System, BeginTickSkipsBeforeDrawHour)
+{
+	ContractTestingPulse ctl;
+	ctl.state()->setDrawHourInternal(23);
+
+	const id player = id::randomValue();
+	ctl.state()->setTicketDirect(0, player, makePlayerDigits(0, 1, 2, 3, 4, 5));
+	ctl.state()->setTicketCounter(1);
+
+	ctl.setDateTime(2025, 1, 10, 12);
+	const uint32 lastStampBefore = ctl.state()->getLastDrawDateStamp();
+	ctl.forceBeginTick();
+
+	EXPECT_EQ(ctl.state()->getTicketCounter(), 1u);
+	EXPECT_EQ(ctl.state()->getLastDrawDateStamp(), lastStampBefore);
+}
+
+// Skip draws on non-scheduled days (excluding Wednesday fallback).
+TEST(ContractPulse_System, BeginTickSkipsWhenNotScheduledDay)
+{
+	ContractTestingPulse ctl;
+	ctl.state()->setDrawHourInternal(1);
+
+	const id player = id::randomValue();
+	ctl.state()->setTicketDirect(0, player, makePlayerDigits(0, 1, 2, 3, 4, 5));
+	ctl.state()->setTicketCounter(1);
+
+	const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> beforeWinning = ctl.state()->getLastWinningDigits();
+
+	ctl.setDateTime(2025, 1, 11, 12);
+	ctl.forceBeginTick();
+
+	EXPECT_EQ(ctl.state()->getTicketCounter(), 1u);
+	for (uint64 i = 0; i < PULSE_WINNING_DIGITS; ++i)
+	{
+		EXPECT_EQ(ctl.state()->getLastWinningDigits().get(i), beforeWinning.get(i));
+	}
 }
 
 // Validate scheduled draw trigger path.
