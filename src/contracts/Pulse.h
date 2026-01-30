@@ -582,7 +582,7 @@ public:
 	};
 	struct SettleRound_locals
 	{
-		uint64 i;
+		sint64 i;
 		sint64 roundRevenue;
 		sint64 devAmount;
 		sint64 burnAmount;
@@ -1605,7 +1605,9 @@ public:
 
 	static sint64 getSlotsLeft(const PULSE& state)
 	{
-		return state.ticketCounter < state.tickets.capacity() ? (state.tickets.capacity() - state.ticketCounter) : 0;
+		return state.ticketCounter < static_cast<sint64>(state.tickets.capacity())
+		           ? static_cast<sint64>(state.tickets.capacity()) - state.ticketCounter
+		           : 0LL;
 	}
 
 protected:

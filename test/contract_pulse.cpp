@@ -827,8 +827,8 @@ TEST(ContractPulse_Private, ProcessAutoTicketsRemovesUnaffordableParticipant)
 	EXPECT_EQ(entry.returnCode, static_cast<uint8>(PULSE::EReturnCode::INVALID_VALUE));
 }
 
-// Keep auto participant when desired ticket count is zero.
-TEST(ContractPulse_Private, ProcessAutoTicketsSkipsZeroDesiredTickets)
+// Checks process auto tickets removes zero desired tickets.
+TEST(ContractPulse_Private, ProcessAutoTicketsRemovesZeroDesiredTickets)
 {
 	ContractTestingPulse ctl;
 	const id user = id::randomValue();
@@ -841,10 +841,7 @@ TEST(ContractPulse_Private, ProcessAutoTicketsSkipsZeroDesiredTickets)
 	ctl.state()->callProcessAutoTickets(qpi);
 
 	const PULSE::GetAutoParticipation_output entry = ctl.getAutoParticipation(user);
-	EXPECT_EQ(entry.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(entry.deposit, ticketPrice * 2);
-	EXPECT_EQ(static_cast<uint32>(entry.desiredTickets), 0u);
-	EXPECT_EQ(ctl.state()->getTicketCounter(), 0u);
+	EXPECT_EQ(entry.returnCode, static_cast<uint8>(PULSE::EReturnCode::INVALID_VALUE));
 }
 
 // ============================================================================
@@ -1154,8 +1151,14 @@ TEST(ContractPulse_Public, BuyRandomTicketsDeterministicWithFixedDigest)
 	const m256i digest(0xABCDEF01ULL, 0x12345678ULL, 0xCAFEBABEULL, 0x0BADF00DULL);
 	etalonTick.prevSpectrumDigest = digest;
 
+	PULSE::AllocateRandomTickets_locals::RandomData randomData{};
+	randomData.prevSpectrumDigest = digest;
+	randomData.allocateInput.player = user;
+	randomData.allocateInput.count = 1;
+	randomData.ticketCounter = static_cast<sint64>(ctl.state()->getTicketCounter());
+
 	m256i hashResult;
-	KangarooTwelve(reinterpret_cast<const uint8*>(&digest), sizeof(m256i), reinterpret_cast<uint8*>(&hashResult), sizeof(m256i));
+	KangarooTwelve(reinterpret_cast<const uint8*>(&randomData), sizeof(randomData), reinterpret_cast<uint8*>(&hashResult), sizeof(m256i));
 	const uint64 randomSeed = hashResult.m256i_u64[0];
 	uint64 tempSeed = 0;
 	PULSEChecker::deriveOne(randomSeed, 0, tempSeed);
@@ -1513,13 +1516,13 @@ TEST(ContractPulse_Public, SetAutoConfigValidatesAndClamps)
 	ctl.transferQHeart(issuance, user, amount);
 
 	EXPECT_EQ(ctl.depositAutoParticipation(user, amount, 3, false).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(ctl.setAutoConfig(user, -2).returnCode, static_cast<uint8>(PULSE::EReturnCode::INVALID_VALUE));
+	EXPECT_EQ(ctl.setAutoConfig(user, -2).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 
 	EXPECT_EQ(ctl.setAutoLimits(PULSE_QHEART_ISSUER, 2).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	EXPECT_EQ(ctl.setAutoConfig(user, -1).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 
 	PULSE::GetAutoParticipation_output entry = ctl.getAutoParticipation(user);
-	EXPECT_EQ(static_cast<uint32>(entry.desiredTickets), 3u);
+	EXPECT_EQ(static_cast<uint32>(entry.desiredTickets), 2u);
 
 	EXPECT_EQ(ctl.setAutoConfig(user, 5).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	entry = ctl.getAutoParticipation(user);
@@ -1558,8 +1561,8 @@ TEST(ContractPulse_Public, SetAutoLimitsGuardsAccessAndValidates)
 {
 	ContractTestingPulse ctl;
 	EXPECT_EQ(ctl.setAutoLimits(id::randomValue(), 10).returnCode, static_cast<uint8>(PULSE::EReturnCode::ACCESS_DENIED));
-	EXPECT_EQ(ctl.setAutoLimits(PULSE_QHEART_ISSUER, PULSE_MAX_NUMBER_OF_PLAYERS + 1).returnCode,
-	          static_cast<uint8>(PULSE::EReturnCode::INVALID_VALUE));
+	EXPECT_EQ(ctl.setAutoLimits(PULSE_QHEART_ISSUER, PULSE_MAX_NUMBER_OF_PLAYERS + 1).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(static_cast<uint32>(ctl.getAutoStats().maxAutoTicketsPerUser), static_cast<uint32>(PULSE_MAX_NUMBER_OF_PLAYERS));
 	EXPECT_EQ(ctl.setAutoLimits(PULSE_QHEART_ISSUER, 5).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 
 	const PULSE::GetAutoStats_output stats = ctl.getAutoStats();
