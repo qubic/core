@@ -3,6 +3,7 @@
 
 #include "contract_testing.h"
 #include "logging_test.h"
+#include "oracle_testing.h"
 #include "platform/concurrency_impl.h"
 #include "platform/profiling.h"
 

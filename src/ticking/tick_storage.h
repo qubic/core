@@ -7,6 +7,7 @@
 #include "platform/concurrency.h"
 #include "platform/console_logging.h"
 #include "platform/debugging.h"
+#include "platform/global_var.h"
 
 #include "public_settings.h"
 
@@ -1037,3 +1038,5 @@ public:
         }
     } transactionsDigestAccess;
 };
+
+GLOBAL_VAR_DECL TickStorage ts;

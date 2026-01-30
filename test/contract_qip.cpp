@@ -1144,9 +1144,7 @@ TEST(ContractQIP, END_EPOCH_Phase1Rollover)
     // Check that Phase 1 remaining was set to 0
     icoInfo = QIP.getICOInfo(0);
     EXPECT_EQ(icoInfo.remainingAmountForPhase1, 0);
-    // Note: Due to bug in contract (sets Phase1 to 0 before adding), Phase2 doesn't increase
-    // Phase2 should remain unchanged (since Phase1 was already 0 when added)
-    EXPECT_EQ(icoInfo.remainingAmountForPhase2, initialPhase2);
+    EXPECT_EQ(icoInfo.remainingAmountForPhase2, initialPhase2 + initialPhase1);
 }
 
 TEST(ContractQIP, END_EPOCH_Phase2Rollover)
@@ -1223,9 +1221,7 @@ TEST(ContractQIP, END_EPOCH_Phase2Rollover)
     // Check that Phase 2 remaining was set to 0
     icoInfo = QIP.getICOInfo(0);
     EXPECT_EQ(icoInfo.remainingAmountForPhase2, 0);
-    // Note: Due to bug in contract (sets Phase2 to 0 before adding), Phase3 doesn't increase
-    // Phase3 should remain unchanged (since Phase2 was already 0 when added)
-    EXPECT_EQ(icoInfo.remainingAmountForPhase3, initialPhase3);
+    EXPECT_EQ(icoInfo.remainingAmountForPhase3, initialPhase3 + initialPhase2);
 }
 
 TEST(ContractQIP, END_EPOCH_Phase3ReturnToCreator)
@@ -1430,11 +1426,19 @@ TEST(ContractQIP, TransferShareManagementRights)
     // Transfer management rights
     sint64 transferAmount = 100000;
     
-    increaseEnergy(creator, QIP_TRANSFER_RIGHTS_FEE);
+    increaseEnergy(creator, QIP_TRANSFER_RIGHTS_FEE * 2);
+    QIP.endEpoch();
+    system.epoch += 1;
+    QIP.endEpoch();
+    system.epoch += 1;
     sint64 transferred = QIP.transferShareManagementRights(creator, asset, transferAmount, QX_CONTRACT_INDEX, QIP_TRANSFER_RIGHTS_FEE);
+    EXPECT_EQ(transferred, 0);
+    QIP.endEpoch();
+    transferred = QIP.transferShareManagementRights(creator, asset, transferAmount, QX_CONTRACT_INDEX, QIP_TRANSFER_RIGHTS_FEE);
     EXPECT_EQ(transferred, transferAmount);
     
     // Verify shares were transferred
-    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, QIP_CONTRACT_ID, QIP_CONTRACT_ID, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), totalShares - transferAmount);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, QIP_CONTRACT_ID, QIP_CONTRACT_ID, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, creator, creator, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), totalShares - transferAmount);
 }
 

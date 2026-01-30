@@ -1105,7 +1105,11 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     EXPECT_EQ(getBalance(id(QBAY_CONTRACT_INDEX, 0, 0, 0)), earnedQubic + collectedShareHolderFee);
 
     // createTraditionalAuction
-    updateTime();
+    setMemory(utcTime, 0);
+    utcTime.Year = 2025;
+    utcTime.Month = 12;
+    utcTime.Day = 31;
+    utcTime.Hour = 0;
     updateQpiTime();
     pfp.createTraditionalAuction(users[4], 10000000, 0, 0, 26, 1, 1, 0, 26, 1, 5, 0);
     pfp.getState()->createAuctionChecker(0, 10000000, 1, 0, users[4], 26, 1, 1, 0, 26, 1, 5, 0);

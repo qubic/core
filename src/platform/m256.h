@@ -62,6 +62,17 @@ union m256i
                              _mm256_set_epi64x(ull3, ull2, ull1, ull0));
     }
 
+    m256i(
+        char c0, char c1, char c2, char c3, char c4, char c5 = 0, char c6 = 0, char c7 = 0, char c8 = 0, char c9 = 0,
+        char c10 = 0, char c11 = 0, char c12 = 0, char c13 = 0, char c14 = 0, char c15 = 0, char c16 = 0, char c17 = 0,
+        char c18 = 0, char c19 = 0, char c20 = 0, char c21 = 0, char c22 = 0, char c23 = 0, char c24 = 0, char c25 = 0,
+        char c26 = 0, char c27 = 0, char c28 = 0, char c29 = 0, char c30 = 0, char c31 = 0)
+    {
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(this),
+            _mm256_set_epi8(c31, c30, c29, c28, c27, c26, c25, c24, c23, c22, c21, c20, c19, c18, c17, c16, c15, c14, c13, c12,
+                c11, c10, c9, c8, c7, c6, c5, c4, c3, c2, c1, c0));
+    }
+
     m256i(const unsigned char value[32])
     {
         _mm256_storeu_si256(reinterpret_cast<__m256i*>(this),

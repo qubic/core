@@ -352,8 +352,8 @@ public:
         setMemory(input, 0);
         input.proposal.epoch = system.epoch;
         input.proposal.type = ProposalTypes::TransferYesNo;
-        input.proposal.transfer.destination = destination;
-        input.proposal.transfer.amount = amount;
+        input.proposal.data.transfer.destination = destination;
+        input.proposal.data.transfer.amount = amount;
         input.isSubscription = false;
 
         auto output = setProposal(proposer, input);
@@ -371,8 +371,8 @@ public:
         setMemory(input, 0);
         input.proposal.epoch = system.epoch;
         input.proposal.type = ProposalTypes::TransferYesNo;
-        input.proposal.transfer.destination = destination;
-        input.proposal.transfer.amount = amountPerPeriod;
+        input.proposal.data.transfer.destination = destination;
+        input.proposal.data.transfer.amount = amountPerPeriod;
         input.isSubscription = true;
         input.weeksPerPeriod = weeksPerPeriod;
         input.numberOfPeriods = numberOfPeriods;
@@ -448,7 +448,7 @@ TEST(ContractCCF, RegularProposalAndVoting)
     // Get proposal
     auto proposal = test.getProposal(proposalIndex);
     EXPECT_TRUE(proposal.okay);
-    EXPECT_EQ(proposal.proposal.transfer.destination, ENTITY1);
+    EXPECT_EQ(proposal.proposal.data.transfer.destination, ENTITY1);
     
     // Vote on proposal
     test.voteMultipleComputors(proposalIndex, 200, 350);
@@ -691,8 +691,8 @@ TEST(ContractCCF, SubscriptionValidation)
     setMemory(input, 0);
     input.proposal.epoch = system.epoch;
     input.proposal.type = ProposalTypes::TransferYesNo;
-    input.proposal.transfer.destination = ENTITY1;
-    input.proposal.transfer.amount = 1000;
+    input.proposal.data.transfer.destination = ENTITY1;
+    input.proposal.data.transfer.amount = 1000;
     input.isSubscription = true;
     input.weeksPerPeriod = 0; 
     input.numberOfPeriods = 4;
@@ -841,8 +841,8 @@ TEST(ContractCCF, SubscriptionMaxEpochsValidation)
     setMemory(input, 0);
     input.proposal.epoch = system.epoch;
     input.proposal.type = ProposalTypes::TransferYesNo;
-    input.proposal.transfer.destination = ENTITY1;
-    input.proposal.transfer.amount = 1000;
+    input.proposal.data.transfer.destination = ENTITY1;
+    input.proposal.data.transfer.amount = 1000;
     input.isSubscription = true;
     input.weeksPerPeriod = 4; // 4 weeks per period (monthly)
     input.numberOfPeriods = 14; // 14 * 4 = 56 epochs > 52 max
@@ -957,8 +957,8 @@ TEST(ContractCCF, SubscriptionSlotReuse)
     setMemory(cancelInput, 0);
     cancelInput.proposal.epoch = 0;
     cancelInput.proposal.type = ProposalTypes::TransferYesNo;
-    cancelInput.proposal.transfer.destination = ENTITY1;
-    cancelInput.proposal.transfer.amount = 1000;
+    cancelInput.proposal.data.transfer.destination = ENTITY1;
+    cancelInput.proposal.data.transfer.amount = 1000;
     cancelInput.weeksPerPeriod = 1; // 1 week per period (weekly)
     cancelInput.numberOfPeriods = 4;
     cancelInput.startEpoch = 189;
@@ -1022,8 +1022,8 @@ TEST(ContractCCF, CancelSubscriptionByZeroAmount)
     setMemory(cancelInput, 0);
     cancelInput.proposal.epoch = system.epoch;
     cancelInput.proposal.type = ProposalTypes::TransferYesNo;
-    cancelInput.proposal.transfer.destination = ENTITY1;
-    cancelInput.proposal.transfer.amount = 0;
+    cancelInput.proposal.data.transfer.destination = ENTITY1;
+    cancelInput.proposal.data.transfer.amount = 0;
     cancelInput.isSubscription = true;
     cancelInput.weeksPerPeriod = 1;
     cancelInput.numberOfPeriods = 4;
@@ -1080,8 +1080,8 @@ TEST(ContractCCF, CancelSubscriptionByZeroPeriods)
     setMemory(cancelInput, 0);
     cancelInput.proposal.epoch = system.epoch;
     cancelInput.proposal.type = ProposalTypes::TransferYesNo;
-    cancelInput.proposal.transfer.destination = ENTITY1;
-    cancelInput.proposal.transfer.amount = 0;
+    cancelInput.proposal.data.transfer.destination = ENTITY1;
+    cancelInput.proposal.data.transfer.amount = 0;
     cancelInput.isSubscription = true;
     cancelInput.weeksPerPeriod = 1;
     cancelInput.numberOfPeriods = 0; // Zero periods will cancel subscription

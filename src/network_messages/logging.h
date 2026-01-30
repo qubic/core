@@ -2,8 +2,8 @@
 
 #include "common_def.h"
 
-#define LOG_TX_NUMBER_OF_SPECIAL_EVENT 5
-#define LOG_TX_PER_TICK (NUMBER_OF_TRANSACTIONS_PER_TICK + LOG_TX_NUMBER_OF_SPECIAL_EVENT)// +5 special events
+#define LOG_TX_NUMBER_OF_SPECIAL_EVENT 6
+#define LOG_TX_PER_TICK (NUMBER_OF_TRANSACTIONS_PER_TICK + LOG_TX_NUMBER_OF_SPECIAL_EVENT) // normal tx + special events
 
 // Fetches log
 struct RequestLog

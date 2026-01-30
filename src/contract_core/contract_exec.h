@@ -192,6 +192,12 @@ static bool initContractExec()
     if (!contractActionTracker.allocBuffer())
         return false;
 
+    if (!allocPoolWithErrorLog(L"userProcedureRegistry", sizeof(*userProcedureRegistry), (void**)&userProcedureRegistry, __LINE__))
+    {
+        return false;
+    }
+    userProcedureRegistry->init();
+
     return true;
 }
 
@@ -217,6 +223,9 @@ static void deinitContractExec()
     {
         freePool(contractStateChangeFlags);
     }
+
+    if (userProcedureRegistry)
+        freePool(userProcedureRegistry);
 
     contractActionTracker.freeBuffer();
 }
@@ -917,6 +926,16 @@ void QPI::QpiContextForInit::__registerUserProcedure(USER_PROCEDURE userProcedur
     contractUserProcedureLocalsSizes[_currentContractIndex][inputType] = localsSize;
 }
 
+void QPI::QpiContextForInit::__registerUserProcedureNotification(USER_PROCEDURE userProcedure, unsigned int procedureId, unsigned short inputSize, unsigned short outputSize, unsigned int localsSize) const
+{
+    ASSERT(userProcedureRegistry);
+    if (!userProcedureRegistry->add(procedureId, { userProcedure, _currentContractIndex, localsSize, inputSize, outputSize }))
+    {
+#if !defined(NDEBUG)
+        addDebugMessage(L"__registerUserProcedureNotification() failed. You should increase MAX_CONTRACT_PROCEDURES_REGISTERED.");
+#endif
+    }
+}
 
 
 // QPI context used to call contract system procedure from qubic core (contract processor)
@@ -1266,15 +1285,6 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
 };
 
 
-struct UserProcedureNotification
-{
-    unsigned int contractIndex;
-    USER_PROCEDURE procedure;
-    const void* inputPtr;
-    unsigned short inputSize;
-    unsigned int localsSize;
-};
-
 // QPI context used to call contract user procedure as a notification from qubic core (contract processor).
 // This means, it isn't triggered by a transaction, but following an event after having setup the notification
 // callback in the contract code.
@@ -1283,16 +1293,16 @@ struct UserProcedureNotification
 // The procedure pointer, the expected inputSize, and the expected localsSize, which are passed via
 // UserProcedureNotification, must be consistent. The code using notifications is responible for ensuring that.
 // Use cases:
-// - oracle notifications (managed by oracleEngine)
+// - oracle notifications (managed by oracleEngine and userProcedureRegistry)
 struct QpiContextUserProcedureNotificationCall : public QPI::QpiContextProcedureCall
 {
-    QpiContextUserProcedureNotificationCall(const UserProcedureNotification& notification) : QPI::QpiContextProcedureCall(notif.contractIndex, NULL_ID, 0, USER_PROCEDURE_NOTIFICATION_CALL),  notif(notification)
+    QpiContextUserProcedureNotificationCall(const UserProcedureRegistry::UserProcedureData& notification) : QPI::QpiContextProcedureCall(notification.contractIndex, NULL_ID, 0, USER_PROCEDURE_NOTIFICATION_CALL),  notif(notification)
     {
         contractActionTracker.init();
     }
 
     // Run user procedure notification
-    void call()
+    void call(const void* inputPtr)
     {
         ASSERT(_currentContractIndex < contractCount);
 
@@ -1330,7 +1340,7 @@ struct QpiContextUserProcedureNotificationCall : public QPI::QpiContextProcedure
             __qpiAbort(ContractErrorAllocInputOutputFailed);
         }
         char* locals = input + notif.inputSize;
-        copyMem(input, notif.inputPtr, notif.inputSize);
+        copyMem(input, inputPtr, notif.inputSize);
         setMem(locals, notif.localsSize, 0);
 
         // call user procedure
@@ -1353,5 +1363,5 @@ struct QpiContextUserProcedureNotificationCall : public QPI::QpiContextProcedure
     }
 
 private:
-    const UserProcedureNotification& notif;
+    const UserProcedureRegistry::UserProcedureData& notif;
 };

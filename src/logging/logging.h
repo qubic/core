@@ -18,7 +18,7 @@ struct Peer;
 
 #define LOG_CONTRACTS (LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES)
 
-#if LOG_SPECTRUM | LOG_UNIVERSE | LOG_CONTRACTS | LOG_CUSTOM_MESSAGES
+#if LOG_SPECTRUM | LOG_UNIVERSE | LOG_CONTRACTS | LOG_CUSTOM_MESSAGES | LOG_ORACLES
 #define ENABLED_LOGGING 1
 #else
 #define ENABLED_LOGGING 0
@@ -57,6 +57,7 @@ struct Peer;
 #define ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE 11
 #define ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE 12
 #define CONTRACT_RESERVE_DEDUCTION 13
+#define ORACLE_QUERY_STATUS_CHANGE 14
 #define CUSTOM_MESSAGE 255
 
 #define CUSTOM_MESSAGE_OP_START_DISTRIBUTE_DIVIDENDS 6217575821008262227ULL // STA_DDIV
@@ -230,6 +231,7 @@ struct SpectrumStats
     unsigned long long dustThresholdBurnHalf;
     unsigned int numberOfEntities;
     unsigned int entityCategoryPopulations[48];
+    unsigned int _padding;
 };
 
 struct ContractReserveDeduction
@@ -237,8 +239,19 @@ struct ContractReserveDeduction
     unsigned long long deductedAmount;
     long long remainingAmount;
     unsigned int contractIndex;
+    unsigned int _padding;
 };
 
+struct OracleQueryStatusChange
+{
+    m256i queryingEntity;
+    long long queryId;
+    unsigned int interfaceIndex;
+    unsigned char type;
+    unsigned char status;
+
+    char _terminator; // Only data before "_terminator" are logged
+};
 
 /*
  * LOGGING IMPLEMENTATION
@@ -374,6 +387,7 @@ public:
     static constexpr unsigned int SC_BEGIN_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 2;
     static constexpr unsigned int SC_END_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 3;
     static constexpr unsigned int SC_END_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 4;
+    static constexpr unsigned int SC_NOTIFICATION_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 5;
 
 #if ENABLED_LOGGING
     // Struct to map log buffer from log id    
@@ -617,9 +631,12 @@ public:
     bool saveCurrentLoggingStates(CHAR16* dir)
     {
 #if ENABLED_LOGGING
-        unsigned char* buffer = (unsigned char*)__scratchpad();        
-        static_assert(reorgBufferSize >= LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
-            + sizeof(digests) + 600, "scratchpad is too small");
+        constexpr auto bufferSize = LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
+            + sizeof(digests) + 600;
+        static_assert(defaultCommonBuffersSize >= bufferSize, "commonBuffer size is too small");
+        __ScopedScratchpad scratchpad(bufferSize, /*initZero=*/false);
+        ASSERT(scratchpad.ptr);
+        unsigned char* buffer = (unsigned char*)scratchpad.ptr;
         unsigned long long writeSz = 0;
         // copy currentPage of log buffer ~ 100MiB
         unsigned long long sz = logBuffer.dumpVMState(buffer);
@@ -654,7 +671,7 @@ public:
         *((unsigned int*)buffer) = currentTxId; buffer += 4;
         *((unsigned int*)buffer) = currentTick; buffer += 4;
         writeSz += 8 + 8 + 4 + 4 + 4 + 4;
-        buffer = (unsigned char*)__scratchpad(); // reset back to original pos
+        buffer = (unsigned char*)scratchpad.ptr; // reset back to original pos
         sz = save(L"logEventState.db", writeSz, buffer, dir);
         if (sz != writeSz)
         {
@@ -669,9 +686,12 @@ public:
     void loadLastLoggingStates(CHAR16* dir)
     {
 #if ENABLED_LOGGING
-        unsigned char* buffer = (unsigned char*)__scratchpad();
-        static_assert(reorgBufferSize >= LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
-            + sizeof(digests) + 600, "scratchpad is too small");
+        constexpr auto bufferSize = LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
+            + sizeof(digests) + 600;
+        static_assert(defaultCommonBuffersSize >= bufferSize, "commonBuffer size is too small");
+        __ScopedScratchpad scratchpad(bufferSize, /*initZero=*/false);
+        unsigned char* buffer = (unsigned char*)scratchpad.ptr;
+        ASSERT(scratchpad.ptr);
         CHAR16 fileName[] = L"logEventState.db";
         const long long fileSz = getFileSize(fileName, dir);
         if (fileSz == -1)
@@ -859,6 +879,13 @@ public:
     {
 #if LOG_SPECTRUM
         logMessage(sizeof(ContractReserveDeduction), CONTRACT_RESERVE_DEDUCTION, &message);
+#endif
+    }
+
+    void logOracleQueryStatusChange(const OracleQueryStatusChange& message)
+    {
+#if LOG_ORACLES
+        logMessage(offsetof(OracleQueryStatusChange, _terminator), ORACLE_QUERY_STATUS_CHANGE, &message);
 #endif
     }
 

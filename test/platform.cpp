@@ -6,6 +6,9 @@
 #include "../src/platform/custom_stack.h"
 #include "../src/platform/profiling.h"
 
+#include "common_buffers.h"
+#include <thread>
+
 TEST(TestCoreReadWriteLock, SimpleSingleThread)
 {
     ReadWriteLock l;
@@ -323,4 +326,176 @@ TEST(TestCoreProfiling, CheckTicksToMicroseconds)
     checkTicksToMicroseconds(2, 0xffffffffffffffllu, 1000);
     checkTicksToMicroseconds(2, 0xffffffffffffffffllu, 12345);
     checkTicksToMicroseconds(2, 0xffffffffffffffffllu, 123456);
+}
+
+static volatile bool waitingForAcquire = false;
+
+static void acquireAndReleaseCommonBuffer()
+{
+    waitingForAcquire = true;
+    void* buf = commonBuffers.acquireBuffer(64);
+    waitingForAcquire = false;
+    EXPECT_NE(buf, nullptr);
+    sleepMilliseconds(100);
+    commonBuffers.releaseBuffer(buf);
+}
+
+TEST(TestCoreCommonBuffers, OneBuffer)
+{
+    if (!frequency)
+        initTimeStampCounter();
+
+    // init fail: 0 buffers / size 0
+    EXPECT_FALSE(commonBuffers.init(0, 1024));
+    EXPECT_FALSE(commonBuffers.init(1, 0));
+
+    // init success
+    EXPECT_TRUE(commonBuffers.init(1, 1024));
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 0);
+
+    // acquire fail: requested buffer size too big
+    void* buf = commonBuffers.acquireBuffer(2000);
+    EXPECT_EQ(buf, nullptr);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 0);
+
+    // acquire success
+    buf = commonBuffers.acquireBuffer(1024);
+    EXPECT_NE(buf, nullptr);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 1);
+
+    // release success
+    commonBuffers.releaseBuffer(buf);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 0);
+
+    // check stats
+    EXPECT_EQ(commonBuffers.getInvalidReleaseCount(), 0);
+    EXPECT_EQ(commonBuffers.getMaxWaitingProcessorCount(), 0);
+
+    // invalid release (double free)
+    commonBuffers.releaseBuffer(buf);
+    EXPECT_EQ(commonBuffers.getInvalidReleaseCount(), 1);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 0);
+
+    // invalid release (invalid pointer)
+    commonBuffers.releaseBuffer((void*)0x123456);
+    EXPECT_EQ(commonBuffers.getInvalidReleaseCount(), 2);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 0);
+
+    // acquire success
+    buf = commonBuffers.acquireBuffer(512);
+    EXPECT_NE(buf, nullptr);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 1);
+
+    // acquire in other thread has to wait
+    auto thread = std::thread(acquireAndReleaseCommonBuffer);
+    sleepMilliseconds(100);
+    EXPECT_TRUE(waitingForAcquire);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 1);
+
+    // release buffer -> other thread can acquire it
+    commonBuffers.releaseBuffer(buf);
+    sleepMilliseconds(50);  // after 50 ms the other thread should have acquired the buffer
+    EXPECT_FALSE(waitingForAcquire);
+    thread.join(); // after ending the thread, the buffer is release again
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 0);
+
+    EXPECT_EQ(commonBuffers.getMaxWaitingProcessorCount(), 1);
+
+    // free all buffers, reset state
+    commonBuffers.deinit();
+    EXPECT_EQ(commonBuffers.getInvalidReleaseCount(), 0);
+    EXPECT_EQ(commonBuffers.getMaxWaitingProcessorCount(), 0);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 0);
+}
+
+TEST(TestCoreCommonBuffers, ThreeBuffers)
+{
+    if (!frequency)
+        initTimeStampCounter();
+
+    // init success
+    EXPECT_TRUE(commonBuffers.init(3, 1024));
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 0);
+
+    // acquire fail: requested buffer size too big
+    void* buf = commonBuffers.acquireBuffer(2000);
+    EXPECT_EQ(buf, nullptr);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 0);
+
+    // acquire success
+    buf = commonBuffers.acquireBuffer(1024);
+    EXPECT_NE(buf, nullptr);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 1);
+
+    // release
+    commonBuffers.releaseBuffer(buf);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 0);
+
+    // acquire three buffer success
+    void* buf2 = commonBuffers.acquireBuffer(1024);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 1);
+    void* buf3 = commonBuffers.acquireBuffer(42);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 2);
+    buf = commonBuffers.acquireBuffer(123);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 3);
+    EXPECT_NE(buf, nullptr);
+    EXPECT_NE(buf2, nullptr);
+    EXPECT_NE(buf3, nullptr);
+
+    // release three buffers
+    commonBuffers.releaseBuffer(buf);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 2);
+    commonBuffers.releaseBuffer(buf2);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 1);
+    commonBuffers.releaseBuffer(buf3);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 0);
+
+    // check stats
+    EXPECT_EQ(commonBuffers.getInvalidReleaseCount(), 0);
+    EXPECT_EQ(commonBuffers.getMaxWaitingProcessorCount(), 1); // heuristic is off by one (in facto no waiting needed)
+
+    // invalid release (double free)
+    commonBuffers.releaseBuffer(buf);
+    EXPECT_EQ(commonBuffers.getInvalidReleaseCount(), 1);
+
+    // invalid release (invalid pointer)
+    commonBuffers.releaseBuffer((void*)0x123456);
+    EXPECT_EQ(commonBuffers.getInvalidReleaseCount(), 2);
+
+    // acquire three buffers
+    buf = commonBuffers.acquireBuffer(512);
+    buf2 = commonBuffers.acquireBuffer(1024);
+    buf3 = commonBuffers.acquireBuffer(987);
+    EXPECT_NE(buf, nullptr);
+    EXPECT_NE(buf2, nullptr);
+    EXPECT_NE(buf3, nullptr);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 3);
+
+    // acquire in two other thread has to wait
+    auto thread1 = std::thread(acquireAndReleaseCommonBuffer);
+    auto thread2 = std::thread(acquireAndReleaseCommonBuffer);
+    sleepMilliseconds(100);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 3);
+    EXPECT_TRUE(waitingForAcquire);
+
+    // release 2 buffers -> other threads can acquire them
+    commonBuffers.releaseBuffer(buf);
+    commonBuffers.releaseBuffer(buf2);
+    sleepMilliseconds(50);
+    EXPECT_FALSE(waitingForAcquire);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 3);
+    thread1.join();
+    thread2.join();
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 1);
+
+    commonBuffers.releaseBuffer(buf3);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 0);
+
+    EXPECT_EQ(commonBuffers.getMaxWaitingProcessorCount(), 2);
+
+    // free all buffers, reset state
+    commonBuffers.deinit();
+    EXPECT_EQ(commonBuffers.getInvalidReleaseCount(), 0);
+    EXPECT_EQ(commonBuffers.getMaxWaitingProcessorCount(), 0);
+    EXPECT_EQ(commonBuffers.acquiredBuffers(), 0);
 }

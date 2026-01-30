@@ -46,7 +46,7 @@ struct RespondSystemInfo
 
     unsigned int targetTickVoteSignature;
     unsigned long long computorPacketSignature;
-    unsigned long long _reserve1;
+    unsigned long long solutionAdditionalThreshold; // solution threshold for additional mining algorithm
     unsigned long long _reserve2;
     unsigned long long _reserve3;
     unsigned long long _reserve4;
