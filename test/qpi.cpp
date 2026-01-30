@@ -773,31 +773,31 @@ void testProposalWithAllVoteData()
 
     // TransferYesNo proposal
     proposal.type = QPI::ProposalTypes::TransferYesNo;
-    proposal.transfer.destination = QPI::id(1, 2, 3, 4);
-    proposal.transfer.amounts.setAll(0);
-    proposal.transfer.amounts.set(0, 1234);
+    proposal.data.transfer.destination = QPI::id(1, 2, 3, 4);
+    proposal.data.transfer.amounts.setAll(0);
+    proposal.data.transfer.amounts.set(0, 1234);
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 2);
 
     // TransferTwoAmounts
     proposal.type = QPI::ProposalTypes::TransferTwoAmounts;
-    proposal.transfer.amounts.set(1, 12345);
+    proposal.data.transfer.amounts.set(1, 12345);
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 3);
 
     // TransferThreeAmounts
     proposal.type = QPI::ProposalTypes::TransferThreeAmounts;
-    proposal.transfer.amounts.set(2, 123456);
+    proposal.data.transfer.amounts.set(2, 123456);
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 4);
 
     // TransferFourAmounts
     proposal.type = QPI::ProposalTypes::TransferFourAmounts;
-    proposal.transfer.amounts.set(3, 1234567);
+    proposal.data.transfer.amounts.set(3, 1234567);
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 5);
 
     // TransferInEpochYesNo proposal
     proposal.type = QPI::ProposalTypes::TransferInEpochYesNo;
-    proposal.transferInEpoch.destination = QPI::id(1, 2, 3, 4);
-    proposal.transferInEpoch.amount = 10;
-    proposal.transferInEpoch.targetEpoch = 123;
+    proposal.data.transferInEpoch.destination = QPI::id(1, 2, 3, 4);
+    proposal.data.transferInEpoch.amount = 10;
+    proposal.data.transferInEpoch.targetEpoch = 123;
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 2);
 
     // fail: test TransferInEpoch proposal with too many or too few options
@@ -810,24 +810,24 @@ void testProposalWithAllVoteData()
 
     // VariableYesNo proposal
     proposal.type = QPI::ProposalTypes::VariableYesNo;
-    proposal.variableOptions.variable = 42;
-    proposal.variableOptions.values.set(0, 987);
-    proposal.variableOptions.values.setRange(1, proposal.variableOptions.values.capacity(), 0);
+    proposal.data.variableOptions.variable = 42;
+    proposal.data.variableOptions.values.set(0, 987);
+    proposal.data.variableOptions.values.setRange(1, proposal.data.variableOptions.values.capacity(), 0);
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 2);
 
     // VariableTwoValues proposal
     proposal.type = QPI::ProposalTypes::VariableTwoValues;
-    proposal.variableOptions.values.set(1, 9876);
+    proposal.data.variableOptions.values.set(1, 9876);
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 3);
 
     // VariableThreeValues proposal
     proposal.type = QPI::ProposalTypes::VariableThreeValues;
-    proposal.variableOptions.values.set(2, 98765);
+    proposal.data.variableOptions.values.set(2, 98765);
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 4);
 
     // VariableFourValues proposal
     proposal.type = QPI::ProposalTypes::VariableFourValues;
-    proposal.variableOptions.values.set(3, 987654);
+    proposal.data.variableOptions.values.set(3, 987654);
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 5);
 
     // fail: test variable proposal with too many or too few options (0 options means scalar)
@@ -841,15 +841,15 @@ void testProposalWithAllVoteData()
     // fail: wrong sorting with class Variable
     proposal.type = QPI::ProposalTypes::VariableFourValues;
     for (int i = 0; i < 4; ++i)
-        proposal.variableOptions.values.set(i, 20 - i);
+        proposal.data.variableOptions.values.set(i, 20 - i);
     EXPECT_FALSE(proposal.checkValidity());
 
     // VariableScalarMean proposal
     proposal.type = QPI::ProposalTypes::VariableScalarMean;
-    proposal.variableScalar.variable = 42;
-    proposal.variableScalar.minValue = 0;
-    proposal.variableScalar.maxValue = 25;
-    proposal.variableScalar.proposedValue = 1;
+    proposal.data.variableScalar.variable = 42;
+    proposal.data.variableScalar.minValue = 0;
+    proposal.data.variableScalar.maxValue = 25;
+    proposal.data.variableScalar.proposedValue = 1;
     if (supportScalarVotes)
         testProposalWithAllVoteDataOptionVotes(pwav, proposal, 26);
     else
@@ -917,8 +917,8 @@ TEST(TestCoreQPI, ProposalWithAllVoteDataYesNoProposals)
 
     // TransferYesNo proposal
     proposal.type = QPI::ProposalTypes::TransferYesNo;
-    proposal.transfer.destination = QPI::id(1, 2, 3, 4);
-    proposal.transfer.amount = 1234;
+    proposal.data.transfer.destination = QPI::id(1, 2, 3, 4);
+    proposal.data.transfer.amount = 1234;
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 2);
 
     // TransferTwoAmounts
@@ -935,8 +935,8 @@ TEST(TestCoreQPI, ProposalWithAllVoteDataYesNoProposals)
 
     // VariableYesNo proposal
     proposal.type = QPI::ProposalTypes::VariableYesNo;
-    proposal.variableOptions.variable = 42;
-    proposal.variableOptions.value = 987;
+    proposal.data.variableOptions.variable = 42;
+    proposal.data.variableOptions.value = 987;
     testProposalWithAllVoteDataOptionVotes(pwav, proposal, 2);
 
     // VariableTwoValues proposal
@@ -1003,9 +1003,9 @@ bool isReturnedProposalAsExpected(
         && proposalReturnedByGet.epoch == qpi.epoch()
         && proposalReturnedByGet.type == proposalSet.type
         && proposalReturnedByGet.supportScalarVotes == proposalSet.supportScalarVotes
-        && (memcmp(&proposalReturnedByGet.transfer, &proposalSet.transfer, sizeof(proposalSet.transfer)) == 0)
-        && (memcmp(&proposalReturnedByGet.variableOptions, &proposalSet.variableOptions, sizeof(proposalSet.variableOptions)) == 0)
-        && (memcmp(&proposalReturnedByGet.variableScalar, &proposalSet.variableScalar, sizeof(proposalSet.variableScalar)) == 0)
+        && (memcmp(&proposalReturnedByGet.data.transfer, &proposalSet.data.transfer, sizeof(proposalSet.data.transfer)) == 0)
+        && (memcmp(&proposalReturnedByGet.data.variableOptions, &proposalSet.data.variableOptions, sizeof(proposalSet.data.variableOptions)) == 0)
+        && (memcmp(&proposalReturnedByGet.data.variableScalar, &proposalSet.data.variableScalar, sizeof(proposalSet.data.variableScalar)) == 0)
         && (memcmp(&proposalReturnedByGet.url, &proposalSet.url, sizeof(proposalSet.url)) == 0);
     return expected;
 }
@@ -1462,8 +1462,8 @@ void testProposalVotingComputorsV1()
 
     // fail: proposal of transfer with wrong address
     proposal.type = QPI::ProposalTypes::TransferYesNo;
-    proposal.transfer.destination = QPI::NULL_ID;
-    proposal.transfer.amounts.setAll(0);
+    proposal.data.transfer.destination = QPI::NULL_ID;
+    proposal.data.transfer.amounts.setAll(0);
     setProposalExpectFailure(qpi, pv, secondProposer, proposal);
     // check that overwrite did not work
     EXPECT_TRUE(qpi(*pv).getProposal(qpi(*pv).proposalIndex(secondProposer), proposalReturned));
@@ -1482,13 +1482,13 @@ void testProposalVotingComputorsV1()
 
     // fail: proposal of revenue distribution with invalid amount
     proposal.type = QPI::ProposalTypes::TransferYesNo;
-    proposal.transfer.destination = qpi.originator();
-    proposal.transfer.amounts.set(0, -123456);
+    proposal.data.transfer.destination = qpi.originator();
+    proposal.data.transfer.amounts.set(0, -123456);
     setProposalExpectFailure(qpi, pv, secondProposer, proposal);
 
     // okay: revenue distribution, overwrite existing proposal of comp 2 (proposal index 1, reused)
-    proposal.transfer.destination = qpi.originator();
-    proposal.transfer.amounts.set(0, 1005);
+    proposal.data.transfer.destination = qpi.originator();
+    proposal.data.transfer.amounts.set(0, 1005);
     setProposalWithSuccessCheck(qpi, pv, secondProposer, proposal);
     EXPECT_EQ((int)qpi(*pv).proposalIndex(secondProposer), 1);
     EXPECT_EQ(qpi(*pv).nextProposalIndex(-1), 0);
@@ -1534,23 +1534,23 @@ void testProposalVotingComputorsV1()
     {
         // fail: scalar proposal with wrong min/max
         proposal.type = QPI::ProposalTypes::VariableScalarMean;
-        proposal.variableScalar.proposedValue = 10;
-        proposal.variableScalar.minValue = 11;
-        proposal.variableScalar.maxValue = 20;
-        proposal.variableScalar.variable = 123; // not checked, full range usable
+        proposal.data.variableScalar.proposedValue = 10;
+        proposal.data.variableScalar.minValue = 11;
+        proposal.data.variableScalar.maxValue = 20;
+        proposal.data.variableScalar.variable = 123; // not checked, full range usable
         setProposalExpectFailure(qpi, pv, qpi.computor(1), proposal);
-        proposal.variableScalar.minValue = 0;
-        proposal.variableScalar.maxValue = 9;
+        proposal.data.variableScalar.minValue = 0;
+        proposal.data.variableScalar.maxValue = 9;
         setProposalExpectFailure(qpi, pv, qpi.computor(1), proposal);
 
         // fail: scalar proposal with full range is invalid, because NO_VOTE_VALUE is reserved for no vote
-        proposal.variableScalar.minValue = proposal.variableScalar.minSupportedValue - 1;
-        proposal.variableScalar.maxValue = proposal.variableScalar.maxSupportedValue;
+        proposal.data.variableScalar.minValue = proposal.data.variableScalar.minSupportedValue - 1;
+        proposal.data.variableScalar.maxValue = proposal.data.variableScalar.maxSupportedValue;
         setProposalExpectFailure(qpi, pv, qpi.computor(1), proposal);
 
         // okay: scalar proposal with nearly full range
-        proposal.variableScalar.minValue = proposal.variableScalar.minSupportedValue;
-        proposal.variableScalar.maxValue = proposal.variableScalar.maxSupportedValue;
+        proposal.data.variableScalar.minValue = proposal.data.variableScalar.minSupportedValue;
+        proposal.data.variableScalar.maxValue = proposal.data.variableScalar.maxSupportedValue;
         setProposalWithSuccessCheck(qpi, pv, qpi.computor(1), proposal);
         EXPECT_EQ((int)qpi(*pv).proposalIndex(qpi.computor(1)), 2);
         EXPECT_EQ((int)qpi(*pv).proposalIndex(secondProposer), (int)secondProposalIdx);
@@ -1564,8 +1564,8 @@ void testProposalVotingComputorsV1()
         expectNoVotes(qpi, pv, qpi(*pv).proposalIndex(qpi.computor(1)));
         for (int i = 0; i < 99; ++i)
         {
-            voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(1)), proposal.type, qpi.tick(), proposal.variableScalar.maxSupportedValue - 2 + i % 3);
-            voteWithValidVoterMultiVote<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(1)), proposal.type, qpi.tick(), proposal.variableScalar.maxSupportedValue - 2 + i % 3);
+            voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(1)), proposal.type, qpi.tick(), proposal.data.variableScalar.maxSupportedValue - 2 + i % 3);
+            voteWithValidVoterMultiVote<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(1)), proposal.type, qpi.tick(), proposal.data.variableScalar.maxSupportedValue - 2 + i % 3);
         }
         EXPECT_TRUE(qpi(*pv).getVotingSummary(qpi(*pv).proposalIndex(qpi.computor(1)), votingSummaryReturned));
         EXPECT_EQ((int)votingSummaryReturned.proposalIndex, (int)qpi(*pv).proposalIndex(qpi.computor(1)));
@@ -1574,20 +1574,20 @@ void testProposalVotingComputorsV1()
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
         EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), -1);
         EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), -1);
-        EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.variableScalar.maxSupportedValue - 1);
+        EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.data.variableScalar.maxSupportedValue - 1);
         for (int i = 0; i < 555; ++i)
         {
-            voteWithValidVoterMultiVote<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(1)), proposal.type, qpi.tick(), proposal.variableScalar.minSupportedValue + 10 - i % 5);
-            voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(1)), proposal.type, qpi.tick(), proposal.variableScalar.minSupportedValue + 10 - i % 5);
+            voteWithValidVoterMultiVote<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(1)), proposal.type, qpi.tick(), proposal.data.variableScalar.minSupportedValue + 10 - i % 5);
+            voteWithValidVoter<true>(qpi, *pv, qpi.computor(i), qpi(*pv).proposalIndex(qpi.computor(1)), proposal.type, qpi.tick(), proposal.data.variableScalar.minSupportedValue + 10 - i % 5);
         }
         EXPECT_TRUE(qpi(*pv).getVotingSummary(qpi(*pv).proposalIndex(qpi.computor(1)), votingSummaryReturned));
         EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 555);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
-        EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.variableScalar.minSupportedValue + 8);
+        EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.data.variableScalar.minSupportedValue + 8);
 
         // okay: scalar proposal with limited range
-        proposal.variableScalar.minValue = -1000;
-        proposal.variableScalar.maxValue = 1000;
+        proposal.data.variableScalar.minValue = -1000;
+        proposal.data.variableScalar.maxValue = 1000;
         setProposalWithSuccessCheck(qpi, pv, qpi.computor(10), proposal);
         EXPECT_EQ((int)qpi(*pv).proposalIndex(qpi.computor(10)), 3);
         EXPECT_EQ(qpi(*pv).nextProposalIndex(-1), 0);
@@ -1640,36 +1640,36 @@ void testProposalVotingComputorsV1()
 
     // fail: test multi-option transfer proposal with invalid amounts
     proposal.type = QPI::ProposalTypes::TransferThreeAmounts;
-    proposal.transfer.destination = qpi.originator();
+    proposal.data.transfer.destination = qpi.originator();
     for (int i = 0; i < 4; ++i)
     {
-        proposal.transfer.amounts.setAll(0);
-        proposal.transfer.amounts.set(i, -100 * i - 1);
+        proposal.data.transfer.amounts.setAll(0);
+        proposal.data.transfer.amounts.set(i, -100 * i - 1);
         setProposalExpectFailure(qpi, pv, qpi.computor(1), proposal);
     }
-    proposal.transfer.amounts.set(0, 0);
-    proposal.transfer.amounts.set(1, 10);
-    proposal.transfer.amounts.set(2, 20);
-    proposal.transfer.amounts.set(3, 100); // for ProposalTypes::TransferThreeAmounts, fourth must be 0
+    proposal.data.transfer.amounts.set(0, 0);
+    proposal.data.transfer.amounts.set(1, 10);
+    proposal.data.transfer.amounts.set(2, 20);
+    proposal.data.transfer.amounts.set(3, 100); // for ProposalTypes::TransferThreeAmounts, fourth must be 0
     setProposalExpectFailure(qpi, pv, qpi.computor(1), proposal);
 
     // fail: duplicate options
-    proposal.transfer.amounts.setAll(0);
+    proposal.data.transfer.amounts.setAll(0);
     setProposalExpectFailure(qpi, pv, qpi.computor(1), proposal);
 
     // fail: options not sorted
     for (int i = 0; i < 3; ++i)
-        proposal.transfer.amounts.set(i, 100 - i);
+        proposal.data.transfer.amounts.set(i, 100 - i);
     setProposalExpectFailure(qpi, pv, qpi.computor(1), proposal);
 
     // okay: fill proposal storage
-    proposal.transfer.amounts.setAll(0);
+    proposal.data.transfer.amounts.setAll(0);
     constexpr QPI::uint16 computorProposalToFillAll = (proposalByComputorsOnly) ? pv->maxProposals : pv->maxProposals - 1;
     for (int i = 0; i < computorProposalToFillAll; ++i)
     {
-        proposal.transfer.amounts.set(0, i);
-        proposal.transfer.amounts.set(1, i * 2 + 1);
-        proposal.transfer.amounts.set(2, i * 3 + 2);
+        proposal.data.transfer.amounts.set(0, i);
+        proposal.data.transfer.amounts.set(1, i * 2 + 1);
+        proposal.data.transfer.amounts.set(2, i * 3 + 2);
         setProposalWithSuccessCheck(qpi, pv, qpi.computor(i), proposal);
     }
     EXPECT_EQ(countActiveProposals(qpi, pv), (int)pv->maxProposals);
@@ -1984,8 +1984,8 @@ void testProposalVotingShareholdersV1()
 
     // fail: proposal of transfer with wrong address
     proposal.type = QPI::ProposalTypes::TransferYesNo;
-    proposal.transfer.destination = QPI::NULL_ID;
-    proposal.transfer.amounts.setAll(0);
+    proposal.data.transfer.destination = QPI::NULL_ID;
+    proposal.data.transfer.amounts.setAll(0);
     setProposalExpectFailure(qpi, pv, secondProposer, proposal);
     // check that overwrite did not work
     EXPECT_TRUE(qpi(*pv).getProposal(qpi(*pv).proposalIndex(secondProposer), proposalReturned));
@@ -2004,13 +2004,13 @@ void testProposalVotingShareholdersV1()
 
     // fail: proposal of revenue distribution with invalid amount
     proposal.type = QPI::ProposalTypes::TransferYesNo;
-    proposal.transfer.destination = qpi.originator();
-    proposal.transfer.amounts.set(0, -123456);
+    proposal.data.transfer.destination = qpi.originator();
+    proposal.data.transfer.amounts.set(0, -123456);
     setProposalExpectFailure(qpi, pv, secondProposer, proposal);
 
     // okay: revenue distribution, overwrite existing proposal of comp 2 (proposal index 1, reused)
-    proposal.transfer.destination = qpi.originator();
-    proposal.transfer.amounts.set(0, 1005);
+    proposal.data.transfer.destination = qpi.originator();
+    proposal.data.transfer.amounts.set(0, 1005);
     setProposalWithSuccessCheck(qpi, pv, secondProposer, proposal);
     EXPECT_EQ((int)qpi(*pv).proposalIndex(secondProposer), 1);
     EXPECT_EQ(qpi(*pv).nextProposalIndex(-1), 0);
@@ -2062,23 +2062,23 @@ void testProposalVotingShareholdersV1()
     {
         // fail: scalar proposal with wrong min/max
         proposal.type = QPI::ProposalTypes::VariableScalarMean;
-        proposal.variableScalar.proposedValue = 10;
-        proposal.variableScalar.minValue = 11;
-        proposal.variableScalar.maxValue = 20;
-        proposal.variableScalar.variable = 123; // not checked, full range usable
+        proposal.data.variableScalar.proposedValue = 10;
+        proposal.data.variableScalar.minValue = 11;
+        proposal.data.variableScalar.maxValue = 20;
+        proposal.data.variableScalar.variable = 123; // not checked, full range usable
         setProposalExpectFailure(qpi, pv, shareholderShares[1].first, proposal);
-        proposal.variableScalar.minValue = 0;
-        proposal.variableScalar.maxValue = 9;
+        proposal.data.variableScalar.minValue = 0;
+        proposal.data.variableScalar.maxValue = 9;
         setProposalExpectFailure(qpi, pv, shareholderShares[1].first, proposal);
 
         // fail: scalar proposal with full range is invalid, because NO_VOTE_VALUE is reserved for no vote
-        proposal.variableScalar.minValue = proposal.variableScalar.minSupportedValue - 1;
-        proposal.variableScalar.maxValue = proposal.variableScalar.maxSupportedValue;
+        proposal.data.variableScalar.minValue = proposal.data.variableScalar.minSupportedValue - 1;
+        proposal.data.variableScalar.maxValue = proposal.data.variableScalar.maxSupportedValue;
         setProposalExpectFailure(qpi, pv, shareholderShares[1].first, proposal);
 
         // okay: scalar proposal with nearly full range
-        proposal.variableScalar.minValue = proposal.variableScalar.minSupportedValue;
-        proposal.variableScalar.maxValue = proposal.variableScalar.maxSupportedValue;
+        proposal.data.variableScalar.minValue = proposal.data.variableScalar.minSupportedValue;
+        proposal.data.variableScalar.maxValue = proposal.data.variableScalar.maxSupportedValue;
         setProposalWithSuccessCheck(qpi, pv, shareholderShares[1].first, proposal);
         EXPECT_EQ((int)qpi(*pv).proposalIndex(shareholderShares[1].first), 2);
         EXPECT_EQ((int)qpi(*pv).proposalIndex(secondProposer), (int)secondProposalIdx);
@@ -2094,16 +2094,16 @@ void testProposalVotingShareholdersV1()
         {
             voteWithValidVoterMultiVote<true>(qpi, *pv, shareholderShares[i].first, qpi(*pv).proposalIndex(shareholderShares[1].first),
                 proposal.type, qpi.tick(),
-                proposal.variableScalar.maxSupportedValue - 2 + i % 3, 5,
-                proposal.variableScalar.maxSupportedValue - 2 + (i + 1) % 3, 3,
-                proposal.variableScalar.maxSupportedValue - 2 + (i + 2) % 3, 2);
+                proposal.data.variableScalar.maxSupportedValue - 2 + i % 3, 5,
+                proposal.data.variableScalar.maxSupportedValue - 2 + (i + 1) % 3, 3,
+                proposal.data.variableScalar.maxSupportedValue - 2 + (i + 2) % 3, 2);
         }
         EXPECT_TRUE(qpi(*pv).getVotingSummary(qpi(*pv).proposalIndex(shareholderShares[1].first), votingSummaryReturned));
         EXPECT_EQ((int)votingSummaryReturned.proposalIndex, (int)qpi(*pv).proposalIndex(shareholderShares[1].first));
         EXPECT_EQ(votingSummaryReturned.totalVotesAuthorized, pv->maxVotes);
         EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 30);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
-        EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.variableScalar.maxSupportedValue - 1);
+        EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.data.variableScalar.maxSupportedValue - 1);
         EXPECT_EQ(votingSummaryReturned.getMostVotedOption(), -1);
         EXPECT_EQ(votingSummaryReturned.getAcceptedOption(), -1);
 
@@ -2111,17 +2111,17 @@ void testProposalVotingShareholdersV1()
         {
             voteWithValidVoterMultiVote<true>(qpi, *pv, shareholderShares[i].first, qpi(*pv).proposalIndex(shareholderShares[1].first),
                 proposal.type, qpi.tick(),
-                proposal.variableScalar.minSupportedValue + 4 - i % 5, 4,
-                proposal.variableScalar.minSupportedValue + 12 - i % 5, 2);
+                proposal.data.variableScalar.minSupportedValue + 4 - i % 5, 4,
+                proposal.data.variableScalar.minSupportedValue + 12 - i % 5, 2);
         }
         EXPECT_TRUE(qpi(*pv).getVotingSummary(qpi(*pv).proposalIndex(shareholderShares[1].first), votingSummaryReturned));
         EXPECT_EQ(votingSummaryReturned.totalVotesCasted, 30);
         EXPECT_EQ((int)votingSummaryReturned.optionCount, 0);
-        EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.variableScalar.minSupportedValue + 2 + 3);
+        EXPECT_EQ(votingSummaryReturned.scalarVotingResult, proposal.data.variableScalar.minSupportedValue + 2 + 3);
 
         // okay: scalar proposal with limited range
-        proposal.variableScalar.minValue = -1000;
-        proposal.variableScalar.maxValue = 1000;
+        proposal.data.variableScalar.minValue = -1000;
+        proposal.data.variableScalar.maxValue = 1000;
         setProposalWithSuccessCheck(qpi, pv, shareholderShares[5].first, proposal);
         EXPECT_EQ((int)qpi(*pv).proposalIndex(shareholderShares[5].first), 3);
         EXPECT_EQ(qpi(*pv).nextProposalIndex(-1), 0);
@@ -2176,36 +2176,36 @@ void testProposalVotingShareholdersV1()
 
     // fail: test multi-option transfer proposal with invalid amounts
     proposal.type = QPI::ProposalTypes::TransferThreeAmounts;
-    proposal.transfer.destination = qpi.originator();
+    proposal.data.transfer.destination = qpi.originator();
     for (int i = 0; i < 4; ++i)
     {
-        proposal.transfer.amounts.setAll(0);
-        proposal.transfer.amounts.set(i, -100 * i - 1);
+        proposal.data.transfer.amounts.setAll(0);
+        proposal.data.transfer.amounts.set(i, -100 * i - 1);
         setProposalExpectFailure(qpi, pv, shareholderShares[1].first, proposal);
     }
-    proposal.transfer.amounts.set(0, 0);
-    proposal.transfer.amounts.set(1, 10);
-    proposal.transfer.amounts.set(2, 20);
-    proposal.transfer.amounts.set(3, 100); // for ProposalTypes::TransferThreeAmounts, fourth must be 0
+    proposal.data.transfer.amounts.set(0, 0);
+    proposal.data.transfer.amounts.set(1, 10);
+    proposal.data.transfer.amounts.set(2, 20);
+    proposal.data.transfer.amounts.set(3, 100); // for ProposalTypes::TransferThreeAmounts, fourth must be 0
     setProposalExpectFailure(qpi, pv, shareholderShares[1].first, proposal);
 
     // fail: duplicate options
-    proposal.transfer.amounts.setAll(0);
+    proposal.data.transfer.amounts.setAll(0);
     setProposalExpectFailure(qpi, pv, shareholderShares[1].first, proposal);
 
     // fail: options not sorted
     for (int i = 0; i < 3; ++i)
-        proposal.transfer.amounts.set(i, 100 - i);
+        proposal.data.transfer.amounts.set(i, 100 - i);
     setProposalExpectFailure(qpi, pv, shareholderShares[1].first, proposal);
 
     // okay: fill proposal storage
-    proposal.transfer.amounts.setAll(0);
+    proposal.data.transfer.amounts.setAll(0);
     ASSERT_EQ((int)pv->maxProposals, (int)shareholderShares.size() - 1);
     for (int i = 0; i < pv->maxProposals; ++i)
     {
-        proposal.transfer.amounts.set(0, i);
-        proposal.transfer.amounts.set(1, i * 2 + 1);
-        proposal.transfer.amounts.set(2, i * 3 + 2);
+        proposal.data.transfer.amounts.set(0, i);
+        proposal.data.transfer.amounts.set(1, i * 2 + 1);
+        proposal.data.transfer.amounts.set(2, i * 3 + 2);
         setProposalWithSuccessCheck(qpi, pv, shareholderShares[i].first, proposal);
     }
     EXPECT_EQ(countActiveProposals(qpi, pv), (int)pv->maxProposals);

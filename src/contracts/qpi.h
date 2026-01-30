@@ -1882,7 +1882,7 @@ namespace QPI
 		uint32 tick;
 
 		// Proposal payload data (for all except types with class GeneralProposal)
-		union
+		union Data
 		{
 			// Used if type class is Transfer
 			struct Transfer
@@ -1917,7 +1917,7 @@ namespace QPI
 				static constexpr sint64 minSupportedValue = 0x8000000000000001;
 				static constexpr sint64 maxSupportedValue = 0x7fffffffffffffff;
 			} variableScalar;
-		};
+		} data;
 
 		// Check if content of instance are valid. Epoch is not checked.
 		// Also useful to show requirements of valid proposal.
@@ -1934,42 +1934,42 @@ namespace QPI
 				okay = options >= 2 && options <= 8;
 				break;
 			case ProposalTypes::Class::Transfer:
-				if (!isZero(transfer.destination) && options >= 2 && options <= 5)
+				if (!isZero(data.transfer.destination) && options >= 2 && options <= 5)
 				{
 					uint16 proposedAmounts = options - 1;
 					okay = true;
 					for (uint16 i = 0; i < proposedAmounts; ++i)
 					{
 						// no negative amounts
-						if (transfer.amounts.get(i) < 0)
+						if (data.transfer.amounts.get(i) < 0)
 						{
 							okay = false;
 							break;
 						}
 					}
 					okay = okay
-						   && isArraySortedWithoutDuplicates(transfer.amounts, 0, proposedAmounts)
-						   && transfer.amounts.rangeEquals(proposedAmounts, transfer.amounts.capacity(), 0);
+						   && isArraySortedWithoutDuplicates(data.transfer.amounts, 0, proposedAmounts)
+						   && data.transfer.amounts.rangeEquals(proposedAmounts, data.transfer.amounts.capacity(), 0);
 				}
 				break;
 			case ProposalTypes::Class::TransferInEpoch:
-				okay = options == 2 && !isZero(transferInEpoch.destination) && transferInEpoch.amount >= 0;
+				okay = options == 2 && !isZero(data.transferInEpoch.destination) && data.transferInEpoch.amount >= 0;
 				break;
 			case ProposalTypes::Class::Variable:
 				if (options >= 2 && options <= 5)
 				{
 					// option voting
 					uint16 proposedValues = options - 1;
-					okay = isArraySortedWithoutDuplicates(variableOptions.values, 0, proposedValues)
-						   && variableOptions.values.rangeEquals(proposedValues, variableOptions.values.capacity(), 0);
+					okay = isArraySortedWithoutDuplicates(data.variableOptions.values, 0, proposedValues)
+						   && data.variableOptions.values.rangeEquals(proposedValues, data.variableOptions.values.capacity(), 0);
 				}
 				else if (options == 0)
 				{
 					// scalar voting
 					if (supportScalarVotes)
-						okay = variableScalar.minValue <= variableScalar.proposedValue
-							&& variableScalar.proposedValue <= variableScalar.maxValue
-							&& variableScalar.minValue > NO_VOTE_VALUE;
+						okay = data.variableScalar.minValue <= data.variableScalar.proposedValue
+							&& data.variableScalar.proposedValue <= data.variableScalar.maxValue
+							&& data.variableScalar.minValue > NO_VOTE_VALUE;
 				}
 				break;
 			}
@@ -2009,7 +2009,7 @@ namespace QPI
 		uint32 tick;
 
 		// Proposal payload data (for all except types with class GeneralProposal)
-		union
+		union Data
 		{
 			// Used if type class is Transfer
 			struct Transfer
@@ -2024,7 +2024,7 @@ namespace QPI
 				uint64 variable;    // For identifying variable (interpreted by contract only)
 				sint64 value;		// Value of proposed option, rest zero
 			} variableOptions;
-		};
+		} data;
 
 		// Check if content of instance are valid. Epoch is not checked.
 		// Also useful to show requirements of valid proposal.
@@ -2041,7 +2041,7 @@ namespace QPI
 				okay = options >= 2 && options <= 3; // 3 options can be encoded in the yes/no type of storage as well
 				break;
 			case ProposalTypes::Class::Transfer:
-				okay = (options == 2 && !isZero(transfer.destination) && transfer.amount >= 0);
+				okay = (options == 2 && !isZero(data.transfer.destination) && data.transfer.amount >= 0);
 				break;
 			case ProposalTypes::Class::Variable:
 				okay = (options == 2);
@@ -3103,8 +3103,8 @@ namespace QPI
 		typedef uint16 SetShareholderProposal_output; \
 		PUBLIC_PROCEDURE(SetShareholderProposal) { \
 			if (qpi.invocationReward() < setProposalFeeVarOrValue || (input.epoch \
-				&& (input.type != ProposalTypes::VariableYesNo || input.variableOptions.variable >= numFeeStateVariables \
-					|| input.variableOptions.value < 0))) { \
+				&& (input.type != ProposalTypes::VariableYesNo || input.data.variableOptions.variable >= numFeeStateVariables \
+					|| input.data.variableOptions.value < 0))) { \
 				qpi.transfer(qpi.invocator(), qpi.invocationReward()); \
 				output = INVALID_PROPOSAL_INDEX; \
 				return; } \
@@ -3195,7 +3195,7 @@ namespace QPI
 					locals.p.acceptedOption = locals.p.results.getAcceptedOption(); \
 					if (locals.p.acceptedOption <= 0) \
 						continue; \
-					locals.p.acceptedValue = locals.p.proposal.variableOptions.value; \
+					locals.p.acceptedValue = locals.p.proposal.data.variableOptions.value; \
 					CALL(FinalizeShareholderProposalSetStateVar, locals.p, output); } } } \
 		PRIVATE_PROCEDURE(FinalizeShareholderProposalSetStateVar)
 

@@ -398,7 +398,7 @@ public:
 			{
 			case ProposalTypes::Class::Variable:
 				// check that variable index is in valid range
-				if (input.proposalData.variableOptions.variable >= 3)
+				if (input.proposalData.data.variableOptions.variable >= 3)
 					return;
 
 				// check that proposed value is in valid range
@@ -407,16 +407,16 @@ public:
 				if (locals.optionCount == 0)
 				{
 					// votes are scalar values
-					if (input.proposalData.variableScalar.minValue < 0
-						|| input.proposalData.variableScalar.maxValue < 0
-						|| input.proposalData.variableScalar.proposedValue < 0)
+					if (input.proposalData.data.variableScalar.minValue < 0
+						|| input.proposalData.data.variableScalar.maxValue < 0
+						|| input.proposalData.data.variableScalar.proposedValue < 0)
 						return;
 				}
 				else
 				{
 					// votes are option indices (option 0 is no change, value i is option i + 1)
 					for (locals.i = 0; locals.i < locals.optionCount - 1; ++locals.i)
-						if (input.proposalData.variableOptions.values.get(locals.i) < 0)
+						if (input.proposalData.data.variableOptions.values.get(locals.i) < 0)
 							return;
 				}
 
@@ -447,11 +447,11 @@ public:
 
 	PRIVATE_PROCEDURE(FinalizeShareholderProposalSetStateVar)
 	{
-		if (input.proposal.variableOptions.variable == 0)
+		if (input.proposal.data.variableOptions.variable == 0)
 			state.fee1 = input.acceptedValue;
-		else if (input.proposal.variableOptions.variable == 1)
+		else if (input.proposal.data.variableOptions.variable == 1)
 			state.fee2 = input.acceptedValue;
-		else if (input.proposal.variableOptions.variable == 2)
+		else if (input.proposal.data.variableOptions.variable == 2)
 			state.fee3 = input.acceptedValue;
 	}
 
@@ -496,7 +496,7 @@ public:
 						continue;
 
 					// option 0 is "no change", option 1 has index 0 in variableOptions
-					locals.p.acceptedValue = locals.p.proposal.variableOptions.values.get(locals.p.acceptedOption - 1);
+					locals.p.acceptedValue = locals.p.proposal.data.variableOptions.values.get(locals.p.acceptedOption - 1);
 				}
 
 				CALL(FinalizeShareholderProposalSetStateVar, locals.p, output);

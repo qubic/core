@@ -473,22 +473,22 @@ public:
             {
                 EXPECT_FALSE(setVar2);
                 EXPECT_FALSE(setVar3);
-                input.proposalData.variableOptions.variable = 0;
-                input.proposalData.variableOptions.value = valueVar1;
+                input.proposalData.data.variableOptions.variable = 0;
+                input.proposalData.data.variableOptions.value = valueVar1;
             }
             else if (setVar2)
             {
                 EXPECT_FALSE(setVar1);
                 EXPECT_FALSE(setVar3);
-                input.proposalData.variableOptions.variable = 1;
-                input.proposalData.variableOptions.value = valueVar2;
+                input.proposalData.data.variableOptions.variable = 1;
+                input.proposalData.data.variableOptions.value = valueVar2;
             }
             else if (setVar3)
             {
                 EXPECT_FALSE(setVar1);
                 EXPECT_FALSE(setVar2);
-                input.proposalData.variableOptions.variable = 2;
-                input.proposalData.variableOptions.value = valueVar3;
+                input.proposalData.data.variableOptions.variable = 2;
+                input.proposalData.data.variableOptions.value = valueVar3;
             }
             break;
         }
@@ -1902,39 +1902,39 @@ TEST(ContractTestEx, ShareholderProposals)
     TESTEXB::ProposalDataT proposalB1;
     proposalB1.epoch = system.epoch;
     proposalB1.type = ProposalTypes::VariableScalarMean;
-    proposalB1.variableScalar.variable = 0;
-    proposalB1.variableScalar.minValue = 0;
-    proposalB1.variableScalar.maxValue = MAX_AMOUNT;
-    proposalB1.variableScalar.proposedValue = 1000;
+    proposalB1.data.variableScalar.variable = 0;
+    proposalB1.data.variableScalar.minValue = 0;
+    proposalB1.data.variableScalar.maxValue = MAX_AMOUNT;
+    proposalB1.data.variableScalar.proposedValue = 1000;
     uint16 proposalIdxB1 = test.setShareholderProposal<TESTEXB>(USER2, { proposalB1 });
     EXPECT_NE((int)proposalIdxB1, (int)INVALID_PROPOSAL_INDEX);
     auto proposalDataB1 = test.getShareholderProposal<TESTEXB>(proposalIdxB1);
     proposalB1 = proposalDataB1.proposal; // needed to set tick
     EXPECT_EQ((int)proposalDataB1.proposal.type, (int)ProposalTypes::VariableScalarMean);
     EXPECT_EQ(proposalDataB1.proposerPubicKey, USER2);
-    EXPECT_EQ(proposalDataB1.proposal.variableScalar.maxValue, MAX_AMOUNT);
-    EXPECT_EQ(proposalDataB1.proposal.variableScalar.proposedValue, 1000);
+    EXPECT_EQ(proposalDataB1.proposal.data.variableScalar.maxValue, MAX_AMOUNT);
+    EXPECT_EQ(proposalDataB1.proposal.data.variableScalar.proposedValue, 1000);
 
     // Create multi-option variable proposal as shareholder TESTEXA
     TESTEXB::ProposalDataT proposalB2;
     proposalB2.epoch = system.epoch;
     proposalB2.type = ProposalTypes::VariableFourValues;
-    proposalB2.variableOptions.variable = 1;
-    proposalB2.variableOptions.values.set(0, 100);
-    proposalB2.variableOptions.values.set(1, 1000);
-    proposalB2.variableOptions.values.set(2, 10000);
-    proposalB2.variableOptions.values.set(3, 100000);
+    proposalB2.data.variableOptions.variable = 1;
+    proposalB2.data.variableOptions.values.set(0, 100);
+    proposalB2.data.variableOptions.values.set(1, 1000);
+    proposalB2.data.variableOptions.values.set(2, 10000);
+    proposalB2.data.variableOptions.values.set(3, 100000);
     uint16 proposalIdxB2 = test.setProposalInOtherContractAsShareholder<TESTEXA>(USER1, TESTEXB_CONTRACT_INDEX, TESTEXB::SetShareholderProposal_input{ proposalB2 });
     EXPECT_NE((int)proposalIdxB2, (int)INVALID_PROPOSAL_INDEX);
     auto proposalDataB2 = test.getShareholderProposal<TESTEXB>(proposalIdxB2);
     proposalB2 = proposalDataB2.proposal; // needed to set tick
     EXPECT_EQ((int)proposalDataB2.proposal.type, (int)ProposalTypes::VariableFourValues);
     EXPECT_EQ(proposalDataB2.proposerPubicKey, TESTEXA_CONTRACT_ID);
-    EXPECT_EQ(proposalDataB2.proposal.variableOptions.variable, 1);
-    EXPECT_EQ(proposalDataB2.proposal.variableOptions.values.get(0), 100);
-    EXPECT_EQ(proposalDataB2.proposal.variableOptions.values.get(1), 1000);
-    EXPECT_EQ(proposalDataB2.proposal.variableOptions.values.get(2), 10000);
-    EXPECT_EQ(proposalDataB2.proposal.variableOptions.values.get(3), 100000);
+    EXPECT_EQ(proposalDataB2.proposal.data.variableOptions.variable, 1);
+    EXPECT_EQ(proposalDataB2.proposal.data.variableOptions.values.get(0), 100);
+    EXPECT_EQ(proposalDataB2.proposal.data.variableOptions.values.get(1), 1000);
+    EXPECT_EQ(proposalDataB2.proposal.data.variableOptions.values.get(2), 10000);
+    EXPECT_EQ(proposalDataB2.proposal.data.variableOptions.values.get(3), 100000);
 
     // cast votes in A1
     EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER1, proposalIdxA1, proposalA1, { {0, 60}, {1, 270} }));
