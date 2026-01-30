@@ -6623,7 +6623,7 @@ static void logHealthStatus()
             appendText(message, L"Contract #");
             appendNumber(message, i, FALSE);
             appendText(message, L": ");
-            const CHAR16* errorMsg = L"Unknown error";
+            const CHAR16* errorMsg = nullptr;
             switch (contractError[i])
             {
             // The alloc failures can be fixed by increasing the size of ContractLocalsStack
@@ -6635,8 +6635,12 @@ static void logHealthStatus()
             case ContractErrorTooManyActions: errorMsg = L"TooManyActions"; break;
             // Timeout requires to remove endless loop, speed-up code, or change the timeout
             case ContractErrorTimeout: errorMsg = L"Timeout"; break;
+            case ContractErrorIPOFailed: errorMsg = L"IPO failed"; break;
             }
-            appendText(message, errorMsg);
+            if (errorMsg)
+                appendText(message, errorMsg);
+            else
+                appendNumber(message, contractError[i], FALSE);
         }
     }
     if (!anyContractError)
