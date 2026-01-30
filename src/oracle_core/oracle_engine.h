@@ -616,8 +616,13 @@ public:
         if (oqm.status != ORACLE_QUERY_STATUS_PENDING)
             return;
 
-        // update query status flags
-        oqm.statusFlags |= (replyMessage->oracleMachineErrorFlags & ORACLE_FLAG_OM_ERROR_FLAGS);
+        // check error flags
+        uint16_t errorFlags = (replyMessage->oracleMachineErrorFlags & ORACLE_FLAG_OM_ERROR_FLAGS);
+        if (errorFlags != 0)
+        {
+            oqm.statusFlags |= errorFlags;
+            return;
+        }
 
         // check reply size vs size expected by interface
         ASSERT(oqm.interfaceIndex < OI::oracleInterfacesCount);
