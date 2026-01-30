@@ -153,14 +153,6 @@ public:
 		return true;
 	}
 
-	/**
-	* @return Current date from core node system
-	*/
-
-	inline static void getCurrentDate(const QPI::QpiContextFunctionCall& qpi, uint32& res)
-	{
-		packNostromoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), res);
-	}
 	/****** END PORTED TIMEUTILS FROM OLD Nostromo *****/
 
 	struct registerInTier_input
