@@ -32,7 +32,24 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 	{
 
 	case RequestOracleData::requestAllQueryIdsByTick:
+	case RequestOracleData::requestUserQueryIdsByTick:
+	case RequestOracleData::requestContractDirectQueryIdsByTick:
+	case RequestOracleData::requestContractSubscriptionQueryIdsByTick:
 	{
+		// select filter function for the request type
+		static_assert(RequestOracleData::requestAllQueryIdsByTick == 0);
+		static_assert(RequestOracleData::requestUserQueryIdsByTick == 1);
+		static_assert(RequestOracleData::requestContractDirectQueryIdsByTick == 2);
+		static_assert(RequestOracleData::requestContractSubscriptionQueryIdsByTick == 3);
+		typedef bool (*FilterFunc)(const OracleQueryMetadata& oqm);
+		const FilterFunc allFilterFunc[] = {
+			nullptr,
+			[](const OracleQueryMetadata& oqm) { return oqm.type == ORACLE_QUERY_TYPE_USER_QUERY; },
+			[](const OracleQueryMetadata& oqm) { return oqm.type == ORACLE_QUERY_TYPE_CONTRACT_QUERY; },
+			[](const OracleQueryMetadata& oqm) { return oqm.type == ORACLE_QUERY_TYPE_CONTRACT_SUBSCRIPTION; },
+		};
+		const FilterFunc filterFunc = allFilterFunc[request->reqType];
+
 		// send query IDs of queries of a given tick, splitting the array in multiple messages if needed
 		if (request->reqTickOrId >= UINT32_MAX)
 			break;
@@ -45,9 +62,13 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		do
 		{
 			unsigned int idxInMsg = 0;
-			for (; idxInMsg < maxQueryIdCount && moreQueries; ++idxInMsg)
+			while (idxInMsg < maxQueryIdCount && moreQueries)
 			{
-				payloadQueryIds[idxInMsg] = queries[queryIndex].queryId;
+				if (!filterFunc || filterFunc(queries[queryIndex]))
+				{
+					payloadQueryIds[idxInMsg] = queries[queryIndex].queryId;
+					++idxInMsg;
+				}
 				++queryIndex;
 				moreQueries = queryIndex < oracleQueryCount && queries[queryIndex].queryTick == tick;
 			}
@@ -56,18 +77,6 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		} while (moreQueries);
 		break;
 	}
-
-	case RequestOracleData::requestUserQueryIdsByTick:
-		// TODO
-		break;
-
-	case RequestOracleData::requestContractDirectQueryIdsByTick:
-		// TODO
-		break;
-
-	case RequestOracleData::requestContractSubscriptionQueryIdsByTick:
-		// TODO
-		break;
 
 	case RequestOracleData::requestPendingQueryIds:
 	{
