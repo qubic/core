@@ -464,24 +464,44 @@ public:
     {
         // check inputs
         if (contractIndex >= MAX_NUMBER_OF_CONTRACTS || interfaceIndex >= OI::oracleInterfacesCount || querySize != OI::oracleInterfaces[interfaceIndex].querySize)
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            addDebugMessage(L"Cannot start contract oracle query due to contractIndex / oracleInterface issue!");
+#endif
             return -1;
+        }
 
         // lock for accessing engine data
         LockGuard lockGuard(lock);
 
         // check that still have free capacity for the query
         if (oracleQueryCount >= MAX_ORACLE_QUERIES || pendingQueryIndices.numValues >= MAX_SIMULTANEOUS_ORACLE_QUERIES || queryStorageBytesUsed + querySize > ORACLE_QUERY_STORAGE_SIZE)
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            addDebugMessage(L"Cannot start contract oracle query due to lack of space!");
+#endif
             return -1;
+        }
 
         // find slot storing temporary reply state
         uint32_t replyStateSlotIdx = getEmptyReplyStateSlot();
         if (replyStateSlotIdx >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            addDebugMessage(L"Cannot start contract oracle query due to lack of free reply slot!");
+#endif
             return -1;
+        }
 
         // compute timeout as absolute point in time
         auto timeout = QPI::DateAndTime::now();
         if (!timeout.addMillisec(timeoutMillisec))
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            addDebugMessage(L"Cannot start contract oracle query due to timeout timestamp issue!");
+#endif
             return -1;
+        }
 
         // get sequential query index of contract in tick
         auto& cs = contractQueryIdState;
@@ -493,7 +513,12 @@ public:
         else
         {
             if (cs.queryIndexInTick >= 0x7FFFFFFF)
+            {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                addDebugMessage(L"Cannot start contract oracle query due to queryId issue!");
+#endif
                 return -1;
+            }
             ++cs.queryIndexInTick;
         }
 
@@ -504,7 +529,12 @@ public:
         // map ID to index
         ASSERT(!queryIdToIndex->contains(queryId));
         if (queryIdToIndex->set(queryId, oracleQueryCount) == QPI::NULL_INDEX)
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            addDebugMessage(L"Cannot start contract oracle query due to queryIdToIndex issue!");
+#endif
             return -1;
+        }
 
         // register index of pending query
         pendingQueryIndices.add(oracleQueryCount);
