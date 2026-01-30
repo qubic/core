@@ -3798,34 +3798,6 @@ static void processTick(unsigned long long processorNumber)
                     sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, broadcastedFutureTickData.tickData.signature);
 
                     enqueueResponse(NULL, sizeof(broadcastedFutureTickData), BroadcastFutureTickData::type(), 0, &broadcastedFutureTickData);
-
-                    // TEST: Also update local tick storage to ensure consistency between
-                    ts.tickData.acquireLock();
-                    TickData& td = ts.tickData.getByTickInCurrentEpoch(broadcastedFutureTickData.tickData.tick);
-                    if (td.epoch != system.epoch)
-                    {
-                        copyMem(&td, &broadcastedFutureTickData.tickData, sizeof(TickData));
-#if !defined(NDEBUG)
-                        {
-                            // Count non-zero transaction digests for debug logging
-                            unsigned int txDigestCount = 0;
-                            for (unsigned int di = 0; di < NUMBER_OF_TRANSACTIONS_PER_TICK; di++)
-                            {
-                                if (!isZero(broadcastedFutureTickData.tickData.transactionDigests[di]))
-                                {
-                                    txDigestCount++;
-                                }
-                            }
-                            CHAR16 dbgMsgLocal[200];
-                            setText(dbgMsgLocal, L"Local ts.tickData updated for tick ");
-                            appendNumber(dbgMsgLocal, broadcastedFutureTickData.tickData.tick, FALSE);
-                            appendText(dbgMsgLocal, ", txDigests ");
-                            appendNumber(dbgMsgLocal, txDigestCount, FALSE);
-                            addDebugMessage(dbgMsgLocal);
-                        }
-#endif
-                    }
-                    ts.tickData.releaseLock();
                 }
 
                 system.latestLedTick = system.tick;
