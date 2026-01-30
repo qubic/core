@@ -228,6 +228,15 @@ static volatile int persistingNodeStateTickProcWaiting = 0;
 static m256i initialRandomSeedFromPersistingState;
 static bool loadMiningSeedFromFile = false;
 static bool loadAllNodeStateFromFile = false;
+
+#if !defined(NDEBUG)
+// Debug: Store loaded digest values to compare with computed values after processTick
+static m256i loadedSaltedSpectrumDigest;
+static m256i loadedSaltedUniverseDigest;
+static m256i loadedSaltedComputerDigest;
+static unsigned int loadedDigestsTick = 0;
+static bool hasLoadedDigests = false;
+#endif
 #if TICK_STORAGE_AUTOSAVE_MODE
 static unsigned int nextPersistingNodeStateTick = 0;
 struct
@@ -3639,6 +3648,68 @@ static void processTick(unsigned long long processorNumber)
         appendText(dbgMsg, L".");
         appendNumber(dbgMsg, etalonTick.millisecond, FALSE);
         addDebugMessage(dbgMsg);
+
+        // Compare with loaded digests if this is the tick that was loaded
+        if (hasLoadedDigests && system.tick == loadedDigestsTick)
+        {
+            bool spectrumMatch = (etalonTick.saltedSpectrumDigest == loadedSaltedSpectrumDigest);
+            bool universeMatch = (etalonTick.saltedUniverseDigest == loadedSaltedUniverseDigest);
+            bool computerMatch = (etalonTick.saltedComputerDigest == loadedSaltedComputerDigest);
+
+            if (!spectrumMatch || !universeMatch || !computerMatch)
+            {
+                setText(dbgMsg, L"[BUG DETECTED] processTick computed DIFFERENT digests than LOADED!");
+                addDebugMessage(dbgMsg);
+
+                if (!spectrumMatch)
+                {
+                    setText(dbgMsg, L"[BUG] Spectrum LOADED: ");
+                    getIdentity(loadedSaltedSpectrumDigest.m256i_u8, digestChars, true);
+                    appendText(dbgMsg, digestChars);
+                    addDebugMessage(dbgMsg);
+
+                    setText(dbgMsg, L"[BUG] Spectrum COMPUTED: ");
+                    getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
+                    appendText(dbgMsg, digestChars);
+                    addDebugMessage(dbgMsg);
+                }
+
+                if (!universeMatch)
+                {
+                    setText(dbgMsg, L"[BUG] Universe LOADED: ");
+                    getIdentity(loadedSaltedUniverseDigest.m256i_u8, digestChars, true);
+                    appendText(dbgMsg, digestChars);
+                    addDebugMessage(dbgMsg);
+
+                    setText(dbgMsg, L"[BUG] Universe COMPUTED: ");
+                    getIdentity(etalonTick.saltedUniverseDigest.m256i_u8, digestChars, true);
+                    appendText(dbgMsg, digestChars);
+                    addDebugMessage(dbgMsg);
+                }
+
+                if (!computerMatch)
+                {
+                    setText(dbgMsg, L"[BUG] Computer LOADED: ");
+                    getIdentity(loadedSaltedComputerDigest.m256i_u8, digestChars, true);
+                    appendText(dbgMsg, digestChars);
+                    addDebugMessage(dbgMsg);
+
+                    setText(dbgMsg, L"[BUG] Computer COMPUTED: ");
+                    getIdentity(etalonTick.saltedComputerDigest.m256i_u8, digestChars, true);
+                    appendText(dbgMsg, digestChars);
+                    addDebugMessage(dbgMsg);
+                }
+
+                setText(dbgMsg, L"[BUG] This means SAVE captured wrong digests or tx pool differs!");
+                addDebugMessage(dbgMsg);
+            }
+            else
+            {
+                setText(dbgMsg, L"[LOAD OK] Computed digests MATCH loaded digests");
+                addDebugMessage(dbgMsg);
+            }
+            hasLoadedDigests = false; // Only check once
+        }
     }
 #endif
 
@@ -4554,6 +4625,19 @@ static bool saveAllNodeStates()
         appendNumber(message, etalonTick.tick, FALSE);
         appendText(message, L", epoch: ");
         appendNumber(message, etalonTick.epoch, FALSE);
+        appendText(message, L", system.tick: ");
+        appendNumber(message, system.tick, FALSE);
+        logToConsole(message);
+
+        // Log pending tx counts to detect if tx pool state differs from LOAD
+        setText(message, L"[SAVE] pending tx counts: ");
+        for (int i = 0; i < 4; i++)
+        {
+            appendNumber(message, system.tick + i, FALSE);
+            appendText(message, L"/");
+            appendNumber(message, pendingTxsPool.numPendingTxs(system.tick + i), FALSE);
+            appendText(message, L" ");
+        }
         logToConsole(message);
 
         setText(message, L"[SAVE] etalonTick.time: ");
@@ -4920,6 +5004,19 @@ static bool loadAllNodeStates()
         appendNumber(message, etalonTick.tick, FALSE);
         appendText(message, L", epoch: ");
         appendNumber(message, etalonTick.epoch, FALSE);
+        appendText(message, L", system.tick: ");
+        appendNumber(message, system.tick, FALSE);
+        logToConsole(message);
+
+        // Log pending tx counts - if different from SAVE, re-processing will produce wrong digests!
+        setText(message, L"[LOAD] pending tx counts: ");
+        for (int i = 0; i < 4; i++)
+        {
+            appendNumber(message, system.tick + i, FALSE);
+            appendText(message, L"/");
+            appendNumber(message, pendingTxsPool.numPendingTxs(system.tick + i), FALSE);
+            appendText(message, L" ");
+        }
         logToConsole(message);
 
         setText(message, L"[LOAD] etalonTick.time: ");
@@ -4975,6 +5072,14 @@ static bool loadAllNodeStates()
 
         setText(message, L"[LOAD] === END ETALONTICK STATE ===");
         logToConsole(message);
+
+        // Store loaded digests to compare with computed values later
+        loadedSaltedSpectrumDigest = etalonTick.saltedSpectrumDigest;
+        loadedSaltedUniverseDigest = etalonTick.saltedUniverseDigest;
+        loadedSaltedComputerDigest = etalonTick.saltedComputerDigest;
+        loadedDigestsTick = etalonTick.tick;
+        hasLoadedDigests = true;
+        logToConsole(L"[LOAD] Stored loaded digests for comparison with processTick output");
     }
 #endif
 
@@ -6081,6 +6186,35 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                     else
                     {
                         saltedSpectrumMismatchCount++;
+                        // Log first spectrum mismatch details
+                        if (saltedSpectrumMismatchCount == 1)
+                        {
+                            CHAR16 dbgMsg[200];
+                            CHAR16 digestChars[64];
+
+                            setText(dbgMsg, L"[SPECTRUM MISMATCH] VOTE salted: ");
+                            getIdentity(tick->saltedSpectrumDigest.m256i_u8, digestChars, true);
+                            appendText(dbgMsg, digestChars);
+                            addDebugMessage(dbgMsg);
+
+                            setText(dbgMsg, L"[SPECTRUM MISMATCH] EXPECTED (from local): ");
+                            getIdentity(saltedDigest.m256i_u8, digestChars, true);
+                            appendText(dbgMsg, digestChars);
+                            addDebugMessage(dbgMsg);
+
+                            setText(dbgMsg, L"[SPECTRUM MISMATCH] LOCAL base digest: ");
+                            getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
+                            appendText(dbgMsg, digestChars);
+                            addDebugMessage(dbgMsg);
+
+                            setText(dbgMsg, L"[SPECTRUM MISMATCH] computorIdx=");
+                            appendNumber(dbgMsg, tick->computorIndex, FALSE);
+                            addDebugMessage(dbgMsg);
+
+                            setText(dbgMsg, L"[SPECTRUM MISMATCH] vote tick=");
+                            appendNumber(dbgMsg, tick->tick, FALSE);
+                            addDebugMessage(dbgMsg);
+                        }
                     }
 #endif
                 }
@@ -6266,6 +6400,30 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
             appendText(summaryMsg, L", computer=");
             appendNumber(summaryMsg, saltedComputerMismatchCount, FALSE);
             addDebugMessage(summaryMsg);
+
+            // If high mismatch rate, show the local digest values being used
+            if (totalSaltedMismatches > 100)
+            {
+                CHAR16 digestChars[64];
+                setText(summaryMsg, L"[DIGEST DEBUG] Local saltedSpectrumDigest: ");
+                getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
+                appendText(summaryMsg, digestChars);
+                addDebugMessage(summaryMsg);
+
+                setText(summaryMsg, L"[DIGEST DEBUG] Local saltedUniverseDigest: ");
+                getIdentity(etalonTick.saltedUniverseDigest.m256i_u8, digestChars, true);
+                appendText(summaryMsg, digestChars);
+                addDebugMessage(summaryMsg);
+
+                setText(summaryMsg, L"[DIGEST DEBUG] Local saltedComputerDigest: ");
+                getIdentity(etalonTick.saltedComputerDigest.m256i_u8, digestChars, true);
+                appendText(summaryMsg, digestChars);
+                addDebugMessage(summaryMsg);
+
+                setText(summaryMsg, L"[DIGEST DEBUG] resourceTestingDigest: ");
+                appendNumber(summaryMsg, resourceTestingDigest, FALSE);
+                addDebugMessage(summaryMsg);
+            }
         }
     }
 #endif
@@ -6416,19 +6574,34 @@ static void tickProcessor(void*)
                 {
                     lastLoggedProcessTick = system.tick;
                     CHAR16 dbgMsg[200];
-                    setText(dbgMsg, L"[TICK PROC] Processing tick ");
+                    setText(dbgMsg, L"[TICK PROC] STARTING processTick for tick ");
                     appendNumber(dbgMsg, system.tick, FALSE);
-                    appendText(dbgMsg, L" (latestProcessedTick was ");
-                    appendNumber(dbgMsg, latestProcessedTick, FALSE);
-                    appendText(dbgMsg, L")");
+                    appendText(dbgMsg, L" requestPersist=");
+                    appendNumber(dbgMsg, requestPersistingNodeState, FALSE);
                     addDebugMessage(dbgMsg);
                 }
 #endif
                 processTick(processorNumber);
                 latestProcessedTick = system.tick;
+#if !defined(NDEBUG)
+                {
+                    CHAR16 dbgMsg[200];
+                    setText(dbgMsg, L"[TICK PROC] COMPLETED processTick for tick ");
+                    appendNumber(dbgMsg, system.tick, FALSE);
+                    appendText(dbgMsg, L" requestPersist=");
+                    appendNumber(dbgMsg, requestPersistingNodeState, FALSE);
+                    addDebugMessage(dbgMsg);
+                }
+#endif
 
                 if (requestPersistingNodeState)
                 {
+#if !defined(NDEBUG)
+                    CHAR16 saveMsg[200];
+                    setText(saveMsg, L"[SAVE TIMING] SAVE requested after processTick completed for tick ");
+                    appendNumber(saveMsg, system.tick, FALSE);
+                    addDebugMessage(saveMsg);
+#endif
                     persistingNodeStateTickProcWaiting = 1;
                     WAIT_WHILE(requestPersistingNodeState);
                     persistingNodeStateTickProcWaiting = 0;
@@ -8955,8 +9128,30 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     }
                 }
 #endif
+#if !defined(NDEBUG)
+                // Log when SAVE is requested but waiting for processTick to complete
+                static unsigned int lastLoggedSaveWait = 0;
+                if (requestPersistingNodeState == 1 && persistingNodeStateTickProcWaiting == 0 && lastLoggedSaveWait != system.tick)
+                {
+                    lastLoggedSaveWait = system.tick;
+                    CHAR16 dbgMsg[200];
+                    setText(dbgMsg, L"[SAVE] WAITING for processTick - system.tick=");
+                    appendNumber(dbgMsg, system.tick, FALSE);
+                    appendText(dbgMsg, L" tickProcWaiting=0 (processTick not done yet)");
+                    addDebugMessage(dbgMsg);
+                }
+#endif
                 if (requestPersistingNodeState == 1 && persistingNodeStateTickProcWaiting == 1)
                 {
+#if !defined(NDEBUG)
+                    {
+                        CHAR16 dbgMsg[200];
+                        setText(dbgMsg, L"[SAVE] PROCEEDING - processTick DONE at system.tick=");
+                        appendNumber(dbgMsg, system.tick, FALSE);
+                        appendText(dbgMsg, L" tickProcWaiting=1");
+                        addDebugMessage(dbgMsg);
+                    }
+#endif
                     // Saving node state takes a lot of time -> Close peer connections before to signal that
                     // the peers should connect to another node.
                     for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
