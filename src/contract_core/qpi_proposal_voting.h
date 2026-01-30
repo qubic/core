@@ -429,7 +429,7 @@ namespace QPI
 						if (supportScalarVotes)
 						{
 							ASSERT(sizeof(votes[0]) == 8);
-							if ((voteValue >= this->variableScalar.minValue && voteValue <= this->variableScalar.maxValue))
+							if ((voteValue >= this->data.variableScalar.minValue && voteValue <= this->data.variableScalar.maxValue))
 							{
 								// (cast should not be needed but is to get rid of warning)
 								votes[voteIndex] = static_cast<VoteStorageType>(voteValue);
@@ -893,8 +893,8 @@ namespace QPI
 		// scalar voting -> compute mean value of votes
 		sint64 value;
 		sint64 accumulation = 0;
-		if (p.variableScalar.maxValue > p.variableScalar.maxSupportedValue / maxVotes
-			|| p.variableScalar.minValue < p.variableScalar.minSupportedValue / maxVotes)
+		if (p.data.variableScalar.maxValue > p.data.variableScalar.maxSupportedValue / maxVotes
+			|| p.data.variableScalar.minValue < p.data.variableScalar.minSupportedValue / maxVotes)
 		{
 			// calculating mean in a way that avoids overflow of sint64
 			// algorithm based on https://stackoverflow.com/questions/56663116/how-to-calculate-average-of-int64-t

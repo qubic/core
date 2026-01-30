@@ -186,14 +186,14 @@ public:
         {
             const auto amountCount = ProposalTypes::optionCount(type) - 1;
             for (int i = 0; i < amountCount; ++i)
-                proposal.transfer.amounts.set(i, amount + i);
-            proposal.transfer.destination = dest;
+                proposal.data.transfer.amounts.set(i, amount + i);
+            proposal.data.transfer.destination = dest;
             break;
         }
         case ProposalTypes::Class::TransferInEpoch:
-            proposal.transferInEpoch.amount = amount;
-            proposal.transferInEpoch.destination = dest;
-            proposal.transferInEpoch.targetEpoch = targetEpoch;
+            proposal.data.transferInEpoch.amount = amount;
+            proposal.data.transferInEpoch.destination = dest;
+            proposal.data.transferInEpoch.targetEpoch = targetEpoch;
             break;
         }
         uint16 proposalIdx = setProposal(id(proposer, 1, 2, 3), proposal);

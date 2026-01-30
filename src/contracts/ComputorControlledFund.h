@@ -228,7 +228,7 @@ public:
 				
 				// Store subscription proposal data in the array indexed by proposalIndex
 				locals.subscriptionProposal.proposerId = qpi.originator();
-				locals.subscriptionProposal.destination = input.proposal.transfer.destination;
+				locals.subscriptionProposal.destination = input.proposal.data.transfer.destination;
 				copyMemory(locals.subscriptionProposal.url, input.proposal.url);
 				locals.subscriptionProposal.weeksPerPeriod = input.weeksPerPeriod;
 				locals.subscriptionProposal.numberOfPeriods = input.numberOfPeriods;
@@ -577,8 +577,8 @@ public:
 					else 
 					{
 						// Regular one-time transfer (no subscription data)
-						locals.transfer.destination = locals.proposal.transfer.destination;
-						locals.transfer.amount = locals.proposal.transfer.amount;
+						locals.transfer.destination = locals.proposal.data.transfer.destination;
+						locals.transfer.amount = locals.proposal.data.transfer.amount;
 						locals.transfer.tick = qpi.tick();
 						copyMemory(locals.transfer.url, locals.proposal.url);
 						locals.transfer.success = (qpi.transfer(locals.transfer.destination, locals.transfer.amount) >= 0);

@@ -491,15 +491,15 @@ public:
 
 			case ProposalTypes::Class::Variable:
 				// check that variable index is in valid range
-				if (input.proposalData.variableOptions.variable >= 3)
+				if (input.proposalData.data.variableOptions.variable >= 3)
 					return;
 
 				// check that proposed value is in valid range
-				if (input.proposalData.variableOptions.variable == 0 && input.proposalData.variableOptions.value > 1000000000000llu)
+				if (input.proposalData.data.variableOptions.variable == 0 && input.proposalData.data.variableOptions.value > 1000000000000llu)
 					return;
-				if (input.proposalData.variableOptions.variable == 1 && input.proposalData.variableOptions.value > 1000000llu)
+				if (input.proposalData.data.variableOptions.variable == 1 && input.proposalData.data.variableOptions.value > 1000000llu)
 					return;
-				if (input.proposalData.variableOptions.variable == 2 && (input.proposalData.variableOptions.value > 100 || input.proposalData.variableOptions.value < -100))
+				if (input.proposalData.data.variableOptions.variable == 2 && (input.proposalData.data.variableOptions.value > 100 || input.proposalData.data.variableOptions.value < -100))
 					return;
 
 				break;
@@ -509,7 +509,7 @@ public:
 				break;
 
 			default:
-				// this forbids other proposals including transfers and all future propsasl classes not implemented yet
+				// this forbids other proposals including transfers and all future proposal classes not implemented yet
 				return;
 			}
 		}
@@ -567,12 +567,12 @@ public:
 				// Check if the yes option (1) has been accepted
 				if (locals.results.getAcceptedOption() == 1)
 				{
-					if (locals.proposal.variableOptions.variable == 0)
-						state.dummyStateVariable1 = uint64(locals.proposal.variableOptions.value);
-					if (locals.proposal.variableOptions.variable == 1)
-						state.dummyStateVariable2 = uint32(locals.proposal.variableOptions.value);
-					if (locals.proposal.variableOptions.variable == 2)
-						state.dummyStateVariable3 = sint8(locals.proposal.variableOptions.value);
+					if (locals.proposal.data.variableOptions.variable == 0)
+						state.dummyStateVariable1 = uint64(locals.proposal.data.variableOptions.value);
+					if (locals.proposal.data.variableOptions.variable == 1)
+						state.dummyStateVariable2 = uint32(locals.proposal.data.variableOptions.value);
+					if (locals.proposal.data.variableOptions.variable == 2)
+						state.dummyStateVariable3 = sint8(locals.proposal.data.variableOptions.value);
 				}
 			}
 
