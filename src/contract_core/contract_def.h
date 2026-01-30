@@ -516,10 +516,10 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXD);
 
     // fill execution fee reserves for test contracts
-    setContractFeeReserve(TESTEXA_CONTRACT_INDEX, 10000);
-    setContractFeeReserve(TESTEXB_CONTRACT_INDEX, 10000);
-    setContractFeeReserve(TESTEXC_CONTRACT_INDEX, 10000);
-    setContractFeeReserve(TESTEXD_CONTRACT_INDEX, 10000);
+    setContractFeeReserve(TESTEXA_CONTRACT_INDEX, 100000000000);
+    setContractFeeReserve(TESTEXB_CONTRACT_INDEX, 100000000000);
+    setContractFeeReserve(TESTEXC_CONTRACT_INDEX, 100000000000);
+    setContractFeeReserve(TESTEXD_CONTRACT_INDEX, 100000000000);
 #endif
 }
 
