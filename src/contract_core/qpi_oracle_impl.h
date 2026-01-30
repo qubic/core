@@ -54,6 +54,12 @@ QPI::sint64 QPI::QpiContextProcedureCall::__qpiQueryOracle(
 			return queryId;
 		}
 	}
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+	else
+	{
+		addDebugMessage(L"Cannot start contract oracle query due to fee issue!");
+	}
+#endif
 
 	// notify about error (status and queryId are 0, indicating that an error happened before sending query)
 	auto* state = (ContractStateType*)contractStates[contractIndex];
