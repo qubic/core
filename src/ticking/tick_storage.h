@@ -552,16 +552,18 @@ public:
     // (2) write all missing chunks to disk
     // (3) update metadata state
     
-    // Lock order: tickData -> tickTransactions
+    // Lock order: tickData -> tickTransactions -> ticks
     void acquireAllLocks()
     {
         tickData.acquireLock();
         tickTransactions.acquireLock();
+        for (int i = 0; i < NUMBER_OF_COMPUTORS; i++) ticks.acquireLock(i);
     }
 
-    // Unlock order: tickTransactions -> tickData
+    // Unlock order: ticks -> tickTransactions -> tickData
     void releaseAllLocks()
     {
+        for (int i = 0; i < NUMBER_OF_COMPUTORS; i++) ticks.releaseLock(i);
         tickTransactions.releaseLock();
         tickData.releaseLock();
     }
