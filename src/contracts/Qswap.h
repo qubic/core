@@ -1577,9 +1577,12 @@ protected:
 		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToBurn = div(locals.swapFee * uint128(state.burnFeeRate), uint128(QSWAP_FEE_BASE_100));
 
+		locals.totalFee = sint64(locals.feeToShareholders.low) + sint64(locals.feeToQx.low) + sint64(locals.feeToInvestRewards.low) + sint64(locals.feeToBurn.low);
+
 		// Overflow protection: ensure all fees fit in uint64
-		if (locals.feeToShareholders.high != 0 || locals.feeToQx.high != 0 ||
-		    locals.feeToInvestRewards.high != 0 || locals.feeToBurn.high != 0)
+		if (locals.feeToShareholders.high != 0 || locals.feeToQx.high != 0
+			|| locals.feeToInvestRewards.high != 0 || locals.feeToBurn.high != 0
+			|| locals.quAmountIn < locals.totalFee)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
@@ -1608,12 +1611,6 @@ protected:
 		state.investRewardsEarnedFee += locals.feeToInvestRewards.low;
 		state.burnEarnedFee += locals.feeToBurn.low;
 
-		locals.totalFee = sint64(locals.feeToShareholders.low) + sint64(locals.feeToQx.low) + sint64(locals.feeToInvestRewards.low) + sint64(locals.feeToBurn.low);
-		if (locals.quAmountIn < locals.totalFee)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			return;
-		}
 		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - locals.totalFee;
 		locals.poolBasicState.reservedAssetAmount -= locals.assetAmountOut;
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
@@ -1726,6 +1723,13 @@ protected:
 		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToBurn = div(locals.swapFee * uint128(state.burnFeeRate), uint128(QSWAP_FEE_BASE_100));
 
+		locals.totalFee = sint64(locals.feeToShareholders.low) + sint64(locals.feeToQx.low) + sint64(locals.feeToInvestRewards.low) + sint64(locals.feeToBurn.low);
+		if (locals.quAmountIn < locals.totalFee)
+		{
+			qpi.transfer(qpi.invocator(), locals.quAmountIn);
+			return;
+		}
+
 		// Overflow protection: ensure all fees fit in uint64
 		if (locals.feeToShareholders.high != 0 || locals.feeToQx.high != 0 ||
 		    locals.feeToInvestRewards.high != 0 || locals.feeToBurn.high != 0)
@@ -1763,12 +1767,6 @@ protected:
 		state.investRewardsEarnedFee += locals.feeToInvestRewards.low;
 		state.burnEarnedFee += locals.feeToBurn.low;
 
-		locals.totalFee = sint64(locals.feeToShareholders.low) + sint64(locals.feeToQx.low) + sint64(locals.feeToInvestRewards.low) + sint64(locals.feeToBurn.low);
-		if (locals.quAmountIn < locals.totalFee)
-		{
-			qpi.transfer(qpi.invocator(), locals.quAmountIn);
-			return;
-		}
 		locals.poolBasicState.reservedQuAmount += locals.quAmountIn - locals.totalFee;
 		locals.poolBasicState.reservedAssetAmount -= input.assetAmountOut;
 		state.mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
