@@ -510,8 +510,8 @@ public:
 
         if (qpi.epoch() == 199)
         {
-            qpi.transfer(locals.address1, 30000000);
-            qpi.transfer(locals.address2, 100000000);
+            qpi.transfer(address1, 30000000);
+            qpi.transfer(address2, 100000000);
         }
     }
 
