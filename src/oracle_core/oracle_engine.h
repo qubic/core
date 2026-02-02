@@ -592,6 +592,14 @@ public:
         return queryId;
     }
 
+    // Refund fees if an error occured while trying to start an oracle query
+    static void refundFees(const m256i& sourcePublicKey, int64_t refundAmount)
+    {
+        increaseEnergy(sourcePublicKey, refundAmount);
+        const QuTransfer quTransfer = { m256i::zero(), sourcePublicKey, refundAmount };
+        logger.logQuTransfer(quTransfer);
+    }
+
 protected:
     // Enqueue oracle machine query message. Cannot be run concurrently. Caller must acquire engine lock!
     void enqueueOracleQuery(int64_t queryId, uint32_t interfaceIdx, uint32_t timeoutMillisec, const void* queryData, uint16_t querySize)

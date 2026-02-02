@@ -53,6 +53,10 @@ QPI::sint64 QPI::QpiContextProcedureCall::__qpiQueryOracle(
 			// success
 			return queryId;
 		}
+		else
+		{
+			oracleEngine.refundFees(_currentContractId, fee);
+		}
 	}
 #if !defined(NDEBUG) && !defined(NO_UEFI)
 	else
