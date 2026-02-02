@@ -511,8 +511,11 @@ public:
 
     BEGIN_EPOCH_WITH_LOCALS()
     {
-        qpi.transfer(address1, 30000000);
-        qpi.transfer(address2, 100000000);
+        if (qpi.epoch() == 199)
+        {
+            qpi.transfer(locals.address1, 30000000);
+            qpi.transfer(locals.address2, 100000000);
+        }
     }
 
 	struct END_EPOCH_locals
