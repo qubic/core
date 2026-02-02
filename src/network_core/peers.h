@@ -317,6 +317,18 @@ static void closePeer(Peer* peer, int closeGracefullyRetries = 0)
     }
 }
 
+// Closes all peer connections; optionally includes Oracle Machine nodes.
+static void closeAllPeers(bool closeOM = false)
+{
+    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
+    {
+        if (closeOM || !peers[i].isOracleMachineNode())
+        {
+            closePeer(&peers[i]);
+        }
+    }
+}
+
 // Add message to sending buffer of specific peer, can only called from main thread (not thread-safe).
 static void push(Peer* peer, RequestResponseHeader* requestResponseHeader)
 {

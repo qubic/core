@@ -6935,10 +6935,7 @@ static void processKeyPresses()
         case 0x0E:
         {
             logToConsole(L"Pressed F4 key");
-            for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
-            {
-                closePeer(&peers[i]);
-            }
+            closeAllPeers();
         }
         break;
 
@@ -7585,13 +7582,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 if (forceRefreshPeerList)
                 {
                     forceRefreshPeerList = false;
-                    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
-                    {
-                        if (!peers[i].isOracleMachineNode())
-                        {
-                            closePeer(&peers[i]);
-                        }
-                    }
+                    closeAllPeers();
                 }
 
                 processKeyPresses();
@@ -7630,10 +7621,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 {
                     // Saving node state takes a lot of time -> Close peer connections before to signal that
                     // the peers should connect to another node.
-                    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
-                    {
-                        closePeer(&peers[i]);
-                    }
+                    closeAllPeers(true);
 
                     logToConsole(L"Saving node state...");
                     saveAllNodeStates();
