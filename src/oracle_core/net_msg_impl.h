@@ -14,7 +14,7 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		return;
 
 	// prepare buffer
-	constexpr int maxQueryIdCount = 2; // TODO: increase value after testing
+	constexpr int maxQueryIdCount = 128;
 	constexpr int payloadBufferSize = math_lib::max((int)math_lib::max(MAX_ORACLE_QUERY_SIZE, MAX_ORACLE_REPLY_SIZE), maxQueryIdCount * 8);
 	static_assert(payloadBufferSize >= sizeof(RespondOracleDataQueryMetadata), "Buffer too small.");
 	static_assert(payloadBufferSize < 32 * 1024, "Large alloc in stack may need reconsideration.");
