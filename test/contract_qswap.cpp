@@ -58,6 +58,11 @@ public:
 		return (QswapChecker*)contractStates[QSWAP_CONTRACT_INDEX];
 	}
 
+    void beginEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(QSWAP_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+    }
+
 	bool loadState(const CHAR16* filename)
 	{
 		return load(filename, sizeof(QSWAP), contractStates[QSWAP_CONTRACT_INDEX]) == sizeof(QSWAP);
@@ -334,6 +339,7 @@ TEST(ContractSwap, QuoteTest)
 TEST(ContractSwap, IssueAssetAndTransferShareManagementRights)
 {
     ContractTestingQswap qswap;
+    qswap.beginEpoch();
 
     id issuer(1, 2, 3, 4);
 
