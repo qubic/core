@@ -283,6 +283,16 @@ TEST(OracleEngine, ContractQuerySuccess)
 
 	// no additional notifications
 	EXPECT_EQ(oracleEngine1.getNotification(), nullptr);
+
+	EXPECT_EQ(oracleEngine1.getOracleQueryStatus(queryId), ORACLE_QUERY_STATUS_SUCCESS);
+
+	OI::Price::OracleReply reply;
+	EXPECT_TRUE(oracleEngine1.getOracleReply(queryId, &reply, sizeof(reply)));
+	EXPECT_TRUE(compareMem(&reply, &notificationInput->reply, sizeof(reply)) == 0);
+
+	// oracleEngine2 did not process reveal -> no success / reply
+	EXPECT_EQ(oracleEngine2.getOracleQueryStatus(queryId), ORACLE_QUERY_STATUS_COMMITTED);
+	EXPECT_FALSE(oracleEngine2.getOracleReply(queryId, &reply, sizeof(reply)));
 }
 
 TEST(OracleEngine, ContractQueryUnresolvable)
@@ -426,6 +436,8 @@ TEST(OracleEngine, ContractQueryUnresolvable)
 
 	// no additional notifications
 	EXPECT_EQ(oracleEngine1.getNotification(), nullptr);
+
+	EXPECT_EQ(oracleEngine1.getOracleQueryStatus(queryId), ORACLE_QUERY_STATUS_UNRESOLVABLE);
 }
 
 TEST(OracleEngine, ContractQueryTimeout)
@@ -480,13 +492,14 @@ TEST(OracleEngine, ContractQueryTimeout)
 
 	// no additional notifications
 	EXPECT_EQ(oracleEngine1.getNotification(), nullptr);
+
+	EXPECT_EQ(oracleEngine1.getOracleQueryStatus(queryId), ORACLE_QUERY_STATUS_TIMEOUT);
 }
 
 /*
 Tests:
 - oracleEngine.getReplyCommitTransaction() with more than 1 commit / tx
-- processOracleReplyCommitTransaction wihtout get getReplyCommitTransaction
-- trigger failure
+- processOracleReplyCommitTransaction without get getReplyCommitTransaction
 */
 
 TEST(OracleEngine, FindFirstQueryIndexOfTick)
