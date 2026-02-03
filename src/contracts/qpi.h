@@ -2894,23 +2894,23 @@ namespace QPI
 	#define LOG_RESUME() __resumeLogMessage();
 
 	#define PRIVATE_FUNCTION(function) \
-		private: \
+		protected: \
 			typedef QPI::NoData function##_locals; \
 			PRIVATE_FUNCTION_WITH_LOCALS(function)
 
 	#define PRIVATE_FUNCTION_WITH_LOCALS(function) \
-		private: \
+		protected: \
 			enum { __is_function_##function = true }; \
 			inline static void function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##function(qpi, state, input, output, locals); } \
 			static void __impl_##function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals)
 
 	#define PRIVATE_PROCEDURE(procedure) \
-		private: \
+		protected: \
 			typedef QPI::NoData procedure##_locals; \
 			PRIVATE_PROCEDURE_WITH_LOCALS(procedure)
 
 	#define PRIVATE_PROCEDURE_WITH_LOCALS(procedure) \
-		private: \
+		protected: \
 			enum { __is_function_##procedure = false, __id_##procedure = (CONTRACT_INDEX << 22) | __LINE__ }; \
 			inline static void procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##procedure(qpi, state, input, output, locals); } \
 			static void __impl_##procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals)
