@@ -23,6 +23,10 @@ constexpr uint32_t MAX_ORACLE_QUERIES = (1 << 18);
 constexpr uint64_t ORACLE_QUERY_STORAGE_SIZE = MAX_ORACLE_QUERIES * 512;
 constexpr uint32_t MAX_SIMULTANEOUS_ORACLE_QUERIES = 1024;
 
+// TODO: with reasonable max. timeout, subscription period may need to be decoupled
+constexpr uint32_t MAX_ORACLE_TIMEOUT_MILLISEC = 3600 * 1000;
+
+
 #pragma pack(push, 4)
 struct OracleQueryMetadata
 {
@@ -496,7 +500,7 @@ public:
 
         // compute timeout as absolute point in time
         auto timeout = QPI::DateAndTime::now();
-        if (!timeout.addMillisec(timeoutMillisec))
+        if (timeoutMillisec > MAX_ORACLE_TIMEOUT_MILLISEC || !timeout.addMillisec(timeoutMillisec))
         {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
             addDebugMessage(L"Cannot start contract oracle query due to timeout timestamp issue!");
