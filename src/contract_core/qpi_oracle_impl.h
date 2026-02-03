@@ -119,5 +119,5 @@ bool QPI::QpiContextFunctionCall::getOracleReply(QPI::sint64 queryId, OracleInte
 
 inline QPI::uint8 QPI::QpiContextFunctionCall::getOracleQueryStatus(sint64 queryId) const
 {
-	return oracleEngine.getOracleReplygetOracleQueryStatus(queryId);
+	return oracleEngine.getOracleQueryStatus(queryId);
 }

@@ -187,7 +187,7 @@ TEST(OracleEngine, ContractQuerySuccess)
 	EXPECT_EQ(oracleEngine1.getNotification(), nullptr);
 
 	//-------------------------------------------------------------------------
-	// create and process enough reply commit tx to trigger reval tx
+	// create and process enough reply commit tx to trigger reveal tx
 
 	// create tx of node 3 computers and process in all nodes
 	for (int i = 600; i < 676; ++i)
@@ -325,22 +325,22 @@ TEST(OracleEngine, ContractQueryUnresolvable)
 	// process simulated reply from OM nodes
 	struct
 	{
-		OracleMachineReply metatdata;
+		OracleMachineReply metadata;
 		OI::Price::OracleReply data;
 	} priceOracleMachineReply;
 
 	// reply received/committed by node 1 and 2
-	priceOracleMachineReply.metatdata.oracleMachineErrorFlags = 0;
-	priceOracleMachineReply.metatdata.oracleQueryId = queryId;
+	priceOracleMachineReply.metadata.oracleMachineErrorFlags = 0;
+	priceOracleMachineReply.metadata.oracleQueryId = queryId;
 	priceOracleMachineReply.data.numerator = 1234;
 	priceOracleMachineReply.data.denominator = 1;
-	oracleEngine1.processOracleMachineReply(&priceOracleMachineReply.metatdata, sizeof(priceOracleMachineReply));
-	oracleEngine2.processOracleMachineReply(&priceOracleMachineReply.metatdata, sizeof(priceOracleMachineReply));
+	oracleEngine1.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
+	oracleEngine2.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
 
 	// reply received/committed by node 1 and 2
 	priceOracleMachineReply.data.numerator = 1233;
 	priceOracleMachineReply.data.denominator = 1;
-	oracleEngine3.processOracleMachineReply(&priceOracleMachineReply.metatdata, sizeof(priceOracleMachineReply));
+	oracleEngine3.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
 
 
 	//-------------------------------------------------------------------------
@@ -380,7 +380,7 @@ TEST(OracleEngine, ContractQueryUnresolvable)
 		oracleEngine3.checkPendingState(queryId, 3 * ownCompIdx + 3, ownCompIdx + 1, ORACLE_QUERY_STATUS_PENDING);
 	}
 
-	// create/process transcations that contradict with majority digest and turn status into unresolvable
+	// create/process transactions that contradict with majority digest and turn status into unresolvable
 	for (int allCompIdx = 600; allCompIdx < 676; ++allCompIdx)
 	{
 		int ownCompIdx = allCompIdx - 400;

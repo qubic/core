@@ -236,7 +236,7 @@ struct OracleEngineStatistics
     /// sum of ticks that were required to reach the commit state
     unsigned long long commitTicksSum;
 
-    /// total number of oracle machin replies that disagree with the first reply received for a query
+    /// total number of oracle machine replies that disagree with the first reply received for a query
     unsigned long long oracleMachineRepliesDisagreeCount;
 
     /// total number of reply reveal transactions
@@ -593,7 +593,7 @@ public:
         return queryId;
     }
 
-    // Refund fees if an error occured while trying to start an oracle query
+    // Refund fees if an error occurred while trying to start an oracle query
     static void refundFees(const m256i& sourcePublicKey, int64_t refundAmount)
     {
         ASSERT(refundAmount >= 0);
@@ -1521,7 +1521,7 @@ public:
         return true;
     }
 
-    uint8_t getOracleReplygetOracleQueryStatus(int64_t queryId) const
+    uint8_t getOracleQueryStatus(int64_t queryId) const
     {
         // lock for accessing engine data
         LockGuard lockGuard(lock);
@@ -1682,7 +1682,7 @@ public:
             ASSERT(oqm.status == ORACLE_QUERY_STATUS_PENDING || oqm.status == ORACLE_QUERY_STATUS_COMMITTED);
         }
 
-        // check index of reply states with pending reply commit quroum
+        // check index of reply states with pending reply commit quorum
         uint32_t replyIdxCount = pendingCommitReplyStateIndices.numValues;
         const uint32_t* replyIndices = pendingCommitReplyStateIndices.values;
         for (uint32_t idx = 0; idx < replyIdxCount; ++idx)

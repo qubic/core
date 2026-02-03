@@ -53,7 +53,7 @@ struct Price
 		/// Second currency of pair to get the exchange rate for.
 		id currency2;
 
-		// TODO: we may need to add precision reqirements regarding response value (and time?)
+		// TODO: we may need to add precision requirements regarding response value
 	};
 
 	/// Oracle reply data / output of the oracle machine
