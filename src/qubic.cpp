@@ -4261,7 +4261,7 @@ static bool saveAllNodeStates()
         appendText(message, L" Spectrum: ");
         getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
         appendText(message, digestChars);
-        logToConsole(message);
+        addDebugMessage(message);
     }
 #endif
 
@@ -4448,7 +4448,7 @@ static bool loadAllNodeStates()
         appendText(message, L" Spectrum: ");
         getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
         appendText(message, digestChars);
-        logToConsole(message);
+        addDebugMessage(message);
     }
 #endif
 
@@ -4557,7 +4557,7 @@ static bool loadAllNodeStates()
 
 #if !defined(NDEBUG)
     forceLogToConsoleAsAddDebugMessage = false;
-    logToConsole(L"[DEBUG] loadAllNodeStates() returning TRUE");
+    addDebugMessage(L"[DEBUG] loadAllNodeStates() returning TRUE");
 #endif
 
     return true;
@@ -5253,7 +5253,7 @@ static void tickProcessor(void*)
         appendText(message, L" Spectrum: ");
         getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
         appendText(message, digestChars);
-        logToConsole(message);
+        addDebugMessage(message);
     }
 #endif
 
@@ -5298,7 +5298,7 @@ static void tickProcessor(void*)
                     appendText(message, L" Spectrum: ");
                     getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
                     appendText(message, digestChars);
-                    logToConsole(message);
+                    addDebugMessage(message);
                 }
 #endif
                 processTick(processorNumber);
@@ -5312,7 +5312,7 @@ static void tickProcessor(void*)
                     appendText(message, L" Spectrum: ");
                     getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
                     appendText(message, digestChars);
-                    logToConsole(message);
+                    addDebugMessage(message);
                 }
 #endif
             }
@@ -6069,11 +6069,11 @@ static bool initialize()
 #if !defined(NDEBUG)
         if (canLoadFromFile)
         {
-            logToConsole(L"[DEBUG] canLoadFromFile=TRUE");
+            addDebugMessage(L"[DEBUG] canLoadFromFile=TRUE");
         }
         else
         {
-            logToConsole(L"[DEBUG] canLoadFromFile=FALSE");
+            addDebugMessage(L"[DEBUG] canLoadFromFile=FALSE");
         }
 #endif
 
@@ -6171,7 +6171,7 @@ static bool initialize()
             loadAllNodeStateFromFile = true;
             logToConsole(L"Loaded node state from snapshot, if you want to start from scratch please delete all snapshot files.");
 #if !defined(NDEBUG)
-            logToConsole(L"[DEBUG] loadAllNodeStateFromFile set to TRUE");
+            addDebugMessage(L"[DEBUG] loadAllNodeStateFromFile set to TRUE");
 #endif
         }
     }
