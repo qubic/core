@@ -3517,19 +3517,6 @@ static void processTick(unsigned long long processorNumber)
 
                     unsigned int nextTxIndex = 0;
                     unsigned int numPendingTickTxs = pendingTxsPool.getNumberOfPendingTickTxs(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET);
-#if !defined(NDEBUG)
-                    // Log when tick leader has NO pending transactions - indicates potential issue after LOAD
-                    if (numPendingTickTxs == 0)
-                    {
-                        setText(message, L"[TICK LEADER] NO pendingTxs! Creating tickData for tick=");
-                        appendNumber(message, system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, FALSE);
-                        appendText(message, L" at system.tick=");
-                        appendNumber(message, system.tick, FALSE);
-                        appendText(message, L" computorIdx=");
-                        appendNumber(message, ownComputorIndices[i], FALSE);
-                        logToConsole(message);
-                    }
-#endif
                     pendingTxsPool.acquireLock();
                     for (unsigned int tx = 0; tx < numPendingTickTxs; ++tx)
                     {
@@ -5030,6 +5017,13 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
 {
     const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
     const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
+
+#if !defined(NDEBUG)
+    // Static variables to prevent repeated logging on every loop iteration
+    static unsigned int lastMismatchLoggedTick = 0;
+    bool alreadyLoggedThisTick = (lastMismatchLoggedTick == system.tick);
+#endif
+
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
         ts.ticks.acquireLock(i);
@@ -5038,9 +5032,9 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
         CHAR16 dbgMsg[300];
         CHAR16 digestChars[60 + 1];
         bool saltedRessourceDigestErrorPrinted = false;
-        bool saltedSpectrumDigestErrorPrinted = false;
-        bool saltedUniverseDigestErrorPrinted = false;
-        bool saltedComputerDigestErrorPrinted = false;
+        bool saltedSpectrumDigestErrorPrinted = alreadyLoggedThisTick;  // Skip if already logged this tick
+        bool saltedUniverseDigestErrorPrinted = alreadyLoggedThisTick;
+        bool saltedComputerDigestErrorPrinted = alreadyLoggedThisTick;
 #endif
 
         const Tick* tick = &tsCompTicks[i];
@@ -5147,6 +5141,7 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                             appendText(dbgMsg, digestChars);
                             logToConsole(dbgMsg);
                             saltedSpectrumDigestErrorPrinted = true;
+                            lastMismatchLoggedTick = system.tick;  // Prevent repeated logging
                         }
                     }
 #endif
