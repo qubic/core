@@ -63,6 +63,7 @@ struct OracleEngineWithInitAndDeinit : public OracleEngine<ownComputorSeedsCount
 		const OracleReplyState<ownComputorSeedsCount>& replyState = this->replyStates[oqm.statusVar.pending.replyStateIndex];
 		EXPECT_EQ((int)totalCommitTxExecuted, (int)replyState.totalCommits);
 		EXPECT_EQ((int)ownCommitTxExecuted, (int)replyState.ownReplyCommitExecCount);
+		EXPECT_EQ(this->getOracleQueryStatus(queryId), expectedStatus);
 	}
 
 	void checkStatus(int64_t queryId, uint8_t expectedStatus) const
@@ -496,10 +497,259 @@ TEST(OracleEngine, ContractQueryTimeout)
 	EXPECT_EQ(oracleEngine1.getOracleQueryStatus(queryId), ORACLE_QUERY_STATUS_TIMEOUT);
 }
 
+template <typename OracleEngine>
+static void checkReplyCommitTransactions(
+	OracleEngine& oracleEngine, int globalCompIdxBegin, int globalCompIdxEnd,
+	const std::vector<QPI::sint64>& queryIds, QPI::sint64 queryIdWithoutReply)
+{
+	uint8_t txBuffer[MAX_TRANSACTION_SIZE];
+	auto* replyCommitTx = (OracleReplyCommitTransactionPrefix*)txBuffer;
+
+	// create tx of node 3 computers and process in all nodes
+	for (int globalCompIdx = globalCompIdxBegin; globalCompIdx < globalCompIdxEnd; ++globalCompIdx)
+	{
+		std::set<QPI::sint64> pendingCommitQueryIds;
+		pendingCommitQueryIds.insert(queryIds.begin(), queryIds.end());
+
+		unsigned int retCode = 0;
+		do
+		{
+			retCode = oracleEngine.getReplyCommitTransaction(txBuffer, globalCompIdx, globalCompIdx - globalCompIdxBegin, system.tick + 3, retCode);
+			if (!retCode)
+				break;
+			unsigned short commitCount = replyCommitTx->inputSize / sizeof(OracleReplyCommitTransactionItem);
+			auto* commits = reinterpret_cast<OracleReplyCommitTransactionItem*>(replyCommitTx->inputPtr());
+			for (unsigned short i = 0; i < commitCount; ++i)
+			{
+				pendingCommitQueryIds.erase(commits[i].queryId);
+			}
+		} while (retCode != UINT32_MAX);
+
+		// only the query without OM reply is not returned
+		EXPECT_EQ(pendingCommitQueryIds.size(), 1);
+		EXPECT_TRUE(pendingCommitQueryIds.contains(queryIdWithoutReply));
+	}
+}
+
+TEST(OracleEngine, MultiContractQuerySuccess)
+{
+	OracleEngineTest test;
+
+
+	// simulate three nodes: one with 350 computor IDs, one with 250, and one with 76
+	const m256i* allCompPubKeys = broadcastedComputors.computors.publicKeys;
+	OracleEngineWithInitAndDeinit<350> oracleEngine1(allCompPubKeys);
+	OracleEngineWithInitAndDeinit<250> oracleEngine2(allCompPubKeys + 350);
+	OracleEngineWithInitAndDeinit<76> oracleEngine3(allCompPubKeys + 600);
+
+	QPI::uint16 contractIndex = 4;
+	QPI::uint32 timeout = 50000;
+	const QPI::uint32 notificationProcId = 12345;
+	EXPECT_TRUE(userProcedureRegistry->add(notificationProcId, { dummyNotificationProc, 1, 128, 128, 1 }));
+
+	constexpr int queryCount = 30;
+	QPI::uint16 interfaceIndex = OI::Mock::oracleInterfaceIndex;
+	OI::Mock::OracleQuery mockQuery;
+
+	//-------------------------------------------------------------------------
+	// start contract query / check message to OM node / check query
+	std::vector<QPI::sint64> queryIds;
+	for (int i = 0; i < queryCount; ++i)
+	{
+		mockQuery.value = i + 1000;
+		QPI::sint64 queryId = oracleEngine1.startContractQuery(contractIndex, interfaceIndex, &mockQuery, sizeof(mockQuery), timeout, notificationProcId);
+		EXPECT_EQ(queryId, getContractOracleQueryId(system.tick, i));
+		EXPECT_EQ(queryId, oracleEngine2.startContractQuery(contractIndex, interfaceIndex, &mockQuery, sizeof(mockQuery), timeout, notificationProcId));
+		EXPECT_EQ(queryId, oracleEngine3.startContractQuery(contractIndex, interfaceIndex, &mockQuery, sizeof(mockQuery), timeout, notificationProcId));
+		
+		checkNetworkMessageOracleMachineQuery<OI::Mock>(queryId, timeout, mockQuery);
+		
+		OI::Mock::OracleQuery mockQueryReturned;
+		EXPECT_TRUE(oracleEngine1.getOracleQuery(queryId, &mockQueryReturned, sizeof(mockQueryReturned)));
+		EXPECT_EQ(memcmp(&mockQueryReturned, &mockQuery, sizeof(mockQuery)), 0);
+
+		queryIds.push_back(queryId);
+	}
+
+	//-------------------------------------------------------------------------
+	// process simulated reply from OM node
+	struct
+	{
+		OracleMachineReply metadata;
+		OI::Mock::OracleReply data;
+	} oracleMachineReply;
+
+	for (int i = 0; i < queryCount; ++i)
+	{
+		oracleMachineReply.metadata.oracleMachineErrorFlags = 0;
+		oracleMachineReply.metadata.oracleQueryId = queryIds[i];
+		oracleMachineReply.data.echoedValue = 1000 + i;
+		oracleMachineReply.data.doubledValue = (1000 + i) * 2;
+
+		// the first 3 queries don't get OM reply all oracleEngines
+		if (i != 0)
+			oracleEngine1.processOracleMachineReply(&oracleMachineReply.metadata, sizeof(oracleMachineReply));
+		if (i != 1)
+			oracleEngine2.processOracleMachineReply(&oracleMachineReply.metadata, sizeof(oracleMachineReply));
+		if (i != 2)
+			oracleEngine3.processOracleMachineReply(&oracleMachineReply.metadata, sizeof(oracleMachineReply));
+	}
+
+	//-------------------------------------------------------------------------
+	// create and process reply commit transactions
+
+	// get all commit tx for checking that correct set of commits is returned
+	checkReplyCommitTransactions(oracleEngine1, 0, 350, queryIds, queryIds[0]);
+	checkReplyCommitTransactions(oracleEngine2, 350, 600, queryIds, queryIds[1]);
+	checkReplyCommitTransactions(oracleEngine3, 600, 676, queryIds, queryIds[2]);
+
+	// advance few ticks in order to get commit tx returned again for processing the commits
+	system.tick += 5;
+
+	uint8_t txBuffer[MAX_TRANSACTION_SIZE];
+	auto* replyCommitTx = (OracleReplyCommitTransactionPrefix*)txBuffer;
+
+	int globalCompIdxBeginEnd[] = { 0, 350, 600, 676 };
+	for (int oracleEngineIdx = 0; oracleEngineIdx < 3; ++oracleEngineIdx)
+	{
+		for (int globalCompIdx = globalCompIdxBeginEnd[oracleEngineIdx];
+			globalCompIdx < globalCompIdxBeginEnd[oracleEngineIdx + 1];
+			++globalCompIdx)
+		{
+			unsigned int retCode = 0;
+			do
+			{
+				if (oracleEngineIdx == 0)
+					retCode = oracleEngine1.getReplyCommitTransaction(
+						txBuffer, globalCompIdx, globalCompIdx - globalCompIdxBeginEnd[oracleEngineIdx],
+						system.tick + 3, retCode);
+				else if (oracleEngineIdx == 1)
+					retCode = oracleEngine2.getReplyCommitTransaction(
+						txBuffer, globalCompIdx, globalCompIdx - globalCompIdxBeginEnd[oracleEngineIdx],
+						system.tick + 3, retCode);
+				else
+					retCode = oracleEngine3.getReplyCommitTransaction(
+						txBuffer, globalCompIdx, globalCompIdx - globalCompIdxBeginEnd[oracleEngineIdx],
+						system.tick + 3, retCode);
+				if (!retCode)
+					break;
+				EXPECT_TRUE(oracleEngine1.processOracleReplyCommitTransaction(replyCommitTx));
+				EXPECT_TRUE(oracleEngine2.processOracleReplyCommitTransaction(replyCommitTx));
+				EXPECT_TRUE(oracleEngine3.processOracleReplyCommitTransaction(replyCommitTx));
+			} while (retCode != UINT32_MAX);
+		}
+	}
+
+	// check status
+	oracleEngine1.checkPendingState(queryIds[0], 326, 0, ORACLE_QUERY_STATUS_PENDING);
+	oracleEngine2.checkPendingState(queryIds[0], 326, 250, ORACLE_QUERY_STATUS_PENDING);
+	oracleEngine3.checkPendingState(queryIds[0], 326, 76, ORACLE_QUERY_STATUS_PENDING);
+
+	oracleEngine1.checkPendingState(queryIds[1], 426, 350, ORACLE_QUERY_STATUS_PENDING);
+	oracleEngine2.checkPendingState(queryIds[1], 426, 0, ORACLE_QUERY_STATUS_PENDING);
+	oracleEngine3.checkPendingState(queryIds[1], 426, 76, ORACLE_QUERY_STATUS_PENDING);
+	
+	// generated tx were processed immediately, so getReplyCommitTransaction() stopped generating
+	// tx immediately when quorum of 451 was hit
+	for (int i = 2; i < queryCount; ++i)
+	{
+		oracleEngine1.checkPendingState(queryIds[i], 451, 350, ORACLE_QUERY_STATUS_COMMITTED);
+		oracleEngine2.checkPendingState(queryIds[i], 451, 101, ORACLE_QUERY_STATUS_COMMITTED);
+		oracleEngine3.checkPendingState(queryIds[i], 451, 0, ORACLE_QUERY_STATUS_COMMITTED);
+	}
+
+	//-------------------------------------------------------------------------
+	// reply reveal tx
+
+	std::set<QPI::sint64> pendingRevealQueryIds;
+	pendingRevealQueryIds.insert(queryIds.begin() + 2, queryIds.end());
+
+	// generate all reveal of oracleEngine3
+	auto* replyRevealTx = (OracleReplyRevealTransactionPrefix*)txBuffer;
+	unsigned int retCode = 0;
+	std::vector<const OracleReplyRevealTransactionPrefix*> revealTxs;
+	unsigned int txIndexInTickData = 0;
+	while ((retCode = oracleEngine3.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, retCode)) != 0)
+	{
+		oracleEngine1.announceExpectedRevealTransaction(replyRevealTx);
+		oracleEngine2.announceExpectedRevealTransaction(replyRevealTx);
+		oracleEngine3.announceExpectedRevealTransaction(replyRevealTx);
+
+		// save pointer to reveal tx in tick storage for processing tx later
+		revealTxs.push_back((OracleReplyRevealTransactionPrefix*)addOracleTransactionToTickStorage(replyRevealTx, txIndexInTickData));
+		txIndexInTickData++;
+	}
+
+	// process reveal tx
+	system.tick += 3;
+	for (txIndexInTickData = 0; txIndexInTickData < revealTxs.size(); ++txIndexInTickData)
+	{
+		const auto* revealTx = revealTxs[txIndexInTickData];
+		pendingRevealQueryIds.erase(revealTx->queryId);
+
+		oracleEngine1.processOracleReplyRevealTransaction(revealTx, txIndexInTickData);
+		oracleEngine2.processOracleReplyRevealTransaction(revealTx, txIndexInTickData);
+		oracleEngine3.processOracleReplyRevealTransaction(revealTx, txIndexInTickData);
+	}
+
+
+	// no reveal possible for oracleEngine3 in query 2, because it didn't get OM reply
+	EXPECT_EQ(pendingRevealQueryIds.size(), 1);
+	EXPECT_TRUE(pendingRevealQueryIds.contains(queryIds[2]));
+
+	// reveal query 2 using oracleEngine2
+	EXPECT_EQ(oracleEngine2.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 0), 1);
+	EXPECT_EQ(replyRevealTx->queryId, queryIds[2]);
+	EXPECT_EQ(oracleEngine2.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 1), 0);
+	addOracleTransactionToTickStorage(replyRevealTx, txIndexInTickData);
+	system.tick += 3;
+	oracleEngine1.processOracleReplyRevealTransaction(replyRevealTx, txIndexInTickData);
+	oracleEngine2.processOracleReplyRevealTransaction(replyRevealTx, txIndexInTickData);
+	oracleEngine3.processOracleReplyRevealTransaction(replyRevealTx, txIndexInTickData);
+
+	// nothing to reveal for oracleEngine1
+	EXPECT_EQ(oracleEngine1.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 0), 0);
+
+	//-------------------------------------------------------------------------
+	// notifications
+
+	std::set<QPI::sint64> pendingNotificationQueryIds;
+	pendingNotificationQueryIds.insert(queryIds.begin() + 2, queryIds.end());
+
+	for (int i = 2; i < queryCount; ++i)
+	{
+		const OracleNotificationData* notification = oracleEngine1.getNotification();
+		EXPECT_NE(notification, nullptr);
+		EXPECT_EQ((int)notification->contractIndex, (int)contractIndex);
+		EXPECT_EQ(notification->procedureId, notificationProcId);
+		EXPECT_EQ((int)notification->inputSize, sizeof(OracleNotificationInput<OI::Mock>));
+		const auto* notificationInput = (const OracleNotificationInput<OI::Mock>*) & notification->inputBuffer;
+		EXPECT_NE(notificationInput->queryId, 0);
+		EXPECT_EQ(notificationInput->status, ORACLE_QUERY_STATUS_SUCCESS);
+		EXPECT_EQ(notificationInput->subscriptionId, 0);
+		
+		EXPECT_EQ(oracleEngine1.getOracleQueryStatus(notificationInput->queryId), ORACLE_QUERY_STATUS_SUCCESS);
+		OI::Mock::OracleQuery query;
+		EXPECT_TRUE(oracleEngine1.getOracleQuery(notificationInput->queryId, &query, sizeof(query)));
+		
+		EXPECT_EQ(notificationInput->reply.echoedValue, query.value);
+		EXPECT_EQ(notificationInput->reply.doubledValue, query.value * 2);
+
+		OI::Mock::OracleReply reply;
+		EXPECT_TRUE(oracleEngine1.getOracleReply(notificationInput->queryId, &reply, sizeof(reply)));
+		EXPECT_TRUE(compareMem(&reply, &notificationInput->reply, sizeof(reply)) == 0);
+
+		pendingNotificationQueryIds.erase(notificationInput->queryId);
+	}
+
+	// no additional notifications
+	EXPECT_EQ(oracleEngine1.getNotification(), nullptr);
+	EXPECT_EQ(pendingNotificationQueryIds.size(), 0);
+}
+
 /*
 Tests:
-- oracleEngine.getReplyCommitTransaction() with more than 1 commit / tx
-- processOracleReplyCommitTransaction without get getReplyCommitTransaction
+- error conditions
 */
 
 TEST(OracleEngine, FindFirstQueryIndexOfTick)

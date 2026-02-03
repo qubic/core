@@ -1069,6 +1069,9 @@ public:
     *         should be passed as the start index for the next call of this function
     *
     * Called from tick processor.
+    *
+    * Calling processOracleReplyRevealTransaction() between two calls of getReplyRevealTransaction() invalidates
+    * the return value/startIdx.
     */
     uint32_t getReplyRevealTransaction(void* txBuffer, uint16_t ownComputorIdx, uint32_t txScheduleTick, uint32_t startIdx = 0)
     {

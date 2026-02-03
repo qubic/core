@@ -60,15 +60,18 @@ static inline QPI::uint64 getContractOracleQueryId(QPI::uint32 tick, QPI::uint32
     return ((QPI::uint64)tick << 31) | (indexInTick + NUMBER_OF_TRANSACTIONS_PER_TICK);
 }
 
-static void addOracleTransactionToTickStorage(const Transaction* tx, unsigned int txIndex)
+static const Transaction* addOracleTransactionToTickStorage(const Transaction* tx, unsigned int txIndex)
 {
+    Transaction* tsTx = nullptr;
     const unsigned int txSize = tx->totalSize();
     auto* offsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(tx->tick);
     if (ts.nextTickTransactionOffset + txSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
     {
         EXPECT_EQ(offsets[txIndex], 0);
         offsets[txIndex] = ts.nextTickTransactionOffset;
-        copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), tx, txSize);
+        tsTx = ts.tickTransactions(ts.nextTickTransactionOffset);
+        copyMem(tsTx, tx, txSize);
         ts.nextTickTransactionOffset += txSize;
     }
+    return tsTx;
 }
