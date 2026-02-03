@@ -6,6 +6,7 @@
 
 #include "system.h"
 #include "spectrum/special_entities.h"
+#include "spectrum/spectrum.h"
 #include "ticking/tick_storage.h"
 #include "logging/logging.h"
 #include "text_output.h"
@@ -574,7 +575,7 @@ public:
         oracleStats[queryMetadata.interfaceIndex].queryCount++;
 #endif
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsg[200];
         setText(dbgMsg, L"oracleEngine.startContractQuery(), tick ");
         appendNumber(dbgMsg, system.tick, FALSE);
@@ -744,7 +745,7 @@ public:
         }
 #endif
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsg[200];
         setText(dbgMsg, L"oracleEngine.processOracleMachineReply(), tick ");
         appendNumber(dbgMsg, system.tick, FALSE);
@@ -839,7 +840,7 @@ public:
         tx->inputType = OracleReplyCommitTransactionPrefix::transactionType();
         tx->inputSize = commitsCount * sizeof(OracleReplyCommitTransactionItem);
 
-#if !defined(NDEBUG) && 0
+#if !defined(NDEBUG) && !defined(NO_UEFI) && 0
         CHAR16 dbgMsg[200];
         setText(dbgMsg, L"oracleEngine.getReplyCommitTransaction(), tick ");
         appendNumber(dbgMsg, system.tick, FALSE);
@@ -884,7 +885,7 @@ public:
         const int compIdx = computorIndex(transaction->sourcePublicKey);
         if (compIdx < 0)
         {
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && !defined(NO_UEFI)
             CHAR16 dbgMsg[120];
             setText(dbgMsg, L"oracleEngine.processOracleReplyCommitTransaction(), tick ");
             appendNumber(dbgMsg, system.tick, FALSE);
@@ -894,7 +895,7 @@ public:
             return false;
         }
 
-#if !defined(NDEBUG) && 0
+#if !defined(NDEBUG) && !defined(NO_UEFI) && 0
         CHAR16 dbgMsg[800];
         setText(dbgMsg, L"oracleEngine.processOracleReplyCommitTransaction(), tick ");
         appendNumber(dbgMsg, system.tick, FALSE);
@@ -985,7 +986,7 @@ public:
                     // log status change
                     logQueryStatusChange(oqm);
 
-#if !defined(NDEBUG) && 1
+#if !defined(NDEBUG) && !defined(NO_UEFI) && 1
                     CHAR16 dbgMsg1[200];
                     setText(dbgMsg1, L"oracleEngine.processOracleReplyCommitTransaction(), tick ");
                     appendNumber(dbgMsg1, system.tick, FALSE);
@@ -1021,7 +1022,7 @@ public:
                 // log status change
                 logQueryStatusChange(oqm);
 
-#if !defined(NDEBUG) && 1
+#if !defined(NDEBUG) && !defined(NO_UEFI) && 1
                 CHAR16 dbgMsg1[200];
                 setText(dbgMsg1, L"oracleEngine.processOracleReplyCommitTransaction(), tick ");
                 appendNumber(dbgMsg1, system.tick, FALSE);
@@ -1036,7 +1037,7 @@ public:
 #endif
             }
 
-#if !defined(NDEBUG) && 0
+#if !defined(NDEBUG) && !defined(NO_UEFI) && 0
             appendNumber(dbgMsg, item->queryId, FALSE);
             appendText(dbgMsg, " (");
             appendNumber(dbgMsg, mostCommitsCount, FALSE);
@@ -1046,7 +1047,7 @@ public:
 #endif
         }
 
-#if !defined(NDEBUG) && 0
+#if !defined(NDEBUG) && !defined(NO_UEFI) && 0
         addDebugMessage(dbgMsg);
 #endif
 
@@ -1119,7 +1120,7 @@ public:
             // remember that we have scheduled reveal of this reply
             replyState.expectedRevealTxTick = txScheduleTick;
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && !defined(NO_UEFI)
             CHAR16 dbgMsg[200];
             setText(dbgMsg, L"oracleEngine.getReplyRevealTransaction(), tick ");
             appendNumber(dbgMsg, system.tick, FALSE);
@@ -1208,6 +1209,7 @@ protected:
         const uint32_t tick = queryMetadata.statusVar.success.revealTick;
         const uint32_t txSlotInTickData = queryMetadata.statusVar.success.revealTxIndex;
         ASSERT(txSlotInTickData < NUMBER_OF_TRANSACTIONS_PER_TICK);
+        ASSERT(ts.tickInCurrentEpochStorage(tick));
         const unsigned long long* tsTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(tick);
         const auto* transaction = (OracleReplyRevealTransactionPrefix*)ts.tickTransactions.ptr(tsTickTransactionOffsets[txSlotInTickData]);
         ASSERT(queryMetadata.queryId == transaction->queryId);
@@ -1232,7 +1234,7 @@ public:
         if (!replyState->expectedRevealTxTick || replyState->expectedRevealTxTick > transaction->tick)
             replyState->expectedRevealTxTick = transaction->tick;
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsg[200];
         setText(dbgMsg, L"oracleEngine.announceExpectedRevealTransaction(), tick ");
         appendNumber(dbgMsg, system.tick, FALSE);
@@ -1251,6 +1253,13 @@ public:
     {
         ASSERT(txSlotInTickData < NUMBER_OF_TRANSACTIONS_PER_TICK);
         ASSERT(transaction->tick == system.tick);
+        {
+            // check that tick storage contains tx at expected position
+            ASSERT(ts.tickInCurrentEpochStorage(transaction->tick));
+            const uint64_t* tsTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(transaction->tick);
+            const auto* tsTx = ts.tickTransactions.ptr(tsTickTransactionOffsets[txSlotInTickData]);
+            ASSERT(compareMem(transaction, tsTx, transaction->totalSize()) == 0);
+        }
 
         // lock for accessing engine data
         LockGuard lockGuard(lock);
@@ -1288,7 +1297,7 @@ public:
         // log status change
         logQueryStatusChange(oqm);
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsg[200];
         setText(dbgMsg, L"oracleEngine.processOracleReplyRevealTransaction(), tick ");
         appendNumber(dbgMsg, system.tick, FALSE);
@@ -1358,7 +1367,7 @@ public:
                 // log status change
                 logQueryStatusChange(oqm);
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) && !defined(NO_UEFI)
                 CHAR16 dbgMsg[200];
                 setText(dbgMsg, L"oracleEngine.processTimeouts(), tick ");
                 appendNumber(dbgMsg, system.tick, FALSE);

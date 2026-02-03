@@ -125,7 +125,7 @@ TEST(OracleEngine, ContractQuerySuccess)
 	// start contract query / check message to OM node
 	QPI::sint64 queryId = oracleEngine1.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId);
 	EXPECT_EQ(queryId, getContractOracleQueryId(system.tick, 0));
-	checkNetworkMessageOracleMachineQuery<OI::Price>(queryId, priceQuery.oracle, timeout);
+	checkNetworkMessageOracleMachineQuery<OI::Price>(queryId, timeout, priceQuery);
 	EXPECT_EQ(queryId, oracleEngine2.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId));
 	EXPECT_EQ(queryId, oracleEngine3.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId));
 
@@ -139,25 +139,25 @@ TEST(OracleEngine, ContractQuerySuccess)
 	// process simulated reply from OM node
 	struct
 	{
-		OracleMachineReply metatdata;
+		OracleMachineReply metadata;
 		OI::Price::OracleReply data;
 	} priceOracleMachineReply;
 
-	priceOracleMachineReply.metatdata.oracleMachineErrorFlags = 0;
-	priceOracleMachineReply.metatdata.oracleQueryId = queryId;
+	priceOracleMachineReply.metadata.oracleMachineErrorFlags = 0;
+	priceOracleMachineReply.metadata.oracleQueryId = queryId;
 	priceOracleMachineReply.data.numerator = 1234;
 	priceOracleMachineReply.data.denominator = 1;
 
-	oracleEngine1.processOracleMachineReply(&priceOracleMachineReply.metatdata, sizeof(priceOracleMachineReply));
-	oracleEngine2.processOracleMachineReply(&priceOracleMachineReply.metatdata, sizeof(priceOracleMachineReply));
-	oracleEngine3.processOracleMachineReply(&priceOracleMachineReply.metatdata, sizeof(priceOracleMachineReply));
+	oracleEngine1.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
+	oracleEngine2.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
+	oracleEngine3.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
 
 	// duplicate from other node
-	oracleEngine1.processOracleMachineReply(&priceOracleMachineReply.metatdata, sizeof(priceOracleMachineReply));
+	oracleEngine1.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
 
 	// other value from other node
 	priceOracleMachineReply.data.numerator = 1233;
-	oracleEngine1.processOracleMachineReply(&priceOracleMachineReply.metatdata, sizeof(priceOracleMachineReply));
+	oracleEngine1.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
 
 	//-------------------------------------------------------------------------
 	// create reply commit tx (with local computor index 0 / global computor index 0)
@@ -313,7 +313,7 @@ TEST(OracleEngine, ContractQueryUnresolvable)
 	EXPECT_EQ(queryId, getContractOracleQueryId(system.tick, 0));
 	EXPECT_EQ(queryId, oracleEngine2.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId));
 	EXPECT_EQ(queryId, oracleEngine3.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId));
-	checkNetworkMessageOracleMachineQuery<OI::Price>(queryId, priceQuery.oracle, timeout);
+	checkNetworkMessageOracleMachineQuery<OI::Price>(queryId, timeout, priceQuery);
 
 	//-------------------------------------------------------------------------
 	// get query contract data
@@ -450,7 +450,7 @@ TEST(OracleEngine, ContractQueryTimeout)
 	//-------------------------------------------------------------------------
 	// start contract query / check message to OM node
 	QPI::sint64 queryId = oracleEngine1.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId);
-	checkNetworkMessageOracleMachineQuery<OI::Price>(queryId, priceQuery.oracle, timeout);
+	checkNetworkMessageOracleMachineQuery<OI::Price>(queryId, timeout, priceQuery);
 
 	//-------------------------------------------------------------------------
 	// get query contract data

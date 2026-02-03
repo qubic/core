@@ -31,7 +31,7 @@ union EnqueuedNetworkMessage
 GLOBAL_VAR_DECL EnqueuedNetworkMessage enqueuedNetworkMessage;
 
 template <typename OracleInterface>
-static void checkNetworkMessageOracleMachineQuery(QPI::uint64 expectedOracleQueryId, QPI::id expectedOracle, QPI::uint32 expectedTimeout)
+static void checkNetworkMessageOracleMachineQuery(QPI::uint64 expectedOracleQueryId, QPI::uint32 expectedTimeout, const typename OracleInterface::OracleQuery& expectedQuery)
 {
     EXPECT_EQ(enqueuedNetworkMessage.header.type(), OracleMachineQuery::type());
     EXPECT_GT(enqueuedNetworkMessage.header.size(), sizeof(RequestResponseHeader) + sizeof(OracleMachineQuery));
@@ -42,7 +42,7 @@ static void checkNetworkMessageOracleMachineQuery(QPI::uint64 expectedOracleQuer
     EXPECT_EQ(enqueuedNetworkMessage.omQuery.queryMetadata.oracleQueryId, expectedOracleQueryId);
     EXPECT_EQ(enqueuedNetworkMessage.omQuery.queryMetadata.timeoutInMilliseconds, expectedTimeout);
     const auto* q = (const OracleInterface::OracleQuery*)enqueuedNetworkMessage.omQuery.queryData;
-    EXPECT_EQ(q->oracle, expectedOracle);
+    EXPECT_TRUE(compareMem(q, &expectedQuery, sizeof(OracleInterface::OracleQuery)) == 0);
 }
 
 static void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data)

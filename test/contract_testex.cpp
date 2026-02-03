@@ -556,10 +556,10 @@ public:
         callSystemProcedure(QX_CONTRACT_INDEX, END_TICK, expectSuccess);
     }
 
-    uint64 queryPriceOracle(const id& invocator, const id& oracle, uint32 timeoutMilliseconds)
+    uint64 queryPriceOracle(const id& invocator, uint32 timeoutMilliseconds, const OI::Price::OracleQuery& query)
     {
         TESTEXC::QueryPriceOracle_input input;
-        input.priceOracleQuery = { oracle, {}, NULL_ID, NULL_ID };
+        input.priceOracleQuery = query;
         input.timeoutMilliseconds = timeoutMilliseconds;
         TESTEXC::QueryPriceOracle_output output;
         EXPECT_TRUE(invokeUserProcedure(TESTEXC_CONTRACT_INDEX, 100, input, output, invocator, 0));
@@ -2106,42 +2106,55 @@ TEST(ContractTestEx, OracleQuery)
 {
     ContractTestingTestEx test;
     system.epoch = 200;
-    system.tick = 1234567890;
+    system.tick = 123456789;
 
     //-------------------------------------------------------------------------
     // Test qpi.queryOracle() and generating message to oracle machine node
     increaseEnergy(USER1, 100000000);
     increaseEnergy(TESTEXC_CONTRACT_ID, 100000000);
 
+    const id currencyBtc(Ch::B, Ch::T, Ch::C, 0, 0);
+    const id currencyUsd(Ch::U, Ch::S, Ch::D, 0, 0);
+
     uint64 expectedOracleQueryId = getContractOracleQueryId(system.tick, 0);
-    EXPECT_EQ(test.queryPriceOracle(USER1, NULL_ID, 10), expectedOracleQueryId);
-    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, NULL_ID, 10);
+    OI::Price::OracleQuery query = { NULL_ID, DateAndTime(2026, 1, 1), currencyBtc, currencyUsd};
+    EXPECT_EQ(test.queryPriceOracle(USER1, 10, query), expectedOracleQueryId);
+    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, 10, query);
 
     expectedOracleQueryId = getContractOracleQueryId(system.tick, 1);
-    EXPECT_EQ(test.queryPriceOracle(USER1, id(1, 2, 3, 4), 42), expectedOracleQueryId);
-    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, id(1, 2, 3, 4), 42);
+    query.oracle = OI::Price::getCoingeckoOracleId();
+    query.timestamp.addDays(20);
+    query.currency1 = currencyUsd;
+    query.currency2 = NULL_ID;
+    EXPECT_EQ(test.queryPriceOracle(USER1, 42, query), expectedOracleQueryId);
+    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, 42, query);
 
     expectedOracleQueryId = getContractOracleQueryId(system.tick, 2);
     test.endTick();
+    OI::Mock::OracleQuery mockQuery{ system.tick };
     ++system.tick;
-    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, OI::Price::getMockOracleId(), 20000);
+    checkNetworkMessageOracleMachineQuery<OI::Mock>(expectedOracleQueryId, 20000, mockQuery);
 
     expectedOracleQueryId = getContractOracleQueryId(system.tick, 0);
-    EXPECT_EQ(test.queryPriceOracle(USER1, id(2, 3, 4, 5), 13), expectedOracleQueryId);
-    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, id(2, 3, 4, 5), 13);
+    query.oracle = OI::Price::getMockOracleId();
+    query.timestamp.addMillisec(123456);
+    query.currency1 = id(1, 23456, 7890, 42);
+    query.currency2 = currencyBtc;
+    EXPECT_EQ(test.queryPriceOracle(USER1, 13, query), expectedOracleQueryId);
+    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, 13, query);
 
     //-------------------------------------------------------------------------
     // Test processing of oracle machine node reply message
     struct
     {
-        OracleMachineReply metatdata;
+        OracleMachineReply metadata;
         OI::Price::OracleReply data;
     } priceOracleMachineReply;
 
-    priceOracleMachineReply.metatdata.oracleMachineErrorFlags = 0;
-    priceOracleMachineReply.metatdata.oracleQueryId = expectedOracleQueryId;
+    priceOracleMachineReply.metadata.oracleMachineErrorFlags = 0;
+    priceOracleMachineReply.metadata.oracleQueryId = expectedOracleQueryId;
     priceOracleMachineReply.data.numerator = 1234;
     priceOracleMachineReply.data.denominator = 1;
 
-    oracleEngine.processOracleMachineReply(&priceOracleMachineReply.metatdata, sizeof(priceOracleMachineReply));
+    oracleEngine.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
 }

@@ -378,7 +378,7 @@ public:
 		if (qpi.tick() % 2 == 1)
 		{
 			locals.mockOracleQuery.value = qpi.tick();
-			QUERY_ORACLE(OI::Mock, locals.mockOracleQuery, NotifyMockOracleReply, 60000);
+			QUERY_ORACLE(OI::Mock, locals.mockOracleQuery, NotifyMockOracleReply, 20000);
 			locals.notificationLog = NotificationLog{ CONTRACT_INDEX, OI::Mock::oracleInterfaceIndex, ORACLE_QUERY_STATUS_PENDING, 0, qpi.tick(), locals.oracleQueryId};
 		}
 		LOG_INFO(locals.notificationLog);
