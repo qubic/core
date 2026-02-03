@@ -4250,7 +4250,7 @@ static bool saveAllNodeStates()
     }
     
     score->saveScoreCache(system.epoch, directory);
-
+    
     copyMem(&nodeStateBuffer.etalonTick, &etalonTick, sizeof(etalonTick));
 
 #if !defined(NDEBUG)
@@ -4262,16 +4262,9 @@ static bool saveAllNodeStates()
         getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
         appendText(message, digestChars);
         logToConsole(message);
-
-        setText(message, L"[SAVE] Universe: ");
-        getIdentity(etalonTick.saltedUniverseDigest.m256i_u8, digestChars, true);
-        appendText(message, digestChars);
-        appendText(message, L" Computer: ");
-        getIdentity(etalonTick.saltedComputerDigest.m256i_u8, digestChars, true);
-        appendText(message, digestChars);
-        logToConsole(message);
     }
 #endif
+
     copyMem(nodeStateBuffer.minerPublicKeys, (void*)minerPublicKeys, sizeof(minerPublicKeys));
     copyMem(nodeStateBuffer.minerScores, (void*)minerScores, sizeof(minerScores));
     copyMem(nodeStateBuffer.competitorPublicKeys, (void*)competitorPublicKeys, sizeof(competitorPublicKeys));
@@ -4454,14 +4447,6 @@ static bool loadAllNodeStates()
         appendNumber(message, etalonTick.tick, FALSE);
         appendText(message, L" Spectrum: ");
         getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
-        appendText(message, digestChars);
-        logToConsole(message);
-
-        setText(message, L"[LOAD] Universe: ");
-        getIdentity(etalonTick.saltedUniverseDigest.m256i_u8, digestChars, true);
-        appendText(message, digestChars);
-        appendText(message, L" Computer: ");
-        getIdentity(etalonTick.saltedComputerDigest.m256i_u8, digestChars, true);
         appendText(message, digestChars);
         logToConsole(message);
     }
@@ -5017,13 +5002,6 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
 {
     const unsigned int currentTickIndex = ts.tickToIndexCurrentEpoch(system.tick);
     const Tick* tsCompTicks = ts.ticks.getByTickIndex(currentTickIndex);
-
-#if !defined(NDEBUG)
-    // Static variables to prevent repeated logging on every loop iteration
-    static unsigned int lastMismatchLoggedTick = 0;
-    bool alreadyLoggedThisTick = (lastMismatchLoggedTick == system.tick);
-#endif
-
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
         ts.ticks.acquireLock(i);
@@ -5032,9 +5010,9 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
         CHAR16 dbgMsg[300];
         CHAR16 digestChars[60 + 1];
         bool saltedRessourceDigestErrorPrinted = false;
-        bool saltedSpectrumDigestErrorPrinted = alreadyLoggedThisTick;  // Skip if already logged this tick
-        bool saltedUniverseDigestErrorPrinted = alreadyLoggedThisTick;
-        bool saltedComputerDigestErrorPrinted = alreadyLoggedThisTick;
+        bool saltedSpectrumDigestErrorPrinted = false;
+        bool saltedUniverseDigestErrorPrinted = false;
+        bool saltedComputerDigestErrorPrinted = false;
 #endif
 
         const Tick* tick = &tsCompTicks[i];
@@ -5126,22 +5104,13 @@ static void updateVotesCount(unsigned int& tickNumberOfComputors, unsigned int& 
                     {
                         if (!saltedSpectrumDigestErrorPrinted)
                         {
-                            setText(dbgMsg, L"saltedSpectrumDigest mismatch! tick=");
-                            appendNumber(dbgMsg, system.tick, FALSE);
-                            appendText(dbgMsg, L" vote=");
+                            setText(dbgMsg, L"saltedSpectrumDigest mismatch! QuorumTick ");
                             getIdentity(tick->saltedSpectrumDigest.m256i_u8, digestChars, true);
                             appendText(dbgMsg, digestChars);
-                            appendText(dbgMsg, L" local=");
+                            appendText(dbgMsg, L", local");
                             getIdentity(saltedDigest.m256i_u8, digestChars, true);
                             appendText(dbgMsg, digestChars);
-                            logToConsole(dbgMsg);
-                            // Also log the raw etalonTick digest for comparison
-                            setText(dbgMsg, L"  etalonTick.saltedSpectrumDigest=");
-                            getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
-                            appendText(dbgMsg, digestChars);
-                            logToConsole(dbgMsg);
                             saltedSpectrumDigestErrorPrinted = true;
-                            lastMismatchLoggedTick = system.tick;  // Prevent repeated logging
                         }
                     }
 #endif
@@ -5278,11 +5247,9 @@ static void tickProcessor(void*)
     if (wasLoadedFromSnapshot)
     {
         CHAR16 digestChars[60 + 1];
-        setText(message, L"[LOAD INIT] After LOAD: system.tick=");
+        setText(message, L"[LOAD INIT] system.tick=");
         appendNumber(message, system.tick, FALSE);
-        appendText(message, L" latestProcessedTick=");
-        appendNumber(message, latestProcessedTick, FALSE);
-        appendText(message, L" digest: ");
+        appendText(message, L" Spectrum: ");
         getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
         appendText(message, digestChars);
         logToConsole(message);
@@ -5309,21 +5276,13 @@ static void tickProcessor(void*)
             if (system.tick > latestProcessedTick)
             {
 #if !defined(NDEBUG)
-                bool logThisTick = wasLoadedFromSnapshot && (latestProcessedTick == 0);  // First tick after LOAD
+                // Log only the FIRST tick after LOAD
+                const bool logThisTick = wasLoadedFromSnapshot && (latestProcessedTick == 0);
 #endif
                 // State persist: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
                 // thus, pausing here and doing the state persisting is the best choice.
                 if (requestPersistingNodeState)
                 {
-#if !defined(NDEBUG)
-                    logThisTick = true;  // Also log when SAVE is triggered
-                    CHAR16 digestChars[60 + 1];
-                    setText(message, L"[SAVE TRIGGER] tick=");
-                    appendNumber(message, system.tick, FALSE);
-                    appendText(message, L" latestProcessedTick=");
-                    appendNumber(message, latestProcessedTick, FALSE);
-                    logToConsole(message);
-#endif
                     persistingNodeStateTickProcWaiting = 1;
                     WAIT_WHILE(requestPersistingNodeState);
                     persistingNodeStateTickProcWaiting = 0;
@@ -5333,27 +5292,9 @@ static void tickProcessor(void*)
                 if (logThisTick)
                 {
                     CHAR16 digestChars[60 + 1];
-                    // Log tick leader info
-                    unsigned int tickLeaderIndex = system.tick % NUMBER_OF_COMPUTORS;
-                    bool isOwnComputorLeader = false;
-                    for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
-                    {
-                        if (ownComputorIndices[i] == tickLeaderIndex)
-                        {
-                            isOwnComputorLeader = true;
-                            break;
-                        }
-                    }
                     setText(message, L"[BEFORE processTick] tick=");
                     appendNumber(message, system.tick, FALSE);
-                    appendText(message, L" leader=");
-                    appendNumber(message, tickLeaderIndex, FALSE);
-                    appendText(message, isOwnComputorLeader ? L" (THIS NODE)" : L" (other)");
-                    appendText(message, L" ownComputors=");
-                    appendNumber(message, numberOfOwnComputorIndices, FALSE);
-                    logToConsole(message);
-
-                    setText(message, L"[BEFORE processTick] digest: ");
+                    appendText(message, L" Spectrum: ");
                     getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
                     appendText(message, digestChars);
                     logToConsole(message);
@@ -5369,14 +5310,6 @@ static void tickProcessor(void*)
                     appendNumber(message, system.tick, FALSE);
                     appendText(message, L" Spectrum: ");
                     getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
-                    appendText(message, digestChars);
-                    logToConsole(message);
-
-                    setText(message, L"[AFTER processTick] Universe: ");
-                    getIdentity(etalonTick.saltedUniverseDigest.m256i_u8, digestChars, true);
-                    appendText(message, digestChars);
-                    appendText(message, L" Computer: ");
-                    getIdentity(etalonTick.saltedComputerDigest.m256i_u8, digestChars, true);
                     appendText(message, digestChars);
                     logToConsole(message);
                 }
