@@ -4557,6 +4557,7 @@ static bool loadAllNodeStates()
 
 #if !defined(NDEBUG)
     forceLogToConsoleAsAddDebugMessage = false;
+    logToConsole(L"[DEBUG] loadAllNodeStates() returning TRUE");
 #endif
 
     return true;
@@ -6059,10 +6060,21 @@ static bool initialize()
 #if TICK_STORAGE_AUTOSAVE_MODE
         bool canLoadFromFile = loadAllNodeStates();
 
-        // loading might have changed system.tick, so restart pendingTxsPool 
+        // loading might have changed system.tick, so restart pendingTxsPool
         pendingTxsPool.beginEpoch(system.tick);
 #else
         bool canLoadFromFile = false;
+#endif
+
+#if !defined(NDEBUG)
+        if (canLoadFromFile)
+        {
+            logToConsole(L"[DEBUG] canLoadFromFile=TRUE");
+        }
+        else
+        {
+            logToConsole(L"[DEBUG] canLoadFromFile=FALSE");
+        }
 #endif
 
         // if failed to load snapshot, load all data and init variables from scratch
@@ -6158,6 +6170,9 @@ static bool initialize()
         {
             loadAllNodeStateFromFile = true;
             logToConsole(L"Loaded node state from snapshot, if you want to start from scratch please delete all snapshot files.");
+#if !defined(NDEBUG)
+            logToConsole(L"[DEBUG] loadAllNodeStateFromFile set to TRUE");
+#endif
         }
     }
 
