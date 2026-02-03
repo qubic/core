@@ -595,6 +595,7 @@ public:
     // Refund fees if an error occured while trying to start an oracle query
     static void refundFees(const m256i& sourcePublicKey, int64_t refundAmount)
     {
+        ASSERT(refundAmount >= 0);
         increaseEnergy(sourcePublicKey, refundAmount);
         const QuTransfer quTransfer = { m256i::zero(), sourcePublicKey, refundAmount };
         logger.logQuTransfer(quTransfer);

@@ -44,6 +44,10 @@ QPI::sint64 QPI::QpiContextProcedureCall::__qpiQueryOracle(
 	int contractSpectrumIdx = ::spectrumIndex(this->_currentContractId);
 	if (fee >= 0 && contractSpectrumIdx >= 0 && decreaseEnergy(contractSpectrumIdx, fee))
 	{
+		// log burning of QU
+		const QuTransfer quTransfer = { this->_currentContractId, m256i::zero(), fee };
+		logger.logQuTransfer(quTransfer);
+
 		// try to start query
 		QPI::sint64 queryId = oracleEngine.startContractQuery(
 			contractIndex, OracleInterface::oracleInterfaceIndex,
@@ -53,8 +57,9 @@ QPI::sint64 QPI::QpiContextProcedureCall::__qpiQueryOracle(
 			// success
 			return queryId;
 		}
-		else
+		else if (fee > 0)
 		{
+			// failure -> refund fee
 			oracleEngine.refundFees(_currentContractId, fee);
 		}
 	}
