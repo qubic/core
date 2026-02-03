@@ -25,7 +25,8 @@ constexpr uint16 PULSE_MAX_NUMBER_OF_WINNERS_IN_HISTORY = 1024;
 constexpr uint64 PULSE_QHEART_ASSET_NAME = 92712259110993ULL; // "QHEART"
 constexpr uint8 PULSE_DEFAULT_DEV_PERCENT = 10;
 constexpr uint8 PULSE_DEFAULT_BURN_PERCENT = 5;
-constexpr uint8 PULSE_DEFAULT_SHAREHOLDERS_PERCENT = 5;
+constexpr uint8 PULSE_DEFAULT_SHAREHOLDERS_PERCENT = 8;
+constexpr uint8 PULSE_DEFAULT_RL_SHAREHOLDERS_PERCENT = 2;
 constexpr uint8 PULSE_DEFAULT_QHEART_PERCENT = 5;
 constexpr uint64 PULSE_DEFAULT_QHEART_HOLD_LIMIT = 2000000000ULL;
 constexpr uint8 PULSE_TICK_UPDATE_PERIOD = 100;
@@ -129,6 +130,7 @@ public:
 				state.devPercent = newDevPercent;
 				state.burnPercent = newBurnPercent;
 				state.shareholdersPercent = newShareholdersPercent;
+				state.rlShareholdersPercent = newRLShareholdersPercent;
 				state.qheartPercent = newQHeartPercent;
 			}
 			if (hasNewQHeartHoldLimit)
@@ -148,6 +150,7 @@ public:
 		uint8 newDevPercent;
 		uint8 newBurnPercent;
 		uint8 newShareholdersPercent;
+		uint8 newRLShareholdersPercent;
 		uint8 newQHeartPercent;
 		uint64 newQHeartHoldLimit;
 	};
@@ -436,6 +439,7 @@ public:
 		uint8 devPercent;
 		uint8 burnPercent;
 		uint8 shareholdersPercent;
+		uint8 rlShareholdersPercent;
 		uint8 qheartPercent;
 		uint8 returnCode;
 	};
@@ -536,6 +540,7 @@ public:
 		uint8 devPercent;
 		uint8 burnPercent;
 		uint8 shareholdersPercent;
+		uint8 rlShareholdersPercent;
 		uint8 qheartPercent;
 	};
 	struct SetFees_output
@@ -574,6 +579,24 @@ public:
 		Array<uint8, PULSE_MAX_DIGIT_ALIGNED> winningCounts;
 	};
 
+	struct TransferTokenToShareholder_input
+	{
+		sint64 shareholdersAmount;
+		Asset shareholdersAsset;
+		sint64 shareholdersTotalShares;
+	};
+
+	struct TransferTokenToShareholder_output
+	{
+	};
+
+	struct TransferTokenToShareholder_locals
+	{
+		AssetPossessionIterator shareholdersIter;
+		sint64 shareholdersDividendPerShare;
+		sint64 shareholdersHolderShares;
+	};
+
 	struct SettleRound_input
 	{
 	};
@@ -587,6 +610,7 @@ public:
 		sint64 devAmount;
 		sint64 burnAmount;
 		sint64 shareholdersAmount;
+		sint64 rlShareholdersAmount;
 		sint64 qheartAmount;
 		sint64 balanceSigned;
 		uint64 balance;
@@ -596,17 +620,14 @@ public:
 		uint64 reservedBalance;
 		m256i mixedSpectrumValue;
 		uint64 randomSeed;
-		Asset shareholdersAsset;
-		AssetPossessionIterator shareholdersIter;
-		sint64 shareholdersTotalShares;
-		sint64 shareholdersDividendPerShare;
-		sint64 shareholdersHolderShares;
 		GetRandomDigits_input randomInput;
 		GetRandomDigits_output randomOutput;
 		Ticket ticket;
 		ComputePrize_locals computePrizeLocals;
 		FillWinnersInfo_input fillWinnersInfoInput;
 		FillWinnersInfo_output fillWinnersInfoOutput;
+		TransferTokenToShareholder_input transferInput;
+		TransferTokenToShareholder_output transferOutput;
 	};
 
 	struct ProcessAutoTickets_input
@@ -682,6 +703,7 @@ public:
 		state.devPercent = PULSE_DEFAULT_DEV_PERCENT;
 		state.burnPercent = PULSE_DEFAULT_BURN_PERCENT;
 		state.shareholdersPercent = PULSE_DEFAULT_SHAREHOLDERS_PERCENT;
+		state.rlShareholdersPercent = PULSE_DEFAULT_RL_SHAREHOLDERS_PERCENT;
 		state.qheartPercent = PULSE_DEFAULT_QHEART_PERCENT;
 		state.qheartHoldLimit = PULSE_DEFAULT_QHEART_HOLD_LIMIT;
 
@@ -804,6 +826,7 @@ public:
 		output.devPercent = state.devPercent;
 		output.burnPercent = state.burnPercent;
 		output.shareholdersPercent = state.shareholdersPercent;
+		output.rlShareholdersPercent = state.rlShareholdersPercent;
 		output.qheartPercent = state.qheartPercent;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
@@ -936,7 +959,7 @@ public:
 			return;
 		}
 
-		if (input.devPercent + input.burnPercent + input.shareholdersPercent + input.qheartPercent > 100)
+		if (input.devPercent + input.burnPercent + input.shareholdersPercent + input.qheartPercent + input.rlShareholdersPercent > 100)
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
@@ -946,6 +969,7 @@ public:
 		state.nextEpochData.newDevPercent = input.devPercent;
 		state.nextEpochData.newBurnPercent = input.burnPercent;
 		state.nextEpochData.newShareholdersPercent = input.shareholdersPercent;
+		state.nextEpochData.newRLShareholdersPercent = input.rlShareholdersPercent;
 		state.nextEpochData.newQHeartPercent = input.qheartPercent;
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
@@ -1379,6 +1403,7 @@ private:
 		locals.devAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.devPercent)), 100LL);
 		locals.burnAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.burnPercent)), 100LL);
 		locals.shareholdersAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.shareholdersPercent)), 100LL);
+		locals.rlShareholdersAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.rlShareholdersPercent)), 100LL);
 		locals.qheartAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.qheartPercent)), 100LL);
 
 		if (locals.devAmount > 0)
@@ -1387,26 +1412,19 @@ private:
 		}
 		if (locals.shareholdersAmount > 0)
 		{
-			locals.shareholdersAsset.issuer = id::zero();
-			locals.shareholdersAsset.assetName = PULSE_CONTRACT_ASSET_NAME;
-			locals.shareholdersTotalShares = NUMBER_OF_COMPUTORS;
-
-			locals.shareholdersDividendPerShare = div<sint64>(locals.shareholdersAmount, locals.shareholdersTotalShares);
-			if (locals.shareholdersDividendPerShare > 0)
-			{
-				locals.shareholdersIter.begin(locals.shareholdersAsset);
-				while (!locals.shareholdersIter.reachedEnd())
-				{
-					locals.shareholdersHolderShares = locals.shareholdersIter.numberOfPossessedShares();
-					if (locals.shareholdersHolderShares > 0)
-					{
-						qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF,
-						                                        smul(locals.shareholdersHolderShares, locals.shareholdersDividendPerShare),
-						                                        locals.shareholdersIter.possessor());
-					}
-					locals.shareholdersIter.next();
-				}
-			}
+			locals.transferInput.shareholdersAmount = locals.shareholdersAmount;
+			locals.transferInput.shareholdersAsset.issuer = id::zero();
+			locals.transferInput.shareholdersAsset.assetName = PULSE_CONTRACT_ASSET_NAME;
+			locals.transferInput.shareholdersTotalShares = NUMBER_OF_COMPUTORS;
+			CALL(TransferTokenToShareholder, locals.transferInput, locals.transferOutput);
+		}
+		if (locals.rlShareholdersAmount > 0)
+		{
+			locals.transferInput.shareholdersAmount = locals.rlShareholdersAmount;
+			locals.transferInput.shareholdersAsset.issuer = id::zero();
+			locals.transferInput.shareholdersAsset.assetName = QTF_RANDOM_LOTTERY_ASSET_NAME;
+			locals.transferInput.shareholdersTotalShares = NUMBER_OF_COMPUTORS;
+			CALL(TransferTokenToShareholder, locals.transferInput, locals.transferOutput);
 		}
 		if (locals.burnAmount > 0)
 		{
@@ -1583,6 +1601,38 @@ private:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
+	PRIVATE_PROCEDURE_WITH_LOCALS(TransferTokenToShareholder)
+	{
+		if (input.shareholdersAmount <= 0 || input.shareholdersTotalShares <= 0)
+		{
+			return;
+		}
+
+		if (input.shareholdersAsset.assetName == 0)
+		{
+			return;
+		}
+
+		locals.shareholdersDividendPerShare = div<sint64>(input.shareholdersAmount, input.shareholdersTotalShares);
+		if (locals.shareholdersDividendPerShare <= 0)
+		{
+			return;
+		}
+
+		locals.shareholdersIter.begin(input.shareholdersAsset);
+		while (!locals.shareholdersIter.reachedEnd())
+		{
+			locals.shareholdersHolderShares = locals.shareholdersIter.numberOfPossessedShares();
+			if (locals.shareholdersHolderShares > 0)
+			{
+				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF,
+				                                        smul(locals.shareholdersHolderShares, locals.shareholdersDividendPerShare),
+				                                        locals.shareholdersIter.possessor());
+			}
+			locals.shareholdersIter.next();
+		}
+	};
+
 public:
 	// Encodes YYYY/MM/DD into a compact sortable date stamp.
 	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
@@ -1630,6 +1680,7 @@ protected:
 	uint8 devPercent;
 	uint8 burnPercent;
 	uint8 shareholdersPercent;
+	uint8 rlShareholdersPercent;
 	uint8 qheartPercent;
 	uint8 schedule;
 	uint8 drawHour;
