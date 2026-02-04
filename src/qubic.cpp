@@ -6193,6 +6193,10 @@ static bool initialize()
                 logToConsole(message);
             }
 
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+    increaseEnergy(id(TESTEXC_CONTRACT_INDEX, 0, 0, 0), 100000000llu);
+#endif
+
             // initialize salted digests of etalonTick, otherwise F2 key would output invalid digests
             // before ticking begins
             etalonTick.saltedSpectrumDigest = spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1];
@@ -6209,9 +6213,6 @@ static bool initialize()
         }
     }
 
-#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
-    increaseEnergy(id(TESTEXC_CONTRACT_INDEX, 0, 0, 0), 100000000llu);
-#endif
 
     initializeContractErrors();
     initializeContracts();
