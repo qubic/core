@@ -5963,9 +5963,15 @@ static bool initialize()
             etalonTick.year = system.initialYear;
 
             loadSpectrum();
+
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+            increaseEnergy(id(TESTEXC_CONTRACT_INDEX, 0, 0, 0), 100000000llu);
+#endif
+
             {
                 const unsigned long long beginningTick = __rdtsc();
 
+                // compute spectrum digest
                 unsigned int digestIndex;
                 for (digestIndex = 0; digestIndex < SPECTRUM_CAPACITY; digestIndex++)
                 {
@@ -6045,9 +6051,6 @@ static bool initialize()
         }
     }
 
-#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
-    increaseEnergy(id(TESTEXC_CONTRACT_INDEX, 0, 0, 0), 100000000llu);
-#endif
 
     initializeContractErrors();
     initializeContracts();
