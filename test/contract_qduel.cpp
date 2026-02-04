@@ -1,9 +1,6 @@
 #define NO_UEFI
-#define _ALLOW_KEYWORD_MACROS
-#define private protected
+
 #include "contract_testing.h"
-#undef private
-#undef _ALLOW_KEYWORD_MACROS
 
 constexpr uint16 PROCEDURE_INDEX_CREATE_ROOM = 1;
 constexpr uint16 PROCEDURE_INDEX_CONNECT_ROOM = 2;
