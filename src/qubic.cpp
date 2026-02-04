@@ -5242,8 +5242,7 @@ static void tickProcessor(void*)
 
     const bool wasLoadedFromSnapshot = loadAllNodeStateFromFile;
     loadAllNodeStateFromFile = false;
-    // If loaded from snapshot, skip processTick for the loaded tick (SAVE happens after processTick, so it's already done)
-    unsigned int latestProcessedTick = wasLoadedFromSnapshot ? system.tick : 0;
+    unsigned int latestProcessedTick = 0;
 
 #if !defined(NDEBUG)
     if (wasLoadedFromSnapshot)
@@ -5281,6 +5280,14 @@ static void tickProcessor(void*)
                 // Log only the FIRST tick after LOAD
                 const bool logThisTick = wasLoadedFromSnapshot && (latestProcessedTick == 0);
 #endif
+                // State persist: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
+                // thus, pausing here and doing the state persisting is the best choice.
+                if (requestPersistingNodeState)
+                {
+                    persistingNodeStateTickProcWaiting = 1;
+                    WAIT_WHILE(requestPersistingNodeState);
+                    persistingNodeStateTickProcWaiting = 0;
+                }
 
 #if !defined(NDEBUG)
                 if (logThisTick)
@@ -5308,14 +5315,6 @@ static void tickProcessor(void*)
                     addDebugMessage(message);
                 }
 #endif
-                // State persist: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
-                // thus, pausing here and doing the state persisting is the best choice.
-                if (requestPersistingNodeState)
-                {
-                    persistingNodeStateTickProcWaiting = 1;
-                    WAIT_WHILE(requestPersistingNodeState);
-                    persistingNodeStateTickProcWaiting = 0;
-                }
             }
 
             if (gFutureTickTotalNumberOfComputors > NUMBER_OF_COMPUTORS - QUORUM)
