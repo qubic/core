@@ -15,6 +15,7 @@
 #include "core_om_network_messages.h"
 
 #include "platform/memory_util.h"
+#include "lib/platform_common/sorting.h"
 
 
 void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data);
@@ -147,10 +148,9 @@ struct OracleReplyState
     uint32_t revealTxIndex;
 };
 
-// 
-struct OracleRevenueCounter
+struct OracleRevenuePoints
 {
-    uint32_t computorRevPoints[NUMBER_OF_COMPUTORS];
+    uint64_t computorRevPoints[NUMBER_OF_COMPUTORS];
 };
 
 struct OracleNotificationData
@@ -245,6 +245,9 @@ struct OracleEngineStatistics
 
     /// total number of reply reveal transactions
     unsigned long long revealTxCount;
+
+    /// total number of commits with wrong knowledge proof
+    unsigned long long wrongKnowledgeProofCount;
 };
 
 
@@ -292,6 +295,9 @@ protected:
     // fast lookup of query indices for which the contract should be notified
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> notificationQueryIndicies;
 
+    // revenue points collected by each computor for fast and correct commit
+    uint64_t revenuePoints[NUMBER_OF_COMPUTORS];
+
     OracleEngineStatistics stats;
 
 #if ENABLE_ORACLE_STATS_RECORD
@@ -329,7 +335,7 @@ protected:
         for (uint32_t i = 0; i < MAX_SIMULTANEOUS_ORACLE_QUERIES; ++i)
         {
             if (replyStates[replyStatesIndex].queryId <= 0)
-                return replyStatesIndex;
+                return replyStatesIndex++;
 
             ++replyStatesIndex;
             if (replyStatesIndex >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
@@ -420,6 +426,7 @@ public:
         pendingCommitReplyStateIndices.numValues = 0;
         pendingRevealReplyStateIndices.numValues = 0;
         notificationQueryIndicies.numValues = 0;
+        setMem(revenuePoints, sizeof(revenuePoints), 0);
         setMem(&stats, sizeof(stats), 0);
 
 #if ENABLE_ORACLE_STATS_RECORD
@@ -774,6 +781,9 @@ public:
     *         index for the next call of this function
     *
     * Called from tick processor.
+    *
+    * Calling processOracleReplyCommitTransaction() between two calls of getReplyCommitTransaction() invalidates
+    * the return value/startIdx.
     */
     uint32_t getReplyCommitTransaction(
         void* txBuffer, uint16_t computorIdx, uint16_t ownComputorIdx,
@@ -1225,6 +1235,17 @@ protected:
         return transaction + 1;
     }
 
+    struct RevealCommitCheckComputorState
+    {
+        uint32_t commitTick;
+        uint16_t computorIndex;
+
+        bool operator<(const RevealCommitCheckComputorState& rhs) const
+        {
+            return this->commitTick < rhs.commitTick;
+        }
+    };
+
 public:
     // Called by request processor when a tx is received in order to minimize sending of reveal tx.
     void announceExpectedRevealTransaction(const OracleReplyRevealTransactionPrefix* transaction)
@@ -1283,7 +1304,101 @@ public:
         OracleQueryMetadata& oqm = queries[queryIndex];
         const auto replyStateIdx = oqm.statusVar.pending.replyStateIndex;
 
-        // TODO: check knowledge proofs of all computors and add revenue points for computors who sent correct commit tx fastest
+        // check knowledge proofs of all computors + add revenue points for those who sent correct commit tx fastest
+        {
+            // Prepare temporary buffers and pointers
+            constexpr uint64_t correctCommitsBufSize = NUMBER_OF_COMPUTORS * sizeof(RevealCommitCheckComputorState);
+            __ScopedScratchpad scratchpad(correctCommitsBufSize + MAX_ORACLE_REPLY_SIZE + 2);
+            auto* correctCommits = (RevealCommitCheckComputorState*)scratchpad.ptr;
+            uint16_t correctCommitsCount = 0;
+            uint16_t correctDigestCount = 0;
+            const uint16_t replySize = (uint16_t)OI::oracleInterfaces[oqm.interfaceIndex].replySize;
+            uint8_t* replyData = (uint8_t*)scratchpad.ptr + correctCommitsBufSize;
+            copyMem(replyData, transaction + 1, replySize);
+            uint16_t* replyDataCompIdx = (uint16_t*)(replyData + replySize);
+
+            const auto quorumHistIdx = replyState->replyCommitHistogramIdx[replyState->mostCommitsHistIdx];
+            const m256i quorumCommitDigest = replyState->replyCommitDigests[quorumHistIdx];
+            for (int computorIdx = 0; computorIdx < NUMBER_OF_COMPUTORS; ++computorIdx)
+            {
+                // check that commit digest matches quorum
+                if (replyState->replyCommitDigests[computorIdx] != quorumCommitDigest)
+                    continue;
+                ++correctDigestCount;
+
+                // check knowledge proof of commit = K12(oracle reply + computor index)
+                m256i expectedKnowledgeProof;
+                *replyDataCompIdx = computorIdx;
+                KangarooTwelve(replyData, replySize + 2, expectedKnowledgeProof.m256i_u8, 32);
+                if (replyState->replyCommitKnowledgeProofs[computorIdx] != expectedKnowledgeProof)
+                {
+                    ++stats.wrongKnowledgeProofCount;
+                    continue;
+                }
+
+                // add correct commit to array
+                correctCommits[correctCommitsCount].computorIndex = computorIdx;
+                correctCommits[correctCommitsCount].commitTick = replyState->replyCommitTicks[computorIdx];
+                ++correctCommitsCount;
+            }
+            ASSERT(correctDigestCount == replyState->replyCommitHistogramCount[quorumHistIdx]);
+
+            // update revenue points:
+            // 1. sort by commit tick
+            quickSort(correctCommits, 0, correctCommitsCount - 1, SortingOrder::SortAscending);
+            // 2. increment revenue counter for first 451 computors (+ the ones with commit in the same tick)
+            uint32_t prevTick = correctCommits[0].commitTick;
+            for (uint16_t i = 0; i < correctCommitsCount; ++i)
+            {
+                if (i >= QUORUM && prevTick != correctCommits[i].commitTick)
+                    break;
+                ++revenuePoints[correctCommits[i].computorIndex];
+                prevTick = correctCommits[i].commitTick;
+            }
+
+            // check if we still have a quorum (some commits may have been discarded)
+            if (correctCommitsCount < QUORUM)
+            {
+                // too many fake / wrong commits -> correctness not confirmed by quorum
+                // -> switch to status UNRESOLVABLE (from COMMITTED)
+                oqm.status = ORACLE_QUERY_STATUS_UNRESOLVABLE;
+                oqm.statusFlags |= ORACLE_FLAG_FAKE_COMMITS;
+                oqm.statusVar.failure.agreeingCommits = correctCommitsCount;
+                oqm.statusVar.failure.totalCommits = replyState->totalCommits;
+                pendingQueryIndices.removeByValue(queryIndex);
+                --stats.commitCount;
+                ++stats.unresolvableCount;
+
+                // cleanup reply state
+                pendingRevealReplyStateIndices.removeByValue(replyStateIdx);
+                freeReplyStateSlot(replyStateIdx);
+
+                // schedule contract notification(s) if needed
+                if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
+                    notificationQueryIndicies.add(queryIndex);
+
+                // log status change
+                logQueryStatusChange(oqm);
+
+#if !defined(NDEBUG) && !defined(NO_UEFI) && 1
+                CHAR16 dbgMsg1[200];
+                setText(dbgMsg1, L"oracleEngine.processOracleReplyRevealTransaction(), tick ");
+                appendNumber(dbgMsg1, system.tick, FALSE);
+                appendText(dbgMsg1, ", queryId ");
+                appendNumber(dbgMsg1, oqm.queryId, FALSE);
+                appendText(dbgMsg1, ", agreeingCommits ");
+                appendNumber(dbgMsg1, replyState->replyCommitHistogramCount[replyState->mostCommitsHistIdx], FALSE);
+                appendText(dbgMsg1, ", correctCommits ");
+                appendNumber(dbgMsg1, correctCommitsCount, FALSE);
+                appendText(dbgMsg1, ", totalCommits ");
+                appendNumber(dbgMsg1, replyState->totalCommits, FALSE);
+                appendText(dbgMsg1, " -> UNRESOLVABLE");
+                addDebugMessage(dbgMsg1);
+#endif
+
+                return true;
+            }
+        }
 
         // update state to SUCCESS
         oqm.statusVar.success.revealTick = transaction->tick;
@@ -1312,6 +1427,7 @@ public:
         appendNumber(dbgMsg, oqm.queryId, FALSE);
         appendText(dbgMsg, ", computorIdx ");
         appendNumber(dbgMsg, computorIndex(transaction->sourcePublicKey), FALSE);
+        appendText(dbgMsg, " -> SUCCESS");
         addDebugMessage(dbgMsg);
 #endif
 
@@ -1556,6 +1672,8 @@ public:
         CHAR16* dbgMsgBuf = (CHAR16*)scratchpad.ptr;
 #endif
 
+        LockGuard lockGuard(lock);
+
         ASSERT(queries);
         ASSERT(queryStorage);
         ASSERT(queryIdToIndex);
@@ -1735,6 +1853,12 @@ public:
 #endif
     }
 
+    void getRevenuePoints(OracleRevenuePoints& orp) const
+    {
+        LockGuard lockGuard(lock);
+        copyMem(orp.computorRevPoints, revenuePoints, sizeof(revenuePoints));
+    }
+
     void logStatus() const
     {
         auto appendQuotientWithOneDecimal = [](CHAR16* message, uint64_t dividend, uint64_t divisor)
@@ -1787,7 +1911,8 @@ public:
         appendNumber(message, queryStorageBytesUsed * 100 / ORACLE_QUERY_STORAGE_SIZE, FALSE);
         appendText(message, "%");
         appendQuotientWithOneDecimal(message, stats.revealTxCount, stats.successCount);
-        appendText(message, " reveal tx per success");
+        appendText(message, " reveal tx per success, wrong knowledge proofs");
+        appendNumber(message, stats.wrongKnowledgeProofCount, FALSE);
         logToConsole(message);
 
 #if ENABLE_ORACLE_STATS_RECORD

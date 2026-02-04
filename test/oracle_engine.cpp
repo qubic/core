@@ -9,7 +9,7 @@ struct OracleEngineTest : public LoggingTest
 {
 	OracleEngineTest()
 	{
-		EXPECT_TRUE(commonBuffers.init(1, sizeof(OracleMachineQuery) + MAX_ORACLE_QUERY_SIZE));
+		EXPECT_TRUE(commonBuffers.init(1, 1024 * 1024));
 		EXPECT_TRUE(initSpecialEntities());
 		EXPECT_TRUE(initContractExec());
 		EXPECT_TRUE(ts.init());
@@ -177,6 +177,7 @@ TEST(OracleEngine, ContractQuerySuccess)
 	EXPECT_EQ(oracleEngine1.getReplyCommitTransaction(txBuffer, 0, 0, system.tick + 3, 0), 0);
 
 	// process commit tx
+	system.tick += 3;
 	EXPECT_TRUE(oracleEngine1.processOracleReplyCommitTransaction(replyCommitTx));
 	EXPECT_TRUE(oracleEngine2.processOracleReplyCommitTransaction(replyCommitTx));
 	EXPECT_TRUE(oracleEngine3.processOracleReplyCommitTransaction(replyCommitTx));
@@ -294,10 +295,34 @@ TEST(OracleEngine, ContractQuerySuccess)
 	// oracleEngine2 did not process reveal -> no success / reply
 	EXPECT_EQ(oracleEngine2.getOracleQueryStatus(queryId), ORACLE_QUERY_STATUS_COMMITTED);
 	EXPECT_FALSE(oracleEngine2.getOracleReply(queryId, &reply, sizeof(reply)));
+
+	//-------------------------------------------------------------------------
+	// revenue
+	OracleRevenuePoints rev1; oracleEngine1.getRevenuePoints(rev1);
+	OracleRevenuePoints rev2; oracleEngine2.getRevenuePoints(rev2);
+	OracleRevenuePoints rev3; oracleEngine3.getRevenuePoints(rev3);
+	for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+	{
+		// first 451 commit messages got through and are all correct:
+		// - all of node 3 (computor 600-675)
+		// - all of node 2 (computor 400-599)
+		// - first 451-276 of node 1 (computor 0-174)
+		bool gotCommit = (i >= 400) || (i <= 174);
+		EXPECT_EQ(rev1.computorRevPoints[i], (gotCommit) ? 1 : 0);
+
+		// no reveal processed in node 2 and 3
+		EXPECT_EQ(rev2.computorRevPoints[i], 0);
+		EXPECT_EQ(rev3.computorRevPoints[i], 0);
+	}
 }
 
 TEST(OracleEngine, ContractQueryUnresolvable)
 {
+	// 2 nodes send 200 commits each with agreeing digest
+	// 1 node sends 276 commits with different digest
+	// -> no quroum can be reached and status changes from pending to unresolvable directly
+	// -> no reveal / nobody gets revenue
+
 	OracleEngineTest test;
 
 	// simulate three nodes: two with 200 computor IDs each, one with 276 IDs
@@ -348,7 +373,7 @@ TEST(OracleEngine, ContractQueryUnresolvable)
 	oracleEngine1.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
 	oracleEngine2.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
 
-	// reply received/committed by node 1 and 2
+	// reply received/committed by node 3
 	priceOracleMachineReply.data.numerator = 1233;
 	priceOracleMachineReply.data.denominator = 1;
 	oracleEngine3.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
@@ -439,10 +464,202 @@ TEST(OracleEngine, ContractQueryUnresolvable)
 	EXPECT_EQ(oracleEngine1.getNotification(), nullptr);
 
 	EXPECT_EQ(oracleEngine1.getOracleQueryStatus(queryId), ORACLE_QUERY_STATUS_UNRESOLVABLE);
+
+	//-------------------------------------------------------------------------
+	// revenue
+	OracleRevenuePoints rev1; oracleEngine1.getRevenuePoints(rev1);
+	OracleRevenuePoints rev2; oracleEngine2.getRevenuePoints(rev2);
+	OracleRevenuePoints rev3; oracleEngine3.getRevenuePoints(rev3);
+	for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+	{
+		// no reveal
+		EXPECT_EQ(rev1.computorRevPoints[i], 0);
+		EXPECT_EQ(rev2.computorRevPoints[i], 0);
+		EXPECT_EQ(rev3.computorRevPoints[i], 0);
+	}
+}
+
+TEST(OracleEngine, ContractQueryWrongKnowledgeProof)
+{
+	// 3 nodes send 451 commits with agreeing digest, but 150 of them have
+	// a wrong knowledge proof -> status gets unresolvable, but the computors
+	// with correct knowledge proof get a revenue point
+
+	OracleEngineTest test;
+
+	// simulate three nodes: two with 200 computor IDs each, one with 276 IDs
+	const m256i* allCompPubKeys = broadcastedComputors.computors.publicKeys;
+	OracleEngineWithInitAndDeinit<200> oracleEngine1(allCompPubKeys);
+	OracleEngineWithInitAndDeinit<200> oracleEngine2(allCompPubKeys + 200);
+	OracleEngineWithInitAndDeinit<276> oracleEngine3(allCompPubKeys + 400);
+
+
+	OI::Price::OracleQuery priceQuery;
+	priceQuery.oracle = m256i(10, 20, 30, 40);
+	priceQuery.currency1 = m256i(20, 30, 40, 50);
+	priceQuery.currency2 = m256i(30, 40, 50, 60);
+	priceQuery.timestamp = QPI::DateAndTime::now();
+	QPI::uint32 interfaceIndex = 0;
+	QPI::uint16 contractIndex = 2;
+	QPI::uint32 timeout = 120000;
+	const QPI::uint32 notificationProcId = 12345;
+	EXPECT_TRUE(userProcedureRegistry->add(notificationProcId, { dummyNotificationProc, 1, 1024, 128, 1 }));
+
+	//-------------------------------------------------------------------------
+	// start contract query / check message to OM node
+	QPI::sint64 queryId = oracleEngine1.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId);
+	EXPECT_EQ(queryId, getContractOracleQueryId(system.tick, 0));
+	EXPECT_EQ(queryId, oracleEngine2.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId));
+	EXPECT_EQ(queryId, oracleEngine3.startContractQuery(contractIndex, interfaceIndex, &priceQuery, sizeof(priceQuery), timeout, notificationProcId));
+	checkNetworkMessageOracleMachineQuery<OI::Price>(queryId, timeout, priceQuery);
+
+	//-------------------------------------------------------------------------
+	// get query contract data
+	OI::Price::OracleQuery priceQueryReturned;
+	EXPECT_TRUE(oracleEngine1.getOracleQuery(queryId, &priceQueryReturned, sizeof(priceQueryReturned)));
+	EXPECT_EQ(memcmp(&priceQueryReturned, &priceQuery, sizeof(priceQuery)), 0);
+
+	//-------------------------------------------------------------------------
+	// process simulated reply from OM nodes
+	struct
+	{
+		OracleMachineReply metadata;
+		OI::Price::OracleReply data;
+	} priceOracleMachineReply;
+
+	// reply received/committed
+	priceOracleMachineReply.metadata.oracleMachineErrorFlags = 0;
+	priceOracleMachineReply.metadata.oracleQueryId = queryId;
+	priceOracleMachineReply.data.numerator = 1234;
+	priceOracleMachineReply.data.denominator = 1;
+	oracleEngine1.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
+	oracleEngine2.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
+	oracleEngine3.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
+
+	//-------------------------------------------------------------------------
+	// create and process reply commits of node 3 computers and process in all nodes
+	uint8_t txBuffer[MAX_TRANSACTION_SIZE];
+	auto* replyCommitTx = (OracleReplyCommitTransactionPrefix*)txBuffer;
+	for (int ownCompIdx = 0; ownCompIdx < 200; ++ownCompIdx)
+	{
+		int allCompIdx = ownCompIdx;
+		EXPECT_EQ(oracleEngine1.getReplyCommitTransaction(txBuffer, allCompIdx, ownCompIdx, system.tick + 3, 0), UINT32_MAX);
+		EXPECT_EQ(replyCommitTx->sourcePublicKey, allCompPubKeys[allCompIdx]);
+		uint8_t expectedStatus = (3 * ownCompIdx + 1 < 451) ? ORACLE_QUERY_STATUS_PENDING : ORACLE_QUERY_STATUS_COMMITTED;
+		EXPECT_TRUE(oracleEngine1.processOracleReplyCommitTransaction(replyCommitTx));
+		oracleEngine1.checkPendingState(queryId, 3 * ownCompIdx + 1, ownCompIdx + 1, expectedStatus);
+		EXPECT_TRUE(oracleEngine2.processOracleReplyCommitTransaction(replyCommitTx));
+		oracleEngine2.checkPendingState(queryId, 3 * ownCompIdx + 1, ownCompIdx, expectedStatus);
+		EXPECT_TRUE(oracleEngine3.processOracleReplyCommitTransaction(replyCommitTx));
+		oracleEngine3.checkPendingState(queryId, 3 * ownCompIdx + 1, ownCompIdx, expectedStatus);
+
+		if (3 * ownCompIdx + 1 == 451)
+		{
+			// After status switched to committed, getReplyCommitTransaction() won't return more tx because these
+			// would be to late to get revenue anyway.
+			allCompIdx = ownCompIdx + 200;
+			EXPECT_EQ(oracleEngine2.getReplyCommitTransaction(txBuffer, allCompIdx, ownCompIdx, system.tick + 3, 0), 0);
+			allCompIdx = ownCompIdx + 400;
+			EXPECT_EQ(oracleEngine2.getReplyCommitTransaction(txBuffer, allCompIdx, ownCompIdx, system.tick + 3, 0), 0);
+			break;
+		}
+
+		allCompIdx = ownCompIdx + 200;
+		EXPECT_EQ(oracleEngine2.getReplyCommitTransaction(txBuffer, allCompIdx, ownCompIdx, system.tick + 3, 0), UINT32_MAX);
+		EXPECT_EQ(replyCommitTx->sourcePublicKey, allCompPubKeys[allCompIdx]);
+		EXPECT_TRUE(oracleEngine1.processOracleReplyCommitTransaction(replyCommitTx));
+		oracleEngine1.checkPendingState(queryId, 3 * ownCompIdx + 2, ownCompIdx + 1, ORACLE_QUERY_STATUS_PENDING);
+		EXPECT_TRUE(oracleEngine2.processOracleReplyCommitTransaction(replyCommitTx));
+		oracleEngine2.checkPendingState(queryId, 3 * ownCompIdx + 2, ownCompIdx + 1, ORACLE_QUERY_STATUS_PENDING);
+		EXPECT_TRUE(oracleEngine3.processOracleReplyCommitTransaction(replyCommitTx));
+		oracleEngine3.checkPendingState(queryId, 3 * ownCompIdx + 2, ownCompIdx, ORACLE_QUERY_STATUS_PENDING);
+
+		allCompIdx = ownCompIdx + 400;
+		EXPECT_EQ(oracleEngine3.getReplyCommitTransaction(txBuffer, allCompIdx, ownCompIdx, system.tick + 3, 0), UINT32_MAX);
+		EXPECT_EQ(replyCommitTx->sourcePublicKey, allCompPubKeys[allCompIdx]);
+
+		// manipulate knowledge proof of computor 400-600 to simulate that computors just echo the commit of
+		// other computors without actually having the oracle reply
+		auto* commit = reinterpret_cast<OracleReplyCommitTransactionItem*>(replyCommitTx->inputPtr());
+		commit->replyKnowledgeProof.u64._3 += 2;
+
+		EXPECT_TRUE(oracleEngine1.processOracleReplyCommitTransaction(replyCommitTx));
+		oracleEngine1.checkPendingState(queryId, 3 * ownCompIdx + 3, ownCompIdx + 1, ORACLE_QUERY_STATUS_PENDING);
+		EXPECT_TRUE(oracleEngine2.processOracleReplyCommitTransaction(replyCommitTx));
+		oracleEngine2.checkPendingState(queryId, 3 * ownCompIdx + 3, ownCompIdx + 1, ORACLE_QUERY_STATUS_PENDING);
+		EXPECT_TRUE(oracleEngine3.processOracleReplyCommitTransaction(replyCommitTx));
+		oracleEngine3.checkPendingState(queryId, 3 * ownCompIdx + 3, ownCompIdx + 1, ORACLE_QUERY_STATUS_PENDING);
+	}
+
+	//-------------------------------------------------------------------------
+	// reply reveal tx
+
+	// success for one tx
+	EXPECT_EQ(oracleEngine1.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 0), 1);
+	EXPECT_EQ(oracleEngine1.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 1), 0);
+
+	// second call does not provide the same tx again
+	EXPECT_EQ(oracleEngine1.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 0), 0);
+
+	EXPECT_EQ(oracleEngine1.getOracleQueryStatus(queryId), ORACLE_QUERY_STATUS_COMMITTED);
+
+	system.tick += 3;
+	auto* replyRevealTx = (OracleReplyRevealTransactionPrefix*)txBuffer;
+	const unsigned int txIndex = 10;
+	addOracleTransactionToTickStorage(replyRevealTx, txIndex);
+	oracleEngine1.processOracleReplyRevealTransaction(replyRevealTx, txIndex);
+
+	EXPECT_EQ(oracleEngine1.getOracleQueryStatus(queryId), ORACLE_QUERY_STATUS_UNRESOLVABLE);
+
+	//-------------------------------------------------------------------------
+	// notifications
+	const OracleNotificationData* notification = oracleEngine1.getNotification();
+	EXPECT_NE(notification, nullptr);
+	EXPECT_EQ((int)notification->contractIndex, (int)contractIndex);
+	EXPECT_EQ(notification->procedureId, notificationProcId);
+	EXPECT_EQ((int)notification->inputSize, sizeof(OracleNotificationInput<OI::Price>));
+	const auto* notificationInput = (const OracleNotificationInput<OI::Price>*) & notification->inputBuffer;
+	EXPECT_EQ(notificationInput->queryId, queryId);
+	EXPECT_EQ(notificationInput->status, ORACLE_QUERY_STATUS_UNRESOLVABLE);
+	EXPECT_EQ(notificationInput->subscriptionId, 0);
+	EXPECT_EQ(notificationInput->reply.numerator, 0);
+	EXPECT_EQ(notificationInput->reply.denominator, 0);
+
+	// no additional notifications
+	EXPECT_EQ(oracleEngine1.getNotification(), nullptr);
+
+	EXPECT_EQ(oracleEngine1.getOracleQueryStatus(queryId), ORACLE_QUERY_STATUS_UNRESOLVABLE);
+
+	//-------------------------------------------------------------------------
+	// revenue
+	OracleRevenuePoints rev1; oracleEngine1.getRevenuePoints(rev1);
+	OracleRevenuePoints rev2; oracleEngine2.getRevenuePoints(rev2);
+	OracleRevenuePoints rev3; oracleEngine3.getRevenuePoints(rev3);
+	for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+	{
+		// In reveal, computors with correct knowledge proof get a point and those
+		// with wrong knowledge proof don't get one:
+		// - first 151 of node 1 got through and get rev (0-150)
+		// - first 150 of node 2 got through and get rev (200-349)
+		// - first 150 of node 3 get no rev due to wrong knowledge proof
+		// - other don't get rev, because no commit got through
+		bool node1rev = i <= 150;
+		bool node2rev = i >= 200 && i <= 349;
+		uint64_t expectedRevPoints = (node1rev || node2rev) ? 1 : 0;
+		EXPECT_EQ(rev1.computorRevPoints[i], expectedRevPoints);
+
+		// no reveal
+		EXPECT_EQ(rev2.computorRevPoints[i], 0);
+		EXPECT_EQ(rev3.computorRevPoints[i], 0);
+	}
 }
 
 TEST(OracleEngine, ContractQueryTimeout)
 {
+	// no response from OM node
+	// -> pending to timeout directly
+	// -> no reveal / nobody gets revenue
+
 	OracleEngineTest test;
 
 	// simulate one node
@@ -495,6 +712,15 @@ TEST(OracleEngine, ContractQueryTimeout)
 	EXPECT_EQ(oracleEngine1.getNotification(), nullptr);
 
 	EXPECT_EQ(oracleEngine1.getOracleQueryStatus(queryId), ORACLE_QUERY_STATUS_TIMEOUT);
+
+	//-------------------------------------------------------------------------
+	// revenue
+	OracleRevenuePoints rev1; oracleEngine1.getRevenuePoints(rev1);
+	for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+	{
+		// no reveal
+		EXPECT_EQ(rev1.computorRevPoints[i], 0);
+	}
 }
 
 template <typename OracleEngine>
@@ -535,7 +761,6 @@ TEST(OracleEngine, MultiContractQuerySuccess)
 {
 	OracleEngineTest test;
 
-
 	// simulate three nodes: one with 350 computor IDs, one with 250, and one with 76
 	const m256i* allCompPubKeys = broadcastedComputors.computors.publicKeys;
 	OracleEngineWithInitAndDeinit<350> oracleEngine1(allCompPubKeys);
@@ -547,7 +772,7 @@ TEST(OracleEngine, MultiContractQuerySuccess)
 	const QPI::uint32 notificationProcId = 12345;
 	EXPECT_TRUE(userProcedureRegistry->add(notificationProcId, { dummyNotificationProc, 1, 128, 128, 1 }));
 
-	constexpr int queryCount = 30;
+	constexpr int queryCount = 25;
 	QPI::uint16 interfaceIndex = OI::Mock::oracleInterfaceIndex;
 	OI::Mock::OracleQuery mockQuery;
 
@@ -599,6 +824,7 @@ TEST(OracleEngine, MultiContractQuerySuccess)
 	// create and process reply commit transactions
 
 	// get all commit tx for checking that correct set of commits is returned
+
 	checkReplyCommitTransactions(oracleEngine1, 0, 350, queryIds, queryIds[0]);
 	checkReplyCommitTransactions(oracleEngine2, 350, 600, queryIds, queryIds[1]);
 	checkReplyCommitTransactions(oracleEngine3, 600, 676, queryIds, queryIds[2]);
@@ -608,6 +834,8 @@ TEST(OracleEngine, MultiContractQuerySuccess)
 
 	uint8_t txBuffer[MAX_TRANSACTION_SIZE];
 	auto* replyCommitTx = (OracleReplyCommitTransactionPrefix*)txBuffer;
+
+	unsigned int txIndexInTickData = 0;
 
 	int globalCompIdxBeginEnd[] = { 0, 350, 600, 676 };
 	for (int oracleEngineIdx = 0; oracleEngineIdx < 3; ++oracleEngineIdx)
@@ -633,11 +861,37 @@ TEST(OracleEngine, MultiContractQuerySuccess)
 						system.tick + 3, retCode);
 				if (!retCode)
 					break;
-				EXPECT_TRUE(oracleEngine1.processOracleReplyCommitTransaction(replyCommitTx));
-				EXPECT_TRUE(oracleEngine2.processOracleReplyCommitTransaction(replyCommitTx));
-				EXPECT_TRUE(oracleEngine3.processOracleReplyCommitTransaction(replyCommitTx));
+
+				// store commit tx in tick storage for processing tx later
+				addOracleTransactionToTickStorage(replyCommitTx, txIndexInTickData);
+				txIndexInTickData++;
 			} while (retCode != UINT32_MAX);
 		}
+
+		// each engine send its txs in a different tick here
+		++system.tick;
+		txIndexInTickData = 0;
+	}
+
+	// process commit txs
+	ts.checkStateConsistencyWithAssert();
+	for (int tick = 0; tick < 3; ++tick)
+	{
+		const unsigned long long* tsTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(system.tick);
+		const unsigned long long* tsTickTransactionOffsets2 = ts.tickTransactionOffsets.getByTickInCurrentEpoch(system.tick+1);
+		const unsigned long long* tsTickTransactionOffsets3 = ts.tickTransactionOffsets.getByTickInCurrentEpoch(system.tick+2);
+		for (txIndexInTickData = 0; txIndexInTickData < NUMBER_OF_TRANSACTIONS_PER_TICK; ++txIndexInTickData)
+		{
+			const unsigned long long offset = tsTickTransactionOffsets[txIndexInTickData];
+			if (offset)
+			{
+				const auto* commitTx = (OracleReplyCommitTransactionPrefix*)ts.tickTransactions.ptr(offset);
+				EXPECT_TRUE(oracleEngine1.processOracleReplyCommitTransaction(commitTx));
+				EXPECT_TRUE(oracleEngine2.processOracleReplyCommitTransaction(commitTx));
+				EXPECT_TRUE(oracleEngine3.processOracleReplyCommitTransaction(commitTx));
+			}
+		}
+		++system.tick;
 	}
 
 	// check status
@@ -648,14 +902,16 @@ TEST(OracleEngine, MultiContractQuerySuccess)
 	oracleEngine1.checkPendingState(queryIds[1], 426, 350, ORACLE_QUERY_STATUS_PENDING);
 	oracleEngine2.checkPendingState(queryIds[1], 426, 0, ORACLE_QUERY_STATUS_PENDING);
 	oracleEngine3.checkPendingState(queryIds[1], 426, 76, ORACLE_QUERY_STATUS_PENDING);
-	
-	// generated tx were processed immediately, so getReplyCommitTransaction() stopped generating
-	// tx immediately when quorum of 451 was hit
-	for (int i = 2; i < queryCount; ++i)
+
+	oracleEngine1.checkPendingState(queryIds[2], 600, 350, ORACLE_QUERY_STATUS_COMMITTED);
+	oracleEngine2.checkPendingState(queryIds[2], 600, 250, ORACLE_QUERY_STATUS_COMMITTED);
+	oracleEngine3.checkPendingState(queryIds[2], 600, 0, ORACLE_QUERY_STATUS_COMMITTED);
+
+	for (int i = 3; i < queryCount; ++i)
 	{
-		oracleEngine1.checkPendingState(queryIds[i], 451, 350, ORACLE_QUERY_STATUS_COMMITTED);
-		oracleEngine2.checkPendingState(queryIds[i], 451, 101, ORACLE_QUERY_STATUS_COMMITTED);
-		oracleEngine3.checkPendingState(queryIds[i], 451, 0, ORACLE_QUERY_STATUS_COMMITTED);
+		oracleEngine1.checkPendingState(queryIds[i], 676, 350, ORACLE_QUERY_STATUS_COMMITTED);
+		oracleEngine2.checkPendingState(queryIds[i], 676, 250, ORACLE_QUERY_STATUS_COMMITTED);
+		oracleEngine3.checkPendingState(queryIds[i], 676, 76, ORACLE_QUERY_STATUS_COMMITTED);
 	}
 
 	//-------------------------------------------------------------------------
@@ -668,7 +924,7 @@ TEST(OracleEngine, MultiContractQuerySuccess)
 	auto* replyRevealTx = (OracleReplyRevealTransactionPrefix*)txBuffer;
 	unsigned int retCode = 0;
 	std::vector<const OracleReplyRevealTransactionPrefix*> revealTxs;
-	unsigned int txIndexInTickData = 0;
+	txIndexInTickData = 0;
 	while ((retCode = oracleEngine3.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, retCode)) != 0)
 	{
 		oracleEngine1.announceExpectedRevealTransaction(replyRevealTx);
@@ -691,7 +947,6 @@ TEST(OracleEngine, MultiContractQuerySuccess)
 		oracleEngine2.processOracleReplyRevealTransaction(revealTx, txIndexInTickData);
 		oracleEngine3.processOracleReplyRevealTransaction(revealTx, txIndexInTickData);
 	}
-
 
 	// no reveal possible for oracleEngine3 in query 2, because it didn't get OM reply
 	EXPECT_EQ(pendingRevealQueryIds.size(), 1);
@@ -745,6 +1000,20 @@ TEST(OracleEngine, MultiContractQuerySuccess)
 	// no additional notifications
 	EXPECT_EQ(oracleEngine1.getNotification(), nullptr);
 	EXPECT_EQ(pendingNotificationQueryIds.size(), 0);
+
+	//-------------------------------------------------------------------------
+	// revenue
+	OracleRevenuePoints rev1; oracleEngine1.getRevenuePoints(rev1);
+	OracleRevenuePoints rev2; oracleEngine2.getRevenuePoints(rev2);
+	OracleRevenuePoints rev3; oracleEngine3.getRevenuePoints(rev3);
+	for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+	{
+		bool hadFastestCommits = (i < 600);
+		uint64_t expectedRevPoints = (hadFastestCommits) ? queryCount - 2 : 0;
+		EXPECT_EQ(rev1.computorRevPoints[i], expectedRevPoints);
+		EXPECT_EQ(rev2.computorRevPoints[i], expectedRevPoints);
+		EXPECT_EQ(rev3.computorRevPoints[i], expectedRevPoints);
+	}
 }
 
 /*

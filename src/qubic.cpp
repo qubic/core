@@ -3377,7 +3377,6 @@ static void processTick(unsigned long long processorNumber)
     while (oracleNotification)
     {
         PROFILE_NAMED_SCOPE("processTick(): run oracle contract notification");
-        // TODO: discuss this extension with steakholders (changes event log communication protocol messages)
         logger.registerNewTx(system.tick, logger.SC_NOTIFICATION_TX);
         contractProcessorUserProcedureNotificationProc = userProcedureRegistry->get(oracleNotification->procedureId);
         contractProcessorUserProcedureNotificationInput = oracleNotification->inputBuffer;

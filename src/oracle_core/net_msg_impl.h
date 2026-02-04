@@ -201,6 +201,7 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		p->successAvgMilliTicksPerQuery = (stats.successCount) ? stats.successTicksSum * 1000 / stats.successCount : 0;
 		p->timeoutAvgMilliTicksPerQuery = (totalTimeouts) ? stats.timeoutTicksSum * 1000 / totalTimeouts : 0;
 		p->revealTxCount = stats.revealTxCount;
+		p->wrongKnowledgeProofCount = stats.wrongKnowledgeProofCount;
 
 		// send response
 		enqueueResponse(peer, sizeof(RespondOracleData) + sizeof(RespondOracleDataQueryStatistics),

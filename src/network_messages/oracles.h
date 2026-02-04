@@ -144,4 +144,7 @@ struct RespondOracleDataQueryStatistics
 
     /// How many thousandth ticks it takes on average until until timeout (only considering cases in which timeout happened)
     uint64_t timeoutAvgMilliTicksPerQuery;
+
+    /// Total number of commit with correct digest but wrong knowledge proof
+    uint64_t wrongKnowledgeProofCount;
 };

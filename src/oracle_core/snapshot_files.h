@@ -24,6 +24,7 @@ struct OracleEngineSnapshotData
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> pendingCommitReplyStateIndices;
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> pendingRevealReplyStateIndices;
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> notificationQueryIndicies;
+    uint64_t revenuePoints[NUMBER_OF_COMPUTORS];
     OracleEngineStatistics stats;
 };
 
@@ -49,6 +50,7 @@ bool OracleEngine<ownComputorSeedsCount>::saveSnapshot(unsigned short epoch, CHA
     copyMemory(engineData.pendingCommitReplyStateIndices, pendingCommitReplyStateIndices);
     copyMemory(engineData.pendingRevealReplyStateIndices, pendingRevealReplyStateIndices);
     copyMemory(engineData.notificationQueryIndicies, notificationQueryIndicies);
+    copyMemory(engineData.revenuePoints, revenuePoints);
     copyMemory(engineData.stats, stats);
 
     logToConsole(L"Saving oracle engine data ...");
@@ -122,6 +124,7 @@ bool OracleEngine<ownComputorSeedsCount>::loadSnapshot(unsigned short epoch, CHA
     copyMemory(pendingCommitReplyStateIndices, engineData.pendingCommitReplyStateIndices);
     copyMemory(pendingRevealReplyStateIndices, engineData.pendingRevealReplyStateIndices);
     copyMemory(notificationQueryIndicies, engineData.notificationQueryIndicies);
+    copyMemory(revenuePoints, engineData.revenuePoints);
     copyMemory(stats, engineData.stats);
     if (oracleQueryCount > MAX_ORACLE_QUERIES || queryStorageBytesUsed > ORACLE_QUERY_STORAGE_SIZE)
     {

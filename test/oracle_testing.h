@@ -62,6 +62,7 @@ static inline QPI::uint64 getContractOracleQueryId(QPI::uint32 tick, QPI::uint32
 
 static const Transaction* addOracleTransactionToTickStorage(const Transaction* tx, unsigned int txIndex)
 {
+    ASSERT(txIndex < NUMBER_OF_TRANSACTIONS_PER_TICK);
     Transaction* tsTx = nullptr;
     const unsigned int txSize = tx->totalSize();
     auto* offsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(tx->tick);

@@ -73,6 +73,7 @@ constexpr uint16_t ORACLE_FLAG_REPLY_RECEIVED = 0x100; ///< Oracle engine got va
 constexpr uint16_t ORACLE_FLAG_BAD_SIZE_REPLY = 0x200; ///< Oracle engine got reply of wrong size from the oracle machine.
 constexpr uint16_t ORACLE_FLAG_OM_DISAGREE = 0x400;    ///< Oracle engine got different replies from oracle machines.
 constexpr uint16_t ORACLE_FLAG_BAD_SIZE_REVEAL = 0x800; ///< Reply in a reveal tx had wrong size.
+constexpr uint16_t ORACLE_FLAG_FAKE_COMMITS = 0x1000;   ///< Unresolvable, because reveal exposed too many fake commits.
 
 typedef union IPv4Address
 {
