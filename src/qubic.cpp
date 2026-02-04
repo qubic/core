@@ -3386,6 +3386,23 @@ static void processTick(unsigned long long processorNumber)
         {
             KangarooTwelve64To32(&spectrum[digestIndex], &spectrumDigests[digestIndex]);
             spectrumChangeFlags[digestIndex >> 6] |= (1ULL << (digestIndex & 63));
+#if !defined(NDEBUG)
+            CHAR16 dbgMsg[200];
+            CHAR16 identityChars[60 + 1];
+
+            // Get the account identity from public key
+            getIdentity(spectrum[digestIndex].publicKey.m256i_u8, identityChars, false);
+
+            setText(dbgMsg, L"[SPECTRUM CHANGE] tick=");
+            appendNumber(dbgMsg, system.tick, FALSE);
+            appendText(dbgMsg, L" account=");
+            appendText(dbgMsg, identityChars);
+            appendText(dbgMsg, L" in=");
+            appendNumber(dbgMsg, spectrum[digestIndex].latestIncomingTransferTick, FALSE);
+            appendText(dbgMsg, L" out=");
+            appendNumber(dbgMsg, spectrum[digestIndex].latestOutgoingTransferTick, FALSE);
+            addDebugMessage(dbgMsg);
+#endif
         }
     }
     unsigned int previousLevelBeginning = 0;
