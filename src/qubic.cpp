@@ -5277,8 +5277,23 @@ static void tickProcessor(void*)
             if (system.tick > latestProcessedTick)
             {
 #if !defined(NDEBUG)
-                // Log only the FIRST tick after LOAD
-                const bool logThisTick = wasLoadedFromSnapshot && (latestProcessedTick == 0);
+                // Log only the FIRST tick after LOAD or when SAVE is requested
+                const bool logThisTick =
+                    requestPersistingNodeState || (wasLoadedFromSnapshot && (latestProcessedTick == 0));
+#endif
+
+#if !defined(NDEBUG)
+                // Log BEFORE save to capture what state will be saved
+                if (logThisTick)
+                {
+                    CHAR16 digestChars[60 + 1];
+                    setText(message, L"[BEFORE processTick and requestPersisting] tick=");
+                    appendNumber(message, system.tick, FALSE);
+                    appendText(message, L" Spectrum: ");
+                    getIdentity(etalonTick.saltedSpectrumDigest.m256i_u8, digestChars, true);
+                    appendText(message, digestChars);
+                    addDebugMessage(message);
+                }
 #endif
                 // State persist: if it can reach to this point that means we already have all necessary data to process tick `system.tick`
                 // thus, pausing here and doing the state persisting is the best choice.
@@ -5290,6 +5305,7 @@ static void tickProcessor(void*)
                 }
 
 #if !defined(NDEBUG)
+                // Log BEFORE save to capture what state will be saved
                 if (logThisTick)
                 {
                     CHAR16 digestChars[60 + 1];
