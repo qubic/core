@@ -15,7 +15,9 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 
 	// prepare buffer
 	constexpr int maxQueryIdCount = 128;
-	constexpr int payloadBufferSize = math_lib::max((int)math_lib::max(MAX_ORACLE_QUERY_SIZE, MAX_ORACLE_REPLY_SIZE), maxQueryIdCount * 8);
+	constexpr int payloadBufferSize = math_lib::max(
+		(int)math_lib::max(MAX_ORACLE_QUERY_SIZE, MAX_ORACLE_REPLY_SIZE),
+		(int)math_lib::max(maxQueryIdCount * 8ull, sizeof(revenuePoints)));
 	static_assert(payloadBufferSize >= sizeof(RespondOracleDataQueryMetadata), "Buffer too small.");
 	static_assert(payloadBufferSize < 32 * 1024, "Large alloc in stack may need reconsideration.");
 	uint8_t responseBuffer[sizeof(RespondOracleData) + payloadBufferSize];
@@ -206,6 +208,20 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		// send response
 		enqueueResponse(peer, sizeof(RespondOracleData) + sizeof(RespondOracleDataQueryStatistics),
 			RespondOracleData::type(), header->dejavu(), response);
+		break;
+	}
+
+	case RequestOracleData::requestOracleRevenuePoints:
+	{
+		// prepare response
+		response->resType = RespondOracleData::respondOracleRevenuePoints;
+		uint64_t* payloadRevPoints = (uint64_t*)(responseBuffer + sizeof(RespondOracleData));
+		copyMem(payloadRevPoints, revenuePoints, sizeof(revenuePoints));
+
+		// send response
+		enqueueResponse(peer, sizeof(RespondOracleData) + sizeof(revenuePoints),
+			RespondOracleData::type(), header->dejavu(), response);
+
 		break;
 	}
 

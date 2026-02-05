@@ -28,6 +28,7 @@ struct RequestOracleData
     static constexpr unsigned int requestQueryAndResponse = 5;
     static constexpr unsigned int requestSubscription = 6;
     static constexpr unsigned int requestQueryStatistics = 7;
+    static constexpr unsigned int requestOracleRevenuePoints = 8;
     unsigned int reqType;
 
     unsigned int _padding;
@@ -71,6 +72,9 @@ struct RespondOracleData
 
     // The payload is RespondOracleDataQueryStatistics.
     static constexpr unsigned int respondQueryStatistics = 7;
+
+    // The payload is an array of 676 revenue points (one per computer, each 8 bytes).
+    static constexpr unsigned int respondOracleRevenuePoints = 8;
 
     // type of oracle response
     unsigned int resType;
