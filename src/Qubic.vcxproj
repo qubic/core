@@ -46,7 +46,6 @@
     <ClInclude Include="contracts\QRaffle.h" />
     <ClInclude Include="contracts\QBond.h" />
     <ClInclude Include="contracts\QIP.h" />
-    <ClInclude Include="contracts\SupplyWatcher_old.h" />
     <ClInclude Include="contracts\QReservePool.h" />
     <ClInclude Include="contracts\QThirtyFour.h" />
     <ClInclude Include="contracts\TestExampleA.h" />
