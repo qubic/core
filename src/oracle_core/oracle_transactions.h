@@ -23,6 +23,8 @@ struct OracleReplyCommitTransactionPrefix : public Transaction
 	{
 		return sizeof(OracleReplyCommitTransactionItem);
 	}
+
+	// followed by: n times OracleReplyCommitTransactionItem
 };
 
 // Transaction for revealing oracle reply. The tx prefix is followed by the OracleReply data
@@ -40,6 +42,8 @@ struct OracleReplyRevealTransactionPrefix : public Transaction
 	}
 
 	unsigned long long queryId;
+
+	// followed by: oracle reply
 };
 
 // Transaction for querying oracle. The tx prefix is followed by the OracleQuery data

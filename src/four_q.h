@@ -42,11 +42,14 @@
 #define C4 0x6BC57DEF56CE8877
 
 #ifdef __AVX512F__
+namespace FourQ
+{
 static __m256i B1, B2, B3, B4, C;
+}
 
 static void initAVX512FourQConstants()
 {
-
+    using namespace FourQ;
     B1 = _mm256_set_epi64x(B14, B13, B12, B11);
     B2 = _mm256_set_epi64x(B24, B23, B22, B21);
     B3 = _mm256_set_epi64x(B34, B33, B32, B31);
@@ -1232,6 +1235,7 @@ static void decompose(unsigned long long* k, unsigned long long* scalars)
     const unsigned long long a4 = mul_truncate(k, (unsigned long long*)ell4);
 
 #ifdef __AVX512F__
+    using namespace FourQ;
     * ((__m256i*)scalars) = _mm256_add_epi64(_mm256_add_epi64(_mm256_add_epi64(_mm256_add_epi64(_mm256_mullo_epi64(_mm256_set1_epi64x(a1), B1), _mm256_mullo_epi64(_mm256_set1_epi64x(a2), B2)), _mm256_mullo_epi64(_mm256_set1_epi64x(a3), B3)), _mm256_mullo_epi64(_mm256_set1_epi64x(a4), B4)), C);
     if (!((scalars[0] += k[0]) & 1))
     {

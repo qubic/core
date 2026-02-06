@@ -341,6 +341,9 @@
     <ClInclude Include="contract_core\execution_time_accumulator.h">
       <Filter>contract_core</Filter>
     </ClInclude>
+    <ClInclude Include="oracle_interfaces\Mock.h">
+      <Filter>oracle_interfaces</Filter>
+    </ClInclude>
     <ClInclude Include="mining\score_common.h">
       <Filter>mining</Filter>
     </ClInclude>
@@ -355,6 +358,12 @@
     </ClInclude>
     <ClInclude Include="contracts\qRWA.h">
       <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\SupplyWatcher_old.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="oracle_core\snapshot_files.h">
+      <Filter>oracle_core</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

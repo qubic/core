@@ -11,6 +11,7 @@
 // - all oracle query IDs that are pending (status is neither success nor failure)
 // - for given oracle query ID: metadata, query, and response if available
 // - subscription info for given oracle subscription ID
+// - query statistics of this node (counts and durations)
 struct RequestOracleData
 {
     static constexpr unsigned char type()
@@ -26,12 +27,14 @@ struct RequestOracleData
     static constexpr unsigned int requestPendingQueryIds = 4;
     static constexpr unsigned int requestQueryAndResponse = 5;
     static constexpr unsigned int requestSubscription = 6;
+    static constexpr unsigned int requestQueryStatistics = 7;
+    static constexpr unsigned int requestOracleRevenuePoints = 8;
     unsigned int reqType;
 
     unsigned int _padding;
 
     // tick, query ID, or subscription ID (depending on reqType)
-    unsigned long long reqTickOrId;
+    long long reqTickOrId;
 };
 
 static_assert(sizeof(RequestOracleData) == 16, "Something is wrong with the struct size.");
@@ -67,6 +70,12 @@ struct RespondOracleData
     // The payload is RespondOracleDataSubscriptionContractMetadata.
     static constexpr unsigned int respondSubscriptionContractMetadata = 6;
 
+    // The payload is RespondOracleDataQueryStatistics.
+    static constexpr unsigned int respondQueryStatistics = 7;
+
+    // The payload is an array of 676 revenue points (one per computer, each 8 bytes).
+    static constexpr unsigned int respondOracleRevenuePoints = 8;
+
     // type of oracle response
     unsigned int resType;
 };
@@ -79,23 +88,25 @@ struct RespondOracleDataQueryMetadata
     uint8_t type;               ///< contract query, user query, subscription (may be by multiple contracts)
     uint8_t status;             ///< overall status (pending -> success or timeout)
     uint16_t statusFlags;       ///< status and error flags (especially as returned by oracle machine connected to this node)
-    uint32_t interfaceIndex;
     uint32_t queryTick;
-    uint64_t timeout;           ///< Timeout in QPI::DateAndTime format
     m256i queryingEntity;
+    uint64_t timeout;           ///< Timeout in QPI::DateAndTime format
+    uint32_t interfaceIndex;
     int32_t subscriptionId;     ///< -1 is reserved for "no subscription"
     uint32_t revealTick;        ///< Tick of reveal tx. Only available if status is success.
     uint16_t totalCommits;      ///< Total number of commit tx. Only available if status isn't success.
     uint16_t agreeingCommits;   ///< Number of agreeing commit tx (biggest group with same digest). Only available if status isn't success.
 };
 
+static_assert(sizeof(RespondOracleDataQueryMetadata) == 72, "Unexpected struct size");
+
 struct RespondOracleDataSubscriptionMetadata
 {
-    uint16_t queryIntervalMinutes;
-    uint16_t queryTimestampOffset;
     int64_t lastQueryQueryId;
     int64_t lastRevealQueryId;
     uint64_t nextQueryTimestamp;
+    uint16_t queryIntervalMinutes;
+    uint16_t queryTimestampOffset;
 };
 
 struct RespondOracleDataSubscriptionContractMetadata
@@ -104,4 +115,40 @@ struct RespondOracleDataSubscriptionContractMetadata
     uint16_t contractIndex;
     uint16_t notificationIntervalMinutes; 
     uint64_t nextQueryNotificationTimestamp; ///< Timeout in QPI::DateAndTime format
+};
+
+struct RespondOracleDataQueryStatistics
+{
+    uint64_t pendingCount;
+    uint64_t pendingOracleMachineCount;
+    uint64_t pendingCommitCount;
+    uint64_t pendingRevealCount;
+
+    uint64_t successfulCount;
+    uint64_t revealTxCount;
+
+    uint64_t unresolvableCount;
+
+    uint64_t timeoutCount;
+    uint64_t timeoutNoReplyCount;
+    uint64_t timeoutNoCommitCount;
+    uint64_t timeoutNoRevealCount;
+
+    /// For how many queries multiple OM nodes connected to this Core node sent differing replies
+    uint64_t oracleMachineRepliesDisagreeCount;
+
+    /// How many thousandth ticks it takes on average until the OM reply is received
+    uint64_t oracleMachineReplyAvgMilliTicksPerQuery;
+
+    /// How many thousandth ticks it takes on average until the commit status is reached (until 451 commit tx got executed)
+    uint64_t commitAvgMilliTicksPerQuery;
+
+    /// How many thousandth ticks it takes on average until until success (ticks until 1 reveal tx got executed)
+    uint64_t successAvgMilliTicksPerQuery;
+
+    /// How many thousandth ticks it takes on average until until timeout (only considering cases in which timeout happened)
+    uint64_t timeoutAvgMilliTicksPerQuery;
+
+    /// Total number of commit with correct digest but wrong knowledge proof
+    uint64_t wrongKnowledgeProofCount;
 };

@@ -482,10 +482,55 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXD);
 
     // fill execution fee reserves for test contracts
-    setContractFeeReserve(TESTEXA_CONTRACT_INDEX, 10000);
-    setContractFeeReserve(TESTEXB_CONTRACT_INDEX, 10000);
-    setContractFeeReserve(TESTEXC_CONTRACT_INDEX, 10000);
-    setContractFeeReserve(TESTEXD_CONTRACT_INDEX, 10000);
+    setContractFeeReserve(TESTEXA_CONTRACT_INDEX, 100000000000);
+    setContractFeeReserve(TESTEXB_CONTRACT_INDEX, 100000000000);
+    setContractFeeReserve(TESTEXC_CONTRACT_INDEX, 100000000000);
+    setContractFeeReserve(TESTEXD_CONTRACT_INDEX, 100000000000);
 #endif
 }
 
+// Class for registering and looking up user procedures independently of input type, for example for notifications
+class UserProcedureRegistry
+{
+public:
+    struct UserProcedureData
+    {
+        USER_PROCEDURE procedure;
+        unsigned int contractIndex;
+        unsigned int localsSize;
+        unsigned short inputSize;
+        unsigned short outputSize;
+    };
+
+    void init()
+    {
+        setMemory(*this, 0);
+    }
+
+    bool add(unsigned int procedureId, const UserProcedureData& data)
+    {
+        const unsigned int cnt = (unsigned int)idToIndex.population();
+        if (cnt >= idToIndex.capacity())
+            return false;
+
+        copyMemory(userProcData[cnt], data);
+        idToIndex.set(procedureId, cnt);
+
+        return true;
+    }
+
+    const UserProcedureData* get(unsigned int procedureId) const
+    {
+        unsigned int idx;
+        if (!idToIndex.get(procedureId, idx))
+            return nullptr;
+        return userProcData + idx;
+    }
+
+protected:
+    UserProcedureData userProcData[MAX_CONTRACT_PROCEDURES_REGISTERED];
+    QPI::HashMap<unsigned int, unsigned int, MAX_CONTRACT_PROCEDURES_REGISTERED> idToIndex;
+};
+
+// For registering and looking up user procedures independently of input type (for notifications), initialized by initContractExec()
+GLOBAL_VAR_DECL UserProcedureRegistry* userProcedureRegistry GLOBAL_VAR_INIT(nullptr);

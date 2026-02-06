@@ -53,7 +53,7 @@ struct Price
 		/// Second currency of pair to get the exchange rate for.
 		id currency2;
 
-		// TODO: we may need to add precision reqirements regarding response value (and time?)
+		// TODO: we may need to add precision requirements regarding response value
 	};
 
 	/// Oracle reply data / output of the oracle machine
@@ -96,4 +96,18 @@ struct Price
 	// TODO:
 	// implement and test currency conversion (including using uint128 on the way in order to support large quantities)
 	// provide character enum / id constructor for convenient setting of oracle/currency IDs
+
+	/// Get oracle ID of mock oracle
+	static id getMockOracleId()
+	{
+		using namespace Ch;
+		return id(m, o, c, k, null);
+	}
+
+	/// Get oracle ID of coingecko oracle
+	static id getCoingeckoOracleId()
+	{
+		using namespace Ch;
+		return id(c, o, i, n, g, e, c, k, o);
+	}
 };

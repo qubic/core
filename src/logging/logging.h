@@ -18,7 +18,7 @@ struct Peer;
 
 #define LOG_CONTRACTS (LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES)
 
-#if LOG_SPECTRUM | LOG_UNIVERSE | LOG_CONTRACTS | LOG_CUSTOM_MESSAGES
+#if LOG_SPECTRUM | LOG_UNIVERSE | LOG_CONTRACTS | LOG_CUSTOM_MESSAGES | LOG_ORACLES
 #define ENABLED_LOGGING 1
 #else
 #define ENABLED_LOGGING 0
@@ -57,6 +57,7 @@ struct Peer;
 #define ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE 11
 #define ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE 12
 #define CONTRACT_RESERVE_DEDUCTION 13
+#define ORACLE_QUERY_STATUS_CHANGE 14
 #define CUSTOM_MESSAGE 255
 
 #define CUSTOM_MESSAGE_OP_START_DISTRIBUTE_DIVIDENDS 6217575821008262227ULL // STA_DDIV
@@ -230,6 +231,7 @@ struct SpectrumStats
     unsigned long long dustThresholdBurnHalf;
     unsigned int numberOfEntities;
     unsigned int entityCategoryPopulations[48];
+    unsigned int _padding;
 };
 
 struct ContractReserveDeduction
@@ -237,8 +239,19 @@ struct ContractReserveDeduction
     unsigned long long deductedAmount;
     long long remainingAmount;
     unsigned int contractIndex;
+    unsigned int _padding;
 };
 
+struct OracleQueryStatusChange
+{
+    m256i queryingEntity;
+    long long queryId;
+    unsigned int interfaceIndex;
+    unsigned char type;
+    unsigned char status;
+
+    char _terminator; // Only data before "_terminator" are logged
+};
 
 /*
  * LOGGING IMPLEMENTATION
@@ -374,6 +387,7 @@ public:
     static constexpr unsigned int SC_BEGIN_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 2;
     static constexpr unsigned int SC_END_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 3;
     static constexpr unsigned int SC_END_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 4;
+    static constexpr unsigned int SC_NOTIFICATION_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 5;
 
 #if ENABLED_LOGGING
     // Struct to map log buffer from log id    
@@ -865,6 +879,13 @@ public:
     {
 #if LOG_SPECTRUM
         logMessage(sizeof(ContractReserveDeduction), CONTRACT_RESERVE_DEDUCTION, &message);
+#endif
+    }
+
+    void logOracleQueryStatusChange(const OracleQueryStatusChange& message)
+    {
+#if LOG_ORACLES
+        logMessage(offsetof(OracleQueryStatusChange, _terminator), ORACLE_QUERY_STATUS_CHANGE, &message);
 #endif
     }
 

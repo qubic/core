@@ -6,9 +6,10 @@
 
 
 template <typename OracleInterface, typename ContractStateType, typename LocalsType>
-QPI::sint64 QPI::QpiContextProcedureCall::queryOracle(
+QPI::sint64 QPI::QpiContextProcedureCall::__qpiQueryOracle(
 	const OracleInterface::OracleQuery& query,
-	void (*notificationCallback)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, QPI::OracleNotificationInput<OracleInterface>& input, QPI::NoData& output, LocalsType& locals),
+	void (*notificationProcPtr)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
+	unsigned int notificationProcId, 
 	uint32 timeoutMillisec
 ) const
 {
@@ -28,25 +29,46 @@ QPI::sint64 QPI::QpiContextProcedureCall::queryOracle(
 	const QPI::uint16 contractIndex = static_cast<QPI::uint16>(this->_currentContractIndex);
 
 	// check callback
-	if (!notificationCallback || ContractStateType::__contract_index != contractIndex)
+	if (!notificationProcPtr || ContractStateType::__contract_index != contractIndex)
 		return -1;
+
+	// check vs registry of user procedures for notification
+	const UserProcedureRegistry::UserProcedureData* procData;
+	if (!userProcedureRegistry || !(procData = userProcedureRegistry->get(notificationProcId)) || procData->procedure != (USER_PROCEDURE)notificationProcPtr)
+		return -1;
+	ASSERT(procData->inputSize == sizeof(OracleNotificationInput<OracleInterface>));
+	ASSERT(procData->localsSize == sizeof(LocalsType));
 
 	// get and destroy fee (not adding to contracts execution fee reserve)
 	sint64 fee = OracleInterface::getQueryFee(query);
 	int contractSpectrumIdx = ::spectrumIndex(this->_currentContractId);
 	if (fee >= 0 && contractSpectrumIdx >= 0 && decreaseEnergy(contractSpectrumIdx, fee))
 	{
+		// log burning of QU
+		const QuTransfer quTransfer = { this->_currentContractId, m256i::zero(), fee };
+		logger.logQuTransfer(quTransfer);
+
 		// try to start query
 		QPI::sint64 queryId = oracleEngine.startContractQuery(
 			contractIndex, OracleInterface::oracleInterfaceIndex,
-			&query, sizeof(query), timeoutMillisec,
-			(USER_PROCEDURE)notificationCallback, sizeof(LocalsType));
+			&query, sizeof(query), timeoutMillisec, notificationProcId);
 		if (queryId >= 0)
 		{
 			// success
 			return queryId;
 		}
+		else if (fee > 0)
+		{
+			// failure -> refund fee
+			oracleEngine.refundFees(_currentContractId, fee);
+		}
 	}
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+	else
+	{
+		addDebugMessage(L"Cannot start contract oracle query due to fee issue!");
+	}
+#endif
 
 	// notify about error (status and queryId are 0, indicating that an error happened before sending query)
 	auto* state = (ContractStateType*)contractStates[contractIndex];
@@ -55,17 +77,18 @@ QPI::sint64 QPI::QpiContextProcedureCall::queryOracle(
 	input->queryId = -1;
 	QPI::NoData output;
 	auto* locals = (LocalsType*)__qpiAllocLocals(sizeof(LocalsType));
-	notificationCallback(*this, *state, *input, output, *locals);
+	notificationProcPtr(*this, *state, *input, output, *locals);
 	__qpiFreeLocals();
 	__qpiFreeLocals();
 	return -1;
 }
 
 template <typename OracleInterface, typename ContractStateType, typename LocalsType>
-inline QPI::sint32 QPI::QpiContextProcedureCall::subscribeOracle(
+inline QPI::sint32 QPI::QpiContextProcedureCall::__qpiSubscribeOracle(
 	const OracleInterface::OracleQuery& query,
-	void (*notificationCallback)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
+	void (*notificationProcPtr)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
 	QPI::uint32 notificationIntervalInMilliseconds,
+	unsigned int notificationProcId,
 	bool notifyWithPreviousReply
 ) const
 {
@@ -85,20 +108,16 @@ inline bool QPI::QpiContextProcedureCall::unsubscribeOracle(
 template <typename OracleInterface>
 bool QPI::QpiContextFunctionCall::getOracleQuery(QPI::sint64 queryId, OracleInterface::OracleQuery& query) const
 {
-	// TODO
-	return false;
+	return oracleEngine.getOracleQuery(queryId, &query, sizeof(query));
 }
 
 template <typename OracleInterface>
 bool QPI::QpiContextFunctionCall::getOracleReply(QPI::sint64 queryId, OracleInterface::OracleReply& reply) const
 {
-	// TODO
-	return false;
+	return oracleEngine.getOracleReply(queryId, &reply, sizeof(reply));
 }
 
-template <typename OracleInterface>
 inline QPI::uint8 QPI::QpiContextFunctionCall::getOracleQueryStatus(sint64 queryId) const
 {
-	// TODO
-	return ORACLE_QUERY_STATUS_UNKNOWN;
+	return oracleEngine.getOracleQueryStatus(queryId);
 }

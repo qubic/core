@@ -105,6 +105,7 @@ static void logSpectrumStats()
     spectrumStats.dustThresholdBurnHalf = dustThresholdBurnHalf;
     spectrumStats.numberOfEntities = spectrumInfo.numberOfEntities;
     copyMem(spectrumStats.entityCategoryPopulations, entityCategoryPopulations, sizeof(entityCategoryPopulations));
+    spectrumStats._padding = 0;
 
     logger.logSpectrumStats(spectrumStats);
 }
