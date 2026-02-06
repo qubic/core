@@ -7410,7 +7410,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             closePeer(&peers[i], ORACLE_MACHINE_GRACEFULL_CLOSE_RETIRES);
                         }
 
-                        constexpr unsigned long long OM_INACTIVITY_TIMEOUT_SECS = 300;  // 5 minutes
+                        // inactivity timeout between 1 and 2 minutes (depending on peer index to reduce risk of
+                        // all OM node connections being closed simultaneously)
+                        const unsigned long long OM_INACTIVITY_TIMEOUT_SECS = 120 - (i % 5) * 15;
                         if (peers[i].isConnectedAccepted &&
                             !peers[i].isClosing &&
                             peers[i].lastOMActivityTime > 0 &&
