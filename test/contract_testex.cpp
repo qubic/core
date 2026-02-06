@@ -2107,7 +2107,7 @@ TEST(ContractTestEx, OracleQuery)
 {
     ContractTestingTestEx test;
     system.epoch = 200;
-    system.tick = 123456789;
+    system.tick = 123456783;
 
     //-------------------------------------------------------------------------
     // Test qpi.queryOracle() and generating message to oracle machine node
