@@ -1478,6 +1478,25 @@ public:
                 ++correctCommitsCount;
             }
             ASSERT(correctDigestCount == replyState->replyCommitHistogramCount[quorumHistIdx]);
+            if (correctDigestCount != replyState->replyCommitHistogramCount[quorumHistIdx])
+            {
+                CHAR16 dbgMsg1[200];
+                setText(dbgMsg1, L"tmpDbg: correctDigestCount ");
+                appendNumber(dbgMsg1, correctDigestCount, FALSE);
+                appendText(dbgMsg1, ", quorumHistIdx ");
+                appendNumber(dbgMsg1, quorumHistIdx, FALSE);
+                appendText(dbgMsg1, ", c[0] ");
+                appendNumber(dbgMsg1, replyState->replyCommitHistogramCount[0], FALSE);
+                appendText(dbgMsg1, ", c[1] ");
+                appendNumber(dbgMsg1, replyState->replyCommitHistogramCount[1], FALSE);
+                appendText(dbgMsg1, ", c[2] ");
+                appendNumber(dbgMsg1, replyState->replyCommitHistogramCount[2], FALSE);
+                appendText(dbgMsg1, ", c[3] ");
+                appendNumber(dbgMsg1, replyState->replyCommitHistogramCount[3], FALSE);
+                appendText(dbgMsg1, ", correctCommitsCount ");
+                appendNumber(dbgMsg1, correctCommitsCount, FALSE);
+                addDebugMessage(dbgMsg1);
+            }
 
             // update revenue points:
             // 1. sort by commit tick
