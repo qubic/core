@@ -341,10 +341,10 @@ public:
 		// Query oracles
 		if (qpi.tick() % 11 == 1)
 		{
-			for (locals.c = (qpi.tick() % 5) + 1; locals.c > 0; --locals.c)
+			locals.c = (qpi.tick() / 11) % 8;
 			{
 				// Setup query (in extra scope limit scope of using namespace Ch
-				if (locals.c % 3 == 0)
+				if (locals.c == 0)
 				{
 					using namespace Ch;
 					locals.priceOracleQuery.oracle = OI::Price::getMockOracleId();
@@ -352,18 +352,58 @@ public:
 					locals.priceOracleQuery.currency2 = id(U, S, D, null, null);
 					locals.priceOracleQuery.timestamp = qpi.now();
 				}
-				else if (locals.c % 3 == 1)
+				else if (locals.c == 1)
 				{
 					using namespace Ch;
-					locals.priceOracleQuery.oracle = OI::Price::getMockOracleId();
+					locals.priceOracleQuery.oracle = OI::Price::getBinanceOracleId();
 					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
 					locals.priceOracleQuery.currency2 = id(E, T, H, null, null);
 					locals.priceOracleQuery.timestamp = qpi.now();
 				}
-				else
+				else if (locals.c == 2)
 				{
 					using namespace Ch;
 					locals.priceOracleQuery.oracle = OI::Price::getCoingeckoOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
+				else if (locals.c == 3)
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getGateOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
+				else if (locals.c == 4)
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getMexcOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
+				else if (locals.c == 5)
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getBinanceGateOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
+				else if (locals.c == 6)
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getBinanceMexcOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
+				else if (locals.c == 7)
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getGateMexcOracleId();
 					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
 					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
 					locals.priceOracleQuery.timestamp = qpi.now();
@@ -373,15 +413,19 @@ public:
 				ASSERT(qpi.getOracleQueryStatus(locals.oracleQueryId) == ORACLE_QUERY_STATUS_PENDING);
 
 				locals.notificationLog = NotificationLog{ CONTRACT_INDEX, OI::Price::oracleInterfaceIndex, ORACLE_QUERY_STATUS_PENDING, 0, 0, locals.oracleQueryId };
+				LOG_INFO(locals.notificationLog);
 			}
 		}
 		if (qpi.tick() % 2 == 1)
 		{
-			locals.mockOracleQuery.value = qpi.tick();
-			QUERY_ORACLE(OI::Mock, locals.mockOracleQuery, NotifyMockOracleReply, 20000);
-			locals.notificationLog = NotificationLog{ CONTRACT_INDEX, OI::Mock::oracleInterfaceIndex, ORACLE_QUERY_STATUS_PENDING, 0, qpi.tick(), locals.oracleQueryId};
+			for (locals.c = 0; locals.c < (qpi.tick() / 2) % 15; ++locals.c)
+			{
+				locals.mockOracleQuery.value = uint64(qpi.tick()) * (locals.c + 1);
+				QUERY_ORACLE(OI::Mock, locals.mockOracleQuery, NotifyMockOracleReply, 20000);
+				locals.notificationLog = NotificationLog{ CONTRACT_INDEX, OI::Mock::oracleInterfaceIndex, ORACLE_QUERY_STATUS_PENDING, 0, (sint64)locals.mockOracleQuery.value, locals.oracleQueryId };
+				LOG_INFO(locals.notificationLog);
+			}
 		}
-		LOG_INFO(locals.notificationLog);
 	}
 
 	//---------------------------------------------------------------
