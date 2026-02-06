@@ -335,7 +335,7 @@ protected:
         for (uint32_t i = 0; i < MAX_SIMULTANEOUS_ORACLE_QUERIES; ++i)
         {
             if (replyStates[replyStatesIndex].queryId <= 0)
-                return replyStatesIndex++;
+                return replyStatesIndex;
 
             ++replyStatesIndex;
             if (replyStatesIndex >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
@@ -1252,7 +1252,8 @@ public:
                 continue;
 
             // check if local view is the quorum view
-            const m256i quorumCommitDigest = replyState.replyCommitDigests[replyState.replyCommitHistogramIdx[replyState.mostCommitsHistIdx]];
+            const uint16_t mostCommitsDigestIdx = replyState.replyCommitHistogramIdx[replyState.mostCommitsHistIdx];
+            const m256i quorumCommitDigest = replyState.replyCommitDigests[mostCommitsDigestIdx];
             if (quorumCommitDigest != replyState.ownReplyDigest)
                 continue;
 
@@ -1340,7 +1341,8 @@ protected:
         KangarooTwelve(replyData, replySize, revealDigest.m256i_u8, 32);
 
         // check that revealed reply matches the quorum digest
-        const m256i quorumCommitDigest = replyState.replyCommitDigests[replyState.replyCommitHistogramIdx[replyState.mostCommitsHistIdx]];
+        const uint16_t mostCommitsDigestIdx = replyState.replyCommitHistogramIdx[replyState.mostCommitsHistIdx];
+        const m256i quorumCommitDigest = replyState.replyCommitDigests[mostCommitsDigestIdx];
         ASSERT(!isZero(quorumCommitDigest));
         if (revealDigest != quorumCommitDigest)
             return nullptr;
@@ -1449,8 +1451,10 @@ public:
             copyMem(replyData, transaction + 1, replySize);
             uint16_t* replyDataCompIdx = (uint16_t*)(replyData + replySize);
 
-            const auto quorumHistIdx = replyState->replyCommitHistogramIdx[replyState->mostCommitsHistIdx];
-            const m256i quorumCommitDigest = replyState->replyCommitDigests[quorumHistIdx];
+            // check digests and knowledge proofs
+            const uint16_t quorumHistIdx = replyState->mostCommitsHistIdx;
+            const uint16_t quorumCommitDigestIdx = replyState->replyCommitHistogramIdx[quorumHistIdx];
+            const m256i quorumCommitDigest = replyState->replyCommitDigests[quorumCommitDigestIdx];
             for (int computorIdx = 0; computorIdx < NUMBER_OF_COMPUTORS; ++computorIdx)
             {
                 // check that commit digest matches quorum
@@ -1897,8 +1901,9 @@ public:
                 ASSERT(replyState->totalCommits <= NUMBER_OF_COMPUTORS);
                 break;
             case ORACLE_QUERY_STATUS_UNRESOLVABLE:
-            case ORACLE_QUERY_STATUS_TIMEOUT:
                 ASSERT(oqm.statusVar.failure.agreeingCommits < QUORUM);
+                // no break by intention
+            case ORACLE_QUERY_STATUS_TIMEOUT:
                 ASSERT(oqm.statusVar.failure.totalCommits <= NUMBER_OF_COMPUTORS);
                 ASSERT(oqm.statusVar.failure.agreeingCommits <= oqm.statusVar.failure.totalCommits);
                 break;
@@ -2068,7 +2073,7 @@ public:
         appendNumber(message, queryStorageBytesUsed * 100 / ORACLE_QUERY_STORAGE_SIZE, FALSE);
         appendText(message, "%");
         appendQuotientWithOneDecimal(message, stats.revealTxCount, stats.successCount);
-        appendText(message, " reveal tx per success, wrong knowledge proofs");
+        appendText(message, " reveal tx per success, wrong knowledge proofs ");
         appendNumber(message, stats.wrongKnowledgeProofCount, FALSE);
         logToConsole(message);
 
