@@ -95,7 +95,7 @@ struct Price
 
 	// TODO:
 	// implement and test currency conversion (including using uint128 on the way in order to support large quantities)
-	// provide character enum / id constructor for convenient setting of oracle/currency IDs
+
 
 	/// Get oracle ID of mock oracle
 	static id getMockOracleId()
@@ -104,10 +104,52 @@ struct Price
 		return id(m, o, c, k, null);
 	}
 
+	/// Get oracle ID of binance oracle
+	static id getBinanceOracleId()
+	{
+		using namespace Ch;
+		return id(b, i, n, a, n, c, e);
+	}
+
+	/// Get oracle ID of mexc oracle
+	static id getMexcOracleId()
+	{
+		using namespace Ch;
+		return id(m, e, x, c, 0);
+	}
+
+	/// Get oracle ID of gate.io oracle
+	static id getGateOracleId()
+	{
+		using namespace Ch;
+		return id(g, a, t, e, 0);
+	}
+
 	/// Get oracle ID of coingecko oracle
 	static id getCoingeckoOracleId()
 	{
 		using namespace Ch;
 		return id(c, o, i, n, g, e, c, k, o);
+	}
+
+	/// Get oracle ID of combined binance + mexc oracle (mean of prices of both sources)
+	static id getBinanceMexcOracleId()
+	{
+		using namespace Ch;
+		return id(b, i, n, a, n, c, e, underscore, m, e, x, c);
+	}
+
+	/// Get oracle ID of combined binance + gate oracle (mean of prices of both sources)
+	static id getBinanceGateOracleId()
+	{
+		using namespace Ch;
+		return id(b, i, n, a, n, c, e, underscore, g, a, t, e);
+	}
+
+	/// Get oracle ID of combined gate + mexc oracle (mean of prices of both sources)
+	static id getGateMexcOracleId()
+	{
+		using namespace Ch;
+		return id(g, a, t, e, underscore, m, e, x, c);
 	}
 };
