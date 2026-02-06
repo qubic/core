@@ -2978,7 +2978,11 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
 
                 case OracleUserQueryTransactionPrefix::transactionType():
                 {
-                    // TODO
+                    const bool error = (oracleEngine.startUserQuery((OracleUserQueryTransactionPrefix*)transaction, transactionIndex) < 0);
+                    if (error && transaction->amount)
+                    {
+                        oracleEngine.refundFees(transaction->sourcePublicKey, transaction->amount);
+                    }
                 }
                 break;
 
@@ -5901,6 +5905,11 @@ static bool initialize()
             return false;
         }
 
+        if (!OI::initOracleInterfaces())
+        {
+            logToConsole(L"initOracleInterfaces() failed! Not all interfaces are properly defined!");
+            return false;
+        }
         if (!oracleEngine.init(computorPublicKeys))
             return false;
 

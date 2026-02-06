@@ -146,6 +146,7 @@ public:
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
 
         EXPECT_TRUE(oracleEngine.init(computorPublicKeys));
+        EXPECT_TRUE(OI::initOracleInterfaces());
 
         checkContractExecCleanup();
 
