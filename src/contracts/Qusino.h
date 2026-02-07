@@ -5,8 +5,6 @@ constexpr uint64 QUSINO_MAX_NUMBER_OF_GAMES = 131072;
 constexpr uint64 QUSINO_GAME_SUBMIT_FEE = 100000000;
 constexpr uint32 QUSINO_MAX_NUMBER_OF_GAMES_FOR_VOTING_PER_USER = 128;
 constexpr uint32 QUSINO_REVOTE_DURATION = 78;        // in number of weeks(18 Months)
-constexpr uint32 QUSINO_QST_PRICE = 777;
-constexpr uint32 QUSINO_QST_PRICE_FOR_SALE = 555;
 constexpr uint32 QUSINO_STAR_BONUS_FOR_QSC = 1000;
 constexpr uint32 QUSINO_STAR_PRICE = 1000;
 constexpr uint32 QUSINO_MIN_STAKING_AMOUNT = 10000;
@@ -19,6 +17,7 @@ constexpr uint32 QUSINO_LP_DIVIDENDS_PERCENT = 20;
 constexpr uint32 QUSINO_CCF_DIVIDENDS_PERCENT = 15;
 constexpr uint32 QUSINO_TREASURY_DIVIDENDS_PERCENT = 25;
 constexpr uint32 QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT = 40;
+constexpr uint64 QUSINO_INFINITY_PRICE = 1000000000000000000ULL;
 
 constexpr sint32 QusinoSuccess = 0;
 constexpr sint32 QusinoinsufficientFunds = 1;
@@ -68,14 +67,6 @@ public:
     {
         sint32 returnCode;
     };
-    struct saleQST_input
-    {
-        uint64 amount;
-    };
-    struct saleQST_output
-    {
-        sint32 returnCode;
-    };
     struct transferSTAROrQSC_input
     {
         id dest;
@@ -111,6 +102,15 @@ public:
         bool yesNo;                 // 1 - yes, 0 - no
     };
     struct voteInGameProposal_output
+    {
+        sint32 returnCode;
+    };
+
+    struct depositQSTForSale_input
+    {
+        uint64 amount;
+    };
+    struct depositQSTForSale_output
     {
         sint32 returnCode;
     };
@@ -184,6 +184,17 @@ public:
         Array<uint64, 32> gameIndexes;
     };
 
+    struct TransferShareManagementRights_input
+    {
+        Asset asset;
+        sint64 numberOfShares;
+        uint32 newManagingContractIndex;
+    };
+    struct TransferShareManagementRights_output
+    {
+        sint64 transferredNumberOfShares;
+    };
+
 protected:
     struct STARAndQSC
     {
@@ -203,12 +214,17 @@ protected:
     HashMap<uint64, gameInfo, QUSINO_MAX_NUMBER_OF_GAMES> gameList;
     HashMap<uint64, gameInfo, 1024> failedGameList;
     HashMap<id, Array<uint64, QUSINO_MAX_NUMBER_OF_GAMES_FOR_VOTING_PER_USER>, QUSINO_MAX_USERS> voteList;
-    id LPDividendsAddress, CCFDividendsAddress, treasuryAddress;
-    uint64 QSCCirclatingSupply, STARCirclatingSupply, totalStakedSTAR, totalStakedQSC, totalStakedQST, burntSTAR, epochRevenue, maxGameIndex, numberOfStakers, QSTAmountForSale, QSTAssetName, QSTIssuer;
+    id LPDividendsAddress, CCFDividendsAddress, treasuryAddress, QSTIssuer;
+    uint64 QSCCirclatingSupply, STARCirclatingSupply, totalStakedSTAR, totalStakedQSC, totalStakedQST, burntSTAR, epochRevenue, maxGameIndex, numberOfStakers, QSTAmountForSale, QSTAssetName;
+    sint64 transferRightsFee;
 
     struct buyQST_locals
     {
+        QX::AssetAskOrders_input input;
+        QX::AssetAskOrders_output output;
         STARAndQSC user;
+        sint64 minPrice;
+        uint32 idx;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(buyQST)
     {
@@ -223,7 +239,23 @@ protected:
         }
         if (input.type == 0)              // if Qubic buy 
         {
-            if (input.amount * QUSINO_QST_PRICE > (uint32)qpi.invocationReward()) 
+            locals.input.issuer = state.QSTIssuer;
+            locals.input.assetName = state.QSTAssetName;
+            locals.input.offset = 0;
+            CALL_OTHER_CONTRACT_FUNCTION(QX, AssetAskOrders, locals.input, locals.output);
+            locals.minPrice = QUSINO_INFINITY_PRICE;
+            for (locals.idx = 0; locals.idx < 256; locals.idx++)
+            {
+                if (locals.output.orders.get(locals.idx).price < locals.minPrice && locals.output.orders.get(locals.idx).price > 0)
+                {
+                    locals.minPrice = locals.output.orders.get(locals.idx).price;
+                }
+            }
+            if (locals.minPrice == QUSINO_INFINITY_PRICE)
+            {
+                locals.minPrice = 777;
+            }
+            if (input.amount * locals.minPrice > (uint32)qpi.invocationReward()) 
             {
                 if (qpi.invocationReward() > 0) 
                 {
@@ -241,9 +273,9 @@ protected:
                 output.returnCode = QusinoinvalidTransfer;
                 return ;
             }
-            if (input.amount * QUSINO_QST_PRICE < (uint32)qpi.invocationReward()) 
+            if (input.amount * locals.minPrice < (uint32)qpi.invocationReward()) 
             {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.amount * QUSINO_QST_PRICE);
+                qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.amount * locals.minPrice);
             }
             state.QSTAmountForSale -= input.amount;
         }
@@ -271,6 +303,7 @@ protected:
             locals.user.volumeOfQSC -= input.amount;
             state.userAssetVolume.set(qpi.invocator(), locals.user);
             state.QSCCirclatingSupply -= input.amount;
+            state.QSTAmountForSale -= input.amount;
         }
         output.returnCode = QusinoSuccess;
     }
@@ -322,25 +355,7 @@ protected:
         locals.user.volumeOfSTAR += QUSINO_STAR_BONUS_FOR_QSC;
         state.userAssetVolume.set(qpi.invocator(), locals.user);
         state.QSCCirclatingSupply += input.amount;
-        output.returnCode = QusinoSuccess;
-    }
-    struct saleQST_locals
-    {
-        STARAndQSC user;
-    };
-    PUBLIC_PROCEDURE_WITH_LOCALS(saleQST)
-    {
-        if (qpi.invocationReward() > 0) 
-        {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward());
-        }
-        if (qpi.transferShareOwnershipAndPossession(state.QSTAssetName, state.QSTIssuer, qpi.invocator(), qpi.invocator(), input.amount, SELF) < 0)
-        {
-            output.returnCode = QusinoinvalidTransfer;
-            return ;
-        }
-        qpi.transfer(qpi.invocator(), input.amount * QUSINO_QST_PRICE_FOR_SALE);
-        state.QSTAmountForSale += input.amount;
+        state.STARCirclatingSupply += QUSINO_STAR_BONUS_FOR_QSC;
         output.returnCode = QusinoSuccess;
     }
 
@@ -373,13 +388,14 @@ protected:
             locals.dest.volumeOfQSC += input.amount;
         }
         state.userAssetVolume.set(qpi.invocator(), locals.sender);
-        state.userAssetVolume.get(input.dest, locals.dest);
+        state.userAssetVolume.set(input.dest, locals.dest);
         output.returnCode = QusinoSuccess;
     }
 
     struct stakeAssets_locals
     {
         stakeInfo user;
+        STARAndQSC userVolume;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(stakeAssets)
     {
@@ -397,12 +413,29 @@ protected:
             output.returnCode = QusinoWrongStakingType;
             return ;
         }
+        state.userAssetVolume.get(qpi.invocator(), locals.userVolume);
         if (input.typeOfAsset == 1)
         {
+            if (locals.userVolume.volumeOfSTAR < input.amount)
+            {
+                output.returnCode = QusinoinsufficientSTAR;
+                return ;
+            }
+            locals.userVolume.volumeOfSTAR -= input.amount;
+            state.STARCirclatingSupply -= input.amount;
+            state.userAssetVolume.set(qpi.invocator(), locals.userVolume);
             state.totalStakedSTAR += input.amount;
         }
         else if (input.typeOfAsset == 2)
         {
+            if (locals.userVolume.volumeOfQSC < input.amount)
+            {
+                output.returnCode = QusinoinsufficientQSC;
+                return ;
+            }
+            locals.userVolume.volumeOfQSC -= input.amount;
+            state.QSCCirclatingSupply -= input.amount;
+            state.userAssetVolume.set(qpi.invocator(), locals.userVolume);
             state.totalStakedQSC += input.amount;
         }
         else if (input.typeOfAsset == 3)
@@ -523,6 +556,21 @@ protected:
         state.voteList.set(qpi.invocator(), locals.voteStatus);
     }
 
+    PUBLIC_PROCEDURE(depositQSTForSale)
+    {
+        if (qpi.transferShareOwnershipAndPossession(state.QSTAssetName, state.QSTIssuer, qpi.invocator(), qpi.invocator(), input.amount, SELF) < 0)
+        {
+            if (qpi.invocationReward() > 0) 
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            output.returnCode = QusinoinvalidTransfer;
+            return ;
+        }
+        state.QSTAmountForSale += input.amount;
+        output.returnCode = QusinoSuccess;
+    }
+
     struct getUserAssetVolume_locals
     {
         STARAndQSC userAsset;
@@ -637,6 +685,46 @@ protected:
             locals.idx = state.gameList.nextElementIndex(locals.idx);
 		}
     }
+
+    PUBLIC_PROCEDURE(TransferShareManagementRights)
+	{
+		if (qpi.invocationReward() < state.transferRightsFee)
+		{
+			return ;
+		}
+
+		if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer,qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
+		{
+			// not enough shares available
+			output.transferredNumberOfShares = 0;
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+		}
+		else
+		{
+			if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
+				input.newManagingContractIndex, input.newManagingContractIndex, state.transferRightsFee) < 0)
+			{
+				// error
+				output.transferredNumberOfShares = 0;
+				if (qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+			}
+			else
+			{
+				// success
+				output.transferredNumberOfShares = input.numberOfShares;
+				if (qpi.invocationReward() > state.transferRightsFee)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward() -  state.transferRightsFee);
+				}
+			}
+		}
+	}
     
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
@@ -649,22 +737,23 @@ protected:
         REGISTER_USER_PROCEDURE(buyQST, 1);
         REGISTER_USER_PROCEDURE(earnSTAR, 2);
         REGISTER_USER_PROCEDURE(earnQSC, 3);
-        REGISTER_USER_PROCEDURE(saleQST, 4);
-        REGISTER_USER_PROCEDURE(transferSTAROrQSC, 5);
-        REGISTER_USER_PROCEDURE(stakeAssets, 6);
-        REGISTER_USER_PROCEDURE(submitGame, 7);
-        REGISTER_USER_PROCEDURE(voteInGameProposal, 8);
+        REGISTER_USER_PROCEDURE(transferSTAROrQSC, 4);
+        REGISTER_USER_PROCEDURE(stakeAssets, 5);
+        REGISTER_USER_PROCEDURE(submitGame, 6);
+        REGISTER_USER_PROCEDURE(voteInGameProposal, 7);
+        REGISTER_USER_PROCEDURE(depositQSTForSale, 8);
+        REGISTER_USER_PROCEDURE(TransferShareManagementRights, 9);
 	}
 
 	INITIALIZE()
 	{
         state.maxGameIndex = 1;
-        state.QSTAmountForSale = 900000000;    // it should be initialized
+        state.transferRightsFee = 100;
         state.LPDividendsAddress = ID(_V, _D, _I, _H, _Y, _F, _G, _B, _J, _Z, _P, _V, _V, _F, _O, _R, _Y, _Q, _V, _O, _I, _D, _U, _P, _S, _I, _H, _C, _B, _D, _K, _B, _K, _Y, _J, _V, _X, _L, _P, _Q, _W, _D, _A, _K, _L, _D, _M, _K, _A, _G, _G, _P, _O, _C, _Y, _G);
         state.CCFDividendsAddress = id(CCF_CONTRACT_INDEX, 0, 0, 0);
         state.treasuryAddress = ID(_B, _Z, _X, _I, _A, _E, _X, _W, _R, _S, _X, _M, _C, _A, _W, _A, _N, _G, _V, _Y, _T, _W, _D, _A, _U, _E, _I, _A, _D, _F, _N, _O, _F, _C, _K, _G, _X, _V, _Q, _M, _P, _C, _K, _U, _H, _S, _M, _L, _F, _E, _E, _B, _E, _P, _C, _C);
-        state.QSTAssetName = 13153214312341;
-        state.QSTIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _, _B, _V, _G, _B, _S, _U, _Q, _G);
+        state.QSTAssetName = 5526353;
+        state.QSTIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _B, _V, _G, _B, _S, _U, _Q, _G);
     }
 
     struct END_EPOCH_locals
@@ -748,4 +837,9 @@ protected:
         qpi.distributeDividends(div(state.epochRevenue * QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT * 1ULL, 67600ULL));
         state.epochRevenue -= div(state.epochRevenue * QUSINO_LP_DIVIDENDS_PERCENT * 1ULL, 100ULL) + div(state.epochRevenue * QUSINO_CCF_DIVIDENDS_PERCENT * 1ULL, 100ULL) + div(state.epochRevenue * QUSINO_TREASURY_DIVIDENDS_PERCENT * 1ULL, 100ULL) + (div(state.epochRevenue * QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT * 1ULL, 67600ULL) * 676);
 	}
+
+    PRE_ACQUIRE_SHARES()
+    {
+		output.allowTransfer = true;
+    }
 };

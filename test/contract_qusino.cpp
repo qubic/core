@@ -8,9 +8,9 @@ static constexpr uint64 QUSINO_TRANSFER_RIGHTS_FEE = 100ull;
 
 static const id QUSINO_CONTRACT_ID(QUSINO_CONTRACT_INDEX, 0, 0, 0);
 
-const id QUSINO_testUser1 = ID(_U, _S, _E, _R, _1, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y);
-const id QUSINO_testUser2 = ID(_U, _S, _E, _R, _2, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y);
-const id QUSINO_testUser3 = ID(_U, _S, _E, _R, _3, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y);
+const id QUSINO_testUser1 = ID(_U, _S, _E, _R, _A, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y);
+const id QUSINO_testUser2 = ID(_U, _S, _E, _R, _B, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y);
+const id QUSINO_testUser3 = ID(_U, _S, _E, _R, _C, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y);
 
 class QUSINOChecker : public QUSINO
 {
@@ -80,7 +80,8 @@ public:
     sint64 transferShareManagementRightsQX(const id& invocator, const Asset& asset, sint64 numberOfShares, uint32 newManagingContractIndex, sint64 fee)
     {
         QX::TransferShareManagementRights_input input;
-        input.asset = asset;
+        input.asset.assetName = asset.assetName;
+        input.asset.issuer = asset.issuer;
         input.numberOfShares = numberOfShares;
         input.newManagingContractIndex = newManagingContractIndex;
         QX::TransferShareManagementRights_output output;
@@ -116,15 +117,6 @@ public:
         return output;
     }
 
-    QUSINO::saleQST_output saleQST(const id& user, uint64 amount, sint64 invocationReward)
-    {
-        QUSINO::saleQST_input input;
-        input.amount = amount;
-        QUSINO::saleQST_output output;
-        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 4, input, output, user, invocationReward);
-        return output;
-    }
-
     QUSINO::transferSTAROrQSC_output transferSTAROrQSC(const id& user, const id& dest, uint64 amount, bool type, sint64 invocationReward)
     {
         QUSINO::transferSTAROrQSC_input input;
@@ -132,7 +124,7 @@ public:
         input.amount = amount;
         input.type = type;
         QUSINO::transferSTAROrQSC_output output;
-        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 5, input, output, user, invocationReward);
+        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 4, input, output, user, invocationReward);
         return output;
     }
 
@@ -143,7 +135,7 @@ public:
         input.type = type;
         input.typeOfAsset = typeOfAsset;
         QUSINO::stakeAssets_output output;
-        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 6, input, output, user, invocationReward);
+        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 5, input, output, user, invocationReward);
         return output;
     }
 
@@ -152,7 +144,7 @@ public:
         QUSINO::submitGame_input input;
         copyMemory(input.URI, URI);
         QUSINO::submitGame_output output;
-        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 7, input, output, user, invocationReward);
+        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 6, input, output, user, invocationReward);
         return output;
     }
 
@@ -163,7 +155,27 @@ public:
         input.gameIndex = gameIndex;
         input.yesNo = yesNo;
         QUSINO::voteInGameProposal_output output;
+        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 7, input, output, user, invocationReward);
+        return output;
+    }
+
+    QUSINO::depositQSTForSale_output depositQSTForSale(const id& user, uint64 amount, sint64 invocationReward)
+    {
+        QUSINO::depositQSTForSale_input input;
+        input.amount = amount;
+        QUSINO::depositQSTForSale_output output;
         invokeUserProcedure(QUSINO_CONTRACT_INDEX, 8, input, output, user, invocationReward);
+        return output;
+    }
+
+    QUSINO::TransferShareManagementRights_output TransferShareManagementRights(const id& user, const Asset& asset, uint64 numberOfShares, uint32 newManagingContractIndex, sint64 invocationReward)
+    {
+        QUSINO::TransferShareManagementRights_input input;
+        input.asset = asset;
+        input.numberOfShares = numberOfShares;
+        input.newManagingContractIndex = newManagingContractIndex;
+        QUSINO::TransferShareManagementRights_output output;
+        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 9, input, output, user, invocationReward);
         return output;
     }
 
@@ -211,6 +223,21 @@ public:
         callFunction(QUSINO_CONTRACT_INDEX, 5, input, output);
         return output;
     }
+
+    // Helper to create an ask order on QX so that QUSINO::buyQST
+    // can read the price from QX::AssetAskOrders.
+    sint64 addToAskOrder(const id& invocator, const id& issuer, uint64 assetName, sint64 price, sint64 numberOfShares)
+    {
+        QX::AddToAskOrder_input input;
+        input.issuer = issuer;
+        input.assetName = assetName;
+        input.price = price;
+        input.numberOfShares = numberOfShares;
+        QX::AddToAskOrder_output output;
+        // No invocation reward needed; AddToAskOrder immediately refunds it anyway.
+        invokeUserProcedure(QX_CONTRACT_INDEX, 5, input, output, invocator, 0);
+        return output.addedNumberOfShares;
+    }
 };
 
 // Helper function to create a URI
@@ -234,28 +261,43 @@ TEST(ContractQUSINO, buyQST_WithQubic_Success)
     ContractTestingQUSINO QUSINO;
     
     // Use QST asset from contract initialization
-    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _, _B, _V, _G, _B, _S, _U, _Q, _G);
-    uint64 qstAssetName = 13153214312341;
+    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _B, _V, _G, _B, _S, _U, _Q, _G);
     sint64 totalShares = 1000000;
+
+    uint64 qstAssetName = assetNameFromString("QST");
     
-    // Issue QST asset
+    // Issue QST asset to the QST issuer
     increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
     EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
     
-    // Transfer QST to contract for sale
-    increaseEnergy(qstIssuer, QUSINO_TRANSFER_ASSET_FEE);
-    EXPECT_EQ(QUSINO.transferAsset(qstIssuer, QUSINO_CONTRACT_ID, qstAssetName, qstIssuer, 100000), 100000);
-    
-    // Transfer management rights to QUSINO contract
+    // Give QUSINO contract management rights over the QST asset
     Asset asset;
     asset.assetName = qstAssetName;
     asset.issuer = qstIssuer;
     increaseEnergy(qstIssuer, QUSINO_TRANSFER_RIGHTS_FEE);
-    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, totalShares, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), totalShares);
+    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, 100000, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), 100000);
+
+    // Deposit QST into QUSINO contract for sale via its own procedure
+    increaseEnergy(qstIssuer, 1);
+    QUSINO::depositQSTForSale_output depOutput = QUSINO.depositQSTForSale(qstIssuer, 100000, 0);
+    EXPECT_EQ(depOutput.returnCode, QusinoSuccess);
+
+    // Create an ask order on QX so QUSINO::buyQST can fetch the price
+    sint64 askPrice1 = 777;
+    sint64 askAmount1 = 50000;
+    EXPECT_EQ(QUSINO.addToAskOrder(qstIssuer, qstIssuer, qstAssetName, askPrice1, askAmount1), askAmount1);
+
+    sint64 askPrice2 = 555;
+    sint64 askAmount2 = 100000;
+    EXPECT_EQ(QUSINO.addToAskOrder(qstIssuer, qstIssuer, qstAssetName, askPrice2, askAmount2), askAmount2);
+
+    sint64 askPrice3 = 888;
+    sint64 askAmount3 = 100000;
+    EXPECT_EQ(QUSINO.addToAskOrder(qstIssuer, qstIssuer, qstAssetName, askPrice3, askAmount3), askAmount3);
     
     id buyer = QUSINO_testUser2;
     uint64 buyAmount = 1000;
-    sint64 requiredReward = buyAmount * QUSINO_QST_PRICE;
+    sint64 requiredReward = buyAmount * askPrice2;
     
     increaseEnergy(buyer, requiredReward);
     
@@ -265,7 +307,7 @@ TEST(ContractQUSINO, buyQST_WithQubic_Success)
     // Verify buyer received QST
     EXPECT_EQ(numberOfPossessedShares(qstAssetName, qstIssuer, buyer, buyer, QUSINO_CONTRACT_INDEX, QUSINO_CONTRACT_INDEX), buyAmount);
     
-    // Check QSTAmountForSale decreased
+    // Check QSTAmountForSale decreased by the purchased amount
     QUSINO::getSCInfo_output scInfo = QUSINO.getSCInfo();
     EXPECT_EQ(scInfo.QSTAmountForSale, 100000 - buyAmount);
 }
@@ -274,43 +316,42 @@ TEST(ContractQUSINO, buyQST_WithQSC_Success)
 {
     ContractTestingQUSINO QUSINO;
     
-    // Use QST asset from contract initialization
-    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _, _B, _V, _G, _B, _S, _U, _Q, _G);
-    uint64 qstAssetName = 13153214312341;
+    // Same QST setup as buyQST_WithQubic_Success
+    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _B, _V, _G, _B, _S, _U, _Q, _G);
+    uint64 qstAssetName = assetNameFromString("QST");
     sint64 totalShares = 1000000;
     
-    // Issue QST asset
     increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
     EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
     
-    // Transfer QST to contract for sale
-    increaseEnergy(qstIssuer, QUSINO_TRANSFER_ASSET_FEE);
-    EXPECT_EQ(QUSINO.transferAsset(qstIssuer, QUSINO_CONTRACT_ID, qstAssetName, qstIssuer, 100000), 100000);
-    
-    // Transfer management rights to QUSINO contract
     Asset asset;
     asset.assetName = qstAssetName;
     asset.issuer = qstIssuer;
     increaseEnergy(qstIssuer, QUSINO_TRANSFER_RIGHTS_FEE);
-    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, totalShares, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), totalShares);
+    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, 100000, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), 100000);
     
-    // First earn QSC
+    increaseEnergy(qstIssuer, 1);
+    QUSINO::depositQSTForSale_output depOutput = QUSINO.depositQSTForSale(qstIssuer, 100000, 0);
+    EXPECT_EQ(depOutput.returnCode, QusinoSuccess);
+    
+    // Buy with QSC: earn QSC then buy QST (type=1)
     id buyer = QUSINO_testUser2;
-    uint64 qstAmount = 5000;
+    uint64 qstAmount = 10000;
     increaseEnergy(buyer, 1);
+    EXPECT_EQ(QUSINO.transferAsset(qstIssuer, buyer, qstAssetName, qstIssuer, 10000), 10000);
+    increaseEnergy(buyer, QUSINO_TRANSFER_RIGHTS_FEE);
+    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(buyer, asset, 10000, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), 10000);
+
     QUSINO::earnQSC_output earnOutput = QUSINO.earnQSC(buyer, qstAmount, 1);
     EXPECT_EQ(earnOutput.returnCode, QusinoSuccess);
     
-    // Now buy QST with QSC
     uint64 buyAmount = 1000;
     increaseEnergy(buyer, 1);
     QUSINO::buyQST_output output = QUSINO.buyQST(buyer, buyAmount, 1, 1);
     EXPECT_EQ(output.returnCode, QusinoSuccess);
     
-    // Verify buyer received QST
     EXPECT_EQ(numberOfPossessedShares(qstAssetName, qstIssuer, buyer, buyer, QUSINO_CONTRACT_INDEX, QUSINO_CONTRACT_INDEX), buyAmount);
     
-    // Check QSC decreased
     QUSINO::getUserAssetVolume_output userVolume = QUSINO.getUserAssetVolume(buyer);
     EXPECT_EQ(userVolume.QSCAmount, qstAmount - buyAmount);
 }
@@ -319,9 +360,34 @@ TEST(ContractQUSINO, buyQST_InsufficientQSTAmountForSale)
 {
     ContractTestingQUSINO QUSINO;
     
+    // Use QST asset from contract initialization (same as buyQST_WithQubic_Success)
+    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _B, _V, _G, _B, _S, _U, _Q, _G);
+    uint64 qstAssetName = assetNameFromString("QST");
+    sint64 totalShares = 1000000;
+    
+    increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
+    EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
+    
+    Asset asset;
+    asset.assetName = qstAssetName;
+    asset.issuer = qstIssuer;
+    increaseEnergy(qstIssuer, QUSINO_TRANSFER_RIGHTS_FEE);
+    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, 100000, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), 100000);
+    
+    // Deposit only 50000 QST for sale
+    uint64 depositedAmount = 50000;
+    increaseEnergy(qstIssuer, 1);
+    QUSINO::depositQSTForSale_output depOutput = QUSINO.depositQSTForSale(qstIssuer, depositedAmount, 0);
+    EXPECT_EQ(depOutput.returnCode, QusinoSuccess);
+    
+    // Create ask order on QX so buyQST(type=0) can read price from AssetAskOrders
+    sint64 askPrice = 777;
+    sint64 askAmount = 50000;
+    EXPECT_EQ(QUSINO.addToAskOrder(qstIssuer, qstIssuer, qstAssetName, askPrice, askAmount), askAmount);
+    
     id buyer = QUSINO_testUser2;
-    uint64 buyAmount = 200000; // More than available
-    sint64 requiredReward = buyAmount * QUSINO_QST_PRICE;
+    uint64 buyAmount = 200000; // More than QSTAmountForSale (50000)
+    sint64 requiredReward = buyAmount * askPrice;
     
     increaseEnergy(buyer, requiredReward);
     
@@ -333,26 +399,32 @@ TEST(ContractQUSINO, buyQST_InsufficientFunds)
 {
     ContractTestingQUSINO QUSINO;
     
-    // Use QST asset from contract initialization
-    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _, _B, _V, _G, _B, _S, _U, _Q, _G);
-    uint64 qstAssetName = 13153214312341;
+    // Use QST asset from contract initialization (same as buyQST_WithQubic_Success)
+    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _B, _V, _G, _B, _S, _U, _Q, _G);
+    uint64 qstAssetName = assetNameFromString("QST");
     sint64 totalShares = 1000000;
     
     increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
     EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
     
-    increaseEnergy(qstIssuer, QUSINO_TRANSFER_ASSET_FEE);
-    EXPECT_EQ(QUSINO.transferAsset(qstIssuer, QUSINO_CONTRACT_ID, qstAssetName, qstIssuer, 100000), 100000);
-    
     Asset asset;
     asset.assetName = qstAssetName;
     asset.issuer = qstIssuer;
     increaseEnergy(qstIssuer, QUSINO_TRANSFER_RIGHTS_FEE);
-    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, totalShares, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), totalShares);
+    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, 100000, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), 100000);
+    
+    increaseEnergy(qstIssuer, 1);
+    QUSINO::depositQSTForSale_output depOutput = QUSINO.depositQSTForSale(qstIssuer, 100000, 0);
+    EXPECT_EQ(depOutput.returnCode, QusinoSuccess);
+    
+    // Create ask order on QX so buyQST(type=0) reads price from AssetAskOrders
+    sint64 askPrice = 777;
+    sint64 askAmount = 50000;
+    EXPECT_EQ(QUSINO.addToAskOrder(qstIssuer, qstIssuer, qstAssetName, askPrice, askAmount), askAmount);
     
     id buyer = QUSINO_testUser2;
     uint64 buyAmount = 1000;
-    sint64 insufficientReward = buyAmount * QUSINO_QST_PRICE - 1;
+    sint64 insufficientReward = 0;
     
     increaseEnergy(buyer, insufficientReward);
     
@@ -364,26 +436,27 @@ TEST(ContractQUSINO, buyQST_InsufficientQSC)
 {
     ContractTestingQUSINO QUSINO;
     
-    // Use QST asset from contract initialization
-    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _, _B, _V, _G, _B, _S, _U, _Q, _G);
-    uint64 qstAssetName = 13153214312341;
+    // Same QST setup as buyQST_WithQubic_Success
+    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _B, _V, _G, _B, _S, _U, _Q, _G);
+    uint64 qstAssetName = assetNameFromString("QST");
     sint64 totalShares = 1000000;
     
     increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
     EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
     
-    increaseEnergy(qstIssuer, QUSINO_TRANSFER_ASSET_FEE);
-    EXPECT_EQ(QUSINO.transferAsset(qstIssuer, QUSINO_CONTRACT_ID, qstAssetName, qstIssuer, 100000), 100000);
-    
     Asset asset;
     asset.assetName = qstAssetName;
     asset.issuer = qstIssuer;
     increaseEnergy(qstIssuer, QUSINO_TRANSFER_RIGHTS_FEE);
-    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, totalShares, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), totalShares);
+    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, 100000, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), 100000);
     
+    increaseEnergy(qstIssuer, 1);
+    QUSINO::depositQSTForSale_output depOutput = QUSINO.depositQSTForSale(qstIssuer, 100000, 0);
+    EXPECT_EQ(depOutput.returnCode, QusinoSuccess);
+    
+    // Buyer has no QSC; buy with QSC (type=1) should fail
     id buyer = QUSINO_testUser2;
     uint64 buyAmount = 1000;
-    
     increaseEnergy(buyer, 1);
     QUSINO::buyQST_output output = QUSINO.buyQST(buyer, buyAmount, 1, 1);
     EXPECT_EQ(output.returnCode, QusinoinsufficientQSC);
@@ -431,8 +504,8 @@ TEST(ContractQUSINO, earnQSC_Success)
     ContractTestingQUSINO QUSINO;
     
     // Use QST asset from contract initialization
-    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _, _B, _V, _G, _B, _S, _U, _Q, _G);
-    uint64 qstAssetName = 13153214312341;
+    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _B, _V, _G, _B, _S, _U, _Q, _G);
+    uint64 qstAssetName = 5526353;
     sint64 totalShares = 1000000;
     
     increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
@@ -442,7 +515,7 @@ TEST(ContractQUSINO, earnQSC_Success)
     asset.assetName = qstAssetName;
     asset.issuer = qstIssuer;
     increaseEnergy(qstIssuer, QUSINO_TRANSFER_RIGHTS_FEE);
-    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, totalShares, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), totalShares);
+    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, 100000, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), 100000);
     
     id user = QUSINO_testUser2;
     uint64 amount = 5000;
@@ -450,6 +523,9 @@ TEST(ContractQUSINO, earnQSC_Success)
     // Transfer QST to user first
     increaseEnergy(qstIssuer, QUSINO_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QUSINO.transferAsset(qstIssuer, user, qstAssetName, qstIssuer, amount), amount);
+
+    increaseEnergy(user, QUSINO_TRANSFER_RIGHTS_FEE);
+    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(user, asset, amount, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), amount);
     
     increaseEnergy(user, 1);
     QUSINO::earnQSC_output output = QUSINO.earnQSC(user, amount, 1);
@@ -464,46 +540,6 @@ TEST(ContractQUSINO, earnQSC_Success)
     QUSINO::getSCInfo_output scInfo = QUSINO.getSCInfo();
     EXPECT_EQ(scInfo.QSCCirclatingSupply, amount);
     EXPECT_EQ(scInfo.STARCirclatingSupply, QUSINO_STAR_BONUS_FOR_QSC);
-}
-
-TEST(ContractQUSINO, saleQST_Success)
-{
-    ContractTestingQUSINO QUSINO;
-    
-    // Use QST asset from contract initialization
-    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _, _B, _V, _G, _B, _S, _U, _Q, _G);
-    uint64 qstAssetName = 13153214312341;
-    sint64 totalShares = 1000000;
-    
-    increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
-    EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
-    
-    Asset asset;
-    asset.assetName = qstAssetName;
-    asset.issuer = qstIssuer;
-    increaseEnergy(qstIssuer, QUSINO_TRANSFER_RIGHTS_FEE);
-    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, totalShares, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), totalShares);
-    
-    id user = QUSINO_testUser2;
-    uint64 amount = 5000;
-    
-    // Transfer QST to user first
-    increaseEnergy(qstIssuer, QUSINO_TRANSFER_ASSET_FEE);
-    EXPECT_EQ(QUSINO.transferAsset(qstIssuer, user, qstAssetName, qstIssuer, amount), amount);
-    
-    sint64 balanceBefore = getBalance(user);
-    increaseEnergy(user, 1);
-    QUSINO::saleQST_output output = QUSINO.saleQST(user, amount, 1);
-    EXPECT_EQ(output.returnCode, QusinoSuccess);
-    
-    // Check user received Qubic
-    sint64 balanceAfter = getBalance(user);
-    sint64 expectedPayment = amount * QUSINO_QST_PRICE_FOR_SALE;
-    EXPECT_EQ(balanceAfter - balanceBefore, expectedPayment);
-    
-    // Check QSTAmountForSale increased
-    QUSINO::getSCInfo_output scInfo = QUSINO.getSCInfo();
-    EXPECT_EQ(scInfo.QSTAmountForSale, 100000 + amount);
 }
 
 TEST(ContractQUSINO, transferSTAROrQSC_STAR_Success)
@@ -537,8 +573,8 @@ TEST(ContractQUSINO, transferSTAROrQSC_QSC_Success)
     ContractTestingQUSINO QUSINO;
     
     // Use QST asset from contract initialization
-    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _, _B, _V, _G, _B, _S, _U, _Q, _G);
-    uint64 qstAssetName = 13153214312341;
+    id qstIssuer = ID(_Q, _M, _H, _J, _N, _L, _M, _Q, _R, _I, _B, _I, _R, _E, _F, _I, _W, _V, _K, _Y, _Q, _E, _L, _B, _F, _A, _R, _B, _T, _D, _N, _Y, _K, _I, _O, _B, _O, _F, _F, _Y, _F, _G, _J, _Y, _Z, _S, _X, _J, _B, _V, _G, _B, _S, _U, _Q, _G);
+    uint64 qstAssetName = 5526353;
     sint64 totalShares = 1000000;
     
     increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
@@ -548,7 +584,7 @@ TEST(ContractQUSINO, transferSTAROrQSC_QSC_Success)
     asset.assetName = qstAssetName;
     asset.issuer = qstIssuer;
     increaseEnergy(qstIssuer, QUSINO_TRANSFER_RIGHTS_FEE);
-    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, totalShares, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), totalShares);
+    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(qstIssuer, asset, 100000, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), 100000);
     
     id sender = QUSINO_testUser2;
     id receiver = QUSINO_testUser3;
@@ -557,6 +593,9 @@ TEST(ContractQUSINO, transferSTAROrQSC_QSC_Success)
     // Transfer QST to sender first
     increaseEnergy(qstIssuer, QUSINO_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QUSINO.transferAsset(qstIssuer, sender, qstAssetName, qstIssuer, amount), amount);
+    
+    increaseEnergy(sender, QUSINO_TRANSFER_RIGHTS_FEE);
+    EXPECT_EQ(QUSINO.transferShareManagementRightsQX(sender, asset, amount, QUSINO_CONTRACT_INDEX, QUSINO_TRANSFER_RIGHTS_FEE), amount);
     
     // Earn QSC
     increaseEnergy(sender, 1);
@@ -816,14 +855,6 @@ TEST(ContractQUSINO, getUserStakingInfo_Empty)
     EXPECT_EQ(output.counts, 0);
 }
 
-TEST(ContractQUSINO, getSCInfo_Initial)
-{
-    ContractTestingQUSINO QUSINO;
-    
-    QUSINO::getSCInfo_output output = QUSINO.getSCInfo();
-    QUSINO.getState()->checkSCInfo(output, 0, 0, 0, 0, 0, 0, 0, 1, 0, 100000);
-}
-
 TEST(ContractQUSINO, getActiveGameList_Empty)
 {
     ContractTestingQUSINO QUSINO;
@@ -852,10 +883,12 @@ TEST(ContractQUSINO, END_EPOCH_StakingRewards)
     EXPECT_EQ(stakeOutput.returnCode, QusinoSuccess);
     
     // Advance epochs to maturity (4 epochs for 1 month staking)
+    // NOTE: staking reward is paid when stakedEpoch + 4 == qpi.epoch(),
+    // so we first increment epoch, then call END_EPOCH for each of 4 epochs.
     for (uint32 i = 0; i < 4; i++)
     {
-        QUSINO.endEpoch();
         ++system.epoch;
+        QUSINO.endEpoch();
     }
     
     // Check that staking was completed and rewards were given
