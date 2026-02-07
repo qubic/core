@@ -39,7 +39,7 @@
 static constexpr unsigned int ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS = 15; // Config timout for connecting attemp to OM
 static constexpr unsigned int ORACLE_MACHINE_TRANSMITING_TIMEOUT_SECS = 30; // Transmitting timeout to OM
 static constexpr unsigned int ORACLE_MACHINE_GRACEFULL_CLOSE_RETIRES = 3; // Gracefull close retries for connecting attemp to OM
-static constexpr unsigned long long OM_RECONNECT_COOLDOWN_SECS = 5;
+static constexpr unsigned long long OM_RECONNECT_COOLDOWN_SECS = 0;
 
 static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
 
