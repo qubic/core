@@ -7404,9 +7404,13 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         if (ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS > 0
                             && peers[i].connectionStartTime > 0
-                            && peers[i].isConnectingAccepting 
+                            && peers[i].isConnectingAccepting
                             && ((__rdtsc() - peers[i].connectionStartTime) / frequency > ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS))
                         {
+#if !defined(NDEBUG)
+                            addDebugMessageOM(L"Connection from Accepting State to Accepted State took too long.");
+                            peerOMLogStatus(i);
+#endif
                             closePeer(&peers[i], ORACLE_MACHINE_GRACEFULL_CLOSE_RETIRES);
                         }
 
@@ -7418,6 +7422,17 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             peers[i].lastOMActivityTime > 0 &&
                             ((__rdtsc() - peers[i].lastOMActivityTime) / frequency > OM_INACTIVITY_TIMEOUT_SECS))
                         {
+#if !defined(NDEBUG)
+                            addDebugMessageOM(L"Connection inactive for some minutes, forcing reconnect.");
+
+                            CHAR16 omDbgMsg[128];
+                            setText(omDbgMsg, L"Closing stale connection, lastActivity=");
+                            appendNumber(omDbgMsg, (unsigned int)((__rdtsc() - peers[i].lastOMActivityTime) / frequency), FALSE);
+                            appendText(omDbgMsg, L" secs ago");
+                            addDebugMessage(omDbgMsg);
+
+                            peerOMLogStatus(i);
+#endif
                             closePeer(&peers[i], ORACLE_MACHINE_GRACEFULL_CLOSE_RETIRES);
                         }
                     }
