@@ -2978,7 +2978,11 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
 
                 case OracleUserQueryTransactionPrefix::transactionType():
                 {
-                    // TODO
+                    const bool error = (oracleEngine.startUserQuery((OracleUserQueryTransactionPrefix*)transaction, transactionIndex) < 0);
+                    if (error && transaction->amount)
+                    {
+                        oracleEngine.refundFees(transaction->sourcePublicKey, transaction->amount);
+                    }
                 }
                 break;
 
@@ -5901,6 +5905,11 @@ static bool initialize()
             return false;
         }
 
+        if (!OI::initOracleInterfaces())
+        {
+            logToConsole(L"initOracleInterfaces() failed! Not all interfaces are properly defined!");
+            return false;
+        }
         if (!oracleEngine.init(computorPublicKeys))
             return false;
 
@@ -7397,7 +7406,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             closePeer(&peers[i], ORACLE_MACHINE_GRACEFULL_CLOSE_RETIRES);
                         }
 
-                        constexpr unsigned long long OM_INACTIVITY_TIMEOUT_SECS = 300;  // 5 minutes
+                        // inactivity timeout between 1 and 2 minutes (depending on peer index to reduce risk of
+                        // all OM node connections being closed simultaneously)
+                        const unsigned long long OM_INACTIVITY_TIMEOUT_SECS = 120 - (i % 5) * 15;
                         if (peers[i].isConnectedAccepted &&
                             !peers[i].isClosing &&
                             peers[i].lastOMActivityTime > 0 &&

@@ -146,6 +146,7 @@ public:
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
 
         EXPECT_TRUE(oracleEngine.init(computorPublicKeys));
+        EXPECT_TRUE(OI::initOracleInterfaces());
 
         checkContractExecCleanup();
 
@@ -2106,7 +2107,7 @@ TEST(ContractTestEx, OracleQuery)
 {
     ContractTestingTestEx test;
     system.epoch = 200;
-    system.tick = 123456789;
+    system.tick = 123456783;
 
     //-------------------------------------------------------------------------
     // Test qpi.queryOracle() and generating message to oracle machine node

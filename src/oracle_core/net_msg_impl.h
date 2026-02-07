@@ -38,6 +38,19 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 	case RequestOracleData::requestContractDirectQueryIdsByTick:
 	case RequestOracleData::requestContractSubscriptionQueryIdsByTick:
 	{
+		// check if data for tick is available
+		if (request->reqTickOrId < system.initialTick || request->reqTickOrId >= system.tick) // TODO: > or >=
+		{
+			// data isn't available -> send RespondOracleDataValidTickRange message
+			response->resType = RespondOracleData::respondTickRange;
+			auto* payloadTickRange = (RespondOracleDataValidTickRange*)payload;
+			payloadTickRange->firstTick = system.initialTick;
+			payloadTickRange->currentTick = system.tick;
+			enqueueResponse(peer, sizeof(RespondOracleData) + sizeof(RespondOracleDataValidTickRange),
+				RespondOracleData::type(), header->dejavu(), response);
+			break;
+		}
+
 		// select filter function for the request type
 		static_assert(RequestOracleData::requestAllQueryIdsByTick == 0);
 		static_assert(RequestOracleData::requestUserQueryIdsByTick == 1);

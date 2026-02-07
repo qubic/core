@@ -9,10 +9,12 @@ struct OracleEngineTest : public LoggingTest
 {
 	OracleEngineTest()
 	{
+		EXPECT_TRUE(initSpectrum());
 		EXPECT_TRUE(commonBuffers.init(1, 1024 * 1024));
 		EXPECT_TRUE(initSpecialEntities());
 		EXPECT_TRUE(initContractExec());
 		EXPECT_TRUE(ts.init());
+		EXPECT_TRUE(OI::initOracleInterfaces());
 
 		// init computors
 		for (int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
@@ -33,6 +35,7 @@ struct OracleEngineTest : public LoggingTest
 
 	~OracleEngineTest()
 	{
+		deinitSpectrum();
 		commonBuffers.deinit();
 		deinitContractExec();
 		ts.deinit();
@@ -314,6 +317,11 @@ TEST(OracleEngine, ContractQuerySuccess)
 		EXPECT_EQ(rev2.computorRevPoints[i], 0);
 		EXPECT_EQ(rev3.computorRevPoints[i], 0);
 	}
+
+	// check that oracle engine is in consistent state
+	oracleEngine1.checkStateConsistencyWithAssert();
+	oracleEngine2.checkStateConsistencyWithAssert();
+	oracleEngine3.checkStateConsistencyWithAssert();
 }
 
 TEST(OracleEngine, ContractQueryUnresolvable)
@@ -477,6 +485,11 @@ TEST(OracleEngine, ContractQueryUnresolvable)
 		EXPECT_EQ(rev2.computorRevPoints[i], 0);
 		EXPECT_EQ(rev3.computorRevPoints[i], 0);
 	}
+
+	// check that oracle engine is in consistent state
+	oracleEngine1.checkStateConsistencyWithAssert();
+	oracleEngine2.checkStateConsistencyWithAssert();
+	oracleEngine3.checkStateConsistencyWithAssert();
 }
 
 TEST(OracleEngine, ContractQueryWrongKnowledgeProof)
@@ -652,6 +665,11 @@ TEST(OracleEngine, ContractQueryWrongKnowledgeProof)
 		EXPECT_EQ(rev2.computorRevPoints[i], 0);
 		EXPECT_EQ(rev3.computorRevPoints[i], 0);
 	}
+
+	// check that oracle engine is in consistent state
+	oracleEngine1.checkStateConsistencyWithAssert();
+	oracleEngine2.checkStateConsistencyWithAssert();
+	oracleEngine3.checkStateConsistencyWithAssert();
 }
 
 TEST(OracleEngine, ContractQueryTimeout)
@@ -721,6 +739,9 @@ TEST(OracleEngine, ContractQueryTimeout)
 		// no reveal
 		EXPECT_EQ(rev1.computorRevPoints[i], 0);
 	}
+
+	// check that oracle engine is in consistent state
+	oracleEngine1.checkStateConsistencyWithAssert();
 }
 
 template <typename OracleEngine>
@@ -878,8 +899,8 @@ TEST(OracleEngine, MultiContractQuerySuccess)
 	for (int tick = 0; tick < 3; ++tick)
 	{
 		const unsigned long long* tsTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(system.tick);
-		const unsigned long long* tsTickTransactionOffsets2 = ts.tickTransactionOffsets.getByTickInCurrentEpoch(system.tick+1);
-		const unsigned long long* tsTickTransactionOffsets3 = ts.tickTransactionOffsets.getByTickInCurrentEpoch(system.tick+2);
+		const unsigned long long* tsTickTransactionOffsets2 = ts.tickTransactionOffsets.getByTickInCurrentEpoch(system.tick + 1);
+		const unsigned long long* tsTickTransactionOffsets3 = ts.tickTransactionOffsets.getByTickInCurrentEpoch(system.tick + 2);
 		for (txIndexInTickData = 0; txIndexInTickData < NUMBER_OF_TRANSACTIONS_PER_TICK; ++txIndexInTickData)
 		{
 			const unsigned long long offset = tsTickTransactionOffsets[txIndexInTickData];
@@ -1014,12 +1035,229 @@ TEST(OracleEngine, MultiContractQuerySuccess)
 		EXPECT_EQ(rev2.computorRevPoints[i], expectedRevPoints);
 		EXPECT_EQ(rev3.computorRevPoints[i], expectedRevPoints);
 	}
+
+	// check that oracle engine is in consistent state
+	oracleEngine1.checkStateConsistencyWithAssert();
+	oracleEngine2.checkStateConsistencyWithAssert();
+	oracleEngine3.checkStateConsistencyWithAssert();
 }
 
 /*
 Tests:
 - error conditions
 */
+
+struct PriceQueryTransaction : public OracleUserQueryTransactionPrefix
+{
+	OI::Price::OracleQuery query;
+	uint8_t signature[SIGNATURE_SIZE];
+};
+
+static PriceQueryTransaction getPriceQueryTransaction(const OI::Price::OracleQuery& query, const m256i& sourcePublicKey, int64_t fee, uint32_t timeout)
+{
+	PriceQueryTransaction tx;
+	tx.amount = fee;
+	tx.destinationPublicKey = m256i::zero();
+	tx.inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(query);
+	tx.inputType = OracleUserQueryTransactionPrefix::transactionType();
+	tx.oracleInterfaceIndex = OI::Price::oracleInterfaceIndex;
+	tx.sourcePublicKey = sourcePublicKey;
+	tx.tick = system.tick;
+	tx.timeoutMilliseconds = timeout;
+	tx.query = query;
+	setMem(tx.signature, SIGNATURE_SIZE, 0); // keep signature uninitialized
+	return tx;
+}
+
+TEST(OracleEngine, UserQuerySuccess)
+{
+	OracleEngineTest test;
+
+	const id USER1(123, 456, 789, 876);
+	increaseEnergy(USER1, 10000000000);
+
+	// simulate three nodes: one with 400 computor IDs, one with 200, and one with 76
+	const m256i* allCompPubKeys = broadcastedComputors.computors.publicKeys;
+	OracleEngineWithInitAndDeinit<400> oracleEngine1(allCompPubKeys);
+	OracleEngineWithInitAndDeinit<200> oracleEngine2(allCompPubKeys + 400);
+	OracleEngineWithInitAndDeinit<76> oracleEngine3(allCompPubKeys + 600);
+
+	OI::Price::OracleQuery priceQuery;
+	priceQuery.oracle = m256i(42, 13, 100, 1000);
+	priceQuery.currency1 = m256i(20, 30, 40, 50);
+	priceQuery.currency2 = m256i(300, 400, 500, 600);
+	priceQuery.timestamp = QPI::DateAndTime::now();
+	QPI::uint32 interfaceIndex = 0;
+	QPI::uint32 timeout = 40000;
+	QPI::sint64 fee = OI::Price::getQueryFee(priceQuery);
+	PriceQueryTransaction priceQueryTx = getPriceQueryTransaction(priceQuery, USER1, fee, timeout);
+	unsigned int priceQueryTxIndex = 15;
+	addOracleTransactionToTickStorage(&priceQueryTx, priceQueryTxIndex);
+
+	const QPI::uint32 notificationProcId = 12345;
+	EXPECT_TRUE(userProcedureRegistry->add(notificationProcId, { dummyNotificationProc, 1, 128, 128, 1 }));
+
+	//-------------------------------------------------------------------------
+	// start user query / check message to OM node
+	QPI::sint64 queryId = oracleEngine1.startUserQuery(&priceQueryTx, priceQueryTxIndex);
+	EXPECT_EQ(queryId, getUserOracleQueryId(system.tick, priceQueryTxIndex));
+	checkNetworkMessageOracleMachineQuery<OI::Price>(queryId, timeout, priceQuery);
+	EXPECT_EQ(queryId, oracleEngine2.startUserQuery(&priceQueryTx, priceQueryTxIndex));
+	EXPECT_EQ(queryId, oracleEngine3.startUserQuery(&priceQueryTx, priceQueryTxIndex));
+
+	//-------------------------------------------------------------------------
+	// get query contract data
+	OI::Price::OracleQuery priceQueryReturned;
+	EXPECT_TRUE(oracleEngine1.getOracleQuery(queryId, &priceQueryReturned, sizeof(priceQueryReturned)));
+	EXPECT_EQ(compareMem(&priceQueryReturned, &priceQuery, sizeof(priceQuery)), 0);
+
+	//-------------------------------------------------------------------------
+	// process simulated reply from OM node
+	struct
+	{
+		OracleMachineReply metadata;
+		OI::Price::OracleReply data;
+	} priceOracleMachineReply;
+
+	priceOracleMachineReply.metadata.oracleMachineErrorFlags = 0;
+	priceOracleMachineReply.metadata.oracleQueryId = queryId;
+	priceOracleMachineReply.data.numerator = 1234;
+	priceOracleMachineReply.data.denominator = 1;
+
+	oracleEngine1.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
+	oracleEngine2.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
+	// test: no reply to oracle engine 3!
+
+	// duplicate from other node
+	oracleEngine1.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
+
+	// other value from other node
+	priceOracleMachineReply.data.numerator = 1233;
+	oracleEngine1.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
+	priceOracleMachineReply.data.numerator = 1234;
+
+	//-------------------------------------------------------------------------
+	// create reply commit tx (with local computor index 0 / global computor index 0)
+	uint8_t txBuffer[MAX_TRANSACTION_SIZE];
+	auto* replyCommitTx = (OracleReplyCommitTransactionPrefix*)txBuffer;
+	EXPECT_EQ(oracleEngine1.getReplyCommitTransaction(txBuffer, 0, 0, system.tick + 3, 0), UINT32_MAX);
+	{
+		EXPECT_EQ((int)replyCommitTx->inputType, (int)OracleReplyCommitTransactionPrefix::transactionType());
+		EXPECT_EQ(replyCommitTx->sourcePublicKey, allCompPubKeys[0]);
+		EXPECT_TRUE(isZero(replyCommitTx->destinationPublicKey));
+		EXPECT_EQ(replyCommitTx->tick, system.tick + 3);
+		EXPECT_EQ((int)replyCommitTx->inputSize, (int)sizeof(OracleReplyCommitTransactionItem));
+	}
+
+	// second call in the same tick: no commits for tx
+	EXPECT_EQ(oracleEngine1.getReplyCommitTransaction(txBuffer, 0, 0, system.tick + 3, 0), 0);
+
+	// process commit tx
+	EXPECT_TRUE(oracleEngine1.processOracleReplyCommitTransaction(replyCommitTx));
+	EXPECT_TRUE(oracleEngine2.processOracleReplyCommitTransaction(replyCommitTx));
+	EXPECT_TRUE(oracleEngine3.processOracleReplyCommitTransaction(replyCommitTx));
+
+	// no reveal yet
+	EXPECT_EQ(oracleEngine1.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 0), 0);
+
+	// no notifications
+	EXPECT_EQ(oracleEngine1.getNotification(), nullptr);
+
+	//-------------------------------------------------------------------------
+	// create and process enough reply commit tx to trigger reveal tx
+
+	// create tx of node 3 computers? -> no commit tx because reply data is not available in node 3 (no OM reply)
+	for (int i = 600; i < 676; ++i)
+	{
+		EXPECT_EQ(oracleEngine3.getReplyCommitTransaction(txBuffer, i, i - 600, system.tick + 3, 0), 0);
+	}
+
+	// create tx of node 2 computers and process in all nodes
+	for (int i = 400; i < 600; ++i)
+	{
+		EXPECT_EQ(oracleEngine2.getReplyCommitTransaction(txBuffer, i, i - 400, system.tick + 3, 0), UINT32_MAX);
+		EXPECT_EQ(replyCommitTx->sourcePublicKey, allCompPubKeys[i]);
+		const int txFromNode2 = i - 400;
+		oracleEngine1.checkPendingState(queryId, txFromNode2 + 1, 1, ORACLE_QUERY_STATUS_PENDING);
+		EXPECT_TRUE(oracleEngine1.processOracleReplyCommitTransaction(replyCommitTx));
+		oracleEngine1.checkPendingState(queryId, txFromNode2 + 2, 1, ORACLE_QUERY_STATUS_PENDING);
+		oracleEngine2.checkPendingState(queryId, txFromNode2 + 1, txFromNode2 + 0, ORACLE_QUERY_STATUS_PENDING);
+		EXPECT_TRUE(oracleEngine2.processOracleReplyCommitTransaction(replyCommitTx));
+		oracleEngine2.checkPendingState(queryId, txFromNode2 + 2, txFromNode2 + 1, ORACLE_QUERY_STATUS_PENDING);
+		oracleEngine3.checkPendingState(queryId, txFromNode2 + 1, 0, ORACLE_QUERY_STATUS_PENDING);
+		EXPECT_TRUE(oracleEngine3.processOracleReplyCommitTransaction(replyCommitTx));
+		oracleEngine3.checkPendingState(queryId, txFromNode2 + 2, 0, ORACLE_QUERY_STATUS_PENDING);
+	}
+
+	// create tx of node 1 computers and process in all nodes
+	for (int i = 1; i < 400; ++i)
+	{
+		bool expectStatusCommitted = (i + 200) >= 451;
+		EXPECT_EQ(oracleEngine1.getReplyCommitTransaction(txBuffer, i, i, system.tick + 3, 0), ((expectStatusCommitted) ? 0 : UINT32_MAX));
+		if (!expectStatusCommitted)
+		{
+			EXPECT_EQ(replyCommitTx->sourcePublicKey, allCompPubKeys[i]);
+			const int txFromNode1 = i;
+			uint8_t newStatus = (txFromNode1 + 200 < 450) ? ORACLE_QUERY_STATUS_PENDING : ORACLE_QUERY_STATUS_COMMITTED;
+			oracleEngine1.checkPendingState(queryId, txFromNode1 + 200, txFromNode1, ORACLE_QUERY_STATUS_PENDING);
+			EXPECT_TRUE(oracleEngine1.processOracleReplyCommitTransaction(replyCommitTx));
+			oracleEngine1.checkPendingState(queryId, txFromNode1 + 201, txFromNode1 + 1, newStatus);
+			oracleEngine2.checkPendingState(queryId, txFromNode1 + 200, 200, ORACLE_QUERY_STATUS_PENDING);
+			EXPECT_TRUE(oracleEngine2.processOracleReplyCommitTransaction(replyCommitTx));
+			oracleEngine2.checkPendingState(queryId, txFromNode1 + 201, 200, newStatus);
+			oracleEngine3.checkPendingState(queryId, txFromNode1 + 200, 0, ORACLE_QUERY_STATUS_PENDING);
+			EXPECT_TRUE(oracleEngine3.processOracleReplyCommitTransaction(replyCommitTx));
+			oracleEngine3.checkPendingState(queryId, txFromNode1 + 201, 0, newStatus);
+		}
+		else
+		{
+			oracleEngine1.checkPendingState(queryId, 451, 251, ORACLE_QUERY_STATUS_COMMITTED);
+			oracleEngine2.checkPendingState(queryId, 451, 200, ORACLE_QUERY_STATUS_COMMITTED);
+			oracleEngine3.checkPendingState(queryId, 451, 0, ORACLE_QUERY_STATUS_COMMITTED);
+		}
+	}
+	EXPECT_EQ(oracleEngine1.getOracleQueryStatus(queryId), ORACLE_QUERY_STATUS_COMMITTED);
+
+	//-------------------------------------------------------------------------
+	// reply reveal tx
+
+	// success for one tx
+	EXPECT_EQ(oracleEngine1.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 0), 1);
+	EXPECT_EQ(oracleEngine1.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 1), 0);
+
+	// second call does not provide the same tx again
+	EXPECT_EQ(oracleEngine1.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 0), 0);
+
+	// node 3 is in committed state but cannot generate reveal tx, because it did not receive OM reply
+	EXPECT_EQ(oracleEngine3.getReplyRevealTransaction(txBuffer, 0, system.tick + 3, 0), 0);
+
+	system.tick += 3;
+	auto* replyRevealTx = (OracleReplyRevealTransactionPrefix*)txBuffer;
+	const unsigned int txIndex = 10;
+	addOracleTransactionToTickStorage(replyRevealTx, txIndex);
+	oracleEngine1.processOracleReplyRevealTransaction(replyRevealTx, txIndex);
+	oracleEngine2.processOracleReplyRevealTransaction(replyRevealTx, txIndex);
+	oracleEngine3.processOracleReplyRevealTransaction(replyRevealTx, txIndex);
+
+	//-------------------------------------------------------------------------
+	// status
+	EXPECT_EQ(oracleEngine1.getOracleQueryStatus(queryId), ORACLE_QUERY_STATUS_SUCCESS);
+	EXPECT_EQ(oracleEngine2.getOracleQueryStatus(queryId), ORACLE_QUERY_STATUS_SUCCESS);
+	EXPECT_EQ(oracleEngine3.getOracleQueryStatus(queryId), ORACLE_QUERY_STATUS_SUCCESS);
+
+	OI::Price::OracleReply reply;
+	EXPECT_TRUE(oracleEngine1.getOracleReply(queryId, &reply, sizeof(reply)));
+	EXPECT_TRUE(compareMem(&reply, &priceOracleMachineReply.data, sizeof(reply)) == 0);
+	EXPECT_TRUE(oracleEngine2.getOracleReply(queryId, &reply, sizeof(reply)));
+	EXPECT_TRUE(compareMem(&reply, &priceOracleMachineReply.data, sizeof(reply)) == 0);
+	EXPECT_TRUE(oracleEngine3.getOracleReply(queryId, &reply, sizeof(reply)));
+	EXPECT_TRUE(compareMem(&reply, &priceOracleMachineReply.data, sizeof(reply)) == 0);
+
+	// check that oracle engine is in consistent state
+	oracleEngine1.checkStateConsistencyWithAssert();
+	oracleEngine2.checkStateConsistencyWithAssert();
+	oracleEngine3.checkStateConsistencyWithAssert();
+}
 
 TEST(OracleEngine, FindFirstQueryIndexOfTick)
 {

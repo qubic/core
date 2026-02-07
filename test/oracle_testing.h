@@ -60,6 +60,12 @@ static inline QPI::uint64 getContractOracleQueryId(QPI::uint32 tick, QPI::uint32
     return ((QPI::uint64)tick << 31) | (indexInTick + NUMBER_OF_TRANSACTIONS_PER_TICK);
 }
 
+static inline QPI::uint64 getUserOracleQueryId(QPI::uint32 tick, QPI::uint32 indexInTick)
+{
+    ASSERT(indexInTick < NUMBER_OF_TRANSACTIONS_PER_TICK);
+    return ((QPI::uint64)tick << 31) | indexInTick;
+}
+
 static const Transaction* addOracleTransactionToTickStorage(const Transaction* tx, unsigned int txIndex)
 {
     ASSERT(txIndex < NUMBER_OF_TRANSACTIONS_PER_TICK);
