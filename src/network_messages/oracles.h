@@ -76,6 +76,9 @@ struct RespondOracleData
     // The payload is an array of 676 revenue points (one per computer, each 8 bytes).
     static constexpr unsigned int respondOracleRevenuePoints = 8;
 
+    // The payload is RespondOracleDataValidTickRange.
+    static constexpr unsigned int respondTickRange = 9;
+
     // type of oracle response
     unsigned int resType;
 };
@@ -151,4 +154,11 @@ struct RespondOracleDataQueryStatistics
 
     /// Total number of commit with correct digest but wrong knowledge proof
     uint64_t wrongKnowledgeProofCount;
+};
+
+// Core node responds with this if the requested query tick is outside the range of ticks with available query info.
+struct RespondOracleDataValidTickRange
+{
+    uint32_t firstTick;
+    uint32_t currentTick;
 };
