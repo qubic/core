@@ -6027,6 +6027,15 @@ static bool initialize()
             if (!loadContractExecFeeFiles())
                 return false;
 #endif
+
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+            // fill execution fee reserves for test contracts
+            setContractFeeReserve(TESTEXA_CONTRACT_INDEX, 100000000000);
+            setContractFeeReserve(TESTEXB_CONTRACT_INDEX, 100000000000);
+            setContractFeeReserve(TESTEXC_CONTRACT_INDEX, 100000000000);
+            setContractFeeReserve(TESTEXD_CONTRACT_INDEX, 100000000000);
+#endif
+
             m256i computerDigest;
             {
                 setText(message, L"Computer digest = ");

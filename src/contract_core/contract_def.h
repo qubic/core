@@ -247,8 +247,6 @@
 // new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
-// forward declaration, defined in qpi_spectrum_impl.h
-static void setContractFeeReserve(unsigned int contractIndex, long long newValue);
 
 constexpr unsigned short TESTEXA_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #undef CONTRACT_INDEX
@@ -480,12 +478,6 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXB);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXC);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXD);
-
-    // fill execution fee reserves for test contracts
-    setContractFeeReserve(TESTEXA_CONTRACT_INDEX, 100000000000);
-    setContractFeeReserve(TESTEXB_CONTRACT_INDEX, 100000000000);
-    setContractFeeReserve(TESTEXC_CONTRACT_INDEX, 100000000000);
-    setContractFeeReserve(TESTEXD_CONTRACT_INDEX, 100000000000);
 #endif
 }
 
