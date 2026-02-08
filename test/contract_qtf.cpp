@@ -1,11 +1,6 @@
 #define NO_UEFI
 
-#define _ALLOW_KEYWORD_MACROS 1
-
-#define private protected
 #include "contract_testing.h"
-#undef private
-#undef _ALLOW_KEYWORD_MACROS
 
 #include <algorithm>
 #include <set>

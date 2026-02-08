@@ -61,11 +61,7 @@ constexpr uint8 QTF_DEFAULT_SCHEDULE = 1 << SATURDAY | 1u << WEDNESDAY;
 constexpr uint8 QTF_DEFAULT_DRAW_HOUR = 11;                        // 11:00 UTC
 constexpr uint32 QTF_DEFAULT_INIT_TIME = 22u << 9 | 4u << 5 | 13u; // RL_DEFAULT_INIT_TIME
 
-const id QTF_ADDRESS_DEV_TEAM = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C, _R,
-                                   _L, _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
-const id QTF_RANDOM_LOTTERY_CONTRACT_ID = id(RL_CONTRACT_INDEX, 0, 0, 0);
 constexpr uint64 QTF_RANDOM_LOTTERY_ASSET_NAME = 19538; // RL
-const id QTF_RESERVE_POOL_CONTRACT_ID = id(QRP_CONTRACT_INDEX, 0, 0, 0);
 
 struct QTF2
 {
@@ -691,7 +687,8 @@ struct QTF : ContractBase
 	// Contract lifecycle methods
 	INITIALIZE()
 	{
-		state.teamAddress = QTF_ADDRESS_DEV_TEAM;
+		state.teamAddress = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C, _R,
+			_L, _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
 		state.ownerAddress = state.teamAddress;
 		state.ticketPrice = QTF_TICKET_PRICE;
 		state.targetJackpot = QTF_DEFAULT_TARGET_JACKPOT;
@@ -1501,7 +1498,7 @@ private:
 		// Transfer reserve overflow to QReservePool
 		if (locals.reserveAdd > 0)
 		{
-			qpi.transfer(QTF_RESERVE_POOL_CONTRACT_ID, locals.reserveAdd);
+			qpi.transfer(id(QRP_CONTRACT_INDEX, 0, 0, 0), locals.reserveAdd);
 		}
 
 		if (locals.devPayout > 0)
@@ -1534,7 +1531,7 @@ private:
 					locals.rlPayback = locals.distPayout - smul(locals.dividendPerShare, locals.rlTotalShares);
 					if (locals.rlPayback > 0)
 					{
-						qpi.transfer(QTF_RANDOM_LOTTERY_CONTRACT_ID, locals.rlPayback);
+						qpi.transfer(id(RL_CONTRACT_INDEX, 0, 0, 0), locals.rlPayback);
 					}
 				}
 			}
