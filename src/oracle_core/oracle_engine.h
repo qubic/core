@@ -488,21 +488,13 @@ public:
         // check fee
         const void* queryData = (tx + 1);
         const int64_t fee = OI::getOracleQueryFeeFunc[tx->oracleInterfaceIndex](queryData);
-        if (tx->amount != fee)
+        if (tx->amount < fee)
         {
-            if (tx->amount < fee)
-            {
-                // tx amount insufficient for fee -> return error (caller should refund in all error cases)
+            // tx amount insufficient for fee -> return error (caller should refund in all error cases)
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-                addDebugMessage(L"Cannot start user oracle query due to insufficient invocation reward!");
+            addDebugMessage(L"Cannot start user oracle query due to insufficient invocation reward!");
 #endif
-                return -1;
-            }
-            else
-            {
-                // refund the amount that has been paid too much
-                refundFees(tx->sourcePublicKey, tx->amount - fee);
-            }
+            return -1;
         }
 
         // lock for accessing engine data
@@ -532,7 +524,7 @@ public:
         if (tx->timeoutMilliseconds > MAX_ORACLE_TIMEOUT_MILLISEC || !timeout.addMillisec(tx->timeoutMilliseconds))
         {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-            addDebugMessage(L"Cannot start contract oracle query due to timeout timestamp issue!");
+            addDebugMessage(L"Cannot start user oracle query due to timeout timestamp issue!");
 #endif
             return -1;
         }
@@ -598,6 +590,12 @@ public:
         appendDateAndTime(dbgMsg, QPI::DateAndTime::now());
         addDebugMessage(dbgMsg);
 #endif
+
+        if (tx->amount > fee)
+        {
+            // success case: refund the amount that has been paid too much (error case refund is handled by caller)
+            refundFees(tx->sourcePublicKey, tx->amount - fee);
+        }
 
         return queryId;
     }
