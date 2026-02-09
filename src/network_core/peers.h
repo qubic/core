@@ -1021,6 +1021,13 @@ static void processTransmittedData(unsigned int i, unsigned int salt)
                 {
                     // success
                     numberOfTransmittedBytes += peers[i].transmitData.DataLength;
+
+                    // Update OM activity time on successful transmit so the inactivity
+                    // timer doesn't kill connections that are actively sending queries
+                    if (peers[i].isOracleMachineNode())
+                    {
+                        peers[i].lastOMActivityTime = __rdtsc();
+                    }
                 }
             }
         }
