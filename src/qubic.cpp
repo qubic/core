@@ -3634,7 +3634,7 @@ static void processTick(unsigned long long processorNumber)
             const auto txTick = system.tick + ORACLE_REPLY_COMMIT_PUBLICATION_OFFSET;
             auto* tx = (OracleReplyCommitTransactionPrefix*)txBuffer;
             unsigned int txCount = 0;
-            for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+            for (int i = numberOfOwnComputorIndices - 1; i >= 0; i--)
             {
                 const auto ownCompIdx = ownComputorIndicesMapping[i];
                 const auto overallCompIdx = ownComputorIndices[i];
