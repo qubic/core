@@ -335,7 +335,7 @@ protected:
         for (uint32_t i = 0; i < MAX_SIMULTANEOUS_ORACLE_QUERIES; ++i)
         {
             if (replyStates[replyStatesIndex].queryId <= 0)
-                return replyStatesIndex++;
+                return replyStatesIndex;
 
             ++replyStatesIndex;
             if (replyStatesIndex >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
@@ -455,19 +455,149 @@ public:
     * Check and start user query based on transaction (should be called from tick processor).
     * @param tx Transaction, whose validity and signature has been checked before.
     * @param txIndex Index of tx in tick data, for referencing in tick storage.
-    * @return Query ID or zero on error.
+    * @return Query ID or -1 on error.
     */
     int64_t startUserQuery(const OracleUserQueryTransactionPrefix* tx, uint32_t txIndex)
     {
-        // ASSERT that tx is in tick storage at tx->tick, txIndex.
-        // check interface index
-        // check size of payload vs expected query of given interface
+        // check preconditions (that function is used correctly)
+        ASSERT(tx);
+        ASSERT(tx->checkValidity());
+        ASSERT(isZero(tx->destinationPublicKey));
+        ASSERT(tx->tick == system.tick);
+        ASSERT(txIndex < NUMBER_OF_TRANSACTIONS_PER_TICK);
+        {
+            // check that tick storage contains tx at expected position
+            ASSERT(ts.tickInCurrentEpochStorage(tx->tick));
+            const uint64_t* tsTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(tx->tick);
+            const auto* tsTx = ts.tickTransactions.ptr(tsTickTransactionOffsets[txIndex]);
+            ASSERT(compareMem(tx, tsTx, tx->totalSize()) == 0);
+        }
+
+        // check size of tx / query data and validity of interface index
+        const uint16_t querySize = tx->inputSize - OracleUserQueryTransactionPrefix::minInputSize();
+        if (tx->inputSize < OracleUserQueryTransactionPrefix::minInputSize()
+            || tx->oracleInterfaceIndex >= OI::oracleInterfacesCount
+            || querySize != OI::oracleInterfaces[tx->oracleInterfaceIndex].querySize)
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            addDebugMessage(L"Cannot start user oracle query due to inputSize / oracleInterface issue!");
+#endif
+            return -1;
+        }
+
+        // check fee
+        const void* queryData = (tx + 1);
+        const int64_t fee = OI::getOracleQueryFeeFunc[tx->oracleInterfaceIndex](queryData);
+        if (tx->amount < fee)
+        {
+            // tx amount insufficient for fee -> return error (caller should refund in all error cases)
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            addDebugMessage(L"Cannot start user oracle query due to insufficient invocation reward!");
+#endif
+            return -1;
+        }
 
         // lock for accessing engine data
         LockGuard lockGuard(lock);
 
-        // add to query storage
-        // send query to oracle machine node
+        // check that we still have free capacity for the query
+        if (oracleQueryCount >= MAX_ORACLE_QUERIES || pendingQueryIndices.numValues >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            addDebugMessage(L"Cannot start user oracle query due to lack of space!");
+#endif
+            return -1;
+        }
+
+        // find slot storing temporary reply state
+        uint32_t replyStateSlotIdx = getEmptyReplyStateSlot();
+        if (replyStateSlotIdx >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            addDebugMessage(L"Cannot start user oracle query due to lack of free reply slot!");
+#endif
+            return -1;
+        }
+
+        // compute timeout as absolute point in time
+        auto timeout = QPI::DateAndTime::now();
+        if (tx->timeoutMilliseconds > MAX_ORACLE_TIMEOUT_MILLISEC || !timeout.addMillisec(tx->timeoutMilliseconds))
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            addDebugMessage(L"Cannot start user oracle query due to timeout timestamp issue!");
+#endif
+            return -1;
+        }
+
+        // compose query ID
+        int64_t queryId = ((int64_t)system.tick << 31) | txIndex;
+        ASSERT(txIndex < (1ull << 31));
+
+        // map ID to index
+        ASSERT(!queryIdToIndex->contains(queryId));
+        if (queryIdToIndex->set(queryId, oracleQueryCount) == QPI::NULL_INDEX)
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            addDebugMessage(L"Cannot start user oracle query due to queryIdToIndex issue!");
+#endif
+            return -1;
+        }
+
+        // register index of pending query
+        pendingQueryIndices.add(oracleQueryCount);
+
+        // init query metadata (persistent)
+        auto& queryMetadata = queries[oracleQueryCount++];
+        queryMetadata.queryId = queryId;
+        queryMetadata.type = ORACLE_QUERY_TYPE_USER_QUERY;
+        queryMetadata.status = ORACLE_QUERY_STATUS_PENDING;
+        queryMetadata.statusFlags = ORACLE_FLAG_REPLY_PENDING;
+        queryMetadata.interfaceIndex = tx->oracleInterfaceIndex;
+        queryMetadata.queryTick = system.tick;
+        queryMetadata.timeout = timeout;
+        queryMetadata.typeVar.user.queryingEntity = tx->sourcePublicKey;
+        queryMetadata.typeVar.user.queryTxIndex = txIndex;
+        queryMetadata.statusVar.pending.replyStateIndex = replyStateSlotIdx;
+
+        // init reply state (temporary until reply is revealed)
+        ReplyState& replyState = replyStates[replyStateSlotIdx];
+        setMem(&replyState, sizeof(replyState), 0);
+        replyState.queryId = queryId;
+
+        // enqueue query message to oracle machine node
+        enqueueOracleQuery(queryId, tx->oracleInterfaceIndex, tx->timeoutMilliseconds, queryData, querySize);
+
+        // log status change
+        OracleQueryStatusChange logEvent{ tx->sourcePublicKey, queryId, tx->oracleInterfaceIndex, queryMetadata.type, queryMetadata.status };
+        logger.logOracleQueryStatusChange(logEvent);
+
+        // Debug logging
+#if ENABLE_ORACLE_STATS_RECORD
+        oracleStats[queryMetadata.interfaceIndex].queryCount++;
+#endif
+
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        CHAR16 dbgMsg[200];
+        setText(dbgMsg, L"oracleEngine.startUserQuery(), tick ");
+        appendNumber(dbgMsg, system.tick, FALSE);
+        appendText(dbgMsg, ", queryId ");
+        appendNumber(dbgMsg, queryId, FALSE);
+        appendText(dbgMsg, ", interfaceIndex ");
+        appendNumber(dbgMsg, tx->oracleInterfaceIndex, FALSE);
+        appendText(dbgMsg, ", timeout ");
+        appendDateAndTime(dbgMsg, timeout);
+        appendText(dbgMsg, ", now ");
+        appendDateAndTime(dbgMsg, QPI::DateAndTime::now());
+        addDebugMessage(dbgMsg);
+#endif
+
+        if (tx->amount > fee)
+        {
+            // success case: refund the amount that has been paid too much (error case refund is handled by caller)
+            refundFees(tx->sourcePublicKey, tx->amount - fee);
+        }
+
+        return queryId;
     }
 
     int64_t startContractQuery(uint16_t contractIndex, uint32_t interfaceIndex,
@@ -724,10 +854,8 @@ public:
         // Update the stats for each type of oracles
         const uint32_t ifaceIdx = oqm.interfaceIndex;
         oracleStats[ifaceIdx].replyCount++;
-        // Now only record contract query
-        if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_QUERY)
         {
-            const void* queryData = queryStorage + oqm.typeVar.contract.queryStorageOffset;
+            const void* queryData = getOracleQueryPointerFromMetadata(oqm, (uint16_t)OI::oracleInterfaces[ifaceIdx].querySize);
 
             bool valid = false;
             switch (ifaceIdx)
@@ -1120,7 +1248,8 @@ public:
                 continue;
 
             // check if local view is the quorum view
-            const m256i quorumCommitDigest = replyState.replyCommitDigests[replyState.replyCommitHistogramIdx[replyState.mostCommitsHistIdx]];
+            const uint16_t mostCommitsDigestIdx = replyState.replyCommitHistogramIdx[replyState.mostCommitsHistIdx];
+            const m256i quorumCommitDigest = replyState.replyCommitDigests[mostCommitsDigestIdx];
             if (quorumCommitDigest != replyState.ownReplyDigest)
                 continue;
 
@@ -1208,7 +1337,8 @@ protected:
         KangarooTwelve(replyData, replySize, revealDigest.m256i_u8, 32);
 
         // check that revealed reply matches the quorum digest
-        const m256i quorumCommitDigest = replyState.replyCommitDigests[replyState.replyCommitHistogramIdx[replyState.mostCommitsHistIdx]];
+        const uint16_t mostCommitsDigestIdx = replyState.replyCommitHistogramIdx[replyState.mostCommitsHistIdx];
+        const m256i quorumCommitDigest = replyState.replyCommitDigests[mostCommitsDigestIdx];
         ASSERT(!isZero(quorumCommitDigest));
         if (revealDigest != quorumCommitDigest)
             return nullptr;
@@ -1317,8 +1447,10 @@ public:
             copyMem(replyData, transaction + 1, replySize);
             uint16_t* replyDataCompIdx = (uint16_t*)(replyData + replySize);
 
-            const auto quorumHistIdx = replyState->replyCommitHistogramIdx[replyState->mostCommitsHistIdx];
-            const m256i quorumCommitDigest = replyState->replyCommitDigests[quorumHistIdx];
+            // check digests and knowledge proofs
+            const uint16_t quorumHistIdx = replyState->mostCommitsHistIdx;
+            const uint16_t quorumCommitDigestIdx = replyState->replyCommitHistogramIdx[quorumHistIdx];
+            const m256i quorumCommitDigest = replyState->replyCommitDigests[quorumCommitDigestIdx];
             for (int computorIdx = 0; computorIdx < NUMBER_OF_COMPUTORS; ++computorIdx)
             {
                 // check that commit digest matches quorum
@@ -1574,6 +1706,36 @@ public:
 
 protected:
     // Caller is responsible for locking.
+    const void* getOracleQueryPointerFromMetadata(const OracleQueryMetadata& queryMetadata, uint16_t querySize) const
+    {
+        switch (queryMetadata.type)
+        {
+        case ORACLE_QUERY_TYPE_CONTRACT_QUERY:
+        {
+            const auto offset = queryMetadata.typeVar.contract.queryStorageOffset;
+            ASSERT(offset > 0 && offset < queryStorageBytesUsed && queryStorageBytesUsed <= ORACLE_QUERY_STORAGE_SIZE);
+            return queryStorage + offset;
+        }
+        // TODO: support subscription
+        case ORACLE_QUERY_TYPE_USER_QUERY:
+        {
+            const uint32_t txSlotInTickData = queryMetadata.typeVar.user.queryTxIndex;
+            ASSERT(txSlotInTickData < NUMBER_OF_TRANSACTIONS_PER_TICK);
+            ASSERT(ts.tickInCurrentEpochStorage(queryMetadata.queryTick));
+            const uint64_t* tsTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(queryMetadata.queryTick);
+            const auto* tx = (OracleUserQueryTransactionPrefix*)ts.tickTransactions.ptr(tsTickTransactionOffsets[txSlotInTickData]);
+            ASSERT(queryMetadata.interfaceIndex == tx->oracleInterfaceIndex);
+            ASSERT(tx->inputSize - OracleUserQueryTransactionPrefix::minInputSize() == querySize);
+            if (tx->inputSize - OracleUserQueryTransactionPrefix::minInputSize() != querySize)
+                return nullptr;
+            return tx + 1;
+        }
+        default:
+            return nullptr;
+        }
+    }
+
+    // Caller is responsible for locking.
     bool getOracleQueryWithoutLocking(int64_t queryId, void* queryData, uint16_t querySize) const
     {
         // get query index
@@ -1587,22 +1749,14 @@ protected:
         if (querySize != OI::oracleInterfaces[queryMetadata.interfaceIndex].querySize)
             return false;
 
-        void* querySrcPtr = nullptr;
-        switch (queryMetadata.type)
+        // get raw pointer to query data
+        const void* querySrcPtr = getOracleQueryPointerFromMetadata(queryMetadata, querySize);
+        if (!querySrcPtr)
         {
-            case ORACLE_QUERY_TYPE_CONTRACT_QUERY:
-            {
-                const auto offset = queryMetadata.typeVar.contract.queryStorageOffset;
-                ASSERT(offset > 0 && offset < queryStorageBytesUsed && queryStorageBytesUsed <= ORACLE_QUERY_STORAGE_SIZE);
-                querySrcPtr = queryStorage + offset;
-                break;
-            }
-            // TODO: support other types
-            default:
-                return false;
+            return false;
         }
 
-        // Return query data
+        // return query data (by copying to provided buffer)
         copyMem(queryData, querySrcPtr, querySize);
         return true;
     }
@@ -1711,10 +1865,20 @@ public:
                 // TODO
                 break;
             case ORACLE_QUERY_TYPE_USER_QUERY:
+            {
                 ASSERT(!isZero(oqm.typeVar.user.queryingEntity));
                 ASSERT(oqm.typeVar.user.queryTxIndex < NUMBER_OF_TRANSACTIONS_PER_TICK);
-                // TODO: check vs tick storage?
+                ASSERT(ts.tickInCurrentEpochStorage(oqm.queryTick));
+                const uint64_t* tsTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(oqm.queryTick);
+                const auto* tx = (OracleUserQueryTransactionPrefix*)ts.tickTransactions.ptr(tsTickTransactionOffsets[oqm.typeVar.user.queryTxIndex]);
+                ASSERT(tx->oracleInterfaceIndex == oqm.interfaceIndex);
+                ASSERT(tx->sourcePublicKey == oqm.typeVar.user.queryingEntity);
+                ASSERT(isZero(tx->destinationPublicKey));
+                ASSERT(tx->tick == oqm.queryTick);
+                ASSERT(tx->inputType == OracleUserQueryTransactionPrefix::transactionType());
+                ASSERT(tx->inputSize == OI::oracleInterfaces[oqm.interfaceIndex].querySize + OracleUserQueryTransactionPrefix::minInputSize());
                 break;
+            }
             default:
 #if !defined(NDEBUG) && !defined(NO_UEFI)
                 setText(dbgMsgBuf, L"Unexpected oracle query type ");
@@ -1741,8 +1905,9 @@ public:
                 ASSERT(replyState->totalCommits <= NUMBER_OF_COMPUTORS);
                 break;
             case ORACLE_QUERY_STATUS_UNRESOLVABLE:
-            case ORACLE_QUERY_STATUS_TIMEOUT:
                 ASSERT(oqm.statusVar.failure.agreeingCommits < QUORUM);
+                // no break by intention
+            case ORACLE_QUERY_STATUS_TIMEOUT:
                 ASSERT(oqm.statusVar.failure.totalCommits <= NUMBER_OF_COMPUTORS);
                 ASSERT(oqm.statusVar.failure.agreeingCommits <= oqm.statusVar.failure.totalCommits);
                 break;
@@ -1766,7 +1931,8 @@ public:
                 break;
             case ORACLE_QUERY_STATUS_UNRESOLVABLE:
                 ++unresolvableCount;
-                ASSERT(oqm.statusVar.failure.totalCommits - oqm.statusVar.failure.agreeingCommits > NUMBER_OF_COMPUTORS - QUORUM);
+                if (!(oqm.statusFlags & ORACLE_FLAG_FAKE_COMMITS))
+                    ASSERT(oqm.statusVar.failure.totalCommits - oqm.statusVar.failure.agreeingCommits > NUMBER_OF_COMPUTORS - QUORUM);
                 break;
             case ORACLE_QUERY_STATUS_TIMEOUT:
                 ++timeoutCount;
@@ -1911,7 +2077,7 @@ public:
         appendNumber(message, queryStorageBytesUsed * 100 / ORACLE_QUERY_STORAGE_SIZE, FALSE);
         appendText(message, "%");
         appendQuotientWithOneDecimal(message, stats.revealTxCount, stats.successCount);
-        appendText(message, " reveal tx per success, wrong knowledge proofs");
+        appendText(message, " reveal tx per success, wrong knowledge proofs ");
         appendNumber(message, stats.wrongKnowledgeProofCount, FALSE);
         logToConsole(message);
 
