@@ -856,10 +856,8 @@ public:
         // Update the stats for each type of oracles
         const uint32_t ifaceIdx = oqm.interfaceIndex;
         oracleStats[ifaceIdx].replyCount++;
-        // Now only record contract query
-        if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_QUERY)
         {
-            const void* queryData = queryStorage + oqm.typeVar.contract.queryStorageOffset;
+            const void* queryData = getOracleQueryPointerFromMetadata(oqm, (uint16_t)OI::oracleInterfaces[ifaceIdx].querySize);
 
             bool valid = false;
             switch (ifaceIdx)
@@ -1710,6 +1708,36 @@ public:
 
 protected:
     // Caller is responsible for locking.
+    const void* getOracleQueryPointerFromMetadata(const OracleQueryMetadata& queryMetadata, uint16_t querySize) const
+    {
+        switch (queryMetadata.type)
+        {
+        case ORACLE_QUERY_TYPE_CONTRACT_QUERY:
+        {
+            const auto offset = queryMetadata.typeVar.contract.queryStorageOffset;
+            ASSERT(offset > 0 && offset < queryStorageBytesUsed && queryStorageBytesUsed <= ORACLE_QUERY_STORAGE_SIZE);
+            return queryStorage + offset;
+        }
+        // TODO: support subscription
+        case ORACLE_QUERY_TYPE_USER_QUERY:
+        {
+            const uint32_t txSlotInTickData = queryMetadata.typeVar.user.queryTxIndex;
+            ASSERT(txSlotInTickData < NUMBER_OF_TRANSACTIONS_PER_TICK);
+            ASSERT(ts.tickInCurrentEpochStorage(queryMetadata.queryTick));
+            const uint64_t* tsTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(queryMetadata.queryTick);
+            const auto* tx = (OracleUserQueryTransactionPrefix*)ts.tickTransactions.ptr(tsTickTransactionOffsets[txSlotInTickData]);
+            ASSERT(queryMetadata.interfaceIndex == tx->oracleInterfaceIndex);
+            ASSERT(tx->inputSize - OracleUserQueryTransactionPrefix::minInputSize() == querySize);
+            if (tx->inputSize - OracleUserQueryTransactionPrefix::minInputSize() != querySize)
+                return nullptr;
+            return tx + 1;
+        }
+        default:
+            return nullptr;
+        }
+    }
+
+    // Caller is responsible for locking.
     bool getOracleQueryWithoutLocking(int64_t queryId, void* queryData, uint16_t querySize) const
     {
         // get query index
@@ -1723,36 +1751,14 @@ protected:
         if (querySize != OI::oracleInterfaces[queryMetadata.interfaceIndex].querySize)
             return false;
 
-        const void* querySrcPtr = nullptr;
-        switch (queryMetadata.type)
+        // get raw pointer to query data
+        const void* querySrcPtr = getOracleQueryPointerFromMetadata(queryMetadata, querySize);
+        if (!querySrcPtr)
         {
-            case ORACLE_QUERY_TYPE_CONTRACT_QUERY:
-            {
-                const auto offset = queryMetadata.typeVar.contract.queryStorageOffset;
-                ASSERT(offset > 0 && offset < queryStorageBytesUsed && queryStorageBytesUsed <= ORACLE_QUERY_STORAGE_SIZE);
-                querySrcPtr = queryStorage + offset;
-                break;
-            }
-            // TODO: support subscription
-            case ORACLE_QUERY_TYPE_USER_QUERY:
-            {
-                const uint32_t txSlotInTickData = queryMetadata.typeVar.user.queryTxIndex;
-                ASSERT(txSlotInTickData < NUMBER_OF_TRANSACTIONS_PER_TICK);
-                ASSERT(ts.tickInCurrentEpochStorage(queryMetadata.queryTick));
-                const uint64_t* tsTickTransactionOffsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(queryMetadata.queryTick);
-                const auto* tx = (OracleUserQueryTransactionPrefix*)ts.tickTransactions.ptr(tsTickTransactionOffsets[txSlotInTickData]);
-                ASSERT(queryMetadata.interfaceIndex == tx->oracleInterfaceIndex);
-                ASSERT(tx->inputSize - OracleUserQueryTransactionPrefix::minInputSize() == querySize);
-                if (tx->inputSize - OracleUserQueryTransactionPrefix::minInputSize() != querySize)
-                    return false;
-                querySrcPtr = tx + 1;
-                break;
-            }
-            default:
-                return false;
+            return false;
         }
 
-        // Return query data
+        // return query data (by copying to provided buffer)
         copyMem(queryData, querySrcPtr, querySize);
         return true;
     }
