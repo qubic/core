@@ -9,10 +9,12 @@
 #include "private_settings.h"
 #include "public_settings.h"
 
+static constexpr unsigned long long computorSeedsCount = sizeof(computorSeeds) / sizeof(computorSeeds[0]);
+
 GLOBAL_VAR_DECL m256i operatorPublicKey;
-GLOBAL_VAR_DECL m256i computorSubseeds[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
-GLOBAL_VAR_DECL m256i computorPrivateKeys[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
-GLOBAL_VAR_DECL m256i computorPublicKeys[sizeof(computorSeeds) / sizeof(computorSeeds[0])];
+GLOBAL_VAR_DECL m256i computorSubseeds[computorSeedsCount];
+GLOBAL_VAR_DECL m256i computorPrivateKeys[computorSeedsCount];
+GLOBAL_VAR_DECL m256i computorPublicKeys[computorSeedsCount];
 GLOBAL_VAR_DECL m256i arbitratorPublicKey;
 GLOBAL_VAR_DECL m256i dispatcherPublicKey;
 
@@ -27,7 +29,7 @@ static bool initSpecialEntities()
         operatorPublicKey.setRandomValue();
     }
 
-    for (unsigned int i = 0; i < sizeof(computorSeeds) / sizeof(computorSeeds[0]); i++)
+    for (unsigned int i = 0; i < computorSeedsCount; i++)
     {
         if (!getSubseed(computorSeeds[i], computorSubseeds[i].m256i_u8))
         {
@@ -51,4 +53,17 @@ static void deinitSpecialEntities()
     setMem(computorSubseeds, sizeof(computorSubseeds), 0);
     setMem(computorPrivateKeys, sizeof(computorPrivateKeys), 0);
     setMem(computorPublicKeys, sizeof(computorPublicKeys), 0);
+}
+
+static int computorIndex(const m256i& computor)
+{
+    for (int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    {
+        if (broadcastedComputors.computors.publicKeys[computorIndex] == computor)
+        {
+            return computorIndex;
+        }
+    }
+
+    return -1;
 }

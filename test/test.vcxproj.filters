@@ -50,6 +50,7 @@
     <ClCompile Include="pending_txs_pool.cpp" />
     <ClCompile Include="quorum_value.cpp" />
     <ClCompile Include="sorting.cpp" />
+    <ClCompile Include="oracle_engine.cpp" />
     <ClCompile Include="contract_qrwa.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -58,6 +59,7 @@
     <ClInclude Include="contract_testing.h" />
     <ClInclude Include="test_util.h" />
     <ClInclude Include="logging_test.h" />
+    <ClInclude Include="oracle_testing.h" />
     <ClInclude Include="score_common_reference.h" />
     <ClInclude Include="score_hyperidentity_reference.h" />
     <ClInclude Include="score_addition_reference.h" />
