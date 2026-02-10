@@ -1571,7 +1571,7 @@ protected:
 		// swapFee = quAmountIn * 0.3% (swapFeeRate/10000)
 		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		locals.swapFee = div(uint128(locals.quAmountIn) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
-		if (locals.swapFee == 0)
+		if (locals.swapFee == uint128_t(0))
 		{
 			locals.swapFee = QSWAP_FEE_BASE_100;
 		}
@@ -1721,7 +1721,7 @@ protected:
 		// swapFee = quAmountIn * 0.3% (swapFeeRate/10000)
 		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		locals.swapFee = div(uint128(locals.quAmountIn) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
-		if (locals.swapFee == 0)
+		if (locals.swapFee == uint128_t(0))
 		{
 			locals.swapFee = QSWAP_FEE_BASE_100;
 		}
@@ -1896,7 +1896,7 @@ protected:
 		// swapFee = quAmountOutWithFee * 0.3% (swapFeeRate/10000)
 		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		locals.swapFee = div(uint128(locals.quAmountOutWithFee) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
-		if (locals.swapFee == 0)
+		if (locals.swapFee == uint128_t(0))
 		{
 			locals.swapFee = QSWAP_FEE_BASE_100;
 		}
@@ -2092,7 +2092,7 @@ protected:
 		// swapFee = quAmountOut * 30/(10_000 - 30)
 		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		locals.swapFee = div(uint128(input.quAmountOut) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate));
-		if (locals.swapFee == 0)
+		if (locals.swapFee == uint128_t(0))
 		{
 			locals.swapFee = QSWAP_FEE_BASE_100;
 		}
