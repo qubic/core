@@ -4007,8 +4007,9 @@ static void endEpoch()
         constexpr long long issuancePerComputor = ISSUANCE_RATE / NUMBER_OF_COMPUTORS;
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
-            // Compute initial computor revenue, reducing arbitrator revenue
-            long long revenue = gRevenueComponents.revenue[computorIndex];
+            // TODO: Remove this and uncomment the line below to restore normal revenue distribution
+            long long revenue = issuancePerComputor;
+            // long long revenue = gRevenueComponents.revenue[computorIndex];
             arbitratorRevenue -= revenue;
 
             // Reduce computor revenue based on revenue donation table agreed on by quorum
