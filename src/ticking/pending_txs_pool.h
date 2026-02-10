@@ -59,6 +59,7 @@ protected:
 
     static void cleanupTxsPriorities(unsigned int tickIndex)
     {
+        PROFILE_SCOPE();
         sint64 elementIndex = txsPriorities->headIndex(m256i{ tickIndex, 0, 0, 0 });
         // use a `for` instead of a `while` loop to make sure it cannot run forever 
         // there can be at most `maxNumTxsPerTick` elements in one pov
@@ -74,6 +75,7 @@ protected:
 
     static sint64 calculateTxPriority(const Transaction* tx)
     {
+        PROFILE_SCOPE();
         sint64 priority = 0;
         int sourceIndex = spectrumIndex(tx->sourcePublicKey);
         if (sourceIndex >= 0)
@@ -189,6 +191,7 @@ public:
     // Return number of transactions scheduled for the specified tick.
     static unsigned int getNumberOfPendingTickTxs(unsigned int tick)
     {
+        PROFILE_SCOPE();
 //#if !defined(NDEBUG) && !defined(NO_UEFI)
 //        addDebugMessage(L"Begin pendingTxsPool.getNumberOfPendingTickTxs()");
 //#endif
@@ -214,6 +217,7 @@ public:
     // Return number of transactions scheduled later than the specified tick.
     static unsigned int getTotalNumberOfPendingTxs(unsigned int tick)
     {
+        PROFILE_SCOPE();
 //#if !defined(NDEBUG) && !defined(NO_UEFI)
 //        addDebugMessage(L"Begin pendingTxsPool.getTotalNumberOfPendingTxs()");
 //#endif
@@ -252,6 +256,7 @@ public:
     // Check validity of transaction and add to the pool. Return boolean indicating whether transaction was added.
     static bool add(const Transaction* tx)
     {
+        PROFILE_SCOPE();
 //#if !defined(NDEBUG) && !defined(NO_UEFI)
 //        addDebugMessage(L"Begin pendingTxsPool.add()");
 //#endif
@@ -423,6 +428,8 @@ public:
 
     static void incrementFirstStoredTick()
     {
+        PROFILE_SCOPE();
+
         ACQUIRE(lock);
 
         // set memory at buffersBeginIndex to 0 
@@ -443,6 +450,7 @@ public:
 
     static void beginEpoch(unsigned int newInitialTick)
     {
+        PROFILE_SCOPE();
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         addDebugMessage(L"Begin pendingTxsPool.beginEpoch()");
 #endif
