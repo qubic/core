@@ -3651,7 +3651,7 @@ static void processTick(unsigned long long processorNumber)
 
                     // sign and broadcast tx
                     KangarooTwelve(tx, sizeof(Transaction) + tx->inputSize, digest, sizeof(digest));
-                    sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest, tx->signaturePtr());
+                    sign(computorSubseeds[ownCompIdx].m256i_u8, computorPublicKeys[ownCompIdx].m256i_u8, digest, tx->signaturePtr());
                     enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
                     ++txCount;
                 }
