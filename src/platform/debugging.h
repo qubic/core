@@ -119,7 +119,9 @@ static void printDebugMessages()
     RELEASE(debugLogLock);
 }
 
-// Add a message for logging from arbitrary thread
+// Add a message for logging from arbitrary thread.
+// CAUTION: Adding many messages may change the overall behavior, because it slows down the main thread
+// significantly (printDebugMessages() function) and it may slow down other threads too due to locking.
 static void addDebugMessage(const CHAR16* msg)
 {
     ACQUIRE_WITHOUT_DEBUG_LOGGING(debugLogLock);

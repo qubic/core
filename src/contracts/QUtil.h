@@ -1491,7 +1491,7 @@ public:
 
     IMPLEMENT_FinalizeShareholderStateVarProposals()
     {
-        switch (input.proposal.variableOptions.variable)
+        switch (input.proposal.data.variableOptions.variable)
         {
         case 0:
             state.smt1InvocationFee = input.acceptedValue;

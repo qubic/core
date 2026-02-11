@@ -120,7 +120,7 @@ struct QUTIL
         // Your code should set the state variable that the proposal is about to the accepted value.
         // This can be done as in this example taken from QUTIL:
 
-        switch (input.proposal.variableOptions.variable)
+        switch (input.proposal.data.variableOptions.variable)
         {
         case 0:
             state.smt1InvocationFee = input.acceptedValue;
@@ -348,7 +348,7 @@ PRIVATE_PROCEDURE_WITH_LOCALS(FinalizeShareholderStateVarProposals)
             if (locals.p.acceptedOption <= 0)
                 continue;
 
-            locals.p.acceptedValue = locals.p.proposal.variableOptions.value;
+            locals.p.acceptedValue = locals.p.proposal.data.variableOptions.value;
 
             CALL(FinalizeShareholderProposalSetStateVar, locals.p, output);
         }
@@ -376,8 +376,8 @@ PUBLIC_PROCEDURE(SetShareholderProposal)
 {
     // check proposal input and fees
     if (qpi.invocationReward() < setProposalFeeVarOrValue || (input.epoch
-        && (input.type != ProposalTypes::VariableYesNo || input.variableOptions.variable >= numFeeStateVariables
-            || input.variableOptions.value < 0)))
+        && (input.type != ProposalTypes::VariableYesNo || input.data.variableOptions.variable >= numFeeStateVariables
+            || input.data.variableOptions.value < 0)))
     {
         // error -> reimburse invocation reward
         qpi.transfer(qpi.invocator(), qpi.invocationReward());
