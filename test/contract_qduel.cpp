@@ -420,6 +420,8 @@ TEST(ContractQDuel, FirstTickAfterUnlockResetsTimerStart)
 	ContractTestingQDuel qduel;
 	// Start from a deterministic time and unlocked state.
 	qduel.state()->setState(QDUEL::EState::NONE);
+	increaseEnergy(qduel.state()->team(), 1);
+	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 3, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	qduel.setDeterministicTime(2022, 4, 13, 0);
 
 	const id owner(2, 0, 0, 0);
@@ -459,6 +461,8 @@ TEST(ContractQDuel, EndTickExpiresRoomCreatesNewWhenDepositAvailable)
 	ContractTestingQDuel qduel;
 	// Start from a deterministic time and unlocked state.
 	qduel.state()->setState(QDUEL::EState::NONE);
+	increaseEnergy(qduel.state()->team(), 1);
+	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 1, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	qduel.setDeterministicTime(2025, 1, 1, 0);
 
 	const id owner(3, 0, 0, 0);
@@ -471,8 +475,8 @@ TEST(ContractQDuel, EndTickExpiresRoomCreatesNewWhenDepositAvailable)
 	const QDUEL::RoomInfo roomBefore = qduel.state()->firstRoom();
 	EXPECT_EQ(qduel.state()->roomCount(), 1ULL);
 
-	// Advance beyond TTL to trigger finalize and auto room creation.
-	qduel.setDeterministicTime(2025, 1, 1, 3);
+	// Advance to TTL to trigger finalize and auto room creation.
+	qduel.setDeterministicTime(2025, 1, 1, 1);
 	qduel.forceEndTick();
 
 	// A new room should replace the expired one.
@@ -492,6 +496,8 @@ TEST(ContractQDuel, EndTickExpiresRoomWithoutAvailableDepositRemovesUser)
 	ContractTestingQDuel qduel;
 	// Start from a deterministic time and unlocked state.
 	qduel.state()->setState(QDUEL::EState::NONE);
+	increaseEnergy(qduel.state()->team(), 1);
+	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 1, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	qduel.setDeterministicTime(2025, 1, 1, 0);
 
 	const id owner(4, 0, 0, 0);
@@ -509,7 +515,7 @@ TEST(ContractQDuel, EndTickExpiresRoomWithoutAvailableDepositRemovesUser)
 	qduel.state()->setUserData(userData);
 
 	// Expire room and expect cleanup.
-	qduel.setDeterministicTime(2025, 1, 1, 3);
+	qduel.setDeterministicTime(2025, 1, 1, 1);
 	qduel.forceEndTick();
 
 	// Room and user data should be removed when deposit is insufficient.
@@ -523,6 +529,8 @@ TEST(ContractQDuel, EndTickSkipsNonPeriodTicks)
 	ContractTestingQDuel qduel;
 	// Start from a deterministic time and unlocked state.
 	qduel.state()->setState(QDUEL::EState::NONE);
+	increaseEnergy(qduel.state()->team(), 1);
+	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 2, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	qduel.setDeterministicTime(2025, 1, 1, 0);
 
 	const id owner(5, 0, 0, 0);
@@ -585,6 +593,8 @@ TEST(ContractQDuel, EndTickRecreatesRoomWithUpdatedStake)
 	ContractTestingQDuel qduel;
 	// Start from a deterministic time and unlocked state.
 	qduel.state()->setState(QDUEL::EState::NONE);
+	increaseEnergy(qduel.state()->team(), 1);
+	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 1, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	qduel.setDeterministicTime(2025, 1, 1, 0);
 
 	const id owner(8, 0, 0, 0);
@@ -596,7 +606,7 @@ TEST(ContractQDuel, EndTickRecreatesRoomWithUpdatedStake)
 	const QDUEL::RoomInfo roomBefore = qduel.state()->firstRoom();
 
 	// Expire the room and expect a new one using computed next stake.
-	qduel.setDeterministicTime(2025, 1, 1, 3);
+	qduel.setDeterministicTime(2025, 1, 1, 1);
 	qduel.forceEndTick();
 
 	const QDUEL::RoomInfo roomAfter = qduel.state()->firstRoom();
@@ -951,7 +961,7 @@ TEST(ContractQDuel, SetPercentFeesUpdatesState)
 	EXPECT_EQ(output.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 }
 
-TEST(ContractQDuel, SetTTLHoursAccessDeniedAndInvalid)
+TEST(ContractQDuel, SetTTLHoursAccessDenied)
 {
 	ContractTestingQDuel qduel;
 	const uint8 ttlBefore = qduel.state()->ttl();
@@ -962,10 +972,6 @@ TEST(ContractQDuel, SetTTLHoursAccessDeniedAndInvalid)
 
 	EXPECT_EQ(qduel.setTtlHours(user, 5, 5).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::ACCESS_DENIED));
 	EXPECT_EQ(getBalance(user), balanceBefore);
-	EXPECT_EQ(qduel.state()->ttl(), ttlBefore);
-
-	increaseEnergy(qduel.state()->team(), 1);
-	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 0, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::INVALID_VALUE));
 	EXPECT_EQ(qduel.state()->ttl(), ttlBefore);
 }
 
@@ -978,6 +984,49 @@ TEST(ContractQDuel, SetTTLHoursUpdatesState)
 	const QDUEL::GetTTLHours_output output = qduel.getTtlHours();
 	EXPECT_EQ(output.ttlHours, 6);
 	EXPECT_EQ(output.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+}
+
+TEST(ContractQDuel, SetTTLHoursResetsCloseTimerForAllRooms)
+{
+	ContractTestingQDuel qduel;
+	qduel.state()->setState(QDUEL::EState::NONE);
+	qduel.setDeterministicTime(2025, 1, 1, 0);
+
+	increaseEnergy(qduel.state()->team(), 2);
+	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 3, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	const id owner1(300, 0, 0, 0);
+	const id owner2(301, 0, 0, 0);
+	const sint64 stake = qduel.state()->minDuelAmount();
+	increaseEnergy(owner1, stake);
+	increaseEnergy(owner2, stake);
+
+	EXPECT_EQ(qduel.createRoom(owner1, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_EQ(qduel.createRoom(owner2, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	// Spend one hour so rooms have less than initial TTL left.
+	qduel.setDeterministicTime(2025, 1, 1, 1);
+	qduel.setTick(QDUEL_TICK_UPDATE_PERIOD);
+	qduel.endTick();
+
+	// Apply new TTL and force-reset all existing room timers to it.
+	qduel.setDeterministicTime(2025, 1, 1, 2);
+	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 1, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	const QDUEL::GetRooms_output roomsOutput = qduel.getRooms();
+	const DateAndTime expectedNow(2025, 1, 1, 2, 0, 0);
+	uint64 seenRooms = 0;
+	for (uint32 i = 0; i < QDUEL_MAX_NUMBER_OF_ROOMS; ++i)
+	{
+		const QDUEL::RoomInfo room = roomsOutput.rooms.get(i);
+		if (room.roomId != id::zero())
+		{
+			++seenRooms;
+			EXPECT_EQ(room.closeTimer, 3600ULL);
+			EXPECT_EQ(room.lastUpdate, expectedNow);
+		}
+	}
+	EXPECT_EQ(seenRooms, 2ULL);
 }
 
 TEST(ContractQDuel, GetRoomsReturnsActiveRooms)

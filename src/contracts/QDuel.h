@@ -321,6 +321,13 @@ public:
 		uint8 returnCode;
 	};
 
+	struct SetTTLHours_locals
+	{
+		sint64 roomIndex;
+		RoomInfo room;
+		DateAndTime now;
+	};
+
 	struct GetTTLHours_input
 	{
 	};
@@ -473,20 +480,24 @@ public:
 				locals.room.lastUpdate = locals.now;
 			}
 
-			locals.elapsedSeconds = div(locals.room.lastUpdate.durationMicrosec(locals.now), 1000000ULL);
-			if (locals.elapsedSeconds >= locals.room.closeTimer)
+			// closeTimer == 0 means an infinite lifetime room.
+			if (locals.room.closeTimer > 0)
 			{
-				locals.finalizeInput.roomId = locals.room.roomId;
-				locals.finalizeInput.owner = locals.room.owner;
-				locals.finalizeInput.roomAmount = locals.room.amount;
-				locals.finalizeInput.includeLocked = true;
-				CALL(FinalizeRoom, locals.finalizeInput, locals.finalizeOutput);
-			}
-			else
-			{
-				locals.room.closeTimer = usubSatu64(locals.room.closeTimer, locals.elapsedSeconds);
-				locals.room.lastUpdate = locals.now;
-				state.rooms.set(locals.room.roomId, locals.room);
+				locals.elapsedSeconds = div(locals.room.lastUpdate.durationMicrosec(locals.now), 1000000ULL);
+				if (locals.elapsedSeconds >= locals.room.closeTimer)
+				{
+					locals.finalizeInput.roomId = locals.room.roomId;
+					locals.finalizeInput.owner = locals.room.owner;
+					locals.finalizeInput.roomAmount = locals.room.amount;
+					locals.finalizeInput.includeLocked = true;
+					CALL(FinalizeRoom, locals.finalizeInput, locals.finalizeOutput);
+				}
+				else
+				{
+					locals.room.closeTimer = usubSatu64(locals.room.closeTimer, locals.elapsedSeconds);
+					locals.room.lastUpdate = locals.now;
+					state.rooms.set(locals.room.roomId, locals.room);
+				}
 			}
 
 			locals.roomIndex = state.rooms.nextElementIndex(locals.roomIndex);
@@ -721,7 +732,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	PUBLIC_PROCEDURE(SetTTLHours)
+	PUBLIC_PROCEDURE_WITH_LOCALS(SetTTLHours)
 	{
 		if (qpi.invocationReward() > 0)
 		{
@@ -734,13 +745,27 @@ public:
 			return;
 		}
 
-		if (input.ttlHours == 0)
+		if (state.ttlHours == input.ttlHours)
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
 
 		state.ttlHours = input.ttlHours;
+		locals.now = qpi.now();
+		locals.roomIndex = state.rooms.nextElementIndex(NULL_INDEX);
+		while (locals.roomIndex != NULL_INDEX)
+		{
+			locals.room = state.rooms.value(locals.roomIndex);
+
+			// 0 means rooms do not expire automatically.
+			locals.room.closeTimer = static_cast<uint32>(state.ttlHours) * 3600U;
+
+			locals.room.lastUpdate = locals.now;
+			state.rooms.set(locals.room.roomId, locals.room);
+
+			locals.roomIndex = state.rooms.nextElementIndex(locals.roomIndex);
+		}
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
@@ -914,6 +939,7 @@ private:
 		locals.newRoom.owner = input.owner;
 		locals.newRoom.allowedPlayer = input.allowedPlayer;
 		locals.newRoom.amount = input.amount;
+		// 0 means rooms do not expire automatically.
 		locals.newRoom.closeTimer = static_cast<uint32>(state.ttlHours) * 3600U;
 		locals.newRoom.lastUpdate = qpi.now();
 
