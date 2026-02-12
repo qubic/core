@@ -1,7 +1,7 @@
 #define NO_UEFI
 
 #include "contract_testing.h"
-#include <type_traits>
+#include <vector>
 
 constexpr uint16 PROCEDURE_INDEX_CREATE_ROOM = 1;
 constexpr uint16 PROCEDURE_INDEX_CONNECT_ROOM = 2;
@@ -252,28 +252,6 @@ public:
 
 namespace
 {
-	template<typename T, typename = void>
-	struct HasConnectWinnerIdField : std::false_type
-	{
-	};
-
-	template<typename T>
-	struct HasConnectWinnerIdField<T, std::void_t<decltype(&T::winnerId)>> : std::true_type
-	{
-	};
-
-	id getConnectWinnerId(const QDUEL::ConnectToRoom_output& output)
-	{
-		if constexpr (HasConnectWinnerIdField<QDUEL::ConnectToRoom_output>::value)
-		{
-			return output.winner;
-		}
-		else
-		{
-			return output.winner;
-		}
-	}
-
 	bool findPlayersForWinner(ContractTestingQDuel& qduel, bool wantPlayer1Win, id& player1, id& player2)
 	{
 		// Brute-force deterministic ids until winner matches desired side.
@@ -337,10 +315,9 @@ namespace
 		qduel.state()->calculateRevenue(duelAmount * 2, revenueOutput);
 
 		// Player 2 joins and triggers finalize logic.
-		const auto connectOutput = qduel.connectToRoom(player2, qduel.state()->firstRoom().roomId, duelAmount);
+		const QDUEL::ConnectToRoom_output connectOutput = qduel.connectToRoom(player2, qduel.state()->firstRoom().roomId, duelAmount);
 		EXPECT_EQ(connectOutput.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
-		EXPECT_EQ(getConnectWinnerId(connectOutput), winner);
-		const uint64 player2AfterConnectToRoom = getBalance(player2);
+		EXPECT_EQ(connectOutput.winner, winner);
 
 		// Check fee distribution for team and shareholders.
 		EXPECT_EQ(getBalance(qduel.state()->team()), teamBefore + revenueOutput.devFee);
@@ -794,7 +771,7 @@ TEST(ContractQDuel, CreateRoomRejectsWhenRoomsFull)
 		const id owner(100 + i, 0, 0, 0);
 		qduel.setTick(i);
 		increaseEnergy(owner, stake);
-		const auto output = qduel.createRoom(owner, NULL_ID, stake, 1, stake, stake);
+		const QDUEL::CreateRoom_output output = qduel.createRoom(owner, NULL_ID, stake, 1, stake, stake);
 		EXPECT_EQ(output.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS)) << "at[" << i << "]";
 	}
 
@@ -870,9 +847,9 @@ TEST(ContractQDuel, ConnectToRoomRefundsExcessRewardForLoser)
 	EXPECT_EQ(qduel.createRoom(owner, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	const uint64 opponentBefore = getBalance(opponent);
 
-	const auto connectOutput = qduel.connectToRoom(opponent, qduel.state()->firstRoom().roomId, reward);
+	const QDUEL::ConnectToRoom_output connectOutput = qduel.connectToRoom(opponent, qduel.state()->firstRoom().roomId, reward);
 	EXPECT_EQ(connectOutput.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
-	EXPECT_EQ(getConnectWinnerId(connectOutput), owner);
+	EXPECT_EQ(connectOutput.winner, owner);
 	EXPECT_EQ(getBalance(opponent), opponentBefore - stake);
 }
 
@@ -943,7 +920,7 @@ TEST(ContractQDuel, CalculateRevenueMatchesExpectedSplits)
 TEST(ContractQDuel, SetPercentFeesAccessDeniedAndGetPercentFees)
 {
 	ContractTestingQDuel qduel;
-	const auto before = qduel.getPercentFees();
+	const QDUEL::GetPercentFees_output before = qduel.getPercentFees();
 
 	const id user(28, 0, 0, 0);
 	increaseEnergy(user, 10);
@@ -952,7 +929,7 @@ TEST(ContractQDuel, SetPercentFeesAccessDeniedAndGetPercentFees)
 	EXPECT_EQ(qduel.setPercentFees(user, 1, 2, 3, 10).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::ACCESS_DENIED));
 	EXPECT_EQ(getBalance(user), balanceBefore);
 
-	const auto after = qduel.getPercentFees();
+	const QDUEL::GetPercentFees_output after = qduel.getPercentFees();
 	EXPECT_EQ(after.devFeePercentBps, before.devFeePercentBps);
 	EXPECT_EQ(after.burnFeePercentBps, before.burnFeePercentBps);
 	EXPECT_EQ(after.shareholdersFeePercentBps, before.shareholdersFeePercentBps);
@@ -966,7 +943,7 @@ TEST(ContractQDuel, SetPercentFeesUpdatesState)
 	increaseEnergy(qduel.state()->team(), 1);
 	EXPECT_EQ(qduel.setPercentFees(qduel.state()->team(), 1, 2, 3, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
-	const auto output = qduel.getPercentFees();
+	const QDUEL::GetPercentFees_output output = qduel.getPercentFees();
 	EXPECT_EQ(output.devFeePercentBps, 1);
 	EXPECT_EQ(output.burnFeePercentBps, 2);
 	EXPECT_EQ(output.shareholdersFeePercentBps, 3);
@@ -998,7 +975,7 @@ TEST(ContractQDuel, SetTTLHoursUpdatesState)
 	increaseEnergy(qduel.state()->team(), 1);
 
 	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 6, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
-	const auto output = qduel.getTtlHours();
+	const QDUEL::GetTTLHours_output output = qduel.getTtlHours();
 	EXPECT_EQ(output.ttlHours, 6);
 	EXPECT_EQ(output.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 }
@@ -1017,7 +994,7 @@ TEST(ContractQDuel, GetRoomsReturnsActiveRooms)
 	EXPECT_EQ(qduel.createRoom(owner1, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	EXPECT_EQ(qduel.createRoom(owner2, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
-	const auto output = qduel.getRooms();
+	const QDUEL::GetRooms_output output = qduel.getRooms();
 	EXPECT_EQ(output.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
 	uint64 count = 0;
@@ -1060,7 +1037,7 @@ TEST(ContractQDuel, GetUserProfileReportsUserData)
 
 	EXPECT_EQ(qduel.createRoom(owner, NULL_ID, stake, 2, stake * 2, stake + 200).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
-	const auto profile = qduel.state()->getUserProfileFor(owner);
+	const QDUEL::GetUserProfile_output profile = qduel.state()->getUserProfileFor(owner);
 	EXPECT_EQ(profile.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	EXPECT_EQ(profile.depositedAmount, 200ULL);
 	EXPECT_EQ(profile.locked, stake);
