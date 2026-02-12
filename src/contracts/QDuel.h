@@ -264,6 +264,22 @@ public:
 		bit failedGetWinner;
 	};
 
+	struct CloseRoom_input
+	{
+	};
+
+	struct CloseRoom_output
+	{
+		uint8 returnCode;
+	};
+
+	struct CloseRoom_locals
+	{
+		UserData userData;
+		RoomInfo room;
+		uint64 refundAmount;
+	};
+
 	struct GetPercentFees_input
 	{
 	};
@@ -410,6 +426,7 @@ public:
 		REGISTER_USER_PROCEDURE(SetTTLHours, 4);
 		REGISTER_USER_PROCEDURE(Deposit, 5);
 		REGISTER_USER_PROCEDURE(Withdraw, 6);
+		REGISTER_USER_PROCEDURE(CloseRoom, 7);
 
 		REGISTER_USER_FUNCTION(GetPercentFees, 1);
 		REGISTER_USER_FUNCTION(GetRooms, 2);
@@ -859,6 +876,51 @@ public:
 		locals.userData.depositedAmount -= input.amount;
 		state.users.set(locals.userData.userId, locals.userData);
 		qpi.transfer(qpi.invocator(), input.amount);
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(CloseRoom)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (!state.users.get(qpi.invocator(), locals.userData))
+		{
+			output.returnCode = toReturnCode(EReturnCode::USER_NOT_FOUND);
+			return;
+		}
+
+		if (state.rooms.get(locals.userData.roomId, locals.room))
+		{
+			if (locals.room.owner != qpi.invocator())
+			{
+				output.returnCode = toReturnCode(EReturnCode::ROOM_ACCESS_DENIED);
+				return;
+			}
+
+			state.rooms.removeByKey(locals.userData.roomId);
+			state.rooms.cleanupIfNeeded();
+		}
+
+		if (locals.userData.depositedAmount > 0)
+		{
+			locals.refundAmount += static_cast<uint64>(locals.userData.depositedAmount);
+		}
+		if (locals.userData.locked > 0)
+		{
+			locals.refundAmount += static_cast<uint64>(locals.userData.locked);
+		}
+
+		state.users.removeByKey(locals.userData.userId);
+		state.users.cleanupIfNeeded();
+
+		if (locals.refundAmount > 0)
+		{
+			qpi.transfer(qpi.invocator(), locals.refundAmount);
+		}
+
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
