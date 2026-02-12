@@ -73,9 +73,6 @@ namespace
 	}
 } // namespace
 
-static const id QTF_DEV_ADDRESS = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C,
-                                     _R, _L, _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
-
 constexpr uint8 QTF_ANY_DAY_SCHEDULE = 0xFF;
 
 // Test helper class exposing internal state
@@ -90,6 +87,7 @@ public:
 	bool getFrActive() const { return frActive; }
 	uint32 getFrRoundsSinceK4() const { return frRoundsSinceK4; }
 	uint32 getFrRoundsAtOrAboveTarget() const { return frRoundsAtOrAboveTarget; }
+	const id& team() const { return teamAddress; }
 
 	void setScheduleMask(uint8 newMask) { schedule = newMask; }
 	void setJackpot(uint64 value) { jackpot = value; }
@@ -1233,10 +1231,10 @@ TEST(ContractQThirtyFour, SetPrice_AccessControl)
 TEST(ContractQThirtyFour, SetPrice_ZeroNotAllowed)
 {
 	ContractTestingQTF ctl;
-	increaseEnergy(QTF_DEV_ADDRESS, 1);
+	increaseEnergy(ctl.state()->team(), 1);
 
 	const uint64 oldPrice = ctl.state()->getTicketPriceInternal();
-	const QTF::SetPrice_output outInvalid = ctl.setPrice(QTF_DEV_ADDRESS, 0);
+	const QTF::SetPrice_output outInvalid = ctl.setPrice(ctl.state()->team(), 0);
 	EXPECT_EQ(outInvalid.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_TICKET_PRICE));
 
 	// Price unchanged
@@ -1247,12 +1245,12 @@ TEST(ContractQThirtyFour, SetPrice_AppliesAfterEndEpoch)
 {
 	ContractTestingQTF ctl;
 	ctl.beginEpochWithValidTime();
-	increaseEnergy(QTF_DEV_ADDRESS, 1);
+	increaseEnergy(ctl.state()->team(), 1);
 
 	const uint64 oldPrice = ctl.state()->getTicketPriceInternal();
 	const uint64 newPrice = oldPrice * 3;
 
-	const QTF::SetPrice_output outOk = ctl.setPrice(QTF_DEV_ADDRESS, newPrice);
+	const QTF::SetPrice_output outOk = ctl.setPrice(ctl.state()->team(), newPrice);
 	EXPECT_EQ(outOk.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
 
 	// Queued in NextEpochData
@@ -1283,9 +1281,9 @@ TEST(ContractQThirtyFour, SetSchedule_AccessControl)
 TEST(ContractQThirtyFour, SetSchedule_ZeroNotAllowed)
 {
 	ContractTestingQTF ctl;
-	increaseEnergy(QTF_DEV_ADDRESS, 1);
+	increaseEnergy(ctl.state()->team(), 1);
 
-	const QTF::SetSchedule_output outInvalid = ctl.setSchedule(QTF_DEV_ADDRESS, 0);
+	const QTF::SetSchedule_output outInvalid = ctl.setSchedule(ctl.state()->team(), 0);
 	EXPECT_EQ(outInvalid.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_VALUE));
 }
 
@@ -1293,11 +1291,11 @@ TEST(ContractQThirtyFour, SetSchedule_AppliesAfterEndEpoch)
 {
 	ContractTestingQTF ctl;
 	ctl.beginEpochWithValidTime();
-	increaseEnergy(QTF_DEV_ADDRESS, 1);
+	increaseEnergy(ctl.state()->team(), 1);
 
 	const uint8 newSchedule = 0x7F; // All days
 
-	const QTF::SetSchedule_output outOk = ctl.setSchedule(QTF_DEV_ADDRESS, newSchedule);
+	const QTF::SetSchedule_output outOk = ctl.setSchedule(ctl.state()->team(), newSchedule);
 	EXPECT_EQ(outOk.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
 
 	// Queued
@@ -1322,9 +1320,9 @@ TEST(ContractQThirtyFour, SetTargetJackpot_AccessControl)
 TEST(ContractQThirtyFour, SetTargetJackpot_ZeroNotAllowed)
 {
 	ContractTestingQTF ctl;
-	increaseEnergy(QTF_DEV_ADDRESS, 1);
+	increaseEnergy(ctl.state()->team(), 1);
 
-	const QTF::SetTargetJackpot_output outInvalid = ctl.setTargetJackpot(QTF_DEV_ADDRESS, 0);
+	const QTF::SetTargetJackpot_output outInvalid = ctl.setTargetJackpot(ctl.state()->team(), 0);
 	EXPECT_EQ(outInvalid.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_VALUE));
 }
 
@@ -1332,11 +1330,11 @@ TEST(ContractQThirtyFour, SetTargetJackpot_AppliesAfterEndEpoch)
 {
 	ContractTestingQTF ctl;
 	ctl.beginEpochWithValidTime();
-	increaseEnergy(QTF_DEV_ADDRESS, 1);
+	increaseEnergy(ctl.state()->team(), 1);
 
 	const uint64 newTarget = 5000000000ULL;
 
-	const QTF::SetTargetJackpot_output outOk = ctl.setTargetJackpot(QTF_DEV_ADDRESS, newTarget);
+	const QTF::SetTargetJackpot_output outOk = ctl.setTargetJackpot(ctl.state()->team(), newTarget);
 	EXPECT_EQ(outOk.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
 
 	// Queued
@@ -1361,14 +1359,14 @@ TEST(ContractQThirtyFour, SetDrawHour_AccessControl)
 TEST(ContractQThirtyFour, SetDrawHour_InvalidValues)
 {
 	ContractTestingQTF ctl;
-	increaseEnergy(QTF_DEV_ADDRESS, 2);
+	increaseEnergy(ctl.state()->team(), 2);
 
 	// 0 is invalid
-	const QTF::SetDrawHour_output out0 = ctl.setDrawHour(QTF_DEV_ADDRESS, 0);
+	const QTF::SetDrawHour_output out0 = ctl.setDrawHour(ctl.state()->team(), 0);
 	EXPECT_EQ(out0.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_VALUE));
 
 	// 24+ is invalid
-	const QTF::SetDrawHour_output out24 = ctl.setDrawHour(QTF_DEV_ADDRESS, 24);
+	const QTF::SetDrawHour_output out24 = ctl.setDrawHour(ctl.state()->team(), 24);
 	EXPECT_EQ(out24.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_VALUE));
 }
 
@@ -1376,11 +1374,11 @@ TEST(ContractQThirtyFour, SetDrawHour_AppliesAfterEndEpoch)
 {
 	ContractTestingQTF ctl;
 	ctl.beginEpochWithValidTime();
-	increaseEnergy(QTF_DEV_ADDRESS, 1);
+	increaseEnergy(ctl.state()->team(), 1);
 
 	const uint8 newHour = 18;
 
-	const QTF::SetDrawHour_output outOk = ctl.setDrawHour(QTF_DEV_ADDRESS, newHour);
+	const QTF::SetDrawHour_output outOk = ctl.setDrawHour(ctl.state()->team(), newHour);
 	EXPECT_EQ(outOk.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
 
 	// Queued
@@ -1460,7 +1458,7 @@ TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed)
 	ctl.buyRandomTickets(numPlayers, ticketPrice, nums.losing);
 
 	const uint64 totalRevenue = ticketPrice * numPlayers;
-	const uint64 devBalBefore = getBalance(QTF_DEV_ADDRESS);
+	const uint64 devBalBefore = getBalance(ctl.state()->team());
 	const uint64 sh1Before = getBalance(shareholder1);
 	const uint64 sh2Before = getBalance(shareholder2);
 	const uint64 rlBefore = getBalance(id(RL_CONTRACT_INDEX, 0, 0, 0));
@@ -1475,7 +1473,7 @@ TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed)
 	// In baseline mode (FR not active), dev receives full 10% of revenue
 	// No redirects are applied
 	const uint64 expectedDevFee = (totalRevenue * fees.teamFeePercent) / 100;
-	EXPECT_EQ(getBalance(QTF_DEV_ADDRESS), devBalBefore + expectedDevFee)
+	EXPECT_EQ(getBalance(ctl.state()->team()), devBalBefore + expectedDevFee)
 	    << "In baseline mode, dev should receive full " << static_cast<int>(fees.teamFeePercent) << "% of revenue";
 
 	// Distribution is paid to RL shareholders with flooring to dividendPerShare and payback remainder to RL contract.
@@ -1569,7 +1567,7 @@ TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed_FRMode)
 	ctl.buyRandomTickets(numPlayers, ticketPrice, nums.losing);
 
 	const uint64 totalRevenue = ticketPrice * numPlayers;
-	const uint64 devBalBefore = getBalance(QTF_DEV_ADDRESS);
+	const uint64 devBalBefore = getBalance(ctl.state()->team());
 	const uint64 contractBalBefore = getBalance(ctl.qtfSelf());
 	const uint64 jackpotBefore = ctl.state()->getJackpot();
 	const uint64 roundsSinceK4Before = ctl.state()->getFrRoundsSinceK4();
@@ -1590,7 +1588,7 @@ TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed_FRMode)
 	// Expected: fullDevFee - at least baseDevRedirect
 	const uint64 maxExpectedDevPayout = fullDevFee - baseDevRedirect;
 
-	const uint64 actualDevPayout = getBalance(QTF_DEV_ADDRESS) - devBalBefore;
+	const uint64 actualDevPayout = getBalance(ctl.state()->team()) - devBalBefore;
 
 	// Dev should receive less than full fee (due to redirects to jackpot)
 	EXPECT_LT(actualDevPayout, fullDevFee) << "In FR mode, dev payout should be reduced by redirects";
@@ -2899,14 +2897,14 @@ TEST(ContractQThirtyFour, FR_HighDeficit_ExtraRedirectsCalculated)
 	// - Since base gain (125M) > required (20M), extra might be 0 or small
 	// But let's verify the mechanism is working
 
-	const uint64 devBalBefore = getBalance(QTF_DEV_ADDRESS);
+	const uint64 devBalBefore = getBalance(ctl.state()->team());
 	const uint64 jackpotBefore = ctl.state()->getJackpot();
 	EXPECT_EQ(jackpotBefore, 0ULL);
 
 	ctl.drawWithDigest(testDigest);
 
 	// After settlement with FR active and high deficit:
-	const uint64 devBalAfter = getBalance(QTF_DEV_ADDRESS);
+	const uint64 devBalAfter = getBalance(ctl.state()->team());
 	const uint64 jackpotAfter = ctl.state()->getJackpot();
 
 	// Verify FR is still active
@@ -2970,7 +2968,7 @@ TEST(ContractQThirtyFour, Settlement_FRMode_ExtraRedirect_ClampsToMax_AndAffects
 	const QTF::GetFees_output fees = ctl.getFees();
 	const uint64 revenue = P * numPlayers;
 
-	const uint64 devBefore = getBalance(QTF_DEV_ADDRESS);
+	const uint64 devBefore = getBalance(ctl.state()->team());
 	const uint64 sh1Before = getBalance(shareholder1);
 	const uint64 sh2Before = getBalance(shareholder2);
 	const uint64 rlBefore = getBalance(id(RL_CONTRACT_INDEX, 0, 0, 0));
@@ -3000,7 +2998,7 @@ TEST(ContractQThirtyFour, Settlement_FRMode_ExtraRedirect_ClampsToMax_AndAffects
 	ctl.drawWithDigest(testDigest);
 
 	// Dev payout must match exact base+extra redirect math (no caps expected in this scenario).
-	EXPECT_EQ(static_cast<uint64>(getBalance(QTF_DEV_ADDRESS) - devBefore), expectedDevPayout);
+	EXPECT_EQ(static_cast<uint64>(getBalance(ctl.state()->team()) - devBefore), expectedDevPayout);
 
 	// Distribution must match expectedDistPayout (dividendPerShare flooring + payback).
 	const uint64 dividendPerShare = expectedDistPayout / NUMBER_OF_COMPUTORS;
@@ -3114,3 +3112,4 @@ TEST(ContractQThirtyFour, FR_PostK4WindowExpiry_DoesNotReactivateWhenWindowExpir
 	EXPECT_EQ(ctl.state()->getFrRoundsSinceK4(), QTF_FR_POST_K4_WINDOW_ROUNDS + 2);
 	EXPECT_EQ(ctl.state()->getFrActive(), false);
 }
+

@@ -12,9 +12,6 @@ constexpr uint16 QRP_FUNC_GET_ALLOWED_SC = 2;
 
 static const id QRP_CONTRACT_ID(QRP_CONTRACT_INDEX, 0, 0, 0);
 static const id QRP_DEFAULT_SC_ID(QRP_QTF_INDEX, 0, 0, 0);
-static const id QRP_OWNER_TEAM_ADDRESS =
-    ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C, _R, _L, _W, _E, _T, _H, _N, _G,
-       _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
 
 class QRPChecker : public QRP
 {
