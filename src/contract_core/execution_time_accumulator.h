@@ -59,7 +59,7 @@ public:
             math_lib::sadd(contractExecutionTimePerPhase[contractExecutionTimeActiveArrayIndex][contractIndex], timeMicroSeconds);
         RELEASE(lock);
 
-#if !defined(NDEBUG) && !defined(NO_UEFI)
+#if !defined(NDEBUG) && !defined(NO_UEFI) && 0
         CHAR16 dbgMsgBuf[128];
         setText(dbgMsgBuf, L"Execution time added for contract ");
         appendNumber(dbgMsgBuf, contractIndex, FALSE);

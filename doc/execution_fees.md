@@ -20,7 +20,8 @@ Contracts can refill their execution fee reserves in the following ways:
 
 The execution fee system follows a key principle: **"The Contract Initiating Execution Pays"**. When a user initiates a transaction, the user's destination contract must have a positive executionFeeReserve. When a contract initiates an operation (including any callbacks it triggers), that contract must have positive executionFeeReserve.
 
-Currently, execution fees are checked (contracts must have `executionFeeReserve > 0`) but **not yet deducted** based on actual computation. Future implementation will measure execution time and resources per procedure call, deduct proportional fees from the reserve.
+Execution fees are checked (contracts must have `executionFeeReserve > 0`) before most contract entry points (see next section).
+The deducted execution fees are proportional to the actual execution time of the contract procedures.
 
 ## What Operations Require Execution Fees
 
@@ -71,3 +72,4 @@ Example: Contract A (executionFeeReserve = 1000) transfers 500 QU to Contract B 
 1. **Check contract status**: Before using a contract, verify it has positive executionFeeReserve
 2. **Transaction failures**: If your transaction fails due to insufficient execution fees reserve, the attached amount will be automatically refunded
 3. **No funds lost**: The system ensures amounts are refunded if a contract cannot execute
+

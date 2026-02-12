@@ -778,9 +778,6 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Packs current date into a compact stamp (Y/M/D) used to ensure a single action per calendar day.
-	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
-
 private:
 	/**
 	 * @brief Internal: records a winner into the cyclic winners array.
@@ -814,6 +811,13 @@ private:
 			qpi.transfer(state.players.get(locals.i), state.ticketPrice);
 		}
 	}
+
+public:
+	// Packs current date into a compact stamp (Y/M/D) used to ensure a single action per calendar day.
+	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
+
+	template<typename T> static constexpr T min(const T& a, const T& b) { return (a < b) ? a : b; }
+	template<typename T> static constexpr T max(const T& a, const T& b) { return a > b ? a : b; }
 
 protected:
 	/**
@@ -957,8 +961,4 @@ protected:
 
 	// Reads current net on-chain balance of SELF (incoming - outgoing).
 	static void getSCRevenue(const Entity& entity, uint64& revenue) { revenue = entity.incomingAmount - entity.outgoingAmount; }
-
-	template<typename T> static constexpr const T& min(const T& a, const T& b) { return (a < b) ? a : b; }
-
-	template<typename T> static constexpr const T& max(const T& a, const T& b) { return (a > b) ? a : b; }
 };

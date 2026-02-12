@@ -114,6 +114,7 @@
   <ItemGroup>
     <ClInclude Include="contract_testing.h" />
     <ClInclude Include="logging_test.h" />
+    <ClInclude Include="oracle_testing.h" />
     <ClInclude Include="score_addition_reference.h" />
     <ClInclude Include="score_common_reference.h" />
     <ClInclude Include="score_hyperidentity_reference.h" />
@@ -130,6 +131,7 @@
     <ClCompile Include="pending_txs_pool.cpp" />
     <ClCompile Include="quorum_value.cpp" />
     <ClCompile Include="sorting.cpp" />
+    <ClCompile Include="oracle_engine.cpp" />
     <ClCompile Include="uint128.cpp" />
     <ClCompile Include="assets.cpp" />
     <ClCompile Include="contract_core.cpp" />
@@ -145,6 +147,8 @@
     <ClCompile Include="contract_gqmprop.cpp" />
     <ClCompile Include="contract_rl.cpp" />
     <ClCompile Include="contract_qduel.cpp" />
+    <ClCompile Include="contract_qrp.cpp" />
+    <ClCompile Include="contract_qtf.cpp" />
     <ClCompile Include="contract_ccf.cpp" />
     <ClCompile Include="contract_qip.cpp" />
     <ClCompile Include="custom_mining.cpp" />

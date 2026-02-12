@@ -15,6 +15,9 @@
 #include "contracts/qpi.h"
 #include "qpi_proposal_voting.h"
 
+// make interfaces to oracles available for all contracts
+#include "oracle_core/oracle_interfaces_def.h"
+
 #define QX_CONTRACT_INDEX 1
 #define CONTRACT_INDEX QX_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QX
@@ -79,11 +82,7 @@
 #define CONTRACT_INDEX SWATCH_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE SWATCH
 #define CONTRACT_STATE2_TYPE SWATCH2
-#ifdef OLD_SWATCH
-#include "contracts/SupplyWatcher_old.h"
-#else
 #include "contracts/SupplyWatcher.h"
-#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -219,7 +218,27 @@
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
-#define QDUEL_CONTRACT_INDEX 21
+#define QRP_CONTRACT_INDEX 21
+#define CONTRACT_INDEX QRP_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QRP
+#define CONTRACT_STATE2_TYPE QRP2
+#include "contracts/QReservePool.h"
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QTF_CONTRACT_INDEX 22
+#define CONTRACT_INDEX QTF_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QTF
+#define CONTRACT_STATE2_TYPE QTF2
+#include "contracts/QThirtyFour.h"
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QDUEL_CONTRACT_INDEX 23
 #define CONTRACT_INDEX QDUEL_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QDUEL
 #define CONTRACT_STATE2_TYPE QDUEL2
@@ -333,6 +352,8 @@ constexpr struct ContractDescription
     {"QIP", 189, 10000, sizeof(QIP)}, // proposal in epoch 187, IPO in 188, construction and first use in 189
     {"QRAFFLE", 192, 10000, sizeof(QRAFFLE)}, // proposal in epoch 190, IPO in 191, construction and first use in 192
     {"QRWA", 197, 10000, sizeof(QRWA)}, // proposal in epoch 195, IPO in 196, construction and first use in 197
+	{"QRP", 199, 10000, sizeof(IPO)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
+	{"QTF", 199, 10000, sizeof(QTF)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
     {"QDUEL", 199, 10000, sizeof(QDUEL)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -450,6 +471,8 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QIP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRAFFLE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRWA);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRP);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTF);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDUEL);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -459,10 +482,55 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXD);
 
     // fill execution fee reserves for test contracts
-    setContractFeeReserve(TESTEXA_CONTRACT_INDEX, 10000);
-    setContractFeeReserve(TESTEXB_CONTRACT_INDEX, 10000);
-    setContractFeeReserve(TESTEXC_CONTRACT_INDEX, 10000);
-    setContractFeeReserve(TESTEXD_CONTRACT_INDEX, 10000);
+    setContractFeeReserve(TESTEXA_CONTRACT_INDEX, 100000000000);
+    setContractFeeReserve(TESTEXB_CONTRACT_INDEX, 100000000000);
+    setContractFeeReserve(TESTEXC_CONTRACT_INDEX, 100000000000);
+    setContractFeeReserve(TESTEXD_CONTRACT_INDEX, 100000000000);
 #endif
 }
 
+// Class for registering and looking up user procedures independently of input type, for example for notifications
+class UserProcedureRegistry
+{
+public:
+    struct UserProcedureData
+    {
+        USER_PROCEDURE procedure;
+        unsigned int contractIndex;
+        unsigned int localsSize;
+        unsigned short inputSize;
+        unsigned short outputSize;
+    };
+
+    void init()
+    {
+        setMemory(*this, 0);
+    }
+
+    bool add(unsigned int procedureId, const UserProcedureData& data)
+    {
+        const unsigned int cnt = (unsigned int)idToIndex.population();
+        if (cnt >= idToIndex.capacity())
+            return false;
+
+        copyMemory(userProcData[cnt], data);
+        idToIndex.set(procedureId, cnt);
+
+        return true;
+    }
+
+    const UserProcedureData* get(unsigned int procedureId) const
+    {
+        unsigned int idx;
+        if (!idToIndex.get(procedureId, idx))
+            return nullptr;
+        return userProcData + idx;
+    }
+
+protected:
+    UserProcedureData userProcData[MAX_CONTRACT_PROCEDURES_REGISTERED];
+    QPI::HashMap<unsigned int, unsigned int, MAX_CONTRACT_PROCEDURES_REGISTERED> idToIndex;
+};
+
+// For registering and looking up user procedures independently of input type (for notifications), initialized by initContractExec()
+GLOBAL_VAR_DECL UserProcedureRegistry* userProcedureRegistry GLOBAL_VAR_INIT(nullptr);
