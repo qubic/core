@@ -2,6 +2,7 @@
 #define _ALLOW_KEYWORD_MACROS
 #define private protected
 #include "contract_testing.h"
+#include <type_traits>
 #undef private
 #undef _ALLOW_KEYWORD_MACROS
 
@@ -85,7 +86,7 @@ public:
 	GetUserProfile_output getUserProfileFor(const id& user) const
 	{
 		QpiContextUserFunctionCallWithInvocator qpi(QDUEL_CONTRACT_INDEX, user);
-		GetUserProfile_input input{};
+		GetUserProfile_input input{user};
 		GetUserProfile_output output{};
 		GetUserProfile_locals locals{};
 		GetUserProfile(qpi, *this, input, output, locals);
@@ -184,11 +185,11 @@ public:
 		return output;
 	}
 
-	QDUEL::GetUserProfile_output getUserProfile()
+	QDUEL::GetUserProfile_output getUserProfile(const id& userId)
 	{
-		QDUEL::GetUserProfile_input input{};
+		QDUEL::GetUserProfile_input input{userId};
 		QDUEL::GetUserProfile_output output;
-		// Read-only function call for caller profile.
+		// Read-only function call for profile by user id.
 		callFunction(QDUEL_CONTRACT_INDEX, FUNCTION_INDEX_GET_USER_PROFILE, input, output);
 		return output;
 	}
@@ -254,6 +255,28 @@ public:
 
 namespace
 {
+	template<typename T, typename = void>
+	struct HasConnectWinnerIdField : std::false_type
+	{
+	};
+
+	template<typename T>
+	struct HasConnectWinnerIdField<T, std::void_t<decltype(&T::winnerId)>> : std::true_type
+	{
+	};
+
+	id getConnectWinnerId(const QDUEL::ConnectToRoom_output& output)
+	{
+		if constexpr (HasConnectWinnerIdField<QDUEL::ConnectToRoom_output>::value)
+		{
+			return output.winner;
+		}
+		else
+		{
+			return output.winner;
+		}
+	}
+
 	bool findPlayersForWinner(ContractTestingQDuel& qduel, bool wantPlayer1Win, id& player1, id& player2)
 	{
 		// Brute-force deterministic ids until winner matches desired side.
@@ -317,8 +340,9 @@ namespace
 		qduel.state()->calculateRevenue(duelAmount * 2, revenueOutput);
 
 		// Player 2 joins and triggers finalize logic.
-		EXPECT_EQ(qduel.connectToRoom(player2, qduel.state()->firstRoom().roomId, duelAmount).returnCode,
-		          QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+		const auto connectOutput = qduel.connectToRoom(player2, qduel.state()->firstRoom().roomId, duelAmount);
+		EXPECT_EQ(connectOutput.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+		EXPECT_EQ(getConnectWinnerId(connectOutput), winner);
 		const uint64 player2AfterConnectToRoom = getBalance(player2);
 
 		// Check fee distribution for team and shareholders.
@@ -849,7 +873,9 @@ TEST(ContractQDuel, ConnectToRoomRefundsExcessRewardForLoser)
 	EXPECT_EQ(qduel.createRoom(owner, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	const uint64 opponentBefore = getBalance(opponent);
 
-	EXPECT_EQ(qduel.connectToRoom(opponent, qduel.state()->firstRoom().roomId, reward).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	const auto connectOutput = qduel.connectToRoom(opponent, qduel.state()->firstRoom().roomId, reward);
+	EXPECT_EQ(connectOutput.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_EQ(getConnectWinnerId(connectOutput), owner);
 	EXPECT_EQ(getBalance(opponent), opponentBefore - stake);
 }
 
@@ -1027,7 +1053,8 @@ TEST(ContractQDuel, GetUserProfileReportsUserData)
 	ContractTestingQDuel qduel;
 	qduel.state()->setState(QDUEL::EState::NONE);
 
-	const QDUEL::GetUserProfile_output& missing = qduel.getUserProfile();
+	const id missingUser(3200, 0, 0, 0);
+	const QDUEL::GetUserProfile_output& missing = qduel.getUserProfile(missingUser);
 	EXPECT_EQ(missing.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::USER_NOT_FOUND));
 
 	const id owner(32, 0, 0, 0);

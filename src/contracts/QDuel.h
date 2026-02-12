@@ -243,6 +243,7 @@ public:
 
 	struct ConnectToRoom_output
 	{
+		id winner;
 		uint8 returnCode;
 	};
 
@@ -332,6 +333,7 @@ public:
 
 	struct GetUserProfile_input
 	{
+		id userId;
 	};
 
 	struct GetUserProfile_output
@@ -686,6 +688,7 @@ public:
 		locals.finalizeInput.includeLocked = false;
 		CALL(FinalizeRoom, locals.finalizeInput, locals.finalizeOutput);
 		output.returnCode = locals.finalizeOutput.returnCode;
+		output.winner = locals.winner;
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetPercentFees)
@@ -772,7 +775,7 @@ public:
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetUserProfile)
 	{
-		if (!state.users.get(qpi.invocator(), locals.userData))
+		if (!state.users.get(input.userId, locals.userData))
 		{
 			output.returnCode = toReturnCode(EReturnCode::USER_NOT_FOUND);
 			return;
