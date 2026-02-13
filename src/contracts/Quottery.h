@@ -1,5 +1,5 @@
 using namespace QPI;
-constexpr uint64 QUOTTERY_INITIAL_MAX_EVENT = 1024;
+constexpr uint64 QUOTTERY_INITIAL_MAX_EVENT = 4096;
 constexpr uint64 QUOTTERY_MAX_CONCURRENT_EVENT = QUOTTERY_INITIAL_MAX_EVENT * X_MULTIPLIER; // Maximum number of concurrent events (at the same time)
 constexpr uint64 QUOTTERY_MAX_NUMBER_OF_USER = QUOTTERY_MAX_CONCURRENT_EVENT * 2048;
 
