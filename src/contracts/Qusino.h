@@ -19,21 +19,21 @@ constexpr uint32 QUSINO_TREASURY_DIVIDENDS_PERCENT = 25;
 constexpr uint32 QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT = 40;
 constexpr uint64 QUSINO_INFINITY_PRICE = 1000000000000000000ULL;
 
-constexpr sint32 QusinoSuccess = 0;
-constexpr sint32 QusinoinsufficientFunds = 1;
-constexpr sint32 QusinoinsufficientSTAR = 2;
-constexpr sint32 QusinoinsufficientQSC = 3;
-constexpr sint32 QusinoLowStaking = 4;
-constexpr sint32 QusinoWrongStakingType = 5;
-constexpr sint32 QusinoInsufficientVoteFee = 6;
-constexpr sint32 QusinoWrongGameURIForVote = 7;
-constexpr sint32 QusinoAlreadyVoted = 8;
-constexpr sint32 QusinoNotVoteTime = 9;
-constexpr sint32 QusinoNoEmptySlot = 10;
-constexpr sint32 QusinoinsufficientQSTAmountForSale = 11;
-constexpr sint32 QusinoinvalidTransfer = 12;
-constexpr sint32 QusinoinsufficientQST = 13;
-constexpr sint32 QusinoWrongAssetType = 14;
+constexpr sint32 QUSINO_SUCCESS = 0;
+constexpr sint32 QUSINO_INSUFFICIENT_FUNDS = 1;
+constexpr sint32 QUSINO_INSUFFICIENT_STAR = 2;
+constexpr sint32 QUSINO_INSUFFICIENT_QSC = 3;
+constexpr sint32 QUSINO_LOW_STAKING = 4;
+constexpr sint32 QUSINO_WRONG_STAKING_TYPE = 5;
+constexpr sint32 QUSINO_INSUFFICIENT_VOTE_FEE = 6;
+constexpr sint32 QUSINO_WRONG_GAME_URI_FOR_VOTE = 7;
+constexpr sint32 QUSINO_ALREADY_VOTED = 8;
+constexpr sint32 QUSINO_NOT_VOTE_TIME = 9;
+constexpr sint32 QUSINO_NO_EMPTY_SLOT = 10;
+constexpr sint32 QUSINO_INSUFFICIENT_QST_AMOUNT_FOR_SALE = 11;
+constexpr sint32 QUSINO_INVALID_TRANSFER = 12;
+constexpr sint32 QUSINO_INSUFFICIENT_QST = 13;
+constexpr sint32 QUSINO_WRONG_ASSET_TYPE = 14;
 
 struct QUSINO2
 {
@@ -234,7 +234,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QusinoinsufficientQSTAmountForSale;
+            output.returnCode = QUSINO_INSUFFICIENT_QST_AMOUNT_FOR_SALE;
             return ;
         }
         if (input.type == 0)              // if Qubic buy 
@@ -261,7 +261,7 @@ protected:
                 {
                     qpi.transfer(qpi.invocator(), qpi.invocationReward());
                 }
-                output.returnCode = QusinoinsufficientFunds;
+                output.returnCode = QUSINO_INSUFFICIENT_FUNDS;
                 return ;
             }
             if (qpi.transferShareOwnershipAndPossession(state.QSTAssetName, state.QSTIssuer, SELF, SELF, input.amount, qpi.invocator()) < 0)
@@ -270,7 +270,7 @@ protected:
                 {
                     qpi.transfer(qpi.invocator(), qpi.invocationReward());
                 }
-                output.returnCode = QusinoinvalidTransfer;
+                output.returnCode = QUSINO_INVALID_TRANSFER;
                 return ;
             }
             if (input.amount * locals.minPrice < (uint32)qpi.invocationReward()) 
@@ -288,7 +288,7 @@ protected:
             state.userAssetVolume.get(qpi.invocator(), locals.user);
             if (locals.user.volumeOfQSC < input.amount)
             {
-                output.returnCode = QusinoinsufficientQSC;
+                output.returnCode = QUSINO_INSUFFICIENT_QSC;
                 return ;
             }
             if (qpi.transferShareOwnershipAndPossession(state.QSTAssetName, state.QSTIssuer, SELF, SELF, input.amount, qpi.invocator()) < 0)
@@ -297,7 +297,7 @@ protected:
                 {
                     qpi.transfer(qpi.invocator(), qpi.invocationReward());
                 }
-                output.returnCode = QusinoinvalidTransfer;
+                output.returnCode = QUSINO_INVALID_TRANSFER;
                 return ;
             }
             locals.user.volumeOfQSC -= input.amount;
@@ -305,7 +305,7 @@ protected:
             state.QSCCirclatingSupply -= input.amount;
             state.QSTAmountForSale -= input.amount;
         }
-        output.returnCode = QusinoSuccess;
+        output.returnCode = QUSINO_SUCCESS;
     }
 
     struct earnSTAR_locals
@@ -320,7 +320,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QusinoinsufficientFunds;
+            output.returnCode = QUSINO_INSUFFICIENT_FUNDS;
             return ;
         }
         if (input.amount * QUSINO_STAR_PRICE < (uint32)qpi.invocationReward()) 
@@ -332,7 +332,7 @@ protected:
         locals.user.volumeOfSTAR += input.amount;
         state.userAssetVolume.set(qpi.invocator(), locals.user);
         state.STARCirclatingSupply += input.amount;
-        output.returnCode = QusinoSuccess;
+        output.returnCode = QUSINO_SUCCESS;
     }
 
     struct earnQSC_locals
@@ -347,7 +347,7 @@ protected:
         }
         if (qpi.transferShareOwnershipAndPossession(state.QSTAssetName, state.QSTIssuer, qpi.invocator(), qpi.invocator(), input.amount, SELF) < 0)
         {
-            output.returnCode = QusinoinvalidTransfer;
+            output.returnCode = QUSINO_INVALID_TRANSFER;
             return ;
         }
         state.userAssetVolume.get(qpi.invocator(), locals.user);
@@ -356,7 +356,7 @@ protected:
         state.userAssetVolume.set(qpi.invocator(), locals.user);
         state.QSCCirclatingSupply += input.amount;
         state.STARCirclatingSupply += QUSINO_STAR_BONUS_FOR_QSC;
-        output.returnCode = QusinoSuccess;
+        output.returnCode = QUSINO_SUCCESS;
     }
 
     struct transferSTAROrQSC_locals
@@ -371,7 +371,7 @@ protected:
         {
             if (locals.sender.volumeOfSTAR < input.amount) 
             {
-                output.returnCode = QusinoinsufficientSTAR;
+                output.returnCode = QUSINO_INSUFFICIENT_STAR;
                 return;
             }
             locals.sender.volumeOfSTAR -= input.amount;
@@ -381,7 +381,7 @@ protected:
         {
             if (locals.sender.volumeOfQSC < input.amount) 
             {
-                output.returnCode = QusinoinsufficientQSC;
+                output.returnCode = QUSINO_INSUFFICIENT_QSC;
                 return;
             }
             locals.sender.volumeOfQSC -= input.amount;
@@ -389,7 +389,7 @@ protected:
         }
         state.userAssetVolume.set(qpi.invocator(), locals.sender);
         state.userAssetVolume.set(input.dest, locals.dest);
-        output.returnCode = QusinoSuccess;
+        output.returnCode = QUSINO_SUCCESS;
     }
 
     struct stakeAssets_locals
@@ -405,12 +405,12 @@ protected:
         }
         if (input.amount < QUSINO_MIN_STAKING_AMOUNT) 
         {
-            output.returnCode = QusinoLowStaking;
+            output.returnCode = QUSINO_LOW_STAKING;
             return ;
         }
         if (input.type == 0 || input.type > 4) 
         {
-            output.returnCode = QusinoWrongStakingType;
+            output.returnCode = QUSINO_WRONG_STAKING_TYPE;
             return ;
         }
         state.userAssetVolume.get(qpi.invocator(), locals.userVolume);
@@ -418,7 +418,7 @@ protected:
         {
             if (locals.userVolume.volumeOfSTAR < input.amount)
             {
-                output.returnCode = QusinoinsufficientSTAR;
+                output.returnCode = QUSINO_INSUFFICIENT_STAR;
                 return ;
             }
             locals.userVolume.volumeOfSTAR -= input.amount;
@@ -430,7 +430,7 @@ protected:
         {
             if (locals.userVolume.volumeOfQSC < input.amount)
             {
-                output.returnCode = QusinoinsufficientQSC;
+                output.returnCode = QUSINO_INSUFFICIENT_QSC;
                 return ;
             }
             locals.userVolume.volumeOfQSC -= input.amount;
@@ -442,14 +442,14 @@ protected:
         {
             if (qpi.transferShareOwnershipAndPossession(state.QSTAssetName, state.QSTIssuer, qpi.invocator(), qpi.invocator(), input.amount, SELF) < 0)
             {
-                output.returnCode = QusinoinvalidTransfer;
+                output.returnCode = QUSINO_INVALID_TRANSFER;
                 return ;
             }
             state.totalStakedQST += input.amount;
         }
         else 
         {
-            output.returnCode = QusinoWrongAssetType;
+            output.returnCode = QUSINO_WRONG_ASSET_TYPE;
             return ;
         }
         locals.user.user = qpi.invocator();
@@ -459,7 +459,7 @@ protected:
         locals.user.typeOfAsset = input.typeOfAsset;
         state.userStakeList.set(state.numberOfStakers, locals.user);
         state.numberOfStakers++;
-        output.returnCode = QusinoSuccess;
+        output.returnCode = QUSINO_SUCCESS;
     }
 
     struct submitGame_locals
@@ -474,7 +474,7 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QusinoinsufficientFunds;
+            output.returnCode = QUSINO_INSUFFICIENT_FUNDS;
             return ;
         }
         if (qpi.invocationReward() > QUSINO_GAME_SUBMIT_FEE) 
@@ -489,7 +489,7 @@ protected:
         locals.newGame.noVotes = 0;
         state.gameList.set(state.maxGameIndex, locals.newGame);
         state.maxGameIndex++;
-        output.returnCode = QusinoSuccess;
+        output.returnCode = QUSINO_SUCCESS;
     }
 
     struct voteInGameProposal_locals
@@ -505,20 +505,20 @@ protected:
         state.userAssetVolume.get(qpi.invocator(), locals.userVolume);
         if (locals.userVolume.volumeOfSTAR < QUSINO_VOTE_FEE) 
         {
-            output.returnCode = QusinoInsufficientVoteFee;
+            output.returnCode = QUSINO_INSUFFICIENT_VOTE_FEE;
             return ;
         }
         state.gameList.get(input.gameIndex, locals.game);
         if (locals.game.proposedEpoch != qpi.epoch() && locals.game.proposedEpoch + QUSINO_REVOTE_DURATION != qpi.epoch()) 
         {
-            output.returnCode = QusinoNotVoteTime;
+            output.returnCode = QUSINO_NOT_VOTE_TIME;
             return ;
         }
         for (locals.i = 0; locals.i < 64; locals.i++) 
         {
             if (locals.game.URI.get(locals.i) != input.URI.get(locals.i)) 
             {
-                output.returnCode = QusinoWrongGameURIForVote;
+                output.returnCode = QUSINO_WRONG_GAME_URI_FOR_VOTE;
                 return ;
             }
         }
@@ -528,7 +528,7 @@ protected:
         {
             if (locals.voteStatus.get(locals.i) == input.gameIndex) 
             {
-                output.returnCode = QusinoAlreadyVoted;
+                output.returnCode = QUSINO_ALREADY_VOTED;
                 return ;
             }
             if (locals.voteStatus.get(locals.i) == 0 && locals.emptySlot == -1) 
@@ -538,7 +538,7 @@ protected:
         }
         if (locals.emptySlot == -1) 
         {
-            output.returnCode = QusinoNoEmptySlot;
+            output.returnCode = QUSINO_NO_EMPTY_SLOT;
             return ;
         }
         locals.userVolume.volumeOfSTAR -= QUSINO_VOTE_FEE;
@@ -564,11 +564,11 @@ protected:
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            output.returnCode = QusinoinvalidTransfer;
+            output.returnCode = QUSINO_INVALID_TRANSFER;
             return ;
         }
         state.QSTAmountForSale += input.amount;
-        output.returnCode = QusinoSuccess;
+        output.returnCode = QUSINO_SUCCESS;
     }
 
     struct getUserAssetVolume_locals
