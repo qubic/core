@@ -2356,7 +2356,8 @@ public:
 
         // temp replacement for qusd
         state.QUSD.assetName = 310652322119ULL; // GARTH
-        state.QUSD.issuer = ID(_G, _A, _R, _T, _H, _F, _A, _N, _X, _M, _P, _X, _M, _D, _P, _E, _Z, _F, _Q, _P, _W, _F, _P, _Y, _M, _H, _O, _A, _W, _T, _K, _I, _L, _I, _N, _C, _T, _R, _M, _V, _L, _F, _F, _V, _A, _T, _K, _V, _J, _R, _K, _E, _D, _Y, _X, _G);
+        // state.QUSD.issuer = ID(_G, _A, _R, _T, _H, _F, _A, _N, _X, _M, _P, _X, _M, _D, _P, _E, _Z, _F, _Q, _P, _W, _F, _P, _Y, _M, _H, _O, _A, _W, _T, _K, _I, _L, _I, _N, _C, _T, _R, _M, _V, _L, _F, _F, _V, _A, _T, _K, _V, _J, _R, _K, _E, _D, _Y, _X, _G); obsolete issuer
+	state.QUSD.issuer = ID(_P,_H,_O,_E,_N,_I,_X,_C,_L,_Q,_O,_B,_H,_D,_Z,_C,_H,_J,_O,_C,_K,_C,_P,_Z,_V,_T,_K,_A,_L,_Q,_B,_M,_X,_Y,_O,_E,_D,_B,_U,_H,_S,_D,_C,_J,_R,_M,_T,_U,_C,_U,_B,_P,_L,_S,_U,_F);
         state.wholeSharePrice = 100000;
     }
 
