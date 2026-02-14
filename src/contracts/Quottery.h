@@ -1992,7 +1992,7 @@ public:
             sint64 amount;
         };
         sint64 count;
-        Array<PositionInfo, QUOTTERY_DOUBLE_BUFFER_SIZE> p;
+        Array<PositionInfo, 1024> p;
     };
 
     struct GetUserPosition_locals
@@ -2013,6 +2013,7 @@ public:
         output.count = 0;
         for (locals.i = 0; locals.i < QUOTTERY_MAX_CONCURRENT_EVENT; locals.i++)
         {
+            if (output.count == output.p.capacity()) break;
             locals.e = state.mRecentActiveEvent.get(locals.i);
             locals.key = MakePosKey(input.uid, locals.e, 0);
             if (state.mPositionInfo.get(locals.key, locals.qo))
