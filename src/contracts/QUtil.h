@@ -81,6 +81,7 @@ struct QUTILSendToManyBenchmarkLog
     uint32 logType;
     id startId;
     sint64 dstCount;
+    sint64 numTransfersEach;
     sint8 _terminator; // Only data before "_terminator" are logged
 };
 
@@ -848,6 +849,7 @@ public:
         locals.logBenchmark.startId = qpi.invocator();
         locals.logBenchmark.logType = QUTIL_STMB_LOG_TYPE;
         locals.logBenchmark.dstCount = input.dstCount;
+        locals.logBenchmark.numTransfersEach = input.numTransfersEach;
         LOG_INFO(locals.logBenchmark);
 
         LOG_PAUSE();
@@ -1489,7 +1491,7 @@ public:
 
     IMPLEMENT_FinalizeShareholderStateVarProposals()
     {
-        switch (input.proposal.variableOptions.variable)
+        switch (input.proposal.data.variableOptions.variable)
         {
         case 0:
             state.smt1InvocationFee = input.acceptedValue;

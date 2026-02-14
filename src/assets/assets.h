@@ -793,8 +793,8 @@ static void assetsEndEpoch()
     ACQUIRE(universeLock);
 
     // rebuild asset hash map, getting rid of all elements with zero shares
-    AssetRecord* reorgAssets = (AssetRecord*)reorgBuffer;
-    setMem(reorgAssets, ASSETS_CAPACITY * sizeof(AssetRecord), 0);
+    AssetRecord* reorgAssets = (AssetRecord*)commonBuffers.acquireBuffer(universeSizeInBytes);
+    setMem(reorgAssets, universeSizeInBytes, 0);
     for (unsigned int i = 0; i < ASSETS_CAPACITY; i++)
     {
         if (assets[i].varStruct.possession.type == POSSESSION
@@ -874,6 +874,7 @@ static void assetsEndEpoch()
         }
     }
     copyMem(assets, reorgAssets, ASSETS_CAPACITY * sizeof(AssetRecord));
+    commonBuffers.releaseBuffer(reorgAssets);
 
     setMem(assetChangeFlags, ASSETS_CAPACITY / 8, 0xFF);
 

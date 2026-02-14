@@ -39,101 +39,100 @@ public:
             nextTickTransactionOffset += transactionSize;
         }
     }
-};
 
-TestTickStorage ts;
-
-void addTick(unsigned int tick, unsigned int seed, unsigned short maxTransactions)
-{
-    // use pseudo-random sequence
-    std::mt19937 gen32(seed);
-
-    // add tick data
-    TickData& td = ts.tickData.getByTickInCurrentEpoch(tick);
-    td.epoch = 1234;
-    td.tick = tick;
-
-    // add computor ticks
-    Tick* computorTicks = ts.ticks.getByTickInCurrentEpoch(tick);
-    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+    void addTick(unsigned int tick, unsigned int seed, unsigned short maxTransactions)
     {
-        computorTicks[i].epoch = 1234;
-        computorTicks[i].computorIndex = i;
-        computorTicks[i].tick = tick;
-        computorTicks[i].prevResourceTestingDigest = gen32();
-    }
+        // use pseudo-random sequence
+        std::mt19937 gen32(seed);
 
-    // add transactions of tick
-    unsigned int transactionNum = gen32() % (maxTransactions + 1);
-    unsigned int orderMode = gen32() % 2;
-    unsigned int transactionSlot;
-    for (unsigned int transaction = 0; transaction < transactionNum; ++transaction)
-    {
-        if (orderMode == 0)
-            transactionSlot = transaction;  // standard order
-        else if (orderMode == 1)
-            transactionSlot = transactionNum - 1 - transaction;  // backward order
-        ts.addTransaction(tick, transactionSlot, gen32() % MAX_INPUT_SIZE);
-    }
-    ts.checkStateConsistencyWithAssert();
-}
+        // add tick data
+        TickData& td = tickData.getByTickInCurrentEpoch(tick);
+        td.epoch = 1234;
+        td.tick = tick;
 
-void checkTick(unsigned int tick, unsigned int seed, unsigned short maxTransactions, bool previousEpoch = false)
-{
-    // only last ticks of previous epoch are kept in storage -> check okay
-    if (previousEpoch && !ts.tickInPreviousEpochStorage(tick))
-        return;
+        // add computor ticks
+        Tick* computorTicks = ticks.getByTickInCurrentEpoch(tick);
+        for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+        {
+            computorTicks[i].epoch = 1234;
+            computorTicks[i].computorIndex = i;
+            computorTicks[i].tick = tick;
+            computorTicks[i].prevResourceTestingDigest = gen32();
+        }
 
-    // use pseudo-random sequence
-    std::mt19937 gen32(seed);
-
-    // check tick data
-    TickData& td = previousEpoch ? ts.tickData.getByTickInPreviousEpoch(tick) : ts.tickData.getByTickInCurrentEpoch(tick);
-    EXPECT_EQ((int)td.epoch, (int)1234);
-    EXPECT_EQ(td.tick, tick);
-
-    // check computor ticks
-    Tick* computorTicks = previousEpoch ? ts.ticks.getByTickInPreviousEpoch(tick) : ts.ticks.getByTickInCurrentEpoch(tick);
-    for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
-    {
-        EXPECT_EQ((int)computorTicks[i].epoch, (int)1234);
-        EXPECT_EQ((int)computorTicks[i].computorIndex, (int)i);
-        EXPECT_EQ(computorTicks[i].tick, tick);
-        EXPECT_EQ(computorTicks[i].prevResourceTestingDigest, gen32());
-    }
-
-    // check transactions of tick
-    {
-        const auto* offsets = previousEpoch ? ts.tickTransactionOffsets.getByTickInPreviousEpoch(tick) : ts.tickTransactionOffsets.getByTickInCurrentEpoch(tick);
+        // add transactions of tick
         unsigned int transactionNum = gen32() % (maxTransactions + 1);
         unsigned int orderMode = gen32() % 2;
         unsigned int transactionSlot;
-
         for (unsigned int transaction = 0; transaction < transactionNum; ++transaction)
         {
-            int expectedInputSize = (int)(gen32() % MAX_INPUT_SIZE);
-
             if (orderMode == 0)
                 transactionSlot = transaction;  // standard order
             else if (orderMode == 1)
                 transactionSlot = transactionNum - 1 - transaction;  // backward order
+            addTransaction(tick, transactionSlot, gen32() % MAX_INPUT_SIZE);
+        }
+        checkStateConsistencyWithAssert();
+    }
 
-            // If previousEpoch, some transactions at the beginning may not have fit into the storage and are missing -> check okay
-            // If current epoch, some may be missing at he end due to limited storage -> check okay
-            if (!offsets[transactionSlot])
-                continue;
+    void checkTick(unsigned int tick, unsigned int seed, unsigned short maxTransactions, bool previousEpoch = false)
+    {
+        // only last ticks of previous epoch are kept in storage -> check okay
+        if (previousEpoch && !tickInPreviousEpochStorage(tick))
+            return;
 
-            Transaction* tp = ts.tickTransactions(offsets[transactionSlot]);
-            EXPECT_TRUE(tp->checkValidity());
-            EXPECT_EQ(tp->tick, tick);
-            EXPECT_EQ((int)tp->inputSize, expectedInputSize);
+        // use pseudo-random sequence
+        std::mt19937 gen32(seed);
+
+        // check tick data
+        TickData& td = previousEpoch ? tickData.getByTickInPreviousEpoch(tick) : tickData.getByTickInCurrentEpoch(tick);
+        EXPECT_EQ((int)td.epoch, (int)1234);
+        EXPECT_EQ(td.tick, tick);
+
+        // check computor ticks
+        Tick* computorTicks = previousEpoch ? ticks.getByTickInPreviousEpoch(tick) : ticks.getByTickInCurrentEpoch(tick);
+        for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
+        {
+            EXPECT_EQ((int)computorTicks[i].epoch, (int)1234);
+            EXPECT_EQ((int)computorTicks[i].computorIndex, (int)i);
+            EXPECT_EQ(computorTicks[i].tick, tick);
+            EXPECT_EQ(computorTicks[i].prevResourceTestingDigest, gen32());
+        }
+
+        // check transactions of tick
+        {
+            const auto* offsets = previousEpoch ? tickTransactionOffsets.getByTickInPreviousEpoch(tick) : tickTransactionOffsets.getByTickInCurrentEpoch(tick);
+            unsigned int transactionNum = gen32() % (maxTransactions + 1);
+            unsigned int orderMode = gen32() % 2;
+            unsigned int transactionSlot;
+
+            for (unsigned int transaction = 0; transaction < transactionNum; ++transaction)
+            {
+                int expectedInputSize = (int)(gen32() % MAX_INPUT_SIZE);
+
+                if (orderMode == 0)
+                    transactionSlot = transaction;  // standard order
+                else if (orderMode == 1)
+                    transactionSlot = transactionNum - 1 - transaction;  // backward order
+
+                // If previousEpoch, some transactions at the beginning may not have fit into the storage and are missing -> check okay
+                // If current epoch, some may be missing at he end due to limited storage -> check okay
+                if (!offsets[transactionSlot])
+                    continue;
+
+                Transaction* tp = tickTransactions(offsets[transactionSlot]);
+                EXPECT_TRUE(tp->checkValidity());
+                EXPECT_EQ(tp->tick, tick);
+                EXPECT_EQ((int)tp->inputSize, expectedInputSize);
+            }
         }
     }
-}
+};
 
 
-TEST(TestCoreTickStorage, EpochTransition) {
-
+TEST(TestCoreTickStorage, EpochTransition)
+{
+    TestTickStorage ts;
     unsigned int seed = 42;
 
     // use pseudo-random sequence
@@ -170,11 +169,11 @@ TEST(TestCoreTickStorage, EpochTransition) {
 
         // add ticks
         for (int i = 0; i < firstEpochTicks; ++i)
-            addTick(firstEpochTick0 + i, firstEpochSeeds[i], maxTransactions);
+            ts.addTick(firstEpochTick0 + i, firstEpochSeeds[i], maxTransactions);
 
         // check ticks
         for (int i = 0; i < firstEpochTicks; ++i)
-            checkTick(firstEpochTick0 + i, firstEpochSeeds[i], maxTransactions);
+            ts.checkTick(firstEpochTick0 + i, firstEpochSeeds[i], maxTransactions);
 
         // Epoch transistion
         ts.beginEpoch(secondEpochTick0);
@@ -182,14 +181,14 @@ TEST(TestCoreTickStorage, EpochTransition) {
 
         // add ticks
         for (int i = 0; i < secondEpochTicks; ++i)
-            addTick(secondEpochTick0 + i, secondEpochSeeds[i], maxTransactions);
+            ts.addTick(secondEpochTick0 + i, secondEpochSeeds[i], maxTransactions);
 
         // check ticks
         for (int i = 0; i < secondEpochTicks; ++i)
-            checkTick(secondEpochTick0 + i, secondEpochSeeds[i], maxTransactions);
+            ts.checkTick(secondEpochTick0 + i, secondEpochSeeds[i], maxTransactions);
         bool previousEpoch = true;
         for (int i = 0; i < firstEpochTicks; ++i)
-            checkTick(firstEpochTick0 + i, firstEpochSeeds[i], maxTransactions, previousEpoch);
+            ts.checkTick(firstEpochTick0 + i, firstEpochSeeds[i], maxTransactions, previousEpoch);
 
         // Epoch transistion
         ts.beginEpoch(thirdEpochTick0);
@@ -197,13 +196,13 @@ TEST(TestCoreTickStorage, EpochTransition) {
 
         // add ticks
         for (int i = 0; i < thirdEpochTicks; ++i)
-            addTick(thirdEpochTick0 + i, thirdEpochSeeds[i], maxTransactions);
+            ts.addTick(thirdEpochTick0 + i, thirdEpochSeeds[i], maxTransactions);
 
         // check ticks
         for (int i = 0; i < thirdEpochTicks; ++i)
-            checkTick(thirdEpochTick0 + i, thirdEpochSeeds[i], maxTransactions);
+            ts.checkTick(thirdEpochTick0 + i, thirdEpochSeeds[i], maxTransactions);
         for (int i = 0; i < secondEpochTicks; ++i)
-            checkTick(secondEpochTick0 + i, secondEpochSeeds[i], maxTransactions, previousEpoch);
+            ts.checkTick(secondEpochTick0 + i, secondEpochSeeds[i], maxTransactions, previousEpoch);
 
         ts.deinit();
     }

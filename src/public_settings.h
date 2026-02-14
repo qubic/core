@@ -57,7 +57,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
 // If this flag is 0, the node will try to fetch data of the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
 // If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
-#define START_NETWORK_FROM_SCRATCH 0
+#define START_NETWORK_FROM_SCRATCH 1
 
 // Addons: If you don't know it, leave it 0.
 #define ADDON_TX_STATUS_REQUEST 0
@@ -66,12 +66,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 273
+#define VERSION_B 278
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 195
-#define TICK 41622000
+#define EPOCH 200
+#define TICK 43910000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -88,14 +88,28 @@ static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining_cache.??
 static unsigned short CONTRACT_EXEC_FEES_ACC_FILE_NAME[] = L"contract_exec_fees_acc.???";
 static unsigned short CONTRACT_EXEC_FEES_REC_FILE_NAME[] = L"contract_exec_fees_rec.???";
 
-static constexpr unsigned long long NUMBER_OF_INPUT_NEURONS = 512;     // K
-static constexpr unsigned long long NUMBER_OF_OUTPUT_NEURONS = 512;    // L
-static constexpr unsigned long long NUMBER_OF_TICKS = 1000;               // N
-static constexpr unsigned long long NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
-static constexpr unsigned long long NUMBER_OF_MUTATIONS = 150;
-static constexpr unsigned long long POPULATION_THRESHOLD = NUMBER_OF_INPUT_NEURONS + NUMBER_OF_OUTPUT_NEURONS + NUMBER_OF_MUTATIONS; // P
+static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS = 512;     // K
+static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS = 512;    // L
+static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_TICKS = 1000;               // N
+static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
+static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_MUTATIONS = 150;
+static constexpr unsigned long long HYPERIDENTITY_POPULATION_THRESHOLD = HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_MUTATIONS; // P
+static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT = 321;
+
+static constexpr unsigned long long ADDITION_NUMBER_OF_INPUT_NEURONS = 14;     // K
+static constexpr unsigned long long ADDITION_NUMBER_OF_OUTPUT_NEURONS = 8;    // L
+static constexpr unsigned long long ADDITION_NUMBER_OF_TICKS = 1000;               // N
+static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
+static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 150;
+static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = ADDITION_NUMBER_OF_INPUT_NEURONS + ADDITION_NUMBER_OF_OUTPUT_NEURONS + ADDITION_NUMBER_OF_MUTATIONS; // P
+static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 74196;
+
+// Multipler of score
+static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;
+static constexpr unsigned int ADDITION_SOLUTION_MULTIPLER = 1;
+
 static constexpr long long NEURON_VALUE_LIMIT = 1LL;
-static constexpr unsigned int SOLUTION_THRESHOLD_DEFAULT = 321;
+
 
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 

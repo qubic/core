@@ -214,8 +214,8 @@ public:
     void createAuctionChecker(uint32 NFTId, uint64 price, bit gt_statusOfAuction, bit gt_paymentMethodOfAuction, id gt_creatorOfAuction, uint32 startYear, uint32 startMonth, uint32 startDay, uint32 startHour, uint32 endYear, uint32 endMonth, uint32 endDay, uint32 endHour)
     {
         uint32 startTime, endTime;
-        QUOTTERY::packQuotteryDate(startYear, startMonth, startDay, startHour, 0, 0, startTime);
-        QUOTTERY::packQuotteryDate(endYear, endMonth, endDay, endHour, 0, 0, endTime);
+        QBAY::packQbayDate(startYear, startMonth, startDay, startHour, 0, 0, startTime);
+        QBAY::packQbayDate(endYear, endMonth, endDay, endHour, 0, 0, endTime);
         EXPECT_EQ(NFTs.get(NFTId).startTimeOfAuction, startTime);
         EXPECT_EQ(NFTs.get(NFTId).endTimeOfAuction, endTime);
         EXPECT_EQ(NFTs.get(NFTId).currentPriceOfAuction, price);
@@ -1105,7 +1105,11 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     EXPECT_EQ(getBalance(id(QBAY_CONTRACT_INDEX, 0, 0, 0)), earnedQubic + collectedShareHolderFee);
 
     // createTraditionalAuction
-    updateTime();
+    setMemory(utcTime, 0);
+    utcTime.Year = 2025;
+    utcTime.Month = 12;
+    utcTime.Day = 31;
+    utcTime.Hour = 0;
     updateQpiTime();
     pfp.createTraditionalAuction(users[4], 10000000, 0, 0, 26, 1, 1, 0, 26, 1, 5, 0);
     pfp.getState()->createAuctionChecker(0, 10000000, 1, 0, users[4], 26, 1, 1, 0, 26, 1, 5, 0);

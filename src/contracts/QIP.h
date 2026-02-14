@@ -288,6 +288,10 @@ public:
     {
         if (input.indexOfICO >= state.numberOfICO)
         {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
             locals.log._contractIndex = SELF_INDEX;
             locals.log._type = QIPLogInfo::QIP_ICONotFound;
             locals.log.dst = qpi.invocator();
@@ -306,6 +310,10 @@ public:
             }
             else
             {
+                if (qpi.invocationReward() > 0)
+                {
+                    qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                }
                 locals.log._contractIndex = SELF_INDEX;
                 locals.log._type = QIPLogInfo::QIP_invalidAmount;
                 locals.log.dst = qpi.invocator();
@@ -324,6 +332,10 @@ public:
             }
             else
             {
+                if (qpi.invocationReward() > 0)
+                {
+                    qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                }
                 locals.log._contractIndex = SELF_INDEX;
                 locals.log._type = QIPLogInfo::QIP_invalidAmount;
                 locals.log.dst = qpi.invocator();
@@ -342,6 +354,10 @@ public:
             }
             else
             {
+                if (qpi.invocationReward() > 0)
+                {
+                    qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                }
                 locals.log._contractIndex = SELF_INDEX;
                 locals.log._type = QIPLogInfo::QIP_invalidAmount;
                 locals.log.dst = qpi.invocator();
@@ -353,6 +369,10 @@ public:
         }
         else
         {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
             locals.log._contractIndex = SELF_INDEX;
             locals.log._type = QIPLogInfo::QIP_invalidEpoch;
             locals.log.dst = qpi.invocator();
@@ -363,6 +383,10 @@ public:
         }
         if (input.amount * locals.price > (uint64)qpi.invocationReward())
         {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
             locals.log._contractIndex = SELF_INDEX;
             locals.log._type = QIPLogInfo::QIP_insufficientInvocationReward;
             locals.log.dst = qpi.invocator();
@@ -410,12 +434,27 @@ public:
         LOG_INFO(locals.log);
     }
 
-    PUBLIC_PROCEDURE(TransferShareManagementRights)
+    struct TransferShareManagementRights_locals
+    {
+        ICOInfo ico;
+        uint32 i;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
 	{
 		if (qpi.invocationReward() < state.transferRightsFee)
 		{
 			return ;
 		}
+
+        for (locals.i = 0 ; locals.i < state.numberOfICO; locals.i++)
+        {
+            locals.ico = state.icos.get(locals.i);
+            if (locals.ico.issuer == input.asset.issuer && locals.ico.assetName == input.asset.assetName) 
+            {
+                return ;
+            }
+        }
 
 		if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer,qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
 		{
@@ -466,28 +505,31 @@ public:
 
     struct BEGIN_EPOCH_locals
     {
-        ICOInfo ico;
+        id address1;
+        id address2;
     };
 
     BEGIN_EPOCH_WITH_LOCALS()
     {
-        if (qpi.epoch() == 196)
+        locals.address1 = ID(_K, _D, _F, _D, _H, _J, _F, _E, _B, _J, _W, _E, _Z, _D, _F, _I, _C, _T, _P, _Z, _N, _N, _D, _T, _A, _Z, _S, _A, _H, _F, _G, _Q, _H, _D, _O, _C, _X, _R, _P, _G, _D, _D, _I, _B, _F, _P, _D, _D, _Q, _Z, _H, _O, _V, _H, _V, _D);
+        locals.address2 = ID(_Z, _V, _V, _C, _R, _T, _G, _Y, _W, _B, _K, _H, _X, _D, _F, _M, _Q, _D, _X, _F, _V, _B, _D, _N, _N, _L, _I, _D, _K, _Q, _F, _N, _B, _Q, _K, _V, _U, _L, _R, _N, _H, _F, _E, _Z, _K, _C, _K, _B, _H, _X, _I, _B, _E, _N, _S, _E);
+
+        if (qpi.epoch() == 199)
         {
-            locals.ico = state.icos.get(0);
-            locals.ico.remainingAmountForPhase3 = qpi.numberOfPossessedShares(locals.ico.assetName, locals.ico.issuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
-            state.icos.set(0, locals.ico);
+            qpi.transfer(locals.address1, 30000000);
+            qpi.transfer(locals.address2, 100000000);
         }
     }
 
 	struct END_EPOCH_locals
 	{
         ICOInfo ico;
-        uint32 idx;
+        sint32 idx;
 	};
 
 	END_EPOCH_WITH_LOCALS()
 	{
-		for(locals.idx = 0; locals.idx < state.numberOfICO; locals.idx++)
+		for(locals.idx = 0; locals.idx < (sint32)state.numberOfICO; locals.idx++)
 		{
             locals.ico = state.icos.get(locals.idx);
             if (locals.ico.startEpoch == qpi.epoch() && locals.ico.remainingAmountForPhase1 > 0)
@@ -502,11 +544,15 @@ public:
                 locals.ico.remainingAmountForPhase2 = 0;
                 state.icos.set(locals.idx, locals.ico);
             }
-            if (locals.ico.startEpoch + 2 == qpi.epoch() && locals.ico.remainingAmountForPhase3 > 0)
+            if (locals.ico.startEpoch + 2 == qpi.epoch())
             {
-                qpi.transferShareOwnershipAndPossession(locals.ico.assetName, locals.ico.issuer, SELF, SELF, locals.ico.remainingAmountForPhase3, locals.ico.creatorOfICO);
+                if (locals.ico.remainingAmountForPhase3 > 0) 
+                {
+                    qpi.transferShareOwnershipAndPossession(locals.ico.assetName, locals.ico.issuer, SELF, SELF, locals.ico.remainingAmountForPhase3, locals.ico.creatorOfICO);
+                }
                 state.icos.set(locals.idx, state.icos.get(state.numberOfICO - 1));
                 state.numberOfICO--;
+                locals.idx--;
             }
 		}
 	}
