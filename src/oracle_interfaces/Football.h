@@ -113,10 +113,10 @@ struct Football
 		return id(m, o, c, k, null);
 	}
 
-	/// Get oracle ID of API-Football oracle
-	static id getApiFootballOracleId()
+	/// Get oracle ID of TheSportsDB oracle (no authentication required!)
+	static id getTheSportsDBOracleId()
 	{
 		using namespace Ch;
-		return id(a, p, i, f, o, o, t, b, a, l, l, null);
+		return id(t, h, e, s, p, o, r, t, s, d, b, null);
 	}
 };

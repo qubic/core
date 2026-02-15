@@ -1,6 +1,4 @@
 using namespace QPI;
-
-
 struct FootballTest : public ContractBase
 {
 	//---------------------------------------------------------------
@@ -124,12 +122,17 @@ struct FootballTest : public ContractBase
 			if (locals.c == 0)
 			{
 				// Query mock oracle - Match 1001 (Man Utd vs Liverpool)
+				// For testing without external API
 				using namespace Ch;
 				locals.footballOracleQuery.oracle = OI::Football::getMockOracleId();
 				locals.footballOracleQuery.matchId = 1001;
 				locals.footballOracleQuery.leagueId = OI::Football::LEAGUE_PREMIER_LEAGUE;
 				locals.footballOracleQuery.season = 2024;
 				locals.footballOracleQuery._reserved = 0;
+				
+				// Alternative: Query TheSportsDB for real data (no API key needed!)
+				// locals.footballOracleQuery.oracle = OI::Football::getTheSportsDBOracleId();
+				// locals.footballOracleQuery.matchId = 2279631;  // Real Madrid vs Real Sociedad
 			}
 			else if (locals.c == 1)
 			{
@@ -140,6 +143,10 @@ struct FootballTest : public ContractBase
 				locals.footballOracleQuery.leagueId = OI::Football::LEAGUE_LA_LIGA;
 				locals.footballOracleQuery.season = 2024;
 				locals.footballOracleQuery._reserved = 0;
+				
+				// Alternative: Query TheSportsDB for real data
+				// locals.footballOracleQuery.oracle = OI::Football::getTheSportsDBOracleId();
+				// locals.footballOracleQuery.matchId = 2267320;  // Man Utd vs Tottenham
 			}
 			else if (locals.c == 2)
 			{
@@ -150,6 +157,10 @@ struct FootballTest : public ContractBase
 				locals.footballOracleQuery.leagueId = OI::Football::LEAGUE_BUNDESLIGA;
 				locals.footballOracleQuery.season = 2024;
 				locals.footballOracleQuery._reserved = 0;
+				
+				// Alternative: Query TheSportsDB for real data
+				// locals.footballOracleQuery.oracle = OI::Football::getTheSportsDBOracleId();
+				// locals.footballOracleQuery.matchId = 2279631;  // Any real match ID
 			}
 
 			locals.oracleQueryId = QUERY_ORACLE(

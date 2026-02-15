@@ -274,14 +274,14 @@ constexpr unsigned short TESTEXC_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #define CONTRACT_STATE_TYPE TESTEXC
 #define CONTRACT_STATE2_TYPE TESTEXC2
 #include "contracts/TestExampleC.h"
-constexpr unsigned short TESTEXD_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
+constexpr unsigned short FOOTBALLTEST_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
-#define CONTRACT_INDEX TESTEXD_CONTRACT_INDEX
-#define CONTRACT_STATE_TYPE TESTEXD
-#define CONTRACT_STATE2_TYPE TESTEXD2
-#include "contracts/TestExampleD.h"
+#define CONTRACT_INDEX FOOTBALLTEST_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE FootballTest
+#define CONTRACT_STATE2_TYPE FootballTestState
+#include "contracts/FootballTest.h"
 #endif
 
 #define MAX_CONTRACT_ITERATION_DURATION 0 // In milliseconds, must be above 0; for now set to 0 to disable timeout, because a rollback mechanism needs to be implemented to properly handle timeout
@@ -360,7 +360,7 @@ constexpr struct ContractDescription
     {"TESTEXA", 138, 10000, sizeof(TESTEXA)},
     {"TESTEXB", 138, 10000, sizeof(TESTEXB)},
     {"TESTEXC", 138, 10000, sizeof(IPO)},
-    {"TESTEXD", 155, 10000, sizeof(IPO)},
+    {"FootballTest", 155, 10000, sizeof(IPO)},
 #endif
 };
 
@@ -479,13 +479,13 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXB);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXC);
-    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXD);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(FootballTest);
 
     // fill execution fee reserves for test contracts
     setContractFeeReserve(TESTEXA_CONTRACT_INDEX, 100000000000);
     setContractFeeReserve(TESTEXB_CONTRACT_INDEX, 100000000000);
     setContractFeeReserve(TESTEXC_CONTRACT_INDEX, 100000000000);
-    setContractFeeReserve(TESTEXD_CONTRACT_INDEX, 100000000000);
+    setContractFeeReserve(FOOTBALLTEST_CONTRACT_INDEX, 100000000000);
 #endif
 }
 
