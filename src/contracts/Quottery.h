@@ -117,7 +117,7 @@ public:
 
     HashMap<uint64, QtryEventInfo, QUOTTERY_MAX_CONCURRENT_EVENT> mEventInfo;
     HashMap<uint64, sint8, QUOTTERY_MAX_CONCURRENT_EVENT> mEventResult; // NOT_SET: -1 , NO: 0, 1: YES: 1
-    HashMap<uint64, bit, QUOTTERY_MAX_CONCURRENT_EVENT> eventFinalFlag; // flag if the event is already finalized (result is set and pass dispute window) 
+    HashMap<uint64, bit, QUOTTERY_MAX_CONCURRENT_EVENT> mEventFinalFlag; // flag if the event is already finalized (result is set and pass dispute window) 
 
     struct DepositInfo
     {
@@ -183,7 +183,7 @@ public:
     /**************************************/
     /************UTIL FUNCTIONS************/
     /**************************************/
-
+protected:
     inline static uint64 orderKey(uint64 option, uint64 tradeBit, uint64 eid)
     {
         return ((option << 63) | (tradeBit << 62) | (eid & QUOTTERY_EID_MASK));
@@ -210,109 +210,6 @@ public:
         return (a < b) ? a : b;
     }
 
-//#define ANTI_SPAM \
-//    if (state.mQtryGov.mAntiSpamAmount) { \
-//    if (qpi.invocationReward() < state.mQtryGov.mAntiSpamAmount) return; \
-//    if (qpi.invocationReward() > state.mQtryGov.mAntiSpamAmount) qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.mQtryGov.mAntiSpamAmount); }
-
-    struct GetEventInfo_input
-    {
-        uint64 eventId;
-    };
-    struct GetEventInfo_output
-    {
-        QtryEventInfo qei;
-    };
-
-    struct GetEventInfo_locals
-    {
-    };
-    /**
-     * @param eventId
-     * @return meta data of a event and its current state
-     */
-    PUBLIC_FUNCTION_WITH_LOCALS(GetEventInfo)
-    {
-        setMemory(output.qei, 0);
-        state.mEventInfo.get(input.eventId, output.qei);
-    }
-
-    struct GetEventInfoBatch_input
-    {
-        Array<uint64, 64> eventIds;
-    };
-    struct GetEventInfoBatch_output
-    {
-        Array<QtryEventInfo, 64> aqei;
-    };
-
-    struct GetEventInfoBatch_locals
-    {
-        uint64 i;
-        QtryEventInfo qei;
-    };
-
-    /**
-     * @brief Retrieves the metadata for 64 specific events.
-     * @param array of eventId
-     * @return The array of QtryEventInfo struct containing the event's details.
-     */
-    PUBLIC_FUNCTION_WITH_LOCALS(GetEventInfoBatch)
-    {
-        setMemory(output.aqei, 0);
-        for (locals.i = 0; locals.i < 64; locals.i++)
-        {
-            if (state.mEventInfo.get(input.eventIds.get(locals.i), locals.qei))
-            {
-                output.aqei.set(locals.i, locals.qei);
-            }
-        }
-    }
-
-    struct ValidateEvent_input
-    {
-        uint64 eventId;
-    };
-    struct ValidateEvent_output
-    {
-        sint64 isValid;
-    };
-    struct ValidateEvent_locals
-    {
-        QtryEventInfo qei;
-        DateAndTime dt;
-        bool status;
-    };
-
-    /**
-     * @brief Checks if an event is valid for trading (exists and is within its trading window).
-     * @param eventId The unique identifier of the event.
-     * @return 1 if the event is valid for trading, 0 otherwise.
-     */
-    PRIVATE_FUNCTION_WITH_LOCALS(ValidateEvent)
-    {
-        output.isValid = 0;
-        locals.status = state.mEventInfo.get(input.eventId, locals.qei);
-        if (!locals.status)
-        {
-            return;
-        }
-
-        locals.dt = qpi.now();
-
-        if (locals.dt < locals.qei.openDate) // now < open_date
-        {
-            return;
-        }
-
-        if (locals.dt > locals.qei.endDate) // now > end_date
-        {
-            return;
-        }
-        output.isValid = 1;
-        return;
-    }
-public:
     /**
      * @brief Helper to construct a unique key for the order book.
      * Packs option, trade type (ask/bid), and event ID into a single uint64.
@@ -377,6 +274,49 @@ public:
         QtryOrder qo;
     };
 
+    struct ValidateEvent_input
+    {
+        uint64 eventId;
+    };
+    struct ValidateEvent_output
+    {
+        sint64 isValid;
+    };
+    struct ValidateEvent_locals
+    {
+        QtryEventInfo qei;
+        DateAndTime dt;
+        bool status;
+    };
+
+    /**
+     * @brief Checks if an event is valid for trading (exists and is within its trading window).
+     * @param eventId The unique identifier of the event.
+     * @return 1 if the event is valid for trading, 0 otherwise.
+     */
+    PRIVATE_FUNCTION_WITH_LOCALS(ValidateEvent)
+    {
+        output.isValid = 0;
+        locals.status = state.mEventInfo.get(input.eventId, locals.qei);
+        if (!locals.status)
+        {
+            return;
+        }
+
+        locals.dt = qpi.now();
+
+        if (locals.dt < locals.qei.openDate) // now < open_date
+        {
+            return;
+        }
+
+        if (locals.dt > locals.qei.endDate) // now > end_date
+        {
+            return;
+        }
+        output.isValid = 1;
+        return;
+    }
     /**
      * @brief Validates that a user owns a sufficient amount of a specific position (shares).
      * @param uid The user's ID.
@@ -900,7 +840,61 @@ public:
             return;
         }
     }
+
 public:
+    struct GetEventInfo_input
+    {
+        uint64 eventId;
+    };
+    struct GetEventInfo_output
+    {
+        QtryEventInfo qei;
+    };
+
+    struct GetEventInfo_locals
+    {
+    };
+    /**
+     * @param eventId
+     * @return meta data of a event and its current state
+     */
+    PUBLIC_FUNCTION_WITH_LOCALS(GetEventInfo)
+    {
+        setMemory(output.qei, 0);
+        state.mEventInfo.get(input.eventId, output.qei);
+    }
+
+    struct GetEventInfoBatch_input
+    {
+        Array<uint64, 64> eventIds;
+    };
+    struct GetEventInfoBatch_output
+    {
+        Array<QtryEventInfo, 64> aqei;
+    };
+
+    struct GetEventInfoBatch_locals
+    {
+        uint64 i;
+        QtryEventInfo qei;
+    };
+
+    /**
+     * @brief Retrieves the metadata for 64 specific events.
+     * @param array of eventId
+     * @return The array of QtryEventInfo struct containing the event's details.
+     */
+    PUBLIC_FUNCTION_WITH_LOCALS(GetEventInfoBatch)
+    {
+        setMemory(output.aqei, 0);
+        for (locals.i = 0; locals.i < 64; locals.i++)
+        {
+            if (state.mEventInfo.get(input.eventIds.get(locals.i), locals.qei))
+            {
+                output.aqei.set(locals.i, locals.qei);
+            }
+        }
+    }
     struct AddToAskOrder_input
     {
         uint64 eventId;
@@ -1625,7 +1619,7 @@ public:
     {
         locals.log = QuotteryLoggerWithData{ 0, QUOTTERY_FINALIZE_EVENT, id(0,0,input.eventId,input.winOption), 0 };
         LOG_INFO(locals.log);
-        state.eventFinalFlag.set(input.eventId, true);
+        state.mEventFinalFlag.set(input.eventId, true);
         locals.winOption = input.winOption;
         // cleaning all ABOrder
         locals.index = 0;
@@ -2323,7 +2317,7 @@ public:
         REGISTER_USER_PROCEDURE(UserClaimReward, 10);
         REGISTER_USER_PROCEDURE(GOForceClaimReward, 11);
         REGISTER_USER_PROCEDURE(TransferQUSD, 12);
-        REGISTER_USER_PROCEDURE(TransferShareManagementRights, 13);        
+        REGISTER_USER_PROCEDURE(TransferShareManagementRights, 12);        
 
         // operation team proc
         REGISTER_USER_PROCEDURE(UpdateFeeDiscountList, 20);
@@ -2356,8 +2350,7 @@ public:
 
         // temp replacement for qusd
         state.QUSD.assetName = 310652322119ULL; // GARTH
-        // state.QUSD.issuer = ID(_G, _A, _R, _T, _H, _F, _A, _N, _X, _M, _P, _X, _M, _D, _P, _E, _Z, _F, _Q, _P, _W, _F, _P, _Y, _M, _H, _O, _A, _W, _T, _K, _I, _L, _I, _N, _C, _T, _R, _M, _V, _L, _F, _F, _V, _A, _T, _K, _V, _J, _R, _K, _E, _D, _Y, _X, _G); obsolete issuer
-	state.QUSD.issuer = ID(_P,_H,_O,_E,_N,_I,_X,_C,_L,_Q,_O,_B,_H,_D,_Z,_C,_H,_J,_O,_C,_K,_C,_P,_Z,_V,_T,_K,_A,_L,_Q,_B,_M,_X,_Y,_O,_E,_D,_B,_U,_H,_S,_D,_C,_J,_R,_M,_T,_U,_C,_U,_B,_P,_L,_S,_U,_F);
+        state.QUSD.issuer = ID(_G, _A, _R, _T, _H, _F, _A, _N, _X, _M, _P, _X, _M, _D, _P, _E, _Z, _F, _Q, _P, _W, _F, _P, _Y, _M, _H, _O, _A, _W, _T, _K, _I, _L, _I, _N, _C, _T, _R, _M, _V, _L, _F, _F, _V, _A, _T, _K, _V, _J, _R, _K, _E, _D, _Y, _X, _G);
         state.wholeSharePrice = 100000;
     }
 
@@ -2412,9 +2405,9 @@ public:
                         locals.qei.endDate.addDays(1);
                         if (locals.qei.endDate < qpi.now())
                         {
-                            if (!state.eventFinalFlag.contains(locals.eid))
+                            if (!state.mEventFinalFlag.contains(locals.eid))
                             {
-                                state.eventFinalFlag.set(locals.eid, true);
+                                state.mEventFinalFlag.set(locals.eid, true);
                             }
                             if (locals.userOption == locals.winOption)
                             {
@@ -2425,7 +2418,7 @@ public:
                                 CALL(RewardTransfer, locals.rti, locals.rto);
                                 if (!locals.rto.ok)
                                 {
-                                    state.eventFinalFlag.set(locals.eid, false); // can't finalize this because failed to give reward to users
+                                    state.mEventFinalFlag.set(locals.eid, false); // can't finalize this because failed to give reward to users
                                     continue;
                                 }
                             }
@@ -2438,13 +2431,13 @@ public:
             
             locals.index = NULL_INDEX;
             do {
-                locals.index = state.eventFinalFlag.nextElementIndex(locals.index);
+                locals.index = state.mEventFinalFlag.nextElementIndex(locals.index);
                 if (locals.index != NULL_INDEX)
                 {
-                    locals.eid = state.eventFinalFlag.key(locals.index);
-                    if (!state.eventFinalFlag.value(locals.index)) // flag as false
+                    locals.eid = state.mEventFinalFlag.key(locals.index);
+                    if (!state.mEventFinalFlag.value(locals.index)) // flag as false
                     {
-                        state.eventFinalFlag.removeByIndex(locals.index); // clean it for next epoch
+                        state.mEventFinalFlag.removeByIndex(locals.index); // clean it for next epoch
                         continue;
                     }
                     locals.log = QuotteryLoggerWithData{ 0, QUOTTERY_ARCHIVE_EVENT, id(0,0, 0, locals.eid), 0 };
@@ -2458,13 +2451,18 @@ public:
                     state.mGODepositInfo.removeByKey(locals.eid);
                     state.mDisputeResolver.removeByKey(locals.eid);
                     state.mEventInfo.removeByKey(locals.eid);
-                    state.eventFinalFlag.removeByIndex(locals.index);
+                    state.mEventFinalFlag.removeByIndex(locals.index);
                 }
             } while (locals.index != NULL_INDEX);
 
             state.mEventInfo.cleanup();
-            state.eventFinalFlag.cleanup();
+            state.mEventFinalFlag.cleanup();
             state.mPositionInfo.cleanup();
+            state.mEventResult.cleanup();
+            state.mDisputeInfo.cleanup();
+            state.mGODepositInfo.cleanup();
+            state.mDisputeResolver.cleanup();
+
         }
 
         // distribute to QTRY shareholders

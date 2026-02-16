@@ -286,6 +286,37 @@ public:
         in.proposalIndex = proposalIdx;
         callFunction(QUOTTERY_CONTRACT_INDEX, 65533, in, out);
     }
+
+    inline static uint64 orderKey(uint64 option, uint64 tradeBit, uint64 eid)
+    {
+        return ((option << 63) | (tradeBit << 62) | (eid & QUOTTERY_EID_MASK));
+    }
+    inline static uint64 posKey(uint64 option, uint64 eid)
+    {
+        return (((uint64)(option) << 63) | (eid & QUOTTERY_EID_MASK));
+    }
+    /**
+     * @brief Helper to construct a unique key for the order book.
+     * Packs option, trade type (ask/bid), and event ID into a single uint64.
+     */
+    static id MakeOrderKey(const uint64 eid, const uint64 option, const uint64 tradeBit, id r)
+    {
+        r.u64._0 = 0;
+        r.u64._1 = 0;
+        r.u64._2 = 0;
+        r.u64._3 = orderKey(option, tradeBit, eid);
+        return r;
+    }
+
+    /**
+     * @brief Helper to construct a unique key for a user's position.
+     * Packs the user's ID with the option and event ID.
+     */
+    static id MakePosKey(id r, const uint64 eid, const uint64 option)
+    {
+        r.u64._3 = posKey(option, eid);
+        return r;
+    }
 };
 
 static QPI::DateAndTime wrapped_now()
@@ -415,13 +446,13 @@ TEST(QTRYTest, MatchingOrders)
     // bid: 100 shares option 1 for 61000
     qtry.AddBidOrder(0, 100, 1, 61000ULL, traders[1]);
     // expected: mint order, matching 40k-60k 
-    id key = QUOTTERY::MakePosKey(traders[0], 0, 0);
+    id key = qtry.MakePosKey(traders[0], 0, 0);
     QUOTTERY::QtryOrder qo;
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
     EXPECT_TRUE(qo.amount == 100);
     EXPECT_TRUE(qo.entity == traders[0]);
 
-    key = QUOTTERY::MakePosKey(traders[1], 0, 1);
+    key = qtry.MakePosKey(traders[1], 0, 1);
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
     EXPECT_TRUE(qo.amount == 100);
     EXPECT_TRUE(qo.entity == traders[1]);
@@ -432,12 +463,12 @@ TEST(QTRYTest, MatchingOrders)
     qtry.AddAskOrder(0, 50, 0, 70000, traders[0]);
     qtry.AddAskOrder(0, 40, 1, 40000, traders[1]);
 
-    key = QUOTTERY::MakePosKey(traders[0], 0, 0);
+    key = qtry.MakePosKey(traders[0], 0, 0);
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
     EXPECT_TRUE(qo.amount == 50);
     EXPECT_TRUE(qo.entity == traders[0]);
 
-    key = QUOTTERY::MakePosKey(traders[1], 0, 1);
+    key = qtry.MakePosKey(traders[1], 0, 1);
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
     EXPECT_TRUE(qo.amount == 60);
     EXPECT_TRUE(qo.entity == traders[1]);
@@ -456,17 +487,17 @@ TEST(QTRYTest, MatchingOrders)
 
     // b0 has 60 shares opt0, 10 is in order
     // b1 has 60 shares opt1, 0 is in order
-    key = QUOTTERY::MakePosKey(traders[0], 0, 0);
+    key = qtry.MakePosKey(traders[0], 0, 0);
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
     EXPECT_TRUE(qo.amount == 50);
     EXPECT_TRUE(qo.entity == traders[0]);
 
-    key = QUOTTERY::MakePosKey(traders[1], 0, 1);
+    key = qtry.MakePosKey(traders[1], 0, 1);
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
     EXPECT_TRUE(qo.amount == 60);
     EXPECT_TRUE(qo.entity == traders[1]);
 
-    key = QUOTTERY::MakeOrderKey(0, 0, 0, id());
+    key = qtry.MakeOrderKey(0, 0, 0, id());
     auto index = state->mABOrders.headIndex(key, 0);
     EXPECT_TRUE(index != NULL_INDEX);
 
@@ -479,12 +510,12 @@ TEST(QTRYTest, MatchingOrders)
     // bid: 100 shares option 1 for 80000
     qtry.AddBidOrder(0, 103, 1, 80000ULL, traders[3]);
 
-    key = QUOTTERY::MakePosKey(traders[2], 0, 0);
+    key = qtry.MakePosKey(traders[2], 0, 0);
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
     EXPECT_TRUE(qo.amount == 103);
     EXPECT_TRUE(qo.entity == traders[2]);
 
-    key = QUOTTERY::MakePosKey(traders[3], 0, 1);
+    key = qtry.MakePosKey(traders[3], 0, 1);
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
     EXPECT_TRUE(qo.amount == 103);
     EXPECT_TRUE(qo.entity == traders[3]);
@@ -494,7 +525,7 @@ TEST(QTRYTest, MatchingOrders)
     qtry.AddBidOrder(0, 10, 0, 71000ULL, traders[4]);
     sint64 b4_bal = qtry.balanceUSD(traders[4]);
     EXPECT_TRUE(b4_bal == (100000000000ULL - 10 * 70000));
-    key = QUOTTERY::MakePosKey(traders[4], 0, 0);
+    key = qtry.MakePosKey(traders[4], 0, 0);
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
     EXPECT_TRUE(qo.amount == 10);
     EXPECT_TRUE(qo.entity == traders[4]);
@@ -511,7 +542,7 @@ TEST(QTRYTest, MatchingOrders)
     qtry.AddBidOrder(0, 163, 0, 50000, traders[5]);
     sint64 b5_bal = qtry.balanceUSD(traders[5]);
     EXPECT_TRUE(b5_bal == (100000000000ULL - 50 * 20000 - 50 * 30000 - 53 * 40000 - 10 * 50000));
-    key = QUOTTERY::MakePosKey(traders[5], 0, 0);
+    key = qtry.MakePosKey(traders[5], 0, 0);
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
     EXPECT_TRUE(qo.amount == 163);
     EXPECT_TRUE(qo.entity == traders[5]);
@@ -570,7 +601,7 @@ TEST(QTRYTest, MatchingOrders)
     // increasing order - (same price)
     qtry.AddAskOrder(1, 5, 0, 50001, traders[8], 1000);
     qtry.AddAskOrder(1, 5, 0, 50001, traders[8], 1000);
-    key = QUOTTERY::MakeOrderKey(1, 0, QUOTTERY_ASK_BIT, id());
+    key = qtry.MakeOrderKey(1, 0, QUOTTERY_ASK_BIT, id());
     index = state->mABOrders.headIndex(key, -50001);
     EXPECT_TRUE(index != NULL_INDEX);
     auto value = state->mABOrders.element(index);
@@ -588,7 +619,7 @@ TEST(QTRYTest, MatchingOrders)
     b8_bal = qtry.balanceUSD(traders[8]);
     EXPECT_TRUE(b8_bal == b8_before - 6 * 90000 - 7 * 90001 - 5 * 90003);
 
-    key = QUOTTERY::MakePosKey(traders[8], 1, 1);
+    key = qtry.MakePosKey(traders[8], 1, 1);
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
     EXPECT_TRUE(qo.amount == 18);
     EXPECT_TRUE(qo.entity == traders[8]);
@@ -606,7 +637,7 @@ TEST(QTRYTest, MatchingOrders)
     qtry.AddBidOrder(2, 16, 0, 80000ULL, traders[9]);
     qtry.AddBidOrder(2, 16, 0, 80000ULL, traders[8]);
 
-    key = QUOTTERY::MakeOrderKey(2, 0, QUOTTERY_BID_BIT, id());
+    key = qtry.MakeOrderKey(2, 0, QUOTTERY_BID_BIT, id());
     index = state->mABOrders.headIndex(key, 80000ULL);
     EXPECT_TRUE(index != NULL_INDEX);
     elem = state->mABOrders.element(index);
@@ -627,7 +658,7 @@ TEST(QTRYTest, MatchingOrders)
     qtry.AddBidOrder(2, 16, 0, 80000ULL, traders[10]);
     qtry.AddBidOrder(2, 8, 0, 80000ULL, traders[8]);
 
-    key = QUOTTERY::MakeOrderKey(2, 0, QUOTTERY_BID_BIT, id());
+    key = qtry.MakeOrderKey(2, 0, QUOTTERY_BID_BIT, id());
     index = state->mABOrders.headIndex(key, 80000ULL);
     EXPECT_TRUE(index != NULL_INDEX);
     qtry.RemoveBidOrder(2, 16, 0, 80000, traders[9]);
@@ -720,7 +751,7 @@ TEST(QTRYTest, CompleteCycle)
         qtry.AddBidOrder(0, 1 + rand() % 100, 1, 10000 + rand() % (1000 - 1), traders[rand() % 16]);
     }
 
-    auto key = QUOTTERY::MakeOrderKey(0, 0, 0, id());
+    auto key = qtry.MakeOrderKey(0, 0, 0, id());
     auto index = state->mABOrders.headIndex(key, 0);
     int count = 0;
 
@@ -732,7 +763,7 @@ TEST(QTRYTest, CompleteCycle)
         count++;
         index = state->mABOrders.nextElementIndex(index);
     }
-    key = QUOTTERY::MakeOrderKey(0, 0, 1, id());
+    key = qtry.MakeOrderKey(0, 0, 1, id());
     index = state->mABOrders.headIndex(key, 0);
     while (index != NULL_INDEX)
     {
@@ -750,10 +781,10 @@ TEST(QTRYTest, CompleteCycle)
     updateEtalonTime(3600 * (24 + 3));
     qtry.FinalizeEvent(0, operation_id);
     // empty mABOrder
-    key = QUOTTERY::MakeOrderKey(0, 0, 0, id());
+    key = qtry.MakeOrderKey(0, 0, 0, id());
     index = state->mABOrders.headIndex(key, 0);
     EXPECT_TRUE(index == NULL_INDEX);
-    key = QUOTTERY::MakeOrderKey(0, 0, 1, id());
+    key = qtry.MakeOrderKey(0, 0, 1, id());
     index = state->mABOrders.headIndex(key, 0);
     EXPECT_TRUE(index == NULL_INDEX);
 
@@ -846,7 +877,7 @@ TEST(QTRYTest, EscrowIntegrity)
     qtry.AddBidOrder(0, 100, 0, 50000, trader);
 
     // Verify Initial Position
-    id key = QUOTTERY::MakePosKey(trader, 0, 0);
+    id key = qtry.MakePosKey(trader, 0, 0);
     QUOTTERY::QtryOrder qo;
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
     EXPECT_TRUE(qo.amount == 100);
@@ -860,7 +891,7 @@ TEST(QTRYTest, EscrowIntegrity)
     EXPECT_TRUE(qo.amount == 60); // Should remain 60 (100 - 40)
 
     // Verify Order Book
-    id orderKey = QUOTTERY::MakeOrderKey(0, 0, QUOTTERY_ASK_BIT, id());
+    id orderKey = qtry.MakeOrderKey(0, 0, QUOTTERY_ASK_BIT, id());
     auto index = state->mABOrders.headIndex(orderKey, -60000);
     EXPECT_TRUE(index != NULL_INDEX);
     auto orderElem = state->mABOrders.element(index);
@@ -1018,8 +1049,8 @@ TEST(QTRYTest, JanitorCleanup_GOForceClaim)
 
     // Verify positions exist
     QUOTTERY::QtryOrder qo;
-    EXPECT_TRUE(state->mPositionInfo.get(QUOTTERY::MakePosKey(winner, 0, 0), qo));
-    EXPECT_TRUE(state->mPositionInfo.get(QUOTTERY::MakePosKey(loser, 0, 1), qo));
+    EXPECT_TRUE(state->mPositionInfo.get(qtry.MakePosKey(winner, 0, 0), qo));
+    EXPECT_TRUE(state->mPositionInfo.get(qtry.MakePosKey(loser, 0, 1), qo));
 
     // 3. TIME TRAVEL: Fast forward past end date
     updateEtalonTime(7200); // +2 hours
@@ -1038,10 +1069,10 @@ TEST(QTRYTest, JanitorCleanup_GOForceClaim)
     // 7. User Claim (Winner) - The "Pull" Pattern
     qtry.UserClaimReward(0, winner);
     // Winner position should be gone
-    EXPECT_FALSE(state->mPositionInfo.contains(QUOTTERY::MakePosKey(winner, 0, 0)));
+    EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(winner, 0, 0)));
 
     // 8. Loser Check - Position still there (stuck state)
-    EXPECT_TRUE(state->mPositionInfo.contains(QUOTTERY::MakePosKey(loser, 0, 1)));
+    EXPECT_TRUE(state->mPositionInfo.contains(qtry.MakePosKey(loser, 0, 1)));
 
     // 9. Janitor (GO) forces cleanup
     std::vector<id> targets;
@@ -1049,7 +1080,7 @@ TEST(QTRYTest, JanitorCleanup_GOForceClaim)
     qtry.GOClaimReward(0, operation_id, targets);
 
     // 10. Verify Loser position is gone
-    EXPECT_FALSE(state->mPositionInfo.contains(QUOTTERY::MakePosKey(loser, 0, 1)));
+    EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(loser, 0, 1)));
 }
 
 TEST(QTRYTest, ViewFunctions_GetOrders_Sorting_Pagination)
@@ -1266,7 +1297,7 @@ TEST(QTRYTest, Matching_SweepBook_PartialFills)
     // 1. Check Whale Position
     QUOTTERY::QtryOrder qo;
     // Whale should have 250 shares
-    EXPECT_TRUE(state->mPositionInfo.get(QUOTTERY::MakePosKey(whale, 0, 0), qo));
+    EXPECT_TRUE(state->mPositionInfo.get(qtry.MakePosKey(whale, 0, 0), qo));
     EXPECT_EQ(qo.amount, 250);
     sint64 expectedCost = 12000000;
     EXPECT_EQ(whaleBalBefore - whaleBalAfter, expectedCost);
@@ -1274,7 +1305,7 @@ TEST(QTRYTest, Matching_SweepBook_PartialFills)
     // 3. Check Order Book Residuals
     // m1 empty, m2 empty
     // m3 should have 50 left @ 60,000
-    id key = QUOTTERY::MakeOrderKey(0, 0, QUOTTERY_ASK_BIT, id());
+    id key = qtry.MakeOrderKey(0, 0, QUOTTERY_ASK_BIT, id());
     // Search for the specific price node
     auto index = state->mABOrders.headIndex(key, -60000);
     EXPECT_TRUE(index != NULL_INDEX);
@@ -1332,12 +1363,12 @@ TEST(QTRYTest, Matching_Merge_ExitLiquidity)
 
     // 4. Verify positions are gone
     QUOTTERY::QtryOrder qo;
-    EXPECT_FALSE(state->mPositionInfo.contains(QUOTTERY::MakePosKey(holderYes, 0, 0)));
-    EXPECT_FALSE(state->mPositionInfo.contains(QUOTTERY::MakePosKey(holderNo, 0, 1)));
+    EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(holderYes, 0, 0)));
+    EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(holderNo, 0, 1)));
 
     // 5. Verify Order Book empty
-    id key0 = QUOTTERY::MakeOrderKey(0, 0, QUOTTERY_ASK_BIT, id());
-    id key1 = QUOTTERY::MakeOrderKey(0, 1, QUOTTERY_ASK_BIT, id());
+    id key0 = qtry.MakeOrderKey(0, 0, QUOTTERY_ASK_BIT, id());
+    id key1 = qtry.MakeOrderKey(0, 1, QUOTTERY_ASK_BIT, id());
     EXPECT_EQ(state->mABOrders.headIndex(key0, 0), NULL_INDEX);
     EXPECT_EQ(state->mABOrders.headIndex(key1, 0), NULL_INDEX);
 }
@@ -1378,12 +1409,12 @@ TEST(QTRYTest, Stability_DustAttack_Rounding)
 
     // 3. Verify Cleanup
     // Order book for Bid Opt 0 should be empty
-    id key = QUOTTERY::MakeOrderKey(0, 0, QUOTTERY_BID_BIT, id());
+    id key = qtry.MakeOrderKey(0, 0, QUOTTERY_BID_BIT, id());
     EXPECT_EQ(state->mABOrders.headIndex(key, 0), NULL_INDEX);
 
     // Whale should have 0 YES left.
     QUOTTERY::QtryOrder qo;
-    EXPECT_FALSE(state->mPositionInfo.contains(QUOTTERY::MakePosKey(whale, 0, 0)));
+    EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(whale, 0, 0)));
 }
 
 TEST(QTRYTest, Governance_FeeUpdates)
@@ -1458,7 +1489,7 @@ TEST(QTRYTest, Finalize_CleanupLogic)
     sint64 balAfterFinalize = qtry.balanceUSD(user);
 
     // 4. Verify Empty Book
-    id key = QUOTTERY::MakeOrderKey(0, 0, QUOTTERY_BID_BIT, id());
+    id key = qtry.MakeOrderKey(0, 0, QUOTTERY_BID_BIT, id());
     EXPECT_EQ(state->mABOrders.headIndex(key, 0), NULL_INDEX);
 
     // 5. Verify Refunds
@@ -1500,8 +1531,8 @@ TEST(QTRYTest, StressTest_ThousandTraders_ChaosMonkey)
     // Verify System State: Every trader should have 100 YES and 100 NO
     QUOTTERY::QtryOrder qo;
     for (int i = 0; i < NUM_TRADERS; i++) {
-        id keyYes = QUOTTERY::MakePosKey(traders[i], 0, 0);
-        id keyNo = QUOTTERY::MakePosKey(traders[i], 0, 1);
+        id keyYes = qtry.MakePosKey(traders[i], 0, 0);
+        id keyNo = qtry.MakePosKey(traders[i], 0, 1);
         EXPECT_TRUE(state->mPositionInfo.get(keyYes, qo));
         EXPECT_EQ(qo.amount, 100);
         EXPECT_TRUE(state->mPositionInfo.get(keyNo, qo));
@@ -1553,17 +1584,17 @@ TEST(QTRYTest, StressTest_ThousandTraders_ChaosMonkey)
     // In real unit test environment we might not have iterator for HashMap easily exposed
     // so we iterate our known traders vector.
     for (int i = 0; i < NUM_TRADERS; i++) {
-        id keyYes = QUOTTERY::MakePosKey(traders[i], 0, 0);
+        id keyYes = qtry.MakePosKey(traders[i], 0, 0);
         if (state->mPositionInfo.get(keyYes, qo)) totalYes += qo.amount;
 
-        id keyNo = QUOTTERY::MakePosKey(traders[i], 0, 1);
+        id keyNo = qtry.MakePosKey(traders[i], 0, 1);
         if (state->mPositionInfo.get(keyNo, qo)) totalNo += qo.amount;
     }
 
     // Scan Order Book (Locked Liquidity)
     auto countLiquidity = [&](uint64 option) -> uint64 {
         uint64 sum = 0;
-        id key = QUOTTERY::MakeOrderKey(0, option, QUOTTERY_ASK_BIT, id());
+        id key = qtry.MakeOrderKey(0, option, QUOTTERY_ASK_BIT, id());
         auto index = state->mABOrders.headIndex(key, 0); // Start from beginning
         int safety = 0;
         while (index != NULL_INDEX && safety++ < 100000) {
@@ -1591,7 +1622,7 @@ TEST(QTRYTest, StressTest_ThousandTraders_ChaosMonkey)
     qtry.FinalizeEvent(0, operation_id);
 
     // Verify Book is completely empty
-    id keyEmpty = QUOTTERY::MakeOrderKey(0, 0, QUOTTERY_BID_BIT, id());
+    id keyEmpty = qtry.MakeOrderKey(0, 0, QUOTTERY_BID_BIT, id());
     EXPECT_EQ(state->mABOrders.headIndex(keyEmpty, 0), NULL_INDEX);
 }
 
@@ -1624,7 +1655,7 @@ TEST(QTRYTest, SelfTrading_WashTrade_Integrity)
 
     // Check Trader has 100 YES shares
     QUOTTERY::QtryOrder qo;
-    id key = QUOTTERY::MakePosKey(trader, 0, 0);
+    id key = qtry.MakePosKey(trader, 0, 0);
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
     EXPECT_EQ(qo.amount, 100);
 
@@ -1662,7 +1693,7 @@ TEST(QTRYTest, SelfTrading_WashTrade_Integrity)
     EXPECT_EQ(qo.amount, 100);
 
     // Order book should be empty
-    id orderKey = QUOTTERY::MakeOrderKey(0, 0, QUOTTERY_BID_BIT, id());
+    id orderKey = qtry.MakeOrderKey(0, 0, QUOTTERY_BID_BIT, id());
     EXPECT_EQ(state->mABOrders.headIndex(orderKey, 60000), NULL_INDEX);
 }
 
@@ -1703,7 +1734,7 @@ TEST(QTRYTest, Matching_Sweep_FullFill)
 
     // 4. Verify Full Sweep
     // Check Dust Orders remaining: Should be 0 (All matched)
-    id keyBid = QUOTTERY::MakeOrderKey(0, 0, QUOTTERY_BID_BIT, id());
+    id keyBid = qtry.MakeOrderKey(0, 0, QUOTTERY_BID_BIT, id());
 
     int remainingDust = 0;
     auto index = state->mABOrders.headIndex(keyBid, 50000);
@@ -1716,7 +1747,7 @@ TEST(QTRYTest, Matching_Sweep_FullFill)
 
     // Check Whale's Ask Order remaining
     // Should be fully filled and removed from book
-    id keyAsk = QUOTTERY::MakeOrderKey(0, 0, QUOTTERY_ASK_BIT, id());
+    id keyAsk = qtry.MakeOrderKey(0, 0, QUOTTERY_ASK_BIT, id());
     index = state->mABOrders.headIndex(keyAsk, -50000);
 
     // If it matched perfectly (60 vs 60), the order is removed.
@@ -1938,7 +1969,7 @@ TEST(QTRYTest, Dispute_Resolution_AutoCleanup_And_Claim)
 
     // Verify Asker's shares are in Escrow (removed from Position)
     QUOTTERY::QtryOrder qo;
-    EXPECT_FALSE(state->mPositionInfo.contains(QUOTTERY::MakePosKey(asker, 0, 1)));
+    EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(asker, 0, 1)));
 
     // 3. Event Ends
     updateEtalonTime(7200); // 2 hours later
@@ -1971,7 +2002,7 @@ TEST(QTRYTest, Dispute_Resolution_AutoCleanup_And_Claim)
     EXPECT_EQ(bidderFinal, bidderInitial);
 
     // B. Asker: Should have received shares back.
-    id askerPosKey = QUOTTERY::MakePosKey(asker, 0, 1);
+    id askerPosKey = qtry.MakePosKey(asker, 0, 1);
     EXPECT_TRUE(state->mPositionInfo.get(askerPosKey, qo));
     EXPECT_EQ(qo.amount, 100);
 
@@ -2227,7 +2258,7 @@ TEST(QTRYTest, Dividend_Distribution_Threshold_Check)
 
     // Verify Minting Succeeded
     QUOTTERY::QtryOrder qo;
-    id key = QUOTTERY::MakePosKey(maker, 0, 0);
+    id key = qtry.MakePosKey(maker, 0, 0);
     EXPECT_TRUE(state->mPositionInfo.get(key, qo));
     EXPECT_EQ(qo.amount, 1);
 
@@ -2486,7 +2517,7 @@ TEST(QTRYTest, Automatic_Cleanup_Lifecycle)
 
     // Verify Flag is set
     bit finalFlag;
-    EXPECT_TRUE(state->eventFinalFlag.get(eventId, finalFlag));
+    EXPECT_TRUE(state->mEventFinalFlag.get(eventId, finalFlag));
 
     // 4. Trigger Automatic Cleanup via EndEpoch
     // This performs two passes:
@@ -2497,7 +2528,7 @@ TEST(QTRYTest, Automatic_Cleanup_Lifecycle)
     // 5. Verify Complete Cleanup
     EXPECT_FALSE(state->mEventInfo.get(eventId, qei));            // Now Gone
     EXPECT_FALSE(state->mEventResult.get(eventId, res));          // Now Gone
-    EXPECT_FALSE(state->eventFinalFlag.get(eventId, finalFlag));  // Flag Gone
+    EXPECT_FALSE(state->mEventFinalFlag.get(eventId, finalFlag));  // Flag Gone
 
     // Safety check: other maps should definitely be gone too
     QUOTTERY::DepositInfo di;
@@ -2585,8 +2616,8 @@ TEST(QTRYTest, Grand_Final_Complex_Lifecycle)
     }
 
     // Check Immediate Cleanup: Orderbook is gone, but Info persists for EndEpoch
-    id keyBid0 = QUOTTERY::MakeOrderKey(eventId, 0, QUOTTERY_BID_BIT, id());
-    id keyAsk1 = QUOTTERY::MakeOrderKey(eventId, 1, QUOTTERY_ASK_BIT, id());
+    id keyBid0 = qtry.MakeOrderKey(eventId, 0, QUOTTERY_BID_BIT, id());
+    id keyAsk1 = qtry.MakeOrderKey(eventId, 1, QUOTTERY_ASK_BIT, id());
     QUOTTERY::QtryEventInfo qei;
 
     EXPECT_EQ(state->mABOrders.headIndex(keyBid0, 0), NULL_INDEX);
@@ -2615,7 +2646,7 @@ TEST(QTRYTest, Grand_Final_Complex_Lifecycle)
     EXPECT_FALSE(state->mEventInfo.get(eventId, qei)); // Now Gone
     EXPECT_FALSE(state->mEventResult.get(eventId, res)); // Gone
     EXPECT_FALSE(state->mDisputeInfo.get(eventId, di));  // Gone
-    EXPECT_FALSE(state->mPositionInfo.contains(QUOTTERY::MakePosKey(traders[5], eventId, 1))); // Gone
+    EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(traders[5], eventId, 1))); // Gone
 
     sint64 finalTotal = 0;
     for (int i = 0; i < NUM_TRADERS; i++) {
@@ -2649,7 +2680,7 @@ TEST(QTRYTest, AskOrder_InsufficientPosition)
     qtry.AddBidOrder(0, 100, 1, 50000, trader);
 
     // Verify Initial Position: 100 Shares of Option 0
-    id keyPos = QUOTTERY::MakePosKey(trader, 0, 0);
+    id keyPos = qtry.MakePosKey(trader, 0, 0);
     QUOTTERY::QtryOrder qo;
     EXPECT_TRUE(state->mPositionInfo.get(keyPos, qo));
     EXPECT_EQ(qo.amount, 100);
@@ -2665,7 +2696,7 @@ TEST(QTRYTest, AskOrder_InsufficientPosition)
     EXPECT_EQ(qo.amount, 100);
 
     // B. Order Book should be Empty
-    id keyAsk = QUOTTERY::MakeOrderKey(0, 0, QUOTTERY_ASK_BIT, id());
+    id keyAsk = qtry.MakeOrderKey(0, 0, QUOTTERY_ASK_BIT, id());
     EXPECT_EQ(state->mABOrders.headIndex(keyAsk, 0), NULL_INDEX);
 
     // 5. Valid Control Test: Sell 50 (Should work)
@@ -2746,7 +2777,7 @@ TEST(QTRYTest, EndEpoch_Full_Lifecycle_Payouts_And_Dividends)
     sint64 winnerBalAfter = qtry.balanceUSD(winner);
     EXPECT_EQ(winnerBalAfter - winnerBalBefore, 8500000);
 
-    EXPECT_FALSE(state->mPositionInfo.contains(QUOTTERY::MakePosKey(winner, eventId, 1)));
+    EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(winner, eventId, 1)));
 
     // 7. Verify PASS 2: Garbage Collection
     sint8 res;
@@ -2831,12 +2862,12 @@ TEST(QTRYTest, Cleanup_Procedures_Check)
     // Verify Initial State
     for (int eid = 0; eid < 3; ++eid) {
         // OrderBook should exist
-        id keyOrder = QUOTTERY::MakeOrderKey(eid, 0, QUOTTERY_ASK_BIT, id());
+        id keyOrder = qtry.MakeOrderKey(eid, 0, QUOTTERY_ASK_BIT, id());
         EXPECT_NE(state->mABOrders.headIndex(keyOrder), NULL_INDEX);
 
         // Every trader should have a position
         for (int t = 0; t < NUM_TRADERS; ++t) {
-            EXPECT_TRUE(state->mPositionInfo.contains(QUOTTERY::MakePosKey(traders[t], eid, 0)));
+            EXPECT_TRUE(state->mPositionInfo.contains(qtry.MakePosKey(traders[t], eid, 0)));
         }
 
         QUOTTERY::QtryEventInfo qei;
@@ -2855,8 +2886,8 @@ TEST(QTRYTest, Cleanup_Procedures_Check)
     qtry.FinalizeEvent(0, operation_id);
 
     // CHECK: OrderBook Empty
-    EXPECT_EQ(state->mABOrders.headIndex(QUOTTERY::MakeOrderKey(0, 0, QUOTTERY_ASK_BIT, id())), NULL_INDEX);
-    EXPECT_EQ(state->mABOrders.headIndex(QUOTTERY::MakeOrderKey(0, 1, QUOTTERY_BID_BIT, id())), NULL_INDEX);
+    EXPECT_EQ(state->mABOrders.headIndex(qtry.MakeOrderKey(0, 0, QUOTTERY_ASK_BIT, id())), NULL_INDEX);
+    EXPECT_EQ(state->mABOrders.headIndex(qtry.MakeOrderKey(0, 1, QUOTTERY_BID_BIT, id())), NULL_INDEX);
 
     // CHECK: Info persists
     QUOTTERY::QtryEventInfo qei;
@@ -2867,15 +2898,15 @@ TEST(QTRYTest, Cleanup_Procedures_Check)
 
     // CHECK: Complete Wipe for Event 0
     for (int t = 0; t < NUM_TRADERS; ++t) {
-        EXPECT_FALSE(state->mPositionInfo.contains(QUOTTERY::MakePosKey(traders[t], 0, 1)));
-        EXPECT_FALSE(state->mPositionInfo.contains(QUOTTERY::MakePosKey(traders[t], 0, 0)));
+        EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(traders[t], 0, 1)));
+        EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(traders[t], 0, 0)));
     }
     EXPECT_FALSE(state->mEventInfo.get(0, qei));
     sint8 res;
     EXPECT_FALSE(state->mEventResult.get(0, res));
 
     // CHECK: Event 1 & 2 still intact
-    EXPECT_NE(state->mABOrders.headIndex(QUOTTERY::MakeOrderKey(1, 0, QUOTTERY_ASK_BIT, id())), NULL_INDEX);
+    EXPECT_NE(state->mABOrders.headIndex(qtry.MakeOrderKey(1, 0, QUOTTERY_ASK_BIT, id())), NULL_INDEX);
 
     // ==========================================================
     // PHASE 2: Event 1 - Dispute Resolution
@@ -2898,7 +2929,7 @@ TEST(QTRYTest, Cleanup_Procedures_Check)
     }
 
     // CHECK: OrderBook empty
-    EXPECT_EQ(state->mABOrders.headIndex(QUOTTERY::MakeOrderKey(1, 0, QUOTTERY_ASK_BIT, id())), NULL_INDEX);
+    EXPECT_EQ(state->mABOrders.headIndex(qtry.MakeOrderKey(1, 0, QUOTTERY_ASK_BIT, id())), NULL_INDEX);
 
     QUOTTERY::DepositInfo di;
     EXPECT_FALSE(state->mDisputeInfo.get(1, di));
@@ -2907,7 +2938,7 @@ TEST(QTRYTest, Cleanup_Procedures_Check)
 
     // CHECK: Complete Wipe for Event 1
     for (int t = 0; t < NUM_TRADERS; ++t) {
-        EXPECT_FALSE(state->mPositionInfo.contains(QUOTTERY::MakePosKey(traders[t], 1, 0)));
+        EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(traders[t], 1, 0)));
     }
     EXPECT_FALSE(state->mEventInfo.get(1, qei));
     EXPECT_FALSE(state->mEventResult.get(1, res));
@@ -2917,11 +2948,11 @@ TEST(QTRYTest, Cleanup_Procedures_Check)
     // ==========================================================
 
     // Event 2 should remain completely untouched
-    EXPECT_NE(state->mABOrders.headIndex(QUOTTERY::MakeOrderKey(2, 0, QUOTTERY_ASK_BIT, id())), NULL_INDEX);
+    EXPECT_NE(state->mABOrders.headIndex(qtry.MakeOrderKey(2, 0, QUOTTERY_ASK_BIT, id())), NULL_INDEX);
     EXPECT_TRUE(state->mEventInfo.get(2, qei));
 
     // Verify a random trader still has position in Event 2
-    EXPECT_TRUE(state->mPositionInfo.contains(QUOTTERY::MakePosKey(traders[25], 2, 0)));
+    EXPECT_TRUE(state->mPositionInfo.contains(qtry.MakePosKey(traders[25], 2, 0)));
 }
 
 TEST(QTRYTest, Cleanup_Empty_Events_NoUsers)
@@ -2961,7 +2992,7 @@ TEST(QTRYTest, Cleanup_Empty_Events_NoUsers)
 
     // CHECK: Flag set, but Data still exists waiting for EndEpoch
     bit finalFlag;
-    EXPECT_TRUE(state->eventFinalFlag.get(eventId_Ghost, finalFlag));
+    EXPECT_TRUE(state->mEventFinalFlag.get(eventId_Ghost, finalFlag));
     QUOTTERY::QtryEventInfo qei;
     EXPECT_TRUE(state->mEventInfo.get(eventId_Ghost, qei));
 
@@ -3061,7 +3092,7 @@ TEST(QTRYTest, Hacker_Warfare_Simulation)
     EXPECT_EQ(qtry.balanceUSD(hacker), hackerInitialBalance);
 
     // Verify no ghost positions were created
-    EXPECT_FALSE(state->mPositionInfo.contains(QUOTTERY::MakePosKey(hacker, eventId, 1)));
+    EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(hacker, eventId, 1)));
 
     // ==========================================================
     // ATTACK 2: The "Double Refund" (Replay Attack)
