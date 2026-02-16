@@ -243,6 +243,7 @@ public:
 
 	struct ConnectToRoom_output
 	{
+		id winner;
 		uint8 returnCode;
 	};
 
@@ -261,6 +262,22 @@ public:
 		uint64 returnAmount;
 		uint64 amount;
 		bit failedGetWinner;
+	};
+
+	struct CloseRoom_input
+	{
+	};
+
+	struct CloseRoom_output
+	{
+		uint8 returnCode;
+	};
+
+	struct CloseRoom_locals
+	{
+		UserData userData;
+		RoomInfo room;
+		uint64 refundAmount;
 	};
 
 	struct GetPercentFees_input
@@ -320,6 +337,13 @@ public:
 		uint8 returnCode;
 	};
 
+	struct SetTTLHours_locals
+	{
+		sint64 roomIndex;
+		RoomInfo room;
+		DateAndTime now;
+	};
+
 	struct GetTTLHours_input
 	{
 	};
@@ -332,6 +356,7 @@ public:
 
 	struct GetUserProfile_input
 	{
+		id userId;
 	};
 
 	struct GetUserProfile_output
@@ -401,6 +426,7 @@ public:
 		REGISTER_USER_PROCEDURE(SetTTLHours, 4);
 		REGISTER_USER_PROCEDURE(Deposit, 5);
 		REGISTER_USER_PROCEDURE(Withdraw, 6);
+		REGISTER_USER_PROCEDURE(CloseRoom, 7);
 
 		REGISTER_USER_FUNCTION(GetPercentFees, 1);
 		REGISTER_USER_FUNCTION(GetRooms, 2);
@@ -471,20 +497,24 @@ public:
 				locals.room.lastUpdate = locals.now;
 			}
 
-			locals.elapsedSeconds = div(locals.room.lastUpdate.durationMicrosec(locals.now), 1000000ULL);
-			if (locals.elapsedSeconds >= locals.room.closeTimer)
+			// closeTimer == 0 means an infinite lifetime room.
+			if (locals.room.closeTimer > 0)
 			{
-				locals.finalizeInput.roomId = locals.room.roomId;
-				locals.finalizeInput.owner = locals.room.owner;
-				locals.finalizeInput.roomAmount = locals.room.amount;
-				locals.finalizeInput.includeLocked = true;
-				CALL(FinalizeRoom, locals.finalizeInput, locals.finalizeOutput);
-			}
-			else
-			{
-				locals.room.closeTimer = usubSatu64(locals.room.closeTimer, locals.elapsedSeconds);
-				locals.room.lastUpdate = locals.now;
-				state.rooms.set(locals.room.roomId, locals.room);
+				locals.elapsedSeconds = div(locals.room.lastUpdate.durationMicrosec(locals.now), 1000000ULL);
+				if (locals.elapsedSeconds >= locals.room.closeTimer)
+				{
+					locals.finalizeInput.roomId = locals.room.roomId;
+					locals.finalizeInput.owner = locals.room.owner;
+					locals.finalizeInput.roomAmount = locals.room.amount;
+					locals.finalizeInput.includeLocked = true;
+					CALL(FinalizeRoom, locals.finalizeInput, locals.finalizeOutput);
+				}
+				else
+				{
+					locals.room.closeTimer = usubSatu64(locals.room.closeTimer, locals.elapsedSeconds);
+					locals.room.lastUpdate = locals.now;
+					state.rooms.set(locals.room.roomId, locals.room);
+				}
 			}
 
 			locals.roomIndex = state.rooms.nextElementIndex(locals.roomIndex);
@@ -686,6 +716,7 @@ public:
 		locals.finalizeInput.includeLocked = false;
 		CALL(FinalizeRoom, locals.finalizeInput, locals.finalizeOutput);
 		output.returnCode = locals.finalizeOutput.returnCode;
+		output.winner = locals.winner;
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetPercentFees)
@@ -718,7 +749,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	PUBLIC_PROCEDURE(SetTTLHours)
+	PUBLIC_PROCEDURE_WITH_LOCALS(SetTTLHours)
 	{
 		if (qpi.invocationReward() > 0)
 		{
@@ -731,13 +762,27 @@ public:
 			return;
 		}
 
-		if (input.ttlHours == 0)
+		if (state.ttlHours == input.ttlHours)
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
 
 		state.ttlHours = input.ttlHours;
+		locals.now = qpi.now();
+		locals.roomIndex = state.rooms.nextElementIndex(NULL_INDEX);
+		while (locals.roomIndex != NULL_INDEX)
+		{
+			locals.room = state.rooms.value(locals.roomIndex);
+
+			// 0 means rooms do not expire automatically.
+			locals.room.closeTimer = static_cast<uint32>(state.ttlHours) * 3600U;
+
+			locals.room.lastUpdate = locals.now;
+			state.rooms.set(locals.room.roomId, locals.room);
+
+			locals.roomIndex = state.rooms.nextElementIndex(locals.roomIndex);
+		}
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
@@ -772,7 +817,7 @@ public:
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetUserProfile)
 	{
-		if (!state.users.get(qpi.invocator(), locals.userData))
+		if (!state.users.get(input.userId, locals.userData))
 		{
 			output.returnCode = toReturnCode(EReturnCode::USER_NOT_FOUND);
 			return;
@@ -831,6 +876,51 @@ public:
 		locals.userData.depositedAmount -= input.amount;
 		state.users.set(locals.userData.userId, locals.userData);
 		qpi.transfer(qpi.invocator(), input.amount);
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(CloseRoom)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (!state.users.get(qpi.invocator(), locals.userData))
+		{
+			output.returnCode = toReturnCode(EReturnCode::USER_NOT_FOUND);
+			return;
+		}
+
+		if (state.rooms.get(locals.userData.roomId, locals.room))
+		{
+			if (locals.room.owner != qpi.invocator())
+			{
+				output.returnCode = toReturnCode(EReturnCode::ROOM_ACCESS_DENIED);
+				return;
+			}
+
+			state.rooms.removeByKey(locals.userData.roomId);
+			state.rooms.cleanupIfNeeded();
+		}
+
+		if (locals.userData.depositedAmount > 0)
+		{
+			locals.refundAmount += static_cast<uint64>(locals.userData.depositedAmount);
+		}
+		if (locals.userData.locked > 0)
+		{
+			locals.refundAmount += static_cast<uint64>(locals.userData.locked);
+		}
+
+		state.users.removeByKey(locals.userData.userId);
+		state.users.cleanupIfNeeded();
+
+		if (locals.refundAmount > 0)
+		{
+			qpi.transfer(qpi.invocator(), locals.refundAmount);
+		}
+
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -911,6 +1001,7 @@ private:
 		locals.newRoom.owner = input.owner;
 		locals.newRoom.allowedPlayer = input.allowedPlayer;
 		locals.newRoom.amount = input.amount;
+		// 0 means rooms do not expire automatically.
 		locals.newRoom.closeTimer = static_cast<uint32>(state.ttlHours) * 3600U;
 		locals.newRoom.lastUpdate = qpi.now();
 
