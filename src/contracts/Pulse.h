@@ -36,8 +36,6 @@ constexpr uint32 PULSE_DEFAULT_INIT_TIME = 22 << 9 | 4 << 5 | 13;
 constexpr uint16 PULSE_DEFAULT_MAX_AUTO_TICKETS_PER_USER = div<uint16>(PULSE_MAX_NUMBER_OF_PLAYERS, 2);
 constexpr uint64 PULSE_CLEANUP_THRESHOLD = 75ULL;
 
-const id PULSE_QHEART_ISSUER = ID(_S, _S, _G, _X, _S, _L, _S, _X, _F, _E, _J, _O, _O, _B, _T, _Z, _W, _V, _D, _S, _R, _C, _E, _F, _G, _X, _N, _D, _Y,
-                                  _U, _V, _D, _X, _M, _Q, _A, _L, _X, _L, _B, _X, _G, _D, _C, _R, _X, _T, _K, _F, _Z, _I, _O, _T, _G, _Z, _F);
 constexpr uint64 PULSE_CONTRACT_ASSET_NAME = 297750254928ULL; // "PULSE"
 
 struct PULSE2
@@ -696,8 +694,10 @@ public:
 
 	INITIALIZE()
 	{
-		state.teamAddress = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C, _R, _L,
-		                       _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
+		state.teamAddress = ID(_R, _O, _J, _V, _A, _E, _M, _F, _B, _X, _X, _Y, _N, _G, _A, _U, _A, _U, _I, _I, _X, _L, _B, _U, _P, _D, _H, _C, _D, _P,
+		                       _E, _S, _Y, _Z, _O, _V, _W, _U, _Y, _E, _C, _B, _Q, _V, _Z, _R, _F, _T, _K, _A, _G, _S, _H, _T, _N, _A);
+		state.qheartIssuer = ID(_S, _S, _G, _X, _S, _L, _S, _X, _F, _E, _J, _O, _O, _B, _T, _Z, _W, _V, _D, _S, _R, _C, _E, _F, _G, _X, _N, _D, _Y,
+		                        _U, _V, _D, _X, _M, _Q, _A, _L, _X, _L, _B, _X, _G, _D, _C, _R, _X, _T, _K, _F, _Z, _I, _O, _T, _G, _Z, _F);
 
 		state.ticketPrice = PULSE_TICKET_PRICE_DEFAULT;
 		state.devPercent = PULSE_DEFAULT_DEV_PERCENT;
@@ -816,7 +816,7 @@ public:
 	// Returns QHeart balance cap retained by the contract.
 	PUBLIC_FUNCTION(GetQHeartHoldLimit) { output.qheartHoldLimit = state.qheartHoldLimit; }
 	// Returns the designated QHeart issuer wallet.
-	PUBLIC_FUNCTION(GetQHeartWallet) { output.wallet = PULSE_QHEART_ISSUER; }
+	PUBLIC_FUNCTION(GetQHeartWallet) { output.wallet = state.qheartIssuer; }
 	// Returns digits from the last settled draw.
 	PUBLIC_FUNCTION(GetWinningDigits) { output.digits = state.lastWinningDigits; }
 
@@ -834,7 +834,7 @@ public:
 	// Returns contract QHeart balance held in the Pulse wallet.
 	PUBLIC_FUNCTION(GetBalance)
 	{
-		output.balance = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, SELF_INDEX, SELF_INDEX);
+		output.balance = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
 	}
 
 	// Returns the winners ring buffer and total winners counter.
@@ -878,7 +878,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.invocator() != PULSE_QHEART_ISSUER)
+		if (qpi.invocator() != state.qheartIssuer)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -903,7 +903,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.invocator() != PULSE_QHEART_ISSUER)
+		if (qpi.invocator() != state.qheartIssuer)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -928,7 +928,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.invocator() != PULSE_QHEART_ISSUER)
+		if (qpi.invocator() != state.qheartIssuer)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -953,7 +953,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.invocator() != PULSE_QHEART_ISSUER)
+		if (qpi.invocator() != state.qheartIssuer)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -983,7 +983,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.invocator() != PULSE_QHEART_ISSUER)
+		if (qpi.invocator() != state.qheartIssuer)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -1025,7 +1025,7 @@ public:
 		}
 
 		locals.userBalance =
-		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
 		input.amount = min(locals.userBalance, input.amount);
 
 		locals.totalPrice = smul(state.ticketPrice, static_cast<sint64>(input.desiredTickets));
@@ -1059,7 +1059,7 @@ public:
 		state.autoParticipants.get(qpi.invocator(), locals.entry);
 		locals.entry.player = qpi.invocator();
 
-		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, qpi.invocator(),
+		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, qpi.invocator(),
 		                                                                qpi.invocator(), input.amount, SELF);
 		if (locals.transferResult < 0)
 		{
@@ -1108,7 +1108,7 @@ public:
 		}
 
 		locals.transferResult =
-		    qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, locals.withdrawAmount, qpi.invocator());
+		    qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, locals.withdrawAmount, qpi.invocator());
 		if (locals.transferResult < 0)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TRANSFER_FROM_PULSE_FAILED);
@@ -1180,7 +1180,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.invocator() != PULSE_QHEART_ISSUER)
+		if (qpi.invocator() != state.qheartIssuer)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -1242,14 +1242,14 @@ public:
 		}
 
 		locals.userBalance =
-		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
 		if (locals.userBalance < state.ticketPrice)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
 			return;
 		}
 
-		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, qpi.invocator(),
+		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, qpi.invocator(),
 		                                                                qpi.invocator(), state.ticketPrice, SELF);
 		if (locals.transferResult < 0)
 		{
@@ -1408,7 +1408,7 @@ private:
 
 		if (locals.devAmount > 0)
 		{
-			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, locals.devAmount, state.teamAddress);
+			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, locals.devAmount, state.teamAddress);
 		}
 		if (locals.shareholdersAmount > 0)
 		{
@@ -1428,12 +1428,12 @@ private:
 		}
 		if (locals.burnAmount > 0)
 		{
-			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, locals.burnAmount, NULL_ID);
+			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, locals.burnAmount, NULL_ID);
 		}
 		if (locals.qheartAmount > 0)
 		{
-			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, locals.qheartAmount,
-			                                        PULSE_QHEART_ISSUER);
+			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, locals.qheartAmount,
+			                                        state.qheartIssuer);
 		}
 
 		locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
@@ -1442,7 +1442,7 @@ private:
 		CALL(GetRandomDigits, locals.randomInput, locals.randomOutput);
 		state.lastWinningDigits = locals.randomOutput.digits;
 
-		locals.balanceSigned = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, SELF_INDEX, SELF_INDEX);
+		locals.balanceSigned = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
 		locals.balance = max(locals.balanceSigned, 0LL);
 
 		locals.totalPrize = 0;
@@ -1468,7 +1468,7 @@ private:
 
 			if (locals.prize > 0 && locals.balance >= locals.prize)
 			{
-				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, static_cast<sint64>(locals.prize),
+				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, static_cast<sint64>(locals.prize),
 				                                        locals.ticket.player);
 				locals.balance -= locals.prize;
 
@@ -1478,13 +1478,13 @@ private:
 			}
 		}
 
-		locals.balanceSigned = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF, SELF_INDEX, SELF_INDEX);
+		locals.balanceSigned = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
 		locals.balance = (locals.balanceSigned > 0) ? static_cast<uint64>(locals.balanceSigned) : 0;
 
 		if (state.qheartHoldLimit > 0 && locals.balance > state.qheartHoldLimit)
 		{
-			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF,
-			                                        static_cast<sint64>(locals.balance - state.qheartHoldLimit), PULSE_QHEART_ISSUER);
+			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF,
+			                                        static_cast<sint64>(locals.balance - state.qheartHoldLimit), state.qheartIssuer);
 		}
 	}
 
@@ -1542,14 +1542,14 @@ private:
 
 		locals.totalPrice = smul(static_cast<sint64>(input.count), state.ticketPrice);
 		locals.userBalance =
-		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, input.player, input.player, SELF_INDEX, SELF_INDEX);
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, input.player, input.player, SELF_INDEX, SELF_INDEX);
 		if (locals.userBalance < static_cast<sint64>(locals.totalPrice))
 		{
 			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
 			return;
 		}
 
-		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, input.player, input.player,
+		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, input.player, input.player,
 		                                                                static_cast<sint64>(locals.totalPrice), SELF);
 		if (locals.transferResult < 0)
 		{
@@ -1625,7 +1625,7 @@ private:
 			locals.shareholdersHolderShares = locals.shareholdersIter.numberOfPossessedShares();
 			if (locals.shareholdersHolderShares > 0)
 			{
-				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, SELF, SELF,
+				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF,
 				                                        smul(locals.shareholdersHolderShares, locals.shareholdersDividendPerShare),
 				                                        locals.shareholdersIter.possessor());
 			}
@@ -1686,6 +1686,7 @@ protected:
 	uint8 drawHour;
 	EState currentState;
 	id teamAddress;
+	id qheartIssuer;
 	NextEpochData nextEpochData;
 	// Monotonic winner count used to rotate the winners ring buffer.
 	uint64 winnersCounter;

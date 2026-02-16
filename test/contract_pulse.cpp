@@ -91,6 +91,7 @@ public:
 	const id& getTeamAddressInternal() const { return teamAddress; }
 	const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& getLastWinningDigits() const { return lastWinningDigits; }
 	Ticket getTicket(uint64 index) const { return tickets.get(index); }
+	id getQHeartIssuer() const { return qheartIssuer; }
 
 	void setTicketCounter(uint64 value) { ticketCounter = value; }
 	void setTicketPriceInternal(uint64 value) { ticketPrice = value; }
@@ -212,6 +213,8 @@ public:
 	}
 
 	PULSEChecker* state() { return reinterpret_cast<PULSEChecker*>(contractStates[PULSE_CONTRACT_INDEX]); }
+	const PULSEChecker* state() const { return reinterpret_cast<PULSEChecker*>(contractStates[PULSE_CONTRACT_INDEX]); }
+
 	id pulseSelf() const { return id(PULSE_CONTRACT_INDEX, 0, 0, 0); }
 
 	PULSE::GetTicketPrice_output getTicketPrice()
@@ -485,7 +488,7 @@ public:
 		static constexpr char name[7] = {'Q', 'H', 'E', 'A', 'R', 'T', 0};
 		static constexpr char unit[7] = {};
 		QHeartIssuance info{};
-		const sint64 issued = issueAsset(PULSE_QHEART_ISSUER, name, 0, unit, totalShares, PULSE_CONTRACT_INDEX, &info.issuanceIndex,
+		const sint64 issued = issueAsset(state()->getQHeartIssuer(), name, 0, unit, totalShares, PULSE_CONTRACT_INDEX, &info.issuanceIndex,
 		                                 &info.ownershipIndex, &info.possessionIndex);
 		EXPECT_EQ(issued, totalShares);
 		return info;
@@ -516,7 +519,7 @@ public:
 	uint64 qheartBalanceOf(const id& owner) const
 	{
 		const long long balance =
-		    numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, PULSE_QHEART_ISSUER, owner, owner, PULSE_CONTRACT_INDEX, PULSE_CONTRACT_INDEX);
+		    numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state()->getQHeartIssuer(), owner, owner, PULSE_CONTRACT_INDEX, PULSE_CONTRACT_INDEX);
 		return (balance > 0) ? static_cast<uint64>(balance) : 0;
 	}
 
@@ -733,7 +736,7 @@ TEST(ContractPulse_Private, ValidateDigitsAcceptsRangeAndRejectsOutOfRange)
 TEST(ContractPulse_Private, PrepareRandomTicketsRejectsInvalidInputs)
 {
 	ContractTestingPulse ctl;
-	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, PULSE_QHEART_ISSUER, 0);
+	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, ctl.state()->getQHeartIssuer(), 0);
 	primeQpiProcedureContext(qpi);
 
 	PULSE::PrepareRandomTickets_output out = ctl.state()->callPrepareRandomTickets(qpi, 0);
@@ -752,7 +755,7 @@ TEST(ContractPulse_Private, PrepareRandomTicketsRejectsWhenSoldOut)
 	ctl.beginEpoch();
 	ctl.state()->setTicketCounter(PULSE_MAX_NUMBER_OF_PLAYERS);
 
-	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, PULSE_QHEART_ISSUER, 0);
+	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, ctl.state()->getQHeartIssuer(), 0);
 	primeQpiProcedureContext(qpi);
 	const PULSE::PrepareRandomTickets_output out = ctl.state()->callPrepareRandomTickets(qpi, 1);
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::TICKET_ALL_SOLD_OUT));
@@ -767,7 +770,7 @@ TEST(ContractPulse_Private, ChargeTicketsFromPlayerRejectsInvalidOrInsufficient)
 	const uint64 ticketPrice = ctl.getTicketPrice().ticketPrice;
 	ctl.transferQHeart(issuance, user, ticketPrice);
 
-	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, PULSE_QHEART_ISSUER, 0);
+	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, ctl.state()->getQHeartIssuer(), 0);
 	primeQpiProcedureContext(qpi);
 
 	PULSE::ChargeTicketsFromPlayer_output out = ctl.state()->callChargeTicketsFromPlayer(qpi, user, 0);
@@ -784,7 +787,7 @@ TEST(ContractPulse_Private, ChargeTicketsFromPlayerRejectsInvalidOrInsufficient)
 TEST(ContractPulse_Private, AllocateRandomTicketsRejectsInvalidOrClosed)
 {
 	ContractTestingPulse ctl;
-	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, PULSE_QHEART_ISSUER, 0);
+	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, ctl.state()->getQHeartIssuer(), 0);
 	primeQpiProcedureContext(qpi);
 
 	PULSE::AllocateRandomTickets_output out = ctl.state()->callAllocateRandomTickets(qpi, id::zero(), 1);
@@ -806,7 +809,7 @@ TEST(ContractPulse_Private, AllocateRandomTicketsRejectsWhenSoldOut)
 	ctl.beginEpoch();
 	ctl.state()->setTicketCounter(PULSE_MAX_NUMBER_OF_PLAYERS);
 
-	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, PULSE_QHEART_ISSUER, 0);
+	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, ctl.state()->getQHeartIssuer(), 0);
 	primeQpiProcedureContext(qpi);
 	const PULSE::AllocateRandomTickets_output out = ctl.state()->callAllocateRandomTickets(qpi, id::randomValue(), 1);
 	EXPECT_EQ(out.returnCode, static_cast<uint8>(PULSE::EReturnCode::TICKET_ALL_SOLD_OUT));
@@ -820,7 +823,7 @@ TEST(ContractPulse_Private, ProcessAutoTicketsSkipsWhenSellingClosed)
 	ctl.state()->setAutoParticipant(user, 1, 1);
 	ctl.state()->forceSelling(false);
 
-	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, PULSE_QHEART_ISSUER, 0);
+	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, ctl.state()->getQHeartIssuer(), 0);
 	primeQpiProcedureContext(qpi);
 	ctl.state()->callProcessAutoTickets(qpi);
 
@@ -840,7 +843,7 @@ TEST(ContractPulse_Private, ProcessAutoTicketsSkipsWhenSoldOut)
 	ctl.state()->forceSelling(true);
 	ctl.state()->setTicketCounter(PULSE_MAX_NUMBER_OF_PLAYERS);
 
-	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, PULSE_QHEART_ISSUER, 0);
+	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, ctl.state()->getQHeartIssuer(), 0);
 	primeQpiProcedureContext(qpi);
 	ctl.state()->callProcessAutoTickets(qpi);
 
@@ -858,7 +861,7 @@ TEST(ContractPulse_Private, ProcessAutoTicketsRemovesUnaffordableParticipant)
 	ctl.state()->setAutoParticipant(user, static_cast<sint64>(ticketPrice - 1), 1);
 
 	ctl.state()->forceSelling(true);
-	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, PULSE_QHEART_ISSUER, 0);
+	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, ctl.state()->getQHeartIssuer(), 0);
 	primeQpiProcedureContext(qpi);
 	ctl.state()->callProcessAutoTickets(qpi);
 
@@ -875,7 +878,7 @@ TEST(ContractPulse_Private, ProcessAutoTicketsRemovesZeroDesiredTickets)
 	ctl.state()->setAutoParticipant(user, static_cast<sint64>(ticketPrice * 2), 0);
 
 	ctl.state()->forceSelling(true);
-	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, PULSE_QHEART_ISSUER, 0);
+	QpiContextUserProcedureCall qpi(PULSE_CONTRACT_INDEX, ctl.state()->getQHeartIssuer(), 0);
 	primeQpiProcedureContext(qpi);
 	ctl.state()->callProcessAutoTickets(qpi);
 
@@ -910,7 +913,7 @@ TEST(ContractPulse_Public, GettersReturnDefaultsAfterInitialize)
 		EXPECT_EQ(win.digits.get(i), 0u);
 	}
 	EXPECT_EQ(ctl.getBalance().balance, 0u);
-	EXPECT_EQ(ctl.getQHeartWallet().wallet, PULSE_QHEART_ISSUER);
+	EXPECT_EQ(ctl.getQHeartWallet().wallet, ctl.state()->getQHeartIssuer());
 }
 
 // Guard admin-only price changes and deferred apply.
@@ -918,9 +921,9 @@ TEST(ContractPulse_Public, SetPriceGuardsAccessAndAppliesOnEndEpoch)
 {
 	ContractTestingPulse ctl;
 	EXPECT_EQ(ctl.setPrice(id::randomValue(), 123).returnCode, static_cast<uint8>(PULSE::EReturnCode::ACCESS_DENIED));
-	EXPECT_EQ(ctl.setPrice(PULSE_QHEART_ISSUER, 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::TICKET_INVALID_PRICE));
+	EXPECT_EQ(ctl.setPrice(ctl.state()->getQHeartIssuer(), 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::TICKET_INVALID_PRICE));
 
-	EXPECT_EQ(ctl.setPrice(PULSE_QHEART_ISSUER, 555).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setPrice(ctl.state()->getQHeartIssuer(), 555).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	EXPECT_EQ(ctl.state()->getTicketPriceInternal(), PULSE_TICKET_PRICE_DEFAULT);
 
 	ctl.endEpoch();
@@ -932,9 +935,9 @@ TEST(ContractPulse_Public, SetScheduleValidatesAndAppliesOnEndEpoch)
 {
 	ContractTestingPulse ctl;
 	EXPECT_EQ(ctl.setSchedule(id::randomValue(), 1).returnCode, static_cast<uint8>(PULSE::EReturnCode::ACCESS_DENIED));
-	EXPECT_EQ(ctl.setSchedule(PULSE_QHEART_ISSUER, 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::INVALID_VALUE));
+	EXPECT_EQ(ctl.setSchedule(ctl.state()->getQHeartIssuer(), 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::INVALID_VALUE));
 
-	EXPECT_EQ(ctl.setSchedule(PULSE_QHEART_ISSUER, 0x7F).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setSchedule(ctl.state()->getQHeartIssuer(), 0x7F).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	EXPECT_EQ(ctl.state()->getScheduleInternal(), PULSE_DEFAULT_SCHEDULE);
 
 	ctl.endEpoch();
@@ -946,9 +949,9 @@ TEST(ContractPulse_Public, SetDrawHourValidatesAndAppliesOnEndEpoch)
 {
 	ContractTestingPulse ctl;
 	EXPECT_EQ(ctl.setDrawHour(id::randomValue(), 12).returnCode, static_cast<uint8>(PULSE::EReturnCode::ACCESS_DENIED));
-	EXPECT_EQ(ctl.setDrawHour(PULSE_QHEART_ISSUER, 24).returnCode, static_cast<uint8>(PULSE::EReturnCode::INVALID_VALUE));
+	EXPECT_EQ(ctl.setDrawHour(ctl.state()->getQHeartIssuer(), 24).returnCode, static_cast<uint8>(PULSE::EReturnCode::INVALID_VALUE));
 
-	EXPECT_EQ(ctl.setDrawHour(PULSE_QHEART_ISSUER, 9).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setDrawHour(ctl.state()->getQHeartIssuer(), 9).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	EXPECT_EQ(ctl.state()->getDrawHourInternal(), PULSE_DEFAULT_DRAW_HOUR);
 
 	ctl.endEpoch();
@@ -960,9 +963,9 @@ TEST(ContractPulse_Public, SetFeesValidatesAndAppliesOnEndEpoch)
 {
 	ContractTestingPulse ctl;
 	EXPECT_EQ(ctl.setFees(id::randomValue(), 1, 2, 3, 4, 5).returnCode, static_cast<uint8>(PULSE::EReturnCode::ACCESS_DENIED));
-	EXPECT_EQ(ctl.setFees(PULSE_QHEART_ISSUER, 60, 60, 0, 0, 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::INVALID_VALUE));
+	EXPECT_EQ(ctl.setFees(ctl.state()->getQHeartIssuer(), 60, 60, 0, 0, 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::INVALID_VALUE));
 
-	EXPECT_EQ(ctl.setFees(PULSE_QHEART_ISSUER, 11, 22, 33, 6, 4).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setFees(ctl.state()->getQHeartIssuer(), 11, 22, 33, 6, 4).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	EXPECT_EQ(ctl.state()->getDevPercentInternal(), PULSE_DEFAULT_DEV_PERCENT);
 	EXPECT_EQ(ctl.state()->getBurnPercentInternal(), PULSE_DEFAULT_BURN_PERCENT);
 	EXPECT_EQ(ctl.state()->getShareholdersPercentInternal(), PULSE_DEFAULT_SHAREHOLDERS_PERCENT);
@@ -982,7 +985,7 @@ TEST(ContractPulse_Public, SetQHeartHoldLimitAppliesOnEndEpoch)
 {
 	ContractTestingPulse ctl;
 	EXPECT_EQ(ctl.setQHeartHoldLimit(id::randomValue(), 100).returnCode, static_cast<uint8>(PULSE::EReturnCode::ACCESS_DENIED));
-	EXPECT_EQ(ctl.setQHeartHoldLimit(PULSE_QHEART_ISSUER, 1234).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setQHeartHoldLimit(ctl.state()->getQHeartIssuer(), 1234).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	EXPECT_EQ(ctl.state()->getQHeartHoldLimitInternal(), PULSE_DEFAULT_QHEART_HOLD_LIMIT);
 
 	ctl.endEpoch();
@@ -993,11 +996,11 @@ TEST(ContractPulse_Public, SetQHeartHoldLimitAppliesOnEndEpoch)
 TEST(ContractPulse_Public, GettersReflectAppliedChanges)
 {
 	ContractTestingPulse ctl;
-	EXPECT_EQ(ctl.setPrice(PULSE_QHEART_ISSUER, 555).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(ctl.setSchedule(PULSE_QHEART_ISSUER, 0x7F).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(ctl.setDrawHour(PULSE_QHEART_ISSUER, 9).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(ctl.setFees(PULSE_QHEART_ISSUER, 11, 22, 33, 6, 4).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(ctl.setQHeartHoldLimit(PULSE_QHEART_ISSUER, 4321).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setPrice(ctl.state()->getQHeartIssuer(), 555).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setSchedule(ctl.state()->getQHeartIssuer(), 0x7F).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setDrawHour(ctl.state()->getQHeartIssuer(), 9).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setFees(ctl.state()->getQHeartIssuer(), 11, 22, 33, 6, 4).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setQHeartHoldLimit(ctl.state()->getQHeartIssuer(), 4321).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 
 	ctl.endEpoch();
 
@@ -1257,7 +1260,7 @@ TEST(ContractPulse_Public, DepositAutoParticipationRejectsInvalidValues)
 TEST(ContractPulse_Public, DepositAutoParticipationClampsDesiredTicketsAndStoresDeposit)
 {
 	ContractTestingPulse ctl;
-	EXPECT_EQ(ctl.setAutoLimits(PULSE_QHEART_ISSUER, 2).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setAutoLimits(ctl.state()->getQHeartIssuer(), 2).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 
 	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
 	const id user = id::randomValue();
@@ -1561,7 +1564,7 @@ TEST(ContractPulse_Public, SetAutoConfigValidatesAndClamps)
 	EXPECT_EQ(ctl.depositAutoParticipation(user, amount, 3, false).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	EXPECT_EQ(ctl.setAutoConfig(user, -2).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 
-	EXPECT_EQ(ctl.setAutoLimits(PULSE_QHEART_ISSUER, 2).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setAutoLimits(ctl.state()->getQHeartIssuer(), 2).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	EXPECT_EQ(ctl.setAutoConfig(user, -1).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 
 	PULSE::GetAutoParticipation_output entry = ctl.getAutoParticipation(user);
@@ -1604,9 +1607,9 @@ TEST(ContractPulse_Public, SetAutoLimitsGuardsAccessAndValidates)
 {
 	ContractTestingPulse ctl;
 	EXPECT_EQ(ctl.setAutoLimits(id::randomValue(), 10).returnCode, static_cast<uint8>(PULSE::EReturnCode::ACCESS_DENIED));
-	EXPECT_EQ(ctl.setAutoLimits(PULSE_QHEART_ISSUER, PULSE_MAX_NUMBER_OF_PLAYERS + 1).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setAutoLimits(ctl.state()->getQHeartIssuer(), PULSE_MAX_NUMBER_OF_PLAYERS + 1).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	EXPECT_EQ(static_cast<uint32>(ctl.getAutoStats().maxAutoTicketsPerUser), static_cast<uint32>(PULSE_MAX_NUMBER_OF_PLAYERS));
-	EXPECT_EQ(ctl.setAutoLimits(PULSE_QHEART_ISSUER, 5).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setAutoLimits(ctl.state()->getQHeartIssuer(), 5).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 
 	const PULSE::GetAutoStats_output stats = ctl.getAutoStats();
 	EXPECT_EQ(stats.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
@@ -1617,8 +1620,8 @@ TEST(ContractPulse_Public, SetAutoLimitsGuardsAccessAndValidates)
 TEST(ContractPulse_Public, SetAutoLimitsAllowsDisabling)
 {
 	ContractTestingPulse ctl;
-	EXPECT_EQ(ctl.setAutoLimits(PULSE_QHEART_ISSUER, 3).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(ctl.setAutoLimits(PULSE_QHEART_ISSUER, 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setAutoLimits(ctl.state()->getQHeartIssuer(), 3).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setAutoLimits(ctl.state()->getQHeartIssuer(), 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 
 	const PULSE::GetAutoStats_output stats = ctl.getAutoStats();
 	EXPECT_EQ(stats.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
@@ -1670,8 +1673,8 @@ TEST(ContractPulse_Public, GetWinnersReportsPaidTickets)
 	ctl.issuePulseSharesTo(id::randomValue(), NUMBER_OF_COMPUTORS);
 	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
 
-	EXPECT_EQ(ctl.setFees(PULSE_QHEART_ISSUER, 0, 0, 0, 0, 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(ctl.setPrice(PULSE_QHEART_ISSUER, 1).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setFees(ctl.state()->getQHeartIssuer(), 0, 0, 0, 0, 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setPrice(ctl.state()->getQHeartIssuer(), 1).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	ctl.endEpoch();
 
 	ctl.setDateTime(2025, 1, 9, 12);
@@ -1939,8 +1942,8 @@ TEST(ContractPulse_Gameplay, ProRataPayoutWhenBalanceInsufficient)
 	ContractTestingPulse ctl;
 	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(2000000);
 
-	EXPECT_EQ(ctl.setFees(PULSE_QHEART_ISSUER, 0, 0, 0, 0, 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(ctl.setPrice(PULSE_QHEART_ISSUER, 1).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setFees(ctl.state()->getQHeartIssuer(), 0, 0, 0, 0, 0).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setPrice(ctl.state()->getQHeartIssuer(), 1).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	ctl.endEpoch();
 
 	ctl.setDateTime(2025, 1, 9, 12);
@@ -2000,9 +2003,9 @@ TEST(ContractPulse_Gameplay, FeesDistributedToDevShareholdersAndQHeartWallet)
 	static constexpr uint8 qheartPercent = 10;
 	const uint64 ticketPrice = static_cast<uint64>(NUMBER_OF_COMPUTORS) * 10;
 
-	EXPECT_EQ(ctl.setFees(PULSE_QHEART_ISSUER, devPercent, burnPercent, shareholdersPercent, 0, qheartPercent).returnCode,
+	EXPECT_EQ(ctl.setFees(ctl.state()->getQHeartIssuer(), devPercent, burnPercent, shareholdersPercent, 0, qheartPercent).returnCode,
 	          static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(ctl.setPrice(PULSE_QHEART_ISSUER, ticketPrice).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setPrice(ctl.state()->getQHeartIssuer(), ticketPrice).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	ctl.endEpoch();
 
 	ctl.setDateTime(2025, 1, 9, 12);
@@ -2014,11 +2017,11 @@ TEST(ContractPulse_Gameplay, FeesDistributedToDevShareholdersAndQHeartWallet)
 
 	const id devWallet = ctl.state()->getTeamAddressInternal();
 	EXPECT_NE(devWallet, shareholder);
-	EXPECT_NE(devWallet, PULSE_QHEART_ISSUER);
+	EXPECT_NE(devWallet, ctl.state()->getQHeartIssuer());
 
 	const uint64 devBefore = ctl.qheartBalanceOf(devWallet);
 	const uint64 shareholderBefore = ctl.qheartBalanceOf(shareholder);
-	const uint64 qheartWalletBefore = ctl.qheartBalanceOf(PULSE_QHEART_ISSUER);
+	const uint64 qheartWalletBefore = ctl.qheartBalanceOf(ctl.state()->getQHeartIssuer());
 
 	ctl.setDateTime(2025, 1, 10, 12);
 	ctl.forceBeginTick();
@@ -2033,9 +2036,8 @@ TEST(ContractPulse_Gameplay, FeesDistributedToDevShareholdersAndQHeartWallet)
 	EXPECT_EQ(expectedShareholderGain, expectedShareholders);
 	EXPECT_EQ(ctl.qheartBalanceOf(devWallet), devBefore + expectedDev);
 	EXPECT_EQ(ctl.qheartBalanceOf(shareholder), shareholderBefore + expectedShareholderGain);
-	EXPECT_EQ(ctl.qheartBalanceOf(PULSE_QHEART_ISSUER), qheartWalletBefore + expectedQHeart);
+	EXPECT_EQ(ctl.qheartBalanceOf(ctl.state()->getQHeartIssuer()), qheartWalletBefore + expectedQHeart);
 }
-
 
 // Validate fee distribution to Random Lottery shareholders.
 TEST(ContractPulse_Gameplay, FeesDistributedToRLShareholders)
@@ -2052,9 +2054,9 @@ TEST(ContractPulse_Gameplay, FeesDistributedToRLShareholders)
 	static constexpr uint8 qheartPercent = 0;
 	constexpr uint64 ticketPrice = static_cast<uint64>(NUMBER_OF_COMPUTORS) * 10ULL;
 
-	EXPECT_EQ(ctl.setFees(PULSE_QHEART_ISSUER, devPercent, burnPercent, shareholdersPercent, rlShareholdersPercent, qheartPercent).returnCode,
+	EXPECT_EQ(ctl.setFees(ctl.state()->getQHeartIssuer(), devPercent, burnPercent, shareholdersPercent, rlShareholdersPercent, qheartPercent).returnCode,
 	          static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(ctl.setPrice(PULSE_QHEART_ISSUER, ticketPrice).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setPrice(ctl.state()->getQHeartIssuer(), ticketPrice).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	ctl.endEpoch();
 
 	ctl.setDateTime(2025, 1, 9, 12);
@@ -2088,7 +2090,7 @@ TEST(ContractPulse_Gameplay, QHeartHoldLimitExcessTransferred)
 	static constexpr uint64 holdLimit = 100000;
 	static constexpr uint64 preFund = 500000;
 
-	EXPECT_EQ(ctl.setQHeartHoldLimit(PULSE_QHEART_ISSUER, holdLimit).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setQHeartHoldLimit(ctl.state()->getQHeartIssuer(), holdLimit).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	ctl.endEpoch();
 
 	ctl.setDateTime(2025, 1, 9, 12);
@@ -2107,7 +2109,7 @@ TEST(ContractPulse_Gameplay, QHeartHoldLimitExcessTransferred)
 	const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winning = deriveWinningDigits(ctl, digest);
 	const uint64 prize = ctl.state()->callComputePrize(winning, digits);
 
-	const uint64 walletBefore = ctl.qheartBalanceOf(PULSE_QHEART_ISSUER);
+	const uint64 walletBefore = ctl.qheartBalanceOf(ctl.state()->getQHeartIssuer());
 	const uint64 contractBefore = ctl.qheartBalanceOf(ctl.pulseSelf());
 
 	const PULSE::GetFees_output fees = ctl.getFees();
@@ -2134,5 +2136,5 @@ TEST(ContractPulse_Gameplay, QHeartHoldLimitExcessTransferred)
 	ctl.forceBeginTick();
 
 	EXPECT_EQ(ctl.qheartBalanceOf(ctl.pulseSelf()), expectedContractAfter);
-	EXPECT_EQ(ctl.qheartBalanceOf(PULSE_QHEART_ISSUER), expectedWalletAfter);
+	EXPECT_EQ(ctl.qheartBalanceOf(ctl.state()->getQHeartIssuer()), expectedWalletAfter);
 }
