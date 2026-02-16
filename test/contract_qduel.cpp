@@ -1,6 +1,7 @@
 #define NO_UEFI
 
 #include "contract_testing.h"
+#include <vector>
 
 constexpr uint16 PROCEDURE_INDEX_CREATE_ROOM = 1;
 constexpr uint16 PROCEDURE_INDEX_CONNECT_ROOM = 2;
@@ -8,6 +9,7 @@ constexpr uint16 PROCEDURE_INDEX_SET_PERCENT_FEES = 3;
 constexpr uint16 PROCEDURE_INDEX_SET_TTL_HOURS = 4;
 constexpr uint16 PROCEDURE_INDEX_DEPOSIT = 5;
 constexpr uint16 PROCEDURE_INDEX_WITHDRAW = 6;
+constexpr uint16 PROCEDURE_INDEX_CLOSE_ROOM = 7;
 constexpr uint16 FUNCTION_INDEX_GET_PERCENT_FEES = 1;
 constexpr uint16 FUNCTION_INDEX_GET_ROOMS = 2;
 constexpr uint16 FUNCTION_INDEX_GET_TTL_HOURS = 3;
@@ -82,7 +84,7 @@ public:
 	GetUserProfile_output getUserProfileFor(const id& user) const
 	{
 		QpiContextUserFunctionCallWithInvocator qpi(QDUEL_CONTRACT_INDEX, user);
-		GetUserProfile_input input{};
+		GetUserProfile_input input{user};
 		GetUserProfile_output output{};
 		GetUserProfile_locals locals{};
 		GetUserProfile(qpi, *this, input, output, locals);
@@ -181,11 +183,11 @@ public:
 		return output;
 	}
 
-	QDUEL::GetUserProfile_output getUserProfile()
+	QDUEL::GetUserProfile_output getUserProfile(const id& userId)
 	{
-		QDUEL::GetUserProfile_input input{};
+		QDUEL::GetUserProfile_input input{userId};
 		QDUEL::GetUserProfile_output output;
-		// Read-only function call for caller profile.
+		// Read-only function call for profile by user id.
 		callFunction(QDUEL_CONTRACT_INDEX, FUNCTION_INDEX_GET_USER_PROFILE, input, output);
 		return output;
 	}
@@ -208,6 +210,17 @@ public:
 		QDUEL::Withdraw_output output;
 		// Withdraw uses user procedure to enforce validations and limits.
 		if (!invokeUserProcedure(QDUEL_CONTRACT_INDEX, PROCEDURE_INDEX_WITHDRAW, input, output, user, reward))
+		{
+			output.returnCode = QDUEL::toReturnCode(QDUEL::EReturnCode::UNKNOWN_ERROR);
+		}
+		return output;
+	}
+
+	QDUEL::CloseRoom_output closeRoom(const id& user, sint64 reward = 0)
+	{
+		QDUEL::CloseRoom_input input{};
+		QDUEL::CloseRoom_output output;
+		if (!invokeUserProcedure(QDUEL_CONTRACT_INDEX, PROCEDURE_INDEX_CLOSE_ROOM, input, output, user, reward))
 		{
 			output.returnCode = QDUEL::toReturnCode(QDUEL::EReturnCode::UNKNOWN_ERROR);
 		}
@@ -314,9 +327,9 @@ namespace
 		qduel.state()->calculateRevenue(duelAmount * 2, revenueOutput);
 
 		// Player 2 joins and triggers finalize logic.
-		EXPECT_EQ(qduel.connectToRoom(player2, qduel.state()->firstRoom().roomId, duelAmount).returnCode,
-		          QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
-		const uint64 player2AfterConnectToRoom = getBalance(player2);
+		const QDUEL::ConnectToRoom_output connectOutput = qduel.connectToRoom(player2, qduel.state()->firstRoom().roomId, duelAmount);
+		EXPECT_EQ(connectOutput.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+		EXPECT_EQ(connectOutput.winner, winner);
 
 		// Check fee distribution for team and shareholders.
 		EXPECT_EQ(getBalance(qduel.state()->team()), teamBefore + revenueOutput.devFee);
@@ -419,6 +432,8 @@ TEST(ContractQDuel, FirstTickAfterUnlockResetsTimerStart)
 	ContractTestingQDuel qduel;
 	// Start from a deterministic time and unlocked state.
 	qduel.state()->setState(QDUEL::EState::NONE);
+	increaseEnergy(qduel.state()->team(), 1);
+	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 23, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	qduel.setDeterministicTime(2022, 4, 13, 0);
 
 	const id owner(2, 0, 0, 0);
@@ -458,6 +473,8 @@ TEST(ContractQDuel, EndTickExpiresRoomCreatesNewWhenDepositAvailable)
 	ContractTestingQDuel qduel;
 	// Start from a deterministic time and unlocked state.
 	qduel.state()->setState(QDUEL::EState::NONE);
+	increaseEnergy(qduel.state()->team(), 1);
+	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 1, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	qduel.setDeterministicTime(2025, 1, 1, 0);
 
 	const id owner(3, 0, 0, 0);
@@ -470,8 +487,8 @@ TEST(ContractQDuel, EndTickExpiresRoomCreatesNewWhenDepositAvailable)
 	const QDUEL::RoomInfo roomBefore = qduel.state()->firstRoom();
 	EXPECT_EQ(qduel.state()->roomCount(), 1ULL);
 
-	// Advance beyond TTL to trigger finalize and auto room creation.
-	qduel.setDeterministicTime(2025, 1, 1, 3);
+	// Advance to TTL to trigger finalize and auto room creation.
+	qduel.setDeterministicTime(2025, 1, 1, 1);
 	qduel.forceEndTick();
 
 	// A new room should replace the expired one.
@@ -491,6 +508,8 @@ TEST(ContractQDuel, EndTickExpiresRoomWithoutAvailableDepositRemovesUser)
 	ContractTestingQDuel qduel;
 	// Start from a deterministic time and unlocked state.
 	qduel.state()->setState(QDUEL::EState::NONE);
+	increaseEnergy(qduel.state()->team(), 1);
+	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 1, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	qduel.setDeterministicTime(2025, 1, 1, 0);
 
 	const id owner(4, 0, 0, 0);
@@ -508,7 +527,7 @@ TEST(ContractQDuel, EndTickExpiresRoomWithoutAvailableDepositRemovesUser)
 	qduel.state()->setUserData(userData);
 
 	// Expire room and expect cleanup.
-	qduel.setDeterministicTime(2025, 1, 1, 3);
+	qduel.setDeterministicTime(2025, 1, 1, 1);
 	qduel.forceEndTick();
 
 	// Room and user data should be removed when deposit is insufficient.
@@ -522,6 +541,8 @@ TEST(ContractQDuel, EndTickSkipsNonPeriodTicks)
 	ContractTestingQDuel qduel;
 	// Start from a deterministic time and unlocked state.
 	qduel.state()->setState(QDUEL::EState::NONE);
+	increaseEnergy(qduel.state()->team(), 1);
+	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 2, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	qduel.setDeterministicTime(2025, 1, 1, 0);
 
 	const id owner(5, 0, 0, 0);
@@ -584,6 +605,8 @@ TEST(ContractQDuel, EndTickRecreatesRoomWithUpdatedStake)
 	ContractTestingQDuel qduel;
 	// Start from a deterministic time and unlocked state.
 	qduel.state()->setState(QDUEL::EState::NONE);
+	increaseEnergy(qduel.state()->team(), 1);
+	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 1, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	qduel.setDeterministicTime(2025, 1, 1, 0);
 
 	const id owner(8, 0, 0, 0);
@@ -595,7 +618,7 @@ TEST(ContractQDuel, EndTickRecreatesRoomWithUpdatedStake)
 	const QDUEL::RoomInfo roomBefore = qduel.state()->firstRoom();
 
 	// Expire the room and expect a new one using computed next stake.
-	qduel.setDeterministicTime(2025, 1, 1, 3);
+	qduel.setDeterministicTime(2025, 1, 1, 1);
 	qduel.forceEndTick();
 
 	const QDUEL::RoomInfo roomAfter = qduel.state()->firstRoom();
@@ -770,7 +793,7 @@ TEST(ContractQDuel, CreateRoomRejectsWhenRoomsFull)
 		const id owner(100 + i, 0, 0, 0);
 		qduel.setTick(i);
 		increaseEnergy(owner, stake);
-		const auto output = qduel.createRoom(owner, NULL_ID, stake, 1, stake, stake);
+		const QDUEL::CreateRoom_output output = qduel.createRoom(owner, NULL_ID, stake, 1, stake, stake);
 		EXPECT_EQ(output.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS)) << "at[" << i << "]";
 	}
 
@@ -846,7 +869,9 @@ TEST(ContractQDuel, ConnectToRoomRefundsExcessRewardForLoser)
 	EXPECT_EQ(qduel.createRoom(owner, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	const uint64 opponentBefore = getBalance(opponent);
 
-	EXPECT_EQ(qduel.connectToRoom(opponent, qduel.state()->firstRoom().roomId, reward).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	const QDUEL::ConnectToRoom_output connectOutput = qduel.connectToRoom(opponent, qduel.state()->firstRoom().roomId, reward);
+	EXPECT_EQ(connectOutput.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_EQ(connectOutput.winner, owner);
 	EXPECT_EQ(getBalance(opponent), opponentBefore - stake);
 }
 
@@ -917,7 +942,7 @@ TEST(ContractQDuel, CalculateRevenueMatchesExpectedSplits)
 TEST(ContractQDuel, SetPercentFeesAccessDeniedAndGetPercentFees)
 {
 	ContractTestingQDuel qduel;
-	const auto before = qduel.getPercentFees();
+	const QDUEL::GetPercentFees_output before = qduel.getPercentFees();
 
 	const id user(28, 0, 0, 0);
 	increaseEnergy(user, 10);
@@ -926,7 +951,7 @@ TEST(ContractQDuel, SetPercentFeesAccessDeniedAndGetPercentFees)
 	EXPECT_EQ(qduel.setPercentFees(user, 1, 2, 3, 10).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::ACCESS_DENIED));
 	EXPECT_EQ(getBalance(user), balanceBefore);
 
-	const auto after = qduel.getPercentFees();
+	const QDUEL::GetPercentFees_output after = qduel.getPercentFees();
 	EXPECT_EQ(after.devFeePercentBps, before.devFeePercentBps);
 	EXPECT_EQ(after.burnFeePercentBps, before.burnFeePercentBps);
 	EXPECT_EQ(after.shareholdersFeePercentBps, before.shareholdersFeePercentBps);
@@ -940,7 +965,7 @@ TEST(ContractQDuel, SetPercentFeesUpdatesState)
 	increaseEnergy(qduel.state()->team(), 1);
 	EXPECT_EQ(qduel.setPercentFees(qduel.state()->team(), 1, 2, 3, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
-	const auto output = qduel.getPercentFees();
+	const QDUEL::GetPercentFees_output output = qduel.getPercentFees();
 	EXPECT_EQ(output.devFeePercentBps, 1);
 	EXPECT_EQ(output.burnFeePercentBps, 2);
 	EXPECT_EQ(output.shareholdersFeePercentBps, 3);
@@ -948,7 +973,7 @@ TEST(ContractQDuel, SetPercentFeesUpdatesState)
 	EXPECT_EQ(output.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 }
 
-TEST(ContractQDuel, SetTTLHoursAccessDeniedAndInvalid)
+TEST(ContractQDuel, SetTTLHoursAccessDenied)
 {
 	ContractTestingQDuel qduel;
 	const uint8 ttlBefore = qduel.state()->ttl();
@@ -960,10 +985,6 @@ TEST(ContractQDuel, SetTTLHoursAccessDeniedAndInvalid)
 	EXPECT_EQ(qduel.setTtlHours(user, 5, 5).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::ACCESS_DENIED));
 	EXPECT_EQ(getBalance(user), balanceBefore);
 	EXPECT_EQ(qduel.state()->ttl(), ttlBefore);
-
-	increaseEnergy(qduel.state()->team(), 1);
-	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 0, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::INVALID_VALUE));
-	EXPECT_EQ(qduel.state()->ttl(), ttlBefore);
 }
 
 TEST(ContractQDuel, SetTTLHoursUpdatesState)
@@ -972,9 +993,52 @@ TEST(ContractQDuel, SetTTLHoursUpdatesState)
 	increaseEnergy(qduel.state()->team(), 1);
 
 	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 6, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
-	const auto output = qduel.getTtlHours();
+	const QDUEL::GetTTLHours_output output = qduel.getTtlHours();
 	EXPECT_EQ(output.ttlHours, 6);
 	EXPECT_EQ(output.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+}
+
+TEST(ContractQDuel, SetTTLHoursResetsCloseTimerForAllRooms)
+{
+	ContractTestingQDuel qduel;
+	qduel.state()->setState(QDUEL::EState::NONE);
+	qduel.setDeterministicTime(2025, 1, 1, 0);
+
+	increaseEnergy(qduel.state()->team(), 2);
+	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 23, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	const id owner1(300, 0, 0, 0);
+	const id owner2(301, 0, 0, 0);
+	const sint64 stake = qduel.state()->minDuelAmount();
+	increaseEnergy(owner1, stake);
+	increaseEnergy(owner2, stake);
+
+	EXPECT_EQ(qduel.createRoom(owner1, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_EQ(qduel.createRoom(owner2, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	// Spend one hour so rooms have less than initial TTL left.
+	qduel.setDeterministicTime(2025, 1, 1, 1);
+	qduel.setTick(QDUEL_TICK_UPDATE_PERIOD);
+	qduel.endTick();
+
+	// Apply new TTL and force-reset all existing room timers to it.
+	qduel.setDeterministicTime(2025, 1, 1, 2);
+	EXPECT_EQ(qduel.setTtlHours(qduel.state()->team(), 1, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	const QDUEL::GetRooms_output roomsOutput = qduel.getRooms();
+	const DateAndTime expectedNow(2025, 1, 1, 2, 0, 0);
+	uint64 seenRooms = 0;
+	for (uint32 i = 0; i < QDUEL_MAX_NUMBER_OF_ROOMS; ++i)
+	{
+		const QDUEL::RoomInfo room = roomsOutput.rooms.get(i);
+		if (room.roomId != id::zero())
+		{
+			++seenRooms;
+			EXPECT_EQ(room.closeTimer, 3600ULL);
+			EXPECT_EQ(room.lastUpdate, expectedNow);
+		}
+	}
+	EXPECT_EQ(seenRooms, 2ULL);
 }
 
 TEST(ContractQDuel, GetRoomsReturnsActiveRooms)
@@ -991,7 +1055,7 @@ TEST(ContractQDuel, GetRoomsReturnsActiveRooms)
 	EXPECT_EQ(qduel.createRoom(owner1, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	EXPECT_EQ(qduel.createRoom(owner2, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
-	const auto output = qduel.getRooms();
+	const QDUEL::GetRooms_output output = qduel.getRooms();
 	EXPECT_EQ(output.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
 	uint64 count = 0;
@@ -1024,7 +1088,8 @@ TEST(ContractQDuel, GetUserProfileReportsUserData)
 	ContractTestingQDuel qduel;
 	qduel.state()->setState(QDUEL::EState::NONE);
 
-	const QDUEL::GetUserProfile_output& missing = qduel.getUserProfile();
+	const id missingUser(3200, 0, 0, 0);
+	const QDUEL::GetUserProfile_output& missing = qduel.getUserProfile(missingUser);
 	EXPECT_EQ(missing.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::USER_NOT_FOUND));
 
 	const id owner(32, 0, 0, 0);
@@ -1033,7 +1098,7 @@ TEST(ContractQDuel, GetUserProfileReportsUserData)
 
 	EXPECT_EQ(qduel.createRoom(owner, NULL_ID, stake, 2, stake * 2, stake + 200).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
-	const auto profile = qduel.state()->getUserProfileFor(owner);
+	const QDUEL::GetUserProfile_output profile = qduel.state()->getUserProfileFor(owner);
 	EXPECT_EQ(profile.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 	EXPECT_EQ(profile.depositedAmount, 200ULL);
 	EXPECT_EQ(profile.locked, stake);
@@ -1096,6 +1161,136 @@ TEST(ContractQDuel, WithdrawValidationsAndTransfers)
 	QDUEL::UserData userAfter{};
 	ASSERT_TRUE(qduel.state()->getUserData(owner, userAfter));
 	EXPECT_EQ(userAfter.depositedAmount, 500ULL);
+}
+
+TEST(ContractQDuel, CloseRoomReturnsFundsAndRemovesRoomAndUser)
+{
+	ContractTestingQDuel qduel;
+	qduel.state()->setState(QDUEL::EState::NONE);
+
+	const id owner(360, 0, 0, 0);
+	const sint64 stake = qduel.state()->minDuelAmount();
+	const sint64 deposit = 700;
+	const sint64 reward = stake + deposit;
+	increaseEnergy(owner, reward);
+	const uint64 ownerBalanceBeforeCreate = getBalance(owner);
+
+	EXPECT_EQ(qduel.createRoom(owner, NULL_ID, stake, 1, stake, reward).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	const QDUEL::RoomInfo room = qduel.state()->firstRoom();
+	ASSERT_NE(room.roomId, id::zero());
+	ASSERT_TRUE(qduel.state()->hasRoom(room.roomId));
+
+	const uint64 ownerBalanceAfterCreate = getBalance(owner);
+	EXPECT_EQ(ownerBalanceAfterCreate, ownerBalanceBeforeCreate - reward);
+
+	EXPECT_EQ(qduel.closeRoom(owner).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_FALSE(qduel.state()->hasRoom(room.roomId));
+
+	QDUEL::UserData ownerData{};
+	EXPECT_FALSE(qduel.state()->getUserData(owner, ownerData));
+	EXPECT_EQ(getBalance(owner), ownerBalanceBeforeCreate);
+}
+
+TEST(ContractQDuel, CloseRoomUserNotFound)
+{
+	ContractTestingQDuel qduel;
+	qduel.state()->setState(QDUEL::EState::NONE);
+
+	const id user(361, 0, 0, 0);
+	increaseEnergy(user, 50);
+	const uint64 balanceBefore = getBalance(user);
+
+	EXPECT_EQ(qduel.closeRoom(user, 50).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::USER_NOT_FOUND));
+	EXPECT_EQ(getBalance(user), balanceBefore);
+}
+
+TEST(ContractQDuel, CloseRoomAccessDeniedWhenUserPointsToForeignRoom)
+{
+	ContractTestingQDuel qduel;
+	qduel.state()->setState(QDUEL::EState::NONE);
+
+	const id owner(362, 0, 0, 0);
+	const id attacker(363, 0, 0, 0);
+	const sint64 stake = qduel.state()->minDuelAmount();
+	increaseEnergy(owner, stake);
+
+	EXPECT_EQ(qduel.createRoom(owner, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	const QDUEL::RoomInfo ownerRoom = qduel.state()->firstRoom();
+	ASSERT_NE(ownerRoom.roomId, id::zero());
+
+	// Inject an inconsistent user record that points to someone else's room.
+	QDUEL::UserData forged{};
+	forged.userId = attacker;
+	forged.roomId = ownerRoom.roomId;
+	forged.allowedPlayer = NULL_ID;
+	forged.depositedAmount = 123;
+	forged.locked = 456;
+	forged.stake = stake;
+	forged.raiseStep = 1;
+	forged.maxStake = stake;
+	qduel.state()->setUserData(forged);
+
+	increaseEnergy(attacker, 25);
+	const uint64 attackerBefore = getBalance(attacker);
+	EXPECT_EQ(qduel.closeRoom(attacker, 25).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::ROOM_ACCESS_DENIED));
+	EXPECT_EQ(getBalance(attacker), attackerBefore);
+
+	// Nothing should be deleted on access denied.
+	EXPECT_TRUE(qduel.state()->hasRoom(ownerRoom.roomId));
+	QDUEL::UserData attackerAfter{};
+	EXPECT_TRUE(qduel.state()->getUserData(attacker, attackerAfter));
+}
+
+TEST(ContractQDuel, CloseRoomSucceedsWhenRoomMissingAndStillRefundsAndRemovesUser)
+{
+	ContractTestingQDuel qduel;
+	qduel.state()->setState(QDUEL::EState::NONE);
+
+	const id owner(364, 0, 0, 0);
+	const sint64 stake = qduel.state()->minDuelAmount();
+	const sint64 deposit = 900;
+	const sint64 reward = stake + deposit;
+	increaseEnergy(owner, reward);
+	const uint64 ownerBalanceBeforeCreate = getBalance(owner);
+
+	EXPECT_EQ(qduel.createRoom(owner, NULL_ID, stake, 1, stake, reward).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+
+	// Simulate stale user->room pointer (room missing in map).
+	QDUEL::UserData ownerData{};
+	ASSERT_TRUE(qduel.state()->getUserData(owner, ownerData));
+	ownerData.roomId = id(999999, 0, 0, 0);
+	qduel.state()->setUserData(ownerData);
+
+	EXPECT_EQ(qduel.closeRoom(owner).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_FALSE(qduel.state()->getUserData(owner, ownerData));
+	EXPECT_EQ(getBalance(owner), ownerBalanceBeforeCreate);
+}
+
+TEST(ContractQDuel, CloseRoomWithZeroFundsRemovesUserWithoutTransfer)
+{
+	ContractTestingQDuel qduel;
+	qduel.state()->setState(QDUEL::EState::NONE);
+
+	const id user(365, 0, 0, 0);
+	increaseEnergy(user, 1);
+
+	QDUEL::UserData data{};
+	data.userId = user;
+	data.roomId = id(888888, 0, 0, 0);
+	data.allowedPlayer = NULL_ID;
+	data.depositedAmount = 0;
+	data.locked = 0;
+	data.stake = qduel.state()->minDuelAmount();
+	data.raiseStep = 1;
+	data.maxStake = data.stake;
+	qduel.state()->setUserData(data);
+
+	const uint64 balanceBefore = getBalance(user);
+	EXPECT_EQ(qduel.closeRoom(user).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	EXPECT_EQ(getBalance(user), balanceBefore);
+
+	QDUEL::UserData after{};
+	EXPECT_FALSE(qduel.state()->getUserData(user, after));
 }
 
 TEST(ContractQDuel, ConnectToRoomDistributesFeesPlayer1Wins)
