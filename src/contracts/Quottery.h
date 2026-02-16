@@ -2317,7 +2317,7 @@ public:
         REGISTER_USER_PROCEDURE(UserClaimReward, 10);
         REGISTER_USER_PROCEDURE(GOForceClaimReward, 11);
         REGISTER_USER_PROCEDURE(TransferQUSD, 12);
-        REGISTER_USER_PROCEDURE(TransferShareManagementRights, 12);        
+        REGISTER_USER_PROCEDURE(TransferShareManagementRights, 13);        
 
         // operation team proc
         REGISTER_USER_PROCEDURE(UpdateFeeDiscountList, 20);
