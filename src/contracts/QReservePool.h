@@ -1,6 +1,5 @@
 ﻿using namespace QPI;
 
-// Number of available smart contracts in the QRP contract.
 constexpr uint16 QRP_ALLOWED_SC_NUM = 128;
 constexpr uint64 QRP_QTF_INDEX = QRP_CONTRACT_INDEX + 1;
 constexpr uint64 QRP_REMOVAL_THRESHOLD_PERCENT = 75;
@@ -13,11 +12,10 @@ struct QRP : ContractBase
 {
 	enum class EReturnCode : uint8
 	{
-		SUCCESS = 0,
-		ACCESS_DENIED = 1,
-		INSUFFICIENT_RESERVE = 2,
-
-		MAX_VALUE = UINT8_MAX
+		SUCCESS,
+		ACCESS_DENIED,
+		INSUFFICIENT_RESERVE,
+		SC_NOT_FOUND,
 	};
 
 	static constexpr uint8 toReturnCode(const EReturnCode& code) { return static_cast<uint8>(code); };
@@ -94,6 +92,24 @@ struct QRP : ContractBase
 		uint64 arrayIndex;
 	};
 
+	struct SendReserve_input
+	{
+		uint64 scIndex;
+		uint64 amount;
+	};
+
+	struct SendReserve_output
+	{
+		uint8 returnCode;
+	};
+
+	struct SendReserve_locals
+	{
+		GetAvailableReserve_input getAvailableReserveInput;
+		GetAvailableReserve_output getAvailableReserveOutput;
+		id scId;
+	};
+
 	INITIALIZE()
 	{
 		// Set team/developer address (owner and team are the same for now)
@@ -111,12 +127,11 @@ struct QRP : ContractBase
 		REGISTER_USER_PROCEDURE(WithdrawReserve, 1);
 		REGISTER_USER_PROCEDURE(AddAllowedSC, 2);
 		REGISTER_USER_PROCEDURE(RemoveAllowedSC, 3);
+		REGISTER_USER_PROCEDURE(SendReserve, 4);
 		// Functions
 		REGISTER_USER_FUNCTION(GetAvailableReserve, 1);
 		REGISTER_USER_FUNCTION(GetAllowedSC, 2);
 	}
-
-	END_EPOCH() { state.allowedSmartContracts.cleanup(); }
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(WithdrawReserve)
 	{
@@ -187,18 +202,40 @@ struct QRP : ContractBase
 		}
 	}
 
+	PUBLIC_PROCEDURE_WITH_LOCALS(SendReserve)
+	{
+		if (qpi.invocator() != state.ownerAddress)
+		{
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			return;
+		}
+
+		locals.scId = id(input.scIndex, 0, 0, 0);
+
+		if (!state.allowedSmartContracts.contains(locals.scId))
+		{
+			output.returnCode = toReturnCode(EReturnCode::SC_NOT_FOUND);
+			return;
+		}
+
+		CALL(GetAvailableReserve, locals.getAvailableReserveInput, locals.getAvailableReserveOutput);
+		if (input.amount > locals.getAvailableReserveOutput.availableReserve)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INSUFFICIENT_RESERVE);
+			return;
+		}
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		qpi.transfer(locals.scId, input.amount);
+	}
+
 protected:
-	/**
-	 * @brief Address of the team managing the lottery contract.
-	 * Initialized to a zero address.
-	 */
+	/** @brief Address of the team managing the lottery contract. */
 	id teamAddress;
 
-	/**
-	 * @brief Address of the owner of the lottery contract.
-	 * Initialized to a zero address.
-	 */
+	/** @brief Address of the owner of the lottery contract. */
 	id ownerAddress;
 
+	/** @brief Smart contract whitelist: only SCs in this list can call WithdrawReserve procedure to access the reserve funds, and receive transfers from SendReserve procedure. */
 	HashSet<id, QRP_ALLOWED_SC_NUM> allowedSmartContracts;
 };

@@ -4,10 +4,12 @@
 #include <chrono>
 
 #include "contract_testing.h"
+#include "oracle_testing.h"
 
 static const id TESTEXA_CONTRACT_ID(TESTEXA_CONTRACT_INDEX, 0, 0, 0);
 static const id TESTEXB_CONTRACT_ID(TESTEXB_CONTRACT_INDEX, 0, 0, 0);
 static const id TESTEXC_CONTRACT_ID(TESTEXC_CONTRACT_INDEX, 0, 0, 0);
+static const id TESTEXD_CONTRACT_ID(TESTEXD_CONTRACT_INDEX, 0, 0, 0);
 static const id USER1(123, 456, 789, 876);
 static const id USER2(42, 424, 4242, 42424);
 static const id USER3(98, 76, 54, 3210);
@@ -143,6 +145,9 @@ public:
         INIT_CONTRACT(QX);
         callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
 
+        EXPECT_TRUE(oracleEngine.init(computorPublicKeys));
+        EXPECT_TRUE(OI::initOracleInterfaces());
+
         checkContractExecCleanup();
 
         // query QX fees
@@ -151,6 +156,7 @@ public:
 
     ~ContractTestingTestEx()
     {
+        oracleEngine.deinit();
         checkContractExecCleanup();
     }
 
@@ -468,22 +474,22 @@ public:
             {
                 EXPECT_FALSE(setVar2);
                 EXPECT_FALSE(setVar3);
-                input.proposalData.variableOptions.variable = 0;
-                input.proposalData.variableOptions.value = valueVar1;
+                input.proposalData.data.variableOptions.variable = 0;
+                input.proposalData.data.variableOptions.value = valueVar1;
             }
             else if (setVar2)
             {
                 EXPECT_FALSE(setVar1);
                 EXPECT_FALSE(setVar3);
-                input.proposalData.variableOptions.variable = 1;
-                input.proposalData.variableOptions.value = valueVar2;
+                input.proposalData.data.variableOptions.variable = 1;
+                input.proposalData.data.variableOptions.value = valueVar2;
             }
             else if (setVar3)
             {
                 EXPECT_FALSE(setVar1);
                 EXPECT_FALSE(setVar2);
-                input.proposalData.variableOptions.variable = 2;
-                input.proposalData.variableOptions.value = valueVar3;
+                input.proposalData.data.variableOptions.variable = 2;
+                input.proposalData.data.variableOptions.value = valueVar3;
             }
             break;
         }
@@ -540,6 +546,25 @@ public:
         callSystemProcedure(TESTEXB_CONTRACT_INDEX, END_EPOCH, expectSuccess);
         callSystemProcedure(TESTEXA_CONTRACT_INDEX, END_EPOCH, expectSuccess);
         callSystemProcedure(QX_CONTRACT_INDEX, END_EPOCH, expectSuccess);
+    }
+
+    void endTick(bool expectSuccess = true)
+    {
+        callSystemProcedure(TESTEXD_CONTRACT_INDEX, END_TICK, expectSuccess);
+        callSystemProcedure(TESTEXC_CONTRACT_INDEX, END_TICK, expectSuccess);
+        callSystemProcedure(TESTEXB_CONTRACT_INDEX, END_TICK, expectSuccess);
+        callSystemProcedure(TESTEXA_CONTRACT_INDEX, END_TICK, expectSuccess);
+        callSystemProcedure(QX_CONTRACT_INDEX, END_TICK, expectSuccess);
+    }
+
+    uint64 queryPriceOracle(const id& invocator, uint32 timeoutMilliseconds, const OI::Price::OracleQuery& query)
+    {
+        TESTEXC::QueryPriceOracle_input input;
+        input.priceOracleQuery = query;
+        input.timeoutMilliseconds = timeoutMilliseconds;
+        TESTEXC::QueryPriceOracle_output output;
+        EXPECT_TRUE(invokeUserProcedure(TESTEXC_CONTRACT_INDEX, 100, input, output, invocator, 0));
+        return output.oracleQueryId;
     }
 };
 
@@ -1878,39 +1903,39 @@ TEST(ContractTestEx, ShareholderProposals)
     TESTEXB::ProposalDataT proposalB1;
     proposalB1.epoch = system.epoch;
     proposalB1.type = ProposalTypes::VariableScalarMean;
-    proposalB1.variableScalar.variable = 0;
-    proposalB1.variableScalar.minValue = 0;
-    proposalB1.variableScalar.maxValue = MAX_AMOUNT;
-    proposalB1.variableScalar.proposedValue = 1000;
+    proposalB1.data.variableScalar.variable = 0;
+    proposalB1.data.variableScalar.minValue = 0;
+    proposalB1.data.variableScalar.maxValue = MAX_AMOUNT;
+    proposalB1.data.variableScalar.proposedValue = 1000;
     uint16 proposalIdxB1 = test.setShareholderProposal<TESTEXB>(USER2, { proposalB1 });
     EXPECT_NE((int)proposalIdxB1, (int)INVALID_PROPOSAL_INDEX);
     auto proposalDataB1 = test.getShareholderProposal<TESTEXB>(proposalIdxB1);
     proposalB1 = proposalDataB1.proposal; // needed to set tick
     EXPECT_EQ((int)proposalDataB1.proposal.type, (int)ProposalTypes::VariableScalarMean);
     EXPECT_EQ(proposalDataB1.proposerPubicKey, USER2);
-    EXPECT_EQ(proposalDataB1.proposal.variableScalar.maxValue, MAX_AMOUNT);
-    EXPECT_EQ(proposalDataB1.proposal.variableScalar.proposedValue, 1000);
+    EXPECT_EQ(proposalDataB1.proposal.data.variableScalar.maxValue, MAX_AMOUNT);
+    EXPECT_EQ(proposalDataB1.proposal.data.variableScalar.proposedValue, 1000);
 
     // Create multi-option variable proposal as shareholder TESTEXA
     TESTEXB::ProposalDataT proposalB2;
     proposalB2.epoch = system.epoch;
     proposalB2.type = ProposalTypes::VariableFourValues;
-    proposalB2.variableOptions.variable = 1;
-    proposalB2.variableOptions.values.set(0, 100);
-    proposalB2.variableOptions.values.set(1, 1000);
-    proposalB2.variableOptions.values.set(2, 10000);
-    proposalB2.variableOptions.values.set(3, 100000);
+    proposalB2.data.variableOptions.variable = 1;
+    proposalB2.data.variableOptions.values.set(0, 100);
+    proposalB2.data.variableOptions.values.set(1, 1000);
+    proposalB2.data.variableOptions.values.set(2, 10000);
+    proposalB2.data.variableOptions.values.set(3, 100000);
     uint16 proposalIdxB2 = test.setProposalInOtherContractAsShareholder<TESTEXA>(USER1, TESTEXB_CONTRACT_INDEX, TESTEXB::SetShareholderProposal_input{ proposalB2 });
     EXPECT_NE((int)proposalIdxB2, (int)INVALID_PROPOSAL_INDEX);
     auto proposalDataB2 = test.getShareholderProposal<TESTEXB>(proposalIdxB2);
     proposalB2 = proposalDataB2.proposal; // needed to set tick
     EXPECT_EQ((int)proposalDataB2.proposal.type, (int)ProposalTypes::VariableFourValues);
     EXPECT_EQ(proposalDataB2.proposerPubicKey, TESTEXA_CONTRACT_ID);
-    EXPECT_EQ(proposalDataB2.proposal.variableOptions.variable, 1);
-    EXPECT_EQ(proposalDataB2.proposal.variableOptions.values.get(0), 100);
-    EXPECT_EQ(proposalDataB2.proposal.variableOptions.values.get(1), 1000);
-    EXPECT_EQ(proposalDataB2.proposal.variableOptions.values.get(2), 10000);
-    EXPECT_EQ(proposalDataB2.proposal.variableOptions.values.get(3), 100000);
+    EXPECT_EQ(proposalDataB2.proposal.data.variableOptions.variable, 1);
+    EXPECT_EQ(proposalDataB2.proposal.data.variableOptions.values.get(0), 100);
+    EXPECT_EQ(proposalDataB2.proposal.data.variableOptions.values.get(1), 1000);
+    EXPECT_EQ(proposalDataB2.proposal.data.variableOptions.values.get(2), 10000);
+    EXPECT_EQ(proposalDataB2.proposal.data.variableOptions.values.get(3), 100000);
 
     // cast votes in A1
     EXPECT_TRUE(test.setShareholderVotes<TESTEXA>(USER1, proposalIdxA1, proposalA1, { {0, 60}, {1, 270} }));
@@ -2076,4 +2101,61 @@ TEST(ContractTestEx, SystemCallbacksWithNegativeFeeReserve)
 
     // Verify TESTEXC fee reserve is still negative
     EXPECT_LT(getContractFeeReserve(TESTEXC_CONTRACT_INDEX), 0);
+}
+
+TEST(ContractTestEx, OracleQuery)
+{
+    ContractTestingTestEx test;
+    system.epoch = 200;
+    system.tick = 123456783;
+
+    //-------------------------------------------------------------------------
+    // Test qpi.queryOracle() and generating message to oracle machine node
+    increaseEnergy(USER1, 100000000);
+    increaseEnergy(TESTEXC_CONTRACT_ID, 100000000);
+
+    const id currencyBtc(Ch::B, Ch::T, Ch::C, 0, 0);
+    const id currencyUsd(Ch::U, Ch::S, Ch::D, 0, 0);
+
+    uint64 expectedOracleQueryId = getContractOracleQueryId(system.tick, 0);
+    OI::Price::OracleQuery query = { NULL_ID, DateAndTime(2026, 1, 1), currencyBtc, currencyUsd};
+    EXPECT_EQ(test.queryPriceOracle(USER1, 10, query), expectedOracleQueryId);
+    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, 10, query);
+
+    expectedOracleQueryId = getContractOracleQueryId(system.tick, 1);
+    query.oracle = OI::Price::getCoingeckoOracleId();
+    query.timestamp.addDays(20);
+    query.currency1 = currencyUsd;
+    query.currency2 = NULL_ID;
+    EXPECT_EQ(test.queryPriceOracle(USER1, 42, query), expectedOracleQueryId);
+    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, 42, query);
+
+    expectedOracleQueryId = getContractOracleQueryId(system.tick, 2);
+    test.endTick();
+    OI::Mock::OracleQuery mockQuery{ system.tick };
+    ++system.tick;
+    checkNetworkMessageOracleMachineQuery<OI::Mock>(expectedOracleQueryId, 20000, mockQuery);
+
+    expectedOracleQueryId = getContractOracleQueryId(system.tick, 0);
+    query.oracle = OI::Price::getMockOracleId();
+    query.timestamp.addMillisec(123456);
+    query.currency1 = id(1, 23456, 7890, 42);
+    query.currency2 = currencyBtc;
+    EXPECT_EQ(test.queryPriceOracle(USER1, 13, query), expectedOracleQueryId);
+    checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, 13, query);
+
+    //-------------------------------------------------------------------------
+    // Test processing of oracle machine node reply message
+    struct
+    {
+        OracleMachineReply metadata;
+        OI::Price::OracleReply data;
+    } priceOracleMachineReply;
+
+    priceOracleMachineReply.metadata.oracleMachineErrorFlags = 0;
+    priceOracleMachineReply.metadata.oracleQueryId = expectedOracleQueryId;
+    priceOracleMachineReply.data.numerator = 1234;
+    priceOracleMachineReply.data.denominator = 1;
+
+    oracleEngine.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
 }

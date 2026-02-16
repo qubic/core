@@ -12,7 +12,8 @@ void qLogger::processRequestLog(unsigned long long processorNumber, Peer* peer, 
     if (request->passcode[0] == logReaderPasscodes[0]
         && request->passcode[1] == logReaderPasscodes[1]
         && request->passcode[2] == logReaderPasscodes[2]
-        && request->passcode[3] == logReaderPasscodes[3])
+        && request->passcode[3] == logReaderPasscodes[3]
+        && request->fromID <= request->toID)
     {
         BlobInfo startIdBufferRange = logBuf.getBlobInfo(request->fromID);
         BlobInfo endIdBufferRange = logBuf.getBlobInfo(request->toID); // inclusive

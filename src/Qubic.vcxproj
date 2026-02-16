@@ -63,6 +63,7 @@
     <ClInclude Include="contract_core\qpi_collection_impl.h" />
     <ClInclude Include="contract_core\qpi_ipo_impl.h" />
     <ClInclude Include="contract_core\qpi_mining_impl.h" />
+    <ClInclude Include="contract_core\qpi_oracle_impl.h" />
     <ClInclude Include="contract_core\qpi_spectrum_impl.h" />
     <ClInclude Include="contract_core\qpi_system_impl.h" />
     <ClInclude Include="contract_core\qpi_hash_map_impl.h" />
@@ -93,13 +94,20 @@
     <ClInclude Include="network_messages\execution_fees.h" />
     <ClInclude Include="network_messages\header.h" />
     <ClInclude Include="network_messages\logging.h" />
+    <ClInclude Include="network_messages\oracles.h" />
     <ClInclude Include="network_messages\public_peers.h" />
     <ClInclude Include="network_messages\special_command.h" />
     <ClInclude Include="network_messages\system_info.h" />
     <ClInclude Include="network_messages\tick.h" />
     <ClInclude Include="network_messages\transactions.h" />
-    <ClInclude Include="oracles\oracle_machines.h" />
-    <ClInclude Include="oracles\Price.h" />
+    <ClInclude Include="oracle_core\core_om_network_messages.h" />
+    <ClInclude Include="oracle_core\net_msg_impl.h" />
+    <ClInclude Include="oracle_core\oracle_engine.h" />
+    <ClInclude Include="oracle_core\oracle_interfaces_def.h" />
+    <ClInclude Include="oracle_core\oracle_transactions.h" />
+    <ClInclude Include="oracle_core\snapshot_files.h" />
+    <ClInclude Include="oracle_interfaces\Mock.h" />
+    <ClInclude Include="oracle_interfaces\Price.h" />
     <ClInclude Include="platform\assert.h" />
     <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />
@@ -111,6 +119,7 @@
     <ClInclude Include="platform\file_io.h" />
     <ClInclude Include="platform\console_logging.h" />
     <ClInclude Include="platform\common_types.h" />
+    <ClInclude Include="platform\memory_util.h" />
     <ClInclude Include="platform\profiling.h" />
     <ClInclude Include="platform\quorum_value.h" />
     <ClInclude Include="platform\random.h" />
@@ -124,7 +133,6 @@
     <ClInclude Include="score.h" />
     <ClInclude Include="platform\m256.h" />
     <ClInclude Include="platform\memory.h" />
-    <ClInclude Include="platform\memory-util.h" />
     <ClInclude Include="score_cache.h" />
     <ClInclude Include="spectrum\special_entities.h" />
     <ClInclude Include="spectrum\spectrum.h" />

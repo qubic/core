@@ -66,12 +66,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 276
+#define VERSION_B 278
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 198
-#define TICK 43101000
+#define EPOCH 200
+#define TICK 43910000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -102,7 +102,7 @@ static constexpr unsigned long long ADDITION_NUMBER_OF_TICKS = 1000;            
 static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
 static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 150;
 static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = ADDITION_NUMBER_OF_INPUT_NEURONS + ADDITION_NUMBER_OF_OUTPUT_NEURONS + ADDITION_NUMBER_OF_MUTATIONS; // P
-static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 74200;
+static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 74300;
 
 // Multipler of score
 static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;
