@@ -33,9 +33,9 @@ constexpr uint64 QUOTTERY_ASK_BIT = 0;
 constexpr uint64 QUOTTERY_BID_BIT = 1;
 constexpr uint64 QUOTTERY_EID_MASK = 0x3FFFFFFFFFFFFFFFULL; // (2^62 - 1);
 constexpr uint64 QUOTTERY_MAX_AMOUNT = 2000000000000LL; // 2 trillion;
-constexpr sint8 QUOTTERY_RESULT_NOT_SET = -1;
-constexpr sint8 QUOTTERY_RESULT_NO = 0;
-constexpr sint8 QUOTTERY_RESULT_YES = 1;
+constexpr uint64 QUOTTERY_RESULT_NOT_SET = -1;
+constexpr uint64 QUOTTERY_RESULT_NO = 0;
+constexpr uint64 QUOTTERY_RESULT_YES = 1;
 
 struct QUOTTERY2
 {
@@ -987,7 +987,7 @@ public:
         {
             // deduct share
             locals.upi.uid = qpi.invocator();
-            locals.upi.amountChange = -1LL * input.amount; // Negative to reduce balance
+            locals.upi.amountChange = -input.amount; // Negative to reduce balance
             locals.upi.oi.eid = input.eventId;
             locals.upi.oi.option = input.option;
             locals.upi.oi.tradeBit = QUOTTERY_ASK_BIT;
@@ -1770,7 +1770,7 @@ public:
 
         state.mDisputeResolver.get(input.eventId, locals.dri);
         locals.dri.epochData.set(locals.isComputor, qpi.epoch());
-        locals.dri.voteData.set(locals.isComputor, static_cast<sint8>(input.vote));
+        locals.dri.voteData.set(locals.isComputor, input.vote);
         state.mDisputeResolver.set(input.eventId, locals.dri);
 
         locals.log = QuotteryLoggerWithData{ 0, QUOTTERY_RESOLVE_DISPUTE, id(0,input.eventId, locals.isComputor, input.vote), 0 };
@@ -1945,7 +1945,7 @@ public:
     };
     struct GetActiveEvent_output
     {
-        uint64 count;
+        sint64 count;
         Array<uint64, 128> activeId;
     };
 
@@ -2175,7 +2175,7 @@ public:
         locals.di.pubkey = qpi.invocator();
         locals.di.amount = qpi.invocationReward();
         state.mGODepositInfo.set(input.eventId, locals.di);
-        state.mEventResult.set(input.eventId, static_cast<sint8>(input.option));
+        state.mEventResult.set(input.eventId, input.option);
         locals.log = QuotteryLoggerWithData{ 0, QUOTTERY_PUBLISH_RESULT, id(0,0,input.eventId,input.option), 0 };
         LOG_INFO(locals.log);
     }
