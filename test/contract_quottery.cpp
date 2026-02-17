@@ -438,7 +438,7 @@ TEST(QTRYTest, MatchingOrders)
     for (int i = 0; i < 16; i++)
     {
         traders[i] = id::randomValue();
-        increaseEnergy(traders[i], 100ULL * 1e9);
+        increaseEnergy(traders[i], 100000000000LL);
         qtry.transferQUSD(qtry.owner, traders[i], 100000000000LL);
     }
     // bid: 100 shares option 0 for 40000
@@ -688,7 +688,7 @@ TEST(QTRYTest, CompleteCycle)
     for (int i = 0; i < 16; i++)
     {
         traders[i] = id::randomValue();
-        increaseEnergy(traders[i], 100ULL * 1e9);
+        increaseEnergy(traders[i], 100000000000LL);
         qtry.transferQUSD(qtry.owner, traders[i], 100000000000LL);
     }
 
@@ -862,13 +862,13 @@ TEST(QTRYTest, EscrowIntegrity)
     qtry.CreateEvent(cei, operation_id, state->mOperationParams.feePerDay);
 
     id trader = id::randomValue();
-    increaseEnergy(trader, 100ULL * 1e9);
+    increaseEnergy(trader, 100000000000LL);
     qtry.transferQUSD(qtry.owner, trader, 100000000000LL);
 
     // 1. Trader acquires 100 shares of Option 0 via Minting (Self-matching bid/bid to mint isn't possible directly easily, 
     // so we simulate acquiring by buying against another)
     id maker = id::randomValue();
-    increaseEnergy(maker, 100ULL * 1e9);
+    increaseEnergy(maker, 100000000000LL);
     qtry.transferQUSD(qtry.owner, maker, 100000000000LL);
 
     // Maker Bids 100 on Option 1 (Minting half)
@@ -935,8 +935,8 @@ TEST(QTRYTest, FeeCalculation)
 
     id seller = id::randomValue();
     id buyer = id::randomValue();
-    increaseEnergy(seller, 100ULL * 1e9); // Has Money
-    increaseEnergy(buyer, 100ULL * 1e9);
+    increaseEnergy(seller, 100000000000LL); // Has Money
+    increaseEnergy(buyer, 100000000000LL);
 
     // Seller gets shares first (Minting)
     qtry.AddBidOrder(0, 100, 1, 50000, buyer);
@@ -1037,8 +1037,8 @@ TEST(QTRYTest, JanitorCleanup_GOForceClaim)
 
     id winner = id::randomValue();
     id loser = id::randomValue();
-    increaseEnergy(winner, 100ULL * 1e9);
-    increaseEnergy(loser, 100ULL * 1e9);
+    increaseEnergy(winner, 100000000000LL);
+    increaseEnergy(loser, 100000000000LL);
     qtry.transferQUSD(qtry.owner, winner, 100000000000LL);
     qtry.transferQUSD(qtry.owner, loser, 100000000000LL);
 
@@ -1098,7 +1098,7 @@ TEST(QTRYTest, ViewFunctions_GetOrders_Sorting_Pagination)
     qtry.CreateEvent(cei, operation_id, state->mOperationParams.feePerDay);
 
     id trader = id::randomValue();
-    increaseEnergy(trader, 100ULL * 1e9);
+    increaseEnergy(trader, 100000000000LL);
     qtry.transferQUSD(qtry.owner, trader, 100000000000LL);
 
     // 1. Add Bids (Should be sorted High Price -> Low Price)
@@ -1202,8 +1202,8 @@ TEST(QTRYTest, ViewFunctions_BasicInfo_RevenueAccumulation)
 
     id t1 = id::randomValue();
     id t2 = id::randomValue();
-    increaseEnergy(t1, 10e9);
-    increaseEnergy(t2, 10e9);
+    increaseEnergy(t1, 10000000000LL);
+    increaseEnergy(t2, 10000000000LL);
     qtry.transferQUSD(qtry.owner, t1, 100000000000LL);
     qtry.transferQUSD(qtry.owner, t2, 100000000000LL);
 
@@ -1267,14 +1267,14 @@ TEST(QTRYTest, Matching_SweepBook_PartialFills)
     qtry.CreateEvent(cei, operation_id, state->mOperationParams.feePerDay);
 
     id whale = id::randomValue();
-    increaseEnergy(whale, 1000ULL * 1e9);
+    increaseEnergy(whale, 1000000000000LL);
     qtry.transferQUSD(qtry.owner, whale, 100000000000LL);
 
     // Setup Order Book (Selling Option 0)
     // 3 Makers with increasing prices
-    id m1 = id::randomValue(); increaseEnergy(m1, 100ULL * 1e9); qtry.transferQUSD(qtry.owner, m1, 100000000000LL);
-    id m2 = id::randomValue(); increaseEnergy(m2, 100ULL * 1e9); qtry.transferQUSD(qtry.owner, m2, 100000000000LL);
-    id m3 = id::randomValue(); increaseEnergy(m3, 100ULL * 1e9); qtry.transferQUSD(qtry.owner, m3, 100000000000LL);
+    id m1 = id::randomValue(); increaseEnergy(m1, 100000000000LL); qtry.transferQUSD(qtry.owner, m1, 100000000000LL);
+    id m2 = id::randomValue(); increaseEnergy(m2, 100000000000LL); qtry.transferQUSD(qtry.owner, m2, 100000000000LL);
+    id m3 = id::randomValue(); increaseEnergy(m3, 100000000000LL); qtry.transferQUSD(qtry.owner, m3, 100000000000LL);
 
     // Helper lambda to mint shares so makers have something to sell
     auto mint = [&](id user, uint64 amt) {
@@ -1330,8 +1330,8 @@ TEST(QTRYTest, Matching_Merge_ExitLiquidity)
 
     id holderYes = id::randomValue();
     id holderNo = id::randomValue();
-    increaseEnergy(holderYes, 100ULL * 1e9);
-    increaseEnergy(holderNo, 100ULL * 1e9);
+    increaseEnergy(holderYes, 100000000000LL);
+    increaseEnergy(holderNo, 100000000000LL);
     qtry.transferQUSD(qtry.owner, holderYes, 100000000000LL);
     qtry.transferQUSD(qtry.owner, holderNo, 100000000000LL);
 
@@ -1362,7 +1362,6 @@ TEST(QTRYTest, Matching_Merge_ExitLiquidity)
     EXPECT_EQ(balNoAfter - balNoBefore, 6000000);   // 60k * 100
 
     // 4. Verify positions are gone
-    QUOTTERY::QtryOrder qo;
     EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(holderYes, 0, 0)));
     EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(holderNo, 0, 1)));
 
@@ -1389,8 +1388,8 @@ TEST(QTRYTest, Stability_DustAttack_Rounding)
 
     id whale = id::randomValue();
     id dust_maker = id::randomValue();
-    increaseEnergy(whale, 100ULL * 1e9);
-    increaseEnergy(dust_maker, 100ULL * 1e9);
+    increaseEnergy(whale, 100000000000LL);
+    increaseEnergy(dust_maker, 100000000000LL);
     qtry.transferQUSD(qtry.owner, whale, 100000000000LL);
     qtry.transferQUSD(qtry.owner, dust_maker, 100000000000LL);
 
@@ -1413,7 +1412,6 @@ TEST(QTRYTest, Stability_DustAttack_Rounding)
     EXPECT_EQ(state->mABOrders.headIndex(key, 0), NULL_INDEX);
 
     // Whale should have 0 YES left.
-    QUOTTERY::QtryOrder qo;
     EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(whale, 0, 0)));
 }
 
@@ -1433,7 +1431,7 @@ TEST(QTRYTest, Governance_FeeUpdates)
 
     // 3. Unauthorized Update (Should Fail)
     id hacker = id::randomValue();
-    increaseEnergy(hacker, 1e9);
+    increaseEnergy(hacker, 1000000000LL);
     qtry.transferQUSD(qtry.owner, hacker, 100000000000LL);
     qtry.UpdateFeePerDay(hacker, 0);
     EXPECT_EQ(state->mOperationParams.feePerDay, 2500); // Should remain unchanged
@@ -1467,7 +1465,7 @@ TEST(QTRYTest, Finalize_CleanupLogic)
     qtry.CreateEvent(cei, operation_id, state->mOperationParams.feePerDay);
 
     id user = id::randomValue();
-    increaseEnergy(user, 100e9);
+    increaseEnergy(user, 100000000000LL);
     qtry.transferQUSD(qtry.owner, user, 100000000000LL);
 
     // 1. Create 10 Bid Orders (Open Interest)
@@ -1516,7 +1514,7 @@ TEST(QTRYTest, StressTest_ThousandTraders_ChaosMonkey)
     std::vector<id> traders(NUM_TRADERS);
     for (int i = 0; i < NUM_TRADERS; i++) {
         traders[i] = id::randomValue();
-        increaseEnergy(traders[i], 10000ULL * 1e9); // 10,000 QU each
+        increaseEnergy(traders[i], 10000000000000LL); // 10,000 QU each
         qtry.transferQUSD(qtry.owner, traders[i], 100000000000LL);
     }
 
@@ -1641,13 +1639,13 @@ TEST(QTRYTest, SelfTrading_WashTrade_Integrity)
     qtry.CreateEvent(cei, operation_id, state->mOperationParams.feePerDay);
 
     id trader = id::randomValue();
-    increaseEnergy(trader, 100ULL * 1e9);
+    increaseEnergy(trader, 100000000000LL);
     qtry.transferQUSD(qtry.owner, trader, 100000000000LL);
 
     // 1. Initial State: Trader Mints 100 Shares of YES/NO
     // (Simulate by buying from another for setup)
     id liquidity_provider = id::randomValue();
-    increaseEnergy(liquidity_provider, 100ULL * 1e9);
+    increaseEnergy(liquidity_provider, 100000000000LL);
     qtry.transferQUSD(qtry.owner, liquidity_provider, 100000000000LL);
 
     qtry.AddBidOrder(0, 100, 1, 50000, liquidity_provider);
@@ -1713,9 +1711,9 @@ TEST(QTRYTest, Matching_Sweep_FullFill)
 
     id whale = id::randomValue();
     id dust_maker = id::randomValue();
-    increaseEnergy(whale, 100ULL * 1e9);
+    increaseEnergy(whale, 100000000000LL);
     qtry.transferQUSD(qtry.owner, whale, 100000000000LL);
-    increaseEnergy(dust_maker, 100ULL * 1e9);
+    increaseEnergy(dust_maker, 100000000000LL);
     qtry.transferQUSD(qtry.owner, dust_maker, 100000000000LL);
 
     // 1. Create 60 Dust BID orders
@@ -1773,9 +1771,9 @@ TEST(QTRYTest, Fee_DynamicUpdate_Realtime)
     id maker = id::randomValue();
     id taker = id::randomValue();
     id lp = id::randomValue();
-    increaseEnergy(maker, 10e9);
-    increaseEnergy(taker, 10e9);
-    increaseEnergy(lp, 10e9);
+    increaseEnergy(maker, 10000000000LL);
+    increaseEnergy(taker, 10000000000LL);
+    increaseEnergy(lp, 10000000000LL);
     qtry.transferQUSD(qtry.owner, maker, 100000000000LL);
     qtry.transferQUSD(qtry.owner, taker, 100000000000LL);
     qtry.transferQUSD(qtry.owner, lp, 100000000000LL);
@@ -1809,7 +1807,7 @@ TEST(QTRYTest, Dispute_Quorum_Failure)
     updateEtalonTime(7200);
     qtry.PublishResult(0, 0, operation_id, state->mQtryGov.mDepositAmount);
     id disputer = id::randomValue();
-    increaseEnergy(disputer, 20e9);
+    increaseEnergy(disputer, 20000000000LL);
     qtry.transferQUSD(qtry.owner, disputer, 100000000000LL);
     qtry.Dispute(0, disputer, state->mQtryGov.mDepositAmount);
     id tmp = id::zero();
@@ -1943,9 +1941,9 @@ TEST(QTRYTest, Dispute_Resolution_AutoCleanup_And_Claim)
     id bidder = id::randomValue();
     id asker = id::randomValue();
     id lp = id::randomValue();
-    increaseEnergy(bidder, 100000ULL * 1e9);
-    increaseEnergy(asker, 100000ULL * 1e9);
-    increaseEnergy(lp, 100000ULL * 1e9);
+    increaseEnergy(bidder, 100000000000000LL);
+    increaseEnergy(asker, 100000000000000LL);
+    increaseEnergy(lp, 100000000000000LL);
     qtry.transferQUSD(qtry.owner, bidder, 100000000000LL);
     qtry.transferQUSD(qtry.owner, asker, 100000000000LL);
     qtry.transferQUSD(qtry.owner, lp, 100000000000LL);
@@ -2108,8 +2106,8 @@ TEST(QTRYTest, Dividend_Distribution_Flow)
 
     id maker = id::randomValue();
     id taker = id::randomValue();
-    increaseEnergy(maker, 100e9);
-    increaseEnergy(taker, 100e9);
+    increaseEnergy(maker, 100000000000LL);
+    increaseEnergy(taker, 100000000000LL);
     qtry.transferQUSD(qtry.owner, maker, 100000000000LL);
     qtry.transferQUSD(qtry.owner, taker, 100000000000LL);
 
@@ -2192,7 +2190,7 @@ TEST(QTRYTest, Dividend_Distribution_MultipleShareholders)
     qtry.CreateEvent(cei, operation_id, state->mOperationParams.feePerDay);
 
     id maker = id::randomValue();
-    increaseEnergy(maker, 100e9);
+    increaseEnergy(maker, 100000000000LL);
     qtry.transferQUSD(qtry.owner, maker, 100000000000LL);
 
     // Generate 1,000,000 QUSD Revenue
@@ -2248,7 +2246,7 @@ TEST(QTRYTest, Dividend_Distribution_Threshold_Check)
     qtry.CreateEvent(cei, operation_id, state->mOperationParams.feePerDay);
 
     id maker = id::randomValue();
-    increaseEnergy(maker, 100e9);
+    increaseEnergy(maker, 100000000000LL);
     qtry.transferQUSD(qtry.owner, maker, 100000000000LL);
 
     // 1. MINTING PHASE (Fee-less)
@@ -2315,7 +2313,7 @@ TEST(QTRYTest, Dividend_Distribution_With_Burn)
     qtry.CreateEvent(cei, operation_id, state->mOperationParams.feePerDay);
 
     id maker = id::randomValue();
-    increaseEnergy(maker, 100e9);
+    increaseEnergy(maker, 100000000000LL);
     qtry.transferQUSD(qtry.owner, maker, 100000000000LL);
 
     // Generate 1,000,000 Revenue
@@ -2347,7 +2345,7 @@ TEST(QTRYTest, Governance_Add_And_Vote_Proposal)
     // 1. Setup Shareholder
     system.epoch = 200;
     id whale = id::randomValue();
-    increaseEnergy(whale, 1e9);
+    increaseEnergy(whale, 1000000000LL);
     {
         QpiContextUserProcedureCall qpi(QUOTTERY_CONTRACT_INDEX, qtry.owner, 0);
         int issuanceIndex, ownershipIndex, possessionIndex;
@@ -2407,7 +2405,7 @@ TEST(QTRYTest, Governance_Reject_Invalid_Proposal)
 
     // Use owner as proposer
     id whale = qtry.owner;
-    increaseEnergy(whale, 1e9);
+    increaseEnergy(whale, 1000000000LL);
 
     QUOTTERY::SetShareholderProposal_input pi;
 
@@ -2440,8 +2438,8 @@ TEST(QTRYTest, Governance_Vote_Weight)
     // 1. Setup Two Shareholders
     id whale = id::randomValue(); // 100 shares
     id shrimp = id::randomValue(); // 1 share
-    increaseEnergy(whale, 1e9);
-    increaseEnergy(shrimp, 1e9);
+    increaseEnergy(whale, 1000000000LL);
+    increaseEnergy(shrimp, 1000000000LL);
 
     {
         QpiContextUserProcedureCall qpi(QUOTTERY_CONTRACT_INDEX, qtry.owner, 0);
@@ -2553,7 +2551,7 @@ TEST(QTRYTest, Grand_Final_Complex_Lifecycle)
 
     for (int i = 0; i < NUM_TRADERS; i++) {
         traders[i] = id::randomValue();
-        increaseEnergy(traders[i], 10000ULL * 1e9);
+        increaseEnergy(traders[i], 10000000000000LL);
         qtry.transferQUSD(qtry.owner, traders[i], initialBalance);
         totalSystemQUSD += initialBalance;
     }
@@ -2671,7 +2669,7 @@ TEST(QTRYTest, AskOrder_InsufficientPosition)
     qtry.CreateEvent(cei, operation_id, state->mOperationParams.feePerDay);
 
     id trader = id::randomValue();
-    increaseEnergy(trader, 100e9);
+    increaseEnergy(trader, 100000000000LL);
     qtry.transferQUSD(qtry.owner, trader, 100000000000LL);
 
     // 2. Mint 100 Shares (Buy 100 Yes + 100 No)
@@ -2744,8 +2742,8 @@ TEST(QTRYTest, EndEpoch_Full_Lifecycle_Payouts_And_Dividends)
     // 3. Trade Setup
     id winner = id::randomValue();
     id loser = id::randomValue();
-    increaseEnergy(winner, 100e9);
-    increaseEnergy(loser, 100e9);
+    increaseEnergy(winner, 100000000000LL);
+    increaseEnergy(loser, 100000000000LL);
     qtry.transferQUSD(qtry.owner, winner, 100000000000LL);
     qtry.transferQUSD(qtry.owner, loser, 100000000000LL);
 
@@ -2829,7 +2827,7 @@ TEST(QTRYTest, Cleanup_Procedures_Check)
 
     for (int i = 0; i < NUM_TRADERS; ++i) {
         traders[i] = id::randomValue();
-        increaseEnergy(traders[i], 10000ULL * 1e9);
+        increaseEnergy(traders[i], 10000000000000LL);
         qtry.transferQUSD(qtry.owner, traders[i], 1000000000000LL); // 1 Trillion each
     }
 
@@ -2916,7 +2914,7 @@ TEST(QTRYTest, Cleanup_Procedures_Check)
     qtry.PublishResult(1, 0, operation_id, state->mQtryGov.mDepositAmount);
 
     id disputer = traders[0]; // Trader 0 disputes
-    increaseEnergy(disputer, 20e9);
+    increaseEnergy(disputer, 20000000000LL);
     qtry.transferQUSD(qtry.owner, disputer, state->mQtryGov.mDepositAmount * 2);
     qtry.Dispute(1, disputer, state->mQtryGov.mDepositAmount);
 
@@ -3021,7 +3019,7 @@ TEST(QTRYTest, Cleanup_Empty_Events_NoUsers)
 
     // 2. Dispute (Disputer says 1) - Even with no bets, you can dispute!
     id disputer = id::randomValue();
-    increaseEnergy(disputer, 20e9);
+    increaseEnergy(disputer, 20000000000LL);
     sint64 bondAmount = state->mQtryGov.mDepositAmount;
     qtry.transferQUSD(qtry.owner, disputer, bondAmount * 2); // Fund disputer
     sint64 disputerBalBefore = qtry.balanceUSD(disputer);
