@@ -120,7 +120,6 @@ struct OracleSubscriptionMetadata
 };
 
 // State of received OM reply and computor commits for a single oracle query
-template <uint16_t ownComputorSeedsCount>
 struct OracleReplyState
 {
     int64_t queryId;
@@ -131,8 +130,8 @@ struct OracleReplyState
 
     // track state of own reply commits (when they are scheduled and when actually got executed)
     uint16_t ownReplyCommitExecCount;
-    uint32_t ownReplyCommitComputorTxTick[ownComputorSeedsCount];
-    uint32_t ownReplyCommitComputorTxExecuted[ownComputorSeedsCount];
+    uint32_t ownReplyCommitComputorTxTick[NUMBER_OF_COMPUTORS];
+    uint32_t ownReplyCommitComputorTxExecuted[NUMBER_OF_COMPUTORS];
 
     m256i replyCommitDigests[NUMBER_OF_COMPUTORS];
     m256i replyCommitKnowledgeProofs[NUMBER_OF_COMPUTORS];
@@ -274,11 +273,8 @@ protected:
         uint32_t queryIndexInTick;
     } contractQueryIdState;
 
-    // data type of state of received OM reply and computor commits for single oracle query (used before reveal)
-    typedef OracleReplyState<ownComputorSeedsCount> ReplyState;
-
     // state of received OM reply and computor commits for each oracle query (used before reveal)
-    ReplyState* replyStates;
+    OracleReplyState* replyStates;
 
     // index in replyStates to check next for empty slot (cyclic buffer)
     int32_t replyStatesIndex;
@@ -560,7 +556,7 @@ public:
         queryMetadata.statusVar.pending.replyStateIndex = replyStateSlotIdx;
 
         // init reply state (temporary until reply is revealed)
-        ReplyState& replyState = replyStates[replyStateSlotIdx];
+        OracleReplyState& replyState = replyStates[replyStateSlotIdx];
         setMem(&replyState, sizeof(replyState), 0);
         replyState.queryId = queryId;
 
@@ -696,7 +692,7 @@ public:
         queryMetadata.statusVar.pending.replyStateIndex = replyStateSlotIdx;
 
         // init reply state (temporary until reply is revealed)
-        ReplyState& replyState = replyStates[replyStateSlotIdx];
+        OracleReplyState& replyState = replyStates[replyStateSlotIdx];
         setMem(&replyState, sizeof(replyState), 0);
         replyState.queryId = queryId;
 
@@ -822,8 +818,10 @@ public:
         // get reply state
         const auto replyStateIdx = oqm.statusVar.pending.replyStateIndex;
         ASSERT(replyStateIdx < MAX_SIMULTANEOUS_ORACLE_QUERIES);
-        ReplyState& replyState = replyStates[replyStateIdx];
+        OracleReplyState& replyState = replyStates[replyStateIdx];
         ASSERT(replyState.queryId == replyMessage->oracleQueryId);
+        if (replyState.queryId != replyMessage->oracleQueryId)
+            return;
 
         // return if we already got a reply
         if (replyState.ownReplySize)
@@ -941,7 +939,7 @@ public:
             const unsigned int replyIdx = replyIndices[idx];
             if (replyIdx >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
                 continue;
-            ReplyState& replyState = replyStates[replyIdx];
+            OracleReplyState& replyState = replyStates[replyIdx];
             if (replyState.queryId <= 0 || replyState.ownReplySize == 0)
                 continue;
 
@@ -1067,8 +1065,10 @@ public:
             // get reply state
             const auto replyStateIdx = oqm.statusVar.pending.replyStateIndex;
             ASSERT(replyStateIdx < MAX_SIMULTANEOUS_ORACLE_QUERIES);
-            ReplyState& replyState = replyStates[replyStateIdx];
+            OracleReplyState& replyState = replyStates[replyStateIdx];
             ASSERT(replyState.queryId == item->queryId);
+            if (replyState.queryId != item->queryId)
+                continue;
 
             // ignore commit if we already have processed a commit by this computor
             if (replyState.replyCommitTicks[compIdx] != 0)
@@ -1235,7 +1235,7 @@ public:
             const unsigned int replyIdx = replyIndices[idx];
             if (replyIdx >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
                 continue;
-            ReplyState& replyState = replyStates[replyIdx];
+            OracleReplyState& replyState = replyStates[replyIdx];
             if (replyState.queryId <= 0 || replyState.ownReplySize == 0)
                 continue;
             const uint16_t mostCommitsCount = replyState.replyCommitHistogramCount[replyState.mostCommitsHistIdx];
@@ -1290,7 +1290,7 @@ public:
 protected:
     // Check oracle reply reveal transaction. Returns reply state if okay or NULL otherwise. Also sets output param queryIndexOutput.
     // Caller is responsible for locking.
-    ReplyState* checkReplyRevealTransaction(const OracleReplyRevealTransactionPrefix* transaction, uint32_t* queryIndexOutput = nullptr) const
+    OracleReplyState* checkReplyRevealTransaction(const OracleReplyRevealTransactionPrefix* transaction, uint32_t* queryIndexOutput = nullptr) const
     {
         // check precondition for calling with ASSERTs
         ASSERT(transaction != nullptr);
@@ -1328,8 +1328,10 @@ protected:
         // get reply state
         const auto replyStateIdx = oqm.statusVar.pending.replyStateIndex;
         ASSERT(replyStateIdx < MAX_SIMULTANEOUS_ORACLE_QUERIES);
-        ReplyState& replyState = replyStates[replyStateIdx];
+        OracleReplyState& replyState = replyStates[replyStateIdx];
         ASSERT(replyState.queryId == transaction->queryId);
+        if (replyState.queryId != transaction->queryId)
+            return nullptr;
 
         // compute digest of reply in reveal tx
         const void* replyData = transaction + 1;
@@ -1384,7 +1386,7 @@ public:
         LockGuard lockGuard(lock);
 
         // check tx and get reply state
-        ReplyState* replyState = checkReplyRevealTransaction(transaction);
+        OracleReplyState* replyState = checkReplyRevealTransaction(transaction);
         if (!replyState)
             return;
 
@@ -1428,7 +1430,7 @@ public:
 
         // check tx and get reply state + query metadata
         uint32_t queryIndex;
-        ReplyState* replyState = checkReplyRevealTransaction(transaction, &queryIndex);
+        OracleReplyState* replyState = checkReplyRevealTransaction(transaction, &queryIndex);
         if (!replyState)
             return false;
         OracleQueryMetadata& oqm = queries[queryIndex];
@@ -1590,7 +1592,7 @@ public:
                 // get reply state
                 const auto replyStateIdx = oqm.statusVar.pending.replyStateIndex;
                 ASSERT(replyStateIdx < MAX_SIMULTANEOUS_ORACLE_QUERIES);
-                ReplyState& replyState = replyStates[replyStateIdx];
+                OracleReplyState& replyState = replyStates[replyStateIdx];
                 ASSERT(replyState.queryId == oqm.queryId);
                 const uint16_t mostCommitsCount = replyState.replyCommitHistogramCount[replyState.mostCommitsHistIdx];
                 ASSERT(replyState.mostCommitsHistIdx < NUMBER_OF_COMPUTORS && mostCommitsCount <= NUMBER_OF_COMPUTORS);
@@ -1889,7 +1891,7 @@ public:
             }
 
             // shared status checks
-            const ReplyState* replyState = nullptr;
+            const OracleReplyState* replyState = nullptr;
             uint16_t agreeingCommits = 0;
             switch (oqm.status)
             {
@@ -1980,7 +1982,7 @@ public:
         {
             const uint32_t replyIdx = replyIndices[idx];
             ASSERT(replyIdx < MAX_SIMULTANEOUS_ORACLE_QUERIES);
-            const ReplyState& replyState = replyStates[replyIdx];
+            const OracleReplyState& replyState = replyStates[replyIdx];
             ASSERT(replyState.queryId);
             uint32_t queryIndex = 0;
             ASSERT(queryIdToIndex->get(replyState.queryId, queryIndex) && queryIndex < oracleQueryCount);
@@ -1995,7 +1997,7 @@ public:
         {
             const uint32_t replyIdx = replyIndices[idx];
             ASSERT(replyIdx < MAX_SIMULTANEOUS_ORACLE_QUERIES);
-            const ReplyState& replyState = replyStates[replyIdx];
+            const OracleReplyState& replyState = replyStates[replyIdx];
             ASSERT(replyState.queryId);
             uint32_t queryIndex = 0;
             ASSERT(queryIdToIndex->get(replyState.queryId, queryIndex) && queryIndex < oracleQueryCount);

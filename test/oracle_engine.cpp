@@ -63,7 +63,7 @@ struct OracleEngineWithInitAndDeinit : public OracleEngine<ownComputorSeedsCount
 		const OracleQueryMetadata& oqm = this->queries[queryIndex];
 		EXPECT_EQ(oqm.status, expectedStatus);
 		EXPECT_TRUE(oqm.status == ORACLE_QUERY_STATUS_PENDING || oqm.status == ORACLE_QUERY_STATUS_COMMITTED);
-		const OracleReplyState<ownComputorSeedsCount>& replyState = this->replyStates[oqm.statusVar.pending.replyStateIndex];
+		const OracleReplyState& replyState = this->replyStates[oqm.statusVar.pending.replyStateIndex];
 		EXPECT_EQ((int)totalCommitTxExecuted, (int)replyState.totalCommits);
 		EXPECT_EQ((int)ownCommitTxExecuted, (int)replyState.ownReplyCommitExecCount);
 		EXPECT_EQ(this->getOracleQueryStatus(queryId), expectedStatus);

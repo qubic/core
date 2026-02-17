@@ -82,7 +82,7 @@ bool OracleEngine<ownComputorSeedsCount>::saveSnapshot(unsigned short epoch, CHA
     }
 
     logToConsole(L"Saving oracle reply states ...");
-    sizeToSave = sizeof(ReplyState) * MAX_SIMULTANEOUS_ORACLE_QUERIES;
+    sizeToSave = sizeof(OracleReplyState) * MAX_SIMULTANEOUS_ORACLE_QUERIES;
     sz = saveLargeFile(ORACLE_SNAPSHOT_REPLY_STATES_FILENAME, sizeToSave, (unsigned char*)replyStates, directory);
     if (sz != sizeToSave)
     {
@@ -163,7 +163,7 @@ bool OracleEngine<ownComputorSeedsCount>::loadSnapshot(unsigned short epoch, CHA
     }
 
     logToConsole(L"Loading oracle reply states ...");
-    sizeToLoad = sizeof(ReplyState) * MAX_SIMULTANEOUS_ORACLE_QUERIES;
+    sizeToLoad = sizeof(OracleReplyState) * MAX_SIMULTANEOUS_ORACLE_QUERIES;
     sz = loadLargeFile(ORACLE_SNAPSHOT_REPLY_STATES_FILENAME, sizeToLoad, (unsigned char*)replyStates, directory);
     if (sz != sizeToLoad)
     {

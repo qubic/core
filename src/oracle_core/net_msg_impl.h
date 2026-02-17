@@ -151,7 +151,7 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		}
 		if (oqm.status == ORACLE_QUERY_STATUS_PENDING || oqm.status == ORACLE_QUERY_STATUS_COMMITTED)
 		{
-			const ReplyState& replyState = replyStates[oqm.statusVar.pending.replyStateIndex];
+			const OracleReplyState& replyState = replyStates[oqm.statusVar.pending.replyStateIndex];
 			payloadOqm->agreeingCommits = replyState.replyCommitHistogramCount[replyState.mostCommitsHistIdx];
 			payloadOqm->totalCommits = replyState.totalCommits;
 		}
