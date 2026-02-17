@@ -359,11 +359,11 @@
     <ClInclude Include="contracts\qRWA.h">
       <Filter>contracts</Filter>
     </ClInclude>
-    <ClInclude Include="contracts\SupplyWatcher_old.h">
-      <Filter>contracts</Filter>
-    </ClInclude>
     <ClInclude Include="oracle_core\snapshot_files.h">
       <Filter>oracle_core</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\Quottery_old.h">
+      <Filter>contracts</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
