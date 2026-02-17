@@ -132,9 +132,10 @@ public:
 		return output;
 	}
 
-	QDUEL::SetPercentFees_output setPercentFees(const id& user, uint8 devFee, uint8 burnFee, uint8 shareholdersFee, sint64 reward = 0)
+	QDUEL::SetPercentFees_output setPercentFees(const id& user, uint8 devFee, uint8 burnFee, uint8 shareholdersFee, uint16 percentScale,
+	                                            sint64 reward = 0)
 	{
-		QDUEL::SetPercentFees_input input{devFee, burnFee, shareholdersFee};
+		QDUEL::SetPercentFees_input input{devFee, burnFee, shareholdersFee, percentScale};
 		QDUEL::SetPercentFees_output output;
 		// System procedures are tested via normal user invocation.
 		if (!invokeUserProcedure(QDUEL_CONTRACT_INDEX, PROCEDURE_INDEX_SET_PERCENT_FEES, input, output, user, reward))
@@ -300,11 +301,11 @@ namespace
 		constexpr uint8 burnFee = 30;
 		constexpr uint8 shareholdersFee = 55;
 		increaseEnergy(qduel.state()->team(), 1);
-		EXPECT_EQ(qduel.setPercentFees(qduel.state()->team(), devFee, burnFee, shareholdersFee).returnCode,
+		EXPECT_EQ(qduel.setPercentFees(qduel.state()->team(), devFee, burnFee, shareholdersFee, QDUEL_PERCENT_SCALE).returnCode,
 		          QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
 		// Setup: give both players enough balance to cover the duel.
-		constexpr sint64 duelAmount = 100000ULL;
+		constexpr sint64 duelAmount = 100000LL;
 		increaseEnergy(player1, duelAmount);
 		increaseEnergy(player2, duelAmount);
 		const uint64 player1Before = getBalance(player1);
@@ -944,32 +945,45 @@ TEST(ContractQDuel, SetPercentFeesAccessDeniedAndGetPercentFees)
 	ContractTestingQDuel qduel;
 	const QDUEL::GetPercentFees_output before = qduel.getPercentFees();
 
+	static constexpr sint64 userAmount = 10LL;
+	static constexpr uint8 devFee = 1;
+	static constexpr uint8 burnFee = 2;
+	static constexpr uint8 shareholdersFee = 3;
+	static constexpr uint16 percentScale = 4;
+	static constexpr sint64 reward = 10LL;
+
 	const id user(28, 0, 0, 0);
-	increaseEnergy(user, 10);
+	increaseEnergy(user, userAmount);
 	const uint64 balanceBefore = getBalance(user);
 
-	EXPECT_EQ(qduel.setPercentFees(user, 1, 2, 3, 10).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::ACCESS_DENIED));
+	EXPECT_EQ(qduel.setPercentFees(user, devFee, burnFee, shareholdersFee, percentScale, reward).returnCode,
+	          QDUEL::toReturnCode(QDUEL::EReturnCode::ACCESS_DENIED));
 	EXPECT_EQ(getBalance(user), balanceBefore);
 
 	const QDUEL::GetPercentFees_output after = qduel.getPercentFees();
-	EXPECT_EQ(after.devFeePercentBps, before.devFeePercentBps);
-	EXPECT_EQ(after.burnFeePercentBps, before.burnFeePercentBps);
-	EXPECT_EQ(after.shareholdersFeePercentBps, before.shareholdersFeePercentBps);
-	EXPECT_EQ(static_cast<uint32>(after.percentScale), static_cast<uint32>(before.percentScale));
+	EXPECT_EQ(memcmp(&before, &after, sizeof(before)), 0);
 }
 
 TEST(ContractQDuel, SetPercentFeesUpdatesState)
 {
 	ContractTestingQDuel qduel;
 
-	increaseEnergy(qduel.state()->team(), 1);
-	EXPECT_EQ(qduel.setPercentFees(qduel.state()->team(), 1, 2, 3, 1).returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
+	static constexpr sint64 teamAmount = 1LL;
+	static constexpr uint8 devFee = 1;
+	static constexpr uint8 burnFee = 2;
+	static constexpr uint8 shareholdersFee = 3;
+	static constexpr uint16 percentScale = 4;
+	static constexpr sint64 reward = 1LL;
+
+	increaseEnergy(qduel.state()->team(), teamAmount);
+	EXPECT_EQ(qduel.setPercentFees(qduel.state()->team(), devFee, burnFee, shareholdersFee, percentScale, reward).returnCode,
+	          QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
 	const QDUEL::GetPercentFees_output output = qduel.getPercentFees();
-	EXPECT_EQ(output.devFeePercentBps, 1);
-	EXPECT_EQ(output.burnFeePercentBps, 2);
-	EXPECT_EQ(output.shareholdersFeePercentBps, 3);
-	EXPECT_EQ(static_cast<uint32>(output.percentScale), static_cast<uint32>(QDUEL_PERCENT_SCALE));
+	EXPECT_EQ(output.devFeePercentBps, devFee);
+	EXPECT_EQ(output.burnFeePercentBps, burnFee);
+	EXPECT_EQ(output.shareholdersFeePercentBps, shareholdersFee);
+	EXPECT_EQ(static_cast<uint32>(output.percentScale), static_cast<uint32>(percentScale));
 	EXPECT_EQ(output.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 }
 
