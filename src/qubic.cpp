@@ -2562,7 +2562,7 @@ static void contractProcessor(void*)
 static void notifyContractOfIncomingTransfer(const m256i& source, const m256i& dest, long long amount, unsigned char type)
 {
     // Only notify if amount > 0 and dest is contract
-    if (amount <= 0 || dest.u64._0 >= contractCount || dest.u64._1 || dest.u64._2 || dest.u64._3)
+    if (amount <= 0 || !isPublicKeyOfContract(dest))
         return;
 
     // Also don't run contract processor if the callback isn't implemented in the dest contract

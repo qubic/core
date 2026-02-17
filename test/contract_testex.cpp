@@ -539,6 +539,15 @@ public:
         return output.success;
     }
 
+    void beginEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(TESTEXD_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+        callSystemProcedure(TESTEXC_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+        callSystemProcedure(TESTEXB_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+        callSystemProcedure(TESTEXA_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+        callSystemProcedure(QX_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+    }
+
     void endEpoch(bool expectSuccess = true)
     {
         callSystemProcedure(TESTEXD_CONTRACT_INDEX, END_EPOCH, expectSuccess);
@@ -1114,6 +1123,9 @@ TEST(ContractTestEx, ResolveDeadlockCallbackProcedureAndConcurrentFunction)
 TEST(ContractTestEx, QueryBasicQpiFunctions)
 {
     ContractTestingTestEx test;
+
+    // some simple QPI functions tests that are independent of the tick
+    test.beginEpoch();
 
     id arbitratorPubKey;
     getPublicKeyFromIdentity((const unsigned char*)ARBITRATOR, arbitratorPubKey.m256i_u8);
