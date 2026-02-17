@@ -5,7 +5,7 @@ constexpr uint16 QDUEL_MINIMUM_DUEL_AMOUNT = 10000;
 constexpr uint8 QDUEL_DEV_FEE_PERCENT_BPS = 15;          // 0.15% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_BURN_FEE_PERCENT_BPS = 30;         // 0.3% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS = 55; // 0.55% * QDUEL_PERCENT_SCALE
-constexpr uint16 QDUEL_PERCENT_SCALE = 1000;
+constexpr uint16 QDUEL_PERCENT_SCALE = 10000;
 constexpr uint8 QDUEL_TTL_HOURS = 3;
 constexpr uint8 QDUEL_TICK_UPDATE_PERIOD = 100;           // Process TICK logic once per this many ticks
 constexpr uint16 QDUEL_RANDOM_LOTTERY_ASSET_NAME = 19538; // RL
@@ -298,6 +298,7 @@ public:
 		uint8 devFeePercentBps;
 		uint8 burnFeePercentBps;
 		uint8 shareholdersFeePercentBps;
+		uint16 percentScale;
 	};
 
 	struct SetPercentFees_output
@@ -432,6 +433,7 @@ public:
 		REGISTER_USER_FUNCTION(GetRooms, 2);
 		REGISTER_USER_FUNCTION(GetTTLHours, 3);
 		REGISTER_USER_FUNCTION(GetUserProfile, 4);
+		REGISTER_USER_FUNCTION(CalculateRevenue, 5);
 	}
 
 	INITIALIZE()
@@ -447,12 +449,18 @@ public:
 		state.shareholdersFeePercentBps = QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS;
 
 		state.ttlHours = QDUEL_TTL_HOURS;
+		state.percentScale = QDUEL_PERCENT_SCALE;
 	}
 
 	BEGIN_EPOCH()
 	{
 		state.firstTick = true;
 		state.currentState = EState::LOCKED;
+
+		if (qpi.epoch() == 201)
+		{
+			state.percentScale = QDUEL_PERCENT_SCALE;
+		}
 	}
 
 	END_EPOCH()
@@ -734,7 +742,7 @@ public:
 
 		locals.totalPercent = static_cast<uint16>(input.devFeePercentBps) + static_cast<uint16>(input.burnFeePercentBps) +
 		                      static_cast<uint16>(input.shareholdersFeePercentBps);
-		locals.totalPercent = div(locals.totalPercent, QDUEL_PERCENT_SCALE);
+		locals.totalPercent = div(locals.totalPercent, input.percentScale);
 
 		if (locals.totalPercent >= 100)
 		{
@@ -745,6 +753,7 @@ public:
 		state.devFeePercentBps = input.devFeePercentBps;
 		state.burnFeePercentBps = input.burnFeePercentBps;
 		state.shareholdersFeePercentBps = input.shareholdersFeePercentBps;
+		state.percentScale = input.percentScale;
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
@@ -792,7 +801,7 @@ public:
 		output.devFeePercentBps = state.devFeePercentBps;
 		output.burnFeePercentBps = state.burnFeePercentBps;
 		output.shareholdersFeePercentBps = state.shareholdersFeePercentBps;
-		output.percentScale = QDUEL_PERCENT_SCALE;
+		output.percentScale = state.percentScale;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -830,6 +839,15 @@ public:
 		output.raiseStep = locals.userData.raiseStep;
 		output.maxStake = locals.userData.maxStake;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_FUNCTION(CalculateRevenue)
+	{
+		output.devFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.devFeePercentBps)), state.percentScale);
+		output.burnFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.burnFeePercentBps)), state.percentScale);
+		output.shareholdersFee =
+			smul(div(div<uint64>(smul(input.amount, static_cast<uint64>(state.shareholdersFeePercentBps)), state.percentScale), 676ULL), 676ULL);
+		output.winner = input.amount - (output.devFee + output.burnFee + output.shareholdersFee);
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(Deposit)
@@ -935,6 +953,7 @@ protected:
 	uint8 ttlHours;
 	uint8 firstTick;
 	EState currentState;
+	uint16 percentScale;
 
 protected:
 	template<typename T> static constexpr const T& min(const T& a, const T& b) { return (a < b) ? a : b; }
@@ -1108,15 +1127,6 @@ private:
 		locals.randomValue = qpi.K12(locals.randomValue);
 
 		output.winner = locals.randomValue.u64._0 & 1 ? locals.maxPlayerId : locals.minPlayerId;
-	}
-
-	PRIVATE_FUNCTION(CalculateRevenue)
-	{
-		output.devFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.devFeePercentBps)), QDUEL_PERCENT_SCALE);
-		output.burnFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.burnFeePercentBps)), QDUEL_PERCENT_SCALE);
-		output.shareholdersFee =
-		    smul(div(div<uint64>(smul(input.amount, static_cast<uint64>(state.shareholdersFeePercentBps)), QDUEL_PERCENT_SCALE), 676ULL), 676ULL);
-		output.winner = input.amount - (output.devFee + output.burnFee + output.shareholdersFee);
 	}
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(TransferToShareholders)
