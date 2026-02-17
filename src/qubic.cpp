@@ -1,6 +1,7 @@
 #define SINGLE_COMPILE_UNIT
 
 // #define OLD_QTRY
+// #define NO_PULSE
 
 //#define INCLUDE_CONTRACT_TEST_EXAMPLES
 
