@@ -11,6 +11,21 @@ struct QVAULT2
 
 struct QVAULT : public ContractBase
 {
+    struct StateData
+    {
+        id QCAP_ISSUER;
+        id authAddress1, authAddress2, authAddress3, newAuthAddress1, newAuthAddress2, newAuthAddress3;
+        id reinvestingAddress, newReinvestingAddress1, newReinvestingAddress2, newReinvestingAddress3;
+        id adminAddress, newAdminAddress1, newAdminAddress2, newAdminAddress3;
+        id bannedAddress1, bannedAddress2, bannedAddress3;
+        id unbannedAddress1, unbannedAddress2, unbannedAddress3;
+        Array<id, QVAULT_MAX_NUMBER_OF_BANNED_ADDRESSES> bannedAddress;
+        uint32 numberOfBannedAddress;
+        uint32 shareholderDividend, QCAPHolderPermille, reinvestingPermille, devPermille, burnPermille;
+        uint32 newQCAPHolderPermille1, newReinvestingPermille1, newDevPermille1;
+        uint32 newQCAPHolderPermille2, newReinvestingPermille2, newDevPermille2;
+        uint32 newQCAPHolderPermille3, newReinvestingPermille3, newDevPermille3;
+    };
 
 public:
 
@@ -19,7 +34,7 @@ public:
         multisig addresses can submit the new multisig address in this procedure.
     */
 
-    struct submitAuthAddress_input 
+    struct submitAuthAddress_input
     {
         id newAddress;
     };
@@ -29,7 +44,7 @@ public:
     };
 
     /*
-        changeAuthAddress PROCEDURE 
+        changeAuthAddress PROCEDURE
         the new multisig address can be changed by multisig address in this procedure.
         the new multisig address should be submitted by the 2 multisig addresses in submitAuthAddress. if else, it will not be changed with new address
     */
@@ -210,32 +225,19 @@ public:
 
 protected:
 
-    id QCAP_ISSUER;
-    id authAddress1, authAddress2, authAddress3, newAuthAddress1, newAuthAddress2, newAuthAddress3;
-    id reinvestingAddress, newReinvestingAddress1, newReinvestingAddress2, newReinvestingAddress3;
-    id adminAddress, newAdminAddress1, newAdminAddress2, newAdminAddress3;
-    id bannedAddress1, bannedAddress2, bannedAddress3;
-    id unbannedAddress1, unbannedAddress2, unbannedAddress3;
-    Array<id, QVAULT_MAX_NUMBER_OF_BANNED_ADDRESSES> bannedAddress;
-    uint32 numberOfBannedAddress;
-    uint32 shareholderDividend, QCAPHolderPermille, reinvestingPermille, devPermille, burnPermille;
-    uint32 newQCAPHolderPermille1, newReinvestingPermille1, newDevPermille1;
-    uint32 newQCAPHolderPermille2, newReinvestingPermille2, newDevPermille2;
-    uint32 newQCAPHolderPermille3, newReinvestingPermille3, newDevPermille3;
-
     PUBLIC_PROCEDURE(submitAuthAddress)
     {
-        if(qpi.invocator() == state.authAddress1)
+        if(qpi.invocator() == state.get().authAddress1)
         {
-            state.newAuthAddress1 = input.newAddress;
+            state.mut().newAuthAddress1 = input.newAddress;
         }
-        if(qpi.invocator() == state.authAddress2)
+        if(qpi.invocator() == state.get().authAddress2)
         {
-            state.newAuthAddress2 = input.newAddress;
+            state.mut().newAuthAddress2 = input.newAddress;
         }
-        if(qpi.invocator() == state.authAddress3)
+        if(qpi.invocator() == state.get().authAddress3)
         {
-            state.newAuthAddress3 = input.newAddress;
+            state.mut().newAuthAddress3 = input.newAddress;
         }
 
     }
@@ -246,271 +248,271 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(changeAuthAddress)
     {
-        if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
+        if(qpi.invocator() != state.get().authAddress1 && qpi.invocator() != state.get().authAddress2 && qpi.invocator() != state.get().authAddress3)
         {
             return ;
         }
 
         locals.succeed = 0;
 
-        if(qpi.invocator() != state.authAddress1 && input.numberOfChangedAddress == 1 && state.newAuthAddress2 != NULL_ID && state.newAuthAddress2 == state.newAuthAddress3)
+        if(qpi.invocator() != state.get().authAddress1 && input.numberOfChangedAddress == 1 && state.get().newAuthAddress2 != NULL_ID && state.get().newAuthAddress2 == state.get().newAuthAddress3)
         {
-            state.authAddress1 = state.newAuthAddress2;
+            state.mut().authAddress1 = state.get().newAuthAddress2;
             locals.succeed = 1;
         }
 
-        if(qpi.invocator() != state.authAddress2 && input.numberOfChangedAddress == 2 && state.newAuthAddress1 != NULL_ID && state.newAuthAddress1 == state.newAuthAddress3)
+        if(qpi.invocator() != state.get().authAddress2 && input.numberOfChangedAddress == 2 && state.get().newAuthAddress1 != NULL_ID && state.get().newAuthAddress1 == state.get().newAuthAddress3)
         {
-            state.authAddress2 = state.newAuthAddress1;
+            state.mut().authAddress2 = state.get().newAuthAddress1;
             locals.succeed = 1;
         }
 
-        if(qpi.invocator() != state.authAddress3 && input.numberOfChangedAddress == 3 && state.newAuthAddress1 != NULL_ID && state.newAuthAddress1 == state.newAuthAddress2)
+        if(qpi.invocator() != state.get().authAddress3 && input.numberOfChangedAddress == 3 && state.get().newAuthAddress1 != NULL_ID && state.get().newAuthAddress1 == state.get().newAuthAddress2)
         {
-            state.authAddress3 = state.newAuthAddress1;
+            state.mut().authAddress3 = state.get().newAuthAddress1;
             locals.succeed = 1;
         }
 
         if(locals.succeed == 1)
         {
-            state.newAuthAddress1 = NULL_ID;
-            state.newAuthAddress2 = NULL_ID;
-            state.newAuthAddress3 = NULL_ID;
+            state.mut().newAuthAddress1 = NULL_ID;
+            state.mut().newAuthAddress2 = NULL_ID;
+            state.mut().newAuthAddress3 = NULL_ID;
         }
     }
 
     PUBLIC_PROCEDURE(submitDistributionPermille)
     {
-        if(input.newDevPermille + input.newQCAPHolderPermille + input.newReinvestingPermille + state.shareholderDividend + state.burnPermille != 1000)
+        if(input.newDevPermille + input.newQCAPHolderPermille + input.newReinvestingPermille + state.get().shareholderDividend + state.get().burnPermille != 1000)
         {
             return ;
         }
 
-        if(qpi.invocator() == state.authAddress1)
+        if(qpi.invocator() == state.get().authAddress1)
         {
-            state.newDevPermille1 = input.newDevPermille;
-            state.newQCAPHolderPermille1 = input.newQCAPHolderPermille;
-            state.newReinvestingPermille1 = input.newReinvestingPermille;
+            state.mut().newDevPermille1 = input.newDevPermille;
+            state.mut().newQCAPHolderPermille1 = input.newQCAPHolderPermille;
+            state.mut().newReinvestingPermille1 = input.newReinvestingPermille;
         }
 
-        if(qpi.invocator() == state.authAddress2)
+        if(qpi.invocator() == state.get().authAddress2)
         {
-            state.newDevPermille2 = input.newDevPermille;
-            state.newQCAPHolderPermille2 = input.newQCAPHolderPermille;
-            state.newReinvestingPermille2 = input.newReinvestingPermille;
+            state.mut().newDevPermille2 = input.newDevPermille;
+            state.mut().newQCAPHolderPermille2 = input.newQCAPHolderPermille;
+            state.mut().newReinvestingPermille2 = input.newReinvestingPermille;
         }
 
-        if(qpi.invocator() == state.authAddress3)
+        if(qpi.invocator() == state.get().authAddress3)
         {
-            state.newDevPermille3 = input.newDevPermille;
-            state.newQCAPHolderPermille3 = input.newQCAPHolderPermille;
-            state.newReinvestingPermille3 = input.newReinvestingPermille;
+            state.mut().newDevPermille3 = input.newDevPermille;
+            state.mut().newQCAPHolderPermille3 = input.newQCAPHolderPermille;
+            state.mut().newReinvestingPermille3 = input.newReinvestingPermille;
         }
 
     }
 
     PUBLIC_PROCEDURE(changeDistributionPermille)
     {
-        if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
+        if(qpi.invocator() != state.get().authAddress1 && qpi.invocator() != state.get().authAddress2 && qpi.invocator() != state.get().authAddress3)
         {
             return ;
         }
 
-        if(input.newDevPermille + input.newQCAPHolderPermille + input.newReinvestingPermille + state.shareholderDividend + state.burnPermille != 1000)
+        if(input.newDevPermille + input.newQCAPHolderPermille + input.newReinvestingPermille + state.get().shareholderDividend + state.get().burnPermille != 1000)
         {
             return ;
         }
 
-        if(input.newDevPermille == 0 || input.newDevPermille != state.newDevPermille1 || state.newDevPermille1 != state.newDevPermille2 || state.newDevPermille2 != state.newDevPermille3)
+        if(input.newDevPermille == 0 || input.newDevPermille != state.get().newDevPermille1 || state.get().newDevPermille1 != state.get().newDevPermille2 || state.get().newDevPermille2 != state.get().newDevPermille3)
         {
             return ;
         }
 
-        if(input.newQCAPHolderPermille == 0 || input.newQCAPHolderPermille != state.newQCAPHolderPermille1 || state.newQCAPHolderPermille1 != state.newQCAPHolderPermille2 || state.newQCAPHolderPermille2 != state.newQCAPHolderPermille3)
+        if(input.newQCAPHolderPermille == 0 || input.newQCAPHolderPermille != state.get().newQCAPHolderPermille1 || state.get().newQCAPHolderPermille1 != state.get().newQCAPHolderPermille2 || state.get().newQCAPHolderPermille2 != state.get().newQCAPHolderPermille3)
         {
             return ;
         }
 
-        if(input.newReinvestingPermille == 0 || input.newReinvestingPermille != state.newReinvestingPermille1 || state.newReinvestingPermille1 != state.newReinvestingPermille2 || state.newReinvestingPermille2 != state.newReinvestingPermille3)
+        if(input.newReinvestingPermille == 0 || input.newReinvestingPermille != state.get().newReinvestingPermille1 || state.get().newReinvestingPermille1 != state.get().newReinvestingPermille2 || state.get().newReinvestingPermille2 != state.get().newReinvestingPermille3)
         {
             return ;
         }
 
-        state.devPermille = state.newDevPermille1;
-        state.QCAPHolderPermille = state.newQCAPHolderPermille1;
-        state.reinvestingPermille = state.newReinvestingPermille1;
+        state.mut().devPermille = state.get().newDevPermille1;
+        state.mut().QCAPHolderPermille = state.get().newQCAPHolderPermille1;
+        state.mut().reinvestingPermille = state.get().newReinvestingPermille1;
 
-        state.newDevPermille1 = 0;
-        state.newDevPermille2 = 0;
-        state.newDevPermille3 = 0;
+        state.mut().newDevPermille1 = 0;
+        state.mut().newDevPermille2 = 0;
+        state.mut().newDevPermille3 = 0;
 
-        state.newQCAPHolderPermille1 = 0;
-        state.newQCAPHolderPermille2 = 0;
-        state.newQCAPHolderPermille3 = 0;
+        state.mut().newQCAPHolderPermille1 = 0;
+        state.mut().newQCAPHolderPermille2 = 0;
+        state.mut().newQCAPHolderPermille3 = 0;
 
-        state.newReinvestingPermille1 = 0;
-        state.newReinvestingPermille2 = 0;
-        state.newReinvestingPermille3 = 0;
+        state.mut().newReinvestingPermille1 = 0;
+        state.mut().newReinvestingPermille2 = 0;
+        state.mut().newReinvestingPermille3 = 0;
     }
 
     PUBLIC_PROCEDURE(submitReinvestingAddress)
     {
-        if(qpi.invocator() == state.authAddress1)
+        if(qpi.invocator() == state.get().authAddress1)
         {
-            state.newReinvestingAddress1 = input.newAddress;
+            state.mut().newReinvestingAddress1 = input.newAddress;
         }
-        if(qpi.invocator() == state.authAddress2)
+        if(qpi.invocator() == state.get().authAddress2)
         {
-            state.newReinvestingAddress2 = input.newAddress;
+            state.mut().newReinvestingAddress2 = input.newAddress;
         }
-        if(qpi.invocator() == state.authAddress3)
+        if(qpi.invocator() == state.get().authAddress3)
         {
-            state.newReinvestingAddress3 = input.newAddress;
+            state.mut().newReinvestingAddress3 = input.newAddress;
         }
     }
 
     PUBLIC_PROCEDURE(changeReinvestingAddress)
     {
-        if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
+        if(qpi.invocator() != state.get().authAddress1 && qpi.invocator() != state.get().authAddress2 && qpi.invocator() != state.get().authAddress3)
         {
             return ;
         }
 
-        if(input.newAddress == NULL_ID || input.newAddress != state.newReinvestingAddress1 || state.newReinvestingAddress1 != state.newReinvestingAddress2  || state.newReinvestingAddress2 != state.newReinvestingAddress3)
+        if(input.newAddress == NULL_ID || input.newAddress != state.get().newReinvestingAddress1 || state.get().newReinvestingAddress1 != state.get().newReinvestingAddress2  || state.get().newReinvestingAddress2 != state.get().newReinvestingAddress3)
         {
             return ;
         }
 
-        state.reinvestingAddress = state.newReinvestingAddress1;
+        state.mut().reinvestingAddress = state.get().newReinvestingAddress1;
 
-        state.newReinvestingAddress1 = NULL_ID;
-        state.newReinvestingAddress2 = NULL_ID;
-        state.newReinvestingAddress3 = NULL_ID;
+        state.mut().newReinvestingAddress1 = NULL_ID;
+        state.mut().newReinvestingAddress2 = NULL_ID;
+        state.mut().newReinvestingAddress3 = NULL_ID;
     }
 
     PUBLIC_FUNCTION(getData)
     {
-        output.authAddress1 = state.authAddress1;
-        output.authAddress2 = state.authAddress2;
-        output.authAddress3 = state.authAddress3;
-        output.reinvestingAddress = state.reinvestingAddress;
-        output.shareholderDividend = state.shareholderDividend;
-        output.devPermille = state.devPermille;
-        output.QCAPHolderPermille = state.QCAPHolderPermille;
-        output.reinvestingPermille = state.reinvestingPermille;
-        output.adminAddress = state.adminAddress;
-        output.newAuthAddress1 = state.newAuthAddress1;
-        output.newAuthAddress2 = state.newAuthAddress2;
-        output.newAuthAddress3 = state.newAuthAddress3;
-        output.newAdminAddress1 = state.newAdminAddress1;
-        output.newAdminAddress2 = state.newAdminAddress2;
-        output.newAdminAddress3 = state.newAdminAddress3;
-        output.newReinvestingAddress1 = state.newReinvestingAddress1;
-        output.newReinvestingAddress2 = state.newReinvestingAddress2;
-        output.newReinvestingAddress3 = state.newReinvestingAddress3;
-        output.numberOfBannedAddress = state.numberOfBannedAddress;
-        output.bannedAddress1 = state.bannedAddress1;
-        output.bannedAddress2 = state.bannedAddress2;
-        output.bannedAddress3 = state.bannedAddress3;
-        output.unbannedAddress1 = state.unbannedAddress1;
-        output.unbannedAddress2 = state.unbannedAddress2;
-        output.unbannedAddress3 = state.unbannedAddress3;
+        output.authAddress1 = state.get().authAddress1;
+        output.authAddress2 = state.get().authAddress2;
+        output.authAddress3 = state.get().authAddress3;
+        output.reinvestingAddress = state.get().reinvestingAddress;
+        output.shareholderDividend = state.get().shareholderDividend;
+        output.devPermille = state.get().devPermille;
+        output.QCAPHolderPermille = state.get().QCAPHolderPermille;
+        output.reinvestingPermille = state.get().reinvestingPermille;
+        output.adminAddress = state.get().adminAddress;
+        output.newAuthAddress1 = state.get().newAuthAddress1;
+        output.newAuthAddress2 = state.get().newAuthAddress2;
+        output.newAuthAddress3 = state.get().newAuthAddress3;
+        output.newAdminAddress1 = state.get().newAdminAddress1;
+        output.newAdminAddress2 = state.get().newAdminAddress2;
+        output.newAdminAddress3 = state.get().newAdminAddress3;
+        output.newReinvestingAddress1 = state.get().newReinvestingAddress1;
+        output.newReinvestingAddress2 = state.get().newReinvestingAddress2;
+        output.newReinvestingAddress3 = state.get().newReinvestingAddress3;
+        output.numberOfBannedAddress = state.get().numberOfBannedAddress;
+        output.bannedAddress1 = state.get().bannedAddress1;
+        output.bannedAddress2 = state.get().bannedAddress2;
+        output.bannedAddress3 = state.get().bannedAddress3;
+        output.unbannedAddress1 = state.get().unbannedAddress1;
+        output.unbannedAddress2 = state.get().unbannedAddress2;
+        output.unbannedAddress3 = state.get().unbannedAddress3;
 
     }
 
     PUBLIC_PROCEDURE(submitAdminAddress)
     {
-        if(qpi.invocator() == state.authAddress1)
+        if(qpi.invocator() == state.get().authAddress1)
         {
-            state.newAdminAddress1 = input.newAddress;
+            state.mut().newAdminAddress1 = input.newAddress;
         }
-        if(qpi.invocator() == state.authAddress2)
+        if(qpi.invocator() == state.get().authAddress2)
         {
-            state.newAdminAddress2 = input.newAddress;
+            state.mut().newAdminAddress2 = input.newAddress;
         }
-        if(qpi.invocator() == state.authAddress3)
+        if(qpi.invocator() == state.get().authAddress3)
         {
-            state.newAdminAddress3 = input.newAddress;
+            state.mut().newAdminAddress3 = input.newAddress;
         }
 
     }
 
     PUBLIC_PROCEDURE(changeAdminAddress)
     {
-        if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
+        if(qpi.invocator() != state.get().authAddress1 && qpi.invocator() != state.get().authAddress2 && qpi.invocator() != state.get().authAddress3)
         {
             return ;
         }
 
-        if(input.newAddress == NULL_ID || input.newAddress != state.newAdminAddress1 || state.newAdminAddress1 != state.newAdminAddress2  || state.newAdminAddress2 != state.newAdminAddress3)
+        if(input.newAddress == NULL_ID || input.newAddress != state.get().newAdminAddress1 || state.get().newAdminAddress1 != state.get().newAdminAddress2  || state.get().newAdminAddress2 != state.get().newAdminAddress3)
         {
             return ;
         }
 
-        state.adminAddress = state.newAdminAddress1;
+        state.mut().adminAddress = state.get().newAdminAddress1;
 
-        state.newAdminAddress1 = NULL_ID;
-        state.newAdminAddress2 = NULL_ID;
-        state.newAdminAddress3 = NULL_ID;
+        state.mut().newAdminAddress1 = NULL_ID;
+        state.mut().newAdminAddress2 = NULL_ID;
+        state.mut().newAdminAddress3 = NULL_ID;
     }
 
 
     PUBLIC_PROCEDURE(submitBannedAddress)
     {
-        if(qpi.invocator() == state.authAddress1)
+        if(qpi.invocator() == state.get().authAddress1)
         {
-            state.bannedAddress1 = input.bannedAddress;
+            state.mut().bannedAddress1 = input.bannedAddress;
         }
-        if(qpi.invocator() == state.authAddress2)
+        if(qpi.invocator() == state.get().authAddress2)
         {
-            state.bannedAddress2 = input.bannedAddress;
+            state.mut().bannedAddress2 = input.bannedAddress;
         }
-        if(qpi.invocator() == state.authAddress3)
+        if(qpi.invocator() == state.get().authAddress3)
         {
-            state.bannedAddress3 = input.bannedAddress;
+            state.mut().bannedAddress3 = input.bannedAddress;
         }
 
     }
 
     PUBLIC_PROCEDURE(saveBannedAddress)
     {
-        if(state.numberOfBannedAddress >= QVAULT_MAX_NUMBER_OF_BANNED_ADDRESSES)
+        if(state.get().numberOfBannedAddress >= QVAULT_MAX_NUMBER_OF_BANNED_ADDRESSES)
         {
             return ;
         }
 
-        if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
+        if(qpi.invocator() != state.get().authAddress1 && qpi.invocator() != state.get().authAddress2 && qpi.invocator() != state.get().authAddress3)
         {
             return ;
         }
 
-        if(input.bannedAddress == NULL_ID || input.bannedAddress != state.bannedAddress1 || state.bannedAddress1 != state.bannedAddress2  || state.bannedAddress2 != state.bannedAddress3)
+        if(input.bannedAddress == NULL_ID || input.bannedAddress != state.get().bannedAddress1 || state.get().bannedAddress1 != state.get().bannedAddress2  || state.get().bannedAddress2 != state.get().bannedAddress3)
         {
             return ;
         }
 
-        state.bannedAddress.set(state.numberOfBannedAddress, input.bannedAddress);
+        state.mut().bannedAddress.set(state.get().numberOfBannedAddress, input.bannedAddress);
 
-        state.numberOfBannedAddress++;
-        state.newAdminAddress1 = NULL_ID;
-        state.newAdminAddress2 = NULL_ID;
-        state.newAdminAddress3 = NULL_ID;
+        state.mut().numberOfBannedAddress++;
+        state.mut().newAdminAddress1 = NULL_ID;
+        state.mut().newAdminAddress2 = NULL_ID;
+        state.mut().newAdminAddress3 = NULL_ID;
 
     }
 
     PUBLIC_PROCEDURE(submitUnbannedAddress)
     {
-        if(qpi.invocator() == state.authAddress1)
+        if(qpi.invocator() == state.get().authAddress1)
         {
-            state.unbannedAddress1 = input.unbannedAddress;
+            state.mut().unbannedAddress1 = input.unbannedAddress;
         }
-        if(qpi.invocator() == state.authAddress2)
+        if(qpi.invocator() == state.get().authAddress2)
         {
-            state.unbannedAddress2 = input.unbannedAddress;
+            state.mut().unbannedAddress2 = input.unbannedAddress;
         }
-        if(qpi.invocator() == state.authAddress3)
+        if(qpi.invocator() == state.get().authAddress3)
         {
-            state.unbannedAddress3 = input.unbannedAddress;
+            state.mut().unbannedAddress3 = input.unbannedAddress;
         }
 
     }
@@ -522,40 +524,40 @@ protected:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(unblockBannedAddress)
     {
-        if(qpi.invocator() != state.authAddress1 && qpi.invocator() != state.authAddress2 && qpi.invocator() != state.authAddress3)
+        if(qpi.invocator() != state.get().authAddress1 && qpi.invocator() != state.get().authAddress2 && qpi.invocator() != state.get().authAddress3)
         {
             return ;
         }
 
-        if(input.unbannedAddress == NULL_ID || input.unbannedAddress != state.unbannedAddress1 || state.unbannedAddress1 != state.unbannedAddress2  || state.unbannedAddress2 != state.unbannedAddress3)
+        if(input.unbannedAddress == NULL_ID || input.unbannedAddress != state.get().unbannedAddress1 || state.get().unbannedAddress1 != state.get().unbannedAddress2  || state.get().unbannedAddress2 != state.get().unbannedAddress3)
         {
             return ;
         }
 
         locals.flag = 0;
 
-        for(locals._t = 0; locals._t < state.numberOfBannedAddress; locals._t++)
+        for(locals._t = 0; locals._t < state.get().numberOfBannedAddress; locals._t++)
         {
-            if(locals.flag == 1 || input.unbannedAddress == state.bannedAddress.get(locals._t))
+            if(locals.flag == 1 || input.unbannedAddress == state.get().bannedAddress.get(locals._t))
             {
-                if(locals._t == state.numberOfBannedAddress - 1) 
+                if(locals._t == state.get().numberOfBannedAddress - 1)
                 {
-                    state.bannedAddress.set(locals._t, NULL_ID);
+                    state.mut().bannedAddress.set(locals._t, NULL_ID);
                     locals.flag = 1;
                     break;
                 }
-                state.bannedAddress.set(locals._t, state.bannedAddress.get(locals._t + 1));
+                state.mut().bannedAddress.set(locals._t, state.get().bannedAddress.get(locals._t + 1));
                 locals.flag = 1;
             }
         }
 
-        if(locals.flag == 1) 
+        if(locals.flag == 1)
         {
-            state.numberOfBannedAddress--;
-        } 
-        state.unbannedAddress1 = NULL_ID;
-        state.unbannedAddress2 = NULL_ID;
-        state.unbannedAddress3 = NULL_ID;
+            state.mut().numberOfBannedAddress--;
+        }
+        state.mut().unbannedAddress1 = NULL_ID;
+        state.mut().unbannedAddress2 = NULL_ID;
+        state.mut().unbannedAddress3 = NULL_ID;
 
     }
 
@@ -580,29 +582,29 @@ protected:
 
 	INITIALIZE()
     {
-        state.QCAP_ISSUER = ID(_Q, _C, _A, _P, _W, _M, _Y, _R, _S, _H, _L, _B, _J, _H, _S, _T, _T, _Z, _Q, _V, _C, _I, _B, _A, _R, _V, _O, _A, _S, _K, _D, _E, _N, _A, _S, _A, _K, _N, _O, _B, _R, _G, _P, _F, _W, _W, _K, _R, _C, _U, _V, _U, _A, _X, _Y, _E);
-        state.authAddress1 = ID(_T, _K, _U, _W, _W, _S, _N, _B, _A, _E, _G, _W, _J, _H, _Q, _J, _D, _F, _L, _G, _Q, _H, _J, _J, _C, _J, _B, _A, _X, _B, _S, _Q, _M, _Q, _A, _Z, _J, _J, _D, _Y, _X, _E, _P, _B, _V, _B, _B, _L, _I, _Q, _A, _N, _J, _T, _I, _D);
-		state.authAddress2 = ID(_F, _X, _J, _F, _B, _T, _J, _M, _Y, _F, _J, _H, _P, _B, _X, _C, _D, _Q, _T, _L, _Y, _U, _K, _G, _M, _H, _B, _B, _Z, _A, _A, _F, _T, _I, _C, _W, _U, _K, _R, _B, _M, _E, _K, _Y, _N, _U, _P, _M, _R, _M, _B, _D, _N, _D, _R, _G);
-        state.authAddress3 = ID(_K, _E, _F, _D, _Z, _T, _Y, _L, _F, _E, _R, _A, _H, _D, _V, _L, _N, _Q, _O, _R, _D, _H, _F, _Q, _I, _B, _S, _B, _Z, _C, _W, _S, _Z, _X, _Z, _F, _F, _A, _N, _O, _T, _F, _A, _H, _W, _M, _O, _V, _G, _T, _R, _Q, _J, _P, _X, _D);
-        state.reinvestingAddress = ID(_R, _U, _U, _Y, _R, _V, _N, _K, _J, _X, _M, _L, _R, _B, _B, _I, _R, _I, _P, _D, _I, _B, _M, _H, _D, _H, _U, _A, _Z, _B, _Q, _K, _N, _B, _J, _T, _R, _D, _S, _P, _G, _C, _L, _Z, _C, _Q, _W, _A, _K, _C, _F, _Q, _J, _K, _K, _E);
-        state.adminAddress = ID(_H, _E, _C, _G, _U, _G, _H, _C, _J, _K, _Q, _O, _S, _D, _T, _M, _E, _H, _Q, _Y, _W, _D, _D, _T, _L, _F, _D, _A, _S, _Z, _K, _M, _G, _J, _L, _S, _R, _C, _S, _T, _H, _H, _A, _P, _P, _E, _D, _L, _G, _B, _L, _X, _J, _M, _N, _D);
+        state.mut().QCAP_ISSUER = ID(_Q, _C, _A, _P, _W, _M, _Y, _R, _S, _H, _L, _B, _J, _H, _S, _T, _T, _Z, _Q, _V, _C, _I, _B, _A, _R, _V, _O, _A, _S, _K, _D, _E, _N, _A, _S, _A, _K, _N, _O, _B, _R, _G, _P, _F, _W, _W, _K, _R, _C, _U, _V, _U, _A, _X, _Y, _E);
+        state.mut().authAddress1 = ID(_T, _K, _U, _W, _W, _S, _N, _B, _A, _E, _G, _W, _J, _H, _Q, _J, _D, _F, _L, _G, _Q, _H, _J, _J, _C, _J, _B, _A, _X, _B, _S, _Q, _M, _Q, _A, _Z, _J, _J, _D, _Y, _X, _E, _P, _B, _V, _B, _B, _L, _I, _Q, _A, _N, _J, _T, _I, _D);
+		state.mut().authAddress2 = ID(_F, _X, _J, _F, _B, _T, _J, _M, _Y, _F, _J, _H, _P, _B, _X, _C, _D, _Q, _T, _L, _Y, _U, _K, _G, _M, _H, _B, _B, _Z, _A, _A, _F, _T, _I, _C, _W, _U, _K, _R, _B, _M, _E, _K, _Y, _N, _U, _P, _M, _R, _M, _B, _D, _N, _D, _R, _G);
+        state.mut().authAddress3 = ID(_K, _E, _F, _D, _Z, _T, _Y, _L, _F, _E, _R, _A, _H, _D, _V, _L, _N, _Q, _O, _R, _D, _H, _F, _Q, _I, _B, _S, _B, _Z, _C, _W, _S, _Z, _X, _Z, _F, _F, _A, _N, _O, _T, _F, _A, _H, _W, _M, _O, _V, _G, _T, _R, _Q, _J, _P, _X, _D);
+        state.mut().reinvestingAddress = ID(_R, _U, _U, _Y, _R, _V, _N, _K, _J, _X, _M, _L, _R, _B, _B, _I, _R, _I, _P, _D, _I, _B, _M, _H, _D, _H, _U, _A, _Z, _B, _Q, _K, _N, _B, _J, _T, _R, _D, _S, _P, _G, _C, _L, _Z, _C, _Q, _W, _A, _K, _C, _F, _Q, _J, _K, _K, _E);
+        state.mut().adminAddress = ID(_H, _E, _C, _G, _U, _G, _H, _C, _J, _K, _Q, _O, _S, _D, _T, _M, _E, _H, _Q, _Y, _W, _D, _D, _T, _L, _F, _D, _A, _S, _Z, _K, _M, _G, _J, _L, _S, _R, _C, _S, _T, _H, _H, _A, _P, _P, _E, _D, _L, _G, _B, _L, _X, _J, _M, _N, _D);
 
-        state.shareholderDividend = 30;
-        state.QCAPHolderPermille = 500;
-        state.reinvestingPermille = 450;
-        state.devPermille = 20;
-        state.burnPermille = 0;
+        state.mut().shareholderDividend = 30;
+        state.mut().QCAPHolderPermille = 500;
+        state.mut().reinvestingPermille = 450;
+        state.mut().devPermille = 20;
+        state.mut().burnPermille = 0;
 
         /*
             initial banned addresses
         */
-        state.bannedAddress.set(0, ID(_K, _E, _F, _D, _Z, _T, _Y, _L, _F, _E, _R, _A, _H, _D, _V, _L, _N, _Q, _O, _R, _D, _H, _F, _Q, _I, _B, _S, _B, _Z, _C, _W, _S, _Z, _X, _Z, _F, _F, _A, _N, _O, _T, _F, _A, _H, _W, _M, _O, _V, _G, _T, _R, _Q, _J, _P, _X, _D));
-        state.bannedAddress.set(1, ID(_E, _S, _C, _R, _O, _W, _B, _O, _T, _F, _T, _F, _I, _C, _I, _F, _P, _U, _X, _O, _J, _K, _G, _Q, _P, _Y, _X, _C, _A, _B, _L, _Z, _V, _M, _M, _U, _C, _M, _J, _F, _S, _G, _S, _A, _I, _A, _T, _Y, _I, _N, _V, _T, _Y, _G, _O, _A));
-        state.numberOfBannedAddress = 2;
+        state.mut().bannedAddress.set(0, ID(_K, _E, _F, _D, _Z, _T, _Y, _L, _F, _E, _R, _A, _H, _D, _V, _L, _N, _Q, _O, _R, _D, _H, _F, _Q, _I, _B, _S, _B, _Z, _C, _W, _S, _Z, _X, _Z, _F, _F, _A, _N, _O, _T, _F, _A, _H, _W, _M, _O, _V, _G, _T, _R, _Q, _J, _P, _X, _D));
+        state.mut().bannedAddress.set(1, ID(_E, _S, _C, _R, _O, _W, _B, _O, _T, _F, _T, _F, _I, _C, _I, _F, _P, _U, _X, _O, _J, _K, _G, _Q, _P, _Y, _X, _C, _A, _B, _L, _Z, _V, _M, _M, _U, _C, _M, _J, _F, _S, _G, _S, _A, _I, _A, _T, _Y, _I, _N, _V, _T, _Y, _G, _O, _A));
+        state.mut().numberOfBannedAddress = 2;
 
 	}
 
-    struct END_EPOCH_locals 
+    struct END_EPOCH_locals
     {
         Entity entity;
         AssetPossessionIterator iter;
@@ -623,10 +625,10 @@ protected:
         qpi.getEntity(SELF, locals.entity);
         locals.revenue = locals.entity.incomingAmount - locals.entity.outgoingAmount;
 
-        locals.paymentForShareholders = div(locals.revenue * state.shareholderDividend, 1000ULL);
-        locals.paymentForQCAPHolders = div(locals.revenue * state.QCAPHolderPermille, 1000ULL);
-        locals.paymentForReinvest = div(locals.revenue * state.reinvestingPermille, 1000ULL);
-        locals.amountOfBurn = div(locals.revenue * state.burnPermille, 1000ULL);
+        locals.paymentForShareholders = div(locals.revenue * state.get().shareholderDividend, 1000ULL);
+        locals.paymentForQCAPHolders = div(locals.revenue * state.get().QCAPHolderPermille, 1000ULL);
+        locals.paymentForReinvest = div(locals.revenue * state.get().reinvestingPermille, 1000ULL);
+        locals.amountOfBurn = div(locals.revenue * state.get().burnPermille, 1000ULL);
         locals.paymentForDevelopment = locals.revenue - locals.paymentForShareholders - locals.paymentForQCAPHolders - locals.paymentForReinvest - locals.amountOfBurn;
 
         if(locals.paymentForReinvest > QVAULT_MAX_REINVEST_AMOUNT)
@@ -636,36 +638,36 @@ protected:
         }
 
         qpi.distributeDividends(div(locals.paymentForShareholders, 676ULL));
-        qpi.transfer(state.adminAddress, locals.paymentForDevelopment);
-        qpi.transfer(state.reinvestingAddress, locals.paymentForReinvest);
+        qpi.transfer(state.get().adminAddress, locals.paymentForDevelopment);
+        qpi.transfer(state.get().reinvestingAddress, locals.paymentForReinvest);
         qpi.burn(locals.amountOfBurn);
 
         locals.circulatedSupply = QVAULT_QCAP_MAX_SUPPLY;
 
-        for(locals._t = 0 ; locals._t < state.numberOfBannedAddress; locals._t++)
+        for(locals._t = 0 ; locals._t < state.get().numberOfBannedAddress; locals._t++)
         {
-            locals.circulatedSupply -= qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, state.bannedAddress.get(locals._t), state.bannedAddress.get(locals._t), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
+            locals.circulatedSupply -= qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.get().QCAP_ISSUER, state.get().bannedAddress.get(locals._t), state.get().bannedAddress.get(locals._t), QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
         }
 
         locals.QCAPId.assetName = QVAULT_QCAP_ASSETNAME;
-        locals.QCAPId.issuer = state.QCAP_ISSUER;
+        locals.QCAPId.issuer = state.get().QCAP_ISSUER;
 
         locals.iter.begin(locals.QCAPId);
         while (!locals.iter.reachedEnd())
         {
             locals.possessorPubkey = locals.iter.possessor();
 
-            for(locals._t = 0 ; locals._t < state.numberOfBannedAddress; locals._t++)
+            for(locals._t = 0 ; locals._t < state.get().numberOfBannedAddress; locals._t++)
             {
-                if(locals.possessorPubkey == state.bannedAddress.get(locals._t))
+                if(locals.possessorPubkey == state.get().bannedAddress.get(locals._t))
                 {
                     break;
                 }
             }
 
-            if(locals._t == state.numberOfBannedAddress)
+            if(locals._t == state.get().numberOfBannedAddress)
             {
-                qpi.transfer(locals.possessorPubkey, div(locals.paymentForQCAPHolders, locals.circulatedSupply) * qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.QCAP_ISSUER, locals.possessorPubkey, locals.possessorPubkey, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX));
+                qpi.transfer(locals.possessorPubkey, div(locals.paymentForQCAPHolders, locals.circulatedSupply) * qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.get().QCAP_ISSUER, locals.possessorPubkey, locals.possessorPubkey, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX));
             }
 
             locals.iter.next();

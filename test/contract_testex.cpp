@@ -37,7 +37,7 @@ void checkPostManagementRightsTransferInput(const PostManagementRightsTransfer_i
     EXPECT_EQ(observed.possessor, expected.possessor);
 }
 
-class StateCheckerTestExampleA : public TESTEXA
+class StateCheckerTestExampleA : public TESTEXA, public TESTEXA::StateData
 {
 public:
     void checkPostReleaseCounter(uint32 expectedCount)
@@ -81,7 +81,7 @@ public:
     }
 };
 
-class StateCheckerTestExampleB : public TESTEXB
+class StateCheckerTestExampleB : public TESTEXB, public TESTEXB::StateData
 {
 public:
     void checkPostReleaseCounter(uint32 expectedCount)

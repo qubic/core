@@ -1,4 +1,4 @@
-﻿using namespace QPI;
+using namespace QPI;
 
 constexpr uint16 QRP_ALLOWED_SC_NUM = 128;
 constexpr uint64 QRP_QTF_INDEX = QRP_CONTRACT_INDEX + 1;
@@ -10,6 +10,23 @@ struct QRP2
 
 struct QRP : ContractBase
 {
+	struct StateData
+	{
+		/**
+		 * @brief Address of the team managing the lottery contract.
+		 * Initialized to a zero address.
+		 */
+		id teamAddress;
+
+		/**
+		 * @brief Address of the owner of the lottery contract.
+		 * Initialized to a zero address.
+		 */
+		id ownerAddress;
+
+		HashSet<id, QRP_ALLOWED_SC_NUM> allowedSmartContracts;
+	};
+
 	enum class EReturnCode : uint8
 	{
 		SUCCESS,
@@ -113,12 +130,12 @@ struct QRP : ContractBase
 	INITIALIZE()
 	{
 		// Set team/developer address (owner and team are the same for now)
-		state.teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C, _X, _B,
+		state.mut().teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C, _X, _B,
 		                       _A, _V, _F, _O, _P, _R, _S, _N, _U, _L, _U, _E, _B, _S, _P, _U, _T, _R, _Z, _N, _T, _G, _F, _B, _I, _E);
-		state.ownerAddress = state.teamAddress;
+		state.mut().ownerAddress = state.get().teamAddress;
 
 		// Adds QTF to the list of allowed smart contracts.
-		state.allowedSmartContracts.add(id(QRP_QTF_INDEX, 0, 0, 0));
+		state.mut().allowedSmartContracts.add(id(QRP_QTF_INDEX, 0, 0, 0));
 	}
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
@@ -133,11 +150,11 @@ struct QRP : ContractBase
 		REGISTER_USER_FUNCTION(GetAllowedSC, 2);
 	}
 
-	END_EPOCH() { state.allowedSmartContracts.cleanup(); }
+	END_EPOCH() { state.mut().allowedSmartContracts.cleanup(); }
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(WithdrawReserve)
 	{
-		if (!state.allowedSmartContracts.contains(qpi.invocator()))
+		if (!state.get().allowedSmartContracts.contains(qpi.invocator()))
 		{
 			output.allocatedRevenue = 0;
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
@@ -161,28 +178,28 @@ struct QRP : ContractBase
 
 	PUBLIC_PROCEDURE(AddAllowedSC)
 	{
-		if (qpi.invocator() != state.ownerAddress)
+		if (qpi.invocator() != state.get().ownerAddress)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
-		state.allowedSmartContracts.add(id(input.scIndex, 0, 0, 0));
+		state.mut().allowedSmartContracts.add(id(input.scIndex, 0, 0, 0));
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE(RemoveAllowedSC)
 	{
-		if (qpi.invocator() != state.ownerAddress)
+		if (qpi.invocator() != state.get().ownerAddress)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
-		state.allowedSmartContracts.remove(id(input.scIndex, 0, 0, 0));
+		state.mut().allowedSmartContracts.remove(id(input.scIndex, 0, 0, 0));
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 
-		state.allowedSmartContracts.cleanupIfNeeded(QRP_REMOVAL_THRESHOLD_PERCENT);
+		if (state.get().allowedSmartContracts.needsCleanup(QRP_REMOVAL_THRESHOLD_PERCENT)) { state.mut().allowedSmartContracts.cleanup(); }
 	}
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAvailableReserve)
@@ -196,17 +213,17 @@ struct QRP : ContractBase
 		locals.arrayIndex = 0;
 		locals.nextIndex = -1;
 
-		locals.nextIndex = state.allowedSmartContracts.nextElementIndex(locals.nextIndex);
+		locals.nextIndex = state.get().allowedSmartContracts.nextElementIndex(locals.nextIndex);
 		while (locals.nextIndex != NULL_INDEX)
 		{
-			output.allowedSC.set(locals.arrayIndex++, state.allowedSmartContracts.key(locals.nextIndex));
-			locals.nextIndex = state.allowedSmartContracts.nextElementIndex(locals.nextIndex);
+			output.allowedSC.set(locals.arrayIndex++, state.get().allowedSmartContracts.key(locals.nextIndex));
+			locals.nextIndex = state.get().allowedSmartContracts.nextElementIndex(locals.nextIndex);
 		}
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(SendReserve)
 	{
-		if (qpi.invocator() != state.ownerAddress)
+		if (qpi.invocator() != state.get().ownerAddress)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -214,7 +231,7 @@ struct QRP : ContractBase
 
 		locals.scId = id(input.scIndex, 0, 0, 0);
 
-		if (!state.allowedSmartContracts.contains(locals.scId))
+		if (!state.get().allowedSmartContracts.contains(locals.scId))
 		{
 			output.returnCode = toReturnCode(EReturnCode::SC_NOT_FOUND);
 			return;
@@ -230,14 +247,4 @@ struct QRP : ContractBase
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 		qpi.transfer(locals.scId, input.amount);
 	}
-
-protected:
-	/** @brief Address of the team managing the lottery contract. */
-	id teamAddress;
-
-	/** @brief Address of the owner of the lottery contract. */
-	id ownerAddress;
-
-	/** @brief Smart contract whitelist: only SCs in this list can call WithdrawReserve procedure to access the reserve funds, and receive transfers from SendReserve procedure. */
-	HashSet<id, QRP_ALLOWED_SC_NUM> allowedSmartContracts;
 };

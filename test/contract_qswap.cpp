@@ -32,7 +32,7 @@ constexpr uint32 SET_INVEST_REWARDS_INFO_IDX = 10;
 constexpr uint32 TRANSFER_SHARE_MANAGEMENT_RIGHTS_IDX = 11;
 
 
-class QswapChecker : public QSWAP
+class QswapChecker : public QSWAP, public QSWAP::StateData
 {
 // public:
 // 	void checkCollectionConsistency() {

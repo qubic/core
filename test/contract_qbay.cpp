@@ -69,7 +69,7 @@ static Array<uint8, 64> getRandomURI()
     return URI;
 }
 
-class QBAYChecker : public QBAY
+class QBAYChecker : public QBAY, public QBAY::StateData
 {
 public:
 

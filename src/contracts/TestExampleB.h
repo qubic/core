@@ -9,6 +9,61 @@ struct TESTEXB2
 struct TESTEXB : public ContractBase
 {
 	//---------------------------------------------------------------
+	// Types (defined before StateData)
+
+	struct IncomingTransferAmounts
+	{
+		sint64 standardTransactionAmount;
+		sint64 procedureTransactionAmount;
+		sint64 qpiTransferAmount;
+		sint64 qpiDistributeDividendsAmount;
+		sint64 revenueDonationAmount;
+		sint64 ipoBidRefundAmount;
+	};
+
+	// Proposal data type. Support up to 8 options and scalar voting.
+	typedef ProposalDataV1<true> ProposalDataT;
+
+	// Shareholders of TESTEXB have right to propose and vote. Only 16 slots provided.
+	typedef ProposalAndVotingByShareholders<16, TESTEXB_ASSET_NAME> ProposersAndVotersT;
+
+	// Proposal and voting storage type
+	typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT;
+
+	//---------------------------------------------------------------
+	// State
+
+	struct StateData
+	{
+		//---------------------------------------------------------------
+		// ASSET MANAGEMENT RIGHTS TRANSFER state fields
+		PreManagementRightsTransfer_output preReleaseSharesOutput;
+		PreManagementRightsTransfer_output preAcquireSharesOutput;
+
+		PreManagementRightsTransfer_input prevPreReleaseSharesInput;
+		PreManagementRightsTransfer_input prevPreAcquireSharesInput;
+		PostManagementRightsTransfer_input prevPostReleaseSharesInput;
+		PostManagementRightsTransfer_input prevPostAcquireSharesInput;
+		uint32 postReleaseSharesCounter;
+		uint32 postAcquireShareCounter;
+
+		//---------------------------------------------------------------
+		// POST_INCOMING_TRANSFER CALLBACK state fields
+		IncomingTransferAmounts incomingTransfers;
+
+		//---------------------------------------------------------------
+		// SHAREHOLDER PROPOSALS state fields
+
+		// Variables that can be set with proposals
+		sint64 fee1;
+		sint64 fee2;
+		sint64 fee3;
+
+		// Proposal storage
+		ProposalVotingT proposals;
+	};
+
+	//---------------------------------------------------------------
 	// ASSET MANAGEMENT RIGHTS TRANSFER
 
 	struct IssueAsset_input
@@ -74,16 +129,6 @@ struct TESTEXB : public ContractBase
 	};
 
 protected:
-	
-	PreManagementRightsTransfer_output preReleaseSharesOutput;
-	PreManagementRightsTransfer_output preAcquireSharesOutput;
-
-	PreManagementRightsTransfer_input prevPreReleaseSharesInput;
-	PreManagementRightsTransfer_input prevPreAcquireSharesInput;
-	PostManagementRightsTransfer_input prevPostReleaseSharesInput;
-	PostManagementRightsTransfer_input prevPostAcquireSharesInput;
-	uint32 postReleaseSharesCounter;
-	uint32 postAcquireShareCounter;
 
 	PUBLIC_PROCEDURE(IssueAsset)
 	{
@@ -115,12 +160,12 @@ protected:
 
 	PUBLIC_PROCEDURE(SetPreReleaseSharesOutput)
 	{
-		state.preReleaseSharesOutput = input;
+		state.mut().preReleaseSharesOutput = input;
 	}
 
 	PUBLIC_PROCEDURE(SetPreAcquireSharesOutput)
 	{
-		state.preAcquireSharesOutput = input;
+		state.mut().preAcquireSharesOutput = input;
 	}
 
 	PUBLIC_PROCEDURE(AcquireShareManagementRights)
@@ -154,9 +199,9 @@ protected:
 		// otherwise allowing another contract to acquire management rights is risky
 		if (qpi.originator() == input.owner)
 		{
-			output = state.preReleaseSharesOutput;
+			output = state.get().preReleaseSharesOutput;
 		}
-		state.prevPreReleaseSharesInput = input;
+		state.mut().prevPreReleaseSharesInput = input;
 
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
@@ -170,8 +215,8 @@ protected:
 
 	POST_RELEASE_SHARES()
 	{
-		state.postReleaseSharesCounter++;
-		state.prevPostReleaseSharesInput = input;
+		state.mut().postReleaseSharesCounter++;
+		state.mut().prevPostReleaseSharesInput = input;
 
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
@@ -185,8 +230,8 @@ protected:
 
 	PRE_ACQUIRE_SHARES()
 	{
-		output = state.preAcquireSharesOutput;
-		state.prevPreAcquireSharesInput = input;
+		output = state.get().preAcquireSharesOutput;
+		state.mut().prevPreAcquireSharesInput = input;
 
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
@@ -200,8 +245,8 @@ protected:
 
 	POST_ACQUIRE_SHARES()
 	{
-		state.postAcquireShareCounter++;
-		state.prevPostAcquireSharesInput = input;
+		state.mut().postAcquireShareCounter++;
+		state.mut().prevPostAcquireSharesInput = input;
 
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
@@ -235,15 +280,7 @@ public:
 	// POST_INCOMING_TRANSFER CALLBACK
 public:
 	typedef NoData IncomingTransferAmounts_input;
-	struct IncomingTransferAmounts_output
-	{
-		sint64 standardTransactionAmount;
-		sint64 procedureTransactionAmount;
-		sint64 qpiTransferAmount;
-		sint64 qpiDistributeDividendsAmount;
-		sint64 revenueDonationAmount;
-		sint64 ipoBidRefundAmount;
-	};
+	typedef IncomingTransferAmounts IncomingTransferAmounts_output;
 
 	struct QpiTransfer_input
 	{
@@ -259,11 +296,10 @@ public:
 	typedef NoData QpiDistributeDividends_output;
 
 protected:
-	IncomingTransferAmounts_output incomingTransfers;
 
 	PUBLIC_FUNCTION(IncomingTransferAmounts)
 	{
-		output = state.incomingTransfers;
+		output = state.get().incomingTransfers;
 	}
 
 	struct POST_INCOMING_TRANSFER_locals
@@ -278,22 +314,22 @@ protected:
 		switch (input.type)
 		{
 		case TransferType::standardTransaction:
-			state.incomingTransfers.standardTransactionAmount += input.amount;
+			state.mut().incomingTransfers.standardTransactionAmount += input.amount;
 			break;
 		case TransferType::procedureTransaction:
-			state.incomingTransfers.procedureTransactionAmount += input.amount;
+			state.mut().incomingTransfers.procedureTransactionAmount += input.amount;
 			break;
 		case TransferType::qpiTransfer:
-			state.incomingTransfers.qpiTransferAmount += input.amount;
+			state.mut().incomingTransfers.qpiTransferAmount += input.amount;
 			break;
 		case TransferType::qpiDistributeDividends:
-			state.incomingTransfers.qpiDistributeDividendsAmount += input.amount;
+			state.mut().incomingTransfers.qpiDistributeDividendsAmount += input.amount;
 			break;
 		case TransferType::revenueDonation:
-			state.incomingTransfers.revenueDonationAmount += input.amount;
+			state.mut().incomingTransfers.revenueDonationAmount += input.amount;
 			break;
 		case TransferType::ipoBidRefund:
-			state.incomingTransfers.ipoBidRefundAmount += input.amount;
+			state.mut().incomingTransfers.ipoBidRefundAmount += input.amount;
 			break;
 		default:
 			ASSERT(false);
@@ -351,24 +387,7 @@ public:
 	// SHAREHOLDER PROPOSALS WITH MULTI-OPTION + SCALAR STORAGE
 
 protected:
-	// Variables that can be set with proposals
-	sint64 fee1;
-	sint64 fee2;
-	sint64 fee3;
 
-public:
-	// Proposal data type. Support up to 8 options and scalar voting.
-	typedef ProposalDataV1<true> ProposalDataT;
-
-	// Shareholders of TESTEXA have right to propose and vote. Only 16 slots provided.
-	typedef ProposalAndVotingByShareholders<16, TESTEXB_ASSET_NAME> ProposersAndVotersT;
-
-	// Proposal and voting storage type
-	typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT;
-
-protected:
-	// Proposal storage
-	ProposalVotingT proposals;
 public:
 
 	struct SetShareholderProposal_input
@@ -429,7 +448,7 @@ public:
 		}
 
 		// Try to set proposal (checks invocator's rights and general validity of input proposal), returns proposal index
-		output = qpi(state.proposals).setProposal(qpi.invocator(), input.proposalData);
+		output = qpi(state.mut().proposals).setProposal(qpi.invocator(), input.proposalData);
 	}
 
 
@@ -448,11 +467,11 @@ public:
 	PRIVATE_PROCEDURE(FinalizeShareholderProposalSetStateVar)
 	{
 		if (input.proposal.data.variableOptions.variable == 0)
-			state.fee1 = input.acceptedValue;
+			state.mut().fee1 = input.acceptedValue;
 		else if (input.proposal.data.variableOptions.variable == 1)
-			state.fee2 = input.acceptedValue;
+			state.mut().fee2 = input.acceptedValue;
 		else if (input.proposal.data.variableOptions.variable == 2)
-			state.fee3 = input.acceptedValue;
+			state.mut().fee3 = input.acceptedValue;
 	}
 
 	typedef NoData FinalizeShareholderStateVarProposals_input;
@@ -468,18 +487,18 @@ public:
 		// Analyze proposal results and set variables:
 		// Iterate all proposals that were open for voting in this epoch ...
 		locals.p.proposalIndex = -1;
-		while ((locals.p.proposalIndex = qpi(state.proposals).nextProposalIndex(locals.p.proposalIndex, qpi.epoch())) >= 0)
+		while ((locals.p.proposalIndex = qpi(state.get().proposals).nextProposalIndex(locals.p.proposalIndex, qpi.epoch())) >= 0)
 		{
-			if (!qpi(state.proposals).getProposal(locals.p.proposalIndex, locals.p.proposal))
+			if (!qpi(state.get().proposals).getProposal(locals.p.proposalIndex, locals.p.proposal))
 				continue;
-			
+
 			locals.proposalClass = ProposalTypes::cls(locals.p.proposal.type);
 
 			// Handle proposal type Variable / MultiVariables
 			if (locals.proposalClass == ProposalTypes::Class::Variable || locals.proposalClass == ProposalTypes::Class::MultiVariables)
 			{
 				// Get voting results and check if conditions for proposal acceptance are met
-				if (!qpi(state.proposals).getVotingSummary(locals.p.proposalIndex, locals.p.results))
+				if (!qpi(state.get().proposals).getVotingSummary(locals.p.proposalIndex, locals.p.results))
 					continue;
 
 				if (locals.p.proposal.type == ProposalTypes::VariableScalarMean)

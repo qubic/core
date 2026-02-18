@@ -67,6 +67,13 @@ GLOBAL_VAR_DECL unsigned int contractError[contractCount];
 // access to contractStateChangeFlags thread-safe
 GLOBAL_VAR_DECL unsigned long long* contractStateChangeFlags GLOBAL_VAR_INIT(nullptr);
 
+// Called by ContractState<T, ContractIndex>::mut() to mark the contract's state as dirty.
+static void markContractStateDirty(unsigned int contractIndex)
+{
+    if (contractIndex < contractCount)
+        contractStateChangeFlags[contractIndex >> 6] |= (1ULL << (contractIndex & 63));
+}
+
 // Forward declaration for getContractFeeReserve (defined in qpi_spectrum_impl.h)
 static long long getContractFeeReserve(unsigned int contractIndex);
 
@@ -666,7 +673,6 @@ void QPI::QpiContextProcedureCall::__qpiReleaseStateForWriting(unsigned int cont
             contractStateLock[contractIndex].releaseWrite();
         }
     }
-    contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
 }
 
 // Used to run a special system procedure from within a contract for example in asset management rights transfer
@@ -1026,9 +1032,8 @@ private:
         _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], executionTime);
         executionTimeAccumulator.addTime(_currentContractIndex, executionTime);
 
-        // release lock of contract state and set state to changed
+        // release lock of contract state
         contractStateLock[_currentContractIndex].releaseWrite();
-        contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
 
         // release stack
         releaseContractLocalsStack(_stackIndex);
@@ -1126,14 +1131,12 @@ struct QpiContextUserProcedureCall : public QPI::QpiContextProcedureCall
         // run procedure
         const unsigned long long startTime = __rdtsc();
         contractUserProcedures[_currentContractIndex][inputType](*this, contractStates[_currentContractIndex], inputBuffer, outputBuffer, localsBuffer);
-        
         const unsigned long long executionTime = __rdtsc() - startTime;
         _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], executionTime);
         executionTimeAccumulator.addTime(_currentContractIndex, executionTime);
 
-        // release lock of contract state and set state to changed
+        // release lock of contract state
         contractStateLock[_currentContractIndex].releaseWrite();
-        contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
     }
 
     // free buffer after output has been copied (or isn't needed anymore)
@@ -1359,9 +1362,8 @@ struct QpiContextUserProcedureNotificationCall : public QPI::QpiContextProcedure
         contractLocalsStack[_stackIndex].free();
         ASSERT(contractLocalsStack[_stackIndex].size() == 0);
 
-        // release lock of contract state and set state to changed
+        // release lock of contract state
         contractStateLock[_currentContractIndex].releaseWrite();
-        contractStateChangeFlags[_currentContractIndex >> 6] |= (1ULL << (_currentContractIndex & 63));
 
         // release stack
         releaseContractLocalsStack(_stackIndex);
