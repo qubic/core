@@ -761,10 +761,15 @@ bool QPI::QpiContextProcedureCall::__qpiCallSystemProc(unsigned int sysProcContr
     return true;
 }
 
+static inline bool isPublicKeyOfContract(const m256i& publicKey)
+{
+    return !publicKey.u64._3 && !publicKey.u64._2 && !publicKey.u64._1 && publicKey.u64._0 < contractCount;
+}
+
 // If dest is a contract, notify contract by running system procedure POST_INCOMING_TRANSFER
 void QPI::QpiContextProcedureCall::__qpiNotifyPostIncomingTransfer(const QPI::id& source, const QPI::id& dest, QPI::sint64 amount, QPI::uint8 type) const
 {
-    if (dest.u64._3 != 0 || dest.u64._2 != 0 || dest.u64._3 != 0 || dest.u64._0 >= contractCount || amount <= 0)
+    if (!isPublicKeyOfContract(dest) || amount <= 0)
         return;
 
     unsigned int destContractIndex = static_cast<unsigned int>(dest.u64._0);
