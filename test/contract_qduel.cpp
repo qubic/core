@@ -1342,15 +1342,15 @@ TEST(ContractQDuel, GetLastWinnersReturnsEmptyHistoryByDefault)
 {
 	ContractTestingQDuel qduel;
 
-	static const QDUEL::WinerData emptyWinerData{};
+	static const QDUEL::WinnerData emptyWinnerData{};
 
 	const QDUEL::GetLastWinners_output output = qduel.getLastWinners();
 	EXPECT_EQ(output.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
 	for (uint64 i = 0; i < QDUEL_MAX_NUMBER_OF_WINNER; ++i)
 	{
-		const QDUEL::WinerData& winnerData = output.winners.get(i);
-		EXPECT_EQ(memcmp(&winnerData, &emptyWinerData, sizeof(QDUEL::WinerData)), 0);
+		const QDUEL::WinnerData& winnerData = output.winners.get(i);
+		EXPECT_EQ(memcmp(&winnerData, &emptyWinnerData, sizeof(QDUEL::WinnerData)), 0);
 	}
 }
 
@@ -1359,7 +1359,7 @@ TEST(ContractQDuel, GetLastWinnersStoresWinnerAfterSuccessfulDuel)
 	ContractTestingQDuel qduel;
 	qduel.state()->setState(QDUEL::EState::NONE);
 
-	static const QDUEL::WinerData emptyWinerData{};
+	static const QDUEL::WinnerData emptyWinnerData{};
 
 	const id owner(5000, 0, 0, 0);
 	const id opponent(5001, 0, 0, 0);
@@ -1380,7 +1380,7 @@ TEST(ContractQDuel, GetLastWinnersStoresWinnerAfterSuccessfulDuel)
 	const QDUEL::GetLastWinners_output winnersOutput = qduel.getLastWinners();
 	EXPECT_EQ(winnersOutput.returnCode, QDUEL::toReturnCode(QDUEL::EReturnCode::SUCCESS));
 
-	const QDUEL::WinerData& firstWinner = winnersOutput.winners.get(0);
+	const QDUEL::WinnerData& firstWinner = winnersOutput.winners.get(0);
 	EXPECT_EQ(firstWinner.player1, owner);
 	EXPECT_EQ(firstWinner.player2, opponent);
 	EXPECT_EQ(firstWinner.winner, connectOutput.winner);
@@ -1388,8 +1388,8 @@ TEST(ContractQDuel, GetLastWinnersStoresWinnerAfterSuccessfulDuel)
 
 	for (uint64 i = 1; i < QDUEL_MAX_NUMBER_OF_WINNER; ++i)
 	{
-		const QDUEL::WinerData& winnerData = winnersOutput.winners.get(i);
-		EXPECT_EQ(memcmp(&winnerData, &emptyWinerData, sizeof(QDUEL::WinerData)), 0);
+		const QDUEL::WinnerData& winnerData = winnersOutput.winners.get(i);
+		EXPECT_EQ(memcmp(&winnerData, &emptyWinnerData, sizeof(QDUEL::WinnerData)), 0);
 	}
 }
 
@@ -1398,7 +1398,7 @@ TEST(ContractQDuel, GetLastWinnersIgnoresFailedConnectAttempts)
 	ContractTestingQDuel qduel;
 	qduel.state()->setState(QDUEL::EState::NONE);
 
-	static const QDUEL::WinerData emptyWinerData{};
+	static const QDUEL::WinnerData emptyWinnerData{};
 
 	const id owner(5100, 0, 0, 0);
 	const id opponent(5101, 0, 0, 0);
@@ -1418,8 +1418,8 @@ TEST(ContractQDuel, GetLastWinnersIgnoresFailedConnectAttempts)
 
 	for (uint64 i = 0; i < QDUEL_MAX_NUMBER_OF_WINNER; ++i)
 	{
-		const QDUEL::WinerData& winnerData = winnersOutput.winners.get(i);
-		EXPECT_EQ(memcmp(&winnerData, &emptyWinerData, sizeof(QDUEL::WinerData)), 0);
+		const QDUEL::WinnerData& winnerData = winnersOutput.winners.get(i);
+		EXPECT_EQ(memcmp(&winnerData, &emptyWinnerData, sizeof(QDUEL::WinnerData)), 0);
 	}
 }
 
@@ -1429,7 +1429,7 @@ TEST(ContractQDuel, GetLastWinnersWrapsAroundAfterCapacity)
 	qduel.state()->setState(QDUEL::EState::NONE);
 
 	const sint64 stake = qduel.state()->minDuelAmount();
-	std::array<QDUEL::WinerData, QDUEL_MAX_NUMBER_OF_WINNER> expectedBySlot;
+	std::array<QDUEL::WinnerData, QDUEL_MAX_NUMBER_OF_WINNER> expectedBySlot;
 	static constexpr  uint64 rounds = QDUEL_MAX_NUMBER_OF_WINNER + 2;
 
 	for (uint64 round = 0; round < rounds; ++round)
@@ -1449,7 +1449,7 @@ TEST(ContractQDuel, GetLastWinnersWrapsAroundAfterCapacity)
 		QDUEL::CalculateRevenue_output revenueOutput{};
 		qduel.state()->calculateRevenue(static_cast<uint64>(stake * 2), revenueOutput);
 
-		QDUEL::WinerData expected{};
+		QDUEL::WinnerData expected{};
 		expected.player1 = owner;
 		expected.player2 = opponent;
 		expected.winner = connectOutput.winner;
@@ -1462,7 +1462,7 @@ TEST(ContractQDuel, GetLastWinnersWrapsAroundAfterCapacity)
 
 	for (uint64 i = 0; i < QDUEL_MAX_NUMBER_OF_WINNER; ++i)
 	{
-		const QDUEL::WinerData winnerData = winnersOutput.winners.get(i);
-		EXPECT_EQ(memcmp(&winnerData, &expectedBySlot[i], sizeof(QDUEL::WinerData)), 0);
+		const QDUEL::WinnerData winnerData = winnersOutput.winners.get(i);
+		EXPECT_EQ(memcmp(&winnerData, &expectedBySlot[i], sizeof(QDUEL::WinnerData)), 0);
 	}
 }

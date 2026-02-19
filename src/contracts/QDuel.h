@@ -83,7 +83,7 @@ public:
 		sint64 maxStake;
 	};
 
-	struct WinerData
+	struct WinnerData
 	{
 		id player1;
 		id player2;
@@ -116,7 +116,7 @@ public:
 
 	struct AddWinnerData_input
 	{
-		WinerData winerData;
+		WinnerData winnerData;
 	};
 
 	struct AddWinnerData_output
@@ -433,7 +433,7 @@ public:
 	};
 	struct GetLastWinners_output
 	{
-		Array<WinerData, QDUEL_MAX_NUMBER_OF_WINNER> winners;
+		Array<WinnerData, QDUEL_MAX_NUMBER_OF_WINNER> winners;
 		uint8 returnCode;
 	};
 
@@ -753,10 +753,10 @@ public:
 		output.returnCode = locals.finalizeOutput.returnCode;
 		output.winner = locals.winner;
 
-		locals.addWinnerDataInput.winerData.player1 = locals.room.owner;
-		locals.addWinnerDataInput.winerData.player2 = qpi.invocator();
-		locals.addWinnerDataInput.winerData.winner = locals.winner;
-		locals.addWinnerDataInput.winerData.revenue = locals.calculateRevenue_output.winner;
+		locals.addWinnerDataInput.winnerData.player1 = locals.room.owner;
+		locals.addWinnerDataInput.winnerData.player2 = qpi.invocator();
+		locals.addWinnerDataInput.winnerData.winner = locals.winner;
+		locals.addWinnerDataInput.winnerData.revenue = locals.calculateRevenue_output.winner;
 
 		CALL(AddWinnerData, locals.addWinnerDataInput, locals.addWinnerDataOutput);
 	}
@@ -994,7 +994,7 @@ protected:
 	uint8 firstTick;
 	EState currentState;
 	uint16 percentScale;
-	Array<WinerData, QDUEL_MAX_NUMBER_OF_WINNER> lastWinners;
+	Array<WinnerData, QDUEL_MAX_NUMBER_OF_WINNER> lastWinners;
 	uint64 winnerCounter;
 
 protected:
@@ -1232,13 +1232,13 @@ private:
 
 	PRIVATE_PROCEDURE(AddWinnerData)
 	{
-		if (!input.winerData.isValid())
+		if (!input.winnerData.isValid())
 		{
 			return;
 		}
 
 		// Adds winner
-		state.lastWinners.set(state.winnerCounter, input.winerData);
+		state.lastWinners.set(state.winnerCounter, input.winnerData);
 
 		// Increment winnerCounter
 		state.winnerCounter = mod(++state.winnerCounter, state.lastWinners.capacity());
