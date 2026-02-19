@@ -186,6 +186,21 @@ protected:
 		state.qpiFunctionsOutputEndTick.set(state.qpiFunctionsOutputTemp.tick, state.qpiFunctionsOutputTemp); // 'set' computes index modulo array size
 	}
 
+	BEGIN_EPOCH()
+	{
+		ASSERT(qpi.isContractId(SELF));
+		ASSERT(qpi.isContractId(id(0, 0, 0, 0)));
+		ASSERT(qpi.isContractId(id(1, 0, 0, 0)));
+		ASSERT(qpi.isContractId(id(10, 0, 0, 0)));
+		ASSERT(!qpi.isContractId(id(CONTRACT_INDEX + 20, 0, 0, 0)));
+		ASSERT(!qpi.isContractId(id(123456789, 0, 0, 0)));
+		ASSERT(qpi.isContractId(id(CONTRACT_INDEX, 0, 0, 0)));
+		ASSERT(!qpi.isContractId(id(CONTRACT_INDEX, 1, 0, 0)));
+		ASSERT(!qpi.isContractId(id(CONTRACT_INDEX, 0, 1, 0)));
+		ASSERT(!qpi.isContractId(id(CONTRACT_INDEX, 0, 0, 1)));
+		ASSERT(!qpi.isContractId(id(CONTRACT_INDEX, 42, 13, 987654)));
+	}
+
 	//---------------------------------------------------------------
 	// ASSET MANAGEMENT RIGHTS TRANSFER
 

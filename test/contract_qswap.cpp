@@ -99,7 +99,7 @@ public:
 
 	bool createPool(const id& issuer, uint64 assetName)
     {
-		QSWAP::CreatePool_input input{issuer, assetName};
+		QSWAP::CreatePool_input input{assetName};
 		QSWAP::CreatePool_output output;
 		invokeUserProcedure(QSWAP_CONTRACT_INDEX, CREATE_POOL_IDX, input, output, issuer, QSWAP_CREATE_POOL_FEE);
 		return output.success;

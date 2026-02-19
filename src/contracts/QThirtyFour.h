@@ -687,8 +687,8 @@ struct QTF : ContractBase
 	// Contract lifecycle methods
 	INITIALIZE()
 	{
-		state.teamAddress = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C, _R,
-			_L, _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
+		state.teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C, _X, _B,
+		                       _A, _V, _F, _O, _P, _R, _S, _N, _U, _L, _U, _E, _B, _S, _P, _U, _T, _R, _Z, _N, _T, _G, _F, _B, _I, _E);
 		state.ownerAddress = state.teamAddress;
 		state.ticketPrice = QTF_TICKET_PRICE;
 		state.targetJackpot = QTF_DEFAULT_TARGET_JACKPOT;

@@ -137,7 +137,7 @@ long long QPI::QpiContextProcedureCall::__transfer(const m256i& destination, lon
 {
     // Transfer to contract is forbidden inside POST_INCOMING_TRANSFER to prevent nested callbacks
     if (contractCallbacksRunning & ContractCallbackPostIncomingTransfer
-        && destination.u64._0 < contractCount && !destination.u64._1 && !destination.u64._2 && !destination.u64._3)
+        && isPublicKeyOfContract(destination))
     {
         return INVALID_AMOUNT;
     }
@@ -210,4 +210,10 @@ m256i QPI::QpiContextFunctionCall::prevId(const m256i& currentId) const
     }
 
     return m256i::zero();
+}
+
+// Returns true if the id passed belongs to a contract (no user entity).
+QPI::bit QPI::QpiContextFunctionCall::isContractId(const QPI::id& id) const
+{
+    return isPublicKeyOfContract(id);
 }
