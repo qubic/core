@@ -10,7 +10,7 @@ There are some general characteristics of the proposal voting:
 - Each proposal has a type and some types of proposals commonly trigger action (such as setting a contract state variable or transferring QUs to another entity) after the end of the epoch if the proposal is accepted by getting enough votes.
 - The proposer entity can have at most one proposal at a time. Setting a new proposal with the same seed will overwrite the previous one.
 - Number of simultaneous proposals per epoch is limited as configured by the contract. The data structures storing the proposal and voting state are stored as a part of the contract state.
-- In this data storage, commonly named `state.proposals`, and the function/procedure interface, each proposal is identified by a proposal index.
+- In this data storage, commonly named `proposals` (a member of `StateData`, accessed via `state.get().proposals` or `state.mut().proposals`), and the function/procedure interface, each proposal is identified by a proposal index.
 - The types of proposals that are allowed are restricted as configured by the contract.
 - The common types of proposals have a predefined set of options that the voters can vote for. Option 0 is always "no change".
 - Each vote, which is connected to each voter entity, can have a value (most commonly an option index) or `NO_VOTE_VALUE` (which means abstaining).
@@ -93,7 +93,7 @@ struct QUTIL
 };
 ```
 
-`DEFINE_SHAREHOLDER_PROPOSAL_STORAGE` defines a state object `state.proposals` and the types `ProposalDataT`, `ProposersAndVotersT`, and `ProposalVotingT`.
+`DEFINE_SHAREHOLDER_PROPOSAL_STORAGE` defines a state object `proposals` (inside `StateData`, accessed via `state.get().proposals` or `state.mut().proposals`) and the types `ProposalDataT`, `ProposersAndVotersT`, and `ProposalVotingT`.
 Make sure to have no name clashes with these.
 Using other names isn't possible if you want to benefit from the QPI macros for simplifying the implementation.
 
@@ -123,19 +123,19 @@ struct QUTIL
         switch (input.proposal.data.variableOptions.variable)
         {
         case 0:
-            state.smt1InvocationFee = input.acceptedValue;
+            state.mut().smt1InvocationFee = input.acceptedValue;
             break;
         case 1:
-            state.pollCreationFee = input.acceptedValue;
+            state.mut().pollCreationFee = input.acceptedValue;
             break;
         case 2:
-            state.pollVoteFee = input.acceptedValue;
+            state.mut().pollVoteFee = input.acceptedValue;
             break;
         case 3:
-            state.distributeQuToShareholderFeePerShareholder = input.acceptedValue;
+            state.mut().distributeQuToShareholderFeePerShareholder = input.acceptedValue;
             break;
         case 4:
-            state.shareholderProposalFee = input.acceptedValue;
+            state.mut().shareholderProposalFee = input.acceptedValue;
             break;
         }
     }
@@ -175,7 +175,7 @@ struct QUTIL
 {
     // ...
 
-    IMPLEMENT_DEFAULT_SHAREHOLDER_PROPOSAL_VOTING(5, state.shareholderProposalFee)
+    IMPLEMENT_DEFAULT_SHAREHOLDER_PROPOSAL_VOTING(5, state.get().shareholderProposalFee)
 
     // ...
 }
@@ -231,7 +231,7 @@ The following elements are required to support shareholder proposals and voting:
 - `GetShareholderVotes`: Function for getting the votes of a shareholder. Usually shouldn't require a custom implementation.
 - `GetShareholderVotingResults`: Function for getting the vote results summary. Usually doesn't require a custom implementation.
 - `SET_SHAREHOLDER_PROPOSAL` and `SET_SHAREHOLDER_VOTES`: These are notification procedures required to handle voting of other contracts that are shareholder of your contract. They usually just invoke `SetShareholderProposal` or `SetShareholderVote`, respectively.
-- Proposal data storage and types: The default implementations expect the object `state.proposals` and the types `ProposalDataT`, `ProposersAndVotersT`, and `ProposalVotingT`, which can be defined via `DEFINE_SHAREHOLDER_PROPOSAL_STORAGE` in some cases.
+- Proposal data storage and types: The default implementations expect the object `proposals` in `StateData` (accessed via `state.get().proposals` or `state.mut().proposals`) and the types `ProposalDataT`, `ProposersAndVotersT`, and `ProposalVotingT`, which can be defined via `DEFINE_SHAREHOLDER_PROPOSAL_STORAGE` in some cases.
 
 QPI provides default implementations through several macros, as used in the [Introduction to Shareholder Proposals](#introduction-to-shareholder-proposals).
 The following tables gives an overview about when the macros can be used.
@@ -285,7 +285,7 @@ With `ProposalDataT` your have the following options:
 The number of proposal slots linearly scales the storage and digest compute requirements. So we recommend to use a quite low number here, similar to the number of variables that can be set in your state.
 
 `ProposalVotingT` combines `ProposersAndVotersT` and `ProposalDataT` into the class used for storing all proposal and voting data.
-It is instantiated as `state.proposals`.
+It is instantiated as `proposals` inside `StateData` (accessed via `state.get().proposals` for reads and `state.mut().proposals` for writes).
 
 In order to support MultiVariables proposals that allow to change multiple variables in a single proposal, the variable values need to be stored separately, for example in an array of `numProposalSlots` structs, one for each potential proposal.
 See the contract TestExampleA to see how to support multi-variable proposals.
@@ -330,9 +330,9 @@ PRIVATE_PROCEDURE_WITH_LOCALS(FinalizeShareholderStateVarProposals)
     // Analyze proposal results and set variables:
     // Iterate all proposals that were open for voting in this epoch ...
     locals.p.proposalIndex = -1;
-    while ((locals.p.proposalIndex = qpi(state.proposals).nextProposalIndex(locals.p.proposalIndex, qpi.epoch())) >= 0)
+    while ((locals.p.proposalIndex = qpi(state.get().proposals).nextProposalIndex(locals.p.proposalIndex, qpi.epoch())) >= 0)
     {
-        if (!qpi(state.proposals).getProposal(locals.p.proposalIndex, locals.p.proposal))
+        if (!qpi(state.get().proposals).getProposal(locals.p.proposalIndex, locals.p.proposal))
             continue;
 
         locals.proposalClass = ProposalTypes::cls(locals.p.proposal.type);
@@ -341,7 +341,7 @@ PRIVATE_PROCEDURE_WITH_LOCALS(FinalizeShareholderStateVarProposals)
         if (locals.proposalClass == ProposalTypes::Class::Variable || locals.proposalClass == ProposalTypes::Class::MultiVariables)
         {
             // Get voting results and check if conditions for proposal acceptance are met
-            if (!qpi(state.proposals).getVotingSummary(locals.p.proposalIndex, locals.p.results))
+            if (!qpi(state.get().proposals).getVotingSummary(locals.p.proposalIndex, locals.p.results))
                 continue;
 
             locals.p.acceptedOption = locals.p.results.getAcceptedOption();
@@ -386,7 +386,7 @@ PUBLIC_PROCEDURE(SetShareholderProposal)
     }
 
     // try to set proposal (checks invocator's rights and general validity of input proposal), returns proposal index
-    output = qpi(state.proposals).setProposal(qpi.invocator(), input);
+    output = qpi(state.mut().proposals).setProposal(qpi.invocator(), input);
     if (output == INVALID_PROPOSAL_INDEX)
     {
         // error -> reimburse invocation reward
@@ -423,8 +423,8 @@ struct GetShareholderProposal_output
 PUBLIC_FUNCTION(GetShareholderProposal)
 {
     // On error, output.proposal.type is set to 0
-    output.proposerPubicKey = qpi(state.proposals).proposerId(input.proposalIndex);
-    qpi(state.proposals).getProposal(input.proposalIndex, output.proposal);
+    output.proposerPubicKey = qpi(state.get().proposals).proposerId(input.proposalIndex);
+    qpi(state.get().proposals).getProposal(input.proposalIndex, output.proposal);
 }
 ```
 
@@ -452,7 +452,7 @@ PUBLIC_FUNCTION(GetShareholderProposalIndices)
     {
         // Return proposals that are open for voting in current epoch
         // (output is initialized with zeros by contract system)
-        while ((input.prevProposalIndex = qpi(state.proposals).nextProposalIndex(input.prevProposalIndex, qpi.epoch())) >= 0)
+        while ((input.prevProposalIndex = qpi(state.get().proposals).nextProposalIndex(input.prevProposalIndex, qpi.epoch())) >= 0)
         {
             output.indices.set(output.numOfIndices, input.prevProposalIndex);
             ++output.numOfIndices;
@@ -465,7 +465,7 @@ PUBLIC_FUNCTION(GetShareholderProposalIndices)
     {
         // Return proposals of previous epochs not overwritten yet
         // (output is initialized with zeros by contract system)
-        while ((input.prevProposalIndex = qpi(state.proposals).nextFinishedProposalIndex(input.prevProposalIndex)) >= 0)
+        while ((input.prevProposalIndex = qpi(state.get().proposals).nextFinishedProposalIndex(input.prevProposalIndex)) >= 0)
         {
             output.indices.set(output.numOfIndices, input.prevProposalIndex);
             ++output.numOfIndices;
@@ -511,7 +511,7 @@ typedef bit SetShareholderVotes_output;
 
 PUBLIC_PROCEDURE(SetShareholderVotes)
 {
-    output = qpi(state.proposals).vote(qpi.invocator(), input);
+    output = qpi(state.mut().proposals).vote(qpi.invocator(), input);
 }
 ```
 
@@ -530,7 +530,7 @@ typedef ProposalMultiVoteDataV1 GetShareholderVotes_output;
 PUBLIC_FUNCTION(GetShareholderVotes)
 {
     // On error, output.votes.proposalType is set to 0
-    qpi(state.proposals).getVotes(input.proposalIndex, input.voter, output);
+    qpi(state.get().proposals).getVotes(input.proposalIndex, input.voter, output);
 }
 ```
 
@@ -548,7 +548,7 @@ typedef ProposalSummarizedVotingDataV1 GetShareholderVotingResults_output;
 PUBLIC_FUNCTION(GetShareholderVotingResults)
 {
     // On error, output.totalVotesAuthorized is set to 0
-    qpi(state.proposals).getVotingSummary(
+    qpi(state.get().proposals).getVotingSummary(
         input.proposalIndex, output);
 }
 ```
