@@ -1656,7 +1656,7 @@ private:
 	PRIVATE_FUNCTION_WITH_LOCALS(CheckContractBalance)
 	{
 		qpi.getEntity(SELF, locals.entity);
-		output.actualBalance = RL::max(locals.entity.incomingAmount - locals.entity.outgoingAmount, 0i64);
+		output.actualBalance = RL::max(locals.entity.incomingAmount - locals.entity.outgoingAmount, 0LL);
 		output.hasEnough = (output.actualBalance >= input.expectedRevenue);
 	}
 
