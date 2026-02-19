@@ -684,6 +684,30 @@ struct QTF : ContractBase
 		bit isScheduledToday;
 	};
 
+	struct GetPlayers_input
+	{
+	};
+
+	struct GetPlayers_output
+	{
+		Array<PlayerData, QTF_MAX_NUMBER_OF_PLAYERS> players;
+		uint8 returnCode;
+	};
+
+	struct SyncJackpot_input
+	{
+	};
+
+	struct SyncJackpot_output
+	{
+		uint8 returnCode;
+	};
+
+	struct SyncJackpot_locals
+	{
+		Entity entity;
+	};
+
 	// Contract lifecycle methods
 	INITIALIZE()
 	{
@@ -706,6 +730,8 @@ struct QTF : ContractBase
 		REGISTER_USER_PROCEDURE(SetSchedule, 3);
 		REGISTER_USER_PROCEDURE(SetTargetJackpot, 4);
 		REGISTER_USER_PROCEDURE(SetDrawHour, 5);
+		REGISTER_USER_PROCEDURE(SyncJackpot, 6);
+
 		REGISTER_USER_FUNCTION(GetTicketPrice, 1);
 		REGISTER_USER_FUNCTION(GetNextEpochData, 2);
 		REGISTER_USER_FUNCTION(GetWinnerData, 3);
@@ -715,6 +741,7 @@ struct QTF : ContractBase
 		REGISTER_USER_FUNCTION(GetState, 7);
 		REGISTER_USER_FUNCTION(GetFees, 8);
 		REGISTER_USER_FUNCTION(EstimatePrizePayouts, 9);
+		REGISTER_USER_FUNCTION(GetPlayers, 10);
 	}
 
 	BEGIN_EPOCH()
@@ -960,6 +987,20 @@ struct QTF : ContractBase
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
+	PUBLIC_PROCEDURE_WITH_LOCALS(SyncJackpot)
+	{
+		if (qpi.invocator() != state.ownerAddress)
+		{
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			return;
+		}
+
+		qpi.getEntity(SELF, locals.entity);
+		state.jackpot = locals.entity.incomingAmount - locals.entity.outgoingAmount;
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
 	// Functions
 	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.ticketPrice; }
 	PUBLIC_FUNCTION(GetNextEpochData) { output.nextEpochData = state.nextEpochData; }
@@ -1071,6 +1112,12 @@ struct QTF : ContractBase
 			// No winners - show what a single winner would get
 			output.k3PayoutPerWinner = RL::min(output.perWinnerCap, output.k3Pool);
 		}
+	}
+
+	PUBLIC_FUNCTION(GetPlayers)
+	{
+		output.players = state.players;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 protected:

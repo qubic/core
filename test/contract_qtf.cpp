@@ -1,7 +1,6 @@
 #define NO_UEFI
 
 #include "contract_testing.h"
-
 #include <algorithm>
 #include <set>
 #include <vector>
@@ -12,6 +11,7 @@ constexpr uint16 QTF_PROCEDURE_SET_PRICE = 2;
 constexpr uint16 QTF_PROCEDURE_SET_SCHEDULE = 3;
 constexpr uint16 QTF_PROCEDURE_SET_TARGET_JACKPOT = 4;
 constexpr uint16 QTF_PROCEDURE_SET_DRAW_HOUR = 5;
+constexpr uint16 QTF_PROCEDURE_SYNC_JACKPOT = 6;
 
 constexpr uint16 QTF_FUNCTION_GET_TICKET_PRICE = 1;
 constexpr uint16 QTF_FUNCTION_GET_NEXT_EPOCH_DATA = 2;
@@ -22,6 +22,7 @@ constexpr uint16 QTF_FUNCTION_GET_DRAW_HOUR = 6;
 constexpr uint16 QTF_FUNCTION_GET_STATE = 7;
 constexpr uint16 QTF_FUNCTION_GET_FEES = 8;
 constexpr uint16 QTF_FUNCTION_ESTIMATE_PRIZE_PAYOUTS = 9;
+constexpr uint16 QTF_FUNCTION_GET_PLAYERS = 10;
 
 using QTFRandomValues = Array<uint8, QTF_RANDOM_VALUES_COUNT>;
 
@@ -354,6 +355,14 @@ public:
 		return output;
 	}
 
+	QTF::GetPlayers_output getPlayers()
+	{
+		QTF::GetPlayers_input input{};
+		QTF::GetPlayers_output output{};
+		callFunction(QTF_CONTRACT_INDEX, QTF_FUNCTION_GET_PLAYERS, input, output);
+		return output;
+	}
+
 	// Procedure wrappers
 	QTF::BuyTicket_output buyTicket(const id& user, uint64 reward, const QTFRandomValues& numbers)
 	{
@@ -409,6 +418,17 @@ public:
 		input.newDrawHour = newHour;
 		QTF::SetDrawHour_output output{};
 		if (!invokeUserProcedure(QTF_CONTRACT_INDEX, QTF_PROCEDURE_SET_DRAW_HOUR, input, output, invocator, 0))
+		{
+			output.returnCode = static_cast<uint8>(QTF::EReturnCode::MAX_VALUE);
+		}
+		return output;
+	}
+
+	QTF::SyncJackpot_output syncJackpot(const id& invocator)
+	{
+		QTF::SyncJackpot_input input{};
+		QTF::SyncJackpot_output output{};
+		if (!invokeUserProcedure(QTF_CONTRACT_INDEX, QTF_PROCEDURE_SYNC_JACKPOT, input, output, invocator, 0))
 		{
 			output.returnCode = static_cast<uint8>(QTF::EReturnCode::MAX_VALUE);
 		}
@@ -1388,6 +1408,66 @@ TEST(ContractQThirtyFour, SetDrawHour_AppliesAfterEndEpoch)
 	ctl.endEpoch();
 	ctl.beginEpoch();
 	EXPECT_EQ(ctl.getDrawHour().drawHour, newHour);
+}
+
+TEST(ContractQThirtyFour, SyncJackpot_AccessControlAndUpdatesFromContractBalance)
+{
+	ContractTestingQTF ctl;
+	static constexpr uint64 newJackpotValue = 12345ULL;
+	ctl.state()->setJackpot(newJackpotValue);
+
+	const id outsider = id::randomValue();
+	increaseEnergy(outsider, 1);
+
+	const QTF::SyncJackpot_output denied = ctl.syncJackpot(outsider);
+	EXPECT_EQ(denied.returnCode, static_cast<uint8>(QTF::EReturnCode::ACCESS_DENIED));
+	EXPECT_EQ(ctl.state()->getJackpot(), newJackpotValue);
+
+	static constexpr uint64 expectedBalance = 777777ULL;
+	increaseEnergy(ctl.qtfSelf(), expectedBalance);
+	increaseEnergy(ctl.state()->team(), 1);
+
+	const QTF::SyncJackpot_output synced = ctl.syncJackpot(ctl.state()->team());
+	EXPECT_EQ(synced.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.state()->getJackpot(), expectedBalance);
+}
+
+TEST(ContractQThirtyFour, GetPlayers_NoTickets_ReturnsEmptyArray)
+{
+	ContractTestingQTF ctl;
+
+	static const QTF::PlayerData emptyPlayerData = {};
+
+	const QTF::GetPlayers_output players = ctl.getPlayers();
+	EXPECT_EQ(players.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
+	EXPECT_EQ(memcmp(&players.players.get(0), &emptyPlayerData, sizeof(QTF::PlayerData)), 0);
+}
+
+TEST(ContractQThirtyFour, GetPlayers_ReturnsPurchasedTickets)
+{
+	ContractTestingQTF ctl;
+	ctl.beginEpochWithValidTime();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user1 = id::randomValue();
+	const id user2 = id::randomValue();
+	const QTFRandomValues nums1 = ctl.makeValidNumbers(1, 4, 7, 10);
+	const QTFRandomValues nums2 = ctl.makeValidNumbers(2, 5, 8, 11);
+
+	ctl.fundAndBuyTicket(user1, ticketPrice, nums1);
+	ctl.fundAndBuyTicket(user2, ticketPrice, nums2);
+
+	const QTF::GetPlayers_output players = ctl.getPlayers();
+	EXPECT_EQ(players.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
+
+	const QTF::PlayerData player0 = players.players.get(0);
+	const QTF::PlayerData player1 = players.players.get(1);
+	EXPECT_EQ(player0.player, user1);
+	EXPECT_TRUE(valuesEqual(player0.randomValues, nums1));
+	EXPECT_EQ(player1.player, user2);
+	EXPECT_TRUE(valuesEqual(player1.randomValues, nums2));
+	EXPECT_TRUE(isZero(players.players.get(2).player));
+	EXPECT_TRUE(isZero(players.players.get(3).player));
 }
 
 // ============================================================================
@@ -2726,7 +2806,7 @@ TEST(ContractQThirtyFour, Settlement_FloorTopUp_LimitedBySafetyCaps_PayoutBelowF
 	// Fund QRP just above soft floor so top-up is limited by both 10% cap and soft floor.
 	const uint64 P = ctl.state()->getTicketPriceInternal();
 	const uint64 softFloor = smul(P, QTF_RESERVE_SOFT_FLOOR_MULT); // 20*P
-	const uint64 qrpFunding = softFloor + 5 * P;                  // 25*P
+	const uint64 qrpFunding = softFloor + 5 * P;                   // 25*P
 	increaseEnergy(ctl.qrpSelf(), qrpFunding);
 
 	m256i testDigest = {};
@@ -2748,9 +2828,9 @@ TEST(ContractQThirtyFour, Settlement_FloorTopUp_LimitedBySafetyCaps_PayoutBelowF
 	const uint64 k3Pool = (winnersBlock * QTF_BASE_K3_SHARE_BP) / 10000;
 	const uint64 k3Floor = smul(P, QTF_K3_FLOOR_MULT);
 	const uint64 needed = k3Floor - k3Pool;
-	const uint64 availableAboveFloor = qrpBefore - softFloor;                     // 5*P
-	const uint64 maxPerRound = (qrpBefore * QTF_TOPUP_RESERVE_PCT_BP) / 10000;    // 10% of total
-	const uint64 perWinnerCapTotal = smul(P, QTF_TOPUP_PER_WINNER_CAP_MULT);      // 25*P
+	const uint64 availableAboveFloor = qrpBefore - softFloor;                                          // 5*P
+	const uint64 maxPerRound = (qrpBefore * QTF_TOPUP_RESERVE_PCT_BP) / 10000;                         // 10% of total
+	const uint64 perWinnerCapTotal = smul(P, QTF_TOPUP_PER_WINNER_CAP_MULT);                           // 25*P
 	const uint64 maxAllowed = std::min(std::min(maxPerRound, availableAboveFloor), perWinnerCapTotal); // 2.5*P
 	const uint64 expectedTopUp = std::min(needed, maxAllowed);
 	const uint64 expectedPayout = k3Pool + expectedTopUp;
@@ -3112,4 +3192,3 @@ TEST(ContractQThirtyFour, FR_PostK4WindowExpiry_DoesNotReactivateWhenWindowExpir
 	EXPECT_EQ(ctl.state()->getFrRoundsSinceK4(), QTF_FR_POST_K4_WINDOW_ROUNDS + 2);
 	EXPECT_EQ(ctl.state()->getFrActive(), false);
 }
-
