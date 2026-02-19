@@ -23,6 +23,7 @@ constexpr uint16 QTF_FUNCTION_GET_STATE = 7;
 constexpr uint16 QTF_FUNCTION_GET_FEES = 8;
 constexpr uint16 QTF_FUNCTION_ESTIMATE_PRIZE_PAYOUTS = 9;
 constexpr uint16 QTF_FUNCTION_GET_PLAYERS = 10;
+constexpr uint16 QTF_FUNCTION_GET_WINNING_COMBINATIONS_HISTORY = 11;
 
 using QTFRandomValues = Array<uint8, QTF_RANDOM_VALUES_COUNT>;
 
@@ -50,6 +51,19 @@ namespace
 	static bool valuesEqual(const QTFRandomValues& a, const QTFRandomValues& b)
 	{
 		return memcmp(&a, &b, sizeof(a)) == 0;
+	}
+
+	static bool isEmptyRandomValues(const QTFRandomValues& randomValues)
+	{
+		for (uint64 i = 0; i < randomValues.capacity(); ++i)
+		{
+			if (randomValues.get(i) != 0)
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	static void expectWinnerValuesValidAndUnique(const QTF::GetWinnerData_output& winnerData)
@@ -88,6 +102,7 @@ public:
 	bool getFrActive() const { return frActive; }
 	uint32 getFrRoundsSinceK4() const { return frRoundsSinceK4; }
 	uint32 getFrRoundsAtOrAboveTarget() const { return frRoundsAtOrAboveTarget; }
+	uint64 getWinningCombinationsWriteIndex() const { return winningCombinationsCount; }
 	const id& team() const { return teamAddress; }
 
 	void setScheduleMask(uint8 newMask) { schedule = newMask; }
@@ -360,6 +375,14 @@ public:
 		QTF::GetPlayers_input input{};
 		QTF::GetPlayers_output output{};
 		callFunction(QTF_CONTRACT_INDEX, QTF_FUNCTION_GET_PLAYERS, input, output);
+		return output;
+	}
+
+	QTF::GetWinningCombinationsHistory_output getWinningCombinationsHistory()
+	{
+		QTF::GetWinningCombinationsHistory_input input{};
+		QTF::GetWinningCombinationsHistory_output output{};
+		callFunction(QTF_CONTRACT_INDEX, QTF_FUNCTION_GET_WINNING_COMBINATIONS_HISTORY, input, output);
 		return output;
 	}
 
@@ -1468,6 +1491,65 @@ TEST(ContractQThirtyFour, GetPlayers_ReturnsPurchasedTickets)
 	EXPECT_TRUE(valuesEqual(player1.randomValues, nums2));
 	EXPECT_TRUE(isZero(players.players.get(2).player));
 	EXPECT_TRUE(isZero(players.players.get(3).player));
+}
+
+TEST(ContractQThirtyFour, WinningCombinationsHistory_StoresWinningCombinationAfterDraw)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	ctl.fundAndBuyTicket(user, ticketPrice, ctl.makeValidNumbers(1, 2, 3, 4));
+
+	m256i digest = {};
+	digest.m256i_u64[0] = 0x1122334455667788ULL;
+	ctl.drawWithDigest(digest);
+
+	const QTF::GetWinnerData_output winnerData = ctl.getWinnerData();
+	const QTF::GetWinningCombinationsHistory_output history = ctl.getWinningCombinationsHistory();
+
+	EXPECT_EQ(history.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
+	EXPECT_TRUE(valuesEqual(history.history.get(0), winnerData.winnerData.winnerValues));
+	EXPECT_EQ(ctl.state()->getWinningCombinationsWriteIndex(), 1ULL);
+}
+
+TEST(ContractQThirtyFour, WinningCombinationsHistory_WrapAroundKeepsLatestAtLastWrittenSlot)
+{
+	ContractTestingQTF ctl;
+	ctl.forceSchedule(QTF_ANY_DAY_SCHEDULE);
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	static constexpr uint64 rounds = QTF_WINNING_COMBINATIONS_HISTORY_SIZE + 3ULL;
+	QTFRandomValues lastWinningValues{};
+
+	for (uint64 i = 0; i < rounds; ++i)
+	{
+		ctl.beginEpochWithValidTime();
+		const id user = id::randomValue();
+		ctl.fundAndBuyTicket(user, ticketPrice, ctl.makeValidNumbers(1, 2, 3, 4));
+
+		m256i digest = {};
+		digest.m256i_u64[0] = 0xABCDEF0000000000ULL + i;
+		ctl.drawWithDigest(digest);
+
+		lastWinningValues = ctl.getWinnerData().winnerData.winnerValues;
+	}
+
+	const QTF::GetWinningCombinationsHistory_output history = ctl.getWinningCombinationsHistory();
+	EXPECT_EQ(history.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
+
+	for (uint64 i = 0; i < history.history.capacity(); ++i)
+	{
+		EXPECT_FALSE(isEmptyRandomValues(history.history.get(i)));
+	}
+
+	const uint64 writeIndex = ctl.state()->getWinningCombinationsWriteIndex();
+	EXPECT_EQ(writeIndex, rounds % QTF_WINNING_COMBINATIONS_HISTORY_SIZE);
+
+	const uint64 lastWrittenSlot =
+	    (writeIndex + QTF_WINNING_COMBINATIONS_HISTORY_SIZE - 1ULL) % QTF_WINNING_COMBINATIONS_HISTORY_SIZE;
+	EXPECT_TRUE(valuesEqual(history.history.get(lastWrittenSlot), lastWinningValues));
 }
 
 // ============================================================================

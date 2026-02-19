@@ -5,6 +5,7 @@ constexpr uint64 QTF_MAX_NUMBER_OF_PLAYERS = 1024;
 constexpr uint64 QTF_RANDOM_VALUES_COUNT = 4;
 constexpr uint64 QTF_MAX_RANDOM_VALUE = 30;
 constexpr uint64 QTF_TICKET_PRICE = 1000000;
+constexpr uint64 QTF_WINNING_COMBINATIONS_HISTORY_SIZE = 128;
 
 // Baseline split for k2/k3 when FR is OFF (per spec: k3=40%, k2=28% of Winners block).
 // Initial 32% of Winners block is unallocated; overflow will also include unawarded k2/k3 funds.
@@ -694,6 +695,16 @@ struct QTF : ContractBase
 		uint8 returnCode;
 	};
 
+	struct GetWinningCombinationsHistory_input
+	{
+	};
+
+	struct GetWinningCombinationsHistory_output
+	{
+		Array<Array<uint8, QTF_RANDOM_VALUES_COUNT>, QTF_WINNING_COMBINATIONS_HISTORY_SIZE> history;
+		uint8 returnCode;
+	};
+
 	struct SyncJackpot_input
 	{
 	};
@@ -742,6 +753,7 @@ struct QTF : ContractBase
 		REGISTER_USER_FUNCTION(GetFees, 8);
 		REGISTER_USER_FUNCTION(EstimatePrizePayouts, 9);
 		REGISTER_USER_FUNCTION(GetPlayers, 10);
+		REGISTER_USER_FUNCTION(GetWinningCombinationsHistory, 11);
 	}
 
 	BEGIN_EPOCH()
@@ -1120,6 +1132,12 @@ struct QTF : ContractBase
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
+	PUBLIC_FUNCTION(GetWinningCombinationsHistory)
+	{
+		output.history = state.winningCombinationsHistory;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
 protected:
 	static void clearEpochState(QTF& state) { clearPlayerData(state); }
 
@@ -1196,39 +1214,32 @@ protected:
 		state.lastWinnerData.epoch = epoch;
 	}
 
-	WinnerData lastWinnerData; // last winners snapshot
+	static void addWinningCombinationToHistory(QTF& state, const Array<uint8, QTF_RANDOM_VALUES_COUNT>& winnerValues)
+	{
+		state.winningCombinationsHistory.set(state.winningCombinationsCount, winnerValues);
+		state.winningCombinationsCount = mod(++state.winningCombinationsCount,  state.winningCombinationsHistory.capacity());
+	}
 
-	NextEpochData nextEpochData; // queued config (ticket price)
-
+	WinnerData lastWinnerData;                            // last winners snapshot
+	NextEpochData nextEpochData;                          // queued config (ticket price)
 	Array<PlayerData, QTF_MAX_NUMBER_OF_PLAYERS> players; // current epoch tickets
-
-	id teamAddress; // Dev/team payout address
-
-	id ownerAddress; // config authority
-
-	uint64 numberOfPlayers; // tickets count in epoch
-
-	uint64 ticketPrice; // active ticket price
-
-	uint64 jackpot; // jackpot balance
-
-	uint64 targetJackpot; // FR target jackpot
-
-	uint64 overflowAlphaBP; // baseline reserve share of overflow (bp)
-
-	uint8 schedule; // bitmask of draw days
-
-	uint8 drawHour; // draw hour UTC
-
-	uint32 lastDrawDateStamp; // guard to avoid multiple draws per day
-
-	bit frActive; // FR flag
-
-	uint16 frRoundsSinceK4; // rounds since last jackpot hit
-
-	uint16 frRoundsAtOrAboveTarget; // hysteresis counter for FR off
-
-	uint8 currentState; // bitmask of STATE_* flags (e.g., STATE_SELLING)
+	id teamAddress;                                       // Dev/team payout address
+	id ownerAddress;                                      // config authority
+	uint64 numberOfPlayers;                               // tickets count in epoch
+	uint64 ticketPrice;                                   // active ticket price
+	uint64 jackpot;                                       // jackpot balance
+	uint64 targetJackpot;                                 // FR target jackpot
+	uint64 overflowAlphaBP;                               // baseline reserve share of overflow (bp)
+	uint8 schedule;                                       // bitmask of draw days
+	uint8 drawHour;                                       // draw hour UTC
+	uint32 lastDrawDateStamp;                             // guard to avoid multiple draws per day
+	bit frActive;                                         // FR flag
+	uint16 frRoundsSinceK4;                               // rounds since last jackpot hit
+	uint16 frRoundsAtOrAboveTarget;                       // hysteresis counter for FR off
+	uint8 currentState;                                   // bitmask of STATE_* flags (e.g., STATE_SELLING)
+	Array<Array<uint8, QTF_RANDOM_VALUES_COUNT>, QTF_WINNING_COMBINATIONS_HISTORY_SIZE>
+	    winningCombinationsHistory;  // ring buffer of winning combinations
+	uint64 winningCombinationsCount; // next write position in ring buffer
 
 private:
 	// Core settlement pipeline for one epoch: fees, FR redirects, payouts, jackpot/reserve updates.
@@ -1489,6 +1500,7 @@ private:
 		// Always save winning values and epoch, even if no winners
 		state.lastWinnerData.winnerValues = locals.winningValues;
 		state.lastWinnerData.epoch = locals.currentEpoch;
+		addWinningCombinationToHistory(state, locals.winningValues);
 
 		// Post-jackpot (k4) logic: reset counters and reseed if jackpot was hit
 		if (locals.countK4 > 0)
