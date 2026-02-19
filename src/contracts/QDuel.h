@@ -5,7 +5,7 @@ constexpr uint16 QDUEL_MINIMUM_DUEL_AMOUNT = 10000;
 constexpr uint8 QDUEL_DEV_FEE_PERCENT_BPS = 15;          // 0.15% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_BURN_FEE_PERCENT_BPS = 30;         // 0.3% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS = 55; // 0.55% * QDUEL_PERCENT_SCALE
-constexpr uint16 QDUEL_PERCENT_SCALE = 1000;
+constexpr uint16 QDUEL_PERCENT_SCALE = 10000;
 constexpr uint8 QDUEL_TTL_HOURS = 3;
 constexpr uint8 QDUEL_TICK_UPDATE_PERIOD = 100;           // Process TICK logic once per this many ticks
 constexpr uint16 QDUEL_RANDOM_LOTTERY_ASSET_NAME = 19538; // RL
@@ -243,6 +243,7 @@ public:
 
 	struct ConnectToRoom_output
 	{
+		id winner;
 		uint8 returnCode;
 	};
 
@@ -263,6 +264,22 @@ public:
 		bit failedGetWinner;
 	};
 
+	struct CloseRoom_input
+	{
+	};
+
+	struct CloseRoom_output
+	{
+		uint8 returnCode;
+	};
+
+	struct CloseRoom_locals
+	{
+		UserData userData;
+		RoomInfo room;
+		uint64 refundAmount;
+	};
+
 	struct GetPercentFees_input
 	{
 	};
@@ -281,6 +298,7 @@ public:
 		uint8 devFeePercentBps;
 		uint8 burnFeePercentBps;
 		uint8 shareholdersFeePercentBps;
+		uint16 percentScale;
 	};
 
 	struct SetPercentFees_output
@@ -320,6 +338,13 @@ public:
 		uint8 returnCode;
 	};
 
+	struct SetTTLHours_locals
+	{
+		sint64 roomIndex;
+		RoomInfo room;
+		DateAndTime now;
+	};
+
 	struct GetTTLHours_input
 	{
 	};
@@ -332,6 +357,7 @@ public:
 
 	struct GetUserProfile_input
 	{
+		id userId;
 	};
 
 	struct GetUserProfile_output
@@ -401,17 +427,19 @@ public:
 		REGISTER_USER_PROCEDURE(SetTTLHours, 4);
 		REGISTER_USER_PROCEDURE(Deposit, 5);
 		REGISTER_USER_PROCEDURE(Withdraw, 6);
+		REGISTER_USER_PROCEDURE(CloseRoom, 7);
 
 		REGISTER_USER_FUNCTION(GetPercentFees, 1);
 		REGISTER_USER_FUNCTION(GetRooms, 2);
 		REGISTER_USER_FUNCTION(GetTTLHours, 3);
 		REGISTER_USER_FUNCTION(GetUserProfile, 4);
+		REGISTER_USER_FUNCTION(CalculateRevenue, 5);
 	}
 
 	INITIALIZE()
 	{
-		state.teamAddress = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C, _R, _L,
-		                       _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
+		state.teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C, _X, _B,
+		                       _A, _V, _F, _O, _P, _R, _S, _N, _U, _L, _U, _E, _B, _S, _P, _U, _T, _R, _Z, _N, _T, _G, _F, _B, _I, _E);
 
 		state.minimumDuelAmount = QDUEL_MINIMUM_DUEL_AMOUNT;
 
@@ -421,6 +449,7 @@ public:
 		state.shareholdersFeePercentBps = QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS;
 
 		state.ttlHours = QDUEL_TTL_HOURS;
+		state.percentScale = QDUEL_PERCENT_SCALE;
 	}
 
 	BEGIN_EPOCH()
@@ -471,20 +500,24 @@ public:
 				locals.room.lastUpdate = locals.now;
 			}
 
-			locals.elapsedSeconds = div(locals.room.lastUpdate.durationMicrosec(locals.now), 1000000ULL);
-			if (locals.elapsedSeconds >= locals.room.closeTimer)
+			// closeTimer == 0 means an infinite lifetime room.
+			if (locals.room.closeTimer > 0)
 			{
-				locals.finalizeInput.roomId = locals.room.roomId;
-				locals.finalizeInput.owner = locals.room.owner;
-				locals.finalizeInput.roomAmount = locals.room.amount;
-				locals.finalizeInput.includeLocked = true;
-				CALL(FinalizeRoom, locals.finalizeInput, locals.finalizeOutput);
-			}
-			else
-			{
-				locals.room.closeTimer = usubSatu64(locals.room.closeTimer, locals.elapsedSeconds);
-				locals.room.lastUpdate = locals.now;
-				state.rooms.set(locals.room.roomId, locals.room);
+				locals.elapsedSeconds = div(locals.room.lastUpdate.durationMicrosec(locals.now), 1000000ULL);
+				if (locals.elapsedSeconds >= locals.room.closeTimer)
+				{
+					locals.finalizeInput.roomId = locals.room.roomId;
+					locals.finalizeInput.owner = locals.room.owner;
+					locals.finalizeInput.roomAmount = locals.room.amount;
+					locals.finalizeInput.includeLocked = true;
+					CALL(FinalizeRoom, locals.finalizeInput, locals.finalizeOutput);
+				}
+				else
+				{
+					locals.room.closeTimer = usubSatu64(locals.room.closeTimer, locals.elapsedSeconds);
+					locals.room.lastUpdate = locals.now;
+					state.rooms.set(locals.room.roomId, locals.room);
+				}
 			}
 
 			locals.roomIndex = state.rooms.nextElementIndex(locals.roomIndex);
@@ -686,6 +719,7 @@ public:
 		locals.finalizeInput.includeLocked = false;
 		CALL(FinalizeRoom, locals.finalizeInput, locals.finalizeOutput);
 		output.returnCode = locals.finalizeOutput.returnCode;
+		output.winner = locals.winner;
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetPercentFees)
@@ -703,7 +737,7 @@ public:
 
 		locals.totalPercent = static_cast<uint16>(input.devFeePercentBps) + static_cast<uint16>(input.burnFeePercentBps) +
 		                      static_cast<uint16>(input.shareholdersFeePercentBps);
-		locals.totalPercent = div(locals.totalPercent, QDUEL_PERCENT_SCALE);
+		locals.totalPercent = div(locals.totalPercent, input.percentScale);
 
 		if (locals.totalPercent >= 100)
 		{
@@ -714,11 +748,12 @@ public:
 		state.devFeePercentBps = input.devFeePercentBps;
 		state.burnFeePercentBps = input.burnFeePercentBps;
 		state.shareholdersFeePercentBps = input.shareholdersFeePercentBps;
+		state.percentScale = input.percentScale;
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	PUBLIC_PROCEDURE(SetTTLHours)
+	PUBLIC_PROCEDURE_WITH_LOCALS(SetTTLHours)
 	{
 		if (qpi.invocationReward() > 0)
 		{
@@ -731,13 +766,27 @@ public:
 			return;
 		}
 
-		if (input.ttlHours == 0)
+		if (state.ttlHours == input.ttlHours)
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
 
 		state.ttlHours = input.ttlHours;
+		locals.now = qpi.now();
+		locals.roomIndex = state.rooms.nextElementIndex(NULL_INDEX);
+		while (locals.roomIndex != NULL_INDEX)
+		{
+			locals.room = state.rooms.value(locals.roomIndex);
+
+			// 0 means rooms do not expire automatically.
+			locals.room.closeTimer = static_cast<uint32>(state.ttlHours) * 3600U;
+
+			locals.room.lastUpdate = locals.now;
+			state.rooms.set(locals.room.roomId, locals.room);
+
+			locals.roomIndex = state.rooms.nextElementIndex(locals.roomIndex);
+		}
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
@@ -747,7 +796,7 @@ public:
 		output.devFeePercentBps = state.devFeePercentBps;
 		output.burnFeePercentBps = state.burnFeePercentBps;
 		output.shareholdersFeePercentBps = state.shareholdersFeePercentBps;
-		output.percentScale = QDUEL_PERCENT_SCALE;
+		output.percentScale = state.percentScale;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -772,7 +821,7 @@ public:
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetUserProfile)
 	{
-		if (!state.users.get(qpi.invocator(), locals.userData))
+		if (!state.users.get(input.userId, locals.userData))
 		{
 			output.returnCode = toReturnCode(EReturnCode::USER_NOT_FOUND);
 			return;
@@ -785,6 +834,15 @@ public:
 		output.raiseStep = locals.userData.raiseStep;
 		output.maxStake = locals.userData.maxStake;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_FUNCTION(CalculateRevenue)
+	{
+		output.devFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.devFeePercentBps)), state.percentScale);
+		output.burnFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.burnFeePercentBps)), state.percentScale);
+		output.shareholdersFee =
+			smul(div(div<uint64>(smul(input.amount, static_cast<uint64>(state.shareholdersFeePercentBps)), state.percentScale), 676ULL), 676ULL);
+		output.winner = input.amount - (output.devFee + output.burnFee + output.shareholdersFee);
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(Deposit)
@@ -834,6 +892,51 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
+	PUBLIC_PROCEDURE_WITH_LOCALS(CloseRoom)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (!state.users.get(qpi.invocator(), locals.userData))
+		{
+			output.returnCode = toReturnCode(EReturnCode::USER_NOT_FOUND);
+			return;
+		}
+
+		if (state.rooms.get(locals.userData.roomId, locals.room))
+		{
+			if (locals.room.owner != qpi.invocator())
+			{
+				output.returnCode = toReturnCode(EReturnCode::ROOM_ACCESS_DENIED);
+				return;
+			}
+
+			state.rooms.removeByKey(locals.userData.roomId);
+			state.rooms.cleanupIfNeeded();
+		}
+
+		if (locals.userData.depositedAmount > 0)
+		{
+			locals.refundAmount += static_cast<uint64>(locals.userData.depositedAmount);
+		}
+		if (locals.userData.locked > 0)
+		{
+			locals.refundAmount += static_cast<uint64>(locals.userData.locked);
+		}
+
+		state.users.removeByKey(locals.userData.userId);
+		state.users.cleanupIfNeeded();
+
+		if (locals.refundAmount > 0)
+		{
+			qpi.transfer(qpi.invocator(), locals.refundAmount);
+		}
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
 protected:
 	HashMap<id, RoomInfo, QDUEL_MAX_NUMBER_OF_ROOMS> rooms;
 	HashMap<id, UserData, QDUEL_MAX_NUMBER_OF_ROOMS> users;
@@ -845,6 +948,7 @@ protected:
 	uint8 ttlHours;
 	uint8 firstTick;
 	EState currentState;
+	uint16 percentScale;
 
 protected:
 	template<typename T> static constexpr const T& min(const T& a, const T& b) { return (a < b) ? a : b; }
@@ -911,6 +1015,7 @@ private:
 		locals.newRoom.owner = input.owner;
 		locals.newRoom.allowedPlayer = input.allowedPlayer;
 		locals.newRoom.amount = input.amount;
+		// 0 means rooms do not expire automatically.
 		locals.newRoom.closeTimer = static_cast<uint32>(state.ttlHours) * 3600U;
 		locals.newRoom.lastUpdate = qpi.now();
 
@@ -1017,15 +1122,6 @@ private:
 		locals.randomValue = qpi.K12(locals.randomValue);
 
 		output.winner = locals.randomValue.u64._0 & 1 ? locals.maxPlayerId : locals.minPlayerId;
-	}
-
-	PRIVATE_FUNCTION(CalculateRevenue)
-	{
-		output.devFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.devFeePercentBps)), QDUEL_PERCENT_SCALE);
-		output.burnFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.burnFeePercentBps)), QDUEL_PERCENT_SCALE);
-		output.shareholdersFee =
-		    smul(div(div<uint64>(smul(input.amount, static_cast<uint64>(state.shareholdersFeePercentBps)), QDUEL_PERCENT_SCALE), 676ULL), 676ULL);
-		output.winner = input.amount - (output.devFee + output.burnFee + output.shareholdersFee);
 	}
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(TransferToShareholders)

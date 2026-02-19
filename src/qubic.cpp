@@ -2560,7 +2560,7 @@ static void contractProcessor(void*)
 static void notifyContractOfIncomingTransfer(const m256i& source, const m256i& dest, long long amount, unsigned char type)
 {
     // Only notify if amount > 0 and dest is contract
-    if (amount <= 0 || dest.u64._0 >= contractCount || dest.u64._1 || dest.u64._2 || dest.u64._3)
+    if (amount <= 0 || !isPublicKeyOfContract(dest))
         return;
 
     // Also don't run contract processor if the callback isn't implemented in the dest contract
@@ -4007,9 +4007,8 @@ static void endEpoch()
         constexpr long long issuancePerComputor = ISSUANCE_RATE / NUMBER_OF_COMPUTORS;
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
-            // TODO: Remove this and uncomment the line below to restore normal revenue distribution
-            long long revenue = issuancePerComputor;
-            // long long revenue = gRevenueComponents.revenue[computorIndex];
+            // Compute initial computor revenue, reducing arbitrator revenue
+            long long revenue = gRevenueComponents.revenue[computorIndex];
             arbitratorRevenue -= revenue;
 
             // Reduce computor revenue based on revenue donation table agreed on by quorum

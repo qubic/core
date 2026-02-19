@@ -183,7 +183,6 @@ public:
 
 	struct CreatePool_input
 	{
-		id assetIssuer;
 		uint64 assetName;
 	};
 	struct CreatePool_output 
@@ -937,9 +936,9 @@ protected:
 		locals.poolCreationFee = uint32(div(uint64(state.cachedIssuanceFee) * uint64(state.poolCreationFeeRate), uint64(QSWAP_FEE_BASE_100)));
 
 		// fee check
-		if(qpi.invocationReward() < locals.poolCreationFee )
+		if (qpi.invocationReward() < locals.poolCreationFee)
 		{
-			if(qpi.invocationReward() > 0)
+			if (qpi.invocationReward() > 0)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
@@ -953,7 +952,7 @@ protected:
 			return;
 		}
 
-		locals.poolID = input.assetIssuer;
+		locals.poolID = qpi.invocator();
 		locals.poolID.u64._3 = input.assetName;
 
 		// check if pool already exist
@@ -1572,6 +1571,10 @@ protected:
 		// swapFee = quAmountIn * 0.3% (swapFeeRate/10000)
 		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		locals.swapFee = div(uint128(locals.quAmountIn) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
+		if (locals.swapFee == uint128_t(0))
+		{
+			locals.swapFee = QSWAP_FEE_BASE_100;
+		}
 		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
@@ -1718,6 +1721,10 @@ protected:
 		// swapFee = quAmountIn * 0.3% (swapFeeRate/10000)
 		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		locals.swapFee = div(uint128(locals.quAmountIn) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
+		if (locals.swapFee == uint128_t(0))
+		{
+			locals.swapFee = QSWAP_FEE_BASE_100;
+		}
 		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
@@ -1889,6 +1896,10 @@ protected:
 		// swapFee = quAmountOutWithFee * 0.3% (swapFeeRate/10000)
 		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		locals.swapFee = div(uint128(locals.quAmountOutWithFee) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE));
+		if (locals.swapFee == uint128_t(0))
+		{
+			locals.swapFee = QSWAP_FEE_BASE_100;
+		}
 		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));
@@ -2081,6 +2092,10 @@ protected:
 		// swapFee = quAmountOut * 30/(10_000 - 30)
 		// swapFee distribution: 27% shareholders, 5% QX, 3% invest&rewards, 1% burn, 64% LP
 		locals.swapFee = div(uint128(input.quAmountOut) * uint128(state.swapFeeRate), uint128(QSWAP_SWAP_FEE_BASE - state.swapFeeRate));
+		if (locals.swapFee == uint128_t(0))
+		{
+			locals.swapFee = QSWAP_FEE_BASE_100;
+		}
 		locals.feeToShareholders = div(locals.swapFee * uint128(state.shareholderFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToQx = div(locals.swapFee * uint128(state.qxFeeRate), uint128(QSWAP_FEE_BASE_100));
 		locals.feeToInvestRewards = div(locals.swapFee * uint128(state.investRewardsFeeRate), uint128(QSWAP_FEE_BASE_100));

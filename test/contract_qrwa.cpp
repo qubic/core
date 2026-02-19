@@ -288,9 +288,9 @@ public:
         issueContractShares(contractIndex, shares);
     }
 
-    void createQswapPool(const id& source, const id& assetIssuer, uint64 assetName, sint64 fee)
+    void createQswapPool(const id& source, uint64 assetName, sint64 fee)
     {
-        QSWAP::CreatePool_input input{ assetIssuer, assetName };
+        QSWAP::CreatePool_input input{ assetName };
         QSWAP::CreatePool_output output;
         invokeUserProcedure(QSWAP_CONTRACT_INDEX, 3, input, output, source, fee);
     }
@@ -355,7 +355,7 @@ TEST(ContractQRWA, QswapDividend_PoolB)
 
     // Create Pool on QSWAP
     // This generates 'poolCreationFee' for QSWAP shareholders, generating substantial revenue
-    qrwa.createQswapPool(ASSET_ISSUER, ASSET_ISSUER, ASSET_NAME, qswapFees.poolCreationFee);
+    qrwa.createQswapPool(ASSET_ISSUER, ASSET_NAME, qswapFees.poolCreationFee);
 
     // We skip AddLiquidity/Swap expectations as the pool creation fee
     // alone is sufficient to test dividend routing
