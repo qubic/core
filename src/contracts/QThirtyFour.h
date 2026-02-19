@@ -701,7 +701,12 @@ struct QTF : ContractBase
 
 	struct GetWinningCombinationsHistory_output
 	{
-		Array<Array<uint8, QTF_RANDOM_VALUES_COUNT>, QTF_WINNING_COMBINATIONS_HISTORY_SIZE> history;
+		struct WinningCombination
+		{
+			Array<uint8, QTF_RANDOM_VALUES_COUNT> values;
+		};
+
+		Array<WinningCombination, QTF_WINNING_COMBINATIONS_HISTORY_SIZE> history;
 		uint8 returnCode;
 	};
 
@@ -1134,7 +1139,7 @@ struct QTF : ContractBase
 
 	PUBLIC_FUNCTION(GetWinningCombinationsHistory)
 	{
-		output.history = state.winningCombinationsHistory;
+		copyMemory(output.history, state.winningCombinationsHistory);
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 

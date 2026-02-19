@@ -1510,7 +1510,7 @@ TEST(ContractQThirtyFour, WinningCombinationsHistory_StoresWinningCombinationAft
 	const QTF::GetWinningCombinationsHistory_output history = ctl.getWinningCombinationsHistory();
 
 	EXPECT_EQ(history.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
-	EXPECT_TRUE(valuesEqual(history.history.get(0), winnerData.winnerData.winnerValues));
+	EXPECT_TRUE(valuesEqual(history.history.get(0).values, winnerData.winnerData.winnerValues));
 	EXPECT_EQ(ctl.state()->getWinningCombinationsWriteIndex(), 1ULL);
 }
 
@@ -1541,7 +1541,7 @@ TEST(ContractQThirtyFour, WinningCombinationsHistory_WrapAroundKeepsLatestAtLast
 
 	for (uint64 i = 0; i < history.history.capacity(); ++i)
 	{
-		EXPECT_FALSE(isEmptyRandomValues(history.history.get(i)));
+		EXPECT_FALSE(isEmptyRandomValues(history.history.get(i).values));
 	}
 
 	const uint64 writeIndex = ctl.state()->getWinningCombinationsWriteIndex();
@@ -1549,7 +1549,7 @@ TEST(ContractQThirtyFour, WinningCombinationsHistory_WrapAroundKeepsLatestAtLast
 
 	const uint64 lastWrittenSlot =
 	    (writeIndex + QTF_WINNING_COMBINATIONS_HISTORY_SIZE - 1ULL) % QTF_WINNING_COMBINATIONS_HISTORY_SIZE;
-	EXPECT_TRUE(valuesEqual(history.history.get(lastWrittenSlot), lastWinningValues));
+	EXPECT_TRUE(valuesEqual(history.history.get(lastWrittenSlot).values, lastWinningValues));
 }
 
 // ============================================================================
