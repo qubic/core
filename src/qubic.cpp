@@ -3647,7 +3647,7 @@ static void processTick(unsigned long long processorNumber)
                     // - 0 if no tx was created (no need to send reply commits)
                     // - UINT32_MAX if we all pending reply commits fitted into this one tx
                     // - otherwise, an index value that has to be passed to the next call for building another tx
-                    retCode = oracleEngine.getReplyCommitTransaction(tx, overallCompIdx, ownCompIdx, txTick, retCode);
+                    retCode = oracleEngine.getReplyCommitTransaction(tx, overallCompIdx, txTick, retCode);
                     if (!retCode)
                         break;
 
@@ -3694,15 +3694,17 @@ static void processTick(unsigned long long processorNumber)
             PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reveal transactions");
             auto* tx = (OracleReplyRevealTransactionPrefix*)txBuffer;
             const auto txTick = system.tick + ORACLE_REPLY_REVEAL_PUBLICATION_OFFSET;
+            const auto ownCompIdx = ownComputorIndicesMapping[0];
+            const auto overallCompIdx = ownComputorIndices[0];
             // create reply reveal transaction in tx (without signature), returning:
             // - 0 if no tx was created (no need to send reply commits)
             // - otherwise, an index value that has to be passed to the next call for building another tx
             unsigned int retCode = 0;
-            while ((retCode = oracleEngine.getReplyRevealTransaction(tx, 0, txTick, retCode)) != 0)
+            while ((retCode = oracleEngine.getReplyRevealTransaction(tx, overallCompIdx, txTick, retCode)) != 0)
             {
                 // sign and broadcast tx
                 KangarooTwelve(tx, sizeof(Transaction) + tx->inputSize, digest, sizeof(digest));
-                sign(computorSubseeds[0].m256i_u8, computorPublicKeys[0].m256i_u8, digest, tx->signaturePtr());
+                sign(computorSubseeds[ownCompIdx].m256i_u8, computorPublicKeys[0].m256i_u8, digest, tx->signaturePtr());
                 enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
             }
         }
@@ -5913,7 +5915,7 @@ static bool initialize()
             logToConsole(L"initOracleInterfaces() failed! Not all interfaces are properly defined!");
             return false;
         }
-        if (!oracleEngine.init(computorPublicKeys))
+        if (!oracleEngine.init(broadcastedComputors.computors.publicKeys))
             return false;
 
 #if ADDON_TX_STATUS_REQUEST

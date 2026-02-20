@@ -30,8 +30,7 @@ struct OracleEngineSnapshotData
 
 
 // save state (excluding queryIdToIndex and unused parts of large buffers)
-template <uint16_t ownComputorSeedsCount>
-bool OracleEngine<ownComputorSeedsCount>::saveSnapshot(unsigned short epoch, CHAR16* directory) const
+bool OracleEngine::saveSnapshot(unsigned short epoch, CHAR16* directory) const
 {
     addEpochToFileName(ORACLE_SNAPSHOT_ENGINE_FILENAME, sizeof(ORACLE_SNAPSHOT_ENGINE_FILENAME) / sizeof(ORACLE_SNAPSHOT_ENGINE_FILENAME[0]), epoch);
     addEpochToFileName(ORACLE_SNAPSHOT_QUERY_METADATA_FILENAME, sizeof(ORACLE_SNAPSHOT_QUERY_METADATA_FILENAME) / sizeof(ORACLE_SNAPSHOT_QUERY_METADATA_FILENAME[0]), epoch);
@@ -95,8 +94,7 @@ bool OracleEngine<ownComputorSeedsCount>::saveSnapshot(unsigned short epoch, CHA
     return true;
 }
 
-template <uint16_t ownComputorSeedsCount>
-bool OracleEngine<ownComputorSeedsCount>::loadSnapshot(unsigned short epoch, CHAR16* directory)
+bool OracleEngine::loadSnapshot(unsigned short epoch, CHAR16* directory)
 {
     addEpochToFileName(ORACLE_SNAPSHOT_ENGINE_FILENAME, sizeof(ORACLE_SNAPSHOT_ENGINE_FILENAME) / sizeof(ORACLE_SNAPSHOT_ENGINE_FILENAME[0]), epoch);
     addEpochToFileName(ORACLE_SNAPSHOT_QUERY_METADATA_FILENAME, sizeof(ORACLE_SNAPSHOT_QUERY_METADATA_FILENAME) / sizeof(ORACLE_SNAPSHOT_QUERY_METADATA_FILENAME[0]), epoch);
@@ -182,14 +180,14 @@ bool OracleEngine<ownComputorSeedsCount>::loadSnapshot(unsigned short epoch, CHA
 
 #else
 
-template <uint16_t ownComputorSeedsCount>
-bool OracleEngine<ownComputorSeedsCount>::saveSnapshot(unsigned short epoch, CHAR16* directory) const
+bool OracleEngine::saveSnapshot(unsigned short epoch, CHAR16* directory) const
 {
+    return false;
 }
 
-template <uint16_t ownComputorSeedsCount>
-bool OracleEngine<ownComputorSeedsCount>::loadSnapshot(unsigned short epoch, CHAR16* directory)
+bool OracleEngine::loadSnapshot(unsigned short epoch, CHAR16* directory)
 {
+    return false;
 }
 
 #endif

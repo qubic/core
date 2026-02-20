@@ -4,8 +4,7 @@
 #include "network_messages/oracles.h"
 #include "network_core/peers.h"
 
-template <uint16_t ownComputorSeedsCount>
-void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, RequestResponseHeader* header) const
+void OracleEngine::processRequestOracleData(Peer* peer, RequestResponseHeader* header) const
 {
 	// check input
 	ASSERT(header && peer);
