@@ -27,7 +27,6 @@ constexpr uint8 PULSE_DEFAULT_DEV_PERCENT = 10;
 constexpr uint8 PULSE_DEFAULT_BURN_PERCENT = 10;
 constexpr uint8 PULSE_DEFAULT_SHAREHOLDERS_PERCENT = 10;
 constexpr uint8 PULSE_DEFAULT_RL_SHAREHOLDERS_PERCENT = 5;
-constexpr uint8 PULSE_DEFAULT_QHEART_PERCENT = 5;
 constexpr uint64 PULSE_DEFAULT_QHEART_HOLD_LIMIT = 2000000000ULL;
 constexpr uint8 PULSE_TICK_UPDATE_PERIOD = 100;
 constexpr uint8 PULSE_DEFAULT_DRAW_HOUR = 11; // 11:00 UTC
@@ -105,7 +104,6 @@ public:
 			newDevPercent = 0;
 			newBurnPercent = 0;
 			newShareholdersPercent = 0;
-			newQHeartPercent = 0;
 			newQHeartHoldLimit = 0;
 		}
 
@@ -129,7 +127,6 @@ public:
 				state.burnPercent = newBurnPercent;
 				state.shareholdersPercent = newShareholdersPercent;
 				state.rlShareholdersPercent = newRLShareholdersPercent;
-				state.qheartPercent = newQHeartPercent;
 			}
 			if (hasNewQHeartHoldLimit)
 			{
@@ -149,7 +146,6 @@ public:
 		uint8 newBurnPercent;
 		uint8 newShareholdersPercent;
 		uint8 newRLShareholdersPercent;
-		uint8 newQHeartPercent;
 		uint64 newQHeartHoldLimit;
 	};
 
@@ -438,7 +434,6 @@ public:
 		uint8 burnPercent;
 		uint8 shareholdersPercent;
 		uint8 rlShareholdersPercent;
-		uint8 qheartPercent;
 		uint8 returnCode;
 	};
 
@@ -539,7 +534,6 @@ public:
 		uint8 burnPercent;
 		uint8 shareholdersPercent;
 		uint8 rlShareholdersPercent;
-		uint8 qheartPercent;
 	};
 	struct SetFees_output
 	{
@@ -609,7 +603,6 @@ public:
 		sint64 burnAmount;
 		sint64 shareholdersAmount;
 		sint64 rlShareholdersAmount;
-		sint64 qheartAmount;
 		sint64 balanceSigned;
 		uint64 balance;
 		uint64 availableBalance;
@@ -704,7 +697,6 @@ public:
 		state.burnPercent = PULSE_DEFAULT_BURN_PERCENT;
 		state.shareholdersPercent = PULSE_DEFAULT_SHAREHOLDERS_PERCENT;
 		state.rlShareholdersPercent = PULSE_DEFAULT_RL_SHAREHOLDERS_PERCENT;
-		state.qheartPercent = PULSE_DEFAULT_QHEART_PERCENT;
 		state.qheartHoldLimit = PULSE_DEFAULT_QHEART_HOLD_LIMIT;
 
 		state.schedule = PULSE_DEFAULT_SCHEDULE;
@@ -827,7 +819,6 @@ public:
 		output.burnPercent = state.burnPercent;
 		output.shareholdersPercent = state.shareholdersPercent;
 		output.rlShareholdersPercent = state.rlShareholdersPercent;
-		output.qheartPercent = state.qheartPercent;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -959,7 +950,7 @@ public:
 			return;
 		}
 
-		if (input.devPercent + input.burnPercent + input.shareholdersPercent + input.qheartPercent + input.rlShareholdersPercent > 100)
+		if (input.devPercent + input.burnPercent + input.shareholdersPercent + input.rlShareholdersPercent > 100)
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
@@ -970,7 +961,6 @@ public:
 		state.nextEpochData.newBurnPercent = input.burnPercent;
 		state.nextEpochData.newShareholdersPercent = input.shareholdersPercent;
 		state.nextEpochData.newRLShareholdersPercent = input.rlShareholdersPercent;
-		state.nextEpochData.newQHeartPercent = input.qheartPercent;
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
@@ -1404,7 +1394,6 @@ private:
 		locals.burnAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.burnPercent)), 100LL);
 		locals.shareholdersAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.shareholdersPercent)), 100LL);
 		locals.rlShareholdersAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.rlShareholdersPercent)), 100LL);
-		locals.qheartAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.qheartPercent)), 100LL);
 
 		if (locals.devAmount > 0)
 		{
@@ -1429,11 +1418,6 @@ private:
 		if (locals.burnAmount > 0)
 		{
 			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, locals.burnAmount, NULL_ID);
-		}
-		if (locals.qheartAmount > 0)
-		{
-			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, locals.qheartAmount,
-			                                        state.qheartIssuer);
 		}
 
 		locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
@@ -1669,27 +1653,26 @@ protected:
 	HashMap<id, AutoParticipant, PULSE_MAX_NUMBER_OF_AUTO_PARTICIPANTS> autoParticipants;
 	// Last settled winning digits; undefined before the first draw.
 	Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> lastWinningDigits;
+	NextEpochData nextEpochData;
+	id teamAddress;
+	id qheartIssuer;
+	// Monotonic winner count used to rotate the winners ring buffer.
+	uint64 winnersCounter;
 	sint64 ticketCounter;
 	sint64 ticketPrice;
-	// Per-user auto-purchase limits; 0 means unlimited.
-	uint16 maxAutoTicketsPerUser;
 	// Contract balance above this cap is swept to the QHeart wallet after settlement.
 	uint64 qheartHoldLimit;
 	// Date stamp of the most recent draw; PULSE_DEFAULT_INIT_TIME is a bootstrap sentinel.
 	uint32 lastDrawDateStamp;
+	// Per-user auto-purchase limits; 0 means unlimited.
+	uint16 maxAutoTicketsPerUser;
 	uint8 devPercent;
 	uint8 burnPercent;
 	uint8 shareholdersPercent;
 	uint8 rlShareholdersPercent;
-	uint8 qheartPercent;
 	uint8 schedule;
 	uint8 drawHour;
 	EState currentState;
-	id teamAddress;
-	id qheartIssuer;
-	NextEpochData nextEpochData;
-	// Monotonic winner count used to rotate the winners ring buffer.
-	uint64 winnersCounter;
 
 protected:
 	static void clearStateOnEndEpoch(PULSE& state)
