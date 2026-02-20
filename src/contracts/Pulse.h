@@ -24,9 +24,9 @@ constexpr uint64 PULSE_TICKET_PRICE_DEFAULT = 200000ULL;
 constexpr uint16 PULSE_MAX_NUMBER_OF_WINNERS_IN_HISTORY = 1024;
 constexpr uint64 PULSE_QHEART_ASSET_NAME = 92712259110993ULL; // "QHEART"
 constexpr uint8 PULSE_DEFAULT_DEV_PERCENT = 10;
-constexpr uint8 PULSE_DEFAULT_BURN_PERCENT = 5;
-constexpr uint8 PULSE_DEFAULT_SHAREHOLDERS_PERCENT = 8;
-constexpr uint8 PULSE_DEFAULT_RL_SHAREHOLDERS_PERCENT = 2;
+constexpr uint8 PULSE_DEFAULT_BURN_PERCENT = 10;
+constexpr uint8 PULSE_DEFAULT_SHAREHOLDERS_PERCENT = 10;
+constexpr uint8 PULSE_DEFAULT_RL_SHAREHOLDERS_PERCENT = 5;
 constexpr uint8 PULSE_DEFAULT_QHEART_PERCENT = 5;
 constexpr uint64 PULSE_DEFAULT_QHEART_HOLD_LIMIT = 2000000000ULL;
 constexpr uint8 PULSE_TICK_UPDATE_PERIOD = 100;
@@ -1731,10 +1731,10 @@ protected:
 	{
 		switch (matches)
 		{
-			case 6: return 150 * state.ticketPrice;
-			case 5: return 30 * state.ticketPrice;
-			case 4: return 8 * state.ticketPrice;
-			case 3: return 2 * state.ticketPrice;
+			case 6: return 100 * state.ticketPrice;
+			case 5: return 10 * state.ticketPrice;
+			case 4: return 3 * state.ticketPrice;
+			case 3: return 1 * state.ticketPrice;
 			case 2:
 			case 1:
 			default: return 0;

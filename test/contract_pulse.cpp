@@ -604,10 +604,10 @@ TEST(ContractPulse_Static, RewardTablesMatchContractConstants)
 	EXPECT_EQ(ctl.state()->callGetLeftAlignedReward(1), 1u * ctl.getTicketPrice().ticketPrice);
 	EXPECT_EQ(ctl.state()->callGetLeftAlignedReward(0), 0u);
 
-	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(6), 150u * ctl.getTicketPrice().ticketPrice);
-	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(5), 30u * ctl.getTicketPrice().ticketPrice);
-	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(4), 8u * ctl.getTicketPrice().ticketPrice);
-	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(3), 2u * ctl.getTicketPrice().ticketPrice);
+	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(6), 100u * ctl.getTicketPrice().ticketPrice);
+	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(5), 10u * ctl.getTicketPrice().ticketPrice);
+	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(4), 3u * ctl.getTicketPrice().ticketPrice);
+	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(3), 1u * ctl.getTicketPrice().ticketPrice);
 	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(2), 0u);
 	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(1), 0u);
 	EXPECT_EQ(ctl.state()->callGetAnyPositionReward(0), 0u);
@@ -623,7 +623,7 @@ TEST(ContractPulse_Static, ComputePrizeSelectsBestReward)
 	EXPECT_EQ(ctl.state()->callComputePrize(winning, exact), 2000u * ctl.getTicketPrice().ticketPrice);
 
 	const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> permuted = makePlayerDigits(5, 4, 3, 2, 1, 0);
-	EXPECT_EQ(ctl.state()->callComputePrize(winning, permuted), 150u * ctl.getTicketPrice().ticketPrice);
+	EXPECT_EQ(ctl.state()->callComputePrize(winning, permuted), 100u * ctl.getTicketPrice().ticketPrice);
 
 	const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> none = makePlayerDigits(9, 9, 9, 9, 9, 9);
 	EXPECT_EQ(ctl.state()->callComputePrize(winning, none), 0u);
