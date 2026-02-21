@@ -76,9 +76,16 @@ namespace
 constexpr uint8 QTF_ANY_DAY_SCHEDULE = 0xFF;
 
 // Test helper class exposing internal state
-class QTFChecker : public QTF
+class QTFChecker : public QTF, public QTF::StateData
 {
 public:
+	const QPI::ContractState<StateData, QTF_CONTRACT_INDEX>& asState() const {
+		return *reinterpret_cast<const QPI::ContractState<StateData, QTF_CONTRACT_INDEX>*>(static_cast<const StateData*>(this));
+	}
+	QPI::ContractState<StateData, QTF_CONTRACT_INDEX>& asMutState() {
+		return *reinterpret_cast<QPI::ContractState<StateData, QTF_CONTRACT_INDEX>*>(static_cast<StateData*>(this));
+	}
+
 	uint64 getNumberOfPlayers() const { return numberOfPlayers; }
 	uint64 getTicketPriceInternal() const { return ticketPrice; }
 	uint64 getJackpot() const { return jackpot; }
@@ -109,7 +116,7 @@ public:
 		ValidateNumbers_locals locals{};
 
 		input.numbers = numbers;
-		ValidateNumbers(qpi, *this, input, output, locals);
+		ValidateNumbers(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -120,7 +127,7 @@ public:
 		GetRandomValues_locals locals{};
 
 		input.seed = seed;
-		GetRandomValues(qpi, *this, input, output, locals);
+		GetRandomValues(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -133,7 +140,7 @@ public:
 
 		input.playerValues = playerValues;
 		input.winningValues = winningValues;
-		CountMatches(qpi, *this, input, output, locals);
+		CountMatches(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -144,7 +151,7 @@ public:
 		CheckContractBalance_locals locals{};
 
 		input.expectedRevenue = expectedRevenue;
-		CheckContractBalance(qpi, *this, input, output, locals);
+		CheckContractBalance(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -156,7 +163,7 @@ public:
 
 		input.base = base;
 		input.exp = exp;
-		PowerFixedPoint(qpi, *this, input, output, locals);
+		PowerFixedPoint(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -167,7 +174,7 @@ public:
 		CalculateExpectedRoundsToK4_locals locals{};
 
 		input.N = N;
-		CalculateExpectedRoundsToK4(qpi, *this, input, output, locals);
+		CalculateExpectedRoundsToK4(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -182,7 +189,7 @@ public:
 		input.needed = needed;
 		input.perWinnerCapTotal = perWinnerCapTotal;
 		input.ticketPrice = ticketPrice;
-		CalcReserveTopUp(qpi, *this, input, output, locals);
+		CalcReserveTopUp(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -194,7 +201,7 @@ public:
 
 		input.revenue = revenue;
 		input.applyFRRake = applyFRRake;
-		CalculatePrizePools(qpi, *this, input, output, locals);
+		CalculatePrizePools(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -206,7 +213,7 @@ public:
 
 		input.revenue = revenue;
 		input.winnersBlock = winnersBlock;
-		CalculateBaseGain(qpi, *this, input, output, locals);
+		CalculateBaseGain(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -221,7 +228,7 @@ public:
 		input.delta = delta;
 		input.revenue = revenue;
 		input.baseGain = baseGain;
-		CalculateExtraRedirectBP(qpi, *this, input, output, locals);
+		CalculateExtraRedirectBP(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -231,7 +238,7 @@ public:
 		ReturnAllTickets_output output{};
 		ReturnAllTickets_locals locals{};
 
-		ReturnAllTickets(qpi, *this, input, output, locals);
+		ReturnAllTickets(qpi, asMutState(), input, output, locals);
 	}
 
 	ProcessTierPayout_output callProcessTierPayout(const QPI::QpiContextProcedureCall& qpi, uint64 floorPerWinner, uint64 winnerCount,
@@ -247,7 +254,7 @@ public:
 		input.perWinnerCap = perWinnerCap;
 		input.totalQRPBalance = totalQRPBalance;
 		input.ticketPrice = ticketPrice;
-		ProcessTierPayout(qpi, *this, input, output, locals);
+		ProcessTierPayout(qpi, asMutState(), input, output, locals);
 		return output;
 	}
 };

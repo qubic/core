@@ -332,33 +332,33 @@ constexpr struct ContractDescription
     unsigned long long stateSize;
 } contractDescriptions[] = {
     {"", 0, 0, sizeof(Contract0State)},
-    {"QX", 66, 10000, sizeof(QX)},
-    {"QTRY", 72, 10000, sizeof(QUOTTERY)},
+    {"QX", 66, 10000, sizeof(QX::StateData)},
+    {"QTRY", 72, 10000, sizeof(QUOTTERY::StateData)},
     {"RANDOM", 88, 10000, sizeof(IPO)},
-    {"QUTIL", 99, 10000, sizeof(QUTIL)},
+    {"QUTIL", 99, 10000, sizeof(QUTIL::StateData)},
     {"MLM", 112, 10000, sizeof(IPO)},
-    {"GQMPROP", 123, 10000, sizeof(GQMPROP)},
+    {"GQMPROP", 123, 10000, sizeof(GQMPROP::StateData)},
     {"SWATCH", 123, 10000, sizeof(IPO)},
-    {"CCF", 127, 10000, sizeof(CCF)}, // proposal in epoch 125, IPO in 126, construction and first use in 127
-    {"QEARN", 137, 10000, sizeof(QEARN)}, // proposal in epoch 135, IPO in 136, construction in 137 / first donation after END_EPOCH, first round in epoch 138
+    {"CCF", 127, 10000, sizeof(CCF::StateData)}, // proposal in epoch 125, IPO in 126, construction and first use in 127
+    {"QEARN", 137, 10000, sizeof(QEARN::StateData)}, // proposal in epoch 135, IPO in 136, construction in 137 / first donation after END_EPOCH, first round in epoch 138
     {"QVAULT", 138, 10000, sizeof(IPO)}, // proposal in epoch 136, IPO in 137, construction and first use in 138
-    {"MSVAULT", 149, 10000, sizeof(MSVAULT)}, // proposal in epoch 147, IPO in 148, construction and first use in 149
-    {"QBAY", 154, 10000, sizeof(QBAY)}, // proposal in epoch 152, IPO in 153, construction and first use in 154
-    {"QSWAP", 171, 10000, sizeof(QSWAP)}, // proposal in epoch 169, IPO in 170, construction and first use in 171
-    {"NOST", 172, 10000, sizeof(NOST)}, // proposal in epoch 170, IPO in 171, construction and first use in 172
-    {"QDRAW", 179, 10000, sizeof(QDRAW)}, // proposal in epoch 177, IPO in 178, construction and first use in 179
-    {"RL", 182, 10000, sizeof(RL)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
-    {"QBOND", 182, 10000, sizeof(QBOND)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
-    {"QIP", 189, 10000, sizeof(QIP)}, // proposal in epoch 187, IPO in 188, construction and first use in 189
-    {"QRAFFLE", 192, 10000, sizeof(QRAFFLE)}, // proposal in epoch 190, IPO in 191, construction and first use in 192
-    {"QRWA", 197, 10000, sizeof(QRWA)}, // proposal in epoch 195, IPO in 196, construction and first use in 197
+    {"MSVAULT", 149, 10000, sizeof(MSVAULT::StateData)}, // proposal in epoch 147, IPO in 148, construction and first use in 149
+    {"QBAY", 154, 10000, sizeof(QBAY::StateData)}, // proposal in epoch 152, IPO in 153, construction and first use in 154
+    {"QSWAP", 171, 10000, sizeof(QSWAP::StateData)}, // proposal in epoch 169, IPO in 170, construction and first use in 171
+    {"NOST", 172, 10000, sizeof(NOST::StateData)}, // proposal in epoch 170, IPO in 171, construction and first use in 172
+    {"QDRAW", 179, 10000, sizeof(QDRAW::StateData)}, // proposal in epoch 177, IPO in 178, construction and first use in 179
+    {"RL", 182, 10000, sizeof(RL::StateData)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
+    {"QBOND", 182, 10000, sizeof(QBOND::StateData)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
+    {"QIP", 189, 10000, sizeof(QIP::StateData)}, // proposal in epoch 187, IPO in 188, construction and first use in 189
+    {"QRAFFLE", 192, 10000, sizeof(QRAFFLE::StateData)}, // proposal in epoch 190, IPO in 191, construction and first use in 192
+    {"QRWA", 197, 10000, sizeof(QRWA::StateData)}, // proposal in epoch 195, IPO in 196, construction and first use in 197
 	{"QRP", 199, 10000, sizeof(IPO)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
-	{"QTF", 199, 10000, sizeof(QTF)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
-    {"QDUEL", 199, 10000, sizeof(QDUEL)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
+	{"QTF", 199, 10000, sizeof(QTF::StateData)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
+    {"QDUEL", 199, 10000, sizeof(QDUEL::StateData)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
-    {"TESTEXA", 138, 10000, sizeof(TESTEXA)},
-    {"TESTEXB", 138, 10000, sizeof(TESTEXB)},
+    {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
+    {"TESTEXB", 138, 10000, sizeof(TESTEXB::StateData)},
     {"TESTEXC", 138, 10000, sizeof(IPO)},
     {"TESTEXD", 155, 10000, sizeof(IPO)},
 #endif
@@ -445,7 +445,7 @@ contractSystemProcedureLocalsSizes[contractIndex][SET_SHAREHOLDER_VOTES] = contr
 if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
 QpiContextForInit qpi(contractIndex); \
 contractName::__registerUserFunctionsAndProcedures(qpi); \
-static_assert(sizeof(contractName) <= MAX_CONTRACT_STATE_SIZE, "Size of contract state " #contractName " is too large!"); \
+static_assert(sizeof(contractName::StateData) <= MAX_CONTRACT_STATE_SIZE, "Size of contract state " #contractName " is too large!"); \
 }
 
 

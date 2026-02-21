@@ -31,6 +31,9 @@ constexpr unsigned long long CONTRACT_ACTION_TRACKER_SIZE = 16 * 1024 * 1024;
 constexpr unsigned int MAX_CONTRACT_PROCEDURES_REGISTERED = 16 * 1024;
 
 
+// Forward declaration — implementation in contract_exec.h
+static void markContractStateDirty(unsigned int contractIndex);
+
 static void __beginFunctionOrProcedure(const unsigned int); // TODO: more human-readable form of function ID?
 static void __endFunctionOrProcedure(const unsigned int);
 template <typename T> static m256i __K12(T);

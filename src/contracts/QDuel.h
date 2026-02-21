@@ -1,4 +1,4 @@
-﻿using namespace QPI;
+using namespace QPI;
 
 constexpr uint16 QDUEL_MAX_NUMBER_OF_ROOMS = 512;
 constexpr uint16 QDUEL_MINIMUM_DUEL_AMOUNT = 10000;
@@ -35,6 +35,43 @@ public:
 	static EState removeStateFlag(EState state, EState flag) { return state & ~flag; }
 	static EState addStateFlag(EState state, EState flag) { return state | flag; }
 
+	struct RoomInfo
+	{
+		id roomId;
+		id owner;
+		id allowedPlayer; // If zero, anyone can join
+		sint64 amount;
+		uint64 closeTimer;
+		DateAndTime lastUpdate;
+	};
+
+	struct UserData
+	{
+		id userId;
+		id roomId;
+		id allowedPlayer;
+		sint64 depositedAmount;
+		sint64 locked;
+		sint64 stake;
+		sint64 raiseStep;
+		sint64 maxStake;
+	};
+
+	struct StateData
+	{
+		HashMap<id, RoomInfo, QDUEL_MAX_NUMBER_OF_ROOMS> rooms;
+		HashMap<id, UserData, QDUEL_MAX_NUMBER_OF_ROOMS> users;
+		id teamAddress;
+		sint64 minimumDuelAmount;
+		uint8 devFeePercentBps;
+		uint8 burnFeePercentBps;
+		uint8 shareholdersFeePercentBps;
+		uint8 ttlHours;
+		uint8 firstTick;
+		EState currentState;
+		uint16 percentScale;
+	};
+
 	enum class EReturnCode : uint8
 	{
 		SUCCESS,
@@ -59,28 +96,6 @@ public:
 	};
 
 	static constexpr uint8 toReturnCode(EReturnCode code) { return static_cast<uint8>(code); }
-
-	struct RoomInfo
-	{
-		id roomId;
-		id owner;
-		id allowedPlayer; // If zero, anyone can join
-		sint64 amount;
-		uint64 closeTimer;
-		DateAndTime lastUpdate;
-	};
-
-	struct UserData
-	{
-		id userId;
-		id roomId;
-		id allowedPlayer;
-		sint64 depositedAmount;
-		sint64 locked;
-		sint64 stake;
-		sint64 raiseStep;
-		sint64 maxStake;
-	};
 
 	struct AddUserData_input
 	{
@@ -438,30 +453,30 @@ public:
 
 	INITIALIZE()
 	{
-		state.teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C, _X, _B,
+		state.mut().teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C, _X, _B,
 		                       _A, _V, _F, _O, _P, _R, _S, _N, _U, _L, _U, _E, _B, _S, _P, _U, _T, _R, _Z, _N, _T, _G, _F, _B, _I, _E);
 
-		state.minimumDuelAmount = QDUEL_MINIMUM_DUEL_AMOUNT;
+		state.mut().minimumDuelAmount = QDUEL_MINIMUM_DUEL_AMOUNT;
 
 		// Fee
-		state.devFeePercentBps = QDUEL_DEV_FEE_PERCENT_BPS;
-		state.burnFeePercentBps = QDUEL_BURN_FEE_PERCENT_BPS;
-		state.shareholdersFeePercentBps = QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS;
+		state.mut().devFeePercentBps = QDUEL_DEV_FEE_PERCENT_BPS;
+		state.mut().burnFeePercentBps = QDUEL_BURN_FEE_PERCENT_BPS;
+		state.mut().shareholdersFeePercentBps = QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS;
 
-		state.ttlHours = QDUEL_TTL_HOURS;
-		state.percentScale = QDUEL_PERCENT_SCALE;
+		state.mut().ttlHours = QDUEL_TTL_HOURS;
+		state.mut().percentScale = QDUEL_PERCENT_SCALE;
 	}
 
 	BEGIN_EPOCH()
 	{
-		state.firstTick = true;
-		state.currentState = EState::LOCKED;
+		state.mut().firstTick = true;
+		state.mut().currentState = EState::LOCKED;
 	}
 
 	END_EPOCH()
 	{
-		state.rooms.cleanup();
-		state.users.cleanup();
+		state.mut().rooms.cleanup();
+		state.mut().users.cleanup();
 	}
 
 	END_TICK_WITH_LOCALS()
@@ -471,31 +486,31 @@ public:
 			return;
 		}
 
-		if ((state.currentState & EState::WAIT_TIME) != EState::NONE)
+		if ((state.get().currentState & EState::WAIT_TIME) != EState::NONE)
 		{
 			RL::makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentTimestamp);
 			if (RL_DEFAULT_INIT_TIME < locals.currentTimestamp)
 			{
-				state.currentState = removeStateFlag(state.currentState, EState::WAIT_TIME);
+				state.mut().currentState = removeStateFlag(state.get().currentState, EState::WAIT_TIME);
 			}
 		}
 
-		if ((state.currentState & EState::LOCKED) != EState::NONE)
+		if ((state.get().currentState & EState::LOCKED) != EState::NONE)
 		{
 			return;
 		}
 
-		locals.roomIndex = state.rooms.nextElementIndex(NULL_INDEX);
+		locals.roomIndex = state.get().rooms.nextElementIndex(NULL_INDEX);
 		while (locals.roomIndex != NULL_INDEX)
 		{
-			locals.room = state.rooms.value(locals.roomIndex);
+			locals.room = state.get().rooms.value(locals.roomIndex);
 			locals.now = qpi.now();
 
 			/**
 			 * The interval between the end of the epoch and the first valid tick can be large.
 			 * To do this, we restore the time before the room was closed.
 			 */
-			if (state.firstTick)
+			if (state.get().firstTick)
 			{
 				locals.room.lastUpdate = locals.now;
 			}
@@ -516,19 +531,19 @@ public:
 				{
 					locals.room.closeTimer = usubSatu64(locals.room.closeTimer, locals.elapsedSeconds);
 					locals.room.lastUpdate = locals.now;
-					state.rooms.set(locals.room.roomId, locals.room);
+					state.mut().rooms.set(locals.room.roomId, locals.room);
 				}
 			}
 
-			locals.roomIndex = state.rooms.nextElementIndex(locals.roomIndex);
+			locals.roomIndex = state.get().rooms.nextElementIndex(locals.roomIndex);
 		}
 
-		state.firstTick = false;
+		state.mut().firstTick = false;
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(CreateRoom)
 	{
-		if ((state.currentState & EState::LOCKED) != EState::NONE)
+		if ((state.get().currentState & EState::LOCKED) != EState::NONE)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 
@@ -536,7 +551,7 @@ public:
 			return;
 		}
 
-		if (qpi.invocationReward() < state.minimumDuelAmount)
+		if (qpi.invocationReward() < state.get().minimumDuelAmount)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 
@@ -544,7 +559,7 @@ public:
 			return;
 		}
 
-		if (input.stake < state.minimumDuelAmount || (input.maxStake > 0 && input.maxStake < input.stake))
+		if (input.stake < state.get().minimumDuelAmount || (input.maxStake > 0 && input.maxStake < input.stake))
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 
@@ -560,7 +575,7 @@ public:
 			return;
 		}
 
-		if (state.users.contains(qpi.invocator()))
+		if (state.get().users.contains(qpi.invocator()))
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 
@@ -597,7 +612,7 @@ public:
 		CALL(AddUserData, locals.addUserInput, locals.addUserOutput);
 		if (locals.addUserOutput.returnCode != toReturnCode(EReturnCode::SUCCESS))
 		{
-			state.rooms.removeByKey(locals.createRoomOutput.roomId);
+			state.mut().rooms.removeByKey(locals.createRoomOutput.roomId);
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 
 			output.returnCode = locals.addUserOutput.returnCode;
@@ -609,7 +624,7 @@ public:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(ConnectToRoom)
 	{
-		if ((state.currentState & EState::LOCKED) != EState::NONE)
+		if ((state.get().currentState & EState::LOCKED) != EState::NONE)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 
@@ -617,7 +632,7 @@ public:
 			return;
 		}
 
-		if (!state.rooms.get(input.roomId, locals.room))
+		if (!state.get().rooms.get(input.roomId, locals.room))
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 
@@ -667,7 +682,7 @@ public:
 			// Return fund to player2
 			qpi.transfer(locals.getWinnerPlayer_input.player2, locals.room.amount);
 
-			state.rooms.removeByKey(input.roomId);
+			state.mut().rooms.removeByKey(input.roomId);
 			locals.amount = 0;
 			locals.failedGetWinner = true;
 			locals.room.amount = 0;
@@ -690,12 +705,12 @@ public:
 			// Return fund to player2
 			qpi.transfer(locals.getWinnerPlayer_input.player2, locals.room.amount);
 
-			state.rooms.removeByKey(input.roomId);
+			state.mut().rooms.removeByKey(input.roomId);
 		}
 
 		if (locals.calculateRevenue_output.devFee > 0)
 		{
-			qpi.transfer(state.teamAddress, locals.calculateRevenue_output.devFee);
+			qpi.transfer(state.get().teamAddress, locals.calculateRevenue_output.devFee);
 		}
 		if (locals.calculateRevenue_output.burnFee > 0)
 		{
@@ -729,7 +744,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.invocator() != state.teamAddress)
+		if (qpi.invocator() != state.get().teamAddress)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -745,10 +760,10 @@ public:
 			return;
 		}
 
-		state.devFeePercentBps = input.devFeePercentBps;
-		state.burnFeePercentBps = input.burnFeePercentBps;
-		state.shareholdersFeePercentBps = input.shareholdersFeePercentBps;
-		state.percentScale = input.percentScale;
+		state.mut().devFeePercentBps = input.devFeePercentBps;
+		state.mut().burnFeePercentBps = input.burnFeePercentBps;
+		state.mut().shareholdersFeePercentBps = input.shareholdersFeePercentBps;
+		state.mut().percentScale = input.percentScale;
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
@@ -760,32 +775,32 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.invocator() != state.teamAddress)
+		if (qpi.invocator() != state.get().teamAddress)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
-		if (state.ttlHours == input.ttlHours)
+		if (state.get().ttlHours == input.ttlHours)
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
 
-		state.ttlHours = input.ttlHours;
+		state.mut().ttlHours = input.ttlHours;
 		locals.now = qpi.now();
-		locals.roomIndex = state.rooms.nextElementIndex(NULL_INDEX);
+		locals.roomIndex = state.get().rooms.nextElementIndex(NULL_INDEX);
 		while (locals.roomIndex != NULL_INDEX)
 		{
-			locals.room = state.rooms.value(locals.roomIndex);
+			locals.room = state.get().rooms.value(locals.roomIndex);
 
 			// 0 means rooms do not expire automatically.
-			locals.room.closeTimer = static_cast<uint32>(state.ttlHours) * 3600U;
+			locals.room.closeTimer = static_cast<uint32>(state.get().ttlHours) * 3600U;
 
 			locals.room.lastUpdate = locals.now;
-			state.rooms.set(locals.room.roomId, locals.room);
+			state.mut().rooms.set(locals.room.roomId, locals.room);
 
-			locals.roomIndex = state.rooms.nextElementIndex(locals.roomIndex);
+			locals.roomIndex = state.get().rooms.nextElementIndex(locals.roomIndex);
 		}
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
@@ -793,21 +808,21 @@ public:
 
 	PUBLIC_FUNCTION(GetPercentFees)
 	{
-		output.devFeePercentBps = state.devFeePercentBps;
-		output.burnFeePercentBps = state.burnFeePercentBps;
-		output.shareholdersFeePercentBps = state.shareholdersFeePercentBps;
-		output.percentScale = state.percentScale;
+		output.devFeePercentBps = state.get().devFeePercentBps;
+		output.burnFeePercentBps = state.get().burnFeePercentBps;
+		output.shareholdersFeePercentBps = state.get().shareholdersFeePercentBps;
+		output.percentScale = state.get().percentScale;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetRooms)
 	{
-		locals.hashSetIndex = state.rooms.nextElementIndex(NULL_INDEX);
+		locals.hashSetIndex = state.get().rooms.nextElementIndex(NULL_INDEX);
 		while (locals.hashSetIndex != NULL_INDEX)
 		{
-			output.rooms.set(locals.arrayIndex++, state.rooms.value(locals.hashSetIndex));
+			output.rooms.set(locals.arrayIndex++, state.get().rooms.value(locals.hashSetIndex));
 
-			locals.hashSetIndex = state.rooms.nextElementIndex(locals.hashSetIndex);
+			locals.hashSetIndex = state.get().rooms.nextElementIndex(locals.hashSetIndex);
 		}
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
@@ -815,13 +830,13 @@ public:
 
 	PUBLIC_FUNCTION(GetTTLHours)
 	{
-		output.ttlHours = state.ttlHours;
+		output.ttlHours = state.get().ttlHours;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetUserProfile)
 	{
-		if (!state.users.get(input.userId, locals.userData))
+		if (!state.get().users.get(input.userId, locals.userData))
 		{
 			output.returnCode = toReturnCode(EReturnCode::USER_NOT_FOUND);
 			return;
@@ -838,10 +853,10 @@ public:
 
 	PUBLIC_FUNCTION(CalculateRevenue)
 	{
-		output.devFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.devFeePercentBps)), state.percentScale);
-		output.burnFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.burnFeePercentBps)), state.percentScale);
+		output.devFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.get().devFeePercentBps)), state.get().percentScale);
+		output.burnFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.get().burnFeePercentBps)), state.get().percentScale);
 		output.shareholdersFee =
-			smul(div(div<uint64>(smul(input.amount, static_cast<uint64>(state.shareholdersFeePercentBps)), state.percentScale), 676ULL), 676ULL);
+			smul(div(div<uint64>(smul(input.amount, static_cast<uint64>(state.get().shareholdersFeePercentBps)), state.get().percentScale), 676ULL), 676ULL);
 		output.winner = input.amount - (output.devFee + output.burnFee + output.shareholdersFee);
 	}
 
@@ -853,7 +868,7 @@ public:
 			return;
 		}
 
-		if (!state.users.get(qpi.invocator(), locals.userData))
+		if (!state.get().users.get(qpi.invocator(), locals.userData))
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			output.returnCode = toReturnCode(EReturnCode::USER_NOT_FOUND);
@@ -861,7 +876,7 @@ public:
 		}
 
 		locals.userData.depositedAmount += qpi.invocationReward();
-		state.users.set(locals.userData.userId, locals.userData);
+		state.mut().users.set(locals.userData.userId, locals.userData);
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -872,7 +887,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (!state.users.get(qpi.invocator(), locals.userData))
+		if (!state.get().users.get(qpi.invocator(), locals.userData))
 		{
 			output.returnCode = toReturnCode(EReturnCode::USER_NOT_FOUND);
 			return;
@@ -887,7 +902,7 @@ public:
 		}
 
 		locals.userData.depositedAmount -= input.amount;
-		state.users.set(locals.userData.userId, locals.userData);
+		state.mut().users.set(locals.userData.userId, locals.userData);
 		qpi.transfer(qpi.invocator(), input.amount);
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
@@ -899,13 +914,13 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (!state.users.get(qpi.invocator(), locals.userData))
+		if (!state.get().users.get(qpi.invocator(), locals.userData))
 		{
 			output.returnCode = toReturnCode(EReturnCode::USER_NOT_FOUND);
 			return;
 		}
 
-		if (state.rooms.get(locals.userData.roomId, locals.room))
+		if (state.get().rooms.get(locals.userData.roomId, locals.room))
 		{
 			if (locals.room.owner != qpi.invocator())
 			{
@@ -913,8 +928,8 @@ public:
 				return;
 			}
 
-			state.rooms.removeByKey(locals.userData.roomId);
-			state.rooms.cleanupIfNeeded();
+			state.mut().rooms.removeByKey(locals.userData.roomId);
+			state.mut().rooms.cleanupIfNeeded();
 		}
 
 		if (locals.userData.depositedAmount > 0)
@@ -926,8 +941,8 @@ public:
 			locals.refundAmount += static_cast<uint64>(locals.userData.locked);
 		}
 
-		state.users.removeByKey(locals.userData.userId);
-		state.users.cleanupIfNeeded();
+		state.mut().users.removeByKey(locals.userData.userId);
+		state.mut().users.cleanupIfNeeded();
 
 		if (locals.refundAmount > 0)
 		{
@@ -936,19 +951,6 @@ public:
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
-
-protected:
-	HashMap<id, RoomInfo, QDUEL_MAX_NUMBER_OF_ROOMS> rooms;
-	HashMap<id, UserData, QDUEL_MAX_NUMBER_OF_ROOMS> users;
-	id teamAddress;
-	sint64 minimumDuelAmount;
-	uint8 devFeePercentBps;
-	uint8 burnFeePercentBps;
-	uint8 shareholdersFeePercentBps;
-	uint8 ttlHours;
-	uint8 firstTick;
-	EState currentState;
-	uint16 percentScale;
 
 protected:
 	template<typename T> static constexpr const T& min(const T& a, const T& b) { return (a < b) ? a : b; }
@@ -984,7 +986,7 @@ protected:
 private:
 	PRIVATE_PROCEDURE_WITH_LOCALS(CreateRoomRecord)
 	{
-		if (state.rooms.population() >= state.rooms.capacity())
+		if (state.get().rooms.population() >= state.get().rooms.capacity())
 		{
 			output.returnCode = toReturnCode(EReturnCode::ROOM_FULL);
 			output.roomId = id::zero();
@@ -994,11 +996,11 @@ private:
 		locals.attempt = 0;
 		while (locals.attempt < 8)
 		{
-			locals.roomId = qpi.K12(m256i(qpi.tick() ^ state.rooms.population() ^ input.owner.u64._0 ^ locals.attempt,
+			locals.roomId = qpi.K12(m256i(qpi.tick() ^ state.get().rooms.population() ^ input.owner.u64._0 ^ locals.attempt,
 			                              input.owner.u64._1 ^ input.allowedPlayer.u64._0 ^ (locals.attempt << 1),
 			                              input.owner.u64._2 ^ input.allowedPlayer.u64._1 ^ (locals.attempt << 2),
 			                              input.owner.u64._3 ^ input.amount ^ (locals.attempt << 3)));
-			if (!state.rooms.contains(locals.roomId))
+			if (!state.get().rooms.contains(locals.roomId))
 			{
 				break;
 			}
@@ -1016,10 +1018,10 @@ private:
 		locals.newRoom.allowedPlayer = input.allowedPlayer;
 		locals.newRoom.amount = input.amount;
 		// 0 means rooms do not expire automatically.
-		locals.newRoom.closeTimer = static_cast<uint32>(state.ttlHours) * 3600U;
+		locals.newRoom.closeTimer = static_cast<uint32>(state.get().ttlHours) * 3600U;
 		locals.newRoom.lastUpdate = qpi.now();
 
-		if (state.rooms.set(locals.roomId, locals.newRoom) == NULL_INDEX)
+		if (state.mut().rooms.set(locals.roomId, locals.newRoom) == NULL_INDEX)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ROOM_FAILED_CREATE);
 			output.roomId = id::zero();
@@ -1032,9 +1034,9 @@ private:
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(FinalizeRoom)
 	{
-		state.rooms.removeByKey(input.roomId);
+		state.mut().rooms.removeByKey(input.roomId);
 
-		if (!state.users.get(input.owner, locals.userData))
+		if (!state.get().users.get(input.owner, locals.userData))
 		{
 			if (input.roomAmount > 0)
 			{
@@ -1052,7 +1054,7 @@ private:
 
 		if (locals.availableDeposit == 0)
 		{
-			state.users.removeByKey(locals.userData.userId);
+			state.mut().users.removeByKey(locals.userData.userId);
 			output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 			return;
 		}
@@ -1064,7 +1066,7 @@ private:
 		if (locals.nextStakeOutput.returnCode != toReturnCode(EReturnCode::SUCCESS))
 		{
 			qpi.transfer(locals.userData.userId, locals.availableDeposit);
-			state.users.removeByKey(locals.userData.userId);
+			state.mut().users.removeByKey(locals.userData.userId);
 			output.returnCode = locals.nextStakeOutput.returnCode;
 			return;
 		}
@@ -1074,10 +1076,10 @@ private:
 			locals.nextStakeOutput.nextStake = locals.availableDeposit;
 		}
 
-		if (locals.nextStakeOutput.nextStake < state.minimumDuelAmount)
+		if (locals.nextStakeOutput.nextStake < state.get().minimumDuelAmount)
 		{
 			qpi.transfer(locals.userData.userId, locals.availableDeposit);
-			state.users.removeByKey(locals.userData.userId);
+			state.mut().users.removeByKey(locals.userData.userId);
 			output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 			return;
 		}
@@ -1089,7 +1091,7 @@ private:
 		if (locals.createRoomOutput.returnCode != toReturnCode(EReturnCode::SUCCESS))
 		{
 			qpi.transfer(locals.userData.userId, locals.availableDeposit);
-			state.users.removeByKey(locals.userData.userId);
+			state.mut().users.removeByKey(locals.userData.userId);
 			output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 			return;
 		}
@@ -1098,12 +1100,12 @@ private:
 		locals.userData.depositedAmount = locals.availableDeposit - locals.nextStakeOutput.nextStake;
 		locals.userData.locked = locals.nextStakeOutput.nextStake;
 		locals.userData.stake = locals.nextStakeOutput.nextStake;
-		state.users.set(locals.userData.userId, locals.userData);
+		state.mut().users.set(locals.userData.userId, locals.userData);
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 
-		state.rooms.cleanupIfNeeded(QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT);
-		state.users.cleanupIfNeeded(QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT);
+		if (state.get().rooms.needsCleanup(QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT)) { state.mut().rooms.cleanup(); }
+		if (state.get().users.needsCleanup(QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT)) { state.mut().users.cleanup(); }
 	}
 
 private:
@@ -1161,7 +1163,7 @@ private:
 	PRIVATE_PROCEDURE_WITH_LOCALS(AddUserData)
 	{
 		// Already Exist
-		if (state.users.contains(input.userId))
+		if (state.get().users.contains(input.userId))
 		{
 			output.returnCode = toReturnCode(EReturnCode::USER_ALREADY_EXISTS);
 			return;
@@ -1175,7 +1177,7 @@ private:
 		locals.newUserData.stake = input.stake;
 		locals.newUserData.raiseStep = input.raiseStep;
 		locals.newUserData.maxStake = input.maxStake;
-		if (state.users.set(input.userId, locals.newUserData) == NULL_INDEX)
+		if (state.mut().users.set(input.userId, locals.newUserData) == NULL_INDEX)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ROOM_FAILED_CREATE);
 			return;

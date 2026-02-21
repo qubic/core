@@ -2,7 +2,7 @@ using namespace QPI;
 
 constexpr uint32 CCF_MAX_SUBSCRIPTIONS = 1024;
 
-struct CCF2 
+struct CCF2
 {
 };
 
@@ -67,7 +67,7 @@ struct CCF : public ContractBase
 
 	// Array to store subscription proposals, one per proposal slot (indexed by proposalIndex)
 	typedef Array<SubscriptionProposalData, 128> SubscriptionProposalsT;
-	
+
 	// Array to store active subscriptions, indexed by destination ID
 	typedef Array<SubscriptionData, CCF_MAX_SUBSCRIPTIONS> ActiveSubscriptionsT;
 
@@ -86,22 +86,24 @@ struct CCF : public ContractBase
 
 	typedef Array<RegularPaymentEntry, 128> RegularPaymentsT;
 
-protected:
-	//----------------------------------------------------------------------------
-	// Define state
-	ProposalVotingT proposals;
+	struct StateData
+	{
+		//----------------------------------------------------------------------------
+		// State fields
+		ProposalVotingT proposals;
 
-	LatestTransfersT latestTransfers;
-	uint8 lastTransfersNextOverwriteIdx;
+		LatestTransfersT latestTransfers;
+		uint8 lastTransfersNextOverwriteIdx;
 
-	uint32 setProposalFee;
+		uint32 setProposalFee;
 
-	RegularPaymentsT regularPayments;
+		RegularPaymentsT regularPayments;
 
-	SubscriptionProposalsT subscriptionProposals;	// Subscription proposals, one per proposal slot (indexed by proposalIndex)
-	ActiveSubscriptionsT activeSubscriptions;		// Active subscriptions, identified by destination ID
+		SubscriptionProposalsT subscriptionProposals;	// Subscription proposals, one per proposal slot (indexed by proposalIndex)
+		ActiveSubscriptionsT activeSubscriptions;		// Active subscriptions, identified by destination ID
 
-	uint8 lastRegularPaymentsNextOverwriteIdx;
+		uint8 lastRegularPaymentsNextOverwriteIdx;
+	};
 
 	//----------------------------------------------------------------------------
 	// Define private procedures and functions with input and output
@@ -139,7 +141,7 @@ public:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetProposal)
 	{
-		if (qpi.invocationReward() < state.setProposalFee)
+		if (qpi.invocationReward() < state.get().setProposalFee)
 		{
 			// Invocation reward not sufficient, undo payment and cancel
 			if (qpi.invocationReward() > 0)
@@ -149,10 +151,10 @@ public:
 			output.proposalIndex = INVALID_PROPOSAL_INDEX;
 			return;
 		}
-		else if (qpi.invocationReward() > state.setProposalFee)
+		else if (qpi.invocationReward() > state.get().setProposalFee)
 		{
 			// Invocation greater than fee, pay back difference
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.setProposalFee);
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.get().setProposalFee);
 		}
 
 		// Burn invocation reward
@@ -193,7 +195,7 @@ public:
 		}
 
 		// Try to set proposal (checks originators rights and general validity of input proposal)
-		output.proposalIndex = qpi(state.proposals).setProposal(qpi.originator(), input.proposal);
+		output.proposalIndex = qpi(state.mut().proposals).setProposal(qpi.originator(), input.proposal);
 
 		// Handle subscription proposals
 		if (output.proposalIndex != INVALID_PROPOSAL_INDEX && input.isSubscription)
@@ -202,16 +204,16 @@ public:
 			if (input.proposal.epoch == 0)
 			{
 				// Check if this is a subscription proposal that can be canceled by the proposer
-				if (output.proposalIndex < state.subscriptionProposals.capacity())
+				if (output.proposalIndex < state.get().subscriptionProposals.capacity())
 				{
-					locals.subscriptionProposal = state.subscriptionProposals.get(output.proposalIndex);
+					locals.subscriptionProposal = state.get().subscriptionProposals.get(output.proposalIndex);
 					// Only allow cancellation by the proposer
 					// The value of below condition should be always true, but set the else condition for safety
 					if (locals.subscriptionProposal.proposerId == qpi.originator())
 					{
 						// Clear the subscription proposal
 						setMemory(locals.subscriptionProposal, 0);
-						state.subscriptionProposals.set(output.proposalIndex, locals.subscriptionProposal);
+						state.mut().subscriptionProposals.set(output.proposalIndex, locals.subscriptionProposal);
 					}
 					else
 					{
@@ -225,7 +227,7 @@ public:
 				// Only the proposer can create a new subscription proposal, but any valid proposer
 				// can propose changes to an existing subscription (which will be handled in END_EPOCH)
 				// For now, we allow the proposal to be created - it will overwrite the existing subscription if accepted
-				
+
 				// Store subscription proposal data in the array indexed by proposalIndex
 				locals.subscriptionProposal.proposerId = qpi.originator();
 				locals.subscriptionProposal.destination = input.proposal.data.transfer.destination;
@@ -234,16 +236,16 @@ public:
 				locals.subscriptionProposal.numberOfPeriods = input.numberOfPeriods;
 				locals.subscriptionProposal.amountPerPeriod = input.amountPerPeriod;
 				locals.subscriptionProposal.startEpoch = input.startEpoch;
-				state.subscriptionProposals.set(output.proposalIndex, locals.subscriptionProposal);
+				state.mut().subscriptionProposals.set(output.proposalIndex, locals.subscriptionProposal);
 			}
 		}
 		else if (output.proposalIndex != INVALID_PROPOSAL_INDEX && !input.isSubscription)
 		{
 			// Clear any subscription proposal at this index if it exists
-			if (output.proposalIndex >= 0 && output.proposalIndex < state.subscriptionProposals.capacity())
+			if (output.proposalIndex >= 0 && output.proposalIndex < state.get().subscriptionProposals.capacity())
 			{
 				setMemory(locals.subscriptionProposal, 0);
-				state.subscriptionProposals.set(output.proposalIndex, locals.subscriptionProposal);
+				state.mut().subscriptionProposals.set(output.proposalIndex, locals.subscriptionProposal);
 			}
 		}
 	}
@@ -266,7 +268,7 @@ public:
 		{
 			// Return proposals that are open for voting in current epoch
 			// (output is initalized with zeros by contract system)
-			while ((input.prevProposalIndex = qpi(state.proposals).nextProposalIndex(input.prevProposalIndex, qpi.epoch())) >= 0)
+			while ((input.prevProposalIndex = qpi(state.get().proposals).nextProposalIndex(input.prevProposalIndex, qpi.epoch())) >= 0)
 			{
 				output.indices.set(output.numOfIndices, input.prevProposalIndex);
 				++output.numOfIndices;
@@ -279,7 +281,7 @@ public:
 		{
 			// Return proposals of previous epochs not overwritten yet
 			// (output is initalized with zeros by contract system)
-			while ((input.prevProposalIndex = qpi(state.proposals).nextFinishedProposalIndex(input.prevProposalIndex)) >= 0)
+			while ((input.prevProposalIndex = qpi(state.get().proposals).nextFinishedProposalIndex(input.prevProposalIndex)) >= 0)
 			{
 				output.indices.set(output.numOfIndices, input.prevProposalIndex);
 				++output.numOfIndices;
@@ -318,15 +320,15 @@ public:
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetProposal)
 	{
-		output.proposerPublicKey = qpi(state.proposals).proposerId(input.proposalIndex);
-		output.okay = qpi(state.proposals).getProposal(input.proposalIndex, output.proposal);
+		output.proposerPublicKey = qpi(state.get().proposals).proposerId(input.proposalIndex);
+		output.okay = qpi(state.get().proposals).getProposal(input.proposalIndex, output.proposal);
 		output.hasSubscriptionProposal = false;
 		output.hasActiveSubscription = false;
 
 		// Check if this proposal has subscription proposal data
-		if (input.proposalIndex < state.subscriptionProposals.capacity())
+		if (input.proposalIndex < state.get().subscriptionProposals.capacity())
 		{
-			locals.subscriptionProposalData = state.subscriptionProposals.get(input.proposalIndex);
+			locals.subscriptionProposalData = state.get().subscriptionProposals.get(input.proposalIndex);
 			if (!isZero(locals.subscriptionProposalData.proposerId))
 			{
 				output.subscriptionProposal = locals.subscriptionProposalData;
@@ -339,7 +341,7 @@ public:
 		{
 			for (locals.subIndex = 0; locals.subIndex < CCF_MAX_SUBSCRIPTIONS; ++locals.subIndex)
 			{
-				locals.subscriptionData = state.activeSubscriptions.get(locals.subIndex);
+				locals.subscriptionData = state.get().activeSubscriptions.get(locals.subIndex);
 				if (locals.subscriptionData.destination == input.subscriptionDestination && !isZero(locals.subscriptionData.destination))
 				{
 					output.subscription = locals.subscriptionData;
@@ -362,9 +364,9 @@ public:
 			// Pay back invocation reward
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
-		
+
 		// Try to vote (checks right to vote and match with proposal)
-		output.okay = qpi(state.proposals).vote(qpi.originator(), input);
+		output.okay = qpi(state.mut().proposals).vote(qpi.originator(), input);
 	}
 
 
@@ -381,9 +383,9 @@ public:
 
 	PUBLIC_FUNCTION(GetVote)
 	{
-		output.okay = qpi(state.proposals).getVote(
+		output.okay = qpi(state.get().proposals).getVote(
 			input.proposalIndex,
-			qpi(state.proposals).voteIndex(input.voter),
+			qpi(state.get().proposals).voteIndex(input.voter),
 			output.vote);
 	}
 
@@ -400,7 +402,7 @@ public:
 
 	PUBLIC_FUNCTION(GetVotingResults)
 	{
-		output.okay = qpi(state.proposals).getVotingSummary(
+		output.okay = qpi(state.get().proposals).getVotingSummary(
 			input.proposalIndex, output.results);
 	}
 
@@ -410,7 +412,7 @@ public:
 
 	PUBLIC_FUNCTION(GetLatestTransfers)
 	{
-		output = state.latestTransfers;
+		output = state.get().latestTransfers;
 	}
 
 
@@ -419,7 +421,7 @@ public:
 
 	PUBLIC_FUNCTION(GetRegularPayments)
 	{
-		output = state.regularPayments;
+		output = state.get().regularPayments;
 	}
 
 
@@ -431,7 +433,7 @@ public:
 
 	PUBLIC_FUNCTION(GetProposalFee)
 	{
-		output.proposalFee = state.setProposalFee;
+		output.proposalFee = state.get().setProposalFee;
 	}
 
 
@@ -452,7 +454,7 @@ public:
 
 	INITIALIZE()
 	{
-		state.setProposalFee = 1000000;
+		state.mut().setProposalFee = 1000000;
 	}
 
 
@@ -482,16 +484,16 @@ public:
 
 		// Iterate all proposals that were open for voting in this epoch ...
 		locals.proposalIndex = -1;
-		while ((locals.proposalIndex = qpi(state.proposals).nextProposalIndex(locals.proposalIndex, locals.currentEpoch)) >= 0)
+		while ((locals.proposalIndex = qpi(state.get().proposals).nextProposalIndex(locals.proposalIndex, locals.currentEpoch)) >= 0)
 		{
-			if (!qpi(state.proposals).getProposal(locals.proposalIndex, locals.proposal))
+			if (!qpi(state.get().proposals).getProposal(locals.proposalIndex, locals.proposal))
 				continue;
 
 			// ... and have transfer proposal type
 			if (ProposalTypes::cls(locals.proposal.type) == ProposalTypes::Class::Transfer)
 			{
 				// Get voting results and check if conditions for proposal acceptance are met
-				if (!qpi(state.proposals).getVotingSummary(locals.proposalIndex, locals.results))
+				if (!qpi(state.get().proposals).getVotingSummary(locals.proposalIndex, locals.results))
 					continue;
 
 				// The total number of votes needs to be at least the quorum
@@ -501,22 +503,22 @@ public:
 				// The transfer option (1) must have more votes than the no-transfer option (0)
 				if (locals.results.optionVoteCount.get(1) < locals.results.optionVoteCount.get(0))
 					continue;
-				
+
 				// Option for transfer has been accepted?
 				if (locals.results.optionVoteCount.get(1) > div<uint32>(QUORUM, 2U))
 				{
 					// Check if this is a subscription proposal
 					locals.isSubscription = false;
-					if (locals.proposalIndex < state.subscriptionProposals.capacity())
+					if (locals.proposalIndex < state.get().subscriptionProposals.capacity())
 					{
-						locals.subscriptionProposal = state.subscriptionProposals.get(locals.proposalIndex);
+						locals.subscriptionProposal = state.get().subscriptionProposals.get(locals.proposalIndex);
 						// Check if this slot has subscription proposal data (non-zero proposerId indicates valid entry)
 						if (!isZero(locals.subscriptionProposal.proposerId))
 						{
 							locals.isSubscription = true;
 						}
 					}
-					
+
 					if (locals.isSubscription)
 					{
 						// Handle subscription proposal acceptance
@@ -527,12 +529,12 @@ public:
 							locals.existingSubIdx = -1;
 							for (locals.subIdx = 0; locals.subIdx < CCF_MAX_SUBSCRIPTIONS; ++locals.subIdx)
 							{
-								locals.subscription = state.activeSubscriptions.get(locals.subIdx);
+								locals.subscription = state.get().activeSubscriptions.get(locals.subIdx);
 								if (locals.subscription.destination == locals.subscriptionProposal.destination && !isZero(locals.subscription.destination))
 								{
 									// Clear the subscription entry
 									setMemory(locals.subscription, 0);
-									state.activeSubscriptions.set(locals.subIdx, locals.subscription);
+									state.mut().activeSubscriptions.set(locals.subIdx, locals.subscription);
 									break;
 								}
 							}
@@ -543,7 +545,7 @@ public:
 							locals.existingSubIdx = -1;
 							for (locals.subIdx = 0; locals.subIdx < CCF_MAX_SUBSCRIPTIONS; ++locals.subIdx)
 							{
-								locals.subscription = state.activeSubscriptions.get(locals.subIdx);
+								locals.subscription = state.get().activeSubscriptions.get(locals.subIdx);
 								if (locals.subscription.destination == locals.subscriptionProposal.destination && !isZero(locals.subscription.destination))
 								{
 									locals.existingSubIdx = locals.subIdx;
@@ -566,15 +568,15 @@ public:
 								locals.subscription.amountPerPeriod = locals.subscriptionProposal.amountPerPeriod;
 								locals.subscription.startEpoch = locals.subscriptionProposal.startEpoch; // Use the start epoch from the proposal
 								locals.subscription.currentPeriod = -1; // Reset to -1, will be updated when first payment is made
-								state.activeSubscriptions.set(locals.existingSubIdx, locals.subscription);
+								state.mut().activeSubscriptions.set(locals.existingSubIdx, locals.subscription);
 							}
 						}
 
 						// Clear the subscription proposal
 						setMemory(locals.subscriptionProposal, 0);
-						state.subscriptionProposals.set(locals.proposalIndex, locals.subscriptionProposal);
+						state.mut().subscriptionProposals.set(locals.proposalIndex, locals.subscriptionProposal);
 					}
-					else 
+					else
 					{
 						// Regular one-time transfer (no subscription data)
 						locals.transfer.destination = locals.proposal.data.transfer.destination;
@@ -584,8 +586,8 @@ public:
 						locals.transfer.success = (qpi.transfer(locals.transfer.destination, locals.transfer.amount) >= 0);
 
 						// Add log entry
-						state.latestTransfers.set(state.lastTransfersNextOverwriteIdx, locals.transfer);
-						state.lastTransfersNextOverwriteIdx = (state.lastTransfersNextOverwriteIdx + 1) & (state.latestTransfers.capacity() - 1);
+						state.mut().latestTransfers.set(state.get().lastTransfersNextOverwriteIdx, locals.transfer);
+						state.mut().lastTransfersNextOverwriteIdx = (state.get().lastTransfersNextOverwriteIdx + 1) & (state.get().latestTransfers.capacity() - 1);
 					}
 				}
 			}
@@ -595,8 +597,8 @@ public:
 		// Iterate through all active subscriptions and check if payment is due
 		for (locals.subIdx = 0; locals.subIdx < CCF_MAX_SUBSCRIPTIONS; ++locals.subIdx)
 		{
-			locals.subscription = state.activeSubscriptions.get(locals.subIdx);
-			
+			locals.subscription = state.get().activeSubscriptions.get(locals.subIdx);
+
 			// Skip invalid subscriptions (zero destination indicates empty slot)
 			if (isZero(locals.subscription.destination) || locals.subscription.numberOfPeriods == 0)
 				continue;
@@ -632,24 +634,23 @@ public:
 
 				// Update subscription current period to the period we just paid for
 				locals.subscription.currentPeriod = locals.periodIndex;
-				state.activeSubscriptions.set(locals.subIdx, locals.subscription);
+				state.mut().activeSubscriptions.set(locals.subIdx, locals.subscription);
 
 				// Add log entry
-				state.regularPayments.set(state.lastRegularPaymentsNextOverwriteIdx, locals.regularPayment);
-				state.lastRegularPaymentsNextOverwriteIdx = (uint8)mod<uint64>(state.lastRegularPaymentsNextOverwriteIdx + 1, state.regularPayments.capacity());
+				state.mut().regularPayments.set(state.get().lastRegularPaymentsNextOverwriteIdx, locals.regularPayment);
+				state.mut().lastRegularPaymentsNextOverwriteIdx = (uint8)mod<uint64>(state.get().lastRegularPaymentsNextOverwriteIdx + 1, state.get().regularPayments.capacity());
 
 				// Check if subscription has expired (all periods completed)
 				if (locals.regularPayment.success && locals.subscription.currentPeriod >= (sint32)locals.subscription.numberOfPeriods - 1)
 				{
 					// Clear the subscription by zeroing out the entry (empty slot is indicated by zero destination)
 					setMemory(locals.subscription, 0);
-					state.activeSubscriptions.set(locals.subIdx, locals.subscription);
+					state.mut().activeSubscriptions.set(locals.subIdx, locals.subscription);
 				}
 			}
 		}
 	}
 
 };
-
 
 

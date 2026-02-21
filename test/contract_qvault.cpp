@@ -50,7 +50,7 @@ static std::vector<id> getRandomUsers(unsigned int totalUsers, unsigned int maxN
     return users;
 }
 
-class QVAULTChecker : public QVAULT
+class QVAULTChecker : public QVAULT, public QVAULT::StateData
 {
 public:
     void endEpochChecker(uint64 revenue, const std::vector<id>& QCAPHolders) 

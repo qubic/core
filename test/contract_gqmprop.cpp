@@ -4,7 +4,7 @@
 
 #define PRINT_DETAILS 0
 
-class GQmPropChecker : public GQMPROP
+class GQmPropChecker : public GQMPROP, public GQMPROP::StateData
 {
 public:
     void checkRevenueDonations(

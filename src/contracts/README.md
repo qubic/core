@@ -11,7 +11,7 @@ This document outlines the guidelines for developing secure and efficient Qubic 
 
 ### Concepts:
 
-The state is the persistent memory of the contract that is kept aligned in all nodes.
+The state is the persistent memory of the contract that is kept aligned in all nodes. All persistent fields must be declared inside a nested `struct StateData`. The state is accessed via `state.get()` (read-only) and `state.mut()` (read-write). Calling `state.mut()` marks the state as dirty so that its digest is recomputed at the end of the tick.
 
 A contract can have member functions and procedures.
 
@@ -41,7 +41,7 @@ In order to be available for invocation by transaction and network message, proc
   - Native data types like `int`, `long`, `char`, ... Use their corresponding predefined data types in `qpi.h` (`uint8`, `sint8`, `uint16`, `sint32`, `uint64`, ...)
   - Inclusion of other files via `#include`. All functions must reside within a single file.
   - Math operators `%` and `/`. Use `mod` and `div` from `qpi.h` instead. `+`, `-`, `*`(multiplication), and bit-wise operators are accepted.
-  - Local variable declaration, even for for-loop. You need to define all necessary variables in either in the contract state or in a "locals" struct similar to the input and output struct of a function or procedure.
+  - Local variable declaration, even for for-loop. You need to define all necessary variables in either `StateData` (accessed via `state.mut()`) or in a "locals" struct similar to the input and output struct of a function or procedure.
   - The `typedef`, `union` keyword.
   - Floating point data types (half, float, double)
  
