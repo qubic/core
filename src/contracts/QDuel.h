@@ -15,24 +15,22 @@ struct QDUEL2
 {
 };
 
-enum class QDUELEState : uint8
-{
-	NONE = 0,
-	WAIT_TIME = 1 << 0,
-
-	LOCKED = WAIT_TIME
-};
-
-inline QDUELEState operator|(const QDUELEState& a, const QDUELEState& b) { return static_cast<QDUELEState>(static_cast<uint8>(a) | static_cast<uint8>(b)); }
-inline QDUELEState operator&(const QDUELEState& a, const QDUELEState& b) { return static_cast<QDUELEState>(static_cast<uint8>(a) & static_cast<uint8>(b)); }
-inline QDUELEState operator~(const QDUELEState& a) { return static_cast<QDUELEState>(~static_cast<uint8>(a)); }
-template<typename T> inline bool operator==(const QDUELEState& a, const T& b) { return static_cast<uint8>(a) == b; }
-template<typename T> inline bool operator!=(const QDUELEState& a, const T& b) { return !(a == b); }
-
 struct QDUEL : public ContractBase
 {
 public:
-	typedef QDUELEState EState;
+	enum class EState : uint8
+	{
+		NONE = 0,
+		WAIT_TIME = 1 << 0,
+
+		LOCKED = WAIT_TIME
+	};
+
+	friend EState operator|(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) | static_cast<uint8>(b)); }
+	friend EState operator&(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) & static_cast<uint8>(b)); }
+	friend EState operator~(const EState& a) { return static_cast<EState>(~static_cast<uint8>(a)); }
+	template<typename T> friend bool operator==(const EState& a, const T& b) { return static_cast<uint8>(a) == b; }
+	template<typename T> friend bool operator!=(const EState& a, const T& b) { return !(a == b); }
 
 	static EState removeStateFlag(EState state, EState flag) { return state & ~flag; }
 	static EState addStateFlag(EState state, EState flag) { return state | flag; }
