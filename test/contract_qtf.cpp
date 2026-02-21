@@ -1547,8 +1547,7 @@ TEST(ContractQThirtyFour, WinningCombinationsHistory_WrapAroundKeepsLatestAtLast
 	const uint64 writeIndex = ctl.state()->getWinningCombinationsWriteIndex();
 	EXPECT_EQ(writeIndex, rounds % QTF_WINNING_COMBINATIONS_HISTORY_SIZE);
 
-	const uint64 lastWrittenSlot =
-	    (writeIndex + QTF_WINNING_COMBINATIONS_HISTORY_SIZE - 1ULL) % QTF_WINNING_COMBINATIONS_HISTORY_SIZE;
+	const uint64 lastWrittenSlot = (writeIndex + QTF_WINNING_COMBINATIONS_HISTORY_SIZE - 1ULL) % QTF_WINNING_COMBINATIONS_HISTORY_SIZE;
 	EXPECT_TRUE(valuesEqual(history.history.get(lastWrittenSlot).values, lastWinningValues));
 }
 
@@ -2649,6 +2648,70 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_MultipleWinners_Split
 	const uint64 expectedPerWinner = initialJackpot / 2;
 	EXPECT_EQ(static_cast<uint64>(getBalance(w1) - w1Before), expectedPerWinner);
 	EXPECT_EQ(static_cast<uint64>(getBalance(w2) - w2Before), expectedPerWinner);
+}
+
+TEST(ContractQThirtyFour, WinnerData_WonAmount_MatchesBalanceGain_ForK2K3K4)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	m256i testDigest = {};
+	testDigest.m256i_u64[0] = 0x1122334455667788ULL;
+	const auto nums = ctl.computeWinningAndLosing(testDigest);
+
+	static constexpr uint64 initialJackpot = 500000000ULL;
+	ctl.state()->setJackpot(initialJackpot);
+	increaseEnergy(ctl.qtfSelf(), initialJackpot);
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+
+	const id k4Winner = id::randomValue();
+	const id k3Winner = id::randomValue();
+	const id k2Winner = id::randomValue();
+	const id loser = id::randomValue();
+
+	ctl.fundAndBuyTicket(k4Winner, ticketPrice, nums.winning);
+	ctl.fundAndBuyTicket(k3Winner, ticketPrice, ctl.makeK3Numbers(nums.winning, 0));
+	ctl.fundAndBuyTicket(k2Winner, ticketPrice, ctl.makeK2Numbers(nums.winning, 0));
+	ctl.fundAndBuyTicket(loser, ticketPrice, nums.losing);
+
+	const uint64 k4Before = getBalance(k4Winner);
+	const uint64 k3Before = getBalance(k3Winner);
+	const uint64 k2Before = getBalance(k2Winner);
+
+	ctl.drawWithDigest(testDigest);
+
+	const uint64 k4Gain = static_cast<uint64>(getBalance(k4Winner) - k4Before);
+	const uint64 k3Gain = static_cast<uint64>(getBalance(k3Winner) - k3Before);
+	const uint64 k2Gain = static_cast<uint64>(getBalance(k2Winner) - k2Before);
+
+	const QTF::GetWinnerData_output winnerData = ctl.getWinnerData();
+	bool foundK4 = false;
+	bool foundK3 = false;
+	bool foundK2 = false;
+	for (uint64 i = 0; i < winnerData.winnerData.winnerCounter; ++i)
+	{
+		const QTF::WinnerPlayerData& winnerEntry = winnerData.winnerData.winners.get(i);
+		if (winnerEntry.playerData.player == k4Winner)
+		{
+			EXPECT_EQ(winnerEntry.wonAmount, k4Gain);
+			foundK4 = true;
+		}
+		if (winnerEntry.playerData.player == k3Winner)
+		{
+			EXPECT_EQ(winnerEntry.wonAmount, k3Gain);
+			foundK3 = true;
+		}
+		if (winnerEntry.playerData.player == k2Winner)
+		{
+			EXPECT_EQ(winnerEntry.wonAmount, k2Gain);
+			foundK2 = true;
+		}
+	}
+
+	EXPECT_TRUE(foundK4);
+	EXPECT_TRUE(foundK3);
+	EXPECT_TRUE(foundK2);
 }
 
 TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_ReseedLimitedByQRP)
