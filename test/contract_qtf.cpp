@@ -24,7 +24,6 @@ constexpr uint16 QTF_FUNCTION_GET_FEES = 8;
 constexpr uint16 QTF_FUNCTION_ESTIMATE_PRIZE_PAYOUTS = 9;
 constexpr uint16 QTF_FUNCTION_GET_PLAYERS = 10;
 constexpr uint16 QTF_FUNCTION_GET_WINNING_COMBINATIONS_HISTORY = 11;
-constexpr uint16 QTF_FUNCTION_GET_WINNER_REWARDS = 12;
 
 using QTFRandomValues = Array<uint8, QTF_RANDOM_VALUES_COUNT>;
 
@@ -87,21 +86,6 @@ namespace
 		k2Pool = (winnersBlock * QTF_BASE_K2_SHARE_BP) / 10000ULL;
 		k3Pool = (winnersBlock * QTF_BASE_K3_SHARE_BP) / 10000ULL;
 	}
-
-	static bool tryGetWinnerRewardFromArray(const QTF::GetWinnerRewards_output& output, const id& playerId, uint64& reward)
-	{
-		for (uint64 i = 0; i < output.numberOfWinnerRewards; ++i)
-		{
-			const QTF::WinnerReward entry = output.winnerRewards.get(i);
-			if (entry.playerId == playerId)
-			{
-				reward = entry.reward;
-				return true;
-			}
-		}
-
-		return false;
-	}
 } // namespace
 
 constexpr uint8 QTF_ANY_DAY_SCHEDULE = 0xFF;
@@ -120,7 +104,6 @@ public:
 	uint32 getFrRoundsAtOrAboveTarget() const { return frRoundsAtOrAboveTarget; }
 	uint64 getWinningCombinationsWriteIndex() const { return winningCombinationsCount; }
 	const id& team() const { return teamAddress; }
-	bool tryGetWinnerReward(const id& playerId, uint64& reward) const { return winnerRewardByPlayer.get(playerId, reward); }
 
 	void setScheduleMask(uint8 newMask) { schedule = newMask; }
 	void setJackpot(uint64 value) { jackpot = value; }
@@ -403,14 +386,6 @@ public:
 		return output;
 	}
 
-	QTF::GetWinnerRewards_output getWinnerRewards()
-	{
-		QTF::GetWinnerRewards_input input{};
-		QTF::GetWinnerRewards_output output{};
-		callFunction(QTF_CONTRACT_INDEX, QTF_FUNCTION_GET_WINNER_REWARDS, input, output);
-		return output;
-	}
-
 	// Procedure wrappers
 	QTF::BuyTicket_output buyTicket(const id& user, uint64 reward, const QTFRandomValues& numbers)
 	{
@@ -621,9 +596,8 @@ public:
 
 	WinningAndLosing computeWinningAndLosing(const m256i& digest)
 	{
-		WinningAndLosing out;
-		out.winning = computeWinningNumbersForDigest(digest);
-		out.losing = makeLosingNumbers(out.winning);
+		WinningAndLosing out = {computeWinningNumbersForDigest(digest), makeLosingNumbers(out.winning)};
+
 		return out;
 	}
 
@@ -654,7 +628,7 @@ public:
 			isWinning[v] = true;
 		}
 
-		QTFRandomValues ticket;
+		QTFRandomValues ticket{};
 		uint64 outIndex = 0;
 
 		// Take `matchCount` winning numbers as the matches (variant-dependent, wrap around 4).
@@ -1873,118 +1847,6 @@ TEST(ContractQThirtyFour, Settlement_RoundsSinceK4_Increments)
 	}
 }
 
-TEST(ContractQThirtyFour, Settlement_WinnerRewardMap_StoresWinnerAmount)
-{
-	ContractTestingQTF ctl;
-	ctl.beginEpochWithValidTime();
-	ctl.forceFRDisabledForBaseline();
-
-	m256i digest = {};
-	digest.m256i_u64[0] = 0x4444555566667777ULL;
-
-	const QTFRandomValues winning = ctl.computeWinningNumbersForDigest(digest);
-	const QTFRandomValues k2Ticket = ctl.makeK2Numbers(winning, 0);
-	const QTFRandomValues losingTicket = ctl.makeLosingNumbers(winning);
-	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
-
-	const id k2Winner = id::randomValue();
-	const id loser = id::randomValue();
-	ctl.fundAndBuyTicket(k2Winner, ticketPrice, k2Ticket);
-	ctl.fundAndBuyTicket(loser, ticketPrice, losingTicket);
-
-	ctl.setPrevSpectrumDigest(digest);
-	ctl.endEpoch();
-
-	const QTF::GetFees_output fees = ctl.getFees();
-	uint64 winnersBlock = 0;
-	uint64 k2Pool = 0;
-	uint64 k3Pool = 0;
-	computeBaselinePrizePools(ticketPrice * 2ULL, fees, winnersBlock, k2Pool, k3Pool);
-
-	uint64 winnerReward = 0;
-	EXPECT_TRUE(ctl.state()->tryGetWinnerReward(k2Winner, winnerReward));
-	EXPECT_EQ(winnerReward, k2Pool);
-
-	uint64 loserReward = 0;
-	EXPECT_FALSE(ctl.state()->tryGetWinnerReward(loser, loserReward));
-
-	const QTF::GetWinnerRewards_output winnerRewardsPublic = ctl.getWinnerRewards();
-	EXPECT_EQ(winnerRewardsPublic.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
-
-	uint64 publicReward = 0;
-	EXPECT_TRUE(tryGetWinnerRewardFromArray(winnerRewardsPublic, k2Winner, publicReward));
-	EXPECT_EQ(publicReward, k2Pool);
-	EXPECT_FALSE(tryGetWinnerRewardFromArray(winnerRewardsPublic, loser, publicReward));
-}
-
-TEST(ContractQThirtyFour, Settlement_WinnerRewardMap_IsClearedBeforeNextRound)
-{
-	ContractTestingQTF ctl;
-	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
-
-	// Round 1: produce one k2 winner and ensure reward exists.
-	ctl.beginEpochWithValidTime();
-	ctl.forceFRDisabledForBaseline();
-
-	m256i digestRound1 = {};
-	digestRound1.m256i_u64[0] = 0x88889999AAAABBBBULL;
-	const QTFRandomValues winningRound1 = ctl.computeWinningNumbersForDigest(digestRound1);
-
-	const id winnerRound1 = id::randomValue();
-	ctl.fundAndBuyTicket(winnerRound1, ticketPrice, ctl.makeK2Numbers(winningRound1, 1));
-
-	ctl.setPrevSpectrumDigest(digestRound1);
-	ctl.endEpoch();
-
-	uint64 rewardRound1 = 0;
-	EXPECT_TRUE(ctl.state()->tryGetWinnerReward(winnerRound1, rewardRound1));
-	EXPECT_GT(rewardRound1, 0ULL);
-
-	// Round 2: no winners, so per-draw map must be cleared.
-	ctl.beginEpochWithValidTime();
-	ctl.forceFRDisabledForBaseline();
-
-	m256i digestRound2 = {};
-	digestRound2.m256i_u64[0] = 0xCCCCDDDDEEEEFFFFULL;
-	const auto numsRound2 = ctl.computeWinningAndLosing(digestRound2);
-	const id loserRound2 = id::randomValue();
-	ctl.fundAndBuyTicket(loserRound2, ticketPrice, numsRound2.losing);
-
-	ctl.setPrevSpectrumDigest(digestRound2);
-	ctl.endEpoch();
-
-	uint64 staleReward = 0;
-	EXPECT_FALSE(ctl.state()->tryGetWinnerReward(winnerRound1, staleReward));
-	EXPECT_FALSE(ctl.state()->tryGetWinnerReward(loserRound2, staleReward));
-}
-
-TEST(ContractQThirtyFour, Settlement_WinnerRewardMap_AccumulatesForSamePlayerMultiTicketWins)
-{
-	ContractTestingQTF ctl;
-	ctl.beginEpochWithValidTime();
-	ctl.forceFRDisabledForBaseline();
-
-	m256i digest = {};
-	digest.m256i_u64[0] = 0x1234ABCDEF995533ULL;
-	const QTFRandomValues winning = ctl.computeWinningNumbersForDigest(digest);
-	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
-
-	const id multiWinner = id::randomValue();
-	ctl.fundAndBuyTicket(multiWinner, ticketPrice, ctl.makeK2Numbers(winning, 0));
-	ctl.fundAndBuyTicket(multiWinner, ticketPrice, ctl.makeK3Numbers(winning, 1));
-	ctl.fundAndBuyTicket(multiWinner, ticketPrice, ctl.makeK2Numbers(winning, 2));
-
-	const uint64 balanceBefore = getBalance(multiWinner);
-	ctl.setPrevSpectrumDigest(digest);
-	ctl.endEpoch();
-	const uint64 gained = static_cast<uint64>(getBalance(multiWinner) - balanceBefore);
-
-	uint64 recordedReward = 0;
-	EXPECT_TRUE(ctl.state()->tryGetWinnerReward(multiWinner, recordedReward));
-	EXPECT_EQ(recordedReward, gained);
-	EXPECT_GT(recordedReward, 0ULL);
-}
-
 // ============================================================================
 // FAST-RECOVERY (FR) TESTS
 // ============================================================================
@@ -2727,12 +2589,8 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_DepletesAndReseeds)
 
 	// Trigger settlement using our fixed prevSpectrumDigest
 	const uint64 k4WinnerBefore = getBalance(k4Winner);
-	const uint64 k3WinnerBefore = getBalance(k3Winner);
-	const uint64 k2WinnerBefore = getBalance(k2Winner);
 	ctl.drawWithDigest(testDigest);
 	const uint64 k4WinnerAfter = getBalance(k4Winner);
-	const uint64 k3WinnerAfter = getBalance(k3Winner);
-	const uint64 k2WinnerAfter = getBalance(k2Winner);
 
 	// Verify k=4 jackpot win behavior:
 	const uint64 jackpotAfter = ctl.state()->getJackpot();
@@ -2755,16 +2613,6 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_DepletesAndReseeds)
 
 	// Verify k=4 winner received exact payout (jackpotBefore / countK4).
 	EXPECT_EQ(static_cast<uint64>(k4WinnerAfter - k4WinnerBefore), initialJackpot);
-
-	// Verify winner reward map stores exact per-draw paid amounts.
-	uint64 reward = 0;
-	EXPECT_TRUE(ctl.state()->tryGetWinnerReward(k4Winner, reward));
-	EXPECT_EQ(reward, static_cast<uint64>(k4WinnerAfter - k4WinnerBefore));
-	EXPECT_TRUE(ctl.state()->tryGetWinnerReward(k3Winner, reward));
-	EXPECT_EQ(reward, static_cast<uint64>(k3WinnerAfter - k3WinnerBefore));
-	EXPECT_TRUE(ctl.state()->tryGetWinnerReward(k2Winner, reward));
-	EXPECT_EQ(reward, static_cast<uint64>(k2WinnerAfter - k2WinnerBefore));
-	EXPECT_FALSE(ctl.state()->tryGetWinnerReward(loser, reward));
 }
 
 TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_MultipleWinners_SplitsEvenly)
@@ -2799,12 +2647,70 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_MultipleWinners_Split
 	const uint64 expectedPerWinner = initialJackpot / 2;
 	EXPECT_EQ(static_cast<uint64>(getBalance(w1) - w1Before), expectedPerWinner);
 	EXPECT_EQ(static_cast<uint64>(getBalance(w2) - w2Before), expectedPerWinner);
+}
 
-	uint64 reward = 0;
-	EXPECT_TRUE(ctl.state()->tryGetWinnerReward(w1, reward));
-	EXPECT_EQ(reward, expectedPerWinner);
-	EXPECT_TRUE(ctl.state()->tryGetWinnerReward(w2, reward));
-	EXPECT_EQ(reward, expectedPerWinner);
+TEST(ContractQThirtyFour, WinnerData_WonAmount_MatchesBalanceGain_ForK2K3K4)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	m256i testDigest = {};
+	testDigest.m256i_u64[0] = 0x1122334455667788ULL;
+	const auto nums = ctl.computeWinningAndLosing(testDigest);
+
+	static constexpr uint64 initialJackpot = 500000000ULL;
+	ctl.state()->setJackpot(initialJackpot);
+	increaseEnergy(ctl.qtfSelf(), initialJackpot);
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+
+	const id k4Winner = id::randomValue();
+	const id k3Winner = id::randomValue();
+	const id k2Winner = id::randomValue();
+	const id loser = id::randomValue();
+
+	ctl.fundAndBuyTicket(k4Winner, ticketPrice, nums.winning);
+	ctl.fundAndBuyTicket(k3Winner, ticketPrice, ctl.makeK3Numbers(nums.winning, 0));
+	ctl.fundAndBuyTicket(k2Winner, ticketPrice, ctl.makeK2Numbers(nums.winning, 0));
+	ctl.fundAndBuyTicket(loser, ticketPrice, nums.losing);
+
+	const uint64 k4Before = getBalance(k4Winner);
+	const uint64 k3Before = getBalance(k3Winner);
+	const uint64 k2Before = getBalance(k2Winner);
+
+	ctl.drawWithDigest(testDigest);
+
+	const uint64 k4Gain = static_cast<uint64>(getBalance(k4Winner) - k4Before);
+	const uint64 k3Gain = static_cast<uint64>(getBalance(k3Winner) - k3Before);
+	const uint64 k2Gain = static_cast<uint64>(getBalance(k2Winner) - k2Before);
+
+	const QTF::GetWinnerData_output winnerData = ctl.getWinnerData();
+	bool foundK4 = false;
+	bool foundK3 = false;
+	bool foundK2 = false;
+	for (uint64 i = 0; i < winnerData.winnerData.winnerCounter; ++i)
+	{
+		const QTF::WinnerPlayerData& winnerEntry = winnerData.winnerData.winners.get(i);
+		if (winnerEntry.player == k4Winner)
+		{
+			EXPECT_EQ(winnerEntry.wonAmount, k4Gain);
+			foundK4 = true;
+		}
+		if (winnerEntry.player == k3Winner)
+		{
+			EXPECT_EQ(winnerEntry.wonAmount, k3Gain);
+			foundK3 = true;
+		}
+		if (winnerEntry.player == k2Winner)
+		{
+			EXPECT_EQ(winnerEntry.wonAmount, k2Gain);
+			foundK2 = true;
+		}
+	}
+
+	EXPECT_TRUE(foundK4);
+	EXPECT_TRUE(foundK3);
+	EXPECT_TRUE(foundK2);
 }
 
 TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_ReseedLimitedByQRP)
@@ -2835,9 +2741,6 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_ReseedLimitedByQRP)
 	ctl.drawWithDigest(testDigest);
 
 	EXPECT_EQ(static_cast<uint64>(getBalance(w1) - w1Before), initialJackpot);
-	uint64 reward = 0;
-	EXPECT_TRUE(ctl.state()->tryGetWinnerReward(w1, reward));
-	EXPECT_EQ(reward, initialJackpot);
 
 	// With a single winning ticket and baseline overflow split, winnersOverflow == winnersBlock, reserveAdd == winnersBlock/2, carryAdd ==
 	// winnersBlock/2.
@@ -2911,10 +2814,7 @@ TEST(ContractQThirtyFour, DeterministicWinner_K2K3Payouts_VerifyRevenueSplit)
 
 	// Get balances before settlement
 	const uint64 k3Winner1Before = getBalance(k3Winner1);
-	const uint64 k3Winner2Before = getBalance(k3Winner2);
 	const uint64 k2Winner1Before = getBalance(k2Winner1);
-	const uint64 k2Winner2Before = getBalance(k2Winner2);
-	const uint64 k2Winner3Before = getBalance(k2Winner3);
 
 	// Trigger settlement
 	ctl.drawWithDigest(testDigest);
@@ -2931,25 +2831,6 @@ TEST(ContractQThirtyFour, DeterministicWinner_K2K3Payouts_VerifyRevenueSplit)
 	const uint64 k2Winner1After = getBalance(k2Winner1);
 	const uint64 k2Winner1Gained = k2Winner1After - k2Winner1Before;
 	EXPECT_EQ(static_cast<uint64>(k2Winner1Gained), expectedK2PayoutPerWinner) << "k=2 winner should receive one-third of k2 pool";
-
-	const uint64 k3Winner2After = getBalance(k3Winner2);
-	const uint64 k2Winner2After = getBalance(k2Winner2);
-	const uint64 k2Winner3After = getBalance(k2Winner3);
-	EXPECT_EQ(static_cast<uint64>(k3Winner2After - k3Winner2Before), expectedK3PayoutPerWinner);
-	EXPECT_EQ(static_cast<uint64>(k2Winner2After - k2Winner2Before), expectedK2PayoutPerWinner);
-	EXPECT_EQ(static_cast<uint64>(k2Winner3After - k2Winner3Before), expectedK2PayoutPerWinner);
-
-	uint64 reward = 0;
-	EXPECT_TRUE(ctl.state()->tryGetWinnerReward(k3Winner1, reward));
-	EXPECT_EQ(reward, expectedK3PayoutPerWinner);
-	EXPECT_TRUE(ctl.state()->tryGetWinnerReward(k3Winner2, reward));
-	EXPECT_EQ(reward, expectedK3PayoutPerWinner);
-	EXPECT_TRUE(ctl.state()->tryGetWinnerReward(k2Winner1, reward));
-	EXPECT_EQ(reward, expectedK2PayoutPerWinner);
-	EXPECT_TRUE(ctl.state()->tryGetWinnerReward(k2Winner2, reward));
-	EXPECT_EQ(reward, expectedK2PayoutPerWinner);
-	EXPECT_TRUE(ctl.state()->tryGetWinnerReward(k2Winner3, reward));
-	EXPECT_EQ(reward, expectedK2PayoutPerWinner);
 
 	// Verify winning numbers in winner data
 	QTF::GetWinnerData_output winnerData = ctl.getWinnerData();
