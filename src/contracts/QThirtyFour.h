@@ -95,21 +95,11 @@ struct QTF : ContractBase
 	{
 		id player;
 		Array<uint8, QTF_RANDOM_VALUES_COUNT> randomValues;
-
-		bool isValid() const { return !isZero(player); }
-	};
-
-	struct WinnerPlayerData
-	{
-		PlayerData playerData;
-		uint64 wonAmount;
-
-		bool isValid() const { return playerData.isValid(); }
 	};
 
 	struct WinnerData
 	{
-		Array<WinnerPlayerData, QTF_MAX_NUMBER_OF_PLAYERS> winners;
+		Array<PlayerData, QTF_MAX_NUMBER_OF_PLAYERS> winners;
 		Array<uint8, QTF_RANDOM_VALUES_COUNT> winnerValues;
 		uint64 winnerCounter;
 		uint16 epoch;
@@ -673,9 +663,10 @@ struct QTF : ContractBase
 		uint64 rlTotalShares;
 		uint64 rlPayback;
 		uint64 rlShares;
+		id winnerPlayerId;
+		uint64 winnerReward;
 		// Cache for countMatches results to avoid redundant calculations
 		Array<uint8, QTF_MAX_NUMBER_OF_PLAYERS> cachedMatches;
-		WinnerPlayerData winnerPlayerData;
 	};
 
 	struct END_EPOCH_locals
@@ -1213,21 +1204,38 @@ protected:
 		}
 	}
 
-	static void clearWinerData(QTF& state) { setMemory(state.lastWinnerData, 0); }
+	static void clearWinerData(QTF& state)
+	{
+		// Clear per-draw winner snapshots only for a settlement that actually reaches draw/payout stage.
+		setMemory(state.lastWinnerData, 0);
+		setMemory(state.winnerRewardByPlayer, 0);
+	}
 
-	static void fillWinnerData(QTF& state, const WinnerPlayerData& winnerPlayerData, const Array<uint8, QTF_RANDOM_VALUES_COUNT>& winnerValues,
+	static void fillWinnerData(QTF& state, const PlayerData& playerData, const Array<uint8, QTF_RANDOM_VALUES_COUNT>& winnerValues,
 	                           const uint16& epoch)
 	{
-		if (winnerPlayerData.isValid())
+		if (!isZero(playerData.player))
 		{
 			if (state.lastWinnerData.winnerCounter < state.lastWinnerData.winners.capacity())
 			{
-				state.lastWinnerData.winners.set(state.lastWinnerData.winnerCounter++, winnerPlayerData);
+				state.lastWinnerData.winners.set(state.lastWinnerData.winnerCounter++, playerData);
 			}
 		}
 
 		state.lastWinnerData.winnerValues = winnerValues;
 		state.lastWinnerData.epoch = epoch;
+	}
+
+	static void addWinnerReward(QTF& state, const id& winnerPlayerId, const uint64& winnerPayout, uint64& winnerReward)
+	{
+		if (state.winnerRewardByPlayer.get(winnerPlayerId, winnerReward))
+		{
+			state.winnerRewardByPlayer.set(winnerPlayerId, sadd(winnerReward, winnerPayout));
+		}
+		else
+		{
+			state.winnerRewardByPlayer.set(winnerPlayerId, winnerPayout);
+		}
 	}
 
 	static void addWinningCombinationToHistory(QTF& state, const Array<uint8, QTF_RANDOM_VALUES_COUNT>& winnerValues)
@@ -1254,13 +1262,15 @@ protected:
 	uint16 frRoundsAtOrAboveTarget;                       // hysteresis counter for FR off
 	uint8 currentState;                                   // bitmask of STATE_* flags (e.g., STATE_SELLING)
 	Array<Array<uint8, QTF_RANDOM_VALUES_COUNT>, QTF_WINNING_COMBINATIONS_HISTORY_SIZE>
-	    winningCombinationsHistory;  // ring buffer of winning combinations
-	uint64 winningCombinationsCount; // next write position in ring buffer
+	    winningCombinationsHistory;                                      // ring buffer of winning combinations
+	uint64 winningCombinationsCount;                                     // next write position in ring buffer
+	HashMap<id, uint64, QTF_MAX_NUMBER_OF_PLAYERS> winnerRewardByPlayer; // payout amount by winner id for the latest successful draw
 
 private:
 	// Core settlement pipeline for one epoch: fees, FR redirects, payouts, jackpot/reserve updates.
 	PRIVATE_PROCEDURE_WITH_LOCALS(SettleEpoch)
 	{
+		// Intentionally preserve previous winner snapshots on early exits below (no draw or aborted settlement).
 		if (state.numberOfPlayers == 0)
 		{
 			return;
@@ -1396,7 +1406,7 @@ private:
 		locals.k2PayoutPool = locals.k2Pool; // mutable pools after top-ups
 		locals.k3PayoutPool = locals.k3Pool;
 
-		// Reset last-winner snapshot for this settlement (per-round view).
+		// Reset winner snapshots only after settlement preconditions pass.
 		clearWinerData(state);
 
 		// Generate winning random values using CALL
@@ -1487,33 +1497,31 @@ private:
 		while (locals.i < state.numberOfPlayers)
 		{
 			locals.matches = locals.cachedMatches.get(locals.i); // Use cached result
+			locals.winnerPlayerId = state.players.get(locals.i).player;
 
 			// k2 payout
 			if (locals.matches == 2 && locals.countK2 > 0 && locals.k2PerWinner > 0)
 			{
-				qpi.transfer(state.players.get(locals.i).player, locals.k2PerWinner);
-				locals.winnerPlayerData.playerData = state.players.get(locals.i);
-				locals.winnerPlayerData.wonAmount = locals.k2PerWinner;
-				fillWinnerData(state, locals.winnerPlayerData, locals.winningValues, locals.currentEpoch);
+				qpi.transfer(locals.winnerPlayerId, locals.k2PerWinner);
+				addWinnerReward(state, locals.winnerPlayerId, locals.k2PerWinner, locals.winnerReward);
+				fillWinnerData(state, state.players.get(locals.i), locals.winningValues, locals.currentEpoch);
 			}
 			// k3 payout
 			if (locals.matches == 3 && locals.countK3 > 0 && locals.k3PerWinner > 0)
 			{
-				qpi.transfer(state.players.get(locals.i).player, locals.k3PerWinner);
-				locals.winnerPlayerData.playerData = state.players.get(locals.i);
-				locals.winnerPlayerData.wonAmount = locals.k3PerWinner;
-				fillWinnerData(state, locals.winnerPlayerData, locals.winningValues, locals.currentEpoch);
+				qpi.transfer(locals.winnerPlayerId, locals.k3PerWinner);
+				addWinnerReward(state, locals.winnerPlayerId, locals.k3PerWinner, locals.winnerReward);
+				fillWinnerData(state, state.players.get(locals.i), locals.winningValues, locals.currentEpoch);
 			}
 			// k4 payout (jackpot)
 			if (locals.matches == 4 && locals.countK4 > 0)
 			{
 				if (locals.jackpotPerK4Winner > 0)
 				{
-					qpi.transfer(state.players.get(locals.i).player, locals.jackpotPerK4Winner);
+					qpi.transfer(locals.winnerPlayerId, locals.jackpotPerK4Winner);
+					addWinnerReward(state, locals.winnerPlayerId, locals.jackpotPerK4Winner, locals.winnerReward);
 				}
-				locals.winnerPlayerData.playerData = state.players.get(locals.i);
-				locals.winnerPlayerData.wonAmount = locals.jackpotPerK4Winner;
-				fillWinnerData(state, locals.winnerPlayerData, locals.winningValues, locals.currentEpoch);
+				fillWinnerData(state, state.players.get(locals.i), locals.winningValues, locals.currentEpoch);
 			}
 
 			++locals.i;
