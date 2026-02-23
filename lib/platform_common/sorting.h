@@ -150,29 +150,41 @@ protected:
 
     void upHeap(unsigned int idx)
     {
-        if (idx == 0)
-            return;
-        const unsigned int parentIdx = (idx - 1) / 2;
-        if (_compare(_data[idx], _data[parentIdx]))
+        while (idx != 0)
         {
-            swap(idx, parentIdx);
-            upHeap(parentIdx);
+            const unsigned int parentIdx = (idx - 1) / 2;
+            if (_compare(_data[idx], _data[parentIdx]))
+            {
+                swap(idx, parentIdx);
+                idx = parentIdx;
+            }
+            else
+            {
+                return;
+            }
         }
     }
 
     void downHeap(unsigned int idx)
     {
-        const unsigned int childIdx1 = idx * 2 + 1;
-        const unsigned int childIdx2 = childIdx1 + 1;
-        if (childIdx1 >= _size)
-            return;
-        unsigned int minChildIdx = childIdx1;
-        if (childIdx2 < _size && _compare(_data[childIdx2], _data[childIdx1]))
-            minChildIdx = childIdx2;
-        if (_compare(_data[minChildIdx], _data[idx]))
+        while (1)
         {
-            swap(idx, minChildIdx);
-            downHeap(minChildIdx);
+            const unsigned int childIdx1 = idx * 2 + 1;
+            const unsigned int childIdx2 = childIdx1 + 1;
+            if (childIdx1 >= _size)
+                return;
+            unsigned int minChildIdx = childIdx1;
+            if (childIdx2 < _size && _compare(_data[childIdx2], _data[childIdx1]))
+                minChildIdx = childIdx2;
+            if (_compare(_data[minChildIdx], _data[idx]))
+            {
+                swap(idx, minChildIdx);
+                idx = minChildIdx;
+            }
+            else
+            {
+                return;
+            }
         }
     }
 
