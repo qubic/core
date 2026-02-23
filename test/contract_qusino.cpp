@@ -89,7 +89,7 @@ public:
         return output.transferredNumberOfShares;
     }
 
-    QUSINO::buyQST_output buyQST(const id& buyer, uint64 amount, bool type, sint64 invocationReward)
+    QUSINO::buyQST_output buyQST(const id& buyer, uint64 amount, uint8 type, sint64 invocationReward)
     {
         QUSINO::buyQST_input input;
         input.amount = amount;
@@ -117,7 +117,7 @@ public:
         return output;
     }
 
-    QUSINO::transferSTAROrQSC_output transferSTAROrQSC(const id& user, const id& dest, uint64 amount, bool type, sint64 invocationReward)
+    QUSINO::transferSTAROrQSC_output transferSTAROrQSC(const id& user, const id& dest, uint64 amount, uint8 type, sint64 invocationReward)
     {
         QUSINO::transferSTAROrQSC_input input;
         input.dest = dest;
@@ -301,7 +301,7 @@ TEST(ContractQUSINO, buyQST_WithQubic_Success)
     
     increaseEnergy(buyer, requiredReward);
     
-    QUSINO::buyQST_output output = QUSINO.buyQST(buyer, buyAmount, 0, requiredReward);
+    QUSINO::buyQST_output output = QUSINO.buyQST(buyer, buyAmount, QUSINO_ASSET_TYPE_QUBIC, requiredReward);
     EXPECT_EQ(output.returnCode, QUSINO_SUCCESS);
     
     // Verify buyer received QST
@@ -347,7 +347,7 @@ TEST(ContractQUSINO, buyQST_WithQSC_Success)
     
     uint64 buyAmount = 1000;
     increaseEnergy(buyer, 1);
-    QUSINO::buyQST_output output = QUSINO.buyQST(buyer, buyAmount, 1, 1);
+    QUSINO::buyQST_output output = QUSINO.buyQST(buyer, buyAmount, QUSINO_ASSET_TYPE_QSC, 1);
     EXPECT_EQ(output.returnCode, QUSINO_SUCCESS);
     
     EXPECT_EQ(numberOfPossessedShares(qstAssetName, qstIssuer, buyer, buyer, QUSINO_CONTRACT_INDEX, QUSINO_CONTRACT_INDEX), buyAmount);
@@ -391,7 +391,7 @@ TEST(ContractQUSINO, buyQST_InsufficientQSTAmountForSale)
     
     increaseEnergy(buyer, requiredReward);
     
-    QUSINO::buyQST_output output = QUSINO.buyQST(buyer, buyAmount, 0, requiredReward);
+    QUSINO::buyQST_output output = QUSINO.buyQST(buyer, buyAmount, QUSINO_ASSET_TYPE_QUBIC, requiredReward);
     EXPECT_EQ(output.returnCode, QUSINO_INSUFFICIENT_QST_AMOUNT_FOR_SALE);
 }
 
@@ -428,7 +428,7 @@ TEST(ContractQUSINO, buyQST_InsufficientFunds)
     
     increaseEnergy(buyer, insufficientReward);
     
-    QUSINO::buyQST_output output = QUSINO.buyQST(buyer, buyAmount, 0, insufficientReward);
+    QUSINO::buyQST_output output = QUSINO.buyQST(buyer, buyAmount, QUSINO_ASSET_TYPE_QUBIC, insufficientReward);
     EXPECT_EQ(output.returnCode, QUSINO_INSUFFICIENT_FUNDS);
 }
 
@@ -458,7 +458,7 @@ TEST(ContractQUSINO, buyQST_InsufficientQSC)
     id buyer = QUSINO_testUser2;
     uint64 buyAmount = 1000;
     increaseEnergy(buyer, 1);
-    QUSINO::buyQST_output output = QUSINO.buyQST(buyer, buyAmount, 1, 1);
+    QUSINO::buyQST_output output = QUSINO.buyQST(buyer, buyAmount, QUSINO_ASSET_TYPE_QSC, 1);
     EXPECT_EQ(output.returnCode, QUSINO_INSUFFICIENT_QSC);
 }
 
@@ -558,7 +558,7 @@ TEST(ContractQUSINO, transferSTAROrQSC_STAR_Success)
     
     // Transfer STAR
     increaseEnergy(sender, 1);
-    QUSINO::transferSTAROrQSC_output output = QUSINO.transferSTAROrQSC(sender, receiver, amount, 1, 1);
+    QUSINO::transferSTAROrQSC_output output = QUSINO.transferSTAROrQSC(sender, receiver, amount, QUSINO_ASSET_TYPE_STAR, 1);
     EXPECT_EQ(output.returnCode, QUSINO_SUCCESS);
     
     // Check balances
@@ -604,7 +604,7 @@ TEST(ContractQUSINO, transferSTAROrQSC_QSC_Success)
     
     // Transfer QSC
     increaseEnergy(sender, 1);
-    QUSINO::transferSTAROrQSC_output output = QUSINO.transferSTAROrQSC(sender, receiver, amount, 0, 1);
+    QUSINO::transferSTAROrQSC_output output = QUSINO.transferSTAROrQSC(sender, receiver, amount, QUSINO_ASSET_TYPE_QSC, 1);
     EXPECT_EQ(output.returnCode, QUSINO_SUCCESS);
     
     // Check balances
@@ -623,7 +623,7 @@ TEST(ContractQUSINO, transferSTAROrQSC_InsufficientSTAR)
     uint64 amount = 1000;
     
     increaseEnergy(sender, 1);
-    QUSINO::transferSTAROrQSC_output output = QUSINO.transferSTAROrQSC(sender, receiver, amount, 1, 1);
+    QUSINO::transferSTAROrQSC_output output = QUSINO.transferSTAROrQSC(sender, receiver, amount, QUSINO_ASSET_TYPE_STAR, 1);
     EXPECT_EQ(output.returnCode, QUSINO_INSUFFICIENT_STAR);
 }
 
@@ -636,7 +636,7 @@ TEST(ContractQUSINO, transferSTAROrQSC_InsufficientQSC)
     uint64 amount = 1000;
     
     increaseEnergy(sender, 1);
-    QUSINO::transferSTAROrQSC_output output = QUSINO.transferSTAROrQSC(sender, receiver, amount, 0, 1);
+    QUSINO::transferSTAROrQSC_output output = QUSINO.transferSTAROrQSC(sender, receiver, amount, QUSINO_ASSET_TYPE_QSC, 1);
     EXPECT_EQ(output.returnCode, QUSINO_INSUFFICIENT_QSC);
 }
 
@@ -646,8 +646,8 @@ TEST(ContractQUSINO, stakeAssets_STAR_Success)
     
     id user = QUSINO_testUser1;
     uint64 amount = 20000; // Above minimum
-    uint32 stakingType = 1; // 1 month
-    uint32 assetType = 1; // STAR
+    uint32 stakingType = QUSINO_DURATION_1_MONTH;
+    uint32 assetType = QUSINO_ASSET_TYPE_STAR;
     
     // First earn STAR
     sint64 requiredReward = amount * QUSINO_STAR_PRICE;
@@ -679,8 +679,8 @@ TEST(ContractQUSINO, stakeAssets_LowStaking)
     
     id user = QUSINO_testUser1;
     uint64 amount = 5000; // Below minimum
-    uint32 stakingType = 1;
-    uint32 assetType = 1;
+    uint32 stakingType = QUSINO_DURATION_1_MONTH;
+    uint32 assetType = QUSINO_ASSET_TYPE_STAR;
     
     increaseEnergy(user, 1);
     QUSINO::stakeAssets_output output = QUSINO.stakeAssets(user, amount, stakingType, assetType, 1);
@@ -693,8 +693,8 @@ TEST(ContractQUSINO, stakeAssets_WrongStakingType)
     
     id user = QUSINO_testUser1;
     uint64 amount = 20000;
-    uint32 stakingType = 0; // Invalid
-    uint32 assetType = 1;
+    uint32 stakingType = 0; // Invalid duration
+    uint32 assetType = QUSINO_ASSET_TYPE_STAR;
     
     increaseEnergy(user, 1);
     QUSINO::stakeAssets_output output = QUSINO.stakeAssets(user, amount, stakingType, assetType, 1);
@@ -707,8 +707,8 @@ TEST(ContractQUSINO, stakeAssets_WrongAssetType)
     
     id user = QUSINO_testUser1;
     uint64 amount = 20000;
-    uint32 stakingType = 1;
-    uint32 assetType = 4; // Invalid
+    uint32 stakingType = QUSINO_DURATION_1_MONTH;
+    uint32 assetType = 4; // Invalid (not QSC/STAR/QST)
     
     increaseEnergy(user, 1);
     QUSINO::stakeAssets_output output = QUSINO.stakeAssets(user, amount, stakingType, assetType, 1);
@@ -869,8 +869,8 @@ TEST(ContractQUSINO, END_EPOCH_StakingRewards)
     
     id user = QUSINO_testUser1;
     uint64 amount = 20000;
-    uint32 stakingType = 1; // 1 month (4 epochs)
-    uint32 assetType = 1; // STAR
+    uint32 stakingType = QUSINO_DURATION_1_MONTH;
+    uint32 assetType = QUSINO_ASSET_TYPE_STAR;
     
     // Earn and stake STAR
     sint64 requiredReward = amount * QUSINO_STAR_PRICE;

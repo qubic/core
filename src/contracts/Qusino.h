@@ -35,6 +35,15 @@ constexpr sint32 QUSINO_INVALID_TRANSFER = 12;
 constexpr sint32 QUSINO_INSUFFICIENT_QST = 13;
 constexpr sint32 QUSINO_WRONG_ASSET_TYPE = 14;
 
+constexpr uint8 QUSINO_ASSET_TYPE_QUBIC = 0;
+constexpr uint8 QUSINO_ASSET_TYPE_QSC = 1;
+constexpr uint8 QUSINO_ASSET_TYPE_STAR = 2;
+constexpr uint8 QUSINO_ASSET_TYPE_QST = 3;
+constexpr uint8 QUSINO_DURATION_1_MONTH = 1;
+constexpr uint8 QUSINO_DURATION_3_MONTHS = 2;
+constexpr uint8 QUSINO_DURATION_6_MONTHS = 3;
+constexpr uint8 QUSINO_DURATION_12_MONTHS = 4;
+
 struct QUSINO2
 {
 };
@@ -45,7 +54,7 @@ public:
     struct buyQST_input
     {
         uint64 amount;
-        uint8 type;                  // 0 - Qubic, 1 - QSC
+        uint8 type;                  // QUSINO_ASSET_TYPE_QUBIC, QUSINO_ASSET_TYPE_QSC
     };
     struct buyQST_output
     {
@@ -71,7 +80,7 @@ public:
     {
         id dest;
         uint64 amount;
-        uint8 type;              // STAR or QSC
+        uint8 type;              // QUSINO_ASSET_TYPE_STAR or QUSINO_ASSET_TYPE_QSC
     };
     struct transferSTAROrQSC_output
     {
@@ -80,8 +89,8 @@ public:
     struct stakeAssets_input
     {
         uint64 amount;
-        uint32 typeOfAsset;      // 1 - STAR, 2 - QSC, 3 - QST
-        uint8 type;            // 1 - a month, 2 - 3 months, 3 - 6 months, 4 - 12 months
+        uint8 typeOfAsset;       // QUSINO_ASSET_TYPE_QSC, QUSINO_ASSET_TYPE_STAR, QUSINO_ASSET_TYPE_QST
+        uint8 type;              // QUSINO_DURATION_1_MONTH, 3_MONTHS, 6_MONTHS, 12_MONTHS
     };
     struct stakeAssets_output
     {
@@ -208,9 +217,9 @@ protected:
     {
         id user;
         uint64 amount;
-        uint32 type;                // 1 - a month, 2 - 3 months, 3 - 6 months, 4 - 12 months
+        uint32 type;                // QUSINO_DURATION_1_MONTH, 3_MONTHS, 6_MONTHS, 12_MONTHS
         uint32 stakedEpoch;
-        uint32 typeOfAsset;          // 1 - STAR, 2 - QSC, 3 - QST
+        uint32 typeOfAsset;         // QUSINO_ASSET_TYPE_QSC, QUSINO_ASSET_TYPE_STAR, QUSINO_ASSET_TYPE_QST
     };
     Array<stakeInfo, QUSINO_MAX_USERS * 64> userStakeList;
     HashMap<uint64, gameInfo, QUSINO_MAX_NUMBER_OF_GAMES> gameList;
@@ -241,7 +250,16 @@ protected:
             output.returnCode = QUSINO_INSUFFICIENT_QST_AMOUNT_FOR_SALE;
             return ;
         }
-        if (input.type == 0)              // if Qubic buy 
+        if (input.type != QUSINO_ASSET_TYPE_QUBIC && input.type != QUSINO_ASSET_TYPE_QSC)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            output.returnCode = QUSINO_WRONG_ASSET_TYPE;
+            return ;
+        }
+        if (input.type == QUSINO_ASSET_TYPE_QUBIC)
         {
             locals.input.issuer = state.QSTIssuer;
             locals.input.assetName = state.QSTAssetName;
@@ -283,7 +301,7 @@ protected:
             }
             state.QSTAmountForSale -= input.amount;
         }
-        else                        // if QSC buy
+        else if (input.type == QUSINO_ASSET_TYPE_QSC)
         {
             if (qpi.invocationReward() > 0) 
             {
@@ -369,9 +387,14 @@ protected:
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(transferSTAROrQSC)
     {
+        if (input.type != QUSINO_ASSET_TYPE_STAR && input.type != QUSINO_ASSET_TYPE_QSC)
+        {
+            output.returnCode = QUSINO_WRONG_ASSET_TYPE;
+            return;
+        }
         state.userAssetVolume.get(qpi.invocator(), locals.sender);
         state.userAssetVolume.get(input.dest, locals.dest);
-        if (input.type)             // if STAR transfer
+        if (input.type == QUSINO_ASSET_TYPE_STAR)
         {
             if (locals.sender.volumeOfSTAR < input.amount) 
             {
@@ -381,7 +404,7 @@ protected:
             locals.sender.volumeOfSTAR -= input.amount;
             locals.dest.volumeOfSTAR += input.amount;
         }
-        else                        // if QSC transfer
+        else if (input.type == QUSINO_ASSET_TYPE_QSC)
         {
             if (locals.sender.volumeOfQSC < input.amount) 
             {
@@ -412,25 +435,18 @@ protected:
             output.returnCode = QUSINO_LOW_STAKING;
             return ;
         }
-        if (input.type == 0 || input.type > 4) 
+        if (input.type < QUSINO_DURATION_1_MONTH || input.type > QUSINO_DURATION_12_MONTHS) 
         {
             output.returnCode = QUSINO_WRONG_STAKING_TYPE;
             return ;
         }
-        state.userAssetVolume.get(qpi.invocator(), locals.userVolume);
-        if (input.typeOfAsset == 1)
+        if (input.typeOfAsset != QUSINO_ASSET_TYPE_QSC && input.typeOfAsset != QUSINO_ASSET_TYPE_STAR && input.typeOfAsset != QUSINO_ASSET_TYPE_QST)
         {
-            if (locals.userVolume.volumeOfSTAR < input.amount)
-            {
-                output.returnCode = QUSINO_INSUFFICIENT_STAR;
-                return ;
-            }
-            locals.userVolume.volumeOfSTAR -= input.amount;
-            state.STARCirclatingSupply -= input.amount;
-            state.userAssetVolume.set(qpi.invocator(), locals.userVolume);
-            state.totalStakedSTAR += input.amount;
+            output.returnCode = QUSINO_WRONG_ASSET_TYPE;
+            return ;
         }
-        else if (input.typeOfAsset == 2)
+        state.userAssetVolume.get(qpi.invocator(), locals.userVolume);
+        if (input.typeOfAsset == QUSINO_ASSET_TYPE_QSC)
         {
             if (locals.userVolume.volumeOfQSC < input.amount)
             {
@@ -442,7 +458,19 @@ protected:
             state.userAssetVolume.set(qpi.invocator(), locals.userVolume);
             state.totalStakedQSC += input.amount;
         }
-        else if (input.typeOfAsset == 3)
+        else if (input.typeOfAsset == QUSINO_ASSET_TYPE_STAR)
+        {
+            if (locals.userVolume.volumeOfSTAR < input.amount)
+            {
+                output.returnCode = QUSINO_INSUFFICIENT_STAR;
+                return ;
+            }
+            locals.userVolume.volumeOfSTAR -= input.amount;
+            state.STARCirclatingSupply -= input.amount;
+            state.userAssetVolume.set(qpi.invocator(), locals.userVolume);
+            state.totalStakedSTAR += input.amount;
+        }
+        else if (input.typeOfAsset == QUSINO_ASSET_TYPE_QST)
         {
             if (qpi.transferShareOwnershipAndPossession(state.QSTAssetName, state.QSTIssuer, qpi.invocator(), qpi.invocator(), input.amount, SELF) < 0)
             {
@@ -450,11 +478,6 @@ protected:
                 return ;
             }
             state.totalStakedQST += input.amount;
-        }
-        else 
-        {
-            output.returnCode = QUSINO_WRONG_ASSET_TYPE;
-            return ;
         }
         locals.user.user = qpi.invocator();
         locals.user.amount = input.amount;
@@ -779,19 +802,19 @@ protected:
         {
 			locals.staker = state.userStakeList.get(locals.i);
             locals.stakingPercent = 0;
-            if(locals.staker.type == 1 && locals.staker.stakedEpoch + 4 == qpi.epoch())
+            if(locals.staker.type == QUSINO_DURATION_1_MONTH && locals.staker.stakedEpoch + 4 == qpi.epoch())
             {
                 locals.stakingPercent = QUSINO_STAR_STAKING_PERCENT_1;
             }
-			else if(locals.staker.type == 2 && locals.staker.stakedEpoch + 13 == qpi.epoch())
+			else if(locals.staker.type == QUSINO_DURATION_3_MONTHS && locals.staker.stakedEpoch + 13 == qpi.epoch())
             {
                 locals.stakingPercent = QUSINO_STAR_STAKING_PERCENT_2;
             }
-            else if(locals.staker.type == 3 && locals.staker.stakedEpoch + 26 == qpi.epoch())
+            else if(locals.staker.type == QUSINO_DURATION_6_MONTHS && locals.staker.stakedEpoch + 26 == qpi.epoch())
             {
                 locals.stakingPercent = QUSINO_STAR_STAKING_PERCENT_3;
             }
-            else if(locals.staker.type == 4 && locals.staker.stakedEpoch + 52 == qpi.epoch())
+            else if(locals.staker.type == QUSINO_DURATION_12_MONTHS && locals.staker.stakedEpoch + 52 == qpi.epoch())
             {
                 locals.stakingPercent = QUSINO_STAR_STAKING_PERCENT_4;
             }
@@ -800,17 +823,17 @@ protected:
                 state.userAssetVolume.get(locals.staker.user, locals.userVolume);
                 locals.userVolume.volumeOfSTAR += div(locals.staker.amount * locals.stakingPercent * 1ULL, 100ULL);        // reward for staking
                 state.STARCirclatingSupply += div(locals.staker.amount * locals.stakingPercent * 1ULL, 100ULL);
-                if (locals.staker.typeOfAsset == 1)
-                {
-                    locals.userVolume.volumeOfSTAR += locals.staker.amount;
-                    state.totalStakedSTAR -= locals.staker.amount;
-                }
-                else if (locals.staker.typeOfAsset == 2)
+                if (locals.staker.typeOfAsset == QUSINO_ASSET_TYPE_QSC)
                 {
                     locals.userVolume.volumeOfQSC += locals.staker.amount;
                     state.totalStakedQSC -= locals.staker.amount;
                 }
-                else if (locals.staker.typeOfAsset == 3)
+                else if (locals.staker.typeOfAsset == QUSINO_ASSET_TYPE_STAR)
+                {
+                    locals.userVolume.volumeOfSTAR += locals.staker.amount;
+                    state.totalStakedSTAR -= locals.staker.amount;
+                }
+                else if (locals.staker.typeOfAsset == QUSINO_ASSET_TYPE_QST)
                 {
                     qpi.transferShareOwnershipAndPossession(state.QSTAssetName, state.QSTIssuer, SELF, SELF, locals.staker.amount, locals.staker.user);
                     state.totalStakedQST -= locals.staker.amount;
