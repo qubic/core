@@ -24,6 +24,7 @@ constexpr uint16 QTF_FUNCTION_GET_FEES = 8;
 constexpr uint16 QTF_FUNCTION_ESTIMATE_PRIZE_PAYOUTS = 9;
 constexpr uint16 QTF_FUNCTION_GET_PLAYERS = 10;
 constexpr uint16 QTF_FUNCTION_GET_WINNING_COMBINATIONS_HISTORY = 11;
+constexpr uint16 QTF_FUNCTION_GET_WINNER_REWARDS = 12;
 
 using QTFRandomValues = Array<uint8, QTF_RANDOM_VALUES_COUNT>;
 
@@ -85,6 +86,21 @@ namespace
 		winnersBlock = (revenue * static_cast<uint64>(fees.winnerFeePercent)) / 100ULL;
 		k2Pool = (winnersBlock * QTF_BASE_K2_SHARE_BP) / 10000ULL;
 		k3Pool = (winnersBlock * QTF_BASE_K3_SHARE_BP) / 10000ULL;
+	}
+
+	static bool tryGetWinnerRewardFromArray(const QTF::GetWinnerRewards_output& output, const id& playerId, uint64& reward)
+	{
+		for (uint64 i = 0; i < output.numberOfWinnerRewards; ++i)
+		{
+			const QTF::WinnerReward entry = output.winnerRewards.get(i);
+			if (entry.playerId == playerId)
+			{
+				reward = entry.reward;
+				return true;
+			}
+		}
+
+		return false;
 	}
 } // namespace
 
@@ -384,6 +400,14 @@ public:
 		QTF::GetWinningCombinationsHistory_input input{};
 		QTF::GetWinningCombinationsHistory_output output{};
 		callFunction(QTF_CONTRACT_INDEX, QTF_FUNCTION_GET_WINNING_COMBINATIONS_HISTORY, input, output);
+		return output;
+	}
+
+	QTF::GetWinnerRewards_output getWinnerRewards()
+	{
+		QTF::GetWinnerRewards_input input{};
+		QTF::GetWinnerRewards_output output{};
+		callFunction(QTF_CONTRACT_INDEX, QTF_FUNCTION_GET_WINNER_REWARDS, input, output);
 		return output;
 	}
 
@@ -1883,6 +1907,14 @@ TEST(ContractQThirtyFour, Settlement_WinnerRewardMap_StoresWinnerAmount)
 
 	uint64 loserReward = 0;
 	EXPECT_FALSE(ctl.state()->tryGetWinnerReward(loser, loserReward));
+
+	const QTF::GetWinnerRewards_output winnerRewardsPublic = ctl.getWinnerRewards();
+	EXPECT_EQ(winnerRewardsPublic.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
+
+	uint64 publicReward = 0;
+	EXPECT_TRUE(tryGetWinnerRewardFromArray(winnerRewardsPublic, k2Winner, publicReward));
+	EXPECT_EQ(publicReward, k2Pool);
+	EXPECT_FALSE(tryGetWinnerRewardFromArray(winnerRewardsPublic, loser, publicReward));
 }
 
 TEST(ContractQThirtyFour, Settlement_WinnerRewardMap_IsClearedBeforeNextRound)

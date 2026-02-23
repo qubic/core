@@ -437,6 +437,29 @@ struct QTF : ContractBase
 		WinnerData winnerData;
 	};
 
+	struct WinnerReward
+	{
+		id playerId;
+		uint64 reward;
+	};
+
+	struct GetWinnerRewards_input
+	{
+	};
+
+	struct GetWinnerRewards_output
+	{
+		Array<WinnerReward, QTF_MAX_NUMBER_OF_PLAYERS> winnerRewards;
+		uint64 numberOfWinnerRewards;
+		uint8 returnCode;
+	};
+
+	struct GetWinnerRewards_locals
+	{
+		WinnerReward winnerReward;
+		sint64 mapIndex;
+	};
+
 	// Pools
 	struct GetPools_input
 	{
@@ -761,6 +784,7 @@ struct QTF : ContractBase
 		REGISTER_USER_FUNCTION(EstimatePrizePayouts, 9);
 		REGISTER_USER_FUNCTION(GetPlayers, 10);
 		REGISTER_USER_FUNCTION(GetWinningCombinationsHistory, 11);
+		REGISTER_USER_FUNCTION(GetWinnerRewards, 12);
 	}
 
 	BEGIN_EPOCH()
@@ -1024,6 +1048,21 @@ struct QTF : ContractBase
 	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.ticketPrice; }
 	PUBLIC_FUNCTION(GetNextEpochData) { output.nextEpochData = state.nextEpochData; }
 	PUBLIC_FUNCTION(GetWinnerData) { output.winnerData = state.lastWinnerData; }
+	PUBLIC_FUNCTION_WITH_LOCALS(GetWinnerRewards)
+	{
+		output.numberOfWinnerRewards = 0;
+		locals.mapIndex = state.winnerRewardByPlayer.nextElementIndex(NULL_INDEX);
+		while (locals.mapIndex != NULL_INDEX)
+		{
+			locals.winnerReward.playerId = state.winnerRewardByPlayer.key(locals.mapIndex);
+			locals.winnerReward.reward = state.winnerRewardByPlayer.value(locals.mapIndex);
+
+			output.winnerRewards.set(output.numberOfWinnerRewards++, locals.winnerReward);
+			locals.mapIndex = state.winnerRewardByPlayer.nextElementIndex(locals.mapIndex);
+		}
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
 	PUBLIC_FUNCTION_WITH_LOCALS(GetPools)
 	{
 		output.pools.jackpot = state.jackpot;
