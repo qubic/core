@@ -4,8 +4,7 @@
 #include "network_messages/oracles.h"
 #include "network_core/peers.h"
 
-template <uint16_t ownComputorSeedsCount>
-void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, RequestResponseHeader* header) const
+void OracleEngine::processRequestOracleData(Peer* peer, RequestResponseHeader* header) const
 {
 	// check input
 	ASSERT(header && peer);
@@ -151,7 +150,7 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		}
 		if (oqm.status == ORACLE_QUERY_STATUS_PENDING || oqm.status == ORACLE_QUERY_STATUS_COMMITTED)
 		{
-			const ReplyState& replyState = replyStates[oqm.statusVar.pending.replyStateIndex];
+			const OracleReplyState& replyState = replyStates[oqm.statusVar.pending.replyStateIndex];
 			payloadOqm->agreeingCommits = replyState.replyCommitHistogramCount[replyState.mostCommitsHistIdx];
 			payloadOqm->totalCommits = replyState.totalCommits;
 		}
