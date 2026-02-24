@@ -3,6 +3,7 @@
 constexpr uint16 PROCEDURE_INDEX_CREATE_SURVEY = 1;
 constexpr uint16 PROCEDURE_INDEX_PAYOUT = 2;
 constexpr uint16 PROCEDURE_INDEX_SET_ORACLE = 3;
+constexpr uint16 PROCEDURE_INDEX_ABORT_SURVEY = 4;
 
 constexpr uint16 FUNCTION_INDEX_GET_SURVEY = 1;
 constexpr uint16 FUNCTION_INDEX_GET_SURVEY_COUNT = 2;
@@ -57,6 +58,17 @@ public:
     output.success = 0;
     invokeUserProcedure(QSURV_CONTRACT_INDEX, PROCEDURE_INDEX_SET_ORACLE, input,
                         output, user, 0);
+    return output;
+  }
+
+  QSURV::abortSurvey_output abortSurvey(const id &user, uint64 surveyId) {
+    QSURV::abortSurvey_input input;
+    input.surveyId = surveyId;
+
+    QSURV::abortSurvey_output output;
+    output.success = 0;
+    invokeUserProcedure(QSURV_CONTRACT_INDEX, PROCEDURE_INDEX_ABORT_SURVEY,
+                        input, output, user, 0);
     return output;
   }
 
