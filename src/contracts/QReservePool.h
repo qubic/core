@@ -133,16 +133,6 @@ struct QRP : ContractBase
 		REGISTER_USER_FUNCTION(GetAllowedSC, 2);
 	}
 
-	BEGIN_EPOCH()
-	{
-		if (qpi.epoch() == 201)
-		{
-			state.teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C, _X,
-			                       _B, _A, _V, _F, _O, _P, _R, _S, _N, _U, _L, _U, _E, _B, _S, _P, _U, _T, _R, _Z, _N, _T, _G, _F, _B, _I, _E);
-			state.ownerAddress = state.teamAddress;
-		}
-	}
-
 	END_EPOCH() { state.allowedSmartContracts.cleanup(); }
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(WithdrawReserve)
