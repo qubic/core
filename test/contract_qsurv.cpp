@@ -1,3 +1,4 @@
+#define NO_UEFI
 #include "contract_testing.h"
 
 constexpr uint16 PROCEDURE_INDEX_CREATE_SURVEY = 1;
