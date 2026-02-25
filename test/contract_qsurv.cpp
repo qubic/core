@@ -17,9 +17,10 @@ public:
     callSystemProcedure(QSURV_CONTRACT_INDEX, INITIALIZE);
   }
 
-  QSURV::createSurvey_output
-  createSurvey(const id &user, uint64 rewardPool, uint32 maxRespondents,
-               const QSURV::Array<uint8, 64> &ipfsHash, uint64 attachedAmount) {
+  QSURV::createSurvey_output createSurvey(const id &user, uint64 rewardPool,
+                                          uint32 maxRespondents,
+                                          const QPI::Array<uint8, 64> &ipfsHash,
+                                          uint64 attachedAmount) {
     QSURV::createSurvey_input input;
     input.rewardPool = rewardPool;
     input.maxRespondents = maxRespondents;
@@ -90,8 +91,6 @@ public:
                  output);
     return output;
   }
-
-  uint64 getBalance(const id &entity) { return getEnergy(entity); }
 };
 
 TEST(ContractQSurv, CreateSurvey_Success) {
@@ -102,7 +101,7 @@ TEST(ContractQSurv, CreateSurvey_Success) {
 
   increaseEnergy(creator, rewardPool + 1000);
 
-  QSURV::Array<uint8, 64> hash;
+  QPI::Array<uint8, 64> hash;
   for (int i = 0; i < 64; i++) {
     hash.set(i, 1);
   }
@@ -127,7 +126,7 @@ TEST(ContractQSurv, CreateSurvey_Fail_ZeroRespondentsOrPool) {
   const id creator(1, 0, 0, 0);
   increaseEnergy(creator, 5000);
 
-  QSURV::Array<uint8, 64> hash;
+  QPI::Array<uint8, 64> hash;
   for (int i = 0; i < 64; i++) {
     hash.set(i, 1);
   }
@@ -168,7 +167,7 @@ TEST(ContractQSurv, Payout_VerifyBalancesAndCompletion) {
   // Set oracle
   qsurv.setOracle(system_invocator, oracle);
 
-  QSURV::Array<uint8, 64> hash;
+  QPI::Array<uint8, 64> hash;
   for (int i = 0; i < 64; i++) {
     hash.set(i, 1);
   }
@@ -182,9 +181,9 @@ TEST(ContractQSurv, Payout_VerifyBalancesAndCompletion) {
   EXPECT_EQ(surveyBefore.balance, 1000);
   EXPECT_EQ(surveyBefore.isActive, 1);
 
-  uint64 respondentBalBefore = qsurv.getBalance(respondent);
-  uint64 referrerBalBefore = qsurv.getBalance(referrer);
-  uint64 oracleBalBefore = qsurv.getBalance(oracle);
+  uint64 respondentBalBefore = getBalance(respondent);
+  uint64 referrerBalBefore = getBalance(referrer);
+  uint64 oracleBalBefore = getBalance(oracle);
 
   // Payout with Tier 1 (10% bonus)
   // Reward per resp = 1000
@@ -193,9 +192,9 @@ TEST(ContractQSurv, Payout_VerifyBalancesAndCompletion) {
   auto payoutOut = qsurv.payout(oracle, 1, respondent, referrer, 1);
   EXPECT_EQ(payoutOut.success, 1);
 
-  uint64 respondentBalAfter = qsurv.getBalance(respondent);
-  uint64 referrerBalAfter = qsurv.getBalance(referrer);
-  uint64 oracleBalAfter = qsurv.getBalance(oracle);
+  uint64 respondentBalAfter = getBalance(respondent);
+  uint64 referrerBalAfter = getBalance(referrer);
+  uint64 oracleBalAfter = getBalance(oracle);
 
   EXPECT_EQ(respondentBalAfter - respondentBalBefore,
             500);                                       // 400 base + 100 bonus
@@ -220,7 +219,7 @@ TEST(ContractQSurv, AbortSurvey_RefundAndReset) {
 
   increaseEnergy(creator, 5000);
 
-  QSURV::Array<uint8, 64> hash;
+  QPI::Array<uint8, 64> hash;
   for (int i = 0; i < 64; i++) {
     hash.set(i, 1);
   }
@@ -232,7 +231,7 @@ TEST(ContractQSurv, AbortSurvey_RefundAndReset) {
   EXPECT_EQ(surveyBefore.balance, 2000);
   EXPECT_EQ(surveyBefore.isActive, 1);
 
-  uint64 creatorBalBefore = qsurv.getBalance(creator);
+  uint64 creatorBalBefore = getBalance(creator);
 
   // Hacker tries to abort
   auto abortHacker = qsurv.abortSurvey(hacker, 1);
@@ -242,7 +241,7 @@ TEST(ContractQSurv, AbortSurvey_RefundAndReset) {
   auto abortCreator = qsurv.abortSurvey(creator, 1);
   EXPECT_EQ(abortCreator.success, 1);
 
-  uint64 creatorBalAfter = qsurv.getBalance(creator);
+  uint64 creatorBalAfter = getBalance(creator);
   EXPECT_EQ(creatorBalAfter - creatorBalBefore,
             2000); // Reclaimed the unspent balance!
 
