@@ -22,7 +22,7 @@ struct QSURV : public ContractBase {
   // STRUCTS
   // ============================================
   struct Survey {
-    uint64 id;
+    uint64 surveyId;
     id creator;
     uint64 rewardAmount;
     uint64 rewardPerRespondent;
@@ -122,7 +122,7 @@ public:
   };
 
   struct getSurvey_output {
-    uint64 id;
+    uint64 surveyId;
     id creator;
     uint64 rewardAmount;
     uint64 rewardPerRespondent;
@@ -186,12 +186,12 @@ public:
     }
 
     // Verify invocation reward matches rewardPool
-    if (qpi.invocationReward() < input.rewardPool) {
+    if ((uint64)qpi.invocationReward() < input.rewardPool) {
       return;
     }
 
     // Create new survey - access state directly via copy pattern
-    locals.tempSurvey.id = state._surveyCount + 1;
+    locals.tempSurvey.surveyId = state._surveyCount + 1;
     locals.tempSurvey.creator = qpi.invocator();
     locals.tempSurvey.rewardAmount = input.rewardPool;
     locals.tempSurvey.maxRespondents = input.maxRespondents;
@@ -221,7 +221,7 @@ public:
 
     // Find survey by ID using found flag pattern
     for (locals.i = 0; locals.i < state._surveyCount; locals.i++) {
-      if (state._surveys.get(locals.i).id == input.surveyId) {
+      if (state._surveys.get(locals.i).surveyId == input.surveyId) {
         locals.index = locals.i;
         locals.found = 1;
         break;
@@ -303,7 +303,7 @@ public:
 
   PUBLIC_PROCEDURE_WITH_LOCALS(abortSurvey) {
     for (locals.i = 0; locals.i < state._surveyCount; locals.i++) {
-      if (state._surveys.get(locals.i).id == input.surveyId) {
+      if (state._surveys.get(locals.i).surveyId == input.surveyId) {
         locals.index = locals.i;
         locals.found = 1;
         break;
@@ -356,8 +356,8 @@ public:
   PUBLIC_FUNCTION_WITH_LOCALS(getSurvey) {
     for (locals.i = 0; locals.i < state._surveyCount; locals.i++) {
       // No need to copy for read-only access, direct get() is fine
-      if (state._surveys.get(locals.i).id == input.surveyId) {
-        output.id = state._surveys.get(locals.i).id;
+      if (state._surveys.get(locals.i).surveyId == input.surveyId) {
+        output.surveyId = state._surveys.get(locals.i).surveyId;
         output.creator = state._surveys.get(locals.i).creator;
         output.rewardAmount = state._surveys.get(locals.i).rewardAmount;
         output.rewardPerRespondent =
