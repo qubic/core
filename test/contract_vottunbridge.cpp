@@ -6,7 +6,7 @@
 
 namespace {
 constexpr unsigned short PROCEDURE_CREATE_ORDER = 1;
-constexpr unsigned short PROCEDURE_TRANSFER_TO_CONTRACT = 6;
+constexpr unsigned short PROCEDURE_TRANSFER_TO_CONTRACT = 4;
 
 uint64 requiredFee(uint64 amount)
 {
@@ -135,7 +135,7 @@ public:
         input.oldAddress = oldAddress;
         input.amount = amount;
 
-        this->invokeUserProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, 9, input, output, admin, 0);
+        this->invokeUserProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, 6, input, output, admin, 0);
         return output;
     }
 
@@ -145,7 +145,7 @@ public:
         VOTTUNBRIDGE::approveProposal_output output{};
         input.proposalId = proposalId;
 
-        this->invokeUserProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, 10, input, output, admin, 0);
+        this->invokeUserProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, 7, input, output, admin, 0);
         return output;
     }
 
@@ -155,8 +155,23 @@ public:
         VOTTUNBRIDGE::cancelProposal_output output{};
         input.proposalId = proposalId;
 
-        this->invokeUserProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, 11, input, output, user, 0);
+        this->invokeUserProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, 8, input, output, user, 0);
         return output;
+    }
+
+    VOTTUNBRIDGE::refundOrder_output refundOrder(const id& manager, uint64 orderId)
+    {
+        VOTTUNBRIDGE::refundOrder_input input{};
+        VOTTUNBRIDGE::refundOrder_output output{};
+        input.orderId = orderId;
+
+        this->invokeUserProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, 3, input, output, manager, 0);
+        return output;
+    }
+
+    void callEndTick()
+    {
+        callSystemProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, END_TICK);
     }
 };
 
@@ -247,7 +262,7 @@ TEST(VottunBridge, TransferToContract_InvalidAmountMismatch)
 {
     ContractTestingVottunBridge bridge;
     const id user = id(6, 0, 0, 0);
-    const uint64 amount = 100;
+    const uint64 amount = 1000;  // Must be >= minimumOrderAmount (200)
     const uint64 fee = requiredFee(amount);
 
     bridge.seedBalance(user, fee + amount + 1);
@@ -263,7 +278,7 @@ TEST(VottunBridge, TransferToContract_InvalidOrderState)
 {
     ContractTestingVottunBridge bridge;
     const id user = id(7, 0, 0, 0);
-    const uint64 amount = 150;
+    const uint64 amount = 1000;
     const uint64 fee = requiredFee(amount);
 
     bridge.seedBalance(user, fee + amount);
@@ -309,15 +324,20 @@ TEST(VottunBridge, CreateOrder_CleansCompletedAndRefundedSlots)
     EXPECT_TRUE(bridge.findOrder(output.orderId, createdOrder));
     EXPECT_EQ(createdOrder.status, 0);
 
-        uint64 emptySlots = 0;
+    // Single-pass recycling: the recyclable slot is directly overwritten
+    // with the new order (status=0), so no slots end up as 255.
+    // Verify that the number of completed/refunded orders decreased by 1
+    // (one was recycled for the new order).
+    uint64 recycledCount = 0;
     for (uint64 i = 0; i < bridge.state()->orders.capacity(); ++i)
+    {
+        uint8 s = bridge.state()->orders.get(i).status;
+        if (s == 1 || s == 2)
         {
-        if (bridge.state()->orders.get(i).status == 255)
-            {
-                emptySlots++;
-            }
+            recycledCount++;
+        }
     }
-    EXPECT_GT(emptySlots, 0);
+    EXPECT_EQ(recycledCount, bridge.state()->orders.capacity() - 1);
 }
 
 TEST(VottunBridge, CreateProposal_CleansExecutedProposalsWhenFull)
@@ -359,16 +379,20 @@ TEST(VottunBridge, CreateProposal_CleansExecutedProposalsWhenFull)
     EXPECT_TRUE(createdProposal.active);
     EXPECT_FALSE(createdProposal.executed);
 
-    uint64 clearedSlots = 0;
+    // Single-pass recycling: the executed slot is cleared and immediately
+    // filled with the new proposal, so no slots end up fully empty.
+    // Verify that the number of executed proposals decreased by 1.
+    uint64 executedCount = 0;
     for (uint64 i = 0; i < bridge.state()->proposals.capacity(); ++i)
     {
         VOTTUNBRIDGE::AdminProposal p = bridge.state()->proposals.get(i);
-        if (!p.active && p.proposalId == 0)
+        if (p.executed)
         {
-            clearedSlots++;
+            executedCount++;
         }
     }
-    EXPECT_GT(clearedSlots, 0);
+    // Originally half (16) were executed; one was recycled for the new proposal
+    EXPECT_EQ(executedCount, 15);
 }
 
 TEST(VottunBridge, CreateProposal_InvalidTypeRejected)
@@ -644,4 +668,249 @@ TEST(VottunBridge, CancelProposal_AlreadyExecutedRejected)
     // Trying to cancel an executed proposal should fail
     auto cancelOutput = bridge.cancelProposal(admin1, proposalOutput.proposalId);
     EXPECT_EQ(cancelOutput.status, static_cast<uint8>(VOTTUNBRIDGE::EthBridgeError::proposalAlreadyExecuted));
+}
+// Additional tests for VottunBridge refund functionality with reserved fees
+// Append these tests to contract_vottunbridge.cpp
+
+TEST(VottunBridge, RefundOrder_ReturnsFullAmountPlusFees)
+{
+    ContractTestingVottunBridge bridge;
+    const id user = id(100, 0, 0, 0);
+    const id manager = id(101, 0, 0, 0);
+    const uint64 amount = 10000;
+    const uint64 fee = requiredFee(amount); // 100 QU (50 + 50)
+
+    std::cout << "[VottunBridge] RefundOrder_ReturnsFullAmountPlusFees: amount=" << amount
+              << " fee=" << fee << std::endl;
+
+    // Setup: Add manager to managers array
+    bridge.state()->managers.set(0, manager);
+    bridge.seedBalance(manager, 1); // Ensure manager exists in spectrum
+
+    // Give contract balance for refunds
+    const id contractId = id(VOTTUNBRIDGE_CONTRACT_INDEX, 0, 0, 0);
+    bridge.seedBalance(contractId, amount + fee);
+
+    // User creates order and transfers tokens
+    bridge.seedBalance(user, fee + amount);
+
+    const long long userBalanceBefore = getBalance(user);
+
+    // Create order (user pays fees)
+    auto orderOutput = bridge.createOrder(user, amount, true, fee);
+    EXPECT_EQ(orderOutput.status, 0);
+    EXPECT_GT(orderOutput.orderId, 0);
+
+    // Transfer tokens to contract
+    auto transferOutput = bridge.transferToContract(user, amount, orderOutput.orderId, amount);
+    EXPECT_EQ(transferOutput.status, 0);
+
+    // Verify fees are reserved
+    EXPECT_EQ(bridge.state()->_reservedFees, 50);
+    EXPECT_EQ(bridge.state()->_reservedFeesQubic, 50);
+
+    // Call END_TICK to simulate tick completion
+    bridge.callEndTick();
+
+    // Verify reserved fees were NOT distributed (still reserved for pending order)
+    EXPECT_EQ(bridge.state()->_reservedFees, 50);
+    EXPECT_EQ(bridge.state()->_reservedFeesQubic, 50);
+
+    // Manager refunds the order
+    std::cout << "  Contract balance BEFORE refund: " << getBalance(id(VOTTUNBRIDGE_CONTRACT_INDEX, 0, 0, 0)) << std::endl;
+    std::cout << "  User balance BEFORE refund: " << getBalance(user) << std::endl;
+
+    auto refundOutput = bridge.refundOrder(manager, orderOutput.orderId);
+
+    std::cout << "  Refund status: " << (int)refundOutput.status << std::endl;
+    std::cout << "  Contract balance AFTER refund: " << getBalance(id(VOTTUNBRIDGE_CONTRACT_INDEX, 0, 0, 0)) << std::endl;
+    std::cout << "  User balance AFTER refund: " << getBalance(user) << std::endl;
+    EXPECT_EQ(refundOutput.status, 0);
+
+    // Verify order is refunded
+    VOTTUNBRIDGE::BridgeOrder order{};
+    ASSERT_TRUE(bridge.findOrder(orderOutput.orderId, order));
+    std::cout << "  Order status after refund: " << (int)order.status << " (expected 2)" << std::endl;
+    std::cout << "  Order tokensReceived: " << order.tokensReceived << std::endl;
+    std::cout << "  Order tokensLocked: " << order.tokensLocked << std::endl;
+    std::cout << "  lockedTokens state: " << bridge.state()->lockedTokens << std::endl;
+    EXPECT_EQ(order.status, 2); // Refunded
+
+    // Verify fees are no longer reserved
+    EXPECT_EQ(bridge.state()->_reservedFees, 0);
+    EXPECT_EQ(bridge.state()->_reservedFeesQubic, 0);
+
+    // Verify user received full refund: amount + both fees
+    const long long userBalanceAfter = getBalance(user);
+    EXPECT_EQ(userBalanceAfter, userBalanceBefore); // Back to original balance
+
+    std::cout << "  ✅ User balance: before=" << userBalanceBefore
+              << " after=" << userBalanceAfter
+              << " (full refund verified)" << std::endl;
+}
+
+TEST(VottunBridge, RefundOrder_BeforeTransfer_ReturnsOnlyFees)
+{
+    ContractTestingVottunBridge bridge;
+    const id user = id(102, 0, 0, 0);
+    const id manager = id(103, 0, 0, 0);
+    const uint64 amount = 5000;
+    const uint64 fee = requiredFee(amount); // 50 QU (25 + 25)
+
+    std::cout << "[VottunBridge] RefundOrder_BeforeTransfer_ReturnsOnlyFees: amount=" << amount
+              << " fee=" << fee << std::endl;
+
+    // Setup: Add manager
+    bridge.state()->managers.set(0, manager);
+    bridge.seedBalance(manager, 1); // Ensure manager exists in spectrum
+
+    // Give contract balance for refunds
+    const id contractId = id(VOTTUNBRIDGE_CONTRACT_INDEX, 0, 0, 0);
+    bridge.seedBalance(contractId, fee);
+
+    // User creates order but does NOT transfer tokens
+    bridge.seedBalance(user, fee);
+
+    const long long userBalanceBefore = getBalance(user);
+
+    // Create order (user pays fees)
+    auto orderOutput = bridge.createOrder(user, amount, true, fee);
+    EXPECT_EQ(orderOutput.status, 0);
+
+    // Verify fees are reserved
+    EXPECT_EQ(bridge.state()->_reservedFees, 25);
+    EXPECT_EQ(bridge.state()->_reservedFeesQubic, 25);
+
+    const long long userBalanceAfterCreate = getBalance(user);
+    EXPECT_EQ(userBalanceAfterCreate, userBalanceBefore - fee);
+
+    // Manager refunds the order (before transferToContract)
+    auto refundOutput = bridge.refundOrder(manager, orderOutput.orderId);
+    EXPECT_EQ(refundOutput.status, 0);
+
+    // Verify user received fees back (no tokens to refund since they were never transferred)
+    const long long userBalanceAfter = getBalance(user);
+    EXPECT_EQ(userBalanceAfter, userBalanceBefore); // Back to original (fees refunded)
+
+    std::cout << "  ✅ User balance: before=" << userBalanceBefore
+              << " afterCreate=" << userBalanceAfterCreate
+              << " afterRefund=" << userBalanceAfter
+              << " (fees refunded)" << std::endl;
+}
+
+TEST(VottunBridge, RefundOrder_AfterEndTick_StillRefundsFullAmount)
+{
+    ContractTestingVottunBridge bridge;
+    const id user = id(104, 0, 0, 0);
+    const id manager = id(105, 0, 0, 0);
+    const uint64 amount = 10000;
+    const uint64 fee = requiredFee(amount);
+
+    std::cout << "[VottunBridge] RefundOrder_AfterEndTick_StillRefundsFullAmount" << std::endl;
+
+    // Setup
+    bridge.state()->managers.set(0, manager);
+    bridge.seedBalance(manager, 1); // Ensure manager exists in spectrum
+
+    // Give contract balance for refunds
+    const id contractId = id(VOTTUNBRIDGE_CONTRACT_INDEX, 0, 0, 0);
+    bridge.seedBalance(contractId, amount + fee);
+
+    bridge.seedBalance(user, fee + amount);
+
+    const long long userBalanceBefore = getBalance(user);
+
+    // Create order and transfer
+    auto orderOutput = bridge.createOrder(user, amount, true, fee);
+    EXPECT_EQ(orderOutput.status, 0);
+
+    auto transferOutput = bridge.transferToContract(user, amount, orderOutput.orderId, amount);
+    EXPECT_EQ(transferOutput.status, 0);
+
+    // Simulate multiple ticks (fees should NOT be distributed while order is pending)
+    for (int i = 0; i < 5; i++)
+    {
+        bridge.callEndTick();
+    }
+
+    // Verify fees are STILL reserved (not distributed during END_TICK)
+    EXPECT_EQ(bridge.state()->_reservedFees, 50);
+    EXPECT_EQ(bridge.state()->_reservedFeesQubic, 50);
+
+    // Refund after multiple ticks
+    auto refundOutput = bridge.refundOrder(manager, orderOutput.orderId);
+    EXPECT_EQ(refundOutput.status, 0);
+
+    // User should still get full refund
+    const long long userBalanceAfter = getBalance(user);
+    EXPECT_EQ(userBalanceAfter, userBalanceBefore);
+
+    std::cout << "  ✅ Fees remained reserved through 5 ticks, full refund successful" << std::endl;
+}
+
+TEST(VottunBridge, CreateOrder_ReservesFees)
+{
+    ContractTestingVottunBridge bridge;
+    const id user = id(106, 0, 0, 0);
+    const uint64 amount = 1000;
+    const uint64 fee = requiredFee(amount); // 10 QU (5 + 5)
+
+    bridge.seedBalance(user, fee);
+
+    // Initially, no fees are reserved
+    EXPECT_EQ(bridge.state()->_reservedFees, 0);
+    EXPECT_EQ(bridge.state()->_reservedFeesQubic, 0);
+    EXPECT_EQ(bridge.state()->_earnedFees, 0);
+    EXPECT_EQ(bridge.state()->_earnedFeesQubic, 0);
+
+    // Create order
+    auto orderOutput = bridge.createOrder(user, amount, true, fee);
+    EXPECT_EQ(orderOutput.status, 0);
+
+    // Verify fees are both earned AND reserved
+    EXPECT_EQ(bridge.state()->_earnedFees, 5);
+    EXPECT_EQ(bridge.state()->_earnedFeesQubic, 5);
+    EXPECT_EQ(bridge.state()->_reservedFees, 5);
+    EXPECT_EQ(bridge.state()->_reservedFeesQubic, 5);
+}
+
+TEST(VottunBridge, CompleteOrder_ReleasesReservedFees)
+{
+    ContractTestingVottunBridge bridge;
+    const id user = id(107, 0, 0, 0);
+    const id manager = id(108, 0, 0, 0);
+    const uint64 amount = 1000;
+    const uint64 fee = requiredFee(amount);
+
+    // Setup
+    bridge.state()->managers.set(0, manager);
+    bridge.seedBalance(manager, 1); // Ensure manager exists in spectrum
+    bridge.state()->lockedTokens = 10000; // Ensure enough liquidity for EVM->Qubic
+    const id contractId = id(VOTTUNBRIDGE_CONTRACT_INDEX, 0, 0, 0);
+    bridge.seedBalance(contractId, amount); // Ensure contract can transfer to user
+    bridge.seedBalance(user, fee);
+
+    // Create order (EVM->Qubic direction, fromQubicToEthereum=false)
+    auto orderOutput = bridge.createOrder(user, amount, false, fee);
+    EXPECT_EQ(orderOutput.status, 0);
+
+    // Verify fees are reserved
+    EXPECT_EQ(bridge.state()->_reservedFees, 5);
+    EXPECT_EQ(bridge.state()->_reservedFeesQubic, 5);
+
+    // Manager completes the order
+    VOTTUNBRIDGE::completeOrder_input input{};
+    VOTTUNBRIDGE::completeOrder_output output{};
+    input.orderId = orderOutput.orderId;
+
+    bridge.invokeUserProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, 2, input, output, manager, 0);
+    EXPECT_EQ(output.status, 0);
+
+    // Verify reserved fees are released (can now be distributed)
+    EXPECT_EQ(bridge.state()->_reservedFees, 0);
+    EXPECT_EQ(bridge.state()->_reservedFeesQubic, 0);
+
+    // Earned fees remain (not distributed yet)
+    EXPECT_EQ(bridge.state()->_earnedFees, 5);
+    EXPECT_EQ(bridge.state()->_earnedFeesQubic, 5);
 }
