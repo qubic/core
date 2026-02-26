@@ -330,6 +330,7 @@ public:
 		uint64 entryAmount;
 		uint32 numberOfMembers;
 		uint32 winnerIndex;
+		uint32 numberOfDaoMembers; // Number of DAO members (registers) at this epoch
 		sint32 returnCode;
 	};
 
@@ -406,6 +407,7 @@ protected:
 		uint64 entryAmount;
 		uint32 numberOfMembers;
 		uint32 winnerIndex;
+		uint32 numberOfDaoMembers; // Number of DAO members (registers) at this epoch
 	};
 	Array <QuRaffleInfo, QRAFFLE_MAX_EPOCH> QuRaffles;
 	struct TokenRaffleInfo
@@ -1109,6 +1111,7 @@ protected:
 		output.entryAmount = state.QuRaffles.get(input.epoch).entryAmount;
 		output.numberOfMembers = state.QuRaffles.get(input.epoch).numberOfMembers;
 		output.winnerIndex = state.QuRaffles.get(input.epoch).winnerIndex;
+		output.numberOfDaoMembers = state.QuRaffles.get(input.epoch).numberOfDaoMembers;
 		output.returnCode = QRAFFLE_SUCCESS;
 	}
 
@@ -1310,6 +1313,7 @@ protected:
 			locals.qraffle.entryAmount = state.qREAmount;
 			locals.qraffle.numberOfMembers = state.numberOfQuRaffleMembers;
 			locals.qraffle.winnerIndex = locals.winnerIndex;
+			locals.qraffle.numberOfDaoMembers = state.numberOfRegisters; // Store DAO member count for this epoch
 			state.QuRaffles.set(qpi.epoch(), locals.qraffle);
 
 			// Log QuRaffle completion with detailed information
