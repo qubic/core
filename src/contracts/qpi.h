@@ -230,6 +230,12 @@ namespace QPI
 			return true;
 		}
 
+		/// Set date/time to invalid value. Depending on the desired behavior of comparison, you may chose a value less or greater than all valid values.
+		inline void setInvalid(bool smallestValue = true)
+		{
+			value = (smallestValue) ? 0 : UINT64_MAX;
+		}
+
 		/**
 		* @brief Set date value without checking if it is valid.
 		* @param year	Year of the date (without offset). Should be in range 0 to 65335.
@@ -310,6 +316,8 @@ namespace QPI
 		/// Check if this instance contains a valid date and time.
 		bool isValid() const
 		{
+			if (!value)
+				return false;
 			return isValid(getYear(), getMonth(), getDay(), getHour(), getMinute(), getSecond(), getMillisec(), getMicrosecDuringMillisec());
 		}
 

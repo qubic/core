@@ -495,80 +495,31 @@ public:
         // lock for accessing engine data
         LockGuard lockGuard(lock);
 
-        // check that we still have free capacity for the query
-        if (oracleQueryCount >= MAX_ORACLE_QUERIES || pendingQueryIndices.numValues >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
-        {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-            addDebugMessage(L"Cannot start user oracle query due to lack of space!");
-#endif
-            return -1;
-        }
-
-        // find slot storing temporary reply state
-        uint32_t replyStateSlotIdx = getEmptyReplyStateSlot();
-        if (replyStateSlotIdx >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
-        {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-            addDebugMessage(L"Cannot start user oracle query due to lack of free reply slot!");
-#endif
-            return -1;
-        }
-
         // compute timeout as absolute point in time
-        auto timeout = QPI::DateAndTime::now();
-        if (tx->timeoutMilliseconds > MAX_ORACLE_TIMEOUT_MILLISEC || !timeout.addMillisec(tx->timeoutMilliseconds))
-        {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-            addDebugMessage(L"Cannot start user oracle query due to timeout timestamp issue!");
-#endif
+        auto timeout = getTimeoutTimestamp(QPI::DateAndTime::now(), tx->timeoutMilliseconds);
+        if (!timeout.isValid())
             return -1;
-        }
 
         // compose query ID
         int64_t queryId = ((int64_t)system.tick << 31) | txIndex;
         ASSERT(txIndex < (1ull << 31));
 
-        // map ID to index
-        ASSERT(!queryIdToIndex->contains(queryId));
-        if (queryIdToIndex->set(queryId, oracleQueryCount) == QPI::NULL_INDEX)
-        {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-            addDebugMessage(L"Cannot start user oracle query due to queryIdToIndex issue!");
-#endif
+        // run common part of starting query and init query metadata
+        OracleQueryMetadata* oqm = startQuery(queryId, ORACLE_QUERY_TYPE_USER_QUERY, tx->oracleInterfaceIndex, timeout, 0);
+        if (!oqm)
             return -1;
-        }
-
-        // register index of pending query
-        pendingQueryIndices.add(oracleQueryCount);
-
-        // init query metadata (persistent)
-        auto& queryMetadata = queries[oracleQueryCount++];
-        queryMetadata.queryId = queryId;
-        queryMetadata.type = ORACLE_QUERY_TYPE_USER_QUERY;
-        queryMetadata.status = ORACLE_QUERY_STATUS_PENDING;
-        queryMetadata.statusFlags = ORACLE_FLAG_REPLY_PENDING;
-        queryMetadata.interfaceIndex = tx->oracleInterfaceIndex;
-        queryMetadata.queryTick = system.tick;
-        queryMetadata.timeout = timeout;
-        queryMetadata.typeVar.user.queryingEntity = tx->sourcePublicKey;
-        queryMetadata.typeVar.user.queryTxIndex = txIndex;
-        queryMetadata.statusVar.pending.replyStateIndex = replyStateSlotIdx;
-
-        // init reply state (temporary until reply is revealed)
-        OracleReplyState& replyState = replyStates[replyStateSlotIdx];
-        setMem(&replyState, sizeof(replyState), 0);
-        replyState.queryId = queryId;
+        oqm->typeVar.user.queryingEntity = tx->sourcePublicKey;
+        oqm->typeVar.user.queryTxIndex = txIndex;
 
         // enqueue query message to oracle machine node
         enqueueOracleQuery(queryId, tx->oracleInterfaceIndex, tx->timeoutMilliseconds, queryData, querySize);
 
         // log status change
-        OracleQueryStatusChange logEvent{ tx->sourcePublicKey, queryId, tx->oracleInterfaceIndex, queryMetadata.type, queryMetadata.status };
-        logger.logOracleQueryStatusChange(logEvent);
+        logQueryStatusChange(*oqm);
 
         // Debug logging
 #if ENABLE_ORACLE_STATS_RECORD
-        oracleStats[queryMetadata.interfaceIndex].queryCount++;
+        oracleStats[oqm->interfaceIndex].queryCount++;
 #endif
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
@@ -611,89 +562,23 @@ public:
         // lock for accessing engine data
         LockGuard lockGuard(lock);
 
-        // check that still have free capacity for the query
-        if (oracleQueryCount >= MAX_ORACLE_QUERIES || pendingQueryIndices.numValues >= MAX_SIMULTANEOUS_ORACLE_QUERIES || queryStorageBytesUsed + querySize > ORACLE_QUERY_STORAGE_SIZE)
-        {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-            addDebugMessage(L"Cannot start contract oracle query due to lack of space!");
-#endif
-            return -1;
-        }
-
-        // find slot storing temporary reply state
-        uint32_t replyStateSlotIdx = getEmptyReplyStateSlot();
-        if (replyStateSlotIdx >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
-        {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-            addDebugMessage(L"Cannot start contract oracle query due to lack of free reply slot!");
-#endif
-            return -1;
-        }
-
         // compute timeout as absolute point in time
-        auto timeout = QPI::DateAndTime::now();
-        if (timeoutMillisec > MAX_ORACLE_TIMEOUT_MILLISEC || !timeout.addMillisec(timeoutMillisec))
-        {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-            addDebugMessage(L"Cannot start contract oracle query due to timeout timestamp issue!");
-#endif
+        auto timeout = getTimeoutTimestamp(QPI::DateAndTime::now(), timeoutMillisec);
+        if (!timeout.isValid())
             return -1;
-        }
 
-        // get sequential query index of contract in tick
-        auto& cs = contractQueryIdState;
-        if (cs.tick < system.tick)
-        {
-            cs.tick = system.tick;
-            cs.queryIndexInTick = NUMBER_OF_TRANSACTIONS_PER_TICK;
-        }
-        else
-        {
-            if (cs.queryIndexInTick >= 0x7FFFFFFF)
-            {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-                addDebugMessage(L"Cannot start contract oracle query due to queryId issue!");
-#endif
-                return -1;
-            }
-            ++cs.queryIndexInTick;
-        }
-
-        // compose query ID
-        int64_t queryId = ((int64_t)system.tick << 31) | cs.queryIndexInTick;
-        static_assert(((0xFFFFFFFFll << 31) & 0x7FFFFFFFll) == 0ll && ((0xFFFFFFFFll << 31) | 0x7FFFFFFFll) > 0);
-
-        // map ID to index
-        ASSERT(!queryIdToIndex->contains(queryId));
-        if (queryIdToIndex->set(queryId, oracleQueryCount) == QPI::NULL_INDEX)
-        {
-#if !defined(NDEBUG) && !defined(NO_UEFI)
-            addDebugMessage(L"Cannot start contract oracle query due to queryIdToIndex issue!");
-#endif
+        // get new query ID
+        int64_t queryId = getNewNonTxQueryId();
+        if (queryId < 0)
             return -1;
-        }
 
-        // register index of pending query
-        pendingQueryIndices.add(oracleQueryCount);
-
-        // init query metadata (persistent)
-        auto& queryMetadata = queries[oracleQueryCount++];
-        queryMetadata.queryId = queryId;
-        queryMetadata.type = ORACLE_QUERY_TYPE_CONTRACT_QUERY;
-        queryMetadata.status = ORACLE_QUERY_STATUS_PENDING;
-        queryMetadata.statusFlags = ORACLE_FLAG_REPLY_PENDING;
-        queryMetadata.interfaceIndex = interfaceIndex;
-        queryMetadata.queryTick = system.tick;
-        queryMetadata.timeout = timeout;
-        queryMetadata.typeVar.contract.queryingContract = contractIndex;
-        queryMetadata.typeVar.contract.queryStorageOffset = queryStorageBytesUsed;
-        queryMetadata.typeVar.contract.notificationProcId = notificationProcId;
-        queryMetadata.statusVar.pending.replyStateIndex = replyStateSlotIdx;
-
-        // init reply state (temporary until reply is revealed)
-        OracleReplyState& replyState = replyStates[replyStateSlotIdx];
-        setMem(&replyState, sizeof(replyState), 0);
-        replyState.queryId = queryId;
+        // run common part of starting query and init query metadata
+        OracleQueryMetadata* oqm = startQuery(queryId, ORACLE_QUERY_TYPE_CONTRACT_QUERY, interfaceIndex, timeout, querySize);
+        if (!oqm)
+            return -1;
+        oqm->typeVar.contract.queryingContract = contractIndex;
+        oqm->typeVar.contract.queryStorageOffset = queryStorageBytesUsed;
+        oqm->typeVar.contract.notificationProcId = notificationProcId;
 
         // copy oracle query data to permanent storage
         copyMem(queryStorage + queryStorageBytesUsed, queryData, querySize);
@@ -703,12 +588,11 @@ public:
         enqueueOracleQuery(queryId, interfaceIndex, timeoutMillisec, queryData, querySize);
 
         // log status change
-        OracleQueryStatusChange logEvent{ m256i(contractIndex, 0, 0, 0), queryId, interfaceIndex, queryMetadata.type, queryMetadata.status };
-        logger.logOracleQueryStatusChange(logEvent);
+        logQueryStatusChange(*oqm);
 
         // Debug logging
 #if ENABLE_ORACLE_STATS_RECORD
-        oracleStats[queryMetadata.interfaceIndex].queryCount++;
+        oracleStats[oqm->interfaceIndex].queryCount++;
 #endif
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
@@ -739,6 +623,107 @@ public:
     }
 
 protected:
+
+    // Compute timeout as timestamp (absolute point in time).
+    static QPI::DateAndTime getTimeoutTimestamp(const QPI::DateAndTime& baseTime, uint32_t timeoutMilliseconds)
+    {
+        QPI::DateAndTime timeout = baseTime;
+        if (timeoutMilliseconds > MAX_ORACLE_TIMEOUT_MILLISEC || !timeout.addMillisec(timeoutMilliseconds))
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            addDebugMessage(L"Cannot start oracle query due to timeout timestamp issue!");
+#endif
+            timeout.setInvalid();
+        }
+        return timeout;
+    }
+
+    // Get the next query ID for a query that is not associated with a transaction
+    // Caller is responsible for acquiring lock.
+    int64_t getNewNonTxQueryId()
+    {
+        // get sequential query index of contract in tick
+        auto& cs = contractQueryIdState;
+        if (cs.tick < system.tick)
+        {
+            cs.tick = system.tick;
+            cs.queryIndexInTick = NUMBER_OF_TRANSACTIONS_PER_TICK;
+        }
+        else
+        {
+            if (cs.queryIndexInTick >= 0x7FFFFFFF)
+            {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                addDebugMessage(L"Cannot start contract oracle query due to queryId issue!");
+#endif
+                return -1;
+            }
+            ++cs.queryIndexInTick;
+        }
+
+        // compose query ID
+        int64_t queryId = ((int64_t)system.tick << 31) | cs.queryIndexInTick;
+        static_assert(((0xFFFFFFFFll << 31) & 0x7FFFFFFFll) == 0ll && ((0xFFFFFFFFll << 31) | 0x7FFFFFFFll) > 0);
+
+        return queryId;
+    }
+
+    // Run common part of starting a query.
+    // Caller is responsible for acquiring lock.
+    OracleQueryMetadata* startQuery(int64_t queryId, uint8_t queryType, uint32_t interfaceIndex, const QPI::DateAndTime& timeout, uint64_t queryStorageBytesToAdd)
+    {
+        // check that we still have free capacity for the query
+        if (oracleQueryCount >= MAX_ORACLE_QUERIES || pendingQueryIndices.numValues >= MAX_SIMULTANEOUS_ORACLE_QUERIES
+            || queryStorageBytesUsed + queryStorageBytesToAdd > ORACLE_QUERY_STORAGE_SIZE)
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            addDebugMessage(L"Cannot start oracle query due to lack of space!");
+#endif
+            return nullptr;
+        }
+
+        // find slot storing temporary reply state
+        uint32_t replyStateSlotIdx = getEmptyReplyStateSlot();
+        if (replyStateSlotIdx >= MAX_SIMULTANEOUS_ORACLE_QUERIES)
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            addDebugMessage(L"Cannot start oracle query due to lack of free reply slot!");
+#endif
+            return nullptr;
+        }
+
+        // map ID to index
+        ASSERT(!queryIdToIndex->contains(queryId));
+        if (queryIdToIndex->set(queryId, oracleQueryCount) == QPI::NULL_INDEX)
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            addDebugMessage(L"Cannot start user oracle query due to queryIdToIndex issue!");
+#endif
+            return nullptr;
+        }
+
+        // register index of pending query
+        pendingQueryIndices.add(oracleQueryCount);
+
+        // init reply state (temporary until reply is revealed)
+        OracleReplyState& replyState = replyStates[replyStateSlotIdx];
+        setMem(&replyState, sizeof(replyState), 0);
+        replyState.queryId = queryId;
+
+        // init common part of query metadata (persistent)
+        auto& queryMetadata = queries[oracleQueryCount++];
+        queryMetadata.queryId = queryId;
+        queryMetadata.type = queryType;
+        queryMetadata.status = ORACLE_QUERY_STATUS_PENDING;
+        queryMetadata.statusFlags = ORACLE_FLAG_REPLY_PENDING;
+        queryMetadata.interfaceIndex = interfaceIndex;
+        queryMetadata.queryTick = system.tick;
+        queryMetadata.timeout = timeout;
+        queryMetadata.statusVar.pending.replyStateIndex = replyStateSlotIdx;
+
+        return &queryMetadata;
+    }
+
     // Enqueue oracle machine query message. Cannot be run concurrently. Caller must acquire engine lock!
     void enqueueOracleQuery(int64_t queryId, uint32_t interfaceIdx, uint32_t timeoutMillisec, const void* queryData, uint16_t querySize)
     {
