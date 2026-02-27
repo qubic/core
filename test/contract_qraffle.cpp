@@ -1055,7 +1055,7 @@ TEST(ContractQraffle, GetFunctions)
         EXPECT_GT(endedQuRaffle.receivedAmount, 0);
         EXPECT_EQ(endedQuRaffle.entryAmount, 10000000);
         EXPECT_EQ(endedQuRaffle.numberOfMembers, memberCount);
-        EXPECT_GT(endedQuRaffle.numberOfDaoMembers, 0); // NEW: Verify DAO members stored
+        EXPECT_GT(endedQuRaffle.numberOfDaoMembers, 0u); // NEW: Verify DAO members stored
         EXPECT_EQ(endedQuRaffle.numberOfDaoMembers, qraffle.getState()->getNumberOfRegisters()); // NEW: Match current count
         
         // Test with future epoch
