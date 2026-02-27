@@ -166,4 +166,19 @@ inline static unsigned int sadd(unsigned int a, unsigned int b)
 	return (unsigned int)sum;
 }
 
+// Compue greatest common divisor of a and b. Returns 0 if a or b are negative and 0 if both are 0.
+template <typename T>
+inline constexpr T greatestCommonDivisor(T a, T b)
+{
+	if (a < 0 || b < 0)
+		return 0;
+	while (b != 0)
+	{
+		T tmp = b;
+		b = a % b;
+		a = tmp;
+	}
+	return a;
+}
+
 }
