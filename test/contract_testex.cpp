@@ -2135,7 +2135,7 @@ TEST(ContractTestEx, OracleQuery)
     checkNetworkMessageOracleMachineQuery<OI::Price>(expectedOracleQueryId, 10, query);
 
     expectedOracleQueryId = getContractOracleQueryId(system.tick, 1);
-    query.oracle = OI::Price::getCoingeckoOracleId();
+    query.oracle = OI::Price::getBinanceOracleId();
     query.timestamp.addDays(20);
     query.currency1 = currencyUsd;
     query.currency2 = NULL_ID;

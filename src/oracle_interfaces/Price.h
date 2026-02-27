@@ -41,7 +41,7 @@ struct Price
 	/// Oracle query data / input to the oracle machine
 	struct OracleQuery
 	{
-		/// Oracle = the source for getting the information, e.g. coingecko
+		/// Oracle = the source for getting the information, e.g. binance
 		id oracle;
 
 		/// The timestamp that the reply value should be of. This is required for supporting supporting subscription, because it is set by the scheduler.
@@ -123,13 +123,6 @@ struct Price
 	{
 		using namespace Ch;
 		return id(g, a, t, e, 0);
-	}
-
-	/// Get oracle ID of coingecko oracle
-	static id getCoingeckoOracleId()
-	{
-		using namespace Ch;
-		return id(c, o, i, n, g, e, c, k, o);
 	}
 
 	/// Get oracle ID of combined binance + mexc oracle (mean of prices of both sources)

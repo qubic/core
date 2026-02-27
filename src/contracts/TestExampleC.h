@@ -363,7 +363,7 @@ public:
 				else if (locals.c == 2)
 				{
 					using namespace Ch;
-					locals.priceOracleQuery.oracle = OI::Price::getCoingeckoOracleId();
+					locals.priceOracleQuery.oracle = OI::Price::getBinanceOracleId();
 					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
 					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
 					locals.priceOracleQuery.timestamp = qpi.now();
