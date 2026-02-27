@@ -160,13 +160,15 @@ public:
     }
 
     void quRaffleWinnerChecker(uint16 epoch, const id& expectedWinner, uint64 expectedReceived, 
-                              uint64 expectedEntryAmount, uint32 expectedMembers, uint32 expectedWinnerIndex)
+                              uint64 expectedEntryAmount, uint32 expectedMembers, uint32 expectedWinnerIndex,
+                              uint32 expectedDaoMembers)
     {
         EXPECT_EQ(QuRaffles.get(epoch).epochWinner, expectedWinner);
         EXPECT_EQ(QuRaffles.get(epoch).receivedAmount, expectedReceived);
         EXPECT_EQ(QuRaffles.get(epoch).entryAmount, expectedEntryAmount);
         EXPECT_EQ(QuRaffles.get(epoch).numberOfMembers, expectedMembers);
         EXPECT_EQ(QuRaffles.get(epoch).winnerIndex, expectedWinnerIndex);
+        EXPECT_EQ(daoMemberCount.get(epoch), expectedDaoMembers);
     }
 
     uint64 getQuRaffleEntryAmount()
@@ -1053,6 +1055,8 @@ TEST(ContractQraffle, GetFunctions)
         EXPECT_GT(endedQuRaffle.receivedAmount, 0);
         EXPECT_EQ(endedQuRaffle.entryAmount, 10000000);
         EXPECT_EQ(endedQuRaffle.numberOfMembers, memberCount);
+        EXPECT_GT(endedQuRaffle.numberOfDaoMembers, 0u); // NEW: Verify DAO members stored
+        EXPECT_EQ(endedQuRaffle.numberOfDaoMembers, qraffle.getState()->getNumberOfRegisters()); // NEW: Match current count
         
         // Test with future epoch
         auto futureQuRaffle = qraffle.getEndedQuRaffle(1);
@@ -1167,7 +1171,8 @@ TEST(ContractQraffle, EndEpoch)
     auto quRaffle = qraffle.getEndedQuRaffle(0);
     EXPECT_EQ(quRaffle.returnCode, QRAFFLE_SUCCESS);
     qraffle.getState()->quRaffleWinnerChecker(0, quRaffle.epochWinner, quRaffle.receivedAmount, 
-                                            quRaffle.entryAmount, quRaffle.numberOfMembers, quRaffle.winnerIndex);
+                                            quRaffle.entryAmount, quRaffle.numberOfMembers, quRaffle.winnerIndex,
+                                            quRaffle.numberOfDaoMembers);
 
     qraffle.endEpoch();
     // Check that token raffles were processed
