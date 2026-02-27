@@ -330,7 +330,7 @@ public:
 		uint64 entryAmount;
 		uint32 numberOfMembers;
 		uint32 winnerIndex;
-		uint32 numberOfDaoMembers; // Number of DAO members (registers) at this epoch
+		uint32 numberOfDaoMembers;
 		sint32 returnCode;
 	};
 
@@ -407,7 +407,6 @@ protected:
 		uint64 entryAmount;
 		uint32 numberOfMembers;
 		uint32 winnerIndex;
-		uint32 numberOfDaoMembers; // Number of DAO members (registers) at this epoch
 	};
 	Array <QuRaffleInfo, QRAFFLE_MAX_EPOCH> QuRaffles;
 	struct TokenRaffleInfo
@@ -427,6 +426,9 @@ protected:
 	id charityAddress, feeAddress, QXMRIssuer;
 	uint64 epochRevenue, epochQXMRRevenue, qREAmount, totalBurnAmount, totalCharityAmount, totalShareholderAmount, totalRegisterAmount, totalFeeAmount, totalWinnerAmount, largestWinnerAmount;
 	uint32 numberOfRegisters, numberOfQuRaffleMembers, numberOfEntryAmountSubmitted, numberOfProposals, numberOfActiveTokenRaffle, numberOfEndedTokenRaffle;
+	
+	// New state variables added at the end to avoid breaking existing state
+	Array<uint32, QRAFFLE_MAX_EPOCH> daoMemberCount; // Number of DAO members (registers) at each epoch
 
 	struct registerInSystem_locals
 	{
@@ -1111,7 +1113,7 @@ protected:
 		output.entryAmount = state.QuRaffles.get(input.epoch).entryAmount;
 		output.numberOfMembers = state.QuRaffles.get(input.epoch).numberOfMembers;
 		output.winnerIndex = state.QuRaffles.get(input.epoch).winnerIndex;
-		output.numberOfDaoMembers = state.QuRaffles.get(input.epoch).numberOfDaoMembers;
+		output.numberOfDaoMembers = state.daoMemberCount.get(input.epoch);
 		output.returnCode = QRAFFLE_SUCCESS;
 	}
 
@@ -1313,8 +1315,8 @@ protected:
 			locals.qraffle.entryAmount = state.qREAmount;
 			locals.qraffle.numberOfMembers = state.numberOfQuRaffleMembers;
 			locals.qraffle.winnerIndex = locals.winnerIndex;
-			locals.qraffle.numberOfDaoMembers = state.numberOfRegisters; // Store DAO member count for this epoch
 			state.QuRaffles.set(qpi.epoch(), locals.qraffle);
+			state.daoMemberCount.set(qpi.epoch(), state.numberOfRegisters); // Store DAO member count for this epoch
 
 			// Log QuRaffle completion with detailed information
 			locals.endEpochLog = QRAFFLEEndEpochLogger{ 

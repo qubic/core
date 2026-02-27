@@ -168,7 +168,7 @@ public:
         EXPECT_EQ(QuRaffles.get(epoch).entryAmount, expectedEntryAmount);
         EXPECT_EQ(QuRaffles.get(epoch).numberOfMembers, expectedMembers);
         EXPECT_EQ(QuRaffles.get(epoch).winnerIndex, expectedWinnerIndex);
-        EXPECT_EQ(QuRaffles.get(epoch).numberOfDaoMembers, expectedDaoMembers);
+        EXPECT_EQ(daoMemberCount.get(epoch), expectedDaoMembers);
     }
 
     uint64 getQuRaffleEntryAmount()
