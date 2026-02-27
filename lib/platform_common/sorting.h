@@ -119,6 +119,30 @@ public:
         return true;
     }
 
+    // Remove first elementToRemove that is found. Requires T::operator==(). Least efficient operation of MinHeap with O(N).
+    bool removeFirstMatch(const T& elementToRemove)
+    {
+        // find element
+        unsigned int i = 0;
+        for (; i < _size; ++i)
+        {
+            if (_data[i] == elementToRemove)
+                break;
+        }
+        if (i == _size)
+            return false;
+
+        // replace it by the last element and heapify
+        --_size;
+        if (i < _size)
+        {
+            _data[i] = _data[_size];
+            i = upHeap(i);
+            downHeap(i);
+        }
+        return true;
+    }
+
     // Get minimum element (copy to output reference and WITHOUT removing it from the heap). Returns true on success.
     bool peek(T& minElement) const
     {
@@ -148,7 +172,7 @@ protected:
         _data[idx2] = tmp;
     }
 
-    void upHeap(unsigned int idx)
+    unsigned int upHeap(unsigned int idx)
     {
         while (idx != 0)
         {
@@ -160,9 +184,10 @@ protected:
             }
             else
             {
-                return;
+                break;
             }
         }
+        return idx;
     }
 
     void downHeap(unsigned int idx)

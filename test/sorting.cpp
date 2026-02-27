@@ -154,7 +154,8 @@ static void testHeapBasedSorting(const std::vector<T>& vec, const std::vector<T>
 template <typename T, class MyCompareType, class StdCompareType>
 static void testHeap(unsigned int seed)
 {
-    std::vector<T> vec = prepareData<T>(seed);
+    std::mt19937 gen32(seed);
+    std::vector<T> vec = prepareData<T>(gen32());
 
     std::vector<T> sortedVec = vec;
     std::sort(sortedVec.begin(), sortedVec.end(), StdCompareType());
@@ -167,7 +168,7 @@ static void testHeap(unsigned int seed)
 
     // test replace
     while (vec.size() < 200)
-        vec = prepareData<T>(++seed);
+        vec = prepareData<T>(gen32());
     std::vector<T> insertedVec;
     T minValue;
     heap.init();
@@ -190,12 +191,52 @@ static void testHeap(unsigned int seed)
         EXPECT_TRUE(heap.peek(minValue));
         EXPECT_EQ(minValue, insertedVec[0]);
     }
+    for (size_t i = 0; i < insertedVec.size(); ++i)
+    {
+        EXPECT_TRUE(heap.extract(minValue));
+        EXPECT_EQ(minValue, insertedVec[i]);
+    }
+    EXPECT_EQ(heap.size(), 0);
 
     // test that insert fails when capacity is reached
     heap.init();
     for (unsigned int i = 0; i < heap.capacity(); ++i)
         EXPECT_TRUE(heap.insert(0));
     EXPECT_FALSE(heap.insert(0));
+
+    // test removeFirstMatch
+    EXPECT_FALSE(heap.removeFirstMatch(1));
+    EXPECT_TRUE(heap.removeFirstMatch(0));
+    heap.init();
+    EXPECT_FALSE(heap.removeFirstMatch(0));
+    insertedVec.clear();
+    for (int i = 0; i <= 100; ++i)
+    {
+        // add two elements with insert to test removeFirstMatch with different sizes and sets
+        EXPECT_TRUE(heap.insert(vec[i]));
+        EXPECT_TRUE(heap.insert(vec[i + 100]));
+        EXPECT_EQ(heap.size(), i + 2);
+        insertedVec.push_back(vec[i]);
+        insertedVec.push_back(vec[i + 100]);
+        std::sort(insertedVec.begin(), insertedVec.end(), StdCompareType());
+        EXPECT_TRUE(heap.peek(minValue));
+        EXPECT_EQ(minValue, insertedVec[0]);
+
+        // test removeFirstMatch
+        const int removeIdx = gen32() % insertedVec.size();
+        EXPECT_TRUE(heap.removeFirstMatch(insertedVec[removeIdx]));
+        EXPECT_EQ(heap.size(), i + 1);
+        insertedVec.erase(insertedVec.begin() + removeIdx);
+        std::sort(insertedVec.begin(), insertedVec.end(), StdCompareType());
+        EXPECT_TRUE(heap.peek(minValue));
+        EXPECT_EQ(minValue, insertedVec[0]);
+    }
+    for (size_t i = 0; i < insertedVec.size(); ++i)
+    {
+        EXPECT_TRUE(heap.extract(minValue));
+        EXPECT_EQ(minValue, insertedVec[i]);
+    }
+    EXPECT_EQ(heap.size(), 0);
 }
 
 template <typename T>
