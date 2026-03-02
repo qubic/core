@@ -12,6 +12,7 @@
 // - for given oracle query ID: metadata, query, and response if available
 // - subscription info for given oracle subscription ID
 // - query statistics of this node (counts and durations)
+// - query oracle revenue points
 struct RequestOracleData
 {
     static constexpr unsigned char type()
@@ -61,14 +62,14 @@ struct RespondOracleData
     // The payload is the OracleReply data as defined by the oracle interface type.
     static constexpr unsigned int respondReplyData = 3;
 
-    // The payload is RespondOracleDataSubscriptionMetadata.
-    static constexpr unsigned int respondSubscriptionMetadata = 4;
+    // The payload is an array of 2-byte contract indices.
+    static constexpr unsigned int respondNotifiedSubscriberContracts = 4;
 
-    // The payload is RespondOracleDataQueryMetadata.
-    static constexpr unsigned int respondSubscriptionQueryData = 5;
+    // The payload is RespondOracleDataSubscription.
+    static constexpr unsigned int respondSubscription = 5;
 
-    // The payload is RespondOracleDataSubscriptionContractMetadata.
-    static constexpr unsigned int respondSubscriptionContractMetadata = 6;
+    // The payload is RespondOracleDataSubscriber.
+    static constexpr unsigned int respondSubscriber = 6;
 
     // The payload is RespondOracleDataQueryStatistics.
     static constexpr unsigned int respondQueryStatistics = 7;
@@ -103,21 +104,21 @@ struct RespondOracleDataQueryMetadata
 
 static_assert(sizeof(RespondOracleDataQueryMetadata) == 72, "Unexpected struct size");
 
-struct RespondOracleDataSubscriptionMetadata
+struct RespondOracleDataSubscription
 {
-    int64_t lastQueryQueryId;
-    int64_t lastRevealQueryId;
-    uint64_t nextQueryTimestamp;
-    uint16_t queryIntervalMinutes;
-    uint16_t queryTimestampOffset;
+    int32_t subscriptionId;
+    uint32_t interfaceIndex;
+    int64_t lastPendingQueryId;
+    int64_t lastRevealedQueryId;
+    uint32_t generatedQueriesCount;
 };
 
-struct RespondOracleDataSubscriptionContractMetadata
+struct RespondOracleDataSubscriber
 {
     int32_t subscriptionId;
     uint16_t contractIndex;
-    uint16_t notificationIntervalMinutes; 
-    uint64_t nextQueryNotificationTimestamp; ///< Timeout in QPI::DateAndTime format
+    uint16_t notificationIntervalMinutes;
+    uint64_t nextQueryTimestamp;    ///< timestamp of next query in QPI::DateAndTime format
 };
 
 struct RespondOracleDataQueryStatistics

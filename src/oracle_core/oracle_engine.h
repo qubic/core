@@ -1063,10 +1063,11 @@ public:
             addDebugMessage(dbgMsg);
 #endif
 
-            // Update current subscription and priority queue all subscriptions
+            // Update current subscription and priority queue of all subscriptions
             ASSERT(subscription.firstSubscriberIndex >= 0);
-            subscription.nextQueryTimestamp = subscribers[subscription.firstSubscriberIndex].nextQueryTimestamp;
+            subscription.lastPendingQueryId = queryId;
             ++subscription.generatedQueriesCount;
+            subscription.nextQueryTimestamp = subscribers[subscription.firstSubscriberIndex].nextQueryTimestamp;
             nextSubscriptionIdQueue.replace(subscriptionId, subscriptionId);
         }
     }
@@ -1971,6 +1972,11 @@ public:
         pendingQueryIndices.removeByValue(queryIndex);
         ++stats.successCount;
         stats.successTicksSum += (oqm.statusVar.success.revealTick - oqm.queryTick);
+        if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_SUBSCRIPTION)
+        {
+            ASSERT(oqm.typeVar.subscription.subscriptionId >= 0 && oqm.typeVar.subscription.subscriptionId < usedSubscriptionSlots);
+            subscriptions[oqm.typeVar.subscription.subscriptionId].lastRevealedQueryId = oqm.queryId;
+        }
 
         // cleanup reply state
         pendingRevealReplyStateIndices.removeByValue(replyStateIdx);
