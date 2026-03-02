@@ -333,7 +333,7 @@ protected:
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> pendingRevealReplyStateIndices;
 
     // fast lookup of query indices for which the contract should be notified
-    UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> notificationQueryIndicies;
+    UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> notificationQueryIndices;
 
     // revenue points collected by each computor for fast and correct commit
     uint64_t revenuePoints[NUMBER_OF_COMPUTORS];
@@ -546,7 +546,7 @@ public:
         pendingQueryIndices.numValues = 0;
         pendingCommitReplyStateIndices.numValues = 0;
         pendingRevealReplyStateIndices.numValues = 0;
-        notificationQueryIndicies.numValues = 0;
+        notificationQueryIndices.numValues = 0;
         usedSubscriptionSlots = 0;
         usedSubscriberSlots = 0;
         setMem(revenuePoints, sizeof(revenuePoints), 0);
@@ -1603,7 +1603,7 @@ public:
 
                 // schedule contract notification(s) if needed
                 if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
-                    notificationQueryIndicies.add(queryIndex);
+                    notificationQueryIndices.add(queryIndex);
 
                 // log status change
                 logQueryStatusChange(oqm);
@@ -1953,7 +1953,7 @@ public:
 
                 // schedule contract notification(s) if needed
                 if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
-                    notificationQueryIndicies.add(queryIndex);
+                    notificationQueryIndices.add(queryIndex);
 
                 // log status change
                 logQueryStatusChange(oqm);
@@ -1997,7 +1997,7 @@ public:
 
         // schedule contract notification(s) if needed
         if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
-            notificationQueryIndicies.add(queryIndex);
+            notificationQueryIndices.add(queryIndex);
 
         // log status change
         logQueryStatusChange(oqm);
@@ -2068,7 +2068,7 @@ public:
 
                 // schedule contract notification(s) if needed
                 if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
-                    notificationQueryIndicies.add(queryIndex);
+                    notificationQueryIndices.add(queryIndex);
 
                 // log status change
                 logQueryStatusChange(oqm);
@@ -2098,15 +2098,15 @@ public:
     const OracleNotificationData* getNotification()
     {
         // currently no notifications needed?
-        if (!notificationQueryIndicies.numValues)
+        if (!notificationQueryIndices.numValues)
             return nullptr;
 
         // lock for accessing engine data
         LockGuard lockGuard(lock);
 
         // get index and update list
-        const uint32_t queryIndex = notificationQueryIndicies.values[0];
-        notificationQueryIndicies.removeByIndex(0);
+        const uint32_t queryIndex = notificationQueryIndices.values[0];
+        notificationQueryIndices.removeByIndex(0);
 
         // get query metadata
         const OracleQueryMetadata& oqm = queries[queryIndex];
@@ -2480,8 +2480,8 @@ public:
         }
 
         // check index of pending notifications
-        queryIdxCount = notificationQueryIndicies.numValues;
-        queryIndices = notificationQueryIndicies.values;
+        queryIdxCount = notificationQueryIndices.numValues;
+        queryIndices = notificationQueryIndices.values;
         for (uint32_t i = 0; i < queryIdxCount; ++i)
         {
             const uint32_t queryIndex = queryIndices[i];
