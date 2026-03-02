@@ -283,6 +283,15 @@ struct OracleEngineStatistics
 
     /// total number of commits with wrong knowledge proof
     unsigned long long wrongKnowledgeProofCount;
+
+    /// Total number of queries by users
+    unsigned long long userQueries;
+
+    /// Total number of one-time queries by contracts
+    unsigned long long contractQueries;
+
+    /// Total number of subscription queries
+    unsigned long long subscriptionQueries;
 };
 
 
@@ -667,6 +676,7 @@ public:
             // success case: refund the amount that has been paid too much (error case refund is handled by caller)
             refundFees(tx->sourcePublicKey, tx->amount - fee);
         }
+        ++stats.userQueries;
 
         return queryId;
     }
@@ -734,6 +744,8 @@ public:
         appendDateAndTime(dbgMsg, QPI::DateAndTime::now());
         addDebugMessage(dbgMsg);
 #endif
+
+        ++stats.contractQueries;
 
         return queryId;
     }
@@ -1063,10 +1075,11 @@ public:
             addDebugMessage(dbgMsg);
 #endif
 
-            // Update current subscription and priority queue of all subscriptions
-            ASSERT(subscription.firstSubscriberIndex >= 0);
+            // Update current subscription, statistics, and priority queue of all subscriptions
             subscription.lastPendingQueryId = queryId;
             ++subscription.generatedQueriesCount;
+            ++stats.subscriptionQueries;
+            ASSERT(subscription.firstSubscriberIndex >= 0);
             subscription.nextQueryTimestamp = subscribers[subscription.firstSubscriberIndex].nextQueryTimestamp;
             nextSubscriptionIdQueue.replace(subscriptionId, subscriptionId);
         }

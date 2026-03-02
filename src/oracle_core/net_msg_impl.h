@@ -289,6 +289,9 @@ void OracleEngine::processRequestOracleData(Peer* peer, RequestResponseHeader* h
 		p->timeoutAvgMilliTicksPerQuery = (totalTimeouts) ? stats.timeoutTicksSum * 1000 / totalTimeouts : 0;
 		p->revealTxCount = stats.revealTxCount;
 		p->wrongKnowledgeProofCount = stats.wrongKnowledgeProofCount;
+		p->userQueries = stats.userQueries;
+		p->contractQueries = stats.contractQueries;
+		p->subscriptionQueries = stats.subscriptionQueries;
 
 		// send response
 		enqueueResponse(peer, sizeof(RespondOracleData) + sizeof(RespondOracleDataQueryStatistics),

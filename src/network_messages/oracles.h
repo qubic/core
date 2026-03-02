@@ -155,6 +155,15 @@ struct RespondOracleDataQueryStatistics
 
     /// Total number of commit with correct digest but wrong knowledge proof
     uint64_t wrongKnowledgeProofCount;
+
+    /// Total number of queries by users
+    unsigned long long userQueries;
+
+    /// Total number of one-time queries by contracts
+    unsigned long long contractQueries;
+
+    /// Total number of subscription queries
+    unsigned long long subscriptionQueries;
 };
 
 // Core node responds with this if the requested query tick is outside the range of ticks with available query info.
