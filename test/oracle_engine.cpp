@@ -1604,3 +1604,30 @@ TEST(OracleEngine, FindFirstQueryIndexOfTick)
 	}
 	oracleEngine.testFindFirstQueryIndexOfTick(ticks);
 }
+
+TEST(PriceOracle, SubscriptionFee)
+{
+	using OI::Price;
+	Price::OracleQuery query;
+	EXPECT_EQ(Price::getSubscriptionFee(query, 1), 10000);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 2), 6500);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 3), 6500);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 4), 4225);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 7), 4225);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 8), 2746);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 15), 2746);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 16), 1784);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 31), 1784);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 32), 1159);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 63), 1159);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 64), 753);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 127), 753);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 128), 489);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 255), 489);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 256), 317);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 511), 317);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 512), 206);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 1023), 206);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 1024), 133);
+	EXPECT_EQ(Price::getSubscriptionFee(query, 2047), 133);
+}

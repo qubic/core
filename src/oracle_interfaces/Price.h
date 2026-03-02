@@ -52,8 +52,6 @@ struct Price
 
 		/// Second currency of pair to get the exchange rate for.
 		id currency2;
-
-		// TODO: we may need to add precision requirements regarding response value
 	};
 
 	/// Oracle reply data / output of the oracle machine
@@ -75,7 +73,30 @@ struct Price
 	/// Return subscription fee, which may depend on query and interval.
 	static sint64 getSubscriptionFee(const OracleQuery& query, uint16 notifyIntervalInMinutes)
 	{
-		return 1000;
+		// subscription interval |      fee
+		// ----------------------+---------
+		// 1 minute              | 10000 QU
+		// 2 to 3 minutes        |  6500 QU
+		// 4 to 7 minutes        |  4225 QU
+		// 8 to 15 minutes       |  2746 QU
+		// 16 to 31 minutes      |  1784 QU
+		// 32 to 63 minutes      |  1159 QU
+		// 64 to 127 minutes     |   753 QU
+		// 128 to 255 minutes    |   489 QU
+		// 256 to 512 minutes    |   317 QU
+		//
+		// Recommendations:
+		// - Select a power of two (1, 2, 4, 8, 16, ...) as notifyIntervalInMinutes to pay less per query.
+		// - With notifyIntervalInMinutes >= 317, it is always cheaper to use individual queries (10 QU per query)
+		//   instead of subscriptions.
+		uint16 interval = notifyIntervalInMinutes;
+		sint64 fee = 10000;
+		while (interval > 1)
+		{
+			fee = fee * 65 / 100;
+			interval /= 2;
+		}
+		return fee;
 	}
 
 	//-------------------------------------------------------------------------
