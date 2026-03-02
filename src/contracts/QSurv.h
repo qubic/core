@@ -47,7 +47,13 @@ protected:
 public:
   INITIALIZE() {
     // State is automatically reset before INITIALIZE() is called
-    // No initialization needed - state fields start at zero
+    // Establish the Genesis Oracle to prevent sniper attacks
+    // ID: BOWFPORUCOPUOCNOIBDNSSRHQYCAXCRHGKBUKCMZJCZBHQVUUWWLAGIFWGVN
+    state._oracleAddress =
+        ID(_B, _O, _W, _F, _P, _O, _R, _U, _C, _O, _P, _U, _O, _C, _N, _O, _I,
+           _B, _D, _N, _S, _S, _R, _H, _Q, _Y, _C, _A, _X, _C, _R, _H, _G, _K,
+           _B, _U, _K, _C, _M, _Z, _J, _C, _Z, _B, _H, _Q, _V, _U, _U, _W, _W,
+           _L, _A, _G, _I, _F);
   }
 
   BEGIN_EPOCH() {
