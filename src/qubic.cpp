@@ -3375,6 +3375,9 @@ static void processTick(unsigned long long processorNumber)
         PROFILE_SCOPE_END();
     }
 
+    // Generate subscription queries (may create queries that immediately timout if the network was stuck)
+    oracleEngine.generateSubscriptionQueries();
+
     // Check for oracle query timeouts (may schedule notification)
     oracleEngine.processTimeouts();
 

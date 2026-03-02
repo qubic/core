@@ -388,6 +388,18 @@ namespace QPI
 			return value > other.value;
 		}
 
+		/// Checks if this date is earlier than the `other` date or the same.
+		bool operator<=(const DateAndTime& other) const
+		{
+			return value <= other.value;
+		}
+
+		/// Checks if this date is later than the `other` date or the same.
+		bool operator>=(const DateAndTime& other) const
+		{
+			return value >= other.value;
+		}
+
 		/// Checks if this date is identical to the `other` date.
 		bool operator==(const DateAndTime& other) const
 		{
@@ -3070,24 +3082,23 @@ namespace QPI
 	* @brief Subscribe for regularly querying an oracle.
 	* @param query The regular query, which must have a member `DateAndTime timestamp`.
 	* @param notificationCallback User procedure that shall be executed when the oracle reply is available or an error occurs.
-	* @param notificationIntervalInMilliseconds Number of milliseconds between consecutive queries/replies.
-	*			This is also used as a timeout. Currently, only multiples of 60000 are supported and other
-	*			values are rejected with an error.
+	* @param notificationIntervalInMilliseconds Number of milliseconds between consecutive queries/replies that the contract
+	*           is notified about. Currently, only multiples of 60000 are supported and other values are rejected with an error.
 	* @param notifyWithPreviousReply Whether to immediately notify this contract with the most up-to-date value if any is available.
 	* @return Oracle subscription ID that can be used to get the status of the subscription, or -1 on error.
 	*
-	* Subscriptions automatically expire at the end of each epoch. So, a common pattern is to call qpi.subscribeOracle()
+	* Subscriptions automatically expire at the end of each epoch. So, a common pattern is to call SUBSCRIBE_ORACLE
 	* in BEGIN_EPOCH.
 	*
-	* Subscriptions facilitate shareing common oracle queries among multiple contracts. This saves network ressources and allows
+	* Subscriptions facilitate sharing common oracle queries among multiple contracts. This saves network resources and allows
 	* to provide a fixed-price subscription for the whole epoch, which is usually much cheaper than the equivalent series of
 	* individual qpi.queryOracle() calls.
 	*
-	* The qpi.subscribeOracle() call will automatically burn the oracle subscription fee as defined by the oracle interface
+	* The SUBSCRIBE_ORACLE call will automatically burn the oracle subscription fee as defined by the oracle interface
 	* (burning without adding to the contract's execution fee reserve). It will fail if the contract doesn't have enough QU.
 	*
 	* The notification callback will be executed when the reply is available or on error.
-	* The callback must be a user procedure of the contract calling qpi.subscribeOracle() with the procedure input type
+	* The callback must be a user procedure of the contract calling SUBSCRIBE_ORACLE with the procedure input type
 	* OracleNotificationInput<OracleInterface> and NoData as output. The procedure must be registered with
 	* REGISTER_USER_PROCEDURE_NOTIFICATION() in REGISTER_USER_FUNCTIONS_AND_PROCEDURES().
 	* Success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
@@ -3095,6 +3106,7 @@ namespace QPI
 	* and input.queryID is -1 (invalid).
 	* Other errors that may happen with valid input.queryID are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
 	* input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE.
+	* The timeout of subscription queries is always 60000 milliseconds.
 	*/
 	#define SUBSCRIBE_ORACLE(OracleInterface, query, userProcNotification, notificationIntervalInMilliseconds, notifyWithPreviousReply) qpi.__qpiSubscribeOracle<OracleInterface>(query, userProcNotification, __id_##userProcNotification, notificationIntervalInMilliseconds, notifyWithPreviousReply)
 
