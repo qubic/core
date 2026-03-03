@@ -214,12 +214,6 @@
 #define CONTRACT_STATE2_TYPE QRWA2
 #include "contracts/qRWA.h"
 
-#define QSURV_CONTRACT_INDEX 24
-#define CONTRACT_INDEX QSURV_CONTRACT_INDEX
-#define CONTRACT_STATE_TYPE QSURV
-#define CONTRACT_STATE2_TYPE QSURV2
-#include "contracts/QSurv.h"
-
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
@@ -249,6 +243,12 @@
 #define CONTRACT_STATE_TYPE QDUEL
 #define CONTRACT_STATE2_TYPE QDUEL2
 #include "contracts/QDuel.h"
+
+#define QSURV_CONTRACT_INDEX 24
+#define CONTRACT_INDEX QSURV_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QSURV
+#define CONTRACT_STATE2_TYPE QSURV2
+#include "contracts/QSurv.h"
 
 // new contracts should be added above this line
 
@@ -361,6 +361,7 @@ constexpr struct ContractDescription
 	{"QRP", 199, 10000, sizeof(IPO)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
 	{"QTF", 199, 10000, sizeof(QTF)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
     {"QDUEL", 199, 10000, sizeof(QDUEL)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
+    {"QSURV", 205, 10000, sizeof(QSURV)}, // proposal in epoch 203, IPO in 204, construction and first use in 205
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA)},
