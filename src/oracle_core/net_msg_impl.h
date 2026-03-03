@@ -255,7 +255,7 @@ void OracleEngine::processRequestOracleData(Peer* peer, RequestResponseHeader* h
 			const OracleSubscriber& subscriber = subscribers[subscriberIdx];
 			p2->subscriptionId = subscriptionId;
 			p2->contractIndex = subscriber.contractIndex;
-			p2->notificationIntervalMinutes = subscriber.notificationPeriodMinutes;
+			p2->notificationPeriodMinutes = subscriber.notificationPeriodMinutes;
 			p2->nextQueryTimestamp = *(uint64_t*)&subscriber.nextQueryTimestamp;
 			enqueueResponse(peer, sizeof(RespondOracleData) + sizeof(RespondOracleDataSubscriber),
 				RespondOracleData::type(), header->dejavu(), response);

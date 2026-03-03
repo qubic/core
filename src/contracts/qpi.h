@@ -2649,7 +2649,7 @@ namespace QPI
 			const typename OracleInterface::OracleQuery& query,
 			void (*notificationProcPtr)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
 			unsigned int notificationProcId,
-			uint32 notificationIntervalInMilliseconds = 60000,
+			uint32 notificationPeriodInMilliseconds = 60000,
 			bool notifyWithPreviousReply = true
 		) const;
 
@@ -3082,7 +3082,7 @@ namespace QPI
 	* @brief Subscribe for regularly querying an oracle.
 	* @param query The regular query, which must have a member `DateAndTime timestamp`.
 	* @param notificationCallback User procedure that shall be executed when the oracle reply is available or an error occurs.
-	* @param notificationIntervalInMilliseconds Number of milliseconds between consecutive queries/replies that the contract
+	* @param notificationPeriodInMilliseconds Number of milliseconds between consecutive queries/replies that the contract
 	*           is notified about. Currently, only multiples of 60000 are supported and other values are rejected with an error.
 	* @param notifyWithPreviousReply Whether to immediately notify this contract with the most up-to-date value if any is available.
 	* @return Oracle subscription ID that can be used to get the status of the subscription, or -1 on error.
@@ -3108,7 +3108,7 @@ namespace QPI
 	* input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE.
 	* The timeout of subscription queries is always 60000 milliseconds.
 	*/
-	#define SUBSCRIBE_ORACLE(OracleInterface, query, userProcNotification, notificationIntervalInMilliseconds, notifyWithPreviousReply) qpi.__qpiSubscribeOracle<OracleInterface>(query, userProcNotification, __id_##userProcNotification, notificationIntervalInMilliseconds, notifyWithPreviousReply)
+	#define SUBSCRIBE_ORACLE(OracleInterface, query, userProcNotification, notificationPeriodInMilliseconds, notifyWithPreviousReply) qpi.__qpiSubscribeOracle<OracleInterface>(query, userProcNotification, __id_##userProcNotification, notificationPeriodInMilliseconds, notifyWithPreviousReply)
 
 	#define SELF id(CONTRACT_INDEX, 0, 0, 0)
 

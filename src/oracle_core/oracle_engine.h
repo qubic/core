@@ -98,7 +98,7 @@ static_assert(sizeof(OracleQueryMetadata) == 72, "Unexpected struct size");
 // However, each contract (subscriber) in the same subscription may have an individual notification period and
 // notification procedure, both stored in OracleSubscriber.
 // For each subscription, a scheduler generates a query regularly. The query may be shared by multiple subscribers.
-// Depending on the individual notification interval of the contracts, some contracts are notified for the specific
+// Depending on the individual notification period of the contracts, some contracts are notified for the specific
 // query and some are not notified.
 // Subscriptions are stored in an array and the index is the subscription ID.
 struct OracleSubscription
@@ -115,7 +115,7 @@ struct OracleSubscription
     /// Count of contracts that are subscribers at the moment
     uint16_t subscriberCount;
 
-    /// Query ID of last query (pending)
+    /// Query ID of last pending query
     int64_t lastPendingQueryId;
 
     /// Query ID of last revealed query, for notifying with cached value on new subscription?
@@ -751,7 +751,7 @@ public:
     }
 
     int32_t startContractSubscription(uint16_t contractIndex, uint32_t interfaceIndex,
-        const void* queryData, uint16_t querySize, uint32_t notificationIntervalMillisec,
+        const void* queryData, uint16_t querySize, uint32_t notificationPeriodMillisec,
         unsigned int notificationProcId, uint16_t timestampOffsetInQuery)
     {
         // check inputs
@@ -765,16 +765,16 @@ public:
             return -1;
         }
 
-        // convert notification interval
-        const uint32_t _notificationIntervalMinutes = notificationIntervalMillisec / 60000;
-        if (notificationIntervalMillisec % 60000 != 0 || _notificationIntervalMinutes < 1 || _notificationIntervalMinutes > 1440)
+        // convert notification period
+        const uint32_t _notificationPeriodMinutes = notificationPeriodMillisec / 60000;
+        if (notificationPeriodMillisec % 60000 != 0 || _notificationPeriodMinutes < 1 || _notificationPeriodMinutes > 1440)
         {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-            addDebugMessage(L"Cannot start contract oracle subscription due to invalid notification interval!");
+            addDebugMessage(L"Cannot start contract oracle subscription due to invalid notification period!");
 #endif
             return -1;
         }
-        const uint16_t notificationIntervalMinutes = uint16_t(_notificationIntervalMinutes);
+        const uint16_t notificationPeriodMinutes = uint16_t(_notificationPeriodMinutes);
 
         // lock for accessing engine data
         LockGuard lockGuard(lock);
@@ -872,7 +872,7 @@ public:
         OracleSubscriber& subscriber = subscribers[subscriberIndex];
         subscriber.subscriptionId = subscriptionId;
         subscriber.contractIndex = contractIndex;
-        subscriber.notificationPeriodMinutes = notificationIntervalMinutes;
+        subscriber.notificationPeriodMinutes = notificationPeriodMinutes;
         subscriber.notificationProcId = notificationProcId;
         ++subscription.subscriberCount;
 
@@ -896,7 +896,7 @@ public:
                 int32_t idx = subscription.firstSubscriberIndex;
                 while (idx >= 0)
                 {
-                    const int16_t gcd = math_lib::greatestCommonDivisor(notificationIntervalMinutes, subscribers[idx].notificationPeriodMinutes);
+                    const int16_t gcd = math_lib::greatestCommonDivisor(notificationPeriodMinutes, subscribers[idx].notificationPeriodMinutes);
                     if (maxGcd < gcd)
                     {
                         maxGcd = gcd;
@@ -912,14 +912,14 @@ public:
             const QPI::DateAndTime& refQueryTimestamp = subscribers[refIdx].nextQueryTimestamp;
             const uint64_t minutesUntilRefQuery = now.durationMicrosec(refQueryTimestamp) / 60000000;
             ASSERT(minutesUntilRefQuery <= subscribers[refIdx].notificationPeriodMinutes);
-            const int64_t periodsUntilRefQuery = int64_t(minutesUntilRefQuery) / notificationIntervalMinutes;
+            const int64_t periodsUntilRefQuery = int64_t(minutesUntilRefQuery) / notificationPeriodMinutes;
             subscriber.nextQueryTimestamp = refQueryTimestamp;
-            const int64_t offsetMinutes = -periodsUntilRefQuery * notificationIntervalMinutes;
+            const int64_t offsetMinutes = -periodsUntilRefQuery * notificationPeriodMinutes;
             if (offsetMinutes)
                 subscriber.nextQueryTimestamp.add(0, 0, 0, 0, offsetMinutes, 0);
             ASSERT(subscriber.nextQueryTimestamp >= now);
             ASSERT(subscriber.nextQueryTimestamp <= refQueryTimestamp);
-            ASSERT(subscriber.nextQueryTimestamp.durationMicrosec(now) / 60000000 <= notificationIntervalMinutes);
+            ASSERT(subscriber.nextQueryTimestamp.durationMicrosec(now) / 60000000 <= notificationPeriodMinutes);
 
             // 3. update next query time of subscription if needed
             if (subscription.nextQueryTimestamp > subscriber.nextQueryTimestamp)

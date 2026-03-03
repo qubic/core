@@ -117,7 +117,7 @@ struct RespondOracleDataSubscriber
 {
     int32_t subscriptionId;
     uint16_t contractIndex;
-    uint16_t notificationIntervalMinutes;
+    uint16_t notificationPeriodMinutes;
     uint64_t nextQueryTimestamp;    ///< timestamp of next query in QPI::DateAndTime format
 };
 

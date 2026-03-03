@@ -1806,7 +1806,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 
 static void processOracleMachineReply(Peer* peer, RequestResponseHeader* header)
 {
-    // Ignore message fron non oracle machine node
+    // Ignore message from non oracle machine node
     if (!peer->isOracleMachineNode())
     {
         return;

@@ -36,8 +36,8 @@ struct Mock
 		return 10;
 	}
 
-	/// Return subscription fee, which may depend on query and interval.
-	static sint64 getSubscriptionFee(const OracleQuery& query, uint16 notifyIntervalInMinutes)
+	/// Return subscription fee, which may depend on query and period.
+	static sint64 getSubscriptionFee(const OracleQuery& query, uint16 notifyPeriodInMinutes)
 	{
 		return 1000;
 	}

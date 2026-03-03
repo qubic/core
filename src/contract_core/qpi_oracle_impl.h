@@ -87,7 +87,7 @@ template <typename OracleInterface, typename ContractStateType, typename LocalsT
 inline QPI::sint32 QPI::QpiContextProcedureCall::__qpiSubscribeOracle(
 	const OracleInterface::OracleQuery& query,
 	void (*notificationProcPtr)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
-	QPI::uint32 notificationIntervalInMilliseconds,
+	QPI::uint32 notificationPeriodInMilliseconds,
 	unsigned int notificationProcId,
 	bool notifyWithPreviousReply
 ) const

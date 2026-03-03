@@ -229,14 +229,14 @@ public:
 			return;
 		}
 
-		// example: store additional data realted to oracle query
+		// example: store additional data related to oracle query
 		state.oracleQueryExtraData.set(output.oracleQueryId, 0);
 	}
 
 	struct SubscribePriceOracle_input
 	{
 		OI::Price::OracleQuery priceOracleQuery;
-		uint16 subscriptionIntervalMinutes;
+		uint16 subscriptionPeriodMinutes;
 	};
 	struct SubscribePriceOracle_output
 	{
@@ -245,7 +245,7 @@ public:
 
 	PUBLIC_PROCEDURE(SubscribePriceOracle)
 	{
-		output.oracleSubscriptionId = SUBSCRIBE_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.subscriptionIntervalMinutes, true);
+		output.oracleSubscriptionId = SUBSCRIBE_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.subscriptionPeriodMinutes, true);
 		if (output.oracleSubscriptionId < 0)
 		{
 			// error

@@ -173,7 +173,7 @@ struct OracleEngineWithInitAndDeinit : public OracleEngine
 		while (idx >= 0)
 		{
 			const OracleSubscriber& subscriber = subscribers[idx];
-			std::cout << "\tcontract " << subscriber.contractIndex << ", next query " << subscriber.nextQueryTimestamp << ", interval " << subscriber.notificationPeriodMinutes << std::endl;
+			std::cout << "\tcontract " << subscriber.contractIndex << ", next query " << subscriber.nextQueryTimestamp << ", period " << subscriber.notificationPeriodMinutes << std::endl;
 			++cnt;
 			idx = subscribers[idx].nextSubscriberIdx;
 		}
@@ -410,7 +410,7 @@ TEST(OracleEngine, ContractQueryUnresolvable)
 {
 	// 2 nodes send 200 commits each with agreeing digest
 	// 1 node sends 276 commits with different digest
-	// -> no quroum can be reached and status changes from pending to unresolvable directly
+	// -> no quorum can be reached and status changes from pending to unresolvable directly
 	// -> no reveal / nobody gets revenue
 
 	OracleEngineTest test;
@@ -1354,7 +1354,7 @@ TEST(OracleEngine, Subscription)
 	OracleEngineWithInitAndDeinit oracleEngine(broadcastedComputors.computors.publicKeys, 0, 676);
 
 	QPI::uint16 interfaceIndex = OI::Price::oracleInterfaceIndex;
-	uint32_t notificationIntervalMillisec = 60000;
+	uint32_t notificationPeriodMillisec = 60000;
 	OI::Price::OracleQuery priceQuery0;
 	priceQuery0.currency1 = QPI::id(QPI::Ch::B, QPI::Ch::T, QPI::Ch::C, 0, 0);
 	priceQuery0.currency2 = QPI::id(QPI::Ch::U, QPI::Ch::S, QPI::Ch::D, QPI::Ch::T, 0);
@@ -1365,43 +1365,43 @@ TEST(OracleEngine, Subscription)
 	// -> subscription 0 for QX: t0 + N (each minute)
 	auto t0 = QPI::DateAndTime::now();
 	int32_t subscriptionId0 = oracleEngine.startContractSubscription(QX_CONTRACT_INDEX, interfaceIndex, &priceQuery0, sizeof(priceQuery0),
-		notificationIntervalMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+		notificationPeriodMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
 	EXPECT_EQ(subscriptionId0, 0);
 
 	// new subscription: failure cases (invalid input parameters)
 	EXPECT_EQ(-1, oracleEngine.startContractSubscription(2000, interfaceIndex, &priceQuery0, sizeof(priceQuery0),
-		notificationIntervalMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp)));
+		notificationPeriodMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp)));
 	EXPECT_EQ(-1, oracleEngine.startContractSubscription(QX_CONTRACT_INDEX, interfaceIndex - 1, &priceQuery0, sizeof(priceQuery0),
-		notificationIntervalMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp)));
+		notificationPeriodMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp)));
 	EXPECT_EQ(-1, oracleEngine.startContractSubscription(QX_CONTRACT_INDEX, interfaceIndex + 1000, &priceQuery0, sizeof(priceQuery0),
-		notificationIntervalMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp)));
+		notificationPeriodMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp)));
 	EXPECT_EQ(-1, oracleEngine.startContractSubscription(QX_CONTRACT_INDEX, interfaceIndex, &priceQuery0, sizeof(priceQuery0) + 1,
-		notificationIntervalMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp)));
+		notificationPeriodMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp)));
 	EXPECT_EQ(-1, oracleEngine.startContractSubscription(QX_CONTRACT_INDEX, interfaceIndex, &priceQuery0, sizeof(priceQuery0),
 		0, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp)));
 	EXPECT_EQ(-1, oracleEngine.startContractSubscription(QX_CONTRACT_INDEX, interfaceIndex, &priceQuery0, sizeof(priceQuery0),
 		10, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp)));
 	EXPECT_EQ(-1, oracleEngine.startContractSubscription(QX_CONTRACT_INDEX, interfaceIndex, &priceQuery0, sizeof(priceQuery0),
-		notificationIntervalMillisec + 1, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp)));
+		notificationPeriodMillisec + 1, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp)));
 	EXPECT_EQ(-1, oracleEngine.startContractSubscription(QX_CONTRACT_INDEX, interfaceIndex, &priceQuery0, sizeof(priceQuery0),
 		0xffffffff, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp)));
 	EXPECT_EQ(-1, oracleEngine.startContractSubscription(QX_CONTRACT_INDEX, interfaceIndex, &priceQuery0, sizeof(priceQuery0),
-		notificationIntervalMillisec, notificationProcId, 1024));
+		notificationPeriodMillisec, notificationProcId, 1024));
 
 	// fail: same subscription from the same contract
 	EXPECT_EQ(-1, oracleEngine.startContractSubscription(QX_CONTRACT_INDEX, interfaceIndex, &priceQuery0, sizeof(priceQuery0),
-		notificationIntervalMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp)));
+		notificationPeriodMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp)));
 
-	// okay: same subscription from a different contract with same notification interval
+	// okay: same subscription from a different contract with same notification period
 	// -> subscription 0 for QEARN: t0 + 2 * N (each 2 minutes)
 	int32_t subscriptionId0b = oracleEngine.startContractSubscription(QEARN_CONTRACT_INDEX, interfaceIndex, &priceQuery0, sizeof(priceQuery0),
-		notificationIntervalMillisec * 2, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+		notificationPeriodMillisec * 2, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
 	EXPECT_EQ(subscriptionId0, subscriptionId0b);
 
-	// okay: same subscription from a another contract with different notification interval
+	// okay: same subscription from a another contract with different notification period
 	// -> subscription 0 for QUTIL: t0 + 5 * N (each 5 minutes)
 	int32_t subscriptionId0c = oracleEngine.startContractSubscription(QUTIL_CONTRACT_INDEX, interfaceIndex, &priceQuery0, sizeof(priceQuery0),
-		notificationIntervalMillisec * 5, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+		notificationPeriodMillisec * 5, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
 	EXPECT_EQ(subscriptionId0, subscriptionId0c);
 
 	// generate and check queries
@@ -1413,18 +1413,18 @@ TEST(OracleEngine, Subscription)
 	advanceTickTime(500);
 	auto t1 = QPI::DateAndTime::now();
 
-	// new subscription to a different oracle with two intervals
+	// new subscription to a different oracle with two periods
 	// -> subscription 1 for QX: t1 + 10 * N (each 10 minutes)
 	// -> subscription 1 for RANDOM: t1 + 12 * N (each 12 minutes)
 	OI::Price::OracleQuery priceQuery1 = priceQuery0;
 	priceQuery1.oracle = OI::Price::getGateOracleId();
-	uint32_t notificationInterval2a = 10 * 60000;
-	uint32_t notificationInterval2b = 12 * 60000;
+	uint32_t notificationPeriod2a = 10 * 60000;
+	uint32_t notificationPeriod2b = 12 * 60000;
 	int32_t subscriptionId1 = oracleEngine.startContractSubscription(QX_CONTRACT_INDEX, interfaceIndex, &priceQuery1, sizeof(priceQuery1),
-		notificationInterval2a, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+		notificationPeriod2a, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
 	EXPECT_EQ(subscriptionId1, 1);
 	int32_t subscriptionId1b = oracleEngine.startContractSubscription(RANDOM_CONTRACT_INDEX, interfaceIndex, &priceQuery1, sizeof(priceQuery1),
-		notificationInterval2b, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+		notificationPeriod2b, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
 	EXPECT_EQ(subscriptionId1b, subscriptionId1);
 
 	// generate and check queries
@@ -1436,16 +1436,16 @@ TEST(OracleEngine, Subscription)
 	advanceTickTime(400);
 	auto t2 = QPI::DateAndTime::now();
 
-	// new subscribers to subscription 2 with two intervals
+	// new subscribers to subscription 2 with two periods
 	// -> subscription 1 for QUTIL: t1 + 5 * N (each 5 minutes)
 	// -> subscription 1 for QUOTTERY: t1 + 3 * N (each 3 minutes)
-	uint32_t notificationInterval2c = 5 * 60000;
-	uint32_t notificationInterval2d = 3 * 60000;
+	uint32_t notificationPeriod2c = 5 * 60000;
+	uint32_t notificationPeriod2d = 3 * 60000;
 	int32_t subscriptionId1c = oracleEngine.startContractSubscription(QUTIL_CONTRACT_INDEX, interfaceIndex, &priceQuery1, sizeof(priceQuery1),
-		notificationInterval2c, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+		notificationPeriod2c, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
 	EXPECT_EQ(subscriptionId1c, subscriptionId1);
 	int32_t subscriptionId1d = oracleEngine.startContractSubscription(QUOTTERY_CONTRACT_INDEX, interfaceIndex, &priceQuery1, sizeof(priceQuery1),
-		notificationInterval2d, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+		notificationPeriod2d, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
 	EXPECT_EQ(subscriptionId1d, subscriptionId1);
 
 	// generate and check queries (no new queries, because QUTIL/QUOTTERY got synced with existing queries)

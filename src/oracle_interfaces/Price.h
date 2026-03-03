@@ -70,10 +70,10 @@ struct Price
 		return 10;
 	}
 
-	/// Return subscription fee, which may depend on query and interval.
-	static sint64 getSubscriptionFee(const OracleQuery& query, uint16 notifyIntervalInMinutes)
+	/// Return subscription fee, which may depend on query and period.
+	static sint64 getSubscriptionFee(const OracleQuery& query, uint16 notifyPeriodInMinutes)
 	{
-		// subscription interval |      fee
+		// subscription period   |      fee
 		// ----------------------+---------
 		// 1 minute              | 10000 QU
 		// 2 to 3 minutes        |  6500 QU
@@ -86,15 +86,15 @@ struct Price
 		// 256 to 512 minutes    |   317 QU
 		//
 		// Recommendations:
-		// - Select a power of two (1, 2, 4, 8, 16, ...) as notifyIntervalInMinutes to pay less per query.
-		// - With notifyIntervalInMinutes >= 317, it is always cheaper to use individual queries (10 QU per query)
+		// - Select a power of two (1, 2, 4, 8, 16, ...) as notifyPeriodInMinutes to pay less per query.
+		// - With notifyPeriodInMinutes >= 317, it is always cheaper to use individual queries (10 QU per query)
 		//   instead of subscriptions.
-		uint16 interval = notifyIntervalInMinutes;
+		uint16 period = notifyPeriodInMinutes;
 		sint64 fee = 10000;
-		while (interval > 1)
+		while (period > 1)
 		{
 			fee = fee * 65 / 100;
-			interval /= 2;
+			period /= 2;
 		}
 		return fee;
 	}
