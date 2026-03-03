@@ -940,9 +940,29 @@ public:
         // (the list is sorted by nextQueryTimestamp, so this needs to be done after scheduling)
         addSubscriberToSubscriptionsSortedList(subscriptionId, subscriberIndex);
 
-        // TODO: generate log entry
+        // low new subscriber
+        logger.logOracleSubscriber({ subscriptionId, interfaceIndex, contractIndex, notificationPeriodMillisec,
+                *(uint64_t*)&subscriber.nextQueryTimestamp });
 
-        // TODO: output to debug.log
+        // debug logging
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        CHAR16 dbgMsg[300];
+        setText(dbgMsg, L"oracleEngine.startContractSubscription(), tick ");
+        appendNumber(dbgMsg, system.tick, FALSE);
+        appendText(dbgMsg, ", subscriptionId ");
+        appendNumber(dbgMsg, subscriptionId, FALSE);
+        appendText(dbgMsg, ", interfaceIndex ");
+        appendNumber(dbgMsg, interfaceIndex, FALSE);
+        appendText(dbgMsg, ", contractIndex ");
+        appendNumber(dbgMsg, contractIndex, FALSE);
+        appendText(dbgMsg, ", notificationPeriodMillisec ");
+        appendNumber(dbgMsg, notificationPeriodMillisec, FALSE);
+        appendText(dbgMsg, ", firstQueryTimestamp ");
+        appendDateAndTime(dbgMsg, subscriber.nextQueryTimestamp);
+        appendText(dbgMsg, ", now ");
+        appendDateAndTime(dbgMsg, QPI::DateAndTime::now());
+        addDebugMessage(dbgMsg);
+#endif
 
         return subscriptionId;
     }
