@@ -61,7 +61,7 @@ static std::string assetNameFromInt64(unsigned long long assetName)
     return buffer;
 }
 
-static void advanceTickTime(uint64_t milliseconds)
+static void advanceTimeAndTick(uint64_t milliseconds)
 {
     QPI::DateAndTime now = QPI::DateAndTime::now();
     EXPECT_TRUE(now.addMillisec(milliseconds));
@@ -72,4 +72,5 @@ static void advanceTickTime(uint64_t milliseconds)
     etalonTick.minute = now.getMinute();
     etalonTick.second = now.getSecond();
     etalonTick.millisecond = now.getMillisec();
+    ++system.tick;
 }

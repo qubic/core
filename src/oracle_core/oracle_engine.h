@@ -332,8 +332,8 @@ protected:
     /// fast lookup of reply state indices for which reveal tx is pending
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> pendingRevealReplyStateIndices;
 
-    // fast lookup of query indices for which the contract should be notified
-    UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> notificationQueryIndices;
+    /// fast lookup of query indices for which the contract should be notified (in order of generation / queryIndex)
+    MinHeap<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> notificationQueryIndexQueue;
 
     // revenue points collected by each computor for fast and correct commit
     uint64_t revenuePoints[NUMBER_OF_COMPUTORS];
@@ -387,6 +387,9 @@ protected:
 
     /// buffer used to store output of getNotification()
     OracleNotificationData notificationOutputBuffer;
+
+    /// subscriber index used as a state variable for getNotification()
+    uint32_t notificationCurrentSubscriberIdx;
 
     /// buffer used by enqueueOracleQuery()
     uint8_t enqueueOracleQueryBuffer[sizeof(OracleMachineQuery) + MAX_ORACLE_QUERY_SIZE];
@@ -529,7 +532,8 @@ public:
     void reset()
     {
         ASSERT(queries && queryStorage && replyStates && queryIdToIndex);
-        if (oracleQueryCount || queryStorageBytesUsed > 8 || queryIdToIndex->population())
+        if (oracleQueryCount || queryStorageBytesUsed > 8 || queryIdToIndex->population()
+            || usedSubscriberSlots || usedSubscriptionSlots)
         {
             setMem(queries, MAX_ORACLE_QUERIES * sizeof(*queries), 0);
             setMem(queryStorage, ORACLE_QUERY_STORAGE_SIZE, 0);
@@ -546,11 +550,13 @@ public:
         pendingQueryIndices.numValues = 0;
         pendingCommitReplyStateIndices.numValues = 0;
         pendingRevealReplyStateIndices.numValues = 0;
-        notificationQueryIndices.numValues = 0;
+        notificationQueryIndexQueue.init();
         usedSubscriptionSlots = 0;
         usedSubscriberSlots = 0;
+        notificationCurrentSubscriberIdx = 0;
         setMem(revenuePoints, sizeof(revenuePoints), 0);
         setMem(&stats, sizeof(stats), 0);
+        setMem(&notificationOutputBuffer, sizeof(notificationOutputBuffer), 0);
 
         nextSubscriptionIdQueue.init(NextSubscriptionCompare{ subscriptions });
 
@@ -1603,7 +1609,7 @@ public:
 
                 // schedule contract notification(s) if needed
                 if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
-                    notificationQueryIndices.add(queryIndex);
+                    notificationQueryIndexQueue.insert(queryIndex);
 
                 // log status change
                 logQueryStatusChange(oqm);
@@ -1953,7 +1959,7 @@ public:
 
                 // schedule contract notification(s) if needed
                 if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
-                    notificationQueryIndices.add(queryIndex);
+                    notificationQueryIndexQueue.insert(queryIndex);
 
                 // log status change
                 logQueryStatusChange(oqm);
@@ -1997,7 +2003,7 @@ public:
 
         // schedule contract notification(s) if needed
         if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
-            notificationQueryIndices.add(queryIndex);
+            notificationQueryIndexQueue.insert(queryIndex);
 
         // log status change
         logQueryStatusChange(oqm);
@@ -2036,7 +2042,7 @@ public:
             ASSERT(oqm.status == ORACLE_QUERY_STATUS_PENDING || oqm.status == ORACLE_QUERY_STATUS_COMMITTED);
 
             // check for timeout
-            if (oqm.timeout < now)
+            if (oqm.timeout <= now)
             {
                 // get reply state
                 const auto replyStateIdx = oqm.statusVar.pending.replyStateIndex;
@@ -2068,7 +2074,7 @@ public:
 
                 // schedule contract notification(s) if needed
                 if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
-                    notificationQueryIndices.add(queryIndex);
+                    notificationQueryIndexQueue.insert(queryIndex);
 
                 // log status change
                 logQueryStatusChange(oqm);
@@ -2094,45 +2100,80 @@ public:
     * @return Pointer to notification info or nullptr if no notifications are needed.
     * 
     * Only to be used in tick processor! No concurrent use supported. Uses one internal buffer for returned data.
+    * Saving / loading snapshots is not supported between calls until nullptr is returned.
     */
     const OracleNotificationData* getNotification()
     {
         // currently no notifications needed?
-        if (!notificationQueryIndices.numValues)
+        if (!notificationQueryIndexQueue.size())
             return nullptr;
 
         // lock for accessing engine data
         LockGuard lockGuard(lock);
 
         // get index and update list
-        const uint32_t queryIndex = notificationQueryIndices.values[0];
-        notificationQueryIndices.removeByIndex(0);
+        uint32_t queryIndex;
+        notificationQueryIndexQueue.peek(queryIndex);
 
         // get query metadata
         const OracleQueryMetadata& oqm = queries[queryIndex];
-        ASSERT(oqm.type == ORACLE_QUERY_TYPE_CONTRACT_QUERY);
+        ASSERT(oqm.type != ORACLE_QUERY_TYPE_USER_QUERY);
 
-        const auto replySize = OI::oracleInterfaces[oqm.interfaceIndex].replySize;
-        ASSERT(16 + replySize < 0xffff);
-
-        if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_QUERY)
+        // setup notification depending on query type and update state for net call
+        int32_t subscriptionId = -1;
+        if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_SUBSCRIPTION)
         {
-            // setup notification
-            notificationOutputBuffer.contractIndex = oqm.typeVar.contract.queryingContract;
-            notificationOutputBuffer.procedureId = oqm.typeVar.contract.notificationProcId;
-            notificationOutputBuffer.inputSize = (uint16_t)(16 + replySize);
-            setMem(notificationOutputBuffer.inputBuffer, notificationOutputBuffer.inputSize, 0);
-            *(int64_t*)(notificationOutputBuffer.inputBuffer + 0) = oqm.queryId;
-            *(uint32_t*)(notificationOutputBuffer.inputBuffer + 8) = 0;
-            *(uint8_t*)(notificationOutputBuffer.inputBuffer + 12) = oqm.status;
-            if (oqm.status == ORACLE_QUERY_STATUS_SUCCESS)
+            // notify contract after SUBSCRIBE_ORACLE
+            const int32_t* subscriberIndices = getNotifiedSubscriberIndices(oqm);
+            ASSERT(notificationCurrentSubscriberIdx < oqm.typeVar.subscription.subscriberCount);
+            const int32_t subscriberIdx = subscriberIndices[notificationCurrentSubscriberIdx];
+            ASSERT(subscriberIdx >= 0 && subscriberIdx < usedSubscriberSlots);
+            const OracleSubscriber& s = subscribers[subscriberIdx];
+            notificationOutputBuffer.contractIndex = s.contractIndex;
+            notificationOutputBuffer.procedureId = s.notificationProcId;
+            ASSERT(s.subscriptionId == oqm.typeVar.subscription.subscriptionId);
+            subscriptionId = oqm.typeVar.subscription.subscriptionId;
+
+            // update state for next call of getNotification()
+            ++notificationCurrentSubscriberIdx;
+            if (notificationCurrentSubscriberIdx == oqm.typeVar.subscription.subscriberCount)
             {
-                const void* replySrcPtr = getReplyDataFromTickTransactionStorage(oqm);
-                copyMem(notificationOutputBuffer.inputBuffer + 16, replySrcPtr, replySize);
+                notificationQueryIndexQueue.drop();
+                notificationCurrentSubscriberIdx = 0;
+            }
+        }
+        else
+        {
+            // update state for next call of getNotification()
+            notificationQueryIndexQueue.drop();
+
+            if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_QUERY)
+            {
+                // notify contract after QUERY_ORACLE
+                notificationOutputBuffer.contractIndex = oqm.typeVar.contract.queryingContract;
+                notificationOutputBuffer.procedureId = oqm.typeVar.contract.notificationProcId;
+            }
+            else
+            {
+                // type is neither contract nor subscription
+                // -> shouldn't ever happen here -> skip and get next notification
+                return getNotification();
             }
         }
 
-        // TODO: handle subscriptions
+        // set common data of notification
+        const auto replySize = OI::oracleInterfaces[oqm.interfaceIndex].replySize;
+        ASSERT(16 + replySize < 0xffff);
+        notificationOutputBuffer.inputSize = (uint16_t)(16 + replySize);
+        setMem(notificationOutputBuffer.inputBuffer, notificationOutputBuffer.inputSize, 0);
+        *(int64_t*)(notificationOutputBuffer.inputBuffer + 0) = oqm.queryId;
+        *(uint32_t*)(notificationOutputBuffer.inputBuffer + 8) = subscriptionId;
+        *(uint8_t*)(notificationOutputBuffer.inputBuffer + 12) = oqm.status;
+        if (oqm.status == ORACLE_QUERY_STATUS_SUCCESS)
+        {
+            const void* replySrcPtr = getReplyDataFromTickTransactionStorage(oqm);
+            copyMem(notificationOutputBuffer.inputBuffer + 16, replySrcPtr, replySize);
+        }
 
         return &notificationOutputBuffer;
     }
@@ -2157,10 +2198,13 @@ public:
 
 protected:
     // Caller is responsible for locking.
-    const int32_t* getNotifiedSubscriberIndices(const OracleQueryMetadata& queryMetadata, uint16_t querySize) const
+    const int32_t* getNotifiedSubscriberIndices(const OracleQueryMetadata& queryMetadata) const
     {
         if (queryMetadata.type != ORACLE_QUERY_TYPE_CONTRACT_SUBSCRIPTION)
             return nullptr;
+        ASSERT(queryMetadata.interfaceIndex < OI::oracleInterfacesCount);
+        const auto querySize = OI::oracleInterfaces[queryMetadata.interfaceIndex].querySize;
+        ASSERT(querySize <= MAX_ORACLE_QUERY_SIZE);
         const auto offset = queryMetadata.typeVar.subscription.queryStorageOffset + querySize;
         ASSERT(offset > 0 && offset < queryStorageBytesUsed && queryStorageBytesUsed <= ORACLE_QUERY_STORAGE_SIZE);
         uint8_t* ptr = queryStorage + offset;
@@ -2333,7 +2377,7 @@ public:
                 ASSERT(subscriptions[oqm.typeVar.subscription.subscriptionId].interfaceIndex == oqm.interfaceIndex);
                 storageBytesUsed += OI::oracleInterfaces[oqm.interfaceIndex].querySize;
                 storageBytesUsed += oqm.typeVar.subscription.subscriberCount * sizeof(int32_t);
-                const int32_t* subscriberIndices = getNotifiedSubscriberIndices(oqm, (uint16_t)OI::oracleInterfaces[oqm.interfaceIndex].querySize);
+                const int32_t* subscriberIndices = getNotifiedSubscriberIndices(oqm);
                 for (uint16_t i = 0; i < oqm.typeVar.subscription.subscriberCount; ++i)
                 {
                     ASSERT(subscriberIndices[i] >= 0 && subscriberIndices[i] < usedSubscriberSlots);
@@ -2480,8 +2524,8 @@ public:
         }
 
         // check index of pending notifications
-        queryIdxCount = notificationQueryIndices.numValues;
-        queryIndices = notificationQueryIndices.values;
+        queryIdxCount = notificationQueryIndexQueue.size();
+        queryIndices = notificationQueryIndexQueue.data();
         for (uint32_t i = 0; i < queryIdxCount; ++i)
         {
             const uint32_t queryIndex = queryIndices[i];

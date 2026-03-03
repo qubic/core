@@ -97,11 +97,16 @@ public:
     }
 
     // Extract minimum element (copy to output reference and remove it from the heap). Returns true on success.
-    bool extract(T& minElement)
+    inline bool extract(T& minElement)
+    {
+        return peek(minElement) && drop();
+    }
+
+    // Remove minimum element. Returns true on success.
+    bool drop()
     {
         if (_size == 0)
             return false;
-        minElement = _data[0];
         _data[0] = _data[--_size];
         downHeap(0);
         return true;
@@ -156,6 +161,12 @@ public:
     unsigned int size() const
     {
         return _size;
+    }
+
+    // Return pointer to elements in heap.
+    const T* data() const
+    {
+        return _data;
     }
 
     // Return maximum number of elements that can be stored in the heap.
