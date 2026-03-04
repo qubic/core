@@ -12,10 +12,9 @@ struct QSURV : public ContractBase {
   // ============================================
   // CONSTANTS
   // ============================================
-  static constexpr uint64 PLATFORM_FEE_PERCENT = 5;
-  static constexpr uint64 REFERRAL_REWARD_PERCENT = 25;
-  static constexpr uint64 BASE_REWARD_PERCENT = 60;
+
   static constexpr uint32 MAX_SURVEYS = 1024;
+  static constexpr uint32 MAX_RESPONDENTS_PER_SURVEY = 128;
   static constexpr uint32 IPFS_HASH_SIZE = 64;
 
   // ============================================
@@ -30,6 +29,7 @@ struct QSURV : public ContractBase {
     uint32 currentRespondents;
     uint64 balance;
     Array<uint8, 64> ipfsHash;
+    Array<id, 128> paidRespondents; // track who has been paid
     bit isActive;
   };
 
@@ -91,6 +91,7 @@ public:
 
   struct createSurvey_locals {
     uint32 i;
+    uint32 index;
     Survey tempSurvey;
   };
 
@@ -112,6 +113,7 @@ public:
   struct payout_locals {
     uint32 index;
     bit found;
+    bit isDuplicate;
     uint64 totalReward;
     uint64 baseReward;
     uint64 referralReward;
@@ -180,43 +182,64 @@ public:
   // ============================================
 
   PUBLIC_PROCEDURE_WITH_LOCALS(createSurvey) {
-    // Validation checks
-    if (state._surveyCount >= MAX_SURVEYS) {
-      return;
-    }
-    if (input.maxRespondents == 0) {
+    // Validation checks — refund invocation reward on failure
+    if (input.maxRespondents == 0 ||
+        input.maxRespondents > MAX_RESPONDENTS_PER_SURVEY) {
+      qpi.transfer(qpi.invocator(), qpi.invocationReward());
       return;
     }
     if (input.rewardPool == 0) {
+      qpi.transfer(qpi.invocator(), qpi.invocationReward());
       return;
     }
 
     // Verify invocation reward matches rewardPool
     if ((uint64)qpi.invocationReward() < input.rewardPool) {
+      qpi.transfer(qpi.invocator(), qpi.invocationReward());
       return;
     }
 
-    // Create new survey - access state directly via copy pattern
-    locals.tempSurvey.surveyId = state._surveyCount + 1;
+    // Scan for an empty (inactive) slot to reuse
+    locals.i = MAX_SURVEYS; // sentinel: no slot found yet
+    for (locals.index = 0; locals.index < state._surveyCount; locals.index++) {
+      if (!state._surveys.get(locals.index).isActive) {
+        locals.i = locals.index;
+        break;
+      }
+    }
+
+    // If no inactive slot found, try to allocate a new one
+    if (locals.i == MAX_SURVEYS) {
+      if (state._surveyCount >= MAX_SURVEYS) {
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        return; // All slots occupied and active, truly full
+      }
+      locals.i = state._surveyCount;
+      state._surveyCount++;
+    }
+
+    // Create new survey in the found/allocated slot
+    locals.tempSurvey.surveyId = locals.i + 1;
     locals.tempSurvey.creator = qpi.invocator();
     locals.tempSurvey.rewardAmount = input.rewardPool;
     locals.tempSurvey.maxRespondents = input.maxRespondents;
     locals.tempSurvey.rewardPerRespondent =
         QPI::div(input.rewardPool, (uint64)input.maxRespondents);
     locals.tempSurvey.balance = input.rewardPool;
+    locals.tempSurvey.currentRespondents = 0;
     locals.tempSurvey.isActive = 1;
 
     // Copy IPFS hash using Array's set method
-    for (locals.i = 0; locals.i < IPFS_HASH_SIZE; locals.i++) {
-      locals.tempSurvey.ipfsHash.set(locals.i, input.ipfsHash.get(locals.i));
+    for (locals.index = 0; locals.index < IPFS_HASH_SIZE; locals.index++) {
+      locals.tempSurvey.ipfsHash.set(locals.index,
+                                     input.ipfsHash.get(locals.index));
     }
 
     // Commit state changes
-    state._surveys.set(state._surveyCount, locals.tempSurvey);
+    state._surveys.set(locals.i, locals.tempSurvey);
 
-    output.surveyId = state._surveyCount + 1;
+    output.surveyId = locals.i + 1;
     output.success = 1;
-    state._surveyCount++;
   }
 
   PUBLIC_PROCEDURE_WITH_LOCALS(payout) {
@@ -250,6 +273,19 @@ public:
       return;
     }
     if (locals.tempSurvey.balance < locals.tempSurvey.rewardPerRespondent) {
+      return;
+    }
+
+    // Double-payout prevention: check if respondent was already paid
+    for (locals.i = 0; locals.i < locals.tempSurvey.currentRespondents;
+         locals.i++) {
+      if (locals.tempSurvey.paidRespondents.get(locals.i) ==
+          input.respondentAddress) {
+        locals.isDuplicate = 1;
+        break;
+      }
+    }
+    if (locals.isDuplicate) {
       return;
     }
 
@@ -289,6 +325,10 @@ public:
 
     qpi.transfer(state._oracleAddress, locals.platformFee);
 
+    // Record this respondent to prevent double-payout
+    locals.tempSurvey.paidRespondents.set(locals.tempSurvey.currentRespondents,
+                                          input.respondentAddress);
+
     // Update state in local variable. Only deduct what was ACTUALLY spent!
     locals.tempSurvey.balance = locals.tempSurvey.balance - locals.totalSpent;
     locals.tempSurvey.currentRespondents++;
@@ -296,6 +336,11 @@ public:
     if (locals.tempSurvey.currentRespondents >=
         locals.tempSurvey.maxRespondents) {
       locals.tempSurvey.isActive = 0;
+      // Refund leftover balance to creator
+      if (locals.tempSurvey.balance > 0) {
+        qpi.transfer(locals.tempSurvey.creator, locals.tempSurvey.balance);
+        locals.tempSurvey.balance = 0;
+      }
     }
 
     // Commit modifications back to state

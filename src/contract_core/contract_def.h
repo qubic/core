@@ -244,7 +244,25 @@
 #define CONTRACT_STATE2_TYPE QDUEL2
 #include "contracts/QDuel.h"
 
-#define QSURV_CONTRACT_INDEX 24
+#ifndef NO_PULSE
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define PULSE_CONTRACT_INDEX 24
+#define CONTRACT_INDEX PULSE_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE PULSE
+#define CONTRACT_STATE2_TYPE PULSE2
+#include "contracts/Pulse.h"
+
+#endif
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QSURV_CONTRACT_INDEX 25
 #define CONTRACT_INDEX QSURV_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QSURV
 #define CONTRACT_STATE2_TYPE QSURV2
@@ -361,6 +379,9 @@ constexpr struct ContractDescription
 	{"QRP", 199, 10000, sizeof(IPO)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
 	{"QTF", 199, 10000, sizeof(QTF)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
     {"QDUEL", 199, 10000, sizeof(QDUEL)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
+#ifndef NO_PULSE
+	{"PULSE", 204, 10000, sizeof(PULSE)}, // proposal in epoch 202, IPO in 203, construction and first use in 204
+#endif
     {"QSURV", 205, 10000, sizeof(QSURV)}, // proposal in epoch 203, IPO in 204, construction and first use in 205
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -478,10 +499,13 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QIP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRAFFLE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRWA);
-    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QSURV);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTF);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDUEL);
+#ifndef NO_PULSE
+	REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(PULSE);
+#endif
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QSURV);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
