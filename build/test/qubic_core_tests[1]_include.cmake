@@ -1,0 +1,5 @@
+if(EXISTS "/Users/f/Documents/Project/Web3/qubic-core/build/test/qubic_core_tests[1]_tests.cmake")
+  include("/Users/f/Documents/Project/Web3/qubic-core/build/test/qubic_core_tests[1]_tests.cmake")
+else()
+  add_test(qubic_core_tests_NOT_BUILT qubic_core_tests_NOT_BUILT)
+endif()

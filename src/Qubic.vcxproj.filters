@@ -307,6 +307,7 @@
     </ClInclude>
 
     <ClInclude Include="contracts\QSurv.h">
+    <ClInclude Include="contracts\Pulse.h">
       <Filter>contracts</Filter>
     </ClInclude>
     <ClInclude Include="contract_core\pre_qpi_def.h">
