@@ -71,7 +71,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 
 // Epoch and initial tick for node startup
 #define EPOCH 203
-#define TICK 45229000
+#define TICK 45233000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -144,3 +144,4 @@ static unsigned int gFullExternalComputationTimes[][2] =
 // Use values like (numerator 1, denominator 10) for division by 10.
 GLOBAL_VAR_DECL unsigned long long executionTimeMultiplierNumerator GLOBAL_VAR_INIT(1ULL);
 GLOBAL_VAR_DECL unsigned long long executionTimeMultiplierDenominator GLOBAL_VAR_INIT(1ULL);
+
