@@ -48,6 +48,7 @@
     <ClInclude Include="contracts\QIP.h" />
     <ClInclude Include="contracts\QReservePool.h" />
     <ClInclude Include="contracts\QThirtyFour.h" />
+    <ClInclude Include="contracts\Pulse.h" />
     <ClInclude Include="contracts\TestExampleA.h" />
     <ClInclude Include="contracts\TestExampleB.h" />
     <ClInclude Include="contracts\TestExampleC.h" />
