@@ -1,2 +1,0 @@
-/usr/bin/ar qc libplatform_common.a CMakeFiles/platform_common.dir/edk2_mdepkg/Library/BaseLib/LongJump.c.o CMakeFiles/platform_common.dir/edk2_mdepkg/Library/BaseLib/SetJump.c.o
-/usr/bin/ranlib libplatform_common.a

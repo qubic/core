@@ -1,2 +1,0 @@
-/usr/bin/ar qc libplatform_efi.a CMakeFiles/platform_efi.dir/edk2_debug.c.o CMakeFiles/platform_efi.dir/processor.cpp.o CMakeFiles/platform_efi.dir/sleep.cpp.o CMakeFiles/platform_efi.dir/uefi_globals.cpp.o
-/usr/bin/ranlib libplatform_efi.a

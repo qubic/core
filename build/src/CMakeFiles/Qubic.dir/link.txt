@@ -1,1 +1,0 @@
-/usr/bin/c++  -arch arm64 -dynamiclib -Wl,-headerpad_max_install_names -o libQubic.efi -install_name @rpath/libQubic.efi CMakeFiles/Qubic.dir/qubic.cpp.o CMakeFiles/Qubic.dir/platform/custom_stack.asm.o  ../lib/platform_common/libplatform_common.a ../lib/platform_efi/libplatform_efi.a

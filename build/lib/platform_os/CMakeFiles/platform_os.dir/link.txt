@@ -1,2 +1,0 @@
-/usr/bin/ar qc libplatform_os.a CMakeFiles/platform_os.dir/edk2_debug.c.o CMakeFiles/platform_os.dir/sleep.cpp.o
-/usr/bin/ranlib libplatform_os.a
