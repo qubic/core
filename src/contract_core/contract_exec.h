@@ -68,7 +68,7 @@ GLOBAL_VAR_DECL unsigned int contractError[contractCount];
 GLOBAL_VAR_DECL unsigned long long* contractStateChangeFlags GLOBAL_VAR_INIT(nullptr);
 
 // Called by ContractState<T, ContractIndex>::mut() to mark the contract's state as dirty.
-static void markContractStateDirty(unsigned int contractIndex)
+static void __markContractStateDirty(unsigned int contractIndex)
 {
     if (contractIndex < contractCount)
         contractStateChangeFlags[contractIndex >> 6] |= (1ULL << (contractIndex & 63));

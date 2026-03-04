@@ -93,10 +93,12 @@ namespace QPI
 	struct ContractState {
 		static constexpr unsigned int __contract_index = contractIndex;
 		const T& get() const { return _data; }
-		T& mut() { ::markContractStateDirty(contractIndex); return _data; }
+		T& mut() { ::__markContractStateDirty(contractIndex); return _data; }
 	private:
 		T _data;
 	};
+
+	// Letters for defining identity with ID function
 	constexpr long long _A = 0;
 	constexpr long long _B = 1;
 	constexpr long long _C = 2;
@@ -3119,7 +3121,7 @@ namespace QPI
 
 	//////////
 
-	#define DEFINE_SHAREHOLDER_PROPOSAL_STORAGE(numProposalSlots, assetNameInt64) \
+	#define DEFINE_SHAREHOLDER_PROPOSAL_TYPES(numProposalSlots, assetNameInt64) \
 		public: \
 			typedef ProposalDataYesNo ProposalDataT; \
 			typedef ProposalAndVotingByShareholders<numProposalSlots, assetNameInt64> ProposersAndVotersT; \

@@ -63,10 +63,11 @@ Features:
 
 If you need more than these features, go through the following steps anyway and continue reading the section about understanding the shareholder voting implementation.
 
-#### 1. Setup proposal storage
+#### 1. Setup proposal types and storage
 
-First, you need to add the proposal storage to your contract state.
-You can easily do this using the QPI macro `DEFINE_SHAREHOLDER_PROPOSAL_STORAGE(numProposalSlots, assetName)`.
+First, you need to add the proposal types and storage to your contract.
+Use the QPI macro `DEFINE_SHAREHOLDER_PROPOSAL_TYPES(numProposalSlots, assetName)` to define the required types,
+and declare the `proposals` field manually inside your `StateData`.
 With the yes/no shareholder proposals supported by this macro, each proposal slot occupies 22144 Bytes of state memory.
 The number of proposal slots limits how many proposals can be open for voting simultaneously.
 The `assetName` that you have to pass as the second argument is the `uint64` representation of your contract's 7-character asset name.
@@ -80,20 +81,26 @@ std::cout << assetNameFromString("QUTIL") << std::endl;
 Replace "QUTIL" by your contract's asset name as given in `contractDescriptions` in `src/contact_core/contract_def.h`.
 You will get an integer that we recommend to assign to a `constexpr uint64` with a name following the scheme `QUTIL_CONTRACT_ASSET_NAME`.
 
-When you have decided about the number of proposal slots and found out the the asset name, you can define the proposal storage similarly to this example taken from the contract QUTIL:
+When you have decided about the number of proposal slots and found out the the asset name, you can define the proposal types and storage similarly to this example taken from the contract QUTIL:
 
 ```C++
 struct QUTIL
 {
-    // other state variables ...
+    DEFINE_SHAREHOLDER_PROPOSAL_TYPES(8, QUTIL_CONTRACT_ASSET_NAME);
 
-    DEFINE_SHAREHOLDER_PROPOSAL_STORAGE(8, QUTIL_CONTRACT_ASSET_NAME);
+    struct StateData
+    {
+        // other state variables ...
 
-    // ...
+        ProposalVotingT proposals;
+
+        // ...
+    };
 };
 ```
 
-`DEFINE_SHAREHOLDER_PROPOSAL_STORAGE` defines a state object `proposals` (inside `StateData`, accessed via `state.get().proposals` or `state.mut().proposals`) and the types `ProposalDataT`, `ProposersAndVotersT`, and `ProposalVotingT`.
+`DEFINE_SHAREHOLDER_PROPOSAL_TYPES` defines the types `ProposalDataT`, `ProposersAndVotersT`, and `ProposalVotingT`.
+The `proposals` field of type `ProposalVotingT` must be declared manually inside `StateData`.
 Make sure to have no name clashes with these.
 Using other names isn't possible if you want to benefit from the QPI macros for simplifying the implementation.
 
@@ -231,7 +238,7 @@ The following elements are required to support shareholder proposals and voting:
 - `GetShareholderVotes`: Function for getting the votes of a shareholder. Usually shouldn't require a custom implementation.
 - `GetShareholderVotingResults`: Function for getting the vote results summary. Usually doesn't require a custom implementation.
 - `SET_SHAREHOLDER_PROPOSAL` and `SET_SHAREHOLDER_VOTES`: These are notification procedures required to handle voting of other contracts that are shareholder of your contract. They usually just invoke `SetShareholderProposal` or `SetShareholderVote`, respectively.
-- Proposal data storage and types: The default implementations expect the object `proposals` in `StateData` (accessed via `state.get().proposals` or `state.mut().proposals`) and the types `ProposalDataT`, `ProposersAndVotersT`, and `ProposalVotingT`, which can be defined via `DEFINE_SHAREHOLDER_PROPOSAL_STORAGE` in some cases.
+- Proposal types and storage: The default implementations expect the types `ProposalDataT`, `ProposersAndVotersT`, and `ProposalVotingT` (defined via `DEFINE_SHAREHOLDER_PROPOSAL_TYPES`) and the object `proposals` of type `ProposalVotingT` in `StateData` (accessed via `state.get().proposals` or `state.mut().proposals`).
 
 QPI provides default implementations through several macros, as used in the [Introduction to Shareholder Proposals](#introduction-to-shareholder-proposals).
 The following tables gives an overview about when the macros can be used.
@@ -244,7 +251,7 @@ Finally, multi-variable proposals change more than one variable if accepted. The
 
 Default implementation can be used?             | 1-var yes/no | 1-var N option | 1-var scalar | multi-var
 ------------------------------------------------|--------------|----------------|--------------|-----------
-`DEFINE_SHAREHOLDER_PROPOSAL_STORAGE`           | X            |                |              | X
+`DEFINE_SHAREHOLDER_PROPOSAL_TYPES`             | X            |                |              | X
 `IMPLEMENT_FinalizeShareholderStateVarProposals`| X            |                |              |
 `IMPLEMENT_SetShareholderProposal`              | X            |                |              |
 `IMPLEMENT_GetShareholderProposal`              | X            | X              | X            |
@@ -265,15 +272,23 @@ You may also have a look into the example contracts given in the table.
 
 #### Proposal types and storage
 
-The default implementation of `DEFINE_SHAREHOLDER_PROPOSAL_STORAGE(assetNameInt64, numProposalSlots)` is defined as follows:
+The default implementation of `DEFINE_SHAREHOLDER_PROPOSAL_TYPES(numProposalSlots, assetNameInt64)` is defined as follows:
 
 ```C++
     public:
         typedef ProposalDataYesNo ProposalDataT;
         typedef ProposalAndVotingByShareholders<numProposalSlots, assetNameInt64> ProposersAndVotersT;
         typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT;
-    protected:
+```
+
+The `proposals` field must be declared manually inside `StateData`:
+
+```C++
+    struct StateData
+    {
         ProposalVotingT proposals;
+        // ...
+    };
 ```
 
 With `ProposalDataT` your have the following options:
