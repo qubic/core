@@ -1,6 +1,6 @@
 using namespace QPI;
 /**************************************/
-/**************SC UTILS*****************/
+/**************SC UTILS****************/
 /**************************************/
 /*
 * A collection of useful functions for smart contract on Qubic:
@@ -124,10 +124,7 @@ struct QUTIL : public ContractBase
         uint64 chosen_option; // Limited to 0-63 by vote procedure
     };
 
-    // Shareholder proposal typedefs
-    typedef ProposalDataYesNo ProposalDataT;
-    typedef ProposalAndVotingByShareholders<8, QUTIL_CONTRACT_ASSET_NAME> ProposersAndVotersT;
-    typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT;
+    DEFINE_SHAREHOLDER_PROPOSAL_TYPES(8, QUTIL_CONTRACT_ASSET_NAME);
 
     struct StateData
     {
