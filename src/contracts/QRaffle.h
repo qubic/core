@@ -215,6 +215,7 @@ public:
 		id charityAddress, feeAddress, QXMRIssuer;
 		uint64 epochRevenue, epochQXMRRevenue, qREAmount, totalBurnAmount, totalCharityAmount, totalShareholderAmount, totalRegisterAmount, totalFeeAmount, totalWinnerAmount, largestWinnerAmount;
 		uint32 numberOfRegisters, numberOfQuRaffleMembers, numberOfEntryAmountSubmitted, numberOfProposals, numberOfActiveTokenRaffle, numberOfEndedTokenRaffle;
+		Array<uint32, QRAFFLE_MAX_EPOCH> daoMemberCount; // Number of DAO members (registers) at each epoch
 	};
 
 	struct registerInSystem_input
@@ -394,6 +395,7 @@ public:
 		uint64 entryAmount;
 		uint32 numberOfMembers;
 		uint32 winnerIndex;
+		uint32 numberOfDaoMembers;
 		sint32 returnCode;
 	};
 
@@ -433,6 +435,7 @@ public:
 	};
 
 protected:
+
 
 	struct registerInSystem_locals
 	{
@@ -1117,6 +1120,7 @@ protected:
 		output.entryAmount = state.get().QuRaffles.get(input.epoch).entryAmount;
 		output.numberOfMembers = state.get().QuRaffles.get(input.epoch).numberOfMembers;
 		output.winnerIndex = state.get().QuRaffles.get(input.epoch).winnerIndex;
+		output.numberOfDaoMembers = state.get().daoMemberCount.get(input.epoch);
 		output.returnCode = QRAFFLE_SUCCESS;
 	}
 
@@ -1319,6 +1323,7 @@ protected:
 			locals.qraffle.numberOfMembers = state.get().numberOfQuRaffleMembers;
 			locals.qraffle.winnerIndex = locals.winnerIndex;
 			state.mut().QuRaffles.set(qpi.epoch(), locals.qraffle);
+			state.mut().daoMemberCount.set(qpi.epoch(), state.get().numberOfRegisters); // Store DAO member count for this epoch
 
 			// Log QuRaffle completion with detailed information
 			locals.endEpochLog = EndEpochLogger{

@@ -5,6 +5,7 @@ constexpr uint64 QTF_MAX_NUMBER_OF_PLAYERS = 1024;
 constexpr uint64 QTF_RANDOM_VALUES_COUNT = 4;
 constexpr uint64 QTF_MAX_RANDOM_VALUE = 30;
 constexpr uint64 QTF_TICKET_PRICE = 1000000;
+constexpr uint64 QTF_WINNING_COMBINATIONS_HISTORY_SIZE = 128;
 
 // Baseline split for k2/k3 when FR is OFF (per spec: k3=40%, k2=28% of Winners block).
 // Initial 32% of Winners block is unallocated; overflow will also include unawarded k2/k3 funds.
@@ -76,11 +77,28 @@ struct QTF : ContractBase
 	{
 		id player;
 		Array<uint8, QTF_RANDOM_VALUES_COUNT> randomValues;
+
+		bool isValid() const { return !isZero(player); }
+	};
+
+	struct WinnerPlayerData
+	{
+		id player;
+		Array<uint8, QTF_RANDOM_VALUES_COUNT> randomValues;
+		uint32 wonAmount;
+
+		void addPlayerData(const PlayerData& data)
+		{
+			player = data.player;
+			randomValues = data.randomValues;
+		}
+
+		bool isValid() const { return !isZero(player); }
 	};
 
 	struct WinnerData
 	{
-		Array<PlayerData, QTF_MAX_NUMBER_OF_PLAYERS> winners;
+		Array<WinnerPlayerData, QTF_MAX_NUMBER_OF_PLAYERS> winners;
 		Array<uint8, QTF_RANDOM_VALUES_COUNT> winnerValues;
 		uint64 winnerCounter;
 		uint16 epoch;
@@ -148,6 +166,10 @@ struct QTF : ContractBase
 		uint16 frRoundsAtOrAboveTarget; // hysteresis counter for FR off
 
 		uint8 currentState; // bitmask of STATE_* flags (e.g., STATE_SELLING)
+
+		Array<Array<uint8, QTF_RANDOM_VALUES_COUNT>, QTF_WINNING_COMBINATIONS_HISTORY_SIZE>
+		    winningCombinationsHistory;  // ring buffer of winning combinations
+		uint64 winningCombinationsCount; // next write position in ring buffer
 	};
 
 	enum class EReturnCode : uint8
@@ -686,6 +708,7 @@ struct QTF : ContractBase
 		uint64 rlShares;
 		// Cache for countMatches results to avoid redundant calculations
 		Array<uint8, QTF_MAX_NUMBER_OF_PLAYERS> cachedMatches;
+		WinnerPlayerData winnerPlayerData;
 	};
 
 	struct END_EPOCH_locals
@@ -704,6 +727,45 @@ struct QTF : ContractBase
 		uint8 currentHour;
 		bit isWednesday;
 		bit isScheduledToday;
+	};
+
+	struct GetPlayers_input
+	{
+	};
+
+	struct GetPlayers_output
+	{
+		Array<PlayerData, QTF_MAX_NUMBER_OF_PLAYERS> players;
+		uint8 returnCode;
+	};
+
+	struct GetWinningCombinationsHistory_input
+	{
+	};
+
+	struct GetWinningCombinationsHistory_output
+	{
+		struct WinningCombination
+		{
+			Array<uint8, QTF_RANDOM_VALUES_COUNT> values;
+		};
+
+		Array<WinningCombination, QTF_WINNING_COMBINATIONS_HISTORY_SIZE> history;
+		uint8 returnCode;
+	};
+
+	struct SyncJackpot_input
+	{
+	};
+
+	struct SyncJackpot_output
+	{
+		uint8 returnCode;
+	};
+
+	struct SyncJackpot_locals
+	{
+		Entity entity;
 	};
 
 	// Contract lifecycle methods
@@ -728,6 +790,8 @@ struct QTF : ContractBase
 		REGISTER_USER_PROCEDURE(SetSchedule, 3);
 		REGISTER_USER_PROCEDURE(SetTargetJackpot, 4);
 		REGISTER_USER_PROCEDURE(SetDrawHour, 5);
+		REGISTER_USER_PROCEDURE(SyncJackpot, 6);
+
 		REGISTER_USER_FUNCTION(GetTicketPrice, 1);
 		REGISTER_USER_FUNCTION(GetNextEpochData, 2);
 		REGISTER_USER_FUNCTION(GetWinnerData, 3);
@@ -737,6 +801,8 @@ struct QTF : ContractBase
 		REGISTER_USER_FUNCTION(GetState, 7);
 		REGISTER_USER_FUNCTION(GetFees, 8);
 		REGISTER_USER_FUNCTION(EstimatePrizePayouts, 9);
+		REGISTER_USER_FUNCTION(GetPlayers, 10);
+		REGISTER_USER_FUNCTION(GetWinningCombinationsHistory, 11);
 	}
 
 	BEGIN_EPOCH()
@@ -982,6 +1048,20 @@ struct QTF : ContractBase
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
+	PUBLIC_PROCEDURE_WITH_LOCALS(SyncJackpot)
+	{
+		if (qpi.invocator() != state.get().ownerAddress)
+		{
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			return;
+		}
+
+		qpi.getEntity(SELF, locals.entity);
+		state.mut().jackpot = locals.entity.incomingAmount - locals.entity.outgoingAmount;
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
 	// Functions
 	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.get().ticketPrice; }
 	PUBLIC_FUNCTION(GetNextEpochData) { output.nextEpochData = state.get().nextEpochData; }
@@ -1095,6 +1175,18 @@ struct QTF : ContractBase
 		}
 	}
 
+	PUBLIC_FUNCTION(GetPlayers)
+	{
+		output.players = state.get().players;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_FUNCTION(GetWinningCombinationsHistory)
+	{
+		copyMemory(output.history, state.get().winningCombinationsHistory);
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
 protected:
 	static void clearEpochState(QPI::ContractState<StateData, CONTRACT_INDEX>& state) { clearPlayerData(state); }
 
@@ -1157,14 +1249,14 @@ protected:
 
 	static void clearWinerData(QPI::ContractState<StateData, CONTRACT_INDEX>& state) { setMemory(state.mut().lastWinnerData, 0); }
 
-	static void fillWinnerData(QPI::ContractState<StateData, CONTRACT_INDEX>& state, const PlayerData& playerData, const Array<uint8, QTF_RANDOM_VALUES_COUNT>& winnerValues,
+	static void fillWinnerData(QPI::ContractState<StateData, CONTRACT_INDEX>& state, const WinnerPlayerData& winnerPlayerData, const Array<uint8, QTF_RANDOM_VALUES_COUNT>& winnerValues,
 	                           const uint16& epoch)
 	{
-		if (!isZero(playerData.player))
+		if (winnerPlayerData.isValid())
 		{
 			if (state.get().lastWinnerData.winnerCounter < state.get().lastWinnerData.winners.capacity())
 			{
-				state.mut().lastWinnerData.winners.set(state.get().lastWinnerData.winnerCounter, playerData);
+				state.mut().lastWinnerData.winners.set(state.get().lastWinnerData.winnerCounter, winnerPlayerData);
 				state.mut().lastWinnerData.winnerCounter++;
 			}
 		}
@@ -1172,6 +1264,13 @@ protected:
 		state.mut().lastWinnerData.winnerValues = winnerValues;
 		state.mut().lastWinnerData.epoch = epoch;
 	}
+
+	static void addWinningCombinationToHistory(QPI::ContractState<StateData, CONTRACT_INDEX>& state, const Array<uint8, QTF_RANDOM_VALUES_COUNT>& winnerValues)
+	{
+		state.mut().winningCombinationsHistory.set(state.get().winningCombinationsCount, winnerValues);
+		state.mut().winningCombinationsCount = mod(state.get().winningCombinationsCount + 1, state.get().winningCombinationsHistory.capacity());
+	}
+
 
 private:
 	// Core settlement pipeline for one epoch: fees, FR redirects, payouts, jackpot/reserve updates.
@@ -1408,13 +1507,17 @@ private:
 			if (locals.matches == 2 && locals.countK2 > 0 && locals.k2PerWinner > 0)
 			{
 				qpi.transfer(state.get().players.get(locals.i).player, locals.k2PerWinner);
-				fillWinnerData(state, state.get().players.get(locals.i), locals.winningValues, locals.currentEpoch);
+				locals.winnerPlayerData.addPlayerData(state.get().players.get(locals.i));
+				locals.winnerPlayerData.wonAmount = static_cast<uint32>(locals.k2PerWinner);
+				fillWinnerData(state, locals.winnerPlayerData, locals.winningValues, locals.currentEpoch);
 			}
 			// k3 payout
 			if (locals.matches == 3 && locals.countK3 > 0 && locals.k3PerWinner > 0)
 			{
 				qpi.transfer(state.get().players.get(locals.i).player, locals.k3PerWinner);
-				fillWinnerData(state, state.get().players.get(locals.i), locals.winningValues, locals.currentEpoch);
+				locals.winnerPlayerData.addPlayerData(state.get().players.get(locals.i));
+				locals.winnerPlayerData.wonAmount = static_cast<uint32>(locals.k3PerWinner);
+				fillWinnerData(state, locals.winnerPlayerData, locals.winningValues, locals.currentEpoch);
 			}
 			// k4 payout (jackpot)
 			if (locals.matches == 4 && locals.countK4 > 0)
@@ -1423,7 +1526,9 @@ private:
 				{
 					qpi.transfer(state.get().players.get(locals.i).player, locals.jackpotPerK4Winner);
 				}
-				fillWinnerData(state, state.get().players.get(locals.i), locals.winningValues, locals.currentEpoch);
+				locals.winnerPlayerData.addPlayerData(state.get().players.get(locals.i));
+				locals.winnerPlayerData.wonAmount = static_cast<uint32>(locals.jackpotPerK4Winner);
+				fillWinnerData(state, locals.winnerPlayerData, locals.winningValues, locals.currentEpoch);
 			}
 
 			++locals.i;
@@ -1432,6 +1537,7 @@ private:
 		// Always save winning values and epoch, even if no winners
 		state.mut().lastWinnerData.winnerValues = locals.winningValues;
 		state.mut().lastWinnerData.epoch = locals.currentEpoch;
+		addWinningCombinationToHistory(state, locals.winningValues);
 
 		// Post-jackpot (k4) logic: reset counters and reseed if jackpot was hit
 		if (locals.countK4 > 0)
@@ -1587,7 +1693,7 @@ private:
 	PRIVATE_FUNCTION_WITH_LOCALS(CheckContractBalance)
 	{
 		qpi.getEntity(SELF, locals.entity);
-		output.actualBalance = RL::max(locals.entity.incomingAmount - locals.entity.outgoingAmount, 0i64);
+		output.actualBalance = RL::max(locals.entity.incomingAmount - locals.entity.outgoingAmount, 0LL);
 		output.hasEnough = (output.actualBalance >= input.expectedRevenue);
 	}
 
