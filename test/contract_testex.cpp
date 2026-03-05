@@ -593,6 +593,14 @@ public:
         EXPECT_TRUE(invokeUserProcedure(TESTEXC_CONTRACT_INDEX, 101, input, output, invocator, OI::Price::getSubscriptionFee(query, periodMilliseconds)));
         return output.oracleSubscriptionId;
     }
+
+    bool unsubscribeOracle(const id& invocator, sint32 subscriptionId)
+    {
+        TESTEXC::UnsubscribeOracle_input input{ subscriptionId };
+        TESTEXC::UnsubscribeOracle_output output;
+        EXPECT_TRUE(invokeUserProcedure(TESTEXC_CONTRACT_INDEX, 102, input, output, invocator, 0));
+        return output.success;
+    }
 };
 
 void checkVoteCounts(const ProposalMultiVoteDataV1& votes, const std::vector<std::pair<sint64, uint32>>& expectedVoteValueCountPairs)
@@ -2196,18 +2204,55 @@ TEST(ContractTestEx, OracleSubscription)
     increaseEnergy(TESTEXC_CONTRACT_ID, 100000000);
 
     const id currencyBtc(Ch::B, Ch::T, Ch::C, 0, 0);
+    const id currencyEth(Ch::E, Ch::T, Ch::H, 0, 0);
     const id currencyUsd(Ch::U, Ch::S, Ch::D, 0, 0);
     const id binance = OI::Price::getBinanceOracleId();
+    const id mexc = OI::Price::getMexcOracleId();
 
     OI::Price::OracleQuery query1 = { binance, DateAndTime(), currencyBtc, currencyUsd };
+    OI::Price::OracleQuery query2 = { mexc, DateAndTime(), currencyBtc, currencyUsd };
+    OI::Price::OracleQuery query3 = { binance, DateAndTime(), currencyBtc, currencyEth };
     const uint32 period1 = 60000;
+    const uint32 period2 = 120000;
+    const uint32 period3 = 180000;
 
+    // subscribing fails due to invalid inputs
     EXPECT_EQ(-1, test.subscribePriceOracle(USER1, period1 * 0, query1, true));
     EXPECT_EQ(-1, test.subscribePriceOracle(USER1, period1 + 1, query1, true));
 
+    // subscribing works if period N * 60000 ms (N minutes with N > 0)
     const sint32 subId1 = test.subscribePriceOracle(USER1, period1, query1, true);
     EXPECT_EQ(subId1, 0);
 
     // subscribing the same twice isn't possible without unsubscribing before
     EXPECT_EQ(-1, test.subscribePriceOracle(USER1, period1, query1, true));
+
+    // unsubscribing fails due to invalid inputs
+    EXPECT_FALSE(test.unsubscribeOracle(USER1, -10));
+    EXPECT_FALSE(test.unsubscribeOracle(USER1, -1));
+    EXPECT_FALSE(test.unsubscribeOracle(USER1, 100));
+
+    oracleEngine.checkStateConsistencyWithAssert();
+
+    // unsubscribe subId1
+    EXPECT_TRUE(test.unsubscribeOracle(USER1, subId1));
+    EXPECT_FALSE(test.unsubscribeOracle(USER1, subId1));
+
+    oracleEngine.checkStateConsistencyWithAssert();
+
+    // subscribe again to same query
+    const sint32 subId1b = test.subscribePriceOracle(USER1, period1, query1, false);
+    EXPECT_EQ(subId1b, subId1);
+
+    // subscribe for other queries
+    const sint32 subId2 = test.subscribePriceOracle(USER1, period2, query2, true);
+    EXPECT_EQ(subId2, 1);
+    const sint32 subId3 = test.subscribePriceOracle(USER1, period3, query3, true);
+    EXPECT_EQ(subId2, 1);
+
+    oracleEngine.checkStateConsistencyWithAssert();
+
+    // unsubscribe all
+    EXPECT_TRUE(test.unsubscribeOracle(USER1, subId2));
+    EXPECT_TRUE(test.unsubscribeOracle(USER1, subId3));
 }

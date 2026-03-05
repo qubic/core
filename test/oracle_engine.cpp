@@ -178,7 +178,8 @@ struct OracleEngineWithInitAndDeinit : public OracleEngine
 			++cnt;
 			idx = subscribers[idx].nextSubscriberIdx;
 		}
-		EXPECT_EQ(subscription.nextQueryTimestamp, subscribers[subscription.firstSubscriberIndex].nextQueryTimestamp);
+		if (subscription.firstSubscriberIndex >= 0)
+			EXPECT_EQ(subscription.nextQueryTimestamp, subscribers[subscription.firstSubscriberIndex].nextQueryTimestamp);
 		EXPECT_EQ((int)subscription.subscriberCount, cnt);
 	}
 
@@ -1431,13 +1432,13 @@ TEST(OracleEngine, Subscription)
 	// -> subscription 1 for RANDOM: t1 + 12 * N (each 12 minutes)
 	OI::Price::OracleQuery priceQuery1 = priceQuery0;
 	priceQuery1.oracle = OI::Price::getGateOracleId();
-	uint32_t notificationPeriod2a = 10 * 60000;
-	uint32_t notificationPeriod2b = 12 * 60000;
+	uint32_t notificationPeriod1a = 10 * 60000;
+	uint32_t notificationPeriod1b = 12 * 60000;
 	int32_t subscriptionId1 = oracleEngine.startContractSubscription(QX_CONTRACT_INDEX, interfaceIndex, &priceQuery1, sizeof(priceQuery1),
-		notificationPeriod2a, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+		notificationPeriod1a, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
 	EXPECT_EQ(subscriptionId1, 1);
 	int32_t subscriptionId1b = oracleEngine.startContractSubscription(RANDOM_CONTRACT_INDEX, interfaceIndex, &priceQuery1, sizeof(priceQuery1),
-		notificationPeriod2b, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+		notificationPeriod1b, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
 	EXPECT_EQ(subscriptionId1b, subscriptionId1);
 
 	// generate and check queries
@@ -1450,16 +1451,16 @@ TEST(OracleEngine, Subscription)
 	advanceTimeAndTick(400);
 	auto t2 = QPI::DateAndTime::now();
 
-	// new subscribers to subscription 2 with two periods
+	// new subscribers to second subscription with two periods
 	// -> subscription 1 for QUTIL: t1 + 5 * N (each 5 minutes)
 	// -> subscription 1 for QUOTTERY: t1 + 3 * N (each 3 minutes)
-	uint32_t notificationPeriod2c = 5 * 60000;
-	uint32_t notificationPeriod2d = 3 * 60000;
+	uint32_t notificationPeriod1c = 5 * 60000;
+	uint32_t notificationPeriod1d = 3 * 60000;
 	int32_t subscriptionId1c = oracleEngine.startContractSubscription(QUTIL_CONTRACT_INDEX, interfaceIndex, &priceQuery1, sizeof(priceQuery1),
-		notificationPeriod2c, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+		notificationPeriod1c, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
 	EXPECT_EQ(subscriptionId1c, subscriptionId1);
 	int32_t subscriptionId1d = oracleEngine.startContractSubscription(QUOTTERY_CONTRACT_INDEX, interfaceIndex, &priceQuery1, sizeof(priceQuery1),
-		notificationPeriod2d, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+		notificationPeriod1d, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
 	EXPECT_EQ(subscriptionId1d, subscriptionId1);
 
 	// generate and check queries (no new queries, because QUTIL/QUOTTERY got synced with existing queries)
@@ -1590,9 +1591,6 @@ TEST(OracleEngine, Subscription)
 	// - triggered subscription 1 for QX: t1 + 10 * N (each 10 minutes)
 	oracleEngine.generateSubscriptionQueries();
 
-	oracleEngine.printSubscription(0);
-	oracleEngine.printSubscription(1);
-
 	EXPECT_EQ(oracleEngine.getQueryCount(), 16);
 	const int64_t qid11 = oracleEngine.expectPriceSubscriptionQuery(11, t0 + 7, subscriptionId0,
 		{ QX_CONTRACT_INDEX }, priceQuery0);
@@ -1631,8 +1629,8 @@ TEST(OracleEngine, Subscription)
 	// - triggered subscription 1 for RANDOM: t1 + 12 * N (each 12 minutes)
 	oracleEngine.generateSubscriptionQueries();
 
-	oracleEngine.printSubscription(0);
-	oracleEngine.printSubscription(1);
+	//oracleEngine.printSubscription(0);
+	//oracleEngine.printSubscription(1);
 
 	EXPECT_EQ(oracleEngine.getQueryCount(), 19);
 	const int64_t qid16 = oracleEngine.expectPriceSubscriptionQuery(16, t0 + 11, subscriptionId0,
@@ -1650,6 +1648,190 @@ TEST(OracleEngine, Subscription)
 		notificationProcId, qid15, ORACLE_QUERY_STATUS_TIMEOUT, subscriptionId1);
 	oracleEngine.expectPriceNotifications({ QX_CONTRACT_INDEX },
 		notificationProcId, qid16, ORACLE_QUERY_STATUS_TIMEOUT, subscriptionId0);
+	EXPECT_EQ(oracleEngine.getNotification(), nullptr);
+
+	oracleEngine.checkStateConsistencyWithAssert();
+
+	// unsubscribe subscription 0 for QX: t0 + N (each minute)
+	oracleEngine.stopContractSubscription(subscriptionId0, QX_CONTRACT_INDEX);
+
+	// Remaining subscriptions:
+	// -> subscription 0 for QEARN: t0 + 2 * N (each 2 minutes)
+	// -> subscription 0 for QUTIL: t0 + 5 * N (each 5 minutes)
+	// -> subscription 1 for QX: t1 + 10 * N (each 10 minutes)
+	// -> subscription 1 for RANDOM: t1 + 12 * N (each 12 minutes)
+	// -> subscription 1 for QUTIL: t1 + 5 * N (each 5 minutes)
+	// -> subscription 1 for QUOTTERY: t1 + 3 * N (each 3 minutes)
+	oracleEngine.checkStateConsistencyWithAssert();
+
+	// advance time by 50 sec -> t10 = t0 + 13 + 0.5/60
+	advanceTimeAndTick(50000);
+
+	// generate and check queries: none
+	oracleEngine.generateSubscriptionQueries();
+	EXPECT_EQ(oracleEngine.getQueryCount(), 19);
+
+	// notification: timeout of t0 + 12, t1 + 12
+	oracleEngine.processTimeouts();
+	oracleEngine.expectPriceNotifications({ QEARN_CONTRACT_INDEX },
+		notificationProcId, qid17, ORACLE_QUERY_STATUS_TIMEOUT, subscriptionId0);
+	oracleEngine.expectPriceNotifications({ QUOTTERY_CONTRACT_INDEX, RANDOM_CONTRACT_INDEX },
+		notificationProcId, qid18, ORACLE_QUERY_STATUS_TIMEOUT, subscriptionId1);
+	EXPECT_EQ(oracleEngine.getNotification(), nullptr);
+
+	// add new subscriptions
+	// -> subscription 0 for RANDOM: t0 + 14 + N (each minute)
+	// -> subscription 0 for QBAY: t0 + 14 + N (each minute)
+	// -> subscription 0 for MSVAULT: t0 + 14 + 3 * N (each 3 minutes)
+	// -> subscription 0 for CCF: t0 + 14 + 8 * N (each 8 minutes)
+	// -> subscription 0 for SWATCH: t0 + 15 + 15 * N (each 15 minutes)
+	int32_t subscriptionId0d = oracleEngine.startContractSubscription(RANDOM_CONTRACT_INDEX, interfaceIndex, &priceQuery0, sizeof(priceQuery0),
+		notificationPeriodMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+	EXPECT_EQ(subscriptionId0, subscriptionId0d);
+	int32_t subscriptionId0e = oracleEngine.startContractSubscription(QBAY_CONTRACT_INDEX, interfaceIndex, &priceQuery0, sizeof(priceQuery0),
+		notificationPeriodMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+	EXPECT_EQ(subscriptionId0, subscriptionId0e);
+	int32_t subscriptionId0f = oracleEngine.startContractSubscription(MSVAULT_CONTRACT_INDEX, interfaceIndex, &priceQuery0, sizeof(priceQuery0),
+		3 * notificationPeriodMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+	EXPECT_EQ(subscriptionId0, subscriptionId0f);
+	int32_t subscriptionId0g = oracleEngine.startContractSubscription(CCF_CONTRACT_INDEX, interfaceIndex, &priceQuery0, sizeof(priceQuery0),
+		8 * notificationPeriodMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+	EXPECT_EQ(subscriptionId0, subscriptionId0g);
+	int32_t subscriptionId0h = oracleEngine.startContractSubscription(SWATCH_CONTRACT_INDEX, interfaceIndex, &priceQuery0, sizeof(priceQuery0),
+		15 * notificationPeriodMillisec, notificationProcId, offsetof(OI::Price::OracleQuery, timestamp));
+	EXPECT_EQ(subscriptionId0, subscriptionId0h);
+
+	// advance time by 60 sec -> t11 = t0 + 14 + 0.5/60
+	advanceTimeAndTick(60000);
+
+	//oracleEngine.printSubscription(0);
+	//oracleEngine.printSubscription(1);
+
+	// generate and check queries:
+	// - triggered subscription 0 for QEARN: t0 + 2 * N (each 2 minutes)
+	// - triggered subscription 0 for RANDOM: t0 + 14 + N (each minute)
+	// - triggered subscription 0 for QBAY: t0 + 14 + N (each minute)
+	// - triggered subscription 0 for MSVAULT: t0 + 14 + 3 * N (each 3 minutes)
+	// - triggered subscription 0 for CCF: t0 + 14 + 8 * N (each 8 minutes)
+	oracleEngine.generateSubscriptionQueries();
+	const int64_t qid19 = oracleEngine.expectPriceSubscriptionQuery(19, t0 + 14, subscriptionId0,
+		{ QEARN_CONTRACT_INDEX, RANDOM_CONTRACT_INDEX, QBAY_CONTRACT_INDEX, MSVAULT_CONTRACT_INDEX, CCF_CONTRACT_INDEX },
+		priceQuery0);
+	EXPECT_EQ(oracleEngine.getQueryCount(), 20);
+
+	// no notifications
+	oracleEngine.processTimeouts();
+	EXPECT_EQ(oracleEngine.getNotification(), nullptr);
+
+	// advance time by 60 sec -> t12 = t0 + 15 + 0.5/60
+	advanceTimeAndTick(60000);
+
+	//oracleEngine.printSubscription(0);
+	//oracleEngine.printSubscription(1);
+
+	// generate and check queries:
+	// - subscription 0 for RANDOM: t0 + 14 + N (each minute)
+	// - subscription 0 for QBAY: t0 + 14 + N (each minute)
+	// - subscription 0 for SWATCH: t0 + 15 + 15 * N (each 15 minutes)
+	// - subscription 0 for QUTIL: t0 + 5 * N (each 5 minutes)
+	// - subscription 1 for QUTIL: t1 + 5 * N (each 5 minutes)
+	// - subscription 1 for QUOTTERY: t1 + 3 * N (each 3 minutes)
+	oracleEngine.generateSubscriptionQueries();
+	const int64_t qid20 = oracleEngine.expectPriceSubscriptionQuery(20, t0 + 15, subscriptionId0,
+		{ RANDOM_CONTRACT_INDEX, QBAY_CONTRACT_INDEX, SWATCH_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX },
+		priceQuery0);
+	const int64_t qid21 = oracleEngine.expectPriceSubscriptionQuery(21, t1 + 15, subscriptionId1,
+		{ QUTIL_CONTRACT_INDEX, QUOTTERY_CONTRACT_INDEX },
+		priceQuery1);
+	EXPECT_EQ(oracleEngine.getQueryCount(), 22);
+
+	// notification: timeout of t0 + 14
+	oracleEngine.processTimeouts();
+	oracleEngine.expectPriceNotifications(
+		{ QEARN_CONTRACT_INDEX, RANDOM_CONTRACT_INDEX, QBAY_CONTRACT_INDEX, MSVAULT_CONTRACT_INDEX, CCF_CONTRACT_INDEX },
+		notificationProcId, qid19, ORACLE_QUERY_STATUS_TIMEOUT, subscriptionId0);
+	EXPECT_EQ(oracleEngine.getNotification(), nullptr);
+
+	// unsubscribe some subscriptions
+	EXPECT_TRUE(oracleEngine.stopContractSubscription(subscriptionId0, SWATCH_CONTRACT_INDEX));
+	EXPECT_FALSE(oracleEngine.stopContractSubscription(subscriptionId0, SWATCH_CONTRACT_INDEX));
+	EXPECT_TRUE(oracleEngine.stopContractSubscription(subscriptionId1, RANDOM_CONTRACT_INDEX));
+	EXPECT_TRUE(oracleEngine.stopContractSubscription(subscriptionId1, QX_CONTRACT_INDEX));
+	EXPECT_TRUE(oracleEngine.stopContractSubscription(subscriptionId1, QUTIL_CONTRACT_INDEX));
+	EXPECT_TRUE(oracleEngine.stopContractSubscription(subscriptionId1, QUOTTERY_CONTRACT_INDEX));
+
+	// Remaining subscriptions:
+	// -> subscription 0 for QEARN: t0 + 2 * N (each 2 minutes)
+	// -> subscription 0 for QUTIL: t0 + 5 * N (each 5 minutes)
+    // -> subscription 0 for RANDOM: t0 + 14 + N (each minute)
+	// -> subscription 0 for QBAY: t0 + 14 + N (each minute)
+	// -> subscription 0 for MSVAULT: t0 + 14 + 3 * N (each 3 minutes)
+	// -> subscription 0 for CCF: t0 + 14 + 8 * N (each 8 minutes)
+	// -> subscription 1 ALL SUBSCRIBED
+	oracleEngine.checkStateConsistencyWithAssert();
+
+	// advance time by 60 sec -> t13 = t0 + 16 + 0.5/60
+	advanceTimeAndTick(60000);
+
+	// generate and check queries:
+	// - subscription 0 for RANDOM: t0 + 14 + N (each minute)
+	// - subscription 0 for QBAY: t0 + 14 + N (each minute)
+	// - subscription 0 for QEARN: t0 + 2 * N (each 2 minutes)
+	oracleEngine.generateSubscriptionQueries();
+	const int64_t qid22 = oracleEngine.expectPriceSubscriptionQuery(22, t0 + 16, subscriptionId0,
+		{ RANDOM_CONTRACT_INDEX, QBAY_CONTRACT_INDEX, QEARN_CONTRACT_INDEX },
+		priceQuery0);
+	EXPECT_EQ(oracleEngine.getQueryCount(), 23);
+
+	// notification: timeout of t0 + 15, t1 + 15
+	oracleEngine.processTimeouts();
+	oracleEngine.expectPriceNotifications(
+		{ RANDOM_CONTRACT_INDEX, QBAY_CONTRACT_INDEX, SWATCH_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX },
+		notificationProcId, qid20, ORACLE_QUERY_STATUS_TIMEOUT, subscriptionId0);
+	oracleEngine.expectPriceNotifications(
+		{ QUTIL_CONTRACT_INDEX, QUOTTERY_CONTRACT_INDEX },
+		notificationProcId, qid21, ORACLE_QUERY_STATUS_TIMEOUT, subscriptionId1);
+	EXPECT_EQ(oracleEngine.getNotification(), nullptr);
+
+	// advance time by 20 * 60 sec -> t13 = t0 + 36 + 0.5/60
+	advanceTimeAndTick(20 * 60000);
+
+	//oracleEngine.printSubscription(0);
+	//oracleEngine.printSubscription(1);
+
+	// generate and check queries:
+	oracleEngine.generateSubscriptionQueries();
+	const int64_t qid23 = oracleEngine.expectPriceSubscriptionQuery(23, t0 + 17, subscriptionId0,
+		{ RANDOM_CONTRACT_INDEX, QBAY_CONTRACT_INDEX, MSVAULT_CONTRACT_INDEX },
+		priceQuery0);
+	const int64_t qid24 = oracleEngine.expectPriceSubscriptionQuery(24, t0 + 18, subscriptionId0,
+		{ QEARN_CONTRACT_INDEX },
+		priceQuery0);
+	const int64_t qid25 = oracleEngine.expectPriceSubscriptionQuery(25, t0 + 20, subscriptionId0,
+		{ QUTIL_CONTRACT_INDEX },
+		priceQuery0);
+	const int64_t qid26 = oracleEngine.expectPriceSubscriptionQuery(26, t0 + 22, subscriptionId0,
+		{ CCF_CONTRACT_INDEX },
+		priceQuery0);
+	EXPECT_EQ(oracleEngine.getQueryCount(), 27);
+
+	// notification: timeout of all
+	oracleEngine.processTimeouts();
+	oracleEngine.expectPriceNotifications(
+		{ RANDOM_CONTRACT_INDEX, QBAY_CONTRACT_INDEX, QEARN_CONTRACT_INDEX },
+		notificationProcId, qid22, ORACLE_QUERY_STATUS_TIMEOUT, subscriptionId0);
+	oracleEngine.expectPriceNotifications(
+		{ RANDOM_CONTRACT_INDEX, QBAY_CONTRACT_INDEX, MSVAULT_CONTRACT_INDEX },
+		notificationProcId, qid23, ORACLE_QUERY_STATUS_TIMEOUT, subscriptionId0);
+	oracleEngine.expectPriceNotifications(
+		{ QEARN_CONTRACT_INDEX },
+		notificationProcId, qid24, ORACLE_QUERY_STATUS_TIMEOUT, subscriptionId0);
+	oracleEngine.expectPriceNotifications(
+		{ QUTIL_CONTRACT_INDEX },
+		notificationProcId, qid25, ORACLE_QUERY_STATUS_TIMEOUT, subscriptionId0);
+	oracleEngine.expectPriceNotifications(
+		{ CCF_CONTRACT_INDEX },
+		notificationProcId, qid26, ORACLE_QUERY_STATUS_TIMEOUT, subscriptionId0);
 	EXPECT_EQ(oracleEngine.getNotification(), nullptr);
 
 	oracleEngine.checkStateConsistencyWithAssert();

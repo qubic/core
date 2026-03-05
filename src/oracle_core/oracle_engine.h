@@ -940,7 +940,7 @@ public:
         // (the list is sorted by nextQueryTimestamp, so this needs to be done after scheduling)
         addSubscriberToSubscriptionsSortedList(subscriptionId, subscriberIndex);
 
-        // low new subscriber
+        // log new subscriber
         logger.logOracleSubscriber({ subscriptionId, interfaceIndex, contractIndex, notificationPeriodMillisec,
                 *(uint64_t*)&subscriber.nextQueryTimestamp });
 
@@ -967,11 +967,97 @@ public:
         return subscriptionId;
     }
 
+    bool stopContractSubscription(int32_t subscriptionId, uint16_t contractIndex)
+    {
+        // initial check of inputs
+        if (subscriptionId < 0 || contractIndex >= MAX_NUMBER_OF_CONTRACTS)
+            return false;
+
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
+
+        // check that contract is subscribed for subscription
+        if (subscriptionId >= usedSubscriptionSlots)
+            return false;
+
+        // Find subscriber in linked list of subscription and remove it
+        OracleSubscription& subscription = subscriptions[subscriptionId];
+        if (subscription.firstSubscriberIndex < 0)
+            return false;
+        ASSERT(subscription.firstSubscriberIndex < usedSubscriberSlots);
+        OracleSubscriber* subscriber = &subscribers[subscription.firstSubscriberIndex];
+        if (subscriber->contractIndex == contractIndex)
+        {
+            // subscriber is the first in the subscription linked list
+            subscription.firstSubscriberIndex = subscriber->nextSubscriberIdx;
+            if (subscription.firstSubscriberIndex >= 0)
+            {
+                // there is at least one additional subscriber -> update timestamp to next subscriber
+                subscription.nextQueryTimestamp = subscribers[subscription.firstSubscriberIndex].nextQueryTimestamp;
+            }
+            else
+            {
+                // there is no subscriber for this subscription anymore -> remove subscription from queue
+                subscription.nextQueryTimestamp.setInvalid();
+                nextSubscriptionIdQueue.removeFirstMatch(subscriptionId);
+            }
+        }
+        else
+        {
+            // find subscriber in linked list and remove it
+            int32_t prevIdx = subscription.firstSubscriberIndex;
+            int32_t curIdx = subscriber->nextSubscriberIdx;
+            while (curIdx >= 0 && subscribers[curIdx].contractIndex != contractIndex)
+            {
+                prevIdx = curIdx;
+                curIdx = subscribers[curIdx].nextSubscriberIdx;
+            }
+            if (curIdx < 0)
+                return false;
+
+            // found subscriber in curIdx -> remove it from linked list by linking previous entry to
+            // to following entry
+            subscriber = &subscribers[curIdx];
+            subscribers[prevIdx].nextSubscriberIdx = subscriber->nextSubscriberIdx;
+        }
+
+        // Disable subscriber by invalidating nextQueryTimestamp, but keep slot occupied, because it is referenced
+        // in the oracle query storage
+        subscriber->nextQueryTimestamp.setInvalid();
+        subscriber->nextSubscriberIdx = -1;
+
+        ASSERT(subscription.subscriberCount >= 1);
+        --subscription.subscriberCount;
+
+        // log removed subscriber
+        logger.logOracleSubscriber({ subscriptionId, subscription.interfaceIndex, contractIndex, 0, 0 });
+
+        // debug logging
+#if !defined(NDEBUG)// && !defined(NO_UEFI)
+        CHAR16 dbgMsg[300];
+        setText(dbgMsg, L"oracleEngine.stopContractSubscription(), tick ");
+        appendNumber(dbgMsg, system.tick, FALSE);
+        appendText(dbgMsg, ", subscriptionId ");
+        appendNumber(dbgMsg, subscriptionId, FALSE);
+        appendText(dbgMsg, ", interfaceIndex ");
+        appendNumber(dbgMsg, subscription.interfaceIndex, FALSE);
+        appendText(dbgMsg, ", contractIndex ");
+        appendNumber(dbgMsg, contractIndex, FALSE);
+        appendText(dbgMsg, ", old notificationPeriodMillisec ");
+        appendNumber(dbgMsg, subscriber->notificationPeriodMinutes * 60000, FALSE);
+        appendText(dbgMsg, ", now ");
+        appendDateAndTime(dbgMsg, QPI::DateAndTime::now());
+        addDebugMessage(dbgMsg);
+#endif
+
+        return true;
+    }
+
     // Called once per tick by tick processor to generate oracle queries for subscriptions.
     void generateSubscriptionQueries()
     {
         QPI::DateAndTime now = QPI::DateAndTime::now();
-#if !defined(NDEBUG) //&& !defined(NO_UEFI)
+#if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsg[200];
         setText(dbgMsg, L"oracleEngine.generateSubscriptionQueries(), tick ");
         appendNumber(dbgMsg, system.tick, FALSE);
@@ -995,7 +1081,7 @@ public:
             if (queryTimestamp > now)
                 break;
 
-#if !defined(NDEBUG) //&& !defined(NO_UEFI)
+#if !defined(NDEBUG) && !defined(NO_UEFI)
             setText(dbgMsg, L"oracleEngine.generateSubscriptionQueries(): subscription ");
             appendNumber(dbgMsg, subscriptionId, FALSE);
             appendText(dbgMsg, ", queryTimestamp ");
@@ -1013,6 +1099,7 @@ public:
                 // add subscriber indices with timestamp <= queryTimestamp to query
                 const int32_t subscriberIdx = subscription.firstSubscriberIndex;
                 OracleSubscriber& subscriber = subscribers[subscriberIdx];
+                ASSERT(subscriber.subscriptionId == subscriptionId);
                 ASSERT(subscriber.nextQueryTimestamp >= queryTimestamp);
                 if (subscriber.nextQueryTimestamp > queryTimestamp)
                     break;
@@ -1025,7 +1112,7 @@ public:
                     subscriber.nextQueryTimestamp.add(0, 0, 0, 0, subscriber.notificationPeriodMinutes, 0);
                 } while (subscriber.nextQueryTimestamp < now);
 
-#if !defined(NDEBUG) //&& !defined(NO_UEFI)
+#if !defined(NDEBUG) && !defined(NO_UEFI)
                 setText(dbgMsg, L"oracleEngine.generateSubscriptionQueries(): -> subscriber ");
                 appendNumber(dbgMsg, subscriber.contractIndex, FALSE);
                 appendText(dbgMsg, " -> nextQueryTimestamp ");
@@ -1086,7 +1173,7 @@ public:
             oracleStats[oqm->interfaceIndex].queryCount++;
 #endif
 
-#if !defined(NDEBUG) //&& !defined(NO_UEFI)
+#if !defined(NDEBUG) && !defined(NO_UEFI)
             CHAR16 dbgMsg[200];
             setText(dbgMsg, L"oracleEngine.generateSubscriptionQueries(): -> new query in tick ");
             appendNumber(dbgMsg, system.tick, FALSE);
@@ -2569,7 +2656,7 @@ public:
             ASSERT(s.contractIndex > 0 && s.contractIndex < MAX_NUMBER_OF_CONTRACTS);
             ASSERT(s.subscriptionId >= 0 && s.subscriptionId < usedSubscriptionSlots);
             ASSERT(s.nextSubscriberIdx >= -1 && s.nextSubscriberIdx < usedSubscriberSlots);
-            ASSERT(s.nextQueryTimestamp >= now);
+            ASSERT(s.nextQueryTimestamp >= now || !s.nextQueryTimestamp.isValid());
             ASSERT(s.notificationPeriodMinutes >= 1);
         }
         for (uint32_t i = usedSubscriberSlots; i < MAX_ORACLE_SUBSCRIBERS; ++i)
@@ -2584,7 +2671,7 @@ public:
         {
             const OracleSubscription& s = subscriptions[subscriptionId];
             ASSERT(s.interfaceIndex < OI::oracleInterfacesCount);
-            ASSERT(s.nextQueryTimestamp >= now);
+            ASSERT(s.nextQueryTimestamp >= now || !s.nextQueryTimestamp.isValid());
             ASSERT(s.initialQueryStorageOffset > 0 && s.initialQueryStorageOffset < queryStorageBytesUsed);
             ASSERT(s.queryTimestampOffset <= OI::oracleInterfaces[s.interfaceIndex].querySize - sizeof(QPI::DateAndTime));
             ASSERT(s.lastPendingQueryId == -1 || queryIdToIndex->contains(s.lastPendingQueryId));

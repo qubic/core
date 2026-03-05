@@ -256,12 +256,26 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
 		}
+
 		output.oracleSubscriptionId = SUBSCRIBE_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.subscriptionPeriodMilliseconds, input.notifyPreviousValue);
-		//output.oracleSubscriptionId = SUBSCRIBE_ORACLE(OI::Mock, OI::Mock::OracleQuery(), NotifyMockOracleReply, input.subscriptionPeriodMilliseconds, input.notifyPreviousValue);
 		if (output.oracleSubscriptionId < 0)
 		{
 			// error
 		}
+	}
+
+	struct UnsubscribeOracle_input
+	{
+		sint32 subscriptionId;
+	};
+	struct UnsubscribeOracle_output
+	{
+		bit success;
+	};
+
+	PUBLIC_PROCEDURE(UnsubscribeOracle)
+	{
+		output.success = qpi.unsubscribeOracle(input.subscriptionId);
 	}
 
 	typedef OracleNotificationInput<OI::Price> NotifyPriceOracleReply_input;
@@ -275,7 +289,7 @@ public:
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(NotifyPriceOracleReply)
 	{
-		locals.notificationLog = NotificationLog{CONTRACT_INDEX, OI::Price::oracleInterfaceIndex, input.status, OI::Price::replyIsValid(input.reply), input.reply.numerator, input.queryId };
+		locals.notificationLog = NotificationLog{CONTRACT_INDEX, OI::Price::oracleInterfaceIndex, input.status, OI::Price::replyIsValid(input.reply), input.subscriptionId, input.queryId };
 		LOG_INFO(locals.notificationLog);
 
 		if (input.status == ORACLE_QUERY_STATUS_SUCCESS)
@@ -455,6 +469,7 @@ public:
 
 		REGISTER_USER_PROCEDURE(QueryPriceOracle, 100);
 		REGISTER_USER_PROCEDURE(SubscribePriceOracle, 101);
+		REGISTER_USER_PROCEDURE(UnsubscribeOracle, 102);
 
 		REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyPriceOracleReply);
 		REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyMockOracleReply);

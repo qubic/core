@@ -193,8 +193,9 @@ inline bool QPI::QpiContextProcedureCall::unsubscribeOracle(
 	QPI::sint32 oracleSubscriptionId
 ) const
 {
-	// TODO
-	return false;
+	ASSERT(this->_currentContractIndex < 0xffff);
+	const QPI::uint16 contractIndex = static_cast<QPI::uint16>(this->_currentContractIndex);
+	return oracleEngine.stopContractSubscription(oracleSubscriptionId, contractIndex);
 }
 
 template <typename OracleInterface>
