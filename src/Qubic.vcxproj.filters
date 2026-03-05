@@ -307,6 +307,8 @@
     </ClInclude>
 
     <ClInclude Include="contracts\QSurv.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contracts\Pulse.h">
       <Filter>contracts</Filter>
     </ClInclude>

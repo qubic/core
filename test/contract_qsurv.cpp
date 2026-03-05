@@ -185,25 +185,28 @@ TEST(ContractQSurv, Payout_VerifyBalancesAndCompletion) {
   uint64 respondentBalBefore = getBalance(respondent);
   uint64 referrerBalBefore = getBalance(referrer);
   uint64 oracleBalBefore = getBalance(oracle);
+  uint64 creatorBalBefore = getBalance(creator);
 
   // Payout with Tier 1 (10% bonus)
   // Reward per resp = 1000
   // Base (40%) = 400, Referral (20%) = 200, Platform (3%) = 30, Bonus (10%) =
-  // 100. Total Spent = 730. Remaining balance = 270.
+  // 100. Total Spent = 730. Leftover = 270 refunded to creator.
   auto payoutOut = qsurv.payout(oracle, 1, respondent, referrer, 1);
   EXPECT_EQ(payoutOut.success, 1);
 
   uint64 respondentBalAfter = getBalance(respondent);
   uint64 referrerBalAfter = getBalance(referrer);
   uint64 oracleBalAfter = getBalance(oracle);
+  uint64 creatorBalAfter = getBalance(creator);
 
   EXPECT_EQ(respondentBalAfter - respondentBalBefore,
             500);                                       // 400 base + 100 bonus
   EXPECT_EQ(referrerBalAfter - referrerBalBefore, 200); // 200 referral
   EXPECT_EQ(oracleBalAfter - oracleBalBefore, 30); // 30 platform fee for Tier 1
+  EXPECT_EQ(creatorBalAfter - creatorBalBefore, 270); // leftover refunded
 
   auto surveyAfter = qsurv.getSurvey(1);
-  EXPECT_EQ(surveyAfter.balance, 270); // 1000 - 730 spent
+  EXPECT_EQ(surveyAfter.balance, 0); // Balance refunded to creator
   EXPECT_EQ(surveyAfter.isActive,
             0); // Marked inactive since max respondents reached
 

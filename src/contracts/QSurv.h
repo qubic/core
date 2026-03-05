@@ -229,6 +229,12 @@ public:
     locals.tempSurvey.currentRespondents = 0;
     locals.tempSurvey.isActive = 1;
 
+    // Zero out paid respondents list for safety (especially on slot reuse)
+    for (locals.index = 0; locals.index < MAX_RESPONDENTS_PER_SURVEY;
+         locals.index++) {
+      locals.tempSurvey.paidRespondents.set(locals.index, NULL_ID);
+    }
+
     // Copy IPFS hash using Array's set method
     for (locals.index = 0; locals.index < IPFS_HASH_SIZE; locals.index++) {
       locals.tempSurvey.ipfsHash.set(locals.index,
