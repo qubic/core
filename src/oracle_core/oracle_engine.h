@@ -20,7 +20,7 @@
 
 void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data);
 
-constexpr uint32_t MAX_ORACLE_QUERIES = (1 << 18);
+constexpr uint32_t MAX_ORACLE_QUERIES = (1 << 19);
 constexpr uint64_t ORACLE_QUERY_STORAGE_SIZE = MAX_ORACLE_QUERIES * 512;
 constexpr uint32_t MAX_SIMULTANEOUS_ORACLE_QUERIES = 1024;
 
