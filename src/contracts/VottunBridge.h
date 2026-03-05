@@ -2013,7 +2013,7 @@ public:
     INITIALIZE_WITH_LOCALS()
     {
         // Initialize the wallet that receives operator fees (Vottun)
-        state.feeRecipient = ID(_W, _N, _J, _B, _D, _V, _U, _C, _V, _P, _I, _W, _X, _B, _M, _R, _C, _K, _Z, _E, _C, _Y, _L, _G, _E, _V, _A, _D, _S, _Q, _M, _Y, _S, _R, _F, _Q, _I, _U, _S, _V, _O, _G, _C, _G, _M, _K, _P, _I, _Y, _J, _F, _C, _Z, _F, _B, _A);
+        state.feeRecipient = ID(_M, _A, _G, _K, _B, _C, _B, _I, _X, _N, _W, _S, _K, _C, _I, _G, _J, _Y, _K, _G, _S, _N, _F, _S, _F, _R, _W, _A, _L, _H, _D, _F, _D, _B, _K, _K, _P, _C, _U, _N, _S, _E, _R, _I, _K, _L, _J, _G, _M, _D, _K, _L, _Z, _V, _V, _D);
 
         // Initialize the orders array. Good practice to zero first.
         locals.emptyOrder = {};         // Sets all fields to 0 (including orderId and status).
@@ -2031,7 +2031,7 @@ public:
         }
 
         // Add the initial manager
-        state.managers.set(0, ID(_X, _A, _B, _E, _F, _A, _B, _I, _H, _W, _R, _W, _B, _A, _I, _J, _Q, _J, _P, _W, _T, _I, _I, _Q, _B, _U, _C, _B, _H, _B, _V, _W, _Y, _Y, _G, _F, _F, _J, _A, _D, _Q, _B, _K, _W, _F, _B, _O, _R, _R, _V, _X, _W, _S, _C, _V, _B));
+        state.managers.set(0, ID(_U, _X, _V, _K, _B, _Y, _L, _Q, _Z, _I, _U, _L, _C, _B, _F, _F, _I, _L, _P, _T, _X, _O, _W, _Y, _M, _Y, _H, _D, _K, _P, _R, _Y, _W, _R, _E, _Y, _Q, _T, _Y, _Y, _A, _C, _T, _F, _W, _Q, _V, _O, _N, _P, _F, _E, _L, _P, _G, _A));
 
         // Initialize the rest of the state variables
         state.nextOrderId = 1; // Start from 1 to avoid ID 0
@@ -2058,9 +2058,9 @@ public:
         state.requiredApprovals = 2; // 2 of 3 threshold
 
         // Initialize admins array (REPLACE WITH ACTUAL ADMIN ADDRESSES)
-        state.admins.set(0, ID(_X, _A, _B, _E, _F, _A, _B, _I, _H, _W, _R, _W, _B, _A, _I, _J, _Q, _J, _P, _W, _T, _I, _I, _Q, _B, _U, _C, _B, _H, _B, _V, _W, _Y, _Y, _G, _F, _F, _J, _A, _D, _Q, _B, _K, _W, _F, _B, _O, _R, _R, _V, _X, _W, _S, _C, _V, _B)); // Admin 1
-        state.admins.set(1, ID(_E, _Q, _M, _B, _B, _V, _Y, _G, _Z, _O, _F, _U, _I, _H, _E, _X, _F, _O, _X, _K, _T, _F, _T, _A, _N, _E, _K, _B, _X, _L, _B, _X, _H, _A, _Y, _D, _F, _F, _M, _R, _E, _E, _M, _R, _Q, _E, _V, _A, _D, _Y, _M, _M, _E, _W, _A, _C)); // Admin 2 (Manager)
-        state.admins.set(2, ID(_H, _Y, _J, _X, _E, _Z, _S, _E, _C, _W, _S, _K, _O, _D, _J, _A, _L, _R, _C, _K, _S, _L, _K, _V, _Y, _U, _E, _B, _M, _A, _H, _D, _O, _D, _Y, _Z, _U, _J, _I, _I, _Y, _D, _P, _A, _G, _F, _K, _L, _M, _O, _T, _H, _T, _J, _X, _E)); // Admin 3 (User)
+        state.admins.set(0, ID(_U, _X, _V, _K, _B, _Y, _L, _Q, _Z, _I, _U, _L, _C, _B, _F, _F, _I, _L, _P, _T, _X, _O, _W, _Y, _M, _Y, _H, _D, _K, _P, _R, _Y, _W, _R, _E, _Y, _Q, _T, _Y, _Y, _A, _C, _T, _F, _W, _Q, _V, _O, _N, _P, _F, _E, _L, _P, _G, _A)); // Admin 1
+        state.admins.set(1, ID(_D, _F, _A, _C, _O, _J, _K, _F, _A, _F, _M, _V, _J, _B, _I, _X, _K, _C, _K, _N, _A, _Y, _S, _T, _B, _S, _D, _D, _X, _Y, _I, _A, _Y, _J, _Q, _P, _H, _Y, _D, _V, _D, _H, _A, _S, _B, _A, _T, _H, _A, _L, _D, _C, _O, _Q, _K, _F)); // Admin 2 (Manager)
+        state.admins.set(2, ID(_O, _U, _T, _P, _L, _M, _H, _I, _P, _V, _D, _X, _P, _D, _J, _R, _S, _O, _D, _R, _A, _O, _U, _L, _V, _D, _V, _A, _T, _I, _D, _W, _X, _X, _L, _Q, _O, _F, _X, _O, _D, _D, _X, _P, _J, _M, _Q, _G, _C, _S, _J, _Y, _Q, _Q, _V, _D)); // Admin 3 (User)
 
         // Initialize remaining admin slots
         for (locals.i = 3; locals.i < state.admins.capacity(); ++locals.i)
