@@ -152,6 +152,16 @@ public:
 
         // query QX fees
         callFunction(QX_CONTRACT_INDEX, 1, QX::Fees_input(), qxFees);
+
+        // setup tick and time
+        system.epoch = 200;
+        system.tick = 123456783;
+        etalonTick.year = 25;
+        etalonTick.month = 12;
+        etalonTick.day = 15;
+        etalonTick.hour = 16;
+        etalonTick.minute = 51;
+        etalonTick.second = 12;
     }
 
     ~ContractTestingTestEx()
@@ -566,14 +576,22 @@ public:
         callSystemProcedure(QX_CONTRACT_INDEX, END_TICK, expectSuccess);
     }
 
-    uint64 queryPriceOracle(const id& invocator, uint32 timeoutMilliseconds, const OI::Price::OracleQuery& query)
+    sint64 queryPriceOracle(const id& invocator, uint32 timeoutMilliseconds, const OI::Price::OracleQuery& query)
     {
         TESTEXC::QueryPriceOracle_input input;
         input.priceOracleQuery = query;
         input.timeoutMilliseconds = timeoutMilliseconds;
         TESTEXC::QueryPriceOracle_output output;
-        EXPECT_TRUE(invokeUserProcedure(TESTEXC_CONTRACT_INDEX, 100, input, output, invocator, 0));
+        EXPECT_TRUE(invokeUserProcedure(TESTEXC_CONTRACT_INDEX, 100, input, output, invocator, OI::Price::getQueryFee(query)));
         return output.oracleQueryId;
+    }
+
+    sint32 subscribePriceOracle(const id& invocator, uint32 periodMilliseconds, const OI::Price::OracleQuery& query, bool notifyPreviousValue = true)
+    {
+        TESTEXC::SubscribePriceOracle_input input{ query, periodMilliseconds, notifyPreviousValue };
+        TESTEXC::SubscribePriceOracle_output output;
+        EXPECT_TRUE(invokeUserProcedure(TESTEXC_CONTRACT_INDEX, 101, input, output, invocator, OI::Price::getSubscriptionFee(query, periodMilliseconds)));
+        return output.oracleSubscriptionId;
     }
 };
 
@@ -2118,11 +2136,9 @@ TEST(ContractTestEx, SystemCallbacksWithNegativeFeeReserve)
 TEST(ContractTestEx, OracleQuery)
 {
     ContractTestingTestEx test;
-    system.epoch = 200;
-    system.tick = 123456783;
 
     //-------------------------------------------------------------------------
-    // Test qpi.queryOracle() and generating message to oracle machine node
+    // Test QUERY_ORACLE and generating message to oracle machine node
     increaseEnergy(USER1, 100000000);
     increaseEnergy(TESTEXC_CONTRACT_ID, 100000000);
 
@@ -2170,4 +2186,28 @@ TEST(ContractTestEx, OracleQuery)
     priceOracleMachineReply.data.denominator = 1;
 
     oracleEngine.processOracleMachineReply(&priceOracleMachineReply.metadata, sizeof(priceOracleMachineReply));
+}
+
+TEST(ContractTestEx, OracleSubscription)
+{
+    ContractTestingTestEx test;
+
+    increaseEnergy(USER1, 100000000);
+    increaseEnergy(TESTEXC_CONTRACT_ID, 100000000);
+
+    const id currencyBtc(Ch::B, Ch::T, Ch::C, 0, 0);
+    const id currencyUsd(Ch::U, Ch::S, Ch::D, 0, 0);
+    const id binance = OI::Price::getBinanceOracleId();
+
+    OI::Price::OracleQuery query1 = { binance, DateAndTime(), currencyBtc, currencyUsd };
+    const uint32 period1 = 60000;
+
+    EXPECT_EQ(-1, test.subscribePriceOracle(USER1, period1 * 0, query1, true));
+    EXPECT_EQ(-1, test.subscribePriceOracle(USER1, period1 + 1, query1, true));
+
+    const sint32 subId1 = test.subscribePriceOracle(USER1, period1, query1, true);
+    EXPECT_EQ(subId1, 0);
+
+    // subscribing the same twice isn't possible without unsubscribing before
+    EXPECT_EQ(-1, test.subscribePriceOracle(USER1, period1, query1, true));
 }

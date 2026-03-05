@@ -222,6 +222,11 @@ public:
 
 	PUBLIC_PROCEDURE(QueryPriceOracle)
 	{
+		if (qpi.invocationReward() < OI::Price::getQueryFee(input.priceOracleQuery))
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		}
 		output.oracleQueryId = QUERY_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.timeoutMilliseconds);
 		if (output.oracleQueryId < 0)
 		{
@@ -236,16 +241,23 @@ public:
 	struct SubscribePriceOracle_input
 	{
 		OI::Price::OracleQuery priceOracleQuery;
-		uint16 subscriptionPeriodMinutes;
+		uint32 subscriptionPeriodMilliseconds;
+		bit notifyPreviousValue;
 	};
 	struct SubscribePriceOracle_output
 	{
-		uint32 oracleSubscriptionId;
+		sint32 oracleSubscriptionId;
 	};
 
 	PUBLIC_PROCEDURE(SubscribePriceOracle)
 	{
-		output.oracleSubscriptionId = SUBSCRIBE_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.subscriptionPeriodMinutes, true);
+		if (qpi.invocationReward() < OI::Price::getSubscriptionFee(input.priceOracleQuery, input.subscriptionPeriodMilliseconds))
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		}
+		output.oracleSubscriptionId = SUBSCRIBE_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.subscriptionPeriodMilliseconds, input.notifyPreviousValue);
+		//output.oracleSubscriptionId = SUBSCRIBE_ORACLE(OI::Mock, OI::Mock::OracleQuery(), NotifyMockOracleReply, input.subscriptionPeriodMilliseconds, input.notifyPreviousValue);
 		if (output.oracleSubscriptionId < 0)
 		{
 			// error
@@ -442,6 +454,7 @@ public:
 		REGISTER_USER_PROCEDURE(QpiBidInIpo, 30);
 
 		REGISTER_USER_PROCEDURE(QueryPriceOracle, 100);
+		REGISTER_USER_PROCEDURE(SubscribePriceOracle, 101);
 
 		REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyPriceOracleReply);
 		REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyMockOracleReply);

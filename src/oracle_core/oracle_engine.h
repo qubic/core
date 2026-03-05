@@ -2339,6 +2339,13 @@ public:
         return queryMetadata.status;
     }
 
+    /// Return pointer to subscription data or nullptr if subscriptionId is invalid. CAUTION: NO LOCKING!
+    const OracleSubscription* getOracleSubscription(int32_t subscriptionId) const
+    {
+        if (subscriptionId < 0 || subscriptionId >= usedSubscriptionSlots)
+            return nullptr;
+        return subscriptions + subscriptionId;
+    }
 
     // Useful for debugging, but expensive: check that everything is as expected.
     void checkStateConsistencyWithAssert() const
