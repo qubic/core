@@ -392,6 +392,45 @@ static void enableAVX()
         ));
 }
 
+// Recompute ALL contract state digests unconditionally and compare against cached values.
+// Logs which contracts have stale digests (state changed but dirty flag was not set).
+// Must be called from tick processor only (same as getComputerDigest).
+static void verifyContractStateDigests()
+{
+    m256i freshDigest;
+    bool anyMismatch = false;
+    for (unsigned int i = 0; i < contractCount; i++)
+    {
+        const unsigned long long size = contractDescriptions[i].stateSize;
+        if (!size)
+            continue;
+
+        contractStateLock[i].acquireRead();
+        KangarooTwelve(contractStates[i], (unsigned int)size, &freshDigest, 32);
+        contractStateLock[i].releaseRead();
+
+        if (freshDigest != contractStateDigests[i])
+        {
+            anyMismatch = true;
+            CHAR16 msg[200];
+            setText(msg, L"DIGEST MISMATCH: contract ");
+            appendNumber(msg, i, FALSE);
+            appendText(msg, L" (");
+            appendText(msg, contractDescriptions[i].assetName);
+            appendText(msg, L") has stale digest in tick ");
+            appendNumber(msg, system.tick, FALSE);
+            logToConsole(msg);
+        }
+    }
+    if (!anyMismatch)
+    {
+        CHAR16 msg[100];
+        setText(msg, L"All contract digests verified OK in tick ");
+        appendNumber(msg, system.tick, FALSE);
+        logToConsole(msg);
+    }
+}
+
 // Should only be called from tick processor to avoid concurrent state changes, which can cause race conditions as detailed in FIXME below.
 static void getComputerDigest(m256i& digest)
 {
@@ -6739,6 +6778,10 @@ static void processKeyPresses()
         case L'p':
             key.ScanCode = 0x48; // map to pause key; action defined below
             break;
+        case L'd':
+            logToConsole(L"Verifying contract state digests...");
+            verifyContractStateDigests();
+            return;
             /*
             * Just prints QUBIC QUBIC QUBIC QUBIC QUBIC to the screen
             * An example how to use other keys and directly return to not continue with the ScanCode
