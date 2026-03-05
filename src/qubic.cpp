@@ -2,7 +2,7 @@
 
 // #define NO_PULSE
 
-//#define INCLUDE_CONTRACT_TEST_EXAMPLES
+#define INCLUDE_CONTRACT_TEST_EXAMPLES
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
