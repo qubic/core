@@ -20,7 +20,7 @@ constexpr uint64 QUSINO_DEVELOPER_FEE = 333;             // 33.3%
 constexpr uint64 QUSINO_SUPPLY_OF_QST = 1200000000ULL;    // 1.2 billion
 constexpr uint64 QUSINO_DAILY_CLAIM_BONUS_DURATION = 24 * 60 * 60; // in number of seconds
 constexpr uint64 QUSINO_BONUS_CLAIM_DURATION = 60;   // 60s
-constexpr uint64 QUSINO_BONUS_CLAIM_AMOUNT = 200;    // 100STAR + 1QSC = 200Qubic
+constexpr uint64 QUSINO_BONUS_CLAIM_AMOUNT = 100;    // 100STAR + 1QSC = 100Qubic,  STAR isnt redeemable for qubic.
 constexpr uint64 QUSINO_BONUS_CLAIM_AMOUNT_STAR = 100;
 constexpr uint64 QUSINO_BONUS_CLAIM_AMOUNT_QSC = 1;
 
