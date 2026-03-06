@@ -365,7 +365,7 @@ public:
 	END_TICK_WITH_LOCALS()
 	{
 		// Query oracles
-		if (qpi.tick() % 11 == 1)
+		if (0) //(qpi.tick() % 11 == 1)
 		{
 			locals.c = (qpi.tick() / 11) % 8;
 			{
@@ -442,7 +442,7 @@ public:
 				LOG_INFO(locals.notificationLog);
 			}
 		}
-		if (qpi.tick() % 2 == 1)
+		if (0) //(qpi.tick() % 2 == 1)
 		{
 			for (locals.c = 0; locals.c < (qpi.tick() / 2) % 15; ++locals.c)
 			{
