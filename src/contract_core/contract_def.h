@@ -244,11 +244,25 @@
 #define CONTRACT_STATE2_TYPE QDUEL2
 #include "contracts/QDuel.h"
 
+#ifndef NO_PULSE
+
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
 
-#define QUSINO_CONTRACT_INDEX 24
+#define PULSE_CONTRACT_INDEX 24
+#define CONTRACT_INDEX PULSE_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE PULSE
+#define CONTRACT_STATE2_TYPE PULSE2
+#include "contracts/Pulse.h"
+
+#endif
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QUSINO_CONTRACT_INDEX 25
 #define CONTRACT_INDEX QUSINO_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QUSINO
 #define CONTRACT_STATE2_TYPE QUSINO2
@@ -365,7 +379,10 @@ constexpr struct ContractDescription
 	{"QRP", 199, 10000, sizeof(IPO)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
 	{"QTF", 199, 10000, sizeof(QTF)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
     {"QDUEL", 199, 10000, sizeof(QDUEL)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
-  {"QUSINO", 203, 10000, sizeof(QUSINO)}, // proposal in epoch 201, IPO in 202, construction and first use in 203
+#ifndef NO_PULSE
+	{"PULSE", 204, 10000, sizeof(PULSE)}, // proposal in epoch 202, IPO in 203, construction and first use in 204
+#endif
+    {"QUSINO", 205, 10000, sizeof(QUSINO)}, // proposal in epoch 203, IPO in 204, construction and first use in 205
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA)},
@@ -485,6 +502,9 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTF);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDUEL);
+#ifndef NO_PULSE
+	REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(PULSE);
+#endif
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUSINO);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
