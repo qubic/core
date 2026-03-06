@@ -1616,6 +1616,8 @@ public:
         REGISTER_USER_PROCEDURE(SubscribePriceOracle, 101);
         REGISTER_USER_PROCEDURE(UnsubscribeOracle, 102);
 
+        REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyPriceOracleReply);
+
         REGISTER_SHAREHOLDER_PROPOSAL_VOTING();
     }
 };
