@@ -508,8 +508,8 @@ protected:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - QUSINO_GAME_SUBMIT_FEE);   
         }
-        qpi.distributeDividends(div(QUSINO_GAME_SUBMIT_FEE / 10, 676ULL));
-        state.epochRevenue += QUSINO_GAME_SUBMIT_FEE - div(QUSINO_GAME_SUBMIT_FEE / 10, 676ULL) * 676;
+        qpi.distributeDividends(div(QUSINO_GAME_SUBMIT_FEE, 676 * 10ULL));
+        state.epochRevenue += QUSINO_GAME_SUBMIT_FEE - div(QUSINO_GAME_SUBMIT_FEE, 676 * 10ULL) * 676;
         locals.newGame.proposedEpoch = qpi.epoch();
         locals.newGame.proposer = qpi.invocator();
         copyMemory(locals.newGame.URI, input.URI);
