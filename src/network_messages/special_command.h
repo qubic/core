@@ -23,6 +23,8 @@ struct SpecialCommandSetSolutionThresholdRequestAndResponse
     unsigned long long everIncreasingNonceAndCommandType;
     unsigned int epoch;
     int threshold;
+    int algoType;
+    int padding;
 };
 
 

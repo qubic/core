@@ -13,6 +13,24 @@ The network message types are defined in a single `enum` in [src/network_message
 The type number is the identifier used in `RequestResponseHeader` (defined in `header.h`).
 The type number is usually available from the network message type via the `static constexpr unsigned char type()` method.
 
+
+## List of special transaction types
+
+Transactions with destination `NULL_ID` (32 bytes all-zero) are handled by the system.
+The following transaction types (`tx->inputType`) are defined:
+
+- Vote counter transaction, type 1, defined in `src/vote_counter.h`.
+- `MiningSolutionTransaction`, type 2, defined in `src/mining/mining.h`.
+- `FileHeaderTransaction`, type 3, defined in `src/files/files.h`.
+- `FileFragmentTransactionPrefix`, type 4, defined in `src/files/files.h`.
+- `FileTrailerTransaction`, type 5, defined in `src/files/files.h`.
+- `OracleReplyCommitTransactionPrefix`, type 6, defined in `src/oracle_core/oracle_transactions.h`.
+- `OracleReplyRevealTransactionPrefix`, type 7, defined in `src/oracle_core/oracle_transactions.h`.
+- `CustomMiningSolutionTransaction`, type 8, defined in `src/mining/mining.h`.
+- `ExecutionFeeReportTransactionPrefix`, type 9, defined in `src/network_messages/execution_fees.h`.
+- `OracleUserQueryTransactionPrefix`, type 10, defined in `src/oracle_core/oracle_transactions.h`.
+
+
 ## Peer Sharing
 
 Peers are identified by IPv4 addresses in context of peer sharing.

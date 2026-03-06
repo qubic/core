@@ -58,6 +58,11 @@ public:
 		return (QswapChecker*)contractStates[QSWAP_CONTRACT_INDEX];
 	}
 
+    void beginEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(QSWAP_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+    }
+
 	bool loadState(const CHAR16* filename)
 	{
 		return load(filename, sizeof(QSWAP), contractStates[QSWAP_CONTRACT_INDEX]) == sizeof(QSWAP);
@@ -94,7 +99,7 @@ public:
 
 	bool createPool(const id& issuer, uint64 assetName)
     {
-		QSWAP::CreatePool_input input{issuer, assetName};
+		QSWAP::CreatePool_input input{assetName};
 		QSWAP::CreatePool_output output;
 		invokeUserProcedure(QSWAP_CONTRACT_INDEX, CREATE_POOL_IDX, input, output, issuer, QSWAP_CREATE_POOL_FEE);
 		return output.success;
@@ -334,6 +339,7 @@ TEST(ContractSwap, QuoteTest)
 TEST(ContractSwap, IssueAssetAndTransferShareManagementRights)
 {
     ContractTestingQswap qswap;
+    qswap.beginEpoch();
 
     id issuer(1, 2, 3, 4);
 

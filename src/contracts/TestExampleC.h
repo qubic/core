@@ -192,6 +192,243 @@ public:
 	}
 
 	//---------------------------------------------------------------
+	// ORACLE TESTING
+
+	struct NotificationLog
+	{
+		uint32 contractIndex;
+		uint8 interface;
+		uint8 status;
+		uint16 dataCheck;
+		sint64 data;
+		sint64 queryId;
+		sint8 _terminator; // Only data before "_terminator" are logged
+	};
+
+	// optional: additional of contract data associated with oracle query
+	HashMap<uint64, uint32, 64> oracleQueryExtraData;
+
+	uint32 oracleSubscriptionId;
+
+	struct QueryPriceOracle_input
+	{
+		OI::Price::OracleQuery priceOracleQuery;
+		uint32 timeoutMilliseconds;
+	};
+	struct QueryPriceOracle_output
+	{
+		sint64 oracleQueryId;
+	};
+
+	PUBLIC_PROCEDURE(QueryPriceOracle)
+	{
+		output.oracleQueryId = QUERY_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.timeoutMilliseconds);
+		if (output.oracleQueryId < 0)
+		{
+			// error
+			return;
+		}
+
+		// example: store additional data realted to oracle query
+		state.oracleQueryExtraData.set(output.oracleQueryId, 0);
+	}
+
+	struct SubscribePriceOracle_input
+	{
+		OI::Price::OracleQuery priceOracleQuery;
+		uint16 subscriptionIntervalMinutes;
+	};
+	struct SubscribePriceOracle_output
+	{
+		uint32 oracleSubscriptionId;
+	};
+
+	PUBLIC_PROCEDURE(SubscribePriceOracle)
+	{
+		output.oracleSubscriptionId = SUBSCRIBE_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.subscriptionIntervalMinutes, true);
+		if (output.oracleSubscriptionId < 0)
+		{
+			// error
+		}
+	}
+
+	typedef OracleNotificationInput<OI::Price> NotifyPriceOracleReply_input;
+	typedef NoData NotifyPriceOracleReply_output;
+	struct NotifyPriceOracleReply_locals
+	{
+		OI::Price::OracleQuery query;
+		uint32 queryExtraData;
+		NotificationLog notificationLog;
+	};
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(NotifyPriceOracleReply)
+	{
+		locals.notificationLog = NotificationLog{CONTRACT_INDEX, OI::Price::oracleInterfaceIndex, input.status, OI::Price::replyIsValid(input.reply), input.reply.numerator, input.queryId };
+		LOG_INFO(locals.notificationLog);
+
+		if (input.status == ORACLE_QUERY_STATUS_SUCCESS)
+		{
+			// get and use query info if needed
+			if (!qpi.getOracleQuery<OI::Price>(input.queryId, locals.query))
+				return;
+			
+			// get and use additional query info stored by contract if needed
+			if (!state.oracleQueryExtraData.get(input.queryId, locals.queryExtraData))
+				return;
+
+			// use example convenience function provided by oracle interface
+			if (!OI::Price::replyIsValid(input.reply))
+				return;
+		}
+		else
+		{
+			// handle failure ...
+		}
+	}
+
+	// MOCK ORACLE TESTING
+	typedef OracleNotificationInput<OI::Mock> NotifyMockOracleReply_input;
+	typedef NoData NotifyMockOracleReply_output;
+	struct NotifyMockOracleReply_locals
+	{
+		OI::Mock::OracleQuery query;
+		OI::Mock::OracleReply reply;
+		uint32 queryExtraData;
+		NotificationLog notificationLog;
+	};
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(NotifyMockOracleReply)
+	{
+		locals.notificationLog = NotificationLog{ CONTRACT_INDEX, OI::Mock::oracleInterfaceIndex, input.status, 0, (sint64)input.reply.echoedValue, input.queryId };
+
+		ASSERT(qpi.getOracleQueryStatus(input.queryId) == input.status);
+		if (input.status == ORACLE_QUERY_STATUS_SUCCESS)
+		{
+			// success
+			if (qpi.getOracleQuery<OI::Mock>(input.queryId, locals.query))
+			{
+				ASSERT(locals.query.value == input.reply.echoedValue);
+				ASSERT(locals.query.value == input.reply.doubledValue / 2);
+
+				locals.notificationLog.dataCheck = OI::Mock::replyIsValid(locals.query, input.reply);
+			}
+			ASSERT(qpi.getOracleQueryStatus(input.queryId) == ORACLE_QUERY_STATUS_SUCCESS);
+			ASSERT(qpi.getOracleReply<OI::Mock>(input.queryId, locals.reply));
+			ASSERT(locals.reply.echoedValue == input.reply.echoedValue);
+			ASSERT(locals.reply.doubledValue == input.reply.doubledValue);
+		}
+		else
+		{
+			// handle failure ...
+			ASSERT(qpi.getOracleQueryStatus(input.queryId) == ORACLE_QUERY_STATUS_TIMEOUT || qpi.getOracleQueryStatus(input.queryId) == ORACLE_QUERY_STATUS_UNRESOLVABLE);
+			ASSERT(!qpi.getOracleReply<OI::Mock>(input.queryId, locals.reply));
+		}
+
+		LOG_INFO(locals.notificationLog);
+	}
+
+	struct END_TICK_locals
+	{
+		OI::Price::OracleQuery priceOracleQuery;
+		OI::Mock::OracleQuery mockOracleQuery;
+		sint64 oracleQueryId;
+		uint32 c;
+		NotificationLog notificationLog;
+	};
+
+	END_TICK_WITH_LOCALS()
+	{
+		// Query oracles
+		if (qpi.tick() % 11 == 1)
+		{
+			locals.c = (qpi.tick() / 11) % 8;
+			{
+				// Setup query (in extra scope limit scope of using namespace Ch
+				if (locals.c == 0)
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getMockOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(U, S, D, null, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
+				else if (locals.c == 1)
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getBinanceOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(E, T, H, null, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
+				else if (locals.c == 2)
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getCoingeckoOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
+				else if (locals.c == 3)
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getGateOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
+				else if (locals.c == 4)
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getMexcOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
+				else if (locals.c == 5)
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getBinanceGateOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
+				else if (locals.c == 6)
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getBinanceMexcOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
+				else if (locals.c == 7)
+				{
+					using namespace Ch;
+					locals.priceOracleQuery.oracle = OI::Price::getGateMexcOracleId();
+					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
+					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
+					locals.priceOracleQuery.timestamp = qpi.now();
+				}
+
+				locals.oracleQueryId = QUERY_ORACLE(OI::Price, locals.priceOracleQuery, NotifyPriceOracleReply, 60000);
+				ASSERT(qpi.getOracleQueryStatus(locals.oracleQueryId) == ORACLE_QUERY_STATUS_PENDING);
+
+				locals.notificationLog = NotificationLog{ CONTRACT_INDEX, OI::Price::oracleInterfaceIndex, ORACLE_QUERY_STATUS_PENDING, 0, 0, locals.oracleQueryId };
+				LOG_INFO(locals.notificationLog);
+			}
+		}
+		if (qpi.tick() % 2 == 1)
+		{
+			for (locals.c = 0; locals.c < (qpi.tick() / 2) % 15; ++locals.c)
+			{
+				locals.mockOracleQuery.value = uint64(qpi.tick()) * (locals.c + 1);
+				QUERY_ORACLE(OI::Mock, locals.mockOracleQuery, NotifyMockOracleReply, 20000);
+				locals.notificationLog = NotificationLog{ CONTRACT_INDEX, OI::Mock::oracleInterfaceIndex, ORACLE_QUERY_STATUS_PENDING, 0, (sint64)locals.mockOracleQuery.value, locals.oracleQueryId };
+				LOG_INFO(locals.notificationLog);
+			}
+		}
+	}
+
+	//---------------------------------------------------------------
 	// COMMON PARTS
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
@@ -203,5 +440,10 @@ public:
 		REGISTER_USER_PROCEDURE(QpiTransfer, 20);
 		REGISTER_USER_PROCEDURE(QpiDistributeDividends, 21);
 		REGISTER_USER_PROCEDURE(QpiBidInIpo, 30);
+
+		REGISTER_USER_PROCEDURE(QueryPriceOracle, 100);
+
+		REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyPriceOracleReply);
+		REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyMockOracleReply);
 	}
 };

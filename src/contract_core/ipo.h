@@ -183,6 +183,8 @@ static void finishIPOs()
             if (finalPrice > 0)
             {
                 setContractFeeReserve(contractIndex, finalPrice * NUMBER_OF_COMPUTORS);
+                // IPO finished successfully, mark this contract error as NoContractError
+                contractError[contractIndex] = NoContractError;
             }
             else
             {

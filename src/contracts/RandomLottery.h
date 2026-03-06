@@ -361,8 +361,8 @@ public:
 	INITIALIZE()
 	{
 		// Set team/developer address (owner and team are the same for now)
-		state.teamAddress = ID(_Z, _T, _Z, _E, _A, _Q, _G, _U, _P, _I, _K, _T, _X, _F, _Y, _X, _Y, _E, _I, _T, _L, _A, _K, _F, _T, _D, _X, _C, _R, _L,
-		                       _W, _E, _T, _H, _N, _G, _H, _D, _Y, _U, _W, _E, _Y, _Q, _N, _Q, _S, _R, _H, _O, _W, _M, _U, _J, _L, _E);
+		state.teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C, _X, _B,
+		                       _A, _V, _F, _O, _P, _R, _S, _N, _U, _L, _U, _E, _B, _S, _P, _U, _T, _R, _Z, _N, _T, _G, _F, _B, _I, _E);
 		state.ownerAddress = state.teamAddress;
 
 		// Fee configuration (winner gets the remainder)
@@ -812,6 +812,13 @@ private:
 		}
 	}
 
+public:
+	// Packs current date into a compact stamp (Y/M/D) used to ensure a single action per calendar day.
+	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
+
+	template<typename T> static constexpr T min(const T& a, const T& b) { return (a < b) ? a : b; }
+	template<typename T> static constexpr T max(const T& a, const T& b) { return a > b ? a : b; }
+
 protected:
 	/**
 	 * @brief Circular buffer storing the history of winners.
@@ -952,13 +959,6 @@ protected:
 
 	static void getWinnerCounter(const RL& state, uint64& outCounter) { outCounter = mod(state.winnersCounter, state.winners.capacity()); }
 
-	// Packs current date into a compact stamp (Y/M/D) used to ensure a single action per calendar day.
-	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
-
 	// Reads current net on-chain balance of SELF (incoming - outgoing).
 	static void getSCRevenue(const Entity& entity, uint64& revenue) { revenue = entity.incomingAmount - entity.outgoingAmount; }
-
-	template<typename T> static constexpr const T& min(const T& a, const T& b) { return (a < b) ? a : b; }
-
-	template<typename T> static constexpr const T& max(const T& a, const T& b) { return (a > b) ? a : b; }
 };

@@ -450,6 +450,8 @@ static void random(const unsigned char* publicKey, const unsigned char* nonce, u
 }
 
 #ifdef __AVX512F__
+#pragma warning(push)
+#pragma warning(disable : 4700) // disable warning for uninitialized local variable used
 
 /*
 This code is adopted from
@@ -733,6 +735,8 @@ namespace K12xkcp
         return originalDataByteLen - dataByteLen;
     }
 } // namespace K12xkcp
+
+#pragma warning(pop) // restore previous settings for warnings
 
 #elif defined(__AVX2__)
 // XKCP AVX2 Implementation uses ASM Code in GCC syntax hence it is not applicable with MSVC at the moment hence we have to use the opt64 version

@@ -21,12 +21,12 @@ public:
     AssetsTest()
     {
         initAssets();
-        initCommonBuffers();
+        commonBuffers.init(1, universeSizeInBytes);
     }
 
     ~AssetsTest()
     {
-        deinitCommonBuffers();
+        commonBuffers.deinit();
         deinitAssets();
     }
 

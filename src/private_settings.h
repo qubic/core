@@ -27,6 +27,10 @@ static const unsigned char whiteListPeers[][4] = {
 };
 */
 
+static const unsigned char oracleMachineIPs[][4] = {
+     {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
+};
+
 #define ENABLE_QUBIC_LOGGING_EVENT 0 // turn on logging events
 
 // Virtual memory settings for logging
@@ -44,6 +48,7 @@ static const unsigned char whiteListPeers[][4] = {
 #define LOG_CONTRACT_INFO_MESSAGES 1
 #define LOG_CONTRACT_DEBUG_MESSAGES 1
 #define LOG_CUSTOM_MESSAGES 1
+#define LOG_ORACLES 1
 #else
 #define LOG_UNIVERSE 0
 #define LOG_SPECTRUM 0
@@ -52,6 +57,7 @@ static const unsigned char whiteListPeers[][4] = {
 #define LOG_CONTRACT_INFO_MESSAGES 0
 #define LOG_CONTRACT_DEBUG_MESSAGES 0
 #define LOG_CUSTOM_MESSAGES 0
+#define LOG_ORACLES 0
 #endif
 
 static unsigned long long logReaderPasscodes[4] = {

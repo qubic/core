@@ -280,7 +280,8 @@ namespace QPI
 	template <typename T, uint64 L>
 	sint64 Collection<T, L>::_rebuild(sint64 rootIdx)
 	{
-		auto* sortedElementIndices = reinterpret_cast<sint64*>(::__scratchpad());
+		__ScopedScratchpad scratchpad(sizeof(*this), /*initZero=*/false);
+		auto* sortedElementIndices = reinterpret_cast<sint64*>(scratchpad.ptr);
 		if (sortedElementIndices == NULL)
 		{
 			return rootIdx;
@@ -615,7 +616,9 @@ namespace QPI
 		}
 
 		// Init buffers
-		auto* _povsBuffer = reinterpret_cast<PoV*>(::__scratchpad(sizeof(_povs) + sizeof(_povOccupationFlags)));
+		__ScopedScratchpad scratchpad(sizeof(_povs) + sizeof(_povOccupationFlags), /*initZero=*/true);
+		ASSERT(scratchpad.ptr);
+		auto* _povsBuffer = reinterpret_cast<PoV*>(scratchpad.ptr);
 		auto* _povOccupationFlagsBuffer = reinterpret_cast<uint64*>(_povsBuffer + L);
 		auto* _stackBuffer = reinterpret_cast<sint64*>(
 			_povOccupationFlagsBuffer + sizeof(_povOccupationFlags) / sizeof(_povOccupationFlags[0]));

@@ -46,6 +46,11 @@ unsigned char QPI::QpiContextFunctionCall::second() const
 
 QPI::DateAndTime QPI::QpiContextFunctionCall::now() const
 {
+    return QPI::DateAndTime::now();
+}
+
+QPI::DateAndTime QPI::DateAndTime::now()
+{
     return QPI::DateAndTime(etalonTick.year + 2000, etalonTick.month, etalonTick.day,
         etalonTick.hour, etalonTick.minute, etalonTick.second, etalonTick.millisecond);
 }

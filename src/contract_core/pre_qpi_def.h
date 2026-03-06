@@ -27,6 +27,9 @@ constexpr unsigned short MAX_NESTED_CONTRACT_CALLS = 10;
 // Size of the contract action tracker, limits the number of transfers that one contract call can execute.
 constexpr unsigned long long CONTRACT_ACTION_TRACKER_SIZE = 16 * 1024 * 1024;
 
+// Maximum number of contract procedures that may be registered, e.g. for user procedure notifications
+constexpr unsigned int MAX_CONTRACT_PROCEDURES_REGISTERED = 16 * 1024;
+
 
 static void __beginFunctionOrProcedure(const unsigned int); // TODO: more human-readable form of function ID?
 static void __endFunctionOrProcedure(const unsigned int);
@@ -38,12 +41,39 @@ template <typename T> static void __logContractWarningMessage(unsigned int, T&);
 static void __pauseLogMessage();
 static void __resumeLogMessage();
 
-// Get buffer for temporary use. Can only be used in contract procedures / tick processor / contract processor!
-// Always returns the same one buffer, no concurrent access!
-static void* __scratchpad(unsigned long long sizeToMemsetZero = 0);
+// Implemented in common_buffers.h
+static void* __acquireScratchpad(unsigned long long size, bool initZero);
+static void __releaseScratchpad(void* ptr);
 
-// static void* __tryAcquireScratchpad(unsigned int size);  // Thread-safe, may return nullptr if no appropriate buffer is available
-// static void __ReleaseScratchpad(void*);
+// Create an instance on the stack to acquire a scratchpad buffer.
+// When the scope is left, the scratchpad is released automatically.
+struct __ScopedScratchpad
+{
+    // Construction of object, trying to acquire buffer. May init ptr == nullptr if size is bigger than supported or
+    // block if no buffer is available at the moment.
+    inline __ScopedScratchpad(unsigned long long size, bool initZero = true)
+    {
+        ptr = __acquireScratchpad(size, initZero);
+    }
+
+    // Destructor, releasing buffer at object's end of life.
+    inline ~__ScopedScratchpad()
+    {
+        release();
+    }
+
+    // Release buffer before end of life
+    inline void release()
+    {
+        if (!ptr)
+            return;
+        __releaseScratchpad(ptr);
+        ptr = nullptr;
+    }
+
+    void* ptr;
+};
+
 
 template <unsigned int functionOrProcedureId>
 struct __FunctionOrProcedureBeginEndGuard

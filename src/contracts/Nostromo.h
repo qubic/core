@@ -32,6 +32,128 @@ struct NOST2
 struct NOST : public ContractBase
 {
 public:
+	/****** PORTED TIMEUTILS FROM OLD Nostromo *****/
+	/**
+	 * Compare 2 date in uint32 format
+	 * @return -1 lesser(ealier) A<B, 0 equal A=B, 1 greater(later) A>B
+	 */
+	inline static sint32 dateCompare(uint32& A, uint32& B, sint32& i)
+	{
+		if (A == B) return 0;
+		if (A < B) return -1;
+		return 1;
+	}
+
+	/**
+	 * @return pack Nost datetime data from year, month, day, hour, minute, second to a uint32
+	 * year is counted from 24 (2024)
+	 */
+	inline static void packNostromoDate(uint32 _year, uint32 _month, uint32 _day, uint32 _hour, uint32 _minute, uint32 _second, uint32& res)
+	{
+		res = ((_year - 24) << 26) | (_month << 22) | (_day << 17) | (_hour << 12) | (_minute << 6) | (_second);
+	}
+
+	inline static uint32 NostGetYear(uint32 data)
+	{
+		return ((data >> 26) + 24);
+	}
+	inline static uint32 NostGetMonth(uint32 data)
+	{
+		return ((data >> 22) & 0b1111);
+	}
+	inline static uint32 NostGetDay(uint32 data)
+	{
+		return ((data >> 17) & 0b11111);
+	}
+	inline static uint32 NostGetHour(uint32 data)
+	{
+		return ((data >> 12) & 0b11111);
+	}
+	inline static uint32 NostGetMinute(uint32 data)
+	{
+		return ((data >> 6) & 0b111111);
+	}
+	inline static uint32 NostGetSecond(uint32 data)
+	{
+		return (data & 0b111111);
+	}
+	/*
+	* @return unpack Nost datetime from uin32 to year, month, day, hour, minute, secon
+	*/
+	inline static void unpackNostromoDate(uint8& _year, uint8& _month, uint8& _day, uint8& _hour, uint8& _minute, uint8& _second, uint32 data)
+	{
+		_year = NostGetYear(data); // 6 bits
+		_month = NostGetMonth(data); //4bits
+		_day = NostGetDay(data); //5bits
+		_hour = NostGetHour(data); //5bits
+		_minute = NostGetMinute(data); //6bits
+		_second = NostGetSecond(data); //6bits
+	}
+
+	inline static void accumulatedDay(sint32 month, uint64& res)
+	{
+		switch (month)
+		{
+		case 1: res = 0; break;
+		case 2: res = 31; break;
+		case 3: res = 59; break;
+		case 4: res = 90; break;
+		case 5: res = 120; break;
+		case 6: res = 151; break;
+		case 7: res = 181; break;
+		case 8: res = 212; break;
+		case 9: res = 243; break;
+		case 10:res = 273; break;
+		case 11:res = 304; break;
+		case 12:res = 334; break;
+		}
+	}
+	/**
+	 * @return difference in number of second, A must be smaller than or equal B to have valid value
+	 */
+	inline static void diffDateInSecond(uint32& A, uint32& B, sint32& i, uint64& dayA, uint64& dayB, uint64& res)
+	{
+		if (dateCompare(A, B, i) >= 0)
+		{
+			res = 0;
+			return;
+		}
+		accumulatedDay(NostGetMonth(A), dayA);
+		dayA += NostGetDay(A);
+		accumulatedDay(NostGetMonth(B), dayB);
+		dayB += (NostGetYear(B) - NostGetYear(A)) * 365ULL + NostGetDay(B);
+
+		// handling leap-year: only store last 2 digits of year here, don't care about mod 100 & mod 400 case
+		for (i = NostGetYear(A); (uint32)(i) < NostGetYear(B); i++)
+		{
+			if (mod(i, 4) == 0)
+			{
+				dayB++;
+			}
+		}
+		if (mod(sint32(NostGetYear(A)), 4) == 0 && (NostGetMonth(A) > 2)) dayA++;
+		if (mod(sint32(NostGetYear(B)), 4) == 0 && (NostGetMonth(B) > 2)) dayB++;
+		res = (dayB - dayA) * 3600ULL * 24;
+		res += (NostGetHour(B) * 3600 + NostGetMinute(B) * 60 + NostGetSecond(B));
+		res -= (NostGetHour(A) * 3600 + NostGetMinute(A) * 60 + NostGetSecond(A));
+	}
+
+	inline static bool checkValidNostDateTime(uint32& A)
+	{
+		if (NostGetMonth(A) > 12) return false;
+		if (NostGetDay(A) > 31) return false;
+		if ((NostGetDay(A) == 31) &&
+			(NostGetMonth(A) != 1) && (NostGetMonth(A) != 3) && (NostGetMonth(A) != 5) &&
+			(NostGetMonth(A) != 7) && (NostGetMonth(A) != 8) && (NostGetMonth(A) != 10) && (NostGetMonth(A) != 12)) return false;
+		if ((NostGetDay(A) == 30) && (NostGetMonth(A) == 2)) return false;
+		if ((NostGetDay(A) == 29) && (NostGetMonth(A) == 2) && (mod(NostGetYear(A), 4u) != 0)) return false;
+		if (NostGetHour(A) >= 24) return false;
+		if (NostGetMinute(A) >= 60) return false;
+		if (NostGetSecond(A) >= 60) return false;
+		return true;
+	}
+
+	/****** END PORTED TIMEUTILS FROM OLD Nostromo *****/
 
 	struct registerInTier_input
 	{
@@ -431,11 +553,11 @@ protected:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(createProject)
 	{
-		QUOTTERY::packQuotteryDate(input.startYear, input.startMonth, input.startDay, input.startHour, 0, 0, locals.startDate);
-		QUOTTERY::packQuotteryDate(input.endYear, input.endMonth, input.endDay, input.endHour, 0, 0, locals.endDate);
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		packNostromoDate(input.startYear, input.startMonth, input.startDay, input.startHour, 0, 0, locals.startDate);
+		packNostromoDate(input.endYear, input.endMonth, input.endDay, input.endHour, 0, 0, locals.endDate);
+		packNostromoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
-		if(locals.curDate > locals.startDate || locals.startDate >= locals.endDate || QUOTTERY::checkValidQtryDateTime(locals.startDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.endDate) == 0)
+		if(locals.curDate > locals.startDate || locals.startDate >= locals.endDate || checkValidNostDateTime(locals.startDate) == 0 || checkValidNostDateTime(locals.endDate) == 0)
 		{
 			output.indexOfProject = NOSTROMO_MAX_NUMBER_PROJECT;
 			if (qpi.invocationReward() > 0)
@@ -525,7 +647,7 @@ protected:
 				return ;
 			}
 		}
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		packNostromoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 		if (locals.curDate >= state.projects.get(input.indexOfProject).startDate && locals.curDate < state.projects.get(input.indexOfProject).endDate)
 		{
 			locals.votedProject = state.projects.get(input.indexOfProject);
@@ -553,16 +675,16 @@ protected:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(createFundraising)
 	{
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
-		QUOTTERY::packQuotteryDate(input.firstPhaseStartYear, input.firstPhaseStartMonth, input.firstPhaseStartDay, input.firstPhaseStartHour, 0, 0, locals.firstPhaseStartDate);
-		QUOTTERY::packQuotteryDate(input.secondPhaseStartYear, input.secondPhaseStartMonth, input.secondPhaseStartDay, input.secondPhaseStartHour, 0, 0, locals.secondPhaseStartDate);
-		QUOTTERY::packQuotteryDate(input.thirdPhaseStartYear, input.thirdPhaseStartMonth, input.thirdPhaseStartDay, input.thirdPhaseStartHour, 0, 0, locals.thirdPhaseStartDate);
-		QUOTTERY::packQuotteryDate(input.firstPhaseEndYear, input.firstPhaseEndMonth, input.firstPhaseEndDay, input.firstPhaseEndHour, 0, 0, locals.firstPhaseEndDate);
-		QUOTTERY::packQuotteryDate(input.secondPhaseEndYear, input.secondPhaseEndMonth, input.secondPhaseEndDay, input.secondPhaseEndHour, 0, 0, locals.secondPhaseEndDate);
-		QUOTTERY::packQuotteryDate(input.thirdPhaseEndYear, input.thirdPhaseEndMonth, input.thirdPhaseEndDay, input.thirdPhaseEndHour, 0, 0, locals.thirdPhaseEndDate);
-		QUOTTERY::packQuotteryDate(input.listingStartYear, input.listingStartMonth, input.listingStartDay, input.listingStartHour, 0, 0, locals.listingStartDate);
-		QUOTTERY::packQuotteryDate(input.cliffEndYear, input.cliffEndMonth, input.cliffEndDay, input.cliffEndHour, 0, 0, locals.cliffEndDate);
-		QUOTTERY::packQuotteryDate(input.vestingEndYear, input.vestingEndMonth, input.vestingEndDay, input.vestingEndHour, 0, 0, locals.vestingEndDate);
+		packNostromoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		packNostromoDate(input.firstPhaseStartYear, input.firstPhaseStartMonth, input.firstPhaseStartDay, input.firstPhaseStartHour, 0, 0, locals.firstPhaseStartDate);
+		packNostromoDate(input.secondPhaseStartYear, input.secondPhaseStartMonth, input.secondPhaseStartDay, input.secondPhaseStartHour, 0, 0, locals.secondPhaseStartDate);
+		packNostromoDate(input.thirdPhaseStartYear, input.thirdPhaseStartMonth, input.thirdPhaseStartDay, input.thirdPhaseStartHour, 0, 0, locals.thirdPhaseStartDate);
+		packNostromoDate(input.firstPhaseEndYear, input.firstPhaseEndMonth, input.firstPhaseEndDay, input.firstPhaseEndHour, 0, 0, locals.firstPhaseEndDate);
+		packNostromoDate(input.secondPhaseEndYear, input.secondPhaseEndMonth, input.secondPhaseEndDay, input.secondPhaseEndHour, 0, 0, locals.secondPhaseEndDate);
+		packNostromoDate(input.thirdPhaseEndYear, input.thirdPhaseEndMonth, input.thirdPhaseEndDay, input.thirdPhaseEndHour, 0, 0, locals.thirdPhaseEndDate);
+		packNostromoDate(input.listingStartYear, input.listingStartMonth, input.listingStartDay, input.listingStartHour, 0, 0, locals.listingStartDate);
+		packNostromoDate(input.cliffEndYear, input.cliffEndMonth, input.cliffEndDay, input.cliffEndHour, 0, 0, locals.cliffEndDate);
+		packNostromoDate(input.vestingEndYear, input.vestingEndMonth, input.vestingEndDay, input.vestingEndHour, 0, 0, locals.vestingEndDate);
 
 		if (locals.curDate > locals.firstPhaseStartDate || locals.firstPhaseStartDate >= locals.firstPhaseEndDate || locals.firstPhaseEndDate > locals.secondPhaseStartDate || locals.secondPhaseStartDate >= locals.secondPhaseEndDate || locals.secondPhaseEndDate > locals.thirdPhaseStartDate || locals.thirdPhaseStartDate >= locals.thirdPhaseEndDate || locals.thirdPhaseEndDate > locals.listingStartDate || locals.listingStartDate > locals.cliffEndDate || locals.cliffEndDate > locals.vestingEndDate)
 		{
@@ -572,7 +694,7 @@ protected:
 			}
 			return ;
 		}
-		if (QUOTTERY::checkValidQtryDateTime(locals.firstPhaseStartDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.firstPhaseEndDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.secondPhaseStartDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.secondPhaseEndDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.thirdPhaseStartDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.thirdPhaseEndDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.listingStartDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.cliffEndDate) == 0 || QUOTTERY::checkValidQtryDateTime(locals.vestingEndDate) == 0)
+		if (checkValidNostDateTime(locals.firstPhaseStartDate) == 0 || checkValidNostDateTime(locals.firstPhaseEndDate) == 0 || checkValidNostDateTime(locals.secondPhaseStartDate) == 0 || checkValidNostDateTime(locals.secondPhaseEndDate) == 0 || checkValidNostDateTime(locals.thirdPhaseStartDate) == 0 || checkValidNostDateTime(locals.thirdPhaseEndDate) == 0 || checkValidNostDateTime(locals.listingStartDate) == 0 || checkValidNostDateTime(locals.cliffEndDate) == 0 || checkValidNostDateTime(locals.vestingEndDate) == 0)
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -701,7 +823,7 @@ protected:
 			return ;
 		}
 		
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		packNostromoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		locals.tmpFundraising = state.fundaraisings.get(input.indexOfFundraising);
 
@@ -1010,7 +1132,7 @@ protected:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(claimToken)
 	{
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		packNostromoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if (input.indexOfFundraising >= state.numberOfFundraising)
 		{
@@ -1046,9 +1168,9 @@ protected:
 		else if (locals.curDate >= state.fundaraisings.get(input.indexOfFundraising).cliffEndDate && locals.curDate < state.fundaraisings.get(input.indexOfFundraising).vestingEndDate)
 		{
 			locals.tmpDate = state.fundaraisings.get(input.indexOfFundraising).cliffEndDate;
-			QUOTTERY::diffDateInSecond(locals.tmpDate, locals.curDate, locals.j, locals.dayA, locals.dayB, locals.start_cur_diffSecond);
+			diffDateInSecond(locals.tmpDate, locals.curDate, locals.j, locals.dayA, locals.dayB, locals.start_cur_diffSecond);
 			locals.tmpDate = state.fundaraisings.get(input.indexOfFundraising).vestingEndDate;
-			QUOTTERY::diffDateInSecond(locals.curDate, locals.tmpDate, locals.j, locals.dayA, locals.dayB, locals.cur_end_diffSecond);
+			diffDateInSecond(locals.curDate, locals.tmpDate, locals.j, locals.dayA, locals.dayB, locals.cur_end_diffSecond);
 
 			locals.curVestingStep = (uint8)div(locals.start_cur_diffSecond, div(locals.start_cur_diffSecond + locals.cur_end_diffSecond, state.fundaraisings.get(input.indexOfFundraising).stepOfVesting * 1ULL)) + 1;
 			locals.vestingPercent = (uint8)div(100ULL - state.fundaraisings.get(input.indexOfFundraising).TGE, state.fundaraisings.get(input.indexOfFundraising).stepOfVesting * 1ULL) * locals.curVestingStep;
@@ -1322,7 +1444,7 @@ public:
 
 	PUBLIC_FUNCTION_WITH_LOCALS(getMaxClaimAmount)
 	{
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		packNostromoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		if (input.indexOfFundraising >= state.numberOfFundraising)
 		{
@@ -1358,9 +1480,9 @@ public:
 		else if (locals.curDate >= state.fundaraisings.get(input.indexOfFundraising).cliffEndDate && locals.curDate < state.fundaraisings.get(input.indexOfFundraising).vestingEndDate)
 		{
 			locals.tmpDate = state.fundaraisings.get(input.indexOfFundraising).cliffEndDate;
-			QUOTTERY::diffDateInSecond(locals.tmpDate, locals.curDate, locals.j, locals.dayA, locals.dayB, locals.start_cur_diffSecond);
+			diffDateInSecond(locals.tmpDate, locals.curDate, locals.j, locals.dayA, locals.dayB, locals.start_cur_diffSecond);
 			locals.tmpDate = state.fundaraisings.get(input.indexOfFundraising).vestingEndDate;
-			QUOTTERY::diffDateInSecond(locals.curDate, locals.tmpDate, locals.k, locals.dayC, locals.dayD, locals.cur_end_diffSecond);
+			diffDateInSecond(locals.curDate, locals.tmpDate, locals.k, locals.dayC, locals.dayD, locals.cur_end_diffSecond);
 
 			locals.curVestingStep = (uint8)div(locals.start_cur_diffSecond, div(locals.start_cur_diffSecond + locals.cur_end_diffSecond, state.fundaraisings.get(input.indexOfFundraising).stepOfVesting * 1ULL)) + 1;
 			locals.vestingPercent = (uint8)div(100ULL - state.fundaraisings.get(input.indexOfFundraising).TGE, state.fundaraisings.get(input.indexOfFundraising).stepOfVesting * 1ULL) * locals.curVestingStep;
@@ -1415,7 +1537,7 @@ public:
 
 	END_EPOCH_WITH_LOCALS()
 	{
-		QUOTTERY::packQuotteryDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		packNostromoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
 
 		locals.idx = state.investors.nextElementIndex(NULL_INDEX);
 		while (locals.idx != NULL_INDEX)
