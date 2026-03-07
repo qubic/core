@@ -4074,10 +4074,7 @@ static void endEpoch()
         {
             OracleRevenuePoints oracleRevPoints;
             oracleEngine.getRevenuePoints(oracleRevPoints);
-            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-            {
-                gEpochRevenueData.oracleScore[i] = oracleRevPoints.computorRevPoints[i];
-            }
+            copyMem(gEpochRevenueData.oracleScore, oracleRevPoints.computorRevPoints, NUMBER_OF_COMPUTORS * sizeof(gEpochRevenueData.oracleScore[0]));
         }
         computeRevenueV2(gEpochRevenueData);
 
