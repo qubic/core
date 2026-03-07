@@ -9,13 +9,6 @@ constexpr uint16 PROCEDURE_INDEX_ABORT_SURVEY = 4;
 constexpr uint16 FUNCTION_INDEX_GET_SURVEY = 1;
 constexpr uint16 FUNCTION_INDEX_GET_SURVEY_COUNT = 2;
 
-// Genesis Oracle ID matching the one hardcoded in QSurv.h INITIALIZE
-// BOWFPORUCOPUOCNOIBDNSSRHQYCAXCRHGKBUKCMZJCZBHQVUUWWLAGIFWGVN
-static const id GENESIS_ORACLE_ID = ID(
-    _B, _O, _W, _F, _P, _O, _R, _U, _C, _O, _P, _U, _O, _C, _N, _O, _I, _B, _D,
-    _N, _S, _S, _R, _H, _Q, _Y, _C, _A, _X, _C, _R, _H, _G, _K, _B, _U, _K, _C,
-    _M, _Z, _J, _C, _Z, _B, _H, _Q, _V, _U, _U, _W, _W, _L, _A, _G, _I, _F);
-
 class ContractTestingQSurv : public ContractTesting {
 public:
   ContractTestingQSurv() {
@@ -150,14 +143,15 @@ TEST(ContractQSurv, CreateSurvey_Fail_ZeroRespondentsOrPool) {
 
 TEST(ContractQSurv, SetOracle_Security) {
   ContractTestingQSurv qsurv;
+  const id anyUser(1, 0, 0, 0);
   const id oracle(999, 0, 0, 0);
   const id hacker(888, 0, 0, 0);
 
-  // setOracle by the genesis oracle (hardcoded in INITIALIZE)
-  auto setOut1 = qsurv.setOracle(GENESIS_ORACLE_ID, oracle);
-  EXPECT_EQ(setOut1.success, 1); // Must succeed
+  // Oracle starts as NULL_ID, so first caller can set it
+  auto setOut1 = qsurv.setOracle(anyUser, oracle);
+  EXPECT_EQ(setOut1.success, 1);
 
-  // Hacker tries to steal
+  // Hacker tries to change oracle
   auto setOut2 = qsurv.setOracle(hacker, hacker);
   EXPECT_EQ(setOut2.success, 0);
 }
@@ -165,12 +159,15 @@ TEST(ContractQSurv, SetOracle_Security) {
 TEST(ContractQSurv, Payout_VerifyBalancesAndCompletion) {
   ContractTestingQSurv qsurv;
   const id creator(1, 0, 0, 0);
+  const id oracle(999, 0, 0, 0);
   const id respondent(2, 0, 0, 0);
   const id referrer(3, 0, 0, 0);
 
   increaseEnergy(creator, 10000);
 
-  // Use GENESIS_ORACLE_ID directly (set by INITIALIZE) - no setOracle needed
+  // Set oracle (allowed because _oracleAddress starts as NULL_ID)
+  auto setOut = qsurv.setOracle(creator, oracle);
+  EXPECT_EQ(setOut.success, 1);
 
   QPI::Array<uint8, 64> hash;
   for (int i = 0; i < 64; i++) {
@@ -188,20 +185,20 @@ TEST(ContractQSurv, Payout_VerifyBalancesAndCompletion) {
 
   uint64 respondentBalBefore = getBalance(respondent);
   uint64 referrerBalBefore = getBalance(referrer);
-  uint64 oracleBalBefore = getBalance(GENESIS_ORACLE_ID);
+  uint64 oracleBalBefore = getBalance(oracle);
   uint64 creatorBalBefore = getBalance(creator);
 
-  // Payout with Tier 1 (10% bonus) using GENESIS_ORACLE_ID as the oracle caller
+  // Payout with Tier 1 (10% bonus)
   // Reward per resp = 1000
   // Base (40%) = 400, Referral (20%) = 200, Platform (3%) = 30
   // Bonus (10%) = 100. burnFee = 15, oracleFee = 15.
   // Total Spent = 730. Leftover = 270 refunded to creator.
-  auto payoutOut = qsurv.payout(GENESIS_ORACLE_ID, 1, respondent, referrer, 1);
+  auto payoutOut = qsurv.payout(oracle, 1, respondent, referrer, 1);
   EXPECT_EQ(payoutOut.success, 1);
 
   uint64 respondentBalAfter = getBalance(respondent);
   uint64 referrerBalAfter = getBalance(referrer);
-  uint64 oracleBalAfter = getBalance(GENESIS_ORACLE_ID);
+  uint64 oracleBalAfter = getBalance(oracle);
   uint64 creatorBalAfter = getBalance(creator);
 
   EXPECT_EQ(respondentBalAfter - respondentBalBefore,
@@ -217,8 +214,7 @@ TEST(ContractQSurv, Payout_VerifyBalancesAndCompletion) {
             0); // Marked inactive since max respondents reached
 
   // Test over-payout fail
-  auto overPayoutOut =
-      qsurv.payout(GENESIS_ORACLE_ID, 1, respondent, referrer, 1);
+  auto overPayoutOut = qsurv.payout(oracle, 1, respondent, referrer, 1);
   EXPECT_EQ(overPayoutOut.success,
             0); // Should fail since inactive and respondents full
 }
