@@ -147,6 +147,9 @@ TEST(ContractQSurv, SetOracle_Security) {
   const id oracle(999, 0, 0, 0);
   const id hacker(888, 0, 0, 0);
 
+  increaseEnergy(anyUser, 1000);
+  increaseEnergy(hacker, 1000);
+
   // Oracle starts as NULL_ID, so first caller can set it
   auto setOut1 = qsurv.setOracle(anyUser, oracle);
   EXPECT_EQ(setOut1.success, 1);
@@ -164,6 +167,7 @@ TEST(ContractQSurv, Payout_VerifyBalancesAndCompletion) {
   const id referrer(3, 0, 0, 0);
 
   increaseEnergy(creator, 10000);
+  increaseEnergy(oracle, 1000); // Oracle needs energy to call payout
 
   // Set oracle (allowed because _oracleAddress starts as NULL_ID)
   auto setOut = qsurv.setOracle(creator, oracle);
