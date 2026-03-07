@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="contract_core.cpp" />
@@ -64,9 +64,6 @@
     <ClInclude Include="score_common_reference.h" />
     <ClInclude Include="score_hyperidentity_reference.h" />
     <ClInclude Include="score_addition_reference.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="core">

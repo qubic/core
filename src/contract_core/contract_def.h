@@ -258,6 +258,16 @@
 
 #endif
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define VOTTUNBRIDGE_CONTRACT_INDEX 25
+#define CONTRACT_INDEX VOTTUNBRIDGE_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE VOTTUNBRIDGE
+#define CONTRACT_STATE2_TYPE VOTTUNBRIDGE2
+#include "contracts/VottunBridge.h"
+
 // new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -372,6 +382,7 @@ constexpr struct ContractDescription
 #ifndef NO_PULSE
 	{"PULSE", 204, 10000, sizeof(PULSE)}, // proposal in epoch 202, IPO in 203, construction and first use in 204
 #endif
+    {"VOTTUN", 199, 10000, sizeof(VOTTUNBRIDGE)}, // proposal in epoch 197, IPO in 200, construction and first use in 197
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA)},
@@ -487,6 +498,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QBOND);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QIP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRAFFLE);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(VOTTUNBRIDGE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRWA);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTF);
