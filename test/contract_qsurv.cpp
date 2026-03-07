@@ -154,7 +154,8 @@ TEST(ContractQSurv, SetOracle_Security) {
   const id hacker(888, 0, 0, 0);
 
   // setOracle by the genesis oracle (hardcoded in INITIALIZE)
-  qsurv.setOracle(GENESIS_ORACLE_ID, oracle);
+  auto setOut1 = qsurv.setOracle(GENESIS_ORACLE_ID, oracle);
+  EXPECT_EQ(setOut1.success, 1); // Must succeed
 
   // Hacker tries to steal
   auto setOut2 = qsurv.setOracle(hacker, hacker);
@@ -164,14 +165,12 @@ TEST(ContractQSurv, SetOracle_Security) {
 TEST(ContractQSurv, Payout_VerifyBalancesAndCompletion) {
   ContractTestingQSurv qsurv;
   const id creator(1, 0, 0, 0);
-  const id oracle(999, 0, 0, 0);
   const id respondent(2, 0, 0, 0);
   const id referrer(3, 0, 0, 0);
 
   increaseEnergy(creator, 10000);
 
-  // Set oracle (must be called by genesis oracle to succeed)
-  qsurv.setOracle(GENESIS_ORACLE_ID, oracle);
+  // Use GENESIS_ORACLE_ID directly (set by INITIALIZE) - no setOracle needed
 
   QPI::Array<uint8, 64> hash;
   for (int i = 0; i < 64; i++) {
@@ -189,19 +188,20 @@ TEST(ContractQSurv, Payout_VerifyBalancesAndCompletion) {
 
   uint64 respondentBalBefore = getBalance(respondent);
   uint64 referrerBalBefore = getBalance(referrer);
-  uint64 oracleBalBefore = getBalance(oracle);
+  uint64 oracleBalBefore = getBalance(GENESIS_ORACLE_ID);
   uint64 creatorBalBefore = getBalance(creator);
 
-  // Payout with Tier 1 (10% bonus)
+  // Payout with Tier 1 (10% bonus) using GENESIS_ORACLE_ID as the oracle caller
   // Reward per resp = 1000
-  // Base (40%) = 400, Referral (20%) = 200, Platform (3%) = 30, Bonus (10%) =
-  // 100. Total Spent = 730. Leftover = 270 refunded to creator.
-  auto payoutOut = qsurv.payout(oracle, 1, respondent, referrer, 1);
+  // Base (40%) = 400, Referral (20%) = 200, Platform (3%) = 30
+  // Bonus (10%) = 100. burnFee = 15, oracleFee = 15.
+  // Total Spent = 730. Leftover = 270 refunded to creator.
+  auto payoutOut = qsurv.payout(GENESIS_ORACLE_ID, 1, respondent, referrer, 1);
   EXPECT_EQ(payoutOut.success, 1);
 
   uint64 respondentBalAfter = getBalance(respondent);
   uint64 referrerBalAfter = getBalance(referrer);
-  uint64 oracleBalAfter = getBalance(oracle);
+  uint64 oracleBalAfter = getBalance(GENESIS_ORACLE_ID);
   uint64 creatorBalAfter = getBalance(creator);
 
   EXPECT_EQ(respondentBalAfter - respondentBalBefore,
@@ -217,7 +217,8 @@ TEST(ContractQSurv, Payout_VerifyBalancesAndCompletion) {
             0); // Marked inactive since max respondents reached
 
   // Test over-payout fail
-  auto overPayoutOut = qsurv.payout(oracle, 1, respondent, referrer, 1);
+  auto overPayoutOut =
+      qsurv.payout(GENESIS_ORACLE_ID, 1, respondent, referrer, 1);
   EXPECT_EQ(overPayoutOut.success,
             0); // Should fail since inactive and respondents full
 }
