@@ -1,6 +1,7 @@
 ﻿using namespace QPI;
 
 constexpr uint16 QDUEL_MAX_NUMBER_OF_ROOMS = 512;
+constexpr uint64 QDUEL_MAX_NUMBER_OF_WINNER = 128;
 constexpr uint16 QDUEL_MINIMUM_DUEL_AMOUNT = 10000;
 constexpr uint8 QDUEL_DEV_FEE_PERCENT_BPS = 15;          // 0.15% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_BURN_FEE_PERCENT_BPS = 30;         // 0.3% * QDUEL_PERCENT_SCALE
@@ -82,6 +83,16 @@ public:
 		sint64 maxStake;
 	};
 
+	struct WinnerData
+	{
+		id player1;
+		id player2;
+		id winner;
+		uint64 revenue;
+
+		bool isValid() { return !isZero(player1) && !isZero(player2) && !isZero(winner) && revenue > 0; }
+	};
+
 	struct AddUserData_input
 	{
 		id userId;
@@ -101,6 +112,15 @@ public:
 	struct AddUserData_locals
 	{
 		UserData newUserData;
+	};
+
+	struct AddWinnerData_input
+	{
+		WinnerData winnerData;
+	};
+
+	struct AddWinnerData_output
+	{
 	};
 
 	struct CreateRoom_input
@@ -258,6 +278,8 @@ public:
 		TransferToShareholders_output transferToShareholders_output;
 		FinalizeRoom_input finalizeInput;
 		FinalizeRoom_output finalizeOutput;
+		AddWinnerData_input addWinnerDataInput;
+		AddWinnerData_output addWinnerDataOutput;
 		id winner;
 		uint64 returnAmount;
 		uint64 amount;
@@ -406,6 +428,15 @@ public:
 		sint64 freeAmount;
 	};
 
+	struct GetLastWinners_input
+	{
+	};
+	struct GetLastWinners_output
+	{
+		Array<WinnerData, QDUEL_MAX_NUMBER_OF_WINNER> winners;
+		uint8 returnCode;
+	};
+
 	struct END_TICK_locals
 	{
 		UserData userData;
@@ -434,6 +465,7 @@ public:
 		REGISTER_USER_FUNCTION(GetTTLHours, 3);
 		REGISTER_USER_FUNCTION(GetUserProfile, 4);
 		REGISTER_USER_FUNCTION(CalculateRevenue, 5);
+		REGISTER_USER_FUNCTION(GetLastWinners, 6);
 	}
 
 	INITIALIZE()
@@ -720,6 +752,13 @@ public:
 		CALL(FinalizeRoom, locals.finalizeInput, locals.finalizeOutput);
 		output.returnCode = locals.finalizeOutput.returnCode;
 		output.winner = locals.winner;
+
+		locals.addWinnerDataInput.winnerData.player1 = locals.room.owner;
+		locals.addWinnerDataInput.winnerData.player2 = qpi.invocator();
+		locals.addWinnerDataInput.winnerData.winner = locals.winner;
+		locals.addWinnerDataInput.winnerData.revenue = locals.calculateRevenue_output.winner;
+
+		CALL(AddWinnerData, locals.addWinnerDataInput, locals.addWinnerDataOutput);
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetPercentFees)
@@ -841,8 +880,14 @@ public:
 		output.devFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.devFeePercentBps)), state.percentScale);
 		output.burnFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.burnFeePercentBps)), state.percentScale);
 		output.shareholdersFee =
-			smul(div(div<uint64>(smul(input.amount, static_cast<uint64>(state.shareholdersFeePercentBps)), state.percentScale), 676ULL), 676ULL);
+		    smul(div(div<uint64>(smul(input.amount, static_cast<uint64>(state.shareholdersFeePercentBps)), state.percentScale), 676ULL), 676ULL);
 		output.winner = input.amount - (output.devFee + output.burnFee + output.shareholdersFee);
+	}
+
+	PUBLIC_FUNCTION(GetLastWinners)
+	{
+		output.winners = state.lastWinners;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(Deposit)
@@ -949,6 +994,8 @@ protected:
 	uint8 firstTick;
 	EState currentState;
 	uint16 percentScale;
+	Array<WinnerData, QDUEL_MAX_NUMBER_OF_WINNER> lastWinners;
+	uint64 winnerCounter;
 
 protected:
 	template<typename T> static constexpr const T& min(const T& a, const T& b) { return (a < b) ? a : b; }
@@ -1181,5 +1228,19 @@ private:
 			return;
 		}
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PRIVATE_PROCEDURE(AddWinnerData)
+	{
+		if (!input.winnerData.isValid())
+		{
+			return;
+		}
+
+		// Adds winner
+		state.lastWinners.set(state.winnerCounter, input.winnerData);
+
+		// Increment winnerCounter
+		state.winnerCounter = mod(++state.winnerCounter, state.lastWinners.capacity());
 	}
 };
