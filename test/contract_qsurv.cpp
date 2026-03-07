@@ -9,6 +9,13 @@ constexpr uint16 PROCEDURE_INDEX_ABORT_SURVEY = 4;
 constexpr uint16 FUNCTION_INDEX_GET_SURVEY = 1;
 constexpr uint16 FUNCTION_INDEX_GET_SURVEY_COUNT = 2;
 
+// Genesis Oracle ID matching the one hardcoded in QSurv.h INITIALIZE
+// BOWFPORUCOPUOCNOIBDNSSRHQYCAXCRHGKBUKCMZJCZBHQVUUWWLAGIFWGVN
+static const id GENESIS_ORACLE_ID = ID(
+    _B, _O, _W, _F, _P, _O, _R, _U, _C, _O, _P, _U, _O, _C, _N, _O, _I, _B, _D,
+    _N, _S, _S, _R, _H, _Q, _Y, _C, _A, _X, _C, _R, _H, _G, _K, _B, _U, _K, _C,
+    _M, _Z, _J, _C, _Z, _B, _H, _Q, _V, _U, _U, _W, _W, _L, _A, _G, _I, _F);
+
 class ContractTestingQSurv : public ContractTesting {
 public:
   ContractTestingQSurv() {
@@ -143,12 +150,11 @@ TEST(ContractQSurv, CreateSurvey_Fail_ZeroRespondentsOrPool) {
 
 TEST(ContractQSurv, SetOracle_Security) {
   ContractTestingQSurv qsurv;
-  const id system_invocator(0, 0, 0, 0);
   const id oracle(999, 0, 0, 0);
   const id hacker(888, 0, 0, 0);
 
-  // setOracle initially by the creator/system
-  qsurv.setOracle(system_invocator, oracle);
+  // setOracle by the genesis oracle (hardcoded in INITIALIZE)
+  qsurv.setOracle(GENESIS_ORACLE_ID, oracle);
 
   // Hacker tries to steal
   auto setOut2 = qsurv.setOracle(hacker, hacker);
@@ -157,7 +163,6 @@ TEST(ContractQSurv, SetOracle_Security) {
 
 TEST(ContractQSurv, Payout_VerifyBalancesAndCompletion) {
   ContractTestingQSurv qsurv;
-  const id system_invocator(0, 0, 0, 0);
   const id creator(1, 0, 0, 0);
   const id oracle(999, 0, 0, 0);
   const id respondent(2, 0, 0, 0);
@@ -165,8 +170,8 @@ TEST(ContractQSurv, Payout_VerifyBalancesAndCompletion) {
 
   increaseEnergy(creator, 10000);
 
-  // Set oracle
-  qsurv.setOracle(system_invocator, oracle);
+  // Set oracle (must be called by genesis oracle to succeed)
+  qsurv.setOracle(GENESIS_ORACLE_ID, oracle);
 
   QPI::Array<uint8, 64> hash;
   for (int i = 0; i < 64; i++) {
