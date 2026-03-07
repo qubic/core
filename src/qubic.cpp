@@ -4000,6 +4000,88 @@ static void endEpoch()
                 gRevenueComponents.revenue);
         }
 
+        // Revenue V2: filter transactions. Run here but have not applied yet
+        // Make sure run after gRevenueComponents is calculated because it use some of data
+        gEpochRevenueData.initialTick = system.initialTick;
+        gEpochRevenueData.totalTicks = system.tick - system.initialTick;
+        for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
+        {
+            const m256i& tickLeaderPublicKey = broadcastedComputors.computors.publicKeys[tick % NUMBER_OF_COMPUTORS];
+
+            // Defensive lock, actually at the end of epoch, no more tick data written. 
+            ts.tickData.acquireLock();
+            unsigned int tickOffset = tick - system.initialTick;
+            TickData& td = ts.tickData.getByTickInCurrentEpoch(tick);
+            if ((td.epoch == system.epoch) && (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH))
+            {
+                unsigned int nTickLeader = 0;
+                unsigned int nProtocol = 0;
+                unsigned int nContract = 0;
+                unsigned int nOther = 0;
+                auto* offsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(tick);
+                for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+                {
+                    if (isZero(td.transactionDigests[i]))
+                    {
+                        continue;
+                    }
+
+                    // Make sure tx body existed
+                    if (!offsets[i])
+                    {
+                        continue;
+                    }
+
+                    const Transaction* tx = ts.tickTransactions(offsets[i]);
+
+                    // skip leader's own txs
+                    if (tx->sourcePublicKey == tickLeaderPublicKey)
+                    {
+                        nTickLeader++;
+                        continue;
+                    }
+
+                    if (isZero(tx->destinationPublicKey))
+                    {
+                        nProtocol++;
+                    }
+                    else
+                    {
+                        m256i masked = tx->destinationPublicKey;
+                        masked.m256i_u64[0] &= ~(unsigned long long)(MAX_NUMBER_OF_CONTRACTS - 1);
+                        unsigned int cIdx = (unsigned int)tx->destinationPublicKey.m256i_u64[0];
+                        if (isZero(masked) && cIdx < contractCount)
+                        {
+                            nContract++;
+                        }
+                        else
+                        {
+                            nOther++;
+                        }
+                    }
+
+                }
+                gEpochRevenueData.perTickTxTickLeaderCount[tickOffset] = (unsigned short)nTickLeader;
+
+                gEpochRevenueData.perTickTxCount[tickOffset] = (unsigned short)(nProtocol + nContract + nOther);
+                gEpochRevenueData.perTickProtocolTxCount[tickOffset] = (unsigned short)nProtocol;
+                gEpochRevenueData.perTickContractTxCount[tickOffset] = (unsigned short)nContract;
+                gEpochRevenueData.perTickOtherTxCount[tickOffset] = (unsigned short)nOther;
+            }
+            ts.tickData.releaseLock();
+        }
+        // Fetch oracle revenue points (accumulated during epoch, reset at beginEpoch)
+        {
+            OracleRevenuePoints oracleRevPoints;
+            oracleEngine.getRevenuePoints(oracleRevPoints);
+            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+            {
+                gEpochRevenueData.oracleScore[i] = oracleRevPoints.computorRevPoints[i];
+            }
+        }
+        computeRevenueV2(gEpochRevenueData);
+
+
         // Get revenue donation data by calling contract GQMPROP::GetRevenueDonation()
         QpiContextUserFunctionCall qpiContext(GQMPROP::__contract_index);
         qpiContext.call(5, "", 0);
@@ -5547,6 +5629,8 @@ static void tickProcessor(void*)
 
                                     // Save the file of revenue. This blocking save can be called from any thread
                                     saveRevenueComponents(NULL);
+                                    // Revenue v2 data
+                                    asyncSave(REVENUE_DATA_END_OF_EPOCH_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData);
 
                                     // Reorder futureComputors so requalifying computors keep their index
                                     // This is needed for correct execution fee reporting across epoch boundaries
