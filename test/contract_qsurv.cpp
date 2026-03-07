@@ -207,7 +207,8 @@ TEST(ContractQSurv, Payout_VerifyBalancesAndCompletion) {
   EXPECT_EQ(respondentBalAfter - respondentBalBefore,
             500);                                       // 400 base + 100 bonus
   EXPECT_EQ(referrerBalAfter - referrerBalBefore, 200); // 200 referral
-  EXPECT_EQ(oracleBalAfter - oracleBalBefore, 30); // 30 platform fee for Tier 1
+  EXPECT_EQ(oracleBalAfter - oracleBalBefore,
+            15); // 15 oracle (half of 30 platform fee; other half burned)
   EXPECT_EQ(creatorBalAfter - creatorBalBefore, 270); // leftover refunded
 
   auto surveyAfter = qsurv.getSurvey(1);

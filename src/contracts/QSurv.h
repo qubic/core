@@ -58,7 +58,6 @@ public:
 
   BEGIN_EPOCH() {
     // Called at the beginning of each epoch
-    // Can be used for cleanup, stats, or balance updates
   }
 
   END_EPOCH() {
@@ -118,6 +117,8 @@ public:
     uint64 baseReward;
     uint64 referralReward;
     uint64 platformFee;
+    uint64 burnFee;
+    uint64 oracleFee;
     uint64 bonus;
     uint64 totalSpent;
     uint32 i;
@@ -182,7 +183,7 @@ public:
   // ============================================
 
   PUBLIC_PROCEDURE_WITH_LOCALS(createSurvey) {
-    // Validation checks — refund invocation reward on failure
+    // Validation checks - refund invocation reward on failure
     if (input.maxRespondents == 0 ||
         input.maxRespondents > MAX_RESPONDENTS_PER_SURVEY) {
       qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -312,13 +313,19 @@ public:
     } else if (input.respondentTier == 3) {
       locals.bonus = QPI::div(locals.totalReward * 30, 100ULL);       // 30%
       locals.platformFee = QPI::div(locals.totalReward * 10, 100ULL); // 10%
-    } else {                                                          // Tier 0
+    } else                                                            // Tier 0
+    {
       locals.bonus = 0;
       locals.platformFee = QPI::div(locals.totalReward * 1, 100ULL); // 1%
     }
 
     locals.totalSpent = locals.baseReward + locals.bonus +
                         locals.referralReward + locals.platformFee;
+
+    // Split platform fee: half burned to sustain execution fee reserve,
+    // half goes to oracle as operational compensation
+    locals.burnFee = QPI::div(locals.platformFee, 2ULL);
+    locals.oracleFee = locals.platformFee - locals.burnFee;
 
     // Execute fund transfers
     qpi.transfer(input.respondentAddress, locals.baseReward + locals.bonus);
@@ -329,7 +336,8 @@ public:
       qpi.transfer(state._oracleAddress, locals.referralReward);
     }
 
-    qpi.transfer(state._oracleAddress, locals.platformFee);
+    qpi.transfer(state._oracleAddress, locals.oracleFee);
+    qpi.burn(locals.burnFee); // Replenish execution fee reserve
 
     // Record this respondent to prevent double-payout
     locals.tempSurvey.paidRespondents.set(locals.tempSurvey.currentRespondents,
@@ -412,7 +420,6 @@ public:
 
   PUBLIC_FUNCTION_WITH_LOCALS(getSurvey) {
     for (locals.i = 0; locals.i < state._surveyCount; locals.i++) {
-      // No need to copy for read-only access, direct get() is fine
       if (state._surveys.get(locals.i).surveyId == input.surveyId) {
         output.surveyId = state._surveys.get(locals.i).surveyId;
         output.creator = state._surveys.get(locals.i).creator;

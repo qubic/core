@@ -1,0 +1,15 @@
+/packages/
+/.vscode/
+/old/
+/notes/
+.vs/
+x64/
+~AutoRecover.*.vcxproj
+/test/spectrum.*
+/test/universe.*
+/test/contract0???.???
+/test/tmp_file_*
+/test/*.pg
+.DS_Store
+.clang-format
+tmp
