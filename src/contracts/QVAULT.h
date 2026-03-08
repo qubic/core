@@ -969,6 +969,12 @@ protected:
      */
     PUBLIC_PROCEDURE_WITH_LOCALS(submitQCP)
     {
+        if (input.newQuorumPercent > QVAULT_MAX_QUORUM_REQ || input.newQuorumPercent < QVAULT_MIN_QUORUM_REQ)
+        {
+            output.returnCode = QVAULT_INPUT_ERROR;
+            return;
+        }
+
         locals.qvaultShare.assetName = QVAULT_QVAULT_ASSETNAME;
         locals.qvaultShare.issuer = NULL_ID;
 
@@ -1695,6 +1701,11 @@ protected:
                     output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
                     return ;
                 }
+                if (input.yes && (input.priceOfIPO < QVAULT_IPO_PARTICIPATION_MIN_FUND || input.priceOfIPO > state.reinvestingFund))
+                {
+                    output.returnCode = QVAULT_INSUFFICIENT_FUND;
+                    return;
+                }
                 break;
             case 4:
                 if (input.proposalId >= state.numberOfQEarnP)
@@ -1831,7 +1842,7 @@ protected:
                             }
                             else if (locals._r < locals.countOfVote)
                             {
-                                locals.updatedIPOProposal.totalWeight -= locals.numberOfNo *  locals.newVoteList.get(locals._r).priceOfIPO;
+                                locals.updatedIPOProposal.totalWeight -= locals.numberOfNo * locals.newVoteList.get(locals._r).priceOfIPO;
                             }
                             locals.updatedIPOProposal.numberOfYes += locals.numberOfYes;
                             locals.updatedIPOProposal.numberOfNo += locals.numberOfNo;
@@ -2853,7 +2864,124 @@ public:
         output.returnCode = QVAULT_SUCCESS;
     }
 
-	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    /**
+     * Input structure for getVoteInProposal function
+     * @param userID user identity
+     * @param proposalType Type of proposal (1=GP, 2=QCP, 3=IPOP, 4=QEarnP, 5=FundP, 6=MKTP, 7=AlloP)
+     * @param proposalId ID of the proposal
+     */
+    struct getVoteInProposal_input
+    {
+        id userID;
+        uint64 proposalType;
+        uint64 proposalId;
+    };
+
+    /**
+     * Output structure for getVoteInProposal function
+     * @param isVoted Indicates whether the user has cast a vote in this proposal
+     * @param votingDecision Indicates how the user voted
+     */
+    struct getVoteInProposal_output
+    {
+        sint64 returnCode;                 // Status code indicating success or failure
+        sint64 isVoted;
+        sint64 votingDecision;
+    };
+
+    /**
+     * Local variables for getVoteInProposal function
+     */
+    struct getVoteInProposal_locals
+    {
+        uint8 countOfVote;
+        Array<voteStatusInfo, QVAULT_MAX_USER_VOTES> voteList;
+        uint64 _r;
+    };
+
+    /**
+     * Retrieves voting decision in specific vote for a specific user address
+     * Returns voting decision in specific vote
+     * 
+     * @param input Type and Id of proposal and userID
+     * @param output Voting decision for specific vote
+     */
+    PUBLIC_FUNCTION_WITH_LOCALS(getVoteInProposal)
+    {
+        if (input.proposalType > 7 || input.proposalType < 1)
+        {
+            output.returnCode = QVAULT_INPUT_ERROR;
+            return ;
+        }
+
+        switch (input.proposalType)
+        {
+            case 1:
+                if (input.proposalId >= state.numberOfGP)
+                {
+                    output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
+                    return ;
+                }
+                break;
+            case 2:
+                if (input.proposalId >= state.numberOfQCP)
+                {
+                    output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
+                    return ;
+                }
+                break;
+            case 3:
+                if (input.proposalId >= state.numberOfIPOP)
+                {
+                    output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
+                    return ;
+                }
+                break;
+            case 4:
+                if (input.proposalId >= state.numberOfQEarnP)
+                {
+                    output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
+                    return ;
+                }
+                break;
+            case 5:
+                if (input.proposalId >= state.numberOfFundP)
+                {
+                    output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
+                    return ;
+                }
+                break;
+            case 6:
+                if (input.proposalId >= state.numberOfMKTP)
+                {
+                    output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
+                    return ;
+                }
+                break;
+            case 7:
+                if (input.proposalId >= state.numberOfAlloP)
+                {
+                    output.returnCode = QVAULT_OVERFLOW_PROPOSAL;
+                    return ;
+                }
+                break;
+        }
+
+        if (state.countOfVote.get(input.userID, locals.countOfVote))
+        {
+            state.vote.get(input.userID, locals.voteList);
+            for (locals._r = 0; locals._r < locals.countOfVote; locals._r++)
+            {
+                if (locals.voteList.get(locals._r).proposalId == input.proposalId && locals.voteList.get(locals._r).proposalType == input.proposalType)
+                {
+                    output.isVoted = 1;
+                    output.votingDecision = locals.voteList.get(locals._r).decision;
+                }
+            }
+        }
+    }
+
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(getData, 1);
         REGISTER_USER_FUNCTION(getStakedAmountAndVotingPower, 2);
@@ -2874,6 +3002,7 @@ public:
         REGISTER_USER_FUNCTION(getAmountOfShareQvaultHold, 18);
         REGISTER_USER_FUNCTION(getNumberOfHolderAndAvgAm, 19);
         REGISTER_USER_FUNCTION(getAmountForQearnInUpcomingEpoch, 20);
+        REGISTER_USER_FUNCTION(getVoteInProposal, 21);
 
         REGISTER_USER_PROCEDURE(stake, 1);
         REGISTER_USER_PROCEDURE(unStake, 2);
@@ -2889,18 +3018,17 @@ public:
         REGISTER_USER_PROCEDURE(TransferShareManagementRights, 13);
     }
 
-	INITIALIZE()
+    INITIALIZE()
     {
         state.QCAP_ISSUER = ID(_Q, _C, _A, _P, _W, _M, _Y, _R, _S, _H, _L, _B, _J, _H, _S, _T, _T, _Z, _Q, _V, _C, _I, _B, _A, _R, _V, _O, _A, _S, _K, _D, _E, _N, _A, _S, _A, _K, _N, _O, _B, _R, _G, _P, _F, _W, _W, _K, _R, _C, _U, _V, _U, _A, _X, _Y, _E);
-        state.qcapSoldAmount = 1909423;
+        state.qcapSoldAmount = 3230507;
         state.transferRightsFee = 100;
         state.quorumPercent = 670;
         state.qcapBurnPermille = 0;
         state.burnPermille = 0;
-        state.QCAPHolderPermille = 520;
-        state.reinvestingPermille = 450;
+        state.QCAPHolderPermille = 970;
+        state.reinvestingPermille = 0;
         state.shareholderDividend = 30;
-
     }
 
     /**
@@ -3031,6 +3159,7 @@ public:
         uint64 requiredFund;                         // Required fund amount
         uint64 tmpAmount;                            // Temporary amount variable
         uint64 paymentForQcapBurn;                   // Payment amount for QCAP burning
+        uint64 revenueForOneQcap;                    // Qus amount per one QCAP
         uint32 numberOfVote;                         // Number of votes
         sint32 _t, _r;                               // Loop counter variables
         uint32 curDate;                              // Current date (packed)
@@ -3055,7 +3184,10 @@ public:
         locals.paymentForQcapBurn = div(state.totalEpochRevenue * state.qcapBurnPermille, 1000ULL);
         locals.amountOfBurn = div(state.totalEpochRevenue * state.burnPermille, 1000ULL);
 
-        qpi.distributeDividends(div(locals.paymentForShareholders + state.proposalCreateFund, 676ULL));
+        if (qpi.distributeDividends(div(locals.paymentForShareholders + state.proposalCreateFund, 676ULL)))
+        {
+            state.totalEpochRevenue -= locals.paymentForShareholders;
+        }
         qpi.burn(locals.amountOfBurn);
 
         locals.QCAPId.assetName = QVAULT_QCAP_ASSETNAME;
@@ -3063,13 +3195,17 @@ public:
 
         locals.circulatedSupply = qpi.numberOfShares(locals.QCAPId) - qpi.numberOfShares(locals.QCAPId, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF)) + state.totalStakedQcapAmount;
 
-        state.revenueForOneQcapPerEpoch.set(qpi.epoch(), div(locals.paymentForQCAPHolders, locals.circulatedSupply * 1ULL));
+        locals.revenueForOneQcap = div(locals.paymentForQCAPHolders, locals.circulatedSupply * 1ULL);
+        state.totalEpochRevenue -= smul(locals.revenueForOneQcap, locals.circulatedSupply);
+
+        state.revenueForOneQcapPerEpoch.set(qpi.epoch(), locals.revenueForOneQcap);
         state.revenueForOneQvaultPerEpoch.set(qpi.epoch(), div(locals.paymentForShareholders + state.proposalCreateFund, 676ULL));
         state.revenueForReinvestPerEpoch.set(qpi.epoch(), locals.paymentForReinvest);
 
         state.reinvestingFund += locals.paymentForReinvest;
         state.fundForBurn += locals.paymentForQcapBurn;
-        state.totalEpochRevenue = 0;
+        
+        state.totalEpochRevenue -= locals.paymentForReinvest + locals.paymentForQcapBurn + locals.amountOfBurn;
         state.proposalCreateFund = 0;
 
         locals.iter.begin(locals.QCAPId);
