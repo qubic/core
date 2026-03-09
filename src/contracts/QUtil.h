@@ -1514,6 +1514,10 @@ public:
             return;
         }
         output.oracleQueryId = QUERY_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.timeoutMilliseconds);
+        if (output.oracleQueryId < 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
     }
 
     struct SubscribePriceOracle_input
@@ -1536,6 +1540,10 @@ public:
             return;
         }
         output.oracleSubscriptionId = SUBSCRIBE_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.subscriptionPeriodMilliseconds, input.notifyPreviousValue);
+        if (output.oracleSubscriptionId < 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
     }
 
     struct UnsubscribeOracle_input
