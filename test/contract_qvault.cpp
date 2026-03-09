@@ -11,7 +11,7 @@ static constexpr uint64 QVAULT_ISSUE_ASSET_FEE = 1000000000ull;
 static constexpr uint64 QVAULT_TOKEN_TRANSFER_FEE = 100;
 static constexpr uint32 QVAULT_SMALL_AMOUNT_QCAP_TRANSFER = 1000;
 static constexpr uint32 QVAULT_BIG_AMOUNT_QCAP_TRANSFER = 1000000;
-static constexpr uint32 QVAULT_QCAP_SOLD_AMOUNT = 1909423;
+static constexpr uint32 QVAULT_QCAP_SOLD_AMOUNT = 3230507;
 static constexpr uint64 QVAULT_MAX_REVENUE = 1000000000000ull;
 static constexpr uint64 QVAULT_MIN_REVENUE = 100000000000ull;;
 static const id QVAULT_CONTRACT_ID(QVAULT_CONTRACT_INDEX, 0, 0, 0);
@@ -191,8 +191,7 @@ public:
     {
         EXPECT_EQ(reinvestingFund, div(qxDistributedAmount * reinvestingPermille, 1000ULL));
         EXPECT_EQ(fundForBurn, div(qxDistributedAmount * qcapBurnPermille, 1000ULL));
-        EXPECT_EQ(totalEpochRevenue, 0);
-        EXPECT_EQ(proposalCreateFund, 0);
+        EXPECT_EQ(totalEpochRevenue + proposalCreateFund, getBalance(QVAULT_CONTRACT_ID));
     }
 
     void test()
@@ -202,7 +201,7 @@ public:
     }
 };
 
-class QXChecker : public QX
+class QXChecker : public QX, public QX::StateData
 {
 public:
     uint64 getDistributedAmountInEndTick()
@@ -739,9 +738,9 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     increaseEnergy(stakers[0], 10000000);
     EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2025MAX_QCAP_SALE_AMOUNT, 100000), QVAULT_OVERFLOW_SALE_AMOUNT);
     EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 2);
-    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2025MAX_QCAP_SALE_AMOUNT - 1909423, 100000), QVAULT_SUCCESS);
+    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2025MAX_QCAP_SALE_AMOUNT - QVAULT_QCAP_SOLD_AMOUNT, 100000), QVAULT_SUCCESS);
     EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 3);
-    QvaultV2.getState()->submitFundPChecker(0, stakers[0], QVAULT_2025MAX_QCAP_SALE_AMOUNT - 1909423, 100000);
+    QvaultV2.getState()->submitFundPChecker(0, stakers[0], QVAULT_2025MAX_QCAP_SALE_AMOUNT - QVAULT_QCAP_SOLD_AMOUNT, 100000);
 
     setMemory(utcTime, 0);
     utcTime.Year = 2026;
@@ -753,9 +752,9 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     increaseEnergy(stakers[0], 10000000);
     EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2026MAX_QCAP_SALE_AMOUNT, 100000), QVAULT_OVERFLOW_SALE_AMOUNT);
     EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 3);
-    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2026MAX_QCAP_SALE_AMOUNT - 1909423, 100000), QVAULT_SUCCESS);
+    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2026MAX_QCAP_SALE_AMOUNT - QVAULT_QCAP_SOLD_AMOUNT, 100000), QVAULT_SUCCESS);
     EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 4);
-    QvaultV2.getState()->submitFundPChecker(1, stakers[0], QVAULT_2026MAX_QCAP_SALE_AMOUNT - 1909423, 100000);
+    QvaultV2.getState()->submitFundPChecker(1, stakers[0], QVAULT_2026MAX_QCAP_SALE_AMOUNT - QVAULT_QCAP_SOLD_AMOUNT, 100000);
 
     setMemory(utcTime, 0);
     utcTime.Year = 2027;
@@ -767,9 +766,9 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     increaseEnergy(stakers[0], 10000000);
     EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2027MAX_QCAP_SALE_AMOUNT, 100000), QVAULT_OVERFLOW_SALE_AMOUNT);
     EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 4);
-    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2027MAX_QCAP_SALE_AMOUNT - 1909423, 100000), QVAULT_SUCCESS);
+    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_2027MAX_QCAP_SALE_AMOUNT - QVAULT_QCAP_SOLD_AMOUNT, 100000), QVAULT_SUCCESS);
     EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 5);
-    QvaultV2.getState()->submitFundPChecker(2, stakers[0], QVAULT_2027MAX_QCAP_SALE_AMOUNT - 1909423, 100000);
+    QvaultV2.getState()->submitFundPChecker(2, stakers[0], QVAULT_2027MAX_QCAP_SALE_AMOUNT - QVAULT_QCAP_SOLD_AMOUNT, 100000);
 
     setMemory(utcTime, 0);
     utcTime.Year = 2028;
@@ -781,9 +780,9 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
     increaseEnergy(stakers[0], 10000000);
     EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_QCAP_MAX_SUPPLY, 100000), QVAULT_OVERFLOW_SALE_AMOUNT);
     EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 5);
-    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_QCAP_MAX_SUPPLY - 1909423, 100000), QVAULT_SUCCESS);
+    EXPECT_EQ(QvaultV2.submitFundP(stakers[0], QVAULT_QCAP_MAX_SUPPLY - QVAULT_QCAP_SOLD_AMOUNT, 100000), QVAULT_SUCCESS);
     EXPECT_EQ(getBalance(QVAULT_CONTRACT_ID), QVAULT_PROPOSAL_FEE * 6);
-    QvaultV2.getState()->submitFundPChecker(3, stakers[0], QVAULT_QCAP_MAX_SUPPLY - 1909423, 100000);
+    QvaultV2.getState()->submitFundPChecker(3, stakers[0], QVAULT_QCAP_MAX_SUPPLY - QVAULT_QCAP_SOLD_AMOUNT, 100000);
 
     increaseEnergy(stakers[0], 10000000);
     EXPECT_EQ(QvaultV2.submitMKTP(stakers[0], 10000, 1000000000, assetNameFromString("QX"), 1, 5), QVAULT_NOT_TRANSFERRED_SHARE);
@@ -833,6 +832,7 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
 
     EXPECT_EQ(QvaultV2.QXTransferShareManagementRights(QVAULT_QCAP_ISSUER, qcapAssetName, QVAULT_CONTRACT_INDEX, 10000, QVAULT_CONTRACT_ID), 10000);
     increaseEnergy(QVAULT_QCAP_ISSUER, 1000000);
+    increaseEnergy(QVAULT_CONTRACT_ID, QVAULT_TOKEN_TRANSFER_FEE);
     EXPECT_EQ(QvaultV2.TransferShareManagementRights(QVAULT_CONTRACT_ID, qcapShare, 10000, QX_CONTRACT_INDEX), 10000);
 
     std::vector<std::pair<m256i, unsigned int>> qxSharesHolers{{QVAULT_CONTRACT_ID, 676}};
