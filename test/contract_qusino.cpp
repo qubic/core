@@ -91,7 +91,7 @@ public:
         QUSINO::depositBonus_input input;
         input.amount = amount;
         QUSINO::depositBonus_output output;
-        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 7, input, output, user, amount);
+        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 6, input, output, user, amount);
         return output;
     }
 
@@ -99,7 +99,7 @@ public:
     {
         QUSINO::dailyClaimBonus_input input;
         QUSINO::dailyClaimBonus_output output;
-        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 8, input, output, user, invocationReward);
+        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 7, input, output, user, invocationReward);
         return output;
     }
 
@@ -112,15 +112,6 @@ public:
         return output;
     }
 
-    QUSINO::earnQSC_output earnQSC(const id& user, uint64 amount, sint64 invocationReward)
-    {
-        QUSINO::earnQSC_input input;
-        input.amount = amount;
-        QUSINO::earnQSC_output output;
-        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 2, input, output, user, invocationReward);
-        return output;
-    }
-
     QUSINO::transferSTAROrQSC_output transferSTAROrQSC(const id& user, const id& dest, uint64 amount, uint8 type, sint64 invocationReward)
     {
         QUSINO::transferSTAROrQSC_input input;
@@ -128,7 +119,7 @@ public:
         input.amount = amount;
         input.type = type;
         QUSINO::transferSTAROrQSC_output output;
-        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 3, input, output, user, invocationReward);
+        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 2, input, output, user, invocationReward);
         return output;
     }
 
@@ -137,7 +128,7 @@ public:
         QUSINO::submitGame_input input;
         copyMemory(input.URI, URI);
         QUSINO::submitGame_output output;
-        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 4, input, output, user, invocationReward);
+        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 3, input, output, user, invocationReward);
         return output;
     }
 
@@ -148,7 +139,7 @@ public:
         input.gameIndex = gameIndex;
         input.yesNo = yesNo;
         QUSINO::voteInGameProposal_output output;
-        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 5, input, output, user, invocationReward);
+        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 4, input, output, user, invocationReward);
         return output;
     }
 
@@ -159,7 +150,16 @@ public:
         input.numberOfShares = numberOfShares;
         input.newManagingContractIndex = newManagingContractIndex;
         QUSINO::TransferShareManagementRights_output output;
-        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 6, input, output, user, invocationReward);
+        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 5, input, output, user, invocationReward);
+        return output;
+    }
+
+    QUSINO::redemptionQSCToQubic_output redemptionQSCToQubic(const id& user, uint64 amount, sint64 invocationReward)
+    {
+        QUSINO::redemptionQSCToQubic_input input;
+        input.amount = amount;
+        QUSINO::redemptionQSCToQubic_output output;
+        invokeUserProcedure(QUSINO_CONTRACT_INDEX, 8, input, output, user, invocationReward);
         return output;
     }
 
@@ -197,6 +197,16 @@ public:
         callFunction(QUSINO_CONTRACT_INDEX, 4, input, output);
         return output;
     }
+
+    QUSINO::getProposerEarnedQSCInfo_output getProposerEarnedQSCInfo(const id& proposer, uint32 epoch)
+    {
+        QUSINO::getProposerEarnedQSCInfo_input input;
+        input.proposer = proposer;
+        input.epoch = epoch;
+        QUSINO::getProposerEarnedQSCInfo_output output;
+        callFunction(QUSINO_CONTRACT_INDEX, 5, input, output);
+        return output;
+    }
 };
 
 // Helper function to create a URI
@@ -232,10 +242,13 @@ TEST(ContractQUSINO, earnSTAR_Success)
     QUSINO::getUserAssetVolume_output userVolume = QUSINO.getUserAssetVolume(user);
     EXPECT_EQ(userVolume.STARAmount, amount * 100);
     
+    // earnSTAR also grants amount QSC (1:1 with STAR amount in logical units)
+    EXPECT_EQ(userVolume.QSCAmount, amount);
+
     // Check SC info
     QUSINO::getSCInfo_output scInfo = QUSINO.getSCInfo();
     EXPECT_EQ(scInfo.STARCirclatingSupply, amount * 100);
-    EXPECT_EQ(scInfo.epochRevenue, requiredReward);
+    EXPECT_EQ(scInfo.QSCCirclatingSupply, amount);
 }
 
 TEST(ContractQUSINO, earnSTAR_InsufficientFunds)
@@ -250,28 +263,6 @@ TEST(ContractQUSINO, earnSTAR_InsufficientFunds)
     
     QUSINO::earnSTAR_output output = QUSINO.earnSTAR(user, amount, insufficientReward);
     EXPECT_EQ(output.returnCode, QUSINO_INSUFFICIENT_FUNDS);
-}
-
-TEST(ContractQUSINO, earnQSC_Success)
-{
-    ContractTestingQUSINO QUSINO;
-    
-    id user = QUSINO_testUser2;
-    uint64 amount = 5000;
-    sint64 requiredReward = amount * QUSINO_QSC_SELL_PRICE;
-    
-    increaseEnergy(user, requiredReward);
-    QUSINO::earnQSC_output output = QUSINO.earnQSC(user, amount, requiredReward);
-    EXPECT_EQ(output.returnCode, QUSINO_SUCCESS);
-    
-    // Check user's QSC amount
-    QUSINO::getUserAssetVolume_output userVolume = QUSINO.getUserAssetVolume(user);
-    EXPECT_EQ(userVolume.QSCAmount, amount);
-    
-    // Check SC info
-    QUSINO::getSCInfo_output scInfo = QUSINO.getSCInfo();
-    EXPECT_EQ(scInfo.QSCCirclatingSupply, amount);
-    EXPECT_EQ(scInfo.epochRevenue, amount * (QUSINO_QSC_SELL_PRICE - QUSINO_QSC_BUY_PRICE));
 }
 
 TEST(ContractQUSINO, transferSTAROrQSC_STAR_Success)
@@ -309,10 +300,10 @@ TEST(ContractQUSINO, transferSTAROrQSC_QSC_Success)
     id receiver = QUSINO_testUser3;
     uint64 amount = 5000;
 
-    // Earn QSC for sender
-    sint64 requiredReward = amount * QUSINO_QSC_SELL_PRICE;
+    // Earn STAR (and get equal amount of QSC) for sender
+    sint64 requiredReward = amount * QUSINO_STAR_PRICE * 100;
     increaseEnergy(sender, requiredReward);
-    QUSINO::earnQSC_output earnOutput = QUSINO.earnQSC(sender, amount, requiredReward);
+    QUSINO::earnSTAR_output earnOutput = QUSINO.earnSTAR(sender, amount, requiredReward);
     EXPECT_EQ(earnOutput.returnCode, QUSINO_SUCCESS);
 
     // Transfer QSC from sender to receiver
@@ -327,6 +318,31 @@ TEST(ContractQUSINO, transferSTAROrQSC_QSC_Success)
     EXPECT_EQ(receiverVolume.QSCAmount, amount);
 }
 
+TEST(ContractQUSINO, transferSTAROrQSC_InvalidGameProposer)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id proposer = QUSINO_testUser1;
+    id receiver = QUSINO_testUser2;
+    Array<uint8, 64> URI = createURI("https://example.com/game1");
+
+    // Proposer submits a game (has active game)
+    increaseEnergy(proposer, QUSINO_GAME_SUBMIT_FEE);
+    QUSINO::submitGame_output subOut = QUSINO.submitGame(proposer, URI, QUSINO_GAME_SUBMIT_FEE);
+    EXPECT_EQ(subOut.returnCode, QUSINO_SUCCESS);
+
+    // Proposer earns STAR and QSC
+    uint64 amount = 1000;
+    sint64 requiredReward = amount * QUSINO_STAR_PRICE * 100;
+    increaseEnergy(proposer, requiredReward);
+    QUSINO::earnSTAR_output earnOut = QUSINO.earnSTAR(proposer, amount, requiredReward);
+    EXPECT_EQ(earnOut.returnCode, QUSINO_SUCCESS);
+
+    // Proposer cannot transfer while they have an active game proposal
+    increaseEnergy(proposer, 1);
+    QUSINO::transferSTAROrQSC_output output = QUSINO.transferSTAROrQSC(proposer, receiver, amount, QUSINO_ASSET_TYPE_QSC, 1);
+    EXPECT_EQ(output.returnCode, QUSINO_INVALID_GAME_PROPOSER);
+}
 
 TEST(ContractQUSINO, transferSTAROrQSC_InsufficientSTAR)
 {
@@ -373,7 +389,7 @@ TEST(ContractQUSINO, submitGame_Success)
     // Check SC info
     QUSINO::getSCInfo_output scInfo = QUSINO.getSCInfo();
     EXPECT_EQ(scInfo.maxGameIndex, 2); // Starts at 1, so first game is index 1
-    uint64 expectedEpochRevenue = QUSINO_GAME_SUBMIT_FEE - div<uint64>(QUSINO_GAME_SUBMIT_FEE / 10, 676ULL) * 676ULL;
+    uint64 expectedEpochRevenue = QUSINO_GAME_SUBMIT_FEE - div<uint64>(QUSINO_GAME_SUBMIT_FEE, 676ULL * 10) * 676ULL;
     EXPECT_EQ(scInfo.epochRevenue, expectedEpochRevenue);
 }
 
@@ -486,6 +502,57 @@ TEST(ContractQUSINO, getUserAssetVolume_Empty)
     EXPECT_EQ(output.QSCAmount, 0);
 }
 
+TEST(ContractQUSINO, redemptionQSCToQubic_Success)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id user = QUSINO_testUser1;
+    uint64 amount = 1000;
+    sint64 requiredReward = amount * QUSINO_STAR_PRICE * 100;
+    increaseEnergy(user, requiredReward);
+    QUSINO::earnSTAR_output earnOut = QUSINO.earnSTAR(user, amount, requiredReward);
+    EXPECT_EQ(earnOut.returnCode, QUSINO_SUCCESS);
+
+    uint64 redeemAmount = 500;
+    QUSINO::redemptionQSCToQubic_output output = QUSINO.redemptionQSCToQubic(user, redeemAmount, 0);
+    EXPECT_EQ(output.returnCode, QUSINO_SUCCESS);
+
+    QUSINO::getUserAssetVolume_output vol = QUSINO.getUserAssetVolume(user);
+    EXPECT_EQ(vol.QSCAmount, amount - redeemAmount);
+    QUSINO::getSCInfo_output scInfo = QUSINO.getSCInfo();
+    EXPECT_EQ(scInfo.QSCCirclatingSupply, amount - redeemAmount);
+}
+
+TEST(ContractQUSINO, redemptionQSCToQubic_InsufficientQSC)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id user = QUSINO_testUser1;
+    increaseEnergy(user, 1);
+    QUSINO::redemptionQSCToQubic_output output = QUSINO.redemptionQSCToQubic(user, 100, 0);
+    EXPECT_EQ(output.returnCode, QUSINO_INSUFFICIENT_QSC);
+}
+
+TEST(ContractQUSINO, redemptionQSCToQubic_InvalidGameProposer)
+{
+    ContractTestingQUSINO QUSINO;
+
+    id proposer = QUSINO_testUser1;
+    Array<uint8, 64> URI = createURI("https://example.com/game1");
+    increaseEnergy(proposer, QUSINO_GAME_SUBMIT_FEE);
+    QUSINO::submitGame_output subOut = QUSINO.submitGame(proposer, URI, QUSINO_GAME_SUBMIT_FEE);
+    EXPECT_EQ(subOut.returnCode, QUSINO_SUCCESS);
+
+    uint64 amount = 1000;
+    sint64 requiredReward = amount * QUSINO_STAR_PRICE * 100;
+    increaseEnergy(proposer, requiredReward);
+    QUSINO::earnSTAR_output earnOut = QUSINO.earnSTAR(proposer, amount, requiredReward);
+    EXPECT_EQ(earnOut.returnCode, QUSINO_SUCCESS);
+
+    QUSINO::redemptionQSCToQubic_output output = QUSINO.redemptionQSCToQubic(proposer, 100, 0);
+    EXPECT_EQ(output.returnCode, QUSINO_INVALID_GAME_PROPOSER);
+}
+
 TEST(ContractQUSINO, END_EPOCH_FailedGameRemoval)
 {
     ContractTestingQUSINO QUSINO;
@@ -528,6 +595,47 @@ TEST(ContractQUSINO, END_EPOCH_FailedGameRemoval)
     // Check failed game list
     QUSINO::getFailedGameList_output failedList = QUSINO.getFailedGameList(0);
     // Game should be in failed list
+}
+
+TEST(ContractQUSINO, END_EPOCH_ProposerEarnedQSCInfo)
+{
+    ContractTestingQUSINO QUSINO;
+
+    // issue QST
+    id qstIssuer = QUSINO_QSTIssuer;
+    uint64 qstAssetName = 5526353;
+    uint64 totalShares = QUSINO_SUPPLY_OF_QST;
+    increaseEnergy(qstIssuer, QUSINO_ISSUE_ASSET_FEE);
+    EXPECT_EQ(QUSINO.issueAsset(qstIssuer, qstAssetName, totalShares), totalShares);
+
+    id proposer = QUSINO_testUser1;
+    id voter = QUSINO_testUser2;
+    Array<uint8, 64> URI = createURI("https://example.com/game2");
+
+    increaseEnergy(proposer, QUSINO_GAME_SUBMIT_FEE);
+    QUSINO::submitGame_output subOut = QUSINO.submitGame(proposer, URI, QUSINO_GAME_SUBMIT_FEE);
+    EXPECT_EQ(subOut.returnCode, QUSINO_SUCCESS);
+
+    uint64 qscAmount = 500;
+    sint64 starReward = qscAmount * QUSINO_STAR_PRICE * 100;
+    increaseEnergy(proposer, starReward);
+    QUSINO::earnSTAR_output earnOut = QUSINO.earnSTAR(proposer, qscAmount, starReward);
+    EXPECT_EQ(earnOut.returnCode, QUSINO_SUCCESS);
+
+    uint32 epochBeforeEnd = system.epoch;
+    increaseEnergy(voter, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100);
+    QUSINO::earnSTAR_output voterEarn = QUSINO.earnSTAR(voter, QUSINO_VOTE_FEE, QUSINO_VOTE_FEE * QUSINO_STAR_PRICE * 100);
+    EXPECT_EQ(voterEarn.returnCode, QUSINO_SUCCESS);
+    QUSINO::getActiveGameList_output gameList = QUSINO.getActiveGameList(0);
+    uint64 gameIndex = gameList.gameIndexes.get(0);
+    QUSINO::voteInGameProposal_output voteOut = QUSINO.voteInGameProposal(voter, URI, gameIndex, 1, 0);
+    EXPECT_EQ(voteOut.returnCode, QUSINO_SUCCESS);
+
+    QUSINO.endEpoch();
+    ++system.epoch;
+
+    QUSINO::getProposerEarnedQSCInfo_output info = QUSINO.getProposerEarnedQSCInfo(proposer, epochBeforeEnd);
+    EXPECT_EQ(info.earnedQSC, qscAmount);
 }
 
 TEST(ContractQUSINO, depositBonus_Success)

@@ -14,8 +14,7 @@ constexpr uint32 QUSINO_TREASURY_DIVIDENDS_PERCENT = 25;
 constexpr uint32 QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT = 20;
 constexpr uint32 QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT = 30;
 constexpr uint64 QUSINO_INFINITY_PRICE = 1000000000000000000ULL;
-constexpr uint64 QUSINO_QSC_SELL_PRICE = 120;
-constexpr uint64 QUSINO_QSC_BUY_PRICE = 100;
+constexpr uint64 QUSINO_QSC_PRICE = 100;    // 1QSC = 100Qubic
 constexpr uint64 QUSINO_DEVELOPER_FEE = 333;             // 33.3%
 constexpr uint64 QUSINO_SUPPLY_OF_QST = 1200000000ULL;    // 1.2 billion
 constexpr uint64 QUSINO_DAILY_CLAIM_BONUS_DURATION = 24 * 60 * 60; // in number of seconds
@@ -41,6 +40,7 @@ constexpr sint32 QUSINO_ALREADY_VOTED_WITH_SAME_VOTE = 15;
 constexpr sint32 QUSINO_ALREADY_CLAIMED_TODAY = 16;
 constexpr sint32 QUSINO_BONUS_CLAIM_TIME_NOT_COME = 17;
 constexpr sint32 QUSINO_INSUFFICIENT_BONUS_AMOUNT = 18;
+constexpr sint32 QUSINO_INVALID_GAME_PROPOSER = 19;
 
 constexpr uint8 QUSINO_ASSET_TYPE_QUBIC = 0;
 constexpr uint8 QUSINO_ASSET_TYPE_QSC = 1;
@@ -59,7 +59,7 @@ constexpr uint32 QUSINO_LOG_WRONG_ASSET_TYPE = 8;
 constexpr uint32 QUSINO_LOG_ALREADY_CLAIMED_TODAY = 9;
 constexpr uint32 QUSINO_LOG_BONUS_CLAIM_TIME_NOT_COME = 10;
 constexpr uint32 QUSINO_LOG_INSUFFICIENT_BONUS_AMOUNT = 11;
-
+constexpr uint32 QUSINO_LOG_INVALID_GAME_PROPOSER = 12;
 struct QUSINOLogger
 {
     uint32 _contractIndex;
@@ -79,14 +79,6 @@ public:
         uint64 amount;                    // amount of STAR / 100 to earn
     };
     struct earnSTAR_output
-    {
-        sint32 returnCode;
-    };
-    struct earnQSC_input
-    {
-        uint64 amount;
-    };
-    struct earnQSC_output
     {
         sint32 returnCode;
     };
@@ -132,6 +124,15 @@ public:
     {
     };
     struct dailyClaimBonus_output
+    {
+        sint32 returnCode;
+    };
+
+    struct redemptionQSCToQubic_input
+    {
+        uint64 amount;
+    };
+    struct redemptionQSCToQubic_output
     {
         sint32 returnCode;
     };
@@ -197,6 +198,15 @@ public:
     {
         sint64 transferredNumberOfShares;
     };
+    struct getProposerEarnedQSCInfo_input
+    {
+        id proposer;
+        uint32 epoch;
+    };
+    struct getProposerEarnedQSCInfo_output
+    {
+        uint64 earnedQSC;
+    };
 
 protected:
     //----------------------------------------------------------------------------
@@ -221,6 +231,16 @@ protected:
     };
     HashMap<VoteInfo, uint8, QUSINO_MAX_USERS * QUSINO_MAX_NUMBER_OF_GAMES_FOR_VOTING_PER_USER> voteList;
     HashMap<id, uint32, QUSINO_MAX_USERS> userDailyClaimedBonus;
+    struct earnedQSCInfo
+    {
+        id proposer;
+        uint32 epoch;
+        bool operator==(const earnedQSCInfo& other) const
+        {
+            return proposer == other.proposer && epoch == other.epoch;
+        }
+    };
+    HashMap<earnedQSCInfo, uint64, QUSINO_MAX_NUMBER_OF_GAMES> userEarnedQSCInfo;
     id LPDividendsAddress;
     id CCFDividendsAddress;
     id treasuryAddress;
@@ -391,58 +411,22 @@ protected:
         {
             qpi.transfer(qpi.invocator(), input.amount * QUSINO_STAR_PRICE * 100 - qpi.invocationReward());
         }
-        state.epochRevenue += input.amount * QUSINO_STAR_PRICE * 100;
         state.userAssetVolume.get(qpi.invocator(), locals.user);
         locals.user.volumeOfSTAR += input.amount * 100;
-        if (input.amount * 100 <= state.bonusAmount)
-        {
-            state.bonusAmount -= input.amount * 100;
-            locals.user.volumeOfQSC += input.amount;
-            state.QSCCirclatingSupply += input.amount;
-        }
-        state.userAssetVolume.set(qpi.invocator(), locals.user);
-        state.STARCirclatingSupply += input.amount * 100;
-        output.returnCode = QUSINO_SUCCESS;
-        locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_SUCCESS, 0 };
-        LOG_INFO(locals.log);
-    }
-
-    struct earnQSC_locals
-    {
-        STARAndQSC user;
-        QUSINOLogger log;
-    };
-    PUBLIC_PROCEDURE_WITH_LOCALS(earnQSC)
-    {
-        if (input.amount * QUSINO_QSC_SELL_PRICE > (uint32)qpi.invocationReward())
-        {
-            if (qpi.invocationReward() > 0)
-            {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            }
-            output.returnCode = QUSINO_INSUFFICIENT_FUNDS;
-            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_FUNDS, 0 };
-            LOG_INFO(locals.log);
-            return;
-        }
-        if (input.amount * QUSINO_QSC_SELL_PRICE < (uint32)qpi.invocationReward())
-        {
-            qpi.transfer(qpi.invocator(), input.amount * QUSINO_QSC_SELL_PRICE - qpi.invocationReward());
-        }
-        state.epochRevenue += input.amount * (QUSINO_QSC_SELL_PRICE - QUSINO_QSC_BUY_PRICE);
-        state.userAssetVolume.get(qpi.invocator(), locals.user);
         locals.user.volumeOfQSC += input.amount;
         state.userAssetVolume.set(qpi.invocator(), locals.user);
+        state.STARCirclatingSupply += input.amount * 100;
         state.QSCCirclatingSupply += input.amount;
         output.returnCode = QUSINO_SUCCESS;
         locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_SUCCESS, 0 };
         LOG_INFO(locals.log);
     }
-
     struct transferSTAROrQSC_locals
     {
         STARAndQSC dest, sender;
         QUSINOLogger log;
+        sint64 idx;
+        GameInfo game;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(transferSTAROrQSC)
     {
@@ -452,6 +436,19 @@ protected:
             locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_WRONG_ASSET_TYPE, 0 };
             LOG_INFO(locals.log);
             return;
+        }
+        locals.idx = state.gameList.nextElementIndex(NULL_INDEX);
+		while (locals.idx != NULL_INDEX)
+        {
+            locals.game = state.gameList.value(locals.idx);
+            if (locals.game.proposer == qpi.invocator())
+            {
+                output.returnCode = QUSINO_INVALID_GAME_PROPOSER;
+                locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INVALID_GAME_PROPOSER, 0 };
+                LOG_INFO(locals.log);
+                return;
+            }
+            locals.idx = state.gameList.nextElementIndex(locals.idx);
         }
         state.userAssetVolume.get(qpi.invocator(), locals.sender);
         state.userAssetVolume.get(input.dest, locals.dest);
@@ -673,6 +670,50 @@ protected:
         LOG_INFO(locals.log);
     }
 
+    struct redemptionQSCToQubic_locals
+    {
+        STARAndQSC userVolume;
+        QUSINOLogger log;
+        sint64 idx;
+        GameInfo game;
+    };
+    PUBLIC_PROCEDURE_WITH_LOCALS(redemptionQSCToQubic)
+    {
+        locals.idx = state.gameList.nextElementIndex(NULL_INDEX);
+		while (locals.idx != NULL_INDEX)
+        {
+            locals.game = state.gameList.value(locals.idx);
+            if (locals.game.proposer == qpi.invocator())
+            {
+                output.returnCode = QUSINO_INVALID_GAME_PROPOSER;
+                locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INVALID_GAME_PROPOSER, 0 };
+                LOG_INFO(locals.log);
+                return;
+            }
+            locals.idx = state.gameList.nextElementIndex(locals.idx);
+        }
+        state.userAssetVolume.get(qpi.invocator(), locals.userVolume);
+        if (locals.userVolume.volumeOfQSC < input.amount)
+        {
+            output.returnCode = QUSINO_INSUFFICIENT_QSC;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_QSC, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+        if (qpi.transfer(qpi.invocator(), input.amount * QUSINO_QSC_PRICE) < 0)
+        {
+            output.returnCode = QUSINO_INSUFFICIENT_FUNDS;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_FUNDS, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+        locals.userVolume.volumeOfQSC -= input.amount;
+        state.userAssetVolume.set(qpi.invocator(), locals.userVolume);
+        state.QSCCirclatingSupply -= input.amount;
+        output.returnCode = QUSINO_SUCCESS;
+        locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_SUCCESS, 0 };
+        LOG_INFO(locals.log);
+    }
     struct getUserAssetVolume_locals
     {
         STARAndQSC userAsset;
@@ -794,22 +835,35 @@ protected:
 			}
 		}
 	}
-    
+
+    struct getProposerEarnedQSCInfo_locals
+    {
+        earnedQSCInfo earnedQSCInfo;
+    };
+
+    PUBLIC_FUNCTION_WITH_LOCALS(getProposerEarnedQSCInfo)
+    {
+        locals.earnedQSCInfo.proposer = input.proposer;
+        locals.earnedQSCInfo.epoch = input.epoch;
+        state.userEarnedQSCInfo.get(locals.earnedQSCInfo, output.earnedQSC);
+    }
+
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
         REGISTER_USER_FUNCTION(getUserAssetVolume, 1);
         REGISTER_USER_FUNCTION(getFailedGameList, 2);
         REGISTER_USER_FUNCTION(getSCInfo, 3);
         REGISTER_USER_FUNCTION(getActiveGameList, 4);
+        REGISTER_USER_FUNCTION(getProposerEarnedQSCInfo, 5);
 
         REGISTER_USER_PROCEDURE(earnSTAR, 1);
-        REGISTER_USER_PROCEDURE(earnQSC, 2);
-        REGISTER_USER_PROCEDURE(transferSTAROrQSC, 3);
-        REGISTER_USER_PROCEDURE(submitGame, 4);
-        REGISTER_USER_PROCEDURE(voteInGameProposal, 5);
-        REGISTER_USER_PROCEDURE(TransferShareManagementRights, 6);
-        REGISTER_USER_PROCEDURE(depositBonus, 7);
-        REGISTER_USER_PROCEDURE(dailyClaimBonus, 8);
+        REGISTER_USER_PROCEDURE(transferSTAROrQSC, 2);
+        REGISTER_USER_PROCEDURE(submitGame, 3);
+        REGISTER_USER_PROCEDURE(voteInGameProposal, 4);
+        REGISTER_USER_PROCEDURE(TransferShareManagementRights, 5);
+        REGISTER_USER_PROCEDURE(depositBonus, 6);
+        REGISTER_USER_PROCEDURE(dailyClaimBonus, 7);
+        REGISTER_USER_PROCEDURE(redemptionQSCToQubic, 8);
 	}
 
 	INITIALIZE()
@@ -831,6 +885,7 @@ protected:
         sint64 idx;
         AssetPossessionIterator iter;
         Asset QSTAsset;
+        earnedQSCInfo earnedQSCInfo;
     };
 	END_EPOCH_WITH_LOCALS()
 	{
@@ -849,12 +904,23 @@ protected:
                     continue;
                 }
             }
+            // distribute QSC to the proposer
             state.userAssetVolume.get(locals.game.proposer, locals.userVolume);
-            state.epochRevenue += div<uint64>(locals.userVolume.volumeOfQSC * QUSINO_QSC_BUY_PRICE * (1000 - QUSINO_DEVELOPER_FEE) * 1ULL, 1000ULL);
-            state.bonusAmount -= locals.userVolume.volumeOfQSC * QUSINO_QSC_BUY_PRICE;
-            qpi.transfer(locals.game.proposer, locals.userVolume.volumeOfQSC * QUSINO_QSC_BUY_PRICE - div<uint64>(locals.userVolume.volumeOfQSC * QUSINO_QSC_BUY_PRICE * (1000 - QUSINO_DEVELOPER_FEE) * 1ULL, 1000ULL));
+            state.epochRevenue += div<uint64>(locals.userVolume.volumeOfQSC * QUSINO_QSC_PRICE * (1000 - QUSINO_DEVELOPER_FEE) * 1ULL, 1000ULL);
+            qpi.transfer(locals.game.proposer, locals.userVolume.volumeOfQSC * QUSINO_QSC_PRICE - div<uint64>(locals.userVolume.volumeOfQSC * QUSINO_QSC_PRICE * (1000 - QUSINO_DEVELOPER_FEE) * 1ULL, 1000ULL));
+            state.QSCCirclatingSupply -= locals.userVolume.volumeOfQSC;
+
+            // add earned QSC to userEarnedQSCInfo
+            locals.earnedQSCInfo.proposer = locals.game.proposer;
+            locals.earnedQSCInfo.epoch = qpi.epoch();
+            state.userEarnedQSCInfo.set(locals.earnedQSCInfo, locals.userVolume.volumeOfQSC);
+
+            // set userVolume to 0
             locals.userVolume.volumeOfQSC = 0;
             state.userAssetVolume.set(locals.game.proposer, locals.userVolume);
+
+            // remove game from gameList
+            state.gameList.removeByIndex(locals.idx);
             locals.idx = state.gameList.nextElementIndex(locals.idx);
         }
         state.gameList.cleanupIfNeeded();
