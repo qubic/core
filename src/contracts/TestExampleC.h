@@ -240,6 +240,7 @@ public:
 		if (output.oracleQueryId < 0)
 		{
 			// error
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
 		}
 
@@ -270,6 +271,7 @@ public:
 		if (output.oracleSubscriptionId < 0)
 		{
 			// error
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 	}
 
