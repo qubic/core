@@ -7,6 +7,15 @@ struct RANDOM2
 struct RANDOM : public ContractBase
 {
 public:
+	struct StateData
+	{
+		uint64 _earnedAmount;
+		uint64 _distributedAmount;
+		uint64 _burnedAmount;
+
+		uint32 _bitFee; // Amount of qus
+	};
+
 	struct RevealAndCommit_input
 	{
 		bit_4096 revealedBits;
@@ -15,13 +24,6 @@ public:
 	struct RevealAndCommit_output
 	{
 	};
-
-private:
-	uint64 _earnedAmount;
-	uint64 _distributedAmount;
-	uint64 _burnedAmount;
-
-	uint32 _bitFee; // Amount of qus
 
 	PUBLIC_PROCEDURE(RevealAndCommit)
 	{
@@ -35,6 +37,6 @@ private:
 
 	INITIALIZE()
 	{
-		state._bitFee = 1000;
+		state.mut()._bitFee = 1000;
 	}
 };
