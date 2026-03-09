@@ -225,6 +225,15 @@ bool OracleEngine::loadSnapshot(unsigned short epoch, CHAR16* directory)
         queryIdToIndex->set(queries[queryIndex].queryId, queryIndex);
 
     logToConsole(L"Successfully loaded all oracle engine data from snapshot!");
+
+    // init nextSubscriptionIdQueue (not saved to file)
+    nextSubscriptionIdQueue.init(NextSubscriptionCompare{ subscriptions });
+    for (int32_t subscriptionId = 0; subscriptionId < usedSubscriptionSlots; ++subscriptionId)
+    {
+        if (subscriptions[subscriptionId].nextQueryTimestamp.isValid())
+            nextSubscriptionIdQueue.insert(subscriptionId);
+    }
+
     return true;
 }
 
