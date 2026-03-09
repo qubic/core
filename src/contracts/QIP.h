@@ -20,19 +20,45 @@ enum QIPLogInfo {
 struct QIPLogger
 {
     uint32 _contractIndex;
-    uint32 _type; 
+    uint32 _type;
     id dst;
     sint64 amt;
 	sint8 _terminator;
 };
 
-struct QIP2 
+struct QIP2
 {
 };
 
 struct QIP : public ContractBase
 {
 public:
+    struct ICOInfo
+    {
+        id creatorOfICO;
+        id issuer;
+        id address1, address2, address3, address4, address5, address6, address7, address8, address9, address10;
+        uint64 assetName;
+        uint64 price1;
+        uint64 price2;
+        uint64 price3;
+        uint64 saleAmountForPhase1;
+        uint64 saleAmountForPhase2;
+        uint64 saleAmountForPhase3;
+        uint64 remainingAmountForPhase1;
+        uint64 remainingAmountForPhase2;
+        uint64 remainingAmountForPhase3;
+        uint32 percent1, percent2, percent3, percent4, percent5, percent6, percent7, percent8, percent9, percent10;
+        uint32 startEpoch;
+    };
+
+    struct StateData
+    {
+        Array<ICOInfo, QIP_MAX_NUMBER_OF_ICO> icos;
+        uint32 numberOfICO;
+        uint32 transferRightsFee;
+    };
+
     struct createICO_input
     {
         id issuer;
@@ -96,32 +122,6 @@ public:
         uint32 startEpoch;
     };
 
-protected:
-
-    struct ICOInfo
-    {
-        id creatorOfICO;
-        id issuer;
-        id address1, address2, address3, address4, address5, address6, address7, address8, address9, address10;
-		uint64 assetName;
-        uint64 price1;
-        uint64 price2;
-        uint64 price3;
-        uint64 saleAmountForPhase1;
-        uint64 saleAmountForPhase2;
-        uint64 saleAmountForPhase3;
-        uint64 remainingAmountForPhase1;
-        uint64 remainingAmountForPhase2;
-        uint64 remainingAmountForPhase3;
-        uint32 percent1, percent2, percent3, percent4, percent5, percent6, percent7, percent8, percent9, percent10;
-        uint32 startEpoch;
-    };
-    Array<ICOInfo, QIP_MAX_NUMBER_OF_ICO> icos;
-
-    uint32 numberOfICO;
-	uint32 transferRightsFee;
-public:
-
     struct getICOInfo_locals
     {
         ICOInfo ico;
@@ -129,7 +129,7 @@ public:
 
     PUBLIC_FUNCTION_WITH_LOCALS(getICOInfo)
     {
-        locals.ico = state.icos.get(input.indexOfICO);
+        locals.ico = state.get().icos.get(input.indexOfICO);
         output.creatorOfICO = locals.ico.creatorOfICO;
         output.issuer = locals.ico.issuer;
         output.address1 = locals.ico.address1;
@@ -223,7 +223,7 @@ public:
             output.returnCode = QIPLogInfo::QIP_invalidTransfer;
             return;
         }
-        if (state.numberOfICO >= QIP_MAX_NUMBER_OF_ICO)
+        if (state.get().numberOfICO >= QIP_MAX_NUMBER_OF_ICO)
         {
             locals.log._contractIndex = SELF_INDEX;
             locals.log._type = QIPLogInfo::QIP_overflowICO;
@@ -266,8 +266,8 @@ public:
         locals.newICO.percent9 = input.percent9;
         locals.newICO.percent10 = input.percent10;
         locals.newICO.startEpoch = input.startEpoch;
-        state.icos.set(state.numberOfICO, locals.newICO);
-        state.numberOfICO++;
+        state.mut().icos.set(state.get().numberOfICO, locals.newICO);
+        state.mut().numberOfICO++;
         output.returnCode = QIPLogInfo::QIP_success;
         locals.log._contractIndex = SELF_INDEX;
         locals.log._type = QIPLogInfo::QIP_success;
@@ -286,7 +286,7 @@ public:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(buyToken)
     {
-        if (input.indexOfICO >= state.numberOfICO)
+        if (input.indexOfICO >= state.get().numberOfICO)
         {
             if (qpi.invocationReward() > 0)
             {
@@ -300,7 +300,7 @@ public:
             output.returnCode = QIPLogInfo::QIP_ICONotFound;
             return;
         }
-        locals.ico = state.icos.get(input.indexOfICO);
+        locals.ico = state.get().icos.get(input.indexOfICO);
         if (qpi.epoch() == locals.ico.startEpoch)
         {
             if (input.amount <= locals.ico.remainingAmountForPhase1)
@@ -425,7 +425,7 @@ public:
         {
             locals.ico.remainingAmountForPhase3 -= input.amount;
         }
-        state.icos.set(input.indexOfICO, locals.ico);
+        state.mut().icos.set(input.indexOfICO, locals.ico);
         output.returnCode = QIPLogInfo::QIP_success;
         locals.log._contractIndex = SELF_INDEX;
         locals.log._type = QIPLogInfo::QIP_success;
@@ -442,15 +442,15 @@ public:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
 	{
-		if (qpi.invocationReward() < state.transferRightsFee)
+		if (qpi.invocationReward() < state.get().transferRightsFee)
 		{
 			return ;
 		}
 
-        for (locals.i = 0 ; locals.i < state.numberOfICO; locals.i++)
+        for (locals.i = 0 ; locals.i < state.get().numberOfICO; locals.i++)
         {
-            locals.ico = state.icos.get(locals.i);
-            if (locals.ico.issuer == input.asset.issuer && locals.ico.assetName == input.asset.assetName) 
+            locals.ico = state.get().icos.get(locals.i);
+            if (locals.ico.issuer == input.asset.issuer && locals.ico.assetName == input.asset.assetName)
             {
                 return ;
             }
@@ -468,7 +468,7 @@ public:
 		else
 		{
 			if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
-				input.newManagingContractIndex, input.newManagingContractIndex, state.transferRightsFee) < 0)
+				input.newManagingContractIndex, input.newManagingContractIndex, state.get().transferRightsFee) < 0)
 			{
 				// error
 				output.transferredNumberOfShares = 0;
@@ -481,9 +481,9 @@ public:
 			{
 				// success
 				output.transferredNumberOfShares = input.numberOfShares;
-				if (qpi.invocationReward() > state.transferRightsFee)
+				if (qpi.invocationReward() > state.get().transferRightsFee)
 				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward() -  state.transferRightsFee);
+					qpi.transfer(qpi.invocator(), qpi.invocationReward() -  state.get().transferRightsFee);
 				}
 			}
 		}
@@ -500,7 +500,7 @@ public:
 
     INITIALIZE()
 	{
-        state.transferRightsFee = 100;
+        state.mut().transferRightsFee = 100;
 	}
 
     struct BEGIN_EPOCH_locals
@@ -529,29 +529,29 @@ public:
 
 	END_EPOCH_WITH_LOCALS()
 	{
-		for(locals.idx = 0; locals.idx < (sint32)state.numberOfICO; locals.idx++)
+		for(locals.idx = 0; locals.idx < (sint32)state.get().numberOfICO; locals.idx++)
 		{
-            locals.ico = state.icos.get(locals.idx);
+            locals.ico = state.get().icos.get(locals.idx);
             if (locals.ico.startEpoch == qpi.epoch() && locals.ico.remainingAmountForPhase1 > 0)
             {
-                locals.ico.remainingAmountForPhase2 += locals.ico.remainingAmountForPhase1; 
+                locals.ico.remainingAmountForPhase2 += locals.ico.remainingAmountForPhase1;
                 locals.ico.remainingAmountForPhase1 = 0;
-                state.icos.set(locals.idx, locals.ico);
+                state.mut().icos.set(locals.idx, locals.ico);
             }
             if (locals.ico.startEpoch + 1 == qpi.epoch() && locals.ico.remainingAmountForPhase2 > 0)
             {
                 locals.ico.remainingAmountForPhase3 += locals.ico.remainingAmountForPhase2;
                 locals.ico.remainingAmountForPhase2 = 0;
-                state.icos.set(locals.idx, locals.ico);
+                state.mut().icos.set(locals.idx, locals.ico);
             }
             if (locals.ico.startEpoch + 2 == qpi.epoch())
             {
-                if (locals.ico.remainingAmountForPhase3 > 0) 
+                if (locals.ico.remainingAmountForPhase3 > 0)
                 {
                     qpi.transferShareOwnershipAndPossession(locals.ico.assetName, locals.ico.issuer, SELF, SELF, locals.ico.remainingAmountForPhase3, locals.ico.creatorOfICO);
                 }
-                state.icos.set(locals.idx, state.icos.get(state.numberOfICO - 1));
-                state.numberOfICO--;
+                state.mut().icos.set(locals.idx, state.get().icos.get(state.get().numberOfICO - 1));
+                state.mut().numberOfICO--;
                 locals.idx--;
             }
 		}

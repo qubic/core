@@ -8,7 +8,7 @@ static constexpr uint64 QX_ISSUE_ASSET_FEE = 1000000000ull;
 
 std::string assetNameFromInt64(uint64 assetName);
 
-class QxChecker : public QX
+class QxChecker : public QX, public QX::StateData
 {
 public:
     struct Order
@@ -33,7 +33,7 @@ public:
         std::map<id, unsigned int> entityCounter;
         for (uint64 i = 0; i < _entityOrders.capacity(); ++i)
         {
-            QX::_EntityOrder order = _entityOrders.element(i);
+            QX::EntityOrder order = _entityOrders.element(i);
             if (!order.numberOfShares)
                 continue;
             Order o;
@@ -55,7 +55,7 @@ public:
         std::set<Order> assetOrders;
         for (uint64 i = 0; i < _assetOrders.capacity(); ++i)
         {
-            QX::_AssetOrder order = _assetOrders.element(i);
+            QX::AssetOrder order = _assetOrders.element(i);
             if (!order.numberOfShares)
                 continue;
             Order o;
