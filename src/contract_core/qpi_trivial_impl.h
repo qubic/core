@@ -47,6 +47,13 @@ namespace QPI
 		setMem(&dst, sizeof(dst), value);
 	}
 
+	// Deleted overloads: prevent bulk memory ops from bypassing ContractState dirty tracking.
+	// Use state.mut() to get a mutable reference first, e.g. setMemory(state.mut().field, 0).
+	template <typename T, unsigned int I> void setMemory(ContractState<T, I>&, uint8) = delete;
+	template <typename T1, unsigned int I, typename T2> void copyMemory(ContractState<T1, I>&, const T2&) = delete;
+	template <typename T1, unsigned int I, typename T2> void copyToBuffer(ContractState<T1, I>&, const T2&, bool) = delete;
+	template <typename T1, unsigned int I, typename T2> void copyFromBuffer(ContractState<T1, I>&, const T2&) = delete;
+
 	// Check if array is sorted in given range (duplicates allowed). Returns false if range is invalid.
 	template <typename T, uint64 L>
 	bool isArraySorted(const Array<T, L>& Array, uint64 beginIdx, uint64 endIdx)

@@ -70,9 +70,16 @@ namespace
 } // namespace
 
 // Test helper class exposing internal state
-class PULSEChecker : public PULSE
+class PULSEChecker : public PULSE, public PULSE::StateData
 {
 public:
+	const QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>& asState() const {
+		return *reinterpret_cast<const QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>*>(static_cast<const StateData*>(this));
+	}
+	QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>& asMutState() {
+		return *reinterpret_cast<QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>*>(static_cast<StateData*>(this));
+	}
+
 	uint64 getTicketCounter() const { return ticketCounter; }
 	uint64 getTicketPriceInternal() const { return ticketPrice; }
 	uint64 getQHeartHoldLimitInternal() const { return qheartHoldLimit; }
@@ -103,8 +110,8 @@ public:
 		tickets.set(index, ticket);
 	}
 
-	void forceSelling(bool enable) { enableBuyTicket(*this, enable); }
-	bool isSelling() const { return isSellingOpen(*this); }
+	void forceSelling(bool enable) { enableBuyTicket(asMutState(), enable); }
+	bool isSelling() const { return isSellingOpen(asState()); }
 
 	ValidateDigits_output callValidateDigits(const QPI::QpiContextFunctionCall& qpi, const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED>& digits) const
 	{
@@ -112,7 +119,7 @@ public:
 		ValidateDigits_output output{};
 		ValidateDigits_locals locals{};
 		input.digits = digits;
-		ValidateDigits(qpi, *this, input, output, locals);
+		ValidateDigits(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -122,7 +129,7 @@ public:
 		GetRandomDigits_output output{};
 		GetRandomDigits_locals locals{};
 		input.seed = seed;
-		GetRandomDigits(qpi, *this, input, output, locals);
+		GetRandomDigits(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -132,7 +139,7 @@ public:
 		PrepareRandomTickets_output output{};
 		PrepareRandomTickets_locals locals{};
 		input.count = count;
-		PrepareRandomTickets(qpi, *this, input, output, locals);
+		PrepareRandomTickets(qpi, asMutState(), input, output, locals);
 		return output;
 	}
 
@@ -143,7 +150,7 @@ public:
 		ChargeTicketsFromPlayer_locals locals{};
 		input.player = player;
 		input.count = count;
-		ChargeTicketsFromPlayer(qpi, *this, input, output, locals);
+		ChargeTicketsFromPlayer(qpi, asMutState(), input, output, locals);
 		return output;
 	}
 
@@ -154,7 +161,7 @@ public:
 		AllocateRandomTickets_locals locals{};
 		input.player = player;
 		input.count = count;
-		AllocateRandomTickets(qpi, *this, input, output, locals);
+		AllocateRandomTickets(qpi, asMutState(), input, output, locals);
 		return output;
 	}
 
@@ -163,7 +170,7 @@ public:
 		ProcessAutoTickets_input input{};
 		ProcessAutoTickets_output output{};
 		ProcessAutoTickets_locals locals{};
-		ProcessAutoTickets(qpi, *this, input, output, locals);
+		ProcessAutoTickets(qpi, asMutState(), input, output, locals);
 	}
 
 	GetAutoParticipation_output callGetAutoParticipation(const QPI::QpiContextFunctionCall& qpi) const
@@ -171,7 +178,7 @@ public:
 		GetAutoParticipation_input input{};
 		GetAutoParticipation_output output{};
 		GetAutoParticipation_locals locals{};
-		GetAutoParticipation(qpi, *this, input, output, locals);
+		GetAutoParticipation(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -184,14 +191,14 @@ public:
 		autoParticipants.set(player, entry);
 	}
 
-	uint64 callGetLeftAlignedReward(uint8 matches) const { return getLeftAlignedReward(*this, matches); }
-	uint64 callGetAnyPositionReward(uint8 matches) const { return getAnyPositionReward(*this, matches); }
+	uint64 callGetLeftAlignedReward(uint8 matches) const { return getLeftAlignedReward(asState(), matches); }
+	uint64 callGetAnyPositionReward(uint8 matches) const { return getAnyPositionReward(asState(), matches); }
 	uint64 callComputePrize(const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winning, const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED>& digits)
 	{
 		Ticket ticket{};
 		ticket.digits = digits;
 		ComputePrize_locals locals{};
-		return computePrize(*this, ticket, winning, locals);
+		return computePrize(asMutState(), ticket, winning, locals);
 	}
 };
 
