@@ -62,9 +62,10 @@ struct RequestIssuedAssets
 {
     m256i publicKey;
 
-    enum {
-        type = 36,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_ISSUED_ASSETS;
+    }
 };
 
 static_assert(sizeof(RequestIssuedAssets) == 32, "Something is wrong with the struct size.");
@@ -77,9 +78,10 @@ struct RespondIssuedAssets
     unsigned int universeIndex;
     m256i siblings[ASSETS_DEPTH];
 
-    enum {
-        type = 37,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::RESPOND_ISSUED_ASSETS;
+    }
 };
 
 
@@ -87,9 +89,10 @@ struct RequestOwnedAssets
 {
     m256i publicKey;
 
-    enum {
-        type = 38,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_OWNED_ASSETS;
+    }
 };
 
 static_assert(sizeof(RequestOwnedAssets) == 32, "Something is wrong with the struct size.");
@@ -103,9 +106,10 @@ struct RespondOwnedAssets
     unsigned int universeIndex;
     m256i siblings[ASSETS_DEPTH];
 
-    enum {
-        type = 39,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::RESPOND_OWNED_ASSETS;
+    }
 };
 
 
@@ -113,9 +117,10 @@ struct RequestPossessedAssets
 {
     m256i publicKey;
 
-    enum {
-        type = 40,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_POSSESSED_ASSETS;
+    }
 };
 
 static_assert(sizeof(RequestPossessedAssets) == 32, "Something is wrong with the struct size.");
@@ -130,9 +135,10 @@ struct RespondPossessedAssets
     unsigned int universeIndex;
     m256i siblings[ASSETS_DEPTH];
 
-    enum {
-        type = 41,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::RESPOND_POSSESSED_ASSETS;
+    }
 };
 
 // Options to request assets:
@@ -142,9 +148,10 @@ struct RespondPossessedAssets
 // - by universeIdx (set issuer and asset name to 0)
 union RequestAssets
 {
-    enum {
-        type = 52,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_ASSETS;
+    }
 
     // type of asset request
     static constexpr unsigned short requestIssuanceRecords = 0;
@@ -200,9 +207,10 @@ struct RespondAssets
     unsigned int tick;
     unsigned int universeIndex;
 
-    enum {
-        type = 53,
-    };
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::RESPOND_ASSETS;
+    }
 };
 
 static_assert(sizeof(RespondAssets) == 56, "Something is wrong with the struct size.");

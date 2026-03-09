@@ -69,6 +69,21 @@ struct QVAULT2
  */
 struct QVAULT : public ContractBase
 {
+    struct StateData
+    {
+        id QCAP_ISSUER;
+        id authAddress1, authAddress2, authAddress3, newAuthAddress1, newAuthAddress2, newAuthAddress3;
+        id reinvestingAddress, newReinvestingAddress1, newReinvestingAddress2, newReinvestingAddress3;
+        id adminAddress, newAdminAddress1, newAdminAddress2, newAdminAddress3;
+        id bannedAddress1, bannedAddress2, bannedAddress3;
+        id unbannedAddress1, unbannedAddress2, unbannedAddress3;
+        Array<id, QVAULT_MAX_NUMBER_OF_BANNED_ADDRESSES> bannedAddress;
+        uint32 numberOfBannedAddress;
+        uint32 shareholderDividend, QCAPHolderPermille, reinvestingPermille, devPermille, burnPermille;
+        uint32 newQCAPHolderPermille1, newReinvestingPermille1, newDevPermille1;
+        uint32 newQCAPHolderPermille2, newReinvestingPermille2, newDevPermille2;
+        uint32 newQCAPHolderPermille3, newReinvestingPermille3, newDevPermille3;
+    };
 
 public:
 
@@ -3191,7 +3206,7 @@ public:
         qpi.burn(locals.amountOfBurn);
 
         locals.QCAPId.assetName = QVAULT_QCAP_ASSETNAME;
-        locals.QCAPId.issuer = state.QCAP_ISSUER;
+        locals.QCAPId.issuer = state.get().QCAP_ISSUER;
 
         locals.circulatedSupply = qpi.numberOfShares(locals.QCAPId) - qpi.numberOfShares(locals.QCAPId, AssetOwnershipSelect::byOwner(SELF), AssetPossessionSelect::byPossessor(SELF)) + state.totalStakedQcapAmount;
 

@@ -18,7 +18,7 @@ struct Peer;
 
 #define LOG_CONTRACTS (LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES)
 
-#if LOG_SPECTRUM | LOG_UNIVERSE | LOG_CONTRACTS | LOG_CUSTOM_MESSAGES
+#if LOG_SPECTRUM | LOG_UNIVERSE | LOG_CONTRACTS | LOG_CUSTOM_MESSAGES | LOG_ORACLES
 #define ENABLED_LOGGING 1
 #else
 #define ENABLED_LOGGING 0
@@ -56,8 +56,14 @@ struct Peer;
 #define SPECTRUM_STATS 10
 #define ASSET_OWNERSHIP_MANAGING_CONTRACT_CHANGE 11
 #define ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE 12
+#define CONTRACT_RESERVE_DEDUCTION 13
+#define ORACLE_QUERY_STATUS_CHANGE 14
 #define CUSTOM_MESSAGE 255
 
+#define CUSTOM_MESSAGE_OP_START_DISTRIBUTE_DIVIDENDS 6217575821008262227ULL // STA_DDIV
+#define CUSTOM_MESSAGE_OP_END_DISTRIBUTE_DIVIDENDS 6217575821008457285ULL //END_DDIV
+#define CUSTOM_MESSAGE_OP_START_EPOCH 4850183582582395987ULL // STA_EPOC
+#define CUSTOM_MESSAGE_OP_END_EPOCH 4850183582582591045ULL //END_EPOC
 /*
 * STRUCTS FOR LOGGING
 */
@@ -73,6 +79,7 @@ struct AssetIssuance
 {
     m256i issuerPublicKey;
     long long numberOfShares;
+    long long managingContractIndex;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
@@ -86,6 +93,7 @@ struct AssetOwnershipChange
     m256i destinationPublicKey;
     m256i issuerPublicKey;
     long long numberOfShares;
+    long long managingContractIndex;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
@@ -99,6 +107,7 @@ struct AssetPossessionChange
     m256i destinationPublicKey;
     m256i issuerPublicKey;
     long long numberOfShares;
+    long long managingContractIndex;
     char name[7];
     char numberOfDecimalPlaces;
     char unitOfMeasurement[7];
@@ -184,6 +193,7 @@ struct Burning
 {
     m256i sourcePublicKey;
     long long amount;
+    unsigned int contractIndexBurnedFor;
 
     char _terminator; // Only data before "_terminator" are logged
 };
@@ -221,17 +231,32 @@ struct SpectrumStats
     unsigned long long dustThresholdBurnHalf;
     unsigned int numberOfEntities;
     unsigned int entityCategoryPopulations[48];
+    unsigned int _padding;
 };
 
+struct ContractReserveDeduction
+{
+    unsigned long long deductedAmount;
+    long long remainingAmount;
+    unsigned int contractIndex;
+    unsigned int _padding;
+};
+
+struct OracleQueryStatusChange
+{
+    m256i queryingEntity;
+    long long queryId;
+    unsigned int interfaceIndex;
+    unsigned char type;
+    unsigned char status;
+
+    char _terminator; // Only data before "_terminator" are logged
+};
 
 /*
  * LOGGING IMPLEMENTATION
+ * For definition of virtual memory sizes, see private_settings.h
  */
-#define LOG_BUFFER_PAGE_SIZE 300000000ULL
-#define PMAP_LOG_PAGE_SIZE 30000000ULL
-#define IMAP_LOG_PAGE_SIZE 10000ULL
-#define VM_NUM_CACHE_PAGE 8
- // Virtual memory with 100'000'000 items per page and 4 pages on cache
 #ifdef NO_UEFI
 #define TEXT_LOGS_AS_NUMBER 0
 #define TEXT_PMAP_AS_NUMBER 0
@@ -279,6 +304,7 @@ private:
     inline static unsigned int lastUpdatedTick; // tick number that the system has generated all log
     inline static unsigned int currentTxId;
     inline static unsigned int currentTick;
+    inline static bool isPausing;
 
     static unsigned long long getLogId(const char* ptr)
     {
@@ -324,6 +350,7 @@ private:
     static void logMessage(unsigned int messageSize, unsigned char messageType, const void* message)
     {
 #if ENABLED_LOGGING
+        if (isPausing) return;
         char buffer[LOG_HEADER_SIZE];
         tx.addLogId();
         logBuf.set(logId, logBufferTail, LOG_HEADER_SIZE + messageSize);
@@ -360,6 +387,7 @@ public:
     static constexpr unsigned int SC_BEGIN_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 2;
     static constexpr unsigned int SC_END_TICK_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 3;
     static constexpr unsigned int SC_END_EPOCH_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 4;
+    static constexpr unsigned int SC_NOTIFICATION_TX = NUMBER_OF_TRANSACTIONS_PER_TICK + 5;
 
 #if ENABLED_LOGGING
     // Struct to map log buffer from log id    
@@ -573,15 +601,18 @@ public:
         m256i zeroHash = m256i::zero();
         XKCP::KangarooTwelve_Update(&k12, zeroHash.m256i_u8, 32); // init tick, feed zero hash
 #endif
+        isPausing = false;
 #endif
     }
 
+    // updateTick is called right after _tick is processed
     static void updateTick(unsigned int _tick)
     {
 #if ENABLED_LOGGING
         ASSERT((_tick == lastUpdatedTick + 1) || (_tick == tickBegin));
+        ASSERT(_tick >= tickBegin);
 #if LOG_STATE_DIGEST
-        unsigned long long index = lastUpdatedTick - tickBegin;
+        unsigned long long index = _tick - tickBegin;
         XKCP::KangarooTwelve_Final(&k12, digests[index].m256i_u8, (const unsigned char*)"", 0);
         XKCP::KangarooTwelve_Initialize(&k12, 128, 32); // init new k12
         XKCP::KangarooTwelve_Update(&k12, digests[index].m256i_u8, 32); // feed the prev hash back to this
@@ -589,6 +620,7 @@ public:
         tx.commitAndCleanCurrentTxToLogId();
         ASSERT(mapTxToLogId.size() == (_tick - tickBegin + 1));
         lastUpdatedTick = _tick;
+        isPausing = false;
 #endif
     }
     
@@ -599,9 +631,12 @@ public:
     bool saveCurrentLoggingStates(CHAR16* dir)
     {
 #if ENABLED_LOGGING
-        unsigned char* buffer = (unsigned char*)__scratchpad();        
-        static_assert(reorgBufferSize >= LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
-            + sizeof(digests) + 600, "scratchpad is too small");
+        constexpr auto bufferSize = LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
+            + sizeof(digests) + 600;
+        static_assert(defaultCommonBuffersSize >= bufferSize, "commonBuffer size is too small");
+        __ScopedScratchpad scratchpad(bufferSize, /*initZero=*/false);
+        ASSERT(scratchpad.ptr);
+        unsigned char* buffer = (unsigned char*)scratchpad.ptr;
         unsigned long long writeSz = 0;
         // copy currentPage of log buffer ~ 100MiB
         unsigned long long sz = logBuffer.dumpVMState(buffer);
@@ -636,7 +671,7 @@ public:
         *((unsigned int*)buffer) = currentTxId; buffer += 4;
         *((unsigned int*)buffer) = currentTick; buffer += 4;
         writeSz += 8 + 8 + 4 + 4 + 4 + 4;
-        buffer = (unsigned char*)__scratchpad(); // reset back to original pos
+        buffer = (unsigned char*)scratchpad.ptr; // reset back to original pos
         sz = save(L"logEventState.db", writeSz, buffer, dir);
         if (sz != writeSz)
         {
@@ -651,9 +686,12 @@ public:
     void loadLastLoggingStates(CHAR16* dir)
     {
 #if ENABLED_LOGGING
-        unsigned char* buffer = (unsigned char*)__scratchpad();
-        static_assert(reorgBufferSize >= LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
-            + sizeof(digests) + 600, "scratchpad is too small");
+        constexpr auto bufferSize = LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
+            + sizeof(digests) + 600;
+        static_assert(defaultCommonBuffersSize >= bufferSize, "commonBuffer size is too small");
+        __ScopedScratchpad scratchpad(bufferSize, /*initZero=*/false);
+        unsigned char* buffer = (unsigned char*)scratchpad.ptr;
+        ASSERT(scratchpad.ptr);
         CHAR16 fileName[] = L"logEventState.db";
         const long long fileSz = getFileSize(fileName, dir);
         if (fileSz == -1)
@@ -837,6 +875,20 @@ public:
 #endif
     }
 
+    void logContractReserveDeduction(const ContractReserveDeduction& message)
+    {
+#if LOG_SPECTRUM
+        logMessage(sizeof(ContractReserveDeduction), CONTRACT_RESERVE_DEDUCTION, &message);
+#endif
+    }
+
+    void logOracleQueryStatusChange(const OracleQueryStatusChange& message)
+    {
+#if LOG_ORACLES
+        logMessage(offsetof(OracleQueryStatusChange, _terminator), ORACLE_QUERY_STATUS_CHANGE, &message);
+#endif
+    }
+
     template <typename T>
     void logCustomMessage(T message)
     {
@@ -845,6 +897,16 @@ public:
 #if LOG_CUSTOM_MESSAGES
         logMessage(offsetof(T, _terminator), CUSTOM_MESSAGE, &message);
 #endif
+    }
+
+    void pause()
+    {
+        isPausing = true;
+    }
+
+    void resume()
+    {
+        isPausing = false;
     }
 
     // get logging content from log ID
@@ -885,4 +947,14 @@ template <typename T>
 static void __logContractWarningMessage(unsigned int size, T& msg)
 {
     logger.__logContractWarningMessage(size, msg);
+}
+
+static void __pauseLogMessage()
+{
+    logger.pause();
+}
+
+static void __resumeLogMessage()
+{
+    logger.resume();
 }

@@ -5,8 +5,6 @@
 
 #include "network_messages/tick.h"
 
-#include "ticking/tick_storage.h"
-
 #include "private_settings.h"
 
 GLOBAL_VAR_DECL Tick etalonTick;

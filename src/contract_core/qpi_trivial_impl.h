@@ -4,6 +4,7 @@
 #pragma once
 
 #include "../contracts/qpi.h"
+#include "../contracts/math_lib.h"
 #include "../platform/memory.h"
 #include "../platform/time.h"
 
@@ -20,11 +21,38 @@ namespace QPI
 		copyMem(&dst, &src, sizeof(dst));
 	}
 
+	template <typename T1, typename T2>
+	inline void copyToBuffer(T1& dst, const T2& src, bool setTailToZero)
+	{
+		static_assert(sizeof(dst) >= sizeof(src), "Destination buffer must be at least the size of the source object.");
+		copyMem(&dst, &src, sizeof(src));
+		if (sizeof(dst) > sizeof(src) && setTailToZero)
+		{
+			uint8* tailPtr = reinterpret_cast<uint8*>(&dst) + sizeof(src);
+			const uint64 tailSize = sizeof(dst) - sizeof(src);
+			setMem(tailPtr, tailSize, 0);
+		}
+	}
+
+	template <typename T1, typename T2>
+	inline void copyFromBuffer(T1& dst, const T2& src)
+	{
+		static_assert(sizeof(dst) <= sizeof(src), "Destination object must be at most the size of the source buffer.");
+		copyMem(&dst, &src, sizeof(dst));
+	}
+
 	template <typename T>
 	inline void setMemory(T& dst, uint8 value)
 	{
 		setMem(&dst, sizeof(dst), value);
 	}
+
+	// Deleted overloads: prevent bulk memory ops from bypassing ContractState dirty tracking.
+	// Use state.mut() to get a mutable reference first, e.g. setMemory(state.mut().field, 0).
+	template <typename T, unsigned int I> void setMemory(ContractState<T, I>&, uint8) = delete;
+	template <typename T1, unsigned int I, typename T2> void copyMemory(ContractState<T1, I>&, const T2&) = delete;
+	template <typename T1, unsigned int I, typename T2> void copyToBuffer(ContractState<T1, I>&, const T2&, bool) = delete;
+	template <typename T1, unsigned int I, typename T2> void copyFromBuffer(ContractState<T1, I>&, const T2&) = delete;
 
 	// Check if array is sorted in given range (duplicates allowed). Returns false if range is invalid.
 	template <typename T, uint64 L>
@@ -87,4 +115,50 @@ m256i QPI::QpiContextFunctionCall::K12(const T& data) const
 	KangarooTwelve(&data, sizeof(data), &digest, sizeof(digest));
 
 	return digest;
+}
+
+//////////
+// safety multiplying a and b and then clamp
+
+inline static QPI::sint64 QPI::smul(QPI::sint64 a, QPI::sint64 b)
+{
+	return math_lib::smul(a, b);
+}
+
+inline static QPI::uint64 QPI::smul(QPI::uint64 a, QPI::uint64 b)
+{
+	return math_lib::smul(a, b);
+}
+
+inline static QPI::sint32 QPI::smul(QPI::sint32 a, QPI::sint32 b)
+{
+	return math_lib::smul(a, b);
+}
+
+inline static QPI::uint32 QPI::smul(QPI::uint32 a, QPI::uint32 b)
+{
+	return math_lib::smul(a, b);
+}
+
+//////////
+// safety adding a and b and then clamp
+
+inline static QPI::sint64 QPI::sadd(QPI::sint64 a, QPI::sint64 b)
+{
+	return math_lib::sadd(a, b);
+}
+
+inline static QPI::uint64 QPI::sadd(QPI::uint64 a, QPI::uint64 b)
+{
+	return math_lib::sadd(a, b);
+}
+
+inline static QPI::sint32 QPI::sadd(QPI::sint32 a, QPI::sint32 b)
+{
+	return math_lib::sadd(a, b);
+}
+
+inline static QPI::uint32 QPI::sadd(QPI::uint32 a, QPI::uint32 b)
+{
+	return math_lib::sadd(a, b);
 }

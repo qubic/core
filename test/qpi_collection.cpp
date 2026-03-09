@@ -2,20 +2,9 @@
 
 #include "gtest/gtest.h"
 
-static void* __scratchpadBuffer = nullptr;
-static void* __scratchpad()
-{
-    return __scratchpadBuffer;
-}
-namespace QPI
-{
-    struct QpiContextProcedureCall;
-    struct QpiContextFunctionCall;
-}
-typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
-typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
-
+#include "../src/contract_core/pre_qpi_def.h"
 #include "../src/contracts/qpi.h"
+#include "../src/common_buffers.h"
 #include "../src/contract_core/qpi_collection_impl.h"
 #include "../src/contract_core/qpi_trivial_impl.h"
 
@@ -691,6 +680,9 @@ void testCollectionOnePovMultiElements(int prioAmpFactor, int prioFreqDiv)
     QPI::Collection<int, capacity> coll;
     coll.reset();
 
+    // scratchpad may be needed if Collection::_rebuild() is called
+    EXPECT_TRUE(commonBuffers.init(1, sizeof(coll)));
+
     // check that behavior of collection and reference implementation matches
     CollectionReferenceImpl<int> collReference;
 
@@ -899,6 +891,9 @@ void testCollectionOnePovMultiElements(int prioAmpFactor, int prioFreqDiv)
     EXPECT_FALSE(isCompletelySame(resetColl, coll));
     coll.cleanup();
     EXPECT_TRUE(isCompletelySame(resetColl, coll));
+
+    // cleanup
+    commonBuffers.deinit();
 }
 
 TEST(TestCoreQPI, CollectionOnePovMultiElements)
@@ -1278,6 +1273,9 @@ TEST(TestCoreQPI, CollectionSubCollectionsRandom)
     QPI::Collection<size_t, 1024> coll;
     coll.reset();
 
+    // scratchpad may be needed if Collection::_rebuild() is called
+    EXPECT_TRUE(commonBuffers.init(1, sizeof(coll)));
+
     const int seed = 246357;
     std::mt19937_64 gen64(seed);
 
@@ -1366,6 +1364,8 @@ TEST(TestCoreQPI, CollectionSubCollectionsRandom)
             }
         }
     }
+
+    commonBuffers.deinit();
 }
 
 TEST(TestCoreQPI, CollectionReplaceElements)
@@ -1522,7 +1522,7 @@ void testCollectionPseudoRandom(int povs, int seed, bool povCollisions, int clea
 
 TEST(TestCoreQPI, CollectionInsertRemoveCleanupRandom)
 {
-    __scratchpadBuffer = new char[10 * 1024 * 1024];
+    commonBuffers.init(1, 10 * 1024 * 1024);
     constexpr unsigned int numCleanups = 30;
     for (int i = 0; i < 10; ++i)
     {
@@ -1540,21 +1540,19 @@ TEST(TestCoreQPI, CollectionInsertRemoveCleanupRandom)
         testCollectionPseudoRandom<16>(10, 12 + i, povCollisions, numCleanups, 55, 45);
         testCollectionPseudoRandom<4>(4, 42 + i, povCollisions, numCleanups, 52, 48);
     }
-    delete[] __scratchpadBuffer;
-    __scratchpadBuffer = nullptr;
+    commonBuffers.deinit();
 }
 
 TEST(TestCoreQPI, CollectionCleanupWithPovCollisions)
 {
     // Shows bugs in cleanup() that occur in case of massive pov hash map collisions and in case of capacity < 32
-    __scratchpadBuffer = new char[10 * 1024 * 1024];
+    commonBuffers.init(1, 10 * 1024 * 1024);
     bool cleanupAfterEachRemove = true;
     testCollectionMultiPovOneElement<16>(cleanupAfterEachRemove);
     testCollectionMultiPovOneElement<32>(cleanupAfterEachRemove);
     testCollectionMultiPovOneElement<64>(cleanupAfterEachRemove);
     testCollectionMultiPovOneElement<128>(cleanupAfterEachRemove);
-    delete[] __scratchpadBuffer;
-    __scratchpadBuffer = nullptr;
+    commonBuffers.deinit();
 }
 
 
@@ -1673,7 +1671,7 @@ QPI::uint64 testCollectionPerformance(
 TEST(TestCoreQPI, CollectionPerformance)
 {
 
-    __scratchpadBuffer = new char[16 * 1024 * 1024];
+    commonBuffers.init(1, 16 * 1024 * 1024);
 
     std::vector<QPI::uint64> durations;
     std::vector<std::string> descriptions;
@@ -1702,8 +1700,7 @@ TEST(TestCoreQPI, CollectionPerformance)
     durations.push_back(testCollectionPerformance<512>(16, 333));
     descriptions.push_back("[CollectionPerformance] Collection<512>(16, 333)");
 
-    delete[] __scratchpadBuffer;
-    __scratchpadBuffer = nullptr;
+    commonBuffers.deinit();
 
     bool verbose = true;
     if (verbose)

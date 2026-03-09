@@ -7,6 +7,7 @@
 #include "platform/concurrency.h"
 #include "platform/console_logging.h"
 #include "platform/debugging.h"
+#include "platform/global_var.h"
 
 #include "public_settings.h"
 
@@ -28,7 +29,7 @@ constexpr unsigned short INVALIDATED_TICK_DATA = 0xffff;
 // - ticks (one Tick struct per tick and Computor)
 // - tickTransactions (continuous buffer efficiently storing the variable-size transactions)
 // - tickTransactionOffsets (offsets of transactions in buffer, order in tickTransactions may differ)
-// - nextTickTransactionOffset (offset of next transition to be added)
+// - nextTickTransactionOffset (offset of next transaction to be added)
 class TickStorage
 {
 private:
@@ -167,7 +168,7 @@ private:
     }
     bool saveTransactions(unsigned long long nTick, long long& outTotalTransactionSize, unsigned long long& outNextTickTransactionOffset, CHAR16* directory = NULL)
     {
-        unsigned int toTick = tickBegin + (unsigned int)(nTick);
+        unsigned int toTick = tickBegin + (unsigned int)(nTick) - 1;
         unsigned long long toPtr = 0;
         outNextTickTransactionOffset = FIRST_TICK_TRANSACTION_OFFSET;
         lastCheckTransactionOffset = tickBegin > lastCheckTransactionOffset ? tickBegin : lastCheckTransactionOffset;
@@ -1037,3 +1038,5 @@ public:
         }
     } transactionsDigestAccess;
 };
+
+GLOBAL_VAR_DECL TickStorage ts;

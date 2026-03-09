@@ -4,7 +4,6 @@
 
 #include "ticking/ticking.h"
 
-
 unsigned char QPI::QpiContextFunctionCall::day() const
 {
     return etalonTick.day;
@@ -43,4 +42,30 @@ int QPI::QpiContextFunctionCall::numberOfTickTransactions() const
 unsigned char QPI::QpiContextFunctionCall::second() const
 {
     return etalonTick.second;
+}
+
+QPI::DateAndTime QPI::QpiContextFunctionCall::now() const
+{
+    return QPI::DateAndTime::now();
+}
+
+QPI::DateAndTime QPI::DateAndTime::now()
+{
+    return QPI::DateAndTime(etalonTick.year + 2000, etalonTick.month, etalonTick.day,
+        etalonTick.hour, etalonTick.minute, etalonTick.second, etalonTick.millisecond);
+}
+
+m256i QPI::QpiContextFunctionCall::getPrevSpectrumDigest() const
+{
+    return etalonTick.prevSpectrumDigest;
+}
+
+m256i QPI::QpiContextFunctionCall::getPrevUniverseDigest() const
+{
+    return etalonTick.prevUniverseDigest;
+}
+
+m256i QPI::QpiContextFunctionCall::getPrevComputerDigest() const
+{
+    return etalonTick.prevComputerDigest;
 }

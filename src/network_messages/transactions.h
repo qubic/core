@@ -9,8 +9,6 @@ struct ContractIPOBid
     unsigned short quantity;
 };
 
-#define BROADCAST_TRANSACTION 24
-
 
 // A transaction is made of this struct, followed by inputSize Bytes payload data and SIGNATURE_SIZE Bytes signature
 struct Transaction
@@ -55,17 +53,25 @@ struct Transaction
 
 static_assert(sizeof(Transaction) == 32 + 32 + 8 + 4 + 2 + 2, "Something is wrong with the struct size.");
 
-#define REQUEST_TICK_TRANSACTIONS 29
 
-struct RequestedTickTransactions
+struct RequestTickTransactions
 {
     unsigned int tick;
     unsigned char transactionFlags[NUMBER_OF_TRANSACTIONS_PER_TICK / 8];
+
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_TICK_TRANSACTIONS;
+    }
 };
 
-#define REQUEST_TRANSACTION_INFO 26
-struct RequestedTransactionInfo
+struct RequestTransactionInfo
 {
     m256i txDigest;
+
+    static constexpr unsigned char type()
+    {
+        return NetworkMessageType::REQUEST_TRANSACTION_INFO;
+    }
 };
 

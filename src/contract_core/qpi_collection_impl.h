@@ -280,7 +280,8 @@ namespace QPI
 	template <typename T, uint64 L>
 	sint64 Collection<T, L>::_rebuild(sint64 rootIdx)
 	{
-		auto* sortedElementIndices = reinterpret_cast<sint64*>(::__scratchpad());
+		__ScopedScratchpad scratchpad(sizeof(*this), /*initZero=*/false);
+		auto* sortedElementIndices = reinterpret_cast<sint64*>(scratchpad.ptr);
 		if (sortedElementIndices == NULL)
 		{
 			return rootIdx;
@@ -585,6 +586,12 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
+	bool Collection<T, L>::needsCleanup(uint64 removalThresholdPercent) const
+	{
+		return _markRemovalCounter > (removalThresholdPercent * L / 100);
+	}
+
+	template <typename T, uint64 L>
 	void Collection<T, L>::cleanupIfNeeded(uint64 removalThresholdPercent)
 	{
 		if (_markRemovalCounter > (removalThresholdPercent * L / 100))
@@ -615,11 +622,12 @@ namespace QPI
 		}
 
 		// Init buffers
-		auto* _povsBuffer = reinterpret_cast<PoV*>(::__scratchpad());
+		__ScopedScratchpad scratchpad(sizeof(_povs) + sizeof(_povOccupationFlags), /*initZero=*/true);
+		ASSERT(scratchpad.ptr);
+		auto* _povsBuffer = reinterpret_cast<PoV*>(scratchpad.ptr);
 		auto* _povOccupationFlagsBuffer = reinterpret_cast<uint64*>(_povsBuffer + L);
 		auto* _stackBuffer = reinterpret_cast<sint64*>(
 			_povOccupationFlagsBuffer + sizeof(_povOccupationFlags) / sizeof(_povOccupationFlags[0]));
-		setMem(::__scratchpad(), sizeof(_povs) + sizeof(_povOccupationFlags), 0);
 		uint64 newPopulation = 0;
 
 		// Go through pov hash map. For each pov that is occupied but not marked for removal, insert pov in new Collection's pov buffers and

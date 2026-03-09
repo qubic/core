@@ -161,3 +161,17 @@ static inline bool isZero(const void* ptr, unsigned long long size)
     }
     return true;
 }
+
+static inline int compareMem(const void* p1, const void* p2, unsigned long long size)
+{
+    const char* cPtr1 = (const char*)p1;
+    const char* cPtr2 = (const char*)p2;
+    for (unsigned long long i = 0; i < size; ++i, ++cPtr1, ++cPtr2)
+    {
+        if (*cPtr1 < *cPtr2)
+            return -1;
+        else if (*cPtr1 > *cPtr2)
+            return 1;
+    }
+    return 0;
+}

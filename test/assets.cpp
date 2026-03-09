@@ -9,6 +9,7 @@
 
 #include "assets/assets.h"
 #include "contract_core/contract_exec.h"
+#include "contract_core/qpi_spectrum_impl.h"
 #include "contract_core/qpi_asset_impl.h"
 
 
@@ -20,12 +21,12 @@ public:
     AssetsTest()
     {
         initAssets();
-        initCommonBuffers();
+        commonBuffers.init(1, universeSizeInBytes);
     }
 
     ~AssetsTest()
     {
-        deinitCommonBuffers();
+        commonBuffers.deinit();
         deinitAssets();
     }
 

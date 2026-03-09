@@ -33,24 +33,24 @@ struct GQMPROP : public ContractBase
 
 	typedef Array<RevenueDonationEntry, 128> RevenueDonationT;
 
+	struct StateData
+	{
+		// Storage of proposals and votes
+		ProposalVotingT proposals;
+
+		// Revenue donation table:
+		// - order of IDs (destinationPublicKey) defines the order of donations
+		// - order of IDs does not change except for IDs being added at the end, no ID is removed or inserted in the middle
+		// - there may be multiple entries of one ID, exactly one with a firstEpoch in the past and multiple with
+		//   firstEpoch in the future
+		// - each pair of ID and firstEpoch exists at most once (it identifies the entry that may be overwritten)
+		// - entries of the same ID are grouped in a continuous block and sorted by firstEpoch in ascending order
+		// - the first entry with NULL_ID marks the end of the current table
+		// - an ID is never completely removed, even if donation is set to 0% (for keeping order)
+		RevenueDonationT revenueDonation;
+	};
+
 protected:
-	//----------------------------------------------------------------------------
-	// Define state
-
-	// Storage of proposals and votes
-	ProposalVotingT proposals;
-
-	// Revenue donation table:
-	// - order of IDs (destinationPublicKey) defines the order of donations
-	// - order of IDs does not change except for IDs being added at the end, no ID is removed or inserted in the middle
-	// - there may be multiple entries of one ID, exactly one with a firstEpoch in the past and multiple with
-	//   firstEpoch in the future
-	// - each pair of ID and firstEpoch exists at most once (it identifies the entry that may be overwritten)
-	// - entries of the same ID are grouped in a continuous block and sorted by firstEpoch in ascending order
-	// - the first entry with NULL_ID marks the end of the current table
-	// - an ID is never completely removed, even if donation is set to 0% (for keeping order)
-	RevenueDonationT revenueDonation;
-
 	//----------------------------------------------------------------------------
 	// Define private procedures and functions with input and output
 
@@ -69,16 +69,16 @@ protected:
 		// Based on publicKey and firstEpoch, find entry to update or indices required to add entry later
 		locals.firstEmptyIdx = -1;
 		locals.beforeInsertIdx = -1;
-		for (locals.idx = 0; locals.idx < (sint64)state.revenueDonation.capacity(); ++locals.idx)
+		for (locals.idx = 0; locals.idx < (sint64)state.get().revenueDonation.capacity(); ++locals.idx)
 		{
-			locals.entry = state.revenueDonation.get(locals.idx);
+			locals.entry = state.get().revenueDonation.get(locals.idx);
 			if (input.destinationPublicKey == locals.entry.destinationPublicKey)
 			{
 				// Found entry with matching publicKey
 				if (input.firstEpoch == locals.entry.firstEpoch)
 				{
 					// Found entry with same publicKey and "first epoch" -> update entry and we are done
-					state.revenueDonation.set(locals.idx, input);
+					state.mut().revenueDonation.set(locals.idx, input);
 					output.okay = true;
 					return;
 				}
@@ -112,17 +112,17 @@ protected:
 			{
 				// Insert entry at correct position to keep order after moving items to free the slot
 				ASSERT(locals.beforeInsertIdx < locals.firstEmptyIdx);
-				ASSERT(locals.beforeInsertIdx + 1 < (sint64)state.revenueDonation.capacity());
+				ASSERT(locals.beforeInsertIdx + 1 < (sint64)state.get().revenueDonation.capacity());
 				for (locals.idx = locals.firstEmptyIdx - 1; locals.idx > locals.beforeInsertIdx; --locals.idx)
 				{
-					state.revenueDonation.set(locals.idx + 1, state.revenueDonation.get(locals.idx));
+					state.mut().revenueDonation.set(locals.idx + 1, state.get().revenueDonation.get(locals.idx));
 				}
-				state.revenueDonation.set(locals.beforeInsertIdx + 1, input);
+				state.mut().revenueDonation.set(locals.beforeInsertIdx + 1, input);
 			}
 			else
 			{
 				// PublicKey not found so far -> add entry at the end
-				state.revenueDonation.set(locals.firstEmptyIdx, input);
+				state.mut().revenueDonation.set(locals.firstEmptyIdx, input);
 				output.okay = true;
 			}
 		}
@@ -141,27 +141,27 @@ protected:
 	{
 		// Make sure we have at most one entry with non-future firstEpoch per destinationPublicKey.
 		// Use that entries are grouped by ID and sorted by firstEpoch.
-		for (locals.idx = 1; locals.idx < state.revenueDonation.capacity(); ++locals.idx)
+		for (locals.idx = 1; locals.idx < state.get().revenueDonation.capacity(); ++locals.idx)
 		{
-			locals.entry1 = state.revenueDonation.get(locals.idx - 1);
+			locals.entry1 = state.get().revenueDonation.get(locals.idx - 1);
 			if (isZero(locals.entry1.destinationPublicKey))
 				break;
-			locals.entry2 = state.revenueDonation.get(locals.idx);
+			locals.entry2 = state.get().revenueDonation.get(locals.idx);
 			if (locals.entry1.destinationPublicKey == locals.entry2.destinationPublicKey)
 			{
 				ASSERT(locals.entry1.firstEpoch < locals.entry2.firstEpoch);
 				if (locals.entry1.firstEpoch < qpi.epoch() && locals.entry2.firstEpoch <= qpi.epoch())
 				{
 					// We have found two non-future entries of the same ID, so remove older one and fill gap
-					//for (locals.idxMove = locals.idx; locals.idxMove < state.revenueDonation.capacity() && !isZero(state.revenueDonation.get(locals.idxMove).destinationPublicKey); ++locals.idxMove)
+					//for (locals.idxMove = locals.idx; locals.idxMove < state.get().revenueDonation.capacity() && !isZero(state.get().revenueDonation.get(locals.idxMove).destinationPublicKey); ++locals.idxMove)
 					locals.idxMove = locals.idx;
-					while (locals.idxMove < state.revenueDonation.capacity() && !isZero(state.revenueDonation.get(locals.idxMove).destinationPublicKey))
+					while (locals.idxMove < state.get().revenueDonation.capacity() && !isZero(state.get().revenueDonation.get(locals.idxMove).destinationPublicKey))
 					{
-						state.revenueDonation.set(locals.idxMove - 1, state.revenueDonation.get(locals.idxMove));
+						state.mut().revenueDonation.set(locals.idxMove - 1, state.get().revenueDonation.get(locals.idxMove));
 						++locals.idxMove;
 					}
 					setMemory(locals.entry2, 0);
-					state.revenueDonation.set(locals.idxMove - 1, locals.entry2);
+					state.mut().revenueDonation.set(locals.idxMove - 1, locals.entry2);
 				}
 			}
 		}
@@ -202,7 +202,7 @@ public:
 			// Check that amounts, which are in millionth, are in range of 0 (= 0%) to 1000000 (= 100%)
 			for (locals.i = 0; locals.i < 4; ++locals.i)
 			{
-				locals.millionthAmount = input.transfer.amounts.get(locals.i);
+				locals.millionthAmount = input.data.transfer.amounts.get(locals.i);
 				if (locals.millionthAmount < 0 || locals.millionthAmount > 1000000)
 				{
 					return;
@@ -212,8 +212,8 @@ public:
 
 		case ProposalTypes::Class::TransferInEpoch:
 			// Check amount and epoch
-			locals.millionthAmount = input.transferInEpoch.amount;
-			if (locals.millionthAmount < 0 || locals.millionthAmount > 1000000 || input.transferInEpoch.targetEpoch <= qpi.epoch())
+			locals.millionthAmount = input.data.transferInEpoch.amount;
+			if (locals.millionthAmount < 0 || locals.millionthAmount > 1000000 || input.data.transferInEpoch.targetEpoch <= qpi.epoch())
 			{
 				return;
 			}
@@ -225,7 +225,7 @@ public:
 		}
 
 		// Try to set proposal (checks originators rights and general validity of input proposal)
-		output.proposalIndex = qpi(state.proposals).setProposal(qpi.originator(), input);
+		output.proposalIndex = qpi(state.mut().proposals).setProposal(qpi.originator(), input);
 		output.okay = (output.proposalIndex != INVALID_PROPOSAL_INDEX);
 	}
 
@@ -247,7 +247,7 @@ public:
 		{
 			// Return proposals that are open for voting in current epoch
 			// (output is initalized with zeros by contract system)
-			while ((input.prevProposalIndex = qpi(state.proposals).nextProposalIndex(input.prevProposalIndex, qpi.epoch())) >= 0)
+			while ((input.prevProposalIndex = qpi(state.get().proposals).nextProposalIndex(input.prevProposalIndex, qpi.epoch())) >= 0)
 			{
 				output.indices.set(output.numOfIndices, input.prevProposalIndex);
 				++output.numOfIndices;
@@ -260,7 +260,7 @@ public:
 		{
 			// Return proposals of previous epochs not overwritten yet
 			// (output is initalized with zeros by contract system)
-			while ((input.prevProposalIndex = qpi(state.proposals).nextFinishedProposalIndex(input.prevProposalIndex)) >= 0)
+			while ((input.prevProposalIndex = qpi(state.get().proposals).nextFinishedProposalIndex(input.prevProposalIndex)) >= 0)
 			{
 				output.indices.set(output.numOfIndices, input.prevProposalIndex);
 				++output.numOfIndices;
@@ -279,15 +279,17 @@ public:
 	struct GetProposal_output
 	{
 		bit okay;
-		uint8 _padding0[7];
+		Array<uint8, 4> _padding0;
+		Array<uint8, 2> _padding1;
+		Array<uint8, 1> _padding2;
 		id proposerPubicKey;
 		ProposalDataT proposal;
 	};
 
 	PUBLIC_FUNCTION(GetProposal)
 	{
-		output.proposerPubicKey = qpi(state.proposals).proposerId(input.proposalIndex);
-		output.okay = qpi(state.proposals).getProposal(input.proposalIndex, output.proposal);
+		output.proposerPubicKey = qpi(state.get().proposals).proposerId(input.proposalIndex);
+		output.okay = qpi(state.get().proposals).getProposal(input.proposalIndex, output.proposal);
 	}
 
 
@@ -297,7 +299,7 @@ public:
 	PUBLIC_PROCEDURE(Vote)
 	{
 		// TODO: Fee? Burn fee?
-		output.okay = qpi(state.proposals).vote(qpi.originator(), input);
+		output.okay = qpi(state.mut().proposals).vote(qpi.originator(), input);
 	}
 
 
@@ -314,9 +316,9 @@ public:
 
 	PUBLIC_FUNCTION(GetVote)
 	{
-		output.okay = qpi(state.proposals).getVote(
+		output.okay = qpi(state.get().proposals).getVote(
 			input.proposalIndex,
-			qpi(state.proposals).voterIndex(input.voter),
+			qpi(state.get().proposals).voteIndex(input.voter),
 			output.vote);
 	}
 
@@ -333,7 +335,7 @@ public:
 
 	PUBLIC_FUNCTION(GetVotingResults)
 	{
-		output.okay = qpi(state.proposals).getVotingSummary(
+		output.okay = qpi(state.get().proposals).getVotingSummary(
 			input.proposalIndex, output.results);
 	}
 
@@ -343,7 +345,7 @@ public:
 
 	PUBLIC_FUNCTION(GetRevenueDonation)
 	{
-		output = state.revenueDonation;
+		output = state.get().revenueDonation;
 	}
 
 
@@ -359,7 +361,7 @@ public:
         REGISTER_USER_PROCEDURE(Vote, 2);
     }
 
-		
+
 	struct BEGIN_EPOCH_locals
 	{
 		sint32 proposalIndex;
@@ -382,19 +384,19 @@ public:
 
 		// Iterate all proposals that were open for voting in previous epoch ...
 		locals.proposalIndex = -1;
-		while ((locals.proposalIndex = qpi(state.proposals).nextProposalIndex(locals.proposalIndex, qpi.epoch() - 1)) >= 0)
+		while ((locals.proposalIndex = qpi(state.get().proposals).nextProposalIndex(locals.proposalIndex, qpi.epoch() - 1)) >= 0)
 		{
-			if (qpi(state.proposals).getProposal(locals.proposalIndex, locals.proposal))
+			if (qpi(state.get().proposals).getProposal(locals.proposalIndex, locals.proposal))
 			{
 				// ... and have transfer proposal type
 				locals.propClass = ProposalTypes::cls(locals.proposal.type);
 				if (locals.propClass == ProposalTypes::Class::Transfer || locals.propClass == ProposalTypes::Class::TransferInEpoch)
 				{
 					// Get voting results and check if conditions for proposal acceptance are met
-					if (qpi(state.proposals).getVotingSummary(locals.proposalIndex, locals.results))
+					if (qpi(state.get().proposals).getVotingSummary(locals.proposalIndex, locals.results))
 					{
 						// The total number of votes needs to be at least the quorum
-						if (locals.results.totalVotes >= QUORUM)
+						if (locals.results.totalVotesCasted >= QUORUM)
 						{
 							// Find most voted option
 							locals.mostVotedOptionIndex = 0;
@@ -410,22 +412,22 @@ public:
 							}
 
 							// Option for changing status quo has been accepted? (option 0 is "no change")
-							if (locals.mostVotedOptionIndex > 0 && locals.mostVotedOptionVotes > QUORUM / 2)
+							if (locals.mostVotedOptionIndex > 0 && locals.mostVotedOptionVotes > div<uint32>(QUORUM, 2U))
 							{
 								// Set in revenueDonation table (cannot be done in END_EPOCH, because this may overwrite entries that
 								// are still needed unchanged for this epoch for the revenue donation which is run after END_EPOCH)
 								if (locals.propClass == ProposalTypes::Class::TransferInEpoch)
 								{
 									ASSERT(locals.mostVotedOptionIndex == 1);
-									ASSERT(locals.proposal.transferInEpoch.targetEpoch >= qpi.epoch());
-									locals.revenueDonationEntry.destinationPublicKey = locals.proposal.transferInEpoch.destination;
-									locals.revenueDonationEntry.millionthAmount = locals.proposal.transferInEpoch.amount;
-									locals.revenueDonationEntry.firstEpoch = locals.proposal.transferInEpoch.targetEpoch;
+									ASSERT(locals.proposal.data.transferInEpoch.targetEpoch >= qpi.epoch());
+									locals.revenueDonationEntry.destinationPublicKey = locals.proposal.data.transferInEpoch.destination;
+									locals.revenueDonationEntry.millionthAmount = locals.proposal.data.transferInEpoch.amount;
+									locals.revenueDonationEntry.firstEpoch = locals.proposal.data.transferInEpoch.targetEpoch;
 								}
 								else
 								{
-									locals.revenueDonationEntry.destinationPublicKey = locals.proposal.transfer.destination;
-									locals.revenueDonationEntry.millionthAmount = locals.proposal.transfer.amounts.get(locals.mostVotedOptionIndex - 1);
+									locals.revenueDonationEntry.destinationPublicKey = locals.proposal.data.transfer.destination;
+									locals.revenueDonationEntry.millionthAmount = locals.proposal.data.transfer.amounts.get(locals.mostVotedOptionIndex - 1);
 									locals.revenueDonationEntry.firstEpoch = qpi.epoch();
 								}
 								CALL(_SetRevenueDonationEntry, locals.revenueDonationEntry, locals.success);

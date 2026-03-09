@@ -44,7 +44,7 @@ static std::vector<id> getRandomUsers(unsigned int totalUsers, unsigned int maxN
     return users;
 }
 
-class QVAULTChecker : public QVAULT
+class QVAULTChecker : public QVAULT, public QVAULT::StateData
 {
 public:
     void submitGPChecker(uint32 index, id proposer)

@@ -259,6 +259,12 @@ namespace QPI
 	}
 	
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	bool HashMap<KeyT, ValueT, L, HashFunc>::needsCleanup(uint64 removalThresholdPercent) const
+	{
+		return _markRemovalCounter > (removalThresholdPercent * L / 100);
+	}
+
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
 	void HashMap<KeyT, ValueT, L, HashFunc>::cleanupIfNeeded(uint64 removalThresholdPercent)
 	{
 		if (_markRemovalCounter > (removalThresholdPercent * L / 100))
@@ -288,11 +294,12 @@ namespace QPI
 		}
 
 		// Init buffers
-		auto* _elementsBuffer = reinterpret_cast<Element*>(::__scratchpad());
+		__ScopedScratchpad scratchpad(sizeof(_elements) + sizeof(_occupationFlags), /*initZero=*/true);
+		ASSERT(scratchpad.ptr);
+		auto* _elementsBuffer = reinterpret_cast<Element*>(scratchpad.ptr);
 		auto* _occupationFlagsBuffer = reinterpret_cast<uint64*>(_elementsBuffer + L);
 		auto* _stackBuffer = reinterpret_cast<sint64*>(
 			_occupationFlagsBuffer + sizeof(_occupationFlags) / sizeof(_occupationFlags[0]));
-		setMem(::__scratchpad(), sizeof(_elements) + sizeof(_occupationFlags), 0);
 		uint64 newPopulation = 0;
 
 		// Go through hash map. For each element that is occupied but not marked for removal, insert element in new hash map's buffers.
@@ -586,6 +593,12 @@ namespace QPI
 	}
 
 	template <typename KeyT, uint64 L, typename HashFunc>
+	bool HashSet<KeyT, L, HashFunc>::needsCleanup(uint64 removalThresholdPercent) const
+	{
+		return _markRemovalCounter > (removalThresholdPercent * L / 100);
+	}
+
+	template <typename KeyT, uint64 L, typename HashFunc>
 	void HashSet<KeyT, L, HashFunc>::cleanupIfNeeded(uint64 removalThresholdPercent)
 	{
 		if (_markRemovalCounter > (removalThresholdPercent * L / 100))
@@ -615,11 +628,12 @@ namespace QPI
 		}
 
 		// Init buffers
-		auto* _keyBuffer = reinterpret_cast<KeyT*>(::__scratchpad());
+		__ScopedScratchpad scratchpad(sizeof(_keys) + sizeof(_occupationFlags), /*initZero=*/true);
+		ASSERT(scratchpad.ptr);
+		auto* _keyBuffer = reinterpret_cast<KeyT*>(scratchpad.ptr);
 		auto* _occupationFlagsBuffer = reinterpret_cast<uint64*>(_keyBuffer + L);
 		auto* _stackBuffer = reinterpret_cast<sint64*>(
 			_occupationFlagsBuffer + sizeof(_occupationFlags) / sizeof(_occupationFlags[0]));
-		setMem(::__scratchpad(), sizeof(_keys) + sizeof(_occupationFlags), 0);
 		uint64 newPopulation = 0;
 
 		// Go through hash map. For each element that is occupied but not marked for removal, insert element in new hash map's buffers.

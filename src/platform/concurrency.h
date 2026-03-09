@@ -43,6 +43,23 @@ public:
 // Release lock
 #define RELEASE(lock) lock = 0
 
+// Create an object of this class to lock until the end of the life-time of this object.
+// Usually used on stack for making sure that the lock is released, no matter which way the function is left.
+struct LockGuard
+{
+    LockGuard(volatile char& lock) : _lock(lock)
+    {
+        ACQUIRE(_lock);
+    }
+
+    ~LockGuard()
+    {
+        RELEASE(_lock);
+    }
+
+    volatile char& _lock;
+};
+
 
 #ifdef NDEBUG
 
@@ -73,6 +90,9 @@ public:
     END_WAIT_WHILE()
 
 #define ATOMIC_STORE8(target, val) _InterlockedExchange8(&target, val)
+// long in windows is 32bits
+static_assert(sizeof(long) == 4, "Size of long for _InterlockedExchange is 4 bytes");
+#define ATOMIC_STORE32(target, val) _InterlockedExchange((volatile long*)&target, val)
 #define ATOMIC_INC64(target) _InterlockedIncrement64(&target)
 #define ATOMIC_AND64(target, val) _InterlockedAnd64(&target, val)
 #define ATOMIC_STORE64(target, val) _InterlockedExchange64(&target, val)
