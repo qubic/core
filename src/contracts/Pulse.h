@@ -88,6 +88,9 @@ public:
 		uint16 desiredTickets;
 	};
 
+	// Forward declaration for use by NextEpochData::apply.
+	struct StateData;
+
 	// Deferred settings applied at END_EPOCH to avoid mid-round changes.
 	struct NextEpochData
 	{
@@ -107,30 +110,30 @@ public:
 			newQHeartHoldLimit = 0;
 		}
 
-		void apply(PULSE& state) const
+		void apply(StateData& s) const
 		{
 			if (hasNewPrice)
 			{
-				state.ticketPrice = newPrice;
+				s.ticketPrice = newPrice;
 			}
 			if (hasNewSchedule)
 			{
-				state.schedule = newSchedule;
+				s.schedule = newSchedule;
 			}
 			if (hasNewDrawHour)
 			{
-				state.drawHour = newDrawHour;
+				s.drawHour = newDrawHour;
 			}
 			if (hasNewFee)
 			{
-				state.devPercent = newDevPercent;
-				state.burnPercent = newBurnPercent;
-				state.shareholdersPercent = newShareholdersPercent;
-				state.rlShareholdersPercent = newRLShareholdersPercent;
+				s.devPercent = newDevPercent;
+				s.burnPercent = newBurnPercent;
+				s.shareholdersPercent = newShareholdersPercent;
+				s.rlShareholdersPercent = newRLShareholdersPercent;
 			}
 			if (hasNewQHeartHoldLimit)
 			{
-				state.qheartHoldLimit = newQHeartHoldLimit;
+				s.qheartHoldLimit = newQHeartHoldLimit;
 			}
 		}
 
@@ -147,6 +150,46 @@ public:
 		uint8 newShareholdersPercent;
 		uint8 newRLShareholdersPercent;
 		uint64 newQHeartHoldLimit;
+	};
+
+	// Winner history entry returned by GetWinners.
+	struct WinnerInfo
+	{
+		id winnerAddress;
+		uint64 revenue;
+		uint16 epoch;
+	};
+
+	struct StateData
+	{
+		// Ring buffer of recent winners; index is winnersCounter % capacity.
+		Array<WinnerInfo, PULSE_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
+		// Tickets for the current round; valid range is [0, ticketCounter).
+		Array<Ticket, PULSE_MAX_NUMBER_OF_PLAYERS> tickets;
+		// Auto-buy participants keyed by user id.
+		HashMap<id, AutoParticipant, PULSE_MAX_NUMBER_OF_AUTO_PARTICIPANTS> autoParticipants;
+		// Last settled winning digits; undefined before the first draw.
+		Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> lastWinningDigits;
+		NextEpochData nextEpochData;
+		id teamAddress;
+		id qheartIssuer;
+		// Monotonic winner count used to rotate the winners ring buffer.
+		uint64 winnersCounter;
+		sint64 ticketCounter;
+		sint64 ticketPrice;
+		// Contract balance above this cap is swept to the QHeart wallet after settlement.
+		uint64 qheartHoldLimit;
+		// Date stamp of the most recent draw; PULSE_DEFAULT_INIT_TIME is a bootstrap sentinel.
+		uint32 lastDrawDateStamp;
+		// Per-user auto-purchase limits; 0 means unlimited.
+		uint16 maxAutoTicketsPerUser;
+		uint8 devPercent;
+		uint8 burnPercent;
+		uint8 shareholdersPercent;
+		uint8 rlShareholdersPercent;
+		uint8 schedule;
+		uint8 drawHour;
+		EState currentState;
 	};
 
 	struct ValidateDigits_input
@@ -469,14 +512,6 @@ public:
 		uint64 balance;
 	};
 
-	// Winner history entry returned by GetWinners.
-	struct WinnerInfo
-	{
-		id winnerAddress;
-		uint64 revenue;
-		uint16 epoch;
-	};
-
 	struct FillWinnersInfo_input
 	{
 		id winnerAddress;
@@ -687,41 +722,41 @@ public:
 
 	INITIALIZE()
 	{
-		state.teamAddress = ID(_R, _O, _J, _V, _A, _E, _M, _F, _B, _X, _X, _Y, _N, _G, _A, _U, _A, _U, _I, _I, _X, _L, _B, _U, _P, _D, _H, _C, _D, _P,
+		state.mut().teamAddress = ID(_R, _O, _J, _V, _A, _E, _M, _F, _B, _X, _X, _Y, _N, _G, _A, _U, _A, _U, _I, _I, _X, _L, _B, _U, _P, _D, _H, _C, _D, _P,
 		                       _E, _S, _Y, _Z, _O, _V, _W, _U, _Y, _E, _C, _B, _Q, _V, _Z, _R, _F, _T, _K, _A, _G, _S, _H, _T, _N, _A);
-		state.qheartIssuer = ID(_S, _S, _G, _X, _S, _L, _S, _X, _F, _E, _J, _O, _O, _B, _T, _Z, _W, _V, _D, _S, _R, _C, _E, _F, _G, _X, _N, _D, _Y,
+		state.mut().qheartIssuer = ID(_S, _S, _G, _X, _S, _L, _S, _X, _F, _E, _J, _O, _O, _B, _T, _Z, _W, _V, _D, _S, _R, _C, _E, _F, _G, _X, _N, _D, _Y,
 		                        _U, _V, _D, _X, _M, _Q, _A, _L, _X, _L, _B, _X, _G, _D, _C, _R, _X, _T, _K, _F, _Z, _I, _O, _T, _G, _Z, _F);
 
-		state.ticketPrice = PULSE_TICKET_PRICE_DEFAULT;
-		state.devPercent = PULSE_DEFAULT_DEV_PERCENT;
-		state.burnPercent = PULSE_DEFAULT_BURN_PERCENT;
-		state.shareholdersPercent = PULSE_DEFAULT_SHAREHOLDERS_PERCENT;
-		state.rlShareholdersPercent = PULSE_DEFAULT_RL_SHAREHOLDERS_PERCENT;
-		state.qheartHoldLimit = PULSE_DEFAULT_QHEART_HOLD_LIMIT;
+		state.mut().ticketPrice = PULSE_TICKET_PRICE_DEFAULT;
+		state.mut().devPercent = PULSE_DEFAULT_DEV_PERCENT;
+		state.mut().burnPercent = PULSE_DEFAULT_BURN_PERCENT;
+		state.mut().shareholdersPercent = PULSE_DEFAULT_SHAREHOLDERS_PERCENT;
+		state.mut().rlShareholdersPercent = PULSE_DEFAULT_RL_SHAREHOLDERS_PERCENT;
+		state.mut().qheartHoldLimit = PULSE_DEFAULT_QHEART_HOLD_LIMIT;
 
-		state.schedule = PULSE_DEFAULT_SCHEDULE;
-		state.drawHour = PULSE_DEFAULT_DRAW_HOUR;
-		state.lastDrawDateStamp = PULSE_DEFAULT_INIT_TIME;
+		state.mut().schedule = PULSE_DEFAULT_SCHEDULE;
+		state.mut().drawHour = PULSE_DEFAULT_DRAW_HOUR;
+		state.mut().lastDrawDateStamp = PULSE_DEFAULT_INIT_TIME;
 
-		state.maxAutoTicketsPerUser = PULSE_DEFAULT_MAX_AUTO_TICKETS_PER_USER;
+		state.mut().maxAutoTicketsPerUser = PULSE_DEFAULT_MAX_AUTO_TICKETS_PER_USER;
 
 		enableBuyTicket(state, false);
 	}
 
 	BEGIN_EPOCH_WITH_LOCALS()
 	{
-		if (state.schedule == 0)
+		if (state.get().schedule == 0)
 		{
-			state.schedule = PULSE_DEFAULT_SCHEDULE;
+			state.mut().schedule = PULSE_DEFAULT_SCHEDULE;
 		}
-		if (state.drawHour == 0)
+		if (state.get().drawHour == 0)
 		{
-			state.drawHour = PULSE_DEFAULT_DRAW_HOUR;
+			state.mut().drawHour = PULSE_DEFAULT_DRAW_HOUR;
 		}
 
-		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), state.lastDrawDateStamp);
-		enableBuyTicket(state, state.lastDrawDateStamp != PULSE_DEFAULT_INIT_TIME);
-		if (state.lastDrawDateStamp != PULSE_DEFAULT_INIT_TIME)
+		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), state.mut().lastDrawDateStamp);
+		enableBuyTicket(state, state.get().lastDrawDateStamp != PULSE_DEFAULT_INIT_TIME);
+		if (state.get().lastDrawDateStamp != PULSE_DEFAULT_INIT_TIME)
 		{
 			CALL(ProcessAutoTickets, locals.autoTicketsInput, locals.autoTicketsOutput);
 		}
@@ -731,8 +766,8 @@ public:
 	{
 		enableBuyTicket(state, false);
 		clearStateOnEndEpoch(state);
-		state.nextEpochData.apply(state);
-		state.nextEpochData.clear();
+		state.mut().nextEpochData.apply(state.mut());
+		state.mut().nextEpochData.clear();
 	}
 
 	BEGIN_TICK_WITH_LOCALS()
@@ -747,7 +782,7 @@ public:
 		locals.currentDayOfWeek = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
 		locals.isWednesday = locals.currentDayOfWeek == WEDNESDAY;
 
-		if (locals.currentHour < state.drawHour)
+		if (locals.currentHour < state.get().drawHour)
 		{
 			return;
 		}
@@ -757,36 +792,36 @@ public:
 		if (locals.currentDateStamp == PULSE_DEFAULT_INIT_TIME)
 		{
 			enableBuyTicket(state, false);
-			state.lastDrawDateStamp = PULSE_DEFAULT_INIT_TIME;
+			state.mut().lastDrawDateStamp = PULSE_DEFAULT_INIT_TIME;
 			return;
 		}
 
-		if (state.lastDrawDateStamp == PULSE_DEFAULT_INIT_TIME)
+		if (state.get().lastDrawDateStamp == PULSE_DEFAULT_INIT_TIME)
 		{
 			enableBuyTicket(state, true);
 			CALL(ProcessAutoTickets, locals.autoTicketsInput, locals.autoTicketsOutput);
 			if (locals.isWednesday)
 			{
-				state.lastDrawDateStamp = locals.currentDateStamp;
+				state.mut().lastDrawDateStamp = locals.currentDateStamp;
 			}
 			else
 			{
-				state.lastDrawDateStamp = 0;
+				state.mut().lastDrawDateStamp = 0;
 			}
 		}
 
-		if (state.lastDrawDateStamp == locals.currentDateStamp)
+		if (state.get().lastDrawDateStamp == locals.currentDateStamp)
 		{
 			return;
 		}
 
-		locals.isScheduledToday = ((state.schedule & (1u << locals.currentDayOfWeek)) != 0);
+		locals.isScheduledToday = ((state.get().schedule & (1u << locals.currentDayOfWeek)) != 0);
 		if (!locals.isWednesday && !locals.isScheduledToday)
 		{
 			return;
 		}
 
-		state.lastDrawDateStamp = locals.currentDateStamp;
+		state.mut().lastDrawDateStamp = locals.currentDateStamp;
 		enableBuyTicket(state, false);
 
 		CALL(SettleRound, locals.settleInput, locals.settleOutput);
@@ -800,38 +835,38 @@ public:
 	}
 
 	// Returns current ticket price in QHeart units.
-	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.ticketPrice; }
+	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.get().ticketPrice; }
 	// Returns current draw schedule bitmask.
-	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.schedule; }
+	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.get().schedule; }
 	// Returns draw hour in UTC.
-	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.drawHour; }
+	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.get().drawHour; }
 	// Returns QHeart balance cap retained by the contract.
-	PUBLIC_FUNCTION(GetQHeartHoldLimit) { output.qheartHoldLimit = state.qheartHoldLimit; }
+	PUBLIC_FUNCTION(GetQHeartHoldLimit) { output.qheartHoldLimit = state.get().qheartHoldLimit; }
 	// Returns the designated QHeart issuer wallet.
-	PUBLIC_FUNCTION(GetQHeartWallet) { output.wallet = state.qheartIssuer; }
+	PUBLIC_FUNCTION(GetQHeartWallet) { output.wallet = state.get().qheartIssuer; }
 	// Returns digits from the last settled draw.
-	PUBLIC_FUNCTION(GetWinningDigits) { output.digits = state.lastWinningDigits; }
+	PUBLIC_FUNCTION(GetWinningDigits) { output.digits = state.get().lastWinningDigits; }
 
 	// Returns current fee split configuration.
 	PUBLIC_FUNCTION(GetFees)
 	{
-		output.devPercent = state.devPercent;
-		output.burnPercent = state.burnPercent;
-		output.shareholdersPercent = state.shareholdersPercent;
-		output.rlShareholdersPercent = state.rlShareholdersPercent;
+		output.devPercent = state.get().devPercent;
+		output.burnPercent = state.get().burnPercent;
+		output.shareholdersPercent = state.get().shareholdersPercent;
+		output.rlShareholdersPercent = state.get().rlShareholdersPercent;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	// Returns contract QHeart balance held in the Pulse wallet.
 	PUBLIC_FUNCTION(GetBalance)
 	{
-		output.balance = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
+		output.balance = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
 	}
 
 	// Returns the winners ring buffer and total winners counter.
 	PUBLIC_FUNCTION(GetWinners)
 	{
-		output.winners = state.winners;
+		output.winners = state.get().winners;
 		getWinnerCounter(state, output.winnersCounter);
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
@@ -840,7 +875,7 @@ public:
 	/// @return Current deposit, config fields, and status code.
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAutoParticipation)
 	{
-		if (!state.autoParticipants.get(qpi.invocator(), locals.entry))
+		if (!state.get().autoParticipants.get(qpi.invocator(), locals.entry))
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
@@ -856,8 +891,8 @@ public:
 	/// @return Current counters, limits, and status code.
 	PUBLIC_FUNCTION(GetAutoStats)
 	{
-		output.autoParticipantsCounter = static_cast<uint16>(state.autoParticipants.population());
-		output.maxAutoTicketsPerUser = state.maxAutoTicketsPerUser;
+		output.autoParticipantsCounter = static_cast<uint16>(state.get().autoParticipants.population());
+		output.maxAutoTicketsPerUser = state.get().maxAutoTicketsPerUser;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -869,7 +904,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.invocator() != state.qheartIssuer)
+		if (qpi.invocator() != state.get().qheartIssuer)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -881,8 +916,8 @@ public:
 			return;
 		}
 
-		state.nextEpochData.hasNewPrice = true;
-		state.nextEpochData.newPrice = input.newPrice;
+		state.mut().nextEpochData.hasNewPrice = true;
+		state.mut().nextEpochData.newPrice = input.newPrice;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -894,7 +929,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.invocator() != state.qheartIssuer)
+		if (qpi.invocator() != state.get().qheartIssuer)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -906,8 +941,8 @@ public:
 			return;
 		}
 
-		state.nextEpochData.hasNewSchedule = true;
-		state.nextEpochData.newSchedule = input.newSchedule;
+		state.mut().nextEpochData.hasNewSchedule = true;
+		state.mut().nextEpochData.newSchedule = input.newSchedule;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -919,7 +954,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.invocator() != state.qheartIssuer)
+		if (qpi.invocator() != state.get().qheartIssuer)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -931,8 +966,8 @@ public:
 			return;
 		}
 
-		state.nextEpochData.hasNewDrawHour = true;
-		state.nextEpochData.newDrawHour = input.newDrawHour;
+		state.mut().nextEpochData.hasNewDrawHour = true;
+		state.mut().nextEpochData.newDrawHour = input.newDrawHour;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -944,7 +979,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.invocator() != state.qheartIssuer)
+		if (qpi.invocator() != state.get().qheartIssuer)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -956,11 +991,11 @@ public:
 			return;
 		}
 
-		state.nextEpochData.hasNewFee = true;
-		state.nextEpochData.newDevPercent = input.devPercent;
-		state.nextEpochData.newBurnPercent = input.burnPercent;
-		state.nextEpochData.newShareholdersPercent = input.shareholdersPercent;
-		state.nextEpochData.newRLShareholdersPercent = input.rlShareholdersPercent;
+		state.mut().nextEpochData.hasNewFee = true;
+		state.mut().nextEpochData.newDevPercent = input.devPercent;
+		state.mut().nextEpochData.newBurnPercent = input.burnPercent;
+		state.mut().nextEpochData.newShareholdersPercent = input.shareholdersPercent;
+		state.mut().nextEpochData.newRLShareholdersPercent = input.rlShareholdersPercent;
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
@@ -973,14 +1008,14 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.invocator() != state.qheartIssuer)
+		if (qpi.invocator() != state.get().qheartIssuer)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
-		state.nextEpochData.hasNewQHeartHoldLimit = true;
-		state.nextEpochData.newQHeartHoldLimit = input.newQHeartHoldLimit;
+		state.mut().nextEpochData.hasNewQHeartHoldLimit = true;
+		state.mut().nextEpochData.newQHeartHoldLimit = input.newQHeartHoldLimit;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -997,7 +1032,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (state.autoParticipants.population() >= state.autoParticipants.capacity())
+		if (state.get().autoParticipants.population() >= state.get().autoParticipants.capacity())
 		{
 			output.returnCode = toReturnCode(EReturnCode::AUTO_PARTICIPANTS_FULL);
 			return;
@@ -1009,16 +1044,16 @@ public:
 			return;
 		}
 
-		if (state.maxAutoTicketsPerUser > 0)
+		if (state.get().maxAutoTicketsPerUser > 0)
 		{
-			input.desiredTickets = min(input.desiredTickets, static_cast<sint16>(state.maxAutoTicketsPerUser));
+			input.desiredTickets = min(input.desiredTickets, static_cast<sint16>(state.get().maxAutoTicketsPerUser));
 		}
 
 		locals.userBalance =
-		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
 		input.amount = min(locals.userBalance, input.amount);
 
-		locals.totalPrice = smul(state.ticketPrice, static_cast<sint64>(input.desiredTickets));
+		locals.totalPrice = smul(state.get().ticketPrice, static_cast<sint64>(input.desiredTickets));
 		if (input.amount < locals.totalPrice)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
@@ -1046,10 +1081,10 @@ public:
 			}
 		}
 
-		state.autoParticipants.get(qpi.invocator(), locals.entry);
+		state.get().autoParticipants.get(qpi.invocator(), locals.entry);
 		locals.entry.player = qpi.invocator();
 
-		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, qpi.invocator(),
+		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(),
 		                                                                qpi.invocator(), input.amount, SELF);
 		if (locals.transferResult < 0)
 		{
@@ -1063,7 +1098,7 @@ public:
 			locals.entry.desiredTickets = input.desiredTickets;
 		}
 
-		state.autoParticipants.set(qpi.invocator(), locals.entry);
+		state.mut().autoParticipants.set(qpi.invocator(), locals.entry);
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -1077,13 +1112,13 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (!state.autoParticipants.contains(qpi.invocator()))
+		if (!state.get().autoParticipants.contains(qpi.invocator()))
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
 
-		if (!state.autoParticipants.get(qpi.invocator(), locals.entry))
+		if (!state.get().autoParticipants.get(qpi.invocator(), locals.entry))
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
@@ -1098,7 +1133,7 @@ public:
 		}
 
 		locals.transferResult =
-		    qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, locals.withdrawAmount, qpi.invocator());
+		    qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, locals.withdrawAmount, qpi.invocator());
 		if (locals.transferResult < 0)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TRANSFER_FROM_PULSE_FAILED);
@@ -1109,12 +1144,12 @@ public:
 
 		if (locals.entry.deposit <= 0)
 		{
-			state.autoParticipants.removeByKey(qpi.invocator());
-			state.autoParticipants.cleanupIfNeeded(PULSE_CLEANUP_THRESHOLD);
+			state.mut().autoParticipants.removeByKey(qpi.invocator());
+			state.mut().autoParticipants.cleanupIfNeeded(PULSE_CLEANUP_THRESHOLD);
 		}
 		else
 		{
-			state.autoParticipants.set(qpi.invocator(), locals.entry);
+			state.mut().autoParticipants.set(qpi.invocator(), locals.entry);
 		}
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
@@ -1130,7 +1165,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (!state.autoParticipants.contains(qpi.invocator()))
+		if (!state.get().autoParticipants.contains(qpi.invocator()))
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
@@ -1144,16 +1179,16 @@ public:
 
 		if (input.desiredTickets > 0)
 		{
-			if (state.maxAutoTicketsPerUser > 0)
+			if (state.get().maxAutoTicketsPerUser > 0)
 			{
-				input.desiredTickets = min(input.desiredTickets, static_cast<sint16>(state.maxAutoTicketsPerUser));
+				input.desiredTickets = min(input.desiredTickets, static_cast<sint16>(state.get().maxAutoTicketsPerUser));
 			}
 
-			state.autoParticipants.get(qpi.invocator(), locals.entry);
+			state.get().autoParticipants.get(qpi.invocator(), locals.entry);
 
 			// Update desired tickets if specified
 			locals.entry.desiredTickets = static_cast<uint16>(input.desiredTickets);
-			state.autoParticipants.set(qpi.invocator(), locals.entry);
+			state.mut().autoParticipants.set(qpi.invocator(), locals.entry);
 		}
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
@@ -1170,13 +1205,13 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.invocator() != state.qheartIssuer)
+		if (qpi.invocator() != state.get().qheartIssuer)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
 		}
 
-		if (state.maxAutoTicketsPerUser == input.maxTicketsPerUser)
+		if (state.get().maxAutoTicketsPerUser == input.maxTicketsPerUser)
 		{
 			output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 			return;
@@ -1184,20 +1219,20 @@ public:
 
 		input.maxTicketsPerUser = min(input.maxTicketsPerUser, PULSE_MAX_NUMBER_OF_PLAYERS);
 
-		state.maxAutoTicketsPerUser = input.maxTicketsPerUser;
+		state.mut().maxAutoTicketsPerUser = input.maxTicketsPerUser;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 
 		// Update existing entries to comply with the new limit.
-		if (state.maxAutoTicketsPerUser > 0)
+		if (state.get().maxAutoTicketsPerUser > 0)
 		{
-			locals.index = state.autoParticipants.nextElementIndex(NULL_INDEX);
+			locals.index = state.get().autoParticipants.nextElementIndex(NULL_INDEX);
 			while (locals.index != NULL_INDEX)
 			{
-				locals.autoParticipant = state.autoParticipants.value(locals.index);
-				locals.autoParticipant.desiredTickets = min(locals.autoParticipant.desiredTickets, state.maxAutoTicketsPerUser);
-				state.autoParticipants.replace(state.autoParticipants.key(locals.index), locals.autoParticipant);
+				locals.autoParticipant = state.get().autoParticipants.value(locals.index);
+				locals.autoParticipant.desiredTickets = min(locals.autoParticipant.desiredTickets, state.get().maxAutoTicketsPerUser);
+				state.mut().autoParticipants.replace(state.get().autoParticipants.key(locals.index), locals.autoParticipant);
 
-				locals.index = state.autoParticipants.nextElementIndex(locals.index);
+				locals.index = state.get().autoParticipants.nextElementIndex(locals.index);
 			}
 		}
 	}
@@ -1232,15 +1267,15 @@ public:
 		}
 
 		locals.userBalance =
-		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
-		if (locals.userBalance < state.ticketPrice)
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
+		if (locals.userBalance < state.get().ticketPrice)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
 			return;
 		}
 
-		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, qpi.invocator(),
-		                                                                qpi.invocator(), state.ticketPrice, SELF);
+		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(),
+		                                                                qpi.invocator(), state.get().ticketPrice, SELF);
 		if (locals.transferResult < 0)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
@@ -1249,8 +1284,8 @@ public:
 
 		locals.ticket.player = qpi.invocator();
 		locals.ticket.digits = input.digits;
-		state.tickets.set(state.ticketCounter, locals.ticket);
-		state.ticketCounter = min(static_cast<uint64>(state.ticketCounter) + 1ull, state.tickets.capacity());
+		state.mut().tickets.set(state.get().ticketCounter, locals.ticket);
+		state.mut().ticketCounter = min(static_cast<uint64>(state.get().ticketCounter) + 1ull, state.get().tickets.capacity());
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
@@ -1290,12 +1325,12 @@ public:
 private:
 	PRIVATE_PROCEDURE_WITH_LOCALS(ProcessAutoTickets)
 	{
-		if (!isSellingOpen(state) || state.autoParticipants.population() == 0)
+		if (!isSellingOpen(state) || state.get().autoParticipants.population() == 0)
 		{
 			return;
 		}
 
-		locals.currentIndex = state.autoParticipants.nextElementIndex(NULL_INDEX);
+		locals.currentIndex = state.get().autoParticipants.nextElementIndex(NULL_INDEX);
 		while (locals.currentIndex != NULL_INDEX)
 		{
 			locals.slotsLeft = getSlotsLeft(state);
@@ -1304,20 +1339,20 @@ private:
 				break;
 			}
 
-			locals.entry = state.autoParticipants.value(locals.currentIndex);
+			locals.entry = state.get().autoParticipants.value(locals.currentIndex);
 
-			locals.affordable = div<sint64>(locals.entry.deposit, state.ticketPrice);
+			locals.affordable = div<sint64>(locals.entry.deposit, state.get().ticketPrice);
 			if (locals.affordable == 0)
 			{
-				state.autoParticipants.removeByIndex(locals.currentIndex);
-				locals.currentIndex = state.autoParticipants.nextElementIndex(locals.currentIndex);
+				state.mut().autoParticipants.removeByIndex(locals.currentIndex);
+				locals.currentIndex = state.get().autoParticipants.nextElementIndex(locals.currentIndex);
 				continue;
 			}
 
 			locals.toBuy = locals.affordable;
-			if (state.maxAutoTicketsPerUser > 0)
+			if (state.get().maxAutoTicketsPerUser > 0)
 			{
-				locals.toBuy = min(locals.toBuy, static_cast<sint64>(state.maxAutoTicketsPerUser));
+				locals.toBuy = min(locals.toBuy, static_cast<sint64>(state.get().maxAutoTicketsPerUser));
 			}
 			if (locals.entry.desiredTickets > 0)
 			{
@@ -1327,7 +1362,7 @@ private:
 			locals.toBuy = min(locals.toBuy, locals.slotsLeft);
 			if (locals.toBuy <= 0)
 			{
-				locals.currentIndex = state.autoParticipants.nextElementIndex(locals.currentIndex);
+				locals.currentIndex = state.get().autoParticipants.nextElementIndex(locals.currentIndex);
 				continue;
 			}
 
@@ -1336,24 +1371,24 @@ private:
 			CALL(AllocateRandomTickets, locals.allocateInput, locals.allocateOutput);
 			if (locals.allocateOutput.returnCode != toReturnCode(EReturnCode::SUCCESS))
 			{
-				locals.currentIndex = state.autoParticipants.nextElementIndex(locals.currentIndex);
+				locals.currentIndex = state.get().autoParticipants.nextElementIndex(locals.currentIndex);
 				continue;
 			}
 
-			locals.entry.deposit -= smul(locals.toBuy, state.ticketPrice);
+			locals.entry.deposit -= smul(locals.toBuy, state.get().ticketPrice);
 			if (locals.entry.deposit <= 0)
 			{
-				state.autoParticipants.removeByIndex(locals.currentIndex);
+				state.mut().autoParticipants.removeByIndex(locals.currentIndex);
 			}
 			else
 			{
-				state.autoParticipants.set(locals.entry.player, locals.entry);
+				state.mut().autoParticipants.set(locals.entry.player, locals.entry);
 			}
 
-			locals.currentIndex = state.autoParticipants.nextElementIndex(locals.currentIndex);
+			locals.currentIndex = state.get().autoParticipants.nextElementIndex(locals.currentIndex);
 		}
 
-		state.autoParticipants.cleanupIfNeeded(PULSE_CLEANUP_THRESHOLD);
+		state.mut().autoParticipants.cleanupIfNeeded(PULSE_CLEANUP_THRESHOLD);
 	}
 
 	PRIVATE_FUNCTION_WITH_LOCALS(ValidateDigits)
@@ -1384,20 +1419,20 @@ private:
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(SettleRound)
 	{
-		if (state.ticketCounter == 0)
+		if (state.get().ticketCounter == 0)
 		{
 			return;
 		}
 
-		locals.roundRevenue = smul(state.ticketPrice, state.ticketCounter);
-		locals.devAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.devPercent)), 100LL);
-		locals.burnAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.burnPercent)), 100LL);
-		locals.shareholdersAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.shareholdersPercent)), 100LL);
-		locals.rlShareholdersAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.rlShareholdersPercent)), 100LL);
+		locals.roundRevenue = smul(state.get().ticketPrice, state.get().ticketCounter);
+		locals.devAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.get().devPercent)), 100LL);
+		locals.burnAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.get().burnPercent)), 100LL);
+		locals.shareholdersAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.get().shareholdersPercent)), 100LL);
+		locals.rlShareholdersAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.get().rlShareholdersPercent)), 100LL);
 
 		if (locals.devAmount > 0)
 		{
-			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, locals.devAmount, state.teamAddress);
+			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, locals.devAmount, state.get().teamAddress);
 		}
 		if (locals.shareholdersAmount > 0)
 		{
@@ -1417,31 +1452,31 @@ private:
 		}
 		if (locals.burnAmount > 0)
 		{
-			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, locals.burnAmount, NULL_ID);
+			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, locals.burnAmount, NULL_ID);
 		}
 
 		locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
 		locals.randomSeed = qpi.K12(locals.mixedSpectrumValue).u64._0;
 		locals.randomInput.seed = locals.randomSeed;
 		CALL(GetRandomDigits, locals.randomInput, locals.randomOutput);
-		state.lastWinningDigits = locals.randomOutput.digits;
+		state.mut().lastWinningDigits = locals.randomOutput.digits;
 
-		locals.balanceSigned = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
+		locals.balanceSigned = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
 		locals.balance = max(locals.balanceSigned, 0LL);
 
 		locals.totalPrize = 0;
-		for (locals.i = 0; locals.i < state.ticketCounter; ++locals.i)
+		for (locals.i = 0; locals.i < state.get().ticketCounter; ++locals.i)
 		{
-			locals.ticket = state.tickets.get(locals.i);
-			locals.prize = computePrize(state, locals.ticket, state.lastWinningDigits, locals.computePrizeLocals);
+			locals.ticket = state.get().tickets.get(locals.i);
+			locals.prize = computePrize(state, locals.ticket, state.get().lastWinningDigits, locals.computePrizeLocals);
 			locals.totalPrize += locals.prize;
 		}
 
 		locals.availableBalance = locals.balance;
-		for (locals.i = 0; locals.i < state.ticketCounter; ++locals.i)
+		for (locals.i = 0; locals.i < state.get().ticketCounter; ++locals.i)
 		{
-			locals.ticket = state.tickets.get(locals.i);
-			locals.prize = computePrize(state, locals.ticket, state.lastWinningDigits, locals.computePrizeLocals);
+			locals.ticket = state.get().tickets.get(locals.i);
+			locals.prize = computePrize(state, locals.ticket, state.get().lastWinningDigits, locals.computePrizeLocals);
 
 			if (locals.totalPrize > 0 && locals.availableBalance < locals.totalPrize)
 			{
@@ -1452,7 +1487,7 @@ private:
 
 			if (locals.prize > 0 && locals.balance >= locals.prize)
 			{
-				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, static_cast<sint64>(locals.prize),
+				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, static_cast<sint64>(locals.prize),
 				                                        locals.ticket.player);
 				locals.balance -= locals.prize;
 
@@ -1462,13 +1497,13 @@ private:
 			}
 		}
 
-		locals.balanceSigned = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
+		locals.balanceSigned = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
 		locals.balance = (locals.balanceSigned > 0) ? static_cast<uint64>(locals.balanceSigned) : 0;
 
-		if (state.qheartHoldLimit > 0 && locals.balance > state.qheartHoldLimit)
+		if (state.get().qheartHoldLimit > 0 && locals.balance > state.get().qheartHoldLimit)
 		{
-			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF,
-			                                        static_cast<sint64>(locals.balance - state.qheartHoldLimit), state.qheartIssuer);
+			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF,
+			                                        static_cast<sint64>(locals.balance - state.get().qheartHoldLimit), state.get().qheartIssuer);
 		}
 	}
 
@@ -1480,13 +1515,13 @@ private:
 		}
 
 		getWinnerCounter(state, locals.insertIdx);
-		++state.winnersCounter;
+		++state.mut().winnersCounter;
 
 		locals.winnerInfo.winnerAddress = input.winnerAddress;
 		locals.winnerInfo.revenue = input.revenue;
 		locals.winnerInfo.epoch = qpi.epoch();
 
-		state.winners.set(locals.insertIdx, locals.winnerInfo);
+		state.mut().winners.set(locals.insertIdx, locals.winnerInfo);
 	}
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(PrepareRandomTickets)
@@ -1524,16 +1559,16 @@ private:
 			return;
 		}
 
-		locals.totalPrice = smul(static_cast<sint64>(input.count), state.ticketPrice);
+		locals.totalPrice = smul(static_cast<sint64>(input.count), state.get().ticketPrice);
 		locals.userBalance =
-		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, input.player, input.player, SELF_INDEX, SELF_INDEX);
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, input.player, input.player, SELF_INDEX, SELF_INDEX);
 		if (locals.userBalance < static_cast<sint64>(locals.totalPrice))
 		{
 			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
 			return;
 		}
 
-		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, input.player, input.player,
+		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, input.player, input.player,
 		                                                                static_cast<sint64>(locals.totalPrice), SELF);
 		if (locals.transferResult < 0)
 		{
@@ -1567,7 +1602,7 @@ private:
 
 		locals.randomData.prevSpectrumDigest = qpi.getPrevSpectrumDigest();
 		locals.randomData.allocateInput = input;
-		locals.randomData.ticketCounter = state.ticketCounter;
+		locals.randomData.ticketCounter = state.get().ticketCounter;
 
 		locals.randomSeed = qpi.K12(locals.randomData).u64._0;
 		for (locals.i = 0; locals.i < input.count; ++locals.i)
@@ -1578,8 +1613,8 @@ private:
 
 			locals.ticket.player = input.player;
 			locals.ticket.digits = locals.randomOutput.digits;
-			state.tickets.set(state.ticketCounter, locals.ticket);
-			state.ticketCounter = min(state.ticketCounter + 1LL, static_cast<sint64>(state.tickets.capacity()));
+			state.mut().tickets.set(state.get().ticketCounter, locals.ticket);
+			state.mut().ticketCounter = min(state.get().ticketCounter + 1LL, static_cast<sint64>(state.get().tickets.capacity()));
 		}
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
@@ -1609,7 +1644,7 @@ private:
 			locals.shareholdersHolderShares = locals.shareholdersIter.numberOfPossessedShares();
 			if (locals.shareholdersHolderShares > 0)
 			{
-				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.qheartIssuer, SELF, SELF,
+				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF,
 				                                        smul(locals.shareholdersHolderShares, locals.shareholdersDividendPerShare),
 				                                        locals.shareholdersIter.possessor());
 			}
@@ -1637,94 +1672,64 @@ public:
 		outValue ^= outValue >> 31;
 	}
 
-	static sint64 getSlotsLeft(const PULSE& state)
+	static sint64 getSlotsLeft(const QPI::ContractState<StateData, CONTRACT_INDEX>& state)
 	{
-		return state.ticketCounter < static_cast<sint64>(state.tickets.capacity())
-		           ? static_cast<sint64>(state.tickets.capacity()) - state.ticketCounter
+		return state.get().ticketCounter < static_cast<sint64>(state.get().tickets.capacity())
+		           ? static_cast<sint64>(state.get().tickets.capacity()) - state.get().ticketCounter
 		           : 0LL;
 	}
 
 protected:
-	// Ring buffer of recent winners; index is winnersCounter % capacity.
-	Array<WinnerInfo, PULSE_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
-	// Tickets for the current round; valid range is [0, ticketCounter).
-	Array<Ticket, PULSE_MAX_NUMBER_OF_PLAYERS> tickets;
-	// Auto-buy participants keyed by user id.
-	HashMap<id, AutoParticipant, PULSE_MAX_NUMBER_OF_AUTO_PARTICIPANTS> autoParticipants;
-	// Last settled winning digits; undefined before the first draw.
-	Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> lastWinningDigits;
-	NextEpochData nextEpochData;
-	id teamAddress;
-	id qheartIssuer;
-	// Monotonic winner count used to rotate the winners ring buffer.
-	uint64 winnersCounter;
-	sint64 ticketCounter;
-	sint64 ticketPrice;
-	// Contract balance above this cap is swept to the QHeart wallet after settlement.
-	uint64 qheartHoldLimit;
-	// Date stamp of the most recent draw; PULSE_DEFAULT_INIT_TIME is a bootstrap sentinel.
-	uint32 lastDrawDateStamp;
-	// Per-user auto-purchase limits; 0 means unlimited.
-	uint16 maxAutoTicketsPerUser;
-	uint8 devPercent;
-	uint8 burnPercent;
-	uint8 shareholdersPercent;
-	uint8 rlShareholdersPercent;
-	uint8 schedule;
-	uint8 drawHour;
-	EState currentState;
-
-protected:
-	static void clearStateOnEndEpoch(PULSE& state)
+	static void clearStateOnEndEpoch(QPI::ContractState<StateData, CONTRACT_INDEX>& state)
 	{
 		clearStateOnEndDraw(state);
-		state.lastDrawDateStamp = 0;
+		state.mut().lastDrawDateStamp = 0;
 	}
 
-	static void clearStateOnEndDraw(PULSE& state)
+	static void clearStateOnEndDraw(QPI::ContractState<StateData, CONTRACT_INDEX>& state)
 	{
-		state.ticketCounter = 0;
-		setMemory(state.tickets, 0);
+		state.mut().ticketCounter = 0;
+		setMemory(state.mut().tickets, 0);
 	}
 
-	static void enableBuyTicket(PULSE& state, bool bEnable)
+	static void enableBuyTicket(QPI::ContractState<StateData, CONTRACT_INDEX>& state, bool bEnable)
 	{
-		state.currentState = bEnable ? state.currentState | EState::SELLING : state.currentState & ~EState::SELLING;
+		state.mut().currentState = bEnable ? state.get().currentState | EState::SELLING : state.get().currentState & ~EState::SELLING;
 	}
 
-	static bool isSellingOpen(const PULSE& state) { return (state.currentState & EState::SELLING) != 0; }
+	static bool isSellingOpen(const QPI::ContractState<StateData, CONTRACT_INDEX>& state) { return (state.get().currentState & EState::SELLING) != 0; }
 
-	static void getWinnerCounter(const PULSE& state, uint64& outCounter) { outCounter = mod(state.winnersCounter, state.winners.capacity()); }
+	static void getWinnerCounter(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, uint64& outCounter) { outCounter = mod(state.get().winnersCounter, state.get().winners.capacity()); }
 
-	static uint64 getLeftAlignedReward(const PULSE& state, uint8 matches)
+	static uint64 getLeftAlignedReward(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, uint8 matches)
 	{
 		switch (matches)
 		{
-			case 6: return 2000 * state.ticketPrice;
-			case 5: return 300 * state.ticketPrice;
-			case 4: return 60 * state.ticketPrice;
-			case 3: return 20 * state.ticketPrice;
-			case 2: return 4 * state.ticketPrice;
-			case 1: return 1 * state.ticketPrice;
+			case 6: return 2000 * state.get().ticketPrice;
+			case 5: return 300 * state.get().ticketPrice;
+			case 4: return 60 * state.get().ticketPrice;
+			case 3: return 20 * state.get().ticketPrice;
+			case 2: return 4 * state.get().ticketPrice;
+			case 1: return 1 * state.get().ticketPrice;
 			default: return 0;
 		}
 	}
 
-	static uint64 getAnyPositionReward(const PULSE& state, uint8 matches)
+	static uint64 getAnyPositionReward(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, uint8 matches)
 	{
 		switch (matches)
 		{
-			case 6: return 100 * state.ticketPrice;
-			case 5: return 10 * state.ticketPrice;
-			case 4: return 3 * state.ticketPrice;
-			case 3: return 1 * state.ticketPrice;
+			case 6: return 100 * state.get().ticketPrice;
+			case 5: return 10 * state.get().ticketPrice;
+			case 4: return 3 * state.get().ticketPrice;
+			case 3: return 1 * state.get().ticketPrice;
 			case 2:
 			case 1:
 			default: return 0;
 		}
 	}
 
-	static uint64 computePrize(const PULSE& state, const Ticket& ticket, const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winningDigits,
+	static uint64 computePrize(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, const Ticket& ticket, const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winningDigits,
 	                           ComputePrize_locals& locals)
 	{
 		setMemory(locals, 0);

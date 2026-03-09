@@ -41,7 +41,7 @@ static std::vector<id> getRandomUsers(unsigned int totalUsers, unsigned int maxN
     return users;
 }
 
-class QRaffleChecker : public QRAFFLE
+class QRaffleChecker : public QRAFFLE, public QRAFFLE::StateData
 {
 public:
     void registerChecker(const id& user, uint32 expectedRegisters, bool isRegistered)
