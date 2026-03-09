@@ -11,6 +11,8 @@
 // - all oracle query IDs that are pending (status is neither success nor failure)
 // - for given oracle query ID: metadata, query, and response if available
 // - subscription info for given oracle subscription ID
+// - subscription IDs of all active subscriptions
+// - subscription IDs of active subscriptions of a given contract
 // - query statistics of this node (counts and durations)
 // - query oracle revenue points
 struct RequestOracleData
@@ -30,11 +32,13 @@ struct RequestOracleData
     static constexpr unsigned int requestSubscription = 6;
     static constexpr unsigned int requestQueryStatistics = 7;
     static constexpr unsigned int requestOracleRevenuePoints = 8;
+    static constexpr unsigned int requestActiveSubscriptions = 9;
+    static constexpr unsigned int requestActiveContractSubscriptions = 10;
     unsigned int reqType;
 
     unsigned int _padding;
 
-    // tick, query ID, or subscription ID (depending on reqType)
+    // tick, query ID, subscription ID, or contract index (depending on reqType)
     long long reqTickOrId;
 };
 
@@ -79,6 +83,9 @@ struct RespondOracleData
 
     // The payload is RespondOracleDataValidTickRange.
     static constexpr unsigned int respondTickRange = 9;
+
+    // The payload is an array of 4-byte subscription IDs.
+    static constexpr unsigned int respondSubscriptionIds = 10;
 
     // type of oracle response
     unsigned int resType;
