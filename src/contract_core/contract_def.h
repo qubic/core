@@ -378,7 +378,7 @@ constexpr struct ContractDescription
 	{"QTF", 199, 10000, sizeof(QTF)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
     {"QDUEL", 199, 10000, sizeof(QDUEL)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
 	{"PULSE", 204, 10000, sizeof(PULSE)}, // proposal in epoch 202, IPO in 203, construction and first use in 204
-    {"VOTTUN", 199, 10000, sizeof(VOTTUNBRIDGE)}, // proposal in epoch 197, IPO in 200, construction and first use in 197
+    {"VOTTUN", 199, 10000, sizeof(VOTTUNBRIDGE::StateData)}, // proposal in epoch 197, IPO in 200, construction and first use in 197
 
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
