@@ -341,7 +341,6 @@ void OracleEngine::processRequestOracleData(Peer* peer, RequestResponseHeader* h
 			break;
 		const uint16_t contractIndex = (uint16_t)request->reqTickOrId;
 		response->resType = RespondOracleData::respondSubscriptionIds;
-		const int32_t* subscriptionIds = nextSubscriptionIdQueue.data();
 		unsigned int subscriptionIdx = 0;
 		bool moreSubscriptions = subscriptionIdx < nextSubscriptionIdQueue.size();
 		do

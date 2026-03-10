@@ -994,6 +994,8 @@ public:
             {
                 // there is at least one additional subscriber -> update timestamp to next subscriber
                 subscription.nextQueryTimestamp = subscribers[subscription.firstSubscriberIndex].nextQueryTimestamp;
+                nextSubscriptionIdQueue.removeFirstMatch(subscriptionId);
+                nextSubscriptionIdQueue.insert(subscriptionId);
             }
             else
             {
@@ -1075,7 +1077,7 @@ public:
         while (nextSubscriptionIdQueue.peek(subscriptionId))
         {
             // Check if it is time to generate the next query
-            ASSERT(subscriptionId >= 0 && subscriptionId < usedSubscriberSlots);
+            ASSERT(subscriptionId >= 0 && subscriptionId < usedSubscriptionSlots);
             OracleSubscription& subscription = subscriptions[subscriptionId];
             QPI::DateAndTime queryTimestamp = subscription.nextQueryTimestamp;
             if (queryTimestamp > now)
