@@ -231,10 +231,16 @@ public:
 
 	PUBLIC_PROCEDURE(QueryPriceOracle)
 	{
+		if (qpi.invocationReward() < OI::Price::getQueryFee(input.priceOracleQuery))
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		}
 		output.oracleQueryId = QUERY_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.timeoutMilliseconds);
 		if (output.oracleQueryId < 0)
 		{
 			// error
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
 		}
 
@@ -245,20 +251,42 @@ public:
 	struct SubscribePriceOracle_input
 	{
 		OI::Price::OracleQuery priceOracleQuery;
-		uint16 subscriptionIntervalMinutes;
+		uint32 subscriptionPeriodMilliseconds;
+		bit notifyPreviousValue;
 	};
 	struct SubscribePriceOracle_output
 	{
-		uint32 oracleSubscriptionId;
+		sint32 oracleSubscriptionId;
 	};
 
 	PUBLIC_PROCEDURE(SubscribePriceOracle)
 	{
-		output.oracleSubscriptionId = SUBSCRIBE_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.subscriptionIntervalMinutes, true);
+		if (qpi.invocationReward() < OI::Price::getSubscriptionFee(input.priceOracleQuery, input.subscriptionPeriodMilliseconds))
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		}
+
+		output.oracleSubscriptionId = SUBSCRIBE_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.subscriptionPeriodMilliseconds, input.notifyPreviousValue);
 		if (output.oracleSubscriptionId < 0)
 		{
 			// error
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
+	}
+
+	struct UnsubscribeOracle_input
+	{
+		sint32 subscriptionId;
+	};
+	struct UnsubscribeOracle_output
+	{
+		bit success;
+	};
+
+	PUBLIC_PROCEDURE(UnsubscribeOracle)
+	{
+		output.success = qpi.unsubscribeOracle(input.subscriptionId);
 	}
 
 	typedef OracleNotificationInput<OI::Price> NotifyPriceOracleReply_input;
@@ -272,7 +300,7 @@ public:
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(NotifyPriceOracleReply)
 	{
-		locals.notificationLog = NotificationLog{CONTRACT_INDEX, OI::Price::oracleInterfaceIndex, input.status, OI::Price::replyIsValid(input.reply), input.reply.numerator, input.queryId };
+		locals.notificationLog = NotificationLog{CONTRACT_INDEX, OI::Price::oracleInterfaceIndex, input.status, OI::Price::replyIsValid(input.reply), input.subscriptionId, input.queryId };
 		LOG_INFO(locals.notificationLog);
 
 		if (input.status == ORACLE_QUERY_STATUS_SUCCESS)
@@ -372,7 +400,7 @@ public:
 				else if (locals.c == 2)
 				{
 					using namespace Ch;
-					locals.priceOracleQuery.oracle = OI::Price::getCoingeckoOracleId();
+					locals.priceOracleQuery.oracle = OI::Price::getBinanceOracleId();
 					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
 					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
 					locals.priceOracleQuery.timestamp = qpi.now();
@@ -451,6 +479,8 @@ public:
 		REGISTER_USER_PROCEDURE(QpiBidInIpo, 30);
 
 		REGISTER_USER_PROCEDURE(QueryPriceOracle, 100);
+		REGISTER_USER_PROCEDURE(SubscribePriceOracle, 101);
+		REGISTER_USER_PROCEDURE(UnsubscribeOracle, 102);
 
 		REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyPriceOracleReply);
 		REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyMockOracleReply);
