@@ -1,4 +1,5 @@
 #define SINGLE_COMPILE_UNIT
+// #define OLD_QVAULT
 
 //#define INCLUDE_CONTRACT_TEST_EXAMPLES
 
