@@ -36,12 +36,6 @@ struct Mock
 		return 10;
 	}
 
-	/// Return subscription fee, which may depend on query and interval.
-	static sint64 getSubscriptionFee(const OracleQuery& query, uint16 notifyIntervalInMinutes)
-	{
-		return 1000;
-	}
-
 	/// Check if the passed oracle reply is valid
 	static bool replyIsValid(const OracleQuery& query, const OracleReply& reply)
 	{

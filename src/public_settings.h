@@ -87,6 +87,7 @@ static unsigned short CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"custom_
 static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining_cache.???";
 static unsigned short CONTRACT_EXEC_FEES_ACC_FILE_NAME[] = L"contract_exec_fees_acc.???";
 static unsigned short CONTRACT_EXEC_FEES_REC_FILE_NAME[] = L"contract_exec_fees_rec.???";
+static unsigned short REVENUE_DATA_END_OF_EPOCH_FILE_NAME[] = L"revenue_data.eoe";
 
 static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS = 512;     // K
 static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS = 512;    // L
@@ -100,7 +101,7 @@ static constexpr unsigned long long ADDITION_NUMBER_OF_INPUT_NEURONS = 14;     /
 static constexpr unsigned long long ADDITION_NUMBER_OF_OUTPUT_NEURONS = 8;    // L
 static constexpr unsigned long long ADDITION_NUMBER_OF_TICKS = 1000;               // N
 static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
-static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 150;
+static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 300;
 static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = ADDITION_NUMBER_OF_INPUT_NEURONS + ADDITION_NUMBER_OF_OUTPUT_NEURONS + ADDITION_NUMBER_OF_MUTATIONS; // P
 static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 74500;
 

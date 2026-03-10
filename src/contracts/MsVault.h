@@ -99,6 +99,34 @@ public:
         sint8 _terminator;
     };
 
+    struct StateData
+    {
+        Array<Vault, MSVAULT_MAX_VAULTS> vaults;
+
+        uint64 numberOfActiveVaults;
+        uint64 totalRevenue;
+        uint64 totalDistributedToShareholders;
+        uint64 burnedAmount;
+
+        Array<MsVaultFeeVote, MSVAULT_MAX_FEE_VOTES> feeVotes;
+        Array<id, MSVAULT_MAX_FEE_VOTES> feeVotesOwner;
+        Array<uint64, MSVAULT_MAX_FEE_VOTES> feeVotesScore;
+        uint64 feeVotesAddrCount;
+
+        Array<MsVaultFeeVote, MSVAULT_MAX_FEE_VOTES> uniqueFeeVotes;
+        Array<uint64, MSVAULT_MAX_FEE_VOTES> uniqueFeeVotesRanking;
+        uint64 uniqueFeeVotesCount;
+
+        uint64 liveRegisteringFee;
+        uint64 liveReleaseFee;
+        uint64 liveReleaseResetFee;
+        uint64 liveHoldingFee;
+        uint64 liveDepositFee;
+        uint64 liveBurnFee;
+
+        Array<VaultAssetPart, MSVAULT_MAX_VAULTS> vaultAssetParts;
+    };
+
     struct isValidVaultId_input
     {
         uint64 vaultId;
@@ -680,33 +708,6 @@ public:
         id qxAdress;
     };
 
-protected:
-    // Contract states
-    Array<Vault, MSVAULT_MAX_VAULTS> vaults;
-
-    uint64 numberOfActiveVaults;
-    uint64 totalRevenue;
-    uint64 totalDistributedToShareholders;
-    uint64 burnedAmount;
-
-    Array<MsVaultFeeVote, MSVAULT_MAX_FEE_VOTES> feeVotes;
-    Array<id, MSVAULT_MAX_FEE_VOTES> feeVotesOwner;
-    Array<uint64, MSVAULT_MAX_FEE_VOTES> feeVotesScore;
-    uint64 feeVotesAddrCount;
-
-    Array<MsVaultFeeVote, MSVAULT_MAX_FEE_VOTES> uniqueFeeVotes;
-    Array<uint64, MSVAULT_MAX_FEE_VOTES> uniqueFeeVotesRanking;
-    uint64 uniqueFeeVotesCount;
-
-    uint64 liveRegisteringFee;
-    uint64 liveReleaseFee;
-    uint64 liveReleaseResetFee;
-    uint64 liveHoldingFee;
-    uint64 liveDepositFee;
-    uint64 liveBurnFee;
-
-    Array<VaultAssetPart, MSVAULT_MAX_VAULTS> vaultAssetParts;
-
     // Helper Functions
     PRIVATE_FUNCTION_WITH_LOCALS(isValidVaultId)
     {
@@ -760,7 +761,7 @@ protected:
         locals.logger.ownerID = qpi.invocator();
         locals.logger.vaultId = -1; // Not yet created
 
-        if (qpi.invocationReward() < (sint64)state.liveRegisteringFee)
+        if (qpi.invocationReward() < (sint64)state.get().liveRegisteringFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
@@ -769,9 +770,9 @@ protected:
             return;
         }
 
-        if (qpi.invocationReward() > (sint64)state.liveRegisteringFee)
+        if (qpi.invocationReward() > (sint64)state.get().liveRegisteringFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.liveRegisteringFee);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.get().liveRegisteringFee);
         }
 
         locals.ownerCount = 0;
@@ -800,7 +801,7 @@ protected:
 
         if (locals.ownerCount <= 1)
         {
-            qpi.transfer(qpi.invocator(), (sint64)state.liveRegisteringFee);
+            qpi.transfer(qpi.invocator(), (sint64)state.get().liveRegisteringFee);
             output.status = 5; // FAILURE_INVALID_PARAMS
             locals.logger._type = (uint32)output.status;
             LOG_INFO(locals.logger);
@@ -810,7 +811,7 @@ protected:
         // requiredApprovals must be > 1 and <= numberOfOwners
         if (input.requiredApprovals <= 1 || input.requiredApprovals > locals.ownerCount)
         {
-            qpi.transfer(qpi.invocator(), (sint64)state.liveRegisteringFee);
+            qpi.transfer(qpi.invocator(), (sint64)state.get().liveRegisteringFee);
             output.status = 5; // FAILURE_INVALID_PARAMS
             locals.logger._type = (uint32)output.status;
             LOG_INFO(locals.logger);
@@ -824,7 +825,7 @@ protected:
             locals.count = 0;
             for (locals.j = 0; locals.j < MSVAULT_MAX_VAULTS; locals.j++)
             {
-                locals.tempVault = state.vaults.get(locals.j);
+                locals.tempVault = state.get().vaults.get(locals.j);
                 if (locals.tempVault.isActive)
                 {
                     for (locals.k = 0; locals.k < (uint64)locals.tempVault.numberOfOwners; locals.k++)
@@ -838,7 +839,7 @@ protected:
             }
             if (locals.count >= MSVAULT_MAX_COOWNER)
             {
-                qpi.transfer(qpi.invocator(), (sint64)state.liveRegisteringFee);
+                qpi.transfer(qpi.invocator(), (sint64)state.get().liveRegisteringFee);
                 output.status = 7; // FAILURE_LIMIT_REACHED
                 locals.logger._type = (uint32)output.status;
                 LOG_INFO(locals.logger);
@@ -850,7 +851,7 @@ protected:
         locals.slotIndex = -1;
         for (locals.ii = 0; locals.ii < MSVAULT_MAX_VAULTS; locals.ii++)
         {
-            locals.tempVault = state.vaults.get(locals.ii);
+            locals.tempVault = state.get().vaults.get(locals.ii);
             if (!locals.tempVault.isActive && locals.tempVault.numberOfOwners == 0 && locals.tempVault.qubicBalance == 0)
             {
                 locals.slotIndex = locals.ii;
@@ -860,7 +861,7 @@ protected:
 
         if (locals.slotIndex == -1)
         {
-            qpi.transfer(qpi.invocator(), (sint64)state.liveRegisteringFee);
+            qpi.transfer(qpi.invocator(), (sint64)state.get().liveRegisteringFee);
             output.status = 7; // FAILURE_LIMIT_REACHED
             locals.logger._type = (uint32)output.status;
             LOG_INFO(locals.logger);
@@ -899,12 +900,12 @@ protected:
             locals.newAssetVault.releaseAssetDestinations.set(locals.i, NULL_ID);
         }
 
-        state.vaults.set((uint64)locals.slotIndex, locals.newQubicVault);
-        state.vaultAssetParts.set((uint64)locals.slotIndex, locals.newAssetVault);
+        state.mut().vaults.set((uint64)locals.slotIndex, locals.newQubicVault);
+        state.mut().vaultAssetParts.set((uint64)locals.slotIndex, locals.newAssetVault);
 
-        state.numberOfActiveVaults++;
+        state.mut().numberOfActiveVaults++;
 
-        state.totalRevenue += state.liveRegisteringFee;
+        state.mut().totalRevenue += state.get().liveRegisteringFee;
         output.status = 1; // SUCCESS
         locals.logger.vaultId = locals.slotIndex;
         locals.logger._type = (uint32)output.status;
@@ -919,7 +920,7 @@ protected:
         locals.logger.ownerID = qpi.invocator();
         locals.logger.vaultId = input.vaultId;
 
-        if (qpi.invocationReward() < (sint64)state.liveDepositFee)
+        if (qpi.invocationReward() < (sint64)state.get().liveDepositFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
@@ -929,7 +930,7 @@ protected:
         }
 
         // calculate the actual amount to deposit into the vault
-        locals.amountToDeposit = qpi.invocationReward() - state.liveDepositFee;
+        locals.amountToDeposit = qpi.invocationReward() - state.get().liveDepositFee;
 
         // make sure the deposit amount is greater than zero
         if (locals.amountToDeposit == 0)
@@ -955,7 +956,7 @@ protected:
             return;
         }
 
-        locals.vault = state.vaults.get(input.vaultId);
+        locals.vault = state.get().vaults.get(input.vaultId);
         if (!locals.vault.isActive)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -966,12 +967,12 @@ protected:
         }
 
         // add the collected fee to the total revenue
-        state.totalRevenue += state.liveDepositFee;
+        state.mut().totalRevenue += state.get().liveDepositFee;
 
         // add the remaining amount to the specified vault's balance
         locals.vault.qubicBalance += locals.amountToDeposit;
 
-        state.vaults.set(input.vaultId, locals.vault);
+        state.mut().vaults.set(input.vaultId, locals.vault);
         output.status = 1; // SUCCESS
         locals.logger._type = (uint32)output.status;
         LOG_INFO(locals.logger);
@@ -1067,7 +1068,7 @@ protected:
         locals.logger.vaultId = input.vaultId;
         locals.logger.amount = input.amount;
 
-        if (qpi.invocationReward() < (sint64)state.liveDepositFee)
+        if (qpi.invocationReward() < (sint64)state.get().liveDepositFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
@@ -1076,9 +1077,9 @@ protected:
             return;
         }
 
-        if (qpi.invocationReward() > (sint64)state.liveDepositFee)
+        if (qpi.invocationReward() > (sint64)state.get().liveDepositFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.liveDepositFee);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.get().liveDepositFee);
         }
 
         locals.userAssetBalance = qpi.numberOfShares(input.asset,
@@ -1089,7 +1090,7 @@ protected:
         {
             // User does not have enough shares, or is trying to deposit zero. Abort and refund the fee.
             output.status = 6; // FAILURE_INSUFFICIENT_BALANCE
-            qpi.transfer(qpi.invocator(), state.liveDepositFee);
+            qpi.transfer(qpi.invocator(), state.get().liveDepositFee);
             locals.logger._type = (uint32)output.status;
             LOG_INFO(locals.logger);
             return;
@@ -1101,18 +1102,18 @@ protected:
         if (!locals.iv_out.result)
         {
             output.status = 3; // FAILURE_INVALID_VAULT
-            qpi.transfer(qpi.invocator(), state.liveDepositFee);
+            qpi.transfer(qpi.invocator(), state.get().liveDepositFee);
             locals.logger._type = (uint32)output.status;
             LOG_INFO(locals.logger);
             return; // invalid vault id
         }
 
-        locals.qubicVault = state.vaults.get(input.vaultId);
-        locals.assetVault = state.vaultAssetParts.get(input.vaultId);
+        locals.qubicVault = state.get().vaults.get(input.vaultId);
+        locals.assetVault = state.get().vaultAssetParts.get(input.vaultId);
         if (!locals.qubicVault.isActive)
         {
             output.status = 3; // FAILURE_INVALID_VAULT
-            qpi.transfer(qpi.invocator(), state.liveDepositFee);
+            qpi.transfer(qpi.invocator(), state.get().liveDepositFee);
             locals.logger._type = (uint32)output.status;
             LOG_INFO(locals.logger);
             return; // vault is not active
@@ -1135,14 +1136,14 @@ protected:
         {
             // no more new asset
             output.status = 7; // FAILURE_LIMIT_REACHED
-            qpi.transfer(qpi.invocator(), state.liveDepositFee);
+            qpi.transfer(qpi.invocator(), state.get().liveDepositFee);
             locals.logger._type = (uint32)output.status;
             LOG_INFO(locals.logger);
             return;
         }
 
         // All checks passed, now perform the transfer of ownership.
-        state.totalRevenue += state.liveDepositFee;
+        state.mut().totalRevenue += state.get().liveDepositFee;
 
         locals.tempShares = qpi.numberOfShares(
             input.asset,
@@ -1192,8 +1193,8 @@ protected:
             locals.assetVault.numberOfAssetTypes++;
         }
 
-        state.vaults.set(input.vaultId, locals.qubicVault);
-        state.vaultAssetParts.set(input.vaultId, locals.assetVault);
+        state.mut().vaults.set(input.vaultId, locals.qubicVault);
+        state.mut().vaultAssetParts.set(input.vaultId, locals.assetVault);
 
         output.status = 1; // SUCCESS
         locals.logger._type = (uint32)output.status;
@@ -1210,7 +1211,7 @@ protected:
         locals.logger.amount = input.amount;
         locals.logger.destination = input.destination;
 
-        if (qpi.invocationReward() < (sint64)state.liveReleaseFee)
+        if (qpi.invocationReward() < (sint64)state.get().liveReleaseFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
@@ -1219,12 +1220,12 @@ protected:
             return;
         }
 
-        if (qpi.invocationReward() > (sint64)state.liveReleaseFee)
+        if (qpi.invocationReward() > (sint64)state.get().liveReleaseFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.liveReleaseFee);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.get().liveReleaseFee);
         }
 
-        state.totalRevenue += state.liveReleaseFee;
+        state.mut().totalRevenue += state.get().liveReleaseFee;
 
         locals.iv_in.vaultId = input.vaultId;
         isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
@@ -1238,7 +1239,7 @@ protected:
             return;
         }
 
-        locals.vault = state.vaults.get(input.vaultId);
+        locals.vault = state.get().vaults.get(input.vaultId);
 
         if (!locals.vault.isActive)
         {
@@ -1316,7 +1317,7 @@ protected:
                 resetReleaseRequests(qpi, state, locals.rr_in, locals.rr_out, locals.rr_locals);
                 locals.vault = locals.rr_out.vault;
 
-                state.vaults.set(input.vaultId, locals.vault);
+                state.mut().vaults.set(input.vaultId, locals.vault);
 
                 output.status = 1; // SUCCESS
                 locals.logger._type = (uint32)output.status;
@@ -1331,7 +1332,7 @@ protected:
         }
         else
         {
-            state.vaults.set(input.vaultId, locals.vault);
+            state.mut().vaults.set(input.vaultId, locals.vault);
             output.status = 9; // PENDING_APPROVAL
             locals.logger._type = (uint32)output.status;
             LOG_INFO(locals.logger);
@@ -1348,7 +1349,7 @@ protected:
         locals.logger.amount = input.amount;
         locals.logger.destination = input.destination;
 
-        if (qpi.invocationReward() < (sint64)state.liveReleaseFee)
+        if (qpi.invocationReward() < (sint64)state.get().liveReleaseFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
@@ -1357,12 +1358,12 @@ protected:
             return;
         }
 
-        if (qpi.invocationReward() > (sint64)state.liveReleaseFee)
+        if (qpi.invocationReward() > (sint64)state.get().liveReleaseFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.liveReleaseFee);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.get().liveReleaseFee);
         }
 
-        state.totalRevenue += state.liveReleaseFee;
+        state.mut().totalRevenue += state.get().liveReleaseFee;
 
         locals.iv_in.vaultId = input.vaultId;
         isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
@@ -1376,8 +1377,8 @@ protected:
             return;
         }
 
-        locals.qubicVault = state.vaults.get(input.vaultId);
-        locals.assetVault = state.vaultAssetParts.get(input.vaultId);
+        locals.qubicVault = state.get().vaults.get(input.vaultId);
+        locals.assetVault = state.get().vaultAssetParts.get(input.vaultId);
 
         if (!locals.qubicVault.isActive)
         {
@@ -1535,22 +1536,22 @@ protected:
                     locals.logger._type = (uint32)output.status;
                     LOG_INFO(locals.logger);
                 }
-                state.vaults.set(input.vaultId, locals.qubicVault);
-                state.vaultAssetParts.set(input.vaultId, locals.assetVault);
+                state.mut().vaults.set(input.vaultId, locals.qubicVault);
+                state.mut().vaultAssetParts.set(input.vaultId, locals.assetVault);
             }
             else
             {
                 output.status = 6; // FAILURE_INSUFFICIENT_BALANCE
-                state.vaults.set(input.vaultId, locals.qubicVault);
-                state.vaultAssetParts.set(input.vaultId, locals.assetVault);
+                state.mut().vaults.set(input.vaultId, locals.qubicVault);
+                state.mut().vaultAssetParts.set(input.vaultId, locals.assetVault);
                 locals.logger._type = (uint32)output.status;
                 LOG_INFO(locals.logger);
             }
         }
         else
         {
-            state.vaults.set(input.vaultId, locals.qubicVault);
-            state.vaultAssetParts.set(input.vaultId, locals.assetVault);
+            state.mut().vaults.set(input.vaultId, locals.qubicVault);
+            state.mut().vaultAssetParts.set(input.vaultId, locals.assetVault);
             output.status = 9; // PENDING_APPROVAL
             locals.logger._type = (uint32)output.status;
             LOG_INFO(locals.logger);
@@ -1567,7 +1568,7 @@ protected:
         locals.logger.amount = 0;
         locals.logger.destination = NULL_ID;
 
-        if (qpi.invocationReward() < (sint64)state.liveReleaseResetFee)
+        if (qpi.invocationReward() < (sint64)state.get().liveReleaseResetFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
@@ -1575,12 +1576,12 @@ protected:
             LOG_INFO(locals.logger);
             return;
         }
-        if (qpi.invocationReward() > (sint64)state.liveReleaseResetFee)
+        if (qpi.invocationReward() > (sint64)state.get().liveReleaseResetFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.liveReleaseResetFee);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.get().liveReleaseResetFee);
         }
 
-        state.totalRevenue += state.liveReleaseResetFee;
+        state.mut().totalRevenue += state.get().liveReleaseResetFee;
 
         locals.iv_in.vaultId = input.vaultId;
         isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
@@ -1594,7 +1595,7 @@ protected:
             return;
         }
 
-        locals.vault = state.vaults.get(input.vaultId);
+        locals.vault = state.get().vaults.get(input.vaultId);
 
         if (!locals.vault.isActive)
         {
@@ -1625,7 +1626,7 @@ protected:
         locals.vault.releaseAmounts.set(locals.ownerIndex, 0);
         locals.vault.releaseDestinations.set(locals.ownerIndex, NULL_ID);
 
-        state.vaults.set(input.vaultId, locals.vault);
+        state.mut().vaults.set(input.vaultId, locals.vault);
 
         output.status = 1; // SUCCESS
         locals.logger._type = (uint32)output.status;
@@ -1642,7 +1643,7 @@ protected:
         locals.logger.amount = 0;
         locals.logger.destination = NULL_ID;
 
-        if (qpi.invocationReward() < (sint64)state.liveReleaseResetFee)
+        if (qpi.invocationReward() < (sint64)state.get().liveReleaseResetFee)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.status = 2; // FAILURE_INSUFFICIENT_FEE
@@ -1650,12 +1651,12 @@ protected:
             LOG_INFO(locals.logger);
             return;
         }
-        if (qpi.invocationReward() > (sint64)state.liveReleaseResetFee)
+        if (qpi.invocationReward() > (sint64)state.get().liveReleaseResetFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.liveReleaseResetFee);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.get().liveReleaseResetFee);
         }
 
-        state.totalRevenue += state.liveReleaseResetFee;
+        state.mut().totalRevenue += state.get().liveReleaseResetFee;
 
         locals.iv_in.vaultId = input.vaultId;
         isValidVaultId(qpi, state, locals.iv_in, locals.iv_out, locals.iv_locals);
@@ -1669,8 +1670,8 @@ protected:
             return;
         }
 
-        locals.qubicVault = state.vaults.get(input.vaultId);
-        locals.assetVault = state.vaultAssetParts.get(input.vaultId);
+        locals.qubicVault = state.get().vaults.get(input.vaultId);
+        locals.assetVault = state.get().vaultAssetParts.get(input.vaultId);
 
         if (!locals.qubicVault.isActive)
         {
@@ -1702,8 +1703,8 @@ protected:
         locals.assetVault.releaseAssetAmounts.set(locals.ownerIndex, 0);
         locals.assetVault.releaseAssetDestinations.set(locals.ownerIndex, NULL_ID);
 
-        state.vaults.set(input.vaultId, locals.qubicVault);
-        state.vaultAssetParts.set(input.vaultId, locals.assetVault);
+        state.mut().vaults.set(input.vaultId, locals.qubicVault);
+        state.mut().vaultAssetParts.set(input.vaultId, locals.assetVault);
 
         output.status = 1; // SUCCESS
         locals.logger._type = (uint32)output.status;
@@ -1748,29 +1749,29 @@ protected:
         //locals.fs.burnFee = input.burnFee;
     
         locals.needNewRecord = true;
-        for (locals.i = 0; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
+        for (locals.i = 0; locals.i < state.get().feeVotesAddrCount; locals.i = locals.i + 1)
         {
-            locals.currentAddr = state.feeVotesOwner.get(locals.i);
+            locals.currentAddr = state.get().feeVotesOwner.get(locals.i);
             locals.realScore = qpi.numberOfShares({ NULL_ID, MSVAULT_ASSET_NAME }, AssetOwnershipSelect::byOwner(locals.currentAddr), AssetPossessionSelect::byPossessor(locals.currentAddr));
-            state.feeVotesScore.set(locals.i, locals.realScore);
+            state.mut().feeVotesScore.set(locals.i, locals.realScore);
             if (locals.currentAddr == qpi.invocator())
             {
                 locals.needNewRecord = false;
-                state.feeVotes.set(locals.i, locals.fs); // Update existing vote
+                state.mut().feeVotes.set(locals.i, locals.fs); // Update existing vote
             }
         }
-        if (locals.needNewRecord && state.feeVotesAddrCount < MSVAULT_MAX_FEE_VOTES)
+        if (locals.needNewRecord && state.get().feeVotesAddrCount < MSVAULT_MAX_FEE_VOTES)
         {
-            state.feeVotes.set(state.feeVotesAddrCount, locals.fs);
-            state.feeVotesOwner.set(state.feeVotesAddrCount, qpi.invocator());
-            state.feeVotesScore.set(state.feeVotesAddrCount, locals.nShare);
-            state.feeVotesAddrCount = state.feeVotesAddrCount + 1;
+            state.mut().feeVotes.set(state.get().feeVotesAddrCount, locals.fs);
+            state.mut().feeVotesOwner.set(state.get().feeVotesAddrCount, qpi.invocator());
+            state.mut().feeVotesScore.set(state.get().feeVotesAddrCount, locals.nShare);
+            state.mut().feeVotesAddrCount = state.get().feeVotesAddrCount + 1;
         }
     
         locals.sumVote = 0;
-        for (locals.i = 0; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
+        for (locals.i = 0; locals.i < state.get().feeVotesAddrCount; locals.i = locals.i + 1)
         {
-            locals.sumVote = locals.sumVote + state.feeVotesScore.get(locals.i);
+            locals.sumVote = locals.sumVote + state.get().feeVotesScore.get(locals.i);
         }
         if (locals.sumVote < QUORUM)
         {
@@ -1780,21 +1781,21 @@ protected:
             return;
         }
     
-        state.uniqueFeeVotesCount = 0;
+        state.mut().uniqueFeeVotesCount = 0;
         // Reset unique vote ranking
         for (locals.i = 0; locals.i < MSVAULT_MAX_FEE_VOTES; locals.i = locals.i + 1)
         {
-            state.uniqueFeeVotesRanking.set(locals.i, 0);
+            state.mut().uniqueFeeVotesRanking.set(locals.i, 0);
         }
 
-        for (locals.i = 0; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
+        for (locals.i = 0; locals.i < state.get().feeVotesAddrCount; locals.i = locals.i + 1)
         {
-            locals.currentVote = state.feeVotes.get(locals.i);
+            locals.currentVote = state.get().feeVotes.get(locals.i);
             locals.found = false;
             locals.uniqueIndex = 0;
-            for (locals.j = 0; locals.j < state.uniqueFeeVotesCount; locals.j = locals.j + 1)
+            for (locals.j = 0; locals.j < state.get().uniqueFeeVotesCount; locals.j = locals.j + 1)
             {
-                locals.uniqueVote = state.uniqueFeeVotes.get(locals.j);
+                locals.uniqueVote = state.get().uniqueFeeVotes.get(locals.j);
                 if (locals.uniqueVote.registeringFee == locals.currentVote.registeringFee &&
                     locals.uniqueVote.releaseFee == locals.currentVote.releaseFee &&
                     locals.uniqueVote.releaseResetFee == locals.currentVote.releaseResetFee &&
@@ -1811,31 +1812,31 @@ protected:
             }
             if (locals.found)
             {
-                locals.currentRank = state.uniqueFeeVotesRanking.get(locals.uniqueIndex);
-                state.uniqueFeeVotesRanking.set(locals.uniqueIndex, locals.currentRank + state.feeVotesScore.get(locals.i));
+                locals.currentRank = state.get().uniqueFeeVotesRanking.get(locals.uniqueIndex);
+                state.mut().uniqueFeeVotesRanking.set(locals.uniqueIndex, locals.currentRank + state.get().feeVotesScore.get(locals.i));
             }
-            else if (state.uniqueFeeVotesCount < MSVAULT_MAX_FEE_VOTES)
+            else if (state.get().uniqueFeeVotesCount < MSVAULT_MAX_FEE_VOTES)
             {
-                state.uniqueFeeVotes.set(state.uniqueFeeVotesCount, locals.currentVote);
-                state.uniqueFeeVotesRanking.set(state.uniqueFeeVotesCount, state.feeVotesScore.get(locals.i));
-                state.uniqueFeeVotesCount = state.uniqueFeeVotesCount + 1;
+                state.mut().uniqueFeeVotes.set(state.get().uniqueFeeVotesCount, locals.currentVote);
+                state.mut().uniqueFeeVotesRanking.set(state.get().uniqueFeeVotesCount, state.get().feeVotesScore.get(locals.i));
+                state.mut().uniqueFeeVotesCount = state.get().uniqueFeeVotesCount + 1;
             }
         }
     
-        for (locals.i = 0; locals.i < state.uniqueFeeVotesCount; locals.i = locals.i + 1)
+        for (locals.i = 0; locals.i < state.get().uniqueFeeVotesCount; locals.i = locals.i + 1)
         {
-            if (state.uniqueFeeVotesRanking.get(locals.i) >= QUORUM)
+            if (state.get().uniqueFeeVotesRanking.get(locals.i) >= QUORUM)
             {
-                state.liveRegisteringFee = state.uniqueFeeVotes.get(locals.i).registeringFee;
-                state.liveReleaseFee = state.uniqueFeeVotes.get(locals.i).releaseFee;
-                state.liveReleaseResetFee = state.uniqueFeeVotes.get(locals.i).releaseResetFee;
-                state.liveHoldingFee = state.uniqueFeeVotes.get(locals.i).holdingFee;
-                state.liveDepositFee = state.uniqueFeeVotes.get(locals.i).depositFee;
+                state.mut().liveRegisteringFee = state.get().uniqueFeeVotes.get(locals.i).registeringFee;
+                state.mut().liveReleaseFee = state.get().uniqueFeeVotes.get(locals.i).releaseFee;
+                state.mut().liveReleaseResetFee = state.get().uniqueFeeVotes.get(locals.i).releaseResetFee;
+                state.mut().liveHoldingFee = state.get().uniqueFeeVotes.get(locals.i).holdingFee;
+                state.mut().liveDepositFee = state.get().uniqueFeeVotes.get(locals.i).depositFee;
                 // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
-                //state.liveBurnFee = state.uniqueFeeVotes.get(locals.i).burnFee;
+                //state.mut().liveBurnFee = state.get().uniqueFeeVotes.get(locals.i).burnFee;
 
-                state.feeVotesAddrCount = 0;
-                state.uniqueFeeVotesCount = 0;
+                state.mut().feeVotesAddrCount = 0;
+                state.mut().uniqueFeeVotesCount = 0;
                 output.status = 1; // SUCCESS
                 locals.logger._type = (uint32)output.status;
                 LOG_INFO(locals.logger);
@@ -1853,7 +1854,7 @@ protected:
         locals.count = 0ULL;
         for (locals.i = 0ULL; locals.i < MSVAULT_MAX_VAULTS && locals.count < MSVAULT_MAX_COOWNER; locals.i++)
         {
-            locals.v = state.vaults.get(locals.i);
+            locals.v = state.get().vaults.get(locals.i);
             if (locals.v.isActive)
             {
                 for (locals.j = 0ULL; locals.j < (uint64)locals.v.numberOfOwners; locals.j++)
@@ -1882,7 +1883,7 @@ protected:
             return; // output.status = false
         }
 
-        locals.vault = state.vaults.get(input.vaultId);
+        locals.vault = state.get().vaults.get(input.vaultId);
         if (!locals.vault.isActive)
         {
             return; // output.status = false
@@ -1907,12 +1908,12 @@ protected:
             return; // output.status = false
         }
 
-        locals.qubicVault = state.vaults.get(input.vaultId);
+        locals.qubicVault = state.get().vaults.get(input.vaultId);
         if (!locals.qubicVault.isActive)
         {
             return; // output.status = false
         }
-        locals.assetVault = state.vaultAssetParts.get(input.vaultId);
+        locals.assetVault = state.get().vaultAssetParts.get(input.vaultId);
 
         for (locals.i = 0; locals.i < (uint64)locals.qubicVault.numberOfOwners; locals.i++)
         {
@@ -1934,7 +1935,7 @@ protected:
             return; // output.status = false
         }
 
-        locals.vault = state.vaults.get(input.vaultId);
+        locals.vault = state.get().vaults.get(input.vaultId);
         if (!locals.vault.isActive)
         {
             return; // output.status = false
@@ -1954,12 +1955,12 @@ protected:
             return; // output.status = false
         }
 
-        locals.qubicVault = state.vaults.get(input.vaultId);
+        locals.qubicVault = state.get().vaults.get(input.vaultId);
         if (!locals.qubicVault.isActive)
         {
             return; // output.status = false
         }
-        locals.assetVault = state.vaultAssetParts.get(input.vaultId);
+        locals.assetVault = state.get().vaultAssetParts.get(input.vaultId);
         output.numberOfAssetTypes = locals.assetVault.numberOfAssetTypes;
         for (locals.i = 0; locals.i < locals.assetVault.numberOfAssetTypes; locals.i++)
         {
@@ -1979,7 +1980,7 @@ protected:
             return; // output.status = false
         }
 
-        locals.vault = state.vaults.get(input.vaultId);
+        locals.vault = state.get().vaults.get(input.vaultId);
         if (!locals.vault.isActive)
         {
             return; // output.status = false
@@ -1990,23 +1991,23 @@ protected:
 
     PUBLIC_FUNCTION(getRevenueInfo)
     {
-        output.numberOfActiveVaults = state.numberOfActiveVaults;
-        output.totalRevenue = state.totalRevenue;
-        output.totalDistributedToShareholders = state.totalDistributedToShareholders;
+        output.numberOfActiveVaults = state.get().numberOfActiveVaults;
+        output.totalRevenue = state.get().totalRevenue;
+        output.totalDistributedToShareholders = state.get().totalDistributedToShareholders;
         // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
-        //output.burnedAmount = state.burnedAmount;
+        //output.burnedAmount = state.get().burnedAmount;
         output.burnedAmount = 0;
     }
 
     PUBLIC_FUNCTION(getFees)
     {
-        output.registeringFee = state.liveRegisteringFee;
-        output.releaseFee = state.liveReleaseFee;
-        output.releaseResetFee = state.liveReleaseResetFee;
-        output.holdingFee = state.liveHoldingFee;
-        output.depositFee = state.liveDepositFee;
+        output.registeringFee = state.get().liveRegisteringFee;
+        output.releaseFee = state.get().liveReleaseFee;
+        output.releaseResetFee = state.get().liveReleaseResetFee;
+        output.holdingFee = state.get().liveHoldingFee;
+        output.depositFee = state.get().liveDepositFee;
         // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
-        //output.burnFee = state.liveBurnFee;
+        //output.burnFee = state.get().liveBurnFee;
         output.burnFee = MSVAULT_BURN_FEE;
     }
 
@@ -2022,7 +2023,7 @@ protected:
             return;
         }
 
-        locals.v = state.vaults.get(input.vaultId);
+        locals.v = state.get().vaults.get(input.vaultId);
 
         if (!locals.v.isActive)
         {
@@ -2058,12 +2059,12 @@ protected:
     {
         output.status = 0ULL;
 
-        for (locals.i = 0ULL; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
+        for (locals.i = 0ULL; locals.i < state.get().feeVotesAddrCount; locals.i = locals.i + 1)
         {
-            output.feeVotes.set(locals.i, state.feeVotes.get(locals.i));
+            output.feeVotes.set(locals.i, state.get().feeVotes.get(locals.i));
         }
 
-        output.numberOfFeeVotes = state.feeVotesAddrCount;
+        output.numberOfFeeVotes = state.get().feeVotesAddrCount;
 
         output.status = 1ULL;
     }
@@ -2072,11 +2073,11 @@ protected:
     {
         output.status = 0ULL;
 
-        for (locals.i = 0ULL; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
+        for (locals.i = 0ULL; locals.i < state.get().feeVotesAddrCount; locals.i = locals.i + 1)
         {
-            output.feeVotesOwner.set(locals.i, state.feeVotesOwner.get(locals.i));
+            output.feeVotesOwner.set(locals.i, state.get().feeVotesOwner.get(locals.i));
         }
-        output.numberOfFeeVotes = state.feeVotesAddrCount;
+        output.numberOfFeeVotes = state.get().feeVotesAddrCount;
 
         output.status = 1ULL;
     }
@@ -2085,11 +2086,11 @@ protected:
     {
         output.status = 0ULL;
 
-        for (locals.i = 0ULL; locals.i < state.feeVotesAddrCount; locals.i = locals.i + 1)
+        for (locals.i = 0ULL; locals.i < state.get().feeVotesAddrCount; locals.i = locals.i + 1)
         {
-            output.feeVotesScore.set(locals.i, state.feeVotesScore.get(locals.i));
+            output.feeVotesScore.set(locals.i, state.get().feeVotesScore.get(locals.i));
         }
-        output.numberOfFeeVotes = state.feeVotesAddrCount;
+        output.numberOfFeeVotes = state.get().feeVotesAddrCount;
 
         output.status = 1ULL;
     }
@@ -2098,11 +2099,11 @@ protected:
     {
         output.status = 0ULL;
 
-        for (locals.i = 0ULL; locals.i < state.uniqueFeeVotesCount; locals.i = locals.i + 1)
+        for (locals.i = 0ULL; locals.i < state.get().uniqueFeeVotesCount; locals.i = locals.i + 1)
         {
-            output.uniqueFeeVotes.set(locals.i, state.uniqueFeeVotes.get(locals.i));
+            output.uniqueFeeVotes.set(locals.i, state.get().uniqueFeeVotes.get(locals.i));
         }
-        output.numberOfUniqueFeeVotes = state.uniqueFeeVotesCount;
+        output.numberOfUniqueFeeVotes = state.get().uniqueFeeVotesCount;
 
         output.status = 1ULL;
     }
@@ -2121,27 +2122,27 @@ protected:
     {
         output.status = 0ULL;
 
-        for (locals.i = 0ULL; locals.i < state.uniqueFeeVotesCount; locals.i = locals.i + 1)
+        for (locals.i = 0ULL; locals.i < state.get().uniqueFeeVotesCount; locals.i = locals.i + 1)
         {
-            output.uniqueFeeVotesRanking.set(locals.i, state.uniqueFeeVotesRanking.get(locals.i));
+            output.uniqueFeeVotesRanking.set(locals.i, state.get().uniqueFeeVotesRanking.get(locals.i));
         }
-        output.numberOfUniqueFeeVotes = state.uniqueFeeVotesCount;
+        output.numberOfUniqueFeeVotes = state.get().uniqueFeeVotesCount;
 
         output.status = 1ULL;
     }
 
     INITIALIZE()
     {
-        state.numberOfActiveVaults = 0ULL;
-        state.totalRevenue = 0ULL;
-        state.totalDistributedToShareholders = 0ULL;
-        state.burnedAmount = 0ULL;
-        state.liveBurnFee = MSVAULT_BURN_FEE;
-        state.liveRegisteringFee = MSVAULT_REGISTERING_FEE;
-        state.liveReleaseFee = MSVAULT_RELEASE_FEE;
-        state.liveReleaseResetFee = MSVAULT_RELEASE_RESET_FEE;
-        state.liveHoldingFee = MSVAULT_HOLDING_FEE;
-        state.liveDepositFee = 0ULL;
+        state.mut().numberOfActiveVaults = 0ULL;
+        state.mut().totalRevenue = 0ULL;
+        state.mut().totalDistributedToShareholders = 0ULL;
+        state.mut().burnedAmount = 0ULL;
+        state.mut().liveBurnFee = MSVAULT_BURN_FEE;
+        state.mut().liveRegisteringFee = MSVAULT_REGISTERING_FEE;
+        state.mut().liveReleaseFee = MSVAULT_RELEASE_FEE;
+        state.mut().liveReleaseResetFee = MSVAULT_RELEASE_RESET_FEE;
+        state.mut().liveHoldingFee = MSVAULT_HOLDING_FEE;
+        state.mut().liveDepositFee = 0ULL;
     }
 
     END_EPOCH_WITH_LOCALS()
@@ -2149,28 +2150,28 @@ protected:
         locals.qxAdress = id(QX_CONTRACT_INDEX, 0, 0, 0);
         for (locals.i = 0ULL; locals.i < MSVAULT_MAX_VAULTS; locals.i++)
         {
-            locals.qubicVault = state.vaults.get(locals.i);
+            locals.qubicVault = state.get().vaults.get(locals.i);
             if (locals.qubicVault.isActive)
             {
-                if (locals.qubicVault.qubicBalance >= state.liveHoldingFee)
+                if (locals.qubicVault.qubicBalance >= state.get().liveHoldingFee)
                 {
-                    locals.qubicVault.qubicBalance -= state.liveHoldingFee;
-                    state.totalRevenue += state.liveHoldingFee;
-                    state.vaults.set(locals.i, locals.qubicVault);
+                    locals.qubicVault.qubicBalance -= state.get().liveHoldingFee;
+                    state.mut().totalRevenue += state.get().liveHoldingFee;
+                    state.mut().vaults.set(locals.i, locals.qubicVault);
                 }
                 else
                 {
                     // Not enough funds to pay holding fee
                     if (locals.qubicVault.qubicBalance > 0)
                     {
-                        state.totalRevenue += locals.qubicVault.qubicBalance;
+                        state.mut().totalRevenue += locals.qubicVault.qubicBalance;
                     }
 
                     // Temporarily disable this code block. To transfer back the assets to QX, we need to pay 100 QUs fee.
                     // But the SC itself does not have enough funds to do so. We will keep it under the SC, so if the stuck asset
                     // happens, we just assign it back manually through patches. As long as there are fees needed for releasing
                     // assets back to QX, the code block below is not applicable.
-                    // locals.assetVault = state.vaultAssetParts.get(locals.i);
+                    // locals.assetVault = state.get().vaultAssetParts.get(locals.i);
                     // for (locals.k = 0; locals.k < locals.assetVault.numberOfAssetTypes; locals.k++)
                     // {
                     //     locals.ab = locals.assetVault.assetBalances.get(locals.k);
@@ -2211,34 +2212,34 @@ protected:
                         locals.assetVault.releaseAssetDestinations.set(locals.j, NULL_ID);
                     }
 
-                    if (state.numberOfActiveVaults > 0)
+                    if (state.get().numberOfActiveVaults > 0)
                     {
-                        state.numberOfActiveVaults--;
+                        state.mut().numberOfActiveVaults--;
                     }
-                    state.vaults.set(locals.i, locals.qubicVault);
-                    state.vaultAssetParts.set(locals.i, locals.assetVault);
+                    state.mut().vaults.set(locals.i, locals.qubicVault);
+                    state.mut().vaultAssetParts.set(locals.i, locals.assetVault);
                 }
             }
         }
 
         {
-            locals.amountToDistribute = QPI::div<uint64>(state.totalRevenue - state.totalDistributedToShareholders, NUMBER_OF_COMPUTORS);
+            locals.amountToDistribute = QPI::div<uint64>(state.get().totalRevenue - state.get().totalDistributedToShareholders, NUMBER_OF_COMPUTORS);
 
             // [TODO]: Turn this ON when MSVAULT_BURN_FEE > 0
             //// Burn fee
-            //locals.feeToBurn = QPI::div<uint64>(locals.amountToDistribute * state.liveBurnFee, 100ULL);
+            //locals.feeToBurn = QPI::div<uint64>(locals.amountToDistribute * state.get().liveBurnFee, 100ULL);
             //if (locals.feeToBurn > 0)
             //{
             //    qpi.burn(locals.feeToBurn);
             //}
             //locals.amountToDistribute -= locals.feeToBurn;
-            //state.burnedAmount += locals.feeToBurn;
+            //state.mut().burnedAmount += locals.feeToBurn;
 
-            if (locals.amountToDistribute > 0 && state.totalRevenue > state.totalDistributedToShareholders)
+            if (locals.amountToDistribute > 0 && state.get().totalRevenue > state.get().totalDistributedToShareholders)
             {
                 if (qpi.distributeDividends(locals.amountToDistribute))
                 {
-                    state.totalDistributedToShareholders += locals.amountToDistribute * NUMBER_OF_COMPUTORS;
+                    state.mut().totalDistributedToShareholders += locals.amountToDistribute * NUMBER_OF_COMPUTORS;
                 }
             }
         }

@@ -58,6 +58,7 @@ struct Peer;
 #define ASSET_POSSESSION_MANAGING_CONTRACT_CHANGE 12
 #define CONTRACT_RESERVE_DEDUCTION 13
 #define ORACLE_QUERY_STATUS_CHANGE 14
+#define ORACLE_SUBSCRIBER_MESSAGE 15
 #define CUSTOM_MESSAGE 255
 
 #define CUSTOM_MESSAGE_OP_START_DISTRIBUTE_DIVIDENDS 6217575821008262227ULL // STA_DDIV
@@ -249,6 +250,17 @@ struct OracleQueryStatusChange
     unsigned int interfaceIndex;
     unsigned char type;
     unsigned char status;
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+struct OracleSubscriberLogMessage
+{
+    int subscriptionId;
+    unsigned int interfaceIndex;
+    unsigned int contractIndex;
+    unsigned int periodInMilliseconds;    //< 0 means unsubscribe
+    unsigned long long firstQueryDateAndTime;
 
     char _terminator; // Only data before "_terminator" are logged
 };
@@ -886,6 +898,13 @@ public:
     {
 #if LOG_ORACLES
         logMessage(offsetof(OracleQueryStatusChange, _terminator), ORACLE_QUERY_STATUS_CHANGE, &message);
+#endif
+    }
+
+    void logOracleSubscriber(const OracleSubscriberLogMessage& message)
+    {
+#if LOG_ORACLES
+        logMessage(offsetof(OracleSubscriberLogMessage, _terminator), ORACLE_SUBSCRIBER_MESSAGE, &message);
 #endif
     }
 
