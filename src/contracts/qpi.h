@@ -1412,9 +1412,98 @@ namespace QPI
 		sint64 tailIndex(const id& pov, sint64 minPriority) const;
 	};
 
+
+	// Doubly-linked list of elements of type T with fixed capacity L.
+	// Provides O(1) insertion at head/tail, O(1) insertion before/after a given index,
+	// O(1) removal by index, and bidirectional traversal.
+	// Removed nodes are immediately recycled via a free list (no deferred cleanup needed).
+	template <typename T, uint64 L>
+	class LinkedList
+	{
+	private:
+		static_assert(L && !(L & (L - 1)),
+			"The capacity of the LinkedList must be 2^N."
+			);
+
+		struct Node
+		{
+			T value;
+			sint64 nextIndex;  // Next in data list, or next in free list when freed
+			sint64 prevIndex;  // Previous in data list (undefined when freed)
+		} _nodes[L];
+
+		// 1 bit per node: 1 = occupied, 0 = free
+		uint64 _occupiedFlags[(L + 63) / 64];
+
+		sint64 _headIndex;      // First element in the list (NULL_INDEX if empty)
+		sint64 _tailIndex;      // Last element in the list (NULL_INDEX if empty)
+		sint64 _freeHeadIndex;  // Head of recycled-nodes free list (NULL_INDEX if none)
+		uint64 _nextUnusedIndex; // Next never-used node index (lazy free list init)
+		uint64 _population;
+
+		// Get a node from the free list or unused pool. Returns NULL_INDEX if full.
+		sint64 _allocateNode();
+
+		// Return node to free list.
+		void _freeNode(sint64 nodeIndex);
+
+	public:
+		// Return maximum number of elements that may be stored.
+		static constexpr uint64 capacity()
+		{
+			return L;
+		}
+
+		// Return current number of elements.
+		inline uint64 population() const;
+
+		// Return elementIndex of first element in the list (or NULL_INDEX if empty).
+		inline sint64 headIndex() const;
+
+		// Return elementIndex of last element in the list (or NULL_INDEX if empty).
+		inline sint64 tailIndex() const;
+
+		// Return elementIndex of next element (or NULL_INDEX if this is the last element).
+		sint64 nextElementIndex(sint64 elementIndex) const;
+
+		// Return elementIndex of previous element (or NULL_INDEX if this is the first element).
+		sint64 prevElementIndex(sint64 elementIndex) const;
+
+		// Return element value at elementIndex.
+		inline const T& element(sint64 elementIndex) const;
+
+		// Return true if the slot at elementIndex is empty (not occupied by an element).
+		inline bool isEmptySlot(sint64 elementIndex) const;
+
+		// Add element at the head of the list, return elementIndex of new element (or NULL_INDEX if full).
+		sint64 addHead(const T& value);
+
+		// Add element at the tail of the list, return elementIndex of new element (or NULL_INDEX if full).
+		sint64 addTail(const T& value);
+
+		// Insert element after the element at elementIndex.
+		// Returns elementIndex of new element (or NULL_INDEX if full or elementIndex is invalid).
+		sint64 insertAfter(sint64 elementIndex, const T& value);
+
+		// Insert element before the element at elementIndex.
+		// Returns elementIndex of new element (or NULL_INDEX if full or elementIndex is invalid).
+		sint64 insertBefore(sint64 elementIndex, const T& value);
+
+		// Remove element at elementIndex. The node is immediately returned to the free list.
+		void remove(sint64 elementIndex);
+
+		// Replace the value at elementIndex with newValue.
+		// Returns true if elementIndex was valid and occupied, false otherwise.
+		bool replace(sint64 elementIndex, const T& newValue);
+
+		// Reinitialize as empty linked list.
+		void reset();
+	};
+
+
 	//////////
 	// safety multiplying a and b and then clamp
-	
+
 	inline static sint64 smul(sint64 a, sint64 b);
 	inline static uint64 smul(uint64 a, uint64 b);
 	inline static sint32 smul(sint32 a, sint32 b);

@@ -323,6 +323,7 @@ constexpr unsigned short TESTEXD_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #include "qpi_collection_impl.h"
 #include "qpi_trivial_impl.h"
 #include "qpi_hash_map_impl.h"
+#include "qpi_linked_list_impl.h"
 
 #include "platform/global_var.h"
 

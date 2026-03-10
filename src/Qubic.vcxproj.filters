@@ -206,6 +206,9 @@
     <ClInclude Include="contract_core\qpi_hash_map_impl.h">
       <Filter>contract_core</Filter>
     </ClInclude>
+    <ClInclude Include="contract_core\qpi_linked_list_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
     <ClInclude Include="contract_core\qpi_asset_impl.h">
       <Filter>contract_core</Filter>
     </ClInclude>
