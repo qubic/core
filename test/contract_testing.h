@@ -24,6 +24,8 @@
 
 #include "test_util.h"
 
+#include "oracle_testing.h"
+
 
 class ContractTesting : public LoggingTest
 {

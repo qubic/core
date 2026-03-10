@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @file RandomLottery.h
  * @brief Random Lottery contract definition: state, data structures, and user / internal
  * procedures.
@@ -75,15 +75,132 @@ public:
 		SELLING = 1 << 0, // Ticket selling is open
 	};
 
-	friend EState operator|(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) | static_cast<uint8>(b)); }
+	friend inline EState operator|(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) | static_cast<uint8>(b)); }
 
-	friend EState operator&(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) & static_cast<uint8>(b)); }
+	friend inline EState operator&(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) & static_cast<uint8>(b)); }
 
-	friend EState operator~(const EState& a) { return static_cast<EState>(~static_cast<uint8>(a)); }
+	friend inline EState operator~(const EState& a) { return static_cast<EState>(~static_cast<uint8>(a)); }
 
-	template<typename T> friend bool operator==(const EState& a, const T& b) { return static_cast<uint8>(a) == b; }
+	template<typename T> friend inline bool operator==(const EState& a, const T& b) { return static_cast<uint8>(a) == b; }
 
-	template<typename T> friend bool operator!=(const EState& a, const T& b) { return !(a == b); }
+	template<typename T> friend inline bool operator!=(const EState& a, const T& b) { return !(a == b); }
+
+	/**
+	 * @brief Stored winner snapshot for an epoch.
+	 */
+	struct WinnerInfo
+	{
+		id winnerAddress; // Winner address
+		uint64 revenue;   // Payout value sent to the winner for that epoch
+		uint32 tick;      // Tick when the decision was made
+		uint16 epoch;     // Epoch number when winner was recorded
+		uint8 dayOfWeek;  // Day of week when the winner was drawn [0..6] 0 = WEDNESDAY
+	};
+
+	struct NextEpochData
+	{
+		uint64 newPrice; // Ticket price to apply after END_EPOCH; 0 means "no change queued"
+		uint8 schedule;  // Schedule bitmask (bit 0 = WEDNESDAY, ..., bit 6 = TUESDAY); applied after END_EPOCH
+	};
+
+	struct StateData
+	{
+		/**
+		 * @brief Circular buffer storing the history of winners.
+		 * Maximum capacity is defined by RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY.
+		 */
+		Array<WinnerInfo, RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
+
+		/**
+		 * @brief Set of players participating in the current lottery epoch.
+		 * Maximum capacity is defined by RL_MAX_NUMBER_OF_PLAYERS.
+		 */
+		Array<id, RL_MAX_NUMBER_OF_PLAYERS> players;
+
+		/**
+		 * @brief Address of the team managing the lottery contract.
+		 * Initialized to a zero address.
+		 */
+		id teamAddress;
+
+		/**
+		 * @brief Address of the owner of the lottery contract.
+		 * Initialized to a zero address.
+		 */
+		id ownerAddress;
+
+		/**
+		 * @brief Data structure for deferred changes to apply at the end of the epoch.
+		 */
+		NextEpochData nexEpochData;
+
+		/**
+		 * @brief Price of a single lottery ticket.
+		 * Value is in the smallest currency unit (e.g., cents).
+		 */
+		uint64 ticketPrice;
+
+		/**
+		 * @brief Number of players (tickets sold) in the current epoch.
+		 */
+		uint64 playerCounter;
+
+		/**
+		 * @brief Index pointing to the next empty slot in the winners array.
+		 * Used for maintaining the circular buffer of winners.
+		 */
+		uint64 winnersCounter;
+
+		/**
+		 * @brief Date/time guard for draw operations.
+		 * lastDrawDateStamp prevents more than one action per calendar day (UTC).
+		 */
+		uint8 lastDrawDay;
+		uint8 lastDrawHour;
+		uint32 lastDrawDateStamp; // Compact YYYY/MM/DD marker
+
+		/**
+		 * @brief Percentage of the revenue allocated to the team.
+		 * Value is between 0 and 100.
+		 */
+		uint8 teamFeePercent;
+
+		/**
+		 * @brief Percentage of the revenue allocated for distribution.
+		 * Value is between 0 and 100.
+		 */
+		uint8 distributionFeePercent;
+
+		/**
+		 * @brief Percentage of the revenue allocated to the winner.
+		 * Automatically calculated as the remainder after other fees.
+		 */
+		uint8 winnerFeePercent;
+
+		/**
+		 * @brief Percentage of the revenue to be burned.
+		 * Value is between 0 and 100.
+		 */
+		uint8 burnPercent;
+
+		/**
+		 * @brief Schedule bitmask: bit 0 = WEDNESDAY, 1 = THURSDAY, ..., 6 = TUESDAY.
+		 * If a bit is set, a draw may occur on that day (subject to drawHour and daily guard).
+		 * Wednesday also follows the "Two-Wednesdays rule" (selling stays closed after Wednesday draw).
+		 */
+		uint8 schedule;
+
+		/**
+		 * @brief UTC hour [0..23] when a draw is allowed to run (daily time gate).
+		 */
+		uint8 drawHour;
+
+		/**
+		 * @brief Current state of the lottery contract.
+		 * SELLING: tickets available; LOCKED: selling closed.
+		 */
+		EState currentState;
+	};
 
 	/**
 	 * @brief Standardized return / error codes for procedures.
@@ -106,12 +223,6 @@ public:
 	};
 
 	static constexpr uint8 toReturnCode(EReturnCode code) { return static_cast<uint8>(code); }
-
-	struct NextEpochData
-	{
-		uint64 newPrice; // Ticket price to apply after END_EPOCH; 0 means "no change queued"
-		uint8 schedule;  // Schedule bitmask (bit 0 = WEDNESDAY, ..., bit 6 = TUESDAY); applied after END_EPOCH
-	};
 
 	//---- User-facing I/O structures -------------------------------------------------------------
 
@@ -146,18 +257,6 @@ public:
 		Array<id, RL_MAX_NUMBER_OF_PLAYERS> players; // Current epoch ticket holders (duplicates allowed)
 		uint64 playerCounter;                        // Actual count of filled entries
 		uint8 returnCode;
-	};
-
-	/**
-	 * @brief Stored winner snapshot for an epoch.
-	 */
-	struct WinnerInfo
-	{
-		id winnerAddress; // Winner address
-		uint64 revenue;   // Payout value sent to the winner for that epoch
-		uint32 tick;      // Tick when the decision was made
-		uint16 epoch;     // Epoch number when winner was recorded
-		uint8 dayOfWeek;  // Day of week when the winner was drawn [0..6] 0 = WEDNESDAY
 	};
 
 	struct FillWinnersInfo_input
@@ -361,27 +460,27 @@ public:
 	INITIALIZE()
 	{
 		// Set team/developer address (owner and team are the same for now)
-		state.teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C, _X, _B,
+		state.mut().teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C, _X, _B,
 		                       _A, _V, _F, _O, _P, _R, _S, _N, _U, _L, _U, _E, _B, _S, _P, _U, _T, _R, _Z, _N, _T, _G, _F, _B, _I, _E);
-		state.ownerAddress = state.teamAddress;
+		state.mut().ownerAddress = state.get().teamAddress;
 
 		// Fee configuration (winner gets the remainder)
-		state.teamFeePercent = RL_TEAM_FEE_PERCENT;
-		state.distributionFeePercent = RL_SHAREHOLDER_FEE_PERCENT;
-		state.burnPercent = RL_BURN_PERCENT;
-		state.winnerFeePercent = 100 - state.teamFeePercent - state.distributionFeePercent - state.burnPercent;
+		state.mut().teamFeePercent = RL_TEAM_FEE_PERCENT;
+		state.mut().distributionFeePercent = RL_SHAREHOLDER_FEE_PERCENT;
+		state.mut().burnPercent = RL_BURN_PERCENT;
+		state.mut().winnerFeePercent = 100 - state.get().teamFeePercent - state.get().distributionFeePercent - state.get().burnPercent;
 
 		// Initial ticket price
-		state.ticketPrice = RL_TICKET_PRICE;
+		state.mut().ticketPrice = RL_TICKET_PRICE;
 
 		// Start in LOCKED state; selling must be explicitly opened with BEGIN_EPOCH
 		enableBuyTicket(state, false);
 
 		// Reset player counter
-		state.playerCounter = 0;
+		state.mut().playerCounter = 0;
 
 		// Default schedule: WEDNESDAY
-		state.schedule = RL_DEFAULT_SCHEDULE;
+		state.mut().schedule = RL_DEFAULT_SCHEDULE;
 	}
 
 	/**
@@ -389,22 +488,22 @@ public:
 	 */
 	BEGIN_EPOCH()
 	{
-		if (state.schedule == 0)
+		if (state.get().schedule == 0)
 		{
 			// Default to WEDNESDAY if no schedule is set (bit 0)
-			state.schedule = RL_DEFAULT_SCHEDULE;
+			state.mut().schedule = RL_DEFAULT_SCHEDULE;
 		}
 
-		if (state.drawHour == 0)
+		if (state.get().drawHour == 0)
 		{
-			state.drawHour = RL_DEFAULT_DRAW_HOUR; // Default draw hour (UTC)
+			state.mut().drawHour = RL_DEFAULT_DRAW_HOUR; // Default draw hour (UTC)
 		}
 
 		// Mark the current date as already processed to avoid immediate draw on the same calendar day
-		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), state.lastDrawDateStamp);
+		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), state.mut().lastDrawDateStamp);
 
 		// Open selling for the new epoch
-		enableBuyTicket(state, state.lastDrawDateStamp != RL_DEFAULT_INIT_TIME);
+		enableBuyTicket(state, state.get().lastDrawDateStamp != RL_DEFAULT_INIT_TIME);
 	}
 
 	END_EPOCH()
@@ -429,7 +528,7 @@ public:
 		locals.isWednesday = locals.currentDayOfWeek == WEDNESDAY;
 
 		// Do nothing before the configured draw hour
-		if (locals.currentHour < state.drawHour)
+		if (locals.currentHour < state.get().drawHour)
 		{
 			return;
 		}
@@ -442,31 +541,31 @@ public:
 			enableBuyTicket(state, false);
 
 			// Safety check: avoid processing on uninitialized time but remember that this date was encountered
-			state.lastDrawDateStamp = RL_DEFAULT_INIT_TIME;
+			state.mut().lastDrawDateStamp = RL_DEFAULT_INIT_TIME;
 			return;
 		}
 
 		// Set lastDrawDateStamp on first valid date processed
-		if (state.lastDrawDateStamp == RL_DEFAULT_INIT_TIME)
+		if (state.get().lastDrawDateStamp == RL_DEFAULT_INIT_TIME)
 		{
 			enableBuyTicket(state, true);
 
 			if (locals.isWednesday)
 			{
-				state.lastDrawDateStamp = locals.currentDateStamp;
+				state.mut().lastDrawDateStamp = locals.currentDateStamp;
 			}
 			else
 			{
-				state.lastDrawDateStamp = 0;
+				state.mut().lastDrawDateStamp = 0;
 			}
 		}
 
-		if (state.lastDrawDateStamp == locals.currentDateStamp)
+		if (state.get().lastDrawDateStamp == locals.currentDateStamp)
 		{
 			return;
 		}
 
-		locals.isScheduledToday = ((state.schedule & (1u << locals.currentDayOfWeek)) != 0);
+		locals.isScheduledToday = ((state.get().schedule & (1u << locals.currentDayOfWeek)) != 0);
 
 		// Two-Wednesdays rule:
 		// - First Wednesday (epoch start) is "consumed" in BEGIN_EPOCH (we set lastDrawDateStamp),
@@ -478,7 +577,7 @@ public:
 		}
 
 		// Mark today's action and timestamp
-		state.lastDrawDateStamp = locals.currentDateStamp;
+		state.mut().lastDrawDateStamp = locals.currentDateStamp;
 
 		// Temporarily close selling for the draw
 		enableBuyTicket(state, false);
@@ -486,11 +585,11 @@ public:
 		// Draw
 		{
 			locals.hasMultipleParticipants = false;
-			if (state.playerCounter >= 2)
+			if (state.get().playerCounter >= 2)
 			{
-				for (locals.index = 1; locals.index < state.playerCounter; ++locals.index)
+				for (locals.index = 1; locals.index < state.get().playerCounter; ++locals.index)
 				{
-					if (state.players.get(locals.index) != state.players.get(0))
+					if (state.get().players.get(locals.index) != state.get().players.get(0))
 					{
 						locals.hasMultipleParticipants = true;
 						break;
@@ -507,10 +606,10 @@ public:
 				// Deterministically shuffle players before drawing so all nodes observe the same order
 				locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
 				locals.mixedSpectrumValue.u64._0 ^= qpi.tick();
-				locals.mixedSpectrumValue.u64._1 ^= state.playerCounter;
+				locals.mixedSpectrumValue.u64._1 ^= state.get().playerCounter;
 				locals.randomNum = qpi.K12(locals.mixedSpectrumValue).u64._0;
 
-				for (locals.shuffleIndex = state.playerCounter - 1; locals.shuffleIndex > 0; --locals.shuffleIndex)
+				for (locals.shuffleIndex = state.get().playerCounter - 1; locals.shuffleIndex > 0; --locals.shuffleIndex)
 				{
 					locals.randomNum ^= locals.randomNum << 13;
 					locals.randomNum ^= locals.randomNum >> 7;
@@ -519,9 +618,9 @@ public:
 
 					if (locals.swapIndex != locals.shuffleIndex)
 					{
-						locals.firstPlayer = state.players.get(locals.shuffleIndex);
-						state.players.set(locals.shuffleIndex, state.players.get(locals.swapIndex));
-						state.players.set(locals.swapIndex, locals.firstPlayer);
+						locals.firstPlayer = state.get().players.get(locals.shuffleIndex);
+						state.mut().players.set(locals.shuffleIndex, state.get().players.get(locals.swapIndex));
+						state.mut().players.set(locals.swapIndex, locals.firstPlayer);
 					}
 				}
 
@@ -533,28 +632,28 @@ public:
 				{
 					locals.winnerAddress = id::zero();
 
-					if (state.playerCounter != 0)
+					if (state.get().playerCounter != 0)
 					{
 						locals.randomNum = qpi.K12(locals.mixedSpectrumValue).u64._0;
-						locals.randomNum = mod(locals.randomNum, state.playerCounter);
+						locals.randomNum = mod(locals.randomNum, state.get().playerCounter);
 
 						// Index directly into players array
-						locals.winnerAddress = state.players.get(locals.randomNum);
+						locals.winnerAddress = state.get().players.get(locals.randomNum);
 					}
 				}
 
 				if (locals.winnerAddress != id::zero())
 				{
 					// Split revenue by configured percentages
-					locals.winnerAmount = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.winnerFeePercent)), 100ULL);
-					locals.teamFee = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.teamFeePercent)), 100ULL);
-					locals.distributionFee = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.distributionFeePercent)), 100ULL);
-					locals.burnedAmount = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.burnPercent)), 100ULL);
+					locals.winnerAmount = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.get().winnerFeePercent)), 100ULL);
+					locals.teamFee = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.get().teamFeePercent)), 100ULL);
+					locals.distributionFee = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.get().distributionFeePercent)), 100ULL);
+					locals.burnedAmount = div<uint64>(smul(locals.revenue, static_cast<uint64>(state.get().burnPercent)), 100ULL);
 
 					// Team payout
 					if (locals.teamFee > 0)
 					{
-						qpi.transfer(state.teamAddress, locals.teamFee);
+						qpi.transfer(state.get().teamAddress, locals.teamFee);
 					}
 
 					// Distribution payout (equal per validator)
@@ -613,10 +712,10 @@ public:
 	 */
 	PUBLIC_FUNCTION(GetFees)
 	{
-		output.teamFeePercent = state.teamFeePercent;
-		output.distributionFeePercent = state.distributionFeePercent;
-		output.winnerFeePercent = state.winnerFeePercent;
-		output.burnPercent = state.burnPercent;
+		output.teamFeePercent = state.get().teamFeePercent;
+		output.distributionFeePercent = state.get().distributionFeePercent;
+		output.winnerFeePercent = state.get().winnerFeePercent;
+		output.burnPercent = state.get().burnPercent;
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
@@ -626,8 +725,8 @@ public:
 	 */
 	PUBLIC_FUNCTION(GetPlayers)
 	{
-		output.players = state.players;
-		output.playerCounter = min(state.playerCounter, state.players.capacity());
+		output.players = state.get().players;
+		output.playerCounter = min(state.get().playerCounter, state.get().players.capacity());
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -636,17 +735,17 @@ public:
 	 */
 	PUBLIC_FUNCTION(GetWinners)
 	{
-		output.winners = state.winners;
+		output.winners = state.get().winners;
 		getWinnerCounter(state, output.winnersCounter);
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.ticketPrice; }
+	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.get().ticketPrice; }
 	PUBLIC_FUNCTION(GetMaxNumberOfPlayers) { output.numberOfPlayers = RL_MAX_NUMBER_OF_PLAYERS; }
-	PUBLIC_FUNCTION(GetState) { output.currentState = static_cast<uint8>(state.currentState); }
-	PUBLIC_FUNCTION(GetNextEpochData) { output.nextEpochData = state.nexEpochData; }
-	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.drawHour; }
-	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.schedule; }
+	PUBLIC_FUNCTION(GetState) { output.currentState = static_cast<uint8>(state.get().currentState); }
+	PUBLIC_FUNCTION(GetNextEpochData) { output.nextEpochData = state.get().nexEpochData; }
+	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.get().drawHour; }
+	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.get().schedule; }
 	PUBLIC_FUNCTION_WITH_LOCALS(GetBalance)
 	{
 		qpi.getEntity(SELF, locals.entity);
@@ -661,7 +760,7 @@ public:
 		}
 
 		// Only team/owner can queue a price change
-		if (qpi.invocator() != state.teamAddress)
+		if (qpi.invocator() != state.get().teamAddress)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -675,7 +774,7 @@ public:
 		}
 
 		// Defer application until END_EPOCH
-		state.nexEpochData.newPrice = input.newPrice;
+		state.mut().nexEpochData.newPrice = input.newPrice;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -686,7 +785,7 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.invocator() != state.teamAddress)
+		if (qpi.invocator() != state.get().teamAddress)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -698,7 +797,7 @@ public:
 			return;
 		}
 
-		state.nexEpochData.schedule = input.newSchedule;
+		state.mut().nexEpochData.schedule = input.newSchedule;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -727,7 +826,7 @@ public:
 		}
 
 		// Not enough to buy even a single ticket: refund everything
-		if (locals.reward < state.ticketPrice)
+		if (locals.reward < state.get().ticketPrice)
 		{
 			if (locals.reward > 0)
 			{
@@ -739,8 +838,8 @@ public:
 		}
 
 		// Capacity check
-		locals.capacity = state.players.capacity();
-		locals.slotsLeft = (state.playerCounter < locals.capacity) ? (locals.capacity - state.playerCounter) : 0;
+		locals.capacity = state.get().players.capacity();
+		locals.slotsLeft = (state.get().playerCounter < locals.capacity) ? (locals.capacity - state.get().playerCounter) : 0;
 		if (locals.slotsLeft == 0)
 		{
 			// All sold out: refund full amount
@@ -753,23 +852,23 @@ public:
 		}
 
 		// Compute desired number of tickets and change
-		locals.desired = div(locals.reward, state.ticketPrice);   // How many tickets the caller attempts to buy
-		locals.remainder = mod(locals.reward, state.ticketPrice); // Change to return
+		locals.desired = div(locals.reward, state.get().ticketPrice);   // How many tickets the caller attempts to buy
+		locals.remainder = mod(locals.reward, state.get().ticketPrice); // Change to return
 		locals.toBuy = min(locals.desired, locals.slotsLeft);     // Do not exceed available slots
 
 		// Add tickets (the same address may be inserted multiple times)
 		for (locals.i = 0; locals.i < locals.toBuy; ++locals.i)
 		{
-			if (state.playerCounter < locals.capacity)
+			if (state.get().playerCounter < locals.capacity)
 			{
-				state.players.set(state.playerCounter, qpi.invocator());
-				state.playerCounter = min(state.playerCounter + 1, locals.capacity);
+				state.mut().players.set(state.get().playerCounter, qpi.invocator());
+				state.mut().playerCounter = min(state.get().playerCounter + 1, locals.capacity);
 			}
 		}
 
 		// Refund change and unfilled portion (if desired > slotsLeft)
 		locals.unfilled = locals.desired - locals.toBuy;
-		locals.refundAmount = locals.remainder + (smul(locals.unfilled, state.ticketPrice));
+		locals.refundAmount = locals.remainder + (smul(locals.unfilled, state.get().ticketPrice));
 		if (locals.refundAmount > 0)
 		{
 			qpi.transfer(qpi.invocator(), locals.refundAmount);
@@ -792,7 +891,7 @@ private:
 
 		// Compute ring-buffer index without clamping the total counter
 		getWinnerCounter(state, locals.insertIdx);
-		++state.winnersCounter;
+		++state.mut().winnersCounter;
 
 		locals.winnerInfo.winnerAddress = input.winnerAddress;
 		locals.winnerInfo.revenue = input.revenue;
@@ -800,15 +899,15 @@ private:
 		locals.winnerInfo.tick = qpi.tick();
 		locals.winnerInfo.dayOfWeek = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
 
-		state.winners.set(locals.insertIdx, locals.winnerInfo);
+		state.mut().winners.set(locals.insertIdx, locals.winnerInfo);
 	}
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(ReturnAllTickets)
 	{
 		// Refund ticket price to each recorded ticket entry (1 transfer per entry)
-		for (locals.i = 0; locals.i < state.playerCounter; ++locals.i)
+		for (locals.i = 0; locals.i < state.get().playerCounter; ++locals.i)
 		{
-			qpi.transfer(state.players.get(locals.i), state.ticketPrice);
+			qpi.transfer(state.get().players.get(locals.i), state.get().ticketPrice);
 		}
 	}
 
@@ -820,144 +919,47 @@ public:
 	template<typename T> static constexpr T max(const T& a, const T& b) { return a > b ? a : b; }
 
 protected:
-	/**
-	 * @brief Circular buffer storing the history of winners.
-	 * Maximum capacity is defined by RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY.
-	 */
-	Array<WinnerInfo, RL_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
-
-	/**
-	 * @brief Set of players participating in the current lottery epoch.
-	 * Maximum capacity is defined by RL_MAX_NUMBER_OF_PLAYERS.
-	 */
-	Array<id, RL_MAX_NUMBER_OF_PLAYERS> players;
-
-	/**
-	 * @brief Address of the team managing the lottery contract.
-	 * Initialized to a zero address.
-	 */
-	id teamAddress;
-
-	/**
-	 * @brief Address of the owner of the lottery contract.
-	 * Initialized to a zero address.
-	 */
-	id ownerAddress;
-
-	/**
-	 * @brief Data structure for deferred changes to apply at the end of the epoch.
-	 */
-	NextEpochData nexEpochData;
-
-	/**
-	 * @brief Price of a single lottery ticket.
-	 * Value is in the smallest currency unit (e.g., cents).
-	 */
-	uint64 ticketPrice;
-
-	/**
-	 * @brief Number of players (tickets sold) in the current epoch.
-	 */
-	uint64 playerCounter;
-
-	/**
-	 * @brief Index pointing to the next empty slot in the winners array.
-	 * Used for maintaining the circular buffer of winners.
-	 */
-	uint64 winnersCounter;
-
-	/**
-	 * @brief Date/time guard for draw operations.
-	 * lastDrawDateStamp prevents more than one action per calendar day (UTC).
-	 */
-	uint8 lastDrawDay;
-	uint8 lastDrawHour;
-	uint32 lastDrawDateStamp; // Compact YYYY/MM/DD marker
-
-	/**
-	 * @brief Percentage of the revenue allocated to the team.
-	 * Value is between 0 and 100.
-	 */
-	uint8 teamFeePercent;
-
-	/**
-	 * @brief Percentage of the revenue allocated for distribution.
-	 * Value is between 0 and 100.
-	 */
-	uint8 distributionFeePercent;
-
-	/**
-	 * @brief Percentage of the revenue allocated to the winner.
-	 * Automatically calculated as the remainder after other fees.
-	 */
-	uint8 winnerFeePercent;
-
-	/**
-	 * @brief Percentage of the revenue to be burned.
-	 * Value is between 0 and 100.
-	 */
-	uint8 burnPercent;
-
-	/**
-	 * @brief Schedule bitmask: bit 0 = WEDNESDAY, 1 = THURSDAY, ..., 6 = TUESDAY.
-	 * If a bit is set, a draw may occur on that day (subject to drawHour and daily guard).
-	 * Wednesday also follows the "Two-Wednesdays rule" (selling stays closed after Wednesday draw).
-	 */
-	uint8 schedule;
-
-	/**
-	 * @brief UTC hour [0..23] when a draw is allowed to run (daily time gate).
-	 */
-	uint8 drawHour;
-
-	/**
-	 * @brief Current state of the lottery contract.
-	 * SELLING: tickets available; LOCKED: selling closed.
-	 */
-	EState currentState;
-
-protected:
-	static void clearStateOnEndEpoch(RL& state)
+	static void clearStateOnEndEpoch(QPI::ContractState<StateData, CONTRACT_INDEX>& state)
 	{
 		// Prepare for next epoch: clear players and reset daily guards
-		state.playerCounter = 0;
-		setMemory(state.players, 0);
+		state.mut().playerCounter = 0;
+		setMemory(state.mut().players, 0);
 
-		state.lastDrawDateStamp = 0;
+		state.mut().lastDrawDateStamp = 0;
 	}
 
-	static void clearStateOnEndDraw(RL& state)
+	static void clearStateOnEndDraw(QPI::ContractState<StateData, CONTRACT_INDEX>& state)
 	{
 		// After each draw period, clear current tickets
-		state.playerCounter = 0;
-		setMemory(state.players, 0);
+		state.mut().playerCounter = 0;
+		setMemory(state.mut().players, 0);
 	}
 
-	static void applyNextEpochData(RL& state)
+	static void applyNextEpochData(QPI::ContractState<StateData, CONTRACT_INDEX>& state)
 	{
 		// Apply deferred ticket price (if any)
-		if (state.nexEpochData.newPrice != 0)
+		if (state.get().nexEpochData.newPrice != 0)
 		{
-			state.ticketPrice = state.nexEpochData.newPrice;
-			state.nexEpochData.newPrice = 0;
+			state.mut().ticketPrice = state.get().nexEpochData.newPrice;
+			state.mut().nexEpochData.newPrice = 0;
 		}
 
 		// Apply deferred schedule (if any)
-		if (state.nexEpochData.schedule != 0)
+		if (state.get().nexEpochData.schedule != 0)
 		{
-			state.schedule = state.nexEpochData.schedule;
-			state.nexEpochData.schedule = 0;
+			state.mut().schedule = state.get().nexEpochData.schedule;
+			state.mut().nexEpochData.schedule = 0;
 		}
 	}
 
-	static void enableBuyTicket(RL& state, bool bEnable)
+	static void enableBuyTicket(QPI::ContractState<StateData, CONTRACT_INDEX>& state, bool bEnable)
 	{
-		state.currentState = bEnable ? state.currentState | EState::SELLING : state.currentState & ~EState::SELLING;
+		state.mut().currentState = bEnable ? state.get().currentState | EState::SELLING : state.get().currentState & ~EState::SELLING;
 	}
 
-	static bool isSellingOpen(const RL& state) { return (state.currentState & EState::SELLING) != 0; }
+	static bool isSellingOpen(const QPI::ContractState<StateData, CONTRACT_INDEX>& state) { return (state.get().currentState & EState::SELLING) != 0; }
 
-	static void getWinnerCounter(const RL& state, uint64& outCounter) { outCounter = mod(state.winnersCounter, state.winners.capacity()); }
+	static void getWinnerCounter(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, uint64& outCounter) { outCounter = mod(state.get().winnersCounter, state.get().winners.capacity()); }
 
 	// Reads current net on-chain balance of SELF (incoming - outgoing).
 	static void getSCRevenue(const Entity& entity, uint64& revenue) { revenue = entity.incomingAmount - entity.outgoingAmount; }

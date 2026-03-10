@@ -27,7 +27,7 @@ static std::vector<uint64> fullyUnlockedAmount;
 static std::vector<id> fullyUnlockedUser;
 
 
-class QearnChecker : public QEARN
+class QearnChecker : public QEARN, public QEARN::StateData
 {
 public:
     void checkLockerArray(bool beforeEndEpoch, bool printInfo = false)

@@ -86,6 +86,18 @@ namespace QPI
 		};
 	}
 
+	// Wrapper around a contract's entire state struct.
+	// sizeof(ContractState<T, contractIndex>) == sizeof(T), standard layout, zero-init compatible.
+	// Use get() for reads, mut() for writes (marks dirty).
+	template <typename T, unsigned int contractIndex>
+	struct ContractState {
+		static constexpr unsigned int __contract_index = contractIndex;
+		const T& get() const { return _data; }
+		T& mut() { ::__markContractStateDirty(contractIndex); return _data; }
+	private:
+		T _data;
+	};
+
 	// Letters for defining identity with ID function
 	constexpr long long _A = 0;
 	constexpr long long _B = 1;
@@ -230,6 +242,12 @@ namespace QPI
 			return true;
 		}
 
+		/// Set date/time to invalid value. Depending on the desired behavior of comparison, you may chose a value less or greater than all valid values.
+		inline void setInvalid(bool smallestValue = true)
+		{
+			value = (smallestValue) ? 0 : UINT64_MAX;
+		}
+
 		/**
 		* @brief Set date value without checking if it is valid.
 		* @param year	Year of the date (without offset). Should be in range 0 to 65335.
@@ -310,6 +328,8 @@ namespace QPI
 		/// Check if this instance contains a valid date and time.
 		bool isValid() const
 		{
+			if (!value)
+				return false;
 			return isValid(getYear(), getMonth(), getDay(), getHour(), getMinute(), getSecond(), getMillisec(), getMicrosecDuringMillisec());
 		}
 
@@ -378,6 +398,18 @@ namespace QPI
 		bool operator>(const DateAndTime& other) const
 		{
 			return value > other.value;
+		}
+
+		/// Checks if this date is earlier than the `other` date or the same.
+		bool operator<=(const DateAndTime& other) const
+		{
+			return value <= other.value;
+		}
+
+		/// Checks if this date is later than the `other` date or the same.
+		bool operator>=(const DateAndTime& other) const
+		{
+			return value >= other.value;
 		}
 
 		/// Checks if this date is identical to the `other` date.
@@ -1109,6 +1141,9 @@ namespace QPI
 		// returning the elementIndex (or NULL_INDEX if the hash map does not contain the key).
 		sint64 removeByKey(const KeyT& key);
 
+		// Check if cleanup is needed based on the removal threshold, without modifying the container.
+		bool needsCleanup(uint64 removalThresholdPercent = 50) const;
+
 		// Call cleanup() if it makes sense. The content of this object may be reordered, so prior indices are invalidated.
 		void cleanupIfNeeded(uint64 removalThresholdPercent = 50);
 
@@ -1192,6 +1227,9 @@ namespace QPI
 		// Mark element for removal if key is contained in the hash set, 
 		// returning the elementIndex (or NULL_INDEX if the hash map does not contain the key).
 		sint64 remove(const KeyT& key);
+
+		// Check if cleanup is needed based on the removal threshold, without modifying the container.
+		bool needsCleanup(uint64 removalThresholdPercent = 50) const;
 
 		// Call cleanup() if it makes sense. The content of this object may be reordered, so prior indices are invalidated.
 		void cleanupIfNeeded(uint64 removalThresholdPercent = 50);
@@ -1316,6 +1354,9 @@ namespace QPI
 		{
 			return L;
 		}
+
+		// Check if cleanup is needed based on the removal threshold, without modifying the collection.
+		bool needsCleanup(uint64 removalThresholdPercent = 50) const;
 
 		// Call cleanup() if more than the given percent of pov slots are marked for removal.
 		void cleanupIfNeeded(uint64 removalThresholdPercent = 50);
@@ -2492,7 +2533,7 @@ namespace QPI
 	struct OracleNotificationInput
 	{
 		sint64 queryId;			///< ID of the oracle query that led to this notification.
-		uint32 subscriptionId;	///< ID of the oracle subscription or 0 in case of a pure oracle query.
+		sint32 subscriptionId;	///< ID of the oracle subscription or -1 in case of a pure oracle query.
 		uint8 status;			///< Oracle query status as defined in `network_messages/common_def.h`
 		uint8 __reserved0;
 		uint16 __reserved1;
@@ -2599,6 +2640,9 @@ namespace QPI
 			sint32 oracleSubscriptionId
 		) const;
 
+		// Bring base class const operator() into scope (otherwise hidden by non-const overload below)
+		using QpiContextFunctionCall::operator();
+
 		// Access proposal procedures with qpi(proposalVotingObject).proc().
 		template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 		inline QpiContextProposalProcedureCall<ProposerAndVoterHandlingType, ProposalDataType> operator()(
@@ -2629,7 +2673,7 @@ namespace QPI
 			const typename OracleInterface::OracleQuery& query,
 			void (*notificationProcPtr)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
 			unsigned int notificationProcId,
-			uint32 notificationIntervalInMilliseconds = 60000,
+			uint32 notificationPeriodInMilliseconds = 60000,
 			bool notifyWithPreviousReply = true
 		) const;
 
@@ -2720,6 +2764,7 @@ namespace QPI
 	
 	struct ContractBase
 	{
+		struct StateData {};
 		enum { __initializeEmpty = 1, __initializeLocalsSize = sizeof(NoData) };
 		static void __initialize(const QpiContextProcedureCall&, void*, void*, void*) {}
 		enum { __beginEpochEmpty = 1, __beginEpochLocalsSize = sizeof(NoData) };
@@ -2765,8 +2810,8 @@ namespace QPI
 		 public: \
 			enum { FuncName##Empty = 0, FuncName##LocalsSize = sizeof(CapLetterName##_locals) }; \
 			static_assert(sizeof(CapLetterName##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #CapLetterName "_locals size too large"); \
-			inline static void FuncName(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, InputType& input, OutputType& output, CapLetterName##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##FuncName(qpi, state, input, output, locals); } \
-			static void __impl_##FuncName(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, InputType& input, OutputType& output, CapLetterName##_locals& locals)
+			inline static void FuncName(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, InputType& input, OutputType& output, CapLetterName##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##FuncName(qpi, state, input, output, locals); } \
+			static void __impl_##FuncName(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, InputType& input, OutputType& output, CapLetterName##_locals& locals)
 
 	// Define contract system procedure called to initialize contract state after IPO
 	#define INITIALIZE()  NO_IO_SYSTEM_PROC(INITIALIZE, __initialize, NoData, NoData)
@@ -2884,7 +2929,7 @@ namespace QPI
 	#define EXPAND() \
       public: \
         enum { __expandEmpty = 0 }; \
-		static void __expand(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, CONTRACT_STATE2_TYPE& state2) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+		static void __expand(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, QPI::ContractState<CONTRACT_STATE2_TYPE, CONTRACT_INDEX>& state2) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
 
 
 	#define LOG_DEBUG(message) __logContractDebugMessage(CONTRACT_INDEX, message);
@@ -2907,8 +2952,8 @@ namespace QPI
 	#define PRIVATE_FUNCTION_WITH_LOCALS(function) \
 		protected: \
 			enum { __is_function_##function = true }; \
-			inline static void function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##function(qpi, state, input, output, locals); } \
-			static void __impl_##function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals)
+			inline static void function(const QPI::QpiContextFunctionCall& qpi, const QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, function##_input& input, function##_output& output, function##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##function(qpi, state, input, output, locals); } \
+			static void __impl_##function(const QPI::QpiContextFunctionCall& qpi, const QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, function##_input& input, function##_output& output, function##_locals& locals)
 
 	#define PRIVATE_PROCEDURE(procedure) \
 		protected: \
@@ -2918,8 +2963,8 @@ namespace QPI
 	#define PRIVATE_PROCEDURE_WITH_LOCALS(procedure) \
 		protected: \
 			enum { __is_function_##procedure = false, __id_##procedure = (CONTRACT_INDEX << 22) | __LINE__ }; \
-			inline static void procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##procedure(qpi, state, input, output, locals); } \
-			static void __impl_##procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals)
+			inline static void procedure(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##procedure(qpi, state, input, output, locals); } \
+			static void __impl_##procedure(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals)
 
 	#define PUBLIC_FUNCTION(function) \
 		public: \
@@ -2929,8 +2974,8 @@ namespace QPI
 	#define PUBLIC_FUNCTION_WITH_LOCALS(function) \
 		public: \
 			enum { __is_function_##function = true }; \
-			inline static void function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##function(qpi, state, input, output, locals); } \
-			static void __impl_##function(const QPI::QpiContextFunctionCall& qpi, const CONTRACT_STATE_TYPE& state, function##_input& input, function##_output& output, function##_locals& locals)
+			inline static void function(const QPI::QpiContextFunctionCall& qpi, const QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, function##_input& input, function##_output& output, function##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##function(qpi, state, input, output, locals); } \
+			static void __impl_##function(const QPI::QpiContextFunctionCall& qpi, const QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, function##_input& input, function##_output& output, function##_locals& locals)
 
 	#define PUBLIC_PROCEDURE(procedure) \
 		public: \
@@ -2940,8 +2985,8 @@ namespace QPI
 	#define PUBLIC_PROCEDURE_WITH_LOCALS(procedure) \
 		public: \
 			enum { __is_function_##procedure = false, __id_##procedure = (CONTRACT_INDEX << 22) | __LINE__ }; \
-			inline static void procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##procedure(qpi, state, input, output, locals); } \
-			static void __impl_##procedure(const QPI::QpiContextProcedureCall& qpi, CONTRACT_STATE_TYPE& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals)
+			inline static void procedure(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##procedure(qpi, state, input, output, locals); } \
+			static void __impl_##procedure(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals)
 
 	#define REGISTER_USER_FUNCTIONS_AND_PROCEDURES() \
 		public: \
@@ -2996,7 +3041,7 @@ namespace QPI
 		do { \
 			const QpiContextFunctionCall* __ctx = qpi.__qpiConstructContextOtherContractFunctionCall(contractStateType::__contract_index, errorVar); \
 			if (__ctx) { \
-				contractStateType* __state = (contractStateType*)qpi.__qpiAcquireStateForReading(contractStateType::__contract_index); \
+				const QPI::ContractState<contractStateType::StateData, contractStateType::__contract_index>* __state = (const QPI::ContractState<contractStateType::StateData, contractStateType::__contract_index>*)qpi.__qpiAcquireStateForReading(contractStateType::__contract_index); \
 				contractStateType::function##_locals* __locals = (contractStateType::function##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::function##_locals)); \
 				contractStateType::function(*__ctx, *__state, input, output, *__locals); \
 				qpi.__qpiFreeLocals(); \
@@ -3022,7 +3067,7 @@ namespace QPI
 		do { \
 			const QpiContextProcedureCall* __ctx = qpi.__qpiConstructProcedureCallContext(contractStateType::__contract_index, invocationReward, errorVar); \
 			if (__ctx) { \
-				contractStateType* __state = (contractStateType*)qpi.__qpiAcquireStateForWriting(contractStateType::__contract_index); \
+				QPI::ContractState<contractStateType::StateData, contractStateType::__contract_index>* __state = (QPI::ContractState<contractStateType::StateData, contractStateType::__contract_index>*)qpi.__qpiAcquireStateForWriting(contractStateType::__contract_index); \
 				contractStateType::procedure##_locals* __locals = (contractStateType::procedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::procedure##_locals)); \
 				contractStateType::procedure(*__ctx, *__state, input, output, *__locals); \
 				qpi.__qpiFreeLocals(); \
@@ -3062,24 +3107,23 @@ namespace QPI
 	* @brief Subscribe for regularly querying an oracle.
 	* @param query The regular query, which must have a member `DateAndTime timestamp`.
 	* @param notificationCallback User procedure that shall be executed when the oracle reply is available or an error occurs.
-	* @param notificationIntervalInMilliseconds Number of milliseconds between consecutive queries/replies.
-	*			This is also used as a timeout. Currently, only multiples of 60000 are supported and other
-	*			values are rejected with an error.
+	* @param notificationPeriodInMilliseconds Number of milliseconds between consecutive queries/replies that the contract
+	*           is notified about. Currently, only multiples of 60000 are supported and other values are rejected with an error.
 	* @param notifyWithPreviousReply Whether to immediately notify this contract with the most up-to-date value if any is available.
 	* @return Oracle subscription ID that can be used to get the status of the subscription, or -1 on error.
 	*
-	* Subscriptions automatically expire at the end of each epoch. So, a common pattern is to call qpi.subscribeOracle()
+	* Subscriptions automatically expire at the end of each epoch. So, a common pattern is to call SUBSCRIBE_ORACLE
 	* in BEGIN_EPOCH.
 	*
-	* Subscriptions facilitate shareing common oracle queries among multiple contracts. This saves network ressources and allows
+	* Subscriptions facilitate sharing common oracle queries among multiple contracts. This saves network resources and allows
 	* to provide a fixed-price subscription for the whole epoch, which is usually much cheaper than the equivalent series of
 	* individual qpi.queryOracle() calls.
 	*
-	* The qpi.subscribeOracle() call will automatically burn the oracle subscription fee as defined by the oracle interface
+	* The SUBSCRIBE_ORACLE call will automatically burn the oracle subscription fee as defined by the oracle interface
 	* (burning without adding to the contract's execution fee reserve). It will fail if the contract doesn't have enough QU.
 	*
 	* The notification callback will be executed when the reply is available or on error.
-	* The callback must be a user procedure of the contract calling qpi.subscribeOracle() with the procedure input type
+	* The callback must be a user procedure of the contract calling SUBSCRIBE_ORACLE with the procedure input type
 	* OracleNotificationInput<OracleInterface> and NoData as output. The procedure must be registered with
 	* REGISTER_USER_PROCEDURE_NOTIFICATION() in REGISTER_USER_FUNCTIONS_AND_PROCEDURES().
 	* Success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
@@ -3087,8 +3131,9 @@ namespace QPI
 	* and input.queryID is -1 (invalid).
 	* Other errors that may happen with valid input.queryID are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
 	* input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE.
+	* The timeout of subscription queries is always 60000 milliseconds.
 	*/
-	#define SUBSCRIBE_ORACLE(OracleInterface, query, userProcNotification, notificationIntervalInMilliseconds, notifyWithPreviousReply) qpi.__qpiSubscribeOracle<OracleInterface>(query, userProcNotification, __id_##userProcNotification, notificationIntervalInMilliseconds, notifyWithPreviousReply)
+	#define SUBSCRIBE_ORACLE(OracleInterface, query, userProcNotification, notificationPeriodInMilliseconds, notifyWithPreviousReply) qpi.__qpiSubscribeOracle<OracleInterface>(query, userProcNotification, __id_##userProcNotification, notificationPeriodInMilliseconds, notifyWithPreviousReply)
 
 	#define SELF id(CONTRACT_INDEX, 0, 0, 0)
 
@@ -3096,13 +3141,11 @@ namespace QPI
 
 	//////////
 
-	#define DEFINE_SHAREHOLDER_PROPOSAL_STORAGE(numProposalSlots, assetNameInt64) \
+	#define DEFINE_SHAREHOLDER_PROPOSAL_TYPES(numProposalSlots, assetNameInt64) \
 		public: \
 			typedef ProposalDataYesNo ProposalDataT; \
 			typedef ProposalAndVotingByShareholders<numProposalSlots, assetNameInt64> ProposersAndVotersT; \
-			typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT; \
-		protected: \
-			ProposalVotingT proposals
+			typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT
 
 	#define IMPLEMENT_SetShareholderProposal(numFeeStateVariables, setProposalFeeVarOrValue) \
 		typedef ProposalDataT SetShareholderProposal_input; \
@@ -3114,7 +3157,7 @@ namespace QPI
 				qpi.transfer(qpi.invocator(), qpi.invocationReward()); \
 				output = INVALID_PROPOSAL_INDEX; \
 				return; } \
-			output = qpi(state.proposals).setProposal(qpi.invocator(), input); \
+			output = qpi(state.mut().proposals).setProposal(qpi.invocator(), input); \
 			if (output == INVALID_PROPOSAL_INDEX) { \
 				qpi.transfer(qpi.invocator(), qpi.invocationReward()); \
 				return;	} \
@@ -3126,20 +3169,20 @@ namespace QPI
 		struct GetShareholderProposal_input { uint16 proposalIndex; }; \
 		struct GetShareholderProposal_output { ProposalDataT proposal; id proposerPubicKey; }; \
 		PUBLIC_FUNCTION(GetShareholderProposal) { \
-			output.proposerPubicKey = qpi(state.proposals).proposerId(input.proposalIndex); \
-			qpi(state.proposals).getProposal(input.proposalIndex, output.proposal); }
+			output.proposerPubicKey = qpi(state.get().proposals).proposerId(input.proposalIndex); \
+			qpi(state.get().proposals).getProposal(input.proposalIndex, output.proposal); }
 
 	#define IMPLEMENT_GetShareholderProposalIndices() \
 		struct GetShareholderProposalIndices_input { bit activeProposals; sint32 prevProposalIndex; }; \
 		struct GetShareholderProposalIndices_output { uint16 numOfIndices; Array<uint16, 64> indices; }; \
 		PUBLIC_FUNCTION(GetShareholderProposalIndices) {\
 			if (input.activeProposals) { \
-				while ((input.prevProposalIndex = qpi(state.proposals).nextProposalIndex(input.prevProposalIndex, qpi.epoch())) >= 0) { \
+				while ((input.prevProposalIndex = qpi(state.get().proposals).nextProposalIndex(input.prevProposalIndex, qpi.epoch())) >= 0) { \
 					output.indices.set(output.numOfIndices, input.prevProposalIndex); \
 					++output.numOfIndices; \
 					if (output.numOfIndices == output.indices.capacity()) break; } } \
 			else { \
-				while ((input.prevProposalIndex = qpi(state.proposals).nextFinishedProposalIndex(input.prevProposalIndex)) >= 0) { \
+				while ((input.prevProposalIndex = qpi(state.get().proposals).nextFinishedProposalIndex(input.prevProposalIndex)) >= 0) { \
 					output.indices.set(output.numOfIndices, input.prevProposalIndex); \
 					++output.numOfIndices; \
 					if (output.numOfIndices == output.indices.capacity()) break; } } }
@@ -3155,19 +3198,19 @@ namespace QPI
 		typedef ProposalMultiVoteDataV1 SetShareholderVotes_input; \
 		typedef bit SetShareholderVotes_output; \
 		PUBLIC_PROCEDURE(SetShareholderVotes) { \
-			output = qpi(state.proposals).vote(qpi.invocator(), input); } \
+			output = qpi(state.mut().proposals).vote(qpi.invocator(), input); } \
 
 	#define IMPLEMENT_GetShareholderVotes() \
 		struct GetShareholderVotes_input { id voter; uint16 proposalIndex; }; \
 		typedef ProposalMultiVoteDataV1 GetShareholderVotes_output; \
 		PUBLIC_FUNCTION(GetShareholderVotes) { \
-			qpi(state.proposals).getVotes(input.proposalIndex, input.voter,	output); }
+			qpi(state.get().proposals).getVotes(input.proposalIndex, input.voter,	output); }
 
 	#define IMPLEMENT_GetShareholderVotingResults() \
 		struct GetShareholderVotingResults_input { uint16 proposalIndex; }; \
 		typedef ProposalSummarizedVotingDataV1 GetShareholderVotingResults_output; \
 		PUBLIC_FUNCTION(GetShareholderVotingResults) { \
-			qpi(state.proposals).getVotingSummary(input.proposalIndex, output); }
+			qpi(state.get().proposals).getVotingSummary(input.proposalIndex, output); }
 
 	#define IMPLEMENT_SET_SHAREHOLDER_PROPOSAL() \
 		struct SET_SHAREHOLDER_PROPOSAL_locals { SetShareholderProposal_input userProcInput; }; \
@@ -3191,12 +3234,12 @@ namespace QPI
 			FinalizeShareholderProposalSetStateVar_input p; uint16 proposalClass; }; \
 		PRIVATE_PROCEDURE_WITH_LOCALS(FinalizeShareholderStateVarProposals) { \
 			locals.p.proposalIndex = -1; \
-			while ((locals.p.proposalIndex = qpi(state.proposals).nextProposalIndex(locals.p.proposalIndex, qpi.epoch())) >= 0) { \
-				if (!qpi(state.proposals).getProposal(locals.p.proposalIndex, locals.p.proposal)) \
+			while ((locals.p.proposalIndex = qpi(state.get().proposals).nextProposalIndex(locals.p.proposalIndex, qpi.epoch())) >= 0) { \
+				if (!qpi(state.get().proposals).getProposal(locals.p.proposalIndex, locals.p.proposal)) \
 					continue; \
 				locals.proposalClass = ProposalTypes::cls(locals.p.proposal.type); \
 				if (locals.proposalClass == ProposalTypes::Class::Variable || locals.proposalClass == ProposalTypes::Class::MultiVariables) { \
-					if (!qpi(state.proposals).getVotingSummary(locals.p.proposalIndex, locals.p.results)) \
+					if (!qpi(state.get().proposals).getVotingSummary(locals.p.proposalIndex, locals.p.results)) \
 						continue; \
 					locals.p.acceptedOption = locals.p.results.getAcceptedOption(); \
 					if (locals.p.acceptedOption <= 0) \
