@@ -228,28 +228,31 @@ public:
 
 public:
     // Contract State
-    Array<BridgeOrder, 1024> orders;
-    id feeRecipient;                 // Specific wallet to receive fees
-    Array<id, 16> managers;          // Managers list
-    uint64 nextOrderId;              // Counter for order IDs
-    uint64 lockedTokens;             // Total locked tokens in the contract (balance)
-    uint64 totalReceivedTokens;      // Total tokens received
-    uint32 sourceChain;              // Source chain identifier (e.g., Ethereum=1, Qubic=0)
-    uint32 _tradeFeeBillionths;      // Trade fee in billionths (e.g., 0.5% = 5,000,000)
-    uint64 _earnedFees;              // Accumulated fees from trades
-    uint64 _distributedFees;         // Fees already distributed to shareholders
-    uint64 _earnedFeesQubic;         // Accumulated fees from Qubic trades
-    uint64 _distributedFeesQubic;    // Fees already distributed to Qubic shareholders
-    uint64 _reservedFees;            // Fees reserved for pending orders (not distributed yet)
-    uint64 _reservedFeesQubic;       // Qubic fees reserved for pending orders (not distributed yet)
-    uint64 minimumOrderAmount;       // Minimum order amount to prevent zero-fee spam
+    struct StateData
+    {
+        Array<BridgeOrder, 1024> orders;
+        id feeRecipient;                 // Specific wallet to receive fees
+        Array<id, 16> managers;          // Managers list
+        uint64 nextOrderId;              // Counter for order IDs
+        uint64 lockedTokens;             // Total locked tokens in the contract (balance)
+        uint64 totalReceivedTokens;      // Total tokens received
+        uint32 sourceChain;              // Source chain identifier (e.g., Ethereum=1, Qubic=0)
+        uint32 _tradeFeeBillionths;      // Trade fee in billionths (e.g., 0.5% = 5,000,000)
+        uint64 _earnedFees;              // Accumulated fees from trades
+        uint64 _distributedFees;         // Fees already distributed to shareholders
+        uint64 _earnedFeesQubic;         // Accumulated fees from Qubic trades
+        uint64 _distributedFeesQubic;    // Fees already distributed to Qubic shareholders
+        uint64 _reservedFees;            // Fees reserved for pending orders (not distributed yet)
+        uint64 _reservedFeesQubic;       // Qubic fees reserved for pending orders (not distributed yet)
+        uint64 minimumOrderAmount;       // Minimum order amount to prevent zero-fee spam
 
-    // Multisig state
-    Array<id, 16> admins;            // List of multisig admins
-    uint8 numberOfAdmins;            // Number of active admins
-    uint8 requiredApprovals;         // Threshold: number of approvals needed (2 of 3)
-    Array<AdminProposal, 32> proposals; // Pending admin proposals
-    uint64 nextProposalId;           // Counter for proposal IDs
+        // Multisig state
+        Array<id, 16> admins;            // List of multisig admins
+        uint8 numberOfAdmins;            // Number of active admins
+        uint8 requiredApprovals;         // Threshold: number of approvals needed (2 of 3)
+        Array<AdminProposal, 32> proposals; // Pending admin proposals
+        uint64 nextProposalId;           // Counter for proposal IDs
+    };
 
     // Internal methods for admin/manager permissions
     typedef id isManager_input;
@@ -262,9 +265,9 @@ public:
 
     PRIVATE_FUNCTION_WITH_LOCALS(isManager)
     {
-        for (locals.i = 0; locals.i < state.managers.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().managers.capacity(); ++locals.i)
         {
-            if (state.managers.get(locals.i) == input)
+            if (state.get().managers.get(locals.i) == input)
             {
                 output = true;
                 return;
@@ -283,9 +286,9 @@ public:
 
     PRIVATE_FUNCTION_WITH_LOCALS(isMultisigAdmin)
     {
-        for (locals.i = 0; locals.i < (uint64)state.numberOfAdmins; ++locals.i)
+        for (locals.i = 0; locals.i < (uint64)state.get().numberOfAdmins; ++locals.i)
         {
-            if (state.admins.get(locals.i) == input)
+            if (state.get().admins.get(locals.i) == input)
             {
                 output = true;
                 return;
@@ -316,7 +319,7 @@ public:
         locals.invReward = qpi.invocationReward();
 
         // [QVB-09] Validate minimum order amount (prevents zero-fee spam)
-        if (input.amount < state.minimumOrderAmount)
+        if (input.amount < state.get().minimumOrderAmount)
         {
             if (locals.invReward > 0) qpi.transfer(qpi.invocator(), locals.invReward);
             locals.log = EthBridgeLogger{
@@ -331,8 +334,8 @@ public:
         }
 
         // Calculate fees as percentage of amount (0.5% each, 1% total)
-        locals.requiredFeeEth = div(input.amount * state._tradeFeeBillionths, 1000000000ULL);
-        locals.requiredFeeQubic = div(input.amount * state._tradeFeeBillionths, 1000000000ULL);
+        locals.requiredFeeEth = div(input.amount * state.get()._tradeFeeBillionths, 1000000000ULL);
+        locals.requiredFeeQubic = div(input.amount * state.get()._tradeFeeBillionths, 1000000000ULL);
         locals.totalRequiredFee = locals.requiredFeeEth + locals.requiredFeeQubic;
 
         // [QVB-09] Safety check: reject if calculated fee rounds to zero
@@ -390,7 +393,7 @@ public:
         }
 
         // [QVB-17] Set order fields WITHOUT incrementing nextOrderId yet
-        locals.newOrder.orderId = state.nextOrderId; // No ++ here
+        locals.newOrder.orderId = state.get().nextOrderId; // No ++ here
         locals.newOrder.qubicSender = qpi.invocator();
 
         // Set qubicDestination according to the direction
@@ -400,7 +403,7 @@ public:
             locals.newOrder.qubicDestination = input.qubicDestination;
 
             // [QVB-09] Check and RESERVE liquidity
-            if (state.lockedTokens < input.amount)
+            if (state.get().lockedTokens < input.amount)
             {
                 if (locals.invReward > 0) qpi.transfer(qpi.invocator(), locals.invReward);
                 locals.log = EthBridgeLogger{
@@ -413,7 +416,7 @@ public:
                 output.status = EthBridgeError::insufficientLockedTokens;
                 return;
             }
-            state.lockedTokens -= input.amount;
+            state.mut().lockedTokens -= input.amount;
         }
         else
         {
@@ -437,18 +440,18 @@ public:
         locals.recyclableFound = false;
         locals.j = 0;
 
-        for (locals.i = 0; locals.i < state.orders.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().orders.capacity(); ++locals.i)
         {
-            if (state.orders.get(locals.i).status == 255)
+            if (state.get().orders.get(locals.i).status == 255)
             {
                 // Empty slot found - use directly
-                locals.newOrder.orderId = state.nextOrderId++; // [QVB-17] Increment only on success
-                state.orders.set(locals.i, locals.newOrder);
+                locals.newOrder.orderId = state.mut().nextOrderId++; // [QVB-17] Increment only on success
+                state.mut().orders.set(locals.i, locals.newOrder);
 
-                state._earnedFees += locals.requiredFeeEth;
-                state._earnedFeesQubic += locals.requiredFeeQubic;
-                state._reservedFees += locals.requiredFeeEth;
-                state._reservedFeesQubic += locals.requiredFeeQubic;
+                state.mut()._earnedFees += locals.requiredFeeEth;
+                state.mut()._earnedFeesQubic += locals.requiredFeeQubic;
+                state.mut()._reservedFees += locals.requiredFeeEth;
+                state.mut()._reservedFeesQubic += locals.requiredFeeQubic;
 
                 // [QVB-11] Refund excess invocationReward
                 if (locals.invReward > locals.totalRequiredFee)
@@ -468,7 +471,7 @@ public:
                 return;
             }
             else if (!locals.recyclableFound &&
-                     (state.orders.get(locals.i).status == 1 || state.orders.get(locals.i).status == 2))
+                     (state.get().orders.get(locals.i).status == 1 || state.get().orders.get(locals.i).status == 2))
             {
                 // Track first recyclable slot (completed or refunded)
                 locals.recyclableFound = true;
@@ -479,13 +482,13 @@ public:
         // No empty slot. Try recyclable slot.
         if (locals.recyclableFound)
         {
-            locals.newOrder.orderId = state.nextOrderId++; // [QVB-17] Increment only on success
-            state.orders.set(locals.j, locals.newOrder);
+            locals.newOrder.orderId = state.mut().nextOrderId++; // [QVB-17] Increment only on success
+            state.mut().orders.set(locals.j, locals.newOrder);
 
-            state._earnedFees += locals.requiredFeeEth;
-            state._earnedFeesQubic += locals.requiredFeeQubic;
-            state._reservedFees += locals.requiredFeeEth;
-            state._reservedFeesQubic += locals.requiredFeeQubic;
+            state.mut()._earnedFees += locals.requiredFeeEth;
+            state.mut()._earnedFeesQubic += locals.requiredFeeQubic;
+            state.mut()._reservedFees += locals.requiredFeeEth;
+            state.mut()._reservedFeesQubic += locals.requiredFeeQubic;
 
             // [QVB-11] Refund excess invocationReward
             if (locals.invReward > locals.totalRequiredFee)
@@ -508,7 +511,7 @@ public:
         // [QVB-09] Undo liquidity reservation if we can't create the order
         if (!input.fromQubicToEthereum)
         {
-            state.lockedTokens += input.amount;
+            state.mut().lockedTokens += input.amount;
         }
 
         // No slots available at all - refund everything
@@ -535,9 +538,9 @@ public:
 
     PUBLIC_FUNCTION_WITH_LOCALS(getOrder)
     {
-        for (locals.i = 0; locals.i < state.orders.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().orders.capacity(); ++locals.i)
         {
-            locals.order = state.orders.get(locals.i);
+            locals.order = state.get().orders.get(locals.i);
             if (locals.order.orderId == input.orderId && locals.order.status != 255)
             {
                 // Populate OrderResponse with BridgeOrder data
@@ -545,7 +548,7 @@ public:
                 locals.orderResp.originAccount = locals.order.qubicSender;
                 locals.orderResp.destinationAccount = locals.order.ethAddress;
                 locals.orderResp.amount = locals.order.amount;
-                locals.orderResp.sourceChain = state.sourceChain;
+                locals.orderResp.sourceChain = state.get().sourceChain;
                 locals.orderResp.qubicDestination = locals.order.qubicDestination;
                 locals.orderResp.status = locals.order.status;
 
@@ -694,9 +697,9 @@ public:
         locals.slotIndex = 0;
         locals.j = 0;
 
-        for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().proposals.capacity(); ++locals.i)
         {
-            if (!state.proposals.get(locals.i).active && state.proposals.get(locals.i).proposalId == 0)
+            if (!state.get().proposals.get(locals.i).active && state.get().proposals.get(locals.i).proposalId == 0)
             {
                 // Empty slot
                 if (!locals.slotFound)
@@ -706,8 +709,8 @@ public:
                 }
             }
             else if (!locals.recyclableFound &&
-                     (state.proposals.get(locals.i).executed ||
-                      (!state.proposals.get(locals.i).active && state.proposals.get(locals.i).proposalId > 0)))
+                     (state.get().proposals.get(locals.i).executed ||
+                      (!state.get().proposals.get(locals.i).active && state.get().proposals.get(locals.i).proposalId > 0)))
             {
                 // First recyclable slot (executed or abandoned)
                 locals.recyclableFound = true;
@@ -737,7 +740,7 @@ public:
         }
 
         // Create the new proposal
-        locals.newProposal.proposalId = state.nextProposalId++;
+        locals.newProposal.proposalId = state.mut().nextProposalId++;
         locals.newProposal.proposalType = input.proposalType;
         locals.newProposal.targetAddress = input.targetAddress;
         locals.newProposal.oldAddress = input.oldAddress;
@@ -750,7 +753,7 @@ public:
         locals.newProposal.approvals.set(0, qpi.invocator());
 
         // Store the proposal
-        state.proposals.set(locals.slotIndex, locals.newProposal);
+        state.mut().proposals.set(locals.slotIndex, locals.newProposal);
 
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
@@ -786,9 +789,9 @@ public:
 
         // Find the proposal
         locals.found = false;
-        for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().proposals.capacity(); ++locals.i)
         {
-            locals.proposal = state.proposals.get(locals.i);
+            locals.proposal = state.get().proposals.get(locals.i);
             if (locals.proposal.proposalId == input.proposalId && locals.proposal.active)
             {
                 locals.found = true;
@@ -856,7 +859,7 @@ public:
         locals.proposal.approvalsCount++;
 
         // Check if threshold reached and execute
-        if (locals.proposal.approvalsCount >= state.requiredApprovals)
+        if (locals.proposal.approvalsCount >= state.get().requiredApprovals)
         {
             // [QVB-20] Track whether the action actually succeeded
             locals.actionSucceeded = false;
@@ -866,9 +869,9 @@ public:
             {
                 // Replace existing admin with new admin (max 3 admins: 2 of 3 multisig)
                 locals.adminAdded = false;
-                for (locals.i = 0; locals.i < (uint64)state.numberOfAdmins; ++locals.i)
+                for (locals.i = 0; locals.i < (uint64)state.get().numberOfAdmins; ++locals.i)
                 {
-                    if (state.admins.get(locals.i) == locals.proposal.targetAddress)
+                    if (state.get().admins.get(locals.i) == locals.proposal.targetAddress)
                     {
                         locals.adminAdded = true;
                         break;
@@ -877,11 +880,11 @@ public:
 
                 if (!locals.adminAdded)
                 {
-                    for (locals.i = 0; locals.i < state.admins.capacity(); ++locals.i)
+                    for (locals.i = 0; locals.i < state.get().admins.capacity(); ++locals.i)
                     {
-                        if (state.admins.get(locals.i) == locals.proposal.oldAddress)
+                        if (state.get().admins.get(locals.i) == locals.proposal.oldAddress)
                         {
-                            state.admins.set(locals.i, locals.proposal.targetAddress);
+                            state.mut().admins.set(locals.i, locals.proposal.targetAddress);
                             locals.actionSucceeded = true;
                             locals.adminLog = AddressChangeLogger{
                                 locals.proposal.targetAddress,
@@ -898,14 +901,14 @@ public:
             {
                 locals.adminAdded = false;
                 locals.managerCount = 0;
-                for (locals.i = 0; locals.i < state.managers.capacity(); ++locals.i)
+                for (locals.i = 0; locals.i < state.get().managers.capacity(); ++locals.i)
                 {
-                    if (state.managers.get(locals.i) == locals.proposal.targetAddress)
+                    if (state.get().managers.get(locals.i) == locals.proposal.targetAddress)
                     {
                         locals.adminAdded = true;
                         break;
                     }
-                    if (state.managers.get(locals.i) != NULL_ID)
+                    if (state.get().managers.get(locals.i) != NULL_ID)
                     {
                         locals.managerCount++;
                     }
@@ -918,11 +921,11 @@ public:
 
                 if (!locals.adminAdded)
                 {
-                    for (locals.i = 0; locals.i < state.managers.capacity(); ++locals.i)
+                    for (locals.i = 0; locals.i < state.get().managers.capacity(); ++locals.i)
                     {
-                        if (state.managers.get(locals.i) == NULL_ID)
+                        if (state.get().managers.get(locals.i) == NULL_ID)
                         {
-                            state.managers.set(locals.i, locals.proposal.targetAddress);
+                            state.mut().managers.set(locals.i, locals.proposal.targetAddress);
                             locals.actionSucceeded = true;
                             locals.adminLog = AddressChangeLogger{
                                 locals.proposal.targetAddress,
@@ -937,11 +940,11 @@ public:
             }
             else if (locals.proposal.proposalType == PROPOSAL_REMOVE_MANAGER)
             {
-                for (locals.i = 0; locals.i < state.managers.capacity(); ++locals.i)
+                for (locals.i = 0; locals.i < state.get().managers.capacity(); ++locals.i)
                 {
-                    if (state.managers.get(locals.i) == locals.proposal.targetAddress)
+                    if (state.get().managers.get(locals.i) == locals.proposal.targetAddress)
                     {
-                        state.managers.set(locals.i, NULL_ID);
+                        state.mut().managers.set(locals.i, NULL_ID);
                         locals.actionSucceeded = true;
                         locals.adminLog = AddressChangeLogger{
                             locals.proposal.targetAddress,
@@ -955,23 +958,23 @@ public:
             }
             else if (locals.proposal.proposalType == PROPOSAL_WITHDRAW_FEES)
             {
-                locals.availableFees = (state._earnedFees > (state._distributedFees + state._reservedFees))
-                                          ? (state._earnedFees - state._distributedFees - state._reservedFees)
+                locals.availableFees = (state.get()._earnedFees > (state.get()._distributedFees + state.get()._reservedFees))
+                                          ? (state.get()._earnedFees - state.get()._distributedFees - state.get()._reservedFees)
                                           : 0;
                 if (locals.proposal.amount <= locals.availableFees && locals.proposal.amount > 0)
                 {
-                    if (qpi.transfer(state.feeRecipient, locals.proposal.amount) >= 0)
+                    if (qpi.transfer(state.get().feeRecipient, locals.proposal.amount) >= 0)
                     {
-                        state._distributedFees += locals.proposal.amount;
+                        state.mut()._distributedFees += locals.proposal.amount;
                         locals.actionSucceeded = true;
                     }
                 }
             }
             else if (locals.proposal.proposalType == PROPOSAL_CHANGE_THRESHOLD)
             {
-                if (locals.proposal.amount >= 2 && locals.proposal.amount <= (uint64)state.numberOfAdmins)
+                if (locals.proposal.amount >= 2 && locals.proposal.amount <= (uint64)state.get().numberOfAdmins)
                 {
-                    state.requiredApprovals = (uint8)locals.proposal.amount;
+                    state.mut().requiredApprovals = (uint8)locals.proposal.amount;
                     locals.actionSucceeded = true;
                 }
             }
@@ -988,7 +991,7 @@ public:
                 locals.proposal.active = false;
                 output.executed = false;
 
-                state.proposals.set(locals.proposalIndex, locals.proposal);
+                state.mut().proposals.set(locals.proposalIndex, locals.proposal);
 
                 locals.log = EthBridgeLogger{
                     CONTRACT_INDEX,
@@ -1007,7 +1010,7 @@ public:
         }
 
         // Update the proposal
-        state.proposals.set(locals.proposalIndex, locals.proposal);
+        state.mut().proposals.set(locals.proposalIndex, locals.proposal);
 
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
@@ -1023,11 +1026,11 @@ public:
     // Get proposal details
     PUBLIC_FUNCTION_WITH_LOCALS(getProposal)
     {
-        for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().proposals.capacity(); ++locals.i)
         {
-            if (state.proposals.get(locals.i).proposalId == input.proposalId)
+            if (state.get().proposals.get(locals.i).proposalId == input.proposalId)
             {
-                output.proposal = state.proposals.get(locals.i);
+                output.proposal = state.get().proposals.get(locals.i);
                 output.status = 0; // Success
                 return;
             }
@@ -1060,9 +1063,9 @@ public:
     {
         // Find the proposal
         locals.found = false;
-        for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().proposals.capacity(); ++locals.i)
         {
-            locals.proposal = state.proposals.get(locals.i);
+            locals.proposal = state.get().proposals.get(locals.i);
             if (locals.proposal.proposalId == input.proposalId && locals.proposal.active)
             {
                 locals.found = true;
@@ -1113,7 +1116,7 @@ public:
 
         // Cancel the proposal by marking it as inactive
         locals.proposal.active = false;
-        state.proposals.set(locals.i, locals.proposal);
+        state.mut().proposals.set(locals.i, locals.proposal);
 
         locals.log = EthBridgeLogger{
             CONTRACT_INDEX,
@@ -1132,7 +1135,7 @@ public:
 
     PUBLIC_FUNCTION_WITH_LOCALS(getTotalReceivedTokens)
     {
-        output.totalTokens = state.totalReceivedTokens;
+        output.totalTokens = state.get().totalReceivedTokens;
     }
 
     struct completeOrder_locals
@@ -1171,11 +1174,11 @@ public:
 
         // Check if the order exists
         locals.orderFound = false;
-        for (locals.i = 0; locals.i < state.orders.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().orders.capacity(); ++locals.i)
         {
-            if (state.orders.get(locals.i).orderId == input.orderId)
+            if (state.get().orders.get(locals.i).orderId == input.orderId)
             {
-                locals.order = state.orders.get(locals.i);
+                locals.order = state.get().orders.get(locals.i);
                 locals.orderFound = true;
                 break;
             }
@@ -1250,29 +1253,29 @@ public:
 
             locals.logTokens = TokensLogger{
                 CONTRACT_INDEX,
-                state.lockedTokens,
-                state.totalReceivedTokens,
+                state.get().lockedTokens,
+                state.get().totalReceivedTokens,
                 0 };
             LOG_INFO(locals.logTokens);
         }
 
         // Release reserved fees now that order is completed (fees can now be distributed)
-        locals.feeOperator = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
-        locals.feeNetwork = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
+        locals.feeOperator = div(locals.order.amount * state.get()._tradeFeeBillionths, 1000000000ULL);
+        locals.feeNetwork = div(locals.order.amount * state.get()._tradeFeeBillionths, 1000000000ULL);
 
         // UNDERFLOW PROTECTION: Only release if enough reserved
-        if (state._reservedFees >= locals.feeOperator)
+        if (state.get()._reservedFees >= locals.feeOperator)
         {
-            state._reservedFees -= locals.feeOperator;
+            state.mut()._reservedFees -= locals.feeOperator;
         }
-        if (state._reservedFeesQubic >= locals.feeNetwork)
+        if (state.get()._reservedFeesQubic >= locals.feeNetwork)
         {
-            state._reservedFeesQubic -= locals.feeNetwork;
+            state.mut()._reservedFeesQubic -= locals.feeNetwork;
         }
 
         // Mark the order as completed
-        locals.order.status = 1;                  // Completed
-        state.orders.set(locals.i, locals.order); // Use the loop index
+        locals.order.status = 1;                      // Completed
+        state.mut().orders.set(locals.i, locals.order); // Use the loop index
 
         output.status = 0; // Success
         locals.log = EthBridgeLogger{
@@ -1320,11 +1323,11 @@ public:
 
         // Retrieve the order
         locals.orderFound = false;
-        for (locals.i = 0; locals.i < state.orders.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().orders.capacity(); ++locals.i)
         {
-            if (state.orders.get(locals.i).orderId == input.orderId)
+            if (state.get().orders.get(locals.i).orderId == input.orderId)
             {
-                locals.order = state.orders.get(locals.i);
+                locals.order = state.get().orders.get(locals.i);
                 locals.orderFound = true;
                 break;
             }
@@ -1357,10 +1360,10 @@ public:
             output.status = EthBridgeError::invalidOrderState; // Error
             return;
         }
-        
+
         // Calculate fees for this order
-        locals.feeOperator = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
-        locals.feeNetwork = div(locals.order.amount * state._tradeFeeBillionths, 1000000000ULL);
+        locals.feeOperator = div(locals.order.amount * state.get()._tradeFeeBillionths, 1000000000ULL);
+        locals.feeNetwork = div(locals.order.amount * state.get()._tradeFeeBillionths, 1000000000ULL);
 
         // Handle refund based on transfer direction
         if (locals.order.fromQubicToEthereum)
@@ -1371,11 +1374,11 @@ public:
                 // Path A: No tokens transferred yet - refund only fees
                 // [QVB-12] Calculate refund amount WITHOUT modifying state first
                 locals.totalRefund = 0;
-                if (state._reservedFees >= locals.feeOperator && state._earnedFees >= locals.feeOperator)
+                if (state.get()._reservedFees >= locals.feeOperator && state.get()._earnedFees >= locals.feeOperator)
                 {
                     locals.totalRefund += locals.feeOperator;
                 }
-                if (state._reservedFeesQubic >= locals.feeNetwork && state._earnedFeesQubic >= locals.feeNetwork)
+                if (state.get()._reservedFeesQubic >= locals.feeNetwork && state.get()._earnedFeesQubic >= locals.feeNetwork)
                 {
                     locals.totalRefund += locals.feeNetwork;
                 }
@@ -1398,19 +1401,19 @@ public:
                 }
 
                 // [QVB-12] Only update state AFTER successful transfer
-                if (state._reservedFees >= locals.feeOperator && state._earnedFees >= locals.feeOperator)
+                if (state.get()._reservedFees >= locals.feeOperator && state.get()._earnedFees >= locals.feeOperator)
                 {
-                    state._reservedFees -= locals.feeOperator;
-                    state._earnedFees -= locals.feeOperator;
+                    state.mut()._reservedFees -= locals.feeOperator;
+                    state.mut()._earnedFees -= locals.feeOperator;
                 }
-                if (state._reservedFeesQubic >= locals.feeNetwork && state._earnedFeesQubic >= locals.feeNetwork)
+                if (state.get()._reservedFeesQubic >= locals.feeNetwork && state.get()._earnedFeesQubic >= locals.feeNetwork)
                 {
-                    state._reservedFeesQubic -= locals.feeNetwork;
-                    state._earnedFeesQubic -= locals.feeNetwork;
+                    state.mut()._reservedFeesQubic -= locals.feeNetwork;
+                    state.mut()._earnedFeesQubic -= locals.feeNetwork;
                 }
 
                 locals.order.status = 2;
-                state.orders.set(locals.i, locals.order);
+                state.mut().orders.set(locals.i, locals.order);
 
                 locals.log = EthBridgeLogger{
                     CONTRACT_INDEX,
@@ -1426,7 +1429,7 @@ public:
             {
                 // Path B: Tokens received - refund amount + fees
                 // [QVB-21] Handles both !tokensLocked (intermediate) and tokensLocked (defensive) states
-                if (state.lockedTokens < locals.order.amount)
+                if (state.get().lockedTokens < locals.order.amount)
                 {
                     locals.log = EthBridgeLogger{
                         CONTRACT_INDEX,
@@ -1441,11 +1444,11 @@ public:
 
                 // [QVB-12] Calculate total refund WITHOUT modifying state
                 locals.totalRefund = locals.order.amount;
-                if (state._reservedFees >= locals.feeOperator && state._earnedFees >= locals.feeOperator)
+                if (state.get()._reservedFees >= locals.feeOperator && state.get()._earnedFees >= locals.feeOperator)
                 {
                     locals.totalRefund += locals.feeOperator;
                 }
-                if (state._reservedFeesQubic >= locals.feeNetwork && state._earnedFeesQubic >= locals.feeNetwork)
+                if (state.get()._reservedFeesQubic >= locals.feeNetwork && state.get()._earnedFeesQubic >= locals.feeNetwork)
                 {
                     locals.totalRefund += locals.feeNetwork;
                 }
@@ -1465,20 +1468,20 @@ public:
                 }
 
                 // [QVB-12] Update state only after successful transfer
-                state.lockedTokens -= locals.order.amount;
-                if (state._reservedFees >= locals.feeOperator && state._earnedFees >= locals.feeOperator)
+                state.mut().lockedTokens -= locals.order.amount;
+                if (state.get()._reservedFees >= locals.feeOperator && state.get()._earnedFees >= locals.feeOperator)
                 {
-                    state._reservedFees -= locals.feeOperator;
-                    state._earnedFees -= locals.feeOperator;
+                    state.mut()._reservedFees -= locals.feeOperator;
+                    state.mut()._earnedFees -= locals.feeOperator;
                 }
-                if (state._reservedFeesQubic >= locals.feeNetwork && state._earnedFeesQubic >= locals.feeNetwork)
+                if (state.get()._reservedFeesQubic >= locals.feeNetwork && state.get()._earnedFeesQubic >= locals.feeNetwork)
                 {
-                    state._reservedFeesQubic -= locals.feeNetwork;
-                    state._earnedFeesQubic -= locals.feeNetwork;
+                    state.mut()._reservedFeesQubic -= locals.feeNetwork;
+                    state.mut()._earnedFeesQubic -= locals.feeNetwork;
                 }
 
                 locals.order.status = 2;
-                state.orders.set(locals.i, locals.order);
+                state.mut().orders.set(locals.i, locals.order);
 
                 locals.log = EthBridgeLogger{
                     CONTRACT_INDEX,
@@ -1495,20 +1498,20 @@ public:
         {
             // EVM → Qubic refund
             // [QVB-09] Restore reserved liquidity (was decremented at createOrder)
-            state.lockedTokens += locals.order.amount;
+            state.mut().lockedTokens += locals.order.amount;
 
             // Release fee reserves (fees stay earned - paid by bridge operator, not end user)
-            if (state._reservedFees >= locals.feeOperator)
+            if (state.get()._reservedFees >= locals.feeOperator)
             {
-                state._reservedFees -= locals.feeOperator;
+                state.mut()._reservedFees -= locals.feeOperator;
             }
-            if (state._reservedFeesQubic >= locals.feeNetwork)
+            if (state.get()._reservedFeesQubic >= locals.feeNetwork)
             {
-                state._reservedFeesQubic -= locals.feeNetwork;
+                state.mut()._reservedFeesQubic -= locals.feeNetwork;
             }
 
             locals.order.status = 2;
-            state.orders.set(locals.i, locals.order);
+            state.mut().orders.set(locals.i, locals.order);
 
             locals.log = EthBridgeLogger{
                 CONTRACT_INDEX,
@@ -1554,11 +1557,11 @@ public:
 
         // Find the order
         locals.orderFound = false;
-        for (locals.i = 0; locals.i < state.orders.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().orders.capacity(); ++locals.i)
         {
-            if (state.orders.get(locals.i).orderId == input.orderId)
+            if (state.get().orders.get(locals.i).orderId == input.orderId)
             {
-                locals.order = state.orders.get(locals.i);
+                locals.order = state.get().orders.get(locals.i);
                 locals.orderFound = true;
                 break;
             }
@@ -1674,8 +1677,8 @@ public:
         }
 
         // Lock only the required amount
-        state.lockedTokens += input.amount;
-        state.totalReceivedTokens += input.amount;
+        state.mut().lockedTokens += input.amount;
+        state.mut().totalReceivedTokens += input.amount;
 
         // Refund excess if user sent too much
         if (locals.depositAmount > input.amount)
@@ -1686,12 +1689,12 @@ public:
         // [QVB-21] Only mark tokens as received, NOT locked
         // tokensLocked will be set by completeOrder (two-phase commit)
         locals.order.tokensReceived = true;
-        state.orders.set(locals.i, locals.order);
+        state.mut().orders.set(locals.i, locals.order);
 
         locals.logTokens = TokensLogger{
             CONTRACT_INDEX,
-            state.lockedTokens,
-            state.totalReceivedTokens,
+            state.get().lockedTokens,
+            state.get().totalReceivedTokens,
             0 };
         LOG_INFO(locals.logTokens);
 
@@ -1707,7 +1710,7 @@ public:
 
     PUBLIC_FUNCTION_WITH_LOCALS(getTotalLockedTokens)
     {
-        output.totalLockedTokens = state.lockedTokens;
+        output.totalLockedTokens = state.get().lockedTokens;
     }
 
     // Structure for the input of the getOrderByDetails function
@@ -1746,9 +1749,9 @@ public:
         }
 
         // Iterate through all orders
-        for (locals.i = 0; locals.i < state.orders.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().orders.capacity(); ++locals.i)
         {
-            locals.order = state.orders.get(locals.i);
+            locals.order = state.get().orders.get(locals.i);
 
             // Check if the order matches the criteria
             if (locals.order.status == 255) // Empty slot
@@ -1851,8 +1854,8 @@ public:
         }
 
         // Add the deposited tokens to the locked tokens pool
-        state.lockedTokens += locals.depositAmount;
-        state.totalReceivedTokens += locals.depositAmount;
+        state.mut().lockedTokens += locals.depositAmount;
+        state.mut().totalReceivedTokens += locals.depositAmount;
 
         // Log the successful liquidity addition
         locals.log = EthBridgeLogger{
@@ -1867,18 +1870,18 @@ public:
         // Set output values
         output.status = 0; // Success
         output.addedAmount = locals.depositAmount;
-        output.totalLocked = state.lockedTokens;
+        output.totalLocked = state.get().lockedTokens;
     }
 
 
     PUBLIC_FUNCTION(getAvailableFees)
     {
         // Available fees exclude those reserved for pending orders
-        output.availableFees = (state._earnedFees > (state._distributedFees + state._reservedFees))
-                                 ? (state._earnedFees - state._distributedFees - state._reservedFees)
+        output.availableFees = (state.get()._earnedFees > (state.get()._distributedFees + state.get()._reservedFees))
+                                 ? (state.get()._earnedFees - state.get()._distributedFees - state.get()._reservedFees)
                                  : 0;
-        output.totalEarnedFees = state._earnedFees;
-        output.totalDistributedFees = state._distributedFees;
+        output.totalEarnedFees = state.get()._earnedFees;
+        output.totalDistributedFees = state.get()._distributedFees;
     }
 
 
@@ -1889,27 +1892,27 @@ public:
 
     PUBLIC_FUNCTION_WITH_LOCALS(getContractInfo)
     {
-        output.managers = state.managers;
-        output.nextOrderId = state.nextOrderId;
-        output.lockedTokens = state.lockedTokens;
-        output.totalReceivedTokens = state.totalReceivedTokens;
-        output.earnedFees = state._earnedFees;
-        output.tradeFeeBillionths = state._tradeFeeBillionths;
-        output.sourceChain = state.sourceChain;
+        output.managers = state.get().managers;
+        output.nextOrderId = state.get().nextOrderId;
+        output.lockedTokens = state.get().lockedTokens;
+        output.totalReceivedTokens = state.get().totalReceivedTokens;
+        output.earnedFees = state.get()._earnedFees;
+        output.tradeFeeBillionths = state.get()._tradeFeeBillionths;
+        output.sourceChain = state.get().sourceChain;
 
 
         output.totalOrdersFound = 0;
         output.emptySlots = 0;
 
-        for (locals.i = 0; locals.i < 16 && locals.i < state.orders.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < 16 && locals.i < state.get().orders.capacity(); ++locals.i)
         {
-            output.firstOrders.set(locals.i, state.orders.get(locals.i));
+            output.firstOrders.set(locals.i, state.get().orders.get(locals.i));
         }
 
         // Count real orders vs empty ones
-        for (locals.i = 0; locals.i < state.orders.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().orders.capacity(); ++locals.i)
         {
-            if (state.orders.get(locals.i).status == 255)
+            if (state.get().orders.get(locals.i).status == 255)
             {
                 output.emptySlots++;
             }
@@ -1920,15 +1923,15 @@ public:
         }
 
         // Multisig info
-        output.multisigAdmins = state.admins;
-        output.numberOfAdmins = state.numberOfAdmins;
-        output.requiredApprovals = state.requiredApprovals;
+        output.multisigAdmins = state.get().admins;
+        output.numberOfAdmins = state.get().numberOfAdmins;
+        output.requiredApprovals = state.get().requiredApprovals;
 
         // Count active proposals
         output.totalProposals = 0;
-        for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().proposals.capacity(); ++locals.i)
         {
-            if (state.proposals.get(locals.i).active && state.proposals.get(locals.i).proposalId > 0)
+            if (state.get().proposals.get(locals.i).active && state.get().proposals.get(locals.i).proposalId > 0)
             {
                 output.totalProposals++;
             }
@@ -1946,8 +1949,8 @@ public:
     END_TICK_WITH_LOCALS()
     {
         // Calculate available fees for distribution (earned - distributed - reserved for pending orders)
-        locals.feesToDistributeInThisTick = (state._earnedFeesQubic > (state._distributedFeesQubic + state._reservedFeesQubic))
-                                              ? (state._earnedFeesQubic - state._distributedFeesQubic - state._reservedFeesQubic)
+        locals.feesToDistributeInThisTick = (state.get()._earnedFeesQubic > (state.get()._distributedFeesQubic + state.get()._reservedFeesQubic))
+                                              ? (state.get()._earnedFeesQubic - state.get()._distributedFeesQubic - state.get()._reservedFeesQubic)
                                               : 0;
 
         if (locals.feesToDistributeInThisTick > 0)
@@ -1960,22 +1963,22 @@ public:
             {
                 if (qpi.distributeDividends(locals.amountPerComputor))
                 {
-                    state._distributedFeesQubic += locals.amountPerComputor * NUMBER_OF_COMPUTORS;
+                    state.mut()._distributedFeesQubic += locals.amountPerComputor * NUMBER_OF_COMPUTORS;
                 }
             }
         }
 
         // Distribution of Vottun fees to feeRecipient (excluding reserved fees)
-        locals.vottunFeesToDistribute = (state._earnedFees > (state._distributedFees + state._reservedFees))
-                                          ? (state._earnedFees - state._distributedFees - state._reservedFees)
+        locals.vottunFeesToDistribute = (state.get()._earnedFees > (state.get()._distributedFees + state.get()._reservedFees))
+                                          ? (state.get()._earnedFees - state.get()._distributedFees - state.get()._reservedFees)
                                           : 0;
 
-        if (locals.vottunFeesToDistribute > 0 && state.feeRecipient != NULL_ID)
+        if (locals.vottunFeesToDistribute > 0 && state.get().feeRecipient != NULL_ID)
         {
             // [QVB-13] Check for non-negative return (success), not truthy (which -1 also satisfies)
-            if (qpi.transfer(state.feeRecipient, locals.vottunFeesToDistribute) >= 0)
+            if (qpi.transfer(state.get().feeRecipient, locals.vottunFeesToDistribute) >= 0)
             {
-                state._distributedFees += locals.vottunFeesToDistribute;
+                state.mut()._distributedFees += locals.vottunFeesToDistribute;
             }
         }
     }
@@ -2013,63 +2016,63 @@ public:
     INITIALIZE_WITH_LOCALS()
     {
         // Initialize the wallet that receives operator fees (Vottun)
-        state.feeRecipient = ID(_M, _A, _G, _K, _B, _C, _B, _I, _X, _N, _W, _S, _K, _C, _I, _G, _J, _Y, _K, _G, _S, _N, _F, _S, _F, _R, _W, _A, _L, _H, _D, _F, _D, _B, _K, _K, _P, _C, _U, _N, _S, _E, _R, _I, _K, _L, _J, _G, _M, _D, _K, _L, _Z, _V, _V, _D);
+        state.mut().feeRecipient = ID(_M, _A, _G, _K, _B, _C, _B, _I, _X, _N, _W, _S, _K, _C, _I, _G, _J, _Y, _K, _G, _S, _N, _F, _S, _F, _R, _W, _A, _L, _H, _D, _F, _D, _B, _K, _K, _P, _C, _U, _N, _S, _E, _R, _I, _K, _L, _J, _G, _M, _D, _K, _L, _Z, _V, _V, _D);
 
         // Initialize the orders array. Good practice to zero first.
         locals.emptyOrder = {};         // Sets all fields to 0 (including orderId and status).
         locals.emptyOrder.status = 255; // Then set your status for empty.
 
-        for (locals.i = 0; locals.i < state.orders.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().orders.capacity(); ++locals.i)
         {
-            state.orders.set(locals.i, locals.emptyOrder);
+            state.mut().orders.set(locals.i, locals.emptyOrder);
         }
 
         // Initialize the managers array with NULL_ID to mark slots as empty
-        for (locals.i = 0; locals.i < state.managers.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().managers.capacity(); ++locals.i)
         {
-            state.managers.set(locals.i, NULL_ID);
+            state.mut().managers.set(locals.i, NULL_ID);
         }
 
         // Add the initial manager
-        state.managers.set(0, ID(_U, _X, _V, _K, _B, _Y, _L, _Q, _Z, _I, _U, _L, _C, _B, _F, _F, _I, _L, _P, _T, _X, _O, _W, _Y, _M, _Y, _H, _D, _K, _P, _R, _Y, _W, _R, _E, _Y, _Q, _T, _Y, _Y, _A, _C, _T, _F, _W, _Q, _V, _O, _N, _P, _F, _E, _L, _P, _G, _A));
+        state.mut().managers.set(0, ID(_U, _X, _V, _K, _B, _Y, _L, _Q, _Z, _I, _U, _L, _C, _B, _F, _F, _I, _L, _P, _T, _X, _O, _W, _Y, _M, _Y, _H, _D, _K, _P, _R, _Y, _W, _R, _E, _Y, _Q, _T, _Y, _Y, _A, _C, _T, _F, _W, _Q, _V, _O, _N, _P, _F, _E, _L, _P, _G, _A));
 
         // Initialize the rest of the state variables
-        state.nextOrderId = 1; // Start from 1 to avoid ID 0
-        state.lockedTokens = 0;
-        state.totalReceivedTokens = 0;
-        state.sourceChain = 0; // Arbitrary number. No-EVM chain
+        state.mut().nextOrderId = 1; // Start from 1 to avoid ID 0
+        state.mut().lockedTokens = 0;
+        state.mut().totalReceivedTokens = 0;
+        state.mut().sourceChain = 0; // Arbitrary number. No-EVM chain
 
         // Initialize fee variables
-        state._tradeFeeBillionths = 5000000; // 0.5% == 5,000,000 / 1,000,000,000
-        state._earnedFees = 0;
-        state._distributedFees = 0;
+        state.mut()._tradeFeeBillionths = 5000000; // 0.5% == 5,000,000 / 1,000,000,000
+        state.mut()._earnedFees = 0;
+        state.mut()._distributedFees = 0;
 
-        state._earnedFeesQubic = 0;
-        state._distributedFeesQubic = 0;
+        state.mut()._earnedFeesQubic = 0;
+        state.mut()._distributedFeesQubic = 0;
 
-        state._reservedFees = 0;
-        state._reservedFeesQubic = 0;
+        state.mut()._reservedFees = 0;
+        state.mut()._reservedFeesQubic = 0;
 
         // [QVB-09] Minimum order amount to prevent zero-fee spam
-        state.minimumOrderAmount = 200; // Minimum 200 QU (fee = 1 QU per direction)
+        state.mut().minimumOrderAmount = 200; // Minimum 200 QU (fee = 1 QU per direction)
 
         // Initialize multisig admins (3 admins, requires 2 approvals)
-        state.numberOfAdmins = 3;
-        state.requiredApprovals = 2; // 2 of 3 threshold
+        state.mut().numberOfAdmins = 3;
+        state.mut().requiredApprovals = 2; // 2 of 3 threshold
 
         // Initialize admins array (REPLACE WITH ACTUAL ADMIN ADDRESSES)
-        state.admins.set(0, ID(_U, _X, _V, _K, _B, _Y, _L, _Q, _Z, _I, _U, _L, _C, _B, _F, _F, _I, _L, _P, _T, _X, _O, _W, _Y, _M, _Y, _H, _D, _K, _P, _R, _Y, _W, _R, _E, _Y, _Q, _T, _Y, _Y, _A, _C, _T, _F, _W, _Q, _V, _O, _N, _P, _F, _E, _L, _P, _G, _A)); // Admin 1
-        state.admins.set(1, ID(_D, _F, _A, _C, _O, _J, _K, _F, _A, _F, _M, _V, _J, _B, _I, _X, _K, _C, _K, _N, _A, _Y, _S, _T, _B, _S, _D, _D, _X, _Y, _I, _A, _Y, _J, _Q, _P, _H, _Y, _D, _V, _D, _H, _A, _S, _B, _A, _T, _H, _A, _L, _D, _C, _O, _Q, _K, _F)); // Admin 2 (Manager)
-        state.admins.set(2, ID(_O, _U, _T, _P, _L, _M, _H, _I, _P, _V, _D, _X, _P, _D, _J, _R, _S, _O, _D, _R, _A, _O, _U, _L, _V, _D, _V, _A, _T, _I, _D, _W, _X, _X, _L, _Q, _O, _F, _X, _O, _D, _D, _X, _P, _J, _M, _Q, _G, _C, _S, _J, _Y, _Q, _Q, _V, _D)); // Admin 3 (User)
+        state.mut().admins.set(0, ID(_U, _X, _V, _K, _B, _Y, _L, _Q, _Z, _I, _U, _L, _C, _B, _F, _F, _I, _L, _P, _T, _X, _O, _W, _Y, _M, _Y, _H, _D, _K, _P, _R, _Y, _W, _R, _E, _Y, _Q, _T, _Y, _Y, _A, _C, _T, _F, _W, _Q, _V, _O, _N, _P, _F, _E, _L, _P, _G, _A)); // Admin 1
+        state.mut().admins.set(1, ID(_D, _F, _A, _C, _O, _J, _K, _F, _A, _F, _M, _V, _J, _B, _I, _X, _K, _C, _K, _N, _A, _Y, _S, _T, _B, _S, _D, _D, _X, _Y, _I, _A, _Y, _J, _Q, _P, _H, _Y, _D, _V, _D, _H, _A, _S, _B, _A, _T, _H, _A, _L, _D, _C, _O, _Q, _K, _F)); // Admin 2 (Manager)
+        state.mut().admins.set(2, ID(_O, _U, _T, _P, _L, _M, _H, _I, _P, _V, _D, _X, _P, _D, _J, _R, _S, _O, _D, _R, _A, _O, _U, _L, _V, _D, _V, _A, _T, _I, _D, _W, _X, _X, _L, _Q, _O, _F, _X, _O, _D, _D, _X, _P, _J, _M, _Q, _G, _C, _S, _J, _Y, _Q, _Q, _V, _D)); // Admin 3 (User)
 
         // Initialize remaining admin slots
-        for (locals.i = 3; locals.i < state.admins.capacity(); ++locals.i)
+        for (locals.i = 3; locals.i < state.get().admins.capacity(); ++locals.i)
         {
-            state.admins.set(locals.i, NULL_ID);
+            state.mut().admins.set(locals.i, NULL_ID);
         }
 
         // Initialize proposals array properly (like orders array)
-        state.nextProposalId = 1;
+        state.mut().nextProposalId = 1;
 
         // Initialize emptyProposal fields explicitly (avoid memset)
         locals.emptyProposal.proposalId = 0;
@@ -2086,9 +2089,9 @@ public:
         }
 
         // Set all proposal slots with the empty proposal
-        for (locals.i = 0; locals.i < state.proposals.capacity(); ++locals.i)
+        for (locals.i = 0; locals.i < state.get().proposals.capacity(); ++locals.i)
         {
-            state.proposals.set(locals.i, locals.emptyProposal);
+            state.mut().proposals.set(locals.i, locals.emptyProposal);
         }
     }
 };

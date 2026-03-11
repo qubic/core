@@ -28,9 +28,9 @@ public:
         callSystemProcedure(VOTTUNBRIDGE_CONTRACT_INDEX, INITIALIZE);
     }
 
-    VOTTUNBRIDGE* state()
+    VOTTUNBRIDGE::StateData* state()
     {
-        return reinterpret_cast<VOTTUNBRIDGE*>(contractStates[VOTTUNBRIDGE_CONTRACT_INDEX]);
+        return reinterpret_cast<VOTTUNBRIDGE::StateData*>(contractStates[VOTTUNBRIDGE_CONTRACT_INDEX]);
     }
 
     bool findOrder(uint64 orderId, VOTTUNBRIDGE::BridgeOrder& out)

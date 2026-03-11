@@ -382,7 +382,7 @@ constexpr struct ContractDescription
 #ifndef NO_PULSE
 	{"PULSE", 204, 10000, sizeof(PULSE::StateData)}, // proposal in epoch 202, IPO in 203, construction and first use in 204
 #endif
-    {"VOTTUN", 199, 10000, sizeof(VOTTUNBRIDGE)}, // proposal in epoch 197, IPO in 200, construction and first use in 197
+    {"VOTTUN", 199, 10000, sizeof(VOTTUNBRIDGE::StateData)}, // proposal in epoch 197, IPO in 200, construction and first use in 197
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
