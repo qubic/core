@@ -157,4 +157,150 @@ static void computeRevenue(
     }
 }
 
+// New reveneue formula
+
+static constexpr unsigned int MAX_TX_LUT_INDEX = (unsigned int)(sizeof(gTxRevenuePoints) / sizeof(gTxRevenuePoints[0]) - 1);
+static constexpr unsigned int REVENUE_HALF_WINDOW = NUMBER_OF_COMPUTORS - 1;  // 675
+static constexpr unsigned int REVENUE_WINDOW_SIZE = 2 * REVENUE_HALF_WINDOW + 1;      // 1351
+static constexpr unsigned long long REVENUE_SCALE = 1024;
+static constexpr unsigned long long REVENUE_BONUS_CAP = 256; // capacity for non-mandatory factor
+static constexpr unsigned int REVENUE_W_TX = 17;             // mandatory weight: TX (85%)
+static constexpr unsigned int REVENUE_W_ORACLE = 3;          // mandatory weight: Oracle (15%)
+static constexpr unsigned int REVENUE_W_SUM = REVENUE_W_TX + REVENUE_W_ORACLE;  // 20
+// M_combined is computed as (W_TX*scoreTx + W_ORACLE*scoreOracle) / W_SUM first → [0, S]
+// Then formula: revenue = ipc × M × (S² + B×E) / (S × (S+B) × S)
+static constexpr unsigned long long REVENUE_DIVISOR = REVENUE_SCALE * (REVENUE_SCALE + REVENUE_BONUS_CAP) * REVENUE_SCALE; // 1024 × 1280 × 1024 = 1,342,177,280
+static constexpr long long REVENUE_IPC = ISSUANCE_RATE / NUMBER_OF_COMPUTORS;
+// Overflow check: IPC * S * (S^2 + B*S) = 1,479,289,940 * 1,342,177,280 ≈ 1.99e18 < u64 max (1.84e19)
+static_assert((unsigned long long)REVENUE_IPC * REVENUE_SCALE
+    * (REVENUE_SCALE * REVENUE_SCALE + REVENUE_BONUS_CAP * REVENUE_SCALE) <= 0xFFFFFFFFFFFFFFFFULL,
+    "V2 revenue formula intermediate can overflow u64");
+
+// Struct record all data so that we can do the offline analysis
+struct EpochRevenueData
+{
+    // Header
+    unsigned int initialTick;
+    unsigned int totalTicks;                                        // system.tick - system.initialTick
+
+    // Per-computor arrays (NUMBER_OF_COMPUTORS entries each)
+    unsigned long long slidingWindowTxScore[NUMBER_OF_COMPUTORS];   // new sliding window accumulated score
+    unsigned long long oracleScore[NUMBER_OF_COMPUTORS];            // oracle commit/reveal revenue points
+    long long v2Revenue[NUMBER_OF_COMPUTORS];                       // V2 shadow output
+
+    // Per-tick TX counts — existing total + 3 categories
+    unsigned short perTickTxCount[MAX_NUMBER_OF_TICKS_PER_EPOCH];           // total of txs exclude the tx of tick leader
+    unsigned short perTickProtocolTxCount[MAX_NUMBER_OF_TICKS_PER_EPOCH];   // protocol txs (votes, mining, oracle, etc.)
+    unsigned short perTickContractTxCount[MAX_NUMBER_OF_TICKS_PER_EPOCH];   // contract txs
+    unsigned short perTickOtherTxCount[MAX_NUMBER_OF_TICKS_PER_EPOCH];   // mainly: user transfers
+    unsigned short perTickTxTickLeaderCount[MAX_NUMBER_OF_TICKS_PER_EPOCH];           // total of txs
+};
+
+static EpochRevenueData gEpochRevenueData;
+
+// Intermediate buffers for V2 revenue computation
+struct RevenueV2Buffers
+{
+    unsigned int slidingWindowLogScore[MAX_NUMBER_OF_TICKS_PER_EPOCH];
+    unsigned long long txFactor[NUMBER_OF_COMPUTORS];
+    unsigned long long oracleFactor[NUMBER_OF_COMPUTORS];
+    unsigned long long miningFactor[NUMBER_OF_COMPUTORS];
+};
+static RevenueV2Buffers gRevenueV2Buffers;
+
+static void computeRevenueV2(EpochRevenueData& rEpochReveneuData)
+{
+    // Defensive: need at least WINDOW_SIZE ticks for circular sliding window to be valid.
+    if (rEpochReveneuData.totalTicks < REVENUE_WINDOW_SIZE)
+    {
+        setMem(rEpochReveneuData.slidingWindowTxScore, sizeof(rEpochReveneuData.slidingWindowTxScore), 0);
+        setMem(rEpochReveneuData.v2Revenue, sizeof(rEpochReveneuData.v2Revenue), 0);
+        return;
+    }
+
+    setMem(rEpochReveneuData.slidingWindowTxScore, sizeof(rEpochReveneuData.slidingWindowTxScore), 0);
+
+    // Transaction score computation
+    for (unsigned int t = 0; t < rEpochReveneuData.totalTicks; t++)
+    {
+        unsigned int txCount = rEpochReveneuData.perTickTxCount[t];
+        txCount = txCount > MAX_TX_LUT_INDEX ? MAX_TX_LUT_INDEX : txCount;
+
+        // Get the log of total transaction
+        gRevenueV2Buffers.slidingWindowLogScore[t] = gTxRevenuePoints[txCount];
+    }
+
+    // Pre-calculate window sum for t = 0: indices [-675, +675] with circular wrap
+    unsigned long long windowSum = 0;
+    for (int i = -(int)REVENUE_HALF_WINDOW; i <= (int)REVENUE_HALF_WINDOW; ++i)
+    {
+        unsigned int idx = ((i % (int)rEpochReveneuData.totalTicks) + (int)rEpochReveneuData.totalTicks) % (int)rEpochReveneuData.totalTicks;
+        windowSum += gRevenueV2Buffers.slidingWindowLogScore[idx];
+    }
+
+    for (unsigned int t = 0; t < rEpochReveneuData.totalTicks; t++)
+    {
+        // Compute score using current window sum
+        unsigned long long windowVal = windowSum;
+        if (windowVal == 0)
+        {
+            windowVal = 1;
+        }
+
+        // Score of center compare to windows
+        unsigned long long txScore = (unsigned long long)gRevenueV2Buffers.slidingWindowLogScore[t];
+        txScore = txScore * REVENUE_SCALE * REVENUE_WINDOW_SIZE / windowVal;
+
+        // Absolute tick number for computor tick leader
+        unsigned int computorIndex = (rEpochReveneuData.initialTick + t) % NUMBER_OF_COMPUTORS;
+        rEpochReveneuData.slidingWindowTxScore[computorIndex] += txScore;
+
+        // Slide the window: subtract leaving element, add entering element
+        unsigned int leavingIdx = (t + rEpochReveneuData.totalTicks - REVENUE_HALF_WINDOW) % rEpochReveneuData.totalTicks;
+        unsigned int enteringIdx = (t + REVENUE_HALF_WINDOW + 1) % rEpochReveneuData.totalTicks;
+        windowSum = windowSum - gRevenueV2Buffers.slidingWindowLogScore[leavingIdx] + gRevenueV2Buffers.slidingWindowLogScore[enteringIdx];
+    }
+
+    // Compute each independent factor
+    computeRevFactor(rEpochReveneuData.slidingWindowTxScore, REVENUE_SCALE, gRevenueV2Buffers.txFactor);
+
+    // Oracle: if no oracle activity this epoch, give everyone max score so the
+    // mandatory weight doesn't penalize computors for something outside their control
+    bool hasOracleActivity = false;
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        if (rEpochReveneuData.oracleScore[i] != 0)
+        {
+            hasOracleActivity = true;
+            break;
+        }
+    }
+    if (hasOracleActivity)
+    {
+        computeRevFactor(rEpochReveneuData.oracleScore, REVENUE_SCALE, gRevenueV2Buffers.oracleFactor);
+    }
+    else
+    {
+        // No oracle queries this epoch — all computors get full oracle factor
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            gRevenueV2Buffers.oracleFactor[i] = REVENUE_SCALE;
+        }
+    }
+
+    computeRevFactor(gRevenueComponents.customMiningScore, REVENUE_SCALE, gRevenueV2Buffers.miningFactor);
+
+    // Combine: M = weighted average of mandatory factors (TX + Oracle), E = bonus (mining)
+    // M = (W_TX*scoreTx + W_ORACLE*scoreOracle) / W_SUM  in  [0, S]
+    // revenue = ipc × M × (S² + B×E) / (S × (S+B) × S)
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        unsigned long long scoreTx = gRevenueV2Buffers.txFactor[i];          // [0, S]
+        unsigned long long scoreOracle = gRevenueV2Buffers.oracleFactor[i];  // [0, S]
+        unsigned long long E = gRevenueV2Buffers.miningFactor[i];         // [0, S]
+        unsigned long long M = (REVENUE_W_TX * scoreTx + REVENUE_W_ORACLE * scoreOracle) / REVENUE_W_SUM;  // [0, S]
+        unsigned long long numerator = M * (REVENUE_SCALE * REVENUE_SCALE + REVENUE_BONUS_CAP * E);
+        rEpochReveneuData.v2Revenue[i] = (long long)(REVENUE_IPC * numerator / REVENUE_DIVISOR);
+    }
+}
 
