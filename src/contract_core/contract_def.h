@@ -112,11 +112,7 @@
 #define CONTRACT_INDEX QVAULT_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QVAULT
 #define CONTRACT_STATE2_TYPE QVAULT2
-#ifdef OLD_QVAULT
-#include "contracts/QVAULT_old.h"
-#else
 #include "contracts/QVAULT.h"
-#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
