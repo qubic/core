@@ -6119,7 +6119,7 @@ static bool initialize()
             }
             if (!loadContractStateFiles())
                 return false;
-#ifndef START_NETWORK_FROM_SCRATCH
+#if !START_NETWORK_FROM_SCRATCH
             if (!loadContractExecFeeFiles())
                 return false;
 #endif
