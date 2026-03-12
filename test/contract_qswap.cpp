@@ -32,7 +32,7 @@ constexpr uint32 SET_INVEST_REWARDS_INFO_IDX = 10;
 constexpr uint32 TRANSFER_SHARE_MANAGEMENT_RIGHTS_IDX = 11;
 
 
-class QswapChecker : public QSWAP
+class QswapChecker : public QSWAP, public QSWAP::StateData
 {
 // public:
 // 	void checkCollectionConsistency() {
@@ -99,7 +99,7 @@ public:
 
 	bool createPool(const id& issuer, uint64 assetName)
     {
-		QSWAP::CreatePool_input input{issuer, assetName};
+		QSWAP::CreatePool_input input{assetName};
 		QSWAP::CreatePool_output output;
 		invokeUserProcedure(QSWAP_CONTRACT_INDEX, CREATE_POOL_IDX, input, output, issuer, QSWAP_CREATE_POOL_FEE);
 		return output.success;

@@ -4,8 +4,7 @@
 #include "network_messages/oracles.h"
 #include "network_core/peers.h"
 
-template <uint16_t ownComputorSeedsCount>
-void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, RequestResponseHeader* header) const
+void OracleEngine::processRequestOracleData(Peer* peer, RequestResponseHeader* header) const
 {
 	// check input
 	ASSERT(header && peer);
@@ -15,6 +14,8 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 
 	// prepare buffer
 	constexpr int maxQueryIdCount = 128;
+	constexpr int maxContractIndexCount = 2; // TODO: change to maxQueryIdCount * 4
+	constexpr int maxSubscriptionIdCount = 2; // TODO: change to maxQueryIdCount * 2
 	constexpr int payloadBufferSize = math_lib::max(
 		(int)math_lib::max(MAX_ORACLE_QUERY_SIZE, MAX_ORACLE_REPLY_SIZE),
 		(int)math_lib::max(maxQueryIdCount * 8ull, sizeof(revenuePoints)));
@@ -22,8 +23,10 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 	static_assert(payloadBufferSize < 32 * 1024, "Large alloc in stack may need reconsideration.");
 	uint8_t responseBuffer[sizeof(RespondOracleData) + payloadBufferSize];
 	RespondOracleData* response = (RespondOracleData*)responseBuffer;
-	void* payload = responseBuffer + sizeof(RespondOracleData);
+	uint8_t* payload = responseBuffer + sizeof(RespondOracleData);
 	int64_t* payloadQueryIds = (int64_t*)(responseBuffer + sizeof(RespondOracleData));
+	uint16_t* payloadContractIndices = (uint16_t*)(responseBuffer + sizeof(RespondOracleData));
+	int32_t* payloadSubscriptionIds = (int32_t*)(responseBuffer + sizeof(RespondOracleData));
 
 	// lock for accessing engine data
 	LockGuard lockGuard(lock);
@@ -151,7 +154,7 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		}
 		if (oqm.status == ORACLE_QUERY_STATUS_PENDING || oqm.status == ORACLE_QUERY_STATUS_COMMITTED)
 		{
-			const ReplyState& replyState = replyStates[oqm.statusVar.pending.replyStateIndex];
+			const OracleReplyState& replyState = replyStates[oqm.statusVar.pending.replyStateIndex];
 			payloadOqm->agreeingCommits = replyState.replyCommitHistogramCount[replyState.mostCommitsHistIdx];
 			payloadOqm->totalCommits = replyState.totalCommits;
 		}
@@ -186,12 +189,83 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 				RespondOracleData::type(), header->dejavu(), response);
 		}
 
+		// if subscription query, send subscriber contract indices
+		if (oqm.type == ORACLE_QUERY_TYPE_CONTRACT_SUBSCRIPTION)
+		{
+			// split the array in multiple messages if needed
+			response->resType = RespondOracleData::respondNotifiedSubscriberContracts;
+			const OracleSubscription subscription = subscriptions[oqm.typeVar.subscription.subscriptionId];
+			int32_t subscriberIdx = subscription.firstSubscriberIndex;
+			bool moreSubscribers = (subscriberIdx >= 0);
+			do
+			{
+				unsigned int idxInMsg = 0;
+				while (idxInMsg < maxQueryIdCount && moreSubscribers)
+				{
+
+					payloadContractIndices[idxInMsg] = subscribers[subscriberIdx].contractIndex;
+					++idxInMsg;
+					subscriberIdx = subscribers[subscriberIdx].nextSubscriberIdx;
+					moreSubscribers = (subscriberIdx >= 0);
+				}
+				enqueueResponse(peer, sizeof(RespondOracleData) + idxInMsg * sizeof(*payloadContractIndices),
+					RespondOracleData::type(), header->dejavu(), response);
+			} while (moreSubscribers);
+		}
+
 		break;
 	}
 
 	case RequestOracleData::requestSubscription:
-		// TODO
+	{
+		if (request->reqTickOrId < 0 || request->reqTickOrId >= usedSubscriptionSlots)
+			break;
+		const int32_t subscriptionId = (int32_t)request->reqTickOrId;
+		const OracleSubscription& subscription = subscriptions[subscriptionId];
+
+		// send subscription
+		response->resType = RespondOracleData::respondSubscription;
+		auto* p1 = (RespondOracleDataSubscription*)payload;
+		setMemory(*p1, 0);
+		p1->subscriptionId = subscriptionId;
+		p1->interfaceIndex = subscription.interfaceIndex;
+		p1->lastPendingQueryId = subscription.lastPendingQueryId;
+		p1->lastRevealedQueryId = subscription.lastRevealedQueryId;
+		p1->generatedQueriesCount = subscription.generatedQueriesCount;
+		enqueueResponse(peer, sizeof(RespondOracleData) + sizeof(RespondOracleDataSubscription),
+			RespondOracleData::type(), header->dejavu(), response);
+
+		// send initial query data
+		response->resType = RespondOracleData::respondQueryData;
+		const uint16_t querySize = (uint16_t)OI::oracleInterfaces[subscription.interfaceIndex].querySize;
+		ASSERT(querySize <= payloadBufferSize);
+		ASSERT(subscription.initialQueryStorageOffset > 0
+			&& subscription.initialQueryStorageOffset + querySize <= queryStorageBytesUsed
+			&& queryStorageBytesUsed <= ORACLE_QUERY_STORAGE_SIZE);
+		copyMem(payload, queryStorage + subscription.initialQueryStorageOffset, querySize);
+		*(uint64_t*)(payload + subscription.queryTimestampOffset) = 0;
+		enqueueResponse(peer, sizeof(RespondOracleData) + querySize,
+				RespondOracleData::type(), header->dejavu(), response);
+
+		// send subscribers
+		response->resType = RespondOracleData::respondSubscriber;
+		auto* p2 = (RespondOracleDataSubscriber*)payload;
+		setMemory(*p2, 0);
+		int32_t subscriberIdx = subscription.firstSubscriberIndex;
+		while (subscriberIdx >= 0)
+		{
+			const OracleSubscriber& subscriber = subscribers[subscriberIdx];
+			p2->subscriptionId = subscriptionId;
+			p2->contractIndex = subscriber.contractIndex;
+			p2->notificationPeriodMinutes = subscriber.notificationPeriodMinutes;
+			p2->nextQueryTimestamp = *(uint64_t*)&subscriber.nextQueryTimestamp;
+			enqueueResponse(peer, sizeof(RespondOracleData) + sizeof(RespondOracleDataSubscriber),
+				RespondOracleData::type(), header->dejavu(), response);
+			subscriberIdx = subscribers[subscriberIdx].nextSubscriberIdx;
+		}
+
 		break;
+	}
 
 	case RequestOracleData::requestQueryStatistics:
 	{
@@ -217,6 +291,9 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		p->timeoutAvgMilliTicksPerQuery = (totalTimeouts) ? stats.timeoutTicksSum * 1000 / totalTimeouts : 0;
 		p->revealTxCount = stats.revealTxCount;
 		p->wrongKnowledgeProofCount = stats.wrongKnowledgeProofCount;
+		p->userQueries = stats.userQueries;
+		p->contractQueries = stats.contractQueries;
+		p->subscriptionQueries = stats.subscriptionQueries;
 
 		// send response
 		enqueueResponse(peer, sizeof(RespondOracleData) + sizeof(RespondOracleDataQueryStatistics),
@@ -234,6 +311,62 @@ void OracleEngine<ownComputorSeedsCount>::processRequestOracleData(Peer* peer, R
 		// send response
 		enqueueResponse(peer, sizeof(RespondOracleData) + sizeof(revenuePoints),
 			RespondOracleData::type(), header->dejavu(), response);
+
+		break;
+	}
+
+	case RequestOracleData::requestActiveSubscriptions:
+	{
+		// send subscription IDs, splitting the array in multiple messages if needed
+		response->resType = RespondOracleData::respondSubscriptionIds;
+		const unsigned int numMessages = (nextSubscriptionIdQueue.size() + maxSubscriptionIdCount - 1) / maxSubscriptionIdCount;
+		const int32_t* subscriptionIds = nextSubscriptionIdQueue.data();
+		unsigned int idIdx = 0;
+		for (unsigned int msgIdx = 0; msgIdx < numMessages; ++msgIdx)
+		{
+			unsigned int idxInMsg = 0;
+			for (; idxInMsg < maxSubscriptionIdCount && idIdx < nextSubscriptionIdQueue.size(); ++idxInMsg, ++idIdx)
+				payloadSubscriptionIds[idxInMsg] = subscriptionIds[idIdx];
+			enqueueResponse(peer, sizeof(RespondOracleData) + idxInMsg * 4,
+				RespondOracleData::type(), header->dejavu(), response);
+		}
+
+		break;
+	}
+
+	case RequestOracleData::requestActiveContractSubscriptions:
+	{
+		// send subscription IDs, splitting the array in multiple messages if needed
+		if (request->reqTickOrId >= contractCount)
+			break;
+		const uint16_t contractIndex = (uint16_t)request->reqTickOrId;
+		response->resType = RespondOracleData::respondSubscriptionIds;
+		unsigned int subscriptionIdx = 0;
+		bool moreSubscriptions = subscriptionIdx < nextSubscriptionIdQueue.size();
+		do
+		{
+			unsigned int idxInMsg = 0;
+			while (idxInMsg < maxQueryIdCount && moreSubscriptions)
+			{
+				// for each subscription, check if contract is subscriber of subscription
+				int32_t subscriberIdx = subscriptions[subscriptionIdx].firstSubscriberIndex;
+				while (subscriberIdx >= 0)
+				{
+					if (subscribers[subscriberIdx].contractIndex == contractIndex)
+						break;
+					subscriberIdx = subscribers[subscriberIdx].nextSubscriberIdx;
+				}
+				if (subscriberIdx >= 0)
+				{
+					payloadSubscriptionIds[idxInMsg] = subscribers[subscriberIdx].subscriptionId;
+					++idxInMsg;
+				}
+				++subscriptionIdx;
+				moreSubscriptions = subscriptionIdx < nextSubscriptionIdQueue.size();
+			}
+			enqueueResponse(peer, sizeof(RespondOracleData) + idxInMsg * 4,
+				RespondOracleData::type(), header->dejavu(), response);
+		} while (moreSubscriptions);
 
 		break;
 	}

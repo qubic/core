@@ -1804,7 +1804,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 
 static void processOracleMachineReply(Peer* peer, RequestResponseHeader* header)
 {
-    // Ignore message fron non oracle machine node
+    // Ignore message from non oracle machine node
     if (!peer->isOracleMachineNode())
     {
         return;
@@ -2560,7 +2560,7 @@ static void contractProcessor(void*)
 static void notifyContractOfIncomingTransfer(const m256i& source, const m256i& dest, long long amount, unsigned char type)
 {
     // Only notify if amount > 0 and dest is contract
-    if (amount <= 0 || dest.u64._0 >= contractCount || dest.u64._1 || dest.u64._2 || dest.u64._3)
+    if (amount <= 0 || !isPublicKeyOfContract(dest))
         return;
 
     // Also don't run contract processor if the callback isn't implemented in the dest contract
@@ -3373,6 +3373,9 @@ static void processTick(unsigned long long processorNumber)
         PROFILE_SCOPE_END();
     }
 
+    // Generate subscription queries (may create queries that immediately timout if the network was stuck)
+    oracleEngine.generateSubscriptionQueries();
+
     // Check for oracle query timeouts (may schedule notification)
     oracleEngine.processTimeouts();
 
@@ -3645,7 +3648,7 @@ static void processTick(unsigned long long processorNumber)
                     // - 0 if no tx was created (no need to send reply commits)
                     // - UINT32_MAX if we all pending reply commits fitted into this one tx
                     // - otherwise, an index value that has to be passed to the next call for building another tx
-                    retCode = oracleEngine.getReplyCommitTransaction(tx, overallCompIdx, ownCompIdx, txTick, retCode);
+                    retCode = oracleEngine.getReplyCommitTransaction(tx, overallCompIdx, txTick, retCode);
                     if (!retCode)
                         break;
 
@@ -3692,15 +3695,17 @@ static void processTick(unsigned long long processorNumber)
             PROFILE_NAMED_SCOPE("processTick(): broadcast oracle reveal transactions");
             auto* tx = (OracleReplyRevealTransactionPrefix*)txBuffer;
             const auto txTick = system.tick + ORACLE_REPLY_REVEAL_PUBLICATION_OFFSET;
+            const auto ownCompIdx = ownComputorIndicesMapping[0];
+            const auto overallCompIdx = ownComputorIndices[0];
             // create reply reveal transaction in tx (without signature), returning:
             // - 0 if no tx was created (no need to send reply commits)
             // - otherwise, an index value that has to be passed to the next call for building another tx
             unsigned int retCode = 0;
-            while ((retCode = oracleEngine.getReplyRevealTransaction(tx, 0, txTick, retCode)) != 0)
+            while ((retCode = oracleEngine.getReplyRevealTransaction(tx, overallCompIdx, txTick, retCode)) != 0)
             {
                 // sign and broadcast tx
                 KangarooTwelve(tx, sizeof(Transaction) + tx->inputSize, digest, sizeof(digest));
-                sign(computorSubseeds[0].m256i_u8, computorPublicKeys[0].m256i_u8, digest, tx->signaturePtr());
+                sign(computorSubseeds[ownCompIdx].m256i_u8, computorPublicKeys[ownCompIdx].m256i_u8, digest, tx->signaturePtr());
                 enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
             }
         }
@@ -3996,6 +4001,85 @@ static void endEpoch()
                 gRevenueComponents.revenue);
         }
 
+        // Revenue V2: filter transactions. Run here but have not applied yet
+        // Make sure run after gRevenueComponents is calculated because it use some of data
+        gEpochRevenueData.initialTick = system.initialTick;
+        gEpochRevenueData.totalTicks = system.tick - system.initialTick;
+        for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
+        {
+            const m256i& tickLeaderPublicKey = broadcastedComputors.computors.publicKeys[tick % NUMBER_OF_COMPUTORS];
+
+            // Defensive lock, actually at the end of epoch, no more tick data written. 
+            ts.tickData.acquireLock();
+            unsigned int tickOffset = tick - system.initialTick;
+            TickData& td = ts.tickData.getByTickInCurrentEpoch(tick);
+            if ((td.epoch == system.epoch) && (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH))
+            {
+                unsigned int nTickLeader = 0;
+                unsigned int nProtocol = 0;
+                unsigned int nContract = 0;
+                unsigned int nOther = 0;
+                auto* offsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(tick);
+                for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
+                {
+                    if (isZero(td.transactionDigests[i]))
+                    {
+                        continue;
+                    }
+
+                    // Make sure tx body existed
+                    if (!offsets[i])
+                    {
+                        continue;
+                    }
+
+                    const Transaction* tx = ts.tickTransactions(offsets[i]);
+
+                    // skip leader's own txs
+                    if (tx->sourcePublicKey == tickLeaderPublicKey)
+                    {
+                        nTickLeader++;
+                        continue;
+                    }
+
+                    if (isZero(tx->destinationPublicKey))
+                    {
+                        nProtocol++;
+                    }
+                    else
+                    {
+                        m256i masked = tx->destinationPublicKey;
+                        masked.m256i_u64[0] &= ~(unsigned long long)(MAX_NUMBER_OF_CONTRACTS - 1);
+                        unsigned int cIdx = (unsigned int)tx->destinationPublicKey.m256i_u64[0];
+                        if (isZero(masked) && cIdx < contractCount)
+                        {
+                            nContract++;
+                        }
+                        else
+                        {
+                            nOther++;
+                        }
+                    }
+
+                }
+                gEpochRevenueData.perTickTxTickLeaderCount[tickOffset] = (unsigned short)nTickLeader;
+
+                gEpochRevenueData.perTickTxCount[tickOffset] = (unsigned short)(nProtocol + nContract + nOther);
+                gEpochRevenueData.perTickProtocolTxCount[tickOffset] = (unsigned short)nProtocol;
+                gEpochRevenueData.perTickContractTxCount[tickOffset] = (unsigned short)nContract;
+                gEpochRevenueData.perTickOtherTxCount[tickOffset] = (unsigned short)nOther;
+            }
+            ts.tickData.releaseLock();
+        }
+        // Fetch oracle revenue points (accumulated during epoch, reset at beginEpoch)
+        {
+            OracleRevenuePoints oracleRevPoints;
+            oracleEngine.getRevenuePoints(oracleRevPoints);
+            copyMemory(gEpochRevenueData.oracleScore, oracleRevPoints.computorRevPoints);
+        }
+        computeRevenueV2(gEpochRevenueData);
+
+
         // Get revenue donation data by calling contract GQMPROP::GetRevenueDonation()
         QpiContextUserFunctionCall qpiContext(GQMPROP::__contract_index);
         qpiContext.call(5, "", 0);
@@ -4007,9 +4091,8 @@ static void endEpoch()
         constexpr long long issuancePerComputor = ISSUANCE_RATE / NUMBER_OF_COMPUTORS;
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
-            // TODO: Remove this and uncomment the line below to restore normal revenue distribution
-            long long revenue = issuancePerComputor;
-            // long long revenue = gRevenueComponents.revenue[computorIndex];
+            // Compute initial computor revenue, reducing arbitrator revenue
+            long long revenue = gRevenueComponents.revenue[computorIndex];
             arbitratorRevenue -= revenue;
 
             // Reduce computor revenue based on revenue donation table agreed on by quorum
@@ -5544,6 +5627,8 @@ static void tickProcessor(void*)
 
                                     // Save the file of revenue. This blocking save can be called from any thread
                                     saveRevenueComponents(NULL);
+                                    // Revenue v2 data
+                                    asyncSave(REVENUE_DATA_END_OF_EPOCH_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData);
 
                                     // Reorder futureComputors so requalifying computors keep their index
                                     // This is needed for correct execution fee reporting across epoch boundaries
@@ -5911,7 +5996,7 @@ static bool initialize()
             logToConsole(L"initOracleInterfaces() failed! Not all interfaces are properly defined!");
             return false;
         }
-        if (!oracleEngine.init(computorPublicKeys))
+        if (!oracleEngine.init(broadcastedComputors.computors.publicKeys))
             return false;
 
 #if ADDON_TX_STATUS_REQUEST
@@ -6033,10 +6118,19 @@ static bool initialize()
             }
             if (!loadContractStateFiles())
                 return false;
-#ifndef START_NETWORK_FROM_SCRATCH
+#if !START_NETWORK_FROM_SCRATCH
             if (!loadContractExecFeeFiles())
                 return false;
 #endif
+
+#ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
+            // fill execution fee reserves for test contracts
+            setContractFeeReserve(TESTEXA_CONTRACT_INDEX, 100000000000);
+            setContractFeeReserve(TESTEXB_CONTRACT_INDEX, 100000000000);
+            setContractFeeReserve(TESTEXC_CONTRACT_INDEX, 100000000000);
+            setContractFeeReserve(TESTEXD_CONTRACT_INDEX, 100000000000);
+#endif
+
             m256i computerDigest;
             {
                 setText(message, L"Computer digest = ");

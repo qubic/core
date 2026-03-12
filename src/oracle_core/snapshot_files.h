@@ -11,6 +11,8 @@ static unsigned short ORACLE_SNAPSHOT_ENGINE_FILENAME[] = L"snapshotOracleEngine
 static unsigned short ORACLE_SNAPSHOT_QUERY_METADATA_FILENAME[] = L"snapshotOracleQueryMetadata.???";
 static unsigned short ORACLE_SNAPSHOT_QUERY_DATA_FILENAME[] = L"snapshotOracleQueryData.???";
 static unsigned short ORACLE_SNAPSHOT_REPLY_STATES_FILENAME[] = L"snapshotOracleReplyStates.???";
+static unsigned short ORACLE_SNAPSHOT_SUBSCRIPTIONS_FILENAME[] = L"snapshotOracleSubscriptions.???";
+static unsigned short ORACLE_SNAPSHOT_SUBSCRIBERS_FILENAME[] = L"snapshotOracleSubscribers.???";
 
 
 struct OracleEngineSnapshotData
@@ -23,20 +25,23 @@ struct OracleEngineSnapshotData
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> pendingQueryIndices;
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> pendingCommitReplyStateIndices;
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> pendingRevealReplyStateIndices;
-    UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> notificationQueryIndicies;
+    MinHeap<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> notificationQueryIndexQueue;
     uint64_t revenuePoints[NUMBER_OF_COMPUTORS];
+    int32_t usedSubscriptionSlots;
+    int32_t usedSubscriberSlots;
     OracleEngineStatistics stats;
 };
 
 
 // save state (excluding queryIdToIndex and unused parts of large buffers)
-template <uint16_t ownComputorSeedsCount>
-bool OracleEngine<ownComputorSeedsCount>::saveSnapshot(unsigned short epoch, CHAR16* directory) const
+bool OracleEngine::saveSnapshot(unsigned short epoch, CHAR16* directory) const
 {
     addEpochToFileName(ORACLE_SNAPSHOT_ENGINE_FILENAME, sizeof(ORACLE_SNAPSHOT_ENGINE_FILENAME) / sizeof(ORACLE_SNAPSHOT_ENGINE_FILENAME[0]), epoch);
     addEpochToFileName(ORACLE_SNAPSHOT_QUERY_METADATA_FILENAME, sizeof(ORACLE_SNAPSHOT_QUERY_METADATA_FILENAME) / sizeof(ORACLE_SNAPSHOT_QUERY_METADATA_FILENAME[0]), epoch);
     addEpochToFileName(ORACLE_SNAPSHOT_QUERY_DATA_FILENAME, sizeof(ORACLE_SNAPSHOT_QUERY_DATA_FILENAME) / sizeof(ORACLE_SNAPSHOT_QUERY_DATA_FILENAME[0]), epoch);
     addEpochToFileName(ORACLE_SNAPSHOT_REPLY_STATES_FILENAME, sizeof(ORACLE_SNAPSHOT_REPLY_STATES_FILENAME) / sizeof(ORACLE_SNAPSHOT_REPLY_STATES_FILENAME[0]), epoch);
+    addEpochToFileName(ORACLE_SNAPSHOT_SUBSCRIPTIONS_FILENAME, sizeof(ORACLE_SNAPSHOT_SUBSCRIPTIONS_FILENAME) / sizeof(ORACLE_SNAPSHOT_SUBSCRIPTIONS_FILENAME[0]), epoch);
+    addEpochToFileName(ORACLE_SNAPSHOT_SUBSCRIBERS_FILENAME, sizeof(ORACLE_SNAPSHOT_SUBSCRIBERS_FILENAME) / sizeof(ORACLE_SNAPSHOT_SUBSCRIBERS_FILENAME[0]), epoch);
 
     LockGuard lockGuard(lock);
 
@@ -46,10 +51,12 @@ bool OracleEngine<ownComputorSeedsCount>::saveSnapshot(unsigned short epoch, CHA
     engineData.contractQueryIdStateTick = contractQueryIdState.tick;
     engineData.contractQueryIdStateQueryIndexInTick = contractQueryIdState.queryIndexInTick;
     engineData.replyStatesIndex = replyStatesIndex;
+    engineData.usedSubscriptionSlots = usedSubscriptionSlots;
+    engineData.usedSubscriberSlots = usedSubscriberSlots;
     copyMemory(engineData.pendingQueryIndices, pendingQueryIndices);
     copyMemory(engineData.pendingCommitReplyStateIndices, pendingCommitReplyStateIndices);
     copyMemory(engineData.pendingRevealReplyStateIndices, pendingRevealReplyStateIndices);
-    copyMemory(engineData.notificationQueryIndicies, notificationQueryIndicies);
+    copyMemory(engineData.notificationQueryIndexQueue, notificationQueryIndexQueue);
     copyMemory(engineData.revenuePoints, revenuePoints);
     copyMemory(engineData.stats, stats);
 
@@ -82,11 +89,29 @@ bool OracleEngine<ownComputorSeedsCount>::saveSnapshot(unsigned short epoch, CHA
     }
 
     logToConsole(L"Saving oracle reply states ...");
-    sizeToSave = sizeof(ReplyState) * MAX_SIMULTANEOUS_ORACLE_QUERIES;
+    sizeToSave = sizeof(OracleReplyState) * MAX_SIMULTANEOUS_ORACLE_QUERIES;
     sz = saveLargeFile(ORACLE_SNAPSHOT_REPLY_STATES_FILENAME, sizeToSave, (unsigned char*)replyStates, directory);
     if (sz != sizeToSave)
     {
         logToConsole(L"Failed to save oracle reply states!");
+        return false;
+    }
+
+    logToConsole(L"Saving oracle subscriptions ...");
+    sizeToSave = sizeof(OracleSubscription) * MAX_ORACLE_SUBSCRIPTIONS;
+    sz = saveLargeFile(ORACLE_SNAPSHOT_SUBSCRIPTIONS_FILENAME, sizeToSave, (unsigned char*)subscriptions, directory);
+    if (sz != sizeToSave)
+    {
+        logToConsole(L"Failed to save oracle subscriptions!");
+        return false;
+    }
+
+    logToConsole(L"Saving oracle subscribers ...");
+    sizeToSave = sizeof(OracleSubscriber) * MAX_ORACLE_SUBSCRIBERS;
+    sz = saveLargeFile(ORACLE_SNAPSHOT_SUBSCRIBERS_FILENAME, sizeToSave, (unsigned char*)subscribers, directory);
+    if (sz != sizeToSave)
+    {
+        logToConsole(L"Failed to save oracle subscribers!");
         return false;
     }
 
@@ -95,13 +120,14 @@ bool OracleEngine<ownComputorSeedsCount>::saveSnapshot(unsigned short epoch, CHA
     return true;
 }
 
-template <uint16_t ownComputorSeedsCount>
-bool OracleEngine<ownComputorSeedsCount>::loadSnapshot(unsigned short epoch, CHAR16* directory)
+bool OracleEngine::loadSnapshot(unsigned short epoch, CHAR16* directory)
 {
     addEpochToFileName(ORACLE_SNAPSHOT_ENGINE_FILENAME, sizeof(ORACLE_SNAPSHOT_ENGINE_FILENAME) / sizeof(ORACLE_SNAPSHOT_ENGINE_FILENAME[0]), epoch);
     addEpochToFileName(ORACLE_SNAPSHOT_QUERY_METADATA_FILENAME, sizeof(ORACLE_SNAPSHOT_QUERY_METADATA_FILENAME) / sizeof(ORACLE_SNAPSHOT_QUERY_METADATA_FILENAME[0]), epoch);
     addEpochToFileName(ORACLE_SNAPSHOT_QUERY_DATA_FILENAME, sizeof(ORACLE_SNAPSHOT_QUERY_DATA_FILENAME) / sizeof(ORACLE_SNAPSHOT_QUERY_DATA_FILENAME[0]), epoch);
     addEpochToFileName(ORACLE_SNAPSHOT_REPLY_STATES_FILENAME, sizeof(ORACLE_SNAPSHOT_REPLY_STATES_FILENAME) / sizeof(ORACLE_SNAPSHOT_REPLY_STATES_FILENAME[0]), epoch);
+    addEpochToFileName(ORACLE_SNAPSHOT_SUBSCRIPTIONS_FILENAME, sizeof(ORACLE_SNAPSHOT_SUBSCRIPTIONS_FILENAME) / sizeof(ORACLE_SNAPSHOT_SUBSCRIPTIONS_FILENAME[0]), epoch);
+    addEpochToFileName(ORACLE_SNAPSHOT_SUBSCRIBERS_FILENAME, sizeof(ORACLE_SNAPSHOT_SUBSCRIBERS_FILENAME) / sizeof(ORACLE_SNAPSHOT_SUBSCRIBERS_FILENAME[0]), epoch);
 
     LockGuard lockGuard(lock);
 
@@ -120,13 +146,17 @@ bool OracleEngine<ownComputorSeedsCount>::loadSnapshot(unsigned short epoch, CHA
     contractQueryIdState.tick = engineData.contractQueryIdStateTick;
     contractQueryIdState.queryIndexInTick = engineData.contractQueryIdStateQueryIndexInTick;
     replyStatesIndex = engineData.replyStatesIndex;
+    usedSubscriptionSlots = engineData.usedSubscriptionSlots;
+    usedSubscriberSlots = engineData.usedSubscriberSlots;
     copyMemory(pendingQueryIndices, engineData.pendingQueryIndices);
     copyMemory(pendingCommitReplyStateIndices, engineData.pendingCommitReplyStateIndices);
     copyMemory(pendingRevealReplyStateIndices, engineData.pendingRevealReplyStateIndices);
-    copyMemory(notificationQueryIndicies, engineData.notificationQueryIndicies);
+    copyMemory(notificationQueryIndexQueue, engineData.notificationQueryIndexQueue);
     copyMemory(revenuePoints, engineData.revenuePoints);
     copyMemory(stats, engineData.stats);
-    if (oracleQueryCount > MAX_ORACLE_QUERIES || queryStorageBytesUsed > ORACLE_QUERY_STORAGE_SIZE)
+    if (oracleQueryCount > MAX_ORACLE_QUERIES || queryStorageBytesUsed > ORACLE_QUERY_STORAGE_SIZE
+        || replyStatesIndex >= MAX_SIMULTANEOUS_ORACLE_QUERIES
+        || usedSubscriberSlots > MAX_ORACLE_SUBSCRIBERS || usedSubscriptionSlots > MAX_ORACLE_SUBSCRIPTIONS)
     {
         logToConsole(L"Oracle engine data is invalid!");
         return false;
@@ -163,11 +193,29 @@ bool OracleEngine<ownComputorSeedsCount>::loadSnapshot(unsigned short epoch, CHA
     }
 
     logToConsole(L"Loading oracle reply states ...");
-    sizeToLoad = sizeof(ReplyState) * MAX_SIMULTANEOUS_ORACLE_QUERIES;
+    sizeToLoad = sizeof(OracleReplyState) * MAX_SIMULTANEOUS_ORACLE_QUERIES;
     sz = loadLargeFile(ORACLE_SNAPSHOT_REPLY_STATES_FILENAME, sizeToLoad, (unsigned char*)replyStates, directory);
     if (sz != sizeToLoad)
     {
         logToConsole(L"Failed to load oracle reply states!");
+        return false;
+    }
+
+    logToConsole(L"Loading oracle subscriptions ...");
+    sizeToLoad = sizeof(OracleSubscription) * MAX_ORACLE_SUBSCRIPTIONS;
+    sz = loadLargeFile(ORACLE_SNAPSHOT_SUBSCRIPTIONS_FILENAME, sizeToLoad, (unsigned char*)subscriptions, directory);
+    if (sz != sizeToLoad)
+    {
+        logToConsole(L"Failed to load oracle subscriptions!");
+        return false;
+    }
+
+    logToConsole(L"Loading oracle subscribers ...");
+    sizeToLoad = sizeof(OracleSubscriber) * MAX_ORACLE_SUBSCRIBERS;
+    sz = loadLargeFile(ORACLE_SNAPSHOT_SUBSCRIBERS_FILENAME, sizeToLoad, (unsigned char*)subscribers, directory);
+    if (sz != sizeToLoad)
+    {
+        logToConsole(L"Failed to load oracle subscribers!");
         return false;
     }
 
@@ -177,19 +225,28 @@ bool OracleEngine<ownComputorSeedsCount>::loadSnapshot(unsigned short epoch, CHA
         queryIdToIndex->set(queries[queryIndex].queryId, queryIndex);
 
     logToConsole(L"Successfully loaded all oracle engine data from snapshot!");
+
+    // init nextSubscriptionIdQueue (not saved to file)
+    nextSubscriptionIdQueue.init(NextSubscriptionCompare{ subscriptions });
+    for (int32_t subscriptionId = 0; subscriptionId < usedSubscriptionSlots; ++subscriptionId)
+    {
+        if (subscriptions[subscriptionId].nextQueryTimestamp.isValid())
+            nextSubscriptionIdQueue.insert(subscriptionId);
+    }
+
     return true;
 }
 
 #else
 
-template <uint16_t ownComputorSeedsCount>
-bool OracleEngine<ownComputorSeedsCount>::saveSnapshot(unsigned short epoch, CHAR16* directory) const
+bool OracleEngine::saveSnapshot(unsigned short epoch, CHAR16* directory) const
 {
+    return false;
 }
 
-template <uint16_t ownComputorSeedsCount>
-bool OracleEngine<ownComputorSeedsCount>::loadSnapshot(unsigned short epoch, CHAR16* directory)
+bool OracleEngine::loadSnapshot(unsigned short epoch, CHAR16* directory)
 {
+    return false;
 }
 
 #endif
