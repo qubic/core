@@ -213,11 +213,11 @@ public:
         uint64 volumeOfSTAR;
         uint64 volumeOfQSC;
     };
-    struct earnedQSCInfo
+    struct EarnedQSCInfo
     {
         id proposer;
         uint32 epoch;
-        bool operator==(const earnedQSCInfo& other) const
+        bool operator==(const EarnedQSCInfo& other) const
         {
             return proposer == other.proposer && epoch == other.epoch;
         }
@@ -241,7 +241,7 @@ public:
         HashMap<uint64, GameInfo, 1024> failedGameList;
         HashMap<VoteInfo, uint8, QUSINO_MAX_USERS * QUSINO_MAX_NUMBER_OF_GAMES_FOR_VOTING_PER_USER> voteList;
         HashMap<id, uint32, QUSINO_MAX_USERS> userDailyClaimedBonus;
-        HashMap<earnedQSCInfo, uint64, QUSINO_MAX_NUMBER_OF_GAMES> userEarnedQSCInfo;
+        HashMap<EarnedQSCInfo, uint64, QUSINO_MAX_NUMBER_OF_GAMES> userEarnedQSCInfo;
         id LPDividendsAddress;
         id CCFDividendsAddress;
         id treasuryAddress;
@@ -389,8 +389,9 @@ public:
         return true;
     }
 
+public:
     //----------------------------------------------------------------------------
-    // Define private procedures and functions with input and output
+    // Define user procedures and functions (with input and output)
     struct earnSTAR_locals
     {
         STARAndQSC user;
@@ -411,7 +412,7 @@ public:
         }
         if (input.amount * QUSINO_STAR_PRICE * 100 < (uint32)qpi.invocationReward()) 
         {
-            qpi.transfer(qpi.invocator(), input.amount * QUSINO_STAR_PRICE * 100 - qpi.invocationReward());
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (input.amount * QUSINO_STAR_PRICE * 100));
         }
         state.get().userAssetVolume.get(qpi.invocator(), locals.user);
         locals.user.volumeOfSTAR += input.amount * 100;
@@ -841,7 +842,7 @@ public:
 
     struct getProposerEarnedQSCInfo_locals
     {
-        earnedQSCInfo earnedQSCInfo;
+        EarnedQSCInfo earnedQSCInfo;
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(getProposerEarnedQSCInfo)
@@ -888,7 +889,7 @@ public:
         sint64 idx;
         AssetPossessionIterator iter;
         Asset QSTAsset;
-        earnedQSCInfo earnedQSCInfo;
+        EarnedQSCInfo earnedQSCInfo;
     };
 	END_EPOCH_WITH_LOCALS()
 	{
@@ -948,7 +949,7 @@ public:
         locals.QSTAsset.assetName = state.get().QSTAssetName;
         locals.QSTAsset.issuer = state.get().QSTIssuer;
         locals.iter.begin(locals.QSTAsset);
-        while (locals.iter.next())
+        while (!locals.iter.reachedEnd())
         {
             qpi.transfer(locals.iter.possessor(), div<uint64>(state.get().epochRevenue * QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT * 1ULL, QUSINO_SUPPLY_OF_QST * 1000ULL) * locals.iter.numberOfPossessedShares());
             locals.QSTDividends += div<uint64>(state.get().epochRevenue * QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT * 1ULL, QUSINO_SUPPLY_OF_QST * 1000ULL) * locals.iter.numberOfPossessedShares();
