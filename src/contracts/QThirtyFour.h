@@ -4,10 +4,12 @@ using namespace QPI;
 constexpr uint64 QTF_MAX_NUMBER_OF_PLAYERS = 1024;
 constexpr uint64 QTF_RANDOM_VALUES_COUNT = 4;
 constexpr uint64 QTF_MAX_RANDOM_VALUE = 30;
+constexpr uint64 QTF_MAX_RANDOM_VALUE_ALIGNED = QTF_MAX_RANDOM_VALUE + 2;
 constexpr uint64 QTF_MAX_BATCH_TICKETS = div(QTF_MAX_NUMBER_OF_PLAYERS, 4ULL);
 constexpr uint64 QTF_BATCH_TICKET_VALUES_COUNT = QTF_MAX_BATCH_TICKETS * QTF_RANDOM_VALUES_COUNT;
 constexpr uint64 QTF_TICKET_PRICE = 1000000;
 constexpr uint64 QTF_WINNING_COMBINATIONS_HISTORY_SIZE = 128;
+constexpr uint64 QTF_PREPARED_TICKET_MAX_COUNT = QTF_MAX_NUMBER_OF_PLAYERS * QTF_RANDOM_VALUES_COUNT;
 
 // Baseline split for k2/k3 when FR is OFF (per spec: k3=40%, k2=28% of Winners block).
 // Initial 32% of Winners block is unallocated; overflow will also include unawarded k2/k3 funds.
@@ -193,18 +195,18 @@ struct QTF : ContractBase
 	};
 	struct ValidateNumbers_locals
 	{
-		HashSet<uint8, QTF_MAX_RANDOM_VALUE + 2> seen;
+		HashSet<uint8, QTF_MAX_RANDOM_VALUE_ALIGNED> seen;
 		uint8 idx;
 		uint8 value;
 	};
 
 	struct CollectSelectionNumbers_input
 	{
-		Array<uint8, QTF_MAX_RANDOM_VALUE + 2> numbers;
+		Array<uint8, QTF_MAX_RANDOM_VALUE_ALIGNED> numbers;
 	};
 	struct CollectSelectionNumbers_output
 	{
-		Array<uint8, QTF_MAX_RANDOM_VALUE + 2> normalizedNumbers;
+		Array<uint8, QTF_MAX_RANDOM_VALUE_ALIGNED> normalizedNumbers;
 		bit isValid;
 		uint8 numberCount;
 	};
@@ -218,7 +220,7 @@ struct QTF : ContractBase
 
 	struct BuyPreparedTickets_input
 	{
-		Array<uint8, QTF_MAX_NUMBER_OF_PLAYERS * QTF_RANDOM_VALUES_COUNT> tickets;
+		Array<uint8, QTF_PREPARED_TICKET_MAX_COUNT> tickets;
 		uint64 ticketCount;
 	};
 	struct BuyPreparedTickets_output
@@ -239,7 +241,7 @@ struct QTF : ContractBase
 
 	struct BuildSelectionTickets_input
 	{
-		Array<uint8, QTF_MAX_RANDOM_VALUE + 2> normalizedNumbers;
+		Array<uint8, QTF_MAX_RANDOM_VALUE_ALIGNED> normalizedNumbers;
 		uint8 numberCount;
 	};
 	struct BuildSelectionTickets_output
@@ -297,7 +299,7 @@ struct QTF : ContractBase
 
 	struct BuyTicketsBySelection_input
 	{
-		Array<uint8, QTF_MAX_RANDOM_VALUE + 2> numbers;
+		Array<uint8, QTF_MAX_RANDOM_VALUE_ALIGNED> numbers;
 	};
 	struct BuyTicketsBySelection_output
 	{
@@ -477,7 +479,7 @@ struct QTF : ContractBase
 		uint8 candidate;
 		uint8 attempts;
 		uint8 fallback;
-		HashSet<uint8, QTF_MAX_RANDOM_VALUE + 2> used;
+		HashSet<uint8, QTF_MAX_RANDOM_VALUE_ALIGNED> used;
 	};
 
 	// CalcReserveTopUp: Calculate safe reserve top-up amount
