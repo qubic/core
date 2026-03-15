@@ -1051,10 +1051,12 @@ struct QTF : ContractBase
 		output.returnCode = locals.buyPreparedOutput.returnCode;
 	}
 
-	/// @brief Buys every valid ticket encoded in the flat batch payload.
-	/// @param input.tickets Flat array of 4-number tickets stored sequentially.
-	/// @return SUCCESS when at least one valid ticket is accepted; invalid or empty 4-number groups are ignored,
-	///         and the batch is clipped to the number of free ticket slots left in the round.
+	/**
+	 * @brief Buys every valid ticket encoded in the flat batch payload.
+	 * @param input.tickets Flat array of 4-number tickets stored sequentially.
+	 * @return SUCCESS when at least one valid ticket is accepted; invalid or empty 4-number groups are ignored,
+	 *         and the batch is clipped to the number of free ticket slots left in the round.
+	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicketsBatch)
 	{
 		if ((state.currentState & STATE_SELLING) == 0)
@@ -1105,10 +1107,12 @@ struct QTF : ContractBase
 		output.returnCode = locals.buyPreparedOutput.returnCode;
 	}
 
-	/// @brief Buys every 4-number combination generated from a validated number selection.
-	/// @param input.numbers Selected values; all unique values in range [1..30] are used.
-	/// @return SUCCESS when all generated tickets are accepted; PARTIAL_PURCHASE when the round has fewer free
-	///         slots than generated tickets; selections that expand beyond the batch limit refund the full reward.
+	/**
+	 * @brief Buys every 4-number combination generated from a validated number selection.
+	 * @param input.numbers Selected values; all unique values in range [1..30] are used.
+	 * @return SUCCESS when all generated tickets are accepted; PARTIAL_PURCHASE when the round has fewer free
+	 *         slots than generated tickets; selections that expand beyond the batch limit refund the full reward.
+	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicketsBySelection)
 	{
 		if ((state.currentState & STATE_SELLING) == 0)
