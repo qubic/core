@@ -26,12 +26,13 @@ A contract also never gets access to uninitialized memory (all memory is initial
 
 Each contract is implemented in one C++ header file in the directory `src/contracts`.
 
-A contract has a state struct, containing all its data as member variables.
+A contract is defined as a struct inheriting from `ContractBase`. All persistent data of the contract must be declared inside a nested `struct StateData`.
 The memory available to the contract is allocated statically, but extending the state will be possible between epochs through special `EXPAND` events.
 
-The state struct also includes the procedures and functions of the contract, which have to be defined using special macros such as `PUBLIC_PROCEDURE()`, `PRIVATE_FUNCTION()`, or `BEGIN_EPOCH()`.
-Functions cannot modify the state, but they are useful to query information with the network message `RequestContractFunction`.
-Procedures can modify the state and are either invoked by special transactions (user procedures) or internal core events (system procedures).
+The contract struct also includes the procedures and functions of the contract, which have to be defined using special macros such as `PUBLIC_PROCEDURE()`, `PRIVATE_FUNCTION()`, or `BEGIN_EPOCH()`.
+The state is accessed through a `ContractState` wrapper named `state`: use `state.get()` for read-only access and `state.mut()` for write access. Calling `state.mut()` marks the state as dirty for automatic change detection. The digest of dirty contract states is recomputed at the end of each tick, so that only contracts whose state actually changed incur the cost of rehashing.
+Functions can only read the state (via `state.get()`), making them useful to query information with the network message `RequestContractFunction`.
+Procedures can modify the state (via `state.mut()`) and are either invoked by special transactions (user procedures) or internal core events (system procedures).
 
 Contract developers should be aware of the following parts of the Qubic protocol that are not implemented yet in the core:
 - Execution of contract procedures will cost fees that will be paid from its contract fee reserve.
@@ -163,7 +164,7 @@ In order to make the function available for external requests through the `Reque
 `[INPUT_TYPE]` is an integer greater or equal to 1 and less or equal to 65535, which identifies the function to call in the `RequestContractFunction` message (`inputType` member).
 If the `inputSize` member in `RequestContractFunction` does not match `sizeof([NAME]_input)`, the input data is either cut off or padded with zeros.
 
-The contract state is passed to the function as a const reference named `state`.
+The contract state is accessed through a `ContractState` wrapper named `state`. In functions, only `state.get()` is available, returning a const reference to the `StateData`. For example, `state.get().myField` reads a field from the state.
 
 Use the macro with the postfix `_WITH_LOCALS` if the function needs local variables, because (1) the contract state cannot be modified within contract functions and (2) creating local variables / objects on the regular function call stack is forbidden.
 With these macros, you have to define the struct `[NAME]_locals`.
@@ -201,8 +202,7 @@ In order to make the function available for invocation by transactions, you need
 `REGISTER_USER_PROCEDURE` has its own set of input types, so the same input type number may be used for both `REGISTER_USER_PROCEDURE` and `REGISTER_USER_FUNCTION` (for example there may be one function with input type 1 and one procedure with input type 1).
 If the `inputSize` member in `Transaction` does not match `sizeof([NAME]_input)`, the input data is either cut off or padded with zeros.
 
-The contract state is passed to the procedure as a reference named `state`.
-And it can be modified (in contrast to contract functions).
+The contract state is accessed through a `ContractState` wrapper named `state`. In procedures, both `state.get()` (read-only) and `state.mut()` (read-write) are available. Use `state.mut()` when modifying state fields, e.g. `state.mut().myField = newValue`. Calling `state.mut()` marks the state as dirty so that its digest is recomputed at the end of the tick.
 
 Use the macro with the postfix `_WITH_LOCALS` if the procedure needs local variables, because creating local variables / objects on the regular function call stack is forbidden.
 With these macros, you have to define the struct `[NAME]_locals`.
@@ -252,8 +252,7 @@ System procedures 1 to 5 have no input and output.
 The input and output of system procedures 6 to 9 are discussed in the section about [management rights transfer](#management-rights-transfer).
 The system procedure 11 and 12 are discussed in the section about [contracts as shareholder of other contracts](contracts_proposals.md#contracts-as-shareholders-of-other-contracts)
 
-The contract state is passed to each of the procedures as a reference named `state`.
-And it can be modified (in contrast to contract functions).
+The contract state is accessed through a `ContractState` wrapper named `state`, the same as in user procedures. Use `state.get()` for reading and `state.mut()` for modifying state fields.
 
 For each of the macros above, there is a variant with the postfix `_WITH_LOCALS`.
 These can be used, if the procedure needs local variables, because creating local variables / objects on the regular function call stack is forbidden.
@@ -572,7 +571,7 @@ https://github.com/qubic/core/issues/574
 
 It is prohibited to locally instantiate objects or variables on the function call stack. This includes loop index variables `for (int i = 0; ...)`.
 Instead, use the function and procedure definition macros with the postfix `_WITH_LOCALS` (see above).  
-In procedures you alternatively may store temporary variables permanently as members of the state.
+In procedures you alternatively may store temporary variables permanently as members of `StateData` (accessed via `state.mut()`).
 
 Defining, casting, and dereferencing pointers is forbidden.
 The character `*` is only allowed in the context of multiplication.
