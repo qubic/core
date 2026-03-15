@@ -234,6 +234,25 @@ struct QTF : ContractBase
 		uint64 offset;
 	};
 
+	struct BuildSelectionTickets_input
+	{
+		Array<uint8, QTF_MAX_RANDOM_VALUE + 2> normalizedNumbers;
+		uint8 numberCount;
+	};
+	struct BuildSelectionTickets_output
+	{
+		BuyPreparedTickets_input preparedTickets;
+	};
+	struct BuildSelectionTickets_locals
+	{
+		Array<uint8, QTF_RANDOM_VALUES_COUNT> ticketValues;
+		uint64 i;
+		uint64 j;
+		uint64 k;
+		uint64 l;
+		uint64 preparedOffset;
+	};
+
 	// Buy Ticket
 	struct BuyTicket_input
 	{
@@ -287,12 +306,11 @@ struct QTF : ContractBase
 	{
 		CollectSelectionNumbers_input collectSelectionInput;
 		CollectSelectionNumbers_output collectSelectionOutput;
-		Array<uint8, QTF_RANDOM_VALUES_COUNT> ticketValues;
-		uint64 i;
+		BuildSelectionTickets_input buildSelectionTicketsInput;
+		BuildSelectionTickets_output buildSelectionTicketsOutput;
 		uint64 j;
 		uint64 k;
 		uint64 l;
-		uint64 preparedOffset;
 		BuyPreparedTickets_input buyPreparedInput;
 		BuyPreparedTickets_output buyPreparedOutput;
 	};
@@ -1089,8 +1107,8 @@ struct QTF : ContractBase
 
 	/// @brief Buys every 4-number combination generated from a validated number selection.
 	/// @param input.numbers Selected values; all unique values in range [1..30] are used.
-	/// @return SUCCESS when all generated tickets are accepted; selections that expand beyond the batch limit
-	///         or do not fit in the remaining round capacity refund the full reward.
+	/// @return SUCCESS when all generated tickets are accepted; PARTIAL_PURCHASE when the round has fewer free
+	///         slots than generated tickets; selections that expand beyond the batch limit refund the full reward.
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicketsBySelection)
 	{
 		if ((state.currentState & STATE_SELLING) == 0)
@@ -1130,63 +1148,11 @@ struct QTF : ContractBase
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
-		locals.j = (state.numberOfPlayers < QTF_MAX_NUMBER_OF_PLAYERS) ? (QTF_MAX_NUMBER_OF_PLAYERS - state.numberOfPlayers) : 0;
-		if (output.requestedTicketCount > locals.j)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			output.returnCode = toReturnCode(EReturnCode::MAX_PLAYERS_REACHED);
-			return;
-		}
 
-		while (locals.i + 3 < locals.collectSelectionOutput.numberCount)
-		{
-			locals.j = locals.i + 1;
-			while (locals.j + 2 < locals.collectSelectionOutput.numberCount)
-			{
-				locals.k = locals.j + 1;
-				while (locals.k + 1 < locals.collectSelectionOutput.numberCount)
-				{
-					locals.l = locals.k + 1;
-					while (locals.l < locals.collectSelectionOutput.numberCount)
-					{
-						locals.ticketValues.set(0, locals.collectSelectionOutput.normalizedNumbers.get(locals.i));
-						locals.ticketValues.set(1, locals.collectSelectionOutput.normalizedNumbers.get(locals.j));
-						locals.ticketValues.set(2, locals.collectSelectionOutput.normalizedNumbers.get(locals.k));
-						locals.ticketValues.set(3, locals.collectSelectionOutput.normalizedNumbers.get(locals.l));
-						locals.preparedOffset = smul(locals.buyPreparedInput.ticketCount, QTF_RANDOM_VALUES_COUNT);
-						locals.buyPreparedInput.tickets.set(locals.preparedOffset, locals.ticketValues.get(0));
-						locals.buyPreparedInput.tickets.set(locals.preparedOffset + 1, locals.ticketValues.get(1));
-						locals.buyPreparedInput.tickets.set(locals.preparedOffset + 2, locals.ticketValues.get(2));
-						locals.buyPreparedInput.tickets.set(locals.preparedOffset + 3, locals.ticketValues.get(3));
-						++locals.buyPreparedInput.ticketCount;
-						if (locals.buyPreparedInput.ticketCount >= QTF_MAX_BATCH_TICKETS)
-						{
-							break;
-						}
-						++locals.l;
-					}
-					if (locals.buyPreparedInput.ticketCount >= QTF_MAX_BATCH_TICKETS)
-					{
-						break;
-					}
-					++locals.k;
-				}
-				if (locals.buyPreparedInput.ticketCount >= QTF_MAX_BATCH_TICKETS)
-				{
-					break;
-				}
-				++locals.j;
-			}
-			if (locals.buyPreparedInput.ticketCount >= QTF_MAX_BATCH_TICKETS)
-			{
-				break;
-			}
-			++locals.i;
-		}
-
+		locals.buildSelectionTicketsInput.normalizedNumbers = locals.collectSelectionOutput.normalizedNumbers;
+		locals.buildSelectionTicketsInput.numberCount = locals.collectSelectionOutput.numberCount;
+		CALL(BuildSelectionTickets, locals.buildSelectionTicketsInput, locals.buildSelectionTicketsOutput);
+		locals.buyPreparedInput = locals.buildSelectionTicketsOutput.preparedTickets;
 		CALL(BuyPreparedTickets, locals.buyPreparedInput, locals.buyPreparedOutput);
 		output.boughtTicketCount = locals.buyPreparedOutput.boughtTicketCount;
 		output.returnCode = locals.buyPreparedOutput.returnCode;
@@ -2199,6 +2165,43 @@ private:
 				output.normalizedNumbers.set(output.numberCount, locals.outValue);
 				++output.numberCount;
 			}
+		}
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(BuildSelectionTickets)
+	{
+		while (locals.i + 3 < input.numberCount)
+		{
+			locals.j = locals.i + 1;
+			while (locals.j + 2 < input.numberCount)
+			{
+				locals.k = locals.j + 1;
+				while (locals.k + 1 < input.numberCount)
+				{
+					locals.l = locals.k + 1;
+					while (locals.l < input.numberCount)
+					{
+						locals.ticketValues.set(0, input.normalizedNumbers.get(locals.i));
+						locals.ticketValues.set(1, input.normalizedNumbers.get(locals.j));
+						locals.ticketValues.set(2, input.normalizedNumbers.get(locals.k));
+						locals.ticketValues.set(3, input.normalizedNumbers.get(locals.l));
+						locals.preparedOffset = smul(output.preparedTickets.ticketCount, QTF_RANDOM_VALUES_COUNT);
+						output.preparedTickets.tickets.set(locals.preparedOffset, locals.ticketValues.get(0));
+						output.preparedTickets.tickets.set(locals.preparedOffset + 1, locals.ticketValues.get(1));
+						output.preparedTickets.tickets.set(locals.preparedOffset + 2, locals.ticketValues.get(2));
+						output.preparedTickets.tickets.set(locals.preparedOffset + 3, locals.ticketValues.get(3));
+						++output.preparedTickets.ticketCount;
+						if (output.preparedTickets.ticketCount >= QTF_MAX_BATCH_TICKETS)
+						{
+							return;
+						}
+						++locals.l;
+					}
+					++locals.k;
+				}
+				++locals.j;
+			}
+			++locals.i;
 		}
 	}
 
