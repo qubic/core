@@ -812,6 +812,7 @@ static bool loadSnapshotUniverseIndex(const CHAR16* fileName, CHAR16* directory 
         logToConsole(L"Failed to load universe index");
         return false;
     }
+    return true;
 }
 #endif
 
