@@ -30,8 +30,8 @@
 
 // The tick duration used to calculate the size of memory buffers.
 // This determines the memory footprint of the application.
-#define TICK_DURATION_FOR_ALLOCATION_MS 750
-#define TRANSACTION_SPARSENESS 1
+#define TICK_DURATION_FOR_ALLOCATION_MS 350
+#define TRANSACTION_SPARSENESS 3
 
 // Number of ticks that are stored in the pending txs pool. This also defines how many ticks in advance a tx can be registered.
 #define PENDING_TXS_POOL_NUM_TICKS (1000 * 60 * 10ULL / TICK_DURATION_FOR_ALLOCATION_MS) // 10 minutes
