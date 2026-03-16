@@ -4334,6 +4334,8 @@ static bool saveAllNodeStates()
         logToConsole(L"Failed to save universe");
         return false;
     }
+    if (!saveSnapshotUniverseIndex(L"snapshotUniverseIndex", directory))
+        return false;
 
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
@@ -4503,14 +4505,18 @@ static bool loadAllNodeStates()
         return false;
     }
 
+    // When loading from a snapshot, the universe index lists must not be rebuilt, because this may change the
+    // order of asset iteration and lead to misalignment. Instead, the original index must be saved/loaded.
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 4] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = L'0';
-    if (!loadUniverse(UNIVERSE_FILE_NAME, directory))
+    if (!loadUniverse(UNIVERSE_FILE_NAME, directory, /*rebuildIndexLists=*/false))
     {
         logToConsole(L"Failed to load universe");
         return false;
     }
+    if (!loadSnapshotUniverseIndex(L"snapshotUniverseIndex", directory))
+        return false;
 
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
