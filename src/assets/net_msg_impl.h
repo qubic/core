@@ -135,14 +135,14 @@ static void processRequestAssetsSendRecord(Peer* peer, RequestResponseHeader* re
 
 static void processRequestAssets(Peer* peer, RequestResponseHeader* header)
 {
-    // check size of recieved message (request by universe index may be smaller than sizeof(RequestAssets))
+    // check size of received message (request by universe index may be smaller than sizeof(RequestAssets))
     if (!header->checkPayloadSizeMinMax(sizeof(RequestAssets::byUniverseIdx), sizeof(RequestAssets)))
         return;
     RequestAssets* request = header->getPayload<RequestAssets>();
     if (request->assetReqType != RequestAssets::requestByUniverseIdx && !header->checkPayloadSize(sizeof(RequestAssets)))
         return;
 
-    // initalize output message (with siblings because the variant without siblings is just a subset)
+    // initialize output message (with siblings because the variant without siblings is just a subset)
     struct
     {
         RequestResponseHeader header;
@@ -152,7 +152,7 @@ static void processRequestAssets(Peer* peer, RequestResponseHeader* header)
     response.header.setType(RespondAssets::type());
     response.header.setDejavu(header->dejavu());
 
-    // size of output message depends on whether sibilings are requested
+    // size of output message depends on whether siblings are requested
     if (request->byFilter.flags & RequestAssets::getSiblings)
         response.header.setSize<sizeof(RequestResponseHeader) + sizeof(RespondAssetsWithSiblings)>();
     else

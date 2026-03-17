@@ -150,5 +150,6 @@ We cannot support you in any case. You are welcome to provide updates, bug fixes
 - [Qubic protocol](doc/protocol.md)
 - [Custom mining](doc/custom_mining.md)
 - [Seamless epoch transition](SEAMLESS.md)
+- [Querying oracles](doc/contracts_oracles.md)
 - [Proposals and voting](doc/contracts_proposals.md)
 
