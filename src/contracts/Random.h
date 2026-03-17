@@ -289,7 +289,7 @@ private:
 
 			for (locals.i = 0; locals.i < 10; locals.i++)
 			{
-				if (locals.collateralTierFlags & (1 << state.get().collateralTiers.get(locals.stream * 1365 + locals.i)))
+				if (locals.collateralTierFlags & (1 << locals.i))
 				{
 					state.mut().entropy.set(locals.stream * 10 + locals.i, locals.zeroReveal);
 				}
