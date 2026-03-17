@@ -28,10 +28,10 @@ That is, the Oracle Machine nodes process the query asynchronously.
 They usually request the information from the Oracle, an external information provider, and send the reply back to the core node.
 They may also get the Oracle Reply from their cache if it is already available from a prior request.
 
-After receiving the reply, the core nodes create one reply commit transaction per computer (whereas each transaction may contain reply commits of multiple queries for increasing efficiency).
+After receiving the reply, the core nodes create one reply commit transaction per computor (whereas each transaction may contain reply commits of multiple queries for increasing efficiency).
 The commits consist of a digest and a knowledge proof of the Oracle Reply, but do not reveal the actual value of the Oracle Reply yet.
 When 451 agreeing reply commits have been processed, the status of the query switches to `ORACLE_QUERY_STATUS_COMMITTED`.
-After that, the fastest computers send a reply reveal transaction, which changes the status to `ORACLE_QUERY_STATUS_SUCCESS` and triggers the notification when executed.
+After that, the fastest computors send a reply reveal transaction, which changes the status to `ORACLE_QUERY_STATUS_SUCCESS` and triggers the notification when executed.
 
 As an incentive for providing fast and correct Oracle Replies, there is an oracle revenue counter for each computor, which influences the overall revenue payed to the computor at the end of the epoch.
 Revenue points are granted to the first 451 reply commits (+ the ones in the same tick) with agreeing digest and correct knowledge proof when processing the reply reveal transaction.
@@ -39,7 +39,7 @@ Revenue points are granted to the first 451 reply commits (+ the ones in the sam
 If too many commits disagree in the digest or have wrong knowledge proof, a quorum of reply commits isn't possible anymore.
 In this case, the status changes to `ORACLE_QUERY_STATUS_UNRESOLVABLE` and error notification without a valid reply is triggered immediately.
 
-Each query is associated with a timeout in order to handle the lack a timely reply, a quorum of commits, and/or a reveal.
+Each query is associated with a timeout in order to handle the lack of a timely reply, a quorum of commits, and/or a reveal.
 When the timeout hits, the status switches to `ORACLE_QUERY_STATUS_TIMEOUT` and error notification is triggered.
 
 All queries and replies stay available until the end of the epoch via their unique query ID.
@@ -75,15 +75,15 @@ Future interfaces, that have not been implemented yet may be: `SportEvent`, `Yes
 The source code of the oracles interfaces resides in the directory `src/oracle_interfaces/` of the Qubic Core repository, with one header file per oracle interface.
 
 In the Qubic contracts, oracle interfaces are made available through the namespace `OI`.
-For example, you can access the the oracle query struct type of the `Price` interface via `OI::Price::OracleQuery`.
+For example, you can access the oracle query struct type of the `Price` interface via `OI::Price::OracleQuery`.
 
 
 ### Oracle query
 
-The `OracleQuery` struct of the interface defines the input input of the Oracle Machine, specifying what exactly is queried.
+The `OracleQuery` struct of the interface defines the input of the Oracle Machine, specifying what exactly is queried.
 For example, the `OracleQuery` struct of the `Price` interface has the following member variables:
 - `oracle`: the Oracle to ask for (e.g., binance, mexc, gate.io),
-- `timestamp`: the specific date and time to ask the price for for,
+- `timestamp`: the specific date and time to ask the price for,
 - `currency1` and `currency2`: the currency pair to get the price for.
 
 In general, the `OracleQuery` struct must be designed in a way that consecutive queries with the same `OracleQuery` member values always lead the exact same `OracleReply`.
@@ -134,7 +134,7 @@ The fee for a `Price` subscription is 10000 QU for getting an update each minute
 A subscription querying each 2 or 3 minutes costs only 6500 QU.
 The fee reduces again and again with a notification intervals of 4 minutes, 8 minutes, and following powers of 2.
 While total cost of the subscription reduces, the cost per query increases (by design, because the potential efficiency gain by sharing queries between contracts reduces with the frequency).
-See the comments in the source code in `src/contract_interfaces/Price.h` for more details.
+See the comments in the source code in `src/oracle_interfaces/Price.h` for more details.
 
 The source code of the official Qubic Core repository and release should usually tell the current oracle fees.
 However, the Quorum decides as usual in Qubic, because the computors running the Qubic Network may change the code, including the fee amounts.
@@ -191,7 +191,7 @@ static sint64 getSubscriptionFee(const OracleQuery& query, uint32 notifyPeriodIn
 
 Additionally, the interface struct may contain other structs or convenience features for contracts using the oracle interface.
 
-All code in the interface header file must respect the the same [C++ language feature restrictions as contracts](#restrictions-of-c-language-features).
+All code in the interface header file must respect the same [C++ language feature restrictions as contracts](#restrictions-of-c-language-features).
 These are checked with the [Qubic Contract Verification Tool](https://github.com/Franziska-Mueller/qubic-contract-verify).
 
 A new oracle interface has to be added file `src/oracle_core/oracle_interfaces_def.h`.
@@ -310,12 +310,12 @@ The callback must be a user procedure of the contract calling `QUERY_ORACLE()` w
 The procedure must be registered with `REGISTER_USER_PROCEDURE_NOTIFICATION()` in `REGISTER_USER_FUNCTIONS_AND_PROCEDURES`.
 
 In the notification callback, success is indicated by `input.status == ORACLE_QUERY_STATUS_SUCCESS`.
-If an error happened before the query has been created and sent, `input.status` is `ORACLE_QUERY_STATUS_UNKNOWN`and `input.queryId` is -1 (invalid).
-Other errors that may happen with valid `input.queryID` are `input.status == ORACLE_QUERY_STATUS_TIMEOUT` and `input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE`.
+If an error happened before the query has been created and sent, `input.status` is `ORACLE_QUERY_STATUS_UNKNOWN` and `input.queryId` is -1 (invalid).
+Other errors that may happen with valid `input.queryId` are `input.status == ORACLE_QUERY_STATUS_TIMEOUT` and `input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE`.
 
-All queries, including pending queries are discarded at the end of the epoch. Contract aren't notified in this case.
+All queries, including pending queries are discarded at the end of the epoch. Contracts aren't notified in this case.
 
-An alternative way of initiating period queries is using subscriptions, see the [Subscription QPI](#subscription-qpi)
+An alternative way of initiating periodic queries is using subscriptions, see the [Subscription QPI](#subscription-qpi)
 
 
 ### Getting the query status by query ID
@@ -330,7 +330,7 @@ The returned status is one of the following:
 
 - `ORACLE_QUERY_STATUS_UNKNOWN`: Query not found / not valid.
 - `ORACLE_QUERY_STATUS_PENDING`: Query is being processed.
-- `ORACLE_QUERY_STATUS_COMMITTED`: The Quorum has committed to a oracle reply, but it has not been revealed yet.
+- `ORACLE_QUERY_STATUS_COMMITTED`: The Quorum has committed to an oracle reply, but it has not been revealed yet.
 - `ORACLE_QUERY_STATUS_SUCCESS`: The oracle reply has been confirmed and is available.
 - `ORACLE_QUERY_STATUS_UNRESOLVABLE`: No valid oracle reply is available, because computors disagreed about the value.
 - `ORACLE_QUERY_STATUS_TIMEOUT`: No valid oracle reply is available and timeout has hit.
@@ -348,7 +348,7 @@ if (qpi.getOracleQuery<OI::Price>(input.queryId, locals.priceQuery))
 ```
 
 This tries to get the query data associated with the query identified by `queryId`.
-If `queryId` is valid and matches with the oracle interface given via the template parameter (`OI::Price` in this example), `locals.priceQuery` (which must be of type `OI::Price::OracleQuery` in this example) is set and the function return true. Otherwise it returns false.
+If `queryId` is valid and matches with the oracle interface given via the template parameter (`OI::Price` in this example), `locals.priceQuery` (which must be of type `OI::Price::OracleQuery` in this example) is set and the function returns true. Otherwise it returns false.
 
 
 ### Getting the reply by query ID
@@ -369,7 +369,7 @@ If all this is true, the function copies the oracle reply into `locals.priceRepl
 ## Subscription QPI
 
 Subscriptions are a cheaper and more efficient way to query time-dependent information, such as prices, regularly.
-A subscriptions repeatedly sends the same query, only changing the query timestamp.
+A subscription repeatedly sends the same query, only changing the query timestamp.
 The subscription queries may be shared by multiple contracts automatically.
 
 After subscribing, updated information is pushed to the subscriber contract in defined intervals as requested.
@@ -420,19 +420,19 @@ Other errors that may happen with valid `input.queryId` are `input.status == ORA
 The timeout of subscription queries is always 60000 milliseconds.
 
 A contract may subscribe to the same oracle interface with multiple different queries.
-However, it cannot subscribe with the same query multiples times.
+However, it cannot subscribe with the same query multiple times.
 In order to change the notification period of an existing query, it needs to be unsubscribed first and subscribed again afterwards.
 
 
 ### Unsubscribing
 
-A contract unsubscribe from an own subscription with the subscription ID returned by the `SUBSCRIBE_ORACLE()` call as illustrated in the following example:
+A contract can unsubscribe from an own subscription with the subscription ID returned by the `SUBSCRIBE_ORACLE()` call as illustrated in the following example:
 
 ```C++
 output.success = qpi.unsubscribeOracle(input.subscriptionId);
 ```
 
-The functions returns true if the subscription given by the ID has been stopped (false means that the ID is invalid).
+The function returns true if the subscription given by the ID has been stopped (false means that the ID is invalid).
 
 If there is a pending query initiated for this subscription while unsubscribing, the contract will still be notified for that query even after unsubscribing.
 However, no new queries for this contract will be generated.
@@ -447,7 +447,7 @@ The query ID is a signed 64-bit integer, with values >= 0 being reserved for val
 Query IDs are unique.
 They are constructed from the tick, when the query was initiated and an index during the tick.
 
-For user queries, the index given by the index of the query transaction in the tick data.
+For user queries, the index is given by the index of the query transaction in the tick data.
 For contract one-time queries and subscription queries, the index is generated sequentially, starting at the maximum number of transactions per tick.
 
 With that index and the query tick, the ID is generated `queryId = (tick << 31) + index` (shift the tick by 31 bits and add the index).

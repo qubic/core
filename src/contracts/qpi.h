@@ -2499,7 +2499,7 @@ namespace QPI
 		*
 		* - ORACLE_QUERY_STATUS_UNKNOWN: Query not found / not valid.
 		* - ORACLE_QUERY_STATUS_PENDING: Query is being processed.
-		* - ORACLE_QUERY_STATUS_COMMITTED: The quorum has committed to a oracle reply, but it has not been revealed yet.
+		* - ORACLE_QUERY_STATUS_COMMITTED: The quorum has committed to an oracle reply, but it has not been revealed yet.
 		* - ORACLE_QUERY_STATUS_SUCCESS: The oracle reply has been confirmed and is available.
 		* - ORACLE_QUERY_STATUS_UNRESOLVABLE: No valid oracle reply is available, because computors disagreed about the value.
 		* - ORACLE_QUERY_STATUS_TIMEOUT: No valid oracle reply is available and timeout has hit.
@@ -3137,7 +3137,7 @@ namespace QPI
 	* The timeout of subscription queries is always 60000 milliseconds.
 	*
 	* A contract may subscribe to the same oracle interface with multiple different queries.
-	* However, it cannot subscribe with the same query multiples times.
+	* However, it cannot subscribe with the same query multiple times.
 	* In order to change the notification period of an existing query, it needs to be unsubscribed first and subscribed again afterwards.
 	*/
 	#define SUBSCRIBE_ORACLE(OracleInterface, query, userProcNotification, notificationPeriodInMilliseconds, notifyWithPreviousReply) qpi.__qpiSubscribeOracle<OracleInterface>(query, userProcNotification, __id_##userProcNotification, notificationPeriodInMilliseconds, notifyWithPreviousReply)
