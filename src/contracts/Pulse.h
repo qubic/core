@@ -688,6 +688,8 @@ public:
 
 	struct BEGIN_EPOCH_locals
 	{
+		QX::Fees_input feesInput;
+		QX::Fees_output feesOutput;
 		ProcessAutoTickets_input autoTicketsInput;
 		ProcessAutoTickets_output autoTicketsOutput;
 	};
@@ -722,10 +724,10 @@ public:
 
 	INITIALIZE()
 	{
-		state.mut().teamAddress = ID(_R, _O, _J, _V, _A, _E, _M, _F, _B, _X, _X, _Y, _N, _G, _A, _U, _A, _U, _I, _I, _X, _L, _B, _U, _P, _D, _H, _C, _D, _P,
-		                       _E, _S, _Y, _Z, _O, _V, _W, _U, _Y, _E, _C, _B, _Q, _V, _Z, _R, _F, _T, _K, _A, _G, _S, _H, _T, _N, _A);
-		state.mut().qheartIssuer = ID(_S, _S, _G, _X, _S, _L, _S, _X, _F, _E, _J, _O, _O, _B, _T, _Z, _W, _V, _D, _S, _R, _C, _E, _F, _G, _X, _N, _D, _Y,
-		                        _U, _V, _D, _X, _M, _Q, _A, _L, _X, _L, _B, _X, _G, _D, _C, _R, _X, _T, _K, _F, _Z, _I, _O, _T, _G, _Z, _F);
+		state.mut().teamAddress = ID(_R, _O, _J, _V, _A, _E, _M, _F, _B, _X, _X, _Y, _N, _G, _A, _U, _A, _U, _I, _I, _X, _L, _B, _U, _P, _D, _H, _C,
+		                             _D, _P, _E, _S, _Y, _Z, _O, _V, _W, _U, _Y, _E, _C, _B, _Q, _V, _Z, _R, _F, _T, _K, _A, _G, _S, _H, _T, _N, _A);
+		state.mut().qheartIssuer = ID(_S, _S, _G, _X, _S, _L, _S, _X, _F, _E, _J, _O, _O, _B, _T, _Z, _W, _V, _D, _S, _R, _C, _E, _F, _G, _X, _N, _D,
+		                              _Y, _U, _V, _D, _X, _M, _Q, _A, _L, _X, _L, _B, _X, _G, _D, _C, _R, _X, _T, _K, _F, _Z, _I, _O, _T, _G, _Z, _F);
 
 		state.mut().ticketPrice = PULSE_TICKET_PRICE_DEFAULT;
 		state.mut().devPercent = PULSE_DEFAULT_DEV_PERCENT;
@@ -832,6 +834,12 @@ public:
 		{
 			CALL(ProcessAutoTickets, locals.autoTicketsInput, locals.autoTicketsOutput);
 		}
+	}
+
+	PRE_ACQUIRE_SHARES()
+	{
+		output.requestedFee = 0;
+		output.allowTransfer = true;
 	}
 
 	// Returns current ticket price in QHeart units.
@@ -1132,8 +1140,8 @@ public:
 			return;
 		}
 
-		locals.transferResult =
-		    qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, locals.withdrawAmount, qpi.invocator());
+		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF,
+		                                                                locals.withdrawAmount, qpi.invocator());
 		if (locals.transferResult < 0)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TRANSFER_FROM_PULSE_FAILED);
@@ -1432,7 +1440,8 @@ private:
 
 		if (locals.devAmount > 0)
 		{
-			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, locals.devAmount, state.get().teamAddress);
+			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, locals.devAmount,
+			                                        state.get().teamAddress);
 		}
 		if (locals.shareholdersAmount > 0)
 		{
@@ -1487,8 +1496,8 @@ private:
 
 			if (locals.prize > 0 && locals.balance >= locals.prize)
 			{
-				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, static_cast<sint64>(locals.prize),
-				                                        locals.ticket.player);
+				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF,
+				                                        static_cast<sint64>(locals.prize), locals.ticket.player);
 				locals.balance -= locals.prize;
 
 				locals.fillWinnersInfoInput.winnerAddress = locals.ticket.player;
@@ -1697,9 +1706,15 @@ protected:
 		state.mut().currentState = bEnable ? state.get().currentState | EState::SELLING : state.get().currentState & ~EState::SELLING;
 	}
 
-	static bool isSellingOpen(const QPI::ContractState<StateData, CONTRACT_INDEX>& state) { return (state.get().currentState & EState::SELLING) != 0; }
+	static bool isSellingOpen(const QPI::ContractState<StateData, CONTRACT_INDEX>& state)
+	{
+		return (state.get().currentState & EState::SELLING) != 0;
+	}
 
-	static void getWinnerCounter(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, uint64& outCounter) { outCounter = mod(state.get().winnersCounter, state.get().winners.capacity()); }
+	static void getWinnerCounter(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, uint64& outCounter)
+	{
+		outCounter = mod(state.get().winnersCounter, state.get().winners.capacity());
+	}
 
 	static uint64 getLeftAlignedReward(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, uint8 matches)
 	{
@@ -1729,8 +1744,8 @@ protected:
 		}
 	}
 
-	static uint64 computePrize(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, const Ticket& ticket, const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winningDigits,
-	                           ComputePrize_locals& locals)
+	static uint64 computePrize(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, const Ticket& ticket,
+	                           const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winningDigits, ComputePrize_locals& locals)
 	{
 		setMemory(locals, 0);
 
