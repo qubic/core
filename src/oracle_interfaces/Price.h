@@ -7,8 +7,8 @@ using namespace QPI;
 * the same input and output structs (OracleQuery and OracleReply).
 *
 * It also defines the oracle query and subscription fees through the member functions getQueryFee() and
-* getSubscriptionFee(). The subscription fee needs to be paid for each call to qpi.subscribeOracle(),
-* which is usually once per epoch. The query fee needs to be paid for each call to qpi.queryOracle()
+* getSubscriptionFee(). The subscription fee needs to be paid for each call to SUBSCRIBE_ORACLE(),
+* which is usually once per epoch. The query fee needs to be paid for each call to QUERY_ORACLE()
 * and as the amount of each user oracle query transaction.
 *
 * Each oracle interface is internally identified through the oracleInterfaceIndex.
