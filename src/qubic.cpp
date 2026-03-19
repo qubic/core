@@ -2335,13 +2335,13 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
-                case BROADCAST_CUSTOM_MINING_TASK:
+                case CustomQubicMiningTask::type():
                 {
                     processBroadcastCustomMiningTask(header);
                 }
                 break;
 
-                case BROADCAST_CUSTOM_MINING_SOLUTION:
+                case CustomQubicMiningSolution::type():
                 {
                     processBroadcastCustomMiningSolution(header);
                 }
