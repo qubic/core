@@ -44,6 +44,28 @@ struct PULSE2
 struct PULSE : public ContractBase
 {
 public:
+	template<typename Key, typename T, uint64 L>
+	struct HashMapConverter
+	{
+		void convert(const HashMap<Key, T, L>& hasMap, Array<T, L>& array)
+		{
+			arrayIndex = 0;
+			setMemory(array, 0);
+
+			hasMapIndex = hasMap.nextElementIndex(NULL_INDEX);
+			while (hasMapIndex != NULL_INDEX)
+			{
+				array.set(arrayIndex, hasMap.value(hasMapIndex));
+				hasMapIndex = hasMap.nextElementIndex(hasMapIndex);
+				++arrayIndex;
+			}
+		}
+
+	private:
+		sint64 hasMapIndex;
+		uint64 arrayIndex;
+	};
+
 	// Bitmask for runtime state flags.
 	enum class EState : uint8
 	{
@@ -53,8 +75,16 @@ public:
 	friend EState operator|(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) | static_cast<uint8>(b)); }
 	friend EState operator&(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) & static_cast<uint8>(b)); }
 	friend EState operator~(const EState& a) { return static_cast<EState>(~static_cast<uint8>(a)); }
-	template<typename T> friend bool operator==(const EState& a, const T& b) { return static_cast<uint8>(a) == b; }
-	template<typename T> friend bool operator!=(const EState& a, const T& b) { return !(a == b); }
+	template<typename T>
+	friend bool operator==(const EState& a, const T& b)
+	{
+		return static_cast<uint8>(a) == b;
+	}
+	template<typename T>
+	friend bool operator!=(const EState& a, const T& b)
+	{
+		return !(a == b);
+	}
 
 	// Public return codes for user procedures/functions.
 	enum class EReturnCode : uint8
@@ -357,11 +387,15 @@ public:
 	};
 	struct GetAutoStats_output
 	{
-		uint16 autoParticipantsCounter;
-		uint64 totalAutoDeposits;
-		sint64 autoStartIndex;
+		Array<AutoParticipant, PULSE_MAX_NUMBER_OF_AUTO_PARTICIPANTS> participants;
+		uint16 maxAutoParticipants;
 		uint16 maxAutoTicketsPerUser;
+		uint16 roundSlotsLeft;
 		uint8 returnCode;
+	};
+	struct GetAutoStats_locals
+	{
+		HashMapConverter<id, AutoParticipant, PULSE_MAX_NUMBER_OF_AUTO_PARTICIPANTS> converter;
 	};
 
 	struct DepositAutoParticipation_input
@@ -989,13 +1023,18 @@ public:
 	}
 
 	/**
-	 * Returns currently exposed global auto-participation counters.
-	 * @return Participant count, max tickets per user, and status code.
+	 * Returns the current auto-participation roster and shared limits.
+	 * @return All registered auto participants, the participant capacity, the per-user auto-ticket limit, remaining slots in the current round, and
+	 * the status code.
 	 */
-	PUBLIC_FUNCTION(GetAutoStats)
+	PUBLIC_FUNCTION_WITH_LOCALS(GetAutoStats)
 	{
-		output.autoParticipantsCounter = static_cast<uint16>(state.get().autoParticipants.population());
+		locals.converter.convert(state.get().autoParticipants, output.participants);
+
+		output.maxAutoParticipants = static_cast<uint16>(state.get().autoParticipants.capacity());
 		output.maxAutoTicketsPerUser = state.get().maxAutoTicketsPerUser;
+
+		output.roundSlotsLeft = clampPublicTicketCount(state, getSlotsLeft(state));
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -1752,8 +1791,16 @@ public:
 	/** Encodes YYYY/MM/DD into a compact sortable date stamp. */
 	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
 
-	template<typename T> static constexpr T min(const T& a, const T& b) { return (a < b) ? a : b; }
-	template<typename T> static constexpr T max(const T& a, const T& b) { return a > b ? a : b; }
+	template<typename T>
+	static constexpr T min(const T& a, const T& b)
+	{
+		return (a < b) ? a : b;
+	}
+	template<typename T>
+	static constexpr T max(const T& a, const T& b)
+	{
+		return a > b ? a : b;
+	}
 
 	/** Applies a per-index mix to deterministically expand a single seed. */
 	static void deriveOne(const uint64& r, const uint64& idx, uint64& outValue) { mix64(r + 0x9e3779b97f4a7c15ULL * (idx + 1), outValue); }
@@ -1865,5 +1912,10 @@ protected:
 		locals.anyPositionReward = getAnyPositionReward(state, locals.anyPositionMatches);
 		locals.prize = max(locals.leftAlignedReward, locals.anyPositionReward);
 		return locals.prize;
+	}
+
+	static uint16 clampPublicTicketCount(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, sint64 value)
+	{
+		return static_cast<uint16>(min(static_cast<uint64>(max(value, 0LL)), state.get().tickets.capacity()));
 	}
 };
