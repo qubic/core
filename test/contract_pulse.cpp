@@ -207,7 +207,7 @@ public:
 
 	GetAutoParticipation_output callGetAutoParticipation(const QPI::QpiContextFunctionCall& qpi) const
 	{
-		GetAutoParticipation_input input{};
+		GetAutoParticipation_input input{qpi.invocator()};
 		GetAutoParticipation_output output{};
 		GetAutoParticipation_locals locals{};
 		GetAutoParticipation(qpi, asState(), input, output, locals);

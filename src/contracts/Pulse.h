@@ -370,6 +370,7 @@ public:
 
 	struct GetAutoParticipation_input
 	{
+		id player;
 	};
 	struct GetAutoParticipation_output
 	{
@@ -1029,7 +1030,7 @@ public:
 	 */
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAutoParticipation)
 	{
-		if (!state.get().autoParticipants.get(qpi.invocator(), locals.entry))
+		if (!state.get().autoParticipants.get(input.player, locals.entry))
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
