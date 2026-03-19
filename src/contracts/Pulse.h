@@ -452,22 +452,6 @@ public:
 		uint64 ticketPrice;
 	};
 
-	struct GetSchedule_input
-	{
-	};
-	struct GetSchedule_output
-	{
-		uint8 schedule;
-	};
-
-	struct GetDrawHour_input
-	{
-	};
-	struct GetDrawHour_output
-	{
-		uint8 drawHour;
-	};
-
 	struct GetFees_input
 	{
 	};
@@ -510,6 +494,51 @@ public:
 	struct GetBalance_output
 	{
 		uint64 balance;
+	};
+
+	struct GetPlayers_input
+	{
+	};
+	struct GetPlayers_output
+	{
+		Array<Ticket, PULSE_MAX_NUMBER_OF_PLAYERS> players;
+		uint8 returnCode;
+	};
+
+	struct GetPrizeTable_input
+	{
+	};
+	struct GetPrizeTable_output
+	{
+		Array<uint64, PULSE_PLAYER_DIGITS_ALIGNED> leftAlignedRewards;
+		Array<uint64, PULSE_PLAYER_DIGITS_ALIGNED> anyPositionRewards;
+		uint64 ticketPrice;
+		uint8 returnCode;
+	};
+	struct GetPrizeTable_locals
+	{
+		uint8 matches;
+	};
+
+	struct GetRoundState_input
+	{
+	};
+	struct GetRoundState_output
+	{
+		uint32 epoch;
+		uint32 lastDrawDateStamp;
+		uint16 ticketCounter;
+		uint16 maxPlayers;
+		uint16 slotsLeft;
+		uint8 currentState;
+		uint8 drawHour;
+		uint8 schedule;
+		bit sellingOpen;
+		uint8 returnCode;
+	};
+	struct GetRoundState_locals
+	{
+		sint64 slotsLeft;
 	};
 
 	struct FillWinnersInfo_input
@@ -698,8 +727,6 @@ public:
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_FUNCTION(GetTicketPrice, 1);
-		REGISTER_USER_FUNCTION(GetSchedule, 2);
-		REGISTER_USER_FUNCTION(GetDrawHour, 3);
 		REGISTER_USER_FUNCTION(GetFees, 4);
 		REGISTER_USER_FUNCTION(GetQHeartHoldLimit, 5);
 		REGISTER_USER_FUNCTION(GetQHeartWallet, 6);
@@ -708,6 +735,10 @@ public:
 		REGISTER_USER_FUNCTION(GetWinners, 9);
 		REGISTER_USER_FUNCTION(GetAutoParticipation, 10);
 		REGISTER_USER_FUNCTION(GetAutoStats, 11);
+		REGISTER_USER_FUNCTION(ValidateDigits, 12);
+		REGISTER_USER_FUNCTION(GetPlayers, 13);
+		REGISTER_USER_FUNCTION(GetPrizeTable, 14);
+		REGISTER_USER_FUNCTION(GetRoundState, 15);
 
 		REGISTER_USER_PROCEDURE(BuyTicket, 1);
 		REGISTER_USER_PROCEDURE(SetPrice, 2);
@@ -842,20 +873,35 @@ public:
 		output.allowTransfer = true;
 	}
 
-	// Returns current ticket price in QHeart units.
+	/**
+	 * Validates a ticket payload without changing contract state.
+	 * @param digits Candidate ticket digits.
+	 * @return `isValid = true` when every digit is within the supported range [0..9].
+	 */
+	PUBLIC_FUNCTION_WITH_LOCALS(ValidateDigits)
+	{
+		output.isValid = true;
+		for (locals.idx = 0; locals.idx < PULSE_PLAYER_DIGITS; ++locals.idx)
+		{
+			locals.value = input.digits.get(locals.idx);
+			if (locals.value > PULSE_MAX_DIGIT)
+			{
+				output.isValid = false;
+				return;
+			}
+		}
+	}
+
+	/** Returns the current ticket price in QHeart units. */
 	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.get().ticketPrice; }
-	// Returns current draw schedule bitmask.
-	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.get().schedule; }
-	// Returns draw hour in UTC.
-	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.get().drawHour; }
-	// Returns QHeart balance cap retained by the contract.
+	/** Returns the QHeart balance cap retained by the contract. */
 	PUBLIC_FUNCTION(GetQHeartHoldLimit) { output.qheartHoldLimit = state.get().qheartHoldLimit; }
-	// Returns the designated QHeart issuer wallet.
+	/** Returns the designated QHeart issuer wallet. */
 	PUBLIC_FUNCTION(GetQHeartWallet) { output.wallet = state.get().qheartIssuer; }
-	// Returns digits from the last settled draw.
+	/** Returns the digits from the last settled draw. */
 	PUBLIC_FUNCTION(GetWinningDigits) { output.digits = state.get().lastWinningDigits; }
 
-	// Returns current fee split configuration.
+	/** Returns the current fee split configuration. */
 	PUBLIC_FUNCTION(GetFees)
 	{
 		output.devPercent = state.get().devPercent;
@@ -865,13 +911,58 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Returns contract QHeart balance held in the Pulse wallet.
+	/** Returns the contract QHeart balance held in the Pulse wallet. */
 	PUBLIC_FUNCTION(GetBalance)
 	{
 		output.balance = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
 	}
 
-	// Returns the winners ring buffer and total winners counter.
+	/**
+	 * Returns the current round ticket snapshot.
+	 * @return Ticket entries already allocated for the ongoing round; unused trailing slots remain zeroed.
+	 */
+	PUBLIC_FUNCTION(GetPlayers)
+	{
+		output.players = state.get().tickets;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	/**
+	 * Returns the payout table derived from the current ticket price.
+	 * @return Reward arrays indexed by match count for left-aligned and any-position payouts, plus the active ticket price.
+	 */
+	PUBLIC_FUNCTION_WITH_LOCALS(GetPrizeTable)
+	{
+		output.ticketPrice = state.get().ticketPrice;
+		for (locals.matches = 0; locals.matches <= PULSE_PLAYER_DIGITS; ++locals.matches)
+		{
+			output.leftAlignedRewards.set(locals.matches, getLeftAlignedReward(state, locals.matches));
+			output.anyPositionRewards.set(locals.matches, getAnyPositionReward(state, locals.matches));
+		}
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	/**
+	 * Returns the current round lifecycle state and sale progress.
+	 * @return Current epoch, last processed draw date stamp, ticket counters, runtime state flags, active schedule, draw hour, and selling status.
+	 */
+	PUBLIC_FUNCTION_WITH_LOCALS(GetRoundState)
+	{
+		locals.slotsLeft = getSlotsLeft(state);
+
+		output.epoch = qpi.epoch();
+		output.lastDrawDateStamp = state.get().lastDrawDateStamp;
+		output.ticketCounter = static_cast<uint16>(min(static_cast<uint64>(max(state.get().ticketCounter, 0LL)), state.get().tickets.capacity()));
+		output.maxPlayers = static_cast<uint16>(state.get().tickets.capacity());
+		output.slotsLeft = static_cast<uint16>(min(static_cast<uint64>(max(locals.slotsLeft, 0LL)), state.get().tickets.capacity()));
+		output.currentState = static_cast<uint8>(state.get().currentState);
+		output.drawHour = state.get().drawHour;
+		output.schedule = state.get().schedule;
+		output.sellingOpen = isSellingOpen(state);
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	/** Returns the winners ring buffer snapshot and the current insertion counter. */
 	PUBLIC_FUNCTION(GetWinners)
 	{
 		output.winners = state.get().winners;
@@ -879,8 +970,10 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	/// Returns auto-participation settings for the invocator.
-	/// @return Current deposit, config fields, and status code.
+	/**
+	 * Returns auto-participation settings for the invocator.
+	 * @return Current reserved deposit, desired ticket count, and status code for the invocator.
+	 */
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAutoParticipation)
 	{
 		if (!state.get().autoParticipants.get(qpi.invocator(), locals.entry))
@@ -895,8 +988,10 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	/// Returns global auto-participation limits and counters.
-	/// @return Current counters, limits, and status code.
+	/**
+	 * Returns currently exposed global auto-participation counters.
+	 * @return Participant count, max tickets per user, and status code.
+	 */
 	PUBLIC_FUNCTION(GetAutoStats)
 	{
 		output.autoParticipantsCounter = static_cast<uint16>(state.get().autoParticipants.population());
@@ -904,7 +999,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Schedules a new ticket price for the next epoch (owner-only).
+	/** Schedules a new ticket price for the next epoch (owner-only). */
 	PUBLIC_PROCEDURE(SetPrice)
 	{
 		if (qpi.invocationReward() > 0)
@@ -929,7 +1024,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Schedules a new draw schedule bitmask for the next epoch (owner-only).
+	/** Schedules a new draw schedule bitmask for the next epoch (owner-only). */
 	PUBLIC_PROCEDURE(SetSchedule)
 	{
 		if (qpi.invocationReward() > 0)
@@ -954,7 +1049,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Schedules a new draw hour in UTC for the next epoch (owner-only).
+	/** Schedules a new draw hour in UTC for the next epoch (owner-only). */
 	PUBLIC_PROCEDURE(SetDrawHour)
 	{
 		if (qpi.invocationReward() > 0)
@@ -979,7 +1074,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Schedules new fee splits for the next epoch (owner-only).
+	/** Schedules new fee splits for the next epoch (owner-only). */
 	PUBLIC_PROCEDURE(SetFees)
 	{
 		if (qpi.invocationReward() > 0)
@@ -1008,7 +1103,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Schedules a new QHeart hold limit for the next epoch (owner-only).
+	/** Schedules a new QHeart hold limit for the next epoch (owner-only). */
 	PUBLIC_PROCEDURE(SetQHeartHoldLimit)
 	{
 		if (qpi.invocationReward() > 0)
@@ -1027,7 +1122,8 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	/** Deposits QHeart into the contract for automatic ticket purchases.
+	/**
+	 * Deposits QHeart into the contract for automatic ticket purchases.
 	 * @param amount QHeart amount to reserve for auto participation.
 	 * @param desiredTickets Number of tickets to buy per draw.
 	 * @param buyNow When true, tries to buy immediately if selling is open.
@@ -1110,9 +1206,11 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	/// Withdraws QHeart from the invocator's auto-participation deposit.
-	/// @param amount QHeart amount to withdraw; 0 withdraws the full deposit.
-	/// @return Status code describing the result.
+	/**
+	 * Withdraws QHeart from the invocator's auto-participation deposit.
+	 * @param amount QHeart amount to withdraw; 0 withdraws the full deposit.
+	 * @return Status code describing whether the requested amount was transferred back.
+	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(WithdrawAutoParticipation)
 	{
 		if (qpi.invocationReward() > 0)
@@ -1163,9 +1261,11 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	/// Sets auto-participation config for the invocator.
-	/// @param desiredTickets Signed: -1 ignore, >0 set new value.
-	/// @return Status code describing the result.
+	/**
+	 * Updates the invocator's auto-participation configuration.
+	 * @param desiredTickets `-1` keeps the current value; values greater than `0` replace the desired ticket count.
+	 * @return Status code describing whether the configuration was accepted.
+	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetAutoConfig)
 	{
 		if (qpi.invocationReward() > 0)
@@ -1202,10 +1302,11 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	/// Sets auto-participation limits (owner-only).
-	/// @param maxTicketsPerUser Max tickets per user; 0 disables the limit.
-	/// @param maxDepositPerUser Max deposit per user; 0 disables the limit.
-	/// @return Status code describing the result.
+	/**
+	 * Sets the global auto-participation ticket limit (owner-only).
+	 * @param maxTicketsPerUser Maximum tickets to auto-buy per user; `0` disables the limit.
+	 * @return Status code describing whether the new limit was accepted.
+	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetAutoLimits)
 	{
 		if (qpi.invocationReward() > 0)
@@ -1245,7 +1346,7 @@ public:
 		}
 	}
 
-	// Buys a single ticket; transfers ticket price from invocator.
+	/** Buys a single ticket and transfers the ticket price from the invocator. */
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicket)
 	{
 		if (qpi.invocationReward() > 0)
@@ -1298,7 +1399,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Buys multiple random tickets; transfers total price from invocator.
+	/** Buys multiple random tickets and transfers the total price from the invocator. */
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyRandomTickets)
 	{
 		if (qpi.invocationReward() > 0)
@@ -1397,20 +1498,6 @@ private:
 		}
 
 		state.mut().autoParticipants.cleanupIfNeeded(PULSE_CLEANUP_THRESHOLD);
-	}
-
-	PRIVATE_FUNCTION_WITH_LOCALS(ValidateDigits)
-	{
-		output.isValid = true;
-		for (locals.idx = 0; locals.idx < PULSE_PLAYER_DIGITS; ++locals.idx)
-		{
-			locals.value = input.digits.get(locals.idx);
-			if (locals.value > PULSE_MAX_DIGIT)
-			{
-				output.isValid = false;
-				return;
-			}
-		}
 	}
 
 	PRIVATE_FUNCTION_WITH_LOCALS(GetRandomDigits)
@@ -1662,13 +1749,13 @@ private:
 	};
 
 public:
-	// Encodes YYYY/MM/DD into a compact sortable date stamp.
+	/** Encodes YYYY/MM/DD into a compact sortable date stamp. */
 	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
 
 	template<typename T> static constexpr T min(const T& a, const T& b) { return (a < b) ? a : b; }
 	template<typename T> static constexpr T max(const T& a, const T& b) { return a > b ? a : b; }
 
-	// Per-index mix to deterministically expand a single seed.
+	/** Applies a per-index mix to deterministically expand a single seed. */
 	static void deriveOne(const uint64& r, const uint64& idx, uint64& outValue) { mix64(r + 0x9e3779b97f4a7c15ULL * (idx + 1), outValue); }
 
 	static void mix64(const uint64& x, uint64& outValue)

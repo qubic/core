@@ -18,8 +18,6 @@ constexpr uint16 PULSE_PROCEDURE_SET_AUTO_CONFIG = 10;
 constexpr uint16 PULSE_PROCEDURE_SET_AUTO_LIMITS = 11;
 
 constexpr uint16 PULSE_FUNCTION_GET_TICKET_PRICE = 1;
-constexpr uint16 PULSE_FUNCTION_GET_SCHEDULE = 2;
-constexpr uint16 PULSE_FUNCTION_GET_DRAW_HOUR = 3;
 constexpr uint16 PULSE_FUNCTION_GET_FEES = 4;
 constexpr uint16 PULSE_FUNCTION_GET_QHEART_HOLD_LIMIT = 5;
 constexpr uint16 PULSE_FUNCTION_GET_QHEART_WALLET = 6;
@@ -28,6 +26,10 @@ constexpr uint16 PULSE_FUNCTION_GET_BALANCE = 8;
 constexpr uint16 PULSE_FUNCTION_GET_WINNERS = 9;
 constexpr uint16 PULSE_FUNCTION_GET_AUTO_PARTICIPATION = 10;
 constexpr uint16 PULSE_FUNCTION_GET_AUTO_STATS = 11;
+constexpr uint16 PULSE_FUNCTION_VALIDATE_DIGITS = 12;
+constexpr uint16 PULSE_FUNCTION_GET_PLAYERS = 13;
+constexpr uint16 PULSE_FUNCTION_GET_PRIZE_TABLE = 14;
+constexpr uint16 PULSE_FUNCTION_GET_ROUND_STATE = 15;
 
 namespace
 {
@@ -227,19 +229,11 @@ public:
 		return output;
 	}
 
-	PULSE::GetSchedule_output getSchedule()
+	PULSE::GetRoundState_output getRoundState()
 	{
-		PULSE::GetSchedule_input input{};
-		PULSE::GetSchedule_output output{};
-		callFunction(PULSE_CONTRACT_INDEX, PULSE_FUNCTION_GET_SCHEDULE, input, output);
-		return output;
-	}
-
-	PULSE::GetDrawHour_output getDrawHour()
-	{
-		PULSE::GetDrawHour_input input{};
-		PULSE::GetDrawHour_output output{};
-		callFunction(PULSE_CONTRACT_INDEX, PULSE_FUNCTION_GET_DRAW_HOUR, input, output);
+		PULSE::GetRoundState_input input{};
+		PULSE::GetRoundState_output output{};
+		callFunction(PULSE_CONTRACT_INDEX, PULSE_FUNCTION_GET_ROUND_STATE, input, output);
 		return output;
 	}
 
@@ -892,8 +886,9 @@ TEST(ContractPulse_Public, GettersReturnDefaultsAfterInitialize)
 {
 	ContractTestingPulse ctl;
 	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, PULSE_TICKET_PRICE_DEFAULT);
-	EXPECT_EQ(ctl.getSchedule().schedule, PULSE_DEFAULT_SCHEDULE);
-	EXPECT_EQ(ctl.getDrawHour().drawHour, PULSE_DEFAULT_DRAW_HOUR);
+	const PULSE::GetRoundState_output roundState = ctl.getRoundState();
+	EXPECT_EQ(roundState.schedule, PULSE_DEFAULT_SCHEDULE);
+	EXPECT_EQ(roundState.drawHour, PULSE_DEFAULT_DRAW_HOUR);
 	EXPECT_EQ(ctl.getQHeartHoldLimit().qheartHoldLimit, PULSE_DEFAULT_QHEART_HOLD_LIMIT);
 
 	const PULSE::GetFees_output& fees = ctl.getFees();
@@ -999,8 +994,9 @@ TEST(ContractPulse_Public, GettersReflectAppliedChanges)
 	ctl.endEpoch();
 
 	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, 555u);
-	EXPECT_EQ(ctl.getSchedule().schedule, 0x7Fu);
-	EXPECT_EQ(ctl.getDrawHour().drawHour, 9u);
+	const PULSE::GetRoundState_output roundState = ctl.getRoundState();
+	EXPECT_EQ(roundState.schedule, 0x7Fu);
+	EXPECT_EQ(roundState.drawHour, 9u);
 	EXPECT_EQ(ctl.getQHeartHoldLimit().qheartHoldLimit, 4321u);
 
 	const PULSE::GetFees_output fees = ctl.getFees();
