@@ -242,6 +242,12 @@ namespace QPI
 			return true;
 		}
 
+		/// Set date/time to invalid value. Depending on the desired behavior of comparison, you may chose a value less or greater than all valid values.
+		inline void setInvalid(bool smallestValue = true)
+		{
+			value = (smallestValue) ? 0 : UINT64_MAX;
+		}
+
 		/**
 		* @brief Set date value without checking if it is valid.
 		* @param year	Year of the date (without offset). Should be in range 0 to 65335.
@@ -322,6 +328,8 @@ namespace QPI
 		/// Check if this instance contains a valid date and time.
 		bool isValid() const
 		{
+			if (!value)
+				return false;
 			return isValid(getYear(), getMonth(), getDay(), getHour(), getMinute(), getSecond(), getMillisec(), getMicrosecDuringMillisec());
 		}
 
@@ -390,6 +398,18 @@ namespace QPI
 		bool operator>(const DateAndTime& other) const
 		{
 			return value > other.value;
+		}
+
+		/// Checks if this date is earlier than the `other` date or the same.
+		bool operator<=(const DateAndTime& other) const
+		{
+			return value <= other.value;
+		}
+
+		/// Checks if this date is later than the `other` date or the same.
+		bool operator>=(const DateAndTime& other) const
+		{
+			return value >= other.value;
 		}
 
 		/// Checks if this date is identical to the `other` date.
@@ -2479,7 +2499,7 @@ namespace QPI
 		*
 		* - ORACLE_QUERY_STATUS_UNKNOWN: Query not found / not valid.
 		* - ORACLE_QUERY_STATUS_PENDING: Query is being processed.
-		* - ORACLE_QUERY_STATUS_COMMITTED: The quorum has commited to a oracle reply, but it has not been revealed yet.
+		* - ORACLE_QUERY_STATUS_COMMITTED: The quorum has committed to an oracle reply, but it has not been revealed yet.
 		* - ORACLE_QUERY_STATUS_SUCCESS: The oracle reply has been confirmed and is available.
 		* - ORACLE_QUERY_STATUS_UNRESOLVABLE: No valid oracle reply is available, because computors disagreed about the value.
 		* - ORACLE_QUERY_STATUS_TIMEOUT: No valid oracle reply is available and timeout has hit.
@@ -2512,9 +2532,9 @@ namespace QPI
 	template <typename OracleInterface>
 	struct OracleNotificationInput
 	{
-		sint64 queryId;			///< ID of the oracle query that led to this notification.
-		uint32 subscriptionId;	///< ID of the oracle subscription or 0 in case of a pure oracle query.
-		uint8 status;			///< Oracle query status as defined in `network_messages/common_def.h`
+		sint64 queryId;         ///< ID of the oracle query that led to this notification.
+		sint32 subscriptionId;  ///< ID of the oracle subscription or -1 in case of a one-time oracle query.
+		uint8 status;           ///< Oracle query status as defined in `network_messages/common_def.h`
 		uint8 __reserved0;
 		uint16 __reserved1;
 		typename OracleInterface::OracleReply reply;	///< Oracle reply if status == ORACLE_QUERY_STATUS_SUCCESS
@@ -2653,7 +2673,7 @@ namespace QPI
 			const typename OracleInterface::OracleQuery& query,
 			void (*notificationProcPtr)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
 			unsigned int notificationProcId,
-			uint32 notificationIntervalInMilliseconds = 60000,
+			uint32 notificationPeriodInMilliseconds = 60000,
 			bool notifyWithPreviousReply = true
 		) const;
 
@@ -3063,22 +3083,24 @@ namespace QPI
 
 	/**
 	* @brief Initiate oracle query that will lead to notification later.
+	* @param OracleInterface Oracle interface struct of interface to query, e.g., OI::Price
 	* @param query Details about which oracle to query for which information, as defined by a specific oracle interface.
 	* @param userProcNotification User procedure that shall be executed when the oracle reply is available or an error occurs.
 	* @param timeoutMillisec Maximum number of milliseconds to wait for reply.
-	* @return Oracle query ID that can be used to get the status of the query, or 0 on error.
+	* @return Oracle query ID that can be used to get the status of the query, or -1 on error.
 	*
 	* This will automatically burn the oracle query fee as defined by the oracle interface (burning without
 	* adding to the contract's execution fee reserve). It will fail if the contract doesn't have enough QU.
 	*
 	* The notification callback will be executed when the reply is available or on error.
-	* The callback must be a user procedure of the contract calling qpi.queryOracle() with the procedure input type
+	* The callback must be a user procedure of the contract calling QUERY_ORACLE() with the procedure input type
 	* OracleNotificationInput<OracleInterface> and NoData as output. The procedure must be registered with
 	* REGISTER_USER_PROCEDURE_NOTIFICATION() in REGISTER_USER_FUNCTIONS_AND_PROCEDURES().
-	* Success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
+	*
+	* In the notification callback, success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
 	* If an error happened before the query has been created and sent, input.status is ORACLE_QUERY_STATUS_UNKNOWN
-	* and input.queryID is -1 (invalid).
-	* Other errors that may happen with valid input.queryID are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
+	* and input.queryId is -1 (invalid).
+	* Other errors that may happen with valid input.queryId are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
 	* input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE.
 	*/
 	#define QUERY_ORACLE(OracleInterface, query, userProcNotification, timeoutMillisec) qpi.__qpiQueryOracle<OracleInterface>(query, userProcNotification, __id_##userProcNotification, timeoutMillisec)
@@ -3087,33 +3109,38 @@ namespace QPI
 	* @brief Subscribe for regularly querying an oracle.
 	* @param query The regular query, which must have a member `DateAndTime timestamp`.
 	* @param notificationCallback User procedure that shall be executed when the oracle reply is available or an error occurs.
-	* @param notificationIntervalInMilliseconds Number of milliseconds between consecutive queries/replies.
-	*			This is also used as a timeout. Currently, only multiples of 60000 are supported and other
-	*			values are rejected with an error.
+	* @param notificationPeriodInMilliseconds Number of milliseconds between consecutive queries/replies that the contract
+	*           is notified about. Currently, only multiples of 60000 are supported and other values are rejected with an error.
 	* @param notifyWithPreviousReply Whether to immediately notify this contract with the most up-to-date value if any is available.
-	* @return Oracle subscription ID that can be used to get the status of the subscription, or -1 on error.
+	* @return Oracle subscription ID or -1 on error.
 	*
-	* Subscriptions automatically expire at the end of each epoch. So, a common pattern is to call qpi.subscribeOracle()
+	* Subscriptions automatically expire at the end of each epoch. So, a common pattern is to call SUBSCRIBE_ORACLE
 	* in BEGIN_EPOCH.
 	*
-	* Subscriptions facilitate shareing common oracle queries among multiple contracts. This saves network ressources and allows
+	* Subscriptions facilitate sharing common oracle queries among multiple contracts. This saves network resources and allows
 	* to provide a fixed-price subscription for the whole epoch, which is usually much cheaper than the equivalent series of
-	* individual qpi.queryOracle() calls.
+	* individual QUERY_ORACLE() calls.
 	*
-	* The qpi.subscribeOracle() call will automatically burn the oracle subscription fee as defined by the oracle interface
+	* The SUBSCRIBE_ORACLE call will automatically burn the oracle subscription fee as defined by the oracle interface
 	* (burning without adding to the contract's execution fee reserve). It will fail if the contract doesn't have enough QU.
 	*
 	* The notification callback will be executed when the reply is available or on error.
-	* The callback must be a user procedure of the contract calling qpi.subscribeOracle() with the procedure input type
+	* The callback must be a user procedure of the contract calling SUBSCRIBE_ORACLE with the procedure input type
 	* OracleNotificationInput<OracleInterface> and NoData as output. The procedure must be registered with
 	* REGISTER_USER_PROCEDURE_NOTIFICATION() in REGISTER_USER_FUNCTIONS_AND_PROCEDURES().
-	* Success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
+	*
+	* In the notification callback, success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
 	* If an error happened before the query has been created and sent, input.status is ORACLE_QUERY_STATUS_UNKNOWN
-	* and input.queryID is -1 (invalid).
-	* Other errors that may happen with valid input.queryID are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
+	* and input.queryId is -1 (invalid).
+	* Other errors that may happen with valid input.queryId are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
 	* input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE.
+	* The timeout of subscription queries is always 60000 milliseconds.
+	*
+	* A contract may subscribe to the same oracle interface with multiple different queries.
+	* However, it cannot subscribe with the same query multiple times.
+	* In order to change the notification period of an existing query, it needs to be unsubscribed first and subscribed again afterwards.
 	*/
-	#define SUBSCRIBE_ORACLE(OracleInterface, query, userProcNotification, notificationIntervalInMilliseconds, notifyWithPreviousReply) qpi.__qpiSubscribeOracle<OracleInterface>(query, userProcNotification, __id_##userProcNotification, notificationIntervalInMilliseconds, notifyWithPreviousReply)
+	#define SUBSCRIBE_ORACLE(OracleInterface, query, userProcNotification, notificationPeriodInMilliseconds, notifyWithPreviousReply) qpi.__qpiSubscribeOracle<OracleInterface>(query, userProcNotification, __id_##userProcNotification, notificationPeriodInMilliseconds, notifyWithPreviousReply)
 
 	#define SELF id(CONTRACT_INDEX, 0, 0, 0)
 

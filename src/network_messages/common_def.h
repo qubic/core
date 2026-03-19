@@ -56,7 +56,7 @@ constexpr uint8_t ORACLE_QUERY_TYPE_USER_QUERY = 2;
 
 constexpr uint8_t ORACLE_QUERY_STATUS_UNKNOWN = 0;     ///< Query not found / valid.
 constexpr uint8_t ORACLE_QUERY_STATUS_PENDING = 1;     ///< Query is being processed.
-constexpr uint8_t ORACLE_QUERY_STATUS_COMMITTED = 2;   ///< The quorum has commited to a oracle reply, but it has not been revealed yet.
+constexpr uint8_t ORACLE_QUERY_STATUS_COMMITTED = 2;   ///< The quorum has committed to an oracle reply, but it has not been revealed yet.
 constexpr uint8_t ORACLE_QUERY_STATUS_SUCCESS = 3;     ///< The oracle reply has been confirmed and is available.
 constexpr uint8_t ORACLE_QUERY_STATUS_UNRESOLVABLE = 5;///< No valid oracle reply is available, because computors disagreed about the value.
 constexpr uint8_t ORACLE_QUERY_STATUS_TIMEOUT = 4;     ///< No valid oracle reply is available and timeout has hit.

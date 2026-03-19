@@ -7,8 +7,8 @@ using namespace QPI;
 * the same input and output structs (OracleQuery and OracleReply).
 *
 * It also defines the oracle query and subscription fees through the member functions getQueryFee() and
-* getSubscriptionFee(). The subscription fee needs to be paid for each call to qpi.subscribeOracle(),
-* which is usually once per epoch. The query fee needs to be paid for each call to qpi.queryOracle()
+* getSubscriptionFee(). The subscription fee needs to be paid for each call to SUBSCRIBE_ORACLE(),
+* which is usually once per epoch. The query fee needs to be paid for each call to QUERY_ORACLE()
 * and as the amount of each user oracle query transaction.
 *
 * Each oracle interface is internally identified through the oracleInterfaceIndex.
@@ -41,7 +41,7 @@ struct Price
 	/// Oracle query data / input to the oracle machine
 	struct OracleQuery
 	{
-		/// Oracle = the source for getting the information, e.g. coingecko
+		/// Oracle = the source for getting the information, e.g. binance
 		id oracle;
 
 		/// The timestamp that the reply value should be of. This is required for supporting supporting subscription, because it is set by the scheduler.
@@ -52,8 +52,6 @@ struct Price
 
 		/// Second currency of pair to get the exchange rate for.
 		id currency2;
-
-		// TODO: we may need to add precision requirements regarding response value
 	};
 
 	/// Oracle reply data / output of the oracle machine
@@ -72,10 +70,33 @@ struct Price
 		return 10;
 	}
 
-	/// Return subscription fee, which may depend on query and interval.
-	static sint64 getSubscriptionFee(const OracleQuery& query, uint16 notifyIntervalInMinutes)
+	/// Return subscription fee, which may depend on query and period.
+	static sint64 getSubscriptionFee(const OracleQuery& query, uint32 notifyPeriodInMilliseconds)
 	{
-		return 1000;
+		// subscription period   |      fee
+		// ----------------------+---------
+		// 1 minute              | 10000 QU
+		// 2 to 3 minutes        |  6500 QU
+		// 4 to 7 minutes        |  4225 QU
+		// 8 to 15 minutes       |  2746 QU
+		// 16 to 31 minutes      |  1784 QU
+		// 32 to 63 minutes      |  1159 QU
+		// 64 to 127 minutes     |   753 QU
+		// 128 to 255 minutes    |   489 QU
+		// 256 to 512 minutes    |   317 QU
+		//
+		// Recommendations:
+		// - Select a power of two (1, 2, 4, 8, 16, ...) as notifyPeriodInMinutes to pay less per query.
+		// - With notifyPeriodInMinutes >= 317, it is always cheaper to use individual queries (10 QU per query)
+		//   instead of subscriptions.
+		uint16 period = notifyPeriodInMilliseconds / 60000;
+		sint64 fee = 10000;
+		while (period > 1)
+		{
+			fee = fee * 65 / 100;
+			period /= 2;
+		}
+		return fee;
 	}
 
 	//-------------------------------------------------------------------------
@@ -123,13 +144,6 @@ struct Price
 	{
 		using namespace Ch;
 		return id(g, a, t, e, 0);
-	}
-
-	/// Get oracle ID of coingecko oracle
-	static id getCoingeckoOracleId()
-	{
-		using namespace Ch;
-		return id(c, o, i, n, g, e, c, k, o);
 	}
 
 	/// Get oracle ID of combined binance + mexc oracle (mean of prices of both sources)

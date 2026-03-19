@@ -2,32 +2,9 @@
 #include "gtest/gtest.h"
 
 #include <type_traits>
-
-// workaround for name clash with stdlib
-#define system qubicSystemStruct
-
-#include "contract_core/contract_def.h"
-#include "contract_core/contract_exec.h"
-#include "contract_core/qpi_spectrum_impl.h"
-
-#include "../src/contract_core/qpi_ticking_impl.h"
-
 #include <random>
 
-::std::ostream& operator<<(::std::ostream& os, const DateAndTime& dt)
-{
-    std::ios_base::fmtflags f(os.flags());
-    os << std::setfill('0') << dt.getYear() << "-"
-        << std::setw(2) << (int)dt.getMonth() << "-"
-        << std::setw(2) << (int)dt.getDay() << " "
-        << std::setw(2) << (int)dt.getHour() << ":"
-        << std::setw(2) << (int)dt.getMinute() << ":"
-        << std::setw(2) << (int)dt.getSecond() << "."
-        << std::setw(3) << dt.getMillisec() << "'"
-        << std::setw(3) << dt.getMicrosecDuringMillisec();
-    os.flags(f);
-    return os;
-}
+#include "test_util.h"
 
 TEST(DateAndTimeTest, IsLeapYear)
 {
