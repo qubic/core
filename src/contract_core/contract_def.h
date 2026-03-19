@@ -254,8 +254,6 @@
 #define CONTRACT_STATE2_TYPE PULSE2
 #include "contracts/Pulse.h"
 
-#ifndef NO_VOTTUN
-
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
@@ -266,7 +264,6 @@
 #define CONTRACT_STATE2_TYPE VOTTUNBRIDGE2
 #include "contracts/VottunBridge.h"
 
-#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -388,9 +385,7 @@ constexpr struct ContractDescription
 	{"QTF", 199, 10000, sizeof(QTF::StateData)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
     {"QDUEL", 199, 10000, sizeof(QDUEL::StateData)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
 	{"PULSE", 204, 10000, sizeof(PULSE::StateData)}, // proposal in epoch 202, IPO in 203, construction and first use in 204
-#ifndef NO_VOTTUN
     {"VOTTUN", 206, 10000, sizeof(VOTTUNBRIDGE::StateData)}, // proposal in epoch 204, IPO in 205, construction and first use in 206
-#endif
       {"QUSINO", 207, 10000, sizeof(QUSINO::StateData)}, // proposal in epoch 205, IPO in 206, construction and first use in 207
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -512,9 +507,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTF);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDUEL);
 	REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(PULSE);
-#ifndef NO_VOTTUN
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(VOTTUNBRIDGE);
-#endif
       REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUSINO);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
