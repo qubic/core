@@ -256,6 +256,7 @@ public:
         sint64 transferRightsFee;
         uint32 lastClaimedTime;
     };
+protected:
     /**************************************/
     /************UTIL FUNCTIONS************/
     /**************************************/
