@@ -1,7 +1,6 @@
 #define NO_UEFI
 
 #include "contract_testing.h"
-
 #include <vector>
 
 // Procedure/function indices (must match REGISTER_USER_FUNCTIONS_AND_PROCEDURES in `src/contracts/Pulse.h`).
@@ -69,16 +68,47 @@ namespace
 			EXPECT_LE(v, PULSE_MAX_DIGIT);
 		}
 	}
+
+	uint32 countAutoParticipants(const PULSE::GetAutoStats_output& stats)
+	{
+		uint32 count = 0;
+		for (uint64 i = 0; i < stats.participants.capacity(); ++i)
+		{
+			if (stats.participants.get(i).player != id::zero())
+			{
+				++count;
+			}
+		}
+
+		return count;
+	}
+
+	uint64 sumAutoDeposits(const PULSE::GetAutoStats_output& stats)
+	{
+		uint64 totalDeposits = 0;
+		for (uint64 i = 0; i < stats.participants.capacity(); ++i)
+		{
+			const PULSE::AutoParticipant& participant = stats.participants.get(i);
+			if (participant.deposit > 0)
+			{
+				totalDeposits += static_cast<uint64>(participant.deposit);
+			}
+		}
+
+		return totalDeposits;
+	}
 } // namespace
 
 // Test helper class exposing internal state
 class PULSEChecker : public PULSE, public PULSE::StateData
 {
 public:
-	const QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>& asState() const {
+	const QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>& asState() const
+	{
 		return *reinterpret_cast<const QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>*>(static_cast<const StateData*>(this));
 	}
-	QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>& asMutState() {
+	QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>& asMutState()
+	{
 		return *reinterpret_cast<QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>*>(static_cast<StateData*>(this));
 	}
 
@@ -1596,7 +1626,8 @@ TEST(ContractPulse_Public, SetAutoLimitsGuardsAccessAndValidates)
 {
 	ContractTestingPulse ctl;
 	EXPECT_EQ(ctl.setAutoLimits(id::randomValue(), 10).returnCode, static_cast<uint8>(PULSE::EReturnCode::ACCESS_DENIED));
-	EXPECT_EQ(ctl.setAutoLimits(ctl.state()->getQHeartIssuer(), PULSE_MAX_NUMBER_OF_PLAYERS + 1).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setAutoLimits(ctl.state()->getQHeartIssuer(), PULSE_MAX_NUMBER_OF_PLAYERS + 1).returnCode,
+	          static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	EXPECT_EQ(static_cast<uint32>(ctl.getAutoStats().maxAutoTicketsPerUser), static_cast<uint32>(PULSE_MAX_NUMBER_OF_PLAYERS));
 	EXPECT_EQ(ctl.setAutoLimits(ctl.state()->getQHeartIssuer(), 5).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 
@@ -1617,8 +1648,8 @@ TEST(ContractPulse_Public, SetAutoLimitsAllowsDisabling)
 	EXPECT_EQ(static_cast<uint32>(stats.maxAutoTicketsPerUser), 0u);
 }
 
-// Report auto participation counts through the public stats API.
-TEST(ContractPulse_Public, GetAutoStatsReportsParticipantCount)
+// Report auto participation roster and shared limits through the stats API.
+TEST(ContractPulse_Public, GetAutoStatsReportsParticipantRosterAndSharedState)
 {
 	ContractTestingPulse ctl;
 	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
@@ -1629,12 +1660,19 @@ TEST(ContractPulse_Public, GetAutoStatsReportsParticipantCount)
 	ctl.transferQHeart(issuance, userA, ticketPrice);
 	ctl.transferQHeart(issuance, userB, ticketPrice);
 
+	EXPECT_EQ(ctl.setAutoLimits(ctl.state()->getQHeartIssuer(), 4).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	EXPECT_EQ(ctl.depositAutoParticipation(userA, ticketPrice, 1, false).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	EXPECT_EQ(ctl.depositAutoParticipation(userB, ticketPrice, 1, false).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	ctl.state()->setTicketCounter(7);
+	ctl.state()->forceSelling(true);
 
 	const PULSE::GetAutoStats_output stats = ctl.getAutoStats();
 	EXPECT_EQ(stats.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(static_cast<uint32>(stats.autoParticipantsCounter), 2u);
+	EXPECT_EQ(countAutoParticipants(stats), 2u);
+	EXPECT_EQ(sumAutoDeposits(stats), ticketPrice * 2);
+	EXPECT_EQ(static_cast<uint32>(stats.maxAutoParticipants), static_cast<uint32>(PULSE_MAX_NUMBER_OF_AUTO_PARTICIPANTS));
+	EXPECT_EQ(static_cast<uint32>(stats.maxAutoTicketsPerUser), 4u);
+	EXPECT_EQ(static_cast<uint32>(stats.roundSlotsLeft), static_cast<uint32>(PULSE_MAX_NUMBER_OF_PLAYERS - 7));
 }
 
 // Ensure balance getter reflects actual QHeart wallet holdings.
