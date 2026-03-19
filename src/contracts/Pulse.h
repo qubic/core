@@ -488,6 +488,7 @@ public:
 
 	struct GetPlayerBalance_input
 	{
+		id player;
 	};
 	struct GetPlayerBalance_output
 	{
@@ -942,7 +943,7 @@ public:
 	PUBLIC_FUNCTION(GetPlayerBalance)
 	{
 		output.balance =
-		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, input.player, input.player, SELF_INDEX, SELF_INDEX);
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
