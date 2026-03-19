@@ -486,6 +486,15 @@ public:
 		uint64 ticketPrice;
 	};
 
+	struct GetPlayerBalance_input
+	{
+	};
+	struct GetPlayerBalance_output
+	{
+		uint64 balance;
+		uint8 returnCode;
+	};
+
 	struct GetFees_input
 	{
 	};
@@ -761,6 +770,7 @@ public:
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_FUNCTION(GetTicketPrice, 1);
+		REGISTER_USER_FUNCTION(GetPlayerBalance, 2);
 		REGISTER_USER_FUNCTION(GetFees, 4);
 		REGISTER_USER_FUNCTION(GetQHeartHoldLimit, 5);
 		REGISTER_USER_FUNCTION(GetQHeartWallet, 6);
@@ -928,6 +938,14 @@ public:
 
 	/** Returns the current ticket price in QHeart units. */
 	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.get().ticketPrice; }
+
+	PUBLIC_FUNCTION(GetPlayerBalance)
+	{
+		output.balance =
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
 	/** Returns the QHeart balance cap retained by the contract. */
 	PUBLIC_FUNCTION(GetQHeartHoldLimit) { output.qheartHoldLimit = state.get().qheartHoldLimit; }
 	/** Returns the designated QHeart issuer wallet. */
