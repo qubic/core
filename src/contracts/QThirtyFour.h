@@ -1100,6 +1100,7 @@ struct QTF : ContractBase
 			return;
 		}
 
+		// is initialized as 0 already
 		while (locals.i < QTF_MAX_BATCH_TICKETS)
 		{
 			locals.offset = smul(locals.i, QTF_RANDOM_VALUES_COUNT);
