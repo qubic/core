@@ -479,6 +479,22 @@ public:
 		sint64 index;
 	};
 
+	struct TransferTokenToQx_input
+	{
+		sint64 numberOfShares;
+	};
+	struct TransferTokenToQx_output
+	{
+		uint8 returnCode;
+	};
+	struct TransferTokenToQx_locals
+	{
+		Asset asset;
+		sint64 releaseResult;
+		QX::Fees_input feesInput;
+		QX::Fees_output feesOutput;
+	};
+
 	struct GetTicketPrice_input
 	{
 	};
@@ -797,6 +813,7 @@ public:
 		REGISTER_USER_PROCEDURE(WithdrawAutoParticipation, 9);
 		REGISTER_USER_PROCEDURE(SetAutoConfig, 10);
 		REGISTER_USER_PROCEDURE(SetAutoLimits, 11);
+		REGISTER_USER_PROCEDURE(TransferTokenToQx, 12);
 	}
 
 	INITIALIZE()
@@ -1488,6 +1505,47 @@ public:
 		CALL(AllocateRandomTickets, locals.allocateInput, locals.allocateOutput);
 
 		output.returnCode = locals.allocateOutput.returnCode;
+	}
+
+	/**
+	 * @brief Releases PULSE share management rights back to QX for the invocator.
+	 * @param input Number of PULSE shares to transfer under QX management.
+	 * @param output Number of shares transferred and a status code.
+	 * @note The current QX transfer fee is paid from the Pulse contract balance; any invocation reward is refunded.
+	 */
+	PUBLIC_PROCEDURE_WITH_LOCALS(TransferTokenToQx)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (input.numberOfShares <= 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		if (qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX,
+		                                SELF_INDEX) < input.numberOfShares)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TRANSFER_FROM_PULSE_FAILED);
+			return;
+		}
+
+		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
+
+		locals.asset.issuer = state.get().qheartIssuer;
+		locals.asset.assetName = PULSE_QHEART_ASSET_NAME;
+		locals.releaseResult = qpi.releaseShares(locals.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares, QX_CONTRACT_INDEX,
+		                                         QX_CONTRACT_INDEX, locals.feesOutput.transferFee);
+		if (locals.releaseResult < 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TRANSFER_FROM_PULSE_FAILED);
+			return;
+		}
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 private:
