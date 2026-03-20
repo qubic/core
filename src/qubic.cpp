@@ -1475,10 +1475,61 @@ static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, 
     }
 }
 
+// Hardcoded doge dispatcher public key (identity: XPILPIJYHRBTACMMIRSJLIZWCXDBHWVEOTZBQFBXWEUXDZGGDEKDQPIEQKQK)
+static const unsigned char dogeDispatcherPubkey[32] = {
+    0x25, 0x98, 0x6d, 0x38, 0xa6, 0x3d, 0xd6, 0x45,
+    0x0c, 0x07, 0x34, 0xd8, 0xaa, 0x47, 0x95, 0x27,
+    0xd7, 0x2c, 0x0f, 0x9b, 0x3a, 0x86, 0x0a, 0xa8,
+    0x9e, 0x9f, 0xb1, 0xf3, 0xfd, 0x3d, 0x1f, 0x95
+};
+
+// Process a doge custom mining task broadcast (type 68).
+// Verifies the signature against the hardcoded doge dispatcher public key and relays if valid.
+static void processBroadcastCustomMiningTask(RequestResponseHeader* header)
+{
+    if (!header->isDejavuZero())
+        return;
+    const unsigned int messageSize = header->size() - sizeof(RequestResponseHeader);
+    if (messageSize <= SIGNATURE_SIZE)
+        return;
+    const unsigned char* payload = (const unsigned char*)header->getPayload<void>();
+    m256i digest;
+    KangarooTwelve(payload, messageSize - SIGNATURE_SIZE, &digest, sizeof(digest));
+    if (verify(dogeDispatcherPubkey, digest.m256i_u8, payload + (messageSize - SIGNATURE_SIZE)))
+    {
+        enqueueResponse(NULL, header);
+    }
+}
+
+// Process a doge custom mining solution broadcast (type 69).
+// Verifies the signature against the sender's public key (first 32 bytes of payload)
+// and relays if the sender is a computor or has enough balance.
+static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
+{
+    if (!header->isDejavuZero())
+        return;
+    const unsigned int messageSize = header->size() - sizeof(RequestResponseHeader);
+    if (messageSize <= SIGNATURE_SIZE)
+        return;
+    const unsigned char* payload = (const unsigned char*)header->getPayload<void>();
+    const m256i* sourcePublicKey = (const m256i*)payload;
+
+    m256i digest;
+    KangarooTwelve(payload, messageSize - SIGNATURE_SIZE, &digest, sizeof(digest));
+    if (verify(sourcePublicKey->m256i_u8, digest.m256i_u8, payload + (messageSize - SIGNATURE_SIZE)))
+    {
+        if (computorIndex(*sourcePublicKey) >= 0
+            || (::spectrumIndex(*sourcePublicKey) >= 0 && energy(::spectrumIndex(*sourcePublicKey)) >= MESSAGE_DISSEMINATION_THRESHOLD))
+        {
+            enqueueResponse(NULL, header);
+        }
+    }
+}
+
 // Process custom mining data requests.
 // Currently supports:
 // - Requesting a range of tasks (using Unix timestamps as unique indexes; each task has only one unique index).
-// - Requesting all solutions corresponding to a specific task index. 
+// - Requesting all solutions corresponding to a specific task index.
 //   The total size of the response will not exceed CUSTOM_MINING_RESPOND_MESSAGE_MAX_SIZE.
 // For the solution respond, only respond solution that has not been verified yet
 static void processCustomMiningDataRequest(Peer* peer, const unsigned long long processorNumber, RequestResponseHeader* header)
@@ -2281,6 +2332,18 @@ static void requestProcessor(void* ProcedureArgument)
                 case RequestAssets::type():
                 {
                     processRequestAssets(peer, header);
+                }
+                break;
+
+                case BROADCAST_CUSTOM_MINING_TASK:
+                {
+                    processBroadcastCustomMiningTask(header);
+                }
+                break;
+
+                case BROADCAST_CUSTOM_MINING_SOLUTION:
+                {
+                    processBroadcastCustomMiningSolution(header);
                 }
                 break;
 
@@ -3373,7 +3436,7 @@ static void processTick(unsigned long long processorNumber)
         PROFILE_SCOPE_END();
     }
 
-    // Generate subscription queries (may create queries that immediately timout if the network was stuck)
+    // Generate subscription queries (may create queries that immediately timeout if the network was stuck)
     oracleEngine.generateSubscriptionQueries();
 
     // Check for oracle query timeouts (may schedule notification)
@@ -4334,6 +4397,8 @@ static bool saveAllNodeStates()
         logToConsole(L"Failed to save universe");
         return false;
     }
+    if (!saveSnapshotUniverseIndex(L"snapshotUniverseIndex", directory))
+        return false;
 
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';
@@ -4503,14 +4568,18 @@ static bool loadAllNodeStates()
         return false;
     }
 
+    // When loading from a snapshot, the universe index lists must not be rebuilt, because this may change the
+    // order of asset iteration and lead to misalignment. Instead, the original index must be saved/loaded.
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 4] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 3] = L'0';
     UNIVERSE_FILE_NAME[sizeof(UNIVERSE_FILE_NAME) / sizeof(UNIVERSE_FILE_NAME[0]) - 2] = L'0';
-    if (!loadUniverse(UNIVERSE_FILE_NAME, directory))
+    if (!loadUniverse(UNIVERSE_FILE_NAME, directory, /*rebuildIndexLists=*/false))
     {
         logToConsole(L"Failed to load universe");
         return false;
     }
+    if (!loadSnapshotUniverseIndex(L"snapshotUniverseIndex", directory))
+        return false;
 
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 4] = L'0';
     CONTRACT_FILE_NAME[sizeof(CONTRACT_FILE_NAME) / sizeof(CONTRACT_FILE_NAME[0]) - 3] = L'0';

@@ -41,6 +41,7 @@
     <ClCompile Include="revenue.cpp" />
     <ClCompile Include="time.cpp" />
     <ClCompile Include="contract_gqmprop.cpp" />
+    <ClCompile Include="contract_vottunbridge.cpp" />
     <ClCompile Include="qpi_date_time.cpp" />
     <ClCompile Include="uint128.cpp" />
     <ClCompile Include="fourq.cpp" />

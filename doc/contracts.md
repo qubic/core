@@ -478,6 +478,12 @@ QX never releases shares passively (following call of `qpi.acquireShares()` by a
 The callbacks `PRE_RELEASE_SHARES()` and `PRE_ACQUIRE_SHARES()` may also check that the `qpi.originator()` initiating the transfer is the owner/possessor.
 
 
+## Querying off-chain data from Oracles
+
+Oracles enable Smart Contracts to actively query off-chain data sources called Oracles.
+Read [Querying Oracles from Contracts](contracts_oracles.md) for more details.
+
+
 ## Other QPI features
 
 ### Container types

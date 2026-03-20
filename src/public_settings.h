@@ -30,8 +30,8 @@
 
 // The tick duration used to calculate the size of memory buffers.
 // This determines the memory footprint of the application.
-#define TICK_DURATION_FOR_ALLOCATION_MS 750
-#define TRANSACTION_SPARSENESS 1
+#define TICK_DURATION_FOR_ALLOCATION_MS 350
+#define TRANSACTION_SPARSENESS 3
 
 // Number of ticks that are stored in the pending txs pool. This also defines how many ticks in advance a tx can be registered.
 #define PENDING_TXS_POOL_NUM_TICKS (1000 * 60 * 10ULL / TICK_DURATION_FOR_ALLOCATION_MS) // 10 minutes
@@ -66,12 +66,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 282
+#define VERSION_B 283
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 204
-#define TICK 45693000
+#define EPOCH 205
+#define TICK 46310000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -103,7 +103,7 @@ static constexpr unsigned long long ADDITION_NUMBER_OF_TICKS = 1000;            
 static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
 static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 300;
 static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = ADDITION_NUMBER_OF_INPUT_NEURONS + ADDITION_NUMBER_OF_OUTPUT_NEURONS + ADDITION_NUMBER_OF_MUTATIONS; // P
-static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 74500;
+static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 74800;
 
 // Multipler of score
 static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;
