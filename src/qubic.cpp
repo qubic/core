@@ -73,6 +73,7 @@
 
 #include "files/files.h"
 #include "mining/mining.h"
+#include "mining/custom_qubic_mining_storage.h"
 
 #include "oracle_core/oracle_engine.h"
 #include "oracle_core/net_msg_impl.h"
@@ -219,6 +220,8 @@ static constexpr unsigned int gScoreMultiplier[score_engine::AlgoType::MaxAlgoCo
 // Custom mining related variables and constants
 static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gCustomMiningSharesCounter;
+
+static CustomQubicMiningStorage customQubicMiningStorage;
 
 // variables and declare for persisting state
 static volatile int requestPersistingNodeState = 0;
@@ -1490,7 +1493,7 @@ static void processBroadcastCustomMiningTask(RequestResponseHeader* header)
     if (!header->isDejavuZero())
         return;
     const unsigned int messageSize = header->size() - sizeof(RequestResponseHeader);
-    if (messageSize <= SIGNATURE_SIZE)
+    if (messageSize < sizeof(CustomQubicMiningTask) + SIGNATURE_SIZE)
         return;
     const unsigned char* payload = (const unsigned char*)header->getPayload<void>();
     m256i digest;
@@ -1498,6 +1501,7 @@ static void processBroadcastCustomMiningTask(RequestResponseHeader* header)
     if (verify(dogeDispatcherPubkey, digest.m256i_u8, payload + (messageSize - SIGNATURE_SIZE)))
     {
         enqueueResponse(NULL, header);
+        customQubicMiningStorage.addTask(reinterpret_cast<const CustomQubicMiningTask*>(payload), messageSize - SIGNATURE_SIZE);
     }
 }
 
@@ -6054,6 +6058,8 @@ static bool initialize()
         {
             return false;
         }
+
+        customQubicMiningStorage.init();
 
         if (!logger.initLogging())
         {
