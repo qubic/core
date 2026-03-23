@@ -110,6 +110,23 @@ public:
         invokeUserProcedure(QUTIL_CONTRACT_INDEX, 7, input, output, invocator, amount);
         return output;
     }
+
+    QUTIL::TransferShareToManyV1_output transferShareToManyV1(const id& invocator, const QUTIL::TransferShareToManyV1_input& input, sint64 fee) {
+        QUTIL::TransferShareToManyV1_output output;
+        memset(&output, 0, sizeof(output));
+        invokeUserProcedure(QUTIL_CONTRACT_INDEX, 9, input, output, invocator, fee);
+        return output;
+    }
+
+    // Transfer share management rights from QX to QUTIL so that TransferShareToManyV1 can operate on them
+    void transferShareManagementToQUtil(const id& owner, const Asset& asset, sint64 numberOfShares) {
+        QX::TransferShareManagementRights_input input;
+        input.asset = asset;
+        input.numberOfShares = numberOfShares;
+        input.newManagingContractIndex = QUTIL_CONTRACT_INDEX;
+        QX::TransferShareManagementRights_output output;
+        invokeUserProcedure(QX_CONTRACT_INDEX, 9, input, output, owner, 0);
+    }
 };
 
 // Helper function to generate random ID
@@ -1748,4 +1765,510 @@ TEST(QUtilTest, DistributeQuToShareholders)
     EXPECT_EQ(output.totalShares, 10000000);
     EXPECT_EQ(output.amountPerShare, amountPerShare);
     EXPECT_EQ(output.fees, 7 * QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER);
+}
+
+// ====================================================================
+// TransferShareToManyV1 tests
+// ====================================================================
+
+// Helper to create a zeroed TransferShareToManyV1_input
+static QUTIL::TransferShareToManyV1_input makeTSTM1Input(const id& issuer, uint64_t assetName)
+{
+    QUTIL::TransferShareToManyV1_input input;
+    memset(&input, 0, sizeof(input));
+    input.issuer = issuer;
+    input.assetName = assetName;
+    return input;
+}
+
+TEST(QUtilTest, TransferShareToManyV1_Success_SingleDest)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id sender = generateRandomId();
+    id dst0 = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(sender, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TESTA");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, sender, asset, 5000);
+    qutil.transferShareManagementToQUtil(sender, asset, 5000);
+
+    auto input = makeTSTM1Input(issuer, assetName);
+    input.dst0 = dst0;
+    input.amt0 = 1000;
+
+    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 senderBalanceBefore = getBalance(sender);
+    auto output = qutil.transferShareToManyV1(sender, input, fee);
+
+    EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
+    // Fee is burned, excess returned; exact fee = smt1InvocationFee
+    EXPECT_EQ(getBalance(sender), senderBalanceBefore - fee);
+    // dst0 should now possess 1000 shares
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst0, dst0, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 1000);
+    // sender should have 4000 remaining
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 4000);
+}
+
+TEST(QUtilTest, TransferShareToManyV1_Success_MultipleDests)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id sender = generateRandomId();
+    id dst0 = generateRandomId();
+    id dst1 = generateRandomId();
+    id dst2 = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(sender, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TESTB");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, sender, asset, 5000);
+    qutil.transferShareManagementToQUtil(sender, asset, 5000);
+
+    auto input = makeTSTM1Input(issuer, assetName);
+    input.dst0 = dst0;
+    input.amt0 = 1000;
+    input.dst1 = dst1;
+    input.amt1 = 2000;
+    input.dst2 = dst2;
+    input.amt2 = 500;
+
+    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    auto output = qutil.transferShareToManyV1(sender, input, fee);
+
+    EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst0, dst0, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 1000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst1, dst1, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 2000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst2, dst2, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 500);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 1500);
+}
+
+TEST(QUtilTest, TransferShareToManyV1_Success_ExcessFeeReturned)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id sender = generateRandomId();
+    id dst0 = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(sender, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TESTC");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, sender, asset, 5000);
+    qutil.transferShareManagementToQUtil(sender, asset, 5000);
+
+    auto input = makeTSTM1Input(issuer, assetName);
+    input.dst0 = dst0;
+    input.amt0 = 100;
+
+    sint64 excessFee = 1000; // Much more than smt1InvocationFee (10)
+    sint64 senderBalanceBefore = getBalance(sender);
+    auto output = qutil.transferShareToManyV1(sender, input, excessFee);
+
+    EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
+    // Only smt1InvocationFee is burned, rest returned
+    EXPECT_EQ(getBalance(sender), senderBalanceBefore - QUTIL_STM1_INVOCATION_FEE);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst0, dst0, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 100);
+}
+
+TEST(QUtilTest, TransferShareToManyV1_InsufficientFee)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id sender = generateRandomId();
+    id dst0 = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(sender, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TESTD");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, sender, asset, 5000);
+    qutil.transferShareManagementToQUtil(sender, asset, 5000);
+
+    auto input = makeTSTM1Input(issuer, assetName);
+    input.dst0 = dst0;
+    input.amt0 = 100;
+
+    sint64 fee = QUTIL_STM1_INVOCATION_FEE - 1; // 9, below 10
+    sint64 senderBalanceBefore = getBalance(sender);
+    auto output = qutil.transferShareToManyV1(sender, input, fee);
+
+    EXPECT_EQ(output.returnCode, QUTIL_TSTM1_INSUFFICIENT_FEE);
+    // Fee refunded
+    EXPECT_EQ(getBalance(sender), senderBalanceBefore);
+    // No shares transferred
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst0, dst0, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 5000);
+}
+
+TEST(QUtilTest, TransferShareToManyV1_InvalidAmount_Negative)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id sender = generateRandomId();
+    id dst0 = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(sender, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TESTE");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, sender, asset, 5000);
+    qutil.transferShareManagementToQUtil(sender, asset, 5000);
+
+    auto input = makeTSTM1Input(issuer, assetName);
+    input.dst0 = dst0;
+    input.amt0 = -1; // Negative amount
+
+    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 senderBalanceBefore = getBalance(sender);
+    auto output = qutil.transferShareToManyV1(sender, input, fee);
+
+    EXPECT_EQ(output.returnCode, QUTIL_TSTM1_INVALID_AMOUNT);
+    // Fee refunded
+    EXPECT_EQ(getBalance(sender), senderBalanceBefore);
+    // No shares transferred
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst0, dst0, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 5000);
+}
+
+TEST(QUtilTest, TransferShareToManyV1_InvalidAmount_NegativeLaterSlot)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id sender = generateRandomId();
+    id dst0 = generateRandomId();
+    id dst1 = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(sender, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TESTF");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, sender, asset, 5000);
+    qutil.transferShareManagementToQUtil(sender, asset, 5000);
+
+    auto input = makeTSTM1Input(issuer, assetName);
+    input.dst0 = dst0;
+    input.amt0 = 100;
+    input.dst1 = dst1;
+    input.amt1 = -5; // Negative in second slot
+
+    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    auto output = qutil.transferShareToManyV1(sender, input, fee);
+
+    EXPECT_EQ(output.returnCode, QUTIL_TSTM1_INVALID_AMOUNT);
+    // No shares transferred
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst0, dst0, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 5000);
+}
+
+TEST(QUtilTest, TransferShareToManyV1_InsufficientShares)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id sender = generateRandomId();
+    id dst0 = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(sender, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TESTG");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, sender, asset, 5000);
+    qutil.transferShareManagementToQUtil(sender, asset, 5000);
+
+    auto input = makeTSTM1Input(issuer, assetName);
+    input.dst0 = dst0;
+    input.amt0 = 5001; // More than possessed (5000)
+
+    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 senderBalanceBefore = getBalance(sender);
+    auto output = qutil.transferShareToManyV1(sender, input, fee);
+
+    EXPECT_EQ(output.returnCode, QUTIL_TSTM1_INSUFFICIENT_SHARES);
+    // Fee refunded
+    EXPECT_EQ(getBalance(sender), senderBalanceBefore);
+    // No shares transferred
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst0, dst0, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 5000);
+}
+
+TEST(QUtilTest, TransferShareToManyV1_InsufficientShares_SumExceeds)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id sender = generateRandomId();
+    id dst0 = generateRandomId();
+    id dst1 = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(sender, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TESTH");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, sender, asset, 5000);
+    qutil.transferShareManagementToQUtil(sender, asset, 5000);
+
+    // Each amount is within range, but the sum exceeds possessed shares
+    auto input = makeTSTM1Input(issuer, assetName);
+    input.dst0 = dst0;
+    input.amt0 = 3000;
+    input.dst1 = dst1;
+    input.amt1 = 2001; // 3000 + 2001 = 5001 > 5000
+
+    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 senderBalanceBefore = getBalance(sender);
+    auto output = qutil.transferShareToManyV1(sender, input, fee);
+
+    EXPECT_EQ(output.returnCode, QUTIL_TSTM1_INSUFFICIENT_SHARES);
+    EXPECT_EQ(getBalance(sender), senderBalanceBefore);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst0, dst0, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst1, dst1, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 5000);
+}
+
+TEST(QUtilTest, TransferShareToManyV1_ZeroAmounts_SkipsTransfer)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id sender = generateRandomId();
+    id dst0 = generateRandomId();
+    id dst1 = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(sender, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TESTI");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, sender, asset, 5000);
+    qutil.transferShareManagementToQUtil(sender, asset, 5000);
+
+    // dst0 has amount 0 (skipped), dst1 has amount 500
+    auto input = makeTSTM1Input(issuer, assetName);
+    input.dst0 = dst0;
+    input.amt0 = 0;
+    input.dst1 = dst1;
+    input.amt1 = 500;
+
+    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    auto output = qutil.transferShareToManyV1(sender, input, fee);
+
+    EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
+    // dst0 gets nothing (amt was 0)
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst0, dst0, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+    // dst1 gets 500
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst1, dst1, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 500);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 4500);
+}
+
+TEST(QUtilTest, TransferShareToManyV1_NullDest_SkipsTransfer)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id sender = generateRandomId();
+    id dst1 = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(sender, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TESTJ");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, sender, asset, 5000);
+    qutil.transferShareManagementToQUtil(sender, asset, 5000);
+
+    // dst0 is NULL_ID (skipped), dst1 has valid destination
+    auto input = makeTSTM1Input(issuer, assetName);
+    // input.dst0 is already zero (NULL_ID) from memset
+    input.amt0 = 100; // amount set but dest is null, should skip
+    input.dst1 = dst1;
+    input.amt1 = 200;
+
+    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    auto output = qutil.transferShareToManyV1(sender, input, fee);
+
+    EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst1, dst1, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 200);
+    // sender keeps 5000 - 200 = 4800 (the 100 for null dest was not transferred)
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 4800);
+}
+
+TEST(QUtilTest, TransferShareToManyV1_AllSlotsUsed)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id sender = generateRandomId();
+
+    increaseEnergy(issuer, 4000000000LL);
+    increaseEnergy(sender, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TESTK");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 1000000);
+    qutil.transferAsset(issuer, sender, asset, 24000); // 1000 per slot for 24 slots
+    qutil.transferShareManagementToQUtil(sender, asset, 24000);
+
+    // Fill all 24 destination slots
+    id dsts[24];
+    for (int i = 0; i < 24; i++)
+    {
+        dsts[i] = generateRandomId();
+    }
+
+    auto input = makeTSTM1Input(issuer, assetName);
+    input.dst0 = dsts[0]; input.amt0 = 1000;
+    input.dst1 = dsts[1]; input.amt1 = 1000;
+    input.dst2 = dsts[2]; input.amt2 = 1000;
+    input.dst3 = dsts[3]; input.amt3 = 1000;
+    input.dst4 = dsts[4]; input.amt4 = 1000;
+    input.dst5 = dsts[5]; input.amt5 = 1000;
+    input.dst6 = dsts[6]; input.amt6 = 1000;
+    input.dst7 = dsts[7]; input.amt7 = 1000;
+    input.dst8 = dsts[8]; input.amt8 = 1000;
+    input.dst9 = dsts[9]; input.amt9 = 1000;
+    input.dst10 = dsts[10]; input.amt10 = 1000;
+    input.dst11 = dsts[11]; input.amt11 = 1000;
+    input.dst12 = dsts[12]; input.amt12 = 1000;
+    input.dst13 = dsts[13]; input.amt13 = 1000;
+    input.dst14 = dsts[14]; input.amt14 = 1000;
+    input.dst15 = dsts[15]; input.amt15 = 1000;
+    input.dst16 = dsts[16]; input.amt16 = 1000;
+    input.dst17 = dsts[17]; input.amt17 = 1000;
+    input.dst18 = dsts[18]; input.amt18 = 1000;
+    input.dst19 = dsts[19]; input.amt19 = 1000;
+    input.dst20 = dsts[20]; input.amt20 = 1000;
+    input.dst21 = dsts[21]; input.amt21 = 1000;
+    input.dst22 = dsts[22]; input.amt22 = 1000;
+    input.dst23 = dsts[23]; input.amt23 = 1000;
+
+    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    auto output = qutil.transferShareToManyV1(sender, input, fee);
+
+    EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
+    for (int i = 0; i < 24; i++)
+    {
+        EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dsts[i], dsts[i], QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 1000);
+    }
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+}
+
+TEST(QUtilTest, TransferShareToManyV1_ExactShares_Success)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id sender = generateRandomId();
+    id dst0 = generateRandomId();
+    id dst1 = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(sender, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TESTL");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, sender, asset, 5000);
+    qutil.transferShareManagementToQUtil(sender, asset, 5000);
+
+    // Transfer exactly all possessed shares
+    auto input = makeTSTM1Input(issuer, assetName);
+    input.dst0 = dst0;
+    input.amt0 = 3000;
+    input.dst1 = dst1;
+    input.amt1 = 2000; // 3000 + 2000 = 5000 (exact)
+
+    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    auto output = qutil.transferShareToManyV1(sender, input, fee);
+
+    EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst0, dst0, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 3000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst1, dst1, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 2000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+}
+
+TEST(QUtilTest, TransferShareToManyV1_NoShares)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id sender = generateRandomId();
+    id dst0 = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(sender, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TESTM");
+    qutil.issueAsset(issuer, assetName, 100000);
+    // sender has no shares of this asset
+
+    auto input = makeTSTM1Input(issuer, assetName);
+    input.dst0 = dst0;
+    input.amt0 = 1;
+
+    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 senderBalanceBefore = getBalance(sender);
+    auto output = qutil.transferShareToManyV1(sender, input, fee);
+
+    EXPECT_EQ(output.returnCode, QUTIL_TSTM1_INSUFFICIENT_SHARES);
+    // Fee refunded
+    EXPECT_EQ(getBalance(sender), senderBalanceBefore);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst0, dst0, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+}
+
+TEST(QUtilTest, TransferShareToManyV1_AllZeroAmounts_Success)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id sender = generateRandomId();
+    id dst0 = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(sender, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TESTN");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, sender, asset, 5000);
+    qutil.transferShareManagementToQUtil(sender, asset, 5000);
+
+    // All amounts are zero - nothing to transfer but should succeed
+    auto input = makeTSTM1Input(issuer, assetName);
+    input.dst0 = dst0;
+    input.amt0 = 0;
+
+    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    auto output = qutil.transferShareToManyV1(sender, input, fee);
+
+    EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst0, dst0, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 5000);
 }
