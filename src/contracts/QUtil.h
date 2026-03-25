@@ -291,6 +291,7 @@ public:
         Asset asset;
         sint64 numberOfShares;
         uint32 newManagingContractIndex;
+        sint64 offeredTransferFee;
     };
     struct TransferShareManagementRights_output
     {
@@ -1154,41 +1155,110 @@ public:
     }
 
     /**
-    * Transfer asset management rights from QUTIL to another contract.
-    * Allows users whose shares are managed by QUTIL (e.g. after receiving shares
-    * via TransferShareToManyV1) to release them to another managing contract.
-    * @param asset: the asset (issuer + assetName)
-    * @param numberOfShares: number of shares to release
-    * @param newManagingContractIndex: destination contract index (e.g. QX)
-    * @return transferredNumberOfShares (0 on failure)
-    */
+     * Releases share management rights from QUTIL to another contract.
+     *
+     * This procedure is used when a user's shares are currently managed by QUTIL
+     * and the user wants to transfer those management rights to a different
+     * managing contract, such as QX.
+     *
+     * Typical flow:
+     * - Shares are first moved under QUTIL management.
+     * - QUTIL performs share operations while it manages them.
+     * - The user later calls this procedure to release management rights from
+     *   QUTIL to another contract.
+     *
+     * @param asset The target asset (issuer + assetName).
+     * @param numberOfShares The number of shares whose management rights will be released.
+     * @param newManagingContractIndex The destination managing contract index
+     *        (for example, QX).
+     * @return transferredNumberOfShares The number of shares successfully transferred.
+     *         Returns 0 if the operation fails.
+     */
     PUBLIC_PROCEDURE(TransferShareManagementRights)
     {
-        // no fee
-        if (qpi.invocationReward() > 0)
+        output.transferredNumberOfShares = 0;
+
+        // Basic validation
+        if (input.numberOfShares <= 0)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            return;
         }
 
-        if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer,
-            qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
+        // Reject invalid/self destination
+        if (input.newManagingContractIndex == 0 || input.newManagingContractIndex == SELF_INDEX)
         {
-            // not enough shares managed by QUTIL
-            output.transferredNumberOfShares = 0;
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            return;
         }
-        else
+
+        // Reject invalid fee
+        if (input.offeredTransferFee < 0)
         {
-            if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
-                input.newManagingContractIndex, input.newManagingContractIndex, 0) < 0)
+            if (qpi.invocationReward() > 0)
             {
-                // error
-                output.transferredNumberOfShares = 0;
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
-            else
+            return;
+        }
+
+        // Caller must fund at least the offered fee
+        if (qpi.invocationReward() < input.offeredTransferFee)
+        {
+            if (qpi.invocationReward() > 0)
             {
-                // success
-                output.transferredNumberOfShares = input.numberOfShares;
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
+            return;
+        }
+
+        // Make sure invocator really has these shares under QUTIL management
+        if (qpi.numberOfPossessedShares(
+                input.asset.assetName,
+                input.asset.issuer,
+                qpi.invocator(),
+                qpi.invocator(),
+                SELF_INDEX,
+                SELF_INDEX) < input.numberOfShares)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            return;
+        }
+
+        // Release management rights from QUTIL to destination contract
+        if (qpi.releaseShares(
+                input.asset,
+                qpi.invocator(),
+                qpi.invocator(),
+                input.numberOfShares,
+                input.newManagingContractIndex,
+                input.newManagingContractIndex,
+                input.offeredTransferFee) < 0)
+        {
+            // Failed: refund everything sent with this invocation
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            return;
+        }
+
+        // Success
+        output.transferredNumberOfShares = input.numberOfShares;
+
+        // Safe refund: anything above the offered fee is definitely not needed
+        if (qpi.invocationReward() > input.offeredTransferFee)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.offeredTransferFee);
         }
     }
 
