@@ -1513,20 +1513,33 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
     if (!header->isDejavuZero())
         return;
     const unsigned int messageSize = header->size() - sizeof(RequestResponseHeader);
-    if (messageSize <= SIGNATURE_SIZE)
+    if (messageSize < sizeof(CustomQubicMiningSolution) + SIGNATURE_SIZE)
         return;
-    const unsigned char* payload = (const unsigned char*)header->getPayload<void>();
-    const m256i* sourcePublicKey = (const m256i*)payload;
+    auto payload = reinterpret_cast<const unsigned char*>(header->getPayload<void>());
 
     m256i digest;
     KangarooTwelve(payload, messageSize - SIGNATURE_SIZE, &digest, sizeof(digest));
+
+    auto sol = reinterpret_cast<const CustomQubicMiningSolution*>(payload);
+    auto sourcePublicKey = reinterpret_cast<const m256i*>(sol->sourcePublicKey);
     if (verify(sourcePublicKey->m256i_u8, digest.m256i_u8, payload + (messageSize - SIGNATURE_SIZE)))
     {
-        if (computorIndex(*sourcePublicKey) >= 0
-            || (::spectrumIndex(*sourcePublicKey) >= 0 && energy(::spectrumIndex(*sourcePublicKey)) >= MESSAGE_DISSEMINATION_THRESHOLD))
-        {
-            enqueueResponse(NULL, header);
-        }
+        // Only relay and process if the sender is a computor or has enough balance to prevent spam.
+        if (computorIndex(*sourcePublicKey) < 0
+            && (::spectrumIndex(*sourcePublicKey) < 0 || energy(::spectrumIndex(*sourcePublicKey)) < MESSAGE_DISSEMINATION_THRESHOLD))
+            return;
+
+        // Check if the solution is added successfully (active task, no duplicate).
+        // If not, it won't be broadcasted to reduce unnecessary traffic and verification.
+        if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE) < 0)
+            return;
+        
+        // Broadcast the solution to peers.
+        enqueueResponse(NULL, header);
+        
+        // TODO: check if from own comp pool --> if yes, query oracle
+        // check only source pubkey or also comp id in extraNonce2?
+        // source pubkey should be enough, revenue points will always be credited to id in extraNonce2.
     }
 }
 
