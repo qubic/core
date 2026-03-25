@@ -286,6 +286,17 @@ public:
         Logger logger;
     };
 
+    struct TransferShareManagementRights_input
+    {
+        Asset asset;
+        sint64 numberOfShares;
+        uint32 newManagingContractIndex;
+    };
+    struct TransferShareManagementRights_output
+    {
+        sint64 transferredNumberOfShares;
+    };
+
     struct SendToManyBenchmark_input
     {
         sint64 dstCount;
@@ -1143,6 +1154,45 @@ public:
     }
 
     /**
+    * Transfer asset management rights from QUTIL to another contract.
+    * Allows users whose shares are managed by QUTIL (e.g. after receiving shares
+    * via TransferShareToManyV1) to release them to another managing contract.
+    * @param asset: the asset (issuer + assetName)
+    * @param numberOfShares: number of shares to release
+    * @param newManagingContractIndex: destination contract index (e.g. QX)
+    * @return transferredNumberOfShares (0 on failure)
+    */
+    PUBLIC_PROCEDURE(TransferShareManagementRights)
+    {
+        // no fee
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+
+        if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer,
+            qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
+        {
+            // not enough shares managed by QUTIL
+            output.transferredNumberOfShares = 0;
+        }
+        else
+        {
+            if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
+                input.newManagingContractIndex, input.newManagingContractIndex, 0) < 0)
+            {
+                // error
+                output.transferredNumberOfShares = 0;
+            }
+            else
+            {
+                // success
+                output.transferredNumberOfShares = input.numberOfShares;
+            }
+        }
+    }
+
+    /**
     * Send n transfers of 1 qu each from a single address to a specified number of addresses.
     * If there are not enough entities in the spectrum, a single entity might be chosen multiple times.
     * @param number of addresses that will be sent n times 1 qubic
@@ -1945,7 +1995,6 @@ public:
 
     IMPLEMENT_DEFAULT_SHAREHOLDER_PROPOSAL_VOTING(5, state.get().shareholderProposalFee)
 
-
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(GetSendToManyV1Fee, 1);
@@ -1966,6 +2015,7 @@ public:
         REGISTER_USER_PROCEDURE(DistributeQuToShareholders, 7);
         REGISTER_USER_PROCEDURE(BurnQubicForContract, 8);
         REGISTER_USER_PROCEDURE(TransferShareToManyV1, 9);
+        REGISTER_USER_PROCEDURE(TransferShareManagementRights, 10);
 
         REGISTER_USER_PROCEDURE(QueryPriceOracle, 100);
         REGISTER_USER_PROCEDURE(SubscribePriceOracle, 101);

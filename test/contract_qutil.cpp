@@ -127,6 +127,21 @@ public:
         QX::TransferShareManagementRights_output output;
         invokeUserProcedure(QX_CONTRACT_INDEX, 9, input, output, owner, 0);
     }
+
+    // Transfer share management rights from QUTIL to another contract
+    QUTIL::TransferShareManagementRights_output transferShareManagementRights(
+        const id& owner, const Asset& asset, sint64 numberOfShares, uint32 newManagingContractIndex, sint64 fee = 0)
+    {
+        QUTIL::TransferShareManagementRights_input input;
+        memset(&input, 0, sizeof(input));
+        input.asset = asset;
+        input.numberOfShares = numberOfShares;
+        input.newManagingContractIndex = newManagingContractIndex;
+        QUTIL::TransferShareManagementRights_output output;
+        memset(&output, 0, sizeof(output));
+        invokeUserProcedure(QUTIL_CONTRACT_INDEX, 10, input, output, owner, fee);
+        return output;
+    }
 };
 
 // Helper function to generate random ID
@@ -2271,4 +2286,250 @@ TEST(QUtilTest, TransferShareToManyV1_AllZeroAmounts_Success)
     EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst0, dst0, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 5000);
+}
+
+// ====================================================================
+// TransferShareManagementRights tests
+// ====================================================================
+
+TEST(QUtilTest, TransferShareManagementRights_Success_ReleaseToQX)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id user = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(user, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TMRA");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, user, asset, 5000);
+
+    // Shares are now managed by QX
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 5000);
+
+    // Transfer management to QUTIL
+    qutil.transferShareManagementToQUtil(user, asset, 5000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 5000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 0);
+
+    // Release management back to QX via QUTIL procedure
+    auto output = qutil.transferShareManagementRights(user, asset, 5000, QX_CONTRACT_INDEX);
+    EXPECT_EQ(output.transferredNumberOfShares, 5000);
+
+    // Shares should be back under QX management
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 5000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+}
+
+TEST(QUtilTest, TransferShareManagementRights_Success_PartialRelease)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id user = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(user, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TMRB");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, user, asset, 5000);
+    qutil.transferShareManagementToQUtil(user, asset, 5000);
+
+    // Release only 2000 of 5000 shares back to QX
+    auto output = qutil.transferShareManagementRights(user, asset, 2000, QX_CONTRACT_INDEX);
+    EXPECT_EQ(output.transferredNumberOfShares, 2000);
+
+    // 2000 under QX, 3000 still under QUTIL
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 2000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 3000);
+}
+
+TEST(QUtilTest, TransferShareManagementRights_Fail_InsufficientShares)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id user = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(user, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TMRC");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, user, asset, 5000);
+    qutil.transferShareManagementToQUtil(user, asset, 5000);
+
+    // Try to release more shares than managed by QUTIL
+    auto output = qutil.transferShareManagementRights(user, asset, 6000, QX_CONTRACT_INDEX);
+    EXPECT_EQ(output.transferredNumberOfShares, 0);
+
+    // Nothing changed
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 5000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 0);
+}
+
+TEST(QUtilTest, TransferShareManagementRights_Fail_NoSharesManagedByQUtil)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id user = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(user, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TMRD");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, user, asset, 5000);
+
+    // Shares are managed by QX, NOT QUTIL — do NOT call transferShareManagementToQUtil
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 5000);
+
+    // Try to release via QUTIL — should fail since QUTIL doesn't manage any shares
+    auto output = qutil.transferShareManagementRights(user, asset, 5000, QX_CONTRACT_INDEX);
+    EXPECT_EQ(output.transferredNumberOfShares, 0);
+
+    // Shares unchanged under QX management
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 5000);
+}
+
+TEST(QUtilTest, TransferShareManagementRights_FeeRefunded)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id user = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(user, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TMRE");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, user, asset, 5000);
+    qutil.transferShareManagementToQUtil(user, asset, 5000);
+
+    // Send extra QU — it should all be refunded (procedure charges no fee)
+    sint64 balanceBefore = getBalance(user);
+    auto output = qutil.transferShareManagementRights(user, asset, 5000, QX_CONTRACT_INDEX, 1000);
+    EXPECT_EQ(output.transferredNumberOfShares, 5000);
+
+    // All QU refunded — no fee charged
+    EXPECT_EQ(getBalance(user), balanceBefore);
+}
+
+TEST(QUtilTest, TransferShareManagementRights_EndToEnd_BatchTransferThenRelease)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id sender = generateRandomId();
+    id recipient1 = generateRandomId();
+    id recipient2 = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(sender, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TMRF");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, sender, asset, 10000);
+
+    // Step 1: Sender transfers management from QX to QUTIL
+    qutil.transferShareManagementToQUtil(sender, asset, 10000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 10000);
+
+    // Step 2: Sender batch-transfers shares via TransferShareToManyV1
+    auto tstmInput = makeTSTM1Input(issuer, assetName);
+    tstmInput.dst0 = recipient1;
+    tstmInput.amt0 = 3000;
+    tstmInput.dst1 = recipient2;
+    tstmInput.amt1 = 2000;
+    auto tstmOutput = qutil.transferShareToManyV1(sender, tstmInput, QUTIL_STM1_INVOCATION_FEE);
+    EXPECT_EQ(tstmOutput.returnCode, QUTIL_TSTM1_SUCCESS);
+
+    // Recipients' shares are managed by QUTIL
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, recipient1, recipient1, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 3000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, recipient2, recipient2, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 2000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 5000);
+
+    // Step 3: Each recipient releases management back to QX
+    auto r1out = qutil.transferShareManagementRights(recipient1, asset, 3000, QX_CONTRACT_INDEX);
+    EXPECT_EQ(r1out.transferredNumberOfShares, 3000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, recipient1, recipient1, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 3000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, recipient1, recipient1, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+
+    auto r2out = qutil.transferShareManagementRights(recipient2, asset, 2000, QX_CONTRACT_INDEX);
+    EXPECT_EQ(r2out.transferredNumberOfShares, 2000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, recipient2, recipient2, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 2000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, recipient2, recipient2, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+
+    // Sender releases remaining shares back to QX
+    auto sout = qutil.transferShareManagementRights(sender, asset, 5000, QX_CONTRACT_INDEX);
+    EXPECT_EQ(sout.transferredNumberOfShares, 5000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 5000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, sender, sender, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+}
+
+TEST(QUtilTest, TransferShareManagementRights_MultiplePartialReleases)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id user = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(user, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TMRG");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, user, asset, 9000);
+    qutil.transferShareManagementToQUtil(user, asset, 9000);
+
+    // Release in three batches
+    auto out1 = qutil.transferShareManagementRights(user, asset, 3000, QX_CONTRACT_INDEX);
+    EXPECT_EQ(out1.transferredNumberOfShares, 3000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 6000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 3000);
+
+    auto out2 = qutil.transferShareManagementRights(user, asset, 4000, QX_CONTRACT_INDEX);
+    EXPECT_EQ(out2.transferredNumberOfShares, 4000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 2000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 7000);
+
+    auto out3 = qutil.transferShareManagementRights(user, asset, 2000, QX_CONTRACT_INDEX);
+    EXPECT_EQ(out3.transferredNumberOfShares, 2000);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 0);
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 9000);
+}
+
+TEST(QUtilTest, TransferShareManagementRights_ZeroShares)
+{
+    ContractTestingQUtil qutil;
+
+    id issuer = generateRandomId();
+    id user = generateRandomId();
+
+    increaseEnergy(issuer, 2000000000);
+    increaseEnergy(user, 10000000);
+
+    unsigned long long assetName = assetNameFromString("TMRH");
+    Asset asset = { issuer, assetName };
+    qutil.issueAsset(issuer, assetName, 100000);
+    qutil.transferAsset(issuer, user, asset, 5000);
+    qutil.transferShareManagementToQUtil(user, asset, 5000);
+
+    // Release zero shares — should succeed (no-op) or fail depending on releaseShares behavior
+    auto output = qutil.transferShareManagementRights(user, asset, 0, QX_CONTRACT_INDEX);
+
+    // Regardless of return, shares should be unchanged
+    EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 5000);
 }
