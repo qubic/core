@@ -1,6 +1,6 @@
 #define SINGLE_COMPILE_UNIT
 
-// #define NO_VOTTUN
+// #define NO_QSURV
 
 //#define INCLUDE_CONTRACT_TEST_EXAMPLES
 
