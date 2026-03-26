@@ -11,10 +11,11 @@
 // A struct for storing an active doge mining task on the node.
 struct StoredDogeMiningTask
 {
-    uint8_t dispatcherDifficulty[4]; // dispatcher difficulty, usually lower than pool and network difficulty, same compact format
+    uint8_t dispatcherTarget[32]; // dispatcher target, usually easier than pool and network difficulty, full 32-byte representation
 
     // Full header can be constructed via concatenating partialHeader1 + merkleRoot + miner's nTime + nBits + miner's nonce.
-    uint8_t partialHeader[36]; // 4 bytes version, 32 bytes prevBlockHash
+    uint8_t version[4]; // 4 bytes version
+    uint8_t prevHash[32]; // 32 bytes prevBlockHash
     uint8_t nBits[4]; // 4 bytes network difficulty (nBits)
 };
 
@@ -47,6 +48,29 @@ private:
                 return i;
         }
         return -1;
+    }
+
+    // Converts the compact representation of the target (4 bytes) to the full 32-byte representation, and writes it to the provided output pointer.
+    // Expected input byte order: bytes 0 - 2 mantissa in little endian, byte 3 exponent.
+    // Output byte order: little endian, i.e. least-significant byte in index 0.
+    void convertTargetCompactToFull(const uint8_t* compact, uint8_t* full)
+    {
+        setMem(full, 32, 0);
+
+        uint8_t exponent = compact[3];
+
+        // The target is mantissa * 256^(exponent - 3).
+        // This means the mantissa starts at byte index (exponent - 3).
+        int start_index = exponent - 3;
+
+        for (int i = 0; i < 3; ++i)
+        {
+            int target_idx = start_index + i;
+            if (target_idx >= 0 && target_idx < 32)
+            {
+                full[target_idx] = compact[i];
+            }
+        }
     }
 
 public:
@@ -97,10 +121,10 @@ public:
                     // If not cleaning job queue, we will override the oldest task. Clean the corresponding solution hash set.
                     receivedSolutions[CustomMiningType::DOGE * maxNumTasks + nextDogeTaskId].reset();
                 }
-                copyMem(dogeTasks[nextDogeTaskId].dispatcherDifficulty, dogeTask->dispatcherDifficulty, 4);
+                convertTargetCompactToFull(dogeTask->dispatcherDifficulty, dogeTasks[nextDogeTaskId].dispatcherTarget);
                 copyMem(dogeTasks[nextDogeTaskId].nBits, dogeTask->nBits, 4);
-                copyMem(dogeTasks[nextDogeTaskId].partialHeader, dogeTask->version, 4);
-                copyMem(dogeTasks[nextDogeTaskId].partialHeader + 4, dogeTask->prevHash, 32);
+                copyMem(dogeTasks[nextDogeTaskId].version, dogeTask->version, 4);
+                copyMem(dogeTasks[nextDogeTaskId].prevHash, dogeTask->prevHash, 32);
                 typeSpecificTaskIndex = nextDogeTaskId;
                 nextDogeTaskId = (nextDogeTaskId + 1) % maxNumTasks;
             }
