@@ -13,7 +13,7 @@ struct StoredDogeMiningTask
 {
     uint8_t dispatcherTarget[32]; // dispatcher target, usually easier than pool and network difficulty, full 32-byte representation
 
-    // Full header can be constructed via concatenating partialHeader1 + merkleRoot + miner's nTime + nBits + miner's nonce.
+    // Full header can be constructed via concatenating version + prevHash + merkleRoot + miner's nTime + nBits + miner's nonce.
     uint8_t version[4]; // 4 bytes version
     uint8_t prevHash[32]; // 32 bytes prevBlockHash
     uint8_t nBits[4]; // 4 bytes network difficulty (nBits)

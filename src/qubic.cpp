@@ -1515,13 +1515,13 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
     const unsigned int messageSize = header->size() - sizeof(RequestResponseHeader);
     if (messageSize < sizeof(CustomQubicMiningSolution) + SIGNATURE_SIZE)
         return;
-    auto payload = reinterpret_cast<const unsigned char*>(header->getPayload<void>());
+    const auto* payload = reinterpret_cast<const unsigned char*>(header->getPayload<void>());
 
     m256i digest;
     KangarooTwelve(payload, messageSize - SIGNATURE_SIZE, &digest, sizeof(digest));
 
-    auto sol = reinterpret_cast<const CustomQubicMiningSolution*>(payload);
-    auto sourcePublicKey = reinterpret_cast<const m256i*>(sol->sourcePublicKey);
+    const auto* sol = reinterpret_cast<const CustomQubicMiningSolution*>(payload);
+    const auto* sourcePublicKey = reinterpret_cast<const m256i*>(sol->sourcePublicKey);
     if (verify(sourcePublicKey->m256i_u8, digest.m256i_u8, payload + (messageSize - SIGNATURE_SIZE)))
     {
         // Only relay and process if the sender is a computor or has enough balance to prevent spam.
@@ -1538,9 +1538,47 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
         // Broadcast the solution to peers.
         enqueueResponse(NULL, header);
         
-        // TODO: check if from own comp pool --> if yes, query oracle
-        // check only source pubkey or also comp id in extraNonce2?
-        // source pubkey should be enough, revenue points will always be credited to id in extraNonce2.
+        if (sol->customMiningType == CustomMiningType::DOGE)
+        {
+            if (messageSize - SIGNATURE_SIZE < sizeof(CustomQubicMiningSolution) + sizeof(QubicDogeMiningSolution))
+                return;
+
+            const auto* dogeSol = reinterpret_cast<const QubicDogeMiningSolution*>(payload + sizeof(CustomQubicMiningSolution));
+
+            // Check if the solution is from own comp pool -> if yes, query oracle.
+            for (unsigned int i = 0; i < computorSeedsCount; ++i)
+            {
+                if (computorPublicKeys[i] == *sourcePublicKey)
+                {
+                    unsigned char buffer[sizeof(Transaction) + 8 + 80 + 32 + SIGNATURE_SIZE];
+
+                    Transaction* tx = reinterpret_cast<Transaction*>(buffer);
+                    tx->sourcePublicKey = computorPublicKeys[i];
+                    tx->destinationPublicKey = { 0 };
+                    tx->amount = 0;
+                    tx->tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+                    tx->inputType = ORACLE_MACHINE_QUERY;
+                    tx->inputSize = 8 + 80 + 32;
+                    unsigned char* queryData = buffer + sizeof(Transaction);
+                    *reinterpret_cast<uint32_t*>(queryData) = 2; // doge validation interface index
+                    *reinterpret_cast<uint32_t*>(queryData + 4) = 2000; // timeout im milliseconds
+                    // Full header can be constructed via concatenating version + prevHash + merkleRoot + miner's nTime + nBits + miner's nonce.
+                    unsigned int offset = 8;
+                    copyMem(queryData + offset, task.version, 4); offset += 4;
+                    copyMem(queryData + offset, task.prevHash, 32); offset += 32;
+                    copyMem(queryData + offset, dogeSol->merkleRoot, 32); offset += 32;
+                    copyMem(queryData + offset, dogeSol->nTime, 4); offset += 4;
+                    copyMem(queryData + offset, task.nBits, 4); offset += 4;
+                    copyMem(queryData + offset, dogeSol->nonce, 4); offset += 4;
+                    copyMem(queryData + offset, task.dispatcherTarget, 32); offset += 32;
+
+                    KangarooTwelve(buffer, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
+                    sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
+                    enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                    break;
+                }
+            }
+        }
     }
 }
 
