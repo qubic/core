@@ -78,6 +78,7 @@
 #include "oracle_core/oracle_engine.h"
 #include "oracle_core/net_msg_impl.h"
 #include "oracle_core/snapshot_files.h"
+#include "oracle_core/oracle_interfaces_def.h"
 #include "contract_core/qpi_oracle_impl.h"
 
 #include "contract_core/qpi_mining_impl.h"
@@ -1550,7 +1551,7 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
             {
                 if (computorPublicKeys[i] == *sourcePublicKey)
                 {
-                    unsigned char buffer[sizeof(Transaction) + 8 + 80 + 32 + SIGNATURE_SIZE];
+                    unsigned char buffer[sizeof(Transaction) + 8 + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
 
                     Transaction* tx = reinterpret_cast<Transaction*>(buffer);
                     tx->sourcePublicKey = computorPublicKeys[i];
@@ -1558,9 +1559,9 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                     tx->amount = 0;
                     tx->tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
                     tx->inputType = ORACLE_MACHINE_QUERY;
-                    tx->inputSize = 8 + 80 + 32;
+                    tx->inputSize = 8 + sizeof(OI::DogeShareValidation::OracleQuery);
                     unsigned char* queryData = buffer + sizeof(Transaction);
-                    *reinterpret_cast<uint32_t*>(queryData) = 2; // doge validation interface index
+                    *reinterpret_cast<uint32_t*>(queryData) = OI::DogeShareValidation::oracleInterfaceIndex;
                     *reinterpret_cast<uint32_t*>(queryData + 4) = 2000; // timeout im milliseconds
                     // Full header can be constructed via concatenating version + prevHash + merkleRoot + miner's nTime + nBits + miner's nonce.
                     unsigned int offset = 8;
