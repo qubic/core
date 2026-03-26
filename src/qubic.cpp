@@ -1531,7 +1531,8 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
 
         // Check if the solution is added successfully (active task, no duplicate).
         // If not, it won't be broadcasted to reduce unnecessary traffic and verification.
-        if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE) < 0)
+        StoredDogeMiningTask task;
+        if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE, reinterpret_cast<char*>(&task)) < 0)
             return;
         
         // Broadcast the solution to peers.
@@ -6072,7 +6073,10 @@ static bool initialize()
             return false;
         }
 
-        customQubicMiningStorage.init();
+        if (!customQubicMiningStorage.init())
+        {
+            return false;
+        }
 
         if (!logger.initLogging())
         {
@@ -6410,6 +6414,8 @@ static void deinitialize()
 #endif
 
     oracleEngine.deinit();
+
+    customQubicMiningStorage.deinit();
 
     deinitContractExec();
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
