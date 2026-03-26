@@ -365,6 +365,9 @@
     <ClInclude Include="oracle_core\snapshot_files.h">
       <Filter>oracle_core</Filter>
     </ClInclude>
+    <ClInclude Include="oracle_interfaces\DogeShareValidation.h">
+      <Filter>oracle_interfaces</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
