@@ -17,7 +17,7 @@ struct DogeShareValidation
         Array<uint8, 32> taskPartialHeaderPrevBlockHash;
         Array<uint8, 32> solutionMerkleRoot;
         Array<uint8, 4> solutionTime;
-        Array<uint8, 4> taskDifficultyNBits;
+        Array<uint8, 4> taskPartialHeaderDifficultyNBits;
         Array<uint8, 4> solutionNonce;
         Array<uint8, 32> target;
     };
