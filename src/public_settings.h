@@ -12,6 +12,9 @@
 
 #define MAX_NUMBER_OF_PROCESSORS 32
 #define NUMBER_OF_SOLUTION_PROCESSORS 12
+// Maximum number of NUMBER_OF_SOLUTION_PROCESSORS can be used for pre-process the mining solution
+// Must not exceed half of NUMBER_OF_SOLUTION_PROCESSORS. Set 0 to disable.
+#define NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS 4
 
 // Number of buffers available for executing contract functions in parallel; having more means reserving a bit more RAM (+1 = +32 MB)
 // and less waiting in request processors if there are more parallel contract function requests. The maximum value that may make sense
