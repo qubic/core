@@ -160,15 +160,13 @@ public:
     }
 
     void quRaffleWinnerChecker(uint16 epoch, const id& expectedWinner, uint64 expectedReceived, 
-                              uint64 expectedEntryAmount, uint32 expectedMembers, uint32 expectedWinnerIndex,
-                              uint32 expectedDaoMembers)
+                              uint64 expectedEntryAmount, uint32 expectedMembers, uint32 expectedWinnerIndex)
     {
         EXPECT_EQ(QuRaffles.get(epoch).epochWinner, expectedWinner);
         EXPECT_EQ(QuRaffles.get(epoch).receivedAmount, expectedReceived);
         EXPECT_EQ(QuRaffles.get(epoch).entryAmount, expectedEntryAmount);
         EXPECT_EQ(QuRaffles.get(epoch).numberOfMembers, expectedMembers);
         EXPECT_EQ(QuRaffles.get(epoch).winnerIndex, expectedWinnerIndex);
-        EXPECT_EQ(daoMemberCount.get(epoch), expectedDaoMembers);
     }
 
     uint64 getQuRaffleEntryAmount()
@@ -761,17 +759,11 @@ TEST(ContractQraffle, DepositInTokenRaffle)
         qraffle.getState()->tokenRaffleMemberChecker(0, user, memberCount);
     }
 
-    // Test insufficient funds
-    id poorUser = getUser(9999);
-    increaseEnergy(poorUser, QRAFFLE_TRANSFER_SHARE_FEE - 1);
-    auto result = qraffle.depositInTokenRaffle(poorUser, 0, QRAFFLE_TRANSFER_SHARE_FEE - 1);
-    EXPECT_EQ(result.returnCode, QRAFFLE_INSUFFICIENT_FUND);
-
     // Test insufficient Token
     id poorUser2 = getUser(8888);
     increaseEnergy(poorUser2, QRAFFLE_TRANSFER_SHARE_FEE);
     qraffle.transferShareOwnershipAndPossession(issuer, assetName, issuer, 999999, poorUser2);
-    result = qraffle.depositInTokenRaffle(poorUser2, 0, QRAFFLE_TRANSFER_SHARE_FEE);
+    auto result = qraffle.depositInTokenRaffle(poorUser2, 0, QRAFFLE_TRANSFER_SHARE_FEE);
     EXPECT_EQ(result.returnCode, QRAFFLE_FAILED_TO_DEPOSIT);
 
     // Test invalid token raffle index
@@ -974,7 +966,7 @@ TEST(ContractQraffle, GetFunctions)
             
             expectedTotalBurnAmount += (totalQuRaffleAmount * QRAFFLE_BURN_FEE) / 100;
             expectedTotalCharityAmount += (totalQuRaffleAmount * QRAFFLE_CHARITY_FEE) / 100;
-            expectedTotalShareholderAmount += ((totalQuRaffleAmount * QRAFFLE_SHRAEHOLDER_FEE) / 100) / 676 * 676;
+            expectedTotalShareholderAmount += ((totalQuRaffleAmount * QRAFFLE_SHAREHOLDER_FEE) / 100) / 676 * 676;
             expectedTotalRegisterAmount += ((totalQuRaffleAmount * QRAFFLE_REGISTER_FEE) / 100) / registerCount * registerCount;
             expectedTotalFeeAmount += (totalQuRaffleAmount * QRAFFLE_FEE) / 100;
             
@@ -1055,8 +1047,6 @@ TEST(ContractQraffle, GetFunctions)
         EXPECT_GT(endedQuRaffle.receivedAmount, 0);
         EXPECT_EQ(endedQuRaffle.entryAmount, 10000000);
         EXPECT_EQ(endedQuRaffle.numberOfMembers, memberCount);
-        EXPECT_GT(endedQuRaffle.numberOfDaoMembers, 0u);
-        EXPECT_EQ(endedQuRaffle.numberOfDaoMembers, qraffle.getState()->getNumberOfRegisters());
         
         // Test with future epoch
         auto futureQuRaffle = qraffle.getEndedQuRaffle(1);
@@ -1171,8 +1161,7 @@ TEST(ContractQraffle, EndEpoch)
     auto quRaffle = qraffle.getEndedQuRaffle(0);
     EXPECT_EQ(quRaffle.returnCode, QRAFFLE_SUCCESS);
     qraffle.getState()->quRaffleWinnerChecker(0, quRaffle.epochWinner, quRaffle.receivedAmount, 
-                                            quRaffle.entryAmount, quRaffle.numberOfMembers, quRaffle.winnerIndex,
-                                            quRaffle.numberOfDaoMembers);
+                                            quRaffle.entryAmount, quRaffle.numberOfMembers, quRaffle.winnerIndex);
 
     qraffle.endEpoch();
     // Check that token raffles were processed
