@@ -5819,12 +5819,7 @@ static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 // forceLoadFromFile: when loading node states from file, we want to make sure it load from file and ignore constructionEpoch == system.epoch case
 static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
 {
-    // Contracts whose state struct grew this epoch. Update this list each epoch as needed.
-    // When enabling, replace both lines below, e.g.:
-    //   constexpr unsigned int paddableContracts[] = { RANDOM_CONTRACT_INDEX };
-    //   constexpr unsigned int paddableCount = sizeof(paddableContracts) / sizeof(paddableContracts[0]);
-    constexpr const unsigned int* paddableContracts = nullptr;
-    constexpr unsigned int paddableCount = 0;
+    // Make sure you define all contracts that are allowed to be padded automatically in contract_def.h
 
     logToConsole(L"Loading contract files ...");
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
