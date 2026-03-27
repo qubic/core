@@ -47,22 +47,22 @@ public:
 	template<typename Key, typename T, uint64 L>
 	struct HashMapConverter
 	{
-		void convert(const HashMap<Key, T, L>& hasMap, Array<T, L>& array)
+		void convert(const HashMap<Key, T, L>& hashMap, Array<T, L>& array)
 		{
 			arrayIndex = 0;
 			setMemory(array, 0);
 
-			hasMapIndex = hasMap.nextElementIndex(NULL_INDEX);
-			while (hasMapIndex != NULL_INDEX)
+			hashMapIndex = hashMap.nextElementIndex(NULL_INDEX);
+			while (hashMapIndex != NULL_INDEX)
 			{
-				array.set(arrayIndex, hasMap.value(hasMapIndex));
-				hasMapIndex = hasMap.nextElementIndex(hasMapIndex);
+				array.set(arrayIndex, hashMap.value(hashMapIndex));
+				hashMapIndex = hashMap.nextElementIndex(hashMapIndex);
 				++arrayIndex;
 			}
 		}
 
 	private:
-		sint64 hasMapIndex;
+		sint64 hashMapIndex;
 		uint64 arrayIndex;
 	};
 
@@ -1061,7 +1061,8 @@ public:
 
 	/**
 	 * Returns the current auto-participation roster and shared limits.
-	 * @return All registered auto participants, the participant capacity, the per-user auto-ticket limit, remaining slots in the current round, and
+	 * @return All registered auto participants, the participant capacity,
+	 * the per-user auto-ticket limit, remaining slots in the current round, and
 	 * the status code.
 	 */
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAutoStats)
