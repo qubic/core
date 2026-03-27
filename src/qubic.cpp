@@ -1551,20 +1551,21 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
             {
                 if (computorPublicKeys[i] == *sourcePublicKey)
                 {
-                    unsigned char buffer[sizeof(Transaction) + 8 + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
+                    unsigned char buffer[sizeof(OracleUserQueryTransactionPrefix)
+                        + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
 
-                    Transaction* tx = reinterpret_cast<Transaction*>(buffer);
+                    auto* tx = reinterpret_cast<OracleUserQueryTransactionPrefix*>(buffer);
                     tx->sourcePublicKey = computorPublicKeys[i];
                     tx->destinationPublicKey = { 0 };
                     tx->amount = 0;
                     tx->tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
                     tx->inputType = ORACLE_MACHINE_QUERY;
-                    tx->inputSize = 8 + sizeof(OI::DogeShareValidation::OracleQuery);
-                    unsigned char* queryData = buffer + sizeof(Transaction);
-                    *reinterpret_cast<uint32_t*>(queryData) = OI::DogeShareValidation::oracleInterfaceIndex;
-                    *reinterpret_cast<uint32_t*>(queryData + 4) = 2000; // timeout im milliseconds
+                    tx->inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery);
+                    tx->oracleInterfaceIndex = OI::DogeShareValidation::oracleInterfaceIndex;
+                    tx->timeoutMilliseconds = 30000;
+                    unsigned char* queryData = buffer + sizeof(OracleUserQueryTransactionPrefix);
                     // Full header can be constructed via concatenating version + prevHash + merkleRoot + miner's nTime + nBits + miner's nonce.
-                    unsigned int offset = 8;
+                    unsigned int offset = 0;
                     copyMem(queryData + offset, task.version, 4); offset += 4;
                     copyMem(queryData + offset, task.prevHash, 32); offset += 32;
                     copyMem(queryData + offset, dogeSol->merkleRoot, 32); offset += 32;
@@ -1577,6 +1578,8 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                     sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
                     enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
                     break;
+
+                    // TODO: resend oracle query if the tx isn't included in system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET or if it is an empty tick
                 }
             }
         }
