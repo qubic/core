@@ -3098,7 +3098,17 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
 
                 case OracleUserQueryTransactionPrefix::transactionType():
                 {
-                    const bool error = (oracleEngine.startUserQuery((OracleUserQueryTransactionPrefix*)transaction, transactionIndex) < 0);
+                    // check for special cases
+                    const auto* queryTx = (const OracleUserQueryTransactionPrefix*)transaction;
+                    bool forceZeroFee = false;
+                    if (queryTx->oracleInterfaceIndex == OI::DogeShareValidation::oracleInterfaceIndex)
+                    {
+                        // doge share validation query does not cost fees for computors
+                        forceZeroFee = computorIndex(queryTx->sourcePublicKey) >= 0;
+                    }
+
+                    // start user query
+                    const bool error = (oracleEngine.startUserQuery(queryTx, transactionIndex, forceZeroFee) < 0);
                     if (error && transaction->amount)
                     {
                         oracleEngine.refundFees(transaction->sourcePublicKey, transaction->amount);
@@ -3516,6 +3526,70 @@ static void processTick(unsigned long long processorNumber)
         WAIT_WHILE(contractProcessorState);
 
         oracleNotification = oracleEngine.getNotification();
+    }
+
+    // Process finished oracle user queries (doge mining share validation replies)
+    const OracleQueryMetadata* finishedUserQuery = oracleEngine.getFinishedUserQuery();
+    while (finishedUserQuery)
+    {
+        if (finishedUserQuery->interfaceIndex == OI::DogeShareValidation::oracleInterfaceIndex)
+        {
+            OI::DogeShareValidation::OracleReply reply;
+            if (finishedUserQuery->status == ORACLE_QUERY_STATUS_SUCCESS
+                && oracleEngine.getOracleReply(finishedUserQuery->queryId, &reply, sizeof(reply)))
+            {
+                // Oracle reply is available
+                if (reply.isValid)
+                {
+                    // Share is valid
+                    // TODO: implement share counting
+                }
+                else
+                {
+                    // Share is invalid
+                    // TODO: handle or remove this else block
+                }
+            }
+            else
+            {
+                // Oracle query failed -> lookup and resend user query tx if it is from own comp pool
+                // TODO: limit repetition?
+                ASSERT(finishedUserQuery->type == ORACLE_QUERY_TYPE_USER_QUERY);
+                ASSERT(ts.tickInCurrentEpochStorage(finishedUserQuery->queryTick));
+                const uint64_t* tsTickTransactionOffsets
+                    = ts.tickTransactionOffsets.getByTickInCurrentEpoch(finishedUserQuery->queryTick);
+                const uint32_t txSlotInTickData = finishedUserQuery->typeVar.user.queryTxIndex;
+                ASSERT(txSlotInTickData < NUMBER_OF_TRANSACTIONS_PER_TICK);
+                const auto* prevTx = (OracleUserQueryTransactionPrefix*)ts.tickTransactions.ptr(
+                    tsTickTransactionOffsets[txSlotInTickData]);
+                ASSERT(finishedUserQuery->interfaceIndex == prevTx->oracleInterfaceIndex);
+                if (prevTx->inputSize
+                    == OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery))
+                {
+                    for (unsigned int i = 0; i < computorSeedsCount; ++i)
+                    {
+                        if (computorPublicKeys[i] == prevTx->sourcePublicKey)
+                        {
+                            // Copy and update tx
+                            __ScopedScratchpad scratchpad(MAX_TRANSACTION_SIZE, /*initZero=*/false);
+                            auto* tx = (OracleUserQueryTransactionPrefix*)scratchpad.ptr;
+                            const uint64_t txSizeWithoutSignature = sizeof(OracleUserQueryTransactionPrefix)
+                                                                    + sizeof(OI::DogeShareValidation::OracleQuery);
+                            copyMem(tx, prevTx, txSizeWithoutSignature);
+                            tx->tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+
+                            // Sign and send tx
+                            m256i digest;
+                            KangarooTwelve(tx, sizeof(Transaction) + prevTx->inputSize, digest.m256i_u8, sizeof(digest));
+                            sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
+                            enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                            break;
+                       }
+                    }
+                }
+            }
+        }
+        finishedUserQuery = oracleEngine.getFinishedUserQuery();
     }
 
     // The last executionFeeReport for the previous phase is published by comp <NUMBER_OF_COMPUTORS - 1> (0-indexed) in the last tick t1 of the
