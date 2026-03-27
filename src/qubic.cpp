@@ -1557,39 +1557,40 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
         // Broadcast the solution to peers.
         enqueueResponse(NULL, header);
 
-        // Check if the solution is added successfully (active task, no duplicate) before sending oracle query.
-        StoredDogeMiningTask task;
-        if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE, reinterpret_cast<char*>(&task)) < 0)
-            return;
-        
-        if (isMainMode()) // only main node should send oracle queries
+        if (sol->customMiningType == CustomMiningType::DOGE)
         {
-            if (sol->customMiningType == CustomMiningType::DOGE)
+            if (messageSize - SIGNATURE_SIZE < sizeof(CustomQubicMiningSolution) + sizeof(QubicDogeMiningSolution))
+                return;
+
+            const auto* dogeSol = reinterpret_cast<const QubicDogeMiningSolution*>(payload + sizeof(CustomQubicMiningSolution));
+
+            // Check if the solution is from own comp pool -> if yes, query oracle.
+            for (unsigned int i = 0; i < computorSeedsCount; ++i)
             {
-                if (messageSize - SIGNATURE_SIZE < sizeof(CustomQubicMiningSolution) + sizeof(QubicDogeMiningSolution))
-                    return;
-
-                const auto* dogeSol = reinterpret_cast<const QubicDogeMiningSolution*>(payload + sizeof(CustomQubicMiningSolution));
-
-                // Check if the solution is from own comp pool -> if yes, query oracle.
-                for (unsigned int i = 0; i < computorSeedsCount; ++i)
+                if (computorPublicKeys[i] == *sourcePublicKey)
                 {
-                    if (computorPublicKeys[i] == *sourcePublicKey)
-                    {
-                        unsigned char buffer[sizeof(Transaction) + 8 + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
+                    // Check if the solution is added successfully (active task, no duplicate) before sending oracle query.
+                    StoredDogeMiningTask task;
+                    if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE, reinterpret_cast<char*>(&task)) < 0)
+                        return;
 
-                        Transaction* tx = reinterpret_cast<Transaction*>(buffer);
+                    if (isMainMode()) // only main node should send oracle queries
+                    {
+                        unsigned char buffer[sizeof(OracleUserQueryTransactionPrefix)
+                            + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
+
+                        auto* tx = reinterpret_cast<OracleUserQueryTransactionPrefix*>(buffer);
                         tx->sourcePublicKey = computorPublicKeys[i];
                         tx->destinationPublicKey = { 0 };
                         tx->amount = 0;
-                        tx->tick = system.tick + 3 * TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+                        tx->tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
                         tx->inputType = ORACLE_MACHINE_QUERY;
-                        tx->inputSize = 8 + sizeof(OI::DogeShareValidation::OracleQuery);
-                        unsigned char* queryData = buffer + sizeof(Transaction);
-                        *reinterpret_cast<uint32_t*>(queryData) = OI::DogeShareValidation::oracleInterfaceIndex;
-                        *reinterpret_cast<uint32_t*>(queryData + 4) = 2000; // timeout im milliseconds
+                        tx->inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery);
+                        tx->oracleInterfaceIndex = OI::DogeShareValidation::oracleInterfaceIndex;
+                        tx->timeoutMilliseconds = 30000;
+                        unsigned char* queryData = buffer + sizeof(OracleUserQueryTransactionPrefix);
                         // Full header can be constructed via concatenating version + prevHash + merkleRoot + miner's nTime + nBits + miner's nonce.
-                        unsigned int offset = 8;
+                        unsigned int offset = 0;
                         copyMem(queryData + offset, task.version, 4); offset += 4;
                         copyMem(queryData + offset, task.prevHash, 32); offset += 32;
                         copyMem(queryData + offset, dogeSol->merkleRoot, 32); offset += 32;
@@ -1601,8 +1602,11 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                         KangarooTwelve(buffer, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
                         sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
                         enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
-                        break;
+
+                        // TODO: resend oracle query if the tx isn't included in scheduled tick or if it is an empty tick
                     }
+
+                    break;
                 }
             }
         }
