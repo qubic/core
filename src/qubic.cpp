@@ -5843,6 +5843,8 @@ static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 // forceLoadFromFile: when loading node states from file, we want to make sure it load from file and ignore constructionEpoch == system.epoch case
 static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
 {
+    // Make sure you define all contracts that are allowed to be padded automatically in contract_def.h
+
     logToConsole(L"Loading contract files ...");
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
@@ -5872,6 +5874,39 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                 }
                 else
                 {
+                    // Check if this contract is allowed to be zero-padded from a smaller file
+                    bool paddingAllowed = false;
+                    for (unsigned int i = 0; i < paddableCount; i++)
+                    {
+                        if (paddableContracts[i] == contractIndex)
+                        {
+                            paddingAllowed = true;
+                            break;
+                        }
+                    }
+
+                    if (paddingAllowed)
+                    {
+                        long long actualSize = getFileSize(CONTRACT_FILE_NAME, directory);
+                        if (actualSize > 0 && (unsigned long long)actualSize < contractDescriptions[contractIndex].stateSize)
+                        {
+                            // Zero the entire buffer, then load the smaller file into the front
+                            setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
+                            long long reloadedSize = load(CONTRACT_FILE_NAME, (unsigned long long)actualSize, contractStates[contractIndex], directory);
+                            if (reloadedSize == actualSize)
+                            {
+                                appendText(message, L" WARNING: undersized file (");
+                                appendNumber(message, (unsigned long long)actualSize, FALSE);
+                                appendText(message, L" < ");
+                                appendNumber(message, contractDescriptions[contractIndex].stateSize, FALSE);
+                                appendText(message, L" bytes), zero-padded");
+                                logToConsole(message);
+                                continue;
+                            }
+                            // Reload also failed — fall through to error
+                        }
+                    }
+
                     appendText(message, L" cannot be read successfully");
                     logToConsole(message);
                     logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
