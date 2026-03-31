@@ -189,6 +189,11 @@ static unsigned long long contractProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a l
 
 static unsigned long long solutionProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a list of proc id that will process solution
 static bool solutionProcessorFlags[MAX_NUMBER_OF_PROCESSORS]; // flag array to indicate that whether a procId should help processing solutions or not
+static bool preprocessSolutionFlags[MAX_NUMBER_OF_PROCESSORS]; // subset of solution processors for pre-computing scores at broadcast time
+static_assert(
+    NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS <= NUMBER_OF_SOLUTION_PROCESSORS / 2,
+    "NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS must not exceed half of NUMBER_OF_SOLUTION_PROCESSORS");
+
 static int nTickProcessorIDs = 0;
 static int nRequestProcessorIDs = 0;
 static int nContractProcessorIDs = 0;
@@ -980,7 +985,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
     }
 }
 
-static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* header)
+static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* header, unsigned long long processorNumber)
 {
     Transaction* request = header->getPayload<Transaction>();
     const unsigned int transactionSize = request->totalSize();
@@ -1038,6 +1043,23 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 }
             }
             ts.tickData.releaseLock();
+
+            // Pre-compute score for mining solution transactions to populate the scoreCache.
+            // This hides computation latency: the solution is published ~3 ticks before execution,
+            // so all 676 Computors get a cache HIT during processTickTransactionSolution().
+            // Only designated solution processors do this to avoid starving request processing.
+            // The deposit and balance of must be >= MiningSolutionTransaction::minAmount() to be proccessed
+            if (preprocessSolutionFlags[processorNumber]
+                && MiningSolutionTransaction::isSolutionTransaction(request))
+            {
+                const int spectrumIdx = spectrumIndex(request->sourcePublicKey);
+                if (spectrumIdx >= 0 && energy(spectrumIdx) >= MiningSolutionTransaction::minAmount())
+                {
+                    const m256i& solutionMiningSeed = *(m256i*)request->inputPtr();
+                    const m256i& solutionNonce = *(m256i*)(request->inputPtr() + 32);
+                    (*score)(processorNumber, request->sourcePublicKey, solutionMiningSeed, solutionNonce);
+                }
+            }
 
             // shortcut: oracle reply reveal transactions are analyzed immediately after receiving them (before execution of the tx),
             // in order to minimize the number of reveal transaction (one per oracle query is enough, so no reveal tx is generated
@@ -2207,7 +2229,7 @@ static void requestProcessor(void* ProcedureArgument)
 
                 case BROADCAST_TRANSACTION:
                 {
-                    processBroadcastTransaction(peer, header);
+                    processBroadcastTransaction(peer, header, processorNumber);
                 }
                 break;
 
@@ -7328,6 +7350,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         for (int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
         {
             solutionProcessorFlags[i] = false;
+            preprocessSolutionFlags[i] = false;
         }
 
         for (unsigned int i = 0; i < numberOfAllProcessors && numberOfProcessors < MAX_NUMBER_OF_PROCESSORS; i++)
@@ -7379,6 +7402,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS] = true;
                         solutionProcessorFlags[i] = true;
+                        if (nSolutionProcessorIDs < NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS)
+                        {
+                            preprocessSolutionFlags[i] = true;
+                        }
                         solutionProcessorIDs[nSolutionProcessorIDs++] = i;
                     }
                 }
