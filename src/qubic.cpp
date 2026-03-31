@@ -2712,6 +2712,19 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
     return transaction->amount > 0;
 }
 
+#ifdef TESTNET
+static void logSolutionDebug(const CHAR16* label, unsigned int val1, unsigned int val2)
+{
+    CHAR16 msg[200];
+    setText(msg, label);
+    appendText(msg, " ");
+    appendNumber(msg, val1, FALSE);
+    appendText(msg, " ");
+    appendNumber(msg, val2, FALSE);
+    addDebugMessage(msg);
+}
+#endif
+
 static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, const unsigned long long processorNumber)
 {
     PROFILE_SCOPE();
@@ -2736,17 +2749,8 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
         unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
         score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(transaction->nonce.m256i_u8);
 
-#if !defined(NDEBUG)
-        {
-            CHAR16 dbgMsg[200];
-            setText(dbgMsg, L"[SOL] first seen, score=");
-            appendNumber(dbgMsg, solutionScore, FALSE);
-            appendText(dbgMsg, L" algo=");
-            appendNumber(dbgMsg, (unsigned int)selectedAlgo, FALSE);
-            appendText(dbgMsg, L" valid=");
-            appendNumber(dbgMsg, score->isValidScore(solutionScore, selectedAlgo) ? 1 : 0, FALSE);
-            addDebugMessage(dbgMsg);
-        }
+#ifdef TESTNET
+        logSolutionDebug(L"[SOL] first seen", solutionScore, (unsigned int)selectedAlgo);
 #endif
 
         if (score->isValidScore(solutionScore, selectedAlgo))
@@ -2758,16 +2762,8 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                 : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
             if (score->isGoodScore(solutionScore, threshold, selectedAlgo))
             {
-#if !defined(NDEBUG)
-                {
-                    CHAR16 dbgMsg[200];
-                    setText(dbgMsg, L"[SOL] GOOD score=");
-                    appendNumber(dbgMsg, solutionScore, FALSE);
-                    appendText(dbgMsg, L" threshold=");
-                    appendNumber(dbgMsg, threshold, FALSE);
-                    appendText(dbgMsg, L" -> refund+record+minerScores");
-                    addDebugMessage(dbgMsg);
-                }
+#ifdef TESTNET
+                logSolutionDebug(L"[SOL] GOOD -> refund+record", solutionScore, threshold);
 #endif
                 // Solution deposit return
                 {
