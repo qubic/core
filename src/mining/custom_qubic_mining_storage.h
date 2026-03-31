@@ -6,8 +6,8 @@
 #include "platform/memory_util.h"
 #include "platform/concurrency.h"
 #include "network_messages/custom_mining.h"
-#include "contracts/qpi.h"
-#include <kangaroo_twelve.h>
+#include "contract_core/qpi_hash_map_impl.h"
+#include "kangaroo_twelve.h"
 
 // A struct for storing an active doge mining task on the node.
 struct StoredDogeMiningTask
@@ -145,7 +145,7 @@ public:
     // the task description is written into the provided pointer.
     int addSolution(const CustomQubicMiningSolution* solution, unsigned int size, char* taskDescription = nullptr)
     {
-        if (size < sizeof(CustomQubicMiningSolution))
+        if (size <= sizeof(CustomQubicMiningSolution))
             return -1;
 
         LockGuard guard(lock);
