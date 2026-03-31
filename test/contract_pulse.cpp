@@ -1,7 +1,6 @@
 #define NO_UEFI
 
 #include "contract_testing.h"
-
 #include <vector>
 
 // Procedure/function indices (must match REGISTER_USER_FUNCTIONS_AND_PROCEDURES in `src/contracts/Pulse.h`).
@@ -18,8 +17,7 @@ constexpr uint16 PULSE_PROCEDURE_SET_AUTO_CONFIG = 10;
 constexpr uint16 PULSE_PROCEDURE_SET_AUTO_LIMITS = 11;
 
 constexpr uint16 PULSE_FUNCTION_GET_TICKET_PRICE = 1;
-constexpr uint16 PULSE_FUNCTION_GET_SCHEDULE = 2;
-constexpr uint16 PULSE_FUNCTION_GET_DRAW_HOUR = 3;
+constexpr uint16 PULSE_FUNCTION_GET_ROUND_STATE = 3;
 constexpr uint16 PULSE_FUNCTION_GET_FEES = 4;
 constexpr uint16 PULSE_FUNCTION_GET_QHEART_HOLD_LIMIT = 5;
 constexpr uint16 PULSE_FUNCTION_GET_QHEART_WALLET = 6;
@@ -28,6 +26,9 @@ constexpr uint16 PULSE_FUNCTION_GET_BALANCE = 8;
 constexpr uint16 PULSE_FUNCTION_GET_WINNERS = 9;
 constexpr uint16 PULSE_FUNCTION_GET_AUTO_PARTICIPATION = 10;
 constexpr uint16 PULSE_FUNCTION_GET_AUTO_STATS = 11;
+constexpr uint16 PULSE_FUNCTION_VALIDATE_DIGITS = 12;
+constexpr uint16 PULSE_FUNCTION_GET_PLAYERS = 13;
+constexpr uint16 PULSE_FUNCTION_GET_PRIZE_TABLE = 14;
 
 namespace
 {
@@ -67,16 +68,47 @@ namespace
 			EXPECT_LE(v, PULSE_MAX_DIGIT);
 		}
 	}
+
+	uint32 countAutoParticipants(const PULSE::GetAutoStats_output& stats)
+	{
+		uint32 count = 0;
+		for (uint64 i = 0; i < stats.participants.capacity(); ++i)
+		{
+			if (stats.participants.get(i).player != id::zero())
+			{
+				++count;
+			}
+		}
+
+		return count;
+	}
+
+	uint64 sumAutoDeposits(const PULSE::GetAutoStats_output& stats)
+	{
+		uint64 totalDeposits = 0;
+		for (uint64 i = 0; i < stats.participants.capacity(); ++i)
+		{
+			const PULSE::AutoParticipant& participant = stats.participants.get(i);
+			if (participant.deposit > 0)
+			{
+				totalDeposits += static_cast<uint64>(participant.deposit);
+			}
+		}
+
+		return totalDeposits;
+	}
 } // namespace
 
 // Test helper class exposing internal state
 class PULSEChecker : public PULSE, public PULSE::StateData
 {
 public:
-	const QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>& asState() const {
+	const QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>& asState() const
+	{
 		return *reinterpret_cast<const QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>*>(static_cast<const StateData*>(this));
 	}
-	QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>& asMutState() {
+	QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>& asMutState()
+	{
 		return *reinterpret_cast<QPI::ContractState<StateData, PULSE_CONTRACT_INDEX>*>(static_cast<StateData*>(this));
 	}
 
@@ -175,7 +207,7 @@ public:
 
 	GetAutoParticipation_output callGetAutoParticipation(const QPI::QpiContextFunctionCall& qpi) const
 	{
-		GetAutoParticipation_input input{};
+		GetAutoParticipation_input input{qpi.invocator()};
 		GetAutoParticipation_output output{};
 		GetAutoParticipation_locals locals{};
 		GetAutoParticipation(qpi, asState(), input, output, locals);
@@ -227,19 +259,11 @@ public:
 		return output;
 	}
 
-	PULSE::GetSchedule_output getSchedule()
+	PULSE::GetRoundState_output getRoundState()
 	{
-		PULSE::GetSchedule_input input{};
-		PULSE::GetSchedule_output output{};
-		callFunction(PULSE_CONTRACT_INDEX, PULSE_FUNCTION_GET_SCHEDULE, input, output);
-		return output;
-	}
-
-	PULSE::GetDrawHour_output getDrawHour()
-	{
-		PULSE::GetDrawHour_input input{};
-		PULSE::GetDrawHour_output output{};
-		callFunction(PULSE_CONTRACT_INDEX, PULSE_FUNCTION_GET_DRAW_HOUR, input, output);
+		PULSE::GetRoundState_input input{};
+		PULSE::GetRoundState_output output{};
+		callFunction(PULSE_CONTRACT_INDEX, PULSE_FUNCTION_GET_ROUND_STATE, input, output);
 		return output;
 	}
 
@@ -892,8 +916,9 @@ TEST(ContractPulse_Public, GettersReturnDefaultsAfterInitialize)
 {
 	ContractTestingPulse ctl;
 	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, PULSE_TICKET_PRICE_DEFAULT);
-	EXPECT_EQ(ctl.getSchedule().schedule, PULSE_DEFAULT_SCHEDULE);
-	EXPECT_EQ(ctl.getDrawHour().drawHour, PULSE_DEFAULT_DRAW_HOUR);
+	const PULSE::GetRoundState_output roundState = ctl.getRoundState();
+	EXPECT_EQ(roundState.schedule, PULSE_DEFAULT_SCHEDULE);
+	EXPECT_EQ(roundState.drawHour, PULSE_DEFAULT_DRAW_HOUR);
 	EXPECT_EQ(ctl.getQHeartHoldLimit().qheartHoldLimit, PULSE_DEFAULT_QHEART_HOLD_LIMIT);
 
 	const PULSE::GetFees_output& fees = ctl.getFees();
@@ -999,8 +1024,9 @@ TEST(ContractPulse_Public, GettersReflectAppliedChanges)
 	ctl.endEpoch();
 
 	EXPECT_EQ(ctl.getTicketPrice().ticketPrice, 555u);
-	EXPECT_EQ(ctl.getSchedule().schedule, 0x7Fu);
-	EXPECT_EQ(ctl.getDrawHour().drawHour, 9u);
+	const PULSE::GetRoundState_output roundState = ctl.getRoundState();
+	EXPECT_EQ(roundState.schedule, 0x7Fu);
+	EXPECT_EQ(roundState.drawHour, 9u);
 	EXPECT_EQ(ctl.getQHeartHoldLimit().qheartHoldLimit, 4321u);
 
 	const PULSE::GetFees_output fees = ctl.getFees();
@@ -1600,7 +1626,8 @@ TEST(ContractPulse_Public, SetAutoLimitsGuardsAccessAndValidates)
 {
 	ContractTestingPulse ctl;
 	EXPECT_EQ(ctl.setAutoLimits(id::randomValue(), 10).returnCode, static_cast<uint8>(PULSE::EReturnCode::ACCESS_DENIED));
-	EXPECT_EQ(ctl.setAutoLimits(ctl.state()->getQHeartIssuer(), PULSE_MAX_NUMBER_OF_PLAYERS + 1).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.setAutoLimits(ctl.state()->getQHeartIssuer(), PULSE_MAX_NUMBER_OF_PLAYERS + 1).returnCode,
+	          static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	EXPECT_EQ(static_cast<uint32>(ctl.getAutoStats().maxAutoTicketsPerUser), static_cast<uint32>(PULSE_MAX_NUMBER_OF_PLAYERS));
 	EXPECT_EQ(ctl.setAutoLimits(ctl.state()->getQHeartIssuer(), 5).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 
@@ -1621,8 +1648,8 @@ TEST(ContractPulse_Public, SetAutoLimitsAllowsDisabling)
 	EXPECT_EQ(static_cast<uint32>(stats.maxAutoTicketsPerUser), 0u);
 }
 
-// Report auto participation counts through the public stats API.
-TEST(ContractPulse_Public, GetAutoStatsReportsParticipantCount)
+// Report auto participation roster and shared limits through the stats API.
+TEST(ContractPulse_Public, GetAutoStatsReportsParticipantRosterAndSharedState)
 {
 	ContractTestingPulse ctl;
 	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
@@ -1633,12 +1660,19 @@ TEST(ContractPulse_Public, GetAutoStatsReportsParticipantCount)
 	ctl.transferQHeart(issuance, userA, ticketPrice);
 	ctl.transferQHeart(issuance, userB, ticketPrice);
 
+	EXPECT_EQ(ctl.setAutoLimits(ctl.state()->getQHeartIssuer(), 4).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	EXPECT_EQ(ctl.depositAutoParticipation(userA, ticketPrice, 1, false).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
 	EXPECT_EQ(ctl.depositAutoParticipation(userB, ticketPrice, 1, false).returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	ctl.state()->setTicketCounter(7);
+	ctl.state()->forceSelling(true);
 
 	const PULSE::GetAutoStats_output stats = ctl.getAutoStats();
 	EXPECT_EQ(stats.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
-	EXPECT_EQ(static_cast<uint32>(stats.autoParticipantsCounter), 2u);
+	EXPECT_EQ(countAutoParticipants(stats), 2u);
+	EXPECT_EQ(sumAutoDeposits(stats), ticketPrice * 2);
+	EXPECT_EQ(static_cast<uint32>(stats.maxAutoParticipants), static_cast<uint32>(PULSE_MAX_NUMBER_OF_AUTO_PARTICIPANTS));
+	EXPECT_EQ(static_cast<uint32>(stats.maxAutoTicketsPerUser), 4u);
+	EXPECT_EQ(static_cast<uint32>(stats.roundSlotsLeft), static_cast<uint32>(PULSE_MAX_NUMBER_OF_PLAYERS - 7));
 }
 
 // Ensure balance getter reflects actual QHeart wallet holdings.
