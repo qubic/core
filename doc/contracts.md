@@ -498,6 +498,9 @@ The following container types are available in the QPI:
   Lookup by key, insert, and remove run in approximately constant time if population is less than 80% of `L`.
 - `HashSet<KeyT, L>`: Hash set of keys of type `KeyT` and total capacity `L`.
   Lookup by key, insert, and remove run in approximately constant time if population is less than 80% of `L`.
+- `LinkedList<T, L>`: Doubly-linked list of elements of type `T` with fixed capacity `L` (`L` must be 2^N).
+  Provides O(1) insertion at head/tail, O(1) insertion before/after a given index, O(1) removal by index, and bidirectional traversal.
+  Removed nodes are immediately recycled via a free list (no deferred cleanup needed).
 
 Please note that removing items from `Collection`, `HashMap`, and `HashSet` does not immediately free the hash map slots used for the removed items.
 This may negatively impact the lookup speed, which depends on the maximum population seen since the last cleanup.
@@ -613,7 +616,7 @@ Global constants, structs and classes must begin with the name of the contract s
 There is a limit for recursion and depth of nested contract function / procedure calls (the limit is 10 at the moment).
 
 The input and output structs of contract user procedures and functions may only use integer and boolean types (such as `uint64`, `sint8`, `bit`) as well as `id`, `Array`, and `BitArray`, and struct types containing only allowed types.
-Complex types that may have an inconsistent internal state, such as `Collection`, are forbidden in the public interface of a contract.
+Complex types that may have an inconsistent internal state, such as `Collection` and `LinkedList`, are forbidden in the public interface of a contract.
 
 
 ## General Change Management
