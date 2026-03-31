@@ -99,7 +99,7 @@ public:
     {
         LockGuard guard(lock);
 
-        if (findTask(task->customMiningType, task->jobId) >= 0)
+        if (findTask(task->customMiningType, task->jobId) < 0)
         {
             unsigned int typeSpecificTaskIndex = 0;
             if (task->customMiningType == CustomMiningType::DOGE)
@@ -151,7 +151,7 @@ public:
         LockGuard guard(lock);
         
         // Check if the solution corresponds to an active task.
-        unsigned int typeSpecificTaskIndex = findTask(solution->customMiningType, solution->jobId);
+        int typeSpecificTaskIndex = findTask(solution->customMiningType, solution->jobId);
         if (typeSpecificTaskIndex < 0)
             return -1;
 
