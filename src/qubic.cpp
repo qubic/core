@@ -2903,11 +2903,20 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                         break;
                     }
                 }
+                if (j == system.numberOfSolutions
+                    && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
+                {
+                    system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
+                    system.solutions[system.numberOfSolutions].miningSeed = transaction->miningSeed;
+                    system.solutions[system.numberOfSolutions].nonce = transaction->nonce;
+                    solutionPublicationTicks[system.numberOfSolutions++] = SOLUTION_RECORDED_FLAG;
+                }
 
                 RELEASE(solutionsLock);
 
                 break;
             }
+        }
         }
     }
 }
