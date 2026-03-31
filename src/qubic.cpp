@@ -2930,6 +2930,9 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
 
 #if DUPLICATE_SOLUTION_FIX == 0
         // OPTION 0: original code (BUG: records without score check)
+#ifdef TESTNET
+        logSolutionDebug(L"[SOL] dup OPTION0: no score check, record blindly", flagIndex, 0);
+#endif
         for (unsigned int i = 0; i < computorSeedsCount; i++)
         {
             if (transaction->sourcePublicKey == computorPublicKeys[i])
@@ -2963,6 +2966,9 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
 
 #elif DUPLICATE_SOLUTION_FIX == 1
         // OPTION 1: only mark existing entries, no new recording
+#ifdef TESTNET
+        logSolutionDebug(L"[SOL] dup OPTION1: mark existing only", flagIndex, 0);
+#endif
         for (unsigned int i = 0; i < computorSeedsCount; i++)
         {
             if (transaction->sourcePublicKey == computorPublicKeys[i])
