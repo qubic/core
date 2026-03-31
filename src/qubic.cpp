@@ -2885,6 +2885,30 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     }
     else
     {
+// ============================================================================
+// DUPLICATE SOLUTION HANDLING (minerSolutionFlags already set)
+// Three options for testing. Enable exactly one.
+//
+// OPTION 0 original code:
+//   Records unvalidated solutions in system.solutions[] on duplicate send.
+//   Test: send invalid nonce twice -> F2 shows 1/1/0/1 (should be 0/0/0/0)
+//
+// OPTION 1 remove add-new block:
+//   Only marks SOLUTION_RECORDED_FLAG for existing entries. Does not record
+//   new entries. Rare hash collision case: legitimate solution silently dropped.
+//   Test: send invalid nonce twice -> F2 shows 0/0/0/0
+//   Test: send valid nonce twice -> minerScores = 1 (no inflation)
+//
+// OPTION 2 re-score in else block:
+//   Re-runs full scoring flow. Score cache makes it instant. BUT enables
+//   free score inflation: send same valid nonce every tick -> minerScores
+//   grows without limit, deposit refunded each time, zero cost.
+//   Test: send valid nonce 3 times -> minerScores = 3 (dup, should be 1)
+// ============================================================================
+#define DUPLICATE_SOLUTION_FIX 1
+
+#if DUPLICATE_SOLUTION_FIX == 0
+        // OPTION 0: original code (BUG: records without score check)
         for (unsigned int i = 0; i < computorSeedsCount; i++)
         {
             if (transaction->sourcePublicKey == computorPublicKeys[i])
@@ -2899,7 +2923,6 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                         && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
                     {
                         solutionPublicationTicks[j] = SOLUTION_RECORDED_FLAG;
-
                         break;
                     }
                 }
@@ -2913,11 +2936,105 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                 }
 
                 RELEASE(solutionsLock);
-
                 break;
             }
         }
+
+#elif DUPLICATE_SOLUTION_FIX == 1
+        // OPTION 1: only mark existing entries, no new recording
+        for (unsigned int i = 0; i < computorSeedsCount; i++)
+        {
+            if (transaction->sourcePublicKey == computorPublicKeys[i])
+            {
+                ACQUIRE(solutionsLock);
+
+                for (unsigned int j = 0; j < system.numberOfSolutions; j++)
+                {
+                    if (transaction->nonce == system.solutions[j].nonce
+                        && transaction->miningSeed == system.solutions[j].miningSeed
+                        && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
+                    {
+                        solutionPublicationTicks[j] = SOLUTION_RECORDED_FLAG;
+                        break;
+                    }
+                }
+
+                RELEASE(solutionsLock);
+                break;
+            }
         }
+
+#elif DUPLICATE_SOLUTION_FIX == 2
+        // OPTION 2: re-score with full flow
+        // TEST: enables dup scores ?
+        {
+            unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
+            score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(transaction->nonce.m256i_u8);
+            if (score->isValidScore(solutionScore, selectedAlgo))
+            {
+                resourceTestingDigest ^= solutionScore;
+                KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
+                const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ?
+                    solutionThreshold[system.epoch][selectedAlgo]
+                    : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
+                if (score->isGoodScore(solutionScore, threshold, selectedAlgo))
+                {
+                    increaseEnergy(transaction->sourcePublicKey, transaction->amount);
+                    const QuTransfer quTransfer = { m256i::zero(), transaction->sourcePublicKey, transaction->amount };
+                    logger.logQuTransfer(quTransfer);
+
+                    for (unsigned int i = 0; i < computorSeedsCount; i++)
+                    {
+                        if (transaction->sourcePublicKey == computorPublicKeys[i])
+                        {
+                            ACQUIRE(solutionsLock);
+
+                            unsigned int j;
+                            for (j = 0; j < system.numberOfSolutions; j++)
+                            {
+                                if (transaction->nonce == system.solutions[j].nonce
+                                    && transaction->miningSeed == system.solutions[j].miningSeed
+                                    && transaction->sourcePublicKey == system.solutions[j].computorPublicKey)
+                                {
+                                    solutionPublicationTicks[j] = SOLUTION_RECORDED_FLAG;
+                                    break;
+                                }
+                            }
+                            if (j == system.numberOfSolutions
+                                && system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS)
+                            {
+                                system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
+                                system.solutions[system.numberOfSolutions].miningSeed = transaction->miningSeed;
+                                system.solutions[system.numberOfSolutions].nonce = transaction->nonce;
+                                solutionPublicationTicks[system.numberOfSolutions++] = SOLUTION_RECORDED_FLAG;
+                            }
+
+                            RELEASE(solutionsLock);
+                            break;
+                        }
+                    }
+
+                    ACQUIRE(minerScoreArrayLock);
+                    unsigned int minerIndex;
+                    for (minerIndex = 0; minerIndex < numberOfMiners; minerIndex++)
+                    {
+                        if (transaction->sourcePublicKey == minerPublicKeys[minerIndex])
+                        {
+                            minerScores[minerIndex] += gScoreMultiplier[selectedAlgo];
+                            break;
+                        }
+                    }
+                    if (minerIndex == numberOfMiners
+                        && numberOfMiners < MAX_NUMBER_OF_MINERS)
+                    {
+                        minerPublicKeys[numberOfMiners] = transaction->sourcePublicKey;
+                        minerScores[numberOfMiners++] = gScoreMultiplier[selectedAlgo];
+                    }
+                    RELEASE(minerScoreArrayLock);
+                }
+            }
+        }
+#endif
     }
 }
 
