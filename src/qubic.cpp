@@ -2747,9 +2747,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
         unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
         score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(transaction->nonce.m256i_u8);
 
-#ifdef TESTNET
         logSolutionDebug(L"[SOL] first seen", solutionScore, (unsigned int)selectedAlgo);
-#endif
 
         if (score->isValidScore(solutionScore, selectedAlgo))
         {
@@ -2760,9 +2758,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                 : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
             if (score->isGoodScore(solutionScore, threshold, selectedAlgo))
             {
-#ifdef TESTNET
                 logSolutionDebug(L"[SOL] GOOD -> refund+record", solutionScore, threshold);
-#endif
                 // Solution deposit return
                 {
                     increaseEnergy(transaction->sourcePublicKey, transaction->amount);
@@ -2928,9 +2924,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
 
 #if DUPLICATE_SOLUTION_FIX == 0
         // OPTION 0: original code (BUG: records without score check)
-#ifdef TESTNET
         logSolutionDebug(L"[SOL] dup OPTION0: no score check, record blindly", flagIndex, 0);
-#endif
         for (unsigned int i = 0; i < computorSeedsCount; i++)
         {
             if (transaction->sourcePublicKey == computorPublicKeys[i])
@@ -2964,9 +2958,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
 
 #elif DUPLICATE_SOLUTION_FIX == 1
         // OPTION 1: only mark existing entries, no new recording
-#ifdef TESTNET
         logSolutionDebug(L"[SOL] dup OPTION1: mark existing only", flagIndex, 0);
-#endif
         for (unsigned int i = 0; i < computorSeedsCount; i++)
         {
             if (transaction->sourcePublicKey == computorPublicKeys[i])
@@ -2993,9 +2985,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
         // OPTION 2: re-score with full flow
         // TEST: enables dup scores ?
         {
-#ifdef TESTNET
             logSolutionDebug(L"[SOL] dup OPTION2: re-score full flow", flagIndex, 0);
-#endif
             unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
             score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(transaction->nonce.m256i_u8);
             if (score->isValidScore(solutionScore, selectedAlgo))
