@@ -2712,7 +2712,6 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
     return transaction->amount > 0;
 }
 
-#ifdef TESTNET
 static void logSolutionDebug(const CHAR16* label, unsigned int val1, unsigned int val2)
 {
     CHAR16 msg[200];
@@ -2723,7 +2722,6 @@ static void logSolutionDebug(const CHAR16* label, unsigned int val1, unsigned in
     appendNumber(msg, val2, FALSE);
     addDebugMessage(msg);
 }
-#endif
 
 static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, const unsigned long long processorNumber)
 {
@@ -2995,6 +2993,9 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
         // OPTION 2: re-score with full flow
         // TEST: enables dup scores ?
         {
+#ifdef TESTNET
+            logSolutionDebug(L"[SOL] dup OPTION2: re-score full flow", flagIndex, 0);
+#endif
             unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
             score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(transaction->nonce.m256i_u8);
             if (score->isValidScore(solutionScore, selectedAlgo))
