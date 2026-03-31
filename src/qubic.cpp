@@ -2735,6 +2735,20 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
 
         unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
         score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(transaction->nonce.m256i_u8);
+
+#if !defined(NDEBUG)
+        {
+            CHAR16 dbgMsg[200];
+            setText(dbgMsg, L"[SOL] first seen, score=");
+            appendNumber(dbgMsg, solutionScore, FALSE);
+            appendText(dbgMsg, L" algo=");
+            appendNumber(dbgMsg, (unsigned int)selectedAlgo, FALSE);
+            appendText(dbgMsg, L" valid=");
+            appendNumber(dbgMsg, score->isValidScore(solutionScore, selectedAlgo) ? 1 : 0, FALSE);
+            addDebugMessage(dbgMsg);
+        }
+#endif
+
         if (score->isValidScore(solutionScore, selectedAlgo))
         {
             resourceTestingDigest ^= solutionScore;
@@ -2744,6 +2758,17 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                 : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
             if (score->isGoodScore(solutionScore, threshold, selectedAlgo))
             {
+#if !defined(NDEBUG)
+                {
+                    CHAR16 dbgMsg[200];
+                    setText(dbgMsg, L"[SOL] GOOD score=");
+                    appendNumber(dbgMsg, solutionScore, FALSE);
+                    appendText(dbgMsg, L" threshold=");
+                    appendNumber(dbgMsg, threshold, FALSE);
+                    appendText(dbgMsg, L" -> refund+record+minerScores");
+                    addDebugMessage(dbgMsg);
+                }
+#endif
                 // Solution deposit return
                 {
                     increaseEnergy(transaction->sourcePublicKey, transaction->amount);
