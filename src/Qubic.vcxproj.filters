@@ -132,6 +132,9 @@
     <ClInclude Include="contracts\QIP.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\Qusino.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contract_core\contract_def.h">
       <Filter>contract_core</Filter>
     </ClInclude>
@@ -305,10 +308,6 @@
     <ClInclude Include="contracts\QDuel.h">
       <Filter>contracts</Filter>
     </ClInclude>
-
-    <ClInclude Include="contracts\QSurv.h">
-      <Filter>contracts</Filter>
-    </ClInclude>
     <ClInclude Include="contracts\Pulse.h">
       <Filter>contracts</Filter>
     </ClInclude>
@@ -368,6 +367,9 @@
     </ClInclude>
     <ClInclude Include="oracle_core\snapshot_files.h">
       <Filter>oracle_core</Filter>
+    </ClInclude>
+    <ClInclude Include="oracle_interfaces\DogeShareValidation.h">
+      <Filter>oracle_interfaces</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

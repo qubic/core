@@ -36,6 +36,14 @@ struct MiningSolutionTransaction : public Transaction
         return sizeof(miningSeed) + sizeof(nonce);
     }
 
+    static bool isSolutionTransaction(const Transaction* tx)
+    {
+        return isZero(tx->destinationPublicKey)
+            && tx->inputType == transactionType()
+            && tx->amount >= minAmount()
+            && tx->inputSize >= minInputSize();
+    }
+
     m256i miningSeed;
     m256i nonce;
     unsigned char signature[SIGNATURE_SIZE];
