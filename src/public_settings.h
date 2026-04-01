@@ -12,6 +12,9 @@
 
 #define MAX_NUMBER_OF_PROCESSORS 32
 #define NUMBER_OF_SOLUTION_PROCESSORS 12
+// Maximum number of NUMBER_OF_SOLUTION_PROCESSORS can be used for pre-process the mining solution
+// Must not exceed half of NUMBER_OF_SOLUTION_PROCESSORS. Set 0 to disable.
+#define NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS 4
 
 // Number of buffers available for executing contract functions in parallel; having more means reserving a bit more RAM (+1 = +32 MB)
 // and less waiting in request processors if there are more parallel contract function requests. The maximum value that may make sense
@@ -30,8 +33,8 @@
 
 // The tick duration used to calculate the size of memory buffers.
 // This determines the memory footprint of the application.
-#define TICK_DURATION_FOR_ALLOCATION_MS 750
-#define TRANSACTION_SPARSENESS 1
+#define TICK_DURATION_FOR_ALLOCATION_MS 350
+#define TRANSACTION_SPARSENESS 3
 
 // Number of ticks that are stored in the pending txs pool. This also defines how many ticks in advance a tx can be registered.
 #define PENDING_TXS_POOL_NUM_TICKS (1000 * 60 * 10ULL / TICK_DURATION_FOR_ALLOCATION_MS) // 10 minutes
@@ -66,12 +69,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 282
+#define VERSION_B 285
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 204
-#define TICK 45693000
+#define EPOCH 207
+#define TICK 48160000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -101,9 +104,9 @@ static constexpr unsigned long long ADDITION_NUMBER_OF_INPUT_NEURONS = 14;     /
 static constexpr unsigned long long ADDITION_NUMBER_OF_OUTPUT_NEURONS = 8;    // L
 static constexpr unsigned long long ADDITION_NUMBER_OF_TICKS = 1000;               // N
 static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
-static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 300;
+static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 500;
 static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = ADDITION_NUMBER_OF_INPUT_NEURONS + ADDITION_NUMBER_OF_OUTPUT_NEURONS + ADDITION_NUMBER_OF_MUTATIONS; // P
-static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 74500;
+static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 75200;
 
 // Multipler of score
 static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;
@@ -134,7 +137,6 @@ static_assert(INTERNAL_COMPUTATIONS_INTERVAL >= NUMBER_OF_COMPUTORS, "Internal c
 static unsigned int gFullExternalComputationTimes[][2] =
 {
     {0x040C0000U, 0x050C0000U}, // Thu 12:00:00 - Fri 12:00:00
-    {0x060C0000U, 0x000C0000U}, // Sat 12:00:00 - Sun 12:00:00
     {0x010C0000U, 0x020C0000U}, // Mon 12:00:00 - Tue 12:00:00
 };
 
