@@ -1554,15 +1554,9 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
             && (::spectrumIndex(*sourcePublicKey) < 0 || energy(::spectrumIndex(*sourcePublicKey)) < MESSAGE_DISSEMINATION_THRESHOLD))
             return;
 
-        // Check if the solution is added successfully (active task, no duplicate).
-        // If not, it won't be broadcasted to reduce unnecessary traffic and verification.
-        StoredDogeMiningTask task;
-        if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE, reinterpret_cast<char*>(&task)) < 0)
-            return;
-        
         // Broadcast the solution to peers.
         enqueueResponse(NULL, header);
-        
+
         if (sol->customMiningType == CustomMiningType::DOGE)
         {
             if (messageSize - SIGNATURE_SIZE < sizeof(CustomQubicMiningSolution) + sizeof(QubicDogeMiningSolution))
@@ -1570,11 +1564,16 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
 
             const auto* dogeSol = reinterpret_cast<const QubicDogeMiningSolution*>(payload + sizeof(CustomQubicMiningSolution));
 
-            // Check if the solution is from own comp pool -> if yes, query oracle.
+            // Check if the solution is from own comp pool -> if yes, save solution and query oracle.
             for (unsigned int i = 0; i < computorSeedsCount; ++i)
             {
                 if (computorPublicKeys[i] == *sourcePublicKey)
                 {
+                    // Check if the solution is added successfully (active task, no duplicate).
+                    CustomQubicMiningStorage::StoredDogeMiningTask task;
+                    if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE, reinterpret_cast<unsigned char*>(&task)) < 0)
+                        return;
+
                     unsigned char buffer[sizeof(OracleUserQueryTransactionPrefix)
                         + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
 
@@ -1582,7 +1581,7 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                     tx->sourcePublicKey = computorPublicKeys[i];
                     tx->destinationPublicKey = { 0 };
                     tx->amount = 0;
-                    tx->tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+                    tx->tick = system.tick + 3 * TICK_TRANSACTIONS_PUBLICATION_OFFSET;
                     tx->inputType = ORACLE_MACHINE_QUERY;
                     tx->inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery);
                     tx->oracleInterfaceIndex = OI::DogeShareValidation::oracleInterfaceIndex;
@@ -1598,12 +1597,15 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                     copyMem(queryData + offset, dogeSol->nonce, 4); offset += 4;
                     copyMem(queryData + offset, task.dispatcherTarget, 32); offset += 32;
 
-                    KangarooTwelve(buffer, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
-                    sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
-                    enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
-                    break;
+                    customQubicMiningStorage.addOracleQuery(tx);
 
-                    // TODO: resend oracle query if the tx isn't included in system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET or if it is an empty tick
+                    if (isMainMode())
+                    {
+                        KangarooTwelve(buffer, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
+                        sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
+                        enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                    }
+                    break;
                 }
             }
         }
@@ -3136,6 +3138,20 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
 
                     // start user query
                     const bool error = (oracleEngine.startUserQuery(queryTx, transactionIndex, forceZeroFee) < 0);
+
+                    if (queryTx->oracleInterfaceIndex == OI::DogeShareValidation::oracleInterfaceIndex)
+                    {
+                        if (error)
+                        {
+                            // The query was included in the tick but could not be started, not necessary to try again.
+                            customQubicMiningStorage.discardOracleQuery(system.tick, (const OracleUserQueryTransactionPrefix*)transaction);
+                        }
+                        else
+                        {
+                            customQubicMiningStorage.markOracleQueryStarted(system.tick, (const OracleUserQueryTransactionPrefix*)transaction);
+                        }
+                    }
+
                     if (error && transaction->amount)
                     {
                         oracleEngine.refundFees(transaction->sourcePublicKey, transaction->amount);
@@ -3530,6 +3546,9 @@ static void processTick(unsigned long long processorNumber)
         PROFILE_SCOPE_END();
     }
 
+    // Resend oracle queries for share validation if they were scheduled for but not included in this tick.
+    customQubicMiningStorage.resendNotStartedOracleQueriesForTick(system.tick, computorSeedsCount, computorSubseeds, computorPublicKeys);
+
     // Generate subscription queries (may create queries that immediately timeout if the network was stuck)
     oracleEngine.generateSubscriptionQueries();
 
@@ -3597,19 +3616,24 @@ static void processTick(unsigned long long processorNumber)
                     {
                         if (computorPublicKeys[i] == prevTx->sourcePublicKey)
                         {
-                            // Copy and update tx
-                            __ScopedScratchpad scratchpad(MAX_TRANSACTION_SIZE, /*initZero=*/false);
-                            auto* tx = (OracleUserQueryTransactionPrefix*)scratchpad.ptr;
-                            const uint64_t txSizeWithoutSignature = sizeof(OracleUserQueryTransactionPrefix)
-                                                                    + sizeof(OI::DogeShareValidation::OracleQuery);
-                            copyMem(tx, prevTx, txSizeWithoutSignature);
-                            tx->tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+                            if (customQubicMiningStorage.increaseOracleQueryFailCounter(prevTx))
+                            {
+                                // Copy and update tx
+                                __ScopedScratchpad scratchpad(MAX_TRANSACTION_SIZE, /*initZero=*/false);
+                                auto* tx = (OracleUserQueryTransactionPrefix*)scratchpad.ptr;
+                                const uint64_t txSizeWithoutSignature = sizeof(OracleUserQueryTransactionPrefix)
+                                    + sizeof(OI::DogeShareValidation::OracleQuery);
+                                copyMem(tx, prevTx, txSizeWithoutSignature);
+                                tx->tick = system.tick + 3 * TICK_TRANSACTIONS_PUBLICATION_OFFSET;
 
-                            // Sign and send tx
-                            m256i digest;
-                            KangarooTwelve(tx, sizeof(Transaction) + prevTx->inputSize, digest.m256i_u8, sizeof(digest));
-                            sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
-                            enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                                // Sign and send tx
+                                m256i digest;
+                                KangarooTwelve(tx, sizeof(Transaction) + prevTx->inputSize, digest.m256i_u8, sizeof(digest));
+                                sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
+                                enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+
+                                customQubicMiningStorage.updateOracleQueryScheduledTick(finishedUserQuery->queryTick, prevTx, tx->tick);
+                            }
                             break;
                        }
                     }
