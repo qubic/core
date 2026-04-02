@@ -60,7 +60,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
 // If this flag is 0, the node will try to fetch data of the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
 // If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
-#define START_NETWORK_FROM_SCRATCH 1
+#define START_NETWORK_FROM_SCRATCH 0
 
 // Addons: If you don't know it, leave it 0.
 #define ADDON_TX_STATUS_REQUEST 0
@@ -70,7 +70,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 
 #define VERSION_A 1
 #define VERSION_B 285
-#define VERSION_C 0
+#define VERSION_C 1
 
 // Epoch and initial tick for node startup
 #define EPOCH 207
@@ -106,7 +106,7 @@ static constexpr unsigned long long ADDITION_NUMBER_OF_TICKS = 1000;            
 static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
 static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 500;
 static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = ADDITION_NUMBER_OF_INPUT_NEURONS + ADDITION_NUMBER_OF_OUTPUT_NEURONS + ADDITION_NUMBER_OF_MUTATIONS; // P
-static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 75200;
+static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 75700;
 
 // Multipler of score
 static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;
