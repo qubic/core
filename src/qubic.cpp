@@ -227,6 +227,11 @@ static constexpr unsigned int gScoreMultiplier[score_engine::AlgoType::MaxAlgoCo
 static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gCustomMiningSharesCounter;
 
+// DOGE merged-mining shares (separate pipeline from XMR custom mining)
+static volatile char gDogeMiningSharesCountLock = 0;
+static unsigned int gDogeMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
+static CustomMiningSharesCounter gDogeMiningSharesCounter;
+
 static CustomQubicMiningStorage customQubicMiningStorage;
 
 // variables and declare for persisting state
@@ -254,6 +259,7 @@ struct
     unsigned int numberOfMiners;
     unsigned int numberOfTransactions;
     unsigned char customMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
+    unsigned char dogeMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
 } nodeStateBuffer;
 #endif
 static bool saveContractStateFiles(CHAR16* directory = NULL);
@@ -1526,6 +1532,7 @@ static void processBroadcastCustomMiningTask(RequestResponseHeader* header)
         enqueueResponse(NULL, header);
 #ifdef SEND_DOGE_ORACLE_QUERIES
         customQubicMiningStorage.addTask(reinterpret_cast<const CustomQubicMiningTask*>(payload), messageSize - SIGNATURE_SIZE);
+        ATOMIC_INC64(gDogeMiningStats.phaseV2.tasks);
 #endif
     }
 }
@@ -1577,8 +1584,12 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                 {
                     // Check if the solution is added successfully (active task, no duplicate) before sending oracle query.
                     CustomQubicMiningStorage::StoredDogeMiningTask task;
+                    ATOMIC_INC64(gDogeMiningStats.phaseV2.shares);
                     if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE, reinterpret_cast<unsigned char*>(&task)) < 0)
+                    {
+                        ATOMIC_INC64(gDogeMiningStats.phaseV2.duplicated);
                         return;
+                    }
 
                     unsigned char buffer[sizeof(OracleUserQueryTransactionPrefix)
                         + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
@@ -2055,6 +2066,7 @@ static void beginCustomMiningPhase()
     gSystemCustomMiningSolutionV2Cache.reset();
     gCustomMiningStorage.reset();
     gCustomMiningStats.phaseResetAndEpochAccumulate();
+    gDogeMiningStats.phaseResetAndEpochAccumulate();
 }
 
 // resetPhase: If true, allows reinitializing mining seed and the custom mining phase flag
@@ -3179,6 +3191,12 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                 }
                 break;
 
+                case DogeMiningShareTransaction::transactionType():
+                {
+                    gDogeMiningSharesCounter.processTransactionData(transaction, dataLock);
+                }
+                break;
+
                 case EXECUTION_FEE_REPORT_INPUT_TYPE:
                 {
                     executionFeeReportCollector.processTransactionData(transaction, dataLock);
@@ -3287,7 +3305,7 @@ static void makeAndBroadcastTickVotesTransaction(int i, BroadcastFutureTickData&
     }
 }
 
-static bool makeAndBroadcastCustomMiningTransaction(int i, BroadcastFutureTickData& td, int txSlot)
+static bool makeAndBroadcastXMRMiningTransaction(int i, BroadcastFutureTickData& td, int txSlot)
 {
     if (!gCustomMiningBroadcastTxBuffer[i].isBroadcasted)
     {
@@ -3314,6 +3332,56 @@ static bool makeAndBroadcastCustomMiningTransaction(int i, BroadcastFutureTickDa
                 if (!tsReqTickTransactionOffsets[txSlot]) // not yet have value
                 {
                     if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch) //have enough space
+                    {
+                        td.tickData.transactionDigests[txSlot] = m256i(digest);
+                        tsReqTickTransactionOffsets[txSlot] = ts.nextTickTransactionOffset;
+                        copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), &payload, transactionSize);
+                        ts.nextTickTransactionOffset += transactionSize;
+                    }
+                }
+                ts.tickTransactions.releaseLock();
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+// Generic mining share broadcast helper.
+// Takes the broadcast buffer + counter by reference so it can be reused for
+// any CustomMiningSharesCounter-based pipeline (DOGE today; future mining types tomorrow).
+// XMR currently has its own dedicated function (makeAndBroadcastXMRMiningTransaction)
+// which will be retired along with XMR custom mining itself.
+static bool makeAndBroadcastCustomMiningTransaction(
+    BroadcastCustomMiningTransaction* broadcastTxBuffer,
+    CustomMiningSharesCounter& sharesCounter,
+    int i,
+    BroadcastFutureTickData& td,
+    int txSlot)
+{
+    if (!broadcastTxBuffer[i].isBroadcasted)
+    {
+        broadcastTxBuffer[i].isBroadcasted = true;
+        auto& payload = broadcastTxBuffer[i].payload;
+        if (sharesCounter.isEmptyPacket(payload.packedScore) == false)
+        {
+            payload.transaction.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+            payload.dataLock = td.tickData.timelock;
+            unsigned char digest[32];
+            KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.packedScore) + sizeof(payload.dataLock), digest, sizeof(digest));
+            sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, payload.signature);
+            enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
+
+            unsigned int tickIndex = ts.tickToIndexCurrentEpoch(td.tickData.tick);
+            unsigned int transactionSize = sizeof(payload);
+            KangarooTwelve(&payload, transactionSize, digest, sizeof(digest));
+            auto* tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
+            if (txSlot < NUMBER_OF_TRANSACTIONS_PER_TICK)
+            {
+                ts.tickTransactions.acquireLock();
+                if (!tsReqTickTransactionOffsets[txSlot])
+                {
+                    if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                     {
                         td.tickData.transactionDigests[txSlot] = m256i(digest);
                         tsReqTickTransactionOffsets[txSlot] = ts.nextTickTransactionOffset;
@@ -3672,8 +3740,18 @@ static void processTick(unsigned long long processorNumber)
                             // TODO: Verify that the task description in the query matches the task description in the storage to decline revenue
                             // for comps tampering with the task description in their query. Not sure how likely this is to happen.
                             
-                            // dogeRev[reply.compIndex]++;
+                            ATOMIC_INC64(gDogeMiningStats.phaseV2.valid);
+                            if (reply.compIndex < NUMBER_OF_COMPUTORS)
+                            {
+                                ACQUIRE(gDogeMiningSharesCountLock);
+                                gDogeMiningSharesCount[reply.compIndex]++;
+                                RELEASE(gDogeMiningSharesCountLock);
+                            }
                         }
+                    }
+                    else
+                    {
+                        ATOMIC_INC64(gDogeMiningStats.phaseV2.invalid);
                     }
                 }
                 else
@@ -3829,6 +3907,44 @@ static void processTick(unsigned long long processorNumber)
             ACQUIRE(gCustomMiningSharesCountLock);
             setMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
             RELEASE(gCustomMiningSharesCountLock);
+
+            // Prepare DOGE mining share broadcast TX (one per own computor; buffer only — send deferred)
+            long long dogeMiningCountOverflow = 0;
+            for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+            {
+                ACQUIRE(gDogeMiningSharesCountLock);
+                for (int k = 0; k < NUMBER_OF_COMPUTORS; k++)
+                {
+                    if (gDogeMiningSharesCount[k] > CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL)
+                    {
+                        if (gDogeMiningSharesCount[k] > dogeMiningCountOverflow)
+                        {
+                            dogeMiningCountOverflow = gDogeMiningSharesCount[k];
+                        }
+                        gDogeMiningSharesCount[k] = CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL;
+                    }
+                }
+                gDogeMiningSharesCounter.registerNewShareCount(gDogeMiningSharesCount);
+                RELEASE(gDogeMiningSharesCountLock);
+
+                auto& dogePayload = gDogeMiningBroadcastTxBuffer[i].payload;
+                dogePayload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
+                dogePayload.transaction.destinationPublicKey = m256i::zero();
+                dogePayload.transaction.amount = 0;
+                dogePayload.transaction.tick = 0;
+                dogePayload.transaction.inputType = DogeMiningShareTransaction::transactionType();
+                dogePayload.transaction.inputSize = sizeof(dogePayload.packedScore) + sizeof(dogePayload.dataLock);
+                gDogeMiningSharesCounter.compressNewSharesPacket(ownComputorIndices[i], dogePayload.packedScore);
+                gDogeMiningBroadcastTxBuffer[i].isBroadcasted = false;
+            }
+
+            // Keep the max of overflow case
+            ATOMIC_MAX64(gDogeMiningStats.maxOverflowShareCount, dogeMiningCountOverflow);
+
+            // Reset the phase counter
+            ACQUIRE(gDogeMiningSharesCountLock);
+            setMem(gDogeMiningSharesCount, sizeof(gDogeMiningSharesCount), 0);
+            RELEASE(gDogeMiningSharesCountLock);
         }
     }
 
@@ -3906,7 +4022,13 @@ static void processTick(unsigned long long processorNumber)
                     {
                         // insert & broadcast external mining score packet (containing the score for each computor on the last external mining phase)
                         // this type of tx is only broadcasted in internal mining phases
-                        if (makeAndBroadcastCustomMiningTransaction(i, broadcastedFutureTickData, nextTxIndex))
+                        if (makeAndBroadcastXMRMiningTransaction(i, broadcastedFutureTickData, nextTxIndex))
+                        {
+                            nextTxIndex++;
+                        }
+
+                        // insert & broadcast DOGE mining score packet
+                        if (makeAndBroadcastCustomMiningTransaction(gDogeMiningBroadcastTxBuffer, gDogeMiningSharesCounter, i, broadcastedFutureTickData, nextTxIndex))
                         {
                             nextTxIndex++;
                         }
@@ -4140,16 +4262,21 @@ static void resetCustomMining()
     gCustomMiningSharesCounter.init();
     setMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
 
+    gDogeMiningSharesCounter.init();
+    setMem(gDogeMiningSharesCount, sizeof(gDogeMiningSharesCount), 0);
+
     gSystemCustomMiningSolutionV2Cache.reset();
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
     {
         // Initialize the broadcast transaction buffer. Assume the all previous is broadcasted.
         gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
+        gDogeMiningBroadcastTxBuffer[i].isBroadcasted = true;
     }
     gCustomMiningStorage.reset();
 
     // Clear all data of epoch
     gCustomMiningStats.epochReset();
+    gDogeMiningStats.epochReset();
 }
 
 static void beginEpoch()
@@ -4313,6 +4440,13 @@ static void endEpoch()
                 gRevenueComponents.voteScore,
                 gRevenueComponents.customMiningScore,
                 gRevenueComponents.revenue);
+        }
+
+        // Collect mining scores for V2
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            gEpochRevenueData.xmrMiningScore[i] = gRevenueComponents.customMiningScore[i];
+            gEpochRevenueData.dogeMiningScore[i] = gDogeMiningSharesCounter.getSharesCount(i);
         }
 
         // Revenue V2: filter transactions. Run here but have not applied yet
@@ -4704,6 +4838,7 @@ static bool saveAllNodeStates()
     nodeStateBuffer.numberOfTransactions = numberOfTransactions;    
     voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
     gCustomMiningSharesCounter.saveAllDataToArray(nodeStateBuffer.customMiningSharesCounterData);
+    gDogeMiningSharesCounter.saveAllDataToArray(nodeStateBuffer.dogeMiningSharesCounterData);
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
     savedSize = save(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer, directory);
@@ -4879,6 +5014,7 @@ static bool loadAllNodeStates()
     loadMiningSeedFromFile = true;
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
     gCustomMiningSharesCounter.loadAllDataFromArray(nodeStateBuffer.customMiningSharesCounterData);
+    gDogeMiningSharesCounter.loadAllDataFromArray(nodeStateBuffer.dogeMiningSharesCounterData);
 
     // update own computor indices
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -7395,6 +7531,10 @@ static void processKeyPresses()
 
             setText(message, L"CustomMining: ");
             gCustomMiningStats.appendLog(message);
+            logToConsole(message);
+
+            setText(message, L"DogeMining: ");
+            gDogeMiningStats.appendLog(message);
             logToConsole(message);
         }
         break;
