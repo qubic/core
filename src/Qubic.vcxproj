@@ -75,6 +75,7 @@
     <ClInclude Include="files\files.h" />
     <ClInclude Include="logging\logging.h" />
     <ClInclude Include="logging\net_msg_impl.h" />
+    <ClInclude Include="mining\custom_qubic_mining_storage.h" />
     <ClInclude Include="mining\mining.h" />
     <ClInclude Include="mining\score_addition.h" />
     <ClInclude Include="mining\score_common.h" />
