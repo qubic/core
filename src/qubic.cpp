@@ -3144,11 +3144,11 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                         if (error)
                         {
                             // The query was included in the tick but could not be started, not necessary to try again.
-                            customQubicMiningStorage.discardOracleQuery(system.tick, (const OracleUserQueryTransactionPrefix*)transaction);
+                            customQubicMiningStorage.removeOracleQuery((const OracleUserQueryTransactionPrefix*)transaction);
                         }
                         else
                         {
-                            customQubicMiningStorage.markOracleQueryStarted(system.tick, (const OracleUserQueryTransactionPrefix*)transaction);
+                            customQubicMiningStorage.markOracleQueryStarted((const OracleUserQueryTransactionPrefix*)transaction);
                         }
                     }
 
@@ -3632,7 +3632,7 @@ static void processTick(unsigned long long processorNumber)
                                 sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
                                 enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
 
-                                customQubicMiningStorage.updateOracleQueryScheduledTick(finishedUserQuery->queryTick, prevTx, tx->tick);
+                                customQubicMiningStorage.updateOracleQueryScheduledTick(prevTx, tx->tick);
                             }
                             break;
                        }

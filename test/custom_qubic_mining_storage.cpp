@@ -6,6 +6,7 @@
 
 #include "gtest/gtest.h"
 
+#include "oracle_testing.h"
 #include "src/mining/custom_qubic_mining_storage.h"
 
 void createTestTask(std::array<unsigned char, sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask)>& buffer, uint64_t jobId, bool cleanJobQueue, std::mt19937& gen)
@@ -208,7 +209,7 @@ TEST(CustomQubicMiningStorage, AddSolutionTaskDescriptionMatches)
     // Create a solution matching the task, adding should be successful.
     std::array<unsigned char, sizeof(CustomQubicMiningSolution) + sizeof(QubicDogeMiningSolution)> solBuffer;
     auto* sol = reinterpret_cast<CustomQubicMiningSolution*>(solBuffer.data());
-    StoredDogeMiningTask storedTask;
+    CustomQubicMiningStorage::StoredDogeMiningTask storedTask;
 
     createTestSolution(solBuffer, /*jobId=*/12345, gen);
     EXPECT_EQ(storage.addSolution(sol, sizeof(CustomQubicMiningSolution) + sizeof(QubicDogeMiningSolution), reinterpret_cast<unsigned char*>(&storedTask)), 1);

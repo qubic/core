@@ -15,7 +15,6 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="mining\custom_qubic_mining_storage.cpp" />
     <ClCompile Include="qubic.cpp" />
   </ItemGroup>
   <ItemGroup>

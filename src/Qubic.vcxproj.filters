@@ -2,9 +2,6 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="qubic.cpp" />
-    <ClCompile Include="mining\custom_qubic_mining_storage.cpp">
-      <Filter>mining</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="private_settings.h" />
