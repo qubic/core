@@ -3545,7 +3545,46 @@ static void processTick(unsigned long long processorNumber)
     }
 
     // Resend oracle queries for share validation if they were scheduled for but not included in this tick.
-    customQubicMiningStorage.resendNotStartedOracleQueriesForTick(system.tick, computorSeedsCount, computorSubseeds, computorPublicKeys);
+    int currentQueryIndex = customQubicMiningStorage.getNextScheduledQueryIndexForTick(CustomMiningType::DOGE, /*currentQueryIndex=*/-1, system.tick);
+    while (currentQueryIndex >= 0)
+    {
+        CustomQubicMiningStorage::OracleQueryInfo queryInfo = customQubicMiningStorage.getOracleQueryInfo(CustomMiningType::DOGE, currentQueryIndex);
+        for (unsigned int i = 0; i < computorSeedsCount; ++i)
+        {
+            if (computorPublicKeys[i] == queryInfo.sourcePublicKey)
+            {
+                unsigned int newScheduledTick = system.tick + 3 * TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+
+                unsigned char buffer[sizeof(OracleUserQueryTransactionPrefix)
+                    + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
+
+                auto* tx = reinterpret_cast<OracleUserQueryTransactionPrefix*>(buffer);
+                tx->sourcePublicKey = computorPublicKeys[i];
+                tx->destinationPublicKey = { 0 };
+                tx->amount = 0;
+                tx->tick = newScheduledTick;
+                tx->inputType = ORACLE_MACHINE_QUERY;
+                tx->inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery);
+                tx->oracleInterfaceIndex = OI::DogeShareValidation::oracleInterfaceIndex;
+                tx->timeoutMilliseconds = 30000;
+                unsigned char* queryData = buffer + sizeof(OracleUserQueryTransactionPrefix);
+
+                if (customQubicMiningStorage.getTypeSpecificOracleQuery(CustomMiningType::DOGE, currentQueryIndex, queryData))
+                {
+                    // Sign and send tx
+                    m256i digest;
+                    KangarooTwelve(tx, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
+                    sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
+                    enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+
+                    customQubicMiningStorage.updateOracleQueryScheduledTick(CustomMiningType::DOGE, currentQueryIndex, newScheduledTick);
+                }
+
+                break;
+            }
+        }
+        currentQueryIndex = customQubicMiningStorage.getNextScheduledQueryIndexForTick(CustomMiningType::DOGE, currentQueryIndex, system.tick);
+    }
 
     // Generate subscription queries (may create queries that immediately timeout if the network was stuck)
     oracleEngine.generateSubscriptionQueries();
@@ -3614,7 +3653,8 @@ static void processTick(unsigned long long processorNumber)
                     {
                         if (computorPublicKeys[i] == prevTx->sourcePublicKey)
                         {
-                            if (customQubicMiningStorage.increaseOracleQueryFailCounter(prevTx))
+                            unsigned int newScheduledTick = system.tick + 3 * TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+                            if (customQubicMiningStorage.increaseOracleQueryFailCounterAndReschedule(prevTx, newScheduledTick)) // true if the fail counter could be increased without hitting max
                             {
                                 // Copy and update tx
                                 __ScopedScratchpad scratchpad(MAX_TRANSACTION_SIZE, /*initZero=*/false);
@@ -3622,15 +3662,13 @@ static void processTick(unsigned long long processorNumber)
                                 const uint64_t txSizeWithoutSignature = sizeof(OracleUserQueryTransactionPrefix)
                                     + sizeof(OI::DogeShareValidation::OracleQuery);
                                 copyMem(tx, prevTx, txSizeWithoutSignature);
-                                tx->tick = system.tick + 3 * TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+                                tx->tick = newScheduledTick;
 
                                 // Sign and send tx
                                 m256i digest;
                                 KangarooTwelve(tx, sizeof(Transaction) + prevTx->inputSize, digest.m256i_u8, sizeof(digest));
                                 sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
                                 enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
-
-                                customQubicMiningStorage.updateOracleQueryScheduledTick(prevTx, tx->tick);
                             }
                             break;
                        }
