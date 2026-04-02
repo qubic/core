@@ -167,6 +167,10 @@ static constexpr unsigned long long REVENUE_BONUS_CAP = 256; // capacity for non
 static constexpr unsigned int REVENUE_W_TX = 17;             // mandatory weight: TX (85%)
 static constexpr unsigned int REVENUE_W_ORACLE = 3;          // mandatory weight: Oracle (15%)
 static constexpr unsigned int REVENUE_W_SUM = REVENUE_W_TX + REVENUE_W_ORACLE;  // 20
+// Bonus factor weights: XMR (custom mining) and DOGE merged-mining, equal split
+static constexpr unsigned int REVENUE_W_XMR_MINING = 1;      // bonus weight: XMR custom mining (50%)
+static constexpr unsigned int REVENUE_W_DOGE_MINING = 1;     // bonus weight: DOGE merged-mining (50%)
+static constexpr unsigned int REVENUE_W_BONUS_SUM = REVENUE_W_XMR_MINING + REVENUE_W_DOGE_MINING; // 2
 // M_combined is computed as (W_TX*scoreTx + W_ORACLE*scoreOracle) / W_SUM first → [0, S]
 // Then formula: revenue = ipc × M × (S² + B×E) / (S × (S+B) × S)
 static constexpr unsigned long long REVENUE_DIVISOR = REVENUE_SCALE * (REVENUE_SCALE + REVENUE_BONUS_CAP) * REVENUE_SCALE; // 1024 × 1280 × 1024 = 1,342,177,280
@@ -186,6 +190,7 @@ struct EpochRevenueData
     // Per-computor arrays (NUMBER_OF_COMPUTORS entries each)
     unsigned long long slidingWindowTxScore[NUMBER_OF_COMPUTORS];   // new sliding window accumulated score
     unsigned long long oracleScore[NUMBER_OF_COMPUTORS];            // oracle commit/reveal revenue points
+    unsigned long long dogeMiningScore[NUMBER_OF_COMPUTORS];        // DOGE merged-mining shares
     long long v2Revenue[NUMBER_OF_COMPUTORS];                       // V2 shadow output
 
     // Per-tick TX counts — existing total + 3 categories
@@ -204,7 +209,8 @@ struct RevenueV2Buffers
     unsigned int slidingWindowLogScore[MAX_NUMBER_OF_TICKS_PER_EPOCH];
     unsigned long long txFactor[NUMBER_OF_COMPUTORS];
     unsigned long long oracleFactor[NUMBER_OF_COMPUTORS];
-    unsigned long long miningFactor[NUMBER_OF_COMPUTORS];
+    unsigned long long miningFactor[NUMBER_OF_COMPUTORS];      // XMR custom mining
+    unsigned long long dogeMiningFactor[NUMBER_OF_COMPUTORS];  // DOGE merged-mining
 };
 static RevenueV2Buffers gRevenueV2Buffers;
 
@@ -288,17 +294,26 @@ static void computeRevenueV2(EpochRevenueData& rEpochReveneuData)
         }
     }
 
+    // XMR custom mining factor
     computeRevFactor(gRevenueComponents.customMiningScore, REVENUE_SCALE, gRevenueV2Buffers.miningFactor);
 
-    // Combine: M = weighted average of mandatory factors (TX + Oracle), E = bonus (mining)
+    // DOGE merged-mining factor
+    computeRevFactor(rEpochReveneuData.dogeMiningScore, REVENUE_SCALE, gRevenueV2Buffers.dogeMiningFactor);
+
+    // Combine: M = weighted average of mandatory factors (TX + Oracle), E = bonus (XMR + DOGE mining)
     // M = (W_TX*scoreTx + W_ORACLE*scoreOracle) / W_SUM  in  [0, S]
+    // E = (W_XMR*xmrFactor + W_DOGE*dogeFactor) / W_BONUS_SUM  in  [0, S]
     // revenue = ipc × M × (S² + B×E) / (S × (S+B) × S)
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        unsigned long long scoreTx = gRevenueV2Buffers.txFactor[i];          // [0, S]
-        unsigned long long scoreOracle = gRevenueV2Buffers.oracleFactor[i];  // [0, S]
-        unsigned long long E = gRevenueV2Buffers.miningFactor[i];         // [0, S]
+        unsigned long long scoreTx = gRevenueV2Buffers.txFactor[i];              // [0, S]
+        unsigned long long scoreOracle = gRevenueV2Buffers.oracleFactor[i];      // [0, S]
+        unsigned long long xmrFactor = gRevenueV2Buffers.miningFactor[i];        // [0, S]
+        unsigned long long dogeFactor = gRevenueV2Buffers.dogeMiningFactor[i];   // [0, S]
+
         unsigned long long M = (REVENUE_W_TX * scoreTx + REVENUE_W_ORACLE * scoreOracle) / REVENUE_W_SUM;  // [0, S]
+        unsigned long long E = (REVENUE_W_XMR_MINING * xmrFactor + REVENUE_W_DOGE_MINING * dogeFactor) / REVENUE_W_BONUS_SUM;  // [0, S]
+
         unsigned long long numerator = M * (REVENUE_SCALE * REVENUE_SCALE + REVENUE_BONUS_CAP * E);
         rEpochReveneuData.v2Revenue[i] = (long long)(REVENUE_IPC * numerator / REVENUE_DIVISOR);
     }
