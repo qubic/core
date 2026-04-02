@@ -107,6 +107,11 @@ static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = 728;    // 2M
 static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 500;
 static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = ADDITION_NUMBER_OF_INPUT_NEURONS + ADDITION_NUMBER_OF_OUTPUT_NEURONS + ADDITION_NUMBER_OF_MUTATIONS; // P
 static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 75700;
+// Mid-epoch threshold increase: ticks before activation use old threshold (75200),
+// ticks >= activation use ADDITION_SOLUTION_THRESHOLD_DEFAULT (75700).
+// Activation tick is inside XMR marathon where no solutions are submitted.
+static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_PRE_ACTIVATION = 75200;
+static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_ACTIVATION_TICK = 48196000;
 
 // Multipler of score
 static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;

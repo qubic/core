@@ -700,9 +700,14 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                         {
                                             unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
                                             score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(solution_nonce.m256i_u8);
-                                            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? 
-                                                solutionThreshold[system.epoch][selectedAlgo] 
+                                            int threshold = (system.epoch < MAX_NUMBER_EPOCH) ?
+                                                solutionThreshold[system.epoch][selectedAlgo]
                                                 : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
+                                            if (selectedAlgo == score_engine::AlgoType::Addition
+                                                && system.tick < ADDITION_SOLUTION_THRESHOLD_ACTIVATION_TICK)
+                                            {
+                                                threshold = ADDITION_SOLUTION_THRESHOLD_PRE_ACTIVATION;
+                                            }
                                             if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
                                                 && score->isValidScore(solutionScore, selectedAlgo)
                                                 && score->isGoodScore(solutionScore, threshold, selectedAlgo))
@@ -1413,6 +1418,10 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.randomMiningSeed = score->currentRandomSeed;
     respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch][score_engine::AlgoType::HyperIdentity] : HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;
     respondedSystemInfo.solutionAdditionalThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch][score_engine::AlgoType::Addition] : ADDITION_SOLUTION_THRESHOLD_DEFAULT;
+    if (system.tick < ADDITION_SOLUTION_THRESHOLD_ACTIVATION_TICK)
+    {
+        respondedSystemInfo.solutionAdditionalThreshold = ADDITION_SOLUTION_THRESHOLD_PRE_ACTIVATION;
+    }
 
     respondedSystemInfo.totalSpectrumAmount = spectrumInfo.totalAmount;
     respondedSystemInfo.currentEntityBalanceDustThreshold = (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf;
@@ -2761,9 +2770,14 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
         {
             resourceTestingDigest ^= solutionScore;
             KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
-            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ?
+            int threshold = (system.epoch < MAX_NUMBER_EPOCH) ?
                 solutionThreshold[system.epoch][selectedAlgo]
                 : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
+            if (selectedAlgo == score_engine::AlgoType::Addition
+                && system.tick < ADDITION_SOLUTION_THRESHOLD_ACTIVATION_TICK)
+            {
+                threshold = ADDITION_SOLUTION_THRESHOLD_PRE_ACTIVATION;
+            }
             if (score->isGoodScore(solutionScore, threshold, selectedAlgo))
             {
                 // Solution deposit return
