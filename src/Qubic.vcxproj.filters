@@ -135,6 +135,9 @@
     <ClInclude Include="contracts\Qusino.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\QAGENT.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contract_core\contract_def.h">
       <Filter>contract_core</Filter>
     </ClInclude>
@@ -369,6 +372,9 @@
       <Filter>oracle_core</Filter>
     </ClInclude>
     <ClInclude Include="oracle_interfaces\DogeShareValidation.h">
+      <Filter>oracle_interfaces</Filter>
+    </ClInclude>
+    <ClInclude Include="oracle_interfaces\AIVerify.h">
       <Filter>oracle_interfaces</Filter>
     </ClInclude>
   </ItemGroup>
