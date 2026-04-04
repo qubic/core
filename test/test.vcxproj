@@ -1,206 +1,207 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <ItemGroup Label="ProjectConfigurations">
-    <ProjectConfiguration Include="Debug|x64">
-      <Configuration>Debug</Configuration>
-      <Platform>x64</Platform>
-    </ProjectConfiguration>
-    <ProjectConfiguration Include="ReleaseAVX512|x64">
-      <Configuration>ReleaseAVX512</Configuration>
-      <Platform>x64</Platform>
-    </ProjectConfiguration>
-    <ProjectConfiguration Include="Release|x64">
-      <Configuration>Release</Configuration>
-      <Platform>x64</Platform>
-    </ProjectConfiguration>
-  </ItemGroup>
-  <PropertyGroup Label="Globals">
-    <ProjectGuid>{30e8e249-6b00-4575-bcdf-be2445d5e099}</ProjectGuid>
-    <Keyword>Win32Proj</Keyword>
-    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <ConfigurationType>Application</ConfigurationType>
-    <PlatformToolset>v143</PlatformToolset>
-    <CharacterSet>Unicode</CharacterSet>
-  </PropertyGroup>
-  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
-  <ImportGroup Label="ExtensionSettings">
-    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
-  </ImportGroup>
-  <ImportGroup Label="Shared" />
-  <ImportGroup Label="PropertySheets" />
-  <PropertyGroup Label="UserMacros" />
-  <ItemDefinitionGroup />
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <ClCompile>
-      <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>X64;_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
-      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
-      <WarningLevel>Level3</WarningLevel>
-      <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
-      <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>../src;$(MSBuildProjectDirectory);$(MSBuildProjectDirectory)\..\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <EnableEnhancedInstructionSet>AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
-      <OpenMPSupport>true</OpenMPSupport>
-      <StringPooling>true</StringPooling>
-    </ClCompile>
-    <Link>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-      <SubSystem>Console</SubSystem>
-    </Link>
-    <PostBuildEvent>
-      <Command>xcopy /E /I /Y  "$(ProjectDir)data" "$(TargetDir)data"</Command>
-    </PostBuildEvent>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <ClCompile>
-      <PreprocessorDefinitions>X64;_CRT_SECURE_NO_WARNINGS;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <WarningLevel>Level3</WarningLevel>
-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
-      <LanguageStandard>stdcpp20</LanguageStandard>
-      <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
-      <IntrinsicFunctions>true</IntrinsicFunctions>
-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <OpenMPSupport>true</OpenMPSupport>
-      <AdditionalIncludeDirectories>../src;$(MSBuildProjectDirectory);$(MSBuildProjectDirectory)\..\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
-      <OmitFramePointers>true</OmitFramePointers>
-    </ClCompile>
-    <Link>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-      <SubSystem>Console</SubSystem>
-      <OptimizeReferences>true</OptimizeReferences>
-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
-      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
-    </Link>
-    <PostBuildEvent>
-      <Command>xcopy /E /I /Y  "$(ProjectDir)data" "$(TargetDir)data"</Command>
-    </PostBuildEvent>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseAVX512|x64'">
-    <ClCompile>
-      <PreprocessorDefinitions>X64;_CRT_SECURE_NO_WARNINGS;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
-      <WarningLevel>Level3</WarningLevel>
-      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
-      <TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
-      <LanguageStandard>stdcpp20</LanguageStandard>
-      <EnableEnhancedInstructionSet>AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
-      <IntrinsicFunctions>true</IntrinsicFunctions>
-      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
-      <OpenMPSupport>true</OpenMPSupport>
-      <AdditionalIncludeDirectories>../src;$(MSBuildProjectDirectory);$(MSBuildProjectDirectory)\..\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
-      <OmitFramePointers>true</OmitFramePointers>
-      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
-    </ClCompile>
-    <Link>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-      <SubSystem>Console</SubSystem>
-      <OptimizeReferences>true</OptimizeReferences>
-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
-      <LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
-    </Link>
-    <PostBuildEvent>
-      <Command>xcopy /E /I /Y  "$(ProjectDir)data" "$(TargetDir)data"</Command>
-    </PostBuildEvent>
-  </ItemDefinitionGroup>
-  <ItemGroup>
-    <ClInclude Include="contract_testing.h" />
-    <ClInclude Include="logging_test.h" />
-    <ClInclude Include="oracle_testing.h" />
-    <ClInclude Include="score_addition_reference.h" />
-    <ClInclude Include="score_common_reference.h" />
-    <ClInclude Include="score_hyperidentity_reference.h" />
-    <ClInclude Include="score_params.h" />
-    <ClInclude Include="score_reference.h" />
-    <ClInclude Include="test_util.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="common_def.cpp" />
-    <ClCompile Include="contract_pulse.cpp" />
-    <ClCompile Include="contract_qbond.cpp" />
-    <ClCompile Include="contract_qrwa.cpp" />
-    <ClCompile Include="contract_qswap.cpp" />
-    <ClCompile Include="fourq.cpp" />
-    <ClCompile Include="pending_txs_pool.cpp" />
-    <ClCompile Include="quorum_value.cpp" />
-    <ClCompile Include="sorting.cpp" />
-    <ClCompile Include="oracle_engine.cpp" />
-    <ClCompile Include="uint128.cpp" />
-    <ClCompile Include="assets.cpp" />
-    <ClCompile Include="contract_core.cpp" />
-    <ClCompile Include="contract_msvault.cpp" />
-    <ClCompile Include="contract_qearn.cpp" />
-    <ClCompile Include="contract_qutil.cpp" />
-    <ClCompile Include="contract_qx.cpp" />
-    <ClCompile Include="contract_qvault.cpp" />
-    <ClCompile Include="contract_testex.cpp" />
-    <ClCompile Include="contract_qbay.cpp" />
-    <ClCompile Include="contract_nostromo.cpp" />
-    <ClCompile Include="contract_qraffle.cpp" />
-    <ClCompile Include="contract_gqmprop.cpp" />
-    <ClCompile Include="contract_vottunbridge.cpp" />
-    <ClCompile Include="contract_rl.cpp" />
-    <ClCompile Include="contract_qduel.cpp" />
-    <ClCompile Include="contract_qrp.cpp" />
-    <ClCompile Include="contract_qtf.cpp" />
-    <ClCompile Include="contract_ccf.cpp" />
-    <ClCompile Include="contract_qip.cpp" />
-    <ClCompile Include="contract_qusino.cpp" />
-    <ClCompile Include="custom_mining.cpp" />
-    <ClCompile Include="execution_fees.cpp" />
-    <ClCompile Include="stable_computor_index.cpp" />
-    <ClCompile Include="file_io.cpp" />
-    <ClCompile Include="qpi_collection.cpp" />
-    <ClCompile Include="qpi_date_time.cpp" />
-    <ClCompile Include="qpi_hash_map.cpp" />
-    <ClCompile Include="kangaroo_twelve.cpp" />
-    <ClCompile Include="revenue.cpp" />
-    <ClCompile Include="spectrum.cpp" />
-    <ClCompile Include="stdlib_impl.cpp" />
-    <ClCompile Include="time.cpp" />
-    <ClCompile Include="tx_status_request.cpp" />
-    <ClCompile Include="m256.cpp" />
-    <ClCompile Include="math_lib.cpp" />
-    <ClCompile Include="network_messages.cpp" />
-    <ClCompile Include="platform.cpp" />
-    <ClCompile Include="qpi.cpp" />
-    <ClCompile Include="score.cpp" />
-    <ClCompile Include="score_cache.cpp" />
-    <ClCompile Include="tick_storage.cpp" />
-    <ClCompile Include="virtual_memory.cpp" />
-    <ClCompile Include="vote_counter.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <MASM Include="..\src\platform\custom_stack.asm" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\lib\platform_common\platform_common.vcxproj">
-      <Project>{61270221-bd41-438e-8f74-48aec8c3f9a5}</Project>
-    </ProjectReference>
-    <ProjectReference Include="..\lib\platform_os\platform_os.vcxproj">
-      <Project>{88b4cda8-8248-44d0-848e-0e938a2aad6d}</Project>
-    </ProjectReference>
-  </ItemGroup>
-  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-  <ImportGroup Label="ExtensionTargets">
-    <Import Project="..\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.7\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets" Condition="Exists('..\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.7\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets')" />
-    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
-  </ImportGroup>
-  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
-    <PropertyGroup>
-      <ErrorText>Dieses Projekt verweist auf mindestens ein NuGet-Paket, das auf diesem Computer fehlt. Verwenden Sie die Wiederherstellung von NuGet-Paketen, um die fehlenden Dateien herunterzuladen. Weitere Informationen finden Sie unter "http://go.microsoft.com/fwlink/?LinkID=322105". Die fehlende Datei ist "{0}".</ErrorText>
-    </PropertyGroup>
-    <Error Condition="!Exists('..\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.7\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.7\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets'))" />
-  </Target>
+	<ItemGroup Label="ProjectConfigurations">
+		<ProjectConfiguration Include="Debug|x64">
+			<Configuration>Debug</Configuration>
+			<Platform>x64</Platform>
+		</ProjectConfiguration>
+		<ProjectConfiguration Include="ReleaseAVX512|x64">
+			<Configuration>ReleaseAVX512</Configuration>
+			<Platform>x64</Platform>
+		</ProjectConfiguration>
+		<ProjectConfiguration Include="Release|x64">
+			<Configuration>Release</Configuration>
+			<Platform>x64</Platform>
+		</ProjectConfiguration>
+	</ItemGroup>
+	<PropertyGroup Label="Globals">
+		<ProjectGuid>{30e8e249-6b00-4575-bcdf-be2445d5e099}</ProjectGuid>
+		<Keyword>Win32Proj</Keyword>
+		<WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+		<ConfigurationType>Application</ConfigurationType>
+		<PlatformToolset>v143</PlatformToolset>
+		<CharacterSet>Unicode</CharacterSet>
+	</PropertyGroup>
+	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+	<ImportGroup Label="ExtensionSettings">
+		<Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
+	</ImportGroup>
+	<ImportGroup Label="Shared" />
+	<ImportGroup Label="PropertySheets" />
+	<PropertyGroup Label="UserMacros" />
+	<ItemDefinitionGroup />
+	<ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+		<ClCompile>
+			<Optimization>Disabled</Optimization>
+			<PreprocessorDefinitions>X64;_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+			<BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+			<RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+			<WarningLevel>Level3</WarningLevel>
+			<TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
+			<LanguageStandard>stdcpp20</LanguageStandard>
+			<AdditionalIncludeDirectories>../src;$(MSBuildProjectDirectory);$(MSBuildProjectDirectory)\..\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+			<EnableEnhancedInstructionSet>AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
+			<OpenMPSupport>true</OpenMPSupport>
+			<StringPooling>true</StringPooling>
+		</ClCompile>
+		<Link>
+			<GenerateDebugInformation>true</GenerateDebugInformation>
+			<SubSystem>Console</SubSystem>
+		</Link>
+		<PostBuildEvent>
+			<Command>xcopy /E /I /Y  "$(ProjectDir)data" "$(TargetDir)data"</Command>
+		</PostBuildEvent>
+	</ItemDefinitionGroup>
+	<ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+		<ClCompile>
+			<PreprocessorDefinitions>X64;_CRT_SECURE_NO_WARNINGS;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+			<RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+			<WarningLevel>Level3</WarningLevel>
+			<DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+			<TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
+			<LanguageStandard>stdcpp20</LanguageStandard>
+			<EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+			<InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+			<IntrinsicFunctions>true</IntrinsicFunctions>
+			<FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+			<OpenMPSupport>true</OpenMPSupport>
+			<AdditionalIncludeDirectories>../src;$(MSBuildProjectDirectory);$(MSBuildProjectDirectory)\..\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+			<WholeProgramOptimization>false</WholeProgramOptimization>
+			<EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+			<OmitFramePointers>true</OmitFramePointers>
+		</ClCompile>
+		<Link>
+			<GenerateDebugInformation>true</GenerateDebugInformation>
+			<SubSystem>Console</SubSystem>
+			<OptimizeReferences>true</OptimizeReferences>
+			<EnableCOMDATFolding>true</EnableCOMDATFolding>
+			<LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+		</Link>
+		<PostBuildEvent>
+			<Command>xcopy /E /I /Y  "$(ProjectDir)data" "$(TargetDir)data"</Command>
+		</PostBuildEvent>
+	</ItemDefinitionGroup>
+	<ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ReleaseAVX512|x64'">
+		<ClCompile>
+			<PreprocessorDefinitions>X64;_CRT_SECURE_NO_WARNINGS;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+			<RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+			<WarningLevel>Level3</WarningLevel>
+			<DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+			<TreatWChar_tAsBuiltInType>false</TreatWChar_tAsBuiltInType>
+			<LanguageStandard>stdcpp20</LanguageStandard>
+			<EnableEnhancedInstructionSet>AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
+			<InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+			<IntrinsicFunctions>true</IntrinsicFunctions>
+			<FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+			<OpenMPSupport>true</OpenMPSupport>
+			<AdditionalIncludeDirectories>../src;$(MSBuildProjectDirectory);$(MSBuildProjectDirectory)\..\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+			<WholeProgramOptimization>false</WholeProgramOptimization>
+			<OmitFramePointers>true</OmitFramePointers>
+			<EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+		</ClCompile>
+		<Link>
+			<GenerateDebugInformation>true</GenerateDebugInformation>
+			<SubSystem>Console</SubSystem>
+			<OptimizeReferences>true</OptimizeReferences>
+			<EnableCOMDATFolding>true</EnableCOMDATFolding>
+			<LinkTimeCodeGeneration>Default</LinkTimeCodeGeneration>
+		</Link>
+		<PostBuildEvent>
+			<Command>xcopy /E /I /Y  "$(ProjectDir)data" "$(TargetDir)data"</Command>
+		</PostBuildEvent>
+	</ItemDefinitionGroup>
+	<ItemGroup>
+		<ClInclude Include="contract_testing.h" />
+		<ClInclude Include="logging_test.h" />
+		<ClInclude Include="oracle_testing.h" />
+		<ClInclude Include="score_addition_reference.h" />
+		<ClInclude Include="score_common_reference.h" />
+		<ClInclude Include="score_hyperidentity_reference.h" />
+		<ClInclude Include="score_params.h" />
+		<ClInclude Include="score_reference.h" />
+		<ClInclude Include="test_util.h" />
+	</ItemGroup>
+	<ItemGroup>
+		<ClCompile Include="common_def.cpp" />
+		<ClCompile Include="contract_qsurv.cpp" />
+		<ClCompile Include="contract_pulse.cpp" />
+		<ClCompile Include="contract_qbond.cpp" />
+		<ClCompile Include="contract_qrwa.cpp" />
+		<ClCompile Include="contract_qswap.cpp" />
+		<ClCompile Include="contract_quottery.cpp" />
+		<ClCompile Include="fourq.cpp" />
+		<ClCompile Include="pending_txs_pool.cpp" />
+		<ClCompile Include="quorum_value.cpp" />
+		<ClCompile Include="sorting.cpp" />
+		<ClCompile Include="oracle_engine.cpp" />
+		<ClCompile Include="uint128.cpp" />
+		<ClCompile Include="assets.cpp" />
+		<ClCompile Include="contract_core.cpp" />
+		<ClCompile Include="contract_msvault.cpp" />
+		<ClCompile Include="contract_qearn.cpp" />
+		<ClCompile Include="contract_qutil.cpp" />
+		<ClCompile Include="contract_qx.cpp" />
+		<ClCompile Include="contract_qvault.cpp" />
+		<ClCompile Include="contract_testex.cpp" />
+		<ClCompile Include="contract_qbay.cpp" />
+		<ClCompile Include="contract_nostromo.cpp" />
+		<ClCompile Include="contract_qraffle.cpp" />
+		<ClCompile Include="contract_gqmprop.cpp" />
+		<ClCompile Include="contract_vottunbridge.cpp" />
+		<ClCompile Include="contract_rl.cpp" />
+		<ClCompile Include="contract_qduel.cpp" />
+		<ClCompile Include="contract_qrp.cpp" />
+		<ClCompile Include="contract_qtf.cpp" />
+		<ClCompile Include="contract_ccf.cpp" />
+		<ClCompile Include="contract_qip.cpp" />
+		<ClCompile Include="custom_mining.cpp" />
+		<ClCompile Include="execution_fees.cpp" />
+		<ClCompile Include="stable_computor_index.cpp" />
+		<ClCompile Include="file_io.cpp" />
+		<ClCompile Include="qpi_collection.cpp" />
+		<ClCompile Include="qpi_date_time.cpp" />
+		<ClCompile Include="qpi_hash_map.cpp" />
+		<ClCompile Include="kangaroo_twelve.cpp" />
+		<ClCompile Include="revenue.cpp" />
+		<ClCompile Include="spectrum.cpp" />
+		<ClCompile Include="stdlib_impl.cpp" />
+		<ClCompile Include="time.cpp" />
+		<ClCompile Include="tx_status_request.cpp" />
+		<ClCompile Include="m256.cpp" />
+		<ClCompile Include="math_lib.cpp" />
+		<ClCompile Include="network_messages.cpp" />
+		<ClCompile Include="platform.cpp" />
+		<ClCompile Include="qpi.cpp" />
+		<ClCompile Include="score.cpp" />
+		<ClCompile Include="score_cache.cpp" />
+		<ClCompile Include="tick_storage.cpp" />
+		<ClCompile Include="virtual_memory.cpp" />
+		<ClCompile Include="vote_counter.cpp" />
+	</ItemGroup>
+	<ItemGroup>
+		<None Include="packages.config" />
+	</ItemGroup>
+	<ItemGroup>
+		<MASM Include="..\src\platform\custom_stack.asm" />
+	</ItemGroup>
+	<ItemGroup>
+		<ProjectReference Include="..\lib\platform_common\platform_common.vcxproj">
+			<Project>{61270221-bd41-438e-8f74-48aec8c3f9a5}</Project>
+		</ProjectReference>
+		<ProjectReference Include="..\lib\platform_os\platform_os.vcxproj">
+			<Project>{88b4cda8-8248-44d0-848e-0e938a2aad6d}</Project>
+		</ProjectReference>
+	</ItemGroup>
+	<Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+	<ImportGroup Label="ExtensionTargets">
+		<Import Project="..\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.7\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets" Condition="Exists('..\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.7\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets')" />
+		<Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
+	</ImportGroup>
+	<Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+		<PropertyGroup>
+			<ErrorText>Dieses Projekt verweist auf mindestens ein NuGet-Paket, das auf diesem Computer fehlt. Verwenden Sie die Wiederherstellung von NuGet-Paketen, um die fehlenden Dateien herunterzuladen. Weitere Informationen finden Sie unter "http://go.microsoft.com/fwlink/?LinkID=322105". Die fehlende Datei ist "{0}".</ErrorText>
+		</PropertyGroup>
+		<Error Condition="!Exists('..\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.7\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.7\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets'))" />
+	</Target>
 </Project>
