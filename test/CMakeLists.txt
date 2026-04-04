@@ -49,7 +49,7 @@ add_executable(
   # tick_storage.cpp
   # tx_status_request.cpp
   # vote_counter.cpp
-)
+ "contract_quottery.cpp")
 
 # Apply test-specific compiler flags from the centralized detection module
 apply_test_compiler_flags(qubic_core_tests)
