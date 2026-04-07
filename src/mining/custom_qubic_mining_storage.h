@@ -9,21 +9,24 @@
 #include "contract_core/qpi_hash_map_impl.h"
 #include "kangaroo_twelve.h"
 
-// A struct for storing an active doge mining task on the node.
-struct StoredDogeMiningTask
-{
-    uint8_t dispatcherTarget[32]; // dispatcher target, usually easier than pool and network difficulty, full 32-byte representation
-
-    // Full header can be constructed via concatenating version + prevHash + merkleRoot + miner's nTime + nBits + miner's nonce.
-    uint8_t version[4]; // 4 bytes version
-    uint8_t prevHash[32]; // 32 bytes prevBlockHash
-    uint8_t nBits[4]; // 4 bytes network difficulty (nBits)
-};
 
 class CustomQubicMiningStorage
 {
-private:
+public:
     static constexpr unsigned int maxNumTasks = 32;
+
+    // A struct for storing an active doge mining task on the node.
+    struct StoredDogeMiningTask
+    {
+        uint8_t dispatcherTarget[32]; // dispatcher target, usually easier than pool and network difficulty, full 32-byte representation
+
+        // Full header can be constructed via concatenating version + prevHash + merkleRoot + miner's nTime + nBits + miner's nonce.
+        uint8_t version[4]; // 4 bytes version
+        uint8_t prevHash[32]; // 32 bytes prevBlockHash
+        uint8_t nBits[4]; // 4 bytes network difficulty (nBits)
+    };
+
+private:
     static constexpr unsigned int maxNumSolutionsPerTask = 256;
 
     uint64_t activeTasks[CustomMiningType::TOTAL_NUM_TYPES][maxNumTasks];
@@ -75,6 +78,8 @@ private:
     }
 
 public:
+
+    // Initialize the storage. Return true if successful, false if initialization failed (e.g. due to memory allocation failure).
     bool init()
     {
         ASSERT(lock == 0);
@@ -89,12 +94,18 @@ public:
         return true;
     }
 
+    // Deinitialize the storage and free any allocated memory.
     void deinit()
     {
         if (receivedSolutions)
             freePool(receivedSolutions);
     }
 
+    // Add a new mining task. Return false if a task with the same jobId and customMiningType already exists, true if added successfully.
+    // The task description is expected to be behind the CustomQubicMiningTask struct in memory. The provided size should specify the
+    // full size of the CustomQubicMiningTask struct and the task description.
+    // For DOGE mining: Adding a task with cleanJobQueue = true will clear all existing tasks and solutions before adding the new task. 
+    //                  If maxNumTasks is reached and a job with cleanJobQueue = false is added, it will override the oldest task and its solutions.
     bool addTask(const CustomQubicMiningTask* task, unsigned int size)
     {
         LockGuard guard(lock);
@@ -143,7 +154,7 @@ public:
     // Return -1 if the solution is invalid (stale or duplicate), 0 if the solution is valid but not added due to storage limit,
     // and 1 if the solution is valid and added successfully. If taskDescription is not nullptr and the solution corresponds to an active task,
     // the task description is written into the provided pointer.
-    int addSolution(const CustomQubicMiningSolution* solution, unsigned int size, char* taskDescription = nullptr)
+    int addSolution(const CustomQubicMiningSolution* solution, unsigned int size, unsigned char* taskDescription = nullptr)
     {
         if (size <= sizeof(CustomQubicMiningSolution))
             return -1;
@@ -178,6 +189,7 @@ public:
         return (indexAdded == QPI::NULL_INDEX) ? 0 : 1;
     }
 
+    // Return true if there is an active task with the given jobId and customMiningType, false otherwise.
     bool containsTask(uint8_t customMiningType, uint64_t jobId)
     {
         LockGuard guard(lock);
