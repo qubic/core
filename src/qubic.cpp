@@ -1526,7 +1526,22 @@ static void processBroadcastCustomMiningTask(RequestResponseHeader* header)
     if (verify(dogeDispatcherPubkey, digest.m256i_u8, payload + (messageSize - SIGNATURE_SIZE)))
     {
         enqueueResponse(NULL, header);
-        customQubicMiningStorage.addTask(reinterpret_cast<const CustomQubicMiningTask*>(payload), messageSize - SIGNATURE_SIZE);
+        if (customQubicMiningStorage.addTask(reinterpret_cast<const CustomQubicMiningTask*>(payload), messageSize - SIGNATURE_SIZE))
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            CHAR16 dbgMsgBuf[200];
+            setText(dbgMsgBuf, L"Add doge task to storage: SUCCESS");
+            addDebugMessage(dbgMsgBuf);
+#endif
+        }
+        else
+        {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            CHAR16 dbgMsgBuf[200];
+            setText(dbgMsgBuf, L"Add doge task to storage: FAIL");
+            addDebugMessage(dbgMsgBuf);
+#endif
+        }
     }
 }
 
@@ -1575,10 +1590,23 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
             {
                 if (computorIndex(computorPublicKeys[i]) == compIdFromEN2)
                 {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                    CHAR16 dbgMsgBuf[200];
+                    setText(dbgMsgBuf, L"EN2 matched own comp index ");
+                    appendNumber(dbgMsgBuf, compIdFromEN2, FALSE);
+                    addDebugMessage(dbgMsgBuf);
+#endif
+
                     // Check if the solution is added successfully (active task, no duplicate) before sending oracle query.
                     CustomQubicMiningStorage::StoredDogeMiningTask task;
                     if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE, reinterpret_cast<unsigned char*>(&task)) < 0)
+                    {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                        setText(dbgMsgBuf, L"Adding solution to storage failed, not sending oracle query");
+                        addDebugMessage(dbgMsgBuf);
+#endif
                         return;
+                    }
 
                     if (isMainMode()) // only main node should send oracle queries
                     {
@@ -1608,6 +1636,11 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                         KangarooTwelve(buffer, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
                         sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
                         enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                        setText(dbgMsgBuf, L"Oracle query broadcasted");
+                        addDebugMessage(dbgMsgBuf);
+#endif
 
                         // TODO: resend oracle query if the tx isn't included in scheduled tick or if it is an empty tick
                     }
