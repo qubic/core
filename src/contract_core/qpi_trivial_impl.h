@@ -102,7 +102,7 @@ unsigned char QPI::QpiContextFunctionCall::dayOfWeek(unsigned char year, unsigne
 	return dayIndex(year, month, day) % 7;
 }
 
-bool QPI::QpiContextFunctionCall::signatureValidity(const m256i& entity, const m256i& digest, const Array<signed char, 64>& signature) const
+QPI::bit QPI::QpiContextFunctionCall::signatureValidity(const m256i& entity, const m256i& digest, const Array<signed char, 64>& signature) const
 {
 	return verify(entity.m256i_u8, digest.m256i_u8, reinterpret_cast<const unsigned char*>(&signature));
 }

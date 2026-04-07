@@ -44,6 +44,28 @@ struct PULSE2
 struct PULSE : public ContractBase
 {
 public:
+	template<typename Key, typename T, uint64 L>
+	struct HashMapConverter
+	{
+		void convert(const HashMap<Key, T, L>& hashMap, Array<T, L>& array)
+		{
+			arrayIndex = 0;
+			setMemory(array, 0);
+
+			hashMapIndex = hashMap.nextElementIndex(NULL_INDEX);
+			while (hashMapIndex != NULL_INDEX)
+			{
+				array.set(arrayIndex, hashMap.value(hashMapIndex));
+				hashMapIndex = hashMap.nextElementIndex(hashMapIndex);
+				++arrayIndex;
+			}
+		}
+
+	private:
+		sint64 hashMapIndex;
+		uint64 arrayIndex;
+	};
+
 	// Bitmask for runtime state flags.
 	enum class EState : uint8
 	{
@@ -53,8 +75,16 @@ public:
 	friend EState operator|(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) | static_cast<uint8>(b)); }
 	friend EState operator&(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) & static_cast<uint8>(b)); }
 	friend EState operator~(const EState& a) { return static_cast<EState>(~static_cast<uint8>(a)); }
-	template<typename T> friend bool operator==(const EState& a, const T& b) { return static_cast<uint8>(a) == b; }
-	template<typename T> friend bool operator!=(const EState& a, const T& b) { return !(a == b); }
+	template<typename T>
+	friend bool operator==(const EState& a, const T& b)
+	{
+		return static_cast<uint8>(a) == b;
+	}
+	template<typename T>
+	friend bool operator!=(const EState& a, const T& b)
+	{
+		return !(a == b);
+	}
 
 	// Public return codes for user procedures/functions.
 	enum class EReturnCode : uint8
@@ -340,6 +370,7 @@ public:
 
 	struct GetAutoParticipation_input
 	{
+		id player;
 	};
 	struct GetAutoParticipation_output
 	{
@@ -357,11 +388,15 @@ public:
 	};
 	struct GetAutoStats_output
 	{
-		uint16 autoParticipantsCounter;
-		uint64 totalAutoDeposits;
-		sint64 autoStartIndex;
+		Array<AutoParticipant, PULSE_MAX_NUMBER_OF_AUTO_PARTICIPANTS> participants;
+		uint16 maxAutoParticipants;
 		uint16 maxAutoTicketsPerUser;
+		uint16 roundSlotsLeft;
 		uint8 returnCode;
+	};
+	struct GetAutoStats_locals
+	{
+		HashMapConverter<id, AutoParticipant, PULSE_MAX_NUMBER_OF_AUTO_PARTICIPANTS> converter;
 	};
 
 	struct DepositAutoParticipation_input
@@ -444,6 +479,36 @@ public:
 		sint64 index;
 	};
 
+	struct DepositManagedQHeart_input
+	{
+		sint64 amount;
+	};
+	struct DepositManagedQHeart_output
+	{
+		uint8 returnCode;
+	};
+	struct DepositManagedQHeart_locals
+	{
+		sint64 transferResult;
+		sint64 userBalance;
+	};
+
+	struct TransferTokenToQx_input
+	{
+		sint64 numberOfShares;
+	};
+	struct TransferTokenToQx_output
+	{
+		uint8 returnCode;
+	};
+	struct TransferTokenToQx_locals
+	{
+		Asset asset;
+		sint64 releaseResult;
+		QX::Fees_input feesInput;
+		QX::Fees_output feesOutput;
+	};
+
 	struct GetTicketPrice_input
 	{
 	};
@@ -452,20 +517,14 @@ public:
 		uint64 ticketPrice;
 	};
 
-	struct GetSchedule_input
+	struct GetPlayerBalance_input
 	{
+		id player;
 	};
-	struct GetSchedule_output
+	struct GetPlayerBalance_output
 	{
-		uint8 schedule;
-	};
-
-	struct GetDrawHour_input
-	{
-	};
-	struct GetDrawHour_output
-	{
-		uint8 drawHour;
+		uint64 balance;
+		uint8 returnCode;
 	};
 
 	struct GetFees_input
@@ -510,6 +569,51 @@ public:
 	struct GetBalance_output
 	{
 		uint64 balance;
+	};
+
+	struct GetPlayers_input
+	{
+	};
+	struct GetPlayers_output
+	{
+		Array<Ticket, PULSE_MAX_NUMBER_OF_PLAYERS> players;
+		uint8 returnCode;
+	};
+
+	struct GetPrizeTable_input
+	{
+	};
+	struct GetPrizeTable_output
+	{
+		Array<uint64, PULSE_PLAYER_DIGITS_ALIGNED> leftAlignedRewards;
+		Array<uint64, PULSE_PLAYER_DIGITS_ALIGNED> anyPositionRewards;
+		uint64 ticketPrice;
+		uint8 returnCode;
+	};
+	struct GetPrizeTable_locals
+	{
+		uint8 matches;
+	};
+
+	struct GetRoundState_input
+	{
+	};
+	struct GetRoundState_output
+	{
+		uint32 epoch;
+		uint32 lastDrawDateStamp;
+		uint16 ticketCounter;
+		uint16 maxPlayers;
+		uint16 slotsLeft;
+		uint8 currentState;
+		uint8 drawHour;
+		uint8 schedule;
+		bit sellingOpen;
+		uint8 returnCode;
+	};
+	struct GetRoundState_locals
+	{
+		sint64 slotsLeft;
 	};
 
 	struct FillWinnersInfo_input
@@ -688,6 +792,8 @@ public:
 
 	struct BEGIN_EPOCH_locals
 	{
+		QX::Fees_input feesInput;
+		QX::Fees_output feesOutput;
 		ProcessAutoTickets_input autoTicketsInput;
 		ProcessAutoTickets_output autoTicketsOutput;
 	};
@@ -696,8 +802,8 @@ public:
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_FUNCTION(GetTicketPrice, 1);
-		REGISTER_USER_FUNCTION(GetSchedule, 2);
-		REGISTER_USER_FUNCTION(GetDrawHour, 3);
+		REGISTER_USER_FUNCTION(GetPlayerBalance, 2);
+		REGISTER_USER_FUNCTION(GetRoundState, 3);
 		REGISTER_USER_FUNCTION(GetFees, 4);
 		REGISTER_USER_FUNCTION(GetQHeartHoldLimit, 5);
 		REGISTER_USER_FUNCTION(GetQHeartWallet, 6);
@@ -706,6 +812,9 @@ public:
 		REGISTER_USER_FUNCTION(GetWinners, 9);
 		REGISTER_USER_FUNCTION(GetAutoParticipation, 10);
 		REGISTER_USER_FUNCTION(GetAutoStats, 11);
+		REGISTER_USER_FUNCTION(ValidateDigits, 12);
+		REGISTER_USER_FUNCTION(GetPlayers, 13);
+		REGISTER_USER_FUNCTION(GetPrizeTable, 14);
 
 		REGISTER_USER_PROCEDURE(BuyTicket, 1);
 		REGISTER_USER_PROCEDURE(SetPrice, 2);
@@ -718,14 +827,16 @@ public:
 		REGISTER_USER_PROCEDURE(WithdrawAutoParticipation, 9);
 		REGISTER_USER_PROCEDURE(SetAutoConfig, 10);
 		REGISTER_USER_PROCEDURE(SetAutoLimits, 11);
+		REGISTER_USER_PROCEDURE(TransferTokenToQx, 12);
+		REGISTER_USER_PROCEDURE(DepositManagedQHeart, 13);
 	}
 
 	INITIALIZE()
 	{
-		state.mut().teamAddress = ID(_R, _O, _J, _V, _A, _E, _M, _F, _B, _X, _X, _Y, _N, _G, _A, _U, _A, _U, _I, _I, _X, _L, _B, _U, _P, _D, _H, _C, _D, _P,
-		                       _E, _S, _Y, _Z, _O, _V, _W, _U, _Y, _E, _C, _B, _Q, _V, _Z, _R, _F, _T, _K, _A, _G, _S, _H, _T, _N, _A);
-		state.mut().qheartIssuer = ID(_S, _S, _G, _X, _S, _L, _S, _X, _F, _E, _J, _O, _O, _B, _T, _Z, _W, _V, _D, _S, _R, _C, _E, _F, _G, _X, _N, _D, _Y,
-		                        _U, _V, _D, _X, _M, _Q, _A, _L, _X, _L, _B, _X, _G, _D, _C, _R, _X, _T, _K, _F, _Z, _I, _O, _T, _G, _Z, _F);
+		state.mut().teamAddress = ID(_R, _O, _J, _V, _A, _E, _M, _F, _B, _X, _X, _Y, _N, _G, _A, _U, _A, _U, _I, _I, _X, _L, _B, _U, _P, _D, _H, _C,
+		                             _D, _P, _E, _S, _Y, _Z, _O, _V, _W, _U, _Y, _E, _C, _B, _Q, _V, _Z, _R, _F, _T, _K, _A, _G, _S, _H, _T, _N, _A);
+		state.mut().qheartIssuer = ID(_S, _S, _G, _X, _S, _L, _S, _X, _F, _E, _J, _O, _O, _B, _T, _Z, _W, _V, _D, _S, _R, _C, _E, _F, _G, _X, _N, _D,
+		                              _Y, _U, _V, _D, _X, _M, _Q, _A, _L, _X, _L, _B, _X, _G, _D, _C, _R, _X, _T, _K, _F, _Z, _I, _O, _T, _G, _Z, _F);
 
 		state.mut().ticketPrice = PULSE_TICKET_PRICE_DEFAULT;
 		state.mut().devPercent = PULSE_DEFAULT_DEV_PERCENT;
@@ -834,20 +945,49 @@ public:
 		}
 	}
 
-	// Returns current ticket price in QHeart units.
+	PRE_ACQUIRE_SHARES()
+	{
+		output.requestedFee = 0;
+		output.allowTransfer = true;
+	}
+
+	/**
+	 * Validates a ticket payload without changing contract state.
+	 * @param digits Candidate ticket digits.
+	 * @return `isValid = true` when every digit is within the supported range [0..9].
+	 */
+	PUBLIC_FUNCTION_WITH_LOCALS(ValidateDigits)
+	{
+		output.isValid = true;
+		for (locals.idx = 0; locals.idx < PULSE_PLAYER_DIGITS; ++locals.idx)
+		{
+			locals.value = input.digits.get(locals.idx);
+			if (locals.value > PULSE_MAX_DIGIT)
+			{
+				output.isValid = false;
+				return;
+			}
+		}
+	}
+
+	/** Returns the current ticket price in QHeart units. */
 	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.get().ticketPrice; }
-	// Returns current draw schedule bitmask.
-	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.get().schedule; }
-	// Returns draw hour in UTC.
-	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.get().drawHour; }
-	// Returns QHeart balance cap retained by the contract.
+
+	PUBLIC_FUNCTION(GetPlayerBalance)
+	{
+		output.balance =
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, input.player, input.player, SELF_INDEX, SELF_INDEX);
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	/** Returns the QHeart balance cap retained by the contract. */
 	PUBLIC_FUNCTION(GetQHeartHoldLimit) { output.qheartHoldLimit = state.get().qheartHoldLimit; }
-	// Returns the designated QHeart issuer wallet.
+	/** Returns the designated QHeart issuer wallet. */
 	PUBLIC_FUNCTION(GetQHeartWallet) { output.wallet = state.get().qheartIssuer; }
-	// Returns digits from the last settled draw.
+	/** Returns the digits from the last settled draw. */
 	PUBLIC_FUNCTION(GetWinningDigits) { output.digits = state.get().lastWinningDigits; }
 
-	// Returns current fee split configuration.
+	/** Returns the current fee split configuration. */
 	PUBLIC_FUNCTION(GetFees)
 	{
 		output.devPercent = state.get().devPercent;
@@ -857,13 +997,58 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Returns contract QHeart balance held in the Pulse wallet.
+	/** Returns the contract QHeart balance held in the Pulse wallet. */
 	PUBLIC_FUNCTION(GetBalance)
 	{
 		output.balance = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
 	}
 
-	// Returns the winners ring buffer and total winners counter.
+	/**
+	 * Returns the current round ticket snapshot.
+	 * @return Ticket entries already allocated for the ongoing round; unused trailing slots remain zeroed.
+	 */
+	PUBLIC_FUNCTION(GetPlayers)
+	{
+		output.players = state.get().tickets;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	/**
+	 * Returns the payout table derived from the current ticket price.
+	 * @return Reward arrays indexed by match count for left-aligned and any-position payouts, plus the active ticket price.
+	 */
+	PUBLIC_FUNCTION_WITH_LOCALS(GetPrizeTable)
+	{
+		output.ticketPrice = state.get().ticketPrice;
+		for (locals.matches = 0; locals.matches <= PULSE_PLAYER_DIGITS; ++locals.matches)
+		{
+			output.leftAlignedRewards.set(locals.matches, getLeftAlignedReward(state, locals.matches));
+			output.anyPositionRewards.set(locals.matches, getAnyPositionReward(state, locals.matches));
+		}
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	/**
+	 * Returns the current round lifecycle state and sale progress.
+	 * @return Current epoch, last processed draw date stamp, ticket counters, runtime state flags, active schedule, draw hour, and selling status.
+	 */
+	PUBLIC_FUNCTION_WITH_LOCALS(GetRoundState)
+	{
+		locals.slotsLeft = getSlotsLeft(state);
+
+		output.epoch = qpi.epoch();
+		output.lastDrawDateStamp = state.get().lastDrawDateStamp;
+		output.ticketCounter = static_cast<uint16>(min(static_cast<uint64>(max(state.get().ticketCounter, 0LL)), state.get().tickets.capacity()));
+		output.maxPlayers = static_cast<uint16>(state.get().tickets.capacity());
+		output.slotsLeft = static_cast<uint16>(min(static_cast<uint64>(max(locals.slotsLeft, 0LL)), state.get().tickets.capacity()));
+		output.currentState = static_cast<uint8>(state.get().currentState);
+		output.drawHour = state.get().drawHour;
+		output.schedule = state.get().schedule;
+		output.sellingOpen = isSellingOpen(state);
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	/** Returns the winners ring buffer snapshot and the current insertion counter. */
 	PUBLIC_FUNCTION(GetWinners)
 	{
 		output.winners = state.get().winners;
@@ -871,11 +1056,13 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	/// Returns auto-participation settings for the invocator.
-	/// @return Current deposit, config fields, and status code.
+	/**
+	 * Returns auto-participation settings for the invocator.
+	 * @return Current reserved deposit, desired ticket count, and status code for the invocator.
+	 */
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAutoParticipation)
 	{
-		if (!state.get().autoParticipants.get(qpi.invocator(), locals.entry))
+		if (!state.get().autoParticipants.get(input.player, locals.entry))
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
@@ -887,16 +1074,24 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	/// Returns global auto-participation limits and counters.
-	/// @return Current counters, limits, and status code.
-	PUBLIC_FUNCTION(GetAutoStats)
+	/**
+	 * Returns the current auto-participation roster and shared limits.
+	 * @return All registered auto participants, the participant capacity,
+	 * the per-user auto-ticket limit, remaining slots in the current round, and
+	 * the status code.
+	 */
+	PUBLIC_FUNCTION_WITH_LOCALS(GetAutoStats)
 	{
-		output.autoParticipantsCounter = static_cast<uint16>(state.get().autoParticipants.population());
+		locals.converter.convert(state.get().autoParticipants, output.participants);
+
+		output.maxAutoParticipants = static_cast<uint16>(state.get().autoParticipants.capacity());
 		output.maxAutoTicketsPerUser = state.get().maxAutoTicketsPerUser;
+
+		output.roundSlotsLeft = clampPublicTicketCount(state, getSlotsLeft(state));
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Schedules a new ticket price for the next epoch (owner-only).
+	/** Schedules a new ticket price for the next epoch (owner-only). */
 	PUBLIC_PROCEDURE(SetPrice)
 	{
 		if (qpi.invocationReward() > 0)
@@ -921,7 +1116,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Schedules a new draw schedule bitmask for the next epoch (owner-only).
+	/** Schedules a new draw schedule bitmask for the next epoch (owner-only). */
 	PUBLIC_PROCEDURE(SetSchedule)
 	{
 		if (qpi.invocationReward() > 0)
@@ -946,7 +1141,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Schedules a new draw hour in UTC for the next epoch (owner-only).
+	/** Schedules a new draw hour in UTC for the next epoch (owner-only). */
 	PUBLIC_PROCEDURE(SetDrawHour)
 	{
 		if (qpi.invocationReward() > 0)
@@ -971,7 +1166,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Schedules new fee splits for the next epoch (owner-only).
+	/** Schedules new fee splits for the next epoch (owner-only). */
 	PUBLIC_PROCEDURE(SetFees)
 	{
 		if (qpi.invocationReward() > 0)
@@ -1000,7 +1195,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Schedules a new QHeart hold limit for the next epoch (owner-only).
+	/** Schedules a new QHeart hold limit for the next epoch (owner-only). */
 	PUBLIC_PROCEDURE(SetQHeartHoldLimit)
 	{
 		if (qpi.invocationReward() > 0)
@@ -1019,7 +1214,8 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	/** Deposits QHeart into the contract for automatic ticket purchases.
+	/**
+	 * Deposits QHeart into the contract for automatic ticket purchases.
 	 * @param amount QHeart amount to reserve for auto participation.
 	 * @param desiredTickets Number of tickets to buy per draw.
 	 * @param buyNow When true, tries to buy immediately if selling is open.
@@ -1102,9 +1298,11 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	/// Withdraws QHeart from the invocator's auto-participation deposit.
-	/// @param amount QHeart amount to withdraw; 0 withdraws the full deposit.
-	/// @return Status code describing the result.
+	/**
+	 * Withdraws QHeart from the invocator's auto-participation deposit.
+	 * @param amount QHeart amount to withdraw; 0 withdraws the full deposit.
+	 * @return Status code describing whether the requested amount was transferred back.
+	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(WithdrawAutoParticipation)
 	{
 		if (qpi.invocationReward() > 0)
@@ -1132,8 +1330,8 @@ public:
 			return;
 		}
 
-		locals.transferResult =
-		    qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, locals.withdrawAmount, qpi.invocator());
+		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF,
+		                                                                locals.withdrawAmount, qpi.invocator());
 		if (locals.transferResult < 0)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TRANSFER_FROM_PULSE_FAILED);
@@ -1155,9 +1353,11 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	/// Sets auto-participation config for the invocator.
-	/// @param desiredTickets Signed: -1 ignore, >0 set new value.
-	/// @return Status code describing the result.
+	/**
+	 * Updates the invocator's auto-participation configuration.
+	 * @param desiredTickets `-1` keeps the current value; values greater than `0` replace the desired ticket count.
+	 * @return Status code describing whether the configuration was accepted.
+	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetAutoConfig)
 	{
 		if (qpi.invocationReward() > 0)
@@ -1194,10 +1394,11 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	/// Sets auto-participation limits (owner-only).
-	/// @param maxTicketsPerUser Max tickets per user; 0 disables the limit.
-	/// @param maxDepositPerUser Max deposit per user; 0 disables the limit.
-	/// @return Status code describing the result.
+	/**
+	 * Sets the global auto-participation ticket limit (owner-only).
+	 * @param maxTicketsPerUser Maximum tickets to auto-buy per user; `0` disables the limit.
+	 * @return Status code describing whether the new limit was accepted.
+	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetAutoLimits)
 	{
 		if (qpi.invocationReward() > 0)
@@ -1237,7 +1438,7 @@ public:
 		}
 	}
 
-	// Buys a single ticket; transfers ticket price from invocator.
+	/** Buys a single ticket and transfers the ticket price from the invocator. */
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicket)
 	{
 		if (qpi.invocationReward() > 0)
@@ -1290,7 +1491,7 @@ public:
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	// Buys multiple random tickets; transfers total price from invocator.
+	/** Buys multiple random tickets and transfers the total price from the invocator. */
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyRandomTickets)
 	{
 		if (qpi.invocationReward() > 0)
@@ -1320,6 +1521,85 @@ public:
 		CALL(AllocateRandomTickets, locals.allocateInput, locals.allocateOutput);
 
 		output.returnCode = locals.allocateOutput.returnCode;
+	}
+
+	/**
+	 * Deposits QHeart already managed by Pulse into the Pulse wallet.
+	 * @param amount QHeart amount to transfer from the invocator to the contract.
+	 * @return Status code describing whether the transfer succeeded.
+	 * @note This only moves managed QHeart into `SELF`; it does not update auto-participation or other accounting.
+	 */
+	PUBLIC_PROCEDURE_WITH_LOCALS(DepositManagedQHeart)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (input.amount <= 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		locals.userBalance =
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
+		if (locals.userBalance < input.amount)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
+			return;
+		}
+
+		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(),
+		                                                                qpi.invocator(), input.amount, SELF);
+		if (locals.transferResult < 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TRANSFER_TO_PULSE_FAILED);
+			return;
+		}
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	/**
+	 * @brief Releases PULSE share management rights back to QX for the invocator.
+	 * @param input Number of PULSE shares to transfer under QX management.
+	 * @param output Number of shares transferred and a status code.
+	 * @note The current QX transfer fee is paid from the Pulse contract balance; any invocation reward is refunded.
+	 */
+	PUBLIC_PROCEDURE_WITH_LOCALS(TransferTokenToQx)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (input.numberOfShares <= 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		if (qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX,
+		                                SELF_INDEX) < input.numberOfShares)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TRANSFER_FROM_PULSE_FAILED);
+			return;
+		}
+
+		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
+
+		locals.asset.issuer = state.get().qheartIssuer;
+		locals.asset.assetName = PULSE_QHEART_ASSET_NAME;
+		locals.releaseResult = qpi.releaseShares(locals.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares, QX_CONTRACT_INDEX,
+		                                         QX_CONTRACT_INDEX, locals.feesOutput.transferFee);
+		if (locals.releaseResult < 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TRANSFER_FROM_PULSE_FAILED);
+			return;
+		}
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 private:
@@ -1391,20 +1671,6 @@ private:
 		state.mut().autoParticipants.cleanupIfNeeded(PULSE_CLEANUP_THRESHOLD);
 	}
 
-	PRIVATE_FUNCTION_WITH_LOCALS(ValidateDigits)
-	{
-		output.isValid = true;
-		for (locals.idx = 0; locals.idx < PULSE_PLAYER_DIGITS; ++locals.idx)
-		{
-			locals.value = input.digits.get(locals.idx);
-			if (locals.value > PULSE_MAX_DIGIT)
-			{
-				output.isValid = false;
-				return;
-			}
-		}
-	}
-
 	PRIVATE_FUNCTION_WITH_LOCALS(GetRandomDigits)
 	{
 		// Derive each digit independently to avoid shared PRNG state.
@@ -1432,7 +1698,8 @@ private:
 
 		if (locals.devAmount > 0)
 		{
-			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, locals.devAmount, state.get().teamAddress);
+			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, locals.devAmount,
+			                                        state.get().teamAddress);
 		}
 		if (locals.shareholdersAmount > 0)
 		{
@@ -1487,8 +1754,8 @@ private:
 
 			if (locals.prize > 0 && locals.balance >= locals.prize)
 			{
-				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, static_cast<sint64>(locals.prize),
-				                                        locals.ticket.player);
+				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF,
+				                                        static_cast<sint64>(locals.prize), locals.ticket.player);
 				locals.balance -= locals.prize;
 
 				locals.fillWinnersInfoInput.winnerAddress = locals.ticket.player;
@@ -1653,13 +1920,21 @@ private:
 	};
 
 public:
-	// Encodes YYYY/MM/DD into a compact sortable date stamp.
+	/** Encodes YYYY/MM/DD into a compact sortable date stamp. */
 	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
 
-	template<typename T> static constexpr T min(const T& a, const T& b) { return (a < b) ? a : b; }
-	template<typename T> static constexpr T max(const T& a, const T& b) { return a > b ? a : b; }
+	template<typename T>
+	static constexpr T min(const T& a, const T& b)
+	{
+		return (a < b) ? a : b;
+	}
+	template<typename T>
+	static constexpr T max(const T& a, const T& b)
+	{
+		return a > b ? a : b;
+	}
 
-	// Per-index mix to deterministically expand a single seed.
+	/** Applies a per-index mix to deterministically expand a single seed. */
 	static void deriveOne(const uint64& r, const uint64& idx, uint64& outValue) { mix64(r + 0x9e3779b97f4a7c15ULL * (idx + 1), outValue); }
 
 	static void mix64(const uint64& x, uint64& outValue)
@@ -1697,9 +1972,15 @@ protected:
 		state.mut().currentState = bEnable ? state.get().currentState | EState::SELLING : state.get().currentState & ~EState::SELLING;
 	}
 
-	static bool isSellingOpen(const QPI::ContractState<StateData, CONTRACT_INDEX>& state) { return (state.get().currentState & EState::SELLING) != 0; }
+	static bool isSellingOpen(const QPI::ContractState<StateData, CONTRACT_INDEX>& state)
+	{
+		return (state.get().currentState & EState::SELLING) != 0;
+	}
 
-	static void getWinnerCounter(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, uint64& outCounter) { outCounter = mod(state.get().winnersCounter, state.get().winners.capacity()); }
+	static void getWinnerCounter(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, uint64& outCounter)
+	{
+		outCounter = mod(state.get().winnersCounter, state.get().winners.capacity());
+	}
 
 	static uint64 getLeftAlignedReward(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, uint8 matches)
 	{
@@ -1729,8 +2010,8 @@ protected:
 		}
 	}
 
-	static uint64 computePrize(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, const Ticket& ticket, const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winningDigits,
-	                           ComputePrize_locals& locals)
+	static uint64 computePrize(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, const Ticket& ticket,
+	                           const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& winningDigits, ComputePrize_locals& locals)
 	{
 		setMemory(locals, 0);
 
@@ -1763,5 +2044,10 @@ protected:
 		locals.anyPositionReward = getAnyPositionReward(state, locals.anyPositionMatches);
 		locals.prize = max(locals.leftAlignedReward, locals.anyPositionReward);
 		return locals.prize;
+	}
+
+	static uint16 clampPublicTicketCount(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, sint64 value)
+	{
+		return static_cast<uint16>(min(static_cast<uint64>(max(value, 0LL)), state.get().tickets.capacity()));
 	}
 };

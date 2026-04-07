@@ -1,5 +1,7 @@
 #define SINGLE_COMPILE_UNIT
 
+// #define NO_QUSINO
+
 //#define INCLUDE_CONTRACT_TEST_EXAMPLES
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
@@ -189,6 +191,11 @@ static unsigned long long contractProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a l
 
 static unsigned long long solutionProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a list of proc id that will process solution
 static bool solutionProcessorFlags[MAX_NUMBER_OF_PROCESSORS]; // flag array to indicate that whether a procId should help processing solutions or not
+static bool preprocessSolutionFlags[MAX_NUMBER_OF_PROCESSORS]; // subset of solution processors for pre-computing scores at broadcast time
+static_assert(
+    NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS <= NUMBER_OF_SOLUTION_PROCESSORS / 2,
+    "NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS must not exceed half of NUMBER_OF_SOLUTION_PROCESSORS");
+
 static int nTickProcessorIDs = 0;
 static int nRequestProcessorIDs = 0;
 static int nContractProcessorIDs = 0;
@@ -982,7 +989,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
     }
 }
 
-static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* header)
+static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* header, unsigned long long processorNumber)
 {
     Transaction* request = header->getPayload<Transaction>();
     const unsigned int transactionSize = request->totalSize();
@@ -1040,6 +1047,23 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 }
             }
             ts.tickData.releaseLock();
+
+            // Pre-compute score for mining solution transactions to populate the scoreCache.
+            // This hides computation latency: the solution is published ~3 ticks before execution,
+            // so all 676 Computors get a cache HIT during processTickTransactionSolution().
+            // Only designated solution processors do this to avoid starving request processing.
+            // The deposit and balance of must be >= MiningSolutionTransaction::minAmount() to be proccessed
+            if (preprocessSolutionFlags[processorNumber]
+                && MiningSolutionTransaction::isSolutionTransaction(request))
+            {
+                const int spectrumIdx = spectrumIndex(request->sourcePublicKey);
+                if (spectrumIdx >= 0 && energy(spectrumIdx) >= MiningSolutionTransaction::minAmount())
+                {
+                    const m256i& solutionMiningSeed = *(m256i*)request->inputPtr();
+                    const m256i& solutionNonce = *(m256i*)(request->inputPtr() + 32);
+                    (*score)(processorNumber, request->sourcePublicKey, solutionMiningSeed, solutionNonce);
+                }
+            }
 
             // shortcut: oracle reply reveal transactions are analyzed immediately after receiving them (before execution of the tx),
             // in order to minimize the number of reveal transaction (one per oracle query is enough, so no reveal tx is generated
@@ -2262,7 +2286,7 @@ static void requestProcessor(void* ProcedureArgument)
 
                 case BROADCAST_TRANSACTION:
                 {
-                    processBroadcastTransaction(peer, header);
+                    processBroadcastTransaction(peer, header, processorNumber);
                 }
                 break;
 
@@ -3098,7 +3122,17 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
 
                 case OracleUserQueryTransactionPrefix::transactionType():
                 {
-                    const bool error = (oracleEngine.startUserQuery((OracleUserQueryTransactionPrefix*)transaction, transactionIndex) < 0);
+                    // check for special cases
+                    const auto* queryTx = (const OracleUserQueryTransactionPrefix*)transaction;
+                    bool forceZeroFee = false;
+                    if (queryTx->oracleInterfaceIndex == OI::DogeShareValidation::oracleInterfaceIndex)
+                    {
+                        // doge share validation query does not cost fees for computors
+                        forceZeroFee = computorIndex(queryTx->sourcePublicKey) >= 0;
+                    }
+
+                    // start user query
+                    const bool error = (oracleEngine.startUserQuery(queryTx, transactionIndex, forceZeroFee) < 0);
                     if (error && transaction->amount)
                     {
                         oracleEngine.refundFees(transaction->sourcePublicKey, transaction->amount);
@@ -5876,6 +5910,8 @@ static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 // forceLoadFromFile: when loading node states from file, we want to make sure it load from file and ignore constructionEpoch == system.epoch case
 static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
 {
+    // Make sure you define all contracts that are allowed to be padded automatically in contract_def.h
+
     logToConsole(L"Loading contract files ...");
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
@@ -5905,6 +5941,39 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                 }
                 else
                 {
+                    // Check if this contract is allowed to be zero-padded from a smaller file
+                    bool paddingAllowed = false;
+                    for (unsigned int i = 0; i < paddableCount; i++)
+                    {
+                        if (paddableContracts[i] == contractIndex)
+                        {
+                            paddingAllowed = true;
+                            break;
+                        }
+                    }
+
+                    if (paddingAllowed)
+                    {
+                        long long actualSize = getFileSize(CONTRACT_FILE_NAME, directory);
+                        if (actualSize > 0 && (unsigned long long)actualSize < contractDescriptions[contractIndex].stateSize)
+                        {
+                            // Zero the entire buffer, then load the smaller file into the front
+                            setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
+                            long long reloadedSize = load(CONTRACT_FILE_NAME, (unsigned long long)actualSize, contractStates[contractIndex], directory);
+                            if (reloadedSize == actualSize)
+                            {
+                                appendText(message, L" WARNING: undersized file (");
+                                appendNumber(message, (unsigned long long)actualSize, FALSE);
+                                appendText(message, L" < ");
+                                appendNumber(message, contractDescriptions[contractIndex].stateSize, FALSE);
+                                appendText(message, L" bytes), zero-padded");
+                                logToConsole(message);
+                                continue;
+                            }
+                            // Reload also failed — fall through to error
+                        }
+                    }
+
                     appendText(message, L" cannot be read successfully");
                     logToConsole(message);
                     logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
@@ -7390,6 +7459,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         for (int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
         {
             solutionProcessorFlags[i] = false;
+            preprocessSolutionFlags[i] = false;
         }
 
         for (unsigned int i = 0; i < numberOfAllProcessors && numberOfProcessors < MAX_NUMBER_OF_PROCESSORS; i++)
@@ -7441,6 +7511,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS] = true;
                         solutionProcessorFlags[i] = true;
+                        if (nSolutionProcessorIDs < NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS)
+                        {
+                            preprocessSolutionFlags[i] = true;
+                        }
                         solutionProcessorIDs[nSolutionProcessorIDs++] = i;
                     }
                 }
