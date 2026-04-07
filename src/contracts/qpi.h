@@ -39,7 +39,7 @@ namespace QPI
 
 	*/
 
-	typedef bool bit;
+	typedef char bit;
 	typedef signed char sint8;
 	typedef unsigned char uint8;
 	typedef signed short sint16;
