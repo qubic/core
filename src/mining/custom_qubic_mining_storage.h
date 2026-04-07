@@ -123,19 +123,19 @@ public:
                     return false;
                 unsigned int& nextDogeTaskId = nextTaskIndex[CustomMiningType::DOGE];
                 const QubicDogeMiningTask* dogeTask = reinterpret_cast<const QubicDogeMiningTask*>(reinterpret_cast<const char*>(task) + sizeof(CustomQubicMiningTask));
-                //if (dogeTask->cleanJobQueue)
-                //{
-                //    setMem(activeTasks[CustomMiningType::DOGE], maxNumTasks * sizeof(uint64_t), 0);
-                //    for (int t = 0; t < maxNumTasks; ++t)
-                //        receivedSolutions[CustomMiningType::DOGE * maxNumTasks + t].reset();
-                //    setMem(dogeTasks, sizeof(dogeTasks), 0);
-                //    nextDogeTaskId = 0;
-                //}
-                //else
-                //{
-                // If not cleaning job queue, we will override the oldest task. Clean the corresponding solution hash set.
-                receivedSolutions[CustomMiningType::DOGE * maxNumTasks + nextDogeTaskId].reset();
-                //}
+                if (dogeTask->cleanJobQueue)
+                {
+                    setMem(activeTasks[CustomMiningType::DOGE], maxNumTasks * sizeof(uint64_t), 0);
+                    for (int t = 0; t < maxNumTasks; ++t)
+                        receivedSolutions[CustomMiningType::DOGE * maxNumTasks + t].reset();
+                    setMem(dogeTasks, sizeof(dogeTasks), 0);
+                    nextDogeTaskId = 0;
+                }
+                else
+                {
+                    // If not cleaning job queue, we will override the oldest task. Clean the corresponding solution hash set.
+                    receivedSolutions[CustomMiningType::DOGE * maxNumTasks + nextDogeTaskId].reset();
+                }
                 convertTargetCompactToFull(dogeTask->dispatcherDifficulty, dogeTasks[nextDogeTaskId].dispatcherTarget);
                 copyMem(dogeTasks[nextDogeTaskId].nBits, dogeTask->nBits, 4);
                 copyMem(dogeTasks[nextDogeTaskId].version, dogeTask->version, 4);

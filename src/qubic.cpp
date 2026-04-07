@@ -1647,11 +1647,19 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                         enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-                        setText(dbgMsgBuf, L"Oracle query broadcasted");
+                        setText(dbgMsgBuf, L"Oracle query broadcasted for tick ");
+                        appendNumber(dbgMsgBuf, tx->tick, FALSE);
                         addDebugMessage(dbgMsgBuf);
 #endif
 
                         // TODO: resend oracle query if the tx isn't included in scheduled tick or if it is an empty tick
+                    }
+                    else
+                    {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                        setText(dbgMsgBuf, L"Oracle query NOT broadcasted (not in main mode)");
+                        addDebugMessage(dbgMsgBuf);
+#endif
                     }
 
                     break;
