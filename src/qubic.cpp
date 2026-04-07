@@ -1599,10 +1599,19 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
 
                     // Check if the solution is added successfully (active task, no duplicate) before sending oracle query.
                     CustomQubicMiningStorage::StoredDogeMiningTask task;
+                    task.nBits[3] = 0; // exponent
                     if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE, reinterpret_cast<unsigned char*>(&task)) < 0)
                     {
 #if !defined(NDEBUG) && !defined(NO_UEFI)
-                        setText(dbgMsgBuf, L"Adding solution to storage failed, not sending oracle query");
+                        setText(dbgMsgBuf, L"Adding solution to storage failed, not sending oracle query ");
+                        if (task.nBits[3] == 0)
+                        {
+                            appendText(dbgMsgBuf, L" (no active task)");
+                        }
+                        else
+                        {
+                            appendText(dbgMsgBuf, L" (duplicate solution)");
+                        }
                         addDebugMessage(dbgMsgBuf);
 #endif
                         return;
