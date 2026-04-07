@@ -1568,6 +1568,7 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
             // Comp id is encoded in first 4 bytes of extraNonce2 (big endian byte order).
             for (int i = 0; i < 4; ++i)
                 compIdFromEN2 = (compIdFromEN2 << 8) | dogeSol->extraNonce2[i];
+            compIdFromEN2 %= NUMBER_OF_COMPUTORS;
 
             // Check if the solution is from own comp pool -> if yes, query oracle.
             for (unsigned int i = 0; i < computorSeedsCount; ++i)
