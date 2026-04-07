@@ -24,7 +24,7 @@ class CustomQubicMiningStorage
 {
 private:
     static constexpr unsigned int maxNumTasks = 32;
-    static constexpr unsigned int maxNumSolutionsPerTask = 128;
+    static constexpr unsigned int maxNumSolutionsPerTask = 256;
 
     uint64_t activeTasks[CustomMiningType::TOTAL_NUM_TYPES][maxNumTasks];
     unsigned int nextTaskIndex[CustomMiningType::TOTAL_NUM_TYPES];

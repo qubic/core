@@ -1583,8 +1583,8 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                         tx->sourcePublicKey = computorPublicKeys[i];
                         tx->destinationPublicKey = { 0 };
                         tx->amount = 0;
-                        tx->tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
-                        tx->inputType = ORACLE_MACHINE_QUERY;
+                        tx->tick = system.tick + 8; // offset of 8 ticks to ensure propagation through the network
+                        tx->inputType = OracleUserQueryTransactionPrefix::transactionType();
                         tx->inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery);
                         tx->oracleInterfaceIndex = OI::DogeShareValidation::oracleInterfaceIndex;
                         tx->timeoutMilliseconds = 30000;
