@@ -91,6 +91,9 @@ public:
         setMem(nextTaskIndex, sizeof(nextTaskIndex), 0);
         setMem(dogeTasks, sizeof(dogeTasks), 0);
 
+        for (int t = 0; t < CustomMiningType::TOTAL_NUM_TYPES * maxNumTasks; ++t)
+            receivedSolutions[t].reset();
+
         return true;
     }
 
