@@ -854,6 +854,8 @@ namespace QPI
 		// Set bit with given index to the given value
 		inline void set(uint64 index, bit value)
 		{
+			// before setting the bit, make sure value is casted from char to bool (integer value 0 or 1 only)
+			value = !!value;
 			_values[(index >> 6) & (_elements - 1)] = (_values[(index >> 6) & (_elements - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
 		}
 
