@@ -612,8 +612,11 @@ Global constants, structs and classes must begin with the name of the contract s
 
 There is a limit for recursion and depth of nested contract function / procedure calls (the limit is 10 at the moment).
 
-The input and output structs of contract user procedures and functions may only use integer and boolean types (such as `uint64`, `sint8`, `bit`) as well as `id`, `Array`, and `BitArray`, and struct types containing only allowed types.
+The input and output structs of contract user procedures and functions may only use integer types (such as `uint64`, `sint8`, `bit`) as well as `id`, `Array`, and `BitArray`, and struct types containing only allowed types.
 Complex types that may have an inconsistent internal state, such as `Collection`, are forbidden in the public interface of a contract.
+
+Please note that `bit` is defined as an 8-byte integer type, because the contract execution runtime cannot enforce that input variables with the `bit` type always have the values 0 or 1 only, which some compilers assume when generating code using boolean variables.
+If your code requires the input `bit varName` to be either 0 or 1 (integer representation of false or true), with mapping all non-zero to 1, you may just ensure this in your contract code by running `input.varName = !!input.varName;`.
 
 
 ## General Change Management
