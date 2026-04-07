@@ -1571,8 +1571,8 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                 if (computorPublicKeys[i] == *sourcePublicKey)
                 {
                     // Check if the solution is added successfully (active task, no duplicate) before sending oracle query.
-                    StoredDogeMiningTask task;
-                    if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE, reinterpret_cast<char*>(&task)) < 0)
+                    CustomQubicMiningStorage::StoredDogeMiningTask task;
+                    if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE, reinterpret_cast<unsigned char*>(&task)) < 0)
                         return;
 
                     if (isMainMode()) // only main node should send oracle queries
