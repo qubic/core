@@ -1557,6 +1557,7 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
         // Broadcast the solution to peers.
         enqueueResponse(NULL, header);
 
+#ifdef SEND_DOGE_ORACLE_QUERIES
         if (sol->customMiningType == CustomMiningType::DOGE)
         {
             if (messageSize - SIGNATURE_SIZE < sizeof(CustomQubicMiningSolution) + sizeof(QubicDogeMiningSolution))
@@ -1610,6 +1611,7 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                 }
             }
         }
+#endif
     }
 }
 
