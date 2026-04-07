@@ -1564,11 +1564,15 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                 return;
 
             const auto* dogeSol = reinterpret_cast<const QubicDogeMiningSolution*>(payload + sizeof(CustomQubicMiningSolution));
+            unsigned int compIdFromEN2 = 0;
+            // Comp id is encoded in first 4 bytes of extraNonce2 (big endian byte order).
+            for (int i = 0; i < 4; ++i)
+                compIdFromEN2 = (compIdFromEN2 << 8) | dogeSol->extraNonce2[i];
 
             // Check if the solution is from own comp pool -> if yes, query oracle.
             for (unsigned int i = 0; i < computorSeedsCount; ++i)
             {
-                if (computorPublicKeys[i] == *sourcePublicKey)
+                if (computorIndex(computorPublicKeys[i]) == compIdFromEN2)
                 {
                     // Check if the solution is added successfully (active task, no duplicate) before sending oracle query.
                     CustomQubicMiningStorage::StoredDogeMiningTask task;
