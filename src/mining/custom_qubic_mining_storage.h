@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "platform/memory.h"
+#include "platform/memory_util.h"
 #include "platform/concurrency.h"
 #include "network_messages/custom_mining.h"
 #include "contracts/qpi.h"

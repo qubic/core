@@ -1554,53 +1554,55 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
             && (::spectrumIndex(*sourcePublicKey) < 0 || energy(::spectrumIndex(*sourcePublicKey)) < MESSAGE_DISSEMINATION_THRESHOLD))
             return;
 
-        // Check if the solution is added successfully (active task, no duplicate).
-        // If not, it won't be broadcasted to reduce unnecessary traffic and verification.
+        // Broadcast the solution to peers.
+        enqueueResponse(NULL, header);
+
+        // Check if the solution is added successfully (active task, no duplicate) before sending oracle query.
         StoredDogeMiningTask task;
         if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE, reinterpret_cast<char*>(&task)) < 0)
             return;
         
-        // Broadcast the solution to peers.
-        enqueueResponse(NULL, header);
-        
-        if (sol->customMiningType == CustomMiningType::DOGE)
+        if (isMainMode()) // only main node should send oracle queries
         {
-            if (messageSize - SIGNATURE_SIZE < sizeof(CustomQubicMiningSolution) + sizeof(QubicDogeMiningSolution))
-                return;
-
-            const auto* dogeSol = reinterpret_cast<const QubicDogeMiningSolution*>(payload + sizeof(CustomQubicMiningSolution));
-
-            // Check if the solution is from own comp pool -> if yes, query oracle.
-            for (unsigned int i = 0; i < computorSeedsCount; ++i)
+            if (sol->customMiningType == CustomMiningType::DOGE)
             {
-                if (computorPublicKeys[i] == *sourcePublicKey)
+                if (messageSize - SIGNATURE_SIZE < sizeof(CustomQubicMiningSolution) + sizeof(QubicDogeMiningSolution))
+                    return;
+
+                const auto* dogeSol = reinterpret_cast<const QubicDogeMiningSolution*>(payload + sizeof(CustomQubicMiningSolution));
+
+                // Check if the solution is from own comp pool -> if yes, query oracle.
+                for (unsigned int i = 0; i < computorSeedsCount; ++i)
                 {
-                    unsigned char buffer[sizeof(Transaction) + 8 + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
+                    if (computorPublicKeys[i] == *sourcePublicKey)
+                    {
+                        unsigned char buffer[sizeof(Transaction) + 8 + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
 
-                    Transaction* tx = reinterpret_cast<Transaction*>(buffer);
-                    tx->sourcePublicKey = computorPublicKeys[i];
-                    tx->destinationPublicKey = { 0 };
-                    tx->amount = 0;
-                    tx->tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
-                    tx->inputType = ORACLE_MACHINE_QUERY;
-                    tx->inputSize = 8 + sizeof(OI::DogeShareValidation::OracleQuery);
-                    unsigned char* queryData = buffer + sizeof(Transaction);
-                    *reinterpret_cast<uint32_t*>(queryData) = OI::DogeShareValidation::oracleInterfaceIndex;
-                    *reinterpret_cast<uint32_t*>(queryData + 4) = 2000; // timeout im milliseconds
-                    // Full header can be constructed via concatenating version + prevHash + merkleRoot + miner's nTime + nBits + miner's nonce.
-                    unsigned int offset = 8;
-                    copyMem(queryData + offset, task.version, 4); offset += 4;
-                    copyMem(queryData + offset, task.prevHash, 32); offset += 32;
-                    copyMem(queryData + offset, dogeSol->merkleRoot, 32); offset += 32;
-                    copyMem(queryData + offset, dogeSol->nTime, 4); offset += 4;
-                    copyMem(queryData + offset, task.nBits, 4); offset += 4;
-                    copyMem(queryData + offset, dogeSol->nonce, 4); offset += 4;
-                    copyMem(queryData + offset, task.dispatcherTarget, 32); offset += 32;
+                        Transaction* tx = reinterpret_cast<Transaction*>(buffer);
+                        tx->sourcePublicKey = computorPublicKeys[i];
+                        tx->destinationPublicKey = { 0 };
+                        tx->amount = 0;
+                        tx->tick = system.tick + 3 * TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+                        tx->inputType = ORACLE_MACHINE_QUERY;
+                        tx->inputSize = 8 + sizeof(OI::DogeShareValidation::OracleQuery);
+                        unsigned char* queryData = buffer + sizeof(Transaction);
+                        *reinterpret_cast<uint32_t*>(queryData) = OI::DogeShareValidation::oracleInterfaceIndex;
+                        *reinterpret_cast<uint32_t*>(queryData + 4) = 2000; // timeout im milliseconds
+                        // Full header can be constructed via concatenating version + prevHash + merkleRoot + miner's nTime + nBits + miner's nonce.
+                        unsigned int offset = 8;
+                        copyMem(queryData + offset, task.version, 4); offset += 4;
+                        copyMem(queryData + offset, task.prevHash, 32); offset += 32;
+                        copyMem(queryData + offset, dogeSol->merkleRoot, 32); offset += 32;
+                        copyMem(queryData + offset, dogeSol->nTime, 4); offset += 4;
+                        copyMem(queryData + offset, task.nBits, 4); offset += 4;
+                        copyMem(queryData + offset, dogeSol->nonce, 4); offset += 4;
+                        copyMem(queryData + offset, task.dispatcherTarget, 32); offset += 32;
 
-                    KangarooTwelve(buffer, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
-                    sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
-                    enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
-                    break;
+                        KangarooTwelve(buffer, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
+                        sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
+                        enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                        break;
+                    }
                 }
             }
         }
