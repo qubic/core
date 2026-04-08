@@ -704,8 +704,8 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                         {
                                             unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
                                             score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(solution_nonce.m256i_u8);
-                                            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? 
-                                                solutionThreshold[system.epoch][selectedAlgo] 
+                                            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ?
+                                                solutionThreshold[system.epoch][selectedAlgo]
                                                 : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
                                             if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
                                                 && score->isValidScore(solutionScore, selectedAlgo)
@@ -1526,7 +1526,9 @@ static void processBroadcastCustomMiningTask(RequestResponseHeader* header)
     if (verify(dogeDispatcherPubkey, digest.m256i_u8, payload + (messageSize - SIGNATURE_SIZE)))
     {
         enqueueResponse(NULL, header);
+#ifdef SEND_DOGE_ORACLE_QUERIES
         customQubicMiningStorage.addTask(reinterpret_cast<const CustomQubicMiningTask*>(payload), messageSize - SIGNATURE_SIZE);
+#endif
     }
 }
 
@@ -1557,19 +1559,25 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
         // Broadcast the solution to peers.
         enqueueResponse(NULL, header);
 
+#ifdef SEND_DOGE_ORACLE_QUERIES
         if (sol->customMiningType == CustomMiningType::DOGE)
         {
             if (messageSize - SIGNATURE_SIZE < sizeof(CustomQubicMiningSolution) + sizeof(QubicDogeMiningSolution))
                 return;
 
             const auto* dogeSol = reinterpret_cast<const QubicDogeMiningSolution*>(payload + sizeof(CustomQubicMiningSolution));
+            unsigned int compIdFromEN2 = 0;
+            // Comp id is encoded in first 4 bytes of extraNonce2 (big endian byte order).
+            for (int i = 0; i < 4; ++i)
+                compIdFromEN2 = (compIdFromEN2 << 8) | dogeSol->extraNonce2[i];
+            compIdFromEN2 %= NUMBER_OF_COMPUTORS;
 
-            // Check if the solution is from own comp pool -> if yes, save solution and query oracle.
+            // Check if the solution is from own comp pool -> if yes, query oracle.
             for (unsigned int i = 0; i < computorSeedsCount; ++i)
             {
-                if (computorPublicKeys[i] == *sourcePublicKey)
+                if (computorIndex(computorPublicKeys[i]) == compIdFromEN2)
                 {
-                    // Check if the solution is added successfully (active task, no duplicate).
+                    // Check if the solution is added successfully (active task, no duplicate) before sending oracle query.
                     CustomQubicMiningStorage::StoredDogeMiningTask task;
                     if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE, reinterpret_cast<unsigned char*>(&task)) < 0)
                         return;
@@ -1579,10 +1587,10 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
 
                     auto* tx = reinterpret_cast<OracleUserQueryTransactionPrefix*>(buffer);
                     tx->sourcePublicKey = computorPublicKeys[i];
-                    tx->destinationPublicKey = { 0 };
+                    tx->destinationPublicKey = m256i::zero();
                     tx->amount = 0;
-                    tx->tick = system.tick + 3 * TICK_TRANSACTIONS_PUBLICATION_OFFSET;
-                    tx->inputType = ORACLE_MACHINE_QUERY;
+                    tx->tick = system.tick + 8; // offset of 8 ticks to ensure propagation through the network
+                    tx->inputType = OracleUserQueryTransactionPrefix::transactionType();
                     tx->inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery);
                     tx->oracleInterfaceIndex = OI::DogeShareValidation::oracleInterfaceIndex;
                     tx->timeoutMilliseconds = 30000;
@@ -1599,14 +1607,18 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
 
                     customQubicMiningStorage.addOracleQuery(tx);
 
-                    KangarooTwelve(buffer, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
-                    sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
-                    enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                    if (isMainMode()) // only main node should send oracle queries
+                    {
+                        KangarooTwelve(buffer, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
+                        sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
+                        enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                    }
 
                     break;
                 }
             }
         }
+#endif
     }
 }
 

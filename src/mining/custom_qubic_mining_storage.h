@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cstdint>
+#include "lib/platform_common/qstdint.h"
 
 #include "platform/memory.h"
 #include "platform/memory_util.h"
@@ -96,7 +96,7 @@ public:
     bool getTypeSpecificOracleQuery(uint8_t customMiningType, unsigned int queryIndex, unsigned char* queryData);
 
 private:
-    static constexpr unsigned int maxNumSolutionsPerTask = 128;
+    static constexpr unsigned int maxNumSolutionsPerTask = 256;
     static constexpr unsigned int oracleQueryMaxNumTries = 5;
 
     // General storage that is the same for all mining types.

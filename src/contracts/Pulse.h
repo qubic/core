@@ -479,6 +479,20 @@ public:
 		sint64 index;
 	};
 
+	struct DepositManagedQHeart_input
+	{
+		sint64 amount;
+	};
+	struct DepositManagedQHeart_output
+	{
+		uint8 returnCode;
+	};
+	struct DepositManagedQHeart_locals
+	{
+		sint64 transferResult;
+		sint64 userBalance;
+	};
+
 	struct TransferTokenToQx_input
 	{
 		sint64 numberOfShares;
@@ -814,6 +828,7 @@ public:
 		REGISTER_USER_PROCEDURE(SetAutoConfig, 10);
 		REGISTER_USER_PROCEDURE(SetAutoLimits, 11);
 		REGISTER_USER_PROCEDURE(TransferTokenToQx, 12);
+		REGISTER_USER_PROCEDURE(DepositManagedQHeart, 13);
 	}
 
 	INITIALIZE()
@@ -1506,6 +1521,44 @@ public:
 		CALL(AllocateRandomTickets, locals.allocateInput, locals.allocateOutput);
 
 		output.returnCode = locals.allocateOutput.returnCode;
+	}
+
+	/**
+	 * Deposits QHeart already managed by Pulse into the Pulse wallet.
+	 * @param amount QHeart amount to transfer from the invocator to the contract.
+	 * @return Status code describing whether the transfer succeeded.
+	 * @note This only moves managed QHeart into `SELF`; it does not update auto-participation or other accounting.
+	 */
+	PUBLIC_PROCEDURE_WITH_LOCALS(DepositManagedQHeart)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (input.amount <= 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		locals.userBalance =
+		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
+		if (locals.userBalance < input.amount)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TICKET_INVALID_PRICE);
+			return;
+		}
+
+		locals.transferResult = qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(),
+		                                                                qpi.invocator(), input.amount, SELF);
+		if (locals.transferResult < 0)
+		{
+			output.returnCode = toReturnCode(EReturnCode::TRANSFER_TO_PULSE_FAILED);
+			return;
+		}
+
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	/**

@@ -15,6 +15,9 @@ constexpr uint16 PULSE_PROCEDURE_DEPOSIT_AUTO_PARTICIPATION = 8;
 constexpr uint16 PULSE_PROCEDURE_WITHDRAW_AUTO_PARTICIPATION = 9;
 constexpr uint16 PULSE_PROCEDURE_SET_AUTO_CONFIG = 10;
 constexpr uint16 PULSE_PROCEDURE_SET_AUTO_LIMITS = 11;
+constexpr uint16 PULSE_PROCEDURE_DEPOSIT_MANAGED_QHEART = 13;
+
+constexpr uint16 QX_PROCEDURE_TRANSFER_SHARE_MANAGEMENT_RIGHTS = 9;
 
 constexpr uint16 PULSE_FUNCTION_GET_TICKET_PRICE = 1;
 constexpr uint16 PULSE_FUNCTION_GET_ROUND_STATE = 3;
@@ -249,6 +252,12 @@ public:
 	PULSEChecker* state() { return reinterpret_cast<PULSEChecker*>(contractStates[PULSE_CONTRACT_INDEX]); }
 	const PULSEChecker* state() const { return reinterpret_cast<PULSEChecker*>(contractStates[PULSE_CONTRACT_INDEX]); }
 
+	void qxInitialize()
+	{
+		INIT_CONTRACT(QX);
+		callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
+	}
+
 	id pulseSelf() const { return id(PULSE_CONTRACT_INDEX, 0, 0, 0); }
 
 	PULSE::GetTicketPrice_output getTicketPrice()
@@ -364,6 +373,19 @@ public:
 		input.buyNow = buyNow;
 		PULSE::DepositAutoParticipation_output output{};
 		if (!invokeUserProcedure(PULSE_CONTRACT_INDEX, PULSE_PROCEDURE_DEPOSIT_AUTO_PARTICIPATION, input, output, user, 0))
+		{
+			output.returnCode = static_cast<uint8>(PULSE::EReturnCode::UNKNOWN_ERROR);
+		}
+		return output;
+	}
+
+	PULSE::DepositManagedQHeart_output depositManagedQHeart(const id& user, sint64 amount)
+	{
+		ensureUserEnergy(user);
+		PULSE::DepositManagedQHeart_input input{};
+		input.amount = amount;
+		PULSE::DepositManagedQHeart_output output{};
+		if (!invokeUserProcedure(PULSE_CONTRACT_INDEX, PULSE_PROCEDURE_DEPOSIT_MANAGED_QHEART, input, output, user, 0))
 		{
 			output.returnCode = static_cast<uint8>(PULSE::EReturnCode::UNKNOWN_ERROR);
 		}
@@ -519,6 +541,17 @@ public:
 		return info;
 	}
 
+	QHeartIssuance issueQHeartOnQx(sint64 totalShares)
+	{
+		static constexpr char name[7] = {'Q', 'H', 'E', 'A', 'R', 'T', 0};
+		static constexpr char unit[7] = {};
+		QHeartIssuance info{};
+		const sint64 issued = issueAsset(state()->getQHeartIssuer(), name, 0, unit, totalShares, QX_CONTRACT_INDEX, &info.issuanceIndex,
+		                                 &info.ownershipIndex, &info.possessionIndex);
+		EXPECT_EQ(issued, totalShares);
+		return info;
+	}
+
 	void transferQHeart(const QHeartIssuance& issuance, const id& dest, sint64 amount)
 	{
 		int destOwnershipIndex = 0;
@@ -541,10 +574,33 @@ public:
 		issueContractShares(RL_CONTRACT_INDEX, initialShares, false);
 	}
 
+	sint64 transferQHeartManagementRightsToPulse(const id& currentOwner, sint64 shares)
+	{
+		ensureUserEnergy(currentOwner);
+		QX::TransferShareManagementRights_input input{};
+		QX::TransferShareManagementRights_output output{};
+		input.asset.assetName = PULSE_QHEART_ASSET_NAME;
+		input.asset.issuer = state()->getQHeartIssuer();
+		input.numberOfShares = shares;
+		input.newManagingContractIndex = PULSE_CONTRACT_INDEX;
+		if (!invokeUserProcedure(QX_CONTRACT_INDEX, QX_PROCEDURE_TRANSFER_SHARE_MANAGEMENT_RIGHTS, input, output, currentOwner, 0))
+		{
+			return 0;
+		}
+		return output.transferredNumberOfShares;
+	}
+
 	uint64 qheartBalanceOf(const id& owner) const
 	{
 		const long long balance =
 		    numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state()->getQHeartIssuer(), owner, owner, PULSE_CONTRACT_INDEX, PULSE_CONTRACT_INDEX);
+		return (balance > 0) ? static_cast<uint64>(balance) : 0;
+	}
+
+	uint64 managedQheartBalanceOf(const id& owner, unsigned int managingContractIndex) const
+	{
+		const long long balance =
+		    numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state()->getQHeartIssuer(), owner, owner, managingContractIndex, managingContractIndex);
 		return (balance > 0) ? static_cast<uint64>(balance) : 0;
 	}
 
@@ -1682,6 +1738,30 @@ TEST(ContractPulse_Public, GetBalanceReportsQHeartWalletBalance)
 	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
 	ctl.transferQHeart(issuance, ctl.pulseSelf(), 12345);
 	EXPECT_EQ(ctl.getBalance().balance, 12345u);
+}
+
+// QX-managed QHEART can be re-managed by Pulse and then deposited into the Pulse wallet.
+TEST(ContractPulse_Public, DepositManagedQHeartAfterQxManagementTransfer)
+{
+	ContractTestingPulse ctl;
+	ctl.qxInitialize();
+
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeartOnQx(1000000);
+	const id user = id::randomValue();
+	static constexpr sint64 depositAmount = 12345;
+
+	ctl.transferQHeart(issuance, user, depositAmount);
+
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, QX_CONTRACT_INDEX), static_cast<uint64>(depositAmount));
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, PULSE_CONTRACT_INDEX), 0u);
+	EXPECT_EQ(ctl.transferQHeartManagementRightsToPulse(user, depositAmount), depositAmount);
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, QX_CONTRACT_INDEX), 0u);
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, PULSE_CONTRACT_INDEX), static_cast<uint64>(depositAmount));
+
+	const PULSE::DepositManagedQHeart_output deposit = ctl.depositManagedQHeart(user, depositAmount);
+	EXPECT_EQ(deposit.returnCode, static_cast<uint8>(PULSE::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, PULSE_CONTRACT_INDEX), 0u);
+	EXPECT_EQ(ctl.getBalance().balance, static_cast<uint64>(depositAmount));
 }
 
 // Report empty winner history before any draws.

@@ -2,10 +2,10 @@
 
 #include <array>
 #include <random>
-#include <cstdint>
 
 #include "gtest/gtest.h"
 
+#include "lib/platform_common/qstdint.h"
 #include "oracle_testing.h"
 #include "src/mining/custom_qubic_mining_storage.h"
 
@@ -91,7 +91,7 @@ TEST(CustomQubicMiningStorage, AddTask)
 
     EXPECT_TRUE(storage.addTask(task, sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask)));
     EXPECT_FALSE(storage.addTask(task, sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask))); // duplicate task is not added
-    
+
     storage.deinit();
 }
 
@@ -129,7 +129,7 @@ TEST(CustomQubicMiningStorage, AddCleanJobQueueTask)
     createTestTask(buffer, /*jobId=*/12345, /*cleanJobQueue=*/false, gen);
     EXPECT_TRUE(storage.addTask(task, sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask)));
     EXPECT_TRUE(storage.containsTask(task->customMiningType, 12345));
-    
+
     // Create and add a task that will clean the job queue. This should remove the previous task.
     createTestTask(buffer, /*jobId=*/532789, /*cleanJobQueue=*/true, gen);
     EXPECT_TRUE(storage.addTask(task, sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask)));
@@ -154,9 +154,9 @@ TEST(CustomQubicMiningStorage, AddingMoreThanMaxNumTasksOverwritesOldest)
 
     for (uint64_t jobId = firstJobId; jobId <= firstJobId + CustomQubicMiningStorage::maxNumTasks; ++jobId)
     {
-         createTestTask(buffer, jobId, /*cleanJobQueue=*/false, gen);
-         EXPECT_TRUE(storage.addTask(task, sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask)));
-         EXPECT_TRUE(storage.containsTask(task->customMiningType, jobId));
+        createTestTask(buffer, jobId, /*cleanJobQueue=*/false, gen);
+        EXPECT_TRUE(storage.addTask(task, sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask)));
+        EXPECT_TRUE(storage.containsTask(task->customMiningType, jobId));
     }
     // The first added task should have been overwritten.
     EXPECT_FALSE(storage.containsTask(task->customMiningType, firstJobId));
