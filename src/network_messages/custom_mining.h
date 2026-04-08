@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cstdint>
+#include "lib/platform_common/qstdint.h"
 
 #include "network_message_type.h"
 

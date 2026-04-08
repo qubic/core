@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cstdint>
+#include "lib/platform_common/qstdint.h"
 
 #include "platform/memory.h"
 #include "platform/memory_util.h"
