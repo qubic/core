@@ -1444,6 +1444,9 @@ public:
                 oracleStats[ifaceIdx].extraData[1] = ((const OI::Mock::OracleReply*)replyData)->echoedValue;
                 oracleStats[ifaceIdx].extraData[2] = ((const OI::Mock::OracleReply*)replyData)->doubledValue;
                 break;
+            case 2: // DogeShareValidation
+                valid = ((const OI::DogeShareValidation::OracleReply*)replyData)->isValid;
+                break;
             default: // unknown
                 break;
             }
