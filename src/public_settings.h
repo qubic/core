@@ -69,12 +69,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 285
-#define VERSION_C 1
+#define VERSION_B 286
+#define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 207
-#define TICK 48160000
+#define EPOCH 208
+#define TICK 48870000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -107,11 +107,6 @@ static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = 728;    // 2M
 static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 500;
 static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = ADDITION_NUMBER_OF_INPUT_NEURONS + ADDITION_NUMBER_OF_OUTPUT_NEURONS + ADDITION_NUMBER_OF_MUTATIONS; // P
 static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 75700;
-// Mid-epoch threshold increase: ticks before activation use old threshold (75200),
-// ticks >= activation use ADDITION_SOLUTION_THRESHOLD_DEFAULT (75700).
-// Activation tick is inside XMR marathon where no solutions are submitted.
-static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_PRE_ACTIVATION = 75200;
-static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_ACTIVATION_TICK = 48196000;
 
 // Multipler of score
 static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;

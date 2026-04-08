@@ -590,9 +590,10 @@ public:
     * Check and start user query based on transaction (should be called from tick processor).
     * @param tx Transaction, whose validity and signature has been checked before.
     * @param txIndex Index of tx in tick data, for referencing in tick storage.
+    * @param forceZeroFee Whether to overwrite the oracle fee by zero. Default: false.
     * @return Query ID or -1 on error.
     */
-    int64_t startUserQuery(const OracleUserQueryTransactionPrefix* tx, uint32_t txIndex)
+    int64_t startUserQuery(const OracleUserQueryTransactionPrefix* tx, uint32_t txIndex, bool forceZeroFee = false)
     {
         // check preconditions (that function is used correctly)
         ASSERT(tx);
@@ -622,7 +623,7 @@ public:
 
         // check fee
         const void* queryData = (tx + 1);
-        const int64_t fee = OI::getOracleQueryFeeFunc[tx->oracleInterfaceIndex](queryData);
+        const int64_t fee = (forceZeroFee) ? 0 : OI::getOracleQueryFeeFunc[tx->oracleInterfaceIndex](queryData);
         if (tx->amount < fee)
         {
             // tx amount insufficient for fee -> return error (caller should refund in all error cases)
