@@ -11,6 +11,14 @@
 namespace QPI
 {
 	template <typename T, uint64 L>
+	bool LinkedList<T, L>::_isValidAndOccupied(sint64 elementIndex) const
+	{
+		if (elementIndex < 0 || elementIndex >= (sint64)L)
+			return false;
+		return (_occupiedFlags[elementIndex >> 6] & (1ULL << (elementIndex & 63))) != 0;
+	}
+
+	template <typename T, uint64 L>
 	sint64 LinkedList<T, L>::_allocateNode()
 	{
 		// First try to recycle a freed node
@@ -69,9 +77,7 @@ namespace QPI
 	template <typename T, uint64 L>
 	sint64 LinkedList<T, L>::nextElementIndex(sint64 elementIndex) const
 	{
-		if (elementIndex < 0 || elementIndex >= (sint64)L)
-			return NULL_INDEX;
-		if (!(_occupiedFlags[elementIndex >> 6] & (1ULL << (elementIndex & 63))))
+		if (!_isValidAndOccupied(elementIndex))
 			return NULL_INDEX;
 		return _nodes[elementIndex].nextIndex;
 	}
@@ -79,9 +85,7 @@ namespace QPI
 	template <typename T, uint64 L>
 	sint64 LinkedList<T, L>::prevElementIndex(sint64 elementIndex) const
 	{
-		if (elementIndex < 0 || elementIndex >= (sint64)L)
-			return NULL_INDEX;
-		if (!(_occupiedFlags[elementIndex >> 6] & (1ULL << (elementIndex & 63))))
+		if (!_isValidAndOccupied(elementIndex))
 			return NULL_INDEX;
 		return _nodes[elementIndex].prevIndex;
 	}
@@ -95,9 +99,7 @@ namespace QPI
 	template <typename T, uint64 L>
 	inline bool LinkedList<T, L>::isEmptySlot(sint64 elementIndex) const
 	{
-		if (elementIndex < 0 || elementIndex >= (sint64)L)
-			return true;
-		return !(_occupiedFlags[elementIndex >> 6] & (1ULL << (elementIndex & 63)));
+		return !_isValidAndOccupied(elementIndex);
 	}
 
 	template <typename T, uint64 L>
@@ -157,10 +159,7 @@ namespace QPI
 	template <typename T, uint64 L>
 	sint64 LinkedList<T, L>::insertAfter(sint64 elementIndex, const T& value)
 	{
-		// Validate target index
-		if (elementIndex < 0 || elementIndex >= (sint64)L)
-			return NULL_INDEX;
-		if (!(_occupiedFlags[elementIndex >> 6] & (1ULL << (elementIndex & 63))))
+		if (!_isValidAndOccupied(elementIndex))
 			return NULL_INDEX;
 
 		// If inserting after the tail, delegate to addTail
@@ -195,10 +194,7 @@ namespace QPI
 	template <typename T, uint64 L>
 	sint64 LinkedList<T, L>::insertBefore(sint64 elementIndex, const T& value)
 	{
-		// Validate target index
-		if (elementIndex < 0 || elementIndex >= (sint64)L)
-			return NULL_INDEX;
-		if (!(_occupiedFlags[elementIndex >> 6] & (1ULL << (elementIndex & 63))))
+		if (!_isValidAndOccupied(elementIndex))
 			return NULL_INDEX;
 
 		// If inserting before the head, delegate to addHead
@@ -233,10 +229,7 @@ namespace QPI
 	template <typename T, uint64 L>
 	void LinkedList<T, L>::remove(sint64 elementIndex)
 	{
-		// Validate index
-		if (elementIndex < 0 || elementIndex >= (sint64)L)
-			return;
-		if (!(_occupiedFlags[elementIndex >> 6] & (1ULL << (elementIndex & 63))))
+		if (!_isValidAndOccupied(elementIndex))
 			return;
 
 		sint64 prevIdx = _nodes[elementIndex].prevIndex;
@@ -262,9 +255,7 @@ namespace QPI
 	template <typename T, uint64 L>
 	bool LinkedList<T, L>::replace(sint64 elementIndex, const T& newValue)
 	{
-		if (elementIndex < 0 || elementIndex >= (sint64)L)
-			return false;
-		if (!(_occupiedFlags[elementIndex >> 6] & (1ULL << (elementIndex & 63))))
+		if (!_isValidAndOccupied(elementIndex))
 			return false;
 
 		_nodes[elementIndex].value = newValue;

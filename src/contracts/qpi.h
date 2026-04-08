@@ -1441,6 +1441,9 @@ namespace QPI
 		uint64 _nextUnusedIndex; // Next never-used node index (lazy free list init)
 		uint64 _population;
 
+		// Check if elementIndex is in range [0, L) and the slot is occupied.
+		bool _isValidAndOccupied(sint64 elementIndex) const;
+
 		// Get a node from the free list or unused pool. Returns NULL_INDEX if full.
 		sint64 _allocateNode();
 
