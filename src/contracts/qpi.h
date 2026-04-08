@@ -1476,6 +1476,7 @@ namespace QPI
 		inline const T& element(sint64 elementIndex) const;
 
 		// Return true if the slot at elementIndex is empty (not occupied by an element).
+		// Out-of-range indices are considered empty.
 		inline bool isEmptySlot(sint64 elementIndex) const;
 
 		// Add element at the head of the list, return elementIndex of new element (or NULL_INDEX if full).
