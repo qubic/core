@@ -1645,6 +1645,7 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                         KangarooTwelve(buffer, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
                         sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
                         enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                        pendingTxsPool.add(tx);
 
 #if !defined(NDEBUG) && !defined(NO_UEFI)
                         setText(dbgMsgBuf, L"Oracle query broadcasted for tick ");
