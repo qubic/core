@@ -3147,7 +3147,8 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                     }
 
                     // start user query
-                    const bool error = (oracleEngine.startUserQuery(queryTx, transactionIndex, forceZeroFee) < 0);
+                    int64_t queryId = oracleEngine.startUserQuery(queryTx, transactionIndex, forceZeroFee);
+                    const bool error = queryId < 0;
 
                     if (queryTx->oracleInterfaceIndex == OI::DogeShareValidation::oracleInterfaceIndex)
                     {
@@ -3158,7 +3159,7 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                         }
                         else
                         {
-                            customQubicMiningStorage.markOracleQueryStarted((const OracleUserQueryTransactionPrefix*)transaction);
+                            customQubicMiningStorage.markOracleQueryStarted((const OracleUserQueryTransactionPrefix*)transaction, queryId);
                         }
                     }
 
@@ -3635,8 +3636,8 @@ static void processTick(unsigned long long processorNumber)
             if (finishedUserQuery->status == ORACLE_QUERY_STATUS_SUCCESS
                 && oracleEngine.getOracleReply(finishedUserQuery->queryId, &reply, sizeof(reply)))
             {
-                // TODO: Oracle query was successful, remove from storage.
-                // customQubicMiningStorage.removeOracleQuery((const OracleUserQueryTransactionPrefix*)transaction);
+                // Oracle query was successful, remove from storage.
+                customQubicMiningStorage.removeOracleQuery(finishedUserQuery->interfaceIndex, finishedUserQuery->queryId);
 
                 // Oracle reply is available
                 if (reply.isValid)
@@ -3669,8 +3670,8 @@ static void processTick(unsigned long long processorNumber)
                     {
                         if (computorPublicKeys[i] == prevTx->sourcePublicKey)
                         {
-                            unsigned int newScheduledTick = system.tick + 3 * TICK_TRANSACTIONS_PUBLICATION_OFFSET;
-                            if (customQubicMiningStorage.increaseOracleQueryFailCounterAndReschedule(prevTx, newScheduledTick)) // true if the fail counter could be increased without hitting max
+                            unsigned int newScheduledTick = system.tick + 8; // offset of 8 ticks to ensure propagation through the network
+                            if (customQubicMiningStorage.increaseOracleQueryFailCounterAndReschedule(finishedUserQuery->interfaceIndex, finishedUserQuery->queryId, newScheduledTick)) // true if the fail counter could be increased without hitting max
                             {
                                 if (isMainMode()) // only main node should send oracle queries
                                 {

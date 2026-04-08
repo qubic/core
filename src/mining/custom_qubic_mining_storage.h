@@ -41,8 +41,21 @@ public:
     {
         unsigned int tick;
         OracleQueryStatus status;
+        int64_t queryId;
         m256i sourcePublicKey;
         unsigned int numTries;
+
+        static OracleQueryInfo makeDefault()
+        {
+            return OracleQueryInfo
+            {
+                .tick = 0,
+                .status = SCHEDULED,
+                .queryId = -1,
+                .sourcePublicKey = m256i::zero(),
+                .numTries = 0
+            };
+        }
     };
 
     // Initialize the storage. Return true if successful, false if initialization failed (e.g. due to memory allocation failure).
@@ -71,15 +84,19 @@ public:
     bool addOracleQuery(const OracleUserQueryTransactionPrefix* queryTx);
 
     // Returns true if the fail counter for this query could be increased without hitting maxNumTries. In this case, the query's tick is updated
-    // to newScheduledTick and the status is set to SCHEDULED. Returns false if the query is not found or the counter has hit maxNumTries.
-    // A query that has hit maxNumTries is removed from storage.
-    bool increaseOracleQueryFailCounterAndReschedule(const OracleUserQueryTransactionPrefix* queryTx, unsigned int newScheduledTick);
+    // to newScheduledTick, the status is set to SCHEDULED and the queryId is reset to -1. Returns false if the query is not found or the counter
+    // has hit maxNumTries. A query that has hit maxNumTries is removed from storage.
+    bool increaseOracleQueryFailCounterAndReschedule(unsigned int oracleInterfaceIndex, int64_t queryId, unsigned int newScheduledTick);
 
     // Remove the given oracle query from storage. Return true if removed successfully, false if the query is not found.
     bool removeOracleQuery(const OracleUserQueryTransactionPrefix* queryTx);
 
-    // Mark the given oracle query as started. Return true if marked successfully, false if the query is not found.
-    bool markOracleQueryStarted(const OracleUserQueryTransactionPrefix* queryTx);
+    // Remove the given oracle query from storage. Return true if removed successfully, false if the query is not found.
+    // This method only works for queries with status STARTED that already have a valid queryId.
+    bool removeOracleQuery(unsigned int oracleInterfaceIndex, int64_t queryId);
+
+    // Mark the given oracle query as started and add the queryId. Return true if marked successfully, false if the query is not found.
+    bool markOracleQueryStarted(const OracleUserQueryTransactionPrefix* queryTx, int64_t queryId);
 
     // Return the index of the next oracle query with status SCHEDULED following currentQueryIndex for the given mining type and tick.
     // Use currentQueryIndex = -1 to get the first SCHEDULED query index for the tick. Return -1 if no more query is found.
@@ -133,6 +150,11 @@ private:
     // Return the mining-type-specific index of the oracle query, or -1 if not found.
     // Assumes the caller holds the lock and has verified valid range for customMiningType.
     int findOracleQuery(uint8_t customMiningType, const OracleUserQueryTransactionPrefix* queryTx) const;
+
+    // Return the mining-type-specific index of the oracle query, or -1 if not found.
+    // Assumes the caller holds the lock and has verified valid range for customMiningType.
+    // This method only works for queries with status STARTED that already have a valid queryId.
+    int findOracleQuery(uint8_t customMiningType, int64_t queryId) const;
 
     // Return true if the type-specific oracle query matches the stored query at the given index, false otherwise.
     // Assumes the caller holds the lock and has verified valid ranges for customMiningType and queryIndex.
@@ -201,6 +223,21 @@ int CustomQubicMiningStorage::findOracleQuery(uint8_t customMiningType, const Or
             {
                 return i;
             }
+        }
+    }
+    return -1;
+}
+
+int CustomQubicMiningStorage::findOracleQuery(uint8_t customMiningType, int64_t queryId) const
+{
+    ASSERT(customMiningType < CustomMiningType::TOTAL_NUM_TYPES);
+
+    for (unsigned int i = 0; i < maxNumTasks * maxNumSolutionsPerTask; ++i)
+    {
+        if (oracleQueries[customMiningType][i].status == STARTED
+            && oracleQueries[customMiningType][i].queryId == queryId)
+        {
+            return i;
         }
     }
     return -1;
@@ -366,6 +403,7 @@ bool CustomQubicMiningStorage::addOracleQuery(const OracleUserQueryTransactionPr
         {
             oracleQueries[customMiningType][i].tick = queryTx->tick;
             oracleQueries[customMiningType][i].status = SCHEDULED;
+            oracleQueries[customMiningType][i].queryId = -1;
             oracleQueries[customMiningType][i].sourcePublicKey = queryTx->sourcePublicKey;
             oracleQueries[customMiningType][i].numTries = 0;
 
@@ -380,15 +418,15 @@ bool CustomQubicMiningStorage::addOracleQuery(const OracleUserQueryTransactionPr
     return false; // all slots full
 }
 
-bool CustomQubicMiningStorage::increaseOracleQueryFailCounterAndReschedule(const OracleUserQueryTransactionPrefix* queryTx, unsigned int newScheduledTick)
+bool CustomQubicMiningStorage::increaseOracleQueryFailCounterAndReschedule(unsigned int oracleInterfaceIndex, int64_t queryId, unsigned int newScheduledTick)
 {
-    uint8_t customMiningType = oracleInterfaceIndexToCustomMiningType(queryTx->oracleInterfaceIndex);
+    uint8_t customMiningType = oracleInterfaceIndexToCustomMiningType(oracleInterfaceIndex);
     if (customMiningType >= CustomMiningType::TOTAL_NUM_TYPES)
         return false; // unsupported oracle interface
 
     LockGuard guard(lock);
 
-    int queryIndex = findOracleQuery(customMiningType, queryTx);
+    int queryIndex = findOracleQuery(customMiningType, queryId);
     if (queryIndex >= 0)
     {
         oracleQueries[customMiningType][queryIndex].numTries++;
@@ -401,6 +439,7 @@ bool CustomQubicMiningStorage::increaseOracleQueryFailCounterAndReschedule(const
         {
             oracleQueries[customMiningType][queryIndex].tick = newScheduledTick;
             oracleQueries[customMiningType][queryIndex].status = SCHEDULED;
+            oracleQueries[customMiningType][queryIndex].queryId = -1;
             return true;
         }
     }
@@ -426,7 +465,25 @@ bool CustomQubicMiningStorage::removeOracleQuery(const OracleUserQueryTransactio
     return false;
 }
 
-bool CustomQubicMiningStorage::markOracleQueryStarted(const OracleUserQueryTransactionPrefix* queryTx)
+bool CustomQubicMiningStorage::removeOracleQuery(unsigned int oracleInterfaceIndex, int64_t queryId)
+{
+    uint8_t customMiningType = oracleInterfaceIndexToCustomMiningType(oracleInterfaceIndex);
+    if (customMiningType >= CustomMiningType::TOTAL_NUM_TYPES)
+        return false; // unsupported oracle interface
+
+    LockGuard guard(lock);
+
+    int queryIndex = findOracleQuery(customMiningType, queryId);
+    if (queryIndex >= 0)
+    {
+        removeOracleQuery(customMiningType, queryIndex);
+        return true;
+    }
+
+    return false;
+}
+
+bool CustomQubicMiningStorage::markOracleQueryStarted(const OracleUserQueryTransactionPrefix* queryTx, int64_t queryId)
 {
     uint8_t customMiningType = oracleInterfaceIndexToCustomMiningType(queryTx->oracleInterfaceIndex);
     if (customMiningType >= CustomMiningType::TOTAL_NUM_TYPES)
@@ -438,6 +495,7 @@ bool CustomQubicMiningStorage::markOracleQueryStarted(const OracleUserQueryTrans
     if (queryIndex >= 0)
     {
         oracleQueries[customMiningType][queryIndex].status = STARTED;
+        oracleQueries[customMiningType][queryIndex].queryId = queryId;
         return true;
     }
 
@@ -470,7 +528,7 @@ int CustomQubicMiningStorage::getNextScheduledQueryIndexForTick(uint8_t customMi
 CustomQubicMiningStorage::OracleQueryInfo CustomQubicMiningStorage::getOracleQueryInfo(uint8_t customMiningType, unsigned int queryIndex)
 {
     if (customMiningType >= CustomMiningType::TOTAL_NUM_TYPES || queryIndex >= maxNumTasks * maxNumSolutionsPerTask)
-        return OracleQueryInfo{.tick = 0, .status = SCHEDULED, .sourcePublicKey = m256i::zero(), .numTries = 0 }; // return default OracleQueryInfo if invalid input
+        return OracleQueryInfo::makeDefault(); // return default OracleQueryInfo if invalid input
 
     LockGuard guard(lock);
 
@@ -486,6 +544,7 @@ bool CustomQubicMiningStorage::updateOracleQueryScheduledTick(uint8_t customMini
 
     oracleQueries[customMiningType][queryIndex].tick = newScheduledTick;
     oracleQueries[customMiningType][queryIndex].status = SCHEDULED;
+    oracleQueries[customMiningType][queryIndex].queryId = -1;
 
     return true;
 }
