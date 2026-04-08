@@ -97,7 +97,7 @@ public:
 
 private:
     static constexpr unsigned int maxNumSolutionsPerTask = 256;
-    static constexpr unsigned int oracleQueryMaxNumTries = 5;
+    static constexpr unsigned int oracleQueryMaxNumTries = 3;
 
     // General storage that is the same for all mining types.
     uint64_t activeTasks[CustomMiningType::TOTAL_NUM_TYPES][maxNumTasks];

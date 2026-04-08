@@ -3565,17 +3565,17 @@ static void processTick(unsigned long long processorNumber)
         {
             if (computorPublicKeys[i] == queryInfo.sourcePublicKey)
             {
-                unsigned int newScheduledTick = system.tick + 3 * TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+                unsigned int newScheduledTick = system.tick + 8; // offset of 8 ticks to ensure propagation through the network
 
                 unsigned char buffer[sizeof(OracleUserQueryTransactionPrefix)
                     + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
 
                 auto* tx = reinterpret_cast<OracleUserQueryTransactionPrefix*>(buffer);
                 tx->sourcePublicKey = computorPublicKeys[i];
-                tx->destinationPublicKey = { 0 };
+                tx->destinationPublicKey = m256i::zero();
                 tx->amount = 0;
                 tx->tick = newScheduledTick;
-                tx->inputType = ORACLE_MACHINE_QUERY;
+                tx->inputType = OracleUserQueryTransactionPrefix::transactionType();
                 tx->inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery);
                 tx->oracleInterfaceIndex = OI::DogeShareValidation::oracleInterfaceIndex;
                 tx->timeoutMilliseconds = 30000;
@@ -3583,12 +3583,14 @@ static void processTick(unsigned long long processorNumber)
 
                 if (customQubicMiningStorage.getTypeSpecificOracleQuery(CustomMiningType::DOGE, currentQueryIndex, queryData))
                 {
-                    // Sign and send tx
-                    m256i digest;
-                    KangarooTwelve(tx, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
-                    sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
-                    enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
-
+                    if (isMainMode()) // only main node should send oracle queries
+                    {
+                        // Sign and send tx
+                        m256i digest;
+                        KangarooTwelve(tx, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
+                        sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
+                        enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                    }
                     customQubicMiningStorage.updateOracleQueryScheduledTick(CustomMiningType::DOGE, currentQueryIndex, newScheduledTick);
                 }
 
@@ -3633,6 +3635,9 @@ static void processTick(unsigned long long processorNumber)
             if (finishedUserQuery->status == ORACLE_QUERY_STATUS_SUCCESS
                 && oracleEngine.getOracleReply(finishedUserQuery->queryId, &reply, sizeof(reply)))
             {
+                // TODO: Oracle query was successful, remove from storage.
+                // customQubicMiningStorage.removeOracleQuery((const OracleUserQueryTransactionPrefix*)transaction);
+
                 // Oracle reply is available
                 if (reply.isValid)
                 {
@@ -3648,7 +3653,6 @@ static void processTick(unsigned long long processorNumber)
             else
             {
                 // Oracle query failed -> lookup and resend user query tx if it is from own comp pool
-                // TODO: limit repetition?
                 ASSERT(finishedUserQuery->type == ORACLE_QUERY_TYPE_USER_QUERY);
                 ASSERT(ts.tickInCurrentEpochStorage(finishedUserQuery->queryTick));
                 const uint64_t* tsTickTransactionOffsets
@@ -3668,19 +3672,22 @@ static void processTick(unsigned long long processorNumber)
                             unsigned int newScheduledTick = system.tick + 3 * TICK_TRANSACTIONS_PUBLICATION_OFFSET;
                             if (customQubicMiningStorage.increaseOracleQueryFailCounterAndReschedule(prevTx, newScheduledTick)) // true if the fail counter could be increased without hitting max
                             {
-                                // Copy and update tx
-                                __ScopedScratchpad scratchpad(MAX_TRANSACTION_SIZE, /*initZero=*/false);
-                                auto* tx = (OracleUserQueryTransactionPrefix*)scratchpad.ptr;
-                                const uint64_t txSizeWithoutSignature = sizeof(OracleUserQueryTransactionPrefix)
-                                    + sizeof(OI::DogeShareValidation::OracleQuery);
-                                copyMem(tx, prevTx, txSizeWithoutSignature);
-                                tx->tick = newScheduledTick;
+                                if (isMainMode()) // only main node should send oracle queries
+                                {
+                                    // Copy and update tx
+                                    __ScopedScratchpad scratchpad(MAX_TRANSACTION_SIZE, /*initZero=*/false);
+                                    auto* tx = (OracleUserQueryTransactionPrefix*)scratchpad.ptr;
+                                    const uint64_t txSizeWithoutSignature = sizeof(OracleUserQueryTransactionPrefix)
+                                        + sizeof(OI::DogeShareValidation::OracleQuery);
+                                    copyMem(tx, prevTx, txSizeWithoutSignature);
+                                    tx->tick = newScheduledTick;
 
-                                // Sign and send tx
-                                m256i digest;
-                                KangarooTwelve(tx, sizeof(Transaction) + prevTx->inputSize, digest.m256i_u8, sizeof(digest));
-                                sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
-                                enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                                    // Sign and send tx
+                                    m256i digest;
+                                    KangarooTwelve(tx, sizeof(Transaction) + prevTx->inputSize, digest.m256i_u8, sizeof(digest));
+                                    sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
+                                    enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                                }
                             }
                             break;
                        }
