@@ -3098,6 +3098,14 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
             appendNumber(dbgMsg, system.tick, FALSE);
             addDebugMessage(dbgMsg);
         }
+        if (transaction->inputType == OracleUserQueryTransactionPrefix::transactionType())
+        {
+            setText(dbgMsg, L"OracleUserQueryTransaction found in processTickTransaction(), tick ");
+            appendNumber(dbgMsg, system.tick, FALSE);
+            appendText(dbgMsg, L", interfaceIndex ");
+            appendNumber(dbgMsg, ((OracleUserQueryTransactionPrefix*)transaction)->oracleInterfaceIndex, FALSE);
+            addDebugMessage(dbgMsg);
+        }
     }
 #endif
 
@@ -3802,6 +3810,31 @@ static void processTick(unsigned long long processorNumber)
                         }
                     }
                     pendingTxsPool.releaseLock();
+
+#if !defined(NDEBUG)
+                    {
+                        // Debug: count oracle user query txs included by tick leader
+                        unsigned int oracleQueryTxCount = 0;
+                        for (unsigned int dbgIdx = 0; dbgIdx < nextTxIndex; dbgIdx++)
+                        {
+                            const Transaction* dbgTx = ts.tickTransactions(ts.tickTransactionOffsets(system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, dbgIdx));
+                            if (isZero(dbgTx->destinationPublicKey) && dbgTx->inputType == OracleUserQueryTransactionPrefix::transactionType())
+                                oracleQueryTxCount++;
+                        }
+                        if (oracleQueryTxCount > 0)
+                        {
+                            CHAR16 dbgMsg[200];
+                            setText(dbgMsg, L"Tick leader included ");
+                            appendNumber(dbgMsg, oracleQueryTxCount, FALSE);
+                            appendText(dbgMsg, L" oracle query tx(s) in tick ");
+                            appendNumber(dbgMsg, system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET, FALSE);
+                            appendText(dbgMsg, L" (total ");
+                            appendNumber(dbgMsg, nextTxIndex, FALSE);
+                            appendText(dbgMsg, L" txs from pending pool)");
+                            addDebugMessage(dbgMsg);
+                        }
+                    }
+#endif
 
                     {
                         // insert & broadcast vote counter tx
