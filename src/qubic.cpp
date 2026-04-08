@@ -1084,6 +1084,15 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 addDebugMessage(dbgMsg);
 #endif
             }
+
+            if (isZero(request->destinationPublicKey)
+                && request->inputType == OracleUserQueryTransactionPrefix::transactionType())
+            {
+#if !defined(NDEBUG) && 1
+                appendText(dbgMsg, L" query");
+                addDebugMessage(dbgMsg);
+#endif
+            }
         }
     }
 
@@ -3202,6 +3211,10 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                         // doge share validation query does not cost fees for computors
                         forceZeroFee = computorIndex(queryTx->sourcePublicKey) >= 0;
                     }
+
+#if !defined(NDEBUG)
+                    addDebugMessage(L"OracleUserQueryTransaction: before startUserQuery()");
+#endif
 
                     // start user query
                     const bool error = (oracleEngine.startUserQuery(queryTx, transactionIndex, forceZeroFee) < 0);
