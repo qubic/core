@@ -1094,6 +1094,16 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
 #endif
             }
         }
+        else
+        {
+            appendText(dbgMsg, L" unverified");
+            addDebugMessage(dbgMsg);
+        }
+    }
+    else
+    {
+        appendText(dbgMsg, L" invalid");
+        addDebugMessage(dbgMsg);
     }
 
 #if !defined(NDEBUG) && 0
