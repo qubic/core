@@ -1643,7 +1643,7 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
 
                         auto* tx = reinterpret_cast<OracleUserQueryTransactionPrefix*>(buffer);
                         tx->sourcePublicKey = computorPublicKeys[i];
-                        tx->destinationPublicKey = { 0 };
+                        tx->destinationPublicKey = m256i::zero();
                         tx->amount = 0;
                         tx->tick = system.tick + 8; // offset of 8 ticks to ensure propagation through the network
                         tx->inputType = OracleUserQueryTransactionPrefix::transactionType();
