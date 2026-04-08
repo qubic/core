@@ -1526,7 +1526,9 @@ static void processBroadcastCustomMiningTask(RequestResponseHeader* header)
     if (verify(dogeDispatcherPubkey, digest.m256i_u8, payload + (messageSize - SIGNATURE_SIZE)))
     {
         enqueueResponse(NULL, header);
+#ifdef SEND_DOGE_ORACLE_QUERIES
         customQubicMiningStorage.addTask(reinterpret_cast<const CustomQubicMiningTask*>(payload), messageSize - SIGNATURE_SIZE);
+#endif
     }
 }
 
