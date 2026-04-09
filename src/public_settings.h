@@ -12,7 +12,7 @@
 
 #define MAX_NUMBER_OF_PROCESSORS 32
 #define NUMBER_OF_SOLUTION_PROCESSORS 12
-// Maximum number of NUMBER_OF_SOLUTION_PROCESSORS can be used for pre-process the mining solution
+// Maximum number of NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS can be used for pre-process the mining solution.
 // Must not exceed half of NUMBER_OF_SOLUTION_PROCESSORS. Set 0 to disable.
 #define NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS 4
 
