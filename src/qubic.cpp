@@ -1577,10 +1577,31 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
             {
                 if (computorIndex(computorPublicKeys[i]) == compIdFromEN2)
                 {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                    CHAR16 dbgMsgBuf[200];
+                    setText(dbgMsgBuf, L"EN2 matched own comp index ");
+                    appendNumber(dbgMsgBuf, compIdFromEN2, FALSE);
+                    addDebugMessage(dbgMsgBuf);
+#endif
                     // Check if the solution is added successfully (active task, no duplicate) before sending oracle query.
                     CustomQubicMiningStorage::StoredDogeMiningTask task;
+                    task.nBits[3] = 0; // exponent
                     if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE, reinterpret_cast<unsigned char*>(&task)) < 0)
+                    {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                        setText(dbgMsgBuf, L"Adding solution to storage failed, not sending oracle query ");
+                        if (task.nBits[3] == 0)
+                        {
+                            appendText(dbgMsgBuf, L" (no active task)");
+                        }
+                        else
+                        {
+                            appendText(dbgMsgBuf, L" (duplicate solution)");
+                        }
+                        addDebugMessage(dbgMsgBuf);
+#endif
                         return;
+                    }
 
                     unsigned char buffer[sizeof(OracleUserQueryTransactionPrefix)
                         + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
@@ -1612,6 +1633,19 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                         KangarooTwelve(buffer, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
                         sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
                         enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                        setText(dbgMsgBuf, L"Oracle query broadcasted for tick ");
+                        appendNumber(dbgMsgBuf, tx->tick, FALSE);
+                        addDebugMessage(dbgMsgBuf);
+#endif
+                    }
+                    else
+                    {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                        setText(dbgMsgBuf, L"Oracle query NOT broadcasted (not in main mode)");
+                        addDebugMessage(dbgMsgBuf);
+#endif
                     }
 
                     break;
@@ -3156,10 +3190,21 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                         {
                             // The query was included in the tick but could not be started, not necessary to try again.
                             customQubicMiningStorage.removeOracleQuery((const OracleUserQueryTransactionPrefix*)transaction);
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                            CHAR16 dbgMsgBuf[200];
+                            setText(dbgMsgBuf, L"Error starting doge oracle query, removing from storage");
+                            addDebugMessage(dbgMsgBuf);
+#endif
                         }
                         else
                         {
                             customQubicMiningStorage.markOracleQueryStarted((const OracleUserQueryTransactionPrefix*)transaction, queryId);
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                            CHAR16 dbgMsgBuf[200];
+                            setText(dbgMsgBuf, L"Doge oracle query started, queryId ");
+                            appendNumber(dbgMsgBuf, queryId, FALSE);
+                            addDebugMessage(dbgMsgBuf);
+#endif
                         }
                     }
 
@@ -3592,6 +3637,14 @@ static void processTick(unsigned long long processorNumber)
                         sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
                         enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
                     }
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                    CHAR16 dbgMsgBuf[200];
+                    setText(dbgMsgBuf, L"Rescheduling doge oracle query not included in ");
+                    appendNumber(dbgMsgBuf, system.tick, FALSE);
+                    appendText(dbgMsgBuf, L" to new scheduled tick ");
+                    appendNumber(dbgMsgBuf, newScheduledTick, FALSE);
+                    addDebugMessage(dbgMsgBuf);
+#endif
                     customQubicMiningStorage.updateOracleQueryScheduledTick(CustomMiningType::DOGE, currentQueryIndex, newScheduledTick);
                 }
 
@@ -3639,6 +3692,14 @@ static void processTick(unsigned long long processorNumber)
                 // Oracle query was successful, remove from storage.
                 customQubicMiningStorage.removeOracleQuery(finishedUserQuery->interfaceIndex, finishedUserQuery->queryId);
 
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                CHAR16 dbgMsgBuf[200];
+                setText(dbgMsgBuf, L"Removed successful doge oracle query ");
+                appendNumber(dbgMsgBuf, finishedUserQuery->queryId, FALSE);
+                appendText(dbgMsgBuf, L" from storage");
+                addDebugMessage(dbgMsgBuf);
+#endif
+
                 // Oracle reply is available
                 if (reply.isValid)
                 {
@@ -3673,6 +3734,14 @@ static void processTick(unsigned long long processorNumber)
                             unsigned int newScheduledTick = system.tick + 8; // offset of 8 ticks to ensure propagation through the network
                             if (customQubicMiningStorage.increaseOracleQueryFailCounterAndReschedule(finishedUserQuery->interfaceIndex, finishedUserQuery->queryId, newScheduledTick)) // true if the fail counter could be increased without hitting max
                             {
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                                CHAR16 dbgMsgBuf[200];
+                                setText(dbgMsgBuf, L"Rescheduling failed doge oracle query ");
+                                appendNumber(dbgMsgBuf, finishedUserQuery->queryId, FALSE);
+                                appendText(dbgMsgBuf, L" to new scheduled tick ");
+                                appendNumber(dbgMsgBuf, newScheduledTick, FALSE);
+                                addDebugMessage(dbgMsgBuf);
+#endif
                                 if (isMainMode()) // only main node should send oracle queries
                                 {
                                     // Copy and update tx
