@@ -68,6 +68,7 @@
     <ClInclude Include="contract_core\qpi_spectrum_impl.h" />
     <ClInclude Include="contract_core\qpi_system_impl.h" />
     <ClInclude Include="contract_core\qpi_hash_map_impl.h" />
+    <ClInclude Include="contract_core\qpi_linked_list_impl.h" />
     <ClInclude Include="contract_core\qpi_ticking_impl.h" />
     <ClInclude Include="contract_core\qpi_trivial_impl.h" />
     <ClInclude Include="contract_core\stack_buffer.h" />
