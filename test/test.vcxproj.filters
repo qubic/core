@@ -55,6 +55,7 @@
     <ClCompile Include="sorting.cpp" />
     <ClCompile Include="oracle_engine.cpp" />
     <ClCompile Include="contract_qrwa.cpp" />
+    <ClCompile Include="custom_qubic_mining_storage.cpp" />
     <ClCompile Include="contract_quottery.cpp" />
   </ItemGroup>
   <ItemGroup>
