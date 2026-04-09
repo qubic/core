@@ -19,8 +19,25 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
+	void LinkedList<T, L>::_initIfNeeded()
+	{
+		// Contract state is zero-initialized (no constructor runs). Detect this case
+		// and set sentinel values. Safe to check: _nextUnusedIndex only increases and
+		// is never 0 again after the first add (unless reset() is called, which already
+		// sets the sentinels correctly).
+		if (_population == 0 && _nextUnusedIndex == 0)
+		{
+			_headIndex = NULL_INDEX;
+			_tailIndex = NULL_INDEX;
+			_freeHeadIndex = NULL_INDEX;
+		}
+	}
+
+	template <typename T, uint64 L>
 	sint64 LinkedList<T, L>::_allocateNode()
 	{
+		_initIfNeeded();
+
 		// First try to recycle a freed node
 		if (_freeHeadIndex != NULL_INDEX)
 		{
@@ -65,13 +82,13 @@ namespace QPI
 	template <typename T, uint64 L>
 	inline sint64 LinkedList<T, L>::headIndex() const
 	{
-		return _headIndex;
+		return (_population == 0) ? NULL_INDEX : _headIndex;
 	}
 
 	template <typename T, uint64 L>
 	inline sint64 LinkedList<T, L>::tailIndex() const
 	{
-		return _tailIndex;
+		return (_population == 0) ? NULL_INDEX : _tailIndex;
 	}
 
 	template <typename T, uint64 L>

@@ -900,3 +900,113 @@ TEST(QPILinkedListTest, DataZeroedAfterRemoval)
 	// We read via element() which masks with (L-1), so the value at that slot is accessible
 	EXPECT_EQ(list.element(idx), 0ULL);
 }
+
+
+//////////////////////////////////////////////////////////////////////////////
+// Test: Zero-initialized state (simulating contract state without reset())
+
+TEST(QPILinkedListTest, ZeroInitReadOnly)
+{
+	// Simulate contract state: zero-filled memory, no constructor, no reset()
+	QPI::LinkedList<int, 8> list;
+	memset(&list, 0, sizeof(list));
+
+	// Must behave as an empty list
+	EXPECT_EQ(list.population(), 0u);
+	EXPECT_EQ(list.headIndex(), QPI::NULL_INDEX);
+	EXPECT_EQ(list.tailIndex(), QPI::NULL_INDEX);
+	EXPECT_TRUE(list.isEmptySlot(0));
+	EXPECT_TRUE(list.isEmptySlot(1));
+	EXPECT_EQ(list.nextElementIndex(0), QPI::NULL_INDEX);
+	EXPECT_EQ(list.prevElementIndex(0), QPI::NULL_INDEX);
+	EXPECT_FALSE(list.replace(0, 42));
+	validateLinkedList(list);
+}
+
+TEST(QPILinkedListTest, ZeroInitAddHead)
+{
+	QPI::LinkedList<int, 4> list;
+	memset(&list, 0, sizeof(list));
+
+	QPI::sint64 idx = list.addHead(42);
+	EXPECT_NE(idx, QPI::NULL_INDEX);
+	EXPECT_EQ(list.population(), 1u);
+	EXPECT_EQ(list.headIndex(), idx);
+	EXPECT_EQ(list.tailIndex(), idx);
+	EXPECT_EQ(list.element(idx), 42);
+	validateLinkedList(list);
+}
+
+TEST(QPILinkedListTest, ZeroInitAddTail)
+{
+	QPI::LinkedList<int, 4> list;
+	memset(&list, 0, sizeof(list));
+
+	QPI::sint64 idx = list.addTail(99);
+	EXPECT_NE(idx, QPI::NULL_INDEX);
+	EXPECT_EQ(list.population(), 1u);
+	EXPECT_EQ(list.headIndex(), idx);
+	EXPECT_EQ(list.tailIndex(), idx);
+	EXPECT_EQ(list.element(idx), 99);
+	validateLinkedList(list);
+}
+
+TEST(QPILinkedListTest, ZeroInitFullCycle)
+{
+	// Simulate contract state: zero-filled, then use the list fully
+	QPI::LinkedList<int, 4> list;
+	memset(&list, 0, sizeof(list));
+
+	// Fill
+	QPI::sint64 idx0 = list.addTail(10);
+	QPI::sint64 idx1 = list.addTail(20);
+	QPI::sint64 idx2 = list.addTail(30);
+	QPI::sint64 idx3 = list.addTail(40);
+	EXPECT_EQ(list.population(), 4u);
+	EXPECT_EQ(list.addTail(50), QPI::NULL_INDEX);  // Full
+
+	// Verify order: 10 -> 20 -> 30 -> 40
+	QPI::sint64 cur = list.headIndex();
+	EXPECT_EQ(list.element(cur), 10);
+	cur = list.nextElementIndex(cur);
+	EXPECT_EQ(list.element(cur), 20);
+	cur = list.nextElementIndex(cur);
+	EXPECT_EQ(list.element(cur), 30);
+	cur = list.nextElementIndex(cur);
+	EXPECT_EQ(list.element(cur), 40);
+	EXPECT_EQ(list.nextElementIndex(cur), QPI::NULL_INDEX);
+
+	// Remove and re-add
+	list.remove(idx1);
+	QPI::sint64 newIdx = list.addTail(50);
+	EXPECT_NE(newIdx, QPI::NULL_INDEX);
+	EXPECT_EQ(list.population(), 4u);
+
+	validateLinkedList(list);
+}
+
+TEST(QPILinkedListTest, ZeroInitRemoveAll)
+{
+	QPI::LinkedList<int, 8> list;
+	memset(&list, 0, sizeof(list));
+
+	// Add and remove all elements
+	QPI::sint64 indices[4];
+	for (int i = 0; i < 4; i++)
+		indices[i] = list.addTail(i * 10);
+
+	for (int i = 0; i < 4; i++)
+		list.remove(indices[i]);
+
+	EXPECT_EQ(list.population(), 0u);
+	EXPECT_EQ(list.headIndex(), QPI::NULL_INDEX);
+	EXPECT_EQ(list.tailIndex(), QPI::NULL_INDEX);
+	validateLinkedList(list);
+
+	// Re-add after emptying
+	QPI::sint64 idx = list.addHead(100);
+	EXPECT_NE(idx, QPI::NULL_INDEX);
+	EXPECT_EQ(list.population(), 1u);
+	EXPECT_EQ(list.element(idx), 100);
+	validateLinkedList(list);
+}

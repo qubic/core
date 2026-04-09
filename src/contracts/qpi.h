@@ -1444,6 +1444,9 @@ namespace QPI
 		// Check if elementIndex is in range [0, L) and the slot is occupied.
 		bool _isValidAndOccupied(sint64 elementIndex) const;
 
+		// Initialize sentinel values if the list has never been used (handles zero-initialized contract state).
+		void _initIfNeeded();
+
 		// Get a node from the free list or unused pool. Returns NULL_INDEX if full.
 		sint64 _allocateNode();
 
