@@ -1,8 +1,3 @@
-#pragma once
-
-#include "network_messages/common_def.h"
-#include "oracle_core/oracle_transactions.h"
-
 using namespace QPI;
 
 /**
@@ -32,9 +27,8 @@ struct DogeShareValidation
         uint32 coinbase2NumBytes;
         uint32 numMerkleBranches;
 
-        static constexpr uint64 additionalDataSize = MAX_INPUT_SIZE
-            - (32 + 4 + 4 + 8 + 4 + 4 + 32 + 4 * sizeof(uint32)) // size of all previous struct members
-            - OracleUserQueryTransactionPrefix::minInputSize();
+        static constexpr uint64 additionalDataSize = MAX_ORACLE_QUERY_SIZE
+            - (32 + 4 + 4 + 8 + 4 + 4 + 32 + 4 * sizeof(uint32)); // size of all previous struct members
 
         uint8 additionalData[additionalDataSize];
         // Layout for additional data:
@@ -46,7 +40,7 @@ struct DogeShareValidation
         // Note: The size of the components contained in the additional data varies, hence the total occupied bytes in the array is not fixed.
     };
 
-    static_assert(sizeof(OracleQuery) + OracleUserQueryTransactionPrefix::minInputSize() == MAX_INPUT_SIZE, "DogeShareValidation::OracleQuery has wrong size");
+    static_assert(sizeof(OracleQuery) == MAX_ORACLE_QUERY_SIZE, "DogeShareValidation::OracleQuery has wrong size");
 
     /// Oracle reply data / output of the oracle machine
     struct OracleReply
