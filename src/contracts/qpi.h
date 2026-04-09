@@ -39,7 +39,21 @@ namespace QPI
 
 	*/
 
-	typedef bool bit;
+	// Boolean type ensuring that input values > 1 are mapped to 1.
+	struct bit
+	{
+		bit(bool v = false) : charValue(v)
+		{
+		}
+
+		operator bool() const
+		{
+			return !!charValue;
+		}
+
+		char charValue;
+	};
+
 	typedef signed char sint8;
 	typedef unsigned char uint8;
 	typedef signed short sint16;
