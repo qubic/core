@@ -93,6 +93,9 @@ public:
     // the task description is written into the provided pointer.
     int addSolution(const CustomQubicMiningSolution* solution, unsigned int size, unsigned char* taskDescription = nullptr);
 
+    // Return true if the solution belongs to an active task and has not been counted for revenue points before, false otherwise.
+    bool countSolutionForRevenue(uint8_t customMiningType, uint64_t jobId, const m256i& solutionHash);
+
     // Return true if there is an active task with the given jobId and customMiningType, false otherwise.
     bool containsTask(uint8_t customMiningType, uint64_t jobId);
 
@@ -138,10 +141,17 @@ private:
     unsigned int nextTaskIndex[CustomMiningType::TOTAL_NUM_TYPES];
     OracleQueryInfo oracleQueries[CustomMiningType::TOTAL_NUM_TYPES][maxNumTasks * maxNumSolutionsPerTask];
 
-    // For each task, we store a set of received solution hashes to prevent duplicate solutions.
+    // For each task, we store a set of received solution hashes to prevent sending oracle queries for duplicate solutions.
+    // Currently, only own solutions (i.e. from any comp index running on the node) are stored.
     // Two-dimensional array [CustomMiningType::TOTAL_NUM_TYPES][maxNumTasks] indexed by mining type and type-specific task index.
     QPI::HashSet<m256i, maxNumSolutionsPerTask>* receivedSolutions;
     static constexpr unsigned long long receivedSolutionsSize = CustomMiningType::TOTAL_NUM_TYPES * maxNumTasks * sizeof(QPI::HashSet<m256i, maxNumSolutionsPerTask>);
+
+    // For each task, we store a set of solution hashes that were already counted for revenue points to prevent counting duplicates.
+    // Any solution from any computor that received a valid oracle reply is stored.
+    // Two-dimensional array [CustomMiningType::TOTAL_NUM_TYPES][maxNumTasks] indexed by mining type and type-specific task index.
+    QPI::HashSet<m256i, maxNumSolutionsPerTask>* countedRevSolutions;
+    static constexpr unsigned long long countedRevSolutionsSize = CustomMiningType::TOTAL_NUM_TYPES * maxNumTasks * sizeof(QPI::HashSet<m256i, maxNumSolutionsPerTask>);
 
     // Storage for type-specific task descriptions.
     StoredDogeMiningTask dogeTasks[maxNumTasks];
@@ -307,6 +317,8 @@ bool CustomQubicMiningStorage::init()
 
     if (!allocPoolWithErrorLog(L"CustomQubicMiningStorage::receivedSolutions ", receivedSolutionsSize, (void**)&receivedSolutions, __LINE__))
         return false;
+    if (!allocPoolWithErrorLog(L"CustomQubicMiningStorage::countedRevSolutions ", countedRevSolutionsSize, (void**)&countedRevSolutions, __LINE__))
+        return false;
 
     setMem(dogeTasks, sizeof(dogeTasks), 0);
     setMem(dogeOracleQueries, sizeof(dogeOracleQueries), 0);
@@ -320,6 +332,8 @@ void CustomQubicMiningStorage::deinit()
 {
     if (receivedSolutions)
         freePool(receivedSolutions);
+    if (countedRevSolutions)
+        freePool(countedRevSolutions);
 }
 
 bool CustomQubicMiningStorage::addTask(const CustomQubicMiningTask* task, unsigned int size)
@@ -344,8 +358,9 @@ bool CustomQubicMiningStorage::addTask(const CustomQubicMiningTask* task, unsign
             unsigned int& nextDogeTaskId = nextTaskIndex[CustomMiningType::DOGE];
             const QubicDogeMiningTask* dogeTask = reinterpret_cast<const QubicDogeMiningTask*>(taskAsCharPtr + sizeof(CustomQubicMiningTask));
 
-            // If maxNumTasks is already reached, we will override the oldest task. Clean the corresponding solution hash set.
+            // If maxNumTasks is already reached, we will override the oldest task. Clean the corresponding solution hash sets.
             receivedSolutions[CustomMiningType::DOGE * maxNumTasks + nextDogeTaskId].reset();
+            countedRevSolutions[CustomMiningType::DOGE * maxNumTasks + nextDogeTaskId].reset();
 
             dogeTasks[nextDogeTaskId].jobId = task->jobId;
             convertTargetCompactToFull(dogeTask->dispatcherDifficulty, dogeTasks[nextDogeTaskId].dispatcherTarget);
@@ -407,6 +422,30 @@ int CustomQubicMiningStorage::addSolution(const CustomQubicMiningSolution* solut
     QPI::sint64 indexAdded = receivedSolutions[solution->customMiningType * maxNumTasks + typeSpecificTaskIndex].add(digest);
 
     return (indexAdded == QPI::NULL_INDEX) ? 0 : 1;
+}
+
+bool CustomQubicMiningStorage::countSolutionForRevenue(uint8_t customMiningType, uint64_t jobId, const m256i& solutionHash)
+{
+    if (customMiningType >= CustomMiningType::TOTAL_NUM_TYPES)
+        return false; // unsupported mining type
+
+    LockGuard guard(lock);
+
+    // Check if the solution corresponds to an active task.
+    int typeSpecificTaskIndex = findTask(customMiningType, jobId);
+    if (typeSpecificTaskIndex < 0)
+        return false;
+
+    if (countedRevSolutions[customMiningType * maxNumTasks + typeSpecificTaskIndex].contains(solutionHash))
+        return false;
+
+    // Try to add the solution hash to the hash set for this task. May return NULL_INDEX if the set is full.
+    // If the set ever gets full, we have to increase maxNumSolutionsPerTask.
+    ASSERT(countedRevSolutions[customMiningType * maxNumTasks + typeSpecificTaskIndex].population()
+        < countedRevSolutions[customMiningType * maxNumTasks + typeSpecificTaskIndex].capacity());
+    QPI::sint64 indexAdded = countedRevSolutions[customMiningType * maxNumTasks + typeSpecificTaskIndex].add(solutionHash);
+
+    return (indexAdded != QPI::NULL_INDEX);
 }
 
 bool CustomQubicMiningStorage::containsTask(uint8_t customMiningType, uint64_t jobId)
