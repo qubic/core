@@ -13,11 +13,13 @@ struct DogeShareValidation
     /// Oracle query data / input to the oracle machine
     struct OracleQuery
     {
-        Array<uint8, 32> target;
+        uint64 jobId;
 
         Array<uint8, 4> solutionTime;
         Array<uint8, 4> solutionNonce;
         Array<uint8, 8> solutionExtraNonce2;
+
+        Array<uint8, 32> target;
         
         Array<uint8, 4> taskPartialHeaderVersion;
         Array<uint8, 4> taskPartialHeaderDifficultyNBits;
@@ -28,7 +30,7 @@ struct DogeShareValidation
         uint32 numMerkleBranches;
 
         static constexpr uint64 additionalDataSize = MAX_ORACLE_QUERY_SIZE
-            - (32 + 4 + 4 + 8 + 4 + 4 + 32 + 4 * sizeof(uint32)); // size of all previous struct members
+            - (sizeof(uint64) + 32 + 4 + 4 + 8 + 4 + 4 + 32 + 4 * sizeof(uint32)); // size of all previous struct members
 
         uint8 additionalData[additionalDataSize];
         // Layout for additional data:
@@ -45,8 +47,8 @@ struct DogeShareValidation
     /// Oracle reply data / output of the oracle machine
     struct OracleReply
     {
-        bit isValid;
         uint32 compIndex;
+        bit isValid;
     };
 
     /// Return query fee, which may depend on the specific query (for example on the oracle).

@@ -1592,16 +1592,21 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                     tx->inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery);
                     tx->oracleInterfaceIndex = OI::DogeShareValidation::oracleInterfaceIndex;
                     tx->timeoutMilliseconds = 30000;
-                    unsigned char* queryData = buffer + sizeof(OracleUserQueryTransactionPrefix);
-                    // Full header can be constructed via concatenating version + prevHash + merkleRoot + miner's nTime + nBits + miner's nonce.
-                    unsigned int offset = 0;
-                    copyMem(queryData + offset, task.version, 4); offset += 4;
-                    copyMem(queryData + offset, task.prevHash, 32); offset += 32;
-                    copyMem(queryData + offset, dogeSol->merkleRoot, 32); offset += 32;
-                    copyMem(queryData + offset, dogeSol->nTime, 4); offset += 4;
-                    copyMem(queryData + offset, task.nBits, 4); offset += 4;
-                    copyMem(queryData + offset, dogeSol->nonce, 4); offset += 4;
-                    copyMem(queryData + offset, task.dispatcherTarget, 32); offset += 32;
+
+                    auto* queryData = reinterpret_cast<OI::DogeShareValidation::OracleQuery*>(buffer + sizeof(OracleUserQueryTransactionPrefix));
+                    queryData->jobId = task.jobId;
+                    copyMem(&queryData->solutionTime, dogeSol->nTime, 4);
+                    copyMem(&queryData->solutionNonce, dogeSol->nonce, 4);
+                    copyMem(&queryData->solutionExtraNonce2, dogeSol->extraNonce2, 8);
+                    copyMem(&queryData->target, task.dispatcherTarget, 32);
+                    copyMem(&queryData->taskPartialHeaderVersion, task.version, 4);
+                    copyMem(&queryData->taskPartialHeaderDifficultyNBits, task.nBits, 4);
+                    copyMem(&queryData->taskPartialHeaderPrevBlockHash, task.prevHash, 32);
+                    queryData->extraNonce1NumBytes = task.extraNonce1NumBytes;
+                    queryData->coinbase1NumBytes = task.coinbase1NumBytes;
+                    queryData->coinbase2NumBytes = task.coinbase2NumBytes;
+                    queryData->numMerkleBranches = task.numMerkleBranches;
+                    copyMem(queryData->additionalData, task.additionalData, OI::DogeShareValidation::OracleQuery::additionalDataSize);
 
                     customQubicMiningStorage.addOracleQuery(tx);
 
