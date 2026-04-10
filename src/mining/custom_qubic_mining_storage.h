@@ -264,15 +264,20 @@ bool CustomQubicMiningStorage::isQueryEqual(uint8_t customMiningType, unsigned i
 {
     if (customMiningType == CustomMiningType::DOGE)
     {
+        // A doge query is treated as equal if the jobId and the solution (nonce, extraNonce2, time) are all the same.
         const auto* dogeQuery = reinterpret_cast<const OI::DogeShareValidation::OracleQuery*>(typeSpecificOracleQuery);
+        if (dogeQuery->jobId != dogeOracleQueries[queryIndex].jobId)
+            return false;
         for (int i = 0; i < 4; ++i)
         {
             if (dogeQuery->solutionNonce.get(i) != dogeOracleQueries[queryIndex].solutionNonce.get(i))
                 return false;
+            if (dogeQuery->solutionTime.get(i) != dogeOracleQueries[queryIndex].solutionTime.get(i))
+                return false;
         }
-        for (int i = 0; i < 32; ++i)
+        for (int i = 0; i < 8; ++i)
         {
-            if (dogeQuery->taskPartialHeaderPrevBlockHash.get(i) != dogeOracleQueries[queryIndex].taskPartialHeaderPrevBlockHash.get(i))
+            if (dogeQuery->solutionExtraNonce2.get(i) != dogeOracleQueries[queryIndex].solutionExtraNonce2.get(i))
                 return false;
         }
         return true;
