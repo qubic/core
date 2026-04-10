@@ -3929,3 +3929,178 @@ TEST(TestQAgent, TreasuryBurnViaGovernance)
     EXPECT_EQ(stats.stats.treasuryBalance, 0);
     EXPECT_GT(stats.stats.totalBurned, 0);
 }
+
+// ===========================================================================
+// TEST: All query functions return sensible defaults on a fresh contract
+// ===========================================================================
+
+TEST(TestQAgent, QueryFunctionsOnFreshState)
+{
+    ContractTestingQAgent qagent;
+
+    auto a = qagent.getAgent(agent1);
+    EXPECT_EQ(a.found, 0);
+
+    auto s = qagent.getStake(agent1);
+    EXPECT_EQ(s.found, 0);
+
+    auto r = qagent.getReputationScore(agent1);
+    EXPECT_EQ(r.found, 0);
+
+    auto t1 = qagent.getTask(1);
+    EXPECT_EQ(t1.found, 0);
+
+    auto t2 = qagent.getTask(999999);
+    EXPECT_EQ(t2.found, 0);
+
+    auto arb = qagent.getArbitrator(arb1);
+    EXPECT_EQ(arb.found, 0);
+
+    auto svc = qagent.getService(agent1);
+    EXPECT_EQ(svc.found, 0);
+
+    auto prop = qagent.getProposal(0);
+    EXPECT_EQ(prop.proposal.active, 0);
+
+    auto cap = qagent.getAgentsByCapability(0xFF);
+    EXPECT_EQ(cap.count, 0u);
+}
+
+// ===========================================================================
+// TEST: Platform stats are zero on fresh contract construction
+// ===========================================================================
+
+TEST(TestQAgent, PlatformStatsZeroOnInit)
+{
+    ContractTestingQAgent qagent;
+
+    auto stats = qagent.getPlatformStats();
+
+    EXPECT_EQ(stats.stats.totalAgents, 0u);
+    EXPECT_EQ(stats.stats.totalTasks, 0u);
+    EXPECT_EQ(stats.stats.activeTasks, 0u);
+    EXPECT_EQ(stats.stats.disputedTasks, 0u);
+    EXPECT_EQ(stats.stats.totalVolume, 0);
+    EXPECT_EQ(stats.stats.totalBurned, 0);
+    EXPECT_EQ(stats.stats.treasuryBalance, 0);
+    EXPECT_EQ(stats.stats.arbitratorPool, 0);
+}
+
+// ===========================================================================
+// TEST: Platform config is seeded with compile-time constants at init
+// ===========================================================================
+
+TEST(TestQAgent, PlatformConfigDefaultsOnInit)
+{
+    ContractTestingQAgent qagent;
+
+    auto stats = qagent.getPlatformStats();
+
+    EXPECT_EQ(stats.config.platformFeeBPS, QAGENT_PLATFORM_FEE_BPS);
+    EXPECT_EQ(stats.config.minRegistrationStake, QAGENT_MIN_REGISTRATION_STAKE);
+    EXPECT_EQ(stats.config.minEscrow, QAGENT_MIN_ESCROW);
+    EXPECT_EQ(stats.config.paused, 0);
+}
+
+// ===========================================================================
+// TEST: Registration succeeds at exactly the minimum registration stake
+// ===========================================================================
+
+TEST(TestQAgent, RegisterAgentAtExactMinimumStake)
+{
+    ContractTestingQAgent qagent;
+
+    auto out = qagent.registerAgent(agent1, 0xFF, 1000, QAGENT_MIN_REGISTRATION_STAKE);
+    EXPECT_EQ(out.returnCode, QAGENT_RC_SUCCESS);
+
+    auto agentOut = qagent.getAgent(agent1);
+    EXPECT_EQ(agentOut.found, 1);
+    EXPECT_EQ(agentOut.agent.status, QAGENT_STATUS_ACTIVE);
+
+    auto stakeOut = qagent.getStake(agent1);
+    EXPECT_EQ(stakeOut.found, 1);
+    EXPECT_EQ(stakeOut.stake.registrationStake, QAGENT_MIN_REGISTRATION_STAKE);
+}
+
+// ===========================================================================
+// TEST: Registration fails when reward is one below the minimum stake
+// ===========================================================================
+
+TEST(TestQAgent, RegisterAgentBelowMinimumStakeFails)
+{
+    ContractTestingQAgent qagent;
+
+    auto out = qagent.registerAgent(agent1, 0xFF, 1000, QAGENT_MIN_REGISTRATION_STAKE - 1);
+    EXPECT_EQ(out.returnCode, QAGENT_RC_INSUFFICIENT_FUNDS);
+
+    auto agentOut = qagent.getAgent(agent1);
+    EXPECT_EQ(agentOut.found, 0);
+
+    auto stats = qagent.getPlatformStats();
+    EXPECT_EQ(stats.stats.totalAgents, 0u);
+}
+
+// ===========================================================================
+// TEST: Lookup of a non-existent taskId returns found=0 for any value
+// ===========================================================================
+
+TEST(TestQAgent, NonExistentTaskLookup)
+{
+    ContractTestingQAgent qagent;
+
+    auto out0 = qagent.getTask(0);
+    EXPECT_EQ(out0.found, 0);
+
+    auto out1 = qagent.getTask(1);
+    EXPECT_EQ(out1.found, 0);
+
+    auto outMax = qagent.getTask(0xFFFFFFFFFFFFFFFFull);
+    EXPECT_EQ(outMax.found, 0);
+}
+
+// ===========================================================================
+// TEST: getAgentsByCapability returns count=0 for all bitmaps on fresh state
+// ===========================================================================
+
+TEST(TestQAgent, GetAgentsByCapabilityEmptyOnFreshState)
+{
+    ContractTestingQAgent qagent;
+
+    auto outAll = qagent.getAgentsByCapability(0xFF);
+    EXPECT_EQ(outAll.count, 0u);
+
+    auto outOne = qagent.getAgentsByCapability(0x01);
+    EXPECT_EQ(outOne.count, 0u);
+
+    auto outNone = qagent.getAgentsByCapability(0x00);
+    EXPECT_EQ(outNone.count, 0u);
+}
+
+// ===========================================================================
+// TEST: Platform totalAgents stat reflects number of successful registrations
+// ===========================================================================
+
+TEST(TestQAgent, TotalAgentsReflectsRegistrationCount)
+{
+    ContractTestingQAgent qagent;
+
+    constexpr uint32 N = 5u;
+    for (uint32 i = 0u; i < N; i++)
+    {
+        id agentX = id(7000 + i, 0, 0, 0);
+        qagent.fund(agentX, 1000000LL);
+        auto out = qagent.registerAgent(agentX, 0xFF, 1000, 50000);
+        EXPECT_EQ(out.returnCode, QAGENT_RC_SUCCESS);
+    }
+
+    auto stats = qagent.getPlatformStats();
+    EXPECT_EQ(stats.stats.totalAgents, N);
+
+    for (uint32 i = 0u; i < N; i++)
+    {
+        id agentX = id(7000 + i, 0, 0, 0);
+        auto a = qagent.getAgent(agentX);
+        EXPECT_EQ(a.found, 1);
+        EXPECT_EQ(a.agent.status, QAGENT_STATUS_ACTIVE);
+    }
+}
