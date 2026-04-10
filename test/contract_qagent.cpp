@@ -4104,3 +4104,342 @@ TEST(TestQAgent, TotalAgentsReflectsRegistrationCount)
         EXPECT_EQ(a.agent.status, QAGENT_STATUS_ACTIVE);
     }
 }
+
+// ===========================================================================
+// TEST: Updating an agent that was never registered returns AGENT_NOT_FOUND
+// ===========================================================================
+
+TEST(TestQAgent, UpdateAgentNotRegistered)
+{
+    ContractTestingQAgent qagent;
+
+    auto out = qagent.updateAgent(agent1, 0x0F, 2000);
+    EXPECT_EQ(out.returnCode, QAGENT_RC_AGENT_NOT_FOUND);
+}
+
+// ===========================================================================
+// TEST: Commit after the task deadline fails with DEADLINE_PASSED
+// ===========================================================================
+
+TEST(TestQAgent, CommitResultAfterDeadlineFails)
+{
+    ContractTestingQAgent qagent;
+
+    qagent.registerAgent(agent1, 0xFF, 1000, 50000);
+    auto taskOut = qagent.createTask(requester1, agent1, QAGENT_TASK_TYPE_ANALYSIS, 100, 10000);
+    uint64 taskId = taskOut.taskId;
+
+    qagent.acceptTask(agent1, taskId, 30000);
+
+    // Advance past deadline
+    auto task0 = qagent.getTask(taskId);
+    qagent.setTick(task0.task.deadlineTick + 1);
+
+    // Prepare any commit hash (won't be used since we fail earlier)
+    id commitHash = id(42, 42, 42, 42);
+    auto commitOut = qagent.commitResult(agent1, taskId, commitHash);
+    EXPECT_EQ(commitOut.returnCode, QAGENT_RC_DEADLINE_PASSED);
+}
+
+// ===========================================================================
+// TEST: Requesting oracle verification twice returns ORACLE_PENDING on 2nd
+// ===========================================================================
+
+TEST(TestQAgent, DoubleOracleRequestReturnsPending)
+{
+    ContractTestingQAgent qagent;
+
+    qagent.registerAgent(agent1, 0xFF, 1000, 50000);
+    auto taskOut = qagent.createTask(requester1, agent1, QAGENT_TASK_TYPE_ANALYSIS, 2000, 10000);
+    uint64 taskId = taskOut.taskId;
+
+    qagent.acceptTask(agent1, taskId, 30000);
+
+    id resultHash = id(1, 2, 3, 4);
+    id salt = id(5, 6, 7, 8);
+    QAGENT::CommitRevealData crd;
+    crd.resultHash = resultHash;
+    crd.salt = salt;
+    uint8 h[32];
+    KangarooTwelve(reinterpret_cast<const uint8*>(&crd), sizeof(crd), h, 32);
+    id ch;
+    copyMem(&ch, h, 32);
+
+    qagent.commitResult(agent1, taskId, ch);
+    qagent.revealResult(agent1, taskId, resultHash, salt);
+
+    // First oracle request should succeed
+    auto ora1 = qagent.requestOracleVerification(requester1, taskId);
+    EXPECT_EQ(ora1.returnCode, QAGENT_RC_SUCCESS);
+
+    // Second oracle request on the same task should be rejected as pending
+    auto ora2 = qagent.requestOracleVerification(requester1, taskId);
+    EXPECT_EQ(ora2.returnCode, QAGENT_RC_ORACLE_PENDING);
+}
+
+// ===========================================================================
+// TEST: Voting on an inactive proposal slot returns PROPOSAL_NOT_FOUND
+// ===========================================================================
+
+TEST(TestQAgent, VoteOnInactiveProposalSlotFails)
+{
+    ContractTestingQAgent qagent;
+
+    // A registered agent with stake tries to vote on index 0 without any
+    // proposal having been created yet
+    qagent.registerAgent(agent1, 0xFF, 1000, 50000);
+
+    auto out = qagent.voteOnProposal(agent1, 0, 1);
+    EXPECT_EQ(out.returnCode, QAGENT_RC_PROPOSAL_NOT_FOUND);
+
+    // Index 3 (still within bounds) is also inactive
+    auto out2 = qagent.voteOnProposal(agent1, 3, 1);
+    EXPECT_EQ(out2.returnCode, QAGENT_RC_PROPOSAL_NOT_FOUND);
+}
+
+// ===========================================================================
+// TEST: Deprecating a service that was never registered fails
+// ===========================================================================
+
+TEST(TestQAgent, DeprecateNonExistentServiceFails)
+{
+    ContractTestingQAgent qagent;
+
+    qagent.registerAgent(agent1, 0xFF, 1000, 50000);
+
+    // agent1 has no service registered; deprecate call should fail
+    auto out = qagent.deprecateService(agent1, agent1);
+    EXPECT_EQ(out.returnCode, QAGENT_RC_SERVICE_NOT_FOUND);
+}
+
+// ===========================================================================
+// TEST: Updating the price of a non-existent service fails
+// ===========================================================================
+
+TEST(TestQAgent, UpdateNonExistentServicePriceFails)
+{
+    ContractTestingQAgent qagent;
+
+    qagent.registerAgent(agent1, 0xFF, 1000, 50000);
+
+    auto out = qagent.updateServicePrice(agent1, agent1, 1234);
+    EXPECT_EQ(out.returnCode, QAGENT_RC_SERVICE_NOT_FOUND);
+}
+
+// ===========================================================================
+// TEST: An agent other than the assigned one cannot commit a task result
+// ===========================================================================
+
+TEST(TestQAgent, NonAssignedAgentCannotCommit)
+{
+    ContractTestingQAgent qagent;
+
+    qagent.registerAgent(agent1, 0xFF, 1000, 50000);
+    qagent.registerAgent(agent2, 0xFF, 1000, 50000);
+
+    auto taskOut = qagent.createTask(requester1, agent1, QAGENT_TASK_TYPE_ANALYSIS, 2000, 10000);
+    qagent.acceptTask(agent1, taskOut.taskId, 30000);
+
+    // agent2 is a valid registered agent but not assigned to this task
+    id bogus = id(42, 42, 42, 42);
+    auto out = qagent.commitResult(agent2, taskOut.taskId, bogus);
+    EXPECT_EQ(out.returnCode, QAGENT_RC_UNAUTHORIZED);
+}
+
+// ===========================================================================
+// TEST: A non-requester cannot approve a revealed task
+// ===========================================================================
+
+TEST(TestQAgent, NonRequesterCannotApproveResult)
+{
+    ContractTestingQAgent qagent;
+
+    qagent.registerAgent(agent1, 0xFF, 1000, 50000);
+    auto taskOut = qagent.createTask(requester1, agent1, QAGENT_TASK_TYPE_ANALYSIS, 2000, 10000);
+    uint64 taskId = taskOut.taskId;
+
+    qagent.acceptTask(agent1, taskId, 30000);
+
+    id resultHash = id(9, 8, 7, 6);
+    id salt = id(5, 4, 3, 2);
+    QAGENT::CommitRevealData crd;
+    crd.resultHash = resultHash;
+    crd.salt = salt;
+    uint8 h[32];
+    KangarooTwelve(reinterpret_cast<const uint8*>(&crd), sizeof(crd), h, 32);
+    id ch;
+    copyMem(&ch, h, 32);
+
+    qagent.commitResult(agent1, taskId, ch);
+    qagent.revealResult(agent1, taskId, resultHash, salt);
+
+    // requester2 is not the original task creator — approval must fail
+    auto out = qagent.approveResult(requester2, taskId);
+    EXPECT_EQ(out.returnCode, QAGENT_RC_UNAUTHORIZED);
+}
+
+// ===========================================================================
+// TEST: Committing before the task is accepted returns WRONG_STATUS
+// ===========================================================================
+
+TEST(TestQAgent, CommitBeforeAcceptFails)
+{
+    ContractTestingQAgent qagent;
+
+    qagent.registerAgent(agent1, 0xFF, 1000, 50000);
+    auto taskOut = qagent.createTask(requester1, agent1, QAGENT_TASK_TYPE_ANALYSIS, 2000, 10000);
+
+    // Task status is OPEN, not ACCEPTED — commit must fail
+    id bogus = id(1, 1, 1, 1);
+    auto out = qagent.commitResult(agent1, taskOut.taskId, bogus);
+    EXPECT_EQ(out.returnCode, QAGENT_RC_WRONG_STATUS);
+}
+
+// ===========================================================================
+// TEST: Revealing before committing returns WRONG_STATUS
+// ===========================================================================
+
+TEST(TestQAgent, RevealBeforeCommitFails)
+{
+    ContractTestingQAgent qagent;
+
+    qagent.registerAgent(agent1, 0xFF, 1000, 50000);
+    auto taskOut = qagent.createTask(requester1, agent1, QAGENT_TASK_TYPE_ANALYSIS, 2000, 10000);
+    uint64 taskId = taskOut.taskId;
+
+    qagent.acceptTask(agent1, taskId, 30000);
+
+    // Task status is ACCEPTED, not COMMITTED — reveal must fail
+    auto out = qagent.revealResult(agent1, taskId, id(1, 2, 3, 4), id(5, 6, 7, 8));
+    EXPECT_EQ(out.returnCode, QAGENT_RC_WRONG_STATUS);
+}
+
+// ===========================================================================
+// TEST: Approving a committed-but-not-revealed task returns WRONG_STATUS
+// ===========================================================================
+
+TEST(TestQAgent, ApproveBeforeRevealFails)
+{
+    ContractTestingQAgent qagent;
+
+    qagent.registerAgent(agent1, 0xFF, 1000, 50000);
+    auto taskOut = qagent.createTask(requester1, agent1, QAGENT_TASK_TYPE_ANALYSIS, 2000, 10000);
+    uint64 taskId = taskOut.taskId;
+
+    qagent.acceptTask(agent1, taskId, 30000);
+
+    id commitHash = id(7, 7, 7, 7);
+    qagent.commitResult(agent1, taskId, commitHash);
+
+    // Task status is COMMITTED, not REVEALED — approve must fail
+    auto out = qagent.approveResult(requester1, taskId);
+    EXPECT_EQ(out.returnCode, QAGENT_RC_WRONG_STATUS);
+}
+
+// ===========================================================================
+// TEST: Registering a service with a negative base price is rejected
+// ===========================================================================
+
+TEST(TestQAgent, RegisterServiceWithNegativePriceRejected)
+{
+    ContractTestingQAgent qagent;
+
+    qagent.registerAgent(agent1, 0xFF, 1000, 50000);
+
+    auto out = qagent.registerService(agent1, 0x0F, -1, QAGENT_TASK_TYPE_ANALYSIS);
+    EXPECT_EQ(out.returnCode, QAGENT_RC_INVALID_INPUT);
+}
+
+// ===========================================================================
+// TEST: Updating an agent with a negative pricePerTask is rejected
+// ===========================================================================
+
+TEST(TestQAgent, UpdateAgentWithNegativePriceRejected)
+{
+    ContractTestingQAgent qagent;
+
+    qagent.registerAgent(agent1, 0xFF, 1000, 50000);
+
+    auto out = qagent.updateAgent(agent1, 0xFF, -100);
+    EXPECT_EQ(out.returnCode, QAGENT_RC_INVALID_INPUT);
+
+    // Agent record should still carry the original price
+    auto a = qagent.getAgent(agent1);
+    EXPECT_EQ(a.found, 1);
+    EXPECT_EQ(a.agent.pricePerTask, 1000);
+}
+
+// ===========================================================================
+// TEST: Non-owner cannot deprecate someone else's service
+// ===========================================================================
+
+TEST(TestQAgent, ServiceDeprecateByNonOwnerFails)
+{
+    ContractTestingQAgent qagent;
+
+    qagent.registerAgent(agent1, 0xFF, 1000, 50000);
+    qagent.registerAgent(agent2, 0xFF, 1000, 50000);
+
+    auto svc = qagent.registerService(agent1, 0x0F, 5000, QAGENT_TASK_TYPE_ANALYSIS);
+    EXPECT_EQ(svc.returnCode, QAGENT_RC_SUCCESS);
+
+    // agent2 tries to deprecate agent1's service — must fail
+    auto out = qagent.deprecateService(agent2, agent1);
+    EXPECT_EQ(out.returnCode, QAGENT_RC_UNAUTHORIZED);
+
+    // Service is still active
+    auto s = qagent.getService(agent1);
+    EXPECT_EQ(s.found, 1);
+    EXPECT_EQ(s.service.active, 1);
+}
+
+// ===========================================================================
+// TEST: A non-assigned agent cannot reveal someone else's task result
+// ===========================================================================
+
+TEST(TestQAgent, NonAssignedAgentCannotReveal)
+{
+    ContractTestingQAgent qagent;
+
+    qagent.registerAgent(agent1, 0xFF, 1000, 50000);
+    qagent.registerAgent(agent2, 0xFF, 1000, 50000);
+
+    auto taskOut = qagent.createTask(requester1, agent1, QAGENT_TASK_TYPE_ANALYSIS, 2000, 10000);
+    uint64 taskId = taskOut.taskId;
+
+    qagent.acceptTask(agent1, taskId, 30000);
+
+    id resultHash = id(1, 2, 3, 4);
+    id salt = id(5, 6, 7, 8);
+    QAGENT::CommitRevealData crd;
+    crd.resultHash = resultHash;
+    crd.salt = salt;
+    uint8 h[32];
+    KangarooTwelve(reinterpret_cast<const uint8*>(&crd), sizeof(crd), h, 32);
+    id ch;
+    copyMem(&ch, h, 32);
+
+    qagent.commitResult(agent1, taskId, ch);
+
+    // agent2 attempts to reveal — unauthorized, not the assigned agent
+    auto out = qagent.revealResult(agent2, taskId, resultHash, salt);
+    EXPECT_EQ(out.returnCode, QAGENT_RC_UNAUTHORIZED);
+}
+
+// ===========================================================================
+// TEST: Creating a task for a deactivated agent fails with WRONG_STATUS
+// ===========================================================================
+
+TEST(TestQAgent, CreateTaskForDeactivatedAgentFails)
+{
+    ContractTestingQAgent qagent;
+
+    qagent.registerAgent(agent1, 0xFF, 1000, 50000);
+
+    auto deact = qagent.deactivateAgent(agent1);
+    EXPECT_EQ(deact.returnCode, QAGENT_RC_SUCCESS);
+
+    // Agent exists but is not ACTIVE — task creation must reject
+    auto out = qagent.createTask(requester1, agent1, QAGENT_TASK_TYPE_ANALYSIS, 2000, 10000);
+    EXPECT_EQ(out.returnCode, QAGENT_RC_WRONG_STATUS);
+}
