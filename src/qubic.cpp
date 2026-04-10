@@ -3669,6 +3669,9 @@ static void processTick(unsigned long long processorNumber)
                         KangarooTwelve(solutionBuffer, 16, solutionHash.m256i_u8, sizeof(solutionHash));
                         if (customQubicMiningStorage.countSolutionForRevenue(CustomMiningType::DOGE, queryData->jobId, solutionHash))
                         {
+                            // TODO: Verify that the task description in the query matches the task description in the storage to decline revenue
+                            // for comps tampering with the task description in their query. Not sure how likely this is to happen.
+                            
                             // dogeRev[reply.compIndex]++;
                         }
                     }
