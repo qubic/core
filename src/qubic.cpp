@@ -1592,16 +1592,21 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                     tx->inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery);
                     tx->oracleInterfaceIndex = OI::DogeShareValidation::oracleInterfaceIndex;
                     tx->timeoutMilliseconds = 30000;
-                    unsigned char* queryData = buffer + sizeof(OracleUserQueryTransactionPrefix);
-                    // Full header can be constructed via concatenating version + prevHash + merkleRoot + miner's nTime + nBits + miner's nonce.
-                    unsigned int offset = 0;
-                    copyMem(queryData + offset, task.version, 4); offset += 4;
-                    copyMem(queryData + offset, task.prevHash, 32); offset += 32;
-                    copyMem(queryData + offset, dogeSol->merkleRoot, 32); offset += 32;
-                    copyMem(queryData + offset, dogeSol->nTime, 4); offset += 4;
-                    copyMem(queryData + offset, task.nBits, 4); offset += 4;
-                    copyMem(queryData + offset, dogeSol->nonce, 4); offset += 4;
-                    copyMem(queryData + offset, task.dispatcherTarget, 32); offset += 32;
+
+                    auto* queryData = reinterpret_cast<OI::DogeShareValidation::OracleQuery*>(buffer + sizeof(OracleUserQueryTransactionPrefix));
+                    queryData->jobId = task.jobId;
+                    copyMem(&queryData->solutionTime, dogeSol->nTime, 4);
+                    copyMem(&queryData->solutionNonce, dogeSol->nonce, 4);
+                    copyMem(&queryData->solutionExtraNonce2, dogeSol->extraNonce2, 8);
+                    copyMem(&queryData->target, task.dispatcherTarget, 32);
+                    copyMem(&queryData->taskPartialHeaderVersion, task.version, 4);
+                    copyMem(&queryData->taskPartialHeaderDifficultyNBits, task.nBits, 4);
+                    copyMem(&queryData->taskPartialHeaderPrevBlockHash, task.prevHash, 32);
+                    queryData->extraNonce1NumBytes = task.extraNonce1NumBytes;
+                    queryData->coinbase1NumBytes = task.coinbase1NumBytes;
+                    queryData->coinbase2NumBytes = task.coinbase2NumBytes;
+                    queryData->numMerkleBranches = task.numMerkleBranches;
+                    copyMem(queryData->additionalData, task.additionalData, OI::DogeShareValidation::OracleQuery::additionalDataSize);
 
                     customQubicMiningStorage.addOracleQuery(tx);
 
@@ -3630,40 +3635,50 @@ static void processTick(unsigned long long processorNumber)
     {
         if (finishedUserQuery->interfaceIndex == OI::DogeShareValidation::oracleInterfaceIndex)
         {
-            OI::DogeShareValidation::OracleReply reply;
-            if (finishedUserQuery->status == ORACLE_QUERY_STATUS_SUCCESS
-                && oracleEngine.getOracleReply(finishedUserQuery->queryId, &reply, sizeof(reply)))
+            // Look up query tx to get query data.
+            ASSERT(finishedUserQuery->type == ORACLE_QUERY_TYPE_USER_QUERY);
+            ASSERT(ts.tickInCurrentEpochStorage(finishedUserQuery->queryTick));
+            const uint64_t* tsTickTransactionOffsets
+                = ts.tickTransactionOffsets.getByTickInCurrentEpoch(finishedUserQuery->queryTick);
+            const uint32_t txSlotInTickData = finishedUserQuery->typeVar.user.queryTxIndex;
+            ASSERT(txSlotInTickData < NUMBER_OF_TRANSACTIONS_PER_TICK);
+            const auto* prevTx = (OracleUserQueryTransactionPrefix*)ts.tickTransactions.ptr(
+                tsTickTransactionOffsets[txSlotInTickData]);
+            ASSERT(finishedUserQuery->interfaceIndex == prevTx->oracleInterfaceIndex);
+            if (prevTx->inputSize
+                == OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery))
             {
-                // Oracle query was successful, remove from storage.
-                customQubicMiningStorage.removeOracleQuery(finishedUserQuery->interfaceIndex, finishedUserQuery->queryId);
-
-                // Oracle reply is available
-                if (reply.isValid)
+                OI::DogeShareValidation::OracleReply reply;
+                if (finishedUserQuery->status == ORACLE_QUERY_STATUS_SUCCESS
+                    && oracleEngine.getOracleReply(finishedUserQuery->queryId, &reply, sizeof(reply)))
                 {
-                    // Share is valid
-                    // TODO: implement share counting
+                    // Oracle query was successful, remove from storage.
+                    customQubicMiningStorage.removeOracleQuery(finishedUserQuery->interfaceIndex, finishedUserQuery->queryId);
+
+                    // Oracle reply is available
+                    if (reply.isValid)
+                    {
+                        // Share is valid: Count rev points if this share belongs to an active task (i.e. still contained
+                        // in the customQubicMiningStorage) and this solution has not been counted before.
+                        const auto* queryData = reinterpret_cast<const OI::DogeShareValidation::OracleQuery*>(prevTx->inputPtr() + OracleUserQueryTransactionPrefix::minInputSize());
+                        unsigned char solutionBuffer[16];
+                        copyMem(solutionBuffer, &queryData->solutionTime, 4);
+                        copyMem(solutionBuffer + 4, &queryData->solutionNonce, 4);
+                        copyMem(solutionBuffer + 8, &queryData->solutionExtraNonce2, 8);
+                        m256i solutionHash;
+                        KangarooTwelve(solutionBuffer, 16, solutionHash.m256i_u8, sizeof(solutionHash));
+                        if (customQubicMiningStorage.countSolutionForRevenue(CustomMiningType::DOGE, queryData->jobId, solutionHash))
+                        {
+                            // TODO: Verify that the task description in the query matches the task description in the storage to decline revenue
+                            // for comps tampering with the task description in their query. Not sure how likely this is to happen.
+                            
+                            // dogeRev[reply.compIndex]++;
+                        }
+                    }
                 }
                 else
                 {
-                    // Share is invalid
-                    // TODO: handle or remove this else block
-                }
-            }
-            else
-            {
-                // Oracle query failed -> lookup and resend user query tx if it is from own comp pool
-                ASSERT(finishedUserQuery->type == ORACLE_QUERY_TYPE_USER_QUERY);
-                ASSERT(ts.tickInCurrentEpochStorage(finishedUserQuery->queryTick));
-                const uint64_t* tsTickTransactionOffsets
-                    = ts.tickTransactionOffsets.getByTickInCurrentEpoch(finishedUserQuery->queryTick);
-                const uint32_t txSlotInTickData = finishedUserQuery->typeVar.user.queryTxIndex;
-                ASSERT(txSlotInTickData < NUMBER_OF_TRANSACTIONS_PER_TICK);
-                const auto* prevTx = (OracleUserQueryTransactionPrefix*)ts.tickTransactions.ptr(
-                    tsTickTransactionOffsets[txSlotInTickData]);
-                ASSERT(finishedUserQuery->interfaceIndex == prevTx->oracleInterfaceIndex);
-                if (prevTx->inputSize
-                    == OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery))
-                {
+                    // Oracle query failed -> resend user query tx if it is from own comp pool
                     for (unsigned int i = 0; i < computorSeedsCount; ++i)
                     {
                         if (computorPublicKeys[i] == prevTx->sourcePublicKey)
@@ -3689,7 +3704,7 @@ static void processTick(unsigned long long processorNumber)
                                 }
                             }
                             break;
-                       }
+                        }
                     }
                 }
             }
