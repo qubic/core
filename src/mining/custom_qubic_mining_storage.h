@@ -16,6 +16,8 @@
 class CustomQubicMiningStorage
 {
 public:
+    static constexpr unsigned int scheduleOracleQueryTickOffset = 8; // offset of 8 ticks to ensure propagation through the network
+
     static constexpr unsigned int maxNumTasks = 32;
 
     // A struct for storing an active doge mining task on the node.

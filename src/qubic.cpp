@@ -1589,7 +1589,7 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                     tx->sourcePublicKey = computorPublicKeys[i];
                     tx->destinationPublicKey = m256i::zero();
                     tx->amount = 0;
-                    tx->tick = system.tick + 8; // offset of 8 ticks to ensure propagation through the network
+                    tx->tick = system.tick + CustomQubicMiningStorage::scheduleOracleQueryTickOffset;
                     tx->inputType = OracleUserQueryTransactionPrefix::transactionType();
                     tx->inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery);
                     tx->oracleInterfaceIndex = OI::DogeShareValidation::oracleInterfaceIndex;
@@ -3566,7 +3566,7 @@ static void processTick(unsigned long long processorNumber)
         {
             if (computorPublicKeys[i] == queryInfo.sourcePublicKey)
             {
-                unsigned int newScheduledTick = system.tick + 8; // offset of 8 ticks to ensure propagation through the network
+                unsigned int newScheduledTick = system.tick + CustomQubicMiningStorage::scheduleOracleQueryTickOffset;
 
                 unsigned char buffer[sizeof(OracleUserQueryTransactionPrefix)
                     + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
@@ -3670,7 +3670,7 @@ static void processTick(unsigned long long processorNumber)
                     {
                         if (computorPublicKeys[i] == prevTx->sourcePublicKey)
                         {
-                            unsigned int newScheduledTick = system.tick + 8; // offset of 8 ticks to ensure propagation through the network
+                            unsigned int newScheduledTick = system.tick + CustomQubicMiningStorage::scheduleOracleQueryTickOffset;
                             if (customQubicMiningStorage.increaseOracleQueryFailCounterAndReschedule(finishedUserQuery->interfaceIndex, finishedUserQuery->queryId, newScheduledTick)) // true if the fail counter could be increased without hitting max
                             {
                                 if (isMainMode()) // only main node should send oracle queries
