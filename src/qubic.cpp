@@ -1582,36 +1582,36 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                     if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE, reinterpret_cast<unsigned char*>(&task)) < 0)
                         return;
 
+                    unsigned char buffer[sizeof(OracleUserQueryTransactionPrefix)
+                        + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
+
+                    auto* tx = reinterpret_cast<OracleUserQueryTransactionPrefix*>(buffer);
+                    tx->sourcePublicKey = computorPublicKeys[i];
+                    tx->destinationPublicKey = m256i::zero();
+                    tx->amount = 0;
+                    tx->tick = system.tick + CustomQubicMiningStorage::scheduleOracleQueryTickOffset;
+                    tx->inputType = OracleUserQueryTransactionPrefix::transactionType();
+                    tx->inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery);
+                    tx->oracleInterfaceIndex = OI::DogeShareValidation::oracleInterfaceIndex;
+                    tx->timeoutMilliseconds = 30000;
+                    unsigned char* queryData = buffer + sizeof(OracleUserQueryTransactionPrefix);
+                    // Full header can be constructed via concatenating version + prevHash + merkleRoot + miner's nTime + nBits + miner's nonce.
+                    unsigned int offset = 0;
+                    copyMem(queryData + offset, task.version, 4); offset += 4;
+                    copyMem(queryData + offset, task.prevHash, 32); offset += 32;
+                    copyMem(queryData + offset, dogeSol->merkleRoot, 32); offset += 32;
+                    copyMem(queryData + offset, dogeSol->nTime, 4); offset += 4;
+                    copyMem(queryData + offset, task.nBits, 4); offset += 4;
+                    copyMem(queryData + offset, dogeSol->nonce, 4); offset += 4;
+                    copyMem(queryData + offset, task.dispatcherTarget, 32); offset += 32;
+
+                    customQubicMiningStorage.addOracleQuery(tx);
+
                     if (isMainMode()) // only main node should send oracle queries
                     {
-                        unsigned char buffer[sizeof(OracleUserQueryTransactionPrefix)
-                            + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
-
-                        auto* tx = reinterpret_cast<OracleUserQueryTransactionPrefix*>(buffer);
-                        tx->sourcePublicKey = computorPublicKeys[i];
-                        tx->destinationPublicKey = m256i::zero();
-                        tx->amount = 0;
-                        tx->tick = system.tick + 8; // offset of 8 ticks to ensure propagation through the network
-                        tx->inputType = OracleUserQueryTransactionPrefix::transactionType();
-                        tx->inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery);
-                        tx->oracleInterfaceIndex = OI::DogeShareValidation::oracleInterfaceIndex;
-                        tx->timeoutMilliseconds = 30000;
-                        unsigned char* queryData = buffer + sizeof(OracleUserQueryTransactionPrefix);
-                        // Full header can be constructed via concatenating version + prevHash + merkleRoot + miner's nTime + nBits + miner's nonce.
-                        unsigned int offset = 0;
-                        copyMem(queryData + offset, task.version, 4); offset += 4;
-                        copyMem(queryData + offset, task.prevHash, 32); offset += 32;
-                        copyMem(queryData + offset, dogeSol->merkleRoot, 32); offset += 32;
-                        copyMem(queryData + offset, dogeSol->nTime, 4); offset += 4;
-                        copyMem(queryData + offset, task.nBits, 4); offset += 4;
-                        copyMem(queryData + offset, dogeSol->nonce, 4); offset += 4;
-                        copyMem(queryData + offset, task.dispatcherTarget, 32); offset += 32;
-
                         KangarooTwelve(buffer, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
                         sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
                         enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
-
-                        // TODO: resend oracle query if the tx isn't included in scheduled tick or if it is an empty tick
                     }
 
                     break;
@@ -3147,7 +3147,22 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                     }
 
                     // start user query
-                    const bool error = (oracleEngine.startUserQuery(queryTx, transactionIndex, forceZeroFee) < 0);
+                    int64_t queryId = oracleEngine.startUserQuery(queryTx, transactionIndex, forceZeroFee);
+                    const bool error = queryId < 0;
+
+                    if (queryTx->oracleInterfaceIndex == OI::DogeShareValidation::oracleInterfaceIndex)
+                    {
+                        if (error)
+                        {
+                            // The query was included in the tick but could not be started, not necessary to try again.
+                            customQubicMiningStorage.removeOracleQuery((const OracleUserQueryTransactionPrefix*)transaction);
+                        }
+                        else
+                        {
+                            customQubicMiningStorage.markOracleQueryStarted((const OracleUserQueryTransactionPrefix*)transaction, queryId);
+                        }
+                    }
+
                     if (error && transaction->amount)
                     {
                         oracleEngine.refundFees(transaction->sourcePublicKey, transaction->amount);
@@ -3542,6 +3557,50 @@ static void processTick(unsigned long long processorNumber)
         PROFILE_SCOPE_END();
     }
 
+    // Resend oracle queries for share validation if they were scheduled for but not included in this tick.
+    int currentQueryIndex = customQubicMiningStorage.getNextScheduledQueryIndexForTick(CustomMiningType::DOGE, /*currentQueryIndex=*/-1, system.tick);
+    while (currentQueryIndex >= 0)
+    {
+        CustomQubicMiningStorage::OracleQueryInfo queryInfo = customQubicMiningStorage.getOracleQueryInfo(CustomMiningType::DOGE, currentQueryIndex);
+        for (unsigned int i = 0; i < computorSeedsCount; ++i)
+        {
+            if (computorPublicKeys[i] == queryInfo.sourcePublicKey)
+            {
+                unsigned int newScheduledTick = system.tick + CustomQubicMiningStorage::scheduleOracleQueryTickOffset;
+
+                unsigned char buffer[sizeof(OracleUserQueryTransactionPrefix)
+                    + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
+
+                auto* tx = reinterpret_cast<OracleUserQueryTransactionPrefix*>(buffer);
+                tx->sourcePublicKey = computorPublicKeys[i];
+                tx->destinationPublicKey = m256i::zero();
+                tx->amount = 0;
+                tx->tick = newScheduledTick;
+                tx->inputType = OracleUserQueryTransactionPrefix::transactionType();
+                tx->inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery);
+                tx->oracleInterfaceIndex = OI::DogeShareValidation::oracleInterfaceIndex;
+                tx->timeoutMilliseconds = 30000;
+                unsigned char* queryData = buffer + sizeof(OracleUserQueryTransactionPrefix);
+
+                if (customQubicMiningStorage.getTypeSpecificOracleQuery(CustomMiningType::DOGE, currentQueryIndex, queryData))
+                {
+                    if (isMainMode()) // only main node should send oracle queries
+                    {
+                        // Sign and send tx
+                        m256i digest;
+                        KangarooTwelve(tx, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
+                        sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
+                        enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                    }
+                    customQubicMiningStorage.updateOracleQueryScheduledTick(CustomMiningType::DOGE, currentQueryIndex, newScheduledTick);
+                }
+
+                break;
+            }
+        }
+        currentQueryIndex = customQubicMiningStorage.getNextScheduledQueryIndexForTick(CustomMiningType::DOGE, currentQueryIndex, system.tick);
+    }
+
     // Generate subscription queries (may create queries that immediately timeout if the network was stuck)
     oracleEngine.generateSubscriptionQueries();
 
@@ -3565,6 +3624,79 @@ static void processTick(unsigned long long processorNumber)
         WAIT_WHILE(contractProcessorState);
 
         oracleNotification = oracleEngine.getNotification();
+    }
+
+    // Process finished oracle user queries (doge mining share validation replies)
+    const OracleQueryMetadata* finishedUserQuery = oracleEngine.getFinishedUserQuery();
+    while (finishedUserQuery)
+    {
+        if (finishedUserQuery->interfaceIndex == OI::DogeShareValidation::oracleInterfaceIndex)
+        {
+            OI::DogeShareValidation::OracleReply reply;
+            if (finishedUserQuery->status == ORACLE_QUERY_STATUS_SUCCESS
+                && oracleEngine.getOracleReply(finishedUserQuery->queryId, &reply, sizeof(reply)))
+            {
+                // Oracle query was successful, remove from storage.
+                customQubicMiningStorage.removeOracleQuery(finishedUserQuery->interfaceIndex, finishedUserQuery->queryId);
+
+                // Oracle reply is available
+                if (reply.isValid)
+                {
+                    // Share is valid
+                    // TODO: implement share counting
+                }
+                else
+                {
+                    // Share is invalid
+                    // TODO: handle or remove this else block
+                }
+            }
+            else
+            {
+                // Oracle query failed -> lookup and resend user query tx if it is from own comp pool
+                ASSERT(finishedUserQuery->type == ORACLE_QUERY_TYPE_USER_QUERY);
+                ASSERT(ts.tickInCurrentEpochStorage(finishedUserQuery->queryTick));
+                const uint64_t* tsTickTransactionOffsets
+                    = ts.tickTransactionOffsets.getByTickInCurrentEpoch(finishedUserQuery->queryTick);
+                const uint32_t txSlotInTickData = finishedUserQuery->typeVar.user.queryTxIndex;
+                ASSERT(txSlotInTickData < NUMBER_OF_TRANSACTIONS_PER_TICK);
+                const auto* prevTx = (OracleUserQueryTransactionPrefix*)ts.tickTransactions.ptr(
+                    tsTickTransactionOffsets[txSlotInTickData]);
+                ASSERT(finishedUserQuery->interfaceIndex == prevTx->oracleInterfaceIndex);
+                if (prevTx->inputSize
+                    == OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery))
+                {
+                    for (unsigned int i = 0; i < computorSeedsCount; ++i)
+                    {
+                        if (computorPublicKeys[i] == prevTx->sourcePublicKey)
+                        {
+                            unsigned int newScheduledTick = system.tick + CustomQubicMiningStorage::scheduleOracleQueryTickOffset;
+                            if (customQubicMiningStorage.increaseOracleQueryFailCounterAndReschedule(finishedUserQuery->interfaceIndex, finishedUserQuery->queryId, newScheduledTick)) // true if the fail counter could be increased without hitting max
+                            {
+                                if (isMainMode()) // only main node should send oracle queries
+                                {
+                                    // Copy and update tx
+                                    __ScopedScratchpad scratchpad(MAX_TRANSACTION_SIZE, /*initZero=*/false);
+                                    auto* tx = (OracleUserQueryTransactionPrefix*)scratchpad.ptr;
+                                    const uint64_t txSizeWithoutSignature = sizeof(OracleUserQueryTransactionPrefix)
+                                        + sizeof(OI::DogeShareValidation::OracleQuery);
+                                    copyMem(tx, prevTx, txSizeWithoutSignature);
+                                    tx->tick = newScheduledTick;
+
+                                    // Sign and send tx
+                                    m256i digest;
+                                    KangarooTwelve(tx, sizeof(Transaction) + prevTx->inputSize, digest.m256i_u8, sizeof(digest));
+                                    sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
+                                    enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                                }
+                            }
+                            break;
+                       }
+                    }
+                }
+            }
+        }
+        finishedUserQuery = oracleEngine.getFinishedUserQuery();
     }
 
     // The last executionFeeReport for the previous phase is published by comp <NUMBER_OF_COMPUTORS - 1> (0-indexed) in the last tick t1 of the
