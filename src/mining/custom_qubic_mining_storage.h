@@ -19,7 +19,7 @@ class CustomQubicMiningStorage
 public:
     static constexpr unsigned int scheduleOracleQueryTickOffset = 8; // offset of 8 ticks to ensure propagation through the network
 
-    static constexpr unsigned int maxNumTasks = 32;
+    static constexpr unsigned int maxNumTasks = 16;
 
     // A struct for storing an active doge mining task on the node.
     struct StoredDogeMiningTask
@@ -343,19 +343,10 @@ bool CustomQubicMiningStorage::addTask(const CustomQubicMiningTask* task, unsign
 
             unsigned int& nextDogeTaskId = nextTaskIndex[CustomMiningType::DOGE];
             const QubicDogeMiningTask* dogeTask = reinterpret_cast<const QubicDogeMiningTask*>(taskAsCharPtr + sizeof(CustomQubicMiningTask));
-            if (dogeTask->cleanJobQueue)
-            {
-                setMem(activeTasks[CustomMiningType::DOGE], maxNumTasks * sizeof(uint64_t), 0);
-                for (int t = 0; t < maxNumTasks; ++t)
-                    receivedSolutions[CustomMiningType::DOGE * maxNumTasks + t].reset();
-                setMem(dogeTasks, sizeof(dogeTasks), 0);
-                nextDogeTaskId = 0;
-            }
-            else
-            {
-                // If not cleaning job queue, we will override the oldest task. Clean the corresponding solution hash set.
-                receivedSolutions[CustomMiningType::DOGE * maxNumTasks + nextDogeTaskId].reset();
-            }
+
+            // If maxNumTasks is already reached, we will override the oldest task. Clean the corresponding solution hash set.
+            receivedSolutions[CustomMiningType::DOGE * maxNumTasks + nextDogeTaskId].reset();
+
             dogeTasks[nextDogeTaskId].jobId = task->jobId;
             convertTargetCompactToFull(dogeTask->dispatcherDifficulty, dogeTasks[nextDogeTaskId].dispatcherTarget);
             copyMem(dogeTasks[nextDogeTaskId].version, dogeTask->version, 4);
