@@ -6,6 +6,10 @@
 #include "vote_counter.h"
 #include "public_settings.h"
 
+// Revenue V2: set to 1 to use the new revenue formula (additive bonus + sliding window + oracle)
+// set to 0 to use V1 formula (multiplicative: tx * vote * mining)
+#define USE_REVENUE_V2 1
+
 
 static unsigned long long gVoteScoreBuffer[NUMBER_OF_COMPUTORS];
 static unsigned long long gCustomMiningScoreBuffer[NUMBER_OF_COMPUTORS];

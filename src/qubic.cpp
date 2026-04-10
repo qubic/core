@@ -4540,7 +4540,11 @@ static void endEpoch()
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             // Compute initial computor revenue, reducing arbitrator revenue
+#if USE_REVENUE_V2
+            long long revenue = gEpochRevenueData.v2Revenue[computorIndex];
+#else
             long long revenue = gRevenueComponents.revenue[computorIndex];
+#endif
             arbitratorRevenue -= revenue;
 
             // Reduce computor revenue based on revenue donation table agreed on by quorum
