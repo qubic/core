@@ -5701,6 +5701,16 @@ static void tickProcessor(void*)
                 tickDataSuits = true;
             }
 
+            // HACK: force empty ticks for stuck unresolvable ticks — remove after passing these ticks
+            if (system.tick == 49124963 || system.tick == 49124964 || system.tick == 49124965)
+            {
+                nextTickData.epoch = 0;
+                setMem(nextTickData.transactionDigests, NUMBER_OF_TRANSACTIONS_PER_TICK * sizeof(m256i), 0);
+                targetNextTickDataDigest = m256i::zero();
+                targetNextTickDataDigestIsKnown = true;
+                tickDataSuits = true;
+            }
+
             if (!tickDataSuits)
             {
                 // if we have problem regarding lacking of tickData, then wait for MAIN loop to fetch those missing data
