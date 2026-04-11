@@ -65,6 +65,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Addons: If you don't know it, leave it 0.
 #define ADDON_TX_STATUS_REQUEST 0
 
+
 //////////////////////////////////////////////////////////////////////////
 // Config options that should NOT be changed by operators
 
