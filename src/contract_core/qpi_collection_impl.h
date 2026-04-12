@@ -621,8 +621,10 @@ namespace QPI
 			return;
 		}
 
-		// Init buffers
-		__ScopedScratchpad scratchpad(sizeof(_povs) + sizeof(_povOccupationFlags), /*initZero=*/true);
+		// Init buffers. Besides the rebuilt pov tables we also need traversal stack
+		// space for walking a pov's BST while updating element.povIndex.
+		const uint64 stackBytes = _population * sizeof(sint64);
+		__ScopedScratchpad scratchpad(sizeof(_povs) + sizeof(_povOccupationFlags) + stackBytes, /*initZero=*/true);
 		ASSERT(scratchpad.ptr);
 		auto* _povsBuffer = reinterpret_cast<PoV*>(scratchpad.ptr);
 		auto* _povOccupationFlagsBuffer = reinterpret_cast<uint64*>(_povsBuffer + L);
