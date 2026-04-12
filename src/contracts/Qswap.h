@@ -228,6 +228,7 @@ public:
 
 	struct CreatePool_input
 	{
+		id assetIssuer;
 		uint64 assetName;
 	};
 	struct CreatePool_output
@@ -942,17 +943,17 @@ protected:
 		}
 
 		// asset no exist
-		if (!qpi.isAssetIssued(qpi.invocator(), input.assetName))
+		if (!qpi.isAssetIssued(input.assetIssuer, input.assetName))
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
 		}
 
-		locals.poolID = qpi.invocator();
+		locals.poolID = input.assetIssuer;
 		locals.poolID.u64._3 = input.assetName;
 
 		// check if pool already exist
-		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL ; locals.i0 ++ )
+		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL; locals.i0 ++ )
 		{
 			if (state.get().mPoolBasicStates.get(locals.i0).poolID == locals.poolID)
 			{
@@ -986,7 +987,7 @@ protected:
 
 		state.mut().mPoolBasicStates.set(locals.poolSlot, locals.poolBasicState);
 
-		if(qpi.invocationReward() > locals.poolCreationFee)
+		if (qpi.invocationReward() > locals.poolCreationFee)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.poolCreationFee );
 		}
