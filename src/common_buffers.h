@@ -43,7 +43,7 @@ public:
         // memory layout of buffer: sub buffer pointers | sub buffer locks | sub buffer 1 | sub buffer 2 | ...
         unsigned char* buffer = nullptr;
         const unsigned long long ptrSize = count * sizeof(unsigned char*);
-        const unsigned long long lockSize = (count + 7) / 8;
+        const unsigned long long lockSize = count * sizeof(subBufferLock[0]);
         const unsigned long long bufSize = count * size;
 
         if (!allocPoolWithErrorLog(L"commonBuffers", ptrSize + lockSize + bufSize, (void**)&buffer, __LINE__))
@@ -55,6 +55,7 @@ public:
         subBufferSize = size;
         subBufferPtr = (unsigned char**)buffer;
         subBufferLock = (volatile char*)(buffer + ptrSize);
+        setMem((void*)subBufferLock, lockSize, 0);
         unsigned char* subBuf = buffer + ptrSize + lockSize;
         for (unsigned int i = 0; i < count; ++i)
         {
