@@ -828,9 +828,9 @@ struct ESCROW : public ContractBase
             if (state.get()._deals.get(state.get()._ownerDealIndexes.element(locals.elementIndex), locals.tempDeal))
             {
                 output.ownedDeals.set(locals.elementIndex2, locals.tempDeal);
-                locals.elementIndex = state.get()._ownerDealIndexes.nextElementIndex(locals.elementIndex);
                 locals.elementIndex2++;
             }
+            locals.elementIndex = state.get()._ownerDealIndexes.nextElementIndex(locals.elementIndex);
         }
 
         locals.elementIndex3 = 0;
