@@ -374,6 +374,9 @@ bool CustomQubicMiningStorage::addTask(const CustomQubicMiningTask* task, unsign
 
             if (additionalDataSize > 0)
                 copyMem(dogeTasks[nextDogeTaskId].additionalData, taskAsCharPtr + combinedTaskStructSize, additionalDataSize);
+            // Zero out the leftover tail.
+            if (additionalDataSize < OI::DogeShareValidation::OracleQuery::additionalDataSize)
+                setMem(dogeTasks[nextDogeTaskId].additionalData + additionalDataSize, OI::DogeShareValidation::OracleQuery::additionalDataSize - additionalDataSize, 0);
 
             typeSpecificTaskIndex = nextDogeTaskId;
             nextDogeTaskId = (nextDogeTaskId + 1) % maxNumTasks;
