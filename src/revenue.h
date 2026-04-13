@@ -57,6 +57,12 @@ unsigned long long getQuorumScore(
     const unsigned int numberOfComputors = NUMBER_OF_COMPUTORS,
     const unsigned int quorum = QUORUM)
 {
+    ASSERT((quorum > 0) && (quorum <= QUORUM));
+    if ((quorum == 0) || (quorum > QUORUM))
+    {
+        return 1;
+    }
+
     unsigned long long sortedScore[QUORUM + 1];
     // Sort revenue scores to get lowest score of quorum
     setMem(sortedScore, (quorum + 1) * sizeof(unsigned long long), 0);
