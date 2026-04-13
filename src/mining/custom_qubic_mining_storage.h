@@ -17,7 +17,7 @@
 class CustomQubicMiningStorage
 {
 public:
-    static constexpr unsigned int scheduleOracleQueryTickOffset = 8; // offset of 8 ticks to ensure propagation through the network
+    static constexpr unsigned int scheduleOracleQueryTickOffset = 6; // offset of 6 ticks to ensure propagation through the network
 
     static constexpr unsigned int maxNumTasks = 16;
 
