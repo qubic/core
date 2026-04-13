@@ -335,6 +335,9 @@ protected:
     /// fast lookup of query indices for which the contract should be notified (in order of generation / queryIndex)
     MinHeap<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> notificationQueryIndexQueue;
 
+    /// fast lookup of query indices of finished user queries (in order of generation / queryIndex)
+    MinHeap<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> finishedUserQueryIndexQueue;
+
     // revenue points collected by each computor for fast and correct commit
     uint64_t revenuePoints[NUMBER_OF_COMPUTORS];
 
@@ -551,6 +554,7 @@ public:
         pendingCommitReplyStateIndices.numValues = 0;
         pendingRevealReplyStateIndices.numValues = 0;
         notificationQueryIndexQueue.init();
+        finishedUserQueryIndexQueue.init();
         usedSubscriptionSlots = 0;
         usedSubscriberSlots = 0;
         notificationCurrentSubscriberIdx = 0;
@@ -590,9 +594,10 @@ public:
     * Check and start user query based on transaction (should be called from tick processor).
     * @param tx Transaction, whose validity and signature has been checked before.
     * @param txIndex Index of tx in tick data, for referencing in tick storage.
+    * @param forceZeroFee Whether to overwrite the oracle fee by zero. Default: false.
     * @return Query ID or -1 on error.
     */
-    int64_t startUserQuery(const OracleUserQueryTransactionPrefix* tx, uint32_t txIndex)
+    int64_t startUserQuery(const OracleUserQueryTransactionPrefix* tx, uint32_t txIndex, bool forceZeroFee = false)
     {
         // check preconditions (that function is used correctly)
         ASSERT(tx);
@@ -622,7 +627,7 @@ public:
 
         // check fee
         const void* queryData = (tx + 1);
-        const int64_t fee = OI::getOracleQueryFeeFunc[tx->oracleInterfaceIndex](queryData);
+        const int64_t fee = (forceZeroFee) ? 0 : OI::getOracleQueryFeeFunc[tx->oracleInterfaceIndex](queryData);
         if (tx->amount < fee)
         {
             // tx amount insufficient for fee -> return error (caller should refund in all error cases)
@@ -1035,7 +1040,7 @@ public:
         logger.logOracleSubscriber({ subscriptionId, subscription.interfaceIndex, contractIndex, 0, 0 });
 
         // debug logging
-#if !defined(NDEBUG)// && !defined(NO_UEFI)
+#if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsg[300];
         setText(dbgMsg, L"oracleEngine.stopContractSubscription(), tick ");
         appendNumber(dbgMsg, system.tick, FALSE);
@@ -1443,6 +1448,9 @@ public:
                 oracleStats[ifaceIdx].extraData[1] = ((const OI::Mock::OracleReply*)replyData)->echoedValue;
                 oracleStats[ifaceIdx].extraData[2] = ((const OI::Mock::OracleReply*)replyData)->doubledValue;
                 break;
+            case 2: // DogeShareValidation
+                valid = ((const OI::DogeShareValidation::OracleReply*)replyData)->isValid;
+                break;
             default: // unknown
                 break;
             }
@@ -1719,6 +1727,8 @@ public:
                 // schedule contract notification(s) if needed
                 if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
                     notificationQueryIndexQueue.insert(queryIndex);
+                else
+                    finishedUserQueryIndexQueue.insert(queryIndex);
 
                 // log status change
                 logQueryStatusChange(oqm);
@@ -2069,6 +2079,8 @@ public:
                 // schedule contract notification(s) if needed
                 if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
                     notificationQueryIndexQueue.insert(queryIndex);
+                else
+                    finishedUserQueryIndexQueue.insert(queryIndex);
 
                 // log status change
                 logQueryStatusChange(oqm);
@@ -2113,6 +2125,8 @@ public:
         // schedule contract notification(s) if needed
         if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
             notificationQueryIndexQueue.insert(queryIndex);
+        else
+            finishedUserQueryIndexQueue.insert(queryIndex);
 
         // log status change
         logQueryStatusChange(oqm);
@@ -2184,6 +2198,8 @@ public:
                 // schedule contract notification(s) if needed
                 if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
                     notificationQueryIndexQueue.insert(queryIndex);
+                else
+                    finishedUserQueryIndexQueue.insert(queryIndex);
 
                 // log status change
                 logQueryStatusChange(oqm);
@@ -2285,6 +2301,33 @@ public:
         }
 
         return &notificationOutputBuffer;
+    }
+
+    /**
+     * @brief Get finished user queries one after another. Call until nullptr is returned.
+     * @return Pointer to oracle query metadata or nullptr if there isn't another finished user query.
+     *
+     * Only to be used in tick processor!
+     * Saving / loading snapshots is not supported between calls until nullptr is returned.
+     */
+    const OracleQueryMetadata* getFinishedUserQuery()
+    {
+        // currently finished query?
+        if (!finishedUserQueryIndexQueue.size())
+            return nullptr;
+
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
+
+        // get index and update list
+        uint32_t queryIndex;
+        finishedUserQueryIndexQueue.extract(queryIndex);
+
+        // get query metadata
+        const OracleQueryMetadata& oqm = queries[queryIndex];
+        ASSERT(oqm.type == ORACLE_QUERY_TYPE_USER_QUERY);
+
+        return &oqm;
     }
 
     // Drop all queries of the previous epoch.
@@ -2648,6 +2691,19 @@ public:
             ASSERT(queryIndex < oracleQueryCount);
             const OracleQueryMetadata& oqm = queries[queryIndex];
             ASSERT(oqm.status != ORACLE_QUERY_STATUS_PENDING);
+            ASSERT(oqm.type != ORACLE_QUERY_TYPE_USER_QUERY);
+        }
+
+        // check index of finished user queries
+        queryIdxCount = finishedUserQueryIndexQueue.size();
+        queryIndices = finishedUserQueryIndexQueue.data();
+        for (uint32_t i = 0; i < queryIdxCount; ++i)
+        {
+            const uint32_t queryIndex = queryIndices[i];
+            ASSERT(queryIndex < oracleQueryCount);
+            const OracleQueryMetadata& oqm = queries[queryIndex];
+            ASSERT(oqm.status != ORACLE_QUERY_STATUS_PENDING);
+            ASSERT(oqm.type == ORACLE_QUERY_TYPE_USER_QUERY);
         }
 
         // check subscribers
