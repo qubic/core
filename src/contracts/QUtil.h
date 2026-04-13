@@ -1579,6 +1579,37 @@ public:
     }
 
     /**************************************/
+    /*      GET BALANCE BULK REQUEST      */
+    /**************************************/
+
+    struct GetBalances16_input
+    {
+        Array<id, 16> publicKeys;
+    };
+
+    struct GetBalances16_output
+    {
+        Array<sint64, 16> balances;
+    };
+
+    struct GetBalances16_locals
+    {
+        Entity entity;
+        uint32 i;
+    };
+
+    PUBLIC_FUNCTION_WITH_LOCALS(GetBalances16)
+    {
+        for (locals.i = 0; locals.i < input.publicKeys.capacity(); ++locals.i)
+        {
+            if (qpi.getEntity(input.publicKeys.get(locals.i), locals.entity))
+            {
+                output.balances.set(locals.i, locals.entity.incomingAmount - locals.entity.outgoingAmount);
+            }
+        }
+    }
+
+    /**************************************/
     /*        SHAREHOLDER PROPOSALS       */
     /**************************************/
 
@@ -1617,6 +1648,7 @@ public:
         REGISTER_USER_FUNCTION(GetPollInfo, 6);
         REGISTER_USER_FUNCTION(GetFees, 7);
         REGISTER_USER_FUNCTION(QueryFeeReserve, 8);
+        REGISTER_USER_FUNCTION(GetBalances16, 9);
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
         REGISTER_USER_PROCEDURE(BurnQubic, 2);
