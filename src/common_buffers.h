@@ -55,7 +55,6 @@ public:
         subBufferSize = size;
         subBufferPtr = (unsigned char**)buffer;
         subBufferLock = (volatile char*)(buffer + ptrSize);
-        setMem((void*)subBufferLock, lockSize, 0);
         unsigned char* subBuf = buffer + ptrSize + lockSize;
         for (unsigned int i = 0; i < count; ++i)
         {
