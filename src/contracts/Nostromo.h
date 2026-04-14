@@ -693,9 +693,10 @@ struct NOST : public ContractBase
 		switch (static_cast<EAuctionType>(input.auctionType))
 		{
 			case EAuctionType::Batch:
+
 				if (!resolveBatchAuctionCreateParams(locals.analyzeAuctionLotOutput.lotItemCount, locals.analyzeAuctionLotOutput.totalEscrowQuantity,
 				                                     input.minimumPurchaseQuantity, locals.resolvedQuantityForSale,
-				                                     locals.resolvedMinimumPurchaseQuantity))
+				                                     locals.resolvedMinimumPurchaseQuantity, input.buyNowPricePerUnit))
 				{
 					if (qpi.invocationReward() > 0)
 					{
@@ -706,7 +707,8 @@ struct NOST : public ContractBase
 				break;
 			case EAuctionType::Standard:
 				if (!resolveStandardAuctionCreateParams(input.minimumPurchaseQuantity, input.minimumBidIncrementPerUnit,
-				                                        locals.resolvedQuantityForSale, locals.resolvedMinimumPurchaseQuantity))
+				                                        locals.resolvedQuantityForSale, locals.resolvedMinimumPurchaseQuantity,
+				                                        input.buyNowPricePerUnit, input.initialPricePerUnit, input.salePricePerUnit))
 				{
 					if (qpi.invocationReward() > 0)
 					{
@@ -1079,11 +1081,11 @@ struct NOST : public ContractBase
 
 protected:
 	static bool resolveBatchAuctionCreateParams(uint64 lotItemCount, uint64 totalEscrowQuantity, uint64 minimumPurchaseQuantity,
-	                                            uint64& quantityForSale, uint64& resolvedMinimumPurchaseQuantity)
+	                                            uint64& quantityForSale, uint64& resolvedMinimumPurchaseQuantity, uint64 buyNowPricePerUnit)
 	{
 		quantityForSale = 0;
 		resolvedMinimumPurchaseQuantity = 0;
-		if (lotItemCount != 1 || minimumPurchaseQuantity == 0 || minimumPurchaseQuantity > totalEscrowQuantity)
+		if (lotItemCount != 1 || minimumPurchaseQuantity == 0 || minimumPurchaseQuantity > totalEscrowQuantity || buyNowPricePerUnit != 0)
 		{
 			return false;
 		}
@@ -1093,7 +1095,8 @@ protected:
 	}
 
 	static bool resolveStandardAuctionCreateParams(uint64 minimumPurchaseQuantity, uint64 minimumBidIncrementPerUnit, uint64& quantityForSale,
-	                                               uint64& resolvedMinimumPurchaseQuantity)
+	                                               uint64& resolvedMinimumPurchaseQuantity, uint64 buyNowPricePerUnit, uint64 initialPricePerUnit,
+	                                               uint64 salePricePerUnit)
 	{
 		quantityForSale = 0;
 		resolvedMinimumPurchaseQuantity = 0;
@@ -1101,6 +1104,13 @@ protected:
 		{
 			return false;
 		}
+
+		if (buyNowPricePerUnit > 0 && (buyNowPricePerUnit < initialPricePerUnit || buyNowPricePerUnit < salePricePerUnit))
+		{
+
+			return false;
+		}
+
 		quantityForSale = 1;
 		resolvedMinimumPurchaseQuantity = 1;
 		return true;
