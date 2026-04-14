@@ -281,22 +281,204 @@ struct NOST : public ContractBase
 		uint8 found;
 	};
 
-	struct CreateAuction_locals
+	struct ResolveBatchAuctionCreateParams_input
 	{
-		AuctionData auction;
+		uint64 lotItemCount;
+		uint64 totalEscrowQuantity;
+		uint64 minimumPurchaseQuantity;
+	};
+
+	struct ResolveBatchAuctionCreateParams_output
+	{
+		uint64 quantityForSale;
+		uint64 minimumPurchaseQuantity;
+		uint8 isValid;
+	};
+
+	struct ResolveBatchAuctionCreateParams_locals
+	{
+	};
+
+	struct ResolveStandardAuctionCreateParams_input
+	{
+		uint64 minimumPurchaseQuantity;
+		uint64 minimumBidIncrementPerUnit;
+	};
+
+	struct ResolveStandardAuctionCreateParams_output
+	{
+		uint64 quantityForSale;
+		uint64 minimumPurchaseQuantity;
+		uint8 isValid;
+	};
+
+	struct ResolveStandardAuctionCreateParams_locals
+	{
+	};
+
+	struct AnalyzeAuctionLot_input
+	{
+		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
+		uint32 durationDays;
+	};
+
+	struct AnalyzeAuctionLot_output
+	{
+		uint64 totalEscrowQuantity;
+		uint64 lotItemCount;
+		AuctionLotEntry firstLotItem;
+		uint8 isValid;
+	};
+
+	struct AnalyzeAuctionLot_locals
+	{
 		AuctionLotEntry lotItem;
+		uint64 lotItemIndex;
+	};
+
+	struct CountAllowedBidderWallets_input
+	{
+		Array<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedBidderWallets;
+	};
+
+	struct CountAllowedBidderWallets_output
+	{
+		uint64 allowedWalletCount;
+	};
+
+	struct CountAllowedBidderWallets_locals
+	{
+		uint64 allowedWalletIndex;
+	};
+
+	struct ValidatePrivateAuctionAccess_input
+	{
+		EAuctionVisibility visibility;
+		Asset requiredAccessAsset;
+		uint64 allowedWalletCount;
+	};
+
+	struct ValidatePrivateAuctionAccess_output
+	{
+		uint8 isValid;
+	};
+
+	struct ValidatePrivateAuctionAccess_locals
+	{
+	};
+
+	struct GetCreateAuctionFee_input
+	{
+		EAuctionVisibility visibility;
+	};
+
+	struct GetCreateAuctionFee_output
+	{
+		sint64 requiredFee;
+	};
+
+	struct GetCreateAuctionFee_locals
+	{
+	};
+
+	struct VerifyAuctionLotBalances_input
+	{
+		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
+	};
+
+	struct VerifyAuctionLotBalances_output
+	{
+		uint8 hasEnoughBalance;
+	};
+
+	struct VerifyAuctionLotBalances_locals
+	{
+		AuctionLotEntry lotItem;
+		uint64 lotItemIndex;
+		sint64 possessedShares;
+	};
+
+	struct EscrowAuctionLotAssets_input
+	{
+		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
+	};
+
+	struct EscrowAuctionLotAssets_output
+	{
+		uint8 success;
+	};
+
+	struct EscrowAuctionLotAssets_locals
+	{
+		AuctionLotEntry lotItem;
+		uint64 lotItemIndex;
+		uint64 rollbackLotItemIndex;
+		sint64 transferredShares;
+	};
+
+	struct RollbackAuctionLotAssets_input
+	{
+		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
+	};
+
+	struct RollbackAuctionLotAssets_output
+	{
+	};
+
+	struct RollbackAuctionLotAssets_locals
+	{
+		AuctionLotEntry lotItem;
+		uint64 lotItemIndex;
+	};
+
+	struct BuildAuctionData_input
+	{
+		CreateAuction_input createInput;
 		AuctionLotEntry firstLotItem;
 		EAuctionType auctionType;
 		EAuctionVisibility visibility;
-		sint64 requiredFee;
-		uint64 totalEscrowQuantity;
-		uint64 lotItemIndex;
-		uint64 lotItemCount;
-		uint64 rollbackLotItemIndex;
-		uint64 allowedWalletCount;
-		sint64 possessedShares;
-		sint64 transferredShares;
+		uint64 quantityForSale;
+		uint64 minimumPurchaseQuantity;
+	};
+
+	struct BuildAuctionData_output
+	{
+		AuctionData auction;
+	};
+
+	struct BuildAuctionData_locals
+	{
 		uint64 allowedWalletIndex;
+	};
+
+	struct CreateAuction_locals
+	{
+		AuctionData auction;
+		AnalyzeAuctionLot_input analyzeAuctionLotInput;
+		AnalyzeAuctionLot_output analyzeAuctionLotOutput;
+		CountAllowedBidderWallets_input countAllowedBidderWalletsInput;
+		CountAllowedBidderWallets_output countAllowedBidderWalletsOutput;
+		ValidatePrivateAuctionAccess_input validatePrivateAuctionAccessInput;
+		ValidatePrivateAuctionAccess_output validatePrivateAuctionAccessOutput;
+		GetCreateAuctionFee_input getCreateAuctionFeeInput;
+		GetCreateAuctionFee_output getCreateAuctionFeeOutput;
+		VerifyAuctionLotBalances_input verifyAuctionLotBalancesInput;
+		VerifyAuctionLotBalances_output verifyAuctionLotBalancesOutput;
+		EscrowAuctionLotAssets_input escrowAuctionLotAssetsInput;
+		EscrowAuctionLotAssets_output escrowAuctionLotAssetsOutput;
+		RollbackAuctionLotAssets_input rollbackAuctionLotAssetsInput;
+		RollbackAuctionLotAssets_output rollbackAuctionLotAssetsOutput;
+		BuildAuctionData_input buildAuctionDataInput;
+		BuildAuctionData_output buildAuctionDataOutput;
+		ResolveBatchAuctionCreateParams_input resolveBatchParamsInput;
+		ResolveBatchAuctionCreateParams_output resolveBatchParamsOutput;
+		ResolveStandardAuctionCreateParams_input resolveStandardParamsInput;
+		ResolveStandardAuctionCreateParams_output resolveStandardParamsOutput;
+		EAuctionType auctionType;
+		EAuctionVisibility visibility;
+		sint64 requiredFee;
+		uint64 resolvedQuantityForSale;
+		uint64 resolvedMinimumPurchaseQuantity;
 	};
 
 	struct PlaceBid_locals
@@ -359,6 +541,217 @@ struct NOST : public ContractBase
 		state.mut().participants.cleanupIfNeeded();
 	}
 
+	PRIVATE_FUNCTION_WITH_LOCALS(ResolveBatchAuctionCreateParams)
+	{
+		output.quantityForSale = 0;
+		output.minimumPurchaseQuantity = 0;
+		output.isValid = 0;
+
+		if (input.lotItemCount != 1 || input.minimumPurchaseQuantity == 0 || input.minimumPurchaseQuantity > input.totalEscrowQuantity)
+		{
+			return;
+		}
+
+		output.quantityForSale = input.totalEscrowQuantity;
+		output.minimumPurchaseQuantity = input.minimumPurchaseQuantity;
+		output.isValid = 1;
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(ResolveStandardAuctionCreateParams)
+	{
+		output.quantityForSale = 0;
+		output.minimumPurchaseQuantity = 0;
+		output.isValid = 0;
+
+		if (input.minimumPurchaseQuantity > 1 || input.minimumBidIncrementPerUnit == 0)
+		{
+			return;
+		}
+
+		output.quantityForSale = 1;
+		output.minimumPurchaseQuantity = 1;
+		output.isValid = 1;
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(AnalyzeAuctionLot)
+	{
+		output.totalEscrowQuantity = 0;
+		output.lotItemCount = 0;
+		output.isValid = 0;
+
+		if (input.durationDays == 0)
+		{
+			return;
+		}
+
+		for (locals.lotItemIndex = 0; locals.lotItemIndex < NOST_AUCTION_LOT_ITEM_NUM; ++locals.lotItemIndex)
+		{
+			locals.lotItem = input.auctionLotItems.get(locals.lotItemIndex);
+			if (isZeroAsset(locals.lotItem.asset))
+			{
+				if (locals.lotItem.quantity != 0)
+				{
+					return;
+				}
+				continue;
+			}
+
+			if (locals.lotItem.quantity <= 0)
+			{
+				return;
+			}
+
+			if (output.lotItemCount == 0)
+			{
+				output.firstLotItem = locals.lotItem;
+			}
+
+			output.lotItemCount = sadd(output.lotItemCount, 1ULL);
+			output.totalEscrowQuantity = sadd(output.totalEscrowQuantity, static_cast<uint64>(locals.lotItem.quantity));
+		}
+
+		output.isValid = output.lotItemCount > 0 ? 1 : 0;
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(CountAllowedBidderWallets)
+	{
+		output.allowedWalletCount = 0;
+		for (locals.allowedWalletIndex = 0; locals.allowedWalletIndex < NOST_AUCTION_ALLOWED_WALLET_NUM; ++locals.allowedWalletIndex)
+		{
+			if (!isZero(input.allowedBidderWallets.get(locals.allowedWalletIndex)))
+			{
+				output.allowedWalletCount = sadd(output.allowedWalletCount, 1ULL);
+			}
+		}
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(ValidatePrivateAuctionAccess)
+	{
+		output.isValid = 1;
+		if (input.visibility == EAuctionVisibility::Private && isZeroAsset(input.requiredAccessAsset) && input.allowedWalletCount == 0)
+		{
+			output.isValid = 0;
+		}
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(GetCreateAuctionFee)
+	{
+		output.requiredFee = 0;
+		if (input.visibility == EAuctionVisibility::Private)
+		{
+			output.requiredFee = NOST_PRIVATE_AUCTION_FEE;
+		}
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(VerifyAuctionLotBalances)
+	{
+		output.hasEnoughBalance = 1;
+		for (locals.lotItemIndex = 0; locals.lotItemIndex < NOST_AUCTION_LOT_ITEM_NUM; ++locals.lotItemIndex)
+		{
+			locals.lotItem = input.auctionLotItems.get(locals.lotItemIndex);
+			if (isZeroAsset(locals.lotItem.asset) || locals.lotItem.quantity <= 0)
+			{
+				continue;
+			}
+
+			locals.possessedShares = qpi.numberOfPossessedShares(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer, qpi.invocator(),
+			                                                    qpi.invocator(), SELF_INDEX, SELF_INDEX);
+			if (locals.possessedShares < locals.lotItem.quantity)
+			{
+				output.hasEnoughBalance = 0;
+				return;
+			}
+		}
+	}
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(RollbackAuctionLotAssets)
+	{
+		for (locals.lotItemIndex = 0; locals.lotItemIndex < NOST_AUCTION_LOT_ITEM_NUM; ++locals.lotItemIndex)
+		{
+			locals.lotItem = input.auctionLotItems.get(locals.lotItemIndex);
+			if (isZeroAsset(locals.lotItem.asset) || locals.lotItem.quantity <= 0)
+			{
+				continue;
+			}
+			qpi.transferShareOwnershipAndPossession(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer, SELF, SELF, locals.lotItem.quantity,
+			                                        qpi.invocator());
+		}
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(EscrowAuctionLotAssets)
+	{
+		output.success = 1;
+		for (locals.lotItemIndex = 0; locals.lotItemIndex < NOST_AUCTION_LOT_ITEM_NUM; ++locals.lotItemIndex)
+		{
+			locals.lotItem = input.auctionLotItems.get(locals.lotItemIndex);
+			if (isZeroAsset(locals.lotItem.asset) || locals.lotItem.quantity <= 0)
+			{
+				continue;
+			}
+
+			locals.transferredShares = qpi.transferShareOwnershipAndPossession(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer,
+			                                                                   qpi.invocator(), qpi.invocator(), locals.lotItem.quantity, SELF);
+			if (locals.transferredShares < locals.lotItem.quantity)
+			{
+				if (locals.transferredShares > 0)
+				{
+					qpi.transferShareOwnershipAndPossession(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer, SELF, SELF,
+					                                        locals.transferredShares, qpi.invocator());
+				}
+				for (locals.rollbackLotItemIndex = 0; locals.rollbackLotItemIndex < locals.lotItemIndex; ++locals.rollbackLotItemIndex)
+				{
+					locals.lotItem = input.auctionLotItems.get(locals.rollbackLotItemIndex);
+					if (isZeroAsset(locals.lotItem.asset) || locals.lotItem.quantity <= 0)
+					{
+						continue;
+					}
+					qpi.transferShareOwnershipAndPossession(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer, SELF, SELF,
+					                                        locals.lotItem.quantity, qpi.invocator());
+				}
+				output.success = 0;
+				return;
+			}
+		}
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(BuildAuctionData)
+	{
+		output.auction.allowedBidderWallets.reset();
+		output.auction.auctionId = id::randomValue();
+		output.auction.quantityForSale = input.quantityForSale;
+		output.auction.allocatedQuantity = 0;
+		output.auction.minimumPurchaseQuantity = input.minimumPurchaseQuantity;
+		output.auction.initialPricePerUnit = input.createInput.initialPricePerUnit;
+		output.auction.salePricePerUnit = input.createInput.salePricePerUnit;
+		output.auction.minimumBidIncrement = input.createInput.minimumBidIncrementPerUnit;
+		output.auction.buyNowPricePerUnit = input.createInput.buyNowPricePerUnit;
+		output.auction.highestBidPerUnit = 0;
+		output.auction.highestBidQuantity = 0;
+		output.auction.highestBidAmount = 0;
+		output.auction.auctionDurationSeconds = smul(static_cast<uint64>(input.createInput.durationDays), NOST_SECONDS_PER_DAY);
+		output.auction.createdAt = qpi.now();
+		output.auction.lastBidAt = output.auction.createdAt;
+		output.auction.sellerDecisionDeadline = DateAndTime();
+		output.auction.settledAt = DateAndTime();
+		output.auction.bidderCount = 0;
+		output.auction.seller = qpi.invocator();
+		output.auction.highestBidder = NULL_ID;
+		output.auction.assetForSale = input.firstLotItem.asset;
+		output.auction.requiredAccessAsset = input.createInput.requiredAccessAsset;
+		output.auction.auctionLotItems = input.createInput.auctionLotItems;
+		for (locals.allowedWalletIndex = 0; locals.allowedWalletIndex < NOST_AUCTION_ALLOWED_WALLET_NUM; ++locals.allowedWalletIndex)
+		{
+			if (!isZero(input.createInput.allowedBidderWallets.get(locals.allowedWalletIndex)))
+			{
+				output.auction.allowedBidderWallets.add(input.createInput.allowedBidderWallets.get(locals.allowedWalletIndex));
+			}
+		}
+		output.auction.metadataIpfsCid = input.createInput.metadataIpfsCid;
+		output.auction.type = input.auctionType;
+		output.auction.visibility = input.visibility;
+		output.auction.status = EAuctionStatus::Active;
+	}
+
 	PUBLIC_PROCEDURE_WITH_LOCALS(CreateAuction)
 	{
 		output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
@@ -395,24 +788,28 @@ struct NOST : public ContractBase
 			output.errorCode = static_cast<uint8>(EAuctionError::StorageFull);
 			return;
 		}
-		locals.totalEscrowQuantity = 0;
-		locals.lotItemCount = 0;
-		for (locals.lotItemIndex = 0; locals.lotItemIndex < NOST_AUCTION_LOT_ITEM_NUM; ++locals.lotItemIndex)
+
+		locals.analyzeAuctionLotInput.auctionLotItems = input.auctionLotItems;
+		locals.analyzeAuctionLotInput.durationDays = input.durationDays;
+		CALL(AnalyzeAuctionLot, locals.analyzeAuctionLotInput, locals.analyzeAuctionLotOutput);
+		if (!locals.analyzeAuctionLotOutput.isValid)
 		{
-			locals.lotItem = input.auctionLotItems.get(locals.lotItemIndex);
-			if (isZeroAsset(locals.lotItem.asset))
+			if (qpi.invocationReward() > 0)
 			{
-				if (locals.lotItem.quantity != 0)
-				{
-					if (qpi.invocationReward() > 0)
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return;
-				}
-				continue;
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
-			if (locals.lotItem.quantity <= 0)
+			return;
+		}
+		locals.resolvedQuantityForSale = 0;
+		locals.resolvedMinimumPurchaseQuantity = 0;
+		switch (locals.auctionType)
+		{
+		case EAuctionType::Batch:
+			locals.resolveBatchParamsInput.lotItemCount = locals.analyzeAuctionLotOutput.lotItemCount;
+			locals.resolveBatchParamsInput.totalEscrowQuantity = locals.analyzeAuctionLotOutput.totalEscrowQuantity;
+			locals.resolveBatchParamsInput.minimumPurchaseQuantity = input.minimumPurchaseQuantity;
+			CALL(ResolveBatchAuctionCreateParams, locals.resolveBatchParamsInput, locals.resolveBatchParamsOutput);
+			if (!locals.resolveBatchParamsOutput.isValid)
 			{
 				if (qpi.invocationReward() > 0)
 				{
@@ -420,55 +817,40 @@ struct NOST : public ContractBase
 				}
 				return;
 			}
-			if (locals.lotItemCount == 0)
+			locals.resolvedQuantityForSale = locals.resolveBatchParamsOutput.quantityForSale;
+			locals.resolvedMinimumPurchaseQuantity = locals.resolveBatchParamsOutput.minimumPurchaseQuantity;
+			break;
+		case EAuctionType::Standard:
+			locals.resolveStandardParamsInput.minimumPurchaseQuantity = input.minimumPurchaseQuantity;
+			locals.resolveStandardParamsInput.minimumBidIncrementPerUnit = input.minimumBidIncrementPerUnit;
+			CALL(ResolveStandardAuctionCreateParams, locals.resolveStandardParamsInput, locals.resolveStandardParamsOutput);
+			if (!locals.resolveStandardParamsOutput.isValid)
 			{
-				locals.firstLotItem = locals.lotItem;
+				if (qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+				return;
 			}
-			locals.lotItemCount = sadd(locals.lotItemCount, 1ULL);
-			locals.totalEscrowQuantity = sadd(locals.totalEscrowQuantity, static_cast<uint64>(locals.lotItem.quantity));
-		}
-		if (locals.lotItemCount == 0 || input.durationDays == 0)
-		{
+			locals.resolvedQuantityForSale = locals.resolveStandardParamsOutput.quantityForSale;
+			locals.resolvedMinimumPurchaseQuantity = locals.resolveStandardParamsOutput.minimumPurchaseQuantity;
+			break;
+		default:
 			if (qpi.invocationReward() > 0)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
+			output.errorCode = static_cast<uint8>(EAuctionError::InvalidAuctionType);
 			return;
 		}
-		if (locals.auctionType == EAuctionType::Batch &&
-		    (locals.lotItemCount != 1 || input.minimumPurchaseQuantity == 0 || input.minimumPurchaseQuantity > locals.totalEscrowQuantity))
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return;
-		}
-		if (locals.auctionType == EAuctionType::Standard && input.minimumPurchaseQuantity > 1)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return;
-		}
-		if (locals.auctionType == EAuctionType::Standard && input.minimumBidIncrementPerUnit == 0)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return;
-		}
-		locals.allowedWalletCount = 0;
-		for (locals.allowedWalletIndex = 0; locals.allowedWalletIndex < NOST_AUCTION_ALLOWED_WALLET_NUM; ++locals.allowedWalletIndex)
-		{
-			if (!isZero(input.allowedBidderWallets.get(locals.allowedWalletIndex)))
-			{
-				locals.allowedWalletCount = sadd(locals.allowedWalletCount, 1ULL);
-			}
-		}
-		if (locals.visibility == EAuctionVisibility::Private && isZeroAsset(input.requiredAccessAsset) && locals.allowedWalletCount == 0)
+
+		locals.countAllowedBidderWalletsInput.allowedBidderWallets = input.allowedBidderWallets;
+		CALL(CountAllowedBidderWallets, locals.countAllowedBidderWalletsInput, locals.countAllowedBidderWalletsOutput);
+		locals.validatePrivateAuctionAccessInput.visibility = locals.visibility;
+		locals.validatePrivateAuctionAccessInput.requiredAccessAsset = input.requiredAccessAsset;
+		locals.validatePrivateAuctionAccessInput.allowedWalletCount = locals.countAllowedBidderWalletsOutput.allowedWalletCount;
+		CALL(ValidatePrivateAuctionAccess, locals.validatePrivateAuctionAccessInput, locals.validatePrivateAuctionAccessOutput);
+		if (!locals.validatePrivateAuctionAccessOutput.isValid)
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -477,11 +859,9 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.requiredFee = 0;
-		if (locals.visibility == EAuctionVisibility::Private)
-		{
-			locals.requiredFee = NOST_PRIVATE_AUCTION_FEE;
-		}
+		locals.getCreateAuctionFeeInput.visibility = locals.visibility;
+		CALL(GetCreateAuctionFee, locals.getCreateAuctionFeeInput, locals.getCreateAuctionFeeOutput);
+		locals.requiredFee = locals.getCreateAuctionFeeOutput.requiredFee;
 		if (qpi.invocationReward() < locals.requiredFee)
 		{
 			if (qpi.invocationReward() > 0)
@@ -492,108 +872,43 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		for (locals.lotItemIndex = 0; locals.lotItemIndex < NOST_AUCTION_LOT_ITEM_NUM; ++locals.lotItemIndex)
+		locals.verifyAuctionLotBalancesInput.auctionLotItems = input.auctionLotItems;
+		CALL(VerifyAuctionLotBalances, locals.verifyAuctionLotBalancesInput, locals.verifyAuctionLotBalancesOutput);
+		if (!locals.verifyAuctionLotBalancesOutput.hasEnoughBalance)
 		{
-			locals.lotItem = input.auctionLotItems.get(locals.lotItemIndex);
-			if (isZeroAsset(locals.lotItem.asset) || locals.lotItem.quantity <= 0)
+			if (qpi.invocationReward() > 0)
 			{
-				continue;
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
-			locals.possessedShares = qpi.numberOfPossessedShares(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer, qpi.invocator(),
-			                                                     qpi.invocator(), SELF_INDEX, SELF_INDEX);
-			if (locals.possessedShares < locals.lotItem.quantity)
-			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				output.errorCode = static_cast<uint8>(EAuctionError::InsufficientAssetBalance);
-				return;
-			}
+			output.errorCode = static_cast<uint8>(EAuctionError::InsufficientAssetBalance);
+			return;
 		}
 
-		for (locals.lotItemIndex = 0; locals.lotItemIndex < NOST_AUCTION_LOT_ITEM_NUM; ++locals.lotItemIndex)
+		locals.escrowAuctionLotAssetsInput.auctionLotItems = input.auctionLotItems;
+		CALL(EscrowAuctionLotAssets, locals.escrowAuctionLotAssetsInput, locals.escrowAuctionLotAssetsOutput);
+		if (!locals.escrowAuctionLotAssetsOutput.success)
 		{
-			locals.lotItem = input.auctionLotItems.get(locals.lotItemIndex);
-			if (isZeroAsset(locals.lotItem.asset) || locals.lotItem.quantity <= 0)
+			if (qpi.invocationReward() > 0)
 			{
-				continue;
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
-
-			locals.transferredShares = qpi.transferShareOwnershipAndPossession(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer,
-			                                                                   qpi.invocator(), qpi.invocator(), locals.lotItem.quantity, SELF);
-			if (locals.transferredShares < locals.lotItem.quantity)
-			{
-				if (locals.transferredShares > 0)
-				{
-					qpi.transferShareOwnershipAndPossession(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer, SELF, SELF,
-					                                        locals.transferredShares, qpi.invocator());
-				}
-				for (locals.rollbackLotItemIndex = 0; locals.rollbackLotItemIndex < locals.lotItemIndex; ++locals.rollbackLotItemIndex)
-				{
-					locals.lotItem = input.auctionLotItems.get(locals.rollbackLotItemIndex);
-					if (isZeroAsset(locals.lotItem.asset) || locals.lotItem.quantity <= 0)
-					{
-						continue;
-					}
-					qpi.transferShareOwnershipAndPossession(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer, SELF, SELF,
-					                                        locals.lotItem.quantity, qpi.invocator());
-				}
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				output.errorCode = static_cast<uint8>(EAuctionError::InsufficientAssetBalance);
-				return;
-			}
+			output.errorCode = static_cast<uint8>(EAuctionError::InsufficientAssetBalance);
+			return;
 		}
 
-		locals.auction.auctionId = id::randomValue();
-		locals.auction.quantityForSale = (locals.auctionType == EAuctionType::Standard) ? 1ULL : locals.totalEscrowQuantity;
-		locals.auction.allocatedQuantity = 0;
-		locals.auction.minimumPurchaseQuantity = (locals.auctionType == EAuctionType::Standard) ? 1ULL : input.minimumPurchaseQuantity;
-		locals.auction.initialPricePerUnit = input.initialPricePerUnit;
-		locals.auction.salePricePerUnit = input.salePricePerUnit;
-		locals.auction.minimumBidIncrement = input.minimumBidIncrementPerUnit;
-		locals.auction.buyNowPricePerUnit = input.buyNowPricePerUnit;
-		locals.auction.highestBidPerUnit = 0;
-		locals.auction.highestBidQuantity = 0;
-		locals.auction.highestBidAmount = 0;
-		locals.auction.auctionDurationSeconds = smul(static_cast<uint64>(input.durationDays), NOST_SECONDS_PER_DAY);
-		locals.auction.createdAt = qpi.now();
-		locals.auction.lastBidAt = locals.auction.createdAt;
-		locals.auction.sellerDecisionDeadline = DateAndTime();
-		locals.auction.settledAt = DateAndTime();
-		locals.auction.bidderCount = 0;
-		locals.auction.seller = qpi.invocator();
-		locals.auction.highestBidder = NULL_ID;
-		locals.auction.assetForSale = locals.firstLotItem.asset;
-		locals.auction.requiredAccessAsset = input.requiredAccessAsset;
-		locals.auction.auctionLotItems = input.auctionLotItems;
-		for (locals.allowedWalletIndex = 0; locals.allowedWalletIndex < NOST_AUCTION_ALLOWED_WALLET_NUM; ++locals.allowedWalletIndex)
-		{
-			if (!isZero(input.allowedBidderWallets.get(locals.allowedWalletIndex)))
-			{
-				locals.auction.allowedBidderWallets.add(input.allowedBidderWallets.get(locals.allowedWalletIndex));
-			}
-		}
-		locals.auction.metadataIpfsCid = input.metadataIpfsCid;
-		locals.auction.type = locals.auctionType;
-		locals.auction.visibility = locals.visibility;
-		locals.auction.status = EAuctionStatus::Active;
+		locals.buildAuctionDataInput.createInput = input;
+		locals.buildAuctionDataInput.firstLotItem = locals.analyzeAuctionLotOutput.firstLotItem;
+		locals.buildAuctionDataInput.auctionType = locals.auctionType;
+		locals.buildAuctionDataInput.visibility = locals.visibility;
+		locals.buildAuctionDataInput.quantityForSale = locals.resolvedQuantityForSale;
+		locals.buildAuctionDataInput.minimumPurchaseQuantity = locals.resolvedMinimumPurchaseQuantity;
+		CALL(BuildAuctionData, locals.buildAuctionDataInput, locals.buildAuctionDataOutput);
+		locals.auction = locals.buildAuctionDataOutput.auction;
 
 		if (state.mut().auctionList.set(locals.auction.auctionId, locals.auction) == NULL_INDEX)
 		{
-			for (locals.rollbackLotItemIndex = 0; locals.rollbackLotItemIndex < NOST_AUCTION_LOT_ITEM_NUM; ++locals.rollbackLotItemIndex)
-			{
-				locals.lotItem = input.auctionLotItems.get(locals.rollbackLotItemIndex);
-				if (isZeroAsset(locals.lotItem.asset) || locals.lotItem.quantity <= 0)
-				{
-					continue;
-				}
-				qpi.transferShareOwnershipAndPossession(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer, SELF, SELF,
-				                                        locals.lotItem.quantity, qpi.invocator());
-			}
+			locals.rollbackAuctionLotAssetsInput.auctionLotItems = input.auctionLotItems;
+			CALL(RollbackAuctionLotAssets, locals.rollbackAuctionLotAssetsInput, locals.rollbackAuctionLotAssetsOutput);
 			if (qpi.invocationReward() > 0)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
