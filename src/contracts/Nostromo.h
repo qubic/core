@@ -5,7 +5,8 @@ constexpr uint64 NOST_AUCTION_METADATA_CID_LENGTH = 64;
 constexpr uint64 NOST_AUCTION_PARTICIPANT_NUM = 4096;
 constexpr uint64 NOST_AUCTION_LOT_ITEM_NUM = 64;
 constexpr uint64 NOST_AUCTION_ALLOWED_WALLET_NUM = 128;
-constexpr uint64 NOST_PRIVATE_AUCTION_FEE = 50000000ULL;
+constexpr uint32 NOST_AUCTION_MAX_DURATION_DAYS = 30;
+constexpr sint64 NOST_PRIVATE_AUCTION_FEE = 50000000LL;
 constexpr uint64 NOST_AUCTION_EXTENSION_SECONDS = 300ULL;
 constexpr uint64 NOST_SECONDS_PER_DAY = 86400ULL;
 constexpr uint64 NOST_AUCTION_SELLER_DECISION_WINDOW_SECONDS = 604800ULL;
@@ -169,9 +170,6 @@ struct NOST : public ContractBase
 		/// Wallet that currently holds the highest bid.
 		id highestBidder;
 
-		/// Primary asset reference of the lot, equal to the first non-empty lot entry.
-		Asset assetForSale;
-
 		/// Asset required for participation when the auction visibility is private.
 		Asset requiredAccessAsset;
 
@@ -196,6 +194,12 @@ struct NOST : public ContractBase
 
 	struct StateData
 	{
+		/// Configured fee charged when creating a private auction.
+		sint64 privateAuctionFee;
+
+		/// Configured maximum auction duration in days.
+		uint32 maxAuctionDurationDays;
+
 		HashMap<id, AuctionData, NOST_AUCTION_NUM> auctionList;
 		HashMap<AuctionParticipantKey, AuctionParticipantData, NOST_AUCTION_PARTICIPANT_NUM> participants;
 	};
@@ -229,7 +233,7 @@ struct NOST : public ContractBase
 		/// Buy Now price that immediately closes a standard auction once matched or exceeded.
 		uint64 buyNowPricePerUnit;
 
-		/// Auction duration configured by the seller in days.
+		/// Auction duration configured by the seller in days, capped by the contract configuration.
 		uint32 durationDays;
 
 		/// Auction House mode selected by the seller: Batch Auction or Standard Auction.
@@ -281,41 +285,6 @@ struct NOST : public ContractBase
 		uint8 found;
 	};
 
-	struct ResolveBatchAuctionCreateParams_input
-	{
-		uint64 lotItemCount;
-		uint64 totalEscrowQuantity;
-		uint64 minimumPurchaseQuantity;
-	};
-
-	struct ResolveBatchAuctionCreateParams_output
-	{
-		uint64 quantityForSale;
-		uint64 minimumPurchaseQuantity;
-		uint8 isValid;
-	};
-
-	struct ResolveBatchAuctionCreateParams_locals
-	{
-	};
-
-	struct ResolveStandardAuctionCreateParams_input
-	{
-		uint64 minimumPurchaseQuantity;
-		uint64 minimumBidIncrementPerUnit;
-	};
-
-	struct ResolveStandardAuctionCreateParams_output
-	{
-		uint64 quantityForSale;
-		uint64 minimumPurchaseQuantity;
-		uint8 isValid;
-	};
-
-	struct ResolveStandardAuctionCreateParams_locals
-	{
-	};
-
 	struct AnalyzeAuctionLot_input
 	{
 		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
@@ -326,7 +295,6 @@ struct NOST : public ContractBase
 	{
 		uint64 totalEscrowQuantity;
 		uint64 lotItemCount;
-		AuctionLotEntry firstLotItem;
 		uint8 isValid;
 	};
 
@@ -349,36 +317,6 @@ struct NOST : public ContractBase
 	struct CountAllowedBidderWallets_locals
 	{
 		uint64 allowedWalletIndex;
-	};
-
-	struct ValidatePrivateAuctionAccess_input
-	{
-		EAuctionVisibility visibility;
-		Asset requiredAccessAsset;
-		uint64 allowedWalletCount;
-	};
-
-	struct ValidatePrivateAuctionAccess_output
-	{
-		uint8 isValid;
-	};
-
-	struct ValidatePrivateAuctionAccess_locals
-	{
-	};
-
-	struct GetCreateAuctionFee_input
-	{
-		EAuctionVisibility visibility;
-	};
-
-	struct GetCreateAuctionFee_output
-	{
-		sint64 requiredFee;
-	};
-
-	struct GetCreateAuctionFee_locals
-	{
 	};
 
 	struct VerifyAuctionLotBalances_input
@@ -421,34 +359,12 @@ struct NOST : public ContractBase
 		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
 	};
 
-	struct RollbackAuctionLotAssets_output
-	{
-	};
+	typedef NoData RollbackAuctionLotAssets_output;
 
 	struct RollbackAuctionLotAssets_locals
 	{
 		AuctionLotEntry lotItem;
 		uint64 lotItemIndex;
-	};
-
-	struct BuildAuctionData_input
-	{
-		CreateAuction_input createInput;
-		AuctionLotEntry firstLotItem;
-		EAuctionType auctionType;
-		EAuctionVisibility visibility;
-		uint64 quantityForSale;
-		uint64 minimumPurchaseQuantity;
-	};
-
-	struct BuildAuctionData_output
-	{
-		AuctionData auction;
-	};
-
-	struct BuildAuctionData_locals
-	{
-		uint64 allowedWalletIndex;
 	};
 
 	struct CreateAuction_locals
@@ -458,27 +374,16 @@ struct NOST : public ContractBase
 		AnalyzeAuctionLot_output analyzeAuctionLotOutput;
 		CountAllowedBidderWallets_input countAllowedBidderWalletsInput;
 		CountAllowedBidderWallets_output countAllowedBidderWalletsOutput;
-		ValidatePrivateAuctionAccess_input validatePrivateAuctionAccessInput;
-		ValidatePrivateAuctionAccess_output validatePrivateAuctionAccessOutput;
-		GetCreateAuctionFee_input getCreateAuctionFeeInput;
-		GetCreateAuctionFee_output getCreateAuctionFeeOutput;
 		VerifyAuctionLotBalances_input verifyAuctionLotBalancesInput;
-		VerifyAuctionLotBalances_output verifyAuctionLotBalancesOutput;
 		EscrowAuctionLotAssets_input escrowAuctionLotAssetsInput;
-		EscrowAuctionLotAssets_output escrowAuctionLotAssetsOutput;
 		RollbackAuctionLotAssets_input rollbackAuctionLotAssetsInput;
-		RollbackAuctionLotAssets_output rollbackAuctionLotAssetsOutput;
-		BuildAuctionData_input buildAuctionDataInput;
-		BuildAuctionData_output buildAuctionDataOutput;
-		ResolveBatchAuctionCreateParams_input resolveBatchParamsInput;
-		ResolveBatchAuctionCreateParams_output resolveBatchParamsOutput;
-		ResolveStandardAuctionCreateParams_input resolveStandardParamsInput;
-		ResolveStandardAuctionCreateParams_output resolveStandardParamsOutput;
-		EAuctionType auctionType;
-		EAuctionVisibility visibility;
 		sint64 requiredFee;
 		uint64 resolvedQuantityForSale;
 		uint64 resolvedMinimumPurchaseQuantity;
+		uint64 allowedWalletIndex;
+		RollbackAuctionLotAssets_output rollbackAuctionLotAssetsOutput;
+		EscrowAuctionLotAssets_output escrowAuctionLotAssetsOutput;
+		VerifyAuctionLotBalances_output verifyAuctionLotBalancesOutput;
 	};
 
 	struct PlaceBid_locals
@@ -512,13 +417,17 @@ struct NOST : public ContractBase
 	{
 		REGISTER_USER_PROCEDURE(CreateAuction, 1);
 		REGISTER_USER_PROCEDURE(PlaceBid, 2);
+		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 3);
+
 		REGISTER_USER_FUNCTION(GetAuction, 1);
 		REGISTER_USER_FUNCTION(GetAuctionParticipant, 2);
-
-		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 1);
 	}
 
-	INITIALIZE() {}
+	INITIALIZE()
+	{
+		state.mut().privateAuctionFee = NOST_PRIVATE_AUCTION_FEE;
+		state.mut().maxAuctionDurationDays = NOST_AUCTION_MAX_DURATION_DAYS;
+	}
 
 	PRE_ACQUIRE_SHARES()
 	{
@@ -532,6 +441,8 @@ struct NOST : public ContractBase
 		if (qpi.epoch() == 220)
 		{
 			// Initialize
+			state.mut().privateAuctionFee = NOST_PRIVATE_AUCTION_FEE;
+			state.mut().maxAuctionDurationDays = NOST_AUCTION_MAX_DURATION_DAYS;
 		}
 	}
 
@@ -541,45 +452,13 @@ struct NOST : public ContractBase
 		state.mut().participants.cleanupIfNeeded();
 	}
 
-	PRIVATE_FUNCTION_WITH_LOCALS(ResolveBatchAuctionCreateParams)
-	{
-		output.quantityForSale = 0;
-		output.minimumPurchaseQuantity = 0;
-		output.isValid = 0;
-
-		if (input.lotItemCount != 1 || input.minimumPurchaseQuantity == 0 || input.minimumPurchaseQuantity > input.totalEscrowQuantity)
-		{
-			return;
-		}
-
-		output.quantityForSale = input.totalEscrowQuantity;
-		output.minimumPurchaseQuantity = input.minimumPurchaseQuantity;
-		output.isValid = 1;
-	}
-
-	PRIVATE_FUNCTION_WITH_LOCALS(ResolveStandardAuctionCreateParams)
-	{
-		output.quantityForSale = 0;
-		output.minimumPurchaseQuantity = 0;
-		output.isValid = 0;
-
-		if (input.minimumPurchaseQuantity > 1 || input.minimumBidIncrementPerUnit == 0)
-		{
-			return;
-		}
-
-		output.quantityForSale = 1;
-		output.minimumPurchaseQuantity = 1;
-		output.isValid = 1;
-	}
-
 	PRIVATE_FUNCTION_WITH_LOCALS(AnalyzeAuctionLot)
 	{
 		output.totalEscrowQuantity = 0;
 		output.lotItemCount = 0;
 		output.isValid = 0;
 
-		if (input.durationDays == 0)
+		if (input.durationDays == 0 || input.durationDays > state.get().maxAuctionDurationDays)
 		{
 			return;
 		}
@@ -601,11 +480,6 @@ struct NOST : public ContractBase
 				return;
 			}
 
-			if (output.lotItemCount == 0)
-			{
-				output.firstLotItem = locals.lotItem;
-			}
-
 			output.lotItemCount = sadd(output.lotItemCount, 1ULL);
 			output.totalEscrowQuantity = sadd(output.totalEscrowQuantity, static_cast<uint64>(locals.lotItem.quantity));
 		}
@@ -625,24 +499,6 @@ struct NOST : public ContractBase
 		}
 	}
 
-	PRIVATE_FUNCTION_WITH_LOCALS(ValidatePrivateAuctionAccess)
-	{
-		output.isValid = 1;
-		if (input.visibility == EAuctionVisibility::Private && isZeroAsset(input.requiredAccessAsset) && input.allowedWalletCount == 0)
-		{
-			output.isValid = 0;
-		}
-	}
-
-	PRIVATE_FUNCTION_WITH_LOCALS(GetCreateAuctionFee)
-	{
-		output.requiredFee = 0;
-		if (input.visibility == EAuctionVisibility::Private)
-		{
-			output.requiredFee = NOST_PRIVATE_AUCTION_FEE;
-		}
-	}
-
 	PRIVATE_FUNCTION_WITH_LOCALS(VerifyAuctionLotBalances)
 	{
 		output.hasEnoughBalance = 1;
@@ -655,7 +511,7 @@ struct NOST : public ContractBase
 			}
 
 			locals.possessedShares = qpi.numberOfPossessedShares(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer, qpi.invocator(),
-			                                                    qpi.invocator(), SELF_INDEX, SELF_INDEX);
+			                                                     qpi.invocator(), SELF_INDEX, SELF_INDEX);
 			if (locals.possessedShares < locals.lotItem.quantity)
 			{
 				output.hasEnoughBalance = 0;
@@ -678,7 +534,7 @@ struct NOST : public ContractBase
 		}
 	}
 
-	PRIVATE_FUNCTION_WITH_LOCALS(EscrowAuctionLotAssets)
+	PRIVATE_PROCEDURE_WITH_LOCALS(EscrowAuctionLotAssets)
 	{
 		output.success = 1;
 		for (locals.lotItemIndex = 0; locals.lotItemIndex < NOST_AUCTION_LOT_ITEM_NUM; ++locals.lotItemIndex)
@@ -714,52 +570,11 @@ struct NOST : public ContractBase
 		}
 	}
 
-	PRIVATE_FUNCTION_WITH_LOCALS(BuildAuctionData)
-	{
-		output.auction.allowedBidderWallets.reset();
-		output.auction.auctionId = id::randomValue();
-		output.auction.quantityForSale = input.quantityForSale;
-		output.auction.allocatedQuantity = 0;
-		output.auction.minimumPurchaseQuantity = input.minimumPurchaseQuantity;
-		output.auction.initialPricePerUnit = input.createInput.initialPricePerUnit;
-		output.auction.salePricePerUnit = input.createInput.salePricePerUnit;
-		output.auction.minimumBidIncrement = input.createInput.minimumBidIncrementPerUnit;
-		output.auction.buyNowPricePerUnit = input.createInput.buyNowPricePerUnit;
-		output.auction.highestBidPerUnit = 0;
-		output.auction.highestBidQuantity = 0;
-		output.auction.highestBidAmount = 0;
-		output.auction.auctionDurationSeconds = smul(static_cast<uint64>(input.createInput.durationDays), NOST_SECONDS_PER_DAY);
-		output.auction.createdAt = qpi.now();
-		output.auction.lastBidAt = output.auction.createdAt;
-		output.auction.sellerDecisionDeadline = DateAndTime();
-		output.auction.settledAt = DateAndTime();
-		output.auction.bidderCount = 0;
-		output.auction.seller = qpi.invocator();
-		output.auction.highestBidder = NULL_ID;
-		output.auction.assetForSale = input.firstLotItem.asset;
-		output.auction.requiredAccessAsset = input.createInput.requiredAccessAsset;
-		output.auction.auctionLotItems = input.createInput.auctionLotItems;
-		for (locals.allowedWalletIndex = 0; locals.allowedWalletIndex < NOST_AUCTION_ALLOWED_WALLET_NUM; ++locals.allowedWalletIndex)
-		{
-			if (!isZero(input.createInput.allowedBidderWallets.get(locals.allowedWalletIndex)))
-			{
-				output.auction.allowedBidderWallets.add(input.createInput.allowedBidderWallets.get(locals.allowedWalletIndex));
-			}
-		}
-		output.auction.metadataIpfsCid = input.createInput.metadataIpfsCid;
-		output.auction.type = input.auctionType;
-		output.auction.visibility = input.visibility;
-		output.auction.status = EAuctionStatus::Active;
-	}
-
 	PUBLIC_PROCEDURE_WITH_LOCALS(CreateAuction)
 	{
 		output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
 
-		locals.auctionType = static_cast<EAuctionType>(input.auctionType);
-		locals.visibility = static_cast<EAuctionVisibility>(input.auctionVisibility);
-
-		if (!isSupportedAuctionType(locals.auctionType))
+		if (!isSupportedAuctionType(static_cast<EAuctionType>(input.auctionType)))
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -769,7 +584,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (!isSupportedAuctionVisibility(locals.visibility))
+		if (!isSupportedAuctionVisibility(static_cast<EAuctionVisibility>(input.auctionVisibility)))
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -802,55 +617,44 @@ struct NOST : public ContractBase
 		}
 		locals.resolvedQuantityForSale = 0;
 		locals.resolvedMinimumPurchaseQuantity = 0;
-		switch (locals.auctionType)
+		switch (static_cast<EAuctionType>(input.auctionType))
 		{
-		case EAuctionType::Batch:
-			locals.resolveBatchParamsInput.lotItemCount = locals.analyzeAuctionLotOutput.lotItemCount;
-			locals.resolveBatchParamsInput.totalEscrowQuantity = locals.analyzeAuctionLotOutput.totalEscrowQuantity;
-			locals.resolveBatchParamsInput.minimumPurchaseQuantity = input.minimumPurchaseQuantity;
-			CALL(ResolveBatchAuctionCreateParams, locals.resolveBatchParamsInput, locals.resolveBatchParamsOutput);
-			if (!locals.resolveBatchParamsOutput.isValid)
-			{
+			case EAuctionType::Batch:
+				if (!resolveBatchAuctionCreateParams(locals.analyzeAuctionLotOutput.lotItemCount, locals.analyzeAuctionLotOutput.totalEscrowQuantity,
+				                                     input.minimumPurchaseQuantity, locals.resolvedQuantityForSale,
+				                                     locals.resolvedMinimumPurchaseQuantity))
+				{
+					if (qpi.invocationReward() > 0)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					}
+					return;
+				}
+				break;
+			case EAuctionType::Standard:
+				if (!resolveStandardAuctionCreateParams(input.minimumPurchaseQuantity, input.minimumBidIncrementPerUnit,
+				                                        locals.resolvedQuantityForSale, locals.resolvedMinimumPurchaseQuantity))
+				{
+					if (qpi.invocationReward() > 0)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					}
+					return;
+				}
+				break;
+			default:
 				if (qpi.invocationReward() > 0)
 				{
 					qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				}
+				output.errorCode = static_cast<uint8>(EAuctionError::InvalidAuctionType);
 				return;
-			}
-			locals.resolvedQuantityForSale = locals.resolveBatchParamsOutput.quantityForSale;
-			locals.resolvedMinimumPurchaseQuantity = locals.resolveBatchParamsOutput.minimumPurchaseQuantity;
-			break;
-		case EAuctionType::Standard:
-			locals.resolveStandardParamsInput.minimumPurchaseQuantity = input.minimumPurchaseQuantity;
-			locals.resolveStandardParamsInput.minimumBidIncrementPerUnit = input.minimumBidIncrementPerUnit;
-			CALL(ResolveStandardAuctionCreateParams, locals.resolveStandardParamsInput, locals.resolveStandardParamsOutput);
-			if (!locals.resolveStandardParamsOutput.isValid)
-			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return;
-			}
-			locals.resolvedQuantityForSale = locals.resolveStandardParamsOutput.quantityForSale;
-			locals.resolvedMinimumPurchaseQuantity = locals.resolveStandardParamsOutput.minimumPurchaseQuantity;
-			break;
-		default:
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			output.errorCode = static_cast<uint8>(EAuctionError::InvalidAuctionType);
-			return;
 		}
 
 		locals.countAllowedBidderWalletsInput.allowedBidderWallets = input.allowedBidderWallets;
 		CALL(CountAllowedBidderWallets, locals.countAllowedBidderWalletsInput, locals.countAllowedBidderWalletsOutput);
-		locals.validatePrivateAuctionAccessInput.visibility = locals.visibility;
-		locals.validatePrivateAuctionAccessInput.requiredAccessAsset = input.requiredAccessAsset;
-		locals.validatePrivateAuctionAccessInput.allowedWalletCount = locals.countAllowedBidderWalletsOutput.allowedWalletCount;
-		CALL(ValidatePrivateAuctionAccess, locals.validatePrivateAuctionAccessInput, locals.validatePrivateAuctionAccessOutput);
-		if (!locals.validatePrivateAuctionAccessOutput.isValid)
+		if (!validatePrivateAuctionAccess(static_cast<EAuctionVisibility>(input.auctionVisibility), input.requiredAccessAsset,
+		                                  locals.countAllowedBidderWalletsOutput.allowedWalletCount))
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -859,9 +663,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.getCreateAuctionFeeInput.visibility = locals.visibility;
-		CALL(GetCreateAuctionFee, locals.getCreateAuctionFeeInput, locals.getCreateAuctionFeeOutput);
-		locals.requiredFee = locals.getCreateAuctionFeeOutput.requiredFee;
+		locals.requiredFee = getCreateAuctionFee(static_cast<EAuctionVisibility>(input.auctionVisibility), state);
 		if (qpi.invocationReward() < locals.requiredFee)
 		{
 			if (qpi.invocationReward() > 0)
@@ -896,14 +698,32 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.buildAuctionDataInput.createInput = input;
-		locals.buildAuctionDataInput.firstLotItem = locals.analyzeAuctionLotOutput.firstLotItem;
-		locals.buildAuctionDataInput.auctionType = locals.auctionType;
-		locals.buildAuctionDataInput.visibility = locals.visibility;
-		locals.buildAuctionDataInput.quantityForSale = locals.resolvedQuantityForSale;
-		locals.buildAuctionDataInput.minimumPurchaseQuantity = locals.resolvedMinimumPurchaseQuantity;
-		CALL(BuildAuctionData, locals.buildAuctionDataInput, locals.buildAuctionDataOutput);
-		locals.auction = locals.buildAuctionDataOutput.auction;
+		locals.auction.auctionId = id::randomValue();
+		locals.auction.quantityForSale = locals.resolvedQuantityForSale;
+		locals.auction.minimumPurchaseQuantity = locals.resolvedMinimumPurchaseQuantity;
+		locals.auction.initialPricePerUnit = input.initialPricePerUnit;
+		locals.auction.salePricePerUnit = input.salePricePerUnit;
+		locals.auction.minimumBidIncrement = input.minimumBidIncrementPerUnit;
+		locals.auction.buyNowPricePerUnit = input.buyNowPricePerUnit;
+		locals.auction.auctionDurationSeconds = smul(static_cast<uint64>(input.durationDays), NOST_SECONDS_PER_DAY);
+		locals.auction.createdAt = qpi.now();
+		locals.auction.lastBidAt = locals.auction.createdAt;
+		locals.auction.sellerDecisionDeadline = DateAndTime();
+		locals.auction.settledAt = DateAndTime();
+		locals.auction.seller = qpi.invocator();
+		locals.auction.requiredAccessAsset = input.requiredAccessAsset;
+		locals.auction.auctionLotItems = input.auctionLotItems;
+		for (locals.allowedWalletIndex = 0; locals.allowedWalletIndex < NOST_AUCTION_ALLOWED_WALLET_NUM; ++locals.allowedWalletIndex)
+		{
+			if (!isZero(input.allowedBidderWallets.get(locals.allowedWalletIndex)))
+			{
+				locals.auction.allowedBidderWallets.add(input.allowedBidderWallets.get(locals.allowedWalletIndex));
+			}
+		}
+		locals.auction.metadataIpfsCid = input.metadataIpfsCid;
+		locals.auction.type = static_cast<EAuctionType>(input.auctionType);
+		locals.auction.visibility = static_cast<EAuctionVisibility>(input.auctionVisibility);
+		locals.auction.status = EAuctionStatus::Active;
 
 		if (state.mut().auctionList.set(locals.auction.auctionId, locals.auction) == NULL_INDEX)
 		{
@@ -1185,6 +1005,44 @@ struct NOST : public ContractBase
 	}
 
 protected:
+	static bool resolveBatchAuctionCreateParams(uint64 lotItemCount, uint64 totalEscrowQuantity, uint64 minimumPurchaseQuantity,
+	                                            uint64& quantityForSale, uint64& resolvedMinimumPurchaseQuantity)
+	{
+		quantityForSale = 0;
+		resolvedMinimumPurchaseQuantity = 0;
+		if (lotItemCount != 1 || minimumPurchaseQuantity == 0 || minimumPurchaseQuantity > totalEscrowQuantity)
+		{
+			return false;
+		}
+		quantityForSale = totalEscrowQuantity;
+		resolvedMinimumPurchaseQuantity = minimumPurchaseQuantity;
+		return true;
+	}
+
+	static bool resolveStandardAuctionCreateParams(uint64 minimumPurchaseQuantity, uint64 minimumBidIncrementPerUnit, uint64& quantityForSale,
+	                                               uint64& resolvedMinimumPurchaseQuantity)
+	{
+		quantityForSale = 0;
+		resolvedMinimumPurchaseQuantity = 0;
+		if (minimumPurchaseQuantity > 1 || minimumBidIncrementPerUnit == 0)
+		{
+			return false;
+		}
+		quantityForSale = 1;
+		resolvedMinimumPurchaseQuantity = 1;
+		return true;
+	}
+
+	static bool validatePrivateAuctionAccess(EAuctionVisibility visibility, const Asset& requiredAccessAsset, uint64 allowedWalletCount)
+	{
+		return visibility != EAuctionVisibility::Private || !isZeroAsset(requiredAccessAsset) || allowedWalletCount > 0;
+	}
+
+	static sint64 getCreateAuctionFee(EAuctionVisibility visibility, const ContractState<StateData, CONTRACT_INDEX>& state)
+	{
+		return visibility == EAuctionVisibility::Private ? state.get().privateAuctionFee : 0;
+	}
+
 	static bool isSupportedAuctionType(EAuctionType auctionType)
 	{
 		return auctionType == EAuctionType::Batch || auctionType == EAuctionType::Standard;
