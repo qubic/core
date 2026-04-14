@@ -7,6 +7,7 @@ constexpr uint64 NOST_AUCTION_LOT_ITEM_NUM = 64;
 constexpr uint64 NOST_AUCTION_ALLOWED_WALLET_NUM = 128;
 constexpr uint32 NOST_AUCTION_MAX_DURATION_DAYS = 30;
 constexpr sint64 NOST_PRIVATE_AUCTION_FEE = 50000000LL;
+constexpr uint64 NOST_AUCTION_CANCELLATION_FEE_BP = 1000ULL;
 constexpr uint64 NOST_AUCTION_EXTENSION_SECONDS = 300ULL;
 constexpr uint64 NOST_SECONDS_PER_DAY = 86400ULL;
 constexpr uint64 NOST_AUCTION_SELLER_DECISION_WINDOW_SECONDS = 604800ULL;
@@ -81,13 +82,28 @@ struct NOST : public ContractBase
 	 */
 	struct AuctionParticipantData
 	{
+		/// Amount currently locked in escrow for this participant bid.
 		uint64 escrowedAmount;
+
+		/// Quantity requested by this participant; standard auctions always use the whole lot quantity.
 		uint64 requestedQuantity;
+
+		/// Quantity finally allocated to this participant after batch settlement.
 		uint64 allocatedQuantity;
-		uint64 pricePerUnit;
+
+		/// Total bid amount committed by this participant for the current request.
+		uint64 bidAmount;
+
+		/// Timestamp of the participant's latest accepted bid.
 		DateAndTime lastBidTime;
+
+		/// Wallet that owns this participant record.
 		id participant;
+
+		/// Marks the participant that currently holds the leading bid.
 		uint8 isHighestBidder;
+
+		/// Marks bids that remain inside the winning allocation after settlement.
 		uint8 isWinningBid;
 	};
 
@@ -125,25 +141,26 @@ struct NOST : public ContractBase
 		/// Minimum quantity a bidder may request in a batch auction; standard auctions sell the entire lot as one unit.
 		uint64 minimumPurchaseQuantity;
 
-		/// Initial Price for a standard auction; bids cannot start below this value.
-		uint64 initialPricePerUnit;
+		/// Initial Price for a standard auction; bids cannot start below this total auction price.
+		uint64 initialPrice;
 
-		/// Sale Price defined by the seller as the desired / minimum acceptable selling price.
-		uint64 salePricePerUnit;
+		/// Sale Price defined by the seller as the desired / minimum acceptable total selling price.
+		uint64 salePrice;
 
 		/// Minimum step by which a new bid must exceed the current highest bid.
 		uint64 minimumBidIncrement;
 
 		/// Buy Now price that closes a standard auction immediately when matched or exceeded.
-		uint64 buyNowPricePerUnit;
+		uint64 buyNowPrice;
 
-		/// Highest price per unit currently offered by any active bid.
-		uint64 highestBidPerUnit;
+		/// Highest total bid currently offered by any active bid.
+		uint64 highestBidPrice;
 
 		/// Quantity requested by the current highest bid.
 		uint64 highestBidQuantity;
 
 		/// Total amount escrowed by the current highest bid.
+		/// Equal to the committed highest bid amount.
 		uint64 highestBidAmount;
 
 		/// Auction duration in seconds, derived from the duration configured in days.
@@ -197,6 +214,9 @@ struct NOST : public ContractBase
 		/// Configured fee charged when creating a private auction.
 		sint64 privateAuctionFee;
 
+		/// Configured cancellation fee rate in basis points.
+		uint64 auctionCancellationFeeBasisPoints;
+
 		/// Configured maximum auction duration in days.
 		uint32 maxAuctionDurationDays;
 
@@ -221,17 +241,17 @@ struct NOST : public ContractBase
 		/// Minimum quantity a bidder may request in a batch auction; standard auctions sell the whole lot as one unit.
 		uint64 minimumPurchaseQuantity;
 
-		/// Initial Price for a standard auction; bids cannot be placed below this value.
-		uint64 initialPricePerUnit;
+		/// Initial Price for a standard auction; bids cannot be placed below this total auction price.
+		uint64 initialPrice;
 
-		/// Sale Price defined by the seller as the desired / minimum acceptable selling price.
-		uint64 salePricePerUnit;
+		/// Sale Price defined by the seller as the desired / minimum acceptable total selling price.
+		uint64 salePrice;
 
 		/// Minimum step by which each new bid must exceed the current highest bid.
-		uint64 minimumBidIncrementPerUnit;
+		uint64 minimumBidIncrement;
 
 		/// Buy Now price that immediately closes a standard auction once matched or exceeded.
-		uint64 buyNowPricePerUnit;
+		uint64 buyNowPrice;
 
 		/// Auction duration configured by the seller in days, capped by the contract configuration.
 		uint32 durationDays;
@@ -251,15 +271,32 @@ struct NOST : public ContractBase
 
 	struct PlaceBid_input
 	{
+		/// Identifier of the target auction.
 		id auctionId;
+
+		/// Requested quantity for a batch auction; ignored for a standard auction because the whole lot is sold as one unit.
 		uint64 quantity;
-		uint64 pricePerUnit;
+
+		/// Total amount the bidder commits for this bid.
+		uint64 bidAmount;
 	};
 
 	struct PlaceBid_output
 	{
 		uint64 escrowedAmount;
 		uint64 refundedAmount;
+		uint8 errorCode;
+	};
+
+	struct CancelAuction_input
+	{
+		id auctionId;
+	};
+
+	struct CancelAuction_output
+	{
+		uint64 refundedAmount;
+		uint64 cancellationFee;
 		uint8 errorCode;
 	};
 
@@ -422,6 +459,18 @@ struct NOST : public ContractBase
 		bool highestBidderExists;
 	};
 
+	struct CancelAuction_locals
+	{
+		AuctionData auction;
+		AuctionParticipantData participantData;
+		AuctionParticipantKey participantKey;
+		RollbackAuctionLotAssets_input rollbackAuctionLotAssetsInput;
+		RollbackAuctionLotAssets_output rollbackAuctionLotAssetsOutput;
+		DateAndTime currentDate;
+		uint64 cancellationBaseAmount;
+		sint64 participantIndex;
+	};
+
 	struct TransferShareManagementRights_input
 	{
 		Asset asset;
@@ -437,7 +486,8 @@ struct NOST : public ContractBase
 	{
 		REGISTER_USER_PROCEDURE(CreateAuction, 1);
 		REGISTER_USER_PROCEDURE(PlaceBid, 2);
-		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 3);
+		REGISTER_USER_PROCEDURE(CancelAuction, 3);
+		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 4);
 
 		REGISTER_USER_FUNCTION(GetAuction, 1);
 		REGISTER_USER_FUNCTION(GetAuctionParticipant, 2);
@@ -446,6 +496,7 @@ struct NOST : public ContractBase
 	INITIALIZE()
 	{
 		state.mut().privateAuctionFee = NOST_PRIVATE_AUCTION_FEE;
+		state.mut().auctionCancellationFeeBasisPoints = NOST_AUCTION_CANCELLATION_FEE_BP;
 		state.mut().maxAuctionDurationDays = NOST_AUCTION_MAX_DURATION_DAYS;
 	}
 
@@ -462,6 +513,7 @@ struct NOST : public ContractBase
 		{
 			// Initialize
 			state.mut().privateAuctionFee = NOST_PRIVATE_AUCTION_FEE;
+			state.mut().auctionCancellationFeeBasisPoints = NOST_AUCTION_CANCELLATION_FEE_BP;
 			state.mut().maxAuctionDurationDays = NOST_AUCTION_MAX_DURATION_DAYS;
 		}
 	}
@@ -696,7 +748,7 @@ struct NOST : public ContractBase
 
 				if (!resolveBatchAuctionCreateParams(locals.analyzeAuctionLotOutput.lotItemCount, locals.analyzeAuctionLotOutput.totalEscrowQuantity,
 				                                     input.minimumPurchaseQuantity, locals.resolvedQuantityForSale,
-				                                     locals.resolvedMinimumPurchaseQuantity, input.buyNowPricePerUnit))
+				                                     locals.resolvedMinimumPurchaseQuantity, input.buyNowPrice))
 				{
 					if (qpi.invocationReward() > 0)
 					{
@@ -706,9 +758,9 @@ struct NOST : public ContractBase
 				}
 				break;
 			case EAuctionType::Standard:
-				if (!resolveStandardAuctionCreateParams(input.minimumPurchaseQuantity, input.minimumBidIncrementPerUnit,
-				                                        locals.resolvedQuantityForSale, locals.resolvedMinimumPurchaseQuantity,
-				                                        input.buyNowPricePerUnit, input.initialPricePerUnit, input.salePricePerUnit))
+				if (!resolveStandardAuctionCreateParams(input.minimumPurchaseQuantity, input.minimumBidIncrement, locals.resolvedQuantityForSale,
+				                                        locals.resolvedMinimumPurchaseQuantity, input.buyNowPrice, input.initialPrice,
+				                                        input.salePrice))
 				{
 					if (qpi.invocationReward() > 0)
 					{
@@ -776,10 +828,10 @@ struct NOST : public ContractBase
 		locals.auction.auctionId = id::randomValue();
 		locals.auction.quantityForSale = locals.resolvedQuantityForSale;
 		locals.auction.minimumPurchaseQuantity = locals.resolvedMinimumPurchaseQuantity;
-		locals.auction.initialPricePerUnit = input.initialPricePerUnit;
-		locals.auction.salePricePerUnit = input.salePricePerUnit;
-		locals.auction.minimumBidIncrement = input.minimumBidIncrementPerUnit;
-		locals.auction.buyNowPricePerUnit = input.buyNowPricePerUnit;
+		locals.auction.initialPrice = input.initialPrice;
+		locals.auction.salePrice = input.salePrice;
+		locals.auction.minimumBidIncrement = input.minimumBidIncrement;
+		locals.auction.buyNowPrice = input.buyNowPrice;
 		locals.auction.auctionDurationSeconds = smul(static_cast<uint64>(input.durationDays), NOST_SECONDS_PER_DAY);
 		locals.auction.createdAt = qpi.now();
 		locals.auction.lastBidAt = locals.auction.createdAt;
@@ -881,7 +933,7 @@ struct NOST : public ContractBase
 		{
 			locals.effectiveQuantity = locals.auction.quantityForSale;
 		}
-		if (locals.effectiveQuantity == 0 || locals.effectiveQuantity < locals.auction.minimumPurchaseQuantity || input.pricePerUnit == 0)
+		if (locals.effectiveQuantity == 0 || locals.effectiveQuantity < locals.auction.minimumPurchaseQuantity || input.bidAmount == 0)
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -892,7 +944,7 @@ struct NOST : public ContractBase
 
 		if (locals.auction.type == EAuctionType::Batch)
 		{
-			if (input.pricePerUnit < locals.auction.salePricePerUnit)
+			if (input.bidAmount < locals.auction.salePrice)
 			{
 				if (qpi.invocationReward() > 0)
 				{
@@ -904,9 +956,9 @@ struct NOST : public ContractBase
 		}
 		else
 		{
-			if (locals.auction.highestBidPerUnit == 0)
+			if (locals.auction.highestBidPrice == 0)
 			{
-				if (input.pricePerUnit < locals.auction.initialPricePerUnit)
+				if (input.bidAmount < locals.auction.initialPrice)
 				{
 					if (qpi.invocationReward() > 0)
 					{
@@ -918,7 +970,7 @@ struct NOST : public ContractBase
 			}
 			else
 			{
-				if (input.pricePerUnit < sadd(locals.auction.highestBidPerUnit, locals.auction.minimumBidIncrement))
+				if (input.bidAmount < sadd(locals.auction.highestBidPrice, locals.auction.minimumBidIncrement))
 				{
 					if (qpi.invocationReward() > 0)
 					{
@@ -930,7 +982,7 @@ struct NOST : public ContractBase
 			}
 		}
 
-		locals.requiredEscrow = smul(locals.effectiveQuantity, input.pricePerUnit);
+		locals.requiredEscrow = input.bidAmount;
 		if (static_cast<uint64>(qpi.invocationReward()) < locals.requiredEscrow)
 		{
 			if (qpi.invocationReward() > 0)
@@ -952,7 +1004,7 @@ struct NOST : public ContractBase
 		locals.participantData.escrowedAmount = locals.requiredEscrow;
 		locals.participantData.requestedQuantity = locals.effectiveQuantity;
 		locals.participantData.allocatedQuantity = 0;
-		locals.participantData.pricePerUnit = input.pricePerUnit;
+		locals.participantData.bidAmount = input.bidAmount;
 		locals.participantData.lastBidTime = locals.currentDate;
 		locals.participantData.participant = qpi.invocator();
 		locals.participantData.isHighestBidder = 0;
@@ -984,16 +1036,16 @@ struct NOST : public ContractBase
 			locals.participantData.isHighestBidder = 1;
 			locals.participantData.isWinningBid = 1;
 			locals.auction.highestBidder = qpi.invocator();
-			locals.auction.highestBidPerUnit = input.pricePerUnit;
+			locals.auction.highestBidPrice = input.bidAmount;
 			locals.auction.highestBidQuantity = locals.effectiveQuantity;
 			locals.auction.highestBidAmount = locals.requiredEscrow;
 		}
 		else
 		{
-			if (input.pricePerUnit > locals.auction.highestBidPerUnit)
+			if (input.bidAmount > locals.auction.highestBidPrice)
 			{
 				locals.auction.highestBidder = qpi.invocator();
-				locals.auction.highestBidPerUnit = input.pricePerUnit;
+				locals.auction.highestBidPrice = input.bidAmount;
 				locals.auction.highestBidQuantity = locals.effectiveQuantity;
 				locals.auction.highestBidAmount = locals.requiredEscrow;
 				locals.participantData.isHighestBidder = 1;
@@ -1005,7 +1057,7 @@ struct NOST : public ContractBase
 		{
 			locals.auction.auctionDurationSeconds = sadd(locals.auction.auctionDurationSeconds, NOST_AUCTION_EXTENSION_SECONDS);
 		}
-		if (locals.auction.buyNowPricePerUnit > 0 && input.pricePerUnit >= locals.auction.buyNowPricePerUnit)
+		if (locals.auction.buyNowPrice > 0 && input.bidAmount >= locals.auction.buyNowPrice)
 		{
 			locals.auction.status = EAuctionStatus::Finalized;
 			locals.auction.settledAt = locals.currentDate;
@@ -1036,6 +1088,87 @@ struct NOST : public ContractBase
 		}
 
 		output.escrowedAmount = locals.requiredEscrow;
+		output.errorCode = static_cast<uint8>(EAuctionError::Success);
+	}
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(CancelAuction)
+	{
+		output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
+
+		if (!state.get().auctionList.get(input.auctionId, locals.auction))
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = static_cast<uint8>(EAuctionError::AuctionNotFound);
+			return;
+		}
+
+		if (locals.auction.status != EAuctionStatus::Active)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = static_cast<uint8>(EAuctionError::AuctionClosed);
+			return;
+		}
+
+		if (locals.auction.seller != qpi.invocator())
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = static_cast<uint8>(EAuctionError::Forbidden);
+			return;
+		}
+
+		locals.cancellationBaseAmount = max(locals.auction.highestBidAmount, locals.auction.salePrice);
+		output.cancellationFee = div<uint64>(smul(locals.cancellationBaseAmount, state.get().auctionCancellationFeeBasisPoints), 10000ULL);
+
+		if (static_cast<uint64>(qpi.invocationReward()) < output.cancellationFee)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = static_cast<uint8>(EAuctionError::InsufficientFunds);
+			return;
+		}
+
+		locals.participantIndex = state.get().participants.nextElementIndex(NULL_INDEX);
+		while (locals.participantIndex != NULL_INDEX)
+		{
+			locals.participantKey = state.get().participants.key(locals.participantIndex);
+			if (locals.participantKey.auctionId == input.auctionId)
+			{
+				locals.participantData = state.get().participants.value(locals.participantIndex);
+				if (locals.participantData.escrowedAmount > 0)
+				{
+					qpi.transfer(locals.participantData.participant, locals.participantData.escrowedAmount);
+					output.refundedAmount = sadd(output.refundedAmount, locals.participantData.escrowedAmount);
+				}
+				state.mut().participants.removeByKey(locals.participantKey);
+			}
+
+			locals.participantIndex = state.get().participants.nextElementIndex(locals.participantIndex);
+		}
+
+		locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.auctionLotItems;
+		CALL(RollbackAuctionLotAssets, locals.rollbackAuctionLotAssetsInput, locals.rollbackAuctionLotAssetsOutput);
+
+		locals.currentDate = qpi.now();
+		locals.auction.status = EAuctionStatus::Cancelled;
+		locals.auction.settledAt = locals.currentDate;
+		state.mut().auctionList.replace(input.auctionId, locals.auction);
+
+		if (static_cast<uint64>(qpi.invocationReward()) > output.cancellationFee)
+		{
+			qpi.transfer(qpi.invocator(), static_cast<uint64>(qpi.invocationReward()) - output.cancellationFee);
+		}
+
 		output.errorCode = static_cast<uint8>(EAuctionError::Success);
 	}
 
@@ -1079,12 +1212,22 @@ struct NOST : public ContractBase
 	}
 
 protected:
+	template<typename T>
+	static constexpr T min(const T& a, const T& b)
+	{
+		return (a < b) ? a : b;
+	}
+	template<typename T>
+	static constexpr T max(const T& a, const T& b)
+	{
+		return a > b ? a : b;
+	}
 	static bool resolveBatchAuctionCreateParams(uint64 lotItemCount, uint64 totalEscrowQuantity, uint64 minimumPurchaseQuantity,
-	                                            uint64& quantityForSale, uint64& resolvedMinimumPurchaseQuantity, uint64 buyNowPricePerUnit)
+	                                            uint64& quantityForSale, uint64& resolvedMinimumPurchaseQuantity, uint64 buyNowPrice)
 	{
 		quantityForSale = 0;
 		resolvedMinimumPurchaseQuantity = 0;
-		if (lotItemCount != 1 || minimumPurchaseQuantity == 0 || minimumPurchaseQuantity > totalEscrowQuantity || buyNowPricePerUnit != 0)
+		if (lotItemCount != 1 || minimumPurchaseQuantity == 0 || minimumPurchaseQuantity > totalEscrowQuantity || buyNowPrice != 0)
 		{
 			return false;
 		}
@@ -1093,23 +1236,22 @@ protected:
 		return true;
 	}
 
-	static bool resolveStandardAuctionCreateParams(uint64 minimumPurchaseQuantity, uint64 minimumBidIncrementPerUnit, uint64& quantityForSale,
-	                                               uint64& resolvedMinimumPurchaseQuantity, uint64 buyNowPricePerUnit, uint64 initialPricePerUnit,
-	                                               uint64 salePricePerUnit)
+	static bool resolveStandardAuctionCreateParams(uint64 minimumPurchaseQuantity, uint64 minimumBidIncrement, uint64& quantityForSale,
+	                                               uint64& resolvedMinimumPurchaseQuantity, uint64 buyNowPrice, uint64 initialPrice, uint64 salePrice)
 	{
 		quantityForSale = 0;
 		resolvedMinimumPurchaseQuantity = 0;
-		if (minimumPurchaseQuantity > 1 || minimumBidIncrementPerUnit == 0 || salePricePerUnit == 0)
+		if (minimumPurchaseQuantity > 1 || minimumBidIncrement == 0 || salePrice == 0)
 		{
 			return false;
 		}
 
-		if (initialPricePerUnit > salePricePerUnit)
+		if (initialPrice > salePrice)
 		{
 			return false;
 		}
 
-		if (buyNowPricePerUnit > 0 && (buyNowPricePerUnit < initialPricePerUnit || buyNowPricePerUnit < salePricePerUnit))
+		if (buyNowPrice > 0 && (buyNowPrice < initialPrice || buyNowPrice < salePrice))
 		{
 
 			return false;
