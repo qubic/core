@@ -783,8 +783,6 @@ struct NOST : public ContractBase
 		locals.auction.auctionDurationSeconds = smul(static_cast<uint64>(input.durationDays), NOST_SECONDS_PER_DAY);
 		locals.auction.createdAt = qpi.now();
 		locals.auction.lastBidAt = locals.auction.createdAt;
-		locals.auction.sellerDecisionDeadline = DateAndTime();
-		locals.auction.settledAt = DateAndTime();
 		locals.auction.seller = qpi.invocator();
 		locals.auction.requiredAccessAsset = input.requiredAccessAsset;
 		locals.auction.auctionLotItems = input.auctionLotItems;
@@ -865,9 +863,10 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.visibility == EAuctionVisibility::Private &&
-		    qpi.numberOfShares(locals.auction.requiredAccessAsset, AssetOwnershipSelect::byOwner(qpi.invocator()),
-		                       AssetPossessionSelect::byPossessor(qpi.invocator())) <= 0)
+		if (locals.auction.visibility == EAuctionVisibility::Private && !locals.auction.allowedBidderWallets.contains(qpi.invocator()) &&
+		    (isZeroAsset(locals.auction.requiredAccessAsset) ||
+		     qpi.numberOfShares(locals.auction.requiredAccessAsset, AssetOwnershipSelect::byOwner(qpi.invocator()),
+		                        AssetPossessionSelect::byPossessor(qpi.invocator())) <= 0))
 		{
 			if (qpi.invocationReward() > 0)
 			{
