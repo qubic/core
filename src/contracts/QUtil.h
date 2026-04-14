@@ -5,7 +5,7 @@ using namespace QPI;
 /*
 * A collection of useful functions for smart contract on Qubic:
 * - SendToManyV1 (STM1): Sending qu from a single address to multiple addresses (upto 25)
-* - TransferShareToManyV1 (TSTM1): Transferring asset shares from a single address to multiple addresses (upto 24)
+* - TransferSharesToManyV1 (TSTM1): Transferring asset shares from a single address to multiple addresses (upto 24)
 * - SendToManyBenchmark: Sending n transfers of 1 qu each to the specified number of addresses
 * - CreatePoll: Create a poll with a name, type, min amount, and GitHub link, and list of allowed assets
 * - Vote: Cast a Vote in a poll with a specified option (0 to 63), charging 100 QUs
@@ -64,7 +64,7 @@ constexpr sint64 QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER = 5;
 
 constexpr uint32 QUTIL_STMB_LOG_TYPE = 100001; // for bob to index
 
-// TransferShareToManyV1 (TSTM1) log/return codes
+// TransferSharesToManyV1 (TSTM1) log/return codes
 constexpr uint64 QUTIL_TSTM1_SUCCESS = 30;
 constexpr uint64 QUTIL_TSTM1_INVALID_AMOUNT = 31;
 constexpr uint64 QUTIL_TSTM1_INSUFFICIENT_SHARES = 32;
@@ -264,7 +264,7 @@ public:
         sint64 fee;
     };
 
-    struct TransferShareToManyV1_input
+    struct TransferSharesToManyV1_input
     {
         id issuer;
         uint64 assetName;
@@ -275,25 +275,27 @@ public:
             amt8, amt9, amt10, amt11, amt12, amt13, amt14, amt15,
             amt16, amt17, amt18, amt19, amt20, amt21, amt22, amt23;
     };
-    struct TransferShareToManyV1_output
+    struct TransferSharesToManyV1_output
     {
         sint32 returnCode;
     };
-    struct TransferShareToManyV1_locals
+    struct TransferSharesToManyV1_locals
     {
+        QX::Fees_input qxFeesInput;
+        QX::Fees_output qxFeesOutput;
+        sint64 tstm1InvocationFee;
         sint64 possessedShares;
         sint64 transferResult;
         Logger logger;
     };
 
-    struct TransferShareManagementRights_input
+    struct TransferSharesManagementRights_input
     {
         Asset asset;
         sint64 numberOfShares;
         uint32 newManagingContractIndex;
-        sint64 offeredTransferFee;
     };
-    struct TransferShareManagementRights_output
+    struct TransferSharesManagementRights_output
     {
         sint64 transferredNumberOfShares;
     };
@@ -862,13 +864,26 @@ public:
     * @param list of 24 amounts (192 bytes): 8 bytes(sint64) for each amount, leave 0 for unused slots
     * @return returnCode (0 means success)
     */
-    PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareToManyV1)
+    PUBLIC_PROCEDURE_WITH_LOCALS(TransferSharesToManyV1)
     {
         locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_TSTM1_TRIGGERED };
         LOG_INFO(locals.logger);
 
-        // Validate invocation fee
-        if (qpi.invocationReward() < state.get().smt1InvocationFee)
+        CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.qxFeesInput, locals.qxFeesOutput);
+        if (interContractCallError != NoCallError)
+        {
+            output.returnCode = QUTIL_TSTM1_INSUFFICIENT_FEE;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_TSTM1_INSUFFICIENT_FEE };
+            LOG_INFO(locals.logger);
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            return;
+        }
+
+        locals.tstm1InvocationFee = 25LL * locals.qxFeesOutput.transferFee;
+        if (qpi.invocationReward() < locals.tstm1InvocationFee)
         {
             output.returnCode = QUTIL_TSTM1_INSUFFICIENT_FEE;
             locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_TSTM1_INSUFFICIENT_FEE };
@@ -1125,11 +1140,12 @@ public:
         locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, 0, QUTIL_TSTM1_SUCCESS };
         LOG_INFO(locals.logger);
         output.returnCode = QUTIL_TSTM1_SUCCESS;
-        if (qpi.invocationReward() > state.get().smt1InvocationFee)
+        qpi.transfer(id(QX_CONTRACT_INDEX, 0, 0, 0), 24LL * (sint64)locals.qxFeesOutput.transferFee);
+        qpi.burn((sint64)locals.qxFeesOutput.transferFee);
+        if (qpi.invocationReward() > locals.tstm1InvocationFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.get().smt1InvocationFee);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.tstm1InvocationFee);
         }
-        qpi.burn(state.get().smt1InvocationFee);
         return;
 
     insufficientShares:
@@ -1174,75 +1190,19 @@ public:
      * @return transferredNumberOfShares The number of shares successfully transferred.
      *         Returns 0 if the operation fails.
      */
-    PUBLIC_PROCEDURE(TransferShareManagementRights)
+    PUBLIC_PROCEDURE(TransferSharesManagementRights)
     {
+        sint64 paidTransferFee;
         output.transferredNumberOfShares = 0;
-
-        // Basic validation
-        if (input.numberOfShares <= 0)
-        {
-            if (qpi.invocationReward() > 0)
-            {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            }
-            return;
-        }
-
-        // Reject invalid/self destination
-        if (input.newManagingContractIndex == 0 || input.newManagingContractIndex == SELF_INDEX)
-        {
-            if (qpi.invocationReward() > 0)
-            {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            }
-            return;
-        }
-
-        // Reject invalid fee
-        if (input.offeredTransferFee < 0)
-        {
-            if (qpi.invocationReward() > 0)
-            {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            }
-            return;
-        }
-
-        // Caller must fund at least the offered fee
-        if (qpi.invocationReward() < input.offeredTransferFee)
-        {
-            if (qpi.invocationReward() > 0)
-            {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            }
-            return;
-        }
-
-        // Make sure invocator really has these shares under QUTIL management
-        if (qpi.numberOfPossessedShares(
-                input.asset.assetName,
-                input.asset.issuer,
-                qpi.invocator(),
-                qpi.invocator(),
-                SELF_INDEX,
-                SELF_INDEX) < input.numberOfShares)
-        {
-            if (qpi.invocationReward() > 0)
-            {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            }
-            return;
-        }
-
-        // Release management rights from QUTIL to destination contract
-        if (qpi.releaseShares(
+        paidTransferFee = qpi.releaseShares(
                 input.asset,
                 qpi.invocator(),
                 qpi.invocator(),
                 input.numberOfShares,
                 input.newManagingContractIndex,
                 input.newManagingContractIndex,
-                input.offeredTransferFee) < 0)
+                qpi.invocationReward());
+        if (paidTransferFee < 0)
         {
             // Failed: refund everything sent with this invocation
             if (qpi.invocationReward() > 0)
@@ -1255,10 +1215,9 @@ public:
         // Success
         output.transferredNumberOfShares = input.numberOfShares;
 
-        // Safe refund: anything above the offered fee is definitely not needed
-        if (qpi.invocationReward() > input.offeredTransferFee)
+        if (qpi.invocationReward() > paidTransferFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.offeredTransferFee);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - paidTransferFee);
         }
     }
 
@@ -2084,8 +2043,8 @@ public:
         REGISTER_USER_PROCEDURE(CancelPoll, 6);
         REGISTER_USER_PROCEDURE(DistributeQuToShareholders, 7);
         REGISTER_USER_PROCEDURE(BurnQubicForContract, 8);
-        REGISTER_USER_PROCEDURE(TransferShareToManyV1, 9);
-        REGISTER_USER_PROCEDURE(TransferShareManagementRights, 10);
+        REGISTER_USER_PROCEDURE(TransferSharesToManyV1, 9);
+        REGISTER_USER_PROCEDURE(TransferSharesManagementRights, 10);
 
         REGISTER_USER_PROCEDURE(QueryPriceOracle, 100);
         REGISTER_USER_PROCEDURE(SubscribePriceOracle, 101);

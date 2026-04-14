@@ -111,11 +111,25 @@ public:
         return output;
     }
 
-    QUTIL::TransferShareToManyV1_output transferShareToManyV1(const id& invocator, const QUTIL::TransferShareToManyV1_input& input, sint64 fee) {
-        QUTIL::TransferShareToManyV1_output output;
+    QUTIL::TransferSharesToManyV1_output transferShareToManyV1(const id& invocator, const QUTIL::TransferSharesToManyV1_input& input, sint64 fee) {
+        QUTIL::TransferSharesToManyV1_output output;
         memset(&output, 0, sizeof(output));
         invokeUserProcedure(QUTIL_CONTRACT_INDEX, 9, input, output, invocator, fee);
         return output;
+    }
+
+    sint64 getQxTransferFee()
+    {
+        QX::Fees_input input;
+        QX::Fees_output output;
+        memset(&output, 0, sizeof(output));
+        callFunction(QX_CONTRACT_INDEX, 1, input, output);
+        return output.transferFee;
+    }
+
+    sint64 getTSTM1InvocationFee()
+    {
+        return 25LL * getQxTransferFee();
     }
 
     // Transfer share management rights from QX to QUTIL so that TransferShareToManyV1 can operate on them
@@ -129,15 +143,19 @@ public:
     }
 
     // Transfer share management rights from QUTIL to another contract
-    QUTIL::TransferShareManagementRights_output transferShareManagementRights(
-        const id& owner, const Asset& asset, sint64 numberOfShares, uint32 newManagingContractIndex, sint64 fee = 0)
+    QUTIL::TransferSharesManagementRights_output transferShareManagementRights(
+        const id& owner, const Asset& asset, sint64 numberOfShares, uint32 newManagingContractIndex, sint64 fee = -1)
     {
-        QUTIL::TransferShareManagementRights_input input;
+        QUTIL::TransferSharesManagementRights_input input;
         memset(&input, 0, sizeof(input));
         input.asset = asset;
         input.numberOfShares = numberOfShares;
         input.newManagingContractIndex = newManagingContractIndex;
-        QUTIL::TransferShareManagementRights_output output;
+        if (fee < 0)
+        {
+            fee = getQxTransferFee();
+        }
+        QUTIL::TransferSharesManagementRights_output output;
         memset(&output, 0, sizeof(output));
         invokeUserProcedure(QUTIL_CONTRACT_INDEX, 10, input, output, owner, fee);
         return output;
@@ -1787,9 +1805,9 @@ TEST(QUtilTest, DistributeQuToShareholders)
 // ====================================================================
 
 // Helper to create a zeroed TransferShareToManyV1_input
-static QUTIL::TransferShareToManyV1_input makeTSTM1Input(const id& issuer, uint64_t assetName)
+static QUTIL::TransferSharesToManyV1_input makeTSTM1Input(const id& issuer, uint64_t assetName)
 {
-    QUTIL::TransferShareToManyV1_input input;
+    QUTIL::TransferSharesToManyV1_input input;
     memset(&input, 0, sizeof(input));
     input.issuer = issuer;
     input.assetName = assetName;
@@ -1817,12 +1835,12 @@ TEST(QUtilTest, TransferShareToManyV1_Success_SingleDest)
     input.dst0 = dst0;
     input.amt0 = 1000;
 
-    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 fee = qutil.getTSTM1InvocationFee();
     sint64 senderBalanceBefore = getBalance(sender);
     auto output = qutil.transferShareToManyV1(sender, input, fee);
 
     EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
-    // Fee is burned, excess returned; exact fee = smt1InvocationFee
+    // Fee is consumed for transfer (24x to QX + 1x burned)
     EXPECT_EQ(getBalance(sender), senderBalanceBefore - fee);
     // dst0 should now possess 1000 shares
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst0, dst0, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 1000);
@@ -1857,7 +1875,7 @@ TEST(QUtilTest, TransferShareToManyV1_Success_MultipleDests)
     input.dst2 = dst2;
     input.amt2 = 500;
 
-    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 fee = qutil.getTSTM1InvocationFee();
     auto output = qutil.transferShareToManyV1(sender, input, fee);
 
     EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
@@ -1888,13 +1906,13 @@ TEST(QUtilTest, TransferShareToManyV1_Success_ExcessFeeReturned)
     input.dst0 = dst0;
     input.amt0 = 100;
 
-    sint64 excessFee = 1000; // Much more than smt1InvocationFee (10)
+    sint64 excessFee = qutil.getTSTM1InvocationFee() + 1000;
     sint64 senderBalanceBefore = getBalance(sender);
     auto output = qutil.transferShareToManyV1(sender, input, excessFee);
 
     EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
-    // Only smt1InvocationFee is burned, rest returned
-    EXPECT_EQ(getBalance(sender), senderBalanceBefore - QUTIL_STM1_INVOCATION_FEE);
+    // Only tstm1 invocation fee is consumed, rest returned
+    EXPECT_EQ(getBalance(sender), senderBalanceBefore - qutil.getTSTM1InvocationFee());
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, dst0, dst0, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 100);
 }
 
@@ -1919,7 +1937,7 @@ TEST(QUtilTest, TransferShareToManyV1_InsufficientFee)
     input.dst0 = dst0;
     input.amt0 = 100;
 
-    sint64 fee = QUTIL_STM1_INVOCATION_FEE - 1; // 9, below 10
+    sint64 fee = qutil.getTSTM1InvocationFee() - 1;
     sint64 senderBalanceBefore = getBalance(sender);
     auto output = qutil.transferShareToManyV1(sender, input, fee);
 
@@ -1952,7 +1970,7 @@ TEST(QUtilTest, TransferShareToManyV1_InvalidAmount_Negative)
     input.dst0 = dst0;
     input.amt0 = -1; // Negative amount
 
-    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 fee = qutil.getTSTM1InvocationFee();
     sint64 senderBalanceBefore = getBalance(sender);
     auto output = qutil.transferShareToManyV1(sender, input, fee);
 
@@ -1988,7 +2006,7 @@ TEST(QUtilTest, TransferShareToManyV1_InvalidAmount_NegativeLaterSlot)
     input.dst1 = dst1;
     input.amt1 = -5; // Negative in second slot
 
-    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 fee = qutil.getTSTM1InvocationFee();
     auto output = qutil.transferShareToManyV1(sender, input, fee);
 
     EXPECT_EQ(output.returnCode, QUTIL_TSTM1_INVALID_AMOUNT);
@@ -2018,7 +2036,7 @@ TEST(QUtilTest, TransferShareToManyV1_InsufficientShares)
     input.dst0 = dst0;
     input.amt0 = 5001; // More than possessed (5000)
 
-    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 fee = qutil.getTSTM1InvocationFee();
     sint64 senderBalanceBefore = getBalance(sender);
     auto output = qutil.transferShareToManyV1(sender, input, fee);
 
@@ -2055,7 +2073,7 @@ TEST(QUtilTest, TransferShareToManyV1_InsufficientShares_SumExceeds)
     input.dst1 = dst1;
     input.amt1 = 2001; // 3000 + 2001 = 5001 > 5000
 
-    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 fee = qutil.getTSTM1InvocationFee();
     sint64 senderBalanceBefore = getBalance(sender);
     auto output = qutil.transferShareToManyV1(sender, input, fee);
 
@@ -2091,7 +2109,7 @@ TEST(QUtilTest, TransferShareToManyV1_ZeroAmounts_SkipsTransfer)
     input.dst1 = dst1;
     input.amt1 = 500;
 
-    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 fee = qutil.getTSTM1InvocationFee();
     auto output = qutil.transferShareToManyV1(sender, input, fee);
 
     EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
@@ -2126,7 +2144,7 @@ TEST(QUtilTest, TransferShareToManyV1_NullDest_SkipsTransfer)
     input.dst1 = dst1;
     input.amt1 = 200;
 
-    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 fee = qutil.getTSTM1InvocationFee();
     auto output = qutil.transferShareToManyV1(sender, input, fee);
 
     EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
@@ -2184,7 +2202,7 @@ TEST(QUtilTest, TransferShareToManyV1_AllSlotsUsed)
     input.dst22 = dsts[22]; input.amt22 = 1000;
     input.dst23 = dsts[23]; input.amt23 = 1000;
 
-    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 fee = qutil.getTSTM1InvocationFee();
     auto output = qutil.transferShareToManyV1(sender, input, fee);
 
     EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
@@ -2220,7 +2238,7 @@ TEST(QUtilTest, TransferShareToManyV1_ExactShares_Success)
     input.dst1 = dst1;
     input.amt1 = 2000; // 3000 + 2000 = 5000 (exact)
 
-    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 fee = qutil.getTSTM1InvocationFee();
     auto output = qutil.transferShareToManyV1(sender, input, fee);
 
     EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
@@ -2248,7 +2266,7 @@ TEST(QUtilTest, TransferShareToManyV1_NoShares)
     input.dst0 = dst0;
     input.amt0 = 1;
 
-    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 fee = qutil.getTSTM1InvocationFee();
     sint64 senderBalanceBefore = getBalance(sender);
     auto output = qutil.transferShareToManyV1(sender, input, fee);
 
@@ -2280,7 +2298,7 @@ TEST(QUtilTest, TransferShareToManyV1_AllZeroAmounts_Success)
     input.dst0 = dst0;
     input.amt0 = 0;
 
-    sint64 fee = QUTIL_STM1_INVOCATION_FEE;
+    sint64 fee = qutil.getTSTM1InvocationFee();
     auto output = qutil.transferShareToManyV1(sender, input, fee);
 
     EXPECT_EQ(output.returnCode, QUTIL_TSTM1_SUCCESS);
@@ -2400,7 +2418,7 @@ TEST(QUtilTest, TransferShareManagementRights_Fail_NoSharesManagedByQUtil)
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 5000);
 }
 
-TEST(QUtilTest, TransferShareManagementRights_FeeRefunded)
+TEST(QUtilTest, TransferShareManagementRights_RefundsUnusedInvocationReward)
 {
     ContractTestingQUtil qutil;
 
@@ -2416,13 +2434,12 @@ TEST(QUtilTest, TransferShareManagementRights_FeeRefunded)
     qutil.transferAsset(issuer, user, asset, 5000);
     qutil.transferShareManagementToQUtil(user, asset, 5000);
 
-    // Send extra QU — it should all be refunded (procedure charges no fee)
+    // Send extra QU — only the actual release fee is consumed and the remainder refunded
     sint64 balanceBefore = getBalance(user);
     auto output = qutil.transferShareManagementRights(user, asset, 5000, QX_CONTRACT_INDEX, 1000);
     EXPECT_EQ(output.transferredNumberOfShares, 5000);
 
-    // All QU refunded — no fee charged
-    EXPECT_EQ(getBalance(user), balanceBefore);
+    EXPECT_EQ(getBalance(user), balanceBefore - qutil.getQxTransferFee());
 }
 
 TEST(QUtilTest, TransferShareManagementRights_EndToEnd_BatchTransferThenRelease)
@@ -2436,6 +2453,8 @@ TEST(QUtilTest, TransferShareManagementRights_EndToEnd_BatchTransferThenRelease)
 
     increaseEnergy(issuer, 2000000000);
     increaseEnergy(sender, 10000000);
+    increaseEnergy(recipient1, 10000000);
+    increaseEnergy(recipient2, 10000000);
 
     unsigned long long assetName = assetNameFromString("TMRF");
     Asset asset = { issuer, assetName };
@@ -2452,7 +2471,7 @@ TEST(QUtilTest, TransferShareManagementRights_EndToEnd_BatchTransferThenRelease)
     tstmInput.amt0 = 3000;
     tstmInput.dst1 = recipient2;
     tstmInput.amt1 = 2000;
-    auto tstmOutput = qutil.transferShareToManyV1(sender, tstmInput, QUTIL_STM1_INVOCATION_FEE);
+    auto tstmOutput = qutil.transferShareToManyV1(sender, tstmInput, qutil.getTSTM1InvocationFee());
     EXPECT_EQ(tstmOutput.returnCode, QUTIL_TSTM1_SUCCESS);
 
     // Recipients' shares are managed by QUTIL
