@@ -10,6 +10,7 @@
 #include "oracle_core/oracle_interfaces_def.h"
 #include "network_messages/custom_mining.h"
 #include "contract_core/qpi_hash_map_impl.h"
+#include "oracle_core/oracle_interfaces_def.h"
 #include "kangaroo_twelve.h"
 
 
@@ -18,17 +19,31 @@ class CustomQubicMiningStorage
 public:
     static constexpr unsigned int scheduleOracleQueryTickOffset = 8; // offset of 8 ticks to ensure propagation through the network
 
-    static constexpr unsigned int maxNumTasks = 32;
+    static constexpr unsigned int maxNumTasks = 16;
 
     // A struct for storing an active doge mining task on the node.
     struct StoredDogeMiningTask
     {
+        uint64_t jobId;
+
         uint8_t dispatcherTarget[32]; // dispatcher target, usually easier than pool and network difficulty, full 32-byte representation
 
-        // Full header can be constructed via concatenating version + prevHash + merkleRoot + miner's nTime + nBits + miner's nonce.
         uint8_t version[4]; // 4 bytes version
-        uint8_t prevHash[32]; // 32 bytes prevBlockHash
         uint8_t nBits[4]; // 4 bytes network difficulty (nBits)
+        uint8_t prevHash[32]; // 32 bytes prevBlockHash
+        uint32_t extraNonce1NumBytes;
+        uint32_t coinbase1NumBytes;
+        uint32_t coinbase2NumBytes;
+        uint32_t numMerkleBranches;
+
+        uint8_t additionalData[OI::DogeShareValidation::OracleQuery::additionalDataSize];
+        // Layout for additional data:
+        // - extraNonce1
+        // - coinbase1
+        // - coinbase2
+        // - merkleBranch1NumBytes (unsigned int), ... , merkleBranchNNumBytes (unsigned int)
+        // - merkleBranch1, ... , merkleBranchN
+        // Note: The size of the components contained in the additional data varies, hence the total occupied bytes in the array is not fixed.
     };
 
     enum OracleQueryStatus : uint8_t
@@ -78,6 +93,9 @@ public:
     // the task description is written into the provided pointer.
     int addSolution(const CustomQubicMiningSolution* solution, unsigned int size, unsigned char* taskDescription = nullptr);
 
+    // Return true if the solution belongs to an active task and has not been counted for revenue points before, false otherwise.
+    bool countSolutionForRevenue(uint8_t customMiningType, uint64_t jobId, const m256i& solutionHash);
+
     // Return true if there is an active task with the given jobId and customMiningType, false otherwise.
     bool containsTask(uint8_t customMiningType, uint64_t jobId);
 
@@ -123,10 +141,17 @@ private:
     unsigned int nextTaskIndex[CustomMiningType::TOTAL_NUM_TYPES];
     OracleQueryInfo oracleQueries[CustomMiningType::TOTAL_NUM_TYPES][maxNumTasks * maxNumSolutionsPerTask];
 
-    // For each task, we store a set of received solution hashes to prevent duplicate solutions.
+    // For each task, we store a set of received solution hashes to prevent sending oracle queries for duplicate solutions.
+    // Currently, only own solutions (i.e. from any comp index running on the node) are stored.
     // Two-dimensional array [CustomMiningType::TOTAL_NUM_TYPES][maxNumTasks] indexed by mining type and type-specific task index.
     QPI::HashSet<m256i, maxNumSolutionsPerTask>* receivedSolutions;
     static constexpr unsigned long long receivedSolutionsSize = CustomMiningType::TOTAL_NUM_TYPES * maxNumTasks * sizeof(QPI::HashSet<m256i, maxNumSolutionsPerTask>);
+
+    // For each task, we store a set of solution hashes that were already counted for revenue points to prevent counting duplicates.
+    // Any solution from any computor that received a valid oracle reply is stored.
+    // Two-dimensional array [CustomMiningType::TOTAL_NUM_TYPES][maxNumTasks] indexed by mining type and type-specific task index.
+    QPI::HashSet<m256i, maxNumSolutionsPerTask>* countedRevSolutions;
+    static constexpr unsigned long long countedRevSolutionsSize = CustomMiningType::TOTAL_NUM_TYPES * maxNumTasks * sizeof(QPI::HashSet<m256i, maxNumSolutionsPerTask>);
 
     // Storage for type-specific task descriptions.
     StoredDogeMiningTask dogeTasks[maxNumTasks];
@@ -249,15 +274,20 @@ bool CustomQubicMiningStorage::isQueryEqual(uint8_t customMiningType, unsigned i
 {
     if (customMiningType == CustomMiningType::DOGE)
     {
+        // A doge query is treated as equal if the jobId and the solution (nonce, extraNonce2, time) are all the same.
         const auto* dogeQuery = reinterpret_cast<const OI::DogeShareValidation::OracleQuery*>(typeSpecificOracleQuery);
+        if (dogeQuery->jobId != dogeOracleQueries[queryIndex].jobId)
+            return false;
         for (int i = 0; i < 4; ++i)
         {
             if (dogeQuery->solutionNonce.get(i) != dogeOracleQueries[queryIndex].solutionNonce.get(i))
                 return false;
+            if (dogeQuery->solutionTime.get(i) != dogeOracleQueries[queryIndex].solutionTime.get(i))
+                return false;
         }
-        for (int i = 0; i < 32; ++i)
+        for (int i = 0; i < 8; ++i)
         {
-            if (dogeQuery->taskPartialHeaderPrevBlockHash.get(i) != dogeOracleQueries[queryIndex].taskPartialHeaderPrevBlockHash.get(i))
+            if (dogeQuery->solutionExtraNonce2.get(i) != dogeOracleQueries[queryIndex].solutionExtraNonce2.get(i))
                 return false;
         }
         return true;
@@ -287,6 +317,8 @@ bool CustomQubicMiningStorage::init()
 
     if (!allocPoolWithErrorLog(L"CustomQubicMiningStorage::receivedSolutions ", receivedSolutionsSize, (void**)&receivedSolutions, __LINE__))
         return false;
+    if (!allocPoolWithErrorLog(L"CustomQubicMiningStorage::countedRevSolutions ", countedRevSolutionsSize, (void**)&countedRevSolutions, __LINE__))
+        return false;
 
     setMem(dogeTasks, sizeof(dogeTasks), 0);
     setMem(dogeOracleQueries, sizeof(dogeOracleQueries), 0);
@@ -300,6 +332,8 @@ void CustomQubicMiningStorage::deinit()
 {
     if (receivedSolutions)
         freePool(receivedSolutions);
+    if (countedRevSolutions)
+        freePool(countedRevSolutions);
 }
 
 bool CustomQubicMiningStorage::addTask(const CustomQubicMiningTask* task, unsigned int size)
@@ -312,27 +346,38 @@ bool CustomQubicMiningStorage::addTask(const CustomQubicMiningTask* task, unsign
         if (task->customMiningType == CustomMiningType::DOGE)
         {
             // Type-specific task info is stored behind general CustomQubicMiningTask struct.
-            if (size < sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask))
+            static constexpr unsigned int combinedTaskStructSize = sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask);
+            if (size < combinedTaskStructSize)
                 return false;
+            unsigned int additionalDataSize = size - combinedTaskStructSize;
+            if (additionalDataSize > OI::DogeShareValidation::OracleQuery::additionalDataSize)
+                return false;
+
+            const auto* taskAsCharPtr = reinterpret_cast<const char*>(task);
+
             unsigned int& nextDogeTaskId = nextTaskIndex[CustomMiningType::DOGE];
-            const QubicDogeMiningTask* dogeTask = reinterpret_cast<const QubicDogeMiningTask*>(reinterpret_cast<const char*>(task) + sizeof(CustomQubicMiningTask));
-            if (dogeTask->cleanJobQueue)
-            {
-                setMem(activeTasks[CustomMiningType::DOGE], maxNumTasks * sizeof(uint64_t), 0);
-                for (int t = 0; t < maxNumTasks; ++t)
-                    receivedSolutions[CustomMiningType::DOGE * maxNumTasks + t].reset();
-                setMem(dogeTasks, sizeof(dogeTasks), 0);
-                nextDogeTaskId = 0;
-            }
-            else
-            {
-                // If not cleaning job queue, we will override the oldest task. Clean the corresponding solution hash set.
-                receivedSolutions[CustomMiningType::DOGE * maxNumTasks + nextDogeTaskId].reset();
-            }
+            const QubicDogeMiningTask* dogeTask = reinterpret_cast<const QubicDogeMiningTask*>(taskAsCharPtr + sizeof(CustomQubicMiningTask));
+
+            // If maxNumTasks is already reached, we will override the oldest task. Clean the corresponding solution hash sets.
+            receivedSolutions[CustomMiningType::DOGE * maxNumTasks + nextDogeTaskId].reset();
+            countedRevSolutions[CustomMiningType::DOGE * maxNumTasks + nextDogeTaskId].reset();
+
+            dogeTasks[nextDogeTaskId].jobId = task->jobId;
             convertTargetCompactToFull(dogeTask->dispatcherDifficulty, dogeTasks[nextDogeTaskId].dispatcherTarget);
-            copyMem(dogeTasks[nextDogeTaskId].nBits, dogeTask->nBits, 4);
             copyMem(dogeTasks[nextDogeTaskId].version, dogeTask->version, 4);
+            copyMem(dogeTasks[nextDogeTaskId].nBits, dogeTask->nBits, 4);
             copyMem(dogeTasks[nextDogeTaskId].prevHash, dogeTask->prevHash, 32);
+            dogeTasks[nextDogeTaskId].extraNonce1NumBytes = dogeTask->extraNonce1NumBytes;
+            dogeTasks[nextDogeTaskId].coinbase1NumBytes = dogeTask->coinbase1NumBytes;
+            dogeTasks[nextDogeTaskId].coinbase2NumBytes = dogeTask->coinbase2NumBytes;
+            dogeTasks[nextDogeTaskId].numMerkleBranches = dogeTask->numMerkleBranches;
+
+            if (additionalDataSize > 0)
+                copyMem(dogeTasks[nextDogeTaskId].additionalData, taskAsCharPtr + combinedTaskStructSize, additionalDataSize);
+            // Zero out the leftover tail.
+            if (additionalDataSize < OI::DogeShareValidation::OracleQuery::additionalDataSize)
+                setMem(dogeTasks[nextDogeTaskId].additionalData + additionalDataSize, OI::DogeShareValidation::OracleQuery::additionalDataSize - additionalDataSize, 0);
+
             typeSpecificTaskIndex = nextDogeTaskId;
             nextDogeTaskId = (nextDogeTaskId + 1) % maxNumTasks;
         }
@@ -380,6 +425,30 @@ int CustomQubicMiningStorage::addSolution(const CustomQubicMiningSolution* solut
     QPI::sint64 indexAdded = receivedSolutions[solution->customMiningType * maxNumTasks + typeSpecificTaskIndex].add(digest);
 
     return (indexAdded == QPI::NULL_INDEX) ? 0 : 1;
+}
+
+bool CustomQubicMiningStorage::countSolutionForRevenue(uint8_t customMiningType, uint64_t jobId, const m256i& solutionHash)
+{
+    if (customMiningType >= CustomMiningType::TOTAL_NUM_TYPES)
+        return false; // unsupported mining type
+
+    LockGuard guard(lock);
+
+    // Check if the solution corresponds to an active task.
+    int typeSpecificTaskIndex = findTask(customMiningType, jobId);
+    if (typeSpecificTaskIndex < 0)
+        return false;
+
+    if (countedRevSolutions[customMiningType * maxNumTasks + typeSpecificTaskIndex].contains(solutionHash))
+        return false;
+
+    // Try to add the solution hash to the hash set for this task. May return NULL_INDEX if the set is full.
+    // If the set ever gets full, we have to increase maxNumSolutionsPerTask.
+    ASSERT(countedRevSolutions[customMiningType * maxNumTasks + typeSpecificTaskIndex].population()
+        < countedRevSolutions[customMiningType * maxNumTasks + typeSpecificTaskIndex].capacity());
+    QPI::sint64 indexAdded = countedRevSolutions[customMiningType * maxNumTasks + typeSpecificTaskIndex].add(solutionHash);
+
+    return (indexAdded != QPI::NULL_INDEX);
 }
 
 bool CustomQubicMiningStorage::containsTask(uint8_t customMiningType, uint64_t jobId)
