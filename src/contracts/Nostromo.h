@@ -1100,7 +1100,12 @@ protected:
 	{
 		quantityForSale = 0;
 		resolvedMinimumPurchaseQuantity = 0;
-		if (minimumPurchaseQuantity > 1 || minimumBidIncrementPerUnit == 0)
+		if (minimumPurchaseQuantity > 1 || minimumBidIncrementPerUnit == 0 || salePricePerUnit == 0)
+		{
+			return false;
+		}
+
+		if (initialPricePerUnit > salePricePerUnit)
 		{
 			return false;
 		}
