@@ -30,7 +30,7 @@ static const unsigned char whiteListPeers[][4] = {
 // Enables basic DOGE oracle query handling, i.e. an oracle query tx is broadcasted once when a solution from an associated comp pool arrives.
 #define BASIC_DOGE_ORACLE_QUERIES 1
 // Enables retry mechanisms for DOGE oracle queries where the query tx was either not included in the scheduled tick or the oracle query failed (e.g. timeout).
-#define RETRY_DOGE_ORACLE_QUERIES 0
+#define RETRY_DOGE_ORACLE_QUERIES 1
 
 // DO NOT CHANGE: Basic DOGE oracle queries need to be enabled to support the retry mechanisms.
 #if RETRY_DOGE_ORACLE_QUERIES && !BASIC_DOGE_ORACLE_QUERIES
