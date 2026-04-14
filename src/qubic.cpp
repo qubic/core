@@ -3610,6 +3610,11 @@ static void processTick(unsigned long long processorNumber)
 
         // Process all transaction of the tick
         PROFILE_NAMED_SCOPE_BEGIN("processTick(): process transactions");
+        unsigned int nTickLeaderTx = 0;
+        unsigned int nProtocolTx = 0;
+        unsigned int nContractTx = 0;
+        unsigned int nOtherTx = 0;
+        const m256i& tickLeaderKey = broadcastedComputors.computors.publicKeys[system.tick % NUMBER_OF_COMPUTORS];
         for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
         {
             if (!isZero(nextTickData.transactionDigests[transactionIndex]))
@@ -3619,6 +3624,29 @@ static void processTick(unsigned long long processorNumber)
                     Transaction* transaction = ts.tickTransactions(tsCurrentTickTransactionOffsets[transactionIndex]);
                     logger.registerNewTx(transaction->tick, transactionIndex);
                     processTickTransaction(transaction, transactionIndex, processorNumber);
+
+                    if (transaction->sourcePublicKey == tickLeaderKey)
+                    {
+                        nTickLeaderTx++;
+                    }
+                    else if (isZero(transaction->destinationPublicKey))
+                    {
+                        nProtocolTx++;
+                    }
+                    else
+                    {
+                        m256i masked = transaction->destinationPublicKey;
+                        masked.m256i_u64[0] &= ~(unsigned long long)(MAX_NUMBER_OF_CONTRACTS - 1);
+                        unsigned int cIdx = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
+                        if (isZero(masked) && cIdx < contractCount)
+                        {
+                            nContractTx++;
+                        }
+                        else
+                        {
+                            nOtherTx++;
+                        }
+                    }
                 }
                 else
                 {
@@ -3627,6 +3655,18 @@ static void processTick(unsigned long long processorNumber)
                         criticalSituation = 1;
                     }
                 }
+            }
+        }
+        // Record per-tick TX counts for V2 revenue (counted here where TX bodies are guaranteed present)
+        {
+            unsigned int tickOffset = system.tick - system.initialTick;
+            if (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH)
+            {
+                gEpochRevenueData.perTickTxTickLeaderCount[tickOffset] = (unsigned short)nTickLeaderTx;
+                gEpochRevenueData.perTickTxCount[tickOffset] = (unsigned short)(nProtocolTx + nContractTx + nOtherTx);
+                gEpochRevenueData.perTickProtocolTxCount[tickOffset] = (unsigned short)nProtocolTx;
+                gEpochRevenueData.perTickContractTxCount[tickOffset] = (unsigned short)nContractTx;
+                gEpochRevenueData.perTickOtherTxCount[tickOffset] = (unsigned short)nOtherTx;
             }
         }
         PROFILE_SCOPE_END();
@@ -4368,6 +4408,7 @@ static void beginEpoch()
     setMem(system.futureComputors, sizeof(system.futureComputors), 0);
 
     resetCustomMining();
+    setMem(&gEpochRevenueData, sizeof(gEpochRevenueData), 0);
 
     // Reset resource testing digest at beginning of the epoch
     // there are many global variables that were init at declaration, may need to re-check all of them again
@@ -4459,76 +4500,10 @@ static void endEpoch()
             gEpochRevenueData.dogeMiningScore[i] = gDogeMiningSharesCounter.getSharesCount(i);
         }
 
-        // Revenue V2: filter transactions. Run here but have not applied yet
-        // Make sure run after gRevenueComponents is calculated because it use some of data
+        // Per-tick TX counts already recorded during processTick()
         gEpochRevenueData.initialTick = system.initialTick;
         gEpochRevenueData.totalTicks = system.tick - system.initialTick;
-        for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
-        {
-            const m256i& tickLeaderPublicKey = broadcastedComputors.computors.publicKeys[tick % NUMBER_OF_COMPUTORS];
 
-            // Defensive lock, actually at the end of epoch, no more tick data written. 
-            ts.tickData.acquireLock();
-            unsigned int tickOffset = tick - system.initialTick;
-            TickData& td = ts.tickData.getByTickInCurrentEpoch(tick);
-            if ((td.epoch == system.epoch) && (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH))
-            {
-                unsigned int nTickLeader = 0;
-                unsigned int nProtocol = 0;
-                unsigned int nContract = 0;
-                unsigned int nOther = 0;
-                auto* offsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(tick);
-                for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
-                {
-                    if (isZero(td.transactionDigests[i]))
-                    {
-                        continue;
-                    }
-
-                    // Make sure tx body existed
-                    if (!offsets[i])
-                    {
-                        continue;
-                    }
-
-                    const Transaction* tx = ts.tickTransactions(offsets[i]);
-
-                    // skip leader's own txs
-                    if (tx->sourcePublicKey == tickLeaderPublicKey)
-                    {
-                        nTickLeader++;
-                        continue;
-                    }
-
-                    if (isZero(tx->destinationPublicKey))
-                    {
-                        nProtocol++;
-                    }
-                    else
-                    {
-                        m256i masked = tx->destinationPublicKey;
-                        masked.m256i_u64[0] &= ~(unsigned long long)(MAX_NUMBER_OF_CONTRACTS - 1);
-                        unsigned int cIdx = (unsigned int)tx->destinationPublicKey.m256i_u64[0];
-                        if (isZero(masked) && cIdx < contractCount)
-                        {
-                            nContract++;
-                        }
-                        else
-                        {
-                            nOther++;
-                        }
-                    }
-
-                }
-                gEpochRevenueData.perTickTxTickLeaderCount[tickOffset] = (unsigned short)nTickLeader;
-
-                gEpochRevenueData.perTickTxCount[tickOffset] = (unsigned short)(nProtocol + nContract + nOther);
-                gEpochRevenueData.perTickProtocolTxCount[tickOffset] = (unsigned short)nProtocol;
-                gEpochRevenueData.perTickContractTxCount[tickOffset] = (unsigned short)nContract;
-                gEpochRevenueData.perTickOtherTxCount[tickOffset] = (unsigned short)nOther;
-            }
-            ts.tickData.releaseLock();
-        }
         // Fetch oracle revenue points (accumulated during epoch, reset at beginEpoch)
         {
             OracleRevenuePoints oracleRevPoints;
@@ -4862,7 +4837,18 @@ static bool saveAllNodeStates()
         logToConsole(L"Failed to save etalon tick and other states");
         return false;
     }
-    
+
+    // Save V2 per-tick TX counts (recorded during processTick)
+    REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+    REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+    REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+    savedSize = save(REVENUE_DATA_SNAPSHOT_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData, directory);
+    if (savedSize != sizeof(gEpochRevenueData))
+    {
+        logToConsole(L"Failed to save revenue data snapshot");
+        return false;
+    }
+
     CHAR16 SPECTRUM_DIGEST_FILE_NAME[] = L"snapshotSpectrumDigest";
     savedSize = save(SPECTRUM_DIGEST_FILE_NAME, spectrumDigestsSizeInByte, (unsigned char*)spectrumDigests, directory);
     logToConsole(L"Saving spectrum digests");
@@ -5029,6 +5015,17 @@ static bool loadAllNodeStates()
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
     gCustomMiningSharesCounter.loadAllDataFromArray(nodeStateBuffer.customMiningSharesCounterData);
     gDogeMiningSharesCounter.loadAllDataFromArray(nodeStateBuffer.dogeMiningSharesCounterData);
+
+    // Load V2 per-tick TX counts
+    REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+    REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+    REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+    long long revenueDataSize = load(REVENUE_DATA_SNAPSHOT_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData, directory);
+    if (revenueDataSize != sizeof(gEpochRevenueData))
+    {
+        logToConsole(L"Failed to load revenue data snapshot, starting with zero counts");
+        setMem(&gEpochRevenueData, sizeof(gEpochRevenueData), 0);
+    }
 
     // update own computor indices
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
