@@ -1,29 +1,14 @@
 using namespace QPI;
 
-constexpr uint64 NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT = 20000000ULL;
-constexpr uint64 NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT = 100000000ULL;
-constexpr uint64 NOSTROMO_TIER_DOG_STAKE_AMOUNT = 200000000ULL;
-constexpr uint64 NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT = 800000000ULL;
-constexpr uint64 NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT = 3200000000ULL;
-constexpr uint64 NOSTROMO_QX_TOKEN_ISSUANCE_FEE = 1000000000ULL;
-
-constexpr uint32 NOSTROMO_TIER_FACEHUGGER_POOL_WEIGHT = 55;
-constexpr uint32 NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT = 300;
-constexpr uint32 NOSTROMO_TIER_DOG_POOL_WEIGHT = 750;
-constexpr uint32 NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT = 3050;
-constexpr uint32 NOSTROMO_TIER_WARRIOR_POOL_WEIGHT = 13750;
-
-constexpr uint32 NOSTROMO_TIER_FACEHUGGER_UNSTAKE_FEE = 5;
-constexpr uint32 NOSTROMO_TIER_CHESTBURST_UNSTAKE_FEE = 4;
-constexpr uint32 NOSTROMO_TIER_DOG_UNSTAKE_FEE = 3;
-constexpr uint32 NOSTROMO_TIER_XENOMORPH_UNSTAKE_FEE = 2;
-constexpr uint32 NOSTROMO_TIER_WARRIOR_UNSTAKE_FEE = 1;
-constexpr uint32 NOSTROMO_CREATE_PROJECT_FEE = 100000000;
-
-constexpr uint32 NOSTROMO_MAX_USER = 262144;
-constexpr uint32 NOSTROMO_MAX_NUMBER_PROJECT = 262144;
-constexpr uint32 NOSTROMO_MAX_NUMBER_TOKEN = 262144;
-constexpr uint32 NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST = 128;
+constexpr uint64 NOST_AUCTION_NUM = 2048;
+constexpr uint64 NOST_AUCTION_METADATA_CID_LENGTH = 64;
+constexpr uint64 NOST_AUCTION_PARTICIPANT_NUM = 4096;
+constexpr uint64 NOST_AUCTION_LOT_ITEM_NUM = 64;
+constexpr uint64 NOST_AUCTION_ALLOWED_WALLET_NUM = 128;
+constexpr uint64 NOST_PRIVATE_AUCTION_FEE = 50000000ULL;
+constexpr uint64 NOST_AUCTION_EXTENSION_SECONDS = 300ULL;
+constexpr uint64 NOST_SECONDS_PER_DAY = 86400ULL;
+constexpr uint64 NOST_AUCTION_SELLER_DECISION_WINDOW_SECONDS = 604800ULL;
 
 struct NOST2
 {
@@ -31,330 +16,303 @@ struct NOST2
 
 struct NOST : public ContractBase
 {
-public:
-	/****** PORTED TIMEUTILS FROM OLD Nostromo *****/
-	/**
-	 * Compare 2 date in uint32 format
-	 * @return -1 lesser(ealier) A<B, 0 equal A=B, 1 greater(later) A>B
-	 */
-	inline static sint32 dateCompare(uint32& A, uint32& B, sint32& i)
+	enum class EAuctionType : uint8
 	{
-		if (A == B) return 0;
-		if (A < B) return -1;
-		return 1;
-	}
+		None,
+		Batch,
+		Standard
+	};
 
-	/**
-	 * @return pack Nost datetime data from year, month, day, hour, minute, second to a uint32
-	 * year is counted from 24 (2024)
-	 */
-	inline static void packNostromoDate(uint32 _year, uint32 _month, uint32 _day, uint32 _hour, uint32 _minute, uint32 _second, uint32& res)
+	enum class EAuctionVisibility : uint8
 	{
-		res = ((_year - 24) << 26) | (_month << 22) | (_day << 17) | (_hour << 12) | (_minute << 6) | (_second);
-	}
+		None,
+		Public,
+		Private
+	};
 
-	inline static uint32 NostGetYear(uint32 data)
+	enum class EAuctionStatus : uint8
 	{
-		return ((data >> 26) + 24);
-	}
-	inline static uint32 NostGetMonth(uint32 data)
-	{
-		return ((data >> 22) & 0b1111);
-	}
-	inline static uint32 NostGetDay(uint32 data)
-	{
-		return ((data >> 17) & 0b11111);
-	}
-	inline static uint32 NostGetHour(uint32 data)
-	{
-		return ((data >> 12) & 0b11111);
-	}
-	inline static uint32 NostGetMinute(uint32 data)
-	{
-		return ((data >> 6) & 0b111111);
-	}
-	inline static uint32 NostGetSecond(uint32 data)
-	{
-		return (data & 0b111111);
-	}
-	/*
-	* @return unpack Nost datetime from uin32 to year, month, day, hour, minute, secon
-	*/
-	inline static void unpackNostromoDate(uint8& _year, uint8& _month, uint8& _day, uint8& _hour, uint8& _minute, uint8& _second, uint32 data)
-	{
-		_year = NostGetYear(data); // 6 bits
-		_month = NostGetMonth(data); //4bits
-		_day = NostGetDay(data); //5bits
-		_hour = NostGetHour(data); //5bits
-		_minute = NostGetMinute(data); //6bits
-		_second = NostGetSecond(data); //6bits
-	}
+		None,
+		Active,
+		Finalized,
+		Cancelled,
+		PendingSellerDecision
+	};
 
-	inline static void accumulatedDay(sint32 month, uint64& res)
+	enum class EAuctionError : uint8
 	{
-		switch (month)
+		Success,
+		InvalidInput,
+		AuctionNotFound,
+		AuctionClosed,
+		Forbidden,
+		InsufficientFunds,
+		InsufficientAssetBalance,
+		StorageFull,
+		InvalidAuctionType,
+		InvalidVisibility,
+		BidTooLow,
+		PrivateAuctionAccessDenied
+	};
+
+	struct AuctionParticipantKey
+	{
+		id auctionId;
+		id participant;
+
+		bool operator<(const AuctionParticipantKey& rhs) const
 		{
-		case 1: res = 0; break;
-		case 2: res = 31; break;
-		case 3: res = 59; break;
-		case 4: res = 90; break;
-		case 5: res = 120; break;
-		case 6: res = 151; break;
-		case 7: res = 181; break;
-		case 8: res = 212; break;
-		case 9: res = 243; break;
-		case 10:res = 273; break;
-		case 11:res = 304; break;
-		case 12:res = 334; break;
-		}
-	}
-	/**
-	 * @return difference in number of second, A must be smaller than or equal B to have valid value
-	 */
-	inline static void diffDateInSecond(uint32& A, uint32& B, sint32& i, uint64& dayA, uint64& dayB, uint64& res)
-	{
-		if (dateCompare(A, B, i) >= 0)
-		{
-			res = 0;
-			return;
-		}
-		accumulatedDay(NostGetMonth(A), dayA);
-		dayA += NostGetDay(A);
-		accumulatedDay(NostGetMonth(B), dayB);
-		dayB += (NostGetYear(B) - NostGetYear(A)) * 365ULL + NostGetDay(B);
-
-		// handling leap-year: only store last 2 digits of year here, don't care about mod 100 & mod 400 case
-		for (i = NostGetYear(A); (uint32)(i) < NostGetYear(B); i++)
-		{
-			if (mod(i, 4) == 0)
+			if (auctionId < rhs.auctionId)
 			{
-				dayB++;
+				return true;
 			}
+			if (rhs.auctionId < auctionId)
+			{
+				return false;
+			}
+			return participant < rhs.participant;
 		}
-		if (mod(sint32(NostGetYear(A)), 4) == 0 && (NostGetMonth(A) > 2)) dayA++;
-		if (mod(sint32(NostGetYear(B)), 4) == 0 && (NostGetMonth(B) > 2)) dayB++;
-		res = (dayB - dayA) * 3600ULL * 24;
-		res += (NostGetHour(B) * 3600 + NostGetMinute(B) * 60 + NostGetSecond(B));
-		res -= (NostGetHour(A) * 3600 + NostGetMinute(A) * 60 + NostGetSecond(A));
-	}
-
-	inline static bool checkValidNostDateTime(uint32& A)
-	{
-		if (NostGetMonth(A) > 12) return false;
-		if (NostGetDay(A) > 31) return false;
-		if ((NostGetDay(A) == 31) &&
-			(NostGetMonth(A) != 1) && (NostGetMonth(A) != 3) && (NostGetMonth(A) != 5) &&
-			(NostGetMonth(A) != 7) && (NostGetMonth(A) != 8) && (NostGetMonth(A) != 10) && (NostGetMonth(A) != 12)) return false;
-		if ((NostGetDay(A) == 30) && (NostGetMonth(A) == 2)) return false;
-		if ((NostGetDay(A) == 29) && (NostGetMonth(A) == 2) && (mod(NostGetYear(A), 4u) != 0)) return false;
-		if (NostGetHour(A) >= 24) return false;
-		if (NostGetMinute(A) >= 60) return false;
-		if (NostGetSecond(A) >= 60) return false;
-		return true;
-	}
-
-	/****** END PORTED TIMEUTILS FROM OLD Nostromo *****/
-
-	struct investInfo
-	{
-		uint64 investedAmount;
-		uint64 claimedAmount;
-		uint32 indexOfFundraising;
 	};
 
-	struct projectInfo
+	/**
+	 * @brief Stores the active bid state of one wallet in one auction.
+	 * @note The same struct is shared by batch and standard auctions.
+	 */
+	struct AuctionParticipantData
 	{
-		id creator;
-		uint64 tokenName;
-		uint64 supplyOfToken;
-		uint32 startDate;
-		uint32 endDate;
-		uint32 numberOfYes;
-		uint32 numberOfNo;
-		bit isCreatedFundarasing;
+		uint64 escrowedAmount;
+		uint64 requestedQuantity;
+		uint64 allocatedQuantity;
+		uint64 pricePerUnit;
+		DateAndTime lastBidTime;
+		id participant;
+		uint8 isHighestBidder;
+		uint8 isWinningBid;
 	};
 
-	struct fundaraisingInfo
+	/**
+	 * @brief Describes one asset entry inside an auction lot.
+	 * @note One non-zero entry means a single-asset auction lot.
+	 * @note Multiple non-zero entries mean a bundle of different assets.
+	 */
+	struct AuctionLotEntry
 	{
-		uint64 tokenPrice;
-		uint64 soldAmount;
-		uint64 requiredFunds;
-		uint64 raisedFunds;
-		uint32 indexOfProject;
-		uint32 firstPhaseStartDate;
-		uint32 firstPhaseEndDate;
-		uint32 secondPhaseStartDate;
-		uint32 secondPhaseEndDate;
-		uint32 thirdPhaseStartDate;
-		uint32 thirdPhaseEndDate;
-		uint32 listingStartDate;
-		uint32 cliffEndDate;
-		uint32 vestingEndDate;
-		uint8 threshold;
-		uint8 TGE;
-		uint8 stepOfVesting;
-		bit isCreatedToken;
+		/// Asset included in the lot.
+		Asset asset;
+
+		/// Quantity of this asset included in the lot.
+		sint64 quantity;
+	};
+
+	/**
+	 * @brief Stores all persistent data for one auction.
+	 * @note The same struct is shared by batch and standard auctions.
+	 * @note `metadataIpfsCid` points to off-chain auction metadata stored in IPFS.
+	 * @note `sellerDecisionDeadline` stays zero until a standard auction enters the manual decision window.
+	 */
+	struct AuctionData
+	{
+		/// Unique identifier of the auction created in the Auction House.
+		id auctionId;
+
+		/// Total sale units offered in this auction; batch auctions use asset quantity, standard auctions use one unit for the whole lot.
+		uint64 quantityForSale;
+
+		/// Quantity already assigned to winning bids after settlement.
+		uint64 allocatedQuantity;
+
+		/// Minimum quantity a bidder may request in a batch auction; standard auctions sell the entire lot as one unit.
+		uint64 minimumPurchaseQuantity;
+
+		/// Initial Price for a standard auction; bids cannot start below this value.
+		uint64 initialPricePerUnit;
+
+		/// Sale Price defined by the seller as the desired / minimum acceptable selling price.
+		uint64 salePricePerUnit;
+
+		/// Minimum step by which a new bid must exceed the current highest bid.
+		uint64 minimumBidIncrement;
+
+		/// Buy Now price that closes a standard auction immediately when matched or exceeded.
+		uint64 buyNowPricePerUnit;
+
+		/// Highest price per unit currently offered by any active bid.
+		uint64 highestBidPerUnit;
+
+		/// Quantity requested by the current highest bid.
+		uint64 highestBidQuantity;
+
+		/// Total amount escrowed by the current highest bid.
+		uint64 highestBidAmount;
+
+		/// Auction duration in seconds, derived from the duration configured in days.
+		uint64 auctionDurationSeconds;
+
+		/// Timestamp when the seller created the auction.
+		DateAndTime createdAt;
+
+		/// Timestamp of the most recent accepted bid.
+		DateAndTime lastBidAt;
+
+		/// Deadline for the seller to manually accept or reject a bid after auction end when the highest bid is between Initial Price and Sale Price.
+		DateAndTime sellerDecisionDeadline;
+
+		/// Timestamp when the auction was finalized, cancelled, or otherwise settled.
+		DateAndTime settledAt;
+
+		/// Number of distinct bidders who have placed bids in this auction.
+		uint32 bidderCount;
+
+		/// Wallet that created the auction and offers the asset for sale.
+		id seller;
+
+		/// Wallet that currently holds the highest bid.
+		id highestBidder;
+
+		/// Primary asset reference of the lot, equal to the first non-empty lot entry.
+		Asset assetForSale;
+
+		/// Asset required for participation when the auction visibility is private.
+		Asset requiredAccessAsset;
+
+		/// Auction lot contents; one non-empty entry means a single asset, multiple non-empty entries mean a bundle.
+		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
+
+		/// Wallet whitelist for private batch auctions; only these wallets may participate when wallet-based restriction is used.
+		HashSet<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedBidderWallets;
+
+		/// IPFS CID stored in Pinata that points to the auction name and description metadata.
+		Array<uint8, NOST_AUCTION_METADATA_CID_LENGTH> metadataIpfsCid;
+
+		/// Auction House mode: Batch Auction or Standard Auction.
+		EAuctionType type;
+
+		/// Auction visibility: public or restricted private access.
+		EAuctionVisibility visibility;
+
+		/// Current lifecycle status of the auction, including the manual seller-decision phase.
+		EAuctionStatus status;
 	};
 
 	struct StateData
 	{
-		HashMap<id, uint8, NOSTROMO_MAX_USER> users;
-		HashMap<id, Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST>, NOSTROMO_MAX_USER> voteStatus;
-		HashMap<id, uint32, NOSTROMO_MAX_USER> numberOfVotedProject;
-		HashSet<uint64, NOSTROMO_MAX_NUMBER_TOKEN> tokens;
-
-		HashMap<id, Array<investInfo, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST>, NOSTROMO_MAX_USER> investors;
-		HashMap<id, uint32, NOSTROMO_MAX_USER> numberOfInvestedProjects;
-		Array<investInfo, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> tmpInvestedList;
-
-		Array<projectInfo, NOSTROMO_MAX_NUMBER_PROJECT> projects;
-
-		Array<fundaraisingInfo, NOSTROMO_MAX_NUMBER_PROJECT> fundaraisings;
-
-		id teamAddress;
-		sint64 transferRightsFee;
-		uint64 epochRevenue, totalPoolWeight;
-		uint32 numberOfRegister, numberOfCreatedProject, numberOfFundraising;
+		HashMap<id, AuctionData, NOST_AUCTION_NUM> auctionList;
+		HashMap<AuctionParticipantKey, AuctionParticipantData, NOST_AUCTION_PARTICIPANT_NUM> participants;
 	};
 
-	struct registerInTier_input
+	struct CreateAuction_input
 	{
-		uint32 tierLevel;
+		/// IPFS CID stored in Pinata that points to the auction name and description metadata.
+		Array<uint8, NOST_AUCTION_METADATA_CID_LENGTH> metadataIpfsCid;
+
+		/// Auction lot contents; one non-empty entry means a single asset, multiple non-empty entries mean a bundle.
+		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
+
+		/// Asset required to participate when the auction is configured as private and asset-based access is used.
+		Asset requiredAccessAsset;
+
+		/// Wallet list for private batch auctions; copied into the auction whitelist on creation.
+		Array<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedBidderWallets;
+
+		/// Minimum quantity a bidder may request in a batch auction; standard auctions sell the whole lot as one unit.
+		uint64 minimumPurchaseQuantity;
+
+		/// Initial Price for a standard auction; bids cannot be placed below this value.
+		uint64 initialPricePerUnit;
+
+		/// Sale Price defined by the seller as the desired / minimum acceptable selling price.
+		uint64 salePricePerUnit;
+
+		/// Minimum step by which each new bid must exceed the current highest bid.
+		uint64 minimumBidIncrementPerUnit;
+
+		/// Buy Now price that immediately closes a standard auction once matched or exceeded.
+		uint64 buyNowPricePerUnit;
+
+		/// Auction duration configured by the seller in days.
+		uint32 durationDays;
+
+		/// Auction House mode selected by the seller: Batch Auction or Standard Auction.
+		uint8 auctionType;
+
+		/// Visibility selected by the seller: public or private.
+		uint8 auctionVisibility;
 	};
 
-	struct registerInTier_output
+	struct CreateAuction_output
 	{
-		uint32 tierLevel;
+		id auctionId;
+		uint8 errorCode;
 	};
 
-	struct logoutFromTier_input
+	struct PlaceBid_input
 	{
-
+		id auctionId;
+		uint64 quantity;
+		uint64 pricePerUnit;
 	};
 
-	struct logoutFromTier_output
+	struct PlaceBid_output
 	{
-		bit result;
+		uint64 escrowedAmount;
+		uint64 refundedAmount;
+		uint8 errorCode;
 	};
 
-	struct createProject_input
+	struct GetAuction_input
 	{
-		uint64 tokenName;
-		uint64 supply;
-		uint32 startYear;
-		uint32 startMonth;
-		uint32 startDay;
-		uint32 startHour;
-		uint32 endYear;
-		uint32 endMonth;
-		uint32 endDay;
-		uint32 endHour;
+		id auctionId;
 	};
 
-	struct createProject_output
+	struct GetAuction_output
 	{
-		uint32 indexOfProject;
+		AuctionData auction;
 	};
 
-	struct voteInProject_input
+	struct GetAuctionParticipant_input
 	{
-		uint32 indexOfProject;
-		bit decision;
+		id auctionId;
+		id participant;
 	};
 
-	struct voteInProject_output
+	struct GetAuctionParticipant_output
 	{
-
+		AuctionParticipantData participantData;
+		uint8 found;
 	};
 
-	struct createFundraising_input
+	struct CreateAuction_locals
 	{
-		uint64 tokenPrice;
-		uint64 soldAmount;
-		uint64 requiredFunds;
-
-		uint32 indexOfProject;
-		uint32 firstPhaseStartYear;
-		uint32 firstPhaseStartMonth;
-		uint32 firstPhaseStartDay;
-		uint32 firstPhaseStartHour;
-		uint32 firstPhaseEndYear;
-		uint32 firstPhaseEndMonth;
-		uint32 firstPhaseEndDay;
-		uint32 firstPhaseEndHour;
-
-		uint32 secondPhaseStartYear;
-		uint32 secondPhaseStartMonth;
-		uint32 secondPhaseStartDay;
-		uint32 secondPhaseStartHour;
-		uint32 secondPhaseEndYear;
-		uint32 secondPhaseEndMonth;
-		uint32 secondPhaseEndDay;
-		uint32 secondPhaseEndHour;
-
-		uint32 thirdPhaseStartYear;
-		uint32 thirdPhaseStartMonth;
-		uint32 thirdPhaseStartDay;
-		uint32 thirdPhaseStartHour;
-		uint32 thirdPhaseEndYear;
-		uint32 thirdPhaseEndMonth;
-		uint32 thirdPhaseEndDay;
-		uint32 thirdPhaseEndHour;
-
-		uint32 listingStartYear;
-		uint32 listingStartMonth;
-		uint32 listingStartDay;
-		uint32 listingStartHour;
-
-		uint32 cliffEndYear;
-		uint32 cliffEndMonth;
-		uint32 cliffEndDay;
-		uint32 cliffEndHour;
-
-		uint32 vestingEndYear;
-		uint32 vestingEndMonth;
-		uint32 vestingEndDay;
-		uint32 vestingEndHour;
-
-		uint8 threshold;
-		uint8 TGE;
-		uint8 stepOfVesting;
+		AuctionData auction;
+		AuctionLotEntry lotItem;
+		AuctionLotEntry firstLotItem;
+		EAuctionType auctionType;
+		EAuctionVisibility visibility;
+		sint64 requiredFee;
+		uint64 totalEscrowQuantity;
+		uint64 lotItemIndex;
+		uint64 lotItemCount;
+		uint64 rollbackLotItemIndex;
+		uint64 allowedWalletCount;
+		sint64 possessedShares;
+		sint64 transferredShares;
+		uint64 allowedWalletIndex;
 	};
 
-	struct createFundraising_output
+	struct PlaceBid_locals
 	{
-
-	};
-
-	struct investInProject_input
-	{
-		uint32 indexOfFundraising;
-	};
-
-	struct investInProject_output
-	{
-
-	};
-
-	struct claimToken_input
-	{
-		uint64 amount;
-		uint32 indexOfFundraising;
-	};
-
-	struct claimToken_output
-	{
-		uint64 claimedAmount;
-	};
-
-	struct upgradeTier_input
-	{
-		uint32 newTierLevel;
-	};
-
-	struct upgradeTier_output
-	{
-
+		AuctionData auction;
+		AuctionParticipantData participantData;
+		AuctionParticipantData previousHighestBidderData;
+		AuctionParticipantKey participantKey;
+		AuctionParticipantKey highestBidderKey;
+		uint64 elapsedSeconds;
+		uint64 requiredEscrow;
+		uint64 previousEscrow;
+		uint64 effectiveQuantity;
+		DateAndTime currentDate;
+		bool participantExists;
+		bool highestBidderExists;
 	};
 
 	struct TransferShareManagementRights_input
@@ -368,202 +326,150 @@ public:
 		sint64 transferredNumberOfShares;
 	};
 
-	struct getStats_input
+	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
+		REGISTER_USER_PROCEDURE(CreateAuction, 1);
+		REGISTER_USER_PROCEDURE(PlaceBid, 2);
+		REGISTER_USER_FUNCTION(GetAuction, 1);
+		REGISTER_USER_FUNCTION(GetAuctionParticipant, 2);
 
-	};
+		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 1);
+	}
 
-	struct getStats_output
+	INITIALIZE() {}
+
+	PRE_ACQUIRE_SHARES()
 	{
-		uint64 epochRevenue, totalPoolWeight;
-		uint32 numberOfRegister, numberOfCreatedProject, numberOfFundraising;
-	};
+		output.requestedFee = 0;
+		output.allowTransfer = true;
+	}
 
-	struct getTierLevelByUser_input
+	BEGIN_EPOCH()
 	{
-		id userId;
-	};
-
-	struct getTierLevelByUser_output
-	{
-		uint8 tierLevel;
-	};
-
-	struct getUserVoteStatus_input
-	{
-		id userId;
-	};
-
-	struct getUserVoteStatus_output
-	{
-		uint32 numberOfVotedProjects;
-		Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> projectIndexList;
-	};
-
-	struct checkTokenCreatability_input
-	{
-		uint64 tokenName;
-	};
-
-	struct checkTokenCreatability_output
-	{
-		bit result;             // result = 1 is the token already issued by SC
-	};
-
-	struct getNumberOfInvestedProjects_input
-	{
-		id userId;
-	};
-
-	struct getNumberOfInvestedProjects_output
-	{
-		uint32 numberOfInvestedProjects;
-	};
-
-protected:
-
-	struct registerInTier_locals
-	{
-		uint64 tierStakedAmount;
-		uint32 poolWeight;
-	};
-
-	PUBLIC_PROCEDURE_WITH_LOCALS(registerInTier)
-	{
-		if (state.get().users.contains(qpi.invocator()))
+		// TODO: Change to valid epoch
+		if (qpi.epoch() == 220)
 		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-		if (input.tierLevel < 1 || input.tierLevel > 5)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-
-		switch (input.tierLevel)
-		{
-		case 1:
-			locals.tierStakedAmount = NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT;
-			locals.poolWeight = NOSTROMO_TIER_FACEHUGGER_POOL_WEIGHT;
-			break;
-		case 2:
-			locals.tierStakedAmount = NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT;
-			locals.poolWeight = NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT;
-			break;
-		case 3:
-			locals.tierStakedAmount = NOSTROMO_TIER_DOG_STAKE_AMOUNT;
-			locals.poolWeight = NOSTROMO_TIER_DOG_POOL_WEIGHT;
-			break;
-		case 4:
-			locals.tierStakedAmount = NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT;
-			locals.poolWeight = NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT;
-			break;
-		case 5:
-			locals.tierStakedAmount = NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT;
-			locals.poolWeight = NOSTROMO_TIER_WARRIOR_POOL_WEIGHT;
-			break;
-		default:
-			break;
-		}
-		if (qpi.invocationReward() < (sint64)locals.tierStakedAmount)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-		else
-		{
-			state.mut().users.set(qpi.invocator(), input.tierLevel);
-			state.mut().numberOfRegister++;
-			if (qpi.invocationReward() > (sint64)locals.tierStakedAmount)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.tierStakedAmount);
-			}
-			state.mut().totalPoolWeight += locals.poolWeight;
-			output.tierLevel = input.tierLevel;
+			// Initialize
 		}
 	}
 
-	struct logoutFromTier_locals
+	END_EPOCH()
 	{
-		uint64 earnedAmount;
-		uint32 elementIndex;
-		uint8 tierLevel;
-	};
-
-	PUBLIC_PROCEDURE_WITH_LOCALS(logoutFromTier)
-	{
-		if (state.get().users.contains(qpi.invocator()) == 0)
-		{
-			return ;
-		}
-		state.get().users.get(qpi.invocator(), locals.tierLevel);
-		switch (locals.tierLevel)
-		{
-		case 1:
-			locals.earnedAmount = div(NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT * NOSTROMO_TIER_FACEHUGGER_UNSTAKE_FEE, 100ULL);
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() + NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT - locals.earnedAmount);
-			state.mut().epochRevenue += locals.earnedAmount;
-			state.mut().totalPoolWeight -= NOSTROMO_TIER_FACEHUGGER_POOL_WEIGHT;
-			break;
-		case 2:
-			locals.earnedAmount = div(NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT * NOSTROMO_TIER_CHESTBURST_UNSTAKE_FEE, 100ULL);
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() + NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT - locals.earnedAmount);
-			state.mut().epochRevenue += locals.earnedAmount;
-			state.mut().totalPoolWeight -= NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT;
-			break;
-		case 3:
-			locals.earnedAmount = div(NOSTROMO_TIER_DOG_STAKE_AMOUNT * NOSTROMO_TIER_DOG_UNSTAKE_FEE, 100ULL);
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() + NOSTROMO_TIER_DOG_STAKE_AMOUNT - locals.earnedAmount);
-			state.mut().epochRevenue += locals.earnedAmount;
-			state.mut().totalPoolWeight -= NOSTROMO_TIER_DOG_POOL_WEIGHT;
-			break;
-		case 4:
-			locals.earnedAmount = div(NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT * NOSTROMO_TIER_XENOMORPH_UNSTAKE_FEE, 100ULL);
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() + NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT - locals.earnedAmount);
-			state.mut().epochRevenue += locals.earnedAmount;
-			state.mut().totalPoolWeight -= NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT;
-			break;
-		case 5:
-			locals.earnedAmount = div(NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT * NOSTROMO_TIER_WARRIOR_UNSTAKE_FEE, 100ULL);
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() + NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT - locals.earnedAmount);
-			state.mut().epochRevenue += locals.earnedAmount;
-			state.mut().totalPoolWeight -= NOSTROMO_TIER_WARRIOR_POOL_WEIGHT;
-			break;
-		default:
-			break;
-		}
-
-		state.mut().users.removeByKey(qpi.invocator());
-		state.mut().numberOfRegister -= 1;
-		output.result = 1;
+		state.mut().auctionList.cleanupIfNeeded();
+		state.mut().participants.cleanupIfNeeded();
 	}
 
-	struct createProject_locals
+	PUBLIC_PROCEDURE_WITH_LOCALS(CreateAuction)
 	{
-		projectInfo newProject;
-		uint32 elementIndex, startDate, endDate, curDate;
-		uint8 tierLevel;
-	};
+		output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
 
-	PUBLIC_PROCEDURE_WITH_LOCALS(createProject)
-	{
-		packNostromoDate(input.startYear, input.startMonth, input.startDay, input.startHour, 0, 0, locals.startDate);
-		packNostromoDate(input.endYear, input.endMonth, input.endDay, input.endHour, 0, 0, locals.endDate);
-		packNostromoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
+		locals.auctionType = static_cast<EAuctionType>(input.auctionType);
+		locals.visibility = static_cast<EAuctionVisibility>(input.auctionVisibility);
 
-		if(locals.curDate > locals.startDate || locals.startDate >= locals.endDate || checkValidNostDateTime(locals.startDate) == 0 || checkValidNostDateTime(locals.endDate) == 0)
+		if (!isSupportedAuctionType(locals.auctionType))
 		{
-			output.indexOfProject = NOSTROMO_MAX_NUMBER_PROJECT;
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = static_cast<uint8>(EAuctionError::InvalidAuctionType);
+			return;
+		}
+
+		if (!isSupportedAuctionVisibility(locals.visibility))
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = static_cast<uint8>(EAuctionError::InvalidVisibility);
+			return;
+		}
+
+		if (state.get().auctionList.population() >= state.get().auctionList.capacity())
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = static_cast<uint8>(EAuctionError::StorageFull);
+			return;
+		}
+		locals.totalEscrowQuantity = 0;
+		locals.lotItemCount = 0;
+		for (locals.lotItemIndex = 0; locals.lotItemIndex < NOST_AUCTION_LOT_ITEM_NUM; ++locals.lotItemIndex)
+		{
+			locals.lotItem = input.auctionLotItems.get(locals.lotItemIndex);
+			if (isZeroAsset(locals.lotItem.asset))
+			{
+				if (locals.lotItem.quantity != 0)
+				{
+					if (qpi.invocationReward() > 0)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					}
+					return;
+				}
+				continue;
+			}
+			if (locals.lotItem.quantity <= 0)
+			{
+				if (qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+				return;
+			}
+			if (locals.lotItemCount == 0)
+			{
+				locals.firstLotItem = locals.lotItem;
+			}
+			locals.lotItemCount = sadd(locals.lotItemCount, 1ULL);
+			locals.totalEscrowQuantity = sadd(locals.totalEscrowQuantity, static_cast<uint64>(locals.lotItem.quantity));
+		}
+		if (locals.lotItemCount == 0 || input.durationDays == 0)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
+		if (locals.auctionType == EAuctionType::Batch &&
+		    (locals.lotItemCount != 1 || input.minimumPurchaseQuantity == 0 || input.minimumPurchaseQuantity > locals.totalEscrowQuantity))
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
+		if (locals.auctionType == EAuctionType::Standard && input.minimumPurchaseQuantity > 1)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
+		if (locals.auctionType == EAuctionType::Standard && input.minimumBidIncrementPerUnit == 0)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
+		locals.allowedWalletCount = 0;
+		for (locals.allowedWalletIndex = 0; locals.allowedWalletIndex < NOST_AUCTION_ALLOWED_WALLET_NUM; ++locals.allowedWalletIndex)
+		{
+			if (!isZero(input.allowedBidderWallets.get(locals.allowedWalletIndex)))
+			{
+				locals.allowedWalletCount = sadd(locals.allowedWalletCount, 1ULL);
+			}
+		}
+		if (locals.visibility == EAuctionVisibility::Private && isZeroAsset(input.requiredAccessAsset) && locals.allowedWalletCount == 0)
+		{
 			if (qpi.invocationReward() > 0)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -571,1078 +477,443 @@ protected:
 			return;
 		}
 
-		if (state.get().tokens.contains(input.tokenName))
+		locals.requiredFee = 0;
+		if (locals.visibility == EAuctionVisibility::Private)
 		{
-			output.indexOfProject = NOSTROMO_MAX_NUMBER_PROJECT;
+			locals.requiredFee = NOST_PRIVATE_AUCTION_FEE;
+		}
+		if (qpi.invocationReward() < locals.requiredFee)
+		{
 			if (qpi.invocationReward() > 0)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
-			return ;
+			output.errorCode = static_cast<uint8>(EAuctionError::InsufficientFunds);
+			return;
 		}
 
-		if (state.get().users.get(qpi.invocator(), locals.tierLevel) && (locals.tierLevel == 4 || locals.tierLevel == 5))
+		for (locals.lotItemIndex = 0; locals.lotItemIndex < NOST_AUCTION_LOT_ITEM_NUM; ++locals.lotItemIndex)
 		{
-			if (qpi.invocationReward() < NOSTROMO_CREATE_PROJECT_FEE)
+			locals.lotItem = input.auctionLotItems.get(locals.lotItemIndex);
+			if (isZeroAsset(locals.lotItem.asset) || locals.lotItem.quantity <= 0)
+			{
+				continue;
+			}
+			locals.possessedShares = qpi.numberOfPossessedShares(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer, qpi.invocator(),
+			                                                     qpi.invocator(), SELF_INDEX, SELF_INDEX);
+			if (locals.possessedShares < locals.lotItem.quantity)
 			{
 				if (qpi.invocationReward() > 0)
 				{
 					qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				}
-				output.indexOfProject = NOSTROMO_MAX_NUMBER_PROJECT;
-				return ;
+				output.errorCode = static_cast<uint8>(EAuctionError::InsufficientAssetBalance);
+				return;
 			}
-			if (qpi.invocationReward() > NOSTROMO_CREATE_PROJECT_FEE)
+		}
+
+		for (locals.lotItemIndex = 0; locals.lotItemIndex < NOST_AUCTION_LOT_ITEM_NUM; ++locals.lotItemIndex)
+		{
+			locals.lotItem = input.auctionLotItems.get(locals.lotItemIndex);
+			if (isZeroAsset(locals.lotItem.asset) || locals.lotItem.quantity <= 0)
 			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward() - NOSTROMO_CREATE_PROJECT_FEE);
+				continue;
 			}
-			state.mut().epochRevenue += NOSTROMO_CREATE_PROJECT_FEE;
 
-			locals.newProject.creator = qpi.invocator();
-			locals.newProject.tokenName = input.tokenName;
-			locals.newProject.supplyOfToken = input.supply;
-			locals.newProject.startDate = locals.startDate;
-			locals.newProject.endDate = locals.endDate;
-			locals.newProject.numberOfYes = 0;
-			locals.newProject.numberOfNo = 0;
+			locals.transferredShares = qpi.transferShareOwnershipAndPossession(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer,
+			                                                                   qpi.invocator(), qpi.invocator(), locals.lotItem.quantity, SELF);
+			if (locals.transferredShares < locals.lotItem.quantity)
+			{
+				if (locals.transferredShares > 0)
+				{
+					qpi.transferShareOwnershipAndPossession(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer, SELF, SELF,
+					                                        locals.transferredShares, qpi.invocator());
+				}
+				for (locals.rollbackLotItemIndex = 0; locals.rollbackLotItemIndex < locals.lotItemIndex; ++locals.rollbackLotItemIndex)
+				{
+					locals.lotItem = input.auctionLotItems.get(locals.rollbackLotItemIndex);
+					if (isZeroAsset(locals.lotItem.asset) || locals.lotItem.quantity <= 0)
+					{
+						continue;
+					}
+					qpi.transferShareOwnershipAndPossession(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer, SELF, SELF,
+					                                        locals.lotItem.quantity, qpi.invocator());
+				}
+				if (qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+				output.errorCode = static_cast<uint8>(EAuctionError::InsufficientAssetBalance);
+				return;
+			}
+		}
 
-			output.indexOfProject = state.get().numberOfCreatedProject;
-			state.mut().projects.set(state.get().numberOfCreatedProject, locals.newProject);
-			state.mut().numberOfCreatedProject++;
-			state.mut().tokens.add(input.tokenName);
+		locals.auction.auctionId = id::randomValue();
+		locals.auction.quantityForSale = (locals.auctionType == EAuctionType::Standard) ? 1ULL : locals.totalEscrowQuantity;
+		locals.auction.allocatedQuantity = 0;
+		locals.auction.minimumPurchaseQuantity = (locals.auctionType == EAuctionType::Standard) ? 1ULL : input.minimumPurchaseQuantity;
+		locals.auction.initialPricePerUnit = input.initialPricePerUnit;
+		locals.auction.salePricePerUnit = input.salePricePerUnit;
+		locals.auction.minimumBidIncrement = input.minimumBidIncrementPerUnit;
+		locals.auction.buyNowPricePerUnit = input.buyNowPricePerUnit;
+		locals.auction.highestBidPerUnit = 0;
+		locals.auction.highestBidQuantity = 0;
+		locals.auction.highestBidAmount = 0;
+		locals.auction.auctionDurationSeconds = smul(static_cast<uint64>(input.durationDays), NOST_SECONDS_PER_DAY);
+		locals.auction.createdAt = qpi.now();
+		locals.auction.lastBidAt = locals.auction.createdAt;
+		locals.auction.sellerDecisionDeadline = DateAndTime();
+		locals.auction.settledAt = DateAndTime();
+		locals.auction.bidderCount = 0;
+		locals.auction.seller = qpi.invocator();
+		locals.auction.highestBidder = NULL_ID;
+		locals.auction.assetForSale = locals.firstLotItem.asset;
+		locals.auction.requiredAccessAsset = input.requiredAccessAsset;
+		locals.auction.auctionLotItems = input.auctionLotItems;
+		for (locals.allowedWalletIndex = 0; locals.allowedWalletIndex < NOST_AUCTION_ALLOWED_WALLET_NUM; ++locals.allowedWalletIndex)
+		{
+			if (!isZero(input.allowedBidderWallets.get(locals.allowedWalletIndex)))
+			{
+				locals.auction.allowedBidderWallets.add(input.allowedBidderWallets.get(locals.allowedWalletIndex));
+			}
+		}
+		locals.auction.metadataIpfsCid = input.metadataIpfsCid;
+		locals.auction.type = locals.auctionType;
+		locals.auction.visibility = locals.visibility;
+		locals.auction.status = EAuctionStatus::Active;
+
+		if (state.mut().auctionList.set(locals.auction.auctionId, locals.auction) == NULL_INDEX)
+		{
+			for (locals.rollbackLotItemIndex = 0; locals.rollbackLotItemIndex < NOST_AUCTION_LOT_ITEM_NUM; ++locals.rollbackLotItemIndex)
+			{
+				locals.lotItem = input.auctionLotItems.get(locals.rollbackLotItemIndex);
+				if (isZeroAsset(locals.lotItem.asset) || locals.lotItem.quantity <= 0)
+				{
+					continue;
+				}
+				qpi.transferShareOwnershipAndPossession(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer, SELF, SELF,
+				                                        locals.lotItem.quantity, qpi.invocator());
+			}
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = static_cast<uint8>(EAuctionError::StorageFull);
+			return;
+		}
+
+		if (static_cast<uint64>(qpi.invocationReward()) > locals.requiredFee)
+		{
+			qpi.transfer(qpi.invocator(), static_cast<uint64>(qpi.invocationReward()) - locals.requiredFee);
+		}
+
+		output.auctionId = locals.auction.auctionId;
+		output.errorCode = static_cast<uint8>(EAuctionError::Success);
+	}
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(PlaceBid)
+	{
+		output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
+
+		if (!state.get().auctionList.get(input.auctionId, locals.auction))
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = static_cast<uint8>(EAuctionError::AuctionNotFound);
+			return;
+		}
+		if (locals.auction.status != EAuctionStatus::Active)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = static_cast<uint8>(EAuctionError::AuctionClosed);
+			return;
+		}
+		if (locals.auction.seller == qpi.invocator())
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = static_cast<uint8>(EAuctionError::Forbidden);
+			return;
+		}
+
+		locals.currentDate = qpi.now();
+		diffDateInSecond(locals.auction.createdAt, locals.currentDate, locals.elapsedSeconds);
+		if (locals.elapsedSeconds >= locals.auction.auctionDurationSeconds)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = static_cast<uint8>(EAuctionError::AuctionClosed);
+			return;
+		}
+
+		if (locals.auction.visibility == EAuctionVisibility::Private &&
+		    qpi.numberOfShares(locals.auction.requiredAccessAsset, AssetOwnershipSelect::byOwner(qpi.invocator()),
+		                       AssetPossessionSelect::byPossessor(qpi.invocator())) <= 0)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = static_cast<uint8>(EAuctionError::PrivateAuctionAccessDenied);
+			return;
+		}
+
+		locals.effectiveQuantity = input.quantity;
+		if (locals.auction.type == EAuctionType::Standard)
+		{
+			locals.effectiveQuantity = locals.auction.quantityForSale;
+		}
+		if (locals.effectiveQuantity == 0 || locals.effectiveQuantity < locals.auction.minimumPurchaseQuantity || input.pricePerUnit == 0)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			return;
+		}
+
+		if (locals.auction.type == EAuctionType::Batch)
+		{
+			if (input.pricePerUnit < locals.auction.salePricePerUnit)
+			{
+				if (qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+				output.errorCode = static_cast<uint8>(EAuctionError::BidTooLow);
+				return;
+			}
 		}
 		else
 		{
-			if (qpi.invocationReward() > 0)
+			if (locals.auction.highestBidPerUnit == 0)
 			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			output.indexOfProject = NOSTROMO_MAX_NUMBER_PROJECT;
-		}
-	}
-
-	struct voteInProject_locals
-	{
-		projectInfo votedProject;
-		Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> votedList;
-		uint32 elementIndex, curDate, numberOfVotedProject, i;
-		bit flag;
-	};
-
-	PUBLIC_PROCEDURE_WITH_LOCALS(voteInProject)
-	{
-		if (input.indexOfProject >= state.get().numberOfCreatedProject)
-		{
-			return ;
-		}
-		if (state.get().users.contains(qpi.invocator()) == 0)
-		{
-			return ;
-		}
-		state.get().numberOfVotedProject.get(qpi.invocator(), locals.numberOfVotedProject);
-		if (locals.numberOfVotedProject == NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST)
-		{
-			return ;
-		}
-		state.get().voteStatus.get(qpi.invocator(), locals.votedList);
-		for (locals.i = 0; locals.i < locals.numberOfVotedProject; locals.i++)
-		{
-			if (locals.votedList.get(locals.i) == input.indexOfProject)
-			{
-				return ;
-			}
-		}
-		packNostromoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
-		if (locals.curDate >= state.get().projects.get(input.indexOfProject).startDate && locals.curDate < state.get().projects.get(input.indexOfProject).endDate)
-		{
-			locals.votedProject = state.get().projects.get(input.indexOfProject);
-			if (input.decision)
-			{
-				locals.votedProject.numberOfYes++;
-			}
-			else
-			{
-				locals.votedProject.numberOfNo++;
-			}
-			state.mut().projects.set(input.indexOfProject, locals.votedProject);
-			locals.votedList.set(locals.numberOfVotedProject++, input.indexOfProject);
-			state.mut().voteStatus.set(qpi.invocator(), locals.votedList);
-			state.mut().numberOfVotedProject.set(qpi.invocator(), locals.numberOfVotedProject);
-		}
-	}
-
-	struct createFundraising_locals
-	{
-		projectInfo tmpProject;
-		fundaraisingInfo newFundraising;
-		uint32 curDate, firstPhaseStartDate, firstPhaseEndDate, secondPhaseStartDate, secondPhaseEndDate, thirdPhaseStartDate, thirdPhaseEndDate, listingStartDate, cliffEndDate, vestingEndDate;
-	};
-
-	PUBLIC_PROCEDURE_WITH_LOCALS(createFundraising)
-	{
-		packNostromoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
-		packNostromoDate(input.firstPhaseStartYear, input.firstPhaseStartMonth, input.firstPhaseStartDay, input.firstPhaseStartHour, 0, 0, locals.firstPhaseStartDate);
-		packNostromoDate(input.secondPhaseStartYear, input.secondPhaseStartMonth, input.secondPhaseStartDay, input.secondPhaseStartHour, 0, 0, locals.secondPhaseStartDate);
-		packNostromoDate(input.thirdPhaseStartYear, input.thirdPhaseStartMonth, input.thirdPhaseStartDay, input.thirdPhaseStartHour, 0, 0, locals.thirdPhaseStartDate);
-		packNostromoDate(input.firstPhaseEndYear, input.firstPhaseEndMonth, input.firstPhaseEndDay, input.firstPhaseEndHour, 0, 0, locals.firstPhaseEndDate);
-		packNostromoDate(input.secondPhaseEndYear, input.secondPhaseEndMonth, input.secondPhaseEndDay, input.secondPhaseEndHour, 0, 0, locals.secondPhaseEndDate);
-		packNostromoDate(input.thirdPhaseEndYear, input.thirdPhaseEndMonth, input.thirdPhaseEndDay, input.thirdPhaseEndHour, 0, 0, locals.thirdPhaseEndDate);
-		packNostromoDate(input.listingStartYear, input.listingStartMonth, input.listingStartDay, input.listingStartHour, 0, 0, locals.listingStartDate);
-		packNostromoDate(input.cliffEndYear, input.cliffEndMonth, input.cliffEndDay, input.cliffEndHour, 0, 0, locals.cliffEndDate);
-		packNostromoDate(input.vestingEndYear, input.vestingEndMonth, input.vestingEndDay, input.vestingEndHour, 0, 0, locals.vestingEndDate);
-
-		if (locals.curDate > locals.firstPhaseStartDate || locals.firstPhaseStartDate >= locals.firstPhaseEndDate || locals.firstPhaseEndDate > locals.secondPhaseStartDate || locals.secondPhaseStartDate >= locals.secondPhaseEndDate || locals.secondPhaseEndDate > locals.thirdPhaseStartDate || locals.thirdPhaseStartDate >= locals.thirdPhaseEndDate || locals.thirdPhaseEndDate > locals.listingStartDate || locals.listingStartDate > locals.cliffEndDate || locals.cliffEndDate > locals.vestingEndDate)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-		if (checkValidNostDateTime(locals.firstPhaseStartDate) == 0 || checkValidNostDateTime(locals.firstPhaseEndDate) == 0 || checkValidNostDateTime(locals.secondPhaseStartDate) == 0 || checkValidNostDateTime(locals.secondPhaseEndDate) == 0 || checkValidNostDateTime(locals.thirdPhaseStartDate) == 0 || checkValidNostDateTime(locals.thirdPhaseEndDate) == 0 || checkValidNostDateTime(locals.listingStartDate) == 0 || checkValidNostDateTime(locals.cliffEndDate) == 0 || checkValidNostDateTime(locals.vestingEndDate) == 0)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-
-		if (input.stepOfVesting == 0 || input.stepOfVesting > 12 || input.TGE > 50 || input.threshold > 50 || input.indexOfProject >= state.get().numberOfCreatedProject)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-
-
-		if (state.get().projects.get(input.indexOfProject).creator != qpi.invocator())
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-
-		if (input.soldAmount > state.get().projects.get(input.indexOfProject).supplyOfToken)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-
-		if (locals.curDate <= state.get().projects.get(input.indexOfProject).endDate || state.get().projects.get(input.indexOfProject).numberOfYes <= state.get().projects.get(input.indexOfProject).numberOfNo || state.get().projects.get(input.indexOfProject).isCreatedFundarasing == 1)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-
-		if (input.tokenPrice * input.soldAmount < input.requiredFunds + div(input.requiredFunds * input.threshold, 100ULL))
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-
-		if (qpi.invocationReward() < NOSTROMO_QX_TOKEN_ISSUANCE_FEE)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-
-		if (qpi.invocationReward() > NOSTROMO_QX_TOKEN_ISSUANCE_FEE)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() - NOSTROMO_QX_TOKEN_ISSUANCE_FEE);
-		}
-
-		locals.tmpProject = state.get().projects.get(input.indexOfProject);
-		locals.tmpProject.isCreatedFundarasing = 1;
-		state.mut().projects.set(input.indexOfProject, locals.tmpProject);
-
-		locals.newFundraising.tokenPrice = input.tokenPrice;
-		locals.newFundraising.soldAmount = input.soldAmount;
-		locals.newFundraising.requiredFunds = input.requiredFunds;
-		locals.newFundraising.raisedFunds = 0;
-		locals.newFundraising.indexOfProject = input.indexOfProject;
-		locals.newFundraising.firstPhaseStartDate = locals.firstPhaseStartDate;
-		locals.newFundraising.firstPhaseEndDate = locals.firstPhaseEndDate;
-		locals.newFundraising.secondPhaseStartDate = locals.secondPhaseStartDate;
-		locals.newFundraising.secondPhaseEndDate = locals.secondPhaseEndDate;
-		locals.newFundraising.thirdPhaseStartDate = locals.thirdPhaseStartDate;
-		locals.newFundraising.thirdPhaseEndDate = locals.thirdPhaseEndDate;
-		locals.newFundraising.listingStartDate = locals.listingStartDate;
-		locals.newFundraising.cliffEndDate = locals.cliffEndDate;
-		locals.newFundraising.vestingEndDate = locals.vestingEndDate;
-		locals.newFundraising.threshold = input.threshold;
-		locals.newFundraising.TGE = input.TGE;
-		locals.newFundraising.stepOfVesting = input.stepOfVesting;
-
-		state.mut().fundaraisings.set(state.get().numberOfFundraising, locals.newFundraising);
-		state.mut().numberOfFundraising++;
-	}
-
-	struct investInProject_locals
-	{
-		QX::IssueAsset_input input;
-		QX::IssueAsset_output output;
-		QX::TransferShareManagementRights_input TransferShareManagementRightsInput;
-		QX::TransferShareManagementRights_output TransferShareManagementRightsOutput;
-		investInfo tmpInvestData;
-		fundaraisingInfo tmpFundraising;
-		uint64 maxCap, minCap, maxInvestmentPerUser, userInvestedAmount;
-		uint32 curDate, elementIndex, i, numberOfInvestedProjects;
-		uint8 tierLevel;
-	};
-
-	PUBLIC_PROCEDURE_WITH_LOCALS(investInProject)
-	{
-		if (input.indexOfFundraising >= state.get().numberOfFundraising || qpi.invocationReward() == 0)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-
-		locals.maxCap = state.get().fundaraisings.get(input.indexOfFundraising).requiredFunds + div(state.get().fundaraisings.get(input.indexOfFundraising).requiredFunds * state.get().fundaraisings.get(input.indexOfFundraising).threshold, 100ULL);
-		locals.minCap = state.get().fundaraisings.get(input.indexOfFundraising).requiredFunds - div(state.get().fundaraisings.get(input.indexOfFundraising).requiredFunds * state.get().fundaraisings.get(input.indexOfFundraising).threshold, 100ULL);
-		if (state.get().numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects) && locals.numberOfInvestedProjects >= NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-
-		packNostromoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
-
-		locals.tmpFundraising = state.get().fundaraisings.get(input.indexOfFundraising);
-
-		if (locals.curDate >= state.get().fundaraisings.get(input.indexOfFundraising).firstPhaseStartDate && locals.curDate < state.get().fundaraisings.get(input.indexOfFundraising).firstPhaseEndDate)
-		{
-			if (state.get().users.contains(qpi.invocator()) == 0)
-			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
-			}
-
-			state.get().users.get(qpi.invocator(), locals.tierLevel);
-			switch (locals.tierLevel)
-			{
-			case 1:
-				locals.maxInvestmentPerUser = div(locals.maxCap * NOSTROMO_TIER_FACEHUGGER_POOL_WEIGHT, state.get().totalPoolWeight);
-				break;
-			case 2:
-				locals.maxInvestmentPerUser = div(locals.maxCap * NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT, state.get().totalPoolWeight);
-				break;
-			case 3:
-				locals.maxInvestmentPerUser = div(locals.maxCap * NOSTROMO_TIER_DOG_POOL_WEIGHT, state.get().totalPoolWeight);
-				break;
-			case 4:
-				locals.maxInvestmentPerUser = div(locals.maxCap * NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT, state.get().totalPoolWeight);
-				break;
-			case 5:
-				locals.maxInvestmentPerUser = div(locals.maxCap * NOSTROMO_TIER_WARRIOR_POOL_WEIGHT, state.get().totalPoolWeight);
-				break;
-			default:
-				break;
-			}
-
-			state.get().investors.get(qpi.invocator(), state.mut().tmpInvestedList);
-			state.get().numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects);
-
-			for (locals.i = 0; locals.i < locals.numberOfInvestedProjects; locals.i++)
-			{
-				if (state.get().tmpInvestedList.get(locals.i).indexOfFundraising == input.indexOfFundraising)
-				{
-					locals.userInvestedAmount = state.get().tmpInvestedList.get(locals.i).investedAmount;
-					break;
-				}
-			}
-
-			locals.tmpInvestData.indexOfFundraising = input.indexOfFundraising;
-
-			if (locals.i < locals.numberOfInvestedProjects)
-			{
-				if (locals.tmpFundraising.raisedFunds + locals.maxInvestmentPerUser - locals.userInvestedAmount > locals.maxCap)
+				if (input.pricePerUnit < locals.auction.initialPricePerUnit)
 				{
 					if (qpi.invocationReward() > 0)
 					{
 						qpi.transfer(qpi.invocator(), qpi.invocationReward());
 					}
-					return ;
+					output.errorCode = static_cast<uint8>(EAuctionError::BidTooLow);
+					return;
 				}
-				if (qpi.invocationReward() + locals.userInvestedAmount > locals.maxInvestmentPerUser)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward() + locals.userInvestedAmount - locals.maxInvestmentPerUser);
-
-					locals.tmpInvestData.investedAmount = locals.maxInvestmentPerUser;
-					locals.tmpFundraising.raisedFunds += locals.maxInvestmentPerUser - locals.userInvestedAmount;
-				}
-				else
-				{
-					locals.tmpInvestData.investedAmount = qpi.invocationReward() + locals.userInvestedAmount;
-					locals.tmpFundraising.raisedFunds += qpi.invocationReward();
-				}
-				state.mut().tmpInvestedList.set(locals.i, locals.tmpInvestData);
-				state.mut().investors.set(qpi.invocator(), state.get().tmpInvestedList);
 			}
 			else
 			{
-				if (locals.tmpFundraising.raisedFunds + locals.maxInvestmentPerUser > locals.maxCap)
+				if (input.pricePerUnit < sadd(locals.auction.highestBidPerUnit, locals.auction.minimumBidIncrement))
 				{
 					if (qpi.invocationReward() > 0)
 					{
 						qpi.transfer(qpi.invocator(), qpi.invocationReward());
 					}
-					return ;
-				}
-				if (qpi.invocationReward() > (sint64)locals.maxInvestmentPerUser)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.maxInvestmentPerUser);
-					locals.tmpInvestData.investedAmount = locals.maxInvestmentPerUser;
-					locals.tmpFundraising.raisedFunds += locals.maxInvestmentPerUser;
-				}
-				else
-				{
-					locals.tmpInvestData.investedAmount = qpi.invocationReward();
-					locals.tmpFundraising.raisedFunds += qpi.invocationReward();
-				}
-
-				state.mut().tmpInvestedList.set(locals.numberOfInvestedProjects, locals.tmpInvestData);
-				state.mut().investors.set(qpi.invocator(), state.get().tmpInvestedList);
-				if (state.get().numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects))
-				{
-					state.mut().numberOfInvestedProjects.set(qpi.invocator(), locals.numberOfInvestedProjects + 1);
-				}
-				else
-				{
-					state.mut().numberOfInvestedProjects.set(qpi.invocator(), 1);
+					output.errorCode = static_cast<uint8>(EAuctionError::BidTooLow);
+					return;
 				}
 			}
 		}
-		else if (locals.curDate >= state.get().fundaraisings.get(input.indexOfFundraising).secondPhaseStartDate && locals.curDate < state.get().fundaraisings.get(input.indexOfFundraising).secondPhaseEndDate)
-		{
-			if (state.get().users.contains(qpi.invocator()) == 0)
-			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
-			}
 
-			state.get().users.get(qpi.invocator(), locals.tierLevel);
-			if (locals.tierLevel < 4)
-			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
-			}
-			switch (locals.tierLevel)
-			{
-			case 4:
-				locals.maxInvestmentPerUser = div(locals.maxCap * NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT, state.get().totalPoolWeight);
-				break;
-			case 5:
-				locals.maxInvestmentPerUser = div(locals.maxCap * NOSTROMO_TIER_WARRIOR_POOL_WEIGHT, state.get().totalPoolWeight);
-				break;
-			default:
-				break;
-			}
-
-			state.get().investors.get(qpi.invocator(), state.mut().tmpInvestedList);
-			state.get().numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects);
-
-			for (locals.i = 0; locals.i < locals.numberOfInvestedProjects; locals.i++)
-			{
-				if (state.get().tmpInvestedList.get(locals.i).indexOfFundraising == input.indexOfFundraising)
-				{
-					locals.userInvestedAmount = state.get().tmpInvestedList.get(locals.i).investedAmount;
-					break;
-				}
-			}
-
-			locals.tmpInvestData.indexOfFundraising = input.indexOfFundraising;
-
-			if (locals.i < locals.numberOfInvestedProjects)
-			{
-				if (locals.tmpFundraising.raisedFunds + locals.maxInvestmentPerUser - locals.userInvestedAmount > locals.maxCap)
-				{
-					if (qpi.invocationReward() > 0)
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-				if (qpi.invocationReward() + locals.userInvestedAmount > locals.maxInvestmentPerUser)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward() + locals.userInvestedAmount - locals.maxInvestmentPerUser);
-
-					locals.tmpInvestData.investedAmount = locals.maxInvestmentPerUser;
-					locals.tmpFundraising.raisedFunds += locals.maxInvestmentPerUser - locals.userInvestedAmount;
-				}
-				else
-				{
-					locals.tmpInvestData.investedAmount = qpi.invocationReward() + locals.userInvestedAmount;
-					locals.tmpFundraising.raisedFunds += qpi.invocationReward();
-				}
-				state.mut().tmpInvestedList.set(locals.i, locals.tmpInvestData);
-				state.mut().investors.set(qpi.invocator(), state.get().tmpInvestedList);
-			}
-			else
-			{
-				if (locals.tmpFundraising.raisedFunds + locals.maxInvestmentPerUser > locals.maxCap)
-				{
-					if (qpi.invocationReward() > 0)
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					return ;
-				}
-				if (qpi.invocationReward() > (sint64)locals.maxInvestmentPerUser)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.maxInvestmentPerUser);
-					locals.tmpInvestData.investedAmount = locals.maxInvestmentPerUser;
-					locals.tmpFundraising.raisedFunds += locals.maxInvestmentPerUser;
-				}
-				else
-				{
-					locals.tmpInvestData.investedAmount = qpi.invocationReward();
-					locals.tmpFundraising.raisedFunds += qpi.invocationReward();
-				}
-
-				state.mut().tmpInvestedList.set(locals.numberOfInvestedProjects, locals.tmpInvestData);
-				state.mut().investors.set(qpi.invocator(), state.get().tmpInvestedList);
-				if (state.get().numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects))
-				{
-					state.mut().numberOfInvestedProjects.set(qpi.invocator(), locals.numberOfInvestedProjects + 1);
-				}
-				else
-				{
-					state.mut().numberOfInvestedProjects.set(qpi.invocator(), 1);
-				}
-			}
-		}
-		else if (locals.curDate >= state.get().fundaraisings.get(input.indexOfFundraising).thirdPhaseStartDate && locals.curDate < state.get().fundaraisings.get(input.indexOfFundraising).thirdPhaseEndDate)
-		{
-			if (locals.tmpFundraising.raisedFunds + qpi.invocationReward() > locals.maxCap)
-			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				return ;
-			}
-			state.get().investors.get(qpi.invocator(), state.mut().tmpInvestedList);
-			state.get().numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects);
-
-			for (locals.i = 0; locals.i < locals.numberOfInvestedProjects; locals.i++)
-			{
-				if (state.get().tmpInvestedList.get(locals.i).indexOfFundraising == input.indexOfFundraising)
-				{
-					locals.userInvestedAmount = state.get().tmpInvestedList.get(locals.i).investedAmount;
-					break;
-				}
-			}
-
-			locals.tmpInvestData.indexOfFundraising = input.indexOfFundraising;
-
-			if (locals.i < locals.numberOfInvestedProjects)
-			{
-				locals.tmpInvestData.investedAmount = qpi.invocationReward() + locals.userInvestedAmount;
-				state.mut().tmpInvestedList.set(locals.i, locals.tmpInvestData);
-				state.mut().investors.set(qpi.invocator(), state.get().tmpInvestedList);
-			}
-			else
-			{
-				locals.tmpInvestData.investedAmount = qpi.invocationReward();
-
-				state.mut().tmpInvestedList.set(locals.numberOfInvestedProjects, locals.tmpInvestData);
-				state.mut().investors.set(qpi.invocator(), state.get().tmpInvestedList);
-				if (state.get().numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects))
-				{
-					state.mut().numberOfInvestedProjects.set(qpi.invocator(), locals.numberOfInvestedProjects + 1);
-				}
-				else
-				{
-					state.mut().numberOfInvestedProjects.set(qpi.invocator(), 1);
-				}
-			}
-			locals.tmpFundraising.raisedFunds += qpi.invocationReward();
-		}
-		else
+		locals.requiredEscrow = smul(locals.effectiveQuantity, input.pricePerUnit);
+		if (static_cast<uint64>(qpi.invocationReward()) < locals.requiredEscrow)
 		{
 			if (qpi.invocationReward() > 0)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
-			return ;
+			output.errorCode = static_cast<uint8>(EAuctionError::InsufficientFunds);
+			return;
 		}
-		if (locals.minCap <= locals.tmpFundraising.raisedFunds && locals.tmpFundraising.isCreatedToken == 0)
+
+		locals.participantKey = {input.auctionId, qpi.invocator()};
+		locals.participantExists = state.get().participants.get(locals.participantKey, locals.participantData);
+		locals.previousEscrow = 0;
+		if (locals.participantExists)
 		{
-			locals.input.assetName = state.get().projects.get(locals.tmpFundraising.indexOfProject).tokenName;
-			locals.input.numberOfDecimalPlaces = 0;
-			locals.input.numberOfShares = state.get().projects.get(locals.tmpFundraising.indexOfProject).supplyOfToken;
-			locals.input.unitOfMeasurement = 0;
+			locals.previousEscrow = locals.participantData.escrowedAmount;
+		}
 
-			INVOKE_OTHER_CONTRACT_PROCEDURE(QX, IssueAsset, locals.input, locals.output, NOSTROMO_QX_TOKEN_ISSUANCE_FEE);
+		locals.participantData.escrowedAmount = locals.requiredEscrow;
+		locals.participantData.requestedQuantity = locals.effectiveQuantity;
+		locals.participantData.allocatedQuantity = 0;
+		locals.participantData.pricePerUnit = input.pricePerUnit;
+		locals.participantData.lastBidTime = locals.currentDate;
+		locals.participantData.participant = qpi.invocator();
+		locals.participantData.isHighestBidder = 0;
+		locals.participantData.isWinningBid = 0;
 
-			if (locals.output.issuedNumberOfShares == state.get().projects.get(locals.tmpFundraising.indexOfProject).supplyOfToken)
+		if (!locals.participantExists)
+		{
+			locals.auction.bidderCount = sadd(locals.auction.bidderCount, 1U);
+		}
+
+		if (locals.auction.type == EAuctionType::Standard)
+		{
+			locals.highestBidderExists = false;
+			if (!isZero(locals.auction.highestBidder))
 			{
-				locals.tmpFundraising.isCreatedToken = 1;
+				locals.highestBidderKey = {input.auctionId, locals.auction.highestBidder};
+				locals.highestBidderExists = state.get().participants.get(locals.highestBidderKey, locals.previousHighestBidderData);
+			}
+			if (locals.highestBidderExists && locals.previousHighestBidderData.participant != qpi.invocator())
+			{
+				qpi.transfer(locals.previousHighestBidderData.participant, locals.previousHighestBidderData.escrowedAmount);
+				output.refundedAmount = sadd(output.refundedAmount, locals.previousHighestBidderData.escrowedAmount);
+				locals.previousHighestBidderData.escrowedAmount = 0;
+				locals.previousHighestBidderData.isHighestBidder = 0;
+				locals.previousHighestBidderData.isWinningBid = 0;
+				state.mut().participants.replace(locals.highestBidderKey, locals.previousHighestBidderData);
+			}
 
-				locals.TransferShareManagementRightsInput.asset.assetName = state.get().projects.get(locals.tmpFundraising.indexOfProject).tokenName;
-				locals.TransferShareManagementRightsInput.asset.issuer = SELF;
-				locals.TransferShareManagementRightsInput.newManagingContractIndex = SELF_INDEX;
-				locals.TransferShareManagementRightsInput.numberOfShares = state.get().projects.get(locals.tmpFundraising.indexOfProject).supplyOfToken;
-
-				INVOKE_OTHER_CONTRACT_PROCEDURE(QX, TransferShareManagementRights, locals.TransferShareManagementRightsInput, locals.TransferShareManagementRightsOutput, 0);
-
-				qpi.transferShareOwnershipAndPossession(state.get().projects.get(locals.tmpFundraising.indexOfProject).tokenName, SELF, SELF, SELF, state.get().projects.get(locals.tmpFundraising.indexOfProject).supplyOfToken - locals.tmpFundraising.soldAmount, state.get().projects.get(locals.tmpFundraising.indexOfProject).creator);
+			locals.participantData.isHighestBidder = 1;
+			locals.participantData.isWinningBid = 1;
+			locals.auction.highestBidder = qpi.invocator();
+			locals.auction.highestBidPerUnit = input.pricePerUnit;
+			locals.auction.highestBidQuantity = locals.effectiveQuantity;
+			locals.auction.highestBidAmount = locals.requiredEscrow;
+		}
+		else
+		{
+			if (input.pricePerUnit > locals.auction.highestBidPerUnit)
+			{
+				locals.auction.highestBidder = qpi.invocator();
+				locals.auction.highestBidPerUnit = input.pricePerUnit;
+				locals.auction.highestBidQuantity = locals.effectiveQuantity;
+				locals.auction.highestBidAmount = locals.requiredEscrow;
+				locals.participantData.isHighestBidder = 1;
 			}
 		}
 
-		state.mut().fundaraisings.set(input.indexOfFundraising, locals.tmpFundraising);
+		locals.auction.lastBidAt = locals.currentDate;
+		if ((locals.auction.auctionDurationSeconds - locals.elapsedSeconds) <= NOST_AUCTION_EXTENSION_SECONDS)
+		{
+			locals.auction.auctionDurationSeconds = sadd(locals.auction.auctionDurationSeconds, NOST_AUCTION_EXTENSION_SECONDS);
+		}
+		if (locals.auction.buyNowPricePerUnit > 0 && input.pricePerUnit >= locals.auction.buyNowPricePerUnit)
+		{
+			locals.auction.status = EAuctionStatus::Finalized;
+			locals.auction.settledAt = locals.currentDate;
+			locals.participantData.isWinningBid = 1;
+			locals.participantData.isHighestBidder = 1;
+		}
 
+		if (state.mut().participants.set(locals.participantKey, locals.participantData) == NULL_INDEX)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = static_cast<uint8>(EAuctionError::StorageFull);
+			return;
+		}
+		state.mut().auctionList.replace(input.auctionId, locals.auction);
+
+		if (locals.previousEscrow > 0)
+		{
+			qpi.transfer(qpi.invocator(), locals.previousEscrow);
+			output.refundedAmount = sadd(output.refundedAmount, locals.previousEscrow);
+		}
+		if (static_cast<uint64>(qpi.invocationReward()) > locals.requiredEscrow)
+		{
+			qpi.transfer(qpi.invocator(), static_cast<uint64>(qpi.invocationReward()) - locals.requiredEscrow);
+			output.refundedAmount = sadd(output.refundedAmount, static_cast<uint64>(qpi.invocationReward()) - locals.requiredEscrow);
+		}
+
+		output.escrowedAmount = locals.requiredEscrow;
+		output.errorCode = static_cast<uint8>(EAuctionError::Success);
 	}
 
-	struct claimToken_locals
+	PUBLIC_FUNCTION(GetAuction) { state.get().auctionList.get(input.auctionId, output.auction); }
+
+	PUBLIC_FUNCTION(GetAuctionParticipant)
 	{
-		investInfo tmpInvestData;
-		uint64 maxClaimAmount, investedAmount, dayA, dayB, start_cur_diffSecond, cur_end_diffSecond, claimedAmount;
-		uint32 curDate, tmpDate, numberOfInvestedProjects;
-		sint32 i, j;
-		uint8 curVestingStep, vestingPercent;
-	};
-
-	PUBLIC_PROCEDURE_WITH_LOCALS(claimToken)
-	{
-		packNostromoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
-
-		if (input.indexOfFundraising >= state.get().numberOfFundraising)
-		{
-			return ;
-		}
-
-		state.get().investors.get(qpi.invocator(), state.mut().tmpInvestedList);
-		if (state.get().numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects) == 0)
-		{
-			return ;
-		}
-
-		for (locals.i = 0; locals.i < (sint32)locals.numberOfInvestedProjects; locals.i++)
-		{
-			if (state.get().tmpInvestedList.get(locals.i).indexOfFundraising == input.indexOfFundraising)
-			{
-				locals.investedAmount = state.get().tmpInvestedList.get(locals.i).investedAmount;
-				locals.claimedAmount = state.get().tmpInvestedList.get(locals.i).claimedAmount;
-				locals.tmpInvestData = state.get().tmpInvestedList.get(locals.i);
-				break;
-			}
-		}
-
-		if (locals.i == locals.numberOfInvestedProjects)
-		{
-			return ;
-		}
-
-		if (locals.curDate >= state.get().fundaraisings.get(input.indexOfFundraising).listingStartDate && locals.curDate < state.get().fundaraisings.get(input.indexOfFundraising).cliffEndDate)
-		{
-			locals.maxClaimAmount = div(div(locals.investedAmount, state.get().fundaraisings.get(input.indexOfFundraising).tokenPrice) * state.get().fundaraisings.get(input.indexOfFundraising).TGE, 100ULL);
-		}
-		else if (locals.curDate >= state.get().fundaraisings.get(input.indexOfFundraising).cliffEndDate && locals.curDate < state.get().fundaraisings.get(input.indexOfFundraising).vestingEndDate)
-		{
-			locals.tmpDate = state.get().fundaraisings.get(input.indexOfFundraising).cliffEndDate;
-			diffDateInSecond(locals.tmpDate, locals.curDate, locals.j, locals.dayA, locals.dayB, locals.start_cur_diffSecond);
-			locals.tmpDate = state.get().fundaraisings.get(input.indexOfFundraising).vestingEndDate;
-			diffDateInSecond(locals.curDate, locals.tmpDate, locals.j, locals.dayA, locals.dayB, locals.cur_end_diffSecond);
-
-			locals.curVestingStep = (uint8)div(locals.start_cur_diffSecond, div(locals.start_cur_diffSecond + locals.cur_end_diffSecond, state.get().fundaraisings.get(input.indexOfFundraising).stepOfVesting * 1ULL)) + 1;
-			locals.vestingPercent = (uint8)div(100ULL - state.get().fundaraisings.get(input.indexOfFundraising).TGE, state.get().fundaraisings.get(input.indexOfFundraising).stepOfVesting * 1ULL) * locals.curVestingStep;
-			locals.maxClaimAmount = div(div(locals.investedAmount, state.get().fundaraisings.get(input.indexOfFundraising).tokenPrice) * (state.get().fundaraisings.get(input.indexOfFundraising).TGE + locals.vestingPercent), 100ULL);
-		}
-		else if (locals.curDate >= state.get().fundaraisings.get(input.indexOfFundraising).vestingEndDate)
-		{
-			locals.maxClaimAmount = div(locals.investedAmount, state.get().fundaraisings.get(input.indexOfFundraising).tokenPrice);
-		}
-
-		if (input.amount + locals.claimedAmount > locals.maxClaimAmount)
-		{
-			return ;
-		}
-		else
-		{
-			qpi.transferShareOwnershipAndPossession(state.get().projects.get(state.get().fundaraisings.get(input.indexOfFundraising).indexOfProject).tokenName, SELF, SELF, SELF, input.amount, qpi.invocator());
-			if (input.amount + locals.claimedAmount == locals.maxClaimAmount && state.get().fundaraisings.get(input.indexOfFundraising).vestingEndDate <= locals.curDate)
-			{
-				state.mut().tmpInvestedList.set(locals.i, state.get().tmpInvestedList.get(locals.numberOfInvestedProjects - 1));
-				state.mut().numberOfInvestedProjects.set(qpi.invocator(), locals.numberOfInvestedProjects - 1);
-			}
-			else
-			{
-				locals.tmpInvestData.claimedAmount = input.amount + locals.claimedAmount;
-				state.mut().tmpInvestedList.set(locals.i, locals.tmpInvestData);
-			}
-			state.mut().investors.set(qpi.invocator(), state.get().tmpInvestedList);
-			state.get().numberOfInvestedProjects.get(qpi.invocator(), locals.numberOfInvestedProjects);
-			if (locals.numberOfInvestedProjects == 0)
-			{
-				state.mut().investors.removeByKey(qpi.invocator());
-				state.mut().numberOfInvestedProjects.removeByKey(qpi.invocator());
-			}
-			output.claimedAmount = input.amount;
-		}
-	}
-
-	struct upgradeTier_locals
-	{
-		uint64 deltaAmount;
-		uint32 i, deltaPoolWeight;
-		uint8 currentTierLevel;
-	};
-
-	PUBLIC_PROCEDURE_WITH_LOCALS(upgradeTier)
-	{
-		if (state.get().users.contains(qpi.invocator()) == 0)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-
-		state.get().users.get(qpi.invocator(), locals.currentTierLevel);
-
-		switch (locals.currentTierLevel)
-		{
-			case 1:
-				locals.deltaAmount = NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT - NOSTROMO_TIER_FACEHUGGER_STAKE_AMOUNT;
-				locals.deltaPoolWeight = NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT - NOSTROMO_TIER_FACEHUGGER_POOL_WEIGHT;
-				break;
-			case 2:
-				locals.deltaAmount = NOSTROMO_TIER_DOG_STAKE_AMOUNT - NOSTROMO_TIER_CHESTBURST_STAKE_AMOUNT;
-				locals.deltaPoolWeight = NOSTROMO_TIER_DOG_POOL_WEIGHT - NOSTROMO_TIER_CHESTBURST_POOL_WEIGHT;
-				break;
-			case 3:
-				locals.deltaAmount = NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT - NOSTROMO_TIER_DOG_STAKE_AMOUNT;
-				locals.deltaPoolWeight = NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT - NOSTROMO_TIER_DOG_POOL_WEIGHT;
-				break;
-			case 4:
-				locals.deltaAmount = NOSTROMO_TIER_WARRIOR_STAKE_AMOUNT - NOSTROMO_TIER_XENOMORPH_STAKE_AMOUNT;
-				locals.deltaPoolWeight = NOSTROMO_TIER_WARRIOR_POOL_WEIGHT - NOSTROMO_TIER_XENOMORPH_POOL_WEIGHT;
-				break;
-			default:
-				break;
-		}
-		if (input.newTierLevel != locals.currentTierLevel + 1 || qpi.invocationReward() < (sint64)locals.deltaAmount)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return ;
-		}
-		else
-		{
-			state.mut().users.set(qpi.invocator(), input.newTierLevel);
-			if (qpi.invocationReward() > (sint64)locals.deltaAmount)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.deltaAmount);
-			}
-			state.mut().totalPoolWeight += locals.deltaPoolWeight;
-		}
+		output.found = state.get().participants.get({input.auctionId, input.participant}, output.participantData) ? 1 : 0;
 	}
 
 	PUBLIC_PROCEDURE(TransferShareManagementRights)
 	{
-		if (qpi.invocationReward() < state.get().transferRightsFee)
+		if (qpi.invocationReward() > 0)
 		{
-			return ;
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer,qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
+		if (input.numberOfShares <= 0 || input.asset.assetName == 0 || input.newManagingContractIndex == 0)
 		{
-			// not enough shares available
 			output.transferredNumberOfShares = 0;
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
+			return;
 		}
-		else
+
+		if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) <
+		    input.numberOfShares)
 		{
-			if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares,
-				input.newManagingContractIndex, input.newManagingContractIndex, state.get().transferRightsFee) < 0)
-			{
-				// error
-				output.transferredNumberOfShares = 0;
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-			}
-			else
-			{
-				// success
-				output.transferredNumberOfShares = input.numberOfShares;
-				if (qpi.invocationReward() > state.get().transferRightsFee)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward() -  state.get().transferRightsFee);
-				}
-			}
+			output.transferredNumberOfShares = 0;
+			return;
 		}
-	}
 
-	PUBLIC_FUNCTION(getStats)
-	{
-		output.epochRevenue = state.get().epochRevenue;
-		output.numberOfCreatedProject = state.get().numberOfCreatedProject;
-		output.numberOfFundraising = state.get().numberOfFundraising;
-		output.numberOfRegister = state.get().numberOfRegister;
-		output.totalPoolWeight = state.get().totalPoolWeight;
-	}
-
-	PUBLIC_FUNCTION(getTierLevelByUser)
-	{
-		state.get().users.get(input.userId, output.tierLevel);
-	}
-
-	PUBLIC_FUNCTION(getUserVoteStatus)
-	{
-		state.get().numberOfVotedProject.get(input.userId, output.numberOfVotedProjects);
-		state.get().voteStatus.get(input.userId, output.projectIndexList);
-	}
-
-	PUBLIC_FUNCTION(checkTokenCreatability)
-	{
-		output.result = state.get().tokens.contains(input.tokenName);
-	}
-
-	PUBLIC_FUNCTION(getNumberOfInvestedProjects)
-	{
-		state.get().numberOfInvestedProjects.get(input.userId, output.numberOfInvestedProjects);
-	}
-
-public:
-	struct getProjectByIndex_input
-	{
-		uint32 indexOfProject;
-	};
-
-	struct getProjectByIndex_output
-	{
-		projectInfo project;
-	};
-
-	PUBLIC_FUNCTION(getProjectByIndex)
-	{
-		output.project = state.get().projects.get(input.indexOfProject);
-	}
-
-	struct getFundarasingByIndex_input
-	{
-		uint32 indexOfFundarasing;
-	};
-
-	struct getFundarasingByIndex_output
-	{
-		fundaraisingInfo fundarasing;
-	};
-
-	PUBLIC_FUNCTION(getFundarasingByIndex)
-	{
-		output.fundarasing = state.get().fundaraisings.get(input.indexOfFundarasing);
-	}
-
-	struct getProjectIndexListByCreator_input
-	{
-		id creator;
-	};
-
-	struct getProjectIndexListByCreator_output
-	{
-		Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> indexListForProjects;
-	};
-
-	struct getProjectIndexListByCreator_locals
-	{
-		uint32 i, countOfProject;
-	};
-
-	PUBLIC_FUNCTION_WITH_LOCALS(getProjectIndexListByCreator)
-	{
-		for (locals.i = 0; locals.i < state.get().numberOfCreatedProject; locals.i++)
+		if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares, input.newManagingContractIndex,
+		                      input.newManagingContractIndex, 0) < 0)
 		{
-			if (state.get().projects.get(locals.i).creator == input.creator)
-			{
-				output.indexListForProjects.set(locals.countOfProject++, locals.i);
-			}
+			// error
+			output.transferredNumberOfShares = 0;
+			return;
 		}
-		for (locals.i = locals.countOfProject; locals.i < NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST; locals.i++)
-		{
-			output.indexListForProjects.set(locals.i, NOSTROMO_MAX_NUMBER_PROJECT);
-		}
+
+		// success
+		output.transferredNumberOfShares = input.numberOfShares;
 	}
 
-	struct getInfoUserInvested_input
+protected:
+	static bool isSupportedAuctionType(EAuctionType auctionType)
 	{
-		id investorId;
-	};
-
-	struct getInfoUserInvested_output
-	{
-		Array<investInfo, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> listUserInvested;
-	};
-
-	struct getInfoUserInvested_locals
-	{
-		uint32 i, countOfProject;
-	};
-
-	PUBLIC_FUNCTION_WITH_LOCALS(getInfoUserInvested)
-	{
-		state.get().investors.get(input.investorId, output.listUserInvested);
+		return auctionType == EAuctionType::Batch || auctionType == EAuctionType::Standard;
 	}
 
-	struct getMaxClaimAmount_input
+	static bool isSupportedAuctionVisibility(EAuctionVisibility visibility)
 	{
-		id investorId;
-		uint32 indexOfFundraising;
-	};
-
-	struct getMaxClaimAmount_output
-	{
-		uint64 amount;
-	};
-
-	struct getMaxClaimAmount_locals
-	{
-		Array<investInfo, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> tmpInvestedList;
-		investInfo tmpInvestData;
-		uint64 maxClaimAmount, investedAmount, dayA, dayB, dayC, dayD, start_cur_diffSecond, cur_end_diffSecond, claimedAmount;
-		uint32 curDate, tmpDate, numberOfInvestedProjects;
-		sint32 i, j, k;
-		uint8 curVestingStep, vestingPercent;
-		bit flag;
-	};
-
-	PUBLIC_FUNCTION_WITH_LOCALS(getMaxClaimAmount)
-	{
-		packNostromoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
-
-		if (input.indexOfFundraising >= state.get().numberOfFundraising)
-		{
-			return ;
-		}
-
-		state.get().investors.get(input.investorId, locals.tmpInvestedList);
-		if (state.get().numberOfInvestedProjects.get(input.investorId, locals.numberOfInvestedProjects) == 0)
-		{
-			return ;
-		}
-
-		for (locals.i = 0; locals.i < (sint32)locals.numberOfInvestedProjects; locals.i++)
-		{
-			if (locals.tmpInvestedList.get(locals.i).indexOfFundraising == input.indexOfFundraising)
-			{
-				locals.investedAmount = locals.tmpInvestedList.get(locals.i).investedAmount;
-				locals.claimedAmount = locals.tmpInvestedList.get(locals.i).claimedAmount;
-				locals.tmpInvestData = locals.tmpInvestedList.get(locals.i);
-				break;
-			}
-		}
-
-		if (locals.i == locals.numberOfInvestedProjects)
-		{
-			return ;
-		}
-
-		if (locals.curDate >= state.get().fundaraisings.get(input.indexOfFundraising).listingStartDate && locals.curDate < state.get().fundaraisings.get(input.indexOfFundraising).cliffEndDate)
-		{
-			output.amount = div(div(locals.investedAmount, state.get().fundaraisings.get(input.indexOfFundraising).tokenPrice) * state.get().fundaraisings.get(input.indexOfFundraising).TGE, 100ULL);
-		}
-		else if (locals.curDate >= state.get().fundaraisings.get(input.indexOfFundraising).cliffEndDate && locals.curDate < state.get().fundaraisings.get(input.indexOfFundraising).vestingEndDate)
-		{
-			locals.tmpDate = state.get().fundaraisings.get(input.indexOfFundraising).cliffEndDate;
-			diffDateInSecond(locals.tmpDate, locals.curDate, locals.j, locals.dayA, locals.dayB, locals.start_cur_diffSecond);
-			locals.tmpDate = state.get().fundaraisings.get(input.indexOfFundraising).vestingEndDate;
-			diffDateInSecond(locals.curDate, locals.tmpDate, locals.k, locals.dayC, locals.dayD, locals.cur_end_diffSecond);
-
-			locals.curVestingStep = (uint8)div(locals.start_cur_diffSecond, div(locals.start_cur_diffSecond + locals.cur_end_diffSecond, state.get().fundaraisings.get(input.indexOfFundraising).stepOfVesting * 1ULL)) + 1;
-			locals.vestingPercent = (uint8)div(100ULL - state.get().fundaraisings.get(input.indexOfFundraising).TGE, state.get().fundaraisings.get(input.indexOfFundraising).stepOfVesting * 1ULL) * locals.curVestingStep;
-			output.amount = div(div(locals.investedAmount, state.get().fundaraisings.get(input.indexOfFundraising).tokenPrice) * (state.get().fundaraisings.get(input.indexOfFundraising).TGE + locals.vestingPercent), 100ULL);
-		}
-		else if (locals.curDate >= state.get().fundaraisings.get(input.indexOfFundraising).vestingEndDate)
-		{
-			output.amount = div(locals.investedAmount, state.get().fundaraisings.get(input.indexOfFundraising).tokenPrice);
-		}
+		return visibility == EAuctionVisibility::Public || visibility == EAuctionVisibility::Private;
 	}
 
-    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
-	{
-		REGISTER_USER_FUNCTION(getStats, 1);
-		REGISTER_USER_FUNCTION(getTierLevelByUser, 2);
-		REGISTER_USER_FUNCTION(getUserVoteStatus, 3);
-		REGISTER_USER_FUNCTION(checkTokenCreatability, 4);
-		REGISTER_USER_FUNCTION(getNumberOfInvestedProjects, 5);
-		REGISTER_USER_FUNCTION(getProjectByIndex, 6);
-		REGISTER_USER_FUNCTION(getFundarasingByIndex, 7);
-		REGISTER_USER_FUNCTION(getProjectIndexListByCreator, 8);
-		REGISTER_USER_FUNCTION(getInfoUserInvested, 9);
-		REGISTER_USER_FUNCTION(getMaxClaimAmount, 10);
+	static bool isZeroAsset(const Asset& asset) { return asset.assetName == 0 && isZero(asset.issuer); }
 
-		REGISTER_USER_PROCEDURE(registerInTier, 1);
-		REGISTER_USER_PROCEDURE(logoutFromTier, 2);
-		REGISTER_USER_PROCEDURE(createProject, 3);
-		REGISTER_USER_PROCEDURE(voteInProject, 4);
-		REGISTER_USER_PROCEDURE(createFundraising, 5);
-		REGISTER_USER_PROCEDURE(investInProject, 6);
-		REGISTER_USER_PROCEDURE(claimToken, 7);
-		REGISTER_USER_PROCEDURE(upgradeTier, 8);
-		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 9);
+	/**
+	 * @brief Compares two Nostromo timestamps.
+	 * @param a Left-hand date-time.
+	 * @param b Right-hand date-time.
+	 * @return `-1` if `a < b`, `0` if `a == b`, `1` if `a > b`.
+	 */
+	static sint32 dateCompare(const DateAndTime& a, const DateAndTime& b)
+	{
+		if (a < b)
+		{
+			return -1;
+		}
+		if (a > b)
+		{
+			return 1;
+		}
+		return 0;
 	}
 
-	INITIALIZE()
+	/**
+	 * @brief Computes the difference in seconds between two `DateAndTime` values.
+	 * @param a Start date-time.
+	 * @param b End date-time.
+	 * @param res Output difference in seconds, or `0` when `A >= B`.
+	 */
+	static void diffDateInSecond(const DateAndTime& a, const DateAndTime& b, uint64& res)
 	{
-		state.mut().teamAddress = ID(_G, _E, _H, _N, _R, _F, _U, _O, _I, _I, _C, _S, _B, _C, _S, _R, _F, _M, _N, _J, _T, _C, _J, _K, _C, _J, _H, _A, _T, _Z, _X, _A, _X, _Y, _O, _F, _W, _X, _U, _F, _L, _C, _K, _F, _P, _B, _W, _X, _Q, _A, _C, _B, _S, _Z, _F, _F);
-		state.mut().transferRightsFee = 100;
+		if (a >= b)
+		{
+			res = 0;
+			return;
+		}
+		res = div<uint64>(a.durationMicrosec(b), 1000000ULL);
 	}
-
-	struct END_EPOCH_locals
-	{
-		fundaraisingInfo tmpFundraising;
-		investInfo tmpInvest;
-		Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> votedList;
-		Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST> clearedVotedList;
-		id userId;
-		sint64 idx;
-		uint32 numberOfVotedProject, clearedNumberOfVotedProject, i, j, curDate, indexOfProject, numberOfInvestedProjects, tierLevel;
-	};
-
-	END_EPOCH_WITH_LOCALS()
-	{
-		packNostromoDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
-
-		locals.idx = state.get().investors.nextElementIndex(NULL_INDEX);
-		while (locals.idx != NULL_INDEX)
-		{
-			locals.userId = state.get().investors.key(locals.idx);
-			state.get().investors.get(locals.userId, state.mut().tmpInvestedList);
-			state.get().numberOfInvestedProjects.get(locals.userId, locals.numberOfInvestedProjects);
-
-			for (locals.i = 0; locals.i < locals.numberOfInvestedProjects; locals.i++)
-			{
-				if (state.get().fundaraisings.get(locals.i).thirdPhaseEndDate < locals.curDate && state.get().fundaraisings.get(locals.i).isCreatedToken == 0 && state.get().fundaraisings.get(locals.i).raisedFunds != 0)
-				{
-					qpi.transfer(locals.userId, state.get().tmpInvestedList.get(locals.i).investedAmount);
-					state.mut().tmpInvestedList.set(locals.i, state.get().tmpInvestedList.get(--locals.numberOfInvestedProjects));
-				}
-			}
-			if (locals.numberOfInvestedProjects == 0)
-			{
-				state.mut().investors.removeByKey(locals.userId);
-				state.mut().numberOfInvestedProjects.removeByKey(locals.userId);
-			}
-			else
-			{
-				state.mut().investors.set(locals.userId, state.get().tmpInvestedList);
-				state.mut().numberOfInvestedProjects.set(locals.userId, locals.numberOfInvestedProjects);
-			}
-			locals.idx = state.get().investors.nextElementIndex(locals.idx);
-		}
-
-		for (locals.i = 0; locals.i < state.get().numberOfFundraising; locals.i++)
-		{
-			if (state.get().fundaraisings.get(locals.i).thirdPhaseEndDate < locals.curDate && state.get().fundaraisings.get(locals.i).isCreatedToken == 0 && state.get().fundaraisings.get(locals.i).raisedFunds != 0)
-			{
-				locals.tmpFundraising = state.get().fundaraisings.get(locals.i);
-				locals.tmpFundraising.raisedFunds = 0;
-				state.mut().fundaraisings.set(locals.i, locals.tmpFundraising);
-			}
-			else if (state.get().fundaraisings.get(locals.i).thirdPhaseEndDate < locals.curDate && state.get().fundaraisings.get(locals.i).isCreatedToken == 1 && state.get().fundaraisings.get(locals.i).raisedFunds != 0)
-			{
-				locals.tmpFundraising = state.get().fundaraisings.get(locals.i);
-
-				state.mut().epochRevenue += div(locals.tmpFundraising.raisedFunds * 5, 100ULL);
-				qpi.transfer(state.get().projects.get(locals.tmpFundraising.indexOfProject).creator, locals.tmpFundraising.raisedFunds - div(locals.tmpFundraising.raisedFunds * 5, 100ULL));
-
-				qpi.transferShareOwnershipAndPossession(state.get().projects.get(locals.tmpFundraising.indexOfProject).tokenName, SELF, SELF, SELF, state.get().fundaraisings.get(locals.i).soldAmount - div(locals.tmpFundraising.raisedFunds, state.get().fundaraisings.get(locals.i).tokenPrice), state.get().projects.get(locals.tmpFundraising.indexOfProject).creator);
-
-				locals.tmpFundraising.raisedFunds = 0;
-				state.mut().fundaraisings.set(locals.i, locals.tmpFundraising);
-			}
-		}
-
-		qpi.transfer(state.get().teamAddress, div(state.get().epochRevenue, 10ULL));
-		state.mut().epochRevenue -= div(state.get().epochRevenue, 10ULL);
-		qpi.distributeDividends(div(state.get().epochRevenue, 676ULL));
-		state.mut().epochRevenue -= div(state.get().epochRevenue, 676ULL) * 676;
-
-		locals.idx = state.get().users.nextElementIndex(NULL_INDEX);
-		while (locals.idx != NULL_INDEX)
-		{
-			locals.userId = state.get().users.key(locals.idx);
-			locals.tierLevel = state.get().users.value(locals.idx);
-
-			if (state.get().numberOfVotedProject.get(locals.userId, locals.numberOfVotedProject))
-			{
-				state.get().voteStatus.get(locals.userId, locals.votedList);
-				locals.clearedNumberOfVotedProject = 0;
-				for (locals.j = 0; locals.j < locals.numberOfVotedProject; locals.j++)
-				{
-					locals.indexOfProject = locals.votedList.get(locals.j);
-
-					if (state.get().projects.get(locals.indexOfProject).endDate > locals.curDate)
-					{
-						locals.clearedVotedList.set(locals.clearedNumberOfVotedProject++, locals.indexOfProject);
-					}
-				}
-				if (locals.clearedNumberOfVotedProject == 0)
-				{
-					state.mut().numberOfVotedProject.removeByKey(locals.userId);
-					state.mut().voteStatus.removeByKey(locals.userId);
-				}
-				else
-				{
-					state.mut().numberOfVotedProject.set(locals.userId, locals.clearedNumberOfVotedProject);
-					state.mut().voteStatus.set(locals.userId, locals.clearedVotedList);
-				}
-			}
-
-			locals.idx = state.get().users.nextElementIndex(locals.idx);
-		}
-
-		if (state.get().users.needsCleanup()) { state.mut().users.cleanup(); }
-		if (state.get().investors.needsCleanup()) { state.mut().investors.cleanup(); }
-		if (state.get().numberOfInvestedProjects.needsCleanup()) { state.mut().numberOfInvestedProjects.cleanup(); }
-		if (state.get().numberOfVotedProject.needsCleanup()) { state.mut().numberOfVotedProject.cleanup(); }
-		if (state.get().voteStatus.needsCleanup()) { state.mut().voteStatus.cleanup(); }
-	}
-
-	PRE_ACQUIRE_SHARES()
-    {
-		output.allowTransfer = true;
-    }
 };
