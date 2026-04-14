@@ -319,6 +319,24 @@ struct NOST : public ContractBase
 		uint64 allowedWalletIndex;
 	};
 
+	struct ValidateMetadataCid_input
+	{
+		Array<uint8, NOST_AUCTION_METADATA_CID_LENGTH> metadataIpfsCid;
+	};
+
+	struct ValidateMetadataCid_output
+	{
+		uint8 isValid;
+	};
+
+	struct ValidateMetadataCid_locals
+	{
+		uint64 cidIndex;
+		uint8 cidChar;
+		uint8 hasPayloadCharacters;
+		uint8 reachedTerminator;
+	};
+
 	struct VerifyAuctionLotBalances_input
 	{
 		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
@@ -370,6 +388,8 @@ struct NOST : public ContractBase
 	struct CreateAuction_locals
 	{
 		AuctionData auction;
+		ValidateMetadataCid_input validateMetadataCidInput;
+		ValidateMetadataCid_output validateMetadataCidOutput;
 		AnalyzeAuctionLot_input analyzeAuctionLotInput;
 		AnalyzeAuctionLot_output analyzeAuctionLotOutput;
 		CountAllowedBidderWallets_input countAllowedBidderWalletsInput;
@@ -499,6 +519,48 @@ struct NOST : public ContractBase
 		}
 	}
 
+	PRIVATE_FUNCTION_WITH_LOCALS(ValidateMetadataCid)
+	{
+		output.isValid = 0;
+		locals.hasPayloadCharacters = 0;
+		locals.reachedTerminator = 0;
+
+		if (input.metadataIpfsCid.get(0) != 'b')
+		{
+			return;
+		}
+
+		for (locals.cidIndex = 1; locals.cidIndex < NOST_AUCTION_METADATA_CID_LENGTH; ++locals.cidIndex)
+		{
+			locals.cidChar = input.metadataIpfsCid.get(locals.cidIndex);
+			if (locals.cidChar == 0)
+			{
+				locals.reachedTerminator = 1;
+				continue;
+			}
+
+			if (locals.reachedTerminator)
+			{
+				return;
+			}
+
+			if ((locals.cidChar >= 'a' && locals.cidChar <= 'z') || (locals.cidChar >= '2' && locals.cidChar <= '7'))
+			{
+				locals.hasPayloadCharacters = 1;
+				continue;
+			}
+
+			return;
+		}
+
+		if (!locals.hasPayloadCharacters)
+		{
+			return;
+		}
+
+		output.isValid = 1;
+	}
+
 	PRIVATE_FUNCTION_WITH_LOCALS(VerifyAuctionLotBalances)
 	{
 		output.hasEnoughBalance = 1;
@@ -601,6 +663,17 @@ struct NOST : public ContractBase
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 			output.errorCode = static_cast<uint8>(EAuctionError::StorageFull);
+			return;
+		}
+
+		locals.validateMetadataCidInput.metadataIpfsCid = input.metadataIpfsCid;
+		CALL(ValidateMetadataCid, locals.validateMetadataCidInput, locals.validateMetadataCidOutput);
+		if (!locals.validateMetadataCidOutput.isValid)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 			return;
 		}
 
