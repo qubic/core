@@ -299,6 +299,10 @@ public:
     {
         sint64 transferredNumberOfShares;
     };
+    struct TransferSharesManagementRights_locals
+    {
+        sint64 paidTransferFee;
+    };
 
     struct SendToManyBenchmark_input
     {
@@ -1190,11 +1194,10 @@ public:
      * @return transferredNumberOfShares The number of shares successfully transferred.
      *         Returns 0 if the operation fails.
      */
-    PUBLIC_PROCEDURE(TransferSharesManagementRights)
+    PUBLIC_PROCEDURE_WITH_LOCALS(TransferSharesManagementRights)
     {
-        sint64 paidTransferFee;
         output.transferredNumberOfShares = 0;
-        paidTransferFee = qpi.releaseShares(
+        locals.paidTransferFee = qpi.releaseShares(
                 input.asset,
                 qpi.invocator(),
                 qpi.invocator(),
@@ -1202,7 +1205,7 @@ public:
                 input.newManagingContractIndex,
                 input.newManagingContractIndex,
                 qpi.invocationReward());
-        if (paidTransferFee < 0)
+        if (locals.paidTransferFee < 0)
         {
             // Failed: refund everything sent with this invocation
             if (qpi.invocationReward() > 0)
@@ -1215,9 +1218,9 @@ public:
         // Success
         output.transferredNumberOfShares = input.numberOfShares;
 
-        if (qpi.invocationReward() > paidTransferFee)
+        if (qpi.invocationReward() > locals.paidTransferFee)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - paidTransferFee);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.paidTransferFee);
         }
     }
 
