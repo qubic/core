@@ -491,8 +491,9 @@ struct NOST : public ContractBase
 		uint64 previousEscrow;
 		uint64 effectiveQuantity;
 		DateAndTime currentDate;
-		bool participantExists;
-		bool highestBidderExists;
+		uint8 participantExists;
+		uint8 highestBidderExists;
+		uint8 hasAccess;
 	};
 
 	struct CancelAuction_locals
@@ -962,6 +963,7 @@ struct NOST : public ContractBase
 			output.errorCode = static_cast<uint8>(EAuctionError::AuctionNotFound);
 			return;
 		}
+
 		if (locals.auction.status != EAuctionStatus::Active)
 		{
 			if (qpi.invocationReward() > 0)
@@ -971,6 +973,7 @@ struct NOST : public ContractBase
 			output.errorCode = static_cast<uint8>(EAuctionError::AuctionClosed);
 			return;
 		}
+
 		if (locals.auction.seller == qpi.invocator())
 		{
 			if (qpi.invocationReward() > 0)
@@ -993,12 +996,20 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.visibility == EAuctionVisibility::Private && !locals.auction.allowedBidderWallets.contains(qpi.invocator()))
+		if (locals.auction.visibility == EAuctionVisibility::Private)
 		{
-			locals.hasRequiredAccessAssetInput.auction = locals.auction;
-			CALL(HasRequiredAccessAsset, locals.hasRequiredAccessAssetInput, locals.hasRequiredAccessAssetOutput);
+			if (locals.auction.requiredAccessAssets.population() > 0)
+			{
+				locals.hasRequiredAccessAssetInput.auction = locals.auction;
+				CALL(HasRequiredAccessAsset, locals.hasRequiredAccessAssetInput, locals.hasRequiredAccessAssetOutput);
+				locals.hasAccess = locals.hasRequiredAccessAssetOutput.hasRequiredAccessAsset;
+			}
+			else
+			{
+				locals.hasAccess = locals.auction.allowedBidderWallets.contains(qpi.invocator());
+			}
 
-			if (!locals.hasRequiredAccessAssetOutput.hasRequiredAccessAsset)
+			if (!locals.hasAccess)
 			{
 				if (qpi.invocationReward() > 0)
 				{
@@ -1345,7 +1356,8 @@ protected:
 
 	static bool validatePrivateAuctionAccess(EAuctionVisibility visibility, uint64 requiredAccessAssetCount, uint64 allowedWalletCount)
 	{
-		return visibility != EAuctionVisibility::Private || requiredAccessAssetCount > 0 || allowedWalletCount > 0;
+		return visibility != EAuctionVisibility::Private ||
+		       ((requiredAccessAssetCount > 0) != (allowedWalletCount > 0));
 	}
 
 	static sint64 getCreateAuctionFee(EAuctionVisibility visibility, const ContractState<StateData, CONTRACT_INDEX>& state)
