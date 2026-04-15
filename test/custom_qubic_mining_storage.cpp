@@ -2,10 +2,10 @@
 
 #include <array>
 #include <random>
-#include <cstdint>
 
 #include "gtest/gtest.h"
 
+#include "lib/platform_common/qstdint.h"
 #include "oracle_testing.h"
 #include "src/mining/custom_qubic_mining_storage.h"
 

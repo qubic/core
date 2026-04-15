@@ -50,6 +50,7 @@
     <ClInclude Include="contracts\QReservePool.h" />
     <ClInclude Include="contracts\QThirtyFour.h" />
     <ClInclude Include="contracts\Pulse.h" />
+    <ClInclude Include="contracts\Escrow.h" />
     <ClInclude Include="contracts\TestExampleA.h" />
     <ClInclude Include="contracts\TestExampleB.h" />
     <ClInclude Include="contracts\TestExampleC.h" />
@@ -68,6 +69,7 @@
     <ClInclude Include="contract_core\qpi_spectrum_impl.h" />
     <ClInclude Include="contract_core\qpi_system_impl.h" />
     <ClInclude Include="contract_core\qpi_hash_map_impl.h" />
+    <ClInclude Include="contract_core\qpi_linked_list_impl.h" />
     <ClInclude Include="contract_core\qpi_ticking_impl.h" />
     <ClInclude Include="contract_core\qpi_trivial_impl.h" />
     <ClInclude Include="contract_core\stack_buffer.h" />

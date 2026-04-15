@@ -12,7 +12,7 @@
 
 #define MAX_NUMBER_OF_PROCESSORS 32
 #define NUMBER_OF_SOLUTION_PROCESSORS 12
-// Maximum number of NUMBER_OF_SOLUTION_PROCESSORS can be used for pre-process the mining solution
+// Maximum number of NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS can be used for pre-process the mining solution.
 // Must not exceed half of NUMBER_OF_SOLUTION_PROCESSORS. Set 0 to disable.
 #define NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS 4
 
@@ -65,16 +65,17 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Addons: If you don't know it, leave it 0.
 #define ADDON_TX_STATUS_REQUEST 0
 
+
 //////////////////////////////////////////////////////////////////////////
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 286
-#define VERSION_C 1
+#define VERSION_B 287
+#define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 208
-#define TICK 48870000
+#define EPOCH 209
+#define TICK 49480000 
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -91,6 +92,7 @@ static unsigned short CUSTOM_MINING_CACHE_FILE_NAME[] = L"custom_mining_cache.??
 static unsigned short CONTRACT_EXEC_FEES_ACC_FILE_NAME[] = L"contract_exec_fees_acc.???";
 static unsigned short CONTRACT_EXEC_FEES_REC_FILE_NAME[] = L"contract_exec_fees_rec.???";
 static unsigned short REVENUE_DATA_END_OF_EPOCH_FILE_NAME[] = L"revenue_data.eoe";
+static unsigned short REVENUE_DATA_SNAPSHOT_FILE_NAME[] = L"revenue_data.???";
 
 static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS = 512;     // K
 static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS = 512;    // L
@@ -137,7 +139,6 @@ static_assert(INTERNAL_COMPUTATIONS_INTERVAL >= NUMBER_OF_COMPUTORS, "Internal c
 static unsigned int gFullExternalComputationTimes[][2] =
 {
     {0x040C0000U, 0x050C0000U}, // Thu 12:00:00 - Fri 12:00:00
-    {0x010C0000U, 0x020C0000U}, // Mon 12:00:00 - Tue 12:00:00
 };
 
 #define STACK_SIZE 4194304

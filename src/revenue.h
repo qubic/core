@@ -6,6 +6,10 @@
 #include "vote_counter.h"
 #include "public_settings.h"
 
+// Revenue V2: set to 1 to use the new revenue formula (additive bonus + sliding window + oracle)
+// set to 0 to use V1 formula (multiplicative: tx * vote * mining)
+#define USE_REVENUE_V2 1
+
 
 static unsigned long long gVoteScoreBuffer[NUMBER_OF_COMPUTORS];
 static unsigned long long gCustomMiningScoreBuffer[NUMBER_OF_COMPUTORS];
@@ -48,15 +52,24 @@ struct RevenueComponents
 } gRevenueComponents;
 
 // Get the lower bound that start to separate the QUORUM region of score
-unsigned long long getQuorumScore(const unsigned long long* score)
+unsigned long long getQuorumScore(
+    const unsigned long long* score,
+    const unsigned int numberOfComputors = NUMBER_OF_COMPUTORS,
+    const unsigned int quorum = QUORUM)
 {
+    ASSERT((quorum > 0) && (quorum <= QUORUM));
+    if ((quorum == 0) || (quorum > QUORUM))
+    {
+        return 1;
+    }
+
     unsigned long long sortedScore[QUORUM + 1];
     // Sort revenue scores to get lowest score of quorum
-    setMem(sortedScore, sizeof(sortedScore), 0);
-    for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    setMem(sortedScore, (quorum + 1) * sizeof(unsigned long long), 0);
+    for (unsigned short computorIndex = 0; computorIndex < numberOfComputors; computorIndex++)
     {
-        sortedScore[QUORUM] = score[computorIndex];
-        unsigned int i = QUORUM;
+        sortedScore[quorum] = score[computorIndex];
+        unsigned int i = quorum;
         while (i
             && sortedScore[i - 1] < sortedScore[i])
         {
@@ -65,11 +78,11 @@ unsigned long long getQuorumScore(const unsigned long long* score)
             sortedScore[i--] = tmp;
         }
     }
-    if (!sortedScore[QUORUM - 1])
+    if (!sortedScore[quorum - 1])
     {
-        sortedScore[QUORUM - 1] = 1;
+        sortedScore[quorum - 1] = 1;
     }
-    return sortedScore[QUORUM - 1];
+    return sortedScore[quorum - 1];
 }
 
 // This function will sort the score take the 450th score at reference score
@@ -79,14 +92,16 @@ unsigned long long getQuorumScore(const unsigned long long* score)
 static void computeRevFactor(
     const unsigned long long* score,
     const unsigned long long scalingThreshold,
-    unsigned long long* outputScoreFactor)
+    unsigned long long* outputScoreFactor,
+    const unsigned int numberOfComputors = NUMBER_OF_COMPUTORS,
+    const unsigned int quorum = QUORUM)
 {
     ASSERT(scalingThreshold > 0);
 
     // Sort revenue scores to get lowest score of quorum
-    unsigned long long quorumScore = getQuorumScore(score);
+    unsigned long long quorumScore = getQuorumScore(score, numberOfComputors, quorum);
 
-    for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    for (unsigned int computorIndex = 0; computorIndex < numberOfComputors; computorIndex++)
     {
         unsigned long long scoreFactor = 0;
         if (score[computorIndex] == 0)
@@ -167,6 +182,15 @@ static constexpr unsigned long long REVENUE_BONUS_CAP = 256; // capacity for non
 static constexpr unsigned int REVENUE_W_TX = 17;             // mandatory weight: TX (85%)
 static constexpr unsigned int REVENUE_W_ORACLE = 3;          // mandatory weight: Oracle (15%)
 static constexpr unsigned int REVENUE_W_SUM = REVENUE_W_TX + REVENUE_W_ORACLE;  // 20
+// Mining group quorum ratio: 2/3 of each group (same ratio as global QUORUM/NUMBER_OF_COMPUTORS)
+static constexpr unsigned int REVENUE_MINING_QUORUM_NUMERATOR = 2;
+static constexpr unsigned int REVENUE_MINING_QUORUM_DENOMINATOR = 3;
+// Mining group assignment strategy (template parameter for computeGroupMiningFactor)
+enum MiningGroupStrategy
+{
+    MINING_GROUP_BY_MAX = 0,    // max(doge, xmr) determines group (robust against gaming)
+    MINING_GROUP_BY_ANY_DOGE,   // any DOGE share > 0 assigns to DOGE group (simple)
+};
 // M_combined is computed as (W_TX*scoreTx + W_ORACLE*scoreOracle) / W_SUM first → [0, S]
 // Then formula: revenue = ipc × M × (S² + B×E) / (S × (S+B) × S)
 static constexpr unsigned long long REVENUE_DIVISOR = REVENUE_SCALE * (REVENUE_SCALE + REVENUE_BONUS_CAP) * REVENUE_SCALE; // 1024 × 1280 × 1024 = 1,342,177,280
@@ -186,6 +210,8 @@ struct EpochRevenueData
     // Per-computor arrays (NUMBER_OF_COMPUTORS entries each)
     unsigned long long slidingWindowTxScore[NUMBER_OF_COMPUTORS];   // new sliding window accumulated score
     unsigned long long oracleScore[NUMBER_OF_COMPUTORS];            // oracle commit/reveal revenue points
+    unsigned long long xmrMiningScore[NUMBER_OF_COMPUTORS];           // XMR custom mining shares (raw)
+    unsigned long long dogeMiningScore[NUMBER_OF_COMPUTORS];        // DOGE merged-mining shares (raw)
     long long v2Revenue[NUMBER_OF_COMPUTORS];                       // V2 shadow output
 
     // Per-tick TX counts — existing total + 3 categories
@@ -198,15 +224,104 @@ struct EpochRevenueData
 
 static EpochRevenueData gEpochRevenueData;
 
+// Mining group classification
+enum MiningGroup : unsigned char
+{
+    MINING_GROUP_XMR = 0,
+    MINING_GROUP_DOGE = 1,
+};
+
 // Intermediate buffers for V2 revenue computation
 struct RevenueV2Buffers
 {
     unsigned int slidingWindowLogScore[MAX_NUMBER_OF_TICKS_PER_EPOCH];
     unsigned long long txFactor[NUMBER_OF_COMPUTORS];
     unsigned long long oracleFactor[NUMBER_OF_COMPUTORS];
-    unsigned long long miningFactor[NUMBER_OF_COMPUTORS];
+    unsigned long long miningFactor[NUMBER_OF_COMPUTORS];          // group-based mining factor (E)
+    MiningGroup miningGroup[NUMBER_OF_COMPUTORS];                  // which group each computor belongs to
+
+    // Scratch buffers for computeGroupMiningFactor (avoid large stack allocations)
+    unsigned int dogeIndices[NUMBER_OF_COMPUTORS];
+    unsigned int xmrIndices[NUMBER_OF_COMPUTORS];
+    unsigned long long dogeGroupScores[NUMBER_OF_COMPUTORS];
+    unsigned long long xmrGroupScores[NUMBER_OF_COMPUTORS];
+    unsigned long long dogeGroupFactors[NUMBER_OF_COMPUTORS];
+    unsigned long long xmrGroupFactors[NUMBER_OF_COMPUTORS];
 };
 static RevenueV2Buffers gRevenueV2Buffers;
+
+// Compute mining factor using group-based quorum normalization.
+// Each computor is assigned to DOGE or XMR group based on their shares.
+// The quorum threshold is 2/3 of each group size, computed independently.
+template <MiningGroupStrategy strategy = MINING_GROUP_BY_MAX>
+static void computeGroupMiningFactor(
+    const unsigned long long* xmrScore,
+    const unsigned long long* dogeScore,
+    const unsigned long long scalingThreshold,
+    unsigned long long* outputMiningFactor,
+    MiningGroup* outputMiningGroup)
+{
+    ASSERT(scalingThreshold > 0);
+
+    // Classify each computor into DOGE or XMR group
+    unsigned int dogeGroupSize = 0;
+    unsigned int xmrGroupSize = 0;
+
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        bool isDoge;
+        if constexpr (strategy == MINING_GROUP_BY_ANY_DOGE)
+        {
+            isDoge = (dogeScore[i] > 0);
+        }
+        else
+        {
+            isDoge = (dogeScore[i] >= xmrScore[i] && dogeScore[i] > 0);
+        }
+
+        if (isDoge)
+        {
+            outputMiningGroup[i] = MINING_GROUP_DOGE;
+            gRevenueV2Buffers.dogeIndices[dogeGroupSize] = i;
+            gRevenueV2Buffers.dogeGroupScores[dogeGroupSize] = dogeScore[i];
+            dogeGroupSize++;
+        }
+        else
+        {
+            outputMiningGroup[i] = MINING_GROUP_XMR;
+            gRevenueV2Buffers.xmrIndices[xmrGroupSize] = i;
+            gRevenueV2Buffers.xmrGroupScores[xmrGroupSize] = xmrScore[i];
+            xmrGroupSize++;
+        }
+    }
+
+    // Compute factors per group using computeRevFactor with 2/3 quorum
+    if (dogeGroupSize > 0)
+    {
+        unsigned int dogeQuorumRank =
+            (dogeGroupSize * REVENUE_MINING_QUORUM_NUMERATOR + REVENUE_MINING_QUORUM_DENOMINATOR - 1)
+            / REVENUE_MINING_QUORUM_DENOMINATOR;
+        computeRevFactor(gRevenueV2Buffers.dogeGroupScores, scalingThreshold, gRevenueV2Buffers.dogeGroupFactors, dogeGroupSize, dogeQuorumRank);
+    }
+
+    if (xmrGroupSize > 0)
+    {
+        unsigned int xmrQuorumRank =
+            (xmrGroupSize * REVENUE_MINING_QUORUM_NUMERATOR + REVENUE_MINING_QUORUM_DENOMINATOR - 1)
+            / REVENUE_MINING_QUORUM_DENOMINATOR;
+        computeRevFactor(gRevenueV2Buffers.xmrGroupScores, scalingThreshold, gRevenueV2Buffers.xmrGroupFactors, xmrGroupSize, xmrQuorumRank);
+    }
+
+    // Map group factors back to computor indices
+    for (unsigned int g = 0; g < dogeGroupSize; g++)
+    {
+        outputMiningFactor[gRevenueV2Buffers.dogeIndices[g]] = gRevenueV2Buffers.dogeGroupFactors[g];
+    }
+    for (unsigned int g = 0; g < xmrGroupSize; g++)
+    {
+        outputMiningFactor[gRevenueV2Buffers.xmrIndices[g]] = gRevenueV2Buffers.xmrGroupFactors[g];
+    }
+}
 
 static void computeRevenueV2(EpochRevenueData& rEpochReveneuData)
 {
@@ -288,17 +403,27 @@ static void computeRevenueV2(EpochRevenueData& rEpochReveneuData)
         }
     }
 
-    computeRevFactor(gRevenueComponents.customMiningScore, REVENUE_SCALE, gRevenueV2Buffers.miningFactor);
+    // Mining factor: group-based (DOGE vs XMR), 2/3 quorum per group
+    // Each computor is assigned to the group where they have more shares
+    // E = factor normalized within the computor's own group
+    computeGroupMiningFactor(
+        rEpochReveneuData.xmrMiningScore,
+        rEpochReveneuData.dogeMiningScore,
+        REVENUE_SCALE,
+        gRevenueV2Buffers.miningFactor,
+        gRevenueV2Buffers.miningGroup);
 
-    // Combine: M = weighted average of mandatory factors (TX + Oracle), E = bonus (mining)
+    // Combine: M = weighted average of mandatory factors (TX + Oracle), E = group mining factor
     // M = (W_TX*scoreTx + W_ORACLE*scoreOracle) / W_SUM  in  [0, S]
     // revenue = ipc × M × (S² + B×E) / (S × (S+B) × S)
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        unsigned long long scoreTx = gRevenueV2Buffers.txFactor[i];          // [0, S]
-        unsigned long long scoreOracle = gRevenueV2Buffers.oracleFactor[i];  // [0, S]
-        unsigned long long E = gRevenueV2Buffers.miningFactor[i];         // [0, S]
+        unsigned long long scoreTx = gRevenueV2Buffers.txFactor[i];         // [0, S]
+        unsigned long long scoreOracle = gRevenueV2Buffers.oracleFactor[i]; // [0, S]
+        unsigned long long E = gRevenueV2Buffers.miningFactor[i];           // [0, S]
+
         unsigned long long M = (REVENUE_W_TX * scoreTx + REVENUE_W_ORACLE * scoreOracle) / REVENUE_W_SUM;  // [0, S]
+
         unsigned long long numerator = M * (REVENUE_SCALE * REVENUE_SCALE + REVENUE_BONUS_CAP * E);
         rEpochReveneuData.v2Revenue[i] = (long long)(REVENUE_IPC * numerator / REVENUE_DIVISOR);
     }
