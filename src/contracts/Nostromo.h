@@ -387,6 +387,60 @@ struct NOST : public ContractBase
 		sint64 possessedAccessShares;
 	};
 
+	struct ProcessBatchBid_input
+	{
+		id auctionId;
+		uint64 effectiveQuantity;
+		uint64 bidAmount;
+		uint64 requiredEscrow;
+		DateAndTime currentDate;
+		uint64 elapsedSeconds;
+	};
+
+	struct ProcessBatchBid_output
+	{
+		uint64 refundedAmount;
+		uint8 errorCode;
+		uint8 success;
+	};
+
+	struct ProcessBatchBid_locals
+	{
+		AuctionData auction;
+		AuctionParticipantData participantData;
+		AuctionParticipantKey participantKey;
+		uint64 previousEscrow;
+		uint8 participantExists;
+	};
+
+	struct ProcessStandardBid_input
+	{
+		id auctionId;
+		uint64 bidAmount;
+		uint64 requiredEscrow;
+		DateAndTime currentDate;
+		uint64 elapsedSeconds;
+	};
+
+	struct ProcessStandardBid_output
+	{
+		uint64 refundedAmount;
+		uint8 errorCode;
+		uint8 success;
+	};
+
+	struct ProcessStandardBid_locals
+	{
+		AuctionData auction;
+		AuctionParticipantData participantData;
+		AuctionParticipantData previousHighestBidderData;
+		AuctionParticipantKey participantKey;
+		AuctionParticipantKey highestBidderKey;
+		uint64 previousEscrow;
+		uint8 participantExists;
+		uint8 highestBidderExists;
+	};
+
 	struct ValidateMetadataCid_input
 	{
 		Array<uint8, NOST_AUCTION_METADATA_CID_LENGTH> metadataIpfsCid;
@@ -480,19 +534,15 @@ struct NOST : public ContractBase
 	struct PlaceBid_locals
 	{
 		AuctionData auction;
-		AuctionParticipantData participantData;
-		AuctionParticipantData previousHighestBidderData;
-		AuctionParticipantKey participantKey;
-		AuctionParticipantKey highestBidderKey;
 		HasRequiredAccessAsset_input hasRequiredAccessAssetInput;
 		HasRequiredAccessAsset_output hasRequiredAccessAssetOutput;
+		ProcessBatchBid_input processBatchBidInput;
+		ProcessBatchBid_output processBatchBidOutput;
+		ProcessStandardBid_input processStandardBidInput;
+		ProcessStandardBid_output processStandardBidOutput;
 		uint64 elapsedSeconds;
 		uint64 requiredEscrow;
-		uint64 previousEscrow;
-		uint64 effectiveQuantity;
 		DateAndTime currentDate;
-		uint8 participantExists;
-		uint8 highestBidderExists;
 		uint8 hasAccess;
 	};
 
@@ -638,6 +688,186 @@ struct NOST : public ContractBase
 				return;
 			}
 		}
+	}
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(ProcessBatchBid)
+	{
+		output.refundedAmount = 0;
+		output.errorCode = static_cast<uint8>(EAuctionError::Success);
+		output.success = 0;
+		if (!state.get().auctionList.get(input.auctionId, locals.auction))
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::AuctionNotFound);
+			return;
+		}
+
+		if (input.effectiveQuantity == 0 || input.effectiveQuantity < locals.auction.minimumPurchaseQuantity || input.bidAmount == 0)
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
+			return;
+		}
+
+		if (input.bidAmount < locals.auction.salePrice)
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::BidTooLow);
+			return;
+		}
+
+		locals.participantKey = {input.auctionId, qpi.invocator()};
+		locals.participantExists = state.get().participants.get(locals.participantKey, locals.participantData);
+		locals.previousEscrow = locals.participantExists ? locals.participantData.escrowedAmount : 0;
+
+		locals.participantData.escrowedAmount = input.requiredEscrow;
+		locals.participantData.requestedQuantity = input.effectiveQuantity;
+		locals.participantData.allocatedQuantity = 0;
+		locals.participantData.bidAmount = input.bidAmount;
+		locals.participantData.lastBidTime = input.currentDate;
+		locals.participantData.participant = qpi.invocator();
+		locals.participantData.isHighestBidder = 0;
+		locals.participantData.isWinningBid = 0;
+
+		if (!locals.participantExists)
+		{
+			locals.auction.bidderCount = sadd(locals.auction.bidderCount, 1U);
+		}
+
+		if (input.bidAmount > locals.auction.highestBidPrice)
+		{
+			locals.auction.highestBidder = qpi.invocator();
+			locals.auction.highestBidPrice = input.bidAmount;
+			locals.auction.highestBidQuantity = input.effectiveQuantity;
+			locals.auction.highestBidAmount = input.requiredEscrow;
+			locals.participantData.isHighestBidder = 1;
+		}
+
+		locals.auction.lastBidAt = input.currentDate;
+		if ((locals.auction.auctionDurationSeconds - input.elapsedSeconds) <= NOST_AUCTION_EXTENSION_SECONDS)
+		{
+			locals.auction.auctionDurationSeconds = sadd(locals.auction.auctionDurationSeconds, NOST_AUCTION_EXTENSION_SECONDS);
+		}
+		if (locals.auction.buyNowPrice > 0 && input.bidAmount >= locals.auction.buyNowPrice)
+		{
+			locals.auction.status = EAuctionStatus::Finalized;
+			locals.auction.settledAt = input.currentDate;
+			locals.participantData.isWinningBid = 1;
+			locals.participantData.isHighestBidder = 1;
+		}
+
+		if (state.mut().participants.set(locals.participantKey, locals.participantData) == NULL_INDEX)
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::StorageFull);
+			return;
+		}
+		state.mut().auctionList.replace(input.auctionId, locals.auction);
+
+		if (locals.previousEscrow > 0)
+		{
+			qpi.transfer(qpi.invocator(), locals.previousEscrow);
+			output.refundedAmount = sadd(output.refundedAmount, locals.previousEscrow);
+		}
+
+		output.success = 1;
+	}
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(ProcessStandardBid)
+	{
+		output.refundedAmount = 0;
+		output.errorCode = static_cast<uint8>(EAuctionError::Success);
+		output.success = 0;
+		locals.highestBidderExists = 0;
+		if (!state.get().auctionList.get(input.auctionId, locals.auction))
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::AuctionNotFound);
+			return;
+		}
+
+		if (locals.auction.quantityForSale == 0 || locals.auction.quantityForSale < locals.auction.minimumPurchaseQuantity || input.bidAmount == 0)
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
+			return;
+		}
+
+		if (locals.auction.highestBidPrice == 0)
+		{
+			if (input.bidAmount < locals.auction.initialPrice)
+			{
+				output.errorCode = static_cast<uint8>(EAuctionError::BidTooLow);
+				return;
+			}
+		}
+		else if (input.bidAmount < sadd(locals.auction.highestBidPrice, locals.auction.minimumBidIncrement))
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::BidTooLow);
+			return;
+		}
+
+		locals.participantKey = {input.auctionId, qpi.invocator()};
+		locals.participantExists = state.get().participants.get(locals.participantKey, locals.participantData);
+		locals.previousEscrow = locals.participantExists ? locals.participantData.escrowedAmount : 0;
+
+		locals.participantData.escrowedAmount = input.requiredEscrow;
+		locals.participantData.requestedQuantity = locals.auction.quantityForSale;
+		locals.participantData.allocatedQuantity = 0;
+		locals.participantData.bidAmount = input.bidAmount;
+		locals.participantData.lastBidTime = input.currentDate;
+		locals.participantData.participant = qpi.invocator();
+		locals.participantData.isHighestBidder = 0;
+		locals.participantData.isWinningBid = 0;
+
+		if (!locals.participantExists)
+		{
+			locals.auction.bidderCount = sadd(locals.auction.bidderCount, 1U);
+		}
+
+		if (!isZero(locals.auction.highestBidder))
+		{
+			locals.highestBidderKey = {locals.auction.auctionId, locals.auction.highestBidder};
+			locals.highestBidderExists = state.get().participants.get(locals.highestBidderKey, locals.previousHighestBidderData);
+		}
+		if (locals.highestBidderExists && locals.previousHighestBidderData.participant != qpi.invocator())
+		{
+			qpi.transfer(locals.previousHighestBidderData.participant, locals.previousHighestBidderData.escrowedAmount);
+			output.refundedAmount = sadd(output.refundedAmount, locals.previousHighestBidderData.escrowedAmount);
+			locals.previousHighestBidderData.escrowedAmount = 0;
+			locals.previousHighestBidderData.isHighestBidder = 0;
+			locals.previousHighestBidderData.isWinningBid = 0;
+			state.mut().participants.replace(locals.highestBidderKey, locals.previousHighestBidderData);
+		}
+
+		locals.participantData.isHighestBidder = 1;
+		locals.participantData.isWinningBid = 1;
+		locals.auction.highestBidder = qpi.invocator();
+		locals.auction.highestBidPrice = input.bidAmount;
+		locals.auction.highestBidQuantity = locals.auction.quantityForSale;
+		locals.auction.highestBidAmount = input.requiredEscrow;
+
+		locals.auction.lastBidAt = input.currentDate;
+		if ((locals.auction.auctionDurationSeconds - input.elapsedSeconds) <= NOST_AUCTION_EXTENSION_SECONDS)
+		{
+			locals.auction.auctionDurationSeconds = sadd(locals.auction.auctionDurationSeconds, NOST_AUCTION_EXTENSION_SECONDS);
+		}
+		if (locals.auction.buyNowPrice > 0 && input.bidAmount >= locals.auction.buyNowPrice)
+		{
+			locals.auction.status = EAuctionStatus::Finalized;
+			locals.auction.settledAt = input.currentDate;
+			locals.participantData.isWinningBid = 1;
+			locals.participantData.isHighestBidder = 1;
+		}
+
+		if (state.mut().participants.set(locals.participantKey, locals.participantData) == NULL_INDEX)
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::StorageFull);
+			return;
+		}
+		state.mut().auctionList.replace(input.auctionId, locals.auction);
+
+		if (locals.previousEscrow > 0)
+		{
+			qpi.transfer(qpi.invocator(), locals.previousEscrow);
+			output.refundedAmount = sadd(output.refundedAmount, locals.previousEscrow);
+		}
+
+		output.success = 1;
 	}
 
 	PRIVATE_FUNCTION_WITH_LOCALS(ValidateMetadataCid)
@@ -1020,60 +1250,6 @@ struct NOST : public ContractBase
 			}
 		}
 
-		locals.effectiveQuantity = input.quantity;
-		if (locals.auction.type == EAuctionType::Standard)
-		{
-			locals.effectiveQuantity = locals.auction.quantityForSale;
-		}
-		if (locals.effectiveQuantity == 0 || locals.effectiveQuantity < locals.auction.minimumPurchaseQuantity || input.bidAmount == 0)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			return;
-		}
-
-		if (locals.auction.type == EAuctionType::Batch)
-		{
-			if (input.bidAmount < locals.auction.salePrice)
-			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				output.errorCode = static_cast<uint8>(EAuctionError::BidTooLow);
-				return;
-			}
-		}
-		else
-		{
-			if (locals.auction.highestBidPrice == 0)
-			{
-				if (input.bidAmount < locals.auction.initialPrice)
-				{
-					if (qpi.invocationReward() > 0)
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					output.errorCode = static_cast<uint8>(EAuctionError::BidTooLow);
-					return;
-				}
-			}
-			else
-			{
-				if (input.bidAmount < sadd(locals.auction.highestBidPrice, locals.auction.minimumBidIncrement))
-				{
-					if (qpi.invocationReward() > 0)
-					{
-						qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					}
-					output.errorCode = static_cast<uint8>(EAuctionError::BidTooLow);
-					return;
-				}
-			}
-		}
-
 		locals.requiredEscrow = input.bidAmount;
 		if (static_cast<uint64>(qpi.invocationReward()) < locals.requiredEscrow)
 		{
@@ -1085,94 +1261,54 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.participantKey = {input.auctionId, qpi.invocator()};
-		locals.participantExists = state.get().participants.get(locals.participantKey, locals.participantData);
-		locals.previousEscrow = 0;
-		if (locals.participantExists)
+		switch (locals.auction.type)
 		{
-			locals.previousEscrow = locals.participantData.escrowedAmount;
+			case EAuctionType::Batch:
+				locals.processBatchBidInput.auctionId = input.auctionId;
+				locals.processBatchBidInput.effectiveQuantity = input.quantity;
+				locals.processBatchBidInput.bidAmount = input.bidAmount;
+				locals.processBatchBidInput.requiredEscrow = locals.requiredEscrow;
+				locals.processBatchBidInput.currentDate = locals.currentDate;
+				locals.processBatchBidInput.elapsedSeconds = locals.elapsedSeconds;
+				CALL(ProcessBatchBid, locals.processBatchBidInput, locals.processBatchBidOutput);
+				if (!locals.processBatchBidOutput.success)
+				{
+					if (qpi.invocationReward() > 0)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					}
+					output.errorCode = locals.processBatchBidOutput.errorCode;
+					return;
+				}
+				output.refundedAmount = sadd(output.refundedAmount, locals.processBatchBidOutput.refundedAmount);
+				break;
+			case EAuctionType::Standard:
+				locals.processStandardBidInput.auctionId = input.auctionId;
+				locals.processStandardBidInput.bidAmount = input.bidAmount;
+				locals.processStandardBidInput.requiredEscrow = locals.requiredEscrow;
+				locals.processStandardBidInput.currentDate = locals.currentDate;
+				locals.processStandardBidInput.elapsedSeconds = locals.elapsedSeconds;
+				CALL(ProcessStandardBid, locals.processStandardBidInput, locals.processStandardBidOutput);
+				if (!locals.processStandardBidOutput.success)
+				{
+					if (qpi.invocationReward() > 0)
+					{
+						qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					}
+					output.errorCode = locals.processStandardBidOutput.errorCode;
+					return;
+				}
+				output.refundedAmount = sadd(output.refundedAmount, locals.processStandardBidOutput.refundedAmount);
+				break;
+			default:
+				if (qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+				output.errorCode = static_cast<uint8>(EAuctionError::InvalidAuctionType);
+				return;
 		}
 
-		locals.participantData.escrowedAmount = locals.requiredEscrow;
-		locals.participantData.requestedQuantity = locals.effectiveQuantity;
-		locals.participantData.allocatedQuantity = 0;
-		locals.participantData.bidAmount = input.bidAmount;
-		locals.participantData.lastBidTime = locals.currentDate;
-		locals.participantData.participant = qpi.invocator();
-		locals.participantData.isHighestBidder = 0;
-		locals.participantData.isWinningBid = 0;
-
-		if (!locals.participantExists)
-		{
-			locals.auction.bidderCount = sadd(locals.auction.bidderCount, 1U);
-		}
-
-		if (locals.auction.type == EAuctionType::Standard)
-		{
-			locals.highestBidderExists = false;
-			if (!isZero(locals.auction.highestBidder))
-			{
-				locals.highestBidderKey = {input.auctionId, locals.auction.highestBidder};
-				locals.highestBidderExists = state.get().participants.get(locals.highestBidderKey, locals.previousHighestBidderData);
-			}
-			if (locals.highestBidderExists && locals.previousHighestBidderData.participant != qpi.invocator())
-			{
-				qpi.transfer(locals.previousHighestBidderData.participant, locals.previousHighestBidderData.escrowedAmount);
-				output.refundedAmount = sadd(output.refundedAmount, locals.previousHighestBidderData.escrowedAmount);
-				locals.previousHighestBidderData.escrowedAmount = 0;
-				locals.previousHighestBidderData.isHighestBidder = 0;
-				locals.previousHighestBidderData.isWinningBid = 0;
-				state.mut().participants.replace(locals.highestBidderKey, locals.previousHighestBidderData);
-			}
-
-			locals.participantData.isHighestBidder = 1;
-			locals.participantData.isWinningBid = 1;
-			locals.auction.highestBidder = qpi.invocator();
-			locals.auction.highestBidPrice = input.bidAmount;
-			locals.auction.highestBidQuantity = locals.effectiveQuantity;
-			locals.auction.highestBidAmount = locals.requiredEscrow;
-		}
-		else
-		{
-			if (input.bidAmount > locals.auction.highestBidPrice)
-			{
-				locals.auction.highestBidder = qpi.invocator();
-				locals.auction.highestBidPrice = input.bidAmount;
-				locals.auction.highestBidQuantity = locals.effectiveQuantity;
-				locals.auction.highestBidAmount = locals.requiredEscrow;
-				locals.participantData.isHighestBidder = 1;
-			}
-		}
-
-		locals.auction.lastBidAt = locals.currentDate;
-		if ((locals.auction.auctionDurationSeconds - locals.elapsedSeconds) <= NOST_AUCTION_EXTENSION_SECONDS)
-		{
-			locals.auction.auctionDurationSeconds = sadd(locals.auction.auctionDurationSeconds, NOST_AUCTION_EXTENSION_SECONDS);
-		}
-		if (locals.auction.buyNowPrice > 0 && input.bidAmount >= locals.auction.buyNowPrice)
-		{
-			locals.auction.status = EAuctionStatus::Finalized;
-			locals.auction.settledAt = locals.currentDate;
-			locals.participantData.isWinningBid = 1;
-			locals.participantData.isHighestBidder = 1;
-		}
-
-		if (state.mut().participants.set(locals.participantKey, locals.participantData) == NULL_INDEX)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			output.errorCode = static_cast<uint8>(EAuctionError::StorageFull);
-			return;
-		}
-		state.mut().auctionList.replace(input.auctionId, locals.auction);
-
-		if (locals.previousEscrow > 0)
-		{
-			qpi.transfer(qpi.invocator(), locals.previousEscrow);
-			output.refundedAmount = sadd(output.refundedAmount, locals.previousEscrow);
-		}
 		if (static_cast<uint64>(qpi.invocationReward()) > locals.requiredEscrow)
 		{
 			qpi.transfer(qpi.invocator(), static_cast<uint64>(qpi.invocationReward()) - locals.requiredEscrow);
@@ -1356,8 +1492,7 @@ protected:
 
 	static bool validatePrivateAuctionAccess(EAuctionVisibility visibility, uint64 requiredAccessAssetCount, uint64 allowedWalletCount)
 	{
-		return visibility != EAuctionVisibility::Private ||
-		       ((requiredAccessAssetCount > 0) != (allowedWalletCount > 0));
+		return visibility != EAuctionVisibility::Private || ((requiredAccessAssetCount > 0) != (allowedWalletCount > 0));
 	}
 
 	static sint64 getCreateAuctionFee(EAuctionVisibility visibility, const ContractState<StateData, CONTRACT_INDEX>& state)
