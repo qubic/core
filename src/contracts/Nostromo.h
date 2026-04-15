@@ -1,10 +1,19 @@
 using namespace QPI;
 
+namespace QPI
+{
+	inline bool operator==(const Asset& lhs, const Asset& rhs)
+	{
+		return lhs.assetName == rhs.assetName && lhs.issuer == rhs.issuer;
+	}
+} // namespace QPI
+
 constexpr uint64 NOST_AUCTION_NUM = 2048;
 constexpr uint64 NOST_AUCTION_METADATA_CID_LENGTH = 64;
 constexpr uint64 NOST_AUCTION_PARTICIPANT_NUM = 4096;
 constexpr uint64 NOST_AUCTION_LOT_ITEM_NUM = 64;
 constexpr uint64 NOST_AUCTION_ALLOWED_WALLET_NUM = 128;
+constexpr uint64 NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM = 16;
 constexpr uint32 NOST_AUCTION_MAX_DURATION_DAYS = 30;
 constexpr sint64 NOST_PRIVATE_AUCTION_FEE = 50000000LL;
 constexpr uint64 NOST_AUCTION_CANCELLATION_FEE_BP = 1000ULL;
@@ -62,18 +71,7 @@ struct NOST : public ContractBase
 		id auctionId;
 		id participant;
 
-		bool operator<(const AuctionParticipantKey& rhs) const
-		{
-			if (auctionId < rhs.auctionId)
-			{
-				return true;
-			}
-			if (rhs.auctionId < auctionId)
-			{
-				return false;
-			}
-			return participant < rhs.participant;
-		}
+		bool operator==(const AuctionParticipantKey& rhs) const { return auctionId == rhs.auctionId && participant == rhs.participant; }
 	};
 
 	/**
@@ -187,8 +185,8 @@ struct NOST : public ContractBase
 		/// Wallet that currently holds the highest bid.
 		id highestBidder;
 
-		/// Asset required for participation when the auction visibility is private.
-		Asset requiredAccessAsset;
+		/// Asset set required for participation when the auction visibility is private and asset-based access is used.
+		HashSet<Asset, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
 
 		/// Auction lot contents; one non-empty entry means a single asset, multiple non-empty entries mean a bundle.
 		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
@@ -232,8 +230,8 @@ struct NOST : public ContractBase
 		/// Auction lot contents; one non-empty entry means a single asset, multiple non-empty entries mean a bundle.
 		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
 
-		/// Asset required to participate when the auction is configured as private and asset-based access is used.
-		Asset requiredAccessAsset;
+		/// Asset list required to participate when the auction is configured as private and asset-based access is used.
+		Array<Asset, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
 
 		/// Wallet list for private batch auctions; copied into the auction whitelist on creation.
 		Array<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedBidderWallets;
@@ -356,6 +354,39 @@ struct NOST : public ContractBase
 		uint64 allowedWalletIndex;
 	};
 
+	struct CountRequiredAccessAssets_input
+	{
+		Array<Asset, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
+	};
+
+	struct CountRequiredAccessAssets_output
+	{
+		uint64 requiredAccessAssetCount;
+	};
+
+	struct CountRequiredAccessAssets_locals
+	{
+		Asset requiredAccessAsset;
+		uint64 requiredAccessAssetIndex;
+	};
+
+	struct HasRequiredAccessAsset_input
+	{
+		AuctionData auction;
+	};
+
+	struct HasRequiredAccessAsset_output
+	{
+		uint8 hasRequiredAccessAsset;
+	};
+
+	struct HasRequiredAccessAsset_locals
+	{
+		Asset requiredAccessAsset;
+		sint64 requiredAccessAssetSetIndex;
+		sint64 possessedAccessShares;
+	};
+
 	struct ValidateMetadataCid_input
 	{
 		Array<uint8, NOST_AUCTION_METADATA_CID_LENGTH> metadataIpfsCid;
@@ -431,6 +462,8 @@ struct NOST : public ContractBase
 		AnalyzeAuctionLot_output analyzeAuctionLotOutput;
 		CountAllowedBidderWallets_input countAllowedBidderWalletsInput;
 		CountAllowedBidderWallets_output countAllowedBidderWalletsOutput;
+		CountRequiredAccessAssets_input countRequiredAccessAssetsInput;
+		CountRequiredAccessAssets_output countRequiredAccessAssetsOutput;
 		VerifyAuctionLotBalances_input verifyAuctionLotBalancesInput;
 		EscrowAuctionLotAssets_input escrowAuctionLotAssetsInput;
 		RollbackAuctionLotAssets_input rollbackAuctionLotAssetsInput;
@@ -438,6 +471,7 @@ struct NOST : public ContractBase
 		uint64 resolvedQuantityForSale;
 		uint64 resolvedMinimumPurchaseQuantity;
 		uint64 allowedWalletIndex;
+		uint64 requiredAccessAssetIndex;
 		RollbackAuctionLotAssets_output rollbackAuctionLotAssetsOutput;
 		EscrowAuctionLotAssets_output escrowAuctionLotAssetsOutput;
 		VerifyAuctionLotBalances_output verifyAuctionLotBalancesOutput;
@@ -450,6 +484,8 @@ struct NOST : public ContractBase
 		AuctionParticipantData previousHighestBidderData;
 		AuctionParticipantKey participantKey;
 		AuctionParticipantKey highestBidderKey;
+		HasRequiredAccessAsset_input hasRequiredAccessAssetInput;
+		HasRequiredAccessAsset_output hasRequiredAccessAssetOutput;
 		uint64 elapsedSeconds;
 		uint64 requiredEscrow;
 		uint64 previousEscrow;
@@ -567,6 +603,38 @@ struct NOST : public ContractBase
 			if (!isZero(input.allowedBidderWallets.get(locals.allowedWalletIndex)))
 			{
 				output.allowedWalletCount = sadd(output.allowedWalletCount, 1ULL);
+			}
+		}
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(CountRequiredAccessAssets)
+	{
+		output.requiredAccessAssetCount = 0;
+		for (locals.requiredAccessAssetIndex = 0; locals.requiredAccessAssetIndex < input.requiredAccessAssets.capacity();
+		     ++locals.requiredAccessAssetIndex)
+		{
+			locals.requiredAccessAsset = input.requiredAccessAssets.get(locals.requiredAccessAssetIndex);
+			if (!isZeroAsset(locals.requiredAccessAsset))
+			{
+				output.requiredAccessAssetCount = sadd(output.requiredAccessAssetCount, 1ULL);
+			}
+		}
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(HasRequiredAccessAsset)
+	{
+		output.hasRequiredAccessAsset = 0;
+		for (locals.requiredAccessAssetSetIndex = input.auction.requiredAccessAssets.nextElementIndex(NULL_INDEX);
+		     locals.requiredAccessAssetSetIndex != NULL_INDEX;
+		     locals.requiredAccessAssetSetIndex = input.auction.requiredAccessAssets.nextElementIndex(locals.requiredAccessAssetSetIndex))
+		{
+			locals.requiredAccessAsset = input.auction.requiredAccessAssets.key(locals.requiredAccessAssetSetIndex);
+			locals.possessedAccessShares = qpi.numberOfShares(locals.requiredAccessAsset, AssetOwnershipSelect::byOwner(qpi.invocator()),
+			                                                  AssetPossessionSelect::byPossessor(qpi.invocator()));
+			if (locals.possessedAccessShares > 0)
+			{
+				output.hasRequiredAccessAsset = 1;
+				return;
 			}
 		}
 	}
@@ -780,7 +848,10 @@ struct NOST : public ContractBase
 
 		locals.countAllowedBidderWalletsInput.allowedBidderWallets = input.allowedBidderWallets;
 		CALL(CountAllowedBidderWallets, locals.countAllowedBidderWalletsInput, locals.countAllowedBidderWalletsOutput);
-		if (!validatePrivateAuctionAccess(static_cast<EAuctionVisibility>(input.auctionVisibility), input.requiredAccessAsset,
+		locals.countRequiredAccessAssetsInput.requiredAccessAssets = input.requiredAccessAssets;
+		CALL(CountRequiredAccessAssets, locals.countRequiredAccessAssetsInput, locals.countRequiredAccessAssetsOutput);
+		if (!validatePrivateAuctionAccess(static_cast<EAuctionVisibility>(input.auctionVisibility),
+		                                  locals.countRequiredAccessAssetsOutput.requiredAccessAssetCount,
 		                                  locals.countAllowedBidderWalletsOutput.allowedWalletCount))
 		{
 			if (qpi.invocationReward() > 0)
@@ -836,7 +907,14 @@ struct NOST : public ContractBase
 		locals.auction.createdAt = qpi.now();
 		locals.auction.lastBidAt = locals.auction.createdAt;
 		locals.auction.seller = qpi.invocator();
-		locals.auction.requiredAccessAsset = input.requiredAccessAsset;
+		for (locals.requiredAccessAssetIndex = 0; locals.requiredAccessAssetIndex < input.requiredAccessAssets.capacity();
+		     ++locals.requiredAccessAssetIndex)
+		{
+			if (!isZeroAsset(input.requiredAccessAssets.get(locals.requiredAccessAssetIndex)))
+			{
+				locals.auction.requiredAccessAssets.add(input.requiredAccessAssets.get(locals.requiredAccessAssetIndex));
+			}
+		}
 		locals.auction.auctionLotItems = input.auctionLotItems;
 		for (locals.allowedWalletIndex = 0; locals.allowedWalletIndex < NOST_AUCTION_ALLOWED_WALLET_NUM; ++locals.allowedWalletIndex)
 		{
@@ -862,7 +940,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (static_cast<uint64>(qpi.invocationReward()) > locals.requiredFee)
+		if (qpi.invocationReward() > locals.requiredFee)
 		{
 			qpi.transfer(qpi.invocator(), static_cast<uint64>(qpi.invocationReward()) - locals.requiredFee);
 		}
@@ -915,17 +993,20 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.visibility == EAuctionVisibility::Private && !locals.auction.allowedBidderWallets.contains(qpi.invocator()) &&
-		    (isZeroAsset(locals.auction.requiredAccessAsset) ||
-		     qpi.numberOfShares(locals.auction.requiredAccessAsset, AssetOwnershipSelect::byOwner(qpi.invocator()),
-		                        AssetPossessionSelect::byPossessor(qpi.invocator())) <= 0))
+		if (locals.auction.visibility == EAuctionVisibility::Private && !locals.auction.allowedBidderWallets.contains(qpi.invocator()))
 		{
-			if (qpi.invocationReward() > 0)
+			locals.hasRequiredAccessAssetInput.auction = locals.auction;
+			CALL(HasRequiredAccessAsset, locals.hasRequiredAccessAssetInput, locals.hasRequiredAccessAssetOutput);
+
+			if (!locals.hasRequiredAccessAssetOutput.hasRequiredAccessAsset)
 			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				if (qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+				output.errorCode = static_cast<uint8>(EAuctionError::PrivateAuctionAccessDenied);
+				return;
 			}
-			output.errorCode = static_cast<uint8>(EAuctionError::PrivateAuctionAccessDenied);
-			return;
 		}
 
 		locals.effectiveQuantity = input.quantity;
@@ -1262,9 +1343,9 @@ protected:
 		return true;
 	}
 
-	static bool validatePrivateAuctionAccess(EAuctionVisibility visibility, const Asset& requiredAccessAsset, uint64 allowedWalletCount)
+	static bool validatePrivateAuctionAccess(EAuctionVisibility visibility, uint64 requiredAccessAssetCount, uint64 allowedWalletCount)
 	{
-		return visibility != EAuctionVisibility::Private || !isZeroAsset(requiredAccessAsset) || allowedWalletCount > 0;
+		return visibility != EAuctionVisibility::Private || requiredAccessAssetCount > 0 || allowedWalletCount > 0;
 	}
 
 	static sint64 getCreateAuctionFee(EAuctionVisibility visibility, const ContractState<StateData, CONTRACT_INDEX>& state)
