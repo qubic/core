@@ -89,7 +89,7 @@ struct NOST : public ContractBase
 		/** @brief Quantity finally allocated to the participant after batch auction settlement. */
 		uint64 allocatedQuantity;
 
-		/** @brief Total amount committed by the participant for the current bid. */
+		/** @brief Offered price per asset in a batch auction, or total offered price for the whole lot in a standard auction. */
 		uint64 bidAmount;
 
 		/** @brief Timestamp of the participant's latest accepted bid. */
@@ -97,9 +97,6 @@ struct NOST : public ContractBase
 
 		/** @brief Wallet that owns this participant record. */
 		id participant;
-
-		/** @brief Marks the participant that currently holds the leading bid. */
-		uint8 isHighestBidder;
 
 		/** @brief Marks bids that remain inside the winning allocation after settlement. */
 		uint8 isWinningBid;
@@ -142,7 +139,7 @@ struct NOST : public ContractBase
 		/** @brief Initial price for a standard auction; bids cannot start below this total price for the whole lot. */
 		uint64 initialPrice;
 
-		/** @brief Sale price defined by the seller as the desired or minimum acceptable total selling price. */
+		/** @brief Minimum acceptable price per asset in a batch auction, or desired minimum total selling price for the whole lot in a standard auction. */
 		uint64 salePrice;
 
 		/** @brief Minimum increment by which a new standard auction bid must exceed the current highest bid. */
@@ -151,7 +148,7 @@ struct NOST : public ContractBase
 		/** @brief Buy Now price that closes a standard auction immediately when matched or exceeded. */
 		uint64 buyNowPrice;
 
-		/** @brief Highest total bid currently offered by any active bid. */
+		/** @brief Highest offered price per asset in a batch auction, or highest total offered price in a standard auction. */
 		uint64 highestBidPrice;
 
 		/** @brief Quantity requested by the current highest bid. */
@@ -174,9 +171,6 @@ struct NOST : public ContractBase
 
 		/** @brief Timestamp when the auction was finalized, cancelled, or otherwise settled. */
 		DateAndTime settledAt;
-
-		/** @brief Number of distinct bidders that have placed bids in this auction. */
-		uint32 bidderCount;
 
 		/** @brief Wallet that created the auction and offers the lot for sale. */
 		id seller;
@@ -242,7 +236,7 @@ struct NOST : public ContractBase
 		/** @brief Initial price for a standard auction; bids cannot be placed below this total price for the whole lot. */
 		uint64 initialPrice;
 
-		/** @brief Sale price defined by the seller as the desired or minimum acceptable total selling price. */
+		/** @brief Minimum acceptable price per asset in a batch auction, or desired minimum total selling price for the whole lot in a standard auction. */
 		uint64 salePrice;
 
 		/** @brief Minimum increment by which each new standard auction bid must exceed the current highest bid. */
@@ -280,7 +274,7 @@ struct NOST : public ContractBase
 		/** @brief Requested quantity for a batch auction; ignored for a standard auction because the whole lot is sold as one unit. */
 		uint64 quantity;
 
-		/** @brief Total amount the bidder commits for this bid. */
+		/** @brief Offered price per asset in a batch auction, or total offered price for the whole lot in a standard auction. */
 		uint64 bidAmount;
 	};
 
@@ -449,11 +443,8 @@ struct NOST : public ContractBase
 		/** @brief Quantity requested by the bidder in the batch auction. */
 		uint64 effectiveQuantity;
 
-		/** @brief Total amount the bidder commits for the batch bid. */
+		/** @brief Offered price per asset for the requested quantity in the batch auction. */
 		uint64 bidAmount;
-
-		/** @brief Amount that must remain escrowed for the batch bid. */
-		uint64 requiredEscrow;
 
 		/** @brief Timestamp of the accepted bid. */
 		DateAndTime currentDate;
@@ -465,6 +456,9 @@ struct NOST : public ContractBase
 	/** @brief Internal output returned after processing a batch auction bid. */
 	struct ProcessBatchBid_output
 	{
+		/** @brief Amount that remains escrowed for the accepted batch bid. */
+		uint64 escrowedAmount;
+
 		/** @brief Amount refunded during batch bid processing. */
 		uint64 refundedAmount;
 
@@ -481,6 +475,7 @@ struct NOST : public ContractBase
 		AuctionParticipantData participantData;
 		AuctionParticipantKey participantKey;
 		uint64 previousEscrow;
+		uint64 requiredEscrow;
 		uint8 participantExists;
 	};
 
@@ -493,9 +488,6 @@ struct NOST : public ContractBase
 		/** @brief Total amount the bidder commits for the standard auction lot. */
 		uint64 bidAmount;
 
-		/** @brief Amount that must remain escrowed for the standard bid. */
-		uint64 requiredEscrow;
-
 		/** @brief Timestamp of the accepted bid. */
 		DateAndTime currentDate;
 
@@ -506,6 +498,9 @@ struct NOST : public ContractBase
 	/** @brief Internal output returned after processing a standard auction bid. */
 	struct ProcessStandardBid_output
 	{
+		/** @brief Amount that remains escrowed for the accepted standard bid. */
+		uint64 escrowedAmount;
+
 		/** @brief Amount refunded during standard bid processing. */
 		uint64 refundedAmount;
 
@@ -524,6 +519,7 @@ struct NOST : public ContractBase
 		AuctionParticipantKey participantKey;
 		AuctionParticipantKey highestBidderKey;
 		uint64 previousEscrow;
+		uint64 requiredEscrow;
 		uint8 participantExists;
 		uint8 highestBidderExists;
 	};
@@ -642,7 +638,6 @@ struct NOST : public ContractBase
 		ProcessStandardBid_input processStandardBidInput;
 		ProcessStandardBid_output processStandardBidOutput;
 		uint64 elapsedSeconds;
-		uint64 requiredEscrow;
 		DateAndTime currentDate;
 		uint8 hasAccess;
 	};
@@ -802,6 +797,7 @@ struct NOST : public ContractBase
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(ProcessBatchBid)
 	{
+		output.escrowedAmount = 0;
 		output.refundedAmount = 0;
 		output.errorCode = static_cast<uint8>(EAuctionError::Success);
 		output.success = 0;
@@ -823,44 +819,37 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		locals.requiredEscrow = smul(input.effectiveQuantity, input.bidAmount);
+		if (static_cast<uint64>(qpi.invocationReward()) < locals.requiredEscrow)
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::InsufficientFunds);
+			return;
+		}
+
 		locals.participantKey = {input.auctionId, qpi.invocator()};
 		locals.participantExists = state.get().participants.get(locals.participantKey, locals.participantData);
 		locals.previousEscrow = locals.participantExists ? locals.participantData.escrowedAmount : 0;
 
-		locals.participantData.escrowedAmount = input.requiredEscrow;
+		locals.participantData.escrowedAmount = locals.requiredEscrow;
 		locals.participantData.requestedQuantity = input.effectiveQuantity;
 		locals.participantData.allocatedQuantity = 0;
 		locals.participantData.bidAmount = input.bidAmount;
 		locals.participantData.lastBidTime = input.currentDate;
 		locals.participantData.participant = qpi.invocator();
-		locals.participantData.isHighestBidder = 0;
 		locals.participantData.isWinningBid = 0;
-
-		if (!locals.participantExists)
-		{
-			locals.auction.bidderCount = sadd(locals.auction.bidderCount, 1U);
-		}
 
 		if (input.bidAmount > locals.auction.highestBidPrice)
 		{
 			locals.auction.highestBidder = qpi.invocator();
 			locals.auction.highestBidPrice = input.bidAmount;
 			locals.auction.highestBidQuantity = input.effectiveQuantity;
-			locals.auction.highestBidAmount = input.requiredEscrow;
-			locals.participantData.isHighestBidder = 1;
+			locals.auction.highestBidAmount = locals.requiredEscrow;
 		}
 
 		locals.auction.lastBidAt = input.currentDate;
 		if ((locals.auction.auctionDurationSeconds - input.elapsedSeconds) <= NOST_AUCTION_EXTENSION_SECONDS)
 		{
 			locals.auction.auctionDurationSeconds = sadd(locals.auction.auctionDurationSeconds, NOST_AUCTION_EXTENSION_SECONDS);
-		}
-		if (locals.auction.buyNowPrice > 0 && input.bidAmount >= locals.auction.buyNowPrice)
-		{
-			locals.auction.status = EAuctionStatus::Finalized;
-			locals.auction.settledAt = input.currentDate;
-			locals.participantData.isWinningBid = 1;
-			locals.participantData.isHighestBidder = 1;
 		}
 
 		if (state.mut().participants.set(locals.participantKey, locals.participantData) == NULL_INDEX)
@@ -875,12 +864,19 @@ struct NOST : public ContractBase
 			qpi.transfer(qpi.invocator(), locals.previousEscrow);
 			output.refundedAmount = sadd(output.refundedAmount, locals.previousEscrow);
 		}
+		if (static_cast<uint64>(qpi.invocationReward()) > locals.requiredEscrow)
+		{
+			qpi.transfer(qpi.invocator(), static_cast<uint64>(qpi.invocationReward()) - locals.requiredEscrow);
+			output.refundedAmount = sadd(output.refundedAmount, static_cast<uint64>(qpi.invocationReward()) - locals.requiredEscrow);
+		}
 
+		output.escrowedAmount = locals.requiredEscrow;
 		output.success = 1;
 	}
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(ProcessStandardBid)
 	{
+		output.escrowedAmount = 0;
 		output.refundedAmount = 0;
 		output.errorCode = static_cast<uint8>(EAuctionError::Success);
 		output.success = 0;
@@ -894,6 +890,13 @@ struct NOST : public ContractBase
 		if (locals.auction.quantityForSale == 0 || locals.auction.quantityForSale < locals.auction.minimumPurchaseQuantity || input.bidAmount == 0)
 		{
 			output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
+			return;
+		}
+
+		locals.requiredEscrow = input.bidAmount;
+		if (static_cast<uint64>(qpi.invocationReward()) < locals.requiredEscrow)
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::InsufficientFunds);
 			return;
 		}
 
@@ -915,19 +918,13 @@ struct NOST : public ContractBase
 		locals.participantExists = state.get().participants.get(locals.participantKey, locals.participantData);
 		locals.previousEscrow = locals.participantExists ? locals.participantData.escrowedAmount : 0;
 
-		locals.participantData.escrowedAmount = input.requiredEscrow;
+		locals.participantData.escrowedAmount = locals.requiredEscrow;
 		locals.participantData.requestedQuantity = locals.auction.quantityForSale;
 		locals.participantData.allocatedQuantity = 0;
 		locals.participantData.bidAmount = input.bidAmount;
 		locals.participantData.lastBidTime = input.currentDate;
 		locals.participantData.participant = qpi.invocator();
-		locals.participantData.isHighestBidder = 0;
 		locals.participantData.isWinningBid = 0;
-
-		if (!locals.participantExists)
-		{
-			locals.auction.bidderCount = sadd(locals.auction.bidderCount, 1U);
-		}
 
 		if (!isZero(locals.auction.highestBidder))
 		{
@@ -939,17 +936,15 @@ struct NOST : public ContractBase
 			qpi.transfer(locals.previousHighestBidderData.participant, locals.previousHighestBidderData.escrowedAmount);
 			output.refundedAmount = sadd(output.refundedAmount, locals.previousHighestBidderData.escrowedAmount);
 			locals.previousHighestBidderData.escrowedAmount = 0;
-			locals.previousHighestBidderData.isHighestBidder = 0;
 			locals.previousHighestBidderData.isWinningBid = 0;
 			state.mut().participants.replace(locals.highestBidderKey, locals.previousHighestBidderData);
 		}
 
-		locals.participantData.isHighestBidder = 1;
 		locals.participantData.isWinningBid = 1;
 		locals.auction.highestBidder = qpi.invocator();
 		locals.auction.highestBidPrice = input.bidAmount;
 		locals.auction.highestBidQuantity = locals.auction.quantityForSale;
-		locals.auction.highestBidAmount = input.requiredEscrow;
+		locals.auction.highestBidAmount = locals.requiredEscrow;
 
 		locals.auction.lastBidAt = input.currentDate;
 		if ((locals.auction.auctionDurationSeconds - input.elapsedSeconds) <= NOST_AUCTION_EXTENSION_SECONDS)
@@ -961,7 +956,6 @@ struct NOST : public ContractBase
 			locals.auction.status = EAuctionStatus::Finalized;
 			locals.auction.settledAt = input.currentDate;
 			locals.participantData.isWinningBid = 1;
-			locals.participantData.isHighestBidder = 1;
 		}
 
 		if (state.mut().participants.set(locals.participantKey, locals.participantData) == NULL_INDEX)
@@ -976,7 +970,13 @@ struct NOST : public ContractBase
 			qpi.transfer(qpi.invocator(), locals.previousEscrow);
 			output.refundedAmount = sadd(output.refundedAmount, locals.previousEscrow);
 		}
+		if (static_cast<uint64>(qpi.invocationReward()) > locals.requiredEscrow)
+		{
+			qpi.transfer(qpi.invocator(), static_cast<uint64>(qpi.invocationReward()) - locals.requiredEscrow);
+			output.refundedAmount = sadd(output.refundedAmount, static_cast<uint64>(qpi.invocationReward()) - locals.requiredEscrow);
+		}
 
+		output.escrowedAmount = locals.requiredEscrow;
 		output.success = 1;
 	}
 
@@ -1360,24 +1360,12 @@ struct NOST : public ContractBase
 			}
 		}
 
-		locals.requiredEscrow = input.bidAmount;
-		if (static_cast<uint64>(qpi.invocationReward()) < locals.requiredEscrow)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			output.errorCode = static_cast<uint8>(EAuctionError::InsufficientFunds);
-			return;
-		}
-
 		switch (locals.auction.type)
 		{
 			case EAuctionType::Batch:
 				locals.processBatchBidInput.auctionId = input.auctionId;
 				locals.processBatchBidInput.effectiveQuantity = input.quantity;
 				locals.processBatchBidInput.bidAmount = input.bidAmount;
-				locals.processBatchBidInput.requiredEscrow = locals.requiredEscrow;
 				locals.processBatchBidInput.currentDate = locals.currentDate;
 				locals.processBatchBidInput.elapsedSeconds = locals.elapsedSeconds;
 				CALL(ProcessBatchBid, locals.processBatchBidInput, locals.processBatchBidOutput);
@@ -1391,11 +1379,11 @@ struct NOST : public ContractBase
 					return;
 				}
 				output.refundedAmount = sadd(output.refundedAmount, locals.processBatchBidOutput.refundedAmount);
+				output.escrowedAmount = locals.processBatchBidOutput.escrowedAmount;
 				break;
 			case EAuctionType::Standard:
 				locals.processStandardBidInput.auctionId = input.auctionId;
 				locals.processStandardBidInput.bidAmount = input.bidAmount;
-				locals.processStandardBidInput.requiredEscrow = locals.requiredEscrow;
 				locals.processStandardBidInput.currentDate = locals.currentDate;
 				locals.processStandardBidInput.elapsedSeconds = locals.elapsedSeconds;
 				CALL(ProcessStandardBid, locals.processStandardBidInput, locals.processStandardBidOutput);
@@ -1409,6 +1397,7 @@ struct NOST : public ContractBase
 					return;
 				}
 				output.refundedAmount = sadd(output.refundedAmount, locals.processStandardBidOutput.refundedAmount);
+				output.escrowedAmount = locals.processStandardBidOutput.escrowedAmount;
 				break;
 			default:
 				if (qpi.invocationReward() > 0)
@@ -1418,14 +1407,6 @@ struct NOST : public ContractBase
 				output.errorCode = static_cast<uint8>(EAuctionError::InvalidAuctionType);
 				return;
 		}
-
-		if (static_cast<uint64>(qpi.invocationReward()) > locals.requiredEscrow)
-		{
-			qpi.transfer(qpi.invocator(), static_cast<uint64>(qpi.invocationReward()) - locals.requiredEscrow);
-			output.refundedAmount = sadd(output.refundedAmount, static_cast<uint64>(qpi.invocationReward()) - locals.requiredEscrow);
-		}
-
-		output.escrowedAmount = locals.requiredEscrow;
 		output.errorCode = static_cast<uint8>(EAuctionError::Success);
 	}
 
@@ -1464,6 +1445,10 @@ struct NOST : public ContractBase
 		}
 
 		locals.cancellationBaseAmount = max(locals.auction.highestBidAmount, locals.auction.salePrice);
+		if (locals.auction.type == EAuctionType::Batch)
+		{
+			locals.cancellationBaseAmount = max(locals.auction.highestBidAmount, smul(locals.auction.salePrice, locals.auction.quantityForSale));
+		}
 		output.cancellationFee = div<uint64>(smul(locals.cancellationBaseAmount, state.get().auctionCancellationFeeBasisPoints), 10000ULL);
 
 		if (static_cast<uint64>(qpi.invocationReward()) < output.cancellationFee)
