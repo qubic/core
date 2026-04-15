@@ -47,6 +47,7 @@
     <ClInclude Include="contracts\QBond.h" />
     <ClInclude Include="contracts\QIP.h" />
     <ClInclude Include="contracts\Qusino.h" />
+    <ClInclude Include="contracts\QAGENT.h" />
     <ClInclude Include="contracts\QReservePool.h" />
     <ClInclude Include="contracts\QThirtyFour.h" />
     <ClInclude Include="contracts\Pulse.h" />
@@ -110,6 +111,7 @@
     <ClInclude Include="oracle_core\oracle_interfaces_def.h" />
     <ClInclude Include="oracle_core\oracle_transactions.h" />
     <ClInclude Include="oracle_core\snapshot_files.h" />
+    <ClInclude Include="oracle_interfaces\AIVerify.h" />
     <ClInclude Include="oracle_interfaces\DogeShareValidation.h" />
     <ClInclude Include="oracle_interfaces\Mock.h" />
     <ClInclude Include="oracle_interfaces\Price.h" />
