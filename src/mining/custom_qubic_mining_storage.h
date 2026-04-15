@@ -335,6 +335,8 @@ void CustomQubicMiningStorage::deinit()
         freePool(receivedSolutions);
     if (countedRevSolutions)
         freePool(countedRevSolutions);
+    if (dogeOracleQueries)
+        freePool(dogeOracleQueries);
 }
 
 bool CustomQubicMiningStorage::addTask(const CustomQubicMiningTask* task, unsigned int size)
