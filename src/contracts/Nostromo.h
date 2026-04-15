@@ -919,6 +919,11 @@ struct NOST : public ContractBase
 		locals.participantKey = {input.auctionId, qpi.invocator()};
 		locals.participantExists = state.get().participants.get(locals.participantKey, locals.participantData);
 		locals.previousEscrow = locals.participantExists ? locals.participantData.escrowedAmount : 0;
+		if (!locals.participantExists && state.get().participants.population() >= state.get().participants.capacity())
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::StorageFull);
+			return;
+		}
 
 		locals.participantData.escrowedAmount = locals.requiredEscrow;
 		locals.participantData.requestedQuantity = locals.auction.quantityForSale;
