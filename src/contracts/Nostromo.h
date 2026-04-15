@@ -136,13 +136,13 @@ struct NOST : public ContractBase
 		/** @brief Quantity already assigned to winning bids after settlement. */
 		uint64 allocatedQuantity;
 
-		/** @brief Minimum quantity a bidder may request in a batch auction; standard auctions always sell the whole lot as one unit. */
+		/** @brief Reserved for standard auction validation; batch auctions do not enforce a minimum bid quantity. */
 		uint64 minimumPurchaseQuantity;
 
 		/** @brief Initial price for a standard auction; bids cannot start below this total price for the whole lot. */
 		uint64 initialPrice;
 
-		/** @brief Minimum acceptable price per asset in a batch auction, or desired minimum total selling price for the whole lot in a standard
+		/** @brief Minimum selling price per asset in a batch auction, or desired minimum total selling price for the whole lot in a standard
 		 * auction. */
 		uint64 salePrice;
 
@@ -237,13 +237,13 @@ struct NOST : public ContractBase
 		/** @brief Wallet list used when the private auction restricts participation to predefined wallets. */
 		Array<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedBidderWallets;
 
-		/** @brief Minimum quantity a bidder may request in a batch auction; standard auctions always sell the whole lot as one unit. */
+		/** @brief Reserved for standard auction validation; batch auctions ignore this value. */
 		uint64 minimumPurchaseQuantity;
 
 		/** @brief Initial price for a standard auction; bids cannot be placed below this total price for the whole lot. */
 		uint64 initialPrice;
 
-		/** @brief Minimum acceptable price per asset in a batch auction, or desired minimum total selling price for the whole lot in a standard
+		/** @brief Minimum selling price per asset in a batch auction, or desired minimum total selling price for the whole lot in a standard
 		 * auction. */
 		uint64 salePrice;
 
@@ -1027,7 +1027,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (input.effectiveQuantity == 0 || input.effectiveQuantity < locals.auction.minimumPurchaseQuantity || input.bidAmount == 0)
+		if (input.effectiveQuantity == 0 || input.bidAmount == 0)
 		{
 			output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
 			return;
@@ -1999,12 +1999,13 @@ protected:
 	{
 		quantityForSale = 0;
 		resolvedMinimumPurchaseQuantity = 0;
-		if (lotItemCount != 1 || minimumPurchaseQuantity == 0 || minimumPurchaseQuantity > totalEscrowQuantity || buyNowPrice != 0)
+		if (lotItemCount != 1 || totalEscrowQuantity == 0 || buyNowPrice != 0)
 		{
 			return false;
 		}
 		quantityForSale = totalEscrowQuantity;
-		resolvedMinimumPurchaseQuantity = minimumPurchaseQuantity;
+		(void)minimumPurchaseQuantity;
+		resolvedMinimumPurchaseQuantity = 0;
 		return true;
 	}
 
