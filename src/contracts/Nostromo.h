@@ -139,7 +139,8 @@ struct NOST : public ContractBase
 		/** @brief Initial price for a standard auction; bids cannot start below this total price for the whole lot. */
 		uint64 initialPrice;
 
-		/** @brief Minimum acceptable price per asset in a batch auction, or desired minimum total selling price for the whole lot in a standard auction. */
+		/** @brief Minimum acceptable price per asset in a batch auction, or desired minimum total selling price for the whole lot in a standard
+		 * auction. */
 		uint64 salePrice;
 
 		/** @brief Minimum increment by which a new standard auction bid must exceed the current highest bid. */
@@ -236,7 +237,8 @@ struct NOST : public ContractBase
 		/** @brief Initial price for a standard auction; bids cannot be placed below this total price for the whole lot. */
 		uint64 initialPrice;
 
-		/** @brief Minimum acceptable price per asset in a batch auction, or desired minimum total selling price for the whole lot in a standard auction. */
+		/** @brief Minimum acceptable price per asset in a batch auction, or desired minimum total selling price for the whole lot in a standard
+		 * auction. */
 		uint64 salePrice;
 
 		/** @brief Minimum increment by which each new standard auction bid must exceed the current highest bid. */
@@ -1478,6 +1480,7 @@ struct NOST : public ContractBase
 
 			locals.participantIndex = state.get().participants.nextElementIndex(locals.participantIndex);
 		}
+		state.mut().participants.cleanupIfNeeded();
 
 		locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.auctionLotItems;
 		CALL(RollbackAuctionLotAssets, locals.rollbackAuctionLotAssetsInput, locals.rollbackAuctionLotAssetsOutput);
