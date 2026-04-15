@@ -630,6 +630,8 @@ sint64 QPI::QpiContextProcedureCall::releaseShares(
     if (destinationOwnershipManagingContractIndex == _currentContractIndex
         || destinationOwnershipManagingContractIndex == 0
         || destinationOwnershipManagingContractIndex >= contractCount
+        || system.epoch < contractDescriptions[destinationOwnershipManagingContractIndex].constructionEpoch
+        || system.epoch >= contractDescriptions[destinationOwnershipManagingContractIndex].destructionEpoch
         || numberOfShares <= 0
         || offeredTransferFee < 0)
     {
