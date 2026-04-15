@@ -32,6 +32,8 @@ jobs:
       # Checkout repo to use files of the repo as input for container action
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: 'true'
       - name: Find all contract files to verify
         id: filepaths
         run: |
