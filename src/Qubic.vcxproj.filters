@@ -132,6 +132,12 @@
     <ClInclude Include="contracts\QIP.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\Qusino.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="contracts\Escrow.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contract_core\contract_def.h">
       <Filter>contract_core</Filter>
     </ClInclude>
@@ -204,6 +210,9 @@
       <Filter>contract_core</Filter>
     </ClInclude>
     <ClInclude Include="contract_core\qpi_hash_map_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
+    <ClInclude Include="contract_core\qpi_linked_list_impl.h">
       <Filter>contract_core</Filter>
     </ClInclude>
     <ClInclude Include="contract_core\qpi_asset_impl.h">
@@ -364,6 +373,12 @@
     </ClInclude>
     <ClInclude Include="oracle_core\snapshot_files.h">
       <Filter>oracle_core</Filter>
+    </ClInclude>
+    <ClInclude Include="oracle_interfaces\DogeShareValidation.h">
+      <Filter>oracle_interfaces</Filter>
+    </ClInclude>
+    <ClInclude Include="mining\custom_qubic_mining_storage.h">
+      <Filter>mining</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

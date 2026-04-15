@@ -24,8 +24,8 @@
 class PendingTxsPool
 {
 protected:
-    // The PendingTxsPool will always leave space for the three protocol-level txs (tick votes, custom mining, contract execution fees).
-    static constexpr unsigned int maxNumTxsPerTick = NUMBER_OF_TRANSACTIONS_PER_TICK - 3;
+    // The PendingTxsPool will always leave space for the four protocol-level txs (tick votes, XMR mining, custom mining, contract execution fees).
+    static constexpr unsigned int maxNumTxsPerTick = NUMBER_OF_TRANSACTIONS_PER_TICK - 4;
     static constexpr unsigned long long maxNumTxsTotal = PENDING_TXS_POOL_NUM_TICKS * maxNumTxsPerTick;
 
     // Sizes of different buffers in bytes
@@ -82,7 +82,10 @@ protected:
             if (balance > 0)
             {
                 if (isZero(tx->destinationPublicKey) && tx->amount == 0LL
-                    && (tx->inputType == VOTE_COUNTER_INPUT_TYPE || tx->inputType == CustomMiningSolutionTransaction::transactionType() || tx->inputType == ExecutionFeeReportTransactionPrefix::transactionType()))
+                    && (tx->inputType == VOTE_COUNTER_INPUT_TYPE 
+                        || tx->inputType == CustomMiningSolutionTransaction::transactionType() 
+                        || tx->inputType == DogeMiningShareTransaction::transactionType()
+                        || tx->inputType == ExecutionFeeReportTransactionPrefix::transactionType()))
                 {
                     // protocol-level tx always have max priority
                     return INT64_MAX;

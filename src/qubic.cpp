@@ -1,8 +1,7 @@
 #define SINGLE_COMPILE_UNIT
 
-// #define NO_VOTTUN
-
 //#define INCLUDE_CONTRACT_TEST_EXAMPLES
+// #define NO_ESCROW
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
@@ -75,10 +74,12 @@
 
 #include "files/files.h"
 #include "mining/mining.h"
+#include "mining/custom_qubic_mining_storage.h"
 
 #include "oracle_core/oracle_engine.h"
 #include "oracle_core/net_msg_impl.h"
 #include "oracle_core/snapshot_files.h"
+#include "oracle_core/oracle_interfaces_def.h"
 #include "contract_core/qpi_oracle_impl.h"
 
 #include "contract_core/qpi_mining_impl.h"
@@ -189,6 +190,11 @@ static unsigned long long contractProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a l
 
 static unsigned long long solutionProcessorIDs[MAX_NUMBER_OF_PROCESSORS]; // a list of proc id that will process solution
 static bool solutionProcessorFlags[MAX_NUMBER_OF_PROCESSORS]; // flag array to indicate that whether a procId should help processing solutions or not
+static bool preprocessSolutionFlags[MAX_NUMBER_OF_PROCESSORS]; // subset of solution processors for pre-computing scores at broadcast time
+static_assert(
+    NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS <= NUMBER_OF_SOLUTION_PROCESSORS / 2,
+    "NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS must not exceed half of NUMBER_OF_SOLUTION_PROCESSORS");
+
 static int nTickProcessorIDs = 0;
 static int nRequestProcessorIDs = 0;
 static int nContractProcessorIDs = 0;
@@ -222,6 +228,13 @@ static constexpr unsigned int gScoreMultiplier[score_engine::AlgoType::MaxAlgoCo
 static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gCustomMiningSharesCounter;
 
+// DOGE merged-mining shares (separate pipeline from XMR custom mining)
+static volatile char gDogeMiningSharesCountLock = 0;
+static unsigned int gDogeMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
+static CustomMiningSharesCounter gDogeMiningSharesCounter;
+
+static CustomQubicMiningStorage customQubicMiningStorage;
+
 // variables and declare for persisting state
 static volatile int requestPersistingNodeState = 0;
 static volatile int persistingNodeStateTickProcWaiting = 0;
@@ -247,6 +260,7 @@ struct
     unsigned int numberOfMiners;
     unsigned int numberOfTransactions;
     unsigned char customMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
+    unsigned char dogeMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
 } nodeStateBuffer;
 #endif
 static bool saveContractStateFiles(CHAR16* directory = NULL);
@@ -426,11 +440,10 @@ static void getComputerDigest(m256i& digest)
                 _interlockedadd64(&contractTotalExecutionTime[digestIndex], executionTime);
                 // do not charge contract 0 state digest computation,
                 // only charge execution time if contract is already constructed/not in IPO
-                // TODO: enable this after adding proper tracking of contract state writes
-                //if (digestIndex > 0 && system.epoch >= contractDescriptions[digestIndex].constructionEpoch)
-                //{
-                //    executionTimeAccumulator.addTime(digestIndex, executionTime);
-                //}
+                if (digestIndex > 0 && system.epoch >= contractDescriptions[digestIndex].constructionEpoch)
+                {
+                    executionTimeAccumulator.addTime(digestIndex, executionTime);
+                }
 
                 // Gather data for comparing different versions of K12
                 if (K12MeasurementsCount < 500)
@@ -695,8 +708,8 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                         {
                                             unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
                                             score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(solution_nonce.m256i_u8);
-                                            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ? 
-                                                solutionThreshold[system.epoch][selectedAlgo] 
+                                            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ?
+                                                solutionThreshold[system.epoch][selectedAlgo]
                                                 : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
                                             if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
                                                 && score->isValidScore(solutionScore, selectedAlgo)
@@ -854,9 +867,28 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             }
             else
             {
-                // Copy the sent tick to the tick storage
-                copyMem(tsTick, &request->tick, sizeof(Tick));
-                peer->lastActiveTick = max(peer->lastActiveTick, peer->getDejavuTick(header->dejavu()));
+                // HACK: force empty ticks 49124963-49124965 — remove after passing these ticks
+                bool isOk = true;
+                if (request->tick.tick == 49124963 || request->tick.tick == 49124964)
+                {
+                    if (!(isZero(request->tick.transactionDigest) && isZero(request->tick.expectedNextTickTransactionDigest)))
+                    {
+                        isOk = false;
+                    }
+                }
+                if (request->tick.tick == 49124965)
+                {
+                    if (!isZero(request->tick.transactionDigest))
+                    {
+                        isOk = false;
+                    }
+                }
+                if (isOk)
+                {
+                    // Copy the sent tick to the tick storage
+                    copyMem(tsTick, &request->tick, sizeof(Tick));
+                    peer->lastActiveTick = max(peer->lastActiveTick, peer->getDejavuTick(header->dejavu()));
+                }
             }
 
             ts.ticks.releaseLock(request->tick.computorIndex);
@@ -980,7 +1012,7 @@ static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* he
     }
 }
 
-static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* header)
+static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* header, unsigned long long processorNumber)
 {
     Transaction* request = header->getPayload<Transaction>();
     const unsigned int transactionSize = request->totalSize();
@@ -1038,6 +1070,23 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 }
             }
             ts.tickData.releaseLock();
+
+            // Pre-compute score for mining solution transactions to populate the scoreCache.
+            // This hides computation latency: the solution is published ~3 ticks before execution,
+            // so all 676 Computors get a cache HIT during processTickTransactionSolution().
+            // Only designated solution processors do this to avoid starving request processing.
+            // The deposit and balance of must be >= MiningSolutionTransaction::minAmount() to be proccessed
+            if (preprocessSolutionFlags[processorNumber]
+                && MiningSolutionTransaction::isSolutionTransaction(request))
+            {
+                const int spectrumIdx = spectrumIndex(request->sourcePublicKey);
+                if (spectrumIdx >= 0 && energy(spectrumIdx) >= MiningSolutionTransaction::minAmount())
+                {
+                    const m256i& solutionMiningSeed = *(m256i*)request->inputPtr();
+                    const m256i& solutionNonce = *(m256i*)(request->inputPtr() + 32);
+                    (*score)(processorNumber, request->sourcePublicKey, solutionMiningSeed, solutionNonce);
+                }
+            }
 
             // shortcut: oracle reply reveal transactions are analyzed immediately after receiving them (before execution of the tx),
             // in order to minimize the number of reveal transaction (one per oracle query is enough, so no reveal tx is generated
@@ -1492,7 +1541,7 @@ static void processBroadcastCustomMiningTask(RequestResponseHeader* header)
     if (!header->isDejavuZero())
         return;
     const unsigned int messageSize = header->size() - sizeof(RequestResponseHeader);
-    if (messageSize <= SIGNATURE_SIZE)
+    if (messageSize < sizeof(CustomQubicMiningTask) + SIGNATURE_SIZE)
         return;
     const unsigned char* payload = (const unsigned char*)header->getPayload<void>();
     m256i digest;
@@ -1500,6 +1549,10 @@ static void processBroadcastCustomMiningTask(RequestResponseHeader* header)
     if (verify(dogeDispatcherPubkey, digest.m256i_u8, payload + (messageSize - SIGNATURE_SIZE)))
     {
         enqueueResponse(NULL, header);
+#if BASIC_DOGE_ORACLE_QUERIES
+        customQubicMiningStorage.addTask(reinterpret_cast<const CustomQubicMiningTask*>(payload), messageSize - SIGNATURE_SIZE);
+        ATOMIC_INC64(gDogeMiningStats.phaseV2.tasks);
+#endif
     }
 }
 
@@ -1511,20 +1564,96 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
     if (!header->isDejavuZero())
         return;
     const unsigned int messageSize = header->size() - sizeof(RequestResponseHeader);
-    if (messageSize <= SIGNATURE_SIZE)
+    if (messageSize < sizeof(CustomQubicMiningSolution) + SIGNATURE_SIZE)
         return;
-    const unsigned char* payload = (const unsigned char*)header->getPayload<void>();
-    const m256i* sourcePublicKey = (const m256i*)payload;
+    const auto* payload = reinterpret_cast<const unsigned char*>(header->getPayload<void>());
 
     m256i digest;
     KangarooTwelve(payload, messageSize - SIGNATURE_SIZE, &digest, sizeof(digest));
+
+    const auto* sol = reinterpret_cast<const CustomQubicMiningSolution*>(payload);
+    const auto* sourcePublicKey = reinterpret_cast<const m256i*>(sol->sourcePublicKey);
     if (verify(sourcePublicKey->m256i_u8, digest.m256i_u8, payload + (messageSize - SIGNATURE_SIZE)))
     {
-        if (computorIndex(*sourcePublicKey) >= 0
-            || (::spectrumIndex(*sourcePublicKey) >= 0 && energy(::spectrumIndex(*sourcePublicKey)) >= MESSAGE_DISSEMINATION_THRESHOLD))
+        // Only relay and process if the sender is a computor or has enough balance to prevent spam.
+        if (computorIndex(*sourcePublicKey) < 0
+            && (::spectrumIndex(*sourcePublicKey) < 0 || energy(::spectrumIndex(*sourcePublicKey)) < MESSAGE_DISSEMINATION_THRESHOLD))
+            return;
+
+        // Broadcast the solution to peers.
+        enqueueResponse(NULL, header);
+
+#if BASIC_DOGE_ORACLE_QUERIES
+        if (sol->customMiningType == CustomMiningType::DOGE)
         {
-            enqueueResponse(NULL, header);
+            if (messageSize - SIGNATURE_SIZE < sizeof(CustomQubicMiningSolution) + sizeof(QubicDogeMiningSolution))
+                return;
+
+            const auto* dogeSol = reinterpret_cast<const QubicDogeMiningSolution*>(payload + sizeof(CustomQubicMiningSolution));
+            unsigned int compIdFromEN2 = 0;
+            // Comp id is encoded in first 4 bytes of extraNonce2 (big endian byte order).
+            for (int i = 0; i < 4; ++i)
+                compIdFromEN2 = (compIdFromEN2 << 8) | dogeSol->extraNonce2[i];
+            compIdFromEN2 %= NUMBER_OF_COMPUTORS;
+
+            // Check if the solution is from own comp pool -> if yes, query oracle.
+            for (unsigned int i = 0; i < computorSeedsCount; ++i)
+            {
+                if (computorIndex(computorPublicKeys[i]) == compIdFromEN2)
+                {
+                    // Check if the solution is added successfully (active task, no duplicate) before sending oracle query.
+                    CustomQubicMiningStorage::StoredDogeMiningTask task;
+                    ATOMIC_INC64(gDogeMiningStats.phaseV2.shares);
+                    if (customQubicMiningStorage.addSolution(sol, messageSize - SIGNATURE_SIZE, reinterpret_cast<unsigned char*>(&task)) < 0)
+                    {
+                        ATOMIC_INC64(gDogeMiningStats.phaseV2.duplicated);
+                        return;
+                    }
+
+                    unsigned char buffer[sizeof(OracleUserQueryTransactionPrefix)
+                        + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
+
+                    auto* tx = reinterpret_cast<OracleUserQueryTransactionPrefix*>(buffer);
+                    tx->sourcePublicKey = computorPublicKeys[i];
+                    tx->destinationPublicKey = m256i::zero();
+                    tx->amount = 0;
+                    tx->tick = system.tick + CustomQubicMiningStorage::scheduleOracleQueryTickOffset;
+                    tx->inputType = OracleUserQueryTransactionPrefix::transactionType();
+                    tx->inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery);
+                    tx->oracleInterfaceIndex = OI::DogeShareValidation::oracleInterfaceIndex;
+                    tx->timeoutMilliseconds = 30000;
+
+                    auto* queryData = reinterpret_cast<OI::DogeShareValidation::OracleQuery*>(buffer + sizeof(OracleUserQueryTransactionPrefix));
+                    queryData->jobId = task.jobId;
+                    copyMem(&queryData->solutionTime, dogeSol->nTime, 4);
+                    copyMem(&queryData->solutionNonce, dogeSol->nonce, 4);
+                    copyMem(&queryData->solutionExtraNonce2, dogeSol->extraNonce2, 8);
+                    copyMem(&queryData->target, task.dispatcherTarget, 32);
+                    copyMem(&queryData->taskPartialHeaderVersion, task.version, 4);
+                    copyMem(&queryData->taskPartialHeaderDifficultyNBits, task.nBits, 4);
+                    copyMem(&queryData->taskPartialHeaderPrevBlockHash, task.prevHash, 32);
+                    queryData->extraNonce1NumBytes = task.extraNonce1NumBytes;
+                    queryData->coinbase1NumBytes = task.coinbase1NumBytes;
+                    queryData->coinbase2NumBytes = task.coinbase2NumBytes;
+                    queryData->numMerkleBranches = task.numMerkleBranches;
+                    copyMem(queryData->additionalData, task.additionalData, OI::DogeShareValidation::OracleQuery::additionalDataSize);
+
+#if RETRY_DOGE_ORACLE_QUERIES
+                    customQubicMiningStorage.addOracleQuery(tx);
+#endif
+
+                    if (isMainMode()) // only main node should send oracle queries
+                    {
+                        KangarooTwelve(buffer, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
+                        sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
+                        enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                    }
+
+                    break;
+                }
+            }
         }
+#endif
     }
 }
 
@@ -1958,6 +2087,7 @@ static void beginCustomMiningPhase()
     gSystemCustomMiningSolutionV2Cache.reset();
     gCustomMiningStorage.reset();
     gCustomMiningStats.phaseResetAndEpochAccumulate();
+    gDogeMiningStats.phaseResetAndEpochAccumulate();
 }
 
 // resetPhase: If true, allows reinitializing mining seed and the custom mining phase flag
@@ -2207,7 +2337,7 @@ static void requestProcessor(void* ProcedureArgument)
 
                 case BROADCAST_TRANSACTION:
                 {
-                    processBroadcastTransaction(peer, header);
+                    processBroadcastTransaction(peer, header, processorNumber);
                 }
                 break;
 
@@ -2337,13 +2467,13 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
-                case BROADCAST_CUSTOM_MINING_TASK:
+                case CustomQubicMiningTask::type():
                 {
                     processBroadcastCustomMiningTask(header);
                 }
                 break;
 
-                case BROADCAST_CUSTOM_MINING_SOLUTION:
+                case CustomQubicMiningSolution::type():
                 {
                     processBroadcastCustomMiningSolution(header);
                 }
@@ -3043,7 +3173,34 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
 
                 case OracleUserQueryTransactionPrefix::transactionType():
                 {
-                    const bool error = (oracleEngine.startUserQuery((OracleUserQueryTransactionPrefix*)transaction, transactionIndex) < 0);
+                    // check for special cases
+                    const auto* queryTx = (const OracleUserQueryTransactionPrefix*)transaction;
+                    bool forceZeroFee = false;
+                    if (queryTx->oracleInterfaceIndex == OI::DogeShareValidation::oracleInterfaceIndex)
+                    {
+                        // doge share validation query does not cost fees for computors
+                        forceZeroFee = computorIndex(queryTx->sourcePublicKey) >= 0;
+                    }
+
+                    // start user query
+                    int64_t queryId = oracleEngine.startUserQuery(queryTx, transactionIndex, forceZeroFee);
+                    const bool error = queryId < 0;
+
+#if RETRY_DOGE_ORACLE_QUERIES
+                    if (queryTx->oracleInterfaceIndex == OI::DogeShareValidation::oracleInterfaceIndex)
+                    {
+                        if (error)
+                        {
+                            // The query was included in the tick but could not be started, not necessary to try again.
+                            customQubicMiningStorage.removeOracleQuery((const OracleUserQueryTransactionPrefix*)transaction);
+                        }
+                        else
+                        {
+                            customQubicMiningStorage.markOracleQueryStarted((const OracleUserQueryTransactionPrefix*)transaction, queryId);
+                        }
+                    }
+#endif
+
                     if (error && transaction->amount)
                     {
                         oracleEngine.refundFees(transaction->sourcePublicKey, transaction->amount);
@@ -3054,6 +3211,12 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                 case CustomMiningSolutionTransaction::transactionType():
                 {
                     gCustomMiningSharesCounter.processTransactionData(transaction, dataLock);
+                }
+                break;
+
+                case DogeMiningShareTransaction::transactionType():
+                {
+                    gDogeMiningSharesCounter.processTransactionData(transaction, dataLock);
                 }
                 break;
 
@@ -3071,6 +3234,9 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                 // Contracts are identified by their index stored in the first 64 bits of the id, all
                 // other bits are zeroed. However, the max number of contracts is limited to 2^32 - 1,
                 // only 32 bits are used for the contract index.
+                // TODO: measure run-time of this check vs the check implemented in isPublicKeyOfContract() in gtest
+                // with a large number of keys; modify the function if the check used here is faster; replace this
+                // and such checks at other places by calls to isPublicKeyOfContract()
                 m256i maskedDestinationPublicKey = transaction->destinationPublicKey;
                 maskedDestinationPublicKey.m256i_u64[0] &= ~(MAX_NUMBER_OF_CONTRACTS - 1ULL);
                 unsigned int contractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
@@ -3165,7 +3331,7 @@ static void makeAndBroadcastTickVotesTransaction(int i, BroadcastFutureTickData&
     }
 }
 
-static bool makeAndBroadcastCustomMiningTransaction(int i, BroadcastFutureTickData& td, int txSlot)
+static bool makeAndBroadcastXMRMiningTransaction(int i, BroadcastFutureTickData& td, int txSlot)
 {
     if (!gCustomMiningBroadcastTxBuffer[i].isBroadcasted)
     {
@@ -3192,6 +3358,56 @@ static bool makeAndBroadcastCustomMiningTransaction(int i, BroadcastFutureTickDa
                 if (!tsReqTickTransactionOffsets[txSlot]) // not yet have value
                 {
                     if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch) //have enough space
+                    {
+                        td.tickData.transactionDigests[txSlot] = m256i(digest);
+                        tsReqTickTransactionOffsets[txSlot] = ts.nextTickTransactionOffset;
+                        copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), &payload, transactionSize);
+                        ts.nextTickTransactionOffset += transactionSize;
+                    }
+                }
+                ts.tickTransactions.releaseLock();
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+// Generic mining share broadcast helper.
+// Takes the broadcast buffer + counter by reference so it can be reused for
+// any CustomMiningSharesCounter-based pipeline (DOGE today; future mining types tomorrow).
+// XMR currently has its own dedicated function (makeAndBroadcastXMRMiningTransaction)
+// which will be retired along with XMR custom mining itself.
+static bool makeAndBroadcastCustomMiningTransaction(
+    BroadcastCustomMiningTransaction* broadcastTxBuffer,
+    CustomMiningSharesCounter& sharesCounter,
+    int i,
+    BroadcastFutureTickData& td,
+    int txSlot)
+{
+    if (!broadcastTxBuffer[i].isBroadcasted)
+    {
+        broadcastTxBuffer[i].isBroadcasted = true;
+        auto& payload = broadcastTxBuffer[i].payload;
+        if (sharesCounter.isEmptyPacket(payload.packedScore) == false)
+        {
+            payload.transaction.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
+            payload.dataLock = td.tickData.timelock;
+            unsigned char digest[32];
+            KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.packedScore) + sizeof(payload.dataLock), digest, sizeof(digest));
+            sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, payload.signature);
+            enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
+
+            unsigned int tickIndex = ts.tickToIndexCurrentEpoch(td.tickData.tick);
+            unsigned int transactionSize = sizeof(payload);
+            KangarooTwelve(&payload, transactionSize, digest, sizeof(digest));
+            auto* tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
+            if (txSlot < NUMBER_OF_TRANSACTIONS_PER_TICK)
+            {
+                ts.tickTransactions.acquireLock();
+                if (!tsReqTickTransactionOffsets[txSlot])
+                {
+                    if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch)
                     {
                         td.tickData.transactionDigests[txSlot] = m256i(digest);
                         tsReqTickTransactionOffsets[txSlot] = ts.nextTickTransactionOffset;
@@ -3416,6 +3632,11 @@ static void processTick(unsigned long long processorNumber)
 
         // Process all transaction of the tick
         PROFILE_NAMED_SCOPE_BEGIN("processTick(): process transactions");
+        unsigned int nTickLeaderTx = 0;
+        unsigned int nProtocolTx = 0;
+        unsigned int nContractTx = 0;
+        unsigned int nOtherTx = 0;
+        const m256i& tickLeaderKey = broadcastedComputors.computors.publicKeys[system.tick % NUMBER_OF_COMPUTORS];
         for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
         {
             if (!isZero(nextTickData.transactionDigests[transactionIndex]))
@@ -3425,6 +3646,29 @@ static void processTick(unsigned long long processorNumber)
                     Transaction* transaction = ts.tickTransactions(tsCurrentTickTransactionOffsets[transactionIndex]);
                     logger.registerNewTx(transaction->tick, transactionIndex);
                     processTickTransaction(transaction, transactionIndex, processorNumber);
+
+                    if (transaction->sourcePublicKey == tickLeaderKey)
+                    {
+                        nTickLeaderTx++;
+                    }
+                    else if (isZero(transaction->destinationPublicKey))
+                    {
+                        nProtocolTx++;
+                    }
+                    else
+                    {
+                        m256i masked = transaction->destinationPublicKey;
+                        masked.m256i_u64[0] &= ~(unsigned long long)(MAX_NUMBER_OF_CONTRACTS - 1);
+                        unsigned int cIdx = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
+                        if (isZero(masked) && cIdx < contractCount)
+                        {
+                            nContractTx++;
+                        }
+                        else
+                        {
+                            nOtherTx++;
+                        }
+                    }
                 }
                 else
                 {
@@ -3435,8 +3679,66 @@ static void processTick(unsigned long long processorNumber)
                 }
             }
         }
+        // Record per-tick TX counts for V2 revenue (counted here where TX bodies are guaranteed present)
+        {
+            unsigned int tickOffset = system.tick - system.initialTick;
+            if (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH)
+            {
+                gEpochRevenueData.perTickTxTickLeaderCount[tickOffset] = (unsigned short)nTickLeaderTx;
+                gEpochRevenueData.perTickTxCount[tickOffset] = (unsigned short)(nProtocolTx + nContractTx + nOtherTx);
+                gEpochRevenueData.perTickProtocolTxCount[tickOffset] = (unsigned short)nProtocolTx;
+                gEpochRevenueData.perTickContractTxCount[tickOffset] = (unsigned short)nContractTx;
+                gEpochRevenueData.perTickOtherTxCount[tickOffset] = (unsigned short)nOtherTx;
+            }
+        }
         PROFILE_SCOPE_END();
     }
+
+#if RETRY_DOGE_ORACLE_QUERIES
+    // Resend oracle queries for share validation if they were scheduled for but not included in this tick.
+    int currentQueryIndex = customQubicMiningStorage.getNextScheduledQueryIndexForTick(CustomMiningType::DOGE, /*currentQueryIndex=*/-1, system.tick);
+    while (currentQueryIndex >= 0)
+    {
+        CustomQubicMiningStorage::OracleQueryInfo queryInfo = customQubicMiningStorage.getOracleQueryInfo(CustomMiningType::DOGE, currentQueryIndex);
+        for (unsigned int i = 0; i < computorSeedsCount; ++i)
+        {
+            if (computorPublicKeys[i] == queryInfo.sourcePublicKey)
+            {
+                unsigned int newScheduledTick = system.tick + CustomQubicMiningStorage::scheduleOracleQueryTickOffset;
+
+                unsigned char buffer[sizeof(OracleUserQueryTransactionPrefix)
+                    + sizeof(OI::DogeShareValidation::OracleQuery) + SIGNATURE_SIZE];
+
+                auto* tx = reinterpret_cast<OracleUserQueryTransactionPrefix*>(buffer);
+                tx->sourcePublicKey = computorPublicKeys[i];
+                tx->destinationPublicKey = m256i::zero();
+                tx->amount = 0;
+                tx->tick = newScheduledTick;
+                tx->inputType = OracleUserQueryTransactionPrefix::transactionType();
+                tx->inputSize = OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery);
+                tx->oracleInterfaceIndex = OI::DogeShareValidation::oracleInterfaceIndex;
+                tx->timeoutMilliseconds = 30000;
+                unsigned char* queryData = buffer + sizeof(OracleUserQueryTransactionPrefix);
+
+                if (customQubicMiningStorage.getTypeSpecificOracleQuery(CustomMiningType::DOGE, currentQueryIndex, queryData))
+                {
+                    if (isMainMode()) // only main node should send oracle queries
+                    {
+                        // Sign and send tx
+                        m256i digest;
+                        KangarooTwelve(tx, sizeof(Transaction) + tx->inputSize, digest.m256i_u8, sizeof(digest));
+                        sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
+                        enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                    }
+                    customQubicMiningStorage.updateOracleQueryScheduledTick(CustomMiningType::DOGE, currentQueryIndex, newScheduledTick);
+                }
+
+                break;
+            }
+        }
+        currentQueryIndex = customQubicMiningStorage.getNextScheduledQueryIndexForTick(CustomMiningType::DOGE, currentQueryIndex, system.tick);
+    }
+#endif
 
     // Generate subscription queries (may create queries that immediately timeout if the network was stuck)
     oracleEngine.generateSubscriptionQueries();
@@ -3461,6 +3763,103 @@ static void processTick(unsigned long long processorNumber)
         WAIT_WHILE(contractProcessorState);
 
         oracleNotification = oracleEngine.getNotification();
+    }
+
+    // Process finished oracle user queries (doge mining share validation replies)
+    const OracleQueryMetadata* finishedUserQuery = oracleEngine.getFinishedUserQuery();
+    while (finishedUserQuery)
+    {
+        if (finishedUserQuery->interfaceIndex == OI::DogeShareValidation::oracleInterfaceIndex)
+        {
+            // Look up query tx to get query data.
+            ASSERT(finishedUserQuery->type == ORACLE_QUERY_TYPE_USER_QUERY);
+            ASSERT(ts.tickInCurrentEpochStorage(finishedUserQuery->queryTick));
+            const uint64_t* tsTickTransactionOffsets
+                = ts.tickTransactionOffsets.getByTickInCurrentEpoch(finishedUserQuery->queryTick);
+            const uint32_t txSlotInTickData = finishedUserQuery->typeVar.user.queryTxIndex;
+            ASSERT(txSlotInTickData < NUMBER_OF_TRANSACTIONS_PER_TICK);
+            const auto* prevTx = (OracleUserQueryTransactionPrefix*)ts.tickTransactions.ptr(
+                tsTickTransactionOffsets[txSlotInTickData]);
+            ASSERT(finishedUserQuery->interfaceIndex == prevTx->oracleInterfaceIndex);
+            if (prevTx->inputSize
+                == OracleUserQueryTransactionPrefix::minInputSize() + sizeof(OI::DogeShareValidation::OracleQuery))
+            {
+                OI::DogeShareValidation::OracleReply reply;
+                if (finishedUserQuery->status == ORACLE_QUERY_STATUS_SUCCESS
+                    && oracleEngine.getOracleReply(finishedUserQuery->queryId, &reply, sizeof(reply)))
+                {
+#if RETRY_DOGE_ORACLE_QUERIES
+                    // Oracle query was successful, remove from storage.
+                    customQubicMiningStorage.removeOracleQuery(finishedUserQuery->interfaceIndex, finishedUserQuery->queryId);
+#endif
+
+                    // Oracle reply is available
+                    if (reply.isValid)
+                    {
+                        // Share is valid: Count rev points if this share belongs to an active task (i.e. still contained
+                        // in the customQubicMiningStorage) and this solution has not been counted before.
+                        const auto* queryData = reinterpret_cast<const OI::DogeShareValidation::OracleQuery*>(prevTx->inputPtr() + OracleUserQueryTransactionPrefix::minInputSize());
+                        unsigned char solutionBuffer[16];
+                        copyMem(solutionBuffer, &queryData->solutionTime, 4);
+                        copyMem(solutionBuffer + 4, &queryData->solutionNonce, 4);
+                        copyMem(solutionBuffer + 8, &queryData->solutionExtraNonce2, 8);
+                        m256i solutionHash;
+                        KangarooTwelve(solutionBuffer, 16, solutionHash.m256i_u8, sizeof(solutionHash));
+                        if (customQubicMiningStorage.countSolutionForRevenue(CustomMiningType::DOGE, queryData->jobId, solutionHash))
+                        {
+                            // TODO: Verify that the task description in the query matches the task description in the storage to decline revenue
+                            // for comps tampering with the task description in their query. Not sure how likely this is to happen.
+                            
+                            ATOMIC_INC64(gDogeMiningStats.phaseV2.valid);
+                            if (reply.compIndex < NUMBER_OF_COMPUTORS)
+                            {
+                                ACQUIRE(gDogeMiningSharesCountLock);
+                                gDogeMiningSharesCount[reply.compIndex]++;
+                                RELEASE(gDogeMiningSharesCountLock);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        ATOMIC_INC64(gDogeMiningStats.phaseV2.invalid);
+                    }
+                }
+#if RETRY_DOGE_ORACLE_QUERIES
+                else
+                {
+                    // Oracle query failed -> resend user query tx if it is from own comp pool
+                    for (unsigned int i = 0; i < computorSeedsCount; ++i)
+                    {
+                        if (computorPublicKeys[i] == prevTx->sourcePublicKey)
+                        {
+                            unsigned int newScheduledTick = system.tick + CustomQubicMiningStorage::scheduleOracleQueryTickOffset;
+                            if (customQubicMiningStorage.increaseOracleQueryFailCounterAndReschedule(finishedUserQuery->interfaceIndex, finishedUserQuery->queryId, newScheduledTick)) // true if the fail counter could be increased without hitting max
+                            {
+                                if (isMainMode()) // only main node should send oracle queries
+                                {
+                                    // Copy and update tx
+                                    __ScopedScratchpad scratchpad(MAX_TRANSACTION_SIZE, /*initZero=*/false);
+                                    auto* tx = (OracleUserQueryTransactionPrefix*)scratchpad.ptr;
+                                    const uint64_t txSizeWithoutSignature = sizeof(OracleUserQueryTransactionPrefix)
+                                        + sizeof(OI::DogeShareValidation::OracleQuery);
+                                    copyMem(tx, prevTx, txSizeWithoutSignature);
+                                    tx->tick = newScheduledTick;
+
+                                    // Sign and send tx
+                                    m256i digest;
+                                    KangarooTwelve(tx, sizeof(Transaction) + prevTx->inputSize, digest.m256i_u8, sizeof(digest));
+                                    sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
+                                    enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+#endif
+            }
+        }
+        finishedUserQuery = oracleEngine.getFinishedUserQuery();
     }
 
     // The last executionFeeReport for the previous phase is published by comp <NUMBER_OF_COMPUTORS - 1> (0-indexed) in the last tick t1 of the
@@ -3580,6 +3979,44 @@ static void processTick(unsigned long long processorNumber)
             ACQUIRE(gCustomMiningSharesCountLock);
             setMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
             RELEASE(gCustomMiningSharesCountLock);
+
+            // Prepare DOGE mining share broadcast TX (one per own computor; buffer only — send deferred)
+            long long dogeMiningCountOverflow = 0;
+            for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+            {
+                ACQUIRE(gDogeMiningSharesCountLock);
+                for (int k = 0; k < NUMBER_OF_COMPUTORS; k++)
+                {
+                    if (gDogeMiningSharesCount[k] > CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL)
+                    {
+                        if (gDogeMiningSharesCount[k] > dogeMiningCountOverflow)
+                        {
+                            dogeMiningCountOverflow = gDogeMiningSharesCount[k];
+                        }
+                        gDogeMiningSharesCount[k] = CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL;
+                    }
+                }
+                gDogeMiningSharesCounter.registerNewShareCount(gDogeMiningSharesCount);
+                RELEASE(gDogeMiningSharesCountLock);
+
+                auto& dogePayload = gDogeMiningBroadcastTxBuffer[i].payload;
+                dogePayload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
+                dogePayload.transaction.destinationPublicKey = m256i::zero();
+                dogePayload.transaction.amount = 0;
+                dogePayload.transaction.tick = 0;
+                dogePayload.transaction.inputType = DogeMiningShareTransaction::transactionType();
+                dogePayload.transaction.inputSize = sizeof(dogePayload.packedScore) + sizeof(dogePayload.dataLock);
+                gDogeMiningSharesCounter.compressNewSharesPacket(ownComputorIndices[i], dogePayload.packedScore);
+                gDogeMiningBroadcastTxBuffer[i].isBroadcasted = false;
+            }
+
+            // Keep the max of overflow case
+            ATOMIC_MAX64(gDogeMiningStats.maxOverflowShareCount, dogeMiningCountOverflow);
+
+            // Reset the phase counter
+            ACQUIRE(gDogeMiningSharesCountLock);
+            setMem(gDogeMiningSharesCount, sizeof(gDogeMiningSharesCount), 0);
+            RELEASE(gDogeMiningSharesCountLock);
         }
     }
 
@@ -3657,7 +4094,13 @@ static void processTick(unsigned long long processorNumber)
                     {
                         // insert & broadcast external mining score packet (containing the score for each computor on the last external mining phase)
                         // this type of tx is only broadcasted in internal mining phases
-                        if (makeAndBroadcastCustomMiningTransaction(i, broadcastedFutureTickData, nextTxIndex))
+                        if (makeAndBroadcastXMRMiningTransaction(i, broadcastedFutureTickData, nextTxIndex))
+                        {
+                            nextTxIndex++;
+                        }
+
+                        // insert & broadcast DOGE mining score packet
+                        if (makeAndBroadcastCustomMiningTransaction(gDogeMiningBroadcastTxBuffer, gDogeMiningSharesCounter, i, broadcastedFutureTickData, nextTxIndex))
                         {
                             nextTxIndex++;
                         }
@@ -3891,16 +4334,21 @@ static void resetCustomMining()
     gCustomMiningSharesCounter.init();
     setMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
 
+    gDogeMiningSharesCounter.init();
+    setMem(gDogeMiningSharesCount, sizeof(gDogeMiningSharesCount), 0);
+
     gSystemCustomMiningSolutionV2Cache.reset();
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
     {
         // Initialize the broadcast transaction buffer. Assume the all previous is broadcasted.
         gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
+        gDogeMiningBroadcastTxBuffer[i].isBroadcasted = true;
     }
     gCustomMiningStorage.reset();
 
     // Clear all data of epoch
     gCustomMiningStats.epochReset();
+    gDogeMiningStats.epochReset();
 }
 
 static void beginEpoch()
@@ -3982,6 +4430,7 @@ static void beginEpoch()
     setMem(system.futureComputors, sizeof(system.futureComputors), 0);
 
     resetCustomMining();
+    setMem(&gEpochRevenueData, sizeof(gEpochRevenueData), 0);
 
     // Reset resource testing digest at beginning of the epoch
     // there are many global variables that were init at declaration, may need to re-check all of them again
@@ -4066,76 +4515,17 @@ static void endEpoch()
                 gRevenueComponents.revenue);
         }
 
-        // Revenue V2: filter transactions. Run here but have not applied yet
-        // Make sure run after gRevenueComponents is calculated because it use some of data
+        // Collect mining scores for V2
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            gEpochRevenueData.xmrMiningScore[i] = gRevenueComponents.customMiningScore[i];
+            gEpochRevenueData.dogeMiningScore[i] = gDogeMiningSharesCounter.getSharesCount(i);
+        }
+
+        // Per-tick TX counts already recorded during processTick()
         gEpochRevenueData.initialTick = system.initialTick;
         gEpochRevenueData.totalTicks = system.tick - system.initialTick;
-        for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
-        {
-            const m256i& tickLeaderPublicKey = broadcastedComputors.computors.publicKeys[tick % NUMBER_OF_COMPUTORS];
 
-            // Defensive lock, actually at the end of epoch, no more tick data written. 
-            ts.tickData.acquireLock();
-            unsigned int tickOffset = tick - system.initialTick;
-            TickData& td = ts.tickData.getByTickInCurrentEpoch(tick);
-            if ((td.epoch == system.epoch) && (tickOffset < MAX_NUMBER_OF_TICKS_PER_EPOCH))
-            {
-                unsigned int nTickLeader = 0;
-                unsigned int nProtocol = 0;
-                unsigned int nContract = 0;
-                unsigned int nOther = 0;
-                auto* offsets = ts.tickTransactionOffsets.getByTickInCurrentEpoch(tick);
-                for (unsigned int i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK; i++)
-                {
-                    if (isZero(td.transactionDigests[i]))
-                    {
-                        continue;
-                    }
-
-                    // Make sure tx body existed
-                    if (!offsets[i])
-                    {
-                        continue;
-                    }
-
-                    const Transaction* tx = ts.tickTransactions(offsets[i]);
-
-                    // skip leader's own txs
-                    if (tx->sourcePublicKey == tickLeaderPublicKey)
-                    {
-                        nTickLeader++;
-                        continue;
-                    }
-
-                    if (isZero(tx->destinationPublicKey))
-                    {
-                        nProtocol++;
-                    }
-                    else
-                    {
-                        m256i masked = tx->destinationPublicKey;
-                        masked.m256i_u64[0] &= ~(unsigned long long)(MAX_NUMBER_OF_CONTRACTS - 1);
-                        unsigned int cIdx = (unsigned int)tx->destinationPublicKey.m256i_u64[0];
-                        if (isZero(masked) && cIdx < contractCount)
-                        {
-                            nContract++;
-                        }
-                        else
-                        {
-                            nOther++;
-                        }
-                    }
-
-                }
-                gEpochRevenueData.perTickTxTickLeaderCount[tickOffset] = (unsigned short)nTickLeader;
-
-                gEpochRevenueData.perTickTxCount[tickOffset] = (unsigned short)(nProtocol + nContract + nOther);
-                gEpochRevenueData.perTickProtocolTxCount[tickOffset] = (unsigned short)nProtocol;
-                gEpochRevenueData.perTickContractTxCount[tickOffset] = (unsigned short)nContract;
-                gEpochRevenueData.perTickOtherTxCount[tickOffset] = (unsigned short)nOther;
-            }
-            ts.tickData.releaseLock();
-        }
         // Fetch oracle revenue points (accumulated during epoch, reset at beginEpoch)
         {
             OracleRevenuePoints oracleRevPoints;
@@ -4157,7 +4547,11 @@ static void endEpoch()
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             // Compute initial computor revenue, reducing arbitrator revenue
+#if USE_REVENUE_V2
+            long long revenue = gEpochRevenueData.v2Revenue[computorIndex];
+#else
             long long revenue = gRevenueComponents.revenue[computorIndex];
+#endif
             arbitratorRevenue -= revenue;
 
             // Reduce computor revenue based on revenue donation table agreed on by quorum
@@ -4455,6 +4849,7 @@ static bool saveAllNodeStates()
     nodeStateBuffer.numberOfTransactions = numberOfTransactions;    
     voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
     gCustomMiningSharesCounter.saveAllDataToArray(nodeStateBuffer.customMiningSharesCounterData);
+    gDogeMiningSharesCounter.saveAllDataToArray(nodeStateBuffer.dogeMiningSharesCounterData);
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
     savedSize = save(NODE_STATE_FILE_NAME, sizeof(nodeStateBuffer), (unsigned char*)&nodeStateBuffer, directory);
@@ -4464,7 +4859,18 @@ static bool saveAllNodeStates()
         logToConsole(L"Failed to save etalon tick and other states");
         return false;
     }
-    
+
+    // Save V2 per-tick TX counts (recorded during processTick)
+    REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+    REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+    REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+    savedSize = save(REVENUE_DATA_SNAPSHOT_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData, directory);
+    if (savedSize != sizeof(gEpochRevenueData))
+    {
+        logToConsole(L"Failed to save revenue data snapshot");
+        return false;
+    }
+
     CHAR16 SPECTRUM_DIGEST_FILE_NAME[] = L"snapshotSpectrumDigest";
     savedSize = save(SPECTRUM_DIGEST_FILE_NAME, spectrumDigestsSizeInByte, (unsigned char*)spectrumDigests, directory);
     logToConsole(L"Saving spectrum digests");
@@ -4630,6 +5036,18 @@ static bool loadAllNodeStates()
     loadMiningSeedFromFile = true;
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
     gCustomMiningSharesCounter.loadAllDataFromArray(nodeStateBuffer.customMiningSharesCounterData);
+    gDogeMiningSharesCounter.loadAllDataFromArray(nodeStateBuffer.dogeMiningSharesCounterData);
+
+    // Load V2 per-tick TX counts
+    REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+    REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+    REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+    long long revenueDataSize = load(REVENUE_DATA_SNAPSHOT_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData, directory);
+    if (revenueDataSize != sizeof(gEpochRevenueData))
+    {
+        logToConsole(L"Failed to load revenue data snapshot, starting with zero counts");
+        setMem(&gEpochRevenueData, sizeof(gEpochRevenueData), 0);
+    }
 
     // update own computor indices
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -5372,6 +5790,13 @@ static void tickProcessor(void*)
                 findNextTickDataDigestFromCurrentTickVotes();
             }
 
+            // HACK: force empty ticks 49124963-49124965 — remove after passing these ticks
+            if (system.tick >= 49124962 && system.tick <= 49124964)
+            {
+                targetNextTickDataDigest = m256i::zero();
+                targetNextTickDataDigestIsKnown = true;
+            }
+
             ts.tickData.acquireLock();
             copyMem(&nextTickData, &ts.tickData[nextTickIndex], sizeof(TickData));
             ts.tickData.releaseLock();
@@ -5821,6 +6246,8 @@ static void contractProcessorShutdownCallback(EFI_EVENT Event, void* Context)
 // forceLoadFromFile: when loading node states from file, we want to make sure it load from file and ignore constructionEpoch == system.epoch case
 static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
 {
+    // Make sure you define all contracts that are allowed to be padded automatically in contract_def.h
+
     logToConsole(L"Loading contract files ...");
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
     {
@@ -5850,6 +6277,39 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                 }
                 else
                 {
+                    // Check if this contract is allowed to be zero-padded from a smaller file
+                    bool paddingAllowed = false;
+                    for (unsigned int i = 0; i < paddableCount; i++)
+                    {
+                        if (paddableContracts[i] == contractIndex)
+                        {
+                            paddingAllowed = true;
+                            break;
+                        }
+                    }
+
+                    if (paddingAllowed)
+                    {
+                        long long actualSize = getFileSize(CONTRACT_FILE_NAME, directory);
+                        if (actualSize > 0 && (unsigned long long)actualSize < contractDescriptions[contractIndex].stateSize)
+                        {
+                            // Zero the entire buffer, then load the smaller file into the front
+                            setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
+                            long long reloadedSize = load(CONTRACT_FILE_NAME, (unsigned long long)actualSize, contractStates[contractIndex], directory);
+                            if (reloadedSize == actualSize)
+                            {
+                                appendText(message, L" WARNING: undersized file (");
+                                appendNumber(message, (unsigned long long)actualSize, FALSE);
+                                appendText(message, L" < ");
+                                appendNumber(message, contractDescriptions[contractIndex].stateSize, FALSE);
+                                appendText(message, L" bytes), zero-padded");
+                                logToConsole(message);
+                                continue;
+                            }
+                            // Reload also failed — fall through to error
+                        }
+                    }
+
                     appendText(message, L" cannot be read successfully");
                     logToConsole(message);
                     logStatusToConsole(L"EFI_FILE_PROTOCOL.Read() reads invalid number of bytes", loadedSize, __LINE__);
@@ -6053,6 +6513,11 @@ static bool initialize()
 
         setMem(&solutionThreshold[0][0], sizeof(int) * MAX_NUMBER_EPOCH * score_engine::AlgoType::MaxAlgoCount, 0);
         if (!allocPoolWithErrorLog(L"minserSolutionFlag", NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags, __LINE__))
+        {
+            return false;
+        }
+
+        if (!customQubicMiningStorage.init())
         {
             return false;
         }
@@ -6393,6 +6858,8 @@ static void deinitialize()
 #endif
 
     oracleEngine.deinit();
+
+    customQubicMiningStorage.deinit();
 
     deinitContractExec();
     for (unsigned int contractIndex = 0; contractIndex < contractCount; contractIndex++)
@@ -7105,6 +7572,10 @@ static void processKeyPresses()
             setText(message, L"CustomMining: ");
             gCustomMiningStats.appendLog(message);
             logToConsole(message);
+
+            setText(message, L"DogeMining: ");
+            gDogeMiningStats.appendLog(message);
+            logToConsole(message);
         }
         break;
 
@@ -7328,6 +7799,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
         for (int i = 0; i < MAX_NUMBER_OF_PROCESSORS; i++)
         {
             solutionProcessorFlags[i] = false;
+            preprocessSolutionFlags[i] = false;
         }
 
         for (unsigned int i = 0; i < numberOfAllProcessors && numberOfProcessors < MAX_NUMBER_OF_PROCESSORS; i++)
@@ -7379,6 +7851,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         solutionProcessorFlags[i % NUMBER_OF_SOLUTION_PROCESSORS] = true;
                         solutionProcessorFlags[i] = true;
+                        if (nSolutionProcessorIDs < NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS)
+                        {
+                            preprocessSolutionFlags[i] = true;
+                        }
                         solutionProcessorIDs[nSolutionProcessorIDs++] = i;
                     }
                 }

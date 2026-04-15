@@ -46,9 +46,11 @@
     <ClInclude Include="contracts\QRaffle.h" />
     <ClInclude Include="contracts\QBond.h" />
     <ClInclude Include="contracts\QIP.h" />
+    <ClInclude Include="contracts\Qusino.h" />
     <ClInclude Include="contracts\QReservePool.h" />
     <ClInclude Include="contracts\QThirtyFour.h" />
     <ClInclude Include="contracts\Pulse.h" />
+    <ClInclude Include="contracts\Escrow.h" />
     <ClInclude Include="contracts\TestExampleA.h" />
     <ClInclude Include="contracts\TestExampleB.h" />
     <ClInclude Include="contracts\TestExampleC.h" />
@@ -67,6 +69,7 @@
     <ClInclude Include="contract_core\qpi_spectrum_impl.h" />
     <ClInclude Include="contract_core\qpi_system_impl.h" />
     <ClInclude Include="contract_core\qpi_hash_map_impl.h" />
+    <ClInclude Include="contract_core\qpi_linked_list_impl.h" />
     <ClInclude Include="contract_core\qpi_ticking_impl.h" />
     <ClInclude Include="contract_core\qpi_trivial_impl.h" />
     <ClInclude Include="contract_core\stack_buffer.h" />
@@ -74,6 +77,7 @@
     <ClInclude Include="files\files.h" />
     <ClInclude Include="logging\logging.h" />
     <ClInclude Include="logging\net_msg_impl.h" />
+    <ClInclude Include="mining\custom_qubic_mining_storage.h" />
     <ClInclude Include="mining\mining.h" />
     <ClInclude Include="mining\score_addition.h" />
     <ClInclude Include="mining\score_common.h" />
@@ -106,6 +110,7 @@
     <ClInclude Include="oracle_core\oracle_interfaces_def.h" />
     <ClInclude Include="oracle_core\oracle_transactions.h" />
     <ClInclude Include="oracle_core\snapshot_files.h" />
+    <ClInclude Include="oracle_interfaces\DogeShareValidation.h" />
     <ClInclude Include="oracle_interfaces\Mock.h" />
     <ClInclude Include="oracle_interfaces\Price.h" />
     <ClInclude Include="platform\assert.h" />
