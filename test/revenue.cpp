@@ -7,6 +7,11 @@
 #include "../src/revenue.h"
 
 #include <fstream>
+#include <memory>
+
+#ifndef CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP
+#define CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP 10
+#endif
 
 std::string TEST_DIR = "data/";
 std::vector <std::string> REVENUE_FILES = {
@@ -55,7 +60,7 @@ TEST(TestCoreRevenue, ComputeRevFactor)
     unsigned long long dataFactor[NUMBER_OF_COMPUTORS];
 
     // All zeros. No reveue for alls
-    setMem(data, sizeof(data), 0); 
+    setMem(data, sizeof(data), 0);
     computeRevFactor(data, scaleFactor, dataFactor);
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
@@ -154,6 +159,386 @@ TEST(TestCoreRevenue, GeneralTest)
         EXPECT_LE(revenuePerComputors[i], arbitratorRevenue);
         EXPECT_GE(revenuePerComputors[i], 0);
     }
+}
+
+// V2 bonus factor end-to-end: run full computeRevenueV2 with different XMR/DOGE
+// combinations. Oracle zero -> fallback (full factor). Uniform TX -> full factor.
+// M = S for all cases, revenue depends only on E = (xmrFactor + dogeFactor) / 2.
+TEST(TestCoreRevenue, V2BonusFactorCombination)
+{
+    constexpr unsigned int TOTAL_TICKS = NUMBER_OF_COMPUTORS * 2;  // must be multiple of 676 for equal rotation
+    static_assert(TOTAL_TICKS >= REVENUE_WINDOW_SIZE, "need enough ticks for sliding window");
+    constexpr unsigned long long S = REVENUE_SCALE;
+    constexpr unsigned long long B = REVENUE_BONUS_CAP;
+
+    // EpochRevenueData is ~17 MB; allocate on the heap to avoid stack overflow.
+    auto dataPtr = std::make_unique<EpochRevenueData>();
+    EpochRevenueData& data = *dataPtr;
+
+    // Helper: setup uniform epoch data for each sub-case
+    // All oracle scores zero -> fallback gives full oracle factor
+    // Uniform TX -> all computors get full TX factor -> M = S
+    auto resetData = [&]()
+        {
+            setMem(&data, sizeof(data), 0);
+            data.initialTick = 0;
+            data.totalTicks = TOTAL_TICKS;
+            for (unsigned int t = 0; t < TOTAL_TICKS; t++)
+            {
+                data.perTickTxCount[t] = 100;
+            }
+        };
+
+    // Both XMR and DOGE full and equal -> tie goes to DOGE group, all uniform -> E = S -> revenue = IPC (100%)
+    resetData();
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        data.xmrMiningScore[i] = 1000;
+        data.dogeMiningScore[i] = 1000;
+    }
+    computeRevenueV2(data);
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        EXPECT_EQ(data.v2Revenue[i], REVENUE_IPC);
+    }
+
+    // XMR full, DOGE zero -> all 676 in XMR group, uniform 1000 -> E = S -> revenue = IPC
+    resetData();
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        data.xmrMiningScore[i] = 1000;
+        data.dogeMiningScore[i] = 0;
+    }
+    computeRevenueV2(data);
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        EXPECT_EQ(data.v2Revenue[i], REVENUE_IPC);
+    }
+
+    // XMR zero, DOGE full -> all 676 in DOGE group, uniform 1000 -> E = S -> revenue = IPC (symmetric)
+    resetData();
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        data.xmrMiningScore[i] = 0;
+        data.dogeMiningScore[i] = 1000;
+    }
+    computeRevenueV2(data);
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        EXPECT_EQ(data.v2Revenue[i], REVENUE_IPC);
+    }
+
+    // Both zero -> all in XMR group with score 0 -> factor 0 -> E = 0 -> revenue = IPC * S/(S+B) ~ 80%
+    resetData();
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        data.xmrMiningScore[i] = 0;
+        data.dogeMiningScore[i] = 0;
+    }
+    computeRevenueV2(data);
+    {
+        unsigned long long numerator = S * (S * S);
+        long long expected = (long long)((unsigned long long)REVENUE_IPC * numerator / REVENUE_DIVISOR);
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            EXPECT_EQ(data.v2Revenue[i], expected);
+        }
+        // Sanity: base revenue should be ~80% of IPC
+        EXPECT_GT(expected, REVENUE_IPC * 79 / 100);
+        EXPECT_LT(expected, REVENUE_IPC * 81 / 100);
+    }
+
+    // Mixed: half DOGE-dominant, half XMR-dominant -> two equal-sized groups, each uniform internally
+    // Both groups: 338 computors, uniform 1000, quorum rank ceil(338*2/3)=226, all >= quorum -> E = S
+    resetData();
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS / 2; i++)
+    {
+        data.xmrMiningScore[i] = 100;
+        data.dogeMiningScore[i] = 1000;  // DOGE > XMR -> DOGE group
+    }
+    for (unsigned int i = NUMBER_OF_COMPUTORS / 2; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        data.xmrMiningScore[i] = 1000;
+        data.dogeMiningScore[i] = 100;   // XMR > DOGE -> XMR group
+    }
+    computeRevenueV2(data);
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        EXPECT_EQ(data.v2Revenue[i], REVENUE_IPC);
+    }
+}
+
+// V2 overflow and extreme value tests.
+// Verify that no intermediate computation overflows u64 under worst-case inputs.
+TEST(TestCoreRevenue, V2OverflowExtremeValues)
+{
+    constexpr unsigned long long S = REVENUE_SCALE;
+    constexpr unsigned long long B = REVENUE_BONUS_CAP;
+    constexpr unsigned long long ipc = (unsigned long long)REVENUE_IPC;
+    constexpr unsigned long long u64Max = 0xFFFFFFFFFFFFFFFFULL;
+
+    // Formula intermediate: IPC * M * (S^2 + B*E)
+    //    Max case: M=S=1024, E=S=1024
+    //    numerator = 1024 * (1048576 + 262144) = 1,342,177,280
+    //    product = 1,479,289,940 * 1,342,177,280 ~ 1.985e18 (headroom ~9.3x)
+    {
+        unsigned long long maxNumerator = S * (S * S + B * S);
+        EXPECT_EQ(maxNumerator, 1342177280ULL);
+        EXPECT_LE(maxNumerator, u64Max / ipc);
+
+        unsigned long long maxProduct = ipc * maxNumerator;
+        EXPECT_LE(maxProduct, u64Max);
+
+        // Full factors -> revenue == IPC
+        unsigned long long result = maxProduct / REVENUE_DIVISOR;
+        EXPECT_EQ(result, ipc);
+
+        // Headroom at least 9x
+        EXPECT_GE(u64Max / maxProduct, 9ULL);
+    }
+
+    // Sliding window per-tick score: logScore * S * WINDOW_SIZE
+    //    Max logScore = 7099 (gTxRevenuePoints[1024])
+    //    Per-tick max = 7099 * 1024 * 1351 = 9,820,926,976 (fits u32? no, needs u64)
+    {
+        unsigned long long perTickMax = (unsigned long long)maxTxRevPoints * S * REVENUE_WINDOW_SIZE;
+        EXPECT_EQ(perTickMax, 9820926976ULL);
+        EXPECT_LE(perTickMax, u64Max);
+    }
+
+    // Sliding window accumulated per computor across full epoch
+    //    Each computor gets MAX_NUMBER_OF_TICKS_PER_EPOCH / 676 ticks
+    //    Max accumulated = perTickMax * ticksPerComputor ~ 2.51e13
+    {
+        unsigned long long perTickMax = (unsigned long long)maxTxRevPoints * S * REVENUE_WINDOW_SIZE;
+        unsigned long long ticksPerComputor = MAX_NUMBER_OF_TICKS_PER_EPOCH / NUMBER_OF_COMPUTORS;
+        unsigned long long maxAccum = perTickMax * ticksPerComputor;
+        EXPECT_LE(maxAccum, u64Max);
+        // Headroom should be very large (>100000x)
+        EXPECT_GT(u64Max / maxAccum, 100000ULL);
+    }
+
+    // computeRevFactor overflow: score[i] * scalingThreshold
+    //    Max mining score per computor: 1023 shares/phase * 675 reporters * ~1278 phases ~ 882M
+    //    score * S = 882M * 1024 ~ 9.04e11 -> must fit u64
+    {
+        unsigned long long maxSharesPerPhase = (1ULL << CUSTOM_MINING_SOLUTION_NUM_BIT_PER_COMP) - 1;
+        unsigned long long phaseCycles = MAX_NUMBER_OF_TICKS_PER_EPOCH / (2 * NUMBER_OF_COMPUTORS);
+        unsigned long long maxReporters = NUMBER_OF_COMPUTORS - 1;
+        unsigned long long maxMiningScore = maxSharesPerPhase * maxReporters * phaseCycles;
+        unsigned long long intermediate = maxMiningScore * S;
+        EXPECT_LE(intermediate, u64Max);
+    }
+
+    // End-to-end: run computeRevenueV2 with max TX (1024/tick), max mining scores,
+    //    full epoch worth of ticks. Must not produce negative or >IPC revenue.
+    {
+        constexpr unsigned int TOTAL_TICKS = REVENUE_WINDOW_SIZE + NUMBER_OF_COMPUTORS * 10;
+        // EpochRevenueData is ~17 MB; allocate on the heap to avoid stack overflow.
+        auto dataPtr = std::make_unique<EpochRevenueData>();
+        EpochRevenueData& data = *dataPtr;
+        setMem(&data, sizeof(data), 0);
+        data.initialTick = 0;
+        data.totalTicks = TOTAL_TICKS;
+        for (unsigned int t = 0; t < TOTAL_TICKS; t++)
+        {
+            data.perTickTxCount[t] = 1024;
+        }
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            data.xmrMiningScore[i] = 1000000;
+            data.dogeMiningScore[i] = 1000000;
+        }
+        computeRevenueV2(data);
+
+        long long totalRevenue = 0;
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            EXPECT_GE(data.v2Revenue[i], 0);
+            EXPECT_LE(data.v2Revenue[i], REVENUE_IPC);
+            totalRevenue += data.v2Revenue[i];
+        }
+        EXPECT_LE(totalRevenue, ISSUANCE_RATE);
+        EXPECT_GT(totalRevenue, 0LL);
+    }
+
+    // Zero everything: totalTicks=0, all scores zero -> no crash, zero revenue
+    {
+        // EpochRevenueData is ~17 MB; allocate on the heap to avoid stack overflow.
+        auto dataPtr = std::make_unique<EpochRevenueData>();
+        EpochRevenueData& data = *dataPtr;
+        setMem(&data, sizeof(data), 0);
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            gRevenueComponents.customMiningScore[i] = 0;
+        }
+        computeRevenueV2(data);
+        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+        {
+            EXPECT_EQ(data.v2Revenue[i], 0);
+        }
+    }
+}
+
+// Group-based mining factor tests (XMR vs DOGE).
+static void zeroScores(unsigned long long* scores)
+{
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        scores[i] = 0;
+    }
+}
+
+TEST(TestCoreRevenue, V2GroupMining_Classification)
+{
+    constexpr unsigned long long S = REVENUE_SCALE;
+    static unsigned long long xmrScore[NUMBER_OF_COMPUTORS];
+    static unsigned long long dogeScore[NUMBER_OF_COMPUTORS];
+    static unsigned long long miningFactor[NUMBER_OF_COMPUTORS];
+    static MiningGroup miningGroup[NUMBER_OF_COMPUTORS];
+
+    zeroScores(xmrScore);
+    zeroScores(dogeScore);
+
+    for (unsigned int i = 0; i < 200; i++)
+    {
+        dogeScore[i] = 1000;
+        xmrScore[i]  = 100;
+    }
+    for (unsigned int i = 200; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        xmrScore[i] = 1000;
+    }
+
+    computeGroupMiningFactor<MINING_GROUP_BY_MAX>(xmrScore, dogeScore, S, miningFactor, miningGroup);
+
+    for (unsigned int i = 0; i < 200; i++)
+    {
+        EXPECT_EQ(miningGroup[i], MINING_GROUP_DOGE);
+    }
+    for (unsigned int i = 200; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        EXPECT_EQ(miningGroup[i], MINING_GROUP_XMR);
+    }
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        EXPECT_EQ(miningFactor[i], S);
+    }
+}
+
+TEST(TestCoreRevenue, V2GroupMining_AllZero)
+{
+    constexpr unsigned long long S = REVENUE_SCALE;
+    static unsigned long long xmrScore[NUMBER_OF_COMPUTORS];
+    static unsigned long long dogeScore[NUMBER_OF_COMPUTORS];
+    static unsigned long long miningFactor[NUMBER_OF_COMPUTORS];
+    static MiningGroup miningGroup[NUMBER_OF_COMPUTORS];
+
+    zeroScores(xmrScore);
+    zeroScores(dogeScore);
+
+    computeGroupMiningFactor<MINING_GROUP_BY_MAX>(xmrScore, dogeScore, S, miningFactor, miningGroup);
+
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        EXPECT_EQ(miningFactor[i], 0ULL);
+        EXPECT_EQ(miningGroup[i], MINING_GROUP_XMR);
+    }
+}
+
+TEST(TestCoreRevenue, V2GroupMining_LocalQuorum)
+{
+    constexpr unsigned long long S = REVENUE_SCALE;
+    static unsigned long long xmrScore[NUMBER_OF_COMPUTORS];
+    static unsigned long long dogeScore[NUMBER_OF_COMPUTORS];
+    static unsigned long long miningFactor[NUMBER_OF_COMPUTORS];
+    static MiningGroup miningGroup[NUMBER_OF_COMPUTORS];
+
+    zeroScores(xmrScore);
+    zeroScores(dogeScore);
+
+    for (unsigned int i = 0; i < 200; i++)
+    {
+        dogeScore[i] = 1000;
+    }
+    for (unsigned int i = 200; i < 300; i++)
+    {
+        dogeScore[i] = 500;
+    }
+    for (unsigned int i = 300; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        xmrScore[i] = 800;
+    }
+
+    computeGroupMiningFactor<MINING_GROUP_BY_MAX>(xmrScore, dogeScore, S, miningFactor, miningGroup);
+
+    for (unsigned int i = 0; i < 200; i++)
+    {
+        EXPECT_EQ(miningGroup[i], MINING_GROUP_DOGE);
+        EXPECT_EQ(miningFactor[i], S);
+    }
+    for (unsigned int i = 200; i < 300; i++)
+    {
+        EXPECT_EQ(miningGroup[i], MINING_GROUP_DOGE);
+        EXPECT_EQ(miningFactor[i], S / 2);
+    }
+    for (unsigned int i = 300; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        EXPECT_EQ(miningGroup[i], MINING_GROUP_XMR);
+        EXPECT_EQ(miningFactor[i], S);
+    }
+}
+
+TEST(TestCoreRevenue, V2GroupMining_TieBreakGoesToDoge)
+{
+    constexpr unsigned long long S = REVENUE_SCALE;
+    static unsigned long long xmrScore[NUMBER_OF_COMPUTORS];
+    static unsigned long long dogeScore[NUMBER_OF_COMPUTORS];
+    static unsigned long long miningFactor[NUMBER_OF_COMPUTORS];
+    static MiningGroup miningGroup[NUMBER_OF_COMPUTORS];
+
+    zeroScores(xmrScore);
+    zeroScores(dogeScore);
+
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        xmrScore[i]  = 500;
+        dogeScore[i] = 500;
+    }
+
+    computeGroupMiningFactor<MINING_GROUP_BY_MAX>(xmrScore, dogeScore, S, miningFactor, miningGroup);
+
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        EXPECT_EQ(miningGroup[i], MINING_GROUP_DOGE);
+        EXPECT_EQ(miningFactor[i], S);
+    }
+}
+
+TEST(TestCoreRevenue, V2GroupMining_AnyDogeStrategy)
+{
+    constexpr unsigned long long S = REVENUE_SCALE;
+    static unsigned long long xmrScore[NUMBER_OF_COMPUTORS];
+    static unsigned long long dogeScore[NUMBER_OF_COMPUTORS];
+    static unsigned long long miningFactor[NUMBER_OF_COMPUTORS];
+    static MiningGroup miningGroup[NUMBER_OF_COMPUTORS];
+
+    zeroScores(xmrScore);
+    zeroScores(dogeScore);
+
+    xmrScore[0] = 1000;
+    dogeScore[0] = 1;
+    for (unsigned int i = 1; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        xmrScore[i] = 1000;
+    }
+
+    computeGroupMiningFactor<MINING_GROUP_BY_MAX>(xmrScore, dogeScore, S, miningFactor, miningGroup);
+    EXPECT_EQ(miningGroup[0], MINING_GROUP_XMR);
+
+    computeGroupMiningFactor<MINING_GROUP_BY_ANY_DOGE>(xmrScore, dogeScore, S, miningFactor, miningGroup);
+    EXPECT_EQ(miningGroup[0], MINING_GROUP_DOGE);
+    EXPECT_EQ(miningFactor[0], S);
 }
 
 // Simulate the revenue fomula from real data

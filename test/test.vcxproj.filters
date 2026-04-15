@@ -16,6 +16,7 @@
     <ClCompile Include="spectrum.cpp" />
     <ClCompile Include="stdlib_impl.cpp" />
     <ClCompile Include="qpi_hash_map.cpp" />
+    <ClCompile Include="qpi_linked_list.cpp" />
     <ClCompile Include="kangaroo_twelve.cpp" />
     <ClCompile Include="contract_qearn.cpp" />
     <ClCompile Include="contract_qx.cpp" />
@@ -32,6 +33,7 @@
     <ClCompile Include="contract_rl.cpp" />
     <ClCompile Include="contract_ccf.cpp" />
     <ClCompile Include="contract_qip.cpp" />
+    <ClCompile Include="contract_qusino.cpp" />
     <ClCompile Include="file_io.cpp" />
     <ClCompile Include="virtual_memory.cpp" />
     <ClCompile Include="custom_mining.cpp" />
@@ -48,13 +50,14 @@
     <ClCompile Include="contract_qbond.cpp" />
     <ClCompile Include="contract_qrp.cpp" />
     <ClCompile Include="contract_qtf.cpp" />
-    <ClCompile Include="contract_qsurv.cpp" />
     <ClCompile Include="contract_pulse.cpp" />
     <ClCompile Include="pending_txs_pool.cpp" />
     <ClCompile Include="quorum_value.cpp" />
     <ClCompile Include="sorting.cpp" />
     <ClCompile Include="oracle_engine.cpp" />
     <ClCompile Include="contract_qrwa.cpp" />
+    <ClCompile Include="contract_escrow.cpp" />
+    <ClCompile Include="custom_qubic_mining_storage.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />

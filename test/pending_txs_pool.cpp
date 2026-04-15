@@ -5,16 +5,16 @@
 // workaround for name clash with stdlib
 #define system qubicSystemStruct
 
-#include "../src/contract_core/contract_def.h"
-#include "../src/contract_core/contract_exec.h"
-#include "../src/contract_core/qpi_spectrum_impl.h"
+#include "src/contract_core/contract_def.h"
+#include "src/contract_core/contract_exec.h"
+#include "src/contract_core/qpi_spectrum_impl.h"
 
-#include "../src/public_settings.h"
+#include "src/public_settings.h"
 #undef PENDING_TXS_POOL_NUM_TICKS
 #define PENDING_TXS_POOL_NUM_TICKS 50ULL
 #undef NUMBER_OF_TRANSACTIONS_PER_TICK
 #define NUMBER_OF_TRANSACTIONS_PER_TICK 128ULL
-#include "../src/ticking/pending_txs_pool.h"
+#include "src/ticking/pending_txs_pool.h"
 
 #include <random>
 #include <vector>

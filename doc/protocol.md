@@ -26,9 +26,10 @@ The following transaction types (`tx->inputType`) are defined:
 - `FileTrailerTransaction`, type 5, defined in `src/files/files.h`.
 - `OracleReplyCommitTransactionPrefix`, type 6, defined in `src/oracle_core/oracle_transactions.h`.
 - `OracleReplyRevealTransactionPrefix`, type 7, defined in `src/oracle_core/oracle_transactions.h`.
-- `CustomMiningSolutionTransaction`, type 8, defined in `src/mining/mining.h`.
+- `CustomMiningSolutionTransaction`, type 8, defined in `src/mining/mining.h`. (will be reclaimed if XMR is removed)
 - `ExecutionFeeReportTransactionPrefix`, type 9, defined in `src/network_messages/execution_fees.h`.
 - `OracleUserQueryTransactionPrefix`, type 10, defined in `src/oracle_core/oracle_transactions.h`.
+- `DogeMiningShareTransaction`, type 11, defined in `src/mining/mining.h`.
 
 
 ## Peer Sharing

@@ -189,6 +189,37 @@ TEST(TestCoreQPI, Array)
         EXPECT_EQ((int)uint16_2.get(i), (int)(((2*i+2) << 8) | (2*i + 1)));
 }
 
+
+TEST(TestCoreQPI, Bit)
+{
+    QPI::bit b1;
+    EXPECT_EQ(b1, false);
+    EXPECT_EQ(b1, 0);
+
+    QPI::bit b2 = true;
+    EXPECT_EQ(b2, true);
+    EXPECT_EQ(b2, 1);
+
+    QPI::bit b3;
+    for (int i = 0; i < 256; ++i)
+    {
+        char c = i + INT8_MIN;
+        b3.charValue = c;
+        EXPECT_EQ(b3, c != 0);
+    }
+
+    EXPECT_TRUE(b1 != b2);
+    EXPECT_FALSE(b1 == b2);
+    EXPECT_TRUE(b1 != b3);
+    EXPECT_FALSE(b1 == b3);
+    EXPECT_TRUE(b2 == b3);
+    EXPECT_FALSE(b2 != b3);
+
+    b1 = b3;
+    EXPECT_TRUE(b1 == b3);
+    EXPECT_FALSE(b1 != b3);
+}
+
 TEST(TestCoreQPI, BitArray)
 {
     //QPI::BitArray<0> mustFail;
@@ -206,6 +237,15 @@ TEST(TestCoreQPI, BitArray)
     b1.set(0, 0);
     EXPECT_EQ(b1.get(0), 0);
     b1.set(0, true);
+    EXPECT_EQ(b1.get(0), 1);
+
+    // test with bit from user input outside 0-1 range
+    QPI::bit bit;
+    bit.charValue = 2;
+    b1.set(0, bit);
+    EXPECT_EQ(b1.get(0), 1);
+    bit.charValue = 3;
+    b1.set(0, bit);
     EXPECT_EQ(b1.get(0), 1);
 
     b1.setAll(0);
