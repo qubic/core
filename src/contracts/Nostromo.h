@@ -80,28 +80,28 @@ struct NOST : public ContractBase
 	 */
 	struct AuctionParticipantData
 	{
-		/// Amount currently locked in escrow for this participant bid.
+		/** @brief Amount currently locked in escrow for the participant bid. */
 		uint64 escrowedAmount;
 
-		/// Quantity requested by this participant; standard auctions always use the whole lot quantity.
+		/** @brief Quantity requested by the participant; standard auctions always use the whole lot quantity. */
 		uint64 requestedQuantity;
 
-		/// Quantity finally allocated to this participant after batch settlement.
+		/** @brief Quantity finally allocated to the participant after batch auction settlement. */
 		uint64 allocatedQuantity;
 
-		/// Total bid amount committed by this participant for the current request.
+		/** @brief Total amount committed by the participant for the current bid. */
 		uint64 bidAmount;
 
-		/// Timestamp of the participant's latest accepted bid.
+		/** @brief Timestamp of the participant's latest accepted bid. */
 		DateAndTime lastBidTime;
 
-		/// Wallet that owns this participant record.
+		/** @brief Wallet that owns this participant record. */
 		id participant;
 
-		/// Marks the participant that currently holds the leading bid.
+		/** @brief Marks the participant that currently holds the leading bid. */
 		uint8 isHighestBidder;
 
-		/// Marks bids that remain inside the winning allocation after settlement.
+		/** @brief Marks bids that remain inside the winning allocation after settlement. */
 		uint8 isWinningBid;
 	};
 
@@ -112,10 +112,10 @@ struct NOST : public ContractBase
 	 */
 	struct AuctionLotEntry
 	{
-		/// Asset included in the lot.
+		/** @brief Asset included in the auction lot. */
 		Asset asset;
 
-		/// Quantity of this asset included in the lot.
+		/** @brief Quantity of this asset included in the auction lot. */
 		sint64 quantity;
 	};
 
@@ -127,209 +127,250 @@ struct NOST : public ContractBase
 	 */
 	struct AuctionData
 	{
-		/// Unique identifier of the auction created in the Auction House.
+		/** @brief Unique identifier of the auction created in the Auction House. */
 		id auctionId;
 
-		/// Total sale units offered in this auction; batch auctions use asset quantity, standard auctions use one unit for the whole lot.
+		/** @brief Total sale units offered; batch auctions use asset quantity, standard auctions use one unit for the whole lot. */
 		uint64 quantityForSale;
 
-		/// Quantity already assigned to winning bids after settlement.
+		/** @brief Quantity already assigned to winning bids after settlement. */
 		uint64 allocatedQuantity;
 
-		/// Minimum quantity a bidder may request in a batch auction; standard auctions sell the entire lot as one unit.
+		/** @brief Minimum quantity a bidder may request in a batch auction; standard auctions always sell the whole lot as one unit. */
 		uint64 minimumPurchaseQuantity;
 
-		/// Initial Price for a standard auction; bids cannot start below this total auction price.
+		/** @brief Initial price for a standard auction; bids cannot start below this total price for the whole lot. */
 		uint64 initialPrice;
 
-		/// Sale Price defined by the seller as the desired / minimum acceptable total selling price.
+		/** @brief Sale price defined by the seller as the desired or minimum acceptable total selling price. */
 		uint64 salePrice;
 
-		/// Minimum step by which a new bid must exceed the current highest bid.
+		/** @brief Minimum increment by which a new standard auction bid must exceed the current highest bid. */
 		uint64 minimumBidIncrement;
 
-		/// Buy Now price that closes a standard auction immediately when matched or exceeded.
+		/** @brief Buy Now price that closes a standard auction immediately when matched or exceeded. */
 		uint64 buyNowPrice;
 
-		/// Highest total bid currently offered by any active bid.
+		/** @brief Highest total bid currently offered by any active bid. */
 		uint64 highestBidPrice;
 
-		/// Quantity requested by the current highest bid.
+		/** @brief Quantity requested by the current highest bid. */
 		uint64 highestBidQuantity;
 
-		/// Total amount escrowed by the current highest bid.
-		/// Equal to the committed highest bid amount.
+		/** @brief Total amount escrowed by the current highest bid; equal to the committed highest bid amount. */
 		uint64 highestBidAmount;
 
-		/// Auction duration in seconds, derived from the duration configured in days.
+		/** @brief Auction duration in seconds, derived from the duration configured in days. */
 		uint64 auctionDurationSeconds;
 
-		/// Timestamp when the seller created the auction.
+		/** @brief Timestamp when the seller created the auction. */
 		DateAndTime createdAt;
 
-		/// Timestamp of the most recent accepted bid.
+		/** @brief Timestamp of the most recent accepted bid. */
 		DateAndTime lastBidAt;
 
-		/// Deadline for the seller to manually accept or reject a bid after auction end when the highest bid is between Initial Price and Sale Price.
+		/** @brief Deadline for the seller to accept or reject a standard auction bid that ended between Initial Price and Sale Price. */
 		DateAndTime sellerDecisionDeadline;
 
-		/// Timestamp when the auction was finalized, cancelled, or otherwise settled.
+		/** @brief Timestamp when the auction was finalized, cancelled, or otherwise settled. */
 		DateAndTime settledAt;
 
-		/// Number of distinct bidders who have placed bids in this auction.
+		/** @brief Number of distinct bidders that have placed bids in this auction. */
 		uint32 bidderCount;
 
-		/// Wallet that created the auction and offers the asset for sale.
+		/** @brief Wallet that created the auction and offers the lot for sale. */
 		id seller;
 
-		/// Wallet that currently holds the highest bid.
+		/** @brief Wallet that currently holds the highest bid. */
 		id highestBidder;
 
-		/// Asset set required for participation when the auction visibility is private and asset-based access is used.
+		/** @brief Asset set required for participation when the private auction uses asset-based access. */
 		HashSet<Asset, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
 
-		/// Auction lot contents; one non-empty entry means a single asset, multiple non-empty entries mean a bundle.
+		/** @brief Auction lot contents; one non-empty entry means a single asset, multiple non-empty entries mean a bundle. */
 		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
 
-		/// Wallet whitelist for private batch auctions; only these wallets may participate when wallet-based restriction is used.
+		/** @brief Wallet whitelist used when the private auction uses wallet-based access. */
 		HashSet<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedBidderWallets;
 
-		/// IPFS CID stored in Pinata that points to the auction name and description metadata.
+		/** @brief Lowercase base32 CIDv1 stored in Pinata for the auction name and description metadata. */
 		Array<uint8, NOST_AUCTION_METADATA_CID_LENGTH> metadataIpfsCid;
 
-		/// Auction House mode: Batch Auction or Standard Auction.
+		/** @brief Auction House mode: Batch Auction or Standard Auction. */
 		EAuctionType type;
 
-		/// Auction visibility: public or restricted private access.
+		/** @brief Auction visibility: public or restricted private access. */
 		EAuctionVisibility visibility;
 
-		/// Current lifecycle status of the auction, including the manual seller-decision phase.
+		/** @brief Current lifecycle status of the auction, including the seller decision phase for standard auctions. */
 		EAuctionStatus status;
 	};
 
 	struct StateData
 	{
-		/// Configured fee charged when creating a private auction.
+		/** @brief Configured fee charged when creating a private auction. */
 		sint64 privateAuctionFee;
 
-		/// Configured cancellation fee rate in basis points.
+		/** @brief Configured cancellation fee rate in basis points. */
 		uint64 auctionCancellationFeeBasisPoints;
 
-		/// Configured maximum auction duration in days.
+		/** @brief Configured maximum auction duration in days. */
 		uint32 maxAuctionDurationDays;
 
 		HashMap<id, AuctionData, NOST_AUCTION_NUM> auctionList;
 		HashMap<AuctionParticipantKey, AuctionParticipantData, NOST_AUCTION_PARTICIPANT_NUM> participants;
 	};
 
+	/** @brief Input payload used to create a Batch Auction or Standard Auction in the Auction House. */
 	struct CreateAuction_input
 	{
-		/// IPFS CID stored in Pinata that points to the auction name and description metadata.
+		/** @brief Lowercase base32 CIDv1 stored in Pinata for the auction name and description metadata. */
 		Array<uint8, NOST_AUCTION_METADATA_CID_LENGTH> metadataIpfsCid;
 
-		/// Auction lot contents; one non-empty entry means a single asset, multiple non-empty entries mean a bundle.
+		/** @brief Auction lot contents; one non-empty entry means a single asset, multiple non-empty entries mean a bundle. */
 		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
 
-		/// Asset list required to participate when the auction is configured as private and asset-based access is used.
+		/** @brief Asset list required to participate when the private auction uses asset-based access. */
 		Array<Asset, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
 
-		/// Wallet list for private batch auctions; copied into the auction whitelist on creation.
+		/** @brief Wallet list used when the private auction restricts participation to predefined wallets. */
 		Array<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedBidderWallets;
 
-		/// Minimum quantity a bidder may request in a batch auction; standard auctions sell the whole lot as one unit.
+		/** @brief Minimum quantity a bidder may request in a batch auction; standard auctions always sell the whole lot as one unit. */
 		uint64 minimumPurchaseQuantity;
 
-		/// Initial Price for a standard auction; bids cannot be placed below this total auction price.
+		/** @brief Initial price for a standard auction; bids cannot be placed below this total price for the whole lot. */
 		uint64 initialPrice;
 
-		/// Sale Price defined by the seller as the desired / minimum acceptable total selling price.
+		/** @brief Sale price defined by the seller as the desired or minimum acceptable total selling price. */
 		uint64 salePrice;
 
-		/// Minimum step by which each new bid must exceed the current highest bid.
+		/** @brief Minimum increment by which each new standard auction bid must exceed the current highest bid. */
 		uint64 minimumBidIncrement;
 
-		/// Buy Now price that immediately closes a standard auction once matched or exceeded.
+		/** @brief Buy Now price that immediately closes a standard auction once matched or exceeded. */
 		uint64 buyNowPrice;
 
-		/// Auction duration configured by the seller in days, capped by the contract configuration.
+		/** @brief Auction duration in days, capped by the contract configuration. */
 		uint32 durationDays;
 
-		/// Auction House mode selected by the seller: Batch Auction or Standard Auction.
+		/** @brief Auction House mode selected by the seller: Batch Auction or Standard Auction. */
 		uint8 auctionType;
 
-		/// Visibility selected by the seller: public or private.
+		/** @brief Visibility selected by the seller: public or private. */
 		uint8 auctionVisibility;
 	};
 
+	/** @brief Result of auction creation. */
 	struct CreateAuction_output
 	{
+		/** @brief Identifier assigned to the new auction when creation succeeds. */
 		id auctionId;
+
+		/** @brief Result code describing whether the auction creation succeeded. */
 		uint8 errorCode;
 	};
 
+	/** @brief Input payload used to place a bid in a Batch Auction or Standard Auction. */
 	struct PlaceBid_input
 	{
-		/// Identifier of the target auction.
+		/** @brief Identifier of the target auction. */
 		id auctionId;
 
-		/// Requested quantity for a batch auction; ignored for a standard auction because the whole lot is sold as one unit.
+		/** @brief Requested quantity for a batch auction; ignored for a standard auction because the whole lot is sold as one unit. */
 		uint64 quantity;
 
-		/// Total amount the bidder commits for this bid.
+		/** @brief Total amount the bidder commits for this bid. */
 		uint64 bidAmount;
 	};
 
+	/** @brief Result of a bid placement request. */
 	struct PlaceBid_output
 	{
+		/** @brief Amount that remains escrowed for the accepted bid. */
 		uint64 escrowedAmount;
+
+		/** @brief Amount refunded to the bidder, including replaced escrow or invocation change. */
 		uint64 refundedAmount;
+
+		/** @brief Result code describing whether the bid placement succeeded. */
 		uint8 errorCode;
 	};
 
+	/** @brief Input payload used to cancel an active auction. */
 	struct CancelAuction_input
 	{
+		/** @brief Identifier of the auction that the seller wants to cancel. */
 		id auctionId;
 	};
 
+	/** @brief Result of an auction cancellation request. */
 	struct CancelAuction_output
 	{
+		/** @brief Total amount refunded to bidders because of the cancellation. */
 		uint64 refundedAmount;
+
+		/** @brief Cancellation fee charged to the seller according to the auction rules. */
 		uint64 cancellationFee;
+
+		/** @brief Result code describing whether the cancellation succeeded. */
 		uint8 errorCode;
 	};
 
+	/** @brief Input payload used to fetch one auction from storage. */
 	struct GetAuction_input
 	{
+		/** @brief Identifier of the auction to read. */
 		id auctionId;
 	};
 
+	/** @brief Auction data returned by the read-only auction getter. */
 	struct GetAuction_output
 	{
+		/** @brief Persistent auction data stored for the requested auction. */
 		AuctionData auction;
 	};
 
+	/** @brief Input payload used to fetch one participant record from an auction. */
 	struct GetAuctionParticipant_input
 	{
+		/** @brief Identifier of the auction that owns the participant record. */
 		id auctionId;
+
+		/** @brief Wallet whose participant record should be returned. */
 		id participant;
 	};
 
+	/** @brief Participant data returned by the read-only participant getter. */
 	struct GetAuctionParticipant_output
 	{
+		/** @brief Participant record for the requested wallet in the requested auction. */
 		AuctionParticipantData participantData;
+
+		/** @brief Flag indicating whether the participant record exists. */
 		uint8 found;
 	};
 
+	/** @brief Internal input used to validate an auction lot and resolve its total escrow quantity. */
 	struct AnalyzeAuctionLot_input
 	{
+		/** @brief Auction lot contents to validate. */
 		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
+
+		/** @brief Requested auction duration in days. */
 		uint32 durationDays;
 	};
 
+	/** @brief Internal output returned after validating an auction lot. */
 	struct AnalyzeAuctionLot_output
 	{
+		/** @brief Total quantity that must be escrowed from the lot. */
 		uint64 totalEscrowQuantity;
+
+		/** @brief Number of non-empty lot entries found in the lot. */
 		uint64 lotItemCount;
+
+		/** @brief Flag indicating whether the lot and duration are valid. */
 		uint8 isValid;
 	};
 
@@ -339,13 +380,17 @@ struct NOST : public ContractBase
 		uint64 lotItemIndex;
 	};
 
+	/** @brief Internal input used to count non-empty wallet entries in a private wallet whitelist. */
 	struct CountAllowedBidderWallets_input
 	{
+		/** @brief Wallet list provided for private wallet-based access control. */
 		Array<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedBidderWallets;
 	};
 
+	/** @brief Internal output containing the number of non-empty wallet whitelist entries. */
 	struct CountAllowedBidderWallets_output
 	{
+		/** @brief Number of non-zero wallet entries found in the whitelist. */
 		uint64 allowedWalletCount;
 	};
 
@@ -354,13 +399,17 @@ struct NOST : public ContractBase
 		uint64 allowedWalletIndex;
 	};
 
+	/** @brief Internal input used to count non-empty asset entries in a private asset access list. */
 	struct CountRequiredAccessAssets_input
 	{
+		/** @brief Asset list provided for private asset-based access control. */
 		Array<Asset, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
 	};
 
+	/** @brief Internal output containing the number of non-empty private access assets. */
 	struct CountRequiredAccessAssets_output
 	{
+		/** @brief Number of non-zero asset entries found in the private access list. */
 		uint64 requiredAccessAssetCount;
 	};
 
@@ -370,13 +419,17 @@ struct NOST : public ContractBase
 		uint64 requiredAccessAssetIndex;
 	};
 
+	/** @brief Internal input used to verify whether the invocator owns at least one required private access asset. */
 	struct HasRequiredAccessAsset_input
 	{
+		/** @brief Auction whose private asset-based access rules should be evaluated. */
 		AuctionData auction;
 	};
 
+	/** @brief Internal output of the private asset access check. */
 	struct HasRequiredAccessAsset_output
 	{
+		/** @brief Flag indicating whether the invocator owns at least one required access asset. */
 		uint8 hasRequiredAccessAsset;
 	};
 
@@ -387,20 +440,38 @@ struct NOST : public ContractBase
 		sint64 possessedAccessShares;
 	};
 
+	/** @brief Internal input used to process a batch auction bid after the common PlaceBid checks succeed. */
 	struct ProcessBatchBid_input
 	{
+		/** @brief Identifier of the target batch auction. */
 		id auctionId;
+
+		/** @brief Quantity requested by the bidder in the batch auction. */
 		uint64 effectiveQuantity;
+
+		/** @brief Total amount the bidder commits for the batch bid. */
 		uint64 bidAmount;
+
+		/** @brief Amount that must remain escrowed for the batch bid. */
 		uint64 requiredEscrow;
+
+		/** @brief Timestamp of the accepted bid. */
 		DateAndTime currentDate;
+
+		/** @brief Seconds elapsed since auction creation at the moment of the bid. */
 		uint64 elapsedSeconds;
 	};
 
+	/** @brief Internal output returned after processing a batch auction bid. */
 	struct ProcessBatchBid_output
 	{
+		/** @brief Amount refunded during batch bid processing. */
 		uint64 refundedAmount;
+
+		/** @brief Result code describing whether the batch bid processing succeeded. */
 		uint8 errorCode;
+
+		/** @brief Flag indicating whether batch bid processing completed successfully. */
 		uint8 success;
 	};
 
@@ -413,19 +484,35 @@ struct NOST : public ContractBase
 		uint8 participantExists;
 	};
 
+	/** @brief Internal input used to process a standard auction bid after the common PlaceBid checks succeed. */
 	struct ProcessStandardBid_input
 	{
+		/** @brief Identifier of the target standard auction. */
 		id auctionId;
+
+		/** @brief Total amount the bidder commits for the standard auction lot. */
 		uint64 bidAmount;
+
+		/** @brief Amount that must remain escrowed for the standard bid. */
 		uint64 requiredEscrow;
+
+		/** @brief Timestamp of the accepted bid. */
 		DateAndTime currentDate;
+
+		/** @brief Seconds elapsed since auction creation at the moment of the bid. */
 		uint64 elapsedSeconds;
 	};
 
+	/** @brief Internal output returned after processing a standard auction bid. */
 	struct ProcessStandardBid_output
 	{
+		/** @brief Amount refunded during standard bid processing. */
 		uint64 refundedAmount;
+
+		/** @brief Result code describing whether the standard bid processing succeeded. */
 		uint8 errorCode;
+
+		/** @brief Flag indicating whether standard bid processing completed successfully. */
 		uint8 success;
 	};
 
@@ -441,13 +528,17 @@ struct NOST : public ContractBase
 		uint8 highestBidderExists;
 	};
 
+	/** @brief Internal input used to validate the IPFS metadata CID format required by the Auction House. */
 	struct ValidateMetadataCid_input
 	{
+		/** @brief Candidate lowercase base32 CIDv1 for auction metadata stored in Pinata. */
 		Array<uint8, NOST_AUCTION_METADATA_CID_LENGTH> metadataIpfsCid;
 	};
 
+	/** @brief Internal output of the metadata CID validation routine. */
 	struct ValidateMetadataCid_output
 	{
+		/** @brief Flag indicating whether the metadata CID has the required lowercase base32 CIDv1 format. */
 		uint8 isValid;
 	};
 
@@ -459,13 +550,17 @@ struct NOST : public ContractBase
 		uint8 reachedTerminator;
 	};
 
+	/** @brief Internal input used to verify that the seller owns enough shares for every asset in the auction lot. */
 	struct VerifyAuctionLotBalances_input
 	{
+		/** @brief Auction lot that should be checked against the seller balance. */
 		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
 	};
 
+	/** @brief Internal output of the seller balance verification routine. */
 	struct VerifyAuctionLotBalances_output
 	{
+		/** @brief Flag indicating whether the seller owns enough shares for the entire lot. */
 		uint8 hasEnoughBalance;
 	};
 
@@ -476,13 +571,17 @@ struct NOST : public ContractBase
 		sint64 possessedShares;
 	};
 
+	/** @brief Internal input used to transfer the auction lot from the seller into contract escrow. */
 	struct EscrowAuctionLotAssets_input
 	{
+		/** @brief Auction lot that must be moved into contract escrow. */
 		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
 	};
 
+	/** @brief Internal output of the lot escrow routine. */
 	struct EscrowAuctionLotAssets_output
 	{
+		/** @brief Flag indicating whether every lot asset was successfully escrowed. */
 		uint8 success;
 	};
 
@@ -494,8 +593,10 @@ struct NOST : public ContractBase
 		sint64 transferredShares;
 	};
 
+	/** @brief Internal input used to roll back an auction lot escrow attempt or to return the lot after cancellation. */
 	struct RollbackAuctionLotAssets_input
 	{
+		/** @brief Auction lot that must be returned from contract escrow to the seller. */
 		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
 	};
 
@@ -558,14 +659,23 @@ struct NOST : public ContractBase
 		sint64 participantIndex;
 	};
 
+	/** @brief Input payload used to move share management rights to another managing contract. */
 	struct TransferShareManagementRights_input
 	{
+		/** @brief Asset whose management rights should be transferred. */
 		Asset asset;
+
+		/** @brief Number of shares whose management rights should be transferred. */
 		sint64 numberOfShares;
+
+		/** @brief Destination managing contract index. */
 		uint32 newManagingContractIndex;
 	};
+
+	/** @brief Result of a share management rights transfer request. */
 	struct TransferShareManagementRights_output
 	{
+		/** @brief Number of shares whose management rights were transferred. */
 		sint64 transferredNumberOfShares;
 	};
 
