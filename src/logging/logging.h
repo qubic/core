@@ -259,7 +259,7 @@ struct OracleSubscriberLogMessage
     int subscriptionId;
     unsigned int interfaceIndex;
     unsigned int contractIndex;
-    unsigned int periodInMilliseconds;    //< 0 means unsubscribe
+    unsigned int periodInMilliseconds;    // 0 means unsubscribe
     unsigned long long firstQueryDateAndTime;
 
     char _terminator; // Only data before "_terminator" are logged

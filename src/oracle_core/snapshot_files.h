@@ -26,6 +26,7 @@ struct OracleEngineSnapshotData
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> pendingCommitReplyStateIndices;
     UnsortedMultiset<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> pendingRevealReplyStateIndices;
     MinHeap<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> notificationQueryIndexQueue;
+    MinHeap<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> finishedUserQueryIndexQueue;
     uint64_t revenuePoints[NUMBER_OF_COMPUTORS];
     int32_t usedSubscriptionSlots;
     int32_t usedSubscriberSlots;
@@ -57,6 +58,7 @@ bool OracleEngine::saveSnapshot(unsigned short epoch, CHAR16* directory) const
     copyMemory(engineData.pendingCommitReplyStateIndices, pendingCommitReplyStateIndices);
     copyMemory(engineData.pendingRevealReplyStateIndices, pendingRevealReplyStateIndices);
     copyMemory(engineData.notificationQueryIndexQueue, notificationQueryIndexQueue);
+    copyMemory(engineData.finishedUserQueryIndexQueue, finishedUserQueryIndexQueue);
     copyMemory(engineData.revenuePoints, revenuePoints);
     copyMemory(engineData.stats, stats);
 
@@ -152,6 +154,7 @@ bool OracleEngine::loadSnapshot(unsigned short epoch, CHAR16* directory)
     copyMemory(pendingCommitReplyStateIndices, engineData.pendingCommitReplyStateIndices);
     copyMemory(pendingRevealReplyStateIndices, engineData.pendingRevealReplyStateIndices);
     copyMemory(notificationQueryIndexQueue, engineData.notificationQueryIndexQueue);
+    copyMemory(finishedUserQueryIndexQueue, engineData.finishedUserQueryIndexQueue);
     copyMemory(revenuePoints, engineData.revenuePoints);
     copyMemory(stats, engineData.stats);
     if (oracleQueryCount > MAX_ORACLE_QUERIES || queryStorageBytesUsed > ORACLE_QUERY_STORAGE_SIZE

@@ -228,6 +228,7 @@ public:
 
 	struct CreatePool_input
 	{
+		id assetIssuer;
 		uint64 assetName;
 	};
 	struct CreatePool_output
@@ -942,13 +943,13 @@ protected:
 		}
 
 		// asset no exist
-		if (!qpi.isAssetIssued(qpi.invocator(), input.assetName))
+		if (!qpi.isAssetIssued(input.assetIssuer, input.assetName))
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
 		}
 
-		locals.poolID = qpi.invocator();
+		locals.poolID = input.assetIssuer;
 		locals.poolID.u64._3 = input.assetName;
 
 		// check if pool already exist
