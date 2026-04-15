@@ -2375,11 +2375,13 @@ public:
     typedef NoData Reinit_output;
     struct Reinit_locals {
         id dst;
+        AssetPossessionIterator qtryIterator;
+        Asset qtryAsset;
     };
 
     PRIVATE_PROCEDURE_WITH_LOCALS(Reinit)
     {
-        state.mut().mOperationParams.mAntiSpamAmount = 1000000;
+        state.mut().mOperationParams.mAntiSpamAmount = 11;
         state.mut().mOperationParams.discountedFeeForUsers.cleanup();
         setMemory(state.mut().mQtryGov, 0);
         state.mut().mQtryGov.mOperationId = ID(_V, _A, _E, _F, _X, _O, _E, _V, _K, _P, _O, _X, _B, _A, _R, _T, _U, _T, _B, _M, _C, _P, _L, _T, _V, _G, _I, _B, _Z, _N, _C, _Y, _K, _K, _W, _X, _U, _V, _F, _N, _G, _G, _Q, _M, _F, _P, _X, _E, _E, _F, _X, _F, _F, _O, _E, _E);
@@ -2389,72 +2391,27 @@ public:
         state.mut().mQtryGov.mDepositAmountForDispute = 1000000000;
         state.mut().mRecentActiveEvent.setAll(NULL_INDEX);
         state.mut().wholeSharePrice = 100000;
-        /*
-        * tribute to active shareholders who work for v2 deployment
-        LIST OF ACTIVE SHAREHOLDERS THAT VOTED TO CHANGE
-        KEFDZTYLFERAHDVLNQORDHFQIBSBZCWSZXZFFANOTFAHWMOVGTRQJPXDVCWG,144
-        LFEUAVWTWKPVZGNKBVWQJLKLWINCZCAGWJSPKBAPHFSUJGXGFGFCGIJGLOJH,100
-        AHYZQFFDRVINZDKHVZAVKAETMUXAUOLWXZWRPFPOBABZXCDJURXIIBHEYDMN,51
-        MPGEKBPMGBKJBHVEEFIQLZRZZNMBOHFUPSHWVQCUOEYKWXXGJNWDHVDDZEOG,32
-        SRIIKYUNVPYUYEGWVGEUGKRQBTABCWPDHQZDACFFHBGIIRSHNLUWLJIGAJPE,10
-        BELARUSXQGJODHDVICUWKAFCCLIDGKRMHVZFAAHRLDXMBCKOUELFNJLAIYIF,10
-        YELOQXMFSHDHSFFHEDGZLOTKNIIDNCHMLMPXZJLSVASUTZNKARGZLUGFAUHC,10
-        ZFINQNMBPKIATBXIILLADBAGYAJAUNRIRLXXAIABXGMZZDFPNTINYRVCMYGL,9
-        PAMGOURNTXPSKDYFWTBFWKOOIVRCICHLTLTRAFLBJELSSHZFGVPJCNBFOHWN,7
-        PSSAMNSRCLRMJAEAMCLOYGMYXUDBZUDLSXXFEXXCNEFKFESORYKLBQIBVFKJ,7
-        DMICQQMRDTKKGDKKRJBSOWFAPKHADARDWNXCZVODYEFGSLBECNXXTPUEWAAK,5
-        SQLYXQUKSYSVABUQYZTYVXLDBNNDWVCJVPKXIUPRBCKQBNDJAGDPFAGCVUSC,4
-        UGTEOSHSVVKVXBGIJKVZQCKLWAKBPJPEKEYWEXMFMDOBHYECALJXSFOGNIUK,3
-        UBGIZFTLNCRKAFJBIUUYWTOMEFEDVPTZZZBKNSZODERUXBJPWQZSPGYAMCYH,2
-        BRRCFEWLMDWVMGWDHZMNTBDABGDCHDMGAOQCXJSFXAZDEGJLDDRUBALFEOQN,1
-        LLSBTQLILXSBDFGWLPRZZVSFLLKCNSHRAJIUTFDFDAWNZHRJNXDSATWAUOUF,1
-        DOJRIEHKUBETGDOUZPSYQHVVIIYCVGHCJXCYITDYMDEPVSGEYFXATQOBCXCI,1
-        GGEERWIAQPEZVFKQPTOUVSRJHCJCSLWGOADAJHUUZBIOBVPKBQOFVUIETAYH,1
-        */
+
         qpi.issueAsset(24294015856956497ULL, SELF, 0, 676, 0); // QTRYGOV
         state.mut().QTRYGOV.assetName = 24294015856956497ULL;
         state.mut().QTRYGOV.issuer = SELF;
 
-        locals.dst = ID(_K, _E, _F, _D, _Z, _T, _Y, _L, _F, _E, _R, _A, _H, _D, _V, _L, _N, _Q, _O, _R, _D, _H, _F, _Q, _I, _B, _S, _B, _Z, _C, _W, _S, _Z, _X, _Z, _F, _F, _A, _N, _O, _T, _F, _A, _H, _W, _M, _O, _V, _G, _T, _R, _Q, _J, _P, _X, _D);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 246, locals.dst);
-        locals.dst = ID(_L, _F, _E, _U, _A, _V, _W, _T, _W, _K, _P, _V, _Z, _G, _N, _K, _B, _V, _W, _Q, _J, _L, _K, _L, _W, _I, _N, _C, _Z, _C, _A, _G, _W, _J, _S, _P, _K, _B, _A, _P, _H, _F, _S, _U, _J, _G, _X, _G, _F, _G, _F, _C, _G, _I, _J, _G);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 169, locals.dst);
-        locals.dst = ID(_A, _H, _Y, _Z, _Q, _F, _F, _D, _R, _V, _I, _N, _Z, _D, _K, _H, _V, _Z, _A, _V, _K, _A, _E, _T, _M, _U, _X, _A, _U, _O, _L, _W, _X, _Z, _W, _R, _P, _F, _P, _O, _B, _A, _B, _Z, _X, _C, _D, _J, _U, _R, _X, _I, _I, _B, _H, _E);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 86, locals.dst);
-        locals.dst = ID(_M, _P, _G, _E, _K, _B, _P, _M, _G, _B, _K, _J, _B, _H, _V, _E, _E, _F, _I, _Q, _L, _Z, _R, _Z, _Z, _N, _M, _B, _O, _H, _F, _U, _P, _S, _H, _W, _V, _Q, _C, _U, _O, _E, _Y, _K, _W, _X, _X, _G, _J, _N, _W, _D, _H, _V, _D, _D);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 54, locals.dst);
-        locals.dst = ID(_S, _R, _I, _I, _K, _Y, _U, _N, _V, _P, _Y, _U, _Y, _E, _G, _W, _V, _G, _E, _U, _G, _K, _R, _Q, _B, _T, _A, _B, _C, _W, _P, _D, _H, _Q, _Z, _D, _A, _C, _F, _F, _H, _B, _G, _I, _I, _R, _S, _H, _N, _L, _U, _W, _L, _J, _I, _G);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 16, locals.dst);
-        locals.dst = ID(_B, _E, _L, _A, _R, _U, _S, _X, _Q, _G, _J, _O, _D, _H, _D, _V, _I, _C, _U, _W, _K, _A, _F, _C, _C, _L, _I, _D, _G, _K, _R, _M, _H, _V, _Z, _F, _A, _A, _H, _R, _L, _D, _X, _M, _B, _C, _K, _O, _U, _E, _L, _F, _N, _J, _L, _A);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 16, locals.dst);
-        locals.dst = ID(_Y, _E, _L, _O, _Q, _X, _M, _F, _S, _H, _D, _H, _S, _F, _F, _H, _E, _D, _G, _Z, _L, _O, _T, _K, _N, _I, _I, _D, _N, _C, _H, _M, _L, _M, _P, _X, _Z, _J, _L, _S, _V, _A, _S, _U, _T, _Z, _N, _K, _A, _R, _G, _Z, _L, _U, _G, _F);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 16, locals.dst);
-        locals.dst = ID(_Z, _F, _I, _N, _Q, _N, _M, _B, _P, _K, _I, _A, _T, _B, _X, _I, _I, _L, _L, _A, _D, _B, _A, _G, _Y, _A, _J, _A, _U, _N, _R, _I, _R, _L, _X, _X, _A, _I, _A, _B, _X, _G, _M, _Z, _Z, _D, _F, _P, _N, _T, _I, _N, _Y, _R, _V, _C);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 15, locals.dst);
-        locals.dst = ID(_P, _A, _M, _G, _O, _U, _R, _N, _T, _X, _P, _S, _K, _D, _Y, _F, _W, _T, _B, _F, _W, _K, _O, _O, _I, _V, _R, _C, _I, _C, _H, _L, _T, _L, _T, _R, _A, _F, _L, _B, _J, _E, _L, _S, _S, _H, _Z, _F, _G, _V, _P, _J, _C, _N, _B, _F);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 12, locals.dst);
-        locals.dst = ID(_P, _S, _S, _A, _M, _N, _S, _R, _C, _L, _R, _M, _J, _A, _E, _A, _M, _C, _L, _O, _Y, _G, _M, _Y, _X, _U, _D, _B, _Z, _U, _D, _L, _S, _X, _X, _F, _E, _X, _X, _C, _N, _E, _F, _K, _F, _E, _S, _O, _R, _Y, _K, _L, _B, _Q, _I, _B);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 12, locals.dst);
-        locals.dst = ID(_D, _M, _I, _C, _Q, _Q, _M, _R, _D, _T, _K, _K, _G, _D, _K, _K, _R, _J, _B, _S, _O, _W, _F, _A, _P, _K, _H, _A, _D, _A, _R, _D, _W, _N, _X, _C, _Z, _V, _O, _D, _Y, _E, _F, _G, _S, _L, _B, _E, _C, _N, _X, _X, _T, _P, _U, _E);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 9, locals.dst);
-        locals.dst = ID(_S, _Q, _L, _Y, _X, _Q, _U, _K, _S, _Y, _S, _V, _A, _B, _U, _Q, _Y, _Z, _T, _Y, _V, _X, _L, _D, _B, _N, _N, _D, _W, _V, _C, _J, _V, _P, _K, _X, _I, _U, _P, _R, _B, _C, _K, _Q, _B, _N, _D, _J, _A, _G, _D, _P, _F, _A, _G, _C);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 7, locals.dst);
-        locals.dst = ID(_U, _G, _T, _E, _O, _S, _H, _S, _V, _V, _K, _V, _X, _B, _G, _I, _J, _K, _V, _Z, _Q, _C, _K, _L, _W, _A, _K, _B, _P, _J, _P, _E, _K, _E, _Y, _W, _E, _X, _M, _F, _M, _D, _O, _B, _H, _Y, _E, _C, _A, _L, _J, _X, _S, _F, _O, _G);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 6, locals.dst);
-        locals.dst = ID(_U, _B, _G, _I, _Z, _F, _T, _L, _N, _C, _R, _K, _A, _F, _J, _B, _I, _U, _U, _Y, _W, _T, _O, _M, _E, _F, _E, _D, _V, _P, _T, _Z, _Z, _Z, _B, _K, _N, _S, _Z, _O, _D, _E, _R, _U, _X, _B, _J, _P, _W, _Q, _Z, _S, _P, _G, _Y, _A);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 4, locals.dst);
-        locals.dst = ID(_B, _R, _R, _C, _F, _E, _W, _L, _M, _D, _W, _V, _M, _G, _W, _D, _H, _Z, _M, _N, _T, _B, _D, _A, _B, _G, _D, _C, _H, _D, _M, _G, _A, _O, _Q, _C, _X, _J, _S, _F, _X, _A, _Z, _D, _E, _G, _J, _L, _D, _D, _R, _U, _B, _A, _L, _F);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 2, locals.dst);
-        locals.dst = ID(_L, _L, _S, _B, _T, _Q, _L, _I, _L, _X, _S, _B, _D, _F, _G, _W, _L, _P, _R, _Z, _Z, _V, _S, _F, _L, _L, _K, _C, _N, _S, _H, _R, _A, _J, _I, _U, _T, _F, _D, _F, _D, _A, _W, _N, _Z, _H, _R, _J, _N, _X, _D, _S, _A, _T, _W, _A);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 2, locals.dst);
-        locals.dst = ID(_D, _O, _J, _R, _I, _E, _H, _K, _U, _B, _E, _T, _G, _D, _O, _U, _Z, _P, _S, _Y, _Q, _H, _V, _V, _I, _I, _Y, _C, _V, _G, _H, _C, _J, _X, _C, _Y, _I, _T, _D, _Y, _M, _D, _E, _P, _V, _S, _G, _E, _Y, _F, _X, _A, _T, _Q, _O, _B);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 2, locals.dst);
-        locals.dst = ID(_G, _G, _E, _E, _R, _W, _I, _A, _Q, _P, _E, _Z, _V, _F, _K, _Q, _P, _T, _O, _U, _V, _S, _R, _J, _H, _C, _J, _C, _S, _L, _W, _G, _O, _A, _D, _A, _J, _H, _U, _U, _Z, _B, _I, _O, _B, _V, _P, _K, _B, _Q, _O, _F, _V, _U, _I, _E);
-        qpi.transferShareOwnershipAndPossession(24294015856956497ULL, SELF, SELF, SELF, 2, locals.dst);
-
         // temp replacement for qusd
         state.mut().QUSD.assetName = 310652322119ULL; // GARTH
         state.mut().QUSD.issuer = ID(_P, _H, _O, _E, _N, _I, _X, _C, _L, _Q, _O, _B, _H, _D, _Z, _C, _H, _J, _O, _C, _K, _C, _P, _Z, _V, _T, _K, _A, _L, _Q, _B, _M, _X, _Y, _O, _E, _D, _B, _U, _H, _S, _D, _C, _J, _R, _M, _T, _U, _C, _U, _B, _P, _L, _S, _U, _F);
+        
+        // distribute QTRYGOV to current shareholders
+        locals.qtryAsset.assetName = QUOTTERY_CONTRACT_ASSET_NAME;
+        locals.qtryAsset.issuer = NULL_ID;
+
+        // distribute QTRY GOV to current shareholders
+        for (locals.qtryIterator.begin(locals.qtryAsset); !locals.qtryIterator.reachedEnd(); locals.qtryIterator.next())
+        {
+            if (locals.qtryIterator.numberOfOwnedShares() > 0)
+            {
+                qpi.transferShareOwnershipAndPossession(state.mut().QTRYGOV.assetName, state.mut().QTRYGOV.issuer, SELF, SELF, locals.qtryIterator.numberOfOwnedShares(), locals.qtryIterator.owner());
+            }
+        }
     }
 
     typedef NoData CleanMemory_input;
@@ -2573,7 +2530,7 @@ public:
     BEGIN_EPOCH()
     {
         // TODO: reinitialize after proposal getting passed
-        if (qpi.epoch() == 209)
+        if (qpi.epoch() == 210)
         {
             CALL(Reinit, input, output);
         }
