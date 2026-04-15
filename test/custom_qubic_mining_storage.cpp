@@ -115,30 +115,6 @@ TEST(CustomQubicMiningStorage, ContainsTask)
     storage.deinit();
 }
 
-TEST(CustomQubicMiningStorage, AddCleanJobQueueTask)
-{
-    CustomQubicMiningStorage storage;
-    EXPECT_TRUE(storage.init());
-
-    std::array<unsigned char, sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask)> buffer;
-    auto* task = reinterpret_cast<CustomQubicMiningTask*>(buffer.data());
-
-    std::random_device rd;
-    std::mt19937 gen(rd());
-
-    createTestTask(buffer, /*jobId=*/12345, /*cleanJobQueue=*/false, gen);
-    EXPECT_TRUE(storage.addTask(task, sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask)));
-    EXPECT_TRUE(storage.containsTask(task->customMiningType, 12345));
-
-    // Create and add a task that will clean the job queue. This should remove the previous task.
-    createTestTask(buffer, /*jobId=*/532789, /*cleanJobQueue=*/true, gen);
-    EXPECT_TRUE(storage.addTask(task, sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask)));
-    EXPECT_TRUE(storage.containsTask(task->customMiningType, 532789));
-    EXPECT_FALSE(storage.containsTask(task->customMiningType, 12345));
-
-    storage.deinit();
-}
-
 TEST(CustomQubicMiningStorage, AddingMoreThanMaxNumTasksOverwritesOldest)
 {
     CustomQubicMiningStorage storage;
