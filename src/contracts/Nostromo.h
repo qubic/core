@@ -251,11 +251,20 @@ struct NOST : public ContractBase
 		/** @brief Shareholder fee tier applied to auctions above the third threshold. */
 		uint64 shareholderFeeBasisPointsTier4;
 
+		/** @brief Start of the currently active global auction timer pause interval. */
+		DateAndTime auctionTimerPauseStartedAt;
+
+		/** @brief End of the currently active global auction timer pause interval. */
+		DateAndTime auctionTimerPauseEndsAt;
+
 		/** @brief Configured maximum auction duration in days. */
 		uint32 maxAuctionDurationDays;
 
 		/** @brief Flag indicating whether the post-`BEGIN_EPOCH()` auction pause is active for the current epoch. */
 		uint8 isPostBeginEpochPauseArmed;
+
+		/** @brief Flag indicating whether auction deadlines are currently frozen by a global pause interval. */
+		uint8 isAuctionTimerPaused;
 
 		id management;
 
@@ -721,11 +730,47 @@ struct NOST : public ContractBase
 		uint8 isPaused;
 	};
 
-	/** @brief Internal locals used to evaluate whether auction interactions are currently paused. */
-	struct IsAuctionInteractionPaused_locals
+	/** @brief Internal input used to resolve the currently active global auction pause interval. */
+	struct GetAuctionPauseState_input
+	{
+	};
+
+	/** @brief Internal output describing the current global auction pause interval. */
+	struct GetAuctionPauseState_output
+	{
+		/** @brief Pause start timestamp for the current active pause interval. */
+		DateAndTime pauseStartedAt;
+
+		/** @brief Pause end timestamp for the current active pause interval. */
+		DateAndTime pauseEndsAt;
+
+		/** @brief Flag indicating whether auction timers are currently paused. */
+		uint8 isPaused;
+	};
+
+	/** @brief Internal locals used to resolve the currently active global auction pause interval. */
+	struct GetAuctionPauseState_locals
 	{
 		/** @brief Compact current date marker used to detect the bootstrap default time sentinel. */
+		DateAndTime currentDate;
+		DateAndTime pauseStartedAt;
+		DateAndTime pauseEndsAt;
+		uint64 elapsedTicksSinceInitialTick;
 		uint32 currentDateStamp;
+	};
+
+	using SyncAuctionPauseState_input = NoData;
+	using SyncAuctionPauseState_output = NoData;
+
+	/** @brief Internal locals used to synchronize auction deadlines with the global pause interval. */
+	struct SyncAuctionPauseState_locals
+	{
+		AuctionData auction;
+		DateAndTime currentDate;
+		GetAuctionPauseState_input getAuctionPauseStateInput;
+		GetAuctionPauseState_output getAuctionPauseStateOutput;
+		uint64 pausedSeconds;
+		sint64 auctionIndex;
 	};
 
 	/** @brief Internal input used to split auction proceeds between seller and configured fee recipients. */
@@ -755,6 +800,20 @@ struct NOST : public ContractBase
 	{
 		/** @brief Number of ticks remaining before auction interactions resume after `BEGIN_EPOCH`. */
 		uint32 ticks;
+	};
+
+	struct GetTicksBeforeAuctionLaunchInternal_locals
+	{
+		DateAndTime currentDate;
+		DateAndTime pauseEndsAt;
+		uint64 remainingSeconds;
+	};
+
+	struct GetTicksBeforeAuctionLaunch_locals
+	{
+		DateAndTime currentDate;
+		DateAndTime pauseEndsAt;
+		uint64 remainingSeconds;
 	};
 
 	/** @brief Internal input used to process a batch auction bid after the common PlaceBid checks succeed. */
@@ -1072,6 +1131,8 @@ struct NOST : public ContractBase
 	{
 		AuctionData auction;
 		DateAndTime currentDate;
+		IsAuctionInteractionPaused_input isAuctionInteractionPausedInput;
+		IsAuctionInteractionPaused_output isAuctionInteractionPausedOutput;
 		FinalizeStandardAuction_input finalizeStandardAuctionInput;
 		FinalizeStandardAuction_output finalizeStandardAuctionOutput;
 		RejectStandardAuction_input rejectStandardAuctionInput;
@@ -1082,11 +1143,11 @@ struct NOST : public ContractBase
 	{
 		AuctionData auction;
 		DateAndTime currentDate;
+		SyncAuctionPauseState_input syncAuctionPauseStateInput;
+		SyncAuctionPauseState_output syncAuctionPauseStateOutput;
 		uint64 elapsedSeconds;
 		uint32 currentDateStamp;
 		sint64 auctionIndex;
-		GetTicksBeforeAuctionLaunchInternal_input getTicksBeforeAuctionLaunchInternalInput;
-		GetTicksBeforeAuctionLaunchInternal_output getTicksBeforeAuctionLaunchInternalOutput;
 		FinalizeBatchAuction_input finalizeBatchAuctionInput;
 		FinalizeBatchAuction_output finalizeBatchAuctionOutput;
 		FinalizeStandardAuction_input finalizeStandardAuctionInput;
@@ -1144,6 +1205,9 @@ struct NOST : public ContractBase
 		state.mut().shareholderFeeBasisPointsTier3 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_3;
 		state.mut().shareholderFeeBasisPointsTier4 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_4;
 		state.mut().maxAuctionDurationDays = NOST_AUCTION_MAX_DURATION_DAYS;
+		state.mut().isAuctionTimerPaused = 1;
+		state.mut().auctionTimerPauseStartedAt.setInvalid();
+		state.mut().auctionTimerPauseEndsAt.setInvalid();
 		state.mut().management = ID(_I, _G, _P, _Z, _X, _Q, _O, _R, _J, _Y, _Q, _P, _A, _G, _V, _A, _B, _N, _T, _N, _I, _S, _O, _Y, _T, _M, _T, _A,
 		                            _N, _M, _K, _Z, _A, _S, _T, _P, _P, _G, _Z, _O, _N, _A, _Q, _J, _X, _Q, _O, _S, _W, _Q, _O, _V, _J, _C, _K, _D);
 		state.mut().development = ID(_D, _Q, _V, _H, _M, _Z, _F, _C, _W, _O, _K, _M, _H, _F, _B, _H, _L, _X, _U, _I, _U, _G, _P, _P, _X, _R, _Z, _C,
@@ -1188,6 +1252,9 @@ struct NOST : public ContractBase
 		}
 
 		state.mut().isPostBeginEpochPauseArmed = 1;
+		state.mut().isAuctionTimerPaused = 1;
+		state.mut().auctionTimerPauseStartedAt.setInvalid();
+		state.mut().auctionTimerPauseEndsAt.setInvalid();
 	}
 
 	END_EPOCH()
@@ -1204,18 +1271,10 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (state.get().isPostBeginEpochPauseArmed)
+		CALL(SyncAuctionPauseState, locals.syncAuctionPauseStateInput, locals.syncAuctionPauseStateOutput);
+		if (state.get().isAuctionTimerPaused)
 		{
-			CALL(GetTicksBeforeAuctionLaunchInternal, locals.getTicksBeforeAuctionLaunchInternalInput,
-			     locals.getTicksBeforeAuctionLaunchInternalOutput);
-			if (locals.getTicksBeforeAuctionLaunchInternalOutput.ticks == 0)
-			{
-				state.mut().isPostBeginEpochPauseArmed = 0;
-			}
-			else
-			{
-				return;
-			}
+			return;
 		}
 
 		locals.currentDate = qpi.now();
@@ -1300,44 +1359,115 @@ struct NOST : public ContractBase
 		output.isValid = output.lotItemCount > 0 ? 1 : 0;
 	}
 
-	PRIVATE_FUNCTION_WITH_LOCALS(IsAuctionInteractionPaused)
+	PRIVATE_FUNCTION_WITH_LOCALS(GetAuctionPauseState)
 	{
 		output.isPaused = 0;
+		output.pauseStartedAt.setInvalid();
+		output.pauseEndsAt.setInvalid();
 
+		locals.currentDate = qpi.now();
 		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
 		if (locals.currentDateStamp == NOST_DEFAULT_INIT_TIME)
 		{
 			output.isPaused = 1;
+			output.pauseStartedAt = locals.currentDate;
+			output.pauseStartedAt.setTime(0, 0, 0, 0, 0);
+			output.pauseEndsAt = output.pauseStartedAt;
+			output.pauseEndsAt.addDays(1);
 			return;
 		}
 
-		if (state.get().isPostBeginEpochPauseArmed && max<sint64>(static_cast<sint64>(NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS) -
-		                                                              (static_cast<sint64>(qpi.tick()) - static_cast<sint64>(qpi.initialTick())),
-		                                                          0) > 0)
+		if (state.get().isPostBeginEpochPauseArmed &&
+		    (static_cast<uint32>(qpi.tick()) - static_cast<uint32>(qpi.initialTick())) < NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS)
+		{
+			locals.elapsedTicksSinceInitialTick = static_cast<uint64>(qpi.tick()) - static_cast<uint64>(qpi.initialTick());
+			locals.pauseStartedAt = locals.currentDate;
+			locals.pauseStartedAt.addMillisec(
+			    -static_cast<sint64>(smul(locals.elapsedTicksSinceInitialTick, static_cast<uint64>(TARGET_TICK_DURATION))));
+			locals.pauseEndsAt = locals.pauseStartedAt;
+			locals.pauseEndsAt.addMillisec(static_cast<sint64>(
+			    smul(static_cast<uint64>(NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS), static_cast<uint64>(TARGET_TICK_DURATION))));
+			accumulatePauseWindow(output.isPaused, output.pauseStartedAt, output.pauseEndsAt, locals.pauseStartedAt, locals.pauseEndsAt);
+		}
+
+		if (qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day()) == 0 && qpi.hour() == 11 && qpi.minute() >= 30)
 		{
 			output.isPaused = 1;
-			return;
+			output.pauseStartedAt = locals.currentDate;
+			output.pauseStartedAt.setTime(11, 30, 0, 0, 0);
+			output.pauseEndsAt = locals.currentDate;
+			output.pauseEndsAt.setTime(12, 0, 0, 0, 0);
 		}
-
-		if (qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day()) != 0)
-		{
-			return;
-		}
-
-		if (qpi.hour() < 11 || qpi.hour() > 11)
-		{
-			return;
-		}
-
-		if (qpi.minute() < 30)
-		{
-			return;
-		}
-
-		output.isPaused = 1;
 	}
 
-	PRIVATE_FUNCTION(GetTicksBeforeAuctionLaunchInternal)
+	PRIVATE_FUNCTION(IsAuctionInteractionPaused) { output.isPaused = state.get().isAuctionTimerPaused; }
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(SyncAuctionPauseState)
+	{
+		locals.currentDate = qpi.now();
+		if (state.get().isPostBeginEpochPauseArmed &&
+		    (static_cast<uint32>(qpi.tick()) - static_cast<uint32>(qpi.initialTick())) >= NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS)
+		{
+			state.mut().isPostBeginEpochPauseArmed = 0;
+		}
+
+		CALL(GetAuctionPauseState, locals.getAuctionPauseStateInput, locals.getAuctionPauseStateOutput);
+
+		if (locals.getAuctionPauseStateOutput.isPaused)
+		{
+			if (!state.get().isAuctionTimerPaused)
+			{
+				state.mut().isAuctionTimerPaused = 1;
+				state.mut().auctionTimerPauseStartedAt = locals.getAuctionPauseStateOutput.pauseStartedAt;
+				state.mut().auctionTimerPauseEndsAt = locals.getAuctionPauseStateOutput.pauseEndsAt;
+				return;
+			}
+
+			if (!state.get().auctionTimerPauseStartedAt.isValid() ||
+			    locals.getAuctionPauseStateOutput.pauseStartedAt < state.get().auctionTimerPauseStartedAt)
+			{
+				state.mut().auctionTimerPauseStartedAt = locals.getAuctionPauseStateOutput.pauseStartedAt;
+			}
+			if (!state.get().auctionTimerPauseEndsAt.isValid() ||
+			    locals.getAuctionPauseStateOutput.pauseEndsAt > state.get().auctionTimerPauseEndsAt)
+			{
+				state.mut().auctionTimerPauseEndsAt = locals.getAuctionPauseStateOutput.pauseEndsAt;
+			}
+			return;
+		}
+
+		if (!state.get().isAuctionTimerPaused)
+		{
+			return;
+		}
+
+		diffDateInSecond(state.get().auctionTimerPauseStartedAt, state.get().auctionTimerPauseEndsAt, locals.pausedSeconds);
+		if (locals.pausedSeconds > 0)
+		{
+			locals.auctionIndex = state.get().auctionList.nextElementIndex(NULL_INDEX);
+			while (locals.auctionIndex != NULL_INDEX)
+			{
+				locals.auction = state.get().auctionList.value(locals.auctionIndex);
+				if (locals.auction.status == EAuctionStatus::Active)
+				{
+					locals.auction.auctionDurationSeconds = sadd(locals.auction.auctionDurationSeconds, locals.pausedSeconds);
+					state.mut().auctionList.replace(locals.auction.auctionId, locals.auction);
+				}
+				else if (locals.auction.status == EAuctionStatus::PendingSellerDecision && locals.auction.sellerDecisionDeadline.isValid())
+				{
+					locals.auction.sellerDecisionDeadline.add(0, 0, 0, 0, 0, static_cast<sint64>(locals.pausedSeconds));
+					state.mut().auctionList.replace(locals.auction.auctionId, locals.auction);
+				}
+				locals.auctionIndex = state.get().auctionList.nextElementIndex(locals.auctionIndex);
+			}
+		}
+
+		state.mut().isAuctionTimerPaused = 0;
+		state.mut().auctionTimerPauseStartedAt.setInvalid();
+		state.mut().auctionTimerPauseEndsAt.setInvalid();
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(GetTicksBeforeAuctionLaunchInternal)
 	{
 		output.ticks = 0;
 
@@ -2521,6 +2651,13 @@ struct NOST : public ContractBase
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
+		CALL(IsAuctionInteractionPaused, locals.isAuctionInteractionPausedInput, locals.isAuctionInteractionPausedOutput);
+		if (locals.isAuctionInteractionPausedOutput.isPaused)
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::AuctionPaused);
+			return;
+		}
+
 		if (input.acceptSale > 1)
 		{
 			return;
@@ -2545,7 +2682,7 @@ struct NOST : public ContractBase
 		}
 
 		locals.currentDate = qpi.now();
-		if (locals.auction.sellerDecisionDeadline <= locals.currentDate)
+		if (!state.get().isAuctionTimerPaused && locals.auction.sellerDecisionDeadline <= locals.currentDate)
 		{
 			locals.finalizeStandardAuctionInput.auctionId = input.auctionId;
 			locals.finalizeStandardAuctionInput.currentDate = locals.currentDate;
@@ -2698,7 +2835,7 @@ struct NOST : public ContractBase
 	 * @brief Returns the remaining post-BEGIN_EPOCH pause before auction interactions resume.
 	 * @note This getter exposes the 500-tick launch pause referenced by the auction timing rules.
 	 */
-	PUBLIC_FUNCTION(GetTicksBeforeAuctionLaunch)
+	PUBLIC_FUNCTION_WITH_LOCALS(GetTicksBeforeAuctionLaunch)
 	{
 		output.ticks = 0;
 
@@ -2889,6 +3026,27 @@ protected:
 	static bool isZeroAsset(const Asset& asset) { return asset.assetName == 0 && isZero(asset.issuer); }
 
 	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
+
+	static void accumulatePauseWindow(uint8& hasPauseWindow, DateAndTime& pauseStartedAt, DateAndTime& pauseEndsAt,
+	                                  const DateAndTime& candidatePauseStartedAt, const DateAndTime& candidatePauseEndsAt)
+	{
+		if (!hasPauseWindow)
+		{
+			hasPauseWindow = 1;
+			pauseStartedAt = candidatePauseStartedAt;
+			pauseEndsAt = candidatePauseEndsAt;
+			return;
+		}
+
+		if (candidatePauseStartedAt < pauseStartedAt)
+		{
+			pauseStartedAt = candidatePauseStartedAt;
+		}
+		if (candidatePauseEndsAt > pauseEndsAt)
+		{
+			pauseEndsAt = candidatePauseEndsAt;
+		}
+	}
 
 	/**
 	 * @brief Compares two Nostromo timestamps.

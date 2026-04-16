@@ -21,6 +21,7 @@ namespace
 			INIT_CONTRACT(QX);
 			callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
 			setNow(2026, 1, 1, 9, 0, 0);
+			callSystemProcedure(NOST_CONTRACT_INDEX, END_TICK);
 		}
 
 		void ensureUser(const id& user, sint64 amount = 1000)
@@ -1107,6 +1108,35 @@ TEST(ContractNostromoAuction, EndTickFinalizesStandardAuctionWithoutBidAuction)
 	EXPECT_EQ(nostromo.managedShares(asset, seller), 1);
 }
 
+TEST(ContractNostromoAuction, WeeklyPauseShiftsActiveAuctionDeadlineAuction)
+{
+	ContractTestingNostromoAuctionFromScratch nostromo;
+	const id seller(215, 216, 217, 218);
+	const uint64 assetName = assetNameFromString("PAUSHL");
+	const Asset asset{seller, assetName};
+
+	nostromo.setNow(2026, 1, 6, 11, 40, 0);
+	EXPECT_EQ(nostromo.issueAsset(seller, assetName, 1), 1);
+	EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 1), 1);
+
+	const auto createOutput = nostromo.createAuction(seller, ContractTestingNostromoAuctionFromScratch::makeStandardAuctionInput(
+	                                                             ContractTestingNostromoAuctionFromScratch::makeSingleLot(asset, 1), 100, 150, 10));
+	ASSERT_EQ(createOutput.errorCode, static_cast<uint8>(NOST::EAuctionError::Success));
+
+	nostromo.setNow(2026, 1, 7, 11, 40, 0);
+	nostromo.advanceAndEndTick(0);
+	EXPECT_EQ(nostromo.getAuction(createOutput.auctionId).auction.status, NOST::EAuctionStatus::Active);
+
+	nostromo.setNow(2026, 1, 7, 12, 0, 0);
+	nostromo.advanceAndEndTick(0);
+	EXPECT_EQ(nostromo.getAuction(createOutput.auctionId).auction.status, NOST::EAuctionStatus::Active);
+
+	nostromo.setNow(2026, 1, 7, 12, 10, 1);
+	nostromo.advanceAndEndTick(0);
+	EXPECT_EQ(nostromo.getAuction(createOutput.auctionId).auction.status, NOST::EAuctionStatus::Finalized);
+	EXPECT_EQ(nostromo.managedShares(asset, seller), 1);
+}
+
 TEST(ContractNostromoAuction, EndTickSkipsAuctionProcessingAtBootstrapTimeAuction)
 {
 	ContractTestingNostromoAuctionFromScratch nostromo;
@@ -1129,6 +1159,55 @@ TEST(ContractNostromoAuction, EndTickSkipsAuctionProcessingAtBootstrapTimeAuctio
 	EXPECT_EQ(auction.status, NOST::EAuctionStatus::Active);
 	EXPECT_EQ(auction.allocatedQuantity, 0ULL);
 	EXPECT_EQ(nostromo.managedShares(asset, seller), 0);
+}
+
+TEST(ContractNostromoAuction, PauseShiftsSellerDecisionDeadlineAuction)
+{
+	ContractTestingNostromoAuctionFromScratch nostromo;
+	const id seller(219, 220, 221, 222);
+	const id bidder(223, 224, 225, 226);
+	const uint64 assetName = assetNameFromString("PDSHFT");
+	const Asset asset{seller, assetName};
+
+	EXPECT_EQ(nostromo.issueAsset(seller, assetName, 1), 1);
+	EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 1), 1);
+
+	const auto createOutput =
+	    nostromo.createAuction(seller, ContractTestingNostromoAuctionFromScratch::makeStandardAuctionInput(
+	                                       ContractTestingNostromoAuctionFromScratch::makeSingleLot(asset, 1), 100, 150, 10));
+	ASSERT_EQ(createOutput.errorCode, static_cast<uint8>(NOST::EAuctionError::Success));
+	ASSERT_EQ(nostromo.placeBid(bidder, createOutput.auctionId, 1, 120, 120).errorCode, static_cast<uint8>(NOST::EAuctionError::Success));
+
+	nostromo.advanceAndEndTick((NOST_SECONDS_PER_DAY) * 1000ULL);
+	auto auction = nostromo.getAuction(createOutput.auctionId).auction;
+	ASSERT_EQ(auction.status, NOST::EAuctionStatus::PendingSellerDecision);
+	EXPECT_EQ(auction.sellerDecisionDeadline.getHour(), 9);
+	EXPECT_EQ(auction.sellerDecisionDeadline.getMinute(), 0);
+	EXPECT_EQ(auction.sellerDecisionDeadline.getSecond(), 0);
+
+	nostromo.setNow(2026, 1, 9, 8, 59, 50);
+	nostromo.beginEpoch();
+	EXPECT_EQ(nostromo.getTicksBeforeAuctionLaunch().ticks, NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS);
+
+	nostromo.advanceAndEndTick(1000);
+	EXPECT_EQ(nostromo.getTicksBeforeAuctionLaunch().ticks, NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS - 1);
+
+	nostromo.setNow(2026, 1, 9, 9, 8, 10);
+	nostromo.advanceAndEndTick(0);
+	auction = nostromo.getAuction(createOutput.auctionId).auction;
+	ASSERT_EQ(auction.status, NOST::EAuctionStatus::PendingSellerDecision);
+	EXPECT_EQ(auction.sellerDecisionDeadline.getHour(), 9);
+	EXPECT_EQ(auction.sellerDecisionDeadline.getMinute(), 8);
+	EXPECT_EQ(auction.sellerDecisionDeadline.getSecond(), 21);
+
+	nostromo.setNow(2026, 1, 9, 9, 8, 20);
+	nostromo.advanceAndEndTick(0);
+	EXPECT_EQ(nostromo.getAuction(createOutput.auctionId).auction.status, NOST::EAuctionStatus::PendingSellerDecision);
+
+	nostromo.setNow(2026, 1, 9, 9, 8, 22);
+	nostromo.advanceAndEndTick(0);
+	EXPECT_EQ(nostromo.getAuction(createOutput.auctionId).auction.status, NOST::EAuctionStatus::Finalized);
+	EXPECT_EQ(nostromo.managedShares(asset, bidder), 1);
 }
 
 TEST(ContractNostromoAuction, EndTickFinalizesStandardAuctionAtSalePriceAuction)
