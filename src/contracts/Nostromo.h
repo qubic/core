@@ -505,13 +505,64 @@ struct NOST : public ContractBase
 	};
 
 	/** @brief Input payload used to query the remaining post-BEGIN_EPOCH auction launch pause. */
-	typedef NoData GetTicksBeforeAuctionLaunch_input;
+	using GetTicksBeforeAuctionLaunch_input = NoData;
 
 	/** @brief Result returned by the auction launch pause getter. */
 	struct GetTicksBeforeAuctionLaunch_output
 	{
 		/** @brief Number of ticks remaining before auction interactions resume after `BEGIN_EPOCH`. */
 		uint32 ticks;
+	};
+
+	/** @brief Input payload used to read the current auction fee configuration. */
+	using GetAuctionFees_input = NoData;
+
+	struct GetAuctionFees_output
+	{
+		/** @brief Fee charged when a private auction is created. */
+		sint64 privateAuctionFee;
+
+		/** @brief Cancellation fee rate in basis points. */
+		uint64 auctionCancellationFeeBasisPoints;
+
+		/** @brief Management fee rate in basis points. */
+		uint64 managementFeeBasisPoints;
+
+		/** @brief Development fee rate in basis points. */
+		uint64 developmentFeeBasisPoints;
+
+		/** @brief Takeover coordinator fee rate in basis points. */
+		uint64 takeoverCoordinatorFeeBasisPoints;
+
+		/** @brief Percentage of the shareholder fee distributed as dividends, in basis points. */
+		uint64 shareholderDividendBasisPoints;
+
+		/** @brief Shareholder fee tier for auctions up to the first threshold. */
+		uint64 shareholderFeeBasisPointsTier1;
+
+		/** @brief Shareholder fee tier for auctions above the first threshold and up to the second threshold. */
+		uint64 shareholderFeeBasisPointsTier2;
+
+		/** @brief Shareholder fee tier for auctions above the second threshold and up to the third threshold. */
+		uint64 shareholderFeeBasisPointsTier3;
+
+		/** @brief Shareholder fee tier for auctions above the third threshold. */
+		uint64 shareholderFeeBasisPointsTier4;
+	};
+
+	/** @brief Input payload used to read the wallets that receive auction fee transfers. */
+	using GetFeeRecipients_input = NoData;
+
+	struct GetFeeRecipients_output
+	{
+		/** @brief Wallet that receives the management fee. */
+		id management;
+
+		/** @brief Wallet that receives the development fee. */
+		id development;
+
+		/** @brief Wallet that receives the takeover coordinator fee. */
+		id takeoverCoordinator;
 	};
 
 	/** @brief Internal input used to validate an auction lot and resolve its total escrow quantity. */
@@ -724,7 +775,7 @@ struct NOST : public ContractBase
 		id auctionId;
 	};
 
-	typedef NoData RecomputeBatchHighestBid_output;
+	using RecomputeBatchHighestBid_output = NoData;
 
 	/** @brief Internal output returned after processing a batch auction bid. */
 	struct ProcessBatchBid_output
@@ -889,7 +940,7 @@ struct NOST : public ContractBase
 		id recipient;
 	};
 
-	typedef NoData RollbackAuctionLotAssets_output;
+	using RollbackAuctionLotAssets_output = NoData;
 
 	struct RollbackAuctionLotAssets_locals
 	{
@@ -1067,6 +1118,8 @@ struct NOST : public ContractBase
 		REGISTER_USER_FUNCTION(GetAuction, 1);
 		REGISTER_USER_FUNCTION(GetAuctionParticipant, 2);
 		REGISTER_USER_FUNCTION(GetTicksBeforeAuctionLaunch, 3);
+		REGISTER_USER_FUNCTION(GetAuctionFees, 4);
+		REGISTER_USER_FUNCTION(GetFeeRecipients, 5);
 	}
 
 	INITIALIZE()
@@ -2635,6 +2688,35 @@ struct NOST : public ContractBase
 		output.ticks = static_cast<uint32>(max<sint64>(static_cast<sint64>(NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS) -
 		                                                   (static_cast<sint64>(qpi.tick()) - static_cast<sint64>(qpi.initialTick())),
 		                                               0));
+	}
+
+	/**
+	 * @brief Returns the current auction fee configuration stored in contract state.
+	 * @note The response includes creation, cancellation, revenue split, and tier-based shareholder fee parameters.
+	 */
+	PUBLIC_FUNCTION(GetAuctionFees)
+	{
+		output.privateAuctionFee = state.get().privateAuctionFee;
+		output.auctionCancellationFeeBasisPoints = state.get().auctionCancellationFeeBasisPoints;
+		output.managementFeeBasisPoints = state.get().managementFeeBasisPoints;
+		output.developmentFeeBasisPoints = state.get().developmentFeeBasisPoints;
+		output.takeoverCoordinatorFeeBasisPoints = state.get().takeoverCoordinatorFeeBasisPoints;
+		output.shareholderDividendBasisPoints = state.get().shareholderDividendBasisPoints;
+		output.shareholderFeeBasisPointsTier1 = state.get().shareholderFeeBasisPointsTier1;
+		output.shareholderFeeBasisPointsTier2 = state.get().shareholderFeeBasisPointsTier2;
+		output.shareholderFeeBasisPointsTier3 = state.get().shareholderFeeBasisPointsTier3;
+		output.shareholderFeeBasisPointsTier4 = state.get().shareholderFeeBasisPointsTier4;
+	}
+
+	/**
+	 * @brief Returns the current wallets that receive auction fee transfers.
+	 * @note The response exposes the configured management, development, and takeover coordinator addresses.
+	 */
+	PUBLIC_FUNCTION(GetFeeRecipients)
+	{
+		output.management = state.get().management;
+		output.development = state.get().development;
+		output.takeoverCoordinator = state.get().takeoverCoordinator;
 	}
 
 	/**
