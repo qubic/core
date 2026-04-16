@@ -15,16 +15,16 @@ constexpr uint64 NOST_AUCTION_LOT_ITEM_NUM = 64;
 constexpr uint64 NOST_AUCTION_ALLOWED_WALLET_NUM = 128;
 constexpr uint64 NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM = 16;
 constexpr uint32 NOST_AUCTION_MAX_DURATION_DAYS = 30;
-constexpr sint64 NOST_PRIVATE_AUCTION_FEE = 50000000LL;
-constexpr uint64 NOST_AUCTION_CANCELLATION_FEE_BP = 1000ULL;
-constexpr uint64 NOST_AUCTION_MANAGEMENT_FEE_BP = 50ULL;
-constexpr uint64 NOST_AUCTION_DEVELOPMENT_FEE_BP = 50ULL;
-constexpr uint64 NOST_AUCTION_TAKEOVER_COORDINATOR_FEE_BP = 50ULL;
-constexpr uint64 NOST_AUCTION_SHAREHOLDER_DIVIDEND_BP = 9000ULL;
-constexpr uint64 NOST_AUCTION_SHAREHOLDER_FEE_BP_TIER_1 = 500ULL;
-constexpr uint64 NOST_AUCTION_SHAREHOLDER_FEE_BP_TIER_2 = 450ULL;
-constexpr uint64 NOST_AUCTION_SHAREHOLDER_FEE_BP_TIER_3 = 400ULL;
-constexpr uint64 NOST_AUCTION_SHAREHOLDER_FEE_BP_TIER_4 = 350ULL;
+constexpr sint64 NOST_DEFAULT_PRIVATE_AUCTION_FEE = 50000000LL;
+constexpr uint64 NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP = 1000ULL;
+constexpr uint64 NOST_DEFAULT_AUCTION_MANAGEMENT_FEE_BP = 50ULL;
+constexpr uint64 NOST_DEFAULT_AUCTION_DEVELOPMENT_FEE_BP = 50ULL;
+constexpr uint64 NOST_DEFAULT_AUCTION_TAKEOVER_COORDINATOR_FEE_BP = 50ULL;
+constexpr uint64 NOST_DEFAULT_AUCTION_SHAREHOLDER_DIVIDEND_BP = 9000ULL;
+constexpr uint64 NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_1 = 500ULL;
+constexpr uint64 NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_2 = 450ULL;
+constexpr uint64 NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_3 = 400ULL;
+constexpr uint64 NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_4 = 350ULL;
 constexpr uint64 NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_1 = 5000000000ULL;
 constexpr uint64 NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_2 = 50000000000ULL;
 constexpr uint64 NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_3 = 200000000000ULL;
@@ -226,6 +226,30 @@ struct NOST : public ContractBase
 		/** @brief Undistributed auction shareholder revenue reserved for contract dividends. */
 		uint64 auctionShareholderDividendPool;
 
+		/** @brief Configured management fee rate in basis points, charged from auction proceeds. */
+		uint64 managementFeeBasisPoints;
+
+		/** @brief Configured development fee rate in basis points, charged from auction proceeds. */
+		uint64 developmentFeeBasisPoints;
+
+		/** @brief Configured takeover coordinator fee rate in basis points, charged from auction proceeds. */
+		uint64 takeoverCoordinatorFeeBasisPoints;
+
+		/** @brief Share of the shareholder fee redirected to dividends, expressed in basis points. */
+		uint64 shareholderDividendBasisPoints;
+
+		/** @brief Shareholder fee tier applied to auctions up to the first threshold. */
+		uint64 shareholderFeeBasisPointsTier1;
+
+		/** @brief Shareholder fee tier applied to auctions above the first threshold and up to the second threshold. */
+		uint64 shareholderFeeBasisPointsTier2;
+
+		/** @brief Shareholder fee tier applied to auctions above the second threshold and up to the third threshold. */
+		uint64 shareholderFeeBasisPointsTier3;
+
+		/** @brief Shareholder fee tier applied to auctions above the third threshold. */
+		uint64 shareholderFeeBasisPointsTier4;
+
 		/** @brief Configured maximum auction duration in days. */
 		uint32 maxAuctionDurationDays;
 
@@ -356,6 +380,93 @@ struct NOST : public ContractBase
 		uint64 refundedAmount;
 
 		/** @brief Result code describing whether the seller decision was applied. */
+		uint8 errorCode;
+	};
+
+	/** @brief Input payload used by the takeover coordinator to overwrite the full auction fee configuration. */
+	struct SetAuctionFees_input
+	{
+		/** @brief Fee charged when a private auction is created. */
+		sint64 privateAuctionFee;
+
+		/** @brief Cancellation fee rate in basis points. */
+		uint64 auctionCancellationFeeBasisPoints;
+
+		/** @brief Management fee rate in basis points. */
+		uint64 managementFeeBasisPoints;
+
+		/** @brief Development fee rate in basis points. */
+		uint64 developmentFeeBasisPoints;
+
+		/** @brief Takeover coordinator fee rate in basis points. */
+		uint64 takeoverCoordinatorFeeBasisPoints;
+
+		/** @brief Percentage of the shareholder fee distributed as dividends, in basis points. */
+		uint64 shareholderDividendBasisPoints;
+
+		/** @brief Shareholder fee tier for auctions up to the first threshold. */
+		uint64 shareholderFeeBasisPointsTier1;
+
+		/** @brief Shareholder fee tier for auctions above the first threshold and up to the second threshold. */
+		uint64 shareholderFeeBasisPointsTier2;
+
+		/** @brief Shareholder fee tier for auctions above the second threshold and up to the third threshold. */
+		uint64 shareholderFeeBasisPointsTier3;
+
+		/** @brief Shareholder fee tier for auctions above the third threshold. */
+		uint64 shareholderFeeBasisPointsTier4;
+	};
+
+	struct SetAuctionFees_output
+	{
+		/** @brief Result code describing whether the fee update succeeded. */
+		uint8 errorCode;
+	};
+
+	/** @brief Input payload used by management to update every fee except takeover coordinator-specific splits. */
+	struct SetAuctionFeesByManagement_input
+	{
+		/** @brief Fee charged when a private auction is created. */
+		sint64 privateAuctionFee;
+
+		/** @brief Cancellation fee rate in basis points. */
+		uint64 auctionCancellationFeeBasisPoints;
+
+		/** @brief Management fee rate in basis points. */
+		uint64 managementFeeBasisPoints;
+
+		/** @brief Development fee rate in basis points. */
+		uint64 developmentFeeBasisPoints;
+
+		/** @brief Shareholder fee tier for auctions up to the first threshold. */
+		uint64 shareholderFeeBasisPointsTier1;
+
+		/** @brief Shareholder fee tier for auctions above the first threshold and up to the second threshold. */
+		uint64 shareholderFeeBasisPointsTier2;
+
+		/** @brief Shareholder fee tier for auctions above the second threshold and up to the third threshold. */
+		uint64 shareholderFeeBasisPointsTier3;
+
+		/** @brief Shareholder fee tier for auctions above the third threshold. */
+		uint64 shareholderFeeBasisPointsTier4;
+	};
+
+	struct SetAuctionFeesByManagement_output
+	{
+		/** @brief Result code describing whether the fee update succeeded. */
+		uint8 errorCode;
+	};
+
+	/** @brief Input payload used by the takeover coordinator to appoint a new management wallet. */
+	struct SetManagement_input
+	{
+		/** @brief New wallet that will receive management privileges. */
+		id management;
+	};
+
+	struct SetManagement_output
+	{
+		/** @brief Result code describing whether the management update succeeded. */
 		uint8 errorCode;
 	};
 
@@ -949,6 +1060,9 @@ struct NOST : public ContractBase
 		REGISTER_USER_PROCEDURE(CancelAuction, 3);
 		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 4);
 		REGISTER_USER_PROCEDURE(ResolvePendingStandardAuction, 5);
+		REGISTER_USER_PROCEDURE(SetAuctionFees, 6);
+		REGISTER_USER_PROCEDURE(SetAuctionFeesByManagement, 7);
+		REGISTER_USER_PROCEDURE(SetManagement, 8);
 
 		REGISTER_USER_FUNCTION(GetAuction, 1);
 		REGISTER_USER_FUNCTION(GetAuctionParticipant, 2);
@@ -957,8 +1071,16 @@ struct NOST : public ContractBase
 
 	INITIALIZE()
 	{
-		state.mut().privateAuctionFee = NOST_PRIVATE_AUCTION_FEE;
-		state.mut().auctionCancellationFeeBasisPoints = NOST_AUCTION_CANCELLATION_FEE_BP;
+		state.mut().privateAuctionFee = NOST_DEFAULT_PRIVATE_AUCTION_FEE;
+		state.mut().auctionCancellationFeeBasisPoints = NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP;
+		state.mut().managementFeeBasisPoints = NOST_DEFAULT_AUCTION_MANAGEMENT_FEE_BP;
+		state.mut().developmentFeeBasisPoints = NOST_DEFAULT_AUCTION_DEVELOPMENT_FEE_BP;
+		state.mut().takeoverCoordinatorFeeBasisPoints = NOST_DEFAULT_AUCTION_TAKEOVER_COORDINATOR_FEE_BP;
+		state.mut().shareholderDividendBasisPoints = NOST_DEFAULT_AUCTION_SHAREHOLDER_DIVIDEND_BP;
+		state.mut().shareholderFeeBasisPointsTier1 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_1;
+		state.mut().shareholderFeeBasisPointsTier2 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_2;
+		state.mut().shareholderFeeBasisPointsTier3 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_3;
+		state.mut().shareholderFeeBasisPointsTier4 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_4;
 		state.mut().maxAuctionDurationDays = NOST_AUCTION_MAX_DURATION_DAYS;
 		state.mut().management = ID(_I, _G, _P, _Z, _X, _Q, _O, _R, _J, _Y, _Q, _P, _A, _G, _V, _A, _B, _N, _T, _N, _I, _S, _O, _Y, _T, _M, _T, _A,
 		                            _N, _M, _K, _Z, _A, _S, _T, _P, _P, _G, _Z, _O, _N, _A, _Q, _J, _X, _Q, _O, _S, _W, _Q, _O, _V, _J, _C, _K, _D);
@@ -981,8 +1103,16 @@ struct NOST : public ContractBase
 		if (qpi.epoch() == 220)
 		{
 			// Initialize
-			state.mut().privateAuctionFee = NOST_PRIVATE_AUCTION_FEE;
-			state.mut().auctionCancellationFeeBasisPoints = NOST_AUCTION_CANCELLATION_FEE_BP;
+			state.mut().privateAuctionFee = NOST_DEFAULT_PRIVATE_AUCTION_FEE;
+			state.mut().auctionCancellationFeeBasisPoints = NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP;
+			state.mut().managementFeeBasisPoints = NOST_DEFAULT_AUCTION_MANAGEMENT_FEE_BP;
+			state.mut().developmentFeeBasisPoints = NOST_DEFAULT_AUCTION_DEVELOPMENT_FEE_BP;
+			state.mut().takeoverCoordinatorFeeBasisPoints = NOST_DEFAULT_AUCTION_TAKEOVER_COORDINATOR_FEE_BP;
+			state.mut().shareholderDividendBasisPoints = NOST_DEFAULT_AUCTION_SHAREHOLDER_DIVIDEND_BP;
+			state.mut().shareholderFeeBasisPointsTier1 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_1;
+			state.mut().shareholderFeeBasisPointsTier2 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_2;
+			state.mut().shareholderFeeBasisPointsTier3 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_3;
+			state.mut().shareholderFeeBasisPointsTier4 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_4;
 			state.mut().maxAuctionDurationDays = NOST_AUCTION_MAX_DURATION_DAYS;
 			state.mut().management =
 			    ID(_I, _G, _P, _Z, _X, _Q, _O, _R, _J, _Y, _Q, _P, _A, _G, _V, _A, _B, _N, _T, _N, _I, _S, _O, _Y, _T, _M, _T, _A, _N, _M, _K, _Z, _A,
@@ -1157,15 +1287,15 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.shareholderFeeBasisPoints = getAuctionShareholderFeeBasisPoints(input.grossAmount);
+		locals.shareholderFeeBasisPoints = getAuctionShareholderFeeBasisPoints(input.grossAmount, state);
 		locals.shareholderFeeAmount = div<uint64>(smul(input.grossAmount, locals.shareholderFeeBasisPoints), 10000ULL);
-		locals.managementFeeAmount = div<uint64>(smul(input.grossAmount, NOST_AUCTION_MANAGEMENT_FEE_BP), 10000ULL);
-		locals.developmentFeeAmount = div<uint64>(smul(input.grossAmount, NOST_AUCTION_DEVELOPMENT_FEE_BP), 10000ULL);
-		locals.shareholderDividendAmount = div<uint64>(smul(locals.shareholderFeeAmount, NOST_AUCTION_SHAREHOLDER_DIVIDEND_BP), 10000ULL);
-		locals.takeoverCoordinatorFeeAmount = div<uint64>(smul(input.grossAmount, NOST_AUCTION_TAKEOVER_COORDINATOR_FEE_BP), 10000ULL) +
+		locals.managementFeeAmount = div<uint64>(smul(input.grossAmount, state.get().managementFeeBasisPoints), 10000ULL);
+		locals.developmentFeeAmount = div<uint64>(smul(input.grossAmount, state.get().developmentFeeBasisPoints), 10000ULL);
+		locals.shareholderDividendAmount = div<uint64>(smul(locals.shareholderFeeAmount, state.get().shareholderDividendBasisPoints), 10000ULL);
+		locals.takeoverCoordinatorFeeAmount = div<uint64>(smul(input.grossAmount, state.get().takeoverCoordinatorFeeBasisPoints), 10000ULL) +
 		                                      (locals.shareholderFeeAmount - locals.shareholderDividendAmount);
 		output.sellerPayout = input.grossAmount - locals.shareholderFeeAmount - locals.managementFeeAmount - locals.developmentFeeAmount -
-		                      div<uint64>(smul(input.grossAmount, NOST_AUCTION_TAKEOVER_COORDINATOR_FEE_BP), 10000ULL);
+		                      div<uint64>(smul(input.grossAmount, state.get().takeoverCoordinatorFeeBasisPoints), 10000ULL);
 
 		state.mut().auctionShareholderDividendPool = sadd(state.get().auctionShareholderDividendPool, locals.shareholderDividendAmount);
 		if (locals.managementFeeAmount > 0)
@@ -1326,8 +1456,8 @@ struct NOST : public ContractBase
 		locals.participantKey = {input.auctionId, qpi.invocator()};
 		locals.participantExists = state.get().participants.get(locals.participantKey, locals.participantData);
 		locals.previousEscrow = locals.participantExists ? locals.participantData.escrowedAmount : 0;
-		locals.mustRecomputeHighestBid = locals.participantExists && locals.auction.highestBidder == qpi.invocator() &&
-		                                input.bidAmount <= locals.auction.highestBidPrice;
+		locals.mustRecomputeHighestBid =
+		    locals.participantExists && locals.auction.highestBidder == qpi.invocator() && input.bidAmount <= locals.auction.highestBidPrice;
 
 		locals.participantData.escrowedAmount = locals.requiredEscrow;
 		locals.participantData.requestedQuantity = input.effectiveQuantity;
@@ -2370,6 +2500,111 @@ struct NOST : public ContractBase
 	}
 
 	/**
+	 * @brief Overwrites the full auction fee configuration.
+	 * @note Only the configured takeover coordinator can call this procedure.
+	 */
+	PUBLIC_PROCEDURE(SetAuctionFees)
+	{
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (qpi.invocator() != state.get().takeoverCoordinator)
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::Forbidden);
+			return;
+		}
+
+		if (!isValidAuctionFeeConfiguration(
+		        input.privateAuctionFee, input.auctionCancellationFeeBasisPoints, input.managementFeeBasisPoints, input.developmentFeeBasisPoints,
+		        input.takeoverCoordinatorFeeBasisPoints, input.shareholderDividendBasisPoints, input.shareholderFeeBasisPointsTier1,
+		        input.shareholderFeeBasisPointsTier2, input.shareholderFeeBasisPointsTier3, input.shareholderFeeBasisPointsTier4))
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
+			return;
+		}
+
+		state.mut().privateAuctionFee = input.privateAuctionFee;
+		state.mut().auctionCancellationFeeBasisPoints = input.auctionCancellationFeeBasisPoints;
+		state.mut().managementFeeBasisPoints = input.managementFeeBasisPoints;
+		state.mut().developmentFeeBasisPoints = input.developmentFeeBasisPoints;
+		state.mut().takeoverCoordinatorFeeBasisPoints = input.takeoverCoordinatorFeeBasisPoints;
+		state.mut().shareholderDividendBasisPoints = input.shareholderDividendBasisPoints;
+		state.mut().shareholderFeeBasisPointsTier1 = input.shareholderFeeBasisPointsTier1;
+		state.mut().shareholderFeeBasisPointsTier2 = input.shareholderFeeBasisPointsTier2;
+		state.mut().shareholderFeeBasisPointsTier3 = input.shareholderFeeBasisPointsTier3;
+		state.mut().shareholderFeeBasisPointsTier4 = input.shareholderFeeBasisPointsTier4;
+		output.errorCode = static_cast<uint8>(EAuctionError::Success);
+	}
+
+	/**
+	 * @brief Updates every auction fee except the takeover coordinator-specific splits.
+	 * @note Only the configured management wallet can call this procedure.
+	 */
+	PUBLIC_PROCEDURE(SetAuctionFeesByManagement)
+	{
+		output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
+
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (qpi.invocator() != state.get().management)
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::Forbidden);
+			return;
+		}
+
+		if (!isValidAuctionFeeConfiguration(
+		        input.privateAuctionFee, input.auctionCancellationFeeBasisPoints, input.managementFeeBasisPoints, input.developmentFeeBasisPoints,
+		        state.get().takeoverCoordinatorFeeBasisPoints, state.get().shareholderDividendBasisPoints, input.shareholderFeeBasisPointsTier1,
+		        input.shareholderFeeBasisPointsTier2, input.shareholderFeeBasisPointsTier3, input.shareholderFeeBasisPointsTier4))
+		{
+			return;
+		}
+
+		state.mut().privateAuctionFee = input.privateAuctionFee;
+		state.mut().auctionCancellationFeeBasisPoints = input.auctionCancellationFeeBasisPoints;
+		state.mut().managementFeeBasisPoints = input.managementFeeBasisPoints;
+		state.mut().developmentFeeBasisPoints = input.developmentFeeBasisPoints;
+		state.mut().shareholderFeeBasisPointsTier1 = input.shareholderFeeBasisPointsTier1;
+		state.mut().shareholderFeeBasisPointsTier2 = input.shareholderFeeBasisPointsTier2;
+		state.mut().shareholderFeeBasisPointsTier3 = input.shareholderFeeBasisPointsTier3;
+		state.mut().shareholderFeeBasisPointsTier4 = input.shareholderFeeBasisPointsTier4;
+		output.errorCode = static_cast<uint8>(EAuctionError::Success);
+	}
+
+	/**
+	 * @brief Reassigns the management role to another wallet.
+	 * @note Only the configured takeover coordinator can call this procedure.
+	 */
+	PUBLIC_PROCEDURE(SetManagement)
+	{
+		output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
+
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (qpi.invocator() != state.get().takeoverCoordinator)
+		{
+			output.errorCode = static_cast<uint8>(EAuctionError::Forbidden);
+			return;
+		}
+
+		if (isZero(input.management))
+		{
+			return;
+		}
+
+		state.mut().management = input.management;
+		output.errorCode = static_cast<uint8>(EAuctionError::Success);
+	}
+
+	/**
 	 * @brief Returns the stored state of one auction.
 	 * @note The response contains the full persistent `AuctionData` record for the requested auction identifier.
 	 */
@@ -2495,21 +2730,41 @@ protected:
 		return visibility != EAuctionVisibility::Private || ((requiredAccessAssetCount > 0) != (allowedWalletCount > 0));
 	}
 
-	static uint64 getAuctionShareholderFeeBasisPoints(uint64 grossAmount)
+	static bool isValidAuctionFeeConfiguration(sint64 privateAuctionFee, uint64 auctionCancellationFeeBasisPoints, uint64 managementFeeBasisPoints,
+	                                           uint64 developmentFeeBasisPoints, uint64 takeoverCoordinatorFeeBasisPoints,
+	                                           uint64 shareholderDividendBasisPoints, uint64 shareholderFeeBasisPointsTier1,
+	                                           uint64 shareholderFeeBasisPointsTier2, uint64 shareholderFeeBasisPointsTier3,
+	                                           uint64 shareholderFeeBasisPointsTier4)
+	{
+		return privateAuctionFee >= 0 && auctionCancellationFeeBasisPoints <= 10000ULL && managementFeeBasisPoints <= 10000ULL &&
+		       developmentFeeBasisPoints <= 10000ULL && takeoverCoordinatorFeeBasisPoints <= 10000ULL && shareholderDividendBasisPoints <= 10000ULL &&
+		       shareholderFeeBasisPointsTier1 <= 10000ULL && shareholderFeeBasisPointsTier2 <= 10000ULL &&
+		       shareholderFeeBasisPointsTier3 <= 10000ULL && shareholderFeeBasisPointsTier4 <= 10000ULL &&
+		       (shareholderFeeBasisPointsTier1 + managementFeeBasisPoints + developmentFeeBasisPoints + takeoverCoordinatorFeeBasisPoints) <=
+		           10000ULL &&
+		       (shareholderFeeBasisPointsTier2 + managementFeeBasisPoints + developmentFeeBasisPoints + takeoverCoordinatorFeeBasisPoints) <=
+		           10000ULL &&
+		       (shareholderFeeBasisPointsTier3 + managementFeeBasisPoints + developmentFeeBasisPoints + takeoverCoordinatorFeeBasisPoints) <=
+		           10000ULL &&
+		       (shareholderFeeBasisPointsTier4 + managementFeeBasisPoints + developmentFeeBasisPoints + takeoverCoordinatorFeeBasisPoints) <=
+		           10000ULL;
+	}
+
+	static uint64 getAuctionShareholderFeeBasisPoints(uint64 grossAmount, const ContractState<StateData, CONTRACT_INDEX>& state)
 	{
 		if (grossAmount <= NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_1)
 		{
-			return NOST_AUCTION_SHAREHOLDER_FEE_BP_TIER_1;
+			return state.get().shareholderFeeBasisPointsTier1;
 		}
 		if (grossAmount <= NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_2)
 		{
-			return NOST_AUCTION_SHAREHOLDER_FEE_BP_TIER_2;
+			return state.get().shareholderFeeBasisPointsTier2;
 		}
 		if (grossAmount <= NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_3)
 		{
-			return NOST_AUCTION_SHAREHOLDER_FEE_BP_TIER_3;
+			return state.get().shareholderFeeBasisPointsTier3;
 		}
-		return NOST_AUCTION_SHAREHOLDER_FEE_BP_TIER_4;
+		return state.get().shareholderFeeBasisPointsTier4;
 	}
 
 	static sint64 getCreateAuctionFee(EAuctionVisibility visibility, const ContractState<StateData, CONTRACT_INDEX>& state)
