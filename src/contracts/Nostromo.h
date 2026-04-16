@@ -606,6 +606,15 @@ struct NOST : public ContractBase
 		uint64 elapsedSeconds;
 	};
 
+	/** @brief Internal input used to refresh the cached highest bid fields of one batch auction. */
+	struct RecomputeBatchHighestBid_input
+	{
+		/** @brief Identifier of the batch auction whose cached top bid must be rebuilt. */
+		id auctionId;
+	};
+
+	typedef NoData RecomputeBatchHighestBid_output;
+
 	/** @brief Internal output returned after processing a batch auction bid. */
 	struct ProcessBatchBid_output
 	{
@@ -627,9 +636,23 @@ struct NOST : public ContractBase
 		AuctionData auction;
 		AuctionParticipantData participantData;
 		AuctionParticipantKey participantKey;
+		RecomputeBatchHighestBid_input recomputeBatchHighestBidInput;
+		RecomputeBatchHighestBid_output recomputeBatchHighestBidOutput;
 		uint64 previousEscrow;
 		uint64 requiredEscrow;
+		uint8 mustRecomputeHighestBid;
 		uint8 participantExists;
+	};
+
+	struct RecomputeBatchHighestBid_locals
+	{
+		AuctionData auction;
+		AuctionParticipantData participantData;
+		AuctionParticipantData bestParticipantData;
+		AuctionParticipantKey participantKey;
+		AuctionParticipantKey bestParticipantKey;
+		sint64 participantIndex;
+		uint8 bestParticipantFound;
 	};
 
 	/** @brief Internal input used to process a standard auction bid after the common PlaceBid checks succeed. */
@@ -1212,6 +1235,63 @@ struct NOST : public ContractBase
 		}
 	}
 
+	PRIVATE_PROCEDURE_WITH_LOCALS(RecomputeBatchHighestBid)
+	{
+		locals.bestParticipantFound = 0;
+
+		if (!state.get().auctionList.get(input.auctionId, locals.auction))
+		{
+			return;
+		}
+
+		if (locals.auction.type != EAuctionType::Batch)
+		{
+			return;
+		}
+
+		for (locals.participantIndex = state.get().participants.nextElementIndex(NULL_INDEX); locals.participantIndex != NULL_INDEX;
+		     locals.participantIndex = state.get().participants.nextElementIndex(locals.participantIndex))
+		{
+			locals.participantKey = state.get().participants.key(locals.participantIndex);
+			if (locals.participantKey.auctionId != input.auctionId)
+			{
+				continue;
+			}
+
+			locals.participantData = state.get().participants.value(locals.participantIndex);
+			if (locals.participantData.escrowedAmount == 0)
+			{
+				continue;
+			}
+
+			if (!locals.bestParticipantFound || locals.participantData.bidAmount > locals.bestParticipantData.bidAmount ||
+			    (locals.participantData.bidAmount == locals.bestParticipantData.bidAmount &&
+			     locals.participantData.lastBidTime < locals.bestParticipantData.lastBidTime))
+			{
+				locals.bestParticipantFound = 1;
+				locals.bestParticipantData = locals.participantData;
+				locals.bestParticipantKey = locals.participantKey;
+			}
+		}
+
+		if (locals.bestParticipantFound)
+		{
+			locals.auction.highestBidder = locals.bestParticipantKey.participant;
+			locals.auction.highestBidPrice = locals.bestParticipantData.bidAmount;
+			locals.auction.highestBidQuantity = locals.bestParticipantData.requestedQuantity;
+			locals.auction.highestBidAmount = locals.bestParticipantData.escrowedAmount;
+		}
+		else
+		{
+			locals.auction.highestBidAmount = 0;
+			locals.auction.highestBidPrice = 0;
+			locals.auction.highestBidQuantity = 0;
+			locals.auction.highestBidder = NULL_ID;
+		}
+
+		state.mut().auctionList.replace(locals.auction.auctionId, locals.auction);
+	}
+
 	PRIVATE_PROCEDURE_WITH_LOCALS(ProcessBatchBid)
 	{
 		output.escrowedAmount = 0;
@@ -1246,6 +1326,8 @@ struct NOST : public ContractBase
 		locals.participantKey = {input.auctionId, qpi.invocator()};
 		locals.participantExists = state.get().participants.get(locals.participantKey, locals.participantData);
 		locals.previousEscrow = locals.participantExists ? locals.participantData.escrowedAmount : 0;
+		locals.mustRecomputeHighestBid = locals.participantExists && locals.auction.highestBidder == qpi.invocator() &&
+		                                input.bidAmount <= locals.auction.highestBidPrice;
 
 		locals.participantData.escrowedAmount = locals.requiredEscrow;
 		locals.participantData.requestedQuantity = input.effectiveQuantity;
@@ -1275,6 +1357,11 @@ struct NOST : public ContractBase
 			return;
 		}
 		state.mut().auctionList.replace(input.auctionId, locals.auction);
+		if (locals.mustRecomputeHighestBid)
+		{
+			locals.recomputeBatchHighestBidInput.auctionId = input.auctionId;
+			CALL(RecomputeBatchHighestBid, locals.recomputeBatchHighestBidInput, locals.recomputeBatchHighestBidOutput);
+		}
 
 		if (locals.previousEscrow > 0)
 		{
