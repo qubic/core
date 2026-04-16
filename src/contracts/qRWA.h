@@ -32,6 +32,7 @@ constexpr uint64 QRWA_PAYOUT_HOUR_POOL_D = 15;      // MLM Water     | Friday 15
 constexpr uint64 QRWA_PAYOUT_MINUTE = 0;             // Trigger at :00
 constexpr uint64 QRWA_CHECK_DAY_OF_WEEK = 1;         // 1=Friday only
 constexpr uint64 QRWA_MIN_PAYOUT_INTERVAL_MS = 518400000ULL; // 6 days (6 * 86400000)
+constexpr uint64 QRWA_MIN_REVENUE_THRESHOLD = 1000ULL; // skip distribution if pool revenue below this
 
 // STATUS CODES for Procedures
 constexpr uint64 QRWA_STATUS_SUCCESS = 1;
@@ -1923,10 +1924,10 @@ public:
         if (locals.poolAReady == 1 || locals.poolBReady == 1 || locals.poolCReady == 1 || locals.poolDReady == 1)
         {
                 // Track whether each pool has revenue before distribution
-                locals.poolAHadRevenue = (locals.poolAReady == 1 && state.get().mRevenuePoolA > 0) ? 1 : 0;
-                locals.poolBHadRevenue = (locals.poolBReady == 1 && state.get().mRevenuePoolB > 0) ? 1 : 0;
-                locals.poolCHadRevenue = (locals.poolCReady == 1 && state.get().mDedicatedRevenuePool > 0) ? 1 : 0;
-                locals.poolDHadRevenue = (locals.poolDReady == 1 && state.get().mPoolDRevenuePool > 0) ? 1 : 0;
+                locals.poolAHadRevenue = (locals.poolAReady == 1 && state.get().mRevenuePoolA >= QRWA_MIN_REVENUE_THRESHOLD) ? 1 : 0;
+                locals.poolBHadRevenue = (locals.poolBReady == 1 && state.get().mRevenuePoolB >= QRWA_MIN_REVENUE_THRESHOLD) ? 1 : 0;
+                locals.poolCHadRevenue = (locals.poolCReady == 1 && state.get().mDedicatedRevenuePool >= QRWA_MIN_REVENUE_THRESHOLD) ? 1 : 0;
+                locals.poolDHadRevenue = (locals.poolDReady == 1 && state.get().mPoolDRevenuePool >= QRWA_MIN_REVENUE_THRESHOLD) ? 1 : 0;
                 locals.logger.contractId = CONTRACT_INDEX;
                 locals.logger.logType = QRWA_LOG_TYPE_DISTRIBUTION;
 
@@ -1937,7 +1938,7 @@ public:
                 locals.totalGovPercent = sadd(sadd(state.get().mCurrentGovParams.electricityPercent, state.get().mCurrentGovParams.maintenancePercent), state.get().mCurrentGovParams.reinvestmentPercent);
                 locals.totalFeeAmount = 0;
 
-                if (locals.totalGovPercent > 0 && locals.totalGovPercent <= QRWA_PERCENT_DENOMINATOR && state.get().mRevenuePoolA > 0)
+                if (locals.totalGovPercent > 0 && locals.totalGovPercent <= QRWA_PERCENT_DENOMINATOR && state.get().mRevenuePoolA >= QRWA_MIN_REVENUE_THRESHOLD)
                 {
                     locals.electricityPayout = div<uint64>(smul(state.get().mRevenuePoolA, state.get().mCurrentGovParams.electricityPercent), QRWA_PERCENT_DENOMINATOR);
                     if (locals.electricityPayout > 0 && state.get().mCurrentGovParams.electricityAddress != NULL_ID)
@@ -1993,7 +1994,7 @@ public:
                 }
 
                 // Pool A: split remaining revenue (after gov fees) into 90% QMINE / 10% qRWA
-                if (state.get().mRevenuePoolA > 0)
+                if (state.get().mRevenuePoolA >= QRWA_MIN_REVENUE_THRESHOLD)
                 {
                     locals.qminePortion = div<uint64>(smul(state.get().mRevenuePoolA, QRWA_QMINE_HOLDER_PERCENT), QRWA_PERCENT_DENOMINATOR);
                     locals.qrwaPortion = state.get().mRevenuePoolA - locals.qminePortion;
@@ -2004,7 +2005,7 @@ public:
                 } // end poolAReady gov fees + split
 
                 // Pool B: split revenue (no gov fees) into 90% QMINE / 10% qRWA — only when Pool B fires
-                if (locals.poolBReady == 1 && state.get().mRevenuePoolB > 0)
+                if (locals.poolBReady == 1 && state.get().mRevenuePoolB >= QRWA_MIN_REVENUE_THRESHOLD)
                 {
                     locals.qminePortion = div<uint64>(smul(state.get().mRevenuePoolB, QRWA_QMINE_HOLDER_PERCENT), QRWA_PERCENT_DENOMINATOR);
                     locals.qrwaPortion = state.get().mRevenuePoolB - locals.qminePortion;
@@ -2014,7 +2015,7 @@ public:
                 }
 
                 // Pool C: split dedicated revenue into 90% QMINE / 10% dedicated qRWA — only when Pool C fires
-                if (locals.poolCReady == 1 && state.get().mDedicatedRevenuePool > 0)
+                if (locals.poolCReady == 1 && state.get().mDedicatedRevenuePool >= QRWA_MIN_REVENUE_THRESHOLD)
                 {
                     locals.qminePortion = div<uint64>(smul(state.get().mDedicatedRevenuePool, QRWA_QMINE_HOLDER_PERCENT), QRWA_PERCENT_DENOMINATOR);
                     locals.qrwaPortion = state.get().mDedicatedRevenuePool - locals.qminePortion;
@@ -2024,7 +2025,7 @@ public:
                 }
 
                 // Pool D: deduct 10% reinvestment, then split remaining into 90% QMINE / 10% dedicated qRWA — only when Pool D fires
-                if (locals.poolDReady == 1 && state.get().mPoolDRevenuePool > 0)
+                if (locals.poolDReady == 1 && state.get().mPoolDRevenuePool >= QRWA_MIN_REVENUE_THRESHOLD)
                 {
                     // 10% reinvestment fee
                     locals.poolDReinvestment = div<uint64>(smul(state.get().mPoolDRevenuePool, QRWA_POOL_D_REINVESTMENT_PERCENT), QRWA_PERCENT_DENOMINATOR);
