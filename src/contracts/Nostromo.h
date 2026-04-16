@@ -33,6 +33,7 @@ constexpr uint64 NOST_SECONDS_PER_DAY = 86400ULL;
 constexpr uint64 NOST_AUCTION_SELLER_DECISION_WINDOW_SECONDS = 604800ULL;
 constexpr uint64 NOST_AUCTION_PRE_EPOCH_PAUSE_SECONDS = 1800ULL;
 constexpr uint32 NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS = 500U;
+constexpr uint32 NOST_DEFAULT_INIT_TIME = 22 << 9 | 4 << 5 | 13;
 
 struct NOST2
 {
@@ -716,8 +717,15 @@ struct NOST : public ContractBase
 	/** @brief Internal output of the auction interaction pause check. */
 	struct IsAuctionInteractionPaused_output
 	{
-		/** @brief Flag indicating whether the 30-minute pre-epoch pause or 500-tick post-BEGIN_EPOCH pause is active. */
+		/** @brief Flag indicating whether auction interactions are blocked by bootstrap time or by epoch timing pauses. */
 		uint8 isPaused;
+	};
+
+	/** @brief Internal locals used to evaluate whether auction interactions are currently paused. */
+	struct IsAuctionInteractionPaused_locals
+	{
+		/** @brief Compact current date marker used to detect the bootstrap default time sentinel. */
+		uint32 currentDateStamp;
 	};
 
 	/** @brief Internal input used to split auction proceeds between seller and configured fee recipients. */
@@ -1075,6 +1083,7 @@ struct NOST : public ContractBase
 		AuctionData auction;
 		DateAndTime currentDate;
 		uint64 elapsedSeconds;
+		uint32 currentDateStamp;
 		sint64 auctionIndex;
 		GetTicksBeforeAuctionLaunchInternal_input getTicksBeforeAuctionLaunchInternalInput;
 		GetTicksBeforeAuctionLaunchInternal_output getTicksBeforeAuctionLaunchInternalOutput;
@@ -1189,6 +1198,12 @@ struct NOST : public ContractBase
 
 	END_TICK_WITH_LOCALS()
 	{
+		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
+		if (locals.currentDateStamp == NOST_DEFAULT_INIT_TIME)
+		{
+			return;
+		}
+
 		if (state.get().isPostBeginEpochPauseArmed)
 		{
 			CALL(GetTicksBeforeAuctionLaunchInternal, locals.getTicksBeforeAuctionLaunchInternalInput,
@@ -1285,9 +1300,16 @@ struct NOST : public ContractBase
 		output.isValid = output.lotItemCount > 0 ? 1 : 0;
 	}
 
-	PRIVATE_FUNCTION(IsAuctionInteractionPaused)
+	PRIVATE_FUNCTION_WITH_LOCALS(IsAuctionInteractionPaused)
 	{
 		output.isPaused = 0;
+
+		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
+		if (locals.currentDateStamp == NOST_DEFAULT_INIT_TIME)
+		{
+			output.isPaused = 1;
+			return;
+		}
 
 		if (state.get().isPostBeginEpochPauseArmed && max<sint64>(static_cast<sint64>(NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS) -
 		                                                              (static_cast<sint64>(qpi.tick()) - static_cast<sint64>(qpi.initialTick())),
@@ -2865,6 +2887,8 @@ protected:
 	}
 
 	static bool isZeroAsset(const Asset& asset) { return asset.assetName == 0 && isZero(asset.issuer); }
+
+	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
 
 	/**
 	 * @brief Compares two Nostromo timestamps.
