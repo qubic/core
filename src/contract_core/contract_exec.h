@@ -382,6 +382,14 @@ const QpiContextProcedureCall* QPI::QpiContextProcedureCall::__qpiConstructProce
         return nullptr;
     }
 
+    // Check if called contract is active in current epoch
+    if (system.epoch < contractDescriptions[procContractIndex].constructionEpoch
+        || system.epoch >= contractDescriptions[procContractIndex].destructionEpoch)
+    {
+        callError = CallErrorContractInErrorState;
+        return nullptr;
+    }
+
     // Check if called contract has sufficient execution fee reserve (can be skipped for system callbacks)
     if (!skipFeeCheck && getContractFeeReserve(procContractIndex) <= 0)
     {
