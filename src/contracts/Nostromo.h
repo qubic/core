@@ -1007,28 +1007,30 @@ struct NOST : public ContractBase
 				diffDateInSecond(locals.auction.createdAt, locals.currentDate, locals.elapsedSeconds);
 				if (locals.elapsedSeconds >= locals.auction.auctionDurationSeconds)
 				{
-					if (locals.auction.type == EAuctionType::Batch)
+					switch (locals.auction.type)
 					{
-						locals.finalizeBatchAuctionInput.auctionId = locals.auction.auctionId;
-						locals.finalizeBatchAuctionInput.currentDate = locals.currentDate;
-						CALL(FinalizeBatchAuction, locals.finalizeBatchAuctionInput, locals.finalizeBatchAuctionOutput);
-					}
-					else if (locals.auction.type == EAuctionType::Standard)
-					{
-						if (locals.auction.highestBidAmount == 0 || locals.auction.highestBidPrice >= locals.auction.salePrice)
-						{
-							locals.finalizeStandardAuctionInput.auctionId = locals.auction.auctionId;
-							locals.finalizeStandardAuctionInput.currentDate = locals.currentDate;
-							CALL(FinalizeStandardAuction, locals.finalizeStandardAuctionInput, locals.finalizeStandardAuctionOutput);
-						}
-						else
-						{
-							locals.auction.status = EAuctionStatus::PendingSellerDecision;
-							locals.auction.sellerDecisionDeadline = locals.currentDate;
-							locals.auction.sellerDecisionDeadline.add(0, 0, 0, 0, 0, NOST_AUCTION_SELLER_DECISION_WINDOW_SECONDS);
-							state.mut().auctionList.replace(locals.auction.auctionId, locals.auction);
-						}
-					}
+						case EAuctionType::Batch:
+							locals.finalizeBatchAuctionInput.auctionId = locals.auction.auctionId;
+							locals.finalizeBatchAuctionInput.currentDate = locals.currentDate;
+							CALL(FinalizeBatchAuction, locals.finalizeBatchAuctionInput, locals.finalizeBatchAuctionOutput);
+							break;
+						case EAuctionType::Standard:
+							if (locals.auction.highestBidAmount == 0 || locals.auction.highestBidPrice >= locals.auction.salePrice)
+							{
+								locals.finalizeStandardAuctionInput.auctionId = locals.auction.auctionId;
+								locals.finalizeStandardAuctionInput.currentDate = locals.currentDate;
+								CALL(FinalizeStandardAuction, locals.finalizeStandardAuctionInput, locals.finalizeStandardAuctionOutput);
+							}
+							else
+							{
+								locals.auction.status = EAuctionStatus::PendingSellerDecision;
+								locals.auction.sellerDecisionDeadline = locals.currentDate;
+								locals.auction.sellerDecisionDeadline.add(0, 0, 0, 0, 0, NOST_AUCTION_SELLER_DECISION_WINDOW_SECONDS);
+								state.mut().auctionList.replace(locals.auction.auctionId, locals.auction);
+							}
+							break;
+						default: break;
+					};
 				}
 			}
 			else if (locals.auction.status == EAuctionStatus::PendingSellerDecision && locals.auction.sellerDecisionDeadline <= locals.currentDate)
@@ -1491,6 +1493,7 @@ struct NOST : public ContractBase
 		locals.soldQuantity = 0;
 		locals.totalGrossAmount = 0;
 
+		// Abort if the auction no longer exists or is no longer an active batch auction.
 		if (!state.get().auctionList.get(input.auctionId, locals.auction))
 		{
 			return;
@@ -1501,6 +1504,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// Resolve the single sellable lot entry that represents the batch asset and quantity in escrow.
 		for (locals.lotItemIndex = 0; locals.lotItemIndex < locals.auction.auctionLotItems.capacity(); ++locals.lotItemIndex)
 		{
 			locals.batchLotItem = locals.auction.auctionLotItems.get(locals.lotItemIndex);
@@ -1515,11 +1519,14 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// Repeatedly pick the best remaining bid, allocate available quantity, and collect the winning payment.
 		locals.remainingQuantity = locals.auction.quantityForSale;
 		while (locals.remainingQuantity > 0)
 		{
 			locals.bestParticipantFound = 0;
 			locals.participantIndex = state.get().participants.nextElementIndex(NULL_INDEX);
+
+			// Scan all bids for this auction to find the highest price, using earlier bid time as the tie-breaker.
 			while (locals.participantIndex != NULL_INDEX)
 			{
 				locals.participantKey = state.get().participants.key(locals.participantIndex);
@@ -1546,6 +1553,7 @@ struct NOST : public ContractBase
 				break;
 			}
 
+			// Price the winning allocation and compute any escrow surplus that must be returned immediately.
 			locals.allocatedQuantity = min(locals.remainingQuantity, locals.bestParticipantData.requestedQuantity);
 			locals.requiredPayment = smul(locals.allocatedQuantity, locals.bestParticipantData.bidAmount);
 			locals.refundAmount = 0;
@@ -1554,6 +1562,7 @@ struct NOST : public ContractBase
 				locals.refundAmount = locals.bestParticipantData.escrowedAmount - locals.requiredPayment;
 			}
 
+			// Transfer the awarded shares, mark the participant as a winner, and advance settlement totals.
 			if (locals.allocatedQuantity > 0)
 			{
 				qpi.transferShareOwnershipAndPossession(locals.batchLotItem.asset.assetName, locals.batchLotItem.asset.issuer, SELF, SELF,
@@ -1565,15 +1574,18 @@ struct NOST : public ContractBase
 				locals.remainingQuantity -= locals.allocatedQuantity;
 			}
 
+			// Return the unused part of the winner escrow when the participant requested more than the remaining supply.
 			if (locals.refundAmount > 0)
 			{
 				qpi.transfer(locals.bestParticipantData.participant, locals.refundAmount);
 			}
 
+			// Clear the processed escrow so the same bid cannot participate in later iterations.
 			locals.bestParticipantData.escrowedAmount = 0;
 			state.mut().participants.replace(locals.bestParticipantKey, locals.bestParticipantData);
 		}
 
+		// Refund every non-winning or non-allocated bid that still has escrow locked after winner selection.
 		locals.participantIndex = state.get().participants.nextElementIndex(NULL_INDEX);
 		while (locals.participantIndex != NULL_INDEX)
 		{
@@ -1593,12 +1605,14 @@ struct NOST : public ContractBase
 			locals.participantIndex = state.get().participants.nextElementIndex(locals.participantIndex);
 		}
 
+		// Return any unsold batch quantity to the seller when demand did not consume the entire lot.
 		if (locals.soldQuantity < locals.auction.quantityForSale)
 		{
 			qpi.transferShareOwnershipAndPossession(locals.batchLotItem.asset.assetName, locals.batchLotItem.asset.issuer, SELF, SELF,
 			                                        locals.auction.quantityForSale - locals.soldQuantity, locals.auction.seller);
 		}
 
+		// Split the collected proceeds according to Nostromo auction fee rules and pay the seller net amount.
 		locals.distributeAuctionRevenueInput.grossAmount = locals.totalGrossAmount;
 		CALL(DistributeAuctionRevenue, locals.distributeAuctionRevenueInput, locals.distributeAuctionRevenueOutput);
 		if (locals.distributeAuctionRevenueOutput.sellerPayout > 0)
@@ -1606,6 +1620,7 @@ struct NOST : public ContractBase
 			qpi.transfer(locals.auction.seller, locals.distributeAuctionRevenueOutput.sellerPayout);
 		}
 
+		// Persist the final sold quantity and close the auction as settled.
 		locals.auction.allocatedQuantity = locals.soldQuantity;
 		locals.auction.status = EAuctionStatus::Finalized;
 		locals.auction.settledAt = input.currentDate;
