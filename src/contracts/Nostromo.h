@@ -393,12 +393,13 @@ struct NOST : public ContractBase
 		uint8 found;
 	};
 
-	struct GetTicksBeforeAuctionLaunch_input
-	{
-	};
+	/** @brief Input payload used to query the remaining post-BEGIN_EPOCH auction launch pause. */
+	typedef NoData GetTicksBeforeAuctionLaunch_input;
 
+	/** @brief Result returned by the auction launch pause getter. */
 	struct GetTicksBeforeAuctionLaunch_output
 	{
+		/** @brief Number of ticks remaining before auction interactions resume after `BEGIN_EPOCH`. */
 		uint32 ticks;
 	};
 
@@ -491,66 +492,98 @@ struct NOST : public ContractBase
 		sint64 possessedAccessShares;
 	};
 
+	/** @brief Internal input used to settle a batch auction after its bidding window closes. */
 	struct FinalizeBatchAuction_input
 	{
+		/** @brief Timestamp used as the auction settlement time. */
 		DateAndTime currentDate;
+
+		/** @brief Identifier of the batch auction to finalize. */
 		id auctionId;
 	};
 
+	/** @brief Internal output returned after batch auction finalization. */
 	struct FinalizeBatchAuction_output
 	{
+		/** @brief Flag indicating whether batch settlement finished successfully. */
 		uint8 success;
 	};
 
+	/** @brief Internal input used to settle a standard auction when it is accepted or auto-finalized. */
 	struct FinalizeStandardAuction_input
 	{
+		/** @brief Timestamp used as the auction settlement time. */
 		DateAndTime currentDate;
+
+		/** @brief Identifier of the standard auction to finalize. */
 		id auctionId;
 	};
 
+	/** @brief Internal output returned after standard auction finalization. */
 	struct FinalizeStandardAuction_output
 	{
+		/** @brief Flag indicating whether standard auction settlement finished successfully. */
 		uint8 success;
 	};
 
+	/** @brief Internal input used to reject a pending standard auction during the seller decision window. */
 	struct RejectStandardAuction_input
 	{
+		/** @brief Timestamp used as the auction settlement time. */
 		DateAndTime currentDate;
+
+		/** @brief Identifier of the pending standard auction to reject. */
 		id auctionId;
 	};
 
+	/** @brief Internal output returned after rejecting a pending standard auction. */
 	struct RejectStandardAuction_output
 	{
+		/** @brief Amount refunded to the highest bidder after the rejection. */
 		uint64 refundedAmount;
+
+		/** @brief Flag indicating whether the rejection flow finished successfully. */
 		uint8 success;
 	};
 
+	/** @brief Internal input used to evaluate whether auction interactions are currently paused. */
 	struct IsAuctionInteractionPaused_input
 	{
 	};
 
+	/** @brief Internal output of the auction interaction pause check. */
 	struct IsAuctionInteractionPaused_output
 	{
+		/** @brief Flag indicating whether the 30-minute pre-epoch pause or 500-tick post-BEGIN_EPOCH pause is active. */
 		uint8 isPaused;
 	};
 
+	/** @brief Internal input used to split auction proceeds between seller and configured fee recipients. */
 	struct DistributeAuctionRevenue_input
 	{
+		/** @brief Gross amount collected from the auction before fee distribution. */
 		uint64 grossAmount;
 	};
 
+	/** @brief Internal output returned after auction revenue distribution is computed. */
 	struct DistributeAuctionRevenue_output
 	{
+		/** @brief Net amount that should be transferred to the seller after auction fees. */
 		uint64 sellerPayout;
+
+		/** @brief Flag indicating whether the revenue distribution completed successfully. */
 		uint8 success;
 	};
 
+	/** @brief Internal input used to compute the remaining post-BEGIN_EPOCH launch pause. */
 	struct GetTicksBeforeAuctionLaunchInternal_input
 	{
 	};
 
+	/** @brief Internal output containing the remaining post-BEGIN_EPOCH launch pause. */
 	struct GetTicksBeforeAuctionLaunchInternal_output
 	{
+		/** @brief Number of ticks remaining before auction interactions resume after `BEGIN_EPOCH`. */
 		uint32 ticks;
 	};
 
@@ -1726,6 +1759,11 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Creates a new Batch Auction or Standard Auction in the Nostromo Auction House.
+	 * @note `CreateAuction_input` defines the IPFS metadata CID stored through Pinata, the auction lot, pricing, duration, and visibility rules.
+	 * @note Private auctions require the configured private auction fee and must use exactly one access mode.
+	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(CreateAuction)
 	{
 		output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
@@ -1935,6 +1973,11 @@ struct NOST : public ContractBase
 		output.errorCode = static_cast<uint8>(EAuctionError::Success);
 	}
 
+	/**
+	 * @brief Places a bid in an active auction.
+	 * @note Batch auctions interpret `bidAmount` as price per asset and `quantity` as the requested amount.
+	 * @note Standard auctions interpret `bidAmount` as the total price for the whole lot and ignore `quantity`.
+	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(PlaceBid)
 	{
 		output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
@@ -2066,6 +2109,10 @@ struct NOST : public ContractBase
 		output.errorCode = static_cast<uint8>(EAuctionError::Success);
 	}
 
+	/**
+	 * @brief Cancels an active auction and refunds every escrowed bid.
+	 * @note The cancellation fee is based on the current highest bid or on the configured reserve price for the full batch quantity or standard lot.
+	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(CancelAuction)
 	{
 		output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
@@ -2153,6 +2200,10 @@ struct NOST : public ContractBase
 		output.errorCode = static_cast<uint8>(EAuctionError::Success);
 	}
 
+	/**
+	 * @brief Lets the seller accept or reject a pending standard auction whose highest bid stayed below the sale price.
+	 * @note The manual decision window lasts one week; after expiry the contract finalizes the sale automatically in favor of the buyer.
+	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(ResolvePendingStandardAuction)
 	{
 		output.refundedAmount = 0;
@@ -2216,13 +2267,25 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Returns the stored state of one auction.
+	 * @note The response contains the full persistent `AuctionData` record for the requested auction identifier.
+	 */
 	PUBLIC_FUNCTION(GetAuction) { state.get().auctionList.get(input.auctionId, output.auction); }
 
+	/**
+	 * @brief Returns the stored bid state of one wallet in one auction.
+	 * @note The response indicates whether a participant record exists for the requested auction and wallet.
+	 */
 	PUBLIC_FUNCTION(GetAuctionParticipant)
 	{
 		output.found = state.get().participants.get({input.auctionId, input.participant}, output.participantData) ? 1 : 0;
 	}
 
+	/**
+	 * @brief Returns the remaining post-BEGIN_EPOCH pause before auction interactions resume.
+	 * @note This getter exposes the 500-tick launch pause referenced by the auction timing rules.
+	 */
 	PUBLIC_FUNCTION(GetTicksBeforeAuctionLaunch)
 	{
 		output.ticks = 0;
@@ -2237,6 +2300,10 @@ struct NOST : public ContractBase
 		                                               0));
 	}
 
+	/**
+	 * @brief Transfers share management rights for an asset position to another managing contract.
+	 * @note The caller must currently possess at least the requested number of shares.
+	 */
 	PUBLIC_PROCEDURE(TransferShareManagementRights)
 	{
 		if (qpi.invocationReward() > 0)
