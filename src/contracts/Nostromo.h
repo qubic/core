@@ -505,7 +505,7 @@ struct NOST : public ContractBase
 	struct GetAuction_output
 	{
 		/** @brief Persistent auction data stored for the requested auction. */
-		Array<AuctionData, 1> auction;
+		AuctionData auction;
 	};
 
 	/** @brief Input payload used to fetch one participant record from an auction. */
@@ -1961,7 +1961,7 @@ struct NOST : public ContractBase
 		locals.hasPayloadCharacters = 0;
 		locals.reachedTerminator = 0;
 
-		if (input.metadataIpfsCid.get(0) != 'b')
+		if (input.metadataIpfsCid.get(0) != QPI::Ch::b)
 		{
 			return;
 		}
@@ -1980,7 +1980,7 @@ struct NOST : public ContractBase
 				return;
 			}
 
-			if ((locals.cidChar >= 'a' && locals.cidChar <= 'z') || (locals.cidChar >= '2' && locals.cidChar <= '7'))
+			if ((locals.cidChar >= QPI::Ch::a && locals.cidChar <= QPI::Ch::z) || (locals.cidChar >= QPI::Ch::_2 && locals.cidChar <= QPI::Ch::_7))
 			{
 				locals.hasPayloadCharacters = 1;
 				continue;
@@ -2946,7 +2946,7 @@ struct NOST : public ContractBase
 	 * @brief Returns the stored state of one auction.
 	 * @note The response contains the full persistent `AuctionData` record for the requested auction identifier.
 	 */
-	PUBLIC_FUNCTION(GetAuction) { state.get().auctionList.get(input.auctionId, *reinterpret_cast<AuctionData*>(&output.auction)); }
+	PUBLIC_FUNCTION(GetAuction) { state.get().auctionList.get(input.auctionId, output.auction); }
 
 	/**
 	 * @brief Returns the stored bid state of one wallet in one auction.
