@@ -499,7 +499,7 @@ TEST(TestPendingTxsPool, ProtocolLevelTxsMaxPriority)
 
     EXPECT_TRUE(pendingTxsPool.add(&tx));
 
-    tx.inputType = CustomMiningSolutionTransaction::transactionType();
+    tx.inputType = DogeMiningShareTransaction::transactionType();
 
     EXPECT_TRUE(pendingTxsPool.add(&tx));
 
