@@ -9,6 +9,7 @@ namespace QPI
 } // namespace QPI
 
 constexpr uint64 NOST_AUCTION_NUM = 2048;
+constexpr uint64 NOST_AUCTION_HISTORY_NUM = 1024;
 constexpr uint64 NOST_AUCTION_METADATA_CID_LENGTH = 64;
 constexpr uint64 NOST_AUCTION_PARTICIPANT_NUM = 4096;
 constexpr uint64 NOST_AUCTION_LOT_ITEM_NUM = 64;
@@ -34,6 +35,7 @@ constexpr uint64 NOST_AUCTION_SELLER_DECISION_WINDOW_SECONDS = 604800ULL;
 constexpr uint64 NOST_AUCTION_PRE_EPOCH_PAUSE_SECONDS = 1800ULL;
 constexpr uint32 NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS = 500U;
 constexpr uint32 NOST_DEFAULT_INIT_TIME = 22 << 9 | 4 << 5 | 13;
+constexpr uint8 NOST_ROUTE_ALL_FEES_TO_DEVELOPMENT = 1;
 
 struct NOST2
 {
@@ -260,17 +262,29 @@ struct NOST : public ContractBase
 		/** @brief Configured maximum auction duration in days. */
 		uint32 maxAuctionDurationDays;
 
+		/** @brief Cached QX transfer fee refreshed at the beginning of each epoch. */
+		uint32 qxTransferFee;
+
 		/** @brief Flag indicating whether the post-`BEGIN_EPOCH()` auction pause is active for the current epoch. */
 		uint8 isPostBeginEpochPauseArmed;
 
 		/** @brief Flag indicating whether auction deadlines are currently frozen by a global pause interval. */
 		uint8 isAuctionTimerPaused;
 
+		/** @brief Flag indicating whether every auction fee is routed to the development wallet. */
+		uint8 routeAllFeesToDevelopment;
+
 		id management;
 
 		id development;
 
 		id takeoverCoordinator;
+
+		/** @brief Circular buffer with identifiers of finalized and cancelled auctions. */
+		Array<id, NOST_AUCTION_HISTORY_NUM> closedAuctionHistory;
+
+		/** @brief Monotonic insertion counter for `closedAuctionHistory`. */
+		uint64 closedAuctionHistoryCounter;
 
 		HashMap<id, AuctionData, NOST_AUCTION_NUM> auctionList;
 		HashMap<AuctionParticipantKey, AuctionParticipantData, NOST_AUCTION_PARTICIPANT_NUM> participants;
@@ -560,6 +574,37 @@ struct NOST : public ContractBase
 		uint64 shareholderFeeBasisPointsTier4;
 	};
 
+	/**
+	 * @brief Pure breakdown of one auction revenue split.
+	 * @note Runtime settlement and tests share this struct to keep fee arithmetic aligned.
+	 */
+	struct AuctionRevenueBreakdown
+	{
+		/** @brief Net amount that remains for the seller after every configured fee is applied. */
+		uint64 sellerPayout;
+
+		/** @brief Shareholder fee tier selected for the provided gross amount. */
+		uint64 shareholderFeeBasisPoints;
+
+		/** @brief Gross shareholder fee amount before dividend retention is split out. */
+		uint64 shareholderFeeAmount;
+
+		/** @brief Portion of the shareholder fee retained by the contract for dividend distribution. */
+		uint64 shareholderDividendAmount;
+
+		/** @brief Management wallet fee amount. */
+		uint64 managementFeeAmount;
+
+		/** @brief Development wallet fee amount. */
+		uint64 developmentFeeAmount;
+
+		/** @brief Base takeover coordinator fee charged directly from the gross amount. */
+		uint64 takeoverCoordinatorBaseAmount;
+
+		/** @brief Total takeover coordinator gain including retained shareholder-fee remainder. */
+		uint64 takeoverCoordinatorFeeAmount;
+	};
+
 	/** @brief Input payload used to read the wallets that receive auction fee transfers. */
 	using GetFeeRecipients_input = NoData;
 
@@ -573,6 +618,27 @@ struct NOST : public ContractBase
 
 		/** @brief Wallet that receives the takeover coordinator fee. */
 		id takeoverCoordinator;
+	};
+
+	/** @brief Input payload used to read the closed auctions history ring buffer. */
+	using GetClosedAuctionHistory_input = NoData;
+
+	struct GetClosedAuctionHistory_output
+	{
+		/** @brief Ring buffer of auction identifiers recorded after finalization or cancellation. */
+		Array<id, NOST_AUCTION_HISTORY_NUM> auctionIds;
+
+		/** @brief Total number of history writes since initialization. */
+		uint64 totalEntries;
+	};
+
+	/** @brief Input payload used to read the temporary fee routing override flag. */
+	using GetRouteAllFeesToDevelopment_input = NoData;
+
+	struct GetRouteAllFeesToDevelopment_output
+	{
+		/** @brief `1` routes every fee to development, `0` uses the standard fee distribution. */
+		uint8 enabled;
 	};
 
 	/** @brief Internal input used to validate an auction lot and resolve its total escrow quantity. */
@@ -753,9 +819,6 @@ struct NOST : public ContractBase
 	{
 		/** @brief Compact current date marker used to detect the bootstrap default time sentinel. */
 		DateAndTime currentDate;
-		DateAndTime pauseStartedAt;
-		DateAndTime pauseEndsAt;
-		uint64 elapsedTicksSinceInitialTick;
 		uint32 currentDateStamp;
 	};
 
@@ -994,7 +1057,7 @@ struct NOST : public ContractBase
 		AuctionLotEntry lotItem;
 		uint64 lotItemIndex;
 		uint64 rollbackLotItemIndex;
-		sint64 transferredShares;
+		sint64 remainingShares;
 	};
 
 	/** @brief Internal input used to return an auction lot from contract escrow to a target wallet. */
@@ -1053,12 +1116,7 @@ struct NOST : public ContractBase
 
 	struct DistributeAuctionRevenue_locals
 	{
-		uint64 shareholderFeeBasisPoints;
-		uint64 shareholderFeeAmount;
-		uint64 managementFeeAmount;
-		uint64 developmentFeeAmount;
-		uint64 takeoverCoordinatorFeeAmount;
-		uint64 shareholderDividendAmount;
+		AuctionRevenueBreakdown auctionRevenueBreakdown;
 		uint64 distributedDividendAmount;
 		uint64 dividendPerShare;
 	};
@@ -1154,6 +1212,12 @@ struct NOST : public ContractBase
 		FinalizeStandardAuction_output finalizeStandardAuctionOutput;
 	};
 
+	struct BEGIN_EPOCH_locals
+	{
+		QX::Fees_input feesInput;
+		QX::Fees_output feesOutput;
+	};
+
 	/** @brief Input payload used to move share management rights to another managing contract. */
 	struct TransferShareManagementRights_input
 	{
@@ -1190,6 +1254,8 @@ struct NOST : public ContractBase
 		REGISTER_USER_FUNCTION(GetTicksBeforeAuctionLaunch, 3);
 		REGISTER_USER_FUNCTION(GetAuctionFees, 4);
 		REGISTER_USER_FUNCTION(GetFeeRecipients, 5);
+		REGISTER_USER_FUNCTION(GetClosedAuctionHistory, 6);
+		REGISTER_USER_FUNCTION(GetRouteAllFeesToDevelopment, 7);
 	}
 
 	INITIALIZE()
@@ -1206,6 +1272,7 @@ struct NOST : public ContractBase
 		state.mut().shareholderFeeBasisPointsTier4 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_4;
 		state.mut().maxAuctionDurationDays = NOST_AUCTION_MAX_DURATION_DAYS;
 		state.mut().isAuctionTimerPaused = 1;
+		state.mut().routeAllFeesToDevelopment = NOST_ROUTE_ALL_FEES_TO_DEVELOPMENT;
 		state.mut().auctionTimerPauseStartedAt.setInvalid();
 		state.mut().auctionTimerPauseEndsAt.setInvalid();
 		state.mut().management = ID(_I, _G, _P, _Z, _X, _Q, _O, _R, _J, _Y, _Q, _P, _A, _G, _V, _A, _B, _N, _T, _N, _I, _S, _O, _Y, _T, _M, _T, _A,
@@ -1223,7 +1290,7 @@ struct NOST : public ContractBase
 		output.allowTransfer = true;
 	}
 
-	BEGIN_EPOCH()
+	BEGIN_EPOCH_WITH_LOCALS()
 	{
 		// TODO: Change to valid epoch
 		if (qpi.epoch() == 220)
@@ -1240,6 +1307,7 @@ struct NOST : public ContractBase
 			state.mut().shareholderFeeBasisPointsTier3 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_3;
 			state.mut().shareholderFeeBasisPointsTier4 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_4;
 			state.mut().maxAuctionDurationDays = NOST_AUCTION_MAX_DURATION_DAYS;
+			state.mut().routeAllFeesToDevelopment = NOST_ROUTE_ALL_FEES_TO_DEVELOPMENT;
 			state.mut().management =
 			    ID(_I, _G, _P, _Z, _X, _Q, _O, _R, _J, _Y, _Q, _P, _A, _G, _V, _A, _B, _N, _T, _N, _I, _S, _O, _Y, _T, _M, _T, _A, _N, _M, _K, _Z, _A,
 			       _S, _T, _P, _P, _G, _Z, _O, _N, _A, _Q, _J, _X, _Q, _O, _S, _W, _Q, _O, _V, _J, _C, _K, _D);
@@ -1251,10 +1319,13 @@ struct NOST : public ContractBase
 			       _E, _N, _Z, _O, _X, _S, _V, _O, _B, _K, _G, _Z, _C, _C, _F, _D, _B, _D, _M, _T, _M, _L, _C);
 		}
 
+		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
+		if (interContractCallError == NoCallError)
+		{
+			state.mut().qxTransferFee = locals.feesOutput.transferFee;
+		}
+
 		state.mut().isPostBeginEpochPauseArmed = 1;
-		state.mut().isAuctionTimerPaused = 1;
-		state.mut().auctionTimerPauseStartedAt.setInvalid();
-		state.mut().auctionTimerPauseEndsAt.setInvalid();
 	}
 
 	END_EPOCH()
@@ -1266,10 +1337,6 @@ struct NOST : public ContractBase
 	END_TICK_WITH_LOCALS()
 	{
 		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
-		if (locals.currentDateStamp == NOST_DEFAULT_INIT_TIME)
-		{
-			return;
-		}
 
 		CALL(SyncAuctionPauseState, locals.syncAuctionPauseStateInput, locals.syncAuctionPauseStateOutput);
 		if (state.get().isAuctionTimerPaused)
@@ -1377,19 +1444,6 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (state.get().isPostBeginEpochPauseArmed &&
-		    (static_cast<uint32>(qpi.tick()) - static_cast<uint32>(qpi.initialTick())) < NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS)
-		{
-			locals.elapsedTicksSinceInitialTick = static_cast<uint64>(qpi.tick()) - static_cast<uint64>(qpi.initialTick());
-			locals.pauseStartedAt = locals.currentDate;
-			locals.pauseStartedAt.addMillisec(
-			    -static_cast<sint64>(smul(locals.elapsedTicksSinceInitialTick, static_cast<uint64>(TARGET_TICK_DURATION))));
-			locals.pauseEndsAt = locals.pauseStartedAt;
-			locals.pauseEndsAt.addMillisec(static_cast<sint64>(
-			    smul(static_cast<uint64>(NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS), static_cast<uint64>(TARGET_TICK_DURATION))));
-			accumulatePauseWindow(output.isPaused, output.pauseStartedAt, output.pauseEndsAt, locals.pauseStartedAt, locals.pauseEndsAt);
-		}
-
 		if (qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day()) == 0 && qpi.hour() == 11 && qpi.minute() >= 30)
 		{
 			output.isPaused = 1;
@@ -1400,13 +1454,21 @@ struct NOST : public ContractBase
 		}
 	}
 
-	PRIVATE_FUNCTION(IsAuctionInteractionPaused) { output.isPaused = state.get().isAuctionTimerPaused; }
+	PRIVATE_FUNCTION(IsAuctionInteractionPaused)
+	{
+		output.isPaused = state.get().isAuctionTimerPaused;
+		if (output.isPaused)
+		{
+			return;
+		}
+
+		output.isPaused = state.get().isPostBeginEpochPauseArmed && (qpi.tick() - qpi.initialTick()) < NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS;
+	}
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(SyncAuctionPauseState)
 	{
 		locals.currentDate = qpi.now();
-		if (state.get().isPostBeginEpochPauseArmed &&
-		    (static_cast<uint32>(qpi.tick()) - static_cast<uint32>(qpi.initialTick())) >= NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS)
+		if (state.get().isPostBeginEpochPauseArmed && (qpi.tick() - qpi.initialTick()) >= NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS)
 		{
 			state.mut().isPostBeginEpochPauseArmed = 0;
 		}
@@ -1428,8 +1490,7 @@ struct NOST : public ContractBase
 			{
 				state.mut().auctionTimerPauseStartedAt = locals.getAuctionPauseStateOutput.pauseStartedAt;
 			}
-			if (!state.get().auctionTimerPauseEndsAt.isValid() ||
-			    locals.getAuctionPauseStateOutput.pauseEndsAt > state.get().auctionTimerPauseEndsAt)
+			if (!state.get().auctionTimerPauseEndsAt.isValid() || locals.getAuctionPauseStateOutput.pauseEndsAt > state.get().auctionTimerPauseEndsAt)
 			{
 				state.mut().auctionTimerPauseEndsAt = locals.getAuctionPauseStateOutput.pauseEndsAt;
 			}
@@ -1438,6 +1499,14 @@ struct NOST : public ContractBase
 
 		if (!state.get().isAuctionTimerPaused)
 		{
+			return;
+		}
+
+		if (!state.get().auctionTimerPauseStartedAt.isValid() || !state.get().auctionTimerPauseEndsAt.isValid())
+		{
+			state.mut().isAuctionTimerPaused = 0;
+			state.mut().auctionTimerPauseStartedAt.setInvalid();
+			state.mut().auctionTimerPauseEndsAt.setInvalid();
 			return;
 		}
 
@@ -1492,35 +1561,39 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.shareholderFeeBasisPoints = getAuctionShareholderFeeBasisPoints(input.grossAmount, state);
-		locals.shareholderFeeAmount = div<uint64>(smul(input.grossAmount, locals.shareholderFeeBasisPoints), 10000ULL);
-		locals.managementFeeAmount = div<uint64>(smul(input.grossAmount, state.get().managementFeeBasisPoints), 10000ULL);
-		locals.developmentFeeAmount = div<uint64>(smul(input.grossAmount, state.get().developmentFeeBasisPoints), 10000ULL);
-		locals.shareholderDividendAmount = div<uint64>(smul(locals.shareholderFeeAmount, state.get().shareholderDividendBasisPoints), 10000ULL);
-		locals.takeoverCoordinatorFeeAmount = div<uint64>(smul(input.grossAmount, state.get().takeoverCoordinatorFeeBasisPoints), 10000ULL) +
-		                                      (locals.shareholderFeeAmount - locals.shareholderDividendAmount);
-		output.sellerPayout = input.grossAmount - locals.shareholderFeeAmount - locals.managementFeeAmount - locals.developmentFeeAmount -
-		                      div<uint64>(smul(input.grossAmount, state.get().takeoverCoordinatorFeeBasisPoints), 10000ULL);
+		calculateAuctionRevenueBreakdown(input.grossAmount, state, locals.auctionRevenueBreakdown);
+		output.sellerPayout = locals.auctionRevenueBreakdown.sellerPayout;
 
-		state.mut().auctionShareholderDividendPool = sadd(state.get().auctionShareholderDividendPool, locals.shareholderDividendAmount);
-		if (locals.managementFeeAmount > 0)
+		if (routeAllFeesToDevelopment(state))
 		{
-			qpi.transfer(state.get().management, locals.managementFeeAmount);
+			if (input.grossAmount > output.sellerPayout)
+			{
+				qpi.transfer(state.get().development, input.grossAmount - output.sellerPayout);
+			}
 		}
-		if (locals.developmentFeeAmount > 0)
+		else
 		{
-			qpi.transfer(state.get().development, locals.developmentFeeAmount);
-		}
-		if (locals.takeoverCoordinatorFeeAmount > 0)
-		{
-			qpi.transfer(state.get().takeoverCoordinator, locals.takeoverCoordinatorFeeAmount);
-		}
+			state.mut().auctionShareholderDividendPool =
+			    sadd(state.get().auctionShareholderDividendPool, locals.auctionRevenueBreakdown.shareholderDividendAmount);
+			if (locals.auctionRevenueBreakdown.managementFeeAmount > 0)
+			{
+				qpi.transfer(state.get().management, locals.auctionRevenueBreakdown.managementFeeAmount);
+			}
+			if (locals.auctionRevenueBreakdown.developmentFeeAmount > 0)
+			{
+				qpi.transfer(state.get().development, locals.auctionRevenueBreakdown.developmentFeeAmount);
+			}
+			if (locals.auctionRevenueBreakdown.takeoverCoordinatorFeeAmount > 0)
+			{
+				qpi.transfer(state.get().takeoverCoordinator, locals.auctionRevenueBreakdown.takeoverCoordinatorFeeAmount);
+			}
 
-		locals.dividendPerShare = div<uint64>(state.get().auctionShareholderDividendPool, NUMBER_OF_COMPUTORS);
-		if (locals.dividendPerShare > 0 && qpi.distributeDividends(locals.dividendPerShare))
-		{
-			locals.distributedDividendAmount = smul(locals.dividendPerShare, static_cast<uint64>(NUMBER_OF_COMPUTORS));
-			state.mut().auctionShareholderDividendPool -= locals.distributedDividendAmount;
+			locals.dividendPerShare = div<uint64>(state.get().auctionShareholderDividendPool, NUMBER_OF_COMPUTORS);
+			if (locals.dividendPerShare > 0 && qpi.distributeDividends(locals.dividendPerShare))
+			{
+				locals.distributedDividendAmount = smul(locals.dividendPerShare, static_cast<uint64>(NUMBER_OF_COMPUTORS));
+				state.mut().auctionShareholderDividendPool -= locals.distributedDividendAmount;
+			}
 		}
 
 		output.success = 1;
@@ -2047,6 +2120,7 @@ struct NOST : public ContractBase
 		locals.auction.status = EAuctionStatus::Finalized;
 		locals.auction.settledAt = input.currentDate;
 		state.mut().auctionList.replace(locals.auction.auctionId, locals.auction);
+		addClosedAuctionToHistory(state, locals.auction.auctionId);
 		output.success = 1;
 	}
 
@@ -2110,6 +2184,7 @@ struct NOST : public ContractBase
 			locals.auction.highestBidder = NULL_ID;
 		}
 		state.mut().auctionList.replace(locals.auction.auctionId, locals.auction);
+		addClosedAuctionToHistory(state, locals.auction.auctionId);
 		output.success = 1;
 	}
 
@@ -2157,6 +2232,7 @@ struct NOST : public ContractBase
 		locals.auction.status = EAuctionStatus::Finalized;
 		locals.auction.settledAt = input.currentDate;
 		state.mut().auctionList.replace(locals.auction.auctionId, locals.auction);
+		addClosedAuctionToHistory(state, locals.auction.auctionId);
 		output.success = 1;
 	}
 
@@ -2171,15 +2247,12 @@ struct NOST : public ContractBase
 				continue;
 			}
 
-			locals.transferredShares = qpi.transferShareOwnershipAndPossession(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer,
-			                                                                   qpi.invocator(), qpi.invocator(), locals.lotItem.quantity, SELF);
-			if (locals.transferredShares < locals.lotItem.quantity)
+			locals.remainingShares = qpi.transferShareOwnershipAndPossession(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer,
+			                                                                 qpi.invocator(), qpi.invocator(), locals.lotItem.quantity, SELF);
+			if (locals.remainingShares < 0)
 			{
-				if (locals.transferredShares > 0)
-				{
-					qpi.transferShareOwnershipAndPossession(locals.lotItem.asset.assetName, locals.lotItem.asset.issuer, SELF, SELF,
-					                                        locals.transferredShares, qpi.invocator());
-				}
+				// `transferShareOwnershipAndPossession` returns the remaining number of matching shares after a successful transfer.
+				// Negative values mean the transfer failed without moving the requested lot entry.
 				for (locals.rollbackLotItemIndex = 0; locals.rollbackLotItemIndex < locals.lotItemIndex; ++locals.rollbackLotItemIndex)
 				{
 					locals.lotItem = input.auctionLotItems.get(locals.rollbackLotItemIndex);
@@ -2403,7 +2476,7 @@ struct NOST : public ContractBase
 
 		if (qpi.invocationReward() > locals.requiredFee)
 		{
-			qpi.transfer(qpi.invocator(), static_cast<uint64>(qpi.invocationReward()) - locals.requiredFee);
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.requiredFee);
 		}
 
 		output.auctionId = locals.auction.auctionId;
@@ -2628,6 +2701,7 @@ struct NOST : public ContractBase
 		locals.auction.status = EAuctionStatus::Cancelled;
 		locals.auction.settledAt = locals.currentDate;
 		state.mut().auctionList.replace(input.auctionId, locals.auction);
+		addClosedAuctionToHistory(state, locals.auction.auctionId);
 
 		if (static_cast<uint64>(qpi.invocationReward()) > output.cancellationFee)
 		{
@@ -2879,6 +2953,22 @@ struct NOST : public ContractBase
 	}
 
 	/**
+	 * @brief Returns the ring buffer with recently closed auctions.
+	 * @note The buffer stores auction identifiers for both finalized and cancelled auctions.
+	 * @note When `totalEntries` exceeds `NOST_AUCTION_HISTORY_NUM`, older entries are overwritten in ring-buffer order.
+	 */
+	PUBLIC_FUNCTION(GetClosedAuctionHistory)
+	{
+		output.auctionIds = state.get().closedAuctionHistory;
+		output.totalEntries = state.get().closedAuctionHistoryCounter;
+	}
+
+	/**
+	 * @brief Returns whether the temporary fee override routes every fee to development.
+	 */
+	PUBLIC_FUNCTION(GetRouteAllFeesToDevelopment) { output.enabled = state.get().routeAllFeesToDevelopment; }
+
+	/**
 	 * @brief Transfers share management rights for an asset position to another managing contract.
 	 * @note The caller must currently possess at least the requested number of shares.
 	 */
@@ -2903,7 +2993,7 @@ struct NOST : public ContractBase
 		}
 
 		if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares, input.newManagingContractIndex,
-		                      input.newManagingContractIndex, 0) < 0)
+		                      input.newManagingContractIndex, state.get().qxTransferFee) < 0)
 		{
 			// error
 			output.transferredNumberOfShares = 0;
@@ -2991,21 +3081,45 @@ protected:
 		           10000ULL;
 	}
 
-	static uint64 getAuctionShareholderFeeBasisPoints(uint64 grossAmount, const ContractState<StateData, CONTRACT_INDEX>& state)
+	static uint64 getAuctionShareholderFeeBasisPoints(uint64 grossAmount, const StateData& state)
 	{
 		if (grossAmount <= NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_1)
 		{
-			return state.get().shareholderFeeBasisPointsTier1;
+			return state.shareholderFeeBasisPointsTier1;
 		}
 		if (grossAmount <= NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_2)
 		{
-			return state.get().shareholderFeeBasisPointsTier2;
+			return state.shareholderFeeBasisPointsTier2;
 		}
 		if (grossAmount <= NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_3)
 		{
-			return state.get().shareholderFeeBasisPointsTier3;
+			return state.shareholderFeeBasisPointsTier3;
 		}
-		return state.get().shareholderFeeBasisPointsTier4;
+		return state.shareholderFeeBasisPointsTier4;
+	}
+
+	static uint64 getAuctionShareholderFeeBasisPoints(uint64 grossAmount, const ContractState<StateData, CONTRACT_INDEX>& state)
+	{
+		return getAuctionShareholderFeeBasisPoints(grossAmount, state.get());
+	}
+
+	/**
+	 * @brief Computes the exact auction fee split without performing transfers.
+	 * @note Keep this helper pure so tests can reuse the same arithmetic as `DistributeAuctionRevenue`.
+	 */
+	static void calculateAuctionRevenueBreakdown(uint64 grossAmount, const ContractState<StateData, CONTRACT_INDEX>& state, AuctionRevenueBreakdown& output)
+	{
+		output.sellerPayout = grossAmount;
+		output.shareholderFeeBasisPoints = getAuctionShareholderFeeBasisPoints(grossAmount, state);
+		output.shareholderFeeAmount = div<uint64>(smul(grossAmount, output.shareholderFeeBasisPoints), 10000ULL);
+		output.shareholderDividendAmount = div<uint64>(smul(output.shareholderFeeAmount, state.get().shareholderDividendBasisPoints), 10000ULL);
+		output.managementFeeAmount = div<uint64>(smul(grossAmount, state.get().managementFeeBasisPoints), 10000ULL);
+		output.developmentFeeAmount = div<uint64>(smul(grossAmount, state.get().developmentFeeBasisPoints), 10000ULL);
+		output.takeoverCoordinatorBaseAmount = div<uint64>(smul(grossAmount, state.get().takeoverCoordinatorFeeBasisPoints), 10000ULL);
+		output.takeoverCoordinatorFeeAmount =
+		    output.takeoverCoordinatorBaseAmount + (output.shareholderFeeAmount - output.shareholderDividendAmount);
+		output.sellerPayout = grossAmount - output.shareholderFeeAmount - output.managementFeeAmount - output.developmentFeeAmount -
+		                      output.takeoverCoordinatorBaseAmount;
 	}
 
 	static sint64 getCreateAuctionFee(EAuctionVisibility visibility, const ContractState<StateData, CONTRACT_INDEX>& state)
@@ -3024,6 +3138,18 @@ protected:
 	}
 
 	static bool isZeroAsset(const Asset& asset) { return asset.assetName == 0 && isZero(asset.issuer); }
+
+	/** @brief Returns whether the runtime fee override routes every auction fee to the development wallet. */
+	static bool routeAllFeesToDevelopment(const QPI::ContractState<StateData, CONTRACT_INDEX>& state)
+	{
+		return state.get().routeAllFeesToDevelopment;
+	}
+
+	static void addClosedAuctionToHistory(QPI::ContractState<StateData, CONTRACT_INDEX>& state, const id& auctionId)
+	{
+		state.mut().closedAuctionHistory.set(mod(state.get().closedAuctionHistoryCounter, state.get().closedAuctionHistory.capacity()), auctionId);
+		state.mut().closedAuctionHistoryCounter = sadd(state.get().closedAuctionHistoryCounter, 1ULL);
+	}
 
 	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
 
