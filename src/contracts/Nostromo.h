@@ -505,7 +505,7 @@ struct NOST : public ContractBase
 	struct GetAuction_output
 	{
 		/** @brief Persistent auction data stored for the requested auction. */
-		AuctionData auction;
+		Array<AuctionData, 1> auction;
 	};
 
 	/** @brief Input payload used to fetch one participant record from an auction. */
@@ -2946,7 +2946,7 @@ struct NOST : public ContractBase
 	 * @brief Returns the stored state of one auction.
 	 * @note The response contains the full persistent `AuctionData` record for the requested auction identifier.
 	 */
-	PUBLIC_FUNCTION(GetAuction) { state.get().auctionList.get(input.auctionId, output.auction); }
+	PUBLIC_FUNCTION(GetAuction) { state.get().auctionList.get(input.auctionId, *reinterpret_cast<AuctionData*>(&output.auction)); }
 
 	/**
 	 * @brief Returns the stored bid state of one wallet in one auction.
@@ -3159,7 +3159,8 @@ protected:
 	 * @brief Computes the exact auction fee split without performing transfers.
 	 * @note Keep this helper pure so tests can reuse the same arithmetic as `DistributeAuctionRevenue`.
 	 */
-	static void calculateAuctionRevenueBreakdown(uint64 grossAmount, const ContractState<StateData, CONTRACT_INDEX>& state, AuctionRevenueBreakdown& output)
+	static void calculateAuctionRevenueBreakdown(uint64 grossAmount, const ContractState<StateData, CONTRACT_INDEX>& state,
+	                                             AuctionRevenueBreakdown& output)
 	{
 		output.sellerPayout = grossAmount;
 		output.shareholderFeeBasisPoints = getAuctionShareholderFeeBasisPoints(grossAmount, state);
@@ -3168,8 +3169,7 @@ protected:
 		output.managementFeeAmount = div<uint64>(smul(grossAmount, state.get().managementFeeBasisPoints), 10000ULL);
 		output.developmentFeeAmount = div<uint64>(smul(grossAmount, state.get().developmentFeeBasisPoints), 10000ULL);
 		output.takeoverCoordinatorBaseAmount = div<uint64>(smul(grossAmount, state.get().takeoverCoordinatorFeeBasisPoints), 10000ULL);
-		output.takeoverCoordinatorFeeAmount =
-		    output.takeoverCoordinatorBaseAmount + (output.shareholderFeeAmount - output.shareholderDividendAmount);
+		output.takeoverCoordinatorFeeAmount = output.takeoverCoordinatorBaseAmount + (output.shareholderFeeAmount - output.shareholderDividendAmount);
 		output.sellerPayout = grossAmount - output.shareholderFeeAmount - output.managementFeeAmount - output.developmentFeeAmount -
 		                      output.takeoverCoordinatorBaseAmount;
 	}
