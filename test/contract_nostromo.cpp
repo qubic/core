@@ -400,6 +400,13 @@ public:
 		state()->calculateAuctionRevenueBreakdown(grossAmount, output);
 	}
 
+	sint64 expectedDividendPoolIncrease(uint64 addedDividendAmount) const
+	{
+		const uint64 poolBefore = stateData().auctionShareholderDividendPool;
+		const uint64 poolAfterFunding = poolBefore + addedDividendAmount;
+		return static_cast<sint64>(poolAfterFunding % NUMBER_OF_COMPUTORS) - static_cast<sint64>(poolBefore);
+	}
+
 	uint64 getAuctionShareholderFeeBasisPoints(uint64 grossAmount) { return state()->getAuctionShareholderFeeBasisPoints(grossAmount); }
 
 	static id managementWallet()
@@ -1277,6 +1284,7 @@ TEST(ContractNostromoAuction, EndTickFinalizesStandardAuctionAtSalePriceAuction)
 
 		NOST::AuctionRevenueBreakdown expectedRevenue{};
 		nostromo.calculateAuctionRevenueBreakdown(10000ULL, expectedRevenue);
+		const sint64 expectedDividendPoolIncrease = nostromo.expectedDividendPoolIncrease(expectedRevenue.shareholderDividendAmount);
 
 		const auto createOutput = nostromo.createAuction(
 		    seller, ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(asset, 1), 10000, 10000, 10));
@@ -1308,7 +1316,7 @@ TEST(ContractNostromoAuction, EndTickFinalizesStandardAuctionAtSalePriceAuction)
 			EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, expectedRevenue.managementFeeAmount);
 			EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, expectedRevenue.developmentFeeAmount);
 			EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore, expectedRevenue.takeoverCoordinatorFeeAmount);
-			EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore, expectedRevenue.shareholderDividendAmount);
+			EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore, expectedDividendPoolIncrease);
 		}
 	}
 }
@@ -1624,6 +1632,7 @@ TEST(ContractNostromoAuction, ShareholderFeeTiersAreAppliedAuction)
 			const Asset asset{seller, cases[caseIndex].assetName};
 			NOST::AuctionRevenueBreakdown expectedRevenue{};
 			nostromo.calculateAuctionRevenueBreakdown(cases[caseIndex].grossAmount, expectedRevenue);
+			const sint64 expectedDividendPoolIncrease = nostromo.expectedDividendPoolIncrease(expectedRevenue.shareholderDividendAmount);
 
 			nostromo.setRouteAllFeesToDevelopment(routeMode);
 			EXPECT_EQ(nostromo.issueAsset(seller, cases[caseIndex].assetName, 1), 1);
@@ -1660,7 +1669,7 @@ TEST(ContractNostromoAuction, ShareholderFeeTiersAreAppliedAuction)
 				EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, expectedRevenue.developmentFeeAmount);
 				EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore,
 				          expectedRevenue.takeoverCoordinatorFeeAmount);
-				EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore, expectedRevenue.shareholderDividendAmount);
+				EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore, expectedDividendPoolIncrease);
 			}
 		}
 	}
