@@ -386,7 +386,7 @@ const QpiContextProcedureCall* QPI::QpiContextProcedureCall::__qpiConstructProce
     if (system.epoch < contractDescriptions[procContractIndex].constructionEpoch
         || system.epoch >= contractDescriptions[procContractIndex].destructionEpoch)
     {
-        callError = CallErrorContractInErrorState;
+        callError = CallErrorContractInactive;
         return nullptr;
     }
 
