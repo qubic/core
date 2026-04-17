@@ -1326,6 +1326,22 @@ struct NOST : public ContractBase
 		}
 
 		state.mut().isPostBeginEpochPauseArmed = 1;
+		if (!state.get().isAuctionTimerPaused)
+		{
+			state.mut().isAuctionTimerPaused = 1;
+			state.mut().auctionTimerPauseStartedAt = qpi.now();
+			state.mut().auctionTimerPauseEndsAt = qpi.now();
+			return;
+		}
+
+		if (!state.get().auctionTimerPauseStartedAt.isValid() || qpi.now() < state.get().auctionTimerPauseStartedAt)
+		{
+			state.mut().auctionTimerPauseStartedAt = qpi.now();
+		}
+		if (!state.get().auctionTimerPauseEndsAt.isValid() || qpi.now() > state.get().auctionTimerPauseEndsAt)
+		{
+			state.mut().auctionTimerPauseEndsAt = qpi.now();
+		}
 	}
 
 	END_EPOCH()
@@ -1468,12 +1484,48 @@ struct NOST : public ContractBase
 	PRIVATE_PROCEDURE_WITH_LOCALS(SyncAuctionPauseState)
 	{
 		locals.currentDate = qpi.now();
-		if (state.get().isPostBeginEpochPauseArmed && (qpi.tick() - qpi.initialTick()) >= NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS)
+		CALL(GetAuctionPauseState, locals.getAuctionPauseStateInput, locals.getAuctionPauseStateOutput);
+
+		if (state.get().isPostBeginEpochPauseArmed)
 		{
+			if ((qpi.tick() - qpi.initialTick()) < NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS)
+			{
+				if (!state.get().isAuctionTimerPaused)
+				{
+					state.mut().isAuctionTimerPaused = 1;
+					state.mut().auctionTimerPauseStartedAt = locals.currentDate;
+					state.mut().auctionTimerPauseEndsAt = locals.currentDate;
+				}
+				else
+				{
+					if (!state.get().auctionTimerPauseStartedAt.isValid())
+					{
+						state.mut().auctionTimerPauseStartedAt = locals.currentDate;
+					}
+					if (!state.get().auctionTimerPauseEndsAt.isValid() || locals.currentDate > state.get().auctionTimerPauseEndsAt)
+					{
+						state.mut().auctionTimerPauseEndsAt = locals.currentDate;
+					}
+				}
+
+				if (locals.getAuctionPauseStateOutput.isPaused)
+				{
+					if (!state.get().auctionTimerPauseStartedAt.isValid() ||
+					    locals.getAuctionPauseStateOutput.pauseStartedAt < state.get().auctionTimerPauseStartedAt)
+					{
+						state.mut().auctionTimerPauseStartedAt = locals.getAuctionPauseStateOutput.pauseStartedAt;
+					}
+					if (!state.get().auctionTimerPauseEndsAt.isValid() ||
+					    locals.getAuctionPauseStateOutput.pauseEndsAt > state.get().auctionTimerPauseEndsAt)
+					{
+						state.mut().auctionTimerPauseEndsAt = locals.getAuctionPauseStateOutput.pauseEndsAt;
+					}
+				}
+				return;
+			}
+
 			state.mut().isPostBeginEpochPauseArmed = 0;
 		}
-
-		CALL(GetAuctionPauseState, locals.getAuctionPauseStateInput, locals.getAuctionPauseStateOutput);
 
 		if (locals.getAuctionPauseStateOutput.isPaused)
 		{
