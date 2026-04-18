@@ -974,7 +974,7 @@ TEST(ContractQraffle, GetFunctions)
             
             expectedTotalBurnAmount += (totalQuRaffleAmount * QRAFFLE_BURN_FEE) / 100;
             expectedTotalCharityAmount += (totalQuRaffleAmount * QRAFFLE_CHARITY_FEE) / 100;
-            expectedTotalShareholderAmount += ((totalQuRaffleAmount * QRAFFLE_SHRAEHOLDER_FEE) / 100) / 676 * 676;
+            expectedTotalShareholderAmount += ((totalQuRaffleAmount * QRAFFLE_SHAREHOLDER_FEE) / 100) / 676 * 676;
             expectedTotalRegisterAmount += ((totalQuRaffleAmount * QRAFFLE_REGISTER_FEE) / 100) / registerCount * registerCount;
             expectedTotalFeeAmount += (totalQuRaffleAmount * QRAFFLE_FEE) / 100;
             
