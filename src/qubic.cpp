@@ -2856,11 +2856,14 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
 
     m256i data[3] = { transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce };
     static_assert(sizeof(data) == 3 * 32, "Unexpected array size");
-    unsigned int flagIndex;
-    KangarooTwelve(data, sizeof(data), &flagIndex, sizeof(flagIndex));
-    if (!(minerSolutionFlags[flagIndex >> 6] & (1ULL << (flagIndex & 63))))
+    unsigned int flagIndices[2];
+    KangarooTwelve(data, sizeof(data), flagIndices, sizeof(flagIndices));
+    // Two independent flag checks to reduce false-positive collision probability from ~N/2^32 to ~N^2/2^64
+    if (!(minerSolutionFlags[flagIndices[0] >> 6] & (1ULL << (flagIndices[0] & 63)))
+        || !(minerSolutionFlags[flagIndices[1] >> 6] & (1ULL << (flagIndices[1] & 63))))
     {
-        minerSolutionFlags[flagIndex >> 6] |= (1ULL << (flagIndex & 63));
+        minerSolutionFlags[flagIndices[0] >> 6] |= (1ULL << (flagIndices[0] & 63));
+        minerSolutionFlags[flagIndices[1] >> 6] |= (1ULL << (flagIndices[1] & 63));
 
         unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
         score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(transaction->nonce.m256i_u8);
@@ -3602,9 +3605,10 @@ static void processTick(unsigned long long processorNumber)
                                 const m256i& solution_nonce = *(m256i*)(transaction->inputPtr() + 32);
                                 m256i data[3] = { transaction->sourcePublicKey, solution_miningSeed, solution_nonce };
                                 static_assert(sizeof(data) == 3 * 32, "Unexpected array size");
-                                unsigned int flagIndex;
-                                KangarooTwelve(data, sizeof(data), &flagIndex, sizeof(flagIndex));
-                                if (!(minerSolutionFlags[flagIndex >> 6] & (1ULL << (flagIndex & 63))))
+                                unsigned int flagIndices[2];
+                                KangarooTwelve(data, sizeof(data), flagIndices, sizeof(flagIndices));
+                                if (!(minerSolutionFlags[flagIndices[0] >> 6] & (1ULL << (flagIndices[0] & 63)))
+                                    || !(minerSolutionFlags[flagIndices[1] >> 6] & (1ULL << (flagIndices[1] & 63))))
                                 {
                                     score->addTask(transaction->sourcePublicKey, solution_miningSeed, solution_nonce);
                                 }
