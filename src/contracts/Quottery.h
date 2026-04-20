@@ -93,7 +93,7 @@ public:
         uint64 shareholdersRevenue;
         uint64 operationRevenue;
         uint64 burnedAmount;
-        uint64 feePerDay;
+        uint64 mFeePerDay;
         uint64 antiSpamAmount;
         uint64 depositAmountForDispute;
         id gameOperator;
@@ -151,12 +151,12 @@ public:
         bit justAdded;
     };
     // gov struct
-    struct QtryGOV // votable by QTRYGOV holders
+    struct QtryGOV // votable by mQTRYGOVIdentifier holders
     {
         uint64 mShareHolderFee;
         uint64 mBurnFee;
         uint64 mOperationFee;
-        sint64 feePerDay;
+        sint64 mFeePerDay;
         sint64 mDepositAmountForDispute;
         id mOperationId;
         bool isValid()
@@ -207,8 +207,8 @@ public:
         uint64 mOperationRevenue;
         uint64 mDistributedOperationRevenue;
         uint64 mBurnedAmount;
-        Asset QUSD;
-        Asset QTRYGOV;
+        Asset mQUSDIdentifier;
+        Asset mQTRYGOVIdentifier;
         sint64 wholeSharePrice;
         QtryGOV mQtryGov;
         struct OperationParams // can be changed by operation team
@@ -216,10 +216,10 @@ public:
             HashMap<id, uint64, 8192 * X_MULTIPLIER> discountedFeeForUsers; // for professional market maker
             sint64 mAntiSpamAmount; // in QUs
         } mOperationParams;
-        Array< proposalVoter, 1024> voters;
-        HashMap<id, sint32, 1024> voteMap;
-        Array<GovHolder, 1024> gov;
-        Array<sint64, 1024> accumulatedSum;
+        Array< proposalVoter, 1024> mGovVoters;
+        HashMap<id, sint32, 1024> mVoteMap;
+        Array<GovHolder, 1024> mGovArray;
+        Array<sint64, 1024> mAccumulatedSum;
     };
 
 
@@ -501,7 +501,7 @@ protected:
             }
         }
 
-        if (qpi.transferShareOwnershipAndPossession(state.get().QUSD.assetName, state.get().QUSD.issuer, SELF, SELF, locals.total - locals.feeTotal, input.receiver) < 0)
+        if (qpi.transferShareOwnershipAndPossession(state.get().mQUSDIdentifier.assetName, state.get().mQUSDIdentifier.issuer, SELF, SELF, locals.total - locals.feeTotal, input.receiver) < 0)
         {
             return;
         }
@@ -1399,14 +1399,14 @@ public:
         {
             return;
         }
-        locals.userBalance = qpi.numberOfShares(state.get().QUSD, { qpi.invocator(), SELF_INDEX }, { qpi.invocator(), SELF_INDEX });
+        locals.userBalance = qpi.numberOfShares(state.get().mQUSDIdentifier, { qpi.invocator(), SELF_INDEX }, { qpi.invocator(), SELF_INDEX });
         locals.totalCost = smul(input.amount, input.price);
         // verify enough amount
         if (locals.totalCost > locals.userBalance)
         {
             return;
         }
-        if (qpi.transferShareOwnershipAndPossession(state.get().QUSD.assetName, state.get().QUSD.issuer, qpi.invocator(), qpi.invocator(), locals.totalCost, SELF) < 0)
+        if (qpi.transferShareOwnershipAndPossession(state.get().mQUSDIdentifier.assetName, state.get().mQUSDIdentifier.issuer, qpi.invocator(), qpi.invocator(), locals.totalCost, SELF) < 0)
         {
             // critical error
             return;
@@ -2001,7 +2001,7 @@ public:
         output.operationRevenue = state.get().mOperationRevenue;
         output.nIssuedEvent = state.get().mCurrentEventID;
         output.burnedAmount = state.get().mBurnedAmount;
-        output.feePerDay = state.get().mQtryGov.feePerDay;
+        output.mFeePerDay = state.get().mQtryGov.mFeePerDay;
         output.antiSpamAmount = state.get().mOperationParams.mAntiSpamAmount;
         output.depositAmountForDispute = state.get().mQtryGov.mDepositAmountForDispute;
     }
@@ -2131,7 +2131,7 @@ public:
         locals.duration = input.qei.endDate.durationMicrosec(locals.dtNow);
         locals.duration = divUp(locals.duration, 86400000000ULL); // 86400000000 us per day
 
-        locals.fee = locals.duration * state.get().mQtryGov.feePerDay;
+        locals.fee = locals.duration * state.get().mQtryGov.mFeePerDay;
 
 
         // fee is higher than sent amount, exit
@@ -2392,15 +2392,15 @@ public:
         state.mut().mRecentActiveEvent.setAll(NULL_INDEX);
         state.mut().wholeSharePrice = 100000;
 
-        qpi.issueAsset(24294015856956497ULL, SELF, 0, 676, 0); // QTRYGOV
-        state.mut().QTRYGOV.assetName = 24294015856956497ULL;
-        state.mut().QTRYGOV.issuer = SELF;
+        qpi.issueAsset(24294015856956497ULL, SELF, 0, 676, 0); // mQTRYGOVIdentifier
+        state.mut().mQTRYGOVIdentifier.assetName = 24294015856956497ULL;
+        state.mut().mQTRYGOVIdentifier.issuer = SELF;
 
-        // temp replacement for qusd
-        state.mut().QUSD.assetName = 310652322119ULL; // GARTH
-        state.mut().QUSD.issuer = ID(_P, _H, _O, _E, _N, _I, _X, _C, _L, _Q, _O, _B, _H, _D, _Z, _C, _H, _J, _O, _C, _K, _C, _P, _Z, _V, _T, _K, _A, _L, _Q, _B, _M, _X, _Y, _O, _E, _D, _B, _U, _H, _S, _D, _C, _J, _R, _M, _T, _U, _C, _U, _B, _P, _L, _S, _U, _F);
+        // temp replacement for mQUSDIdentifier
+        state.mut().mQUSDIdentifier.assetName = 310652322119ULL; // GARTH
+        state.mut().mQUSDIdentifier.issuer = ID(_P, _H, _O, _E, _N, _I, _X, _C, _L, _Q, _O, _B, _H, _D, _Z, _C, _H, _J, _O, _C, _K, _C, _P, _Z, _V, _T, _K, _A, _L, _Q, _B, _M, _X, _Y, _O, _E, _D, _B, _U, _H, _S, _D, _C, _J, _R, _M, _T, _U, _C, _U, _B, _P, _L, _S, _U, _F);
         
-        // distribute QTRYGOV to current shareholders
+        // distribute mQTRYGOVIdentifier to current shareholders
         locals.qtryAsset.assetName = QUOTTERY_CONTRACT_ASSET_NAME;
         locals.qtryAsset.issuer = NULL_ID;
 
@@ -2409,7 +2409,7 @@ public:
         {
             if (locals.qtryIterator.numberOfOwnedShares() > 0)
             {
-                qpi.transferShareOwnershipAndPossession(state.mut().QTRYGOV.assetName, state.mut().QTRYGOV.issuer, SELF, SELF, locals.qtryIterator.numberOfOwnedShares(), locals.qtryIterator.owner());
+                qpi.transferShareOwnershipAndPossession(state.mut().mQTRYGOVIdentifier.assetName, state.mut().mQTRYGOVIdentifier.issuer, SELF, SELF, locals.qtryIterator.numberOfOwnedShares(), locals.qtryIterator.owner());
             }
         }
     }
@@ -2571,7 +2571,7 @@ public:
                     if (locals.iter.numberOfPossessedShares() > 0)
                     {
                         locals.payout = smul(locals.payoutPerShare, (uint64)locals.iter.numberOfPossessedShares());
-                        if (qpi.transferShareOwnershipAndPossession(state.get().QUSD.assetName, state.get().QUSD.issuer, SELF, SELF, locals.payout, locals.iter.possessor()) < 0)
+                        if (qpi.transferShareOwnershipAndPossession(state.get().mQUSDIdentifier.assetName, state.get().mQUSDIdentifier.issuer, SELF, SELF, locals.payout, locals.iter.possessor()) < 0)
                         {
                             //critical error
                         }
@@ -2587,7 +2587,7 @@ public:
         if (state.get().mOperationRevenue > state.get().mDistributedOperationRevenue)
         {
             locals.payout = state.get().mOperationRevenue - state.get().mDistributedOperationRevenue;
-            if (qpi.transferShareOwnershipAndPossession(state.get().QUSD.assetName, state.get().QUSD.issuer, SELF, SELF, locals.payout, state.get().mQtryGov.mOperationId) < 0)
+            if (qpi.transferShareOwnershipAndPossession(state.get().mQUSDIdentifier.assetName, state.get().mQUSDIdentifier.issuer, SELF, SELF, locals.payout, state.get().mQtryGov.mOperationId) < 0)
             {
                 //critical error
             }
@@ -2622,13 +2622,13 @@ public:
             if (qpi.invocationReward() < state.get().mOperationParams.mAntiSpamAmount) return;
             if (qpi.invocationReward() > state.get().mOperationParams.mAntiSpamAmount) qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.get().mOperationParams.mAntiSpamAmount);
         }
-        locals.amountOfShares = qpi.numberOfShares(state.get().QTRYGOV, { qpi.invocator(), SELF_INDEX }, { qpi.invocator(), SELF_INDEX });
+        locals.amountOfShares = qpi.numberOfShares(state.get().mQTRYGOVIdentifier, { qpi.invocator(), SELF_INDEX }, { qpi.invocator(), SELF_INDEX });
         if (locals.amountOfShares == 0) return;
         // check duplicated publickey
         locals.chosenIndex = -1;
         for (locals.i = 0; locals.i < 676; locals.i++)
         {
-            if (state.get().voters.get(locals.i).publicKey == qpi.invocator())
+            if (state.get().mGovVoters.get(locals.i).publicKey == qpi.invocator())
             {
                 locals.chosenIndex = locals.i;
                 break;
@@ -2639,7 +2639,7 @@ public:
             // get any spot that is not valid:  epoch != qpi.epoch
             for (locals.i = 0; locals.i < 676; locals.i++)
             {
-                if (state.get().voters.get(locals.i).proposedEpoch != qpi.epoch())
+                if (state.get().mGovVoters.get(locals.i).proposedEpoch != qpi.epoch())
                 {
                     locals.chosenIndex = locals.i;
                     break;
@@ -2652,19 +2652,19 @@ public:
             locals.pv.amountOfShares = locals.amountOfShares;
             locals.pv.proposed = input.proposed;
             locals.pv.proposedEpoch = qpi.epoch();
-            state.mut().voters.set(locals.chosenIndex, locals.pv);
+            state.mut().mGovVoters.set(locals.chosenIndex, locals.pv);
         }
         // update old votes, invalidate the slot if needed
         for (locals.i = 0; locals.i < 676; locals.i++)
         {
-            locals.pv = state.get().voters.get(locals.i);
+            locals.pv = state.get().mGovVoters.get(locals.i);
             if (locals.pv.proposedEpoch == qpi.epoch())
             {
-                locals.amountOfShares = qpi.numberOfShares(state.get().QTRYGOV, { locals.pv.publicKey, SELF_INDEX }, { locals.pv.publicKey, SELF_INDEX });
+                locals.amountOfShares = qpi.numberOfShares(state.get().mQTRYGOVIdentifier, { locals.pv.publicKey, SELF_INDEX }, { locals.pv.publicKey, SELF_INDEX });
                 if (locals.amountOfShares == 0)
                 {
                     locals.pv.proposedEpoch = 0;
-                    state.mut().voters.set(locals.i, locals.pv);
+                    state.mut().mGovVoters.set(locals.i, locals.pv);
                 }
             }
         }
@@ -2700,20 +2700,20 @@ public:
     PRIVATE_PROCEDURE_WITH_LOCALS(FinalizeProposalAndGovernment)
     {
         // clear stale vote counts from previous epochs
-        state.mut().voteMap.cleanup();
+        state.mut().mVoteMap.reset();
         locals.maxVoteCount = -1;
         for (locals.i = 0; locals.i < 676; locals.i++)
         {
-            locals.pv = state.get().voters.get(locals.i);
+            locals.pv = state.get().mGovVoters.get(locals.i);
             if (locals.pv.proposedEpoch == qpi.epoch())
             {
-                locals.pv.amountOfShares = qpi.numberOfShares(state.get().QTRYGOV, { locals.pv.publicKey, SELF_INDEX }, { locals.pv.publicKey, SELF_INDEX });
+                locals.pv.amountOfShares = qpi.numberOfShares(state.get().mQTRYGOVIdentifier, { locals.pv.publicKey, SELF_INDEX }, { locals.pv.publicKey, SELF_INDEX });
                 locals.proposalHash = qpi.K12(locals.pv.proposed);
-                if (!state.get().voteMap.get(locals.proposalHash, locals.currentPoint))
+                if (!state.get().mVoteMap.get(locals.proposalHash, locals.currentPoint))
                 {
                     locals.currentPoint = 0;
                 }
-                state.mut().voteMap.set(locals.proposalHash, locals.currentPoint + sint32(locals.pv.amountOfShares));
+                state.mut().mVoteMap.set(locals.proposalHash, locals.currentPoint + sint32(locals.pv.amountOfShares));
                 if (locals.maxVoteCount < locals.currentPoint + sint32(locals.pv.amountOfShares))
                 {
                     locals.maxVoteCount = locals.currentPoint + sint32(locals.pv.amountOfShares);
@@ -2728,12 +2728,12 @@ public:
         // reset all vote slots
         for (locals.i = 0; locals.i < 676; locals.i++)
         {
-            locals.pv = state.get().voters.get(locals.i);
+            locals.pv = state.get().mGovVoters.get(locals.i);
             locals.pv.proposedEpoch = 0;
-            state.mut().voters.set(locals.i, locals.pv);
+            state.mut().mGovVoters.set(locals.i, locals.pv);
         }
         // checking for GOV holders activities - here we only transfer both ownership and possession at the same time, so we only need to check the ownership
-        locals.aoi = AssetOwnershipIterator(state.get().QTRYGOV);
+        locals.aoi = AssetOwnershipIterator(state.get().mQTRYGOVIdentifier);
         locals.govCount = 0;
         locals.govSum = 0;
         locals.redistributeSum = 0;
@@ -2754,16 +2754,16 @@ public:
                 // this ID doesn't even have 1QU, need to move the gov token
                 locals.shouldRedistribute = true;
             }
-            locals.amountOfShares = qpi.numberOfShares(state.get().QTRYGOV, { locals.aoi.owner(), SELF_INDEX }, { locals.aoi.owner(), SELF_INDEX });
+            locals.amountOfShares = qpi.numberOfShares(state.get().mQTRYGOVIdentifier, { locals.aoi.owner(), SELF_INDEX }, { locals.aoi.owner(), SELF_INDEX });
             if (locals.shouldRedistribute)
             {
                 // transfer this amount of GOV token to this SC
-                qpi.transferShareOwnershipAndPossession(state.get().QTRYGOV.assetName, state.get().QTRYGOV.issuer, locals.aoi.owner(), locals.aoi.owner(), locals.amountOfShares, SELF);
+                qpi.transferShareOwnershipAndPossession(state.get().mQTRYGOVIdentifier.assetName, state.get().mQTRYGOVIdentifier.issuer, locals.aoi.owner(), locals.aoi.owner(), locals.amountOfShares, SELF);
                 locals.redistributeSum += locals.amountOfShares;
             }
             else
             {
-                state.mut().gov.set(locals.govCount, { locals.aoi.owner() , locals.amountOfShares });
+                state.mut().mGovArray.set(locals.govCount, { locals.aoi.owner() , locals.amountOfShares });
                 locals.govCount++;
                 locals.govSum += locals.amountOfShares;
             }
@@ -2771,11 +2771,11 @@ public:
         }
         if (locals.redistributeSum && locals.govCount > 0 && locals.govSum > 0)
         {
-            state.mut().accumulatedSum.set(0, state.get().gov.get(0).amount);
+            state.mut().mAccumulatedSum.set(0, state.get().mGovArray.get(0).amount);
             for (locals.i = 1; locals.i < locals.govCount; locals.i++)
             {
-                locals.prev = state.get().accumulatedSum.get(locals.i - 1);
-                state.mut().accumulatedSum.set(locals.i, locals.prev + state.get().gov.get(locals.i).amount);
+                locals.prev = state.get().mAccumulatedSum.get(locals.i - 1);
+                state.mut().mAccumulatedSum.set(locals.i, locals.prev + state.get().mGovArray.get(locals.i).amount);
             }
             // get the pseudo random from spectrum
             locals.seed = qpi.getPrevSpectrumDigest();
@@ -2786,11 +2786,11 @@ public:
                 locals.rd = mod(locals.seed.u32._0, uint32(locals.govSum));
                 for (locals.i = 0; locals.i < locals.govCount; locals.i++)
                 {
-                    if (locals.rd < state.get().accumulatedSum.get(locals.i))
+                    if (locals.rd < state.get().mAccumulatedSum.get(locals.i))
                     {
                         // airdrop from SC to active holder
-                        locals.owner = state.get().gov.get(locals.i).publicKey;
-                        qpi.transferShareOwnershipAndPossession(state.get().QTRYGOV.assetName, state.get().QTRYGOV.issuer, SELF, SELF, 1, locals.owner);
+                        locals.owner = state.get().mGovArray.get(locals.i).publicKey;
+                        qpi.transferShareOwnershipAndPossession(state.get().mQTRYGOVIdentifier.assetName, state.get().mQTRYGOVIdentifier.issuer, SELF, SELF, 1, locals.owner);
                         locals.redistributeSum--;
                         break;
                     }
@@ -2851,10 +2851,10 @@ public:
         // accumulate votes per unique proposal hash
         for (locals.i = 0; locals.i < 676; locals.i++)
         {
-            locals.pv = state.get().voters.get(locals.i);
+            locals.pv = state.get().mGovVoters.get(locals.i);
             if (locals.pv.proposedEpoch != qpi.epoch()) continue;
 
-            locals.amountOfShares = qpi.numberOfShares(state.get().QTRYGOV, { locals.pv.publicKey, SELF_INDEX }, { locals.pv.publicKey, SELF_INDEX });
+            locals.amountOfShares = qpi.numberOfShares(state.get().mQTRYGOVIdentifier, { locals.pv.publicKey, SELF_INDEX }, { locals.pv.publicKey, SELF_INDEX });
             if (locals.amountOfShares == 0) continue;
 
             locals.h = qpi.K12(locals.pv.proposed);
@@ -2916,7 +2916,7 @@ public:
     PUBLIC_FUNCTION(GetApprovedAmount)
     {
         output.amount = qpi.numberOfShares(
-            state.get().QUSD,
+            state.get().mQUSDIdentifier,
             { input.pk, SELF_INDEX },
             { input.pk, SELF_INDEX }
         );
@@ -2934,7 +2934,7 @@ public:
     PUBLIC_PROCEDURE(TransferQUSD) // that is managed by this SC
     {
         if (input.amount <= 0) { output.amount = -1; return; }
-        if (qpi.transferShareOwnershipAndPossession(state.get().QUSD.assetName, state.get().QUSD.issuer, qpi.invocator(), qpi.invocator(), input.amount, input.receiver) < 0)
+        if (qpi.transferShareOwnershipAndPossession(state.get().mQUSDIdentifier.assetName, state.get().mQUSDIdentifier.issuer, qpi.invocator(), qpi.invocator(), input.amount, input.receiver) < 0)
         {
             output.amount = -1;
         }
@@ -2956,7 +2956,7 @@ public:
     PUBLIC_PROCEDURE(TransferQTRYGOV) // that is managed by this SC
     {
         if (input.amount <= 0) { output.amount = -1; return; }
-        if (qpi.transferShareOwnershipAndPossession(state.get().QTRYGOV.assetName, state.get().QTRYGOV.issuer, qpi.invocator(), qpi.invocator(), input.amount, input.receiver) < 0)
+        if (qpi.transferShareOwnershipAndPossession(state.get().mQTRYGOVIdentifier.assetName, state.get().mQTRYGOVIdentifier.issuer, qpi.invocator(), qpi.invocator(), input.amount, input.receiver) < 0)
         {
             output.amount = -1;
         }
@@ -2990,8 +2990,8 @@ public:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
     {
-        // only allow to transfer mgmt right from QUSD
-        if (input.asset.assetName != state.get().QUSD.assetName || input.asset.issuer != state.get().QUSD.issuer)
+        // only allow to transfer mgmt right from mQUSDIdentifier
+        if (input.asset.assetName != state.get().mQUSDIdentifier.assetName || input.asset.issuer != state.get().mQUSDIdentifier.issuer)
         {
             return;
         }

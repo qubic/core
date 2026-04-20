@@ -22,10 +22,12 @@ static void updateEtalonTime(uint64 offsetSecond)
     system.tick = etalonTick.tick;
 }
 
-class ContractTestingQtry : public ContractTesting {
+class ContractTestingQtry : public ContractTesting 
+{
 public:
     id owner;
-    ContractTestingQtry() {
+    ContractTestingQtry() 
+    {
         initEmptySpectrum();
         initEmptyUniverse();
         INIT_CONTRACT(QUOTTERY);
@@ -46,7 +48,7 @@ public:
         QpiContextUserProcedureCall qpi(QUOTTERY_CONTRACT_INDEX, id::zero(), 0);
         {
             setMemory(state->mQtryGov, 0);
-            state->mQtryGov.feePerDay = 11337;
+            state->mQtryGov.mFeePerDay = 11337;
             state->mOperationParams.discountedFeeForUsers.cleanup();
             state->mQtryGov.mOperationId = owner; // testnet ARB
             state->mQtryGov.mBurnFee = 0;
@@ -57,10 +59,10 @@ public:
             id qtryId = id(QUOTTERY_CONTRACT_INDEX, 0, 0, 0);
             // for test only
             qpi.issueAsset(1146312017, qtryId, 0, 1000000000000000ULL, 0);
-            state->QUSD.assetName = 1146312017;
-            state->QUSD.issuer = qtryId;
+            state->mQUSDIdentifier.assetName = 1146312017;
+            state->mQUSDIdentifier.issuer = qtryId;
             state->wholeSharePrice = 100000;
-            qpi.transferShareOwnershipAndPossession(state->QUSD.assetName, state->QUSD.issuer, qtryId, qtryId, 1000000000000000ULL, state->mQtryGov.mOperationId); // transfer all to GO
+            qpi.transferShareOwnershipAndPossession(state->mQUSDIdentifier.assetName, state->mQUSDIdentifier.issuer, qtryId, qtryId, 1000000000000000ULL, state->mQtryGov.mOperationId); // transfer all to GO
         }
 
         owner = state->mQtryGov.mOperationId;
@@ -75,13 +77,13 @@ public:
     {
         auto state = getState();
         QpiContextUserProcedureCall qpi(QUOTTERY_CONTRACT_INDEX, from, 0);
-        qpi.transferShareOwnershipAndPossession(state->QUSD.assetName, state->QUSD.issuer, from, from, amount, to);
+        qpi.transferShareOwnershipAndPossession(state->mQUSDIdentifier.assetName, state->mQUSDIdentifier.issuer, from, from, amount, to);
         qpi.freeBuffer();
     }
 
     long long balanceUSD(id pk)
     {
-        return numberOfShares(getState()->QUSD,
+        return numberOfShares(getState()->mQUSDIdentifier,
             { pk, QUOTTERY_CONTRACT_INDEX },
             { pk, QUOTTERY_CONTRACT_INDEX });
     }
@@ -101,7 +103,8 @@ public:
         callSystemProcedure(QUOTTERY_CONTRACT_INDEX, END_EPOCH, expectSuccess);
     }
 
-    void CreateEvent(const QUOTTERY::CreateEvent_input& cei, const id& caller, const sint64 amount) {
+    void CreateEvent(const QUOTTERY::CreateEvent_input& cei, const id& caller, const sint64 amount) 
+    {
         increaseEnergy(caller, amount + 1); // give caller some coins
         QUOTTERY::CreateEvent_output ceo;
         invokeUserProcedure(QUOTTERY_CONTRACT_INDEX, 1, cei, ceo, caller, amount);
@@ -345,21 +348,21 @@ public:
     long long balanceQTRYGOV(const id& pk)
     {
         auto state = getState();
-        return numberOfShares(state->QTRYGOV,
+      return numberOfShares(state->mQTRYGOVIdentifier,
             { pk, QUOTTERY_CONTRACT_INDEX },
             { pk, QUOTTERY_CONTRACT_INDEX });
     }
 
     // Set up a test-only QTRYGOV asset and give `amount` shares to `user`.
     // The mainnet Reinit stores a different assetName in state than the one it issues,
-    // so this helper overrides state->QTRYGOV to a locally-issued test asset.
+    // so this helper overrides state->mQTRYGOVIdentifier to a locally-issued test asset.
     void setupTestQTRYGOV(const id& user, sint64 amount)
     {
         auto state = getState();
         id qtryId = id(QUOTTERY_CONTRACT_INDEX, 0, 0, 0);
         const uint64 testGovName = 0x564F4751ULL; // "QGOV" in Qubic 1-byte-per-char encoding
-        state->QTRYGOV.assetName = testGovName;
-        state->QTRYGOV.issuer = qtryId;
+        state->mQTRYGOVIdentifier.assetName = testGovName;
+        state->mQTRYGOVIdentifier.issuer = qtryId;
         QpiContextUserProcedureCall qpi(QUOTTERY_CONTRACT_INDEX, qtryId, 0);
         qpi.issueAsset(testGovName, qtryId, 0, amount, 0);
         qpi.transferShareOwnershipAndPossession(testGovName, qtryId, qtryId, qtryId, amount, user);
@@ -407,7 +410,7 @@ TEST(QTRYTest, CreateEvent)
 
 
 
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
     EXPECT_TRUE(state->mCurrentEventID == 1);
     QUOTTERY::QtryEventInfo onchain_qei;
     EXPECT_TRUE(state->mEventInfo.get(0, onchain_qei));
@@ -433,11 +436,11 @@ TEST(QTRYTest, CreateEvent)
         cei.qei.option0Desc.set(i, v_o0[i]);
         cei.qei.option1Desc.set(i, v_o1[i]);
     }
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
     EXPECT_TRUE(state->mCurrentEventID == 1); // not increase
 
     // invalid creator
-    qtry.CreateEvent(cei, id::randomValue(), state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, id::randomValue(), state->mQtryGov.mFeePerDay);
     EXPECT_TRUE(state->mCurrentEventID == 1); // not increase
 
     // lack of fund
@@ -479,7 +482,7 @@ TEST(QTRYTest, MatchingOrders)
 
 
 
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id traders[16];
     for (int i = 0; i < 16; i++)
@@ -602,7 +605,7 @@ TEST(QTRYTest, MatchingOrders)
     b5_bal = qtry.balanceUSD(traders[5]);
     EXPECT_TRUE(b5_bal == (100000000000ULL));
 
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
     qtry.AddBidOrder(1, 103, 0, 20000ULL, traders[0]);
     qtry.AddBidOrder(1, 103, 1, 80000ULL, traders[1]);
     qtry.AddBidOrder(1, 203, 0, 20000ULL, traders[2]);
@@ -671,7 +674,7 @@ TEST(QTRYTest, MatchingOrders)
     EXPECT_TRUE(qo.amount == 18);
     EXPECT_TRUE(qo.entity == traders[8]);
 
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
     qtry.AddBidOrder(2, 103, 1, 20000ULL, traders[0]);
     qtry.AddBidOrder(2, 103, 0, 80000ULL, traders[1]);
     qtry.AddBidOrder(2, 203, 1, 20000ULL, traders[2]);
@@ -764,7 +767,7 @@ TEST(QTRYTest, CompleteCycle)
 
 
 
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
     srand(0);
 
     sint64 total = 0;
@@ -898,7 +901,7 @@ TEST(QTRYTest, EscrowIntegrity)
 
 
 
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id trader = id::randomValue();
     increaseEnergy(trader, 100ULL * 1000000000ULL);
@@ -964,7 +967,7 @@ TEST(QTRYTest, FeeCalculation)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id seller = id::randomValue();
     id buyer = id::randomValue();
@@ -1016,7 +1019,7 @@ TEST(QTRYTest, DisputeInitialization)
     cei.qei.eid = -1;
     // Open in past is fine (started already)
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);     // Ends in 1 hour (VALID)
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     // Verify creation
     EXPECT_TRUE(state->mCurrentEventID == 1);
@@ -1066,7 +1069,7 @@ TEST(QTRYTest, JanitorCleanup_GOForceClaim)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL); // Ends in 1 hour
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id winner = id::randomValue();
     id loser = id::randomValue();
@@ -1128,7 +1131,7 @@ TEST(QTRYTest, ViewFunctions_GetOrders_Sorting_Pagination)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id trader = id::randomValue();
     increaseEnergy(trader, 100ULL * 1000000000ULL);
@@ -1146,7 +1149,8 @@ TEST(QTRYTest, ViewFunctions_GetOrders_Sorting_Pagination)
 
     // Verify Count
     int count = 0;
-    for (int i = 0; i < 256; i++) {
+    for (int i = 0; i < 256; i++) 
+    {
         if (out.orders.get(i).qo.amount > 0) count++;
     }
     EXPECT_EQ(count, 3);
@@ -1198,7 +1202,7 @@ TEST(QTRYTest, ViewFunctions_BasicInfo_RevenueAccumulation)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id t1 = id::randomValue();
     id t2 = id::randomValue();
@@ -1264,7 +1268,7 @@ TEST(QTRYTest, Matching_SweepBook_PartialFills)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id whale = id::randomValue();
     increaseEnergy(whale, 1000ULL * 1000000000ULL);
@@ -1277,10 +1281,11 @@ TEST(QTRYTest, Matching_SweepBook_PartialFills)
     id m3 = id::randomValue(); increaseEnergy(m3, 100ULL * 1000000000ULL); qtry.transferQUSD(qtry.owner, m3, 100000000000LL);
 
     // Helper lambda to mint shares so makers have something to sell
-    auto mint = [&](id user, uint64 amt) {
+    auto mint = [&](id user, uint64 amt)
+    {
         qtry.AddBidOrder(0, amt, 0, 50000, user);
         qtry.AddBidOrder(0, amt, 1, 50000, user); // Self-match mint
-        };
+    };
     mint(m1, 100);
     mint(m2, 100);
     mint(m3, 100);
@@ -1326,7 +1331,7 @@ TEST(QTRYTest, Matching_Merge_ExitLiquidity)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id holderYes = id::randomValue();
     id holderNo = id::randomValue();
@@ -1384,7 +1389,7 @@ TEST(QTRYTest, Stability_DustAttack_Rounding)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id whale = id::randomValue();
     id dust_maker = id::randomValue();
@@ -1394,7 +1399,8 @@ TEST(QTRYTest, Stability_DustAttack_Rounding)
     qtry.transferQUSD(qtry.owner, dust_maker, 100000000000LL);
 
     // 1. Create 50 dust BID orders (Amount = 1, Price = 50,000)
-    for (int i = 0; i < 50; i++) {
+    for (int i = 0; i < 50; i++)
+    {
         qtry.AddBidOrder(0, 1, 0, 50000, dust_maker);
     }
 
@@ -1427,14 +1433,15 @@ TEST(QTRYTest, Finalize_CleanupLogic)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id user = id::randomValue();
     increaseEnergy(user, 100000000000ULL);
     qtry.transferQUSD(qtry.owner, user, 100000000000LL);
 
     // 1. Create 10 Bid Orders (Open Interest)
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 10; i++)
+    {
         qtry.AddBidOrder(0, 10, 0, 10000 + i, user);
     }
 
@@ -1472,12 +1479,13 @@ TEST(QTRYTest, StressTest_ThousandTraders_ChaosMonkey)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     // 2. Initialize 1,024 Traders with Funds
     const int NUM_TRADERS = 1024;
     std::vector<id> traders(NUM_TRADERS);
-    for (int i = 0; i < NUM_TRADERS; i++) {
+    for (int i = 0; i < NUM_TRADERS; i++)
+    {
         traders[i] = id::randomValue();
         increaseEnergy(traders[i], 10000ULL * 1000000000ULL); // 10,000 QU each
         qtry.transferQUSD(qtry.owner, traders[i], 100000000000LL);
@@ -1486,14 +1494,16 @@ TEST(QTRYTest, StressTest_ThousandTraders_ChaosMonkey)
     // 3. Phase 1: Seed Liquidity (Minting Phase)
     // To have an active market, users need shares. 
     // We force minting by having everyone buy both Yes/No at 50k.
-    for (int i = 0; i < NUM_TRADERS; i++) {
+    for (int i = 0; i < NUM_TRADERS; i++)
+    {
         qtry.AddBidOrder(0, 100, 0, 50000, traders[i]); // Buy 100 YES
         qtry.AddBidOrder(0, 100, 1, 50000, traders[i]); // Buy 100 NO (Auto-Mint)
     }
 
     // Verify System State: Every trader should have 100 YES and 100 NO
     QUOTTERY::QtryOrder qo;
-    for (int i = 0; i < NUM_TRADERS; i++) {
+    for (int i = 0; i < NUM_TRADERS; i++)
+    {
         id keyYes = qtry.MakePosKey(traders[i], 0, 0);
         id keyNo = qtry.MakePosKey(traders[i], 0, 1);
         EXPECT_TRUE(state->mPositionInfo.get(keyYes, qo));
@@ -1546,7 +1556,8 @@ TEST(QTRYTest, StressTest_ThousandTraders_ChaosMonkey)
     // Scan PositionInfo (Simulated via iterating known traders for speed in GTest)
     // In real unit test environment we might not have iterator for HashMap easily exposed
     // so we iterate our known traders vector.
-    for (int i = 0; i < NUM_TRADERS; i++) {
+    for (int i = 0; i < NUM_TRADERS; i++)
+    {
         id keyYes = qtry.MakePosKey(traders[i], 0, 0);
         if (state->mPositionInfo.get(keyYes, qo)) totalYes += qo.amount;
 
@@ -1555,18 +1566,20 @@ TEST(QTRYTest, StressTest_ThousandTraders_ChaosMonkey)
     }
 
     // Scan Order Book (Locked Liquidity)
-    auto countLiquidity = [&](uint64 option) -> uint64 {
+    auto countLiquidity = [&](uint64 option) -> uint64
+    {
         uint64 sum = 0;
         id key = qtry.MakeOrderKey(0, option, QUOTTERY_ASK_BIT, id());
         auto index = state->mABOrders.headIndex(key, 0); // Start from beginning
         int safety = 0;
-        while (index != NULL_INDEX && safety++ < 100000) {
+        while (index != NULL_INDEX && safety++ < 100000)
+        {
             auto elem = state->mABOrders.element(index);
             sum += elem.amount;
             index = state->mABOrders.nextElementIndex(index);
         }
         return sum;
-        };
+    };
 
     totalYes += countLiquidity(0);
     totalNo += countLiquidity(1);
@@ -1601,7 +1614,7 @@ TEST(QTRYTest, SelfTrading_WashTrade_Integrity)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id trader = id::randomValue();
     increaseEnergy(trader, 100ULL * 1000000000ULL);
@@ -1683,7 +1696,8 @@ TEST(QTRYTest, Matching_Sweep_FullFill)
 
     // 1. Create 60 Dust BID orders
     // They all buy Option 0 at 50,000
-    for (int i = 0; i < 60; i++) {
+    for (int i = 0; i < 60; i++)
+    {
         qtry.AddBidOrder(0, 1, 0, 50000, dust_maker);
     }
 
@@ -1701,7 +1715,8 @@ TEST(QTRYTest, Matching_Sweep_FullFill)
 
     int remainingDust = 0;
     auto index = state->mABOrders.headIndex(keyBid, 50000);
-    while (index != NULL_INDEX) {
+    while (index != NULL_INDEX)
+    {
         remainingDust++;
         index = state->mABOrders.nextElementIndex(index);
     }
@@ -1731,7 +1746,7 @@ TEST(QTRYTest, Fee_DynamicUpdate_Realtime)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id maker = id::randomValue();
     id taker = id::randomValue();
@@ -1768,7 +1783,7 @@ TEST(QTRYTest, Dispute_Quorum_Failure)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
     updateEtalonTime(7200);
     qtry.PublishResult(0, 0, operation_id, state->mQtryGov.mDepositAmountForDispute);
     id disputer = id::randomValue();
@@ -1799,7 +1814,7 @@ TEST(QTRYTest, Dispute_Process_DisputerWins)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     updateEtalonTime(7200);
 
@@ -1850,7 +1865,7 @@ TEST(QTRYTest, Dispute_Process_GOWins)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     updateEtalonTime(7200);
 
@@ -1901,7 +1916,7 @@ TEST(QTRYTest, Dispute_Resolution_AutoCleanup_And_Claim)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL); // Ends in 1 hour
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id bidder = id::randomValue();
     id asker = id::randomValue();
@@ -1995,7 +2010,7 @@ TEST(QTRYTest, Dispute_Payout_Logic_Correctness)
     cei.qei.eid = -1;
 
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     updateEtalonTime(7200);
 
@@ -2067,7 +2082,7 @@ TEST(QTRYTest, Dividend_Distribution_Flow)
     DateAndTime dt = wrapped_now();
     cei.qei.eid = -1;
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id maker = id::randomValue();
     id taker = id::randomValue();
@@ -2085,9 +2100,9 @@ TEST(QTRYTest, Dividend_Distribution_Flow)
     qtry.AddAskOrder(0, 100, 0, 60000, maker);
 
     // Step C: Taker Buys 100 shares @ 60,000
-    // Transaction Volume = 100 * 60,000 = 6,000,000 QUSD.
-    // Shareholder Fee (10%) = 600,000 QUSD.
-    // Operation Fee (5%) = 300,000 QUSD.
+    // Transaction Volume = 100 * 60,000 = 6,000,000 mQUSDIdentifier.
+    // Shareholder Fee (10%) = 600,000 mQUSDIdentifier.
+    // Operation Fee (5%) = 300,000 mQUSDIdentifier.
     qtry.AddBidOrder(0, 100, 0, 60000, taker);
 
     // 5. Verify Revenue Accumulation in State
@@ -2152,13 +2167,13 @@ TEST(QTRYTest, Dividend_Distribution_MultipleShareholders)
     DateAndTime dt = wrapped_now();
     cei.qei.eid = -1;
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id maker = id::randomValue();
     increaseEnergy(maker, 100000000000ULL);
     qtry.transferQUSD(qtry.owner, maker, 100000000000LL);
 
-    // Generate 1,000,000 QUSD Revenue
+    // Generate 1,000,000 mQUSDIdentifier Revenue
     // Volume: 10,000,000. Fee 10%.
     qtry.AddBidOrder(0, 200, 0, 50000, maker);
     qtry.AddBidOrder(0, 200, 1, 50000, maker);
@@ -2208,7 +2223,7 @@ TEST(QTRYTest, Dividend_Distribution_Threshold_Check)
     DateAndTime dt = wrapped_now();
     cei.qei.eid = -1;
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id maker = id::randomValue();
     increaseEnergy(maker, 100000000000ULL);
@@ -2275,7 +2290,7 @@ TEST(QTRYTest, Dividend_Distribution_With_Burn)
     DateAndTime dt = wrapped_now();
     cei.qei.eid = -1;
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id maker = id::randomValue();
     increaseEnergy(maker, 100000000000ULL);
@@ -2313,7 +2328,7 @@ TEST(QTRYTest, Automatic_Cleanup_Lifecycle)
     DateAndTime dt = wrapped_now();
     cei.qei.eid = -1;
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
     uint64 eventId = 0;
 
     // 2. Publish Result
@@ -2370,21 +2385,22 @@ TEST(QTRYTest, Grand_Final_Complex_Lifecycle)
     const int NUM_TRADERS = 20;
     std::vector<id> traders(NUM_TRADERS);
     sint64 initialBalance = 100000000000LL; // 100B
-    sint64 totalSystemQUSD = 0;
+    sint64 totalSystemmQUSDIdentifier = 0;
 
-    for (int i = 0; i < NUM_TRADERS; i++) {
+    for (int i = 0; i < NUM_TRADERS; i++)
+    {
         traders[i] = id::randomValue();
         increaseEnergy(traders[i], 10000ULL * 1000000000ULL);
         qtry.transferQUSD(qtry.owner, traders[i], initialBalance);
-        totalSystemQUSD += initialBalance;
+        totalSystemmQUSDIdentifier += initialBalance;
     }
-    totalSystemQUSD += qtry.balanceUSD(qtry.owner);
+    totalSystemmQUSDIdentifier += qtry.balanceUSD(qtry.owner);
 
     QUOTTERY::CreateEvent_input cei;
     DateAndTime dt = wrapped_now();
     cei.qei.eid = -1;
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL); // 1 hour
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
     uint64 eventId = 0;
 
     // 2. CHAOS PHASE: 2000 Random Trades
@@ -2396,10 +2412,12 @@ TEST(QTRYTest, Grand_Final_Complex_Lifecycle)
         uint64 amount = 1 + (rand() % 50);
         uint64 price = 10000 + ((rand() % 90) * 1000);
 
-        if (rand() % 2 == 0) {
+        if (rand() % 2 == 0)
+        {
             qtry.AddBidOrder(eventId, amount, option, price, traders[tIdx]);
         }
-        else {
+        else
+        {
             qtry.AddAskOrder(eventId, amount, option, price, traders[tIdx]);
         }
     }
@@ -2419,7 +2437,8 @@ TEST(QTRYTest, Grand_Final_Complex_Lifecycle)
     // 5. PANIC CANCEL
     for (int i = 1; i < 5; i++)
     {
-        for (uint64 p = 10000; p < 90000; p += 5000) {
+        for (uint64 p = 10000; p < 90000; p += 5000)
+        {
             qtry.RemoveBidOrder(eventId, 100, 0, p, traders[i]);
             qtry.RemoveBidOrder(eventId, 100, 1, p, traders[i]);
             qtry.RemoveAskOrder(eventId, 100, 0, p, traders[i]);
@@ -2430,7 +2449,8 @@ TEST(QTRYTest, Grand_Final_Complex_Lifecycle)
     // 6. RESOLUTION
     // This triggers FinalizeEvent internally
     id tmp = id::zero();
-    for (int i = 1; i <= 451; i++) {
+    for (int i = 1; i <= 451; i++)
+    {
         tmp.m256i_u8[30] = i / 256;
         tmp.m256i_u8[31] = i % 256;
         qtry.ResolveDispute(eventId, 1, tmp);
@@ -2448,7 +2468,8 @@ TEST(QTRYTest, Grand_Final_Complex_Lifecycle)
     EXPECT_TRUE(state->mEventInfo.get(eventId, qei));
 
     // 7. CLAIM REWARDS
-    for (int i = 0; i < NUM_TRADERS; i++) {
+    for (int i = 0; i < NUM_TRADERS; i++)
+    {
         qtry.UserClaimReward(eventId, traders[i]);
     }
 
@@ -2470,12 +2491,13 @@ TEST(QTRYTest, Grand_Final_Complex_Lifecycle)
     EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(traders[5], eventId, 1))); // Gone
 
     sint64 finalTotal = 0;
-    for (int i = 0; i < NUM_TRADERS; i++) {
+    for (int i = 0; i < NUM_TRADERS; i++)
+    {
         finalTotal += qtry.balanceUSD(traders[i]);
     }
     finalTotal += qtry.balanceUSD(qtry.owner);
 
-    EXPECT_EQ(finalTotal, totalSystemQUSD);
+    EXPECT_EQ(finalTotal, totalSystemmQUSDIdentifier);
 }
 
 TEST(QTRYTest, AskOrder_InsufficientPosition)
@@ -2489,7 +2511,7 @@ TEST(QTRYTest, AskOrder_InsufficientPosition)
     DateAndTime dt = wrapped_now();
     cei.qei.eid = -1;
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     id trader = id::randomValue();
     increaseEnergy(trader, 100000000000ULL);
@@ -2559,7 +2581,7 @@ TEST(QTRYTest, EndEpoch_Full_Lifecycle_Payouts_And_Dividends)
     DateAndTime dt = wrapped_now();
     cei.qei.eid = -1;
     cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
     uint64 eventId = 0;
 
     // 3. Trade Setup
@@ -2636,34 +2658,39 @@ TEST(QTRYTest, Cleanup_Procedures_Check)
     state->mQtryGov.mOperationFee = 0;
 
     // Create 3 Events
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < 3; ++i)
+    {
         QUOTTERY::CreateEvent_input cei;
         DateAndTime dt = wrapped_now();
         cei.qei.eid = -1;
         cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-        qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+        qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
     }
 
     // 1. Initialize 50 Traders
     const int NUM_TRADERS = 50;
     std::vector<id> traders(NUM_TRADERS);
 
-    for (int i = 0; i < NUM_TRADERS; ++i) {
+    for (int i = 0; i < NUM_TRADERS; ++i)
+    {
         traders[i] = id::randomValue();
         increaseEnergy(traders[i], 10000ULL * 1000000000ULL);
         qtry.transferQUSD(qtry.owner, traders[i], 1000000000000LL); // 1 Trillion each
     }
 
     // 2. Populate Data (Minting & Orders)
-    for (int eid = 0; eid < 3; ++eid) {
+    for (int eid = 0; eid < 3; ++eid)
+    {
         // Step A: Everyone Mints Positions (So they have inventory to Ask)
-        for (int t = 0; t < NUM_TRADERS; ++t) {
+        for (int t = 0; t < NUM_TRADERS; ++t)
+        {
             qtry.AddBidOrder(eid, 1000, 0, 50000, traders[t]);
             qtry.AddBidOrder(eid, 1000, 1, 50000, traders[t]);
         }
 
         // Step B: Create 1000 Random Orders per Event
-        for (int k = 0; k < 1000; ++k) {
+        for (int k = 0; k < 1000; ++k)
+        {
             int tIdx = k % NUM_TRADERS; // Rotate through traders
 
             // Ensure Bid < Ask (Spread) so they don't match immediately
@@ -2681,13 +2708,15 @@ TEST(QTRYTest, Cleanup_Procedures_Check)
     }
 
     // Verify Initial State
-    for (int eid = 0; eid < 3; ++eid) {
+    for (int eid = 0; eid < 3; ++eid)
+    {
         // OrderBook should exist
         id keyOrder = qtry.MakeOrderKey(eid, 0, QUOTTERY_ASK_BIT, id());
         EXPECT_NE(state->mABOrders.headIndex(keyOrder), NULL_INDEX);
 
         // Every trader should have a position
-        for (int t = 0; t < NUM_TRADERS; ++t) {
+        for (int t = 0; t < NUM_TRADERS; ++t)
+        {
             EXPECT_TRUE(state->mPositionInfo.contains(qtry.MakePosKey(traders[t], eid, 0)));
         }
 
@@ -2718,7 +2747,8 @@ TEST(QTRYTest, Cleanup_Procedures_Check)
     qtry.endEpoch();
 
     // CHECK: Complete Wipe for Event 0
-    for (int t = 0; t < NUM_TRADERS; ++t) {
+    for (int t = 0; t < NUM_TRADERS; ++t)
+    {
         EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(traders[t], 0, 1)));
         EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(traders[t], 0, 0)));
     }
@@ -2744,7 +2774,8 @@ TEST(QTRYTest, Cleanup_Procedures_Check)
     updateEtalonTime(1001);
     // Resolve (Triggers Finalize internally)
     id tmp = id::zero();
-    for (int i = 1; i <= 451; i++) {
+    for (int i = 1; i <= 451; i++)
+    {
         tmp.m256i_u8[30] = i / 256;
         tmp.m256i_u8[31] = i % 256;
         qtry.ResolveDispute(1, 1, tmp);
@@ -2759,7 +2790,8 @@ TEST(QTRYTest, Cleanup_Procedures_Check)
     qtry.endEpoch();
 
     // CHECK: Complete Wipe for Event 1
-    for (int t = 0; t < NUM_TRADERS; ++t) {
+    for (int t = 0; t < NUM_TRADERS; ++t)
+    {
         EXPECT_FALSE(state->mPositionInfo.contains(qtry.MakePosKey(traders[t], 1, 0)));
     }
     EXPECT_FALSE(state->mEventInfo.get(1, qei));
@@ -2788,12 +2820,13 @@ TEST(QTRYTest, Cleanup_Empty_Events_NoUsers)
     state->mQtryGov.mOperationFee = 0;
 
     // Create 2 Events
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < 2; ++i)
+    {
         QUOTTERY::CreateEvent_input cei;
         DateAndTime dt = wrapped_now();
         cei.qei.eid = -1;
         cei.qei.endDate = dt; cei.qei.endDate.addMicrosec(3600000000ULL);
-        qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+        qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
     }
 
     // NOTE: We do NOT place any Bids or Asks. mPositionInfo remains empty for these events.
@@ -2852,7 +2885,8 @@ TEST(QTRYTest, Cleanup_Empty_Events_NoUsers)
 
     // 3. Resolve (Computors vote 1 - Disputer Wins)
     id tmp = id::zero();
-    for (int i = 1; i <= 451; i++) {
+    for (int i = 1; i <= 451; i++)
+    {
         tmp.m256i_u8[30] = i / 256;
         tmp.m256i_u8[31] = i % 256;
         qtry.ResolveDispute(eventId_Dispute, 1, tmp);
@@ -2887,7 +2921,7 @@ TEST(QTRYTest, Hacker_Warfare_Simulation)
     auto operation_id = state->mQtryGov.mOperationId;
 
     // 1. Setup: The Honeypot
-    // Hacker has 100,000 QUSD (The seed capital)
+    // Hacker has 100,000 mQUSDIdentifier (The seed capital)
     id hacker = id::randomValue();
     increaseEnergy(hacker, 1000000000000ULL); // Infinite energy
     qtry.transferQUSD(qtry.owner, hacker, 100000);
@@ -2898,7 +2932,7 @@ TEST(QTRYTest, Hacker_Warfare_Simulation)
     QUOTTERY::CreateEvent_input cei;
     cei.qei.eid = -1;
     cei.qei.endDate = wrapped_now(); cei.qei.endDate.addMicrosec(3600000000ULL);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
     uint64 eventId = 0;
 
     // ==========================================================
@@ -2986,7 +3020,7 @@ TEST(QTRYTest, Hacker_Warfare_Simulation)
     qtry.AddBidOrder(9999, 1, 0, 50000, hacker);
 
     // CHECK: Hacker should not have lost or gained money from invalid calls
-    // (Note: Transaction fees might apply in real network, but logic shouldn't change QUSD balance)
+    // (Note: Transaction fees might apply in real network, but logic shouldn't change mQUSDIdentifier balance)
     EXPECT_EQ(qtry.balanceUSD(hacker), fuzzStartBalance);
 
     // ==========================================================
@@ -3019,7 +3053,7 @@ static uint64 createTestEvent(ContractTestingQtry& qtry, const std::string& labe
     for (int i = 0; i < 4; i++) cei.qei.desc.set(i, v_desc[i]);
     for (int i = 0; i < 2; i++) { cei.qei.option0Desc.set(i, v_o0[i]); cei.qei.option1Desc.set(i, v_o1[i]); }
     uint64 nextId = state->mCurrentEventID;
-    qtry.CreateEvent(cei, qtry.owner, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, qtry.owner, state->mQtryGov.mFeePerDay);
     return nextId;
 }
 
@@ -3125,12 +3159,12 @@ TEST(QTRYTest, ViewFunctions_GetApprovedAmount)
 
     id user = id::randomValue(); increaseEnergy(user, 1000000000ULL);
 
-    // User has no QUSD yet -> approved amount is 0.
+    // User has no mQUSDIdentifier yet -> approved amount is 0.
     QUOTTERY::GetApprovedAmount_output out;
     qtry.GetApprovedAmount(user, out);
     EXPECT_EQ(out.amount, 0ULL);
 
-    // Give user some QUSD and verify GetApprovedAmount matches balanceUSD.
+    // Give user some mQUSDIdentifier and verify GetApprovedAmount matches balanceUSD.
     const sint64 amount = 5000000LL;
     qtry.transferQUSD(qtry.owner, user, amount);
 
@@ -3215,18 +3249,18 @@ TEST(QTRYTest, TransferShareManagementRights_Procedure)
 
     QUOTTERY::TransferShareManagementRights_output out;
 
-    // Passing an asset other than the contract's QUSD must be rejected immediately
+    // Passing an asset other than the contract's mQUSDIdentifier must be rejected immediately
     // (output.transferredNumberOfShares stays 0, procedure returns early).
     Asset wrongAsset;
     wrongAsset.assetName = 999999ULL;
-    wrongAsset.issuer = user; // arbitrary non-QUSD issuer
+    wrongAsset.issuer = user; // arbitrary non-mQUSDIdentifier issuer
     qtry.ContractTransferShareManagementRights(user, wrongAsset, 1, QUOTTERY_CONTRACT_INDEX, out);
     EXPECT_EQ(out.transferredNumberOfShares, 0);
 
-    // Passing the correct QUSD asset but without the caller owning shares under
+    // Passing the correct mQUSDIdentifier asset but without the caller owning shares under
     // SELF_INDEX management should also fail (0 shares transferred).
-    Asset qusdAsset = state->QUSD;
-    qtry.ContractTransferShareManagementRights(user, qusdAsset, 1, QUOTTERY_CONTRACT_INDEX, out);
+    Asset mQUSDIdentifierAsset = state->mQUSDIdentifier;
+    qtry.ContractTransferShareManagementRights(user, mQUSDIdentifierAsset, 1, QUOTTERY_CONTRACT_INDEX, out);
     EXPECT_EQ(out.transferredNumberOfShares, 0);
 }
 
@@ -3982,7 +4016,7 @@ TEST(QTRYTest, ProposalVote_NonHolder_Rejected)
     bool found = false;
     for (int i = 0; i < 676; i++)
     {
-        if (state->voters.get(i).publicKey == nonHolder)
+      if (state->mGovVoters.get(i).publicKey == nonHolder)
         {
             found = true;
             break;
@@ -4015,7 +4049,7 @@ TEST(QTRYTest, ProposalVote_HolderSubmitsProposal)
     bool found = false;
     for (int i = 0; i < 676; i++)
     {
-        auto v = state->voters.get(i);
+      auto v = state->mGovVoters.get(i);
         if (v.publicKey == holder)
         {
             found = true;
@@ -4056,7 +4090,7 @@ TEST(QTRYTest, ProposalVote_ResubmitUpdatesInPlace)
     uint64 storedFee = 0;
     for (int i = 0; i < 676; i++)
     {
-        auto v = state->voters.get(i);
+      auto v = state->mGovVoters.get(i);
         if (v.publicKey == holder)
         {
             count++;
@@ -4097,7 +4131,7 @@ TEST(QTRYTest, ProposalVote_StaleVoterInvalidated)
     bool found1 = false;
     for (int i = 0; i < 676; i++)
     {
-        if (state->voters.get(i).publicKey == holder1)
+      if (state->mGovVoters.get(i).publicKey == holder1)
         {
             found1 = true;
             break;
@@ -4117,7 +4151,7 @@ TEST(QTRYTest, ProposalVote_StaleVoterInvalidated)
     found1 = false;
     for (int i = 0; i < 676; i++)
     {
-        auto v = state->voters.get(i);
+      auto v = state->mGovVoters.get(i);
         if (v.publicKey == holder1 && v.proposedEpoch != 0)
         {
             found1 = true;
@@ -4130,7 +4164,7 @@ TEST(QTRYTest, ProposalVote_StaleVoterInvalidated)
     bool found2 = false;
     for (int i = 0; i < 676; i++)
     {
-        auto v = state->voters.get(i);
+      auto v = state->mGovVoters.get(i);
         if (v.publicKey == holder2)
         {
             found2 = true;
@@ -4147,7 +4181,7 @@ TEST(QTRYTest, Coverage_CreateEvent_FullCapacity)
     auto state = qtry.getState();
     auto operation_id = state->mQtryGov.mOperationId;
 
-    // Give GO enough QUSD to create many events
+    // Give GO enough mQUSDIdentifier to create many events
     qtry.transferQUSD(qtry.owner, operation_id, 1000000000000LL);
 
     // Create events until we hit QUOTTERY_MAX_CONCURRENT_EVENT
@@ -4163,14 +4197,17 @@ TEST(QTRYTest, Coverage_CreateEvent_FullCapacity)
     memcpy(v_o0[0].m256i_i8, opt0.data(), opt0.size());
     memcpy(v_o1[0].m256i_i8, opt1.data(), opt1.size());
     for (int i = 0; i < 4; i++) cei.qei.desc.set(i, v_desc[i]);
-    for (int i = 0; i < 2; i++) { cei.qei.option0Desc.set(i, v_o0[i]); cei.qei.option1Desc.set(i, v_o1[i]); }
+    for (int i = 0; i < 2; i++)
+    {
+        cei.qei.option0Desc.set(i, v_o0[i]); cei.qei.option1Desc.set(i, v_o1[i]);
+    }
     cei.qei.eid = (uint64)-1;
     cei.qei.openDate = dt;
     cei.qei.endDate = dt_end;
 
     for (uint64 i = 0; i < QUOTTERY_MAX_CONCURRENT_EVENT; i++)
     {
-        qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+        qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
     }
     EXPECT_EQ(state->mCurrentEventID, QUOTTERY_MAX_CONCURRENT_EVENT);
     EXPECT_EQ(state->mEventInfo.population(), QUOTTERY_MAX_CONCURRENT_EVENT);
@@ -4178,7 +4215,7 @@ TEST(QTRYTest, Coverage_CreateEvent_FullCapacity)
     // One more event should be rejected — capacity full
     uint64 idBefore = state->mCurrentEventID;
     sint64 balBefore = qtry.balanceUSD(operation_id);
-    qtry.CreateEvent(cei, operation_id, state->mQtryGov.feePerDay);
+    qtry.CreateEvent(cei, operation_id, state->mQtryGov.mFeePerDay);
 
     // mCurrentEventID should NOT have incremented
     EXPECT_EQ(state->mCurrentEventID, idBefore);
@@ -4346,7 +4383,11 @@ TEST(QTRYTest, Coverage_GovernanceQuorum_ChangesParams)
     // Verify vote was stored
     bool found = false;
     for (int i = 0; i < 676; i++)
-        if (state->voters.get(i).publicKey == holder) { found = true; break; }
+      if (state->mGovVoters.get(i).publicKey == holder)
+        {
+            found = true;
+            break;
+        }
     EXPECT_TRUE(found);
 
     qtry.endEpoch();
@@ -4357,7 +4398,7 @@ TEST(QTRYTest, Coverage_GovernanceQuorum_ChangesParams)
     EXPECT_EQ(state->mQtryGov.mShareHolderFee, 33ULL);
 
     // Voter slots reset
-    auto v = state->voters.get(0);
+    auto v = state->mGovVoters.get(0);
     EXPECT_EQ((int)v.proposedEpoch, 0);
 }
 
@@ -4383,7 +4424,7 @@ TEST(QTRYTest, Coverage_GovernanceBelowQuorum_NoChange)
     // Params should be UNCHANGED — not enough votes
     EXPECT_EQ(state->mQtryGov.mOperationFee, oldOpFee);
     // Voter slot reset
-    EXPECT_EQ((int)state->voters.get(0).proposedEpoch, 0);
+    EXPECT_EQ((int)state->mGovVoters.get(0).proposedEpoch, 0);
 }
 
 TEST(QTRYTest, Coverage_GetEventInfo_DisputeVoteCounts)
@@ -4629,7 +4670,11 @@ TEST(QTRYTest, Coverage_RecentActiveEvent_ClearedAfterCleanup)
     bool found = false;
     for (int i = 0; i < (int)QUOTTERY_MAX_CONCURRENT_EVENT; i++)
     {
-        if (out.recentActiveEvent.get(i) == eid) { found = true; break; }
+        if (out.recentActiveEvent.get(i) == eid)
+        {
+            found = true;
+            break;
+        }
     }
     EXPECT_TRUE(found);
 
