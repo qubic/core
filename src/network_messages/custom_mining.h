@@ -4,47 +4,6 @@
 
 #include "network_message_type.h"
 
-
-// Message struture for request custom mining data
-struct RequestCustomMiningData
-{
-    static constexpr unsigned char type()
-    {
-        return NetworkMessageType::REQUEST_CUSTOM_MINING_DATA;
-    }
-
-    enum
-    {
-        taskType = 0,
-        solutionType = 1,
-    };
-    // Task index information:
-    // - For taskType: 'fromTaskIndex' is the lower bound and 'toTaskIndex' is the upper bound of the task range [fromTaskIndex, toTaskIndex].
-    // - For solutionType: only 'fromTaskIndex' is used, since the solution response is tied to a single task.
-    unsigned long long fromTaskIndex;
-    unsigned long long toTaskIndex;
-
-    // Type of the request: either task (taskType) or solution (solutionType).
-    long long dataType;
-};
-
-// Message struture for respond custom mining data
-struct RespondCustomMiningData
-{
-    static constexpr unsigned char type()
-    {
-        return NetworkMessageType::RESPOND_CUSTOM_MINING_DATA;
-    }
-
-    enum
-    {
-        taskType = 0,
-        solutionType = 1,
-    };
-    // The 'payload' variable is defined externally and usually contains a byte array.
-    // Ussualy: [CustomMiningRespondDataHeader ... NumberOfItems * ItemSize];
-};
-
 enum CustomMiningType : uint8_t
 {
     DOGE,
