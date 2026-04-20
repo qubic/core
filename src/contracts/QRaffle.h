@@ -1,24 +1,26 @@
 using namespace QPI;
 
 constexpr uint64 QRAFFLE_REGISTER_AMOUNT = 1000000000ull;
-constexpr uint64 QRAFFLE_QXMR_REGISTER_AMOUNT = 100000000ull;
+constexpr uint64 QRAFFLE_QXMR_REGISTER_AMOUNT = 250000000ull;
 constexpr uint64 QRAFFLE_MAX_QRE_AMOUNT = 1000000000ull;
 constexpr uint64 QRAFFLE_ASSET_NAME = 19505638103142993;
 constexpr uint64 QRAFFLE_QXMR_ASSET_NAME = 1380800593; // QXMR token asset name
-constexpr uint32 QRAFFLE_LOGOUT_FEE = 50000000;
-constexpr uint32 QRAFFLE_QXMR_LOGOUT_FEE = 5000000; // QXMR logout fee
+constexpr uint32 QRAFFLE_LOGOUT_FEE = div<uint32>(QRAFFLE_REGISTER_AMOUNT, 20);
+constexpr uint32 QRAFFLE_QXMR_LOGOUT_FEE = div<uint32>(QRAFFLE_QXMR_REGISTER_AMOUNT, 20); // QXMR logout fee
 constexpr uint32 QRAFFLE_TRANSFER_SHARE_FEE = 100;
-constexpr uint32 QRAFFLE_BURN_FEE = 10; // percent
+constexpr uint32 QRAFFLE_BURN_FEE = 5; // percent
 constexpr uint32 QRAFFLE_REGISTER_FEE = 5; // percent
 constexpr uint32 QRAFFLE_FEE = 1; // percent
 constexpr uint32 QRAFFLE_CHARITY_FEE = 1; // percent
-constexpr uint32 QRAFFLE_SHRAEHOLDER_FEE = 3; // percent
+constexpr uint32 QRAFFLE_SHAREHOLDER_FEE = 8; // percent
 constexpr uint32 QRAFFLE_MAX_EPOCH = 65536;
 constexpr uint32 QRAFFLE_MAX_PROPOSAL_EPOCH = 128;
 constexpr uint32 QRAFFLE_MAX_MEMBER = 65536;
 constexpr uint32 QRAFFLE_DEFAULT_QRAFFLE_AMOUNT = 10000000ull;
 constexpr uint32 QRAFFLE_MIN_QRAFFLE_AMOUNT = 1000000ull;
 constexpr uint32 QRAFFLE_MAX_QRAFFLE_AMOUNT = 1000000000ull;
+constexpr uint32 QRAFFLE_MAX_TOKEN_RAFFLES = 1048576;
+constexpr uint32 QRAFFLE_MAX_SHAREHOLDERS = 1024;
 
 constexpr sint32 QRAFFLE_SUCCESS = 0;
 constexpr sint32 QRAFFLE_INSUFFICIENT_FUND = 1;
@@ -207,9 +209,9 @@ public:
 		Array <id, QRAFFLE_MAX_MEMBER> tmpTokenRaffleMembers;
 
 		Array <QuRaffleInfo, QRAFFLE_MAX_EPOCH> QuRaffles;
-		Array <TokenRaffleInfo, 1048576> tokenRaffle;
+		Array <TokenRaffleInfo, QRAFFLE_MAX_TOKEN_RAFFLES> tokenRaffle;
 		HashMap <id, uint64, QRAFFLE_MAX_MEMBER> quRaffleEntryAmount;
-		HashSet <id, 1024> shareholdersList;
+		HashSet <id, QRAFFLE_MAX_SHAREHOLDERS> shareholdersList;
 
 		id initialRegister1, initialRegister2, initialRegister3, initialRegister4, initialRegister5;
 		id charityAddress, feeAddress, QXMRIssuer;
@@ -1271,7 +1273,7 @@ protected:
 			// Calculate fee distributions
 			locals.burnAmount = div<uint64>(state.get().qREAmount * state.get().numberOfQuRaffleMembers * QRAFFLE_BURN_FEE, 100);
 			locals.charityRevenue = div<uint64>(state.get().qREAmount * state.get().numberOfQuRaffleMembers * QRAFFLE_CHARITY_FEE, 100);
-			locals.shareholderRevenue = div<uint64>(state.get().qREAmount * state.get().numberOfQuRaffleMembers * QRAFFLE_SHRAEHOLDER_FEE, 100);
+			locals.shareholderRevenue = div<uint64>(state.get().qREAmount * state.get().numberOfQuRaffleMembers * QRAFFLE_SHAREHOLDER_FEE, 100);
 			locals.registerRevenue = div<uint64>(state.get().qREAmount * state.get().numberOfQuRaffleMembers * QRAFFLE_REGISTER_FEE, 100);
 			locals.fee = div<uint64>(state.get().qREAmount * state.get().numberOfQuRaffleMembers * QRAFFLE_FEE, 100);
 			locals.winnerRevenue = state.get().qREAmount * state.get().numberOfQuRaffleMembers - locals.burnAmount - locals.charityRevenue - div<uint64>(locals.shareholderRevenue, 676) * 676 - div<uint64>(locals.registerRevenue, state.get().numberOfRegisters) * state.get().numberOfRegisters - locals.fee;
@@ -1370,7 +1372,7 @@ protected:
 				// Calculate token raffle fee distributions
 				locals.burnAmount = div<uint64>(locals.acTokenRaffle.entryAmount * state.get().numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_BURN_FEE, 100);
 				locals.charityRevenue = div<uint64>(locals.acTokenRaffle.entryAmount * state.get().numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_CHARITY_FEE, 100);
-				locals.shareholderRevenue = div<uint64>(locals.acTokenRaffle.entryAmount * state.get().numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_SHRAEHOLDER_FEE, 100);
+				locals.shareholderRevenue = div<uint64>(locals.acTokenRaffle.entryAmount * state.get().numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_SHAREHOLDER_FEE, 100);
 				locals.registerRevenue = div<uint64>(locals.acTokenRaffle.entryAmount * state.get().numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_REGISTER_FEE, 100);
 				locals.fee = div<uint64>(locals.acTokenRaffle.entryAmount * state.get().numberOfTokenRaffleMembers.get(locals.i) * QRAFFLE_FEE, 100);
 				locals.winnerRevenue = locals.acTokenRaffle.entryAmount * state.get().numberOfTokenRaffleMembers.get(locals.i) - locals.burnAmount - locals.charityRevenue - div<uint64>(locals.shareholderRevenue, 676) * 676 - div<uint64>(locals.registerRevenue, state.get().numberOfRegisters) * state.get().numberOfRegisters - locals.fee;
