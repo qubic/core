@@ -128,12 +128,14 @@ static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
 
-#define INTERNAL_COMPUTATIONS_INTERVAL 676
+// Period (in ticks) of the mining-seed rotation. Qubic mining runs every tick against the current seed,
+// which rotates deterministically every MINING_SEED_ROTATION_INTERVAL ticks
+// (triggered when tick % MINING_SEED_ROTATION_INTERVAL == 0).
+#define MINING_SEED_ROTATION_INTERVAL 2400
 // Total length of the DOGE share-counter broadcast cycle, in ticks.
 // Every DOGE_BROADCAST_CYCLE ticks the packed 10-bit share counts are broadcast and the counter is reset.
 #define DOGE_BROADCAST_CYCLE (2 * NUMBER_OF_COMPUTORS + 1)
-static_assert(INTERNAL_COMPUTATIONS_INTERVAL >= NUMBER_OF_COMPUTORS, "Internal computation phase needs to be at least equal NUMBER_OF_COMPUTORS");
-static_assert(DOGE_BROADCAST_CYCLE > INTERNAL_COMPUTATIONS_INTERVAL, "DOGE broadcast cycle must exceed internal computations interval");
+static_assert(MINING_SEED_ROTATION_INTERVAL >= NUMBER_OF_COMPUTORS, "Mining-seed rotation interval must span at least one full leader cycle");
 
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE

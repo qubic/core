@@ -1732,69 +1732,20 @@ static void beginCustomMiningPhase()
     gDogeMiningStats.phaseResetAndEpochAccumulate();
 }
 
-// resetPhase: If true, allows reinitializing mining seed and the custom mining phase flag
-// even when already inside the current phase. These values are normally set only once
-// at the beginning of a phase.
+// resetPhase: if true, force a mining-seed rotation even when not at the regular rotation boundary.
 static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate, bool resetPhase)
 {
-    bool isBeginOfCustomMiningPhase = false;
-    char isInCustomMiningPhase = 0;
-
-    // When resetting the phase:
-    // - If in the internal mining phase => reset the mining seed for the new epoch
-    // - If in the external (custom) mining phase => reset mining data (counters, etc.)
-    if (resetPhase)
+    // The mining seed rotates every MINING_SEED_ROTATION_INTERVAL ticks.
+    if (resetPhase || (system.tick % MINING_SEED_ROTATION_INTERVAL) == 0)
     {
-        const unsigned int r = getTickInMiningPhaseCycle();
-        if (r < INTERNAL_COMPUTATIONS_INTERVAL)
-        {
-            setNewMiningSeed();
-        }
-        else
-        {
-            score->initMiningData(m256i::zero());
-            isBeginOfCustomMiningPhase = true;
-            isInCustomMiningPhase = 1;
-        }
-    }
-    else
-    {
-        const unsigned int r = getTickInMiningPhaseCycle();
-        if (!r)
-        {
-            setNewMiningSeed();
-        }
-        else
-        {
-            if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
-            {
-                score->initMiningData(m256i::zero());
-            }
-
-            // Setting for custom mining phase
-            isInCustomMiningPhase = 0;
-            if (r >= INTERNAL_COMPUTATIONS_INTERVAL)
-            {
-                isInCustomMiningPhase = 1;
-                // Begin of custom mining phase. Turn the flag on so we can reset some state variables
-                if (r == INTERNAL_COMPUTATIONS_INTERVAL)
-                {
-                    isBeginOfCustomMiningPhase = true;
-                }
-            }
-        }
+        setNewMiningSeed();
     }
 
-    // Variables need to be reset in the beginning of custom mining phase
-    if (isBeginOfCustomMiningPhase)
+    // Roll DOGE per-phase stats at the midpoint of the DOGE broadcast cycle (display only).
+    if (getTickInDogeBroadcastCycle() == MINING_SEED_ROTATION_INTERVAL)
     {
         beginCustomMiningPhase();
     }
-
-    // Turn on the custom mining state 
-    ACQUIRE(gIsInCustomMiningStateLock);
-    gIsInCustomMiningState = isInCustomMiningPhase;
-    RELEASE(gIsInCustomMiningStateLock);
 }
 
 // Updates the global numberTickTransactions based on the tick data in the tick storage.
@@ -3480,9 +3431,9 @@ static void processTick(unsigned long long processorNumber)
     // prepare custom mining shares packet ONCE
     if (isMainMode())
     {
-        // In the begining of mining phase.
+        // At the start of each DOGE broadcast cycle.
         // Also skip the begining of the epoch, because the no thing to do
-        if (getTickInMiningPhaseCycle() == 0)
+        if (getTickInDogeBroadcastCycle() == 0)
         {
             PROFILE_NAMED_SCOPE("processTick(): prepare custom mining shares tx");
             // Prepare DOGE mining share broadcast TX (one per own computor; buffer only — send deferred)
@@ -3778,8 +3729,9 @@ static void processTick(unsigned long long processorNumber)
                 // Compute tick offset, when to publish solution
                 unsigned int publishingTickOffset = MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
 
-                // Do not publish, if the solution tx would end up after reset of mining seed, preventing loss of security deposit
-                if (getTickInMiningPhaseCycle() + publishingTickOffset >= INTERNAL_COMPUTATIONS_INTERVAL + 3)
+                // Do not publish if the solution tx would land in the next mining-seed rotation,
+                // preventing loss of security deposit from verifying against a rotated seed.
+                if ((system.tick % MINING_SEED_ROTATION_INTERVAL) + publishingTickOffset >= MINING_SEED_ROTATION_INTERVAL)
                     continue;
 
                 // Prepare, sign, and broadcast MiningSolutionTransaction
@@ -6610,21 +6562,6 @@ static void logInfo()
 
     // Log infomation about custom mining
     setText(message, L"CustomMining: ");
-
-    // System: Active status | Overflow | Collision
-    char isCustomMiningStateActive = 0;
-    ACQUIRE(gIsInCustomMiningStateLock);
-    isCustomMiningStateActive = gIsInCustomMiningState;
-    RELEASE(gIsInCustomMiningStateLock);
-
-    if (isCustomMiningStateActive)
-    {
-        appendText(message, L"Active. ");
-    }
-    else
-    {
-        appendText(message, L"Inactive. ");
-    }
 
     long long customMiningShareMaxOFCount = ATOMIC_LOAD64(gDogeMiningStats.maxOverflowShareCount);
     long long customMiningSharesMaxCollision = ATOMIC_LOAD64(gDogeMiningStats.maxCollisionShareCount);

@@ -10,7 +10,7 @@
 
 #include <lib/platform_efi/uefi.h>
 
-static unsigned int getTickInMiningPhaseCycle()
+static unsigned int getTickInDogeBroadcastCycle()
 {
 #ifdef NO_UEFI
     return 0;
@@ -209,10 +209,10 @@ public:
     {
 #ifndef NO_UEFI
         int computorIndex = transaction->tick % NUMBER_OF_COMPUTORS;
-        int tickPhase = getTickInMiningPhaseCycle();
+        int tickInDogeCycle = getTickInDogeBroadcastCycle();
         if (transaction->sourcePublicKey == broadcastedComputors.computors.publicKeys[computorIndex] // this tx was sent by the tick leader of this tick
             && transaction->inputSize == CUSTOM_MINING_SHARES_COUNT_SIZE_IN_BYTES + sizeof(m256i)
-            && tickPhase <= NUMBER_OF_COMPUTORS + TICK_VOTE_COUNTER_PUBLICATION_OFFSET) // only accept tick within internal mining phase (+ 2 from broadcast time)
+            && tickInDogeCycle <= NUMBER_OF_COMPUTORS + TICK_VOTE_COUNTER_PUBLICATION_OFFSET) // DOGE share tx acceptance window: +2 ticks after the start of each broadcast cycle
         {
             if (!transaction->amount)
             {
@@ -235,9 +235,6 @@ public:
 #endif
     }
 };
-
-static char gIsInCustomMiningState = 0;
-static volatile char gIsInCustomMiningStateLock = 0;
 
 // Stats of custom mining.
 // Reset after epoch change.
