@@ -132,14 +132,6 @@ static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 #define EXTERNAL_COMPUTATIONS_INTERVAL (676 + 1)
 static_assert(INTERNAL_COMPUTATIONS_INTERVAL >= NUMBER_OF_COMPUTORS, "Internal computation phase needs to be at least equal NUMBER_OF_COMPUTORS");
 
-// List of start-end for full external computation times. The event must not be overlap.
-// Format is DoW-hh-mm-ss in hex format, total 4 bytes, each use 1 bytes
-// DoW: Day of the week 0: Sunday, 1 = Monday ...
-static unsigned int gFullExternalComputationTimes[][2] =
-{
-    {0x040C0000U, 0x050C0000U}, // Thu 12:00:00 - Fri 12:00:00
-};
-
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE
 

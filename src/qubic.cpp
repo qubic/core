@@ -1726,73 +1726,6 @@ static void setNewMiningSeed()
     score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
-// Total number of external mining event.
-// Can set to zero to disable event 
-static constexpr int gNumberOfFullExternalMiningEvents = 0;
-struct FullExternallEvent
-{
-    WeekDay startTime;
-    WeekDay endTime;
-};
-FullExternallEvent* gFullExternalEventTime = NULL;
-static bool gSpecialEventFullExternalComputationPeriod = false; // a flag indicates a special event (period) that the network running 100% external computation
-static WeekDay currentEventEndTime;
-
-
-static bool isFullExternalComputationTime(TimeDate tickDate)
-{
-    // No event
-    if (gNumberOfFullExternalMiningEvents <= 0)
-    {
-        return false;
-    }
-
-    // Get current day of the week
-    WeekDay tickWeekDay;
-    tickWeekDay.hour = tickDate.hour;
-    tickWeekDay.minute = tickDate.minute;
-    tickWeekDay.second = tickDate.second;
-    tickWeekDay.millisecond = tickDate.millisecond;
-    tickWeekDay.dayOfWeek = getDayOfWeek(tickDate.day, tickDate.month, 2000 + tickDate.year);
-
-    // Check if the day is in range. Expect the time is not overlap.
-    for (int i = 0; i < gNumberOfFullExternalMiningEvents; ++i)
-    {
-        if (isWeekDayInRange(tickWeekDay, gFullExternalEventTime[i].startTime, gFullExternalEventTime[i].endTime))
-        {
-            gSpecialEventFullExternalComputationPeriod = true;
-
-            currentEventEndTime = gFullExternalEventTime[i].endTime;
-            return true;
-        }
-    }
-
-    // When not in range, and the time pass the gFullExternalEndTime. We need to make sure the ending happen
-    // in custom mining period, so that the score of custom mining is recorded.
-    if (gSpecialEventFullExternalComputationPeriod)
-    {
-        // Check time pass the end time
-        TimeDate endTimeDate = tickDate;
-        endTimeDate.hour = currentEventEndTime.hour;
-        endTimeDate.minute = currentEventEndTime.minute;
-        endTimeDate.second = currentEventEndTime.second;
-
-        if (compareTimeDate(tickDate, endTimeDate) == 1)
-        {
-            // Check time is in custom mining phase. If it is still in qubic mining phase
-            // don't stop the event
-            if (getTickInMiningPhaseCycle() <= INTERNAL_COMPUTATIONS_INTERVAL)
-            {
-                return true;
-            }
-        }
-    }
-    
-    // Event is marked as end
-    gSpecialEventFullExternalComputationPeriod = false;
-    return false;
-}
-
 // Clean up before custom mining phase. Thread-safe function
 static void beginCustomMiningPhase()
 {
@@ -1826,59 +1759,27 @@ static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate, bool r
     }
     else
     {
-        // Track whether we’re currently in a full external computation window
-        static bool isInFullExternalTime = false;
-
-        // Make sure the tick is valid and not in the reset phase state
-        if (tickEpoch == system.epoch)
+        const unsigned int r = getTickInMiningPhaseCycle();
+        if (!r)
         {
-            if (isFullExternalComputationTime(tickDate))
-            {
-                // Trigger time
-                if (!isInFullExternalTime)
-                {
-                    isInFullExternalTime = true;
-
-                    // Turn off the qubic mining phase
-                    score->initMiningData(m256i::zero());
-
-                    // Start the custom mining phase
-                    isBeginOfCustomMiningPhase = true;
-                }
-                isInCustomMiningPhase = 1;
-            }
-            else
-            {
-                // Not in the full external phase anymore
-                isInFullExternalTime = false;
-            }
+            setNewMiningSeed();
         }
-
-        // Incase of the full custom mining is just end. The setNewMiningSeed() will wait for next period of qubic mining phase
-        if (!isInFullExternalTime)
+        else
         {
-            const unsigned int r = getTickInMiningPhaseCycle();
-            if (!r)
+            if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
             {
-                setNewMiningSeed();
+                score->initMiningData(m256i::zero());
             }
-            else
-            {
-                if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
-                {
-                    score->initMiningData(m256i::zero());
-                }
 
-                // Setting for custom mining phase
-                isInCustomMiningPhase = 0;
-                if (r >= INTERNAL_COMPUTATIONS_INTERVAL)
+            // Setting for custom mining phase
+            isInCustomMiningPhase = 0;
+            if (r >= INTERNAL_COMPUTATIONS_INTERVAL)
+            {
+                isInCustomMiningPhase = 1;
+                // Begin of custom mining phase. Turn the flag on so we can reset some state variables
+                if (r == INTERNAL_COMPUTATIONS_INTERVAL)
                 {
-                    isInCustomMiningPhase = 1;
-                    // Begin of custom mining phase. Turn the flag on so we can reset some state variables
-                    if (r == INTERNAL_COMPUTATIONS_INTERVAL)
-                    {
-                        isBeginOfCustomMiningPhase = true;
-                    }
+                    isBeginOfCustomMiningPhase = true;
                 }
             }
         }
@@ -6398,20 +6299,6 @@ static bool initialize()
     emptyTickResolver.clock = 0;
     emptyTickResolver.tick = 0;
     emptyTickResolver.lastTryClock = 0;
-
-    // Convert time parameters for full custom mining time
-    if (gNumberOfFullExternalMiningEvents > 0)
-    {
-        if ((!allocPoolWithErrorLog(L"gFullExternalEventTime", gNumberOfFullExternalMiningEvents * sizeof(FullExternallEvent), (void**)&gFullExternalEventTime, __LINE__)))
-        {
-            return false;
-        }
-        for (int i = 0; i < gNumberOfFullExternalMiningEvents; i++)
-        {
-            gFullExternalEventTime[i].startTime = convertWeekTimeFromPackedData(gFullExternalComputationTimes[i][0]);
-            gFullExternalEventTime[i].endTime = convertWeekTimeFromPackedData(gFullExternalComputationTimes[i][1]);
-        }
-    }
 
     return true;
 }
