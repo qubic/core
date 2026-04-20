@@ -71,6 +71,7 @@ namespace QPI
 		CallErrorContractInErrorState = 1,      // Called contract is already in error state
 		CallErrorInsufficientFees = 2,          // Called contract has no execution fee reserve
 		CallErrorAllocationFailed = 3,          // Failed to allocate context on stack
+		CallErrorContractInactive = 4,			// Called contract has been inactive
 	};
 
 	typedef uint128_t uint128;
