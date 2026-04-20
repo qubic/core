@@ -1230,7 +1230,7 @@ protected:
 		ActiveTokenRaffleInfo acTokenRaffle;
 		AssetPossessionIterator iter;
 		Asset QraffleAsset;
-		id digest, winner, shareholder;
+		id digest, winner, shareholder, baseSeed, raffleSeed;
 		sint64 idx;
 		uint64 sumOfEntryAmountSubmitted, r, winnerRevenue, burnAmount, charityRevenue, shareholderRevenue, registerRevenue, fee, oneShareholderRev;
 		uint32 i, j, winnerIndex;
@@ -1249,7 +1249,9 @@ protected:
 		state.mut().epochRevenue -= locals.oneShareholderRev * 676;
 
 		locals.digest = qpi.getPrevSpectrumDigest();
-		locals.r = (qpi.numberOfTickTransactions() + 1) * locals.digest.u64._0 + (qpi.second()) * locals.digest.u64._1 + locals.digest.u64._2;
+		locals.baseSeed = qpi.K12(m256i(locals.digest.u64._0 ^ (uint64)qpi.epoch(), locals.digest.u64._1 ^ (uint64)qpi.tick(), locals.digest.u64._2 ^ (uint64)(qpi.numberOfTickTransactions() + 1), locals.digest.u64._3 ^ (uint64)qpi.second()));
+		locals.raffleSeed = qpi.K12(m256i(locals.baseSeed.u64._0, locals.baseSeed.u64._1, locals.baseSeed.u64._2, locals.baseSeed.u64._3 ^ 0ULL));
+		locals.r = locals.raffleSeed.u64._0;
 		locals.winnerIndex = (uint32)mod(locals.r, state.get().numberOfQuRaffleMembers * 1ull);
 		locals.winner = state.get().quRaffleMembers.get(locals.winnerIndex);
 
@@ -1363,6 +1365,8 @@ protected:
 		{
 			if (state.get().numberOfTokenRaffleMembers.get(locals.i) > 0)
 			{
+				locals.raffleSeed = qpi.K12(m256i(locals.baseSeed.u64._0, locals.baseSeed.u64._1, locals.baseSeed.u64._2, locals.baseSeed.u64._3 ^ ((uint64)locals.i + 1ULL)));
+				locals.r = locals.raffleSeed.u64._0;
 				locals.winnerIndex = (uint32)mod(locals.r, state.get().numberOfTokenRaffleMembers.get(locals.i) * 1ull);
 				state.get().tokenRaffleMembers.get(locals.i, state.mut().tmpTokenRaffleMembers);
 				locals.winner = state.get().tmpTokenRaffleMembers.get(locals.winnerIndex);
