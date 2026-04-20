@@ -3233,15 +3233,9 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                 // Contracts are identified by their index stored in the first 64 bits of the id, all
                 // other bits are zeroed. However, the max number of contracts is limited to 2^32 - 1,
                 // only 32 bits are used for the contract index.
-                // TODO: measure run-time of this check vs the check implemented in isPublicKeyOfContract() in gtest
-                // with a large number of keys; modify the function if the check used here is faster; replace this
-                // and such checks at other places by calls to isPublicKeyOfContract()
-                m256i maskedDestinationPublicKey = transaction->destinationPublicKey;
-                maskedDestinationPublicKey.m256i_u64[0] &= ~(MAX_NUMBER_OF_CONTRACTS - 1ULL);
-                unsigned int contractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
-                if (isZero(maskedDestinationPublicKey)
-                    && contractIndex < contractCount)
+                if (isPublicKeyOfContract(transaction->destinationPublicKey))
                 {
+                    unsigned int contractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
                     // Contract transactions
                     if (system.epoch == (contractDescriptions[contractIndex].constructionEpoch - 1))
                     {
@@ -3656,10 +3650,7 @@ static void processTick(unsigned long long processorNumber)
                     }
                     else
                     {
-                        m256i masked = transaction->destinationPublicKey;
-                        masked.m256i_u64[0] &= ~(unsigned long long)(MAX_NUMBER_OF_CONTRACTS - 1);
-                        unsigned int cIdx = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
-                        if (isZero(masked) && cIdx < contractCount)
+                        if (isPublicKeyOfContract(transaction->destinationPublicKey))
                         {
                             nContractTx++;
                         }
