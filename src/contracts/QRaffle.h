@@ -21,6 +21,7 @@ constexpr uint32 QRAFFLE_MIN_QRAFFLE_AMOUNT = 1000000ull;
 constexpr uint32 QRAFFLE_MAX_QRAFFLE_AMOUNT = 1000000000ull;
 constexpr uint32 QRAFFLE_MAX_TOKEN_RAFFLES = 1048576;
 constexpr uint32 QRAFFLE_MAX_SHAREHOLDERS = 1024;
+constexpr uint8 QRAFFLE_MAX_PROPOSALS_PER_PROPOSER = 3; // per epoch; mitigates global-slot DoS without a proposal fee
 
 constexpr sint32 QRAFFLE_SUCCESS = 0;
 constexpr sint32 QRAFFLE_INSUFFICIENT_FUND = 1;
@@ -41,6 +42,7 @@ constexpr sint32 QRAFFLE_USER_NOT_FOUND = 15;
 constexpr sint32 QRAFFLE_INVALID_ENTRY_AMOUNT = 16;
 constexpr sint32 QRAFFLE_EMPTY_QU_RAFFLE = 17;
 constexpr sint32 QRAFFLE_EMPTY_TOKEN_RAFFLE = 18;
+constexpr sint32 QRAFFLE_MAX_PROPOSAL_PER_USER_REACHED = 19;
 
 struct QRAFFLE2
 {
@@ -82,7 +84,8 @@ public:
 		QRAFFLE_tokenRaffleDeposited = 29,
 		QRAFFLE_shareManagementRightsTransferred = 30,
 		QRAFFLE_emptyQuRaffle = 31,
-		QRAFFLE_emptyTokenRaffle = 32
+		QRAFFLE_emptyTokenRaffle = 32,
+		QRAFFLE_maxProposalPerUserReached = 33
 	};
 
 	struct Logger
@@ -195,7 +198,6 @@ public:
 	struct StateData
 	{
 		HashMap <id, uint8, QRAFFLE_MAX_MEMBER> registers;
-
 		Array <ProposalInfo, QRAFFLE_MAX_PROPOSAL_EPOCH> proposals;
 
 		HashMap <uint32, Array <VotedId, QRAFFLE_MAX_MEMBER>, QRAFFLE_MAX_PROPOSAL_EPOCH> voteStatus;
@@ -218,6 +220,7 @@ public:
 		uint64 epochRevenue, epochQXMRRevenue, qREAmount, totalBurnAmount, totalCharityAmount, totalShareholderAmount, totalRegisterAmount, totalFeeAmount, totalWinnerAmount, largestWinnerAmount;
 		uint32 numberOfRegisters, numberOfQuRaffleMembers, numberOfEntryAmountSubmitted, numberOfProposals, numberOfActiveTokenRaffle, numberOfEndedTokenRaffle;
 		Array<uint32, QRAFFLE_MAX_EPOCH> daoMemberCount; // Number of DAO members (registers) at each epoch
+		HashMap <id, uint8, QRAFFLE_MAX_MEMBER> proposalsPerProposer;
 	};
 
 	struct registerInSystem_input
@@ -627,6 +630,7 @@ protected:
 	struct submitProposal_locals
 	{
 		ProposalInfo proposal;
+		uint8 countThisEpoch;
 		Logger log;
 	};
 
@@ -650,12 +654,39 @@ protected:
 			LOG_INFO(locals.log);
 			return ;
 		}
+		locals.countThisEpoch = 0;
+		if (state.get().proposalsPerProposer.contains(qpi.invocator()))
+		{
+			state.get().proposalsPerProposer.get(qpi.invocator(), locals.countThisEpoch);
+		}
+		if (locals.countThisEpoch >= QRAFFLE_MAX_PROPOSALS_PER_PROPOSER)
+		{
+			output.returnCode = QRAFFLE_MAX_PROPOSAL_PER_USER_REACHED;
+			locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_maxProposalPerUserReached, 0 };
+			LOG_INFO(locals.log);
+			return ;
+		}
+		if (input.entryAmount < QRAFFLE_MIN_QRAFFLE_AMOUNT || input.entryAmount > QRAFFLE_MAX_QRAFFLE_AMOUNT)
+		{
+			output.returnCode = QRAFFLE_INVALID_ENTRY_AMOUNT;
+			locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_invalidEntryAmount, 0 };
+			LOG_INFO(locals.log);
+			return ;
+		}
+		if (!qpi.isAssetIssued(input.tokenIssuer, input.tokenName))
+		{
+			output.returnCode = QRAFFLE_INVALID_TOKEN_TYPE;
+			locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_invalidTokenType, 0 };
+			LOG_INFO(locals.log);
+			return ;
+		}
 		locals.proposal.token.issuer = input.tokenIssuer;
 		locals.proposal.token.assetName = input.tokenName;
 		locals.proposal.entryAmount = input.entryAmount;
 		locals.proposal.proposer = qpi.invocator();
 		state.mut().proposals.set(state.get().numberOfProposals, locals.proposal);
 		state.mut().numberOfProposals++;
+		state.mut().proposalsPerProposer.set(qpi.invocator(), locals.countThisEpoch + 1);
 		output.returnCode = QRAFFLE_SUCCESS;
 		locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_proposalSubmitted, 0 };
 		LOG_INFO(locals.log);
@@ -1487,6 +1518,7 @@ protected:
 
 		state.mut().numberOfVotedInProposal.setAll(0);
 		state.mut().tokenRaffleMembers.reset();
+		state.mut().proposalsPerProposer.reset();
 		state.mut().quRaffleEntryAmount.reset();
 		state.mut().shareholdersList.reset();
 		state.mut().voteStatus.reset();

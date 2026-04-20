@@ -587,7 +587,42 @@ TEST(ContractQraffle, SubmitProposal)
     increaseEnergy(unregisteredUser, QRAFFLE_REGISTER_AMOUNT);
     auto result = qraffle.submitProposal(unregisteredUser, token1, 1000000);
     EXPECT_EQ(result.returnCode, QRAFFLE_UNREGISTERED);
-}   
+}
+
+TEST(ContractQraffle, SubmitProposalPerUserLimitAndValidation)
+{
+    ContractTestingQraffle qraffle;
+
+    auto users = getRandomUsers(100, 100);
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
+        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT, 0);
+    }
+
+    id issuer = getUser(2000);
+    increaseEnergy(issuer, 1000000000ULL);
+    uint64 assetName = assetNameFromString("LIMVAL");
+    qraffle.issueAsset(issuer, assetName, 10000000, 0, 0);
+
+    Asset token;
+    token.assetName = assetName;
+    token.issuer = issuer;
+
+    increaseEnergy(users[0], 1000);
+    EXPECT_EQ(qraffle.submitProposal(users[0], token, 1000000ULL).returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(qraffle.submitProposal(users[0], token, 2000000ULL).returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(qraffle.submitProposal(users[0], token, 3000000ULL).returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(qraffle.submitProposal(users[0], token, 4000000ULL).returnCode, QRAFFLE_MAX_PROPOSAL_PER_USER_REACHED);
+
+    EXPECT_EQ(qraffle.submitProposal(users[0], token, 500000ULL).returnCode, QRAFFLE_INVALID_ENTRY_AMOUNT);
+    EXPECT_EQ(qraffle.submitProposal(users[0], token, 2000000000ULL).returnCode, QRAFFLE_INVALID_ENTRY_AMOUNT);
+
+    Asset fakeToken;
+    fakeToken.assetName = assetNameFromString("NOTISS");
+    fakeToken.issuer = issuer;
+    EXPECT_EQ(qraffle.submitProposal(users[1], fakeToken, 1000000ULL).returnCode, QRAFFLE_INVALID_TOKEN_TYPE);
+}
 
 TEST(ContractQraffle, VoteInProposal)
 {
