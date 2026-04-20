@@ -15,7 +15,7 @@ static unsigned int getTickInMiningPhaseCycle()
 #ifdef NO_UEFI
     return 0;
 #else
-    return (system.tick) % (INTERNAL_COMPUTATIONS_INTERVAL + EXTERNAL_COMPUTATIONS_INTERVAL);
+    return (system.tick) % DOGE_BROADCAST_CYCLE;
 #endif
 }
 
