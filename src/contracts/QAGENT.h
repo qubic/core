@@ -1133,13 +1133,19 @@ END_EPOCH_WITH_LOCALS()
             {
                 if (locals.prop.paramId == QAGENT_PARAM_PLATFORM_FEE_BPS && locals.prop.newValue >= 0 && locals.prop.newValue <= 500)
                     state.mut().config.platformFeeBPS = locals.prop.newValue;
-                else if (locals.prop.paramId == QAGENT_PARAM_MIN_REG_STAKE && locals.prop.newValue >= 10000)
+                else if (locals.prop.paramId == QAGENT_PARAM_MIN_REG_STAKE
+                    && locals.prop.newValue >= 10000
+                    && locals.prop.newValue <= 10000000LL)
                     state.mut().config.minRegistrationStake = locals.prop.newValue;
                 else if (locals.prop.paramId == QAGENT_PARAM_CHALLENGE_WINDOW && locals.prop.newValue >= 100 && locals.prop.newValue <= 3000)
                     state.mut().config.challengeWindowTicks = locals.prop.newValue;
-                else if (locals.prop.paramId == QAGENT_PARAM_MIN_ESCROW && locals.prop.newValue >= 100)
+                else if (locals.prop.paramId == QAGENT_PARAM_MIN_ESCROW
+                    && locals.prop.newValue >= 100
+                    && locals.prop.newValue <= 1000000LL)
                     state.mut().config.minEscrow = locals.prop.newValue;
-                else if (locals.prop.paramId == QAGENT_PARAM_ORACLE_THRESHOLD && locals.prop.newValue >= 100000)
+                else if (locals.prop.paramId == QAGENT_PARAM_ORACLE_THRESHOLD
+                    && locals.prop.newValue >= 100000
+                    && locals.prop.newValue <= 100000000LL)
                     state.mut().config.oracleAutoThreshold = locals.prop.newValue;
                 else if (locals.prop.paramId == QAGENT_PARAM_KEEPER_FEE_BPS && locals.prop.newValue >= 0 && locals.prop.newValue <= 100)
                     state.mut().config.keeperFeeBPS = locals.prop.newValue;
@@ -1566,6 +1572,13 @@ PUBLIC_PROCEDURE_WITH_LOCALS(DeactivateAgent)
         qpi.transfer(qpi.invocator(), qpi.invocationReward());
         return;
     }
+    // Suspended agents cannot escape suspension via deactivate/reactivate
+    if (locals.agent.status == QAGENT_STATUS_SUSPENDED)
+    {
+        output.returnCode = QAGENT_RC_WRONG_STATUS;
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        return;
+    }
     locals.agent.status = QAGENT_STATUS_INACTIVE;
     state.mut().agents.set(qpi.invocator(), locals.agent);
 
@@ -1618,6 +1631,7 @@ PUBLIC_PROCEDURE_WITH_LOCALS(StakeMore)
     if (qpi.invocationReward() <= 0)
     {
         output.returnCode = QAGENT_RC_INSUFFICIENT_FUNDS;
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
         return;
     }
     locals.stake.additionalStake += qpi.invocationReward();
@@ -2761,10 +2775,26 @@ PRIVATE_PROCEDURE_WITH_LOCALS(OnAIVerifyReply)
         return; // No mapping — nothing to do
 
     if (!state.get().tasks.get(locals.foundTaskId, locals.task))
-        return; // Task not found — stale mapping
+    {
+        // Task missing — remove stale mapping so HashMap does not accumulate orphans
+        state.mut().oracleQueryToTask.removeByKey(input.queryId);
+        return;
+    }
 
     if (locals.task.oracleQueryId != input.queryId || locals.task.taskId == 0)
-        return; // Sanity check
+    {
+        // QueryId mismatch — mapping inconsistent, remove to prevent accumulation
+        state.mut().oracleQueryToTask.removeByKey(input.queryId);
+        return;
+    }
+
+    // Task must still be in ORACLE_PENDING to accept the reply. If a concurrent
+    // path has already moved it to a terminal status, we must not double-finalize.
+    if (locals.task.status != QAGENT_TASK_STATUS_ORACLE_PENDING)
+    {
+        state.mut().oracleQueryToTask.removeByKey(input.queryId);
+        return;
+    }
 
     if (input.status != ORACLE_QUERY_STATUS_SUCCESS)
     {
@@ -2775,6 +2805,7 @@ PRIVATE_PROCEDURE_WITH_LOCALS(OnAIVerifyReply)
         state.mut().tasks.set(locals.task.taskId, locals.task);
         state.mut().activeTaskQ.add(SELF, locals.task.taskId, static_cast<sint64>(locals.task.disputeDeadlineTick));
         state.mut().stats.disputedTasks += 1;
+        state.mut().oracleQueryToTask.removeByKey(input.queryId);
         return;
     }
 
@@ -2788,6 +2819,8 @@ PRIVATE_PROCEDURE_WITH_LOCALS(OnAIVerifyReply)
         locals.task.disputeDeadlineTick = qpi.tick() + static_cast<uint32>(state.get().config.disputeResolutionTicks);
         state.mut().tasks.set(locals.task.taskId, locals.task);
         state.mut().activeTaskQ.add(SELF, locals.task.taskId, static_cast<sint64>(locals.task.disputeDeadlineTick));
+        state.mut().stats.disputedTasks += 1;
+        state.mut().oracleQueryToTask.removeByKey(input.queryId);
         return;
     }
 
@@ -2969,6 +3002,13 @@ PUBLIC_PROCEDURE_WITH_LOCALS(CastDisputeVote)
         return;
     }
     if (!state.get().arbitrators.get(qpi.invocator(), locals.arb))
+    {
+        output.returnCode = QAGENT_RC_UNAUTHORIZED;
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        return;
+    }
+    // Deactivated arbitrators or those below minimum stake cannot vote on disputes
+    if (locals.arb.active == 0 || locals.arb.stakeAmount < QAGENT_MIN_ARBITRATOR_STAKE)
     {
         output.returnCode = QAGENT_RC_UNAUTHORIZED;
         qpi.transfer(qpi.invocator(), qpi.invocationReward());
