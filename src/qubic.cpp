@@ -1709,12 +1709,6 @@ static void setNewMiningSeed()
     score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
-// Clean up before custom mining phase. Thread-safe function
-static void beginCustomMiningPhase()
-{
-    gDogeMiningStats.phaseResetAndEpochAccumulate();
-}
-
 // resetPhase: if true, force a mining-seed rotation even when not at the regular rotation boundary.
 static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate, bool resetPhase)
 {
@@ -1724,10 +1718,10 @@ static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate, bool r
         setNewMiningSeed();
     }
 
-    // Roll DOGE per-phase stats at the midpoint of the DOGE broadcast cycle (display only).
-    if (getTickInDogeBroadcastCycle() == MINING_SEED_ROTATION_INTERVAL)
+    // Roll DOGE per-phase stats at broadcast-cycle boundaries (display only).
+    if (getTickInDogeBroadcastCycle() == 0)
     {
-        beginCustomMiningPhase();
+        gDogeMiningStats.phaseResetAndEpochAccumulate();
     }
 }
 
