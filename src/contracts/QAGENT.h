@@ -34,10 +34,13 @@ constexpr uint32 QAGENT_DISPUTE_VALIDATORS = 5;
 constexpr uint32 QAGENT_DISPUTE_THRESHOLD = 3;
 constexpr sint64 QAGENT_MIN_ARBITRATOR_STAKE = 10000LL;
 // Cooldown between arbitrator registration and first vote eligibility.
-// Prevents just-in-time registration when a dispute is active, so an
-// attacker cannot spin up fresh identities to fill the committee.
-// ~1 week at 1 tick/second.
-constexpr uint32 QAGENT_ARBITRATOR_COOLDOWN_TICKS = 604800;
+// Prevents reactive just-in-time registration — an attacker observing a
+// fresh dispute cannot spin up and use a new identity within the cooldown
+// window. 300 ticks (~5 minutes at ~1s/tick) is enough to frustrate the
+// observe-and-register vector while remaining shorter than
+// QAGENT_DISPUTE_RESOLUTION_TICKS = 1200, so arbitrators registered at
+// genesis can still participate in disputes filed shortly after.
+constexpr uint32 QAGENT_ARBITRATOR_COOLDOWN_TICKS = 300;
 
 // Minimum oracle confidence (in BPS) required to accept a VALID or INVALID
 // verdict. 2500 BPS = 25% agreement. Below this threshold the reply falls
@@ -2893,6 +2896,13 @@ PUBLIC_PROCEDURE_WITH_LOCALS(RequestOracleVerification)
     locals.task.oracleQueryId = output.oracleQueryId;
     locals.task.oracleRequested = 1;
     locals.task.status = QAGENT_TASK_STATUS_ORACLE_PENDING;
+    // Ensure disputeDeadlineTick is set so the END_TICK ORACLE_PENDING
+    // fallback fires even when the task went directly from REVEALED to
+    // ORACLE_PENDING (without a prior dispute). Without this, tasks
+    // entering from REVEALED could be left locked if the oracle silently
+    // fails to reply.
+    if (locals.task.disputeDeadlineTick == 0)
+        locals.task.disputeDeadlineTick = qpi.tick() + static_cast<uint32>(state.get().config.disputeResolutionTicks);
     state.mut().tasks.set(input.taskId, locals.task);
 
     state.mut().stats.oracleVerifications += 1;
@@ -3616,9 +3626,12 @@ PUBLIC_PROCEDURE_WITH_LOCALS(ProposeParameterChange)
         }
         if (locals.prop.executed == 0
             && locals.prop.endTick > 0
-            && qpi.tick() > locals.prop.endTick)
+            && qpi.tick() > locals.prop.endTick + QAGENT_GOVERNANCE_TIMELOCK_TICKS)
         {
             // Evict expired-but-unexecuted proposal; treat as free slot.
+            // Only reclaim slots AFTER the timelock window has closed —
+            // otherwise a passed proposal could be silently evicted during
+            // its post-vote timelock and never get executed.
             locals.prop.executed = 1;
             locals.prop.active = 0;
             state.mut().proposals.set(locals.i, locals.prop);
