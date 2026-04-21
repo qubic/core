@@ -78,5 +78,3 @@ namespace OI
 #define ENABLE_ORACLE_STATS_RECORD 1
 
 }
-
-// Contracts use the OI::AIVerify form directly (consistent with OI::Price pattern)
