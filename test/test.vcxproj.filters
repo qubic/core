@@ -36,7 +36,6 @@
     <ClCompile Include="contract_qusino.cpp" />
     <ClCompile Include="file_io.cpp" />
     <ClCompile Include="virtual_memory.cpp" />
-    <ClCompile Include="custom_mining.cpp" />
     <ClCompile Include="execution_fees.cpp" />
     <ClCompile Include="stable_computor_index.cpp" />
     <ClCompile Include="contract_qutil.cpp" />
