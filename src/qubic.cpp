@@ -2739,6 +2739,7 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                     if (error && transaction->amount)
                     {
                         oracleEngine.refundFees(transaction->sourcePublicKey, transaction->amount);
+                        moneyFlew = false;
                     }
                 }
                 break;
