@@ -120,6 +120,7 @@ constexpr uint8 QAGENT_PARAM_DISPUTE_TICKS = 6;
 constexpr uint8 QAGENT_PARAM_DEFAULT_DEADLINE = 7;
 constexpr uint8 QAGENT_PARAM_PAUSED = 8;
 constexpr uint8 QAGENT_PARAM_TREASURY_BURN = 9;
+constexpr uint8 QAGENT_PARAM_MAX_ESCROW = 10;
 
 // ---
 // Return Codes
@@ -343,6 +344,10 @@ struct PlatformConfig
     sint64 disputeResolutionTicks;
     sint64 defaultDeadlineTicks;
     sint64 paused;
+    // Per-task escrow ceiling. Caps the blast radius of a single
+    // compromised or mis-parameterised task. Governance may raise this
+    // as confidence in the contract grows.
+    sint64 maxEscrow;
 };
 
 struct PlatformStats
@@ -1143,6 +1148,9 @@ INITIALIZE()
     state.mut().config.keeperFeeBPS = QAGENT_KEEPER_FEE_BPS;
     state.mut().config.disputeResolutionTicks = QAGENT_DISPUTE_RESOLUTION_TICKS;
     state.mut().config.defaultDeadlineTicks = QAGENT_DEFAULT_DEADLINE_TICKS;
+    // Conservative launch cap: 10 billion QU per task. Governance may raise
+    // via QAGENT_PARAM_MAX_ESCROW as contract confidence and QU value grow.
+    state.mut().config.maxEscrow = 10000000000LL;
 }
 
 END_EPOCH_WITH_LOCALS()
@@ -1178,6 +1186,10 @@ END_EPOCH_WITH_LOCALS()
                     && locals.prop.newValue >= 100
                     && locals.prop.newValue <= 1000000LL)
                     state.mut().config.minEscrow = locals.prop.newValue;
+                else if (locals.prop.paramId == QAGENT_PARAM_MAX_ESCROW
+                    && locals.prop.newValue >= state.get().config.minEscrow
+                    && locals.prop.newValue <= 1000000000000LL)
+                    state.mut().config.maxEscrow = locals.prop.newValue;
                 else if (locals.prop.paramId == QAGENT_PARAM_ORACLE_THRESHOLD
                     && locals.prop.newValue >= 100000
                     && locals.prop.newValue <= 100000000LL)
@@ -1926,6 +1938,15 @@ PUBLIC_PROCEDURE_WITH_LOCALS(CreateTask)
     if (qpi.invocationReward() < state.get().config.minEscrow)
     {
         output.returnCode = QAGENT_RC_INSUFFICIENT_FUNDS;
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        return;
+    }
+    // Maximum escrow (per-task blast-radius cap). Prevents a single task
+    // from concentrating an unbounded amount of QU, independent of any
+    // fiat price assumption underlying other stake parameters.
+    if (qpi.invocationReward() > state.get().config.maxEscrow)
+    {
+        output.returnCode = QAGENT_RC_INVALID_INPUT;
         qpi.transfer(qpi.invocator(), qpi.invocationReward());
         return;
     }
