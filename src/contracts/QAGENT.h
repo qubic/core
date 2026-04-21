@@ -39,6 +39,12 @@ constexpr sint64 QAGENT_MIN_ARBITRATOR_STAKE = 10000LL;
 // ~1 week at 1 tick/second.
 constexpr uint32 QAGENT_ARBITRATOR_COOLDOWN_TICKS = 604800;
 
+// Minimum oracle confidence (in BPS) required to accept a VALID or INVALID
+// verdict. 2500 BPS = 25% agreement. Below this threshold the reply falls
+// back to arbitrator dispute. Prevents a narrow-majority oracle quorum
+// under partial attack from finalising high-value tasks.
+constexpr uint32 QAGENT_MIN_ORACLE_CONFIDENCE = 2500;
+
 constexpr uint32 QAGENT_STAKE_LOCK_EPOCHS = 4;
 constexpr uint32 QAGENT_MAX_TASKS_PER_TICK = 50;
 
@@ -1430,6 +1436,30 @@ END_TICK_WITH_LOCALS()
             continue;
         }
 
+        // ORACLE_PENDING task with an expired dispute deadline → fall back
+        // to arbitrator resolution. Guards against a silent oracle engine
+        // (or unimplemented oracle machine) leaving task funds locked
+        // indefinitely. disputeResolutionTicks is a conservative grace.
+        if (locals.task.status == QAGENT_TASK_STATUS_ORACLE_PENDING
+            && locals.task.disputeDeadlineTick > 0
+            && qpi.tick() > locals.task.disputeDeadlineTick
+                + static_cast<uint32>(state.get().config.disputeResolutionTicks))
+        {
+            locals.task.status = QAGENT_TASK_STATUS_DISPUTED;
+            locals.task.oracleRequested = 0;
+            locals.task.disputeDeadlineTick = qpi.tick()
+                + static_cast<uint32>(state.get().config.disputeResolutionTicks);
+            state.mut().tasks.set(locals.task.taskId, locals.task);
+            state.mut().activeTaskQ.add(SELF, locals.task.taskId, static_cast<sint64>(locals.task.disputeDeadlineTick));
+            state.mut().stats.disputedTasks += 1;
+            if (locals.task.oracleQueryId != 0)
+                state.mut().oracleQueryToTask.removeByKey(locals.task.oracleQueryId);
+
+            locals.elemIdx = state.mut().activeTaskQ.remove(locals.elemIdx);
+            locals.processed += 1;
+            continue;
+        }
+
         // DISPUTED task past dispute deadline → cancel (no resolution)
         if (locals.task.status == QAGENT_TASK_STATUS_DISPUTED
             && locals.task.disputeDeadlineTick > 0
@@ -1731,6 +1761,16 @@ PUBLIC_PROCEDURE_WITH_LOCALS(WithdrawStake)
         qpi.transfer(qpi.invocator(), qpi.invocationReward());
         return;
     }
+    // Prevent withdrawal while agent still has open (non-finalised) tasks.
+    // Otherwise the agent could drop their reputation stake mid-task,
+    // leaving nothing to progressive-slash on eventual timeout.
+    if (state.get().agents.get(qpi.invocator(), locals.agent)
+        && locals.agent.totalTasks > locals.agent.completedTasks + locals.agent.failedTasks)
+    {
+        output.returnCode = QAGENT_RC_WRONG_STATUS;
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        return;
+    }
 
     locals.amount = locals.stake.registrationStake + locals.stake.additionalStake;
     if (locals.amount > 0)
@@ -1969,19 +2009,21 @@ PUBLIC_PROCEDURE_WITH_LOCALS(CreateTask)
     state.mut().stats.activeTasks += 1;
     state.mut().stats.totalVolume += qpi.invocationReward();
 
-    // Track interaction for anti-Sybil (unique requester count)
+    // Track interaction for anti-Sybil (unique requester count). Only count
+    // a requester as "unique" once they have interacted at least 3 times
+    // with this agent — a single task is far too cheap a signal.
     locals.ikey.agentId = input.agentId;
     locals.ikey.requesterId = qpi.invocator();
     locals.ikeyHash = qpi.K12(locals.ikey);
     if (!state.get().interactions.get(locals.ikeyHash, locals.icount))
-    {
         locals.icount = 0;
-        // New unique requester
+    locals.icount += 1;
+    state.mut().interactions.set(locals.ikeyHash, locals.icount);
+    if (locals.icount == 3)
+    {
         locals.agent.uniqueRequesters += 1;
         state.mut().agents.set(input.agentId, locals.agent);
     }
-    locals.icount += 1;
-    state.mut().interactions.set(locals.ikeyHash, locals.icount);
 
     locals.log = QAGENTLogger{ CONTRACT_INDEX, logCreateTask, locals.task.taskId, qpi.invocator(), qpi.invocationReward(), input.taskType };
     LOG_INFO(locals.log);
@@ -2674,8 +2716,10 @@ PUBLIC_PROCEDURE_WITH_LOCALS(CompleteMilestone)
         qpi.transfer(qpi.invocator(), qpi.invocationReward());
         return;
     }
-    if (locals.task.status != QAGENT_TASK_STATUS_REVEALED
-        && locals.task.status != QAGENT_TASK_STATUS_ACCEPTED)
+    // Only revealed tasks can have milestones paid out. Allowing ACCEPTED
+    // here would let a requester pay an agent before any cryptographic
+    // commitment to work has been submitted, undermining commit-reveal.
+    if (locals.task.status != QAGENT_TASK_STATUS_REVEALED)
     {
         output.returnCode = QAGENT_RC_WRONG_STATUS;
         qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -2888,9 +2932,13 @@ PRIVATE_PROCEDURE_WITH_LOCALS(OnAIVerifyReply)
         return;
     }
 
-    // Validate oracle reply has a decisive verdict with confidence > 0
-    // (matches AIVerify::replyIsValid pattern — inlined to avoid QPI scope resolution)
-    if (input.reply.verdict == 0 || input.reply.confidence == 0)
+    // Validate oracle reply has a decisive verdict and meets minimum
+    // confidence threshold. Below the threshold the oracle does not have
+    // enough quorum agreement to finalise the task, so we fall back to
+    // arbitrator resolution instead of acting on a weak signal.
+    if (input.reply.verdict == 0
+        || input.reply.confidence < QAGENT_MIN_ORACLE_CONFIDENCE
+        || input.reply.confidence > QAGENT_BPS_SCALE)
     {
         // Non-decisive reply (abstain or zero confidence) — fall back to dispute
         locals.task.status = QAGENT_TASK_STATUS_DISPUTED;
