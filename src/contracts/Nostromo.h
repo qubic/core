@@ -21,6 +21,10 @@ constexpr uint64 NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP = 1000ULL;
 constexpr uint64 NOST_DEFAULT_AUCTION_MANAGEMENT_FEE_BP = 50ULL;
 constexpr uint64 NOST_DEFAULT_AUCTION_DEVELOPMENT_FEE_BP = 50ULL;
 constexpr uint64 NOST_DEFAULT_AUCTION_TAKEOVER_COORDINATOR_FEE_BP = 50ULL;
+constexpr uint64 NOST_AUCTION_SERVICE_FEE_SHAREHOLDER_BP = 7270ULL;
+constexpr uint64 NOST_AUCTION_SERVICE_FEE_MANAGEMENT_BP = 910ULL;
+constexpr uint64 NOST_AUCTION_SERVICE_FEE_DEVELOPMENT_BP = 910ULL;
+constexpr uint64 NOST_AUCTION_SERVICE_FEE_TAKEOVER_COORDINATOR_BP = 910ULL;
 constexpr uint64 NOST_DEFAULT_AUCTION_SHAREHOLDER_DIVIDEND_BP = 9000ULL;
 constexpr uint64 NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_1 = 500ULL;
 constexpr uint64 NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_2 = 450ULL;
@@ -226,7 +230,7 @@ struct NOST : public ContractBase
 		/** @brief Configured cancellation fee rate in basis points. */
 		uint64 auctionCancellationFeeBasisPoints;
 
-		/** @brief Undistributed auction shareholder revenue reserved for contract dividends. */
+		/** @brief Undistributed shareholder revenue from auction proceeds and service fees reserved for contract dividends. */
 		uint64 auctionShareholderDividendPool;
 
 		/** @brief Configured management fee rate in basis points, charged from auction proceeds. */
@@ -605,6 +609,25 @@ struct NOST : public ContractBase
 		uint64 takeoverCoordinatorFeeAmount;
 	};
 
+	/**
+	 * @brief Pure breakdown of one service fee charged for private-auction creation or auction cancellation.
+	 * @note Runtime settlement and tests share this struct to keep fee arithmetic aligned.
+	 */
+	struct AuctionServiceFeeBreakdown
+	{
+		/** @brief Portion retained by the contract for shareholder dividends. */
+		uint64 shareholderDividendAmount;
+
+		/** @brief Management wallet fee amount. */
+		uint64 managementFeeAmount;
+
+		/** @brief Development wallet fee amount. */
+		uint64 developmentFeeAmount;
+
+		/** @brief Takeover coordinator wallet fee amount. */
+		uint64 takeoverCoordinatorFeeAmount;
+	};
+
 	/** @brief Input payload used to read the wallets that receive auction fee transfers. */
 	using GetFeeRecipients_input = NoData;
 
@@ -850,6 +873,20 @@ struct NOST : public ContractBase
 		uint64 sellerPayout;
 
 		/** @brief Flag indicating whether the revenue distribution completed successfully. */
+		uint8 success;
+	};
+
+	/** @brief Internal input used to split private-auction and cancellation service fees between shareholders and configured recipients. */
+	struct DistributeAuctionServiceFee_input
+	{
+		/** @brief Fee amount that should be distributed. */
+		uint64 feeAmount;
+	};
+
+	/** @brief Internal output returned after service-fee distribution is completed. */
+	struct DistributeAuctionServiceFee_output
+	{
+		/** @brief Flag indicating whether the service-fee distribution completed successfully. */
 		uint8 success;
 	};
 
@@ -1121,6 +1158,13 @@ struct NOST : public ContractBase
 		uint64 dividendPerShare;
 	};
 
+	struct DistributeAuctionServiceFee_locals
+	{
+		AuctionServiceFeeBreakdown auctionServiceFeeBreakdown;
+		uint64 distributedDividendAmount;
+		uint64 dividendPerShare;
+	};
+
 	struct RejectStandardAuction_locals
 	{
 		AuctionData auction;
@@ -1147,6 +1191,7 @@ struct NOST : public ContractBase
 		VerifyAuctionLotBalances_input verifyAuctionLotBalancesInput;
 		EscrowAuctionLotAssets_input escrowAuctionLotAssetsInput;
 		RollbackAuctionLotAssets_input rollbackAuctionLotAssetsInput;
+		DistributeAuctionServiceFee_input distributeAuctionServiceFeeInput;
 		sint64 requiredFee;
 		uint64 resolvedQuantityForSale;
 		uint64 resolvedMinimumPurchaseQuantity;
@@ -1155,6 +1200,7 @@ struct NOST : public ContractBase
 		RollbackAuctionLotAssets_output rollbackAuctionLotAssetsOutput;
 		EscrowAuctionLotAssets_output escrowAuctionLotAssetsOutput;
 		VerifyAuctionLotBalances_output verifyAuctionLotBalancesOutput;
+		DistributeAuctionServiceFee_output distributeAuctionServiceFeeOutput;
 	};
 
 	struct PlaceBid_locals
@@ -1180,6 +1226,8 @@ struct NOST : public ContractBase
 		AuctionParticipantKey participantKey;
 		RollbackAuctionLotAssets_input rollbackAuctionLotAssetsInput;
 		RollbackAuctionLotAssets_output rollbackAuctionLotAssetsOutput;
+		DistributeAuctionServiceFee_input distributeAuctionServiceFeeInput;
+		DistributeAuctionServiceFee_output distributeAuctionServiceFeeOutput;
 		DateAndTime currentDate;
 		uint64 cancellationBaseAmount;
 		sint64 participantIndex;
@@ -1646,6 +1694,49 @@ struct NOST : public ContractBase
 				locals.distributedDividendAmount = smul(locals.dividendPerShare, static_cast<uint64>(NUMBER_OF_COMPUTORS));
 				state.mut().auctionShareholderDividendPool -= locals.distributedDividendAmount;
 			}
+		}
+
+		output.success = 1;
+	}
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(DistributeAuctionServiceFee)
+	{
+		output.success = 0;
+
+		if (input.feeAmount == 0)
+		{
+			output.success = 1;
+			return;
+		}
+
+		if (routeAllFeesToDevelopment(state))
+		{
+			qpi.transfer(state.get().development, input.feeAmount);
+			output.success = 1;
+			return;
+		}
+
+		calculateAuctionServiceFeeBreakdown(input.feeAmount, locals.auctionServiceFeeBreakdown);
+		state.mut().auctionShareholderDividendPool =
+		    sadd(state.get().auctionShareholderDividendPool, locals.auctionServiceFeeBreakdown.shareholderDividendAmount);
+		if (locals.auctionServiceFeeBreakdown.managementFeeAmount > 0)
+		{
+			qpi.transfer(state.get().management, locals.auctionServiceFeeBreakdown.managementFeeAmount);
+		}
+		if (locals.auctionServiceFeeBreakdown.developmentFeeAmount > 0)
+		{
+			qpi.transfer(state.get().development, locals.auctionServiceFeeBreakdown.developmentFeeAmount);
+		}
+		if (locals.auctionServiceFeeBreakdown.takeoverCoordinatorFeeAmount > 0)
+		{
+			qpi.transfer(state.get().takeoverCoordinator, locals.auctionServiceFeeBreakdown.takeoverCoordinatorFeeAmount);
+		}
+
+		locals.dividendPerShare = div<uint64>(state.get().auctionShareholderDividendPool, NUMBER_OF_COMPUTORS);
+		if (locals.dividendPerShare > 0 && qpi.distributeDividends(locals.dividendPerShare))
+		{
+			locals.distributedDividendAmount = smul(locals.dividendPerShare, static_cast<uint64>(NUMBER_OF_COMPUTORS));
+			state.mut().auctionShareholderDividendPool -= locals.distributedDividendAmount;
 		}
 
 		output.success = 1;
@@ -2324,7 +2415,8 @@ struct NOST : public ContractBase
 	/**
 	 * @brief Creates a new Batch Auction or Standard Auction in the Nostromo Auction House.
 	 * @note `CreateAuction_input` defines the IPFS metadata CID stored through Pinata, the auction lot, pricing, duration, and visibility rules.
-	 * @note Private auctions require the configured private auction fee and must use exactly one access mode.
+	 * @note Private auctions require the configured private auction fee, which is distributed between shareholders and the configured fee recipients,
+	 * and must use exactly one access mode.
 	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(CreateAuction)
 	{
@@ -2526,6 +2618,9 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		locals.distributeAuctionServiceFeeInput.feeAmount = static_cast<uint64>(locals.requiredFee);
+		CALL(DistributeAuctionServiceFee, locals.distributeAuctionServiceFeeInput, locals.distributeAuctionServiceFeeOutput);
+
 		if (qpi.invocationReward() > locals.requiredFee)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.requiredFee);
@@ -2672,11 +2767,15 @@ struct NOST : public ContractBase
 	}
 
 	/**
-	 * @brief Cancels an active auction and refunds every escrowed bid.
-	 * @note The cancellation fee is based on the current highest bid or on the configured reserve price for the full batch quantity or standard lot.
+	 * @brief Cancels an active auction before the first accepted bid is placed.
+	 * @note Once any bid is accepted, the seller can no longer cancel the auction.
+	 * @note The cancellation fee is based on the configured reserve price for the full batch quantity or standard lot and is distributed between
+	 * shareholders and the configured fee recipients.
 	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(CancelAuction)
 	{
+		output.refundedAmount = 0;
+		output.cancellationFee = 0;
 		output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
 
 		if (!state.get().auctionList.get(input.auctionId, locals.auction))
@@ -2709,10 +2808,20 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.cancellationBaseAmount = max(locals.auction.highestBidAmount, locals.auction.salePrice);
+		if (locals.auction.highestBidAmount > 0)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = static_cast<uint8>(EAuctionError::Forbidden);
+			return;
+		}
+
+		locals.cancellationBaseAmount = locals.auction.salePrice;
 		if (locals.auction.type == EAuctionType::Batch)
 		{
-			locals.cancellationBaseAmount = max(locals.auction.highestBidAmount, smul(locals.auction.salePrice, locals.auction.quantityForSale));
+			locals.cancellationBaseAmount = smul(locals.auction.salePrice, locals.auction.quantityForSale);
 		}
 		output.cancellationFee = div<uint64>(smul(locals.cancellationBaseAmount, state.get().auctionCancellationFeeBasisPoints), 10000ULL);
 
@@ -2754,6 +2863,9 @@ struct NOST : public ContractBase
 		locals.auction.settledAt = locals.currentDate;
 		state.mut().auctionList.replace(input.auctionId, locals.auction);
 		addClosedAuctionToHistory(state, locals.auction.auctionId);
+
+		locals.distributeAuctionServiceFeeInput.feeAmount = output.cancellationFee;
+		CALL(DistributeAuctionServiceFee, locals.distributeAuctionServiceFeeInput, locals.distributeAuctionServiceFeeOutput);
 
 		if (static_cast<uint64>(qpi.invocationReward()) > output.cancellationFee)
 		{
@@ -3172,6 +3284,22 @@ protected:
 		output.takeoverCoordinatorFeeAmount = output.takeoverCoordinatorBaseAmount + (output.shareholderFeeAmount - output.shareholderDividendAmount);
 		output.sellerPayout = grossAmount - output.shareholderFeeAmount - output.managementFeeAmount - output.developmentFeeAmount -
 		                      output.takeoverCoordinatorBaseAmount;
+	}
+
+	/**
+	 * @brief Computes the exact service-fee split without performing transfers.
+	 * @note Keep this helper pure so tests can reuse the same arithmetic as `DistributeAuctionServiceFee`.
+	 */
+	static void calculateAuctionServiceFeeBreakdown(uint64 feeAmount, AuctionServiceFeeBreakdown& output)
+	{
+		output.shareholderDividendAmount = div<uint64>(smul(feeAmount, NOST_AUCTION_SERVICE_FEE_SHAREHOLDER_BP), 10000ULL);
+		output.managementFeeAmount = div<uint64>(smul(feeAmount, NOST_AUCTION_SERVICE_FEE_MANAGEMENT_BP), 10000ULL);
+		output.developmentFeeAmount = div<uint64>(smul(feeAmount, NOST_AUCTION_SERVICE_FEE_DEVELOPMENT_BP), 10000ULL);
+		output.takeoverCoordinatorFeeAmount = div<uint64>(smul(feeAmount, NOST_AUCTION_SERVICE_FEE_TAKEOVER_COORDINATOR_BP), 10000ULL);
+		// Shareholders receive the rounding remainder so the entire collected fee is distributed on-chain.
+		output.shareholderDividendAmount =
+		    output.shareholderDividendAmount + (feeAmount - output.shareholderDividendAmount - output.managementFeeAmount -
+		                                        output.developmentFeeAmount - output.takeoverCoordinatorFeeAmount);
 	}
 
 	static sint64 getCreateAuctionFee(EAuctionVisibility visibility, const ContractState<StateData, CONTRACT_INDEX>& state)
