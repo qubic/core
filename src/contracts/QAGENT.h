@@ -33,6 +33,11 @@ constexpr sint64 QAGENT_MIN_REGISTRATION_STAKE = 50000LL;
 constexpr uint32 QAGENT_DISPUTE_VALIDATORS = 5;
 constexpr uint32 QAGENT_DISPUTE_THRESHOLD = 3;
 constexpr sint64 QAGENT_MIN_ARBITRATOR_STAKE = 10000LL;
+// Cooldown between arbitrator registration and first vote eligibility.
+// Prevents just-in-time registration when a dispute is active, so an
+// attacker cannot spin up fresh identities to fill the committee.
+// ~1 week at 1 tick/second.
+constexpr uint32 QAGENT_ARBITRATOR_COOLDOWN_TICKS = 604800;
 
 constexpr uint32 QAGENT_STAKE_LOCK_EPOCHS = 4;
 constexpr uint32 QAGENT_MAX_TASKS_PER_TICK = 50;
@@ -2716,6 +2721,18 @@ PUBLIC_PROCEDURE_WITH_LOCALS(RequestOracleVerification)
         qpi.transfer(qpi.invocator(), qpi.invocationReward());
         return;
     }
+    // Only the task's direct participants may trigger oracle verification.
+    // Without this, any third party could move a REVEALED task into
+    // ORACLE_PENDING (blocking approval) and drain the contract's oracle
+    // reserves at the platform's expense.
+    if (qpi.invocator() != locals.task.requester
+        && qpi.invocator() != locals.task.assignedAgent
+        && qpi.invocator() != locals.task.challengerId)
+    {
+        output.returnCode = QAGENT_RC_UNAUTHORIZED;
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        return;
+    }
     // Only disputed or revealed tasks can be oracle-verified
     if (locals.task.status != QAGENT_TASK_STATUS_DISPUTED
         && locals.task.status != QAGENT_TASK_STATUS_REVEALED)
@@ -2814,6 +2831,24 @@ PRIVATE_PROCEDURE_WITH_LOCALS(OnAIVerifyReply)
     if (input.reply.verdict == 0 || input.reply.confidence == 0)
     {
         // Non-decisive reply (abstain or zero confidence) — fall back to dispute
+        locals.task.status = QAGENT_TASK_STATUS_DISPUTED;
+        locals.task.oracleRequested = 0;
+        locals.task.disputeDeadlineTick = qpi.tick() + static_cast<uint32>(state.get().config.disputeResolutionTicks);
+        state.mut().tasks.set(locals.task.taskId, locals.task);
+        state.mut().activeTaskQ.add(SELF, locals.task.taskId, static_cast<sint64>(locals.task.disputeDeadlineTick));
+        state.mut().stats.disputedTasks += 1;
+        state.mut().oracleQueryToTask.removeByKey(input.queryId);
+        return;
+    }
+
+    // If the oracle claims the agent's result is VALID but its independently
+    // computed result hash differs from the agent's claimed hash, the claim
+    // is inconsistent. Fall back to arbitrator dispute rather than paying
+    // out on a mismatched verdict. Without this check the entire point of
+    // the oracle — independent hash verification — is discarded.
+    if (input.reply.verdict == QAGENT_VERDICT_VALID
+        && input.reply.verifiedHash != locals.task.resultHash)
+    {
         locals.task.status = QAGENT_TASK_STATUS_DISPUTED;
         locals.task.oracleRequested = 0;
         locals.task.disputeDeadlineTick = qpi.tick() + static_cast<uint32>(state.get().config.disputeResolutionTicks);
@@ -3001,6 +3036,15 @@ PUBLIC_PROCEDURE_WITH_LOCALS(CastDisputeVote)
         qpi.transfer(qpi.invocator(), qpi.invocationReward());
         return;
     }
+    // Reject votes past the dispute resolution deadline. Without this check,
+    // a late vote submitted in the same tick END_TICK would cancel the dispute
+    // could race ahead and resolve the dispute to the voter's preferred side.
+    if (locals.task.disputeDeadlineTick > 0 && qpi.tick() > locals.task.disputeDeadlineTick)
+    {
+        output.returnCode = QAGENT_RC_DEADLINE_PASSED;
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        return;
+    }
     if (!state.get().arbitrators.get(qpi.invocator(), locals.arb))
     {
         output.returnCode = QAGENT_RC_UNAUTHORIZED;
@@ -3009,6 +3053,15 @@ PUBLIC_PROCEDURE_WITH_LOCALS(CastDisputeVote)
     }
     // Deactivated arbitrators or those below minimum stake cannot vote on disputes
     if (locals.arb.active == 0 || locals.arb.stakeAmount < QAGENT_MIN_ARBITRATOR_STAKE)
+    {
+        output.returnCode = QAGENT_RC_UNAUTHORIZED;
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        return;
+    }
+    // Enforce a minimum age before a newly-registered arbitrator may vote.
+    // Blocks just-in-time sybil registration when an attacker sees a dispute
+    // open and spins up fresh identities to fill the committee.
+    if (qpi.tick() < locals.arb.registeredTick + QAGENT_ARBITRATOR_COOLDOWN_TICKS)
     {
         output.returnCode = QAGENT_RC_UNAUTHORIZED;
         qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -3396,13 +3449,27 @@ PUBLIC_PROCEDURE_WITH_LOCALS(ProposeParameterChange)
         return;
     }
 
-    // Find a free proposal slot
+    // Find a free proposal slot. A slot is considered free when it is
+    // inactive, OR when its voting window has already passed and no one has
+    // yet executed it — in that case reclaim the slot proactively so that
+    // proposal spam cannot lock governance until END_EPOCH runs.
     locals.freeSlot = 255;
     for (locals.i = 0; locals.i < QAGENT_MAX_PROPOSALS; locals.i++)
     {
         locals.prop = state.get().proposals.get(locals.i);
         if (locals.prop.active == 0)
         {
+            locals.freeSlot = static_cast<uint8>(locals.i);
+            break;
+        }
+        if (locals.prop.executed == 0
+            && locals.prop.endTick > 0
+            && qpi.tick() > locals.prop.endTick)
+        {
+            // Evict expired-but-unexecuted proposal; treat as free slot.
+            locals.prop.executed = 1;
+            locals.prop.active = 0;
+            state.mut().proposals.set(locals.i, locals.prop);
             locals.freeSlot = static_cast<uint8>(locals.i);
             break;
         }
