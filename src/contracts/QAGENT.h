@@ -687,6 +687,7 @@ struct FinalizeTask_locals
     sint64 burnAmount;
     sint64 treasuryAmount;
     sint64 arbPoolAmount;
+    sint64 agentShareCap;
     sint64 completionRate;
     QAGENTLogger log;
 };
@@ -834,6 +835,7 @@ struct CastDisputeVote_locals
     sint64 challengerReward;
     sint64 arbReward;
     sint64 perVoterReward;
+    sint64 arbRemainder;
     sint64 treasuryAmount;
     sint64 slashAmount;
     sint64 completionRate;
@@ -2488,11 +2490,9 @@ PUBLIC_PROCEDURE_WITH_LOCALS(FinalizeTask)
     // Cap keeperFee at 50% of the agent's share so the keeper-floor cannot
     // consume the entire payout on small escrows (e.g. minEscrow=100 with
     // MIN_KEEPER_FEE=100 would otherwise leave agentPayout = 0).
-    {
-        sint64 agentShareCap = div<sint64>(locals.task.escrowAmount - locals.platformFee, static_cast<sint64>(2));
-        if (locals.keeperFee > agentShareCap)
-            locals.keeperFee = agentShareCap;
-    }
+    locals.agentShareCap = div<sint64>(locals.task.escrowAmount - locals.platformFee, static_cast<sint64>(2));
+    if (locals.keeperFee > locals.agentShareCap)
+        locals.keeperFee = locals.agentShareCap;
     if (locals.platformFee + locals.keeperFee > locals.task.escrowAmount)
         locals.keeperFee = locals.task.escrowAmount - locals.platformFee;
     if (locals.keeperFee < 0)
@@ -3364,9 +3364,9 @@ PUBLIC_PROCEDURE_WITH_LOCALS(CastDisputeVote)
                     if (locals.task.disputeVoters_4 != NULL_ID)
                         qpi.transfer(locals.task.disputeVoters_4, locals.perVoterReward);
                 }
-                sint64 arbRemainder = locals.arbReward - smul(locals.perVoterReward, static_cast<sint64>(locals.task.disputeVoterCount));
-                if (arbRemainder > 0)
-                    state.mut().stats.treasuryBalance += arbRemainder;
+                locals.arbRemainder = locals.arbReward - smul(locals.perVoterReward, static_cast<sint64>(locals.task.disputeVoterCount));
+                if (locals.arbRemainder > 0)
+                    state.mut().stats.treasuryBalance += locals.arbRemainder;
             }
         }
 
@@ -3446,9 +3446,9 @@ PUBLIC_PROCEDURE_WITH_LOCALS(CastDisputeVote)
                 if (locals.task.disputeVoters_4 != NULL_ID)
                     qpi.transfer(locals.task.disputeVoters_4, locals.perVoterReward);
             }
-            sint64 arbRemainder = locals.arbReward - smul(locals.perVoterReward, static_cast<sint64>(locals.task.disputeVoterCount));
-            if (arbRemainder > 0)
-                state.mut().stats.treasuryBalance += arbRemainder;
+            locals.arbRemainder = locals.arbReward - smul(locals.perVoterReward, static_cast<sint64>(locals.task.disputeVoterCount));
+            if (locals.arbRemainder > 0)
+                state.mut().stats.treasuryBalance += locals.arbRemainder;
         }
         state.mut().stats.treasuryBalance += locals.treasuryAmount;
 
