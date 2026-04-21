@@ -783,6 +783,8 @@ struct OnAIVerifyReply_locals
     sint64 agentPayout;
     sint64 burnAmount;
     sint64 slashAmount;
+    sint64 arbShare;
+    sint64 treasuryShare;
     sint64 completionRate;
     uint64 foundTaskId;
     QAGENTLogger log;
@@ -1865,6 +1867,12 @@ PUBLIC_PROCEDURE_WITH_LOCALS(CreateTask)
         qpi.transfer(qpi.invocator(), qpi.invocationReward());
         return;
     }
+    if (qpi.invocator() != qpi.originator())
+    {
+        output.returnCode = QAGENT_RC_UNAUTHORIZED;
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        return;
+    }
     // Minimum escrow
     if (qpi.invocationReward() < state.get().config.minEscrow)
     {
@@ -2197,6 +2205,18 @@ PUBLIC_PROCEDURE_WITH_LOCALS(RevealResult)
 
 PUBLIC_PROCEDURE_WITH_LOCALS(ApproveResult)
 {
+    if (state.get().config.paused != 0)
+    {
+        output.returnCode = QAGENT_RC_PAUSED;
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        return;
+    }
+    if (qpi.invocator() != qpi.originator())
+    {
+        output.returnCode = QAGENT_RC_UNAUTHORIZED;
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        return;
+    }
     if (!state.get().tasks.get(input.taskId, locals.task))
     {
         output.returnCode = QAGENT_RC_TASK_NOT_FOUND;
@@ -2355,6 +2375,12 @@ PUBLIC_PROCEDURE_WITH_LOCALS(ChallengeResult)
 
 PUBLIC_PROCEDURE_WITH_LOCALS(FinalizeTask)
 {
+    if (state.get().config.paused != 0)
+    {
+        output.returnCode = QAGENT_RC_PAUSED;
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        return;
+    }
     if (!state.get().tasks.get(input.taskId, locals.task))
     {
         output.returnCode = QAGENT_RC_TASK_NOT_FOUND;
@@ -2449,6 +2475,12 @@ PUBLIC_PROCEDURE_WITH_LOCALS(FinalizeTask)
 
 PUBLIC_PROCEDURE_WITH_LOCALS(TimeoutTask)
 {
+    if (state.get().config.paused != 0)
+    {
+        output.returnCode = QAGENT_RC_PAUSED;
+        qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        return;
+    }
     if (!state.get().tasks.get(input.taskId, locals.task))
     {
         output.returnCode = QAGENT_RC_TASK_NOT_FOUND;
@@ -2972,9 +3004,14 @@ PRIVATE_PROCEDURE_WITH_LOCALS(OnAIVerifyReply)
         // Slash agent bond progressively
         if (locals.task.agentStake > 0)
         {
-            // Distribution: 40% burn, 30% challenger, 20% arbitrators, 10% treasury
-            locals.burnAmount = div<sint64>(smul(locals.task.agentStake, static_cast<sint64>(QAGENT_SLASH_BURN_BPS)), static_cast<sint64>(QAGENT_BPS_SCALE));
+            // Distribution: 40% burn, 30% challenger, 20% arbitrators, 10% treasury.
+            // To avoid integer-division dust being silently stranded in the
+            // contract balance, compute burn/challenger/arb as independent
+            // floor shares and assign the exact remainder to treasury.
+            locals.burnAmount  = div<sint64>(smul(locals.task.agentStake, static_cast<sint64>(QAGENT_SLASH_BURN_BPS)),       static_cast<sint64>(QAGENT_BPS_SCALE));
             locals.slashAmount = div<sint64>(smul(locals.task.agentStake, static_cast<sint64>(QAGENT_SLASH_CHALLENGER_BPS)), static_cast<sint64>(QAGENT_BPS_SCALE));
+            locals.arbShare    = div<sint64>(smul(locals.task.agentStake, static_cast<sint64>(QAGENT_SLASH_ARBITRATOR_BPS)), static_cast<sint64>(QAGENT_BPS_SCALE));
+            locals.treasuryShare = locals.task.agentStake - locals.burnAmount - locals.slashAmount - locals.arbShare;
 
             if (locals.task.challengerId != NULL_ID && locals.slashAmount > 0)
                 qpi.transfer(locals.task.challengerId, locals.slashAmount);
@@ -2989,8 +3026,8 @@ PRIVATE_PROCEDURE_WITH_LOCALS(OnAIVerifyReply)
                 qpi.burn(locals.burnAmount);
                 state.mut().stats.totalBurned += locals.burnAmount;
             }
-            state.mut().stats.arbitratorPool += div<sint64>(smul(locals.task.agentStake, static_cast<sint64>(QAGENT_SLASH_ARBITRATOR_BPS)), static_cast<sint64>(QAGENT_BPS_SCALE));
-            state.mut().stats.treasuryBalance += div<sint64>(smul(locals.task.agentStake, static_cast<sint64>(QAGENT_SLASH_TREASURY_BPS)), static_cast<sint64>(QAGENT_BPS_SCALE));
+            state.mut().stats.arbitratorPool += locals.arbShare;
+            state.mut().stats.treasuryBalance += locals.treasuryShare;
         }
 
         // Return challenger's stake
@@ -3195,7 +3232,9 @@ PUBLIC_PROCEDURE_WITH_LOCALS(CastDisputeVote)
                 state.mut().stats.totalBurned += locals.slashAmount;
             }
             state.mut().stats.treasuryBalance += locals.treasuryAmount;
-            // Distribute arbPool portion directly to dispute voters
+            // Distribute arbPool portion directly to dispute voters.
+            // Any remainder from per-voter floor-division goes to treasury so
+            // that no QU is silently stranded in the contract balance.
             locals.arbReward = locals.platformFee - locals.slashAmount - locals.treasuryAmount;
             if (locals.arbReward > 0 && locals.task.disputeVoterCount > 0)
             {
@@ -3213,6 +3252,9 @@ PUBLIC_PROCEDURE_WITH_LOCALS(CastDisputeVote)
                     if (locals.task.disputeVoters_4 != NULL_ID)
                         qpi.transfer(locals.task.disputeVoters_4, locals.perVoterReward);
                 }
+                sint64 arbRemainder = locals.arbReward - smul(locals.perVoterReward, static_cast<sint64>(locals.task.disputeVoterCount));
+                if (arbRemainder > 0)
+                    state.mut().stats.treasuryBalance += arbRemainder;
             }
         }
 
@@ -3274,7 +3316,8 @@ PUBLIC_PROCEDURE_WITH_LOCALS(CastDisputeVote)
             qpi.burn(locals.burnAmount);
             state.mut().stats.totalBurned += locals.burnAmount;
         }
-        // Distribute arbitrator reward directly to dispute voters (equal split)
+        // Distribute arbitrator reward directly to dispute voters (equal split).
+        // Remainder from per-voter floor-division accrues to treasury.
         if (locals.arbReward > 0 && locals.task.disputeVoterCount > 0)
         {
             locals.perVoterReward = div<sint64>(locals.arbReward, static_cast<sint64>(locals.task.disputeVoterCount));
@@ -3291,6 +3334,9 @@ PUBLIC_PROCEDURE_WITH_LOCALS(CastDisputeVote)
                 if (locals.task.disputeVoters_4 != NULL_ID)
                     qpi.transfer(locals.task.disputeVoters_4, locals.perVoterReward);
             }
+            sint64 arbRemainder = locals.arbReward - smul(locals.perVoterReward, static_cast<sint64>(locals.task.disputeVoterCount));
+            if (arbRemainder > 0)
+                state.mut().stats.treasuryBalance += arbRemainder;
         }
         state.mut().stats.treasuryBalance += locals.treasuryAmount;
 
