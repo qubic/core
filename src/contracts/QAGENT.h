@@ -343,6 +343,9 @@ struct PlatformStats
     uint32 disputedTasks;
     uint32 oracleVerifications;
     uint32 totalProposals;
+    // Running sum of (registrationStake + additionalStake) across all active
+    // agent stake records. Used as the denominator for governance quorum.
+    sint64 totalStakeWeight;
 };
 
 // Helper struct for K12 commit-reveal hashing
@@ -1040,6 +1043,8 @@ struct END_EPOCH_locals
     sint64 arbShare;
     sint64 arbIdx;
     ArbitratorRecord tempArb;
+    sint64 quorumRequired;
+    sint64 participatingWeight;
     QAGENTLogger log;
 };
 
@@ -1133,8 +1138,16 @@ END_EPOCH_WITH_LOCALS()
         if (locals.prop.active != 0 && locals.prop.executed == 0
             && locals.prop.endTick > 0 && locals.prop.endTick <= qpi.tick())
         {
-            // Check if proposal passed (yes > no)
-            if (locals.prop.yesStakeWeight > locals.prop.noStakeWeight)
+            // Require minimum 20% quorum of total agent stake weight to have
+            // participated. Without this a single large staker can unilaterally
+            // pass any proposal by self-voting yes.
+            locals.quorumRequired = div<sint64>(
+                smul(state.get().stats.totalStakeWeight, static_cast<sint64>(2000)),
+                static_cast<sint64>(QAGENT_BPS_SCALE));
+            locals.participatingWeight = locals.prop.yesStakeWeight + locals.prop.noStakeWeight;
+            // Proposal passes if yes > no AND quorum is met
+            if (locals.prop.yesStakeWeight > locals.prop.noStakeWeight
+                && locals.participatingWeight >= locals.quorumRequired)
             {
                 if (locals.prop.paramId == QAGENT_PARAM_PLATFORM_FEE_BPS && locals.prop.newValue >= 0 && locals.prop.newValue <= 500)
                     state.mut().config.platformFeeBPS = locals.prop.newValue;
@@ -1313,6 +1326,10 @@ END_TICK_WITH_LOCALS()
                         {
                             qpi.burn(locals.slashAmount);
                             state.mut().stats.totalBurned += locals.slashAmount;
+                            if (state.get().stats.totalStakeWeight >= locals.slashAmount)
+                                state.mut().stats.totalStakeWeight -= locals.slashAmount;
+                            else
+                                state.mut().stats.totalStakeWeight = 0;
                         }
                     }
                 }
@@ -1531,6 +1548,8 @@ PUBLIC_PROCEDURE_WITH_LOCALS(RegisterAgent)
     state.mut().stakes.set(qpi.invocator(), locals.stake);
 
     state.mut().stats.totalAgents += 1;
+    // Track total governance voting weight for quorum enforcement.
+    state.mut().stats.totalStakeWeight += locals.stake.registrationStake;
 
     // Refund excess beyond registration stake
     locals.excess = qpi.invocationReward() - state.get().config.minRegistrationStake;
@@ -1644,6 +1663,8 @@ PUBLIC_PROCEDURE_WITH_LOCALS(StakeMore)
 
     output.totalStake = locals.stake.registrationStake + locals.stake.additionalStake;
 
+    state.mut().stats.totalStakeWeight += qpi.invocationReward();
+
     locals.log = QAGENTLogger{ CONTRACT_INDEX, logStakeMore, 0, qpi.invocator(), qpi.invocationReward(), 0 };
     LOG_INFO(locals.log);
 
@@ -1716,6 +1737,11 @@ PUBLIC_PROCEDURE_WITH_LOCALS(WithdrawStake)
     locals.stake.registrationStake = 0;
     locals.stake.additionalStake = 0;
     state.mut().stakes.set(qpi.invocator(), locals.stake);
+
+    if (state.get().stats.totalStakeWeight >= locals.amount)
+        state.mut().stats.totalStakeWeight -= locals.amount;
+    else
+        state.mut().stats.totalStakeWeight = 0;
 
     // Deactivate agent
     if (state.get().agents.get(qpi.invocator(), locals.agent))
@@ -2495,6 +2521,10 @@ PUBLIC_PROCEDURE_WITH_LOCALS(TimeoutTask)
                 {
                     qpi.burn(locals.slashAmount);
                     state.mut().stats.totalBurned += locals.slashAmount;
+                    if (state.get().stats.totalStakeWeight >= locals.slashAmount)
+                        state.mut().stats.totalStakeWeight -= locals.slashAmount;
+                    else
+                        state.mut().stats.totalStakeWeight = 0;
                 }
             }
         }
