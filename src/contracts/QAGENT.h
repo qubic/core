@@ -32,7 +32,12 @@ constexpr sint64 QAGENT_MIN_REGISTRATION_STAKE = 50000LL;
 
 constexpr uint32 QAGENT_DISPUTE_VALIDATORS = 5;
 constexpr uint32 QAGENT_DISPUTE_THRESHOLD = 3;
-constexpr sint64 QAGENT_MIN_ARBITRATOR_STAKE = 10000LL;
+// Sized for meaningful economic cost independent of QU/USD fluctuations.
+// At 100M QU, filling all 256 arbitrator slots costs 25.6B QU, materially
+// raising the bar against pre-registered sybil committees. Governance
+// cannot currently adjust this constant; future versions may add a
+// governance path if the economic landscape warrants it.
+constexpr sint64 QAGENT_MIN_ARBITRATOR_STAKE = 100000000LL;
 // Cooldown between arbitrator registration and first vote eligibility.
 // Prevents reactive just-in-time registration — an attacker observing a
 // fresh dispute cannot spin up and use a new identity within the cooldown
