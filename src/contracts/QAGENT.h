@@ -45,6 +45,11 @@ constexpr uint32 QAGENT_ARBITRATOR_COOLDOWN_TICKS = 604800;
 // under partial attack from finalising high-value tasks.
 constexpr uint32 QAGENT_MIN_ORACLE_CONFIDENCE = 2500;
 
+// Delay between a passed proposal's voting window ending and its actual
+// parameter application. Gives stakers a last chance to respond to a
+// captured governance vote before changes take effect. ~1 week.
+constexpr uint32 QAGENT_GOVERNANCE_TIMELOCK_TICKS = 604800;
+
 constexpr uint32 QAGENT_STAKE_LOCK_EPOCHS = 4;
 constexpr uint32 QAGENT_MAX_TASKS_PER_TICK = 50;
 
@@ -1144,7 +1149,8 @@ END_EPOCH_WITH_LOCALS()
     {
         locals.prop = state.get().proposals.get(locals.i);
         if (locals.prop.active != 0 && locals.prop.executed == 0
-            && locals.prop.endTick > 0 && locals.prop.endTick <= qpi.tick())
+            && locals.prop.endTick > 0
+            && qpi.tick() >= locals.prop.endTick + QAGENT_GOVERNANCE_TIMELOCK_TICKS)
         {
             // Require minimum 20% quorum of total agent stake weight to have
             // participated. Without this a single large staker can unilaterally
@@ -2450,6 +2456,14 @@ PUBLIC_PROCEDURE_WITH_LOCALS(FinalizeTask)
         static_cast<sint64>(QAGENT_BPS_SCALE));
     if (locals.keeperFee < QAGENT_MIN_KEEPER_FEE)
         locals.keeperFee = QAGENT_MIN_KEEPER_FEE;
+    // Cap keeperFee at 50% of the agent's share so the keeper-floor cannot
+    // consume the entire payout on small escrows (e.g. minEscrow=100 with
+    // MIN_KEEPER_FEE=100 would otherwise leave agentPayout = 0).
+    {
+        sint64 agentShareCap = div<sint64>(locals.task.escrowAmount - locals.platformFee, static_cast<sint64>(2));
+        if (locals.keeperFee > agentShareCap)
+            locals.keeperFee = agentShareCap;
+    }
     if (locals.platformFee + locals.keeperFee > locals.task.escrowAmount)
         locals.keeperFee = locals.task.escrowAmount - locals.platformFee;
     if (locals.keeperFee < 0)
@@ -3112,6 +3126,20 @@ PRIVATE_PROCEDURE_WITH_LOCALS(OnAIVerifyReply)
 
         locals.log = QAGENTLogger{ CONTRACT_INDEX, logOracleReply, locals.task.taskId, locals.task.assignedAgent, 0, QAGENT_VERDICT_INVALID };
         LOG_INFO(locals.log);
+    }
+    else
+    {
+        // Unknown verdict value — do not act on it. Fall back to dispute
+        // rather than leaving the task stuck in ORACLE_PENDING with no
+        // further processing path and funds locked.
+        locals.task.status = QAGENT_TASK_STATUS_DISPUTED;
+        locals.task.oracleRequested = 0;
+        locals.task.disputeDeadlineTick = qpi.tick() + static_cast<uint32>(state.get().config.disputeResolutionTicks);
+        state.mut().tasks.set(locals.task.taskId, locals.task);
+        state.mut().activeTaskQ.add(SELF, locals.task.taskId, static_cast<sint64>(locals.task.disputeDeadlineTick));
+        state.mut().stats.disputedTasks += 1;
+        state.mut().oracleQueryToTask.removeByKey(input.queryId);
+        return;
     }
 
     if (state.get().stats.activeTasks > 0)
