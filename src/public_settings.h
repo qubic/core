@@ -108,7 +108,7 @@ static constexpr unsigned long long ADDITION_NUMBER_OF_TICKS = 1000;            
 static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
 static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 500;
 static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = ADDITION_NUMBER_OF_INPUT_NEURONS + ADDITION_NUMBER_OF_OUTPUT_NEURONS + ADDITION_NUMBER_OF_MUTATIONS; // P
-static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 75700;
+static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 76100;
 
 // Multipler of score
 static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;
