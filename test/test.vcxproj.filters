@@ -37,7 +37,6 @@
     <ClCompile Include="contract_qagent.cpp" />
     <ClCompile Include="file_io.cpp" />
     <ClCompile Include="virtual_memory.cpp" />
-    <ClCompile Include="custom_mining.cpp" />
     <ClCompile Include="execution_fees.cpp" />
     <ClCompile Include="stable_computor_index.cpp" />
     <ClCompile Include="contract_qutil.cpp" />
@@ -59,6 +58,7 @@
     <ClCompile Include="contract_qrwa.cpp" />
     <ClCompile Include="contract_escrow.cpp" />
     <ClCompile Include="custom_qubic_mining_storage.cpp" />
+    <ClCompile Include="contract_quottery.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />

@@ -383,6 +383,9 @@
     <ClInclude Include="mining\custom_qubic_mining_storage.h">
       <Filter>mining</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\Quottery_old.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="oracle_interfaces\AIVerify.h">
       <Filter>oracle_interfaces</Filter>
     </ClInclude>
