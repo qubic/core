@@ -156,8 +156,9 @@ private:
     // Storage for type-specific task descriptions.
     StoredDogeMiningTask dogeTasks[maxNumTasks];
 
-    // Storage for type-specific oracle queries.
-    OI::DogeShareValidation::OracleQuery dogeOracleQueries[maxNumTasks * maxNumSolutionsPerTask];
+    // Storage for type-specific oracle queries. Linear array of length maxNumTasks * maxNumSolutionsPerTask.
+    OI::DogeShareValidation::OracleQuery* dogeOracleQueries;
+    static constexpr unsigned long long dogeOracleQueriesSize = maxNumTasks * maxNumSolutionsPerTask * sizeof(OI::DogeShareValidation::OracleQuery);
 
     inline static volatile char lock = 0;
 
@@ -314,14 +315,14 @@ bool CustomQubicMiningStorage::init()
     setMem(activeTasks, sizeof(activeTasks), 0);
     setMem(nextTaskIndex, sizeof(nextTaskIndex), 0);
     setMem(oracleQueries, sizeof(oracleQueries), 0);
+    setMem(dogeTasks, sizeof(dogeTasks), 0);
 
     if (!allocPoolWithErrorLog(L"CustomQubicMiningStorage::receivedSolutions ", receivedSolutionsSize, (void**)&receivedSolutions, __LINE__))
         return false;
     if (!allocPoolWithErrorLog(L"CustomQubicMiningStorage::countedRevSolutions ", countedRevSolutionsSize, (void**)&countedRevSolutions, __LINE__))
         return false;
-
-    setMem(dogeTasks, sizeof(dogeTasks), 0);
-    setMem(dogeOracleQueries, sizeof(dogeOracleQueries), 0);
+    if (!allocPoolWithErrorLog(L"CustomQubicMiningStorage::dogeOracleQueries ", dogeOracleQueriesSize, (void**)&dogeOracleQueries, __LINE__))
+        return false;
 
     ASSERT(lock == 0);
 
@@ -334,6 +335,8 @@ void CustomQubicMiningStorage::deinit()
         freePool(receivedSolutions);
     if (countedRevSolutions)
         freePool(countedRevSolutions);
+    if (dogeOracleQueries)
+        freePool(dogeOracleQueries);
 }
 
 bool CustomQubicMiningStorage::addTask(const CustomQubicMiningTask* task, unsigned int size)

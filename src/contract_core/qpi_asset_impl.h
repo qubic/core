@@ -396,6 +396,8 @@ sint64 QPI::QpiContextProcedureCall::acquireShares(
     if (sourcePossessionManagingContractIndex == _currentContractIndex
         || sourcePossessionManagingContractIndex == 0
         || sourcePossessionManagingContractIndex >= contractCount
+        || system.epoch < contractDescriptions[sourcePossessionManagingContractIndex].constructionEpoch
+        || system.epoch >= contractDescriptions[sourcePossessionManagingContractIndex].destructionEpoch
         || numberOfShares <= 0
         || offeredTransferFee < 0)
     {
