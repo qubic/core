@@ -22,6 +22,7 @@ public:
     {
         initEmptySpectrum();
         initEmptyUniverse();
+        system.epoch = contractDescriptions[MSVAULT_CONTRACT_INDEX].constructionEpoch;
         INIT_CONTRACT(MSVAULT);
         callSystemProcedure(MSVAULT_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QX);

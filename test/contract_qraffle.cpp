@@ -209,6 +209,7 @@ public:
     {
         initEmptySpectrum();
         initEmptyUniverse();
+        system.epoch = contractDescriptions[QRAFFLE_CONTRACT_INDEX].constructionEpoch;
         INIT_CONTRACT(QRAFFLE);
         callSystemProcedure(QRAFFLE_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QX);
