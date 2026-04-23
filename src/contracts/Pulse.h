@@ -1565,15 +1565,10 @@ public:
 	 * @brief Releases PULSE share management rights back to QX for the invocator.
 	 * @param input Number of PULSE shares to transfer under QX management.
 	 * @param output Number of shares transferred and a status code.
-	 * @note The current QX transfer fee is paid from the Pulse contract balance; any invocation reward is refunded.
+	 * @note The invocation reward must cover QX transfer fees; any excess reward is refunded.
 	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(TransferTokenToQx)
 	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
-
 		if (input.numberOfShares <= 0)
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
@@ -1588,6 +1583,11 @@ public:
 		}
 
 		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
+		if (qpi.invocationReward() < locals.feesOutput.transferFee)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
 
 		locals.asset.issuer = state.get().qheartIssuer;
 		locals.asset.assetName = PULSE_QHEART_ASSET_NAME;
@@ -1597,6 +1597,11 @@ public:
 		{
 			output.returnCode = toReturnCode(EReturnCode::TRANSFER_FROM_PULSE_FAILED);
 			return;
+		}
+
+		if (qpi.invocationReward() > locals.feesOutput.transferFee)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.feesOutput.transferFee);
 		}
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);

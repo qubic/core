@@ -385,6 +385,7 @@ struct ESCROW : public ContractBase
     PUBLIC_PROCEDURE_WITH_LOCALS(AcceptDeal)
     {
         locals.error = false;
+        locals.transferResult = 0;
         locals.requestedQuAndFee = 0;
 
         if (!state.get()._deals.get(input.index, locals.tempDeal)
@@ -422,6 +423,15 @@ struct ESCROW : public ContractBase
 
             for (locals.counter = 0; locals.counter < locals.tempDeal.offeredAssetsNumber; locals.counter++)
             {
+                locals.tempAsset.assetName = locals.tempDeal.offeredAssets.get(locals.counter).name;
+                locals.tempAsset.issuer = locals.tempDeal.offeredAssets.get(locals.counter).issuer;
+                locals.availableTokenAmount = qpi.numberOfShares(locals.tempAsset, {locals.dealOwner, SELF_INDEX, false, false}, {locals.dealOwner, SELF_INDEX, false, false});
+                if (locals.availableTokenAmount < 0 || uint64(locals.availableTokenAmount) < locals.tempDeal.offeredAssets.get(locals.counter).amount)
+                {
+                    locals.error = true;
+                    break;
+                }
+
                 if (locals.tempDeal.offeredAssets.get(locals.counter).issuer == NULL_ID)
                 {
                     locals.requestedQuAndFee = sadd(smul(locals.tempDeal.offeredAssets.get(locals.counter).amount, ESCROW_FEE_PER_SHARE), locals.requestedQuAndFee);
@@ -481,39 +491,42 @@ struct ESCROW : public ContractBase
                 }
             }
 
-            locals.tempAsset.issuer = locals.tempDeal.offeredAssets.get(locals.counter).issuer;
-            locals.tempAsset.assetName = locals.tempDeal.offeredAssets.get(locals.counter).name;
-            locals.wrapper.setFrom(locals.tempAsset);
-
-            if (locals.tempAsset.issuer != NULL_ID && !state.get()._earnedTokens.contains(locals.wrapper))
+            if (locals.transferResult >= 0)
             {
-                state.mut()._earnedTokens.add(locals.wrapper);
-            }
+                locals.tempAsset.issuer = locals.tempDeal.offeredAssets.get(locals.counter).issuer;
+                locals.tempAsset.assetName = locals.tempDeal.offeredAssets.get(locals.counter).name;
+                locals.wrapper.setFrom(locals.tempAsset);
 
-            state.mut()._numberOfReservedShares_input.issuer = locals.tempDeal.offeredAssets.get(locals.counter).issuer;
-            state.mut()._numberOfReservedShares_input.assetName = locals.tempDeal.offeredAssets.get(locals.counter).name;
-            state.mut()._numberOfReservedShares_input.owner = locals.dealOwner;
-            CALL(_NumberOfReservedShares, state.mut()._numberOfReservedShares_input, state.mut()._numberOfReservedShares_output);
-            locals.elementIndex = state.get()._reservedAssets.headIndex(locals.dealOwner);
-            while (locals.elementIndex != NULL_INDEX)
-            {
-                locals.tempAssetWithAmount = state.get()._reservedAssets.element(locals.elementIndex);
-                if (locals.tempAssetWithAmount.name == locals.tempDeal.offeredAssets.get(locals.counter).name
-                    && locals.tempAssetWithAmount.issuer == locals.tempDeal.offeredAssets.get(locals.counter).issuer)
+                if (locals.tempAsset.issuer != NULL_ID && !state.get()._earnedTokens.contains(locals.wrapper))
                 {
-                    if (state.get()._numberOfReservedShares_output.amount - locals.transferredShares - locals.transferredFeeShares <= 0)
-                    {
-                        state.mut()._reservedAssets.remove(locals.elementIndex);
-                    }
-                    else
-                    {
-                        locals.tempAssetWithAmount.amount -= locals.transferredShares;
-                        locals.tempAssetWithAmount.amount -= locals.transferredFeeShares;
-                        state.mut()._reservedAssets.replace(locals.elementIndex, locals.tempAssetWithAmount);
-                    }
-                    break;
+                    state.mut()._earnedTokens.add(locals.wrapper);
                 }
-                locals.elementIndex = state.get()._reservedAssets.nextElementIndex(locals.elementIndex);
+
+                state.mut()._numberOfReservedShares_input.issuer = locals.tempDeal.offeredAssets.get(locals.counter).issuer;
+                state.mut()._numberOfReservedShares_input.assetName = locals.tempDeal.offeredAssets.get(locals.counter).name;
+                state.mut()._numberOfReservedShares_input.owner = locals.dealOwner;
+                CALL(_NumberOfReservedShares, state.mut()._numberOfReservedShares_input, state.mut()._numberOfReservedShares_output);
+                locals.elementIndex = state.get()._reservedAssets.headIndex(locals.dealOwner);
+                while (locals.elementIndex != NULL_INDEX)
+                {
+                    locals.tempAssetWithAmount = state.get()._reservedAssets.element(locals.elementIndex);
+                    if (locals.tempAssetWithAmount.name == locals.tempDeal.offeredAssets.get(locals.counter).name
+                        && locals.tempAssetWithAmount.issuer == locals.tempDeal.offeredAssets.get(locals.counter).issuer)
+                    {
+                        if (state.get()._numberOfReservedShares_output.amount - locals.transferredShares - locals.transferredFeeShares <= 0)
+                        {
+                            state.mut()._reservedAssets.remove(locals.elementIndex);
+                        }
+                        else
+                        {
+                            locals.tempAssetWithAmount.amount -= locals.transferredShares;
+                            locals.tempAssetWithAmount.amount -= locals.transferredFeeShares;
+                            state.mut()._reservedAssets.replace(locals.elementIndex, locals.tempAssetWithAmount);
+                        }
+                        break;
+                    }
+                    locals.elementIndex = state.get()._reservedAssets.nextElementIndex(locals.elementIndex);
+                }
             }
         }
 
