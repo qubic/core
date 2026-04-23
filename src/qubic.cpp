@@ -1442,7 +1442,7 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                     queryData->numMerkleBranches = task.numMerkleBranches;
                     copyMem(queryData->additionalData, task.additionalData, OI::DogeShareValidation::OracleQuery::additionalDataSize);
 
-                    customQubicMiningStorage.addOracleQuery(tx);
+                    customQubicMiningStorage.addOracleQuery(tx, task.jobId);
 
                     if (isMainMode()) // only main node should send oracle queries
                     {
@@ -3158,11 +3158,20 @@ static void processTick(unsigned long long processorNumber)
         PROFILE_SCOPE_END();
     }
 
-    // Resend oracle queries for share validation if they were scheduled for but not included in this tick.
+    // Resend own oracle queries for share validation if they were scheduled for but not included in this tick.
     int currentQueryIndex = customQubicMiningStorage.getNextScheduledQueryIndexForTick(CustomMiningType::DOGE, /*currentQueryIndex=*/-1, system.tick);
     while (currentQueryIndex >= 0)
     {
         CustomQubicMiningStorage::OracleQueryInfo queryInfo = customQubicMiningStorage.getOracleQueryInfo(CustomMiningType::DOGE, currentQueryIndex);
+        
+        // Check if task is still active before rescheduling (revenue points can only be counted for active tasks).
+        if (!customQubicMiningStorage.containsTask(CustomMiningType::DOGE, queryInfo.taskId))
+        {
+            customQubicMiningStorage.removeOracleQuery(CustomMiningType::DOGE, currentQueryIndex);
+            currentQueryIndex = customQubicMiningStorage.getNextScheduledQueryIndexForTick(CustomMiningType::DOGE, currentQueryIndex, system.tick);
+            continue;
+        }
+
         for (unsigned int i = 0; i < computorSeedsCount; ++i)
         {
             if (computorPublicKeys[i] == queryInfo.sourcePublicKey)
