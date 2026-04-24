@@ -1,7 +1,8 @@
 #define SINGLE_COMPILE_UNIT
 
+// #define OLD_QTRY
+
 //#define INCLUDE_CONTRACT_TEST_EXAMPLES
-// #define NO_ESCROW
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
@@ -224,11 +225,8 @@ static constexpr unsigned int gScoreMultiplier[score_engine::AlgoType::MaxAlgoCo
     ADDITION_SOLUTION_MULTIPLER         // Addition
 };
 
-// Custom mining related variables and constants
-static unsigned int gCustomMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
-static CustomMiningSharesCounter gCustomMiningSharesCounter;
 
-// DOGE merged-mining shares (separate pipeline from XMR custom mining)
+// DOGE merged-mining shares
 static volatile char gDogeMiningSharesCountLock = 0;
 static unsigned int gDogeMiningSharesCount[NUMBER_OF_COMPUTORS] = { 0 };
 static CustomMiningSharesCounter gDogeMiningSharesCounter;
@@ -259,7 +257,6 @@ struct
     unsigned int resourceTestingDigest;
     unsigned int numberOfMiners;
     unsigned int numberOfTransactions;
-    unsigned char customMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
     unsigned char dogeMiningSharesCounterData[CustomMiningSharesCounter::_customMiningSolutionCounterDataSize];
 } nodeStateBuffer;
 #endif
@@ -536,110 +533,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                 enqueueResponse(NULL, header);
             }
 
-            if (isZero(request->destinationPublicKey))
-            {
-                const unsigned int messagePayloadSize = messageSize - sizeof(BroadcastMessage) - SIGNATURE_SIZE;
-
-                // Only record task and solution message in idle phase
-                char recordCustomMining = 0;
-                ACQUIRE(gIsInCustomMiningStateLock);
-                recordCustomMining = gIsInCustomMiningState;
-                RELEASE(gIsInCustomMiningStateLock);
-
-                if (messagePayloadSize == sizeof(CustomMiningTaskV2) && request->sourcePublicKey == dispatcherPublicKey)
-                {
-                    unsigned char sharedKeyAndGammingNonce[64];
-                    setMem(sharedKeyAndGammingNonce, 32, 0);
-                    copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
-                    unsigned char gammingKey[32];
-                    KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
-
-                    // Record the task emitted by dispatcher
-                    if (recordCustomMining && gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_TASK)
-                    {
-                        const CustomMiningTaskV2* task = ((CustomMiningTaskV2*)((unsigned char*)request + sizeof(BroadcastMessage)));
-
-                        // Record the task message
-                        ACQUIRE(gCustomMiningTaskStorageLock);
-                        int taskAddSts = gCustomMiningStorage._taskV2Storage.addData(task);
-                        if (CustomMiningTaskV2Storage::OK == taskAddSts)
-                        {
-                            ATOMIC_INC64(gCustomMiningStats.phaseV2.tasks);
-                            gCustomMiningStorage.updateTaskIndex(task->taskIndex);
-                        }
-                        RELEASE(gCustomMiningTaskStorageLock);
-                    }
-                }
-                else if (messagePayloadSize == sizeof(CustomMiningSolutionV2))
-                {
-                    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-                    {
-                        if (request->sourcePublicKey == broadcastedComputors.computors.publicKeys[i])
-                        {
-                            // Compute the gamming key to get the sub-type of message
-                            unsigned char sharedKeyAndGammingNonce[64];
-                            setMem(sharedKeyAndGammingNonce, 32, 0);
-                            copyMem(&sharedKeyAndGammingNonce[32], &request->gammingNonce, 32);
-                            unsigned char gammingKey[32];
-                            KangarooTwelve64To32(sharedKeyAndGammingNonce, gammingKey);
-
-                            if (recordCustomMining && gammingKey[0] == MESSAGE_TYPE_CUSTOM_MINING_SOLUTION)
-                            {
-                                // Record the solution
-                                bool isSolutionGood = false;
-                                const CustomMiningSolutionV2* solution = ((CustomMiningSolutionV2*)((unsigned char*)request + sizeof(BroadcastMessage)));
-
-                                CustomMiningSolutionV2CacheEntry cacheEntry;
-                                cacheEntry.set(solution);
-
-                                unsigned int cacheIndex = 0;
-                                int sts = gSystemCustomMiningSolutionV2Cache.tryFetching(cacheEntry, cacheIndex);
-
-                                // Check for duplicated solution
-                                if (sts == CUSTOM_MINING_CACHE_MISS)
-                                {
-                                    gSystemCustomMiningSolutionV2Cache.addEntry(cacheEntry, cacheIndex);
-                                    isSolutionGood = true;
-                                }
-                                if (gCustomMiningStorage.isSolutionStale(solution->taskIndex))
-                                {
-                                    isSolutionGood = false;
-                                }
-
-                                if (isSolutionGood)
-                                {
-                                    // Check the computor idx of this solution.
-                                    unsigned short computorID = customMiningGetComputorID(solution);
-
-                                    ACQUIRE(gCustomMiningSharesCountLock);
-                                    gCustomMiningSharesCount[computorID]++;
-                                    RELEASE(gCustomMiningSharesCountLock);
-
-                                    CustomMiningSolutionStorageEntry solutionStorageEntry;
-                                    solutionStorageEntry.taskIndex = solution->taskIndex;
-                                    solutionStorageEntry.nonce = solution->nonce;
-                                    solutionStorageEntry.cacheEntryIndex = cacheIndex;
-
-                                    ACQUIRE(gCustomMiningSolutionStorageLock);
-                                    gCustomMiningStorage._solutionV2Storage.addData(&solutionStorageEntry);
-                                    RELEASE(gCustomMiningSolutionStorageLock);
-                                }
-
-                                // Record stats
-                                const unsigned int hitCount = gSystemCustomMiningSolutionV2Cache.hitCount();
-                                const unsigned int missCount = gSystemCustomMiningSolutionV2Cache.missCount();
-                                const unsigned int collision = gSystemCustomMiningSolutionV2Cache.collisionCount();
-
-                                ATOMIC_STORE64(gCustomMiningStats.phaseV2.shares, missCount);
-                                ATOMIC_STORE64(gCustomMiningStats.phaseV2.duplicated, hitCount);
-                                ATOMIC_MAX64(gCustomMiningStats.maxCollisionShareCount, collision);
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-            else
+            if (!isZero(request->destinationPublicKey))
             {
                 for (unsigned int i = 0; i < computorSeedsCount; i++)
                 {
@@ -867,28 +761,9 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             }
             else
             {
-                // HACK: force empty ticks 49124963-49124965 — remove after passing these ticks
-                bool isOk = true;
-                if (request->tick.tick == 49124963 || request->tick.tick == 49124964)
-                {
-                    if (!(isZero(request->tick.transactionDigest) && isZero(request->tick.expectedNextTickTransactionDigest)))
-                    {
-                        isOk = false;
-                    }
-                }
-                if (request->tick.tick == 49124965)
-                {
-                    if (!isZero(request->tick.transactionDigest))
-                    {
-                        isOk = false;
-                    }
-                }
-                if (isOk)
-                {
-                    // Copy the sent tick to the tick storage
-                    copyMem(tsTick, &request->tick, sizeof(Tick));
-                    peer->lastActiveTick = max(peer->lastActiveTick, peer->getDejavuTick(header->dejavu()));
-                }
+                // Copy the sent tick to the tick storage
+                copyMem(tsTick, &request->tick, sizeof(Tick));
+                peer->lastActiveTick = max(peer->lastActiveTick, peer->getDejavuTick(header->dejavu()));
             }
 
             ts.ticks.releaseLock(request->tick.computorIndex);
@@ -1458,74 +1333,6 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     enqueueResponse(peer, sizeof(respondedSystemInfo), RespondSystemInfo::type(), header->dejavu(), &respondedSystemInfo);
 }
 
-
-// Process the request for custom mining solution verification.
-// The request contains a single solution along with its validity status.
-// Once the validity is determined, the solution is marked as verified in storage
-// to prevent it from being re-sent for verification.
-static void processRequestedCustomMiningSolutionVerificationRequest(Peer* peer, RequestResponseHeader* header)
-{
-    RequestCustomMiningSolutionVerification* request = header->getPayload<RequestCustomMiningSolutionVerification>();
-    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestCustomMiningSolutionVerification) + SIGNATURE_SIZE)
-    {
-        unsigned char digest[32];
-        KangarooTwelve(request, header->size() - sizeof(RequestResponseHeader) - SIGNATURE_SIZE, digest, sizeof(digest));
-        if (verify(operatorPublicKey.m256i_u8, digest, ((const unsigned char*)header + (header->size() - SIGNATURE_SIZE))))
-        {
-            // Update the share counting
-            // Only record shares in idle phase
-            char recordSolutions = 0;
-            ACQUIRE(gIsInCustomMiningStateLock);
-            recordSolutions = gIsInCustomMiningState;
-            RELEASE(gIsInCustomMiningStateLock);
-
-            RespondCustomMiningSolutionVerification respond = customMiningVerificationRequestToRespond(request);
-            if (recordSolutions)
-            {
-                CustomMiningSolutionV2 solution = customMiningVerificationRequestToSolution(request);
-
-                CustomMiningSolutionV2CacheEntry fullEntry;
-                fullEntry.set(&solution);
-                fullEntry.setVerified(true);
-                fullEntry.setValid(request->isValid > 0);
-
-                // Check the computor idx of this solution
-                unsigned short computorID = customMiningGetComputorID(&solution);
-                // Also re-update the cache data with verified = true and validity
-                if ( gSystemCustomMiningSolutionV2Cache.tryFetchingAndUpdateHitData(fullEntry))
-                {
-                    // Reduce the share of this nonce if it is invalid
-                    if (0 == request->isValid)
-                    {
-                        ACQUIRE(gCustomMiningSharesCountLock);
-                        gCustomMiningSharesCount[computorID] = gCustomMiningSharesCount[computorID] > 0 ? gCustomMiningSharesCount[computorID] - 1 : 0;
-                        RELEASE(gCustomMiningSharesCountLock);
-
-                        // Save the number of invalid share count
-                        ATOMIC_INC64(gCustomMiningStats.phaseV2.invalid);
-
-                        respond.status = RespondCustomMiningSolutionVerification::invalid;
-                    }
-                    else
-                    {
-                        ATOMIC_INC64(gCustomMiningStats.phaseV2.valid);
-                        respond.status = RespondCustomMiningSolutionVerification::valid;
-                    }
-                }
-                else
-                {
-                    respond.status = RespondCustomMiningSolutionVerification::notExisted;
-                }
-            }
-            else
-            {
-                respond.status = RespondCustomMiningSolutionVerification::customMiningStateEnded;
-            }
-            enqueueResponse(peer, sizeof(respond), RespondCustomMiningSolutionVerification::type(), header->dejavu(), &respond);
-        }
-    }
-}
-
 // Hardcoded doge dispatcher public key (identity: XPILPIJYHRBTACMMIRSJLIZWCXDBHWVEOTZBQFBXWEUXDZGGDEKDQPIEQKQK)
 static const unsigned char dogeDispatcherPubkey[32] = {
     0x25, 0x98, 0x6d, 0x38, 0xa6, 0x3d, 0xd6, 0x45,
@@ -1654,118 +1461,6 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
             }
         }
 #endif
-    }
-}
-
-// Process custom mining data requests.
-// Currently supports:
-// - Requesting a range of tasks (using Unix timestamps as unique indexes; each task has only one unique index).
-// - Requesting all solutions corresponding to a specific task index.
-//   The total size of the response will not exceed CUSTOM_MINING_RESPOND_MESSAGE_MAX_SIZE.
-// For the solution respond, only respond solution that has not been verified yet
-static void processCustomMiningDataRequest(Peer* peer, const unsigned long long processorNumber, RequestResponseHeader* header)
-{
-    RequestCustomMiningData* request = header->getPayload<RequestCustomMiningData>();
-    if (header->size() >= sizeof(RequestResponseHeader) + sizeof(RequestCustomMiningData) + SIGNATURE_SIZE)
-    {
-
-        unsigned char digest[32];
-        KangarooTwelve(request, header->size() - sizeof(RequestResponseHeader) - SIGNATURE_SIZE, digest, sizeof(digest));
-        if (verify(operatorPublicKey.m256i_u8, digest, ((const unsigned char*)header + (header->size() - SIGNATURE_SIZE))))
-        {
-            unsigned char* respond = NULL;
-            // Request tasks
-            if (request->dataType == RequestCustomMiningData::taskType)
-            {
-                // For task type, return all data from the current phase
-                ACQUIRE(gCustomMiningTaskStorageLock);
-                // Pack all the task data
-                respond = gCustomMiningStorage.getSerializedTaskData(request->fromTaskIndex, request->toTaskIndex, processorNumber);
-                RELEASE(gCustomMiningTaskStorageLock);
-
-                if (NULL != respond)
-                {
-                    CustomMiningRespondDataHeader* customMiningInternalHeader = (CustomMiningRespondDataHeader*)respond;
-                    customMiningInternalHeader->respondType = RespondCustomMiningData::taskType;
-                    const unsigned long long respondDataSize = sizeof(CustomMiningRespondDataHeader) + customMiningInternalHeader->itemCount * customMiningInternalHeader->itemSize;
-                    ASSERT(respondDataSize < ((1ULL << 32) - 1));
-                    enqueueResponse(
-                        peer,
-                        (unsigned int)respondDataSize,
-                        RespondCustomMiningData::type(), header->dejavu(), respond);
-                }
-                else
-                {
-                    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
-                }
-
-            }
-            // Request solutions
-            else if (request->dataType == RequestCustomMiningData::solutionType)
-            {
-                // For solution type, return all solution from the current phase
-                {
-                    ACQUIRE(gCustomMiningSolutionStorageLock);
-                    // Look for all solution data
-                    respond = gCustomMiningStorage._solutionV2Storage.getSerializedData(request->fromTaskIndex, processorNumber);
-                    RELEASE(gCustomMiningSolutionStorageLock);
-                }
-
-                // Has the solutions
-                if (NULL != respond)
-                {
-                    unsigned char* respondSolution = gCustomMiningStorage._dataBuffer[processorNumber];
-                    CustomMiningRespondDataHeader* customMiningInternalHeader = (CustomMiningRespondDataHeader*)respondSolution;
-                    CustomMiningSolutionStorageEntry* solutionEntries = (CustomMiningSolutionStorageEntry*)(respond + sizeof(CustomMiningRespondDataHeader));
-                    copyMem(customMiningInternalHeader, (CustomMiningRespondDataHeader*)respond, sizeof(CustomMiningRespondDataHeader));
-
-                    // Extract the solutions and respond
-                    unsigned char* respondSolutionPayload = respondSolution + sizeof(CustomMiningRespondDataHeader);
-                    long long remainedDataToSend = CUSTOM_MINING_RESPOND_MESSAGE_MAX_SIZE;
-                    int sendItem = 0;
-                    for (int k = 0; k < customMiningInternalHeader->itemCount && remainedDataToSend > sizeof(CustomMiningSolutionV2); k++)
-                    {
-                        CustomMiningSolutionStorageEntry entry = solutionEntries[k];
-                        CustomMiningSolutionV2CacheEntry fullEntry;
-
-                        gSystemCustomMiningSolutionV2Cache.getEntry(fullEntry, (unsigned int)entry.cacheEntryIndex);
-
-                        // Check data is matched and not verifed yet
-                        if (!fullEntry.isEmpty() 
-                            && !fullEntry.isVerified() 
-                            && fullEntry.getTaskIndex() == entry.taskIndex
-                            && fullEntry.getNonce() == entry.nonce)
-                        {
-                            // Append data to send
-                            CustomMiningSolutionV2 solution;
-                            fullEntry.get(solution);
-
-                            copyMem(respondSolutionPayload + k * sizeof(CustomMiningSolutionV2), &solution, sizeof(CustomMiningSolutionV2));
-                            remainedDataToSend -= sizeof(CustomMiningSolutionV2);
-                            sendItem++;
-                        }
-                    }
-                    
-                    customMiningInternalHeader->itemSize = sizeof(CustomMiningSolutionV2);
-                    customMiningInternalHeader->itemCount = sendItem;
-                    customMiningInternalHeader->respondType = RespondCustomMiningData::solutionType;
-                    const unsigned long long respondDataSize = sizeof(CustomMiningRespondDataHeader) + customMiningInternalHeader->itemCount * customMiningInternalHeader->itemSize;
-                    ASSERT(respondDataSize < ((1ULL << 32) - 1));
-                    enqueueResponse(
-                        peer,
-                        (unsigned int)respondDataSize,
-                        RespondCustomMiningData::type(), header->dejavu(), respondSolution);
-                }
-                else
-                {
-                    enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
-                }
-            }
-            else // Unknonwn type
-            {
-                enqueueResponse(peer, 0, EndResponse::type(), header->dejavu(), NULL);
-            }
-        }
     }
 }
 
@@ -2014,177 +1709,20 @@ static void setNewMiningSeed()
     score->initMiningData(spectrumDigests[(SPECTRUM_CAPACITY * 2 - 1) - 1]);
 }
 
-// Total number of external mining event.
-// Can set to zero to disable event 
-static constexpr int gNumberOfFullExternalMiningEvents = sizeof(gFullExternalComputationTimes) > 0 ? sizeof(gFullExternalComputationTimes) / sizeof(gFullExternalComputationTimes[0]) : 0;
-struct FullExternallEvent
-{
-    WeekDay startTime;
-    WeekDay endTime;
-};
-FullExternallEvent* gFullExternalEventTime = NULL;
-static bool gSpecialEventFullExternalComputationPeriod = false; // a flag indicates a special event (period) that the network running 100% external computation
-static WeekDay currentEventEndTime;
-
-
-static bool isFullExternalComputationTime(TimeDate tickDate)
-{
-    // No event
-    if (gNumberOfFullExternalMiningEvents <= 0)
-    {
-        return false;
-    }
-
-    // Get current day of the week
-    WeekDay tickWeekDay;
-    tickWeekDay.hour = tickDate.hour;
-    tickWeekDay.minute = tickDate.minute;
-    tickWeekDay.second = tickDate.second;
-    tickWeekDay.millisecond = tickDate.millisecond;
-    tickWeekDay.dayOfWeek = getDayOfWeek(tickDate.day, tickDate.month, 2000 + tickDate.year);
-
-    // Check if the day is in range. Expect the time is not overlap.
-    for (int i = 0; i < gNumberOfFullExternalMiningEvents; ++i)
-    {
-        if (isWeekDayInRange(tickWeekDay, gFullExternalEventTime[i].startTime, gFullExternalEventTime[i].endTime))
-        {
-            gSpecialEventFullExternalComputationPeriod = true;
-
-            currentEventEndTime = gFullExternalEventTime[i].endTime;
-            return true;
-        }
-    }
-
-    // When not in range, and the time pass the gFullExternalEndTime. We need to make sure the ending happen
-    // in custom mining period, so that the score of custom mining is recorded.
-    if (gSpecialEventFullExternalComputationPeriod)
-    {
-        // Check time pass the end time
-        TimeDate endTimeDate = tickDate;
-        endTimeDate.hour = currentEventEndTime.hour;
-        endTimeDate.minute = currentEventEndTime.minute;
-        endTimeDate.second = currentEventEndTime.second;
-
-        if (compareTimeDate(tickDate, endTimeDate) == 1)
-        {
-            // Check time is in custom mining phase. If it is still in qubic mining phase
-            // don't stop the event
-            if (getTickInMiningPhaseCycle() <= INTERNAL_COMPUTATIONS_INTERVAL)
-            {
-                return true;
-            }
-        }
-    }
-    
-    // Event is marked as end
-    gSpecialEventFullExternalComputationPeriod = false;
-    return false;
-}
-
-// Clean up before custom mining phase. Thread-safe function
-static void beginCustomMiningPhase()
-{
-    gSystemCustomMiningSolutionV2Cache.reset();
-    gCustomMiningStorage.reset();
-    gCustomMiningStats.phaseResetAndEpochAccumulate();
-    gDogeMiningStats.phaseResetAndEpochAccumulate();
-}
-
-// resetPhase: If true, allows reinitializing mining seed and the custom mining phase flag
-// even when already inside the current phase. These values are normally set only once
-// at the beginning of a phase.
+// resetPhase: if true, force a mining-seed rotation even when not at the regular rotation boundary.
 static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate, bool resetPhase)
 {
-    bool isBeginOfCustomMiningPhase = false;
-    char isInCustomMiningPhase = 0;
-
-    // When resetting the phase:
-    // - If in the internal mining phase => reset the mining seed for the new epoch
-    // - If in the external (custom) mining phase => reset mining data (counters, etc.)
-    if (resetPhase)
+    // The mining seed rotates every MINING_SEED_ROTATION_INTERVAL ticks.
+    if (resetPhase || (system.tick % MINING_SEED_ROTATION_INTERVAL) == 0)
     {
-        const unsigned int r = getTickInMiningPhaseCycle();
-        if (r < INTERNAL_COMPUTATIONS_INTERVAL)
-        {
-            setNewMiningSeed();
-        }
-        else
-        {
-            score->initMiningData(m256i::zero());
-            isBeginOfCustomMiningPhase = true;
-            isInCustomMiningPhase = 1;
-        }
-    }
-    else
-    {
-        // Track whether we’re currently in a full external computation window
-        static bool isInFullExternalTime = false;
-
-        // Make sure the tick is valid and not in the reset phase state
-        if (tickEpoch == system.epoch)
-        {
-            if (isFullExternalComputationTime(tickDate))
-            {
-                // Trigger time
-                if (!isInFullExternalTime)
-                {
-                    isInFullExternalTime = true;
-
-                    // Turn off the qubic mining phase
-                    score->initMiningData(m256i::zero());
-
-                    // Start the custom mining phase
-                    isBeginOfCustomMiningPhase = true;
-                }
-                isInCustomMiningPhase = 1;
-            }
-            else
-            {
-                // Not in the full external phase anymore
-                isInFullExternalTime = false;
-            }
-        }
-
-        // Incase of the full custom mining is just end. The setNewMiningSeed() will wait for next period of qubic mining phase
-        if (!isInFullExternalTime)
-        {
-            const unsigned int r = getTickInMiningPhaseCycle();
-            if (!r)
-            {
-                setNewMiningSeed();
-            }
-            else
-            {
-                if (r == INTERNAL_COMPUTATIONS_INTERVAL + 3) // 3 is added because of 3-tick shift for transaction confirmation
-                {
-                    score->initMiningData(m256i::zero());
-                }
-
-                // Setting for custom mining phase
-                isInCustomMiningPhase = 0;
-                if (r >= INTERNAL_COMPUTATIONS_INTERVAL)
-                {
-                    isInCustomMiningPhase = 1;
-                    // Begin of custom mining phase. Turn the flag on so we can reset some state variables
-                    if (r == INTERNAL_COMPUTATIONS_INTERVAL)
-                    {
-                        isBeginOfCustomMiningPhase = true;
-                    }
-                }
-            }
-        }
+        setNewMiningSeed();
     }
 
-    // Variables need to be reset in the beginning of custom mining phase
-    if (isBeginOfCustomMiningPhase)
+    // Roll DOGE per-phase stats at broadcast-cycle boundaries (display only).
+    if (getTickInDogeBroadcastCycle() == 0)
     {
-        beginCustomMiningPhase();
+        gDogeMiningStats.phaseResetAndEpochAccumulate();
     }
-
-    // Turn on the custom mining state 
-    ACQUIRE(gIsInCustomMiningStateLock);
-    gIsInCustomMiningState = isInCustomMiningPhase;
-    RELEASE(gIsInCustomMiningStateLock);
 }
 
 // Updates the global numberTickTransactions based on the tick data in the tick storage.
@@ -2476,18 +2014,6 @@ static void requestProcessor(void* ProcedureArgument)
                 case CustomQubicMiningSolution::type():
                 {
                     processBroadcastCustomMiningSolution(header);
-                }
-                break;
-
-                case RequestCustomMiningSolutionVerification::type():
-                {
-                    processRequestedCustomMiningSolutionVerificationRequest(peer, header);
-                }
-                break;
-
-                case RequestCustomMiningData::type():
-                {
-                    processCustomMiningDataRequest(peer, processorNumber, header);
                 }
                 break;
 
@@ -2857,11 +2383,14 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
 
     m256i data[3] = { transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce };
     static_assert(sizeof(data) == 3 * 32, "Unexpected array size");
-    unsigned int flagIndex;
-    KangarooTwelve(data, sizeof(data), &flagIndex, sizeof(flagIndex));
-    if (!(minerSolutionFlags[flagIndex >> 6] & (1ULL << (flagIndex & 63))))
+    unsigned int flagIndices[2];
+    KangarooTwelve(data, sizeof(data), flagIndices, sizeof(flagIndices));
+    // Two independent flag checks to reduce false-positive collision probability from ~N/2^32 to ~N^2/2^64
+    if (!(minerSolutionFlags[flagIndices[0] >> 6] & (1ULL << (flagIndices[0] & 63)))
+        || !(minerSolutionFlags[flagIndices[1] >> 6] & (1ULL << (flagIndices[1] & 63))))
     {
-        minerSolutionFlags[flagIndex >> 6] |= (1ULL << (flagIndex & 63));
+        minerSolutionFlags[flagIndices[0] >> 6] |= (1ULL << (flagIndices[0] & 63));
+        minerSolutionFlags[flagIndices[1] >> 6] |= (1ULL << (flagIndices[1] & 63));
 
         unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
         score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(transaction->nonce.m256i_u8);
@@ -3204,13 +2733,8 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                     if (error && transaction->amount)
                     {
                         oracleEngine.refundFees(transaction->sourcePublicKey, transaction->amount);
+                        moneyFlew = false;
                     }
-                }
-                break;
-
-                case CustomMiningSolutionTransaction::transactionType():
-                {
-                    gCustomMiningSharesCounter.processTransactionData(transaction, dataLock);
                 }
                 break;
 
@@ -3234,15 +2758,9 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                 // Contracts are identified by their index stored in the first 64 bits of the id, all
                 // other bits are zeroed. However, the max number of contracts is limited to 2^32 - 1,
                 // only 32 bits are used for the contract index.
-                // TODO: measure run-time of this check vs the check implemented in isPublicKeyOfContract() in gtest
-                // with a large number of keys; modify the function if the check used here is faster; replace this
-                // and such checks at other places by calls to isPublicKeyOfContract()
-                m256i maskedDestinationPublicKey = transaction->destinationPublicKey;
-                maskedDestinationPublicKey.m256i_u64[0] &= ~(MAX_NUMBER_OF_CONTRACTS - 1ULL);
-                unsigned int contractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
-                if (isZero(maskedDestinationPublicKey)
-                    && contractIndex < contractCount)
+                if (isPublicKeyOfContract(transaction->destinationPublicKey))
                 {
+                    unsigned int contractIndex = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
                     // Contract transactions
                     if (system.epoch == (contractDescriptions[contractIndex].constructionEpoch - 1))
                     {
@@ -3331,53 +2849,9 @@ static void makeAndBroadcastTickVotesTransaction(int i, BroadcastFutureTickData&
     }
 }
 
-static bool makeAndBroadcastXMRMiningTransaction(int i, BroadcastFutureTickData& td, int txSlot)
-{
-    if (!gCustomMiningBroadcastTxBuffer[i].isBroadcasted)
-    {
-        gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
-        auto& payload = gCustomMiningBroadcastTxBuffer[i].payload;
-        if (gCustomMiningSharesCounter.isEmptyPacket(payload.packedScore) == false) // only continue processing if packet isn't empty
-        {
-            payload.transaction.tick = system.tick + TICK_TRANSACTIONS_PUBLICATION_OFFSET;
-            payload.dataLock = td.tickData.timelock;
-            unsigned char digest[32];
-            KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.packedScore) + sizeof(payload.dataLock), digest, sizeof(digest));
-            sign(computorSubseeds[ownComputorIndicesMapping[i]].m256i_u8, computorPublicKeys[ownComputorIndicesMapping[i]].m256i_u8, digest, payload.signature);
-            enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
-
-            // copy the content of this xmr point packet to local memory
-            unsigned int tickIndex = ts.tickToIndexCurrentEpoch(td.tickData.tick);
-            unsigned int transactionSize = sizeof(payload);
-            KangarooTwelve(&payload, transactionSize, digest, sizeof(digest));
-            auto* tsReqTickTransactionOffsets = ts.tickTransactionOffsets.getByTickIndex(tickIndex);
-            if (txSlot < NUMBER_OF_TRANSACTIONS_PER_TICK) // valid slot
-            {
-                // TODO: refactor function add transaction to txStorage
-                ts.tickTransactions.acquireLock();
-                if (!tsReqTickTransactionOffsets[txSlot]) // not yet have value
-                {
-                    if (ts.nextTickTransactionOffset + transactionSize <= ts.tickTransactions.storageSpaceCurrentEpoch) //have enough space
-                    {
-                        td.tickData.transactionDigests[txSlot] = m256i(digest);
-                        tsReqTickTransactionOffsets[txSlot] = ts.nextTickTransactionOffset;
-                        copyMem(ts.tickTransactions(ts.nextTickTransactionOffset), &payload, transactionSize);
-                        ts.nextTickTransactionOffset += transactionSize;
-                    }
-                }
-                ts.tickTransactions.releaseLock();
-            }
-            return true;
-        }
-    }
-    return false;
-}
-
 // Generic mining share broadcast helper.
 // Takes the broadcast buffer + counter by reference so it can be reused for
 // any CustomMiningSharesCounter-based pipeline (DOGE today; future mining types tomorrow).
-// XMR currently has its own dedicated function (makeAndBroadcastXMRMiningTransaction)
-// which will be retired along with XMR custom mining itself.
 static bool makeAndBroadcastCustomMiningTransaction(
     BroadcastCustomMiningTransaction* broadcastTxBuffer,
     CustomMiningSharesCounter& sharesCounter,
@@ -3603,9 +3077,10 @@ static void processTick(unsigned long long processorNumber)
                                 const m256i& solution_nonce = *(m256i*)(transaction->inputPtr() + 32);
                                 m256i data[3] = { transaction->sourcePublicKey, solution_miningSeed, solution_nonce };
                                 static_assert(sizeof(data) == 3 * 32, "Unexpected array size");
-                                unsigned int flagIndex;
-                                KangarooTwelve(data, sizeof(data), &flagIndex, sizeof(flagIndex));
-                                if (!(minerSolutionFlags[flagIndex >> 6] & (1ULL << (flagIndex & 63))))
+                                unsigned int flagIndices[2];
+                                KangarooTwelve(data, sizeof(data), flagIndices, sizeof(flagIndices));
+                                if (!(minerSolutionFlags[flagIndices[0] >> 6] & (1ULL << (flagIndices[0] & 63)))
+                                    || !(minerSolutionFlags[flagIndices[1] >> 6] & (1ULL << (flagIndices[1] & 63))))
                                 {
                                     score->addTask(transaction->sourcePublicKey, solution_miningSeed, solution_nonce);
                                 }
@@ -3657,10 +3132,7 @@ static void processTick(unsigned long long processorNumber)
                     }
                     else
                     {
-                        m256i masked = transaction->destinationPublicKey;
-                        masked.m256i_u64[0] &= ~(unsigned long long)(MAX_NUMBER_OF_CONTRACTS - 1);
-                        unsigned int cIdx = (unsigned int)transaction->destinationPublicKey.m256i_u64[0];
-                        if (isZero(masked) && cIdx < contractCount)
+                        if (isPublicKeyOfContract(transaction->destinationPublicKey))
                         {
                             nContractTx++;
                         }
@@ -3932,54 +3404,11 @@ static void processTick(unsigned long long processorNumber)
     // prepare custom mining shares packet ONCE
     if (isMainMode())
     {
-        // In the begining of mining phase.
+        // At the start of each DOGE broadcast cycle.
         // Also skip the begining of the epoch, because the no thing to do
-        if (getTickInMiningPhaseCycle() == 0)
+        if (getTickInDogeBroadcastCycle() == 0)
         {
-            PROFILE_NAMED_SCOPE("processTick(): prepare custom mining shares tx");            
-            long long customMiningCountOverflow = 0;
-            for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
-            {
-                // Update the custom mining share counter
-                ACQUIRE(gCustomMiningSharesCountLock);
-                for (int k = 0; k < NUMBER_OF_COMPUTORS; k++)
-                {
-                    if (gCustomMiningSharesCount[k] > CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL)
-                    {
-                        // Save the max of overflow case
-                        if (gCustomMiningSharesCount[k] > customMiningCountOverflow)
-                        {
-                            customMiningCountOverflow = gCustomMiningSharesCount[k];
-                        }
-
-                        // Threshold the value
-                        gCustomMiningSharesCount[k] = CUSTOM_MINING_SOLUTION_SHARES_COUNT_MAX_VAL;
-                    }
-                }
-                gCustomMiningSharesCounter.registerNewShareCount(gCustomMiningSharesCount);
-                RELEASE(gCustomMiningSharesCountLock);
-
-                // Save the transaction to be broadcasted
-                auto& payload = gCustomMiningBroadcastTxBuffer[i].payload;
-                payload.transaction.sourcePublicKey = computorPublicKeys[ownComputorIndicesMapping[i]];
-                payload.transaction.destinationPublicKey = m256i::zero();
-                payload.transaction.amount = 0;
-                payload.transaction.tick = 0;
-                payload.transaction.inputType = CustomMiningSolutionTransaction::transactionType();
-                payload.transaction.inputSize = sizeof(payload.packedScore) + sizeof(payload.dataLock);
-                gCustomMiningSharesCounter.compressNewSharesPacket(ownComputorIndices[i], payload.packedScore);
-                // Set the flag to false, indicating that the transaction is not broadcasted yet
-                gCustomMiningBroadcastTxBuffer[i].isBroadcasted = false;
-            }
-
-            // Keep the max of overflow case
-            ATOMIC_MAX64(gCustomMiningStats.maxOverflowShareCount, customMiningCountOverflow);
-
-            // reset the phase counter
-            ACQUIRE(gCustomMiningSharesCountLock);
-            setMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
-            RELEASE(gCustomMiningSharesCountLock);
-
+            PROFILE_NAMED_SCOPE("processTick(): prepare custom mining shares tx");
             // Prepare DOGE mining share broadcast TX (one per own computor; buffer only — send deferred)
             long long dogeMiningCountOverflow = 0;
             for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
@@ -4092,13 +3521,6 @@ static void processTick(unsigned long long processorNumber)
                         makeAndBroadcastTickVotesTransaction(i, broadcastedFutureTickData, nextTxIndex++);
                     }
                     {
-                        // insert & broadcast external mining score packet (containing the score for each computor on the last external mining phase)
-                        // this type of tx is only broadcasted in internal mining phases
-                        if (makeAndBroadcastXMRMiningTransaction(i, broadcastedFutureTickData, nextTxIndex))
-                        {
-                            nextTxIndex++;
-                        }
-
                         // insert & broadcast DOGE mining score packet
                         if (makeAndBroadcastCustomMiningTransaction(gDogeMiningBroadcastTxBuffer, gDogeMiningSharesCounter, i, broadcastedFutureTickData, nextTxIndex))
                         {
@@ -4280,8 +3702,9 @@ static void processTick(unsigned long long processorNumber)
                 // Compute tick offset, when to publish solution
                 unsigned int publishingTickOffset = MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
 
-                // Do not publish, if the solution tx would end up after reset of mining seed, preventing loss of security deposit
-                if (getTickInMiningPhaseCycle() + publishingTickOffset >= INTERNAL_COMPUTATIONS_INTERVAL + 3)
+                // Do not publish if the solution tx would land in the next mining-seed rotation,
+                // preventing loss of security deposit from verifying against a rotated seed.
+                if ((system.tick % MINING_SEED_ROTATION_INTERVAL) + publishingTickOffset >= MINING_SEED_ROTATION_INTERVAL)
                     continue;
 
                 // Prepare, sign, and broadcast MiningSolutionTransaction
@@ -4331,23 +3754,16 @@ OPTIMIZE_ON()
 
 static void resetCustomMining()
 {
-    gCustomMiningSharesCounter.init();
-    setMem(gCustomMiningSharesCount, sizeof(gCustomMiningSharesCount), 0);
-
     gDogeMiningSharesCounter.init();
     setMem(gDogeMiningSharesCount, sizeof(gDogeMiningSharesCount), 0);
 
-    gSystemCustomMiningSolutionV2Cache.reset();
     for (int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
     {
         // Initialize the broadcast transaction buffer. Assume the all previous is broadcasted.
-        gCustomMiningBroadcastTxBuffer[i].isBroadcasted = true;
         gDogeMiningBroadcastTxBuffer[i].isBroadcasted = true;
     }
-    gCustomMiningStorage.reset();
 
     // Clear all data of epoch
-    gCustomMiningStats.epochReset();
     gDogeMiningStats.epochReset();
 }
 
@@ -4506,8 +3922,8 @@ static void endEpoch()
             {
                 gRevenueComponents.voteScore[i] = voteCounter.getVoteCount(i);
                 gRevenueComponents.txScore[i] = revenueScore[i];
-                gRevenueComponents.customMiningScore[i] = gCustomMiningSharesCounter.getSharesCount(i);
             }
+            setMem(gRevenueComponents.customMiningScore, sizeof(gRevenueComponents.customMiningScore), 0);
             computeRevenue(
                 gRevenueComponents.txScore,
                 gRevenueComponents.voteScore,
@@ -4518,7 +3934,6 @@ static void endEpoch()
         // Collect mining scores for V2
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
-            gEpochRevenueData.xmrMiningScore[i] = gRevenueComponents.customMiningScore[i];
             gEpochRevenueData.dogeMiningScore[i] = gDogeMiningSharesCounter.getSharesCount(i);
         }
 
@@ -4848,7 +4263,6 @@ static bool saveAllNodeStates()
     nodeStateBuffer.numberOfMiners = numberOfMiners;
     nodeStateBuffer.numberOfTransactions = numberOfTransactions;    
     voteCounter.saveAllDataToArray(nodeStateBuffer.voteCounterData);
-    gCustomMiningSharesCounter.saveAllDataToArray(nodeStateBuffer.customMiningSharesCounterData);
     gDogeMiningSharesCounter.saveAllDataToArray(nodeStateBuffer.dogeMiningSharesCounterData);
 
     CHAR16 NODE_STATE_FILE_NAME[] = L"snapshotNodeMiningState";
@@ -5035,7 +4449,6 @@ static bool loadAllNodeStates()
     numberOfTransactions = nodeStateBuffer.numberOfTransactions;
     loadMiningSeedFromFile = true;
     voteCounter.loadAllDataFromArray(nodeStateBuffer.voteCounterData);
-    gCustomMiningSharesCounter.loadAllDataFromArray(nodeStateBuffer.customMiningSharesCounterData);
     gDogeMiningSharesCounter.loadAllDataFromArray(nodeStateBuffer.dogeMiningSharesCounterData);
 
     // Load V2 per-tick TX counts
@@ -5788,13 +5201,6 @@ static void tickProcessor(void*)
             if (!targetNextTickDataDigestIsKnown)
             {
                 findNextTickDataDigestFromCurrentTickVotes();
-            }
-
-            // HACK: force empty ticks 49124963-49124965 — remove after passing these ticks
-            if (system.tick >= 49124962 && system.tick <= 49124964)
-            {
-                targetNextTickDataDigest = m256i::zero();
-                targetNextTickDataDigestIsKnown = true;
             }
 
             ts.tickData.acquireLock();
@@ -6563,9 +5969,6 @@ static bool initialize()
 
         lastExpectedTickTransactionDigest = m256i::zero();
 
-        // Init custom mining data. Reset function will be called in beginEpoch()
-        customMiningInitialize();
-
         beginEpoch();
 
         // needs to be called after ts.beginEpoch() because it looks up tickIndex, which requires to setup begin of epoch in ts
@@ -6709,8 +6112,6 @@ static bool initialize()
     }    
     score->loadScoreCache(system.epoch);
 
-    loadCustomMiningCache(system.epoch);
-
     logToConsole(L"Allocating buffers ...");
     if ((!allocPoolWithErrorLog(L"dejavu0", 536870912, (void**)&dejavu0, __LINE__)) ||
         (!allocPoolWithErrorLog(L"dejavu1", 536870912, (void**)&dejavu1, __LINE__)))
@@ -6817,20 +6218,6 @@ static bool initialize()
     emptyTickResolver.tick = 0;
     emptyTickResolver.lastTryClock = 0;
 
-    // Convert time parameters for full custom mining time
-    if (gNumberOfFullExternalMiningEvents > 0)
-    {
-        if ((!allocPoolWithErrorLog(L"gFullExternalEventTime", gNumberOfFullExternalMiningEvents * sizeof(FullExternallEvent), (void**)&gFullExternalEventTime, __LINE__)))
-        {
-            return false;
-        }
-        for (int i = 0; i < gNumberOfFullExternalMiningEvents; i++)
-        {
-            gFullExternalEventTime[i].startTime = convertWeekTimeFromPackedData(gFullExternalComputationTimes[i][0]);
-            gFullExternalEventTime[i].endTime = convertWeekTimeFromPackedData(gFullExternalComputationTimes[i][1]);
-        }
-    }
-
     return true;
 }
 
@@ -6928,8 +6315,6 @@ static void deinitialize()
             closeEvent(peers[i].transmitToken.CompletionToken.Event);
         }
     }
-
-    customMiningDeinitialize();
 }
 
 static void logInfo()
@@ -7144,23 +6529,8 @@ static void logInfo()
     // Log infomation about custom mining
     setText(message, L"CustomMining: ");
 
-    // System: Active status | Overflow | Collision
-    char isCustomMiningStateActive = 0;
-    ACQUIRE(gIsInCustomMiningStateLock);
-    isCustomMiningStateActive = gIsInCustomMiningState;
-    RELEASE(gIsInCustomMiningStateLock);
-
-    if (isCustomMiningStateActive)
-    {
-        appendText(message, L"Active. ");
-    }
-    else
-    {
-        appendText(message, L"Inactive. ");
-    }
-
-    long long customMiningShareMaxOFCount = ATOMIC_LOAD64(gCustomMiningStats.maxOverflowShareCount);
-    long long customMiningSharesMaxCollision = ATOMIC_LOAD64(gCustomMiningStats.maxCollisionShareCount);
+    long long customMiningShareMaxOFCount = ATOMIC_LOAD64(gDogeMiningStats.maxOverflowShareCount);
+    long long customMiningSharesMaxCollision = ATOMIC_LOAD64(gDogeMiningStats.maxCollisionShareCount);
     appendText(message, L" Overflow: ");
     appendNumber(message, customMiningShareMaxOFCount, false);
     appendText(message, L" | Collision: ");
@@ -7567,10 +6937,6 @@ static void processKeyPresses()
             appendText(message, L", min candidate score = ");
             appendNumber(message, minimumCandidateScore, TRUE);
             appendText(message, L").");
-            logToConsole(message);
-
-            setText(message, L"CustomMining: ");
-            gCustomMiningStats.appendLog(message);
             logToConsole(message);
 
             setText(message, L"DogeMining: ");
@@ -8071,7 +7437,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     saveSystem();
                     score->saveScoreCache(system.epoch);
-                    saveCustomMiningCache(system.epoch);
                 }
 #endif
                 tryResendTickVotes();
@@ -8390,7 +7755,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
             saveSystem();
             score->saveScoreCache(system.epoch);
-            saveCustomMiningCache(system.epoch);
 #ifdef ENABLE_PROFILING
             gProfilingDataCollector.writeToFile();
 #endif
