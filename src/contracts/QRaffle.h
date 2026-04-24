@@ -166,11 +166,6 @@ public:
 		uint32 nNo;
 	};
 
-	struct VotedId {
-		id user;
-		bit status;
-	};
-
 	struct QuRaffleInfo
 	{
 		id epochWinner;
@@ -200,8 +195,10 @@ public:
 		HashMap <id, uint8, QRAFFLE_MAX_MEMBER> registers;
 		Array <ProposalInfo, QRAFFLE_MAX_PROPOSAL_EPOCH> proposals;
 
-		HashMap <uint32, Array <VotedId, QRAFFLE_MAX_MEMBER>, QRAFFLE_MAX_PROPOSAL_EPOCH> voteStatus;
-		Array <VotedId, QRAFFLE_MAX_MEMBER> tmpVoteStatus;
+		// Per-user vote tracking with dual BitArray (qRWA pattern).
+		// O(1) lookup via id hash, 1 bit per proposal. ~4 MB each, ~8 MB total.
+		HashMap <id, BitArray<QRAFFLE_MAX_PROPOSAL_EPOCH>, QRAFFLE_MAX_MEMBER> voteParticipation; // bit=1 if user has voted
+		HashMap <id, BitArray<QRAFFLE_MAX_PROPOSAL_EPOCH>, QRAFFLE_MAX_MEMBER> voteValues; // bit=1 for yes, bit=0 for no
 		Array <uint32, QRAFFLE_MAX_PROPOSAL_EPOCH> numberOfVotedInProposal;
 		Array <id, QRAFFLE_MAX_MEMBER> quRaffleMembers;
 
@@ -704,9 +701,8 @@ protected:
 	struct voteInProposal_locals
 	{
 		ProposalInfo proposal;
-		VotedId votedId;
-		VotedId emptyVote;
-		uint32 i;
+		BitArray<QRAFFLE_MAX_PROPOSAL_EPOCH> participation;
+		BitArray<QRAFFLE_MAX_PROPOSAL_EPOCH> values;
 		uint32 votedCount;
 		Logger log;
 	};
@@ -732,63 +728,42 @@ protected:
 			return ;
 		}
 		locals.proposal = state.get().proposals.get(input.indexOfProposal);
-		// Load vote buffer for this proposal. Clear it if no votes exist yet to avoid
-		// matching stale entries left over from a previous proposal in the same slot.
-		if (state.get().voteStatus.contains(input.indexOfProposal))
-		{
-			state.get().voteStatus.get(input.indexOfProposal, state.mut().tmpVoteStatus);
-		}
-		else
-		{
-			locals.emptyVote.user = NULL_ID;
-			locals.emptyVote.status = 0;
-			state.mut().tmpVoteStatus.setAll(locals.emptyVote);
-		}
-		locals.votedCount = state.get().numberOfVotedInProposal.get(input.indexOfProposal);
-		for (locals.i = 0; locals.i < locals.votedCount; locals.i++)
-		{
-			if (state.get().tmpVoteStatus.get(locals.i).user == qpi.invocator())
-			{
-				if (state.get().tmpVoteStatus.get(locals.i).status == input.yes)
-				{
-					output.returnCode = QRAFFLE_ALREADY_VOTED;
-					locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_alreadyVoted, 0 };
-					LOG_INFO(locals.log);
-					return ;
-				}
-				else
-				{
-					// Guard against unsigned underflow when flipping the vote.
-					if (input.yes)
-					{
-						locals.proposal.nYes++;
-						if (locals.proposal.nNo > 0)
-						{
-							locals.proposal.nNo--;
-						}
-					}
-					else
-					{
-						locals.proposal.nNo++;
-						if (locals.proposal.nYes > 0)
-						{
-							locals.proposal.nYes--;
-						}
-					}
-					state.mut().proposals.set(input.indexOfProposal, locals.proposal);
-				}
 
-				locals.votedId.user = qpi.invocator();
-				locals.votedId.status = input.yes;
-				state.mut().tmpVoteStatus.set(locals.i, locals.votedId);
-				state.mut().voteStatus.set(input.indexOfProposal, state.get().tmpVoteStatus);
-				output.returnCode = QRAFFLE_SUCCESS;
-				locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_proposalVoted, 0 };
+		// O(1) vote lookup via per-user bitfield (id hash, no K12 overhead).
+		state.get().voteParticipation.get(qpi.invocator(), locals.participation);
+		if (locals.participation.get(input.indexOfProposal))
+		{
+			// Already voted — check if same direction.
+			state.get().voteValues.get(qpi.invocator(), locals.values);
+			if (locals.values.get(input.indexOfProposal) == input.yes)
+			{
+				output.returnCode = QRAFFLE_ALREADY_VOTED;
+				locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_alreadyVoted, 0 };
 				LOG_INFO(locals.log);
 				return ;
 			}
+			// Flip the vote: update counters with underflow guard.
+			if (input.yes)
+			{
+				locals.proposal.nYes++;
+				if (locals.proposal.nNo > 0) { locals.proposal.nNo--; }
+			}
+			else
+			{
+				locals.proposal.nNo++;
+				if (locals.proposal.nYes > 0) { locals.proposal.nYes--; }
+			}
+			state.mut().proposals.set(input.indexOfProposal, locals.proposal);
+			locals.values.set(input.indexOfProposal, input.yes);
+			state.mut().voteValues.replace(qpi.invocator(), locals.values);
+			output.returnCode = QRAFFLE_SUCCESS;
+			locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_proposalVoted, 0 };
+			LOG_INFO(locals.log);
+			return ;
 		}
-		// Reject new votes once the per-proposal buffer is full.
+
+		// New vote: check capacity before inserting.
+		locals.votedCount = state.get().numberOfVotedInProposal.get(input.indexOfProposal);
 		if (locals.votedCount >= QRAFFLE_MAX_MEMBER)
 		{
 			output.returnCode = QRAFFLE_MAX_MEMBER_REACHED;
@@ -806,10 +781,13 @@ protected:
 		}
 		state.mut().proposals.set(input.indexOfProposal, locals.proposal);
 
-		locals.votedId.user = qpi.invocator();
-		locals.votedId.status = input.yes;
-		state.mut().tmpVoteStatus.set(locals.votedCount, locals.votedId);
-		state.mut().voteStatus.set(input.indexOfProposal, state.get().tmpVoteStatus);
+		// Mark participation and record vote direction.
+		locals.participation.set(input.indexOfProposal, 1);
+		state.mut().voteParticipation.set(qpi.invocator(), locals.participation);
+		state.get().voteValues.get(qpi.invocator(), locals.values);
+		locals.values.set(input.indexOfProposal, input.yes);
+		state.mut().voteValues.set(qpi.invocator(), locals.values);
+
 		state.mut().numberOfVotedInProposal.set(input.indexOfProposal, locals.votedCount + 1);
 		output.returnCode = QRAFFLE_SUCCESS;
 		locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_proposalVoted, 0 };
@@ -1712,7 +1690,8 @@ protected:
 		state.mut().proposalsPerProposer.reset();
 		state.mut().quRaffleEntryAmount.reset();
 		state.mut().shareholdersList.reset();
-		state.mut().voteStatus.reset();
+		state.mut().voteParticipation.reset();
+		state.mut().voteValues.reset();
 		state.mut().numberOfEntryAmountSubmitted = 0;
 		state.mut().numberOfProposals = 0;
 		state.mut().numberOfQuRaffleMembers = 0;
