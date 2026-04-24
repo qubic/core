@@ -1385,6 +1385,78 @@ public:
         state.mut().mPayoutsPoolDNextIdx = 0;
     }
 
+    typedef NoData Reinit_input;
+    typedef NoData Reinit_output;
+    struct Reinit_locals
+    {
+        id newDedicatedAddr;
+    };
+    // One-time re-initialization called from BEGIN_EPOCH on the upgrade epoch.
+    // INITIALIZE() is not called again for already-deployed contracts.
+    PRIVATE_PROCEDURE_WITH_LOCALS(Reinit)
+    {
+        // Pool A revenue address
+        // USALFUZBICLZIEMYPSKLYDZJZRFBKYEONUGSWFXOIGRMWSJHLIPMEGZCVCMG
+        if (state.get().mPoolARevenueAddress == NULL_ID)
+        {
+            state.mut().mPoolARevenueAddress = ID(
+                _U, _S, _A, _L, _F, _U, _Z, _B, _I, _C, _L, _Z, _I, _E, _M, _Y,
+                _P, _S, _K, _L, _Y, _D, _Z, _J, _Z, _R, _F, _B, _K, _Y, _E, _O,
+                _N, _U, _G, _S, _W, _F, _X, _O, _I, _G, _R, _M, _W, _S, _J, _H,
+                _L, _I, _P, _M, _E, _G, _Z, _C
+            );
+        }
+
+        // Fundraising address — excluded from ALL distributions
+        // QTDSQGIEAPPMMDDSEHBHHETEUZHBUZXRYFKKTICWAAUXVEWNPCTGCAFBYWWB
+        if (state.get().mFundraisingAddress == NULL_ID)
+        {
+            state.mut().mFundraisingAddress = ID(
+                _Q, _T, _D, _S, _Q, _G, _I, _E, _A, _P, _P, _M, _M, _D, _D, _S,
+                _E, _H, _B, _H, _H, _E, _T, _E, _U, _Z, _H, _B, _U, _Z, _X, _R,
+                _Y, _F, _K, _K, _T, _I, _C, _W, _A, _A, _U, _X, _V, _E, _W, _N,
+                _P, _C, _T, _G, _C, _A, _F, _B
+            );
+        }
+
+        // Exchange address (safe.trade) — excluded from ALL distributions
+        // CLJHHZVRWAVBEAECXMCEIZOZOJLAMWCQMNYXXHQXOBGRUCXKVZCMBQECQJPE
+        if (state.get().mExchangeAddress == NULL_ID)
+        {
+            state.mut().mExchangeAddress = ID(
+                _C, _L, _J, _H, _H, _Z, _V, _R, _W, _A, _V, _B, _E, _A, _E, _C,
+                _X, _M, _C, _E, _I, _Z, _O, _Z, _O, _J, _L, _A, _M, _W, _C, _Q,
+                _M, _N, _Y, _X, _X, _H, _Q, _X, _O, _B, _G, _R, _U, _C, _X, _K,
+                _V, _Z, _C, _M, _B, _Q, _E, _C
+            );
+        }
+
+        // Dedicated revenue address (Pool C)
+        // QTDSQGIEAPPMMDDSEHBHHETEUZHBUZXRYFKKTICWAAUXVEWNPCTGCAFBYWWB
+        locals.newDedicatedAddr = ID(
+            _Q, _T, _D, _S, _Q, _G, _I, _E, _A, _P, _P, _M, _M, _D, _D, _S,
+            _E, _H, _B, _H, _H, _E, _T, _E, _U, _Z, _H, _B, _U, _Z, _X, _R,
+            _Y, _F, _K, _K, _T, _I, _C, _W, _A, _A, _U, _X, _V, _E, _W, _N,
+            _P, _C, _T, _G, _C, _A, _F, _B
+        );
+        if (state.get().mDedicatedRevenueAddress != locals.newDedicatedAddr)
+        {
+            state.mut().mDedicatedRevenueAddress = locals.newDedicatedAddr;
+        }
+
+        // Pool D revenue address (MLM Water)
+        // QMINEQQXYBEGBHNSUPOUYDIQKZPCBPQIIHUUZMCPLBPCCAIARVZBTYKGFCWM
+        if (state.get().mPoolDRevenueAddress == NULL_ID)
+        {
+            state.mut().mPoolDRevenueAddress = ID(
+                _Q, _M, _I, _N, _E, _Q, _Q, _X, _Y, _B, _E, _G, _B, _H, _N, _S,
+                _U, _P, _O, _U, _Y, _D, _I, _Q, _K, _Z, _P, _C, _B, _P, _Q, _I,
+                _I, _H, _U, _U, _Z, _M, _C, _P, _L, _B, _P, _C, _C, _A, _I, _A,
+                _R, _V, _Z, _B, _T, _Y, _K, _G
+            );
+        }
+    }
+
     struct BEGIN_EPOCH_locals
     {
         AssetPossessionIterator iter;
@@ -1392,71 +1464,13 @@ public:
         QRWALogger logger;
         id holder;
         uint64 existingBalance;
-        id newDedicatedAddr;
     };
     BEGIN_EPOCH_WITH_LOCALS()
     {
-        // ── One-time migrations (remove after epoch 211) ──
-        if (qpi.epoch() <= 211)
+        // One-time re-initialization on the upgrade epoch
+        if (qpi.epoch() == 211)
         {
-            // auto-initialize mPoolARevenueAddress if not set
-            if (state.get().mPoolARevenueAddress == NULL_ID)
-            {
-                // USALFUZBICLZIEMYPSKLYDZJZRFBKYEONUGSWFXOIGRMWSJHLIPMEGZCVCMG
-                state.mut().mPoolARevenueAddress = ID(
-                    _U, _S, _A, _L, _F, _U, _Z, _B, _I, _C, _L, _Z, _I, _E, _M, _Y,
-                    _P, _S, _K, _L, _Y, _D, _Z, _J, _Z, _R, _F, _B, _K, _Y, _E, _O,
-                    _N, _U, _G, _S, _W, _F, _X, _O, _I, _G, _R, _M, _W, _S, _J, _H,
-                    _L, _I, _P, _M, _E, _G, _Z, _C
-                );
-            }
-
-            // auto-initialize mFundraisingAddress if not set
-            if (state.get().mFundraisingAddress == NULL_ID)
-            {
-                state.mut().mFundraisingAddress = ID(
-                    _Q, _T, _D, _S, _Q, _G, _I, _E, _A, _P, _P, _M, _M, _D, _D, _S,
-                    _E, _H, _B, _H, _H, _E, _T, _E, _U, _Z, _H, _B, _U, _Z, _X, _R,
-                    _Y, _F, _K, _K, _T, _I, _C, _W, _A, _A, _U, _X, _V, _E, _W, _N,
-                    _P, _C, _T, _G, _C, _A, _F, _B
-                );
-            }
-
-            // auto-initialize mExchangeAddress if not set
-            if (state.get().mExchangeAddress == NULL_ID)
-            {
-                state.mut().mExchangeAddress = ID(
-                    _C, _L, _J, _H, _H, _Z, _V, _R, _W, _A, _V, _B, _E, _A, _E, _C,
-                    _X, _M, _C, _E, _I, _Z, _O, _Z, _O, _J, _L, _A, _M, _W, _C, _Q,
-                    _M, _N, _Y, _X, _X, _H, _Q, _X, _O, _B, _G, _R, _U, _C, _X, _K,
-                    _V, _Z, _C, _M, _B, _Q, _E, _C
-                );
-            }
-
-            // update mDedicatedRevenueAddress to Pool C production address
-            // QTDSQGIEAPPMMDDSEHBHHETEUZHBUZXRYFKKTICWAAUXVEWNPCTGCAFBYWWB
-            locals.newDedicatedAddr = ID(
-                _Q, _T, _D, _S, _Q, _G, _I, _E, _A, _P, _P, _M, _M, _D, _D, _S,
-                _E, _H, _B, _H, _H, _E, _T, _E, _U, _Z, _H, _B, _U, _Z, _X, _R,
-                _Y, _F, _K, _K, _T, _I, _C, _W, _A, _A, _U, _X, _V, _E, _W, _N,
-                _P, _C, _T, _G, _C, _A, _F, _B
-            );
-            if (state.get().mDedicatedRevenueAddress != locals.newDedicatedAddr)
-            {
-                state.mut().mDedicatedRevenueAddress = locals.newDedicatedAddr;
-            }
-
-            // auto-initialize mPoolDRevenueAddress if not set
-            // QMINEQQXYBEGBHNSUPOUYDIQKZPCBPQIIHUUZMCPLBPCCAIARVZBTYKGFCWM
-            if (state.get().mPoolDRevenueAddress == NULL_ID)
-            {
-                state.mut().mPoolDRevenueAddress = ID(
-                    _Q, _M, _I, _N, _E, _Q, _Q, _X, _Y, _B, _E, _G, _B, _H, _N, _S,
-                    _U, _P, _O, _U, _Y, _D, _I, _Q, _K, _Z, _P, _C, _B, _P, _Q, _I,
-                    _I, _H, _U, _U, _Z, _M, _C, _P, _L, _B, _P, _C, _C, _A, _I, _A,
-                    _R, _V, _Z, _B, _T, _Y, _K, _G
-                );
-            }
+            CALL(Reinit, input, output);
         }
 
         // Reset new poll counters
