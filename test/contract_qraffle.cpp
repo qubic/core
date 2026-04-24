@@ -105,11 +105,10 @@ public:
 
     void tokenRaffleMemberChecker(uint32 raffleIndex, const id& user, uint32 expectedMembers)
     {
-        tokenRaffleMembers.get(raffleIndex, tmpTokenRaffleMembers);
         bool found = false;
         for (uint32 i = 0; i < numberOfTokenRaffleMembers.get(raffleIndex); i++)
         {
-            if (tmpTokenRaffleMembers.get(i) == user)
+            if (tokenRaffleMemberSlots.get(raffleIndex * QRAFFLE_TOKEN_RAFFLE_SLOT_SIZE + i) == user)
             {
                 found = true;
                 break;

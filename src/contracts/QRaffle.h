@@ -21,6 +21,7 @@ constexpr uint32 QRAFFLE_MIN_QRAFFLE_AMOUNT = 1000000ull;
 constexpr uint32 QRAFFLE_MAX_QRAFFLE_AMOUNT = 1000000000ull;
 constexpr uint32 QRAFFLE_MAX_TOKEN_RAFFLES = 1048576;
 constexpr uint32 QRAFFLE_MAX_SHAREHOLDERS = 1024;
+constexpr uint32 QRAFFLE_TOKEN_RAFFLE_SLOT_SIZE = 512; // 2^9, max members per token raffle
 constexpr uint8 QRAFFLE_MAX_PROPOSALS_PER_PROPOSER = 3; // max proposals per user per epoch
 
 constexpr sint32 QRAFFLE_SUCCESS = 0;
@@ -203,9 +204,11 @@ public:
 		Array <id, QRAFFLE_MAX_MEMBER> quRaffleMembers;
 
 		Array <ActiveTokenRaffleInfo, QRAFFLE_MAX_PROPOSAL_EPOCH> activeTokenRaffle;
-		HashMap <uint32, Array <id, QRAFFLE_MAX_MEMBER>, QRAFFLE_MAX_PROPOSAL_EPOCH> tokenRaffleMembers;
+		// Per-user O(1) duplicate check for token raffle deposits. ~4 MB.
+		HashMap <id, BitArray<QRAFFLE_MAX_PROPOSAL_EPOCH>, QRAFFLE_MAX_MEMBER> tokenRaffleParticipation;
+		// Flat indexed member storage: raffle i occupies slots [i*SLOT_SIZE .. i*SLOT_SIZE+count). ~2 MB.
+		Array <id, QRAFFLE_MAX_MEMBER> tokenRaffleMemberSlots;
 		Array <uint32, QRAFFLE_MAX_PROPOSAL_EPOCH> numberOfTokenRaffleMembers;
-		Array <id, QRAFFLE_MAX_MEMBER> tmpTokenRaffleMembers;
 
 		Array <QuRaffleInfo, QRAFFLE_MAX_EPOCH> QuRaffles;
 		Array <TokenRaffleInfo, QRAFFLE_MAX_TOKEN_RAFFLES> tokenRaffle;
@@ -849,7 +852,7 @@ protected:
 	struct depositInTokenRaffle_locals
 	{
 		ActiveTokenRaffleInfo raffleInfo;
-		uint32 i;
+		BitArray<QRAFFLE_MAX_PROPOSAL_EPOCH> participation;
 		uint32 currentMembers;
 		Logger log;
 	};
@@ -891,7 +894,7 @@ protected:
 			return ;
 		}
 		locals.currentMembers = state.get().numberOfTokenRaffleMembers.get(input.indexOfTokenRaffle);
-		if (locals.currentMembers >= QRAFFLE_MAX_MEMBER)
+		if (locals.currentMembers >= QRAFFLE_TOKEN_RAFFLE_SLOT_SIZE)
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -902,21 +905,18 @@ protected:
 			LOG_INFO(locals.log);
 			return ;
 		}
-		// Reject duplicate deposit from the same user.
-		state.get().tokenRaffleMembers.get(input.indexOfTokenRaffle, state.mut().tmpTokenRaffleMembers);
-		for (locals.i = 0; locals.i < locals.currentMembers; locals.i++)
+		// O(1) duplicate check via per-user bitfield.
+		state.get().tokenRaffleParticipation.get(qpi.invocator(), locals.participation);
+		if (locals.participation.get(input.indexOfTokenRaffle))
 		{
-			if (state.get().tmpTokenRaffleMembers.get(locals.i) == qpi.invocator())
+			if (qpi.invocationReward() > 0)
 			{
-				if (qpi.invocationReward() > 0)
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				}
-				output.returnCode = QRAFFLE_ALREADY_REGISTERED;
-				locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_alreadyRegistered, 0 };
-				LOG_INFO(locals.log);
-				return ;
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
+			output.returnCode = QRAFFLE_ALREADY_REGISTERED;
+			locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_alreadyRegistered, 0 };
+			LOG_INFO(locals.log);
+			return ;
 		}
 		locals.raffleInfo = state.get().activeTokenRaffle.get(input.indexOfTokenRaffle);
 		if (qpi.transferShareOwnershipAndPossession(locals.raffleInfo.token.assetName, locals.raffleInfo.token.issuer, qpi.invocator(), qpi.invocator(), locals.raffleInfo.entryAmount, SELF) < 0)
@@ -936,9 +936,12 @@ protected:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() - QRAFFLE_TRANSFER_SHARE_FEE);
 		}
 		state.mut().epochRevenue += QRAFFLE_TRANSFER_SHARE_FEE;
-		state.mut().tmpTokenRaffleMembers.set(locals.currentMembers, qpi.invocator());
+
+		// Store member in flat slot array and mark participation.
+		state.mut().tokenRaffleMemberSlots.set(input.indexOfTokenRaffle * QRAFFLE_TOKEN_RAFFLE_SLOT_SIZE + locals.currentMembers, qpi.invocator());
 		state.mut().numberOfTokenRaffleMembers.set(input.indexOfTokenRaffle, locals.currentMembers + 1);
-		state.mut().tokenRaffleMembers.set(input.indexOfTokenRaffle, state.get().tmpTokenRaffleMembers);
+		locals.participation.set(input.indexOfTokenRaffle, 1);
+		state.mut().tokenRaffleParticipation.set(qpi.invocator(), locals.participation);
 		output.returnCode = QRAFFLE_SUCCESS;
 		locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_tokenRaffleDeposited, 0 };
 		LOG_INFO(locals.log);
@@ -1528,8 +1531,7 @@ protected:
 				locals.raffleSeed = qpi.K12(m256i(locals.baseSeed.u64._0, locals.baseSeed.u64._1, locals.baseSeed.u64._2, locals.baseSeed.u64._3 ^ ((uint64)locals.i + 1ULL)));
 				locals.r = locals.raffleSeed.u64._0;
 				locals.winnerIndex = (uint32)mod(locals.r, state.get().numberOfTokenRaffleMembers.get(locals.i) * 1ull);
-				state.get().tokenRaffleMembers.get(locals.i, state.mut().tmpTokenRaffleMembers);
-				locals.winner = state.get().tmpTokenRaffleMembers.get(locals.winnerIndex);
+				locals.winner = state.get().tokenRaffleMemberSlots.get(locals.i * QRAFFLE_TOKEN_RAFFLE_SLOT_SIZE + locals.winnerIndex);
 
 				locals.acTokenRaffle = state.get().activeTokenRaffle.get(locals.i);
 
@@ -1686,7 +1688,7 @@ protected:
 		state.mut().daoMemberCount.set(qpi.epoch(), state.get().numberOfRegisters);
 
 		state.mut().numberOfVotedInProposal.setAll(0);
-		state.mut().tokenRaffleMembers.reset();
+		state.mut().tokenRaffleParticipation.reset();
 		state.mut().proposalsPerProposer.reset();
 		state.mut().quRaffleEntryAmount.reset();
 		state.mut().shareholdersList.reset();
