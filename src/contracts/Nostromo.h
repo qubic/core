@@ -1286,6 +1286,14 @@ struct NOST : public ContractBase
 		sint64 transferredNumberOfShares;
 	};
 
+	struct TransferShareManagementRights_locals
+	{
+		sint64 result;
+		sint64 reward;
+		sint64 refundAmount;
+		bit success;
+	};
+
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_PROCEDURE(CreateAuction, 1);
@@ -3136,36 +3144,34 @@ struct NOST : public ContractBase
 	 * @brief Transfers share management rights for an asset position to another managing contract.
 	 * @note The caller must currently possess at least the requested number of shares.
 	 */
-	PUBLIC_PROCEDURE(TransferShareManagementRights)
+	PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
 	{
-		if (qpi.invocationReward() > 0)
+		locals.reward = qpi.invocationReward();
+		locals.refundAmount = locals.reward;
+		locals.success = false;
+		output.transferredNumberOfShares = 0;
+
+		if (input.numberOfShares > 0 && qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer, qpi.invocator(), qpi.invocator(),
+		                                                            SELF_INDEX, SELF_INDEX) >= input.numberOfShares)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			locals.result = qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares, input.newManagingContractIndex,
+			                                  input.newManagingContractIndex, locals.reward);
+			if (locals.result != INVALID_AMOUNT && locals.result >= 0)
+			{
+				locals.success = true;
+				locals.refundAmount = locals.reward - locals.result;
+			}
 		}
 
-		if (input.numberOfShares <= 0 || input.asset.assetName == 0 || input.newManagingContractIndex == 0)
+		if (locals.success)
 		{
-			output.transferredNumberOfShares = 0;
-			return;
+			output.transferredNumberOfShares = input.numberOfShares;
 		}
 
-		if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) <
-		    input.numberOfShares)
+		if (locals.refundAmount > 0)
 		{
-			output.transferredNumberOfShares = 0;
-			return;
+			qpi.transfer(qpi.invocator(), locals.refundAmount);
 		}
-
-		if (qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares, input.newManagingContractIndex,
-		                      input.newManagingContractIndex, state.get().qxTransferFee) < 0)
-		{
-			// error
-			output.transferredNumberOfShares = 0;
-			return;
-		}
-
-		// success
-		output.transferredNumberOfShares = input.numberOfShares;
 	}
 
 protected:
