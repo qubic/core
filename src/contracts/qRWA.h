@@ -1393,10 +1393,6 @@ public:
     {
     };
 
-    struct Reinit_locals
-    {
-    };
-
     struct BEGIN_EPOCH_locals
     {
         AssetPossessionIterator iter;
@@ -1410,7 +1406,7 @@ public:
 
     // One-time re-initialization called from BEGIN_EPOCH on the upgrade epoch.
     // INITIALIZE() is not called again for already-deployed contracts.
-    PRIVATE_PROCEDURE_WITH_LOCALS(Reinit)
+    PRIVATE_PROCEDURE(Reinit)
     {
         // QMINE Asset Constant
         // Issuer: QMINEQQXYBEGBHNSUPOUYDIQKZPCBPQIIHUUZMCPLBPCCAIARVZBTYKGFCWM
