@@ -1385,77 +1385,17 @@ public:
         state.mut().mPayoutsPoolDNextIdx = 0;
     }
 
-    typedef NoData Reinit_input;
-    typedef NoData Reinit_output;
+    struct Reinit_input
+    {
+    };
+
+    struct Reinit_output
+    {
+    };
+
     struct Reinit_locals
     {
-        id newDedicatedAddr;
     };
-    // One-time re-initialization called from BEGIN_EPOCH on the upgrade epoch.
-    // INITIALIZE() is not called again for already-deployed contracts.
-    PRIVATE_PROCEDURE_WITH_LOCALS(Reinit)
-    {
-        // Pool A revenue address
-        // USALFUZBICLZIEMYPSKLYDZJZRFBKYEONUGSWFXOIGRMWSJHLIPMEGZCVCMG
-        if (state.get().mPoolARevenueAddress == NULL_ID)
-        {
-            state.mut().mPoolARevenueAddress = ID(
-                _U, _S, _A, _L, _F, _U, _Z, _B, _I, _C, _L, _Z, _I, _E, _M, _Y,
-                _P, _S, _K, _L, _Y, _D, _Z, _J, _Z, _R, _F, _B, _K, _Y, _E, _O,
-                _N, _U, _G, _S, _W, _F, _X, _O, _I, _G, _R, _M, _W, _S, _J, _H,
-                _L, _I, _P, _M, _E, _G, _Z, _C
-            );
-        }
-
-        // Fundraising address — excluded from ALL distributions
-        // QTDSQGIEAPPMMDDSEHBHHETEUZHBUZXRYFKKTICWAAUXVEWNPCTGCAFBYWWB
-        if (state.get().mFundraisingAddress == NULL_ID)
-        {
-            state.mut().mFundraisingAddress = ID(
-                _Q, _T, _D, _S, _Q, _G, _I, _E, _A, _P, _P, _M, _M, _D, _D, _S,
-                _E, _H, _B, _H, _H, _E, _T, _E, _U, _Z, _H, _B, _U, _Z, _X, _R,
-                _Y, _F, _K, _K, _T, _I, _C, _W, _A, _A, _U, _X, _V, _E, _W, _N,
-                _P, _C, _T, _G, _C, _A, _F, _B
-            );
-        }
-
-        // Exchange address (safe.trade) — excluded from ALL distributions
-        // CLJHHZVRWAVBEAECXMCEIZOZOJLAMWCQMNYXXHQXOBGRUCXKVZCMBQECQJPE
-        if (state.get().mExchangeAddress == NULL_ID)
-        {
-            state.mut().mExchangeAddress = ID(
-                _C, _L, _J, _H, _H, _Z, _V, _R, _W, _A, _V, _B, _E, _A, _E, _C,
-                _X, _M, _C, _E, _I, _Z, _O, _Z, _O, _J, _L, _A, _M, _W, _C, _Q,
-                _M, _N, _Y, _X, _X, _H, _Q, _X, _O, _B, _G, _R, _U, _C, _X, _K,
-                _V, _Z, _C, _M, _B, _Q, _E, _C
-            );
-        }
-
-        // Dedicated revenue address (Pool C)
-        // QTDSQGIEAPPMMDDSEHBHHETEUZHBUZXRYFKKTICWAAUXVEWNPCTGCAFBYWWB
-        locals.newDedicatedAddr = ID(
-            _Q, _T, _D, _S, _Q, _G, _I, _E, _A, _P, _P, _M, _M, _D, _D, _S,
-            _E, _H, _B, _H, _H, _E, _T, _E, _U, _Z, _H, _B, _U, _Z, _X, _R,
-            _Y, _F, _K, _K, _T, _I, _C, _W, _A, _A, _U, _X, _V, _E, _W, _N,
-            _P, _C, _T, _G, _C, _A, _F, _B
-        );
-        if (state.get().mDedicatedRevenueAddress != locals.newDedicatedAddr)
-        {
-            state.mut().mDedicatedRevenueAddress = locals.newDedicatedAddr;
-        }
-
-        // Pool D revenue address (MLM Water)
-        // QMINEQQXYBEGBHNSUPOUYDIQKZPCBPQIIHUUZMCPLBPCCAIARVZBTYKGFCWM
-        if (state.get().mPoolDRevenueAddress == NULL_ID)
-        {
-            state.mut().mPoolDRevenueAddress = ID(
-                _Q, _M, _I, _N, _E, _Q, _Q, _X, _Y, _B, _E, _G, _B, _H, _N, _S,
-                _U, _P, _O, _U, _Y, _D, _I, _Q, _K, _Z, _P, _C, _B, _P, _Q, _I,
-                _I, _H, _U, _U, _Z, _M, _C, _P, _L, _B, _P, _C, _C, _A, _I, _A,
-                _R, _V, _Z, _B, _T, _Y, _K, _G
-            );
-        }
-    }
 
     struct BEGIN_EPOCH_locals
     {
@@ -1464,13 +1404,108 @@ public:
         QRWALogger logger;
         id holder;
         uint64 existingBalance;
+        Reinit_input reinitInput;
+        Reinit_output reinitOutput;
     };
+
+    // One-time re-initialization called from BEGIN_EPOCH on the upgrade epoch.
+    // INITIALIZE() is not called again for already-deployed contracts.
+    PRIVATE_PROCEDURE_WITH_LOCALS(Reinit)
+    {
+        // QMINE Asset Constant
+        // Issuer: QMINEQQXYBEGBHNSUPOUYDIQKZPCBPQIIHUUZMCPLBPCCAIARVZBTYKGFCWM
+        // Name: 297666170193 ("QMINE")
+        state.mut().mQmineAsset.assetName = 297666170193ULL;
+        state.mut().mQmineAsset.issuer = ID(
+            _Q, _M, _I, _N, _E, _Q, _Q, _X, _Y, _B, _E, _G, _B, _H, _N, _S,
+            _U, _P, _O, _U, _Y, _D, _I, _Q, _K, _Z, _P, _C, _B, _P, _Q, _I,
+            _I, _H, _U, _U, _Z, _M, _C, _P, _L, _B, _P, _C, _C, _A, _I, _A,
+            _R, _V, _Z, _B, _T, _Y, _K, _G
+        );
+
+        // Initialize default governance parameters
+        state.mut().mCurrentGovParams.mAdminAddress = ID(
+            _Q, _M, _I, _N, _E, _Q, _Q, _X, _Y, _B, _E, _G, _B, _H, _N, _S,
+            _U, _P, _O, _U, _Y, _D, _I, _Q, _K, _Z, _P, _C, _B, _P, _Q, _I,
+            _I, _H, _U, _U, _Z, _M, _C, _P, _L, _B, _P, _C, _C, _A, _I, _A,
+            _R, _V, _Z, _B, _T, _Y, _K, _G
+        );
+        state.mut().mCurrentGovParams.electricityAddress = ID(
+            _M, _Z, _P, _T, _Y, _A, _P, _N, _C, _D, _K, _U, _O, _G, _I, _A,
+            _Z, _C, _T, _E, _R, _U, _Q, _U, _R, _I, _X, _C, _H, _V, _F, _W,
+            _B, _C, _R, _N, _C, _J, _P, _G, _H, _A, _B, _S, _S, _V, _Q, _H,
+            _R, _S, _J, _O, _P, _U, _N, _B
+        );
+        state.mut().mCurrentGovParams.maintenanceAddress = ID(
+            _Z, _F, _P, _Y, _I, _R, _A, _Q, _A, _P, _N, _K, _N, _E, _D, _D,
+            _W, _G, _K, _N, _K, _J, _Q, _I, _Y, _C, _F, _B, _J, _R, _L, _G,
+            _V, _Q, _O, _T, _Y, _N, _W, _O, _G, _C, _N, _P, _P, _B, _Z, _K,
+            _J, _P, _G, _D, _C, _A, _N, _E
+        );
+        state.mut().mCurrentGovParams.reinvestmentAddress = ID(
+            _M, _D, _U, _X, _D, _C, _V, _I, _D, _G, _H, _T, _J, _G, _H, _E,
+            _S, _A, _P, _R, _A, _Q, _G, _I, _H, _Y, _F, _D, _D, _I, _S, _T,
+            _T, _K, _F, _G, _K, _O, _I, _O, _T, _B, _U, _N, _M, _P, _N, _Q,
+            _J, _I, _Y, _W, _A, _B, _M, _G
+        );
+        state.mut().mCurrentGovParams.qmineDevAddress = ID(
+            _Z, _O, _X, _X, _I, _D, _C, _Z, _I, _M, _G, _C, _E, _C, _C, _F,
+            _A, _X, _D, _D, _C, _M, _B, _B, _X, _C, _D, _A, _Q, _J, _I, _H,
+            _G, _O, _O, _A, _T, _A, _F, _P, _S, _B, _F, _I, _O, _F, _O, _Y,
+            _E, _C, _F, _K, _U, _F, _P, _B
+        );
+        state.mut().mCurrentGovParams.electricityPercent = 350;
+        state.mut().mCurrentGovParams.maintenancePercent = 50;
+        state.mut().mCurrentGovParams.reinvestmentPercent = 100;
+
+        // Dedicated BTC revenue address (Pool C)
+        // QTDSQGIEAPPMMDDSEHBHHETEUZHBUZXRYFKKTICWAAUXVEWNPCTGCAFBYWWB
+        state.mut().mDedicatedRevenueAddress = ID(
+            _Q, _T, _D, _S, _Q, _G, _I, _E, _A, _P, _P, _M, _M, _D, _D, _S,
+            _E, _H, _B, _H, _H, _E, _T, _E, _U, _Z, _H, _B, _U, _Z, _X, _R,
+            _Y, _F, _K, _K, _T, _I, _C, _W, _A, _A, _U, _X, _V, _E, _W, _N,
+            _P, _C, _T, _G, _C, _A, _F, _B
+        );
+
+        // Fundraising address — excluded from ALL distributions
+        state.mut().mFundraisingAddress = ID(
+            _Q, _T, _D, _S, _Q, _G, _I, _E, _A, _P, _P, _M, _M, _D, _D, _S,
+            _E, _H, _B, _H, _H, _E, _T, _E, _U, _Z, _H, _B, _U, _Z, _X, _R,
+            _Y, _F, _K, _K, _T, _I, _C, _W, _A, _A, _U, _X, _V, _E, _W, _N,
+            _P, _C, _T, _G, _C, _A, _F, _B
+        );
+
+        // Exchange address (safe.trade) — excluded from ALL distributions
+        state.mut().mExchangeAddress = ID(
+            _C, _L, _J, _H, _H, _Z, _V, _R, _W, _A, _V, _B, _E, _A, _E, _C,
+            _X, _M, _C, _E, _I, _Z, _O, _Z, _O, _J, _L, _A, _M, _W, _C, _Q,
+            _M, _N, _Y, _X, _X, _H, _Q, _X, _O, _B, _G, _R, _U, _C, _X, _K,
+            _V, _Z, _C, _M, _B, _Q, _E, _C
+        );
+
+        // Pool A revenue address (Qubic Mining)
+        state.mut().mPoolARevenueAddress = ID(
+            _U, _S, _A, _L, _F, _U, _Z, _B, _I, _C, _L, _Z, _I, _E, _M, _Y,
+            _P, _S, _K, _L, _Y, _D, _Z, _J, _Z, _R, _F, _B, _K, _Y, _E, _O,
+            _N, _U, _G, _S, _W, _F, _X, _O, _I, _G, _R, _M, _W, _S, _J, _H,
+            _L, _I, _P, _M, _E, _G, _Z, _C
+        );
+
+        // Pool D revenue address (MLM Water)
+        state.mut().mPoolDRevenueAddress = ID(
+            _Q, _M, _I, _N, _E, _Q, _Q, _X, _Y, _B, _E, _G, _B, _H, _N, _S,
+            _U, _P, _O, _U, _Y, _D, _I, _Q, _K, _Z, _P, _C, _B, _P, _Q, _I,
+            _I, _H, _U, _U, _Z, _M, _C, _P, _L, _B, _P, _C, _C, _A, _I, _A,
+            _R, _V, _Z, _B, _T, _Y, _K, _G
+        );
+    }
+
     BEGIN_EPOCH_WITH_LOCALS()
     {
-        // One-time re-initialization on the upgrade epoch
+        // Run one-time re-initialization exactly on the deployment upgrade epoch.
         if (qpi.epoch() == 211)
         {
-            CALL(Reinit, input, output);
+            CALL(Reinit, locals.reinitInput, locals.reinitOutput);
         }
 
         // Reset new poll counters
