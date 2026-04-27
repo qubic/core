@@ -102,7 +102,7 @@
 #define MAX_MESSAGE_PAYLOAD_SIZE MAX_TRANSACTION_SIZE
 #define MAX_UNIVERSE_SIZE 1073741824
 #define MESSAGE_DISSEMINATION_THRESHOLD 1000000000
-#define PORT 21841
+#define PORT 31841
 #define SYSTEM_DATA_SAVING_PERIOD 300000ULL
 #define TICK_TRANSACTIONS_PUBLICATION_OFFSET 2 // Must be only 2
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
@@ -570,13 +570,13 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
         return;
     }
 
-    // The sender's own number, checked where it can still prevent work rather than merely be counted.
-    if (payload.claimedScore != childScore)
-    {
-        antDebugPoolDrop(L"claimMismatch", payload);
-        gAntPendingSolutions.noteClaimMismatch();
-        return;
-    }
+    // For testnets, accept every claimed score from the submitter. Restore this block for mainnet.
+    // if (payload.claimedScore != childScore)
+    // {
+    //     antDebugPoolDrop(L"claimMismatch", payload);
+    //     gAntPendingSolutions.noteClaimMismatch();
+    //     return;
+    // }
 
     // The child count only grows, so passing now is not a promise it will pass at publication - the
     // publisher re-checks. Failing now is final enough to refuse the slot.
@@ -1011,7 +1011,8 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                             score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(solution_nonce.m256i_u8);
                                             const int threshold = getSolutionThreshold(selectedAlgo);
                                             if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
-                                                && solution_claimedScore == solutionScore
+                                                // For testnets, we accept every score from submiter
+                                                // && solution_claimedScore == solutionScore
                                                 && score->isValidScore(solutionScore, selectedAlgo)
                                                 && score->isGoodScore(solutionScore, threshold, selectedAlgo))
                                             {
@@ -3269,8 +3270,8 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
             KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
             const int threshold = getSolutionThreshold(selectedAlgo);
             // The deposit is only returned when the miner's claimed score matches the one computed
-            if (transaction->score == solutionScore
-                && score->isGoodScore(solutionScore, threshold, selectedAlgo))
+            // For testnets, we accept every score from submiter, so remove transaction->score == solutionScore in if check
+            if (score->isGoodScore(solutionScore, threshold, selectedAlgo))
             {
                 // Solution deposit return
                 {
@@ -3511,7 +3512,8 @@ static void processTickTransactionAntColonySolution(
 
     // Refund AND ranking. A valid solution is refunded whether or not it improved this miner's best,
     // and whether or not the store had room for it, ranking is best-score-only
-    if (transaction->claimedScore == childScore)
+    // For testnet, accept every claimed score . Restore this check for mainnet.
+    // if (transaction->claimedScore == childScore)
     {
         // Refund if this score == its claimed score and the ann tree check
         increaseEnergy(transaction->sourcePublicKey, transaction->amount);
@@ -6711,8 +6713,9 @@ static void tickProcessor(void*)
                             if (tickDataSuits)
                             {
                                 const int dayIndex = ::dayIndex(etalonTick.year, etalonTick.month, etalonTick.day);
-                                if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
-                                    || dayIndex > 738570 + system.epoch * 7)
+                                // if ((dayIndex == 738570 + system.epoch * 7 && etalonTick.hour >= 12)
+                                //     || dayIndex > 738570 + system.epoch * 7)
+                                if (system.tick - system.initialTick >= TESTNET_EPOCH_DURATION)
                                 {
                                     // start seamless epoch transition
                                     epochTransitionState = 1;
@@ -7910,20 +7913,23 @@ static void logInfo()
     }
     else
     {
-        const CHAR16 alphabet[26][2] = { L"A", L"B", L"C", L"D", L"E", L"F", L"G", L"H", L"I", L"J", L"K", L"L", L"M", L"N", L"O", L"P", L"Q", L"R", L"S", L"T", L"U", L"V", L"W", L"X", L"Y", L"Z" };
-        for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
-        {
-            appendText(message, alphabet[ownComputorIndices[i] / 26]);
-            appendText(message, alphabet[ownComputorIndices[i] % 26]);
-            if (i < (unsigned int)(numberOfOwnComputorIndices - 1))
-            {
-                appendText(message, L"+");
-            }
-            else
-            {
-                appendText(message, L".");
-            }
-        }
+        appendText(message, L"[Owning ");
+        appendNumber(message, numberOfOwnComputorIndices, false);
+        appendText(message, L" indices]");
+        // const CHAR16 alphabet[26][2] = { L"A", L"B", L"C", L"D", L"E", L"F", L"G", L"H", L"I", L"J", L"K", L"L", L"M", L"N", L"O", L"P", L"Q", L"R", L"S", L"T", L"U", L"V", L"W", L"X", L"Y", L"Z" };
+        // for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+        // {
+        //     appendText(message, alphabet[ownComputorIndices[i] / 26]);
+        //     appendText(message, alphabet[ownComputorIndices[i] % 26]);
+        //     if (i < (unsigned int)(numberOfOwnComputorIndices - 1))
+        //     {
+        //         appendText(message, L"+");
+        //     }
+        //     else
+        //     {
+        //         appendText(message, L".");
+        //     }
+        // }
     }
     logToConsole(message);
 
