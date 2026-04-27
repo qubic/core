@@ -9,12 +9,12 @@
 
 // no need to define AVX512 here anymore, just change the project settings to use the AVX512 version
 // random seed is now obtained from spectrumDigests
-
+#define TESTNET
 #define MAX_NUMBER_OF_PROCESSORS 32
-#define NUMBER_OF_SOLUTION_PROCESSORS 12
+#define NUMBER_OF_SOLUTION_PROCESSORS 2 // do not increase this, because there may be issues due to too fast ticking
 // Maximum number of NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS can be used for pre-process the mining solution.
 // Must not exceed half of NUMBER_OF_SOLUTION_PROCESSORS. Set 0 to disable.
-#define NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS 4
+#define NUMBER_OF_PREPROCESS_SOLUTION_PROCESSORS 1
 
 // Number of buffers available for executing contract functions in parallel; having more means reserving a bit more RAM (+1 = +32 MB)
 // and less waiting in request processors if there are more parallel contract function requests. The maximum value that may make sense
@@ -29,18 +29,18 @@
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
 // The tick duration used for timing and scheduling logic.
-#define TARGET_TICK_DURATION 1000
+#define TARGET_TICK_DURATION 7000
 
 // The tick duration used to calculate the size of memory buffers.
 // This determines the memory footprint of the application.
-#define TICK_DURATION_FOR_ALLOCATION_MS 225
-#define TRANSACTION_SPARSENESS 10
+#define TICK_DURATION_FOR_ALLOCATION_MS 7000
+#define TRANSACTION_SPARSENESS 4
 
 // Number of ticks that are stored in the pending txs pool. This also defines how many ticks in advance a tx can be registered.
 #define PENDING_TXS_POOL_NUM_TICKS (1000 * 60 * 10ULL / TICK_DURATION_FOR_ALLOCATION_MS) // 10 minutes
 
 // Below are 2 variables that are used for auto-F5 feature:
-#define AUTO_FORCE_NEXT_TICK_THRESHOLD 0ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
+#define AUTO_FORCE_NEXT_TICK_THRESHOLD 20ULL // Multiplier of TARGET_TICK_DURATION for the system to detect "F5 case" | set to 0 to disable
                                             // to prevent bad actor causing misalignment.
                                             // depends on actual tick time of the network, operators should set this number randomly in this range [12, 26]
                                             // eg: If AUTO_FORCE_NEXT_TICK_THRESHOLD is 8 and TARGET_TICK_DURATION is 2, then the system will start "auto F5 procedure" after 16 seconds after receveing 451+ votes
@@ -63,7 +63,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 #define START_NETWORK_FROM_SCRATCH 0
 
 // Addons: If you don't know it, leave it 0.
-#define ADDON_TX_STATUS_REQUEST 0
+#define ADDON_TX_STATUS_REQUEST 1
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -78,8 +78,9 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 #define TICK 72065097
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
-#define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
-#define DISPATCHER "XPXYKFLGSWRHRGAUKWFWVXCDVEYAPCPCNUTMUDWFGDYQCWZNJMWFZEEGCFFO"
+
+#define ARBITRATOR "MEFKYFCDXDUILCAJKOIKWQAPENJDUHSSYPBRWFOTLALILAYWQFDSITJELLHG"
+#define DISPATCHER "DISPAPLNOYSWXCJMZEMFUNCCMMJANGQPYJDSEXZTTBFSUEPYPEKCICADBUCJ"
 
 static unsigned short SYSTEM_FILE_NAME[] = L"system";
 static unsigned short SYSTEM_END_OF_EPOCH_FILE_NAME[] = L"system.eoe";
@@ -131,10 +132,11 @@ static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 100;
 // Number of graded windows. The score is an error count in [0, BPP9000_NUMBER_OF_WINDOWS], smaller is
 // better, and a solution passes when score <= threshold.
 static constexpr unsigned long long BPP9000_NUMBER_OF_WINDOWS = BPP9000_SEQUENCE_LENGTH - BPP9000_WINDOW_WIDTH;
-static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 3838;
+
+static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 5400;
 
 // Ant colony: a solution must be published within this many ticks of the anchor its walk seeded from.
-static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 16000;
+static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 1600;
 
 // Per-parent child cap: a parent accepts at most this many children - a miner's parallel branches
 // off one node. 0 means unbound (no cap). A child's score must still strictly beat its parent's.
@@ -156,16 +158,17 @@ static constexpr unsigned int BPP9000_SOLUTION_MULTIPLER = 1;
 
 static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 
-
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
 // Signing difficulty
-#define TARGET_TICK_VOTE_SIGNATURE 0x000242ECU // ~28,980 signing operations per ID
+#define TARGET_TICK_VOTE_SIGNATURE 0x07FFFFFFU // around 32 signing operations per ID
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
 
-#define MAX_NUMBER_OF_TICKS_PER_EPOCH (((((60ULL * 60 * 24 * 7 * 1000) / TICK_DURATION_FOR_ALLOCATION_MS) + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS)
+#define TESTNET_EPOCH_DURATION 3000
+
+#define MAX_NUMBER_OF_TICKS_PER_EPOCH (((TESTNET_EPOCH_DURATION + NUMBER_OF_COMPUTORS - 1) / NUMBER_OF_COMPUTORS) * NUMBER_OF_COMPUTORS) // this has to be % NUMBER_OF_COMPUTORS == 0 for snapshot saving/loading to work properly
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
 
