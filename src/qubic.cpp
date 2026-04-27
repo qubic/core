@@ -3169,6 +3169,11 @@ static void processTick(unsigned long long processorNumber)
         {
             customQubicMiningStorage.removeOracleQuery(CustomMiningType::DOGE, currentQueryIndex);
             currentQueryIndex = customQubicMiningStorage.getNextScheduledQueryIndexForTick(CustomMiningType::DOGE, currentQueryIndex, system.tick);
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            CHAR16 dbgMsgBuf[200];
+            setText(dbgMsgBuf, L"Not rescheduling not-included query tx (task is not active anymore)");
+            addDebugMessage(dbgMsgBuf);
+#endif
             continue;
         }
 
@@ -3202,6 +3207,11 @@ static void processTick(unsigned long long processorNumber)
                         sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest.m256i_u8, tx->signaturePtr());
                         enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
                     }
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+                    CHAR16 dbgMsgBuf[200];
+                    setText(dbgMsgBuf, L"Rescheduled not-included query tx (task is still active)");
+                    addDebugMessage(dbgMsgBuf);
+#endif
                     customQubicMiningStorage.updateOracleQueryScheduledTick(CustomMiningType::DOGE, currentQueryIndex, newScheduledTick);
                 }
 

@@ -516,12 +516,23 @@ bool CustomQubicMiningStorage::increaseOracleQueryFailCounterAndReschedule(unsig
             || _findTask(customMiningType, oracleQueries[customMiningType][queryIndex].taskId) < 0)
         {
             _removeOracleQuery(customMiningType, queryIndex);
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+            CHAR16 dbgMsgBuf[200];
+            setText(dbgMsgBuf, L"Not rescheduling failed oracle query (task not active anymore or max tries reached)");
+            addDebugMessage(dbgMsgBuf);
+#endif
             return false;
         }
 
         oracleQueries[customMiningType][queryIndex].tick = newScheduledTick;
         oracleQueries[customMiningType][queryIndex].status = SCHEDULED;
         oracleQueries[customMiningType][queryIndex].queryId = -1;
+
+#if !defined(NDEBUG) && !defined(NO_UEFI)
+        CHAR16 dbgMsgBuf[200];
+        setText(dbgMsgBuf, L"Rescheduled failed oracle query (task is still active, max tries not reached yet)");
+        addDebugMessage(dbgMsgBuf);
+#endif
 
         return true;  
     }
