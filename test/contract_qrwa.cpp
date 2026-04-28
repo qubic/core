@@ -109,11 +109,6 @@ public:
         state->mCurrentGovParams.electricityAddress = FEE_ADDR_E;
         state->mCurrentGovParams.maintenanceAddress = FEE_ADDR_M;
         state->mCurrentGovParams.reinvestmentAddress = FEE_ADDR_R;
-
-        // In tests, QUTIL's SendToManyV1 is used to simulate Pool A revenue.
-        // Override mPoolARevenueAddress to match QUTIL's contract ID so that
-        // transfers originating from QUTIL correctly route to Pool A.
-        state->mPoolARevenueAddress = id(QUTIL_CONTRACT_INDEX, 0, 0, 0);
     }
 
     QRWA::StateData* getState()
@@ -620,11 +615,6 @@ TEST(ContractQRWA, Payout_FullDistribution)
     EXPECT_EQ(numberOfShares(QMINE_ASSET, { HOLDER_C, QX_CONTRACT_INDEX },
         { HOLDER_C, QX_CONTRACT_INDEX }), 0);
 
-    // Issue qRWA contract shares so qRWA distribution can run
-    const id QRWA_SH = id::randomValue();
-    std::vector<std::pair<m256i, unsigned int>> qrwaContractShares{ {QRWA_SH, NUMBER_OF_COMPUTORS} };
-    qrwa.issueContractSharesHelper(QRWA_CONTRACT_INDEX, qrwaContractShares);
-
     // Deposit revenue
     // Pool A (from SC)
     qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), 1000000);
@@ -718,11 +708,6 @@ TEST(ContractQRWA, Payout_SnapshotLogic)
     qrwa.transferAsset(QMINE_ISSUER, HOLDER_B, QMINE_ASSET, 1000);
     qrwa.transferAsset(QMINE_ISSUER, HOLDER_C, QMINE_ASSET, 1000);
     // QMINE_ISSUER keeps 500
-
-    // Issue qRWA contract shares so qRWA distribution can run
-    const id QRWA_SH3 = id::randomValue();
-    std::vector<std::pair<m256i, unsigned int>> qrwaContractShares3{ {QRWA_SH3, NUMBER_OF_COMPUTORS} };
-    qrwa.issueContractSharesHelper(QRWA_CONTRACT_INDEX, qrwaContractShares3);
 
     qrwa.beginEpoch();
     // Snapshot (Begin Epoch 1):
@@ -886,11 +871,6 @@ TEST(ContractQRWA, Payout_FullDistribution2)
         { USER_D, QX_CONTRACT_INDEX }), 150000);
     EXPECT_EQ(numberOfShares(QMINE_ASSET, { HOLDER_C, QX_CONTRACT_INDEX },
         { HOLDER_C, QX_CONTRACT_INDEX }), 0);
-
-    // Issue qRWA contract shares so qRWA distribution can run
-    const id QRWA_SH2 = id::randomValue();
-    std::vector<std::pair<m256i, unsigned int>> qrwaContractShares2{ {QRWA_SH2, NUMBER_OF_COMPUTORS} };
-    qrwa.issueContractSharesHelper(QRWA_CONTRACT_INDEX, qrwaContractShares2);
 
     // Deposit revenue
     // Pool A (from SC)
@@ -1201,10 +1181,10 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     print_balances();
 #endif
 
-    EXPECT_EQ(numberOfShares(QMINE_ASSET, { DESTINATION_ADDR, QX_CONTRACT_INDEX }), 0); // No release mechanism implemented
+    EXPECT_EQ(numberOfShares(QMINE_ASSET, { DESTINATION_ADDR, QX_CONTRACT_INDEX }), 1000);
 
-    // Calculate Pools based on Revenue
-    sint64 netRevenueEp2 = REVENUE_AMT;
+    // Calculate Pools based on Revenue - 100 QU Fee
+    sint64 netRevenueEp2 = REVENUE_AMT - 100;
     sint64 feeAmtEp2 = (netRevenueEp2 * 500) / 1000; // 50% fees
     sint64 distributableEp2 = netRevenueEp2 - feeAmtEp2;
     sint64 qminePoolEp2 = (distributableEp2 * 900) / 1000;
@@ -1284,21 +1264,21 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     print_balances();
 #endif
 
-    EXPECT_EQ(numberOfShares(QMINE_ASSET, { DESTINATION_ADDR, QX_CONTRACT_INDEX }), 0); // No release mechanism implemented
+    EXPECT_EQ(numberOfShares(QMINE_ASSET, { DESTINATION_ADDR, QX_CONTRACT_INDEX }), 1000 + 500);
 
     auto activeParams = qrwa.getGovParams();
     EXPECT_EQ(activeParams.electricityPercent, 300);
     EXPECT_EQ(activeParams.maintenancePercent, 100);
 
-    // Calculate Pools based on Revenue
-    sint64 netRevenueEp3 = REVENUE_AMT;
+    // Calculate Pools based on Revenue - 100 QU Fee
+    sint64 netRevenueEp3 = REVENUE_AMT - 100;
     sint64 feeAmtEp3 = (netRevenueEp3 * 500) / 1000; // 50% fees still (params update next epoch)
     sint64 distributableEp3 = netRevenueEp3 - feeAmtEp3;
     sint64 qminePoolEp3 = (distributableEp3 * 900) / 1000;
     sint64 qrwaPoolEp3 = distributableEp3 - qminePoolEp3;
 
-    // All treasury QMINE donated; no releases. Base = TOTAL_SUPPLY - TREASURY_INIT.
-    sint64 payoutBaseEp3 = TOTAL_SUPPLY - TREASURY_INIT;
+    // Contract released 1000 + 500. Balance = 150B - 1500.
+    sint64 payoutBaseEp3 = TOTAL_SUPPLY - (TREASURY_INIT - 1500);
 
     sint64 qrwaRateEp3 = getQrwaRateForEpoch(qrwaPoolEp3);
 
@@ -1393,9 +1373,9 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     print_balances();
 #endif
 
-    EXPECT_EQ(numberOfShares(QMINE_ASSET, { DESTINATION_ADDR, QX_CONTRACT_INDEX }), 0); // Unchanged
+    EXPECT_EQ(numberOfShares(QMINE_ASSET, { DESTINATION_ADDR, QX_CONTRACT_INDEX }), 1500); // Unchanged
 
-    // Failed vote = No release = Full Revenue. Base unchanged.
+    // Failed vote = No release = No fee = Full Revenue. Base unchanged.
     sint64 qrwaRateEp5 = getQrwaRateForEpoch(QRWA_POOL_AMT_BASE);
 
     divS1 = calculateQminePayout(145000000000LL, payoutBaseEp4, qminePoolEp4);
