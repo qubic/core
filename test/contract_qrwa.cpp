@@ -53,7 +53,6 @@ enum qRWAFunctionIds
 {
     QRWA_FUNC_GET_GOV_PARAMS = 1,
     QRWA_FUNC_GET_GOV_POLL = 2,
-    QRWA_FUNC_GET_ASSET_RELEASE_POLL = 3,
     QRWA_FUNC_GET_TREASURY_BALANCE = 4,
     QRWA_FUNC_GET_DIVIDEND_BALANCES = 5,
     QRWA_FUNC_GET_TOTAL_DISTRIBUTED = 6
@@ -63,8 +62,6 @@ enum qRWAProcedureIds
 {
     QRWA_PROC_DONATE_TO_TREASURY = 3,
     QRWA_PROC_VOTE_GOV_PARAMS = 4,
-    QRWA_PROC_CREATE_ASSET_RELEASE_POLL = 5,
-    QRWA_PROC_VOTE_ASSET_RELEASE = 6,
     QRWA_PROC_DEPOSIT_GENERAL_ASSET = 7,
     QRWA_PROC_REVOKE_ASSET = 8,
 };
@@ -137,7 +134,14 @@ public:
     // manually reset the last payout time for testing.
     void resetPayoutTime()
     {
-        getState()->mLastPayoutTime = { 0, 0, 0, 0, 0, 0, 0 };
+        setMemory(getState()->mLastPayoutTimePoolA, 0);
+        setMemory(getState()->mLastPayoutTimePoolB, 0);
+        setMemory(getState()->mLastPayoutTimePoolC, 0);
+        setMemory(getState()->mLastPayoutTimePoolD, 0);
+        getState()->mLastPayoutTickPoolA = 0;
+        getState()->mLastPayoutTickPoolB = 0;
+        getState()->mLastPayoutTickPoolC = 0;
+        getState()->mLastPayoutTickPoolD = 0;
     }
 
     // QX/QUTIL Contract Wrappers
@@ -189,7 +193,7 @@ public:
         return output.status;
     }
 
-    uint64 voteGovParams(const id& from, const QRWA::RWAGovParams& params)
+    uint64 voteGovParams(const id& from, const QRWA::QRWAGovParams& params)
     {
         QRWA::VoteGovParams_input input{ params };
         QRWA::VoteGovParams_output output;
@@ -197,21 +201,7 @@ public:
         return output.status;
     }
 
-    QRWA::CreateAssetReleasePoll_output createAssetReleasePoll(const id& from, const QRWA::CreateAssetReleasePoll_input& input)
-    {
-        QRWA::CreateAssetReleasePoll_output output;
-        memset(&output, 0, sizeof(output));
-        invokeUserProcedure(QRWA_CONTRACT_INDEX, QRWA_PROC_CREATE_ASSET_RELEASE_POLL, input, output, from, 0);
-        return output;
-    }
 
-    uint64 voteAssetRelease(const id& from, uint64 pollId, uint64 option)
-    {
-        QRWA::VoteAssetRelease_input input{ pollId, option };
-        QRWA::VoteAssetRelease_output output;
-        invokeUserProcedure(QRWA_CONTRACT_INDEX, QRWA_PROC_VOTE_ASSET_RELEASE, input, output, from, 0);
-        return output.status;
-    }
 
     uint64 depositGeneralAsset(const id& from, const Asset& asset, uint64 amount)
     {
@@ -236,7 +226,7 @@ public:
 
     // QRWA Wrappers
 
-    QRWA::RWAGovParams getGovParams()
+    QRWA::QRWAGovParams getGovParams()
     {
         QRWA::GetGovParams_input input;
         QRWA::GetGovParams_output output;
@@ -249,14 +239,6 @@ public:
         QRWA::GetGovPoll_input input{ pollId };
         QRWA::GetGovPoll_output output;
         callFunction(QRWA_CONTRACT_INDEX, QRWA_FUNC_GET_GOV_POLL, input, output);
-        return output;
-    }
-
-    QRWA::GetAssetReleasePoll_output getAssetReleasePoll(uint64 pollId)
-    {
-        QRWA::GetAssetReleasePoll_input input{ pollId };
-        QRWA::GetAssetReleasePoll_output output;
-        callFunction(QRWA_CONTRACT_INDEX, QRWA_FUNC_GET_ASSET_RELEASE_POLL, input, output);
         return output;
     }
 
@@ -409,12 +391,12 @@ TEST(ContractQRWA, Initialization)
     auto divBalances = qrwa.getDividendBalances();
     EXPECT_EQ(divBalances.revenuePoolA, 0);
     EXPECT_EQ(divBalances.revenuePoolB, 0);
-    EXPECT_EQ(divBalances.qmineDividendPool, 0);
-    EXPECT_EQ(divBalances.qrwaDividendPool, 0);
+    EXPECT_EQ(divBalances.poolAQmineDividend, 0);
+    EXPECT_EQ(divBalances.poolAQrwaDividend, 0);
 
     auto distTotals = qrwa.getTotalDistributed();
-    EXPECT_EQ(distTotals.totalQmineDistributed, 0);
-    EXPECT_EQ(distTotals.totalQRWADistributed, 0);
+    EXPECT_EQ(distTotals.totalPoolADistributed, 0);
+    EXPECT_EQ(distTotals.totalPoolADistributed, 0);
 }
 
 
@@ -472,19 +454,19 @@ TEST(ContractQRWA, Governance_VoteGovParams_And_EndEpochCount)
     EXPECT_EQ(qrwa.voteGovParams(USER_D, {}), QRWA_STATUS_FAILURE_NOT_AUTHORIZED);
 
     // Invalid params (Admin NULL_ID)
-    QRWA::RWAGovParams invalidParams = qrwa.getGovParams();
+    QRWA::QRWAGovParams invalidParams = qrwa.getGovParams();
     invalidParams.mAdminAddress = NULL_ID;
     EXPECT_EQ(qrwa.voteGovParams(HOLDER_A, invalidParams), QRWA_STATUS_FAILURE_INVALID_INPUT);
 
     // Create new poll and vote for it
-    QRWA::RWAGovParams paramsA = qrwa.getGovParams();
+    QRWA::QRWAGovParams paramsA = qrwa.getGovParams();
     paramsA.electricityPercent = 100; // Change one param
 
     EXPECT_EQ(qrwa.voteGovParams(HOLDER_A, paramsA), QRWA_STATUS_SUCCESS); // Poll 0
     EXPECT_EQ(qrwa.voteGovParams(HOLDER_B, paramsA), QRWA_STATUS_SUCCESS); // Vote for Poll 0
 
     // Change vote
-    QRWA::RWAGovParams paramsB = qrwa.getGovParams();
+    QRWA::QRWAGovParams paramsB = qrwa.getGovParams();
     paramsB.maintenancePercent = 100; // Change another param
 
     EXPECT_EQ(qrwa.voteGovParams(HOLDER_A, paramsB), QRWA_STATUS_SUCCESS); // Poll 1
@@ -540,225 +522,6 @@ TEST(ContractQRWA, Governance_VoteGovParams_And_EndEpochCount)
 
     // Verify params were updated
     EXPECT_EQ(qrwa.getGovParams().maintenancePercent, 100);
-}
-
-TEST(ContractQRWA, Governance_AssetReleasePolls)
-{
-    ContractTestingQRWA qrwa;
-
-    increaseEnergy(HOLDER_A, 1000000);
-    increaseEnergy(HOLDER_B, 1000000);
-    increaseEnergy(USER_D, 1000000);
-    increaseEnergy(DESTINATION_ADDR, 1000000);
-
-    // Issue QMINE, distribute, and run BEGIN_EPOCH
-    qrwa.issueAsset(QMINE_ISSUER, QMINE_ASSET.assetName, 1000000 + 1000);
-    EXPECT_EQ(numberOfShares(QMINE_ASSET, { QMINE_ISSUER, QX_CONTRACT_INDEX },
-        { QMINE_ISSUER, QX_CONTRACT_INDEX }), 1001000);
-
-    qrwa.transferAsset(QMINE_ISSUER, HOLDER_A, QMINE_ASSET, 700000); // 70%
-    EXPECT_EQ(numberOfShares(QMINE_ASSET, { HOLDER_A, QX_CONTRACT_INDEX },
-        { HOLDER_A, QX_CONTRACT_INDEX }), 700000);
-    EXPECT_EQ(numberOfShares(QMINE_ASSET, { QMINE_ISSUER, QX_CONTRACT_INDEX },
-        { QMINE_ISSUER, QX_CONTRACT_INDEX }), 301000);
-
-    qrwa.transferAsset(QMINE_ISSUER, HOLDER_B, QMINE_ASSET, 300000); // 30%
-    EXPECT_EQ(numberOfShares(QMINE_ASSET, { HOLDER_B, QX_CONTRACT_INDEX },
-        { HOLDER_B, QX_CONTRACT_INDEX }), 300000);
-    EXPECT_EQ(numberOfShares(QMINE_ASSET, { QMINE_ISSUER, QX_CONTRACT_INDEX },
-        { QMINE_ISSUER, QX_CONTRACT_INDEX }), 1000);
-    // QMINE_ISSUER (ADMIN_ADDRESS) now holds 1000
-
-    // Give SC 1000 QMINE for its treasury
-    qrwa.transferManagementRights(QMINE_ISSUER, QMINE_ASSET, 1000, QRWA_CONTRACT_INDEX);
-    EXPECT_EQ(qrwa.donateToTreasury(QMINE_ISSUER, 1000), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.getTreasuryBalance(), 1000);
-
-    qrwa.beginEpoch();
-
-    // Not Admin
-    QRWA::CreateAssetReleasePoll_input pollInput = {};
-    pollInput.proposalName = id::randomValue();
-    pollInput.asset = QMINE_ASSET;
-    pollInput.amount = 100;
-    pollInput.destination = DESTINATION_ADDR;
-
-    auto pollOut = qrwa.createAssetReleasePoll(HOLDER_A, pollInput); // HOLDER_A is not admin
-    EXPECT_EQ(pollOut.status, QRWA_STATUS_FAILURE_NOT_AUTHORIZED);
-
-    // Admin creates poll
-    pollOut = qrwa.createAssetReleasePoll(ADMIN_ADDRESS, pollInput);
-    EXPECT_EQ(pollOut.status, QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(pollOut.proposalId, 0);
-
-    // Not a holder
-    EXPECT_EQ(qrwa.voteAssetRelease(USER_D, 0, 1), QRWA_STATUS_FAILURE_NOT_AUTHORIZED);
-
-    // Holders vote
-    EXPECT_EQ(qrwa.voteAssetRelease(HOLDER_A, 0, 1), QRWA_STATUS_SUCCESS); // 700k YES
-    EXPECT_EQ(qrwa.voteAssetRelease(HOLDER_B, 0, 0), QRWA_STATUS_SUCCESS); // 300k NO
-
-    // Add revenue to Pool A so the contract can pay the release fee
-    qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), 1000000);
-    EXPECT_EQ(qrwa.getDividendBalances().revenuePoolA, 1000000);
-
-    // Count at end epoch (Pass)
-    qrwa.endEpoch();
-
-    auto poll = qrwa.getAssetReleasePoll(0);
-    EXPECT_EQ(poll.status, QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(poll.proposal.status, QRWA_POLL_STATUS_PASSED_EXECUTED); // Should pass now
-    EXPECT_EQ(poll.proposal.votesYes, 700000);
-    EXPECT_EQ(poll.proposal.votesNo, 300000);
-
-    // Verify balances
-    EXPECT_EQ(qrwa.getTreasuryBalance(), 900); // 1000 - 100
-    EXPECT_EQ(numberOfShares(QMINE_ASSET, { DESTINATION_ADDR, QX_CONTRACT_INDEX },
-        { DESTINATION_ADDR, QX_CONTRACT_INDEX }), 100); // Should be 100 now
-
-    // Count at end epoch (Fail Vote)
-    qrwa.beginEpoch();
-    pollOut = qrwa.createAssetReleasePoll(ADMIN_ADDRESS, pollInput); // Poll 1
-    EXPECT_EQ(qrwa.voteAssetRelease(HOLDER_A, 1, 0), QRWA_STATUS_SUCCESS); // 700k NO
-    EXPECT_EQ(qrwa.voteAssetRelease(HOLDER_B, 1, 1), QRWA_STATUS_SUCCESS); // 300k YES
-    qrwa.endEpoch();
-
-    poll = qrwa.getAssetReleasePoll(1);
-    EXPECT_EQ(poll.proposal.status, QRWA_POLL_STATUS_FAILED_VOTE);
-    EXPECT_EQ(qrwa.getTreasuryBalance(), 900); // Unchanged
-
-    // Count at end epoch (Fail Execution - Insufficient)
-    qrwa.beginEpoch();
-    pollInput.amount = 1000; // Try to release 1000 (only 900 left)
-    pollOut = qrwa.createAssetReleasePoll(ADMIN_ADDRESS, pollInput); // Poll 2
-    EXPECT_EQ(qrwa.voteAssetRelease(HOLDER_A, 2, 1), QRWA_STATUS_SUCCESS); // 700k YES
-    qrwa.endEpoch();
-
-    poll = qrwa.getAssetReleasePoll(2);
-    EXPECT_EQ(poll.proposal.status, QRWA_POLL_STATUS_PASSED_FAILED_EXECUTION);
-    EXPECT_EQ(qrwa.getTreasuryBalance(), 900); // Unchanged
-}
-
-TEST(ContractQRWA, Governance_AssetRelease_FailAndRevoke)
-{
-    ContractTestingQRWA qrwa;
-
-    const sint64 initialEnergy = 1000000000;
-    increaseEnergy(HOLDER_A, initialEnergy);
-    increaseEnergy(HOLDER_B, initialEnergy);
-    increaseEnergy(ADMIN_ADDRESS, initialEnergy + QX_ISSUE_ASSET_FEE);
-    increaseEnergy(DESTINATION_ADDR, initialEnergy);
-
-    const sint64 treasuryAmount = 1000;
-    const sint64 voterShares = 1000000;
-    const sint64 releaseAmount = 500;
-
-    qrwa.issueAsset(QMINE_ISSUER, QMINE_ASSET.assetName, voterShares + treasuryAmount);
-
-    qrwa.transferAsset(QMINE_ISSUER, HOLDER_A, QMINE_ASSET, 700000);
-    qrwa.transferAsset(QMINE_ISSUER, HOLDER_B, QMINE_ASSET, 300000);
-
-    // Give qRWA management rights over the treasury shares
-    qrwa.transferManagementRights(QMINE_ISSUER, QMINE_ASSET, treasuryAmount, QRWA_CONTRACT_INDEX);
-
-    // Verify management rights were transferred
-    EXPECT_EQ(numberOfShares(QMINE_ASSET, { QMINE_ISSUER, QRWA_CONTRACT_INDEX },
-                                          { QMINE_ISSUER, QRWA_CONTRACT_INDEX }), treasuryAmount);
-
-    // Donate the shares to the treasury
-    EXPECT_EQ(qrwa.donateToTreasury(QMINE_ISSUER, treasuryAmount), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.getTreasuryBalance(), treasuryAmount);
-
-    // Verify Revenue Pool A (for fees) is empty.
-    auto divBalances = qrwa.getDividendBalances();
-    EXPECT_EQ(divBalances.revenuePoolA, 0);
-
-    qrwa.beginEpoch();
-    // Total voting power = 1,000,000 (HOLDER_A + HOLDER_B)
-    // Quorum = (1,000,000 * 2 / 3) + 1 = 666,667
-
-    QRWA::CreateAssetReleasePoll_input pollInput = {};
-    pollInput.proposalName = id::randomValue();
-    pollInput.asset = QMINE_ASSET;
-    pollInput.amount = releaseAmount;
-    pollInput.destination = DESTINATION_ADDR;
-
-    // create poll
-    auto pollOut = qrwa.createAssetReleasePoll(ADMIN_ADDRESS, pollInput);
-    EXPECT_EQ(pollOut.status, QRWA_STATUS_SUCCESS);
-    uint64 pollId = pollOut.proposalId;
-
-    // HOLDER_A votes YES, passing the poll (700k > 666k quorum)
-    EXPECT_EQ(qrwa.voteAssetRelease(HOLDER_A, pollId, 1), QRWA_STATUS_SUCCESS);
-
-    qrwa.endEpoch();
-
-    // Check poll status
-    // It should have passed the vote but failed execution (due to lack of 100 QUs fee for QX management transfer)
-    auto poll = qrwa.getAssetReleasePoll(pollId);
-    EXPECT_EQ(poll.proposal.status, QRWA_POLL_STATUS_PASSED_FAILED_EXECUTION);
-    EXPECT_EQ(poll.proposal.votesYes, 700000);
-
-    // Check SC asset state
-    // Asserts the INTERNAL counter is now decreased
-    EXPECT_EQ(qrwa.getTreasuryBalance(), treasuryAmount - releaseAmount); // 1000 - 500 = 500
-
-    // the SC balance is decreased
-    sint64 scOwnedBalance = numberOfShares(QMINE_ASSET,
-        { id(QRWA_CONTRACT_INDEX, 0, 0, 0), QRWA_CONTRACT_INDEX },
-        { id(QRWA_CONTRACT_INDEX, 0, 0, 0), QRWA_CONTRACT_INDEX });
-    EXPECT_EQ(scOwnedBalance, treasuryAmount - releaseAmount); // 1000 - 500 = 500
-
-    // DESTINATION_ADDR should now owns the shares, but they are MANAGED by qRWA
-    sint64 destManagedByQrwa = numberOfShares(QMINE_ASSET,
-        { DESTINATION_ADDR, QRWA_CONTRACT_INDEX },
-        { DESTINATION_ADDR, QRWA_CONTRACT_INDEX });
-    EXPECT_EQ(destManagedByQrwa, releaseAmount); // 500 shares are stuck
-
-    // DESTINATION_ADDR should have 0 shares managed by QX
-    sint64 destManagedByQx = numberOfShares(QMINE_ASSET,
-        { DESTINATION_ADDR, QX_CONTRACT_INDEX },
-        { DESTINATION_ADDR, QX_CONTRACT_INDEX });
-    EXPECT_EQ(destManagedByQx, 0);
-
-    // Test Revoke
-    qrwa.beginEpoch();
-
-    // Fund DESTINATION_ADDR with the fee for the revoke procedure
-    increaseEnergy(DESTINATION_ADDR, QRWA_RELEASE_MANAGEMENT_FEE);
-    sint64 destBalanceBeforeRevoke = getBalance(DESTINATION_ADDR);
-
-    // DESTINATION_ADDR calls revokeAssetManagementRights
-    auto revokeOut = qrwa.revokeAssetManagementRights(DESTINATION_ADDR, QMINE_ASSET, releaseAmount);
-
-    // check the outcome
-    EXPECT_EQ(revokeOut.status, QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(revokeOut.transferredNumberOfShares, releaseAmount);
-
-    // check final on-chain asset state
-    // DESTINATION_ADDR should be no longer have shares managed by qRWA
-    destManagedByQrwa = numberOfShares(QMINE_ASSET,
-        { DESTINATION_ADDR, QRWA_CONTRACT_INDEX },
-        { DESTINATION_ADDR, QRWA_CONTRACT_INDEX });
-    EXPECT_EQ(destManagedByQrwa, 0);
-
-    // DESTINATION_ADDR's shares should now be managed by QX
-    destManagedByQx = numberOfShares(QMINE_ASSET,
-        { DESTINATION_ADDR, QX_CONTRACT_INDEX },
-        { DESTINATION_ADDR, QX_CONTRACT_INDEX });
-    EXPECT_EQ(destManagedByQx, releaseAmount);
-
-    // check if the fee was paid by the user
-    sint64 destBalanceAfterRevoke = getBalance(DESTINATION_ADDR);
-    EXPECT_EQ(destBalanceAfterRevoke, destBalanceBeforeRevoke - QRWA_RELEASE_MANAGEMENT_FEE);
-
-    // Critical check:
-    // Verify that the fee sent to the SC was NOT permanently added to Pool B.
-    // The POST_INCOMING_TRANSFER adds 100 QU to Pool B.
-    // The procedure executes, spends 100 QU to QX, and logic must subtract 100 from Pool B.
-    // Net result for Pool B must be 0.
-    auto finalDivBalances = qrwa.getDividendBalances();
-    EXPECT_EQ(finalDivBalances.revenuePoolB, 0);
 }
 
 TEST(ContractQRWA, Treasury_Donation)
@@ -889,7 +652,7 @@ TEST(ContractQRWA, Payout_FullDistribution)
     // qRWA Payout (50,000 QUs)
     uint64 qrwaPerShare = 50000 / NUMBER_OF_COMPUTORS; // 73
     auto distTotals = qrwa.getTotalDistributed();
-    EXPECT_EQ(distTotals.totalQRWADistributed, qrwaPerShare * NUMBER_OF_COMPUTORS); // 73 * 676 = 49328
+    EXPECT_EQ(distTotals.totalPoolADistributed, qrwaPerShare * NUMBER_OF_COMPUTORS); // 73 * 676 = 49328
 
     // QMINE Payout (450,000 QUs)
     // mPayoutTotalQmineBegin = 1,000,000
@@ -921,8 +684,8 @@ TEST(ContractQRWA, Payout_FullDistribution)
     auto divBalances = qrwa.getDividendBalances();
     EXPECT_EQ(divBalances.revenuePoolA, 0);
     EXPECT_EQ(divBalances.revenuePoolB, 0);
-    EXPECT_EQ(divBalances.qmineDividendPool, 0);
-    EXPECT_EQ(divBalances.qrwaDividendPool, 50000 - (qrwaPerShare * NUMBER_OF_COMPUTORS)); // Dust
+    EXPECT_EQ(divBalances.poolAQmineDividend, 0);
+    EXPECT_EQ(divBalances.poolAQrwaDividend, 50000 - (qrwaPerShare * NUMBER_OF_COMPUTORS)); // Dust
 }
 
 TEST(ContractQRWA, Payout_SnapshotLogic)
@@ -1146,7 +909,7 @@ TEST(ContractQRWA, Payout_FullDistribution2)
     // qRWA Payout (150,000 QUs)
     uint64 qrwaPerShare = 150000 / NUMBER_OF_COMPUTORS; // 150000 / 676 = 221
     auto distTotals = qrwa.getTotalDistributed();
-    EXPECT_EQ(distTotals.totalQRWADistributed, qrwaPerShare * NUMBER_OF_COMPUTORS); // 221 * 676 = 149416
+    EXPECT_EQ(distTotals.totalPoolADistributed, qrwaPerShare * NUMBER_OF_COMPUTORS); // 221 * 676 = 149416
 
     // QMINE Payout (1,350,000 QUs)
     // mPayoutTotalQmineBegin = 1,000,000 (A:200k, B:300k, C:100k, Issuer:400k)
@@ -1179,8 +942,8 @@ TEST(ContractQRWA, Payout_FullDistribution2)
     auto divBalances = qrwa.getDividendBalances();
     EXPECT_EQ(divBalances.revenuePoolA, 0);
     EXPECT_EQ(divBalances.revenuePoolB, 0);
-    EXPECT_EQ(divBalances.qmineDividendPool, 0); // QMINE dev gets the remainder
-    EXPECT_EQ(divBalances.qrwaDividendPool, 150000 - (qrwaPerShare * NUMBER_OF_COMPUTORS)); // Dust (584)
+    EXPECT_EQ(divBalances.poolAQmineDividend, 0); // QMINE dev gets the remainder
+    EXPECT_EQ(divBalances.poolAQrwaDividend, 150000 - (qrwaPerShare * NUMBER_OF_COMPUTORS)); // Dust (584)
 }
 
 TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
@@ -1403,22 +1166,8 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     // Revenue
     qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), REVENUE_AMT);
 
-    // Release Poll
-    QRWA::CreateAssetReleasePoll_input pollInput;
-    pollInput.proposalName = id::randomValue();
-    pollInput.asset = QMINE_ASSET;
-    pollInput.amount = 1000;
-    pollInput.destination = DESTINATION_ADDR;
 
-    auto pollOut = qrwa.createAssetReleasePoll(ADMIN_ADDRESS, pollInput);
-    uint64 pollIdEp2 = pollOut.proposalId;
 
-    EXPECT_EQ(qrwa.voteAssetRelease(S1, pollIdEp2, 1), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.voteAssetRelease(S2, pollIdEp2, 1), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.voteAssetRelease(S3, pollIdEp2, 1), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.voteAssetRelease(S4, pollIdEp2, 1), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.voteAssetRelease(S5, pollIdEp2, 1), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.voteAssetRelease(Q1, pollIdEp2, 1), QRWA_STATUS_FAILURE_NOT_AUTHORIZED);
 
     qrwa.endEpoch();
 
@@ -1432,8 +1181,6 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     print_balances();
 #endif
 
-    auto pollResultEp2 = qrwa.getAssetReleasePoll(pollIdEp2);
-    EXPECT_EQ(pollResultEp2.proposal.status, QRWA_POLL_STATUS_PASSED_EXECUTED);
     EXPECT_EQ(numberOfShares(QMINE_ASSET, { DESTINATION_ADDR, QX_CONTRACT_INDEX }), 1000);
 
     // Calculate Pools based on Revenue - 100 QU Fee
@@ -1485,21 +1232,10 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     // Revenue
     qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), REVENUE_AMT);
 
-    // Release Poll
-    pollInput.amount = 500;
-    pollInput.proposalName = id::randomValue();
-    pollOut = qrwa.createAssetReleasePoll(ADMIN_ADDRESS, pollInput);
-    uint64 pollIdEp3 = pollOut.proposalId;
 
-    EXPECT_EQ(qrwa.voteAssetRelease(S1, pollIdEp3, 1), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.voteAssetRelease(S2, pollIdEp3, 1), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.voteAssetRelease(S3, pollIdEp3, 1), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.voteAssetRelease(S4, pollIdEp3, 1), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.voteAssetRelease(S5, pollIdEp3, 1), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.voteAssetRelease(Q1, pollIdEp3, 1), QRWA_STATUS_FAILURE_NOT_AUTHORIZED);
 
     // Gov Vote
-    QRWA::RWAGovParams newParams = qrwa.getGovParams();
+    QRWA::QRWAGovParams newParams = qrwa.getGovParams();
     newParams.electricityPercent = 300;
     newParams.maintenancePercent = 100;
 
@@ -1528,8 +1264,6 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     print_balances();
 #endif
 
-    auto pollResultEp3 = qrwa.getAssetReleasePoll(pollIdEp3);
-    EXPECT_EQ(pollResultEp3.proposal.status, QRWA_POLL_STATUS_PASSED_EXECUTED);
     EXPECT_EQ(numberOfShares(QMINE_ASSET, { DESTINATION_ADDR, QX_CONTRACT_INDEX }), 1000 + 500);
 
     auto activeParams = qrwa.getGovParams();
@@ -1624,18 +1358,8 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     qrwa.beginEpoch();
     qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), REVENUE_AMT);
 
-    // Release Poll
-    pollInput.amount = 100;
-    pollInput.proposalName = id::randomValue();
-    pollOut = qrwa.createAssetReleasePoll(ADMIN_ADDRESS, pollInput);
-    uint64 pollIdEp5 = pollOut.proposalId;
 
     // Vote NO (3/5 Majority)
-    EXPECT_EQ(qrwa.voteAssetRelease(S1, pollIdEp5, 0), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.voteAssetRelease(S2, pollIdEp5, 0), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.voteAssetRelease(S3, pollIdEp5, 0), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.voteAssetRelease(S4, pollIdEp5, 1), QRWA_STATUS_SUCCESS);
-    EXPECT_EQ(qrwa.voteAssetRelease(S5, pollIdEp5, 1), QRWA_STATUS_SUCCESS);
 
     qrwa.endEpoch();
 
@@ -1649,8 +1373,6 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     print_balances();
 #endif
 
-    auto pollResultEp5 = qrwa.getAssetReleasePoll(pollIdEp5);
-    EXPECT_EQ(pollResultEp5.proposal.status, QRWA_POLL_STATUS_FAILED_VOTE);
     EXPECT_EQ(numberOfShares(QMINE_ASSET, { DESTINATION_ADDR, QX_CONTRACT_INDEX }), 1500); // Unchanged
 
     // Failed vote = No release = No fee = Full Revenue. Base unchanged.
@@ -1688,7 +1410,7 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), REVENUE_AMT);
 
     // Create Gov Proposal
-    QRWA::RWAGovParams failParams = qrwa.getGovParams();
+    QRWA::QRWAGovParams failParams = qrwa.getGovParams();
     failParams.reinvestmentPercent = 200;
 
     // Only S1 votes (< 20% supply). Quorum fail
@@ -1744,10 +1466,6 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), REVENUE_AMT);
 
     // Create poll, no votes
-    pollInput.amount = 100;
-    pollInput.proposalName = id::randomValue();
-    pollOut = qrwa.createAssetReleasePoll(ADMIN_ADDRESS, pollInput);
-    uint64 pollIdEp7 = pollOut.proposalId;
 
     qrwa.endEpoch();
 
@@ -1761,8 +1479,6 @@ TEST(ContractQRWA, FullScenario_DividendsAndGovernance)
     print_balances();
 #endif
 
-    auto pollResultEp7 = qrwa.getAssetReleasePoll(pollIdEp7);
-    EXPECT_EQ(pollResultEp7.proposal.status, QRWA_POLL_STATUS_FAILED_VOTE);
 
     sint64 qrwaRateEp7 = getQrwaRateForEpoch(QRWA_POOL_AMT_BASE);
 
