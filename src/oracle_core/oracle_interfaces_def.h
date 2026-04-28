@@ -17,6 +17,10 @@ namespace OI
 #include "oracle_interfaces/DogeShareValidation.h"
 #undef ORACLE_INTERFACE_INDEX
 
+#define ORACLE_INTERFACE_INDEX 3
+#include "oracle_interfaces/AIVerify.h"
+#undef ORACLE_INTERFACE_INDEX
+
 // add new interface above this line (define ORACLE_INTERFACE_INDEX, include the header file and undef ORACLE_INTERFACE_INDEX)
 
 #define DEFINE_ORACLE_INTERFACE(Interface) {sizeof(Interface::OracleQuery), sizeof(Interface::OracleReply)}
@@ -28,6 +32,7 @@ namespace OI
 		DEFINE_ORACLE_INTERFACE(Price),
 		DEFINE_ORACLE_INTERFACE(Mock),
 		DEFINE_ORACLE_INTERFACE(DogeShareValidation),
+		DEFINE_ORACLE_INTERFACE(AIVerify),
 		// add new interface above this line (with DEFINE_ORACLE_INTERFACE; the order must match the interfaces indices)
 	};
 
@@ -58,6 +63,7 @@ namespace OI
 		REGISTER_ORACLE_INTERFACE(Price);
 		REGISTER_ORACLE_INTERFACE(Mock);
 		REGISTER_ORACLE_INTERFACE(DogeShareValidation);
+		REGISTER_ORACLE_INTERFACE(AIVerify);
 		// add new interface above this line (with REGISTER_ORACLE_INTERFACE)
 
 		for (uint32_t idx = 0; idx < oracleInterfacesCount; ++idx)

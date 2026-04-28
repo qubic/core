@@ -138,6 +138,9 @@
     <ClInclude Include="contracts\Escrow.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\QAGENT.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contract_core\contract_def.h">
       <Filter>contract_core</Filter>
     </ClInclude>
@@ -382,6 +385,9 @@
     </ClInclude>
     <ClInclude Include="contracts\Quottery_old.h">
       <Filter>contracts</Filter>
+    </ClInclude>
+    <ClInclude Include="oracle_interfaces\AIVerify.h">
+      <Filter>oracle_interfaces</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
