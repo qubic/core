@@ -3226,6 +3226,8 @@ struct NOST : public ContractBase
 	/**
 	 * @brief Transfers share management rights for an asset position to another managing contract.
 	 * @note The caller must currently possess at least the requested number of shares.
+	 * @note The caller must send the destination contract's required transfer fee as invocation reward. This contract cannot query that
+	 * fee before calling `releaseShares`, so callers must resolve it from `newManagingContractIndex`.
 	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
 	{
