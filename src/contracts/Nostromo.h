@@ -138,15 +138,39 @@ struct NOST : public ContractBase
 	};
 
 	/**
-	 * @brief Stores all persistent data for one auction.
-	 * @note The same struct is shared by batch and standard auctions.
+	 * @brief Shared auction fields used by persistent state and public getter views.
+	 * @note Container fields differ between persistent state and ABI views, so access-control collections stay outside this struct.
 	 * @note `metadataIpfsCid` points to off-chain auction metadata stored in IPFS.
 	 * @note `sellerDecisionDeadline` stays zero until a standard auction enters the manual decision window.
 	 */
-	struct AuctionData
+	struct AuctionCore
 	{
+		/** @brief Auction lot contents; one non-empty entry means a single asset, multiple non-empty entries mean a bundle. */
+		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
+
+		/** @brief Lowercase base32 CIDv1 stored in Pinata for the auction name and description metadata. */
+		Array<uint8, NOST_AUCTION_METADATA_CID_LENGTH> metadataIpfsCid;
+
 		/** @brief Unique identifier of the auction created in the Auction House. */
 		id auctionId;
+
+		/** @brief Wallet that created the auction and offers the lot for sale. */
+		id seller;
+
+		/** @brief Wallet that currently holds the highest bid. */
+		id highestBidder;
+
+		/** @brief Timestamp when the seller created the auction. */
+		DateAndTime createdAt;
+
+		/** @brief Timestamp of the most recent accepted bid. */
+		DateAndTime lastBidAt;
+
+		/** @brief Deadline for the seller to accept or reject a standard auction bid that ended between Initial Price and Sale Price. */
+		DateAndTime sellerDecisionDeadline;
+
+		/** @brief Timestamp when the auction was finalized, cancelled, or otherwise settled. */
+		DateAndTime settledAt;
 
 		/** @brief Total sale units offered; batch auctions use asset quantity, standard auctions use one unit for the whole lot. */
 		uint64 quantityForSale;
@@ -182,36 +206,6 @@ struct NOST : public ContractBase
 		/** @brief Auction duration in seconds, derived from the duration configured in days. */
 		uint64 auctionDurationSeconds;
 
-		/** @brief Timestamp when the seller created the auction. */
-		DateAndTime createdAt;
-
-		/** @brief Timestamp of the most recent accepted bid. */
-		DateAndTime lastBidAt;
-
-		/** @brief Deadline for the seller to accept or reject a standard auction bid that ended between Initial Price and Sale Price. */
-		DateAndTime sellerDecisionDeadline;
-
-		/** @brief Timestamp when the auction was finalized, cancelled, or otherwise settled. */
-		DateAndTime settledAt;
-
-		/** @brief Wallet that created the auction and offers the lot for sale. */
-		id seller;
-
-		/** @brief Wallet that currently holds the highest bid. */
-		id highestBidder;
-
-		/** @brief Asset set required for participation when the private auction uses asset-based access. */
-		HashSet<Asset, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
-
-		/** @brief Auction lot contents; one non-empty entry means a single asset, multiple non-empty entries mean a bundle. */
-		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
-
-		/** @brief Wallet whitelist used when the private auction uses wallet-based access. */
-		HashSet<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedBidderWallets;
-
-		/** @brief Lowercase base32 CIDv1 stored in Pinata for the auction name and description metadata. */
-		Array<uint8, NOST_AUCTION_METADATA_CID_LENGTH> metadataIpfsCid;
-
 		/** @brief Auction House mode: Batch Auction or Standard Auction. */
 		EAuctionType type;
 
@@ -220,6 +214,45 @@ struct NOST : public ContractBase
 
 		/** @brief Current lifecycle status of the auction, including the seller decision phase for standard auctions. */
 		EAuctionStatus status;
+	};
+
+	/**
+	 * @brief Stores all persistent data for one auction.
+	 * @note The same struct is shared by batch and standard auctions.
+	 */
+	struct AuctionData
+	{
+		/** @brief Fields shared with the public auction view. */
+		AuctionCore core;
+
+		/** @brief Wallet whitelist used when the private auction uses wallet-based access. */
+		HashSet<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedBidderWallets;
+
+		/** @brief Asset set required for participation when the private auction uses asset-based access. */
+		HashSet<Asset, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
+	};
+
+	/**
+	 * @brief Serializable view of one auction for public getter outputs.
+	 * @note Persistent state uses `HashSet` for access checks, but ABI payloads expose fixed arrays because `HashSet` is not valid in
+	 * input/output structs.
+	 */
+	struct AuctionView
+	{
+		/** @brief Fields shared with the persistent auction record. */
+		AuctionCore core;
+
+		/** @brief Wallet list used when the private auction restricts participation to predefined wallets. */
+		Array<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedBidderWallets;
+
+		/** @brief Asset list required to participate when the private auction uses asset-based access. */
+		Array<Asset, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
+
+		/** @brief Number of populated entries in `requiredAccessAssets`. */
+		uint64 requiredAccessAssetCount;
+
+		/** @brief Number of populated entries in `allowedBidderWallets`. */
+		uint64 allowedBidderWalletCount;
 	};
 
 	struct StateData
@@ -508,8 +541,11 @@ struct NOST : public ContractBase
 	/** @brief Auction data returned by the read-only auction getter. */
 	struct GetAuction_output
 	{
-		/** @brief Persistent auction data stored for the requested auction. */
-		AuctionData auction;
+		/** @brief Serializable auction data stored for the requested auction. */
+		AuctionView auction;
+
+		/** @brief Flag indicating whether the auction record exists. */
+		uint8 found;
 	};
 
 	/** @brief Input payload used to fetch one participant record from an auction. */
@@ -732,11 +768,20 @@ struct NOST : public ContractBase
 		uint64 requiredAccessAssetIndex;
 	};
 
+	struct GetAuction_locals
+	{
+		AuctionData auction;
+		Asset requiredAccessAsset;
+		id allowedBidderWallet;
+		sint64 requiredAccessAssetSetIndex;
+		sint64 allowedBidderWalletSetIndex;
+	};
+
 	/** @brief Internal input used to verify whether the invocator owns at least one required private access asset. */
 	struct HasRequiredAccessAsset_input
 	{
-		/** @brief Auction whose private asset-based access rules should be evaluated. */
-		AuctionData auction;
+		/** @brief Identifier of the auction whose private asset-based access rules should be evaluated. */
+		id auctionId;
 	};
 
 	/** @brief Internal output of the private asset access check. */
@@ -748,6 +793,7 @@ struct NOST : public ContractBase
 
 	struct HasRequiredAccessAsset_locals
 	{
+		AuctionData auction;
 		Asset requiredAccessAsset;
 		sint64 requiredAccessAssetSetIndex;
 		sint64 possessedAccessShares;
@@ -1421,40 +1467,41 @@ struct NOST : public ContractBase
 		while (locals.auctionIndex != NULL_INDEX)
 		{
 			locals.auction = state.get().auctionList.value(locals.auctionIndex);
-			if (locals.auction.status == EAuctionStatus::Active)
+			if (locals.auction.core.status == EAuctionStatus::Active)
 			{
-				diffDateInSecond(locals.auction.createdAt, locals.currentDate, locals.elapsedSeconds);
-				if (locals.elapsedSeconds >= locals.auction.auctionDurationSeconds)
+				diffDateInSecond(locals.auction.core.createdAt, locals.currentDate, locals.elapsedSeconds);
+				if (locals.elapsedSeconds >= locals.auction.core.auctionDurationSeconds)
 				{
-					switch (locals.auction.type)
+					switch (locals.auction.core.type)
 					{
 						case EAuctionType::Batch:
-							locals.finalizeBatchAuctionInput.auctionId = locals.auction.auctionId;
+							locals.finalizeBatchAuctionInput.auctionId = locals.auction.core.auctionId;
 							locals.finalizeBatchAuctionInput.currentDate = locals.currentDate;
 							CALL(FinalizeBatchAuction, locals.finalizeBatchAuctionInput, locals.finalizeBatchAuctionOutput);
 							break;
 						case EAuctionType::Standard:
-							if (locals.auction.highestBidAmount == 0 || locals.auction.highestBidPrice >= locals.auction.salePrice)
+							if (locals.auction.core.highestBidAmount == 0 || locals.auction.core.highestBidPrice >= locals.auction.core.salePrice)
 							{
-								locals.finalizeStandardAuctionInput.auctionId = locals.auction.auctionId;
+								locals.finalizeStandardAuctionInput.auctionId = locals.auction.core.auctionId;
 								locals.finalizeStandardAuctionInput.currentDate = locals.currentDate;
 								CALL(FinalizeStandardAuction, locals.finalizeStandardAuctionInput, locals.finalizeStandardAuctionOutput);
 							}
 							else
 							{
-								locals.auction.status = EAuctionStatus::PendingSellerDecision;
-								locals.auction.sellerDecisionDeadline = locals.currentDate;
-								locals.auction.sellerDecisionDeadline.add(0, 0, 0, 0, 0, NOST_AUCTION_SELLER_DECISION_WINDOW_SECONDS);
-								state.mut().auctionList.replace(locals.auction.auctionId, locals.auction);
+								locals.auction.core.status = EAuctionStatus::PendingSellerDecision;
+								locals.auction.core.sellerDecisionDeadline = locals.currentDate;
+								locals.auction.core.sellerDecisionDeadline.add(0, 0, 0, 0, 0, NOST_AUCTION_SELLER_DECISION_WINDOW_SECONDS);
+								state.mut().auctionList.replace(locals.auction.core.auctionId, locals.auction);
 							}
 							break;
 						default: break;
 					};
 				}
 			}
-			else if (locals.auction.status == EAuctionStatus::PendingSellerDecision && locals.auction.sellerDecisionDeadline <= locals.currentDate)
+			else if (locals.auction.core.status == EAuctionStatus::PendingSellerDecision &&
+			         locals.auction.core.sellerDecisionDeadline <= locals.currentDate)
 			{
-				locals.finalizeStandardAuctionInput.auctionId = locals.auction.auctionId;
+				locals.finalizeStandardAuctionInput.auctionId = locals.auction.core.auctionId;
 				locals.finalizeStandardAuctionInput.currentDate = locals.currentDate;
 				CALL(FinalizeStandardAuction, locals.finalizeStandardAuctionInput, locals.finalizeStandardAuctionOutput);
 			}
@@ -1625,15 +1672,15 @@ struct NOST : public ContractBase
 			while (locals.auctionIndex != NULL_INDEX)
 			{
 				locals.auction = state.get().auctionList.value(locals.auctionIndex);
-				if (locals.auction.status == EAuctionStatus::Active)
+				if (locals.auction.core.status == EAuctionStatus::Active)
 				{
-					locals.auction.auctionDurationSeconds = sadd(locals.auction.auctionDurationSeconds, locals.pausedSeconds);
-					state.mut().auctionList.replace(locals.auction.auctionId, locals.auction);
+					locals.auction.core.auctionDurationSeconds = sadd(locals.auction.core.auctionDurationSeconds, locals.pausedSeconds);
+					state.mut().auctionList.replace(locals.auction.core.auctionId, locals.auction);
 				}
-				else if (locals.auction.status == EAuctionStatus::PendingSellerDecision && locals.auction.sellerDecisionDeadline.isValid())
+				else if (locals.auction.core.status == EAuctionStatus::PendingSellerDecision && locals.auction.core.sellerDecisionDeadline.isValid())
 				{
-					locals.auction.sellerDecisionDeadline.add(0, 0, 0, 0, 0, static_cast<sint64>(locals.pausedSeconds));
-					state.mut().auctionList.replace(locals.auction.auctionId, locals.auction);
+					locals.auction.core.sellerDecisionDeadline.add(0, 0, 0, 0, 0, static_cast<sint64>(locals.pausedSeconds));
+					state.mut().auctionList.replace(locals.auction.core.auctionId, locals.auction);
 				}
 				locals.auctionIndex = state.get().auctionList.nextElementIndex(locals.auctionIndex);
 			}
@@ -1779,11 +1826,16 @@ struct NOST : public ContractBase
 	PRIVATE_FUNCTION_WITH_LOCALS(HasRequiredAccessAsset)
 	{
 		output.hasRequiredAccessAsset = 0;
-		for (locals.requiredAccessAssetSetIndex = input.auction.requiredAccessAssets.nextElementIndex(NULL_INDEX);
-		     locals.requiredAccessAssetSetIndex != NULL_INDEX;
-		     locals.requiredAccessAssetSetIndex = input.auction.requiredAccessAssets.nextElementIndex(locals.requiredAccessAssetSetIndex))
+		if (!state.get().auctionList.get(input.auctionId, locals.auction))
 		{
-			locals.requiredAccessAsset = input.auction.requiredAccessAssets.key(locals.requiredAccessAssetSetIndex);
+			return;
+		}
+
+		for (locals.requiredAccessAssetSetIndex = locals.auction.requiredAccessAssets.nextElementIndex(NULL_INDEX);
+		     locals.requiredAccessAssetSetIndex != NULL_INDEX;
+		     locals.requiredAccessAssetSetIndex = locals.auction.requiredAccessAssets.nextElementIndex(locals.requiredAccessAssetSetIndex))
+		{
+			locals.requiredAccessAsset = locals.auction.requiredAccessAssets.key(locals.requiredAccessAssetSetIndex);
 			locals.possessedAccessShares = qpi.numberOfShares(locals.requiredAccessAsset, AssetOwnershipSelect::byOwner(qpi.invocator()),
 			                                                  AssetPossessionSelect::byPossessor(qpi.invocator()));
 			if (locals.possessedAccessShares > 0)
@@ -1803,7 +1855,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.type != EAuctionType::Batch)
+		if (locals.auction.core.type != EAuctionType::Batch)
 		{
 			return;
 		}
@@ -1835,20 +1887,20 @@ struct NOST : public ContractBase
 
 		if (locals.bestParticipantFound)
 		{
-			locals.auction.highestBidder = locals.bestParticipantKey.participant;
-			locals.auction.highestBidPrice = locals.bestParticipantData.bidAmount;
-			locals.auction.highestBidQuantity = locals.bestParticipantData.requestedQuantity;
-			locals.auction.highestBidAmount = locals.bestParticipantData.escrowedAmount;
+			locals.auction.core.highestBidder = locals.bestParticipantKey.participant;
+			locals.auction.core.highestBidPrice = locals.bestParticipantData.bidAmount;
+			locals.auction.core.highestBidQuantity = locals.bestParticipantData.requestedQuantity;
+			locals.auction.core.highestBidAmount = locals.bestParticipantData.escrowedAmount;
 		}
 		else
 		{
-			locals.auction.highestBidAmount = 0;
-			locals.auction.highestBidPrice = 0;
-			locals.auction.highestBidQuantity = 0;
-			locals.auction.highestBidder = NULL_ID;
+			locals.auction.core.highestBidAmount = 0;
+			locals.auction.core.highestBidPrice = 0;
+			locals.auction.core.highestBidQuantity = 0;
+			locals.auction.core.highestBidder = NULL_ID;
 		}
 
-		state.mut().auctionList.replace(locals.auction.auctionId, locals.auction);
+		state.mut().auctionList.replace(locals.auction.core.auctionId, locals.auction);
 	}
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(ProcessBatchBid)
@@ -1869,7 +1921,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (input.bidAmount < locals.auction.salePrice)
+		if (input.bidAmount < locals.auction.core.salePrice)
 		{
 			output.errorCode = static_cast<uint8>(EAuctionError::BidTooLow);
 			return;
@@ -1885,8 +1937,8 @@ struct NOST : public ContractBase
 		locals.participantKey = {input.auctionId, qpi.invocator()};
 		locals.participantExists = state.get().participants.get(locals.participantKey, locals.participantData);
 		locals.previousEscrow = locals.participantExists ? locals.participantData.escrowedAmount : 0;
-		locals.mustRecomputeHighestBid =
-		    locals.participantExists && locals.auction.highestBidder == qpi.invocator() && input.bidAmount <= locals.auction.highestBidPrice;
+		locals.mustRecomputeHighestBid = locals.participantExists && locals.auction.core.highestBidder == qpi.invocator() &&
+		                                 input.bidAmount <= locals.auction.core.highestBidPrice;
 
 		locals.participantData.escrowedAmount = locals.requiredEscrow;
 		locals.participantData.requestedQuantity = input.effectiveQuantity;
@@ -1896,18 +1948,18 @@ struct NOST : public ContractBase
 		locals.participantData.participant = qpi.invocator();
 		locals.participantData.isWinningBid = 0;
 
-		if (input.bidAmount > locals.auction.highestBidPrice)
+		if (input.bidAmount > locals.auction.core.highestBidPrice)
 		{
-			locals.auction.highestBidder = qpi.invocator();
-			locals.auction.highestBidPrice = input.bidAmount;
-			locals.auction.highestBidQuantity = input.effectiveQuantity;
-			locals.auction.highestBidAmount = locals.requiredEscrow;
+			locals.auction.core.highestBidder = qpi.invocator();
+			locals.auction.core.highestBidPrice = input.bidAmount;
+			locals.auction.core.highestBidQuantity = input.effectiveQuantity;
+			locals.auction.core.highestBidAmount = locals.requiredEscrow;
 		}
 
-		locals.auction.lastBidAt = input.currentDate;
-		if ((locals.auction.auctionDurationSeconds - input.elapsedSeconds) <= NOST_AUCTION_EXTENSION_SECONDS)
+		locals.auction.core.lastBidAt = input.currentDate;
+		if ((locals.auction.core.auctionDurationSeconds - input.elapsedSeconds) <= NOST_AUCTION_EXTENSION_SECONDS)
 		{
-			locals.auction.auctionDurationSeconds = sadd(locals.auction.auctionDurationSeconds, NOST_AUCTION_EXTENSION_SECONDS);
+			locals.auction.core.auctionDurationSeconds = sadd(locals.auction.core.auctionDurationSeconds, NOST_AUCTION_EXTENSION_SECONDS);
 		}
 
 		if (state.mut().participants.set(locals.participantKey, locals.participantData) == NULL_INDEX)
@@ -1951,7 +2003,8 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.quantityForSale == 0 || locals.auction.quantityForSale < locals.auction.minimumPurchaseQuantity || input.bidAmount == 0)
+		if (locals.auction.core.quantityForSale == 0 || locals.auction.core.quantityForSale < locals.auction.core.minimumPurchaseQuantity ||
+		    input.bidAmount == 0)
 		{
 			output.errorCode = static_cast<uint8>(EAuctionError::InvalidInput);
 			return;
@@ -1964,15 +2017,15 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.highestBidPrice == 0)
+		if (locals.auction.core.highestBidPrice == 0)
 		{
-			if (input.bidAmount < locals.auction.initialPrice)
+			if (input.bidAmount < locals.auction.core.initialPrice)
 			{
 				output.errorCode = static_cast<uint8>(EAuctionError::BidTooLow);
 				return;
 			}
 		}
-		else if (input.bidAmount < sadd(locals.auction.highestBidPrice, locals.auction.minimumBidIncrement))
+		else if (input.bidAmount < sadd(locals.auction.core.highestBidPrice, locals.auction.core.minimumBidIncrement))
 		{
 			output.errorCode = static_cast<uint8>(EAuctionError::BidTooLow);
 			return;
@@ -1988,16 +2041,16 @@ struct NOST : public ContractBase
 		}
 
 		locals.participantData.escrowedAmount = locals.requiredEscrow;
-		locals.participantData.requestedQuantity = locals.auction.quantityForSale;
+		locals.participantData.requestedQuantity = locals.auction.core.quantityForSale;
 		locals.participantData.allocatedQuantity = 0;
 		locals.participantData.bidAmount = input.bidAmount;
 		locals.participantData.lastBidTime = input.currentDate;
 		locals.participantData.participant = qpi.invocator();
 		locals.participantData.isWinningBid = 0;
 
-		if (!isZero(locals.auction.highestBidder))
+		if (!isZero(locals.auction.core.highestBidder))
 		{
-			locals.highestBidderKey = {locals.auction.auctionId, locals.auction.highestBidder};
+			locals.highestBidderKey = {locals.auction.core.auctionId, locals.auction.core.highestBidder};
 			locals.highestBidderExists = state.get().participants.get(locals.highestBidderKey, locals.previousHighestBidderData);
 		}
 		if (locals.highestBidderExists && locals.previousHighestBidderData.participant != qpi.invocator())
@@ -2010,17 +2063,17 @@ struct NOST : public ContractBase
 		}
 
 		locals.participantData.isWinningBid = 1;
-		locals.auction.highestBidder = qpi.invocator();
-		locals.auction.highestBidPrice = input.bidAmount;
-		locals.auction.highestBidQuantity = locals.auction.quantityForSale;
-		locals.auction.highestBidAmount = locals.requiredEscrow;
+		locals.auction.core.highestBidder = qpi.invocator();
+		locals.auction.core.highestBidPrice = input.bidAmount;
+		locals.auction.core.highestBidQuantity = locals.auction.core.quantityForSale;
+		locals.auction.core.highestBidAmount = locals.requiredEscrow;
 
-		locals.auction.lastBidAt = input.currentDate;
-		if ((locals.auction.auctionDurationSeconds - input.elapsedSeconds) <= NOST_AUCTION_EXTENSION_SECONDS)
+		locals.auction.core.lastBidAt = input.currentDate;
+		if ((locals.auction.core.auctionDurationSeconds - input.elapsedSeconds) <= NOST_AUCTION_EXTENSION_SECONDS)
 		{
-			locals.auction.auctionDurationSeconds = sadd(locals.auction.auctionDurationSeconds, NOST_AUCTION_EXTENSION_SECONDS);
+			locals.auction.core.auctionDurationSeconds = sadd(locals.auction.core.auctionDurationSeconds, NOST_AUCTION_EXTENSION_SECONDS);
 		}
-		if (locals.auction.buyNowPrice > 0 && input.bidAmount >= locals.auction.buyNowPrice)
+		if (locals.auction.core.buyNowPrice > 0 && input.bidAmount >= locals.auction.core.buyNowPrice)
 		{
 			locals.finalizeImmediately = 1;
 		}
@@ -2145,15 +2198,15 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.type != EAuctionType::Batch || locals.auction.status != EAuctionStatus::Active)
+		if (locals.auction.core.type != EAuctionType::Batch || locals.auction.core.status != EAuctionStatus::Active)
 		{
 			return;
 		}
 
 		// Resolve the single sellable lot entry that represents the batch asset and quantity in escrow.
-		for (locals.lotItemIndex = 0; locals.lotItemIndex < locals.auction.auctionLotItems.capacity(); ++locals.lotItemIndex)
+		for (locals.lotItemIndex = 0; locals.lotItemIndex < locals.auction.core.auctionLotItems.capacity(); ++locals.lotItemIndex)
 		{
-			locals.batchLotItem = locals.auction.auctionLotItems.get(locals.lotItemIndex);
+			locals.batchLotItem = locals.auction.core.auctionLotItems.get(locals.lotItemIndex);
 			if (!isZeroAsset(locals.batchLotItem.asset) && locals.batchLotItem.quantity > 0)
 			{
 				locals.lotItemFound = 1;
@@ -2166,7 +2219,7 @@ struct NOST : public ContractBase
 		}
 
 		// Repeatedly pick the best remaining bid, allocate available quantity, and collect the winning payment.
-		locals.remainingQuantity = locals.auction.quantityForSale;
+		locals.remainingQuantity = locals.auction.core.quantityForSale;
 		while (locals.remainingQuantity > 0)
 		{
 			locals.bestParticipantFound = 0;
@@ -2252,10 +2305,10 @@ struct NOST : public ContractBase
 		}
 
 		// Return any unsold batch quantity to the seller when demand did not consume the entire lot.
-		if (locals.soldQuantity < locals.auction.quantityForSale)
+		if (locals.soldQuantity < locals.auction.core.quantityForSale)
 		{
 			qpi.transferShareOwnershipAndPossession(locals.batchLotItem.asset.assetName, locals.batchLotItem.asset.issuer, SELF, SELF,
-			                                        locals.auction.quantityForSale - locals.soldQuantity, locals.auction.seller);
+			                                        locals.auction.core.quantityForSale - locals.soldQuantity, locals.auction.core.seller);
 		}
 
 		// Split the collected proceeds according to Nostromo auction fee rules and pay the seller net amount.
@@ -2263,15 +2316,15 @@ struct NOST : public ContractBase
 		CALL(DistributeAuctionRevenue, locals.distributeAuctionRevenueInput, locals.distributeAuctionRevenueOutput);
 		if (locals.distributeAuctionRevenueOutput.sellerPayout > 0)
 		{
-			qpi.transfer(locals.auction.seller, locals.distributeAuctionRevenueOutput.sellerPayout);
+			qpi.transfer(locals.auction.core.seller, locals.distributeAuctionRevenueOutput.sellerPayout);
 		}
 
 		// Persist the final sold quantity and close the auction as settled.
-		locals.auction.allocatedQuantity = locals.soldQuantity;
-		locals.auction.status = EAuctionStatus::Finalized;
-		locals.auction.settledAt = input.currentDate;
-		state.mut().auctionList.replace(locals.auction.auctionId, locals.auction);
-		addClosedAuctionToHistory(state, locals.auction.auctionId);
+		locals.auction.core.allocatedQuantity = locals.soldQuantity;
+		locals.auction.core.status = EAuctionStatus::Finalized;
+		locals.auction.core.settledAt = input.currentDate;
+		state.mut().auctionList.replace(locals.auction.core.auctionId, locals.auction);
+		addClosedAuctionToHistory(state, locals.auction.core.auctionId);
 		output.success = 1;
 	}
 
@@ -2286,20 +2339,20 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.type != EAuctionType::Standard)
+		if (locals.auction.core.type != EAuctionType::Standard)
 		{
 			return;
 		}
 
-		if (!isZero(locals.auction.highestBidder))
+		if (!isZero(locals.auction.core.highestBidder))
 		{
-			locals.highestBidderKey = {locals.auction.auctionId, locals.auction.highestBidder};
+			locals.highestBidderKey = {locals.auction.core.auctionId, locals.auction.core.highestBidder};
 			locals.highestBidderExists = state.get().participants.get(locals.highestBidderKey, locals.highestBidderData);
 		}
 
 		if (locals.highestBidderExists && locals.highestBidderData.escrowedAmount > 0)
 		{
-			locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.auctionLotItems;
+			locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.core.auctionLotItems;
 			locals.rollbackAuctionLotAssetsInput.recipient = locals.highestBidderData.participant;
 			CALL(RollbackAuctionLotAssets, locals.rollbackAuctionLotAssetsInput, locals.rollbackAuctionLotAssetsOutput);
 
@@ -2307,35 +2360,35 @@ struct NOST : public ContractBase
 			CALL(DistributeAuctionRevenue, locals.distributeAuctionRevenueInput, locals.distributeAuctionRevenueOutput);
 			if (locals.distributeAuctionRevenueOutput.sellerPayout > 0)
 			{
-				qpi.transfer(locals.auction.seller, locals.distributeAuctionRevenueOutput.sellerPayout);
+				qpi.transfer(locals.auction.core.seller, locals.distributeAuctionRevenueOutput.sellerPayout);
 			}
 
-			locals.highestBidderData.allocatedQuantity = locals.auction.quantityForSale;
+			locals.highestBidderData.allocatedQuantity = locals.auction.core.quantityForSale;
 			locals.highestBidderData.isWinningBid = 1;
 			locals.highestBidderData.escrowedAmount = 0;
 			state.mut().participants.replace(locals.highestBidderKey, locals.highestBidderData);
-			locals.auction.allocatedQuantity = locals.auction.quantityForSale;
+			locals.auction.core.allocatedQuantity = locals.auction.core.quantityForSale;
 			locals.lotSold = 1;
 		}
 		else
 		{
-			locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.auctionLotItems;
-			locals.rollbackAuctionLotAssetsInput.recipient = locals.auction.seller;
+			locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.core.auctionLotItems;
+			locals.rollbackAuctionLotAssetsInput.recipient = locals.auction.core.seller;
 			CALL(RollbackAuctionLotAssets, locals.rollbackAuctionLotAssetsInput, locals.rollbackAuctionLotAssetsOutput);
-			locals.auction.allocatedQuantity = 0;
+			locals.auction.core.allocatedQuantity = 0;
 		}
 
-		locals.auction.status = EAuctionStatus::Finalized;
-		locals.auction.settledAt = input.currentDate;
+		locals.auction.core.status = EAuctionStatus::Finalized;
+		locals.auction.core.settledAt = input.currentDate;
 		if (!locals.lotSold)
 		{
-			locals.auction.highestBidAmount = 0;
-			locals.auction.highestBidPrice = 0;
-			locals.auction.highestBidQuantity = 0;
-			locals.auction.highestBidder = NULL_ID;
+			locals.auction.core.highestBidAmount = 0;
+			locals.auction.core.highestBidPrice = 0;
+			locals.auction.core.highestBidQuantity = 0;
+			locals.auction.core.highestBidder = NULL_ID;
 		}
-		state.mut().auctionList.replace(locals.auction.auctionId, locals.auction);
-		addClosedAuctionToHistory(state, locals.auction.auctionId);
+		state.mut().auctionList.replace(locals.auction.core.auctionId, locals.auction);
+		addClosedAuctionToHistory(state, locals.auction.core.auctionId);
 		output.success = 1;
 	}
 
@@ -2350,14 +2403,14 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.type != EAuctionType::Standard || locals.auction.status != EAuctionStatus::PendingSellerDecision)
+		if (locals.auction.core.type != EAuctionType::Standard || locals.auction.core.status != EAuctionStatus::PendingSellerDecision)
 		{
 			return;
 		}
 
-		if (!isZero(locals.auction.highestBidder))
+		if (!isZero(locals.auction.core.highestBidder))
 		{
-			locals.highestBidderKey = {locals.auction.auctionId, locals.auction.highestBidder};
+			locals.highestBidderKey = {locals.auction.core.auctionId, locals.auction.core.highestBidder};
 			locals.highestBidderExists = state.get().participants.get(locals.highestBidderKey, locals.highestBidderData);
 		}
 
@@ -2371,19 +2424,19 @@ struct NOST : public ContractBase
 			state.mut().participants.replace(locals.highestBidderKey, locals.highestBidderData);
 		}
 
-		locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.auctionLotItems;
-		locals.rollbackAuctionLotAssetsInput.recipient = locals.auction.seller;
+		locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.core.auctionLotItems;
+		locals.rollbackAuctionLotAssetsInput.recipient = locals.auction.core.seller;
 		CALL(RollbackAuctionLotAssets, locals.rollbackAuctionLotAssetsInput, locals.rollbackAuctionLotAssetsOutput);
 
-		locals.auction.allocatedQuantity = 0;
-		locals.auction.highestBidAmount = 0;
-		locals.auction.highestBidPrice = 0;
-		locals.auction.highestBidQuantity = 0;
-		locals.auction.highestBidder = NULL_ID;
-		locals.auction.status = EAuctionStatus::Finalized;
-		locals.auction.settledAt = input.currentDate;
-		state.mut().auctionList.replace(locals.auction.auctionId, locals.auction);
-		addClosedAuctionToHistory(state, locals.auction.auctionId);
+		locals.auction.core.allocatedQuantity = 0;
+		locals.auction.core.highestBidAmount = 0;
+		locals.auction.core.highestBidPrice = 0;
+		locals.auction.core.highestBidQuantity = 0;
+		locals.auction.core.highestBidder = NULL_ID;
+		locals.auction.core.status = EAuctionStatus::Finalized;
+		locals.auction.core.settledAt = input.currentDate;
+		state.mut().auctionList.replace(locals.auction.core.auctionId, locals.auction);
+		addClosedAuctionToHistory(state, locals.auction.core.auctionId);
 		output.success = 1;
 	}
 
@@ -2581,17 +2634,17 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.auction.auctionId = id::randomValue();
-		locals.auction.quantityForSale = locals.resolvedQuantityForSale;
-		locals.auction.minimumPurchaseQuantity = locals.resolvedMinimumPurchaseQuantity;
-		locals.auction.initialPrice = input.initialPrice;
-		locals.auction.salePrice = input.salePrice;
-		locals.auction.minimumBidIncrement = input.minimumBidIncrement;
-		locals.auction.buyNowPrice = input.buyNowPrice;
-		locals.auction.auctionDurationSeconds = smul(static_cast<uint64>(input.durationDays), NOST_SECONDS_PER_DAY);
-		locals.auction.createdAt = qpi.now();
-		locals.auction.lastBidAt = locals.auction.createdAt;
-		locals.auction.seller = qpi.invocator();
+		locals.auction.core.auctionId = id::randomValue();
+		locals.auction.core.quantityForSale = locals.resolvedQuantityForSale;
+		locals.auction.core.minimumPurchaseQuantity = locals.resolvedMinimumPurchaseQuantity;
+		locals.auction.core.initialPrice = input.initialPrice;
+		locals.auction.core.salePrice = input.salePrice;
+		locals.auction.core.minimumBidIncrement = input.minimumBidIncrement;
+		locals.auction.core.buyNowPrice = input.buyNowPrice;
+		locals.auction.core.auctionDurationSeconds = smul(static_cast<uint64>(input.durationDays), NOST_SECONDS_PER_DAY);
+		locals.auction.core.createdAt = qpi.now();
+		locals.auction.core.lastBidAt = locals.auction.core.createdAt;
+		locals.auction.core.seller = qpi.invocator();
 		for (locals.requiredAccessAssetIndex = 0; locals.requiredAccessAssetIndex < input.requiredAccessAssets.capacity();
 		     ++locals.requiredAccessAssetIndex)
 		{
@@ -2600,7 +2653,7 @@ struct NOST : public ContractBase
 				locals.auction.requiredAccessAssets.add(input.requiredAccessAssets.get(locals.requiredAccessAssetIndex));
 			}
 		}
-		locals.auction.auctionLotItems = input.auctionLotItems;
+		locals.auction.core.auctionLotItems = input.auctionLotItems;
 		for (locals.allowedWalletIndex = 0; locals.allowedWalletIndex < input.allowedBidderWallets.capacity(); ++locals.allowedWalletIndex)
 		{
 			if (!isZero(input.allowedBidderWallets.get(locals.allowedWalletIndex)))
@@ -2608,12 +2661,12 @@ struct NOST : public ContractBase
 				locals.auction.allowedBidderWallets.add(input.allowedBidderWallets.get(locals.allowedWalletIndex));
 			}
 		}
-		locals.auction.metadataIpfsCid = input.metadataIpfsCid;
-		locals.auction.type = static_cast<EAuctionType>(input.auctionType);
-		locals.auction.visibility = static_cast<EAuctionVisibility>(input.auctionVisibility);
-		locals.auction.status = EAuctionStatus::Active;
+		locals.auction.core.metadataIpfsCid = input.metadataIpfsCid;
+		locals.auction.core.type = static_cast<EAuctionType>(input.auctionType);
+		locals.auction.core.visibility = static_cast<EAuctionVisibility>(input.auctionVisibility);
+		locals.auction.core.status = EAuctionStatus::Active;
 
-		if (state.mut().auctionList.set(locals.auction.auctionId, locals.auction) == NULL_INDEX)
+		if (state.mut().auctionList.set(locals.auction.core.auctionId, locals.auction) == NULL_INDEX)
 		{
 			locals.rollbackAuctionLotAssetsInput.auctionLotItems = input.auctionLotItems;
 			locals.rollbackAuctionLotAssetsInput.recipient = qpi.invocator();
@@ -2634,7 +2687,7 @@ struct NOST : public ContractBase
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.requiredFee);
 		}
 
-		output.auctionId = locals.auction.auctionId;
+		output.auctionId = locals.auction.core.auctionId;
 		output.errorCode = static_cast<uint8>(EAuctionError::Success);
 	}
 
@@ -2668,7 +2721,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.status != EAuctionStatus::Active)
+		if (locals.auction.core.status != EAuctionStatus::Active)
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -2678,7 +2731,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.seller == qpi.invocator())
+		if (locals.auction.core.seller == qpi.invocator())
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -2689,8 +2742,8 @@ struct NOST : public ContractBase
 		}
 
 		locals.currentDate = qpi.now();
-		diffDateInSecond(locals.auction.createdAt, locals.currentDate, locals.elapsedSeconds);
-		if (locals.elapsedSeconds >= locals.auction.auctionDurationSeconds)
+		diffDateInSecond(locals.auction.core.createdAt, locals.currentDate, locals.elapsedSeconds);
+		if (locals.elapsedSeconds >= locals.auction.core.auctionDurationSeconds)
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -2700,11 +2753,11 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.visibility == EAuctionVisibility::Private)
+		if (locals.auction.core.visibility == EAuctionVisibility::Private)
 		{
 			if (locals.auction.requiredAccessAssets.population() > 0)
 			{
-				locals.hasRequiredAccessAssetInput.auction = locals.auction;
+				locals.hasRequiredAccessAssetInput.auctionId = input.auctionId;
 				CALL(HasRequiredAccessAsset, locals.hasRequiredAccessAssetInput, locals.hasRequiredAccessAssetOutput);
 				locals.hasAccess = locals.hasRequiredAccessAssetOutput.hasRequiredAccessAsset;
 			}
@@ -2724,7 +2777,7 @@ struct NOST : public ContractBase
 			}
 		}
 
-		switch (locals.auction.type)
+		switch (locals.auction.core.type)
 		{
 			case EAuctionType::Batch:
 				locals.processBatchBidInput.auctionId = input.auctionId;
@@ -2796,7 +2849,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.status != EAuctionStatus::Active)
+		if (locals.auction.core.status != EAuctionStatus::Active)
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -2806,7 +2859,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.seller != qpi.invocator())
+		if (locals.auction.core.seller != qpi.invocator())
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -2816,7 +2869,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.highestBidAmount > 0)
+		if (locals.auction.core.highestBidAmount > 0)
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -2826,10 +2879,10 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.cancellationBaseAmount = locals.auction.salePrice;
-		if (locals.auction.type == EAuctionType::Batch)
+		locals.cancellationBaseAmount = locals.auction.core.salePrice;
+		if (locals.auction.core.type == EAuctionType::Batch)
 		{
-			locals.cancellationBaseAmount = smul(locals.auction.salePrice, locals.auction.quantityForSale);
+			locals.cancellationBaseAmount = smul(locals.auction.core.salePrice, locals.auction.core.quantityForSale);
 		}
 		output.cancellationFee = div<uint64>(smul(locals.cancellationBaseAmount, state.get().auctionCancellationFeeBasisPoints), 10000ULL);
 
@@ -2862,15 +2915,15 @@ struct NOST : public ContractBase
 		}
 		state.mut().participants.cleanupIfNeeded();
 
-		locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.auctionLotItems;
-		locals.rollbackAuctionLotAssetsInput.recipient = locals.auction.seller;
+		locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.core.auctionLotItems;
+		locals.rollbackAuctionLotAssetsInput.recipient = locals.auction.core.seller;
 		CALL(RollbackAuctionLotAssets, locals.rollbackAuctionLotAssetsInput, locals.rollbackAuctionLotAssetsOutput);
 
 		locals.currentDate = qpi.now();
-		locals.auction.status = EAuctionStatus::Cancelled;
-		locals.auction.settledAt = locals.currentDate;
+		locals.auction.core.status = EAuctionStatus::Cancelled;
+		locals.auction.core.settledAt = locals.currentDate;
 		state.mut().auctionList.replace(input.auctionId, locals.auction);
-		addClosedAuctionToHistory(state, locals.auction.auctionId);
+		addClosedAuctionToHistory(state, locals.auction.core.auctionId);
 
 		locals.distributeAuctionServiceFeeInput.feeAmount = output.cancellationFee;
 		CALL(DistributeAuctionServiceFee, locals.distributeAuctionServiceFeeInput, locals.distributeAuctionServiceFeeOutput);
@@ -2915,20 +2968,20 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.seller != qpi.invocator())
+		if (locals.auction.core.seller != qpi.invocator())
 		{
 			output.errorCode = static_cast<uint8>(EAuctionError::Forbidden);
 			return;
 		}
 
-		if (locals.auction.type != EAuctionType::Standard || locals.auction.status != EAuctionStatus::PendingSellerDecision)
+		if (locals.auction.core.type != EAuctionType::Standard || locals.auction.core.status != EAuctionStatus::PendingSellerDecision)
 		{
 			output.errorCode = static_cast<uint8>(EAuctionError::AuctionClosed);
 			return;
 		}
 
 		locals.currentDate = qpi.now();
-		if (!state.get().isAuctionTimerPaused && locals.auction.sellerDecisionDeadline <= locals.currentDate)
+		if (!state.get().isAuctionTimerPaused && locals.auction.core.sellerDecisionDeadline <= locals.currentDate)
 		{
 			locals.finalizeStandardAuctionInput.auctionId = input.auctionId;
 			locals.finalizeStandardAuctionInput.currentDate = locals.currentDate;
@@ -3064,9 +3117,39 @@ struct NOST : public ContractBase
 
 	/**
 	 * @brief Returns the stored state of one auction.
-	 * @note The response contains the full persistent `AuctionData` record for the requested auction identifier.
+	 * @note The response contains a serializable auction view; access-control sets are returned as fixed arrays with counts.
 	 */
-	PUBLIC_FUNCTION(GetAuction) { state.get().auctionList.get(input.auctionId, output.auction); }
+	PUBLIC_FUNCTION_WITH_LOCALS(GetAuction)
+	{
+		output.found = 0;
+		if (!state.get().auctionList.get(input.auctionId, locals.auction))
+		{
+			return;
+		}
+
+		output.found = 1;
+		output.auction.core = locals.auction.core;
+
+		output.auction.requiredAccessAssetCount = 0;
+		for (locals.requiredAccessAssetSetIndex = locals.auction.requiredAccessAssets.nextElementIndex(NULL_INDEX);
+		     locals.requiredAccessAssetSetIndex != NULL_INDEX;
+		     locals.requiredAccessAssetSetIndex = locals.auction.requiredAccessAssets.nextElementIndex(locals.requiredAccessAssetSetIndex))
+		{
+			locals.requiredAccessAsset = locals.auction.requiredAccessAssets.key(locals.requiredAccessAssetSetIndex);
+			output.auction.requiredAccessAssets.set(output.auction.requiredAccessAssetCount, locals.requiredAccessAsset);
+			output.auction.requiredAccessAssetCount = sadd(output.auction.requiredAccessAssetCount, 1ULL);
+		}
+
+		output.auction.allowedBidderWalletCount = 0;
+		for (locals.allowedBidderWalletSetIndex = locals.auction.allowedBidderWallets.nextElementIndex(NULL_INDEX);
+		     locals.allowedBidderWalletSetIndex != NULL_INDEX;
+		     locals.allowedBidderWalletSetIndex = locals.auction.allowedBidderWallets.nextElementIndex(locals.allowedBidderWalletSetIndex))
+		{
+			locals.allowedBidderWallet = locals.auction.allowedBidderWallets.key(locals.allowedBidderWalletSetIndex);
+			output.auction.allowedBidderWallets.set(output.auction.allowedBidderWalletCount, locals.allowedBidderWallet);
+			output.auction.allowedBidderWalletCount = sadd(output.auction.allowedBidderWalletCount, 1ULL);
+		}
+	}
 
 	/**
 	 * @brief Returns the stored bid state of one wallet in one auction.
