@@ -105,11 +105,10 @@ public:
 
     void tokenRaffleMemberChecker(uint32 raffleIndex, const id& user, uint32 expectedMembers)
     {
-        tokenRaffleMembers.get(raffleIndex, tmpTokenRaffleMembers);
         bool found = false;
         for (uint32 i = 0; i < numberOfTokenRaffleMembers.get(raffleIndex); i++)
         {
-            if (tmpTokenRaffleMembers.get(i) == user)
+            if (tokenRaffleMemberSlots.get(raffleIndex * QRAFFLE_TOKEN_RAFFLE_SLOT_SIZE + i) == user)
             {
                 found = true;
                 break;
@@ -425,6 +424,11 @@ public:
 
     sint64 TransferShareManagementRightsQraffle(const id& issuer, uint64 assetName, uint32 newManagingContractIndex, sint64 numberOfShares, const id& currentOwner)
     {
+        return TransferShareManagementRightsQraffleWithFee(issuer, assetName, newManagingContractIndex, numberOfShares, currentOwner, QRAFFLE_TRANSFER_SHARE_FEE);
+    }
+
+    sint64 TransferShareManagementRightsQraffleWithFee(const id& issuer, uint64 assetName, uint32 newManagingContractIndex, sint64 numberOfShares, const id& currentOwner, sint64 invocationReward)
+    {
         QRAFFLE::TransferShareManagementRights_input input;
         QRAFFLE::TransferShareManagementRights_output output;
 
@@ -433,7 +437,7 @@ public:
         input.newManagingContractIndex = newManagingContractIndex;
         input.numberOfShares = numberOfShares;
 
-        invokeUserProcedure(QRAFFLE_CONTRACT_INDEX, 8, input, output, currentOwner, QRAFFLE_TRANSFER_SHARE_FEE);
+        invokeUserProcedure(QRAFFLE_CONTRACT_INDEX, 8, input, output, currentOwner, invocationReward);
         return output.transferredNumberOfShares;
     }
 };
@@ -554,7 +558,8 @@ TEST(ContractQraffle, SubmitProposal)
 
     // Issue some test assets
     id issuer = getUser(2000);
-    increaseEnergy(issuer, 1000000000ULL);
+    // Asset issuance fee on QX is 1,000,000,000 per asset; need at least 2 fees here.
+    increaseEnergy(issuer, 2 * 1000000000ULL);
     uint64 assetName1 = assetNameFromString("TEST1");
     uint64 assetName2 = assetNameFromString("TEST2");
     qraffle.issueAsset(issuer, assetName1, 1000000, 0, 0);
@@ -588,7 +593,43 @@ TEST(ContractQraffle, SubmitProposal)
     increaseEnergy(unregisteredUser, QRAFFLE_REGISTER_AMOUNT);
     auto result = qraffle.submitProposal(unregisteredUser, token1, 1000000);
     EXPECT_EQ(result.returnCode, QRAFFLE_UNREGISTERED);
-}   
+}
+
+TEST(ContractQraffle, SubmitProposalPerUserLimitAndValidation)
+{
+    ContractTestingQraffle qraffle;
+
+    auto users = getRandomUsers(100, 100);
+    for (const auto& user : users)
+    {
+        increaseEnergy(user, QRAFFLE_REGISTER_AMOUNT);
+        qraffle.registerInSystem(user, QRAFFLE_REGISTER_AMOUNT, 0);
+    }
+
+    id issuer = getUser(2000);
+    increaseEnergy(issuer, 1000000000ULL);
+    uint64 assetName = assetNameFromString("LIMVAL");
+    qraffle.issueAsset(issuer, assetName, 10000000, 0, 0);
+
+    Asset token;
+    token.assetName = assetName;
+    token.issuer = issuer;
+
+    increaseEnergy(users[0], 1000);
+    EXPECT_EQ(qraffle.submitProposal(users[0], token, 1000000ULL).returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(qraffle.submitProposal(users[0], token, 2000000ULL).returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(qraffle.submitProposal(users[0], token, 3000000ULL).returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(qraffle.submitProposal(users[0], token, 4000000ULL).returnCode, QRAFFLE_MAX_PROPOSAL_PER_USER_REACHED);
+
+    // Use a different proposer for entry-amount validation; per-user cap would otherwise mask it.
+    EXPECT_EQ(qraffle.submitProposal(users[1], token, 500000ULL).returnCode, QRAFFLE_INVALID_ENTRY_AMOUNT);
+    EXPECT_EQ(qraffle.submitProposal(users[1], token, 2000000000ULL).returnCode, QRAFFLE_INVALID_ENTRY_AMOUNT);
+
+    Asset fakeToken;
+    fakeToken.assetName = assetNameFromString("NOTISS");
+    fakeToken.issuer = issuer;
+    EXPECT_EQ(qraffle.submitProposal(users[2], fakeToken, 1000000ULL).returnCode, QRAFFLE_INVALID_TOKEN_TYPE);
+}
 
 TEST(ContractQraffle, VoteInProposal)
 {
@@ -768,12 +809,24 @@ TEST(ContractQraffle, DepositInTokenRaffle)
     auto result = qraffle.depositInTokenRaffle(poorUser, 0, QRAFFLE_TRANSFER_SHARE_FEE - 1);
     EXPECT_EQ(result.returnCode, QRAFFLE_INSUFFICIENT_FUND);
 
-    // Test insufficient Token
+    // Test unregistered user (must be a DAO member to deposit in token raffle)
+    increaseEnergy(poorUser, QRAFFLE_TRANSFER_SHARE_FEE);
+    result = qraffle.depositInTokenRaffle(poorUser, 0, QRAFFLE_TRANSFER_SHARE_FEE);
+    EXPECT_EQ(result.returnCode, QRAFFLE_UNREGISTERED);
+
+    // Test insufficient Token (registered DAO member with too few shares)
     id poorUser2 = getUser(8888);
+    increaseEnergy(poorUser2, QRAFFLE_REGISTER_AMOUNT);
+    qraffle.registerInSystem(poorUser2, QRAFFLE_REGISTER_AMOUNT, 0);
     increaseEnergy(poorUser2, QRAFFLE_TRANSFER_SHARE_FEE);
     qraffle.transferShareOwnershipAndPossession(issuer, assetName, issuer, 999999, poorUser2);
     result = qraffle.depositInTokenRaffle(poorUser2, 0, QRAFFLE_TRANSFER_SHARE_FEE);
     EXPECT_EQ(result.returnCode, QRAFFLE_FAILED_TO_DEPOSIT);
+
+    // Test duplicate deposit by same user (already deposited above)
+    increaseEnergy(users[0], QRAFFLE_TRANSFER_SHARE_FEE);
+    result = qraffle.depositInTokenRaffle(users[0], 0, QRAFFLE_TRANSFER_SHARE_FEE);
+    EXPECT_EQ(result.returnCode, QRAFFLE_ALREADY_REGISTERED);
 
     // Test invalid token raffle index
     increaseEnergy(users[0], QRAFFLE_TRANSFER_SHARE_FEE);
@@ -797,7 +850,11 @@ TEST(ContractQraffle, TransferShareManagementRights)
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user1, user1, QRAFFLE_CONTRACT_INDEX, QRAFFLE_CONTRACT_INDEX), 1000000);
 
     increaseEnergy(user1, 1000000000ULL);
-    qraffle.TransferShareManagementRightsQraffle(issuer, assetName, QX_CONTRACT_INDEX, 1000000, user1);
+    // QRAFFLE's procedure now forwards (invocationReward - QRAFFLE_TRANSFER_SHARE_FEE) as the
+    // offeredTransferFee to the destination contract (QX requires 100 QU). Previously the test
+    // only paid QRAFFLE's own fee, leaving 0 to offer QX which silently failed. We now pass
+    // a sufficient amount and rely on the procedure to refund any excess.
+    qraffle.TransferShareManagementRightsQraffleWithFee(issuer, assetName, QX_CONTRACT_INDEX, 1000000, user1, 2 * QRAFFLE_TRANSFER_SHARE_FEE);
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user1, user1, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 1000000);
 }
 
@@ -832,7 +889,8 @@ TEST(ContractQraffle, GetFunctions)
 
     // Create some proposals
     id issuer = getUser(2000);
-    increaseEnergy(issuer, 1000000000ULL);
+    // Asset issuance fee on QX is 1,000,000,000 per asset; need at least 2 fees here.
+    increaseEnergy(issuer, 2 * 1000000000ULL);
     uint64 assetName1 = assetNameFromString("TEST1");
     uint64 assetName2 = assetNameFromString("TEST2");
     qraffle.issueAsset(issuer, assetName1, 1000000000, 0, 0);
@@ -1420,7 +1478,10 @@ TEST(ContractQraffle, QXMRRevenueDistribution)
     qraffle.depositInQuRaffle(users[0], QRAFFLE_DEFAULT_QRAFFLE_AMOUNT);
 
     qraffle.endEpoch();
-    EXPECT_EQ(qraffle.getState()->getEpochQXMRRevenue(), expectedQXMRRevenue - div(expectedQXMRRevenue, 676ull) * 676);
+    // No QRAFFLE shareholders exist in this test universe, so no QXMR is actually transferred.
+    // The contract must therefore retain the full epochQXMRRevenue rather than booking it as
+    // distributed (previous behavior silently leaked QXMR accounting).
+    EXPECT_EQ(qraffle.getState()->getEpochQXMRRevenue(), expectedQXMRRevenue);
 }
 
 TEST(ContractQraffle, GetQuRaffleEntryAmountPerUser)
