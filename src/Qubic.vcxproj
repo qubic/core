@@ -25,7 +25,6 @@
     <ClInclude Include="contracts\ComputorControlledFund.h" />
     <ClInclude Include="contracts\Qdraw.h" />
     <ClInclude Include="contracts\qRWA.h" />
-    <ClInclude Include="contracts\qRWA_old.h" />
     <ClInclude Include="contracts\Qswap.h" />
     <ClInclude Include="contracts\RandomLottery.h" />
     <ClInclude Include="contracts\QDuel.h" />
