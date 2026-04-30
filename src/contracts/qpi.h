@@ -2578,6 +2578,8 @@ namespace QPI
 		inline uint32 tick(
 		) const; // [0..999'999'999]
 
+		inline uint32 initialTick() const;
+
 		inline uint8 year(
 		) const; // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
 
