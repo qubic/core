@@ -5,6 +5,7 @@ using namespace QPI;
 /*
 * A collection of useful functions for smart contract on Qubic:
 * - SendToManyV1 (STM1): Sending qu from a single address to multiple addresses (upto 25)
+* - TransferSharesToManyV1 (TSTM1): Transferring asset shares from a single address to multiple addresses (upto 24)
 * - SendToManyBenchmark: Sending n transfers of 1 qu each to the specified number of addresses
 * - CreatePoll: Create a poll with a name, type, min amount, and GitHub link, and list of allowed assets
 * - Vote: Cast a Vote in a poll with a specified option (0 to 63), charging 100 QUs
@@ -62,6 +63,15 @@ constexpr uint64 QUTILLogTypeMaxPollsReached = 22;                  // Max epoch
 constexpr sint64 QUTIL_DISTRIBUTE_QU_TO_SHAREHOLDER_FEE_PER_SHAREHOLDER = 5;
 
 constexpr uint32 QUTIL_STMB_LOG_TYPE = 100001; // for bob to index
+
+// TransferSharesToManyV1 (TSTM1) log/return codes
+constexpr uint64 QUTIL_TSTM1_SUCCESS = 30;
+constexpr uint64 QUTIL_TSTM1_INVALID_AMOUNT = 31;
+constexpr uint64 QUTIL_TSTM1_INSUFFICIENT_SHARES = 32;
+constexpr uint64 QUTIL_TSTM1_TRIGGERED = 33;
+constexpr uint64 QUTIL_TSTM1_TRANSFER_SHARE = 34;
+constexpr uint64 QUTIL_TSTM1_TRANSFER_FAILED = 35;
+constexpr uint64 QUTIL_TSTM1_INSUFFICIENT_FEE = 36;
 
 // Deactivate logger for delay function
 #if 0
@@ -252,6 +262,46 @@ public:
     struct GetSendToManyV1Fee_output
     {
         sint64 fee;
+    };
+
+    struct TransferSharesToManyV1_input
+    {
+        id issuer;
+        uint64 assetName;
+        id dst0, dst1, dst2, dst3, dst4, dst5, dst6, dst7,
+            dst8, dst9, dst10, dst11, dst12, dst13, dst14, dst15,
+            dst16, dst17, dst18, dst19, dst20, dst21, dst22, dst23;
+        sint64 amt0, amt1, amt2, amt3, amt4, amt5, amt6, amt7,
+            amt8, amt9, amt10, amt11, amt12, amt13, amt14, amt15,
+            amt16, amt17, amt18, amt19, amt20, amt21, amt22, amt23;
+    };
+    struct TransferSharesToManyV1_output
+    {
+        sint32 returnCode;
+    };
+    struct TransferSharesToManyV1_locals
+    {
+        QX::Fees_input qxFeesInput;
+        QX::Fees_output qxFeesOutput;
+        sint64 tstm1InvocationFee;
+        sint64 possessedShares;
+        sint64 transferResult;
+        Logger logger;
+    };
+
+    struct TransferSharesManagementRights_input
+    {
+        Asset asset;
+        sint64 numberOfShares;
+        uint32 newManagingContractIndex;
+    };
+    struct TransferSharesManagementRights_output
+    {
+        sint64 transferredNumberOfShares;
+    };
+    struct TransferSharesManagementRights_locals
+    {
+        sint64 paidTransferFee;
     };
 
     struct SendToManyBenchmark_input
@@ -808,6 +858,370 @@ public:
         LOG_INFO(locals.logger);
         output.returnCode = QUTIL_STM1_SUCCESS;
         qpi.burn(state.get().smt1InvocationFee);
+    }
+
+    /**
+    * Transfer asset shares from a single address to multiple addresses (up to 24)
+    * @param issuer: the asset issuer identity
+    * @param assetName: the asset name (up to 7 chars, encoded as uint64)
+    * @param list of 24 destination addresses (768 bytes): 32 bytes for each address, leave empty(zeroes) for unused slots
+    * @param list of 24 amounts (192 bytes): 8 bytes(sint64) for each amount, leave 0 for unused slots
+    * @return returnCode (0 means success)
+    */
+    PUBLIC_PROCEDURE_WITH_LOCALS(TransferSharesToManyV1)
+    {
+        locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_TSTM1_TRIGGERED };
+        LOG_INFO(locals.logger);
+
+        CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.qxFeesInput, locals.qxFeesOutput);
+        if (interContractCallError != NoCallError)
+        {
+            output.returnCode = QUTIL_TSTM1_INSUFFICIENT_FEE;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_TSTM1_INSUFFICIENT_FEE };
+            LOG_INFO(locals.logger);
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            return;
+        }
+
+        locals.tstm1InvocationFee = 25LL * locals.qxFeesOutput.transferFee;
+        if (qpi.invocationReward() < locals.tstm1InvocationFee)
+        {
+            output.returnCode = QUTIL_TSTM1_INSUFFICIENT_FEE;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, qpi.invocationReward(), QUTIL_TSTM1_INSUFFICIENT_FEE };
+            LOG_INFO(locals.logger);
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            return;
+        }
+
+        // Validate all amounts are non-negative
+        if ((input.amt0 < 0) || (input.amt1 < 0) || (input.amt2 < 0) || (input.amt3 < 0)
+            || (input.amt4 < 0) || (input.amt5 < 0) || (input.amt6 < 0) || (input.amt7 < 0)
+            || (input.amt8 < 0) || (input.amt9 < 0) || (input.amt10 < 0) || (input.amt11 < 0)
+            || (input.amt12 < 0) || (input.amt13 < 0) || (input.amt14 < 0) || (input.amt15 < 0)
+            || (input.amt16 < 0) || (input.amt17 < 0) || (input.amt18 < 0) || (input.amt19 < 0)
+            || (input.amt20 < 0) || (input.amt21 < 0) || (input.amt22 < 0) || (input.amt23 < 0))
+        {
+            output.returnCode = QUTIL_TSTM1_INVALID_AMOUNT;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, 0, QUTIL_TSTM1_INVALID_AMOUNT };
+            LOG_INFO(locals.logger);
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            return;
+        }
+
+        // Check invocator possesses enough shares for all transfers
+        locals.possessedShares = qpi.numberOfPossessedShares(
+            input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
+
+        locals.possessedShares -= input.amt0; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt1; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt2; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt3; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt4; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt5; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt6; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt7; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt8; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt9; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt10; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt11; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt12; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt13; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt14; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt15; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt16; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt17; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt18; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt19; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt20; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt21; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt22; if (locals.possessedShares < 0) goto insufficientShares;
+        locals.possessedShares -= input.amt23; if (locals.possessedShares < 0) goto insufficientShares;
+
+        // Execute share transfers to each non-empty destination
+        if (input.dst0 != NULL_ID && input.amt0 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt0, input.dst0);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst0, input.amt0, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst1 != NULL_ID && input.amt1 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt1, input.dst1);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst1, input.amt1, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst2 != NULL_ID && input.amt2 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt2, input.dst2);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst2, input.amt2, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst3 != NULL_ID && input.amt3 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt3, input.dst3);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst3, input.amt3, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst4 != NULL_ID && input.amt4 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt4, input.dst4);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst4, input.amt4, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst5 != NULL_ID && input.amt5 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt5, input.dst5);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst5, input.amt5, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst6 != NULL_ID && input.amt6 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt6, input.dst6);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst6, input.amt6, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst7 != NULL_ID && input.amt7 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt7, input.dst7);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst7, input.amt7, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst8 != NULL_ID && input.amt8 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt8, input.dst8);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst8, input.amt8, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst9 != NULL_ID && input.amt9 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt9, input.dst9);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst9, input.amt9, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst10 != NULL_ID && input.amt10 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt10, input.dst10);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst10, input.amt10, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst11 != NULL_ID && input.amt11 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt11, input.dst11);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst11, input.amt11, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst12 != NULL_ID && input.amt12 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt12, input.dst12);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst12, input.amt12, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst13 != NULL_ID && input.amt13 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt13, input.dst13);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst13, input.amt13, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst14 != NULL_ID && input.amt14 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt14, input.dst14);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst14, input.amt14, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst15 != NULL_ID && input.amt15 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt15, input.dst15);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst15, input.amt15, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst16 != NULL_ID && input.amt16 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt16, input.dst16);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst16, input.amt16, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst17 != NULL_ID && input.amt17 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt17, input.dst17);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst17, input.amt17, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst18 != NULL_ID && input.amt18 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt18, input.dst18);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst18, input.amt18, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst19 != NULL_ID && input.amt19 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt19, input.dst19);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst19, input.amt19, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst20 != NULL_ID && input.amt20 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt20, input.dst20);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst20, input.amt20, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst21 != NULL_ID && input.amt21 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt21, input.dst21);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst21, input.amt21, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst22 != NULL_ID && input.amt22 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt22, input.dst22);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst22, input.amt22, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+        if (input.dst23 != NULL_ID && input.amt23 > 0)
+        {
+            locals.transferResult = qpi.transferShareOwnershipAndPossession(
+                input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.amt23, input.dst23);
+            if (locals.transferResult < 0) goto transferFailed;
+            locals.logger = Logger{ 0, 0, qpi.invocator(), input.dst23, input.amt23, QUTIL_TSTM1_TRANSFER_SHARE };
+            LOG_INFO(locals.logger);
+        }
+
+        // All transfers succeeded
+        locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, 0, QUTIL_TSTM1_SUCCESS };
+        LOG_INFO(locals.logger);
+        output.returnCode = QUTIL_TSTM1_SUCCESS;
+        qpi.transfer(id(QX_CONTRACT_INDEX, 0, 0, 0), 24LL * (sint64)locals.qxFeesOutput.transferFee);
+        qpi.burn((sint64)locals.qxFeesOutput.transferFee);
+        if (qpi.invocationReward() > locals.tstm1InvocationFee)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.tstm1InvocationFee);
+        }
+        return;
+
+    insufficientShares:
+        output.returnCode = QUTIL_TSTM1_INSUFFICIENT_SHARES;
+        locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, 0, QUTIL_TSTM1_INSUFFICIENT_SHARES };
+        LOG_INFO(locals.logger);
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+        return;
+
+    transferFailed:
+        output.returnCode = QUTIL_TSTM1_TRANSFER_FAILED;
+        locals.logger = Logger{ 0, 0, qpi.invocator(), SELF, 0, QUTIL_TSTM1_TRANSFER_FAILED };
+        LOG_INFO(locals.logger);
+        // Note: some shares may have already been transferred and cannot be rolled back
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+        return;
+    }
+
+    /**
+     * Releases share management rights from QUTIL to another contract.
+     *
+     * This procedure is used when a user's shares are currently managed by QUTIL
+     * and the user wants to transfer those management rights to a different
+     * managing contract, such as QX.
+     *
+     * Typical flow:
+     * - Shares are first moved under QUTIL management.
+     * - QUTIL performs share operations while it manages them.
+     * - The user later calls this procedure to release management rights from
+     *   QUTIL to another contract.
+     *
+     * @param asset The target asset (issuer + assetName).
+     * @param numberOfShares The number of shares whose management rights will be released.
+     * @param newManagingContractIndex The destination managing contract index
+     *        (for example, QX).
+     * @return transferredNumberOfShares The number of shares successfully transferred.
+     *         Returns 0 if the operation fails.
+     */
+    PUBLIC_PROCEDURE_WITH_LOCALS(TransferSharesManagementRights)
+    {
+        output.transferredNumberOfShares = 0;
+        locals.paidTransferFee = qpi.releaseShares(
+                input.asset,
+                qpi.invocator(),
+                qpi.invocator(),
+                input.numberOfShares,
+                input.newManagingContractIndex,
+                input.newManagingContractIndex,
+                qpi.invocationReward());
+        if (locals.paidTransferFee < 0)
+        {
+            // Failed: refund everything sent with this invocation
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            return;
+        }
+
+        // Success
+        output.transferredNumberOfShares = input.numberOfShares;
+
+        if (qpi.invocationReward() > locals.paidTransferFee)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.paidTransferFee);
+        }
     }
 
     /**
@@ -1375,6 +1789,13 @@ public:
         CALL(FinalizeShareholderStateVarProposals, input, output);
     }
 
+    PRE_ACQUIRE_SHARES()
+    {
+        // Accept incoming share management transfers with no fee
+        output.allowTransfer = true;
+        output.requestedFee = 0;
+    }
+
     INITIALIZE()
     {
         // init fee state variables (only called in gtest, because INITIALIZE has been added a long time after IPO)
@@ -1579,6 +2000,37 @@ public:
     }
 
     /**************************************/
+    /*      GET BALANCE BULK REQUEST      */
+    /**************************************/
+
+    struct GetBalances16_input
+    {
+        Array<id, 16> publicKeys;
+    };
+
+    struct GetBalances16_output
+    {
+        Array<sint64, 16> balances;
+    };
+
+    struct GetBalances16_locals
+    {
+        Entity entity;
+        uint32 i;
+    };
+
+    PUBLIC_FUNCTION_WITH_LOCALS(GetBalances16)
+    {
+        for (locals.i = 0; locals.i < input.publicKeys.capacity(); ++locals.i)
+        {
+            if (qpi.getEntity(input.publicKeys.get(locals.i), locals.entity))
+            {
+                output.balances.set(locals.i, locals.entity.incomingAmount - locals.entity.outgoingAmount);
+            }
+        }
+    }
+
+    /**************************************/
     /*        SHAREHOLDER PROPOSALS       */
     /**************************************/
 
@@ -1606,7 +2058,6 @@ public:
 
     IMPLEMENT_DEFAULT_SHAREHOLDER_PROPOSAL_VOTING(5, state.get().shareholderProposalFee)
 
-
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(GetSendToManyV1Fee, 1);
@@ -1617,6 +2068,7 @@ public:
         REGISTER_USER_FUNCTION(GetPollInfo, 6);
         REGISTER_USER_FUNCTION(GetFees, 7);
         REGISTER_USER_FUNCTION(QueryFeeReserve, 8);
+        REGISTER_USER_FUNCTION(GetBalances16, 9);
 
         REGISTER_USER_PROCEDURE(SendToManyV1, 1);
         REGISTER_USER_PROCEDURE(BurnQubic, 2);
@@ -1626,6 +2078,8 @@ public:
         REGISTER_USER_PROCEDURE(CancelPoll, 6);
         REGISTER_USER_PROCEDURE(DistributeQuToShareholders, 7);
         REGISTER_USER_PROCEDURE(BurnQubicForContract, 8);
+        REGISTER_USER_PROCEDURE(TransferSharesToManyV1, 9);
+        REGISTER_USER_PROCEDURE(TransferSharesManagementRights, 10);
 
         REGISTER_USER_PROCEDURE(QueryPriceOracle, 100);
         REGISTER_USER_PROCEDURE(SubscribePriceOracle, 101);

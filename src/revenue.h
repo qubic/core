@@ -6,6 +6,10 @@
 #include "vote_counter.h"
 #include "public_settings.h"
 
+// Revenue V2: set to 1 to use the new revenue formula (additive bonus + sliding window + oracle)
+// set to 0 to use V1 formula (multiplicative: tx * vote * mining)
+#define USE_REVENUE_V2 1
+
 
 static unsigned long long gVoteScoreBuffer[NUMBER_OF_COMPUTORS];
 static unsigned long long gCustomMiningScoreBuffer[NUMBER_OF_COMPUTORS];
@@ -48,15 +52,24 @@ struct RevenueComponents
 } gRevenueComponents;
 
 // Get the lower bound that start to separate the QUORUM region of score
-unsigned long long getQuorumScore(const unsigned long long* score)
+unsigned long long getQuorumScore(
+    const unsigned long long* score,
+    const unsigned int numberOfComputors = NUMBER_OF_COMPUTORS,
+    const unsigned int quorum = QUORUM)
 {
+    ASSERT((quorum > 0) && (quorum <= QUORUM));
+    if ((quorum == 0) || (quorum > QUORUM))
+    {
+        return 1;
+    }
+
     unsigned long long sortedScore[QUORUM + 1];
     // Sort revenue scores to get lowest score of quorum
-    setMem(sortedScore, sizeof(sortedScore), 0);
-    for (unsigned short computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    setMem(sortedScore, (quorum + 1) * sizeof(unsigned long long), 0);
+    for (unsigned short computorIndex = 0; computorIndex < numberOfComputors; computorIndex++)
     {
-        sortedScore[QUORUM] = score[computorIndex];
-        unsigned int i = QUORUM;
+        sortedScore[quorum] = score[computorIndex];
+        unsigned int i = quorum;
         while (i
             && sortedScore[i - 1] < sortedScore[i])
         {
@@ -65,11 +78,11 @@ unsigned long long getQuorumScore(const unsigned long long* score)
             sortedScore[i--] = tmp;
         }
     }
-    if (!sortedScore[QUORUM - 1])
+    if (!sortedScore[quorum - 1])
     {
-        sortedScore[QUORUM - 1] = 1;
+        sortedScore[quorum - 1] = 1;
     }
-    return sortedScore[QUORUM - 1];
+    return sortedScore[quorum - 1];
 }
 
 // This function will sort the score take the 450th score at reference score
@@ -79,14 +92,16 @@ unsigned long long getQuorumScore(const unsigned long long* score)
 static void computeRevFactor(
     const unsigned long long* score,
     const unsigned long long scalingThreshold,
-    unsigned long long* outputScoreFactor)
+    unsigned long long* outputScoreFactor,
+    const unsigned int numberOfComputors = NUMBER_OF_COMPUTORS,
+    const unsigned int quorum = QUORUM)
 {
     ASSERT(scalingThreshold > 0);
 
     // Sort revenue scores to get lowest score of quorum
-    unsigned long long quorumScore = getQuorumScore(score);
+    unsigned long long quorumScore = getQuorumScore(score, numberOfComputors, quorum);
 
-    for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
+    for (unsigned int computorIndex = 0; computorIndex < numberOfComputors; computorIndex++)
     {
         unsigned long long scoreFactor = 0;
         if (score[computorIndex] == 0)
@@ -167,6 +182,15 @@ static constexpr unsigned long long REVENUE_BONUS_CAP = 256; // capacity for non
 static constexpr unsigned int REVENUE_W_TX = 17;             // mandatory weight: TX (85%)
 static constexpr unsigned int REVENUE_W_ORACLE = 3;          // mandatory weight: Oracle (15%)
 static constexpr unsigned int REVENUE_W_SUM = REVENUE_W_TX + REVENUE_W_ORACLE;  // 20
+// Mining group quorum ratio: 2/3 of each group (same ratio as global QUORUM/NUMBER_OF_COMPUTORS)
+static constexpr unsigned int REVENUE_MINING_QUORUM_NUMERATOR = 2;
+static constexpr unsigned int REVENUE_MINING_QUORUM_DENOMINATOR = 3;
+// Mining group assignment strategy (template parameter for computeGroupMiningFactor)
+enum MiningGroupStrategy
+{
+    MINING_GROUP_BY_MAX = 0,    // max(doge, xmr) determines group (robust against gaming)
+    MINING_GROUP_BY_ANY_DOGE,   // any DOGE share > 0 assigns to DOGE group (simple)
+};
 // M_combined is computed as (W_TX*scoreTx + W_ORACLE*scoreOracle) / W_SUM first → [0, S]
 // Then formula: revenue = ipc × M × (S² + B×E) / (S × (S+B) × S)
 static constexpr unsigned long long REVENUE_DIVISOR = REVENUE_SCALE * (REVENUE_SCALE + REVENUE_BONUS_CAP) * REVENUE_SCALE; // 1024 × 1280 × 1024 = 1,342,177,280
@@ -186,6 +210,7 @@ struct EpochRevenueData
     // Per-computor arrays (NUMBER_OF_COMPUTORS entries each)
     unsigned long long slidingWindowTxScore[NUMBER_OF_COMPUTORS];   // new sliding window accumulated score
     unsigned long long oracleScore[NUMBER_OF_COMPUTORS];            // oracle commit/reveal revenue points
+    unsigned long long dogeMiningScore[NUMBER_OF_COMPUTORS];        // DOGE merged-mining shares (raw)
     long long v2Revenue[NUMBER_OF_COMPUTORS];                       // V2 shadow output
 
     // Per-tick TX counts — existing total + 3 categories
@@ -288,17 +313,20 @@ static void computeRevenueV2(EpochRevenueData& rEpochReveneuData)
         }
     }
 
-    computeRevFactor(gRevenueComponents.customMiningScore, REVENUE_SCALE, gRevenueV2Buffers.miningFactor);
+    // Mining factor E (DOGE), 
+    computeRevFactor(rEpochReveneuData.dogeMiningScore, REVENUE_SCALE, gRevenueV2Buffers.miningFactor);
 
-    // Combine: M = weighted average of mandatory factors (TX + Oracle), E = bonus (mining)
+    // Combine: M = weighted average of mandatory factors (TX + Oracle), E = group mining factor
     // M = (W_TX*scoreTx + W_ORACLE*scoreOracle) / W_SUM  in  [0, S]
     // revenue = ipc × M × (S² + B×E) / (S × (S+B) × S)
     for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
     {
-        unsigned long long scoreTx = gRevenueV2Buffers.txFactor[i];          // [0, S]
-        unsigned long long scoreOracle = gRevenueV2Buffers.oracleFactor[i];  // [0, S]
-        unsigned long long E = gRevenueV2Buffers.miningFactor[i];         // [0, S]
+        unsigned long long scoreTx = gRevenueV2Buffers.txFactor[i];         // [0, S]
+        unsigned long long scoreOracle = gRevenueV2Buffers.oracleFactor[i]; // [0, S]
+        unsigned long long E = gRevenueV2Buffers.miningFactor[i];           // [0, S]
+
         unsigned long long M = (REVENUE_W_TX * scoreTx + REVENUE_W_ORACLE * scoreOracle) / REVENUE_W_SUM;  // [0, S]
+
         unsigned long long numerator = M * (REVENUE_SCALE * REVENUE_SCALE + REVENUE_BONUS_CAP * E);
         rEpochReveneuData.v2Revenue[i] = (long long)(REVENUE_IPC * numerator / REVENUE_DIVISOR);
     }

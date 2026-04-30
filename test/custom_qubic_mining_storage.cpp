@@ -2,10 +2,10 @@
 
 #include <array>
 #include <random>
-#include <cstdint>
 
 #include "gtest/gtest.h"
 
+#include "lib/platform_common/qstdint.h"
 #include "oracle_testing.h"
 #include "src/mining/custom_qubic_mining_storage.h"
 
@@ -111,30 +111,6 @@ TEST(CustomQubicMiningStorage, ContainsTask)
     EXPECT_TRUE(storage.addTask(task, sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask)));
     EXPECT_TRUE(storage.containsTask(task->customMiningType, task->jobId));
     EXPECT_FALSE(storage.containsTask(task->customMiningType, task->jobId + 1));
-
-    storage.deinit();
-}
-
-TEST(CustomQubicMiningStorage, AddCleanJobQueueTask)
-{
-    CustomQubicMiningStorage storage;
-    EXPECT_TRUE(storage.init());
-
-    std::array<unsigned char, sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask)> buffer;
-    auto* task = reinterpret_cast<CustomQubicMiningTask*>(buffer.data());
-
-    std::random_device rd;
-    std::mt19937 gen(rd());
-
-    createTestTask(buffer, /*jobId=*/12345, /*cleanJobQueue=*/false, gen);
-    EXPECT_TRUE(storage.addTask(task, sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask)));
-    EXPECT_TRUE(storage.containsTask(task->customMiningType, 12345));
-
-    // Create and add a task that will clean the job queue. This should remove the previous task.
-    createTestTask(buffer, /*jobId=*/532789, /*cleanJobQueue=*/true, gen);
-    EXPECT_TRUE(storage.addTask(task, sizeof(CustomQubicMiningTask) + sizeof(QubicDogeMiningTask)));
-    EXPECT_TRUE(storage.containsTask(task->customMiningType, 532789));
-    EXPECT_FALSE(storage.containsTask(task->customMiningType, 12345));
 
     storage.deinit();
 }

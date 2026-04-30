@@ -20,8 +20,13 @@
 
 void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data);
 
-constexpr uint32_t MAX_ORACLE_QUERIES = (1 << 19);
-constexpr uint64_t ORACLE_QUERY_STORAGE_SIZE = MAX_ORACLE_QUERIES * 512;
+// Maximum number of queries supported per epoch
+constexpr uint32_t MAX_ORACLE_QUERIES = (1 << 21);
+
+// Size of query storage (used for contract queries and subscriptions, not needed for user queries such as DOGE verification)
+constexpr uint64_t ORACLE_QUERY_STORAGE_SIZE = MAX_ORACLE_QUERIES * 256;
+
+// Maximum number of queries that may be pending simultaneously
 constexpr uint32_t MAX_SIMULTANEOUS_ORACLE_QUERIES = 1024;
 
 constexpr uint32_t MAX_ORACLE_SUBSCRIPTIONS = (1 << 13);
@@ -335,6 +340,9 @@ protected:
     /// fast lookup of query indices for which the contract should be notified (in order of generation / queryIndex)
     MinHeap<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> notificationQueryIndexQueue;
 
+    /// fast lookup of query indices of finished user queries (in order of generation / queryIndex)
+    MinHeap<uint32_t, MAX_SIMULTANEOUS_ORACLE_QUERIES> finishedUserQueryIndexQueue;
+
     // revenue points collected by each computor for fast and correct commit
     uint64_t revenuePoints[NUMBER_OF_COMPUTORS];
 
@@ -551,6 +559,7 @@ public:
         pendingCommitReplyStateIndices.numValues = 0;
         pendingRevealReplyStateIndices.numValues = 0;
         notificationQueryIndexQueue.init();
+        finishedUserQueryIndexQueue.init();
         usedSubscriptionSlots = 0;
         usedSubscriberSlots = 0;
         notificationCurrentSubscriberIdx = 0;
@@ -1036,7 +1045,7 @@ public:
         logger.logOracleSubscriber({ subscriptionId, subscription.interfaceIndex, contractIndex, 0, 0 });
 
         // debug logging
-#if !defined(NDEBUG)// && !defined(NO_UEFI)
+#if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsg[300];
         setText(dbgMsg, L"oracleEngine.stopContractSubscription(), tick ");
         appendNumber(dbgMsg, system.tick, FALSE);
@@ -1723,6 +1732,8 @@ public:
                 // schedule contract notification(s) if needed
                 if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
                     notificationQueryIndexQueue.insert(queryIndex);
+                else
+                    finishedUserQueryIndexQueue.insert(queryIndex);
 
                 // log status change
                 logQueryStatusChange(oqm);
@@ -2073,6 +2084,8 @@ public:
                 // schedule contract notification(s) if needed
                 if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
                     notificationQueryIndexQueue.insert(queryIndex);
+                else
+                    finishedUserQueryIndexQueue.insert(queryIndex);
 
                 // log status change
                 logQueryStatusChange(oqm);
@@ -2117,6 +2130,8 @@ public:
         // schedule contract notification(s) if needed
         if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
             notificationQueryIndexQueue.insert(queryIndex);
+        else
+            finishedUserQueryIndexQueue.insert(queryIndex);
 
         // log status change
         logQueryStatusChange(oqm);
@@ -2188,6 +2203,8 @@ public:
                 // schedule contract notification(s) if needed
                 if (oqm.type != ORACLE_QUERY_TYPE_USER_QUERY)
                     notificationQueryIndexQueue.insert(queryIndex);
+                else
+                    finishedUserQueryIndexQueue.insert(queryIndex);
 
                 // log status change
                 logQueryStatusChange(oqm);
@@ -2289,6 +2306,33 @@ public:
         }
 
         return &notificationOutputBuffer;
+    }
+
+    /**
+     * @brief Get finished user queries one after another. Call until nullptr is returned.
+     * @return Pointer to oracle query metadata or nullptr if there isn't another finished user query.
+     *
+     * Only to be used in tick processor!
+     * Saving / loading snapshots is not supported between calls until nullptr is returned.
+     */
+    const OracleQueryMetadata* getFinishedUserQuery()
+    {
+        // currently finished query?
+        if (!finishedUserQueryIndexQueue.size())
+            return nullptr;
+
+        // lock for accessing engine data
+        LockGuard lockGuard(lock);
+
+        // get index and update list
+        uint32_t queryIndex;
+        finishedUserQueryIndexQueue.extract(queryIndex);
+
+        // get query metadata
+        const OracleQueryMetadata& oqm = queries[queryIndex];
+        ASSERT(oqm.type == ORACLE_QUERY_TYPE_USER_QUERY);
+
+        return &oqm;
     }
 
     // Drop all queries of the previous epoch.
@@ -2652,6 +2696,19 @@ public:
             ASSERT(queryIndex < oracleQueryCount);
             const OracleQueryMetadata& oqm = queries[queryIndex];
             ASSERT(oqm.status != ORACLE_QUERY_STATUS_PENDING);
+            ASSERT(oqm.type != ORACLE_QUERY_TYPE_USER_QUERY);
+        }
+
+        // check index of finished user queries
+        queryIdxCount = finishedUserQueryIndexQueue.size();
+        queryIndices = finishedUserQueryIndexQueue.data();
+        for (uint32_t i = 0; i < queryIdxCount; ++i)
+        {
+            const uint32_t queryIndex = queryIndices[i];
+            ASSERT(queryIndex < oracleQueryCount);
+            const OracleQueryMetadata& oqm = queries[queryIndex];
+            ASSERT(oqm.status != ORACLE_QUERY_STATUS_PENDING);
+            ASSERT(oqm.type == ORACLE_QUERY_TYPE_USER_QUERY);
         }
 
         // check subscribers

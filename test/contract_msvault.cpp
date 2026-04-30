@@ -22,6 +22,7 @@ public:
     {
         initEmptySpectrum();
         initEmptyUniverse();
+        system.epoch = contractDescriptions[MSVAULT_CONTRACT_INDEX].constructionEpoch;
         INIT_CONTRACT(MSVAULT);
         callSystemProcedure(MSVAULT_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QX);
@@ -72,6 +73,19 @@ public:
         increaseEnergy(owner, fee);
         MSVAULT::releaseTo_output relOut;
         invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 3, input, relOut, owner, fee);
+        return relOut;
+    }
+
+    // Variant of releaseTo that does NOT auto-fund the caller, so balance
+    // accounting can be observed precisely.
+    MSVAULT::releaseTo_output releaseToRaw(uint64 vaultId, uint64 amount, const id& destination, const id& owner, uint64 reward)
+    {
+        MSVAULT::releaseTo_input input;
+        input.vaultId = vaultId;
+        input.amount = amount;
+        input.destination = destination;
+        MSVAULT::releaseTo_output relOut;
+        invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 3, input, relOut, owner, reward);
         return relOut;
     }
 
@@ -190,6 +204,20 @@ public:
         return output;
     }
 
+    // Variant of revokeAssetManagementRights that does NOT auto-fund the caller,
+    // so balance accounting can be observed precisely.
+    MSVAULT::revokeAssetManagementRights_output revokeAssetManagementRightsRaw(const id& from, const Asset& asset, sint64 numberOfShares, uint64 reward)
+    {
+        MSVAULT::revokeAssetManagementRights_input input;
+        input.asset = asset;
+        input.numberOfShares = numberOfShares;
+        MSVAULT::revokeAssetManagementRights_output output;
+        output.transferredNumberOfShares = 0;
+        output.status = 0;
+        invokeUserProcedure(MSVAULT_CONTRACT_INDEX, 25, input, output, from, reward);
+        return output;
+    }
+
     MSVAULT::depositAsset_output depositAsset(uint64 vaultId, const Asset& asset, uint64 amount, const id& from)
     {
         MSVAULT::depositAsset_input input;
@@ -248,6 +276,41 @@ public:
     {
     }
 };
+
+
+TEST(ContractMsVault, ReleaseTo_InvalidVault_RefundsFullReward)
+{
+    ContractTestingMsVault msVault;
+
+    increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(
+        2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    ASSERT_EQ(regOut.status, 1ULL);
+
+    const id ID1 = id::randomValue();
+    const id contractId(MSVAULT_CONTRACT_INDEX, 0, 0, 0);
+
+    const uint64 invalidVaultId = 999999ULL;
+    const uint64 EXCESS = 12345ULL;
+    const uint64 invocationReward = MSVAULT_RELEASE_FEE + EXCESS;
+
+    ASSERT_EQ(getBalance(ID1), 0LL);
+    ASSERT_GE(getBalance(contractId), (sint64)EXCESS);
+
+    const auto   revenueBefore = msVault.getRevenueInfo();
+    const sint64 contractBefore = getBalance(contractId);
+
+    auto relOut = msVault.releaseTo(
+        invalidVaultId, 1000ULL, DESTINATION, ID1, invocationReward);
+
+    EXPECT_EQ(relOut.status, 3ULL);
+
+    EXPECT_EQ(getBalance(ID1), (sint64)invocationReward);
+    EXPECT_EQ(getBalance(contractId), contractBefore);
+
+    const auto revenueAfter = msVault.getRevenueInfo();
+    EXPECT_EQ(revenueAfter.totalRevenue, revenueBefore.totalRevenue);
+}
 
 
 TEST(ContractMsVault, RegisterVault_InsufficientFee)
@@ -1255,4 +1318,273 @@ TEST(ContractMsVault, RevokeAssetManagementRights_Success)
     // The amount managed by QX should increase accordingly
     sint64 finalManagedByQx = numberOfShares(asset, { USER, QX_CONTRACT_INDEX }, { USER, QX_CONTRACT_INDEX });
     EXPECT_EQ(finalManagedByQx, (initialShares - sharesToManage) + sharesToRevoke); // 6000 + 3000 = 9000
+}
+
+
+TEST(ContractMsVault, RevokeAssetManagementRights_ZeroShares)
+{
+    ContractTestingMsVault msVault;
+    increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    ASSERT_EQ(regOut.status, 1ULL);
+
+    const id ID1 = id::randomValue();
+    const id contractId(MSVAULT_CONTRACT_INDEX, 0, 0, 0);
+
+    constexpr uint64 REVOKE_FEE = 100ULL; // MSVAULT_REVOKE_FEE
+    const uint64 EXCESS = 50000ULL;
+    const uint64 reward = REVOKE_FEE + EXCESS;
+
+    ASSERT_EQ(getBalance(ID1), 0LL);
+    ASSERT_GE(getBalance(contractId), (sint64)EXCESS);
+
+    increaseEnergy(ID1, reward);
+
+    const sint64 contractBefore = getBalance(contractId);
+
+    Asset anyAsset = { OWNER1, assetNameFromString("ANY") };
+    auto out = msVault.revokeAssetManagementRightsRaw(ID1, anyAsset, 0, reward);
+
+    EXPECT_EQ(out.status, 5ULL); // FAILURE_INVALID_PARAMS
+
+    EXPECT_EQ(getBalance(ID1), (sint64)reward);
+
+    EXPECT_EQ(getBalance(contractId), contractBefore);
+}
+
+
+TEST(ContractMsVault, RevokeAssetManagementRights_InsufficientBalance)
+{
+    ContractTestingMsVault msVault;
+
+    increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    ASSERT_EQ(regOut.status, 1ULL);
+
+    const id ID1 = id::randomValue();
+    const id contractId(MSVAULT_CONTRACT_INDEX, 0, 0, 0);
+
+    constexpr uint64 REVOKE_FEE = 100ULL;
+    const uint64 EXCESS = 50000ULL;
+    const uint64 reward = REVOKE_FEE + EXCESS;
+
+    ASSERT_EQ(getBalance(ID1), 0LL);
+    ASSERT_GE(getBalance(contractId), (sint64)EXCESS);
+
+    increaseEnergy(ID1, reward);
+
+    const sint64 contractBefore = getBalance(contractId);
+
+    Asset anyAsset = { OWNER1, assetNameFromString("ANY2") };
+    auto out = msVault.revokeAssetManagementRightsRaw(ID1, anyAsset, 1000, reward);
+
+    EXPECT_EQ(out.status, 6ULL); // FAILURE_INSUFFICIENT_BALANCE
+
+    EXPECT_EQ(getBalance(ID1), (sint64)reward);
+    EXPECT_EQ(getBalance(contractId), contractBefore);
+}
+
+
+TEST(ContractMsVault, RevokeAssetManagementRights_Success_ExactFeeOnly)
+{
+    ContractTestingMsVault msvault;
+
+    const id USER = OWNER1;
+    const Asset asset = { USER, assetNameFromString("REVOKE2") };
+    const sint64 initialShares = 10000;
+    const sint64 sharesToManage = 4000;
+    const sint64 sharesToRevoke = 3000;
+
+    constexpr uint64 REVOKE_FEE = 100ULL;
+    const uint64 EXCESS = 25000ULL;
+    const uint64 reward = REVOKE_FEE + EXCESS;
+
+    increaseEnergy(USER, QX_ISSUE_ASSET_FEE + 1000000 + reward);
+    msvault.issueAsset(USER, "REVOKE2", initialShares);
+    msvault.transferShareManagementRights(USER, asset, sharesToManage, MSVAULT_CONTRACT_INDEX);
+
+    const sint64 callerBefore = getBalance(USER);
+
+    auto out = msvault.revokeAssetManagementRightsRaw(USER, asset, sharesToRevoke, reward);
+
+    EXPECT_EQ(out.status, 1ULL); // SUCCESS
+    EXPECT_EQ(out.transferredNumberOfShares, sharesToRevoke);
+
+    EXPECT_EQ(callerBefore - getBalance(USER), (sint64)REVOKE_FEE);
+
+    EXPECT_EQ(numberOfShares(asset, { USER, MSVAULT_CONTRACT_INDEX }, { USER, MSVAULT_CONTRACT_INDEX }),
+        sharesToManage - sharesToRevoke);
+    EXPECT_EQ(numberOfShares(asset, { USER, QX_CONTRACT_INDEX }, { USER, QX_CONTRACT_INDEX }),
+        (initialShares - sharesToManage) + sharesToRevoke);
+}
+
+
+TEST(ContractMsVault, RevokeAssetManagementRights_InsufficientFee_NoSideEffects)
+{
+    ContractTestingMsVault msVault;
+
+    const id ID1 = id::randomValue();
+    const id contractId(MSVAULT_CONTRACT_INDEX, 0, 0, 0);
+
+    constexpr uint64 REVOKE_FEE = 100ULL;
+    const uint64 underFunded = REVOKE_FEE - 1;
+
+    increaseEnergy(ID1, underFunded);
+    const sint64 callerBefore = getBalance(ID1);
+    const sint64 contractBefore = getBalance(contractId);
+
+    Asset anyAsset = { OWNER1, assetNameFromString("UNDFND") };
+    auto out = msVault.revokeAssetManagementRightsRaw(ID1, anyAsset, 100, underFunded);
+
+    EXPECT_EQ(out.status, 2ULL); // FAILURE_INSUFFICIENT_FEE
+    EXPECT_EQ(getBalance(ID1), callerBefore);
+    EXPECT_EQ(getBalance(contractId), contractBefore);
+}
+
+
+TEST(ContractMsVault, ReleaseTo_InsufficientFee_NoSideEffects)
+{
+    ContractTestingMsVault msVault;
+
+    increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    ASSERT_EQ(regOut.status, 1ULL);
+
+    auto vaultsO1 = msVault.getVaults(OWNER1);
+    uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
+
+    const id contractId(MSVAULT_CONTRACT_INDEX, 0, 0, 0);
+    const uint64 underFunded = MSVAULT_RELEASE_FEE - 1;
+
+    increaseEnergy(OWNER1, underFunded);
+    const sint64 callerBefore = getBalance(OWNER1);
+    const sint64 contractBefore = getBalance(contractId);
+    const auto revenueBefore = msVault.getRevenueInfo();
+
+    auto relOut = msVault.releaseToRaw(vaultId, 1000ULL, DESTINATION, OWNER1, underFunded);
+
+    EXPECT_EQ(relOut.status, 2ULL); // FAILURE_INSUFFICIENT_FEE
+    EXPECT_EQ(getBalance(OWNER1), callerBefore);
+    EXPECT_EQ(getBalance(contractId), contractBefore);
+
+    const auto revenueAfter = msVault.getRevenueInfo();
+    EXPECT_EQ(revenueAfter.totalRevenue, revenueBefore.totalRevenue);
+}
+
+
+TEST(ContractMsVault, ReleaseTo_NonOwner_Extra)
+{
+    ContractTestingMsVault msVault;
+
+    increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    ASSERT_EQ(regOut.status, 1ULL);
+
+    auto vaultsO1 = msVault.getVaults(OWNER1);
+    uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
+
+    const id contractId(MSVAULT_CONTRACT_INDEX, 0, 0, 0);
+    const uint64 EXCESS = 7777ULL;
+    const uint64 reward = MSVAULT_RELEASE_FEE + EXCESS;
+
+    increaseEnergy(OWNER3, reward);
+    const sint64 callerBefore = getBalance(OWNER3);
+    const sint64 contractBefore = getBalance(contractId);
+    const auto revenueBefore = msVault.getRevenueInfo();
+
+    auto relOut = msVault.releaseToRaw(vaultId, 1000ULL, DESTINATION, OWNER3, reward);
+
+    EXPECT_EQ(relOut.status, 4ULL); // FAILURE_NOT_AUTHORIZED
+    EXPECT_EQ(getBalance(OWNER3), callerBefore);
+    EXPECT_EQ(getBalance(contractId), contractBefore);
+
+    const auto revenueAfter = msVault.getRevenueInfo();
+    EXPECT_EQ(revenueAfter.totalRevenue, revenueBefore.totalRevenue);
+}
+
+
+TEST(ContractMsVault, ReleaseTo_InvalidParams_Extra)
+{
+    ContractTestingMsVault msVault;
+
+    increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2 }, MSVAULT_REGISTERING_FEE);
+    ASSERT_EQ(regOut.status, 1ULL);
+
+    auto vaultsO1 = msVault.getVaults(OWNER1);
+    uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
+
+    auto depOut = msVault.deposit(vaultId, 10000ULL, OWNER1);
+    ASSERT_EQ(depOut.status, 1ULL);
+
+    const id contractId(MSVAULT_CONTRACT_INDEX, 0, 0, 0);
+    const uint64 EXCESS = 4321ULL;
+    const uint64 reward = MSVAULT_RELEASE_FEE + EXCESS;
+
+    // Case 1: amount = 0
+    {
+        increaseEnergy(OWNER1, reward);
+        const sint64 callerBefore = getBalance(OWNER1);
+        const sint64 contractBefore = getBalance(contractId);
+        const auto revenueBefore = msVault.getRevenueInfo();
+
+        auto relOut = msVault.releaseToRaw(vaultId, 0ULL, OWNER2, OWNER1, reward);
+
+        EXPECT_EQ(relOut.status, 5ULL); // FAILURE_INVALID_PARAMS
+        EXPECT_EQ(getBalance(OWNER1), callerBefore);
+        EXPECT_EQ(getBalance(contractId), contractBefore);
+
+        const auto revenueAfter = msVault.getRevenueInfo();
+        EXPECT_EQ(revenueAfter.totalRevenue, revenueBefore.totalRevenue);
+    }
+
+    // Case 2: destination = NULL_ID
+    {
+        increaseEnergy(OWNER1, reward);
+        const sint64 callerBefore = getBalance(OWNER1);
+        const sint64 contractBefore = getBalance(contractId);
+        const auto revenueBefore = msVault.getRevenueInfo();
+
+        auto relOut = msVault.releaseToRaw(vaultId, 5000ULL, NULL_ID, OWNER1, reward);
+
+        EXPECT_EQ(relOut.status, 5ULL); // FAILURE_INVALID_PARAMS
+        EXPECT_EQ(getBalance(OWNER1), callerBefore);
+        EXPECT_EQ(getBalance(contractId), contractBefore);
+
+        const auto revenueAfter = msVault.getRevenueInfo();
+        EXPECT_EQ(revenueAfter.totalRevenue, revenueBefore.totalRevenue);
+    }
+}
+
+
+TEST(ContractMsVault, ReleaseTo_PendingApproval_CommitsFeeExactlyOnce)
+{
+    ContractTestingMsVault msVault;
+
+    increaseEnergy(OWNER1, MSVAULT_REGISTERING_FEE);
+    auto regOut = msVault.registerVault(2ULL, TEST_VAULT_NAME, { OWNER1, OWNER2, OWNER3 }, MSVAULT_REGISTERING_FEE);
+    ASSERT_EQ(regOut.status, 1ULL);
+
+    auto vaultsO1 = msVault.getVaults(OWNER1);
+    uint64 vaultId = vaultsO1.vaultIds.get(vaultsO1.numberOfVaults - 1);
+
+    auto depOut = msVault.deposit(vaultId, 15000ULL, OWNER1);
+    ASSERT_EQ(depOut.status, 1ULL);
+
+    const uint64 EXCESS = 8888ULL;
+    const uint64 reward = MSVAULT_RELEASE_FEE + EXCESS;
+
+    increaseEnergy(OWNER1, reward);
+    const sint64 callerBefore = getBalance(OWNER1);
+    const auto revenueBefore = msVault.getRevenueInfo();
+
+    auto relOut = msVault.releaseToRaw(vaultId, 5000ULL, OWNER3, OWNER1, reward);
+
+    EXPECT_EQ(relOut.status, 9ULL); // PENDING_APPROVAL
+
+    EXPECT_EQ(callerBefore - getBalance(OWNER1), (sint64)MSVAULT_RELEASE_FEE);
+
+    const auto revenueAfter = msVault.getRevenueInfo();
+    EXPECT_EQ(revenueAfter.totalRevenue - revenueBefore.totalRevenue,
+        (uint64)MSVAULT_RELEASE_FEE);
 }
