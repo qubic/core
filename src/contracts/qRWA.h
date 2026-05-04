@@ -1387,15 +1387,11 @@ public:
 
     typedef NoData Reinit_input;
     typedef NoData Reinit_output;
-    struct Reinit_locals
-    {
-        id newDedicatedAddr;
-    };
     // One-time re-initialization called from BEGIN_EPOCH on the upgrade epoch.
     // INITIALIZE() is not called again for already-deployed contracts, so we
     // re-init every non-zero default here. Each field is guarded so already-set
     // (e.g. voted-on) values are preserved if Reinit is ever re-invoked.
-    PRIVATE_PROCEDURE_WITH_LOCALS(Reinit)
+    PRIVATE_PROCEDURE(Reinit)
     {
         // QMINE Asset Constant
         // Issuer: QMINEQQXYBEGBHNSUPOUYDIQKZPCBPQIIHUUZMCPLBPCCAIARVZBTYKGFCWM
@@ -1520,15 +1516,14 @@ public:
 
         // Dedicated revenue address (Pool C)
         // QTDSQGIEAPPMMDDSEHBHHETEUZHBUZXRYFKKTICWAAUXVEWNPCTGCAFBYWWB
-        locals.newDedicatedAddr = ID(
-            _Q, _T, _D, _S, _Q, _G, _I, _E, _A, _P, _P, _M, _M, _D, _D, _S,
-            _E, _H, _B, _H, _H, _E, _T, _E, _U, _Z, _H, _B, _U, _Z, _X, _R,
-            _Y, _F, _K, _K, _T, _I, _C, _W, _A, _A, _U, _X, _V, _E, _W, _N,
-            _P, _C, _T, _G, _C, _A, _F, _B
-        );
         if (state.get().mDedicatedRevenueAddress == NULL_ID)
         {
-            state.mut().mDedicatedRevenueAddress = locals.newDedicatedAddr;
+            state.mut().mDedicatedRevenueAddress = ID(
+                _Q, _T, _D, _S, _Q, _G, _I, _E, _A, _P, _P, _M, _M, _D, _D, _S,
+                _E, _H, _B, _H, _H, _E, _T, _E, _U, _Z, _H, _B, _U, _Z, _X, _R,
+                _Y, _F, _K, _K, _T, _I, _C, _W, _A, _A, _U, _X, _V, _E, _W, _N,
+                _P, _C, _T, _G, _C, _A, _F, _B
+            );
         }
 
         // Pool D revenue address (MLM Water)
@@ -2195,6 +2190,7 @@ public:
                                     if (locals.payout_u64 > 0 && qpi.transfer(locals.holder, (sint64)locals.payout_u64) >= 0)
                                     {
                                         locals.poolAQmine_128 -= locals.eligiblePayout_128;
+                                        state.mut().mTotalPoolADistributed = sadd(state.get().mTotalPoolADistributed, locals.payout_u64);
                                         locals.lastPaidHolderA = locals.holder;
                                         locals.payoutEntry.recipient = locals.holder;
                                         locals.payoutEntry.amount = locals.payout_u64;
@@ -2224,6 +2220,7 @@ public:
                                     if (locals.payout_u64 > 0 && qpi.transfer(locals.holder, (sint64)locals.payout_u64) >= 0)
                                     {
                                         locals.poolBQmine_128 -= locals.eligiblePayout_128;
+                                        state.mut().mTotalPoolBDistributed = sadd(state.get().mTotalPoolBDistributed, locals.payout_u64);
                                         locals.lastPaidHolderB = locals.holder;
                                         locals.payoutEntry.recipient = locals.holder;
                                         locals.payoutEntry.amount = locals.payout_u64;
@@ -2253,6 +2250,7 @@ public:
                                     if (locals.payout_u64 > 0 && qpi.transfer(locals.holder, (sint64)locals.payout_u64) >= 0)
                                     {
                                         locals.poolCQmine_128 -= locals.eligiblePayout_128;
+                                        state.mut().mTotalPoolCDistributed = sadd(state.get().mTotalPoolCDistributed, locals.payout_u64);
                                         locals.lastPaidHolderC = locals.holder;
                                         locals.payoutEntry.recipient = locals.holder;
                                         locals.payoutEntry.amount = locals.payout_u64;
@@ -2282,6 +2280,7 @@ public:
                                     if (locals.payout_u64 > 0 && qpi.transfer(locals.holder, (sint64)locals.payout_u64) >= 0)
                                     {
                                         locals.poolDQmine_128 -= locals.eligiblePayout_128;
+                                        state.mut().mTotalPoolDDistributed = sadd(state.get().mTotalPoolDDistributed, locals.payout_u64);
                                         locals.lastPaidHolderD = locals.holder;
                                         locals.payoutEntry.recipient = locals.holder;
                                         locals.payoutEntry.amount = locals.payout_u64;
