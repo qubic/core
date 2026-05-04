@@ -2740,7 +2740,7 @@ public:
 
         while (!locals.aoi.reachedEnd())
         {
-            if (locals.aoi.owner() != SELF) // FIX: only process if holder isn't QTRY itself
+            if (locals.aoi.owner() != SELF) // only process if holder isn't QTRY itself
             {
                 locals.shouldRedistribute = false;
                 if (qpi.getEntity(locals.aoi.owner(), locals.e))
