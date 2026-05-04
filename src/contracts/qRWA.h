@@ -1549,7 +1549,9 @@ public:
     };
     BEGIN_EPOCH_WITH_LOCALS()
     {
-        // One-time re-initialization on the upgrade epoch
+        // One-time re-initialization on the upgrade epoch.
+        // TODO: After epoch 212 has passed (live: Wednesday ~12:00 UTC), remove
+        //       the Reinit procedure and this call block entirely.
         if (qpi.epoch() == 212)
         {
             CALL(Reinit, input, output);
