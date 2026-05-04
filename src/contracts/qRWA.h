@@ -1472,6 +1472,7 @@ public:
         }
 
         // Governance: mining fee percentages — set defaults only if completely unset
+        // (i.e. first-time initialization: all three are 0 means they were never configured)
         if (state.get().mCurrentGovParams.electricityPercent == 0
             && state.get().mCurrentGovParams.maintenancePercent == 0
             && state.get().mCurrentGovParams.reinvestmentPercent == 0)
@@ -1525,7 +1526,7 @@ public:
             _Y, _F, _K, _K, _T, _I, _C, _W, _A, _A, _U, _X, _V, _E, _W, _N,
             _P, _C, _T, _G, _C, _A, _F, _B
         );
-        if (state.get().mDedicatedRevenueAddress != locals.newDedicatedAddr)
+        if (state.get().mDedicatedRevenueAddress == NULL_ID)
         {
             state.mut().mDedicatedRevenueAddress = locals.newDedicatedAddr;
         }
@@ -2297,7 +2298,7 @@ public:
                         }
                     }
 
-                    // QMINE remainder: unverteilt gebliebene Anteile an qmineDevAddress senden
+                    // QMINE remainder: send undistributed dust to qmineDevAddress
                     // Pool A remainder
                     if (locals.poolAQmine_128 > (uint128)0 && locals.poolAQmine_128.high == 0 && state.get().mCurrentGovParams.qmineDevAddress != NULL_ID)
                     {
@@ -2424,13 +2425,13 @@ public:
                                 }
                             }
 
-                            // Pool A qRWA: Dust im Pool behalten für nächste Ausschüttung
+                            // Pool A qRWA: keep dust in pool for next distribution
                             if (locals.poolAReady == 1)
                             {
                                 state.mut().mPoolAQrwaDividend = (state.get().mPoolAQrwaDividend > locals.poolAQrwaDistributed)
                                     ? (state.get().mPoolAQrwaDividend - locals.poolAQrwaDistributed) : 0;
                             }
-                            // Pool B qRWA: Dust im Pool behalten für nächste Ausschüttung
+                            // Pool B qRWA: keep dust in pool for next distribution
                             if (locals.poolBReady == 1)
                             {
                                 state.mut().mPoolBQrwaDividend = (state.get().mPoolBQrwaDividend > locals.poolBQrwaDistributed)

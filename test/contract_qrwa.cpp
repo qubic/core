@@ -89,6 +89,7 @@ public:
     {
         initEmptySpectrum();
         initEmptyUniverse();
+        system.epoch = contractDescriptions[QRWA_CONTRACT_INDEX].constructionEpoch;
         INIT_CONTRACT(QRWA);
         callSystemProcedure(QRWA_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(QX);
