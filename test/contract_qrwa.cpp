@@ -662,7 +662,11 @@ TEST(ContractQRWA, Payout_FullDistribution)
     // qRWA Payout (50,000 QUs)
     uint64 qrwaPerShare = 50000 / NUMBER_OF_COMPUTORS; // 73
     auto distTotals = qrwa.getTotalDistributed();
-    EXPECT_EQ(distTotals.totalPoolADistributed, qrwaPerShare * NUMBER_OF_COMPUTORS); // 73 * 676 = 49328
+    // totalPoolADistributed includes both qRWA holder payouts and QMINE holder payouts
+    // qRWA: 73 * 676 = 49,348
+    // QMINE eligible paid: H1=67,500 + H2=135,000 + Issuer=180,000 = 382,500
+    uint64 qmineEligiblePaidA = 67500 + 135000 + 180000;
+    EXPECT_EQ(distTotals.totalPoolADistributed, qrwaPerShare * NUMBER_OF_COMPUTORS + qmineEligiblePaidA);
 
     // QMINE Payout (450,000 QUs)
     // mPayoutTotalQmineBegin = 1,000,000
@@ -929,7 +933,11 @@ TEST(ContractQRWA, Payout_FullDistribution2)
     // qRWA Payout (150,000 QUs)
     uint64 qrwaPerShare = 150000 / NUMBER_OF_COMPUTORS; // 150000 / 676 = 221
     auto distTotals = qrwa.getTotalDistributed();
-    EXPECT_EQ(distTotals.totalPoolADistributed, qrwaPerShare * NUMBER_OF_COMPUTORS); // 221 * 676 = 149416
+    // totalPoolADistributed includes both qRWA holder payouts and QMINE holder payouts
+    // qRWA: 221 * 676 = 149,396
+    // QMINE eligible paid: H1=202,500 + H2=405,000 + Issuer=540,000 = 1,147,500
+    uint64 qmineEligiblePaidA = 202500 + 405000 + 540000;
+    EXPECT_EQ(distTotals.totalPoolADistributed, qrwaPerShare * NUMBER_OF_COMPUTORS + qmineEligiblePaidA);
 
     // QMINE Payout (1,350,000 QUs)
     // mPayoutTotalQmineBegin = 1,000,000 (A:200k, B:300k, C:100k, Issuer:400k)
