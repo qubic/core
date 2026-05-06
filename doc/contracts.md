@@ -42,7 +42,7 @@ The contract developers / shareholders are strongly recommended to monitor the f
 For monitoring, tools are provided by [qfront.org](https://qfront.org/ContractReserves), [qubic.li](https://explorer.qubic.li/analytics/execution-fees), [qubic.tools](https://contracts.qubic.tools/), and [qubic-cli](https://github.com/qubic/qubic-cli).
 
 Additionally, every tick that has a change of contract's state (via `state.mut()`) costs fees due to the need to recompute the digest of the state.
-Depending on the size of the state, the digest computation may be significantly more expensive them the run-time of the procedures.
+Depending on the size of the state, the digest computation may be significantly more expensive than the run-time of the procedures.
 Thus, we recommend to keep the size of the state low for new contracts, for example by not overestimating the number of users.
 The state size may be increased if needed when the contract is widely adopted.
 

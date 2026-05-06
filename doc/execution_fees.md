@@ -24,7 +24,7 @@ Execution fees are checked (contracts must have `executionFeeReserve > 0`) befor
 The deducted execution fees are proportional to the actual execution time of the contract procedures.
 
 Next to executing a procedure, every tick that has a change of contract's state (via `state.mut()`) costs fees due to the need to recompute the digest of the state.
-Depending on the size of the state, the digest computation may be significantly more expensive them the run-time of the procedures.
+Depending on the size of the state, the digest computation may be significantly more expensive than the run-time of the procedures.
 
 ## What Operations Require Execution Fees
 
