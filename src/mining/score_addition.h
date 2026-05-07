@@ -20,11 +20,19 @@ struct ScoreAddition
     static constexpr unsigned long long numberOfNeurons =
         numberOfInputNeurons + numberOfOutputNeurons;
     static constexpr unsigned long long maxNumberOfNeurons = populationThreshold;
+    static constexpr unsigned long long numberOfEvolutionNeurons =
+        populationThreshold - numberOfNeurons;   // P - K - L
     static constexpr unsigned long long maxNumberOfSynapses =
         populationThreshold * maxNumberOfNeighbors;
     static constexpr unsigned long long trainingSetSize = 1ULL << numberOfInputNeurons; // 2^K
     static constexpr unsigned long long paddingNumberOfSynapses =
         (maxNumberOfSynapses + 31) / 32 * 32; // padding to multiple of 32
+    static constexpr unsigned long long mutationChunkSize = 3 * numberOfMutations;
+    static constexpr unsigned long long maxChunkCount = 3;
+    static constexpr unsigned long long mutationChunkBytes =
+        mutationChunkSize * sizeof(unsigned long long);
+    static constexpr unsigned long long paddedMutationChunkBytes =
+        (mutationChunkBytes + 64 - 1) / 64 * 64;
 
 #if defined(__AVX512F__)
     static constexpr unsigned long long BATCH_SIZE = 64;
@@ -63,12 +71,18 @@ struct ScoreAddition
     struct InitValue
     {
         unsigned long long outputNeuronPositions[numberOfOutputNeurons];
+        unsigned long long evolutionNeuronPositions[numberOfEvolutionNeurons];
         unsigned long long synapseWeight[paddingNumberOfSynapses / 32]; // each 64bits elements will decide value of 32 synapses
-        unsigned long long synpaseMutation[numberOfMutations];
+        unsigned long long mutationChunk[mutationChunkSize];
     };
     static constexpr unsigned long long paddingInitValueSizeInBytes = (sizeof(InitValue) + 64 - 1) / 64 * 64;
 
-    unsigned char paddingInitValue[paddingInitValueSizeInBytes];
+    alignas(64) unsigned char paddingInitValue[paddingInitValueSizeInBytes];
+
+    // random2 in this codebase requires output size to be a multiple of 64.
+    // sizeof(mutationChunk) is not always 64-aligned (e.g. 300 ULL = 2400 bytes), so we
+    // generate into this padded staging buffer and copy the first mutationChunkBytes back.
+    alignas(64) unsigned char chunkPadBuffer[paddedMutationChunkBytes];
 
     // Training set
     alignas(64) char trainingInputs[numberOfInputNeurons * PADDED_SAMPLES];
@@ -92,11 +106,11 @@ struct ScoreAddition
     unsigned long long activeCount;
 
     // Indices caching look up
-    unsigned long long neuronIndices[numberOfNeurons];
+    unsigned long long neuronIndices[maxNumberOfNeurons];
     unsigned long long outputNeuronIndices[numberOfOutputNeurons];
     unsigned long long outputNeuronIdxCache[numberOfOutputNeurons];
     unsigned long long numCachedOutputs;
-    unsigned long long evolutionNeuronIdxCache[numberOfMutations];
+    unsigned long long evolutionNeuronIdxCache[numberOfEvolutionNeurons];
     unsigned long long numCachedEvolution;
 
     unsigned long long processNeuronOffsetCache[maxNumberOfNeurons];
@@ -238,16 +252,14 @@ struct ScoreAddition
         }
     }
 
-    void mutate(unsigned long long mutateStep)
+    bool mutate(unsigned long long synapseMutation)
     {
         // Mutation
         unsigned long long population = currentANN.population;
         unsigned long long actualNeighbors = getActualNeighborCount();
         Synapse* synapses = currentANN.synapses;
-        InitValue* initValue = (InitValue*)paddingInitValue;
 
         // Randomly pick a synapse, randomly increase or decrease its weight by 1 or -1
-        unsigned long long synapseMutation = initValue->synpaseMutation[mutateStep];
         unsigned long long totalValidSynapses = population * actualNeighbors;
         unsigned long long flatIdx = (synapseMutation >> 1) % totalValidSynapses;
 
@@ -276,18 +288,11 @@ struct ScoreAddition
         if (newWeight >= -1 && newWeight <= 1)
         {
             synapses[synapseFullBufferIdx] = newWeight;
-        }
-        else // Invalid weight. Insert a neuron
-        {
-            // Insert the neuron
-            insertNeuron(neuronIdx, synapseIndex);
+            return true;
         }
 
-        // Clean the ANN
-        while (scanRedundantNeurons() > 0)
-        {
-            cleanANN();
-        }
+        // Saturating mutation: silent no-op (fixed-topology, no neuron insertion)
+        return false;
     }
 
     // Get the pointer to all outgoing synapse of a neurons
@@ -1438,8 +1443,8 @@ struct ScoreAddition
         Synapse* synapses = currentANN.synapses;
         unsigned char* neuronTypes = currentANN.neuronTypes;
 
-        // Initialization
-        population = numberOfNeurons;
+        // Initialization -- fixed-topology detour: population is N total, set once.
+        population = populationThreshold;
         neuronValues = neuronValuesBuffer0;
         prevNeuronValues = neuronValuesBuffer1;
 
@@ -1449,7 +1454,7 @@ struct ScoreAddition
         // Initalize with nonce and public key
         random2(hash, randomPool, (unsigned char*)&paddingInitValue, sizeof(paddingInitValue));
 
-        // Randomly choose the positions of neurons types
+        // Default = Input.
         for (unsigned long long i = 0; i < population; ++i)
         {
             neuronIndices[i] = i;
@@ -1458,6 +1463,7 @@ struct ScoreAddition
 
         InitValue* initValue = (InitValue*)paddingInitValue;
         unsigned long long neuronCount = population;
+        // Output positions from the remaining pool
         for (unsigned long long i = 0; i < numberOfOutputNeurons; ++i)
         {
             unsigned long long outputNeuronIdx = initValue->outputNeuronPositions[i] % neuronCount;
@@ -1470,6 +1476,17 @@ struct ScoreAddition
             // the number of picking neurons
             neuronCount = neuronCount - 1;
             neuronIndices[outputNeuronIdx] = neuronIndices[neuronCount];
+        }
+
+        // Evolution positions from the remaining pool
+        for (unsigned long long i = 0; i < numberOfEvolutionNeurons; ++i)
+        {
+            unsigned long long evolutionNeuronIdx = initValue->evolutionNeuronPositions[i] % neuronCount;
+
+            neuronTypes[neuronIndices[evolutionNeuronIdx]] = EVOLUTION_NEURON_TYPE;
+
+            neuronCount = neuronCount - 1;
+            neuronIndices[evolutionNeuronIdx] = neuronIndices[neuronCount];
         }
 
         // Synapse weight initialization via LUT: each byte encodes 4 weights (2 bits each),
@@ -1507,16 +1524,50 @@ struct ScoreAddition
         unsigned int bestR = initializeANN(publicKey, nonce, randomPool);
         copyANN(bestANN, currentANN);
 
-        for (unsigned long long s = 0; s < numberOfMutations; ++s)
-        {
-            // Do the mutation
-            mutate(s);
+        InitValue* initValue = (InitValue*)paddingInitValue;
 
-            // Exit if the number of population reaches the maximum allowed
-            if (currentANN.population >= populationThreshold)
+        // Chunk 0 was filled as part of initializeANN's random2() into initValue.
+        // If exhausted, refill via K12(publicKey || nonce || chunkCounter).
+        unsigned long long chunkIdx = 0;
+        unsigned long long chunkCounter = 1;   // chunk 0 already in initValue
+
+        unsigned long long effectiveMutationIdx = 0;
+        while (effectiveMutationIdx < numberOfMutations)
+        {
+            // The chunk is exhausted, refill if budget allows.
+            if (chunkIdx >= mutationChunkSize)
             {
-                break;
+                if (chunkCounter >= maxChunkCount)
+                {
+                    break;
+                }
+
+                // Derive next chunk seed: K12(publicKey || nonce || chunkCounter)
+                unsigned char chunkInput[32 + 32 + sizeof(chunkCounter)];
+                copyMem(chunkInput, publicKey, 32);
+                copyMem(chunkInput + 32, nonce, 32);
+                copyMem(chunkInput + 64, &chunkCounter, sizeof(chunkCounter));
+                unsigned char chunkSeed[32];
+                KangarooTwelve(chunkInput, sizeof(chunkInput), chunkSeed, 32);
+
+                // random2 requires output size to be multiple of 64; stage into chunkPadBuffer
+                // and copy first mutationChunkBytes back into initValue->mutationChunk so the
+                // produced bytes are bit-exact with the Qiner reference.
+                random2(chunkSeed, randomPool, chunkPadBuffer, paddedMutationChunkBytes);
+                copyMem(initValue->mutationChunk, chunkPadBuffer, mutationChunkBytes);
+
+                chunkCounter++;
+                chunkIdx = 0;
             }
+
+            unsigned long long synapseMutation = initValue->mutationChunk[chunkIdx++];
+
+            // Saturating mutations are silent no-ops; keep drawing.
+            if (!mutate(synapseMutation))
+            {
+                continue;
+            }
+            ++effectiveMutationIdx;
 
             // Ticks simulation
             unsigned int R = inferANN();
