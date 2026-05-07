@@ -136,7 +136,7 @@ TEST(TestCoreQPI, SafeMath)
 
 TEST(TestCoreQPI, Array)
 {
-    //QPI::array<int, 0> mustFail; // should raise compile error
+    //QPI::Array<int, 0> mustFail; // should raise compile error
 
     QPI::Array<QPI::uint8, 4> uint8_4;
     EXPECT_EQ(uint8_4.capacity(), 4);
@@ -175,7 +175,7 @@ TEST(TestCoreQPI, Array)
     //uint64_4.setMem(uint8_4); // should raise compile error
 
     QPI::Array<QPI::uint16, 2> uint16_2;
-    EXPECT_EQ(uint8_4.capacity(), 4);
+    EXPECT_EQ(uint16_2.capacity(), 2);
     //uint16_2.setMem(QPI::id(1, 2, 3, 4)); // should raise compile error
     uint16_2.setAll(12345);
     EXPECT_EQ((int)uint16_2.get(0), 12345);
@@ -187,6 +187,42 @@ TEST(TestCoreQPI, Array)
     uint16_2.setMem(uint8_4);
     for (int i = 0; i < uint16_2.capacity(); ++i)
         EXPECT_EQ((int)uint16_2.get(i), (int)(((2*i+2) << 8) | (2*i + 1)));
+}
+
+
+TEST(TestCoreQPI, SlowAnySizeArray)
+{
+    //QPI::SlowAnySizeArray<int, 0> mustFail; // should raise compile error
+
+    QPI::SlowAnySizeArray<QPI::uint8, 3> uint8_3;
+    EXPECT_EQ(uint8_3.capacity(), 3);
+    uint8_3.setAll(2);
+    EXPECT_EQ(uint8_3.get(0), 2);
+    EXPECT_EQ(uint8_3.get(1), 2);
+    EXPECT_EQ(uint8_3.get(2), 2);
+    EXPECT_EQ(uint8_3.get(3), 2); // same as get(0)
+    for (int i = 0; i < uint8_3.capacity(); ++i)
+        uint8_3.set(i, i + 1);
+    for (int i = 0; i < uint8_3.capacity(); ++i)
+        EXPECT_EQ(uint8_3.get(i), i + 1);
+    for (int i = 0; i < uint8_3.capacity(); ++i)
+        uint8_3.set(i + 10, i + 1);
+    for (int i = 0; i < uint8_3.capacity(); ++i)
+        EXPECT_EQ(uint8_3.get(i + 10), i + 1);
+
+
+    QPI::SlowAnySizeArray<QPI::uint16, 676> uint16_676;
+    uint16_676.setAll(12345);
+    for (int i = 0; i < uint16_676.capacity(); ++i)
+        EXPECT_EQ((int)uint16_676.get(i), 12345);
+    for (int i = 0; i < uint16_676.capacity(); ++i)
+        uint16_676.set(i, i + 987);
+    for (int i = 0; i < uint16_676.capacity(); ++i)
+        EXPECT_EQ((int)uint16_676.get(i), i + 987);
+    for (int i = 0; i < uint16_676.capacity(); ++i)
+        uint16_676.set(i + uint16_676.capacity(), i + 42);
+    for (int i = 0; i < uint16_676.capacity(); ++i)
+        EXPECT_EQ((int)uint16_676.get(i + uint16_676.capacity()), i + 42);
 }
 
 
