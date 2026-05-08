@@ -305,6 +305,10 @@ static struct
     RequestResponseHeader header;
     RequestTickTransactions requestedTickTransactions;
 } requestedTickTransactions;
+// Guards concurrent access to requestedTickTransactions between the tickProcessor thread
+// (which updates .tick and .transactionFlags in prepareNextTickTransactions() and tickProcessor())
+// and the main thread (which reads them and dispatches the request via pushToAny/pushToAnyFullNode).
+static volatile char requestedTickTransactionsLock = 0;
 
 static struct {
     unsigned char day;
@@ -4829,6 +4833,8 @@ static void prepareNextTickTransactions()
         // As processNextTickTransactions returns tx for which the flag ist set to 0 (tx with flag set to 1 are not returned)
 
         // We check if the last tickTransactionRequest it already sent
+        // Lock guards .tick and .transactionFlags against concurrent reads/writes from the main thread.
+        LockGuard guard(requestedTickTransactionsLock);
         if (requestedTickTransactions.requestedTickTransactions.tick == 0)
         {
             // Initialize transactionFlags to one so that by default we do not request any transaction
@@ -5342,12 +5348,16 @@ static void tickProcessor(void*)
 
                 if (numberOfKnownNextTickTransactions != numberOfNextTickTransactions)
                 {
+                    LockGuard guard(requestedTickTransactionsLock);
                     requestedTickTransactions.requestedTickTransactions.tick = nextTick;
                 }
                 else
                 {
                     // This node has all required transactions
-                    requestedTickTransactions.requestedTickTransactions.tick = 0;
+                    {
+                        LockGuard guard(requestedTickTransactionsLock);
+                        requestedTickTransactions.requestedTickTransactions.tick = 0;
+                    }
 
                     if (ts.tickData[currentTickIndex].epoch == system.epoch)
                     {
@@ -7535,13 +7545,19 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         pushToAnyFullNode(&requestedTickData.header);
                     }
 
-                    if (requestedTickTransactions.requestedTickTransactions.tick)
                     {
-                        requestedTickTransactions.header.randomizeDejavu();
-                        pushToAny(&requestedTickTransactions.header);
-                        pushToAnyFullNode(&requestedTickTransactions.header);
+                        // Hold the lock for the entire block: pushToAny/pushToAnyFullNode copyMem the
+                        // struct contents (including transactionFlags) into peer TX buffers, so the
+                        // tickProcessor thread must not be mutating it during the copy.
+                        LockGuard guard(requestedTickTransactionsLock);
+                        if (requestedTickTransactions.requestedTickTransactions.tick)
+                        {
+                            requestedTickTransactions.header.randomizeDejavu();
+                            pushToAny(&requestedTickTransactions.header);
+                            pushToAnyFullNode(&requestedTickTransactions.header);
 
-                        requestedTickTransactions.requestedTickTransactions.tick = 0;
+                            requestedTickTransactions.requestedTickTransactions.tick = 0;
+                        }
                     }
                 }
 
