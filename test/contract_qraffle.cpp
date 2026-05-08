@@ -661,12 +661,14 @@ TEST(ContractQraffle, VoteInProposal)
     proposalCount++;
 
     uint32 yesVotes = 0, noVotes = 0;
+    bit users0OriginalVote = 0;
 
     // Test voting
-    for (const auto& user : users)
+    for (size_t vi = 0; vi < users.size(); vi++)
     {
         bit vote = (bit)random(0, 2);
-        auto result = qraffle.voteInProposal(user, 0, vote);
+        if (vi == 0) users0OriginalVote = vote;
+        auto result = qraffle.voteInProposal(users[vi], 0, vote);
         EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
         
         if (vote)
@@ -677,8 +679,8 @@ TEST(ContractQraffle, VoteInProposal)
         qraffle.getState()->voteChecker(0, yesVotes, noVotes);
     }
 
-    // Test duplicate vote (should change vote)
-    bit newVote = (bit)random(0, 2);
+    // Test duplicate vote: explicitly use the opposite direction to guarantee the vote changes
+    bit newVote = users0OriginalVote ? (bit)0 : (bit)1;
     auto result = qraffle.voteInProposal(users[0], 0, newVote);
     EXPECT_EQ(result.returnCode, QRAFFLE_SUCCESS);
     
@@ -974,8 +976,8 @@ TEST(ContractQraffle, GetFunctions)
         auto registers2 = qraffle.getRegisters(registerCount + 10, 5);
         EXPECT_EQ(registers2.returnCode, QRAFFLE_INVALID_OFFSET_OR_LIMIT);
         
-        // Test with limit exceeding maximum (1024)
-        auto registers3 = qraffle.getRegisters(0, 1025);
+        // Test with limit exceeding maximum (20)
+        auto registers3 = qraffle.getRegisters(0, 21);
         EXPECT_EQ(registers3.returnCode, QRAFFLE_INVALID_OFFSET_OR_LIMIT);
         
         // Test with offset + limit exceeding total registers
@@ -1110,12 +1112,16 @@ TEST(ContractQraffle, GetFunctions)
         // Test with current epoch (0)
         auto endedQuRaffle = qraffle.getEndedQuRaffle(0);
         EXPECT_EQ(endedQuRaffle.returnCode, QRAFFLE_SUCCESS);
-        EXPECT_NE(endedQuRaffle.epochWinner, id(0, 0, 0, 0)); // Winner should be set
-        EXPECT_GT(endedQuRaffle.receivedAmount, 0);
-        EXPECT_EQ(endedQuRaffle.entryAmount, 10000000);
         EXPECT_EQ(endedQuRaffle.numberOfMembers, memberCount);
         EXPECT_GT(endedQuRaffle.numberOfDaoMembers, 0u);
         EXPECT_EQ(endedQuRaffle.numberOfDaoMembers, qraffle.getState()->getNumberOfRegisters());
+        // Winner and prize are only set when at least one member participated
+        if (memberCount > 0)
+        {
+            EXPECT_NE(endedQuRaffle.epochWinner, id(0, 0, 0, 0));
+            EXPECT_GT(endedQuRaffle.receivedAmount, 0);
+            EXPECT_EQ(endedQuRaffle.entryAmount, 10000000);
+        }
         
         // Test with future epoch
         auto futureQuRaffle = qraffle.getEndedQuRaffle(1);
