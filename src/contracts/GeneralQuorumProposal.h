@@ -21,7 +21,7 @@ struct GQMPROP : public ContractBase
 
 	struct Success_output
 	{
-		bool okay;
+		bit okay;
 	};
 
 	struct RevenueDonationEntry
@@ -175,7 +175,7 @@ public:
 	struct SetProposal_output
 	{
 		uint16 proposalIndex;
-		bool okay;
+		bit okay;
 	};
 	struct SetProposal_locals
 	{
