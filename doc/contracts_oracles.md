@@ -139,7 +139,7 @@ See the comments in the source code in `src/oracle_interfaces/Price.h` for more 
 The source code of the official Qubic Core repository and release should usually tell the current oracle fees.
 However, the Quorum decides as usual in Qubic, because the computors running the Qubic Network may change the code, including the fee amounts.
 
-In order to prevent spam, there are minimum fees, which are 10 QUs per oracle query and 100 QUs per oracle subscriptions at the moment.
+In order to prevent spam, there are minimum fees, which are 10 QUs per oracle query and 100 QUs per oracle subscription at the moment.
 
 
 ### Adding new interfaces
