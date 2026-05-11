@@ -512,6 +512,8 @@ The following container types are available in the QPI:
 - `LinkedList<T, L>`: Doubly-linked list of elements of type `T` with fixed capacity `L` (`L` must be 2^N).
   Provides O(1) insertion at head/tail, O(1) insertion before/after a given index, O(1) removal by index, and bidirectional traversal.
   Removed nodes are immediately recycled via a free list (no deferred cleanup needed).
+- `SlowAnySizeArray<T, L>`: Array of `L` elements of type `T` that is slower than the normal `Array` but may have any capacity `L`.
+  This should be only used when a specific `L` != 2^N is needed for a good reason, e.g., in input/output.
 
 Please note that removing items from `Collection`, `HashMap`, and `HashSet` does not immediately free the hash map slots used for the removed items.
 This may negatively impact the lookup speed, which depends on the maximum population seen since the last cleanup.

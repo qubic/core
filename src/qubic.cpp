@@ -1443,7 +1443,7 @@ static void processBroadcastCustomMiningSolution(RequestResponseHeader* header)
                     queryData->coinbase1NumBytes = task.coinbase1NumBytes;
                     queryData->coinbase2NumBytes = task.coinbase2NumBytes;
                     queryData->numMerkleBranches = task.numMerkleBranches;
-                    copyMem(queryData->additionalData, task.additionalData, OI::DogeShareValidation::OracleQuery::additionalDataSize);
+                    copyMemory(queryData->additionalData, task.additionalData);
 
                     customQubicMiningStorage.addOracleQuery(tx, task.jobId);
 
