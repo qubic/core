@@ -317,6 +317,8 @@ public:
 		UserData userData;
 		RoomInfo room;
 		uint64 refundAmount;
+		sint64 transferResult;
+		bit roomExists;
 	};
 
 	struct GetPercentFees_input
@@ -443,6 +445,7 @@ public:
 	{
 		UserData userData;
 		sint64 freeAmount;
+		sint64 transferResult;
 	};
 
 	struct GetLastWinners_input
@@ -942,7 +945,14 @@ public:
 
 		locals.freeAmount = locals.userData.depositedAmount;
 
-		if (input.amount == 0 || input.amount > locals.freeAmount)
+		if (input.amount <= 0 || input.amount > locals.freeAmount)
+		{
+			output.returnCode = toReturnCode(EReturnCode::INSUFFICIENT_FREE_DEPOSIT);
+			return;
+		}
+
+		locals.transferResult = qpi.transfer(qpi.invocator(), input.amount);
+		if (locals.transferResult < 0)
 		{
 			output.returnCode = toReturnCode(EReturnCode::INSUFFICIENT_FREE_DEPOSIT);
 			return;
@@ -950,7 +960,6 @@ public:
 
 		locals.userData.depositedAmount -= input.amount;
 		state.mut().users.set(locals.userData.userId, locals.userData);
-		qpi.transfer(qpi.invocator(), input.amount);
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
@@ -967,16 +976,14 @@ public:
 			return;
 		}
 
-		if (state.get().rooms.get(locals.userData.roomId, locals.room))
+		locals.roomExists = state.get().rooms.get(locals.userData.roomId, locals.room);
+		if (locals.roomExists)
 		{
 			if (locals.room.owner != qpi.invocator())
 			{
 				output.returnCode = toReturnCode(EReturnCode::ROOM_ACCESS_DENIED);
 				return;
 			}
-
-			state.mut().rooms.removeByKey(locals.userData.roomId);
-			state.mut().rooms.cleanupIfNeeded();
 		}
 
 		if (locals.userData.depositedAmount > 0)
@@ -988,13 +995,24 @@ public:
 			locals.refundAmount += static_cast<uint64>(locals.userData.locked);
 		}
 
-		state.mut().users.removeByKey(locals.userData.userId);
-		state.mut().users.cleanupIfNeeded();
-
 		if (locals.refundAmount > 0)
 		{
-			qpi.transfer(qpi.invocator(), locals.refundAmount);
+			locals.transferResult = qpi.transfer(qpi.invocator(), locals.refundAmount);
+			if (locals.transferResult < 0)
+			{
+				output.returnCode = toReturnCode(EReturnCode::INSUFFICIENT_FREE_DEPOSIT);
+				return;
+			}
 		}
+
+		if (locals.roomExists)
+		{
+			state.mut().rooms.removeByKey(locals.userData.roomId);
+			state.mut().rooms.cleanupIfNeeded();
+		}
+
+		state.mut().users.removeByKey(locals.userData.userId);
+		state.mut().users.cleanupIfNeeded();
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
