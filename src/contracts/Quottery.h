@@ -2736,7 +2736,7 @@ public:
         locals.aoi = AssetOwnershipIterator(state.get().mQTRYGOVIdentifier);
         locals.govCount = 0;
         locals.govSum = 0;
-        locals.redistributeSum = 0;
+        locals.redistributeSum = qpi.numberOfShares(state.get().mQTRYGOVIdentifier, { SELF, SELF_INDEX }, { SELF, SELF_INDEX });
 
         while (!locals.aoi.reachedEnd())
         {
@@ -3046,4 +3046,3 @@ public:
         output.allowTransfer = true;
     }
 };
-
