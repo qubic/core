@@ -5,6 +5,9 @@
 #define TRACK_MAX_STACK_BUFFER_SIZE
 #include "../src/contract_core/stack_buffer.h"
 #include "../src/contract_core/contract_action_tracker.h"
+#include "contract_testing.h"
+
+#include <chrono>
 
 TEST(TestCoreContractCore, StackBuffer)
 {
@@ -164,4 +167,57 @@ TEST(TestCoreContractCore, ContractActionTracker)
     EXPECT_EQ(at.getOverallQuTransferBalance(id2), 300);
 
     at.freeBuffer();
+}
+
+static inline bool isPublicKeyOfContractMaskedCheck(const m256i& publicKey)
+{
+    m256i masked = publicKey;
+    masked.m256i_u64[0] &= ~(MAX_NUMBER_OF_CONTRACTS - 1ULL);
+    unsigned int cIdx = (unsigned int)publicKey.m256i_u64[0];
+    return isZero(masked) && cIdx < contractCount;
+}
+
+TEST(TestCoreContractCore, isPublicKeyOfContract)
+{
+    constexpr size_t N = 10000000;
+    std::vector<m256i> keys(N);
+    for (auto& key : keys)
+    {
+        key.setRandomValue();
+        if ((key.m256i_u64[0] & 0xFF) < 51) // 51/256 ~= 20% of keys are surely contract public key
+        {
+            key.m256i_u64[0] %= contractCount;
+            key.m256i_u64[1] = 0;
+            key.m256i_u64[2] = 0;
+            key.m256i_u64[3] = 0;
+        }
+    }
+    unsigned long long checksumA = 0;
+    unsigned long long checksumB = 0;
+    auto t0 = std::chrono::steady_clock::now();
+    for (const auto& k : keys)
+    {
+        checksumA += static_cast<unsigned long long>(isPublicKeyOfContractMaskedCheck(k));
+    }
+    auto t1 = std::chrono::steady_clock::now();
+    for (const auto& k : keys)
+    {
+        checksumB += static_cast<unsigned long long>(isPublicKeyOfContract(k));
+    }
+    auto t2 = std::chrono::steady_clock::now();
+
+    double nsPerCallA = std::chrono::duration<double, std::nano>(t1 - t0).count() / N;
+    double nsPerCallB = std::chrono::duration<double, std::nano>(t2 - t1).count() / N;
+    double totalMsA = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    double totalMsB = std::chrono::duration<double, std::milli>(t2 - t1).count();
+
+    std::cout << "isPublicKeyOfContractMaskedCheck: " << totalMsA << " ms total, " << nsPerCallA << " ns/call\n";
+    std::cout << "isPublicKeyOfContract:            " << totalMsB << " ms total, " << nsPerCallB << " ns/call\n";
+    EXPECT_EQ(checksumA, checksumB);
+
+    // 2 versions should have the same value
+    for (unsigned int i = 0; i < 1024; ++i)
+    {
+        EXPECT_EQ(isPublicKeyOfContractMaskedCheck(keys[i]), isPublicKeyOfContract(keys[i]));
+    }
 }

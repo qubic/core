@@ -4,7 +4,12 @@ using namespace QPI;
 constexpr uint64 QTF_MAX_NUMBER_OF_PLAYERS = 1024;
 constexpr uint64 QTF_RANDOM_VALUES_COUNT = 4;
 constexpr uint64 QTF_MAX_RANDOM_VALUE = 30;
+constexpr uint64 QTF_MAX_RANDOM_VALUE_ALIGNED = QTF_MAX_RANDOM_VALUE + 2;
+constexpr uint64 QTF_MAX_BATCH_TICKETS = div(QTF_MAX_NUMBER_OF_PLAYERS, 4ULL);
+constexpr uint64 QTF_BATCH_TICKET_VALUES_COUNT = QTF_MAX_BATCH_TICKETS * QTF_RANDOM_VALUES_COUNT;
 constexpr uint64 QTF_TICKET_PRICE = 1000000;
+constexpr uint64 QTF_WINNING_COMBINATIONS_HISTORY_SIZE = 128;
+constexpr uint64 QTF_PREPARED_TICKET_MAX_COUNT = QTF_MAX_NUMBER_OF_PLAYERS * QTF_RANDOM_VALUES_COUNT;
 
 // Baseline split for k2/k3 when FR is OFF (per spec: k3=40%, k2=28% of Winners block).
 // Initial 32% of Winners block is unallocated; overflow will also include unawarded k2/k3 funds.
@@ -69,6 +74,9 @@ struct QTF2
 
 struct QTF : ContractBase
 {
+	// Forward declaration for NextEpochData::apply
+	struct StateData;
+
 	enum class EReturnCode : uint8
 	{
 		SUCCESS,
@@ -78,6 +86,7 @@ struct QTF : ContractBase
 		INVALID_NUMBERS,
 		INVALID_VALUE,
 		TICKET_SELLING_CLOSED,
+		PARTIAL_PURCHASE,
 
 		MAX_VALUE = UINT8_MAX
 	};
@@ -94,11 +103,28 @@ struct QTF : ContractBase
 	{
 		id player;
 		Array<uint8, QTF_RANDOM_VALUES_COUNT> randomValues;
+
+		bool isValid() const { return !isZero(player); }
+	};
+
+	struct WinnerPlayerData
+	{
+		id player;
+		Array<uint8, QTF_RANDOM_VALUES_COUNT> randomValues;
+		uint32 wonAmount;
+
+		void addPlayerData(const PlayerData& data)
+		{
+			player = data.player;
+			randomValues = data.randomValues;
+		}
+
+		bool isValid() const { return !isZero(player); }
 	};
 
 	struct WinnerData
 	{
-		Array<PlayerData, QTF_MAX_NUMBER_OF_PLAYERS> winners;
+		Array<WinnerPlayerData, QTF_MAX_NUMBER_OF_PLAYERS> winners;
 		Array<uint8, QTF_RANDOM_VALUES_COUNT> winnerValues;
 		uint64 winnerCounter;
 		uint16 epoch;
@@ -114,23 +140,23 @@ struct QTF : ContractBase
 			newDrawHour = 0;
 		}
 
-		void apply(QTF& state) const
+		void apply(QPI::ContractState<StateData, CONTRACT_INDEX>& state) const
 		{
 			if (newTicketPrice > 0)
 			{
-				state.ticketPrice = newTicketPrice;
+				state.mut().ticketPrice = newTicketPrice;
 			}
 			if (newTargetJackpot > 0)
 			{
-				state.targetJackpot = newTargetJackpot;
+				state.mut().targetJackpot = newTargetJackpot;
 			}
 			if (newSchedule > 0)
 			{
-				state.schedule = newSchedule;
+				state.mut().schedule = newSchedule;
 			}
 			if (newDrawHour > 0)
 			{
-				state.drawHour = newDrawHour;
+				state.mut().drawHour = newDrawHour;
 			}
 		}
 
@@ -169,9 +195,67 @@ struct QTF : ContractBase
 	};
 	struct ValidateNumbers_locals
 	{
-		HashSet<uint8, QTF_MAX_RANDOM_VALUE + 2> seen;
+		HashSet<uint8, QTF_MAX_RANDOM_VALUE_ALIGNED> seen;
 		uint8 idx;
 		uint8 value;
+	};
+
+	struct CollectSelectionNumbers_input
+	{
+		Array<uint8, QTF_MAX_RANDOM_VALUE_ALIGNED> numbers;
+	};
+	struct CollectSelectionNumbers_output
+	{
+		Array<uint8, QTF_MAX_RANDOM_VALUE_ALIGNED> normalizedNumbers;
+		bit isValid;
+		uint8 numberCount;
+	};
+	struct CollectSelectionNumbers_locals
+	{
+		uint8 idx;
+		uint8 value;
+		uint8 outValue;
+		uint32 mask;
+	};
+
+	struct BuyPreparedTickets_input
+	{
+		Array<uint8, QTF_PREPARED_TICKET_MAX_COUNT> tickets;
+		uint64 ticketCount;
+	};
+	struct BuyPreparedTickets_output
+	{
+		uint16 boughtTicketCount;
+		uint8 returnCode;
+	};
+	struct BuyPreparedTickets_locals
+	{
+		Array<uint8, QTF_RANDOM_VALUES_COUNT> ticketValues;
+		uint64 effectiveTicketCount;
+		uint64 freeSlots;
+		uint64 requiredAmount;
+		uint64 excess;
+		uint64 i;
+		uint64 offset;
+	};
+
+	struct BuildSelectionTickets_input
+	{
+		Array<uint8, QTF_MAX_RANDOM_VALUE_ALIGNED> normalizedNumbers;
+		uint8 numberCount;
+	};
+	struct BuildSelectionTickets_output
+	{
+		BuyPreparedTickets_input preparedTickets;
+	};
+	struct BuildSelectionTickets_locals
+	{
+		Array<uint8, QTF_RANDOM_VALUES_COUNT> ticketValues;
+		uint64 i;
+		uint64 j;
+		uint64 k;
+		uint64 l;
+		uint64 preparedOffset;
 	};
 
 	// Buy Ticket
@@ -185,10 +269,55 @@ struct QTF : ContractBase
 	};
 	struct BuyTicket_locals
 	{
-		// CALL parameters for ValidateNumbers
 		ValidateNumbers_input validateInput;
 		ValidateNumbers_output validateOutput;
-		uint64 excess;
+		BuyPreparedTickets_input buyPreparedInput;
+		BuyPreparedTickets_output buyPreparedOutput;
+	};
+
+	struct BuyTicketsBatch_input
+	{
+		Array<uint8, QTF_BATCH_TICKET_VALUES_COUNT> tickets;
+	};
+	struct BuyTicketsBatch_output
+	{
+		uint16 boughtTicketCount;
+		uint8 returnCode;
+	};
+	struct BuyTicketsBatch_locals
+	{
+		ValidateNumbers_input validateInput;
+		ValidateNumbers_output validateOutput;
+		Array<uint8, QTF_RANDOM_VALUES_COUNT> ticketValues;
+		uint64 ticketCount;
+		uint64 i;
+		uint64 offset;
+		uint64 preparedOffset;
+		BuyPreparedTickets_input buyPreparedInput;
+		BuyPreparedTickets_output buyPreparedOutput;
+	};
+
+	struct BuyTicketsBySelection_input
+	{
+		Array<uint8, QTF_MAX_RANDOM_VALUE_ALIGNED> numbers;
+	};
+	struct BuyTicketsBySelection_output
+	{
+		uint16 requestedTicketCount;
+		uint16 boughtTicketCount;
+		uint8 returnCode;
+	};
+	struct BuyTicketsBySelection_locals
+	{
+		CollectSelectionNumbers_input collectSelectionInput;
+		CollectSelectionNumbers_output collectSelectionOutput;
+		BuildSelectionTickets_input buildSelectionTicketsInput;
+		BuildSelectionTickets_output buildSelectionTicketsOutput;
+		uint64 j;
+		uint64 k;
+		uint64 l;
+		BuyPreparedTickets_input buyPreparedInput;
+		BuyPreparedTickets_output buyPreparedOutput;
 	};
 
 	// Set Price
@@ -350,7 +479,7 @@ struct QTF : ContractBase
 		uint8 candidate;
 		uint8 attempts;
 		uint8 fallback;
-		HashSet<uint8, QTF_MAX_RANDOM_VALUE + 2> used;
+		HashSet<uint8, QTF_MAX_RANDOM_VALUE_ALIGNED> used;
 	};
 
 	// CalcReserveTopUp: Calculate safe reserve top-up amount
@@ -664,6 +793,7 @@ struct QTF : ContractBase
 		uint64 rlShares;
 		// Cache for countMatches results to avoid redundant calculations
 		Array<uint8, QTF_MAX_NUMBER_OF_PLAYERS> cachedMatches;
+		WinnerPlayerData winnerPlayerData;
 	};
 
 	struct END_EPOCH_locals
@@ -684,19 +814,82 @@ struct QTF : ContractBase
 		bit isScheduledToday;
 	};
 
+	struct GetPlayers_input
+	{
+	};
+
+	struct GetPlayers_output
+	{
+		Array<PlayerData, QTF_MAX_NUMBER_OF_PLAYERS> players;
+		uint8 returnCode;
+	};
+
+	struct GetWinningCombinationsHistory_input
+	{
+	};
+
+	struct GetWinningCombinationsHistory_output
+	{
+		struct WinningCombination
+		{
+			Array<uint8, QTF_RANDOM_VALUES_COUNT> values;
+		};
+
+		Array<WinningCombination, QTF_WINNING_COMBINATIONS_HISTORY_SIZE> history;
+		uint8 returnCode;
+	};
+
+	struct SyncJackpot_input
+	{
+	};
+
+	struct SyncJackpot_output
+	{
+		uint8 returnCode;
+	};
+
+	struct SyncJackpot_locals
+	{
+		Entity entity;
+	};
+
+	struct StateData
+	{
+		WinnerData lastWinnerData;                            // last winners snapshot
+		NextEpochData nextEpochData;                          // queued config (ticket price)
+		Array<PlayerData, QTF_MAX_NUMBER_OF_PLAYERS> players; // current epoch tickets
+		id teamAddress;                                       // Dev/team payout address
+		id ownerAddress;                                      // config authority
+		uint64 numberOfPlayers;                               // tickets count in epoch
+		uint64 ticketPrice;                                   // active ticket price
+		uint64 jackpot;                                       // jackpot balance
+		uint64 targetJackpot;                                 // FR target jackpot
+		uint64 overflowAlphaBP;                               // baseline reserve share of overflow (bp)
+		uint8 schedule;                                       // bitmask of draw days
+		uint8 drawHour;                                       // draw hour UTC
+		uint32 lastDrawDateStamp;                             // guard to avoid multiple draws per day
+		bit frActive;                                         // FR flag
+		uint16 frRoundsSinceK4;                               // rounds since last jackpot hit
+		uint16 frRoundsAtOrAboveTarget;                       // hysteresis counter for FR off
+		uint8 currentState;                                   // bitmask of STATE_* flags (e.g., STATE_SELLING)
+		Array<Array<uint8, QTF_RANDOM_VALUES_COUNT>, QTF_WINNING_COMBINATIONS_HISTORY_SIZE>
+		    winningCombinationsHistory;  // ring buffer of winning combinations
+		uint64 winningCombinationsCount; // next write position in ring buffer
+	};
+
 	// Contract lifecycle methods
 	INITIALIZE()
 	{
-		state.teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C, _X, _B,
-		                       _A, _V, _F, _O, _P, _R, _S, _N, _U, _L, _U, _E, _B, _S, _P, _U, _T, _R, _Z, _N, _T, _G, _F, _B, _I, _E);
-		state.ownerAddress = state.teamAddress;
-		state.ticketPrice = QTF_TICKET_PRICE;
-		state.targetJackpot = QTF_DEFAULT_TARGET_JACKPOT;
-		state.overflowAlphaBP = QTF_BASELINE_OVERFLOW_ALPHA_BP;
-		state.schedule = QTF_DEFAULT_SCHEDULE;
-		state.drawHour = QTF_DEFAULT_DRAW_HOUR;
-		state.lastDrawDateStamp = QTF_DEFAULT_INIT_TIME;
-		state.currentState = STATE_NONE;
+		state.mut().teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C,
+		                             _X, _B, _A, _V, _F, _O, _P, _R, _S, _N, _U, _L, _U, _E, _B, _S, _P, _U, _T, _R, _Z, _N, _T, _G, _F, _B, _I, _E);
+		state.mut().ownerAddress = state.get().teamAddress;
+		state.mut().ticketPrice = QTF_TICKET_PRICE;
+		state.mut().targetJackpot = QTF_DEFAULT_TARGET_JACKPOT;
+		state.mut().overflowAlphaBP = QTF_BASELINE_OVERFLOW_ALPHA_BP;
+		state.mut().schedule = QTF_DEFAULT_SCHEDULE;
+		state.mut().drawHour = QTF_DEFAULT_DRAW_HOUR;
+		state.mut().lastDrawDateStamp = QTF_DEFAULT_INIT_TIME;
+		state.mut().currentState = STATE_NONE;
 	}
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
@@ -706,6 +899,10 @@ struct QTF : ContractBase
 		REGISTER_USER_PROCEDURE(SetSchedule, 3);
 		REGISTER_USER_PROCEDURE(SetTargetJackpot, 4);
 		REGISTER_USER_PROCEDURE(SetDrawHour, 5);
+		REGISTER_USER_PROCEDURE(SyncJackpot, 6);
+		REGISTER_USER_PROCEDURE(BuyTicketsBatch, 7);
+		REGISTER_USER_PROCEDURE(BuyTicketsBySelection, 8);
+
 		REGISTER_USER_FUNCTION(GetTicketPrice, 1);
 		REGISTER_USER_FUNCTION(GetNextEpochData, 2);
 		REGISTER_USER_FUNCTION(GetWinnerData, 3);
@@ -715,23 +912,25 @@ struct QTF : ContractBase
 		REGISTER_USER_FUNCTION(GetState, 7);
 		REGISTER_USER_FUNCTION(GetFees, 8);
 		REGISTER_USER_FUNCTION(EstimatePrizePayouts, 9);
+		REGISTER_USER_FUNCTION(GetPlayers, 10);
+		REGISTER_USER_FUNCTION(GetWinningCombinationsHistory, 11);
 	}
 
 	BEGIN_EPOCH()
 	{
 		applyNextEpochData(state);
 
-		if (state.schedule == 0)
+		if (state.get().schedule == 0)
 		{
-			state.schedule = QTF_DEFAULT_SCHEDULE;
+			state.mut().schedule = QTF_DEFAULT_SCHEDULE;
 		}
-		if (state.drawHour == 0)
+		if (state.get().drawHour == 0)
 		{
-			state.drawHour = QTF_DEFAULT_DRAW_HOUR;
+			state.mut().drawHour = QTF_DEFAULT_DRAW_HOUR;
 		}
-		RL::makeDateStamp(qpi.year(), qpi.month(), qpi.day(), state.lastDrawDateStamp);
+		RL::makeDateStamp(qpi.year(), qpi.month(), qpi.day(), state.mut().lastDrawDateStamp);
 		clearEpochState(state);
-		enableBuyTicket(state, state.lastDrawDateStamp != RL_DEFAULT_INIT_TIME);
+		enableBuyTicket(state, state.get().lastDrawDateStamp != RL_DEFAULT_INIT_TIME);
 	}
 
 	// Settle and reset at epoch end (uses locals buffer)
@@ -752,7 +951,7 @@ struct QTF : ContractBase
 		}
 
 		locals.currentHour = qpi.hour();
-		if (locals.currentHour < state.drawHour)
+		if (locals.currentHour < state.get().drawHour)
 		{
 			return;
 		}
@@ -764,33 +963,33 @@ struct QTF : ContractBase
 		if (locals.currentDateStamp == QTF_DEFAULT_INIT_TIME)
 		{
 			enableBuyTicket(state, false);
-			state.lastDrawDateStamp = QTF_DEFAULT_INIT_TIME;
+			state.mut().lastDrawDateStamp = QTF_DEFAULT_INIT_TIME;
 			return;
 		}
 
 		// First valid date after init: just record and exit
-		if (state.lastDrawDateStamp == QTF_DEFAULT_INIT_TIME && locals.currentDateStamp != QTF_DEFAULT_INIT_TIME)
+		if (state.get().lastDrawDateStamp == QTF_DEFAULT_INIT_TIME && locals.currentDateStamp != QTF_DEFAULT_INIT_TIME)
 		{
 			enableBuyTicket(state, true);
 			if (locals.currentDayOfWeek == WEDNESDAY)
 			{
-				state.lastDrawDateStamp = locals.currentDateStamp;
+				state.mut().lastDrawDateStamp = locals.currentDateStamp;
 			}
 			else
 			{
-				state.lastDrawDateStamp = 0;
+				state.mut().lastDrawDateStamp = 0;
 			}
 
 			return;
 		}
 
-		if (locals.currentDateStamp == state.lastDrawDateStamp)
+		if (locals.currentDateStamp == state.get().lastDrawDateStamp)
 		{
 			return;
 		}
 
 		locals.isWednesday = (locals.currentDayOfWeek == WEDNESDAY);
-		locals.isScheduledToday = ((state.schedule & (1u << locals.currentDayOfWeek)) != 0);
+		locals.isScheduledToday = ((state.get().schedule & (1u << locals.currentDayOfWeek)) != 0);
 
 		// Always draw on Wednesday; otherwise require schedule bit.
 		if (!locals.isWednesday && !locals.isScheduledToday)
@@ -798,7 +997,7 @@ struct QTF : ContractBase
 			return;
 		}
 
-		state.lastDrawDateStamp = locals.currentDateStamp;
+		state.mut().lastDrawDateStamp = locals.currentDateStamp;
 
 		// Pause selling during draw/settlement.
 		enableBuyTicket(state, false);
@@ -827,7 +1026,7 @@ struct QTF : ContractBase
 	// Procedures
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicket)
 	{
-		if ((state.currentState & STATE_SELLING) == 0)
+		if ((state.get().currentState & STATE_SELLING) == 0)
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -838,7 +1037,7 @@ struct QTF : ContractBase
 			return;
 		}
 
-		if (state.numberOfPlayers >= QTF_MAX_NUMBER_OF_PLAYERS)
+		if (state.get().numberOfPlayers >= QTF_MAX_NUMBER_OF_PLAYERS)
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -849,7 +1048,8 @@ struct QTF : ContractBase
 			return;
 		}
 
-		if (qpi.invocationReward() < static_cast<sint64>(state.ticketPrice))
+		if (state.get().ticketPrice > INT64_MAX || qpi.invocationReward() <= 0 ||
+		    static_cast<uint64>(qpi.invocationReward()) < state.get().ticketPrice)
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -872,25 +1072,130 @@ struct QTF : ContractBase
 			return;
 		}
 
-		addPlayerInfo(state, qpi.invocator(), input.randomValues);
+		locals.buyPreparedInput.ticketCount = 1;
+		locals.buyPreparedInput.tickets.set(0, input.randomValues.get(0));
+		locals.buyPreparedInput.tickets.set(1, input.randomValues.get(1));
+		locals.buyPreparedInput.tickets.set(2, input.randomValues.get(2));
+		locals.buyPreparedInput.tickets.set(3, input.randomValues.get(3));
+		CALL(BuyPreparedTickets, locals.buyPreparedInput, locals.buyPreparedOutput);
+		output.returnCode = locals.buyPreparedOutput.returnCode;
+	}
 
-		// If overpaid, accept ticket and return excess to invocator.
-		// Important: refund excess ONLY after validation, otherwise invalid tickets could be over-refunded.
-		if (qpi.invocationReward() > static_cast<sint64>(state.ticketPrice))
+	/**
+	 * @brief Buys every valid ticket encoded in the flat batch payload.
+	 * @param input.tickets Flat array of 4-number tickets stored sequentially.
+	 * @return SUCCESS when at least one valid ticket is accepted; invalid or empty 4-number groups are ignored,
+	 *         and the batch is clipped to the number of free ticket slots left in the round.
+	 */
+	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicketsBatch)
+	{
+		if ((state.get().currentState & STATE_SELLING) == 0)
 		{
-			locals.excess = qpi.invocationReward() - state.ticketPrice;
-			if (locals.excess > 0)
+			if (qpi.invocationReward() > 0)
 			{
-				qpi.transfer(qpi.invocator(), locals.excess);
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
+
+			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
+			return;
 		}
 
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		// is initialized as 0 already
+		while (locals.i < QTF_MAX_BATCH_TICKETS)
+		{
+			locals.offset = smul(locals.i, QTF_RANDOM_VALUES_COUNT);
+			locals.ticketValues.set(0, input.tickets.get(locals.offset));
+			locals.ticketValues.set(1, input.tickets.get(locals.offset + 1));
+			locals.ticketValues.set(2, input.tickets.get(locals.offset + 2));
+			locals.ticketValues.set(3, input.tickets.get(locals.offset + 3));
+
+			if (isEmptyTicket(locals.ticketValues))
+			{
+				++locals.i;
+				continue;
+			}
+
+			locals.validateInput.numbers = locals.ticketValues;
+			CALL(ValidateNumbers, locals.validateInput, locals.validateOutput);
+			if (!locals.validateOutput.isValid)
+			{
+				++locals.i;
+				continue;
+			}
+
+			locals.preparedOffset = smul(locals.ticketCount, QTF_RANDOM_VALUES_COUNT);
+			locals.buyPreparedInput.tickets.set(locals.preparedOffset, locals.ticketValues.get(0));
+			locals.buyPreparedInput.tickets.set(locals.preparedOffset + 1, locals.ticketValues.get(1));
+			locals.buyPreparedInput.tickets.set(locals.preparedOffset + 2, locals.ticketValues.get(2));
+			locals.buyPreparedInput.tickets.set(locals.preparedOffset + 3, locals.ticketValues.get(3));
+			++locals.ticketCount;
+			++locals.i;
+		}
+
+		locals.buyPreparedInput.ticketCount = locals.ticketCount;
+		CALL(BuyPreparedTickets, locals.buyPreparedInput, locals.buyPreparedOutput);
+		output.boughtTicketCount = locals.buyPreparedOutput.boughtTicketCount;
+		output.returnCode = locals.buyPreparedOutput.returnCode;
+	}
+
+	/**
+	 * @brief Buys every 4-number combination generated from a validated number selection.
+	 * @param input.numbers Selected values; all unique values in range [1..30] are used.
+	 * @return SUCCESS when all generated tickets are accepted; PARTIAL_PURCHASE when the round has fewer free
+	 *         slots than generated tickets; selections that expand beyond the batch limit refund the full reward.
+	 */
+	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicketsBySelection)
+	{
+		if ((state.get().currentState & STATE_SELLING) == 0)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
+			return;
+		}
+
+		locals.collectSelectionInput.numbers = input.numbers;
+		CALL(CollectSelectionNumbers, locals.collectSelectionInput, locals.collectSelectionOutput);
+		if (!locals.collectSelectionOutput.isValid || locals.collectSelectionOutput.numberCount < QTF_RANDOM_VALUES_COUNT)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.returnCode = toReturnCode(EReturnCode::INVALID_NUMBERS);
+			return;
+		}
+
+		locals.j =
+		    smul(static_cast<uint64>(locals.collectSelectionOutput.numberCount), static_cast<uint64>(locals.collectSelectionOutput.numberCount - 1));
+		locals.k = smul(locals.j, static_cast<uint64>(locals.collectSelectionOutput.numberCount - 2));
+		locals.l = smul(locals.k, static_cast<uint64>(locals.collectSelectionOutput.numberCount - 3));
+		output.requestedTicketCount = static_cast<uint16>(div<uint64>(locals.l, 24));
+		if (output.requestedTicketCount > QTF_MAX_BATCH_TICKETS)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			return;
+		}
+
+		locals.buildSelectionTicketsInput.normalizedNumbers = locals.collectSelectionOutput.normalizedNumbers;
+		locals.buildSelectionTicketsInput.numberCount = locals.collectSelectionOutput.numberCount;
+		CALL(BuildSelectionTickets, locals.buildSelectionTicketsInput, locals.buildSelectionTicketsOutput);
+		locals.buyPreparedInput = locals.buildSelectionTicketsOutput.preparedTickets;
+		CALL(BuyPreparedTickets, locals.buyPreparedInput, locals.buyPreparedOutput);
+		output.boughtTicketCount = locals.buyPreparedOutput.boughtTicketCount;
+		output.returnCode = locals.buyPreparedOutput.returnCode;
 	}
 
 	PUBLIC_PROCEDURE(SetPrice)
 	{
-		if (qpi.invocator() != state.ownerAddress)
+		if (qpi.invocator() != state.get().ownerAddress)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -902,13 +1207,13 @@ struct QTF : ContractBase
 			return;
 		}
 
-		state.nextEpochData.newTicketPrice = input.newPrice;
+		state.mut().nextEpochData.newTicketPrice = input.newPrice;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE(SetSchedule)
 	{
-		if (qpi.invocator() != state.ownerAddress)
+		if (qpi.invocator() != state.get().ownerAddress)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -920,13 +1225,13 @@ struct QTF : ContractBase
 			return;
 		}
 
-		state.nextEpochData.newSchedule = input.newSchedule;
+		state.mut().nextEpochData.newSchedule = input.newSchedule;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE(SetTargetJackpot)
 	{
-		if (qpi.invocator() != state.ownerAddress)
+		if (qpi.invocator() != state.get().ownerAddress)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -938,13 +1243,13 @@ struct QTF : ContractBase
 			return;
 		}
 
-		state.nextEpochData.newTargetJackpot = input.newTargetJackpot;
+		state.mut().nextEpochData.newTargetJackpot = input.newTargetJackpot;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	PUBLIC_PROCEDURE(SetDrawHour)
 	{
-		if (qpi.invocator() != state.ownerAddress)
+		if (qpi.invocator() != state.get().ownerAddress)
 		{
 			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
 			return;
@@ -956,26 +1261,40 @@ struct QTF : ContractBase
 			return;
 		}
 
-		state.nextEpochData.newDrawHour = input.newDrawHour;
+		state.mut().nextEpochData.newDrawHour = input.newDrawHour;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(SyncJackpot)
+	{
+		if (qpi.invocator() != state.get().ownerAddress)
+		{
+			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			return;
+		}
+
+		qpi.getEntity(SELF, locals.entity);
+		state.mut().jackpot = locals.entity.incomingAmount - locals.entity.outgoingAmount;
+
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
 	// Functions
-	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.ticketPrice; }
-	PUBLIC_FUNCTION(GetNextEpochData) { output.nextEpochData = state.nextEpochData; }
-	PUBLIC_FUNCTION(GetWinnerData) { output.winnerData = state.lastWinnerData; }
+	PUBLIC_FUNCTION(GetTicketPrice) { output.ticketPrice = state.get().ticketPrice; }
+	PUBLIC_FUNCTION(GetNextEpochData) { output.nextEpochData = state.get().nextEpochData; }
+	PUBLIC_FUNCTION(GetWinnerData) { output.winnerData = state.get().lastWinnerData; }
 	PUBLIC_FUNCTION_WITH_LOCALS(GetPools)
 	{
-		output.pools.jackpot = state.jackpot;
+		output.pools.jackpot = state.get().jackpot;
 		CALL_OTHER_CONTRACT_FUNCTION(QRP, GetAvailableReserve, locals.qrpInput, locals.qrpOutput);
 		output.pools.reserve = locals.qrpOutput.availableReserve;
-		output.pools.targetJackpot = state.targetJackpot;
-		output.pools.frActive = state.frActive;
-		output.pools.roundsSinceK4 = state.frRoundsSinceK4;
+		output.pools.targetJackpot = state.get().targetJackpot;
+		output.pools.frActive = state.get().frActive;
+		output.pools.roundsSinceK4 = state.get().frRoundsSinceK4;
 	}
-	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.schedule; }
-	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.drawHour; }
-	PUBLIC_FUNCTION(GetState) { output.currentState = static_cast<uint8>(state.currentState); }
+	PUBLIC_FUNCTION(GetSchedule) { output.schedule = state.get().schedule; }
+	PUBLIC_FUNCTION(GetDrawHour) { output.drawHour = state.get().drawHour; }
+	PUBLIC_FUNCTION(GetState) { output.currentState = static_cast<uint8>(state.get().currentState); }
 	PUBLIC_FUNCTION_WITH_LOCALS(GetFees)
 	{
 		CALL_OTHER_CONTRACT_FUNCTION(RL, GetFees, locals.feesInput, locals.feesOutput);
@@ -999,15 +1318,15 @@ struct QTF : ContractBase
 	PUBLIC_FUNCTION_WITH_LOCALS(EstimatePrizePayouts)
 	{
 		// Calculate total revenue from current ticket sales
-		locals.revenue = smul(state.ticketPrice, state.numberOfPlayers);
+		locals.revenue = smul(state.get().ticketPrice, state.get().numberOfPlayers);
 		output.totalRevenue = locals.revenue;
 
 		// Set minimum floors and cap
-		output.k2MinFloor = div<uint64>(smul(state.ticketPrice, QTF_K2_FLOOR_MULT), QTF_K2_FLOOR_DIV); // 0.5*P
-		output.k3MinFloor = smul(state.ticketPrice, QTF_K3_FLOOR_MULT);                                // 5*P
-		output.perWinnerCap = smul(state.ticketPrice, QTF_TOPUP_PER_WINNER_CAP_MULT);                  // 25*P
+		output.k2MinFloor = div<uint64>(smul(state.get().ticketPrice, QTF_K2_FLOOR_MULT), QTF_K2_FLOOR_DIV); // 0.5*P
+		output.k3MinFloor = smul(state.get().ticketPrice, QTF_K3_FLOOR_MULT);                                // 5*P
+		output.perWinnerCap = smul(state.get().ticketPrice, QTF_TOPUP_PER_WINNER_CAP_MULT);                  // 25*P
 
-		if (locals.revenue == 0 || state.numberOfPlayers == 0)
+		if (locals.revenue == 0 || state.get().numberOfPlayers == 0)
 		{
 			// No tickets sold, no payouts
 			output.k2PayoutPerWinner = 0;
@@ -1019,7 +1338,7 @@ struct QTF : ContractBase
 
 		// Use shared CalculatePrizePools function to compute pools
 		locals.calcPoolsInput.revenue = locals.revenue;
-		locals.calcPoolsInput.applyFRRake = state.frActive;
+		locals.calcPoolsInput.applyFRRake = state.get().frActive;
 		CALL(CalculatePrizePools, locals.calcPoolsInput, locals.calcPoolsOutput);
 
 		output.k2Pool = locals.calcPoolsOutput.k2Pool;
@@ -1073,24 +1392,36 @@ struct QTF : ContractBase
 		}
 	}
 
-protected:
-	static void clearEpochState(QTF& state) { clearPlayerData(state); }
-
-	static void applyNextEpochData(QTF& state)
+	PUBLIC_FUNCTION(GetPlayers)
 	{
-		state.nextEpochData.apply(state);
-		state.nextEpochData.clear();
+		output.players = state.get().players;
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
 
-	static void enableBuyTicket(QTF& state, bool bEnable)
+	PUBLIC_FUNCTION(GetWinningCombinationsHistory)
+	{
+		copyMemory(output.history, state.get().winningCombinationsHistory);
+		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+	}
+
+protected:
+	static void clearEpochState(QPI::ContractState<StateData, CONTRACT_INDEX>& state) { clearPlayerData(state); }
+
+	static void applyNextEpochData(QPI::ContractState<StateData, CONTRACT_INDEX>& state)
+	{
+		state.get().nextEpochData.apply(state);
+		state.mut().nextEpochData.clear();
+	}
+
+	static void enableBuyTicket(QPI::ContractState<StateData, CONTRACT_INDEX>& state, bool bEnable)
 	{
 		if (bEnable)
 		{
-			state.currentState = static_cast<uint8>(state.currentState | STATE_SELLING);
+			state.mut().currentState = static_cast<uint8>(state.get().currentState | STATE_SELLING);
 		}
 		else
 		{
-			state.currentState = static_cast<uint8>(state.currentState & static_cast<uint8>(~STATE_SELLING));
+			state.mut().currentState = static_cast<uint8>(state.get().currentState & static_cast<uint8>(~STATE_SELLING));
 		}
 	}
 
@@ -1108,9 +1439,16 @@ protected:
 
 	static void deriveOne(const uint64& r, const uint64& idx, uint64& outValue) { mix64(r + 0x9e3779b97f4a7c15ULL * (idx + 1), outValue); }
 
-	static void addPlayerInfo(QTF& state, const id& playerId, const Array<uint8, QTF_RANDOM_VALUES_COUNT>& randomValues)
+	static void addPlayerInfo(QPI::ContractState<StateData, CONTRACT_INDEX>& state, const id& playerId,
+	                          const Array<uint8, QTF_RANDOM_VALUES_COUNT>& randomValues)
 	{
-		state.players.set(state.numberOfPlayers++, {playerId, randomValues});
+		state.mut().players.set(state.get().numberOfPlayers, {playerId, randomValues});
+		state.mut().numberOfPlayers++;
+	}
+
+	static bool isEmptyTicket(const Array<uint8, QTF_RANDOM_VALUES_COUNT>& ticketValues)
+	{
+		return (ticketValues.get(0) | ticketValues.get(1) | ticketValues.get(2) | ticketValues.get(3)) == 0;
 	}
 
 	static uint8 bitcount32(uint32 v)
@@ -1123,77 +1461,125 @@ protected:
 		return static_cast<uint8>(v & 0x3Fu);
 	}
 
-	static void clearPlayerData(QTF& state)
+	static void clearPlayerData(QPI::ContractState<StateData, CONTRACT_INDEX>& state)
 	{
-		if (state.numberOfPlayers > 0)
+		if (state.get().numberOfPlayers > 0)
 		{
-			setMemory(state.players, 0);
-			state.numberOfPlayers = 0;
+			setMemory(state.mut().players, 0);
+			state.mut().numberOfPlayers = 0;
 		}
 	}
 
-	static void clearWinerData(QTF& state) { setMemory(state.lastWinnerData, 0); }
+	static void clearWinerData(QPI::ContractState<StateData, CONTRACT_INDEX>& state) { setMemory(state.mut().lastWinnerData, 0); }
 
-	static void fillWinnerData(QTF& state, const PlayerData& playerData, const Array<uint8, QTF_RANDOM_VALUES_COUNT>& winnerValues,
-	                           const uint16& epoch)
+	static void fillWinnerData(QPI::ContractState<StateData, CONTRACT_INDEX>& state, const WinnerPlayerData& winnerPlayerData,
+	                           const Array<uint8, QTF_RANDOM_VALUES_COUNT>& winnerValues, const uint16& epoch)
 	{
-		if (!isZero(playerData.player))
+		if (winnerPlayerData.isValid())
 		{
-			if (state.lastWinnerData.winnerCounter < state.lastWinnerData.winners.capacity())
+			if (state.get().lastWinnerData.winnerCounter < state.get().lastWinnerData.winners.capacity())
 			{
-				state.lastWinnerData.winners.set(state.lastWinnerData.winnerCounter++, playerData);
+				state.mut().lastWinnerData.winners.set(state.get().lastWinnerData.winnerCounter, winnerPlayerData);
+				state.mut().lastWinnerData.winnerCounter++;
 			}
 		}
 
-		state.lastWinnerData.winnerValues = winnerValues;
-		state.lastWinnerData.epoch = epoch;
+		state.mut().lastWinnerData.winnerValues = winnerValues;
+		state.mut().lastWinnerData.epoch = epoch;
 	}
 
-	WinnerData lastWinnerData; // last winners snapshot
-
-	NextEpochData nextEpochData; // queued config (ticket price)
-
-	Array<PlayerData, QTF_MAX_NUMBER_OF_PLAYERS> players; // current epoch tickets
-
-	id teamAddress; // Dev/team payout address
-
-	id ownerAddress; // config authority
-
-	uint64 numberOfPlayers; // tickets count in epoch
-
-	uint64 ticketPrice; // active ticket price
-
-	uint64 jackpot; // jackpot balance
-
-	uint64 targetJackpot; // FR target jackpot
-
-	uint64 overflowAlphaBP; // baseline reserve share of overflow (bp)
-
-	uint8 schedule; // bitmask of draw days
-
-	uint8 drawHour; // draw hour UTC
-
-	uint32 lastDrawDateStamp; // guard to avoid multiple draws per day
-
-	bit frActive; // FR flag
-
-	uint16 frRoundsSinceK4; // rounds since last jackpot hit
-
-	uint16 frRoundsAtOrAboveTarget; // hysteresis counter for FR off
-
-	uint8 currentState; // bitmask of STATE_* flags (e.g., STATE_SELLING)
+	static void addWinningCombinationToHistory(QPI::ContractState<StateData, CONTRACT_INDEX>& state,
+	                                           const Array<uint8, QTF_RANDOM_VALUES_COUNT>& winnerValues)
+	{
+		state.mut().winningCombinationsHistory.set(state.get().winningCombinationsCount, winnerValues);
+		state.mut().winningCombinationsCount = mod(state.get().winningCombinationsCount + 1, state.get().winningCombinationsHistory.capacity());
+	}
 
 private:
+	PRIVATE_PROCEDURE_WITH_LOCALS(BuyPreparedTickets)
+	{
+		if ((state.get().currentState & STATE_SELLING) == 0)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
+			return;
+		}
+
+		if (input.ticketCount == 0)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			output.returnCode = toReturnCode(EReturnCode::INVALID_NUMBERS);
+			return;
+		}
+
+		locals.freeSlots = (state.get().numberOfPlayers < QTF_MAX_NUMBER_OF_PLAYERS) ? (QTF_MAX_NUMBER_OF_PLAYERS - state.get().numberOfPlayers) : 0;
+		if (locals.freeSlots == 0)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			output.returnCode = toReturnCode(EReturnCode::MAX_PLAYERS_REACHED);
+			return;
+		}
+
+		locals.effectiveTicketCount = RL::min(input.ticketCount, locals.freeSlots);
+		locals.requiredAmount = smul(state.get().ticketPrice, locals.effectiveTicketCount);
+		if (locals.requiredAmount > INT64_MAX || qpi.invocationReward() <= 0 || static_cast<uint64>(qpi.invocationReward()) < locals.requiredAmount)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			output.returnCode = toReturnCode(EReturnCode::INVALID_TICKET_PRICE);
+			return;
+		}
+
+		while (locals.i < locals.effectiveTicketCount)
+		{
+			locals.offset = smul(locals.i, QTF_RANDOM_VALUES_COUNT);
+			locals.ticketValues.set(0, input.tickets.get(locals.offset));
+			locals.ticketValues.set(1, input.tickets.get(locals.offset + 1));
+			locals.ticketValues.set(2, input.tickets.get(locals.offset + 2));
+			locals.ticketValues.set(3, input.tickets.get(locals.offset + 3));
+			addPlayerInfo(state, qpi.invocator(), locals.ticketValues);
+			++locals.i;
+		}
+
+		if (qpi.invocationReward() > 0 && static_cast<uint64>(qpi.invocationReward()) > locals.requiredAmount)
+		{
+			locals.excess = static_cast<uint64>(qpi.invocationReward()) - locals.requiredAmount;
+			if (locals.excess > 0)
+			{
+				qpi.transfer(qpi.invocator(), locals.excess);
+			}
+		}
+
+		output.boughtTicketCount = static_cast<uint16>(locals.effectiveTicketCount);
+		output.returnCode =
+		    (locals.effectiveTicketCount < input.ticketCount) ? toReturnCode(EReturnCode::PARTIAL_PURCHASE) : toReturnCode(EReturnCode::SUCCESS);
+	}
+
 	// Core settlement pipeline for one epoch: fees, FR redirects, payouts, jackpot/reserve updates.
 	PRIVATE_PROCEDURE_WITH_LOCALS(SettleEpoch)
 	{
-		if (state.numberOfPlayers == 0)
+		if (state.get().numberOfPlayers == 0)
 		{
 			return;
 		}
 
 		locals.currentEpoch = qpi.epoch();
-		locals.revenue = smul(state.ticketPrice, state.numberOfPlayers);
+		locals.revenue = smul(state.get().ticketPrice, state.get().numberOfPlayers);
 		if (locals.revenue == 0)
 		{
 			CALL(ReturnAllTickets, locals.returnAllTicketsInput, locals.returnAllTicketsOutput);
@@ -1223,37 +1609,37 @@ private:
 		// FR detection and hysteresis logic.
 		// Update hysteresis counter BEFORE activation check so deactivation can occur
 		// immediately when reaching the threshold (3 consecutive rounds at/above target).
-		if (state.jackpot >= state.targetJackpot)
+		if (state.get().jackpot >= state.get().targetJackpot)
 		{
-			state.frRoundsAtOrAboveTarget = sadd(state.frRoundsAtOrAboveTarget, 1);
+			state.mut().frRoundsAtOrAboveTarget = sadd(state.get().frRoundsAtOrAboveTarget, 1);
 		}
 		else
 		{
-			state.frRoundsAtOrAboveTarget = 0;
+			state.mut().frRoundsAtOrAboveTarget = 0;
 		}
 
 		// FR Activation/Deactivation logic (deficit-driven, no hard N threshold)
 		// Activation: when carry < target AND within post-k4 window (adaptive)
 		// Deactivation (hysteresis): after carry >= target for 3+ rounds
-		locals.shouldActivateFR = (state.jackpot < state.targetJackpot) && (state.frRoundsSinceK4 < QTF_FR_POST_K4_WINDOW_ROUNDS);
+		locals.shouldActivateFR = (state.get().jackpot < state.get().targetJackpot) && (state.get().frRoundsSinceK4 < QTF_FR_POST_K4_WINDOW_ROUNDS);
 		if (locals.shouldActivateFR)
 		{
-			state.frActive = true;
+			state.mut().frActive = true;
 		}
-		else if (state.frRoundsSinceK4 >= QTF_FR_POST_K4_WINDOW_ROUNDS)
+		else if (state.get().frRoundsSinceK4 >= QTF_FR_POST_K4_WINDOW_ROUNDS)
 		{
 			// Outside post-k4 window: FR must be OFF.
-			state.frActive = false;
+			state.mut().frActive = false;
 		}
-		else if (state.frRoundsAtOrAboveTarget >= QTF_FR_HYSTERESIS_ROUNDS)
+		else if (state.get().frRoundsAtOrAboveTarget >= QTF_FR_HYSTERESIS_ROUNDS)
 		{
 			// Deactivate FR after target held for hysteresis rounds
-			state.frActive = false;
+			state.mut().frActive = false;
 		}
 
 		// Calculate prize pools using shared function (handles FR rake if active)
 		locals.calcPoolsInput.revenue = locals.revenue;
-		locals.calcPoolsInput.applyFRRake = state.frActive;
+		locals.calcPoolsInput.applyFRRake = state.get().frActive;
 		CALL(CalculatePrizePools, locals.calcPoolsInput, locals.calcPoolsOutput);
 
 		locals.winnersBlock = locals.calcPoolsOutput.winnersBlock;
@@ -1268,10 +1654,10 @@ private:
 		// Fast-Recovery (FR) mode: redirect portions of Dev/Distribution to jackpot with deficit-driven extra.
 		// Base redirect is always 1% Dev + 1% Dist when FR=ON.
 		// Extra redirect is calculated dynamically based on deficit, expected k4 timing, and ticket volume.
-		if (state.frActive)
+		if (state.get().frActive)
 		{
 			// Calculate deficit to target jackpot
-			locals.delta = (state.jackpot < state.targetJackpot) ? (state.targetJackpot - state.jackpot) : 0;
+			locals.delta = (state.get().jackpot < state.get().targetJackpot) ? (state.get().targetJackpot - state.get().jackpot) : 0;
 
 			// Estimate base gain from existing FR mechanisms (without extra)
 			locals.calcBaseGainInput.revenue = locals.revenue;
@@ -1279,7 +1665,7 @@ private:
 			CALL(CalculateBaseGain, locals.calcBaseGainInput, locals.calcBaseGainOutput);
 
 			// Calculate deficit-driven extra redirect in basis points
-			locals.calcExtraInput.N = state.numberOfPlayers;
+			locals.calcExtraInput.N = state.get().numberOfPlayers;
 			locals.calcExtraInput.delta = locals.delta;
 			locals.calcExtraInput.revenue = locals.revenue;
 			locals.calcExtraInput.baseGain = locals.calcBaseGainOutput.baseGain;
@@ -1332,9 +1718,9 @@ private:
 
 		// First pass: count matches and cache results for second pass
 		locals.i = 0;
-		while (locals.i < state.numberOfPlayers)
+		while (locals.i < state.get().numberOfPlayers)
 		{
-			locals.countMatchesInput.playerValues = state.players.get(locals.i).randomValues;
+			locals.countMatchesInput.playerValues = state.get().players.get(locals.i).randomValues;
 			locals.countMatchesInput.winningValues = locals.winningValues;
 			CALL(CountMatches, locals.countMatchesInput, locals.countMatchesOutput);
 
@@ -1365,35 +1751,35 @@ private:
 		// This guarantees that if QRP had >= targetJackpot before settlement, reseed can still reach target after payouts.
 		if (locals.countK4 > 0)
 		{
-			if (locals.totalQRPBalance > state.targetJackpot)
+			if (locals.totalQRPBalance > state.get().targetJackpot)
 			{
-				locals.totalQRPBalance -= state.targetJackpot;
+				locals.totalQRPBalance -= state.get().targetJackpot;
 			}
 			else
 			{
 				locals.totalQRPBalance = 0;
 			}
 		}
-		locals.perWinnerCap = smul(state.ticketPrice, QTF_TOPUP_PER_WINNER_CAP_MULT); // 25*P
+		locals.perWinnerCap = smul(state.get().ticketPrice, QTF_TOPUP_PER_WINNER_CAP_MULT); // 25*P
 
 		// Process k2 tier payout
-		locals.tierPayoutInput.floorPerWinner = div<uint64>(smul(state.ticketPrice, QTF_K2_FLOOR_MULT), QTF_K2_FLOOR_DIV);
+		locals.tierPayoutInput.floorPerWinner = div<uint64>(smul(state.get().ticketPrice, QTF_K2_FLOOR_MULT), QTF_K2_FLOOR_DIV);
 		locals.tierPayoutInput.winnerCount = locals.countK2;
 		locals.tierPayoutInput.payoutPool = locals.k2PayoutPool;
 		locals.tierPayoutInput.perWinnerCap = locals.perWinnerCap;
 		locals.tierPayoutInput.totalQRPBalance = locals.totalQRPBalance;
-		locals.tierPayoutInput.ticketPrice = state.ticketPrice;
+		locals.tierPayoutInput.ticketPrice = state.get().ticketPrice;
 		CALL(ProcessTierPayout, locals.tierPayoutInput, locals.tierPayoutOutput);
 		locals.k2PerWinner = locals.tierPayoutOutput.perWinnerPayout;
 		locals.winnersOverflow = sadd(locals.winnersOverflow, locals.tierPayoutOutput.overflow);
 
 		// Process k3 tier payout
-		locals.tierPayoutInput.floorPerWinner = smul(state.ticketPrice, QTF_K3_FLOOR_MULT);
+		locals.tierPayoutInput.floorPerWinner = smul(state.get().ticketPrice, QTF_K3_FLOOR_MULT);
 		locals.tierPayoutInput.winnerCount = locals.countK3;
 		locals.tierPayoutInput.payoutPool = locals.k3PayoutPool;
 		locals.tierPayoutInput.perWinnerCap = locals.perWinnerCap;
 		locals.tierPayoutInput.totalQRPBalance = locals.totalQRPBalance;
-		locals.tierPayoutInput.ticketPrice = state.ticketPrice;
+		locals.tierPayoutInput.ticketPrice = state.get().ticketPrice;
 		CALL(ProcessTierPayout, locals.tierPayoutInput, locals.tierPayoutOutput);
 		locals.k3PerWinner = locals.tierPayoutOutput.perWinnerPayout;
 		locals.winnersOverflow = sadd(locals.winnersOverflow, locals.tierPayoutOutput.overflow);
@@ -1404,59 +1790,66 @@ private:
 		locals.jackpotPerK4Winner = 0;
 		if (locals.countK4 > 0)
 		{
-			locals.jackpotPerK4Winner = div(state.jackpot, locals.countK4);
+			locals.jackpotPerK4Winner = div(state.get().jackpot, locals.countK4);
 		}
 
 		// Second pass: payout loop using cached match results (avoids redundant countMatches calls)
 		// (Optimization: reduces player iteration from 4 passes to 2 passes + eliminates duplicate countMatches)
 		locals.i = 0;
-		while (locals.i < state.numberOfPlayers)
+		while (locals.i < state.get().numberOfPlayers)
 		{
 			locals.matches = locals.cachedMatches.get(locals.i); // Use cached result
 
 			// k2 payout
 			if (locals.matches == 2 && locals.countK2 > 0 && locals.k2PerWinner > 0)
 			{
-				qpi.transfer(state.players.get(locals.i).player, locals.k2PerWinner);
-				fillWinnerData(state, state.players.get(locals.i), locals.winningValues, locals.currentEpoch);
+				qpi.transfer(state.get().players.get(locals.i).player, locals.k2PerWinner);
+				locals.winnerPlayerData.addPlayerData(state.get().players.get(locals.i));
+				locals.winnerPlayerData.wonAmount = static_cast<uint32>(locals.k2PerWinner);
+				fillWinnerData(state, locals.winnerPlayerData, locals.winningValues, locals.currentEpoch);
 			}
 			// k3 payout
 			if (locals.matches == 3 && locals.countK3 > 0 && locals.k3PerWinner > 0)
 			{
-				qpi.transfer(state.players.get(locals.i).player, locals.k3PerWinner);
-				fillWinnerData(state, state.players.get(locals.i), locals.winningValues, locals.currentEpoch);
+				qpi.transfer(state.get().players.get(locals.i).player, locals.k3PerWinner);
+				locals.winnerPlayerData.addPlayerData(state.get().players.get(locals.i));
+				locals.winnerPlayerData.wonAmount = static_cast<uint32>(locals.k3PerWinner);
+				fillWinnerData(state, locals.winnerPlayerData, locals.winningValues, locals.currentEpoch);
 			}
 			// k4 payout (jackpot)
 			if (locals.matches == 4 && locals.countK4 > 0)
 			{
 				if (locals.jackpotPerK4Winner > 0)
 				{
-					qpi.transfer(state.players.get(locals.i).player, locals.jackpotPerK4Winner);
+					qpi.transfer(state.get().players.get(locals.i).player, locals.jackpotPerK4Winner);
 				}
-				fillWinnerData(state, state.players.get(locals.i), locals.winningValues, locals.currentEpoch);
+				locals.winnerPlayerData.addPlayerData(state.get().players.get(locals.i));
+				locals.winnerPlayerData.wonAmount = static_cast<uint32>(locals.jackpotPerK4Winner);
+				fillWinnerData(state, locals.winnerPlayerData, locals.winningValues, locals.currentEpoch);
 			}
 
 			++locals.i;
 		}
 
 		// Always save winning values and epoch, even if no winners
-		state.lastWinnerData.winnerValues = locals.winningValues;
-		state.lastWinnerData.epoch = locals.currentEpoch;
+		state.mut().lastWinnerData.winnerValues = locals.winningValues;
+		state.mut().lastWinnerData.epoch = locals.currentEpoch;
+		addWinningCombinationToHistory(state, locals.winningValues);
 
 		// Post-jackpot (k4) logic: reset counters and reseed if jackpot was hit
 		if (locals.countK4 > 0)
 		{
 			// Jackpot was paid out in combined loop above, now deplete it
-			state.jackpot = 0;
+			state.mut().jackpot = 0;
 
 			// Reset FR counters after jackpot hit
-			state.frRoundsSinceK4 = 0;
-			state.frRoundsAtOrAboveTarget = 0;
+			state.mut().frRoundsSinceK4 = 0;
+			state.mut().frRoundsAtOrAboveTarget = 0;
 
 			// Reseed jackpot from QReservePool (up to targetJackpot or available reserve)
 			// Re-query available reserve because k2/k3 top-ups may have reduced it.
 			CALL_OTHER_CONTRACT_FUNCTION(QRP, GetAvailableReserve, locals.qrpGetAvailableInput, locals.qrpGetAvailableOutput);
-			locals.qrpRequested = RL::min(locals.qrpGetAvailableOutput.availableReserve, state.targetJackpot);
+			locals.qrpRequested = RL::min(locals.qrpGetAvailableOutput.availableReserve, state.get().targetJackpot);
 			if (locals.qrpRequested > 0)
 			{
 				locals.qrpGetReserveInput.revenue = locals.qrpRequested;
@@ -1465,14 +1858,14 @@ private:
 				if (locals.qrpGetReserveOutput.returnCode == QRP::toReturnCode(QRP::EReturnCode::SUCCESS))
 				{
 					locals.qrpReceived = locals.qrpGetReserveOutput.allocatedRevenue;
-					state.jackpot = sadd(state.jackpot, locals.qrpReceived);
+					state.mut().jackpot = sadd(state.get().jackpot, locals.qrpReceived);
 				}
 			}
 		}
 		else
 		{
 			// No jackpot hit: increment rounds counter for FR post-k4 window tracking
-			++state.frRoundsSinceK4;
+			state.mut().frRoundsSinceK4++;
 		}
 
 		// Overflow split: unawarded tier funds split between reserve and jackpot.
@@ -1480,20 +1873,20 @@ private:
 		// Baseline mode: 50/50 split (alpha=0.50)
 		if (locals.winnersOverflow > 0)
 		{
-			if (state.frActive)
+			if (state.get().frActive)
 			{
 				locals.reserveAdd = div<uint64>(smul(locals.winnersOverflow, QTF_FR_ALPHA_BP), 10000);
 			}
 			else
 			{
-				locals.reserveAdd = div<uint64>(smul(locals.winnersOverflow, state.overflowAlphaBP), 10000);
+				locals.reserveAdd = div<uint64>(smul(locals.winnersOverflow, state.get().overflowAlphaBP), 10000);
 			}
 			locals.carryAdd = sadd(locals.carryAdd, (locals.winnersOverflow - locals.reserveAdd));
 		}
 
 		// Add all jackpot contributions: overflow carryAdd + FR redirects (if active)
 		locals.totalJackpotContribution = sadd(locals.carryAdd, sadd(locals.devRedirect, locals.distRedirect));
-		state.jackpot = sadd(state.jackpot, locals.totalJackpotContribution);
+		state.mut().jackpot = sadd(state.get().jackpot, locals.totalJackpotContribution);
 
 		// Transfer reserve overflow to QReservePool
 		if (locals.reserveAdd > 0)
@@ -1503,7 +1896,7 @@ private:
 
 		if (locals.devPayout > 0)
 		{
-			qpi.transfer(state.teamAddress, locals.devPayout);
+			qpi.transfer(state.get().teamAddress, locals.devPayout);
 		}
 		// Manual dividend payout to RL shareholders (no extra fee).
 		if (locals.distPayout > 0)
@@ -1555,9 +1948,9 @@ private:
 	PRIVATE_PROCEDURE_WITH_LOCALS(ReturnAllTickets)
 	{
 		// Refund ticket price to each player
-		for (locals.i = 0; locals.i < state.numberOfPlayers; ++locals.i)
+		for (locals.i = 0; locals.i < state.get().numberOfPlayers; ++locals.i)
 		{
-			qpi.transfer(state.players.get(locals.i).player, state.ticketPrice);
+			qpi.transfer(state.get().players.get(locals.i).player, state.get().ticketPrice);
 		}
 	}
 
@@ -1597,7 +1990,7 @@ private:
 	PRIVATE_FUNCTION_WITH_LOCALS(CheckContractBalance)
 	{
 		qpi.getEntity(SELF, locals.entity);
-		output.actualBalance = RL::max(locals.entity.incomingAmount - locals.entity.outgoingAmount, 0i64);
+		output.actualBalance = RL::max(locals.entity.incomingAmount - locals.entity.outgoingAmount, 0LL);
 		output.hasEnough = (output.actualBalance >= input.expectedRevenue);
 	}
 
@@ -1756,6 +2149,77 @@ private:
 				return;
 			}
 			locals.seen.add(locals.value);
+		}
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(CollectSelectionNumbers)
+	{
+		output.isValid = true;
+		for (locals.idx = 0; locals.idx < input.numbers.capacity(); ++locals.idx)
+		{
+			locals.value = input.numbers.get(locals.idx);
+			if (locals.value == 0)
+			{
+				continue;
+			}
+			if (locals.value > QTF_MAX_RANDOM_VALUE)
+			{
+				output.isValid = false;
+				return;
+			}
+			if ((locals.mask & (1u << locals.value)) != 0)
+			{
+				output.isValid = false;
+				return;
+			}
+			locals.mask |= (1u << locals.value);
+		}
+
+		// Get Sorted Unique Values from Mask
+		for (locals.outValue = 1; locals.outValue <= QTF_MAX_RANDOM_VALUE; ++locals.outValue)
+		{
+			if ((locals.mask & (1u << locals.outValue)) != 0)
+			{
+				output.normalizedNumbers.set(output.numberCount, locals.outValue);
+				++output.numberCount;
+			}
+		}
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(BuildSelectionTickets)
+	{
+		while (locals.i + 3 < input.numberCount)
+		{
+			locals.j = locals.i + 1;
+			while (locals.j + 2 < input.numberCount)
+			{
+				locals.k = locals.j + 1;
+				while (locals.k + 1 < input.numberCount)
+				{
+					locals.l = locals.k + 1;
+					while (locals.l < input.numberCount)
+					{
+						locals.ticketValues.set(0, input.normalizedNumbers.get(locals.i));
+						locals.ticketValues.set(1, input.normalizedNumbers.get(locals.j));
+						locals.ticketValues.set(2, input.normalizedNumbers.get(locals.k));
+						locals.ticketValues.set(3, input.normalizedNumbers.get(locals.l));
+						locals.preparedOffset = smul(output.preparedTickets.ticketCount, QTF_RANDOM_VALUES_COUNT);
+						output.preparedTickets.tickets.set(locals.preparedOffset, locals.ticketValues.get(0));
+						output.preparedTickets.tickets.set(locals.preparedOffset + 1, locals.ticketValues.get(1));
+						output.preparedTickets.tickets.set(locals.preparedOffset + 2, locals.ticketValues.get(2));
+						output.preparedTickets.tickets.set(locals.preparedOffset + 3, locals.ticketValues.get(3));
+						++output.preparedTickets.ticketCount;
+						if (output.preparedTickets.ticketCount >= QTF_MAX_BATCH_TICKETS)
+						{
+							return;
+						}
+						++locals.l;
+					}
+					++locals.k;
+				}
+				++locals.j;
+			}
+			++locals.i;
 		}
 	}
 

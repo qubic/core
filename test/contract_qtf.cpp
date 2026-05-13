@@ -1,7 +1,6 @@
 #define NO_UEFI
 
 #include "contract_testing.h"
-
 #include <algorithm>
 #include <set>
 #include <vector>
@@ -12,6 +11,9 @@ constexpr uint16 QTF_PROCEDURE_SET_PRICE = 2;
 constexpr uint16 QTF_PROCEDURE_SET_SCHEDULE = 3;
 constexpr uint16 QTF_PROCEDURE_SET_TARGET_JACKPOT = 4;
 constexpr uint16 QTF_PROCEDURE_SET_DRAW_HOUR = 5;
+constexpr uint16 QTF_PROCEDURE_SYNC_JACKPOT = 6;
+constexpr uint16 QTF_PROCEDURE_BUY_TICKETS_BATCH = 7;
+constexpr uint16 QTF_PROCEDURE_BUY_TICKETS_BY_SELECTION = 8;
 
 constexpr uint16 QTF_FUNCTION_GET_TICKET_PRICE = 1;
 constexpr uint16 QTF_FUNCTION_GET_NEXT_EPOCH_DATA = 2;
@@ -22,6 +24,8 @@ constexpr uint16 QTF_FUNCTION_GET_DRAW_HOUR = 6;
 constexpr uint16 QTF_FUNCTION_GET_STATE = 7;
 constexpr uint16 QTF_FUNCTION_GET_FEES = 8;
 constexpr uint16 QTF_FUNCTION_ESTIMATE_PRIZE_PAYOUTS = 9;
+constexpr uint16 QTF_FUNCTION_GET_PLAYERS = 10;
+constexpr uint16 QTF_FUNCTION_GET_WINNING_COMBINATIONS_HISTORY = 11;
 
 using QTFRandomValues = Array<uint8, QTF_RANDOM_VALUES_COUNT>;
 
@@ -51,6 +55,19 @@ namespace
 		return memcmp(&a, &b, sizeof(a)) == 0;
 	}
 
+	static bool isEmptyRandomValues(const QTFRandomValues& randomValues)
+	{
+		for (uint64 i = 0; i < randomValues.capacity(); ++i)
+		{
+			if (randomValues.get(i) != 0)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 	static void expectWinnerValuesValidAndUnique(const QTF::GetWinnerData_output& winnerData)
 	{
 		std::set<uint8> unique;
@@ -71,14 +88,76 @@ namespace
 		k2Pool = (winnersBlock * QTF_BASE_K2_SHARE_BP) / 10000ULL;
 		k3Pool = (winnersBlock * QTF_BASE_K3_SHARE_BP) / 10000ULL;
 	}
+
+	static Array<uint8, QTF_MAX_RANDOM_VALUE + 2> makeSelectionInput(std::initializer_list<uint8> values)
+	{
+		Array<uint8, QTF_MAX_RANDOM_VALUE + 2> numbers{};
+		uint64 index = 0;
+		for (const uint8& value : values)
+		{
+			numbers.set(index++, value);
+		}
+		return numbers;
+	}
+
+	static QTF::BuyPreparedTickets_input makePreparedTicketsInput(std::initializer_list<QTFRandomValues> tickets)
+	{
+		QTF::BuyPreparedTickets_input input{};
+		uint64 ticketIndex = 0;
+		for (const auto& ticket : tickets)
+		{
+			const uint64 offset = ticketIndex * QTF_RANDOM_VALUES_COUNT;
+			for (uint64 i = 0; i < QTF_RANDOM_VALUES_COUNT; ++i)
+			{
+				input.tickets.set(offset + i, ticket.get(i));
+			}
+			++ticketIndex;
+		}
+		input.ticketCount = ticketIndex;
+		return input;
+	}
+
+	static QTF::BuyTicketsBatch_input makeBatchTicketsInput(std::initializer_list<QTFRandomValues> tickets)
+	{
+		QTF::BuyTicketsBatch_input input{};
+		uint64 ticketIndex = 0;
+		for (const auto& ticket : tickets)
+		{
+			const uint64 offset = ticketIndex * QTF_RANDOM_VALUES_COUNT;
+			for (uint64 i = 0; i < QTF_RANDOM_VALUES_COUNT; ++i)
+			{
+				input.tickets.set(offset + i, ticket.get(i));
+			}
+			++ticketIndex;
+		}
+		return input;
+	}
+
+	static uint64 combinations4(uint64 numberCount)
+	{
+		if (numberCount < QTF_RANDOM_VALUES_COUNT)
+		{
+			return 0;
+		}
+		return (numberCount * (numberCount - 1) * (numberCount - 2) * (numberCount - 3)) / 24ULL;
+	}
 } // namespace
 
 constexpr uint8 QTF_ANY_DAY_SCHEDULE = 0xFF;
 
 // Test helper class exposing internal state
-class QTFChecker : public QTF
+class QTFChecker : public QTF, public QTF::StateData
 {
 public:
+	const QPI::ContractState<StateData, QTF_CONTRACT_INDEX>& asState() const
+	{
+		return *reinterpret_cast<const QPI::ContractState<StateData, QTF_CONTRACT_INDEX>*>(static_cast<const StateData*>(this));
+	}
+	QPI::ContractState<StateData, QTF_CONTRACT_INDEX>& asMutState()
+	{
+		return *reinterpret_cast<QPI::ContractState<StateData, QTF_CONTRACT_INDEX>*>(static_cast<StateData*>(this));
+	}
+
 	uint64 getNumberOfPlayers() const { return numberOfPlayers; }
 	uint64 getTicketPriceInternal() const { return ticketPrice; }
 	uint64 getJackpot() const { return jackpot; }
@@ -87,8 +166,10 @@ public:
 	bool getFrActive() const { return frActive; }
 	uint32 getFrRoundsSinceK4() const { return frRoundsSinceK4; }
 	uint32 getFrRoundsAtOrAboveTarget() const { return frRoundsAtOrAboveTarget; }
+	uint64 getWinningCombinationsWriteIndex() const { return winningCombinationsCount; }
 	const id& team() const { return teamAddress; }
 
+	void setNumberOfPlayers(uint64 newCount) { numberOfPlayers = newCount; }
 	void setScheduleMask(uint8 newMask) { schedule = newMask; }
 	void setJackpot(uint64 value) { jackpot = value; }
 	void setTargetJackpotInternal(uint64 value) { targetJackpot = value; }
@@ -109,7 +190,7 @@ public:
 		ValidateNumbers_locals locals{};
 
 		input.numbers = numbers;
-		ValidateNumbers(qpi, *this, input, output, locals);
+		ValidateNumbers(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -120,7 +201,7 @@ public:
 		GetRandomValues_locals locals{};
 
 		input.seed = seed;
-		GetRandomValues(qpi, *this, input, output, locals);
+		GetRandomValues(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -133,7 +214,7 @@ public:
 
 		input.playerValues = playerValues;
 		input.winningValues = winningValues;
-		CountMatches(qpi, *this, input, output, locals);
+		CountMatches(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -144,7 +225,7 @@ public:
 		CheckContractBalance_locals locals{};
 
 		input.expectedRevenue = expectedRevenue;
-		CheckContractBalance(qpi, *this, input, output, locals);
+		CheckContractBalance(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -156,7 +237,7 @@ public:
 
 		input.base = base;
 		input.exp = exp;
-		PowerFixedPoint(qpi, *this, input, output, locals);
+		PowerFixedPoint(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -167,7 +248,7 @@ public:
 		CalculateExpectedRoundsToK4_locals locals{};
 
 		input.N = N;
-		CalculateExpectedRoundsToK4(qpi, *this, input, output, locals);
+		CalculateExpectedRoundsToK4(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -182,7 +263,7 @@ public:
 		input.needed = needed;
 		input.perWinnerCapTotal = perWinnerCapTotal;
 		input.ticketPrice = ticketPrice;
-		CalcReserveTopUp(qpi, *this, input, output, locals);
+		CalcReserveTopUp(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -194,7 +275,7 @@ public:
 
 		input.revenue = revenue;
 		input.applyFRRake = applyFRRake;
-		CalculatePrizePools(qpi, *this, input, output, locals);
+		CalculatePrizePools(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -206,7 +287,7 @@ public:
 
 		input.revenue = revenue;
 		input.winnersBlock = winnersBlock;
-		CalculateBaseGain(qpi, *this, input, output, locals);
+		CalculateBaseGain(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -221,7 +302,7 @@ public:
 		input.delta = delta;
 		input.revenue = revenue;
 		input.baseGain = baseGain;
-		CalculateExtraRedirectBP(qpi, *this, input, output, locals);
+		CalculateExtraRedirectBP(qpi, asState(), input, output, locals);
 		return output;
 	}
 
@@ -231,7 +312,7 @@ public:
 		ReturnAllTickets_output output{};
 		ReturnAllTickets_locals locals{};
 
-		ReturnAllTickets(qpi, *this, input, output, locals);
+		ReturnAllTickets(qpi, asMutState(), input, output, locals);
 	}
 
 	ProcessTierPayout_output callProcessTierPayout(const QPI::QpiContextProcedureCall& qpi, uint64 floorPerWinner, uint64 winnerCount,
@@ -247,7 +328,44 @@ public:
 		input.perWinnerCap = perWinnerCap;
 		input.totalQRPBalance = totalQRPBalance;
 		input.ticketPrice = ticketPrice;
-		ProcessTierPayout(qpi, *this, input, output, locals);
+		ProcessTierPayout(qpi, asMutState(), input, output, locals);
+		return output;
+	}
+
+	bool callIsEmptyTicket(const QTFRandomValues& ticketValues) const { return isEmptyTicket(ticketValues); }
+
+	CollectSelectionNumbers_output callCollectSelectionNumbers(const QPI::QpiContextFunctionCall& qpi,
+	                                                           const Array<uint8, QTF_MAX_RANDOM_VALUE + 2>& numbers) const
+	{
+		CollectSelectionNumbers_input input{};
+		CollectSelectionNumbers_output output{};
+		CollectSelectionNumbers_locals locals{};
+
+		input.numbers = numbers;
+		CollectSelectionNumbers(qpi, asState(), input, output, locals);
+		return output;
+	}
+
+	BuildSelectionTickets_output callBuildSelectionTickets(const QPI::QpiContextFunctionCall& qpi,
+	                                                       const Array<uint8, QTF_MAX_RANDOM_VALUE + 2>& normalizedNumbers, uint8 numberCount) const
+	{
+		BuildSelectionTickets_input input{};
+		BuildSelectionTickets_output output{};
+		BuildSelectionTickets_locals locals{};
+
+		input.normalizedNumbers = normalizedNumbers;
+		input.numberCount = numberCount;
+		BuildSelectionTickets(qpi, asState(), input, output, locals);
+		return output;
+	}
+
+	BuyPreparedTickets_output callBuyPreparedTickets(const QPI::QpiContextProcedureCall& qpi, BuyPreparedTickets_input input)
+	{
+		BuyPreparedTickets_output output{};
+		BuyPreparedTickets_locals locals{};
+		BuyPreparedTickets_input mutableInput = input;
+
+		BuyPreparedTickets(qpi, asMutState(), mutableInput, output, locals);
 		return output;
 	}
 };
@@ -354,6 +472,22 @@ public:
 		return output;
 	}
 
+	QTF::GetPlayers_output getPlayers()
+	{
+		QTF::GetPlayers_input input{};
+		QTF::GetPlayers_output output{};
+		callFunction(QTF_CONTRACT_INDEX, QTF_FUNCTION_GET_PLAYERS, input, output);
+		return output;
+	}
+
+	QTF::GetWinningCombinationsHistory_output getWinningCombinationsHistory()
+	{
+		QTF::GetWinningCombinationsHistory_input input{};
+		QTF::GetWinningCombinationsHistory_output output{};
+		callFunction(QTF_CONTRACT_INDEX, QTF_FUNCTION_GET_WINNING_COMBINATIONS_HISTORY, input, output);
+		return output;
+	}
+
 	// Procedure wrappers
 	QTF::BuyTicket_output buyTicket(const id& user, uint64 reward, const QTFRandomValues& numbers)
 	{
@@ -409,6 +543,39 @@ public:
 		input.newDrawHour = newHour;
 		QTF::SetDrawHour_output output{};
 		if (!invokeUserProcedure(QTF_CONTRACT_INDEX, QTF_PROCEDURE_SET_DRAW_HOUR, input, output, invocator, 0))
+		{
+			output.returnCode = static_cast<uint8>(QTF::EReturnCode::MAX_VALUE);
+		}
+		return output;
+	}
+
+	QTF::SyncJackpot_output syncJackpot(const id& invocator)
+	{
+		QTF::SyncJackpot_input input{};
+		QTF::SyncJackpot_output output{};
+		if (!invokeUserProcedure(QTF_CONTRACT_INDEX, QTF_PROCEDURE_SYNC_JACKPOT, input, output, invocator, 0))
+		{
+			output.returnCode = static_cast<uint8>(QTF::EReturnCode::MAX_VALUE);
+		}
+		return output;
+	}
+
+	QTF::BuyTicketsBatch_output buyTicketsBatch(const id& user, uint64 reward, const QTF::BuyTicketsBatch_input& input)
+	{
+		QTF::BuyTicketsBatch_output output{};
+		if (!invokeUserProcedure(QTF_CONTRACT_INDEX, QTF_PROCEDURE_BUY_TICKETS_BATCH, input, output, user, reward))
+		{
+			output.returnCode = static_cast<uint8>(QTF::EReturnCode::MAX_VALUE);
+		}
+		return output;
+	}
+
+	QTF::BuyTicketsBySelection_output buyTicketsBySelection(const id& user, uint64 reward, const Array<uint8, QTF_MAX_RANDOM_VALUE + 2>& numbers)
+	{
+		QTF::BuyTicketsBySelection_input input{};
+		input.numbers = numbers;
+		QTF::BuyTicketsBySelection_output output{};
+		if (!invokeUserProcedure(QTF_CONTRACT_INDEX, QTF_PROCEDURE_BUY_TICKETS_BY_SELECTION, input, output, user, reward))
 		{
 			output.returnCode = static_cast<uint8>(QTF::EReturnCode::MAX_VALUE);
 		}
@@ -553,9 +720,8 @@ public:
 
 	WinningAndLosing computeWinningAndLosing(const m256i& digest)
 	{
-		WinningAndLosing out;
-		out.winning = computeWinningNumbersForDigest(digest);
-		out.losing = makeLosingNumbers(out.winning);
+		WinningAndLosing out = {computeWinningNumbersForDigest(digest), makeLosingNumbers(out.winning)};
+
 		return out;
 	}
 
@@ -586,7 +752,7 @@ public:
 			isWinning[v] = true;
 		}
 
-		QTFRandomValues ticket;
+		QTFRandomValues ticket{};
 		uint64 outIndex = 0;
 
 		// Take `matchCount` winning numbers as the matches (variant-dependent, wrap around 4).
@@ -676,6 +842,126 @@ TEST(ContractQThirtyFour_Private, ValidateNumbers_WorksForValidDuplicateAndRange
 	QTFRandomValues outOfRange = ctl.makeValidNumbers(1, 2, 3, 4);
 	outOfRange.set(2, 31);
 	EXPECT_FALSE(ctl.state()->callValidateNumbers(qpi, outOfRange).isValid);
+}
+
+TEST(ContractQThirtyFour_Private, IsEmptyTicket_ReturnsTrueOnlyForAllZeroTicket)
+{
+	ContractTestingQTF ctl;
+
+	static const QTFRandomValues empty{};
+	EXPECT_TRUE(ctl.state()->callIsEmptyTicket(empty));
+
+	QTFRandomValues partiallyFilled{};
+	partiallyFilled.set(2, 17);
+	EXPECT_FALSE(ctl.state()->callIsEmptyTicket(partiallyFilled));
+
+	const QTFRandomValues valid = ctl.makeValidNumbers(1, 2, 3, 4);
+	EXPECT_FALSE(ctl.state()->callIsEmptyTicket(valid));
+}
+
+TEST(ContractQThirtyFour_Private, CollectSelectionNumbers_NormalizesZerosAndRejectsInvalidInput)
+{
+	ContractTestingQTF ctl;
+
+	QpiContextUserFunctionCall qpi(QTF_CONTRACT_INDEX);
+	primeQpiFunctionContext(qpi);
+
+	{
+		const auto out = ctl.state()->callCollectSelectionNumbers(qpi, makeSelectionInput({7, 0, 3, 9, 1}));
+		EXPECT_TRUE(out.isValid);
+		EXPECT_EQ(out.numberCount, 4u);
+		EXPECT_EQ(out.normalizedNumbers.get(0), 1u);
+		EXPECT_EQ(out.normalizedNumbers.get(1), 3u);
+		EXPECT_EQ(out.normalizedNumbers.get(2), 7u);
+		EXPECT_EQ(out.normalizedNumbers.get(3), 9u);
+	}
+
+	{
+		const auto out = ctl.state()->callCollectSelectionNumbers(qpi, makeSelectionInput({0, 0, 0}));
+		EXPECT_TRUE(out.isValid);
+		EXPECT_EQ(out.numberCount, 0u);
+	}
+
+	{
+		const auto out = ctl.state()->callCollectSelectionNumbers(qpi, makeSelectionInput({4, 0, 4}));
+		EXPECT_FALSE(out.isValid);
+	}
+
+	{
+		const auto out = ctl.state()->callCollectSelectionNumbers(qpi, makeSelectionInput({1, 2, 31}));
+		EXPECT_FALSE(out.isValid);
+	}
+}
+
+TEST(ContractQThirtyFour_Private, BuildSelectionTickets_GeneratesCombinationsAndClipsToBatchLimit)
+{
+	ContractTestingQTF ctl;
+
+	QpiContextUserFunctionCall qpi(QTF_CONTRACT_INDEX);
+	primeQpiFunctionContext(qpi);
+
+	{
+		const QTF::BuildSelectionTickets_output& out = ctl.state()->callBuildSelectionTickets(qpi, makeSelectionInput({1, 2, 3}), 3);
+		EXPECT_EQ(out.preparedTickets.ticketCount, 0u);
+	}
+
+	{
+		const QTF::BuildSelectionTickets_output& out = ctl.state()->callBuildSelectionTickets(qpi, makeSelectionInput({1, 2, 3, 4, 5}), 5);
+		EXPECT_EQ(out.preparedTickets.ticketCount, 5u);
+
+		const QTFRandomValues expected[] = {
+		    ctl.makeValidNumbers(1, 2, 3, 4), ctl.makeValidNumbers(1, 2, 3, 5), ctl.makeValidNumbers(1, 2, 4, 5),
+		    ctl.makeValidNumbers(1, 3, 4, 5), ctl.makeValidNumbers(2, 3, 4, 5),
+		};
+
+		for (uint64 ticketIndex = 0; ticketIndex < 5; ++ticketIndex)
+		{
+			const uint64 offset = ticketIndex * QTF_RANDOM_VALUES_COUNT;
+			for (uint64 valueIndex = 0; valueIndex < QTF_RANDOM_VALUES_COUNT; ++valueIndex)
+			{
+				EXPECT_EQ(out.preparedTickets.tickets.get(offset + valueIndex), expected[ticketIndex].get(valueIndex));
+			}
+		}
+	}
+
+	{
+		Array<uint8, QTF_MAX_RANDOM_VALUE + 2> numbers{};
+		for (uint8 value = 1; value <= 11; ++value)
+		{
+			numbers.set(value - 1, value);
+		}
+
+		const QTF::BuildSelectionTickets_output& out = ctl.state()->callBuildSelectionTickets(qpi, numbers, 11);
+		EXPECT_EQ(out.preparedTickets.ticketCount, QTF_MAX_BATCH_TICKETS);
+
+		std::set<uint32> uniqueTickets;
+		for (uint64 ticketIndex = 0; ticketIndex < out.preparedTickets.ticketCount; ++ticketIndex)
+		{
+			const uint64 offset = ticketIndex * QTF_RANDOM_VALUES_COUNT;
+			const uint8 a = out.preparedTickets.tickets.get(offset);
+			const uint8 b = out.preparedTickets.tickets.get(offset + 1);
+			const uint8 c = out.preparedTickets.tickets.get(offset + 2);
+			const uint8 d = out.preparedTickets.tickets.get(offset + 3);
+
+			EXPECT_GE(a, 1u);
+			EXPECT_LE(d, 11u);
+			EXPECT_LT(a, b);
+			EXPECT_LT(b, c);
+			EXPECT_LT(c, d);
+
+			QTFRandomValues generatedTicket{};
+			generatedTicket.set(0, a);
+			generatedTicket.set(1, b);
+			generatedTicket.set(2, c);
+			generatedTicket.set(3, d);
+			EXPECT_TRUE(ctl.state()->callValidateNumbers(qpi, generatedTicket).isValid);
+
+			const uint32 packedTicket =
+			    static_cast<uint32>(a) | (static_cast<uint32>(b) << 8) | (static_cast<uint32>(c) << 16) | (static_cast<uint32>(d) << 24);
+			EXPECT_TRUE(uniqueTickets.insert(packedTicket).second);
+		}
+		EXPECT_EQ(uniqueTickets.size(), static_cast<size_t>(QTF_MAX_BATCH_TICKETS));
+	}
 }
 
 TEST(ContractQThirtyFour_Private, GetRandomValues_IsDeterministicAndUniqueInRange)
@@ -945,6 +1231,128 @@ TEST(ContractQThirtyFour_Private, ReturnAllTickets_RefundsEachPlayerAndClearsVia
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0ULL);
 }
 
+TEST(ContractQThirtyFour_Private, BuyPreparedTickets_RejectsClosedEmptyFullAndInvalidPrice)
+{
+	ContractTestingQTF ctl;
+	const id user = id::randomValue();
+
+	const auto oneTicket = makePreparedTicketsInput({ctl.makeValidNumbers(1, 2, 3, 4)});
+
+	{
+		QpiContextUserProcedureCall qpi(QTF_CONTRACT_INDEX, user, ctl.state()->getTicketPriceInternal());
+		primeQpiProcedureContext(qpi, static_cast<uint8>(ctl.state()->getDrawHourInternal()));
+
+		increaseEnergy(ctl.qtfSelf(), ctl.state()->getTicketPriceInternal());
+		const uint64 userBefore = getBalance(user);
+		const auto out = ctl.state()->callBuyPreparedTickets(qpi, oneTicket);
+		EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::TICKET_SELLING_CLOSED));
+		EXPECT_EQ(getBalance(user), userBefore + ctl.state()->getTicketPriceInternal());
+		EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+	}
+
+	ctl.startAnyDayEpoch();
+
+	{
+		QpiContextUserProcedureCall qpi(QTF_CONTRACT_INDEX, user, ctl.state()->getTicketPriceInternal());
+		primeQpiProcedureContext(qpi, static_cast<uint8>(ctl.state()->getDrawHourInternal()));
+
+		increaseEnergy(ctl.qtfSelf(), ctl.state()->getTicketPriceInternal());
+		const uint64 userBefore = getBalance(user);
+		QTF::BuyPreparedTickets_input emptyInput{};
+		const auto out = ctl.state()->callBuyPreparedTickets(qpi, emptyInput);
+		EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_NUMBERS));
+		EXPECT_EQ(getBalance(user), userBefore + ctl.state()->getTicketPriceInternal());
+		EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+	}
+
+	for (uint64 i = 0; i < QTF_MAX_NUMBER_OF_PLAYERS; ++i)
+	{
+		ctl.addPlayerDirect(id::randomValue(), ctl.makeValidNumbers(1, 2, 3, 4));
+	}
+
+	{
+		QpiContextUserProcedureCall qpi(QTF_CONTRACT_INDEX, user, ctl.state()->getTicketPriceInternal());
+		primeQpiProcedureContext(qpi, static_cast<uint8>(ctl.state()->getDrawHourInternal()));
+
+		increaseEnergy(ctl.qtfSelf(), ctl.state()->getTicketPriceInternal());
+		const uint64 userBefore = getBalance(user);
+		const auto out = ctl.state()->callBuyPreparedTickets(qpi, oneTicket);
+		EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::MAX_PLAYERS_REACHED));
+		EXPECT_EQ(getBalance(user), userBefore + ctl.state()->getTicketPriceInternal());
+		EXPECT_EQ(ctl.state()->getNumberOfPlayers(), QTF_MAX_NUMBER_OF_PLAYERS);
+	}
+
+	ctl.state()->setNumberOfPlayers(0);
+	ctl.state()->setTicketPriceInternal(static_cast<uint64>(INT64_MAX));
+
+	{
+		const uint64 reward = 1;
+		QpiContextUserProcedureCall qpi(QTF_CONTRACT_INDEX, user, reward);
+		primeQpiProcedureContext(qpi, static_cast<uint8>(ctl.state()->getDrawHourInternal()));
+
+		increaseEnergy(ctl.qtfSelf(), reward);
+		const uint64 userBefore = getBalance(user);
+		const auto out = ctl.state()->callBuyPreparedTickets(qpi, makePreparedTicketsInput({
+		                                                              ctl.makeValidNumbers(1, 2, 3, 4),
+		                                                              ctl.makeValidNumbers(5, 6, 7, 8),
+		                                                          }));
+		EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_TICKET_PRICE));
+		EXPECT_EQ(getBalance(user), userBefore + reward);
+		EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+	}
+}
+
+TEST(ContractQThirtyFour_Private, BuyPreparedTickets_SucceedsRefundsExcessAndSupportsPartialPurchase)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	const auto twoTickets = makePreparedTicketsInput({
+	    ctl.makeValidNumbers(1, 2, 3, 4),
+	    ctl.makeValidNumbers(5, 6, 7, 8),
+	});
+
+	{
+		const uint64 reward = ticketPrice * 3;
+		QpiContextUserProcedureCall qpi(QTF_CONTRACT_INDEX, user, reward);
+		primeQpiProcedureContext(qpi, static_cast<uint8>(ctl.state()->getDrawHourInternal()));
+
+		increaseEnergy(ctl.qtfSelf(), reward);
+		const uint64 userBefore = getBalance(user);
+		const auto out = ctl.state()->callBuyPreparedTickets(qpi, twoTickets);
+
+		EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
+		EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 2u);
+		EXPECT_EQ(getBalance(user), userBefore + ticketPrice);
+		EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 2u);
+		EXPECT_TRUE(valuesEqual(ctl.state()->getPlayer(0).randomValues, ctl.makeValidNumbers(1, 2, 3, 4)));
+		EXPECT_TRUE(valuesEqual(ctl.state()->getPlayer(1).randomValues, ctl.makeValidNumbers(5, 6, 7, 8)));
+	}
+
+	while (ctl.state()->getNumberOfPlayers() < QTF_MAX_NUMBER_OF_PLAYERS - 1)
+	{
+		ctl.addPlayerDirect(id::randomValue(), ctl.makeValidNumbers(9, 10, 11, 12));
+	}
+
+	{
+		const uint64 reward = ticketPrice * 2;
+		QpiContextUserProcedureCall qpi(QTF_CONTRACT_INDEX, user, reward);
+		primeQpiProcedureContext(qpi, static_cast<uint8>(ctl.state()->getDrawHourInternal()));
+
+		increaseEnergy(ctl.qtfSelf(), reward);
+		const uint64 userBefore = getBalance(user);
+		const auto out = ctl.state()->callBuyPreparedTickets(qpi, twoTickets);
+
+		EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::PARTIAL_PURCHASE));
+		EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 1u);
+		EXPECT_EQ(getBalance(user), userBefore + ticketPrice);
+		EXPECT_EQ(ctl.state()->getNumberOfPlayers(), QTF_MAX_NUMBER_OF_PLAYERS);
+		EXPECT_TRUE(valuesEqual(ctl.state()->getPlayer(QTF_MAX_NUMBER_OF_PLAYERS - 1).randomValues, ctl.makeValidNumbers(1, 2, 3, 4)));
+	}
+}
+
 // ============================================================================
 // BUY TICKET TESTS
 // ============================================================================
@@ -1208,6 +1616,331 @@ TEST(ContractQThirtyFour, BuyTicket_SamePlayerMultipleTickets_Allowed)
 }
 
 // ============================================================================
+// BATCH AND SELECTION BUY TESTS
+// ============================================================================
+
+TEST(ContractQThirtyFour, BuyTicketsBatch_WhenSellingClosed_RefundsAndFails)
+{
+	ContractTestingQTF ctl;
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	increaseEnergy(user, ticketPrice * 2);
+	const uint64 balanceBefore = getBalance(user);
+
+	const auto out = ctl.buyTicketsBatch(user, ticketPrice,
+	                                     makeBatchTicketsInput({
+	                                         ctl.makeValidNumbers(1, 2, 3, 4),
+	                                     }));
+
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::TICKET_SELLING_CLOSED));
+	EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 0u);
+	EXPECT_EQ(getBalance(user), balanceBefore);
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+}
+
+TEST(ContractQThirtyFour, BuyTicketsBatch_AllInvalidOrEmpty_RefundsAndFails)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	increaseEnergy(user, ticketPrice * 5);
+	const uint64 balanceBefore = getBalance(user);
+
+	QTFRandomValues duplicate = ctl.makeValidNumbers(4, 5, 6, 7);
+	duplicate.set(3, 5);
+	QTFRandomValues outOfRange = ctl.makeValidNumbers(1, 2, 3, 4);
+	outOfRange.set(2, 31);
+	QTFRandomValues empty{};
+
+	const auto out = ctl.buyTicketsBatch(user, ticketPrice * 3, makeBatchTicketsInput({empty, duplicate, outOfRange}));
+
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_NUMBERS));
+	EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 0u);
+	EXPECT_EQ(getBalance(user), balanceBefore);
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+}
+
+TEST(ContractQThirtyFour, BuyTicketsBatch_RejectsInsufficientRewardForValidTickets)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	increaseEnergy(user, ticketPrice * 5);
+	const uint64 balanceBefore = getBalance(user);
+
+	const auto out = ctl.buyTicketsBatch(user, ticketPrice,
+	                                     makeBatchTicketsInput({
+	                                         ctl.makeValidNumbers(1, 2, 3, 4),
+	                                         ctl.makeValidNumbers(5, 6, 7, 8),
+	                                     }));
+
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_TICKET_PRICE));
+	EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 0u);
+	EXPECT_EQ(getBalance(user), balanceBefore);
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+}
+
+TEST(ContractQThirtyFour, BuyTicketsBatch_WhenMaxPlayersReached_RefundsAndFails)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	for (uint64 i = 0; i < QTF_MAX_NUMBER_OF_PLAYERS; ++i)
+	{
+		ctl.addPlayerDirect(id::randomValue(), ctl.makeValidNumbers(1, 2, 3, 4));
+	}
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	increaseEnergy(user, ticketPrice * 2);
+	const uint64 balanceBefore = getBalance(user);
+
+	const auto out = ctl.buyTicketsBatch(user, ticketPrice,
+	                                     makeBatchTicketsInput({
+	                                         ctl.makeValidNumbers(5, 6, 7, 8),
+	                                     }));
+
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::MAX_PLAYERS_REACHED));
+	EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 0u);
+	EXPECT_EQ(getBalance(user), balanceBefore);
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), QTF_MAX_NUMBER_OF_PLAYERS);
+}
+
+TEST(ContractQThirtyFour, BuyTicketsBatch_PartialPurchase_UsesOnlyFreeSlots)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	while (ctl.state()->getNumberOfPlayers() < QTF_MAX_NUMBER_OF_PLAYERS - 2)
+	{
+		ctl.addPlayerDirect(id::randomValue(), ctl.makeValidNumbers(9, 10, 11, 12));
+	}
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	increaseEnergy(user, ticketPrice * 5);
+	const uint64 balanceBefore = getBalance(user);
+
+	const QTFRandomValues t1 = ctl.makeValidNumbers(1, 2, 3, 4);
+	const QTFRandomValues t2 = ctl.makeValidNumbers(5, 6, 7, 8);
+	const QTFRandomValues t3 = ctl.makeValidNumbers(13, 14, 15, 16);
+	const auto out = ctl.buyTicketsBatch(user, ticketPrice * 3, makeBatchTicketsInput({t1, t2, t3}));
+
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::PARTIAL_PURCHASE));
+	EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 2u);
+	EXPECT_EQ(getBalance(user), balanceBefore - ticketPrice * 2);
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), QTF_MAX_NUMBER_OF_PLAYERS);
+	EXPECT_TRUE(valuesEqual(ctl.state()->getPlayer(QTF_MAX_NUMBER_OF_PLAYERS - 2).randomValues, t1));
+	EXPECT_TRUE(valuesEqual(ctl.state()->getPlayer(QTF_MAX_NUMBER_OF_PLAYERS - 1).randomValues, t2));
+}
+
+TEST(ContractQThirtyFour, BuyTicketsBatch_SkipsInvalidTicketsAndRefundsExcess)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	increaseEnergy(user, ticketPrice * 6);
+	const uint64 balanceBefore = getBalance(user);
+
+	QTFRandomValues duplicate = ctl.makeValidNumbers(11, 12, 13, 14);
+	duplicate.set(3, 12);
+	QTFRandomValues outOfRange = ctl.makeValidNumbers(21, 22, 23, 24);
+	outOfRange.set(0, 0);
+	QTFRandomValues empty{};
+	const QTFRandomValues valid1 = ctl.makeValidNumbers(1, 2, 3, 4);
+	const QTFRandomValues valid2 = ctl.makeValidNumbers(5, 6, 7, 8);
+
+	const auto out = ctl.buyTicketsBatch(user, ticketPrice * 3, makeBatchTicketsInput({valid1, empty, duplicate, valid2, outOfRange}));
+
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
+	EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 2u);
+	EXPECT_EQ(getBalance(user), balanceBefore - ticketPrice * 2);
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 2u);
+	EXPECT_TRUE(valuesEqual(ctl.state()->getPlayer(0).randomValues, valid1));
+	EXPECT_TRUE(valuesEqual(ctl.state()->getPlayer(1).randomValues, valid2));
+}
+
+TEST(ContractQThirtyFour, BuyTicketsBySelection_WhenSellingClosed_RefundsAndFails)
+{
+	ContractTestingQTF ctl;
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	increaseEnergy(user, ticketPrice * 2);
+	const uint64 balanceBefore = getBalance(user);
+
+	const auto out = ctl.buyTicketsBySelection(user, ticketPrice, makeSelectionInput({1, 2, 3, 4}));
+
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::TICKET_SELLING_CLOSED));
+	EXPECT_EQ(static_cast<uint64>(out.requestedTicketCount), 0u);
+	EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 0u);
+	EXPECT_EQ(getBalance(user), balanceBefore);
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+}
+
+TEST(ContractQThirtyFour, BuyTicketsBySelection_InvalidSelections_RefundAndFail)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	increaseEnergy(user, ticketPrice * 6);
+	const uint64 balanceBefore = getBalance(user);
+
+	{
+		const auto out = ctl.buyTicketsBySelection(user, ticketPrice, makeSelectionInput({4, 0, 4, 8}));
+		EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_NUMBERS));
+		EXPECT_EQ(static_cast<uint64>(out.requestedTicketCount), 0u);
+		EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 0u);
+		EXPECT_EQ(getBalance(user), balanceBefore);
+	}
+
+	{
+		const auto out = ctl.buyTicketsBySelection(user, ticketPrice, makeSelectionInput({1, 2, 31, 4}));
+		EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_NUMBERS));
+		EXPECT_EQ(static_cast<uint64>(out.requestedTicketCount), 0u);
+		EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 0u);
+		EXPECT_EQ(getBalance(user), balanceBefore);
+	}
+
+	{
+		const auto out = ctl.buyTicketsBySelection(user, ticketPrice, makeSelectionInput({1, 2, 3, 0}));
+		EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_NUMBERS));
+		EXPECT_EQ(static_cast<uint64>(out.requestedTicketCount), 0u);
+		EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 0u);
+		EXPECT_EQ(getBalance(user), balanceBefore);
+	}
+
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+}
+
+TEST(ContractQThirtyFour, BuyTicketsBySelection_TooManyCombinations_RefundsAndFails)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	increaseEnergy(user, ticketPrice * 40);
+	const uint64 balanceBefore = getBalance(user);
+
+	const auto out = ctl.buyTicketsBySelection(user, ticketPrice * 30, makeSelectionInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}));
+
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_VALUE));
+	EXPECT_EQ(static_cast<uint64>(out.requestedTicketCount), combinations4(11));
+	EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 0u);
+	EXPECT_EQ(getBalance(user), balanceBefore);
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+}
+
+TEST(ContractQThirtyFour, BuyTicketsBySelection_RejectsInsufficientReward)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	increaseEnergy(user, ticketPrice * 10);
+	const uint64 balanceBefore = getBalance(user);
+
+	const auto out = ctl.buyTicketsBySelection(user, ticketPrice * 4, makeSelectionInput({1, 2, 3, 4, 5}));
+
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::INVALID_TICKET_PRICE));
+	EXPECT_EQ(static_cast<uint64>(out.requestedTicketCount), combinations4(5));
+	EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 0u);
+	EXPECT_EQ(getBalance(user), balanceBefore);
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+}
+
+TEST(ContractQThirtyFour, BuyTicketsBySelection_WhenMaxPlayersReached_RefundsAndFails)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	for (uint64 i = 0; i < QTF_MAX_NUMBER_OF_PLAYERS; ++i)
+	{
+		ctl.addPlayerDirect(id::randomValue(), ctl.makeValidNumbers(1, 2, 3, 4));
+	}
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	increaseEnergy(user, ticketPrice * 2);
+	const uint64 balanceBefore = getBalance(user);
+
+	const auto out = ctl.buyTicketsBySelection(user, ticketPrice, makeSelectionInput({1, 2, 3, 4}));
+
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::MAX_PLAYERS_REACHED));
+	EXPECT_EQ(static_cast<uint64>(out.requestedTicketCount), 1u);
+	EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 0u);
+	EXPECT_EQ(getBalance(user), balanceBefore);
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), QTF_MAX_NUMBER_OF_PLAYERS);
+}
+
+TEST(ContractQThirtyFour, BuyTicketsBySelection_PartialPurchase_UsesOnlyFreeSlots)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	while (ctl.state()->getNumberOfPlayers() < QTF_MAX_NUMBER_OF_PLAYERS - 3)
+	{
+		ctl.addPlayerDirect(id::randomValue(), ctl.makeValidNumbers(20, 21, 22, 23));
+	}
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	increaseEnergy(user, ticketPrice * 8);
+	const uint64 balanceBefore = getBalance(user);
+
+	const auto out = ctl.buyTicketsBySelection(user, ticketPrice * 5, makeSelectionInput({9, 1, 5, 7, 3}));
+
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::PARTIAL_PURCHASE));
+	EXPECT_EQ(static_cast<uint64>(out.requestedTicketCount), combinations4(5));
+	EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), 3u);
+	EXPECT_EQ(getBalance(user), balanceBefore - ticketPrice * 3);
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), QTF_MAX_NUMBER_OF_PLAYERS);
+	EXPECT_TRUE(valuesEqual(ctl.state()->getPlayer(QTF_MAX_NUMBER_OF_PLAYERS - 3).randomValues, ctl.makeValidNumbers(1, 3, 5, 7)));
+	EXPECT_TRUE(valuesEqual(ctl.state()->getPlayer(QTF_MAX_NUMBER_OF_PLAYERS - 2).randomValues, ctl.makeValidNumbers(1, 3, 5, 9)));
+	EXPECT_TRUE(valuesEqual(ctl.state()->getPlayer(QTF_MAX_NUMBER_OF_PLAYERS - 1).randomValues, ctl.makeValidNumbers(1, 3, 7, 9)));
+}
+
+TEST(ContractQThirtyFour, BuyTicketsBySelection_SuccessBuildsNormalizedCombinationsAndRefundsExcess)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	increaseEnergy(user, ticketPrice * 10);
+	const uint64 balanceBefore = getBalance(user);
+
+	const auto out = ctl.buyTicketsBySelection(user, ticketPrice * 6, makeSelectionInput({9, 0, 3, 7, 1, 5}));
+
+	EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
+	EXPECT_EQ(static_cast<uint64>(out.requestedTicketCount), combinations4(5));
+	EXPECT_EQ(static_cast<uint64>(out.boughtTicketCount), combinations4(5));
+	EXPECT_EQ(getBalance(user), balanceBefore - ticketPrice * combinations4(5));
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), combinations4(5));
+
+	const QTFRandomValues expected[] = {
+	    ctl.makeValidNumbers(1, 3, 5, 7), ctl.makeValidNumbers(1, 3, 5, 9), ctl.makeValidNumbers(1, 3, 7, 9),
+	    ctl.makeValidNumbers(1, 5, 7, 9), ctl.makeValidNumbers(3, 5, 7, 9),
+	};
+
+	for (uint64 i = 0; i < combinations4(5); ++i)
+	{
+		EXPECT_TRUE(valuesEqual(ctl.state()->getPlayer(i).randomValues, expected[i]));
+	}
+}
+
+// ============================================================================
 // CONFIGURATION CHANGE TESTS
 // ============================================================================
 
@@ -1388,6 +2121,124 @@ TEST(ContractQThirtyFour, SetDrawHour_AppliesAfterEndEpoch)
 	ctl.endEpoch();
 	ctl.beginEpoch();
 	EXPECT_EQ(ctl.getDrawHour().drawHour, newHour);
+}
+
+TEST(ContractQThirtyFour, SyncJackpot_AccessControlAndUpdatesFromContractBalance)
+{
+	ContractTestingQTF ctl;
+	static constexpr uint64 newJackpotValue = 12345ULL;
+	ctl.state()->setJackpot(newJackpotValue);
+
+	const id outsider = id::randomValue();
+	increaseEnergy(outsider, 1);
+
+	const QTF::SyncJackpot_output denied = ctl.syncJackpot(outsider);
+	EXPECT_EQ(denied.returnCode, static_cast<uint8>(QTF::EReturnCode::ACCESS_DENIED));
+	EXPECT_EQ(ctl.state()->getJackpot(), newJackpotValue);
+
+	static constexpr uint64 expectedBalance = 777777ULL;
+	increaseEnergy(ctl.qtfSelf(), expectedBalance);
+	increaseEnergy(ctl.state()->team(), 1);
+
+	const QTF::SyncJackpot_output synced = ctl.syncJackpot(ctl.state()->team());
+	EXPECT_EQ(synced.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
+	EXPECT_EQ(ctl.state()->getJackpot(), expectedBalance);
+}
+
+TEST(ContractQThirtyFour, GetPlayers_NoTickets_ReturnsEmptyArray)
+{
+	ContractTestingQTF ctl;
+
+	static const QTF::PlayerData emptyPlayerData = {};
+
+	const QTF::GetPlayers_output players = ctl.getPlayers();
+	EXPECT_EQ(players.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
+	EXPECT_EQ(memcmp(&players.players.get(0), &emptyPlayerData, sizeof(QTF::PlayerData)), 0);
+}
+
+TEST(ContractQThirtyFour, GetPlayers_ReturnsPurchasedTickets)
+{
+	ContractTestingQTF ctl;
+	ctl.beginEpochWithValidTime();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user1 = id::randomValue();
+	const id user2 = id::randomValue();
+	const QTFRandomValues nums1 = ctl.makeValidNumbers(1, 4, 7, 10);
+	const QTFRandomValues nums2 = ctl.makeValidNumbers(2, 5, 8, 11);
+
+	ctl.fundAndBuyTicket(user1, ticketPrice, nums1);
+	ctl.fundAndBuyTicket(user2, ticketPrice, nums2);
+
+	const QTF::GetPlayers_output players = ctl.getPlayers();
+	EXPECT_EQ(players.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
+
+	const QTF::PlayerData player0 = players.players.get(0);
+	const QTF::PlayerData player1 = players.players.get(1);
+	EXPECT_EQ(player0.player, user1);
+	EXPECT_TRUE(valuesEqual(player0.randomValues, nums1));
+	EXPECT_EQ(player1.player, user2);
+	EXPECT_TRUE(valuesEqual(player1.randomValues, nums2));
+	EXPECT_TRUE(isZero(players.players.get(2).player));
+	EXPECT_TRUE(isZero(players.players.get(3).player));
+}
+
+TEST(ContractQThirtyFour, WinningCombinationsHistory_StoresWinningCombinationAfterDraw)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id user = id::randomValue();
+	ctl.fundAndBuyTicket(user, ticketPrice, ctl.makeValidNumbers(1, 2, 3, 4));
+
+	m256i digest = {};
+	digest.m256i_u64[0] = 0x1122334455667788ULL;
+	ctl.drawWithDigest(digest);
+
+	const QTF::GetWinnerData_output winnerData = ctl.getWinnerData();
+	const QTF::GetWinningCombinationsHistory_output history = ctl.getWinningCombinationsHistory();
+
+	EXPECT_EQ(history.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
+	EXPECT_TRUE(valuesEqual(history.history.get(0).values, winnerData.winnerData.winnerValues));
+	EXPECT_EQ(ctl.state()->getWinningCombinationsWriteIndex(), 1ULL);
+}
+
+TEST(ContractQThirtyFour, WinningCombinationsHistory_WrapAroundKeepsLatestAtLastWrittenSlot)
+{
+	ContractTestingQTF ctl;
+	ctl.forceSchedule(QTF_ANY_DAY_SCHEDULE);
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	static constexpr uint64 rounds = QTF_WINNING_COMBINATIONS_HISTORY_SIZE + 3ULL;
+	QTFRandomValues lastWinningValues{};
+
+	for (uint64 i = 0; i < rounds; ++i)
+	{
+		ctl.beginEpochWithValidTime();
+		const id user = id::randomValue();
+		ctl.fundAndBuyTicket(user, ticketPrice, ctl.makeValidNumbers(1, 2, 3, 4));
+
+		m256i digest = {};
+		digest.m256i_u64[0] = 0xABCDEF0000000000ULL + i;
+		ctl.drawWithDigest(digest);
+
+		lastWinningValues = ctl.getWinnerData().winnerData.winnerValues;
+	}
+
+	const QTF::GetWinningCombinationsHistory_output history = ctl.getWinningCombinationsHistory();
+	EXPECT_EQ(history.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
+
+	for (uint64 i = 0; i < history.history.capacity(); ++i)
+	{
+		EXPECT_FALSE(isEmptyRandomValues(history.history.get(i).values));
+	}
+
+	const uint64 writeIndex = ctl.state()->getWinningCombinationsWriteIndex();
+	EXPECT_EQ(writeIndex, rounds % QTF_WINNING_COMBINATIONS_HISTORY_SIZE);
+
+	const uint64 lastWrittenSlot = (writeIndex + QTF_WINNING_COMBINATIONS_HISTORY_SIZE - 1ULL) % QTF_WINNING_COMBINATIONS_HISTORY_SIZE;
+	EXPECT_TRUE(valuesEqual(history.history.get(lastWrittenSlot).values, lastWinningValues));
 }
 
 // ============================================================================
@@ -2467,7 +3318,7 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_MultipleWinners_Split
 	testDigest.m256i_u64[0] = 0xA5A5A5A5A5A5A5A5ULL;
 	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
-	const uint64 initialJackpot = 900000000ULL;
+	static constexpr uint64 initialJackpot = 900000000ULL;
 	ctl.state()->setJackpot(initialJackpot);
 	ctl.forceFREnabledWithinWindow(1);
 	increaseEnergy(ctl.qtfSelf(), initialJackpot);
@@ -2487,6 +3338,70 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_MultipleWinners_Split
 	const uint64 expectedPerWinner = initialJackpot / 2;
 	EXPECT_EQ(static_cast<uint64>(getBalance(w1) - w1Before), expectedPerWinner);
 	EXPECT_EQ(static_cast<uint64>(getBalance(w2) - w2Before), expectedPerWinner);
+}
+
+TEST(ContractQThirtyFour, WinnerData_WonAmount_MatchesBalanceGain_ForK2K3K4)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	m256i testDigest = {};
+	testDigest.m256i_u64[0] = 0x1122334455667788ULL;
+	const auto nums = ctl.computeWinningAndLosing(testDigest);
+
+	static constexpr uint64 initialJackpot = 500000000ULL;
+	ctl.state()->setJackpot(initialJackpot);
+	increaseEnergy(ctl.qtfSelf(), initialJackpot);
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+
+	const id k4Winner = id::randomValue();
+	const id k3Winner = id::randomValue();
+	const id k2Winner = id::randomValue();
+	const id loser = id::randomValue();
+
+	ctl.fundAndBuyTicket(k4Winner, ticketPrice, nums.winning);
+	ctl.fundAndBuyTicket(k3Winner, ticketPrice, ctl.makeK3Numbers(nums.winning, 0));
+	ctl.fundAndBuyTicket(k2Winner, ticketPrice, ctl.makeK2Numbers(nums.winning, 0));
+	ctl.fundAndBuyTicket(loser, ticketPrice, nums.losing);
+
+	const uint64 k4Before = getBalance(k4Winner);
+	const uint64 k3Before = getBalance(k3Winner);
+	const uint64 k2Before = getBalance(k2Winner);
+
+	ctl.drawWithDigest(testDigest);
+
+	const uint64 k4Gain = static_cast<uint64>(getBalance(k4Winner) - k4Before);
+	const uint64 k3Gain = static_cast<uint64>(getBalance(k3Winner) - k3Before);
+	const uint64 k2Gain = static_cast<uint64>(getBalance(k2Winner) - k2Before);
+
+	const QTF::GetWinnerData_output winnerData = ctl.getWinnerData();
+	bool foundK4 = false;
+	bool foundK3 = false;
+	bool foundK2 = false;
+	for (uint64 i = 0; i < winnerData.winnerData.winnerCounter; ++i)
+	{
+		const QTF::WinnerPlayerData& winnerEntry = winnerData.winnerData.winners.get(i);
+		if (winnerEntry.player == k4Winner)
+		{
+			EXPECT_EQ(winnerEntry.wonAmount, k4Gain);
+			foundK4 = true;
+		}
+		if (winnerEntry.player == k3Winner)
+		{
+			EXPECT_EQ(winnerEntry.wonAmount, k3Gain);
+			foundK3 = true;
+		}
+		if (winnerEntry.player == k2Winner)
+		{
+			EXPECT_EQ(winnerEntry.wonAmount, k2Gain);
+			foundK2 = true;
+		}
+	}
+
+	EXPECT_TRUE(foundK4);
+	EXPECT_TRUE(foundK3);
+	EXPECT_TRUE(foundK2);
 }
 
 TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_ReseedLimitedByQRP)
@@ -2726,7 +3641,7 @@ TEST(ContractQThirtyFour, Settlement_FloorTopUp_LimitedBySafetyCaps_PayoutBelowF
 	// Fund QRP just above soft floor so top-up is limited by both 10% cap and soft floor.
 	const uint64 P = ctl.state()->getTicketPriceInternal();
 	const uint64 softFloor = smul(P, QTF_RESERVE_SOFT_FLOOR_MULT); // 20*P
-	const uint64 qrpFunding = softFloor + 5 * P;                  // 25*P
+	const uint64 qrpFunding = softFloor + 5 * P;                   // 25*P
 	increaseEnergy(ctl.qrpSelf(), qrpFunding);
 
 	m256i testDigest = {};
@@ -2748,9 +3663,9 @@ TEST(ContractQThirtyFour, Settlement_FloorTopUp_LimitedBySafetyCaps_PayoutBelowF
 	const uint64 k3Pool = (winnersBlock * QTF_BASE_K3_SHARE_BP) / 10000;
 	const uint64 k3Floor = smul(P, QTF_K3_FLOOR_MULT);
 	const uint64 needed = k3Floor - k3Pool;
-	const uint64 availableAboveFloor = qrpBefore - softFloor;                     // 5*P
-	const uint64 maxPerRound = (qrpBefore * QTF_TOPUP_RESERVE_PCT_BP) / 10000;    // 10% of total
-	const uint64 perWinnerCapTotal = smul(P, QTF_TOPUP_PER_WINNER_CAP_MULT);      // 25*P
+	const uint64 availableAboveFloor = qrpBefore - softFloor;                                          // 5*P
+	const uint64 maxPerRound = (qrpBefore * QTF_TOPUP_RESERVE_PCT_BP) / 10000;                         // 10% of total
+	const uint64 perWinnerCapTotal = smul(P, QTF_TOPUP_PER_WINNER_CAP_MULT);                           // 25*P
 	const uint64 maxAllowed = std::min(std::min(maxPerRound, availableAboveFloor), perWinnerCapTotal); // 2.5*P
 	const uint64 expectedTopUp = std::min(needed, maxAllowed);
 	const uint64 expectedPayout = k3Pool + expectedTopUp;
@@ -3112,4 +4027,3 @@ TEST(ContractQThirtyFour, FR_PostK4WindowExpiry_DoesNotReactivateWhenWindowExpir
 	EXPECT_EQ(ctl.state()->getFrRoundsSinceK4(), QTF_FR_POST_K4_WINDOW_ROUNDS + 2);
 	EXPECT_EQ(ctl.state()->getFrActive(), false);
 }
-

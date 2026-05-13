@@ -4,7 +4,7 @@
 #include "spectrum/spectrum.h"
 
 
-bool QPI::QpiContextFunctionCall::getEntity(const m256i& id, QPI::Entity& entity) const
+QPI::bit QPI::QpiContextFunctionCall::getEntity(const m256i& id, QPI::Entity& entity) const
 {
     int index = spectrumIndex(id);
     if (index < 0)

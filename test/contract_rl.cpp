@@ -53,7 +53,7 @@ bool operator==(const RL::WinnerInfo& left, const RL::WinnerInfo& right)
 }
 
 // Test helper that exposes internal state assertions and utilities
-class RLChecker : public RL
+class RLChecker : public RL, public RL::StateData
 {
 public:
 	void checkFees(const GetFees_output& fees)

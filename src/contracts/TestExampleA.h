@@ -9,7 +9,7 @@ struct TESTEXA2
 struct TESTEXA : public ContractBase
 {
 	//---------------------------------------------------------------
-	// QPI FUNCTION TESTING
+	// Types (defined before StateData)
 
 	struct QpiFunctionsOutput
 	{
@@ -31,6 +31,82 @@ struct TESTEXA : public ContractBase
 		uint8 dayOfWeek;
 	};
 
+	// MultiVariables proposal option data type, which is custom per contract
+	struct MultiVariablesProposalExtraData
+	{
+		struct Option
+		{
+			uint64 dummyStateVariable1;
+			uint32 dummyStateVariable2;
+			sint8 dummyStateVariable3;
+		};
+
+		Option optionYesValues;
+		bool hasValueDummyStateVariable1;
+		bool hasValueDummyStateVariable2;
+		bool hasValueDummyStateVariable3;
+
+		bool isValid() const
+		{
+			return hasValueDummyStateVariable1 || hasValueDummyStateVariable2 || hasValueDummyStateVariable3;
+		}
+	};
+
+	// Proposal data type. We only support yes/no voting.
+	typedef ProposalDataYesNo ProposalDataT;
+
+	// Shareholders of TESTEXA have right to propose and vote. Only 16 slots provided.
+	typedef ProposalAndVotingByShareholders<16, TESTEXA_ASSET_NAME> ProposersAndVotersT;
+
+	// Proposal and voting storage type
+	typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT;
+
+	//---------------------------------------------------------------
+	// State
+
+	struct StateData
+	{
+		//---------------------------------------------------------------
+		// QPI FUNCTION TESTING state fields
+		QpiFunctionsOutput qpiFunctionsOutputTemp;
+		Array<QpiFunctionsOutput, 16> qpiFunctionsOutputBeginTick; // Output of QPI functions queried by the BEGIN_TICK procedure for the last 16 ticks
+		Array<QpiFunctionsOutput, 16> qpiFunctionsOutputEndTick; // Output of QPI functions queried by the END_TICK procedure for the last 16 ticks
+		Array<QpiFunctionsOutput, 16> qpiFunctionsOutputUserProc; // Output of QPI functions queried by the USER_PROCEDURE
+
+		//---------------------------------------------------------------
+		// ASSET MANAGEMENT RIGHTS TRANSFER state fields
+		PreManagementRightsTransfer_output preReleaseSharesOutput;
+		PreManagementRightsTransfer_output preAcquireSharesOutput;
+
+		PreManagementRightsTransfer_input prevPreReleaseSharesInput;
+		PreManagementRightsTransfer_input prevPreAcquireSharesInput;
+		PostManagementRightsTransfer_input prevPostReleaseSharesInput;
+		PostManagementRightsTransfer_input prevPostAcquireSharesInput;
+		uint32 postReleaseSharesCounter;
+		uint32 postAcquireShareCounter;
+
+		//---------------------------------------------------------------
+		// CONTRACT INTERACTION / RESOLVING DEADLOCKS / ERROR HANDLING state fields
+		sint64 heavyComputationResult;
+
+		//---------------------------------------------------------------
+		// SHAREHOLDER PROPOSALS state fields
+
+		// Variables that can be set with proposals
+		uint64 dummyStateVariable1;
+		uint32 dummyStateVariable2;
+		sint8 dummyStateVariable3;
+
+		// Proposal storage
+		ProposalVotingT proposals;
+
+		// MultiVariables proposal option data storage (same number of slots as proposals)
+		Array<MultiVariablesProposalExtraData, 16> multiVariablesProposalData;
+	};
+
+	//---------------------------------------------------------------
+	// QPI FUNCTION TESTING
+
 	struct QueryQpiFunctions_input
 	{
 		Array<sint8, 128> data;
@@ -47,7 +123,7 @@ struct TESTEXA : public ContractBase
 	struct QueryQpiFunctionsToState_input {};
 	struct QueryQpiFunctionsToState_output {};
 
-	struct ReturnQpiFunctionsOutputBeginTick_input 
+	struct ReturnQpiFunctionsOutputBeginTick_input
 	{
 		uint32 tick;
 	};
@@ -75,10 +151,6 @@ struct TESTEXA : public ContractBase
 	};
 
 protected:
-	QpiFunctionsOutput qpiFunctionsOutputTemp;
-	Array<QpiFunctionsOutput, 16> qpiFunctionsOutputBeginTick; // Output of QPI functions queried by the BEGIN_TICK procedure for the last 16 ticks
-	Array<QpiFunctionsOutput, 16> qpiFunctionsOutputEndTick; // Output of QPI functions queried by the END_TICK procedure for the last 16 ticks
-	Array<QpiFunctionsOutput, 16> qpiFunctionsOutputUserProc; // Output of QPI functions queried by the USER_PROCEDURE
 
 	PUBLIC_FUNCTION(QueryQpiFunctions)
 	{
@@ -104,86 +176,86 @@ protected:
 
 	PUBLIC_PROCEDURE(QueryQpiFunctionsToState)
 	{
-		state.qpiFunctionsOutputTemp.year = qpi.year();
-		state.qpiFunctionsOutputTemp.month = qpi.month();
-		state.qpiFunctionsOutputTemp.day = qpi.day();
-		state.qpiFunctionsOutputTemp.hour = qpi.hour();
-		state.qpiFunctionsOutputTemp.minute = qpi.minute();
-		state.qpiFunctionsOutputTemp.second = qpi.second();
-		state.qpiFunctionsOutputTemp.millisecond = qpi.millisecond();
-		state.qpiFunctionsOutputTemp.dayOfWeek = qpi.dayOfWeek(state.qpiFunctionsOutputTemp.year, state.qpiFunctionsOutputTemp.month, state.qpiFunctionsOutputTemp.day);
-		state.qpiFunctionsOutputTemp.arbitrator = qpi.arbitrator();
-		state.qpiFunctionsOutputTemp.computor0 = qpi.computor(0);
-		state.qpiFunctionsOutputTemp.epoch = qpi.epoch();
-		state.qpiFunctionsOutputTemp.invocationReward = qpi.invocationReward();
-		state.qpiFunctionsOutputTemp.invocator = qpi.invocator();
-		state.qpiFunctionsOutputTemp.numberOfTickTransactions = qpi.numberOfTickTransactions();
-		state.qpiFunctionsOutputTemp.originator = qpi.originator();
-		state.qpiFunctionsOutputTemp.tick = qpi.tick();
+		state.mut().qpiFunctionsOutputTemp.year = qpi.year();
+		state.mut().qpiFunctionsOutputTemp.month = qpi.month();
+		state.mut().qpiFunctionsOutputTemp.day = qpi.day();
+		state.mut().qpiFunctionsOutputTemp.hour = qpi.hour();
+		state.mut().qpiFunctionsOutputTemp.minute = qpi.minute();
+		state.mut().qpiFunctionsOutputTemp.second = qpi.second();
+		state.mut().qpiFunctionsOutputTemp.millisecond = qpi.millisecond();
+		state.mut().qpiFunctionsOutputTemp.dayOfWeek = qpi.dayOfWeek(state.get().qpiFunctionsOutputTemp.year, state.get().qpiFunctionsOutputTemp.month, state.get().qpiFunctionsOutputTemp.day);
+		state.mut().qpiFunctionsOutputTemp.arbitrator = qpi.arbitrator();
+		state.mut().qpiFunctionsOutputTemp.computor0 = qpi.computor(0);
+		state.mut().qpiFunctionsOutputTemp.epoch = qpi.epoch();
+		state.mut().qpiFunctionsOutputTemp.invocationReward = qpi.invocationReward();
+		state.mut().qpiFunctionsOutputTemp.invocator = qpi.invocator();
+		state.mut().qpiFunctionsOutputTemp.numberOfTickTransactions = qpi.numberOfTickTransactions();
+		state.mut().qpiFunctionsOutputTemp.originator = qpi.originator();
+		state.mut().qpiFunctionsOutputTemp.tick = qpi.tick();
 
-		state.qpiFunctionsOutputUserProc.set(state.qpiFunctionsOutputTemp.tick, state.qpiFunctionsOutputTemp); // 'set' computes index modulo array size
+		state.mut().qpiFunctionsOutputUserProc.set(state.get().qpiFunctionsOutputTemp.tick, state.get().qpiFunctionsOutputTemp); // 'set' computes index modulo array size
 	}
 
 	PUBLIC_FUNCTION(ReturnQpiFunctionsOutputBeginTick)
 	{
-		if (state.qpiFunctionsOutputBeginTick.get(input.tick).tick == input.tick) // 'get' computes index modulo array size
-			output.qpiFunctionsOutput = state.qpiFunctionsOutputBeginTick.get(input.tick);
+		if (state.get().qpiFunctionsOutputBeginTick.get(input.tick).tick == input.tick) // 'get' computes index modulo array size
+			output.qpiFunctionsOutput = state.get().qpiFunctionsOutputBeginTick.get(input.tick);
 	}
 
 	PUBLIC_FUNCTION(ReturnQpiFunctionsOutputEndTick)
 	{
-		if (state.qpiFunctionsOutputEndTick.get(input.tick).tick == input.tick) // 'get' computes index modulo array size
-			output.qpiFunctionsOutput = state.qpiFunctionsOutputEndTick.get(input.tick);
+		if (state.get().qpiFunctionsOutputEndTick.get(input.tick).tick == input.tick) // 'get' computes index modulo array size
+			output.qpiFunctionsOutput = state.get().qpiFunctionsOutputEndTick.get(input.tick);
 	}
 
 	PUBLIC_FUNCTION(ReturnQpiFunctionsOutputUserProc)
 	{
-		if (state.qpiFunctionsOutputUserProc.get(input.tick).tick == input.tick) // 'get' computes index modulo array size
-			output.qpiFunctionsOutput = state.qpiFunctionsOutputUserProc.get(input.tick);
+		if (state.get().qpiFunctionsOutputUserProc.get(input.tick).tick == input.tick) // 'get' computes index modulo array size
+			output.qpiFunctionsOutput = state.get().qpiFunctionsOutputUserProc.get(input.tick);
 	}
 
 	BEGIN_TICK()
 	{
-		state.qpiFunctionsOutputTemp.year = qpi.year();
-		state.qpiFunctionsOutputTemp.month = qpi.month();
-		state.qpiFunctionsOutputTemp.day = qpi.day();
-		state.qpiFunctionsOutputTemp.hour = qpi.hour();
-		state.qpiFunctionsOutputTemp.minute = qpi.minute();
-		state.qpiFunctionsOutputTemp.second = qpi.second();
-		state.qpiFunctionsOutputTemp.millisecond = qpi.millisecond();
-		state.qpiFunctionsOutputTemp.dayOfWeek = qpi.dayOfWeek(state.qpiFunctionsOutputTemp.year, state.qpiFunctionsOutputTemp.month, state.qpiFunctionsOutputTemp.day);
-		state.qpiFunctionsOutputTemp.arbitrator = qpi.arbitrator();
-		state.qpiFunctionsOutputTemp.computor0 = qpi.computor(0);
-		state.qpiFunctionsOutputTemp.epoch = qpi.epoch();
-		state.qpiFunctionsOutputTemp.invocationReward = qpi.invocationReward();
-		state.qpiFunctionsOutputTemp.invocator = qpi.invocator();
-		state.qpiFunctionsOutputTemp.numberOfTickTransactions = qpi.numberOfTickTransactions();
-		state.qpiFunctionsOutputTemp.originator = qpi.originator();
-		state.qpiFunctionsOutputTemp.tick = qpi.tick();
+		state.mut().qpiFunctionsOutputTemp.year = qpi.year();
+		state.mut().qpiFunctionsOutputTemp.month = qpi.month();
+		state.mut().qpiFunctionsOutputTemp.day = qpi.day();
+		state.mut().qpiFunctionsOutputTemp.hour = qpi.hour();
+		state.mut().qpiFunctionsOutputTemp.minute = qpi.minute();
+		state.mut().qpiFunctionsOutputTemp.second = qpi.second();
+		state.mut().qpiFunctionsOutputTemp.millisecond = qpi.millisecond();
+		state.mut().qpiFunctionsOutputTemp.dayOfWeek = qpi.dayOfWeek(state.get().qpiFunctionsOutputTemp.year, state.get().qpiFunctionsOutputTemp.month, state.get().qpiFunctionsOutputTemp.day);
+		state.mut().qpiFunctionsOutputTemp.arbitrator = qpi.arbitrator();
+		state.mut().qpiFunctionsOutputTemp.computor0 = qpi.computor(0);
+		state.mut().qpiFunctionsOutputTemp.epoch = qpi.epoch();
+		state.mut().qpiFunctionsOutputTemp.invocationReward = qpi.invocationReward();
+		state.mut().qpiFunctionsOutputTemp.invocator = qpi.invocator();
+		state.mut().qpiFunctionsOutputTemp.numberOfTickTransactions = qpi.numberOfTickTransactions();
+		state.mut().qpiFunctionsOutputTemp.originator = qpi.originator();
+		state.mut().qpiFunctionsOutputTemp.tick = qpi.tick();
 
-		state.qpiFunctionsOutputBeginTick.set(state.qpiFunctionsOutputTemp.tick, state.qpiFunctionsOutputTemp); // 'set' computes index modulo array size
+		state.mut().qpiFunctionsOutputBeginTick.set(state.get().qpiFunctionsOutputTemp.tick, state.get().qpiFunctionsOutputTemp); // 'set' computes index modulo array size
 	}
 
 	END_TICK()
 	{
-		state.qpiFunctionsOutputTemp.year = qpi.year();
-		state.qpiFunctionsOutputTemp.month = qpi.month();
-		state.qpiFunctionsOutputTemp.day = qpi.day();
-		state.qpiFunctionsOutputTemp.hour = qpi.hour();
-		state.qpiFunctionsOutputTemp.minute = qpi.minute();
-		state.qpiFunctionsOutputTemp.second = qpi.second();
-		state.qpiFunctionsOutputTemp.millisecond = qpi.millisecond();
-		state.qpiFunctionsOutputTemp.dayOfWeek = qpi.dayOfWeek(state.qpiFunctionsOutputTemp.year, state.qpiFunctionsOutputTemp.month, state.qpiFunctionsOutputTemp.day);
-		state.qpiFunctionsOutputTemp.arbitrator = qpi.arbitrator();
-		state.qpiFunctionsOutputTemp.computor0 = qpi.computor(0);
-		state.qpiFunctionsOutputTemp.epoch = qpi.epoch();
-		state.qpiFunctionsOutputTemp.invocationReward = qpi.invocationReward();
-		state.qpiFunctionsOutputTemp.invocator = qpi.invocator();
-		state.qpiFunctionsOutputTemp.numberOfTickTransactions = qpi.numberOfTickTransactions();
-		state.qpiFunctionsOutputTemp.originator = qpi.originator();
-		state.qpiFunctionsOutputTemp.tick = qpi.tick();
+		state.mut().qpiFunctionsOutputTemp.year = qpi.year();
+		state.mut().qpiFunctionsOutputTemp.month = qpi.month();
+		state.mut().qpiFunctionsOutputTemp.day = qpi.day();
+		state.mut().qpiFunctionsOutputTemp.hour = qpi.hour();
+		state.mut().qpiFunctionsOutputTemp.minute = qpi.minute();
+		state.mut().qpiFunctionsOutputTemp.second = qpi.second();
+		state.mut().qpiFunctionsOutputTemp.millisecond = qpi.millisecond();
+		state.mut().qpiFunctionsOutputTemp.dayOfWeek = qpi.dayOfWeek(state.get().qpiFunctionsOutputTemp.year, state.get().qpiFunctionsOutputTemp.month, state.get().qpiFunctionsOutputTemp.day);
+		state.mut().qpiFunctionsOutputTemp.arbitrator = qpi.arbitrator();
+		state.mut().qpiFunctionsOutputTemp.computor0 = qpi.computor(0);
+		state.mut().qpiFunctionsOutputTemp.epoch = qpi.epoch();
+		state.mut().qpiFunctionsOutputTemp.invocationReward = qpi.invocationReward();
+		state.mut().qpiFunctionsOutputTemp.invocator = qpi.invocator();
+		state.mut().qpiFunctionsOutputTemp.numberOfTickTransactions = qpi.numberOfTickTransactions();
+		state.mut().qpiFunctionsOutputTemp.originator = qpi.originator();
+		state.mut().qpiFunctionsOutputTemp.tick = qpi.tick();
 
-		state.qpiFunctionsOutputEndTick.set(state.qpiFunctionsOutputTemp.tick, state.qpiFunctionsOutputTemp); // 'set' computes index modulo array size
+		state.mut().qpiFunctionsOutputEndTick.set(state.get().qpiFunctionsOutputTemp.tick, state.get().qpiFunctionsOutputTemp); // 'set' computes index modulo array size
 	}
 
 	BEGIN_EPOCH()
@@ -258,15 +330,6 @@ public:
 	};
 
 protected:
-	PreManagementRightsTransfer_output preReleaseSharesOutput;
-	PreManagementRightsTransfer_output preAcquireSharesOutput;
-
-	PreManagementRightsTransfer_input prevPreReleaseSharesInput;
-	PreManagementRightsTransfer_input prevPreAcquireSharesInput;
-	PostManagementRightsTransfer_input prevPostReleaseSharesInput;
-	PostManagementRightsTransfer_input prevPostAcquireSharesInput;
-	uint32 postReleaseSharesCounter;
-	uint32 postAcquireShareCounter;
 
 	PUBLIC_PROCEDURE(IssueAsset)
 	{
@@ -298,12 +361,12 @@ protected:
 
 	PUBLIC_PROCEDURE(SetPreReleaseSharesOutput)
 	{
-		state.preReleaseSharesOutput = input;
+		state.mut().preReleaseSharesOutput = input;
 	}
 
 	PUBLIC_PROCEDURE(SetPreAcquireSharesOutput)
 	{
-		state.preAcquireSharesOutput = input;
+		state.mut().preAcquireSharesOutput = input;
 	}
 
 	PUBLIC_PROCEDURE(AcquireShareManagementRights)
@@ -322,9 +385,9 @@ protected:
 		// otherwise allowing another contract to acquire management rights is risky
 		if (qpi.originator() == input.owner)
 		{
-			output = state.preReleaseSharesOutput;
+			output = state.get().preReleaseSharesOutput;
 		}
-		state.prevPreReleaseSharesInput = input;
+		state.mut().prevPreReleaseSharesInput = input;
 
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
@@ -338,8 +401,8 @@ protected:
 
 	POST_RELEASE_SHARES()
 	{
-		state.postReleaseSharesCounter++;
-		state.prevPostReleaseSharesInput = input;
+		state.mut().postReleaseSharesCounter++;
+		state.mut().prevPostReleaseSharesInput = input;
 
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
@@ -353,8 +416,8 @@ protected:
 
 	PRE_ACQUIRE_SHARES()
 	{
-		output = state.preAcquireSharesOutput;
-		state.prevPreAcquireSharesInput = input;
+		output = state.get().preAcquireSharesOutput;
+		state.mut().prevPreAcquireSharesInput = input;
 
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
@@ -368,8 +431,8 @@ protected:
 
 	POST_ACQUIRE_SHARES()
 	{
-		state.postAcquireShareCounter++;
-		state.prevPostAcquireSharesInput = input;
+		state.mut().postAcquireShareCounter++;
+		state.mut().prevPostAcquireSharesInput = input;
 
 		ASSERT(qpi.invocator().u64._0 == input.otherContractIndex);
 
@@ -392,8 +455,6 @@ public:
 
 protected:
 
-	sint64 heavyComputationResult;
-
 	typedef Array<sint8, 32 * 1024> ErrorTriggerFunction_locals;
 
 #pragma warning(push)
@@ -415,13 +476,13 @@ protected:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(RunHeavyComputation)
 	{
-		state.heavyComputationResult = input;
-		
+		state.mut().heavyComputationResult = input;
+
 		// Iterate through spectrum
 		while (!isZero(locals.entityId = qpi.nextId(locals.entityId)))
 		{
 			qpi.getEntity(locals.entityId, locals.entity);
-			state.heavyComputationResult += locals.entity.incomingAmount;
+			state.mut().heavyComputationResult += locals.entity.incomingAmount;
 
 			// Iterate through universe
 			locals.issuanceIter.begin(AssetIssuanceSelect::any());
@@ -430,44 +491,21 @@ protected:
 				locals.possessionIter.begin(locals.issuanceIter.asset(), AssetOwnershipSelect::any(), AssetPossessionSelect::byPossessor(locals.entityId));
 				while (!locals.possessionIter.reachedEnd())
 				{
-					state.heavyComputationResult += locals.possessionIter.numberOfPossessedShares();
+					state.mut().heavyComputationResult += locals.possessionIter.numberOfPossessedShares();
 					locals.possessionIter.next();
 				}
 
 				locals.issuanceIter.next();
 			}
 		}
-		
-		output = state.heavyComputationResult;
+
+		output = state.get().heavyComputationResult;
 	}
 
 	//---------------------------------------------------------------
 	// SHAREHOLDER PROPOSALS WITH COMPACT STORAGE (OPTIONS: NO/YES)
 
 public:
-	// Proposal data type. We only support yes/no voting.
-	typedef ProposalDataYesNo ProposalDataT;
-
-	// MultiVariables proposal option data type, which is custom per contract
-	struct MultiVariablesProposalExtraData
-	{
-		struct Option
-		{
-			uint64 dummyStateVariable1;
-			uint32 dummyStateVariable2;
-			sint8 dummyStateVariable3;
-		};
-
-		Option optionYesValues;
-		bool hasValueDummyStateVariable1;
-		bool hasValueDummyStateVariable2;
-		bool hasValueDummyStateVariable3;
-
-		bool isValid() const
-		{
-			return hasValueDummyStateVariable1 || hasValueDummyStateVariable2 || hasValueDummyStateVariable3;
-		}
-	};
 
 	struct SetShareholderProposal_input
 	{
@@ -530,7 +568,7 @@ public:
 		}
 
 		// Try to set proposal (checks invocator's rights and general validity of input proposal), returns proposal index
-		output = qpi(state.proposals).setProposal(qpi.invocator(), input.proposalData);
+		output = qpi(state.mut().proposals).setProposal(qpi.invocator(), input.proposalData);
 
 		if (output != INVALID_PROPOSAL_INDEX)
 		{
@@ -538,7 +576,7 @@ public:
 			if (ProposalTypes::cls(input.proposalData.type) == ProposalTypes::Class::MultiVariables)
 			{
 				// store custom data of multi-variable proposal in array (at position proposalIdx)
-				state.multiVariablesProposalData.set(output, input.multiVarData);
+				state.mut().multiVariablesProposalData.set(output, input.multiVarData);
 			}
 		}
 	}
@@ -550,7 +588,7 @@ public:
 	{
 		// - fee can be handled as you like
 
-		output = qpi(state.proposals).vote(qpi.invocator(), input);
+		output = qpi(state.mut().proposals).vote(qpi.invocator(), input);
 	}
 
 	struct END_EPOCH_locals
@@ -567,27 +605,27 @@ public:
 
 		// Iterate all proposals that were open for voting in this epoch ...
 		locals.proposalIndex = -1;
-		while ((locals.proposalIndex = qpi(state.proposals).nextProposalIndex(locals.proposalIndex, qpi.epoch())) >= 0)
+		while ((locals.proposalIndex = qpi(state.get().proposals).nextProposalIndex(locals.proposalIndex, qpi.epoch())) >= 0)
 		{
-			if (!qpi(state.proposals).getProposal(locals.proposalIndex, locals.proposal))
+			if (!qpi(state.get().proposals).getProposal(locals.proposalIndex, locals.proposal))
 				continue;
 
 			// handle Variable proposal type
 			if (ProposalTypes::cls(locals.proposal.type) == ProposalTypes::Class::Variable)
 			{
 				// Get voting results and check if conditions for proposal acceptance are met
-				if (!qpi(state.proposals).getVotingSummary(locals.proposalIndex, locals.results))
+				if (!qpi(state.get().proposals).getVotingSummary(locals.proposalIndex, locals.results))
 					continue;
 
 				// Check if the yes option (1) has been accepted
 				if (locals.results.getAcceptedOption() == 1)
 				{
 					if (locals.proposal.data.variableOptions.variable == 0)
-						state.dummyStateVariable1 = uint64(locals.proposal.data.variableOptions.value);
+						state.mut().dummyStateVariable1 = uint64(locals.proposal.data.variableOptions.value);
 					if (locals.proposal.data.variableOptions.variable == 1)
-						state.dummyStateVariable2 = uint32(locals.proposal.data.variableOptions.value);
+						state.mut().dummyStateVariable2 = uint32(locals.proposal.data.variableOptions.value);
 					if (locals.proposal.data.variableOptions.variable == 2)
-						state.dummyStateVariable3 = sint8(locals.proposal.data.variableOptions.value);
+						state.mut().dummyStateVariable3 = sint8(locals.proposal.data.variableOptions.value);
 				}
 			}
 
@@ -595,20 +633,20 @@ public:
 			if (ProposalTypes::cls(locals.proposal.type) == ProposalTypes::Class::MultiVariables)
 			{
 				// Get voting results and check if conditions for proposal acceptance are met
-				if (!qpi(state.proposals).getVotingSummary(locals.proposalIndex, locals.results))
+				if (!qpi(state.get().proposals).getVotingSummary(locals.proposalIndex, locals.results))
 					continue;
 
 				// Check if the yes option (1) has been accepted
 				if (locals.results.getAcceptedOption() == 1)
 				{
-					locals.multiVarData = state.multiVariablesProposalData.get(locals.proposalIndex);
+					locals.multiVarData = state.get().multiVariablesProposalData.get(locals.proposalIndex);
 
 					if (locals.multiVarData.hasValueDummyStateVariable1)
-						state.dummyStateVariable1 = locals.multiVarData.optionYesValues.dummyStateVariable1;
+						state.mut().dummyStateVariable1 = locals.multiVarData.optionYesValues.dummyStateVariable1;
 					if (locals.multiVarData.hasValueDummyStateVariable2)
-						state.dummyStateVariable2 = locals.multiVarData.optionYesValues.dummyStateVariable2;
+						state.mut().dummyStateVariable2 = locals.multiVarData.optionYesValues.dummyStateVariable2;
 					if (locals.multiVarData.hasValueDummyStateVariable3)
-						state.dummyStateVariable3 = locals.multiVarData.optionYesValues.dummyStateVariable3;
+						state.mut().dummyStateVariable3 = locals.multiVarData.optionYesValues.dummyStateVariable3;
 				}
 			}
 		}
@@ -631,7 +669,7 @@ public:
 		{
 			// Return proposals that are open for voting in current epoch
 			// (output is initalized with zeros by contract system)
-			while ((input.prevProposalIndex = qpi(state.proposals).nextProposalIndex(input.prevProposalIndex, qpi.epoch())) >= 0)
+			while ((input.prevProposalIndex = qpi(state.get().proposals).nextProposalIndex(input.prevProposalIndex, qpi.epoch())) >= 0)
 			{
 				output.indices.set(output.numOfIndices, input.prevProposalIndex);
 				++output.numOfIndices;
@@ -644,7 +682,7 @@ public:
 		{
 			// Return proposals of previous epochs not overwritten yet
 			// (output is initalized with zeros by contract system)
-			while ((input.prevProposalIndex = qpi(state.proposals).nextFinishedProposalIndex(input.prevProposalIndex)) >= 0)
+			while ((input.prevProposalIndex = qpi(state.get().proposals).nextFinishedProposalIndex(input.prevProposalIndex)) >= 0)
 			{
 				output.indices.set(output.numOfIndices, input.prevProposalIndex);
 				++output.numOfIndices;
@@ -682,11 +720,11 @@ public:
 	PUBLIC_FUNCTION(GetShareholderProposal)
 	{
 		// On error, output.proposal.type is set to 0
-		output.proposerPubicKey = qpi(state.proposals).proposerId(input.proposalIndex);
-		qpi(state.proposals).getProposal(input.proposalIndex, output.proposal);
+		output.proposerPubicKey = qpi(state.get().proposals).proposerId(input.proposalIndex);
+		qpi(state.get().proposals).getProposal(input.proposalIndex, output.proposal);
 		if (ProposalTypes::cls(output.proposal.type) == ProposalTypes::Class::MultiVariables)
 		{
-			output.multiVarData = state.multiVariablesProposalData.get(input.proposalIndex);
+			output.multiVarData = state.get().multiVariablesProposalData.get(input.proposalIndex);
 		}
 	}
 
@@ -700,7 +738,7 @@ public:
 	PUBLIC_FUNCTION(GetShareholderVotes)
 	{
 		// On error, output.votes.proposalType is set to 0
-		qpi(state.proposals).getVotes(
+		qpi(state.get().proposals).getVotes(
 			input.proposalIndex,
 			input.voter,
 			output);
@@ -716,7 +754,7 @@ public:
 	PUBLIC_FUNCTION(GetShareholderVotingResults)
 	{
 		// On error, output.totalVotesAuthorized is set to 0
-		qpi(state.proposals).getVotingSummary(
+		qpi(state.get().proposals).getVotingSummary(
 			input.proposalIndex, output);
 	}
 
@@ -747,22 +785,6 @@ public:
 	}
 
 protected:
-	// Variables that can be set with proposals
-	uint64 dummyStateVariable1;
-	uint32 dummyStateVariable2;
-	sint8 dummyStateVariable3;
-
-	// Shareholders of TESTEXA have right to propose and vote. Only 16 slots provided.
-	typedef ProposalAndVotingByShareholders<16, TESTEXA_ASSET_NAME> ProposersAndVotersT;
-
-	// Proposal and voting storage type
-	typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT;
-
-	// Proposal storage
-	ProposalVotingT proposals;
-
-	// MultiVariables proposal option data storage (same number of slots as proposals)
-	Array<MultiVariablesProposalExtraData, 16> multiVariablesProposalData;
 
 
 public:

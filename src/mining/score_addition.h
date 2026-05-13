@@ -80,10 +80,11 @@ struct ScoreAddition
     alignas(64) char neuronValuesBuffer0[maxNumberOfNeurons * PADDED_SAMPLES];
     alignas(64) char neuronValuesBuffer1[maxNumberOfNeurons * PADDED_SAMPLES];
 
-    // Incoming synapses
-    alignas(64) unsigned int incomingSource[maxNumberOfNeurons * maxNumberOfNeighbors];
-    alignas(64) Synapse incomingSynapses[maxNumberOfNeurons * maxNumberOfNeighbors];
-    unsigned int incomingCount[maxNumberOfNeurons];
+    // Incoming synapses split by sign
+    alignas(64) unsigned int incomingPositiveSource[maxNumberOfNeurons * maxNumberOfNeighbors];
+    alignas(64) unsigned int incomingNegativeSource[maxNumberOfNeurons * maxNumberOfNeighbors];
+    unsigned int incomingPositiveCount[maxNumberOfNeurons];
+    unsigned int incomingNegativeCount[maxNumberOfNeurons];
 
     // For tracking/compacting sample after each tick
     alignas(64) unsigned int sampleMapping[PADDED_SAMPLES];
@@ -95,6 +96,13 @@ struct ScoreAddition
     unsigned long long outputNeuronIndices[numberOfOutputNeurons];
     unsigned long long outputNeuronIdxCache[numberOfOutputNeurons];
     unsigned long long numCachedOutputs;
+    unsigned long long evolutionNeuronIdxCache[numberOfMutations];
+    unsigned long long numCachedEvolution;
+
+    unsigned long long processNeuronOffsetCache[maxNumberOfNeurons];
+    unsigned long long numProcessNeuron;
+
+    alignas(64) int32_t synapseWeightLUT[256];
 
     // Buffers for cleaning up
     unsigned long long removalNeurons[maxNumberOfNeurons];
@@ -111,6 +119,17 @@ struct ScoreAddition
     void initMemory()
     {
         generateTrainingSet();
+
+        for (int b = 0; b < 256; b++)
+        {
+            char w[4];
+            for (int j = 0; j < 4; j++)
+            {
+                unsigned char ev = (unsigned char)((b >> (j * 2)) & 3);
+                w[j] = (ev == 2) ? (char)-1 : (ev == 3) ? (char)1 : (char)0;
+            }
+            copyMem(&synapseWeightLUT[b], w, 4);
+        }
     }
 
 
@@ -200,14 +219,21 @@ struct ScoreAddition
         return offsetToBufferIndex(neighborOffset);
     }
 
-    void cacheOutputNeuronIndices()
+    void cacheOutputEvoNeuronIndices()
     {
         numCachedOutputs = 0;
+        numCachedEvolution = 0;
+        numProcessNeuron = currentANN.population;
         for (unsigned long long i = 0; i < currentANN.population; i++)
         {
+            processNeuronOffsetCache[i] = i * PADDED_SAMPLES;
             if (currentANN.neuronTypes[i] == OUTPUT_NEURON_TYPE)
             {
                 outputNeuronIdxCache[numCachedOutputs++] = i;
+            }
+            else if (currentANN.neuronTypes[i] == EVOLUTION_NEURON_TYPE)
+            {
+                evolutionNeuronIdxCache[numCachedEvolution++] = i;
             }
         }
     }
@@ -570,141 +596,309 @@ struct ScoreAddition
         }
     }
 
-    void processTick()
-    {
-
-        unsigned long long population = currentANN.population;
-        unsigned char* neuronTypes = currentANN.neuronTypes;
-
-        unsigned long long activeSamplePad = ((activeCount + BATCH_SIZE - 1) / BATCH_SIZE) * BATCH_SIZE;
-
 #if defined(__AVX512F__)
-
+    void processNeuronTick512(
+        unsigned long long targetNeuronBase,
+        const unsigned int* positiveSources, unsigned int numPos,
+        const unsigned int* negativeSources, unsigned int numNeg,
+        unsigned long long activeSamplePad)
+    {
         const __m512i one16 = _mm512_set1_epi16(1);
         const __m512i negOne16 = _mm512_set1_epi16(-1);
         const __m512i packLoc = _mm512_setr_epi64(0, 2, 4, 6, 1, 3, 5, 7);
 
-        for (unsigned long long targetNeuron = 0; targetNeuron < population; targetNeuron++)
+        unsigned long long s = 0;
+        for (; s + 2 * BATCH_SIZE <= activeSamplePad; s += 2 * BATCH_SIZE)
         {
-            if (neuronTypes[targetNeuron] == INPUT_NEURON_TYPE)
-                continue;
+            __m512i acc16_0a = _mm512_setzero_si512();
+            __m512i acc16_1a = _mm512_setzero_si512();
+            __m512i acc16_0b = _mm512_setzero_si512();
+            __m512i acc16_1b = _mm512_setzero_si512();
+            __m512i acc8a = _mm512_setzero_si512();
+            __m512i acc8b = _mm512_setzero_si512();
+            unsigned int count = 0;
 
-            unsigned int numIncoming = incomingCount[targetNeuron];
-            const unsigned long long targetNeuronOffset = targetNeuron * maxNumberOfNeighbors;
-            for (unsigned long long s = 0; s < activeSamplePad; s += BATCH_SIZE)
+            for (unsigned int i = 0; i < numPos; i++)
             {
-                __m512i acc0 = _mm512_setzero_si512();  // samples 0-31 (int16)
-                __m512i acc1 = _mm512_setzero_si512();  // samples 32-63 (int16)
-                for (unsigned int i = 0; i < numIncoming; i++)
+                const unsigned long long srcBase = (unsigned long long)positiveSources[i] * PADDED_SAMPLES;
+                acc8a = _mm512_add_epi8(acc8a, _mm512_loadu_si512((__m512i*)&prevNeuronValues[srcBase + s]));
+                acc8b = _mm512_add_epi8(acc8b, _mm512_loadu_si512((__m512i*)&prevNeuronValues[srcBase + s + BATCH_SIZE]));
+                count++;
+                if (count == 127)
                 {
-                    unsigned int srcNeuron = incomingSource[targetNeuronOffset + i];
-                    __m512i weight512 = _mm512_set1_epi8(incomingSynapses[targetNeuronOffset + i]);
-
-                    // Load 64 source neuron values
-                    //__m512i srcValues = _mm512_load_si512((__m512i*)&neuronValues[srcNeuron][s]);
-                    __m512i srcValues = _mm512_loadu_si512((__m512i*)&prevNeuronValues[srcNeuron * PADDED_SAMPLES + s]);
-
-                    __mmask64 negMask = _mm512_movepi8_mask(weight512);
-                    __m512i negated = _mm512_sub_epi8(_mm512_setzero_si512(), srcValues);
-                    __m512i product = _mm512_mask_blend_epi8(negMask, srcValues, negated);
-
-                    // Sign-extend char to int16 and accumulate
-                    __m256i lo = _mm512_extracti64x4_epi64(product, 0);
-                    __m256i hi = _mm512_extracti64x4_epi64(product, 1);
-
-                    acc0 = _mm512_add_epi16(acc0, _mm512_cvtepi8_epi16(lo));
-                    acc1 = _mm512_add_epi16(acc1, _mm512_cvtepi8_epi16(hi));
+                    acc16_0a = _mm512_add_epi16(acc16_0a, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8a, 0)));
+                    acc16_1a = _mm512_add_epi16(acc16_1a, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8a, 1)));
+                    acc16_0b = _mm512_add_epi16(acc16_0b, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8b, 0)));
+                    acc16_1b = _mm512_add_epi16(acc16_1b, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8b, 1)));
+                    acc8a = _mm512_setzero_si512();
+                    acc8b = _mm512_setzero_si512();
+                    count = 0;
                 }
-
-                // Clamp to [-1, 1]
-                acc0 = _mm512_max_epi16(acc0, negOne16);
-                acc0 = _mm512_min_epi16(acc0, one16);
-                acc1 = _mm512_max_epi16(acc1, negOne16);
-                acc1 = _mm512_min_epi16(acc1, one16);
-
-                // Pack int16 back to int8
-                __m512i packed = _mm512_packs_epi16(acc0, acc1);
-
-                // Fix lane ordering after packs
-                packed = _mm512_permutexvar_epi64(packLoc, packed);
-
-                _mm512_storeu_si512((__m512i*)&neuronValues[targetNeuron * PADDED_SAMPLES + s], packed);
             }
+            acc16_0a = _mm512_add_epi16(acc16_0a, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8a, 0)));
+            acc16_1a = _mm512_add_epi16(acc16_1a, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8a, 1)));
+            acc16_0b = _mm512_add_epi16(acc16_0b, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8b, 0)));
+            acc16_1b = _mm512_add_epi16(acc16_1b, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8b, 1)));
+
+            acc8a = _mm512_setzero_si512();
+            acc8b = _mm512_setzero_si512();
+            count = 0;
+            for (unsigned int i = 0; i < numNeg; i++)
+            {
+                const unsigned long long srcBase = (unsigned long long)negativeSources[i] * PADDED_SAMPLES;
+                acc8a = _mm512_add_epi8(acc8a, _mm512_loadu_si512((__m512i*)&prevNeuronValues[srcBase + s]));
+                acc8b = _mm512_add_epi8(acc8b, _mm512_loadu_si512((__m512i*)&prevNeuronValues[srcBase + s + BATCH_SIZE]));
+                count++;
+                if (count == 127)
+                {
+                    acc16_0a = _mm512_sub_epi16(acc16_0a, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8a, 0)));
+                    acc16_1a = _mm512_sub_epi16(acc16_1a, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8a, 1)));
+                    acc16_0b = _mm512_sub_epi16(acc16_0b, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8b, 0)));
+                    acc16_1b = _mm512_sub_epi16(acc16_1b, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8b, 1)));
+                    acc8a = _mm512_setzero_si512();
+                    acc8b = _mm512_setzero_si512();
+                    count = 0;
+                }
+            }
+            acc16_0a = _mm512_sub_epi16(acc16_0a, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8a, 0)));
+            acc16_1a = _mm512_sub_epi16(acc16_1a, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8a, 1)));
+            acc16_0b = _mm512_sub_epi16(acc16_0b, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8b, 0)));
+            acc16_1b = _mm512_sub_epi16(acc16_1b, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8b, 1)));
+
+            acc16_0a = _mm512_max_epi16(_mm512_min_epi16(acc16_0a, one16), negOne16);
+            acc16_1a = _mm512_max_epi16(_mm512_min_epi16(acc16_1a, one16), negOne16);
+            _mm512_storeu_si512((__m512i*)&neuronValues[targetNeuronBase + s],
+                _mm512_permutexvar_epi64(packLoc, _mm512_packs_epi16(acc16_0a, acc16_1a)));
+            acc16_0b = _mm512_max_epi16(_mm512_min_epi16(acc16_0b, one16), negOne16);
+            acc16_1b = _mm512_max_epi16(_mm512_min_epi16(acc16_1b, one16), negOne16);
+            _mm512_storeu_si512((__m512i*)&neuronValues[targetNeuronBase + s + BATCH_SIZE],
+                _mm512_permutexvar_epi64(packLoc, _mm512_packs_epi16(acc16_0b, acc16_1b)));
         }
 
-#else
+        for (; s < activeSamplePad; s += BATCH_SIZE)
+        {
+            __m512i acc16_0 = _mm512_setzero_si512();
+            __m512i acc16_1 = _mm512_setzero_si512();
+            __m512i acc8 = _mm512_setzero_si512();
+            unsigned int count = 0;
 
+            for (unsigned int i = 0; i < numPos; i++)
+            {
+                const unsigned long long srcBase = (unsigned long long)positiveSources[i] * PADDED_SAMPLES;
+                acc8 = _mm512_add_epi8(acc8, _mm512_loadu_si512((__m512i*)&prevNeuronValues[srcBase + s]));
+                count++;
+                if (count == 127)
+                {
+                    acc16_0 = _mm512_add_epi16(acc16_0, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8, 0)));
+                    acc16_1 = _mm512_add_epi16(acc16_1, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8, 1)));
+                    acc8 = _mm512_setzero_si512();
+                    count = 0;
+                }
+            }
+            acc16_0 = _mm512_add_epi16(acc16_0, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8, 0)));
+            acc16_1 = _mm512_add_epi16(acc16_1, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8, 1)));
+
+            acc8 = _mm512_setzero_si512();
+            count = 0;
+            for (unsigned int i = 0; i < numNeg; i++)
+            {
+                const unsigned long long srcBase = (unsigned long long)negativeSources[i] * PADDED_SAMPLES;
+                acc8 = _mm512_add_epi8(acc8, _mm512_loadu_si512((__m512i*)&prevNeuronValues[srcBase + s]));
+                count++;
+                if (count == 127)
+                {
+                    acc16_0 = _mm512_sub_epi16(acc16_0, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8, 0)));
+                    acc16_1 = _mm512_sub_epi16(acc16_1, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8, 1)));
+                    acc8 = _mm512_setzero_si512();
+                    count = 0;
+                }
+            }
+            acc16_0 = _mm512_sub_epi16(acc16_0, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8, 0)));
+            acc16_1 = _mm512_sub_epi16(acc16_1, _mm512_cvtepi8_epi16(_mm512_extracti64x4_epi64(acc8, 1)));
+
+            acc16_0 = _mm512_max_epi16(_mm512_min_epi16(acc16_0, one16), negOne16);
+            acc16_1 = _mm512_max_epi16(_mm512_min_epi16(acc16_1, one16), negOne16);
+            _mm512_storeu_si512((__m512i*)&neuronValues[targetNeuronBase + s],
+                _mm512_permutexvar_epi64(packLoc, _mm512_packs_epi16(acc16_0, acc16_1)));
+        }
+    }
+
+#else // AVX2
+    void processNeuronTick256(
+        unsigned long long targetNeuronBase,
+        const unsigned int* positiveSources, unsigned int numPos,
+        const unsigned int* negativeSources, unsigned int numNeg,
+        unsigned long long activeSamplePad)
+    {
         const __m256i one16 = _mm256_set1_epi16(1);
         const __m256i negOne16 = _mm256_set1_epi16(-1);
 
-        for (unsigned long long targetNeuron = 0; targetNeuron < population; targetNeuron++)
+        unsigned long long s = 0;
+        for (; s + 2 * BATCH_SIZE <= activeSamplePad; s += 2 * BATCH_SIZE)
         {
-            if (neuronTypes[targetNeuron] == INPUT_NEURON_TYPE)
-                continue;
+            __m256i acc16_0a = _mm256_setzero_si256();
+            __m256i acc16_1a = _mm256_setzero_si256();
+            __m256i acc16_0b = _mm256_setzero_si256();
+            __m256i acc16_1b = _mm256_setzero_si256();
+            __m256i acc8a = _mm256_setzero_si256();
+            __m256i acc8b = _mm256_setzero_si256();
+            unsigned int count = 0;
 
-            unsigned int numIncoming = incomingCount[targetNeuron];
-            const unsigned long long targetNeuronOffset = targetNeuron * maxNumberOfNeighbors;
-            for (unsigned long long s = 0; s < activeSamplePad; s += BATCH_SIZE)
+            for (unsigned int i = 0; i < numPos; i++)
             {
-                __m256i acc0 = _mm256_setzero_si256();  // samples 0-15 (int16)
-                __m256i acc1 = _mm256_setzero_si256();  // samples 16-31 (int16)
-                for (unsigned int i = 0; i < numIncoming; i++)
+                const unsigned long long srcBase = (unsigned long long)positiveSources[i] * PADDED_SAMPLES;
+                acc8a = _mm256_add_epi8(acc8a, _mm256_loadu_si256((__m256i*) & prevNeuronValues[srcBase + s]));
+                acc8b = _mm256_add_epi8(acc8b, _mm256_loadu_si256((__m256i*) & prevNeuronValues[srcBase + s + BATCH_SIZE]));
+                count++;
+                if (count == 127)
                 {
-                    unsigned int srcNeuron = incomingSource[targetNeuronOffset + i];
-                    __m256i weight256 = _mm256_set1_epi8(incomingSynapses[targetNeuronOffset + i]);
-
-                    // Load 32 source neuron values
-                    __m256i srcValues = _mm256_loadu_si256((__m256i*)&prevNeuronValues[srcNeuron * PADDED_SAMPLES + s]);
-
-                    __m256i negated = _mm256_sub_epi8(_mm256_setzero_si256(), srcValues);
-                    __m256i product = _mm256_blendv_epi8(srcValues, negated, weight256);
-
-                    // Sign-extend char to int16 and accumulate
-                    __m128i lo = _mm256_castsi256_si128(product);
-                    __m128i hi = _mm256_extracti128_si256(product, 1);
-
-                    acc0 = _mm256_add_epi16(acc0, _mm256_cvtepi8_epi16(lo));
-                    acc1 = _mm256_add_epi16(acc1, _mm256_cvtepi8_epi16(hi));
+                    acc16_0a = _mm256_add_epi16(acc16_0a, _mm256_cvtepi8_epi16(_mm256_castsi256_si128(acc8a)));
+                    acc16_1a = _mm256_add_epi16(acc16_1a, _mm256_cvtepi8_epi16(_mm256_extracti128_si256(acc8a, 1)));
+                    acc16_0b = _mm256_add_epi16(acc16_0b, _mm256_cvtepi8_epi16(_mm256_castsi256_si128(acc8b)));
+                    acc16_1b = _mm256_add_epi16(acc16_1b, _mm256_cvtepi8_epi16(_mm256_extracti128_si256(acc8b, 1)));
+                    acc8a = _mm256_setzero_si256();
+                    acc8b = _mm256_setzero_si256();
+                    count = 0;
                 }
-
-                // Clamp to [-1, 1]
-                acc0 = _mm256_max_epi16(acc0, negOne16);
-                acc0 = _mm256_min_epi16(acc0, one16);
-                acc1 = _mm256_max_epi16(acc1, negOne16);
-                acc1 = _mm256_min_epi16(acc1, one16);
-
-                // Pack int16 back to int8
-                __m256i packed = _mm256_packs_epi16(acc0, acc1);
-
-                // Fix lane ordering after packs. (3, 1, 2, 0)
-                packed = _mm256_permute4x64_epi64(packed, 0xD8); // 0xD8: (3 << 6) | (1 << 4) | (2 << 2) | 0
-
-                _mm256_storeu_si256((__m256i*)&neuronValues[targetNeuron * PADDED_SAMPLES + s], packed);
             }
+            acc16_0a = _mm256_add_epi16(acc16_0a, _mm256_cvtepi8_epi16(_mm256_castsi256_si128(acc8a)));
+            acc16_1a = _mm256_add_epi16(acc16_1a, _mm256_cvtepi8_epi16(_mm256_extracti128_si256(acc8a, 1)));
+            acc16_0b = _mm256_add_epi16(acc16_0b, _mm256_cvtepi8_epi16(_mm256_castsi256_si128(acc8b)));
+            acc16_1b = _mm256_add_epi16(acc16_1b, _mm256_cvtepi8_epi16(_mm256_extracti128_si256(acc8b, 1)));
+
+            acc8a = _mm256_setzero_si256();
+            acc8b = _mm256_setzero_si256();
+            count = 0;
+            for (unsigned int i = 0; i < numNeg; i++)
+            {
+                const unsigned long long srcBase = (unsigned long long)negativeSources[i] * PADDED_SAMPLES;
+                acc8a = _mm256_add_epi8(acc8a, _mm256_loadu_si256((__m256i*) & prevNeuronValues[srcBase + s]));
+                acc8b = _mm256_add_epi8(acc8b, _mm256_loadu_si256((__m256i*) & prevNeuronValues[srcBase + s + BATCH_SIZE]));
+                count++;
+                if (count == 127)
+                {
+                    acc16_0a = _mm256_sub_epi16(acc16_0a, _mm256_cvtepi8_epi16(_mm256_castsi256_si128(acc8a)));
+                    acc16_1a = _mm256_sub_epi16(acc16_1a, _mm256_cvtepi8_epi16(_mm256_extracti128_si256(acc8a, 1)));
+                    acc16_0b = _mm256_sub_epi16(acc16_0b, _mm256_cvtepi8_epi16(_mm256_castsi256_si128(acc8b)));
+                    acc16_1b = _mm256_sub_epi16(acc16_1b, _mm256_cvtepi8_epi16(_mm256_extracti128_si256(acc8b, 1)));
+                    acc8a = _mm256_setzero_si256();
+                    acc8b = _mm256_setzero_si256();
+                    count = 0;
+                }
+            }
+            acc16_0a = _mm256_sub_epi16(acc16_0a, _mm256_cvtepi8_epi16(_mm256_castsi256_si128(acc8a)));
+            acc16_1a = _mm256_sub_epi16(acc16_1a, _mm256_cvtepi8_epi16(_mm256_extracti128_si256(acc8a, 1)));
+            acc16_0b = _mm256_sub_epi16(acc16_0b, _mm256_cvtepi8_epi16(_mm256_castsi256_si128(acc8b)));
+            acc16_1b = _mm256_sub_epi16(acc16_1b, _mm256_cvtepi8_epi16(_mm256_extracti128_si256(acc8b, 1)));
+
+            acc16_0a = _mm256_max_epi16(_mm256_min_epi16(acc16_0a, one16), negOne16);
+            acc16_1a = _mm256_max_epi16(_mm256_min_epi16(acc16_1a, one16), negOne16);
+            _mm256_storeu_si256((__m256i*) & neuronValues[targetNeuronBase + s],
+                _mm256_permute4x64_epi64(_mm256_packs_epi16(acc16_0a, acc16_1a), 0xD8));
+            acc16_0b = _mm256_max_epi16(_mm256_min_epi16(acc16_0b, one16), negOne16);
+            acc16_1b = _mm256_max_epi16(_mm256_min_epi16(acc16_1b, one16), negOne16);
+            _mm256_storeu_si256((__m256i*) & neuronValues[targetNeuronBase + s + BATCH_SIZE],
+                _mm256_permute4x64_epi64(_mm256_packs_epi16(acc16_0b, acc16_1b), 0xD8));
         }
+
+        for (; s < activeSamplePad; s += BATCH_SIZE)
+        {
+            __m256i acc16_0 = _mm256_setzero_si256();
+            __m256i acc16_1 = _mm256_setzero_si256();
+            __m256i acc8 = _mm256_setzero_si256();
+            unsigned int count = 0;
+
+            for (unsigned int i = 0; i < numPos; i++)
+            {
+                const unsigned long long srcBase = (unsigned long long)positiveSources[i] * PADDED_SAMPLES;
+                acc8 = _mm256_add_epi8(acc8, _mm256_loadu_si256((__m256i*) & prevNeuronValues[srcBase + s]));
+                count++;
+                if (count == 127)
+                {
+                    acc16_0 = _mm256_add_epi16(acc16_0, _mm256_cvtepi8_epi16(_mm256_castsi256_si128(acc8)));
+                    acc16_1 = _mm256_add_epi16(acc16_1, _mm256_cvtepi8_epi16(_mm256_extracti128_si256(acc8, 1)));
+                    acc8 = _mm256_setzero_si256();
+                    count = 0;
+                }
+            }
+            acc16_0 = _mm256_add_epi16(acc16_0, _mm256_cvtepi8_epi16(_mm256_castsi256_si128(acc8)));
+            acc16_1 = _mm256_add_epi16(acc16_1, _mm256_cvtepi8_epi16(_mm256_extracti128_si256(acc8, 1)));
+
+            acc8 = _mm256_setzero_si256();
+            count = 0;
+            for (unsigned int i = 0; i < numNeg; i++)
+            {
+                const unsigned long long srcBase = (unsigned long long)negativeSources[i] * PADDED_SAMPLES;
+                acc8 = _mm256_add_epi8(acc8, _mm256_loadu_si256((__m256i*) & prevNeuronValues[srcBase + s]));
+                count++;
+                if (count == 127)
+                {
+                    acc16_0 = _mm256_sub_epi16(acc16_0, _mm256_cvtepi8_epi16(_mm256_castsi256_si128(acc8)));
+                    acc16_1 = _mm256_sub_epi16(acc16_1, _mm256_cvtepi8_epi16(_mm256_extracti128_si256(acc8, 1)));
+                    acc8 = _mm256_setzero_si256();
+                    count = 0;
+                }
+            }
+            acc16_0 = _mm256_sub_epi16(acc16_0, _mm256_cvtepi8_epi16(_mm256_castsi256_si128(acc8)));
+            acc16_1 = _mm256_sub_epi16(acc16_1, _mm256_cvtepi8_epi16(_mm256_extracti128_si256(acc8, 1)));
+
+            acc16_0 = _mm256_max_epi16(_mm256_min_epi16(acc16_0, one16), negOne16);
+            acc16_1 = _mm256_max_epi16(_mm256_min_epi16(acc16_1, one16), negOne16);
+            _mm256_storeu_si256((__m256i*) & neuronValues[targetNeuronBase + s],
+                _mm256_permute4x64_epi64(_mm256_packs_epi16(acc16_0, acc16_1), 0xD8));
+        }
+    }
 #endif
 
+    void processNeuronTick(unsigned long long targetNeuron, unsigned long long activeSamplePad)
+    {
+        const unsigned long long offset = targetNeuron * maxNumberOfNeighbors;
+        const unsigned long long base = targetNeuron * PADDED_SAMPLES;
+#if defined(__AVX512F__)
+        processNeuronTick512(base,
+            &incomingPositiveSource[offset], incomingPositiveCount[targetNeuron],
+            &incomingNegativeSource[offset], incomingNegativeCount[targetNeuron],
+            activeSamplePad);
+#else
+        processNeuronTick256(base,
+            &incomingPositiveSource[offset], incomingPositiveCount[targetNeuron],
+            &incomingNegativeSource[offset], incomingNegativeCount[targetNeuron],
+            activeSamplePad);
+#endif
     }
+
+    void processTick()
+    {
+        unsigned long long activeSamplePad = ((activeCount + BATCH_SIZE - 1) / BATCH_SIZE) * BATCH_SIZE;
+
+        for (unsigned long long idx = 0; idx < numCachedOutputs; ++idx)
+            processNeuronTick(outputNeuronIdxCache[idx], activeSamplePad);
+
+        for (unsigned long long idx = 0; idx < numCachedEvolution; ++idx)
+            processNeuronTick(evolutionNeuronIdxCache[idx], activeSamplePad);
+    }
+
     void loadTrainingData()
     {
         unsigned long long population = currentANN.population;
 
-        // Load input neuron values from training data
         unsigned long long inputIdx = 0;
         for (unsigned long long n = 0; n < population; n++)
         {
             if (currentANN.neuronTypes[n] == INPUT_NEURON_TYPE)
             {
-                copyMem(&neuronValues[n * PADDED_SAMPLES], &trainingInputs[inputIdx * PADDED_SAMPLES], PADDED_SAMPLES);
+                const unsigned long long offset = n * PADDED_SAMPLES;
+                copyMem(&neuronValues[offset], &trainingInputs[inputIdx * PADDED_SAMPLES], PADDED_SAMPLES);
+                copyMem(&prevNeuronValues[offset], &trainingInputs[inputIdx * PADDED_SAMPLES], PADDED_SAMPLES);
                 inputIdx++;
             }
             else
             {
-                // Non-input neurons: clear to zero
-                setMem(&neuronValues[n * PADDED_SAMPLES], PADDED_SAMPLES, 0);
+                const unsigned long long offset = n * PADDED_SAMPLES;
+                setMem(&neuronValues[offset], PADDED_SAMPLES, 0);
+                setMem(&prevNeuronValues[offset], PADDED_SAMPLES, 0);
             }
         }
-
     }
 
     // Convert the outgoing synapse to incomming style
@@ -716,10 +910,9 @@ struct ScoreAddition
         unsigned long long startIdx = getSynapseStartIndex();
         unsigned long long endIdx = getSynapseEndIndex();
 
-        // Clear counts
-        setMem(incomingCount, sizeof(incomingCount), 0);
+        setMem(incomingPositiveCount, sizeof(incomingPositiveCount), 0);
+        setMem(incomingNegativeCount, sizeof(incomingNegativeCount), 0);
 
-        // Convert outgoing synapses to incoming ones
         for (unsigned long long n = 0; n < population; n++)
         {
             const Synapse* kSynapses = getSynapses(n);
@@ -731,11 +924,16 @@ struct ScoreAddition
                 long long offset = bufferIndexToOffset(synIdx);
                 unsigned long long nnIndex = clampNeuronIndex((long long)n, offset);
 
-                unsigned int idx = incomingCount[nnIndex]++;
-                incomingSynapses[nnIndex * maxNumberOfNeighbors + idx] = weight;
-
-                // Cache the incomming neuron
-                incomingSource[nnIndex * maxNumberOfNeighbors + idx] = (unsigned int)n;
+                if (weight > 0)
+                {
+                    unsigned int idx = incomingPositiveCount[nnIndex]++;
+                    incomingPositiveSource[nnIndex * maxNumberOfNeighbors + idx] = (unsigned int)n;
+                }
+                else
+                {
+                    unsigned int idx = incomingNegativeCount[nnIndex]++;
+                    incomingNegativeSource[nnIndex * maxNumberOfNeighbors + idx] = (unsigned int)n;
+                }
             }
         }
     }
@@ -765,9 +963,19 @@ struct ScoreAddition
     {
         while (s < activeCount)
         {
+            // Check only output + evolution neurons for unchanged (input neurons never change)
             bool allUnchanged = true;
-            for (unsigned long long n = 0; n < population && allUnchanged; n++)
+            for (unsigned long long i = 0; i < numCachedOutputs && allUnchanged; i++)
             {
+                unsigned long long n = outputNeuronIdxCache[i];
+                if (neuronValues[n * PADDED_SAMPLES + s] != prevNeuronValues[n * PADDED_SAMPLES + s])
+                {
+                    allUnchanged = false;
+                }
+            }
+            for (unsigned long long i = 0; i < numCachedEvolution && allUnchanged; i++)
+            {
+                unsigned long long n = evolutionNeuronIdxCache[i];
                 if (neuronValues[n * PADDED_SAMPLES + s] != prevNeuronValues[n * PADDED_SAMPLES + s])
                 {
                     allUnchanged = false;
@@ -805,10 +1013,11 @@ struct ScoreAddition
                 if (writePos != s)
                 {
                     sampleMapping[writePos] = sampleMapping[s];
-                    for (unsigned long long n = 0; n < population; n++)
+                    for (unsigned long long n = 0; n < numProcessNeuron; n++)
                     {
-                        neuronValues[n * PADDED_SAMPLES + writePos] = neuronValues[n * PADDED_SAMPLES + s];
-                        prevNeuronValues[n * PADDED_SAMPLES + writePos] = prevNeuronValues[n * PADDED_SAMPLES + s];
+                        unsigned long long baseIdx = processNeuronOffsetCache[n];
+                        neuronValues[baseIdx + writePos] = neuronValues[baseIdx + s];
+                        prevNeuronValues[baseIdx + writePos] = prevNeuronValues[baseIdx + s];
                     }
                 }
                 writePos++;
@@ -827,10 +1036,20 @@ struct ScoreAddition
         while (s + BATCH_SIZE <= activeCount)
         {
             // Check 1: All neurons unchanged (curr == prev)
+            // Only check output + evolution neurons (input neurons never change)
             // unchangedMask = 1 if unchanged
             __m512i unchangedVec = allOnes;
-            for (unsigned long long n = 0; n < population; n++)
+            for (unsigned long long i = 0; i < numCachedOutputs; i++)
             {
+                unsigned long long n = outputNeuronIdxCache[i];
+                __m512i curr = _mm512_loadu_si512((__m512i*)&neuronValues[n * PADDED_SAMPLES + s]);
+                __m512i prev = _mm512_loadu_si512((__m512i*)&prevNeuronValues[n * PADDED_SAMPLES + s]);
+                __m512i diff = _mm512_xor_si512(curr, prev);
+                unchangedVec = _mm512_andnot_si512(diff, unchangedVec);
+            }
+            for (unsigned long long i = 0; i < numCachedEvolution; i++)
+            {
+                unsigned long long n = evolutionNeuronIdxCache[i];
                 __m512i curr = _mm512_loadu_si512((__m512i*)&neuronValues[n * PADDED_SAMPLES + s]);
                 __m512i prev = _mm512_loadu_si512((__m512i*)&prevNeuronValues[n * PADDED_SAMPLES + s]);
                 __m512i diff = _mm512_xor_si512(curr, prev);
@@ -896,9 +1115,9 @@ struct ScoreAddition
                     _mm512_storeu_si512((__m512i*)&sampleMapping[writePos + 48], map3);
 
                     // Neuron is char, 1 copy is enough
-                    for (unsigned long long n = 0; n < population; n++)
+                    for (unsigned long long n = 0; n < numProcessNeuron; n++)
                     {
-                        unsigned long long baseIdx = n * PADDED_SAMPLES;
+                        unsigned long long baseIdx = processNeuronOffsetCache[n];
 
                         __m512i curr = _mm512_loadu_si512((__m512i*)&neuronValues[baseIdx + s]);
                         __m512i prev = _mm512_loadu_si512((__m512i*)&prevNeuronValues[baseIdx + s]);
@@ -916,7 +1135,7 @@ struct ScoreAddition
                 // Load 4 blocks of 16 samples to adjust the sample index
                 static_assert(BATCH_SIZE / 16 == 4, "Compress loop assumes BATCH_SIZE / 16 == 4");
                 int offset = 0;
-                for (unsigned long long blockId = 0; blockId < BATCH_SIZE; blockId +=16)
+                for (unsigned long long blockId = 0; blockId < BATCH_SIZE; blockId += 16)
                 {
                     __mmask16 k16 = (__mmask16)((activeMask >> blockId) & 0xFFFF);
                     __m512i map = _mm512_loadu_si512((__m512i*)&sampleMapping[s + blockId]);
@@ -927,9 +1146,9 @@ struct ScoreAddition
 
 
                 // Adjust the neurons and previous neuron values
-                unsigned long long baseIdx = 0;
-                for (unsigned long long n = 0; n < population; n++, baseIdx += PADDED_SAMPLES)
+                for (unsigned long long n = 0; n < numProcessNeuron; n++)
                 {
+                    unsigned long long baseIdx = processNeuronOffsetCache[n];
                     __m512i curr = _mm512_loadu_si512((__m512i*)&neuronValues[baseIdx + s]);
                     __m512i prev = _mm512_loadu_si512((__m512i*)&prevNeuronValues[baseIdx + s]);
 
@@ -951,12 +1170,22 @@ struct ScoreAddition
         while (s + BATCH_SIZE <= activeCount)
         {
             // Check 1: All neurons unchanged (curr == prev)
+            // Only check output + evolution neurons (input neurons never change)
             // unchangedMask = 1 if unchanged
             __m256i unchangedVec = allOnes;
-            for (unsigned long long n = 0; n < population; n++)
+            for (unsigned long long i = 0; i < numCachedOutputs; i++)
             {
-                __m256i curr = _mm256_loadu_si256((__m256i*)&neuronValues[n * PADDED_SAMPLES + s]);
-                __m256i prev = _mm256_loadu_si256((__m256i*)&prevNeuronValues[n * PADDED_SAMPLES + s]);
+                unsigned long long n = outputNeuronIdxCache[i];
+                __m256i curr = _mm256_loadu_si256((__m256i*) & neuronValues[n * PADDED_SAMPLES + s]);
+                __m256i prev = _mm256_loadu_si256((__m256i*) & prevNeuronValues[n * PADDED_SAMPLES + s]);
+                __m256i diff = _mm256_xor_si256(curr, prev);
+                unchangedVec = _mm256_andnot_si256(diff, unchangedVec);
+            }
+            for (unsigned long long i = 0; i < numCachedEvolution; i++)
+            {
+                unsigned long long n = evolutionNeuronIdxCache[i];
+                __m256i curr = _mm256_loadu_si256((__m256i*) & neuronValues[n * PADDED_SAMPLES + s]);
+                __m256i prev = _mm256_loadu_si256((__m256i*) & prevNeuronValues[n * PADDED_SAMPLES + s]);
                 __m256i diff = _mm256_xor_si256(curr, prev);
                 unchangedVec = _mm256_andnot_si256(diff, unchangedVec);
             }
@@ -1015,15 +1244,15 @@ struct ScoreAddition
                     __m256i map1 = _mm256_loadu_si256((__m256i*) & sampleMapping[s + 8]);
                     __m256i map2 = _mm256_loadu_si256((__m256i*) & sampleMapping[s + 16]);
                     __m256i map3 = _mm256_loadu_si256((__m256i*) & sampleMapping[s + 24]);
-                    _mm256_storeu_si256((__m256i*)& sampleMapping[writePos + 0], map0);
-                    _mm256_storeu_si256((__m256i*)& sampleMapping[writePos + 8], map1);
-                    _mm256_storeu_si256((__m256i*)& sampleMapping[writePos + 16], map2);
-                    _mm256_storeu_si256((__m256i*)& sampleMapping[writePos + 24], map3);
+                    _mm256_storeu_si256((__m256i*) & sampleMapping[writePos + 0], map0);
+                    _mm256_storeu_si256((__m256i*) & sampleMapping[writePos + 8], map1);
+                    _mm256_storeu_si256((__m256i*) & sampleMapping[writePos + 16], map2);
+                    _mm256_storeu_si256((__m256i*) & sampleMapping[writePos + 24], map3);
 
                     // Neuron is char, 1 copy is enough
-                    for (unsigned long long n = 0; n < population; n++)
+                    for (unsigned long long n = 0; n < numProcessNeuron; n++)
                     {
-                        unsigned long long baseIdx = n * PADDED_SAMPLES;
+                        unsigned long long baseIdx = processNeuronOffsetCache[n];
 
                         __m256i curr = _mm256_loadu_si256((__m256i*) & neuronValues[baseIdx + s]);
                         __m256i prev = _mm256_loadu_si256((__m256i*) & prevNeuronValues[baseIdx + s]);
@@ -1048,9 +1277,9 @@ struct ScoreAddition
                 }
 
                 // Separate update for better caching
-                for (unsigned long long n = 0; n < population; n++)
+                for (unsigned long long n = 0; n < numProcessNeuron; n++)
                 {
-                    unsigned long long baseIdx = n * PADDED_SAMPLES;
+                    unsigned long long baseIdx = processNeuronOffsetCache[n];
                     mask = (unsigned int)activeMask;
                     writeOffset = 0;
                     while (mask != 0)
@@ -1095,12 +1324,10 @@ struct ScoreAddition
             }
             activeCount = trainingSetSize;
 
-            // Load the training set and fill ANN value
             loadTrainingData();
-            copyMem(prevNeuronValues, neuronValues, population * PADDED_SAMPLES);
 
-            // Cache the location of ouput neurons
-            cacheOutputNeuronIndices();
+            // Cache the location of ouput and evolutionneurons
+            cacheOutputEvoNeuronIndices();
 
             // Transpose the synpase
             convertToIncomingSynapses();
@@ -1245,36 +1472,17 @@ struct ScoreAddition
             neuronIndices[outputNeuronIdx] = neuronIndices[neuronCount];
         }
 
-        // Synapse weight initialization
-        auto extractWeight = [](unsigned long long packedValue, unsigned long long position) -> char
-            {
-                unsigned char extractValue = static_cast<unsigned char>((packedValue >> (position * 2)) & 0b11);
-                switch (extractValue)
-                {
-                case 2:
-                    return -1;
-                case 3:
-                    return 1;
-                default:
-                    return 0;
-                }
-            };
-        for (unsigned long long i = 0; i < (maxNumberOfSynapses / 32); ++i)
+        // Synapse weight initialization via LUT: each byte encodes 4 weights (2 bits each),
+        // the LUT expands one byte to 4 signed chars in a single 32-bit store.
         {
-            for (unsigned long long j = 0; j < 32; ++j)
+            const unsigned char* packedBytes = (const unsigned char*)initValue->synapseWeight;
+            int32_t* synOut = (int32_t*)synapses;
+            // maxNumberOfSynapses is always a multiple of 4 (populationThreshold * maxNeighbors)
+            static_assert(maxNumberOfSynapses % 4 == 0, "maxNumberOfSynapses must be divisible by 4 for LUT unpacking");
+            const unsigned long long count = maxNumberOfSynapses / 4;
+            for (unsigned long long i = 0; i < count; i++)
             {
-                synapses[32 * i + j] = extractWeight(initValue->synapseWeight[i], j);
-            }
-        }
-
-        // Handle remaining synapses (if maxNumberOfSynapses not divisible by 32)
-        unsigned long long remainder = maxNumberOfSynapses % 32;
-        if (remainder > 0)
-        {
-            unsigned long long lastBlock = maxNumberOfSynapses / 32;
-            for (unsigned long long j = 0; j < remainder; ++j)
-            {
-                synapses[32 * lastBlock + j] = extractWeight(initValue->synapseWeight[lastBlock], j);
+                synOut[i] = synapseWeightLUT[packedBytes[i]];
             }
         }
 
@@ -1284,12 +1492,20 @@ struct ScoreAddition
         return score;
     }
 
+    void copyANN(ANN& dst, const ANN& src)
+    {
+        unsigned long long pop = src.population;
+        copyMem(dst.synapses, src.synapses, pop * maxNumberOfNeighbors * sizeof(Synapse));
+        copyMem(dst.neuronTypes, src.neuronTypes, pop);
+        dst.population = pop;
+    }
+
     // Main function for mining
     unsigned int computeScore(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* randomPool)
     {
         // Initialize
         unsigned int bestR = initializeANN(publicKey, nonce, randomPool);
-        copyMem(&bestANN, &currentANN, sizeof(bestANN));
+        copyANN(bestANN, currentANN);
 
         for (unsigned long long s = 0; s < numberOfMutations; ++s)
         {
@@ -1310,12 +1526,12 @@ struct ScoreAddition
             {
                 bestR = R;
                 // Better R. Save the state
-                copyMem(&bestANN, &currentANN, sizeof(bestANN));
+                copyANN(bestANN, currentANN);
             }
             else
             {
                 // Roll back
-                copyMem(&currentANN, &bestANN, sizeof(bestANN));
+                copyANN(currentANN, bestANN);
             }
 
             ASSERT(bestANN.population <= populationThreshold);

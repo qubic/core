@@ -4,7 +4,7 @@
 
 #define PRINT_DETAILS 0
 
-class CCFChecker : public CCF
+class CCFChecker : public CCF, public CCF::StateData
 {
 public:
     void checkSubscriptions(bool printDetails = PRINT_DETAILS)

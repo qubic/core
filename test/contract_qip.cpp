@@ -14,7 +14,7 @@ const id QIP_testAddress2 = ID(_A, _D, _D, _R, _B, _A, _B, _C, _D, _E, _F, _G, _
 const id QIP_testAddress3 = ID(_A, _D, _D, _R, _C, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y);
 const id QIP_testBuyer = ID(_B, _U, _Y, _E, _R, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y, _Z, _A, _B, _C, _D, _E, _F, _G, _H, _I, _J, _K, _L, _M, _N, _O, _P, _Q, _R, _S, _T, _U, _V, _W, _X, _Y);
 
-class QIPChecker : public QIP
+class QIPChecker : public QIP, public QIP::StateData
 {
 public:
     uint32 getNumberOfICO() const { return numberOfICO; }

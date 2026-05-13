@@ -86,3 +86,34 @@ TEST(TestCoreMathLib, DivUp) {
     testDivUp<unsigned int>();
     testDivUp<unsigned long long>();
 }
+
+template <typename T>
+void testPositiveGreatestCommonDivisor()
+{
+    EXPECT_EQ((int)math_lib::greatestCommonDivisor(T(0), T(0)), 0);
+    EXPECT_EQ((int)math_lib::greatestCommonDivisor(T(0), T(1)), 1);
+    EXPECT_EQ((int)math_lib::greatestCommonDivisor(T(1), T(0)), 1);
+    EXPECT_EQ((int)math_lib::greatestCommonDivisor(T(2), T(20)), 2);
+    EXPECT_EQ((int)math_lib::greatestCommonDivisor(T(20), T(2)), 2);
+    EXPECT_EQ((int)math_lib::greatestCommonDivisor(T(12), T(18)), 6);
+    EXPECT_EQ((int)math_lib::greatestCommonDivisor(T(18), T(12)), 6);
+    EXPECT_EQ((int)math_lib::greatestCommonDivisor(T(36), T(27)), 9);
+    EXPECT_EQ((int)math_lib::greatestCommonDivisor(T(27), T(36)), 9);
+    EXPECT_EQ((int)math_lib::greatestCommonDivisor(T(30), T(30)), 30);
+    EXPECT_EQ((int)math_lib::greatestCommonDivisor(T(30), T(30)), 30);
+    EXPECT_EQ((int)math_lib::greatestCommonDivisor(T(99), T(100)), 1);
+    EXPECT_EQ((int)math_lib::greatestCommonDivisor(T(100), T(99)), 1);
+}
+
+TEST(TestCoreMathLib, GreatestCommonDivisor)
+{
+    testPositiveGreatestCommonDivisor<unsigned char>();
+    testPositiveGreatestCommonDivisor<unsigned short>();
+    testPositiveGreatestCommonDivisor<unsigned int>();
+    testPositiveGreatestCommonDivisor<unsigned long long>();
+    EXPECT_EQ(math_lib::greatestCommonDivisor<int>(-1, -1), 0);
+    EXPECT_EQ(math_lib::greatestCommonDivisor<int>(-8, -12), 0);
+    EXPECT_EQ(math_lib::greatestCommonDivisor<int>(-8, 12), 0);
+    EXPECT_EQ(math_lib::greatestCommonDivisor<int>(8, -12), 0);
+    EXPECT_EQ(math_lib::greatestCommonDivisor<int>(-12, -18), 0);
+}

@@ -33,6 +33,7 @@ add_executable(
   # contract_qearn.cpp
   # contract_qvault.cpp
   # contract_qx.cpp
+  contract_vottunbridge.cpp
   # kangaroo_twelve.cpp
   m256.cpp
   math_lib.cpp

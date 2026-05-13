@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "pre_qpi_def.h"
+#include "../common_buffers.h"
 #include "../contracts/qpi.h"
 #include "../platform/memory.h"
 #include "../kangaroo_twelve.h"
@@ -258,6 +260,12 @@ namespace QPI
 		}
 	}
 	
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
+	bool HashMap<KeyT, ValueT, L, HashFunc>::needsCleanup(uint64 removalThresholdPercent) const
+	{
+		return _markRemovalCounter > (removalThresholdPercent * L / 100);
+	}
+
 	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc>
 	void HashMap<KeyT, ValueT, L, HashFunc>::cleanupIfNeeded(uint64 removalThresholdPercent)
 	{
@@ -584,6 +592,12 @@ namespace QPI
 			removeByIndex(elementIndex);
 			return elementIndex;
 		}
+	}
+
+	template <typename KeyT, uint64 L, typename HashFunc>
+	bool HashSet<KeyT, L, HashFunc>::needsCleanup(uint64 removalThresholdPercent) const
+	{
+		return _markRemovalCounter > (removalThresholdPercent * L / 100);
 	}
 
 	template <typename KeyT, uint64 L, typename HashFunc>

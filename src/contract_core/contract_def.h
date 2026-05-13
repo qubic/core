@@ -244,11 +244,49 @@
 #define CONTRACT_STATE2_TYPE QDUEL2
 #include "contracts/QDuel.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define PULSE_CONTRACT_INDEX 24
+#define CONTRACT_INDEX PULSE_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE PULSE
+#define CONTRACT_STATE2_TYPE PULSE2
+#include "contracts/Pulse.h"
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define VOTTUNBRIDGE_CONTRACT_INDEX 25
+#define CONTRACT_INDEX VOTTUNBRIDGE_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE VOTTUNBRIDGE
+#define CONTRACT_STATE2_TYPE VOTTUNBRIDGE2
+#include "contracts/VottunBridge.h"
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QUSINO_CONTRACT_INDEX 26
+#define CONTRACT_INDEX QUSINO_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QUSINO
+#define CONTRACT_STATE2_TYPE QUSINO2
+#include "contracts/Qusino.h"
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define ESCROW_CONTRACT_INDEX 27
+#define CONTRACT_INDEX ESCROW_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE ESCROW
+#define CONTRACT_STATE2_TYPE ESCROW2
+#include "contracts/Escrow.h"
+
 // new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
-// forward declaration, defined in qpi_spectrum_impl.h
-static void setContractFeeReserve(unsigned int contractIndex, long long newValue);
 
 constexpr unsigned short TESTEXA_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #undef CONTRACT_INDEX
@@ -305,6 +343,7 @@ constexpr unsigned short TESTEXD_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 #include "qpi_collection_impl.h"
 #include "qpi_trivial_impl.h"
 #include "qpi_hash_map_impl.h"
+#include "qpi_linked_list_impl.h"
 
 #include "platform/global_var.h"
 
@@ -332,33 +371,37 @@ constexpr struct ContractDescription
     unsigned long long stateSize;
 } contractDescriptions[] = {
     {"", 0, 0, sizeof(Contract0State)},
-    {"QX", 66, 10000, sizeof(QX)},
-    {"QTRY", 72, 10000, sizeof(QUOTTERY)},
-    {"RANDOM", 88, 10000, sizeof(IPO)},
-    {"QUTIL", 99, 10000, sizeof(QUTIL)},
+    {"QX", 66, 10000, sizeof(QX::StateData)},
+    {"QTRY", 72, 10000, sizeof(QUOTTERY::StateData)},
+    {"RANDOM", 88, 10000, sizeof(RANDOM::StateData)},
+    {"QUTIL", 99, 10000, sizeof(QUTIL::StateData)},
     {"MLM", 112, 10000, sizeof(IPO)},
-    {"GQMPROP", 123, 10000, sizeof(GQMPROP)},
+    {"GQMPROP", 123, 10000, sizeof(GQMPROP::StateData)},
     {"SWATCH", 123, 10000, sizeof(IPO)},
-    {"CCF", 127, 10000, sizeof(CCF)}, // proposal in epoch 125, IPO in 126, construction and first use in 127
-    {"QEARN", 137, 10000, sizeof(QEARN)}, // proposal in epoch 135, IPO in 136, construction in 137 / first donation after END_EPOCH, first round in epoch 138
-    {"QVAULT", 138, 10000, sizeof(IPO)}, // proposal in epoch 136, IPO in 137, construction and first use in 138
-    {"MSVAULT", 149, 10000, sizeof(MSVAULT)}, // proposal in epoch 147, IPO in 148, construction and first use in 149
-    {"QBAY", 154, 10000, sizeof(QBAY)}, // proposal in epoch 152, IPO in 153, construction and first use in 154
-    {"QSWAP", 171, 10000, sizeof(QSWAP)}, // proposal in epoch 169, IPO in 170, construction and first use in 171
-    {"NOST", 172, 10000, sizeof(NOST)}, // proposal in epoch 170, IPO in 171, construction and first use in 172
-    {"QDRAW", 179, 10000, sizeof(QDRAW)}, // proposal in epoch 177, IPO in 178, construction and first use in 179
-    {"RL", 182, 10000, sizeof(RL)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
-    {"QBOND", 182, 10000, sizeof(QBOND)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
-    {"QIP", 189, 10000, sizeof(QIP)}, // proposal in epoch 187, IPO in 188, construction and first use in 189
-    {"QRAFFLE", 192, 10000, sizeof(QRAFFLE)}, // proposal in epoch 190, IPO in 191, construction and first use in 192
-    {"QRWA", 197, 10000, sizeof(QRWA)}, // proposal in epoch 195, IPO in 196, construction and first use in 197
+    {"CCF", 127, 10000, sizeof(CCF::StateData)}, // proposal in epoch 125, IPO in 126, construction and first use in 127
+    {"QEARN", 137, 10000, sizeof(QEARN::StateData)}, // proposal in epoch 135, IPO in 136, construction in 137 / first donation after END_EPOCH, first round in epoch 138
+    {"QVAULT", 138, 10000, sizeof(QVAULT::StateData)}, // proposal in epoch 136, IPO in 137, construction and first use in 138
+    {"MSVAULT", 149, 10000, sizeof(MSVAULT::StateData)}, // proposal in epoch 147, IPO in 148, construction and first use in 149
+    {"QBAY", 154, 10000, sizeof(QBAY::StateData)}, // proposal in epoch 152, IPO in 153, construction and first use in 154
+    {"QSWAP", 171, 10000, sizeof(QSWAP::StateData)}, // proposal in epoch 169, IPO in 170, construction and first use in 171
+    {"NOST", 172, 10000, sizeof(NOST::StateData)}, // proposal in epoch 170, IPO in 171, construction and first use in 172
+    {"QDRAW", 179, 10000, sizeof(QDRAW::StateData)}, // proposal in epoch 177, IPO in 178, construction and first use in 179
+    {"RL", 182, 10000, sizeof(RL::StateData)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
+    {"QBOND", 182, 10000, sizeof(QBOND::StateData)}, // proposal in epoch 180, IPO in 181, construction and first use in 182
+    {"QIP", 189, 10000, sizeof(QIP::StateData)}, // proposal in epoch 187, IPO in 188, construction and first use in 189
+    {"QRAFFLE", 192, 10000, sizeof(QRAFFLE::StateData)}, // proposal in epoch 190, IPO in 191, construction and first use in 192
+    {"QRWA", 197, 10000, sizeof(QRWA::StateData)}, // proposal in epoch 195, IPO in 196, construction and first use in 197
 	{"QRP", 199, 10000, sizeof(IPO)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
-	{"QTF", 199, 10000, sizeof(QTF)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
-    {"QDUEL", 199, 10000, sizeof(QDUEL)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
+	{"QTF", 199, 10000, sizeof(QTF::StateData)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
+    {"QDUEL", 199, 10000, sizeof(QDUEL::StateData)}, // proposal in epoch 197, IPO in 198, construction and first use in 199
+	{"PULSE", 204, 10000, sizeof(PULSE::StateData)}, // proposal in epoch 202, IPO in 203, construction and first use in 204
+    {"VOTTUN", 206, 10000, sizeof(VOTTUNBRIDGE::StateData)}, // proposal in epoch 204, IPO in 205, construction and first use in 206
+    {"QUSINO", 208, 10000, sizeof(QUSINO::StateData)}, // proposal in epoch 206, IPO in 207, construction and first use in 208
+    {"ESCROW", 210, 10000, sizeof(ESCROW::StateData)}, // proposal in epoch 208, IPO in 209, construction and first use in 210
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
-    {"TESTEXA", 138, 10000, sizeof(TESTEXA)},
-    {"TESTEXB", 138, 10000, sizeof(TESTEXB)},
+    {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
+    {"TESTEXB", 138, 10000, sizeof(TESTEXB::StateData)},
     {"TESTEXC", 138, 10000, sizeof(IPO)},
     {"TESTEXD", 155, 10000, sizeof(IPO)},
 #endif
@@ -445,7 +488,7 @@ contractSystemProcedureLocalsSizes[contractIndex][SET_SHAREHOLDER_VOTES] = contr
 if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
 QpiContextForInit qpi(contractIndex); \
 contractName::__registerUserFunctionsAndProcedures(qpi); \
-static_assert(sizeof(contractName) <= MAX_CONTRACT_STATE_SIZE, "Size of contract state " #contractName " is too large!"); \
+static_assert(sizeof(contractName::StateData) <= MAX_CONTRACT_STATE_SIZE, "Size of contract state " #contractName " is too large!"); \
 }
 
 
@@ -474,20 +517,27 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTF);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDUEL);
+	REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(PULSE);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(VOTTUNBRIDGE);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUSINO);
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(ESCROW);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXB);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXC);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXD);
-
-    // fill execution fee reserves for test contracts
-    setContractFeeReserve(TESTEXA_CONTRACT_INDEX, 100000000000);
-    setContractFeeReserve(TESTEXB_CONTRACT_INDEX, 100000000000);
-    setContractFeeReserve(TESTEXC_CONTRACT_INDEX, 100000000000);
-    setContractFeeReserve(TESTEXD_CONTRACT_INDEX, 100000000000);
 #endif
 }
+
+// Automatic Contract Padding
+// Contracts whose state struct grew this epoch. Update this list each epoch as needed.
+// When enabling, replace both lines below, e.g.:
+//   constexpr unsigned int paddableContracts[] = { RANDOM_CONTRACT_INDEX };
+//   constexpr unsigned int paddableCount = sizeof(paddableContracts) / sizeof(paddableContracts[0]);
+constexpr const unsigned int* paddableContracts = nullptr;
+constexpr unsigned int paddableCount = 0;
+
 
 // Class for registering and looking up user procedures independently of input type, for example for notifications
 class UserProcedureRegistry

@@ -14,7 +14,7 @@ constexpr uint16 QRP_FUNC_GET_ALLOWED_SC = 2;
 static const id QRP_CONTRACT_ID(QRP_CONTRACT_INDEX, 0, 0, 0);
 static const id QRP_DEFAULT_SC_ID(QRP_QTF_INDEX, 0, 0, 0);
 
-class QRPChecker : public QRP
+class QRPChecker : public QRP, public QRP::StateData
 {
 public:
 	const id& team() const { return teamAddress; }

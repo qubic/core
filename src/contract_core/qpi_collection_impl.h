@@ -586,6 +586,12 @@ namespace QPI
 	}
 
 	template <typename T, uint64 L>
+	bool Collection<T, L>::needsCleanup(uint64 removalThresholdPercent) const
+	{
+		return _markRemovalCounter > (removalThresholdPercent * L / 100);
+	}
+
+	template <typename T, uint64 L>
 	void Collection<T, L>::cleanupIfNeeded(uint64 removalThresholdPercent)
 	{
 		if (_markRemovalCounter > (removalThresholdPercent * L / 100))
@@ -615,8 +621,10 @@ namespace QPI
 			return;
 		}
 
-		// Init buffers
-		__ScopedScratchpad scratchpad(sizeof(_povs) + sizeof(_povOccupationFlags), /*initZero=*/true);
+		// Init buffers. Besides the rebuilt pov tables we also need traversal stack
+		// space for walking a pov's BST while updating element.povIndex.
+		const uint64 stackBytes = _population * sizeof(sint64);
+		__ScopedScratchpad scratchpad(sizeof(_povs) + sizeof(_povOccupationFlags) + stackBytes, /*initZero=*/true);
 		ASSERT(scratchpad.ptr);
 		auto* _povsBuffer = reinterpret_cast<PoV*>(scratchpad.ptr);
 		auto* _povOccupationFlagsBuffer = reinterpret_cast<uint64*>(_povsBuffer + L);

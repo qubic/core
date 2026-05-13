@@ -124,9 +124,13 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="common_def.cpp" />
+    <ClCompile Include="contract_escrow.cpp" />
+    <ClCompile Include="contract_pulse.cpp" />
     <ClCompile Include="contract_qbond.cpp" />
     <ClCompile Include="contract_qrwa.cpp" />
     <ClCompile Include="contract_qswap.cpp" />
+    <ClCompile Include="custom_qubic_mining_storage.cpp" />
+    <ClCompile Include="contract_quottery.cpp" />
     <ClCompile Include="fourq.cpp" />
     <ClCompile Include="pending_txs_pool.cpp" />
     <ClCompile Include="quorum_value.cpp" />
@@ -145,19 +149,21 @@
     <ClCompile Include="contract_nostromo.cpp" />
     <ClCompile Include="contract_qraffle.cpp" />
     <ClCompile Include="contract_gqmprop.cpp" />
+    <ClCompile Include="contract_vottunbridge.cpp" />
     <ClCompile Include="contract_rl.cpp" />
     <ClCompile Include="contract_qduel.cpp" />
     <ClCompile Include="contract_qrp.cpp" />
     <ClCompile Include="contract_qtf.cpp" />
     <ClCompile Include="contract_ccf.cpp" />
     <ClCompile Include="contract_qip.cpp" />
-    <ClCompile Include="custom_mining.cpp" />
+    <ClCompile Include="contract_qusino.cpp" />
     <ClCompile Include="execution_fees.cpp" />
     <ClCompile Include="stable_computor_index.cpp" />
     <ClCompile Include="file_io.cpp" />
     <ClCompile Include="qpi_collection.cpp" />
     <ClCompile Include="qpi_date_time.cpp" />
     <ClCompile Include="qpi_hash_map.cpp" />
+    <ClCompile Include="qpi_linked_list.cpp" />
     <ClCompile Include="kangaroo_twelve.cpp" />
     <ClCompile Include="revenue.cpp" />
     <ClCompile Include="spectrum.cpp" />

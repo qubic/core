@@ -7,6 +7,30 @@ struct TESTEXC2
 struct TESTEXC : public ContractBase
 {
 	//---------------------------------------------------------------
+	// Types (defined before StateData)
+
+	struct IncomingTransferAmounts
+	{
+		sint64 standardTransactionAmount;
+		sint64 procedureTransactionAmount;
+		sint64 qpiTransferAmount;
+		sint64 qpiDistributeDividendsAmount;
+		sint64 revenueDonationAmount;
+		sint64 ipoBidRefundAmount;
+	};
+
+	//---------------------------------------------------------------
+	// State
+
+	struct StateData
+	{
+		int waitInPreAcqiuireSharesCallback;
+		IncomingTransferAmounts incomingTransfers;
+		HashMap<uint64, uint32, 64> oracleQueryExtraData;
+		uint32 oracleSubscriptionId;
+	};
+
+	//---------------------------------------------------------------
 	// ASSET MANAGEMENT RIGHTS TRANSFER
 
 	struct GetTestExampleAShareManagementRights_input
@@ -20,8 +44,7 @@ struct TESTEXC : public ContractBase
 	};
 
 protected:
-	int waitInPreAcqiuireSharesCallback;
-	
+
 	struct GetTestExampleAShareManagementRights_locals
 	{
 		TESTEXA::TransferShareManagementRights_input input;
@@ -71,15 +94,7 @@ protected:
 	// POST_INCOMING_TRANSFER CALLBACK
 public:
 	typedef NoData IncomingTransferAmounts_input;
-	struct IncomingTransferAmounts_output
-	{
-		sint64 standardTransactionAmount;
-		sint64 procedureTransactionAmount;
-		sint64 qpiTransferAmount;
-		sint64 qpiDistributeDividendsAmount;
-		sint64 revenueDonationAmount;
-		sint64 ipoBidRefundAmount;
-	};
+	typedef IncomingTransferAmounts IncomingTransferAmounts_output;
 
 	struct QpiTransfer_input
 	{
@@ -95,11 +110,10 @@ public:
 	typedef NoData QpiDistributeDividends_output;
 
 protected:
-	IncomingTransferAmounts_output incomingTransfers;
 
 	PUBLIC_FUNCTION(IncomingTransferAmounts)
 	{
-		output = state.incomingTransfers;
+		output = state.get().incomingTransfers;
 	}
 
 	struct POST_INCOMING_TRANSFER_locals
@@ -116,22 +130,22 @@ protected:
 		switch (input.type)
 		{
 		case TransferType::standardTransaction:
-			state.incomingTransfers.standardTransactionAmount += input.amount;
+			state.mut().incomingTransfers.standardTransactionAmount += input.amount;
 			break;
 		case TransferType::procedureTransaction:
-			state.incomingTransfers.procedureTransactionAmount += input.amount;
+			state.mut().incomingTransfers.procedureTransactionAmount += input.amount;
 			break;
 		case TransferType::qpiTransfer:
-			state.incomingTransfers.qpiTransferAmount += input.amount;
+			state.mut().incomingTransfers.qpiTransferAmount += input.amount;
 			break;
 		case TransferType::qpiDistributeDividends:
-			state.incomingTransfers.qpiDistributeDividendsAmount += input.amount;
+			state.mut().incomingTransfers.qpiDistributeDividendsAmount += input.amount;
 			break;
 		case TransferType::revenueDonation:
-			state.incomingTransfers.revenueDonationAmount += input.amount;
+			state.mut().incomingTransfers.revenueDonationAmount += input.amount;
 			break;
 		case TransferType::ipoBidRefund:
-			state.incomingTransfers.ipoBidRefundAmount += input.amount;
+			state.mut().incomingTransfers.ipoBidRefundAmount += input.amount;
 			break;
 		default:
 			ASSERT(false);
@@ -205,11 +219,6 @@ public:
 		sint8 _terminator; // Only data before "_terminator" are logged
 	};
 
-	// optional: additional of contract data associated with oracle query
-	HashMap<uint64, uint32, 64> oracleQueryExtraData;
-
-	uint32 oracleSubscriptionId;
-
 	struct QueryPriceOracle_input
 	{
 		OI::Price::OracleQuery priceOracleQuery;
@@ -222,34 +231,62 @@ public:
 
 	PUBLIC_PROCEDURE(QueryPriceOracle)
 	{
+		if (qpi.invocationReward() < OI::Price::getQueryFee(input.priceOracleQuery))
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		}
 		output.oracleQueryId = QUERY_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.timeoutMilliseconds);
 		if (output.oracleQueryId < 0)
 		{
 			// error
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
 		}
 
 		// example: store additional data realted to oracle query
-		state.oracleQueryExtraData.set(output.oracleQueryId, 0);
+		state.mut().oracleQueryExtraData.set(output.oracleQueryId, 0);
 	}
 
 	struct SubscribePriceOracle_input
 	{
 		OI::Price::OracleQuery priceOracleQuery;
-		uint16 subscriptionIntervalMinutes;
+		uint32 subscriptionPeriodMilliseconds;
+		bit notifyPreviousValue;
 	};
 	struct SubscribePriceOracle_output
 	{
-		uint32 oracleSubscriptionId;
+		sint32 oracleSubscriptionId;
 	};
 
 	PUBLIC_PROCEDURE(SubscribePriceOracle)
 	{
-		output.oracleSubscriptionId = SUBSCRIBE_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.subscriptionIntervalMinutes, true);
+		if (qpi.invocationReward() < OI::Price::getSubscriptionFee(input.priceOracleQuery, input.subscriptionPeriodMilliseconds))
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		}
+
+		output.oracleSubscriptionId = SUBSCRIBE_ORACLE(OI::Price, input.priceOracleQuery, NotifyPriceOracleReply, input.subscriptionPeriodMilliseconds, input.notifyPreviousValue);
 		if (output.oracleSubscriptionId < 0)
 		{
 			// error
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
+	}
+
+	struct UnsubscribeOracle_input
+	{
+		sint32 subscriptionId;
+	};
+	struct UnsubscribeOracle_output
+	{
+		bit success;
+	};
+
+	PUBLIC_PROCEDURE(UnsubscribeOracle)
+	{
+		output.success = qpi.unsubscribeOracle(input.subscriptionId);
 	}
 
 	typedef OracleNotificationInput<OI::Price> NotifyPriceOracleReply_input;
@@ -263,7 +300,7 @@ public:
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(NotifyPriceOracleReply)
 	{
-		locals.notificationLog = NotificationLog{CONTRACT_INDEX, OI::Price::oracleInterfaceIndex, input.status, OI::Price::replyIsValid(input.reply), input.reply.numerator, input.queryId };
+		locals.notificationLog = NotificationLog{CONTRACT_INDEX, OI::Price::oracleInterfaceIndex, input.status, OI::Price::replyIsValid(input.reply), input.subscriptionId, input.queryId };
 		LOG_INFO(locals.notificationLog);
 
 		if (input.status == ORACLE_QUERY_STATUS_SUCCESS)
@@ -271,9 +308,9 @@ public:
 			// get and use query info if needed
 			if (!qpi.getOracleQuery<OI::Price>(input.queryId, locals.query))
 				return;
-			
+
 			// get and use additional query info stored by contract if needed
-			if (!state.oracleQueryExtraData.get(input.queryId, locals.queryExtraData))
+			if (!state.get().oracleQueryExtraData.get(input.queryId, locals.queryExtraData))
 				return;
 
 			// use example convenience function provided by oracle interface
@@ -363,7 +400,7 @@ public:
 				else if (locals.c == 2)
 				{
 					using namespace Ch;
-					locals.priceOracleQuery.oracle = OI::Price::getCoingeckoOracleId();
+					locals.priceOracleQuery.oracle = OI::Price::getBinanceOracleId();
 					locals.priceOracleQuery.currency1 = id(B, T, C, null, null);
 					locals.priceOracleQuery.currency2 = id(U, S, D, T, null);
 					locals.priceOracleQuery.timestamp = qpi.now();
@@ -442,6 +479,8 @@ public:
 		REGISTER_USER_PROCEDURE(QpiBidInIpo, 30);
 
 		REGISTER_USER_PROCEDURE(QueryPriceOracle, 100);
+		REGISTER_USER_PROCEDURE(SubscribePriceOracle, 101);
+		REGISTER_USER_PROCEDURE(UnsubscribeOracle, 102);
 
 		REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyPriceOracleReply);
 		REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyMockOracleReply);

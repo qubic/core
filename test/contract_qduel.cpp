@@ -29,9 +29,13 @@ public:
 	{}
 };
 
-class QDuelChecker : public QDUEL
+class QDuelChecker : public QDUEL, public QDUEL::StateData
 {
 public:
+	const QPI::ContractState<StateData, QDUEL_CONTRACT_INDEX>& asState() const {
+		return *reinterpret_cast<const QPI::ContractState<StateData, QDUEL_CONTRACT_INDEX>*>(static_cast<const StateData*>(this));
+	}
+
 	// Expose read-only accessors for internal state so tests can assert without
 	// modifying contract storage directly.
 	uint64 roomCount() const { return rooms.population(); }
@@ -68,7 +72,7 @@ public:
 		GetWinnerPlayer_input input{player1, player2};
 		GetWinnerPlayer_output output{};
 		GetWinnerPlayer_locals locals{};
-		GetWinnerPlayer(qpi, *this, input, output, locals);
+		GetWinnerPlayer(qpi, asState(), input, output, locals);
 		return output.winner;
 	}
 
@@ -80,7 +84,7 @@ public:
 		output = {};
 		CalculateRevenue_input revenueInput{amount};
 		CalculateRevenue_locals revenueLocals{};
-		CalculateRevenue(qpi, *this, revenueInput, output, revenueLocals);
+		CalculateRevenue(qpi, asState(), revenueInput, output, revenueLocals);
 	}
 
 	GetUserProfile_output getUserProfileFor(const id& user) const
@@ -89,7 +93,7 @@ public:
 		GetUserProfile_input input{user};
 		GetUserProfile_output output{};
 		GetUserProfile_locals locals{};
-		GetUserProfile(qpi, *this, input, output, locals);
+		GetUserProfile(qpi, asState(), input, output, locals);
 		return output;
 	}
 };

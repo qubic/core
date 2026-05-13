@@ -34,7 +34,7 @@ static std::vector<id> getRandomUsers(unsigned int totalUsers, unsigned int maxN
     return users;
 }
 
-class NostromoChecker : public NOST
+class NostromoChecker : public NOST, public NOST::StateData
 {
 public:
     void registerChecker(id registerId, uint32 tierLevel, uint32 indexOfRegister)
