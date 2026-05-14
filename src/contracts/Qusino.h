@@ -397,12 +397,16 @@ public:
     {
         STARAndQSC user;
         QUSINOLogger log;
+        uint64 starVolumeIncrease;
+        uint64 qubicCost;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(earnSTAR)
     {
-        if (input.amount * QUSINO_STAR_PRICE * 100 > (uint32)qpi.invocationReward()) 
+        locals.starVolumeIncrease = smul(input.amount, 100ULL);
+        locals.qubicCost = smul(locals.starVolumeIncrease, (uint64)QUSINO_STAR_PRICE);
+        if (locals.qubicCost > (uint64)qpi.invocationReward())
         {
-            if (qpi.invocationReward() > 0) 
+            if (qpi.invocationReward() > 0)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
@@ -411,16 +415,16 @@ public:
             LOG_INFO(locals.log);
             return ;
         }
-        if (input.amount * QUSINO_STAR_PRICE * 100 < (uint32)qpi.invocationReward()) 
+        if (locals.qubicCost < (uint64)qpi.invocationReward())
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (input.amount * QUSINO_STAR_PRICE * 100));
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)locals.qubicCost);
         }
         state.get().userAssetVolume.get(qpi.invocator(), locals.user);
-        locals.user.volumeOfSTAR += input.amount * 100;
-        locals.user.volumeOfQSC += input.amount;
+        locals.user.volumeOfSTAR = sadd(locals.user.volumeOfSTAR, locals.starVolumeIncrease);
+        locals.user.volumeOfQSC = sadd(locals.user.volumeOfQSC, input.amount);
         state.mut().userAssetVolume.set(qpi.invocator(), locals.user);
-        state.mut().STARCirclatingSupply += input.amount * 100;
-        state.mut().QSCCirclatingSupply += input.amount;
+        state.mut().STARCirclatingSupply = sadd(state.get().STARCirclatingSupply, locals.starVolumeIncrease);
+        state.mut().QSCCirclatingSupply = sadd(state.get().QSCCirclatingSupply, input.amount);
         output.returnCode = QUSINO_SUCCESS;
         locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_SUCCESS, 0 };
         LOG_INFO(locals.log);
@@ -466,7 +470,7 @@ public:
                 return;
             }
             locals.sender.volumeOfSTAR -= input.amount;
-            locals.dest.volumeOfSTAR += input.amount;
+            locals.dest.volumeOfSTAR = sadd(locals.dest.volumeOfSTAR, input.amount);
         }
         else if (input.type == QUSINO_ASSET_TYPE_QSC)
         {
@@ -478,7 +482,7 @@ public:
                 return;
             }
             locals.sender.volumeOfQSC -= input.amount;
-            locals.dest.volumeOfQSC += input.amount;
+            locals.dest.volumeOfQSC = sadd(locals.dest.volumeOfQSC, input.amount);
         }
         state.mut().userAssetVolume.set(qpi.invocator(), locals.sender);
         state.mut().userAssetVolume.set(input.dest, locals.dest);
@@ -510,7 +514,7 @@ public:
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - QUSINO_GAME_SUBMIT_FEE);   
         }
         qpi.distributeDividends(div(QUSINO_GAME_SUBMIT_FEE, 676 * 10ULL));
-        state.mut().epochRevenue += QUSINO_GAME_SUBMIT_FEE - div(QUSINO_GAME_SUBMIT_FEE, 676 * 10ULL) * 676;
+        state.mut().epochRevenue = sadd(state.get().epochRevenue, QUSINO_GAME_SUBMIT_FEE - div(QUSINO_GAME_SUBMIT_FEE, 676 * 10ULL) * 676);
         locals.newGame.proposedEpoch = qpi.epoch();
         locals.newGame.proposer = qpi.invocator();
         copyMemory(locals.newGame.URI, input.URI);
@@ -617,7 +621,10 @@ public:
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(depositBonus)
     {
-        state.mut().bonusAmount += qpi.invocationReward();
+        if (qpi.invocationReward() > 0)
+        {
+            state.mut().bonusAmount = sadd(state.get().bonusAmount, (uint64)qpi.invocationReward());
+        }
         output.returnCode = QUSINO_SUCCESS;
         locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_SUCCESS, 0 };
         LOG_INFO(locals.log);
@@ -662,14 +669,14 @@ public:
         }
         state.mut().bonusAmount -= QUSINO_BONUS_CLAIM_AMOUNT;
         state.get().userAssetVolume.get(qpi.invocator(), locals.userVolume);
-        locals.userVolume.volumeOfSTAR += QUSINO_BONUS_CLAIM_AMOUNT_STAR;
-        locals.userVolume.volumeOfQSC += QUSINO_BONUS_CLAIM_AMOUNT_QSC;
+        locals.userVolume.volumeOfSTAR = sadd(locals.userVolume.volumeOfSTAR, QUSINO_BONUS_CLAIM_AMOUNT_STAR);
+        locals.userVolume.volumeOfQSC = sadd(locals.userVolume.volumeOfQSC, QUSINO_BONUS_CLAIM_AMOUNT_QSC);
         state.mut().userAssetVolume.set(qpi.invocator(), locals.userVolume);
-        state.mut().STARCirclatingSupply += QUSINO_BONUS_CLAIM_AMOUNT_STAR;
-        state.mut().QSCCirclatingSupply += QUSINO_BONUS_CLAIM_AMOUNT_QSC;
+        state.mut().STARCirclatingSupply = sadd(state.get().STARCirclatingSupply, QUSINO_BONUS_CLAIM_AMOUNT_STAR);
+        state.mut().QSCCirclatingSupply = sadd(state.get().QSCCirclatingSupply, QUSINO_BONUS_CLAIM_AMOUNT_QSC);
         state.mut().lastClaimedTime = locals.curDate;
         state.mut().userDailyClaimedBonus.set(qpi.invocator(), locals.curDate);
-        state.mut().epochRevenue += QUSINO_BONUS_CLAIM_AMOUNT_STAR;      // 100STAR is 100Qubic for each bonus claim
+        state.mut().epochRevenue = sadd(state.get().epochRevenue, QUSINO_BONUS_CLAIM_AMOUNT_STAR);      // 100STAR is 100Qubic for each bonus claim
         output.returnCode = QUSINO_SUCCESS;
         locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_SUCCESS, 0 };
         LOG_INFO(locals.log);
@@ -681,6 +688,7 @@ public:
         QUSINOLogger log;
         sint64 idx;
         GameInfo game;
+        uint64 qubicPayout;
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(redemptionQSCToQubic)
     {
@@ -705,7 +713,15 @@ public:
             LOG_INFO(locals.log);
             return;
         }
-        if (qpi.transfer(qpi.invocator(), input.amount * QUSINO_QSC_PRICE) < 0)
+        locals.qubicPayout = smul(input.amount, QUSINO_QSC_PRICE);
+        if (locals.qubicPayout > (uint64)INT64_MAX)
+        {
+            output.returnCode = QUSINO_INSUFFICIENT_FUNDS;
+            locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_FUNDS, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+        if (qpi.transfer(qpi.invocator(), (sint64)locals.qubicPayout) < 0)
         {
             output.returnCode = QUSINO_INSUFFICIENT_FUNDS;
             locals.log = QUSINOLogger{ CONTRACT_INDEX, QUSINO_LOG_INSUFFICIENT_FUNDS, 0 };
@@ -738,7 +754,7 @@ public:
     };
     PUBLIC_FUNCTION_WITH_LOCALS(getFailedGameList)
     {
-        if (input.offset + 32 >= 1024) 
+        if (input.offset > 1024u - 33u)
         {
             return ;
         }
@@ -778,7 +794,7 @@ public:
     };
     PUBLIC_FUNCTION_WITH_LOCALS(getActiveGameList)
     {
-        if (input.offset + 32 >= QUSINO_MAX_NUMBER_OF_GAMES) 
+        if (input.offset > QUSINO_MAX_NUMBER_OF_GAMES - 33u)
         {
             return ;
         }
@@ -891,6 +907,17 @@ public:
         AssetPossessionIterator iter;
         Asset QSTAsset;
         EarnedQSCInfo earnedQSCInfo;
+        uint64 epochSnapshot;
+        uint64 grossQubicFromQsc;
+        uint64 qscToEpochRevenue;
+        uint64 lpShare;
+        uint64 ccfShare;
+        uint64 treasuryShare;
+        uint64 shareholders676Part;
+        uint64 qstPerShareRate;
+        sint64 possessionCount;
+        uint64 qstPayout;
+        uint64 proposerQubic;
     };
 	END_EPOCH_WITH_LOCALS()
 	{
@@ -911,8 +938,18 @@ public:
             }
             // distribute QSC to the proposer
             state.get().userAssetVolume.get(locals.game.proposer, locals.userVolume);
-            state.mut().epochRevenue += div<uint64>(locals.userVolume.volumeOfQSC * QUSINO_QSC_PRICE * (1000 - QUSINO_DEVELOPER_FEE) * 1ULL, 1000ULL);
-            qpi.transfer(locals.game.proposer, locals.userVolume.volumeOfQSC * QUSINO_QSC_PRICE - div<uint64>(locals.userVolume.volumeOfQSC * QUSINO_QSC_PRICE * (1000 - QUSINO_DEVELOPER_FEE) * 1ULL, 1000ULL));
+            locals.grossQubicFromQsc = smul(locals.userVolume.volumeOfQSC, QUSINO_QSC_PRICE);
+            locals.qscToEpochRevenue = div<uint64>(smul(locals.grossQubicFromQsc, (uint64)(1000 - QUSINO_DEVELOPER_FEE)), 1000ULL);
+            state.mut().epochRevenue = sadd(state.get().epochRevenue, locals.qscToEpochRevenue);
+            locals.proposerQubic = 0;
+            if (locals.grossQubicFromQsc >= locals.qscToEpochRevenue)
+            {
+                locals.proposerQubic = locals.grossQubicFromQsc - locals.qscToEpochRevenue;
+            }
+            if (locals.proposerQubic <= (uint64)INT64_MAX)
+            {
+                qpi.transfer(locals.game.proposer, (sint64)locals.proposerQubic);
+            }
             state.mut().QSCCirclatingSupply -= locals.userVolume.volumeOfQSC;
 
             // add earned QSC to userEarnedQSCInfo
@@ -943,20 +980,38 @@ public:
         }
         state.mut().userAssetVolume.cleanupIfNeeded();
 
-        qpi.transfer(state.get().LPDividendsAddress, div(state.get().epochRevenue * QUSINO_LP_DIVIDENDS_PERCENT * 1ULL, 100ULL));
-        qpi.transfer(state.get().CCFDividendsAddress, div(state.get().epochRevenue * QUSINO_CCF_DIVIDENDS_PERCENT * 1ULL, 100ULL));
-        qpi.transfer(state.get().treasuryAddress, div(state.get().epochRevenue * QUSINO_TREASURY_DIVIDENDS_PERCENT * 1ULL, 100ULL));
-        qpi.distributeDividends(div(state.get().epochRevenue * QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT * 1ULL, 67600ULL));
+        locals.epochSnapshot = state.get().epochRevenue;
+        locals.lpShare = div(smul(smul(locals.epochSnapshot, (uint64)QUSINO_LP_DIVIDENDS_PERCENT), 1ULL), 100ULL);
+        locals.ccfShare = div(smul(smul(locals.epochSnapshot, (uint64)QUSINO_CCF_DIVIDENDS_PERCENT), 1ULL), 100ULL);
+        locals.treasuryShare = div(smul(smul(locals.epochSnapshot, (uint64)QUSINO_TREASURY_DIVIDENDS_PERCENT), 1ULL), 100ULL);
+        locals.shareholders676Part = smul(
+            div(smul(smul(locals.epochSnapshot, (uint64)QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT), 1ULL), 67600ULL),
+            676ULL);
+
+        qpi.transfer(state.get().LPDividendsAddress, (sint64)locals.lpShare);
+        qpi.transfer(state.get().CCFDividendsAddress, (sint64)locals.ccfShare);
+        qpi.transfer(state.get().treasuryAddress, (sint64)locals.treasuryShare);
+        qpi.distributeDividends(div(smul(smul(locals.epochSnapshot, (uint64)QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT), 1ULL), 67600ULL));
+        locals.QSTDividends = 0;
+        locals.qstPerShareRate = div<uint64>(smul(smul(locals.epochSnapshot, (uint64)QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT), 1ULL), QUSINO_SUPPLY_OF_QST * 1000ULL);
         locals.QSTAsset.assetName = state.get().QSTAssetName;
         locals.QSTAsset.issuer = state.get().QSTIssuer;
         locals.iter.begin(locals.QSTAsset);
         while (!locals.iter.reachedEnd())
         {
-            qpi.transfer(locals.iter.possessor(), div<uint64>(state.get().epochRevenue * QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT * 1ULL, QUSINO_SUPPLY_OF_QST * 1000ULL) * locals.iter.numberOfPossessedShares());
-            locals.QSTDividends += div<uint64>(state.get().epochRevenue * QUSINO_QST_HOLDERS_DIVIDENDS_PERCENT * 1ULL, QUSINO_SUPPLY_OF_QST * 1000ULL) * locals.iter.numberOfPossessedShares();
+            locals.possessionCount = locals.iter.numberOfPossessedShares();
+            if (locals.possessionCount > 0)
+            {
+                locals.qstPayout = smul(locals.qstPerShareRate, (uint64)locals.possessionCount);
+                locals.QSTDividends = sadd(locals.QSTDividends, locals.qstPayout);
+                if (locals.qstPayout <= (uint64)INT64_MAX)
+                {
+                    qpi.transfer(locals.iter.possessor(), (sint64)locals.qstPayout);
+                }
+            }
             locals.iter.next();
         }
-        state.mut().epochRevenue -= div(state.get().epochRevenue * QUSINO_LP_DIVIDENDS_PERCENT * 1ULL, 100ULL) + div(state.get().epochRevenue * QUSINO_CCF_DIVIDENDS_PERCENT * 1ULL, 100ULL) + div(state.get().epochRevenue * QUSINO_TREASURY_DIVIDENDS_PERCENT * 1ULL, 100ULL) + (div(state.get().epochRevenue * QUSINO_SHAREHOLDERS_DIVIDENDS_PERCENT * 1ULL, 67600ULL) * 676) + locals.QSTDividends;
+        state.mut().epochRevenue -= sadd(sadd(sadd(sadd(locals.lpShare, locals.ccfShare), locals.treasuryShare), locals.shareholders676Part), locals.QSTDividends);
 	}
 
     PRE_ACQUIRE_SHARES()
