@@ -12,7 +12,7 @@ enum QSWAPLogInfo {
 };
 
 // FIXED CONSTANTS
-constexpr uint64 QSWAP_INITIAL_MAX_POOL = 16384;
+constexpr uint64 QSWAP_INITIAL_MAX_POOL = 8192;
 constexpr uint64 QSWAP_MAX_POOL = QSWAP_INITIAL_MAX_POOL * X_MULTIPLIER;
 constexpr uint64 QSWAP_MAX_USER_PER_POOL = 256;
 constexpr sint64 QSWAP_MIN_LIQUIDITY = 1000;
@@ -113,6 +113,22 @@ public:
 		uint32 cachedTransferFee;
 	};
 
+	struct FindPoolSlotReadOnly_input
+	{
+		id assetIssuer;
+		uint64 assetName;
+	};
+	struct FindPoolSlotReadOnly_output
+	{
+		sint64 poolSlot;
+	};
+
+	struct FindPoolSlotReadOnly_locals
+	{
+		id poolID;
+		uint32 i0;
+	};
+
 	struct Fees_input
 	{
 	};
@@ -144,7 +160,7 @@ public:
 	};
 	struct SetInvestRewardsInfo_output
 	{
-		sint32 success; // 1 if updated, else 0
+		bool success;
 	};
 
 	struct GetPoolBasicState_input
@@ -233,7 +249,7 @@ public:
 	};
 	struct CreatePool_output
 	{
-		sint32 success; // 1 if pool created, else 0
+		bool success;
 	};
 
 	struct TransferShareOwnershipAndPossession_input
@@ -347,6 +363,17 @@ protected:
 	inline static sint64 min(sint64 a, sint64 b)
 	{
 		return (a < b) ? a : b;
+	}
+
+	// Collection PoV must be unique per (pool, LP). Using poolID alone forced O(#LPs) scans; one PoV per pair yields headIndex ~ O(1).
+	inline static id liquidityPov(const id& poolID, const id& entity, id& r)
+	{
+		r = entity;
+		r.u64._0 ^= poolID.u64._0;
+		r.u64._1 ^= poolID.u64._1;
+		r.u64._2 ^= poolID.u64._2;
+		r.u64._3 ^= poolID.u64._3;
+		return r;
 	}
 
 	// find the sqrt of a*b
@@ -512,6 +539,22 @@ protected:
 		}
 	}
 
+	PRIVATE_FUNCTION_WITH_LOCALS(FindPoolSlotReadOnly)
+	{
+		locals.poolID = input.assetIssuer;
+		locals.poolID.u64._3 = input.assetName;
+
+		output.poolSlot = NULL_INDEX;
+		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL; locals.i0++)
+		{
+			if (state.get().mPoolBasicStates.get(locals.i0).poolID == locals.poolID)
+			{
+				output.poolSlot = sint64(locals.i0);
+				return;
+			}
+		}
+	}
+
 	PUBLIC_FUNCTION(Fees)
 	{
 		output.assetIssuanceFee = state.get().cachedIssuanceFee;
@@ -526,10 +569,10 @@ protected:
 
 	struct GetPoolBasicState_locals
 	{
-		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
-		uint32 i0;
+		FindPoolSlotReadOnly_input fsRoIn;
+		FindPoolSlotReadOnly_output fsRoOut;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetPoolBasicState)
@@ -545,18 +588,10 @@ protected:
 			return;
 		}
 
-		locals.poolID = input.assetIssuer;
-		locals.poolID.u64._3 = input.assetName;
-
-		locals.poolSlot = NULL_INDEX;
-		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL; locals.i0++)
-		{
-			if (state.get().mPoolBasicStates.get(locals.i0).poolID == locals.poolID)
-			{
-				locals.poolSlot = locals.i0;
-				break;
-			}
-		}
+		locals.fsRoIn.assetIssuer = input.assetIssuer;
+		locals.fsRoIn.assetName = input.assetName;
+		CALL(FindPoolSlotReadOnly, locals.fsRoIn, locals.fsRoOut);
+		locals.poolSlot = locals.fsRoOut.poolSlot;
 
 		if (locals.poolSlot == NULL_INDEX)
 		{
@@ -575,7 +610,9 @@ protected:
 	struct GetLiquidityOf_locals
 	{
 		id poolID;
+		id liqPov;
 		sint64 liqElementIndex;
+		id r;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetLiquidityOf)
@@ -585,27 +622,23 @@ protected:
 		locals.poolID = input.assetIssuer;
 		locals.poolID.u64._3 = input.assetName;
 
-		locals.liqElementIndex = state.get().mLiquidities.headIndex(locals.poolID, 0);
+		locals.liqPov = liquidityPov(locals.poolID, input.account, locals.r);
+		locals.liqElementIndex = state.get().mLiquidities.headIndex(locals.liqPov, 0);
 
-		while (locals.liqElementIndex != NULL_INDEX)
+		if (locals.liqElementIndex != NULL_INDEX)
 		{
-			if (state.get().mLiquidities.element(locals.liqElementIndex).entity == input.account)
-			{
-				output.liquidity = state.get().mLiquidities.element(locals.liqElementIndex).liquidity;
-				return;
-			}
-			locals.liqElementIndex = state.get().mLiquidities.nextElementIndex(locals.liqElementIndex);
+			output.liquidity = state.get().mLiquidities.element(locals.liqElementIndex).liquidity;
 		}
 	}
 
 	struct QuoteExactQuInput_locals
 	{
-		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
 
-		uint32 i0;
 		uint128 i1, i2, i3, i4;
+		FindPoolSlotReadOnly_input fsRoIn;
+		FindPoolSlotReadOnly_output fsRoOut;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(QuoteExactQuInput)
@@ -617,21 +650,13 @@ protected:
 			return;
 		}
 
-		locals.poolID = input.assetIssuer;
-		locals.poolID.u64._3 = input.assetName;
-
-		locals.poolSlot = -1;
-		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL; locals.i0 ++)
-		{
-			if (state.get().mPoolBasicStates.get(locals.i0).poolID == locals.poolID)
-			{
-				locals.poolSlot = locals.i0;
-				break;
-			}
-		}
+		locals.fsRoIn.assetIssuer = input.assetIssuer;
+		locals.fsRoIn.assetName = input.assetName;
+		CALL(FindPoolSlotReadOnly, locals.fsRoIn, locals.fsRoOut);
+		locals.poolSlot = locals.fsRoOut.poolSlot;
 
 		// no available slot for new pool
-		if (locals.poolSlot == -1)
+		if (locals.poolSlot == NULL_INDEX)
 		{
 			return;
 		}
@@ -658,12 +683,12 @@ protected:
 
 	struct QuoteExactQuOutput_locals
 	{
-		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
 
-		uint32 i0;
 		uint128 i1, i2, i3;
+		FindPoolSlotReadOnly_input fsRoIn;
+		FindPoolSlotReadOnly_output fsRoOut;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(QuoteExactQuOutput)
@@ -675,21 +700,13 @@ protected:
 			return;
 		}
 
-		locals.poolID = input.assetIssuer;
-		locals.poolID.u64._3 = input.assetName;
-
-		locals.poolSlot = -1;
-		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL; locals.i0 ++)
-		{
-			if (state.get().mPoolBasicStates.get(locals.i0).poolID == locals.poolID)
-			{
-				locals.poolSlot = locals.i0;
-				break;
-			}
-		}
+		locals.fsRoIn.assetIssuer = input.assetIssuer;
+		locals.fsRoIn.assetName = input.assetName;
+		CALL(FindPoolSlotReadOnly, locals.fsRoIn, locals.fsRoOut);
+		locals.poolSlot = locals.fsRoOut.poolSlot;
 
 		// no available slot for new pool
-		if (locals.poolSlot == -1)
+		if (locals.poolSlot == NULL_INDEX)
 		{
 			return;
 		}
@@ -720,13 +737,13 @@ protected:
 
 	struct QuoteExactAssetInput_locals
 	{
-		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
 		sint64 quAmountOutWithFee;
 
-		uint32 i0;
 		uint128 i1, i2, i3;
+		FindPoolSlotReadOnly_input fsRoIn;
+		FindPoolSlotReadOnly_output fsRoOut;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(QuoteExactAssetInput)
@@ -738,21 +755,13 @@ protected:
 			return;
 		}
 
-		locals.poolID = input.assetIssuer;
-		locals.poolID.u64._3 = input.assetName;
-
-		locals.poolSlot = -1;
-		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL; locals.i0 ++)
-		{
-			if (state.get().mPoolBasicStates.get(locals.i0).poolID == locals.poolID)
-			{
-				locals.poolSlot = locals.i0;
-				break;
-			}
-		}
+		locals.fsRoIn.assetIssuer = input.assetIssuer;
+		locals.fsRoIn.assetName = input.assetName;
+		CALL(FindPoolSlotReadOnly, locals.fsRoIn, locals.fsRoOut);
+		locals.poolSlot = locals.fsRoOut.poolSlot;
 
 		// no available slot for new pool
-		if (locals.poolSlot == -1)
+		if (locals.poolSlot == NULL_INDEX)
 		{
 			return;
 		}
@@ -790,12 +799,12 @@ protected:
 
 	struct QuoteExactAssetOutput_locals
 	{
-		id poolID;
 		sint64 poolSlot;
 		PoolBasicState poolBasicState;
 
-		uint32 i0;
 		uint128 i1, i2, i3;
+		FindPoolSlotReadOnly_input fsRoIn;
+		FindPoolSlotReadOnly_output fsRoOut;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(QuoteExactAssetOutput)
@@ -807,21 +816,13 @@ protected:
 			return;
 		}
 
-		locals.poolID = input.assetIssuer;
-		locals.poolID.u64._3 = input.assetName;
-
-		locals.poolSlot = -1;
-		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL; locals.i0 ++)
-		{
-			if (state.get().mPoolBasicStates.get(locals.i0).poolID == locals.poolID)
-			{
-				locals.poolSlot = locals.i0;
-				break;
-			}
-		}
+		locals.fsRoIn.assetIssuer = input.assetIssuer;
+		locals.fsRoIn.assetName = input.assetName;
+		CALL(FindPoolSlotReadOnly, locals.fsRoIn, locals.fsRoOut);
+		locals.poolSlot = locals.fsRoOut.poolSlot;
 
 		// no available slot for new pool
-		if (locals.poolSlot == -1)
+		if (locals.poolSlot == NULL_INDEX)
 		{
 			return;
 		}
@@ -921,14 +922,16 @@ protected:
 		PoolBasicState poolBasicState;
 		uint32 poolCreationFee;
 
-		uint32 i0, i1;
+		uint32 i1;
+		FindPoolSlotReadOnly_input fsRoIn;
+		FindPoolSlotReadOnly_output fsRoOut;
 	};
 
 	// create uniswap like pool
 	// TODO: reject if there is no shares avaliabe shares in current contract, e.g. asset is issue in contract qx
 	PUBLIC_PROCEDURE_WITH_LOCALS(CreatePool)
 	{
-		output.success = 0;
+		output.success = false;
 
 		locals.poolCreationFee = uint32(div(uint64(state.get().cachedIssuanceFee) * uint64(state.get().poolCreationFeeRate), uint64(QSWAP_FEE_BASE_100)));
 
@@ -952,14 +955,13 @@ protected:
 		locals.poolID = input.assetIssuer;
 		locals.poolID.u64._3 = input.assetName;
 
-		// check if pool already exist
-		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL ; locals.i0 ++ )
+		locals.fsRoIn.assetIssuer = input.assetIssuer;
+		locals.fsRoIn.assetName = input.assetName;
+		CALL(FindPoolSlotReadOnly, locals.fsRoIn, locals.fsRoOut);
+		if (locals.fsRoOut.poolSlot != NULL_INDEX)
 		{
-			if (state.get().mPoolBasicStates.get(locals.i0).poolID == locals.poolID)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				return;
-			}
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
 		}
 
 		// find an vacant pool slot
@@ -993,7 +995,7 @@ protected:
 		}
 		state.mut().shareholderEarnedFee += locals.poolCreationFee;
 
-		output.success = 1;
+		output.success = true;
 	}
 
 
@@ -1002,6 +1004,7 @@ protected:
 		AddLiquidityMessage addLiquidityMessage;
 		id poolID;
 		sint64 poolSlot;
+		id r;
 		PoolBasicState poolBasicState;
 		LiquidityInfo tmpLiquidity;
 
@@ -1019,8 +1022,9 @@ protected:
 		uint128 tmpIncLiq0;
 		uint128 tmpIncLiq1;
 
-		uint32 i0;
 		uint128 i1, i2, i3;
+		FindPoolSlotReadOnly_input fspIn;
+		FindPoolSlotReadOnly_output fspOut;
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(AddLiquidity)
@@ -1049,18 +1053,12 @@ protected:
 		locals.poolID = input.assetIssuer;
 		locals.poolID.u64._3 = input.assetName;
 
-		// check the pool existance
-		locals.poolSlot = -1;
-		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL; locals.i0 ++)
-		{
-			if (state.get().mPoolBasicStates.get(locals.i0).poolID == locals.poolID)
-			{
-				locals.poolSlot = locals.i0;
-				break;
-			}
-		}
+		locals.fspIn.assetIssuer = input.assetIssuer;
+		locals.fspIn.assetName = input.assetName;
+		CALL(FindPoolSlotReadOnly, locals.fspIn, locals.fspOut);
+		locals.poolSlot = locals.fspOut.poolSlot;
 
-		if (locals.poolSlot == -1)
+		if (locals.poolSlot == NULL_INDEX)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
@@ -1195,11 +1193,11 @@ protected:
 			// permanently lock the first MINIMUM_LIQUIDITY tokens
 			locals.tmpLiquidity.entity = SELF;
 			locals.tmpLiquidity.liquidity = QSWAP_MIN_LIQUIDITY;
-			state.mut().mLiquidities.add(locals.poolID, locals.tmpLiquidity, 0);
+			state.mut().mLiquidities.add(liquidityPov(locals.poolID, SELF, locals.r), locals.tmpLiquidity, 0);
 
 			locals.tmpLiquidity.entity = qpi.invocator();
 			locals.tmpLiquidity.liquidity = locals.increaseLiquidity - QSWAP_MIN_LIQUIDITY;
-			state.mut().mLiquidities.add(locals.poolID, locals.tmpLiquidity, 0);
+			state.mut().mLiquidities.add(liquidityPov(locals.poolID, qpi.invocator(), locals.r), locals.tmpLiquidity, 0);
 
 			output.quAmount = locals.quTransferAmount;
 			output.assetAmount = locals.assetTransferAmount;
@@ -1239,17 +1237,7 @@ protected:
 				return;
 			}
 
-			// find user liquidity index
-			locals.userLiquidityElementIndex = state.get().mLiquidities.headIndex(locals.poolID, 0);
-			while (locals.userLiquidityElementIndex != NULL_INDEX)
-			{
-				if(state.get().mLiquidities.element(locals.userLiquidityElementIndex).entity == qpi.invocator())
-				{
-					break;
-				}
-
-				locals.userLiquidityElementIndex = state.get().mLiquidities.nextElementIndex(locals.userLiquidityElementIndex);
-			}
+			locals.userLiquidityElementIndex = state.get().mLiquidities.headIndex(liquidityPov(locals.poolID, qpi.invocator(), locals.r), 0);
 
 			// no more space for new liquidity item
 			if ((locals.userLiquidityElementIndex == NULL_INDEX) && ( state.get().mLiquidities.population() == state.get().mLiquidities.capacity()))
@@ -1295,7 +1283,7 @@ protected:
 			{
 				locals.tmpLiquidity.entity = qpi.invocator();
 				locals.tmpLiquidity.liquidity = locals.increaseLiquidity;
-				state.mut().mLiquidities.add(locals.poolID, locals.tmpLiquidity, 0);
+				state.mut().mLiquidities.add(liquidityPov(locals.poolID, qpi.invocator(), locals.r), locals.tmpLiquidity, 0);
 			}
 			else
 			{
@@ -1336,13 +1324,15 @@ protected:
 		RemoveLiquidityMessage removeLiquidityMessage;
 		id poolID;
 		PoolBasicState poolBasicState;
+		id r;
 		sint64 userLiquidityElementIndex;
 		sint64 poolSlot;
 		LiquidityInfo userLiquidity;
 		sint64 burnQuAmount;
 		sint64 burnAssetAmount;
 
-		uint32 i0;
+		FindPoolSlotReadOnly_input fspIn;
+		FindPoolSlotReadOnly_output fspOut;
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(RemoveLiquidity)
@@ -1364,36 +1354,20 @@ protected:
 		locals.poolID = input.assetIssuer;
 		locals.poolID.u64._3 = input.assetName;
 
-		// get the pool's basic state
-		locals.poolSlot = -1;
-
-		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL; locals.i0 ++)
-		{
-			if (state.get().mPoolBasicStates.get(locals.i0).poolID == locals.poolID)
-			{
-				locals.poolSlot = locals.i0;
-				break;
-			}
-		}
+		locals.fspIn.assetIssuer = input.assetIssuer;
+		locals.fspIn.assetName = input.assetName;
+		CALL(FindPoolSlotReadOnly, locals.fspIn, locals.fspOut);
+		locals.poolSlot = locals.fspOut.poolSlot;
 
 		// the pool does not exsit
-		if (locals.poolSlot == -1)
+		if (locals.poolSlot == NULL_INDEX)
 		{
 			return;
 		}
 
 		locals.poolBasicState = state.get().mPoolBasicStates.get(locals.poolSlot);
 
-		locals.userLiquidityElementIndex = state.get().mLiquidities.headIndex(locals.poolID, 0);
-		while (locals.userLiquidityElementIndex != NULL_INDEX)
-		{
-			if(state.get().mLiquidities.element(locals.userLiquidityElementIndex).entity == qpi.invocator())
-			{
-				break;
-			}
-
-			locals.userLiquidityElementIndex = state.get().mLiquidities.nextElementIndex(locals.userLiquidityElementIndex);
-		}
+		locals.userLiquidityElementIndex = state.get().mLiquidities.headIndex(liquidityPov(locals.poolID, qpi.invocator(), locals.r), 0);
 
 		if (locals.userLiquidityElementIndex == NULL_INDEX)
 		{
@@ -1480,7 +1454,6 @@ protected:
 		PoolBasicState poolBasicState;
 		sint64 assetAmountOut;
 
-		uint32 i0;
 		uint128 i1, i2, i3, i4;
 		uint128 swapFee;
 		uint128 feeToInvestRewards;
@@ -1490,6 +1463,9 @@ protected:
 		uint128 feeToBurn;
 
 		sint64 totalFee;
+
+		FindPoolSlotReadOnly_input fspIn;
+		FindPoolSlotReadOnly_output fspOut;
 	};
 
 	// given an input qu amountIn, only execute swap in case (amountOut >= amountOutMin)
@@ -1515,17 +1491,12 @@ protected:
 		locals.poolID = input.assetIssuer;
 		locals.poolID.u64._3 = input.assetName;
 
-		locals.poolSlot = -1;
-		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL; locals.i0 ++)
-		{
-			if (state.get().mPoolBasicStates.get(locals.i0).poolID == locals.poolID)
-			{
-				locals.poolSlot = locals.i0;
-				break;
-			}
-		}
+		locals.fspIn.assetIssuer = input.assetIssuer;
+		locals.fspIn.assetName = input.assetName;
+		CALL(FindPoolSlotReadOnly, locals.fspIn, locals.fspOut);
+		locals.poolSlot = locals.fspOut.poolSlot;
 
-		if (locals.poolSlot == -1)
+		if (locals.poolSlot == NULL_INDEX)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
@@ -1634,7 +1605,6 @@ protected:
 		sint64 quAmountIn;
 		sint64 transferredAssetAmount;
 
-		uint32 i0;
 		uint128 i1, i2, i3;
 		uint128 swapFee;
 		uint128 feeToInvestRewards;
@@ -1643,6 +1613,9 @@ protected:
 		uint128 feeToBurn;
 
 		sint64 totalFee;
+
+		FindPoolSlotReadOnly_input fspIn;
+		FindPoolSlotReadOnly_output fspOut;
 	};
 
 	// https://docs.uniswap.org/contracts/v2/reference/smart-contracts/router-02#swaptokensforexacttokens
@@ -1666,17 +1639,12 @@ protected:
 		locals.poolID = input.assetIssuer;
 		locals.poolID.u64._3 = input.assetName;
 
-		locals.poolSlot = -1;
-		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL; locals.i0 ++)
-		{
-			if (state.get().mPoolBasicStates.get(locals.i0).poolID == locals.poolID)
-			{
-				locals.poolSlot = locals.i0;
-				break;
-			}
-		}
+		locals.fspIn.assetIssuer = input.assetIssuer;
+		locals.fspIn.assetName = input.assetName;
+		CALL(FindPoolSlotReadOnly, locals.fspIn, locals.fspOut);
+		locals.poolSlot = locals.fspOut.poolSlot;
 
-		if (locals.poolSlot == -1)
+		if (locals.poolSlot == NULL_INDEX)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
@@ -1796,7 +1764,6 @@ protected:
 		sint64 transferredAssetAmountBefore;
 		sint64 transferredAssetAmountAfter;
 
-		uint32 i0;
 		uint128 i1, i2, i3;
 		uint128 swapFee;
 		uint128 feeToInvestRewards;
@@ -1805,6 +1772,9 @@ protected:
 		uint128 feeToBurn;
 
 		sint64 totalFee;
+
+		FindPoolSlotReadOnly_input fspIn;
+		FindPoolSlotReadOnly_output fspOut;
 	};
 
 	// given an amount of asset swap in, only execute swaping if quAmountOut >= input.amountOutMin
@@ -1825,17 +1795,12 @@ protected:
 		locals.poolID = input.assetIssuer;
 		locals.poolID.u64._3 = input.assetName;
 
-		locals.poolSlot = -1;
-		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL; locals.i0++)
-		{
-			if (state.get().mPoolBasicStates.get(locals.i0).poolID == locals.poolID)
-			{
-				locals.poolSlot = locals.i0;
-				break;
-			}
-		}
+		locals.fspIn.assetIssuer = input.assetIssuer;
+		locals.fspIn.assetName = input.assetName;
+		CALL(FindPoolSlotReadOnly, locals.fspIn, locals.fspOut);
+		locals.poolSlot = locals.fspOut.poolSlot;
 
-		if (locals.poolSlot == -1)
+		if (locals.poolSlot == NULL_INDEX)
 		{
 			return;
 		}
@@ -1995,7 +1960,6 @@ protected:
 		sint64 transferredAssetAmountBefore;
 		sint64 transferredAssetAmountAfter;
 
-		uint32 i0;
 		uint128 i1, i2, i3;
 		uint128 swapFee;
 		uint128 feeToInvestRewards;
@@ -2004,6 +1968,9 @@ protected:
 		uint128 feeToBurn;
 
 		sint64 totalFee;
+
+		FindPoolSlotReadOnly_input fspIn;
+		FindPoolSlotReadOnly_output fspOut;
 	};
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(SwapAssetForExactQu)
@@ -2022,17 +1989,12 @@ protected:
 		locals.poolID = input.assetIssuer;
 		locals.poolID.u64._3 = input.assetName;
 
-		locals.poolSlot = -1;
-		for (locals.i0 = 0; locals.i0 < QSWAP_MAX_POOL; locals.i0 ++)
-		{
-			if (state.get().mPoolBasicStates.get(locals.i0).poolID == locals.poolID)
-			{
-				locals.poolSlot = locals.i0;
-				break;
-			}
-		}
+		locals.fspIn.assetIssuer = input.assetIssuer;
+		locals.fspIn.assetName = input.assetName;
+		CALL(FindPoolSlotReadOnly, locals.fspIn, locals.fspOut);
+		locals.poolSlot = locals.fspOut.poolSlot;
 
-		if (locals.poolSlot == -1)
+		if (locals.poolSlot == NULL_INDEX)
 		{
 			return;
 		}
@@ -2241,14 +2203,14 @@ protected:
 
 	PUBLIC_PROCEDURE(SetInvestRewardsInfo)
 	{
-		output.success = 0;
+		output.success = false;
 		if (qpi.invocator() != state.get().investRewardsId)
 		{
 			return;
 		}
 
 		state.mut().investRewardsId = input.newInvestRewardsId;
-		output.success = 1;
+		output.success = true;
 	}
 
 	struct TransferShareManagementRights_locals
