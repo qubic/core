@@ -245,7 +245,9 @@ public:
         }
         EXPECT_EQ(found, expectPresent);
         if (expectPresent && expectedTickets > 0)
+        {
             EXPECT_EQ(foundTickets, expectedTickets);
+        }
     }
 
     void assetRafflePoolChecker(uint32 index, uint64 expectedGross, uint32 expectedTotalTickets, uint32 expectedBuyers)
@@ -2224,7 +2226,6 @@ TEST(ContractQraffle, AssetRaffle_BuyTicketRefundExcess)
     EXPECT_EQ(br.returnCode, QRAFFLE_SUCCESS);
 
     // Buyer should have been refunded the overpayment for 2 extra tickets
-    sint64 expectedRefund = (sint64)(ticketPrice * 2);
     EXPECT_EQ(getBalance(buyer), balanceBefore - (sint64)(ticketPrice * 2));
 
     qraffle.getState()->assetRaffleBuyerChecker(0, buyer, true, 2);
@@ -2649,7 +2650,6 @@ TEST(ContractQraffle, AssetRaffle_EndEpoch_FeeSplit)
     EXPECT_EQ(analyticsAfterEpoch.totalAssetRafflesFailed,    0u);
 
     // Creator paid + refunded (0 on success) + proposal fees = total inflow
-    uint64 totalInflow = totalPool + QRAFFLE_ASSET_RAFFLE_PROPOSAL_FEE;
     EXPECT_LE(analyticsAfterEpoch.totalAssetRaffleCreatorPaid, totalPool);
     EXPECT_GT(analyticsAfterEpoch.totalAssetRaffleCreatorPaid, 0ULL);
     // Proposal fee tracked separately
@@ -3450,7 +3450,7 @@ TEST(ContractQraffle, VoteInProposal_SameDirectionRejected)
     increaseEnergy(tokenIssuer, 1000000000ULL);
     uint64 aname = assetNameFromString("SDTEST");
     qraffle.issueAsset(tokenIssuer, aname, 1000000, 0, 0);
-    Asset token{ aname, tokenIssuer };
+    Asset token{ tokenIssuer, aname };
 
     qraffle.submitProposal(member, token, QRAFFLE_MIN_QRAFFLE_AMOUNT);
 
@@ -3483,7 +3483,7 @@ TEST(ContractQraffle, VoteInProposal_FlipToOppositeDirection)
     increaseEnergy(tokenIssuer, 1000000000ULL);
     uint64 aname = assetNameFromString("FLIPT");
     qraffle.issueAsset(tokenIssuer, aname, 1000000, 0, 0);
-    Asset token{ aname, tokenIssuer };
+    Asset token{ tokenIssuer, aname };
 
     qraffle.submitProposal(voters[0], token, QRAFFLE_MIN_QRAFFLE_AMOUNT);
 
@@ -3549,7 +3549,7 @@ TEST(ContractQraffle, EndEpoch_ProposalRejectedWhenNoWins)
     increaseEnergy(tokenIssuer, 1000000000ULL);
     uint64 aname = assetNameFromString("NOWINS");
     qraffle.issueAsset(tokenIssuer, aname, 1000000, 0, 0);
-    Asset token{ aname, tokenIssuer };
+    Asset token{ tokenIssuer, aname };
 
     qraffle.submitProposal(voters[0], token, QRAFFLE_MIN_QRAFFLE_AMOUNT);
 
@@ -3648,8 +3648,8 @@ TEST(ContractQraffle, MultipleEpochs_StateResetAndReuse)
     qraffle.issueAsset(tokenIssuer, aname1, 1000000000, 0, 0);
     qraffle.issueAsset(tokenIssuer, aname2, 1000000000, 0, 0);
 
-    Asset token1{ aname1, tokenIssuer };
-    Asset token2{ aname2, tokenIssuer };
+    Asset token1{ tokenIssuer, aname1 };
+    Asset token2{ tokenIssuer, aname2 };
 
     // ── Epoch 5: submit proposal, vote yes, add QuRaffle members ──────────────
     qraffle.submitProposal(members[0], token1, QRAFFLE_MIN_QRAFFLE_AMOUNT);
@@ -3728,7 +3728,7 @@ TEST(ContractQraffle, TokenRaffle_WinnerReceivesTokensMinusFees)
     uint64 aname = assetNameFromString("WINTOK");
     sint64 totalShares = 1000000000LL;
     qraffle.issueAsset(tokenIssuer, aname, totalShares, 0, 0);
-    Asset token{ aname, tokenIssuer };
+    Asset token{ tokenIssuer, aname };
 
     // Propose and vote yes.
     uint64 entryAmount = 5000000ULL;
@@ -4006,7 +4006,7 @@ TEST(ContractQraffle, TokenRaffle_DepositSlotFull)
     uint64 aname = assetNameFromString("SLOTFLL");
     sint64 totalShares = 1000000000LL;
     qraffle.issueAsset(tokenIssuer, aname, totalShares, 0, 0);
-    Asset token{ aname, tokenIssuer };
+    Asset token{ tokenIssuer, aname };
 
     // Register one proposer and vote to activate the token raffle.
     const uint32 numVoters = 10;
@@ -4067,8 +4067,6 @@ TEST(ContractQraffle, getRegisters_PaginationCorrect)
         increaseEnergy(u, QRAFFLE_REGISTER_AMOUNT);
         EXPECT_EQ(qraffle.registerInSystem(u, QRAFFLE_REGISTER_AMOUNT, 0).returnCode, QRAFFLE_SUCCESS);
     }
-    const uint32 total = 5 + extra;
-
     // Page 0: offset=0, limit=10.
     auto page0 = qraffle.getRegisters(0, 10);
     EXPECT_EQ(page0.returnCode, QRAFFLE_SUCCESS);
