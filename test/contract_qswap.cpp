@@ -340,6 +340,7 @@ TEST(ContractSwap, IssueAssetAndTransferShareManagementRights)
 {
     ContractTestingQswap qswap;
     qswap.beginEpoch();
+    system.epoch = 200;
 
     id issuer(1, 2, 3, 4);
 
