@@ -3840,6 +3840,6 @@ public:
      */
     PRE_ACQUIRE_SHARES()
     {
-		output.allowTransfer = true;
+        output.allowTransfer = true;
     }
 };
