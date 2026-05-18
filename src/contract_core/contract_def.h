@@ -284,6 +284,16 @@
 #define CONTRACT_STATE2_TYPE ESCROW2
 #include "contracts/Escrow.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define WOLFPACK_CONTRACT_INDEX 28
+#define CONTRACT_INDEX WOLFPACK_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE WOLFPACK
+#define CONTRACT_STATE2_TYPE WOLFPACK2
+#include "contracts/GGWP.h"
+
 // new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -398,6 +408,7 @@ constexpr struct ContractDescription
     {"VOTTUN", 206, 10000, sizeof(VOTTUNBRIDGE::StateData)}, // proposal in epoch 204, IPO in 205, construction and first use in 206
     {"QUSINO", 208, 10000, sizeof(QUSINO::StateData)}, // proposal in epoch 206, IPO in 207, construction and first use in 208
     {"ESCROW", 210, 10000, sizeof(ESCROW::StateData)}, // proposal in epoch 208, IPO in 209, construction and first use in 210
+    {"GGWP", 216, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 214, IPO in 215, construction and first use in 216
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
