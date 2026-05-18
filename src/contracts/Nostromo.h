@@ -12,9 +12,9 @@ constexpr uint64 NOST_AUCTION_NUM = 2048;
 constexpr uint64 NOST_AUCTION_HISTORY_NUM = 1024;
 constexpr uint64 NOST_AUCTION_METADATA_CID_LENGTH = 64;
 constexpr uint64 NOST_AUCTION_PARTICIPANT_NUM = 4096;
-constexpr uint64 NOST_AUCTION_LOT_ITEM_NUM = 64;
-constexpr uint64 NOST_AUCTION_ALLOWED_WALLET_NUM = 128;
-constexpr uint64 NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM = 16;
+constexpr uint64 NOST_AUCTION_LOT_ITEM_NUM = 8;
+constexpr uint64 NOST_AUCTION_ALLOWED_WALLET_NUM = 8;
+constexpr uint64 NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM = 4;
 constexpr uint32 NOST_AUCTION_MAX_DURATION_DAYS = 30;
 constexpr sint64 NOST_DEFAULT_PRIVATE_AUCTION_FEE = 50000000LL;
 constexpr uint64 NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP = 1000ULL;
@@ -2554,7 +2554,7 @@ struct NOST : public ContractBase
 
 				if (!resolveBatchAuctionCreateParams(locals.analyzeAuctionLotOutput.lotItemCount, locals.analyzeAuctionLotOutput.totalEscrowQuantity,
 				                                     input.minimumPurchaseQuantity, locals.resolvedQuantityForSale,
-				                                     locals.resolvedMinimumPurchaseQuantity, input.buyNowPrice))
+				                                     locals.resolvedMinimumPurchaseQuantity))
 				{
 					if (qpi.invocationReward() > 0)
 					{
@@ -3270,7 +3270,7 @@ protected:
 	{
 		return a > b ? a : b;
 	}
-	static bool resolveBatchAuctionCreateParams(uint64 lotItemCount, uint64 totalEscrowQuantity, uint64 minimumPurchaseQuantity,
+	static bool resolveBatchAuctionCreateParams(uint64 lotItemCount, uint64 totalEscrowQuantity,
 	                                            uint64& quantityForSale, uint64& resolvedMinimumPurchaseQuantity, uint64 buyNowPrice)
 	{
 		quantityForSale = 0;
@@ -3280,7 +3280,6 @@ protected:
 			return false;
 		}
 		quantityForSale = totalEscrowQuantity;
-		(void)minimumPurchaseQuantity;
 		resolvedMinimumPurchaseQuantity = 0;
 		return true;
 	}
