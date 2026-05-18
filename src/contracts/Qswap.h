@@ -163,7 +163,7 @@ public:
 	};
 	struct SetInvestRewardsInfo_output
 	{
-		sint32 success; // 1 if updated, else 0
+		bit success;
 	};
 
 	struct GetPoolBasicState_input
@@ -254,7 +254,7 @@ public:
 	};
 	struct CreatePool_output
 	{
-		sint32 success; // 1 if pool created, else 0
+		bit success;
 	};
 
 	struct TransferShareOwnershipAndPossession_input
@@ -947,7 +947,7 @@ protected:
 	// TODO: reject if there is no shares avaliabe shares in current contract, e.g. asset is issue in contract qx
 	PUBLIC_PROCEDURE_WITH_LOCALS(CreatePool)
 	{
-		output.success = 0;
+		output.success = false;
 
 		locals.poolCreationFee = uint32(div(uint64(state.get().cachedIssuanceFee) * uint64(state.get().poolCreationFeeRate), uint64(QSWAP_FEE_BASE_100)));
 
@@ -1011,7 +1011,7 @@ protected:
 		}
 		state.mut().shareholderEarnedFee += locals.poolCreationFee;
 
-		output.success = 1;
+		output.success = true;
 	}
 
 
@@ -2288,14 +2288,14 @@ protected:
 
 	PUBLIC_PROCEDURE(SetInvestRewardsInfo)
 	{
-		output.success = 0;
+		output.success = false;
 		if (qpi.invocator() != state.get().investRewardsId)
 		{
 			return;
 		}
 
 		state.mut().investRewardsId = input.newInvestRewardsId;
-		output.success = 1;
+		output.success = true;
 	}
 
 	struct TransferShareManagementRights_locals
