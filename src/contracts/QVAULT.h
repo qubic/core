@@ -1905,8 +1905,7 @@ public:
                             {
                                 locals.updatedIPOProposal.totalWeight += locals.numberOfYes * input.priceOfIPO;
                             }
-                            // (locals._r != -1) --- user has already voted in this proposal
-                            else if (locals._r != -1)
+                            else if (locals._r != -1) // locals._r != -1 --- user has already voted in this proposal
                             {
                                 locals.updatedIPOProposal.totalWeight -= locals.numberOfNo * locals.newVoteList.get(locals._r).priceOfIPO;
                             }
