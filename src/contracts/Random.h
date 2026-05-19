@@ -42,14 +42,17 @@ public:
 
 	struct BuyEntropy_output
 	{
-		Array<bit_4096, 32> entropy;
+		bit_4096 entropy;
 	};
 
 	struct BuyEntropy_locals
 	{
 		bit_4096 zeroEntropy;
+		bit_4096 entropy;
+		uint64 i;
+		uint64 entropyIdx;
+		sint64 entropyCost;
 		uint32 stream;
-		uint32 entropyIdx;
 	};
 
 	struct StateData
@@ -85,22 +88,38 @@ public:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyEntropy)
 	{
+		locals.entropyCost = static_cast<sint64>(input.numberOfBits) * 100;
+
 		if (input.collateralTier <= 9
 			&& input.numberOfBits >= 1 && input.numberOfBits <= 4096
-			&& qpi.invocationReward() >= input.numberOfBits * 100)
+			&& qpi.invocationReward() >= locals.entropyCost)
 		{
+			// Read from the stream finalized at the previous END_TICK -- the
+			// current tick's entropy slot is overwritten at the start of this
+			// tick's END_TICK and not yet refilled.
 			locals.stream = mod<uint32>(qpi.tick() + 2, 3);
-			locals.entropyIdx = locals.stream *10 + input.collateralTier;
+			locals.entropyIdx = locals.stream * 10 + input.collateralTier;
+			locals.entropy = state.get().entropy.get(locals.entropyIdx);
 
-			if (state.get().entropy.get(locals.entropyIdx) == locals.zeroEntropy)
+			if (locals.entropy == locals.zeroEntropy)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 			else
 			{
-				state.mut().earnedAmount += qpi.invocationReward();
+				state.mut().earnedAmount += static_cast<uint64>(locals.entropyCost);
+				if (qpi.invocationReward() > locals.entropyCost)
+				{
+					// Refund any overpayment beyond the per-bit cost.
+					qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.entropyCost);
+				}
 
-				output.entropy.setRange(0, input.numberOfBits, state.get().entropy.get(locals.entropyIdx));
+				// Copy the first numberOfBits bits of entropy into the output.
+				// Remaining bits stay zero (output buffer is zeroed by the framework).
+				for (locals.i = 0; locals.i < input.numberOfBits; locals.i++)
+				{
+					output.entropy.set(locals.i, locals.entropy.get(locals.i));
+				}
 			}
 		}
 		else
