@@ -2736,36 +2736,39 @@ public:
         locals.aoi = AssetOwnershipIterator(state.get().mQTRYGOVIdentifier);
         locals.govCount = 0;
         locals.govSum = 0;
-        locals.redistributeSum = 0;
+        locals.redistributeSum = qpi.numberOfShares(state.get().mQTRYGOVIdentifier, { SELF, SELF_INDEX }, { SELF, SELF_INDEX });
 
         while (!locals.aoi.reachedEnd())
         {
-            locals.shouldRedistribute = false;
-            if (qpi.getEntity(locals.aoi.owner(), locals.e))
+            if (locals.aoi.owner() != SELF) // only process if holder isn't QTRY itself
             {
-                if (qpi.tick() - 5000000 >= locals.e.latestOutgoingTransferTick)
+                locals.shouldRedistribute = false;
+                if (qpi.getEntity(locals.aoi.owner(), locals.e))
                 {
-                    // no outgoing last 5000000 ticks, need to move the gov token
+                    if (qpi.tick() - 5000000 >= locals.e.latestOutgoingTransferTick)
+                    {
+                        // no outgoing last 5000000 ticks, need to move the gov token
+                        locals.shouldRedistribute = true;
+                    }
+                }
+                else
+                {
+                    // this ID doesn't even have 1QU, need to move the gov token
                     locals.shouldRedistribute = true;
                 }
-            }
-            else
-            {
-                // this ID doesn't even have 1QU, need to move the gov token
-                locals.shouldRedistribute = true;
-            }
-            locals.amountOfShares = qpi.numberOfShares(state.get().mQTRYGOVIdentifier, { locals.aoi.owner(), SELF_INDEX }, { locals.aoi.owner(), SELF_INDEX });
-            if (locals.shouldRedistribute)
-            {
-                // transfer this amount of GOV token to this SC
-                qpi.transferShareOwnershipAndPossession(state.get().mQTRYGOVIdentifier.assetName, state.get().mQTRYGOVIdentifier.issuer, locals.aoi.owner(), locals.aoi.owner(), locals.amountOfShares, SELF);
-                locals.redistributeSum += locals.amountOfShares;
-            }
-            else
-            {
-                state.mut().mGovArray.set(locals.govCount, { locals.aoi.owner() , locals.amountOfShares });
-                locals.govCount++;
-                locals.govSum += locals.amountOfShares;
+                locals.amountOfShares = qpi.numberOfShares(state.get().mQTRYGOVIdentifier, { locals.aoi.owner(), SELF_INDEX }, { locals.aoi.owner(), SELF_INDEX });
+                if (locals.shouldRedistribute)
+                {
+                    // transfer this amount of GOV token to this SC
+                    qpi.transferShareOwnershipAndPossession(state.get().mQTRYGOVIdentifier.assetName, state.get().mQTRYGOVIdentifier.issuer, locals.aoi.owner(), locals.aoi.owner(), locals.amountOfShares, SELF);
+                    locals.redistributeSum += locals.amountOfShares;
+                }
+                else
+                {
+                    state.mut().mGovArray.set(locals.govCount, { locals.aoi.owner() , locals.amountOfShares });
+                    locals.govCount++;
+                    locals.govSum += locals.amountOfShares;
+                }
             }
             locals.aoi.next();
         }
@@ -3043,4 +3046,3 @@ public:
         output.allowTransfer = true;
     }
 };
-

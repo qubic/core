@@ -1069,6 +1069,57 @@ namespace QPI
 	template <typename T, uint64 L>
 	bool isArraySortedWithoutDuplicates(const Array<T, L>& Array, uint64 beginIdx = 0, uint64 endIdx = L);
 
+	// Array of L elements of type T that is slower than normal Array but may have any capacity L.
+	// This should be only used when a specific L != 2^N is needed for a good reason, e.g., in input/output.
+	template <typename T, uint64 L>
+	struct SlowAnySizeArray
+	{
+	private:
+		static_assert(L, "The capacity of the array must be != 0.");
+
+		T _values[L];
+
+	public:
+		// Return number of elements in array
+		static inline constexpr uint64 capacity()
+		{
+			return L;
+		}
+
+		// Get element of array
+		inline const T& get(uint64 index) const
+		{
+			return _values[index % L];
+		}
+
+		// Set element of array
+		inline void set(uint64 index, const T& value)
+		{
+			_values[index % L] = value;
+		}
+
+		// Set all elements to passed value
+		inline void setAll(const T& value)
+		{
+			for (uint64 i = 0; i < L; ++i)
+				_values[i] = value;
+		}
+
+		// Implement assignment operator to prevent generating call to unavailable memcpy()
+		inline SlowAnySizeArray<T, L>& operator=(const SlowAnySizeArray<T, L>& other)
+		{
+			copyMemory(*this, other);
+			return *this;
+		}
+
+		// Implement copy constructor to prevent generating call to unavailable memcpy()
+		inline SlowAnySizeArray(const SlowAnySizeArray<T, L>& other)
+		{
+			copyMemory(*this, other);
+		}
+
+		SlowAnySizeArray() = default;
+	};
 
 	// Hash function class to be used with the hash map.
 	template <typename KeyT> class HashFunction 

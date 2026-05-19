@@ -89,12 +89,12 @@ struct Price
 		// - Select a power of two (1, 2, 4, 8, 16, ...) as notifyPeriodInMinutes to pay less per query.
 		// - With notifyPeriodInMinutes >= 317, it is always cheaper to use individual queries (10 QU per query)
 		//   instead of subscriptions.
-		uint16 period = notifyPeriodInMilliseconds / 60000;
+		uint16 period = (uint16)QPI::div(notifyPeriodInMilliseconds, 60000u);
 		sint64 fee = 10000;
 		while (period > 1)
 		{
-			fee = fee * 65 / 100;
-			period /= 2;
+			fee = QPI::div(fee * 65ll, 100ll);
+			period = period >> 1;
 		}
 		return fee;
 	}

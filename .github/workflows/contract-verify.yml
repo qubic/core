@@ -13,6 +13,7 @@ on:
       - '!src/contracts/math_lib.h'
       - '!src/contracts/qpi.h'
       - '!src/contracts/TestExample*.h'
+      - 'src/oracle_interfaces/*.h'
       - '.github/workflows/contract-verify.yml'
   pull_request:
     branches: [ "main", "develop" ]
@@ -21,6 +22,7 @@ on:
       - '!src/contracts/math_lib.h'
       - '!src/contracts/qpi.h'
       - '!src/contracts/TestExample*.h'
+      - 'src/oracle_interfaces/*.h'
       - '.github/workflows/contract-verify.yml'
 
 jobs:
@@ -39,8 +41,10 @@ jobs:
         run: |
           files=$(find src/contracts/ -maxdepth 1 -type f -name "*.h" ! -name "*TestExample*" ! -name "*math_lib*" ! -name "*qpi*" -printf "%p\n" | paste -sd, -)
           echo "contract-filepaths=$files" >> "$GITHUB_OUTPUT"
+          files2=$(find src/oracle_interfaces/ -maxdepth 1 -type f -name "*.h" -printf "%p\n" | paste -sd, -)
+          echo "oi-filepaths=$files2" >> "$GITHUB_OUTPUT"
       - name: Contract verify action step
         id: verify
         uses: Franziska-Mueller/qubic-contract-verify@main
         with:
-          filepaths: '${{ steps.filepaths.outputs.contract-filepaths }}'
+          filepaths: '${{ steps.filepaths.outputs.contract-filepaths }},${{ steps.filepaths.outputs.oi-filepaths }}'

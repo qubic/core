@@ -144,7 +144,7 @@ public:
 	};
 	struct SetInvestRewardsInfo_output
 	{
-		bool success;
+		bit success;
 	};
 
 	struct GetPoolBasicState_input
@@ -233,7 +233,7 @@ public:
 	};
 	struct CreatePool_output
 	{
-		bool success;
+		bit success;
 	};
 
 	struct TransferShareOwnershipAndPossession_input
