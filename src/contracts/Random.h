@@ -99,9 +99,14 @@ public:
 			else
 			{
 				state.mut().earnedAmount += qpi.invocationReward();
-			
+
 				output.entropy.setRange(0, input.numberOfBits, state.get().entropy.get(locals.entropyIdx));
 			}
+		}
+		else
+		{
+			// Invalid input: no entropy is delivered, so refund in full.
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 	}
 
@@ -343,8 +348,13 @@ private:
 						}
 						state.mut().entropy.set(locals.stream * 10 + state.get().collateralTiers.get(locals.stream * 1365 + locals.i),
 						                        locals.entropy);
-						state.mut().reveals.set(locals.stream * 1365 + locals.i, locals.zeroReveal);
 					}
+					// Always clear the reveal slot, even when the XOR was skipped because
+					// the tier was poisoned by a no-show. Otherwise this provider would
+					// be permanently locked out: next round their RAC is rejected at the
+					// "reveals[i] != zeroReveal" guard, and END_TICK would then burn their
+					// (never-deposited) collateral as a no-show.
+					state.mut().reveals.set(locals.stream * 1365 + locals.i, locals.zeroReveal);
 				}
 
 				state.mut().revealOrCommitFlags.set(locals.stream * 1365 + locals.i, 0);
