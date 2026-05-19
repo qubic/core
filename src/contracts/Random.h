@@ -25,6 +25,33 @@ public:
 		uint32 i;
 	};
 
+	struct Fees_input
+	{
+	};
+
+	struct Fees_output
+	{
+		Array<uint32, 16> fees;
+	};
+
+	struct BuyEntropy_input
+	{
+		uint8 collateralTier;
+		uint16 numberOfBits;
+	};
+
+	struct BuyEntropy_output
+	{
+		Array<bit_4096, 32> entropy;
+	};
+
+	struct BuyEntropy_locals
+	{
+		bit_4096 zeroEntropy;
+		uint32 stream;
+		uint32 entropyIdx;
+	};
+
 	struct StateData
 	{
 		uint64 earnedAmount;
@@ -41,6 +68,42 @@ public:
 		bit_4096 revealOrCommitFlags;        // 3 * 1365
 		Array<bit_4096, 32> entropy;         // 3 * 10
 	};
+
+	PUBLIC_FUNCTION(Fees)
+	{
+		output.fees.set(0, 100);
+		output.fees.set(1, 100);
+		output.fees.set(2, 100);
+		output.fees.set(3, 100);
+		output.fees.set(4, 100);
+		output.fees.set(5, 100);
+		output.fees.set(6, 100);
+		output.fees.set(7, 100);
+		output.fees.set(8, 100);
+		output.fees.set(9, 100);
+	}
+
+	PUBLIC_PROCEDURE_WITH_LOCALS(BuyEntropy)
+	{
+		if (input.collateralTier <= 9
+			&& input.numberOfBits >= 1 && input.numberOfBits <= 4096
+			&& qpi.invocationReward() >= input.numberOfBits * 100)
+		{
+			locals.stream = mod<uint32>(qpi.tick() + 2, 3);
+			locals.entropyIdx = locals.stream *10 + input.collateralTier;
+
+			if (state.get().entropy.get(locals.entropyIdx) == locals.zeroEntropy)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			else
+			{
+				state.mut().earnedAmount += qpi.invocationReward();
+			
+				output.entropy.setRange(0, input.numberOfBits, state.get().entropy.get(locals.entropyIdx));
+			}
+		}
+	}
 
 private:
 	PUBLIC_PROCEDURE_WITH_LOCALS(RevealAndCommit)
@@ -299,11 +362,14 @@ private:
 
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
+		REGISTER_USER_FUNCTION(Fees, 1);
+
 		REGISTER_USER_PROCEDURE(RevealAndCommit, 1);
+		REGISTER_USER_PROCEDURE(BuyEntropy, 2);
 	}
 
 	INITIALIZE()
 	{
-		state.mut().bitFee = 1000;
+		// state.mut().bitFee = 1000;
 	}
 };
