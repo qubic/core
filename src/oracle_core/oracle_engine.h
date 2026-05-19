@@ -20,14 +20,22 @@
 
 void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data);
 
-constexpr uint32_t MAX_ORACLE_QUERIES = (1 << 19);
-constexpr uint64_t ORACLE_QUERY_STORAGE_SIZE = MAX_ORACLE_QUERIES * 512;
+// Maximum number of queries supported per epoch
+constexpr uint32_t MAX_ORACLE_QUERIES = (1 << 21);
+
+// Size of query storage (used for contract queries and subscriptions, not needed for user queries such as DOGE verification)
+constexpr uint64_t ORACLE_QUERY_STORAGE_SIZE = MAX_ORACLE_QUERIES * 256;
+
+// Maximum number of queries that may be pending simultaneously
 constexpr uint32_t MAX_SIMULTANEOUS_ORACLE_QUERIES = 1024;
 
 constexpr uint32_t MAX_ORACLE_SUBSCRIPTIONS = (1 << 13);
 constexpr uint32_t MAX_ORACLE_SUBSCRIBERS = MAX_ORACLE_SUBSCRIPTIONS * 16;
 
 constexpr uint32_t MAX_ORACLE_TIMEOUT_MILLISEC = 3600 * 1000;
+
+constexpr int64_t MIN_ORACLE_QUERY_FEE = 10;
+constexpr int64_t MIN_ORACLE_SUBSCRIPTION_FEE = 100;
 
 
 #pragma pack(push, 4)
@@ -628,7 +636,7 @@ public:
         // check fee
         const void* queryData = (tx + 1);
         const int64_t fee = (forceZeroFee) ? 0 : OI::getOracleQueryFeeFunc[tx->oracleInterfaceIndex](queryData);
-        if (tx->amount < fee)
+        if (!forceZeroFee && (tx->amount < fee || fee < MIN_ORACLE_QUERY_FEE))
         {
             // tx amount insufficient for fee -> return error (caller should refund in all error cases)
 #if !defined(NDEBUG) && !defined(NO_UEFI)

@@ -139,6 +139,8 @@ See the comments in the source code in `src/oracle_interfaces/Price.h` for more 
 The source code of the official Qubic Core repository and release should usually tell the current oracle fees.
 However, the Quorum decides as usual in Qubic, because the computors running the Qubic Network may change the code, including the fee amounts.
 
+In order to prevent spam, there are minimum fees, which are 10 QUs per oracle query and 100 QUs per oracle subscription at the moment.
+
 
 ### Adding new interfaces
 
@@ -191,8 +193,15 @@ static sint64 getSubscriptionFee(const OracleQuery& query, uint32 notifyPeriodIn
 
 Additionally, the interface struct may contain other structs or convenience features for contracts using the oracle interface.
 
-All code in the interface header file must respect the same [C++ language feature restrictions as contracts](#restrictions-of-c-language-features).
+All code in the interface header file must respect the same [C++ language feature restrictions as contracts](#restrictions-of-c-language-features) (except for a few differences listed below).
 These are checked with the [Qubic Contract Verification Tool](https://github.com/Franziska-Mueller/qubic-contract-verify).
+
+The C++ language feature restrictions of oracle interfaces differ in the following points from those of contracts:
+
+- Only one struct is permitted on global scope that should have the same name as the file (e.g. `struct Price` in `Price.h`).
+  Global constants or other global definitions/declarations are forbidden.
+- The restrictions of the contract input / output types apply to all structs in oracle interfaces, that is, all structs are considered to be input / output.
+- Functions defined in oracle interfaces may use a few local integer variables. The rationale is to keep the interfaces simple (no passing of storage for local variables as arguments). The number is restricted to 10 integers, which should fit in the registers of the Intel/AMD x64.
 
 A new oracle interface has to be added file `src/oracle_core/oracle_interfaces_def.h`.
 Search for "add new interface above this line" in this file to see, where to add references to new interface to make it available to contracts and the oracle engine.
