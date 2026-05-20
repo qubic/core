@@ -193,11 +193,11 @@ TEST(TestCoreRevenue, V2OverflowExtremeValues)
     }
 
     // Sliding window per-tick score: logScore * S * WINDOW_SIZE
-    //    Max logScore = 7099 (gTxRevenuePoints[1024])
-    //    Per-tick max = 7099 * 1024 * 1351 = 9,820,926,976 (fits u32? no, needs u64)
+    //    Max logScore = 34071 (gTxRevenuePoints[4096])
+    //    Per-tick max = 34071 * 1024 * 1351 = 47,134,639,104 (needs u64)
     {
         unsigned long long perTickMax = (unsigned long long)maxTxRevPoints * S * REVENUE_WINDOW_SIZE;
-        EXPECT_EQ(perTickMax, 9820926976ULL);
+        EXPECT_EQ(perTickMax, 47134639104ULL);
         EXPECT_LE(perTickMax, u64Max);
     }
 
@@ -225,7 +225,7 @@ TEST(TestCoreRevenue, V2OverflowExtremeValues)
         EXPECT_LE(intermediate, u64Max);
     }
 
-    // End-to-end: run computeRevenueV2 with max TX (1024/tick), max mining scores,
+    // End-to-end: run computeRevenueV2 with max TX (NUMBER_OF_TRANSACTIONS_PER_TICK/tick), max mining scores,
     //    full epoch worth of ticks. Must not produce negative or >IPC revenue.
     {
         constexpr unsigned int TOTAL_TICKS = REVENUE_WINDOW_SIZE + NUMBER_OF_COMPUTORS * 10;
@@ -237,7 +237,7 @@ TEST(TestCoreRevenue, V2OverflowExtremeValues)
         data.totalTicks = TOTAL_TICKS;
         for (unsigned int t = 0; t < TOTAL_TICKS; t++)
         {
-            data.perTickTxCount[t] = 1024;
+            data.perTickTxCount[t] = NUMBER_OF_TRANSACTIONS_PER_TICK;
         }
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {

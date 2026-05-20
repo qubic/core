@@ -147,6 +147,63 @@ TEST(ExecutionFeeReportTransaction, RejectNonZeroAmount) {
     EXPECT_FALSE(ExecutionFeeReportTransactionPrefix::isValidExecutionFeeReport(tx));
 }
 
+TEST(ExecutionFeeReportTransaction, RejectNumEntriesOverflow) {
+    unsigned char buffer[512];
+
+    Transaction* tx = (Transaction*)buffer;
+    tx->sourcePublicKey = m256i::zero();
+    tx->destinationPublicKey = m256i::zero();
+    tx->amount = 0;
+    tx->tick = 1000;
+    tx->inputType = EXECUTION_FEE_REPORT_INPUT_TYPE;
+    tx->inputSize = 128;
+
+    unsigned char* inputPtr = tx->inputPtr();
+    *(unsigned int*)inputPtr = 5;
+    *(unsigned int*)(inputPtr + 4) = 0x40000007u;
+
+    EXPECT_FALSE(ExecutionFeeReportTransactionPrefix::isValidExecutionFeeReport(tx));
+    EXPECT_FALSE(ExecutionFeeReportTransactionPrefix::isValidEntryAlignment(tx));
+}
+
+TEST(ExecutionFeeReportTransaction, RejectNumEntriesAboveContractCount) {
+    unsigned char buffer[2048];
+    unsigned int contractIndices[1] = {1};
+    long long executionFees[1] = {1000};
+
+    Transaction* tx = createTestTransaction(buffer, sizeof(buffer), 1, contractIndices, executionFees);
+    ASSERT_NE(tx, nullptr);
+
+    unsigned char* inputPtr = tx->inputPtr();
+    *(unsigned int*)(inputPtr + 4) = contractCount + 1;
+
+    EXPECT_FALSE(ExecutionFeeReportTransactionPrefix::isValidExecutionFeeReport(tx));
+    EXPECT_FALSE(ExecutionFeeReportTransactionPrefix::isValidEntryAlignment(tx));
+}
+
+TEST(ExecutionFeeReportTransaction, RejectInputSizeBelowMin) {
+    unsigned char buffer[512];
+    unsigned int contractIndices[1] = {1};
+    long long executionFees[1] = {1000};
+
+    Transaction* tx = createTestTransaction(buffer, sizeof(buffer), 1, contractIndices, executionFees);
+    ASSERT_NE(tx, nullptr);
+
+    tx->inputSize = sizeof(unsigned int) + sizeof(unsigned int);
+
+    EXPECT_FALSE(ExecutionFeeReportTransactionPrefix::isValidExecutionFeeReport(tx));
+}
+
+TEST(ExecutionFeeReportCollector, ValidateRejectsNumEntriesAboveContractCount) {
+    ExecutionFeeReportCollector collector;
+    collector.init();
+
+    unsigned int indices[1] = {1};
+    unsigned long long fees[1] = {1000};
+    EXPECT_FALSE(collector.validateReportEntries(indices, fees, contractCount + 1));
+    EXPECT_FALSE(collector.validateReportEntries(indices, fees, 0x40000007u));
+}
+
 TEST(ExecutionFeeReportTransaction, RejectMisalignedEntries) {
     unsigned char buffer[512];
     unsigned int contractIndices[1] = {1};

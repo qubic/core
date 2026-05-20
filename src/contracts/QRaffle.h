@@ -19,10 +19,12 @@ constexpr uint32 QRAFFLE_MAX_MEMBER = 65536;
 constexpr uint32 QRAFFLE_DEFAULT_QRAFFLE_AMOUNT = 10000000ull;
 constexpr uint32 QRAFFLE_MIN_QRAFFLE_AMOUNT = 1000000ull;
 constexpr uint32 QRAFFLE_MAX_QRAFFLE_AMOUNT = 1000000000ull;
-constexpr uint32 QRAFFLE_MAX_TOKEN_RAFFLES = 16384;     // ring buffer: 16384 × ~96 B ≈ 1.5 MB, covers ~128 epochs
+// Ended token-raffle ring: 16 384 slots × ~96 B ≈ 1.5 MB.
+// At most QRAFFLE_MAX_PROPOSAL_EPOCH (128) raffles/epoch → covers ~128 epochs of history.
+constexpr uint32 QRAFFLE_MAX_TOKEN_RAFFLES = 16384;
 constexpr uint32 QRAFFLE_MAX_SHAREHOLDERS = 1024;
-constexpr uint32 QRAFFLE_TOKEN_RAFFLE_SLOT_SIZE = 512;  // flat stride per token raffle; must be power of 2
-constexpr uint8 QRAFFLE_MAX_PROPOSALS_PER_PROPOSER = 3; // per epoch
+constexpr uint32 QRAFFLE_TOKEN_RAFFLE_SLOT_SIZE = 512; // 2^9, max members per token raffle
+constexpr uint8 QRAFFLE_MAX_PROPOSALS_PER_PROPOSER = 3; // max proposals per user per epoch
 
 constexpr sint32 QRAFFLE_SUCCESS = 0;
 constexpr sint32 QRAFFLE_INSUFFICIENT_FUND = 1;
@@ -309,19 +311,19 @@ public:
 		HashMap <id, uint8, QRAFFLE_MAX_MEMBER> registers;
 		Array <ProposalInfo, QRAFFLE_MAX_PROPOSAL_EPOCH> proposals;
 
-		// Dual-bitfield vote store: O(1) has-voted check + direction, ~4 MB each.
-		// bit[i]=1 in voteParticipation → user voted on proposal i; bit[i] in voteValues → direction (1=yes).
-		HashMap <id, BitArray<QRAFFLE_MAX_PROPOSAL_EPOCH>, QRAFFLE_MAX_MEMBER> voteParticipation;
-		HashMap <id, BitArray<QRAFFLE_MAX_PROPOSAL_EPOCH>, QRAFFLE_MAX_MEMBER> voteValues;
+		// Per-user vote tracking with dual BitArray (qRWA pattern).
+		// O(1) lookup via id hash, 1 bit per proposal. ~4 MB each, ~8 MB total.
+		HashMap <id, BitArray<QRAFFLE_MAX_PROPOSAL_EPOCH>, QRAFFLE_MAX_MEMBER> voteParticipation; // bit=1 if user has voted
+		HashMap <id, BitArray<QRAFFLE_MAX_PROPOSAL_EPOCH>, QRAFFLE_MAX_MEMBER> voteValues; // bit=1 for yes, bit=0 for no
 		Array <uint32, QRAFFLE_MAX_PROPOSAL_EPOCH> numberOfVotedInProposal;
 		Array <id, QRAFFLE_MAX_MEMBER> quRaffleMembers;
-		// Shadow set for O(1) duplicate check; kept in sync with quRaffleMembers.
+		// O(1) duplicate guard for quRaffle entries; mirrors quRaffleMembers for membership tests.
 		HashSet <id, QRAFFLE_MAX_MEMBER> quRaffleMemberSet;
 
 		Array <ActiveTokenRaffleInfo, QRAFFLE_MAX_PROPOSAL_EPOCH> activeTokenRaffle;
-		// O(1) has-deposited check per user per raffle. ~4 MB.
+		// Per-user O(1) duplicate check for token raffle deposits. ~4 MB.
 		HashMap <id, BitArray<QRAFFLE_MAX_PROPOSAL_EPOCH>, QRAFFLE_MAX_MEMBER> tokenRaffleParticipation;
-		// Flat member list: raffle i occupies [i*SLOT_SIZE .. i*SLOT_SIZE+count). ~2 MB.
+		// Flat indexed member storage: raffle i occupies slots [i*SLOT_SIZE .. i*SLOT_SIZE+count). ~2 MB.
 		Array <id, QRAFFLE_MAX_MEMBER> tokenRaffleMemberSlots;
 		Array <uint32, QRAFFLE_MAX_PROPOSAL_EPOCH> numberOfTokenRaffleMembers;
 
@@ -1007,10 +1009,11 @@ protected:
 		}
 		locals.proposal = state.get().proposals.get(input.indexOfProposal);
 
+		// O(1) vote lookup via per-user bitfield (id hash, no K12 overhead).
 		state.get().voteParticipation.get(qpi.invocator(), locals.participation);
 		if (locals.participation.get(input.indexOfProposal))
 		{
-			// User voted before — reject if same direction, flip counters if different.
+			// Already voted — check if same direction.
 			state.get().voteValues.get(qpi.invocator(), locals.values);
 			if (locals.values.get(input.indexOfProposal) == input.yes)
 			{
@@ -1019,7 +1022,7 @@ protected:
 				LOG_INFO(locals.log);
 				return ;
 			}
-			// nYes/nNo are uint32; decrement is guarded to prevent underflow on corrupt state.
+			// Flip the vote: update counters with underflow guard.
 			if (input.yes)
 			{
 				locals.proposal.nYes++;
@@ -1039,6 +1042,7 @@ protected:
 			return ;
 		}
 
+		// New vote: check capacity before inserting.
 		locals.votedCount = state.get().numberOfVotedInProposal.get(input.indexOfProposal);
 		if (locals.votedCount >= QRAFFLE_MAX_MEMBER)
 		{
@@ -1057,6 +1061,7 @@ protected:
 		}
 		state.mut().proposals.set(input.indexOfProposal, locals.proposal);
 
+		// Mark participation and record vote direction.
 		locals.participation.set(input.indexOfProposal, 1);
 		state.mut().voteParticipation.set(qpi.invocator(), locals.participation);
 		state.get().voteValues.get(qpi.invocator(), locals.values);
@@ -1098,6 +1103,7 @@ protected:
 			LOG_INFO(locals.log);
 			return ;
 		}
+		// O(1) duplicate check via HashSet (replaces former O(N) linear scan over quRaffleMembers).
 		if (state.get().quRaffleMemberSet.contains(qpi.invocator()))
 		{
 			if (qpi.invocationReward() > 0)
@@ -1139,6 +1145,7 @@ protected:
 			LOG_INFO(locals.log);
 			return ;
 		}
+		// Only registered members may deposit.
 		if (state.get().registers.contains(qpi.invocator()) == 0)
 		{
 			if (qpi.invocationReward() > 0)
@@ -1173,6 +1180,7 @@ protected:
 			LOG_INFO(locals.log);
 			return ;
 		}
+		// O(1) duplicate check via per-user bitfield.
 		state.get().tokenRaffleParticipation.get(qpi.invocator(), locals.participation);
 		if (locals.participation.get(input.indexOfTokenRaffle))
 		{
@@ -1197,13 +1205,14 @@ protected:
 			LOG_INFO(locals.log);
 			return ;
 		}
+		// Keep QRAFFLE_TRANSFER_SHARE_FEE as service revenue; refund any excess.
 		if (qpi.invocationReward() > QRAFFLE_TRANSFER_SHARE_FEE)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() - QRAFFLE_TRANSFER_SHARE_FEE);
 		}
 		state.mut().epochRevenue += QRAFFLE_TRANSFER_SHARE_FEE;
 
-		// Store member in flat slot array and mark participation bitfield.
+		// Store member in flat slot array and mark participation.
 		state.mut().tokenRaffleMemberSlots.set(input.indexOfTokenRaffle * QRAFFLE_TOKEN_RAFFLE_SLOT_SIZE + locals.currentMembers, qpi.invocator());
 		state.mut().numberOfTokenRaffleMembers.set(input.indexOfTokenRaffle, locals.currentMembers + 1);
 		locals.participation.set(input.indexOfTokenRaffle, 1);
@@ -1223,8 +1232,8 @@ protected:
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
 	{
-		// Minimum fee covers service cost. Any amount above that is passed to releaseShares
-		// as the offered transfer fee; the destination keeps what it needs, the rest is refunded.
+		// Requires QRAFFLE_TRANSFER_SHARE_FEE minimum. The rest is offered to the destination
+		// contract as transfer fee; the unused portion is refunded after releaseShares.
 		if (qpi.invocationReward() < QRAFFLE_TRANSFER_SHARE_FEE)
 		{
 			if (qpi.invocationReward() > 0)
@@ -1238,7 +1247,8 @@ protected:
 
 		if (qpi.numberOfPossessedShares(input.tokenName, input.tokenIssuer,qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
 		{
-				output.transferredNumberOfShares = 0;
+			// Not enough shares — refund in full.
+			output.transferredNumberOfShares = 0;
 			locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_notEnoughShares, 0 };
 			LOG_INFO(locals.log);
 			if (qpi.invocationReward() > 0)
@@ -1255,6 +1265,7 @@ protected:
 				input.newManagingContractIndex, input.newManagingContractIndex, locals.offeredFee);
 			if (locals.paidFee < 0)
 			{
+				// Transfer rejected by the destination — refund everything.
 				output.transferredNumberOfShares = 0;
 				locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_transferFailed, 0 };
 				LOG_INFO(locals.log);
@@ -1265,7 +1276,7 @@ protected:
 			}
 			else
 			{
-				// Keep base service fee; refund whatever the destination didn't consume.
+				// Success — keep service fee as revenue, refund unused transfer fee.
 				output.transferredNumberOfShares = input.numberOfShares;
 				state.mut().epochRevenue += QRAFFLE_TRANSFER_SHARE_FEE;
 				if (locals.offeredFee > locals.paidFee)
@@ -2140,6 +2151,12 @@ protected:
 		REGISTER_USER_FUNCTION(getEpochRaffleIndexes, 7);
 		REGISTER_USER_FUNCTION(getQuRaffleEntryAmountPerUser, 8);
 		REGISTER_USER_FUNCTION(getQuRaffleEntryAverageAmount, 9);
+    // Asset Raffle view functions
+		REGISTER_USER_FUNCTION(getActiveAssetRaffle, 10);
+		REGISTER_USER_FUNCTION(getActiveAssetRaffleBundleItem, 11);
+		REGISTER_USER_FUNCTION(getActiveAssetRaffleBuyer, 12);
+		REGISTER_USER_FUNCTION(getEndedAssetRaffle, 13);
+		REGISTER_USER_FUNCTION(getAssetRaffleAnalytics, 14);
 
 		REGISTER_USER_PROCEDURE(registerInSystem, 1);
 		REGISTER_USER_PROCEDURE(logoutInSystem, 2);
@@ -2153,12 +2170,6 @@ protected:
 		REGISTER_USER_PROCEDURE(createAssetRaffle, 9);
 		REGISTER_USER_PROCEDURE(buyAssetRaffleTicket, 10);
 		REGISTER_USER_PROCEDURE(cancelAssetRaffle, 11);
-		// Asset Raffle view functions
-		REGISTER_USER_FUNCTION(getActiveAssetRaffle, 10);
-		REGISTER_USER_FUNCTION(getActiveAssetRaffleBundleItem, 11);
-		REGISTER_USER_FUNCTION(getActiveAssetRaffleBuyer, 12);
-		REGISTER_USER_FUNCTION(getEndedAssetRaffle, 13);
-		REGISTER_USER_FUNCTION(getAssetRaffleAnalytics, 14);
 	}
 
 	INITIALIZE()
