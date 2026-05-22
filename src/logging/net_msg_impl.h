@@ -8,6 +8,8 @@
 void qLogger::processRequestLog(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
 {
 #if ENABLED_LOGGING
+    if (!header->checkPayloadSize(sizeof(RequestLog)))
+        return;
     RequestLog* request = header->getPayload<RequestLog>();
     if (request->passcode[0] == logReaderPasscodes[0]
         && request->passcode[1] == logReaderPasscodes[1]
@@ -58,6 +60,8 @@ void qLogger::processRequestLog(unsigned long long processorNumber, Peer* peer, 
 void qLogger::processRequestTxLogInfo(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
 {
 #if ENABLED_LOGGING
+    if (!header->checkPayloadSize(sizeof(RequestLogIdRangeFromTx)))
+        return;
     RequestLogIdRangeFromTx* request = header->getPayload<RequestLogIdRangeFromTx>();
     if (request->passcode[0] == logReaderPasscodes[0]
         && request->passcode[1] == logReaderPasscodes[1]
@@ -90,6 +94,8 @@ void qLogger::processRequestTxLogInfo(unsigned long long processorNumber, Peer* 
 void qLogger::processRequestTickTxLogInfo(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
 {
 #if ENABLED_LOGGING
+    if (!header->checkPayloadSize(sizeof(RequestAllLogIdRangesFromTick)))
+        return;
     RequestAllLogIdRangesFromTick* request = header->getPayload<RequestAllLogIdRangesFromTick>();
     if (request->passcode[0] == logReaderPasscodes[0]
         && request->passcode[1] == logReaderPasscodes[1]
@@ -123,6 +129,8 @@ void qLogger::processRequestTickTxLogInfo(unsigned long long processorNumber, Pe
 void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* header)
 {
 #if ENABLED_LOGGING
+    if (!header->checkPayloadSize(sizeof(RequestPruningLog)))
+        return;
     RequestPruningLog* request = header->getPayload<RequestPruningLog>();
     if (request->passcode[0] == logReaderPasscodes[0]
         && request->passcode[1] == logReaderPasscodes[1]
@@ -177,6 +185,8 @@ void qLogger::processRequestPrunePageFile(Peer* peer, RequestResponseHeader* hea
 void qLogger::processRequestGetLogDigest(Peer* peer, RequestResponseHeader* header)
 {
 #if LOG_STATE_DIGEST
+    if (!header->checkPayloadSize(sizeof(RequestLogStateDigest)))
+        return;
     RequestLogStateDigest* request = header->getPayload<RequestLogStateDigest>();
     if (request->passcode[0] == logReaderPasscodes[0]
         && request->passcode[1] == logReaderPasscodes[1]

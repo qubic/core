@@ -8,6 +8,8 @@ static void processRequestIssuedAssets(Peer* peer, RequestResponseHeader* header
 {
     RespondIssuedAssets response;
 
+    if (!header->checkPayloadSize(sizeof(RequestIssuedAssets)))
+        return;
     RequestIssuedAssets* request = header->getPayload<RequestIssuedAssets>();
 
     unsigned int universeIndex = request->publicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
@@ -45,6 +47,8 @@ static void processRequestOwnedAssets(Peer* peer, RequestResponseHeader* header)
 {
     RespondOwnedAssets response;
 
+    if (!header->checkPayloadSize(sizeof(RequestOwnedAssets)))
+        return;
     RequestOwnedAssets* request = header->getPayload<RequestOwnedAssets>();
 
     unsigned int universeIndex = request->publicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
@@ -83,6 +87,8 @@ static void processRequestPossessedAssets(Peer* peer, RequestResponseHeader* hea
 {
     RespondPossessedAssets response;
 
+    if (!header->checkPayloadSize(sizeof(RequestPossessedAssets)))
+        return;
     RequestPossessedAssets* request = header->getPayload<RequestPossessedAssets>();
 
     unsigned int universeIndex = request->publicKey.m256i_u32[0] & (ASSETS_CAPACITY - 1);
@@ -121,6 +127,8 @@ iteration:
 static void processRequestAssetsSendRecord(Peer* peer, RequestResponseHeader* responseHeader, unsigned int universeIndex)
 {
     if (universeIndex >= ASSETS_CAPACITY)
+        return;
+    if (!responseHeader->checkPayloadSize(sizeof(RespondAssetsWithSiblings)))
         return;
     RespondAssetsWithSiblings* payload = responseHeader->getPayload<RespondAssetsWithSiblings>();
     copyMemory(payload->asset, assets[universeIndex]);
