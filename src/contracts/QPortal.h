@@ -1,5 +1,4 @@
 using namespace QPI;
-#include "qpi.h"
 
 constexpr uint64 QPORTAL_PORTAL_ASSET_NAME = 83843471265616; //PORTAL asset name
 constexpr uint64 QPORTAL_MIN_HOLDING_PORTAL = 100000ull; //proposal must have at least 100K PORTAL to approve a proposal.
@@ -221,7 +220,7 @@ protected:
     struct getRegisters_locals
     {
         id user;
-        sint32 index;
+        sint64 index;
         uint32 i, cnt;
     };
 
@@ -400,7 +399,8 @@ protected:
 
     struct submitProposal_locals
     {
-        sint32 index, status;
+        sint64 index;
+        uint32 status;
         Logger log;
     };
 
@@ -478,7 +478,7 @@ protected:
      struct submitInVote_locals
      {
         id key;
-        sint32 index;
+        sint64 index;
         uint64 amount;
         sint64 ownedShares;
         voteKey vk;
@@ -593,7 +593,7 @@ protected:
 
     struct submitOutVote_locals
     {
-        sint32 index;
+        sint64 index;
         voteRecord vr;
         voteResult tmp;
         Logger log;
@@ -665,7 +665,7 @@ protected:
 
     struct requestRefund_locals
     {
-        sint32 i;
+        uint32 i;
         Logger log;
     };
 
@@ -785,7 +785,7 @@ protected:
 
     struct END_EPOCH_locals
     {
-        uint32 i, index;
+        sint64 i, index;
         id proposalId;
         uint32 yesVotes, noVotes;
         uint64 yesPortal, noPortal;

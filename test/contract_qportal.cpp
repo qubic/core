@@ -46,6 +46,8 @@ public:
             ? lockedAmount.value(lockedAmount.getElementIndex(u))
             : 0ull;
     }
+
+    sint64 getBurnAmt() const { return burnAmt; }
 };
 
 class ContractTestingQPortal : protected ContractTesting
@@ -59,6 +61,10 @@ public:
     {
         initEmptySpectrum();
         initEmptyUniverse();
+
+        // QX is needed as a destination managing contract for transferShareManagementRights.
+        INIT_CONTRACT(QX);
+        callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
 
         INIT_CONTRACT(QPORTAL);
         callSystemProcedure(QPORTAL_CONTRACT_INDEX, INITIALIZE);
@@ -157,6 +163,26 @@ public:
         QPORTAL::requestRefund_output output;
         invokeUserProcedure(QPORTAL_CONTRACT_INDEX, 5, input, output, user, 0);
         return output.returnCode;
+    }
+
+    QPORTAL::transferShareManagementRights_output transferShareMgmtRights(
+        const id& user, uint64 numberOfShares, uint32 newMgmtIdx, sint64 invocationReward)
+    {
+        QPORTAL::transferShareManagementRights_input input;
+        input.asset.assetName = QPORTAL_PORTAL_ASSET_NAME;
+        input.asset.issuer = portalIssuer;
+        input.numberOfShares = numberOfShares;
+        input.newManagementContractIndex = newMgmtIdx;
+        QPORTAL::transferShareManagementRights_output output;
+        invokeUserProcedure(QPORTAL_CONTRACT_INDEX, 6, input, output, user, invocationReward);
+        return output;
+    }
+
+    sint64 portalBalanceOnQX(const id& owner)
+    {
+        return numberOfPossessedShares(
+            QPORTAL_PORTAL_ASSET_NAME, portalIssuer, owner, owner,
+            QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
     }
 
     // ---- QPORTAL functions ------------------------------------------------
@@ -1009,4 +1035,74 @@ TEST(ContractQPortal, GetProposalStatus_InvalidAndMissing)
     qp.issuePortal(1000000);
     EXPECT_EQ(qp.getProposalStatus(NULL_ID).returnCode, (sint32)QPORTAL_INVALID_INPUT);
     EXPECT_EQ(qp.getProposalStatus(qpProposal(7)).returnCode, (sint32)QPORTAL_NOT_EXISTED_PROPOSAL);
+}
+
+// ===========================================================================
+// transferShareManagementRights
+// ===========================================================================
+
+TEST(ContractQPortal, TransferShareMgmtRights_InsufficientReward)
+{
+    ContractTestingQPortal qp;
+    qp.issuePortal(1000000);
+    id user = qpMember(1);
+    qp.fundUser(user, 1000);
+
+    // invocationReward below QPORTAL_TRANSFER_SHARE_FEE (100) is rejected.
+    QPORTAL::transferShareManagementRights_output o =
+        qp.transferShareMgmtRights(user, 500, QX_CONTRACT_INDEX, QPORTAL_TRANSFER_SHARE_FEE - 1);
+    EXPECT_EQ(o.returnCode, (sint32)QPORTAL_INSUFFICIENT_PORTAL);
+    // Management is unchanged: all shares still on QPORTAL.
+    EXPECT_EQ(qp.portalBalanceOnQPortal(user), 1000);
+}
+
+TEST(ContractQPortal, TransferShareMgmtRights_InsufficientShares)
+{
+    ContractTestingQPortal qp;
+    qp.issuePortal(1000000);
+    id user = qpMember(1);
+    qp.fundUser(user, 50);
+
+    // Requesting more shares than the user holds is rejected.
+    QPORTAL::transferShareManagementRights_output o =
+        qp.transferShareMgmtRights(user, 1000, QX_CONTRACT_INDEX, QPORTAL_TRANSFER_SHARE_FEE);
+    EXPECT_EQ(o.returnCode, (sint32)QPORTAL_INSUFFICIENT_PORTAL);
+    EXPECT_EQ(o.transferredNumberOfShares, 0ll);
+    EXPECT_EQ(qp.portalBalanceOnQPortal(user), 50);
+}
+
+TEST(ContractQPortal, TransferShareMgmtRights_SelfDestinationRejected)
+{
+    ContractTestingQPortal qp;
+    qp.issuePortal(1000000);
+    id user = qpMember(1);
+    qp.fundUser(user, 1000);
+
+    // releaseShares rejects a transfer whose destination is the current contract.
+    QPORTAL::transferShareManagementRights_output o =
+        qp.transferShareMgmtRights(user, 500, QPORTAL_CONTRACT_INDEX, 5000000);
+    EXPECT_EQ(o.returnCode, (sint32)QPORTAL_INSUFFICIENT_PORTAL);
+    EXPECT_EQ(o.transferredNumberOfShares, 0ll);
+    EXPECT_EQ(qp.portalBalanceOnQPortal(user), 1000);
+}
+
+TEST(ContractQPortal, TransferShareMgmtRights_SuccessToQX)
+{
+    ContractTestingQPortal qp;
+    qp.issuePortal(1000000);
+    id user = qpMember(1);
+    qp.fundUser(user, 1000);
+
+    // Move management of 600 shares from QPORTAL to QX (a contract that accepts).
+    QPORTAL::transferShareManagementRights_output o =
+        qp.transferShareMgmtRights(user, 600, QX_CONTRACT_INDEX, 5000000);
+    EXPECT_EQ(o.returnCode, (sint32)QPORTAL_SUCCESS);
+    EXPECT_EQ(o.transferredNumberOfShares, 600ll);
+
+    // 600 shares are now managed by QX, 400 remain on QPORTAL.
+    EXPECT_EQ(qp.portalBalanceOnQX(user), 600);
+    EXPECT_EQ(qp.portalBalanceOnQPortal(user), 400);
+
+    // The transfer fee is accumulated for burning.
+    EXPECT_EQ(qp.getState()->getBurnAmt(), (sint64)QPORTAL_TRANSFER_SHARE_FEE);
 }
