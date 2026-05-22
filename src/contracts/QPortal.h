@@ -1,13 +1,15 @@
 using namespace QPI;
 #include "qpi.h"
 
-constexpr uint64 QPORTAL_PORTAL_ASSET_NAME = 83843471265616; //Portal toekn asset name
-constexpr uint32 QPORTAL_REGISTER_AMOUNT = 5; //Amount of portal token to register
+constexpr uint64 QPORTAL_PORTAL_ASSET_NAME = 83843471265616; //PORTAL asset name
+constexpr uint64 QPORTAL_MIN_HOLDING_PORTAL = 100000ull; //proposal must have at least 100K PORTAL to approve a proposal.
+constexpr uint32 QPORTAL_REGISTER_AMOUNT = 5; //Amount of PORTAL to register
 constexpr uint32 QPORTAL_MIN_RETAINED = 1; //Members must keep >=1 portal token
 constexpr uint32 QPORTAL_MAX_MEMBER = 4096; //Maximum number of members in the portal DAO.
 constexpr uint32 QPORTAL_MAX_PROPOSAL = 4096; //Maximum number of proposals in the portal DAO.
 constexpr uint32 QPORTAL_MAX_PROPOSAL_USER = 2; //The maximum number of proposals a user can submit.
 constexpr uint32 QPORTAL_MAX_PROPOSAL_EPOCH = 5; //The maximum number
+constexpr uint32 QPORTAL_MAX_VOTE = 32768; //The maximum number of votes a user can make (voting in all proposals in all proposal epochs).
 
 constexpr uint32 QPORTAL_SUCCESS = 0;
 constexpr uint32 QPORTAL_INSUFFICIENT_PORTAL = 1;
@@ -17,6 +19,9 @@ constexpr uint32 QPORTAL_REACHED_FULL = 4;
 constexpr uint32 QPORTAL_NOT_REGISTERED = 5;
 constexpr uint32 QPORTAL_REACHED_PROPOSAL = 6;
 constexpr uint32 QPORTAL_ALREADY_EXISTED_PROPOSAL = 7;
+constexpr uint32 QPORTAL_NOT_EXISTED_PROPOSAL = 8;
+constexpr uint32 QPORTAL_ALREADY_VOTED_PROPOSAL = 9;
+constexpr uint32 QPORTAL_CLOSED_PROPOSAL = 10;
 
 struct QPORTAL2
 {
@@ -33,7 +38,25 @@ public:
         sint8 _terminator;
     };
 
-    // struct 
+    struct VoteKey
+    {
+        id userId;
+        id proposalId;
+    };
+
+    struct voteRecord
+    {
+        id proposalId;
+        bit vote; // 0 = no, 1 = yes
+    };
+    
+    struct voteResult
+    {
+        uint32 yesVotes;
+        uint32 noVotes;
+        uint64 yesPortal;
+        uint64 noPortal;
+    };
 
     struct StateData
     {
@@ -41,8 +64,13 @@ public:
         HashMap<id, bit, QPORTAL_MAX_MEMBER> registers; //registered members in the portal DAO
         uint32 numberOfRegisters, numberOfProposalEpochs, numberOfProposals;
         HashMap<id, uint32, QPORTAL_MAX_MEMBER> userProposalStatus; // 0 = no proposal, 1 = submitted 1 proposal, 2 = submitted 2 proposals (max)
+        Array<id, QPORTAL_MAX_PROPOSAL_EPOCH> currentEpochProposals; // record of proposal IDs in the current proposal epoch
         HashMap<id, uint32, QPORTAL_MAX_PROPOSAL> submittedProposals; // 0 = voting, 1 = accepted, 2 = rejected
-        
+        HashMap<id, uint64, QPORTAL_MAX_MEMBER> lockedAmount;
+        HashMap<id, voteRecord, QPORTAL_MAX_VOTE> proposalVotes; // Voting records for each user per proposal epoch, used to check whether the user voted in the current proposal epoch.
+        HashMap<id, voteResult, QPORTAL_MAX_PROPOSAL> proposalResults; // record of vote results for all of proposals
+        HashSet<id, QPORTAL_MAX_MEMBER> lockedPortals; // record of users who have locked their PORTAL
+
     };
 
     struct getRegisters_input
@@ -72,6 +100,18 @@ public:
     };
 
     struct submitProposal_output
+    {
+        sint32 returnCode;
+    };
+
+    struct submitInVote_input
+    {
+        id proposalId;
+        bit vote; // 0 = no, 1 = yes
+        uint64 votingPortalAmount;
+    };
+
+    struct submitInVote_output
     {
         sint32 returnCode;
     };
@@ -148,8 +188,8 @@ protected:
             locals.i++;
             locals.index = state.get().registers.nextElementIndex(locals.index);
         }
-        output.returnCode = QPORTAL_SUCCESS;
 
+        output.returnCode = QPORTAL_SUCCESS;
     }
 
     struct registerInPortalDAO_locals
@@ -195,6 +235,7 @@ protected:
             LOG_INFO(locals.log);
             return ;
         }
+
         state.mut().registers.set(qpi.invocator(), 1);
         state.mut().numberOfRegisters ++;
 
@@ -225,7 +266,7 @@ protected:
             return ;
         }
 
-        if ( state.get().numberOfProposals >= QPORTAL_MAX_PROPOSAL)
+        if (state.get().numberOfProposals >= QPORTAL_MAX_PROPOSAL)
         {
             output.returnCode = QPORTAL_REACHED_PROPOSAL;
             locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_REACHED_PROPOSAL, 0 };
@@ -233,7 +274,7 @@ protected:
             return ;
         }
 
-        if ( state.get().numberOfProposalEpochs >= QPORTAL_MAX_PROPOSAL_EPOCH)
+        if (state.get().numberOfProposalEpochs >= QPORTAL_MAX_PROPOSAL_EPOCH)
         {
             output.returnCode = QPORTAL_REACHED_PROPOSAL;
             locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_REACHED_PROPOSAL, 0 };
@@ -260,6 +301,7 @@ protected:
         }
 
         state.mut().submittedProposals.set(input.proposalId, 0);
+        state.mut().currentEpochProposals.set(state.get().numberOfProposalEpochs, input.proposalId); // add proposal to the current proposal epoch
         
         locals.user_status = locals.user_index == NULL_INDEX ? 0 : state.get().userProposalStatus.value(locals.user_index);
 
@@ -272,18 +314,162 @@ protected:
         LOG_INFO(locals.log);
     }
 
+     struct submitInVote_locals
+     {
+        id key;
+        sint32 index;
+        uint64 amount;
+        VoteKey vk;
+        voteRecord voteRec;
+        voteResult voteRes;
+        Logger log;
+     };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(submitInVote)
+    {
+
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+
+        if (!state.get().registers.contains(qpi.invocator()))
+        {
+            output.returnCode = QPORTAL_NOT_REGISTERED;
+            locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_NOT_REGISTERED, 0 };
+            LOG_INFO(locals.log);
+            return ;
+        }
+
+        if (input.votingPortalAmount == 0 || qpi.numberOfPossessedShares(QPORTAL_PORTAL_ASSET_NAME, state.get().PORTAL_Issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.votingPortalAmount)
+        {
+            output.returnCode = QPORTAL_INSUFFICIENT_PORTAL;
+            locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INSUFFICIENT_PORTAL, 0 };
+            LOG_INFO(locals.log);
+            return ;
+        }
+
+        if (!state.get().submittedProposals.contains(input.proposalId))
+        {
+            output.returnCode = QPORTAL_NOT_EXISTED_PROPOSAL;
+            locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_NOT_EXISTED_PROPOSAL, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        locals.index = state.get().submittedProposals.getElementIndex(input.proposalId);
+        if (state.get().submittedProposals.value(locals.index) != 0)
+        {
+            output.returnCode = QPORTAL_CLOSED_PROPOSAL;
+            locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_CLOSED_PROPOSAL, 0 };
+            LOG_INFO(locals.log);
+            return;
+        }
+
+        locals.vk.userId = qpi.invocator();
+        locals.vk.proposalId = input.proposalId;
+        locals.key = qpi.K12(locals.vk);
+
+        if (state.get().proposalVotes.getElementIndex(locals.key) != NULL_INDEX)
+        {
+            output.returnCode = QPORTAL_ALREADY_VOTED_PROPOSAL;
+            locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_ALREADY_VOTED_PROPOSAL, 0 };
+            LOG_INFO(locals.log);
+            return ;
+        }
+
+        qpi.transferShareOwnershipAndPossession(QPORTAL_PORTAL_ASSET_NAME, state.get().PORTAL_Issuer, qpi.invocator(), qpi.invocator(), input.votingPortalAmount, SELF);
+
+        if (state.get().lockedAmount.contains(qpi.invocator()))
+        {
+            locals.amount = state.get().lockedAmount.value(state.get().lockedAmount.getElementIndex(qpi.invocator()));
+            state.mut().lockedAmount.set(qpi.invocator(), locals.amount + input.votingPortalAmount);
+        }
+        else
+        {
+            state.mut().lockedAmount.set(qpi.invocator(), input.votingPortalAmount);
+        }
+
+        state.mut().proposalVotes.set(locals.key, {input.proposalId, input.vote});
+
+        locals.index = state.get().proposalResults.getElementIndex(input.proposalId);
+        if (locals.index == NULL_INDEX)
+        {
+            if (input.vote == 1)
+            {
+                state.mut().proposalResults.set(input.proposalId, { 1, 0, input.votingPortalAmount, 0 });
+            }
+            else
+            {
+                state.mut().proposalResults.set(input.proposalId, { 0, 1, 0, input.votingPortalAmount });
+            }
+        }
+        else
+        {
+            locals.voteRes = state.get().proposalResults.value(locals.index);
+            state.mut().proposalResults.set(input.proposalId, { locals.voteRes.yesVotes + (input.vote == 1 ? 1 : 0), locals.voteRes.noVotes + (input.vote == 0 ? 1 : 0), locals.voteRes.yesPortal + (input.vote == 1 ? input.votingPortalAmount : 0), locals.voteRes.noPortal + (input.vote == 0 ? input.votingPortalAmount : 0) });
+        }
+
+        output.returnCode = QPORTAL_SUCCESS;
+        locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_SUCCESS, 0 };
+        LOG_INFO(locals.log);
+    }
+
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(getRegisters, 1);
 
         REGISTER_USER_PROCEDURE(registerInPortalDAO, 1);
         REGISTER_USER_PROCEDURE(submitProposal, 2);
+        REGISTER_USER_PROCEDURE(submitInVote, 3);
     }
 
-    END_EPOCH()
+    struct END_EPOCH_locals
     {
+        uint32 i, index;
+        id proposalId;
+        uint32 yesVotes, noVotes;
+        uint64 yesPortal, noPortal;
+    };
+
+    END_EPOCH_WITH_LOCALS()
+    {
+        if (state.get().numberOfProposalEpochs > 0)
+        {
+             
+            for (; locals.i < state.get().numberOfProposalEpochs; locals.i ++)
+            {
+                locals.proposalId = state.get().currentEpochProposals.get(locals.i);
+    
+                locals.index = state.get().proposalResults.getElementIndex(locals.proposalId);
+                if (locals.index == NULL_INDEX)
+                {
+                    state.mut().submittedProposals.set(locals.proposalId, 2);
+                    continue;
+                }
+                locals.yesVotes = state.get().proposalResults.value(locals.index).yesVotes;
+                locals.noVotes = state.get().proposalResults.value(locals.index).noVotes;
+                locals.yesPortal = state.get().proposalResults.value(locals.index).yesPortal;
+                locals.noPortal = state.get().proposalResults.value(locals.index).noPortal;
+                
+                if (locals.yesPortal + locals.noPortal < QPORTAL_MIN_HOLDING_PORTAL )
+                {
+                    state.mut().submittedProposals.set(locals.proposalId, 2);
+                }
+                else if (locals.yesVotes > locals.noVotes && locals.yesPortal > locals.noPortal )
+                {
+                    state.mut().submittedProposals.set(locals.proposalId, 1);
+                }
+                else
+                {
+                    state.mut().submittedProposals.set(locals.proposalId, 2);
+                }
+            }
+        }
+
         state.mut().numberOfProposalEpochs = 0;
         state.mut().userProposalStatus.reset();
+        state.mut().proposalVotes.reset(); 
     }
 
     INITIALIZE()
@@ -295,5 +481,6 @@ protected:
         state.mut().registers.reset();
         state.mut().userProposalStatus.reset();
         state.mut().submittedProposals.reset();
+        state.mut().proposalResults.reset();
     }
 };
