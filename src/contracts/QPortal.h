@@ -8,8 +8,10 @@ constexpr uint64 QPORTAL_REFUND_FEE = 5; //PORTAL fee charged on each refund
 constexpr uint32 QPORTAL_MAX_MEMBER = 4096; //Maximum number of members in the portal DAO.
 constexpr uint32 QPORTAL_MAX_PROPOSAL = 4096; //Maximum number of proposals in the portal DAO.
 constexpr uint32 QPORTAL_MAX_PROPOSAL_USER = 2; //The maximum number of proposals a user can submit.
-constexpr uint32 QPORTAL_MAX_PROPOSAL_EPOCH = 5; //The maximum number
+constexpr uint32 QPORTAL_MAX_PROPOSAL_EPOCH = 5; //The maximum number of proposals per epoch.
+constexpr uint32 QPORTAL_EPOCH_PROPOSALS_CAPACITY = 8; //Backing capacity for currentEpochProposals (Array requires 2^N, must be >= QPORTAL_MAX_PROPOSAL_EPOCH).
 constexpr uint32 QPORTAL_MAX_VOTE = 32768; //The maximum number of votes a user can make (voting in all proposals in all proposal epochs).
+constexpr uint32 QPORTAL_TRANSFER_SHARE_FEE = 100;
 
 constexpr uint32 QPORTAL_SUCCESS = 0;
 constexpr uint32 QPORTAL_INSUFFICIENT_PORTAL = 1;
@@ -73,11 +75,12 @@ public:
         HashMap<id, bit, QPORTAL_MAX_MEMBER> registers; //registered members in the portal DAO
         uint32 numberOfRegisters, numberOfCurrentEpochProposals, numberOfProposals;
         HashMap<id, uint32, QPORTAL_MAX_MEMBER> userProposalStatus; // 0 = no proposal, 1 = submitted 1 proposal, 2 = submitted 2 proposals (max)
-        Array<id, QPORTAL_MAX_PROPOSAL_EPOCH> currentEpochProposals; // record of proposal IDs in the current proposal epoch
+        Array<id, QPORTAL_EPOCH_PROPOSALS_CAPACITY> currentEpochProposals; // record of proposal IDs in the current proposal epoch
         HashMap<id, submitInfo, QPORTAL_MAX_PROPOSAL> submittedProposals; // 0 = voting, 1 = accepted, 2 = rejected
         HashMap<id, uint64, QPORTAL_MAX_MEMBER> lockedAmount;
         HashMap<id, voteRecord, QPORTAL_MAX_VOTE> proposalVotes; // Voting records for each user per proposal epoch, used to check whether the user voted in the current proposal epoch.
         HashMap<id, voteResult, QPORTAL_MAX_PROPOSAL> proposalResults; // record of vote results for all of proposals
+        sint64 burnAmt;
     };
 
     struct getRegisters_input
@@ -197,6 +200,19 @@ public:
 
     struct requestRefund_output
     {
+        sint32 returnCode;
+    };
+
+    struct transferShareManagementRights_input
+    {
+        Asset asset;
+        sint64 numberOfShares;
+        uint32 newManagementContractIndex;
+    };
+
+    struct transferShareManagementRights_output
+    {
+        sint64 transferredNumberOfShares;
         sint32 returnCode;
     };
 
@@ -702,6 +718,54 @@ protected:
         LOG_INFO(locals.log);
     }
 
+    struct transferShareManagementRights_locals
+    {
+        sint64 result;
+        sint64 transferredShares;
+        sint64 offeredFee;
+        Logger log;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(transferShareManagementRights)
+    {
+        if (qpi.invocationReward() < QPORTAL_TRANSFER_SHARE_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INSUFFICIENT_PORTAL, 0 };
+            LOG_INFO(locals.log);
+            output.returnCode = QPORTAL_INSUFFICIENT_PORTAL;
+            return ;
+        }
+
+        if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
+        {
+            output.transferredNumberOfShares = 0;
+            locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INSUFFICIENT_PORTAL, 0 };
+            LOG_INFO(locals.log);
+            output.returnCode = QPORTAL_INSUFFICIENT_PORTAL;
+            return ;
+        }
+
+        locals.offeredFee = qpi.invocationReward() - QPORTAL_TRANSFER_SHARE_FEE;
+        locals.result = qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares, input.newManagementContractIndex, input.newManagementContractIndex, locals.offeredFee);
+        if (locals.result == INVALID_AMOUNT || locals.result < 0)
+        {
+            output.transferredNumberOfShares = 0;
+            locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INSUFFICIENT_PORTAL, 0 };
+            LOG_INFO(locals.log);
+            output.returnCode = QPORTAL_INSUFFICIENT_PORTAL;
+            return ;
+        }
+
+        qpi.transfer(qpi.invocator(), locals.offeredFee - locals.result);
+        state.mut().burnAmt += QPORTAL_TRANSFER_SHARE_FEE;
+
+        output.transferredNumberOfShares = input.numberOfShares;
+        output.returnCode = QPORTAL_SUCCESS;
+        locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_SUCCESS, 0 };
+        LOG_INFO(locals.log);
+    }
+
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(getRegisters, 1);
@@ -716,6 +780,7 @@ protected:
         REGISTER_USER_PROCEDURE(submitInVote, 3);
         REGISTER_USER_PROCEDURE(submitOutVote, 4);
         REGISTER_USER_PROCEDURE(requestRefund, 5);
+        REGISTER_USER_PROCEDURE(transferShareManagementRights, 6);
     }
 
     struct END_EPOCH_locals
@@ -760,11 +825,18 @@ protected:
                 }
             }
         }
+        qpi.burn(state.get().burnAmt);
 
         state.mut().numberOfCurrentEpochProposals = 0;
         state.mut().userProposalStatus.reset();
         state.mut().proposalVotes.reset();
-        state.mut().currentEpochProposals.setAll(0); 
+        state.mut().currentEpochProposals.setAll(NULL_ID);
+        state.mut().burnAmt = 0;
+    }
+
+    PRE_ACQUIRE_SHARES()
+    {
+        output.allowTransfer = true;
     }
 
     INITIALIZE()
@@ -774,7 +846,7 @@ protected:
         state.mut().numberOfCurrentEpochProposals = 0;
         state.mut().numberOfProposals = 0;
         state.mut().lockedAmount.reset();
-        state.mut().currentEpochProposals.setAll(0);
+        state.mut().currentEpochProposals.setAll(NULL_ID);
         state.mut().proposalVotes.reset();
         state.mut().registers.reset();
         state.mut().userProposalStatus.reset();
