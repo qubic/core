@@ -4,7 +4,6 @@ using namespace QPI;
 constexpr uint64 QPORTAL_PORTAL_ASSET_NAME = 83843471265616; //PORTAL asset name
 constexpr uint64 QPORTAL_MIN_HOLDING_PORTAL = 100000ull; //proposal must have at least 100K PORTAL to approve a proposal.
 constexpr uint32 QPORTAL_REGISTER_AMOUNT = 5; //Amount of PORTAL to register
-constexpr uint32 QPORTAL_MIN_RETAINED = 1; //Members must keep >=1 portal token
 constexpr uint32 QPORTAL_MAX_MEMBER = 4096; //Maximum number of members in the portal DAO.
 constexpr uint32 QPORTAL_MAX_PROPOSAL = 4096; //Maximum number of proposals in the portal DAO.
 constexpr uint32 QPORTAL_MAX_PROPOSAL_USER = 2; //The maximum number of proposals a user can submit.
@@ -22,6 +21,7 @@ constexpr uint32 QPORTAL_ALREADY_EXISTED_PROPOSAL = 7;
 constexpr uint32 QPORTAL_NOT_EXISTED_PROPOSAL = 8;
 constexpr uint32 QPORTAL_ALREADY_VOTED_PROPOSAL = 9;
 constexpr uint32 QPORTAL_CLOSED_PROPOSAL = 10;
+constexpr uint32 QPORTAL_INVALID_INPUT = 11;
 
 struct QPORTAL2
 {
@@ -43,12 +43,6 @@ public:
         id userId;
         id proposalId;
     };
-
-    struct voteRecord
-    {
-        id proposalId;
-        bit vote; // 0 = no, 1 = yes
-    };
     
     struct voteResult
     {
@@ -62,15 +56,13 @@ public:
     {
         id PORTAL_Issuer;
         HashMap<id, bit, QPORTAL_MAX_MEMBER> registers; //registered members in the portal DAO
-        uint32 numberOfRegisters, numberOfProposalEpochs, numberOfProposals;
+        uint32 numberOfRegisters, numberOfCurrentEpochProposals, numberOfProposals;
         HashMap<id, uint32, QPORTAL_MAX_MEMBER> userProposalStatus; // 0 = no proposal, 1 = submitted 1 proposal, 2 = submitted 2 proposals (max)
         Array<id, QPORTAL_MAX_PROPOSAL_EPOCH> currentEpochProposals; // record of proposal IDs in the current proposal epoch
         HashMap<id, uint32, QPORTAL_MAX_PROPOSAL> submittedProposals; // 0 = voting, 1 = accepted, 2 = rejected
         HashMap<id, uint64, QPORTAL_MAX_MEMBER> lockedAmount;
-        HashMap<id, voteRecord, QPORTAL_MAX_VOTE> proposalVotes; // Voting records for each user per proposal epoch, used to check whether the user voted in the current proposal epoch.
+        HashMap<id, bit, QPORTAL_MAX_VOTE> proposalVotes; // Voting records for each user per proposal epoch, used to check whether the user voted in the current proposal epoch.
         HashMap<id, voteResult, QPORTAL_MAX_PROPOSAL> proposalResults; // record of vote results for all of proposals
-        HashSet<id, QPORTAL_MAX_MEMBER> lockedPortals; // record of users who have locked their PORTAL
-
     };
 
     struct getRegisters_input
@@ -220,7 +212,7 @@ protected:
             return ;
         }
 
-        if (qpi.numberOfPossessedShares(QPORTAL_PORTAL_ASSET_NAME, state.get().PORTAL_Issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < QPORTAL_REGISTER_AMOUNT + QPORTAL_MIN_RETAINED) // +1 to check if the user has enough shares to pay the fee
+        if (qpi.numberOfPossessedShares(QPORTAL_PORTAL_ASSET_NAME, state.get().PORTAL_Issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < QPORTAL_REGISTER_AMOUNT) 
         {
             output.returnCode = QPORTAL_INSUFFICIENT_PORTAL;
             locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INSUFFICIENT_PORTAL, 0 };
@@ -246,8 +238,7 @@ protected:
 
     struct submitProposal_locals
     {
-        sint32 user_index, proposal_index;
-        uint32 user_status, proposal_status;
+        sint32 index, status;
         Logger log;
     };
 
@@ -266,6 +257,14 @@ protected:
             return ;
         }
 
+        if (input.proposalId == NULL_ID)
+        {
+            output.returnCode = QPORTAL_INVALID_INPUT;
+            locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INVALID_INPUT, 0 };
+            LOG_INFO(locals.log);
+            return ;
+        }
+
         if (state.get().numberOfProposals >= QPORTAL_MAX_PROPOSAL)
         {
             output.returnCode = QPORTAL_REACHED_PROPOSAL;
@@ -274,7 +273,7 @@ protected:
             return ;
         }
 
-        if (state.get().numberOfProposalEpochs >= QPORTAL_MAX_PROPOSAL_EPOCH)
+        if (state.get().numberOfCurrentEpochProposals >= QPORTAL_MAX_PROPOSAL_EPOCH)
         {
             output.returnCode = QPORTAL_REACHED_PROPOSAL;
             locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_REACHED_PROPOSAL, 0 };
@@ -282,9 +281,9 @@ protected:
             return ;
         }
 
-        locals.user_index = state.get().userProposalStatus.getElementIndex(qpi.invocator());
+        locals.index = state.get().userProposalStatus.getElementIndex(qpi.invocator());
 
-        if (locals.user_index != NULL_INDEX && (state.get().userProposalStatus.value(locals.user_index) >= QPORTAL_MAX_PROPOSAL_USER))
+        if (locals.index != NULL_INDEX && (state.get().userProposalStatus.value(locals.index) >= QPORTAL_MAX_PROPOSAL_USER))
         {
             output.returnCode = QPORTAL_REACHED_PROPOSAL;
             locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_REACHED_PROPOSAL, 0 };
@@ -301,13 +300,13 @@ protected:
         }
 
         state.mut().submittedProposals.set(input.proposalId, 0);
-        state.mut().currentEpochProposals.set(state.get().numberOfProposalEpochs, input.proposalId); // add proposal to the current proposal epoch
+        state.mut().currentEpochProposals.set(state.get().numberOfCurrentEpochProposals, input.proposalId); // add proposal to the current proposal epoch
         
-        locals.user_status = locals.user_index == NULL_INDEX ? 0 : state.get().userProposalStatus.value(locals.user_index);
+        locals.status = locals.index == NULL_INDEX ? 0 : state.get().userProposalStatus.value(locals.index);
 
-        state.mut().userProposalStatus.set(qpi.invocator(), ++ locals.user_status);
+        state.mut().userProposalStatus.set(qpi.invocator(), ++ locals.status);
         state.mut().numberOfProposals ++;
-        state.mut().numberOfProposalEpochs ++;
+        state.mut().numberOfCurrentEpochProposals ++;
 
         output.returnCode = QPORTAL_SUCCESS;
         locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_SUCCESS, 0 };
@@ -320,7 +319,6 @@ protected:
         sint32 index;
         uint64 amount;
         VoteKey vk;
-        voteRecord voteRec;
         voteResult voteRes;
         Logger log;
      };
@@ -333,6 +331,14 @@ protected:
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
         }
 
+        if (input.proposalId == NULL_ID || input.votingPortalAmount == 0)
+        {
+            output.returnCode = QPORTAL_INVALID_INPUT;
+            locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INVALID_INPUT, 0 };
+            LOG_INFO(locals.log);
+            return ;
+        }
+
         if (!state.get().registers.contains(qpi.invocator()))
         {
             output.returnCode = QPORTAL_NOT_REGISTERED;
@@ -341,7 +347,7 @@ protected:
             return ;
         }
 
-        if (input.votingPortalAmount == 0 || qpi.numberOfPossessedShares(QPORTAL_PORTAL_ASSET_NAME, state.get().PORTAL_Issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.votingPortalAmount)
+        if (qpi.numberOfPossessedShares(QPORTAL_PORTAL_ASSET_NAME, state.get().PORTAL_Issuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.votingPortalAmount)
         {
             output.returnCode = QPORTAL_INSUFFICIENT_PORTAL;
             locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INSUFFICIENT_PORTAL, 0 };
@@ -378,7 +384,13 @@ protected:
             return ;
         }
 
-        qpi.transferShareOwnershipAndPossession(QPORTAL_PORTAL_ASSET_NAME, state.get().PORTAL_Issuer, qpi.invocator(), qpi.invocator(), input.votingPortalAmount, SELF);
+        if (qpi.transferShareOwnershipAndPossession(QPORTAL_PORTAL_ASSET_NAME, state.get().PORTAL_Issuer, qpi.invocator(), qpi.invocator(), input.votingPortalAmount, SELF) < 0)
+        {
+            output.returnCode = QPORTAL_INSUFFICIENT_PORTAL;
+            locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INSUFFICIENT_PORTAL, 0 };
+            LOG_INFO(locals.log);
+            return ;
+        }
 
         if (state.get().lockedAmount.contains(qpi.invocator()))
         {
@@ -390,7 +402,7 @@ protected:
             state.mut().lockedAmount.set(qpi.invocator(), input.votingPortalAmount);
         }
 
-        state.mut().proposalVotes.set(locals.key, {input.proposalId, input.vote});
+        state.mut().proposalVotes.set(locals.key, input.vote);
 
         locals.index = state.get().proposalResults.getElementIndex(input.proposalId);
         if (locals.index == NULL_INDEX)
@@ -434,10 +446,10 @@ protected:
 
     END_EPOCH_WITH_LOCALS()
     {
-        if (state.get().numberOfProposalEpochs > 0)
+        if (state.get().numberOfCurrentEpochProposals > 0)
         {
              
-            for (; locals.i < state.get().numberOfProposalEpochs; locals.i ++)
+            for (; locals.i < state.get().numberOfCurrentEpochProposals; locals.i ++)
             {
                 locals.proposalId = state.get().currentEpochProposals.get(locals.i);
     
@@ -467,7 +479,7 @@ protected:
             }
         }
 
-        state.mut().numberOfProposalEpochs = 0;
+        state.mut().numberOfCurrentEpochProposals = 0;
         state.mut().userProposalStatus.reset();
         state.mut().proposalVotes.reset(); 
     }
@@ -476,8 +488,11 @@ protected:
     {
         state.mut().PORTAL_Issuer = ID(_I, _Q, _U, _G, _N, _V, _F, _D, _Q, _S, _L, _T, _X, _F, _J, _S, _I, _O, _P, _P, _N, _P, _Z, _I, _N, _S, _C, _D, _Q, _T, _J, _V, _J, _W, _G, _R, _P, _W, _R, _T, _F, _F, _X, _M, _X, _S, _J, _I, _A, _A, _S, _X, _O, _B, _F, _F);
         state.mut().numberOfRegisters = 0;
-        state.mut().numberOfProposalEpochs = 0;
+        state.mut().numberOfCurrentEpochProposals = 0;
         state.mut().numberOfProposals = 0;
+        state.mut().lockedAmount.reset();
+        state.mut().currentEpochProposals.setAll(0);
+        state.mut().proposalVotes.reset();
         state.mut().registers.reset();
         state.mut().userProposalStatus.reset();
         state.mut().submittedProposals.reset();
