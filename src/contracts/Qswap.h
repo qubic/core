@@ -975,9 +975,9 @@ protected:
 		locals.fsRoIn.assetName = input.assetName;
 		CALL(FindPoolSlotReadOnly, locals.fsRoIn, locals.fsRoOut);
 		if (locals.fsRoOut.poolSlot != NULL_INDEX)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				return;
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
 		}
 
 		// find an vacant pool slot
