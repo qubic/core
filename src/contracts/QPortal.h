@@ -92,6 +92,16 @@ public:
         sint32 returnCode;
     };
 
+    struct getCurrentNumberOfRegisters_input
+    {
+    };
+
+    struct getCurrentNumberOfRegisters_output
+    {
+        uint32 numberOfRegisters;
+        sint32 returnCode;
+    };
+
     struct getCurrentEpochProposals_input
     {
     };
@@ -131,6 +141,7 @@ public:
     struct getProposalInfo_output
     {
         id proposer;
+        uint8 status;
         uint32 yesVotes;
         uint32 noVotes;
         uint64 yesPortal;
@@ -194,13 +205,13 @@ protected:
     struct getRegisters_locals
     {
         id user;
-        sint32 index, cnt;
-        uint32 i;
+        sint32 index;
+        uint32 i, cnt;
     };
 
     PUBLIC_FUNCTION_WITH_LOCALS(getRegisters)
     {
-        if (input.limit > 10)
+        if (input.limit == 0 || input.limit > 10)
         {
             output.returnCode = QPORTAL_INVALID_OFFSET_OR_LIMIT;
             return ;
@@ -212,12 +223,16 @@ protected:
             return ;
         }
 
-        locals.index = state.get().registers.nextElementIndex(input.offset == 0 ? NULL_INDEX: input.offset -1);
+        locals.index = state.get().registers.nextElementIndex(NULL_INDEX);
         locals.cnt = input.offset + input.limit > state.get().numberOfRegisters ? state.get().numberOfRegisters - input.offset : input.limit;
-        while (locals.cnt > 0)
+        for (locals.i = 0; locals.i < input.offset; locals.i ++)
+        {
+            locals.index = state.get().registers.nextElementIndex(locals.index);
+        }
+        for (locals.i = 0; locals.i < locals.cnt && locals.index != NULL_INDEX; locals.i++)
         {
             locals.user = state.get().registers.key(locals.index);
-            switch (locals.index - input.offset)
+            switch (locals.i)
             {
                 case 0: output.register1 = locals.user; break;
                 case 1: output.register2 = locals.user; break;
@@ -229,11 +244,16 @@ protected:
                 case 7: output.register8 = locals.user; break;
                 case 8: output.register9 = locals.user; break;
                 case 9: output.register10 = locals.user; break;
-            } 
+            }
             locals.index = state.get().registers.nextElementIndex(locals.index);
-            locals.cnt --;
         }
 
+        output.returnCode = QPORTAL_SUCCESS;
+    }
+
+    PUBLIC_FUNCTION(getCurrentNumberOfRegisters)
+    {
+        output.numberOfRegisters = state.get().numberOfRegisters;
         output.returnCode = QPORTAL_SUCCESS;
     }
 
@@ -278,19 +298,32 @@ protected:
         output.returnCode = QPORTAL_SUCCESS;
     }
 
-    PUBLIC_FUNCTION(getProposalInfo)
+    struct getProposalInfo_locals
     {
-        if (!state.get().proposalResults.contains(input.proposalId))
+        submitInfo si;
+        voteResult vr;
+    };
+
+    PUBLIC_FUNCTION_WITH_LOCALS(getProposalInfo)
+    {
+        if (!state.get().submittedProposals.contains(input.proposalId))
         {
             output.returnCode = QPORTAL_NOT_EXISTED_PROPOSAL;
             return ;
         }
 
-        output.proposer = state.get().submittedProposals.value(state.get().submittedProposals.getElementIndex(input.proposalId)).userId;
-        output.yesVotes = state.get().proposalResults.value(state.get().proposalResults.getElementIndex(input.proposalId)).yesVotes;
-        output.noVotes = state.get().proposalResults.value(state.get().proposalResults.getElementIndex(input.proposalId)).noVotes;
-        output.yesPortal = state.get().proposalResults.value(state.get().proposalResults.getElementIndex(input.proposalId)).yesPortal;
-        output.noPortal = state.get().proposalResults.value(state.get().proposalResults.getElementIndex(input.proposalId)).noPortal;
+        locals.si = state.get().submittedProposals.value(state.get().submittedProposals.getElementIndex(input.proposalId));
+        output.proposer = locals.si.userId;
+        output.status = locals.si.proposalStatus;
+
+        if (state.get().proposalResults.contains(input.proposalId))
+        {
+            locals.vr = state.get().proposalResults.value(state.get().proposalResults.getElementIndex(input.proposalId));
+            output.yesVotes = locals.vr.yesVotes;
+            output.noVotes = locals.vr.noVotes;
+            output.yesPortal = locals.vr.yesPortal;
+            output.noPortal = locals.vr.noPortal;
+        }
 
         output.returnCode = QPORTAL_SUCCESS;
     }
@@ -672,6 +705,11 @@ protected:
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(getRegisters, 1);
+        REGISTER_USER_FUNCTION(getCurrentNumberOfRegisters, 2);
+        REGISTER_USER_FUNCTION(getCurrentEpochProposals, 3);
+        REGISTER_USER_FUNCTION(getProposalStatus, 4);
+        REGISTER_USER_FUNCTION(getUserLockedAmount, 5);
+        REGISTER_USER_FUNCTION(getProposalInfo, 6);
 
         REGISTER_USER_PROCEDURE(registerInPortalDAO, 1);
         REGISTER_USER_PROCEDURE(submitProposal, 2);
@@ -725,7 +763,8 @@ protected:
 
         state.mut().numberOfCurrentEpochProposals = 0;
         state.mut().userProposalStatus.reset();
-        state.mut().proposalVotes.reset(); 
+        state.mut().proposalVotes.reset();
+        state.mut().currentEpochProposals.setAll(0); 
     }
 
     INITIALIZE()
