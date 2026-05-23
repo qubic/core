@@ -73,6 +73,23 @@ public:
         system.epoch = contractDescriptions[QPORTAL_CONTRACT_INDEX].constructionEpoch;
 
         portalIssuer = getState()->getPortalIssuer();
+
+        // Default to a Thursday (outside the Mon 00:00 -> end-of-epoch freeze window)
+        // so the rest of the suite is not blocked by the freeze.
+        setDateTime(2025, 1, 2, 12);
+    }
+
+    // Sets the simulated UTC date/time visible to the contract via qpi.year/month/day.
+    void setDateTime(uint16 year, uint8 month, uint8 day, uint8 hour)
+    {
+        utcTime.Year = year;
+        utcTime.Month = month;
+        utcTime.Day = day;
+        utcTime.Hour = hour;
+        utcTime.Minute = 0;
+        utcTime.Second = 0;
+        utcTime.Nanosecond = 0;
+        updateQpiTime();
     }
 
     QPORTALChecker* getState()
@@ -1048,9 +1065,9 @@ TEST(ContractQPortal, TransferShareMgmtRights_InsufficientReward)
     id user = qpMember(1);
     qp.fundUser(user, 1000);
 
-    // invocationReward below QPORTAL_TRANSFER_SHARE_FEE (100) is rejected.
+    // invocationReward below QPORTAL_EXECUTION_FEE (100) is rejected.
     QPORTAL::transferShareManagementRights_output o =
-        qp.transferShareMgmtRights(user, 500, QX_CONTRACT_INDEX, QPORTAL_TRANSFER_SHARE_FEE - 1);
+        qp.transferShareMgmtRights(user, 500, QX_CONTRACT_INDEX, QPORTAL_EXECUTION_FEE - 1);
     EXPECT_EQ(o.returnCode, (sint32)QPORTAL_INSUFFICIENT_PORTAL);
     // Management is unchanged: all shares still on QPORTAL.
     EXPECT_EQ(qp.portalBalanceOnQPortal(user), 1000);
@@ -1065,7 +1082,7 @@ TEST(ContractQPortal, TransferShareMgmtRights_InsufficientShares)
 
     // Requesting more shares than the user holds is rejected.
     QPORTAL::transferShareManagementRights_output o =
-        qp.transferShareMgmtRights(user, 1000, QX_CONTRACT_INDEX, QPORTAL_TRANSFER_SHARE_FEE);
+        qp.transferShareMgmtRights(user, 1000, QX_CONTRACT_INDEX, QPORTAL_EXECUTION_FEE);
     EXPECT_EQ(o.returnCode, (sint32)QPORTAL_INSUFFICIENT_PORTAL);
     EXPECT_EQ(o.transferredNumberOfShares, 0ll);
     EXPECT_EQ(qp.portalBalanceOnQPortal(user), 50);
@@ -1078,12 +1095,164 @@ TEST(ContractQPortal, TransferShareMgmtRights_SelfDestinationRejected)
     id user = qpMember(1);
     qp.fundUser(user, 1000);
 
-    // releaseShares rejects a transfer whose destination is the current contract.
+    // The contract's input-validation guard rejects destination == SELF.
     QPORTAL::transferShareManagementRights_output o =
         qp.transferShareMgmtRights(user, 500, QPORTAL_CONTRACT_INDEX, 5000000);
-    EXPECT_EQ(o.returnCode, (sint32)QPORTAL_INSUFFICIENT_PORTAL);
-    EXPECT_EQ(o.transferredNumberOfShares, 0ll);
+    EXPECT_EQ(o.returnCode, (sint32)QPORTAL_INVALID_INPUT);
     EXPECT_EQ(qp.portalBalanceOnQPortal(user), 1000);
+}
+
+// ===========================================================================
+// Freeze window: Monday 00:00 UTC -> Wednesday 12:00 UTC
+//
+// One test per row of the required-tests matrix:
+//   Sunday 23:59         -> proposal/vote/cancel allowed
+//   Monday 00:00         -> QPORTAL_EPOCH_FROZEN
+//   Monday 12:00         -> QPORTAL_EPOCH_FROZEN
+//   Tuesday 23:59        -> QPORTAL_EPOCH_FROZEN
+//   Wednesday 11:59      -> QPORTAL_EPOCH_FROZEN
+//   Wednesday 12:00      -> proposal/vote/cancel allowed for new epoch
+//   During freeze, requestRefund() with active vote -> rejected
+//   After END_EPOCH, requestRefund() -> allowed
+//
+// Reference calendar: 2026-05-17 Sun, -18 Mon, -19 Tue, -20 Wed.
+// setDateTime() has hour granularity, so 23:59 is exercised with hour=23.
+// ===========================================================================
+
+// Helper: build a fresh fixture with a registered proposer/voter and one
+// proposal, the voter holding `voterFund` PORTAL ready to vote. All setup is
+// performed on the fixture's default Thursday (outside the freeze window).
+static void freezeSetup(ContractTestingQPortal& qp, id& proposer, id& voter, id& proposal,
+                        sint64 voterFund = 50000)
+{
+    qp.issuePortal(10000000);
+    proposer = qpMember(1);
+    voter = qpMember(2);
+    qp.fundUser(proposer, 100);
+    qp.fundUser(voter, voterFund);
+    EXPECT_EQ(qp.registerInPortalDAO(proposer), (sint32)QPORTAL_SUCCESS);
+    EXPECT_EQ(qp.registerInPortalDAO(voter), (sint32)QPORTAL_SUCCESS);
+    proposal = qpProposal(1);
+    EXPECT_EQ(qp.submitProposal(proposer, proposal), (sint32)QPORTAL_SUCCESS);
+}
+
+// Row 1: Sunday 23:59 -> proposal/vote/cancel allowed.
+TEST(ContractQPortal, Freeze_Allowed_Sunday_23_59)
+{
+    ContractTestingQPortal qp;
+    id proposer, voter, proposal;
+    freezeSetup(qp, proposer, voter, proposal);
+
+    qp.setDateTime(2026, 5, 17, 23); // Sunday 23:xx UTC
+    EXPECT_EQ(qp.submitProposal(proposer, qpProposal(2)), (sint32)QPORTAL_SUCCESS);
+    EXPECT_EQ(qp.submitInVote(voter, proposal, 1, 1000), (sint32)QPORTAL_SUCCESS);
+    EXPECT_EQ(qp.submitOutVote(voter, proposal), (sint32)QPORTAL_SUCCESS);
+}
+
+// Row 2: Monday 00:00 -> QPORTAL_EPOCH_FROZEN.
+TEST(ContractQPortal, Freeze_Frozen_Monday_00_00)
+{
+    ContractTestingQPortal qp;
+    id proposer, voter, proposal;
+    freezeSetup(qp, proposer, voter, proposal);
+    EXPECT_EQ(qp.submitInVote(voter, proposal, 1, 1000), (sint32)QPORTAL_SUCCESS);
+
+    qp.setDateTime(2026, 5, 18, 0); // Monday 00:00 UTC
+    EXPECT_EQ(qp.submitProposal(proposer, qpProposal(2)), (sint32)QPORTAL_EPOCH_FROZEN);
+    EXPECT_EQ(qp.submitInVote(voter, proposal, 0, 500), (sint32)QPORTAL_EPOCH_FROZEN);
+    EXPECT_EQ(qp.submitOutVote(voter, proposal), (sint32)QPORTAL_EPOCH_FROZEN);
+}
+
+// Row 3: Monday 12:00 -> QPORTAL_EPOCH_FROZEN.
+TEST(ContractQPortal, Freeze_Frozen_Monday_12_00)
+{
+    ContractTestingQPortal qp;
+    id proposer, voter, proposal;
+    freezeSetup(qp, proposer, voter, proposal);
+    EXPECT_EQ(qp.submitInVote(voter, proposal, 1, 1000), (sint32)QPORTAL_SUCCESS);
+
+    qp.setDateTime(2026, 5, 18, 12); // Monday 12:00 UTC
+    EXPECT_EQ(qp.submitProposal(proposer, qpProposal(2)), (sint32)QPORTAL_EPOCH_FROZEN);
+    EXPECT_EQ(qp.submitInVote(voter, proposal, 0, 500), (sint32)QPORTAL_EPOCH_FROZEN);
+    EXPECT_EQ(qp.submitOutVote(voter, proposal), (sint32)QPORTAL_EPOCH_FROZEN);
+}
+
+// Row 4: Tuesday 23:59 -> QPORTAL_EPOCH_FROZEN.
+TEST(ContractQPortal, Freeze_Frozen_Tuesday_23_59)
+{
+    ContractTestingQPortal qp;
+    id proposer, voter, proposal;
+    freezeSetup(qp, proposer, voter, proposal);
+    EXPECT_EQ(qp.submitInVote(voter, proposal, 1, 1000), (sint32)QPORTAL_SUCCESS);
+
+    qp.setDateTime(2026, 5, 19, 23); // Tuesday 23:xx UTC
+    EXPECT_EQ(qp.submitProposal(proposer, qpProposal(2)), (sint32)QPORTAL_EPOCH_FROZEN);
+    EXPECT_EQ(qp.submitInVote(voter, proposal, 0, 500), (sint32)QPORTAL_EPOCH_FROZEN);
+    EXPECT_EQ(qp.submitOutVote(voter, proposal), (sint32)QPORTAL_EPOCH_FROZEN);
+}
+
+// Row 5: Wednesday 11:59 -> QPORTAL_EPOCH_FROZEN (one hour before thaw).
+TEST(ContractQPortal, Freeze_Frozen_Wednesday_11_59)
+{
+    ContractTestingQPortal qp;
+    id proposer, voter, proposal;
+    freezeSetup(qp, proposer, voter, proposal);
+    EXPECT_EQ(qp.submitInVote(voter, proposal, 1, 1000), (sint32)QPORTAL_SUCCESS);
+
+    qp.setDateTime(2026, 5, 20, 11); // Wednesday 11:xx UTC
+    EXPECT_EQ(qp.submitProposal(proposer, qpProposal(2)), (sint32)QPORTAL_EPOCH_FROZEN);
+    EXPECT_EQ(qp.submitInVote(voter, proposal, 0, 500), (sint32)QPORTAL_EPOCH_FROZEN);
+    EXPECT_EQ(qp.submitOutVote(voter, proposal), (sint32)QPORTAL_EPOCH_FROZEN);
+}
+
+// Row 6: Wednesday 12:00 -> proposal/vote/cancel allowed for the new epoch.
+TEST(ContractQPortal, Freeze_Allowed_Wednesday_12_00)
+{
+    ContractTestingQPortal qp;
+    id proposer, voter, proposal;
+    freezeSetup(qp, proposer, voter, proposal);
+
+    qp.setDateTime(2026, 5, 20, 12); // Wednesday 12:00 UTC -- exact thaw boundary
+    EXPECT_EQ(qp.submitProposal(proposer, qpProposal(2)), (sint32)QPORTAL_SUCCESS);
+    EXPECT_EQ(qp.submitInVote(voter, proposal, 1, 1000), (sint32)QPORTAL_SUCCESS);
+    EXPECT_EQ(qp.submitOutVote(voter, proposal), (sint32)QPORTAL_SUCCESS);
+}
+
+// Row 7: during the freeze, requestRefund() for an active vote is rejected.
+TEST(ContractQPortal, Freeze_RefundRejectedDuringFreezeWithActiveVote)
+{
+    ContractTestingQPortal qp;
+    id proposer, voter, proposal;
+    freezeSetup(qp, proposer, voter, proposal);
+
+    // Vote on the default Thursday; the vote is active in proposalVotes.
+    EXPECT_EQ(qp.submitInVote(voter, proposal, 1, 10000), (sint32)QPORTAL_SUCCESS);
+
+    // Move into the freeze window (Tuesday) and request a refund.
+    qp.setDateTime(2026, 5, 19, 12);
+    // The refund check sees the still-active vote and rejects.
+    EXPECT_EQ(qp.requestRefund(voter, 5000), (sint32)QPORTAL_EXISTED_PROPOSAL);
+    EXPECT_EQ(qp.getState()->lockedOf(voter), 10000ull); // still locked
+}
+
+// Row 8: after END_EPOCH, requestRefund() is allowed.
+TEST(ContractQPortal, Freeze_RefundAllowedAfterEndEpoch)
+{
+    ContractTestingQPortal qp;
+    id proposer, voter, proposal;
+    freezeSetup(qp, proposer, voter, proposal);
+
+    EXPECT_EQ(qp.submitInVote(voter, proposal, 1, 10000), (sint32)QPORTAL_SUCCESS);
+
+    // END_EPOCH clears proposalVotes; lockedAmount persists.
+    qp.endEpoch();
+    EXPECT_EQ(qp.getState()->lockedOf(voter), 10000ull);
+
+    // After the epoch transition the refund goes through.
+    sint64 before = qp.portalBalanceOnQPortal(voter);
+    EXPECT_EQ(qp.requestRefund(voter, 10000), (sint32)QPORTAL_SUCCESS);
+    EXPECT_EQ(qp.portalBalanceOnQPortal(voter), before + 10000 - (sint64)QPORTAL_REFUND_FEE);
+    EXPECT_EQ(qp.getState()->lockedOf(voter), 0ull);
 }
 
 TEST(ContractQPortal, TransferShareMgmtRights_SuccessToQX)
@@ -1104,5 +1273,5 @@ TEST(ContractQPortal, TransferShareMgmtRights_SuccessToQX)
     EXPECT_EQ(qp.portalBalanceOnQPortal(user), 400);
 
     // The transfer fee is accumulated for burning.
-    EXPECT_EQ(qp.getState()->getBurnAmt(), (sint64)QPORTAL_TRANSFER_SHARE_FEE);
+    EXPECT_EQ(qp.getState()->getBurnAmt(), (sint64)QPORTAL_EXECUTION_FEE);
 }
