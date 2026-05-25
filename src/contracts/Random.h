@@ -1,6 +1,8 @@
 using namespace QPI;
 
 constexpr uint32 RANDOM_BITFEE = 100;
+constexpr uint32 RANDOM_STREAM_CAPACITY = 1365;
+constexpr uint32 RANDOM_MAX_PROVIDERS = 4096;
 
 struct RANDOM2
 {
@@ -67,10 +69,10 @@ public:
 		uint32 bitFee; // Amount of qus
 
 		Array<uint32, 4> populations;        // 3
-		Array<id, 4096> providers;           // 3 * 1365
-		Array<uint64, 4096> collateralTiers; // 3 * 1365
-		Array<id, 4096> commits;             // 3 * 1365
-		Array<bit_4096, 4096> reveals;       // 3 * 1365
+		Array<id, RANDOM_MAX_PROVIDERS> providers;           // 3 * 1365
+		Array<uint64, RANDOM_MAX_PROVIDERS> collateralTiers; // 3 * 1365
+		Array<id, RANDOM_MAX_PROVIDERS> commits;             // 3 * 1365
+		Array<bit_4096, RANDOM_MAX_PROVIDERS> reveals;       // 3 * 1365
 		bit_4096 revealOrCommitFlags;        // 3 * 1365
 		Array<bit_4096, 32> entropy;         // 3 * 10
 
@@ -81,7 +83,7 @@ public:
 		// - revealedThisTickFlags[index] is set when the provider revealed
 		//   this tick (vs. only committing), so END_TICK knows whether to mix
 		//   their reveal into entropy.
-		Array<uint64, 4096> lockedCollateralAmounts; // 3 * 1365
+		Array<uint64, RANDOM_MAX_PROVIDERS> lockedCollateralAmounts; // 3 * 1365
 		bit_4096 revealedThisTickFlags;              // 3 * 1365
 	};
 
@@ -191,21 +193,21 @@ private:
 			// next round.
 			for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
 			{
-				if (qpi.invocator() == state.get().providers.get(locals.stream * 1365 + locals.i) &&
-				    locals.collateralTier == state.get().collateralTiers.get(locals.stream * 1365 + locals.i))
+				if (qpi.invocator() == state.get().providers.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) &&
+				    locals.collateralTier == state.get().collateralTiers.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i))
 				{
 					break;
 				}
 			}
 			if (locals.i == state.get().populations.get(locals.stream) ||
-			    state.get().reveals.get(locals.stream * 1365 + locals.i) != locals.zeroReveal ||
-			    qpi.K12(input.reveal) != state.get().commits.get(locals.stream * 1365 + locals.i))
+			    state.get().reveals.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) != locals.zeroReveal ||
+			    qpi.K12(input.reveal) != state.get().commits.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i))
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				return;
 			}
 
-			locals.index = locals.stream * 1365 + locals.i;
+			locals.index = locals.stream * RANDOM_STREAM_CAPACITY + locals.i;
 
 			// Refund the collateral locked by the previous commit; the provider
 			// fulfilled their obligation by revealing.
@@ -230,8 +232,8 @@ private:
 		// First-commit path: register a brand-new provider for this stream/tier.
 		for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
 		{
-			if (qpi.invocator() == state.get().providers.get(locals.stream * 1365 + locals.i) &&
-			    locals.collateralTier == state.get().collateralTiers.get(locals.stream * 1365 + locals.i))
+			if (qpi.invocator() == state.get().providers.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) &&
+			    locals.collateralTier == state.get().collateralTiers.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i))
 			{
 				// An existing provider cannot replace their commit without
 				// first revealing the previous one.
@@ -239,14 +241,14 @@ private:
 				return;
 			}
 		}
-		if (locals.i == 1365)
+		if (locals.i == RANDOM_STREAM_CAPACITY)
 		{
 			// The stream is full.
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
 		}
 
-		locals.index = locals.stream * 1365 + locals.i;
+		locals.index = locals.stream * RANDOM_STREAM_CAPACITY + locals.i;
 
 		state.mut().providers.set(locals.index, qpi.invocator());
 		state.mut().collateralTiers.set(locals.index, locals.collateralTier);
@@ -290,7 +292,7 @@ private:
 		// without disturbing slots not yet visited.
 		for (locals.i = state.get().populations.get(locals.stream); locals.i--;)
 		{
-			locals.index = locals.stream * 1365 + locals.i;
+			locals.index = locals.stream * RANDOM_STREAM_CAPACITY + locals.i;
 			locals.tier = static_cast<uint32>(state.get().collateralTiers.get(locals.index));
 
 			if (state.get().revealOrCommitFlags.get(locals.index))
@@ -336,7 +338,7 @@ private:
 				locals.collateralTierFlags |= (1 << locals.tier);
 
 				// Swap-delete: move the last active provider into this slot.
-				locals.lastIndex = locals.stream * 1365 + state.get().populations.get(locals.stream) - 1;
+				locals.lastIndex = locals.stream * RANDOM_STREAM_CAPACITY + state.get().populations.get(locals.stream) - 1;
 				if (locals.index != locals.lastIndex)
 				{
 					state.mut().providers.set(locals.index, state.get().providers.get(locals.lastIndex));
