@@ -1,5 +1,7 @@
 using namespace QPI;
 
+constexpr uint32 RANDOM_BITFEE = 100;
+
 struct RANDOM2
 {
 };
@@ -85,21 +87,21 @@ public:
 
 	PUBLIC_FUNCTION(Fees)
 	{
-		output.fees.set(0, 100);
-		output.fees.set(1, 100);
-		output.fees.set(2, 100);
-		output.fees.set(3, 100);
-		output.fees.set(4, 100);
-		output.fees.set(5, 100);
-		output.fees.set(6, 100);
-		output.fees.set(7, 100);
-		output.fees.set(8, 100);
-		output.fees.set(9, 100);
+		output.fees.set(0, state.get().bitFee);
+		output.fees.set(1, state.get().bitFee);
+		output.fees.set(2, state.get().bitFee);
+		output.fees.set(3, state.get().bitFee);
+		output.fees.set(4, state.get().bitFee);
+		output.fees.set(5, state.get().bitFee);
+		output.fees.set(6, state.get().bitFee);
+		output.fees.set(7, state.get().bitFee);
+		output.fees.set(8, state.get().bitFee);
+		output.fees.set(9, state.get().bitFee);
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyEntropy)
 	{
-		locals.entropyCost = static_cast<sint64>(input.numberOfBits) * 100;
+		locals.entropyCost = static_cast<sint64>(input.numberOfBits) * state.get().bitFee;
 
 		if (input.collateralTier <= 9
 			&& input.numberOfBits >= 1 && input.numberOfBits <= 4096
@@ -377,6 +379,6 @@ private:
 
 	INITIALIZE()
 	{
-		// state.mut().bitFee = 1000;
+		state.mut().bitFee = RANDOM_BITFEE;
 	}
 };
