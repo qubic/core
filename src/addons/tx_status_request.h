@@ -23,8 +23,8 @@ typedef struct
     m256i digest;
 } ConfirmedTx;
 
-constexpr unsigned long long confirmedTxCurrentEpochLength = (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK / TRANSACTION_SPARSENESS);
-constexpr unsigned long long confirmedTxPreviousEpochLength = (((unsigned long long)TICKS_TO_KEEP_FROM_PRIOR_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK / TRANSACTION_SPARSENESS);
+constexpr unsigned long long confirmedTxCurrentEpochLength = (((unsigned long long)MAX_NUMBER_OF_TICKS_PER_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK);
+constexpr unsigned long long confirmedTxPreviousEpochLength = (((unsigned long long)TICKS_TO_KEEP_FROM_PRIOR_EPOCH) * NUMBER_OF_TRANSACTIONS_PER_TICK);
 constexpr unsigned long long confirmedTxLength = confirmedTxCurrentEpochLength + confirmedTxPreviousEpochLength;
 
 // Memory to store confirmed TX's (arrays store data of current epoch, followed by last ticks of previous epoch)

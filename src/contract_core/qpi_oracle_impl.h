@@ -7,7 +7,7 @@
 
 template <typename OracleInterface, typename ContractStateType, typename LocalsType>
 QPI::sint64 QPI::QpiContextProcedureCall::__qpiQueryOracle(
-	const OracleInterface::OracleQuery& query,
+	const typename OracleInterface::OracleQuery& query,
 	void (*notificationProcPtr)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
 	unsigned int notificationProcId, 
 	uint32 timeoutMillisec
@@ -42,7 +42,7 @@ QPI::sint64 QPI::QpiContextProcedureCall::__qpiQueryOracle(
 	// get and destroy fee (not adding to contracts execution fee reserve)
 	sint64 fee = OracleInterface::getQueryFee(query);
 	int contractSpectrumIdx = ::spectrumIndex(this->_currentContractId);
-	if (fee >= 0 && contractSpectrumIdx >= 0 && decreaseEnergy(contractSpectrumIdx, fee))
+	if (fee >= MIN_ORACLE_QUERY_FEE && contractSpectrumIdx >= 0 && decreaseEnergy(contractSpectrumIdx, fee))
 	{
 		// log burning of QU
 		const QuTransfer quTransfer = { this->_currentContractId, m256i::zero(), fee };
@@ -86,7 +86,7 @@ QPI::sint64 QPI::QpiContextProcedureCall::__qpiQueryOracle(
 
 template <typename OracleInterface, typename ContractStateType, typename LocalsType>
 inline QPI::sint32 QPI::QpiContextProcedureCall::__qpiSubscribeOracle(
-	const OracleInterface::OracleQuery& query,
+	const typename OracleInterface::OracleQuery& query,
 	void (*notificationProcPtr)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
 	unsigned int notificationProcId,
 	QPI::uint32 notificationPeriodInMilliseconds,
@@ -125,7 +125,7 @@ inline QPI::sint32 QPI::QpiContextProcedureCall::__qpiSubscribeOracle(
 	// get and destroy fee (not adding to contracts execution fee reserve)
 	const sint64 fee = OracleInterface::getSubscriptionFee(query, notificationPeriodInMilliseconds);
 	const int contractSpectrumIdx = ::spectrumIndex(this->_currentContractId);
-	if (fee >= 0 && contractSpectrumIdx >= 0 && decreaseEnergy(contractSpectrumIdx, fee))
+	if (fee >= MIN_ORACLE_SUBSCRIPTION_FEE && contractSpectrumIdx >= 0 && decreaseEnergy(contractSpectrumIdx, fee))
 	{
 		// log burning of QU
 		const QuTransfer quTransfer = { this->_currentContractId, m256i::zero(), fee };

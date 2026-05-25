@@ -34,11 +34,22 @@ The state is accessed through a `ContractState` wrapper named `state`: use `stat
 Functions can only read the state (via `state.get()`), making them useful to query information with the network message `RequestContractFunction`.
 Procedures can modify the state (via `state.mut()`) and are either invoked by special transactions (user procedures) or internal core events (system procedures).
 
+Execution of contract procedures costs fees that are paid from its contract fee reserve.
+This reserve is initially filled with the QUs burned during the IPO of the contract and refilled by additional burning of QUs during contract execution.
+In the long run, each contract needs to burn QUs to stay alive.
+If a contract's execution fee reserve runs empty, the contract will not be executed anymore.
+The contract developers / shareholders are strongly recommended to monitor the fee reserve and adjust the burning in order to prevent such situations.
+For monitoring, tools are provided by [qfront.org](https://qfront.org/ContractReserves), [qubic.li](https://explorer.qubic.li/analytics/execution-fees), [qubic.tools](https://contracts.qubic.tools/), and [qubic-cli](https://github.com/qubic/qubic-cli).
+
+Additionally, every tick that has a change of contract's state (via `state.mut()`) costs fees due to the need to recompute the digest of the state.
+Depending on the size of the state, the digest computation may be significantly more expensive than the run-time of the procedures.
+Thus, we recommend to keep the size of the state low for new contracts, for example by not overestimating the number of users.
+The state size may be increased if needed when the contract is widely adopted.
+
+The execution fees are detailed [here](execution_fees.md).
+Every contract dev should at least read the [best practice recommendation](execution_fees.md#for-contract-developers).
+
 Contract developers should be aware of the following parts of the Qubic protocol that are not implemented yet in the core:
-- Execution of contract procedures will cost fees that will be paid from its contract fee reserve.
-  This reserve is initially filled with the QUs burned during the IPO of the contract and refilled by additional burning of QUs happening in the contract.
-  In the long run, each contract needs to burn QUs to stay alive.
-  If a contract's execution fee reserve runs empty, the contract will not be executed anymore.
 - In the future, the issuer of an asset, more specifically the managing contract, will have to pay for entries in the ledger.
   This is why it is a good idea to collect fees when issuing an asset.
 
@@ -75,7 +86,7 @@ In order to develop a contract, follow these steps:
       Think about the data structures you use, for example if you can use a hash map instead of an array with linear search.
       Check if you can optimize code in loops and especially in nested loops.
     - Also be efficient with the state memory you reserve.
-      Larger state sizes will also lead to more execution fees, because the hashing of the state memory will be included in the execution time.
+      Larger state sizes will also lead to more execution fees, because the hashing of the state memory is included in the execution time.
       For example, your contract does not need to be prepared for 1 Million users right from the beginning.
       The size of data structures can be increased later with `EXPAND` events.
       Currently, the contract state size is limited to 1 GB.
@@ -498,6 +509,11 @@ The following container types are available in the QPI:
   Lookup by key, insert, and remove run in approximately constant time if population is less than 80% of `L`.
 - `HashSet<KeyT, L>`: Hash set of keys of type `KeyT` and total capacity `L`.
   Lookup by key, insert, and remove run in approximately constant time if population is less than 80% of `L`.
+- `LinkedList<T, L>`: Doubly-linked list of elements of type `T` with fixed capacity `L` (`L` must be 2^N).
+  Provides O(1) insertion at head/tail, O(1) insertion before/after a given index, O(1) removal by index, and bidirectional traversal.
+  Removed nodes are immediately recycled via a free list (no deferred cleanup needed).
+- `SlowAnySizeArray<T, L>`: Array of `L` elements of type `T` that is slower than the normal `Array` but may have any capacity `L`.
+  This should be only used when a specific `L` != 2^N is needed for a good reason, e.g., in input/output.
 
 Please note that removing items from `Collection`, `HashMap`, and `HashSet` does not immediately free the hash map slots used for the removed items.
 This may negatively impact the lookup speed, which depends on the maximum population seen since the last cleanup.
@@ -613,7 +629,7 @@ Global constants, structs and classes must begin with the name of the contract s
 There is a limit for recursion and depth of nested contract function / procedure calls (the limit is 10 at the moment).
 
 The input and output structs of contract user procedures and functions may only use integer and boolean types (such as `uint64`, `sint8`, `bit`) as well as `id`, `Array`, and `BitArray`, and struct types containing only allowed types.
-Complex types that may have an inconsistent internal state, such as `Collection`, are forbidden in the public interface of a contract.
+Complex types that may have an inconsistent internal state, such as `Collection` and `LinkedList`, are forbidden in the public interface of a contract.
 
 
 ## General Change Management

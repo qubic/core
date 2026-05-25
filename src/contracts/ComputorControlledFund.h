@@ -23,7 +23,7 @@ struct CCF : public ContractBase
 
 	struct Success_output
 	{
-		bool okay;
+		bit okay;
 	};
 
 	struct LatestTransfersEntry
@@ -32,7 +32,7 @@ struct CCF : public ContractBase
 		Array<uint8, 256> url;
 		sint64 amount;
 		uint32 tick;
-		bool success;
+		bit success;
 	};
 
 	typedef Array<LatestTransfersEntry, 128> LatestTransfersT;
@@ -79,7 +79,7 @@ struct CCF : public ContractBase
 		sint64 amount;
 		uint32 tick;
 		sint32 periodIndex;				// Which period this payment is for (0-based)
-		bool success;
+		bit success;
 		Array<uint8, 1> _padding0;
 		Array<uint8, 2> _padding1;
 	};
@@ -157,8 +157,8 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.get().setProposalFee);
 		}
 
-		// Burn invocation reward
-		qpi.burn(qpi.invocationReward());
+		// Burn the proposal fee
+		qpi.burn(state.get().setProposalFee);
 
 		// Check requirements for proposals in this contract
 		if (ProposalTypes::cls(input.proposal.type) != ProposalTypes::Class::Transfer)

@@ -924,11 +924,11 @@ protected:
 
         if (input.operation == 0)
         {
-            output.result = state.mut()._commissionFreeAddresses.remove(input.user);
+            output.result = state.mut()._commissionFreeAddresses.remove(input.user) != NULL_INDEX;
         }
         else
         {
-            output.result = state.mut()._commissionFreeAddresses.add(input.user);
+            output.result = state.mut()._commissionFreeAddresses.add(input.user) != NULL_INDEX;
         }
     }
 

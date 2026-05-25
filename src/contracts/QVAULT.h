@@ -17,6 +17,10 @@ constexpr uint32 QVAULT_MAX_URLS_COUNT = 256; // Maximum number of URLs allowed
 constexpr uint32 QVAULT_MIN_VOTING_POWER = 10000; // Minimum voting power required
 constexpr uint32 QVAULT_SUM_OF_ALLOCATION_PERCENTAGES = 970; // Sum of allocation percentages
 constexpr uint32 QVAULT_MAX_USER_VOTES = 16; // Maximum number of votes per user
+constexpr uint32 QVAULT_MIN_STAKE_AMOUNT = 100; // Minimum amount of QCAP to stake
+constexpr uint32 QVAULT_MIN_BUY_QCAP_AMOUNT = 50; // Minimum amount of QCAP to buy
+constexpr uint32 QVAULT_MIN_INCOMING_TRANSFER = 5000000; // Minimum amount of qu for incoming standard transaction
+constexpr uint32 QVAULT_UNSTAKE_FEE = 100000; // Fee required to unstake qcap
 
 // Yearly QCAP sale limits
 constexpr uint32 QVAULT_2025MAX_QCAP_SALE_AMOUNT = 10714286; // Maximum QCAP sales for 2025
@@ -46,6 +50,9 @@ constexpr sint32 QVAULT_INPUT_ERROR = 18;                      // Invalid input 
 constexpr sint32 QVAULT_OVERFLOW_STAKER = 19;                  // Maximum number of stakers exceeded
 constexpr sint32 QVAULT_INSUFFICIENT_SHARE_OR_VOTING_POWER = 20; // User doesn't have minimum voting power (10000) or shares
 constexpr sint32 QVAULT_NOT_FOUND_STAKER_ADDRESS = 21;          // User not found in staker list
+constexpr sint32 QVAULT_INVALID_STAKE_AMOUNT = 22;              // Minimum 100 QCAP allowed to stake
+constexpr sint32 QVAULT_STAKE_ALREADY_DONE = 23;              // Stake already done in this epoch by the user
+constexpr sint32 QVAULT_UNSTAKE_ALREADY_DONE = 24;              // Unstake already done in this epoch by the user
 
 // Return result of proposal constants
 constexpr uint8 QVAULT_PROPOSAL_PASSED = 0;
@@ -213,6 +220,13 @@ struct QVAULT : public ContractBase
         uint8 proposalType;             // Type of proposal (1-7)
         bit decision;                   // Voting decision (1=yes, 0=no)
     };
+
+    enum StakeEpochFlags : uint8
+    {
+        STAKE_DONE   = 1 << 0,
+        UNSTAKE_DONE = 1 << 1,
+    };
+
     struct StateData
     {
         // Storage arrays for staking and voting power data
@@ -278,6 +292,8 @@ struct QVAULT : public ContractBase
         // Configuration parameters
         uint32 transferRightsFee;           // Fee for transferring share management rights
         uint32 quorumPercent;               // Current quorum percentage for proposals 
+
+        HashMap<id, uint8, 16384> userEpochActionsFlags;
     };
 public:
 
@@ -708,6 +724,7 @@ public:
         stakingInfo user;               // User staking information
         sint32 _t;                      // Loop counter variable
         bool isNewStaker;               // Flag to check if the user is a new staker
+        uint8 actionsFlag;              // Flag to check if the user already stake in this epoch
     };
 
     /**
@@ -719,10 +736,30 @@ public:
      */
     PUBLIC_PROCEDURE_WITH_LOCALS(stake)
     {
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+
         if (input.amount > (uint32)qpi.numberOfPossessedShares(QVAULT_QCAP_ASSETNAME, state.get().QCAP_ISSUER, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX))
         {
             output.returnCode = QVAULT_INSUFFICIENT_QCAP;
             return ;
+        }
+
+        if (input.amount < QVAULT_MIN_STAKE_AMOUNT)
+        {
+            output.returnCode = QVAULT_INVALID_STAKE_AMOUNT;
+            return ;
+        }
+
+        if (state.get().userEpochActionsFlags.get(qpi.invocator(), locals.actionsFlag))
+        {
+            if (locals.actionsFlag & StakeEpochFlags::STAKE_DONE)
+            {
+                output.returnCode = QVAULT_STAKE_ALREADY_DONE;
+                return ;
+            }
         }
 
         for (locals._t = 0 ; locals._t < (sint32)state.get().numberOfStaker; locals._t++)
@@ -761,6 +798,8 @@ public:
             return ;
         }
 
+        locals.actionsFlag |= StakeEpochFlags::STAKE_DONE;
+        state.mut().userEpochActionsFlags.set(qpi.invocator(), locals.actionsFlag);
         state.mut().totalStakedQcapAmount += input.amount;
         state.mut().staker.set(locals._t, locals.user);
         output.returnCode = QVAULT_SUCCESS;
@@ -773,6 +812,7 @@ public:
     {
         stakingInfo user;               // User staking information
         sint32 _t;                      // Loop counter variable
+        uint8 actionsFlag;              // Flag to check if the user already unstake in this epoch
     };
 
     /**
@@ -788,6 +828,28 @@ public:
         {
             output.returnCode = QVAULT_INPUT_ERROR;
             return ;
+        }
+
+        if (qpi.invocationReward() < QVAULT_UNSTAKE_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.returnCode = QVAULT_INSUFFICIENT_FUND;
+            return ;
+        }
+
+        if (state.get().userEpochActionsFlags.get(qpi.invocator(), locals.actionsFlag))
+        {
+            if (locals.actionsFlag & StakeEpochFlags::UNSTAKE_DONE)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                output.returnCode = QVAULT_UNSTAKE_ALREADY_DONE;
+                return ;
+            }
+        }
+
+        if (qpi.invocationReward() > QVAULT_UNSTAKE_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - QVAULT_UNSTAKE_FEE);
         }
 
         for (locals._t = 0 ; locals._t < (sint32)state.get().numberOfStaker; locals._t++)
@@ -812,11 +874,22 @@ public:
 
                     state.mut().totalStakedQcapAmount -= input.amount;
                     output.returnCode = QVAULT_SUCCESS;
+                    locals.actionsFlag |= StakeEpochFlags::UNSTAKE_DONE;
+                    state.mut().userEpochActionsFlags.set(qpi.invocator(), locals.actionsFlag);
                     if (locals.user.amount == 0)
                     {
                         state.mut().numberOfStaker--;
                         state.mut().staker.set(locals._t, state.get().staker.get(state.get().numberOfStaker));
                     }
+                }
+
+                if (output.returnCode == QVAULT_SUCCESS)
+                {
+                    qpi.burn(QVAULT_UNSTAKE_FEE);
+                }
+                else
+                {
+                    qpi.transfer(qpi.invocator(), QVAULT_UNSTAKE_FEE);
                 }
                 return ;
             }
@@ -1638,7 +1711,7 @@ public:
         voteStatusInfo newVote;                     // New vote to add
         sint32 numberOfYes;                         // Number of yes votes to add
         sint32 numberOfNo;                          // Number of no votes to add
-        sint32 _t, _r;                              // Loop counter variables
+        sint32 _t, _r, _r1;                          // Loop counter variables
         uint8 countOfVote;                          // Current vote count for user
         bit statusOfProposal;                       // Whether proposal is still active
     };
@@ -1717,23 +1790,33 @@ public:
                 break;
         }
 
+        locals._r = -1;
         if (state.get().countOfVote.get(qpi.invocator(), locals.countOfVote))
         {
             state.get().vote.get(qpi.invocator(), locals.newVoteList);
-            for (locals._r = 0; locals._r < locals.countOfVote; locals._r++)
+            for (locals._r1 = 0; locals._r1 < locals.countOfVote; locals._r1++)
             {
-                if (locals.newVoteList.get(locals._r).proposalId == input.proposalId && locals.newVoteList.get(locals._r).proposalType == input.proposalType)
+                if (locals.newVoteList.get(locals._r1).proposalId == input.proposalId && locals.newVoteList.get(locals._r1).proposalType == input.proposalType)
                 {
-                    break;
+                    // user has already voted twice in this proposal
+                    if (locals._r != -1)
+                    {
+                        output.returnCode = QVAULT_OVERFLOW_VOTES;
+                        return;
+                    }
+                    locals._r = locals._r1;
                 }
             }
         }
-        if (locals.countOfVote == QVAULT_MAX_USER_VOTES && locals._r == locals.countOfVote)
+
+        if (locals.countOfVote == QVAULT_MAX_USER_VOTES && locals._r1 == locals.countOfVote)
         {
             output.returnCode = QVAULT_OVERFLOW_VOTES;
             return ;
         }
-        if (locals._r < locals.countOfVote && locals.newVoteList.get(locals._r).decision == input.yes)
+
+        // (locals._r != -1) --- user has already voted in this proposal
+        if (locals._r != -1 && locals.newVoteList.get(locals._r).decision == input.yes)
         {
             output.returnCode = QVAULT_SAME_DECISION;
             return ;
@@ -1790,7 +1873,8 @@ public:
                     if (input.yes == 1)
                     {
                         locals.numberOfYes = state.get().votingPower.get(locals._t).amount;
-                        if (locals._r < locals.countOfVote)
+                        // (locals._r != -1) --- user has already voted in this proposal
+                        if (locals._r != -1)
                         {
                             locals.numberOfNo -= state.get().votingPower.get(locals._t).amount;
                         }
@@ -1798,7 +1882,8 @@ public:
                     else 
                     {
                         locals.numberOfNo = state.get().votingPower.get(locals._t).amount;
-                        if (locals._r < locals.countOfVote)
+                        // (locals._r != -1) --- user has already voted in this proposal
+                        if (locals._r != -1)
                         {
                             locals.numberOfYes -= state.get().votingPower.get(locals._t).amount;
                         }
@@ -1820,7 +1905,7 @@ public:
                             {
                                 locals.updatedIPOProposal.totalWeight += locals.numberOfYes * input.priceOfIPO;
                             }
-                            else if (locals._r < locals.countOfVote)
+                            else if (locals._r != -1) // locals._r != -1 --- user has already voted in this proposal
                             {
                                 locals.updatedIPOProposal.totalWeight -= locals.numberOfNo * locals.newVoteList.get(locals._r).priceOfIPO;
                             }
@@ -1857,15 +1942,8 @@ public:
                         locals.newVote.proposalType = input.proposalType;
                         locals.newVote.decision = input.yes;
                         locals.newVote.priceOfIPO = input.priceOfIPO;
-                        if (locals._r < locals.countOfVote)
-                        {
-                            locals.newVoteList.set(locals._r, locals.newVote);
-                        }
-                        else
-                        {
-                            locals.newVoteList.set(locals.countOfVote, locals.newVote);
-                            state.mut().countOfVote.set(qpi.invocator(), locals.countOfVote + 1);
-                        }
+                        locals.newVoteList.set(locals.countOfVote, locals.newVote);
+                        state.mut().countOfVote.set(qpi.invocator(), locals.countOfVote + 1);
                     }
                     else 
                     {
@@ -1915,43 +1993,80 @@ public:
      */
     PUBLIC_PROCEDURE_WITH_LOCALS(buyQcap)
     {
+        if (input.amount < QVAULT_MIN_BUY_QCAP_AMOUNT)
+        {
+            if (qpi.invocationReward() > 0)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            }
+            return ;
+        }
+
         packQvaultDate(qpi.year(), qpi.month(), qpi.day(), qpi.hour(), qpi.minute(), qpi.second(), locals.curDate);
         unpackQvaultDate(locals.year, locals.month, locals.day, locals.hour, locals.minute, locals.second, locals.curDate);
         if (locals.year == 25 && state.get().qcapSoldAmount + input.amount > QVAULT_2025MAX_QCAP_SALE_AMOUNT)
         {
-            output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
-            if (qpi.invocationReward() > 0)
+            if (QVAULT_2025MAX_QCAP_SALE_AMOUNT - state.get().qcapSoldAmount > 0)
             {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                input.amount = QVAULT_2025MAX_QCAP_SALE_AMOUNT - state.get().qcapSoldAmount;
             }
-            return ;
+            else
+            {
+                output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
+                if (qpi.invocationReward() > 0)
+                {
+                    qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                }
+                return ;
+            }
         }
         else if (locals.year == 26 && state.get().qcapSoldAmount + input.amount > QVAULT_2026MAX_QCAP_SALE_AMOUNT)
         {
-            output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
-            if (qpi.invocationReward() > 0)
+            if (QVAULT_2026MAX_QCAP_SALE_AMOUNT - state.get().qcapSoldAmount > 0)
             {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                input.amount = QVAULT_2026MAX_QCAP_SALE_AMOUNT - state.get().qcapSoldAmount;
             }
-            return ;
+            else
+            {
+                output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
+                if (qpi.invocationReward() > 0)
+                {
+                    qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                }
+                return ;
+            }
         }
         else if (locals.year == 27 && state.get().qcapSoldAmount + input.amount > QVAULT_2027MAX_QCAP_SALE_AMOUNT)
         {
-            output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
-            if (qpi.invocationReward() > 0)
+            if (QVAULT_2027MAX_QCAP_SALE_AMOUNT - state.get().qcapSoldAmount > 0)
             {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                input.amount = QVAULT_2027MAX_QCAP_SALE_AMOUNT - state.get().qcapSoldAmount;
             }
-            return ;
+            else
+            {
+                output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
+                if (qpi.invocationReward() > 0)
+                {
+                    qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                }
+                return ;
+            }
         }
         else if (state.get().qcapSoldAmount + input.amount > QVAULT_QCAP_MAX_SUPPLY)
         {
-            output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
-            if (qpi.invocationReward() > 0)
+            if (QVAULT_QCAP_MAX_SUPPLY - state.get().qcapSoldAmount > 0)
             {
-                qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                input.amount = QVAULT_QCAP_MAX_SUPPLY - state.get().qcapSoldAmount;
             }
-            return ;
+            else
+            {
+                output.returnCode = QVAULT_OVERFLOW_SALE_AMOUNT;
+                if (qpi.invocationReward() > 0)
+                {
+                    qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                }
+                return ;
+            }
         }
 
         for (locals._t = state.get().numberOfFundP - 1; locals._t >= 0; locals._t--)
@@ -2859,13 +2974,16 @@ public:
 
     /**
      * Output structure for getVoteInProposal function
-     * @param isVoted Indicates whether the user has cast a vote in this proposal
+     * @param voteStatus Vote status:
+     *                   0 - user has not voted yet
+     *                   1 - user has voted
+     *                   2 - user has already revoted and can no longer change their vote
      * @param votingDecision Indicates how the user voted
      */
     struct getVoteInProposal_output
     {
         sint64 returnCode;                 // Status code indicating success or failure
-        sint64 isVoted;
+        sint64 voteStatus;
         sint64 votingDecision;
     };
 
@@ -2954,11 +3072,40 @@ public:
             {
                 if (locals.voteList.get(locals._r).proposalId == input.proposalId && locals.voteList.get(locals._r).proposalType == input.proposalType)
                 {
-                    output.isVoted = 1;
+                    output.voteStatus++;
                     output.votingDecision = locals.voteList.get(locals._r).decision;
                 }
             }
         }
+    }
+
+    /**
+     * Input structure for getStakeEpochFlag function
+     * @param userID user identity
+     */
+    struct getStakeEpochFlag_input
+    {
+        id userID;
+    };
+
+    /**
+     * Output structure for getStakeEpochFlag function
+     * @param flag Indicates whether the user has staked or unstaked in the current epoch
+     */
+    struct getStakeEpochFlag_output
+    {
+        uint8 flag;
+    };
+
+    /**
+     * Returns flag that indicates whether the user has staked or unstaked in the current epoch
+     * 
+     * @param input userID
+     * @param output Staking flag for specific user
+     */
+    PUBLIC_FUNCTION(getStakeEpochFlag)
+    {
+        state.get().userEpochActionsFlags.get(input.userID, output.flag);
     }
 
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
@@ -2983,6 +3130,7 @@ public:
         REGISTER_USER_FUNCTION(getNumberOfHolderAndAvgAm, 19);
         REGISTER_USER_FUNCTION(getAmountForQearnInUpcomingEpoch, 20);
         REGISTER_USER_FUNCTION(getVoteInProposal, 21);
+        REGISTER_USER_FUNCTION(getStakeEpochFlag, 22);
 
         REGISTER_USER_PROCEDURE(stake, 1);
         REGISTER_USER_PROCEDURE(unStake, 2);
@@ -3609,7 +3757,7 @@ public:
 
         state.mut().vote.reset();
         state.mut().countOfVote.reset();
-
+        state.mut().userEpochActionsFlags.reset();
     }
 
     /**
@@ -3634,11 +3782,16 @@ public:
         switch (input.type)
         {
             case TransferType::standardTransaction:
+                if (input.amount < QVAULT_MIN_INCOMING_TRANSFER)
+                {
+                    qpi.transfer(input.sourceId, input.amount);
+                    return;
+                }
                 state.mut().totalHistoryRevenue += input.amount;
                 state.mut().revenueInQcapPerEpoch.set(qpi.epoch(), state.get().revenueInQcapPerEpoch.get(qpi.epoch()) + input.amount);
 
                 state.mut().totalEpochRevenue += input.amount;
-            break;
+                break;
             case TransferType::qpiTransfer:
                 if (input.sourceId.u64._0 == QEARN_CONTRACT_INDEX)
                 {
@@ -3655,7 +3808,6 @@ public:
                     state.mut().totalHistoryRevenue += input.amount - locals.lockedFund;
                     state.mut().revenueInQcapPerEpoch.set(qpi.epoch(), state.get().revenueInQcapPerEpoch.get(qpi.epoch()) + input.amount - locals.lockedFund);
                     state.mut().revenueByQearn += input.amount - locals.lockedFund;
-
                 }
                 else
                 {
@@ -3687,6 +3839,6 @@ public:
      */
     PRE_ACQUIRE_SHARES()
     {
-		output.allowTransfer = true;
+        output.allowTransfer = true;
     }
 };

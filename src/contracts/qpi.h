@@ -39,7 +39,21 @@ namespace QPI
 
 	*/
 
-	typedef bool bit;
+	// Boolean type ensuring that input values > 1 are mapped to 1.
+	struct bit
+	{
+		bit(bool v = false) : charValue(v)
+		{
+		}
+
+		operator bool() const
+		{
+			return !!charValue;
+		}
+
+		char charValue;
+	};
+
 	typedef signed char sint8;
 	typedef unsigned char uint8;
 	typedef signed short sint16;
@@ -57,6 +71,7 @@ namespace QPI
 		CallErrorContractInErrorState = 1,      // Called contract is already in error state
 		CallErrorInsufficientFees = 2,          // Called contract has no execution fee reserve
 		CallErrorAllocationFailed = 3,          // Failed to allocate context on stack
+		CallErrorContractInactive = 4,			// Called contract has been inactive
 	};
 
 	typedef uint128_t uint128;
@@ -1054,6 +1069,57 @@ namespace QPI
 	template <typename T, uint64 L>
 	bool isArraySortedWithoutDuplicates(const Array<T, L>& Array, uint64 beginIdx = 0, uint64 endIdx = L);
 
+	// Array of L elements of type T that is slower than normal Array but may have any capacity L.
+	// This should be only used when a specific L != 2^N is needed for a good reason, e.g., in input/output.
+	template <typename T, uint64 L>
+	struct SlowAnySizeArray
+	{
+	private:
+		static_assert(L, "The capacity of the array must be != 0.");
+
+		T _values[L];
+
+	public:
+		// Return number of elements in array
+		static inline constexpr uint64 capacity()
+		{
+			return L;
+		}
+
+		// Get element of array
+		inline const T& get(uint64 index) const
+		{
+			return _values[index % L];
+		}
+
+		// Set element of array
+		inline void set(uint64 index, const T& value)
+		{
+			_values[index % L] = value;
+		}
+
+		// Set all elements to passed value
+		inline void setAll(const T& value)
+		{
+			for (uint64 i = 0; i < L; ++i)
+				_values[i] = value;
+		}
+
+		// Implement assignment operator to prevent generating call to unavailable memcpy()
+		inline SlowAnySizeArray<T, L>& operator=(const SlowAnySizeArray<T, L>& other)
+		{
+			copyMemory(*this, other);
+			return *this;
+		}
+
+		// Implement copy constructor to prevent generating call to unavailable memcpy()
+		inline SlowAnySizeArray(const SlowAnySizeArray<T, L>& other)
+		{
+			copyMemory(*this, other);
+		}
+
+		SlowAnySizeArray() = default;
+	};
 
 	// Hash function class to be used with the hash map.
 	template <typename KeyT> class HashFunction 
@@ -1412,9 +1478,105 @@ namespace QPI
 		sint64 tailIndex(const id& pov, sint64 minPriority) const;
 	};
 
+
+	// Doubly-linked list of elements of type T with fixed capacity L.
+	// Provides O(1) insertion at head/tail, O(1) insertion before/after a given index,
+	// O(1) removal by index, and bidirectional traversal.
+	// Removed nodes are immediately recycled via a free list (no deferred cleanup needed).
+	template <typename T, uint64 L>
+	class LinkedList
+	{
+	private:
+		static_assert(L && !(L & (L - 1)),
+			"The capacity of the LinkedList must be 2^N."
+			);
+
+		struct Node
+		{
+			T value;
+			sint64 nextIndex;  // Next in data list, or next in free list when freed
+			sint64 prevIndex;  // Previous in data list (undefined when freed)
+		} _nodes[L];
+
+		// 1 bit per node: 1 = occupied, 0 = free
+		uint64 _occupiedFlags[(L + 63) / 64];
+
+		sint64 _headIndex;      // First element in the list (NULL_INDEX if empty)
+		sint64 _tailIndex;      // Last element in the list (NULL_INDEX if empty)
+		sint64 _freeHeadIndex;  // Head of recycled-nodes free list (NULL_INDEX if none)
+		uint64 _nextUnusedIndex; // Next never-used node index (lazy free list init)
+		uint64 _population;
+
+		// Check if elementIndex is in range [0, L) and the slot is occupied.
+		bool _isValidAndOccupied(sint64 elementIndex) const;
+
+		// Initialize sentinel values if the list has never been used (handles zero-initialized contract state).
+		void _initIfNeeded();
+
+		// Get a node from the free list or unused pool. Returns NULL_INDEX if full.
+		sint64 _allocateNode();
+
+		// Return node to free list.
+		void _freeNode(sint64 nodeIndex);
+
+	public:
+		// Return maximum number of elements that may be stored.
+		static constexpr uint64 capacity()
+		{
+			return L;
+		}
+
+		// Return current number of elements.
+		inline uint64 population() const;
+
+		// Return elementIndex of first element in the list (or NULL_INDEX if empty).
+		inline sint64 headIndex() const;
+
+		// Return elementIndex of last element in the list (or NULL_INDEX if empty).
+		inline sint64 tailIndex() const;
+
+		// Return elementIndex of next element (or NULL_INDEX if this is the last element).
+		sint64 nextElementIndex(sint64 elementIndex) const;
+
+		// Return elementIndex of previous element (or NULL_INDEX if this is the first element).
+		sint64 prevElementIndex(sint64 elementIndex) const;
+
+		// Return element value at elementIndex.
+		inline const T& element(sint64 elementIndex) const;
+
+		// Return true if the slot at elementIndex is empty (not occupied by an element).
+		// Out-of-range indices are considered empty.
+		inline bool isEmptySlot(sint64 elementIndex) const;
+
+		// Add element at the head of the list, return elementIndex of new element (or NULL_INDEX if full).
+		sint64 addHead(const T& value);
+
+		// Add element at the tail of the list, return elementIndex of new element (or NULL_INDEX if full).
+		sint64 addTail(const T& value);
+
+		// Insert element after the element at elementIndex.
+		// Returns elementIndex of new element (or NULL_INDEX if full or elementIndex is invalid).
+		sint64 insertAfter(sint64 elementIndex, const T& value);
+
+		// Insert element before the element at elementIndex.
+		// Returns elementIndex of new element (or NULL_INDEX if full or elementIndex is invalid).
+		sint64 insertBefore(sint64 elementIndex, const T& value);
+
+		// Remove element at elementIndex. The node is immediately returned to the free list.
+		void remove(sint64 elementIndex);
+
+		// Replace the value at elementIndex with newValue.
+		// Returns true if elementIndex was valid and occupied, false otherwise.
+		bool replace(sint64 elementIndex, const T& newValue);
+
+		// Reinitialize as empty linked list.
+		void reset();
+	};
+
+
 	//////////
 	// safety multiplying a and b and then clamp
-	
+
 	inline static sint64 smul(sint64 a, sint64 b);
 	inline static uint64 smul(uint64 a, uint64 b);
 	inline static sint32 smul(sint32 a, sint32 b);
@@ -2994,6 +3156,7 @@ namespace QPI
 	#define PUBLIC_PROCEDURE_WITH_LOCALS(procedure) \
 		public: \
 			enum { __is_function_##procedure = false, __id_##procedure = (CONTRACT_INDEX << 22) | __LINE__ }; \
+			static_assert(sizeof(procedure##_input) <= MAX_INPUT_SIZE, #procedure "_input size too large"); \
 			inline static void procedure(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##procedure(qpi, state, input, output, locals); } \
 			static void __impl_##procedure(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals)
 

@@ -8,6 +8,7 @@
 #include "platform/debugging.h"
 
 #include "spectrum/spectrum.h"
+#include "spectrum/special_entities.h"
 
 #include "mining/mining.h"
 
@@ -81,8 +82,11 @@ protected:
             sint64 balance = energy(sourceIndex);
             if (balance > 0)
             {
-                if (isZero(tx->destinationPublicKey) && tx->amount == 0LL
-                    && (tx->inputType == VOTE_COUNTER_INPUT_TYPE || tx->inputType == CustomMiningSolutionTransaction::transactionType() || tx->inputType == ExecutionFeeReportTransactionPrefix::transactionType()))
+                if (computorIndex(tx->sourcePublicKey) >= 0
+                    && isZero(tx->destinationPublicKey) && tx->amount == 0LL
+                    && (tx->inputType == VOTE_COUNTER_INPUT_TYPE
+                        || tx->inputType == DogeMiningShareTransaction::transactionType()
+                        || tx->inputType == ExecutionFeeReportTransactionPrefix::transactionType()))
                 {
                     // protocol-level tx always have max priority
                     return INT64_MAX;
