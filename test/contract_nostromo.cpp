@@ -1173,7 +1173,7 @@ TEST(ContractNostromoAuction, PrivateAuctionAccessListsSupportMaximumViewCapacit
 	{
 		ContractTestingNOST nostromo;
 		const id seller(47, 48, 49, 50);
-		const id allowedBidder(30127, 31127, 32127, 33127);
+		const id allowedBidder(30007, 31007, 32007, 33007);
 		const uint64 assetName = assetNameFromString("MAXWAL");
 		const Asset asset{seller, assetName};
 		Array<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedWallets{};
