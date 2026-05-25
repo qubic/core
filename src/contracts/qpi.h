@@ -2635,6 +2635,15 @@ namespace QPI
 			const id& newOwnerAndPossessor // New owner and possessor. Pass NULL_ID to burn shares (not allowed for contract shares).
 		) const; // Returns remaining number of possessed shares satisfying all the conditions; if the value is less than 0, the attempt has failed, in this case the absolute value equals to the insufficient number, INVALID_AMOUNT indicates another error
 
+		/**
+		* @brief Return the full invocation reward to the current invocator.
+		* @return Remaining energy amount of the current contract on success; a negative value means the transfer failed,
+		* in which case the absolute value equals the missing amount. INVALID_AMOUNT indicates another error.
+		* @note Equivalent to calling transfer(invocator(), invocationReward()) and therefore sends 0 when no invocation
+		* reward is attached.
+		*/
+		inline sint64 returnInvocatorReward() const;
+
 		/// Unsubscribe oracle based on subscription ID (returning false if oracleSubscriptionId is invalid).
 		inline bool unsubscribeOracle(
 			sint32 oracleSubscriptionId

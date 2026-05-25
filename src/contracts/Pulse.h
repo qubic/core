@@ -493,15 +493,16 @@ public:
 		sint64 userBalance;
 	};
 
-	struct TransferTokenToQx_input
+	struct TransferShareManagementRights_input
 	{
 		sint64 numberOfShares;
+		uint16 newManagingContractIndex;
 	};
-	struct TransferTokenToQx_output
+	struct TransferShareManagementRights_output
 	{
 		uint8 returnCode;
 	};
-	struct TransferTokenToQx_locals
+	struct TransferShareManagementRights_locals
 	{
 		Asset asset;
 		sint64 releaseResult;
@@ -827,7 +828,7 @@ public:
 		REGISTER_USER_PROCEDURE(WithdrawAutoParticipation, 9);
 		REGISTER_USER_PROCEDURE(SetAutoConfig, 10);
 		REGISTER_USER_PROCEDURE(SetAutoLimits, 11);
-		REGISTER_USER_PROCEDURE(TransferTokenToQx, 12);
+		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 12);
 		REGISTER_USER_PROCEDURE(DepositManagedQHeart, 13);
 	}
 
@@ -1094,10 +1095,7 @@ public:
 	/** Schedules a new ticket price for the next epoch (owner-only). */
 	PUBLIC_PROCEDURE(SetPrice)
 	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
+		qpi.returnInvocatorReward();
 
 		if (qpi.invocator() != state.get().qheartIssuer)
 		{
@@ -1119,10 +1117,7 @@ public:
 	/** Schedules a new draw schedule bitmask for the next epoch (owner-only). */
 	PUBLIC_PROCEDURE(SetSchedule)
 	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
+		qpi.returnInvocatorReward();
 
 		if (qpi.invocator() != state.get().qheartIssuer)
 		{
@@ -1144,10 +1139,7 @@ public:
 	/** Schedules a new draw hour in UTC for the next epoch (owner-only). */
 	PUBLIC_PROCEDURE(SetDrawHour)
 	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
+		qpi.returnInvocatorReward();
 
 		if (qpi.invocator() != state.get().qheartIssuer)
 		{
@@ -1169,10 +1161,7 @@ public:
 	/** Schedules new fee splits for the next epoch (owner-only). */
 	PUBLIC_PROCEDURE(SetFees)
 	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
+		qpi.returnInvocatorReward();
 
 		if (qpi.invocator() != state.get().qheartIssuer)
 		{
@@ -1198,10 +1187,7 @@ public:
 	/** Schedules a new QHeart hold limit for the next epoch (owner-only). */
 	PUBLIC_PROCEDURE(SetQHeartHoldLimit)
 	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
+		qpi.returnInvocatorReward();
 
 		if (qpi.invocator() != state.get().qheartIssuer)
 		{
@@ -1223,10 +1209,7 @@ public:
 	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(DepositAutoParticipation)
 	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
+		qpi.returnInvocatorReward();
 
 		if (state.get().autoParticipants.population() >= state.get().autoParticipants.capacity())
 		{
@@ -1305,10 +1288,7 @@ public:
 	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(WithdrawAutoParticipation)
 	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
+		qpi.returnInvocatorReward();
 
 		if (!state.get().autoParticipants.contains(qpi.invocator()))
 		{
@@ -1360,10 +1340,7 @@ public:
 	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetAutoConfig)
 	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
+		qpi.returnInvocatorReward();
 
 		if (!state.get().autoParticipants.contains(qpi.invocator()))
 		{
@@ -1401,10 +1378,7 @@ public:
 	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetAutoLimits)
 	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
+		qpi.returnInvocatorReward();
 
 		if (qpi.invocator() != state.get().qheartIssuer)
 		{
@@ -1441,10 +1415,7 @@ public:
 	/** Buys a single ticket and transfers the ticket price from the invocator. */
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyTicket)
 	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
+		qpi.returnInvocatorReward();
 
 		if (!isSellingOpen(state))
 		{
@@ -1494,10 +1465,7 @@ public:
 	/** Buys multiple random tickets and transfers the total price from the invocator. */
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyRandomTickets)
 	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
+		qpi.returnInvocatorReward();
 
 		locals.prepareInput.count = input.count;
 		CALL(PrepareRandomTickets, locals.prepareInput, locals.prepareOutput);
@@ -1531,10 +1499,7 @@ public:
 	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(DepositManagedQHeart)
 	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
+		qpi.returnInvocatorReward();
 
 		if (input.amount <= 0)
 		{
@@ -1562,41 +1527,43 @@ public:
 	}
 
 	/**
-	 * @brief Releases PULSE share management rights back to QX for the invocator.
-	 * @param input Number of PULSE shares to transfer under QX management.
-	 * @param output Number of shares transferred and a status code.
-	 * @note The current QX transfer fee is paid from the Pulse contract balance; any invocation reward is refunded.
-	 */
-	PUBLIC_PROCEDURE_WITH_LOCALS(TransferTokenToQx)
+ * @brief Releases PULSE share management rights to another contract for the invocator.
+ * @param input Number of PULSE shares and the contract index that should acquire management rights.
+ * @param output Number of shares transferred and a status code.
+ * @note The destination contract fee is paid from the invocation reward; any unused reward is refunded.
+ */
+	PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
 	{
-		if (qpi.invocationReward() > 0)
+		if (input.numberOfShares <= 0 || input.newManagingContractIndex == 0 || input.newManagingContractIndex >= MAX_NUMBER_OF_CONTRACTS || input.newManagingContractIndex == SELF_INDEX)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
-
-		if (input.numberOfShares <= 0)
-		{
+			qpi.returnInvocatorReward();
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
 
-		if (qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX,
-		                                SELF_INDEX) < input.numberOfShares)
+		if (qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) <
+			input.numberOfShares)
 		{
+			qpi.returnInvocatorReward();
 			output.returnCode = toReturnCode(EReturnCode::TRANSFER_FROM_PULSE_FAILED);
 			return;
 		}
 
-		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
-
 		locals.asset.issuer = state.get().qheartIssuer;
 		locals.asset.assetName = PULSE_QHEART_ASSET_NAME;
-		locals.releaseResult = qpi.releaseShares(locals.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares, QX_CONTRACT_INDEX,
-		                                         QX_CONTRACT_INDEX, locals.feesOutput.transferFee);
+
+		locals.releaseResult = qpi.releaseShares(locals.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares, input.newManagingContractIndex,
+												 input.newManagingContractIndex, qpi.invocationReward());
 		if (locals.releaseResult < 0)
 		{
+			qpi.returnInvocatorReward();
 			output.returnCode = toReturnCode(EReturnCode::TRANSFER_FROM_PULSE_FAILED);
 			return;
+		}
+
+		if (qpi.invocationReward() > locals.releaseResult)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.releaseResult);
 		}
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);

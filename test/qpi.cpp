@@ -381,6 +381,29 @@ struct ContractExecInitDeinitGuard
     }
 };
 
+TEST(TestCoreQPI, ReturnInvocatorReward)
+{
+    ContractTesting test;
+    test.initEmptySpectrum();
+
+    const QPI::id invocator(101, 202, 303, 404);
+    const QPI::id contractId(QX_CONTRACT_INDEX, 0, 0, 0);
+    constexpr sint64 invocationReward = 123;
+    constexpr sint64 extraContractBalance = 77;
+
+    increaseEnergy(contractId, invocationReward + extraContractBalance);
+
+    const sint64 contractBalanceBefore = getBalance(contractId);
+    const sint64 invocatorBalanceBefore = getBalance(invocator);
+
+    QpiContextUserProcedureCall qpi(QX_CONTRACT_INDEX, invocator, invocationReward);
+    const sint64 remainingContractBalance = qpi.returnInvocatorReward();
+
+    EXPECT_EQ(remainingContractBalance, extraContractBalance);
+    EXPECT_EQ(getBalance(contractId), contractBalanceBefore - invocationReward);
+    EXPECT_EQ(getBalance(invocator), invocatorBalanceBefore + invocationReward);
+}
+
 TEST(TestCoreQPI, ProposalAndVotingByComputors)
 {
     ContractExecInitDeinitGuard initDeinitGuard;
