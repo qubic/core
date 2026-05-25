@@ -535,8 +535,8 @@ static void initializeContracts()
 // When enabling, replace both lines below, e.g.:
 //   constexpr unsigned int paddableContracts[] = { RANDOM_CONTRACT_INDEX };
 //   constexpr unsigned int paddableCount = sizeof(paddableContracts) / sizeof(paddableContracts[0]);
-constexpr const unsigned int* paddableContracts = nullptr;
-constexpr unsigned int paddableCount = 0;
+constexpr unsigned int paddableContracts[] = { RANDOM_CONTRACT_INDEX };
+constexpr unsigned int paddableCount = sizeof(paddableContracts) / sizeof(paddableContracts[0]);
 
 
 // Class for registering and looking up user procedures independently of input type, for example for notifications
