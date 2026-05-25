@@ -814,19 +814,24 @@ TEST(ContractNostromoAuction, TransferShareManagementRightsAuction)
 
 	const auto invalidZeroShares = nostromo.transferManagedShares(owner, asset, 0, QX_CONTRACT_INDEX);
 	EXPECT_EQ(invalidZeroShares.transferredNumberOfShares, 0);
+	EXPECT_EQ(invalidZeroShares.errorCode, NOST::EAuctionError::InvalidInput);
 
 	Asset zeroAsset{};
 	const auto invalidZeroAsset = nostromo.transferManagedShares(owner, zeroAsset, 1, QX_CONTRACT_INDEX);
 	EXPECT_EQ(invalidZeroAsset.transferredNumberOfShares, 0);
+	EXPECT_EQ(invalidZeroAsset.errorCode, NOST::EAuctionError::InvalidInput);
 
 	const auto invalidZeroContract = nostromo.transferManagedShares(owner, asset, 1, 0);
 	EXPECT_EQ(invalidZeroContract.transferredNumberOfShares, 0);
+	EXPECT_EQ(invalidZeroContract.errorCode, NOST::EAuctionError::InvalidInput);
 
 	const auto insufficient = nostromo.transferManagedShares(owner, asset, 8, QX_CONTRACT_INDEX);
 	EXPECT_EQ(insufficient.transferredNumberOfShares, 0);
+	EXPECT_EQ(insufficient.errorCode, NOST::EAuctionError::InvalidInput);
 
 	const auto success = nostromo.transferManagedShares(owner, asset, 5, QX_CONTRACT_INDEX);
 	EXPECT_EQ(success.transferredNumberOfShares, 5);
+	EXPECT_EQ(success.errorCode, NOST::EAuctionError::Success);
 	EXPECT_EQ(nostromo.managedShares(asset, owner), 2);
 	EXPECT_EQ(nostromo.sharesManagedBy(asset, owner, QX_CONTRACT_INDEX), 8);
 }
@@ -845,6 +850,7 @@ TEST(ContractNostromoAuction, TransferShareManagementRightsRequiresInvocationRew
 
 		const auto output = nostromo.transferManagedSharesWithReward(owner, asset, 2, QX_CONTRACT_INDEX, nostromo.getCachedQxTransferFee());
 		EXPECT_EQ(output.transferredNumberOfShares, 2);
+		EXPECT_EQ(output.errorCode, NOST::EAuctionError::Success);
 		EXPECT_EQ(nostromo.managedShares(asset, owner), 2);
 		EXPECT_EQ(nostromo.sharesManagedBy(asset, owner, QX_CONTRACT_INDEX), 2);
 	}
@@ -861,6 +867,7 @@ TEST(ContractNostromoAuction, TransferShareManagementRightsRequiresInvocationRew
 
 		const auto output = nostromo.transferManagedSharesWithReward(owner, asset, 2, QX_CONTRACT_INDEX, nostromo.getCachedQxTransferFee() - 1);
 		EXPECT_EQ(output.transferredNumberOfShares, 0);
+		EXPECT_EQ(output.errorCode, NOST::EAuctionError::InvalidInput);
 		EXPECT_EQ(nostromo.managedShares(asset, owner), 4);
 		EXPECT_EQ(nostromo.sharesManagedBy(asset, owner, QX_CONTRACT_INDEX), 0);
 	}
@@ -880,6 +887,7 @@ TEST(ContractNostromoAuction, TransferShareManagementRightsRequiresInvocationRew
 
 		const auto output = nostromo.transferManagedSharesWithFundedReward(owner, asset, 2, QX_CONTRACT_INDEX, reward);
 		EXPECT_EQ(output.transferredNumberOfShares, 2);
+		EXPECT_EQ(output.errorCode, NOST::EAuctionError::Success);
 		EXPECT_EQ(getBalance(owner) - ownerBefore, -static_cast<sint64>(nostromo.getCachedQxTransferFee()));
 		EXPECT_EQ(nostromo.managedShares(asset, owner), 2);
 		EXPECT_EQ(nostromo.sharesManagedBy(asset, owner, QX_CONTRACT_INDEX), 2);
@@ -897,12 +905,14 @@ TEST(ContractNostromoAuction, TransferShareManagementRightsRequiresInvocationRew
 
 		const auto invalidDestination = nostromo.transferManagedSharesWithReward(owner, asset, 2, 0, nostromo.getCachedQxTransferFee());
 		EXPECT_EQ(invalidDestination.transferredNumberOfShares, 0);
+		EXPECT_EQ(invalidDestination.errorCode, NOST::EAuctionError::InvalidInput);
 		EXPECT_EQ(nostromo.managedShares(asset, owner), 4);
 
 		Asset zeroAsset{};
 		const auto zeroAssetOutput =
 		    nostromo.transferManagedSharesWithReward(owner, zeroAsset, 2, QX_CONTRACT_INDEX, nostromo.getCachedQxTransferFee());
 		EXPECT_EQ(zeroAssetOutput.transferredNumberOfShares, 0);
+		EXPECT_EQ(zeroAssetOutput.errorCode, NOST::EAuctionError::InvalidInput);
 		EXPECT_EQ(nostromo.managedShares(asset, owner), 4);
 	}
 }
@@ -1467,6 +1477,25 @@ TEST(ContractNostromoAuction, CreateAuctionRejectsWhenAuctionStorageIsFullAuctio
 	const auto output = nostromo.createAuction(seller, ContractTestingNOST::makeBatchAuctionInput(asset, 1, 10));
 	EXPECT_EQ(output.errorCode, NOST::EAuctionError::StorageFull);
 	EXPECT_EQ(output.auctionIndex, 0ULL);
+	EXPECT_EQ(nostromo.managedShares(asset, seller), 1);
+}
+
+TEST(ContractNostromoAuction, CreateAuctionRejectsWhenAuctionIndexIsExhaustedAuction)
+{
+	ContractTestingNOST nostromo;
+	const id seller(89, 90, 91, 92);
+	const uint64 assetName = assetNameFromString("IDXMAX");
+	const Asset asset{seller, assetName};
+
+	EXPECT_EQ(nostromo.issueAsset(seller, assetName, 1), 1);
+	EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 1), 1);
+	nostromo.stateData().totalAuctionsCreated = UINT64_MAX;
+
+	const auto output = nostromo.createAuction(seller, ContractTestingNOST::makeBatchAuctionInput(asset, 1, 10));
+	EXPECT_EQ(output.errorCode, NOST::EAuctionError::AuctionIndexExhausted);
+	EXPECT_EQ(output.auctionIndex, 0ULL);
+	EXPECT_EQ(nostromo.stateData().totalAuctionsCreated, UINT64_MAX);
+	EXPECT_EQ(nostromo.stateData().auctionList.population(), 0ULL);
 	EXPECT_EQ(nostromo.managedShares(asset, seller), 1);
 }
 

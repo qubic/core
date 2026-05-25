@@ -85,7 +85,8 @@ struct NOST : public ContractBase
 		InvalidVisibility,
 		BidTooLow,
 		PrivateAuctionAccessDenied,
-		AuctionPaused
+		AuctionPaused,
+		AuctionIndexExhausted
 	};
 
 	struct AuctionParticipantKey
@@ -1566,6 +1567,9 @@ struct NOST : public ContractBase
 	{
 		/** @brief Number of shares whose management rights were transferred. */
 		sint64 transferredNumberOfShares;
+
+		/** @brief Result code describing whether the transfer request succeeded. */
+		EAuctionError errorCode;
 	};
 
 	struct TransferShareManagementRights_locals
@@ -2756,7 +2760,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::AuctionPaused;
 			setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -2768,7 +2772,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::InvalidAuctionType;
 			setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -2780,7 +2784,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::InvalidVisibility;
 			setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -2792,7 +2796,19 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::StorageFull;
 			setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
+			return;
+		}
+
+		if (state.get().totalAuctionsCreated == UINT64_MAX)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = EAuctionError::AuctionIndexExhausted;
+			setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -2804,8 +2820,9 @@ struct NOST : public ContractBase
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
+			output.errorCode = EAuctionError::InvalidInput;
 			setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -2818,8 +2835,9 @@ struct NOST : public ContractBase
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
+			output.errorCode = EAuctionError::InvalidInput;
 			setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 		locals.resolvedQuantityForSale = 0;
@@ -2835,8 +2853,9 @@ struct NOST : public ContractBase
 					{
 						qpi.transfer(qpi.invocator(), qpi.invocationReward());
 					}
+					output.errorCode = EAuctionError::InvalidInput;
 					setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
-					LOG_INFO(locals.log);
+					logProcedureResult(locals.log);
 					return;
 				}
 				break;
@@ -2849,8 +2868,9 @@ struct NOST : public ContractBase
 					{
 						qpi.transfer(qpi.invocator(), qpi.invocationReward());
 					}
+					output.errorCode = EAuctionError::InvalidInput;
 					setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
-					LOG_INFO(locals.log);
+					logProcedureResult(locals.log);
 					return;
 				}
 				break;
@@ -2861,7 +2881,7 @@ struct NOST : public ContractBase
 				}
 				output.errorCode = EAuctionError::InvalidAuctionType;
 				setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
-				LOG_INFO(locals.log);
+				logProcedureResult(locals.log);
 				return;
 		}
 
@@ -2877,8 +2897,9 @@ struct NOST : public ContractBase
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
+			output.errorCode = EAuctionError::InvalidInput;
 			setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -2891,7 +2912,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::InsufficientFunds;
 			setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -2905,7 +2926,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::InsufficientAssetBalance;
 			setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -2919,7 +2940,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::InsufficientAssetBalance;
 			setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -2966,7 +2987,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::StorageFull;
 			setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -2982,7 +3003,7 @@ struct NOST : public ContractBase
 		state.mut().totalAuctionsCreated = sadd(state.get().totalAuctionsCreated, 1ULL);
 		output.errorCode = EAuctionError::Success;
 		setProcedureLogInput(locals.log, qpi.invocator(), 1, output.errorCode, output.auctionIndex, qpi.invocationReward());
-		LOG_INFO(locals.log);
+		logProcedureResult(locals.log);
 	}
 
 	/**
@@ -3003,7 +3024,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::AuctionPaused;
 			setProcedureLogInput(locals.log, qpi.invocator(), 2, output.errorCode, input.auctionIndex, output.escrowedAmount);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3015,7 +3036,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::AuctionNotFound;
 			setProcedureLogInput(locals.log, qpi.invocator(), 2, output.errorCode, input.auctionIndex, output.escrowedAmount);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3027,7 +3048,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::AuctionClosed;
 			setProcedureLogInput(locals.log, qpi.invocator(), 2, output.errorCode, input.auctionIndex, output.escrowedAmount);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3039,7 +3060,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::Forbidden;
 			setProcedureLogInput(locals.log, qpi.invocator(), 2, output.errorCode, input.auctionIndex, output.escrowedAmount);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3053,7 +3074,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::AuctionClosed;
 			setProcedureLogInput(locals.log, qpi.invocator(), 2, output.errorCode, input.auctionIndex, output.escrowedAmount);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3078,7 +3099,7 @@ struct NOST : public ContractBase
 				}
 				output.errorCode = EAuctionError::PrivateAuctionAccessDenied;
 				setProcedureLogInput(locals.log, qpi.invocator(), 2, output.errorCode, input.auctionIndex, output.escrowedAmount);
-				LOG_INFO(locals.log);
+				logProcedureResult(locals.log);
 				return;
 			}
 		}
@@ -3100,7 +3121,7 @@ struct NOST : public ContractBase
 					}
 					output.errorCode = locals.processBatchBidOutput.errorCode;
 					setProcedureLogInput(locals.log, qpi.invocator(), 2, output.errorCode, input.auctionIndex, output.escrowedAmount);
-					LOG_INFO(locals.log);
+					logProcedureResult(locals.log);
 					return;
 				}
 				output.refundedAmount = sadd(output.refundedAmount, locals.processBatchBidOutput.refundedAmount);
@@ -3120,7 +3141,7 @@ struct NOST : public ContractBase
 					}
 					output.errorCode = locals.processStandardBidOutput.errorCode;
 					setProcedureLogInput(locals.log, qpi.invocator(), 2, output.errorCode, input.auctionIndex, output.escrowedAmount);
-					LOG_INFO(locals.log);
+					logProcedureResult(locals.log);
 					return;
 				}
 				output.refundedAmount = sadd(output.refundedAmount, locals.processStandardBidOutput.refundedAmount);
@@ -3133,12 +3154,12 @@ struct NOST : public ContractBase
 				}
 				output.errorCode = EAuctionError::InvalidAuctionType;
 				setProcedureLogInput(locals.log, qpi.invocator(), 2, output.errorCode, input.auctionIndex, output.escrowedAmount);
-				LOG_INFO(locals.log);
+				logProcedureResult(locals.log);
 				return;
 		}
 		output.errorCode = EAuctionError::Success;
 		setProcedureLogInput(locals.log, qpi.invocator(), 2, output.errorCode, input.auctionIndex, output.escrowedAmount);
-		LOG_INFO(locals.log);
+		logProcedureResult(locals.log);
 	}
 
 	/**
@@ -3161,7 +3182,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::AuctionNotFound;
 			setProcedureLogInput(locals.log, qpi.invocator(), 3, output.errorCode, input.auctionIndex, output.cancellationFee);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3173,7 +3194,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::AuctionClosed;
 			setProcedureLogInput(locals.log, qpi.invocator(), 3, output.errorCode, input.auctionIndex, output.cancellationFee);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3185,7 +3206,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::Forbidden;
 			setProcedureLogInput(locals.log, qpi.invocator(), 3, output.errorCode, input.auctionIndex, output.cancellationFee);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3197,7 +3218,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::Forbidden;
 			setProcedureLogInput(locals.log, qpi.invocator(), 3, output.errorCode, input.auctionIndex, output.cancellationFee);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3216,7 +3237,7 @@ struct NOST : public ContractBase
 			}
 			output.errorCode = EAuctionError::InsufficientFunds;
 			setProcedureLogInput(locals.log, qpi.invocator(), 3, output.errorCode, input.auctionIndex, output.cancellationFee);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3259,7 +3280,7 @@ struct NOST : public ContractBase
 
 		output.errorCode = EAuctionError::Success;
 		setProcedureLogInput(locals.log, qpi.invocator(), 3, output.errorCode, input.auctionIndex, output.cancellationFee);
-		LOG_INFO(locals.log);
+		logProcedureResult(locals.log);
 	}
 
 	/**
@@ -3281,14 +3302,15 @@ struct NOST : public ContractBase
 		{
 			output.errorCode = EAuctionError::AuctionPaused;
 			setProcedureLogInput(locals.log, qpi.invocator(), 5, output.errorCode, input.auctionIndex, output.refundedAmount);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
 		if (input.acceptSale > 1)
 		{
+			output.errorCode = EAuctionError::InvalidInput;
 			setProcedureLogInput(locals.log, qpi.invocator(), 5, output.errorCode, input.auctionIndex, output.refundedAmount);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3296,7 +3318,7 @@ struct NOST : public ContractBase
 		{
 			output.errorCode = EAuctionError::AuctionNotFound;
 			setProcedureLogInput(locals.log, qpi.invocator(), 5, output.errorCode, input.auctionIndex, output.refundedAmount);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3304,7 +3326,7 @@ struct NOST : public ContractBase
 		{
 			output.errorCode = EAuctionError::Forbidden;
 			setProcedureLogInput(locals.log, qpi.invocator(), 5, output.errorCode, input.auctionIndex, output.refundedAmount);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3312,7 +3334,7 @@ struct NOST : public ContractBase
 		{
 			output.errorCode = EAuctionError::AuctionClosed;
 			setProcedureLogInput(locals.log, qpi.invocator(), 5, output.errorCode, input.auctionIndex, output.refundedAmount);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3325,7 +3347,7 @@ struct NOST : public ContractBase
 
 			output.errorCode = EAuctionError::AuctionClosed;
 			setProcedureLogInput(locals.log, qpi.invocator(), 5, output.errorCode, input.auctionIndex, output.refundedAmount);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3345,7 +3367,7 @@ struct NOST : public ContractBase
 			output.errorCode = locals.rejectStandardAuctionOutput.success ? EAuctionError::Success : EAuctionError::AuctionClosed;
 		}
 		setProcedureLogInput(locals.log, qpi.invocator(), 5, output.errorCode, input.auctionIndex, output.refundedAmount);
-		LOG_INFO(locals.log);
+		logProcedureResult(locals.log);
 	}
 
 	/**
@@ -3364,7 +3386,7 @@ struct NOST : public ContractBase
 		{
 			output.errorCode = EAuctionError::Forbidden;
 			setProcedureLogInput(locals.log, qpi.invocator(), 6, output.errorCode, 0, 0);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3375,7 +3397,7 @@ struct NOST : public ContractBase
 		{
 			output.errorCode = EAuctionError::InvalidInput;
 			setProcedureLogInput(locals.log, qpi.invocator(), 6, output.errorCode, 0, 0);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3391,7 +3413,7 @@ struct NOST : public ContractBase
 		state.mut().shareholderFeeBasisPointsTier4 = input.shareholderFeeBasisPointsTier4;
 		output.errorCode = EAuctionError::Success;
 		setProcedureLogInput(locals.log, qpi.invocator(), 6, output.errorCode, 0, 0);
-		LOG_INFO(locals.log);
+		logProcedureResult(locals.log);
 	}
 
 	/**
@@ -3411,7 +3433,7 @@ struct NOST : public ContractBase
 		{
 			output.errorCode = EAuctionError::Forbidden;
 			setProcedureLogInput(locals.log, qpi.invocator(), 7, output.errorCode, 0, 0);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3420,8 +3442,9 @@ struct NOST : public ContractBase
 		        state.get().takeoverCoordinatorFeeBasisPoints, state.get().shareholderDividendBasisPoints, input.shareholderFeeBasisPointsTier1,
 		        input.shareholderFeeBasisPointsTier2, input.shareholderFeeBasisPointsTier3, input.shareholderFeeBasisPointsTier4))
 		{
+			output.errorCode = EAuctionError::InvalidInput;
 			setProcedureLogInput(locals.log, qpi.invocator(), 7, output.errorCode, 0, 0);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
@@ -3435,7 +3458,7 @@ struct NOST : public ContractBase
 		state.mut().shareholderFeeBasisPointsTier4 = input.shareholderFeeBasisPointsTier4;
 		output.errorCode = EAuctionError::Success;
 		setProcedureLogInput(locals.log, qpi.invocator(), 7, output.errorCode, 0, 0);
-		LOG_INFO(locals.log);
+		logProcedureResult(locals.log);
 	}
 
 	/**
@@ -3455,21 +3478,22 @@ struct NOST : public ContractBase
 		{
 			output.errorCode = EAuctionError::Forbidden;
 			setProcedureLogInput(locals.log, qpi.invocator(), 8, output.errorCode, 0, 0);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
 		if (isZero(input.management))
 		{
+			output.errorCode = EAuctionError::InvalidInput;
 			setProcedureLogInput(locals.log, qpi.invocator(), 8, output.errorCode, 0, 0);
-			LOG_INFO(locals.log);
+			logProcedureResult(locals.log);
 			return;
 		}
 
 		state.mut().management = input.management;
 		output.errorCode = EAuctionError::Success;
 		setProcedureLogInput(locals.log, qpi.invocator(), 8, output.errorCode, 0, 0);
-		LOG_INFO(locals.log);
+		logProcedureResult(locals.log);
 	}
 
 	/**
@@ -3818,6 +3842,7 @@ struct NOST : public ContractBase
 		locals.refundAmount = locals.reward;
 		locals.success = false;
 		output.transferredNumberOfShares = 0;
+		output.errorCode = EAuctionError::InvalidInput;
 
 		if (input.numberOfShares > 0 && qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer, qpi.invocator(), qpi.invocator(),
 		                                                            SELF_INDEX, SELF_INDEX) >= input.numberOfShares)
@@ -3834,19 +3859,31 @@ struct NOST : public ContractBase
 		if (locals.success)
 		{
 			output.transferredNumberOfShares = input.numberOfShares;
+			output.errorCode = EAuctionError::Success;
 		}
 
 		if (locals.refundAmount > 0)
 		{
 			qpi.transfer(qpi.invocator(), locals.refundAmount);
 		}
-		setProcedureLogInput(locals.log, qpi.invocator(), 4, locals.success ? EAuctionError::Success : EAuctionError::InvalidInput, 0,
-		                     output.transferredNumberOfShares);
+		setProcedureLogInput(locals.log, qpi.invocator(), 4, output.errorCode, 0, output.transferredNumberOfShares);
 
-		LOG_INFO(locals.log);
+		logProcedureResult(locals.log);
 	}
 
 protected:
+	static void logProcedureResult(const NostromoProcedureLog& log)
+	{
+		if (log.errorCode == EAuctionError::Success)
+		{
+			LOG_INFO(log);
+		}
+		else
+		{
+			LOG_ERROR(log);
+		}
+	}
+
 	static void setProcedureLogInput(NostromoProcedureLog& log, const id& actor, uint8 procedure, EAuctionError errorCode, uint64 auctionIndex,
 	                                 sint64 amount)
 	{
