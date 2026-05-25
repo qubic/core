@@ -10,7 +10,7 @@ constexpr uint32 QPORTAL_MAX_PROPOSAL_USER = 2; //The maximum number of proposal
 constexpr uint32 QPORTAL_MAX_PROPOSAL_EPOCH = 5; //The maximum number of proposals per epoch.
 constexpr uint32 QPORTAL_EPOCH_PROPOSALS_CAPACITY = 8; //Backing capacity for currentEpochProposals (Array requires 2^N, must be >= QPORTAL_MAX_PROPOSAL_EPOCH).
 constexpr uint32 QPORTAL_MAX_VOTE = 32768; //The maximum number of votes a user can make (voting in all proposals in all proposal epochs).
-constexpr uint32 QPORTAL_EXECUTION_FEE = 100;
+constexpr uint32 QPORTAL_EXECUTION_FEE = 20000;
 
 constexpr uint32 QPORTAL_SUCCESS = 0;
 constexpr uint32 QPORTAL_INSUFFICIENT_PORTAL = 1;
