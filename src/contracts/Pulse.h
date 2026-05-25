@@ -222,12 +222,20 @@ public:
 		EState currentState;
 	};
 
+	/**
+	 * @brief Input for ValidateDigits.
+	 */
 	struct ValidateDigits_input
 	{
+		// Candidate ticket digits; only the first PULSE_PLAYER_DIGITS entries are validated.
 		Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> digits;
 	};
+	/**
+	 * @brief Output for ValidateDigits.
+	 */
 	struct ValidateDigits_output
 	{
+		// True when every checked digit is in the supported range [0..9].
 		bit isValid;
 	};
 	struct ValidateDigits_locals
@@ -236,13 +244,21 @@ public:
 		uint8 value;
 	};
 
+	/**
+	 * @brief Input for BuyTicket.
+	 */
 	struct BuyTicket_input
 	{
+		// Ticket digits chosen by the invocator; only the first PULSE_PLAYER_DIGITS entries are used.
 		Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> digits;
 	};
 
+	/**
+	 * @brief Output for BuyTicket.
+	 */
 	struct BuyTicket_output
 	{
+		// EReturnCode value describing whether the ticket was accepted and paid.
 		uint8 returnCode;
 	};
 
@@ -334,13 +350,21 @@ public:
 		} randomData;
 	};
 
+	/**
+	 * @brief Input for BuyRandomTickets.
+	 */
 	struct BuyRandomTickets_input
 	{
+		// Requested number of random tickets to buy for the invocator.
 		uint16 count;
 	};
 
+	/**
+	 * @brief Output for BuyRandomTickets.
+	 */
 	struct BuyRandomTickets_output
 	{
+		// EReturnCode value describing validation, payment, or allocation result.
 		uint8 returnCode;
 	};
 
@@ -368,14 +392,24 @@ public:
 		sint64 elementIndex;
 	};
 
+	/**
+	 * @brief Input for GetAutoParticipation.
+	 */
 	struct GetAutoParticipation_input
 	{
+		// Account whose auto-participation entry should be read.
 		id player;
 	};
+	/**
+	 * @brief Output for GetAutoParticipation.
+	 */
 	struct GetAutoParticipation_output
 	{
+		// QHeart amount reserved for future automatic purchases.
 		uint64 deposit;
+		// Number of tickets requested per automatic purchase round.
 		uint16 desiredTickets;
+		// EReturnCode::SUCCESS when an entry exists, otherwise EReturnCode::INVALID_VALUE.
 		uint8 returnCode;
 	};
 	struct GetAutoParticipation_locals
@@ -383,15 +417,27 @@ public:
 		AutoParticipant entry;
 	};
 
+	/**
+	 * @brief Input for GetAutoStats.
+	 * @note This function has no parameters.
+	 */
 	struct GetAutoStats_input
 	{
 	};
+	/**
+	 * @brief Output for GetAutoStats.
+	 */
 	struct GetAutoStats_output
 	{
+		// Snapshot of registered auto-participants; unused trailing slots are zeroed.
 		Array<AutoParticipant, PULSE_MAX_NUMBER_OF_AUTO_PARTICIPANTS> participants;
+		// Maximum number of auto-participants supported by storage.
 		uint16 maxAutoParticipants;
+		// Current per-user automatic ticket cap; 0 means unlimited.
 		uint16 maxAutoTicketsPerUser;
+		// Remaining ticket capacity in the current round.
 		uint16 roundSlotsLeft;
+		// EReturnCode value for the query.
 		uint8 returnCode;
 	};
 	struct GetAutoStats_locals
@@ -399,14 +445,24 @@ public:
 		HashMapConverter<id, AutoParticipant, PULSE_MAX_NUMBER_OF_AUTO_PARTICIPANTS> converter;
 	};
 
+	/**
+	 * @brief Input for DepositAutoParticipation.
+	 */
 	struct DepositAutoParticipation_input
 	{
+		// QHeart amount to transfer into the auto-participation deposit.
 		sint64 amount;
+		// Desired number of tickets to buy automatically per draw.
 		sint16 desiredTickets;
+		// When true, attempts an immediate random-ticket purchase before storing the remaining deposit.
 		bit buyNow;
 	};
+	/**
+	 * @brief Output for DepositAutoParticipation.
+	 */
 	struct DepositAutoParticipation_output
 	{
+		// EReturnCode value describing validation, transfer, or purchase result.
 		uint8 returnCode;
 	};
 	struct DepositAutoParticipation_locals
@@ -432,12 +488,20 @@ public:
 		BuyRandomTickets_output buyRandomTicketsOutput;
 	};
 
+	/**
+	 * @brief Input for WithdrawAutoParticipation.
+	 */
 	struct WithdrawAutoParticipation_input
 	{
+		// QHeart amount to withdraw; values <= 0 request the full stored deposit.
 		sint64 amount;
 	};
+	/**
+	 * @brief Output for WithdrawAutoParticipation.
+	 */
 	struct WithdrawAutoParticipation_output
 	{
+		// EReturnCode value describing whether the withdrawal succeeded.
 		uint8 returnCode;
 	};
 	struct WithdrawAutoParticipation_locals
@@ -448,12 +512,20 @@ public:
 		sint64 withdrawAmount;
 	};
 
+	/**
+	 * @brief Input for SetAutoConfig.
+	 */
 	struct SetAutoConfig_input
 	{
+		// New desired ticket count; -1 keeps the current value.
 		sint16 desiredTickets;
 	};
+	/**
+	 * @brief Output for SetAutoConfig.
+	 */
 	struct SetAutoConfig_output
 	{
+		// EReturnCode value describing whether the configuration update was accepted.
 		uint8 returnCode;
 	};
 	struct SetAutoConfig_locals
@@ -465,12 +537,20 @@ public:
 		FindAutoParticipant_output findOutput;
 	};
 
+	/**
+	 * @brief Input for SetAutoLimits.
+	 */
 	struct SetAutoLimits_input
 	{
+		// Maximum automatic tickets per participant; 0 disables the limit.
 		uint16 maxTicketsPerUser;
 	};
+	/**
+	 * @brief Output for SetAutoLimits.
+	 */
 	struct SetAutoLimits_output
 	{
+		// EReturnCode value describing whether the owner-only update succeeded.
 		uint8 returnCode;
 	};
 	struct SetAutoLimits_locals
@@ -479,12 +559,20 @@ public:
 		sint64 index;
 	};
 
+	/**
+	 * @brief Input for DepositManagedQHeart.
+	 */
 	struct DepositManagedQHeart_input
 	{
+		// QHeart amount to move from the invocator into the Pulse contract wallet.
 		sint64 amount;
 	};
+	/**
+	 * @brief Output for DepositManagedQHeart.
+	 */
 	struct DepositManagedQHeart_output
 	{
+		// EReturnCode value describing validation or transfer result.
 		uint8 returnCode;
 	};
 	struct DepositManagedQHeart_locals
@@ -493,13 +581,22 @@ public:
 		sint64 userBalance;
 	};
 
+	/**
+	 * @brief Input for TransferShareManagementRights.
+	 */
 	struct TransferShareManagementRights_input
 	{
+		// Number of managed QHeart shares to release.
 		sint64 numberOfShares;
+		// Destination contract index that should acquire management rights.
 		uint16 newManagingContractIndex;
 	};
+	/**
+	 * @brief Output for TransferShareManagementRights.
+	 */
 	struct TransferShareManagementRights_output
 	{
+		// EReturnCode value describing validation or share-release result.
 		uint8 returnCode;
 	};
 	struct TransferShareManagementRights_locals
@@ -510,85 +607,166 @@ public:
 		QX::Fees_output feesOutput;
 	};
 
+	/**
+	 * @brief Input for GetTicketPrice.
+	 * @note This function has no parameters.
+	 */
 	struct GetTicketPrice_input
 	{
 	};
+	/**
+	 * @brief Output for GetTicketPrice.
+	 */
 	struct GetTicketPrice_output
 	{
+		// Current ticket price in QHeart units.
 		uint64 ticketPrice;
 	};
 
+	/**
+	 * @brief Input for GetPlayerBalance.
+	 */
 	struct GetPlayerBalance_input
 	{
+		// Account whose QHeart balance should be queried.
 		id player;
 	};
+	/**
+	 * @brief Output for GetPlayerBalance.
+	 */
 	struct GetPlayerBalance_output
 	{
+		// Player QHeart balance managed by the Pulse contract context.
 		uint64 balance;
+		// EReturnCode value for the query.
 		uint8 returnCode;
 	};
 
+	/**
+	 * @brief Input for GetFees.
+	 * @note This function has no parameters.
+	 */
 	struct GetFees_input
 	{
 	};
+	/**
+	 * @brief Output for GetFees.
+	 */
 	struct GetFees_output
 	{
+		// Percent of round revenue allocated to the dev wallet.
 		uint8 devPercent;
+		// Percent of round revenue burned.
 		uint8 burnPercent;
+		// Percent of round revenue distributed to Pulse shareholders.
 		uint8 shareholdersPercent;
+		// Percent of round revenue distributed to RandomLottery shareholders.
 		uint8 rlShareholdersPercent;
+		// EReturnCode value for the query.
 		uint8 returnCode;
 	};
 
+	/**
+	 * @brief Input for GetQHeartHoldLimit.
+	 * @note This function has no parameters.
+	 */
 	struct GetQHeartHoldLimit_input
 	{
 	};
+	/**
+	 * @brief Output for GetQHeartHoldLimit.
+	 */
 	struct GetQHeartHoldLimit_output
 	{
+		// Maximum QHeart balance retained by the Pulse wallet after settlement.
 		uint64 qheartHoldLimit;
 	};
 
+	/**
+	 * @brief Input for GetQHeartWallet.
+	 * @note This function has no parameters.
+	 */
 	struct GetQHeartWallet_input
 	{
 	};
+	/**
+	 * @brief Output for GetQHeartWallet.
+	 */
 	struct GetQHeartWallet_output
 	{
+		// Current QHeart issuer wallet configured for Pulse.
 		id wallet;
 	};
 
+	/**
+	 * @brief Input for GetWinningDigits.
+	 * @note This function has no parameters.
+	 */
 	struct GetWinningDigits_input
 	{
 	};
+	/**
+	 * @brief Output for GetWinningDigits.
+	 */
 	struct GetWinningDigits_output
 	{
+		// Winning digits from the last settled draw.
 		Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> digits;
 	};
 
+	/**
+	 * @brief Input for GetBalance.
+	 * @note This function has no parameters.
+	 */
 	struct GetBalance_input
 	{
 	};
+	/**
+	 * @brief Output for GetBalance.
+	 */
 	struct GetBalance_output
 	{
+		// QHeart balance currently held by the Pulse contract wallet.
 		uint64 balance;
 	};
 
+	/**
+	 * @brief Input for GetPlayers.
+	 * @note This function has no parameters.
+	 */
 	struct GetPlayers_input
 	{
 	};
+	/**
+	 * @brief Output for GetPlayers.
+	 */
 	struct GetPlayers_output
 	{
+		// Snapshot of current-round tickets; unused trailing slots are zeroed.
 		Array<Ticket, PULSE_MAX_NUMBER_OF_PLAYERS> players;
+		// EReturnCode value for the query.
 		uint8 returnCode;
 	};
 
+	/**
+	 * @brief Input for GetPrizeTable.
+	 * @note This function has no parameters.
+	 */
 	struct GetPrizeTable_input
 	{
 	};
+	/**
+	 * @brief Output for GetPrizeTable.
+	 */
 	struct GetPrizeTable_output
 	{
+		// Reward table indexed by left-aligned match count.
 		Array<uint64, PULSE_PLAYER_DIGITS_ALIGNED> leftAlignedRewards;
+		// Reward table indexed by any-position match count.
 		Array<uint64, PULSE_PLAYER_DIGITS_ALIGNED> anyPositionRewards;
+		// Ticket price used to derive the reward tables.
 		uint64 ticketPrice;
+		// EReturnCode value for the query.
 		uint8 returnCode;
 	};
 	struct GetPrizeTable_locals
@@ -596,20 +774,37 @@ public:
 		uint8 matches;
 	};
 
+	/**
+	 * @brief Input for GetRoundState.
+	 * @note This function has no parameters.
+	 */
 	struct GetRoundState_input
 	{
 	};
+	/**
+	 * @brief Output for GetRoundState.
+	 */
 	struct GetRoundState_output
 	{
+		// Current Qubic epoch.
 		uint32 epoch;
+		// Compact date stamp for the most recent draw.
 		uint32 lastDrawDateStamp;
+		// Number of tickets allocated in the current round.
 		uint16 ticketCounter;
+		// Maximum ticket capacity for one round.
 		uint16 maxPlayers;
+		// Remaining ticket slots for the current round.
 		uint16 slotsLeft;
+		// Runtime state flags encoded from EState.
 		uint8 currentState;
+		// UTC hour when scheduled draws become eligible.
 		uint8 drawHour;
+		// Weekday bitmask for scheduled draws.
 		uint8 schedule;
+		// True when ticket sales are currently open.
 		bit sellingOpen;
+		// EReturnCode value for the query.
 		uint8 returnCode;
 	};
 	struct GetRoundState_locals
@@ -631,61 +826,114 @@ public:
 		uint64 insertIdx;
 	};
 
+	/**
+	 * @brief Input for GetWinners.
+	 * @note This function has no parameters.
+	 */
 	struct GetWinners_input
 	{
 	};
+	/**
+	 * @brief Output for GetWinners.
+	 */
 	struct GetWinners_output
 	{
+		// Winner history ring buffer snapshot.
 		Array<WinnerInfo, PULSE_MAX_NUMBER_OF_WINNERS_IN_HISTORY> winners;
+		// Monotonic insertion counter for interpreting ring-buffer order.
 		uint64 winnersCounter;
+		// EReturnCode value for the query.
 		uint8 returnCode;
 	};
 
+	/**
+	 * @brief Input for SetPrice.
+	 */
 	struct SetPrice_input
 	{
+		// Ticket price to apply at the next epoch.
 		uint64 newPrice;
 	};
+	/**
+	 * @brief Output for SetPrice.
+	 */
 	struct SetPrice_output
 	{
+		// EReturnCode value describing whether the owner-only update was scheduled.
 		uint8 returnCode;
 	};
 
+	/**
+	 * @brief Input for SetSchedule.
+	 */
 	struct SetSchedule_input
 	{
+		// Weekday bitmask to apply at the next epoch.
 		uint8 newSchedule;
 	};
+	/**
+	 * @brief Output for SetSchedule.
+	 */
 	struct SetSchedule_output
 	{
+		// EReturnCode value describing whether the owner-only update was scheduled.
 		uint8 returnCode;
 	};
 
+	/**
+	 * @brief Input for SetDrawHour.
+	 */
 	struct SetDrawHour_input
 	{
+		// UTC draw hour to apply at the next epoch; valid range is 0..23.
 		uint8 newDrawHour;
 	};
+	/**
+	 * @brief Output for SetDrawHour.
+	 */
 	struct SetDrawHour_output
 	{
+		// EReturnCode value describing whether the owner-only update was scheduled.
 		uint8 returnCode;
 	};
 
+	/**
+	 * @brief Input for SetFees.
+	 */
 	struct SetFees_input
 	{
+		// Dev fee percent to apply at the next epoch.
 		uint8 devPercent;
+		// Burn percent to apply at the next epoch.
 		uint8 burnPercent;
+		// Pulse shareholder distribution percent to apply at the next epoch.
 		uint8 shareholdersPercent;
+		// RandomLottery shareholder distribution percent to apply at the next epoch.
 		uint8 rlShareholdersPercent;
 	};
+	/**
+	 * @brief Output for SetFees.
+	 */
 	struct SetFees_output
 	{
+		// EReturnCode value describing whether the owner-only update was scheduled.
 		uint8 returnCode;
 	};
 
+	/**
+	 * @brief Input for SetQHeartHoldLimit.
+	 */
 	struct SetQHeartHoldLimit_input
 	{
+		// QHeart balance cap to apply at the next epoch.
 		uint64 newQHeartHoldLimit;
 	};
+	/**
+	 * @brief Output for SetQHeartHoldLimit.
+	 */
 	struct SetQHeartHoldLimit_output
 	{
+		// EReturnCode value describing whether the owner-only update was scheduled.
 		uint8 returnCode;
 	};
 
