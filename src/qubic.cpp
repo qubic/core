@@ -658,6 +658,18 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
         return;
     BroadcastComputors* request = header->getPayload<BroadcastComputors>();
 
+    // Diagnostic: log every incoming BroadcastComputors with epoch context
+    {
+        CHAR16 dbgMsg[256];
+        setText(dbgMsg, L"[BC] in epoch=");
+        appendNumber(dbgMsg, request->computors.epoch, FALSE);
+        appendText(dbgMsg, L" sys.epoch=");
+        appendNumber(dbgMsg, system.epoch, FALSE);
+        appendText(dbgMsg, L" stored.epoch=");
+        appendNumber(dbgMsg, broadcastedComputors.computors.epoch, FALSE);
+        logToConsole(dbgMsg);
+    }
+
     // Only accept computor list from current epoch (important in seamless epoch transition if this node is
     // lagging behind the others that already switched epoch).
     if (request->computors.epoch == system.epoch && request->computors.epoch > broadcastedComputors.computors.epoch)
@@ -667,6 +679,10 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
         {
             if (isZero(request->computors.publicKeys[i]))
             {
+                CHAR16 dbgMsg[128];
+                setText(dbgMsg, L"[BC] REJECT zero pubkey at i=");
+                appendNumber(dbgMsg, i, FALSE);
+                logToConsole(dbgMsg);
                 return;
             }
         }
@@ -674,8 +690,10 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
         // Verify that list is signed by Arbitrator
         unsigned char digest[32];
         KangarooTwelve(request, sizeof(BroadcastComputors) - SIGNATURE_SIZE, digest, sizeof(digest));
-        if (verify((unsigned char*)&arbitratorPublicKey, digest, request->computors.signature))
+        const bool sigOk = verify((unsigned char*)&arbitratorPublicKey, digest, request->computors.signature);
+        if (sigOk)
         {
+            logToConsole(L"[BC] ACCEPT signature ok, applying list");
             if (header->isDejavuZero())
             {
                 enqueueResponse(NULL, header);
@@ -707,6 +725,30 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                 RELEASE(minerScoreArrayLock);
             }
         }
+        else
+        {
+            // Diagnostic: signature failed. Dump S (signature[32..63]) in hex, big-endian, so we can
+            // tell whether the malleability patch (S < r) is the rejecter vs. genuine bad sig / wrong ARB key.
+            // Curve order r (hex, big-endian): 0029CBC14E5E0A72 F05397829CBC14E5 DFBD004DFE0F7999 2FB2540EC7768CE7
+            CHAR16 dbgMsg[256];
+            setText(dbgMsg, L"[BC] REJECT sig verify failed. S(hex,BE)=");
+            const unsigned char* s = request->computors.signature + 32;
+            unsigned short di = 0;
+            while (dbgMsg[di] != 0) ++di;
+            const CHAR16 hex[] = L"0123456789ABCDEF";
+            for (int b = 31; b >= 0; --b)
+            {
+                dbgMsg[di++] = hex[(s[b] >> 4) & 0xF];
+                dbgMsg[di++] = hex[s[b] & 0xF];
+            }
+            dbgMsg[di] = 0;
+            logToConsole(dbgMsg);
+        }
+    }
+    else
+    {
+        // Diagnostic: epoch gate rejected the packet
+        logToConsole(L"[BC] REJECT epoch gate (epoch mismatch or already have >= this epoch)");
     }
 }
 
