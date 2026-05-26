@@ -254,6 +254,9 @@
     <ClInclude Include="contracts\Qswap.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\Qswap_old.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="platform\uint128.h">
       <Filter>platform</Filter>
     </ClInclude>
