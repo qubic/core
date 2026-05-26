@@ -872,18 +872,7 @@ protected:
 			LOG_INFO(locals.log);
 			return ;
 		}
-		// Only registered members may deposit.
-		if (state.get().registers.contains(qpi.invocator()) == 0)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			output.returnCode = QRAFFLE_UNREGISTERED;
-			locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_unregistered, 0 };
-			LOG_INFO(locals.log);
-			return ;
-		}
+		
 		if (input.indexOfTokenRaffle >= state.get().numberOfActiveTokenRaffle)
 		{
 			if (qpi.invocationReward() > 0)
