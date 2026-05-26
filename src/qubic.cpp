@@ -654,8 +654,8 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 
 static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
 {
-    // if (!header->checkPayloadSize(sizeof(BroadcastComputors)))
-    //     return;
+    if (!header->checkPayloadSize(sizeof(BroadcastComputors)))
+        return;
     BroadcastComputors* request = header->getPayload<BroadcastComputors>();
 
     // Diagnostic: log every incoming BroadcastComputors with epoch context
