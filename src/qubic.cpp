@@ -667,7 +667,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
         appendNumber(dbgMsg, system.epoch, FALSE);
         appendText(dbgMsg, L" stored.epoch=");
         appendNumber(dbgMsg, broadcastedComputors.computors.epoch, FALSE);
-        logToConsole(dbgMsg);
+        addDebugMessage(dbgMsg);
     }
 
     // Only accept computor list from current epoch (important in seamless epoch transition if this node is
@@ -682,7 +682,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                 CHAR16 dbgMsg[128];
                 setText(dbgMsg, L"[BC] REJECT zero pubkey at i=");
                 appendNumber(dbgMsg, i, FALSE);
-                logToConsole(dbgMsg);
+                addDebugMessage(dbgMsg);
                 return;
             }
         }
@@ -693,7 +693,7 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
         const bool sigOk = verify((unsigned char*)&arbitratorPublicKey, digest, request->computors.signature);
         if (sigOk)
         {
-            logToConsole(L"[BC] ACCEPT signature ok, applying list");
+            addDebugMessage(L"[BC] ACCEPT signature ok, applying list");
             if (header->isDejavuZero())
             {
                 enqueueResponse(NULL, header);
@@ -742,13 +742,13 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                 dbgMsg[di++] = hex[s[b] & 0xF];
             }
             dbgMsg[di] = 0;
-            logToConsole(dbgMsg);
+            addDebugMessage(dbgMsg);
         }
     }
     else
     {
         // Diagnostic: epoch gate rejected the packet
-        logToConsole(L"[BC] REJECT epoch gate (epoch mismatch or already have >= this epoch)");
+        addDebugMessage(L"[BC] REJECT epoch gate (epoch mismatch or already have >= this epoch)");
     }
 }
 
