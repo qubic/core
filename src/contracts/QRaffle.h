@@ -684,15 +684,7 @@ protected:
 			LOG_INFO(locals.log);
 			return ;
 		}
-		// Reject internal tokens: QRAFFLE shares and QXMR are reserved for dividends/registration.
-		if ((input.tokenName == QRAFFLE_ASSET_NAME && input.tokenIssuer == NULL_ID)
-			|| (input.tokenName == QRAFFLE_QXMR_ASSET_NAME && input.tokenIssuer == state.get().QXMRIssuer))
-		{
-			output.returnCode = QRAFFLE_INVALID_TOKEN_TYPE;
-			locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_invalidTokenType, 0 };
-			LOG_INFO(locals.log);
-			return ;
-		}
+		
 		locals.proposal.token.issuer = input.tokenIssuer;
 		locals.proposal.token.assetName = input.tokenName;
 		locals.proposal.entryAmount = input.entryAmount;
