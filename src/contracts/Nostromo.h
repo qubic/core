@@ -963,13 +963,12 @@ struct NOST : public ContractBase
 
 	struct NostromoProcedureLog
 	{
+		uint32 contractIndex;
+		EAuctionError errorCode;
 		id actor;
 		sint64 amount;
 		uint64 auctionIndex;
-		uint32 contractIndex;
 		uint8 procedure;
-		EAuctionError errorCode;
-
 		sint8 _terminator;
 	};
 
