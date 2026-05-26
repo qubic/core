@@ -964,7 +964,7 @@ struct NOST : public ContractBase
 	struct NostromoProcedureLog
 	{
 		uint32 contractIndex;
-		EAuctionError errorCode;
+		uint32 errorCode;
 		id actor;
 		sint64 amount;
 		uint64 auctionIndex;
@@ -3873,7 +3873,7 @@ struct NOST : public ContractBase
 protected:
 	static void logProcedureResult(const NostromoProcedureLog& log)
 	{
-		if (log.errorCode == EAuctionError::Success)
+		if (log.errorCode == static_cast<uint32>(EAuctionError::Success))
 		{
 			LOG_INFO(log);
 		}
@@ -3888,7 +3888,7 @@ protected:
 	{
 		log.contractIndex = SELF_INDEX;
 		log.procedure = procedure;
-		log.errorCode = errorCode;
+		log.errorCode = static_cast<uint32>(errorCode);
 		log.auctionIndex = auctionIndex;
 		log.actor = actor;
 		log.amount = amount;
