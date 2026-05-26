@@ -1775,14 +1775,15 @@ public:
 	}
 
 	/**
- * @brief Releases PULSE share management rights to another contract for the invocator.
- * @param input Number of PULSE shares and the contract index that should acquire management rights.
- * @param output Number of shares transferred and a status code.
- * @note The destination contract fee is paid from the invocation reward; any unused reward is refunded.
- */
+	 * @brief Releases managed QHeart token rights to another contract for the invocator.
+	 * @param input Number of QHeart tokens and the contract index that should acquire management rights.
+	 * @param output Status code describing validation or rights-release result.
+	 * @note The destination contract fee is paid from the invocation reward; any unused reward is refunded.
+	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
 	{
-		if (input.numberOfShares <= 0 || input.newManagingContractIndex == 0 || input.newManagingContractIndex >= MAX_NUMBER_OF_CONTRACTS || input.newManagingContractIndex == SELF_INDEX)
+		if (input.numberOfShares <= 0 || input.newManagingContractIndex == 0 || input.newManagingContractIndex >= MAX_NUMBER_OF_CONTRACTS ||
+		    input.newManagingContractIndex == SELF_INDEX)
 		{
 			qpi.returnInvocatorReward();
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
@@ -1790,7 +1791,7 @@ public:
 		}
 
 		if (qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) <
-			input.numberOfShares)
+		    input.numberOfShares)
 		{
 			qpi.returnInvocatorReward();
 			output.returnCode = toReturnCode(EReturnCode::TRANSFER_FROM_PULSE_FAILED);
@@ -1801,7 +1802,7 @@ public:
 		locals.asset.assetName = PULSE_QHEART_ASSET_NAME;
 
 		locals.releaseResult = qpi.releaseShares(locals.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares, input.newManagingContractIndex,
-												 input.newManagingContractIndex, qpi.invocationReward());
+		                                         input.newManagingContractIndex, qpi.invocationReward());
 		if (locals.releaseResult < 0)
 		{
 			qpi.returnInvocatorReward();
