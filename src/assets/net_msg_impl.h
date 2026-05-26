@@ -128,13 +128,11 @@ static void processRequestAssetsSendRecord(Peer* peer, RequestResponseHeader* re
 {
     if (universeIndex >= ASSETS_CAPACITY)
         return;
-    if (!responseHeader->checkPayloadSize(sizeof(RespondAssetsWithSiblings)))
-        return;
     RespondAssetsWithSiblings* payload = responseHeader->getPayload<RespondAssetsWithSiblings>();
     copyMemory(payload->asset, assets[universeIndex]);
     payload->tick = system.tick;
     payload->universeIndex = universeIndex;
-    if (!responseHeader->checkPayloadSize(sizeof(RequestAssets)))
+    if (responseHeader->size() == sizeof(RequestResponseHeader) + sizeof(RespondAssetsWithSiblings))
     {
         getSiblings<ASSETS_DEPTH>(universeIndex, assetDigests, payload->siblings);
     }
