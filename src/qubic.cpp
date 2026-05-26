@@ -654,7 +654,8 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 
 static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
 {
-    if (!header->checkPayloadSize(sizeof(BroadcastComputors)))
+    // TODO: tighten back to checkPayloadSize once external tools send canonical size.
+    if (!header->checkPayloadSizeMinMax(sizeof(BroadcastComputors), sizeof(BroadcastComputors) + 4))
         return;
     BroadcastComputors* request = header->getPayload<BroadcastComputors>();
 
