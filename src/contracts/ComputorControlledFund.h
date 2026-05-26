@@ -157,8 +157,8 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.get().setProposalFee);
 		}
 
-		// Burn invocation reward
-		qpi.burn(qpi.invocationReward());
+		// Burn the proposal fee
+		qpi.burn(state.get().setProposalFee);
 
 		// Check requirements for proposals in this contract
 		if (ProposalTypes::cls(input.proposal.type) != ProposalTypes::Class::Transfer)

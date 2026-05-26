@@ -383,7 +383,7 @@
     <ClInclude Include="contracts\QRaffle_old.h">
       <Filter>contracts</Filter>
     </ClInclude>
-    <ClInclude Include="contracts\Qswap_old.h">
+    <ClInclude Include="contracts\QVAULT_old.h">
       <Filter>contracts</Filter>
     </ClInclude>
   </ItemGroup>
