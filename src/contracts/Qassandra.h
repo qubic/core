@@ -13,6 +13,14 @@ constexpr uint64 QASSANDRA_DOUBLE_BUFFER_SIZE = QASSANDRA_MAX_CONCURRENT_EVENT *
 constexpr uint64 QASSANDRA_CONTRACT_ASSET_NAME = 1095910481ULL;
 constexpr uint64 QASSANDRA_GOV_ASSET_NAME = 24294015454299217ULL;
 
+constexpr uint8 QASSANDRA_MARKET_TYPE_GENERIC = 0;
+constexpr uint8 QASSANDRA_MARKET_TYPE_QUBIC_USD_THRESHOLD = 1;
+constexpr uint8 QASSANDRA_MARKET_TYPE_ECOSYSTEM_MILESTONE = 2;
+
+constexpr uint8 QASSANDRA_COMPARISON_UNSPECIFIED = 0;
+constexpr uint8 QASSANDRA_COMPARISON_GTE = 1;
+constexpr uint8 QASSANDRA_COMPARISON_LTE = 2;
+
 constexpr uint32 QASSANDRA_DISPUTE_WINDOW = 1000;
 constexpr uint64 QASSANDRA_INVALID_DATETIME = 1;
 constexpr uint64 QASSANDRA_INSUFFICIENT_FUND = 5;
@@ -122,6 +130,15 @@ public:
         Array<id, 2> option0Desc;
         Array<id, 2> option1Desc;
     };
+    struct QdraMarketMetadata
+    {
+        uint8 marketType; // QASSANDRA_MARKET_TYPE_*
+        uint8 comparison; // QASSANDRA_COMPARISON_* for threshold markets
+        uint16 reserved0;
+        sint64 thresholdValue; // reserved for scaled QUBIC/USD threshold values
+        uint64 targetDate; // reserved deadline or target date for threshold/milestone markets
+        Array<id, 2> reference; // reserved for future oracle feed, milestone, or release references
+    };
     struct DepositInfo
     {
         id pubkey;
@@ -190,7 +207,13 @@ public:
 
     struct StateData
     {
+        // Existing generic fields map into Qassandra forecast markets as follows:
+        // mEventInfo.desc stores the market question, option descriptions store binary outcomes,
+        // openDate controls trading start, and endDate controls the current operator outcome window.
         HashMap<uint64, QdraEventInfo, QASSANDRA_MAX_CONCURRENT_EVENT> mEventInfo;
+        // Optional type-specific metadata for QUBIC/USD threshold and ecosystem milestone markets.
+        // This is metadata only; oracle-first settlement and typed market validation are future work.
+        HashMap<uint64, QdraMarketMetadata, QASSANDRA_MAX_CONCURRENT_EVENT> mMarketMetadata;
         HashMap<uint64, sint8, QASSANDRA_MAX_CONCURRENT_EVENT> mEventResult; // forecast outcome: NOT_SET: -1 , NO: 0, 1: YES: 1
         HashMap<uint64, uint32, QASSANDRA_MAX_CONCURRENT_EVENT> mEventResultPublishTickTime; // tick tracker for when the forecast outcome was published
         HashMap<uint64, bit, QASSANDRA_MAX_CONCURRENT_EVENT> mEventFinalFlag; // flag if the forecast market is finalized (outcome is set and past dispute window)
