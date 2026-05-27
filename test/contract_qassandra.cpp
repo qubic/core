@@ -4,6 +4,11 @@
 
 #include <cstring>
 
+struct QassandraMetadataTestAccess : public QASSANDRA
+{
+    using QASSANDRA::isMarketMetadataValid;
+};
+
 TEST(QassandraScaffold, AssetConstants)
 {
     EXPECT_EQ(QASSANDRA_CONTRACT_ASSET_NAME, 1095910481ULL);
@@ -63,4 +68,81 @@ TEST(QassandraMarketMetadataScaffold, MetadataStorageIsQassandraOnly)
     EXPECT_EQ(sizeof(QASSANDRA::StateData), sizeof(QUOTTERY::StateData) + sizeof(MetadataMap));
     EXPECT_EQ(contractDescriptions[QASSANDRA_CONTRACT_INDEX].stateSize, sizeof(QASSANDRA::StateData));
     EXPECT_EQ(contractDescriptions[QUOTTERY_CONTRACT_INDEX].stateSize, sizeof(QUOTTERY::StateData));
+}
+
+TEST_F(ContractTesting, CreateTypedForecastMarketRegistersAtNextFreeSlot)
+{
+    EXPECT_NE(contractUserProcedures[QASSANDRA_CONTRACT_INDEX][16], nullptr);
+    EXPECT_NE(contractUserProcedures[QASSANDRA_CONTRACT_INDEX][15], nullptr);
+    EXPECT_NE(contractUserProcedures[QASSANDRA_CONTRACT_INDEX][20], nullptr);
+    EXPECT_NE(contractUserProcedures[QASSANDRA_CONTRACT_INDEX][1], nullptr);
+}
+
+TEST(QassandraTypedMarketScaffold, CreateEventAbiStaysGeneric)
+{
+    EXPECT_EQ(sizeof(QASSANDRA::CreateEvent_input), sizeof(QASSANDRA::QdraEventInfo));
+    EXPECT_GT(sizeof(QASSANDRA::CreateTypedForecastMarket_input), sizeof(QASSANDRA::CreateEvent_input));
+    EXPECT_EQ(sizeof(QASSANDRA::CreateTypedForecastMarket_input),
+        sizeof(QASSANDRA::QdraEventInfo) + sizeof(QASSANDRA::QdraMarketMetadata));
+}
+
+TEST(QassandraTypedMarketScaffold, ValidatesQubicUsdThresholdMetadata)
+{
+    QASSANDRA::QdraMarketMetadata metadata;
+    std::memset(&metadata, 0, sizeof(metadata));
+
+    metadata.marketType = QASSANDRA_MARKET_TYPE_QUBIC_USD_THRESHOLD;
+    metadata.comparison = QASSANDRA_COMPARISON_GTE;
+    metadata.thresholdValue = 1000000;
+    metadata.targetDate = 20270101;
+
+    EXPECT_TRUE(QassandraMetadataTestAccess::isMarketMetadataValid(metadata));
+
+    metadata.comparison = QASSANDRA_COMPARISON_UNSPECIFIED;
+    EXPECT_FALSE(QassandraMetadataTestAccess::isMarketMetadataValid(metadata));
+
+    metadata.comparison = QASSANDRA_COMPARISON_LTE;
+    metadata.thresholdValue = 0;
+    EXPECT_FALSE(QassandraMetadataTestAccess::isMarketMetadataValid(metadata));
+
+    metadata.thresholdValue = 1000000;
+    metadata.targetDate = 0;
+    EXPECT_FALSE(QassandraMetadataTestAccess::isMarketMetadataValid(metadata));
+}
+
+TEST(QassandraTypedMarketScaffold, ValidatesEcosystemMilestoneMetadata)
+{
+    QASSANDRA::QdraMarketMetadata metadata;
+    std::memset(&metadata, 0, sizeof(metadata));
+
+    metadata.marketType = QASSANDRA_MARKET_TYPE_ECOSYSTEM_MILESTONE;
+    metadata.comparison = QASSANDRA_COMPARISON_UNSPECIFIED;
+    metadata.thresholdValue = 0;
+    metadata.targetDate = 20270101;
+
+    EXPECT_TRUE(QassandraMetadataTestAccess::isMarketMetadataValid(metadata));
+
+    metadata.comparison = QASSANDRA_COMPARISON_GTE;
+    EXPECT_FALSE(QassandraMetadataTestAccess::isMarketMetadataValid(metadata));
+
+    metadata.comparison = QASSANDRA_COMPARISON_UNSPECIFIED;
+    metadata.thresholdValue = 1;
+    EXPECT_FALSE(QassandraMetadataTestAccess::isMarketMetadataValid(metadata));
+}
+
+TEST(QassandraTypedMarketScaffold, RejectsGenericUnknownAndReservedMetadata)
+{
+    QASSANDRA::QdraMarketMetadata metadata;
+    std::memset(&metadata, 0, sizeof(metadata));
+
+    metadata.marketType = QASSANDRA_MARKET_TYPE_GENERIC;
+    metadata.targetDate = 20270101;
+    EXPECT_FALSE(QassandraMetadataTestAccess::isMarketMetadataValid(metadata));
+
+    metadata.marketType = 255;
+    EXPECT_FALSE(QassandraMetadataTestAccess::isMarketMetadataValid(metadata));
+
+    metadata.marketType = QASSANDRA_MARKET_TYPE_ECOSYSTEM_MILESTONE;
+    metadata.reserved0 = 1;
+    EXPECT_FALSE(QassandraMetadataTestAccess::isMarketMetadataValid(metadata));
 }

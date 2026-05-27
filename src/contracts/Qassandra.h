@@ -323,6 +323,29 @@ protected:
         return price > 0 && price <= wholeSharePrice;
     }
 
+    inline static bool isMarketMetadataValid(const QdraMarketMetadata& metadata)
+    {
+        if (metadata.reserved0 != 0 || metadata.targetDate == 0)
+        {
+            return false;
+        }
+
+        if (metadata.marketType == QASSANDRA_MARKET_TYPE_QUBIC_USD_THRESHOLD)
+        {
+            return (metadata.comparison == QASSANDRA_COMPARISON_GTE ||
+                metadata.comparison == QASSANDRA_COMPARISON_LTE) &&
+                metadata.thresholdValue > 0;
+        }
+
+        if (metadata.marketType == QASSANDRA_MARKET_TYPE_ECOSYSTEM_MILESTONE)
+        {
+            return metadata.comparison == QASSANDRA_COMPARISON_UNSPECIFIED &&
+                metadata.thresholdValue == 0;
+        }
+
+        return false;
+    }
+
     struct ValidatePosition_input
     {
         id uid;
@@ -2203,6 +2226,94 @@ public:
         LOG_INFO(locals.log);
     }
 
+    struct CreateTypedForecastMarket_input
+    {
+        QdraEventInfo qei;
+        QdraMarketMetadata metadata;
+    };
+    struct CreateTypedForecastMarket_output
+    {
+    };
+    struct CreateTypedForecastMarket_locals
+    {
+        DateAndTime dtNow;
+        uint64 duration;
+        sint64 fee;
+
+        QdraEventInfo qei;
+        QassandraLogger log;
+        sint32 i;
+        DisputeResolveInfo dri;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(CreateTypedForecastMarket)
+    {
+        // Qassandra-only typed forecast market creation. Generic callers keep using CreateEvent.
+        if (qpi.invocator() != state.get().mQdraGov.mOperationId)
+        {
+            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        locals.dtNow = qpi.now();
+        if (input.qei.endDate < locals.dtNow)
+        {
+            locals.log = QassandraLogger{ 0, QASSANDRA_INVALID_DATETIME ,0 };
+            LOG_INFO(locals.log);
+            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        locals.duration = input.qei.endDate.durationMicrosec(locals.dtNow);
+        locals.duration = divUp(locals.duration, 86400000000ULL); // 86400000000 us per day
+
+        locals.fee = locals.duration * state.get().mQdraGov.mFeePerDay;
+
+        if (locals.fee > qpi.invocationReward())
+        {
+            locals.log = QassandraLogger{ 0, QASSANDRA_INSUFFICIENT_FUND ,0 };
+            LOG_INFO(locals.log);
+            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+        if (state.get().mEventInfo.population() == QASSANDRA_MAX_CONCURRENT_EVENT)
+        {
+            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+        if (!isMarketMetadataValid(input.metadata))
+        {
+            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        locals.qei = input.qei;
+        locals.qei.eid = state.mut().mCurrentEventID++;
+        locals.qei.openDate = locals.dtNow;
+
+        state.mut().mEventInfo.set(locals.qei.eid, locals.qei);
+        state.mut().mMarketMetadata.set(locals.qei.eid, input.metadata);
+        state.mut().mEventResult.set(locals.qei.eid, QASSANDRA_RESULT_NOT_SET);
+        state.mut().mEventResultPublishTickTime.set(locals.qei.eid, 0);
+        state.mut().mDisputeInfo.removeByKey(locals.qei.eid); // clean if any
+
+        if (qpi.invocationReward() > locals.fee)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.fee);
+        }
+        state.mut().mRecentActiveEvent.set(mod(locals.qei.eid, QASSANDRA_MAX_CONCURRENT_EVENT), locals.qei.eid);
+
+        for (locals.i = 0; locals.i < NUMBER_OF_COMPUTORS; locals.i++)
+        {
+            locals.dri.epochData.set(locals.i, 10000);
+            locals.dri.voteData.set(locals.i, QASSANDRA_RESULT_NOT_SET);
+        }
+        state.mut().mDisputeResolver.set(locals.qei.eid, locals.dri);
+
+        locals.log = QassandraLogger{ 0, QASSANDRA_CREATED_EVENT ,0 };
+        LOG_INFO(locals.log);
+    }
+
     struct PublishResult_locals
     {
         QdraEventInfo qei;
@@ -2392,6 +2503,7 @@ public:
         REGISTER_USER_PROCEDURE(TransferShareManagementRights, 13);
         REGISTER_USER_PROCEDURE(CleanMemory, 14);
         REGISTER_USER_PROCEDURE(TransferQDRAGOV, 15);
+        REGISTER_USER_PROCEDURE(CreateTypedForecastMarket, 16);
 
         // market operation team procedures
         REGISTER_USER_PROCEDURE(UpdateFeeDiscountList, 20);
@@ -2538,6 +2650,7 @@ public:
                     state.mut().mGODepositInfo.removeByKey(locals.eid);
                     state.mut().mDisputeResolver.removeByKey(locals.eid);
                     state.mut().mEventInfo.removeByKey(locals.eid);
+                    state.mut().mMarketMetadata.removeByKey(locals.eid);
                     state.mut().mEventFinalFlag.removeByIndex(locals.index);
 
                     // Clear the active forecast market slot so GetActiveEvent/GetUserPosition don't see stale IDs
@@ -2546,6 +2659,7 @@ public:
             } while (locals.index != NULL_INDEX);
 
             state.mut().mEventInfo.cleanup();
+            state.mut().mMarketMetadata.cleanup();
             state.mut().mEventFinalFlag.cleanup();
             state.mut().mPositionInfo.cleanup();
             state.mut().mEventResult.cleanup();
