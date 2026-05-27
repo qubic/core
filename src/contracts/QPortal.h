@@ -1,4 +1,5 @@
 using namespace QPI;
+#include "qpi.h";
 
 constexpr uint64 QPORTAL_PORTAL_ASSET_NAME = 83843471265616; //PORTAL asset name
 constexpr uint64 QPORTAL_MIN_TOTAL_VOTED_PORTAL = 100000ull; //proposal must have at least 100K PORTAL to approve a proposal(yes + no).
@@ -11,6 +12,9 @@ constexpr uint32 QPORTAL_MAX_PROPOSAL_EPOCH = 5; //The maximum number of proposa
 constexpr uint32 QPORTAL_EPOCH_PROPOSALS_CAPACITY = 8; //Backing capacity for currentEpochProposals (Array requires 2^N, must be >= QPORTAL_MAX_PROPOSAL_EPOCH).
 constexpr uint32 QPORTAL_MAX_VOTE = 32768; //The maximum number of votes a user can make (voting in all proposals in all proposal epochs).
 constexpr uint32 QPORTAL_EXECUTION_FEE = 20000;
+constexpr uint32 QPORTAL_TOTAL_FEE = 4; //100%
+constexpr uint32 QPORTAL_BURN_FEE = 1;  // 25%
+constexpr uint32 QPORTAL_SHAREHOLDER_FEE = 3; //75%
 
 constexpr uint32 QPORTAL_SUCCESS = 0;
 constexpr uint32 QPORTAL_INSUFFICIENT_PORTAL = 1;
@@ -81,6 +85,8 @@ public:
         HashMap<id, uint64, QPORTAL_MAX_MEMBER> lockedAmount;
         HashMap<id, voteRecord, QPORTAL_MAX_VOTE> proposalVotes; // Voting records for each user per proposal epoch, used to check whether the user voted in the current proposal epoch.
         HashMap<id, voteResult, QPORTAL_MAX_PROPOSAL> proposalResults; // record of vote results for all of proposals
+        uint64 epochRevenue;
+        uint64 portalEpochRevenue;
     };
 
     struct getRegisters_input
@@ -364,7 +370,7 @@ protected:
     {
         if (qpi.invocationReward() < QPORTAL_EXECUTION_FEE)
         {
-            qpi.burn(qpi.invocationReward());
+            state.mut().epochRevenue += qpi.invocationReward();
             locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INSUFFICIENT_EXECUTION_FEE, 0 };
             LOG_INFO(locals.log);
             output.returnCode = QPORTAL_INSUFFICIENT_EXECUTION_FEE;
@@ -376,7 +382,7 @@ protected:
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - QPORTAL_EXECUTION_FEE);
         }
 
-        qpi.burn(QPORTAL_EXECUTION_FEE);
+        state.mut().epochRevenue += QPORTAL_EXECUTION_FEE;
 
         if (state.get().registers.contains(qpi.invocator()))
         {
@@ -428,7 +434,7 @@ protected:
     {
         if(qpi.invocationReward() < QPORTAL_EXECUTION_FEE)
         {
-            qpi.burn(qpi.invocationReward());
+            state.mut().epochRevenue += qpi.invocationReward();
             output.returnCode = QPORTAL_INSUFFICIENT_EXECUTION_FEE;
             return;
         }
@@ -438,7 +444,7 @@ protected:
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - QPORTAL_EXECUTION_FEE);
         }
 
-        qpi.burn(QPORTAL_EXECUTION_FEE);
+        state.mut().epochRevenue += QPORTAL_EXECUTION_FEE;
 
         if (!state.get().registers.contains(qpi.invocator()))
         {
@@ -466,7 +472,7 @@ protected:
     {
         if (qpi.invocationReward() < QPORTAL_EXECUTION_FEE)
         {
-            qpi.burn(qpi.invocationReward());
+            state.mut().epochRevenue += qpi.invocationReward();
             locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INSUFFICIENT_EXECUTION_FEE, 0 };
             LOG_INFO(locals.log);
             output.returnCode = QPORTAL_INSUFFICIENT_EXECUTION_FEE;
@@ -478,7 +484,7 @@ protected:
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - QPORTAL_EXECUTION_FEE);
         }
 
-        qpi.burn(QPORTAL_EXECUTION_FEE);
+        state.mut().epochRevenue += QPORTAL_EXECUTION_FEE;
 
         {
             locals.dow = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
@@ -572,7 +578,7 @@ protected:
 
         if (qpi.invocationReward() < QPORTAL_EXECUTION_FEE)
         {
-            qpi.burn(qpi.invocationReward());
+            state.mut().epochRevenue += qpi.invocationReward();
             locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INSUFFICIENT_EXECUTION_FEE, 0 };
             LOG_INFO(locals.log);
             output.returnCode = QPORTAL_INSUFFICIENT_EXECUTION_FEE;
@@ -584,7 +590,7 @@ protected:
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - QPORTAL_EXECUTION_FEE);
         }
 
-        qpi.burn(QPORTAL_EXECUTION_FEE);
+        state.mut().epochRevenue += QPORTAL_EXECUTION_FEE;
 
         {
             locals.dow = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
@@ -707,7 +713,7 @@ protected:
     {
         if (qpi.invocationReward() < QPORTAL_EXECUTION_FEE)
         {
-            qpi.burn(qpi.invocationReward());
+            state.mut().epochRevenue += qpi.invocationReward();
             locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INSUFFICIENT_EXECUTION_FEE, 0 };
             LOG_INFO(locals.log);
             output.returnCode = QPORTAL_INSUFFICIENT_EXECUTION_FEE;
@@ -719,7 +725,7 @@ protected:
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - QPORTAL_EXECUTION_FEE);
         }
 
-        qpi.burn(QPORTAL_EXECUTION_FEE);
+        state.mut().epochRevenue += QPORTAL_EXECUTION_FEE;
 
         {
             locals.dow = qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day());
@@ -801,7 +807,7 @@ protected:
     {
         if (qpi.invocationReward() < QPORTAL_EXECUTION_FEE)
         {
-            qpi.burn(qpi.invocationReward());
+            state.mut().epochRevenue += qpi.invocationReward();
             locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INSUFFICIENT_EXECUTION_FEE, 0 };
             LOG_INFO(locals.log);
             output.returnCode = QPORTAL_INSUFFICIENT_EXECUTION_FEE;
@@ -813,7 +819,7 @@ protected:
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - QPORTAL_EXECUTION_FEE); 
         }
 
-        qpi.burn(QPORTAL_EXECUTION_FEE);
+        state.mut().epochRevenue += QPORTAL_EXECUTION_FEE;
 
         if (input.amount <= QPORTAL_REFUND_FEE)
         {
@@ -850,6 +856,8 @@ protected:
             return ;
         }
 
+        state.mut().portalEpochRevenue += QPORTAL_REFUND_FEE;
+
         locals.remaining = state.get().lockedAmount.value(state.get().lockedAmount.getElementIndex(qpi.invocator())) - input.amount;
         if (locals.remaining > 0)
         {
@@ -878,7 +886,7 @@ protected:
     {
         if (qpi.invocationReward() < QPORTAL_EXECUTION_FEE)
         {
-            qpi.burn(qpi.invocationReward());
+            state.mut().epochRevenue += qpi.invocationReward();
             locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INSUFFICIENT_EXECUTION_FEE, 0 };
             LOG_INFO(locals.log);
             output.returnCode = QPORTAL_INSUFFICIENT_EXECUTION_FEE;
@@ -886,7 +894,7 @@ protected:
         }
 
         locals.offeredFee = qpi.invocationReward() - QPORTAL_EXECUTION_FEE;
-        qpi.burn(QPORTAL_EXECUTION_FEE);
+        state.mut().epochRevenue += QPORTAL_EXECUTION_FEE;
 
         if (input.numberOfShares <= 0 || input.newManagementContractIndex == 0 || input.newManagementContractIndex == SELF_INDEX)
         {
@@ -946,10 +954,14 @@ protected:
 
     struct END_EPOCH_locals
     {
-        sint64 i, index;
+        sint64 i, index, sharesHeld;
         id proposalId;
         uint32 yesVotes, noVotes;
         uint64 yesPortal, noPortal;
+        uint64 burnFee, shareholderFeePerShare, sharholderPortalFeePerShare;
+        AssetPossessionIterator iter;
+		Asset QPortalAsset;
+
     };
 
     END_EPOCH_WITH_LOCALS()
@@ -982,8 +994,38 @@ protected:
                     state.mut().submittedProposals.set(locals.proposalId, {state.get().submittedProposals.value(state.get().submittedProposals.getElementIndex(locals.proposalId)).userId, 2});
                 }
             }
+
         }
 
+        locals.shareholderFeePerShare = div<uint64>(div<uint64>(state.get().epochRevenue, QPORTAL_TOTAL_FEE) * QPORTAL_SHAREHOLDER_FEE, NUMBER_OF_COMPUTORS);
+        if (locals.shareholderFeePerShare > 0)
+        {
+            qpi.distributeDividends(locals.shareholderFeePerShare);
+        }
+
+        locals.burnFee = state.get().epochRevenue - locals.shareholderFeePerShare * NUMBER_OF_COMPUTORS;
+        if (locals.burnFee > 0)
+        {
+            qpi.burn(locals.burnFee);
+        }
+
+        locals.sharholderPortalFeePerShare = div<uint64>(state.get().portalEpochRevenue, NUMBER_OF_COMPUTORS);
+        if (locals.sharholderPortalFeePerShare > 0)
+        {
+            locals.iter.begin(locals.QPortalAsset);
+            while (!locals.iter.reachedEnd())
+            {
+                locals.sharesHeld = locals.iter.numberOfPossessedShares();
+                if (locals.sharesHeld > 0)
+                {
+                    qpi.transferShareOwnershipAndPossession(QPORTAL_PORTAL_ASSET_NAME, state.get().PORTAL_Issuer, SELF, SELF, (sint64)(locals.sharholderPortalFeePerShare * (uint64)locals.sharesHeld), locals.iter.possessor());
+                }
+                locals.iter.next();
+            }
+            state.mut().portalEpochRevenue = state.get().portalEpochRevenue - locals.sharholderPortalFeePerShare * NUMBER_OF_COMPUTORS;
+        }
+
+        state.mut().epochRevenue = 0;
         state.mut().numberOfCurrentEpochProposals = 0;
         state.mut().userProposalStatus.reset();
         state.mut().proposalVotes.reset();
@@ -1004,6 +1046,7 @@ protected:
         state.mut().numberOfRegisters = 0;
         state.mut().numberOfCurrentEpochProposals = 0;
         state.mut().numberOfProposals = 0;
+        state.mut().epochRevenue = 0;
         state.mut().lockedAmount.reset();
         state.mut().currentEpochProposals.setAll(NULL_ID);
         state.mut().proposalVotes.reset();
