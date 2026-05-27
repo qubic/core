@@ -1,6 +1,8 @@
 using namespace QPI;
+// Qassandra scope: QUBIC/USD forecast markets and ecosystem milestone markets.
+// TODO: Add oracle-first settlement in a later commit; this scaffold keeps the current operator/dispute flow.
 constexpr uint64 QASSANDRA_INITIAL_MAX_EVENT = 4096;
-constexpr uint64 QASSANDRA_MAX_CONCURRENT_EVENT = QASSANDRA_INITIAL_MAX_EVENT * X_MULTIPLIER; // Maximum number of concurrent events (at the same time)
+constexpr uint64 QASSANDRA_MAX_CONCURRENT_EVENT = QASSANDRA_INITIAL_MAX_EVENT * X_MULTIPLIER; // Maximum number of concurrent forecast markets (at the same time)
 constexpr uint64 QASSANDRA_MAX_NUMBER_OF_USER = QASSANDRA_MAX_CONCURRENT_EVENT * 2048;
 
 constexpr uint64 QASSANDRA_PERCENT_DENOMINATOR = 1000; // 1000 == 100%
@@ -90,32 +92,33 @@ public:
         uint64 operationFee; // 1000 is 100%
         uint64 shareholderFee;
         uint64 burnFee; // percentage
-        uint64 nIssuedEvent; // number of issued event
+        uint64 nIssuedEvent; // number of issued forecast markets
         uint64 shareholdersRevenue;
         uint64 operationRevenue;
         uint64 burnedAmount;
         uint64 mFeePerDay;
         uint64 antiSpamAmount;
         uint64 depositAmountForDispute;
-        id gameOperator;
+        id gameOperator; // ABI name retained; represents the market operator
     };
 
     /**************************************/
     /************CONTRACT STATES***********/
     /**************************************/
     /*
-    * QDRA V2
+    * QDRA V2: QUBIC/USD and ecosystem milestone forecasting marketplace scaffold.
+    * Oracle-first settlement is planned later; current settlement comments describe the inherited operator/dispute flow.
     */
 
     struct QdraEventInfo
     {
         uint64 eid;
         DateAndTime openDate; // submitted date
-        DateAndTime endDate; // stop receiving result from OPs
+        DateAndTime endDate; // stop receiving outcomes from the market operator
 
-        /*256 sint8s to describe*/
+        /*256 sint8s to describe the forecast market*/
         Array<id, 4> desc;
-        /*128 sint8s to describe option */
+        /*128 sint8s to describe forecast outcomes */
         Array<id, 2> option0Desc;
         Array<id, 2> option1Desc;
     };
@@ -188,9 +191,9 @@ public:
     struct StateData
     {
         HashMap<uint64, QdraEventInfo, QASSANDRA_MAX_CONCURRENT_EVENT> mEventInfo;
-        HashMap<uint64, sint8, QASSANDRA_MAX_CONCURRENT_EVENT> mEventResult; // NOT_SET: -1 , NO: 0, 1: YES: 1
-        HashMap<uint64, uint32, QASSANDRA_MAX_CONCURRENT_EVENT> mEventResultPublishTickTime; // a tick tracker to know when the result was published
-        HashMap<uint64, bit, QASSANDRA_MAX_CONCURRENT_EVENT> mEventFinalFlag; // flag if the event is already finalized (result is set and pass dispute window) 
+        HashMap<uint64, sint8, QASSANDRA_MAX_CONCURRENT_EVENT> mEventResult; // forecast outcome: NOT_SET: -1 , NO: 0, 1: YES: 1
+        HashMap<uint64, uint32, QASSANDRA_MAX_CONCURRENT_EVENT> mEventResultPublishTickTime; // tick tracker for when the forecast outcome was published
+        HashMap<uint64, bit, QASSANDRA_MAX_CONCURRENT_EVENT> mEventFinalFlag; // flag if the forecast market is finalized (outcome is set and past dispute window)
         HashMap<uint64, DepositInfo, QASSANDRA_MAX_CONCURRENT_EVENT> mDisputeInfo;
         HashMap<uint64, DisputeResolveInfo, QASSANDRA_MAX_CONCURRENT_EVENT> mDisputeResolver;
         HashMap<uint64, DepositInfo, QASSANDRA_MAX_CONCURRENT_EVENT> mGODepositInfo;
@@ -212,7 +215,7 @@ public:
         Asset mQDRAGOVIdentifier;
         sint64 wholeSharePrice;
         QdraGOV mQdraGov;
-        struct OperationParams // can be changed by operation team
+        struct OperationParams // can be changed by the market operation team
         {
             HashMap<id, uint64, 8192 * X_MULTIPLIER> discountedFeeForUsers; // for professional market maker
             sint64 mAntiSpamAmount; // in QUs
@@ -252,7 +255,7 @@ protected:
 
     /**
      * @brief Helper to construct a unique key for the order book.
-     * Packs option, trade type (ask/bid), and event ID into a single uint64.
+     * Packs forecast outcome option, trade type (ask/bid), and market ID into a single uint64.
      */
     static id MakeOrderKey(const uint64 eid, const uint64 option, const uint64 tradeBit, id r)
     {
@@ -265,7 +268,7 @@ protected:
 
     /**
      * @brief Helper to construct a unique key for a user's position.
-     * Packs the user's ID with the option and event ID.
+     * Packs the user's ID with the forecast outcome option and market ID.
      */
     static id MakePosKey(id r, const uint64 eid, const uint64 option)
     {
@@ -274,7 +277,7 @@ protected:
     }
 
     /**
-     * @brief Checks if an option is valid (0 or 1).
+     * @brief Checks if a binary forecast outcome option is valid (0 or 1).
      */
     static bool isOptionValid(uint64 option)
     {
@@ -330,9 +333,9 @@ protected:
     };
 
     /**
-     * @brief Checks if an event is valid for trading (exists and is within its trading window).
-     * @param eventId The unique identifier of the event.
-     * @return 1 if the event is valid for trading, 0 otherwise.
+     * @brief Checks if a forecast market is valid for trading (exists and is within its trading window).
+     * @param eventId The unique identifier of the forecast market.
+     * @return 1 if the forecast market is valid for trading, 0 otherwise.
      */
     PRIVATE_FUNCTION_WITH_LOCALS(ValidateEvent)
     {
@@ -360,8 +363,8 @@ protected:
     /**
      * @brief Validates that a user owns a sufficient amount of a specific position (shares).
      * @param uid The user's ID.
-     * @param eventId The event ID.
-     * @param option The option (0 or 1).
+     * @param eventId The forecast market ID.
+     * @param option The binary forecast outcome option (0 or 1).
      * @param amount The amount to check for.
      * @return 1 if the user's position is sufficient, 0 otherwise.
      */
@@ -463,9 +466,10 @@ protected:
 
     /**
      * @brief Handles all outgoing transfers from the contract. It calculates and deducts fees
-     * for shareholders, operations, creators, and oracles before sending the net amount.
+     * for shareholders and operations before sending the net amount.
+     * TODO: Add oracle-specific accounting when oracle-first settlement is implemented.
      * @param receiver The recipient of the funds.
-     * @param eid The associated event ID for fee calculation.
+     * @param eid The associated forecast market ID for fee calculation.
      * @param amount The gross amount to transfer.
      * @param needChargeFee If true, fees are calculated and deducted.
      */
@@ -495,7 +499,7 @@ protected:
                 locals.feeTotal += locals.fee;
                 state.mut().mShareholdersRevenue += locals.fee;
 
-                // operation team
+                // market operation team
                 locals.fee = div(smul(locals.amountWithDiscount, state.get().mQdraGov.mOperationFee), QASSANDRA_PERCENT_DENOMINATOR * QASSANDRA_PERCENT_DENOMINATOR);
                 locals.feeTotal += locals.fee;
                 state.mut().mOperationRevenue += locals.fee;
@@ -881,9 +885,9 @@ public:
     struct GetEventInfo_output
     {
         QdraEventInfo qei;
-        sint32 resultByGO; // NOT_SET: -1 , NO: 0, 1: YES: 1
-        uint32 publishTickTime; // ignore if not set result. if result is set and 
-        // publishTickTime is max uint32 then this event is already finalized
+        sint32 resultByGO; // market-operator outcome: NOT_SET: -1 , NO: 0, 1: YES: 1
+        uint32 publishTickTime; // ignore if outcome is not set. if outcome is set and
+        // publishTickTime is max uint32 then this forecast market is already finalized
         DepositInfo disputerInfo; // NULL if no dispute
         uint32 computorsVote0;
         uint32 computorsVote1;
@@ -897,7 +901,7 @@ public:
     };
     /**
      * @param eventId
-     * @return meta data of a event and its current state
+     * @return metadata of a forecast market and its current state
      */
     PUBLIC_FUNCTION_WITH_LOCALS(GetEventInfo)
     {
@@ -946,9 +950,9 @@ public:
     };
 
     /**
-     * @brief Retrieves the metadata for 64 specific events.
+     * @brief Retrieves the metadata for 64 specific forecast markets.
      * @param array of eventId
-     * @return The array of QdraEventInfo struct containing the event's details.
+     * @return The array of QdraEventInfo struct containing the forecast market details.
      */
     PUBLIC_FUNCTION_WITH_LOCALS(GetEventInfoBatch)
     {
@@ -1003,8 +1007,8 @@ public:
     /**
      * @brief PUBLIC PROCEDURE
      * Allows a user to place an ask (sell) order for a position they own.
-     * @param eventId The event to place the order on.
-     * @param option The option (0 or 1) to sell.
+     * @param eventId The forecast market to place the order on.
+     * @param option The binary forecast outcome option (0 or 1) to sell.
      * @param amount The number of shares to sell.
      * @param price The price per share.
      */
@@ -1067,7 +1071,7 @@ public:
         locals.index = state.get().mABOrders.headIndex(locals.key, -input.price);
         locals.flag = false;
 
-        // if there is exact 100% same order as this (same amount, trade bit, price, eventId):
+        // if there is exact 100% same order as this (same amount, trade bit, price, market ID):
         // if same user => replace new one
         // if diff user => add new one
         // final => exit
@@ -1154,8 +1158,8 @@ public:
     /**
      * @brief PUBLIC PROCEDURE
      * Allows a user to remove an existing ask (sell) order from the order book.
-     * @param eventId The event of the order.
-     * @param option The option (0 or 1) of the order.
+     * @param eventId The forecast market of the order.
+     * @param option The binary forecast outcome option (0 or 1) of the order.
      * @param amount The amount to remove.
      * @param price The price of the order to remove.
      */
@@ -1263,8 +1267,8 @@ public:
     /**
      * @brief PUBLIC PROCEDURE
      * Allows a user to remove an existing bid (buy) order and get a refund of their locked funds.
-     * @param eventId The event of the order.
-     * @param option The option (0 or 1) of the order.
+     * @param eventId The forecast market of the order.
+     * @param option The binary forecast outcome option (0 or 1) of the order.
      * @param amount The amount to remove.
      * @param price The price of the order to remove.
      */
@@ -1371,8 +1375,8 @@ public:
      * @brief PUBLIC PROCEDURE
      * Allows a user to place a bid (buy) order, locking funds to back it.
      * Triggers the matching engine after the order is placed.
-     * @param eventId The event to place the order on.
-     * @param option The option (0 or 1) to buy.
+     * @param eventId The forecast market to place the order on.
+     * @param option The binary forecast outcome option (0 or 1) to buy.
      * @param amount The number of shares to buy.
      * @param price The price per share.
      */
@@ -1420,7 +1424,7 @@ public:
         locals.index = state.get().mABOrders.headIndex(locals.key, input.price);
         locals.flag = false;
 
-        // if there is exact 100% same order as this (same amount, trade bit, price, eventId):
+        // if there is exact 100% same order as this (same amount, trade bit, price, market ID):
         // if same user => replace new one
         // if diff user => add new one
         // final => exit
@@ -1490,8 +1494,8 @@ public:
         DepositInfo di;
     };
 
-    // when users not agree with operator, they can dispute
-    // the event will be resolved by computors
+    // when users do not agree with the published market outcome, they can dispute
+    // the forecast market will be resolved by computors
     PUBLIC_PROCEDURE_WITH_LOCALS(Dispute)
     {
         // deposit
@@ -1505,7 +1509,7 @@ public:
             if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
         }
-        if (locals.result == QASSANDRA_RESULT_NOT_SET) // no result yet
+        if (locals.result == QASSANDRA_RESULT_NOT_SET) // no outcome yet
         {
             if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
@@ -1553,7 +1557,7 @@ public:
         {
             return; // no refund because of spam
         }
-        // only allow claiming after the event is finalized (dispute window closed)
+        // only allow claiming after the forecast market is finalized (dispute window closed)
         if (!state.get().mEventFinalFlag.contains(input.eventId))
         {
             return; // no refund because of spam
@@ -1611,7 +1615,7 @@ public:
         {
             return;
         }
-        // only allow claiming after the event is finalized (dispute window closed)
+        // only allow claiming after the forecast market is finalized (dispute window closed)
         if (!state.get().mEventFinalFlag.contains(input.eventId))
         {
             return;
@@ -1776,7 +1780,7 @@ public:
     {
         sint32 i;
         sint8 result;
-        sint32 voteCount; // final vote count for result
+        sint32 voteCount; // final vote count for outcome
         sint32 isComputor;
         DisputeResolveInfo dri;
         sint32 voteNo, voteYes;
@@ -1796,7 +1800,7 @@ public:
 
         QassandraLoggerWithData log;
     };
-    // resolve a disputed event, can only be called by computors
+    // resolve a disputed forecast market, can only be called by computors
     PUBLIC_PROCEDURE_WITH_LOCALS(ResolveDispute)
     {
         if (qpi.invocationReward() < 10000000)
@@ -1863,7 +1867,7 @@ public:
             return;
         }
 
-        // POT have: mDepositAmountForDispute x 2: from disputer and GO
+        // POT has: mDepositAmountForDispute x 2, from disputer and market operator
         // computors takes 0.3 x POT
         // disputer takes 0.7 x POT
         state.get().mDisputeInfo.get(input.eventId, locals.diDisputer);
@@ -1902,7 +1906,7 @@ public:
         state.mut().mGODepositInfo.removeByKey(input.eventId);
         state.mut().mDisputeResolver.removeByKey(input.eventId);
 
-        // finalize the event (guard against double-finalization)
+        // finalize the forecast market (guard against double-finalization)
         if (!state.get().mEventFinalFlag.contains(input.eventId))
         {
             locals.fei.eventId = input.eventId;
@@ -1913,8 +1917,8 @@ public:
     }
 
     /**
-    * Try to finalize an event
-    * call by GO - at least 24 hours after end date
+    * Try to finalize a forecast market
+    * called by the market operator - at least 24 hours after end date
     * the reward distribution goes thru if there is no dispute
     * @param eventId
     */
@@ -1952,10 +1956,10 @@ public:
 
         if (state.get().mDisputeInfo.contains(input.eventId))
         {
-            // this event is being disputed: users not agree with result from operation team
+            // this forecast market is being disputed: users do not agree with the outcome from the market operation team
             return;
         }
-        // only finalizing after 1000 ticks since result is published
+        // only finalizing after 1000 ticks since the outcome is published
         state.get().mEventResultPublishTickTime.get(input.eventId, locals.publishResultTick);
         if (locals.publishResultTick + QASSANDRA_DISPUTE_WINDOW > qpi.tick())
         {
@@ -1976,7 +1980,7 @@ public:
             locals.winOption = 1;
         }
 
-        // ALL passed, no dispute, return the deposit to GO
+        // ALL passed, no dispute, return the deposit to the market operator
         state.get().mGODepositInfo.get(input.eventId, locals.di);
         qpi.transfer(locals.di.pubkey, locals.di.amount);
         state.mut().mGODepositInfo.removeByKey(input.eventId); // clean up
@@ -2020,7 +2024,7 @@ public:
         sint64 i;
     };
     /**
-     * @return a list of active eventID.
+     * @return a list of active forecast market IDs.
      */
     PUBLIC_FUNCTION_WITH_LOCALS(GetActiveEvent)
     {
@@ -2036,7 +2040,7 @@ public:
     {
         struct PositionInfo
         {
-            uint64 eo; //packed eventId and option bit
+            uint64 eo; // packed market ID and outcome option bit
             sint64 amount;
         };
         sint64 count;
@@ -2085,10 +2089,10 @@ public:
     /************CORE FUNCTIONS************/
     /**************************************/
     /**
-    * Create a event
-    * if the provided info is failed to create a event, fund will be returned to invocator.
-    * @param eventDesc (32 bytes): event description 32 bytes
-    * @param optionDesc (256 bytes): option descriptions, 32 bytes for each option from 0 to 7, leave empty(zeroes) for unused memory space
+    * Create a forecast market for QUBIC/USD or ecosystem milestone forecasting.
+    * If the provided info fails validation, funds will be returned to the invocator.
+    * @param eventDesc Forecast market description.
+    * @param optionDesc Binary forecast outcome descriptions.
     * @param closeDate (4 bytes): date in qassandraData format, thefirst byte is year, the second byte is month, the third byte is day(in month), the fourth byte is 0.
     * @param endDate (4 bytes): date in qassandraData format, thefirst byte is year, the second byte is month, the third byte is day(in month), the fourth byte is 0.
     */
@@ -2113,7 +2117,7 @@ public:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(CreateEvent)
     {
-        // only allow GO (game operator) to create event
+        // only allow the market operator to create forecast markets
         if (qpi.invocator() != state.get().mQdraGov.mOperationId)
         {
             if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -2193,10 +2197,11 @@ public:
     {
     };
     /**
-    * Publish result of a event (GO only)
-    * GO is required to LOCK mDepositAmountForDispute for publishing each result
+    * Publish the outcome of a forecast market (market operator only).
+    * The market operator is required to LOCK mDepositAmountForDispute for each published outcome.
+    * TODO: Replace operator-published outcomes with oracle-first settlement in a later commit.
     * @param eventId (8 bytes)
-    * @param option (8 bytes): winning option
+    * @param option (8 bytes): winning forecast outcome option
     */
     PUBLIC_PROCEDURE_WITH_LOCALS(PublishResult)
     {
@@ -2229,7 +2234,7 @@ public:
             return;
         }
 
-        // prevent re-publishing (deposit loss, timer reset, result flip)
+        // prevent re-publishing (deposit loss, timer reset, outcome flip)
         state.get().mEventResult.get(input.eventId, locals.existingResult);
         if (locals.existingResult != QASSANDRA_RESULT_NOT_SET)
         {
@@ -2270,9 +2275,9 @@ public:
     };
     /**
      * @brief PUBLIC VIEW FUNCTION
-     * Retrieves a paginated list of orders from the order book for a specific side of an event.
-     * @param eventId The event to query.
-     * @param option The option (0 or 1).
+     * Retrieves a paginated list of orders from the order book for a specific side of a forecast market.
+     * @param eventId The forecast market to query.
+     * @param option The binary forecast outcome option (0 or 1).
      * @param isBid 1 for bids (buy orders), 0 for asks (sell orders).
      * @param offset The number of orders to skip (for pagination).
      * @return A list of up to 256 orders with their price and amount.
@@ -2365,7 +2370,7 @@ public:
         REGISTER_USER_PROCEDURE(CleanMemory, 14);
         REGISTER_USER_PROCEDURE(TransferQDRAGOV, 15);
 
-        // operation team proc
+        // market operation team procedures
         REGISTER_USER_PROCEDURE(UpdateFeeDiscountList, 20);
 
         // Shareholder proposals: use standard function/procedure indices
@@ -2436,10 +2441,10 @@ public:
     };
     PUBLIC_PROCEDURE_WITH_LOCALS(CleanMemory)
     {
-        // Only the system or GO can call this
+        // Only the system or market operator can call this
         if (qpi.invocator() == NULL_ID || qpi.invocator() == state.get().mQdraGov.mOperationId)
         {
-            // payout all positions that have final result and then clean all finalized events
+            // payout all positions that have final outcomes and then clean all finalized forecast markets
             locals.index = NULL_INDEX;
             do {
                 locals.index = state.get().mPositionInfo.nextElementIndex(locals.index);
@@ -2452,16 +2457,16 @@ public:
                     state.get().mEventResult.get(locals.eid, locals.winOption);
                     if (locals.winOption != QASSANDRA_RESULT_NOT_SET)
                     {
-                        // skip events that are currently under active dispute
+                        // skip forecast markets that are currently under active dispute
                         if (state.get().mDisputeInfo.contains(locals.eid))
                         {
                             continue;
                         }
-                        // result is available, now checking if it's still in dispute window
+                        // outcome is available, now checking if it's still in dispute window
                         state.get().mEventInfo.get(locals.eid, locals.qei);
-                        // only finalizing after 1000 ticks since result publication
+                        // only finalizing after 1000 ticks since outcome publication
                         state.get().mEventResultPublishTickTime.get(locals.eid, locals.publishResultTick);
-                        if (locals.publishResultTick + QASSANDRA_DISPUTE_WINDOW < qpi.tick()) // 1000 ticks passed the result publication
+                        if (locals.publishResultTick + QASSANDRA_DISPUTE_WINDOW < qpi.tick()) // 1000 ticks passed the outcome publication
                         {
                             if (!state.get().mEventFinalFlag.contains(locals.eid))
                             {
@@ -2501,7 +2506,7 @@ public:
                     locals.log = QassandraLoggerWithData{ 0, QASSANDRA_ARCHIVE_EVENT, id(0,0, 0, locals.eid), 0 };
                     LOG_INFO(locals.log);
 
-                    // Cleanup the result, freeing the slot in mEventResult
+                    // Cleanup the outcome, freeing the slot in mEventResult
                     state.mut().mEventResult.removeByKey(locals.eid);
                     state.mut().mEventResultPublishTickTime.removeByKey(locals.eid);
 
@@ -2512,7 +2517,7 @@ public:
                     state.mut().mEventInfo.removeByKey(locals.eid);
                     state.mut().mEventFinalFlag.removeByIndex(locals.index);
 
-                    // Clear the active event slot so GetActiveEvent/GetUserPosition don't see stale IDs
+                    // Clear the active forecast market slot so GetActiveEvent/GetUserPosition don't see stale IDs
                     state.mut().mRecentActiveEvent.set(mod(locals.eid, QASSANDRA_MAX_CONCURRENT_EVENT), NULL_INDEX);
                 }
             } while (locals.index != NULL_INDEX);
@@ -2584,7 +2589,7 @@ public:
                 }
             }
         }
-        // distribute to operation team
+        // distribute to market operation team
         if (state.get().mOperationRevenue > state.get().mDistributedOperationRevenue)
         {
             locals.payout = state.get().mOperationRevenue - state.get().mDistributedOperationRevenue;
@@ -2935,7 +2940,7 @@ public:
     {
         uint64 amount;
     };
-    PUBLIC_PROCEDURE(TransferQUSD) // that is managed by this SC
+    PUBLIC_PROCEDURE(TransferQUSD) // asset managed by this contract
     {
         if (input.amount <= 0) { output.amount = -1; return; }
         if (qpi.transferShareOwnershipAndPossession(state.get().mQUSDIdentifier.assetName, state.get().mQUSDIdentifier.issuer, qpi.invocator(), qpi.invocator(), input.amount, input.receiver) < 0)
@@ -2957,7 +2962,7 @@ public:
     {
         uint64 amount;
     };
-    PUBLIC_PROCEDURE(TransferQDRAGOV) // that is managed by this SC
+    PUBLIC_PROCEDURE(TransferQDRAGOV) // asset managed by this contract
     {
         if (input.amount <= 0) { output.amount = -1; return; }
         if (qpi.transferShareOwnershipAndPossession(state.get().mQDRAGOVIdentifier.assetName, state.get().mQDRAGOVIdentifier.issuer, qpi.invocator(), qpi.invocator(), input.amount, input.receiver) < 0)
