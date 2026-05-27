@@ -162,6 +162,15 @@ public:
         sint32 returnCode;
     };
 
+    struct logoutInPortalDAO_input
+    {
+    };
+
+    struct logoutInPortalDAO_output
+    {
+        sint32 returnCode;
+    };
+
     struct submitProposal_input
     {
         id proposalId;
@@ -406,6 +415,41 @@ protected:
         state.mut().numberOfRegisters ++;
 
         output.returnCode = QPORTAL_SUCCESS;
+        locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_SUCCESS, 0 };
+        LOG_INFO(locals.log);
+    }
+
+    struct logoutInPortalDAO_locals
+    {
+        Logger log;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(logoutInPortalDAO)
+    {
+        if(qpi.invocationReward() < QPORTAL_EXECUTION_FEE)
+        {
+            qpi.burn(qpi.invocationReward());
+            output.returnCode = QPORTAL_INSUFFICIENT_EXECUTION_FEE;
+            return;
+        }
+
+        if (qpi.invocationReward() > QPORTAL_EXECUTION_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - QPORTAL_EXECUTION_FEE);
+        }
+
+        qpi.burn(QPORTAL_EXECUTION_FEE);
+
+        if (!state.get().registers.contains(qpi.invocator()))
+        {
+            output.returnCode = QPORTAL_NOT_REGISTERED;
+            locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_NOT_REGISTERED, 0 };
+            LOG_INFO(locals.log);
+            return ;
+        }
+
+        state.mut().registers.removeByKey(qpi.invocator());
+        state.mut().numberOfRegisters --;
         locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_SUCCESS, 0 };
         LOG_INFO(locals.log);
     }
@@ -892,11 +936,12 @@ protected:
         REGISTER_USER_FUNCTION(getProposalInfo, 6);
 
         REGISTER_USER_PROCEDURE(registerInPortalDAO, 1);
-        REGISTER_USER_PROCEDURE(submitProposal, 2);
-        REGISTER_USER_PROCEDURE(submitInVote, 3);
-        REGISTER_USER_PROCEDURE(submitOutVote, 4);
-        REGISTER_USER_PROCEDURE(requestRefund, 5);
-        REGISTER_USER_PROCEDURE(transferShareManagementRights, 6);
+        REGISTER_USER_PROCEDURE(logoutInPortalDAO, 2);
+        REGISTER_USER_PROCEDURE(submitProposal, 3);
+        REGISTER_USER_PROCEDURE(submitInVote, 4);
+        REGISTER_USER_PROCEDURE(submitOutVote, 5);
+        REGISTER_USER_PROCEDURE(requestRefund, 6);
+        REGISTER_USER_PROCEDURE(transferShareManagementRights, 7);
     }
 
     struct END_EPOCH_locals
