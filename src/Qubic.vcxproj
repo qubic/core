@@ -36,6 +36,7 @@
     <ClInclude Include="contracts\MsVault.h" />
     <ClInclude Include="contracts\MyLastMatch.h" />
     <ClInclude Include="contracts\qpi.h" />
+    <ClInclude Include="contracts\Qassandra.h" />
     <ClInclude Include="contracts\Quottery.h" />
     <ClInclude Include="contracts\QUtil.h" />
     <ClInclude Include="contracts\Qx.h" />

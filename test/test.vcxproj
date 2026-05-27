@@ -124,6 +124,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="common_def.cpp" />
+    <ClCompile Include="contract_qassandra.cpp" />
     <ClCompile Include="contract_escrow.cpp" />
     <ClCompile Include="contract_pulse.cpp" />
     <ClCompile Include="contract_qbond.cpp" />
