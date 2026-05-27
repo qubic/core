@@ -1884,9 +1884,31 @@ static bool verify(const unsigned char* publicKey, const unsigned char* messageD
     point_t A;
     unsigned char temp[32 + 64], h[64];
 
-    if ((publicKey[15] & 0x80) || (signature[15] & 0x80) || (signature[62] & 0xC0) || signature[63])
-    {  // Are bit128(PublicKey) = bit128(Signature) = 0 and Signature+32 < 2^246?
+    if ((publicKey[15] & 0x80) || (signature[15] & 0x80))
+    {  // Are bit128(PublicKey) = bit128(Signature) = 0?
         return false;
+    }
+
+    // Reject non-canonical signature scalars: require S < curve_order r.
+    // S is the lower 32 bytes of (signature + 32), stored little-endian, so we
+    // compare most-significant limb first. The previous code only checked
+    // S < 2^246, but r < 2^246, leaving the gap [r, 2^246) accepted: the twin
+    // S' = S + r then verifies for the same message, producing a different tx
+    // hash that bypasses dedup (double-execution). Strict "<" also rejects S == r.
+    {
+        const unsigned long long* s = (const unsigned long long*)(signature + 32);
+        static const unsigned long long r[4] = { CURVE_ORDER_0, CURVE_ORDER_1, CURVE_ORDER_2, CURVE_ORDER_3 };
+        bool canonical = false;
+        for (int i = 3; i >= 0; --i)
+        {
+            if (s[i] < r[i]) { canonical = true; break; } // S < r  -> accept
+            if (s[i] > r[i]) { break; }                   // S > r  -> reject (canonical stays false)
+            // s[i] == r[i] -> undecided, inspect next-lower limb; if all equal, S == r -> reject
+        }
+        if (!canonical)
+        {
+            return false;
+        }
     }
 
     if (!decode(publicKey, A)) // Also verifies that A is on the curve, if it is not it fails
