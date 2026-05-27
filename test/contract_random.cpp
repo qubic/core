@@ -453,10 +453,55 @@ TEST(ContractRandom, RevealWithZeroCommitIsRejectedNoDoublePay)
         << "a rejected commit==0 call must not set the participation flag";
 }
 
-// C1: a provider who does nothing in a round receives NOTHING. Their locked
-// stake is burned (slashed) and they are removed from the pool. The old bug
-// paid silent providers from the treasury.
+// C1: a provider who does nothing in a round receives NOTHING - PROVIDED at
+// least one reveal landed in the stream this tick (the reveal channel was
+// usable). Their locked stake is burned (slashed) and they are removed from
+// the pool. The old bug paid silent providers from the treasury.
+//
+// Note: a second "witness" provider reveals in T+3 so revealedThisTickFlags
+// is set somewhere in the stream. Without a witness, END_TICK would take the
+// empty-reveal-channel branch and refund instead of slash. See the dedicated
+// EmptyRevealChannel tests for that semantics.
 TEST(ContractRandom, SilentProviderIsSlashedNotPaid)
+{
+    ContractTestingRandom r;
+    const uint8 tier = 2;
+    const sint64 collateral = collateralForTier(tier);
+    const uint32 stream = r.tick() % 3;
+
+    id silent  = getUser(1);
+    id witness = getUser(2);
+    auto witR1 = makeReveal(101);
+    auto witR2 = makeReveal(102);
+    QPI::bit_4096 zero; zero.setAll(0);
+
+    // T: both providers commit. T+3 will be a slash-eligible round once the
+    // witness reveals.
+    increaseEnergy(silent,  collateral);
+    increaseEnergy(witness, collateral);
+    r.revealAndCommit(silent,  zero, commitOf(makeReveal(1)), collateral);
+    r.revealAndCommit(witness, zero, commitOf(witR1),         collateral);
+    r.endTick();
+
+    const uint64    burnedBefore  = r.state()->burnedAmount;
+    const long long silentBefore  = getBalance(silent);
+
+    // T+3: witness reveals, silent does nothing. The reveal channel is proven
+    // usable, so slashing applies to silent.
+    r.setTick(r.tick() + 3);
+    increaseEnergy(witness, collateral);
+    r.revealAndCommit(witness, witR1, commitOf(witR2), collateral);
+    r.endTick();
+
+    EXPECT_EQ(getBalance(silent), silentBefore)
+        << "a silent provider must not receive any payout when a peer revealed";
+    EXPECT_EQ(r.state()->burnedAmount, burnedBefore + (uint64)collateral)
+        << "the silent provider's locked collateral must be burned";
+    EXPECT_EQ(r.state()->populations.get(stream), 1u)
+        << "only the witness must remain; the silent provider is removed";
+}
+
+TEST(ContractRandom, EmptyRevealChannelRefundsAndRemovesPendingCommit)
 {
     ContractTestingRandom r;
     const uint8 tier = 2;
@@ -466,25 +511,206 @@ TEST(ContractRandom, SilentProviderIsSlashedNotPaid)
     id provider = getUser(1);
     QPI::bit_4096 zero; zero.setAll(0);
 
-    // First commit, then survive one END_TICK with the stake locked.
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, zero, commitOf(makeReveal(1)), collateral);
+    r.endTick();
+    const uint32 index = stream * RANDOM_STREAM_CAPACITY;
+    EXPECT_EQ(r.state()->lockedCollateralAmounts.get(index), (uint64)collateral);
+
+    const uint64    burnedBefore  = r.state()->burnedAmount;
+    const long long balanceBefore = getBalance(provider);
+
+    // T+3: nobody reveals (network glitch). END_TICK refunds the stake
+    // AND removes the provider so the slot is reusable. Leaving them
+    // registered with commits == 0 would brick the slot (the existing-
+    // provider check in the first-commit path and the K12 check in the
+    // reveal path both reject any return).
+    r.setTick(r.tick() + 3);
+    r.endTick();
+
+    EXPECT_EQ(getBalance(provider), balanceBefore + collateral)
+        << "pending-commit stake must be refunded on empty reveal channel";
+    EXPECT_EQ(r.state()->burnedAmount, burnedBefore)
+        << "nothing must be burned when the reveal channel was empty";
+    EXPECT_EQ(r.state()->populations.get(stream), 0u)
+        << "stale-commit holder must be swap-deleted so slot is reusable";
+    EXPECT_EQ(r.state()->lockedCollateralAmounts.get(index), 0u);
+    EXPECT_TRUE(r.state()->providers.get(index) == id::zero())
+        << "provider slot must be cleared so re-registration is possible";
+    EXPECT_TRUE(r.state()->commits.get(index) == id::zero());
+}
+
+// R1 regression test: a force-majeured provider must be able to register
+// again on the next stream-tick. Without swap-delete in the empty branch
+// their slot would stay bricked.
+TEST(ContractRandom, ProviderCanReRegisterAfterEmptyRevealChannel)
+{
+    ContractTestingRandom r;
+    const uint8 tier = 2;
+    const sint64 collateral = collateralForTier(tier);
+    const uint32 stream = r.tick() % 3;
+
+    id provider = getUser(1);
+    QPI::bit_4096 zero; zero.setAll(0);
+
     increaseEnergy(provider, collateral);
     r.revealAndCommit(provider, zero, commitOf(makeReveal(1)), collateral);
     r.endTick();
 
-    const uint64 burnedBefore = r.state()->burnedAmount;
-    const long long balanceBefore = getBalance(provider);
-
-    // Next cycle: the provider stays silent.
     r.setTick(r.tick() + 3);
     r.endTick();
+    ASSERT_EQ(r.state()->populations.get(stream), 0u);
 
-    // C1: silent provider is not paid; their stake is burned and they are gone.
-    EXPECT_EQ(getBalance(provider), balanceBefore)
-        << "a silent provider must not receive any payout";
-    EXPECT_EQ(r.state()->burnedAmount, burnedBefore + (uint64)collateral)
-        << "the silent provider's locked collateral must be burned";
+    // Walk forward until tick%3 == stream again so we are in this stream's
+    // commit window.
+    while ((r.tick() % 3) != stream) { r.setTick(r.tick() + 1); r.endTick(); }
+
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, zero, commitOf(makeReveal(2)), collateral);
+
+    EXPECT_EQ(r.state()->populations.get(stream), 1u)
+        << "provider must be able to register again after a force-majeure refund";
+    const uint32 index = stream * RANDOM_STREAM_CAPACITY;
+    EXPECT_TRUE(r.state()->providers.get(index) == provider)
+        << "fresh registration must populate the freed slot";
+    EXPECT_EQ(r.state()->lockedCollateralAmounts.get(index), (uint64)collateral)
+        << "fresh stake must be locked";
+}
+
+TEST(ContractRandom, FirstCommitDoesNotCountAsRevealForEmptyChannel)
+{
+    ContractTestingRandom r;
+    const uint8 tier = 2;
+    const sint64 collateral = collateralForTier(tier);
+    const uint32 stream = r.tick() % 3;
+
+    id stale   = getUser(1);  // committed at T, expected to reveal at T+3
+    id joiner  = getUser(2);  // first-commits at T+3
+    QPI::bit_4096 zero; zero.setAll(0);
+
+    // T: stale commits.
+    increaseEnergy(stale, collateral);
+    r.revealAndCommit(stale, zero, commitOf(makeReveal(1)), collateral);
+    r.endTick();
+
+    const uint64    burnedBefore = r.state()->burnedAmount;
+    const long long staleBefore  = getBalance(stale);
+
+    // T+3: stale does nothing, joiner does a first-commit only. No actual
+    // reveal landed → empty-reveal-channel branch must fire.
+    r.setTick(r.tick() + 3);
+    increaseEnergy(joiner, collateral);
+    r.revealAndCommit(joiner, zero, commitOf(makeReveal(2)), collateral);
+    r.endTick();
+
+    EXPECT_EQ(getBalance(stale), staleBefore + collateral)
+        << "stale provider must be refunded - a first-commit is not a reveal";
+    EXPECT_EQ(r.state()->burnedAmount, burnedBefore)
+        << "no burn when the reveal channel was empty";
+    // Stale is swap-deleted; fresh joiner stays. After swap-delete the
+    // joiner may end up at any index (depends on which slot was vacated).
+    EXPECT_EQ(r.state()->populations.get(stream), 1u)
+        << "stale removed, joiner kept";
+
+    bool joinerFound = false;
+    for (uint32 i = 0; i < r.state()->populations.get(stream); i++)
+    {
+        const uint32 idx = stream * RANDOM_STREAM_CAPACITY + i;
+        if (r.state()->providers.get(idx) == joiner)
+        {
+            joinerFound = true;
+            EXPECT_EQ(r.state()->lockedCollateralAmounts.get(idx), (uint64)collateral)
+                << "joiner's fresh stake must remain locked for next round";
+            EXPECT_FALSE(r.state()->commits.get(idx) == id::zero())
+                << "joiner's fresh commit must be preserved";
+        }
+    }
+    EXPECT_TRUE(joinerFound) << "joiner must remain in the pool";
+}
+
+TEST(ContractRandom, EmptyRevealChannelIsolatedToStream)
+{
+    ContractTestingRandom r;
+    const uint8 tier = 2;
+    const sint64 collateral = collateralForTier(tier);
+
+    // Align so each stream has a committed provider going into its next round.
+    r.setTick(r.tick());
+    const uint32 stream0 = r.tick() % 3;
+    const uint32 stream1 = (r.tick() + 1) % 3;
+    const uint32 stream2 = (r.tick() + 2) % 3;
+
+    id p0 = getUser(10);
+    id p1 = getUser(11);
+    id p2 = getUser(12);
+    QPI::bit_4096 zero; zero.setAll(0);
+
+    // Each provider commits in their own stream's tick.
+    increaseEnergy(p0, collateral);
+    r.revealAndCommit(p0, zero, commitOf(makeReveal(1)), collateral);
+    r.endTick();
+
+    r.setTick(r.tick() + 1);
+    increaseEnergy(p1, collateral);
+    r.revealAndCommit(p1, zero, commitOf(makeReveal(2)), collateral);
+    r.endTick();
+
+    r.setTick(r.tick() + 1);
+    increaseEnergy(p2, collateral);
+    r.revealAndCommit(p2, zero, commitOf(makeReveal(3)), collateral);
+    r.endTick();
+
+    // Now jump forward exactly 3 ticks (so we land on stream0's reveal round)
+    // and run END_TICK with no reveal activity. Only stream0 must be touched.
+    r.setTick(r.tick() + 1); // now == original_tick + 3, mod 3 == stream0
+    const uint64 lockedS1Before = r.state()->lockedCollateralAmounts.get(stream1 * RANDOM_STREAM_CAPACITY);
+    const uint64 lockedS2Before = r.state()->lockedCollateralAmounts.get(stream2 * RANDOM_STREAM_CAPACITY);
+    r.endTick();
+
+    EXPECT_EQ(r.state()->lockedCollateralAmounts.get(stream0 * RANDOM_STREAM_CAPACITY), 0u)
+        << "stream0's locked stake must be refunded (empty reveal tick)";
+    EXPECT_EQ(r.state()->lockedCollateralAmounts.get(stream1 * RANDOM_STREAM_CAPACITY), lockedS1Before)
+        << "stream1 must be untouched by stream0's END_TICK";
+    EXPECT_EQ(r.state()->lockedCollateralAmounts.get(stream2 * RANDOM_STREAM_CAPACITY), lockedS2Before)
+        << "stream2 must be untouched by stream0's END_TICK";
+    EXPECT_EQ(r.state()->populations.get(stream0), 0u)
+        << "stream0's stale-commit holder is swap-deleted";
+    EXPECT_EQ(r.state()->populations.get(stream1), 1u)
+        << "stream1 untouched";
+    EXPECT_EQ(r.state()->populations.get(stream2), 1u)
+        << "stream2 untouched";
+}
+
+TEST(ContractRandom, ConsecutiveEmptyRevealChannelsDoNotDoubleRefund)
+{
+    ContractTestingRandom r;
+    const uint8 tier = 2;
+    const sint64 collateral = collateralForTier(tier);
+    const uint32 stream = r.tick() % 3;
+
+    id provider = getUser(1);
+    QPI::bit_4096 zero; zero.setAll(0);
+
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, zero, commitOf(makeReveal(1)), collateral);
+    r.endTick();
+
+    const long long balanceBefore = getBalance(provider);
+
+    // First empty reveal tick: refund.
+    r.setTick(r.tick() + 3);
+    r.endTick();
+    EXPECT_EQ(getBalance(provider), balanceBefore + collateral)
+        << "first empty reveal tick must refund once";
+
+    // After the first empty tick the provider was swap-deleted, so the
+    // second empty tick has no providers to process at all.
+    r.setTick(r.tick() + 3);
+    r.endTick();
+    EXPECT_EQ(getBalance(provider), balanceBefore + collateral)
+        << "second empty reveal tick must NOT refund again";
     EXPECT_EQ(r.state()->populations.get(stream), 0u)
-        << "the silent provider must be removed from the pool";
+        << "stream must remain empty across consecutive empty ticks";
 }
 
 // H4: when one provider in a tier is a no-show, the other providers in that

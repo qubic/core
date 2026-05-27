@@ -288,6 +288,57 @@ private:
 			state.mut().entropy.set(locals.stream * 10 + locals.i, locals.zeroReveal);
 		}
 
+		for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
+		{
+			if (state.get().revealedThisTickFlags.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i))
+			{
+				break;
+			}
+		}
+		if (locals.i == state.get().populations.get(locals.stream))
+		{
+			for (locals.i = state.get().populations.get(locals.stream); locals.i--;)
+			{
+				locals.index = locals.stream * RANDOM_STREAM_CAPACITY + locals.i;
+				if (state.get().revealOrCommitFlags.get(locals.index))
+				{
+					state.mut().revealOrCommitFlags.set(locals.index, 0);
+					continue;
+				}
+
+				locals.lockedAmount = state.get().lockedCollateralAmounts.get(locals.index);
+				if (locals.lockedAmount > 0)
+				{
+					qpi.transfer(state.get().providers.get(locals.index),
+					             static_cast<sint64>(locals.lockedAmount));
+				}
+
+				// Swap-delete: move the last active provider into this slot
+				// so the stream stays compact.
+				locals.lastIndex = locals.stream * RANDOM_STREAM_CAPACITY + state.get().populations.get(locals.stream) - 1;
+				if (locals.index != locals.lastIndex)
+				{
+					state.mut().providers.set(locals.index, state.get().providers.get(locals.lastIndex));
+					state.mut().collateralTiers.set(locals.index, state.get().collateralTiers.get(locals.lastIndex));
+					state.mut().commits.set(locals.index, state.get().commits.get(locals.lastIndex));
+					state.mut().reveals.set(locals.index, state.get().reveals.get(locals.lastIndex));
+					state.mut().lockedCollateralAmounts.set(locals.index, state.get().lockedCollateralAmounts.get(locals.lastIndex));
+					state.mut().revealOrCommitFlags.set(locals.index, state.get().revealOrCommitFlags.get(locals.lastIndex));
+					state.mut().revealedThisTickFlags.set(locals.index, state.get().revealedThisTickFlags.get(locals.lastIndex));
+				}
+				state.mut().providers.set(locals.lastIndex, id::zero());
+				state.mut().collateralTiers.set(locals.lastIndex, 0);
+				state.mut().commits.set(locals.lastIndex, id::zero());
+				state.mut().reveals.set(locals.lastIndex, locals.zeroReveal);
+				state.mut().lockedCollateralAmounts.set(locals.lastIndex, 0);
+				state.mut().revealOrCommitFlags.set(locals.lastIndex, 0);
+				state.mut().revealedThisTickFlags.set(locals.lastIndex, 0);
+
+				state.mut().populations.set(locals.stream, state.get().populations.get(locals.stream) - 1);
+			}
+			return;
+		}
+
 		// Walk providers back-to-front so removed slots can be swap-deleted
 		// without disturbing slots not yet visited.
 		for (locals.i = state.get().populations.get(locals.stream); locals.i--;)
