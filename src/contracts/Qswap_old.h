@@ -1356,7 +1356,7 @@ protected:
 		}
 
 		// check the vadility of input params
-		if (input.quAmountMin < 0 || input.assetAmountMin < 0)
+		if (input.quAmountMin < 0 || input.assetAmountMin < 0 || input.burnLiquidity <= 0)
 		{
 			return;
 		}
