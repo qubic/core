@@ -404,20 +404,15 @@ TEST(TestWolfPack, SetAdmin)
     ContractTestingWP wp;
     id newAdmin(50, 60, 70, 80);
 
+    // SetAdmin is now deprecated and always rejects (immutable admin)
     auto out = wp.setAdmin(adminAddr, newAdmin);
-    EXPECT_EQ(out.returnCode, WOLFPACK_OK);
+    EXPECT_EQ(out.returnCode, WOLFPACK_ERROR_ACCESS_DENIED);
 
     auto* s = wp.getState();
-    EXPECT_EQ(s->adminAddress, newAdmin);
-
-    // Old admin should no longer work
-    auto out2 = wp.addClanMember(adminAddr, user1, 0);
-    EXPECT_EQ(out2.returnCode, WOLFPACK_ERROR_ACCESS_DENIED);
-
-    // New admin works
-    auto out3 = wp.addClanMember(newAdmin, user1, 0);
-    EXPECT_EQ(out3.returnCode, WOLFPACK_OK);
+    // adminAddress should remain unchanged (hardcoded to token issuer)
+    EXPECT_EQ(s->adminAddress, adminAddr);
 }
+
 
 TEST(TestWolfPack, SetAdminAccessDenied)
 {
@@ -427,21 +422,25 @@ TEST(TestWolfPack, SetAdminAccessDenied)
     EXPECT_EQ(out.returnCode, WOLFPACK_ERROR_ACCESS_DENIED);
 }
 
-TEST(TestWolfPack, SetAdminBootstrap)
+TEST(TestWolfPack, AdminIsImmutable)
 {
     ContractTestingWP wp;
 
-    // Reset to NULL_ID to simulate fresh deployment (bootstrap state)
-    wp.getState()->adminAddress = id{};
+    // Verify adminAddress is hardcoded to token issuer at INITIALIZE
+    auto* s = wp.getState();
+    EXPECT_EQ(s->adminAddress, adminAddr);
 
-    // Any user can claim admin when adminAddress is NULL_ID
-    auto out = wp.setAdmin(user1, user1);
-    EXPECT_EQ(out.returnCode, WOLFPACK_OK);
-    EXPECT_EQ(wp.getState()->adminAddress, user1);
-
-    // Second user can no longer hijack admin (user1 is now admin)
-    out = wp.setAdmin(user2, user2);
+    // SetAdmin is now deprecated and always rejects
+    id newAdmin(50, 60, 70, 80);
+    auto out = wp.setAdmin(adminAddr, newAdmin);
     EXPECT_EQ(out.returnCode, WOLFPACK_ERROR_ACCESS_DENIED);
+    
+    // Admin address should not change
+    EXPECT_EQ(s->adminAddress, adminAddr);
+    
+    // Verify admin-only procedures still work (with correct admin)
+    auto out2 = wp.addClanMember(adminAddr, user1, 0);
+    EXPECT_EQ(out2.returnCode, WOLFPACK_OK);
 }
 
 // ============================================================================
@@ -877,4 +876,29 @@ TEST(TestWolfPack, EndEpochCleansUpStakingMaps)
     uint64 val = 0;
     EXPECT_TRUE(s->stakedBalances.get(user1, val));
     EXPECT_EQ(val, 100ULL);
+}
+
+// ============================================================================
+// Staking - Overflow & Edge Cases
+// ============================================================================
+
+TEST(TestWolfPack, StakingRewardOverflowEdgeCase)
+{
+    ContractTestingWP wp;
+    auto* s = wp.getState();
+
+    // Edge case: very small totalStaked with large reward
+    // This tests the uint128 cast on quotient in the staking reward calculation
+    s->totalStaked = 100;  // Small denominator
+    s->stakingRewardPool = 1923076;  // Large reward
+    s->stakedBalances.set(user1, 100);  // User has all the stake
+    s->stakerCount = 1;
+
+    wp.beginEpoch();
+
+    // Verify reward calculation didn't overflow
+    uint64 reward = 0;
+    s->pendingStakingRewards.get(user1, reward);
+    EXPECT_EQ(reward, 1923076ULL);  // Should get full pool
+    EXPECT_EQ(s->stakingRewardPool, 0ULL);
 }

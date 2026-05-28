@@ -416,16 +416,9 @@ struct WOLFPACK : public ContractBase
 
     PUBLIC_PROCEDURE(SetAdmin)
     {
-        // adminAddress is hardcoded in INITIALIZE, so only the current admin
-        // may rotate it. (The NULL_ID clause is a defensive fallback in case
-        // the contract is ever deployed with an unset admin.)
-        if (qpi.invocator() != state.get().adminAddress && state.get().adminAddress != NULL_ID)
-        {
-            output.returnCode = WOLFPACK_ERROR_ACCESS_DENIED;
-            return;
-        }
-        state.mut().adminAddress = input.newAdmin;
-        output.returnCode = WOLFPACK_OK;
+        // Admin address is immutable — hardcoded to token issuer at INITIALIZE.
+        // SetAdmin is deprecated and no longer supported to prevent NULL_ID attacks.
+        output.returnCode = WOLFPACK_ERROR_ACCESS_DENIED;
     }
 
     PUBLIC_PROCEDURE(SetExcludeAddress)
@@ -626,10 +619,14 @@ struct WOLFPACK : public ContractBase
     {
         // GGWP token (external, issued on QX by MLMWPS...)
         state.mut().wpToken.issuer = ID(
-            _M, _L, _M, _W, _P, _S, _Q, _N, _V, _A, _I, _B, _R, _F, _D, _H,
-            _W, _C, _K, _S, _F, _O, _V, _U, _A, _Z, _D, _D, _W, _K, _J, _G,
-            _C, _L, _R, _S, _Y, _Z, _I, _U, _E, _F, _D, _U, _R, _P, _W, _I,
-            _P, _Q, _X, _A, _C, _Y, _O, _E
+            _M, _L, _M, _W, _P, _S, _Q, _N,
+            _V, _A, _I, _B, _R, _F, _D, _H,
+            _W, _C, _K, _S, _F, _O, _V, _U,
+            _A, _Z, _D, _D, _W, _K, _J, _G,
+            _C, _L, _R, _S, _Y, _Z, _I, _U,
+            _E, _F, _D, _U, _R, _P, _W, _I,
+            _P, _Q, _X, _A, _C, _Y, _O, _E,
+            _P, _M, _L, _B
         );
         state.mut().wpToken.assetName = WOLFPACK_SC_ASSET_NAME; // "GGWP"
 
@@ -769,7 +766,7 @@ struct WOLFPACK : public ContractBase
 
                 locals.quotient = div(locals.rewardThisEpoch, state.get().totalStaked);
                 locals.remainder = mod(locals.rewardThisEpoch, state.get().totalStaked);
-                locals.stakerReward = locals.quotient * locals.stakerTokens + div((uint128)locals.remainder * (uint128)locals.stakerTokens, (uint128)state.get().totalStaked).low;
+                locals.stakerReward = ((uint128)locals.quotient * (uint128)locals.stakerTokens).low + div((uint128)locals.remainder * (uint128)locals.stakerTokens, (uint128)state.get().totalStaked).low;
                 if (locals.stakerReward == 0) continue;
 
                 locals.existingReward = 0;
