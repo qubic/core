@@ -10,7 +10,10 @@ constexpr uint64 QASSANDRA_HARD_CAP_CREATOR_FEE = 50; // 5%
 
 constexpr uint64 QASSANDRA_DOUBLE_BUFFER_SIZE = QASSANDRA_MAX_CONCURRENT_EVENT * 2; // bug in SC verify tool, need this to bypass
 
+// Asset names use the repository little-endian u64 ticker convention:
+// QDRA -> 'Q' | 'D' << 8 | 'R' << 16 | 'A' << 24 = 1095910481.
 constexpr uint64 QASSANDRA_CONTRACT_ASSET_NAME = 1095910481ULL;
+// QDRAGOV -> 'Q' | 'D' << 8 | 'R' << 16 | 'A' << 24 | 'G' << 32 | 'O' << 40 | 'V' << 48 = 24294015454299217.
 constexpr uint64 QASSANDRA_GOV_ASSET_NAME = 24294015454299217ULL;
 
 constexpr uint8 QASSANDRA_MARKET_TYPE_GENERIC = 0;
@@ -21,6 +24,10 @@ constexpr uint8 QASSANDRA_COMPARISON_UNSPECIFIED = 0;
 constexpr uint8 QASSANDRA_COMPARISON_GTE = 1;
 constexpr uint8 QASSANDRA_COMPARISON_LTE = 2;
 
+// QUBIC/USD oracle replies are rational numerator/denominator values.
+// Threshold checks use uint128 cross-products against this fixed-point scale,
+// intentionally avoiding division before comparison so equality and tiny prices
+// are handled deterministically.
 constexpr uint64 QASSANDRA_QUBIC_USD_PRICE_SCALE = 1000000000ULL;
 constexpr uint8 QASSANDRA_ORACLE_SETTLEMENT_NONE = 0;
 constexpr uint8 QASSANDRA_ORACLE_SETTLEMENT_PENDING = 1;
@@ -501,6 +508,9 @@ protected:
         return existingResult == QASSANDRA_RESULT_NOT_SET;
     }
 
+    // Only QUBIC/USD threshold markets are oracle-authoritative. Generic and
+    // ecosystem milestone markets keep manual PublishResult, so this block must
+    // remain an exact marketType match.
     inline static bool shouldBlockManualPublishResult(const QdraMarketMetadata& metadata)
     {
         return metadata.marketType == QASSANDRA_MARKET_TYPE_QUBIC_USD_THRESHOLD;
@@ -2745,6 +2755,9 @@ public:
             return;
         }
 
+        // Scaffold trust model: the accepted oracle reply is currently the
+        // settlement source. Future hardening may add quorum, retry policy, or
+        // governance fallback without changing the simple QUBIC/USD market UX.
         output.oracleQueryId = QUERY_ORACLE(OI::Price, locals.query, NotifyQubicUsdPriceReply, input.timeoutMilliseconds);
         if (output.oracleQueryId < 0)
         {
@@ -2785,6 +2798,9 @@ public:
         sint8 existingResult;
     };
 
+    // Idempotency: oracle settlement tracking may record the reply and mapped
+    // outcome, but mEventResult is written only when the existing result is
+    // explicitly QASSANDRA_RESULT_NOT_SET.
     PRIVATE_PROCEDURE_WITH_LOCALS(NotifyQubicUsdPriceReply)
     {
         if (!state.get().mOracleQueryToEvent.contains(input.queryId))
