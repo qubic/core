@@ -21,6 +21,14 @@ constexpr uint8 QASSANDRA_COMPARISON_UNSPECIFIED = 0;
 constexpr uint8 QASSANDRA_COMPARISON_GTE = 1;
 constexpr uint8 QASSANDRA_COMPARISON_LTE = 2;
 
+constexpr uint64 QASSANDRA_QUBIC_USD_PRICE_SCALE = 1000000000ULL;
+constexpr uint8 QASSANDRA_ORACLE_SETTLEMENT_NONE = 0;
+constexpr uint8 QASSANDRA_ORACLE_SETTLEMENT_PENDING = 1;
+constexpr uint8 QASSANDRA_ORACLE_SETTLEMENT_SUCCESS = 2;
+constexpr uint8 QASSANDRA_ORACLE_SETTLEMENT_TIMEOUT = 3;
+constexpr uint8 QASSANDRA_ORACLE_SETTLEMENT_UNRESOLVABLE = 4;
+constexpr uint8 QASSANDRA_ORACLE_SETTLEMENT_INVALID_REPLY = 5;
+
 constexpr uint32 QASSANDRA_DISPUTE_WINDOW = 1000;
 constexpr uint64 QASSANDRA_INVALID_DATETIME = 1;
 constexpr uint64 QASSANDRA_INSUFFICIENT_FUND = 5;
@@ -139,6 +147,16 @@ public:
         uint64 targetDate; // reserved deadline or target date for threshold/milestone markets
         Array<id, 2> reference; // reserved for future oracle feed, milestone, or release references
     };
+    struct QdraOracleSettlement
+    {
+        sint64 queryId;
+        uint32 requestedTick;
+        uint8 status;
+        sint8 oracleOutcome;
+        uint16 reserved0;
+        sint64 numerator;
+        sint64 denominator;
+    };
     struct DepositInfo
     {
         id pubkey;
@@ -214,6 +232,8 @@ public:
         // Optional type-specific metadata for QUBIC/USD threshold and ecosystem milestone markets.
         // This is metadata only; oracle-first settlement and typed market validation are future work.
         HashMap<uint64, QdraMarketMetadata, QASSANDRA_MAX_CONCURRENT_EVENT> mMarketMetadata;
+        HashMap<uint64, QdraOracleSettlement, QASSANDRA_MAX_CONCURRENT_EVENT> mOracleSettlement;
+        HashMap<sint64, uint64, QASSANDRA_MAX_CONCURRENT_EVENT> mOracleQueryToEvent;
         HashMap<uint64, sint8, QASSANDRA_MAX_CONCURRENT_EVENT> mEventResult; // forecast outcome: NOT_SET: -1 , NO: 0, 1: YES: 1
         HashMap<uint64, uint32, QASSANDRA_MAX_CONCURRENT_EVENT> mEventResultPublishTickTime; // tick tracker for when the forecast outcome was published
         HashMap<uint64, bit, QASSANDRA_MAX_CONCURRENT_EVENT> mEventFinalFlag; // flag if the forecast market is finalized (outcome is set and past dispute window)
@@ -321,6 +341,55 @@ protected:
     static bool isPriceValid(sint64 price, sint64 wholeSharePrice)
     {
         return price > 0 && price <= wholeSharePrice;
+    }
+
+    inline static id qubicCurrencyId()
+    {
+        return id(Ch::Q, Ch::U, Ch::B, Ch::I, Ch::C);
+    }
+
+    inline static id usdCurrencyId()
+    {
+        return id(Ch::U, Ch::S, Ch::D, Ch::null, Ch::null);
+    }
+
+    inline static id usdtCurrencyId()
+    {
+        return id(Ch::U, Ch::S, Ch::D, Ch::T, Ch::null);
+    }
+
+    inline static bool isQubicUsdOracleReplyValid(const OI::Price::OracleReply& reply)
+    {
+        return reply.numerator > 0 && reply.denominator > 0;
+    }
+
+    inline static bool mapQubicUsdThresholdOutcome(const OI::Price::OracleReply& reply, const QdraMarketMetadata& metadata, sint8& outcome)
+    {
+        outcome = QASSANDRA_RESULT_NOT_SET;
+
+        if (!isQubicUsdOracleReplyValid(reply) ||
+            metadata.marketType != QASSANDRA_MARKET_TYPE_QUBIC_USD_THRESHOLD ||
+            metadata.thresholdValue <= 0)
+        {
+            return false;
+        }
+
+        const uint128 observed = uint128((uint64)reply.numerator) * uint128(QASSANDRA_QUBIC_USD_PRICE_SCALE);
+        const uint128 threshold = uint128((uint64)metadata.thresholdValue) * uint128((uint64)reply.denominator);
+
+        if (metadata.comparison == QASSANDRA_COMPARISON_GTE)
+        {
+            outcome = (observed >= threshold) ? QASSANDRA_RESULT_YES : QASSANDRA_RESULT_NO;
+            return true;
+        }
+
+        if (metadata.comparison == QASSANDRA_COMPARISON_LTE)
+        {
+            outcome = (observed <= threshold) ? QASSANDRA_RESULT_YES : QASSANDRA_RESULT_NO;
+            return true;
+        }
+
+        return false;
     }
 
     inline static bool isMarketMetadataValid(const QdraMarketMetadata& metadata)

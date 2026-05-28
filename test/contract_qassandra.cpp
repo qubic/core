@@ -6,7 +6,12 @@
 
 struct QassandraMetadataTestAccess : public QASSANDRA
 {
+    using QASSANDRA::mapQubicUsdThresholdOutcome;
+    using QASSANDRA::isQubicUsdOracleReplyValid;
     using QASSANDRA::isMarketMetadataValid;
+    using QASSANDRA::qubicCurrencyId;
+    using QASSANDRA::usdCurrencyId;
+    using QASSANDRA::usdtCurrencyId;
 };
 
 TEST(QassandraScaffold, AssetConstants)
@@ -63,11 +68,41 @@ TEST(QassandraMarketMetadataScaffold, DefaultMetadataPreservesGenericMarketType)
 TEST(QassandraMarketMetadataScaffold, MetadataStorageIsQassandraOnly)
 {
     using MetadataMap = QPI::HashMap<uint64, QASSANDRA::QdraMarketMetadata, QASSANDRA_MAX_CONCURRENT_EVENT>;
+    using SettlementMap = QPI::HashMap<uint64, QASSANDRA::QdraOracleSettlement, QASSANDRA_MAX_CONCURRENT_EVENT>;
+    using QueryToEventMap = QPI::HashMap<sint64, uint64, QASSANDRA_MAX_CONCURRENT_EVENT>;
 
     EXPECT_GT(sizeof(QASSANDRA::QdraMarketMetadata), 0);
-    EXPECT_EQ(sizeof(QASSANDRA::StateData), sizeof(QUOTTERY::StateData) + sizeof(MetadataMap));
+    EXPECT_GT(sizeof(QASSANDRA::QdraOracleSettlement), 0);
+    EXPECT_EQ(sizeof(QASSANDRA::StateData), sizeof(QUOTTERY::StateData) + sizeof(MetadataMap) + sizeof(SettlementMap) + sizeof(QueryToEventMap));
     EXPECT_EQ(contractDescriptions[QASSANDRA_CONTRACT_INDEX].stateSize, sizeof(QASSANDRA::StateData));
     EXPECT_EQ(contractDescriptions[QUOTTERY_CONTRACT_INDEX].stateSize, sizeof(QUOTTERY::StateData));
+}
+
+TEST(QassandraOracleSettlementScaffold, CurrencyIds)
+{
+    EXPECT_EQ(QassandraMetadataTestAccess::qubicCurrencyId(), id(Ch::Q, Ch::U, Ch::B, Ch::I, Ch::C));
+    EXPECT_EQ(QassandraMetadataTestAccess::usdCurrencyId(), id(Ch::U, Ch::S, Ch::D, Ch::null, Ch::null));
+    EXPECT_EQ(QassandraMetadataTestAccess::usdtCurrencyId(), id(Ch::U, Ch::S, Ch::D, Ch::T, Ch::null));
+}
+
+TEST(QassandraOracleSettlementScaffold, PriceScaleAndStatusConstants)
+{
+    EXPECT_EQ(QASSANDRA_QUBIC_USD_PRICE_SCALE, 1000000000ULL);
+    EXPECT_EQ(QASSANDRA_ORACLE_SETTLEMENT_NONE, 0);
+    EXPECT_EQ(QASSANDRA_ORACLE_SETTLEMENT_PENDING, 1);
+    EXPECT_EQ(QASSANDRA_ORACLE_SETTLEMENT_SUCCESS, 2);
+    EXPECT_EQ(QASSANDRA_ORACLE_SETTLEMENT_TIMEOUT, 3);
+    EXPECT_EQ(QASSANDRA_ORACLE_SETTLEMENT_UNRESOLVABLE, 4);
+    EXPECT_EQ(QASSANDRA_ORACLE_SETTLEMENT_INVALID_REPLY, 5);
+}
+
+TEST(QassandraOracleSettlementScaffold, PriceReplyValidation)
+{
+    EXPECT_TRUE(QassandraMetadataTestAccess::isQubicUsdOracleReplyValid({ 1, 1 }));
+    EXPECT_FALSE(QassandraMetadataTestAccess::isQubicUsdOracleReplyValid({ 0, 1 }));
+    EXPECT_FALSE(QassandraMetadataTestAccess::isQubicUsdOracleReplyValid({ -1, 1 }));
+    EXPECT_FALSE(QassandraMetadataTestAccess::isQubicUsdOracleReplyValid({ 1, 0 }));
+    EXPECT_FALSE(QassandraMetadataTestAccess::isQubicUsdOracleReplyValid({ 1, -1 }));
 }
 
 TEST_F(ContractTesting, CreateTypedForecastMarketRegistersAtNextFreeSlot)
@@ -145,4 +180,84 @@ TEST(QassandraTypedMarketScaffold, RejectsGenericUnknownAndReservedMetadata)
     metadata.marketType = QASSANDRA_MARKET_TYPE_ECOSYSTEM_MILESTONE;
     metadata.reserved0 = 1;
     EXPECT_FALSE(QassandraMetadataTestAccess::isMarketMetadataValid(metadata));
+}
+
+TEST(QassandraOracleSettlementScaffold, MapsGteThresholdOutcomes)
+{
+    QASSANDRA::QdraMarketMetadata metadata;
+    std::memset(&metadata, 0, sizeof(metadata));
+    metadata.marketType = QASSANDRA_MARKET_TYPE_QUBIC_USD_THRESHOLD;
+    metadata.comparison = QASSANDRA_COMPARISON_GTE;
+    metadata.thresholdValue = 5 * QASSANDRA_QUBIC_USD_PRICE_SCALE;
+
+    sint8 outcome = QASSANDRA_RESULT_NOT_SET;
+    EXPECT_TRUE(QassandraMetadataTestAccess::mapQubicUsdThresholdOutcome({ 6, 1 }, metadata, outcome));
+    EXPECT_EQ(outcome, QASSANDRA_RESULT_YES);
+
+    EXPECT_TRUE(QassandraMetadataTestAccess::mapQubicUsdThresholdOutcome({ 5, 1 }, metadata, outcome));
+    EXPECT_EQ(outcome, QASSANDRA_RESULT_YES);
+
+    EXPECT_TRUE(QassandraMetadataTestAccess::mapQubicUsdThresholdOutcome({ 4, 1 }, metadata, outcome));
+    EXPECT_EQ(outcome, QASSANDRA_RESULT_NO);
+}
+
+TEST(QassandraOracleSettlementScaffold, MapsLteThresholdOutcomes)
+{
+    QASSANDRA::QdraMarketMetadata metadata;
+    std::memset(&metadata, 0, sizeof(metadata));
+    metadata.marketType = QASSANDRA_MARKET_TYPE_QUBIC_USD_THRESHOLD;
+    metadata.comparison = QASSANDRA_COMPARISON_LTE;
+    metadata.thresholdValue = 5 * QASSANDRA_QUBIC_USD_PRICE_SCALE;
+
+    sint8 outcome = QASSANDRA_RESULT_NOT_SET;
+    EXPECT_TRUE(QassandraMetadataTestAccess::mapQubicUsdThresholdOutcome({ 4, 1 }, metadata, outcome));
+    EXPECT_EQ(outcome, QASSANDRA_RESULT_YES);
+
+    EXPECT_TRUE(QassandraMetadataTestAccess::mapQubicUsdThresholdOutcome({ 5, 1 }, metadata, outcome));
+    EXPECT_EQ(outcome, QASSANDRA_RESULT_YES);
+
+    EXPECT_TRUE(QassandraMetadataTestAccess::mapQubicUsdThresholdOutcome({ 6, 1 }, metadata, outcome));
+    EXPECT_EQ(outcome, QASSANDRA_RESULT_NO);
+}
+
+TEST(QassandraOracleSettlementScaffold, RejectsInvalidThresholdMappingInputs)
+{
+    QASSANDRA::QdraMarketMetadata metadata;
+    std::memset(&metadata, 0, sizeof(metadata));
+    metadata.marketType = QASSANDRA_MARKET_TYPE_QUBIC_USD_THRESHOLD;
+    metadata.comparison = QASSANDRA_COMPARISON_GTE;
+    metadata.thresholdValue = QASSANDRA_QUBIC_USD_PRICE_SCALE;
+
+    sint8 outcome = QASSANDRA_RESULT_YES;
+    EXPECT_FALSE(QassandraMetadataTestAccess::mapQubicUsdThresholdOutcome({ 0, 1 }, metadata, outcome));
+    EXPECT_EQ(outcome, QASSANDRA_RESULT_NOT_SET);
+
+    EXPECT_FALSE(QassandraMetadataTestAccess::mapQubicUsdThresholdOutcome({ 1, 0 }, metadata, outcome));
+    EXPECT_EQ(outcome, QASSANDRA_RESULT_NOT_SET);
+
+    metadata.thresholdValue = 0;
+    EXPECT_FALSE(QassandraMetadataTestAccess::mapQubicUsdThresholdOutcome({ 1, 1 }, metadata, outcome));
+    EXPECT_EQ(outcome, QASSANDRA_RESULT_NOT_SET);
+
+    metadata.thresholdValue = QASSANDRA_QUBIC_USD_PRICE_SCALE;
+    metadata.comparison = QASSANDRA_COMPARISON_UNSPECIFIED;
+    EXPECT_FALSE(QassandraMetadataTestAccess::mapQubicUsdThresholdOutcome({ 1, 1 }, metadata, outcome));
+    EXPECT_EQ(outcome, QASSANDRA_RESULT_NOT_SET);
+}
+
+TEST(QassandraOracleSettlementScaffold, UsesUint128ForLargeThresholdComparison)
+{
+    QASSANDRA::QdraMarketMetadata metadata;
+    std::memset(&metadata, 0, sizeof(metadata));
+    metadata.marketType = QASSANDRA_MARKET_TYPE_QUBIC_USD_THRESHOLD;
+    metadata.comparison = QASSANDRA_COMPARISON_GTE;
+    metadata.thresholdValue = 89999999999LL;
+
+    sint8 outcome = QASSANDRA_RESULT_NOT_SET;
+    EXPECT_TRUE(QassandraMetadataTestAccess::mapQubicUsdThresholdOutcome({ 90000000000LL, 1000000000LL }, metadata, outcome));
+    EXPECT_EQ(outcome, QASSANDRA_RESULT_YES);
+
+    metadata.thresholdValue = 90000000001LL;
+    EXPECT_TRUE(QassandraMetadataTestAccess::mapQubicUsdThresholdOutcome({ 90000000000LL, 1000000000LL }, metadata, outcome));
+    EXPECT_EQ(outcome, QASSANDRA_RESULT_NO);
 }
