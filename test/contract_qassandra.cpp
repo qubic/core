@@ -6,10 +6,16 @@
 
 struct QassandraMetadataTestAccess : public QASSANDRA
 {
+    using QASSANDRA::canRetryQubicUsdSettlement;
+    using QASSANDRA::decodeQassandraTargetDate;
     using QASSANDRA::mapQubicUsdThresholdOutcome;
     using QASSANDRA::isQubicUsdOracleReplyValid;
     using QASSANDRA::isMarketMetadataValid;
+    using QASSANDRA::isQubicUsdSettlementRequestMetadataValid;
+    using QASSANDRA::qassandraSettlementStatusFromOracleStatus;
     using QASSANDRA::qubicCurrencyId;
+    using QASSANDRA::resolveQubicUsdQuoteCurrency;
+    using QASSANDRA::resolveQubicUsdSettlementOracle;
     using QASSANDRA::usdCurrencyId;
     using QASSANDRA::usdtCurrencyId;
 };
@@ -94,6 +100,7 @@ TEST(QassandraOracleSettlementScaffold, PriceScaleAndStatusConstants)
     EXPECT_EQ(QASSANDRA_ORACLE_SETTLEMENT_TIMEOUT, 3);
     EXPECT_EQ(QASSANDRA_ORACLE_SETTLEMENT_UNRESOLVABLE, 4);
     EXPECT_EQ(QASSANDRA_ORACLE_SETTLEMENT_INVALID_REPLY, 5);
+    EXPECT_EQ(QASSANDRA_ORACLE_SETTLEMENT_QUERY_ERROR, 6);
 }
 
 TEST(QassandraOracleSettlementScaffold, PriceReplyValidation)
@@ -111,6 +118,19 @@ TEST_F(ContractTesting, CreateTypedForecastMarketRegistersAtNextFreeSlot)
     EXPECT_NE(contractUserProcedures[QASSANDRA_CONTRACT_INDEX][15], nullptr);
     EXPECT_NE(contractUserProcedures[QASSANDRA_CONTRACT_INDEX][20], nullptr);
     EXPECT_NE(contractUserProcedures[QASSANDRA_CONTRACT_INDEX][1], nullptr);
+}
+
+TEST_F(ContractTesting, RequestQubicUsdSettlementRegistersAtNextFreeSlot)
+{
+    EXPECT_NE(contractUserProcedures[QASSANDRA_CONTRACT_INDEX][17], nullptr);
+    EXPECT_NE(contractUserProcedures[QASSANDRA_CONTRACT_INDEX][16], nullptr);
+    EXPECT_NE(contractUserProcedures[QASSANDRA_CONTRACT_INDEX][20], nullptr);
+}
+
+TEST(QassandraOracleSettlementScaffold, NotificationTypesAreOracleCompatible)
+{
+    EXPECT_EQ(sizeof(QASSANDRA::NotifyQubicUsdPriceReply_input), sizeof(OracleNotificationInput<OI::Price>));
+    EXPECT_EQ(sizeof(QASSANDRA::NotifyQubicUsdPriceReply_output), sizeof(NoData));
 }
 
 TEST(QassandraTypedMarketScaffold, CreateEventAbiStaysGeneric)
@@ -260,4 +280,118 @@ TEST(QassandraOracleSettlementScaffold, UsesUint128ForLargeThresholdComparison)
     metadata.thresholdValue = 90000000001LL;
     EXPECT_TRUE(QassandraMetadataTestAccess::mapQubicUsdThresholdOutcome({ 90000000000LL, 1000000000LL }, metadata, outcome));
     EXPECT_EQ(outcome, QASSANDRA_RESULT_NO);
+}
+
+TEST(QassandraOracleRequestScaffold, DecodesTargetDates)
+{
+    DateAndTime decoded;
+
+    EXPECT_TRUE(QassandraMetadataTestAccess::decodeQassandraTargetDate(20270102, decoded));
+    EXPECT_EQ(decoded.getYear(), 2027);
+    EXPECT_EQ(decoded.getMonth(), 1);
+    EXPECT_EQ(decoded.getDay(), 2);
+    EXPECT_EQ(decoded.getHour(), 0);
+    EXPECT_EQ(decoded.getMinute(), 0);
+    EXPECT_EQ(decoded.getSecond(), 0);
+
+    EXPECT_TRUE(QassandraMetadataTestAccess::decodeQassandraTargetDate(20270102030405ULL, decoded));
+    EXPECT_EQ(decoded.getYear(), 2027);
+    EXPECT_EQ(decoded.getMonth(), 1);
+    EXPECT_EQ(decoded.getDay(), 2);
+    EXPECT_EQ(decoded.getHour(), 3);
+    EXPECT_EQ(decoded.getMinute(), 4);
+    EXPECT_EQ(decoded.getSecond(), 5);
+}
+
+TEST(QassandraOracleRequestScaffold, RejectsInvalidTargetDates)
+{
+    DateAndTime decoded;
+
+    EXPECT_FALSE(QassandraMetadataTestAccess::decodeQassandraTargetDate(0, decoded));
+    EXPECT_FALSE(QassandraMetadataTestAccess::decodeQassandraTargetDate(20271301, decoded));
+    EXPECT_FALSE(QassandraMetadataTestAccess::decodeQassandraTargetDate(20270230, decoded));
+    EXPECT_FALSE(QassandraMetadataTestAccess::decodeQassandraTargetDate(20270101240000ULL, decoded));
+    EXPECT_FALSE(QassandraMetadataTestAccess::decodeQassandraTargetDate(20270101006000ULL, decoded));
+    EXPECT_FALSE(QassandraMetadataTestAccess::decodeQassandraTargetDate(20270101000060ULL, decoded));
+}
+
+TEST(QassandraOracleRequestScaffold, ResolvesOracleFromInputOrMetadata)
+{
+    QASSANDRA::QdraMarketMetadata metadata;
+    std::memset(&metadata, 0, sizeof(metadata));
+
+    id selected;
+    const id metadataOracle = OI::Price::getMockOracleId();
+    const id inputOracle = id(1, 2, 3, 4);
+    metadata.reference.set(0, metadataOracle);
+
+    EXPECT_TRUE(QassandraMetadataTestAccess::resolveQubicUsdSettlementOracle(inputOracle, metadata, selected));
+    EXPECT_EQ(selected, inputOracle);
+
+    EXPECT_TRUE(QassandraMetadataTestAccess::resolveQubicUsdSettlementOracle(NULL_ID, metadata, selected));
+    EXPECT_EQ(selected, metadataOracle);
+
+    metadata.reference.set(0, NULL_ID);
+    EXPECT_FALSE(QassandraMetadataTestAccess::resolveQubicUsdSettlementOracle(NULL_ID, metadata, selected));
+}
+
+TEST(QassandraOracleRequestScaffold, ResolvesUsdAndUsdtQuoteCurrencies)
+{
+    id selected;
+
+    EXPECT_TRUE(QassandraMetadataTestAccess::resolveQubicUsdQuoteCurrency(NULL_ID, selected));
+    EXPECT_EQ(selected, QassandraMetadataTestAccess::usdCurrencyId());
+
+    EXPECT_TRUE(QassandraMetadataTestAccess::resolveQubicUsdQuoteCurrency(QassandraMetadataTestAccess::usdCurrencyId(), selected));
+    EXPECT_EQ(selected, QassandraMetadataTestAccess::usdCurrencyId());
+
+    EXPECT_TRUE(QassandraMetadataTestAccess::resolveQubicUsdQuoteCurrency(QassandraMetadataTestAccess::usdtCurrencyId(), selected));
+    EXPECT_EQ(selected, QassandraMetadataTestAccess::usdtCurrencyId());
+
+    EXPECT_FALSE(QassandraMetadataTestAccess::resolveQubicUsdQuoteCurrency(QassandraMetadataTestAccess::qubicCurrencyId(), selected));
+    EXPECT_EQ(selected, NULL_ID);
+}
+
+TEST(QassandraOracleRequestScaffold, ValidatesOnlySettlementRequiredMetadata)
+{
+    QASSANDRA::QdraMarketMetadata metadata;
+    std::memset(&metadata, 0, sizeof(metadata));
+    metadata.marketType = QASSANDRA_MARKET_TYPE_QUBIC_USD_THRESHOLD;
+    metadata.comparison = QASSANDRA_COMPARISON_GTE;
+    metadata.thresholdValue = QASSANDRA_QUBIC_USD_PRICE_SCALE;
+    metadata.targetDate = 20270102030405ULL;
+    metadata.reserved0 = 7;
+
+    DateAndTime targetTimestamp;
+    EXPECT_TRUE(QassandraMetadataTestAccess::isQubicUsdSettlementRequestMetadataValid(metadata, targetTimestamp));
+
+    metadata.comparison = QASSANDRA_COMPARISON_UNSPECIFIED;
+    EXPECT_FALSE(QassandraMetadataTestAccess::isQubicUsdSettlementRequestMetadataValid(metadata, targetTimestamp));
+
+    metadata.comparison = QASSANDRA_COMPARISON_LTE;
+    metadata.thresholdValue = 0;
+    EXPECT_FALSE(QassandraMetadataTestAccess::isQubicUsdSettlementRequestMetadataValid(metadata, targetTimestamp));
+
+    metadata.thresholdValue = QASSANDRA_QUBIC_USD_PRICE_SCALE;
+    metadata.targetDate = 20270230;
+    EXPECT_FALSE(QassandraMetadataTestAccess::isQubicUsdSettlementRequestMetadataValid(metadata, targetTimestamp));
+}
+
+TEST(QassandraOracleRequestScaffold, RetryGatingAllowsOnlyFailureStatuses)
+{
+    EXPECT_FALSE(QassandraMetadataTestAccess::canRetryQubicUsdSettlement(QASSANDRA_ORACLE_SETTLEMENT_NONE));
+    EXPECT_FALSE(QassandraMetadataTestAccess::canRetryQubicUsdSettlement(QASSANDRA_ORACLE_SETTLEMENT_PENDING));
+    EXPECT_FALSE(QassandraMetadataTestAccess::canRetryQubicUsdSettlement(QASSANDRA_ORACLE_SETTLEMENT_SUCCESS));
+    EXPECT_TRUE(QassandraMetadataTestAccess::canRetryQubicUsdSettlement(QASSANDRA_ORACLE_SETTLEMENT_TIMEOUT));
+    EXPECT_TRUE(QassandraMetadataTestAccess::canRetryQubicUsdSettlement(QASSANDRA_ORACLE_SETTLEMENT_UNRESOLVABLE));
+    EXPECT_TRUE(QassandraMetadataTestAccess::canRetryQubicUsdSettlement(QASSANDRA_ORACLE_SETTLEMENT_INVALID_REPLY));
+    EXPECT_TRUE(QassandraMetadataTestAccess::canRetryQubicUsdSettlement(QASSANDRA_ORACLE_SETTLEMENT_QUERY_ERROR));
+}
+
+TEST(QassandraOracleRequestScaffold, MapsOracleStatusesToSettlementStatuses)
+{
+    EXPECT_EQ(QassandraMetadataTestAccess::qassandraSettlementStatusFromOracleStatus(ORACLE_QUERY_STATUS_SUCCESS), QASSANDRA_ORACLE_SETTLEMENT_SUCCESS);
+    EXPECT_EQ(QassandraMetadataTestAccess::qassandraSettlementStatusFromOracleStatus(ORACLE_QUERY_STATUS_TIMEOUT), QASSANDRA_ORACLE_SETTLEMENT_TIMEOUT);
+    EXPECT_EQ(QassandraMetadataTestAccess::qassandraSettlementStatusFromOracleStatus(ORACLE_QUERY_STATUS_UNRESOLVABLE), QASSANDRA_ORACLE_SETTLEMENT_UNRESOLVABLE);
+    EXPECT_EQ(QassandraMetadataTestAccess::qassandraSettlementStatusFromOracleStatus(ORACLE_QUERY_STATUS_UNKNOWN), QASSANDRA_ORACLE_SETTLEMENT_QUERY_ERROR);
 }

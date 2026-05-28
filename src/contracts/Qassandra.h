@@ -28,6 +28,7 @@ constexpr uint8 QASSANDRA_ORACLE_SETTLEMENT_SUCCESS = 2;
 constexpr uint8 QASSANDRA_ORACLE_SETTLEMENT_TIMEOUT = 3;
 constexpr uint8 QASSANDRA_ORACLE_SETTLEMENT_UNRESOLVABLE = 4;
 constexpr uint8 QASSANDRA_ORACLE_SETTLEMENT_INVALID_REPLY = 5;
+constexpr uint8 QASSANDRA_ORACLE_SETTLEMENT_QUERY_ERROR = 6;
 
 constexpr uint32 QASSANDRA_DISPUTE_WINDOW = 1000;
 constexpr uint64 QASSANDRA_INVALID_DATETIME = 1;
@@ -390,6 +391,109 @@ protected:
         }
 
         return false;
+    }
+
+    inline static bool decodeQassandraTargetDate(uint64 targetDate, DateAndTime& output)
+    {
+        uint64 year;
+        uint64 month;
+        uint64 day;
+        uint64 hour = 0;
+        uint64 minute = 0;
+        uint64 second = 0;
+
+        if (targetDate >= 10000000ULL && targetDate <= 99999999ULL)
+        {
+            year = div(targetDate, 10000ULL);
+            month = mod(div(targetDate, 100ULL), 100ULL);
+            day = mod(targetDate, 100ULL);
+        }
+        else if (targetDate >= 10000000000000ULL && targetDate <= 99999999999999ULL)
+        {
+            year = div(targetDate, 10000000000ULL);
+            month = mod(div(targetDate, 100000000ULL), 100ULL);
+            day = mod(div(targetDate, 1000000ULL), 100ULL);
+            hour = mod(div(targetDate, 10000ULL), 100ULL);
+            minute = mod(div(targetDate, 100ULL), 100ULL);
+            second = mod(targetDate, 100ULL);
+        }
+        else
+        {
+            output = DateAndTime();
+            return false;
+        }
+
+        return output.setIfValid(year, month, day, hour, minute, second);
+    }
+
+    inline static bool resolveQubicUsdSettlementOracle(const id& requestedOracle, const QdraMarketMetadata& metadata, id& selectedOracle)
+    {
+        selectedOracle = requestedOracle;
+        if (isZero(selectedOracle))
+        {
+            selectedOracle = metadata.reference.get(0);
+        }
+
+        return !isZero(selectedOracle);
+    }
+
+    inline static bool resolveQubicUsdQuoteCurrency(const id& requestedQuoteCurrency, id& selectedQuoteCurrency)
+    {
+        if (isZero(requestedQuoteCurrency))
+        {
+            selectedQuoteCurrency = usdCurrencyId();
+            return true;
+        }
+
+        if (requestedQuoteCurrency == usdCurrencyId() || requestedQuoteCurrency == usdtCurrencyId())
+        {
+            selectedQuoteCurrency = requestedQuoteCurrency;
+            return true;
+        }
+
+        selectedQuoteCurrency = NULL_ID;
+        return false;
+    }
+
+    inline static bool isQubicUsdSettlementRequestMetadataValid(const QdraMarketMetadata& metadata, DateAndTime& targetTimestamp)
+    {
+        if (metadata.marketType != QASSANDRA_MARKET_TYPE_QUBIC_USD_THRESHOLD ||
+            (metadata.comparison != QASSANDRA_COMPARISON_GTE && metadata.comparison != QASSANDRA_COMPARISON_LTE) ||
+            metadata.thresholdValue <= 0)
+        {
+            targetTimestamp = DateAndTime();
+            return false;
+        }
+
+        return decodeQassandraTargetDate(metadata.targetDate, targetTimestamp);
+    }
+
+    inline static bool canRetryQubicUsdSettlement(uint8 status)
+    {
+        return status == QASSANDRA_ORACLE_SETTLEMENT_TIMEOUT ||
+            status == QASSANDRA_ORACLE_SETTLEMENT_UNRESOLVABLE ||
+            status == QASSANDRA_ORACLE_SETTLEMENT_INVALID_REPLY ||
+            status == QASSANDRA_ORACLE_SETTLEMENT_QUERY_ERROR;
+    }
+
+    inline static uint8 qassandraSettlementStatusFromOracleStatus(uint8 oracleStatus)
+    {
+        if (oracleStatus == ORACLE_QUERY_STATUS_SUCCESS)
+        {
+            return QASSANDRA_ORACLE_SETTLEMENT_SUCCESS;
+        }
+
+        if (oracleStatus == ORACLE_QUERY_STATUS_TIMEOUT)
+        {
+            return QASSANDRA_ORACLE_SETTLEMENT_TIMEOUT;
+        }
+
+        if (oracleStatus == ORACLE_QUERY_STATUS_UNRESOLVABLE)
+        {
+            return QASSANDRA_ORACLE_SETTLEMENT_UNRESOLVABLE;
+        }
+
+        return QASSANDRA_ORACLE_SETTLEMENT_QUERY_ERROR;
     }
 
     inline static bool isMarketMetadataValid(const QdraMarketMetadata& metadata)
@@ -2383,6 +2487,189 @@ public:
         LOG_INFO(locals.log);
     }
 
+    struct RequestQubicUsdSettlement_input
+    {
+        uint64 eventId;
+        id oracle;
+        id quoteCurrency;
+        uint32 timeoutMilliseconds;
+    };
+    struct RequestQubicUsdSettlement_output
+    {
+        uint64 errorCode;
+        sint64 oracleQueryId;
+        uint8 settlementStatus;
+        sint64 queryFee;
+    };
+    struct RequestQubicUsdSettlement_locals
+    {
+        QdraEventInfo qei;
+        QdraMarketMetadata metadata;
+        QdraOracleSettlement existingSettlement;
+        QdraOracleSettlement settlement;
+        DateAndTime targetTimestamp;
+        id selectedOracle;
+        id selectedQuoteCurrency;
+        OI::Price::OracleQuery query;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(RequestQubicUsdSettlement)
+    {
+        output.errorCode = 0;
+        output.oracleQueryId = -1;
+        output.settlementStatus = QASSANDRA_ORACLE_SETTLEMENT_QUERY_ERROR;
+        output.queryFee = 0;
+
+        if (!state.get().mEventInfo.contains(input.eventId) ||
+            !state.get().mMarketMetadata.contains(input.eventId))
+        {
+            output.errorCode = QASSANDRA_INVALID_EVENT_ID;
+            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        state.get().mEventInfo.get(input.eventId, locals.qei);
+        state.get().mMarketMetadata.get(input.eventId, locals.metadata);
+
+        if (!isQubicUsdSettlementRequestMetadataValid(locals.metadata, locals.targetTimestamp) ||
+            !resolveQubicUsdSettlementOracle(input.oracle, locals.metadata, locals.selectedOracle) ||
+            !resolveQubicUsdQuoteCurrency(input.quoteCurrency, locals.selectedQuoteCurrency))
+        {
+            output.errorCode = QASSANDRA_INVALID_DATETIME;
+            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        if (state.get().mEventFinalFlag.contains(input.eventId))
+        {
+            output.errorCode = QASSANDRA_INVALID_EVENT_ID;
+            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        if (state.get().mOracleSettlement.contains(input.eventId))
+        {
+            state.get().mOracleSettlement.get(input.eventId, locals.existingSettlement);
+            if (locals.existingSettlement.status == QASSANDRA_ORACLE_SETTLEMENT_PENDING ||
+                !canRetryQubicUsdSettlement(locals.existingSettlement.status))
+            {
+                output.settlementStatus = locals.existingSettlement.status;
+                if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                return;
+            }
+
+            if (locals.existingSettlement.queryId >= 0)
+            {
+                state.mut().mOracleQueryToEvent.removeByKey(locals.existingSettlement.queryId);
+            }
+        }
+        else if (state.get().mOracleSettlement.population() == QASSANDRA_MAX_CONCURRENT_EVENT)
+        {
+            output.errorCode = QASSANDRA_OUT_OF_MEMORY;
+            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        locals.query.oracle = locals.selectedOracle;
+        locals.query.timestamp = locals.targetTimestamp;
+        locals.query.currency1 = qubicCurrencyId();
+        locals.query.currency2 = locals.selectedQuoteCurrency;
+        output.queryFee = OI::Price::getQueryFee(locals.query);
+
+        if (qpi.invocationReward() < output.queryFee)
+        {
+            output.errorCode = QASSANDRA_INSUFFICIENT_FUND;
+            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        output.oracleQueryId = QUERY_ORACLE(OI::Price, locals.query, NotifyQubicUsdPriceReply, input.timeoutMilliseconds);
+        if (output.oracleQueryId < 0)
+        {
+            locals.settlement.queryId = output.oracleQueryId;
+            locals.settlement.requestedTick = qpi.tick();
+            locals.settlement.status = QASSANDRA_ORACLE_SETTLEMENT_QUERY_ERROR;
+            locals.settlement.oracleOutcome = QASSANDRA_RESULT_NOT_SET;
+            locals.settlement.reserved0 = 0;
+            locals.settlement.numerator = 0;
+            locals.settlement.denominator = 0;
+            state.mut().mOracleSettlement.set(input.eventId, locals.settlement);
+            output.errorCode = QASSANDRA_INSUFFICIENT_FUND;
+            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        locals.settlement.queryId = output.oracleQueryId;
+        locals.settlement.requestedTick = qpi.tick();
+        locals.settlement.status = QASSANDRA_ORACLE_SETTLEMENT_PENDING;
+        locals.settlement.oracleOutcome = QASSANDRA_RESULT_NOT_SET;
+        locals.settlement.reserved0 = 0;
+        locals.settlement.numerator = 0;
+        locals.settlement.denominator = 0;
+
+        state.mut().mOracleSettlement.set(input.eventId, locals.settlement);
+        state.mut().mOracleQueryToEvent.set(output.oracleQueryId, input.eventId);
+        output.settlementStatus = QASSANDRA_ORACLE_SETTLEMENT_PENDING;
+    }
+
+    typedef OracleNotificationInput<OI::Price> NotifyQubicUsdPriceReply_input;
+    typedef NoData NotifyQubicUsdPriceReply_output;
+    struct NotifyQubicUsdPriceReply_locals
+    {
+        uint64 eventId;
+        QdraMarketMetadata metadata;
+        QdraOracleSettlement settlement;
+        sint8 oracleOutcome;
+    };
+
+    PRIVATE_PROCEDURE_WITH_LOCALS(NotifyQubicUsdPriceReply)
+    {
+        if (!state.get().mOracleQueryToEvent.contains(input.queryId))
+        {
+            return;
+        }
+
+        state.get().mOracleQueryToEvent.get(input.queryId, locals.eventId);
+        if (!state.get().mOracleSettlement.contains(locals.eventId) ||
+            !state.get().mMarketMetadata.contains(locals.eventId))
+        {
+            return;
+        }
+
+        state.get().mOracleSettlement.get(locals.eventId, locals.settlement);
+        state.get().mMarketMetadata.get(locals.eventId, locals.metadata);
+        if (locals.metadata.marketType != QASSANDRA_MARKET_TYPE_QUBIC_USD_THRESHOLD)
+        {
+            return;
+        }
+
+        locals.settlement.queryId = input.queryId;
+        locals.settlement.numerator = 0;
+        locals.settlement.denominator = 0;
+        locals.settlement.oracleOutcome = QASSANDRA_RESULT_NOT_SET;
+
+        if (input.status == ORACLE_QUERY_STATUS_SUCCESS)
+        {
+            locals.settlement.numerator = input.reply.numerator;
+            locals.settlement.denominator = input.reply.denominator;
+            if (mapQubicUsdThresholdOutcome(input.reply, locals.metadata, locals.oracleOutcome))
+            {
+                locals.settlement.status = QASSANDRA_ORACLE_SETTLEMENT_SUCCESS;
+                locals.settlement.oracleOutcome = locals.oracleOutcome;
+            }
+            else
+            {
+                locals.settlement.status = QASSANDRA_ORACLE_SETTLEMENT_INVALID_REPLY;
+            }
+        }
+        else
+        {
+            locals.settlement.status = qassandraSettlementStatusFromOracleStatus(input.status);
+        }
+
+        state.mut().mOracleSettlement.set(locals.eventId, locals.settlement);
+    }
+
     struct PublishResult_locals
     {
         QdraEventInfo qei;
@@ -2573,6 +2860,8 @@ public:
         REGISTER_USER_PROCEDURE(CleanMemory, 14);
         REGISTER_USER_PROCEDURE(TransferQDRAGOV, 15);
         REGISTER_USER_PROCEDURE(CreateTypedForecastMarket, 16);
+        REGISTER_USER_PROCEDURE(RequestQubicUsdSettlement, 17);
+        REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyQubicUsdPriceReply);
 
         // market operation team procedures
         REGISTER_USER_PROCEDURE(UpdateFeeDiscountList, 20);
