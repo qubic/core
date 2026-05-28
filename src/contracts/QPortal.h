@@ -455,7 +455,9 @@ protected:
         }
 
         state.mut().registers.removeByKey(qpi.invocator());
+        state.mut().registers.cleanupIfNeeded();
         state.mut().numberOfRegisters --;
+        output.returnCode = QPORTAL_SUCCESS;
         locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_SUCCESS, 0 };
         LOG_INFO(locals.log);
     }
@@ -821,7 +823,7 @@ protected:
 
         state.mut().epochRevenue += QPORTAL_EXECUTION_FEE;
 
-        if (input.amount <= QPORTAL_REFUND_FEE)
+        if (input.amount <= 0)
         {
             output.returnCode = QPORTAL_INVALID_INPUT;
             locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INVALID_INPUT, 0 };
@@ -840,7 +842,7 @@ protected:
             }
         }
 
-        if (!state.get().lockedAmount.contains(qpi.invocator()) || state.get().lockedAmount.value(state.get().lockedAmount.getElementIndex(qpi.invocator())) < input.amount)
+        if (!state.get().lockedAmount.contains(qpi.invocator()) || state.get().lockedAmount.value(state.get().lockedAmount.getElementIndex(qpi.invocator())) < (input.amount + QPORTAL_REFUND_FEE))
         {
             output.returnCode = QPORTAL_INSUFFICIENT_PORTAL;
             locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INSUFFICIENT_PORTAL, 0 };
@@ -848,7 +850,7 @@ protected:
             return ;
         }
 
-        if(qpi.transferShareOwnershipAndPossession(QPORTAL_PORTAL_ASSET_NAME, state.get().PORTAL_Issuer, SELF, SELF, input.amount - QPORTAL_REFUND_FEE, qpi.invocator()) < 0)
+        if(qpi.transferShareOwnershipAndPossession(QPORTAL_PORTAL_ASSET_NAME, state.get().PORTAL_Issuer, SELF, SELF, input.amount, qpi.invocator()) < 0)
         {
             output.returnCode = QPORTAL_INSUFFICIENT_PORTAL;
             locals.log = Logger{ QPORTAL_CONTRACT_INDEX, QPORTAL_INSUFFICIENT_PORTAL, 0 };
@@ -958,7 +960,7 @@ protected:
         id proposalId;
         uint32 yesVotes, noVotes;
         uint64 yesPortal, noPortal;
-        uint64 burnFee, shareholderFeePerShare, sharholderPortalFeePerShare;
+        uint64 burnFee, shareholderFeePerShare, shareholderPortalFeePerShare;
         AssetPossessionIterator iter;
 		Asset QPortalAsset;
 
@@ -1009,20 +1011,22 @@ protected:
             qpi.burn(locals.burnFee);
         }
 
-        locals.sharholderPortalFeePerShare = div<uint64>(state.get().portalEpochRevenue, NUMBER_OF_COMPUTORS);
-        if (locals.sharholderPortalFeePerShare > 0)
+        locals.shareholderPortalFeePerShare = div<uint64>(state.get().portalEpochRevenue, NUMBER_OF_COMPUTORS);
+        if (locals.shareholderPortalFeePerShare > 0)
         {
+            locals.QPortalAsset.assetName = QPORTAL_PORTAL_ASSET_NAME;
+            locals.QPortalAsset.issuer = state.get().PORTAL_Issuer;
             locals.iter.begin(locals.QPortalAsset);
             while (!locals.iter.reachedEnd())
             {
                 locals.sharesHeld = locals.iter.numberOfPossessedShares();
                 if (locals.sharesHeld > 0)
                 {
-                    qpi.transferShareOwnershipAndPossession(QPORTAL_PORTAL_ASSET_NAME, state.get().PORTAL_Issuer, SELF, SELF, (sint64)(locals.sharholderPortalFeePerShare * (uint64)locals.sharesHeld), locals.iter.possessor());
+                    qpi.transferShareOwnershipAndPossession(QPORTAL_PORTAL_ASSET_NAME, state.get().PORTAL_Issuer, SELF, SELF, (sint64)(locals.shareholderPortalFeePerShare * (uint64)locals.sharesHeld), locals.iter.possessor());
                 }
                 locals.iter.next();
             }
-            state.mut().portalEpochRevenue = state.get().portalEpochRevenue - locals.sharholderPortalFeePerShare * NUMBER_OF_COMPUTORS;
+            state.mut().portalEpochRevenue = state.get().portalEpochRevenue - locals.shareholderPortalFeePerShare * NUMBER_OF_COMPUTORS;
         }
 
         state.mut().epochRevenue = 0;
@@ -1033,11 +1037,14 @@ protected:
         state.mut().lockedAmount.cleanupIfNeeded();
         state.mut().proposalResults.cleanupIfNeeded();
         state.mut().submittedProposals.cleanupIfNeeded();
+        state.mut().registers.cleanupIfNeeded();
     }
 
     PRE_ACQUIRE_SHARES()
     {
-        output.allowTransfer = true;
+        output.allowTransfer =
+            (input.asset.assetName == QPORTAL_PORTAL_ASSET_NAME) &&
+            (input.asset.issuer == state.get().PORTAL_Issuer);
     }
 
     INITIALIZE()
