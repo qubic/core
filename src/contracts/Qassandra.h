@@ -501,6 +501,11 @@ protected:
         return existingResult == QASSANDRA_RESULT_NOT_SET;
     }
 
+    inline static bool shouldBlockManualPublishResult(const QdraMarketMetadata& metadata)
+    {
+        return metadata.marketType == QASSANDRA_MARKET_TYPE_QUBIC_USD_THRESHOLD;
+    }
+
     inline static bool isMarketMetadataValid(const QdraMarketMetadata& metadata)
     {
         if (metadata.reserved0 != 0 || metadata.targetDate == 0)
@@ -2839,6 +2844,7 @@ public:
         QdraEventInfo qei;
         QassandraLoggerWithData log;
         DepositInfo di;
+        QdraMarketMetadata metadata;
         sint8 existingResult;
     };
 
@@ -2877,6 +2883,13 @@ public:
         }
 
         if (!state.get().mEventInfo.get(input.eventId, locals.qei))
+        {
+            if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        if (state.get().mMarketMetadata.get(input.eventId, locals.metadata) &&
+            shouldBlockManualPublishResult(locals.metadata))
         {
             if (qpi.invocationReward()) qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;

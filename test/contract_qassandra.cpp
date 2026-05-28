@@ -16,6 +16,7 @@ struct QassandraMetadataTestAccess : public QASSANDRA
     using QASSANDRA::qubicCurrencyId;
     using QASSANDRA::resolveQubicUsdQuoteCurrency;
     using QASSANDRA::resolveQubicUsdSettlementOracle;
+    using QASSANDRA::shouldBlockManualPublishResult;
     using QASSANDRA::shouldPublishOracleOutcomeToResult;
     using QASSANDRA::usdCurrencyId;
     using QASSANDRA::usdtCurrencyId;
@@ -469,4 +470,28 @@ TEST(QassandraOracleResultPublishScaffold, PublishesOnlyWhenExistingResultIsNotS
     EXPECT_FALSE(QassandraMetadataTestAccess::shouldPublishOracleOutcomeToResult(QASSANDRA_RESULT_NO));
     EXPECT_FALSE(QassandraMetadataTestAccess::shouldPublishOracleOutcomeToResult(QASSANDRA_RESULT_YES));
     EXPECT_FALSE(QassandraMetadataTestAccess::shouldPublishOracleOutcomeToResult(7));
+}
+
+TEST(QassandraManualPublishScaffold, BlocksOnlyQubicUsdThresholdMarkets)
+{
+    QASSANDRA::QdraMarketMetadata metadata;
+    std::memset(&metadata, 0, sizeof(metadata));
+
+    metadata.marketType = QASSANDRA_MARKET_TYPE_QUBIC_USD_THRESHOLD;
+    EXPECT_TRUE(QassandraMetadataTestAccess::shouldBlockManualPublishResult(metadata));
+
+    metadata.marketType = QASSANDRA_MARKET_TYPE_GENERIC;
+    EXPECT_FALSE(QassandraMetadataTestAccess::shouldBlockManualPublishResult(metadata));
+
+    metadata.marketType = QASSANDRA_MARKET_TYPE_ECOSYSTEM_MILESTONE;
+    EXPECT_FALSE(QassandraMetadataTestAccess::shouldBlockManualPublishResult(metadata));
+
+    metadata.marketType = 255;
+    EXPECT_FALSE(QassandraMetadataTestAccess::shouldBlockManualPublishResult(metadata));
+}
+
+TEST(QassandraManualPublishScaffold, PublishResultAbiUnchanged)
+{
+    EXPECT_EQ(sizeof(QASSANDRA::PublishResult_input), sizeof(uint64) * 2);
+    EXPECT_EQ(sizeof(QASSANDRA::PublishResult_output), 1);
 }
