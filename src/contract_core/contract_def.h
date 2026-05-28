@@ -376,7 +376,7 @@ struct IPO
 
 static_assert(sizeof(IPO) == 32 * NUMBER_OF_COMPUTORS + 8 * NUMBER_OF_COMPUTORS, "Something is wrong with the struct size.");
 
-constexpr unsigned short TODO_QASSANDRA_CONSTRUCTION_EPOCH = 0;
+constexpr unsigned short QASSANDRA_CONSTRUCTION_EPOCH_PLACEHOLDER = 0xFFFF;
 
 constexpr struct ContractDescription
 {
@@ -413,7 +413,7 @@ constexpr struct ContractDescription
     {"VOTTUN", 206, 10000, sizeof(VOTTUNBRIDGE::StateData)}, // proposal in epoch 204, IPO in 205, construction and first use in 206
     {"QUSINO", 208, 10000, sizeof(QUSINO::StateData)}, // proposal in epoch 206, IPO in 207, construction and first use in 208
     {"ESCROW", 210, 10000, sizeof(ESCROW::StateData)}, // proposal in epoch 208, IPO in 209, construction and first use in 210
-    {"QDRA", TODO_QASSANDRA_CONSTRUCTION_EPOCH, 10000, sizeof(QASSANDRA::StateData)},
+    {"QDRA", QASSANDRA_CONSTRUCTION_EPOCH_PLACEHOLDER, 10000, sizeof(QASSANDRA::StateData)},
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
