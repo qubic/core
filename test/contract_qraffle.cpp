@@ -5,6 +5,11 @@
 
 #include "contract_testing.h"
 
+// Test-local expectation for the asset-raffle creator share. The contract derives the
+// creator payout implicitly by subtracting the 20% fee split (5% burn + 1% charity +
+// 8% shareholder + 5% register + 1% fee), so 80% is the expected creator percentage.
+static constexpr uint32 QRAFFLE_TEST_ASSET_RAFFLE_CREATOR_PCT = 80;
+
 static std::mt19937_64 rand64;
 
 static unsigned long long random(unsigned long long minValue, unsigned long long maxValue)
@@ -1207,19 +1212,27 @@ TEST(ContractQraffle, GetFunctions)
         // Test with valid offset and limit
         auto registers = qraffle.getRegisters(0, 10);
         EXPECT_EQ(registers.returnCode, QRAFFLE_SUCCESS);
-        
-        // Test with offset beyond available registers
+
+        // Test with offset beyond available registers — now returns SUCCESS with an
+        // empty result (all output slots stay NULL_ID).
         auto registers2 = qraffle.getRegisters(registerCount + 10, 5);
-        EXPECT_EQ(registers2.returnCode, QRAFFLE_INVALID_OFFSET_OR_LIMIT);
-        
-        // Test with limit exceeding maximum (20)
+        EXPECT_EQ(registers2.returnCode, QRAFFLE_SUCCESS);
+        EXPECT_EQ(registers2.register1, id(0, 0, 0, 0));
+
+        // Test with limit exceeding maximum (20) — still invalid because the output
+        // struct can only carry 20 ids.
         auto registers3 = qraffle.getRegisters(0, 21);
         EXPECT_EQ(registers3.returnCode, QRAFFLE_INVALID_OFFSET_OR_LIMIT);
-        
-        // Test with offset + limit exceeding total registers
+
+        // Test with offset + limit exceeding total registers — now returns SUCCESS with
+        // however many registers are actually available; trailing output slots stay
+        // NULL_ID so the caller can detect end-of-data.
         auto registers4 = qraffle.getRegisters(registerCount - 5, 10);
-        EXPECT_EQ(registers4.returnCode, QRAFFLE_INVALID_OFFSET_OR_LIMIT);
-        
+        EXPECT_EQ(registers4.returnCode, QRAFFLE_SUCCESS);
+        EXPECT_NE(registers4.register1, id(0, 0, 0, 0));
+        EXPECT_NE(registers4.register5, id(0, 0, 0, 0));
+        EXPECT_EQ(registers4.register6, id(0, 0, 0, 0));
+
         // Test with zero limit
         auto registers5 = qraffle.getRegisters(0, 0);
         EXPECT_EQ(registers5.returnCode, QRAFFLE_SUCCESS);
@@ -2525,7 +2538,7 @@ TEST(ContractQraffle, AssetRaffle_EndEpoch_ReserveMet)
     qraffle.getState()->endedAssetRaffleChecker(0, true, creator, totalPool, 200);
 
     // Creator should have received 80% of pool
-    uint64 expectedCreatorPay = (totalPool * QRAFFLE_ASSET_RAFFLE_CREATOR_PCT) / 100;
+    uint64 expectedCreatorPay = (totalPool * QRAFFLE_TEST_ASSET_RAFFLE_CREATOR_PCT) / 100;
     EXPECT_GE((uint64)getBalance(creator), creatorBalBefore + expectedCreatorPay - totalPool / 100);
 
     // Analytics: 1 created, 1 succeeded, 0 failed
@@ -3214,7 +3227,7 @@ TEST(ContractQraffle, AssetRaffle_FullLifecycle)
               QRAFFLE_CONTRACT_INDEX, QRAFFLE_CONTRACT_INDEX), 500000);
 
     // Creator received ~80% of pool
-    uint64 minCreatorPay = (totalPool * QRAFFLE_ASSET_RAFFLE_CREATOR_PCT) / 100 - 1;
+    uint64 minCreatorPay = (totalPool * QRAFFLE_TEST_ASSET_RAFFLE_CREATOR_PCT) / 100 - 1;
     EXPECT_GE((uint64)getBalance(creator), creatorBalBefore + minCreatorPay);
 
     // Analytics
@@ -4075,15 +4088,30 @@ TEST(ContractQraffle, getRegisters_PaginationCorrect)
     auto page1 = qraffle.getRegisters(10, 10);
     EXPECT_EQ(page1.returnCode, QRAFFLE_SUCCESS);
 
-    // Page 2: offset=20, limit=5. (remaining 5)
+    // Page 2: offset=20, limit=5. (remaining 5 — exact fit)
     auto page2 = qraffle.getRegisters(20, 5);
     EXPECT_EQ(page2.returnCode, QRAFFLE_SUCCESS);
 
-    // offset + limit > total → invalid.
-    auto bad = qraffle.getRegisters(20, 6);
-    EXPECT_EQ(bad.returnCode, QRAFFLE_INVALID_OFFSET_OR_LIMIT);
+    // Partial trailing page: offset=20, limit=6 with 25 total → returns the 5
+    // available registers; the 6th slot stays NULL_ID so the caller can detect
+    // end-of-data. (Previously this rejected with INVALID_OFFSET_OR_LIMIT.)
+    auto partial = qraffle.getRegisters(20, 6);
+    EXPECT_EQ(partial.returnCode, QRAFFLE_SUCCESS);
+    EXPECT_NE(partial.register1, id(0, 0, 0, 0));
+    EXPECT_NE(partial.register5, id(0, 0, 0, 0));
+    EXPECT_EQ(partial.register6, id(0, 0, 0, 0));
 
-    // limit > 20 → invalid.
+    // Offset past end → SUCCESS with an empty result (all NULL_ID).
+    auto pastEnd = qraffle.getRegisters(25, 5);
+    EXPECT_EQ(pastEnd.returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(pastEnd.register1, id(0, 0, 0, 0));
+
+    // Offset far past end (defensive: large offset value should not iterate the list).
+    auto wayPast = qraffle.getRegisters(1000000, 10);
+    EXPECT_EQ(wayPast.returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(wayPast.register1, id(0, 0, 0, 0));
+
+    // limit > 20 → still invalid (output struct only holds 20 ids).
     auto bad2 = qraffle.getRegisters(0, 21);
     EXPECT_EQ(bad2.returnCode, QRAFFLE_INVALID_OFFSET_OR_LIMIT);
 }

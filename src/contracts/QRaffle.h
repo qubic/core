@@ -22,7 +22,6 @@ constexpr uint32 QRAFFLE_MAX_QRAFFLE_AMOUNT = 1000000000ull;
 // Ended token-raffle ring: 16 384 slots × ~96 B ≈ 1.5 MB.
 // At most QRAFFLE_MAX_PROPOSAL_EPOCH (128) raffles/epoch → covers ~128 epochs of history.
 constexpr uint32 QRAFFLE_MAX_TOKEN_RAFFLES = 16384;
-constexpr uint32 QRAFFLE_MAX_SHAREHOLDERS = 1024;
 constexpr uint32 QRAFFLE_TOKEN_RAFFLE_SLOT_SIZE = 512; // 2^9, max members per token raffle
 constexpr uint8 QRAFFLE_MAX_PROPOSALS_PER_PROPOSER = 3; // max proposals per user per epoch
 
@@ -59,7 +58,6 @@ constexpr sint32 QRAFFLE_CANCEL_NOT_ALLOWED         = 27;
 
 // Asset Raffle configuration
 constexpr uint64 QRAFFLE_ASSET_RAFFLE_PROPOSAL_FEE       = 500000ull;    // 500K Qu; non-refundable anti-spam
-constexpr uint32 QRAFFLE_ASSET_RAFFLE_CREATOR_PCT        = 80;              // creator's share of Qu pool (%)
 constexpr uint32 QRAFFLE_MAX_ASSET_RAFFLES_PER_EPOCH     = 64;              // concurrent active raffles
 constexpr uint32 QRAFFLE_MAX_ASSETS_PER_BUNDLE           = 4;               // items per bundle
 constexpr uint32 QRAFFLE_MAX_ASSET_TICKET_BUYERS         = 1024;            // distinct buyers per raffle
@@ -330,7 +328,6 @@ public:
 		Array <QuRaffleInfo, QRAFFLE_MAX_EPOCH> QuRaffles;
 		Array <TokenRaffleInfo, QRAFFLE_MAX_TOKEN_RAFFLES> tokenRaffle;
 		HashMap <id, uint64, QRAFFLE_MAX_MEMBER> quRaffleEntryAmount;
-		HashSet <id, QRAFFLE_MAX_SHAREHOLDERS> shareholdersList;
 
 		id initialRegister1, initialRegister2, initialRegister3, initialRegister4, initialRegister5;
 		id charityAddress, feeAddress, QXMRIssuer;
@@ -1733,9 +1730,9 @@ protected:
 			output.returnCode = QRAFFLE_INVALID_OFFSET_OR_LIMIT;
 			return ;
 		}
-		if (input.offset + input.limit > state.get().numberOfRegisters)
+		if (input.offset >= state.get().numberOfRegisters)
 		{
-			output.returnCode = QRAFFLE_INVALID_OFFSET_OR_LIMIT;
+			output.returnCode = QRAFFLE_SUCCESS;
 			return ;
 		}
 		locals.idx = state.get().registers.nextElementIndex(NULL_INDEX);
@@ -2245,7 +2242,8 @@ protected:
 		uint32 arJ;
 		uint32 arBuyerSlot;
 		uint32 arWinnerIndex;
-		uint32 arEndedIdx;
+		uint32 arEndedIdx;        // ring-buffer slot (masked) the settled raffle is written to
+		uint32 arEndedGlobalIdx;  // monotonic global index callers pass to getEndedAssetRaffle
 		bit    arReserveMet;
 	};
 
@@ -2269,22 +2267,10 @@ protected:
 			locals.digest.u64._2 ^ locals.computerDigest.u64._2,
 			locals.digest.u64._3 ^ locals.computerDigest.u64._3));
 
-		// Build the shareholder set for token-raffle and QXMR distributions.
+		// Asset descriptor reused by the QXMR distribution and per-token-raffle shareholder
+		// payout loops below; both iterate QRAFFLE_ASSET possessors directly via locals.iter.
 		locals.QraffleAsset.assetName = QRAFFLE_ASSET_NAME;
 		locals.QraffleAsset.issuer = NULL_ID;
-		locals.iter.begin(locals.QraffleAsset);
-		while (!locals.iter.reachedEnd())
-		{
-			if (locals.iter.numberOfPossessedShares() > 0)
-			{
-				locals.shareholder = locals.iter.possessor();
-				if (state.get().shareholdersList.contains(locals.shareholder) == 0)
-				{
-					state.mut().shareholdersList.add(locals.shareholder);
-				}
-			}
-			locals.iter.next();
-		}
 
 		if (state.get().numberOfQuRaffleMembers > 0)
 		{
@@ -2369,40 +2355,39 @@ protected:
 				0
 			};
 			LOG_INFO(locals.endEpochLog);
-
-			// Distribute QXMR to shareholders. Only deduct what was actually transferred.
-			locals.qxmrPerShare = div<uint64>(state.get().epochQXMRRevenue, NUMBER_OF_COMPUTORS);
-			locals.qxmrDistributedTotal = 0;
-			if (locals.qxmrPerShare > 0)
-			{
-				locals.qxmrContractBalance = (uint64)qpi.numberOfPossessedShares(QRAFFLE_QXMR_ASSET_NAME, state.get().QXMRIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
-				locals.iter.begin(locals.QraffleAsset);
-				while (!locals.iter.reachedEnd())
-				{
-					locals.sharesHeld = locals.iter.numberOfPossessedShares();
-					if (locals.sharesHeld > 0)
-					{
-						locals.shareholder = locals.iter.possessor();
-						locals.perShare = (sint64)(locals.qxmrPerShare * (uint64)locals.sharesHeld);
-						if ((uint64)locals.perShare <= locals.qxmrContractBalance - locals.qxmrDistributedTotal)
-						{
-							locals.transferResult = qpi.transferShareOwnershipAndPossession(QRAFFLE_QXMR_ASSET_NAME, state.get().QXMRIssuer, SELF, SELF, locals.perShare, locals.shareholder);
-							if (locals.transferResult >= 0)
-							{
-								locals.qxmrDistributedTotal += (uint64)locals.perShare;
-							}
-						}
-					}
-					locals.iter.next();
-				}
-			}
-			state.mut().epochQXMRRevenue -= locals.qxmrDistributedTotal;
 		}
 		else
 		{
 			locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_emptyQuRaffle, 0 };
 			LOG_INFO(locals.log);
 		}
+
+		locals.qxmrPerShare = div<uint64>(state.get().epochQXMRRevenue, NUMBER_OF_COMPUTORS);
+		locals.qxmrDistributedTotal = 0;
+		if (locals.qxmrPerShare > 0)
+		{
+			locals.qxmrContractBalance = (uint64)qpi.numberOfPossessedShares(QRAFFLE_QXMR_ASSET_NAME, state.get().QXMRIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
+			locals.iter.begin(locals.QraffleAsset);
+			while (!locals.iter.reachedEnd())
+			{
+				locals.sharesHeld = locals.iter.numberOfPossessedShares();
+				if (locals.sharesHeld > 0)
+				{
+					locals.shareholder = locals.iter.possessor();
+					locals.perShare = (sint64)(locals.qxmrPerShare * (uint64)locals.sharesHeld);
+					if ((uint64)locals.perShare <= locals.qxmrContractBalance - locals.qxmrDistributedTotal)
+					{
+						locals.transferResult = qpi.transferShareOwnershipAndPossession(QRAFFLE_QXMR_ASSET_NAME, state.get().QXMRIssuer, SELF, SELF, locals.perShare, locals.shareholder);
+						if (locals.transferResult >= 0)
+						{
+							locals.qxmrDistributedTotal += (uint64)locals.perShare;
+						}
+					}
+				}
+				locals.iter.next();
+			}
+		}
+		state.mut().epochQXMRRevenue -= locals.qxmrDistributedTotal;
 
 		// Process each active token raffle.
 		for (locals.i = 0 ; locals.i < state.get().numberOfActiveTokenRaffle; locals.i++)
@@ -2549,59 +2534,59 @@ protected:
 					}
 				}
 
-			// Transfer each bundle item to the winner. If an item fails, log and continue;
-			// we cannot pull assets back from a user's wallet, so the winner keeps whatever
-			// was delivered and the remaining escrowed items stay in the contract.
-			for (locals.arJ = 0; locals.arJ < locals.arInfo.bundleSize; locals.arJ++)
-			{
-				locals.arItem = state.get().activeAssetRaffleItems.get(
-					locals.arI * QRAFFLE_MAX_ASSETS_PER_BUNDLE + locals.arJ);
-				locals.transferResult = qpi.transferShareOwnershipAndPossession(
-					locals.arItem.asset.assetName, locals.arItem.asset.issuer,
-					SELF, SELF,
-					locals.arItem.numberOfShares, locals.winner);
-				if (locals.transferResult < 0)
+				// Transfer each bundle item to the winner. If an item fails, log and continue;
+				// we cannot pull assets back from a user's wallet, so the winner keeps whatever
+				// was delivered and the remaining escrowed items stay in the contract.
+				for (locals.arJ = 0; locals.arJ < locals.arInfo.bundleSize; locals.arJ++)
 				{
-					locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_assetRaffleBundleDeliveryFailed, 0 };
-					LOG_INFO(locals.log);
+					locals.arItem = state.get().activeAssetRaffleItems.get(
+						locals.arI * QRAFFLE_MAX_ASSETS_PER_BUNDLE + locals.arJ);
+					locals.transferResult = qpi.transferShareOwnershipAndPossession(
+						locals.arItem.asset.assetName, locals.arItem.asset.issuer,
+						SELF, SELF,
+						locals.arItem.numberOfShares, locals.winner);
+					if (locals.transferResult < 0)
+					{
+						locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_assetRaffleBundleDeliveryFailed, 0 };
+						LOG_INFO(locals.log);
+					}
 				}
-			}
 
-			// Qu pool distribution: 80% to creator, 20% to fee buckets.
-			// Always executed when reserve is met, regardless of per-item delivery outcome.
-			// (Assets already delivered to winner; we cannot recall them from a user's wallet.)
-			locals.arBurn            = div<uint64>(locals.arGross * (uint64)QRAFFLE_BURN_FEE,        100ull);
-			locals.arCharity         = div<uint64>(locals.arGross * (uint64)QRAFFLE_CHARITY_FEE,     100ull);
-			locals.arShareholderRev  = div<uint64>(locals.arGross * (uint64)QRAFFLE_SHAREHOLDER_FEE, 100ull);
-			locals.arRegisterRev     = div<uint64>(locals.arGross * (uint64)QRAFFLE_REGISTER_FEE,    100ull);
-			locals.arFee             = div<uint64>(locals.arGross * (uint64)QRAFFLE_FEE,             100ull);
-			// Round down per-share amounts; all rounding dust goes to creator.
-			locals.arShareholderPerShare    = div<uint64>(locals.arShareholderRev, (uint64)NUMBER_OF_COMPUTORS);
-			locals.arRegisterPerShare       = (state.get().numberOfRegisters > 0)
-				? div<uint64>(locals.arRegisterRev, (uint64)state.get().numberOfRegisters)
-				: 0;
-			locals.arRegisterPerShareActual = locals.arRegisterPerShare * (uint64)state.get().numberOfRegisters;
-			// Creator gets gross minus all deductions; rounding dust stays with creator.
-			locals.arCreatorPay = locals.arGross
-				- locals.arBurn
-				- locals.arCharity
-				- (locals.arShareholderPerShare * (uint64)NUMBER_OF_COMPUTORS)
-				- locals.arRegisterPerShareActual
-				- locals.arFee;
+				// Qu pool distribution: 80% to creator, 20% to fee buckets.
+				// Always executed when reserve is met, regardless of per-item delivery outcome.
+				// (Assets already delivered to winner; we cannot recall them from a user's wallet.)
+				locals.arBurn            = div<uint64>(locals.arGross * (uint64)QRAFFLE_BURN_FEE,        100ull);
+				locals.arCharity         = div<uint64>(locals.arGross * (uint64)QRAFFLE_CHARITY_FEE,     100ull);
+				locals.arShareholderRev  = div<uint64>(locals.arGross * (uint64)QRAFFLE_SHAREHOLDER_FEE, 100ull);
+				locals.arRegisterRev     = div<uint64>(locals.arGross * (uint64)QRAFFLE_REGISTER_FEE,    100ull);
+				locals.arFee             = div<uint64>(locals.arGross * (uint64)QRAFFLE_FEE,             100ull);
+				// Round down per-share amounts; all rounding dust goes to creator.
+				locals.arShareholderPerShare    = div<uint64>(locals.arShareholderRev, (uint64)NUMBER_OF_COMPUTORS);
+				locals.arRegisterPerShare       = (state.get().numberOfRegisters > 0)
+					? div<uint64>(locals.arRegisterRev, (uint64)state.get().numberOfRegisters)
+					: 0;
+				locals.arRegisterPerShareActual = locals.arRegisterPerShare * (uint64)state.get().numberOfRegisters;
+				// Creator gets gross minus all deductions; rounding dust stays with creator.
+				locals.arCreatorPay = locals.arGross
+					- locals.arBurn
+					- locals.arCharity
+					- (locals.arShareholderPerShare * (uint64)NUMBER_OF_COMPUTORS)
+					- locals.arRegisterPerShareActual
+					- locals.arFee;
 
-			qpi.transfer(locals.arInfo.creator, locals.arCreatorPay);
-			qpi.burn(locals.arBurn);
-			qpi.transfer(state.get().charityAddress, locals.arCharity);
-			if (locals.arShareholderPerShare > 0)
-			{
-				qpi.distributeDividends(locals.arShareholderPerShare);
-			}
-			qpi.transfer(state.get().feeAddress, locals.arFee);
-			// Accumulate register share; distributed in a single pass after the loop.
-			locals.arRegisterBucket += locals.arRegisterPerShareActual;
+				qpi.transfer(locals.arInfo.creator, locals.arCreatorPay);
+				qpi.burn(locals.arBurn);
+				qpi.transfer(state.get().charityAddress, locals.arCharity);
+				if (locals.arShareholderPerShare > 0)
+				{
+					qpi.distributeDividends(locals.arShareholderPerShare);
+				}
+				qpi.transfer(state.get().feeAddress, locals.arFee);
+				// Accumulate register share; distributed in a single pass after the loop.
+				locals.arRegisterBucket += locals.arRegisterPerShareActual;
 
-			state.mut().totalAssetRaffleCreatorPaid += locals.arCreatorPay;
-			state.mut().totalAssetRafflesSucceeded++;
+				state.mut().totalAssetRaffleCreatorPaid += locals.arCreatorPay;
+				state.mut().totalAssetRafflesSucceeded++;
 			}
 
 			if (!locals.arReserveMet)
@@ -2630,7 +2615,10 @@ protected:
 			}
 
 			// Write to ended ring buffer.
-			locals.arEndedIdx = mod<uint32>(state.get().numberOfEndedAssetRaffles, QRAFFLE_MAX_ENDED_ASSET_RAFFLES);
+			// arEndedGlobalIdx is the monotonic logical index (pre-increment); this is the
+			// value callers pass to getEndedAssetRaffle. arEndedIdx is its ring-masked slot.
+			locals.arEndedGlobalIdx = state.get().numberOfEndedAssetRaffles;
+			locals.arEndedIdx = mod<uint32>(locals.arEndedGlobalIdx, QRAFFLE_MAX_ENDED_ASSET_RAFFLES);
 			locals.arEnded.creator        = locals.arInfo.creator;
 			locals.arEnded.epochWinner    = locals.winner;
 			locals.arEnded.reservePriceQu = locals.arInfo.reservePriceQu;
@@ -2648,7 +2636,7 @@ protected:
 			locals.arLog = AssetRaffleEndedLogger{
 				QRAFFLE_CONTRACT_INDEX,
 				locals.arReserveMet ? (uint32)QRAFFLE_assetRaffleSucceeded : (uint32)QRAFFLE_assetRaffleRefunded,
-				locals.arI,
+				locals.arEndedGlobalIdx,
 				locals.arInfo.creator,
 				locals.winner,
 				locals.arGross,
@@ -2660,6 +2648,9 @@ protected:
 		}
 
 		// Distribute accumulated register share from all successful asset raffles in one O(R) pass.
+		// Any integer-division remainder (up to numberOfRegisters-1 Qu) is folded into the DAO
+		// bucket below so the dust either pays out this same epoch via the DAO distribution that
+		// follows, or carries forward — never silently leaks into untracked contract balance.
 		if (locals.arRegisterBucket > 0 && state.get().numberOfRegisters > 0)
 		{
 			locals.arRegisterBucketPerReg = div<uint64>(locals.arRegisterBucket, (uint64)state.get().numberOfRegisters);
@@ -2672,9 +2663,12 @@ protected:
 					locals.idx = state.get().registers.nextElementIndex(locals.idx);
 				}
 			}
+			state.mut().epochAssetRaffleDaoBucket += locals.arRegisterBucket - locals.arRegisterBucketPerReg * (uint64)state.get().numberOfRegisters;
 		}
 
 		// Distribute DAO proposal-fee bucket evenly to registers.
+		// Subtract only what was actually paid out so the integer-division remainder carries
+		// forward to the next epoch instead of being silently dropped into contract balance.
 		if (state.get().epochAssetRaffleDaoBucket > 0 && state.get().numberOfRegisters > 0)
 		{
 			locals.arDaoBucketPerRegister = div<uint64>(state.get().epochAssetRaffleDaoBucket, (uint64)state.get().numberOfRegisters);
@@ -2687,7 +2681,7 @@ protected:
 					locals.idx = state.get().registers.nextElementIndex(locals.idx);
 				}
 			}
-			state.mut().epochAssetRaffleDaoBucket = 0;
+			state.mut().epochAssetRaffleDaoBucket -= locals.arDaoBucketPerRegister * (uint64)state.get().numberOfRegisters;
 		}
 
 		// Reset asset raffle per-epoch state.
@@ -2754,7 +2748,6 @@ protected:
 		state.mut().tokenRaffleParticipation.reset();
 		state.mut().proposalsPerProposer.reset();
 		state.mut().quRaffleEntryAmount.reset();
-		state.mut().shareholdersList.reset();
 		state.mut().voteParticipation.reset();
 		state.mut().voteValues.reset();
 		state.mut().numberOfEntryAmountSubmitted = 0;

@@ -13,4 +13,3 @@ x64/
 .DS_Store
 .clang-format
 tmp
-build/
