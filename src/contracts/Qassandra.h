@@ -496,6 +496,11 @@ protected:
         return QASSANDRA_ORACLE_SETTLEMENT_QUERY_ERROR;
     }
 
+    inline static bool shouldPublishOracleOutcomeToResult(sint8 existingResult)
+    {
+        return existingResult == QASSANDRA_RESULT_NOT_SET;
+    }
+
     inline static bool isMarketMetadataValid(const QdraMarketMetadata& metadata)
     {
         if (metadata.reserved0 != 0 || metadata.targetDate == 0)
@@ -2772,6 +2777,7 @@ public:
         QdraMarketMetadata metadata;
         QdraOracleSettlement settlement;
         sint8 oracleOutcome;
+        sint8 existingResult;
     };
 
     PRIVATE_PROCEDURE_WITH_LOCALS(NotifyQubicUsdPriceReply)
@@ -2808,6 +2814,12 @@ public:
             {
                 locals.settlement.status = QASSANDRA_ORACLE_SETTLEMENT_SUCCESS;
                 locals.settlement.oracleOutcome = locals.oracleOutcome;
+                if (state.get().mEventResult.get(locals.eventId, locals.existingResult) &&
+                    shouldPublishOracleOutcomeToResult(locals.existingResult))
+                {
+                    state.mut().mEventResult.set(locals.eventId, locals.oracleOutcome);
+                    state.mut().mEventResultPublishTickTime.set(locals.eventId, qpi.tick());
+                }
             }
             else
             {

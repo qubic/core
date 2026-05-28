@@ -16,6 +16,7 @@ struct QassandraMetadataTestAccess : public QASSANDRA
     using QASSANDRA::qubicCurrencyId;
     using QASSANDRA::resolveQubicUsdQuoteCurrency;
     using QASSANDRA::resolveQubicUsdSettlementOracle;
+    using QASSANDRA::shouldPublishOracleOutcomeToResult;
     using QASSANDRA::usdCurrencyId;
     using QASSANDRA::usdtCurrencyId;
 };
@@ -460,4 +461,12 @@ TEST(QassandraOracleRequestScaffold, MapsOracleStatusesToSettlementStatuses)
     EXPECT_EQ(QassandraMetadataTestAccess::qassandraSettlementStatusFromOracleStatus(ORACLE_QUERY_STATUS_TIMEOUT), QASSANDRA_ORACLE_SETTLEMENT_TIMEOUT);
     EXPECT_EQ(QassandraMetadataTestAccess::qassandraSettlementStatusFromOracleStatus(ORACLE_QUERY_STATUS_UNRESOLVABLE), QASSANDRA_ORACLE_SETTLEMENT_UNRESOLVABLE);
     EXPECT_EQ(QassandraMetadataTestAccess::qassandraSettlementStatusFromOracleStatus(ORACLE_QUERY_STATUS_UNKNOWN), QASSANDRA_ORACLE_SETTLEMENT_QUERY_ERROR);
+}
+
+TEST(QassandraOracleResultPublishScaffold, PublishesOnlyWhenExistingResultIsNotSet)
+{
+    EXPECT_TRUE(QassandraMetadataTestAccess::shouldPublishOracleOutcomeToResult(QASSANDRA_RESULT_NOT_SET));
+    EXPECT_FALSE(QassandraMetadataTestAccess::shouldPublishOracleOutcomeToResult(QASSANDRA_RESULT_NO));
+    EXPECT_FALSE(QassandraMetadataTestAccess::shouldPublishOracleOutcomeToResult(QASSANDRA_RESULT_YES));
+    EXPECT_FALSE(QassandraMetadataTestAccess::shouldPublishOracleOutcomeToResult(7));
 }
