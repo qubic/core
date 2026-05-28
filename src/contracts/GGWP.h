@@ -625,8 +625,7 @@ struct WOLFPACK : public ContractBase
             _A, _Z, _D, _D, _W, _K, _J, _G,
             _C, _L, _R, _S, _Y, _Z, _I, _U,
             _E, _F, _D, _U, _R, _P, _W, _I,
-            _P, _Q, _X, _A, _C, _Y, _O, _E,
-            _P, _M, _L, _B
+            _P, _Q, _X, _A, _C, _Y, _O, _E
         );
         state.mut().wpToken.assetName = WOLFPACK_SC_ASSET_NAME; // "GGWP"
 
