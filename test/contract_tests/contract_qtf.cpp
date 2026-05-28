@@ -1,9 +1,5 @@
-#define NO_UEFI
-
-#include "contract_testing.h"
-#include <algorithm>
-#include <set>
-#include <vector>
+namespace contract_qtf_testing
+{
 
 // Procedure/function indices (must match REGISTER_USER_FUNCTIONS_AND_PROCEDURES in `src/contracts/QThirtyFour.h`).
 constexpr uint16 QTF_PROCEDURE_BUY_TICKET = 1;
@@ -4027,3 +4023,5 @@ TEST(ContractQThirtyFour, FR_PostK4WindowExpiry_DoesNotReactivateWhenWindowExpir
 	EXPECT_EQ(ctl.state()->getFrRoundsSinceK4(), QTF_FR_POST_K4_WINDOW_ROUNDS + 2);
 	EXPECT_EQ(ctl.state()->getFrActive(), false);
 }
+
+}  // namespace contract_qtf_testing

@@ -1,9 +1,7 @@
-#define NO_UEFI
-
-#include "contract_testing.h"
-#include "test_util.h"
-
 #define ENABLE_BALANCE_DEBUG 0
+
+namespace contract_qrwa_testing
+{
 
 // Pseudo IDs (for testing only)
 
@@ -1595,3 +1593,5 @@ TEST(ContractQRWA, Payout_MultiContractManagement)
     EXPECT_EQ(balanceAfter - balanceBefore, expectedPayout);
     EXPECT_EQ(balanceAfter - balanceBefore, 450000);
 }
+
+}  // namespace contract_qrwa_testing

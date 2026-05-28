@@ -1,31 +1,4 @@
-﻿// File: test/contract_rl.cpp
-#define NO_UEFI
-
-#include "contract_testing.h"
-
-constexpr uint16 PROCEDURE_INDEX_BUY_TICKET = 1;
-constexpr uint16 PROCEDURE_INDEX_SET_PRICE = 2;
-constexpr uint16 PROCEDURE_INDEX_SET_SCHEDULE = 3;
-constexpr uint16 FUNCTION_INDEX_GET_FEES = 1;
-constexpr uint16 FUNCTION_INDEX_GET_PLAYERS = 2;
-constexpr uint16 FUNCTION_INDEX_GET_WINNERS = 3;
-constexpr uint16 FUNCTION_INDEX_GET_TICKET_PRICE = 4;
-constexpr uint16 FUNCTION_INDEX_GET_MAX_NUM_PLAYERS = 5;
-constexpr uint16 FUNCTION_INDEX_GET_STATE = 6;
-constexpr uint16 FUNCTION_INDEX_GET_BALANCE = 7;
-constexpr uint16 FUNCTION_INDEX_GET_NEXT_EPOCH_DATA = 8;
-constexpr uint16 FUNCTION_INDEX_GET_DRAW_HOUR = 9;
-constexpr uint16 FUNCTION_INDEX_GET_SCHEDULE = 10;
-constexpr uint8 STATE_SELLING = static_cast<uint8>(RL::EState::SELLING);
-constexpr uint8 STATE_LOCKED = 0u;
-
-constexpr uint8 RL_ANY_DAY_DRAW_SCHEDULE = 0xFF; // 0xFF sets bits 0..6 (WED..TUE); bit 7 is unused/ignored by logic
-
-static uint32 makeDateStamp(uint16 year, uint8 month, uint8 day)
-{
-	const uint8 shortYear = static_cast<uint8>(year - 2000);
-	return static_cast<uint32>(shortYear << 9 | month << 5 | day);
-}
+﻿// All operator== need to be specified in global scope for gtest to find it.
 
 inline bool operator==(uint8 left, RL::EReturnCode right)
 {
@@ -49,7 +22,34 @@ inline bool operator!=(RL::EReturnCode left, uint8 right)
 bool operator==(const RL::WinnerInfo& left, const RL::WinnerInfo& right)
 {
 	return left.winnerAddress == right.winnerAddress && left.revenue == right.revenue && left.epoch == right.epoch && left.tick == right.tick &&
-	       left.dayOfWeek == right.dayOfWeek;
+		left.dayOfWeek == right.dayOfWeek;
+}
+
+namespace contract_rl_testing
+{
+
+constexpr uint16 PROCEDURE_INDEX_BUY_TICKET = 1;
+constexpr uint16 PROCEDURE_INDEX_SET_PRICE = 2;
+constexpr uint16 PROCEDURE_INDEX_SET_SCHEDULE = 3;
+constexpr uint16 FUNCTION_INDEX_GET_FEES = 1;
+constexpr uint16 FUNCTION_INDEX_GET_PLAYERS = 2;
+constexpr uint16 FUNCTION_INDEX_GET_WINNERS = 3;
+constexpr uint16 FUNCTION_INDEX_GET_TICKET_PRICE = 4;
+constexpr uint16 FUNCTION_INDEX_GET_MAX_NUM_PLAYERS = 5;
+constexpr uint16 FUNCTION_INDEX_GET_STATE = 6;
+constexpr uint16 FUNCTION_INDEX_GET_BALANCE = 7;
+constexpr uint16 FUNCTION_INDEX_GET_NEXT_EPOCH_DATA = 8;
+constexpr uint16 FUNCTION_INDEX_GET_DRAW_HOUR = 9;
+constexpr uint16 FUNCTION_INDEX_GET_SCHEDULE = 10;
+constexpr uint8 STATE_SELLING = static_cast<uint8>(RL::EState::SELLING);
+constexpr uint8 STATE_LOCKED = 0u;
+
+constexpr uint8 RL_ANY_DAY_DRAW_SCHEDULE = 0xFF; // 0xFF sets bits 0..6 (WED..TUE); bit 7 is unused/ignored by logic
+
+static uint32 makeDateStamp(uint16 year, uint8 month, uint8 day)
+{
+	const uint8 shortYear = static_cast<uint8>(year - 2000);
+	return static_cast<uint32>(shortYear << 9 | month << 5 | day);
 }
 
 // Test helper that exposes internal state assertions and utilities
@@ -1280,4 +1280,4 @@ TEST(ContractRandomLottery, GetDrawHour_DefaultAfterBeginEpoch)
 	EXPECT_EQ(ctl.getDrawHour().drawHour, RL_DEFAULT_DRAW_HOUR);
 }
 
-
+}  // namespace contract_rl_testing

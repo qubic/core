@@ -1,7 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <ClCompile Include="contract_core.cpp" />
     <ClCompile Include="m256.cpp" />
     <ClCompile Include="math_lib.cpp" />
     <ClCompile Include="network_messages.cpp" />
@@ -18,46 +17,98 @@
     <ClCompile Include="qpi_hash_map.cpp" />
     <ClCompile Include="qpi_linked_list.cpp" />
     <ClCompile Include="kangaroo_twelve.cpp" />
-    <ClCompile Include="contract_qearn.cpp" />
-    <ClCompile Include="contract_qx.cpp" />
-    <ClCompile Include="contract_qswap.cpp" />
-    <ClCompile Include="contract_qvault.cpp" />
-    <ClCompile Include="contract_qraffle.cpp" />
     <ClCompile Include="common_def.cpp" />
     <ClCompile Include="assets.cpp" />
-    <ClCompile Include="contract_msvault.cpp" />
-    <ClCompile Include="contract_testex.cpp" />
-    <ClCompile Include="contract_qbay.cpp" />
-    <ClCompile Include="contract_nostromo.cpp" />
-    <ClCompile Include="contract_qduel.cpp" />
-    <ClCompile Include="contract_rl.cpp" />
-    <ClCompile Include="contract_ccf.cpp" />
-    <ClCompile Include="contract_qip.cpp" />
-    <ClCompile Include="contract_qusino.cpp" />
     <ClCompile Include="file_io.cpp" />
     <ClCompile Include="virtual_memory.cpp" />
     <ClCompile Include="execution_fees.cpp" />
     <ClCompile Include="stable_computor_index.cpp" />
-    <ClCompile Include="contract_qutil.cpp" />
     <ClCompile Include="revenue.cpp" />
     <ClCompile Include="time.cpp" />
-    <ClCompile Include="contract_gqmprop.cpp" />
-    <ClCompile Include="contract_vottunbridge.cpp" />
     <ClCompile Include="qpi_date_time.cpp" />
     <ClCompile Include="uint128.cpp" />
     <ClCompile Include="fourq.cpp" />
-    <ClCompile Include="contract_qbond.cpp" />
-    <ClCompile Include="contract_qrp.cpp" />
-    <ClCompile Include="contract_qtf.cpp" />
-    <ClCompile Include="contract_pulse.cpp" />
     <ClCompile Include="pending_txs_pool.cpp" />
     <ClCompile Include="quorum_value.cpp" />
     <ClCompile Include="sorting.cpp" />
     <ClCompile Include="oracle_engine.cpp" />
-    <ClCompile Include="contract_qrwa.cpp" />
-    <ClCompile Include="contract_escrow.cpp" />
     <ClCompile Include="custom_qubic_mining_storage.cpp" />
-    <ClCompile Include="contract_quottery.cpp" />
+    <ClCompile Include="all_contract_tests.cpp" />
+    <ClCompile Include="contract_tests\contract_ccf.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_core.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_escrow.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_gqmprop.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_msvault.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_nostromo.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_pulse.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_qbay.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_qbond.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_qduel.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_qearn.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_qip.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_qraffle.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_qrp.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_qrwa.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_qswap.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_qtf.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_quottery.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_qusino.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_qutil.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_qvault.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_qx.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_rl.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_testex.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_vottunbridge.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="score_reference.h" />
@@ -76,6 +127,9 @@
   <ItemGroup>
     <Filter Include="core">
       <UniqueIdentifier>{b544a744-99a4-4a9d-b445-211aabef63f2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="contract_tests">
+      <UniqueIdentifier>{51de3e01-9aad-4324-8812-87fbcd39d4ad}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

@@ -1,8 +1,7 @@
-#define NO_UEFI
-
-#include "contract_testing.h"
-
 #define PRINT_DETAILS 0
+
+namespace contract_ccf_testing
+{
 
 class CCFChecker : public CCF, public CCF::StateData
 {
@@ -417,11 +416,11 @@ public:
     }
 };
 
-static id ENTITY0(7, 0, 0, 0);
-static id ENTITY1(100, 0, 0, 0);
-static id ENTITY2(123, 456, 789, 0);
-static id ENTITY3(42, 69, 0, 13);
-static id ENTITY4(3, 14, 2, 7);
+const id ENTITY0(7, 0, 0, 0);
+const id ENTITY1(100, 0, 0, 0);
+const id ENTITY2(123, 456, 789, 0);
+const id ENTITY3(42, 69, 0, 13);
+const id ENTITY4(3, 14, 2, 7);
 
 TEST(ContractCCF, BasicInitialization)
 {
@@ -1213,3 +1212,5 @@ TEST(ContractCCF, SubscriptionOverwriteByDestination)
     EXPECT_EQ(state->getSubscriptionNumberOfPeriods(ENTITY1), 6u); // New number of periods
     EXPECT_EQ(state->countActiveSubscriptions(), 1u); // Still only one subscription per destination
 }
+
+}  // namespace contract_ccf_testing

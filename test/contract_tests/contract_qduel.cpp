@@ -1,8 +1,5 @@
-#define NO_UEFI
-
-#include "contract_testing.h"
-#include <array>
-#include <vector>
+namespace contract_qduel_testing
+{
 
 constexpr uint16 PROCEDURE_INDEX_CREATE_ROOM = 1;
 constexpr uint16 PROCEDURE_INDEX_CONNECT_ROOM = 2;
@@ -1557,3 +1554,5 @@ TEST(ContractQDuel, GetLastWinnersWrapsAroundAfterCapacity)
 		EXPECT_EQ(memcmp(&winnerData, &expectedBySlot[i], sizeof(QDUEL::WinnerData)), 0);
 	}
 }
+
+}  // namespace contract_qduel_testing

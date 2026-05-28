@@ -1,8 +1,5 @@
-#define NO_UEFI
-
-#include "contract_testing.h"
-
-#include <random>
+namespace contract_qutil_testing
+{
 
 class ContractTestingQUtil : public ContractTesting {
 public:
@@ -2552,3 +2549,5 @@ TEST(QUtilTest, TransferShareManagementRights_ZeroShares)
     // Regardless of return, shares should be unchanged
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, user, user, QUTIL_CONTRACT_INDEX, QUTIL_CONTRACT_INDEX), 5000);
 }
+
+}  // namespace contract_qutil_testing

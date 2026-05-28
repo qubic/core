@@ -1,8 +1,7 @@
-#define NO_UEFI
-
-#include "contract_testing.h"
-
 #define PRINT_DETAILS 0
+
+namespace contract_qx_testing
+{
 
 static constexpr uint64 QX_ISSUE_ASSET_FEE = 1000000000ull;
 
@@ -251,3 +250,5 @@ TEST(ContractQx, CleanupCollections)
         std::cout << "QX state file not found. Skipping file test..." << std::endl;
     }
 }
+
+}  // namespace contract_qx_testing

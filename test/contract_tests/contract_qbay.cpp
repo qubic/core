@@ -1,74 +1,70 @@
-#define NO_UEFI
-
-#include <map>
-#include <random>
-
-#include "contract_testing.h"
 #include "network_messages/common_def.h"
 
-const id MARKETPLACE_OWNER = ID(_R, _K, _D, _H, _C, _M, _R, _J, _Y, _C, _G, _K, _P, _D, _U, _Y, _R, _X, _G, _D, _Y, _Z, _C, _I, _Z, _I, _T, _A, _H, _Y, _O, _V, _G, _I, _U, _T, _K, _N, _D, _T, _E, _H, _P, _C, _C, _L, _W, _L, _Z, _X, _S, _H, _N, _F, _P, _D);
-const id CFB_ISSUER = ID(_C, _F, _B, _M, _E, _M, _Z, _O, _I, _D, _E, _X, _Q, _A, _U, _X, _Y, _Y, _S, _Z, _I, _U, _R, _A, _D, _Q, _L, _A, _P, _W, _P, _M, _N, _J, _X, _Q, _S, _N, _V, _Q, _Z, _A, _H, _Y, _V, _O, _P, _Y, _U, _K, _K, _J, _B, _J, _U, _C);
-static constexpr uint64 QBAY_ISSUE_ASSET_FEE = 1000000000ULL;
-static constexpr uint64 QBAY_TOKEN_TRANSFER_FEE = 1000000ULL;
-static constexpr sint64 QBAY_CREATED_CFB_AMOUNT = 1000000000000ULL;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_2_200 = 100;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_201_1000 = 200;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_1001_2000 = 400;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_2001_3000 = 600;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_3001_4000 = 800;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_4001_5000 = 1000;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_5001_6000 = 1200;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_6001_7000 = 1400;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_7001_8000 = 1600;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_8001_9000 = 1800;
-constexpr uint32 QBAY_FEE_COLLECTION_CREATE_9001_10000 = 2000;
-
-static std::mt19937_64 rand64;
-
-static unsigned long long random(unsigned long long minValue, unsigned long long maxValue)
+namespace contract_qbay_testing
 {
-    if(minValue > maxValue) 
+    const id MARKETPLACE_OWNER = ID(_R, _K, _D, _H, _C, _M, _R, _J, _Y, _C, _G, _K, _P, _D, _U, _Y, _R, _X, _G, _D, _Y, _Z, _C, _I, _Z, _I, _T, _A, _H, _Y, _O, _V, _G, _I, _U, _T, _K, _N, _D, _T, _E, _H, _P, _C, _C, _L, _W, _L, _Z, _X, _S, _H, _N, _F, _P, _D);
+    const id CFB_ISSUER = ID(_C, _F, _B, _M, _E, _M, _Z, _O, _I, _D, _E, _X, _Q, _A, _U, _X, _Y, _Y, _S, _Z, _I, _U, _R, _A, _D, _Q, _L, _A, _P, _W, _P, _M, _N, _J, _X, _Q, _S, _N, _V, _Q, _Z, _A, _H, _Y, _V, _O, _P, _Y, _U, _K, _K, _J, _B, _J, _U, _C);
+    static constexpr uint64 QBAY_ISSUE_ASSET_FEE = 1000000000ULL;
+    static constexpr uint64 QBAY_TOKEN_TRANSFER_FEE = 1000000ULL;
+    static constexpr sint64 QBAY_CREATED_CFB_AMOUNT = 1000000000000ULL;
+    constexpr uint32 QBAY_FEE_COLLECTION_CREATE_2_200 = 100;
+    constexpr uint32 QBAY_FEE_COLLECTION_CREATE_201_1000 = 200;
+    constexpr uint32 QBAY_FEE_COLLECTION_CREATE_1001_2000 = 400;
+    constexpr uint32 QBAY_FEE_COLLECTION_CREATE_2001_3000 = 600;
+    constexpr uint32 QBAY_FEE_COLLECTION_CREATE_3001_4000 = 800;
+    constexpr uint32 QBAY_FEE_COLLECTION_CREATE_4001_5000 = 1000;
+    constexpr uint32 QBAY_FEE_COLLECTION_CREATE_5001_6000 = 1200;
+    constexpr uint32 QBAY_FEE_COLLECTION_CREATE_6001_7000 = 1400;
+    constexpr uint32 QBAY_FEE_COLLECTION_CREATE_7001_8000 = 1600;
+    constexpr uint32 QBAY_FEE_COLLECTION_CREATE_8001_9000 = 1800;
+    constexpr uint32 QBAY_FEE_COLLECTION_CREATE_9001_10000 = 2000;
+
+    static std::mt19937_64 rand64;
+
+    static unsigned long long random(unsigned long long minValue, unsigned long long maxValue)
     {
-        return 0;
-    }
-    return minValue + rand64() % (maxValue - minValue);
-}
-
-static id getUser(unsigned long long i)
-{
-    return id(i, i / 2 + 4, i + 10, i * 3 + 8);
-}
-
-static std::vector<id> getRandomUsers(unsigned int totalUsers, unsigned int maxNum)
-{
-    unsigned long long userCount = random(0, maxNum);
-    std::vector<id> users;
-    users.reserve(userCount);
-    for (unsigned int i = 0; i < userCount; ++i)
-    {
-        unsigned long long userIdx = random(0, totalUsers - 1);
-        users.push_back(getUser(userIdx));
-    }
-    return users;
-}
-
-static Array<uint8, 64> getRandomURI()
-{
-    Array<uint8, 64> URI;
-
-    for(sint32 i = 0 ; i < 64; i++)
-    {
-        uint8 t = (uint8)random(0, 127);
-        if((t >= 48 && t <= 57) || (t >= 65 && t <= 90) || (t >= 97 && t <= 122))
+        if (minValue > maxValue)
         {
-            URI.set(i, t);
-            continue;
+            return 0;
         }
-        i--;
+        return minValue + rand64() % (maxValue - minValue);
     }
 
-    return URI;
-}
+    static id getUser(unsigned long long i)
+    {
+        return id(i, i / 2 + 4, i + 10, i * 3 + 8);
+    }
+
+    static std::vector<id> getRandomUsers(unsigned int totalUsers, unsigned int maxNum)
+    {
+        unsigned long long userCount = random(0, maxNum);
+        std::vector<id> users;
+        users.reserve(userCount);
+        for (unsigned int i = 0; i < userCount; ++i)
+        {
+            unsigned long long userIdx = random(0, totalUsers - 1);
+            users.push_back(getUser(userIdx));
+        }
+        return users;
+    }
+
+    static Array<uint8, 64> getRandomURI()
+    {
+        Array<uint8, 64> URI;
+
+        for (sint32 i = 0; i < 64; i++)
+        {
+            uint8 t = (uint8)random(0, 127);
+            if ((t >= 48 && t <= 57) || (t >= 65 && t <= 90) || (t >= 97 && t <= 122))
+            {
+                URI.set(i, t);
+                continue;
+            }
+            i--;
+        }
+
+        return URI;
+    }
 
 class QBAYChecker : public QBAY, public QBAY::StateData
 {
@@ -1417,3 +1413,5 @@ TEST(TestContractQBAY, SignednessRegression_MakeOfferReplaceOfferBlocksPoisonedE
     EXPECT_EQ(pfp.getState()->NFTs.get(nftId).askUser, victim);
     EXPECT_EQ(getBalance(qbayContract), contractBalanceBefore);
 }
+
+}  // namespace contract_qbay_testing

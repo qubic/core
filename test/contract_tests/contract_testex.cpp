@@ -1,10 +1,12 @@
-#define NO_UEFI
+// operator== needs to be specified in global scope for gtest to find it.
 
-#include <thread>
-#include <chrono>
+bool operator==(const TESTEXA::MultiVariablesProposalExtraData& p1, const TESTEXA::MultiVariablesProposalExtraData& p2)
+{
+    return memcmp(&p1, &p2, sizeof(p1)) == 0;
+}
 
-#include "contract_testing.h"
-#include "oracle_testing.h"
+namespace contract_testex_testing
+{
 
 static const id TESTEXA_CONTRACT_ID(TESTEXA_CONTRACT_INDEX, 0, 0, 0);
 static const id TESTEXB_CONTRACT_ID(TESTEXB_CONTRACT_INDEX, 0, 0, 0);
@@ -627,12 +629,6 @@ void checkVoteCounts(const ProposalMultiVoteDataV1& votes, const std::vector<std
         FAIL() << "Error: missing vote value/count pair " << it.first << "/" << it.second;
     }
 }
-
-bool operator==(const TESTEXA::MultiVariablesProposalExtraData& p1, const TESTEXA::MultiVariablesProposalExtraData& p2)
-{
-    return memcmp(&p1, &p2, sizeof(p1)) == 0;
-}
-
 
 TEST(ContractTestEx, QpiReleaseShares)
 {
@@ -2256,3 +2252,5 @@ TEST(ContractTestEx, OracleSubscription)
     EXPECT_TRUE(test.unsubscribeOracle(USER1, subId2));
     EXPECT_TRUE(test.unsubscribeOracle(USER1, subId3));
 }
+
+}  // namespace contract_testex_testing

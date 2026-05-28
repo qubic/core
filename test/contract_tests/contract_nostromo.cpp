@@ -1,38 +1,34 @@
-#define NO_UEFI
-
-#include <map>
-#include <random>
-
-#include "contract_testing.h"
-
-static std::mt19937_64 rand64;
-
-static unsigned long long random(unsigned long long minValue, unsigned long long maxValue)
+namespace contract_nostromo_testing
 {
-    if(minValue > maxValue) 
+
+    static std::mt19937_64 rand64;
+
+    static unsigned long long random(unsigned long long minValue, unsigned long long maxValue)
     {
-        return 0;
+        if (minValue > maxValue)
+        {
+            return 0;
+        }
+        return minValue + rand64() % (maxValue - minValue);
     }
-    return minValue + rand64() % (maxValue - minValue);
-}
 
-static id getUser(unsigned long long i)
-{
-    return id(i, i / 2 + 4, i + 10, i * 3 + 8);
-}
-
-static std::vector<id> getRandomUsers(unsigned int totalUsers, unsigned int maxNum)
-{
-    unsigned long long userCount = random(0, maxNum);
-    std::vector<id> users;
-    users.reserve(userCount);
-    for (unsigned int i = 0; i < userCount; ++i)
+    static id getUser(unsigned long long i)
     {
-        unsigned long long userIdx = random(0, totalUsers - 1);
-        users.push_back(getUser(userIdx));
+        return id(i, i / 2 + 4, i + 10, i * 3 + 8);
     }
-    return users;
-}
+
+    static std::vector<id> getRandomUsers(unsigned int totalUsers, unsigned int maxNum)
+    {
+        unsigned long long userCount = random(0, maxNum);
+        std::vector<id> users;
+        users.reserve(userCount);
+        for (unsigned int i = 0; i < userCount; ++i)
+        {
+            unsigned long long userIdx = random(0, totalUsers - 1);
+            users.push_back(getUser(userIdx));
+        }
+        return users;
+    }
 
 class NostromoChecker : public NOST, public NOST::StateData
 {
@@ -1690,3 +1686,5 @@ TEST(TestContractNostromo, createFundraisingAndInvestInProjectAndClaimTokenCheck
     nostromoTestCaseC.getState()->endEpochFailedFundraisingChecker(2);
     nostromoTestCaseC.getState()->endEpochVoteStatusClearChecker();
 }
+
+}  // namespace contract_nostromo_testing

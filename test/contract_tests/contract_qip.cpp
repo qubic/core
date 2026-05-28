@@ -1,6 +1,5 @@
-#define NO_UEFI
-
-#include "contract_testing.h"
+namespace contract_qip_testing
+{
 
 static constexpr uint64 QIP_ISSUE_ASSET_FEE = 1000000000ull;
 static constexpr uint64 QIP_TRANSFER_ASSET_FEE = 100ull;
@@ -1441,4 +1440,6 @@ TEST(ContractQIP, TransferShareManagementRights)
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, QIP_CONTRACT_ID, QIP_CONTRACT_ID, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 0);
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, creator, creator, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), totalShares - transferAmount);
 }
+
+}  // namespace contract_qip_testing
 

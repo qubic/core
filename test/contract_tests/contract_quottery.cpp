@@ -1,10 +1,5 @@
-﻿#define NO_UEFI
-
-#include "contract_testing.h"
-
-#include <random>
-#include <chrono>
-#include <ctime>
+﻿namespace contract_quottery_testing
+{
 
 static void updateEtalonTime(uint64 offsetSecond)
 {
@@ -4692,3 +4687,5 @@ TEST(QTRYTest, Coverage_RecentActiveEvent_ClearedAfterCleanup)
     uint64 slot = out.recentActiveEvent.get(eid % QUOTTERY_MAX_CONCURRENT_EVENT);
     EXPECT_EQ(slot, (uint64)NULL_INDEX);
 }
+
+}  // namespace contract_quottery_testing

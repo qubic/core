@@ -1,7 +1,5 @@
-#define NO_UEFI
-
-#include "contract_testing.h"
-#include <vector>
+namespace contract_pulse_testing
+{
 
 // Procedure/function indices (must match REGISTER_USER_FUNCTIONS_AND_PROCEDURES in `src/contracts/Pulse.h`).
 constexpr uint16 PULSE_PROCEDURE_BUY_TICKET = 1;
@@ -2239,3 +2237,5 @@ TEST(ContractPulse_Gameplay, QHeartHoldLimitExcessTransferred)
 	EXPECT_EQ(ctl.qheartBalanceOf(ctl.pulseSelf()), expectedContractAfter);
 	EXPECT_EQ(ctl.qheartBalanceOf(ctl.state()->getQHeartIssuer()), expectedWalletAfter);
 }
+
+}  // namespace contract_pulse_testing

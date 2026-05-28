@@ -1,9 +1,5 @@
-#define NO_UEFI
-
-#include <map>
-#include <random>
-
-#include "contract_testing.h"
+namespace contract_qraffle_testing
+{
 
 static std::mt19937_64 rand64;
 
@@ -1647,3 +1643,5 @@ TEST(ContractQraffle, GetQuRaffleEntryAverageAmount)
     EXPECT_EQ(recalculatedAverageResult.returnCode, QRAFFLE_SUCCESS);
     EXPECT_EQ(recalculatedAverageResult.entryAverageAmount, recalculatedAverage);
 }
+
+}  // namespace contract_qraffle_testing

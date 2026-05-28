@@ -1,6 +1,5 @@
-﻿#define NO_UEFI
-
-#include "contract_testing.h"
+﻿namespace contract_qrp_testing
+{
 
 // Procedure/function indices (must match REGISTER_USER_FUNCTIONS_AND_PROCEDURES in `src/contracts/QReservePool.h`).
 constexpr uint16 QRP_PROC_GET_RESERVE = 1;
@@ -261,3 +260,5 @@ TEST(ContractQReservePool, SendReserve_AllValidAndInvalidScenarios)
 	EXPECT_EQ(qrp.balanceQrp(), 0);
 	EXPECT_EQ(qrp.balanceOf(recipientSc), 1000);
 }
+
+}  // namespace contract_qrp_testing

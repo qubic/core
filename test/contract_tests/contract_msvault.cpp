@@ -1,7 +1,5 @@
-#define NO_UEFI
-
-#include "contract_testing.h"
-#include "test_util.h"
+namespace contract_msvault_testing
+{
 
 static const id OWNER1 = ID(_T, _K, _U, _W, _W, _S, _N, _B, _A, _E, _G, _W, _J, _H, _Q, _J, _D, _F, _L, _G, _Q, _H, _J, _J, _C, _J, _B, _A, _X, _B, _S, _Q, _M, _Q, _A, _Z, _J, _J, _D, _Y, _X, _E, _P, _B, _V, _B, _B, _L, _I, _Q, _A, _N, _J, _T, _I, _D);
 static const id OWNER2 = ID(_F, _X, _J, _F, _B, _T, _J, _M, _Y, _F, _J, _H, _P, _B, _X, _C, _D, _Q, _T, _L, _Y, _U, _K, _G, _M, _H, _B, _B, _Z, _A, _A, _F, _T, _I, _C, _W, _U, _K, _R, _B, _M, _E, _K, _Y, _N, _U, _P, _M, _R, _M, _B, _D, _N, _D, _R, _G);
@@ -1588,3 +1586,5 @@ TEST(ContractMsVault, ReleaseTo_PendingApproval_CommitsFeeExactlyOnce)
     EXPECT_EQ(revenueAfter.totalRevenue - revenueBefore.totalRevenue,
         (uint64)MSVAULT_RELEASE_FEE);
 }
+
+}  // namespace contract_msvault_testing

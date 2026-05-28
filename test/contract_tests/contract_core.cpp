@@ -1,13 +1,7 @@
-#define NO_UEFI
-
-#include "gtest/gtest.h"
-
 #define TRACK_MAX_STACK_BUFFER_SIZE
 #include "../src/contract_core/stack_buffer.h"
 #include "../src/contract_core/contract_action_tracker.h"
-#include "contract_testing.h"
 
-#include <chrono>
 
 TEST(TestCoreContractCore, StackBuffer)
 {
