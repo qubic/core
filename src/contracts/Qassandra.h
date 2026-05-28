@@ -1184,6 +1184,158 @@ public:
             }
         }
     }
+
+    struct GetMarketMetadata_input
+    {
+        uint64 eventId;
+    };
+    struct GetMarketMetadata_output
+    {
+        bit eventExists;
+        bit metadataExists;
+        QdraMarketMetadata metadata;
+        uint8 marketType;
+        uint8 comparison;
+    };
+    PUBLIC_FUNCTION(GetMarketMetadata)
+    {
+        output.eventExists = state.get().mEventInfo.contains(input.eventId);
+        output.metadataExists = false;
+        setMemory(output.metadata, 0);
+        output.marketType = QASSANDRA_MARKET_TYPE_GENERIC;
+        output.comparison = QASSANDRA_COMPARISON_UNSPECIFIED;
+
+        if (state.get().mMarketMetadata.get(input.eventId, output.metadata))
+        {
+            output.metadataExists = true;
+            output.marketType = output.metadata.marketType;
+            output.comparison = output.metadata.comparison;
+        }
+    }
+
+    struct GetOracleSettlement_input
+    {
+        uint64 eventId;
+    };
+    struct GetOracleSettlement_output
+    {
+        bit eventExists;
+        bit settlementExists;
+        QdraOracleSettlement settlement;
+        sint64 queryId;
+        uint8 settlementStatus;
+        sint8 oracleOutcome;
+        sint64 numerator;
+        sint64 denominator;
+        uint32 requestedTick;
+    };
+    PUBLIC_FUNCTION(GetOracleSettlement)
+    {
+        output.eventExists = state.get().mEventInfo.contains(input.eventId);
+        output.settlementExists = false;
+        setMemory(output.settlement, 0);
+        output.settlement.queryId = -1;
+        output.queryId = -1;
+        output.settlementStatus = QASSANDRA_ORACLE_SETTLEMENT_NONE;
+        output.oracleOutcome = QASSANDRA_RESULT_NOT_SET;
+        output.numerator = 0;
+        output.denominator = 0;
+        output.requestedTick = 0;
+
+        if (state.get().mOracleSettlement.get(input.eventId, output.settlement))
+        {
+            output.settlementExists = true;
+            output.queryId = output.settlement.queryId;
+            output.settlementStatus = output.settlement.status;
+            output.oracleOutcome = output.settlement.oracleOutcome;
+            output.numerator = output.settlement.numerator;
+            output.denominator = output.settlement.denominator;
+            output.requestedTick = output.settlement.requestedTick;
+        }
+    }
+
+    struct GetOracleQueryEvent_input
+    {
+        sint64 queryId;
+    };
+    struct GetOracleQueryEvent_output
+    {
+        bit queryExists;
+        uint64 eventId;
+    };
+    PUBLIC_FUNCTION(GetOracleQueryEvent)
+    {
+        output.queryExists = false;
+        output.eventId = 0;
+
+        if (state.get().mOracleQueryToEvent.get(input.queryId, output.eventId))
+        {
+            output.queryExists = true;
+        }
+    }
+
+    struct GetTypedMarketStatus_input
+    {
+        uint64 eventId;
+    };
+    struct GetTypedMarketStatus_output
+    {
+        bit eventExists;
+        bit metadataExists;
+        bit settlementExists;
+        uint8 marketType;
+        uint8 comparison;
+        sint64 thresholdValue;
+        uint64 targetDate;
+        uint8 settlementStatus;
+        sint8 oracleOutcome;
+        sint64 numerator;
+        sint64 denominator;
+        sint64 queryId;
+        uint32 requestedTick;
+    };
+    struct GetTypedMarketStatus_locals
+    {
+        QdraMarketMetadata metadata;
+        QdraOracleSettlement settlement;
+    };
+    PUBLIC_FUNCTION_WITH_LOCALS(GetTypedMarketStatus)
+    {
+        output.eventExists = state.get().mEventInfo.contains(input.eventId);
+        output.metadataExists = false;
+        output.settlementExists = false;
+        output.marketType = QASSANDRA_MARKET_TYPE_GENERIC;
+        output.comparison = QASSANDRA_COMPARISON_UNSPECIFIED;
+        output.thresholdValue = 0;
+        output.targetDate = 0;
+        output.settlementStatus = QASSANDRA_ORACLE_SETTLEMENT_NONE;
+        output.oracleOutcome = QASSANDRA_RESULT_NOT_SET;
+        output.numerator = 0;
+        output.denominator = 0;
+        output.queryId = -1;
+        output.requestedTick = 0;
+
+        if (state.get().mMarketMetadata.get(input.eventId, locals.metadata))
+        {
+            output.metadataExists = true;
+            output.marketType = locals.metadata.marketType;
+            output.comparison = locals.metadata.comparison;
+            output.thresholdValue = locals.metadata.thresholdValue;
+            output.targetDate = locals.metadata.targetDate;
+        }
+
+        if (state.get().mOracleSettlement.get(input.eventId, locals.settlement))
+        {
+            output.settlementExists = true;
+            output.settlementStatus = locals.settlement.status;
+            output.oracleOutcome = locals.settlement.oracleOutcome;
+            output.numerator = locals.settlement.numerator;
+            output.denominator = locals.settlement.denominator;
+            output.queryId = locals.settlement.queryId;
+            output.requestedTick = locals.settlement.requestedTick;
+        }
+    }
+
     struct AddToAskOrder_input
     {
         uint64 eventId;
@@ -2843,6 +2995,10 @@ public:
         REGISTER_USER_FUNCTION(GetUserPosition, 6);
         REGISTER_USER_FUNCTION(GetApprovedAmount, 7);
         REGISTER_USER_FUNCTION(GetTopProposals, 8);
+        REGISTER_USER_FUNCTION(GetMarketMetadata, 9);
+        REGISTER_USER_FUNCTION(GetOracleSettlement, 10);
+        REGISTER_USER_FUNCTION(GetOracleQueryEvent, 11);
+        REGISTER_USER_FUNCTION(GetTypedMarketStatus, 12);
 
         REGISTER_USER_PROCEDURE(CreateEvent, 1);
         REGISTER_USER_PROCEDURE(AddToAskOrder, 2);
@@ -2898,7 +3054,7 @@ public:
         // temp replacement for mQUSDIdentifier
         state.mut().mQUSDIdentifier.assetName = 310652322119ULL; // GARTH
         state.mut().mQUSDIdentifier.issuer = ID(_P, _H, _O, _E, _N, _I, _X, _C, _L, _Q, _O, _B, _H, _D, _Z, _C, _H, _J, _O, _C, _K, _C, _P, _Z, _V, _T, _K, _A, _L, _Q, _B, _M, _X, _Y, _O, _E, _D, _B, _U, _H, _S, _D, _C, _J, _R, _M, _T, _U, _C, _U, _B, _P, _L, _S, _U, _F);
-        
+
         // distribute mQDRAGOVIdentifier to current shareholders
         locals.qdraAsset.assetName = QASSANDRA_CONTRACT_ASSET_NAME;
         locals.qdraAsset.issuer = NULL_ID;

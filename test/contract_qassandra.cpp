@@ -133,6 +133,72 @@ TEST(QassandraOracleSettlementScaffold, NotificationTypesAreOracleCompatible)
     EXPECT_EQ(sizeof(QASSANDRA::NotifyQubicUsdPriceReply_output), sizeof(NoData));
 }
 
+TEST_F(ContractTesting, AgentIndexerReadFunctionsRegisterAtExpectedSlots)
+{
+    EXPECT_NE(contractUserFunctions[QASSANDRA_CONTRACT_INDEX][9], nullptr);
+    EXPECT_NE(contractUserFunctions[QASSANDRA_CONTRACT_INDEX][10], nullptr);
+    EXPECT_NE(contractUserFunctions[QASSANDRA_CONTRACT_INDEX][11], nullptr);
+    EXPECT_NE(contractUserFunctions[QASSANDRA_CONTRACT_INDEX][12], nullptr);
+    EXPECT_NE(contractUserFunctions[QASSANDRA_CONTRACT_INDEX][8], nullptr);
+}
+
+TEST(QassandraAgentIndexerReadScaffold, MissingMetadataOutputDefaults)
+{
+    QASSANDRA::GetMarketMetadata_output output;
+    std::memset(&output, 0, sizeof(output));
+
+    EXPECT_FALSE(output.eventExists);
+    EXPECT_FALSE(output.metadataExists);
+    EXPECT_EQ(output.metadata.marketType, QASSANDRA_MARKET_TYPE_GENERIC);
+    EXPECT_EQ(output.metadata.comparison, QASSANDRA_COMPARISON_UNSPECIFIED);
+}
+
+TEST(QassandraAgentIndexerReadScaffold, MissingSettlementOutputDefaults)
+{
+    QASSANDRA::GetOracleSettlement_output output;
+    std::memset(&output, 0, sizeof(output));
+    output.queryId = -1;
+    output.settlement.queryId = -1;
+    output.settlementStatus = QASSANDRA_ORACLE_SETTLEMENT_NONE;
+    output.oracleOutcome = QASSANDRA_RESULT_NOT_SET;
+
+    EXPECT_FALSE(output.eventExists);
+    EXPECT_FALSE(output.settlementExists);
+    EXPECT_EQ(output.settlementStatus, QASSANDRA_ORACLE_SETTLEMENT_NONE);
+    EXPECT_EQ(output.oracleOutcome, QASSANDRA_RESULT_NOT_SET);
+    EXPECT_EQ(output.queryId, -1);
+    EXPECT_EQ(output.settlement.queryId, -1);
+}
+
+TEST(QassandraAgentIndexerReadScaffold, MissingQueryOutputDefaults)
+{
+    QASSANDRA::GetOracleQueryEvent_output output;
+    std::memset(&output, 0, sizeof(output));
+
+    EXPECT_FALSE(output.queryExists);
+    EXPECT_EQ(output.eventId, 0);
+}
+
+TEST(QassandraAgentIndexerReadScaffold, CombinedStatusOutputShape)
+{
+    QASSANDRA::GetTypedMarketStatus_output output;
+    std::memset(&output, 0, sizeof(output));
+    output.settlementStatus = QASSANDRA_ORACLE_SETTLEMENT_NONE;
+    output.oracleOutcome = QASSANDRA_RESULT_NOT_SET;
+    output.queryId = -1;
+
+    EXPECT_FALSE(output.eventExists);
+    EXPECT_FALSE(output.metadataExists);
+    EXPECT_FALSE(output.settlementExists);
+    EXPECT_EQ(output.marketType, QASSANDRA_MARKET_TYPE_GENERIC);
+    EXPECT_EQ(output.comparison, QASSANDRA_COMPARISON_UNSPECIFIED);
+    EXPECT_EQ(output.settlementStatus, QASSANDRA_ORACLE_SETTLEMENT_NONE);
+    EXPECT_EQ(output.oracleOutcome, QASSANDRA_RESULT_NOT_SET);
+    EXPECT_EQ(output.queryId, -1);
+    EXPECT_EQ(sizeof(QASSANDRA::GetTypedMarketStatus_input), sizeof(uint64));
+    EXPECT_GT(sizeof(QASSANDRA::GetTypedMarketStatus_output), sizeof(QASSANDRA::GetTypedMarketStatus_input));
+}
+
 TEST(QassandraTypedMarketScaffold, CreateEventAbiStaysGeneric)
 {
     EXPECT_EQ(sizeof(QASSANDRA::CreateEvent_input), sizeof(QASSANDRA::QdraEventInfo));
