@@ -926,15 +926,29 @@ protected:
 
 	PUBLIC_PROCEDURE(RemoveFromAskOrder)
 	{
-		if (qpi.invocationReward() > 0)
+		if (qpi.invocationReward() < QX_ADDITIONAL_FEE)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			output.removedNumberOfShares = 0;
+			return;
+		}
+		else
+		{
+			if (qpi.invocationReward() > QX_ADDITIONAL_FEE)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - QX_ADDITIONAL_FEE);
+			}
 		}
 
 		if (input.price <= 0 || input.price >= MAX_AMOUNT
 			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT
 			|| smul(input.price, input.numberOfShares) >= MAX_AMOUNT)
 		{
+			qpi.transfer(qpi.invocator(), QX_ADDITIONAL_FEE);
 			output.removedNumberOfShares = 0;
 		}
 		else
@@ -1001,6 +1015,8 @@ protected:
 				state.mut()._elementIndex = state.get()._entityOrders.nextElementIndex(state.get()._elementIndex);
 			}
 
+			qpi.burn(QX_ADDITIONAL_FEE);
+			state.mut()._burnedAmount += QX_ADDITIONAL_FEE;
 			if (state.get()._elementIndex == NULL_INDEX) // No other ask orders for the same asset at the same price found
 			{
 				output.removedNumberOfShares = 0;
@@ -1014,15 +1030,29 @@ protected:
 
 	PUBLIC_PROCEDURE(RemoveFromBidOrder)
 	{
-		if (qpi.invocationReward() > 0)
+		if (qpi.invocationReward() < QX_ADDITIONAL_FEE)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			output.removedNumberOfShares = 0;
+			return;
+		}
+		else
+		{
+			if (qpi.invocationReward() > QX_ADDITIONAL_FEE)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - QX_ADDITIONAL_FEE);
+			}
 		}
 
 		if (input.price <= 0 || input.price >= MAX_AMOUNT
 			|| input.numberOfShares <= 0 || input.numberOfShares >= MAX_AMOUNT
 			|| smul(input.price, input.numberOfShares) >= MAX_AMOUNT)
 		{
+			qpi.transfer(qpi.invocator(), QX_ADDITIONAL_FEE);
 			output.removedNumberOfShares = 0;
 		}
 		else
@@ -1089,6 +1119,8 @@ protected:
 				state.mut()._elementIndex = state.get()._entityOrders.prevElementIndex(state.get()._elementIndex);
 			}
 
+			qpi.burn(QX_ADDITIONAL_FEE);
+			state.mut()._burnedAmount += QX_ADDITIONAL_FEE;
 			if (state.get()._elementIndex == NULL_INDEX) // No other bid orders for the same asset at the same price found
 			{
 				output.removedNumberOfShares = 0;
