@@ -1,3 +1,5 @@
+#pragma once
+
 using namespace QPI;
 
 // Inert scaffold for future Qassandra oracle-settled prediction markets.
@@ -52,7 +54,7 @@ struct QassandraMarketId
 
 struct QassandraOracleSettlement
 {
-	sint64 thresholdValue;
+	uint64 thresholdValue;
 	uint8 comparisonDirection;
 };
 
@@ -69,7 +71,7 @@ struct QassandraMarketDescriptor
 	uint64 settlementTime;
 	id oracleQueryId;
 	uint8 settlementStatus;
-	bool canAgentRead;
+	uint8 canAgentRead;
 };
 
 inline static bool qassandraIsValidPriceReply(const OI::Price::OracleReply& reply)
@@ -77,9 +79,9 @@ inline static bool qassandraIsValidPriceReply(const OI::Price::OracleReply& repl
 	return reply.numerator > 0 && reply.denominator > 0;
 }
 
-inline static bool qassandraCompareScaledPrice(const OI::Price::OracleReply& reply, sint64 thresholdValue, uint8 comparisonDirection)
+inline static bool qassandraCompareScaledPrice(const OI::Price::OracleReply& reply, uint64 thresholdValue, uint8 comparisonDirection)
 {
-	if (!qassandraIsValidPriceReply(reply) || thresholdValue < 0)
+	if (!qassandraIsValidPriceReply(reply))
 	{
 		return false;
 	}
@@ -103,5 +105,6 @@ inline static bool qassandraCompareScaledPrice(const OI::Price::OracleReply& rep
 	{
 		return left <= right;
 	}
+	// Unknown comparison directions fail closed.
 	return false;
 }
