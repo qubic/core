@@ -4492,8 +4492,8 @@ static bool loadAllNodeStates()
     long long revenueDataSize = load(REVENUE_DATA_SNAPSHOT_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData, directory);
     if (revenueDataSize != sizeof(gEpochRevenueData))
     {
-        logToConsole(L"Failed to load revenue data snapshot, starting with zero counts");
-        setMem(&gEpochRevenueData, sizeof(gEpochRevenueData), 0);
+        logToConsole(L"Failed to load revenue data snapshot");
+        return false;
     }
 
     // update own computor indices
