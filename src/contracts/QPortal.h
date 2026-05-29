@@ -1,5 +1,4 @@
 using namespace QPI;
-#include "qpi.h";
 
 constexpr uint64 QPORTAL_PORTAL_ASSET_NAME = 83843471265616; //PORTAL asset name
 constexpr uint64 QPORTAL_MIN_TOTAL_VOTED_PORTAL = 100000ull; //proposal must have at least 100K PORTAL to approve a proposal(yes + no).
