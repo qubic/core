@@ -15,6 +15,12 @@ enum QassandraMarketStatus : uint8
 	QASSANDRA_MARKET_STATUS_CANCELLED = 4,
 };
 
+enum QassandraMarketType : uint8
+{
+	QASSANDRA_MARKET_TYPE_UNKNOWN = 0,
+	QASSANDRA_MARKET_TYPE_BINARY_PRICE = 1,
+};
+
 enum QassandraOutcome : uint8
 {
 	QASSANDRA_OUTCOME_UNKNOWN = 0,
@@ -28,6 +34,14 @@ enum QassandraComparisonDirection : uint8
 	QASSANDRA_COMPARE_GTE = 1,
 	QASSANDRA_COMPARE_LT = 2,
 	QASSANDRA_COMPARE_LTE = 3,
+};
+
+enum QassandraOracleSettlementStatus : uint8
+{
+	QASSANDRA_ORACLE_SETTLEMENT_STATUS_UNKNOWN = 0,
+	QASSANDRA_ORACLE_SETTLEMENT_STATUS_PENDING = 1,
+	QASSANDRA_ORACLE_SETTLEMENT_STATUS_READY = 2,
+	QASSANDRA_ORACLE_SETTLEMENT_STATUS_FINAL = 3,
 };
 
 struct QassandraMarketId
@@ -47,9 +61,15 @@ struct QassandraOracleSettlement
 struct QassandraMarketDescriptor
 {
 	QassandraMarketId marketId;
+	uint8 marketType;
 	id baseAsset;
 	id quoteAsset;
 	QassandraOracleSettlement settlement;
+	uint64 settlementTick;
+	uint64 settlementTime;
+	id oracleQueryId;
+	uint8 settlementStatus;
+	bool canAgentRead;
 };
 
 inline static bool qassandraIsValidPriceReply(const OI::Price::OracleReply& reply)
