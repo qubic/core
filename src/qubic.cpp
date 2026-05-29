@@ -4493,7 +4493,7 @@ static bool loadAllNodeStates()
     if (revenueDataSize != sizeof(gEpochRevenueData))
     {
         logToConsole(L"Failed to load revenue data snapshot, starting with zero counts");
-        setMem(&gEpochRevenueData, sizeof(gEpochRevenueData), 0);
+        return false;
     }
 
     // update own computor indices
