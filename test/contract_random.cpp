@@ -79,11 +79,13 @@ public:
     }
 
     RANDOM::BuyEntropy_output buyEntropy(const id& user, uint8 collateralTier,
-                                         uint16 numberOfBits, sint64 amount)
+                                         uint16 numberOfBits, sint64 amount,
+                                         const id& trustee = id::zero())
     {
         RANDOM::BuyEntropy_input input{};
         input.collateralTier = collateralTier;
         input.numberOfBits = numberOfBits;
+        input.trustee = trustee;
         RANDOM::BuyEntropy_output output{};
         invokeUserProcedure(RANDOM_CONTRACT_INDEX, 2, input, output, user, amount);
         return output;
@@ -125,7 +127,7 @@ TEST(ContractRandom, BuyEntropyRefundsWhenEntropyMissing)
     EXPECT_EQ(r.state()->earnedAmount, 0u) << "Refund must not credit earnedAmount";
 }
 
-// Specification (per CFB): "BuyEntropy procedure is for buying entropy. The
+// Specification : "BuyEntropy procedure is for buying entropy. The
 // fee is returned if there is no entropy, in this case output will be all
 // zeros." -- the user only loses funds when entropy is actually delivered.
 // By symmetry, when the request is rejected because of invalid inputs (bad
@@ -341,6 +343,195 @@ TEST(ContractRandom, EndToEnd_LatestEntropyRetrieved_TickMod3_Is1)
 TEST(ContractRandom, EndToEnd_LatestEntropyRetrieved_TickMod3_Is2)
 {
     runFullRandomCycle(/*startTick=*/1004); // 1004 % 3 == 2 -> stream 2
+}
+
+// ---------------------------------------------------------------------------
+// Trustee condition. BuyEntropy carries a single optional trustee:
+//   - trustee == 0                         : unconditional, plain buy.
+//   - trustee is a provider in the
+//     stream/tier being bought             : entropy delivered, fee charged.
+//   - trustee absent from that stream/tier : nothing delivered, nothing charged.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+    // Registers one provider on stream (startTick % 3) at the given tier and
+    // drives it commit -> reveal so that, at the returned buy tick, the tier's
+    // entropy slot holds a known non-zero value (= the revealed value). Leaves
+    // the contract's current tick set to the buy tick.
+    struct TrusteeScenario
+    {
+        uint8 tier;
+        uint32 stream;
+        id provider;
+        QPI::bit_4096 entropy;
+    };
+
+    TrusteeScenario buildEntropyWithProvider(ContractTestingRandom& r, uint32 startTick,
+                                             uint8 tier, uint64 providerSeed)
+    {
+        r.setTick(startTick);
+        const sint64 collateral = collateralForTier(tier);
+        const uint32 stream = startTick % 3;
+
+        const QPI::bit_4096 reveal1 = makeReveal(providerSeed * 7654321u + 1u);
+        const id commit1 = commitOf(reveal1);
+        const id commit2 = commitOf(makeReveal(providerSeed * 7654321u + 2u));
+        const id provider = getUser(providerSeed);
+
+        QPI::bit_4096 zero; zero.setAll(0);
+
+        // Tick T: first commit (no reveal yet).
+        increaseEnergy(provider, collateral);
+        r.revealAndCommit(provider, zero, commit1, collateral);
+        r.endTick();
+
+        // Tick T+3 (same stream): reveal reveal1, recommit. END_TICK XORs
+        // reveal1 into entropy[stream*10+tier].
+        r.setTick(startTick + 3);
+        increaseEnergy(provider, collateral);
+        r.revealAndCommit(provider, reveal1, commit2, collateral);
+        r.endTick();
+
+        // Tick T+4: the latest finalized stream is exactly `stream`.
+        r.setTick(startTick + 4);
+
+        TrusteeScenario s;
+        s.tier = tier;
+        s.stream = stream;
+        s.provider = provider;
+        s.entropy = reveal1;
+        return s;
+    }
+}
+
+// A trustee that is a provider in the bought stream/tier: behaves like a plain
+// buy (entropy delivered, fee charged).
+TEST(ContractRandom, BuyEntropyWithMatchingTrusteeSucceeds)
+{
+    ContractTestingRandom r;
+    auto s = buildEntropyWithProvider(r, /*startTick=*/1002, /*tier=*/2, /*seed=*/0xA11CE);
+    ASSERT_TRUE(r.state()->entropy.get(s.stream * 10 + s.tier) == s.entropy);
+
+    const uint16 numberOfBits = 4096;
+    const sint64 fee = (sint64)numberOfBits * 100;
+    id buyer = getUser(0xB0B);
+    increaseEnergy(buyer, fee);
+    const long long before = getBalance(buyer);
+    const uint64 earnedBefore = r.state()->earnedAmount;
+
+    auto out = r.buyEntropy(buyer, s.tier, numberOfBits, fee, /*trustee=*/s.provider);
+
+    EXPECT_EQ(getBalance(buyer), before - fee)
+        << "buy with a present trustee must charge the fee";
+    EXPECT_EQ(r.state()->earnedAmount, earnedBefore + (uint64)fee);
+    EXPECT_TRUE(out.entropy == s.entropy)
+        << "buy with a present trustee must return the finalized entropy";
+}
+
+// A trustee absent from the stream: charge nothing, return all-zeros.
+TEST(ContractRandom, BuyEntropyWithAbsentTrusteeRefundsAndReturnsZero)
+{
+    ContractTestingRandom r;
+    auto s = buildEntropyWithProvider(r, /*startTick=*/1002, /*tier=*/2, /*seed=*/0xA11CE);
+
+    const uint16 numberOfBits = 4096;
+    const sint64 fee = (sint64)numberOfBits * 100;
+    id buyer = getUser(0xB0B);
+    increaseEnergy(buyer, fee);
+    const long long before = getBalance(buyer);
+    const uint64 earnedBefore = r.state()->earnedAmount;
+
+    const id absentTrustee = getUser(0xDEAD); // never registered as a provider
+    auto out = r.buyEntropy(buyer, s.tier, numberOfBits, fee, /*trustee=*/absentTrustee);
+
+    EXPECT_EQ(getBalance(buyer), before)
+        << "buy with an absent trustee must charge nothing (full refund)";
+    EXPECT_EQ(r.state()->earnedAmount, earnedBefore)
+        << "buy with an absent trustee must not earn any fee";
+    QPI::bit_4096 zero; zero.setAll(0);
+    EXPECT_TRUE(out.entropy == zero)
+        << "buy with an absent trustee must return all-zero entropy";
+}
+
+// A zero trustee imposes no condition: identical to the original BuyEntropy.
+TEST(ContractRandom, BuyEntropyZeroTrusteeBehavesLikePlainBuy)
+{
+    ContractTestingRandom r;
+    auto s = buildEntropyWithProvider(r, /*startTick=*/1002, /*tier=*/2, /*seed=*/0xA11CE);
+
+    const uint16 numberOfBits = 4096;
+    const sint64 fee = (sint64)numberOfBits * 100;
+    id buyer = getUser(0xB0B);
+    increaseEnergy(buyer, fee);
+    const long long before = getBalance(buyer);
+
+    auto out = r.buyEntropy(buyer, s.tier, numberOfBits, fee, /*trustee=*/id::zero());
+
+    EXPECT_EQ(getBalance(buyer), before - fee);
+    EXPECT_TRUE(out.entropy == s.entropy);
+}
+
+// A trustee that is a provider in the stream but in a DIFFERENT tier than the
+// one being bought does not satisfy the condition: its reveal fed another
+// tier's entropy, not the one the buyer reads. This isolates the tier match
+// (the bought tier still has real, non-zero entropy of its own).
+TEST(ContractRandom, BuyEntropyTrusteeInOtherTierRefunds)
+{
+    ContractTestingRandom r;
+    const uint32 startTick = 1002;
+    const uint32 stream = startTick % 3;
+    const uint8 boughtTier = 2;
+    const uint8 otherTier = 3;
+    const sint64 collateralBought = collateralForTier(boughtTier);
+    const sint64 collateralOther = collateralForTier(otherTier);
+
+    const id providerBought = getUser(0xA11CE);
+    const id providerOther = getUser(0xB0B0);
+
+    const QPI::bit_4096 revealBought = makeReveal(11);
+    const QPI::bit_4096 revealOther = makeReveal(22);
+    QPI::bit_4096 zero; zero.setAll(0);
+
+    // Tick T: both providers first-commit on the same stream, different tiers.
+    r.setTick(startTick);
+    increaseEnergy(providerBought, collateralBought);
+    r.revealAndCommit(providerBought, zero, commitOf(revealBought), collateralBought);
+    increaseEnergy(providerOther, collateralOther);
+    r.revealAndCommit(providerOther, zero, commitOf(revealOther), collateralOther);
+    r.endTick();
+
+    // Tick T+3: both reveal, so tier 2 and tier 3 entropy both become non-zero.
+    r.setTick(startTick + 3);
+    increaseEnergy(providerBought, collateralBought);
+    r.revealAndCommit(providerBought, revealBought, commitOf(makeReveal(111)), collateralBought);
+    increaseEnergy(providerOther, collateralOther);
+    r.revealAndCommit(providerOther, revealOther, commitOf(makeReveal(222)), collateralOther);
+    r.endTick();
+
+    r.setTick(startTick + 4);
+    ASSERT_FALSE(r.state()->entropy.get(stream * 10 + boughtTier) == zero)
+        << "tier being bought must have its own real entropy for this test to isolate the tier check";
+
+    const uint16 numberOfBits = 4096;
+    const sint64 fee = (sint64)numberOfBits * 100;
+    id buyer = getUser(0xBEEF);
+    increaseEnergy(buyer, fee);
+    const long long before = getBalance(buyer);
+
+    // Buy tier 2 but name the tier-3 provider as trustee.
+    auto out = r.buyEntropy(buyer, boughtTier, numberOfBits, fee, /*trustee=*/providerOther);
+
+    EXPECT_EQ(getBalance(buyer), before)
+        << "a trustee present only in another tier must not satisfy the condition";
+    EXPECT_TRUE(out.entropy == zero);
+
+    // Sanity: naming the correct-tier provider succeeds against the same state.
+    increaseEnergy(buyer, fee);
+    const long long before2 = getBalance(buyer);
+    auto out2 = r.buyEntropy(buyer, boughtTier, numberOfBits, fee, /*trustee=*/providerBought);
+    EXPECT_EQ(getBalance(buyer), before2 - fee);
+    EXPECT_TRUE(out2.entropy == r.state()->entropy.get(stream * 10 + boughtTier));
 }
 
 // ---------------------------------------------------------------------------

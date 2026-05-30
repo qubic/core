@@ -43,6 +43,7 @@ public:
 	{
 		uint8 collateralTier;
 		uint16 numberOfBits;
+		id trustee;
 	};
 
 	struct BuyEntropy_output
@@ -58,6 +59,8 @@ public:
 		uint64 entropyIdx;
 		sint64 entropyCost;
 		uint32 stream;
+		uint32 index;
+		sint8 trusteeOk;
 	};
 
 	struct StateData
@@ -116,7 +119,23 @@ public:
 			locals.entropyIdx = locals.stream * 10 + input.collateralTier;
 			locals.entropy = state.get().entropy.get(locals.entropyIdx);
 
-			if (locals.entropy == locals.zeroEntropy)
+			locals.trusteeOk = (input.trustee == id::zero()) ? 1 : 0;
+
+			if(!locals.trusteeOk)
+			{
+				for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
+				{
+					locals.index = locals.stream * RANDOM_STREAM_CAPACITY + static_cast<uint32>(locals.i);
+					if (input.trustee == state.get().providers.get(locals.index)
+						&& input.collateralTier == state.get().collateralTiers.get(locals.index))
+					{
+						locals.trusteeOk = 1;
+						break;
+					}
+				}
+			}
+			
+			if (locals.entropy == locals.zeroEntropy || !locals.trusteeOk)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
