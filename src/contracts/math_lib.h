@@ -181,4 +181,110 @@ inline constexpr T greatestCommonDivisor(T a, T b)
 	return a;
 }
 
+// hard termination backstop for iroot
+static constexpr unsigned int IROOT_NEWTON_CAP = 100;
+
+// Number of significant bits of x (highest set bit + 1); bitLength(0) == 0.
+inline static unsigned int bitLength(unsigned long long x)
+{
+    if (x == 0)
+    {
+        return 0;
+    }
+    return 64U - static_cast<unsigned int>(__lzcnt64(x));
+}
+
+// Returns true if x^exp <= maxAllowed
+inline static bool powerLessOrEqual(unsigned long long x, unsigned int exp, unsigned long long maxAllowed)
+{
+    if (exp == 0)
+    {
+        return 1ULL <= maxAllowed;
+    }
+    if (x <= 1)
+    {
+        return x <= maxAllowed;
+    }
+
+    unsigned long long p = 1;
+    for (unsigned int i = 0; i < exp; i++)
+    {
+        if (p > maxAllowed / x)
+        {
+            // p * x would exceed maxAllowed
+            return false;
+        }
+        p *= x;
+    }
+    return true;
+}
+
+// One Newton step toward floor(n^(1/k)): exact integer floor of ((k-1)*x + n/x^(k-1)) / k,
+// formed so neither (k-1)*x nor x^(k-1) can overflow u64
+template<unsigned int k>
+inline static unsigned long long irootNewtonStep(unsigned long long n, unsigned long long x)
+{
+    unsigned long long xPowKm1 = 1;
+    bool overflowed = false;
+    for (unsigned int j = 0; j < k - 1; j++)
+    {
+        if (xPowKm1 > 0xFFFFFFFFFFFFFFFFULL / x)
+        {
+            // x^(k-1) > u64max => > n => divTerm = 0
+            overflowed = true;
+            break;
+        }
+        xPowKm1 *= x;
+    }
+    const unsigned long long divTerm = overflowed ? 0ULL : (n / xPowKm1);
+
+    if (divTerm >= x)
+    {
+        return x + (divTerm - x) / k;
+    }
+    return x - (x - divTerm + (k - 1)) / k;
+}
+
+// Floor of the integer k-th root: the largest r with r^k <= n
+template<unsigned int k>
+inline static unsigned long long irootK64(unsigned long long n)
+{
+    static_assert(k >= 1 && k <= 64, "irootK64 only supports k in [1, 64]");
+    if (k == 1)
+    {
+        return n;
+    }
+
+    if (n < 2)
+    {
+        // iroot(0) = 0, iroot(1) = 1
+        return n;
+    }
+
+    // Init value
+    const unsigned int seedShift = (bitLength(n) + k - 1) / k;   // ceil(bitLength(n)/k); <= 32 for k >= 2
+    unsigned long long x = 1ULL << seedShift;
+
+    // Condition-driven Newton
+    unsigned long long t = irootNewtonStep<k>(n, x);
+    unsigned int iter = 0;
+    while (t < x && iter < IROOT_NEWTON_CAP)
+    {
+        x = t;
+        t = irootNewtonStep<k>(n, x);
+        iter++;
+    }
+
+    // Exact floor correction
+    while (!powerLessOrEqual(x, k, n))
+    {
+        x--;
+    }
+    while (x < 0xFFFFFFFFFFFFFFFFULL && powerLessOrEqual(x + 1, k, n))
+    {
+        x++;
+    }
+    return x;
+}
+
 }
