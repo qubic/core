@@ -3142,6 +3142,8 @@ static void processTick(unsigned long long processorNumber)
         unsigned int nProtocolTx = 0;
         unsigned int nContractTx = 0;
         unsigned int nOtherTx = 0;
+        setMem(gTxObservation, sizeof(gTxObservation), 0);
+
         const m256i& tickLeaderKey = broadcastedComputors.computors.publicKeys[system.tick % NUMBER_OF_COMPUTORS];
         for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
         {
@@ -3152,6 +3154,33 @@ static void processTick(unsigned long long processorNumber)
                     Transaction* transaction = ts.tickTransactions(tsCurrentTickTransactionOffsets[transactionIndex]);
                     logger.registerNewTx(transaction->tick, transactionIndex);
                     processTickTransaction(transaction, transactionIndex, processorNumber);
+
+                    // Multi-dim revenue: categorize this tx into the REVENUE_TX_DIM observation
+                    if (isZero(transaction->destinationPublicKey))
+                    {
+                        const int srcIdx = computorIndex(transaction->sourcePublicKey);
+                        if (srcIdx >= 0)
+                        {
+                            // [0,676) source-computor
+                            gTxObservation[srcIdx]++;
+                        }
+                        else
+                        {
+                            // non-computor service -> transfer
+                            gTxObservation[REVENUE_TX_DIM - 1]++;
+                        }
+                    }
+                    else if (isPublicKeyOfContract(transaction->destinationPublicKey))
+                    {
+                        const unsigned int cidx = (unsigned int)transaction->destinationPublicKey.u64._0;
+                        // [676, 676+contractCount)
+                        gTxObservation[NUMBER_OF_COMPUTORS + cidx]++;
+                    }
+                    else
+                    {
+                        // user-to-user txs, other txs
+                        gTxObservation[REVENUE_TX_DIM - 1]++;                    
+                    }
 
                     if (transaction->sourcePublicKey == tickLeaderKey)
                     {
@@ -3192,6 +3221,8 @@ static void processTick(unsigned long long processorNumber)
                 gEpochRevenueData.perTickProtocolTxCount[tickOffset] = (unsigned short)nProtocolTx;
                 gEpochRevenueData.perTickContractTxCount[tickOffset] = (unsigned short)nContractTx;
                 gEpochRevenueData.perTickOtherTxCount[tickOffset] = (unsigned short)nOtherTx;
+
+                revenueOnTick(tickOffset, gTxObservation);
             }
         }
         PROFILE_SCOPE_END();
@@ -3881,6 +3912,9 @@ static void beginEpoch()
 
     resetCustomMining();
     setMem(&gEpochRevenueData, sizeof(gEpochRevenueData), 0);
+    setMem(&gMultiDimRevenue, sizeof(gMultiDimRevenue), 0);
+    // interior ticks finalized in revenueOnTick() depend on initialTick being correct all epoch.
+    gMultiDimRevenue.initialTick = system.initialTick;
 
     // Reset resource testing digest at beginning of the epoch
     // there are many global variables that were init at declaration, may need to re-check all of them again
@@ -3950,21 +3984,6 @@ static void endEpoch()
             ts.tickData.releaseLock();
         }
 
-        // Save data of custom mining.
-        {
-            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-            {
-                gRevenueComponents.voteScore[i] = voteCounter.getVoteCount(i);
-                gRevenueComponents.txScore[i] = revenueScore[i];
-            }
-            setMem(gRevenueComponents.customMiningScore, sizeof(gRevenueComponents.customMiningScore), 0);
-            computeRevenue(
-                gRevenueComponents.txScore,
-                gRevenueComponents.voteScore,
-                gRevenueComponents.customMiningScore,
-                gRevenueComponents.revenue);
-        }
-
         // Collect mining scores for V2
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
         {
@@ -3982,6 +4001,25 @@ static void endEpoch()
             copyMemory(gEpochRevenueData.oracleScore, oracleRevPoints.computorRevPoints);
         }
         computeRevenueV2(gEpochRevenueData);
+
+        // Multi dimension revenue in shadow mode
+        gMultiDimRevenue.totalTicks = system.tick - system.initialTick;
+        computeMultiDimRevenue();
+
+        // Save data of custom mining.
+        {
+            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+            {
+                gRevenueComponents.voteScore[i] = voteCounter.getVoteCount(i);
+                gRevenueComponents.txScore[i] = revenueScore[i];
+            }
+            setMem(gRevenueComponents.customMiningScore, sizeof(gRevenueComponents.customMiningScore), 0);
+            computeRevenue(
+                gRevenueComponents.txScore,
+                gRevenueComponents.voteScore,
+                gRevenueComponents.customMiningScore,
+                gRevenueComponents.revenue);
+        }
 
 
         // Get revenue donation data by calling contract GQMPROP::GetRevenueDonation()
@@ -4319,6 +4357,16 @@ static bool saveAllNodeStates()
         return false;
     }
 
+    MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME) / sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+    MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME) / sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+    MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME) / sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+    savedSize = save(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME, sizeof(gMultiDimRevenue), (unsigned char*)&gMultiDimRevenue, directory);
+    if (savedSize != sizeof(gMultiDimRevenue)) 
+    {
+        logToConsole(L"Failed to save multidim revenue");
+        return false; 
+    }
+
     CHAR16 SPECTRUM_DIGEST_FILE_NAME[] = L"snapshotSpectrumDigest";
     savedSize = save(SPECTRUM_DIGEST_FILE_NAME, spectrumDigestsSizeInByte, (unsigned char*)spectrumDigests, directory);
     logToConsole(L"Saving spectrum digests");
@@ -4494,6 +4542,18 @@ static bool loadAllNodeStates()
     {
         logToConsole(L"Failed to load revenue data snapshot, starting with zero counts");
         setMem(&gEpochRevenueData, sizeof(gEpochRevenueData), 0);
+    }
+
+    MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME) / sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
+    MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME) / sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
+    MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME) / sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
+    long long mdSize = load(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME, sizeof(gMultiDimRevenue), (unsigned char*)&gMultiDimRevenue, directory);
+    if (mdSize != sizeof(gMultiDimRevenue))
+    {
+        // SHADOW: gMultiDimRevenue is computed but not applied to balances, so zero+continue is safe.
+        // TODO: when applied this must return false
+        logToConsole(L"Multi dim revenue snapshot missing/mismatch (shadow mode), zeroing");
+        setMem(&gMultiDimRevenue, sizeof(gMultiDimRevenue), 0);
     }
 
     // update own computor indices
@@ -5579,6 +5639,8 @@ static void tickProcessor(void*)
                                     saveRevenueComponents(NULL);
                                     // Revenue v2 data
                                     asyncSave(REVENUE_DATA_END_OF_EPOCH_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData);
+                                    // Multi-dim revenue (shadow) - for offline comparison against the additive
+                                    asyncSave(MULTIDIM_REVENUE_END_OF_EPOCH_FILE_NAME, sizeof(gMultiDimRevenue), (unsigned char*)&gMultiDimRevenue);
 
                                     // Reorder futureComputors so requalifying computors keep their index
                                     // This is needed for correct execution fee reporting across epoch boundaries
