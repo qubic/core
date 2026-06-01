@@ -92,11 +92,15 @@ In order to develop a contract, follow these steps:
       Currently, the contract state size is limited to 1 GB.
     - See more details about how to develop the contract [below](#procedures-and-functions).
 5. Implement tests in GoogleTest framework:
-    - Create a file for your tests in the directory `test`.
-      To get started, you may copy an existing contract test file, such as `test/contract_qearn.cpp`.
+    - Create a file for your tests in the directory `test/contract_tests/`.
+      To get started, you may copy an existing contract test file, such as `test/contract_tests/contract_qearn.cpp`.
       The name of your new file should follow the pattern `contract_[YourContractName].cpp`.
-    - Add the file to the MS Visual C++ project "test".
+      All your code should be wrapped in a namespace `contract_[YourContractName]_testing`.
+    - Add the file to the MS Visual C++ project "test", under the filter "contract_tests".
+      Disable compilation of your contract test file (right click on file -> properties -> general -> exluded from build: yes, make sure this is set for configuration "All Configurations").
+      Add your contract test file in `test/all_contract_tests.cpp` to enable compilation together with the other contract tests.
     - Implement tests covering all your procedures and functions, making sure they work as intended and as written down in your contract description.
+      All standard library header includes need to be added to `test/all_contract_tests.cpp` instead of your contract test file.
 6. Make sure that there are no compiler errors, no compiler warnings, all your tests pass without errors.
 7. Double check that the implementation of your contract does what it is supposed to do.
 8. Create PR to develop branch of official repository, including the description of your contract.
