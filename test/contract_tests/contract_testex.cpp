@@ -136,6 +136,7 @@ public:
     {
         initEmptySpectrum();
         initEmptyUniverse();
+        initSpecialEntities();
         INIT_CONTRACT(TESTEXA);
         callSystemProcedure(TESTEXA_CONTRACT_INDEX, INITIALIZE);
         INIT_CONTRACT(TESTEXB);
@@ -170,6 +171,7 @@ public:
     {
         oracleEngine.deinit();
         checkContractExecCleanup();
+        deinitSpecialEntities();
     }
 
     StateCheckerTestExampleA* getStateTestExampleA()
