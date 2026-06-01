@@ -128,7 +128,6 @@
   <ItemGroup>
     <ClCompile Include="all_contract_tests.cpp" />
     <ClCompile Include="common_def.cpp" />
-<<<<<<< feature/2026-05-28-speedup-test-compilation
     <ClCompile Include="contract_tests\contract_ccf.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseAVX512|x64'">true</ExcludedFromBuild>
@@ -140,6 +139,11 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="contract_tests\contract_escrow.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseAVX512|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_ggwp.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseAVX512|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
@@ -254,14 +258,6 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='ReleaseAVX512|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </ClCompile>
-=======
-    <ClCompile Include="contract_escrow.cpp" />
-    <ClCompile Include="contract_ggwp.cpp" />
-    <ClCompile Include="contract_pulse.cpp" />
-    <ClCompile Include="contract_qbond.cpp" />
-    <ClCompile Include="contract_qrwa.cpp" />
-    <ClCompile Include="contract_qswap.cpp" />
->>>>>>> develop
     <ClCompile Include="custom_qubic_mining_storage.cpp" />
     <ClCompile Include="fourq.cpp" />
     <ClCompile Include="pending_txs_pool.cpp" />

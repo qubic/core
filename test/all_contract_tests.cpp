@@ -23,6 +23,7 @@
 #include "contract_tests/contract_ccf.cpp"
 #include "contract_tests/contract_core.cpp"
 #include "contract_tests/contract_escrow.cpp"
+#include "contract_tests/contract_ggwp.cpp"
 #include "contract_tests/contract_gqmprop.cpp"
 #include "contract_tests/contract_msvault.cpp"
 #include "contract_tests/contract_nostromo.cpp"

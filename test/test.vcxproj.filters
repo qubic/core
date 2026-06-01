@@ -32,7 +32,6 @@
     <ClCompile Include="quorum_value.cpp" />
     <ClCompile Include="sorting.cpp" />
     <ClCompile Include="oracle_engine.cpp" />
-    <ClCompile Include="contract_ggwp.cpp" />
     <ClCompile Include="custom_qubic_mining_storage.cpp" />
     <ClCompile Include="all_contract_tests.cpp" />
     <ClCompile Include="contract_tests\contract_ccf.cpp">
@@ -108,6 +107,9 @@
       <Filter>contract_tests</Filter>
     </ClCompile>
     <ClCompile Include="contract_tests\contract_vottunbridge.cpp">
+      <Filter>contract_tests</Filter>
+    </ClCompile>
+    <ClCompile Include="contract_tests\contract_ggwp.cpp">
       <Filter>contract_tests</Filter>
     </ClCompile>
   </ItemGroup>
