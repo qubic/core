@@ -181,6 +181,50 @@ inline constexpr T greatestCommonDivisor(T a, T b)
 	return a;
 }
 
+static unsigned long long ipow(unsigned long long v, unsigned int e)
+{
+    // Edge case: 0^0 = 1, while 0^e (where e > 0) = 0
+    if (v == 0)
+    {
+        return (e == 0) ? 1 : 0;
+    }
+    // Edge case: 1^e is always 1
+    if (v == 1)
+    {
+        return 1;
+    }
+
+    unsigned long long r = 1;
+    const unsigned long long max_val = 0xFFFFFFFFFFFFFFFFULL;
+
+    while (e > 0)
+    {
+        // If the current bit of the exponent is set, multiply r by v
+        if (e & 1)
+        {
+            if (r > max_val / v)
+            {
+                return max_val; // Saturate on overflow
+            }
+            r *= v;
+        }
+
+        // Advance to the next bit of the exponent
+        e >>= 1;
+
+        // If there are more bits left, square the base v
+        if (e > 0)
+        {
+            if (v > max_val / v)
+            {
+                return max_val;
+            }
+            v *= v;
+        }
+    }
+    return r;
+}
+
 // hard termination backstop for iroot
 static constexpr unsigned int IROOT_NEWTON_CAP = 100;
 
