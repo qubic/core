@@ -265,7 +265,6 @@ static bool saveContractExecFeeFiles(CHAR16* directory = NULL, bool saveAccumula
 static bool saveSystem(CHAR16* directory = NULL);
 static bool loadContractStateFiles(CHAR16* directory = NULL, bool forceLoadFromFile = false);
 static bool loadContractExecFeeFiles(CHAR16* directory = NULL, bool loadAccumulatedTime = false);
-static bool saveRevenueComponents(CHAR16* directory = NULL);
 
 #if ENABLED_LOGGING
 #define PAUSE_BEFORE_CLEAR_MEMORY 1 // Requiring operators to press F10 to clear memory (before switching epoch)
@@ -5636,7 +5635,6 @@ static void tickProcessor(void*)
                                     endEpoch();
 
                                     // Save the file of revenue. This blocking save can be called from any thread
-                                    saveRevenueComponents(NULL);
                                     // Revenue v2 data
                                     asyncSave(REVENUE_DATA_END_OF_EPOCH_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData);
                                     // Multi-dim revenue (shadow) - for offline comparison against the additive
@@ -5926,17 +5924,6 @@ static bool saveSystem(CHAR16* directory)
         appendNumber(message, (__rdtsc() - beginningTick) * 1000000 / frequency, TRUE);
         appendText(message, L" microseconds).");
         logToConsole(message);
-        return true;
-    }
-    return false;
-}
-
-static bool saveRevenueComponents(CHAR16* directory)
-{
-    CHAR16* fn = CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME;
-    long long savedSize = asyncSave(fn, sizeof(gRevenueComponents), (unsigned char*)&gRevenueComponents, directory);
-    if (savedSize == sizeof(gRevenueComponents))
-    {
         return true;
     }
     return false;
