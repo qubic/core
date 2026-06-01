@@ -262,3 +262,149 @@ TEST(TestFourQ, TestSign)
         }
     }
 }
+
+// Helpers for the verify() negative/malleability tests below.
+namespace
+{
+    // A few (subseed, messageDigest) vectors reused from TestSign to produce valid signatures.
+    const char* const kVerifySubSeeds[] = {
+        "4ac19e2bf0d3776519aabe31924f7dc2589b3d0e7411a65f84c9b16df72c038e",
+        "e8217c5b40aa91df662803ce4dbf18722e35f1097ac68fb5da10643a825799e3",
+        "6d02f48bcb53ac397fc71a9028e4165df9b87044c53e116a0192d7fa83254bb0",
+        "3cfa1097be482f6e5ce132c2aa657d0fb9d84121048de6f05b90a2cc136bf73a",
+    };
+    const char* const kVerifyDigests[] = {
+        "94e120a4d3f58c217a53eb9046d9f2c5b11288a9fe340d6ce5a771cf04b82e63",
+        "77f493b58ea40162dc33f9a718e2543b05f629884d7ca0e31598c45f021ae7c0",
+        "5cc82fa973101da5bfb3e2448196f0a7d7d3324c86fbbe42907613d5c8c2f1a4",
+        "c01ae5f2879d11439b30ddae5f4c7b22689f023e17b4955c3b2f05e8d9089af6",
+    };
+    constexpr int kNumVerifyVectors = sizeof(kVerifySubSeeds) / sizeof(kVerifySubSeeds[0]);
+
+    // Produce a valid signature (and its publicKey + digest) for vector i.
+    void makeValidSignature(int i, unsigned char publicKey[32], unsigned char digest[32], unsigned char signature[64])
+    {
+        m256i subseed = test_utils::hexTo32Bytes(kVerifySubSeeds[i], 32);
+        m256i md = test_utils::hexTo32Bytes(kVerifyDigests[i], 32);
+        unsigned char privateKey[32];
+        getPrivateKey(subseed.m256i_u8, privateKey);
+        getPublicKey(privateKey, publicKey);
+        copyMem(digest, md.m256i_u8, 32);
+        sign(subseed.m256i_u8, publicKey, digest, signature);
+    }
+
+    // out = s + curve_order (256-bit), s is the lower 32 bytes interpreted little-endian.
+    void addCurveOrder(const unsigned char s[32], unsigned char out[32])
+    {
+        unsigned long long si[4], ri[4] = { CURVE_ORDER_0, CURVE_ORDER_1, CURVE_ORDER_2, CURVE_ORDER_3 };
+        copyMem(si, s, 32);
+        unsigned long long oi[4];
+        unsigned char carry = _addcarry_u64(0, si[0], ri[0], &oi[0]);
+        carry = _addcarry_u64(carry, si[1], ri[1], &oi[1]);
+        carry = _addcarry_u64(carry, si[2], ri[2], &oi[2]);
+        _addcarry_u64(carry, si[3], ri[3], &oi[3]);
+        copyMem(out, oi, 32);
+    }
+}
+
+// Negative test: verify() must reject signatures that have been tampered with.
+TEST(TestFourQ, TestVerifyRejectsTamperedSignature)
+{
+#ifdef __AVX512F__
+    initAVX512FourQConstants();
+#endif
+    for (int i = 0; i < kNumVerifyVectors; ++i)
+    {
+        unsigned char publicKey[32], digest[32], signature[64];
+        makeValidSignature(i, publicKey, digest, signature);
+
+        // Sanity: the untouched signature must verify.
+        ASSERT_TRUE(verify(publicKey, digest, signature)) << " valid signature rejected at [" << i << "]";
+
+        // Flip a bit in the commitment R (first 32 bytes) -> must fail.
+        {
+            unsigned char bad[64];
+            copyMem(bad, signature, 64);
+            bad[0] ^= 0x01;
+            EXPECT_FALSE(verify(publicKey, digest, bad)) << " tampered R accepted at [" << i << "]";
+        }
+
+        // Flip a low bit in the scalar S (bytes 32..63) -> must fail (still canonical, just wrong).
+        {
+            unsigned char bad[64];
+            copyMem(bad, signature, 64);
+            bad[32] ^= 0x01;
+            EXPECT_FALSE(verify(publicKey, digest, bad)) << " tampered S accepted at [" << i << "]";
+        }
+
+        // Wrong message digest -> must fail.
+        {
+            unsigned char otherDigest[32];
+            copyMem(otherDigest, digest, 32);
+            otherDigest[0] ^= 0x01;
+            EXPECT_FALSE(verify(publicKey, otherDigest, signature)) << " wrong digest accepted at [" << i << "]";
+        }
+
+        // Wrong public key -> must fail.
+        {
+            unsigned char otherPub[32];
+            copyMem(otherPub, publicKey, 32);
+            otherPub[0] ^= 0x01;
+            EXPECT_FALSE(verify(otherPub, digest, signature)) << " wrong public key accepted at [" << i << "]";
+        }
+    }
+}
+
+// Malleability test: the twin S' = S + curve_order is a second valid SchnorrQ scalar for the
+// same (R, publicKey, message). It MUST be rejected by the canonical S < curve_order check.
+// Before that check existed, S' passed (only S < 2^246 was enforced) and produced a distinct
+// transaction hash, enabling double-execution.
+TEST(TestFourQ, TestVerifyRejectsMalleableSignature)
+{
+#ifdef __AVX512F__
+    initAVX512FourQConstants();
+#endif
+    int testedTwins = 0;
+    for (int i = 0; i < kNumVerifyVectors; ++i)
+    {
+        unsigned char publicKey[32], digest[32], signature[64];
+        makeValidSignature(i, publicKey, digest, signature);
+        ASSERT_TRUE(verify(publicKey, digest, signature)) << " valid signature rejected at [" << i << "]";
+
+        // Build the malleable twin: same R (bytes 0..31), S' = S + r (bytes 32..63).
+        unsigned char twin[64];
+        copyMem(twin, signature, 32);
+        unsigned char twinScalar[32];
+        addCurveOrder(signature + 32, twinScalar);
+        copyMem(twin + 32, twinScalar, 32);
+
+        // Only twins that still fit in 2^246 would have slipped past the OLD check; those are the
+        // dangerous ones this fix must catch. (S' >= 2^246 was already rejected before.)
+        const bool twinFitsOldCheck = !((twin[62] & 0xC0) || twin[63]);
+        if (twinFitsOldCheck)
+        {
+            ++testedTwins;
+            EXPECT_FALSE(verify(publicKey, digest, twin))
+                << " malleable twin S+r accepted at [" << i << "] (signature malleability not blocked)";
+        }
+    }
+    // At least one vector should exercise the dangerous (old-check-passing) twin range.
+    EXPECT_GT(testedTwins, 0) << " no test vector produced a twin in the malleable range";
+}
+
+// Boundary test: a scalar S exactly equal to the curve order is non-canonical and must be rejected.
+TEST(TestFourQ, TestVerifyRejectsScalarEqualToCurveOrder)
+{
+#ifdef __AVX512F__
+    initAVX512FourQConstants();
+#endif
+    unsigned char publicKey[32], digest[32], signature[64];
+    makeValidSignature(0, publicKey, digest, signature);
+
+    // S = r exactly (>= r, so rejected by the canonical check regardless of the rest).
+    unsigned long long ri[4] = { CURVE_ORDER_0, CURVE_ORDER_1, CURVE_ORDER_2, CURVE_ORDER_3 };
+    unsigned char atOrder[64];
+    copyMem(atOrder, signature, 32);
+    copyMem(atOrder + 32, ri, 32);
+    EXPECT_FALSE(verify(publicKey, digest, atOrder)) << " scalar S == curve_order accepted";
+}

@@ -1,9 +1,8 @@
 #define SINGLE_COMPILE_UNIT
 
-//#define INCLUDE_CONTRACT_TEST_EXAMPLES
+// #define INCLUDE_CONTRACT_TEST_EXAMPLES
 
-// #define OLD_QRAFFLE
-// #define OLD_QVAULT
+// #define NO_GGWP
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
@@ -501,6 +500,8 @@ static void processExchangePublicPeers(Peer* peer, RequestResponseHeader* header
         }
     }
 
+    if (!header->checkPayloadSize(sizeof(ExchangePublicPeers)))
+        return;
     ExchangePublicPeers* request = header->getPayload<ExchangePublicPeers>();
     for (unsigned int j = 0; j < NUMBER_OF_EXCHANGED_PEERS && numberOfPublicPeers < MAX_NUMBER_OF_PUBLIC_PEERS; j++)
     {
@@ -653,6 +654,9 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 
 static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
 {
+    // TODO: tighten back to checkPayloadSize once external tools send canonical size.
+    if (!header->checkPayloadSizeMinMax(sizeof(BroadcastComputors), sizeof(BroadcastComputors) + 4))
+        return;
     BroadcastComputors* request = header->getPayload<BroadcastComputors>();
 
     // Only accept computor list from current epoch (important in seamless epoch transition if this node is
@@ -720,6 +724,8 @@ static bool verifyTickVoteSignature(const unsigned char* publicKey, const unsign
 
 static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
 {
+    if (!header->checkPayloadSize(sizeof(BroadcastTick)))
+        return;
     BroadcastTick* request = header->getPayload<BroadcastTick>();
     if (request->tick.computorIndex < NUMBER_OF_COMPUTORS
         && request->tick.epoch == system.epoch
@@ -767,9 +773,22 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
             }
             else
             {
-                // Copy the sent tick to the tick storage
-                copyMem(tsTick, &request->tick, sizeof(Tick));
-                peer->lastActiveTick = max(peer->lastActiveTick, peer->getDejavuTick(header->dejavu()));
+                // hot fix: only accept "empty" votes for stuck tick 54400007
+                bool isOk = true;
+                if (request->tick.tick == 54400007)
+                {
+                    // only accept zero transactionDigest
+                    if (!isZero(request->tick.transactionDigest))
+                    {
+                        isOk = false;
+                    }
+                }
+                if (isOk)
+                {
+                    // Copy the sent tick to the tick storage
+                    copyMem(tsTick, &request->tick, sizeof(Tick));
+                    peer->lastActiveTick = max(peer->lastActiveTick, peer->getDejavuTick(header->dejavu()));
+                }
             }
 
             ts.ticks.releaseLock(request->tick.computorIndex);
@@ -779,6 +798,8 @@ static void processBroadcastTick(Peer* peer, RequestResponseHeader* header)
 
 static void processBroadcastFutureTickData(Peer* peer, RequestResponseHeader* header)
 {
+    if (!header->checkPayloadSize(sizeof(BroadcastFutureTickData)))
+        return;
     BroadcastFutureTickData* request = header->getPayload<BroadcastFutureTickData>();
     if (request->tickData.epoch == system.epoch
         && request->tickData.tick > system.tick
@@ -1014,6 +1035,8 @@ static void processRequestComputors(Peer* peer, RequestResponseHeader* header)
  */
 static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
 {
+    if (!header->checkPayloadSize(sizeof(RequestQuorumTick)))
+        return;
     RequestQuorumTick* request = header->getPayload<RequestQuorumTick>();
 
     unsigned short tickEpoch = 0;
@@ -1064,6 +1087,8 @@ static void processRequestQuorumTick(Peer* peer, RequestResponseHeader* header)
 
 static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
 {
+    if (!header->checkPayloadSize(sizeof(RequestTickData)))
+        return;
     RequestTickData* request = header->getPayload<RequestTickData>();
     TickData* td = ts.tickData.getByTickIfNotEmpty(request->requestedTickData.tick);
     if (td)
@@ -1078,6 +1103,8 @@ static void processRequestTickData(Peer* peer, RequestResponseHeader* header)
 
 static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* header)
 {
+    if (!header->checkPayloadSize(sizeof(RequestTickTransactions)))
+        return;
     RequestTickTransactions* request = header->getPayload<RequestTickTransactions>();
 
     unsigned short tickEpoch = 0;
@@ -1137,6 +1164,8 @@ static void processRequestTickTransactions(Peer* peer, RequestResponseHeader* he
 
 static void processRequestTransactionInfo(Peer* peer, RequestResponseHeader* header)
 {
+    if (!header->checkPayloadSize(sizeof(RequestTransactionInfo)))
+        return;
     RequestTransactionInfo* request = header->getPayload<RequestTransactionInfo>();
     const Transaction* transaction = ts.transactionsDigestAccess.findTransaction(request->txDigest);
     if (transaction)
@@ -1194,9 +1223,11 @@ static void processResponseCurrentTickInfo(Peer* peer, RequestResponseHeader* he
 
 static void processRequestEntity(Peer* peer, RequestResponseHeader* header)
 {
-    RespondEntity respondedEntity;
-
+    if (!header->checkPayloadSize(sizeof(RequestEntity)))
+        return;
     RequestEntity* request = header->getPayload<RequestEntity>();
+
+    RespondEntity respondedEntity;
     respondedEntity.entity.publicKey = request->publicKey;
     // Inside spectrumIndex already have acquire/release lock
     respondedEntity.spectrumIndex = spectrumIndex(respondedEntity.entity.publicKey);
@@ -1241,9 +1272,11 @@ static void processRequestActiveIPOs(Peer* peer, RequestResponseHeader* header)
 
 static void processRequestContractIPO(Peer* peer, RequestResponseHeader* header)
 {
-    RespondContractIPO respondContractIPO;
-
+    if (!header->checkPayloadSize(sizeof(RequestContractIPO)))
+        return;
     RequestContractIPO* request = header->getPayload<RequestContractIPO>();
+
+    RespondContractIPO respondContractIPO;
     respondContractIPO.contractIndex = request->contractIndex;
     respondContractIPO.tick = system.tick;
     if (request->contractIndex >= contractCount
@@ -4459,8 +4492,8 @@ static bool loadAllNodeStates()
     long long revenueDataSize = load(REVENUE_DATA_SNAPSHOT_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData, directory);
     if (revenueDataSize != sizeof(gEpochRevenueData))
     {
-        logToConsole(L"Failed to load revenue data snapshot, starting with zero counts");
-        setMem(&gEpochRevenueData, sizeof(gEpochRevenueData), 0);
+        logToConsole(L"Failed to load revenue data snapshot");
+        return false;
     }
 
     // update own computor indices
@@ -5299,6 +5332,14 @@ static void tickProcessor(void*)
                 targetNextTickDataDigest = m256i::zero();
                 targetNextTickDataDigestIsKnown = true;
                 tickDataSuits = true;
+            }
+
+            // hot fix: force tick 54400007 to be empty
+            if (system.tick == 54400006)
+            {
+                // ignore next tick (54400007)
+                targetNextTickDataDigest = m256i::zero();
+                targetNextTickDataDigestIsKnown = true;
             }
 
             if (!tickDataSuits)

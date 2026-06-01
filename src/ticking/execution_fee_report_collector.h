@@ -42,6 +42,8 @@ return nullptr;
 
 bool validateReportEntries(const unsigned int* contractIndices, const unsigned long long* executionFees, unsigned int numEntries)
 {
+if (numEntries > contractCount)
+    return false;
 for (unsigned int i = 0; i < numEntries; i++)
 {
     if (contractIndices[i] == 0 || contractIndices[i] >= contractCount || executionFees[i] == 0)

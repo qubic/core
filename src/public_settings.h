@@ -70,12 +70,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 291
+#define VERSION_B 294
 #define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 213
-#define TICK 52320000
+#define EPOCH 216
+#define TICK 55900000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -101,13 +101,14 @@ static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_MUTATIONS = 150;
 static constexpr unsigned long long HYPERIDENTITY_POPULATION_THRESHOLD = HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_MUTATIONS; // P
 static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT = 321;
 
-static constexpr unsigned long long ADDITION_NUMBER_OF_INPUT_NEURONS = 14;     // K
-static constexpr unsigned long long ADDITION_NUMBER_OF_OUTPUT_NEURONS = 8;    // L
-static constexpr unsigned long long ADDITION_NUMBER_OF_TICKS = 1000;               // N
-static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
-static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 500;
-static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = ADDITION_NUMBER_OF_INPUT_NEURONS + ADDITION_NUMBER_OF_OUTPUT_NEURONS + ADDITION_NUMBER_OF_MUTATIONS; // P
-static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 76430;
+static constexpr unsigned long long ADDITION_NUMBER_OF_INPUT_NEURONS = 14;
+static constexpr unsigned long long ADDITION_NUMBER_OF_OUTPUT_NEURONS = 8;
+static constexpr unsigned long long ADDITION_NUMBER_OF_TICKS = 256;
+static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = 256;
+// Each neuron is connected to every other neuron(exclude self). The effective is clamp to (ADDITION_POPULATION_THRESHOLD - 1) at runtime
+static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = ADDITION_POPULATION_THRESHOLD;
+static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 256;
+static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 76500;
 
 // Multipler of score
 static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;
