@@ -288,6 +288,16 @@
 #define CONTRACT_STATE2_TYPE ESCROW2
 #include "contracts/Escrow.h"
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QPORTAL_CONTRACT_INDEX 28
+#define CONTRACT_INDEX QPORTAL_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QPORTAL
+#define CONTRACT_STATE2_TYPE QPORTAL2
+#include "contracts/QPortal.h"
+
 #ifndef NO_GGWP
 
 #undef CONTRACT_INDEX
@@ -301,16 +311,6 @@
 #include "contracts/GGWP.h"
 
 #endif
-
-#undef CONTRACT_INDEX
-#undef CONTRACT_STATE_TYPE
-#undef CONTRACT_STATE2_TYPE
-
-#define QPORTAL_CONTRACT_INDEX 29
-#define CONTRACT_INDEX QPORTAL_CONTRACT_INDEX
-#define CONTRACT_STATE_TYPE QPORTAL
-#define CONTRACT_STATE2_TYPE QPORTAL2
-#include "contracts/QPortal.h"
 
 // new contracts should be added above this line
 
@@ -426,10 +426,10 @@ constexpr struct ContractDescription
     {"VOTTUN", 206, 10000, sizeof(VOTTUNBRIDGE::StateData)}, // proposal in epoch 204, IPO in 205, construction and first use in 206
     {"QUSINO", 208, 10000, sizeof(QUSINO::StateData)}, // proposal in epoch 206, IPO in 207, construction and first use in 208
     {"ESCROW", 210, 10000, sizeof(ESCROW::StateData)}, // proposal in epoch 208, IPO in 209, construction and first use in 210
+    {"QPORTAL", 217, 10000, sizeof(QPORTAL::StateData)}, // proposal in epoch 215, IPO in 216, construction and first use in 217
 #ifndef NO_GGWP
     {"GGWP", 217, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 215, IPO in 216, construction and first use in 217
 #endif
-    {"QPORTAL", 217, 10000, sizeof(QPORTAL::StateData)}, // proposal in epoch 215, IPO in 216, construction and first use in 217
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
@@ -549,14 +549,14 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QRP);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QTF);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QDUEL);
-	  REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(PULSE);
+	REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(PULSE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(VOTTUNBRIDGE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUSINO);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(ESCROW);
+    EGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QPORTAL);
 #ifndef NO_GGWP
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(WOLFPACK);
 #endif
-    EGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QPORTAL);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
