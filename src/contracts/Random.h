@@ -88,6 +88,10 @@ public:
 		//   their reveal into entropy.
 		Array<uint64, RANDOM_MAX_PROVIDERS> lockedCollateralAmounts; // 3 * 1365
 		bit_4096 revealedThisTickFlags;              // 3 * 1365
+		// Set in END_TICK only when a provider's reveal is actually XOR'd into
+		// entropy. Persists until the stream's next END_TICK so BuyEntropy can
+		// verify that a named trustee genuinely contributed (not just enrolled).
+		bit_4096 contributedToEntropyFlags;          // 3 * 1365
 	};
 
 	PUBLIC_FUNCTION(Fees)
@@ -127,7 +131,8 @@ public:
 				{
 					locals.index = locals.stream * RANDOM_STREAM_CAPACITY + static_cast<uint32>(locals.i);
 					if (input.trustee == state.get().providers.get(locals.index)
-						&& input.collateralTier == state.get().collateralTiers.get(locals.index))
+						&& input.collateralTier == state.get().collateralTiers.get(locals.index)
+						&& state.get().contributedToEntropyFlags.get(locals.index))
 					{
 						locals.trusteeOk = 1;
 						break;
@@ -307,6 +312,14 @@ private:
 			state.mut().entropy.set(locals.stream * 10 + locals.i, locals.zeroReveal);
 		}
 
+		// Clear contribution flags so only reveals in THIS tick can satisfy the
+		// trustee check in BuyEntropy — a fresh committer's flag stays 0.
+		for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
+		{
+			state.mut().contributedToEntropyFlags.set(
+				locals.stream * RANDOM_STREAM_CAPACITY + locals.i, 0);
+		}
+
 		for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
 		{
 			if (state.get().revealedThisTickFlags.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i))
@@ -344,6 +357,7 @@ private:
 					state.mut().lockedCollateralAmounts.set(locals.index, state.get().lockedCollateralAmounts.get(locals.lastIndex));
 					state.mut().revealOrCommitFlags.set(locals.index, state.get().revealOrCommitFlags.get(locals.lastIndex));
 					state.mut().revealedThisTickFlags.set(locals.index, state.get().revealedThisTickFlags.get(locals.lastIndex));
+					state.mut().contributedToEntropyFlags.set(locals.index, state.get().contributedToEntropyFlags.get(locals.lastIndex));
 				}
 				state.mut().providers.set(locals.lastIndex, id::zero());
 				state.mut().collateralTiers.set(locals.lastIndex, 0);
@@ -352,6 +366,7 @@ private:
 				state.mut().lockedCollateralAmounts.set(locals.lastIndex, 0);
 				state.mut().revealOrCommitFlags.set(locals.lastIndex, 0);
 				state.mut().revealedThisTickFlags.set(locals.lastIndex, 0);
+				state.mut().contributedToEntropyFlags.set(locals.lastIndex, 0);
 
 				state.mut().populations.set(locals.stream, state.get().populations.get(locals.stream) - 1);
 			}
@@ -383,6 +398,9 @@ private:
 							                   locals.entropy.get(locals.j) ^ state.get().reveals.get(locals.index).get(locals.j));
 						}
 						state.mut().entropy.set(locals.stream * 10 + locals.tier, locals.entropy);
+						// Mark that this provider's reveal was actually XOR'd in.
+						// BuyEntropy uses this to verify trustee guarantees.
+						state.mut().contributedToEntropyFlags.set(locals.index, 1);
 					}
 					// Always clear the reveal so the provider can reveal again
 					// next round, even when the XOR above was skipped because
@@ -418,6 +436,7 @@ private:
 					state.mut().lockedCollateralAmounts.set(locals.index, state.get().lockedCollateralAmounts.get(locals.lastIndex));
 					state.mut().revealOrCommitFlags.set(locals.index, state.get().revealOrCommitFlags.get(locals.lastIndex));
 					state.mut().revealedThisTickFlags.set(locals.index, state.get().revealedThisTickFlags.get(locals.lastIndex));
+					state.mut().contributedToEntropyFlags.set(locals.index, state.get().contributedToEntropyFlags.get(locals.lastIndex));
 				}
 				state.mut().providers.set(locals.lastIndex, id::zero());
 				state.mut().collateralTiers.set(locals.lastIndex, 0);
@@ -426,6 +445,7 @@ private:
 				state.mut().lockedCollateralAmounts.set(locals.lastIndex, 0);
 				state.mut().revealOrCommitFlags.set(locals.lastIndex, 0);
 				state.mut().revealedThisTickFlags.set(locals.lastIndex, 0);
+				state.mut().contributedToEntropyFlags.set(locals.lastIndex, 0);
 
 				state.mut().populations.set(locals.stream, state.get().populations.get(locals.stream) - 1);
 			}

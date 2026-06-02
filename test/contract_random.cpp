@@ -534,6 +534,107 @@ TEST(ContractRandom, BuyEntropyTrusteeInOtherTierRefunds)
     EXPECT_TRUE(out2.entropy == r.state()->entropy.get(stream * 10 + boughtTier));
 }
 
+// A trustee who is enrolled in the pool but whose reveal was NOT XOR'd into the
+// entropy (first-commit path, no previous reveal) must NOT satisfy the trustee
+// condition. BuyEntropy must refund even though the trustee is on the roster.
+//
+// Scenario (stream s = 1002 % 3 = 0):
+//   Tick 1002  : Bob first-commits.  END_TICK -> empty channel, entropy = 0.
+//   Tick 1005  : Bob reveals (entropy becomes reveal_bob).
+//                Alice first-commits on the same stream/tier (no previous reveal).
+//                END_TICK -> Bob's flag set, Alice's flag stays 0.
+//   Tick 1006  : BuyEntropy with trustee=Alice  -> refund (flag=0).
+//                BuyEntropy with trustee=Bob    -> success (flag=1), as sanity check.
+TEST(ContractRandom, BuyEntropyFreshTrusteeRefunds)
+{
+    ContractTestingRandom r;
+    const uint32 startTick = 1002;
+    const uint8 tier = 2;
+    const sint64 collateral = collateralForTier(tier);
+    const uint32 stream = startTick % 3;
+
+    const id bob   = getUser(0xB0B);
+    const id alice = getUser(0xA11CE);
+
+    const QPI::bit_4096 revealBob = makeReveal(0xB0B * 7 + 1);
+    const id commitBob1 = commitOf(revealBob);
+    const id commitBob2 = commitOf(makeReveal(0xB0B * 7 + 2));
+    const id commitAlice = commitOf(makeReveal(0xA11CE * 7 + 1));
+
+    QPI::bit_4096 zero; zero.setAll(0);
+
+    // Tick T: Bob first-commits only.
+    r.setTick(startTick);
+    increaseEnergy(bob, collateral);
+    r.revealAndCommit(bob, zero, commitBob1, collateral);
+    r.endTick();
+    // Empty reveal channel -> entropy stays zero, Bob stays enrolled.
+    ASSERT_TRUE(r.state()->entropy.get(stream * 10 + tier) == zero);
+    ASSERT_EQ(r.state()->populations.get(stream), 1u);
+
+    // Tick T+3: Bob reveals (entropy becomes revealBob), Alice first-commits.
+    r.setTick(startTick + 3);
+    increaseEnergy(bob, collateral);
+    r.revealAndCommit(bob, revealBob, commitBob2, collateral);
+    increaseEnergy(alice, collateral);
+    r.revealAndCommit(alice, zero, commitAlice, collateral);
+    r.endTick();
+
+    // Sanity: entropy is now non-zero (Bob's reveal was XOR'd in).
+    ASSERT_FALSE(r.state()->entropy.get(stream * 10 + tier) == zero)
+        << "Bob's reveal must have produced non-zero entropy";
+    ASSERT_EQ(r.state()->populations.get(stream), 2u)
+        << "Both Bob and Alice must be enrolled";
+
+    // Find Alice's index and verify her contributedToEntropyFlags is 0.
+    bool aliceFound = false;
+    for (uint32 i = 0; i < r.state()->populations.get(stream); i++)
+    {
+        uint32 idx = stream * RANDOM_STREAM_CAPACITY + i;
+        if (r.state()->providers.get(idx) == alice)
+        {
+            aliceFound = true;
+            EXPECT_EQ(r.state()->contributedToEntropyFlags.get(idx), 0)
+                << "Alice only committed this round; her contribution flag must be 0";
+            break;
+        }
+    }
+    ASSERT_TRUE(aliceFound) << "Alice must be in the pool after first-commit";
+
+    // Tick T+4: BuyEntropy.
+    r.setTick(startTick + 4);
+    const uint16 numberOfBits = 4096;
+    const sint64 fee = (sint64)numberOfBits * 100;
+
+    // --- Alice as trustee: must refund (she did not contribute to the entropy).
+    id buyer = getUser(0xBEEF);
+    increaseEnergy(buyer, fee);
+    const long long beforeAlice = getBalance(buyer);
+    const uint64 earnedBeforeAlice = r.state()->earnedAmount;
+
+    auto outAlice = r.buyEntropy(buyer, tier, numberOfBits, fee, /*trustee=*/alice);
+
+    EXPECT_EQ(getBalance(buyer), beforeAlice)
+        << "BuyEntropy with fresh-committer trustee must refund (trustee did not reveal)";
+    EXPECT_EQ(r.state()->earnedAmount, earnedBeforeAlice)
+        << "earnedAmount must not increase on trustee refund";
+    EXPECT_TRUE(outAlice.entropy == zero)
+        << "output must be all-zero when trustee check fails";
+
+    // --- Bob as trustee: must succeed (he did reveal and his flag is set).
+    increaseEnergy(buyer, fee);
+    const long long beforeBob = getBalance(buyer);
+    const uint64 earnedBeforeBob = r.state()->earnedAmount;
+
+    auto outBob = r.buyEntropy(buyer, tier, numberOfBits, fee, /*trustee=*/bob);
+
+    EXPECT_EQ(getBalance(buyer), beforeBob - fee)
+        << "BuyEntropy with an established trustee must charge the fee";
+    EXPECT_EQ(r.state()->earnedAmount, earnedBeforeBob + (uint64)fee);
+    EXPECT_FALSE(outBob.entropy == zero)
+        << "BuyEntropy with an established trustee must return real entropy";
+}
+
 // ---------------------------------------------------------------------------
 // Collateral-lifecycle tests (C1 / C2 / C3 / H4).
 //
