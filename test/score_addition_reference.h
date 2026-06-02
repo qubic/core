@@ -23,11 +23,16 @@ struct Miner
     static constexpr unsigned long long numberOfNeurons =
         numberOfInputNeurons + numberOfOutputNeurons;
     static constexpr unsigned long long maxNumberOfNeurons = populationThreshold;
+    static constexpr unsigned long long numberOfEvolutionNeurons =
+        populationThreshold - numberOfNeurons;   // P - K - L
     static constexpr unsigned long long maxNumberOfSynapses =
         populationThreshold * maxNumberOfNeighbors;
     static constexpr unsigned long long trainingSetSize = 1ULL << numberOfInputNeurons; // 2^K
     static constexpr unsigned long long paddingNumberOfSynapses =
         (maxNumberOfSynapses + 31 ) / 32 * 32; // padding to multiple of 32
+    // Packed 2-bit synapse storage: 4 weights per byte. Encoding:
+    //   00 -> 0, 01 -> +1, 10 -> -1, 11 -> 0
+    static constexpr unsigned long long packedSynapsesBytes = (maxNumberOfSynapses + 3) / 4;
 
     static_assert(
         maxNumberOfSynapses <= (0xFFFFFFFFFFFFFFFF << 1ULL),
@@ -76,22 +81,47 @@ struct Miner
     struct ANN
     {
         Neuron neurons[maxNumberOfNeurons];
-        Synapse synapses[maxNumberOfSynapses];
+        unsigned char synapsesPacked[packedSynapsesBytes];
         unsigned long long population;
     };
     ANN bestANN;
     ANN currentANN;
 
+    // Decoded synapse buffer (derived from currentANN.synapsesPacked).
+    Synapse synapses[maxNumberOfSynapses];
+
     // Intermediate data
     struct InitValue
     {
         unsigned long long outputNeuronPositions[numberOfOutputNeurons];
+        unsigned long long evolutionNeuronPositions[numberOfEvolutionNeurons];
         unsigned long long synapseWeight[paddingNumberOfSynapses / 32]; // each 64bits elements will
                                                                         // decide value of 32 synapses
-        unsigned long long synpaseMutation[numberOfMutations];
+        unsigned long long synapseMutation[numberOfMutations];
     } initValue;
 
-    unsigned long long neuronIndices[numberOfNeurons];
+    // Get the pointer to all outgoing synapses of a neuron.
+    Synapse* getSynapses(unsigned long long neuronIndex)
+    {
+        return &synapses[neuronIndex * maxNumberOfNeighbors];
+    }
+
+    // Refresh the decoded synapses[] buffer from currentANN.synapsesPacked.
+    void decodeSynapses()
+    {
+        // Encoding: 00 -> 0, 01 -> +1, 10 -> -1, 11 -> 0
+        static constexpr char weightFromBits[4] = { 0, +1, -1, 0 };
+        for (unsigned long long i = 0; i < maxNumberOfSynapses; ++i)
+        {
+            // Byte location: 4 weights per byte
+            // Slot location in byte: (i % 4) * 2
+            // Keep 2 bits: & 0x3U
+            unsigned char ev = (currentANN.synapsesPacked[i / 4] >> ((i % 4) * 2)) & 0x3U;
+            synapses[i].weight = weightFromBits[ev];
+        }
+    }
+
+    unsigned long long neuronIndices[maxNumberOfNeurons];
     char previousNeuronValue[maxNumberOfNeurons];
 
     unsigned long long outputNeuronIndices[numberOfOutputNeurons];
@@ -183,61 +213,36 @@ struct Miner
 
 
 
-    void mutate(unsigned long long mutateStep)
+    // Bit-flip mutation on the 2-bit packed weight encoding.
+    //   +1 (01) flipped on either bit -> 0 (00 or 11), never -1
+    //   -1 (10) flipped on either bit -> 0 (11 or 00), never +1
+    //   0  (00) -> +1 or -1 depending on which bit is flipped
+    //   0  (11) -> +1 or -1 depending on which bit is flipped (opposite of 00)
+    void mutate(unsigned long long synapseMutation)
     {
-        // Mutation
+        // Seed split: bit 0 -> which of the 2 bits to flip; bits 1..63 -> synapse pick
         unsigned long long population = currentANN.population;
         unsigned long long actualNeighbors = getActualNeighborCount();
-        Synapse* synapses = currentANN.synapses;
 
-        // Randomly pick a synapse, randomly increase or decrease its weight by 1 or -1
-        unsigned long long synapseMutation = initValue.synpaseMutation[mutateStep];
         unsigned long long totalValidSynapses = population * actualNeighbors;
         unsigned long long flatIdx = (synapseMutation >> 1) % totalValidSynapses;
 
-        // Convert flat index to (neuronIdx, local synapse index within valid range)
         unsigned long long neuronIdx = flatIdx / actualNeighbors;
         unsigned long long localSynapseIdx = flatIdx % actualNeighbors;
 
-        // Convert to synapse buffer index that have bigger range
         unsigned long long synapseIndex = localSynapseIdx + getSynapseStartIndex();
         unsigned long long synapseFullBufferIdx = neuronIdx * maxNumberOfNeighbors + synapseIndex;
 
-        // Randomly increase or decrease its value
-        char weightChange = 0;
-        if ((synapseMutation & 1ULL) == 0)
-        {
-            weightChange = -1;
-        }
-        else
-        {
-            weightChange = 1;
-        }
-
-        char newWeight = synapses[synapseFullBufferIdx].weight + weightChange;
-
-        // Valid weight. Update it
-        if (newWeight >= -1 && newWeight <= 1)
-        {
-            synapses[synapseFullBufferIdx].weight = newWeight;
-        }
-        else // Invalid weight. Insert a neuron
-        {
-            // Insert the neuron
-            insertNeuron(neuronIdx, synapseIndex);
-        }
-
-        // Clean the ANN
-        while (scanRedundantNeurons() > 0)
-        {
-            cleanANN();
-        }
-    }
-
-    // Get the pointer to all outgoing synapse of a neurons
-    Synapse* getSynapses(unsigned long long neuronIndex)
-    {
-        return &currentANN.synapses[neuronIndex * maxNumberOfNeighbors];
+        // which of the 2 bits will be flipped
+        unsigned long long bitOffset = synapseMutation & 1ULL;
+        // byte location: 4 weights per byte
+        unsigned long long byteIdx = synapseFullBufferIdx / 4;
+        // which 2-bit slot in that byte (0..3)
+        unsigned long long nibblePos = synapseFullBufferIdx % 4;
+        // get mask to the set bit
+        unsigned char mask  = 1u << (nibblePos * 2 + bitOffset);
+        // flip the bit, others untouched
+        currentANN.synapsesPacked[byteIdx] ^= mask;
     }
 
     // Calculate the new neuron index that is reached by moving from the given `neuronIdx` `value`
@@ -264,6 +269,15 @@ struct Miner
         return (unsigned long long)nnIndex;
     }
     
+
+    // Variable-topology helpers below are preserved (not compiled) for potential ant-colony
+    // reuse. Not used in fixed topology.
+#if 0
+    // Get the pointer to all outgoing synapse of a neurons
+    Synapse* getSynapses(unsigned long long neuronIndex)
+    {
+        return &currentANN.synapses[neuronIndex * maxNumberOfNeighbors];
+    }
 
     // Remove a neuron and all synapses relate to it
     void removeNeuron(unsigned long long neuronIdx)
@@ -562,6 +576,7 @@ struct Miner
             }
         }
     }
+#endif // variable-topology helpers (kept for ant-colony reference)
 
     void processTick()
     {
@@ -722,6 +737,10 @@ struct Miner
 
     unsigned int inferANN()
     {
+        // Synapses live as packed 2-bit values in currentANN.synapsesPacked.
+        // Decoded char buffer once per inference.
+        decodeSynapses();
+
         unsigned int score = 0;
         for (unsigned long long i = 0; i < trainingSetSize; ++i)
         {
@@ -744,11 +763,10 @@ struct Miner
         KangarooTwelve(combined, 64, hash, 32);
 
         unsigned long long& population = currentANN.population;
-        Synapse* synapses = currentANN.synapses;
         Neuron* neurons = currentANN.neurons;
 
-        // Initialization
-        population = numberOfNeurons;
+        // Initialization -- fixed-topology: population is N total, set once.
+        population = populationThreshold;
 
         // Generate all 2^K possible (A, B, C) pairs
         generateTrainingSet();
@@ -756,13 +774,15 @@ struct Miner
         // Initalize with nonce and public key
         score_reference::random2(hash, poolVec.data(), (unsigned char*)&initValue, sizeof(InitValue));
 
-        // Randomly choose the positions of neurons types
+        // Randomly choose the positions of neurons types.
+        // Default = Input.
         for (unsigned long long i = 0; i < population; ++i)
         {
             neuronIndices[i] = i;
             neurons[i].type = Neuron::kInput;
         }
         unsigned long long neuronCount = population;
+        // Output positions from the remaining pool
         for (unsigned long long i = 0; i < numberOfOutputNeurons; ++i)
         {
             unsigned long long outputNeuronIdx = initValue.outputNeuronPositions[i] % neuronCount;
@@ -777,37 +797,21 @@ struct Miner
             neuronIndices[outputNeuronIdx] = neuronIndices[neuronCount];
         }
 
-        // Synapse weight initialization
-        auto extractWeight = [](unsigned long long packedValue, unsigned long long position) -> char {
-            unsigned char extractValue = static_cast<unsigned char>((packedValue >> (position * 2)) & 0b11);
-            switch (extractValue)
-            {
-                case 2:
-                    return -1;
-                case 3:
-                    return 1;
-                default:
-                    return 0;
-            }
-        };
-        for (unsigned long long i = 0; i < (maxNumberOfSynapses / 32); ++i)
+        // Evolution positions from the remaining pool
+        for (unsigned long long i = 0; i < numberOfEvolutionNeurons; ++i)
         {
-            for (unsigned long long j = 0; j < 32; ++j)
-            {
-                synapses[32 * i + j].weight = extractWeight(initValue.synapseWeight[i], j);
-            }
+            unsigned long long evolutionNeuronIdx = initValue.evolutionNeuronPositions[i] % neuronCount;
+
+            neurons[neuronIndices[evolutionNeuronIdx]].type = Neuron::kEvolution;
+
+            neuronCount = neuronCount - 1;
+            neuronIndices[evolutionNeuronIdx] = neuronIndices[neuronCount];
         }
 
-        // Handle remaining synapses (if maxNumberOfSynapses not divisible by 32)
-        unsigned long long remainder = maxNumberOfSynapses % 32;
-        if (remainder > 0)
-        {
-            unsigned long long lastBlock = maxNumberOfSynapses / 32;
-            for (unsigned long long j = 0; j < remainder; ++j)
-            {
-                synapses[32 * lastBlock + j].weight = extractWeight(initValue.synapseWeight[lastBlock], j);
-            }
-        }
+        // Synapse weight initialization, already in the 2-bit packed, just copy them
+        memcpy(currentANN.synapsesPacked,
+               initValue.synapseWeight,
+               sizeof(currentANN.synapsesPacked));
 
         // Run the first inference to get starting point before mutation
         unsigned int score = inferANN();
@@ -824,14 +828,7 @@ struct Miner
 
         for (unsigned long long s = 0; s < numberOfMutations; ++s)
         {
-            // Do the mutation
-            mutate(s);
-
-            // Exit if the number of population reaches the maximum allowed
-            if (currentANN.population >= populationThreshold)
-            {
-                break;
-            }
+            mutate(initValue.synapseMutation[s]);
 
             // Ticks simulation
             unsigned int R = inferANN();
@@ -848,8 +845,6 @@ struct Miner
                 // Roll back
                 memcpy(&currentANN, &bestANN, sizeof(bestANN));
             }
-
-            assert(bestANN.population <= populationThreshold);
         }
         return bestR;
     }

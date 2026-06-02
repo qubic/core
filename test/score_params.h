@@ -15,24 +15,26 @@ struct ConfigPair
 };
 
 // All configurations
+// Addition: fixed-topology detour. neighbors == populationThreshold (every-to-every via clamp).
+// HyperIdentity: unchanged from variable-topology design.
 using Config0 = ConfigPair<
     score_engine::HyperIdentityParams<64, 64, 50, 64, 178, 50, 36>,
-    score_engine::AdditionParams<2 * 2, 3, 50, 64, 100, 50, 36>
+    score_engine::AdditionParams<2 * 2, 3, 200, 16, 16, 400, 36>
 >;
 
 using Config1 = ConfigPair<
     score_engine::HyperIdentityParams<256, 256, 120, 256, 612, 100, 171>,
-    score_engine::AdditionParams<4 * 2, 5, 120, 256, 100 + 8 + 5, 100, 171>
+    score_engine::AdditionParams<4 * 2, 5, 200, 32, 32, 400, 171>
 >;
 
 using Config2 = ConfigPair<
     score_engine::HyperIdentityParams<512, 512, 150, 512, 1174, 150, 300>,
-    score_engine::AdditionParams<7 * 2, 8, 150, 512, 150 + 14 + 8, 150, 600>
+    score_engine::AdditionParams<7 * 2, 8, 100, 32, 32, 200, 600>
 >;
 
 using Config3 = ConfigPair<
     score_engine::HyperIdentityParams<1024, 1024, 200, 1024, 3000, 200, 600>,
-    score_engine::AdditionParams<9 * 2, 10, 200, 1024, 200 + 18 + 10, 200, 600>
+    score_engine::AdditionParams<7 * 2, 8, 150, 64, 64, 500, 600>
 >;
 
 using ConfigProfile = ConfigPair<
