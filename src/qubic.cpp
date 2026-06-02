@@ -5791,36 +5791,49 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                 }
                 else
                 {
-                    // Check if this contract is allowed to be zero-padded from a smaller file
-                    bool paddingAllowed = false;
-                    for (unsigned int i = 0; i < paddableCount; i++)
+                    // Check if this contract is allowed to have an automatic state change this epoch
+                    bool stateChangeAllowed = false;
+                    ContractStateChangeType changeType;
+                    for (unsigned int i = 0; i < contractStateChangeCount; i++)
                     {
-                        if (paddableContracts[i] == contractIndex)
+                        if (contractStateChangeInfos[i].contractIndex == contractIndex)
                         {
-                            paddingAllowed = true;
+                            stateChangeAllowed = true;
+                            changeType = contractStateChangeInfos[i].changeType;
                             break;
                         }
                     }
 
-                    if (paddingAllowed)
+                    if (stateChangeAllowed)
                     {
-                        long long actualSize = getFileSize(CONTRACT_FILE_NAME, directory);
-                        if (actualSize > 0 && (unsigned long long)actualSize < contractDescriptions[contractIndex].stateSize)
+                        if (changeType == RESET)
                         {
-                            // Zero the entire buffer, then load the smaller file into the front
+                            // Reset the entire state buffer with new size.
                             setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
-                            long long reloadedSize = load(CONTRACT_FILE_NAME, (unsigned long long)actualSize, contractStates[contractIndex], directory);
-                            if (reloadedSize == actualSize)
+                            appendText(message, L" state reset to all 0 as requested");
+                            logToConsole(message);
+                            continue;
+                        }
+                        else if (changeType == PADDING)
+                        {
+                            long long actualSize = getFileSize(CONTRACT_FILE_NAME, directory);
+                            if (actualSize > 0 && (unsigned long long)actualSize < contractDescriptions[contractIndex].stateSize)
                             {
-                                appendText(message, L" WARNING: undersized file (");
-                                appendNumber(message, (unsigned long long)actualSize, FALSE);
-                                appendText(message, L" < ");
-                                appendNumber(message, contractDescriptions[contractIndex].stateSize, FALSE);
-                                appendText(message, L" bytes), zero-padded");
-                                logToConsole(message);
-                                continue;
+                                // Zero the entire buffer, then load the smaller file into the front
+                                setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
+                                long long reloadedSize = load(CONTRACT_FILE_NAME, (unsigned long long)actualSize, contractStates[contractIndex], directory);
+                                if (reloadedSize == actualSize)
+                                {
+                                    appendText(message, L" WARNING: undersized file (");
+                                    appendNumber(message, (unsigned long long)actualSize, FALSE);
+                                    appendText(message, L" < ");
+                                    appendNumber(message, contractDescriptions[contractIndex].stateSize, FALSE);
+                                    appendText(message, L" bytes), zero-padded");
+                                    logToConsole(message);
+                                    continue;
+                                }
+                                // Reload also failed — fall through to error
                             }
-                            // Reload also failed — fall through to error
                         }
                     }
 
