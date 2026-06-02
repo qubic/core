@@ -18,6 +18,9 @@
 // make interfaces to oracles available for all contracts
 #include "oracle_core/oracle_interfaces_def.h"
 
+// make inert Qassandra prediction-market scaffold types available for contracts
+#include "contracts/Qassandra.h"
+
 #define QX_CONTRACT_INDEX 1
 #define CONTRACT_INDEX QX_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QX
