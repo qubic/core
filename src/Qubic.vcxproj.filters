@@ -138,6 +138,9 @@
     <ClInclude Include="contracts\Escrow.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\GGWP.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contract_core\contract_def.h">
       <Filter>contract_core</Filter>
     </ClInclude>
