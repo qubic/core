@@ -52,6 +52,7 @@
     <ClInclude Include="contracts\QThirtyFour.h" />
     <ClInclude Include="contracts\Pulse.h" />
     <ClInclude Include="contracts\Escrow.h" />
+    <ClInclude Include="contracts\GGWP.h" />
     <ClInclude Include="contracts\TestExampleA.h" />
     <ClInclude Include="contracts\TestExampleB.h" />
     <ClInclude Include="contracts\TestExampleC.h" />

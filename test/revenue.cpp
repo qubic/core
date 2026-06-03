@@ -4,6 +4,10 @@
 
 #include "gtest/gtest.h"
 
+#ifndef contractCount
+#define contractCount 1024
+#endif
+
 #include "../src/revenue.h"
 
 #include <algorithm>
