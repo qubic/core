@@ -226,6 +226,30 @@ public:
         invokeUserProcedure(WOLFPACK_CONTRACT_INDEX, 11, input, output, sender, 0);
         return output;
     }
+
+    WOLFPACK::ProposeGovChange_output proposeGovChange(const id& sender, uint8 targetType, const id& newAddress)
+    {
+        WOLFPACK::ProposeGovChange_input input{ targetType, newAddress };
+        WOLFPACK::ProposeGovChange_output output;
+        invokeUserProcedure(WOLFPACK_CONTRACT_INDEX, 12, input, output, sender, 0);
+        return output;
+    }
+
+    WOLFPACK::VoteGovChange_output voteGovChange(const id& sender, uint64 proposalIndex, uint8 approve)
+    {
+        WOLFPACK::VoteGovChange_input input{ proposalIndex, approve };
+        WOLFPACK::VoteGovChange_output output;
+        invokeUserProcedure(WOLFPACK_CONTRACT_INDEX, 13, input, output, sender, 0);
+        return output;
+    }
+
+    WOLFPACK::GetGovProposal_output getGovProposal(uint64 proposalIndex)
+    {
+        WOLFPACK::GetGovProposal_input input{ proposalIndex };
+        WOLFPACK::GetGovProposal_output output;
+        callFunction(WOLFPACK_CONTRACT_INDEX, 8, input, output);
+        return output;
+    }
 };
 
 // ============================================================================
@@ -239,8 +263,6 @@ TEST(TestWolfPack, Initialization)
 
     EXPECT_EQ(s->totalTokensSnapshot, 0ULL);
     EXPECT_EQ(s->holderCount, 0ULL);
-    EXPECT_EQ(s->totalSharesSnapshot, 0ULL);
-    EXPECT_EQ(s->shareholderCount, 0ULL);
     EXPECT_EQ(s->clanMemberCount, 0ULL);
     EXPECT_EQ(s->clanWeightedTotal, 0ULL);
     EXPECT_EQ(s->pendingRevenue, 0ULL);
@@ -465,7 +487,7 @@ TEST(TestWolfPack, SetExcludeAddress)
 
     // Invalid slot
     out = wp.setExcludeAddress(adminAddr, 3, excl1);
-    EXPECT_EQ(out.returnCode,  WOLFPACK_ERROR_INVALID_SLOT);
+    EXPECT_EQ(out.returnCode, WOLFPACK_ERROR_INVALID_SLOT);
 }
 
 // ============================================================================
@@ -514,13 +536,15 @@ TEST(TestWolfPack, RevenueSplitMath)
     uint64 holderShare = amount * WOLFPACK_DISTRIBUTION_PERMILLE_HOLDERS / 1000ULL;
     uint64 shareholderShare = amount * WOLFPACK_DISTRIBUTION_PERMILLE_SHAREHOLDERS / 1000ULL;
     uint64 clanShare = amount * WOLFPACK_DISTRIBUTION_PERMILLE_CLAN / 1000ULL;
-    uint64 reinvestShare = amount - holderShare - shareholderShare - clanShare;
+    uint64 execReserveShare = amount * WOLFPACK_DISTRIBUTION_PERMILLE_EXEC_RESERVE / 1000ULL;
+    uint64 reinvestShare = amount - holderShare - shareholderShare - clanShare - execReserveShare;
 
     EXPECT_EQ(holderShare, 700000ULL);
     EXPECT_EQ(shareholderShare, 100000ULL);
     EXPECT_EQ(clanShare, 100000ULL);
-    EXPECT_EQ(reinvestShare, 100000ULL);
-    EXPECT_EQ(holderShare + shareholderShare + clanShare + reinvestShare, amount);
+    EXPECT_EQ(execReserveShare, 10000ULL);  // 1.0%
+    EXPECT_EQ(reinvestShare, 90000ULL);     // 9.0%
+    EXPECT_EQ(holderShare + shareholderShare + clanShare + execReserveShare + reinvestShare, amount);
 }
 
 // ============================================================================
@@ -555,9 +579,10 @@ TEST(TestWolfPack, StakeInsufficientSharesUnderManagement)
 {
     ContractTestingWP wp;
 
-    // user1 has no WP shares under WP's management in empty universe
-    // -> numberOfPossessedShares returns 0, stake must fail
-    auto out = wp.stake(user1, 100);
+    // user1 has no WP shares under WP's management in empty universe.
+    // Use >= WOLFPACK_MIN_STAKE so the min-stake gate passes and we reach the
+    // possession check -> numberOfPossessedShares returns 0 -> ACQUIRE_FAILED.
+    auto out = wp.stake(user1, WOLFPACK_MIN_STAKE);
     EXPECT_EQ(out.returnCode, WOLFPACK_ERROR_ACQUIRE_FAILED);
 }
 
@@ -626,25 +651,26 @@ TEST(TestWolfPack, RequestUnstakePartial)
     ContractTestingWP wp;
     auto* s = wp.getState();
 
-    s->stakedBalances.set(user1, 100);
-    s->totalStaked = 100;
+    // Use realistic amounts so the remaining position stays >= WOLFPACK_MIN_STAKE.
+    s->stakedBalances.set(user1, 1000000);
+    s->totalStaked = 1000000;
     s->stakerCount = 1;
 
-    auto out = wp.requestUnstake(user1, 40);
+    auto out = wp.requestUnstake(user1, 400000);
     EXPECT_EQ(out.returnCode, WOLFPACK_OK);
-    EXPECT_EQ(s->totalStaked, 60ULL);
+    EXPECT_EQ(s->totalStaked, 600000ULL);
     EXPECT_EQ(s->stakerCount, 1ULL);
     EXPECT_EQ(s->unstakeCount, 1ULL);
 
-    // Check remaining stake
+    // Check remaining stake (>= 500k)
     uint64 remaining = 0;
     EXPECT_TRUE(s->stakedBalances.get(user1, remaining));
-    EXPECT_EQ(remaining, 60ULL);
+    EXPECT_EQ(remaining, 600000ULL);
 
     // Check unstake request
     uint64 unstakeAmt = 0;
     EXPECT_TRUE(s->unstakeAmounts.get(user1, unstakeAmt));
-    EXPECT_EQ(unstakeAmt, 40ULL);
+    EXPECT_EQ(unstakeAmt, 400000ULL);
 
     uint64 unstakeEpoch = 0;
     EXPECT_TRUE(s->unstakeEpochs.get(user1, unstakeEpoch));
@@ -675,15 +701,15 @@ TEST(TestWolfPack, RequestUnstakeAlreadyPending)
     ContractTestingWP wp;
     auto* s = wp.getState();
 
-    s->stakedBalances.set(user1, 100);
-    s->totalStaked = 100;
+    s->stakedBalances.set(user1, 1000000);
+    s->totalStaked = 1000000;
     s->stakerCount = 1;
 
-    wp.requestUnstake(user1, 50);
+    // Leaves 600000 (>= 500k) -> first request succeeds and becomes pending.
+    wp.requestUnstake(user1, 400000);
 
-    // Second unstake should fail while first is pending
-    // Need to re-stake for this to work - user1 still has 50 staked
-    auto out = wp.requestUnstake(user1, 30);
+    // Second unstake should fail while first is pending.
+    auto out = wp.requestUnstake(user1, 30000);
     EXPECT_EQ(out.returnCode, WOLFPACK_ERROR_UNSTAKE_PENDING);
 }
 
@@ -708,12 +734,13 @@ TEST(TestWolfPack, StakeBlockedWhileUnstakePending)
     ContractTestingWP wp;
     auto* s = wp.getState();
 
-    s->stakedBalances.set(user1, 100);
-    s->totalStaked = 100;
+    s->stakedBalances.set(user1, 1000000);
+    s->totalStaked = 1000000;
     s->stakerCount = 1;
 
-    wp.requestUnstake(user1, 50);
+    wp.requestUnstake(user1, 400000); // leaves 600000, becomes pending
 
+    // Stake is blocked while an unstake is pending (checked before min-stake/fee).
     auto out = wp.stake(user1, 10);
     EXPECT_EQ(out.returnCode, WOLFPACK_ERROR_UNSTAKE_PENDING);
 }
@@ -901,4 +928,162 @@ TEST(TestWolfPack, StakingRewardOverflowEdgeCase)
     s->pendingStakingRewards.get(user1, reward);
     EXPECT_EQ(reward, 1923076ULL);  // Should get full pool
     EXPECT_EQ(s->stakingRewardPool, 0ULL);
+}
+
+// ============================================================================
+// Execution-fee reserve (1% distribution cut, retained in contract)
+// ============================================================================
+
+TEST(TestWolfPack, ExecReserveCutOnDistribution)
+{
+    ContractTestingWP wp;
+    auto* s = wp.getState();
+
+    wp.depositRevenue(depositor, 100000);
+    EXPECT_EQ(s->pendingRevenue, 100000ULL);
+
+    // No holders/shareholders/clan in the snapshot -> only the reinvest share is
+    // transferred out; the exec-reserve share is retained (never paid out).
+    wp.endEpoch();
+
+    EXPECT_EQ(s->pendingRevenue, 0ULL);
+    EXPECT_EQ(s->totalDistributed, 100000ULL);
+    EXPECT_EQ(s->execReserveFund, 1000ULL);    // 1.0% of 100000
+    EXPECT_EQ(s->reinvestmentFund, 9000ULL);   // 9.0% of 100000
+}
+
+// ============================================================================
+// Min-stake (>= 500k) and unstake consistency (0 or >= 500k remaining)
+// ============================================================================
+
+TEST(TestWolfPack, StakeBelowMinFails)
+{
+    ContractTestingWP wp;
+
+    // 100000 < WOLFPACK_MIN_STAKE (500000); checked before the possession gate.
+    auto out = wp.stake(user1, 100000);
+    EXPECT_EQ(out.returnCode, WOLFPACK_ERROR_BELOW_MIN_STAKE);
+}
+
+TEST(TestWolfPack, RequestUnstakeBelowMinRemainingFails)
+{
+    ContractTestingWP wp;
+    auto* s = wp.getState();
+
+    s->stakedBalances.set(user1, 1000000);
+    s->totalStaked = 1000000;
+    s->stakerCount = 1;
+
+    // Leaving 300000 (< 500000) must be rejected.
+    auto out = wp.requestUnstake(user1, 700000);
+    EXPECT_EQ(out.returnCode, WOLFPACK_ERROR_BELOW_MIN_STAKE);
+
+    // Full exit (remaining 0) is always allowed.
+    out = wp.requestUnstake(user1, 1000000);
+    EXPECT_EQ(out.returnCode, WOLFPACK_OK);
+    EXPECT_EQ(s->totalStaked, 0ULL);
+}
+
+// ============================================================================
+// Shareholder governance (multi-proposal, >51% of 676 SC shares)
+// ============================================================================
+
+TEST(TestWolfPack, GovProposeRequiresShareholder)
+{
+    ContractTestingWP wp;
+    // All SC shares go to user2; user1 owns none -> not a shareholder.
+    std::vector<std::pair<m256i, unsigned int>> owners = { { user2, 676 } };
+    issueContractShares(WOLFPACK_CONTRACT_INDEX, owners, false);
+    auto out = wp.proposeGovChange(user1, WOLFPACK_GOV_TARGET_ADMIN, user2);
+    EXPECT_EQ(out.returnCode, WOLFPACK_ERROR_NOT_SHAREHOLDER);
+}
+
+TEST(TestWolfPack, GovProposeNullAddressRejected)
+{
+    ContractTestingWP wp;
+    std::vector<std::pair<m256i, unsigned int>> owners = { { user1, 400 }, { user2, 276 } };
+    issueContractShares(WOLFPACK_CONTRACT_INDEX, owners, false);
+
+    auto out = wp.proposeGovChange(user1, WOLFPACK_GOV_TARGET_ADMIN, NULL_ID);
+    EXPECT_EQ(out.returnCode, WOLFPACK_ERROR_NULL_ADDRESS);
+}
+
+TEST(TestWolfPack, GovProposePassesWithMajority)
+{
+    ContractTestingWP wp;
+    auto* s = wp.getState();
+    std::vector<std::pair<m256i, unsigned int>> owners = { { user1, 400 }, { user2, 276 } };
+    issueContractShares(WOLFPACK_CONTRACT_INDEX, owners, false); // user1: 400 (>= 345)
+
+    auto out = wp.proposeGovChange(user1, WOLFPACK_GOV_TARGET_ADMIN, user2);
+    EXPECT_EQ(out.returnCode, WOLFPACK_OK);
+    EXPECT_EQ(out.passed, 1u);
+    EXPECT_TRUE(s->adminAddress == user2);
+}
+
+TEST(TestWolfPack, GovProposeBelowMajorityStaysOpen)
+{
+    ContractTestingWP wp;
+    std::vector<std::pair<m256i, unsigned int>> owners = { { user1, 200 }, { user2, 476 } };
+    issueContractShares(WOLFPACK_CONTRACT_INDEX, owners, false); // user1: 200 (< 345)
+
+    auto out = wp.proposeGovChange(user1, WOLFPACK_GOV_TARGET_REINVEST, user2);
+    EXPECT_EQ(out.returnCode, WOLFPACK_OK);
+    EXPECT_EQ(out.passed, 0u);
+    EXPECT_EQ(out.proposalIndex, 0ULL);
+
+    auto info = wp.getGovProposal(0);
+    EXPECT_EQ(info.status, 1u);
+    EXPECT_EQ(info.yesShares, 200ULL);
+    EXPECT_EQ(info.requiredShares, 345ULL);
+    EXPECT_EQ(info.totalShares, 676ULL);
+}
+
+TEST(TestWolfPack, GovVoteReachesThreshold)
+{
+    ContractTestingWP wp;
+    auto* s = wp.getState();
+    std::vector<std::pair<m256i, unsigned int>> owners = { { user1, 200 }, { user2, 200 }, { user3, 276 } };
+    issueContractShares(WOLFPACK_CONTRACT_INDEX, owners, false);
+
+    auto p = wp.proposeGovChange(user1, WOLFPACK_GOV_TARGET_REINVEST, user3);
+    EXPECT_EQ(p.passed, 0u);
+
+    // user2 votes yes on the same proposal -> 200 + 200 = 400 >= 345 -> pass.
+    auto v = wp.voteGovChange(user2, p.proposalIndex, 1);
+    EXPECT_EQ(v.returnCode, WOLFPACK_OK);
+    EXPECT_EQ(v.passed, 1u);
+    EXPECT_TRUE(s->reinvestAddress == user3);
+}
+
+TEST(TestWolfPack, GovMultipleProposalsCoexist)
+{
+    ContractTestingWP wp;
+    std::vector<std::pair<m256i, unsigned int>> owners = { { user1, 100 }, { user2, 100 }, { user3, 476 } };
+    issueContractShares(WOLFPACK_CONTRACT_INDEX, owners, false);
+
+    auto p1 = wp.proposeGovChange(user1, WOLFPACK_GOV_TARGET_ADMIN, user3);
+    auto p2 = wp.proposeGovChange(user2, WOLFPACK_GOV_TARGET_REINVEST, user3);
+    EXPECT_EQ(p1.returnCode, WOLFPACK_OK);
+    EXPECT_EQ(p2.returnCode, WOLFPACK_OK);
+    EXPECT_EQ(p1.proposalIndex, 0ULL);
+    EXPECT_EQ(p2.proposalIndex, 1ULL);
+
+    EXPECT_EQ(wp.getGovProposal(0).status, 1u);
+    EXPECT_EQ(wp.getGovProposal(1).status, 1u);
+}
+
+TEST(TestWolfPack, GovVoteNoActiveProposal)
+{
+    ContractTestingWP wp;
+    // No proposal opened -> NO_ACTIVE_PROPOSAL (checked before the shareholder check).
+    auto v = wp.voteGovChange(user1, 0, 1);
+    EXPECT_EQ(v.returnCode, WOLFPACK_ERROR_NO_ACTIVE_PROPOSAL);
+}
+
+TEST(TestWolfPack, GovVoteInvalidIndex)
+{
+    ContractTestingWP wp;
+    auto v = wp.voteGovChange(user1, WOLFPACK_MAX_GOV_PROPOSALS, 1);
+    EXPECT_EQ(v.returnCode, WOLFPACK_ERROR_INVALID_PROPOSAL);
 }

@@ -417,7 +417,7 @@ constexpr struct ContractDescription
     {"QUSINO", 208, 10000, sizeof(QUSINO::StateData)}, // proposal in epoch 206, IPO in 207, construction and first use in 208
     {"ESCROW", 210, 10000, sizeof(ESCROW::StateData)}, // proposal in epoch 208, IPO in 209, construction and first use in 210
 #ifndef NO_GGWP
-    {"GGWP", 217, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 215, IPO in 216, construction and first use in 217
+    {"GGWP", 218, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 216, IPO in 217, construction and first use in 218
 #endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
