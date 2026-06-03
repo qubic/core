@@ -288,7 +288,6 @@
 #define CONTRACT_STATE2_TYPE ESCROW2
 #include "contracts/Escrow.h"
 
-<<<<<<< HEAD
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
@@ -313,22 +312,6 @@
 #define CONTRACT_STATE2_TYPE QASSAND2
 #include "contracts/Qassand.h"
 
-=======
-#ifndef NO_GGWP
-
-#undef CONTRACT_INDEX
-#undef CONTRACT_STATE_TYPE
-#undef CONTRACT_STATE2_TYPE
-
-#define WOLFPACK_CONTRACT_INDEX 28
-#define CONTRACT_INDEX WOLFPACK_CONTRACT_INDEX
-#define CONTRACT_STATE_TYPE WOLFPACK
-#define CONTRACT_STATE2_TYPE WOLFPACK2
-#include "contracts/GGWP.h"
-
-#endif
-
->>>>>>> upstream/main
 // new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
