@@ -38,10 +38,10 @@ constexpr uint64 WOLFPACK_DISTRIBUTION_PERMILLE_SHAREHOLDERS = 100;
 constexpr uint64 WOLFPACK_DISTRIBUTION_PERMILLE_CLAN = 100;
 constexpr uint64 WOLFPACK_DISTRIBUTION_PERMILLE_REINVEST = 90;       // was 100
 constexpr uint64 WOLFPACK_DISTRIBUTION_PERMILLE_EXEC_RESERVE = 10;   // NEW: retained in-contract for execution-fee reserve (never paid out)
+// Distribution permille (holders + shareholders + clan + reinvest + exec-reserve) must sum to 1000.
 static_assert(WOLFPACK_DISTRIBUTION_PERMILLE_HOLDERS + WOLFPACK_DISTRIBUTION_PERMILLE_SHAREHOLDERS
             + WOLFPACK_DISTRIBUTION_PERMILLE_CLAN + WOLFPACK_DISTRIBUTION_PERMILLE_REINVEST
-            + WOLFPACK_DISTRIBUTION_PERMILLE_EXEC_RESERVE == 1000,
-            "GGWP distribution permille must sum to 1000");
+            + WOLFPACK_DISTRIBUTION_PERMILLE_EXEC_RESERVE == 1000);
 constexpr uint64 WOLFPACK_SC_ASSET_NAME = 1347897159ULL; // "GGWP" as uint64
 
 // --- Shareholder governance: change admin / reinvest address by >51% of SC shares ---
@@ -344,7 +344,7 @@ struct WOLFPACK : public ContractBase
     {
         output.totalShares = WOLFPACK_TOTAL_SC_SHARES;
         // required = ceil(totalShares * threshold% / 100)
-        output.requiredShares = (WOLFPACK_TOTAL_SC_SHARES * WOLFPACK_GOV_THRESHOLD_PERCENT + 99) / 100;
+        output.requiredShares = div(WOLFPACK_TOTAL_SC_SHARES * WOLFPACK_GOV_THRESHOLD_PERCENT + 99, 100ULL);
         if (input.proposalIndex >= WOLFPACK_MAX_GOV_PROPOSALS)
         {
             return; // out of range -> zeroed output
