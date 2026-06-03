@@ -826,18 +826,20 @@ struct WOLFPACK : public ContractBase
             return;
         }
 
-        // Fix 1: the user covers the QX release fee (the contract no longer pays it).
-        // The attached 100 QU offsets the fee that releaseShares deducts from SELF.
-        if (qpi.invocationReward() < WOLFPACK_QX_TRANSFER_FEE)
+        // Unstake fee (mirrors Stake): 100 QU covers the QX release fee, 900 QU is
+        // retained in the execution-fee reserve. Total = WOLFPACK_QX_TRANSFER_FEE + WOLFPACK_STAKE_FEE.
+        // (The 100 QU offsets the fee releaseShares deducts from SELF; the 900 QU stay in the balance.)
+        if (qpi.invocationReward() < WOLFPACK_QX_TRANSFER_FEE + WOLFPACK_STAKE_FEE)
         {
             if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
             output.returnCode = WOLFPACK_ERROR_INSUFFICIENT_FEE;
             return;
         }
-        if (qpi.invocationReward() > WOLFPACK_QX_TRANSFER_FEE)
+        if (qpi.invocationReward() > WOLFPACK_QX_TRANSFER_FEE + WOLFPACK_STAKE_FEE)
         {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward() - WOLFPACK_QX_TRANSFER_FEE);
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (WOLFPACK_QX_TRANSFER_FEE + WOLFPACK_STAKE_FEE));
         }
+        state.mut().execReserveFund = state.get().execReserveFund + (uint64)WOLFPACK_STAKE_FEE;
 
         locals.releaseResult = qpi.releaseShares(state.get().wpToken, qpi.invocator(), qpi.invocator(),
             (sint64)locals.unstakeAmount, WOLFPACK_QX_CONTRACT_INDEX, WOLFPACK_QX_CONTRACT_INDEX, WOLFPACK_QX_TRANSFER_FEE);
