@@ -174,15 +174,15 @@ struct QASSAND : public ContractBase
 
 	PUBLIC_FUNCTION(GetInfo)
 	{
-		output.protocolName.set(0, 'Q');
-		output.protocolName.set(1, 'a');
-		output.protocolName.set(2, 's');
-		output.protocolName.set(3, 's');
-		output.protocolName.set(4, 'a');
-		output.protocolName.set(5, 'n');
-		output.protocolName.set(6, 'd');
-		output.protocolName.set(7, 'r');
-		output.protocolName.set(8, 'a');
+		output.protocolName.set(0, 81);
+		output.protocolName.set(1, 97);
+		output.protocolName.set(2, 115);
+		output.protocolName.set(3, 115);
+		output.protocolName.set(4, 97);
+		output.protocolName.set(5, 110);
+		output.protocolName.set(6, 100);
+		output.protocolName.set(7, 114);
+		output.protocolName.set(8, 97);
 		output.version = state.get().version;
 		output.constructionEpoch = state.get().constructionEpoch;
 		output.totalPingCount = state.get().totalPingCount;
@@ -209,17 +209,17 @@ struct QASSAND : public ContractBase
 		{
 			output.returnCode = QASSAND_SUCCESS;
 			output.laneId = QASSAND_LANE_FORECASTING;
-			output.laneName.set(0, 'F');
-			output.laneName.set(1, 'o');
-			output.laneName.set(2, 'r');
-			output.laneName.set(3, 'e');
-			output.laneName.set(4, 'c');
-			output.laneName.set(5, 'a');
-			output.laneName.set(6, 's');
-			output.laneName.set(7, 't');
-			output.laneName.set(8, 'i');
-			output.laneName.set(9, 'n');
-			output.laneName.set(10, 'g');
+			output.laneName.set(0, 70);
+			output.laneName.set(1, 111);
+			output.laneName.set(2, 114);
+			output.laneName.set(3, 101);
+			output.laneName.set(4, 99);
+			output.laneName.set(5, 97);
+			output.laneName.set(6, 115);
+			output.laneName.set(7, 116);
+			output.laneName.set(8, 105);
+			output.laneName.set(9, 110);
+			output.laneName.set(10, 103);
 			output.requiredFee = 0;
 			return;
 		}
@@ -228,15 +228,15 @@ struct QASSAND : public ContractBase
 		{
 			output.returnCode = QASSAND_SUCCESS;
 			output.laneId = QASSAND_LANE_STABLE_OPERATIONS;
-			output.laneName.set(0, 'S');
-			output.laneName.set(1, 't');
-			output.laneName.set(2, 'a');
-			output.laneName.set(3, 'b');
-			output.laneName.set(4, 'l');
-			output.laneName.set(5, 'e');
-			output.laneName.set(6, 'O');
-			output.laneName.set(7, 'p');
-			output.laneName.set(8, 's');
+			output.laneName.set(0, 83);
+			output.laneName.set(1, 116);
+			output.laneName.set(2, 97);
+			output.laneName.set(3, 98);
+			output.laneName.set(4, 108);
+			output.laneName.set(5, 101);
+			output.laneName.set(6, 79);
+			output.laneName.set(7, 112);
+			output.laneName.set(8, 115);
 			output.requiredFee = 0;
 			return;
 		}
@@ -245,10 +245,10 @@ struct QASSAND : public ContractBase
 		{
 			output.returnCode = QASSAND_SUCCESS;
 			output.laneId = QASSAND_LANE_DATA_ATTESTATION;
-			output.laneName.set(0, 'D');
-			output.laneName.set(1, 'a');
-			output.laneName.set(2, 't');
-			output.laneName.set(3, 'a');
+			output.laneName.set(0, 68);
+			output.laneName.set(1, 97);
+			output.laneName.set(2, 116);
+			output.laneName.set(3, 97);
 			output.requiredFee = 0;
 			return;
 		}
