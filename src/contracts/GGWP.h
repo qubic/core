@@ -25,7 +25,7 @@ using namespace QPI;
 
 // --- Constants ---
 constexpr uint64 WOLFPACK_MAX_HOLDERS = 16384;
-constexpr uint64 WOLFPACK_MAX_SHAREHOLDERS = 1024;
+constexpr uint64 WOLFPACK_MAX_SHAREHOLDERS = 676;
 constexpr uint64 WOLFPACK_MAX_CLAN_MEMBERS = 8192;
 // Dust filter: token holders below this (accumulated) balance are excluded from the
 // 70% distribution snapshot, so dust-spray can't bloat the holder loop. 1B supply / 10k = anti-dust.
