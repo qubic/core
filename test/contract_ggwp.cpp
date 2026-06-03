@@ -263,8 +263,6 @@ TEST(TestWolfPack, Initialization)
 
     EXPECT_EQ(s->totalTokensSnapshot, 0ULL);
     EXPECT_EQ(s->holderCount, 0ULL);
-    EXPECT_EQ(s->totalSharesSnapshot, 0ULL);
-    EXPECT_EQ(s->shareholderCount, 0ULL);
     EXPECT_EQ(s->clanMemberCount, 0ULL);
     EXPECT_EQ(s->clanWeightedTotal, 0ULL);
     EXPECT_EQ(s->pendingRevenue, 0ULL);
@@ -993,7 +991,9 @@ TEST(TestWolfPack, RequestUnstakeBelowMinRemainingFails)
 TEST(TestWolfPack, GovProposeRequiresShareholder)
 {
     ContractTestingWP wp;
-    // user1 is not in the shareholder snapshot.
+    // All SC shares go to user2; user1 owns none -> not a shareholder.
+    std::vector<std::pair<m256i, unsigned int>> owners = { { user2, 676 } };
+    issueContractShares(WOLFPACK_CONTRACT_INDEX, owners, false);
     auto out = wp.proposeGovChange(user1, WOLFPACK_GOV_TARGET_ADMIN, user2);
     EXPECT_EQ(out.returnCode, WOLFPACK_ERROR_NOT_SHAREHOLDER);
 }
@@ -1001,8 +1001,8 @@ TEST(TestWolfPack, GovProposeRequiresShareholder)
 TEST(TestWolfPack, GovProposeNullAddressRejected)
 {
     ContractTestingWP wp;
-    auto* s = wp.getState();
-    s->shareholderBalances.set(user1, 400);
+    std::vector<std::pair<m256i, unsigned int>> owners = { { user1, 400 }, { user2, 276 } };
+    issueContractShares(WOLFPACK_CONTRACT_INDEX, owners, false);
 
     auto out = wp.proposeGovChange(user1, WOLFPACK_GOV_TARGET_ADMIN, NULL_ID);
     EXPECT_EQ(out.returnCode, WOLFPACK_ERROR_NULL_ADDRESS);
@@ -1012,7 +1012,8 @@ TEST(TestWolfPack, GovProposePassesWithMajority)
 {
     ContractTestingWP wp;
     auto* s = wp.getState();
-    s->shareholderBalances.set(user1, 400); // >= 345 -> instant pass
+    std::vector<std::pair<m256i, unsigned int>> owners = { { user1, 400 }, { user2, 276 } };
+    issueContractShares(WOLFPACK_CONTRACT_INDEX, owners, false); // user1: 400 (>= 345)
 
     auto out = wp.proposeGovChange(user1, WOLFPACK_GOV_TARGET_ADMIN, user2);
     EXPECT_EQ(out.returnCode, WOLFPACK_OK);
@@ -1023,8 +1024,8 @@ TEST(TestWolfPack, GovProposePassesWithMajority)
 TEST(TestWolfPack, GovProposeBelowMajorityStaysOpen)
 {
     ContractTestingWP wp;
-    auto* s = wp.getState();
-    s->shareholderBalances.set(user1, 200); // < 345
+    std::vector<std::pair<m256i, unsigned int>> owners = { { user1, 200 }, { user2, 476 } };
+    issueContractShares(WOLFPACK_CONTRACT_INDEX, owners, false); // user1: 200 (< 345)
 
     auto out = wp.proposeGovChange(user1, WOLFPACK_GOV_TARGET_REINVEST, user2);
     EXPECT_EQ(out.returnCode, WOLFPACK_OK);
@@ -1042,8 +1043,8 @@ TEST(TestWolfPack, GovVoteReachesThreshold)
 {
     ContractTestingWP wp;
     auto* s = wp.getState();
-    s->shareholderBalances.set(user1, 200);
-    s->shareholderBalances.set(user2, 200);
+    std::vector<std::pair<m256i, unsigned int>> owners = { { user1, 200 }, { user2, 200 }, { user3, 276 } };
+    issueContractShares(WOLFPACK_CONTRACT_INDEX, owners, false);
 
     auto p = wp.proposeGovChange(user1, WOLFPACK_GOV_TARGET_REINVEST, user3);
     EXPECT_EQ(p.passed, 0u);
@@ -1058,9 +1059,8 @@ TEST(TestWolfPack, GovVoteReachesThreshold)
 TEST(TestWolfPack, GovMultipleProposalsCoexist)
 {
     ContractTestingWP wp;
-    auto* s = wp.getState();
-    s->shareholderBalances.set(user1, 100);
-    s->shareholderBalances.set(user2, 100);
+    std::vector<std::pair<m256i, unsigned int>> owners = { { user1, 100 }, { user2, 100 }, { user3, 476 } };
+    issueContractShares(WOLFPACK_CONTRACT_INDEX, owners, false);
 
     auto p1 = wp.proposeGovChange(user1, WOLFPACK_GOV_TARGET_ADMIN, user3);
     auto p2 = wp.proposeGovChange(user2, WOLFPACK_GOV_TARGET_REINVEST, user3);
@@ -1076,9 +1076,7 @@ TEST(TestWolfPack, GovMultipleProposalsCoexist)
 TEST(TestWolfPack, GovVoteNoActiveProposal)
 {
     ContractTestingWP wp;
-    auto* s = wp.getState();
-    s->shareholderBalances.set(user1, 100);
-
+    // No proposal opened -> NO_ACTIVE_PROPOSAL (checked before the shareholder check).
     auto v = wp.voteGovChange(user1, 0, 1);
     EXPECT_EQ(v.returnCode, WOLFPACK_ERROR_NO_ACTIVE_PROPOSAL);
 }
@@ -1086,9 +1084,6 @@ TEST(TestWolfPack, GovVoteNoActiveProposal)
 TEST(TestWolfPack, GovVoteInvalidIndex)
 {
     ContractTestingWP wp;
-    auto* s = wp.getState();
-    s->shareholderBalances.set(user1, 100);
-
     auto v = wp.voteGovChange(user1, WOLFPACK_MAX_GOV_PROPOSALS, 1);
     EXPECT_EQ(v.returnCode, WOLFPACK_ERROR_INVALID_PROPOSAL);
 }
