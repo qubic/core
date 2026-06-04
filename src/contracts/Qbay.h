@@ -9,6 +9,8 @@ constexpr uint32 QBAY_CFB_NAME = 4343363;
 constexpr uint32 QBAY_MIN_DELTA_SIZE = 1000000;
 constexpr uint32 QBAY_FEE_NFT_SALE_MARKET = 20;
 constexpr uint32 QBAY_FEE_NFT_SALE_SHAREHOLDERS = 10;
+// Max royalty percent leaving room for market (20/1000) and shareholder (10/1000) fees on QU sales.
+constexpr uint32 QBAY_MAX_ROYALTY_PERCENT = 100 - (QBAY_FEE_NFT_SALE_MARKET + QBAY_FEE_NFT_SALE_SHAREHOLDERS) / 10;
 
 struct QBAY2
 {
@@ -694,7 +696,7 @@ struct QBAY : public ContractBase
 			return ;
 		}
 
-		if(input.volume > 10 || input.royalty > 100 || input.priceForDropMint >= (uint64)MAX_AMOUNT)
+		if(input.volume > 10 || input.royalty > QBAY_MAX_ROYALTY_PERCENT || input.priceForDropMint >= (uint64)MAX_AMOUNT)
 		{
 			output.returnCode = LogInfo::invalidInput;  			// volume size should be 0 ~ 10
 			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
@@ -823,7 +825,7 @@ struct QBAY : public ContractBase
 
 		if(input.typeOfMint == 1)     //     It means NFT creator mints the single NFT.
 		{
-			if(input.royalty >= 100)
+			if(input.royalty > QBAY_MAX_ROYALTY_PERCENT)
 			{
 				output.returnCode = LogInfo::invalidInput;
 				locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
