@@ -1106,6 +1106,7 @@ struct WOLFPACK : public ContractBase
         state.mut().unstakeAmounts.cleanupIfNeeded();
         state.mut().unstakeEpochs.cleanupIfNeeded();
         state.mut().pendingStakingRewards.cleanupIfNeeded();
+        state.mut().govVoteMap.cleanupIfNeeded();
 
         // Weekly revenue distribution: fires exactly once per epoch, using this
         // epoch's BEGIN_EPOCH holder/shareholder snapshot. No time/day gate needed.
