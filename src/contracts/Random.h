@@ -69,8 +69,8 @@ public:
 		uint64 distributedAmount;
 		uint64 burnedAmount;
 
-		uint32 bitFee; // in qu
-
+		uint32 bitFee;
+		
 		Array<uint32, 4> populations;
 		Array<id, RANDOM_MAX_PROVIDERS> providers;
 		Array<uint64, RANDOM_MAX_PROVIDERS> collateralTiers;
@@ -161,6 +161,13 @@ public:
 private:
 	PUBLIC_PROCEDURE_WITH_LOCALS(RevealAndCommit)
 	{
+		// Entropy providers must be user accounts, not smart contracts.
+		if (qpi.isContractId(qpi.invocator()))
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			return;
+		}
+
 		switch (qpi.invocationReward())
 		{
 			case 1: locals.collateralTier = 0; break;
