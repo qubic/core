@@ -23,7 +23,7 @@ public:
 
 	struct RevealAndCommit_locals
 	{
-		bit_4096 zeroReveal; // TODO: Use a constant from either QPI or global state
+		bit_4096 zeroReveal;
 		uint32 stream;
 		uint32 collateralTier;
 		uint32 i;
@@ -69,29 +69,22 @@ public:
 		uint64 distributedAmount;
 		uint64 burnedAmount;
 
-		uint32 bitFee; // Amount of qus
+		uint32 bitFee; // in qu
 
-		Array<uint32, 4> populations;        // 3
-		Array<id, RANDOM_MAX_PROVIDERS> providers;           // 3 * 1365
-		Array<uint64, RANDOM_MAX_PROVIDERS> collateralTiers; // 3 * 1365
-		Array<id, RANDOM_MAX_PROVIDERS> commits;             // 3 * 1365
-		Array<bit_4096, RANDOM_MAX_PROVIDERS> reveals;       // 3 * 1365
-		bit_4096 revealOrCommitFlags;        // 3 * 1365
-		Array<bit_4096, 32> entropy;         // 3 * 10
+		Array<uint32, 4> populations;
+		Array<id, RANDOM_MAX_PROVIDERS> providers;
+		Array<uint64, RANDOM_MAX_PROVIDERS> collateralTiers;
+		Array<id, RANDOM_MAX_PROVIDERS> commits;
+		Array<bit_4096, RANDOM_MAX_PROVIDERS> reveals;
+		bit_4096 revealOrCommitFlags;
+		Array<bit_4096, 32> entropy;
 
-		// Collateral lifecycle (appended fields):
-		// - lockedCollateralAmounts[index] holds the exact stake currently
-		//   locked for a provider. It is refunded only when the provider
-		//   reveals, and slashed (burned) if they fail to reveal.
-		// - revealedThisTickFlags[index] is set when the provider revealed
-		//   this tick (vs. only committing), so END_TICK knows whether to mix
-		//   their reveal into entropy.
-		Array<uint64, RANDOM_MAX_PROVIDERS> lockedCollateralAmounts; // 3 * 1365
-		bit_4096 revealedThisTickFlags;              // 3 * 1365
-		// Set in END_TICK only when a provider's reveal is actually XOR'd into
-		// entropy. Persists until the stream's next END_TICK so BuyEntropy can
-		// verify that a named trustee genuinely contributed (not just enrolled).
-		bit_4096 contributedToEntropyFlags;          // 3 * 1365
+		// lockedCollateralAmounts: stake locked per-provider; refunded on reveal, burned on no-show.
+		// revealedThisTickFlags: set when provider revealed this tick (not just committed).
+		Array<uint64, RANDOM_MAX_PROVIDERS> lockedCollateralAmounts;
+		bit_4096 revealedThisTickFlags;
+		// Cleared each END_TICK; set when reveal is XOR'd into entropy. BuyEntropy uses for trustee verification.
+		bit_4096 contributedToEntropyFlags;
 	};
 
 	PUBLIC_FUNCTION(Fees)
@@ -116,9 +109,7 @@ public:
 			&& input.numberOfBits >= 1 && input.numberOfBits <= 4096
 			&& qpi.invocationReward() >= locals.entropyCost)
 		{
-			// Read from the stream finalized at the previous END_TICK -- the
-			// current tick's entropy slot is overwritten at the start of this
-			// tick's END_TICK and not yet refilled.
+			// Offset +2: skip the current tick's slot (being overwritten) and read the last finalized stream.
 			locals.stream = mod<uint32>(qpi.tick() + 2, 3);
 			locals.entropyIdx = locals.stream * 10 + input.collateralTier;
 			locals.entropy = state.get().entropy.get(locals.entropyIdx);
@@ -139,7 +130,7 @@ public:
 					}
 				}
 			}
-			
+
 			if (locals.entropy == locals.zeroEntropy || !locals.trusteeOk)
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -149,12 +140,11 @@ public:
 				state.mut().earnedAmount += static_cast<uint64>(locals.entropyCost);
 				if (qpi.invocationReward() > locals.entropyCost)
 				{
-					// Refund any overpayment beyond the per-bit cost.
+					// Refund overpayment.
 					qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.entropyCost);
 				}
 
-				// Copy the first numberOfBits bits of entropy into the output.
-				// Remaining bits stay zero (output buffer is zeroed by the framework).
+				// Copy requested bits; remaining output bits are zero (framework-zeroed).
 				for (locals.i = 0; locals.i < input.numberOfBits; locals.i++)
 				{
 					output.entropy.set(locals.i, locals.entropy.get(locals.i));
@@ -163,7 +153,7 @@ public:
 		}
 		else
 		{
-			// Invalid input: no entropy is delivered, so refund in full.
+			// Invalid input — refund in full.
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 	}
@@ -171,8 +161,6 @@ public:
 private:
 	PUBLIC_PROCEDURE_WITH_LOCALS(RevealAndCommit)
 	{
-		// TODO: Reject transactions from smart contracts!
-
 		switch (qpi.invocationReward())
 		{
 			case 1: locals.collateralTier = 0; break;
@@ -198,10 +186,8 @@ private:
 			default: qpi.transfer(qpi.invocator(), qpi.invocationReward()); return;
 		}
 
-		// A commit for the next round is mandatory. Reject an empty commit
-		// BEFORE touching any state: otherwise the reveal path below would set
-		// the participation flag and refund here, and END_TICK would then
-		// refund the collateral a second time (double-pay).
+		// Reject empty commit before any state change — double-refund risk: reveal path sets
+		// the participation flag, then END_TICK would refund the collateral a second time.
 		if (input.commit == id::zero())
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -212,9 +198,7 @@ private:
 
 		if (input.reveal != locals.zeroReveal)
 		{
-			// Reveal path: an existing provider reveals the preimage of their
-			// previous commit and, in the same transaction, commits for the
-			// next round.
+			// Reveal path: verify preimage of prior commit and re-commit for next round.
 			for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
 			{
 				if (qpi.invocator() == state.get().providers.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) &&
@@ -233,8 +217,7 @@ private:
 
 			locals.index = locals.stream * RANDOM_STREAM_CAPACITY + locals.i;
 
-			// Refund the collateral locked by the previous commit; the provider
-			// fulfilled their obligation by revealing.
+			// Refund prior collateral — reveal fulfills obligation.
 			if (state.get().lockedCollateralAmounts.get(locals.index) > 0)
 			{
 				qpi.transfer(qpi.invocator(), state.get().lockedCollateralAmounts.get(locals.index));
@@ -259,15 +242,14 @@ private:
 			if (qpi.invocator() == state.get().providers.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) &&
 			    locals.collateralTier == state.get().collateralTiers.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i))
 			{
-				// An existing provider cannot replace their commit without
-				// first revealing the previous one.
+				// Existing provider must reveal before re-committing.
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				return;
 			}
 		}
 		if (locals.i == RANDOM_STREAM_CAPACITY)
 		{
-			// The stream is full.
+			// Stream is full.
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			return;
 		}
@@ -279,8 +261,7 @@ private:
 		state.mut().commits.set(locals.index, input.commit);
 		state.mut().reveals.set(locals.index, locals.zeroReveal);
 
-		// Lock the collateral. It stays in the contract until the provider
-		// reveals (refund) or fails to reveal (slash) in a future round.
+		// Lock collateral until future reveal (refund) or no-show (slash).
 		state.mut().lockedCollateralAmounts.set(locals.index, qpi.invocationReward());
 
 		state.mut().revealOrCommitFlags.set(locals.index, 1);
@@ -291,7 +272,7 @@ private:
 
 	struct END_TICK_locals
 	{
-		bit_4096 zeroReveal; // TODO: Use a constant from either QPI or global state
+		bit_4096 zeroReveal; // TODO: replace with a QPI/global zero constant
 		bit_4096 entropy;
 		uint32 stream;
 		uint32 i, j;
@@ -312,14 +293,14 @@ private:
 			state.mut().entropy.set(locals.stream * 10 + locals.i, locals.zeroReveal);
 		}
 
-		// Clear contribution flags so only reveals in THIS tick can satisfy the
-		// trustee check in BuyEntropy — a fresh committer's flag stays 0.
+		// Reset contribution flags; only this tick's reveals can satisfy BuyEntropy trustee checks.
 		for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
 		{
 			state.mut().contributedToEntropyFlags.set(
 				locals.stream * RANDOM_STREAM_CAPACITY + locals.i, 0);
 		}
 
+		// Check if any provider revealed this tick.
 		for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
 		{
 			if (state.get().revealedThisTickFlags.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i))
@@ -329,6 +310,8 @@ private:
 		}
 		if (locals.i == state.get().populations.get(locals.stream))
 		{
+			// Empty tick: no reveals. Refund stale (unflagged) providers; keep fresh commits.
+			// No-shows are not slashed when the whole pool went silent.
 			for (locals.i = state.get().populations.get(locals.stream); locals.i--;)
 			{
 				locals.index = locals.stream * RANDOM_STREAM_CAPACITY + locals.i;
@@ -345,8 +328,7 @@ private:
 					             static_cast<sint64>(locals.lockedAmount));
 				}
 
-				// Swap-delete: move the last active provider into this slot
-				// so the stream stays compact.
+				// Swap-delete: move the last active provider into this slot.
 				locals.lastIndex = locals.stream * RANDOM_STREAM_CAPACITY + state.get().populations.get(locals.stream) - 1;
 				if (locals.index != locals.lastIndex)
 				{
@@ -373,8 +355,7 @@ private:
 			return;
 		}
 
-		// Walk providers back-to-front so removed slots can be swap-deleted
-		// without disturbing slots not yet visited.
+		// Back-to-front walk so swap-delete doesn't disturb unvisited slots.
 		for (locals.i = state.get().populations.get(locals.stream); locals.i--;)
 		{
 			locals.index = locals.stream * RANDOM_STREAM_CAPACITY + locals.i;
@@ -382,13 +363,10 @@ private:
 
 			if (state.get().revealOrCommitFlags.get(locals.index))
 			{
-				// Provider participated this tick (revealed and/or committed).
-				// Their collateral stays locked until they reveal it later.
+				// Participated this tick; collateral remains locked.
 				if (state.get().revealedThisTickFlags.get(locals.index))
 				{
-					// A valid reveal contributes to this tier's entropy, unless
-					// the tier was already poisoned by a no-show found earlier
-					// in the walk.
+					// XOR reveal into tier entropy unless the tier is already poisoned by a no-show.
 					if (!(locals.collateralTierFlags & (1 << locals.tier)))
 					{
 						locals.entropy = state.get().entropy.get(locals.stream * 10 + locals.tier);
@@ -398,13 +376,10 @@ private:
 							                   locals.entropy.get(locals.j) ^ state.get().reveals.get(locals.index).get(locals.j));
 						}
 						state.mut().entropy.set(locals.stream * 10 + locals.tier, locals.entropy);
-						// Mark that this provider's reveal was actually XOR'd in.
-						// BuyEntropy uses this to verify trustee guarantees.
+						// Mark contribution for BuyEntropy trustee verification.
 						state.mut().contributedToEntropyFlags.set(locals.index, 1);
 					}
-					// Always clear the reveal so the provider can reveal again
-					// next round, even when the XOR above was skipped because
-					// the tier was poisoned.
+					// Clear reveal regardless — provider can reveal again next round.
 					state.mut().reveals.set(locals.index, locals.zeroReveal);
 				}
 
@@ -413,8 +388,7 @@ private:
 			}
 			else
 			{
-				// Provider did nothing this tick: slash the collateral locked
-				// by their last commit and remove them from the pool.
+				// No-show: burn collateral and evict from pool.
 				locals.lockedAmount = state.get().lockedCollateralAmounts.get(locals.index);
 				if (locals.lockedAmount > 0)
 				{

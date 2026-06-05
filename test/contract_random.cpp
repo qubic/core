@@ -15,8 +15,7 @@ static QPI::bit_4096 makeReveal(uint64 seed)
     return v;
 }
 
-// Helper: compute K12(reveal) -> id, exactly the same operation the contract
-// performs via qpi.K12(input.reveal) when validating reveals against commits.
+// Helper: K12(reveal) -> id, matching qpi.K12() used by RevealAndCommit to validate reveals.
 static id commitOf(const QPI::bit_4096& reveal)
 {
     id digest;
@@ -127,19 +126,10 @@ TEST(ContractRandom, BuyEntropyRefundsWhenEntropyMissing)
     EXPECT_EQ(r.state()->earnedAmount, 0u) << "Refund must not credit earnedAmount";
 }
 
-// Specification : "BuyEntropy procedure is for buying entropy. The
-// fee is returned if there is no entropy, in this case output will be all
-// zeros." -- the user only loses funds when entropy is actually delivered.
-// By symmetry, when the request is rejected because of invalid inputs (bad
-// tier, zero/oversize bit count, underpaid fee) no entropy is delivered, so
-// the spec-correct behaviour is also a full refund. earnedAmount must NOT
-// be credited and output must stay all-zero.
-//
-// KNOWN BUG (Random.h, BuyEntropy): the procedure has no `else` branch on
-// the top-level guard, so invalid inputs silently keep the fee. These tests
-// encode the spec and will fail until the contract adds an explicit refund
-// for invalid inputs:
-//     else { qpi.transfer(qpi.invocator(), qpi.invocationReward()); }
+// Spec: "BuyEntropy procedure is for buying entropy. The fee is returned if there
+// is no entropy, in this case output will be all zeros." By symmetry, invalid
+// inputs (bad tier, zero/oversize bits, underpaid fee) must also refund in full:
+// no entropy delivered, earnedAmount unchanged.
 
 TEST(ContractRandom, BuyEntropyRefundsOnInvalidTier)
 {
@@ -222,24 +212,16 @@ TEST(ContractRandom, BuyEntropyRefundsOnOversizeBits)
 }
 
 // ---------------------------------------------------------------------------
-// End-to-end test: drive RevealAndCommit + END_TICK so the contract itself
-// produces real entropy, then verify BuyEntropy hands back the *latest*
-// finalized entropy slot (not the bug's hardcoded stream-0 slot).
+// End-to-end: drive RevealAndCommit + END_TICK to produce real entropy, then
+// verify BuyEntropy reads the correct finalized stream.
 //
-// Lifecycle of one provider on stream s (= tick % 3):
-//   tick T       : RevealAndCommit(reveal=0, commit=K12(reveal1))   -> provider
-//                  registered, commit stored. Reveals stay zero, so END_TICK
-//                  finalizes entropy[s*10+tier] = 0 (XOR with zero).
-//   tick T+3     : RevealAndCommit(reveal=reveal1, commit=K12(reveal2)) -> reveal
-//                  reveal1 is accepted because K12(reveal1) matches the prior
-//                  commit. END_TICK XORs reveal1 into entropy[s*10+tier], so
-//                  entropy = reveal1.
-//   tick T+4     : BuyEntropy(tier). The contract reads
-//                  latestStream = (tick + 2) % 3 = (T+4+2) % 3 = T % 3 = s,
-//                  so it must return entropy[s*10+tier] = reveal1.
+// Lifecycle on stream s = startTick % 3:
+//   Tick T   : first-commit only. END_TICK leaves entropy[s*10+tier] = 0.
+//   Tick T+3 : reveal=reveal1, re-commit. END_TICK XORs reveal1 in -> entropy = reveal1.
+//   Tick T+4 : BuyEntropy reads stream (T+4+2)%3 = T%3 = s -> must return reveal1.
 //
-// Done for every residue of T mod 3, so the test is sensitive to the original
-// bug where BuyEntropy always read stream-0 instead of the latest stream.
+// Repeated for all three residues of T mod 3 to catch the original bug where
+// BuyEntropy always read stream 0 instead of the latest finalized stream.
 // ---------------------------------------------------------------------------
 
 namespace
@@ -272,8 +254,7 @@ namespace
         EXPECT_EQ(r.state()->populations.get(stream), 1u);
 
         r.endTick();
-        // After END_TICK on stream s, collateral was refunded, flag cleared,
-        // entropy slot stays zero (reveal was zero).
+        // After END_TICK on stream s: flag cleared, collateral stays locked, entropy stays zero.
         EXPECT_TRUE(r.state()->entropy.get(stream * 10 + tier) == zero);
         EXPECT_EQ(r.state()->populations.get(stream), 1u);
 
@@ -355,10 +336,8 @@ TEST(ContractRandom, EndToEnd_LatestEntropyRetrieved_TickMod3_Is2)
 
 namespace
 {
-    // Registers one provider on stream (startTick % 3) at the given tier and
-    // drives it commit -> reveal so that, at the returned buy tick, the tier's
-    // entropy slot holds a known non-zero value (= the revealed value). Leaves
-    // the contract's current tick set to the buy tick.
+    // Drive one provider through commit -> reveal so entropy[stream*10+tier] = reveal1
+    // at tick T+4. Leaves the contract at tick T+4.
     struct TrusteeScenario
     {
         uint8 tier;
@@ -472,10 +451,8 @@ TEST(ContractRandom, BuyEntropyZeroTrusteeBehavesLikePlainBuy)
     EXPECT_TRUE(out.entropy == s.entropy);
 }
 
-// A trustee that is a provider in the stream but in a DIFFERENT tier than the
-// one being bought does not satisfy the condition: its reveal fed another
-// tier's entropy, not the one the buyer reads. This isolates the tier match
-// (the bought tier still has real, non-zero entropy of its own).
+// A trustee present only in a different tier does not satisfy the condition
+// (tier must match). The bought tier has its own real entropy.
 TEST(ContractRandom, BuyEntropyTrusteeInOtherTierRefunds)
 {
     ContractTestingRandom r;
@@ -534,17 +511,11 @@ TEST(ContractRandom, BuyEntropyTrusteeInOtherTierRefunds)
     EXPECT_TRUE(out2.entropy == r.state()->entropy.get(stream * 10 + boughtTier));
 }
 
-// A trustee who is enrolled in the pool but whose reveal was NOT XOR'd into the
-// entropy (first-commit path, no previous reveal) must NOT satisfy the trustee
-// condition. BuyEntropy must refund even though the trustee is on the roster.
+// Enrollment alone doesn't satisfy the trustee condition — the provider must have
+// actually XOR'd a reveal into entropy this round (contributedToEntropyFlags=1).
 //
-// Scenario (stream s = 1002 % 3 = 0):
-//   Tick 1002  : Bob first-commits.  END_TICK -> empty channel, entropy = 0.
-//   Tick 1005  : Bob reveals (entropy becomes reveal_bob).
-//                Alice first-commits on the same stream/tier (no previous reveal).
-//                END_TICK -> Bob's flag set, Alice's flag stays 0.
-//   Tick 1006  : BuyEntropy with trustee=Alice  -> refund (flag=0).
-//                BuyEntropy with trustee=Bob    -> success (flag=1), as sanity check.
+// Scenario (stream 0, T=1002): Bob commits; T+3 Bob reveals + Alice first-commits;
+// T+4 trustee=Alice refunds (flag=0), trustee=Bob succeeds (flag=1).
 TEST(ContractRandom, BuyEntropyFreshTrusteeRefunds)
 {
     ContractTestingRandom r;
@@ -745,15 +716,9 @@ TEST(ContractRandom, RevealWithZeroCommitIsRejectedNoDoublePay)
         << "a rejected commit==0 call must not set the participation flag";
 }
 
-// C1: a provider who does nothing in a round receives NOTHING - PROVIDED at
-// least one reveal landed in the stream this tick (the reveal channel was
-// usable). Their locked stake is burned (slashed) and they are removed from
-// the pool. The old bug paid silent providers from the treasury.
-//
-// Note: a second "witness" provider reveals in T+3 so revealedThisTickFlags
-// is set somewhere in the stream. Without a witness, END_TICK would take the
-// empty-reveal-channel branch and refund instead of slash. See the dedicated
-// EmptyRevealChannel tests for that semantics.
+// C1: when at least one reveal lands in a round, a no-show provider's stake is
+// burned and they are evicted. A witness provider proves the reveal channel was
+// live — without one END_TICK takes the empty-tick path and refunds instead of slashing.
 TEST(ContractRandom, SilentProviderIsSlashedNotPaid)
 {
     ContractTestingRandom r;
@@ -812,11 +777,8 @@ TEST(ContractRandom, EmptyRevealChannelRefundsAndRemovesPendingCommit)
     const uint64    burnedBefore  = r.state()->burnedAmount;
     const long long balanceBefore = getBalance(provider);
 
-    // T+3: nobody reveals (network glitch). END_TICK refunds the stake
-    // AND removes the provider so the slot is reusable. Leaving them
-    // registered with commits == 0 would brick the slot (the existing-
-    // provider check in the first-commit path and the K12 check in the
-    // reveal path both reject any return).
+    // T+3: nobody reveals. END_TICK refunds the stake and evicts the provider
+    // so the slot is reusable — a stale commit would brick re-registration.
     r.setTick(r.tick() + 3);
     r.endTick();
 
