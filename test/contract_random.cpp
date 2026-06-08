@@ -716,6 +716,69 @@ TEST(ContractRandom, RevealWithZeroCommitIsRejectedNoDoublePay)
         << "a rejected commit==0 call must not set the participation flag";
 }
 
+// S1: commit and reveal in the same tick must be rejected. The whole point of the
+// commit-reveal scheme is that the preimage is locked before the reveal window opens.
+// If both are allowed in one tick, a provider can observe other reveals, pick an
+// optimal preimage, and submit commit+reveal together — breaking entropy security.
+//
+// The guard reuses revealOrCommitFlags: the first-commit path sets the flag; END_TICK
+// clears it. So a reveal attempted while the flag is already set means the provider
+// committed this tick and must be rejected.
+TEST(ContractRandom, SameTickCommitAndRevealIsRejected)
+{
+    ContractTestingRandom r;
+    const uint8 tier = 2;
+    const sint64 collateral = collateralForTier(tier);
+    const uint32 stream = r.tick() % 3;
+    const uint32 index = stream * RANDOM_STREAM_CAPACITY + 0;
+
+    const QPI::bit_4096 reveal1 = makeReveal(0xDEAD);
+    const id commit1 = commitOf(reveal1);
+    const id commit2 = commitOf(makeReveal(0xBEEF));
+    id provider = getUser(1);
+    QPI::bit_4096 zero; zero.setAll(0);
+
+    // Tx 1: first-commit. Registers the provider and sets revealOrCommitFlags=1.
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, zero, commit1, collateral);
+    ASSERT_EQ(r.state()->populations.get(stream), 1u);
+    ASSERT_TRUE(r.state()->commits.get(index) == commit1);
+
+    // Tx 2 (same tick): attempt to reveal the preimage of commit1 immediately.
+    // Must be rejected — provider must not be able to pick the preimage after
+    // observing other reveals in the same tick.
+    increaseEnergy(provider, collateral);
+    const long long before = getBalance(provider);
+
+    r.revealAndCommit(provider, reveal1, commit2, collateral);
+
+    EXPECT_EQ(getBalance(provider), before)
+        << "same-tick reveal must be refunded in full";
+    EXPECT_TRUE(r.state()->reveals.get(index) == zero)
+        << "same-tick reveal must not store the reveal value";
+    EXPECT_EQ(r.state()->revealedThisTickFlags.get(index), 0)
+        << "same-tick reveal must not set the revealed flag";
+    EXPECT_TRUE(r.state()->commits.get(index) == commit1)
+        << "same-tick reveal must not overwrite the existing commit";
+
+    // After END_TICK the provider is still enrolled (they committed legitimately).
+    r.endTick();
+    EXPECT_EQ(r.state()->populations.get(stream), 1u)
+        << "provider must remain enrolled after END_TICK";
+
+    // Tick T+3: the normal reveal must now succeed.
+    r.setTick(r.tick() + 3);
+    increaseEnergy(provider, collateral);
+    const long long before2 = getBalance(provider);
+
+    r.revealAndCommit(provider, reveal1, commit2, collateral);
+
+    EXPECT_EQ(getBalance(provider), before2)
+        << "legitimate reveal at T+3 must refund prior collateral (net zero)";
+    EXPECT_EQ(r.state()->revealedThisTickFlags.get(index), 1)
+        << "legitimate reveal at T+3 must set the revealed flag";
+}
+
 // C1: when at least one reveal lands in a round, a no-show provider's stake is
 // burned and they are evicted. A witness provider proves the reveal channel was
 // live — without one END_TICK takes the empty-tick path and refunds instead of slashing.

@@ -216,7 +216,8 @@ private:
 			}
 			if (locals.i == state.get().populations.get(locals.stream) ||
 			    state.get().reveals.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) != locals.zeroReveal ||
-			    qpi.K12(input.reveal) != state.get().commits.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i))
+			    qpi.K12(input.reveal) != state.get().commits.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) ||
+			    state.get().revealOrCommitFlags.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i)) // same-tick commit+reveal is forbidden
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				return;
