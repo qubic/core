@@ -186,7 +186,12 @@
 #define CONTRACT_INDEX QBOND_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QBOND
 #define CONTRACT_STATE2_TYPE QBOND2
+
+#ifndef OLD_QBOND
 #include "contracts/QBond.h"
+#else
+#include "contracts/QBond_old.h"
+#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
