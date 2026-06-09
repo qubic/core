@@ -670,7 +670,7 @@ protected:
 			LOG_INFO(locals.log);
 			return ;
 		}
-		if (input.entryAmount < QRAFFLE_MIN_QRAFFLE_AMOUNT || input.entryAmount > QRAFFLE_MAX_QRAFFLE_AMOUNT)
+		if (input.entryAmount <= 0)
 		{
 			output.returnCode = QRAFFLE_INVALID_ENTRY_AMOUNT;
 			locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_invalidEntryAmount, 0 };
