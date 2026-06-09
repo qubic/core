@@ -161,7 +161,7 @@ static unsigned int numberOfTransactions = 0;
 static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsigned long long) * 8)];
 
 static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
-static unsigned char contractProcessorState = 0;
+static volatile unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
 static const Transaction* contractProcessorTransaction = 0; // does not have signature in some cases, see notifyContractOfIncomingTransfer()
 static int contractProcessorTransactionMoneyflew = 0;
