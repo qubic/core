@@ -182,6 +182,16 @@ long long QPI::QpiContextProcedureCall::transfer(const m256i& destination, long 
     return __transfer(destination, amount, TransferType::qpiTransfer);
 }
 
+sint64 QPI::QpiContextProcedureCall::returnInvocatorReward() const
+{
+	if (invocationReward() > 0)
+	{
+		return transfer(invocator(), invocationReward());
+	}
+
+	return 0;
+}
+
 m256i QPI::QpiContextFunctionCall::nextId(const m256i& currentId) const
 {
     int index = spectrumIndex(currentId);
