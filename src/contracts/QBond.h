@@ -327,7 +327,7 @@ protected:
                 || !state.get()._epochMbondInfoMap.get(qpi.epoch(), locals.tempMbondInfo)
                 || qpi.invocationReward() < 0
                 || (uint64) qpi.invocationReward() < locals.amountAndFee
-                || locals.tempMbondInfo.totalStaked + QBOND_MIN_MBONDS_TO_STAKE > QBOND_STAKE_LIMIT_PER_EPOCH)
+                || locals.tempMbondInfo.totalStaked + input.quMillions > QBOND_STAKE_LIMIT_PER_EPOCH)
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward());
             return;
