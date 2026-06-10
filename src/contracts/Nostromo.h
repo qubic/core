@@ -13,8 +13,8 @@ constexpr uint64 NOST_AUCTION_HISTORY_NUM = 1024;
 constexpr uint64 NOST_AUCTION_METADATA_CID_LENGTH = 64;
 constexpr uint64 NOST_AUCTION_PARTICIPANT_NUM = 4096;
 constexpr uint64 NOST_AUCTION_GETTER_PAGE_SIZE = 64;
-constexpr uint64 NOST_AUCTION_LOT_ITEM_NUM = 8;
-constexpr uint64 NOST_AUCTION_ALLOWED_WALLET_NUM = 8;
+constexpr uint64 NOST_AUCTION_LOT_ITEM_NUM = 1;
+constexpr uint64 NOST_AUCTION_ALLOWED_WALLET_NUM = 16;
 constexpr uint64 NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM = 4;
 constexpr uint32 NOST_AUCTION_MAX_DURATION_DAYS = 30;
 constexpr sint64 NOST_DEFAULT_PRIVATE_AUCTION_FEE = 50000000LL;
@@ -126,16 +126,14 @@ struct NOST : public ContractBase
 	};
 
 	/**
-	 * @brief Describes one asset entry inside an auction lot.
-	 * @note One non-zero entry means a single-asset auction lot.
-	 * @note Multiple non-zero entries mean a bundle of different assets.
+	 * @brief Describes an asset and quantity used by an auction lot or private access rule.
 	 */
-	struct AuctionLotEntry
+	struct AuctionAssetEntry
 	{
-		/** @brief Asset included in the auction lot. */
+		/** @brief Asset included in a lot or used as an access requirement. */
 		Asset asset;
 
-		/** @brief Quantity of this asset included in the auction lot. */
+		/** @brief Lot quantity or minimum ownership quantity required for access. */
 		sint64 quantity;
 	};
 
@@ -147,8 +145,8 @@ struct NOST : public ContractBase
 	 */
 	struct AuctionCore
 	{
-		/** @brief Auction lot contents; one non-empty entry means a single asset, multiple non-empty entries mean a bundle. */
-		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
+		/** @brief Single asset and quantity offered by the auction. */
+		Array<AuctionAssetEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
 
 		/** @brief Lowercase base32 CIDv1 stored in Pinata for the auction name and description metadata. */
 		Array<uint8, NOST_AUCTION_METADATA_CID_LENGTH> metadataIpfsCid;
@@ -230,8 +228,8 @@ struct NOST : public ContractBase
 		/** @brief Wallet whitelist used when the private auction uses wallet-based access. */
 		HashSet<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedBidderWallets;
 
-		/** @brief Asset set required for participation when the private auction uses asset-based access. */
-		HashSet<Asset, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
+		/** @brief Minimum quantity by asset required for participation; owning any one entry grants access. */
+		HashMap<Asset, sint64, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
 	};
 
 	/**
@@ -247,8 +245,8 @@ struct NOST : public ContractBase
 		/** @brief Wallet list used when the private auction restricts participation to predefined wallets. */
 		Array<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedBidderWallets;
 
-		/** @brief Asset list required to participate when the private auction uses asset-based access. */
-		Array<Asset, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
+		/** @brief Asset and minimum-quantity alternatives used by private asset-based access. */
+		Array<AuctionAssetEntry, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
 
 		/** @brief Number of populated entries in `requiredAccessAssets`. */
 		uint64 requiredAccessAssetCount;
@@ -338,11 +336,11 @@ struct NOST : public ContractBase
 		/** @brief Lowercase base32 CIDv1 stored in Pinata for the auction name and description metadata. */
 		Array<uint8, NOST_AUCTION_METADATA_CID_LENGTH> metadataIpfsCid;
 
-		/** @brief Auction lot contents; one non-empty entry means a single asset, multiple non-empty entries mean a bundle. */
-		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
+		/** @brief Single asset and quantity offered by the auction. */
+		Array<AuctionAssetEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
 
-		/** @brief Asset list required to participate when the private auction uses asset-based access. */
-		Array<Asset, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
+		/** @brief Asset and minimum-quantity alternatives used by private asset-based access. */
+		Array<AuctionAssetEntry, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
 
 		/** @brief Wallet list used when the private auction restricts participation to predefined wallets. */
 		Array<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedBidderWallets;
@@ -897,7 +895,7 @@ struct NOST : public ContractBase
 	struct AnalyzeAuctionLot_input
 	{
 		/** @brief Auction lot contents to validate. */
-		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
+		Array<AuctionAssetEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
 
 		/** @brief Requested auction duration in days. */
 		uint32 durationDays;
@@ -918,7 +916,7 @@ struct NOST : public ContractBase
 
 	struct AnalyzeAuctionLot_locals
 	{
-		AuctionLotEntry lotItem;
+		AuctionAssetEntry lotItem;
 		uint64 lotItemIndex;
 	};
 
@@ -944,20 +942,23 @@ struct NOST : public ContractBase
 	/** @brief Internal input used to count non-empty asset entries in a private asset access list. */
 	struct CountRequiredAccessAssets_input
 	{
-		/** @brief Asset list provided for private asset-based access control. */
-		Array<Asset, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
+		/** @brief Asset and minimum-quantity alternatives provided for private access control. */
+		Array<AuctionAssetEntry, NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM> requiredAccessAssets;
 	};
 
 	/** @brief Internal output containing the number of non-empty private access assets. */
 	struct CountRequiredAccessAssets_output
 	{
-		/** @brief Number of non-zero asset entries found in the private access list. */
+		/** @brief Number of populated asset entries found in the private access list. */
 		uint64 requiredAccessAssetCount;
+
+		/** @brief Flag indicating whether every entry has a valid asset/quantity combination. */
+		uint8 isValid;
 	};
 
 	struct CountRequiredAccessAssets_locals
 	{
-		Asset requiredAccessAsset;
+		AuctionAssetEntry requiredAccessAsset;
 		uint64 requiredAccessAssetIndex;
 	};
 
@@ -975,7 +976,7 @@ struct NOST : public ContractBase
 	struct GetAuctionByIndex_locals
 	{
 		AuctionData auction;
-		Asset requiredAccessAsset;
+		AuctionAssetEntry requiredAccessAsset;
 		id allowedBidderWallet;
 		sint64 requiredAccessAssetSetIndex;
 		sint64 allowedBidderWalletSetIndex;
@@ -1008,7 +1009,7 @@ struct NOST : public ContractBase
 	using GetAuctionCountBySeller_locals = GetterScan_locals;
 	using GetAuctionAtCreationSnapshot_locals = GetterScan_locals;
 
-	/** @brief Internal input used to verify whether the invocator owns at least one required private access asset. */
+	/** @brief Internal input used to verify whether the invocator satisfies any private asset requirement. */
 	struct HasRequiredAccessAsset_input
 	{
 		/** @brief Monotonic index of the auction whose private asset-based access rules should be evaluated. */
@@ -1018,14 +1019,14 @@ struct NOST : public ContractBase
 	/** @brief Internal output of the private asset access check. */
 	struct HasRequiredAccessAsset_output
 	{
-		/** @brief Flag indicating whether the invocator owns at least one required access asset. */
+		/** @brief Flag indicating whether the invocator owns the minimum quantity of any required asset. */
 		uint8 hasRequiredAccessAsset;
 	};
 
 	struct HasRequiredAccessAsset_locals
 	{
 		AuctionData auction;
-		Asset requiredAccessAsset;
+		AuctionAssetEntry requiredAccessAsset;
 		sint64 requiredAccessAssetSetIndex;
 		sint64 possessedAccessShares;
 	};
@@ -1335,7 +1336,7 @@ struct NOST : public ContractBase
 	struct VerifyAuctionLotBalances_input
 	{
 		/** @brief Auction lot that should be checked against the seller balance. */
-		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
+		Array<AuctionAssetEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
 	};
 
 	/** @brief Internal output of the seller balance verification routine. */
@@ -1347,7 +1348,7 @@ struct NOST : public ContractBase
 
 	struct VerifyAuctionLotBalances_locals
 	{
-		AuctionLotEntry lotItem;
+		AuctionAssetEntry lotItem;
 		uint64 lotItemIndex;
 		sint64 possessedShares;
 	};
@@ -1356,7 +1357,7 @@ struct NOST : public ContractBase
 	struct EscrowAuctionLotAssets_input
 	{
 		/** @brief Auction lot that must be moved into contract escrow. */
-		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
+		Array<AuctionAssetEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
 	};
 
 	/** @brief Internal output of the lot escrow routine. */
@@ -1368,7 +1369,7 @@ struct NOST : public ContractBase
 
 	struct EscrowAuctionLotAssets_locals
 	{
-		AuctionLotEntry lotItem;
+		AuctionAssetEntry lotItem;
 		uint64 lotItemIndex;
 		uint64 rollbackLotItemIndex;
 		sint64 remainingShares;
@@ -1378,7 +1379,7 @@ struct NOST : public ContractBase
 	struct RollbackAuctionLotAssets_input
 	{
 		/** @brief Auction lot that must be transferred out of contract escrow. */
-		Array<AuctionLotEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
+		Array<AuctionAssetEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
 
 		/** @brief Destination wallet that should receive the lot from escrow. */
 		id recipient;
@@ -1388,7 +1389,7 @@ struct NOST : public ContractBase
 
 	struct RollbackAuctionLotAssets_locals
 	{
-		AuctionLotEntry lotItem;
+		AuctionAssetEntry lotItem;
 		uint64 lotItemIndex;
 	};
 
@@ -1399,7 +1400,7 @@ struct NOST : public ContractBase
 		AuctionParticipantData bestParticipantData;
 		AuctionParticipantKey participantKey;
 		AuctionParticipantKey bestParticipantKey;
-		AuctionLotEntry batchLotItem;
+		AuctionAssetEntry batchLotItem;
 		DistributeAuctionRevenue_input distributeAuctionRevenueInput;
 		DistributeAuctionRevenue_output distributeAuctionRevenueOutput;
 		DateAndTime currentDate;
@@ -1466,11 +1467,13 @@ struct NOST : public ContractBase
 		CountAllowedBidderWallets_output countAllowedBidderWalletsOutput;
 		CountRequiredAccessAssets_input countRequiredAccessAssetsInput;
 		CountRequiredAccessAssets_output countRequiredAccessAssetsOutput;
+		AuctionAssetEntry requiredAccessAsset;
 		VerifyAuctionLotBalances_input verifyAuctionLotBalancesInput;
 		EscrowAuctionLotAssets_input escrowAuctionLotAssetsInput;
 		RollbackAuctionLotAssets_input rollbackAuctionLotAssetsInput;
 		DistributeAuctionServiceFee_input distributeAuctionServiceFeeInput;
 		sint64 requiredFee;
+		sint64 existingRequiredAccessQuantity;
 		uint64 resolvedQuantityForSale;
 		uint64 resolvedMinimumPurchaseQuantity;
 		uint64 allowedWalletIndex;
@@ -2079,14 +2082,28 @@ struct NOST : public ContractBase
 	PRIVATE_FUNCTION_WITH_LOCALS(CountRequiredAccessAssets)
 	{
 		output.requiredAccessAssetCount = 0;
+		output.isValid = 1;
 		for (locals.requiredAccessAssetIndex = 0; locals.requiredAccessAssetIndex < input.requiredAccessAssets.capacity();
 		     ++locals.requiredAccessAssetIndex)
 		{
 			locals.requiredAccessAsset = input.requiredAccessAssets.get(locals.requiredAccessAssetIndex);
-			if (!isZeroAsset(locals.requiredAccessAsset))
+			if (isZeroAsset(locals.requiredAccessAsset.asset))
 			{
-				output.requiredAccessAssetCount = sadd(output.requiredAccessAssetCount, 1ULL);
+				if (locals.requiredAccessAsset.quantity != 0)
+				{
+					output.isValid = 0;
+					return;
+				}
+				continue;
 			}
+
+			if (locals.requiredAccessAsset.quantity <= 0)
+			{
+				output.isValid = 0;
+				return;
+			}
+
+			output.requiredAccessAssetCount = sadd(output.requiredAccessAssetCount, 1ULL);
 		}
 	}
 
@@ -2102,10 +2119,11 @@ struct NOST : public ContractBase
 		     locals.requiredAccessAssetSetIndex != NULL_INDEX;
 		     locals.requiredAccessAssetSetIndex = locals.auction.requiredAccessAssets.nextElementIndex(locals.requiredAccessAssetSetIndex))
 		{
-			locals.requiredAccessAsset = locals.auction.requiredAccessAssets.key(locals.requiredAccessAssetSetIndex);
-			locals.possessedAccessShares = qpi.numberOfShares(locals.requiredAccessAsset, AssetOwnershipSelect::byOwner(qpi.invocator()),
+			locals.requiredAccessAsset.asset = locals.auction.requiredAccessAssets.key(locals.requiredAccessAssetSetIndex);
+			locals.requiredAccessAsset.quantity = locals.auction.requiredAccessAssets.value(locals.requiredAccessAssetSetIndex);
+			locals.possessedAccessShares = qpi.numberOfShares(locals.requiredAccessAsset.asset, AssetOwnershipSelect::byOwner(qpi.invocator()),
 			                                                  AssetPossessionSelect::byPossessor(qpi.invocator()));
-			if (locals.possessedAccessShares > 0)
+			if (locals.possessedAccessShares >= locals.requiredAccessAsset.quantity)
 			{
 				output.hasRequiredAccessAsset = 1;
 				return;
@@ -2888,7 +2906,8 @@ struct NOST : public ContractBase
 		CALL(CountAllowedBidderWallets, locals.countAllowedBidderWalletsInput, locals.countAllowedBidderWalletsOutput);
 		locals.countRequiredAccessAssetsInput.requiredAccessAssets = input.requiredAccessAssets;
 		CALL(CountRequiredAccessAssets, locals.countRequiredAccessAssetsInput, locals.countRequiredAccessAssetsOutput);
-		if (!validatePrivateAuctionAccess(static_cast<EAuctionVisibility>(input.auctionVisibility),
+		if (!locals.countRequiredAccessAssetsOutput.isValid ||
+		    !validatePrivateAuctionAccess(static_cast<EAuctionVisibility>(input.auctionVisibility),
 		                                  locals.countRequiredAccessAssetsOutput.requiredAccessAssetCount,
 		                                  locals.countAllowedBidderWalletsOutput.allowedWalletCount))
 		{
@@ -2957,9 +2976,12 @@ struct NOST : public ContractBase
 		for (locals.requiredAccessAssetIndex = 0; locals.requiredAccessAssetIndex < input.requiredAccessAssets.capacity();
 		     ++locals.requiredAccessAssetIndex)
 		{
-			if (!isZeroAsset(input.requiredAccessAssets.get(locals.requiredAccessAssetIndex)))
+			locals.requiredAccessAsset = input.requiredAccessAssets.get(locals.requiredAccessAssetIndex);
+			if (!isZeroAsset(locals.requiredAccessAsset.asset) &&
+			    (!locals.auction.requiredAccessAssets.get(locals.requiredAccessAsset.asset, locals.existingRequiredAccessQuantity) ||
+			     locals.requiredAccessAsset.quantity > locals.existingRequiredAccessQuantity))
 			{
-				locals.auction.requiredAccessAssets.add(input.requiredAccessAssets.get(locals.requiredAccessAssetIndex));
+				locals.auction.requiredAccessAssets.set(locals.requiredAccessAsset.asset, locals.requiredAccessAsset.quantity);
 			}
 		}
 		locals.auction.core.auctionLotItems = input.auctionLotItems;
@@ -3497,7 +3519,7 @@ struct NOST : public ContractBase
 
 	/**
 	 * @brief Returns the stored state of one auction.
-	 * @note The response contains a serializable auction view; access-control sets are returned as fixed arrays with counts.
+	 * @note The response contains a serializable auction view; access-control containers are returned as fixed arrays with counts.
 	 */
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAuctionByIndex)
 	{
@@ -3515,7 +3537,8 @@ struct NOST : public ContractBase
 		     locals.requiredAccessAssetSetIndex != NULL_INDEX;
 		     locals.requiredAccessAssetSetIndex = locals.auction.requiredAccessAssets.nextElementIndex(locals.requiredAccessAssetSetIndex))
 		{
-			locals.requiredAccessAsset = locals.auction.requiredAccessAssets.key(locals.requiredAccessAssetSetIndex);
+			locals.requiredAccessAsset.asset = locals.auction.requiredAccessAssets.key(locals.requiredAccessAssetSetIndex);
+			locals.requiredAccessAsset.quantity = locals.auction.requiredAccessAssets.value(locals.requiredAccessAssetSetIndex);
 			output.auction.requiredAccessAssets.set(output.auction.requiredAccessAssetCount, locals.requiredAccessAsset);
 			output.auction.requiredAccessAssetCount = sadd(output.auction.requiredAccessAssetCount, 1ULL);
 		}
@@ -3989,12 +4012,12 @@ protected:
 		return true;
 	}
 
-	static bool validatePrivateAuctionAccess(EAuctionVisibility visibility, uint64 requiredAccessAssetCount, uint64 allowedWalletCount)
+	constexpr static bool validatePrivateAuctionAccess(EAuctionVisibility visibility, uint64 requiredAccessAssetCount, uint64 allowedWalletCount)
 	{
 		return visibility != EAuctionVisibility::Private || ((requiredAccessAssetCount > 0) != (allowedWalletCount > 0));
 	}
 
-	static bool isValidAuctionFeeConfiguration(sint64 privateAuctionFee, uint64 auctionCancellationFeeBasisPoints, uint64 managementFeeBasisPoints,
+	constexpr static bool isValidAuctionFeeConfiguration(sint64 privateAuctionFee, uint64 auctionCancellationFeeBasisPoints, uint64 managementFeeBasisPoints,
 	                                           uint64 developmentFeeBasisPoints, uint64 takeoverCoordinatorFeeBasisPoints,
 	                                           uint64 shareholderDividendBasisPoints, uint64 shareholderFeeBasisPointsTier1,
 	                                           uint64 shareholderFeeBasisPointsTier2, uint64 shareholderFeeBasisPointsTier3,
