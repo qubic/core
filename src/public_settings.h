@@ -100,7 +100,7 @@ static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_TICKS = 1000;       
 static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
 static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_MUTATIONS = 150;
 static constexpr unsigned long long HYPERIDENTITY_POPULATION_THRESHOLD = HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_MUTATIONS; // P
-static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT = 321;
+static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT = 313;
 
 static constexpr unsigned long long ADDITION_NUMBER_OF_INPUT_NEURONS = 14;
 static constexpr unsigned long long ADDITION_NUMBER_OF_OUTPUT_NEURONS = 8;
