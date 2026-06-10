@@ -3,7 +3,7 @@ using namespace QPI;
 // ============================================================================
 // WolfPack (GGWP) - Revenue Distribution & Staking Smart Contract
 //
-// --- Revenue Payout (triggered daily at 11:00 UTC via END_TICK) ---
+// --- Revenue Payout (once per epoch / weekly, via END_EPOCH) ---
 //
 //   Revenue split:
 //     70% -> GGWP token holders (proportional to token holdings)
@@ -25,17 +25,36 @@ using namespace QPI;
 
 // --- Constants ---
 constexpr uint64 WOLFPACK_MAX_HOLDERS = 16384;
-constexpr uint64 WOLFPACK_MAX_SHAREHOLDERS = 1024;
+constexpr uint64 WOLFPACK_MAX_SHAREHOLDERS = 1024; // HashMap capacity must be 2^N and >= 676 SC shares (676 is not a power of two)
 constexpr uint64 WOLFPACK_MAX_CLAN_MEMBERS = 8192;
+// Dust filter: token holders below this (accumulated) balance are excluded from the
+// 70% distribution snapshot, so dust-spray can't bloat the holder loop. 1B supply / 10k = anti-dust.
+constexpr uint64 WOLFPACK_MIN_ELIGIBLE_BALANCE = 10000;
+// Minimum staked position: a staker's total staked balance must reach this.
+// After a partial unstake the remaining balance must be 0 (full exit) or >= this.
+constexpr uint64 WOLFPACK_MIN_STAKE = 500000;
 constexpr uint64 WOLFPACK_DISTRIBUTION_PERMILLE_HOLDERS = 700;
 constexpr uint64 WOLFPACK_DISTRIBUTION_PERMILLE_SHAREHOLDERS = 100;
 constexpr uint64 WOLFPACK_DISTRIBUTION_PERMILLE_CLAN = 100;
-constexpr uint64 WOLFPACK_DISTRIBUTION_PERMILLE_REINVEST = 100;
+constexpr uint64 WOLFPACK_DISTRIBUTION_PERMILLE_REINVEST = 90;       // was 100
+constexpr uint64 WOLFPACK_DISTRIBUTION_PERMILLE_EXEC_RESERVE = 10;   // NEW: retained in-contract for execution-fee reserve (never paid out)
+// Distribution permille (holders + shareholders + clan + reinvest + exec-reserve) must sum to 1000.
+static_assert(WOLFPACK_DISTRIBUTION_PERMILLE_HOLDERS + WOLFPACK_DISTRIBUTION_PERMILLE_SHAREHOLDERS
+            + WOLFPACK_DISTRIBUTION_PERMILLE_CLAN + WOLFPACK_DISTRIBUTION_PERMILLE_REINVEST
+            + WOLFPACK_DISTRIBUTION_PERMILLE_EXEC_RESERVE == 1000);
 constexpr uint64 WOLFPACK_SC_ASSET_NAME = 1347897159ULL; // "GGWP" as uint64
 
+// --- Shareholder governance: change admin / reinvest address by >51% of SC shares ---
+constexpr uint64 WOLFPACK_TOTAL_SC_SHARES = 676;       // total IPO shares = 100%
+constexpr uint64 WOLFPACK_GOV_THRESHOLD_PERCENT = 51;  // pass at >= 51% of all SC shares (>= 345 shares)
+constexpr uint64 WOLFPACK_GOV_PROPOSAL_MAX_EPOCHS = 4; // a proposal auto-expires after this many epochs
+constexpr uint8  WOLFPACK_GOV_TARGET_NONE = 0;
+constexpr uint8  WOLFPACK_GOV_TARGET_ADMIN = 1;
+constexpr uint8  WOLFPACK_GOV_TARGET_REINVEST = 2;
+constexpr uint64 WOLFPACK_MAX_GOV_PROPOSALS = 8;   // up to this many shareholder proposals active at once
+
 // Payout timing
-constexpr uint8 WOLFPACK_PAYOUT_HOUR = 11; // 11:00 UTC
-constexpr uint64 WOLFPACK_MIN_PAYOUT_INTERVAL_TICKS = 1000; // prevent double-payout in same hour
+// Revenue is distributed once per epoch (weekly) in END_EPOCH - no time/day gate needed.
 
 // Return codes
 constexpr uint32 WOLFPACK_OK = 0;
@@ -63,6 +82,7 @@ constexpr uint64 WOLFPACK_STAKING_REWARD_PER_EPOCH = 1923076ULL; // ~100M / 52 e
 constexpr uint64 WOLFPACK_UNSTAKE_DELAY_EPOCHS = 2;
 constexpr uint16 WOLFPACK_QX_CONTRACT_INDEX = 1;
 constexpr sint64 WOLFPACK_QX_TRANSFER_FEE = 100LL; // QX fee for management rights transfer
+constexpr sint64 WOLFPACK_STAKE_FEE = 900LL;       // QU charged on Stake(), retained in the execution-fee reserve (causer-pays). User also pays the ~100 QU QX mgmt-rights fee separately → ~1000 total.
 
 // Additional error codes
 constexpr uint32 WOLFPACK_ERROR_INSUFFICIENT_STAKE = 8;
@@ -72,6 +92,15 @@ constexpr uint32 WOLFPACK_ERROR_TRANSFER_FAILED = 11;
 constexpr uint32 WOLFPACK_ERROR_NO_PENDING_REWARDS = 12;
 constexpr uint32 WOLFPACK_ERROR_UNSTAKE_NOT_READY = 13;
 constexpr uint32 WOLFPACK_ERROR_NOT_STAKER = 14;
+constexpr uint32 WOLFPACK_ERROR_NOT_SHAREHOLDER = 16;
+constexpr uint32 WOLFPACK_ERROR_NO_ACTIVE_PROPOSAL = 17;
+constexpr uint32 WOLFPACK_ERROR_PROPOSAL_ACTIVE = 18;
+constexpr uint32 WOLFPACK_ERROR_INVALID_TARGET = 19;
+constexpr uint32 WOLFPACK_ERROR_NULL_ADDRESS = 20;
+constexpr uint32 WOLFPACK_ERROR_INSUFFICIENT_FEE = 21;
+constexpr uint32 WOLFPACK_ERROR_BELOW_MIN_STAKE = 22;
+constexpr uint32 WOLFPACK_ERROR_NO_PROPOSAL_SLOT = 23;
+constexpr uint32 WOLFPACK_ERROR_INVALID_PROPOSAL = 24;
 
 // Secondary state struct, reserved for future EXPAND events.
 struct WOLFPACK2
@@ -80,6 +109,16 @@ struct WOLFPACK2
 
 struct WOLFPACK : public ContractBase
 {
+    // A single shareholder governance proposal (one slot in govProposals).
+    struct WolfpackGovProposal
+    {
+        id proposedAddress;     // candidate new admin/reinvest address
+        uint64 proposalId;      // unique increasing id (0 = none); votes reference this id
+        uint64 proposalEpoch;   // epoch the proposal was opened (for expiry)
+        uint8 status;           // 0 = inactive/empty, 1 = active
+        uint8 targetType;       // WOLFPACK_GOV_TARGET_ADMIN / _REINVEST
+    };
+
     // ======================== STATE ========================
     struct StateData
     {
@@ -93,11 +132,8 @@ struct WOLFPACK : public ContractBase
         uint64 totalTokensSnapshot;
         uint64 holderCount;
 
-        // SC shareholder snapshot (taken at BEGIN_EPOCH) - 10% pool
-        // These are the 676 IPO shares (issuer=NULL_ID, name="GGWP")
-        HashMap<id, uint64, WOLFPACK_MAX_SHAREHOLDERS> shareholderBalances;
-        uint64 totalSharesSnapshot;
-        uint64 shareholderCount;
+        // SC shareholders (the 676 IPO shares) are paid via qpi.distributeDividends()
+        // and their voting power is queried live via qpi.numberOfShares() - no snapshot kept.
 
         // Clan system
         HashMap<id, uint64, WOLFPACK_MAX_CLAN_MEMBERS> clanRanks;
@@ -107,6 +143,7 @@ struct WOLFPACK : public ContractBase
         // Revenue tracking
         uint64 pendingRevenue;
         uint64 reinvestmentFund;  // cumulative total sent to reinvestAddress
+        uint64 execReserveFund;   // cumulative QU retained in-contract for execution-fee reserve
         uint64 totalDistributed;
         uint64 totalDeposited;
         uint64 lastDistributionEpoch;
@@ -118,6 +155,12 @@ struct WOLFPACK : public ContractBase
 
         // Recipient of the reinvestment share (10% of each payout)
         id reinvestAddress;
+
+        // Shareholder governance (change adminAddress / reinvestAddress by >51% of SC shares).
+        // Multiple proposals can be active at once; each holds one slot.
+        Array<WolfpackGovProposal, WOLFPACK_MAX_GOV_PROPOSALS> govProposals;
+        uint64 govNextProposalId;   // monotonic counter; assigns a unique id to each proposal
+        HashMap<id, uint64, WOLFPACK_MAX_SHAREHOLDERS> govVoteMap; // shareholder -> proposalId they support (one vote)
 
         // Staking system
         HashMap<id, uint64, WOLFPACK_MAX_HOLDERS> stakedBalances;
@@ -159,6 +202,19 @@ struct WOLFPACK : public ContractBase
     struct SetExcludeAddress_input { uint64 slot; id address; };
     struct SetExcludeAddress_output { uint32 returnCode; };
 
+    // Shareholder governance I/O
+    struct ProposeGovChange_input { uint8 targetType; id newAddress; };
+    struct ProposeGovChange_output { uint32 returnCode; uint64 proposalIndex; uint8 passed; };
+    struct ProposeGovChange_locals { uint64 power; uint64 yesShares; sint64 vIdx; id voter; uint64 snap; sint64 slot; sint64 freeSlot; uint64 newId; WolfpackGovProposal prop; };
+
+    struct VoteGovChange_input { uint64 proposalIndex; uint8 approve; };
+    struct VoteGovChange_output { uint32 returnCode; uint8 passed; };
+    struct VoteGovChange_locals { uint64 power; uint64 yesShares; sint64 vIdx; id voter; uint64 snap; uint64 voted; WolfpackGovProposal prop; };
+
+    struct GetGovProposal_input { uint64 proposalIndex; };
+    struct GetGovProposal_output { uint8 status; uint8 targetType; id proposedAddress; uint64 proposalId; uint64 proposalEpoch; uint64 yesShares; uint64 totalShares; uint64 requiredShares; };
+    struct GetGovProposal_locals { sint64 vIdx; id voter; uint64 snap; WolfpackGovProposal prop; };
+
     // Staking I/O
     struct Stake_input { uint64 numberOfShares; };
     struct Stake_output { uint32 returnCode; };
@@ -189,12 +245,11 @@ struct WOLFPACK : public ContractBase
     {
         uint64 holderCount;
         uint64 totalTokensSnapshot;
-        uint64 shareholderCount;
-        uint64 totalSharesSnapshot;
         uint64 clanMemberCount;
         uint64 clanWeightedTotal;
         uint64 pendingRevenue;
         uint64 reinvestmentFund;
+        uint64 execReserveFund;
         uint64 totalDistributed;
         uint64 totalDeposited;
         uint64 lastPayoutTick;
@@ -217,11 +272,11 @@ struct WOLFPACK : public ContractBase
     struct GetExcludeAddresses_input { };
     struct GetExcludeAddresses_output { id address1; id address2; };
 
-    // BUG-SONDE: returns the split that END_TICK would compute for a given
+    // BUG-SONDE: returns the split that END_EPOCH would compute for a given
     // amount, without executing the transfers. Lets tests verify the
     // permille arithmetic in isolation from the qpi.transfer step.
     struct GetDistributionPreview_input { uint64 amount; };
-    struct GetDistributionPreview_output { uint64 holderShare; uint64 shareholderShare; uint64 clanShare; uint64 reinvestShare; };
+    struct GetDistributionPreview_output { uint64 holderShare; uint64 shareholderShare; uint64 clanShare; uint64 reinvestShare; uint64 execReserveShare; };
 
     // ======================== FUNCTIONS (read-only) ========================
 
@@ -229,12 +284,11 @@ struct WOLFPACK : public ContractBase
     {
         output.holderCount = state.get().holderCount;
         output.totalTokensSnapshot = state.get().totalTokensSnapshot;
-        output.shareholderCount = state.get().shareholderCount;
-        output.totalSharesSnapshot = state.get().totalSharesSnapshot;
         output.clanMemberCount = state.get().clanMemberCount;
         output.clanWeightedTotal = state.get().clanWeightedTotal;
         output.pendingRevenue = state.get().pendingRevenue;
         output.reinvestmentFund = state.get().reinvestmentFund;
+        output.execReserveFund = state.get().execReserveFund;
         output.totalDistributed = state.get().totalDistributed;
         output.totalDeposited = state.get().totalDeposited;
         output.lastPayoutTick = state.get().lastPayoutTick;
@@ -253,11 +307,11 @@ struct WOLFPACK : public ContractBase
 
     PUBLIC_FUNCTION_WITH_LOCALS(GetShareholderInfo)
     {
-        output.isShareholder = state.get().shareholderBalances.get(input.shareholderAddress, locals.val) ? 1 : 0;
-        if (output.isShareholder)
-        {
-            output.shares = locals.val;
-        }
+        // Live SC-share ownership (the 676 IPO shares, issuer=NULL_ID, name="GGWP").
+        output.shares = (uint64)qpi.numberOfShares({ NULL_ID, WOLFPACK_SC_ASSET_NAME },
+            AssetOwnershipSelect::byOwner(input.shareholderAddress),
+            AssetPossessionSelect::byPossessor(input.shareholderAddress));
+        output.isShareholder = (output.shares > 0) ? 1 : 0;
     }
 
     PUBLIC_FUNCTION_WITH_LOCALS(GetClanMemberInfo)
@@ -282,7 +336,40 @@ struct WOLFPACK : public ContractBase
         output.holderShare = div((uint128)input.amount * (uint128)WOLFPACK_DISTRIBUTION_PERMILLE_HOLDERS, (uint128)1000ULL).low;
         output.shareholderShare = div((uint128)input.amount * (uint128)WOLFPACK_DISTRIBUTION_PERMILLE_SHAREHOLDERS, (uint128)1000ULL).low;
         output.clanShare = div((uint128)input.amount * (uint128)WOLFPACK_DISTRIBUTION_PERMILLE_CLAN, (uint128)1000ULL).low;
-        output.reinvestShare = input.amount - output.holderShare - output.shareholderShare - output.clanShare;
+        output.execReserveShare = div((uint128)input.amount * (uint128)WOLFPACK_DISTRIBUTION_PERMILLE_EXEC_RESERVE, (uint128)1000ULL).low;
+        output.reinvestShare = input.amount - output.holderShare - output.shareholderShare - output.clanShare - output.execReserveShare;
+    }
+
+    PUBLIC_FUNCTION_WITH_LOCALS(GetGovProposal)
+    {
+        output.totalShares = WOLFPACK_TOTAL_SC_SHARES;
+        // required = ceil(totalShares * threshold% / 100)
+        output.requiredShares = div(WOLFPACK_TOTAL_SC_SHARES * WOLFPACK_GOV_THRESHOLD_PERCENT + 99, 100ULL);
+        if (input.proposalIndex >= WOLFPACK_MAX_GOV_PROPOSALS)
+        {
+            return; // out of range -> zeroed output
+        }
+        locals.prop = state.get().govProposals.get((sint64)input.proposalIndex);
+        output.targetType = locals.prop.targetType;
+        output.proposedAddress = locals.prop.proposedAddress;
+        output.proposalId = locals.prop.proposalId;
+        output.proposalEpoch = locals.prop.proposalEpoch;
+        // active only if marked active AND not yet expired
+        output.status = (locals.prop.status == 1 &&
+            qpi.epoch() < locals.prop.proposalEpoch + WOLFPACK_GOV_PROPOSAL_MAX_EPOCHS) ? 1 : 0;
+
+        // Sum current-snapshot voting power of voters supporting this proposalId.
+        output.yesShares = 0;
+        for (locals.vIdx = state.get().govVoteMap.nextElementIndex(NULL_INDEX);
+             locals.vIdx != NULL_INDEX;
+             locals.vIdx = state.get().govVoteMap.nextElementIndex(locals.vIdx))
+        {
+            if (state.get().govVoteMap.value(locals.vIdx) != locals.prop.proposalId) continue;
+            locals.voter = state.get().govVoteMap.key(locals.vIdx);
+            locals.snap = (uint64)qpi.numberOfShares({ NULL_ID, WOLFPACK_SC_ASSET_NAME },
+                AssetOwnershipSelect::byOwner(locals.voter), AssetPossessionSelect::byPossessor(locals.voter));
+            output.yesShares = sadd(output.yesShares, locals.snap);
+        }
     }
 
     PUBLIC_FUNCTION_WITH_LOCALS(GetStakingInfo)
@@ -421,6 +508,176 @@ struct WOLFPACK : public ContractBase
         output.returnCode = WOLFPACK_ERROR_ACCESS_DENIED;
     }
 
+    // Open a shareholder proposal to change the admin or reinvest address.
+    // Caller must be an SC shareholder (present in the current BEGIN_EPOCH snapshot).
+    // Up to WOLFPACK_MAX_GOV_PROPOSALS proposals can be active at the same time.
+    PUBLIC_PROCEDURE_WITH_LOCALS(ProposeGovChange)
+    {
+        // Governance calls are not payable - refund any attached amount.
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+
+        locals.power = (uint64)qpi.numberOfShares({ NULL_ID, WOLFPACK_SC_ASSET_NAME },
+            AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator()));
+        if (locals.power == 0)
+        {
+            output.returnCode = WOLFPACK_ERROR_NOT_SHAREHOLDER;
+            return;
+        }
+        if (input.targetType != WOLFPACK_GOV_TARGET_ADMIN && input.targetType != WOLFPACK_GOV_TARGET_REINVEST)
+        {
+            output.returnCode = WOLFPACK_ERROR_INVALID_TARGET;
+            return;
+        }
+        if (input.newAddress == NULL_ID)
+        {
+            output.returnCode = WOLFPACK_ERROR_NULL_ADDRESS;
+            return;
+        }
+
+        // Find a free slot: empty (status 0) or holding an expired proposal.
+        locals.freeSlot = -1;
+        for (locals.slot = 0; locals.slot < (sint64)WOLFPACK_MAX_GOV_PROPOSALS; locals.slot++)
+        {
+            locals.prop = state.get().govProposals.get(locals.slot);
+            if (locals.prop.status == 0 ||
+                qpi.epoch() >= locals.prop.proposalEpoch + WOLFPACK_GOV_PROPOSAL_MAX_EPOCHS)
+            {
+                locals.freeSlot = locals.slot;
+                break;
+            }
+        }
+        if (locals.freeSlot < 0)
+        {
+            output.returnCode = WOLFPACK_ERROR_NO_PROPOSAL_SLOT;
+            return;
+        }
+
+        // Open the proposal with a fresh unique id; proposer auto-votes "yes".
+        // The unique id means stale votes from a recycled slot can never count.
+        locals.newId = state.get().govNextProposalId + 1;
+        state.mut().govNextProposalId = locals.newId;
+
+        locals.prop.proposedAddress = input.newAddress;
+        locals.prop.proposalId = locals.newId;
+        locals.prop.proposalEpoch = qpi.epoch();
+        locals.prop.status = 1;
+        locals.prop.targetType = input.targetType;
+        state.mut().govProposals.set(locals.freeSlot, locals.prop);
+
+        state.mut().govVoteMap.set(qpi.invocator(), locals.newId);
+
+        // Tally shares of voters supporting this proposalId.
+        locals.yesShares = 0;
+        for (locals.vIdx = state.get().govVoteMap.nextElementIndex(NULL_INDEX);
+             locals.vIdx != NULL_INDEX;
+             locals.vIdx = state.get().govVoteMap.nextElementIndex(locals.vIdx))
+        {
+            if (state.get().govVoteMap.value(locals.vIdx) != locals.newId) continue;
+            locals.voter = state.get().govVoteMap.key(locals.vIdx);
+            locals.snap = (uint64)qpi.numberOfShares({ NULL_ID, WOLFPACK_SC_ASSET_NAME },
+                AssetOwnershipSelect::byOwner(locals.voter), AssetPossessionSelect::byPossessor(locals.voter));
+            locals.yesShares = sadd(locals.yesShares, locals.snap);
+        }
+
+        output.proposalIndex = (uint64)locals.freeSlot;
+        output.passed = 0;
+        if (locals.yesShares * 100 >= WOLFPACK_TOTAL_SC_SHARES * WOLFPACK_GOV_THRESHOLD_PERCENT)
+        {
+            if (locals.prop.targetType == WOLFPACK_GOV_TARGET_ADMIN)
+            {
+                state.mut().adminAddress = locals.prop.proposedAddress;
+            }
+            else
+            {
+                state.mut().reinvestAddress = locals.prop.proposedAddress;
+            }
+            locals.prop.status = 0;
+            state.mut().govProposals.set(locals.freeSlot, locals.prop);
+            output.passed = 1;
+        }
+        output.returnCode = WOLFPACK_OK;
+    }
+
+    // Vote on a specific proposal by index. approve=1 casts/keeps a "yes"; approve=0 withdraws.
+    // A shareholder supports at most one proposal at a time. Executes once >= 51% is reached.
+    PUBLIC_PROCEDURE_WITH_LOCALS(VoteGovChange)
+    {
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+
+        if (input.proposalIndex >= WOLFPACK_MAX_GOV_PROPOSALS)
+        {
+            output.returnCode = WOLFPACK_ERROR_INVALID_PROPOSAL;
+            return;
+        }
+        locals.prop = state.get().govProposals.get((sint64)input.proposalIndex);
+        if (locals.prop.status == 0 ||
+            qpi.epoch() >= locals.prop.proposalEpoch + WOLFPACK_GOV_PROPOSAL_MAX_EPOCHS)
+        {
+            output.returnCode = WOLFPACK_ERROR_NO_ACTIVE_PROPOSAL;
+            return;
+        }
+
+        locals.power = (uint64)qpi.numberOfShares({ NULL_ID, WOLFPACK_SC_ASSET_NAME },
+            AssetOwnershipSelect::byOwner(qpi.invocator()), AssetPossessionSelect::byPossessor(qpi.invocator()));
+        if (locals.power == 0)
+        {
+            output.returnCode = WOLFPACK_ERROR_NOT_SHAREHOLDER;
+            return;
+        }
+
+        if (input.approve == 0)
+        {
+            // Withdraw only if currently supporting THIS proposal.
+            locals.voted = 0;
+            if (state.get().govVoteMap.get(qpi.invocator(), locals.voted) && locals.voted == locals.prop.proposalId)
+            {
+                state.mut().govVoteMap.removeByKey(qpi.invocator());
+            }
+        }
+        else
+        {
+            // One vote per voter: switches support to this proposal.
+            state.mut().govVoteMap.set(qpi.invocator(), locals.prop.proposalId);
+        }
+
+        // Tally shares of voters supporting this proposalId (transfers can't double-count -
+        // a sold-out voter contributes 0 from the snapshot).
+        locals.yesShares = 0;
+        for (locals.vIdx = state.get().govVoteMap.nextElementIndex(NULL_INDEX);
+             locals.vIdx != NULL_INDEX;
+             locals.vIdx = state.get().govVoteMap.nextElementIndex(locals.vIdx))
+        {
+            if (state.get().govVoteMap.value(locals.vIdx) != locals.prop.proposalId) continue;
+            locals.voter = state.get().govVoteMap.key(locals.vIdx);
+            locals.snap = (uint64)qpi.numberOfShares({ NULL_ID, WOLFPACK_SC_ASSET_NAME },
+                AssetOwnershipSelect::byOwner(locals.voter), AssetPossessionSelect::byPossessor(locals.voter));
+            locals.yesShares = sadd(locals.yesShares, locals.snap);
+        }
+
+        output.passed = 0;
+        if (locals.yesShares * 100 >= WOLFPACK_TOTAL_SC_SHARES * WOLFPACK_GOV_THRESHOLD_PERCENT)
+        {
+            if (locals.prop.targetType == WOLFPACK_GOV_TARGET_ADMIN)
+            {
+                state.mut().adminAddress = locals.prop.proposedAddress;
+            }
+            else
+            {
+                state.mut().reinvestAddress = locals.prop.proposedAddress;
+            }
+            locals.prop.status = 0;
+            state.mut().govProposals.set((sint64)input.proposalIndex, locals.prop);
+            output.passed = 1;
+        }
+        output.returnCode = WOLFPACK_OK;
+    }
+
     PUBLIC_PROCEDURE(SetExcludeAddress)
     {
         if (qpi.invocator() != state.get().adminAddress)
@@ -458,6 +715,14 @@ struct WOLFPACK : public ContractBase
             output.returnCode = WOLFPACK_ERROR_UNSTAKE_PENDING;
             return;
         }
+        // Minimum stake: the resulting staked position must reach WOLFPACK_MIN_STAKE.
+        locals.existingStake = 0;
+        state.get().stakedBalances.get(qpi.invocator(), locals.existingStake);
+        if (locals.existingStake + input.numberOfShares < WOLFPACK_MIN_STAKE)
+        {
+            output.returnCode = WOLFPACK_ERROR_BELOW_MIN_STAKE;
+            return;
+        }
         // Verify invocator has enough GGWP shares already under WP's management.
         // User must call QX.TransferShareManagementRights(asset=wpToken, shares=N, newMgmtIdx=GGWP) first.
         if (qpi.numberOfPossessedShares(state.get().wpToken.assetName, state.get().wpToken.issuer,
@@ -466,6 +731,20 @@ struct WOLFPACK : public ContractBase
             output.returnCode = WOLFPACK_ERROR_ACQUIRE_FAILED;
             return;
         }
+
+        // Causer-pays (self-sustain): the stake fee stays in the contract's QU balance
+        // (= execution-fee reserve). It is NOT transferred out and NOT burned.
+        if (qpi.invocationReward() < WOLFPACK_STAKE_FEE)
+        {
+            if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.returnCode = WOLFPACK_ERROR_INSUFFICIENT_FEE;
+            return;
+        }
+        if (qpi.invocationReward() > WOLFPACK_STAKE_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - WOLFPACK_STAKE_FEE);
+        }
+        state.mut().execReserveFund = state.get().execReserveFund + (uint64)WOLFPACK_STAKE_FEE;
 
         locals.existingStake = 0;
         state.get().stakedBalances.get(qpi.invocator(), locals.existingStake);
@@ -500,6 +779,14 @@ struct WOLFPACK : public ContractBase
             output.returnCode = WOLFPACK_ERROR_UNSTAKE_PENDING;
             return;
         }
+        // Either fully exit (remaining 0) or keep at least the minimum stake.
+        // Partial unstakes that would leave a sub-minimum dust position are rejected.
+        if (input.numberOfShares < locals.currentStake &&
+            locals.currentStake - input.numberOfShares < WOLFPACK_MIN_STAKE)
+        {
+            output.returnCode = WOLFPACK_ERROR_BELOW_MIN_STAKE;
+            return;
+        }
 
         if (input.numberOfShares == locals.currentStake)
         {
@@ -531,6 +818,21 @@ struct WOLFPACK : public ContractBase
             output.returnCode = WOLFPACK_ERROR_UNSTAKE_NOT_READY;
             return;
         }
+
+        // Unstake fee (mirrors Stake): 100 QU covers the QX release fee, 900 QU is
+        // retained in the execution-fee reserve. Total = WOLFPACK_QX_TRANSFER_FEE + WOLFPACK_STAKE_FEE.
+        // (The 100 QU offsets the fee releaseShares deducts from SELF; the 900 QU stay in the balance.)
+        if (qpi.invocationReward() < WOLFPACK_QX_TRANSFER_FEE + WOLFPACK_STAKE_FEE)
+        {
+            if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.returnCode = WOLFPACK_ERROR_INSUFFICIENT_FEE;
+            return;
+        }
+        if (qpi.invocationReward() > WOLFPACK_QX_TRANSFER_FEE + WOLFPACK_STAKE_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - (WOLFPACK_QX_TRANSFER_FEE + WOLFPACK_STAKE_FEE));
+        }
+        state.mut().execReserveFund = state.get().execReserveFund + (uint64)WOLFPACK_STAKE_FEE;
 
         locals.releaseResult = qpi.releaseShares(state.get().wpToken, qpi.invocator(), qpi.invocator(),
             (sint64)locals.unstakeAmount, WOLFPACK_QX_CONTRACT_INDEX, WOLFPACK_QX_CONTRACT_INDEX, WOLFPACK_QX_TRANSFER_FEE);
@@ -574,6 +876,18 @@ struct WOLFPACK : public ContractBase
             return;
         }
 
+        // Fix 1: the user covers the QX release fee (the contract no longer pays it).
+        if (qpi.invocationReward() < WOLFPACK_QX_TRANSFER_FEE)
+        {
+            if (qpi.invocationReward() > 0) qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            output.returnCode = WOLFPACK_ERROR_INSUFFICIENT_FEE;
+            return;
+        }
+        if (qpi.invocationReward() > WOLFPACK_QX_TRANSFER_FEE)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward() - WOLFPACK_QX_TRANSFER_FEE);
+        }
+
         locals.releaseResult = qpi.releaseShares(state.get().wpToken, qpi.invocator(), qpi.invocator(),
             (sint64)locals.pending, WOLFPACK_QX_CONTRACT_INDEX, WOLFPACK_QX_CONTRACT_INDEX, WOLFPACK_QX_TRANSFER_FEE);
         if (locals.releaseResult < 0)
@@ -607,10 +921,13 @@ struct WOLFPACK : public ContractBase
         REGISTER_USER_PROCEDURE(FinalizeUnstake, 9);
         REGISTER_USER_PROCEDURE(DepositStakingRewards, 10);
         REGISTER_USER_PROCEDURE(ClaimStakingRewards, 11);
+        REGISTER_USER_PROCEDURE(ProposeGovChange, 12);
+        REGISTER_USER_PROCEDURE(VoteGovChange, 13);
 
         REGISTER_USER_FUNCTION(GetStakingInfo, 5);
         REGISTER_USER_FUNCTION(GetExcludeAddresses, 6);
         REGISTER_USER_FUNCTION(GetDistributionPreview, 7);
+        REGISTER_USER_FUNCTION(GetGovProposal, 8);
     }
 
     // ======================== SYSTEM PROCEDURES ========================
@@ -636,14 +953,18 @@ struct WOLFPACK : public ContractBase
         state.mut().adminAddress = state.get().wpToken.issuer;
         state.mut().reinvestAddress = state.get().wpToken.issuer;
 
+        // Shareholder governance starts with no active proposals.
+        // (govProposals slots are zero-initialised => status 0 / inactive.)
+        state.mut().govNextProposalId = 0;
+        state.mut().govVoteMap.reset();
+
         state.mut().totalTokensSnapshot = 0;
         state.mut().holderCount = 0;
-        state.mut().totalSharesSnapshot = 0;
-        state.mut().shareholderCount = 0;
         state.mut().clanMemberCount = 0;
         state.mut().clanWeightedTotal = 0;
         state.mut().pendingRevenue = 0;
         state.mut().reinvestmentFund = 0;
+        state.mut().execReserveFund = 0;
         state.mut().totalDistributed = 0;
         state.mut().totalDeposited = 0;
         state.mut().lastDistributionEpoch = 0;
@@ -663,8 +984,6 @@ struct WOLFPACK : public ContractBase
     struct BEGIN_EPOCH_locals
     {
         AssetPossessionIterator tokenIter;
-        AssetPossessionIterator scIter;
-        Asset scAsset;
         uint64 balance;
         id holder;
         uint64 existingBalance;
@@ -701,6 +1020,10 @@ struct WOLFPACK : public ContractBase
                     state.get().holderBalances.get(locals.holder, locals.existingBalance);
                     locals.balance = sadd(locals.existingBalance, locals.balance);
 
+                    // Dust filter: only include holders whose accumulated balance reaches
+                    // the minimum. Keeps dust-spray addresses out of the distribution loop.
+                    if (locals.balance < WOLFPACK_MIN_ELIGIBLE_BALANCE) continue;
+
                     if (state.mut().holderBalances.set(locals.holder, locals.balance) != NULL_INDEX)
                     {
                         state.mut().totalTokensSnapshot = sadd(state.get().totalTokensSnapshot, (uint64)locals.tokenIter.numberOfPossessedShares());
@@ -713,39 +1036,8 @@ struct WOLFPACK : public ContractBase
             }
         }
 
-        // ---- Pass 2: SC shareholders (IPO shares, issuer=NULL_ID, name="GGWP") ----
-        state.mut().shareholderBalances.reset();
-        state.mut().totalSharesSnapshot = 0;
-        state.mut().shareholderCount = 0;
-
-        locals.scAsset.issuer = NULL_ID;
-        locals.scAsset.assetName = WOLFPACK_SC_ASSET_NAME;
-
-        for (locals.scIter.begin(locals.scAsset); !locals.scIter.reachedEnd(); locals.scIter.next())
-        {
-            if (locals.scIter.possessor() == SELF) continue;
-            if (state.get().excludeAddress1 != NULL_ID && locals.scIter.possessor() == state.get().excludeAddress1) continue;
-            if (state.get().excludeAddress2 != NULL_ID && locals.scIter.possessor() == state.get().excludeAddress2) continue;
-
-            locals.balance = locals.scIter.numberOfPossessedShares();
-            locals.holder = locals.scIter.possessor();
-
-            if (locals.balance > 0)
-            {
-                locals.existingBalance = 0;
-                state.get().shareholderBalances.get(locals.holder, locals.existingBalance);
-                locals.balance = sadd(locals.existingBalance, locals.balance);
-
-                if (state.mut().shareholderBalances.set(locals.holder, locals.balance) != NULL_INDEX)
-                {
-                    state.mut().totalSharesSnapshot = sadd(state.get().totalSharesSnapshot, (uint64)locals.scIter.numberOfPossessedShares());
-                    if (locals.existingBalance == 0)
-                    {
-                        state.mut().shareholderCount = state.get().shareholderCount + 1;
-                    }
-                }
-            }
-        }
+        // SC shareholders (10% pool) are paid via qpi.distributeDividends() in END_EPOCH;
+        // their voting power is read live via qpi.numberOfShares() - no snapshot needed.
 
         // ---- Staking reward distribution ----
         locals.rewardThisEpoch = WOLFPACK_STAKING_REWARD_PER_EPOCH;
@@ -777,29 +1069,23 @@ struct WOLFPACK : public ContractBase
         }
     }
 
-    END_EPOCH()
+    END_TICK()
     {
-        state.mut().holderBalances.cleanupIfNeeded();
-        state.mut().shareholderBalances.cleanupIfNeeded();
-        state.mut().clanRanks.cleanupIfNeeded();
-        state.mut().stakedBalances.cleanupIfNeeded();
-        state.mut().unstakeAmounts.cleanupIfNeeded();
-        state.mut().unstakeEpochs.cleanupIfNeeded();
-        state.mut().pendingStakingRewards.cleanupIfNeeded();
     }
 
     BEGIN_TICK()
     {
     }
 
-    // Auto-payout at 11:00 UTC daily
-    struct END_TICK_locals
+    // Weekly revenue payout runs once per epoch in END_EPOCH (below).
+    struct END_EPOCH_locals
     {
         uint64 amount;
         uint64 holderShare;
         uint64 shareholderShare;
         uint64 clanShare;
         uint64 reinvestShare;
+        uint64 execReserveShare;
         sint64 idx;
         id holder;
         uint64 tokens;
@@ -811,18 +1097,19 @@ struct WOLFPACK : public ContractBase
         uint64 quotient;
         uint64 remainder;
     };
-    END_TICK_WITH_LOCALS()
+    END_EPOCH_WITH_LOCALS()
     {
-        // Gate: only at hour 11 and enough ticks since last payout
-        if (qpi.hour() != WOLFPACK_PAYOUT_HOUR)
-        {
-            return;
-        }
-        if (state.get().lastPayoutTick != 0 &&
-            qpi.tick() < state.get().lastPayoutTick + WOLFPACK_MIN_PAYOUT_INTERVAL_TICKS)
-        {
-            return;
-        }
+        // Compact hash maps once per epoch (previously done in END_EPOCH).
+        state.mut().holderBalances.cleanupIfNeeded();
+        state.mut().clanRanks.cleanupIfNeeded();
+        state.mut().stakedBalances.cleanupIfNeeded();
+        state.mut().unstakeAmounts.cleanupIfNeeded();
+        state.mut().unstakeEpochs.cleanupIfNeeded();
+        state.mut().pendingStakingRewards.cleanupIfNeeded();
+        state.mut().govVoteMap.cleanupIfNeeded();
+
+        // Weekly revenue distribution: fires exactly once per epoch, using this
+        // epoch's BEGIN_EPOCH holder/shareholder snapshot. No time/day gate needed.
         if (state.get().pendingRevenue == 0)
         {
             return;
@@ -833,13 +1120,17 @@ struct WOLFPACK : public ContractBase
         locals.holderShare = div((uint128)locals.amount * (uint128)WOLFPACK_DISTRIBUTION_PERMILLE_HOLDERS, (uint128)1000ULL).low;
         locals.shareholderShare = div((uint128)locals.amount * (uint128)WOLFPACK_DISTRIBUTION_PERMILLE_SHAREHOLDERS, (uint128)1000ULL).low;
         locals.clanShare = div((uint128)locals.amount * (uint128)WOLFPACK_DISTRIBUTION_PERMILLE_CLAN, (uint128)1000ULL).low;
-        locals.reinvestShare = locals.amount - locals.holderShare - locals.shareholderShare - locals.clanShare;
+        locals.execReserveShare = div((uint128)locals.amount * (uint128)WOLFPACK_DISTRIBUTION_PERMILLE_EXEC_RESERVE, (uint128)1000ULL).low;
+        // Execution-fee reserve: retained in the contract's own QU balance (never transferred out).
+        // reinvestShare takes the remainder so all five portions sum to exactly `amount`.
+        locals.reinvestShare = locals.amount - locals.holderShare - locals.shareholderShare - locals.clanShare - locals.execReserveShare;
 
         state.mut().pendingRevenue = 0;
         state.mut().totalDistributed = state.get().totalDistributed + locals.amount;
         state.mut().lastDistributionEpoch = qpi.epoch();
         state.mut().lastPayoutTick = qpi.tick();
         state.mut().reinvestmentFund = state.get().reinvestmentFund + locals.reinvestShare;
+        state.mut().execReserveFund = state.get().execReserveFund + locals.execReserveShare;
 
         qpi.getEntity(SELF, locals.entity);
         locals.contractBalance = locals.entity.incomingAmount - locals.entity.outgoingAmount;
@@ -867,32 +1158,15 @@ struct WOLFPACK : public ContractBase
             }
         }
 
-        // --- Step 3: Push 10% to SC shareholders ---
-        if (locals.shareholderShare > 0 && state.get().totalSharesSnapshot > 0)
+        // --- Step 3: Push 10% to SC shareholders via the protocol dividend mechanism ---
+        // distributeDividends() pays `perShare` to each of the 676 SC shares automatically
+        // (no snapshot/loop needed). The integer remainder stays in the contract balance.
+        if (locals.shareholderShare > 0)
         {
-            if (locals.contractBalance == 0)
+            locals.quotient = div(locals.shareholderShare, (uint64)NUMBER_OF_COMPUTORS); // per-share amount
+            if (locals.quotient > 0)
             {
-                qpi.getEntity(SELF, locals.entity);
-                locals.contractBalance = locals.entity.incomingAmount - locals.entity.outgoingAmount;
-            }
-
-            for (locals.idx = state.get().shareholderBalances.nextElementIndex(NULL_INDEX);
-                 locals.idx != NULL_INDEX;
-                 locals.idx = state.get().shareholderBalances.nextElementIndex(locals.idx))
-            {
-                locals.holder = state.get().shareholderBalances.key(locals.idx);
-                locals.tokens = state.get().shareholderBalances.value(locals.idx);
-                if (locals.tokens == 0) continue;
-
-                locals.quotient = div(locals.shareholderShare, state.get().totalSharesSnapshot);
-                locals.remainder = mod(locals.shareholderShare, state.get().totalSharesSnapshot);
-                locals.reward = locals.quotient * locals.tokens + div((uint128)locals.remainder * (uint128)locals.tokens, (uint128)state.get().totalSharesSnapshot).low;
-                if (locals.reward == 0) continue;
-                if (locals.reward > locals.contractBalance) locals.reward = locals.contractBalance;
-
-                qpi.transfer(locals.holder, locals.reward);
-                locals.contractBalance = locals.contractBalance - locals.reward;
-                if (locals.contractBalance == 0) break;
+                qpi.distributeDividends((sint64)locals.quotient);
             }
         }
 

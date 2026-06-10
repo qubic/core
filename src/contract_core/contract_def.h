@@ -417,7 +417,7 @@ constexpr struct ContractDescription
     {"QUSINO", 208, 10000, sizeof(QUSINO::StateData)}, // proposal in epoch 206, IPO in 207, construction and first use in 208
     {"ESCROW", 210, 10000, sizeof(ESCROW::StateData)}, // proposal in epoch 208, IPO in 209, construction and first use in 210
 #ifndef NO_GGWP
-    {"GGWP", 217, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 215, IPO in 216, construction and first use in 217
+    {"GGWP", 218, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 216, IPO in 217, construction and first use in 218
 #endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -557,7 +557,9 @@ static void initializeContracts()
 // Automatic Contract State Changes
 enum ContractStateChangeType
 {
+    // Keeps the saved state's old bytes, only zero-fills the new bytes at the end (used when struct grew; old fields preserved)
     PADDING,
+    // Discards the saved state entirely, zeros the whole buffer
     RESET,
 };
 struct ContractStateChangeInfo
@@ -566,8 +568,9 @@ struct ContractStateChangeInfo
     ContractStateChangeType changeType;
 };
 // Contracts whose state struct changed this epoch. Update this list each epoch as needed.
+// Each entry is { CONTRACT_INDEX, PADDING or RESET }
 // When enabling, replace both lines below, e.g.:
-constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { QIP_CONTRACT_INDEX, RESET } };
+constexpr ContractStateChangeInfo contractStateChangeInfos[] = { {RANDOM_CONTRACT_INDEX, PADDING} };
 constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
 // constexpr const ContractStateChangeInfo* contractStateChangeInfos = nullptr;
 // constexpr unsigned int contractStateChangeCount = 0;
