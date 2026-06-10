@@ -109,7 +109,7 @@ static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = 256;
 // Each neuron is connected to every other neuron(exclude self). The effective is clamp to (ADDITION_POPULATION_THRESHOLD - 1) at runtime
 static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = ADDITION_POPULATION_THRESHOLD;
 static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 256;
-static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 76000;
+static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 74300;
 
 // Multipler of score
 static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;
