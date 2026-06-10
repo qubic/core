@@ -201,12 +201,11 @@ TEST(ContractQBond, Stake)
     qbond.stake(testAddress2, 5, 5025000);
     EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 0);
 
-    // scenario 4.2: testAddress1 want to stake 7 millions, testAddress1 recieve 7 MBonds and testAddress2 recieve 5 MBonds, because the total qu millions in the queue became more than 10
+    // scenario 4.2: testAddress1 want to stake 7 millions, testAddress1 recieve 0 MBonds and testAddress2 recieve 0 MBonds, because the stake queue is no longer supported
     qbond.stake(testAddress1, 7, 7035000);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 57);
-    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 5);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 50);
+    EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 0);
 }
-
 
 TEST(ContractQBond, TransferMBondOwnershipAndPossession)
 {
@@ -234,13 +233,13 @@ TEST(ContractQBond, AddRemoveAskOrder)
     ContractTestingQBond qbond;
     qbond.beginEpoch();
     increaseEnergy(testAddress1, 1000000000);
-    qbond.stake(testAddress1, 50, 50250000);
+    qbond.stake(testAddress1, 50, 50200000);
 
     // scenario 1: not enough mbonds
     EXPECT_EQ(qbond.addAskOrder(testAddress1, system.epoch, 1500000, 100, 0).addedMBondsAmount, 0);
 
     // scenario 2: success to add ask, asked mbonds are blocked and cannot be transferred to another address
-    EXPECT_EQ(qbond.addAskOrder(testAddress1, system.epoch, 1500000, 30, 0).addedMBondsAmount, 30);
+    EXPECT_EQ(qbond.addAskOrder(testAddress1, system.epoch, 1500000, 30, QBOND_ASK_ORDER_FEE).addedMBondsAmount, 30);
     // not enough free mbonds
     EXPECT_EQ(qbond.transfer(testAddress1, testAddress2, system.epoch, 21, 100).transferredMBonds, 0);
     EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 0);
@@ -276,27 +275,27 @@ TEST(ContractQBond, AddRemoveBidOrder)
     EXPECT_EQ(qbond.addBidOrder(testAddress2, system.epoch, 1500000, 10, 15000000).addedMBondsAmount, 10);
 
     // scenario 3: testAddress1 add ask order which matches the bid order
-    EXPECT_EQ(qbond.addAskOrder(testAddress1, system.epoch, 1500000, 3, 0).addedMBondsAmount, 3);
+    EXPECT_EQ(qbond.addAskOrder(testAddress1, system.epoch, 1500000, 3, QBOND_ASK_ORDER_FEE).addedMBondsAmount, 3);
     EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress1, testAddress1, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 47);
     EXPECT_EQ(numberOfPossessedShares(assetNameFromString(std::string("MBND").append(getCurrentMbondIndex(system.epoch)).c_str()), id(QBOND_CONTRACT_INDEX, 0, 0, 0), testAddress2, testAddress2, QBOND_CONTRACT_INDEX, QBOND_CONTRACT_INDEX), 3);
 
     // scenario 3: no orders to remove at this price
-    EXPECT_EQ(qbond.removeBidOrder(testAddress2, system.epoch, 1400000, 30, 0).removedMBondsAmount, 0);
-    EXPECT_EQ(qbond.removeBidOrder(testAddress2, system.epoch, 1600000, 30, 0).removedMBondsAmount, 0);
+    EXPECT_EQ(qbond.removeBidOrder(testAddress2, system.epoch, 1400000, 30, QBOND_PROCEDURE_FEE).removedMBondsAmount, 0);
+    EXPECT_EQ(qbond.removeBidOrder(testAddress2, system.epoch, 1600000, 30, QBOND_PROCEDURE_FEE).removedMBondsAmount, 0);
 
     // scenario 4: successful removal bid order, qu are returned (7 mbonds per 1500000 each)
     int64_t prevBalance = getBalance(testAddress2);
-    EXPECT_EQ(qbond.removeBidOrder(testAddress2, system.epoch, 1500000, 100, 0).removedMBondsAmount, 7);
-    EXPECT_EQ(getBalance(testAddress2) - prevBalance, 10500000);
+    EXPECT_EQ(qbond.removeBidOrder(testAddress2, system.epoch, 1500000, 100, QBOND_PROCEDURE_FEE).removedMBondsAmount, 7);
+    EXPECT_EQ(getBalance(testAddress2) - prevBalance, 10400000);
 
     // check earned fees
     auto fees = qbond.getEarnedFees();
-    EXPECT_EQ(fees.stakeFees, 250000);
-    EXPECT_EQ(fees.tradeFees, 1350); // 1500000 (MBond price) * 3 (MBonds) * 0.0003 (0.03% fees for trade)
+    EXPECT_EQ(fees.stakeFees, 200000);
+    EXPECT_EQ(fees.tradeFees, 100000); // minimum commission for one ask order
 
     // getOrders checks
-    EXPECT_EQ(qbond.addAskOrder(testAddress1, system.epoch, 1600000, 5, 0).addedMBondsAmount, 5);
-    EXPECT_EQ(qbond.addAskOrder(testAddress2, system.epoch, 1500000, 3, 0).addedMBondsAmount, 3);
+    EXPECT_EQ(qbond.addAskOrder(testAddress1, system.epoch, 1600000, 5, QBOND_ASK_ORDER_FEE).addedMBondsAmount, 5);
+    EXPECT_EQ(qbond.addAskOrder(testAddress2, system.epoch, 1500000, 3, QBOND_ASK_ORDER_FEE).addedMBondsAmount, 3);
     EXPECT_EQ(qbond.addBidOrder(testAddress1, system.epoch, 1400000, 10, 14000000).addedMBondsAmount, 10);
     EXPECT_EQ(qbond.addBidOrder(testAddress2, system.epoch, 1300000, 5, 6500000).addedMBondsAmount, 5);
 
@@ -356,15 +355,15 @@ TEST(ContractQBond, BurnQu)
     increaseEnergy(testAddress1, 1000000000);
 
     // scenario 1: not enough qu
-    EXPECT_EQ(qbond.burnQU(testAddress1, 1000000, 1000).amount, -1);
+    EXPECT_EQ(qbond.burnQU(testAddress1, 5000000, 1000).amount, 0);
 
     // scenario 2: successful burning
-    EXPECT_EQ(qbond.burnQU(testAddress1, 1000000, 1000000).amount, 1000000);
+    EXPECT_EQ(qbond.burnQU(testAddress1, 5000000, 5000000).amount, 5000000);
 
     // scenario 3: successful burning, the surplus is returned
     int64_t prevBalance = getBalance(testAddress1);
-    EXPECT_EQ(qbond.burnQU(testAddress1, 1000000, 10000000).amount, 1000000);
-    EXPECT_EQ(prevBalance - getBalance(testAddress1), 1000000);
+    EXPECT_EQ(qbond.burnQU(testAddress1, 5000000, 10000000).amount, 5000000);
+    EXPECT_EQ(prevBalance - getBalance(testAddress1), 5000000);
 }
 
 TEST(ContractQBond, UpdateCFA)
