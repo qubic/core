@@ -24,17 +24,34 @@ set_source_files_properties(platform/custom_stack.asm PROPERTIES
 
 
 # Add additional compiler-specific flags for the main application
+# NOTE: The x86-specific flags below (for example `-mrdrnd` and
+# `-target x86_64-unknown-windows`) must only be applied when the build
+# target is x86_64. On non-x86 platforms (Apple Silicon, ARM), those flags
+# and intrinsics are invalid and will break the build. The conditional here
+# preserves the original x86 behavior while keeping native non-x86 builds
+# functional.
 if(IS_CLANG)
     # Clang-specific flags
-    target_compile_options(Qubic PRIVATE
-        -D_CONSOLE
-        $<$<CONFIG:Release>:-DNDEBUG>
-        -mrdrnd
-        -target x86_64-unknown-windows
-        $<$<BOOL:${CLANG_SYSROOT}>:--sysroot="${CLANG_SYSROOT}">
-        -Werror
-        -Wno-unused-parameter
-    )
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64")
+        # x86_64-only flags (rdrand instruction and cross-target)
+        target_compile_options(Qubic PRIVATE
+            -D_CONSOLE
+            $<$<CONFIG:Release>:-DNDEBUG>
+            -mrdrnd
+            -target x86_64-unknown-windows
+            $<$<BOOL:${CLANG_SYSROOT}>:--sysroot="${CLANG_SYSROOT}">
+            -Werror
+            -Wno-unused-parameter
+        )
+    else()
+        # Generic clang flags for non-x86 platforms (e.g., arm64 mac)
+        target_compile_options(Qubic PRIVATE
+            -D_CONSOLE
+            $<$<CONFIG:Release>:-DNDEBUG>
+            -Werror
+            -Wno-unused-parameter
+        )
+    endif()
 elseif(IS_MSVC)
     # MSVC-specific flags
     target_compile_options(Qubic PRIVATE
