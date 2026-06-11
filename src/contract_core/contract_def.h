@@ -302,6 +302,16 @@
 
 #endif
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define QASSAND_CONTRACT_INDEX 29
+#define CONTRACT_INDEX QASSAND_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE QASSAND
+#define CONTRACT_STATE2_TYPE QASSAND2
+#include "contracts/Qassand.h"
+
 // new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -419,6 +429,7 @@ constexpr struct ContractDescription
 #ifndef NO_GGWP
     {"GGWP", 218, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 216, IPO in 217, construction and first use in 218
 #endif
+    {"QASSAND", QASSAND_CONSTRUCTION_EPOCH_PLACEHOLDER, 10000, sizeof(QASSAND::StateData)},
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
@@ -545,6 +556,7 @@ static void initializeContracts()
 #ifndef NO_GGWP
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(WOLFPACK);
 #endif
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QASSAND);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
