@@ -310,6 +310,7 @@
 #define CONTRACT_INDEX DUMMY_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE DUMMY
 #define CONTRACT_STATE2_TYPE DUMMY2
+#define CONTRACT_STATE_OLD_TYPE DUMMY_OLD
 #include "contracts/Dummy.h"
 
 // new contracts should be added above this line
@@ -573,6 +574,8 @@ enum ContractStateChangeType
     PADDING,
     // Discards the saved state entirely, zeros the whole buffer
     RESET,
+    // Migrate data from an old to a new state struct
+	MIGRATE,
 };
 struct ContractStateChangeInfo
 {
@@ -582,7 +585,7 @@ struct ContractStateChangeInfo
 // Contracts whose state struct changed this epoch. Update this list each epoch as needed.
 // Each entry is { CONTRACT_INDEX, PADDING or RESET }
 // When enabling, replace both lines below, e.g.:
-constexpr ContractStateChangeInfo contractStateChangeInfos[] = { {RANDOM_CONTRACT_INDEX, PADDING} };
+constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { DUMMY_CONTRACT_INDEX, MIGRATE } };
 constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
 // constexpr const ContractStateChangeInfo* contractStateChangeInfos = nullptr;
 // constexpr unsigned int contractStateChangeCount = 0;
