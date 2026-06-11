@@ -4,13 +4,12 @@ struct DUMMY2
 {
 };
 
-// OLD STATE DATA
-//struct StateData
-//{
-//	uint32 numBeginEpoch;
-//	uint32 numEndEpoch;
-//	SlowAnySizeArray<uint32, 10000> dummyArray; // to make state size larger than sizeof(IPO)
-//};
+struct DUMMY_OLD
+{
+	uint32 numBeginEpoch;
+	uint32 numEndEpoch;
+	SlowAnySizeArray<uint32, 10000> dummyArray; // to make state size larger than sizeof(IPO)
+};
 
 struct DUMMY : public ContractBase
 {
@@ -30,6 +29,11 @@ struct DUMMY : public ContractBase
 
 		SlowAnySizeArray<DummyInfo, 10000> dummyArray;
 	};
+
+	MIGRATE()
+	{
+
+	}
 
 	INITIALIZE()
 	{

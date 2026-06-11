@@ -5812,6 +5812,14 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                                 // Reload also failed — fall through to error
                             }
                         }
+                        else if (changeType == MIGRATE)
+                        {
+                            long long actualSize = getFileSize(CONTRACT_FILE_NAME, directory);
+                            // if (actualSize == old state size)
+                            // load file into old state struct
+                            // call contracts migrate function
+                            // otherwise fall through to error
+                        }
                     }
 
                     appendText(message, L" cannot be read successfully");
