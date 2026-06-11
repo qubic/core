@@ -3,9 +3,9 @@ using namespace QPI;
 // QASSAND is the Qubic contract implementation name for the Qassandra protocol v0.
 constexpr uint16 QASSAND_VERSION = 0;
 constexpr uint16 QASSAND_CONSTRUCTION_EPOCH_PLACEHOLDER = 10000;
-constexpr sint64 QASSAND_PING_FEE = 100000;
-constexpr sint64 QASSAND_PROTOCOL_FEE = 75000;
-constexpr sint64 QASSAND_BURN_FEE = 25000;
+constexpr uint64 QASSAND_PROTOCOL_FEE = 75000;
+constexpr uint64 QASSAND_BURN_FEE = 25000;
+constexpr uint64 QASSAND_PING_FEE = QASSAND_PROTOCOL_FEE + QASSAND_BURN_FEE;
 constexpr uint8 QASSAND_SUCCESS = 0;
 constexpr uint8 QASSAND_UNDERPAID = 1;
 constexpr uint8 QASSAND_UNKNOWN_LANE = 2;
@@ -24,14 +24,13 @@ struct QASSAND : public ContractBase
 	{
 		uint16 version;
 		uint16 constructionEpoch;
-		sint64 pingFee;
-		sint64 protocolFee;
-		sint64 burnFee;
+		uint64 protocolFee;
+		uint64 burnFee;
 		uint64 totalPingCount;
-		sint64 protocolEarnedFee;
-		sint64 burnEarnedFee;
-		sint64 pendingBurnAmount;
-		sint64 totalBurnedAmount;
+		uint64 protocolEarnedFee;
+		uint64 burnEarnedFee;
+		uint64 pendingBurnAmount;
+		uint64 totalBurnedAmount;
 	};
 
 	struct Ping_input
@@ -41,17 +40,17 @@ struct QASSAND : public ContractBase
 	struct Ping_output
 	{
 		uint8 returnCode;
-		sint64 acceptedFee;
-		sint64 refundedAmount;
-		sint64 protocolEarnedFee;
-		sint64 burnEarnedFee;
+		uint64 acceptedFee;
+		uint64 refundedAmount;
+		uint64 protocolEarnedFee;
+		uint64 burnEarnedFee;
 		uint64 totalPingCount;
 	};
 
 	struct Ping_locals
 	{
-		sint64 paidAmount;
-		sint64 refundAmount;
+		uint64 paidAmount;
+		uint64 refundAmount;
 	};
 
 	struct GetInfo_input
@@ -72,11 +71,10 @@ struct QASSAND : public ContractBase
 
 	struct GetFeeInfo_output
 	{
-		sint64 pingFee;
-		sint64 protocolFee;
-		sint64 burnFee;
-		sint64 protocolEarnedFee;
-		sint64 burnEarnedFee;
+		uint64 protocolFee;
+		uint64 burnFee;
+		uint64 protocolEarnedFee;
+		uint64 burnEarnedFee;
 	};
 
 	struct GetBurnInfo_input
@@ -85,8 +83,8 @@ struct QASSAND : public ContractBase
 
 	struct GetBurnInfo_output
 	{
-		sint64 pendingBurnAmount;
-		sint64 totalBurnedAmount;
+		uint64 pendingBurnAmount;
+		uint64 totalBurnedAmount;
 	};
 
 	struct GetLaneInfo_input
@@ -99,19 +97,18 @@ struct QASSAND : public ContractBase
 		uint8 returnCode;
 		uint16 laneId;
 		Array<uint8, 16> laneName;
-		sint64 requiredFee;
+		uint64 requiredFee;
 	};
 
 	struct END_TICK_locals
 	{
-		sint64 burnAmount;
+		uint64 burnAmount;
 	};
 
 	INITIALIZE()
 	{
 		state.mut().version = QASSAND_VERSION;
 		state.mut().constructionEpoch = QASSAND_CONSTRUCTION_EPOCH_PLACEHOLDER;
-		state.mut().pingFee = QASSAND_PING_FEE;
 		state.mut().protocolFee = QASSAND_PROTOCOL_FEE;
 		state.mut().burnFee = QASSAND_BURN_FEE;
 	}
@@ -128,7 +125,7 @@ struct QASSAND : public ContractBase
 	END_TICK_WITH_LOCALS()
 	{
 		locals.burnAmount = state.get().pendingBurnAmount;
-		if (locals.burnAmount <= 0)
+		if (locals.burnAmount == 0)
 		{
 			return;
 		}
@@ -142,9 +139,9 @@ struct QASSAND : public ContractBase
 	{
 		locals.paidAmount = qpi.invocationReward();
 
-		if (locals.paidAmount < state.get().pingFee)
+		if (locals.paidAmount < (state.get().protocolFee + state.get().burnFee))
 		{
-			if (locals.paidAmount > 0)
+			if (locals.paidAmount != 0)
 			{
 				qpi.transfer(qpi.invocator(), locals.paidAmount);
 			}
@@ -153,8 +150,8 @@ struct QASSAND : public ContractBase
 			return;
 		}
 
-		locals.refundAmount = locals.paidAmount - state.get().pingFee;
-		if (locals.refundAmount > 0)
+		locals.refundAmount = locals.paidAmount - (state.get().protocolFee + state.get().burnFee);
+		if (locals.refundAmount != 0)
 		{
 			qpi.transfer(qpi.invocator(), locals.refundAmount);
 		}
@@ -165,7 +162,7 @@ struct QASSAND : public ContractBase
 		state.mut().pendingBurnAmount += state.get().burnFee;
 
 		output.returnCode = QASSAND_SUCCESS;
-		output.acceptedFee = state.get().pingFee;
+		output.acceptedFee = (state.get().protocolFee + state.get().burnFee);
 		output.refundedAmount = locals.refundAmount;
 		output.protocolEarnedFee = state.get().protocolFee;
 		output.burnEarnedFee = state.get().burnFee;
@@ -190,7 +187,7 @@ struct QASSAND : public ContractBase
 
 	PUBLIC_FUNCTION(GetFeeInfo)
 	{
-		output.pingFee = state.get().pingFee;
+		output.pingFee = (state.get().protocolFee + state.get().burnFee);
 		output.protocolFee = state.get().protocolFee;
 		output.burnFee = state.get().burnFee;
 		output.protocolEarnedFee = state.get().protocolEarnedFee;

@@ -16,10 +16,10 @@ public:
 	uint16 versionValue() const { return version; }
 	uint16 constructionEpochValue() const { return constructionEpoch; }
 	uint64 totalPingCountValue() const { return totalPingCount; }
-	sint64 protocolEarnedFeeValue() const { return protocolEarnedFee; }
-	sint64 burnEarnedFeeValue() const { return burnEarnedFee; }
-	sint64 pendingBurnAmountValue() const { return pendingBurnAmount; }
-	sint64 totalBurnedAmountValue() const { return totalBurnedAmount; }
+	uint64 protocolEarnedFeeValue() const { return protocolEarnedFee; }
+	uint64 burnEarnedFeeValue() const { return burnEarnedFee; }
+	uint64 pendingBurnAmountValue() const { return pendingBurnAmount; }
+	uint64 totalBurnedAmountValue() const { return totalBurnedAmount; }
 };
 
 class ContractTestingQassand : protected ContractTesting
@@ -39,7 +39,7 @@ public:
 	uint64 balanceQassand() const { return balanceOf(QASSAND_CONTRACT_ID); }
 	void fund(const id& account, uint64 amount) { increaseEnergy(account, amount); }
 
-	QASSAND::Ping_output ping(const id& invocator, sint64 amount)
+	QASSAND::Ping_output ping(const id& invocator, uint64 amount)
 	{
 		QASSAND::Ping_input input{};
 		QASSAND::Ping_output output{};
@@ -102,10 +102,10 @@ TEST(ContractQassand, InitializeSetsPingV0Metadata)
 	EXPECT_EQ(state->versionValue(), QASSAND_VERSION);
 	EXPECT_EQ(state->constructionEpochValue(), QASSAND_CONSTRUCTION_EPOCH_PLACEHOLDER);
 	EXPECT_EQ(state->totalPingCountValue(), 0ull);
-	EXPECT_EQ(state->protocolEarnedFeeValue(), 0ll);
-	EXPECT_EQ(state->burnEarnedFeeValue(), 0ll);
-	EXPECT_EQ(state->pendingBurnAmountValue(), 0ll);
-	EXPECT_EQ(state->totalBurnedAmountValue(), 0ll);
+	EXPECT_EQ(state->protocolEarnedFeeValue(), 0ull);
+	EXPECT_EQ(state->burnEarnedFeeValue(), 0ull);
+	EXPECT_EQ(state->pendingBurnAmountValue(), 0ull);
+	EXPECT_EQ(state->totalBurnedAmountValue(), 0ull);
 }
 
 TEST(ContractQassand, ReadsMetadataAndFeeState)
@@ -122,12 +122,12 @@ TEST(ContractQassand, ReadsMetadataAndFeeState)
 	EXPECT_EQ(fees.pingFee, QASSAND_PING_FEE);
 	EXPECT_EQ(fees.protocolFee, QASSAND_PROTOCOL_FEE);
 	EXPECT_EQ(fees.burnFee, QASSAND_BURN_FEE);
-	EXPECT_EQ(fees.protocolEarnedFee, 0ll);
-	EXPECT_EQ(fees.burnEarnedFee, 0ll);
+	EXPECT_EQ(fees.protocolEarnedFee, 0ull);
+	EXPECT_EQ(fees.burnEarnedFee, 0ull);
 
 	const QASSAND::GetBurnInfo_output burn = qassand.getBurnInfo();
-	EXPECT_EQ(burn.pendingBurnAmount, 0ll);
-	EXPECT_EQ(burn.totalBurnedAmount, 0ll);
+	EXPECT_EQ(burn.pendingBurnAmount, 0ull);
+	EXPECT_EQ(burn.totalBurnedAmount, 0ull);
 }
 
 TEST(ContractQassand, ReadsLaneTaxonomy)
@@ -138,19 +138,19 @@ TEST(ContractQassand, ReadsLaneTaxonomy)
 	EXPECT_EQ(forecastingLane.returnCode, QASSAND_SUCCESS);
 	EXPECT_EQ(forecastingLane.laneId, QASSAND_LANE_FORECASTING);
 	EXPECT_TRUE(arrayStartsWith(forecastingLane.laneName, "Forecasting"));
-	EXPECT_EQ(forecastingLane.requiredFee, 0ll);
+	EXPECT_EQ(forecastingLane.requiredFee, 0ull);
 
 	const QASSAND::GetLaneInfo_output stableLane = qassand.getLaneInfo(QASSAND_LANE_STABLE_OPERATIONS);
 	EXPECT_EQ(stableLane.returnCode, QASSAND_SUCCESS);
 	EXPECT_EQ(stableLane.laneId, QASSAND_LANE_STABLE_OPERATIONS);
 	EXPECT_TRUE(arrayStartsWith(stableLane.laneName, "StableOps"));
-	EXPECT_EQ(stableLane.requiredFee, 0ll);
+	EXPECT_EQ(stableLane.requiredFee, 0ull);
 
 	const QASSAND::GetLaneInfo_output attestationLane = qassand.getLaneInfo(QASSAND_LANE_DATA_ATTESTATION);
 	EXPECT_EQ(attestationLane.returnCode, QASSAND_SUCCESS);
 	EXPECT_EQ(attestationLane.laneId, QASSAND_LANE_DATA_ATTESTATION);
 	EXPECT_TRUE(arrayStartsWith(attestationLane.laneName, "Data"));
-	EXPECT_EQ(attestationLane.requiredFee, 0ll);
+	EXPECT_EQ(attestationLane.requiredFee, 0ull);
 
 	const QASSAND::GetLaneInfo_output unknownLane = qassand.getLaneInfo(QASSAND_LANE_UNKNOWN);
 	EXPECT_EQ(unknownLane.returnCode, QASSAND_UNKNOWN_LANE);
@@ -162,16 +162,16 @@ TEST(ContractQassand, UnderpaymentRefundsAndDoesNotAccountFee)
 	const id user = id::randomValue();
 	qassand.fund(user, QASSAND_PING_FEE);
 
-	const sint64 underpaidAmount = QASSAND_PING_FEE - 1;
+	const uint64 underpaidAmount = QASSAND_PING_FEE - 1;
 	const QASSAND::Ping_output underpaid = qassand.ping(user, underpaidAmount);
 	EXPECT_EQ(underpaid.returnCode, QASSAND_UNDERPAID);
 	EXPECT_EQ(underpaid.refundedAmount, underpaidAmount);
 	EXPECT_EQ(qassand.balanceOf(user), QASSAND_PING_FEE);
 	EXPECT_EQ(qassand.balanceQassand(), 0ull);
 	EXPECT_EQ(qassand.state()->totalPingCountValue(), 0ull);
-	EXPECT_EQ(qassand.state()->protocolEarnedFeeValue(), 0ll);
-	EXPECT_EQ(qassand.state()->burnEarnedFeeValue(), 0ll);
-	EXPECT_EQ(qassand.state()->pendingBurnAmountValue(), 0ll);
+	EXPECT_EQ(qassand.state()->protocolEarnedFeeValue(), 0ull);
+	EXPECT_EQ(qassand.state()->burnEarnedFeeValue(), 0ull);
+	EXPECT_EQ(qassand.state()->pendingBurnAmountValue(), 0ull);
 }
 
 TEST(ContractQassand, ExactFeeAccountsProtocolAndDeferredBurn)
@@ -183,7 +183,7 @@ TEST(ContractQassand, ExactFeeAccountsProtocolAndDeferredBurn)
 	const QASSAND::Ping_output ping = qassand.ping(user, QASSAND_PING_FEE);
 	EXPECT_EQ(ping.returnCode, QASSAND_SUCCESS);
 	EXPECT_EQ(ping.acceptedFee, QASSAND_PING_FEE);
-	EXPECT_EQ(ping.refundedAmount, 0ll);
+	EXPECT_EQ(ping.refundedAmount, 0ull);
 	EXPECT_EQ(ping.protocolEarnedFee, QASSAND_PROTOCOL_FEE);
 	EXPECT_EQ(ping.burnEarnedFee, QASSAND_BURN_FEE);
 	EXPECT_EQ(ping.totalPingCount, 1ull);
@@ -200,13 +200,13 @@ TEST(ContractQassand, ExcessFeeRefundsOnlyOverage)
 {
 	ContractTestingQassand qassand;
 	const id user = id::randomValue();
-	const sint64 paidAmount = QASSAND_PING_FEE + 12345;
+	const uint64 paidAmount = QASSAND_PING_FEE + 12345;
 	qassand.fund(user, paidAmount);
 
 	const QASSAND::Ping_output ping = qassand.ping(user, paidAmount);
 	EXPECT_EQ(ping.returnCode, QASSAND_SUCCESS);
 	EXPECT_EQ(ping.acceptedFee, QASSAND_PING_FEE);
-	EXPECT_EQ(ping.refundedAmount, 12345ll);
+	EXPECT_EQ(ping.refundedAmount, 12345ull);
 	EXPECT_EQ(qassand.balanceOf(user), 12345ull);
 	EXPECT_EQ(qassand.balanceQassand(), QASSAND_PING_FEE);
 	EXPECT_EQ(qassand.state()->totalPingCountValue(), 1ull);
@@ -221,10 +221,10 @@ TEST(ContractQassand, EndTickBurnsDeferredAmount)
 
 	qassand.ping(user, QASSAND_PING_FEE);
 	EXPECT_EQ(qassand.state()->pendingBurnAmountValue(), QASSAND_BURN_FEE);
-	EXPECT_EQ(qassand.state()->totalBurnedAmountValue(), 0ll);
+	EXPECT_EQ(qassand.state()->totalBurnedAmountValue(), 0ull);
 
 	qassand.endTick();
-	EXPECT_EQ(qassand.state()->pendingBurnAmountValue(), 0ll);
+	EXPECT_EQ(qassand.state()->pendingBurnAmountValue(), 0ull);
 	EXPECT_EQ(qassand.state()->totalBurnedAmountValue(), QASSAND_BURN_FEE);
 	EXPECT_EQ(qassand.balanceQassand(), QASSAND_PROTOCOL_FEE);
 }
