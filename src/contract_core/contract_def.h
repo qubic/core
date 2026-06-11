@@ -302,6 +302,17 @@
 
 #endif
 
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define DUMMY_CONTRACT_INDEX 29
+#define CONTRACT_INDEX DUMMY_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE DUMMY
+#define CONTRACT_STATE2_TYPE DUMMY2
+#define CONTRACT_STATE_OLD_TYPE DUMMY_OLD
+#include "contracts/Dummy.h"
+
 // new contracts should be added above this line
 
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
@@ -419,6 +430,7 @@ constexpr struct ContractDescription
 #ifndef NO_GGWP
     {"GGWP", 218, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 216, IPO in 217, construction and first use in 218
 #endif
+    {"DUMMY", 218, 10000, sizeof(DUMMY::StateData)}, // proposal in epoch 216, IPO in 217, construction and first use in 218
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
@@ -545,6 +557,7 @@ static void initializeContracts()
 #ifndef NO_GGWP
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(WOLFPACK);
 #endif
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(DUMMY);
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
@@ -561,6 +574,8 @@ enum ContractStateChangeType
     PADDING,
     // Discards the saved state entirely, zeros the whole buffer
     RESET,
+    // Migrate data from an old to a new state struct
+	MIGRATE,
 };
 struct ContractStateChangeInfo
 {
@@ -570,7 +585,7 @@ struct ContractStateChangeInfo
 // Contracts whose state struct changed this epoch. Update this list each epoch as needed.
 // Each entry is { CONTRACT_INDEX, PADDING or RESET }
 // When enabling, replace both lines below, e.g.:
-constexpr ContractStateChangeInfo contractStateChangeInfos[] = { {RANDOM_CONTRACT_INDEX, PADDING} };
+constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { DUMMY_CONTRACT_INDEX, MIGRATE } };
 constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
 // constexpr const ContractStateChangeInfo* contractStateChangeInfos = nullptr;
 // constexpr unsigned int contractStateChangeCount = 0;
