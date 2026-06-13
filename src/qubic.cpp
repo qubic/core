@@ -3975,27 +3975,6 @@ static void endEpoch()
     // Only issue qus if the max supply is not yet reached
     if (spectrumInfo.totalAmount + ISSUANCE_RATE <= MAX_SUPPLY)
     {
-        // Compute revenue scores of computors
-        unsigned long long revenueScore[NUMBER_OF_COMPUTORS];
-        setMem(revenueScore, sizeof(revenueScore), 0);
-        for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
-        {
-            ts.tickData.acquireLock();
-            TickData& td = ts.tickData.getByTickInCurrentEpoch(tick);
-            if (td.epoch == system.epoch)
-            {
-                unsigned int numberOfTransactions = 0;
-                for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
-                {
-                    if (!isZero(td.transactionDigests[transactionIndex]))
-                    {
-                        numberOfTransactions++;
-                    }
-                }
-                revenueScore[tick % NUMBER_OF_COMPUTORS] += gTxRevenuePoints[numberOfTransactions];
-            }
-            ts.tickData.releaseLock();
-        }
 
         // Collect mining scores for V2
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -4019,22 +3998,6 @@ static void endEpoch()
         gMultiDimRevenue.totalTicks = system.tick - system.initialTick;
         computeMultiDimRevenue();
 
-        // Save data of custom mining.
-        {
-            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-            {
-                gRevenueComponents.voteScore[i] = voteCounter.getVoteCount(i);
-                gRevenueComponents.txScore[i] = revenueScore[i];
-            }
-            setMem(gRevenueComponents.customMiningScore, sizeof(gRevenueComponents.customMiningScore), 0);
-            computeRevenue(
-                gRevenueComponents.txScore,
-                gRevenueComponents.voteScore,
-                gRevenueComponents.customMiningScore,
-                gRevenueComponents.revenue);
-        }
-
-
         // Get revenue donation data by calling contract GQMPROP::GetRevenueDonation()
         QpiContextUserFunctionCall qpiContext(GQMPROP::__contract_index);
         qpiContext.call(5, "", 0);
@@ -4047,11 +4010,7 @@ static void endEpoch()
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             // Compute initial computor revenue, reducing arbitrator revenue
-#if USE_REVENUE_V2
             long long revenue = gEpochRevenueData.v2Revenue[computorIndex];
-#else
-            long long revenue = gRevenueComponents.revenue[computorIndex];
-#endif
             arbitratorRevenue -= revenue;
 
             // Reduce computor revenue based on revenue donation table agreed on by quorum
