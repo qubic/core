@@ -3994,7 +3994,8 @@ static void endEpoch()
         }
         computeRevenueV2(gEpochRevenueData);
 
-        // Multi dimension revenue in shadow mode
+        // Multi-dimension revenue: computed for offline comparison; paid to computors
+        // only when USE_REVENUE_MULTI_DIMENSION is set (see src/revenue.h).
         gMultiDimRevenue.totalTicks = system.tick - system.initialTick;
         computeMultiDimRevenue();
 
@@ -4010,7 +4011,11 @@ static void endEpoch()
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             // Compute initial computor revenue, reducing arbitrator revenue
+#if USE_REVENUE_MULTI_DIMENSION
+            long long revenue = gMultiDimRevenue.revenue[computorIndex];
+#else
             long long revenue = gEpochRevenueData.v2Revenue[computorIndex];
+#endif
             arbitratorRevenue -= revenue;
 
             // Reduce computor revenue based on revenue donation table agreed on by quorum

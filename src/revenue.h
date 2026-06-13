@@ -7,6 +7,13 @@
 #include "vote_counter.h"
 #include "public_settings.h"
 
+// Revenue formula selector:
+//   0 = V2
+//   1 = multi-dimension (asymmetric L2 across source/contract/transfer dims)
+// Both formulas always run for offline comparison; this switch only selects which
+// output is paid to computors.
+#define USE_REVENUE_MULTI_DIMENSION 0
+
 // gTxRevenuePoints is calculated from 4096 * ln(tx + 1)
 // When NUMBER_OF_TRANSACTIONS_PER_TICK is changed, this table needs to be regenerated
 // Make sure it is STRICTLY MONOTONIC integer
@@ -348,6 +355,8 @@ static void computeRevFactor(
 static constexpr unsigned int MAX_TX_LUT_INDEX = (unsigned int)(sizeof(gTxRevenuePoints) / sizeof(gTxRevenuePoints[0]) - 1);
 static constexpr unsigned int REVENUE_HALF_WINDOW = NUMBER_OF_COMPUTORS - 1;  // 675
 static constexpr unsigned int REVENUE_WINDOW_SIZE = 2 * REVENUE_HALF_WINDOW + 1;      // 1351
+static_assert(MAX_NUMBER_OF_TICKS_PER_EPOCH >= REVENUE_WINDOW_SIZE,
+    "MAX_NUMBER_OF_TICKS_PER_EPOCH must be >= REVENUE_WINDOW_SIZE; epochs shorter than one window produce zero revenue.");
 static constexpr unsigned long long REVENUE_SCALE = 1024;
 static constexpr unsigned long long REVENUE_BONUS_CAP = 256; // capacity for non-mandatory factor
 static constexpr unsigned int REVENUE_W_TX = 17;             // mandatory weight: TX (85%)
