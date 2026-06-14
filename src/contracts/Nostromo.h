@@ -13,7 +13,8 @@ constexpr uint64 NOST_AUCTION_HISTORY_NUM = 1024;
 constexpr uint64 NOST_AUCTION_METADATA_CID_LENGTH = 64;
 constexpr uint64 NOST_AUCTION_PARTICIPANT_NUM = 4096;
 constexpr uint64 NOST_AUCTION_GETTER_PAGE_SIZE = 64;
-constexpr uint64 NOST_AUCTION_LOT_ITEM_NUM = 1;
+constexpr uint64 NOST_BATCH_AUCTION_LOT_ITEM_NUM = 1;
+constexpr uint64 NOST_AUCTION_LOT_ITEM_NUM = 4;
 constexpr uint64 NOST_AUCTION_ALLOWED_WALLET_NUM = 16;
 constexpr uint64 NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM = 4;
 constexpr uint32 NOST_AUCTION_MAX_DURATION_DAYS = 30;
@@ -170,7 +171,7 @@ struct NOST : public ContractBase
 	 */
 	struct AuctionCore
 	{
-		/** @brief Single asset and quantity offered by the auction. */
+		/** @brief Assets and quantities offered by the auction. */
 		Array<AuctionAssetEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
 
 		/** @brief Lowercase base32 CIDv1 stored in Pinata for the auction name and description metadata. */
@@ -361,7 +362,7 @@ struct NOST : public ContractBase
 		/** @brief Lowercase base32 CIDv1 stored in Pinata for the auction name and description metadata. */
 		Array<uint8, NOST_AUCTION_METADATA_CID_LENGTH> metadataIpfsCid;
 
-		/** @brief Single asset and quantity offered by the auction. */
+		/** @brief Assets and quantities offered by the auction. */
 		Array<AuctionAssetEntry, NOST_AUCTION_LOT_ITEM_NUM> auctionLotItems;
 
 		/** @brief Asset and minimum-quantity alternatives used by private asset-based access. */
@@ -4037,7 +4038,7 @@ protected:
 	{
 		quantityForSale = 0;
 		resolvedMinimumPurchaseQuantity = 0;
-		if (lotItemCount != NOST_AUCTION_LOT_ITEM_NUM || totalEscrowQuantity == 0 || buyNowPrice != 0)
+		if (lotItemCount != NOST_BATCH_AUCTION_LOT_ITEM_NUM || totalEscrowQuantity == 0 || buyNowPrice != 0)
 		{
 			return false;
 		}

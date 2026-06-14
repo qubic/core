@@ -516,6 +516,17 @@ public:
 		return lot;
 	}
 
+	static Array<NOST::AuctionAssetEntry, NOST_AUCTION_LOT_ITEM_NUM> makeLot(std::initializer_list<NOST::AuctionAssetEntry> entries)
+	{
+		Array<NOST::AuctionAssetEntry, NOST_AUCTION_LOT_ITEM_NUM> lot{};
+		uint64 index = 0;
+		for (const auto& entry : entries)
+		{
+			lot.set(index++, entry);
+		}
+		return lot;
+	}
+
 	static Array<id, NOST_AUCTION_ALLOWED_WALLET_NUM> makeAllowedWallets(std::initializer_list<id> wallets)
 	{
 		Array<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowed{};
@@ -964,31 +975,66 @@ TEST(ContractNostromoAuction, CreateStandardSingleAssetAuctionEscrowsLotAuction)
 	EXPECT_EQ(nostromo.sharesManagedBy(asset, NOST_CONTRACT_ID, NOST_CONTRACT_INDEX), 5);
 }
 
-TEST(ContractNostromoAuction, CreateStandardAuctionSupportsSingleLotEntryAuction)
+TEST(ContractNostromoAuction, CreateStandardAuctionSupportsFourLotEntriesAuction)
 {
 	ContractTestingNOST nostromo;
 	const id seller(25, 26, 27, 28);
 	const id bidder(29, 30, 31, 32);
-	const uint64 assetName = assetNameFromString("MAXLOT");
-	const Asset asset{seller, assetName};
+	const Asset assets[] = {
+	    {seller, assetNameFromString("MAXLOA")},
+	    {seller, assetNameFromString("MAXLOB")},
+	    {seller, assetNameFromString("MAXLOC")},
+	    {seller, assetNameFromString("MAXLOD")},
+	};
 
-	EXPECT_EQ(NOST_AUCTION_LOT_ITEM_NUM, 1ULL);
-	EXPECT_EQ(nostromo.issueAsset(seller, assetName, 3), 3);
-	EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 3), 3);
+	EXPECT_EQ(NOST_BATCH_AUCTION_LOT_ITEM_NUM, 1ULL);
+	EXPECT_EQ(NOST_AUCTION_LOT_ITEM_NUM, 4);
+	for (const auto& asset : assets)
+	{
+		EXPECT_EQ(nostromo.issueAsset(seller, asset.assetName, 3), 3);
+		EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 3), 3);
+	}
 
 	const auto createOutput = nostromo.createAuction(
-	    seller, ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(asset, 3), 100, 100, 1));
+	    seller, ContractTestingNOST::makeStandardAuctionInput(
+	                ContractTestingNOST::makeLot({{assets[0], 3}, {assets[1], 3}, {assets[2], 3}, {assets[3], 3}}), 100, 100, 1));
 	ASSERT_EQ(createOutput.errorCode, NOST::EAuctionError::Success);
-	EXPECT_EQ(nostromo.managedShares(asset, seller), 0);
-	EXPECT_EQ(nostromo.sharesManagedBy(asset, NOST_CONTRACT_ID, NOST_CONTRACT_INDEX), 3);
+	for (const auto& asset : assets)
+	{
+		EXPECT_EQ(nostromo.managedShares(asset, seller), 0);
+		EXPECT_EQ(nostromo.sharesManagedBy(asset, NOST_CONTRACT_ID, NOST_CONTRACT_INDEX), 3);
+	}
 
 	ASSERT_EQ(nostromo.placeBid(bidder, createOutput.auctionIndex, 1, 100, 100).errorCode, NOST::EAuctionError::Success);
 	nostromo.advanceAndEndTick((NOST_SECONDS_PER_DAY + 1ULL) * 1000ULL);
 
 	const auto auction = nostromo.getAuction(createOutput.auctionIndex).auction;
 	EXPECT_EQ(auction.core.status, NOST::EAuctionStatus::Finalized);
-	EXPECT_EQ(nostromo.managedShares(asset, bidder), 3);
-	EXPECT_EQ(nostromo.sharesManagedBy(asset, NOST_CONTRACT_ID, NOST_CONTRACT_INDEX), 0);
+	for (const auto& asset : assets)
+	{
+		EXPECT_EQ(nostromo.managedShares(asset, bidder), 3);
+		EXPECT_EQ(nostromo.sharesManagedBy(asset, NOST_CONTRACT_ID, NOST_CONTRACT_INDEX), 0);
+	}
+}
+
+TEST(ContractNostromoAuction, CreateBatchAuctionRejectsMultipleLotEntriesAuction)
+{
+	ContractTestingNOST nostromo;
+	const id seller(33, 34, 35, 36);
+	const Asset firstAsset{seller, assetNameFromString("BATLOA")};
+	const Asset secondAsset{seller, assetNameFromString("BATLOB")};
+
+	EXPECT_EQ(nostromo.issueAsset(seller, firstAsset.assetName, 2), 2);
+	EXPECT_EQ(nostromo.issueAsset(seller, secondAsset.assetName, 2), 2);
+	EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, firstAsset, 2), 2);
+	EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, secondAsset, 2), 2);
+
+	auto input = ContractTestingNOST::makeBatchAuctionInput(firstAsset, 2);
+	input.auctionLotItems = ContractTestingNOST::makeLot({{firstAsset, 2}, {secondAsset, 2}});
+
+	EXPECT_EQ(nostromo.createAuction(seller, input).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(nostromo.managedShares(firstAsset, seller), 2);
+	EXPECT_EQ(nostromo.managedShares(secondAsset, seller), 2);
 }
 
 TEST(ContractNostromoAuction, CreatePrivateAuctionsByWalletAndAccessAssetAuction)
@@ -1091,8 +1137,8 @@ TEST(ContractNostromoAuction, GetAuctionViewExposesAccessListsAndFoundFlagAuctio
 
 		auto input = ContractTestingNOST::makeBatchAuctionInput(asset, 2, 10);
 		input.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
-		input.requiredAccessAssets = ContractTestingNOST::makeRequiredAccessAssets(
-		    {NOST::AuctionAssetEntry{accessAssetA, 2}, NOST::AuctionAssetEntry{accessAssetB, 5}});
+		input.requiredAccessAssets =
+		    ContractTestingNOST::makeRequiredAccessAssets({NOST::AuctionAssetEntry{accessAssetA, 2}, NOST::AuctionAssetEntry{accessAssetB, 5}});
 
 		const auto createOutput = nostromo.createAuction(seller, input, NOST_DEFAULT_PRIVATE_AUCTION_FEE);
 		ASSERT_EQ(createOutput.errorCode, NOST::EAuctionError::Success);
@@ -1161,8 +1207,7 @@ TEST(ContractNostromoAuction, GetAuctionViewDeduplicatesPrivateAccessInputsAucti
 
 		const auto auction = nostromo.getAuction(createOutput.auctionIndex).auction;
 		EXPECT_EQ(auction.requiredAccessAssetCount, 1U);
-		EXPECT_TRUE(containsAccessAsset(auction.requiredAccessAssets, auction.requiredAccessAssetCount,
-		                                NOST::AuctionAssetEntry{accessAsset, 5}));
+		EXPECT_TRUE(containsAccessAsset(auction.requiredAccessAssets, auction.requiredAccessAssetCount, NOST::AuctionAssetEntry{accessAsset, 5}));
 	}
 }
 
@@ -1211,8 +1256,7 @@ TEST(ContractNostromoAuction, PrivateAuctionAccessListsSupportMaximumViewCapacit
 		{
 			requiredAssets.set(index, NOST::AuctionAssetEntry{Asset{gateIssuer, 34000 + index}, 1});
 		}
-		requiredAssets.set(NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM - 1,
-		                   NOST::AuctionAssetEntry{Asset{accessBidder, bidderAccessAssetName}, 1});
+		requiredAssets.set(NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM - 1, NOST::AuctionAssetEntry{Asset{accessBidder, bidderAccessAssetName}, 1});
 
 		EXPECT_EQ(nostromo.issueAsset(seller, saleAssetName, 1), 1);
 		EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, saleAsset, 1), 1);
@@ -1374,8 +1418,7 @@ TEST(ContractNostromoAuction, CreateAuctionRejectsInvalidInputsAuction)
 	auto negativeAccessQuantity = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	negativeAccessQuantity.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
 	negativeAccessQuantity.requiredAccessAssets = ContractTestingNOST::makeRequiredAccessAssets({NOST::AuctionAssetEntry{accessAsset, -1}});
-	EXPECT_EQ(nostromo.createAuction(seller, negativeAccessQuantity, NOST_DEFAULT_PRIVATE_AUCTION_FEE).errorCode,
-	          NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(nostromo.createAuction(seller, negativeAccessQuantity, NOST_DEFAULT_PRIVATE_AUCTION_FEE).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto partiallyEmptyAccessAsset = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	partiallyEmptyAccessAsset.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
@@ -1730,18 +1773,16 @@ TEST(ContractNostromoAuction, PrivateAuctionAccessRulesAuction)
 
 		auto input = ContractTestingNOST::makeBatchAuctionInput(saleAsset, 3, 10);
 		input.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
-		input.requiredAccessAssets = ContractTestingNOST::makeRequiredAccessAssets(
-		    {NOST::AuctionAssetEntry{accessAssetA, 3}, NOST::AuctionAssetEntry{accessAssetB, 5}});
+		input.requiredAccessAssets =
+		    ContractTestingNOST::makeRequiredAccessAssets({NOST::AuctionAssetEntry{accessAssetA, 3}, NOST::AuctionAssetEntry{accessAssetB, 5}});
 
 		const auto createOutput = nostromo.createAuction(seller, input, NOST_DEFAULT_PRIVATE_AUCTION_FEE);
 		ASSERT_EQ(createOutput.errorCode, NOST::EAuctionError::Success);
 
 		EXPECT_EQ(nostromo.placeBid(belowThresholdBidder, createOutput.auctionIndex, 1, 12, 12).errorCode,
 		          NOST::EAuctionError::PrivateAuctionAccessDenied);
-		EXPECT_EQ(nostromo.placeBid(exactThresholdBidder, createOutput.auctionIndex, 1, 12, 12).errorCode,
-		          NOST::EAuctionError::Success);
-		EXPECT_EQ(nostromo.placeBid(alternateAssetBidder, createOutput.auctionIndex, 1, 13, 13).errorCode,
-		          NOST::EAuctionError::Success);
+		EXPECT_EQ(nostromo.placeBid(exactThresholdBidder, createOutput.auctionIndex, 1, 12, 12).errorCode, NOST::EAuctionError::Success);
+		EXPECT_EQ(nostromo.placeBid(alternateAssetBidder, createOutput.auctionIndex, 1, 13, 13).errorCode, NOST::EAuctionError::Success);
 	}
 }
 
