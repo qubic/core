@@ -769,8 +769,7 @@ struct QBAY : public ContractBase
 				return ;
 			}
 
-			qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.get().cfbIssuer, qpi.invocator(), qpi.invocator(), locals.fee * state.get().priceOfCFB, SELF);
-			state.mut().earnedCFB += locals.fee * state.get().priceOfCFB;
+			qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.get().cfbIssuer, qpi.invocator(), qpi.invocator(), locals.fee * state.get().priceOfCFB, NULL_ID);
 		}
 		locals.newCollection.currentSize = locals.numberOfNFT;
 		state.mut().numberOfNFTIncoming += locals.numberOfNFT;
