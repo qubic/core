@@ -4527,10 +4527,13 @@ static bool loadAllNodeStates()
     long long mdSize = load(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME, sizeof(gMultiDimRevenue), (unsigned char*)&gMultiDimRevenue, directory);
     if (mdSize != sizeof(gMultiDimRevenue))
     {
-        // SHADOW: gMultiDimRevenue is computed but not applied to balances, so zero+continue is safe.
-        // TODO: when applied this must return false
+#if USE_REVENUE_MULTI_DIMENSION
+        logToConsole(L"Failed to load multi dim revenue snapshot");
+        return false;
+#else
         logToConsole(L"Multi dim revenue snapshot missing/mismatch (shadow mode), zeroing");
         setMem(&gMultiDimRevenue, sizeof(gMultiDimRevenue), 0);
+#endif                                                                                                                 
     }
 
     // update own computor indices
