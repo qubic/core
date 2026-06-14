@@ -71,7 +71,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 
 #define VERSION_A 1
 #define VERSION_B 295
-#define VERSION_C 2
+#define VERSION_C 1
 
 // Epoch and initial tick for node startup
 #define EPOCH 217
@@ -100,11 +100,7 @@ static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_TICKS = 1000;       
 static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
 static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_MUTATIONS = 150;
 static constexpr unsigned long long HYPERIDENTITY_POPULATION_THRESHOLD = HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_MUTATIONS; // P
-static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT = 316;
-// Mid-epoch threshold increase: ticks before activation use old threshold (313),
-// ticks >= activation use HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT (316).
-static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_PRE_ACTIVATION = 313;
-static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_ACTIVATION_TICK = 57707553;
+static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT = 313;
 
 static constexpr unsigned long long ADDITION_NUMBER_OF_INPUT_NEURONS = 14;
 static constexpr unsigned long long ADDITION_NUMBER_OF_OUTPUT_NEURONS = 8;
