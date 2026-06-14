@@ -8,52 +8,98 @@ namespace QPI
 	}
 } // namespace QPI
 
+// Maximum number of active auction records stored by the contract, in auctions.
 constexpr uint64 NOST_AUCTION_NUM = 2048;
+// Number of closed auction indices retained in the history ring buffer, in entries.
 constexpr uint64 NOST_AUCTION_HISTORY_NUM = 1024;
+// Fixed length of an auction metadata IPFS CID, in bytes.
 constexpr uint64 NOST_AUCTION_METADATA_CID_LENGTH = 64;
+// Maximum number of active auction-participant bid records, in entries.
 constexpr uint64 NOST_AUCTION_PARTICIPANT_NUM = 4096;
+// Maximum number of entries returned by one paginated auction getter call.
 constexpr uint64 NOST_AUCTION_GETTER_PAGE_SIZE = 64;
+// Maximum number of asset entries in a Batch Auction lot.
 constexpr uint64 NOST_BATCH_AUCTION_LOT_ITEM_NUM = 1;
+// Maximum number of asset entries in a Standard Auction lot.
 constexpr uint64 NOST_AUCTION_LOT_ITEM_NUM = 4;
+// Maximum number of bidder wallets allowed by a private auction wallet gate.
 constexpr uint64 NOST_AUCTION_ALLOWED_WALLET_NUM = 16;
+// Maximum number of alternative assets accepted by a private auction asset gate.
 constexpr uint64 NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM = 4;
+// Maximum configured duration of any auction, in days.
 constexpr uint32 NOST_AUCTION_MAX_DURATION_DAYS = 30;
+// Default fee charged to create a private auction, in qu.
 constexpr sint64 NOST_DEFAULT_PRIVATE_AUCTION_FEE = 50000000LL;
+// Default fee deducted when an auction is cancelled, in basis points.
 constexpr uint64 NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP = 1000ULL;
+// Default management fee applied to gross auction proceeds, in basis points.
 constexpr uint64 NOST_DEFAULT_AUCTION_MANAGEMENT_FEE_BP = 50ULL;
+// Default development fee applied to gross auction proceeds, in basis points.
 constexpr uint64 NOST_DEFAULT_AUCTION_DEVELOPMENT_FEE_BP = 50ULL;
+// Default takeover coordinator fee applied to gross auction proceeds, in basis points.
 constexpr uint64 NOST_DEFAULT_AUCTION_TAKEOVER_COORDINATOR_FEE_BP = 50ULL;
+// Shareholder allocation of private-creation and cancellation service fees, in basis points.
 constexpr uint64 NOST_AUCTION_SERVICE_FEE_SHAREHOLDER_BP = 7270ULL;
+// Management allocation of private-creation and cancellation service fees, in basis points.
 constexpr uint64 NOST_AUCTION_SERVICE_FEE_MANAGEMENT_BP = 910ULL;
+// Development allocation of private-creation and cancellation service fees, in basis points.
 constexpr uint64 NOST_AUCTION_SERVICE_FEE_DEVELOPMENT_BP = 910ULL;
+// Takeover coordinator allocation of private-creation and cancellation service fees, in basis points.
 constexpr uint64 NOST_AUCTION_SERVICE_FEE_TAKEOVER_COORDINATOR_BP = 910ULL;
+// Default portion of the shareholder fee distributed as dividends, in basis points.
 constexpr uint64 NOST_DEFAULT_AUCTION_SHAREHOLDER_DIVIDEND_BP = 9000ULL;
+// Default shareholder fee for gross proceeds in tier 1, in basis points.
 constexpr uint64 NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_1 = 500ULL;
+// Default shareholder fee for gross proceeds in tier 2, in basis points.
 constexpr uint64 NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_2 = 450ULL;
+// Default shareholder fee for gross proceeds in tier 3, in basis points.
 constexpr uint64 NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_3 = 400ULL;
+// Default shareholder fee for gross proceeds in tier 4, in basis points.
 constexpr uint64 NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_4 = 350ULL;
+// Inclusive upper gross-proceeds threshold for shareholder fee tier 1, in qu.
 constexpr uint64 NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_1 = 5000000000ULL;
+// Inclusive upper gross-proceeds threshold for shareholder fee tier 2, in qu.
 constexpr uint64 NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_2 = 50000000000ULL;
+// Inclusive upper gross-proceeds threshold for shareholder fee tier 3, in qu.
 constexpr uint64 NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_3 = 200000000000ULL;
+// Time added when an accepted bid arrives near an auction deadline, in seconds.
 constexpr uint64 NOST_AUCTION_EXTENSION_SECONDS = 300ULL;
+// Number of seconds used to convert one auction duration day.
 constexpr uint64 NOST_SECONDS_PER_DAY = 86400ULL;
+// Time allowed for a Standard Auction seller to resolve a pending sale, in seconds.
 constexpr uint64 NOST_AUCTION_SELLER_DECISION_WINDOW_SECONDS = 604800ULL;
+// Duration of the scheduled auction pause before an epoch transition, in seconds.
 constexpr uint64 NOST_AUCTION_PRE_EPOCH_PAUSE_SECONDS = 1800ULL;
+// Duration of the auction launch pause after `BEGIN_EPOCH`, in ticks.
 constexpr uint32 NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS = 500U;
+// Denominator representing 100 percent in basis-point calculations.
 constexpr uint64 NOST_BASIS_POINTS_SCALE = 10000ULL;
+// Number of microseconds used to convert a timestamp duration to seconds.
 constexpr uint64 NOST_MICROSECONDS_PER_SECOND = 1000000ULL;
+// Epoch at which the contract reapplies its default configuration, in epochs.
 constexpr uint16 NOST_REINITIALIZATION_EPOCH = 220U;
+// Quantity used to sell a Standard Auction lot as one indivisible unit, not an asset count.
 constexpr uint64 NOST_STANDARD_AUCTION_LOT_COUNT = 1ULL;
+// Year component of the packed initial date stamp.
 constexpr uint8 NOST_DEFAULT_INIT_YEAR = 22U;
+// Month component of the packed initial date stamp.
 constexpr uint8 NOST_DEFAULT_INIT_MONTH = 4U;
+// Day component of the packed initial date stamp.
 constexpr uint8 NOST_DEFAULT_INIT_DAY = 13U;
+// Bit offset of the year component in a packed date stamp, in bits.
 constexpr uint8 NOST_DATE_STAMP_YEAR_SHIFT = 9U;
+// Bit offset of the month component in a packed date stamp, in bits.
 constexpr uint8 NOST_DATE_STAMP_MONTH_SHIFT = 5U;
+// Runtime day-of-week index on which the scheduled pre-epoch pause begins.
 constexpr uint8 NOST_PRE_EPOCH_PAUSE_DAY_OF_WEEK = 0U;
+// UTC hour at which the scheduled pre-epoch pause begins.
 constexpr uint8 NOST_PRE_EPOCH_PAUSE_HOUR = 11U;
+// Minute within the configured hour at which the scheduled pre-epoch pause begins.
 constexpr uint8 NOST_PRE_EPOCH_PAUSE_MINUTE = 30U;
+// Packed date stamp used to recognize the contract's initial runtime date.
 constexpr uint32 NOST_DEFAULT_INIT_TIME =
     NOST_DEFAULT_INIT_YEAR << NOST_DATE_STAMP_YEAR_SHIFT | NOST_DEFAULT_INIT_MONTH << NOST_DATE_STAMP_MONTH_SHIFT | NOST_DEFAULT_INIT_DAY;
+// Default enabled flag that routes all collected auction fees to development.
 constexpr uint8 NOST_ROUTE_ALL_FEES_TO_DEVELOPMENT = 1;
 
 struct NOST2
