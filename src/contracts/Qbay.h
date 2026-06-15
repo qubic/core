@@ -9,6 +9,9 @@ constexpr uint32 QBAY_CFB_NAME = 4343363;
 constexpr uint32 QBAY_MIN_DELTA_SIZE = 1000000;
 constexpr uint32 QBAY_FEE_NFT_SALE_MARKET = 20;
 constexpr uint32 QBAY_FEE_NFT_SALE_SHAREHOLDERS = 10;
+// Max royalty percent leaving room for market (20/1000) and shareholder (10/1000) fees on QU sales.
+// 100 - (QBAY_FEE_NFT_SALE_MARKET + QBAY_FEE_NFT_SALE_SHAREHOLDERS) / 10 = 97U
+constexpr uint32 QBAY_MAX_ROYALTY_PERCENT = 97U;
 
 struct QBAY2
 {
@@ -241,6 +244,32 @@ struct QBAY : public ContractBase
 		return true;
 	}
 	/****** END PORTED TIMEUTILS FROM OLD QUOTTERY *****/
+
+	inline static bool isValidOraclePrice(uint64 price)
+	{
+		return price > 0 && price < (uint64)MAX_AMOUNT;
+	}
+
+	inline static uint64 ceilDiv(uint64 numerator, uint64 denominator)
+	{
+		return div(numerator + denominator - 1ULL, denominator);
+	}
+
+	// Converts a QU-denominated sale price to required CFB (ceil). Returns false on invalid prices or overflow.
+	inline static bool quSalePriceToRequiredCFB(uint64 salePriceQu, uint64 priceOfCFB, uint64 priceOfQubic, uint64& requiredCFB)
+	{
+		requiredCFB = 0;
+		if (!isValidOraclePrice(priceOfCFB) || !isValidOraclePrice(priceOfQubic) || salePriceQu == 0)
+		{
+			return false;
+		}
+		if (salePriceQu > div((uint64)MAX_AMOUNT, priceOfCFB))
+		{
+			return false;
+		}
+		requiredCFB = ceilDiv(salePriceQu * priceOfCFB, priceOfQubic);
+		return requiredCFB > 0;
+	}
 
 	struct settingCFBAndQubicPrice_input
 	{
@@ -627,6 +656,14 @@ struct QBAY : public ContractBase
 			return ;
 		}
 
+		if (!isValidOraclePrice(input.CFBPrice) || !isValidOraclePrice(input.QubicPrice))
+		{
+			output.returnCode = LogInfo::invalidInput;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
+			LOG_INFO(locals.log);
+			return;
+		}
+
 		state.mut().priceOfCFB = input.CFBPrice;
 		state.mut().priceOfQubic = input.QubicPrice;
 
@@ -660,7 +697,7 @@ struct QBAY : public ContractBase
 			return ;
 		}
 
-		if(input.volume > 10 || input.royalty > 100) 
+		if(input.volume > 10 || input.royalty > QBAY_MAX_ROYALTY_PERCENT || input.priceForDropMint >= (uint64)MAX_AMOUNT)
 		{
 			output.returnCode = LogInfo::invalidInput;  			// volume size should be 0 ~ 10
 			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
@@ -789,7 +826,7 @@ struct QBAY : public ContractBase
 
 		if(input.typeOfMint == 1)     //     It means NFT creator mints the single NFT.
 		{
-			if(input.royalty >= 100)
+			if(input.royalty > QBAY_MAX_ROYALTY_PERCENT)
 			{
 				output.returnCode = LogInfo::invalidInput;
 				locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
@@ -986,7 +1023,7 @@ struct QBAY : public ContractBase
 
 		if((uint64)qpi.invocationReward() > state.get().Collections.get(input.collectionId).priceForDropMint)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.get().Collections.get(input.collectionId).priceForDropMint);
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.get().Collections.get(input.collectionId).priceForDropMint);
 		}
 
         qpi.transfer(state.get().Collections.get(input.collectionId).creator, state.get().Collections.get(input.collectionId).priceForDropMint);
@@ -1136,7 +1173,7 @@ struct QBAY : public ContractBase
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if(input.NFTid >= QBAY_MAX_NUMBER_NFT)									//			NFTid should be less than MAX_NUMBER_NFT
+		if(input.NFTid >= QBAY_MAX_NUMBER_NFT || input.price == 0 || input.price >= (uint64)MAX_AMOUNT)									//			NFTid should be less than MAX_NUMBER_NFT
 		{
 			output.returnCode = LogInfo::wrongNFTId; 
 			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::wrongNFTId, 0 };
@@ -1195,6 +1232,7 @@ struct QBAY : public ContractBase
 		QX::TransferShareManagementRights_output transferShareManagementRights_output;
 		InfoOfNFT updatedNFT;
 		sint64 transferredAmountOfCFB;
+		uint64 requiredCFB;
 		sint64 marketFee;
 		sint64 creatorFee;
 		sint64 shareHolderFee;
@@ -1265,9 +1303,23 @@ struct QBAY : public ContractBase
 			return ;
 		}
 
+		if(state.get().NFTs.get(input.NFTid).salePrice == 0 || state.get().NFTs.get(input.NFTid).salePrice >= (uint64)MAX_AMOUNT)
+		{
+			output.returnCode = LogInfo::invalidInput;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
+			LOG_INFO(locals.log);
+
+			if(qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+
+			return ;
+		}
+
 		if(input.methodOfPayment == 0)
 		{
-			if((sint64)state.get().NFTs.get(input.NFTid).salePrice > qpi.invocationReward()) 
+			if((uint64)qpi.invocationReward() < state.get().NFTs.get(input.NFTid).salePrice) 
 			{
 				output.returnCode = LogInfo::insufficientQubic;
 				locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::insufficientQubic, 0 };
@@ -1281,9 +1333,9 @@ struct QBAY : public ContractBase
 				return ;
 			}
 
-			if((sint64)state.get().NFTs.get(input.NFTid).salePrice < qpi.invocationReward())
+			if((uint64)qpi.invocationReward() > state.get().NFTs.get(input.NFTid).salePrice)
 			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward() - state.get().NFTs.get(input.NFTid).salePrice);
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)state.get().NFTs.get(input.NFTid).salePrice);
 			}
 
 			locals.creatorFee = div(state.get().NFTs.get(input.NFTid).salePrice * state.get().NFTs.get(input.NFTid).royalty * 1ULL, 100ULL);
@@ -1302,17 +1354,28 @@ struct QBAY : public ContractBase
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
-			locals.possessedCFBAmount = qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.get().cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX);
-			if(div(state.get().NFTs.get(input.NFTid).salePrice * 1ULL, state.get().priceOfQubic) > div(locals.possessedCFBAmount * 1ULL, state.get().priceOfCFB)) 
+			if(!quSalePriceToRequiredCFB(
+				state.get().NFTs.get(input.NFTid).salePrice,
+				state.get().priceOfCFB,
+				state.get().priceOfQubic,
+				locals.requiredCFB))
 			{
-				output.returnCode = LogInfo::insufficientQubic;
-				locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::insufficientQubic, 0 };
+				output.returnCode = LogInfo::invalidInput;
+				locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
+				LOG_INFO(locals.log);
+				return;
+			}
+			locals.possessedCFBAmount = qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.get().cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX);
+			if(locals.possessedCFBAmount < 0 || (uint64)locals.possessedCFBAmount < locals.requiredCFB)
+			{
+				output.returnCode = LogInfo::insufficientCFB;
+				locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::insufficientCFB, 0 };
 				LOG_INFO(locals.log);
 
 				return ;
 			}
 
-			locals.transferredAmountOfCFB = div(state.get().NFTs.get(input.NFTid).salePrice * 1ULL, state.get().priceOfQubic) * state.get().priceOfCFB;
+			locals.transferredAmountOfCFB = (sint64)locals.requiredCFB;
 			locals.creatorFee = div(locals.transferredAmountOfCFB * state.get().NFTs.get(input.NFTid).royalty * 1ULL, 100ULL);
 			locals.marketFee = div(locals.transferredAmountOfCFB * QBAY_FEE_NFT_SALE_MARKET * 1ULL, 1000ULL);
 
@@ -1576,7 +1639,7 @@ struct QBAY : public ContractBase
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(makeOffer)
 	{
-		if(input.NFTid >= QBAY_MAX_NUMBER_NFT || input.askPrice == 0)
+		if(input.NFTid >= QBAY_MAX_NUMBER_NFT || input.askPrice == 0 || input.askPrice >= (uint64)MAX_AMOUNT)
 		{
 			output.returnCode = LogInfo::invalidInput;
 			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
@@ -1621,9 +1684,22 @@ struct QBAY : public ContractBase
 
 		if(state.get().NFTs.get(input.NFTid).statusOfAsk == 1)
 		{
+			if(!isValidOraclePrice(state.get().priceOfCFB) || !isValidOraclePrice(state.get().priceOfQubic))
+			{
+				output.returnCode = LogInfo::invalidInput;
+				locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
+				LOG_INFO(locals.log);
+
+				if(qpi.invocationReward() > 0)
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				}
+				return ;
+			}
+
 			if((input.askPrice < state.get().NFTs.get(input.NFTid).askMaxPrice + QBAY_MIN_DELTA_SIZE && input.paymentMethod == state.get().NFTs.get(input.NFTid).paymentMethodOfAsk)
-			|| (input.paymentMethod == 1 && state.get().NFTs.get(input.NFTid).paymentMethodOfAsk == 0 && div(input.askPrice * 1ULL, state.get().priceOfCFB) < div((state.get().NFTs.get(input.NFTid).askMaxPrice + QBAY_MIN_DELTA_SIZE) * 1ULL, state.get().priceOfQubic))
-			|| (input.paymentMethod == 0 && state.get().NFTs.get(input.NFTid).paymentMethodOfAsk == 1 && div(input.askPrice * 1ULL, state.get().priceOfQubic) < div((state.get().NFTs.get(input.NFTid).askMaxPrice + QBAY_MIN_DELTA_SIZE) * 1ULL, state.get().priceOfCFB)))
+			|| (input.paymentMethod == 1 && state.get().NFTs.get(input.NFTid).paymentMethodOfAsk == 0 && ceilDiv(input.askPrice, state.get().priceOfCFB) < div((state.get().NFTs.get(input.NFTid).askMaxPrice + QBAY_MIN_DELTA_SIZE) * 1ULL, state.get().priceOfQubic))
+			|| (input.paymentMethod == 0 && state.get().NFTs.get(input.NFTid).paymentMethodOfAsk == 1 && ceilDiv(input.askPrice, state.get().priceOfQubic) < div((state.get().NFTs.get(input.NFTid).askMaxPrice + QBAY_MIN_DELTA_SIZE) * 1ULL, state.get().priceOfCFB)))
 			{
 				output.returnCode = LogInfo::lowPrice;
 				locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::lowPrice, 0 };
@@ -1639,7 +1715,7 @@ struct QBAY : public ContractBase
 
 		if(input.paymentMethod == 0)
 		{
-			if(qpi.invocationReward() < (sint64)input.askPrice)
+			if((uint64)qpi.invocationReward() < input.askPrice)
 			{
 				output.returnCode = LogInfo::insufficientQubic;
 				locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::insufficientQubic, 0 };
@@ -1653,9 +1729,9 @@ struct QBAY : public ContractBase
 				return;
 			}
 
-			if(qpi.invocationReward() > (sint64)input.askPrice)
+			if((uint64)qpi.invocationReward() > input.askPrice)
 			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.askPrice);
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)input.askPrice);
 			}
 		}
 		
@@ -1666,7 +1742,8 @@ struct QBAY : public ContractBase
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
-			if(qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.get().cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX) < (sint64)input.askPrice)
+			locals.tmp = qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.get().cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX);
+			if(locals.tmp < 0 || (uint64)locals.tmp < input.askPrice)
 			{
 				output.returnCode = LogInfo::insufficientCFB;
 				locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::insufficientCFB, 0 };
@@ -1679,10 +1756,29 @@ struct QBAY : public ContractBase
 
 		if(state.get().NFTs.get(input.NFTid).statusOfAsk == 1)
 		{
+			if(state.get().NFTs.get(input.NFTid).askMaxPrice >= (uint64)MAX_AMOUNT)
+			{
+				output.returnCode = LogInfo::invalidInput;
+				locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
+				LOG_INFO(locals.log);
+
+				// Roll back this call's payment only. Do not use qpi.invocationReward() here:
+				// it is still the original reward amount, and QU/CFB paths above may have
+				// already transferred part of it (excess QU refund or full QU refund before CFB).
+				if(input.paymentMethod == 0)
+				{
+					qpi.transfer(qpi.invocator(), (sint64)input.askPrice);
+				}
+				else if(input.paymentMethod == 1)
+				{
+					qpi.transferShareOwnershipAndPossession(QBAY_CFB_NAME, state.get().cfbIssuer, SELF, SELF, input.askPrice, qpi.invocator());
+				}
+				return;
+			}
 
 			if(state.get().NFTs.get(input.NFTid).paymentMethodOfAsk == 0)
 			{
-				qpi.transfer(state.get().NFTs.get(input.NFTid).askUser, state.get().NFTs.get(input.NFTid).askMaxPrice);
+				qpi.transfer(state.get().NFTs.get(input.NFTid).askUser, (sint64)state.get().NFTs.get(input.NFTid).askMaxPrice);
 			}
 			else
 			{
@@ -1768,6 +1864,14 @@ struct QBAY : public ContractBase
 			return ;
 		}
 
+		if(state.get().NFTs.get(input.NFTid).askMaxPrice == 0 || state.get().NFTs.get(input.NFTid).askMaxPrice >= (uint64)MAX_AMOUNT)
+		{
+			output.returnCode = LogInfo::invalidInput;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
+			LOG_INFO(locals.log);
+			return ;
+		}
+
 		locals.creatorFee = div(state.get().NFTs.get(input.NFTid).askMaxPrice * state.get().NFTs.get(input.NFTid).royalty * 1ULL, 100ULL);
 		locals.marketFee = div(state.get().NFTs.get(input.NFTid).askMaxPrice * QBAY_FEE_NFT_SALE_MARKET * 1ULL, 1000ULL);
 		locals.shareHolderFee = div(state.get().NFTs.get(input.NFTid).askMaxPrice * QBAY_FEE_NFT_SALE_SHAREHOLDERS * 1ULL, 1000ULL);
@@ -1776,7 +1880,7 @@ struct QBAY : public ContractBase
 		{
 			state.mut().collectedShareHoldersFee += locals.shareHolderFee;
 			qpi.transfer(state.get().NFTs.get(input.NFTid).creator, locals.creatorFee);
-			qpi.transfer(state.get().NFTs.get(input.NFTid).possessor, state.get().NFTs.get(input.NFTid).askMaxPrice - locals.creatorFee - locals.marketFee - locals.shareHolderFee);
+			qpi.transfer(state.get().NFTs.get(input.NFTid).possessor, (sint64)state.get().NFTs.get(input.NFTid).askMaxPrice - locals.creatorFee - locals.marketFee - locals.shareHolderFee);
 			
 			state.mut().earnedQubic += locals.marketFee;
 		}
@@ -1869,9 +1973,17 @@ struct QBAY : public ContractBase
 			return ;
 		}
 
+		if(state.get().NFTs.get(input.NFTid).askMaxPrice == 0 || state.get().NFTs.get(input.NFTid).askMaxPrice >= (uint64)MAX_AMOUNT)
+		{
+			output.returnCode = LogInfo::invalidInput;
+			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
+			LOG_INFO(locals.log);
+			return ;
+		}
+
 		if(state.get().NFTs.get(input.NFTid).paymentMethodOfAsk == 0)
 		{
-			qpi.transfer(state.get().NFTs.get(input.NFTid).askUser, state.get().NFTs.get(input.NFTid).askMaxPrice);
+			qpi.transfer(state.get().NFTs.get(input.NFTid).askUser, (sint64)state.get().NFTs.get(input.NFTid).askMaxPrice);
 		}
 		else if(state.get().NFTs.get(input.NFTid).paymentMethodOfAsk == 1)
 		{
@@ -1927,7 +2039,7 @@ struct QBAY : public ContractBase
 		packQbayDate(input.startYear, input.startMonth, input.startDay, input.startHour, 0, 0, locals.startDate);
 		packQbayDate(input.endYear, input.endMonth, input.endDay, input.endHour, 0, 0, locals.endDate);
 
-		if(input.NFTId >= QBAY_MAX_NUMBER_NFT || checkValidQbayDateTime(locals.startDate) == 0 || checkValidQbayDateTime(locals.endDate) == 0)
+		if(input.NFTId >= QBAY_MAX_NUMBER_NFT || input.minPrice == 0 || input.minPrice >= (uint64)MAX_AMOUNT || checkValidQbayDateTime(locals.startDate) == 0 || checkValidQbayDateTime(locals.endDate) == 0)
 		{
 			output.returnCode = LogInfo::invalidInput;
 			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
@@ -2009,7 +2121,7 @@ struct QBAY : public ContractBase
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(bidOnTraditionalAuction)
 	{
-		if(input.NFTId >= QBAY_MAX_NUMBER_NFT)
+		if(input.NFTId >= QBAY_MAX_NUMBER_NFT || input.price == 0 || input.price >= (uint64)MAX_AMOUNT)
 		{
 			output.returnCode = LogInfo::invalidInput;
 			locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::invalidInput, 0 };
@@ -2103,7 +2215,7 @@ struct QBAY : public ContractBase
 
 			if((uint64)qpi.invocationReward() > input.price)
 			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward() - input.price);
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - (sint64)input.price);
 			}
 
 			if(state.get().NFTs.get(input.NFTId).statusOfAuction == 1)
@@ -2161,9 +2273,9 @@ struct QBAY : public ContractBase
 				return ;
 			}
 
-			locals.possessedAmount = qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.get().cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX);
+			locals.tmp = qpi.numberOfPossessedShares(QBAY_CFB_NAME, state.get().cfbIssuer, qpi.invocator(), qpi.invocator(), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX);
 
-			if(locals.possessedAmount < input.price)
+			if(locals.tmp < 0 || (uint64)locals.tmp < input.price)
 			{
 				output.returnCode = LogInfo::insufficientQubic;
 				locals.log = Logger{ QBAY_CONTRACT_INDEX, LogInfo::insufficientQubic, 0 };
@@ -2566,7 +2678,7 @@ struct QBAY : public ContractBase
 	locals.cnt = 0;
 	locals._r = 0;
 
-	for(locals._t = state.get().numberOfCollection - 1 ; locals._t >= 0; locals._t--)
+	for(locals._t = (sint32)state.get().numberOfNFT - 1 ; locals._t >= 0; locals._t--)
 	{
 		if(state.get().NFTs.get(locals._t).creator == input.user)
 		{

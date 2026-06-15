@@ -112,11 +112,7 @@
 #define CONTRACT_INDEX QVAULT_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QVAULT
 #define CONTRACT_STATE2_TYPE QVAULT2
-#ifdef OLD_QVAULT
-#include "contracts/QVAULT_old.h"
-#else
 #include "contracts/QVAULT.h"
-#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -146,7 +142,11 @@
 #define CONTRACT_INDEX QSWAP_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QSWAP
 #define CONTRACT_STATE2_TYPE QSWAP2
+#ifdef OLD_QSWAP
+#include "contracts/Qswap_old.h"
+#else
 #include "contracts/Qswap.h"
+#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -206,11 +206,7 @@
 #define CONTRACT_INDEX QRAFFLE_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QRAFFLE
 #define CONTRACT_STATE2_TYPE QRAFFLE2
-#ifdef OLD_QRAFFLE
-#include "contracts/QRaffle_old.h"
-#else
 #include "contracts/QRaffle.h"
-#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -291,6 +287,20 @@
 #define CONTRACT_STATE_TYPE ESCROW
 #define CONTRACT_STATE2_TYPE ESCROW2
 #include "contracts/Escrow.h"
+
+#ifndef NO_GGWP
+
+#undef CONTRACT_INDEX
+#undef CONTRACT_STATE_TYPE
+#undef CONTRACT_STATE2_TYPE
+
+#define WOLFPACK_CONTRACT_INDEX 28
+#define CONTRACT_INDEX WOLFPACK_CONTRACT_INDEX
+#define CONTRACT_STATE_TYPE WOLFPACK
+#define CONTRACT_STATE2_TYPE WOLFPACK2
+#include "contracts/GGWP.h"
+
+#endif
 
 // new contracts should be added above this line
 
@@ -406,6 +416,9 @@ constexpr struct ContractDescription
     {"VOTTUN", 206, 10000, sizeof(VOTTUNBRIDGE::StateData)}, // proposal in epoch 204, IPO in 205, construction and first use in 206
     {"QUSINO", 208, 10000, sizeof(QUSINO::StateData)}, // proposal in epoch 206, IPO in 207, construction and first use in 208
     {"ESCROW", 210, 10000, sizeof(ESCROW::StateData)}, // proposal in epoch 208, IPO in 209, construction and first use in 210
+#ifndef NO_GGWP
+    {"GGWP", 218, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 216, IPO in 217, construction and first use in 218
+#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
@@ -529,6 +542,9 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(VOTTUNBRIDGE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUSINO);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(ESCROW);
+#ifndef NO_GGWP
+    REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(WOLFPACK);
+#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
@@ -538,13 +554,26 @@ static void initializeContracts()
 #endif
 }
 
-// Automatic Contract Padding
-// Contracts whose state struct grew this epoch. Update this list each epoch as needed.
+// Automatic Contract State Changes
+enum ContractStateChangeType
+{
+    // Keeps the saved state's old bytes, only zero-fills the new bytes at the end (used when struct grew; old fields preserved)
+    PADDING,
+    // Discards the saved state entirely, zeros the whole buffer
+    RESET,
+};
+struct ContractStateChangeInfo
+{
+    unsigned int contractIndex;
+    ContractStateChangeType changeType;
+};
+// Contracts whose state struct changed this epoch. Update this list each epoch as needed.
+// Each entry is { CONTRACT_INDEX, PADDING or RESET }
 // When enabling, replace both lines below, e.g.:
-//   constexpr unsigned int paddableContracts[] = { RANDOM_CONTRACT_INDEX };
-//   constexpr unsigned int paddableCount = sizeof(paddableContracts) / sizeof(paddableContracts[0]);
-constexpr const unsigned int* paddableContracts = nullptr;
-constexpr unsigned int paddableCount = 0;
+constexpr ContractStateChangeInfo contractStateChangeInfos[] = { {RANDOM_CONTRACT_INDEX, PADDING} };
+constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
+// constexpr const ContractStateChangeInfo* contractStateChangeInfos = nullptr;
+// constexpr unsigned int contractStateChangeCount = 0;
 
 
 // Class for registering and looking up user procedures independently of input type, for example for notifications

@@ -4,6 +4,7 @@
 #include <random>
 
 #include "contract_testing.h"
+#include "network_messages/common_def.h"
 
 const id MARKETPLACE_OWNER = ID(_R, _K, _D, _H, _C, _M, _R, _J, _Y, _C, _G, _K, _P, _D, _U, _Y, _R, _X, _G, _D, _Y, _Z, _C, _I, _Z, _I, _T, _A, _H, _Y, _O, _V, _G, _I, _U, _T, _K, _N, _D, _T, _E, _H, _P, _C, _C, _L, _W, _L, _Z, _X, _S, _H, _N, _F, _P, _D);
 const id CFB_ISSUER = ID(_C, _F, _B, _M, _E, _M, _Z, _O, _I, _D, _E, _X, _Q, _A, _U, _X, _Y, _Y, _S, _Z, _I, _U, _R, _A, _D, _Q, _L, _A, _P, _W, _P, _M, _N, _J, _X, _Q, _S, _N, _V, _Q, _Z, _A, _H, _Y, _V, _O, _P, _Y, _U, _K, _K, _J, _B, _J, _U, _C);
@@ -49,6 +50,11 @@ static std::vector<id> getRandomUsers(unsigned int totalUsers, unsigned int maxN
         users.push_back(getUser(userIdx));
     }
     return users;
+}
+
+static uint64 quSalePriceToRequiredCFB(uint64 salePriceQu, uint64 cfbPrice, uint64 qubicPrice)
+{
+    return div(salePriceQu * cfbPrice + qubicPrice - 1ULL, qubicPrice);
 }
 
 static Array<uint8, 64> getRandomURI()
@@ -373,6 +379,11 @@ public:
         return (QBAYChecker*)contractStates[QBAY_CONTRACT_INDEX];
     }
 
+    void beginEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(QBAY_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+    }
+
     void endEpoch(bool expectSuccess = true)
     {
         callSystemProcedure(QBAY_CONTRACT_INDEX, END_EPOCH, expectSuccess);
@@ -636,7 +647,7 @@ public:
         return output;
     }
 
-    QBAY::makeOffer_output makeOffer(const id& user, sint64 askPrice, uint32 NFTid, bit paymentMethod)
+    QBAY::makeOffer_output makeOfferWithReward(const id& user, uint64 askPrice, uint32 NFTid, bit paymentMethod, sint64 invocationReward)
     {
         QBAY::makeOffer_input input;
         QBAY::makeOffer_output output;
@@ -645,9 +656,14 @@ public:
         input.NFTid = NFTid;
         input.paymentMethod = paymentMethod;
 
-        invokeUserProcedure(QBAY_CONTRACT_INDEX, 11, input, output, user, paymentMethod == 0?askPrice:0);
+        invokeUserProcedure(QBAY_CONTRACT_INDEX, 11, input, output, user, invocationReward);
 
         return output;
+    }
+
+    QBAY::makeOffer_output makeOffer(const id& user, sint64 askPrice, uint32 NFTid, bit paymentMethod)
+    {
+        return makeOfferWithReward(user, (uint64)askPrice, NFTid, paymentMethod, paymentMethod == 0 ? askPrice : 0);
     }
 
     QBAY::acceptOffer_output acceptOffer(const id& user, uint32 NFTid)
@@ -696,7 +712,8 @@ public:
         return output;
     }
 
-    QBAY::bidOnTraditionalAuction_output bidOnTraditionalAuction(const id& user, uint64 price, uint32 NFTId, bit paymentMethod)
+    QBAY::bidOnTraditionalAuction_output bidOnTraditionalAuctionWithReward(
+        const id& user, uint64 price, uint32 NFTId, bit paymentMethod, sint64 invocationReward)
     {
         QBAY::bidOnTraditionalAuction_input input;
         QBAY::bidOnTraditionalAuction_output output;
@@ -705,9 +722,14 @@ public:
         input.paymentMethod = paymentMethod;
         input.price = price;
 
-        invokeUserProcedure(QBAY_CONTRACT_INDEX, 15, input, output, user, price);
+        invokeUserProcedure(QBAY_CONTRACT_INDEX, 15, input, output, user, invocationReward);
 
         return output;
+    }
+
+    QBAY::bidOnTraditionalAuction_output bidOnTraditionalAuction(const id& user, uint64 price, uint32 NFTId, bit paymentMethod)
+    {
+        return bidOnTraditionalAuctionWithReward(user, price, NFTId, paymentMethod, (sint64)price);
     }
 
     QBAY::changeStatusOfMarketPlace_output changeStatusOfMarketPlace(const id& user, bit status)
@@ -791,6 +813,9 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     uint32 totalPriceForCollectionCreating = 0;
     uint32 numberOfCollectionCreated = 0;
     uint32 numberOfNFTCreated = 0;
+
+    pfp.beginEpoch();
+    system.epoch = 200;
 
     increaseEnergy(MARKETPLACE_OWNER, 1);
 
@@ -1035,12 +1060,13 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     increaseEnergy(users[4], 10000000);
     increaseEnergy(CFB_ISSUER, QBAY_TOKEN_TRANSFER_FEE);
     EXPECT_EQ(pfp.TransferShareOwnershipAndPossession(CFB_ISSUER, assetName, 10000000000, users[4]), 10000000000);
-    EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, div(10000000ULL, qubicPrice) * cfbPrice, users[4]), div(10000000ULL, qubicPrice) * cfbPrice);
+    const uint64 requiredCFBForBuy = quSalePriceToRequiredCFB(10000000ULL, cfbPrice, qubicPrice);
+    EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, requiredCFBForBuy, users[4]), requiredCFBForBuy);
 
     pfp.buy(users[4], 0, 1, 0);
-    earnedCFB += div(div(10000000ULL, qubicPrice) * cfbPrice * QBAY_FEE_NFT_SALE_MARKET, 1000ULL);
+    earnedCFB += div(requiredCFBForBuy * QBAY_FEE_NFT_SALE_MARKET, 1000ULL);
 
-    pfp.getState()->buyChecker(oldPossesor, users[4], 0, div(10000000ULL, qubicPrice) * cfbPrice, 1, initialBalanceOfCreator, initialBalanceOfPossesor, initialBalanceOfMarket, pfp.getState()->getCreatorOfNFT(0) == pfp.getState()->getPossessorOfNFT(0));
+    pfp.getState()->buyChecker(oldPossesor, users[4], 0, requiredCFBForBuy, 1, initialBalanceOfCreator, initialBalanceOfPossesor, initialBalanceOfMarket, pfp.getState()->getCreatorOfNFT(0) == pfp.getState()->getPossessorOfNFT(0));
 
     EXPECT_EQ(numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, id(QBAY_CONTRACT_INDEX, 0, 0, 0), id(QBAY_CONTRACT_INDEX, 0, 0, 0), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX), earnedCFB);
     EXPECT_EQ(getBalance(id(QBAY_CONTRACT_INDEX, 0, 0, 0)), earnedQubic + collectedShareHolderFee);
@@ -1171,4 +1197,276 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     increaseEnergy(CFB_ISSUER, 1000000);
     EXPECT_EQ(pfp.qbayTransferShareManagementRights(CFB_ISSUER, 10000, QX_CONTRACT_INDEX, 1000000).transferredNumberOfShares, 10000);
     EXPECT_EQ(numberOfQXCFB, numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, CFB_ISSUER, CFB_ISSUER, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX));
+}
+
+namespace {
+
+constexpr uint64 kEscrowQu = 1000000ULL;
+// Certik PoC value (>= MAX_AMOUNT); rejected by askPrice >= MAX_AMOUNT guard.
+constexpr uint64 kWrappedNegativeQu = (uint64)(-(sint64)kEscrowQu);
+// >= MAX_AMOUNT; rejected at procedure entry (also covers Certik-style uint64 wrap values).
+constexpr uint64 kSignedOverflowAskPrice = (uint64)INT64_MAX + 1ULL;
+// Below MAX_AMOUNT; with zero reward must fail unsigned payment check (not succeed).
+constexpr uint64 kBelowMaxAskPrice = (uint64)MAX_AMOUNT - 1ULL;
+
+static Array<uint8, 64> makeTestUri()
+{
+    Array<uint8, 64> uri;
+    for (uint32 i = 0; i < QBAY_LENGTH_OF_URI; ++i)
+    {
+        uri.set(i, (uint8)('a' + (i % 26)));
+    }
+    return uri;
+}
+
+static void initQbayMarketplaceForSignednessTests(ContractTestingQBAY& pfp, id& nftOwner, uint32& nftId)
+{
+    pfp.beginEpoch();
+    system.epoch = 200;
+
+    increaseEnergy(MARKETPLACE_OWNER, 1);
+    pfp.settingCFBAndQubicPrice(MARKETPLACE_OWNER, 1000, 1000);
+    pfp.changeStatusOfMarketPlace(MARKETPLACE_OWNER, 1);
+
+    nftOwner = getUser(501);
+
+    const uint64 assetName = assetNameFromString("CFB");
+    increaseEnergy(CFB_ISSUER, QBAY_ISSUE_ASSET_FEE);
+    EXPECT_EQ(pfp.issueAsset(CFB_ISSUER, assetName, QBAY_CREATED_CFB_AMOUNT, 0, 0), QBAY_CREATED_CFB_AMOUNT);
+
+    increaseEnergy(CFB_ISSUER, QBAY_TOKEN_TRANSFER_FEE);
+    increaseEnergy(nftOwner, QBAY_TOKEN_TRANSFER_FEE);
+    EXPECT_EQ(pfp.TransferShareOwnershipAndPossession(CFB_ISSUER, assetName, 10000000000, nftOwner), 10000000000ULL);
+    // volume 0 collection fee is 100 CFB units; transfer fee * priceOfCFB (1000) shares.
+    EXPECT_EQ(
+        pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, 1000ULL * 100ULL, nftOwner),
+        100000ULL);
+
+    Array<uint8, 64> uri = makeTestUri();
+    EXPECT_EQ(pfp.createCollection(nftOwner, 0, 0, 10, 100, 1, uri).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.mint(nftOwner, 0, 0, uri, 0, 0).returnCode, QBAY::LogInfo::success);
+    nftId = 0;
+}
+
+} // namespace
+
+TEST(TestContractQBAY, SignednessRegression_MakeOfferDoesNotDrainEscrowWithZeroPayment)
+{
+    ContractTestingQBAY pfp;
+    id nftOwner;
+    uint32 nftId = 0;
+    initQbayMarketplaceForSignednessTests(pfp, nftOwner, nftId);
+
+    const id victim = getUser(502);
+    const id attacker = getUser(503);
+    const id qbayContract = id(QBAY_CONTRACT_INDEX, 0, 0, 0);
+
+    increaseEnergy(victim, kEscrowQu);
+    increaseEnergy(attacker, 0);
+    auto victimOffer = pfp.makeOffer(victim, (sint64)kEscrowQu, nftId, 0);
+    EXPECT_EQ(victimOffer.returnCode, QBAY::LogInfo::success);
+    pfp.getState()->makeOfferChecker(nftId, victim, 0, kEscrowQu);
+
+    const uint64 contractBalanceBefore = getBalance(qbayContract);
+    const uint64 attackerBalanceBefore = getBalance(attacker);
+    EXPECT_EQ(contractBalanceBefore, kEscrowQu);
+
+    auto maliciousOffer = pfp.makeOfferWithReward(attacker, kWrappedNegativeQu, nftId, 0, 0);
+    EXPECT_EQ(maliciousOffer.returnCode, QBAY::LogInfo::invalidInput);
+
+    auto belowMaxOffer = pfp.makeOfferWithReward(attacker, kBelowMaxAskPrice, nftId, 0, 0);
+    EXPECT_EQ(belowMaxOffer.returnCode, QBAY::LogInfo::insufficientQubic);
+
+    EXPECT_EQ(getBalance(qbayContract), contractBalanceBefore);
+    EXPECT_EQ(getBalance(attacker), attackerBalanceBefore);
+    EXPECT_EQ(pfp.getState()->NFTs.get(nftId).askUser, victim);
+    EXPECT_EQ(pfp.getState()->NFTs.get(nftId).askMaxPrice, kEscrowQu);
+}
+
+TEST(TestContractQBAY, SignednessRegression_MakeOfferRejectsOutOfRangeAskPrice)
+{
+    ContractTestingQBAY pfp;
+    id nftOwner;
+    uint32 nftId = 0;
+    initQbayMarketplaceForSignednessTests(pfp, nftOwner, nftId);
+
+    const id bidder = getUser(504);
+    increaseEnergy(bidder, kEscrowQu);
+
+    auto zeroPrice = pfp.makeOfferWithReward(bidder, 0, nftId, 0, kEscrowQu);
+    EXPECT_EQ(zeroPrice.returnCode, QBAY::LogInfo::invalidInput);
+
+    auto maxAmountPrice = pfp.makeOfferWithReward(bidder, (uint64)MAX_AMOUNT, nftId, 0, kEscrowQu);
+    EXPECT_EQ(maxAmountPrice.returnCode, QBAY::LogInfo::invalidInput);
+
+    auto wrappedMaxAmount = pfp.makeOfferWithReward(bidder, kWrappedNegativeQu, nftId, 0, kEscrowQu);
+    EXPECT_EQ(wrappedMaxAmount.returnCode, QBAY::LogInfo::invalidInput);
+}
+
+TEST(TestContractQBAY, SignednessRegression_BuyRejectsPoisonedSalePrice)
+{
+    ContractTestingQBAY pfp;
+    id nftOwner;
+    uint32 nftId = 0;
+    initQbayMarketplaceForSignednessTests(pfp, nftOwner, nftId);
+
+    const id buyer = getUser(505);
+    increaseEnergy(buyer, 0);
+
+    auto listed = pfp.listInMarket(nftOwner, kWrappedNegativeQu, nftId);
+    EXPECT_EQ(listed.returnCode, QBAY::LogInfo::wrongNFTId);
+
+    QBAY::InfoOfNFT nft = pfp.getState()->NFTs.get(nftId);
+    nft.salePrice = kSignedOverflowAskPrice;
+    nft.statusOfSale = 1;
+    pfp.getState()->NFTs.set(nftId, nft);
+
+    auto buyOutput = pfp.buy(buyer, nftId, 0, 0);
+    EXPECT_EQ(buyOutput.returnCode, QBAY::LogInfo::invalidInput);
+
+    nft.salePrice = kBelowMaxAskPrice;
+    pfp.getState()->NFTs.set(nftId, nft);
+    auto belowMaxBuy = pfp.buy(buyer, nftId, 0, 0);
+    EXPECT_EQ(belowMaxBuy.returnCode, QBAY::LogInfo::insufficientQubic);
+    EXPECT_EQ(getBalance(buyer), 0ULL);
+}
+
+TEST(TestContractQBAY, SignednessRegression_ListInMarketRejectsOutOfRangePrice)
+{
+    ContractTestingQBAY pfp;
+    id nftOwner;
+    uint32 nftId = 0;
+    initQbayMarketplaceForSignednessTests(pfp, nftOwner, nftId);
+
+    EXPECT_EQ(pfp.listInMarket(nftOwner, 0, nftId).returnCode, QBAY::LogInfo::wrongNFTId);
+    EXPECT_EQ(pfp.listInMarket(nftOwner, (uint64)MAX_AMOUNT, nftId).returnCode, QBAY::LogInfo::wrongNFTId);
+}
+
+TEST(TestContractQBAY, SignednessRegression_BidRejectsOutOfRangePrice)
+{
+    ContractTestingQBAY pfp;
+    id nftOwner;
+    uint32 nftId = 0;
+    initQbayMarketplaceForSignednessTests(pfp, nftOwner, nftId);
+
+    setMemory(utcTime, 0);
+    utcTime.Year = 2025;
+    utcTime.Month = 12;
+    utcTime.Day = 31;
+    utcTime.Hour = 0;
+    updateQpiTime();
+
+    auto auction = pfp.createTraditionalAuction(nftOwner, kEscrowQu, nftId, 0, 26, 1, 1, 0, 26, 1, 5, 0);
+    EXPECT_EQ(auction.returnCode, QBAY::LogInfo::success);
+
+    setMemory(utcTime, 0);
+    utcTime.Year = 2026;
+    utcTime.Month = 1;
+    utcTime.Day = 3;
+    utcTime.Hour = 0;
+    updateQpiTime();
+
+    const id bidder = getUser(506);
+    increaseEnergy(bidder, kEscrowQu);
+
+    EXPECT_EQ(pfp.bidOnTraditionalAuctionWithReward(bidder, 0, nftId, 0, 0).returnCode, QBAY::LogInfo::invalidInput);
+    EXPECT_EQ(pfp.bidOnTraditionalAuctionWithReward(bidder, (uint64)MAX_AMOUNT, nftId, 0, 0).returnCode, QBAY::LogInfo::invalidInput);
+
+    auto wrappedBid = pfp.bidOnTraditionalAuctionWithReward(bidder, kWrappedNegativeQu, nftId, 0, 0);
+    EXPECT_EQ(wrappedBid.returnCode, QBAY::LogInfo::invalidInput);
+
+    auto signedOverflowBid = pfp.bidOnTraditionalAuctionWithReward(bidder, kSignedOverflowAskPrice, nftId, 0, 0);
+    EXPECT_EQ(signedOverflowBid.returnCode, QBAY::LogInfo::invalidInput);
+
+    auto belowMaxBid = pfp.bidOnTraditionalAuctionWithReward(bidder, kBelowMaxAskPrice, nftId, 0, 0);
+    EXPECT_EQ(belowMaxBid.returnCode, QBAY::LogInfo::insufficientQubic);
+}
+
+TEST(TestContractQBAY, SignednessRegression_CreateCollectionRejectsOutOfRangeDropMintPrice)
+{
+    ContractTestingQBAY pfp;
+    id nftOwner;
+    uint32 nftId = 0;
+    initQbayMarketplaceForSignednessTests(pfp, nftOwner, nftId);
+
+    Array<uint8, 64> uri = makeTestUri();
+    EXPECT_EQ(
+        pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, 1000ULL * 100ULL, nftOwner),
+        100000ULL);
+    EXPECT_EQ(pfp.createCollection(nftOwner, 0, 0, 10, 100, 0, uri).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.createCollection(nftOwner, (uint64)MAX_AMOUNT, 0, 10, 100, 0, uri).returnCode, QBAY::LogInfo::invalidInput);
+}
+
+TEST(TestContractQBAY, SignednessRegression_MakeOfferReplaceOfferBlocksPoisonedEscrow)
+{
+    ContractTestingQBAY pfp;
+    id nftOwner;
+    uint32 nftId = 0;
+    initQbayMarketplaceForSignednessTests(pfp, nftOwner, nftId);
+
+    const id victim = getUser(507);
+    const id attacker = getUser(508);
+    const id qbayContract = id(QBAY_CONTRACT_INDEX, 0, 0, 0);
+
+    increaseEnergy(victim, kEscrowQu);
+    increaseEnergy(attacker, kEscrowQu * 2);
+    EXPECT_EQ(pfp.makeOffer(victim, (sint64)kEscrowQu, nftId, 0).returnCode, QBAY::LogInfo::success);
+
+    QBAY::InfoOfNFT nft = pfp.getState()->NFTs.get(nftId);
+    nft.askMaxPrice = kWrappedNegativeQu;
+    pfp.getState()->NFTs.set(nftId, nft);
+
+    const uint64 contractBalanceBefore = getBalance(qbayContract);
+    auto replaceOffer = pfp.makeOfferWithReward(attacker, kEscrowQu * 2, nftId, 0, kEscrowQu * 2);
+    EXPECT_EQ(replaceOffer.returnCode, QBAY::LogInfo::invalidInput);
+
+    EXPECT_EQ(pfp.getState()->NFTs.get(nftId).askUser, victim);
+    EXPECT_EQ(getBalance(qbayContract), contractBalanceBefore);
+}
+
+TEST(TestContractQBAY, SettingOraclePriceRejectsZero)
+{
+    ContractTestingQBAY pfp;
+    pfp.beginEpoch();
+    system.epoch = 200;
+    increaseEnergy(MARKETPLACE_OWNER, 1);
+
+    EXPECT_EQ(pfp.settingCFBAndQubicPrice(MARKETPLACE_OWNER, 0, 1000).returnCode, QBAY::LogInfo::invalidInput);
+    EXPECT_EQ(pfp.settingCFBAndQubicPrice(MARKETPLACE_OWNER, 1000, 0).returnCode, QBAY::LogInfo::invalidInput);
+}
+
+TEST(TestContractQBAY, EconomicExploit_BuyWithCFBModeCanAcquireForFreeWhenSalePriceBelowQubicPrice)
+{
+    ContractTestingQBAY pfp;
+    id nftOwner;
+    uint32 nftId = 0;
+    initQbayMarketplaceForSignednessTests(pfp, nftOwner, nftId);
+
+    const id buyer = getUser(550);
+    const uint64 livePriceOfCFB = 454000ULL;
+    const uint64 livePriceOfQubic = 1052631ULL;
+    const uint64 salePrice = livePriceOfQubic - 1ULL;
+
+    pfp.settingCFBAndQubicPrice(MARKETPLACE_OWNER, livePriceOfCFB, livePriceOfQubic);
+    EXPECT_EQ(pfp.getState()->priceOfCFB, livePriceOfCFB);
+    EXPECT_EQ(pfp.getState()->priceOfQubic, livePriceOfQubic);
+
+    EXPECT_EQ(pfp.listInMarket(nftOwner, salePrice, nftId).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.getState()->NFTs.get(nftId).possessor, nftOwner);
+    EXPECT_EQ(pfp.getState()->NFTs.get(nftId).statusOfSale, 1);
+
+    increaseEnergy(buyer, 0);
+    const sint64 buyerCfbBefore =
+        numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, buyer, buyer, QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX)
+        + numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, buyer, buyer, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
+
+    auto out = pfp.buy(buyer, nftId, 1, 0);
+    EXPECT_EQ(out.returnCode, QBAY::LogInfo::insufficientCFB);
+    EXPECT_EQ(pfp.getState()->NFTs.get(nftId).possessor, nftOwner);
+
+    const sint64 buyerCfbAfter =
+        numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, buyer, buyer, QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX)
+        + numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, buyer, buyer, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
+    EXPECT_EQ(buyerCfbBefore, buyerCfbAfter);
+    EXPECT_EQ(getBalance(buyer), 0ULL);
 }

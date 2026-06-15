@@ -70,12 +70,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 292
-#define VERSION_C 0
+#define VERSION_B 295
+#define VERSION_C 2
 
 // Epoch and initial tick for node startup
-#define EPOCH 214
-#define TICK 52810000
+#define EPOCH 217
+#define TICK 57700000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -87,11 +87,12 @@ static unsigned short SPECTRUM_FILE_NAME[] = L"spectrum.???";
 static unsigned short UNIVERSE_FILE_NAME[] = L"universe.???";
 static unsigned short SCORE_CACHE_FILE_NAME[] = L"score.???";
 static unsigned short CONTRACT_FILE_NAME[] = L"contract????.???";
-static unsigned short CUSTOM_MINING_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"custom_revenue.eoe";
 static unsigned short CONTRACT_EXEC_FEES_ACC_FILE_NAME[] = L"contract_exec_fees_acc.???";
 static unsigned short CONTRACT_EXEC_FEES_REC_FILE_NAME[] = L"contract_exec_fees_rec.???";
 static unsigned short REVENUE_DATA_END_OF_EPOCH_FILE_NAME[] = L"revenue_data.eoe";
 static unsigned short REVENUE_DATA_SNAPSHOT_FILE_NAME[] = L"revenue_data.???";
+static unsigned short MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[] = L"revenue_data_multi.???";
+static unsigned short MULTIDIM_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"revenue_data_multi.eoe";
 
 static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS = 512;     // K
 static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS = 512;    // L
@@ -99,15 +100,20 @@ static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_TICKS = 1000;       
 static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
 static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_MUTATIONS = 150;
 static constexpr unsigned long long HYPERIDENTITY_POPULATION_THRESHOLD = HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_MUTATIONS; // P
-static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT = 321;
+static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT = 316;
+// Mid-epoch threshold increase: ticks before activation use old threshold (313),
+// ticks >= activation use HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT (316).
+static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_PRE_ACTIVATION = 313;
+static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_ACTIVATION_TICK = 57707553;
 
-static constexpr unsigned long long ADDITION_NUMBER_OF_INPUT_NEURONS = 14;     // K
-static constexpr unsigned long long ADDITION_NUMBER_OF_OUTPUT_NEURONS = 8;    // L
-static constexpr unsigned long long ADDITION_NUMBER_OF_TICKS = 1000;               // N
-static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
-static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 500;
-static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = ADDITION_NUMBER_OF_INPUT_NEURONS + ADDITION_NUMBER_OF_OUTPUT_NEURONS + ADDITION_NUMBER_OF_MUTATIONS; // P
-static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 76430;
+static constexpr unsigned long long ADDITION_NUMBER_OF_INPUT_NEURONS = 14;
+static constexpr unsigned long long ADDITION_NUMBER_OF_OUTPUT_NEURONS = 8;
+static constexpr unsigned long long ADDITION_NUMBER_OF_TICKS = 256;
+static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = 256;
+// Each neuron is connected to every other neuron(exclude self). The effective is clamp to (ADDITION_POPULATION_THRESHOLD - 1) at runtime
+static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = ADDITION_POPULATION_THRESHOLD;
+static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 256;
+static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 74300;
 
 // Multipler of score
 static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;

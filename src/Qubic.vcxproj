@@ -24,10 +24,9 @@
     <ClInclude Include="common_buffers.h" />
     <ClInclude Include="contracts\ComputorControlledFund.h" />
     <ClInclude Include="contracts\Qdraw.h" />
-    <ClInclude Include="contracts\QRaffle_old.h" />
     <ClInclude Include="contracts\qRWA.h" />
     <ClInclude Include="contracts\Qswap.h" />
-    <ClInclude Include="contracts\QVAULT_old.h" />
+    <ClInclude Include="contracts\Qswap_old.h" />
     <ClInclude Include="contracts\RandomLottery.h" />
     <ClInclude Include="contracts\QDuel.h" />
     <ClInclude Include="contracts\SupplyWatcher.h" />
@@ -53,6 +52,7 @@
     <ClInclude Include="contracts\QThirtyFour.h" />
     <ClInclude Include="contracts\Pulse.h" />
     <ClInclude Include="contracts\Escrow.h" />
+    <ClInclude Include="contracts\GGWP.h" />
     <ClInclude Include="contracts\TestExampleA.h" />
     <ClInclude Include="contracts\TestExampleB.h" />
     <ClInclude Include="contracts\TestExampleC.h" />
