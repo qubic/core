@@ -12,7 +12,7 @@
 //   1 = multi-dimension (asymmetric L2 across source/contract/transfer dims)
 // Both formulas always run for offline comparison; this switch only selects which
 // output is paid to computors.
-#define USE_REVENUE_MULTI_DIMENSION 0
+#define USE_REVENUE_MULTI_DIMENSION 1
 
 // gTxRevenuePoints is calculated from 4096 * ln(tx + 1)
 // When NUMBER_OF_TRANSACTIONS_PER_TICK is changed, this table needs to be regenerated
