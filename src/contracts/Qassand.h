@@ -71,6 +71,7 @@ struct QASSAND : public ContractBase
 
 	struct GetFeeInfo_output
 	{
+		uint64 pingFee;
 		uint64 protocolFee;
 		uint64 burnFee;
 		uint64 protocolEarnedFee;
