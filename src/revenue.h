@@ -380,8 +380,7 @@ static_assert((unsigned long long)REVENUE_IPC * REVENUE_SCALE
     * (REVENUE_SCALE * REVENUE_SCALE + REVENUE_BONUS_CAP * REVENUE_SCALE) <= 0xFFFFFFFFFFFFFFFFULL,
     "V2 revenue formula intermediate can overflow u64");
 
-// TODO: create voting for this number
-static constexpr unsigned int REVENUE_DOGE_K = 4;
+static constexpr unsigned int REVENUE_DOGE_K = 2;
 static constexpr unsigned int REVENUE_CONTRACT_DIMS = contractCount;
 static constexpr unsigned int REVENUE_TX_DIM = NUMBER_OF_COMPUTORS + REVENUE_CONTRACT_DIMS + 1;
 static constexpr unsigned int m_SRC_COMPUTOR = 1;
