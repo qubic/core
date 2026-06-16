@@ -7,21 +7,12 @@
 #include "vote_counter.h"
 #include "public_settings.h"
 
-// Revenue V2: set to 1 to use the new revenue formula (additive bonus + sliding window + oracle)
-// set to 0 to use V1 formula (multiplicative: tx * vote * mining)
-#define USE_REVENUE_V2 1
-
-static unsigned long long gVoteScoreBuffer[NUMBER_OF_COMPUTORS];
-static unsigned long long gCustomMiningScoreBuffer[NUMBER_OF_COMPUTORS];
-
-static unsigned long long gTxScoreFactor[NUMBER_OF_COMPUTORS];
-static constexpr unsigned long long gTxScoreScalingThreshold = (1ULL << 10);
-
-static unsigned long long gVoteScoreFactor[NUMBER_OF_COMPUTORS];
-static constexpr unsigned long long gVoteScoreScalingThreshold = (1ULL << 10);
-
-static unsigned long long gCustomMiningScoreFactor[NUMBER_OF_COMPUTORS];
-static constexpr unsigned long long gCustomMiningScoreScalingThreshold = (1ULL << 10);
+// Revenue formula selector:
+//   0 = V2
+//   1 = multi-dimension (asymmetric L2 across source/contract/transfer dims)
+// Both formulas always run for offline comparison; this switch only selects which
+// output is paid to computors.
+#define USE_REVENUE_MULTI_DIMENSION 1
 
 // gTxRevenuePoints is calculated from 4096 * ln(tx + 1)
 // When NUMBER_OF_TRANSACTIONS_PER_TICK is changed, this table needs to be regenerated
@@ -289,31 +280,6 @@ static_assert(NUMBER_OF_TRANSACTIONS_PER_TICK == 4096, "TxRevenuePoints expect o
 static_assert(gTxRevenuePoints[NUMBER_OF_TRANSACTIONS_PER_TICK] > gTxRevenuePoints[NUMBER_OF_TRANSACTIONS_PER_TICK - 1],
     "gTxRevenuePoints tail not monotonic (missing entries)");
 
-static constexpr unsigned long long maxTxRevPoints = gTxRevenuePoints[sizeof(gTxRevenuePoints) / sizeof(gTxRevenuePoints[0]) - 1];
-// Assert checkout for tx
-static_assert(maxTxRevPoints* MAX_NUMBER_OF_TICKS_PER_EPOCH / 676 <= 0xFFFFFFFFFFFFFFFFULL / gTxScoreScalingThreshold,
-    "Max value of tx score can make score overflow");
-// Assert check for vote
-static_assert(((1ULL << VOTE_COUNTER_NUM_BIT_PER_COMP) - 1)* NUMBER_OF_COMPUTORS* MAX_NUMBER_OF_TICKS_PER_EPOCH <= 0xFFFFFFFFFFFFFFFFULL / gVoteScoreScalingThreshold,
-    "Max value of vote score can make score overflow");
-// Assert check for custom mining score. Custom mining only happen in idle phase so for all epoch need to divided by 2
-static_assert(((1ULL << VOTE_COUNTER_NUM_BIT_PER_COMP) - 1)* NUMBER_OF_COMPUTORS* MAX_NUMBER_OF_TICKS_PER_EPOCH / 2 <= 0xFFFFFFFFFFFFFFFFULL / gCustomMiningScoreScalingThreshold,
-    "Max value of custom mininng score can make score overflow");
-
-struct RevenueComponents
-{
-    unsigned long long txScore[NUMBER_OF_COMPUTORS];    // revenue score with txs
-    unsigned long long voteScore[NUMBER_OF_COMPUTORS];  // vote count
-    unsigned long long customMiningScore[NUMBER_OF_COMPUTORS]; // the shares count with custom mining
-
-    unsigned long long txScoreFactor[NUMBER_OF_COMPUTORS];
-    unsigned long long voteScoreFactor[NUMBER_OF_COMPUTORS];
-    unsigned long long customMiningScoreFactor[NUMBER_OF_COMPUTORS];
-
-    long long conservativeRevenue[NUMBER_OF_COMPUTORS];
-    long long revenue[NUMBER_OF_COMPUTORS];
-} gRevenueComponents;
-
 // Get the lower bound that start to separate the QUORUM region of score
 unsigned long long getQuorumScore(
     const unsigned long long* score,
@@ -386,60 +352,11 @@ static void computeRevFactor(
     }
 }
 
-static void computeRevenue(
-    const unsigned long long* txScore,
-    const unsigned long long* voteScore,
-    const unsigned long long* customMiningScore,
-    long long* revenue = NULL)
-{
-    // Transaction score
-    copyMem(gRevenueComponents.txScore, txScore, sizeof(gRevenueComponents.txScore));
-    computeRevFactor(gRevenueComponents.txScore, gTxScoreScalingThreshold, gRevenueComponents.txScoreFactor);
-
-    // Vote score
-    copyMem(gRevenueComponents.voteScore, voteScore, sizeof(gRevenueComponents.voteScore));
-    computeRevFactor(gRevenueComponents.voteScore, gVoteScoreScalingThreshold, gRevenueComponents.voteScoreFactor);
-
-    // Custom mining score
-    copyMem(gRevenueComponents.customMiningScore, customMiningScore, sizeof(gRevenueComponents.customMiningScore));
-    computeRevFactor(gRevenueComponents.customMiningScore, gCustomMiningScoreScalingThreshold, gRevenueComponents.customMiningScoreFactor);
-
-    long long arbitratorRevenue = ISSUANCE_RATE;
-    constexpr long long issuancePerComputor = ISSUANCE_RATE / NUMBER_OF_COMPUTORS;
-    constexpr long long scalingThreshold = 0xFFFFFFFFFFFFFFFFULL / issuancePerComputor;
-    static_assert(gTxScoreScalingThreshold * gVoteScoreScalingThreshold * gCustomMiningScoreScalingThreshold <= scalingThreshold, "Normalize factor can cause overflow");
-
-    // Save data of custom mining. But not apply yet
-    {
-        for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-        {
-            unsigned long long txFactor = gRevenueComponents.txScoreFactor[i];
-            unsigned long long voteFactor = gRevenueComponents.voteScoreFactor[i];
-            unsigned long long customFactor = gRevenueComponents.customMiningScoreFactor[i];
-            ASSERT(txFactor <= gTxScoreScalingThreshold);
-            ASSERT(voteFactor <= gVoteScoreScalingThreshold);
-            ASSERT(customFactor <= gCustomMiningScoreScalingThreshold);
-            static_assert(gTxScoreScalingThreshold * gVoteScoreScalingThreshold * gCustomMiningScoreScalingThreshold < 0xFFFFFFFFFFFFFFFFULL / issuancePerComputor);
-
-            unsigned long long combinedScoreFactor = txFactor * voteFactor * customFactor;
-
-            gRevenueComponents.revenue[i] =
-                (long long)(combinedScoreFactor * issuancePerComputor / gTxScoreScalingThreshold / gVoteScoreScalingThreshold / gCustomMiningScoreScalingThreshold);
-        }
-    }
-
-    // Apply the new revenue formula
-    if (NULL != revenue)
-    {
-        copyMem(revenue, gRevenueComponents.revenue, sizeof(gRevenueComponents.revenue));
-    }
-}
-
-// New reveneue formula
-
 static constexpr unsigned int MAX_TX_LUT_INDEX = (unsigned int)(sizeof(gTxRevenuePoints) / sizeof(gTxRevenuePoints[0]) - 1);
 static constexpr unsigned int REVENUE_HALF_WINDOW = NUMBER_OF_COMPUTORS - 1;  // 675
 static constexpr unsigned int REVENUE_WINDOW_SIZE = 2 * REVENUE_HALF_WINDOW + 1;      // 1351
+static_assert(MAX_NUMBER_OF_TICKS_PER_EPOCH >= REVENUE_WINDOW_SIZE,
+    "MAX_NUMBER_OF_TICKS_PER_EPOCH must be >= REVENUE_WINDOW_SIZE; epochs shorter than one window produce zero revenue.");
 static constexpr unsigned long long REVENUE_SCALE = 1024;
 static constexpr unsigned long long REVENUE_BONUS_CAP = 256; // capacity for non-mandatory factor
 static constexpr unsigned int REVENUE_W_TX = 17;             // mandatory weight: TX (85%)
@@ -463,8 +380,7 @@ static_assert((unsigned long long)REVENUE_IPC * REVENUE_SCALE
     * (REVENUE_SCALE * REVENUE_SCALE + REVENUE_BONUS_CAP * REVENUE_SCALE) <= 0xFFFFFFFFFFFFFFFFULL,
     "V2 revenue formula intermediate can overflow u64");
 
-// TODO: create voting for this number
-static constexpr unsigned int REVENUE_DOGE_K = 4;
+static constexpr unsigned int REVENUE_DOGE_K = 2;
 static constexpr unsigned int REVENUE_CONTRACT_DIMS = contractCount;
 static constexpr unsigned int REVENUE_TX_DIM = NUMBER_OF_COMPUTORS + REVENUE_CONTRACT_DIMS + 1;
 static constexpr unsigned int m_SRC_COMPUTOR = 1;
