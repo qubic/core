@@ -1019,11 +1019,7 @@ protected:
                 locals.totalLockedAmountInEpoch217 += state.get().locker.get(locals.t)._lockedAmount;
             }
             locals.INITIALIZE_ROUNDINFO._totalLockedAmount = locals.totalLockedAmountInEpoch217;
-            for(locals.t = 216; locals.t >= 164; locals.t--)
-            {
-                locals.pre_epoch_balance += state.get()._currentRoundInfo.get(locals.t)._epochBonusAmount + state.get()._currentRoundInfo.get(locals.t)._totalLockedAmount;
-            }
-            locals.INITIALIZE_ROUNDINFO._epochBonusAmount = locals.current_balance - locals.pre_epoch_balance - locals.totalLockedAmountInEpoch217;
+            locals.INITIALIZE_ROUNDINFO._epochBonusAmount = 50227542196;
             state.mut()._initialRoundInfo.set(217, locals.INITIALIZE_ROUNDINFO);
             state.mut()._currentRoundInfo.set(217, locals.INITIALIZE_ROUNDINFO);
         }
