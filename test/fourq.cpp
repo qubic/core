@@ -408,3 +408,288 @@ TEST(TestFourQ, TestVerifyRejectsScalarEqualToCurveOrder)
     copyMem(atOrder + 32, ri, 32);
     EXPECT_FALSE(verify(publicKey, digest, atOrder)) << " scalar S == curve_order accepted";
 }
+
+// ---------------------------------------------------------------------------
+// Low-order (weak) public-key forgery.
+//
+// FourQ's group order is 392*r (cofactor 392 = 2^3 * 7^2, r = prime subgroup order).
+// Any public key whose order divides 392 (the 392-point cofactor subgroup) lets an
+// attacker forge a valid signature WITHOUT a private key, because h*A then depends only
+// on h mod (order of A) and is enumerable. The identity point is the worst case: a single
+// deterministic forgery is valid for EVERY message:
+//     pick any canonical S < r;  R = encode(S*G);  signature = (R, S)
+// verifies because S*G + h*A == S*G == R (h*A == O). The identity encodes as 01 00..00,
+// which is also the QX contract address. verify() must reject the whole cofactor subgroup.
+// See fourqExp.md.
+// ---------------------------------------------------------------------------
+namespace
+{
+    // Well-known low-order public keys, as raw 32-byte little-endian encodings (m256i limbs).
+    // Each is a genuine, canonical cofactor-subgroup point. (Non-canonical y==p aliases are
+    // intentionally NOT listed: decode() does not handle a literal y==p uniformly, so such
+    // encodings do not reliably decode back to their low-order base point -- the reason the
+    // proper remedy is canonical-y enforcement in decode(), tracked separately.)
+    struct WeakKey { const char* name; unsigned long long limb[4]; };
+    const WeakKey kWeakKeys[] = {
+        { "identity (0,1) order 1 (== QX address)", { 1, 0, 0, 0 } },                            // hits fast-path
+        { "NULL_ID (i,0) order 4",                  { 0, 0, 0, 0 } },                            // hits general check
+        { "(-i,0) order 4",                         { 0, 0, 0, 0x8000000000000000ULL } },        // hits general check
+        { "(0,-1) order 2",                         { 0xFFFFFFFFFFFFFFFEULL, 0x7FFFFFFFFFFFFFFFULL, 0, 0 } }, // general
+    };
+    constexpr int kNumWeakKeys = sizeof(kWeakKeys) / sizeof(kWeakKeys[0]);
+
+    void weakKeyBytes(const WeakKey& w, unsigned char out[32])
+    {
+        copyMem(out, w.limb, 32);
+    }
+
+    // Independent of verify(): does the key decode and is [392]*A the neutral point?
+    // True == A is a cofactor-subgroup (forgeable) point. Used to PROVE the test vectors
+    // are genuinely low-order, and to exercise cofactor_clearing directly.
+    bool isCofactorPoint(const unsigned char pubkey[32])
+    {
+        point_t A;
+        if (!decode(pubkey, A))
+        {
+            return false; // not a decodable curve point
+        }
+        point_extproj_t P;
+        point_setup(A, P);
+        cofactor_clearing(P);          // P = 392 * A
+        mod1271(P->x[0]);
+        mod1271(P->x[1]);
+        return (P->x[0][0] | P->x[0][1] | P->x[1][0] | P->x[1][1]) == 0; // projective X == 0
+    }
+
+    // Deterministic identity forgery: signature = encode(S*G) || S, with canonical S.
+    // Uses the library's own generator multiplication, exactly matching what verify()
+    // computes for the G term, so this is a genuine forgery (valid absent the guard).
+    void forgeIdentitySignature(unsigned long long sLow, unsigned char signature[64])
+    {
+        unsigned long long s[4] = { sLow, 0, 0, 0 };
+        point_t P;
+        ecc_mul_fixed(s, P);              // P = S * G
+        encode(P, signature);            // R = encode(S*G)  -> signature[0:32]
+        copyMem(signature + 32, s, 32);  // S                -> signature[32:64]
+    }
+
+    // A faithful copy of the SHIPPED verify() with the two low-order guards (identity
+    // fast-path + [392]*A==O cofactor check) intentionally REMOVED -- i.e. exactly the
+    // pre-fix verifier. Everything else (bit128 reject, canonical S<r reject, decode,
+    // ecc_mul_double, encode-compare) is kept identical. Used to prove a forgery would have
+    // been ACCEPTED before the fix and is REJECTED only because of it. If verify()'s
+    // non-guard logic ever changes, mirror it here.
+    bool verifyUnpatched(const unsigned char* publicKey, const unsigned char* messageDigest, const unsigned char* signature)
+    {
+        point_t A;
+        unsigned char temp[32 + 64], h[64];
+
+        if ((publicKey[15] & 0x80) || (signature[15] & 0x80))
+        {
+            return false;
+        }
+        // Canonical scalar S < curve_order (this predates the low-order fix).
+        {
+            const unsigned long long* s = (const unsigned long long*)(signature + 32);
+            static const unsigned long long r[4] = { CURVE_ORDER_0, CURVE_ORDER_1, CURVE_ORDER_2, CURVE_ORDER_3 };
+            bool canonical = false;
+            for (int i = 3; i >= 0; --i)
+            {
+                if (s[i] < r[i]) { canonical = true; break; }
+                if (s[i] > r[i]) { break; }
+            }
+            if (!canonical)
+            {
+                return false;
+            }
+        }
+        // <<< pre-fix: NO identity fast-path and NO [392]*A==O cofactor check here >>>
+        if (!decode(publicKey, A))
+        {
+            return false;
+        }
+        copyMem(temp, signature, 32);
+        copyMem(temp + 32, publicKey, 32);
+        copyMem(temp + 64, messageDigest, 32);
+        KangarooTwelve(temp, 32 + 64, h, 64);
+        if (!ecc_mul_double((unsigned long long*)(signature + 32), (unsigned long long*)h, A))
+        {
+            return false;
+        }
+        unsigned char encoded[32];
+        encode(A, encoded);
+        for (int j = 0; j < 32; ++j)
+        {
+            if (encoded[j] != signature[j])
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+// Sanity layer: the weak vectors really are cofactor-subgroup points (the forgeable
+// class), and a legitimate key is not. This validates the vectors used by the rejection
+// tests below and exercises cofactor_clearing end-to-end.
+TEST(TestFourQ, TestLowOrderVectorsAreCofactorPoints)
+{
+#ifdef __AVX512F__
+    initAVX512FourQConstants();
+#endif
+    for (int i = 0; i < kNumWeakKeys; ++i)
+    {
+        unsigned char pk[32];
+        weakKeyBytes(kWeakKeys[i], pk);
+        EXPECT_TRUE(isCofactorPoint(pk)) << " expected low-order: " << kWeakKeys[i].name;
+    }
+
+    unsigned char publicKey[32], digest[32], signature[64];
+    makeValidSignature(0, publicKey, digest, signature);
+    EXPECT_FALSE(isCofactorPoint(publicKey)) << " legitimate key misclassified as low-order";
+}
+
+// Headline forgery: the identity point {1,0,0,0} (== QX contract address) with a single
+// forged signature that is valid for EVERY message. verify() must reject it for all of
+// them. The positive control proves verify() is not trivially returning false.
+TEST(TestFourQ, TestVerifyRejectsIdentityForgery)
+{
+#ifdef __AVX512F__
+    initAVX512FourQConstants();
+#endif
+    unsigned char identity[32];
+    weakKeyBytes(kWeakKeys[0], identity); // {1,0,0,0}
+
+    // Positive control: a legitimate key + genuine signature still verifies.
+    {
+        unsigned char pub[32], dig[32], sig[64];
+        makeValidSignature(0, pub, dig, sig);
+        ASSERT_TRUE(verify(pub, dig, sig)) << " sanity: valid signature must verify";
+    }
+
+    const unsigned long long scalars[] = { 1ULL, 2ULL, 123456789ULL };
+    for (int si = 0; si < (int)(sizeof(scalars) / sizeof(scalars[0])); ++si)
+    {
+        unsigned char signature[64];
+        forgeIdentitySignature(scalars[si], signature);
+
+        // Message-independence is the hallmark of the identity attack: absent the guard
+        // this same (R,S) verifies for every message. Prove that directly per digest:
+        // pre-fix verifier ACCEPTS, shipped verifier REJECTS.
+        for (int d = 0; d < kNumVerifyVectors; ++d)
+        {
+            m256i md = test_utils::hexTo32Bytes(kVerifyDigests[d], 32);
+            EXPECT_TRUE(verifyUnpatched(identity, md.m256i_u8, signature))
+                << " pre-fix verifier should accept identity forgery (S=" << scalars[si] << ", digest idx " << d << ")";
+            EXPECT_FALSE(verify(identity, md.m256i_u8, signature))
+                << " identity forgery accepted (S=" << scalars[si] << ", digest idx " << d << ")";
+        }
+        unsigned char digest[32];
+        setMem(digest, 32, 0xAB);
+        EXPECT_TRUE(verifyUnpatched(identity, digest, signature))
+            << " pre-fix verifier should accept identity forgery for 0xAB digest (S=" << scalars[si] << ")";
+        EXPECT_FALSE(verify(identity, digest, signature))
+            << " identity forgery accepted for 0xAB digest (S=" << scalars[si] << ")";
+    }
+}
+
+// Defense in depth: verify() must reject every cofactor-subgroup public key (including the
+// non-canonical y==p aliases), whatever signature is presented. The guard fires right after
+// decode(), before the signature math. Each vector is first asserted to be genuinely
+// low-order, so the rejection is attributable to the weak-key guard and not to an incidental
+// signature mismatch.
+TEST(TestFourQ, TestVerifyRejectsAllLowOrderPublicKeys)
+{
+#ifdef __AVX512F__
+    initAVX512FourQConstants();
+#endif
+    unsigned char signature[64];
+    forgeIdentitySignature(7ULL, signature); // well-formed: R = encode(7*G), S = 7
+
+    unsigned char digest[32];
+    setMem(digest, 32, 0x5A);
+
+    for (int i = 0; i < kNumWeakKeys; ++i)
+    {
+        unsigned char pk[32];
+        weakKeyBytes(kWeakKeys[i], pk);
+        ASSERT_TRUE(isCofactorPoint(pk)) << " test vector not low-order: " << kWeakKeys[i].name;
+        EXPECT_FALSE(verify(pk, digest, signature))
+            << " low-order public key accepted: " << kWeakKeys[i].name;
+    }
+}
+
+// Real forged transactions the attacker executed on network. Each is a full Qubic
+// transaction (source | dest | amount | tick | inputType | inputSize | signature) that
+// spends QU *from the identity point* {1,0,0,0} == 01 00..00 == the QX contract address,
+// to two attacker-controlled wallets. They passed the old verify() and must now be rejected.
+// The digest is reproduced exactly as the node computes it in processBroadcastTransaction():
+//     KangarooTwelve(tx, totalSize - SIGNATURE_SIZE, digest, 32).
+TEST(TestFourQ, TestVerifyRejectsNetworkForgeries)
+{
+#ifdef __AVX512F__
+    initAVX512FourQConstants();
+#endif
+    const char* const kNetworkForgeries[] = {
+        "010000000000000000000000000000000000000000000000000000000000000091cfd01bb1d6b1d48e9f806a8ef65734ae6162fbb3b2643a0088c1046e55f776009435770000000072e878030000000052750c95db608b2ad33f260c13523f3392afdbeefcd071a824e3973403443d890f997c86e5c769fd2344c515a7ce19b4dffc30a06e6da2dab5a1bc09f2212300",
+        "010000000000000000000000000000000000000000000000000000000000000091cfd01bb1d6b1d48e9f806a8ef65734ae6162fbb3b2643a0088c1046e55f776009435770000000060e8780300000000304d8a0eef6d5e578f7fe3623f21d97debd5c1a77a2bad8f347ae4cf41256a61f31cd9c1d5280e2895ba8d3864e7e33cb9197d7e0fca47e38211277fb2960b00",
+        "01000000000000000000000000000000000000000000000000000000000000008220a28587c81abd47934c0f6e8af42d1b10182c494a3d46aa9908eaf83e606a00e40b5402000000e74a7803000000004c1357678e9aa76ef892379f94545e571a1435730c15b5ae366a1f34f9a8fa54834ba3e96e9c5b6407759e470b5ecceb5f233f067bbeecd72ebe0332b11f0200",
+        "01000000000000000000000000000000000000000000000000000000000000008220a28587c81abd47934c0f6e8af42d1b10182c494a3d46aa9908eaf83e606a00f2052a01000000bf487803000000009f660e0561ec753b2d2395ef84a8b305489c091fbba0cfa95f910cc13d56e67f542412901ff6107611d2d4facf038fe73193a3f8b1dff646be0a9100ce752600",
+        "0100000000000000000000000000000000000000000000000000000000000000d4902431eb401facb0e5f4c649b53801c3ad1228ba0294953922d2e662a66da301000000000000008d0d77030000000091f3a7dd1cf60d64a79efac0fe6f034a6848924a08f65d46059387a801761ebafc062f4764555f485fedbd34a7e536889d261582a46325cb5dd1e5b083412300",
+        "01000000000000000000000000000000000000000000000000000000000000004de5b0cd0b1f9638e12b9906cc36a39334835644d958318957bb37b648b5822f01000000000000003917770300000000ef46106b7a44f73e67f857b8b9f66e4c2a0ed960453fe55a4058d0e4c4a052d679d773ae43ec0bc24e200ae4ce28abb5e0a195d45c313358719b0c77ae131c00",
+        "01000000000000000000000000000000000000000000000000000000000000008220a28587c81abd47934c0f6e8af42d1b10182c494a3d46aa9908eaf83e606a01000000000000002b197703000000005cafd8c1dcf05b0eebf805cafb40d361848c13f94ce78640cfdb76fba0cddcde50ce8556637fdac894848fa18b18b5fdcbc49b0719ef505fcafe3100497f2200",
+        "01000000000000000000000000000000000000000000000000000000000000008220a28587c81abd47934c0f6e8af42d1b10182c494a3d46aa9908eaf83e606a00e40b5402000000a0437703000000009573ad5ce6f0e8d8d02a28297334c3009a319580e63c27c5a1b257fe2e056fcc0b8307956b52c223eba07eb5a8a0384ba044626aed71637ef3238ad3ee160c00"
+    };
+    constexpr int n = sizeof(kNetworkForgeries) / sizeof(kNetworkForgeries[0]);
+
+    auto bytesEqual = [](const unsigned char* a, const unsigned char* b, int len) {
+        for (int j = 0; j < len; ++j) { if (a[j] != b[j]) return false; }
+        return true;
+    };
+    unsigned char identity[32];
+    setMem(identity, 32, 0);
+    identity[0] = 1;
+
+    for (int i = 0; i < n; ++i)
+    {
+        const std::string hex = kNetworkForgeries[i];
+        ASSERT_EQ(hex.size() % 2, (size_t)0) << " vector " << i << " has odd hex length";
+        const int totalBytes = (int)(hex.size() / 2);
+        ASSERT_GE(totalBytes, 80 + 64) << " vector " << i << " too short to be a transaction";
+
+        unsigned char tx[256];
+        ASSERT_LE(totalBytes, (int)sizeof(tx));
+        test_utils::hexToByte(hex, totalBytes, tx);
+
+        // The spent-from account is the identity / QX address, and it is a low-order point.
+        EXPECT_TRUE(bytesEqual(tx, identity, 32)) << " vector " << i << " source is not the identity point";
+        EXPECT_TRUE(isCofactorPoint(tx)) << " vector " << i << " source is not a cofactor point";
+
+        // Digest exactly as the node computes it: K12 over everything but the 64-byte signature.
+        const int digestLen = totalBytes - 64;
+        unsigned char digest[32];
+        KangarooTwelve(tx, digestLen, digest, 32);
+        const unsigned char* signature = tx + digestLen;
+
+        // Independent structural check that this really is a valid identity forgery: for
+        // A = identity, verify accepts iff encode(S*G) == R (since h*A == O).
+        {
+            unsigned long long S[4];
+            copyMem(S, signature + 32, 32);
+            point_t P;
+            ecc_mul_fixed(S, P);
+            unsigned char R[32];
+            encode(P, R);
+            EXPECT_TRUE(bytesEqual(R, signature, 32))
+                << " vector " << i << " is not a valid identity forgery (encode(S*G) != R)";
+        }
+
+        // The before/after proof, on the SAME input and digest:
+        //   pre-fix verifier  -> ACCEPTS (this is why the attack worked on network)
+        //   shipped verifier   -> REJECTS (the low-order guard is what stops it)
+        EXPECT_TRUE(verifyUnpatched(tx, digest, signature))
+            << " vector " << i << ": forgery did NOT pass the pre-fix verifier (setup wrong)";
+        EXPECT_FALSE(verify(tx, digest, signature))
+            << " FORGERY ACCEPTED for vector " << i << " -- the fix is NOT working";
+    }
+}

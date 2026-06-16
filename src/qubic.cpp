@@ -2637,6 +2637,16 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
     const m256i& transactionDigest = nextTickData.transactionDigests[transactionIndex];
     const m256i& dataLock = nextTickData.timelock;
 
+    // Reject transactions whose source is a smart-contract address ({contractIndex, 0, 0, 0}).
+    // No legitimate keypair maps to such an address, so it can never be a real signer. Some of
+    // these addresses are even low-order FourQ points whose signatures are forgeable (e.g. the
+    // QX contract address {1,0,0,0} is the identity point), which would let an attacker move
+    // funds "from" a contract. Never process such a transaction.
+    if (isPublicKeyOfContract(transaction->sourcePublicKey))
+    {
+        return;
+    }
+
     // Record the tx with digest
     ts.transactionsDigestAccess.acquireLock();
     ts.transactionsDigestAccess.insertTransaction(transactionDigest, transaction);
