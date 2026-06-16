@@ -1011,19 +1011,22 @@ protected:
             locals.pre_epoch_balance += state.get()._currentRoundInfo.get(locals.t)._epochBonusAmount + state.get()._currentRoundInfo.get(locals.t)._totalLockedAmount;
         }
 
-        if(locals.current_balance - locals.pre_epoch_balance > QEARN_MAX_BONUS_AMOUNT)
+        if (state.get()._initialRoundInfo.get(qpi.epoch())._totalLockedAmount == 0) 
         {
-            qpi.burn(locals.current_balance - locals.pre_epoch_balance - QEARN_MAX_BONUS_AMOUNT);
-            locals.INITIALIZE_ROUNDINFO._epochBonusAmount = QEARN_MAX_BONUS_AMOUNT;
+            if(locals.current_balance - locals.pre_epoch_balance > QEARN_MAX_BONUS_AMOUNT)
+            {
+                qpi.burn(locals.current_balance - locals.pre_epoch_balance - QEARN_MAX_BONUS_AMOUNT);
+                locals.INITIALIZE_ROUNDINFO._epochBonusAmount = QEARN_MAX_BONUS_AMOUNT;
+            }
+            else
+            {
+                locals.INITIALIZE_ROUNDINFO._epochBonusAmount = locals.current_balance - locals.pre_epoch_balance;
+            }
+            locals.INITIALIZE_ROUNDINFO._totalLockedAmount = 0;
+    
+            state.mut()._initialRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
+            state.mut()._currentRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);   
         }
-        else
-        {
-            locals.INITIALIZE_ROUNDINFO._epochBonusAmount = locals.current_balance - locals.pre_epoch_balance;
-        }
-        locals.INITIALIZE_ROUNDINFO._totalLockedAmount = 0;
-
-        state.mut()._initialRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
-        state.mut()._currentRoundInfo.set(qpi.epoch(), locals.INITIALIZE_ROUNDINFO);
 	}
 
     struct END_EPOCH_locals
