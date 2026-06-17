@@ -42,7 +42,8 @@ constexpr uint64 WOLFPACK_DISTRIBUTION_PERMILLE_EXEC_RESERVE = 10;   // NEW: ret
 static_assert(WOLFPACK_DISTRIBUTION_PERMILLE_HOLDERS + WOLFPACK_DISTRIBUTION_PERMILLE_SHAREHOLDERS
             + WOLFPACK_DISTRIBUTION_PERMILLE_CLAN + WOLFPACK_DISTRIBUTION_PERMILLE_REINVEST
             + WOLFPACK_DISTRIBUTION_PERMILLE_EXEC_RESERVE == 1000);
-constexpr uint64 WOLFPACK_SC_ASSET_NAME = 1347897159ULL; // "GGWP" as uint64
+constexpr uint64 WOLFPACK_SC_ASSET_NAME = 1347897159ULL; // "GGWP" as uint64 — the contract's own 676 IPO/SC shares (issuer = NULL_ID)
+constexpr uint64 WOLFPACK_WP_ASSET_NAME = 20567ULL;      // "WP" as uint64 — the EXTERNAL staking/holder token issued on QX by MLMWPS... (distinct from the SC shares above)
 
 // --- Shareholder governance: change admin / reinvest address by >51% of SC shares ---
 constexpr uint64 WOLFPACK_TOTAL_SC_SHARES = 676;       // total IPO shares = 100%
@@ -934,7 +935,7 @@ struct WOLFPACK : public ContractBase
 
     INITIALIZE()
     {
-        // GGWP token (external, issued on QX by MLMWPS...)
+        // WP token (external staking/holder token, issued on QX by MLMWPS...)
         state.mut().wpToken.issuer = ID(
             _M, _L, _M, _W, _P, _S, _Q, _N,
             _V, _A, _I, _B, _R, _F, _D, _H,
@@ -944,7 +945,7 @@ struct WOLFPACK : public ContractBase
             _E, _F, _D, _U, _R, _P, _W, _I,
             _P, _Q, _X, _A, _C, _Y, _O, _E
         );
-        state.mut().wpToken.assetName = WOLFPACK_SC_ASSET_NAME; // "GGWP"
+        state.mut().wpToken.assetName = WOLFPACK_WP_ASSET_NAME; // "WP" — external token on QX (NOT the "GGWP" SC shares)
 
         // Admin and reinvestment recipient are hardcoded to the GGWP token
         // issuer identity. Hardcoding the admin (instead of a NULL_ID bootstrap)
