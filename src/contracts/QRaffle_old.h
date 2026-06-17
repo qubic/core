@@ -670,7 +670,7 @@ protected:
 			LOG_INFO(locals.log);
 			return ;
 		}
-		if (input.entryAmount <= 0)
+		if (input.entryAmount < QRAFFLE_MIN_QRAFFLE_AMOUNT || input.entryAmount > QRAFFLE_MAX_QRAFFLE_AMOUNT)
 		{
 			output.returnCode = QRAFFLE_INVALID_ENTRY_AMOUNT;
 			locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_invalidEntryAmount, 0 };
@@ -684,7 +684,15 @@ protected:
 			LOG_INFO(locals.log);
 			return ;
 		}
-		
+		// Reject internal tokens: QRAFFLE shares and QXMR are reserved for dividends/registration.
+		if ((input.tokenName == QRAFFLE_ASSET_NAME && input.tokenIssuer == NULL_ID)
+			|| (input.tokenName == QRAFFLE_QXMR_ASSET_NAME && input.tokenIssuer == state.get().QXMRIssuer))
+		{
+			output.returnCode = QRAFFLE_INVALID_TOKEN_TYPE;
+			locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_invalidTokenType, 0 };
+			LOG_INFO(locals.log);
+			return ;
+		}
 		locals.proposal.token.issuer = input.tokenIssuer;
 		locals.proposal.token.assetName = input.tokenName;
 		locals.proposal.entryAmount = input.entryAmount;
@@ -864,7 +872,18 @@ protected:
 			LOG_INFO(locals.log);
 			return ;
 		}
-		
+		// Only registered members may deposit.
+		if (state.get().registers.contains(qpi.invocator()) == 0)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.returnCode = QRAFFLE_UNREGISTERED;
+			locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_unregistered, 0 };
+			LOG_INFO(locals.log);
+			return ;
+		}
 		if (input.indexOfTokenRaffle >= state.get().numberOfActiveTokenRaffle)
 		{
 			if (qpi.invocationReward() > 0)

@@ -10,8 +10,7 @@ constexpr uint32 QBAY_MIN_DELTA_SIZE = 1000000;
 constexpr uint32 QBAY_FEE_NFT_SALE_MARKET = 20;
 constexpr uint32 QBAY_FEE_NFT_SALE_SHAREHOLDERS = 10;
 // Max royalty percent leaving room for market (20/1000) and shareholder (10/1000) fees on QU sales.
-// 100 - (QBAY_FEE_NFT_SALE_MARKET + QBAY_FEE_NFT_SALE_SHAREHOLDERS) / 10 = 97U
-constexpr uint32 QBAY_MAX_ROYALTY_PERCENT = 97U;
+constexpr uint32 QBAY_MAX_ROYALTY_PERCENT = 100 - div(QBAY_FEE_NFT_SALE_MARKET + QBAY_FEE_NFT_SALE_SHAREHOLDERS, 10U);
 
 struct QBAY2
 {

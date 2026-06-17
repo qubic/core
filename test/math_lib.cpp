@@ -197,3 +197,57 @@ TEST(TestCoreMathLib, IRootVsFloorDouble)
     expectRoot<3>(0xFFFFFFFFFFFFFFFFULL);
     expectRoot<8>(0xFFFFFFFFFFFFFFFFULL);
 }
+
+TEST(TestCoreMathLib, IRootK64Integer)
+{
+    EXPECT_EQ(math_lib::irootK64<1>(0), 0ULL);
+    EXPECT_EQ(math_lib::irootK64<1>(1), 1ULL);
+    EXPECT_EQ(math_lib::irootK64<1>(12345), 12345ULL);
+
+    EXPECT_EQ(math_lib::irootK64<2>(0), 0ULL);
+    EXPECT_EQ(math_lib::irootK64<2>(1), 1ULL);
+    EXPECT_EQ(math_lib::irootK64<2>(3), 1ULL);
+    EXPECT_EQ(math_lib::irootK64<2>(4), 2ULL);
+    EXPECT_EQ(math_lib::irootK64<2>(9), 3ULL);
+    EXPECT_EQ(math_lib::irootK64<2>(15), 3ULL);
+    EXPECT_EQ(math_lib::irootK64<2>(16), 4ULL);
+
+    EXPECT_EQ(math_lib::irootK64<3>(0), 0ULL);
+    EXPECT_EQ(math_lib::irootK64<3>(7), 1ULL);
+    EXPECT_EQ(math_lib::irootK64<3>(8), 2ULL);
+    EXPECT_EQ(math_lib::irootK64<3>(26), 2ULL);
+    EXPECT_EQ(math_lib::irootK64<3>(27), 3ULL);
+
+    EXPECT_EQ(math_lib::irootK64<4>(0), 0ULL);
+    EXPECT_EQ(math_lib::irootK64<4>(15), 1ULL);
+    EXPECT_EQ(math_lib::irootK64<4>(16), 2ULL);
+    EXPECT_EQ(math_lib::irootK64<4>(80), 2ULL);
+    EXPECT_EQ(math_lib::irootK64<4>(81), 3ULL);
+    EXPECT_EQ(math_lib::irootK64<4>(1024), 5ULL);
+
+    EXPECT_LE(math_lib::irootK64<4>(81), math_lib::irootK64<4>(82));
+    EXPECT_LE(math_lib::irootK64<4>(82), math_lib::irootK64<4>(255));
+    EXPECT_LE(math_lib::irootK64<4>(255), math_lib::irootK64<4>(256));
+}
+
+TEST(TestCoreMathLib, IpowEdgeCases)
+{
+    constexpr unsigned long long u64Max = 0xFFFFFFFFFFFFFFFFULL;
+
+    EXPECT_EQ(math_lib::ipow(0, 0), 1ULL);
+    EXPECT_EQ(math_lib::ipow(0, 1), 0ULL);
+    EXPECT_EQ(math_lib::ipow(0, 10), 0ULL);
+
+    EXPECT_EQ(math_lib::ipow(1, 0), 1ULL);
+    EXPECT_EQ(math_lib::ipow(1, 1), 1ULL);
+    EXPECT_EQ(math_lib::ipow(1, 1000), 1ULL);
+
+    EXPECT_EQ(math_lib::ipow(1024, 0), 1ULL);
+    EXPECT_EQ(math_lib::ipow(1024, 1), 1024ULL);
+    EXPECT_EQ(math_lib::ipow(1024, 2), 1048576ULL);
+    EXPECT_EQ(math_lib::ipow(1024, 3), 1073741824ULL);
+
+    // Max overflow
+    EXPECT_EQ(math_lib::ipow(2, 64), u64Max);
+    EXPECT_EQ(math_lib::ipow(1024, 7), u64Max);
+}

@@ -2,7 +2,7 @@
 
 // #define INCLUDE_CONTRACT_TEST_EXAMPLES
 
-// #define NO_GGWP
+// #define OLD_QRAFFLE
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
@@ -608,14 +608,9 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                         {
                                             unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
                                             score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(solution_nonce.m256i_u8);
-                                            int threshold = (system.epoch < MAX_NUMBER_EPOCH) ?
+                                            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ?
                                                 solutionThreshold[system.epoch][selectedAlgo]
                                                 : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
-                                            if (selectedAlgo == score_engine::AlgoType::HyperIdentity
-                                                && system.tick < HYPERIDENTITY_SOLUTION_THRESHOLD_ACTIVATION_TICK)
-                                            {
-                                                threshold = HYPERIDENTITY_SOLUTION_THRESHOLD_PRE_ACTIVATION;
-                                            }
                                             if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
                                                 && score->isValidScore(solutionScore, selectedAlgo)
                                                 && score->isGoodScore(solutionScore, threshold, selectedAlgo))
@@ -1358,10 +1353,6 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.randomMiningSeed = score->currentRandomSeed;
     respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch][score_engine::AlgoType::HyperIdentity] : HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;
     respondedSystemInfo.solutionAdditionalThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch][score_engine::AlgoType::Addition] : ADDITION_SOLUTION_THRESHOLD_DEFAULT;
-    if (system.tick < HYPERIDENTITY_SOLUTION_THRESHOLD_ACTIVATION_TICK)
-    {
-        respondedSystemInfo.solutionThreshold = HYPERIDENTITY_SOLUTION_THRESHOLD_PRE_ACTIVATION;
-    }
 
     respondedSystemInfo.totalSpectrumAmount = spectrumInfo.totalAmount;
     respondedSystemInfo.currentEntityBalanceDustThreshold = (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf;
@@ -2439,14 +2430,9 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
         {
             resourceTestingDigest ^= solutionScore;
             KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
-            int threshold = (system.epoch < MAX_NUMBER_EPOCH) ?
+            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ?
                 solutionThreshold[system.epoch][selectedAlgo]
                 : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
-            if (selectedAlgo == score_engine::AlgoType::HyperIdentity
-                && system.tick < HYPERIDENTITY_SOLUTION_THRESHOLD_ACTIVATION_TICK)
-            {
-                threshold = HYPERIDENTITY_SOLUTION_THRESHOLD_PRE_ACTIVATION;
-            }
             if (score->isGoodScore(solutionScore, threshold, selectedAlgo))
             {
                 // Solution deposit return
@@ -3985,27 +3971,6 @@ static void endEpoch()
     // Only issue qus if the max supply is not yet reached
     if (spectrumInfo.totalAmount + ISSUANCE_RATE <= MAX_SUPPLY)
     {
-        // Compute revenue scores of computors
-        unsigned long long revenueScore[NUMBER_OF_COMPUTORS];
-        setMem(revenueScore, sizeof(revenueScore), 0);
-        for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
-        {
-            ts.tickData.acquireLock();
-            TickData& td = ts.tickData.getByTickInCurrentEpoch(tick);
-            if (td.epoch == system.epoch)
-            {
-                unsigned int numberOfTransactions = 0;
-                for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
-                {
-                    if (!isZero(td.transactionDigests[transactionIndex]))
-                    {
-                        numberOfTransactions++;
-                    }
-                }
-                revenueScore[tick % NUMBER_OF_COMPUTORS] += gTxRevenuePoints[numberOfTransactions];
-            }
-            ts.tickData.releaseLock();
-        }
 
         // Collect mining scores for V2
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -4025,25 +3990,10 @@ static void endEpoch()
         }
         computeRevenueV2(gEpochRevenueData);
 
-        // Multi dimension revenue in shadow mode
+        // Multi-dimension revenue: computed for offline comparison; paid to computors
+        // only when USE_REVENUE_MULTI_DIMENSION is set (see src/revenue.h).
         gMultiDimRevenue.totalTicks = system.tick - system.initialTick;
         computeMultiDimRevenue();
-
-        // Save data of custom mining.
-        {
-            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-            {
-                gRevenueComponents.voteScore[i] = voteCounter.getVoteCount(i);
-                gRevenueComponents.txScore[i] = revenueScore[i];
-            }
-            setMem(gRevenueComponents.customMiningScore, sizeof(gRevenueComponents.customMiningScore), 0);
-            computeRevenue(
-                gRevenueComponents.txScore,
-                gRevenueComponents.voteScore,
-                gRevenueComponents.customMiningScore,
-                gRevenueComponents.revenue);
-        }
-
 
         // Get revenue donation data by calling contract GQMPROP::GetRevenueDonation()
         QpiContextUserFunctionCall qpiContext(GQMPROP::__contract_index);
@@ -4057,10 +4007,10 @@ static void endEpoch()
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             // Compute initial computor revenue, reducing arbitrator revenue
-#if USE_REVENUE_V2
-            long long revenue = gEpochRevenueData.v2Revenue[computorIndex];
+#if USE_REVENUE_MULTI_DIMENSION
+            long long revenue = gMultiDimRevenue.revenue[computorIndex];
 #else
-            long long revenue = gRevenueComponents.revenue[computorIndex];
+            long long revenue = gEpochRevenueData.v2Revenue[computorIndex];
 #endif
             arbitratorRevenue -= revenue;
 
@@ -4573,10 +4523,13 @@ static bool loadAllNodeStates()
     long long mdSize = load(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME, sizeof(gMultiDimRevenue), (unsigned char*)&gMultiDimRevenue, directory);
     if (mdSize != sizeof(gMultiDimRevenue))
     {
-        // SHADOW: gMultiDimRevenue is computed but not applied to balances, so zero+continue is safe.
-        // TODO: when applied this must return false
+#if USE_REVENUE_MULTI_DIMENSION
+        logToConsole(L"Failed to load multi dim revenue snapshot");
+        return false;
+#else
         logToConsole(L"Multi dim revenue snapshot missing/mismatch (shadow mode), zeroing");
         setMem(&gMultiDimRevenue, sizeof(gMultiDimRevenue), 0);
+#endif                                                                                                                 
     }
 
     // update own computor indices
