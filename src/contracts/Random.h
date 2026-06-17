@@ -23,7 +23,6 @@ public:
 
 	struct RevealAndCommit_locals
 	{
-		bit_4096 zeroReveal;
 		uint32 stream;
 		uint32 collateralTier;
 		uint32 i;
@@ -203,7 +202,7 @@ private:
 
 		locals.stream = mod<uint32>(qpi.tick(), 3);
 
-		if (input.reveal != locals.zeroReveal)
+		if (input.reveal != BIT4096_ZERO)
 		{
 			// Reveal path: verify preimage of prior commit and re-commit for next round.
 			for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
@@ -215,7 +214,7 @@ private:
 				}
 			}
 			if (locals.i == state.get().populations.get(locals.stream) ||
-			    state.get().reveals.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) != locals.zeroReveal ||
+			    state.get().reveals.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) != BIT4096_ZERO ||
 			    qpi.K12(input.reveal) != state.get().commits.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) ||
 			    state.get().revealOrCommitFlags.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i)) // same-tick commit+reveal is forbidden
 			{
@@ -267,7 +266,7 @@ private:
 		state.mut().providers.set(locals.index, qpi.invocator());
 		state.mut().collateralTiers.set(locals.index, locals.collateralTier);
 		state.mut().commits.set(locals.index, input.commit);
-		state.mut().reveals.set(locals.index, locals.zeroReveal);
+		state.mut().reveals.set(locals.index, BIT4096_ZERO);
 
 		// Lock collateral until future reveal (refund) or no-show (slash).
 		state.mut().lockedCollateralAmounts.set(locals.index, qpi.invocationReward());
@@ -280,7 +279,6 @@ private:
 
 	struct END_TICK_locals
 	{
-		bit_4096 zeroReveal; // TODO: replace with a QPI/global zero constant
 		bit_4096 entropy;
 		uint32 stream;
 		uint32 i, j;
@@ -298,7 +296,7 @@ private:
 		// Entropy for this stream is recomputed from scratch every cycle.
 		for (locals.i = 0; locals.i < 10; locals.i++)
 		{
-			state.mut().entropy.set(locals.stream * 10 + locals.i, locals.zeroReveal);
+			state.mut().entropy.set(locals.stream * 10 + locals.i, BIT4096_ZERO);
 		}
 
 		// Reset contribution flags; only this tick's reveals can satisfy BuyEntropy trustee checks.
@@ -352,7 +350,7 @@ private:
 				state.mut().providers.set(locals.lastIndex, id::zero());
 				state.mut().collateralTiers.set(locals.lastIndex, 0);
 				state.mut().commits.set(locals.lastIndex, id::zero());
-				state.mut().reveals.set(locals.lastIndex, locals.zeroReveal);
+				state.mut().reveals.set(locals.lastIndex, BIT4096_ZERO);
 				state.mut().lockedCollateralAmounts.set(locals.lastIndex, 0);
 				state.mut().revealOrCommitFlags.set(locals.lastIndex, 0);
 				state.mut().revealedThisTickFlags.set(locals.lastIndex, 0);
@@ -388,7 +386,7 @@ private:
 						state.mut().contributedToEntropyFlags.set(locals.index, 1);
 					}
 					// Clear reveal regardless — provider can reveal again next round.
-					state.mut().reveals.set(locals.index, locals.zeroReveal);
+					state.mut().reveals.set(locals.index, BIT4096_ZERO);
 				}
 
 				state.mut().revealOrCommitFlags.set(locals.index, 0);
@@ -423,7 +421,7 @@ private:
 				state.mut().providers.set(locals.lastIndex, id::zero());
 				state.mut().collateralTiers.set(locals.lastIndex, 0);
 				state.mut().commits.set(locals.lastIndex, id::zero());
-				state.mut().reveals.set(locals.lastIndex, locals.zeroReveal);
+				state.mut().reveals.set(locals.lastIndex, BIT4096_ZERO);
 				state.mut().lockedCollateralAmounts.set(locals.lastIndex, 0);
 				state.mut().revealOrCommitFlags.set(locals.lastIndex, 0);
 				state.mut().revealedThisTickFlags.set(locals.lastIndex, 0);
@@ -438,7 +436,7 @@ private:
 		{
 			if (locals.collateralTierFlags & (1 << locals.i))
 			{
-				state.mut().entropy.set(locals.stream * 10 + locals.i, locals.zeroReveal);
+				state.mut().entropy.set(locals.stream * 10 + locals.i, BIT4096_ZERO);
 			}
 		}
 	}

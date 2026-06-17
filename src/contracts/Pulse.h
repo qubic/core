@@ -44,8 +44,7 @@ struct PULSE2
 struct PULSE : public ContractBase
 {
 public:
-	template<typename Key, typename T, uint64 L>
-	struct HashMapConverter
+	template<typename Key, typename T, uint64 L> struct HashMapConverter
 	{
 		void convert(const HashMap<Key, T, L>& hashMap, Array<T, L>& array)
 		{
@@ -75,16 +74,8 @@ public:
 	friend EState operator|(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) | static_cast<uint8>(b)); }
 	friend EState operator&(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) & static_cast<uint8>(b)); }
 	friend EState operator~(const EState& a) { return static_cast<EState>(~static_cast<uint8>(a)); }
-	template<typename T>
-	friend bool operator==(const EState& a, const T& b)
-	{
-		return static_cast<uint8>(a) == b;
-	}
-	template<typename T>
-	friend bool operator!=(const EState& a, const T& b)
-	{
-		return !(a == b);
-	}
+	template<typename T> friend bool operator==(const EState& a, const T& b) { return static_cast<uint8>(a) == b; }
+	template<typename T> friend bool operator!=(const EState& a, const T& b) { return !(a == b); }
 
 	// Public return codes for user procedures/functions.
 	enum class EReturnCode : uint8
@@ -109,6 +100,8 @@ public:
 	{
 		id player;
 		Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> digits;
+
+		bool isValid() const { return !isZero(player); }
 	};
 
 	struct AutoParticipant
@@ -321,6 +314,9 @@ public:
 		uint64 slotsLeft;
 		uint64 randomSeed;
 		uint64 tempSeed;
+		m256i randomDigest;
+		RANDOM::BuyEntropy_input buyEntropyInput;
+		RANDOM::BuyEntropy_output buyEntropyOutput;
 		uint16 i;
 		Ticket ticket;
 		GetRandomDigits_input randomInput;
@@ -328,9 +324,10 @@ public:
 
 		struct RandomData
 		{
-			m256i prevSpectrumDigest;
+			bit_4096 entropy;
 			AllocateRandomTickets_input allocateInput;
 			sint64 ticketCounter;
+			uint32 tick;
 		} randomData;
 	};
 
@@ -352,6 +349,7 @@ public:
 		ChargeTicketsFromPlayer_output chargeOutput;
 		AllocateRandomTickets_input allocateInput;
 		AllocateRandomTickets_output allocateOutput;
+		sint64 refundAmount;
 	};
 
 	struct FindAutoParticipant_input
@@ -420,14 +418,6 @@ public:
 		uint64 affordable;
 		uint64 toBuy;
 		uint64 spend;
-		uint64 seedIndex;
-		m256i mixedSpectrumValue;
-		uint64 randomSeed;
-		uint64 tempSeed;
-		uint16 i;
-		Ticket ticket;
-		GetRandomDigits_input randomInput;
-		GetRandomDigits_output randomOutput;
 		BuyRandomTickets_input buyRandomTicketsInput;
 		BuyRandomTickets_output buyRandomTicketsOutput;
 	};
@@ -728,6 +718,15 @@ public:
 		sint64 shareholdersHolderShares;
 	};
 
+	using ReturnAllTickets_input = NoData;
+	using ReturnAllTickets_output = NoData;
+
+	struct ReturnAllTickets_locals
+	{
+		Ticket ticket;
+		sint64 i;
+	};
+
 	struct SettleRound_input
 	{
 	};
@@ -748,16 +747,30 @@ public:
 		uint64 prize;
 		uint64 totalPrize;
 		uint64 reservedBalance;
-		m256i mixedSpectrumValue;
+		m256i randomDigest;
+		RANDOM::BuyEntropy_input buyEntropyInput;
+		RANDOM::BuyEntropy_output buyEntropyOutput;
 		uint64 randomSeed;
 		GetRandomDigits_input randomInput;
 		GetRandomDigits_output randomOutput;
 		Ticket ticket;
+		Entity entity;
 		ComputePrize_locals computePrizeLocals;
 		FillWinnersInfo_input fillWinnersInfoInput;
 		FillWinnersInfo_output fillWinnersInfoOutput;
 		TransferTokenToShareholder_input transferInput;
 		TransferTokenToShareholder_output transferOutput;
+		ReturnAllTickets_input returnAllTicketsInput;
+		ReturnAllTickets_output returnAllTicketsOutput;
+
+		struct SettleEntropyData
+		{
+			bit_4096 entropy;
+			sint64 ticketCounter;
+			sint64 ticketPrice;
+			uint32 tick;
+			uint16 epoch;
+		} settleEntropyData;
 	};
 
 	struct ProcessAutoTickets_input
@@ -865,7 +878,7 @@ public:
 			state.mut().drawHour = PULSE_DEFAULT_DRAW_HOUR;
 		}
 
-		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), state.mut().lastDrawDateStamp);
+		RL::makeDateStamp(qpi.year(), qpi.month(), qpi.day(), state.mut().lastDrawDateStamp);
 		enableBuyTicket(state, state.get().lastDrawDateStamp != PULSE_DEFAULT_INIT_TIME);
 		if (state.get().lastDrawDateStamp != PULSE_DEFAULT_INIT_TIME)
 		{
@@ -898,7 +911,7 @@ public:
 			return;
 		}
 
-		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
+		RL::makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
 
 		if (locals.currentDateStamp == PULSE_DEFAULT_INIT_TIME)
 		{
@@ -1038,9 +1051,9 @@ public:
 
 		output.epoch = qpi.epoch();
 		output.lastDrawDateStamp = state.get().lastDrawDateStamp;
-		output.ticketCounter = static_cast<uint16>(min(static_cast<uint64>(max(state.get().ticketCounter, 0LL)), state.get().tickets.capacity()));
+		output.ticketCounter = static_cast<uint16>(RL::min(static_cast<uint64>(RL::max(state.get().ticketCounter, 0LL)), state.get().tickets.capacity()));
 		output.maxPlayers = static_cast<uint16>(state.get().tickets.capacity());
-		output.slotsLeft = static_cast<uint16>(min(static_cast<uint64>(max(locals.slotsLeft, 0LL)), state.get().tickets.capacity()));
+		output.slotsLeft = static_cast<uint16>(RL::min(static_cast<uint64>(RL::max(locals.slotsLeft, 0LL)), state.get().tickets.capacity()));
 		output.currentState = static_cast<uint8>(state.get().currentState);
 		output.drawHour = state.get().drawHour;
 		output.schedule = state.get().schedule;
@@ -1242,12 +1255,12 @@ public:
 
 		if (state.get().maxAutoTicketsPerUser > 0)
 		{
-			input.desiredTickets = min(input.desiredTickets, static_cast<sint16>(state.get().maxAutoTicketsPerUser));
+			input.desiredTickets = RL::min(input.desiredTickets, static_cast<sint16>(state.get().maxAutoTicketsPerUser));
 		}
 
 		locals.userBalance =
 		    qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX);
-		input.amount = min(locals.userBalance, input.amount);
+		input.amount = RL::min(locals.userBalance, input.amount);
 
 		locals.totalPrice = smul(state.get().ticketPrice, static_cast<sint64>(input.desiredTickets));
 		if (input.amount < locals.totalPrice)
@@ -1322,7 +1335,7 @@ public:
 			return;
 		}
 
-		locals.withdrawAmount = (input.amount <= 0) ? locals.entry.deposit : min(input.amount, locals.entry.deposit);
+		locals.withdrawAmount = (input.amount <= 0) ? locals.entry.deposit : RL::min(input.amount, locals.entry.deposit);
 
 		if (locals.withdrawAmount == 0)
 		{
@@ -1370,7 +1383,7 @@ public:
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
 			return;
 		}
-		input.desiredTickets = max<sint16>(input.desiredTickets, -1);
+		input.desiredTickets = RL::max<sint16>(input.desiredTickets, -1);
 		if (input.desiredTickets == 0)
 		{
 			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
@@ -1381,7 +1394,7 @@ public:
 		{
 			if (state.get().maxAutoTicketsPerUser > 0)
 			{
-				input.desiredTickets = min(input.desiredTickets, static_cast<sint16>(state.get().maxAutoTicketsPerUser));
+				input.desiredTickets = RL::min(input.desiredTickets, static_cast<sint16>(state.get().maxAutoTicketsPerUser));
 			}
 
 			state.get().autoParticipants.get(qpi.invocator(), locals.entry);
@@ -1418,7 +1431,7 @@ public:
 			return;
 		}
 
-		input.maxTicketsPerUser = min(input.maxTicketsPerUser, PULSE_MAX_NUMBER_OF_PLAYERS);
+		input.maxTicketsPerUser = RL::min(input.maxTicketsPerUser, PULSE_MAX_NUMBER_OF_PLAYERS);
 
 		state.mut().maxAutoTicketsPerUser = input.maxTicketsPerUser;
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
@@ -1430,7 +1443,7 @@ public:
 			while (locals.index != NULL_INDEX)
 			{
 				locals.autoParticipant = state.get().autoParticipants.value(locals.index);
-				locals.autoParticipant.desiredTickets = min(locals.autoParticipant.desiredTickets, state.get().maxAutoTicketsPerUser);
+				locals.autoParticipant.desiredTickets = RL::min(locals.autoParticipant.desiredTickets, state.get().maxAutoTicketsPerUser);
 				state.mut().autoParticipants.replace(state.get().autoParticipants.key(locals.index), locals.autoParticipant);
 
 				locals.index = state.get().autoParticipants.nextElementIndex(locals.index);
@@ -1486,7 +1499,7 @@ public:
 		locals.ticket.player = qpi.invocator();
 		locals.ticket.digits = input.digits;
 		state.mut().tickets.set(state.get().ticketCounter, locals.ticket);
-		state.mut().ticketCounter = min(static_cast<uint64>(state.get().ticketCounter) + 1ull, state.get().tickets.capacity());
+		state.mut().ticketCounter = RL::min(static_cast<uint64>(state.get().ticketCounter) + 1ull, state.get().tickets.capacity());
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 	}
@@ -1519,6 +1532,17 @@ public:
 		locals.allocateInput.player = qpi.invocator();
 		locals.allocateInput.count = locals.prepareOutput.count;
 		CALL(AllocateRandomTickets, locals.allocateInput, locals.allocateOutput);
+
+		if (locals.allocateOutput.returnCode != toReturnCode(EReturnCode::SUCCESS))
+		{
+			locals.refundAmount =
+			    static_cast<sint64>(smul(static_cast<uint64>(locals.prepareOutput.count), static_cast<uint64>(state.get().ticketPrice)));
+			if (locals.refundAmount > 0)
+			{
+				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, locals.refundAmount,
+				                                        qpi.invocator());
+			}
+		}
 
 		output.returnCode = locals.allocateOutput.returnCode;
 	}
@@ -1580,8 +1604,8 @@ public:
 			return;
 		}
 
-		if (qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX,
-		                                SELF_INDEX) < input.numberOfShares)
+		if (qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) <
+		    input.numberOfShares)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TRANSFER_FROM_PULSE_FAILED);
 			return;
@@ -1632,14 +1656,14 @@ private:
 			locals.toBuy = locals.affordable;
 			if (state.get().maxAutoTicketsPerUser > 0)
 			{
-				locals.toBuy = min(locals.toBuy, static_cast<sint64>(state.get().maxAutoTicketsPerUser));
+				locals.toBuy = RL::min(locals.toBuy, static_cast<sint64>(state.get().maxAutoTicketsPerUser));
 			}
 			if (locals.entry.desiredTickets > 0)
 			{
-				locals.toBuy = min(locals.toBuy, static_cast<sint64>(locals.entry.desiredTickets));
+				locals.toBuy = RL::min(locals.toBuy, static_cast<sint64>(locals.entry.desiredTickets));
 			}
 
-			locals.toBuy = min(locals.toBuy, locals.slotsLeft);
+			locals.toBuy = RL::min(locals.toBuy, locals.slotsLeft);
 			if (locals.toBuy <= 0)
 			{
 				locals.currentIndex = state.get().autoParticipants.nextElementIndex(locals.currentIndex);
@@ -1676,7 +1700,7 @@ private:
 		// Derive each digit independently to avoid shared PRNG state.
 		for (locals.index = 0; locals.index < PULSE_WINNING_DIGITS; ++locals.index)
 		{
-			deriveOne(input.seed, locals.index, locals.tempValue);
+			RL::deriveOne(input.seed, locals.index, locals.tempValue);
 			locals.candidate = static_cast<uint8>(mod(locals.tempValue, PULSE_MAX_DIGIT + 1ULL));
 
 			output.digits.set(locals.index, locals.candidate);
@@ -1689,6 +1713,30 @@ private:
 		{
 			return;
 		}
+
+		qpi.getEntity(SELF, locals.entity);
+		if ((locals.entity.incomingAmount - locals.entity.outgoingAmount) < CONTRACT_RANDOM_ENTROPY_FEE)
+		{
+			CALL(ReturnAllTickets, locals.returnAllTicketsInput, locals.returnAllTicketsOutput);
+			return;
+		}
+
+		locals.buyEntropyInput.collateralTier = CONTRACT_RANDOM_COLLATERAL_TIER;
+		locals.buyEntropyInput.numberOfBits = CONTRACT_RANDOM_ENTROPY_BITS;
+		locals.buyEntropyInput.trustee = id::zero();
+		INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, CONTRACT_RANDOM_ENTROPY_FEE);
+		if (interContractCallError != NoCallError || RL::isZeroEntropy(locals.buyEntropyOutput.entropy))
+		{
+			CALL(ReturnAllTickets, locals.returnAllTicketsInput, locals.returnAllTicketsOutput);
+			return;
+		}
+
+		locals.settleEntropyData.entropy = locals.buyEntropyOutput.entropy;
+		locals.settleEntropyData.ticketCounter = state.get().ticketCounter;
+		locals.settleEntropyData.ticketPrice = state.get().ticketPrice;
+		locals.settleEntropyData.tick = qpi.tick();
+		locals.settleEntropyData.epoch = qpi.epoch();
+		locals.randomDigest = qpi.K12(locals.settleEntropyData);
 
 		locals.roundRevenue = smul(state.get().ticketPrice, state.get().ticketCounter);
 		locals.devAmount = div<sint64>(smul(locals.roundRevenue, static_cast<sint64>(state.get().devPercent)), 100LL);
@@ -1722,14 +1770,13 @@ private:
 			qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, locals.burnAmount, NULL_ID);
 		}
 
-		locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
-		locals.randomSeed = qpi.K12(locals.mixedSpectrumValue).u64._0;
+		locals.randomSeed = locals.randomDigest.u64._0;
 		locals.randomInput.seed = locals.randomSeed;
 		CALL(GetRandomDigits, locals.randomInput, locals.randomOutput);
 		state.mut().lastWinningDigits = locals.randomOutput.digits;
 
 		locals.balanceSigned = qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, SELF_INDEX, SELF_INDEX);
-		locals.balance = max(locals.balanceSigned, 0LL);
+		locals.balance = RL::max(locals.balanceSigned, 0LL);
 
 		locals.totalPrize = 0;
 		for (locals.i = 0; locals.i < state.get().ticketCounter; ++locals.i)
@@ -1808,7 +1855,7 @@ private:
 		}
 
 		locals.slotsLeft = getSlotsLeft(state);
-		output.count = min(input.count, static_cast<uint16>(locals.slotsLeft));
+		output.count = RL::min(input.count, static_cast<uint16>(locals.slotsLeft));
 		if (output.count == 0)
 		{
 			output.returnCode = toReturnCode(EReturnCode::TICKET_ALL_SOLD_OUT);
@@ -1867,21 +1914,33 @@ private:
 			return;
 		}
 
-		locals.randomData.prevSpectrumDigest = qpi.getPrevSpectrumDigest();
+		locals.buyEntropyInput.collateralTier = CONTRACT_RANDOM_COLLATERAL_TIER;
+		locals.buyEntropyInput.numberOfBits = CONTRACT_RANDOM_ENTROPY_BITS;
+		locals.buyEntropyInput.trustee = id::zero();
+		INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, CONTRACT_RANDOM_ENTROPY_FEE);
+		if (RL::isZeroEntropy(locals.buyEntropyOutput.entropy))
+		{
+			output.returnCode = toReturnCode(EReturnCode::UNKNOWN_ERROR);
+			return;
+		}
+
+		locals.randomData.entropy = locals.buyEntropyOutput.entropy;
 		locals.randomData.allocateInput = input;
 		locals.randomData.ticketCounter = state.get().ticketCounter;
+		locals.randomData.tick = qpi.tick();
 
-		locals.randomSeed = qpi.K12(locals.randomData).u64._0;
+		locals.randomDigest = qpi.K12(locals.randomData);
+		locals.randomSeed = locals.randomDigest.u64._0;
 		for (locals.i = 0; locals.i < input.count; ++locals.i)
 		{
-			deriveOne(locals.randomSeed, locals.i, locals.tempSeed);
+			RL::deriveOne(locals.randomSeed, locals.i, locals.tempSeed);
 			locals.randomInput.seed = locals.tempSeed;
 			CALL(GetRandomDigits, locals.randomInput, locals.randomOutput);
 
 			locals.ticket.player = input.player;
 			locals.ticket.digits = locals.randomOutput.digits;
 			state.mut().tickets.set(state.get().ticketCounter, locals.ticket);
-			state.mut().ticketCounter = min(state.get().ticketCounter + 1LL, static_cast<sint64>(state.get().tickets.capacity()));
+			state.mut().ticketCounter = RL::min(state.get().ticketCounter + 1LL, static_cast<sint64>(state.get().tickets.capacity()));
 		}
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
@@ -1919,34 +1978,25 @@ private:
 		}
 	};
 
+	PRIVATE_PROCEDURE_WITH_LOCALS(ReturnAllTickets)
+	{
+		if (state.get().ticketCounter == 0 || isZero(state.get().qheartIssuer) || state.get().ticketPrice <= 0)
+		{
+			return;
+		}
+
+		for (locals.i = 0; locals.i < state.get().ticketCounter; ++locals.i)
+		{
+			locals.ticket = state.get().tickets.get(locals.i);
+			if (locals.ticket.isValid())
+			{
+				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, state.get().ticketPrice,
+				                                        locals.ticket.player);
+			}
+		}
+	}
+
 public:
-	/** Encodes YYYY/MM/DD into a compact sortable date stamp. */
-	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res) { res = static_cast<uint32>(year << 9 | month << 5 | day); }
-
-	template<typename T>
-	static constexpr T min(const T& a, const T& b)
-	{
-		return (a < b) ? a : b;
-	}
-	template<typename T>
-	static constexpr T max(const T& a, const T& b)
-	{
-		return a > b ? a : b;
-	}
-
-	/** Applies a per-index mix to deterministically expand a single seed. */
-	static void deriveOne(const uint64& r, const uint64& idx, uint64& outValue) { mix64(r + 0x9e3779b97f4a7c15ULL * (idx + 1), outValue); }
-
-	static void mix64(const uint64& x, uint64& outValue)
-	{
-		outValue = x;
-		outValue ^= outValue >> 30;
-		outValue *= 0xbf58476d1ce4e5b9ULL;
-		outValue ^= outValue >> 27;
-		outValue *= 0x94d049bb133111ebULL;
-		outValue ^= outValue >> 31;
-	}
-
 	static sint64 getSlotsLeft(const QPI::ContractState<StateData, CONTRACT_INDEX>& state)
 	{
 		return state.get().ticketCounter < static_cast<sint64>(state.get().tickets.capacity())
@@ -2036,18 +2086,18 @@ protected:
 
 		for (locals.digitValue = 0; locals.digitValue <= PULSE_MAX_DIGIT; ++locals.digitValue)
 		{
-			locals.anyPositionMatches += min<uint8>(locals.ticketCounts.get(locals.digitValue), locals.winningCounts.get(locals.digitValue));
+			locals.anyPositionMatches += RL::min<uint8>(locals.ticketCounts.get(locals.digitValue), locals.winningCounts.get(locals.digitValue));
 		}
 
 		// Reward the best of left-aligned or any-position matches to avoid double counting.
 		locals.leftAlignedReward = getLeftAlignedReward(state, locals.leftAlignedMatches);
 		locals.anyPositionReward = getAnyPositionReward(state, locals.anyPositionMatches);
-		locals.prize = max(locals.leftAlignedReward, locals.anyPositionReward);
+		locals.prize = RL::max(locals.leftAlignedReward, locals.anyPositionReward);
 		return locals.prize;
 	}
 
 	static uint16 clampPublicTicketCount(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, sint64 value)
 	{
-		return static_cast<uint16>(min(static_cast<uint64>(max(value, 0LL)), state.get().tickets.capacity()));
+		return static_cast<uint16>(RL::min(static_cast<uint64>(RL::max(value, 0LL)), state.get().tickets.capacity()));
 	}
 };

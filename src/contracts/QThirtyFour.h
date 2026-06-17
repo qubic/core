@@ -727,6 +727,9 @@ struct QTF : ContractBase
 		CheckContractBalance_locals checkBalanceLocals;
 		CountMatches_input countMatchesInput;
 		CountMatches_output countMatchesOutput;
+		RANDOM::BuyEntropy_input buyEntropyInput;
+		RANDOM::BuyEntropy_output buyEntropyOutput;
+		m256i randomDigest;
 		uint16 currentEpoch;
 		uint64 revenue; // ticketPrice * players count
 		uint64 winnersBlock;
@@ -794,6 +797,16 @@ struct QTF : ContractBase
 		// Cache for countMatches results to avoid redundant calculations
 		Array<uint8, QTF_MAX_NUMBER_OF_PLAYERS> cachedMatches;
 		WinnerPlayerData winnerPlayerData;
+
+		struct SettleEntropyData
+		{
+			bit_4096 entropy;
+			uint64 numberOfPlayers;
+			uint64 ticketPrice;
+			uint64 jackpot;
+			uint32 tick;
+			uint16 epoch;
+		} settleEntropyData;
 	};
 
 	struct END_EPOCH_locals
@@ -1427,17 +1440,9 @@ protected:
 
 	// ========== Helper static functions ==========
 
-	static void mix64(const uint64& x, uint64& outValue)
-	{
-		outValue = x;
-		outValue ^= outValue >> 30;
-		outValue *= 0xbf58476d1ce4e5b9ULL;
-		outValue ^= outValue >> 27;
-		outValue *= 0x94d049bb133111ebULL;
-		outValue ^= outValue >> 31;
-	}
+	static void mix64(const uint64& x, uint64& outValue) { RL::mix64(x, outValue); }
 
-	static void deriveOne(const uint64& r, const uint64& idx, uint64& outValue) { mix64(r + 0x9e3779b97f4a7c15ULL * (idx + 1), outValue); }
+	static void deriveOne(const uint64& r, const uint64& idx, uint64& outValue) { RL::deriveOne(r, idx, outValue); }
 
 	static void addPlayerInfo(QPI::ContractState<StateData, CONTRACT_INDEX>& state, const id& playerId,
 	                          const Array<uint8, QTF_RANDOM_VALUES_COUNT>& randomValues)
@@ -1589,7 +1594,7 @@ private:
 		}
 
 		// Check if contract has sufficient balance for settlement
-		locals.checkBalanceInput.expectedRevenue = locals.revenue;
+		locals.checkBalanceInput.expectedRevenue = sadd(locals.revenue, CONTRACT_RANDOM_ENTROPY_FEE);
 		CALL(CheckContractBalance, locals.checkBalanceInput, locals.checkBalanceOutput);
 		if (!locals.checkBalanceOutput.hasEnough)
 		{
@@ -1599,6 +1604,26 @@ private:
 
 			return;
 		}
+
+		locals.buyEntropyInput.collateralTier = CONTRACT_RANDOM_COLLATERAL_TIER;
+		locals.buyEntropyInput.numberOfBits = CONTRACT_RANDOM_ENTROPY_BITS;
+		locals.buyEntropyInput.trustee = id::zero();
+		INVOKE_OTHER_CONTRACT_PROCEDURE_E(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, CONTRACT_RANDOM_ENTROPY_FEE,
+		                                  buyEntropyError);
+		if (buyEntropyError != NoCallError || RL::isZeroEntropy(locals.buyEntropyOutput.entropy))
+		{
+			CALL(ReturnAllTickets, locals.returnAllTicketsInput, locals.returnAllTicketsOutput);
+			clearPlayerData(state);
+			return;
+		}
+
+		locals.settleEntropyData.entropy = locals.buyEntropyOutput.entropy;
+		locals.settleEntropyData.numberOfPlayers = state.get().numberOfPlayers;
+		locals.settleEntropyData.ticketPrice = state.get().ticketPrice;
+		locals.settleEntropyData.jackpot = state.get().jackpot;
+		locals.settleEntropyData.tick = qpi.tick();
+		locals.settleEntropyData.epoch = qpi.epoch();
+		locals.randomDigest = qpi.K12(locals.settleEntropyData);
 
 		CALL(GetFees, locals.feesInput, locals.feesOutput);
 
@@ -1711,8 +1736,8 @@ private:
 		// Reset last-winner snapshot for this settlement (per-round view).
 		clearWinerData(state);
 
-		// Generate winning random values using CALL
-		locals.getRandomInput.seed = qpi.K12(qpi.getPrevSpectrumDigest()).u64._0;
+		// Generate winning values from the Random entropy purchase.
+		locals.getRandomInput.seed = locals.randomDigest.u64._0;
 		CALL(GetRandomValues, locals.getRandomInput, locals.getRandomOutput);
 		locals.winningValues = locals.getRandomOutput.values;
 

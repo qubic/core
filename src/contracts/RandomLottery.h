@@ -47,6 +47,10 @@ constexpr uint8 RL_DEFAULT_SCHEDULE = 1 << WEDNESDAY | 1 << FRIDAY | 1 << SUNDAY
 
 constexpr uint32 RL_DEFAULT_INIT_TIME = 22 << 9 | 4 << 5 | 13;
 
+constexpr uint16 CONTRACT_RANDOM_ENTROPY_BITS = 256;
+constexpr uint8 CONTRACT_RANDOM_COLLATERAL_TIER = 0;
+constexpr uint64 CONTRACT_RANDOM_ENTROPY_FEE = static_cast<uint64>(RANDOM_BITFEE) * CONTRACT_RANDOM_ENTROPY_BITS;
+
 /// Placeholder structure for future extensions.
 struct RL2
 {
@@ -378,8 +382,10 @@ public:
 	{
 		id winnerAddress;
 		id firstPlayer;
-		m256i mixedSpectrumValue;
+		m256i randomDigest;
 		Entity entity;
+		RANDOM::BuyEntropy_input buyEntropyInput;
+		RANDOM::BuyEntropy_output buyEntropyOutput;
 		uint64 revenue;
 		uint64 randomNum;
 		uint64 shuffleIndex;
@@ -401,6 +407,14 @@ public:
 		ReturnAllTickets_input returnAllTicketsInput;
 		ReturnAllTickets_output returnAllTicketsOutput;
 		FillWinnersInfo_output fillWinnersInfoOutput;
+
+		struct DrawEntropyData
+		{
+			bit_4096 entropy;
+			uint64 playerCounter;
+			uint32 tick;
+			uint16 epoch;
+		} drawEntropyData;
 	};
 
 	struct GetNextEpochData_input
@@ -460,8 +474,8 @@ public:
 	INITIALIZE()
 	{
 		// Set team/developer address (owner and team are the same for now)
-		state.mut().teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C, _X, _B,
-		                       _A, _V, _F, _O, _P, _R, _S, _N, _U, _L, _U, _E, _B, _S, _P, _U, _T, _R, _Z, _N, _T, _G, _F, _B, _I, _E);
+		state.mut().teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C,
+		                             _X, _B, _A, _V, _F, _O, _P, _R, _S, _N, _U, _L, _U, _E, _B, _S, _P, _U, _T, _R, _Z, _N, _T, _G, _F, _B, _I, _E);
 		state.mut().ownerAddress = state.get().teamAddress;
 
 		// Fee configuration (winner gets the remainder)
@@ -603,11 +617,36 @@ public:
 			}
 			else
 			{
-				// Deterministically shuffle players before drawing so all nodes observe the same order
-				locals.mixedSpectrumValue = qpi.getPrevSpectrumDigest();
-				locals.mixedSpectrumValue.u64._0 ^= qpi.tick();
-				locals.mixedSpectrumValue.u64._1 ^= state.get().playerCounter;
-				locals.randomNum = qpi.K12(locals.mixedSpectrumValue).u64._0;
+				qpi.getEntity(SELF, locals.entity);
+				getSCRevenue(locals.entity, locals.revenue);
+				if (locals.revenue < CONTRACT_RANDOM_ENTROPY_FEE)
+				{
+					ReturnAllTickets(qpi, state, locals.returnAllTicketsInput, locals.returnAllTicketsOutput, locals.returnAllTicketsLocals);
+					clearStateOnEndDraw(state);
+					enableBuyTicket(state, !locals.isWednesday);
+					return;
+				}
+
+				locals.buyEntropyInput.collateralTier = CONTRACT_RANDOM_COLLATERAL_TIER;
+				locals.buyEntropyInput.numberOfBits = CONTRACT_RANDOM_ENTROPY_BITS;
+				locals.buyEntropyInput.trustee = id::zero();
+				INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, CONTRACT_RANDOM_ENTROPY_FEE);
+
+				if (interContractCallError != NoCallError || isZeroEntropy(locals.buyEntropyOutput.entropy))
+				{
+					ReturnAllTickets(qpi, state, locals.returnAllTicketsInput, locals.returnAllTicketsOutput, locals.returnAllTicketsLocals);
+					clearStateOnEndDraw(state);
+					enableBuyTicket(state, !locals.isWednesday);
+					return;
+				}
+
+				// Hash Random entropy with draw context before deriving shuffle and winner indexes.
+				locals.drawEntropyData.entropy = locals.buyEntropyOutput.entropy;
+				locals.drawEntropyData.playerCounter = state.get().playerCounter;
+				locals.drawEntropyData.tick = qpi.tick();
+				locals.drawEntropyData.epoch = qpi.epoch();
+				locals.randomDigest = qpi.K12(locals.drawEntropyData);
+				locals.randomNum = locals.randomDigest.u64._0;
 
 				for (locals.shuffleIndex = state.get().playerCounter - 1; locals.shuffleIndex > 0; --locals.shuffleIndex)
 				{
@@ -628,13 +667,13 @@ public:
 				qpi.getEntity(SELF, locals.entity);
 				getSCRevenue(locals.entity, locals.revenue);
 
-				// Winner selection (pseudo-random using K12(prevSpectrumDigest)).
+				// Winner selection from the same Random entropy purchase.
 				{
 					locals.winnerAddress = id::zero();
 
 					if (state.get().playerCounter != 0)
 					{
-						locals.randomNum = qpi.K12(locals.mixedSpectrumValue).u64._0;
+						locals.randomNum = locals.randomDigest.u64._1;
 						locals.randomNum = mod(locals.randomNum, state.get().playerCounter);
 
 						// Index directly into players array
@@ -854,7 +893,7 @@ public:
 		// Compute desired number of tickets and change
 		locals.desired = div(locals.reward, state.get().ticketPrice);   // How many tickets the caller attempts to buy
 		locals.remainder = mod(locals.reward, state.get().ticketPrice); // Change to return
-		locals.toBuy = min(locals.desired, locals.slotsLeft);     // Do not exceed available slots
+		locals.toBuy = min(locals.desired, locals.slotsLeft);           // Do not exceed available slots
 
 		// Add tickets (the same address may be inserted multiple times)
 		for (locals.i = 0; locals.i < locals.toBuy; ++locals.i)
@@ -918,6 +957,20 @@ public:
 	template<typename T> static constexpr T min(const T& a, const T& b) { return (a < b) ? a : b; }
 	template<typename T> static constexpr T max(const T& a, const T& b) { return a > b ? a : b; }
 
+	static bool isZeroEntropy(const bit_4096& entropy) { return entropy == BIT4096_ZERO; }
+
+	static void deriveOne(const uint64& r, const uint64& idx, uint64& outValue) { mix64(r + 0x9e3779b97f4a7c15ULL * (idx + 1), outValue); }
+
+	static void mix64(const uint64& x, uint64& outValue)
+	{
+		outValue = x;
+		outValue ^= outValue >> 30;
+		outValue *= 0xbf58476d1ce4e5b9ULL;
+		outValue ^= outValue >> 27;
+		outValue *= 0x94d049bb133111ebULL;
+		outValue ^= outValue >> 31;
+	}
+
 protected:
 	static void clearStateOnEndEpoch(QPI::ContractState<StateData, CONTRACT_INDEX>& state)
 	{
@@ -957,9 +1010,15 @@ protected:
 		state.mut().currentState = bEnable ? state.get().currentState | EState::SELLING : state.get().currentState & ~EState::SELLING;
 	}
 
-	static bool isSellingOpen(const QPI::ContractState<StateData, CONTRACT_INDEX>& state) { return (state.get().currentState & EState::SELLING) != 0; }
+	static bool isSellingOpen(const QPI::ContractState<StateData, CONTRACT_INDEX>& state)
+	{
+		return (state.get().currentState & EState::SELLING) != 0;
+	}
 
-	static void getWinnerCounter(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, uint64& outCounter) { outCounter = mod(state.get().winnersCounter, state.get().winners.capacity()); }
+	static void getWinnerCounter(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, uint64& outCounter)
+	{
+		outCounter = mod(state.get().winnersCounter, state.get().winners.capacity());
+	}
 
 	// Reads current net on-chain balance of SELF (incoming - outgoing).
 	static void getSCRevenue(const Entity& entity, uint64& revenue) { revenue = entity.incomingAmount - entity.outgoingAmount; }

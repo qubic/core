@@ -2,7 +2,7 @@ using namespace QPI;
 
 constexpr uint16 QDUEL_MAX_NUMBER_OF_ROOMS = 512;
 constexpr uint64 QDUEL_MAX_NUMBER_OF_WINNER = 128;
-constexpr uint16 QDUEL_MINIMUM_DUEL_AMOUNT = 10000;
+constexpr uint16 QDUEL_MINIMUM_DUEL_AMOUNT = CONTRACT_RANDOM_ENTROPY_FEE * 2;
 constexpr uint8 QDUEL_DEV_FEE_PERCENT_BPS = 15;          // 0.15% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_BURN_FEE_PERCENT_BPS = 30;         // 0.3% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS = 55; // 0.55% * QDUEL_PERCENT_SCALE
@@ -140,6 +140,24 @@ public:
 	{
 	};
 
+	struct CloseRoomInternal_input
+	{
+		id roomOwner;
+	};
+
+	struct CloseRoomInternal_output
+	{
+		EReturnCode returnCode;
+	};
+
+	struct CloseRoomInternal_locals
+	{
+		UserData userData;
+		RoomInfo room;
+		uint64 refundAmount;
+		sint64 transferResult;
+	};
+
 	struct CreateRoom_input
 	{
 		id allowedPlayer; // If zero, anyone can join
@@ -198,6 +216,7 @@ public:
 	{
 		id player1;
 		id player2;
+		bit_4096 entropy;
 	};
 
 	struct GetWinnerPlayer_output
@@ -207,9 +226,15 @@ public:
 
 	struct GetWinnerPlayer_locals
 	{
+		Array<id, 2> players;
 		m256i randomValue;
-		m256i minPlayerId;
-		m256i maxPlayerId;
+
+		struct RandomData
+		{
+			bit_4096 entropy;
+			Array<id, 2> players;
+			uint32 tick;
+		} randomData;
 	};
 
 	struct CalculateRevenue_input
@@ -289,6 +314,8 @@ public:
 		RoomInfo room;
 		GetWinnerPlayer_input getWinnerPlayer_input;
 		GetWinnerPlayer_output getWinnerPlayer_output;
+		RANDOM::BuyEntropy_input buyEntropyInput;
+		RANDOM::BuyEntropy_output buyEntropyOutput;
 		CalculateRevenue_input calculateRevenue_input;
 		CalculateRevenue_output calculateRevenue_output;
 		TransferToShareholders_input transferToShareholders_input;
@@ -297,28 +324,35 @@ public:
 		FinalizeRoom_output finalizeOutput;
 		AddWinnerData_input addWinnerDataInput;
 		AddWinnerData_output addWinnerDataOutput;
+		CloseRoomInternal_input closeRoomInternalInput;
+		CloseRoomInternal_output closeRoomInternalOutput;
 		id winner;
 		uint64 returnAmount;
 		uint64 amount;
+		uint64 requiredBalance;
 		bit failedGetWinner;
 	};
 
-	struct CloseRoom_input
-	{
-	};
-
+	using CloseRoom_input = NoData;
 	struct CloseRoom_output
 	{
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 
 	struct CloseRoom_locals
 	{
-		UserData userData;
-		RoomInfo room;
-		uint64 refundAmount;
-		sint64 transferResult;
-		bit roomExists;
+		CloseRoomInternal_input closeRoomInternalInput;
+		CloseRoomInternal_output closeRoomInternalOutput;
+	};
+
+	struct SetMinimumDuelAmount_input
+	{
+		sint64 newMinimumDuelAmount;
+	};
+
+	struct SetMinimumDuelAmount_output
+	{
+		EReturnCode returnCode;
 	};
 
 	struct GetPercentFees_input
@@ -479,6 +513,7 @@ public:
 		REGISTER_USER_PROCEDURE(Deposit, 5);
 		REGISTER_USER_PROCEDURE(Withdraw, 6);
 		REGISTER_USER_PROCEDURE(CloseRoom, 7);
+		REGISTER_USER_PROCEDURE(SetMinimumDuelAmount, 8);
 
 		REGISTER_USER_FUNCTION(GetPercentFees, 1);
 		REGISTER_USER_FUNCTION(GetRooms, 2);
@@ -490,8 +525,8 @@ public:
 
 	INITIALIZE()
 	{
-		state.mut().teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C, _X, _B,
-		                       _A, _V, _F, _O, _P, _R, _S, _N, _U, _L, _U, _E, _B, _S, _P, _U, _T, _R, _Z, _N, _T, _G, _F, _B, _I, _E);
+		state.mut().teamAddress = ID(_O, _C, _Z, _W, _N, _J, _S, _N, _R, _U, _Q, _J, _U, _A, _H, _Z, _C, _T, _R, _P, _N, _Y, _W, _G, _G, _E, _F, _C,
+		                             _X, _B, _A, _V, _F, _O, _P, _R, _S, _N, _U, _L, _U, _E, _B, _S, _P, _U, _T, _R, _Z, _N, _T, _G, _F, _B, _I, _E);
 
 		state.mut().minimumDuelAmount = QDUEL_MINIMUM_DUEL_AMOUNT;
 
@@ -697,16 +732,39 @@ public:
 			return;
 		}
 
+		locals.requiredBalance = sadd(static_cast<uint64>(locals.room.amount), static_cast<uint64>(locals.room.amount));
+		if (locals.requiredBalance <= CONTRACT_RANDOM_ENTROPY_FEE)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			locals.closeRoomInternalInput.roomOwner = locals.room.owner;
+			CALL(CloseRoomInternal, locals.closeRoomInternalInput, locals.closeRoomInternalOutput);
+			output.returnCode = toReturnCode(EReturnCode::ROOM_FAILED_GET_WINNER);
+			return;
+		}
+
+		locals.buyEntropyInput.collateralTier = CONTRACT_RANDOM_COLLATERAL_TIER;
+		locals.buyEntropyInput.numberOfBits = CONTRACT_RANDOM_ENTROPY_BITS;
+		locals.buyEntropyInput.trustee = id::zero();
+		INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, CONTRACT_RANDOM_ENTROPY_FEE);
+		if (interContractCallError != NoCallError || RL::isZeroEntropy(locals.buyEntropyOutput.entropy))
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			output.returnCode = toReturnCode(EReturnCode::ROOM_FAILED_GET_WINNER);
+			return;
+		}
+
 		if (qpi.invocationReward() > locals.room.amount)
 		{
 			locals.returnAmount = qpi.invocationReward() - locals.room.amount;
 			qpi.transfer(qpi.invocator(), locals.returnAmount);
 		}
 
-		locals.amount = (qpi.invocationReward() - locals.returnAmount) + locals.room.amount;
+		locals.amount = sadd(locals.room.amount, locals.room.amount);
+		locals.amount = locals.amount - CONTRACT_RANDOM_ENTROPY_FEE;
 
 		locals.getWinnerPlayer_input.player1 = locals.room.owner;
 		locals.getWinnerPlayer_input.player2 = qpi.invocator();
+		locals.getWinnerPlayer_input.entropy = locals.buyEntropyOutput.entropy;
 
 		CALL(GetWinnerPlayer, locals.getWinnerPlayer_input, locals.getWinnerPlayer_output);
 		locals.winner = locals.getWinnerPlayer_output.winner;
@@ -900,7 +958,8 @@ public:
 		output.devFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.get().devFeePercentBps)), state.get().percentScale);
 		output.burnFee = div<uint64>(smul(input.amount, static_cast<uint64>(state.get().burnFeePercentBps)), state.get().percentScale);
 		output.shareholdersFee =
-			smul(div(div<uint64>(smul(input.amount, static_cast<uint64>(state.get().shareholdersFeePercentBps)), state.get().percentScale), 676ULL), 676ULL);
+		    smul(div(div<uint64>(smul(input.amount, static_cast<uint64>(state.get().shareholdersFeePercentBps)), state.get().percentScale), 676ULL),
+		         676ULL);
 		output.winner = input.amount - (output.devFee + output.burnFee + output.shareholdersFee);
 	}
 
@@ -970,58 +1029,37 @@ public:
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 		}
 
-		if (!state.get().users.get(qpi.invocator(), locals.userData))
+		locals.closeRoomInternalInput.roomOwner = qpi.invocator();
+		CALL(CloseRoomInternal, locals.closeRoomInternalInput, locals.closeRoomInternalOutput);
+
+		output.returnCode = locals.closeRoomInternalOutput.returnCode;
+	}
+
+	PUBLIC_PROCEDURE(SetMinimumDuelAmount)
+	{
+		if (qpi.invocationReward() > 0)
 		{
-			output.returnCode = toReturnCode(EReturnCode::USER_NOT_FOUND);
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (qpi.invocator() != state.get().teamAddress)
+		{
+			output.returnCode = EReturnCode::ACCESS_DENIED;
 			return;
 		}
 
-		locals.roomExists = state.get().rooms.get(locals.userData.roomId, locals.room);
-		if (locals.roomExists)
+		if (input.newMinimumDuelAmount < 0)
 		{
-			if (locals.room.owner != qpi.invocator())
-			{
-				output.returnCode = toReturnCode(EReturnCode::ROOM_ACCESS_DENIED);
-				return;
-			}
+			output.returnCode = EReturnCode::INVALID_VALUE;
+			return;
 		}
 
-		if (locals.userData.depositedAmount > 0)
-		{
-			locals.refundAmount += static_cast<uint64>(locals.userData.depositedAmount);
-		}
-		if (locals.userData.locked > 0)
-		{
-			locals.refundAmount += static_cast<uint64>(locals.userData.locked);
-		}
+		state.mut().minimumDuelAmount = input.newMinimumDuelAmount;
 
-		if (locals.refundAmount > 0)
-		{
-			locals.transferResult = qpi.transfer(qpi.invocator(), locals.refundAmount);
-			if (locals.transferResult < 0)
-			{
-				output.returnCode = toReturnCode(EReturnCode::INSUFFICIENT_FREE_DEPOSIT);
-				return;
-			}
-		}
-
-		if (locals.roomExists)
-		{
-			state.mut().rooms.removeByKey(locals.userData.roomId);
-			state.mut().rooms.cleanupIfNeeded();
-		}
-
-		state.mut().users.removeByKey(locals.userData.userId);
-		state.mut().users.cleanupIfNeeded();
-
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		output.returnCode = EReturnCode::SUCCESS;
 	}
 
 protected:
-	template<typename T> static constexpr const T& min(const T& a, const T& b) { return (a < b) ? a : b; }
-	template<typename T> static constexpr const T& max(const T& a, const T& b) { return (a > b) ? a : b; }
-	static constexpr const m256i& max(const m256i& a, const m256i& b) { return (a < b) ? b : a; }
-
 	static void computeNextStake(const ComputeNextStake_input& input, ComputeNextStake_output& output)
 	{
 		output.nextStake = input.stake;
@@ -1120,6 +1158,7 @@ private:
 		if (locals.availableDeposit == 0)
 		{
 			state.mut().users.removeByKey(locals.userData.userId);
+			state.mut().users.cleanupIfNeeded(QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT);
 			output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 			return;
 		}
@@ -1132,6 +1171,7 @@ private:
 		{
 			qpi.transfer(locals.userData.userId, locals.availableDeposit);
 			state.mut().users.removeByKey(locals.userData.userId);
+			state.mut().users.cleanupIfNeeded(QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT);
 			output.returnCode = locals.nextStakeOutput.returnCode;
 			return;
 		}
@@ -1145,6 +1185,7 @@ private:
 		{
 			qpi.transfer(locals.userData.userId, locals.availableDeposit);
 			state.mut().users.removeByKey(locals.userData.userId);
+			state.mut().users.cleanupIfNeeded(QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT);
 			output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 			return;
 		}
@@ -1157,6 +1198,7 @@ private:
 		{
 			qpi.transfer(locals.userData.userId, locals.availableDeposit);
 			state.mut().users.removeByKey(locals.userData.userId);
+			state.mut().users.cleanupIfNeeded(QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT);
 			output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 			return;
 		}
@@ -1169,26 +1211,28 @@ private:
 
 		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
 
-		if (state.get().rooms.needsCleanup(QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT)) { state.mut().rooms.cleanup(); }
-		if (state.get().users.needsCleanup(QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT)) { state.mut().users.cleanup(); }
+		state.mut().rooms.cleanupIfNeeded(QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT);
+		state.mut().users.cleanupIfNeeded(QDUEL_ROOMS_REMOVAL_THRESHOLD_PERCENT);
 	}
 
 private:
 	PRIVATE_FUNCTION_WITH_LOCALS(GetWinnerPlayer)
 	{
-		locals.minPlayerId = min(input.player1, input.player2);
-		locals.maxPlayerId = max(input.player1, input.player2);
+		if (RL::isZeroEntropy(input.entropy))
+		{
+			output.winner = id::zero();
+			return;
+		}
 
-		locals.randomValue = qpi.getPrevSpectrumDigest();
+		locals.players.set(0, input.player1);
+		locals.players.set(1, input.player2);
 
-		locals.randomValue.u64._0 ^= locals.minPlayerId.u64._0 ^ locals.maxPlayerId.u64._0 ^ qpi.tick();
-		locals.randomValue.u64._1 ^= locals.minPlayerId.u64._1 ^ locals.maxPlayerId.u64._1;
-		locals.randomValue.u64._2 ^= locals.minPlayerId.u64._2 ^ locals.maxPlayerId.u64._2;
-		locals.randomValue.u64._3 ^= locals.minPlayerId.u64._3 ^ locals.maxPlayerId.u64._3;
+		locals.randomData.entropy = input.entropy;
+		locals.randomData.players = locals.players;
+		locals.randomData.tick = qpi.tick();
+		locals.randomValue = qpi.K12(locals.randomData);
 
-		locals.randomValue = qpi.K12(locals.randomValue);
-
-		output.winner = locals.randomValue.u64._0 & 1 ? locals.maxPlayerId : locals.minPlayerId;
+		output.winner = locals.players.get(locals.randomValue.u64._0 & 1);
 	}
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(TransferToShareholders)
@@ -1262,5 +1306,58 @@ private:
 
 		// Increment winnerCounter
 		state.mut().winnerCounter = mod(state.get().winnerCounter + 1, state.get().lastWinners.capacity());
+	}
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(CloseRoomInternal)
+	{
+		if (isZero(input.roomOwner))
+		{
+			output.returnCode = EReturnCode::INVALID_VALUE;
+			return;
+		}
+
+		if (!state.get().users.get(input.roomOwner, locals.userData))
+		{
+			output.returnCode = EReturnCode::USER_NOT_FOUND;
+			return;
+		}
+
+		if (!state.get().rooms.get(locals.userData.roomId, locals.room))
+		{
+			output.returnCode = EReturnCode::ROOM_NOT_FOUND;
+			return;
+		}
+
+		if (locals.room.owner != input.roomOwner)
+		{
+			output.returnCode = EReturnCode::ROOM_ACCESS_DENIED;
+			return;
+		}
+
+		if (locals.userData.depositedAmount > 0)
+		{
+			locals.refundAmount = sadd(locals.refundAmount, static_cast<uint64>(locals.userData.depositedAmount));
+		}
+		if (locals.userData.locked > 0)
+		{
+			locals.refundAmount = sadd(locals.refundAmount, static_cast<uint64>(locals.userData.locked));
+		}
+
+		if (locals.refundAmount > 0)
+		{
+			locals.transferResult = qpi.transfer(input.roomOwner, locals.refundAmount);
+			if (locals.transferResult < 0)
+			{
+				output.returnCode = EReturnCode::INSUFFICIENT_FREE_DEPOSIT;
+				return;
+			}
+		}
+
+		state.mut().rooms.removeByKey(locals.userData.roomId);
+		state.mut().rooms.cleanupIfNeeded();
+		state.mut().users.removeByKey(locals.userData.userId);
+		state.mut().users.cleanupIfNeeded();
+
+		output.returnCode = EReturnCode::SUCCESS;
 	}
 };
