@@ -370,6 +370,12 @@ public:
 	}
 };
 
+enum class DrawFunding
+{
+	NoEntropyFunding,
+	AutoFundEntropy
+};
+
 class ContractTestingQTF : protected ContractTesting
 {
 public:
@@ -377,10 +383,13 @@ public:
 	{
 		initEmptySpectrum();
 		initEmptyUniverse();
+		INIT_CONTRACT(RANDOM);
 		INIT_CONTRACT(QRP);
 		INIT_CONTRACT(RL);
 		INIT_CONTRACT(QTF);
 
+		system.epoch = contractDescriptions[RANDOM_CONTRACT_INDEX].constructionEpoch;
+		callSystemProcedure(RANDOM_CONTRACT_INDEX, INITIALIZE);
 		// Initialize QRP first (QTF depends on it for reserve operations)
 		callSystemProcedure(QRP_CONTRACT_INDEX, INITIALIZE);
 		// Initialize RL (RandomLottery contract)
@@ -392,10 +401,12 @@ public:
 
 	// Access internal contract state
 	QTFChecker* state() { return reinterpret_cast<QTFChecker*>(contractStates[QTF_CONTRACT_INDEX]); }
+	RANDOM::StateData* randomState() { return reinterpret_cast<RANDOM::StateData*>(contractStates[RANDOM_CONTRACT_INDEX]); }
 
 	id qtfSelf() { return id(QTF_CONTRACT_INDEX, 0, 0, 0); }
 	id qrpSelf() { return id(QRP_CONTRACT_INDEX, 0, 0, 0); }
 	void addPlayerDirect(const id& playerId, const QTFRandomValues& randomValues) { state()->addPlayerDirect(playerId, randomValues); }
+	void fundQtfEntropyFee(uint64 count = 1) { increaseEnergy(qtfSelf(), CONTRACT_RANDOM_ENTROPY_FEE * count); }
 
 	// Public function wrappers
 	QTF::GetTicketPrice_output getTicketPrice()
@@ -600,9 +611,19 @@ public:
 		updateQpiTime();
 	}
 
-	void forceBeginTick()
+	void fundEntropyForDrawIfNeeded(DrawFunding funding)
+	{
+		if (funding == DrawFunding::AutoFundEntropy && state()->getNumberOfPlayers() > 0 && state()->getTicketPriceInternal() > 0)
+		{
+			fundQtfEntropyFee();
+		}
+	}
+
+	void forceBeginTick(DrawFunding funding = DrawFunding::NoEntropyFunding)
 	{
 		system.tick = system.tick + (RL_TICK_UPDATE_PERIOD - (system.tick % RL_TICK_UPDATE_PERIOD));
+		seedRandomEntropy(static_cast<uint64>(system.tick) ^ static_cast<uint64>(system.epoch) ^ 0x515446ULL);
+		fundEntropyForDrawIfNeeded(funding);
 		beginTick();
 	}
 
@@ -637,14 +658,14 @@ public:
 	}
 
 	// Trigger a tick that performs the draw (time is set to a scheduled day and hour).
-	void triggerDrawTick()
+	void triggerDrawTick(DrawFunding funding = DrawFunding::AutoFundEntropy)
 	{
 		constexpr uint16 y = 2025;
 		constexpr uint8 m = 1;
 		constexpr uint8 d = 10;
 		setDateTime(y, m, d, 12);
 		__pauseLogMessage();
-		forceBeginTick();
+		forceBeginTick(funding);
 	}
 
 	// Helper to create valid random values
@@ -666,28 +687,86 @@ public:
 		EXPECT_EQ(out.returnCode, static_cast<uint8>(QTF::EReturnCode::SUCCESS));
 	}
 
-	// Set prevSpectrumDigest for deterministic random number generation
-	// This allows tests to predict winning numbers by fixing the RNG seed
-	void setPrevSpectrumDigest(const m256i& digest) { etalonTick.prevSpectrumDigest = digest; }
-
-	void drawWithDigest(const m256i& digest)
+	QPI::bit_4096 seedRandomEntropy(uint64 seed)
 	{
-		setPrevSpectrumDigest(digest);
-		triggerDrawTick();
+		QPI::bit_4096 entropy{};
+		for (uint64 i = 0; i < CONTRACT_RANDOM_ENTROPY_BITS; ++i)
+		{
+			entropy.set(i, ((seed + i) & 1ULL) != 0);
+		}
+
+		const uint32 stream = (system.tick + 2u) % 3u;
+		randomState()->entropy.set(stream * 10u + CONTRACT_RANDOM_COLLATERAL_TIER, entropy);
+		const uint32 drawTick = system.tick + (RL_TICK_UPDATE_PERIOD - (system.tick % RL_TICK_UPDATE_PERIOD));
+		const uint32 drawStream = (drawTick + 2u) % 3u;
+		randomState()->entropy.set(drawStream * 10u + CONTRACT_RANDOM_COLLATERAL_TIER, entropy);
+		return entropy;
 	}
 
-	// Compute the winning numbers that would be generated for a given prevSpectrumDigest.
-	// Uses the contract GetRandomValues() implementation (so tests don't duplicate RNG logic).
-	// Returns values in generation order (not sorted).
-	QTFRandomValues computeWinningNumbersForDigest(const m256i& digest)
+	QPI::bit_4096 seedRandomEntropy(const m256i& seedDigest) { return seedRandomEntropy(seedDigest.m256i_u64[0]); }
+
+	void seedRandomEntropy(const QPI::bit_4096& entropy)
 	{
-		m256i hashResult;
-		KangarooTwelve((const uint8*)&digest, sizeof(m256i), (uint8*)&hashResult, sizeof(m256i));
-		const uint64 seed = hashResult.m256i_u64[0];
+		const uint32 stream = (system.tick + 2u) % 3u;
+		randomState()->entropy.set(stream * 10u + CONTRACT_RANDOM_COLLATERAL_TIER, entropy);
+		const uint32 drawTick = system.tick + (RL_TICK_UPDATE_PERIOD - (system.tick % RL_TICK_UPDATE_PERIOD));
+		const uint32 drawStream = (drawTick + 2u) % 3u;
+		randomState()->entropy.set(drawStream * 10u + CONTRACT_RANDOM_COLLATERAL_TIER, entropy);
+	}
+
+	void drawWithEntropy(uint64 seed, DrawFunding funding = DrawFunding::AutoFundEntropy)
+	{
+		constexpr uint16 y = 2025;
+		constexpr uint8 m = 1;
+		constexpr uint8 d = 10;
+		setDateTime(y, m, d, 12);
+		system.tick = system.tick + (RL_TICK_UPDATE_PERIOD - (system.tick % RL_TICK_UPDATE_PERIOD));
+		seedRandomEntropy(seed);
+		__pauseLogMessage();
+		fundEntropyForDrawIfNeeded(funding);
+		beginTick();
+	}
+
+	void drawWithEntropy(const QPI::bit_4096& entropy, DrawFunding funding = DrawFunding::AutoFundEntropy)
+	{
+		constexpr uint16 y = 2025;
+		constexpr uint8 m = 1;
+		constexpr uint8 d = 10;
+		setDateTime(y, m, d, 12);
+		system.tick = system.tick + (RL_TICK_UPDATE_PERIOD - (system.tick % RL_TICK_UPDATE_PERIOD));
+		seedRandomEntropy(entropy);
+		__pauseLogMessage();
+		fundEntropyForDrawIfNeeded(funding);
+		beginTick();
+	}
+
+	void drawWithEntropy(const m256i& seedDigest, DrawFunding funding = DrawFunding::AutoFundEntropy)
+	{
+		drawWithEntropy(seedDigest.m256i_u64[0], funding);
+	}
+
+	// Uses the contract GetRandomValues() implementation so tests don't duplicate RNG logic.
+	// Returns values in generation order (not sorted).
+	QTFRandomValues computeWinningNumbersForEntropy(const QPI::bit_4096& entropy, uint64 expectedNumberOfPlayers,
+	                                                uint64 expectedJackpot = static_cast<uint64>(-1),
+	                                                uint64 expectedTicketPrice = static_cast<uint64>(-1))
+	{
+		QTF::SettleEpoch_locals::SettleEntropyData settleEntropyData{};
+		settleEntropyData.entropy = entropy;
+		settleEntropyData.numberOfPlayers = expectedNumberOfPlayers;
+		settleEntropyData.ticketPrice =
+		    expectedTicketPrice == static_cast<uint64>(-1) ? state()->getTicketPriceInternal() : expectedTicketPrice;
+		settleEntropyData.jackpot = expectedJackpot == static_cast<uint64>(-1) ? state()->getJackpot() : expectedJackpot;
+		settleEntropyData.tick = system.tick + (RL_TICK_UPDATE_PERIOD - (system.tick % RL_TICK_UPDATE_PERIOD));
+		settleEntropyData.epoch = system.epoch;
+
+		m256i randomDigest;
+		KangarooTwelve(reinterpret_cast<const uint8*>(&settleEntropyData), sizeof(settleEntropyData), reinterpret_cast<uint8*>(&randomDigest),
+		               sizeof(m256i));
 
 		QpiContextUserFunctionCall qpi(QTF_CONTRACT_INDEX);
 		primeQpiFunctionContext(qpi);
-		const auto out = state()->callGetRandomValues(qpi, seed);
+		const auto out = state()->callGetRandomValues(qpi, randomDigest.m256i_u64[0]);
 		return out.values;
 	}
 
@@ -718,11 +797,22 @@ public:
 		return losingNumbers;
 	}
 
-	WinningAndLosing computeWinningAndLosing(const m256i& digest)
+	WinningAndLosing computeWinningAndLosing(const QPI::bit_4096& entropy, uint64 expectedNumberOfPlayers,
+	                                         uint64 expectedJackpot = static_cast<uint64>(-1),
+	                                         uint64 expectedTicketPrice = static_cast<uint64>(-1))
 	{
-		WinningAndLosing out = {computeWinningNumbersForDigest(digest), makeLosingNumbers(out.winning)};
+		WinningAndLosing out = {computeWinningNumbersForEntropy(entropy, expectedNumberOfPlayers, expectedJackpot, expectedTicketPrice),
+		                        makeLosingNumbers(out.winning)};
 
 		return out;
+	}
+
+	WinningAndLosing computeWinningAndLosing(const m256i& seedDigest, uint64 expectedNumberOfPlayers,
+	                                         uint64 expectedJackpot = static_cast<uint64>(-1),
+	                                         uint64 expectedTicketPrice = static_cast<uint64>(-1))
+	{
+		const QPI::bit_4096 entropy = seedRandomEntropy(seedDigest.m256i_u64[0]);
+		return computeWinningAndLosing(entropy, expectedNumberOfPlayers, expectedJackpot, expectedTicketPrice);
 	}
 
 	void buyRandomTickets(uint64 count, uint64 ticketPrice, const QTFRandomValues& numbers)
@@ -2194,7 +2284,7 @@ TEST(ContractQThirtyFour, WinningCombinationsHistory_StoresWinningCombinationAft
 
 	m256i digest = {};
 	digest.m256i_u64[0] = 0x1122334455667788ULL;
-	ctl.drawWithDigest(digest);
+	ctl.drawWithEntropy(digest);
 
 	const QTF::GetWinnerData_output winnerData = ctl.getWinnerData();
 	const QTF::GetWinningCombinationsHistory_output history = ctl.getWinningCombinationsHistory();
@@ -2221,7 +2311,7 @@ TEST(ContractQThirtyFour, WinningCombinationsHistory_WrapAroundKeepsLatestAtLast
 
 		m256i digest = {};
 		digest.m256i_u64[0] = 0xABCDEF0000000000ULL + i;
-		ctl.drawWithDigest(digest);
+		ctl.drawWithEntropy(digest);
 
 		lastWinningValues = ctl.getWinnerData().winnerData.winnerValues;
 	}
@@ -2288,7 +2378,7 @@ TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed)
 	// Fix RNG so we can deterministically avoid winners (and especially k=4).
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0x1010101010101010ULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 10);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 	const QTF::GetFees_output fees = ctl.getFees();
@@ -2317,7 +2407,7 @@ TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed)
 
 	EXPECT_EQ(contractBalBefore, totalRevenue);
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	EXPECT_EQ(ctl.state()->getFrActive(), false);
 
@@ -2371,7 +2461,7 @@ TEST(ContractQThirtyFour, Settlement_InsufficientBalance_ClearsPlayersAndAbortsS
 
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0x3030303030303030ULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 2);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 	constexpr uint64 numPlayers = 2;
@@ -2386,7 +2476,7 @@ TEST(ContractQThirtyFour, Settlement_InsufficientBalance_ClearsPlayersAndAbortsS
 	ASSERT_TRUE(decreaseEnergy(qtfIndex, totalRevenue));
 	EXPECT_EQ(getBalance(ctl.qtfSelf()), 0);
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest, DrawFunding::NoEntropyFunding);
 
 	// Even if refunds can't be paid (because we drained balance), the contract must clear the epoch state.
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0ULL);
@@ -2400,12 +2490,12 @@ TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed_FRMode)
 	// Fix RNG so we can deterministically avoid winners (and especially k=4).
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0x2020202020202020ULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
 	// Activate FR mode
 	ctl.state()->setJackpot(100000000ULL); // Below target
 	ctl.state()->setTargetJackpotInternal(QTF_DEFAULT_TARGET_JACKPOT);
 	ctl.forceFREnabledWithinWindow(5);
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 10);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 	const QTF::GetFees_output fees = ctl.getFees();
@@ -2425,7 +2515,7 @@ TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed_FRMode)
 
 	EXPECT_EQ(contractBalBefore, totalRevenue);
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	// In FR mode, dev receives less than full 10% of revenue
 	// Base redirect: 1% of revenue (QTF_FR_DEV_REDIRECT_BP = 100 basis points)
@@ -2466,7 +2556,7 @@ TEST(ContractQThirtyFour, Settlement_JackpotGrowsFromOverflow)
 	// Fix RNG so we can deterministically create "no winners" tickets.
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0xBADC0FFEE0DDF00DULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 20);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 	const uint64 jackpotBefore = ctl.state()->getJackpot();
@@ -2496,7 +2586,7 @@ TEST(ContractQThirtyFour, Settlement_JackpotGrowsFromOverflow)
 	// Minimum expected jackpot growth (assuming no k2/k3 winners, all overflow goes to jackpot)
 	const uint64 minExpectedGrowth = overflowToJackpot;
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	// Verify jackpot growth
 	const uint64 jackpotAfter = ctl.state()->getJackpot();
@@ -2519,7 +2609,6 @@ TEST(ContractQThirtyFour, Settlement_RoundsSinceK4_Increments)
 
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0x1111222233334444ULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 
@@ -2528,10 +2617,11 @@ TEST(ContractQThirtyFour, Settlement_RoundsSinceK4_Increments)
 	{
 		ctl.beginEpochWithValidTime();
 
+		const auto nums = ctl.computeWinningAndLosing(testDigest, 5);
 		ctl.buyRandomTickets(5, ticketPrice, nums.losing);
 
 		const uint64 roundsBefore = ctl.state()->getFrRoundsSinceK4();
-		ctl.drawWithDigest(testDigest);
+		ctl.drawWithEntropy(testDigest);
 
 		// Deterministic: no ticket matches any winning number, so k=4 cannot occur.
 		EXPECT_EQ(ctl.state()->getFrRoundsSinceK4(), roundsBefore + 1);
@@ -2580,7 +2670,6 @@ TEST(ContractQThirtyFour, FR_Deactivation_AfterHysteresis)
 
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0x3030303030303030ULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
 	// Set jackpot at target
 	ctl.state()->setJackpot(QTF_DEFAULT_TARGET_JACKPOT);
@@ -2595,11 +2684,11 @@ TEST(ContractQThirtyFour, FR_Deactivation_AfterHysteresis)
 	{
 		ctl.beginEpochWithValidTime();
 
-		ctl.buyRandomTickets(5, ticketPrice, nums.losing);
-
 		// Keep jackpot at target (add back what might be paid out)
 		ctl.state()->setJackpot(QTF_DEFAULT_TARGET_JACKPOT);
-		ctl.drawWithDigest(testDigest);
+		const auto nums = ctl.computeWinningAndLosing(testDigest, 5);
+		ctl.buyRandomTickets(5, ticketPrice, nums.losing);
+		ctl.drawWithEntropy(testDigest);
 	}
 
 	// After 3 rounds at target, FR should deactivate
@@ -2615,7 +2704,6 @@ TEST(ContractQThirtyFour, FR_OverflowBias_95PercentToJackpot)
 	// Fix RNG so we can deterministically create "no winners" tickets.
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0xCAFEBABEDEADBEEFULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
 	// Activate FR
 	ctl.state()->setJackpot(100000000ULL); // Below target
@@ -2628,6 +2716,7 @@ TEST(ContractQThirtyFour, FR_OverflowBias_95PercentToJackpot)
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 	const uint64 jackpotBefore = ctl.state()->getJackpot();
 	constexpr uint64 numPlayers = 50;
+	const auto nums = ctl.computeWinningAndLosing(testDigest, numPlayers);
 
 	// Add many players to generate significant overflow
 	ctl.buyRandomTickets(numPlayers, ticketPrice, nums.losing);
@@ -2673,7 +2762,7 @@ TEST(ContractQThirtyFour, FR_OverflowBias_95PercentToJackpot)
 	// totalJackpotContribution = overflowToJackpot + winnersRake + devRedirect + distRedirect
 	const uint64 expectedGrowth = overflowToJackpot + winnersRake + devRedirect + distRedirect;
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	// Verify that jackpot grew by the expected amount
 	const uint64 actualGrowth = ctl.state()->getJackpot() - jackpotBefore;
@@ -2719,17 +2808,17 @@ TEST(ContractQThirtyFour, WinnerData_ResetEachRound)
 	// Round 1: force a deterministic k=2 winner so winnerCounter becomes > 0.
 	m256i digest1 = {};
 	digest1.m256i_u64[0] = 0x13579BDF2468ACE0ULL;
-	const auto nums1 = ctl.computeWinningAndLosing(digest1);
 
 	ctl.beginEpochWithValidTime();
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const auto nums1 = ctl.computeWinningAndLosing(digest1, 1);
 
 	QTFRandomValues k2Numbers = ctl.makeK2Numbers(nums1.winning);
 	const id k2Winner = id::randomValue();
 	ctl.fundAndBuyTicket(k2Winner, ticketPrice, k2Numbers);
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 1u);
 
-	ctl.drawWithDigest(digest1);
+	ctl.drawWithEntropy(digest1);
 
 	const QTF::GetWinnerData_output afterRound1 = ctl.getWinnerData();
 	EXPECT_GT(afterRound1.winnerData.winnerCounter, 0u);
@@ -2737,13 +2826,13 @@ TEST(ContractQThirtyFour, WinnerData_ResetEachRound)
 	// Round 2: force a deterministic "no winners" round, winnerCounter must reset to 0.
 	m256i digest2 = {};
 	digest2.m256i_u64[0] = 0x0F0E0D0C0B0A0908ULL;
-	const auto nums2 = ctl.computeWinningAndLosing(digest2);
 
 	ctl.beginEpochWithValidTime();
+	const auto nums2 = ctl.computeWinningAndLosing(digest2, 5);
 	ctl.buyRandomTickets(5, ticketPrice, nums2.losing);
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 5u);
 
-	ctl.drawWithDigest(digest2);
+	ctl.drawWithEntropy(digest2);
 
 	const QTF::GetWinnerData_output afterRound2 = ctl.getWinnerData();
 	EXPECT_EQ(afterRound2.winnerData.winnerCounter, 0u) << "Winner snapshot must reset each round";
@@ -2787,7 +2876,6 @@ TEST(ContractQThirtyFour, MultipleRounds_JackpotAccumulates)
 
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0x0DDC0FFEE0DDF00DULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 	uint64 prevJackpot = 0;
@@ -2797,8 +2885,9 @@ TEST(ContractQThirtyFour, MultipleRounds_JackpotAccumulates)
 	{
 		ctl.beginEpochWithValidTime();
 
+		const auto nums = ctl.computeWinningAndLosing(testDigest, 10);
 		ctl.buyRandomTickets(10, ticketPrice, nums.losing);
-		ctl.drawWithDigest(testDigest);
+		ctl.drawWithEntropy(testDigest);
 
 		// Jackpot should increase each round (no k=4 winners in this test)
 		const uint64 currentJackpot = ctl.state()->getJackpot();
@@ -2878,8 +2967,8 @@ TEST(ContractQThirtyFour, Schedule_WednesdayAlwaysDraws_IgnoresScheduleMask)
 	ctl.beginEpochWithValidTime();
 
 	const m256i testDigest = {};
-	ctl.setPrevSpectrumDigest(testDigest);
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
+	ctl.seedRandomEntropy(testDigest);
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 5);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 	for (int i = 0; i < 5; ++i)
@@ -2892,7 +2981,7 @@ TEST(ContractQThirtyFour, Schedule_WednesdayAlwaysDraws_IgnoresScheduleMask)
 	// Wednesday should always trigger a draw at/after draw hour, even if schedule mask does not include it.
 	const uint8 drawHour = ctl.state()->getDrawHourInternal();
 	ctl.setDateTime(2025, 1, 15, drawHour);
-	ctl.forceBeginTick();
+	ctl.forceBeginTick(DrawFunding::AutoFundEntropy);
 
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
 }
@@ -2928,7 +3017,7 @@ TEST(ContractQThirtyFour, Schedule_DrawOnlyOnScheduledDays)
 
 	// Wednesday 2025-01-15 IS scheduled - should trigger draw
 	ctl.setDateTime(2025, 1, 15, 12);
-	ctl.forceBeginTick();
+	ctl.forceBeginTick(DrawFunding::AutoFundEntropy);
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u); // Cleared after draw
 }
 
@@ -2943,8 +3032,8 @@ TEST(ContractQThirtyFour, Schedule_DrawAtMostOncePerDay_LastDrawDateStampGuards)
 	ctl.beginEpochWithValidTime();
 
 	const m256i testDigest = {};
-	ctl.setPrevSpectrumDigest(testDigest);
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
+	ctl.seedRandomEntropy(testDigest);
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 1);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 	{
@@ -2956,7 +3045,7 @@ TEST(ContractQThirtyFour, Schedule_DrawAtMostOncePerDay_LastDrawDateStampGuards)
 
 	// First draw on Thursday.
 	ctl.setDateTime(2025, 1, 16, drawHour);
-	ctl.forceBeginTick();
+	ctl.forceBeginTick(DrawFunding::AutoFundEntropy);
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
 
 	const uint64 jackpotAfterFirst = ctl.state()->getJackpot();
@@ -3009,7 +3098,7 @@ TEST(ContractQThirtyFour, DrawHour_NoDrawBeforeScheduledHour)
 
 	// At or after draw hour - should trigger draw
 	ctl.setDateTime(2025, 1, 15, drawHour);
-	ctl.forceBeginTick();
+	ctl.forceBeginTick(DrawFunding::AutoFundEntropy);
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
 }
 
@@ -3021,8 +3110,8 @@ TEST(ContractQThirtyFour, DrawHour_WednesdayDrawClosesTicketSelling)
 	ctl.beginEpochWithValidTime();
 
 	const m256i testDigest = {};
-	ctl.setPrevSpectrumDigest(testDigest);
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
+	ctl.seedRandomEntropy(testDigest);
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 1);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 	{
@@ -3032,7 +3121,7 @@ TEST(ContractQThirtyFour, DrawHour_WednesdayDrawClosesTicketSelling)
 
 	const uint8 drawHour = ctl.state()->getDrawHourInternal();
 	ctl.setDateTime(2025, 1, 15, drawHour);
-	ctl.forceBeginTick();
+	ctl.forceBeginTick(DrawFunding::AutoFundEntropy);
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
 
 	// After a Wednesday draw, selling must remain closed until next epoch.
@@ -3205,18 +3294,18 @@ TEST(ContractQThirtyFour, EstimatePrizePayouts_NoWinnersShowsPotential)
 // ============================================================================
 // DETERMINISTIC WINNER TESTING
 // ============================================================================
-// Solution: By fixing prevSpectrumDigest, we can deterministically control winning numbers
+// Solution: By fixing Random entropy plus explicit settlement context, we can deterministically control winning numbers
 //
 // Background:
-// Settlement generates winning numbers using: seed = K12(prevSpectrumDigest).u64._0
+// Settlement generates winning numbers using: seed = K12(Random entropy, player count, price, jackpot, tick, epoch).u64._0
 // This seed is then used in GetRandomValues (QThirtyFour.h:1663-1698) to derive 4 numbers.
 //
 // Approach:
-//   1. Create a fixed test prevSpectrumDigest (e.g., testDigest)
-//   2. Compute expected winning numbers for that digest
+//   1. Create a fixed test Random entropy (e.g., testDigest)
+//   2. Compute expected winning numbers for that entropy and the final settlement player count
 //   3. Buy tickets with exact winning numbers (for k=4), partial matches (for k=2/k=3), etc.
-//   4. Trigger settlement with drawWithDigest(testDigest)
-//   5. Settlement will use our fixed digest, generating the pre-computed winning numbers
+//   4. Trigger settlement with drawWithEntropy(testDigest)
+//   5. Settlement will use our fixed entropy and matching context, generating the pre-computed winning numbers
 //   6. Verify actual payouts, jackpot depletion, FR resets, etc.
 //
 // This enables deterministic testing of:
@@ -3235,17 +3324,16 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_DepletesAndReseeds)
 	increaseEnergy(ctl.qrpSelf(), QTF_DEFAULT_TARGET_JACKPOT + 1000000ULL);
 	const uint64 qrpBalanceBefore = static_cast<uint64>(getBalance(ctl.qrpSelf()));
 
-	// Create a deterministic prevSpectrumDigest
+	// Create a deterministic Random entropy
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0x123456789ABCDEF0ULL; // Arbitrary seed
-
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
 	// Setup: FR active with jackpot below target
 	const uint64 initialJackpot = 800000000ULL; // 800M QU
 	ctl.state()->setJackpot(initialJackpot);
 	ctl.state()->setTargetJackpotInternal(QTF_DEFAULT_TARGET_JACKPOT); // 1B target
 	ctl.forceFREnabledWithinWindow(10);
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 4);
 	// IMPORTANT: internal `state.jackpot` must be backed by actual contract balance, otherwise transfers will fail.
 	increaseEnergy(ctl.qtfSelf(), initialJackpot);
 
@@ -3278,9 +3366,9 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_DepletesAndReseeds)
 	EXPECT_EQ(jackpotBefore, initialJackpot);
 	EXPECT_EQ(roundsSinceK4Before, 10u);
 
-	// Trigger settlement using our fixed prevSpectrumDigest
+	// Trigger settlement using our fixed Random entropy
 	const uint64 k4WinnerBefore = getBalance(k4Winner);
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 	const uint64 k4WinnerAfter = getBalance(k4Winner);
 
 	// Verify k=4 jackpot win behavior:
@@ -3316,11 +3404,11 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_MultipleWinners_Split
 
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0xA5A5A5A5A5A5A5A5ULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
 	static constexpr uint64 initialJackpot = 900000000ULL;
 	ctl.state()->setJackpot(initialJackpot);
 	ctl.forceFREnabledWithinWindow(1);
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 2);
 	increaseEnergy(ctl.qtfSelf(), initialJackpot);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
@@ -3333,7 +3421,7 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_MultipleWinners_Split
 	const uint64 w1Before = getBalance(w1);
 	const uint64 w2Before = getBalance(w2);
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	const uint64 expectedPerWinner = initialJackpot / 2;
 	EXPECT_EQ(static_cast<uint64>(getBalance(w1) - w1Before), expectedPerWinner);
@@ -3347,10 +3435,10 @@ TEST(ContractQThirtyFour, WinnerData_WonAmount_MatchesBalanceGain_ForK2K3K4)
 
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0x1122334455667788ULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
 	static constexpr uint64 initialJackpot = 500000000ULL;
 	ctl.state()->setJackpot(initialJackpot);
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 4);
 	increaseEnergy(ctl.qtfSelf(), initialJackpot);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
@@ -3369,7 +3457,7 @@ TEST(ContractQThirtyFour, WinnerData_WonAmount_MatchesBalanceGain_ForK2K3K4)
 	const uint64 k3Before = getBalance(k3Winner);
 	const uint64 k2Before = getBalance(k2Winner);
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	const uint64 k4Gain = static_cast<uint64>(getBalance(k4Winner) - k4Before);
 	const uint64 k3Gain = static_cast<uint64>(getBalance(k3Winner) - k3Before);
@@ -3416,10 +3504,10 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_ReseedLimitedByQRP)
 
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0x0A0B0C0D0E0F1011ULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
 	const uint64 initialJackpot = 800000000ULL;
 	ctl.state()->setJackpot(initialJackpot);
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 1);
 	increaseEnergy(ctl.qtfSelf(), initialJackpot);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
@@ -3429,7 +3517,7 @@ TEST(ContractQThirtyFour, DeterministicWinner_K4JackpotWin_ReseedLimitedByQRP)
 	const uint64 qrpBefore = static_cast<uint64>(getBalance(ctl.qrpSelf()));
 	const uint64 w1Before = getBalance(w1);
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	EXPECT_EQ(static_cast<uint64>(getBalance(w1) - w1Before), initialJackpot);
 
@@ -3455,11 +3543,11 @@ TEST(ContractQThirtyFour, DeterministicWinner_K2K3Payouts_VerifyRevenueSplit)
 	// Force FR activation window to be expired so SettleEpoch cannot auto-enable FR.
 	ctl.forceFRDisabledForBaseline();
 
-	// Create deterministic prevSpectrumDigest
+	// Create deterministic Random entropy
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0xFEDCBA9876543210ULL; // Different seed
 
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 10);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 
@@ -3508,7 +3596,7 @@ TEST(ContractQThirtyFour, DeterministicWinner_K2K3Payouts_VerifyRevenueSplit)
 	const uint64 k2Winner1Before = getBalance(k2Winner1);
 
 	// Trigger settlement
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	// Verify winner payouts
 	// k=3 pool split between 2 winners
@@ -3591,7 +3679,7 @@ TEST(ContractQThirtyFour, Settlement_PerWinnerCap_AppliesToK3Winner_OverflowAcco
 
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0xD1CEB00BD1CEB00BULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 101);
 
 	const uint64 P = ctl.state()->getTicketPriceInternal();
 	const uint64 perWinnerCap = smul(P, QTF_TOPUP_PER_WINNER_CAP_MULT);
@@ -3606,7 +3694,7 @@ TEST(ContractQThirtyFour, Settlement_PerWinnerCap_AppliesToK3Winner_OverflowAcco
 	const uint64 qrpBefore = static_cast<uint64>(getBalance(ctl.qrpSelf()));
 	const uint64 k3Before = getBalance(k3Winner);
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	EXPECT_EQ(static_cast<uint64>(getBalance(k3Winner) - k3Before), perWinnerCap);
 
@@ -3646,7 +3734,7 @@ TEST(ContractQThirtyFour, Settlement_FloorTopUp_LimitedBySafetyCaps_PayoutBelowF
 
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0x0DDC0FFEE0DDF00DULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 1);
 
 	const id k3Winner = id::randomValue();
 	ctl.fundAndBuyTicket(k3Winner, P, ctl.makeK3Numbers(nums.winning, 0));
@@ -3655,7 +3743,7 @@ TEST(ContractQThirtyFour, Settlement_FloorTopUp_LimitedBySafetyCaps_PayoutBelowF
 	const uint64 qrpBefore = static_cast<uint64>(getBalance(ctl.qrpSelf()));
 	const uint64 k3Before = getBalance(k3Winner);
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	const QTF::GetFees_output fees = ctl.getFees();
 	const uint64 revenue = P;
@@ -3705,7 +3793,7 @@ TEST(ContractQThirtyFour, Settlement_FloorTopUp_Integration_K2K3FloorsMetWhenRes
 
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0x5566778899AABBCCULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 3);
 
 	const uint64 P = ctl.state()->getTicketPriceInternal();
 
@@ -3727,7 +3815,7 @@ TEST(ContractQThirtyFour, Settlement_FloorTopUp_Integration_K2K3FloorsMetWhenRes
 
 	EXPECT_EQ(qtfBefore, 3 * P);
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	// Expected pools and top-ups.
 	const QTF::GetFees_output fees = ctl.getFees();
@@ -3780,7 +3868,6 @@ TEST(ContractQThirtyFour, FR_HighDeficit_ExtraRedirectsCalculated)
 	// Fix RNG so we can deterministically avoid winners (and especially k=4).
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0x4040404040404040ULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
 	// Setup: High deficit scenario
 	// Jackpot = 0, Target = 1B, FR active
@@ -3793,6 +3880,7 @@ TEST(ContractQThirtyFour, FR_HighDeficit_ExtraRedirectsCalculated)
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 	const QTF::GetFees_output fees = ctl.getFees();
+	const auto nums = ctl.computeWinningAndLosing(testDigest, 500);
 
 	// Add many players to generate high revenue
 	constexpr int numPlayers = 500;
@@ -3816,7 +3904,7 @@ TEST(ContractQThirtyFour, FR_HighDeficit_ExtraRedirectsCalculated)
 	const uint64 jackpotBefore = ctl.state()->getJackpot();
 	EXPECT_EQ(jackpotBefore, 0ULL);
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	// After settlement with FR active and high deficit:
 	const uint64 devBalAfter = getBalance(ctl.state()->team());
@@ -3866,7 +3954,6 @@ TEST(ContractQThirtyFour, Settlement_FRMode_ExtraRedirect_ClampsToMax_AndAffects
 	// Deterministic no-winner tickets.
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0x7777777777777777ULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
 	// Force FR on and create an extreme deficit to guarantee extra redirect clamps to max.
 	ctl.state()->setJackpot(0ULL);
@@ -3878,6 +3965,7 @@ TEST(ContractQThirtyFour, Settlement_FRMode_ExtraRedirect_ClampsToMax_AndAffects
 
 	const uint64 P = ctl.state()->getTicketPriceInternal();
 	constexpr uint64 numPlayers = 10;
+	const auto nums = ctl.computeWinningAndLosing(testDigest, numPlayers);
 	ctl.buyRandomTickets(numPlayers, P, nums.losing);
 
 	const QTF::GetFees_output fees = ctl.getFees();
@@ -3910,7 +3998,7 @@ TEST(ContractQThirtyFour, Settlement_FRMode_ExtraRedirect_ClampsToMax_AndAffects
 	const uint64 expectedDevPayout = fullDevFee - expectedDevRedirect;
 	const uint64 expectedDistPayout = fullDistFee - expectedDistRedirect;
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	// Dev payout must match exact base+extra redirect math (no caps expected in this scenario).
 	EXPECT_EQ(static_cast<uint64>(getBalance(ctl.state()->team()) - devBefore), expectedDevPayout);
@@ -3936,7 +4024,6 @@ TEST(ContractQThirtyFour, FR_PostK4WindowExpiry_DoesNotActivateWhenInactive)
 
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0xABCDABCDABCDABCDULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
 	// Setup: Jackpot below target, but window expired and FR inactive.
 	ctl.state()->setJackpot(QTF_DEFAULT_TARGET_JACKPOT / 2);
@@ -3948,9 +4035,10 @@ TEST(ContractQThirtyFour, FR_PostK4WindowExpiry_DoesNotActivateWhenInactive)
 
 	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
 	constexpr int numPlayers = 10;
+	const auto nums = ctl.computeWinningAndLosing(testDigest, numPlayers);
 	ctl.buyRandomTickets(numPlayers, ticketPrice, nums.losing);
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	EXPECT_EQ(ctl.state()->getFrActive(), false);
 	EXPECT_EQ(ctl.state()->getFrRoundsSinceK4(), QTF_FR_POST_K4_WINDOW_ROUNDS + 1);
@@ -3963,7 +4051,6 @@ TEST(ContractQThirtyFour, FR_PostK4WindowExpiry_DoesNotReactivateWhenWindowExpir
 
 	m256i testDigest = {};
 	testDigest.m256i_u64[0] = 0xFACEFEEDFACEFEEDULL;
-	const auto nums = ctl.computeWinningAndLosing(testDigest);
 
 	// Setup: FR active, jackpot below target, but approaching window expiry
 	ctl.state()->setJackpot(QTF_DEFAULT_TARGET_JACKPOT / 2);           // 500M (below target)
@@ -3977,6 +4064,7 @@ TEST(ContractQThirtyFour, FR_PostK4WindowExpiry_DoesNotReactivateWhenWindowExpir
 
 	// Add players
 	constexpr int numPlayers = 10;
+	auto nums = ctl.computeWinningAndLosing(testDigest, numPlayers);
 	for (int i = 0; i < numPlayers; ++i)
 	{
 		const id user = id::randomValue();
@@ -3988,7 +4076,7 @@ TEST(ContractQThirtyFour, FR_PostK4WindowExpiry_DoesNotReactivateWhenWindowExpir
 	EXPECT_EQ(ctl.state()->getFrRoundsSinceK4(), QTF_FR_POST_K4_WINDOW_ROUNDS - 1);
 	EXPECT_LT(ctl.state()->getJackpot(), ctl.state()->getTargetJackpotInternal());
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	// After settlement (deterministic: no k=4 win is possible):
 	// - roundsSinceK4 should increment to 50
@@ -4000,13 +4088,14 @@ TEST(ContractQThirtyFour, FR_PostK4WindowExpiry_DoesNotReactivateWhenWindowExpir
 	// Run one more round: FR must be OFF because roundsSinceK4 >= 50.
 	ctl.beginEpochWithValidTime();
 
+	nums = ctl.computeWinningAndLosing(testDigest, numPlayers);
 	for (int i = 0; i < numPlayers; ++i)
 	{
 		const id user = id::randomValue();
 		ctl.fundAndBuyTicket(user, ticketPrice, nums.losing);
 	}
 
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	// After second round:
 	// - Jackpot still below target
@@ -4017,12 +4106,13 @@ TEST(ContractQThirtyFour, FR_PostK4WindowExpiry_DoesNotReactivateWhenWindowExpir
 
 	// Run a third round to ensure FR stays OFF while still outside the window.
 	ctl.beginEpochWithValidTime();
+	nums = ctl.computeWinningAndLosing(testDigest, numPlayers);
 	for (int i = 0; i < numPlayers; ++i)
 	{
 		const id user = id::randomValue();
 		ctl.fundAndBuyTicket(user, ticketPrice, nums.losing);
 	}
-	ctl.drawWithDigest(testDigest);
+	ctl.drawWithEntropy(testDigest);
 
 	EXPECT_EQ(ctl.state()->getFrRoundsSinceK4(), QTF_FR_POST_K4_WINDOW_ROUNDS + 2);
 	EXPECT_EQ(ctl.state()->getFrActive(), false);
