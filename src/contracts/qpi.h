@@ -2960,7 +2960,7 @@ namespace QPI
 		enum { __expandEmpty = 1 };
 		static void __expand(const QpiContextProcedureCall& qpi, void*, void*) {}
 		enum { __migrateEmpty = 1, __migrateOldStateSize = 0 , __migrateLocalsSize = sizeof(NoData) };
-		static void __migrate(const QpiContextProcedureCall& qpi, void*, void*) {}
+		static void __migrate(const QpiContextProcedureCall& qpi, void*, void*, void*) {}
 	};
 
 	// Internal macro for defining the system procedure macros
