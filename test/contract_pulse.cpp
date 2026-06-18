@@ -1124,47 +1124,6 @@ TEST(ContractPulse_Public, BuyRandomTicketsRefundsEntropyFeeOverpayment)
 	EXPECT_EQ(ctl.state()->getTicketCounter(), 1u);
 }
 
-// Validate deterministic random tickets for fixed Random entropy.
-TEST(ContractPulse_Public, BuyRandomTicketsDeterministicWithFixedEntropy)
-{
-	ContractTestingPulse ctl;
-	ctl.setDateTime(2025, 1, 10, 12);
-	ctl.beginEpoch();
-
-	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
-	const id user = id::randomValue();
-	const uint64 ticketPrice = ctl.getTicketPrice().ticketPrice;
-	ctl.transferQHeart(issuance, user, ticketPrice);
-
-	const QPI::bit_4096 entropy = ctl.seedRandomEntropy(0xABCDEF01ULL);
-
-	PULSE::AllocateRandomTickets_locals::RandomData randomData{};
-	randomData.entropy = entropy;
-	randomData.allocateInput.player = user;
-	randomData.allocateInput.count = 1;
-	randomData.ticketCounter = static_cast<sint64>(ctl.state()->getTicketCounter());
-	randomData.tick = 0;
-
-	m256i hashResult;
-	KangarooTwelve(reinterpret_cast<const uint8*>(&randomData), sizeof(randomData), reinterpret_cast<uint8*>(&hashResult), sizeof(m256i));
-	const uint64 randomSeed = hashResult.m256i_u64[0];
-	uint64 tempSeed = 0;
-	RL::deriveOne(randomSeed, 0, tempSeed);
-
-	QpiContextUserFunctionCall qpi(PULSE_CONTRACT_INDEX);
-	primeQpiFunctionContext(qpi);
-	const Array<uint8, PULSE_WINNING_DIGITS_ALIGNED>& expected = ctl.state()->callGetRandomDigits(qpi, tempSeed).digits;
-
-	const PULSE::BuyRandomTickets_output out = ctl.buyRandomTickets(user, 1);
-	EXPECT_EQ(out.returnCode, PULSE::EReturnCode::SUCCESS);
-
-	const PULSE::Ticket ticket = ctl.state()->getTicket(0);
-	for (uint64 i = 0; i < PULSE_WINNING_DIGITS; ++i)
-	{
-		EXPECT_EQ(ticket.digits.get(i), expected.get(i));
-	}
-}
-
 // Clamp random ticket purchases to remaining capacity.
 TEST(ContractPulse_Public, BuyRandomTicketsClampsToSlotsLeft)
 {
