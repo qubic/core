@@ -938,6 +938,46 @@ TEST(ContractQDuel, ConnectToRoom_ZeroEntropyFailsAndRefundsOpponent)
 	EXPECT_EQ(winners.winners.get(0).winner, id::zero());
 }
 
+TEST(ContractQDuel, ConnectToRoom_PostEntropyFallbackRefundsStakePoolMinusEntropyFee)
+{
+	ContractTestingQDuel qduel;
+	qduel.state()->setState(QDUEL::EState::NONE);
+
+	const id owner(2211, 0, 0, 0);
+	const id opponent(2212, 0, 0, 0);
+	const sint64 stake = qduel.state()->minDuelAmount();
+	increaseEnergy(owner, stake);
+	increaseEnergy(opponent, stake);
+	increaseEnergy(qduel.state()->team(), stake);
+
+	ASSERT_EQ(qduel.setPercentFees(qduel.state()->team(), 2, 1, 0, 3).returnCode, QDUEL::EReturnCode::SUCCESS);
+
+	const uint64 ownerBefore = getBalance(owner);
+	const uint64 opponentBefore = getBalance(opponent);
+	const uint64 randomEarnedBefore = qduel.randomState()->earnedAmount;
+	const uint64 teamBefore = getBalance(qduel.state()->team());
+
+	ASSERT_EQ(qduel.createRoom(owner, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::EReturnCode::SUCCESS);
+	const QDUEL::RoomInfo roomBefore = qduel.state()->firstRoom();
+	const uint64 refundPool = static_cast<uint64>(stake) * 2ULL - RL_RANDOM_ENTROPY_FEE;
+	const uint64 ownerRefund = refundPool / 2ULL;
+	const uint64 opponentRefund = refundPool - ownerRefund;
+
+	const QDUEL::ConnectToRoom_output output = qduel.connectToRoom(opponent, roomBefore.roomId, stake);
+
+	EXPECT_EQ(output.returnCode, QDUEL::EReturnCode::SUCCESS);
+	EXPECT_TRUE(output.winner == owner || output.winner == opponent);
+	EXPECT_EQ(getBalance(owner), ownerBefore - static_cast<uint64>(stake) + ownerRefund);
+	EXPECT_EQ(getBalance(opponent), opponentBefore - static_cast<uint64>(stake) + opponentRefund);
+	EXPECT_EQ(qduel.randomState()->earnedAmount, randomEarnedBefore + RL_RANDOM_ENTROPY_FEE);
+	EXPECT_EQ(getBalance(qduel.state()->team()), teamBefore);
+	EXPECT_EQ(qduel.state()->roomCount(), 0u);
+
+	const QDUEL::GetLastWinners_output winners = qduel.getLastWinners();
+	EXPECT_EQ(winners.returnCode, QDUEL::EReturnCode::SUCCESS);
+	EXPECT_EQ(winners.winners.get(0).winner, id::zero());
+}
+
 TEST(ContractQDuel, ConnectToRoomRefundsExcessRewardForLoser)
 {
 	ContractTestingQDuel qduel;

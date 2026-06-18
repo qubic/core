@@ -358,6 +358,22 @@ public:
 		uint64 i; // Loop counter for mass-refund
 	};
 
+	struct ReturnTicketsAfterEntropy_input
+	{
+	};
+	struct ReturnTicketsAfterEntropy_output
+	{
+	};
+
+	struct ReturnTicketsAfterEntropy_locals
+	{
+		uint64 i;
+		uint64 refundAmount;
+		uint64 refundPerTicket;
+		uint64 refundPool;
+		uint64 refundRemainder;
+	};
+
 	struct SetPrice_input
 	{
 		uint64 newPrice; // New ticket price to be applied at the end of the epoch
@@ -406,6 +422,8 @@ public:
 		ReturnAllTickets_locals returnAllTicketsLocals;
 		ReturnAllTickets_input returnAllTicketsInput;
 		ReturnAllTickets_output returnAllTicketsOutput;
+		ReturnTicketsAfterEntropy_input returnTicketsAfterEntropyInput;
+		ReturnTicketsAfterEntropy_output returnTicketsAfterEntropyOutput;
 		FillWinnersInfo_output fillWinnersInfoOutput;
 
 		struct DrawEntropyData
@@ -720,8 +738,7 @@ public:
 				}
 				else
 				{
-					// Fallback: if winner couldn't be selected (should not happen), refund all tickets
-					ReturnAllTickets(qpi, state, locals.returnAllTicketsInput, locals.returnAllTicketsOutput, locals.returnAllTicketsLocals);
+					CALL(ReturnTicketsAfterEntropy, locals.returnTicketsAfterEntropyInput, locals.returnTicketsAfterEntropyOutput);
 				}
 			}
 		}
@@ -947,6 +964,36 @@ private:
 		for (locals.i = 0; locals.i < state.get().playerCounter; ++locals.i)
 		{
 			qpi.transfer(state.get().players.get(locals.i), state.get().ticketPrice);
+		}
+	}
+
+	PRIVATE_PROCEDURE_WITH_LOCALS(ReturnTicketsAfterEntropy)
+	{
+		if (state.get().playerCounter == 0)
+		{
+			return;
+		}
+
+		locals.refundPool = smul(state.get().playerCounter, state.get().ticketPrice);
+		if (locals.refundPool <= RL_RANDOM_ENTROPY_FEE)
+		{
+			return;
+		}
+		locals.refundPool = locals.refundPool - RL_RANDOM_ENTROPY_FEE;
+		locals.refundPerTicket = div(locals.refundPool, state.get().playerCounter);
+		locals.refundRemainder = mod(locals.refundPool, state.get().playerCounter);
+
+		for (locals.i = 0; locals.i < state.get().playerCounter; ++locals.i)
+		{
+			locals.refundAmount = locals.refundPerTicket;
+			if (locals.i < locals.refundRemainder)
+			{
+				locals.refundAmount = sadd(locals.refundAmount, 1ULL);
+			}
+			if (locals.refundAmount > 0)
+			{
+				qpi.transfer(state.get().players.get(locals.i), locals.refundAmount);
+			}
 		}
 	}
 

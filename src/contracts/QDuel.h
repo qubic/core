@@ -325,6 +325,8 @@ public:
 		CloseRoomInternal_input closeRoomInternalInput;
 		CloseRoomInternal_output closeRoomInternalOutput;
 		id winner;
+		uint64 player1Refund;
+		uint64 player2Refund;
 		uint64 returnAmount;
 		uint64 amount;
 		uint64 requiredBalance;
@@ -770,10 +772,16 @@ public:
 		if (locals.winner == id::zero() ||
 		    (locals.winner != locals.getWinnerPlayer_input.player1 && locals.winner != locals.getWinnerPlayer_input.player2))
 		{
-			// Return fund to player1
-			qpi.transfer(locals.getWinnerPlayer_input.player1, locals.room.amount);
-			// Return fund to player2
-			qpi.transfer(locals.getWinnerPlayer_input.player2, locals.room.amount);
+			locals.player1Refund = div(locals.amount, 2ULL);
+			locals.player2Refund = locals.amount - locals.player1Refund;
+			if (locals.player1Refund > 0)
+			{
+				qpi.transfer(locals.getWinnerPlayer_input.player1, locals.player1Refund);
+			}
+			if (locals.player2Refund > 0)
+			{
+				qpi.transfer(locals.getWinnerPlayer_input.player2, locals.player2Refund);
+			}
 
 			state.mut().rooms.removeByKey(input.roomId);
 			locals.amount = 0;
@@ -793,23 +801,31 @@ public:
 		}
 		else if (!locals.failedGetWinner)
 		{
-			// Return fund to player1
-			qpi.transfer(locals.getWinnerPlayer_input.player1, locals.room.amount);
-			// Return fund to player2
-			qpi.transfer(locals.getWinnerPlayer_input.player2, locals.room.amount);
+			locals.player1Refund = div(locals.amount, 2ULL);
+			locals.player2Refund = locals.amount - locals.player1Refund;
+			if (locals.player1Refund > 0)
+			{
+				qpi.transfer(locals.getWinnerPlayer_input.player1, locals.player1Refund);
+			}
+			if (locals.player2Refund > 0)
+			{
+				qpi.transfer(locals.getWinnerPlayer_input.player2, locals.player2Refund);
+			}
 
 			state.mut().rooms.removeByKey(input.roomId);
+			locals.amount = 0;
+			locals.failedGetWinner = true;
 		}
 
-		if (locals.calculateRevenue_output.devFee > 0)
+		if (!locals.failedGetWinner && locals.calculateRevenue_output.devFee > 0)
 		{
 			qpi.transfer(state.get().teamAddress, locals.calculateRevenue_output.devFee);
 		}
-		if (locals.calculateRevenue_output.burnFee > 0)
+		if (!locals.failedGetWinner && locals.calculateRevenue_output.burnFee > 0)
 		{
 			qpi.burn(locals.calculateRevenue_output.burnFee);
 		}
-		if (locals.calculateRevenue_output.shareholdersFee > 0)
+		if (!locals.failedGetWinner && locals.calculateRevenue_output.shareholdersFee > 0)
 		{
 			locals.transferToShareholders_input.amount = locals.calculateRevenue_output.shareholdersFee;
 
