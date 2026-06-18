@@ -2482,6 +2482,48 @@ TEST(ContractQThirtyFour, Settlement_InsufficientBalance_ClearsPlayersAndAbortsS
 	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0ULL);
 }
 
+TEST(ContractQThirtyFour, Settlement_ZeroEntropy_RefundsTicketsAndClearsPlayers)
+{
+	ContractTestingQTF ctl;
+	ctl.startAnyDayEpoch();
+
+	const uint64 ticketPrice = ctl.state()->getTicketPriceInternal();
+	const id playerA = id::randomValue();
+	const id playerB = id::randomValue();
+	const QTFRandomValues numbersA = ctl.makeValidNumbers(1, 2, 3, 4);
+	const QTFRandomValues numbersB = ctl.makeValidNumbers(5, 6, 7, 8);
+
+	increaseEnergy(playerA, ticketPrice);
+	increaseEnergy(playerB, ticketPrice);
+	const uint64 playerABefore = getBalance(playerA);
+	const uint64 playerBBefore = getBalance(playerB);
+	ASSERT_EQ(ctl.buyTicket(playerA, ticketPrice, numbersA).returnCode, QTF::EReturnCode::SUCCESS);
+	ASSERT_EQ(ctl.buyTicket(playerB, ticketPrice, numbersB).returnCode, QTF::EReturnCode::SUCCESS);
+	ASSERT_EQ(ctl.state()->getNumberOfPlayers(), 2u);
+
+	const uint64 randomEarnedBefore = ctl.randomState()->earnedAmount;
+	const QTF::GetWinnerData_output winnersBefore = ctl.getWinnerData();
+	const uint64 jackpotBefore = ctl.state()->getJackpot();
+	const QTF::GetPools_output poolsBefore = ctl.getPools();
+
+	QPI::bit_4096 zeroEntropy{};
+	ctl.fundQtfEntropyFee();
+	ctl.drawWithEntropy(zeroEntropy, DrawFunding::NoEntropyFunding);
+
+	EXPECT_EQ(getBalance(playerA), playerABefore);
+	EXPECT_EQ(getBalance(playerB), playerBBefore);
+	EXPECT_EQ(ctl.state()->getNumberOfPlayers(), 0u);
+	EXPECT_EQ(ctl.getWinnerData().winnerData.winnerCounter, winnersBefore.winnerData.winnerCounter);
+	EXPECT_EQ(ctl.randomState()->earnedAmount, randomEarnedBefore);
+	EXPECT_EQ(ctl.state()->getJackpot(), jackpotBefore);
+
+	const QTF::GetPools_output poolsAfter = ctl.getPools();
+	EXPECT_EQ(poolsAfter.pools.jackpot, poolsBefore.pools.jackpot);
+	EXPECT_EQ(poolsAfter.pools.reserve, poolsBefore.pools.reserve);
+	EXPECT_EQ(poolsAfter.pools.targetJackpot, poolsBefore.pools.targetJackpot);
+	EXPECT_EQ(getBalance(ctl.qtfSelf()), RL_RANDOM_ENTROPY_FEE);
+}
+
 TEST(ContractQThirtyFour, Settlement_WithPlayers_FeesDistributed_FRMode)
 {
 	ContractTestingQTF ctl;

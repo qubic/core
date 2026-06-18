@@ -49,7 +49,7 @@ constexpr uint32 RL_DEFAULT_INIT_TIME = 22 << 9 | 4 << 5 | 13;
 
 constexpr uint16 RL_RANDOM_ENTROPY_BITS = 256;
 constexpr uint8 RL_RANDOM_COLLATERAL_TIER = 0;
-constexpr uint64 RL_RANDOM_ENTROPY_FEE = static_cast<uint64>(RANDOM_BITFEE) * RL_RANDOM_ENTROPY_BITS;
+constexpr uint64 RL_RANDOM_ENTROPY_FEE = RANDOM_BITFEE * RL_RANDOM_ENTROPY_BITS;
 
 /// Placeholder structure for future extensions.
 struct RL2

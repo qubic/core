@@ -166,6 +166,15 @@ public:
 		return entropy;
 	}
 
+	void seedRandomEntropy(const QPI::bit_4096& entropy)
+	{
+		const uint32 stream = (system.tick + 2u) % 3u;
+		randomState()->entropy.set(stream * 10u + RL_RANDOM_COLLATERAL_TIER, entropy);
+		const uint32 drawTick = system.tick + (RL_TICK_UPDATE_PERIOD - mod(system.tick, static_cast<uint32>(RL_TICK_UPDATE_PERIOD)));
+		const uint32 drawStream = (drawTick + 2u) % 3u;
+		randomState()->entropy.set(drawStream * 10u + RL_RANDOM_COLLATERAL_TIER, entropy);
+	}
+
 	RL::GetFees_output getFees()
 	{
 		RL::GetFees_input input;
@@ -934,6 +943,44 @@ TEST(ContractRandomLottery, DrawAndPayout_BeginTick)
 		EXPECT_EQ(getBalance(ctl.state()->team()), teamStartBal + teamAccrued);
 	}
 }
+
+TEST(ContractRandomLottery, DrawAndPayout_ZeroEntropyRefundsAllTickets)
+{
+	ContractTestingRL ctl;
+	ctl.forceSchedule(RL_ANY_DAY_DRAW_SCHEDULE);
+	ctl.beginEpochWithValidTime();
+
+	const id contractAddress = ctl.rlSelf();
+	const uint64 ticketPrice = ctl.state()->getTicketPrice();
+	const id playerA = id::randomValue();
+	const id playerB = id::randomValue();
+	increaseEnergy(playerA, ticketPrice);
+	increaseEnergy(playerB, ticketPrice);
+	const uint64 playerABefore = getBalance(playerA);
+	const uint64 playerBBefore = getBalance(playerB);
+	ASSERT_EQ(ctl.buyTicket(playerA, ticketPrice).returnCode, RL::EReturnCode::SUCCESS);
+	ASSERT_EQ(ctl.buyTicket(playerB, ticketPrice).returnCode, RL::EReturnCode::SUCCESS);
+	ASSERT_EQ(ctl.state()->getPlayerCounter(), 2u);
+	increaseEnergy(contractAddress, RL_RANDOM_ENTROPY_FEE);
+
+	const uint64 teamBefore = getBalance(ctl.state()->team());
+	const uint64 winnersBefore = ctl.getWinners().winnersCounter;
+	const uint64 randomEarnedBefore = ctl.randomState()->earnedAmount;
+
+	ctl.setDateTime(2025, 1, 10, 12);
+	QPI::bit_4096 zeroEntropy{};
+	ctl.seedRandomEntropy(zeroEntropy);
+	ctl.forceBeginTick();
+
+	EXPECT_EQ(getBalance(playerA), playerABefore);
+	EXPECT_EQ(getBalance(playerB), playerBBefore);
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), 0u);
+	EXPECT_EQ(ctl.getWinners().winnersCounter, winnersBefore);
+	EXPECT_EQ(getBalance(ctl.state()->team()), teamBefore);
+	EXPECT_EQ(ctl.randomState()->earnedAmount, randomEarnedBefore);
+	EXPECT_EQ(getBalance(contractAddress), RL_RANDOM_ENTROPY_FEE);
+}
+
 TEST(ContractRandomLottery, GetBalance)
 {
 	ContractTestingRL ctl;
@@ -1302,4 +1349,3 @@ TEST(ContractRandomLottery, GetDrawHour_DefaultAfterBeginEpoch)
 	ctl.beginEpochWithValidTime();
 	EXPECT_EQ(ctl.getDrawHour().drawHour, RL_DEFAULT_DRAW_HOUR);
 }
-

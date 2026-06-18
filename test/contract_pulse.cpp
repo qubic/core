@@ -297,6 +297,15 @@ public:
 		return entropy;
 	}
 
+	void seedRandomEntropy(const QPI::bit_4096& entropy)
+	{
+		const uint32 stream = (system.tick + 2u) % 3u;
+		randomState()->entropy.set(stream * 10u + RL_RANDOM_COLLATERAL_TIER, entropy);
+		const uint32 drawTick = system.tick + (PULSE_TICK_UPDATE_PERIOD - (system.tick % PULSE_TICK_UPDATE_PERIOD));
+		const uint32 drawStream = (drawTick + 2u) % 3u;
+		randomState()->entropy.set(drawStream * 10u + RL_RANDOM_COLLATERAL_TIER, entropy);
+	}
+
 	Array<uint8, PULSE_WINNING_DIGITS_ALIGNED> computeWinningDigitsForEntropy(const QPI::bit_4096& entropy,
 	                                                                          uint64 ticketCounter = static_cast<uint64>(-1))
 	{
@@ -320,6 +329,18 @@ public:
 	                                                sint64 invocationReward = static_cast<sint64>(RL_RANDOM_ENTROPY_FEE))
 	{
 		ensureUserEnergy(user, invocationReward);
+		PULSE::BuyRandomTickets_input input{};
+		input.count = count;
+		PULSE::BuyRandomTickets_output output{};
+		if (!invokeUserProcedure(PULSE_CONTRACT_INDEX, PULSE_PROCEDURE_BUY_RANDOM_TICKETS, input, output, user, invocationReward))
+		{
+			output.returnCode = PULSE::EReturnCode::UNKNOWN_ERROR;
+		}
+		return output;
+	}
+
+	PULSE::BuyRandomTickets_output buyRandomTicketsWithoutAutoEnergy(const id& user, uint16 count, sint64 invocationReward)
+	{
 		PULSE::BuyRandomTickets_input input{};
 		input.count = count;
 		PULSE::BuyRandomTickets_output output{};
@@ -1105,6 +1126,36 @@ TEST(ContractPulse_Public, BuyRandomTicketsSucceedsAndMovesQHeart)
 	}
 }
 
+TEST(ContractPulse_Public, BuyRandomTicketsRefundsQHeartAndEntropyFeeWhenRandomReturnsZero)
+{
+	ContractTestingPulse ctl;
+	ctl.setDateTime(2025, 1, 10, 12);
+	ctl.beginEpoch();
+
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
+	const id user = id::randomValue();
+	const uint64 ticketPrice = ctl.getTicketPrice().ticketPrice;
+	ctl.transferQHeart(issuance, user, ticketPrice);
+	increaseEnergy(user, RL_RANDOM_ENTROPY_FEE);
+
+	QPI::bit_4096 zeroEntropy{};
+	ctl.seedRandomEntropy(zeroEntropy);
+	const uint64 userQHeartBefore = ctl.qheartBalanceOf(user);
+	const uint64 contractQHeartBefore = ctl.qheartBalanceOf(ctl.pulseSelf());
+	const uint64 userQuBefore = getBalance(user);
+	const uint64 randomEarnedBefore = ctl.randomState()->earnedAmount;
+
+	const PULSE::BuyRandomTickets_output out =
+	    ctl.buyRandomTicketsWithoutAutoEnergy(user, 1, static_cast<sint64>(RL_RANDOM_ENTROPY_FEE));
+
+	EXPECT_EQ(out.returnCode, PULSE::EReturnCode::UNKNOWN_ERROR);
+	EXPECT_EQ(ctl.state()->getTicketCounter(), 0u);
+	EXPECT_EQ(ctl.qheartBalanceOf(user), userQHeartBefore);
+	EXPECT_EQ(ctl.qheartBalanceOf(ctl.pulseSelf()), contractQHeartBefore);
+	EXPECT_EQ(getBalance(user), userQuBefore);
+	EXPECT_EQ(ctl.randomState()->earnedAmount, randomEarnedBefore);
+}
+
 // Refund only the qu sent above the one entropy fee required for the batch.
 TEST(ContractPulse_Public, BuyRandomTicketsRefundsEntropyFeeOverpayment)
 {
@@ -1233,6 +1284,44 @@ TEST(ContractPulse_Public, GetWinnersReportsPaidTickets)
 	EXPECT_EQ(winners.winners.get(0).revenue, prizeA);
 	EXPECT_EQ(winners.winners.get(1).winnerAddress, playerB);
 	EXPECT_EQ(winners.winners.get(1).revenue, prizeB);
+}
+
+TEST(ContractPulse_Public, SettleRound_ZeroEntropy_ReturnsTicketsAndDoesNotRecordWinners)
+{
+	ContractTestingPulse ctl;
+	increaseEnergy(ctl.pulseSelf(), RL_RANDOM_ENTROPY_FEE);
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
+
+	ctl.setDateTime(2025, 1, 9, 12);
+	ctl.beginEpoch();
+
+	const id playerA = id::randomValue();
+	const id playerB = id::randomValue();
+	ctl.transferQHeart(issuance, playerA, PULSE_TICKET_PRICE_DEFAULT);
+	ctl.transferQHeart(issuance, playerB, PULSE_TICKET_PRICE_DEFAULT);
+	const uint64 playerABefore = ctl.qheartBalanceOf(playerA);
+	const uint64 playerBBefore = ctl.qheartBalanceOf(playerB);
+	const uint64 contractQHeartBefore = ctl.qheartBalanceOf(ctl.pulseSelf());
+
+	ASSERT_EQ(ctl.buyTicket(playerA, makePlayerDigits(0, 1, 2, 3, 4, 5)).returnCode, PULSE::EReturnCode::SUCCESS);
+	ASSERT_EQ(ctl.buyTicket(playerB, makePlayerDigits(1, 2, 3, 4, 5, 6)).returnCode, PULSE::EReturnCode::SUCCESS);
+	ASSERT_EQ(ctl.state()->getTicketCounter(), 2u);
+
+	const uint64 winnersBefore = ctl.getWinners().winnersCounter;
+	const uint64 randomEarnedBefore = ctl.randomState()->earnedAmount;
+	QPI::bit_4096 zeroEntropy{};
+	ctl.seedRandomEntropy(zeroEntropy);
+
+	ctl.setDateTime(2025, 1, 10, 12);
+	ctl.forceBeginTick();
+
+	EXPECT_EQ(ctl.state()->getTicketCounter(), 0u);
+	EXPECT_EQ(ctl.qheartBalanceOf(playerA), playerABefore);
+	EXPECT_EQ(ctl.qheartBalanceOf(playerB), playerBBefore);
+	EXPECT_EQ(ctl.qheartBalanceOf(ctl.pulseSelf()), contractQHeartBefore);
+	EXPECT_EQ(ctl.getWinners().winnersCounter, winnersBefore);
+	EXPECT_EQ(ctl.randomState()->earnedAmount, randomEarnedBefore);
+	EXPECT_EQ(getBalance(ctl.pulseSelf()), RL_RANDOM_ENTROPY_FEE);
 }
 
 // ============================================================================

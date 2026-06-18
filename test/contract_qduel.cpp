@@ -163,6 +163,17 @@ public:
 		return output;
 	}
 
+	QDUEL::ConnectToRoom_output connectToRoomWithoutSeedingEntropy(const id& user, const id& roomId, sint64 reward)
+	{
+		QDUEL::ConnectToRoom_input input{roomId};
+		QDUEL::ConnectToRoom_output output;
+		if (!invokeUserProcedure(QDUEL_CONTRACT_INDEX, PROCEDURE_INDEX_CONNECT_ROOM, input, output, user, reward))
+		{
+			output.returnCode = QDUEL::EReturnCode::UNKNOWN_ERROR;
+		}
+		return output;
+	}
+
 	QDUEL::SetPercentFees_output setPercentFees(const id& user, uint8 devFee, uint8 burnFee, uint8 shareholdersFee, uint16 percentScale,
 	                                            sint64 reward = 0)
 	{
@@ -891,6 +902,40 @@ TEST(ContractQDuel, ConnectToRoomRejectsInsufficientReward)
 	const QDUEL::RoomInfo room = qduel.state()->firstRoom();
 
 	EXPECT_EQ(qduel.connectToRoom(opponent, room.roomId, stake - 1).returnCode, QDUEL::EReturnCode::ROOM_INSUFFICIENT_DUEL_AMOUNT);
+}
+
+TEST(ContractQDuel, ConnectToRoom_ZeroEntropyFailsAndRefundsOpponent)
+{
+	ContractTestingQDuel qduel;
+	qduel.state()->setState(QDUEL::EState::NONE);
+
+	const id owner(2201, 0, 0, 0);
+	const id opponent(2202, 0, 0, 0);
+	const sint64 stake = qduel.state()->minDuelAmount();
+	increaseEnergy(owner, stake);
+	increaseEnergy(opponent, stake);
+
+	ASSERT_EQ(qduel.createRoom(owner, NULL_ID, stake, 1, stake, stake).returnCode, QDUEL::EReturnCode::SUCCESS);
+	const QDUEL::RoomInfo roomBefore = qduel.state()->firstRoom();
+	const uint64 opponentBefore = getBalance(opponent);
+	const uint64 randomEarnedBefore = qduel.randomState()->earnedAmount;
+	QPI::bit_4096 zeroEntropy{};
+	qduel.seedRandomEntropy(zeroEntropy);
+
+	const QDUEL::ConnectToRoom_output output = qduel.connectToRoomWithoutSeedingEntropy(opponent, roomBefore.roomId, stake);
+
+	EXPECT_EQ(output.returnCode, QDUEL::EReturnCode::ROOM_FAILED_GET_WINNER);
+	EXPECT_EQ(getBalance(opponent), opponentBefore);
+	EXPECT_EQ(qduel.randomState()->earnedAmount, randomEarnedBefore);
+	EXPECT_EQ(qduel.state()->roomCount(), 1u);
+	const QDUEL::RoomInfo roomAfter = qduel.state()->firstRoom();
+	EXPECT_EQ(roomAfter.roomId, roomBefore.roomId);
+	EXPECT_EQ(roomAfter.owner, roomBefore.owner);
+	EXPECT_EQ(roomAfter.amount, roomBefore.amount);
+
+	const QDUEL::GetLastWinners_output winners = qduel.getLastWinners();
+	EXPECT_EQ(winners.returnCode, QDUEL::EReturnCode::SUCCESS);
+	EXPECT_EQ(winners.winners.get(0).winner, id::zero());
 }
 
 TEST(ContractQDuel, ConnectToRoomRefundsExcessRewardForLoser)
