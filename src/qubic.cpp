@@ -5773,7 +5773,8 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                     ContractStateChangeType changeType;
                     for (unsigned int i = 0; i < contractStateChangeCount; i++)
                     {
-                        if (contractStateChangeInfos[i].contractIndex == contractIndex)
+                        if (contractStateChangeInfos[i].contractIndex == contractIndex
+                            && contractStateChangeInfos[i].changeEpoch == system.epoch)
                         {
                             stateChangeAllowed = true;
                             changeType = contractStateChangeInfos[i].changeType;

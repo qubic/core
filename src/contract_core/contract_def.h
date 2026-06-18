@@ -568,7 +568,9 @@ static void initializeContracts()
 #endif
 }
 
-// Automatic Contract State Changes
+// ----- Automatic Contract State Changes -----
+// NOTE: All state changes are currently only triggered during loading if the loaded size does not match the expected size.
+// If we ever need a reset or migrate where the state size remains the same, we have to change the implementation in loadContractStateFiles.
 enum ContractStateChangeType
 {
     // Keeps the saved state's old bytes, only zero-fills the new bytes at the end (used when struct grew; old fields preserved)
@@ -582,11 +584,12 @@ struct ContractStateChangeInfo
 {
     unsigned int contractIndex;
     ContractStateChangeType changeType;
+    unsigned short changeEpoch; // extra safeguard to prevent accidental state change
 };
 // Contracts whose state struct changed this epoch. Update this list each epoch as needed.
-// Each entry is { CONTRACT_INDEX, PADDING or RESET or MIGRATE }
+// Each entry is { CONTRACT_INDEX, PADDING or RESET or MIGRATE, EPOCH }
 // When enabling, replace both lines below, e.g.:
-constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { DUMMY_CONTRACT_INDEX, MIGRATE } };
+constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { DUMMY_CONTRACT_INDEX, MIGRATE, 219 } };
 constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
 // constexpr const ContractStateChangeInfo* contractStateChangeInfos = nullptr;
 // constexpr unsigned int contractStateChangeCount = 0;
