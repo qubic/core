@@ -442,6 +442,9 @@ constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(con
 
 GLOBAL_VAR_DECL EXPAND_PROCEDURE contractExpandProcedures[contractCount];
 
+GLOBAL_VAR_DECL MIGRATE_PROCEDURE contractMigrateProcedures[contractCount];
+GLOBAL_VAR_DECL unsigned long long contractMigrateOldStateSizes[contractCount];
+
 // TODO: all below are filled very sparsely, so a better data structure could save almost all the memory
 GLOBAL_VAR_DECL USER_FUNCTION contractUserFunctions[contractCount][65536];
 GLOBAL_VAR_DECL unsigned short contractUserFunctionInputSizes[contractCount][65536];
@@ -517,6 +520,8 @@ contractSystemProcedureLocalsSizes[contractIndex][SET_SHAREHOLDER_PROPOSAL] = co
 if (!contractName::__setShareholderVotesEmpty) contractSystemProcedures[contractIndex][SET_SHAREHOLDER_VOTES] = (SYSTEM_PROCEDURE)contractName::__setShareholderVotes;\
 contractSystemProcedureLocalsSizes[contractIndex][SET_SHAREHOLDER_VOTES] = contractName::__setShareholderVotesLocalsSize; \
 if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
+if (!contractName::__migrateEmpty) contractMigrateProcedures[contractIndex] = (MIGRATE_PROCEDURE)contractName::__migrate;\
+contractMigrateOldStateSizes[contractIndex] = contractName::__migrateOldStateSize;\
 QpiContextForInit qpi(contractIndex); \
 contractName::__registerUserFunctionsAndProcedures(qpi); \
 static_assert(sizeof(contractName::StateData) <= MAX_CONTRACT_STATE_SIZE, "Size of contract state " #contractName " is too large!"); \

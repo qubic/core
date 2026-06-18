@@ -2959,6 +2959,8 @@ namespace QPI
 		static void __acceptOracleUnknownReply(const QpiContextProcedureCall&, void*, void*) {}
 		enum { __expandEmpty = 1 };
 		static void __expand(const QpiContextProcedureCall& qpi, void*, void*) {}
+		enum { __migrateEmpty = 1, __migrateOldStateSize = 0 };
+		static void __migrate(const QpiContextProcedureCall& qpi, void*, void*) {}
 	};
 
 	// Internal macro for defining the system procedure macros
@@ -3097,8 +3099,8 @@ namespace QPI
 	#define MIGRATE() \
       public: \
         enum { __migrateEmpty = 0 }; \
-		inline static void __migrate(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_OLD_TYPE& state_old) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_migrate(qpi, state, state_old); } \
-		static void __impl_migrate(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_OLD_TYPE& state_old)
+		inline static void __migrate(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_TYPE::OldStateData& state_old) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_migrate(qpi, state, state_old); } \
+		static void __impl_migrate(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_TYPE::OldStateData& state_old)
 
 
 	#define LOG_DEBUG(message) __logContractDebugMessage(CONTRACT_INDEX, message);
