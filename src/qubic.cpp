@@ -5790,7 +5790,7 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                             setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
                             appendText(message, L" state reset to all 0 as requested");
                             logToConsole(message);
-                            continue;
+                            continue; // continue to next contract
                         }
                         else if (changeType == PADDING)
                         {
@@ -5808,7 +5808,7 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                                     appendNumber(message, contractDescriptions[contractIndex].stateSize, FALSE);
                                     appendText(message, L" bytes), zero-padded");
                                     logToConsole(message);
-                                    continue;
+                                    continue; // continue to next contract
                                 }
                                 // Reload also failed — fall through to error
                             }
@@ -5816,10 +5816,32 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                         else if (changeType == MIGRATE)
                         {
                             long long actualSize = getFileSize(CONTRACT_FILE_NAME, directory);
-                            // if (actualSize == old state size)
-                            // load file into old state struct
-                            // call contracts migrate function
-                            // otherwise fall through to error
+                            if (actualSize == contractMigrateOldStateSizes[contractIndex])
+                            {
+                                __ScopedScratchpad scratchpad(actualSize, /*initZero=*/false);
+                                if (scratchpad.ptr)
+                                {
+                                    long long reloadedSize = load(CONTRACT_FILE_NAME, (unsigned long long)actualSize, reinterpret_cast<unsigned char*>(scratchpad.ptr), directory);
+                                    if (reloadedSize == actualSize && contractMigrateProcedures[contractIndex])
+                                    {
+                                        QpiContextMigrateProcedureCall ctx(contractIndex);
+                                        if (ctx.call(/*oldState=*/scratchpad.ptr) == NoContractError)
+                                        {
+                                            appendText(message, L" state migration succeeded");
+                                            logToConsole(message);
+                                            continue; // migration succeeded, continue to next contract
+                                        }
+                                        else
+                                        {
+                                            // migration failed
+                                            appendText(message, L" attempted state migration failed");
+                                            logToConsole(message);
+                                            // fall through to error
+                                        }
+                                    }
+                                }
+                            }
+                            // else fall through to error
                         }
                     }
 

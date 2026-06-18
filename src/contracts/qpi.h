@@ -2959,7 +2959,7 @@ namespace QPI
 		static void __acceptOracleUnknownReply(const QpiContextProcedureCall&, void*, void*) {}
 		enum { __expandEmpty = 1 };
 		static void __expand(const QpiContextProcedureCall& qpi, void*, void*) {}
-		enum { __migrateEmpty = 1, __migrateOldStateSize = 0 };
+		enum { __migrateEmpty = 1, __migrateOldStateSize = 0 , __migrateLocalsSize = sizeof(NoData) };
 		static void __migrate(const QpiContextProcedureCall& qpi, void*, void*) {}
 	};
 
@@ -3096,12 +3096,16 @@ namespace QPI
 		inline static void __expand(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, QPI::ContractState<CONTRACT_STATE2_TYPE, CONTRACT_INDEX>& state2) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_expand(qpi, state, state2); } \
 		static void __impl_expand(const QPI::QpiContextProcedureCall & qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>&state, QPI::ContractState<CONTRACT_STATE2_TYPE, CONTRACT_INDEX>& state2)
 
+	#define MIGRATE_WITH_LOCALS() \
+      public: \
+        enum { __migrateEmpty = 0, __migrateOldStateSize = sizeof(CONTRACT_STATE_TYPE::OldStateData), __migrateLocalsSize = sizeof(MIGRATE_locals) }; \
+		inline static void __migrate(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_TYPE::OldStateData& oldState, MIGRATE_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_migrate(qpi, state, oldState, locals); } \
+		static void __impl_migrate(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_TYPE::OldStateData& oldState, MIGRATE_locals& locals)
+
 	#define MIGRATE() \
       public: \
-        enum { __migrateEmpty = 0 }; \
-		inline static void __migrate(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_TYPE::OldStateData& state_old) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_migrate(qpi, state, state_old); } \
-		static void __impl_migrate(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_TYPE::OldStateData& state_old)
-
+		typedef NoData MIGRATE_locals; \
+		MIGRATE_WITH_LOCALS()
 
 	#define LOG_DEBUG(message) __logContractDebugMessage(CONTRACT_INDEX, message);
 

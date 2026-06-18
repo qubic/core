@@ -12,7 +12,7 @@ namespace QPI
 // TODO: add option for having locals to SYSTEM and EXPAND procedures
 typedef void (*SYSTEM_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
 typedef void (*EXPAND_PROCEDURE)(const QPI::QpiContextFunctionCall&, void*, void*); // cannot not change anything except state
-typedef void (*MIGRATE_PROCEDURE)(const QPI::QpiContextFunctionCall&, void*, void*); // cannot not change anything except state
+typedef void (*MIGRATE_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* oldState, void* locals); // cannot not change anything except state
 typedef void (*USER_FUNCTION)(const QPI::QpiContextFunctionCall&, void* state, void* input, void* output, void* locals);
 typedef void (*USER_PROCEDURE)(const QPI::QpiContextProcedureCall&, void* state, void* input, void* output, void* locals);
 
