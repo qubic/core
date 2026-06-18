@@ -341,15 +341,25 @@ public:
 		sint64 userBalance;
 	};
 
-	struct TransferTokenToQx_input
+	/**
+	 * @brief Input for TransferShareManagementRights.
+	 */
+	struct TransferShareManagementRights_input
 	{
+		// Number of managed QHeart shares to release.
 		sint64 numberOfShares;
+		// Destination contract index that should acquire management rights.
+		uint16 newManagingContractIndex;
 	};
-	struct TransferTokenToQx_output
+	/**
+	 * @brief Output for TransferShareManagementRights.
+	 */
+	struct TransferShareManagementRights_output
 	{
+		// EReturnCode value describing validation or share-release result.
 		EReturnCode returnCode;
 	};
-	struct TransferTokenToQx_locals
+	struct TransferShareManagementRights_locals
 	{
 		Asset asset;
 		sint64 releaseResult;
@@ -671,7 +681,7 @@ public:
 		REGISTER_USER_PROCEDURE(SetFees, 5);
 		REGISTER_USER_PROCEDURE(SetQHeartHoldLimit, 6);
 		REGISTER_USER_PROCEDURE(BuyRandomTickets, 7);
-		REGISTER_USER_PROCEDURE(TransferTokenToQx, 12);
+		REGISTER_USER_PROCEDURE(TransferShareManagementRights, 12);
 		REGISTER_USER_PROCEDURE(DepositManagedQHeart, 13);
 	}
 
@@ -1164,20 +1174,20 @@ public:
 	}
 
 	/**
-	 * @brief Releases PULSE share management rights back to QX for the invocator.
-	 * @param input Number of PULSE shares to transfer under QX management.
-	 * @param output Number of shares transferred and a status code.
-	 * @note The current QX transfer fee is paid from the Pulse contract balance; any invocation reward is refunded.
+	 * @brief Releases managed QHeart token rights to another contract for the invocator.
+	 * @param input Number of QHeart tokens and the contract index that should acquire management rights.
+	 * @param output Status code describing validation or rights-release result.
+	 * @note The destination contract fee is paid from the invocation reward; any unused reward is refunded.
 	 */
-	PUBLIC_PROCEDURE_WITH_LOCALS(TransferTokenToQx)
+	PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
 	{
-		if (qpi.invocationReward() > 0)
+		if (input.numberOfShares <= 0 || input.newManagingContractIndex == 0 || input.newManagingContractIndex >= MAX_NUMBER_OF_CONTRACTS ||
+		    input.newManagingContractIndex == SELF_INDEX)
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
-
-		if (input.numberOfShares <= 0)
-		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 			output.returnCode = EReturnCode::INVALID_VALUE;
 			return;
 		}
@@ -1185,20 +1195,32 @@ public:
 		if (qpi.numberOfPossessedShares(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) <
 		    input.numberOfShares)
 		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 			output.returnCode = EReturnCode::TRANSFER_FROM_PULSE_FAILED;
 			return;
 		}
 
-		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
-
 		locals.asset.issuer = state.get().qheartIssuer;
 		locals.asset.assetName = PULSE_QHEART_ASSET_NAME;
-		locals.releaseResult = qpi.releaseShares(locals.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares, QX_CONTRACT_INDEX,
-		                                         QX_CONTRACT_INDEX, locals.feesOutput.transferFee);
+
+		locals.releaseResult = qpi.releaseShares(locals.asset, qpi.invocator(), qpi.invocator(), input.numberOfShares, input.newManagingContractIndex,
+		                                         input.newManagingContractIndex, qpi.invocationReward());
 		if (locals.releaseResult < 0)
 		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
 			output.returnCode = EReturnCode::TRANSFER_FROM_PULSE_FAILED;
 			return;
+		}
+
+		if (qpi.invocationReward() > locals.releaseResult)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.releaseResult);
 		}
 
 		output.returnCode = EReturnCode::SUCCESS;

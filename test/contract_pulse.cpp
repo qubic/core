@@ -11,6 +11,7 @@ constexpr uint16 PULSE_PROCEDURE_SET_DRAW_HOUR = 4;
 constexpr uint16 PULSE_PROCEDURE_SET_FEES = 5;
 constexpr uint16 PULSE_PROCEDURE_SET_QHEART_HOLD_LIMIT = 6;
 constexpr uint16 PULSE_PROCEDURE_BUY_RANDOM_TICKETS = 7;
+constexpr uint16 PULSE_PROCEDURE_TRANSFER_SHARE_MANAGEMENT_RIGHTS = 12;
 constexpr uint16 PULSE_PROCEDURE_DEPOSIT_MANAGED_QHEART = 13;
 
 constexpr uint16 QX_PROCEDURE_TRANSFER_SHARE_MANAGEMENT_RIGHTS = 9;
@@ -364,6 +365,27 @@ public:
 		return output;
 	}
 
+	PULSE::TransferShareManagementRights_output transferShareManagementRights(const id& user, sint64 numberOfShares, uint16 newManagingContractIndex,
+	                                                                          sint64 invocationReward = 0)
+	{
+		ensureUserEnergy(user, invocationReward);
+		return transferShareManagementRightsWithoutAutoEnergy(user, numberOfShares, newManagingContractIndex, invocationReward);
+	}
+
+	PULSE::TransferShareManagementRights_output
+	transferShareManagementRightsWithoutAutoEnergy(const id& user, sint64 numberOfShares, uint16 newManagingContractIndex, sint64 invocationReward)
+	{
+		PULSE::TransferShareManagementRights_input input{};
+		input.numberOfShares = numberOfShares;
+		input.newManagingContractIndex = newManagingContractIndex;
+		PULSE::TransferShareManagementRights_output output{};
+		if (!invokeUserProcedure(PULSE_CONTRACT_INDEX, PULSE_PROCEDURE_TRANSFER_SHARE_MANAGEMENT_RIGHTS, input, output, user, invocationReward))
+		{
+			output.returnCode = PULSE::EReturnCode::UNKNOWN_ERROR;
+		}
+		return output;
+	}
+
 	PULSE::SetPrice_output setPrice(const id& invocator, uint64 newPrice)
 	{
 		ensureUserEnergy(invocator);
@@ -521,6 +543,14 @@ public:
 			return 0;
 		}
 		return output.transferredNumberOfShares;
+	}
+
+	sint64 getQxTransferFee()
+	{
+		QX::Fees_input input{};
+		QX::Fees_output output{};
+		callFunction(QX_CONTRACT_INDEX, 1, input, output);
+		return output.transferFee;
 	}
 
 	uint64 qheartBalanceOf(const id& owner) const
@@ -1145,8 +1175,7 @@ TEST(ContractPulse_Public, BuyRandomTicketsRefundsQHeartAndEntropyFeeWhenRandomR
 	const uint64 userQuBefore = getBalance(user);
 	const uint64 randomEarnedBefore = ctl.randomState()->earnedAmount;
 
-	const PULSE::BuyRandomTickets_output out =
-	    ctl.buyRandomTicketsWithoutAutoEnergy(user, 1, static_cast<sint64>(RL_RANDOM_ENTROPY_FEE));
+	const PULSE::BuyRandomTickets_output out = ctl.buyRandomTicketsWithoutAutoEnergy(user, 1, static_cast<sint64>(RL_RANDOM_ENTROPY_FEE));
 
 	EXPECT_EQ(out.returnCode, PULSE::EReturnCode::UNKNOWN_ERROR);
 	EXPECT_EQ(ctl.state()->getTicketCounter(), 0u);
@@ -1228,6 +1257,115 @@ TEST(ContractPulse_Public, DepositManagedQHeartAfterQxManagementTransfer)
 	EXPECT_EQ(deposit.returnCode, PULSE::EReturnCode::SUCCESS);
 	EXPECT_EQ(ctl.managedQheartBalanceOf(user, PULSE_CONTRACT_INDEX), 0u);
 	EXPECT_EQ(ctl.getBalance().balance, static_cast<uint64>(depositAmount));
+}
+
+TEST(ContractPulse_Public, TransferShareManagementRightsRejectsInvalidInputs)
+{
+	ContractTestingPulse ctl;
+	ctl.qxInitialize();
+
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeartOnQx(1000000);
+	const id user = id::randomValue();
+	static constexpr sint64 managedAmount = 12345;
+
+	ctl.transferQHeart(issuance, user, managedAmount);
+	EXPECT_EQ(ctl.transferQHeartManagementRightsToPulse(user, managedAmount), managedAmount);
+
+	const uint64 qxBefore = ctl.managedQheartBalanceOf(user, QX_CONTRACT_INDEX);
+	const uint64 pulseBefore = ctl.managedQheartBalanceOf(user, PULSE_CONTRACT_INDEX);
+
+	EXPECT_EQ(ctl.transferShareManagementRights(user, 0, QX_CONTRACT_INDEX).returnCode, PULSE::EReturnCode::INVALID_VALUE);
+	EXPECT_EQ(ctl.transferShareManagementRights(user, -1, QX_CONTRACT_INDEX).returnCode, PULSE::EReturnCode::INVALID_VALUE);
+	EXPECT_EQ(ctl.transferShareManagementRights(user, managedAmount, 0).returnCode, PULSE::EReturnCode::INVALID_VALUE);
+	EXPECT_EQ(ctl.transferShareManagementRights(user, managedAmount, PULSE_CONTRACT_INDEX).returnCode, PULSE::EReturnCode::INVALID_VALUE);
+
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, QX_CONTRACT_INDEX), qxBefore);
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, PULSE_CONTRACT_INDEX), pulseBefore);
+}
+
+TEST(ContractPulse_Public, TransferShareManagementRightsFailsWithoutPulseManagedQHeart)
+{
+	ContractTestingPulse ctl;
+	ctl.qxInitialize();
+
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeartOnQx(1000000);
+	const id user = id::randomValue();
+	static constexpr sint64 amount = 12345;
+
+	ctl.transferQHeart(issuance, user, amount);
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, QX_CONTRACT_INDEX), static_cast<uint64>(amount));
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, PULSE_CONTRACT_INDEX), 0u);
+
+	const PULSE::TransferShareManagementRights_output output =
+	    ctl.transferShareManagementRights(user, amount, QX_CONTRACT_INDEX, ctl.getQxTransferFee());
+	EXPECT_EQ(output.returnCode, PULSE::EReturnCode::TRANSFER_FROM_PULSE_FAILED);
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, QX_CONTRACT_INDEX), static_cast<uint64>(amount));
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, PULSE_CONTRACT_INDEX), 0u);
+}
+
+TEST(ContractPulse_Public, TransferShareManagementRightsReleasesQHeartBackToQx)
+{
+	ContractTestingPulse ctl;
+	ctl.qxInitialize();
+
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeartOnQx(1000000);
+	const id user = id::randomValue();
+	static constexpr sint64 amount = 12345;
+
+	ctl.transferQHeart(issuance, user, amount);
+	EXPECT_EQ(ctl.transferQHeartManagementRightsToPulse(user, amount), amount);
+
+	const PULSE::TransferShareManagementRights_output output =
+	    ctl.transferShareManagementRights(user, amount, QX_CONTRACT_INDEX, ctl.getQxTransferFee());
+	EXPECT_EQ(output.returnCode, PULSE::EReturnCode::SUCCESS);
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, PULSE_CONTRACT_INDEX), 0u);
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, QX_CONTRACT_INDEX), static_cast<uint64>(amount));
+}
+
+TEST(ContractPulse_Public, TransferShareManagementRightsSupportsPartialRelease)
+{
+	ContractTestingPulse ctl;
+	ctl.qxInitialize();
+
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeartOnQx(1000000);
+	const id user = id::randomValue();
+	static constexpr sint64 managedAmount = 12345;
+	static constexpr sint64 releaseAmount = 5000;
+
+	ctl.transferQHeart(issuance, user, managedAmount);
+	EXPECT_EQ(ctl.transferQHeartManagementRightsToPulse(user, managedAmount), managedAmount);
+
+	const PULSE::TransferShareManagementRights_output output =
+	    ctl.transferShareManagementRights(user, releaseAmount, QX_CONTRACT_INDEX, ctl.getQxTransferFee());
+	EXPECT_EQ(output.returnCode, PULSE::EReturnCode::SUCCESS);
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, QX_CONTRACT_INDEX), static_cast<uint64>(releaseAmount));
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, PULSE_CONTRACT_INDEX), static_cast<uint64>(managedAmount - releaseAmount));
+}
+
+TEST(ContractPulse_Public, TransferShareManagementRightsRefundsUnusedInvocationReward)
+{
+	ContractTestingPulse ctl;
+	ctl.qxInitialize();
+
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeartOnQx(1000000);
+	const id user = id::randomValue();
+	static constexpr sint64 amount = 5000;
+	static constexpr sint64 overpayment = 1000;
+
+	ctl.transferQHeart(issuance, user, amount);
+	EXPECT_EQ(ctl.transferQHeartManagementRightsToPulse(user, amount), amount);
+
+	const sint64 qxTransferFee = ctl.getQxTransferFee();
+	const sint64 invocationReward = qxTransferFee + overpayment;
+	increaseEnergy(user, invocationReward + 1);
+	const sint64 balanceBefore = getBalance(user);
+
+	const PULSE::TransferShareManagementRights_output output =
+	    ctl.transferShareManagementRightsWithoutAutoEnergy(user, amount, QX_CONTRACT_INDEX, invocationReward);
+	EXPECT_EQ(output.returnCode, PULSE::EReturnCode::SUCCESS);
+	EXPECT_EQ(getBalance(user), balanceBefore - qxTransferFee);
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, QX_CONTRACT_INDEX), static_cast<uint64>(amount));
+	EXPECT_EQ(ctl.managedQheartBalanceOf(user, PULSE_CONTRACT_INDEX), 0u);
 }
 
 // Report empty winner history before any draws.
