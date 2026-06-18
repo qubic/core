@@ -863,8 +863,11 @@ TEST(ContractQraffle, SubmitProposalPerUserLimitAndValidation)
     EXPECT_EQ(qraffle.submitProposal(users[0], token, 4000000ULL).returnCode, QRAFFLE_MAX_PROPOSAL_PER_USER_REACHED);
 
     // Use a different proposer for entry-amount validation; per-user cap would otherwise mask it.
-    EXPECT_EQ(qraffle.submitProposal(users[1], token, 500000ULL).returnCode, QRAFFLE_INVALID_ENTRY_AMOUNT);
-    EXPECT_EQ(qraffle.submitProposal(users[1], token, 2000000000ULL).returnCode, QRAFFLE_INVALID_ENTRY_AMOUNT);
+    // Entry-amount range limits were intentionally removed (#898): any positive amount is accepted
+    // and only a zero amount is rejected.
+    EXPECT_EQ(qraffle.submitProposal(users[1], token, 500000ULL).returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(qraffle.submitProposal(users[1], token, 2000000000ULL).returnCode, QRAFFLE_SUCCESS);
+    EXPECT_EQ(qraffle.submitProposal(users[1], token, 0ULL).returnCode, QRAFFLE_INVALID_ENTRY_AMOUNT);
 
     Asset fakeToken;
     fakeToken.assetName = assetNameFromString("NOTISS");
@@ -1052,10 +1055,12 @@ TEST(ContractQraffle, DepositInTokenRaffle)
     auto result = qraffle.depositInTokenRaffle(poorUser, 0, QRAFFLE_TRANSFER_SHARE_FEE - 1);
     EXPECT_EQ(result.returnCode, QRAFFLE_INSUFFICIENT_FUND);
 
-    // Test unregistered user (must be a DAO member to deposit in token raffle)
+    // DAO membership is no longer required to deposit in a token raffle (#898): an unregistered
+    // user is no longer rejected up-front. poorUser holds no shares, so the deposit now fails at
+    // the share transfer instead of being rejected for being unregistered.
     increaseEnergy(poorUser, QRAFFLE_TRANSFER_SHARE_FEE);
     result = qraffle.depositInTokenRaffle(poorUser, 0, QRAFFLE_TRANSFER_SHARE_FEE);
-    EXPECT_EQ(result.returnCode, QRAFFLE_UNREGISTERED);
+    EXPECT_EQ(result.returnCode, QRAFFLE_FAILED_TO_DEPOSIT);
 
     // Test insufficient Token (registered DAO member with too few shares)
     id poorUser2 = getUser(8888);

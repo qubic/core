@@ -67,7 +67,7 @@ constexpr uint32 QRAFFLE_MAX_ENDED_ASSET_RAFFLES         = 8192;            // h
 constexpr uint64 QRAFFLE_MIN_ASSET_TICKET_AMOUNT         = 1000000ull;      // 1M Qu
 constexpr uint64 QRAFFLE_MAX_ASSET_TICKET_AMOUNT         = 1000000000000ull;// 1T Qu
 // Flat array strides: raffle i occupies [i*stride .. i*stride+count)
-constexpr uint32 QRAFFLE_ASSET_RAFFLE_BUNDLE_FLAT_SIZE   = QRAFFLE_MAX_ASSET_RAFFLES_PER_EPOCH * QRAFFLE_MAX_ASSETS_PER_BUNDLE;   // 512
+constexpr uint32 QRAFFLE_ASSET_RAFFLE_BUNDLE_FLAT_SIZE   = QRAFFLE_MAX_ASSET_RAFFLES_PER_EPOCH * QRAFFLE_MAX_ASSETS_PER_BUNDLE;   // 256
 constexpr uint32 QRAFFLE_ASSET_RAFFLE_BUYERS_FLAT_SIZE   = QRAFFLE_MAX_ASSET_RAFFLES_PER_EPOCH * QRAFFLE_MAX_ASSET_TICKET_BUYERS; // 65536
 
 struct QRAFFLE2
@@ -340,7 +340,7 @@ public:
 		Array<AssetRaffleInfo, QRAFFLE_MAX_ASSET_RAFFLES_PER_EPOCH> activeAssetRaffles;
 		uint32 numberOfActiveAssetRaffles;
 
-		// Bundle items: raffle i occupies [i*8 .. i*8+bundleSize).
+		// Bundle items: raffle i occupies [i*4 .. i*4+bundleSize).
 		Array<AssetRaffleItem, QRAFFLE_ASSET_RAFFLE_BUNDLE_FLAT_SIZE> activeAssetRaffleItems;
 
 		// Buyer lists: raffle i occupies [i*1024 .. i*1024+numberOfBuyers).
@@ -1386,7 +1386,7 @@ protected:
 				LOG_INFO(locals.log);
 				return;
 			}
-			// Duplicate-asset check within the bundle; O(N²) acceptable for N ≤ 8.
+			// Duplicate-asset check within the bundle; O(N²) acceptable for N ≤ 4.
 			locals.dupFound = 0;
 			for (locals.j = 0; locals.j < locals.i; locals.j++)
 			{
