@@ -165,6 +165,7 @@ static bool initContractExec()
     setMem(contractExpandProcedures, sizeof(contractExpandProcedures), 0);
     setMem(contractMigrateProcedures, sizeof(contractMigrateProcedures), 0);
     setMem(contractMigrateOldStateSizes, sizeof(contractMigrateOldStateSizes), 0);
+    setMem(contractMigrateLocalsSizes, sizeof(contractMigrateLocalsSizes), 0);
 
     setMem(contractSystemProcedures, sizeof(contractSystemProcedures), 0);
     setMem(contractSystemProcedureLocalsSizes, sizeof(contractSystemProcedureLocalsSizes), 0);
