@@ -389,9 +389,6 @@
     <ClInclude Include="contracts\QRaffle_old.h">
       <Filter>contracts</Filter>
     </ClInclude>
-    <ClInclude Include="contracts\Dummy.h">
-      <Filter>contracts</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
