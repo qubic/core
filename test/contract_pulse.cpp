@@ -284,16 +284,16 @@ public:
 	QPI::bit_4096 seedRandomEntropy(uint64 seed)
 	{
 		QPI::bit_4096 entropy{};
-		for (uint64 i = 0; i < CONTRACT_RANDOM_ENTROPY_BITS; ++i)
+		for (uint64 i = 0; i < RL_RANDOM_ENTROPY_BITS; ++i)
 		{
 			entropy.set(i, ((seed + i) & 1ULL) != 0);
 		}
 
 		const uint32 stream = (system.tick + 2u) % 3u;
-		randomState()->entropy.set(stream * 10u + CONTRACT_RANDOM_COLLATERAL_TIER, entropy);
+		randomState()->entropy.set(stream * 10u + RL_RANDOM_COLLATERAL_TIER, entropy);
 		const uint32 drawTick = system.tick + (PULSE_TICK_UPDATE_PERIOD - (system.tick % PULSE_TICK_UPDATE_PERIOD));
 		const uint32 drawStream = (drawTick + 2u) % 3u;
-		randomState()->entropy.set(drawStream * 10u + CONTRACT_RANDOM_COLLATERAL_TIER, entropy);
+		randomState()->entropy.set(drawStream * 10u + RL_RANDOM_COLLATERAL_TIER, entropy);
 		return entropy;
 	}
 
@@ -317,7 +317,7 @@ public:
 	}
 
 	PULSE::BuyRandomTickets_output buyRandomTickets(const id& user, uint16 count,
-	                                                sint64 invocationReward = static_cast<sint64>(CONTRACT_RANDOM_ENTROPY_FEE))
+	                                                sint64 invocationReward = static_cast<sint64>(RL_RANDOM_ENTROPY_FEE))
 	{
 		ensureUserEnergy(user, invocationReward);
 		PULSE::BuyRandomTickets_input input{};
@@ -1119,7 +1119,7 @@ TEST(ContractPulse_Public, BuyRandomTicketsRefundsEntropyFeeOverpayment)
 	ctl.seedRandomEntropy(0xBBBBULL);
 
 	static constexpr sint64 overpayment = 1234;
-	const PULSE::BuyRandomTickets_output out = ctl.buyRandomTickets(user, 1, static_cast<sint64>(CONTRACT_RANDOM_ENTROPY_FEE) + overpayment);
+	const PULSE::BuyRandomTickets_output out = ctl.buyRandomTickets(user, 1, static_cast<sint64>(RL_RANDOM_ENTROPY_FEE) + overpayment);
 	EXPECT_EQ(out.returnCode, PULSE::EReturnCode::SUCCESS);
 	EXPECT_EQ(ctl.state()->getTicketCounter(), 1u);
 }
@@ -1192,7 +1192,7 @@ TEST(ContractPulse_Public, GetWinnersReportsEmptyWhenNoWinners)
 TEST(ContractPulse_Public, GetWinnersReportsPaidTickets)
 {
 	ContractTestingPulse ctl;
-	increaseEnergy(id(PULSE_CONTRACT_INDEX, 0, 0, 0), CONTRACT_RANDOM_ENTROPY_FEE);
+	increaseEnergy(id(PULSE_CONTRACT_INDEX, 0, 0, 0), RL_RANDOM_ENTROPY_FEE);
 	ctl.issuePulseSharesTo(id::randomValue(), NUMBER_OF_COMPUTORS);
 	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
 
@@ -1361,7 +1361,7 @@ TEST(ContractPulse_Gameplay, MultipleRoundsMultiplePlayers)
 
 	for (uint32 r = 0; r < 3; ++r)
 	{
-		increaseEnergy(id(PULSE_CONTRACT_INDEX, 0, 0, 0), CONTRACT_RANDOM_ENTROPY_FEE);
+		increaseEnergy(id(PULSE_CONTRACT_INDEX, 0, 0, 0), RL_RANDOM_ENTROPY_FEE);
 
 		ctl.setDateTime(2025, 1, rounds[r].startDay, 12);
 		ctl.beginEpoch();
@@ -1420,7 +1420,7 @@ TEST(ContractPulse_Gameplay, MultipleRoundsMultiplePlayers)
 TEST(ContractPulse_Gameplay, ProRataPayoutWhenBalanceInsufficient)
 {
 	ContractTestingPulse ctl;
-	increaseEnergy(id(PULSE_CONTRACT_INDEX, 0, 0, 0), CONTRACT_RANDOM_ENTROPY_FEE);
+	increaseEnergy(id(PULSE_CONTRACT_INDEX, 0, 0, 0), RL_RANDOM_ENTROPY_FEE);
 
 	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(2000000);
 
@@ -1475,7 +1475,7 @@ TEST(ContractPulse_Gameplay, ProRataPayoutWhenBalanceInsufficient)
 TEST(ContractPulse_Gameplay, FeesDistributedToDevAndShareholders)
 {
 	ContractTestingPulse ctl;
-	increaseEnergy(id(PULSE_CONTRACT_INDEX, 0, 0, 0), CONTRACT_RANDOM_ENTROPY_FEE);
+	increaseEnergy(id(PULSE_CONTRACT_INDEX, 0, 0, 0), RL_RANDOM_ENTROPY_FEE);
 
 	const id shareholder = id::randomValue();
 	ctl.issuePulseSharesTo(shareholder, NUMBER_OF_COMPUTORS);
@@ -1523,7 +1523,7 @@ TEST(ContractPulse_Gameplay, FeesDistributedToDevAndShareholders)
 TEST(ContractPulse_Gameplay, FeesDistributedToRLShareholders)
 {
 	ContractTestingPulse ctl;
-	increaseEnergy(id(PULSE_CONTRACT_INDEX, 0, 0, 0), CONTRACT_RANDOM_ENTROPY_FEE);
+	increaseEnergy(id(PULSE_CONTRACT_INDEX, 0, 0, 0), RL_RANDOM_ENTROPY_FEE);
 	ctl.seedRandomEntropy(0x6161ULL);
 
 	const id rlShareholder = id::randomValue();
@@ -1565,7 +1565,7 @@ TEST(ContractPulse_Gameplay, FeesDistributedToRLShareholders)
 TEST(ContractPulse_Gameplay, QHeartHoldLimitExcessTransferred)
 {
 	ContractTestingPulse ctl;
-	increaseEnergy(id(PULSE_CONTRACT_INDEX, 0, 0, 0), CONTRACT_RANDOM_ENTROPY_FEE);
+	increaseEnergy(id(PULSE_CONTRACT_INDEX, 0, 0, 0), RL_RANDOM_ENTROPY_FEE);
 
 	ctl.issuePulseSharesTo(id::randomValue(), NUMBER_OF_COMPUTORS);
 	ctl.issueRandomLotterySharesTo(id::randomValue(), NUMBER_OF_COMPUTORS);

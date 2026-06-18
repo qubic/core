@@ -2,7 +2,7 @@ using namespace QPI;
 
 constexpr uint16 QDUEL_MAX_NUMBER_OF_ROOMS = 512;
 constexpr uint64 QDUEL_MAX_NUMBER_OF_WINNER = 128;
-constexpr uint16 QDUEL_MINIMUM_DUEL_AMOUNT = CONTRACT_RANDOM_ENTROPY_FEE * 2;
+constexpr uint16 QDUEL_MINIMUM_DUEL_AMOUNT = RL_RANDOM_ENTROPY_FEE * 2;
 constexpr uint8 QDUEL_DEV_FEE_PERCENT_BPS = 15;          // 0.15% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_BURN_FEE_PERCENT_BPS = 30;         // 0.3% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS = 55; // 0.55% * QDUEL_PERCENT_SCALE
@@ -731,7 +731,7 @@ public:
 		}
 
 		locals.requiredBalance = sadd(static_cast<uint64>(locals.room.amount), static_cast<uint64>(locals.room.amount));
-		if (locals.requiredBalance <= CONTRACT_RANDOM_ENTROPY_FEE)
+		if (locals.requiredBalance <= RL_RANDOM_ENTROPY_FEE)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			locals.closeRoomInternalInput.roomOwner = locals.room.owner;
@@ -740,10 +740,10 @@ public:
 			return;
 		}
 
-		locals.buyEntropyInput.collateralTier = CONTRACT_RANDOM_COLLATERAL_TIER;
-		locals.buyEntropyInput.numberOfBits = CONTRACT_RANDOM_ENTROPY_BITS;
+		locals.buyEntropyInput.collateralTier = RL_RANDOM_COLLATERAL_TIER;
+		locals.buyEntropyInput.numberOfBits = RL_RANDOM_ENTROPY_BITS;
 		locals.buyEntropyInput.trustee = id::zero();
-		INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, CONTRACT_RANDOM_ENTROPY_FEE);
+		INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, RL_RANDOM_ENTROPY_FEE);
 		if (interContractCallError != NoCallError || RL::isZeroEntropy(locals.buyEntropyOutput.entropy))
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -758,7 +758,7 @@ public:
 		}
 
 		locals.amount = sadd(locals.room.amount, locals.room.amount);
-		locals.amount = locals.amount - CONTRACT_RANDOM_ENTROPY_FEE;
+		locals.amount = locals.amount - RL_RANDOM_ENTROPY_FEE;
 
 		locals.getWinnerPlayer_input.player1 = locals.room.owner;
 		locals.getWinnerPlayer_input.player2 = qpi.invocator();

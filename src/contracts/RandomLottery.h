@@ -47,9 +47,9 @@ constexpr uint8 RL_DEFAULT_SCHEDULE = 1 << WEDNESDAY | 1 << FRIDAY | 1 << SUNDAY
 
 constexpr uint32 RL_DEFAULT_INIT_TIME = 22 << 9 | 4 << 5 | 13;
 
-constexpr uint16 CONTRACT_RANDOM_ENTROPY_BITS = 256;
-constexpr uint8 CONTRACT_RANDOM_COLLATERAL_TIER = 0;
-constexpr uint64 CONTRACT_RANDOM_ENTROPY_FEE = static_cast<uint64>(RANDOM_BITFEE) * CONTRACT_RANDOM_ENTROPY_BITS;
+constexpr uint16 RL_RANDOM_ENTROPY_BITS = 256;
+constexpr uint8 RL_RANDOM_COLLATERAL_TIER = 0;
+constexpr uint64 RL_RANDOM_ENTROPY_FEE = static_cast<uint64>(RANDOM_BITFEE) * RL_RANDOM_ENTROPY_BITS;
 
 /// Placeholder structure for future extensions.
 struct RL2
@@ -619,7 +619,7 @@ public:
 			{
 				qpi.getEntity(SELF, locals.entity);
 				getSCRevenue(locals.entity, locals.revenue);
-				if (locals.revenue < CONTRACT_RANDOM_ENTROPY_FEE)
+				if (locals.revenue < RL_RANDOM_ENTROPY_FEE)
 				{
 					ReturnAllTickets(qpi, state, locals.returnAllTicketsInput, locals.returnAllTicketsOutput, locals.returnAllTicketsLocals);
 					clearStateOnEndDraw(state);
@@ -627,10 +627,10 @@ public:
 					return;
 				}
 
-				locals.buyEntropyInput.collateralTier = CONTRACT_RANDOM_COLLATERAL_TIER;
-				locals.buyEntropyInput.numberOfBits = CONTRACT_RANDOM_ENTROPY_BITS;
+				locals.buyEntropyInput.collateralTier = RL_RANDOM_COLLATERAL_TIER;
+				locals.buyEntropyInput.numberOfBits = RL_RANDOM_ENTROPY_BITS;
 				locals.buyEntropyInput.trustee = id::zero();
-				INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, CONTRACT_RANDOM_ENTROPY_FEE);
+				INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, RL_RANDOM_ENTROPY_FEE);
 
 				if (interContractCallError != NoCallError || isZeroEntropy(locals.buyEntropyOutput.entropy))
 				{

@@ -26,7 +26,7 @@ namespace
 	QPI::bit_4096 makeTestEntropy(uint64 seed)
 	{
 		QPI::bit_4096 entropy{};
-		for (uint64 i = 0; i < CONTRACT_RANDOM_ENTROPY_BITS; ++i)
+		for (uint64 i = 0; i < RL_RANDOM_ENTROPY_BITS; ++i)
 		{
 			entropy.set(i, ((seed + i) & 1ULL) != 0);
 		}
@@ -135,7 +135,7 @@ public:
 	void seedRandomEntropy(const QPI::bit_4096& entropy)
 	{
 		const uint32 stream = (system.tick + 2u) % 3u;
-		randomState()->entropy.set(stream * 10u + CONTRACT_RANDOM_COLLATERAL_TIER, entropy);
+		randomState()->entropy.set(stream * 10u + RL_RANDOM_COLLATERAL_TIER, entropy);
 	}
 
 	QDUEL::CreateRoom_output createRoom(const id& user, const id& allowedPlayer, sint64 stake, sint64 raiseStep, sint64 maxStake, sint64 reward)
@@ -368,7 +368,7 @@ namespace
 
 		// Calculate expected revenue distribution for fees and winner.
 		QDUEL::CalculateRevenue_output revenueOutput{};
-		qduel.state()->calculateRevenue((duelAmount * 2) - CONTRACT_RANDOM_ENTROPY_FEE, revenueOutput);
+		qduel.state()->calculateRevenue((duelAmount * 2) - RL_RANDOM_ENTROPY_FEE, revenueOutput);
 
 		// Player 2 joins and triggers finalize logic.
 		const QDUEL::ConnectToRoom_output connectOutput = qduel.connectToRoom(player2, qduel.state()->firstRoom().roomId, duelAmount);
@@ -1492,7 +1492,7 @@ TEST(ContractQDuel, GetLastWinnersStoresWinnerAfterSuccessfulDuel)
 	EXPECT_EQ(connectOutput.returnCode, QDUEL::EReturnCode::SUCCESS);
 
 	QDUEL::CalculateRevenue_output revenueOutput{};
-	qduel.state()->calculateRevenue(static_cast<uint64>((stake * 2) - CONTRACT_RANDOM_ENTROPY_FEE), revenueOutput);
+	qduel.state()->calculateRevenue(static_cast<uint64>((stake * 2) - RL_RANDOM_ENTROPY_FEE), revenueOutput);
 
 	const QDUEL::GetLastWinners_output winnersOutput = qduel.getLastWinners();
 	EXPECT_EQ(winnersOutput.returnCode, QDUEL::EReturnCode::SUCCESS);
@@ -1564,7 +1564,7 @@ TEST(ContractQDuel, GetLastWinnersWrapsAroundAfterCapacity)
 		ASSERT_EQ(connectOutput.returnCode, QDUEL::EReturnCode::SUCCESS);
 
 		QDUEL::CalculateRevenue_output revenueOutput{};
-		qduel.state()->calculateRevenue(static_cast<uint64>((stake * 2) - CONTRACT_RANDOM_ENTROPY_FEE), revenueOutput);
+		qduel.state()->calculateRevenue(static_cast<uint64>((stake * 2) - RL_RANDOM_ENTROPY_FEE), revenueOutput);
 
 		QDUEL::WinnerData expected{};
 		expected.player1 = owner;

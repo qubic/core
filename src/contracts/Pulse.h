@@ -1081,7 +1081,7 @@ public:
 			return;
 		}
 
-		if (qpi.invocationReward() < static_cast<sint64>(CONTRACT_RANDOM_ENTROPY_FEE))
+		if (qpi.invocationReward() < static_cast<sint64>(RL_RANDOM_ENTROPY_FEE))
 		{
 			if (qpi.invocationReward() > 0)
 			{
@@ -1091,9 +1091,9 @@ public:
 			return;
 		}
 
-		if (qpi.invocationReward() > static_cast<sint64>(CONTRACT_RANDOM_ENTROPY_FEE))
+		if (qpi.invocationReward() > static_cast<sint64>(RL_RANDOM_ENTROPY_FEE))
 		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward() - static_cast<sint64>(CONTRACT_RANDOM_ENTROPY_FEE));
+			qpi.transfer(qpi.invocator(), qpi.invocationReward() - static_cast<sint64>(RL_RANDOM_ENTROPY_FEE));
 		}
 
 		locals.chargeInput.player = qpi.invocator();
@@ -1101,7 +1101,7 @@ public:
 		CALL(ChargeTicketsFromPlayer, locals.chargeInput, locals.chargeOutput);
 		if (locals.chargeOutput.returnCode != EReturnCode::SUCCESS)
 		{
-			qpi.transfer(qpi.invocator(), CONTRACT_RANDOM_ENTROPY_FEE);
+			qpi.transfer(qpi.invocator(), RL_RANDOM_ENTROPY_FEE);
 			output.returnCode = locals.chargeOutput.returnCode;
 			return;
 		}
@@ -1119,7 +1119,7 @@ public:
 				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, locals.refundAmount,
 				                                        qpi.invocator());
 			}
-			qpi.transfer(qpi.invocator(), CONTRACT_RANDOM_ENTROPY_FEE);
+			qpi.transfer(qpi.invocator(), RL_RANDOM_ENTROPY_FEE);
 		}
 
 		output.returnCode = locals.allocateOutput.returnCode;
@@ -1225,16 +1225,16 @@ private:
 		}
 
 		qpi.getEntity(SELF, locals.entity);
-		if ((locals.entity.incomingAmount - locals.entity.outgoingAmount) < CONTRACT_RANDOM_ENTROPY_FEE)
+		if ((locals.entity.incomingAmount - locals.entity.outgoingAmount) < RL_RANDOM_ENTROPY_FEE)
 		{
 			CALL(ReturnAllTickets, locals.returnAllTicketsInput, locals.returnAllTicketsOutput);
 			return;
 		}
 
-		locals.buyEntropyInput.collateralTier = CONTRACT_RANDOM_COLLATERAL_TIER;
-		locals.buyEntropyInput.numberOfBits = CONTRACT_RANDOM_ENTROPY_BITS;
+		locals.buyEntropyInput.collateralTier = RL_RANDOM_COLLATERAL_TIER;
+		locals.buyEntropyInput.numberOfBits = RL_RANDOM_ENTROPY_BITS;
 		locals.buyEntropyInput.trustee = id::zero();
-		INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, CONTRACT_RANDOM_ENTROPY_FEE);
+		INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, RL_RANDOM_ENTROPY_FEE);
 		if (interContractCallError != NoCallError || RL::isZeroEntropy(locals.buyEntropyOutput.entropy))
 		{
 			CALL(ReturnAllTickets, locals.returnAllTicketsInput, locals.returnAllTicketsOutput);
@@ -1424,10 +1424,10 @@ private:
 			return;
 		}
 
-		locals.buyEntropyInput.collateralTier = CONTRACT_RANDOM_COLLATERAL_TIER;
-		locals.buyEntropyInput.numberOfBits = CONTRACT_RANDOM_ENTROPY_BITS;
+		locals.buyEntropyInput.collateralTier = RL_RANDOM_COLLATERAL_TIER;
+		locals.buyEntropyInput.numberOfBits = RL_RANDOM_ENTROPY_BITS;
 		locals.buyEntropyInput.trustee = id::zero();
-		INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, CONTRACT_RANDOM_ENTROPY_FEE);
+		INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, RL_RANDOM_ENTROPY_FEE);
 		if (interContractCallError != NoCallError || RL::isZeroEntropy(locals.buyEntropyOutput.entropy))
 		{
 			output.returnCode = EReturnCode::UNKNOWN_ERROR;

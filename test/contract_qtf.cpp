@@ -406,7 +406,7 @@ public:
 	id qtfSelf() { return id(QTF_CONTRACT_INDEX, 0, 0, 0); }
 	id qrpSelf() { return id(QRP_CONTRACT_INDEX, 0, 0, 0); }
 	void addPlayerDirect(const id& playerId, const QTFRandomValues& randomValues) { state()->addPlayerDirect(playerId, randomValues); }
-	void fundQtfEntropyFee(uint64 count = 1) { increaseEnergy(qtfSelf(), CONTRACT_RANDOM_ENTROPY_FEE * count); }
+	void fundQtfEntropyFee(uint64 count = 1) { increaseEnergy(qtfSelf(), RL_RANDOM_ENTROPY_FEE * count); }
 
 	// Public function wrappers
 	QTF::GetTicketPrice_output getTicketPrice()
@@ -690,16 +690,16 @@ public:
 	QPI::bit_4096 seedRandomEntropy(uint64 seed)
 	{
 		QPI::bit_4096 entropy{};
-		for (uint64 i = 0; i < CONTRACT_RANDOM_ENTROPY_BITS; ++i)
+		for (uint64 i = 0; i < RL_RANDOM_ENTROPY_BITS; ++i)
 		{
 			entropy.set(i, ((seed + i) & 1ULL) != 0);
 		}
 
 		const uint32 stream = (system.tick + 2u) % 3u;
-		randomState()->entropy.set(stream * 10u + CONTRACT_RANDOM_COLLATERAL_TIER, entropy);
+		randomState()->entropy.set(stream * 10u + RL_RANDOM_COLLATERAL_TIER, entropy);
 		const uint32 drawTick = system.tick + (RL_TICK_UPDATE_PERIOD - (system.tick % RL_TICK_UPDATE_PERIOD));
 		const uint32 drawStream = (drawTick + 2u) % 3u;
-		randomState()->entropy.set(drawStream * 10u + CONTRACT_RANDOM_COLLATERAL_TIER, entropy);
+		randomState()->entropy.set(drawStream * 10u + RL_RANDOM_COLLATERAL_TIER, entropy);
 		return entropy;
 	}
 
@@ -708,10 +708,10 @@ public:
 	void seedRandomEntropy(const QPI::bit_4096& entropy)
 	{
 		const uint32 stream = (system.tick + 2u) % 3u;
-		randomState()->entropy.set(stream * 10u + CONTRACT_RANDOM_COLLATERAL_TIER, entropy);
+		randomState()->entropy.set(stream * 10u + RL_RANDOM_COLLATERAL_TIER, entropy);
 		const uint32 drawTick = system.tick + (RL_TICK_UPDATE_PERIOD - (system.tick % RL_TICK_UPDATE_PERIOD));
 		const uint32 drawStream = (drawTick + 2u) % 3u;
-		randomState()->entropy.set(drawStream * 10u + CONTRACT_RANDOM_COLLATERAL_TIER, entropy);
+		randomState()->entropy.set(drawStream * 10u + RL_RANDOM_COLLATERAL_TIER, entropy);
 	}
 
 	void drawWithEntropy(uint64 seed, DrawFunding funding = DrawFunding::AutoFundEntropy)

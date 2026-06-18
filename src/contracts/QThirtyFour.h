@@ -1592,7 +1592,7 @@ private:
 		}
 
 		// Check if contract has sufficient balance for settlement
-		locals.checkBalanceInput.expectedRevenue = sadd(locals.revenue, CONTRACT_RANDOM_ENTROPY_FEE);
+		locals.checkBalanceInput.expectedRevenue = sadd(locals.revenue, RL_RANDOM_ENTROPY_FEE);
 		CALL(CheckContractBalance, locals.checkBalanceInput, locals.checkBalanceOutput);
 		if (!locals.checkBalanceOutput.hasEnough)
 		{
@@ -1603,10 +1603,10 @@ private:
 			return;
 		}
 
-		locals.buyEntropyInput.collateralTier = CONTRACT_RANDOM_COLLATERAL_TIER;
-		locals.buyEntropyInput.numberOfBits = CONTRACT_RANDOM_ENTROPY_BITS;
+		locals.buyEntropyInput.collateralTier = RL_RANDOM_COLLATERAL_TIER;
+		locals.buyEntropyInput.numberOfBits = RL_RANDOM_ENTROPY_BITS;
 		locals.buyEntropyInput.trustee = id::zero();
-		INVOKE_OTHER_CONTRACT_PROCEDURE_E(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, CONTRACT_RANDOM_ENTROPY_FEE,
+		INVOKE_OTHER_CONTRACT_PROCEDURE_E(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, RL_RANDOM_ENTROPY_FEE,
 		                                  buyEntropyError);
 		if (buyEntropyError != NoCallError || RL::isZeroEntropy(locals.buyEntropyOutput.entropy))
 		{
