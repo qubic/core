@@ -5824,6 +5824,8 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                                     long long reloadedSize = load(CONTRACT_FILE_NAME, (unsigned long long)actualSize, reinterpret_cast<unsigned char*>(scratchpad.ptr), directory);
                                     if (reloadedSize == actualSize && contractMigrateProcedures[contractIndex])
                                     {
+                                        // Zero the entire state before calling MIGRATE
+                                        setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
                                         QpiContextMigrateProcedureCall ctx(contractIndex);
                                         if (ctx.call(/*oldState=*/scratchpad.ptr) == NoContractError)
                                         {
