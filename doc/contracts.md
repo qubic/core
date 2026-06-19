@@ -651,11 +651,13 @@ The available options for `<change_type>` are:
 * `RESET`: Core will reset the state completely and re-initialize it to all 0 with the new state size. All previous data will be lost.
 * `MIGRATE`: Core will load the contract's old state file and run the `MIGRATE` procedure defined in the contract to populate the new state. More details below.
 
+Note that contract state changes are currently only triggered in core if the size of the new state struct is different from the old contract state file. In case you require a state change (`RESET` / `MIGRATE`) where the size remains the same, reach out to the core dev team.
+
 #### Implementing a `MIGRATE` Procedure
 
 In order to do a state change via state migration, the following need to be added in the contract:
 * An `OldStateData` struct that is defined as nested struct within the contract struct. `OldStateData` should have exactly the same layout as the previous `StateData`. Special attention is required if constants are changed that are used to define state variables. The best way to handle this is to keep the old constant value as `<constant_name>_OLD` and use it in `OldStateData` until after successful state migration.
-* A `MIGRATE` or `MIGRATE_WITH_LOCALS` procedure. Within this procedure, the contract has access to a QPI context `const QPI::QpiContextProcedureCall& qpi`, the new `StateData` struct `QPI::ContractState<StateData>& state`, the old state `const OldStateData& oldState`, and potentially some local variables `MIGRATE_locals& locals`. Note that `MIGRATE` procedures are prohibited to use any QPI functions that change the universe or spectrum. 
+* A `MIGRATE` or `MIGRATE_WITH_LOCALS` procedure. Within this procedure, the contract has access to a QPI context `const QPI::QpiContextFunctionCall& qpi`, the new `StateData` struct `QPI::ContractState<StateData>& state`, the old state `const OldStateData& oldState`, and potentially some local variables `MIGRATE_locals& locals`. Note that `MIGRATE` procedures are prohibited to use any QPI functions that change the universe or spectrum (enforced by passing `QpiContextFunctionCall`).
 
 ### New Features
 If you want to add new features, this needs to be approved by the computors again. Please refer to the [Deployment](#deployment) for the needed steps. The IPO is not anymore needed for an update of your SC.
