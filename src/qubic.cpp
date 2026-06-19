@@ -5773,7 +5773,8 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                     ContractStateChangeType changeType;
                     for (unsigned int i = 0; i < contractStateChangeCount; i++)
                     {
-                        if (contractStateChangeInfos[i].contractIndex == contractIndex)
+                        if (contractStateChangeInfos[i].contractIndex == contractIndex
+                            && contractStateChangeInfos[i].changeEpoch == system.epoch)
                         {
                             stateChangeAllowed = true;
                             changeType = contractStateChangeInfos[i].changeType;
@@ -5789,7 +5790,7 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                             setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
                             appendText(message, L" state reset to all 0 as requested");
                             logToConsole(message);
-                            continue;
+                            continue; // continue to next contract
                         }
                         else if (changeType == PADDING)
                         {
@@ -5807,10 +5808,42 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                                     appendNumber(message, contractDescriptions[contractIndex].stateSize, FALSE);
                                     appendText(message, L" bytes), zero-padded");
                                     logToConsole(message);
-                                    continue;
+                                    continue; // continue to next contract
                                 }
                                 // Reload also failed — fall through to error
                             }
+                        }
+                        else if (changeType == MIGRATE)
+                        {
+                            long long actualSize = getFileSize(CONTRACT_FILE_NAME, directory);
+                            if (actualSize == contractMigrateOldStateSizes[contractIndex])
+                            {
+                                __ScopedScratchpad scratchpad(actualSize, /*initZero=*/false);
+                                if (scratchpad.ptr)
+                                {
+                                    long long reloadedSize = load(CONTRACT_FILE_NAME, (unsigned long long)actualSize, reinterpret_cast<unsigned char*>(scratchpad.ptr), directory);
+                                    if (reloadedSize == actualSize && contractMigrateProcedures[contractIndex])
+                                    {
+                                        // Zero the entire state before calling MIGRATE
+                                        setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
+                                        QpiContextMigrateProcedureCall ctx(contractIndex);
+                                        if (ctx.call(/*oldState=*/scratchpad.ptr) == NoContractError)
+                                        {
+                                            appendText(message, L" state migration succeeded");
+                                            logToConsole(message);
+                                            continue; // migration succeeded, continue to next contract
+                                        }
+                                        else
+                                        {
+                                            // migration failed
+                                            appendText(message, L" attempted state migration failed -");
+                                            logToConsole(message);
+                                            // fall through to error
+                                        }
+                                    }
+                                }
+                            }
+                            // else fall through to error
                         }
                     }
 
@@ -6061,6 +6094,9 @@ static bool initialize()
         // needs to be called after ts.beginEpoch() because it looks up tickIndex, which requires to setup begin of epoch in ts
         updateNumberOfTickTransactions();
 
+        // contract functions and procedures need to be initialized before loading to enable the use of contract MIGRATE procedures
+        initializeContracts();
+
 #if TICK_STORAGE_AUTOSAVE_MODE
         bool canLoadFromFile = loadAllNodeStates();
 
@@ -6181,9 +6217,8 @@ static bool initialize()
         }
     }
 
-
+    // universe needs to be initialized before initializing contract errors
     initializeContractErrors();
-    initializeContracts();
 
     if (loadMiningSeedFromFile)
     {
