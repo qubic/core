@@ -6108,6 +6108,9 @@ static bool initialize()
         // needs to be called after ts.beginEpoch() because it looks up tickIndex, which requires to setup begin of epoch in ts
         updateNumberOfTickTransactions();
 
+        // contract functions and procedures need to be initialized before loading to enable the use of contract MIGRATE procedures
+        initializeContracts();
+
 #if TICK_STORAGE_AUTOSAVE_MODE
         bool canLoadFromFile = loadAllNodeStates();
 
@@ -6228,9 +6231,8 @@ static bool initialize()
         }
     }
 
-
+    // universe needs to be initialized before initializing contract errors
     initializeContractErrors();
-    initializeContracts();
 
     if (loadMiningSeedFromFile)
     {
