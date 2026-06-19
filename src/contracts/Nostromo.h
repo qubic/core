@@ -247,7 +247,7 @@ struct NOST : public ContractBase
 		/** @brief Quantity already assigned to winning bids after settlement. */
 		uint64 allocatedQuantity;
 
-		/** @brief Reserved for standard auction validation; batch auctions do not enforce a minimum bid quantity. */
+		/** @brief Minimum quantity requested by each batch bid; always zero for standard auctions. */
 		uint64 minimumPurchaseQuantity;
 
 		/** @brief Initial price for a standard auction; bids cannot start below this total price for the whole lot. */
@@ -417,7 +417,7 @@ struct NOST : public ContractBase
 		/** @brief Wallet list used when the private auction restricts participation to predefined wallets. */
 		Array<id, NOST_AUCTION_ALLOWED_WALLET_NUM> allowedBidderWallets;
 
-		/** @brief Reserved for standard auction validation; batch auctions ignore this value. */
+		/** @brief Required minimum requested quantity for batch bids; ignored for standard auctions. */
 		uint64 minimumPurchaseQuantity;
 
 		/** @brief Initial price for a standard auction; bids cannot be placed below this total price for the whole lot. */
@@ -459,7 +459,7 @@ struct NOST : public ContractBase
 		/** @brief Monotonic index of the target auction. */
 		uint64 auctionIndex;
 
-		/** @brief Requested quantity for a batch auction; ignored for a standard auction because the whole lot is sold as one unit. */
+		/** @brief Requested quantity for a batch auction, which must meet its configured minimum; ignored for a standard auction. */
 		uint64 quantity;
 
 		/** @brief Offered price per asset in a batch auction, or total offered price for the whole lot in a standard auction. */
@@ -1116,7 +1116,10 @@ struct NOST : public ContractBase
 	/** @brief Internal output returned after batch auction finalization. */
 	struct FinalizeBatchAuction_output
 	{
-		/** @brief Flag indicating whether batch settlement finished successfully. */
+		/**
+		 * @brief Flag indicating whether batch settlement finished successfully.
+		 * @note Final allocations are never smaller than the auction minimum; any insufficient remainder is returned to the seller.
+		 */
 		uint8 success;
 	};
 
@@ -2273,8 +2276,9 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (input.effectiveQuantity == 0 || input.bidAmount == 0)
+		if (input.effectiveQuantity < locals.auction.core.minimumPurchaseQuantity || input.bidAmount == 0)
 		{
+			output.refundedAmount = static_cast<uint64>(qpi.invocationReward());
 			output.errorCode = EAuctionError::InvalidInput;
 			return;
 		}
@@ -2576,9 +2580,9 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		// Repeatedly pick the best remaining bid, allocate available quantity, and collect the winning payment.
+		// Once supply falls below the minimum, no valid allocation remains; the common refund path returns all residual escrow and assets.
 		locals.remainingQuantity = locals.auction.core.quantityForSale;
-		while (locals.remainingQuantity > 0)
+		while (locals.remainingQuantity >= locals.auction.core.minimumPurchaseQuantity)
 		{
 			locals.bestParticipantFound = 0;
 			locals.participantIndex = state.get().participants.nextElementIndex(NULL_INDEX);
@@ -2834,6 +2838,7 @@ struct NOST : public ContractBase
 	/**
 	 * @brief Creates a new Batch Auction or Standard Auction in the Nostromo Auction House.
 	 * @note `CreateAuction_input` defines the IPFS metadata CID stored through Pinata, the auction lot, pricing, duration, and visibility rules.
+	 * @note Batch auctions require `minimumPurchaseQuantity` in the range `[1, quantityForSale]`; standard auctions ignore it and store zero.
 	 * @note Private auctions require the configured private auction fee, which is distributed between shareholders and the configured fee recipients,
 	 * and must use exactly one access mode.
 	 */
@@ -2944,7 +2949,8 @@ struct NOST : public ContractBase
 			case EAuctionType::Batch:
 
 				if (!resolveBatchAuctionCreateParams(locals.analyzeAuctionLotOutput.lotItemCount, locals.analyzeAuctionLotOutput.totalEscrowQuantity,
-				                                     locals.resolvedQuantityForSale, locals.resolvedMinimumPurchaseQuantity, input.buyNowPrice))
+				                                     input.minimumPurchaseQuantity, locals.resolvedQuantityForSale,
+				                                     locals.resolvedMinimumPurchaseQuantity, input.buyNowPrice))
 				{
 					if (qpi.invocationReward() > 0)
 					{
@@ -2958,7 +2964,7 @@ struct NOST : public ContractBase
 				}
 				break;
 			case EAuctionType::Standard:
-				if (!resolveStandardAuctionCreateParams(input.minimumPurchaseQuantity, input.minimumBidIncrement, locals.resolvedQuantityForSale,
+				if (!resolveStandardAuctionCreateParams(input.minimumBidIncrement, locals.resolvedQuantityForSale,
 				                                        locals.resolvedMinimumPurchaseQuantity, input.buyNowPrice, input.initialPrice,
 				                                        input.salePrice))
 				{
@@ -3117,7 +3123,10 @@ struct NOST : public ContractBase
 
 	/**
 	 * @brief Places a bid in an active auction.
-	 * @note Batch auctions interpret `bidAmount` as price per asset and `quantity` as the requested amount.
+	 * @note Batch auctions interpret `bidAmount` as price per asset and reject requested `quantity` below `minimumPurchaseQuantity` with a full
+	 * refund.
+	 * @note Batch final allocations are also at least `minimumPurchaseQuantity`; smaller unsold remainders return to the seller and affected bids are
+	 * fully refunded.
 	 * @note Standard auctions interpret `bidAmount` as the total price for the whole lot and ignore `quantity`.
 	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(PlaceBid)
@@ -3229,6 +3238,7 @@ struct NOST : public ContractBase
 					{
 						qpi.transfer(qpi.invocator(), qpi.invocationReward());
 					}
+					output.refundedAmount = locals.processBatchBidOutput.refundedAmount;
 					output.errorCode = locals.processBatchBidOutput.errorCode;
 					setProcedureLogInput(locals.log, qpi.invocator(), EProcedureId::PlaceBid, output.errorCode, input.auctionIndex,
 					                     output.escrowedAmount);
@@ -4079,26 +4089,27 @@ protected:
 		return a > b ? a : b;
 	}
 
-	static bool resolveBatchAuctionCreateParams(uint64 lotItemCount, uint64 totalEscrowQuantity, uint64& quantityForSale,
-	                                            uint64& resolvedMinimumPurchaseQuantity, uint64 buyNowPrice)
+	static bool resolveBatchAuctionCreateParams(uint64 lotItemCount, uint64 totalEscrowQuantity, uint64 minimumPurchaseQuantity,
+	                                            uint64& quantityForSale, uint64& resolvedMinimumPurchaseQuantity, uint64 buyNowPrice)
 	{
 		quantityForSale = 0;
 		resolvedMinimumPurchaseQuantity = 0;
-		if (lotItemCount != NOST_BATCH_AUCTION_LOT_ITEM_NUM || totalEscrowQuantity == 0 || buyNowPrice != 0)
+		if (lotItemCount != NOST_BATCH_AUCTION_LOT_ITEM_NUM || totalEscrowQuantity == 0 || minimumPurchaseQuantity == 0 ||
+		    minimumPurchaseQuantity > totalEscrowQuantity || buyNowPrice != 0)
 		{
 			return false;
 		}
 		quantityForSale = totalEscrowQuantity;
-		resolvedMinimumPurchaseQuantity = 0;
+		resolvedMinimumPurchaseQuantity = minimumPurchaseQuantity;
 		return true;
 	}
 
-	static bool resolveStandardAuctionCreateParams(uint64 minimumPurchaseQuantity, uint64 minimumBidIncrement, uint64& quantityForSale,
-	                                               uint64& resolvedMinimumPurchaseQuantity, uint64 buyNowPrice, uint64 initialPrice, uint64 salePrice)
+	static bool resolveStandardAuctionCreateParams(uint64 minimumBidIncrement, uint64& quantityForSale, uint64& resolvedMinimumPurchaseQuantity,
+	                                               uint64 buyNowPrice, uint64 initialPrice, uint64 salePrice)
 	{
 		quantityForSale = 0;
 		resolvedMinimumPurchaseQuantity = 0;
-		if (minimumPurchaseQuantity > NOST_STANDARD_AUCTION_LOT_COUNT || minimumBidIncrement == 0 || salePrice == 0)
+		if (minimumBidIncrement == 0 || salePrice == 0)
 		{
 			return false;
 		}
@@ -4115,7 +4126,7 @@ protected:
 		}
 
 		quantityForSale = NOST_STANDARD_AUCTION_LOT_COUNT;
-		resolvedMinimumPurchaseQuantity = NOST_STANDARD_AUCTION_LOT_COUNT;
+		resolvedMinimumPurchaseQuantity = 0;
 		return true;
 	}
 
