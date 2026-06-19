@@ -5817,12 +5817,18 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                         else if (changeType == MIGRATE)
                         {
                             long long actualSize = getFileSize(CONTRACT_FILE_NAME, directory);
+                            appendText(message, L" attempting migration, oldStateSize=");
+                            appendNumber(message, contractMigrateOldStateSizes[contractIndex], FALSE);
+                            appendText(message, L", actualSize=");
+                            appendNumber(message, actualSize, FALSE);
                             if (actualSize == contractMigrateOldStateSizes[contractIndex])
                             {
                                 __ScopedScratchpad scratchpad(actualSize, /*initZero=*/false);
                                 if (scratchpad.ptr)
                                 {
                                     long long reloadedSize = load(CONTRACT_FILE_NAME, (unsigned long long)actualSize, reinterpret_cast<unsigned char*>(scratchpad.ptr), directory);
+                                    appendText(message, L", reloadedSize=");
+                                    appendNumber(message, reloadedSize, FALSE);
                                     if (reloadedSize == actualSize && contractMigrateProcedures[contractIndex])
                                     {
                                         QpiContextMigrateProcedureCall ctx(contractIndex);
