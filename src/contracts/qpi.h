@@ -3099,6 +3099,7 @@ namespace QPI
 	#define MIGRATE_WITH_LOCALS() \
       public: \
         enum { __migrateEmpty = 0, __migrateOldStateSize = sizeof(CONTRACT_STATE_TYPE::OldStateData), __migrateLocalsSize = sizeof(MIGRATE_locals) }; \
+		static_assert(sizeof(MIGRATE_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, "MIGRATE_locals size too large"); \
 		inline static void __migrate(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_TYPE::OldStateData& oldState, MIGRATE_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_migrate(qpi, state, oldState, locals); } \
 		static void __impl_migrate(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_TYPE::OldStateData& oldState, MIGRATE_locals& locals)
 
