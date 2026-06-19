@@ -5834,7 +5834,7 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                                         else
                                         {
                                             // migration failed
-                                            appendText(message, L" attempted state migration failed");
+                                            appendText(message, L" attempted state migration failed -");
                                             logToConsole(message);
                                             // fall through to error
                                         }
