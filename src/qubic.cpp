@@ -5821,6 +5821,15 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                             appendNumber(message, contractMigrateOldStateSizes[contractIndex], FALSE);
                             appendText(message, L", actualSize=");
                             appendNumber(message, actualSize, FALSE);
+                            appendText(message, L", DUMMY::__migrateOldStateSize=");
+                            appendNumber(message, DUMMY::__migrateOldStateSize, FALSE);
+                            appendText(message, L", DUMMY::__migrateLocalsSize=");
+                            appendNumber(message, DUMMY::__migrateLocalsSize, FALSE);
+                            appendText(message, L", DUMMY::__migrateEmpty=");
+                            appendNumber(message, DUMMY::__migrateEmpty, FALSE);
+                            appendText(message, L", contractMigrateProcedures[contractIndex] not null ");
+                            appendNumber(message, contractMigrateProcedures[contractIndex] != nullptr, FALSE);
+
                             if (actualSize == contractMigrateOldStateSizes[contractIndex])
                             {
                                 __ScopedScratchpad scratchpad(actualSize, /*initZero=*/false);
