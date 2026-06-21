@@ -1,6 +1,6 @@
 using namespace QPI;
 
-constexpr uint32 QIP_MAX_NUMBER_OF_ICO = 1024;
+constexpr uint32 QIP_MAX_NUMBER_OF_ICO = 16384;
 constexpr sint64 QIP_ICO_SETUP_FEE = 1000000000;
 constexpr sint64 QIP_ICO_SETUP_FEE_DISTRIBUTION_PERCENT = 90;
 constexpr sint64 QIP_INVESTORS_DISTRIBUTION_PERCENT = 97;
@@ -26,6 +26,9 @@ enum QIPLogInfo {
     QIP_maxBuyers = 12,
     QIP_fundsAlreadyReturned = 13,
     QIP_amountBelowMinimum = 14,
+    QIP_invalidIssuer = 15,
+    QIP_qxAskOrderFound = 16,
+    QIP_icoAlreadyExists = 17,
 };
 
 struct QIPLogger
@@ -96,7 +99,8 @@ public:
     struct StateData
     {
         Array<ICOInfo, QIP_MAX_NUMBER_OF_ICO> icos;
-        uint32 numberOfICO;
+        HashSet<uint64, QIP_MAX_NUMBER_OF_ICO> activeIcoIndexes;
+        uint32 currentIcoIndex;
         uint32 transferRightsFee;
         id developmentFundAddress;
         HashMap<IcoBuyerKey, BuyerInfo, 131072> buyersInfo;
@@ -180,6 +184,21 @@ public:
         uint32 vestingPeriod;
     };
 
+    struct getBuyerInfo_input
+    {
+        id buyer;
+        uint32 indexOfICO;
+    };
+    struct getBuyerInfo_output
+    {
+        sint64 tokensToReceive;
+        sint64 receivedTokens;
+        sint64 totalQuPayed;
+        bit isReturned;
+        bit isVested;
+        uint32 remainingVestingPeriod;
+    };
+
     struct getICOInfo_locals
     {
         ICOInfo ico;
@@ -226,17 +245,58 @@ public:
         output.vestingPeriod = locals.ico.vestingPeriod;
     }
 
+    struct getBuyerInfo_locals
+    {
+        ICOInfo ico;
+        BuyerInfo buyerInfo;
+        IcoBuyerKey key;
+    };
+
+    PUBLIC_FUNCTION_WITH_LOCALS(getBuyerInfo)
+    {
+        locals.ico = state.get().icos.get(input.indexOfICO);
+        locals.key.assetName = locals.ico.assetName;
+        locals.key.issuer = locals.ico.issuer;
+        locals.key.creator = locals.ico.creatorOfICO;
+        locals.key.buyer = input.buyer;
+
+        if (state.get().buyersInfo.get(locals.key, locals.buyerInfo))
+        {
+            output.tokensToReceive = locals.buyerInfo.toReceive;
+            output.receivedTokens = locals.buyerInfo.received;
+            output.totalQuPayed = locals.buyerInfo.totalQuPayed;
+            output.isVested = locals.ico.isVested;
+            output.isReturned = locals.buyerInfo.isReturned;
+            if (locals.ico.isVested && !locals.buyerInfo.isReturned && qpi.epoch() - locals.ico.startEpoch - 2 < locals.ico.vestingPeriod)
+            {
+                output.remainingVestingPeriod = locals.ico.vestingPeriod - (qpi.epoch() - locals.ico.startEpoch - 2);
+            }
+        }
+    }
+
     struct createICO_locals
     {
         ICOInfo newICO;
         QIPLogger log;
         sint64 amountPerShare;
+        sint64 elementIndex;
         BuyerInfo emptyInfo;
+        QX::AssetAskOrders_input qxAskOrdersInput;
+        QX::AssetAskOrders_output qxAskOrdersOutput;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(createICO)
     {
-        if (input.startEpoch <= (uint32)qpi.epoch() + 1)
+        if (qpi.invocator() != input.issuer)
+        {
+            locals.log._contractIndex = SELF_INDEX;
+            locals.log._type = QIPLogInfo::QIP_invalidIssuer;
+            locals.log.dst = qpi.invocator();
+            locals.log.amt = 0;
+            LOG_INFO(locals.log);
+            output.returnCode = QIPLogInfo::QIP_invalidIssuer;
+        }
+        else if (input.startEpoch <= (uint32)qpi.epoch() + 1)
         {
             locals.log._contractIndex = SELF_INDEX;
             locals.log._type = QIPLogInfo::QIP_invalidStartEpoch;
@@ -273,7 +333,7 @@ public:
             LOG_INFO(locals.log);
             output.returnCode = QIPLogInfo::QIP_invalidPercent;
         }
-        else if (state.get().numberOfICO >= QIP_MAX_NUMBER_OF_ICO)
+        else if (state.get().activeIcoIndexes.population() >= QIP_MAX_NUMBER_OF_ICO)
         {
             locals.log._contractIndex = SELF_INDEX;
             locals.log._type = QIPLogInfo::QIP_overflowICO;
@@ -300,7 +360,40 @@ public:
             LOG_INFO(locals.log);
             output.returnCode = QIPLogInfo::QIP_invalidVestingPeriod;
         }
-        else if (qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.saleAmountForPhase1 + input.saleAmountForPhase2 + input.saleAmountForPhase3, SELF) < 0)
+        else
+        {
+            locals.qxAskOrdersInput.assetName = input.assetName;
+            locals.qxAskOrdersInput.issuer = input.issuer;
+            locals.qxAskOrdersInput.offset = 0;
+            CALL_OTHER_CONTRACT_FUNCTION(QX, AssetAskOrders, locals.qxAskOrdersInput, locals.qxAskOrdersOutput);
+            if (locals.qxAskOrdersOutput.orders.get(0).numberOfShares != 0)
+            {
+                locals.log._contractIndex = SELF_INDEX;
+                locals.log._type = QIPLogInfo::QIP_qxAskOrderFound;
+                locals.log.dst = qpi.invocator();
+                locals.log.amt = 0;
+                LOG_INFO(locals.log);
+                output.returnCode = QIPLogInfo::QIP_qxAskOrderFound;
+            }
+            else
+            {
+                for (locals.elementIndex = 0; locals.elementIndex < state.get().currentIcoIndex; locals.elementIndex++)
+                {
+                    if (state.get().icos.get(locals.elementIndex).assetName == input.assetName && state.get().icos.get(locals.elementIndex).issuer == input.issuer)
+                    {
+                        locals.log._contractIndex = SELF_INDEX;
+                        locals.log._type = QIPLogInfo::QIP_icoAlreadyExists;
+                        locals.log.dst = qpi.invocator();
+                        locals.log.amt = 0;
+                        LOG_INFO(locals.log);
+                        output.returnCode = QIPLogInfo::QIP_icoAlreadyExists;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (output.returnCode == 0 && qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.saleAmountForPhase1 + input.saleAmountForPhase2 + input.saleAmountForPhase3, SELF) < 0)
         {
             locals.log._contractIndex = SELF_INDEX;
             locals.log._type = QIPLogInfo::QIP_invalidTransfer;
@@ -322,6 +415,7 @@ public:
         {
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - QIP_ICO_SETUP_FEE);
         }
+
         locals.newICO.creatorOfICO = qpi.invocator();
         locals.newICO.issuer = input.issuer;
         locals.newICO.address1 = input.address1;
@@ -358,8 +452,9 @@ public:
         locals.newICO.burnRemainingTokens = input.burnRemainingTokens;
         locals.newICO.isVested = input.isVested;
         locals.newICO.vestingPeriod = input.vestingPeriod;
-        state.mut().icos.set(state.get().numberOfICO, locals.newICO);
-        state.mut().numberOfICO++;
+        state.mut().icos.set(state.get().currentIcoIndex, locals.newICO);
+        state.mut().activeIcoIndexes.add(state.get().currentIcoIndex);
+        state.mut().currentIcoIndex++;
 
         locals.amountPerShare = QPI::div(smul(QPI::div(QIP_ICO_SETUP_FEE, 10LL), 6LL), 676LL);
         qpi.distributeDividends(locals.amountPerShare);
@@ -390,7 +485,7 @@ public:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(buyToken)
     {
-        if (input.indexOfICO >= state.get().numberOfICO)
+        if (!state.get().activeIcoIndexes.contains(input.indexOfICO))
         {
             locals.errorCode = QIPLogInfo::QIP_ICONotFound;
         }
@@ -599,7 +694,7 @@ public:
 
     PUBLIC_PROCEDURE_WITH_LOCALS(returnFunds)
     {
-        if (input.indexOfICO >= state.get().numberOfICO)
+        if (!state.get().activeIcoIndexes.contains(input.indexOfICO))
         {
             locals.log._type = QIPLogInfo::QIP_ICONotFound;
         }
@@ -645,7 +740,7 @@ public:
         }
 
         locals.fullReturnAmount = QPI::div(locals.buyerInfo.totalQuPayed * (QIP_INVESTORS_DISTRIBUTION_PERCENT - locals.ico.percent1), 100ll);
-        locals.returnAmount = locals.fullReturnAmount - QPI::div(locals.fullReturnAmount, sint64(locals.ico.vestingPeriod)) * (qpi.epoch() - locals.ico.startEpoch - 3);
+        locals.returnAmount = locals.fullReturnAmount - QPI::div(locals.fullReturnAmount, sint64(locals.ico.vestingPeriod)) * (qpi.epoch() - locals.ico.startEpoch - 2);
         qpi.transfer(qpi.invocator(), locals.returnAmount);
         locals.buyerInfo.isReturned = true;
         locals.ico.quToDistribute -= locals.buyerInfo.totalQuPayed;
@@ -657,22 +752,27 @@ public:
     {
         ICOInfo ico;
         uint32 i;
+        uint64 elementIndex;
     };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(TransferShareManagementRights)
     {
         if (qpi.invocationReward() < state.get().transferRightsFee)
         {
-            return ;
+            return;
         }
 
-        for (locals.i = 0 ; locals.i < state.get().numberOfICO; locals.i++)
+        locals.elementIndex = state.get().activeIcoIndexes.nextElementIndex(NULL_INDEX);
+        while (locals.elementIndex != NULL_INDEX)
         {
-            locals.ico = state.get().icos.get(locals.i);
-            if (locals.ico.issuer == input.asset.issuer && locals.ico.assetName == input.asset.assetName)
+            locals.ico = state.get().icos.get(state.get().activeIcoIndexes.key(locals.elementIndex));
+            if (locals.ico.issuer == input.asset.issuer
+                && locals.ico.assetName == input.asset.assetName
+                && !locals.ico.isVested)
             {
-                return ;
+                return;
             }
+            locals.elementIndex = state.get().activeIcoIndexes.nextElementIndex(locals.elementIndex);
         }
 
         if (qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer,qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < input.numberOfShares)
@@ -711,6 +811,7 @@ public:
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_FUNCTION(getICOInfo, 1);
+        REGISTER_USER_FUNCTION(getBuyerInfo, 2);
 
         REGISTER_USER_PROCEDURE(createICO, 1);
         REGISTER_USER_PROCEDURE(buyToken, 2);
@@ -745,31 +846,34 @@ public:
     struct END_EPOCH_locals
     {
         ICOInfo ico;
-        sint32 idx;
         id buyer;
         sint64 elementIndex;
         sint64 buyerIndex;
         sint64 tempAmount;
         IcoBuyerKey icoBuyerKey;
         BuyerInfo buyerInfo;
+        bit isVestingCancelled;
+        sint64 tokenAmountToReturn;
+        uint64 icoElementIndex;
     };
 
     END_EPOCH_WITH_LOCALS()
     {
-        for(locals.idx = 0; locals.idx < (sint32)state.get().numberOfICO; locals.idx++)
+        locals.icoElementIndex = state.get().activeIcoIndexes.nextElementIndex(NULL_INDEX);
+        while (locals.icoElementIndex != NULL_INDEX)
         {
-            locals.ico = state.get().icos.get(locals.idx);
+            locals.ico = state.get().icos.get(state.get().activeIcoIndexes.key(locals.icoElementIndex));
             if (locals.ico.startEpoch == qpi.epoch() && locals.ico.remainingAmountForPhase1 > 0)
             {
                 locals.ico.remainingAmountForPhase2 += locals.ico.remainingAmountForPhase1;
                 locals.ico.remainingAmountForPhase1 = 0;
-                state.mut().icos.set(locals.idx, locals.ico);
+                state.mut().icos.set(state.get().activeIcoIndexes.key(locals.icoElementIndex), locals.ico);
             }
             else if (locals.ico.startEpoch + 1 == qpi.epoch() && locals.ico.remainingAmountForPhase2 > 0)
             {
                 locals.ico.remainingAmountForPhase3 += locals.ico.remainingAmountForPhase2;
                 locals.ico.remainingAmountForPhase2 = 0;
-                state.mut().icos.set(locals.idx, locals.ico);
+                state.mut().icos.set(state.get().activeIcoIndexes.key(locals.icoElementIndex), locals.ico);
             }
             else if (locals.ico.startEpoch + 2 == qpi.epoch())
             {
@@ -787,59 +891,80 @@ public:
 
                 if (!locals.ico.isVested)
                 {
-                    state.mut().icos.set(locals.idx, state.get().icos.get(state.get().numberOfICO - 1));
-                    state.mut().numberOfICO--;
-                    locals.idx--;
+                    state.mut().activeIcoIndexes.removeByIndex(locals.icoElementIndex);
                 }
+
+                locals.ico.remainingAmountForPhase3 = 0;
             }
-            else if (locals.ico.isVested)
+
+            if (locals.ico.isVested && qpi.epoch() >= locals.ico.startEpoch + 2) // locals.ico.startEpoch + 2 - first distribution epoch
             {
+                locals.isVestingCancelled = true;
+                locals.tokenAmountToReturn = 0;
                 locals.elementIndex = state.get().buyersInfo.nextElementIndex(NULL_INDEX);
                 while (locals.elementIndex != NULL_INDEX)
                 {
                     if (state.get().buyersInfo.key(locals.elementIndex).assetName == locals.ico.assetName
                         && state.get().buyersInfo.key(locals.elementIndex).issuer == locals.ico.issuer
-                        && state.get().buyersInfo.key(locals.elementIndex).creator == locals.ico.creatorOfICO
-                        && !state.get().buyersInfo.value(locals.elementIndex).isReturned)
+                        && state.get().buyersInfo.key(locals.elementIndex).creator == locals.ico.creatorOfICO)
                     {
+                        if (state.get().buyersInfo.value(locals.elementIndex).isReturned)
+                        {
+                            locals.tokenAmountToReturn += state.get().buyersInfo.value(locals.elementIndex).toReceive - state.get().buyersInfo.value(locals.elementIndex).received;
+                            locals.elementIndex = state.get().buyersInfo.nextElementIndex(locals.elementIndex);
+                            continue;
+                        }
+
+                        if (locals.isVestingCancelled)
+                        {
+                            locals.isVestingCancelled = false;
+                        }
+
                         locals.buyerInfo = state.get().buyersInfo.value(locals.elementIndex);
                         locals.icoBuyerKey = state.get().buyersInfo.key(locals.elementIndex);
-                        if (qpi.epoch() == locals.ico.startEpoch + locals.ico.vestingPeriod + 2) // last vesting epoch
+                        if (qpi.epoch() == locals.ico.startEpoch + locals.ico.vestingPeriod + 1) // last vesting epoch
                         {
                             locals.tempAmount = locals.buyerInfo.toReceive - locals.buyerInfo.received;
-                            state.mut().buyersInfo.removeByIndex(locals.elementIndex);
+                            locals.buyerInfo.received = locals.buyerInfo.toReceive;
                         }
                         else 
                         {
                             locals.tempAmount = QPI::div(locals.buyerInfo.toReceive, sint64(locals.ico.vestingPeriod));
                             locals.buyerInfo.received += locals.tempAmount;
-                            state.mut().buyersInfo.replace(locals.icoBuyerKey, locals.buyerInfo);
                         }
+                        state.mut().buyersInfo.replace(locals.icoBuyerKey, locals.buyerInfo);
                         qpi.transferShareOwnershipAndPossession(locals.ico.assetName, locals.ico.issuer, SELF, SELF, locals.tempAmount, locals.icoBuyerKey.buyer);
                     }
                     locals.elementIndex = state.get().buyersInfo.nextElementIndex(locals.elementIndex);
                 }
 
-                qpi.transfer(locals.ico.address2, div(div(locals.ico.quToDistribute * locals.ico.percent2, 100ULL), uint64(locals.ico.vestingPeriod)));
-                qpi.transfer(locals.ico.address3, div(div(locals.ico.quToDistribute * locals.ico.percent3, 100ULL), uint64(locals.ico.vestingPeriod)));
-                qpi.transfer(locals.ico.address4, div(div(locals.ico.quToDistribute * locals.ico.percent4, 100ULL), uint64(locals.ico.vestingPeriod)));
-                qpi.transfer(locals.ico.address5, div(div(locals.ico.quToDistribute * locals.ico.percent5, 100ULL), uint64(locals.ico.vestingPeriod)));
-                qpi.transfer(locals.ico.address6, div(div(locals.ico.quToDistribute * locals.ico.percent6, 100ULL), uint64(locals.ico.vestingPeriod)));
-                qpi.transfer(locals.ico.address7, div(div(locals.ico.quToDistribute * locals.ico.percent7, 100ULL), uint64(locals.ico.vestingPeriod)));
-                qpi.transfer(locals.ico.address8, div(div(locals.ico.quToDistribute * locals.ico.percent8, 100ULL), uint64(locals.ico.vestingPeriod)));
-                qpi.transfer(locals.ico.address9, div(div(locals.ico.quToDistribute * locals.ico.percent9, 100ULL), uint64(locals.ico.vestingPeriod)));
-                qpi.transfer(locals.ico.address10, div(div(locals.ico.quToDistribute * locals.ico.percent10, 100ULL), uint64(locals.ico.vestingPeriod)));
+                if (locals.isVestingCancelled)
+                {
+                    qpi.transferShareOwnershipAndPossession(locals.ico.assetName, locals.ico.issuer, SELF, SELF, locals.tokenAmountToReturn, locals.ico.creatorOfICO);
+                }
+                else
+                {
+                    qpi.transfer(locals.ico.address2, div(div(locals.ico.quToDistribute * locals.ico.percent2, 100ULL), uint64(locals.ico.vestingPeriod)));
+                    qpi.transfer(locals.ico.address3, div(div(locals.ico.quToDistribute * locals.ico.percent3, 100ULL), uint64(locals.ico.vestingPeriod)));
+                    qpi.transfer(locals.ico.address4, div(div(locals.ico.quToDistribute * locals.ico.percent4, 100ULL), uint64(locals.ico.vestingPeriod)));
+                    qpi.transfer(locals.ico.address5, div(div(locals.ico.quToDistribute * locals.ico.percent5, 100ULL), uint64(locals.ico.vestingPeriod)));
+                    qpi.transfer(locals.ico.address6, div(div(locals.ico.quToDistribute * locals.ico.percent6, 100ULL), uint64(locals.ico.vestingPeriod)));
+                    qpi.transfer(locals.ico.address7, div(div(locals.ico.quToDistribute * locals.ico.percent7, 100ULL), uint64(locals.ico.vestingPeriod)));
+                    qpi.transfer(locals.ico.address8, div(div(locals.ico.quToDistribute * locals.ico.percent8, 100ULL), uint64(locals.ico.vestingPeriod)));
+                    qpi.transfer(locals.ico.address9, div(div(locals.ico.quToDistribute * locals.ico.percent9, 100ULL), uint64(locals.ico.vestingPeriod)));
+                    qpi.transfer(locals.ico.address10, div(div(locals.ico.quToDistribute * locals.ico.percent10, 100ULL), uint64(locals.ico.vestingPeriod)));
+                }
 
                 if (qpi.epoch() == locals.ico.startEpoch + locals.ico.vestingPeriod + 2) // last vesting epoch
                 {
-                    state.mut().icos.set(locals.idx, state.get().icos.get(state.get().numberOfICO - 1));
-                    state.mut().numberOfICO--;
-                    locals.idx--;
+                    state.mut().activeIcoIndexes.removeByIndex(locals.icoElementIndex);
                 }
             }
+            locals.icoElementIndex = state.get().activeIcoIndexes.nextElementIndex(locals.icoElementIndex);
         }
 
         state.mut().buyersInfo.cleanupIfNeeded();
+        state.mut().activeIcoIndexes.cleanupIfNeeded();
     }
 
     PRE_ACQUIRE_SHARES()
