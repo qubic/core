@@ -121,7 +121,7 @@ static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
 // Signing difficulty
-#define TARGET_TICK_VOTE_SIGNATURE 0x00095CBEU // around 7000 signing operations per ID
+#define TARGET_TICK_VOTE_SIGNATURE 0x000242ECU // ~28,980 signing operations per ID (4.14x harder)
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"
