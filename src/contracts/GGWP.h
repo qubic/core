@@ -856,11 +856,7 @@ struct WOLFPACK : public ContractBase
             output.returnCode = WOLFPACK_ERROR_ZERO_AMOUNT;
             return;
         }
-        // Pull the reward WP into the contract's OWN ownership+possession so the pool is
-        // real and claims can be paid from it. The depositor must first delegate WP
-        // management to GGWP via QX.TransferShareManagementRights(newMgmtIdx=GGWP).
-        // (Previously this only checked possession and bumped a counter, so the WP never
-        // actually entered the contract and rewards could not be paid out.)
+
         locals.transferResult = qpi.transferShareOwnershipAndPossession(
             state.get().wpToken.assetName, state.get().wpToken.issuer,
             qpi.invocator(), qpi.invocator(), (sint64)input.numberOfShares, SELF);
