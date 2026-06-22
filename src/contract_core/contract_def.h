@@ -132,7 +132,11 @@
 #define CONTRACT_INDEX QBAY_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QBAY
 #define CONTRACT_STATE2_TYPE QBAY2
+#ifdef OLD_QBAY
+#include "contracts/Qbay_old.h"
+#else
 #include "contracts/Qbay.h"
+#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
