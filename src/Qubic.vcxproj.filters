@@ -389,9 +389,6 @@
     <ClInclude Include="mining\custom_qubic_mining_storage.h">
       <Filter>mining</Filter>
     </ClInclude>
-    <ClInclude Include="contracts\QRaffle_old.h">
-      <Filter>contracts</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
