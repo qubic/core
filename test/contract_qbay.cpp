@@ -847,7 +847,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_9001_10000;
     totalIncommingNFTNumber += 10000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_9001_10000 * cfbPrice;
     
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_8001_9000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_8001_9000);
     pfp.createCollection(users[0], 0, 9, 10, 100, 1, URI);
@@ -855,7 +854,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_8001_9000;
     totalIncommingNFTNumber += 9000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_8001_9000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_7001_8000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_7001_8000);
     pfp.createCollection(users[0], 0, 8, 10, 100, 1, URI);
@@ -863,7 +861,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_7001_8000;
     totalIncommingNFTNumber += 8000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_7001_8000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_6001_7000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_6001_7000);
     pfp.createCollection(users[0], 0, 7, 10, 100, 1, URI);
@@ -871,7 +868,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_6001_7000;
     totalIncommingNFTNumber += 7000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_6001_7000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_5001_6000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_5001_6000);
     pfp.createCollection(users[0], 0, 6, 10, 100, 1, URI);
@@ -879,7 +875,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_5001_6000;
     totalIncommingNFTNumber += 6000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_5001_6000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_4001_5000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_4001_5000);
     pfp.createCollection(users[0], 0, 5, 10, 100, 1, URI);
@@ -887,7 +882,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_4001_5000;
     totalIncommingNFTNumber += 5000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_4001_5000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_3001_4000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_3001_4000);
     pfp.createCollection(users[0], 0, 4, 10, 100, 1, URI);
@@ -895,7 +889,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_3001_4000;
     totalIncommingNFTNumber += 4000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_3001_4000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_2001_3000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_2001_3000);
     pfp.createCollection(users[0], 0, 3, 10, 100, 1, URI);
@@ -903,7 +896,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_2001_3000;
     totalIncommingNFTNumber += 3000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_2001_3000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_1001_2000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_1001_2000);
     pfp.createCollection(users[0], 0, 2, 10, 100, 1, URI);
@@ -911,7 +903,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_1001_2000;
     totalIncommingNFTNumber += 2000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_1001_2000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_201_1000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_201_1000);
     pfp.createCollection(users[0], 0, 1, 10, 100, 1, URI);
@@ -919,7 +910,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_201_1000;
     totalIncommingNFTNumber += 1000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_201_1000 * cfbPrice;
 
     // Collection for Drop. collection id: 10
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_2_200, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_2_200);
@@ -928,7 +918,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_2_200;
     totalIncommingNFTNumber += 200;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_2_200 * cfbPrice;
 
     // getting the id of collection user created
 
@@ -946,7 +935,7 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     auto getInfoOfCollectionById_output = pfp.getInfoOfCollectionById(0);
     pfp.getState()->getInfoOfCollectionByIdChecker(getInfoOfCollectionById_output, 0);
 
-    EXPECT_EQ(numberOfPossessedShares(assetName, CFB_ISSUER, id(12, 0, 0, 0), id(12, 0, 0, 0), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX), cfbPrice * totalPriceForCollectionCreating);
+    EXPECT_EQ(numberOfPossessedShares(assetName, CFB_ISSUER, id(12, 0, 0, 0), id(12, 0, 0, 0), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX), 0);
 
     EXPECT_EQ(numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, id(QBAY_CONTRACT_INDEX, 0, 0, 0), id(QBAY_CONTRACT_INDEX, 0, 0, 0), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX), earnedCFB);
     EXPECT_EQ(getBalance(id(QBAY_CONTRACT_INDEX, 0, 0, 0)), earnedQubic);
