@@ -1371,6 +1371,33 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     enqueueResponse(peer, sizeof(respondedSystemInfo), RespondSystemInfo::type(), header->dejavu(), &respondedSystemInfo);
 }
 
+// Per-processor revenue response buffers
+static RespondRevenueData gRevenueDataResponseBuffer[MAX_NUMBER_OF_PROCESSORS];
+
+// Returns the current (approximate) raw per-computor revenue scores so a consumer can compute revenue
+// without reprocessing transactions. This function is pure copy, no computation
+static void processRequestRevenueData(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
+{
+    if (processorNumber >= MAX_NUMBER_OF_PROCESSORS)
+    {
+        return;
+    }
+    RespondRevenueData& response = gRevenueDataResponseBuffer[processorNumber];
+
+    response.tick = system.tick;
+    response.dogeK = (unsigned short)REVENUE_DOGE_K;
+    response.ipc = REVENUE_IPC;
+
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        response.txScore[i] = gMultiDimRevenue.txScore[i];
+        response.oracleScore[i] = oracleEngine.getRevenuePointUnsafe(i);
+        response.dogeScore[i] = gDogeMiningSharesCounter.getSharesCount(i);
+    }
+
+    enqueueResponse(peer, sizeof(response), RespondRevenueData::type(), header->dejavu(), &response);
+}
+
 // Hardcoded doge dispatcher public key (identity: XPILPIJYHRBTACMMIRSJLIZWCXDBHWVEOTZBQFBXWEUXDZGGDEKDQPIEQKQK)
 static const unsigned char dogeDispatcherPubkey[32] = {
     0x25, 0x98, 0x6d, 0x38, 0xa6, 0x3d, 0xd6, 0x45,
@@ -2028,6 +2055,12 @@ static void requestProcessor(void* ProcedureArgument)
                 case RequestSystemInfo::type():
                 {
                     processRequestSystemInfo(peer, header);
+                }
+                break;
+
+                case RequestRevenueData::type():
+                {
+                    processRequestRevenueData(processorNumber, peer, header);
                 }
                 break;
 
