@@ -235,7 +235,7 @@ struct WOLFPACK : public ContractBase
 
     struct ClaimStakingRewards_input { };
     struct ClaimStakingRewards_output { uint32 returnCode; uint64 claimedAmount; };
-    struct ClaimStakingRewards_locals { uint64 pending; sint64 releaseResult; };
+    struct ClaimStakingRewards_locals { uint64 pending; sint64 releaseResult; sint64 transferResult; };
 
     struct GetStakingInfo_input { id stakerAddress; };
     struct GetStakingInfo_output { uint64 stakedAmount; uint64 pendingRewards; uint64 unstakeAmount; uint64 unstakeEpoch; uint64 totalStaked; uint64 stakingRewardPool; uint32 isStaker; };
@@ -856,10 +856,11 @@ struct WOLFPACK : public ContractBase
             output.returnCode = WOLFPACK_ERROR_ZERO_AMOUNT;
             return;
         }
-        // Verify invocator has enough GGWP shares under WP's management.
-        // User must call QX.TransferShareManagementRights(asset=wpToken, newMgmtIdx=GGWP) first.
-        if (qpi.numberOfPossessedShares(state.get().wpToken.assetName, state.get().wpToken.issuer,
-            qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < (sint64)input.numberOfShares)
+
+        locals.transferResult = qpi.transferShareOwnershipAndPossession(
+            state.get().wpToken.assetName, state.get().wpToken.issuer,
+            qpi.invocator(), qpi.invocator(), (sint64)input.numberOfShares, SELF);
+        if (locals.transferResult < 0)
         {
             output.returnCode = WOLFPACK_ERROR_ACQUIRE_FAILED;
             return;
@@ -889,6 +890,17 @@ struct WOLFPACK : public ContractBase
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - WOLFPACK_QX_TRANSFER_FEE);
         }
 
+        // Pay the reward from the contract-held pool: move ownership+possession of
+        // `pending` WP from the contract to the claimer, then hand management back to QX
+        // so the claimer freely controls them — fully decoupled from the staker's principal.
+        locals.transferResult = qpi.transferShareOwnershipAndPossession(
+            state.get().wpToken.assetName, state.get().wpToken.issuer,
+            SELF, SELF, (sint64)locals.pending, qpi.invocator());
+        if (locals.transferResult < 0)
+        {
+            output.returnCode = WOLFPACK_ERROR_TRANSFER_FAILED;
+            return;
+        }
         locals.releaseResult = qpi.releaseShares(state.get().wpToken, qpi.invocator(), qpi.invocator(),
             (sint64)locals.pending, WOLFPACK_QX_CONTRACT_INDEX, WOLFPACK_QX_CONTRACT_INDEX, WOLFPACK_QX_TRANSFER_FEE);
         if (locals.releaseResult < 0)
