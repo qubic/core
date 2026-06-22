@@ -1440,3 +1440,24 @@ static long long asyncLoadLargeFile(CHAR16* fileName, unsigned long long totalSi
     }
     return totalReadSize;
 }
+
+// Acquire a spinlock, but if we are the main thread (the only thread that can
+// flush IO), keep draining the async IO queue while waiting. Prevents a deadlock
+// where a non-main thread holds lock while parked inside asyncLoad() waiting
+// for the main thread to flush, and the main thread is itself blocked on lock
+static void acquireLockWithIOPump(volatile char& lock)
+{
+    if (TRY_ACQUIRE(lock))
+    {
+        return;
+    }
+    const bool mainThread = (gAsyncFileIO && gAsyncFileIO->isMainThread());
+    while (!TRY_ACQUIRE(lock))
+    {
+        if (mainThread)
+        {
+            flushAsyncFileIOBuffer(1);
+        }
+        _mm_pause();
+    }
+}

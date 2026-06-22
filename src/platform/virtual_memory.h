@@ -47,6 +47,14 @@ private:
 
     volatile char memLock; // every read/write needs a memory lock, can optimize later
 
+    // Acquire memLock, but if we are the main thread (the only thread that can do IO),
+    // keep pumping the async IO queue while we wait. Otherwise a non-main thread parked
+    // inside asyncLoad() while holding memLock could never be serviced and cause deadlock.
+    void acquireMemLock()
+    {
+        acquireLockWithIOPump(memLock); 
+    }
+
     void generatePageName(CHAR16 pageName[64], unsigned long long page_id)
     {
         setMem(pageName, sizeof(pageName), 0);
@@ -251,7 +259,7 @@ public:
 
     bool init()
     {
-        ACQUIRE(memLock);
+        acquireMemLock();
         if (currentPage == NULL)
         {
             if (!allocPoolWithErrorLog(L"VirtualMemory.Page", pageSize * (numCachePage + 1), (void**)&currentPage, __LINE__))
@@ -324,7 +332,7 @@ public:
     // return number of items has been copied
     unsigned long long getMany(T* dst, unsigned long long offset, unsigned long long numItems)
     {
-        ACQUIRE(memLock);
+        acquireMemLock();
         ASSERT(offset + numItems - 1 < currentId);
         if (offset + numItems - 1 >= currentId)
         {
@@ -349,7 +357,7 @@ public:
         unsigned long long r_page_id = rhs / pageCapacity;
         unsigned long long he = min(rhs + pageCapacity, offset + numItems); // head end
         unsigned long long n_item = he - hs; // copy [hs, he)
-        ACQUIRE(memLock);
+        acquireMemLock();
         int cache_page_idx = loadPageToCache(r_page_id);
         if (cache_page_idx == -1)
         {
@@ -371,7 +379,7 @@ public:
             for (bs = he; bs + pageCapacity <= p_end; bs += pageCapacity)
             {
                 r_page_id = bs / pageCapacity;
-                ACQUIRE(memLock);
+                acquireMemLock();
                 cache_page_idx = loadPageToCache(r_page_id);
                 if (cache_page_idx == -1)
                 {
@@ -393,7 +401,7 @@ public:
         {
             r_page_id = bs / pageCapacity;
             n_item = p_end - bs; // copy [bs, p_end)
-            ACQUIRE(memLock);
+            acquireMemLock();
             int cache_page_idx = loadPageToCache(r_page_id);
             if (cache_page_idx == -1)
             {
@@ -417,7 +425,7 @@ public:
     // return number of items has been copied
     unsigned long long appendMany(T* src, unsigned long long numItems)
     {
-        ACQUIRE(memLock);
+        acquireMemLock();
         unsigned long long c_bytes = 0;
         unsigned long long p_start = currentId;
         unsigned long long p_end = currentId + numItems;
@@ -466,7 +474,7 @@ public:
     T get(unsigned long long index)
     {
         T result;
-        ACQUIRE(memLock);
+        acquireMemLock();
         if (index >= currentId) // out of bound
         {
             setMem(&result, sizeof(T), 0);
@@ -494,7 +502,7 @@ public:
     // if index is not in cache it will load the page to most outdated cache
     void getOne(unsigned long long index, T* result)
     {
-        ACQUIRE(memLock);
+        acquireMemLock();
         if (index >= currentId) // out of bound
         {
             setMem(result, sizeof(T), 0);
@@ -530,7 +538,7 @@ public:
     void append(const T& data)
     {
         ASSERT(currentPage != NULL);
-        ACQUIRE(memLock);
+        acquireMemLock();
         copyMem(&currentPage[currentId % pageCapacity], &data, sizeof(T));
         currentId++;
         tryPersistingPage();
@@ -551,7 +559,7 @@ public:
         }
         CHAR16 pageName[64];
         generatePageName(pageName, pageId);
-        ACQUIRE(memLock);
+        acquireMemLock();
         bool success = (asyncRemoveFile(pageName, pageDir)) == 0;
         RELEASE(memLock);
         return success;
@@ -621,7 +629,7 @@ public:
 
     unsigned long long dumpVMState(unsigned char* buffer)
     {
-        ACQUIRE(memLock);
+        acquireMemLock();
         unsigned long long ret = 0;
         copyMem(buffer, currentPage, pageSize);
         ret += pageSize;
@@ -640,7 +648,7 @@ public:
 
     unsigned long long loadVMState(unsigned char* buffer)
     {
-        ACQUIRE(memLock);
+        acquireMemLock();
         unsigned long long ret = 0;
         copyMem(currentPage, buffer, pageSize);
         ret += pageSize;
