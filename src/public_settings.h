@@ -70,12 +70,12 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 295
-#define VERSION_C 2
+#define VERSION_B 297
+#define VERSION_C 0
 
 // Epoch and initial tick for node startup
-#define EPOCH 217
-#define TICK 57700000
+#define EPOCH 219
+#define TICK 62200000
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -101,10 +101,6 @@ static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_NEIGHBORS = 728;    
 static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_MUTATIONS = 150;
 static constexpr unsigned long long HYPERIDENTITY_POPULATION_THRESHOLD = HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_MUTATIONS; // P
 static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT = 316;
-// Mid-epoch threshold increase: ticks before activation use old threshold (313),
-// ticks >= activation use HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT (316).
-static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_PRE_ACTIVATION = 313;
-static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_ACTIVATION_TICK = 57707553;
 
 static constexpr unsigned long long ADDITION_NUMBER_OF_INPUT_NEURONS = 14;
 static constexpr unsigned long long ADDITION_NUMBER_OF_OUTPUT_NEURONS = 8;
@@ -113,7 +109,7 @@ static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = 256;
 // Each neuron is connected to every other neuron(exclude self). The effective is clamp to (ADDITION_POPULATION_THRESHOLD - 1) at runtime
 static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = ADDITION_POPULATION_THRESHOLD;
 static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 256;
-static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 74300;
+static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 74100;
 
 // Multipler of score
 static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;
@@ -125,7 +121,7 @@ static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
 // Signing difficulty
-#define TARGET_TICK_VOTE_SIGNATURE 0x00095CBEU // around 7000 signing operations per ID
+#define TARGET_TICK_VOTE_SIGNATURE 0x000242ECU // ~28,980 signing operations per ID
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"

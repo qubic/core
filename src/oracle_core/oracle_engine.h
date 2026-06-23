@@ -2778,6 +2778,12 @@ public:
         copyMem(orp.computorRevPoints, revenuePoints, sizeof(revenuePoints));
     }
 
+    // Lock-free per-element accessor for read-only stats. Caller must pass idx < NUMBER_OF_COMPUTORS.
+    uint64_t getRevenuePointUnsafe(unsigned int idx) const
+    {
+        return revenuePoints[idx];
+    }
+
     void logStatus() const
     {
         auto appendQuotientWithOneDecimal = [](CHAR16* message, uint64_t dividend, uint64_t divisor)

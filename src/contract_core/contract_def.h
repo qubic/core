@@ -132,7 +132,11 @@
 #define CONTRACT_INDEX QBAY_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QBAY
 #define CONTRACT_STATE2_TYPE QBAY2
+#ifdef OLD_QBAY
+#include "contracts/Qbay_old.h"
+#else
 #include "contracts/Qbay.h"
+#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -288,8 +292,6 @@
 #define CONTRACT_STATE2_TYPE ESCROW2
 #include "contracts/Escrow.h"
 
-#ifndef NO_GGWP
-
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
 #undef CONTRACT_STATE2_TYPE
@@ -299,8 +301,6 @@
 #define CONTRACT_STATE_TYPE WOLFPACK
 #define CONTRACT_STATE2_TYPE WOLFPACK2
 #include "contracts/GGWP.h"
-
-#endif
 
 // new contracts should be added above this line
 
@@ -416,9 +416,7 @@ constexpr struct ContractDescription
     {"VOTTUN", 206, 10000, sizeof(VOTTUNBRIDGE::StateData)}, // proposal in epoch 204, IPO in 205, construction and first use in 206
     {"QUSINO", 208, 10000, sizeof(QUSINO::StateData)}, // proposal in epoch 206, IPO in 207, construction and first use in 208
     {"ESCROW", 210, 10000, sizeof(ESCROW::StateData)}, // proposal in epoch 208, IPO in 209, construction and first use in 210
-#ifndef NO_GGWP
     {"GGWP", 218, 10000, sizeof(WOLFPACK::StateData)}, // proposal in epoch 216, IPO in 217, construction and first use in 218
-#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     {"TESTEXA", 138, 10000, sizeof(TESTEXA::StateData)},
@@ -431,6 +429,10 @@ constexpr struct ContractDescription
 constexpr unsigned int contractCount = sizeof(contractDescriptions) / sizeof(contractDescriptions[0]);
 
 GLOBAL_VAR_DECL EXPAND_PROCEDURE contractExpandProcedures[contractCount];
+
+GLOBAL_VAR_DECL MIGRATE_PROCEDURE contractMigrateProcedures[contractCount];
+GLOBAL_VAR_DECL unsigned long long contractMigrateOldStateSizes[contractCount];
+GLOBAL_VAR_DECL unsigned short contractMigrateLocalsSizes[contractCount];
 
 // TODO: all below are filled very sparsely, so a better data structure could save almost all the memory
 GLOBAL_VAR_DECL USER_FUNCTION contractUserFunctions[contractCount][65536];
@@ -474,6 +476,7 @@ enum OtherEntryPointIDs
     USER_FUNCTION_CALL = contractSystemProcedureCount + 2,
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES_CALL = contractSystemProcedureCount + 3,
     USER_PROCEDURE_NOTIFICATION_CALL = contractSystemProcedureCount + 4,
+	MIGRATE_PROCEDURE_CALL = contractSystemProcedureCount + 5,
 };
 
 GLOBAL_VAR_DECL SYSTEM_PROCEDURE contractSystemProcedures[contractCount][contractSystemProcedureCount];
@@ -507,6 +510,9 @@ contractSystemProcedureLocalsSizes[contractIndex][SET_SHAREHOLDER_PROPOSAL] = co
 if (!contractName::__setShareholderVotesEmpty) contractSystemProcedures[contractIndex][SET_SHAREHOLDER_VOTES] = (SYSTEM_PROCEDURE)contractName::__setShareholderVotes;\
 contractSystemProcedureLocalsSizes[contractIndex][SET_SHAREHOLDER_VOTES] = contractName::__setShareholderVotesLocalsSize; \
 if (!contractName::__expandEmpty) contractExpandProcedures[contractIndex] = (EXPAND_PROCEDURE)contractName::__expand;\
+if (!contractName::__migrateEmpty) contractMigrateProcedures[contractIndex] = (MIGRATE_PROCEDURE)contractName::__migrate;\
+contractMigrateOldStateSizes[contractIndex] = contractName::__migrateOldStateSize;\
+contractMigrateLocalsSizes[contractIndex] = contractName::__migrateLocalsSize;\
 QpiContextForInit qpi(contractIndex); \
 contractName::__registerUserFunctionsAndProcedures(qpi); \
 static_assert(sizeof(contractName::StateData) <= MAX_CONTRACT_STATE_SIZE, "Size of contract state " #contractName " is too large!"); \
@@ -542,9 +548,7 @@ static void initializeContracts()
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(VOTTUNBRIDGE);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(QUSINO);
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(ESCROW);
-#ifndef NO_GGWP
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(WOLFPACK);
-#endif
     // new contracts should be added above this line
 #ifdef INCLUDE_CONTRACT_TEST_EXAMPLES
     REGISTER_CONTRACT_FUNCTIONS_AND_PROCEDURES(TESTEXA);
@@ -554,26 +558,31 @@ static void initializeContracts()
 #endif
 }
 
-// Automatic Contract State Changes
+// ----- Automatic Contract State Changes -----
+// NOTE: All state changes are currently only triggered during loading if the loaded size does not match the expected size.
+// If we ever need a reset or migrate where the state size remains the same, we have to change the implementation in loadContractStateFiles.
 enum ContractStateChangeType
 {
     // Keeps the saved state's old bytes, only zero-fills the new bytes at the end (used when struct grew; old fields preserved)
     PADDING,
     // Discards the saved state entirely, zeros the whole buffer
     RESET,
+    // Migrate data from an old to a new state struct
+	MIGRATE,
 };
 struct ContractStateChangeInfo
 {
     unsigned int contractIndex;
     ContractStateChangeType changeType;
+    unsigned short changeEpoch; // extra safeguard to prevent accidental state change
 };
 // Contracts whose state struct changed this epoch. Update this list each epoch as needed.
-// Each entry is { CONTRACT_INDEX, PADDING or RESET }
+// Each entry is { CONTRACT_INDEX, PADDING or RESET or MIGRATE, EPOCH }
 // When enabling, replace both lines below, e.g.:
-constexpr ContractStateChangeInfo contractStateChangeInfos[] = { {RANDOM_CONTRACT_INDEX, PADDING} };
-constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
-// constexpr const ContractStateChangeInfo* contractStateChangeInfos = nullptr;
-// constexpr unsigned int contractStateChangeCount = 0;
+//constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { DUMMY_CONTRACT_INDEX, MIGRATE, 219 } };
+//constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
+ constexpr const ContractStateChangeInfo* contractStateChangeInfos = nullptr;
+ constexpr unsigned int contractStateChangeCount = 0;
 
 
 // Class for registering and looking up user procedures independently of input type, for example for notifications
