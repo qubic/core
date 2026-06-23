@@ -49,6 +49,8 @@ enum NetworkMessageType : unsigned char
     RESPOND_ORACLE_DATA = 67,
     BROADCAST_CUSTOM_MINING_TASK = 68,
     BROADCAST_CUSTOM_MINING_SOLUTION = 69,
+    REQUEST_REVENUE_DATA = 70,
+    RESPOND_REVENUE_DATA = 71,
     ORACLE_MACHINE_QUERY = 190, // only on communication channel Core node <-> OM node
     ORACLE_MACHINE_REPLY = 191, // only on communication channel Core node <-> OM node
     REQUEST_TX_STATUS = 201, // tx addon only

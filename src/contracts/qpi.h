@@ -2928,37 +2928,33 @@ namespace QPI
 	{
 		struct StateData {};
 		enum { __initializeEmpty = 1, __initializeLocalsSize = sizeof(NoData) };
-		static void __initialize(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __initialize(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __beginEpochEmpty = 1, __beginEpochLocalsSize = sizeof(NoData) };
-		static void __beginEpoch(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __beginEpoch(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __endEpochEmpty = 1, __endEpochLocalsSize = sizeof(NoData) };
-		static void __endEpoch(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __endEpoch(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __beginTickEmpty = 1, __beginTickLocalsSize = sizeof(NoData) };
-		static void __beginTick(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __beginTick(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __endTickEmpty = 1, __endTickLocalsSize = sizeof(NoData) };
-		static void __endTick(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __endTick(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __preAcquireSharesEmpty = 1, __preAcquireSharesLocalsSize = sizeof(NoData) };
-		static void __preAcquireShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __preAcquireShares(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __preReleaseSharesEmpty = 1, __preReleaseSharesLocalsSize = sizeof(NoData) };
-		static void __preReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __preReleaseShares(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __postAcquireSharesEmpty = 1, __postAcquireSharesLocalsSize = sizeof(NoData) };
-		static void __postAcquireShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __postAcquireShares(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __postReleaseSharesEmpty = 1, __postReleaseSharesLocalsSize = sizeof(NoData) };
-		static void __postReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __postReleaseShares(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __postIncomingTransferEmpty = 1, __postIncomingTransferLocalsSize = sizeof(NoData) };
-		static void __postIncomingTransfer(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __postIncomingTransfer(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __setShareholderProposalEmpty = 1, __setShareholderProposalLocalsSize = sizeof(NoData) };
-		static void __setShareholderProposal(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __setShareholderProposal(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __setShareholderVotesEmpty = 1, __setShareholderVotesLocalsSize = sizeof(NoData) };
-		static void __setShareholderVotes(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __acceptOracleTrueReplyEmpty = 1, __acceptOracleTrueReplyLocalsSize = sizeof(NoData) };
-		static void __acceptOracleTrueReply(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __acceptOracleFalseReplyEmpty = 1, __acceptOracleFalseReplyLocalsSize = sizeof(NoData) };
-		static void __acceptOracleFalseReply(const QpiContextProcedureCall&, void*, void*) {}
-		enum { __acceptOracleUnknownReplyEmpty = 1, __acceptOracleUnknownReplyLocalsSize = sizeof(NoData) };
-		static void __acceptOracleUnknownReply(const QpiContextProcedureCall&, void*, void*) {}
+		static void __setShareholderVotes(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __expandEmpty = 1 };
 		static void __expand(const QpiContextProcedureCall& qpi, void*, void*) {}
+		enum { __migrateEmpty = 1, __migrateOldStateSize = 0 , __migrateLocalsSize = sizeof(NoData) };
+		static void __migrate(const QpiContextProcedureCall& qpi, void* state, void* oldState, void* locals) {}
 	};
 
 	// Internal macro for defining the system procedure macros
@@ -3091,8 +3087,20 @@ namespace QPI
 	#define EXPAND() \
       public: \
         enum { __expandEmpty = 0 }; \
-		static void __expand(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, QPI::ContractState<CONTRACT_STATE2_TYPE, CONTRACT_INDEX>& state2) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+		inline static void __expand(const QPI::QpiContextFunctionCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, QPI::ContractState<CONTRACT_STATE2_TYPE, CONTRACT_INDEX>& state2) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_expand(qpi, state, state2); } \
+		static void __impl_expand(const QPI::QpiContextFunctionCall & qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>&state, QPI::ContractState<CONTRACT_STATE2_TYPE, CONTRACT_INDEX>& state2)
 
+	#define MIGRATE_WITH_LOCALS() \
+      public: \
+        enum { __migrateEmpty = 0, __migrateOldStateSize = sizeof(CONTRACT_STATE_TYPE::OldStateData), __migrateLocalsSize = sizeof(MIGRATE_locals) }; \
+		static_assert(sizeof(MIGRATE_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, "MIGRATE_locals size too large"); \
+		inline static void __migrate(const QPI::QpiContextFunctionCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_TYPE::OldStateData& oldState, MIGRATE_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_migrate(qpi, state, oldState, locals); } \
+		static void __impl_migrate(const QPI::QpiContextFunctionCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_TYPE::OldStateData& oldState, MIGRATE_locals& locals)
+
+	#define MIGRATE() \
+      public: \
+		typedef NoData MIGRATE_locals; \
+		MIGRATE_WITH_LOCALS()
 
 	#define LOG_DEBUG(message) __logContractDebugMessage(CONTRACT_INDEX, message);
 
