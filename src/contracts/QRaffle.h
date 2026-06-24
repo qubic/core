@@ -70,6 +70,10 @@ constexpr uint64 QRAFFLE_MAX_ASSET_TICKET_AMOUNT         = 1000000000000ull;// 1
 constexpr uint32 QRAFFLE_ASSET_RAFFLE_BUNDLE_FLAT_SIZE   = QRAFFLE_MAX_ASSET_RAFFLES_PER_EPOCH * QRAFFLE_MAX_ASSETS_PER_BUNDLE;   // 256
 constexpr uint32 QRAFFLE_ASSET_RAFFLE_BUYERS_FLAT_SIZE   = QRAFFLE_MAX_ASSET_RAFFLES_PER_EPOCH * QRAFFLE_MAX_ASSET_TICKET_BUYERS; // 65536
 
+
+constexpr uint32 QRAFFLE_MAX_SHAREHOLDERS_OLD = 1024;
+
+
 struct QRAFFLE2
 {
 };
@@ -302,6 +306,35 @@ public:
 	struct ActiveTokenRaffleInfo {
 		Asset token;
 		uint64 entryAmount;
+	};
+
+	struct OldStateData
+	{
+		HashMap <id, uint8, QRAFFLE_MAX_MEMBER> registers;
+		Array <ProposalInfo, QRAFFLE_MAX_PROPOSAL_EPOCH> proposals;
+
+		HashMap <id, BitArray<QRAFFLE_MAX_PROPOSAL_EPOCH>, QRAFFLE_MAX_MEMBER> voteParticipation;
+		HashMap <id, BitArray<QRAFFLE_MAX_PROPOSAL_EPOCH>, QRAFFLE_MAX_MEMBER> voteValues;
+		Array <uint32, QRAFFLE_MAX_PROPOSAL_EPOCH> numberOfVotedInProposal;
+		Array <id, QRAFFLE_MAX_MEMBER> quRaffleMembers;
+		HashSet <id, QRAFFLE_MAX_MEMBER> quRaffleMemberSet;
+
+		Array <ActiveTokenRaffleInfo, QRAFFLE_MAX_PROPOSAL_EPOCH> activeTokenRaffle;
+		HashMap <id, BitArray<QRAFFLE_MAX_PROPOSAL_EPOCH>, QRAFFLE_MAX_MEMBER> tokenRaffleParticipation;
+		Array <id, QRAFFLE_MAX_MEMBER> tokenRaffleMemberSlots;
+		Array <uint32, QRAFFLE_MAX_PROPOSAL_EPOCH> numberOfTokenRaffleMembers;
+
+		Array <QuRaffleInfo, QRAFFLE_MAX_EPOCH> QuRaffles;
+		Array <TokenRaffleInfo, QRAFFLE_MAX_TOKEN_RAFFLES> tokenRaffle;
+		HashMap <id, uint64, QRAFFLE_MAX_MEMBER> quRaffleEntryAmount;
+		HashSet <id, QRAFFLE_MAX_SHAREHOLDERS_OLD> shareholdersList;
+
+		id initialRegister1, initialRegister2, initialRegister3, initialRegister4, initialRegister5;
+		id charityAddress, feeAddress, QXMRIssuer;
+		uint64 epochRevenue, epochQXMRRevenue, qREAmount, totalBurnAmount, totalCharityAmount, totalShareholderAmount, totalRegisterAmount, totalFeeAmount, totalWinnerAmount, largestWinnerAmount;
+		uint32 numberOfRegisters, numberOfQuRaffleMembers, numberOfEntryAmountSubmitted, numberOfProposals, numberOfActiveTokenRaffle, numberOfEndedTokenRaffle;
+		Array<uint32, QRAFFLE_MAX_EPOCH> daoMemberCount;
+		HashMap <id, uint8, QRAFFLE_MAX_MEMBER> proposalsPerProposer;
 	};
 
 	struct StateData
@@ -2736,6 +2769,52 @@ protected:
 		state.mut().numberOfQuRaffleMembers = 0;
 		state.mut().quRaffleMemberSet.reset();
 		if (state.get().registers.needsCleanup()) { state.mut().registers.cleanup(); }
+	}
+	
+	MIGRATE()
+	{
+		copyMemory(state.mut().registers,                oldState.registers);
+		copyMemory(state.mut().voteParticipation,        oldState.voteParticipation);
+		copyMemory(state.mut().voteValues,               oldState.voteValues);
+		copyMemory(state.mut().quRaffleMemberSet,        oldState.quRaffleMemberSet);
+		copyMemory(state.mut().tokenRaffleParticipation, oldState.tokenRaffleParticipation);
+		copyMemory(state.mut().quRaffleEntryAmount,      oldState.quRaffleEntryAmount);
+		copyMemory(state.mut().proposalsPerProposer,     oldState.proposalsPerProposer);
+
+		state.mut().proposals                  = oldState.proposals;
+		state.mut().numberOfVotedInProposal    = oldState.numberOfVotedInProposal;
+		state.mut().quRaffleMembers            = oldState.quRaffleMembers;
+		state.mut().activeTokenRaffle          = oldState.activeTokenRaffle;
+		state.mut().tokenRaffleMemberSlots     = oldState.tokenRaffleMemberSlots;
+		state.mut().numberOfTokenRaffleMembers = oldState.numberOfTokenRaffleMembers;
+		state.mut().QuRaffles                  = oldState.QuRaffles;
+		state.mut().tokenRaffle                = oldState.tokenRaffle;
+		state.mut().daoMemberCount             = oldState.daoMemberCount;
+
+		state.mut().initialRegister1             = oldState.initialRegister1;
+		state.mut().initialRegister2             = oldState.initialRegister2;
+		state.mut().initialRegister3             = oldState.initialRegister3;
+		state.mut().initialRegister4             = oldState.initialRegister4;
+		state.mut().initialRegister5             = oldState.initialRegister5;
+		state.mut().charityAddress               = oldState.charityAddress;
+		state.mut().feeAddress                   = oldState.feeAddress;
+		state.mut().QXMRIssuer                   = oldState.QXMRIssuer;
+		state.mut().epochRevenue                 = oldState.epochRevenue;
+		state.mut().epochQXMRRevenue             = oldState.epochQXMRRevenue;
+		state.mut().qREAmount                    = oldState.qREAmount;
+		state.mut().totalBurnAmount              = oldState.totalBurnAmount;
+		state.mut().totalCharityAmount           = oldState.totalCharityAmount;
+		state.mut().totalShareholderAmount       = oldState.totalShareholderAmount;
+		state.mut().totalRegisterAmount          = oldState.totalRegisterAmount;
+		state.mut().totalFeeAmount               = oldState.totalFeeAmount;
+		state.mut().totalWinnerAmount            = oldState.totalWinnerAmount;
+		state.mut().largestWinnerAmount          = oldState.largestWinnerAmount;
+		state.mut().numberOfRegisters            = oldState.numberOfRegisters;
+		state.mut().numberOfQuRaffleMembers      = oldState.numberOfQuRaffleMembers;
+		state.mut().numberOfEntryAmountSubmitted = oldState.numberOfEntryAmountSubmitted;
+		state.mut().numberOfProposals            = oldState.numberOfProposals;
+		state.mut().numberOfActiveTokenRaffle    = oldState.numberOfActiveTokenRaffle;
+		state.mut().numberOfEndedTokenRaffle     = oldState.numberOfEndedTokenRaffle;
 	}
 
 	PRE_ACQUIRE_SHARES()
