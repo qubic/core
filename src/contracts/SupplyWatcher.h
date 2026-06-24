@@ -26,7 +26,6 @@ struct SWATCH : public ContractBase
         // Burn to balance fee reserves of GQMPROP (6), SWATCH (7), CCF (8), QVAULT (10), QBond (17)
         if (qpi.getEntity(SELF, locals.ownEntity))
         {
-	    // TODO Remove after epoch 219
             locals.burn10 = 38300000000LL;   // 38.3 Billion QUBIC
             locals.burn17 = 6250000000LL;    // 6.25 Billion QUBIC
             locals.ownBalance = locals.ownEntity.incomingAmount - locals.ownEntity.outgoingAmount;
