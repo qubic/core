@@ -16,6 +16,8 @@ constexpr uint64 NOST_AUCTION_HISTORY_NUM = 1024;
 constexpr uint64 NOST_AUCTION_METADATA_CID_LENGTH = 64;
 // Maximum number of active auction-participant bid records, in entries.
 constexpr uint64 NOST_AUCTION_PARTICIPANT_NUM = 4096;
+// Sentinel for "no participant slot".
+constexpr uint64 NOST_INVALID_PARTICIPANT_SLOT = NOST_AUCTION_PARTICIPANT_NUM;
 // Maximum number of entries returned by one paginated auction getter call.
 constexpr uint64 NOST_AUCTION_GETTER_PAGE_SIZE = 64;
 // Maximum number of asset entries in a Batch Auction lot.
@@ -80,6 +82,10 @@ constexpr uint64 NOST_MICROSECONDS_PER_SECOND = 1000000ULL;
 constexpr uint16 NOST_REINITIALIZATION_EPOCH = 220U;
 // Quantity used to sell a Standard Auction lot as one indivisible unit, not an asset count.
 constexpr uint64 NOST_STANDARD_AUCTION_LOT_COUNT = 1ULL;
+// Minimum allowed Standard Auction starting and sale price, in qu.
+constexpr uint64 NOST_STANDARD_MIN_PRICE = 1000000ULL;
+// Minimum allowed Standard Auction bid increment, in qu.
+constexpr uint64 NOST_STANDARD_MIN_BID_INCREMENT = 1000ULL;
 // Year component of the packed initial date stamp.
 constexpr uint8 NOST_DEFAULT_INIT_YEAR = 22U;
 // Month component of the packed initial date stamp.
@@ -158,23 +164,22 @@ struct NOST : public ContractBase
 		BidTooLow,
 		PrivateAuctionAccessDenied,
 		AuctionPaused,
-		AuctionIndexExhausted
-	};
-
-	struct AuctionParticipantKey
-	{
-		uint64 auctionIndex;
-		id participant;
-
-		bool operator==(const AuctionParticipantKey& rhs) const { return auctionIndex == rhs.auctionIndex && participant == rhs.participant; }
+		AuctionIndexExhausted,
+		QuantityUnavailable
 	};
 
 	/**
-	 * @brief Stores the active bid state of one wallet in one auction.
+	 * @brief Stores one bid slot in one auction.
 	 * @note The same struct is shared by batch and standard auctions.
 	 */
 	struct AuctionParticipantData
 	{
+		/** @brief Auction that owns this bid slot. */
+		uint64 auctionIndex;
+
+		/** @brief Monotonic bid sequence inside the auction, used for FIFO tie-breaks. */
+		uint64 bidIndex;
+
 		/** @brief Amount currently locked in escrow for the participant bid. */
 		uint64 escrowedAmount;
 
@@ -187,11 +192,17 @@ struct NOST : public ContractBase
 		/** @brief Offered price per asset in a batch auction, or total offered price for the whole lot in a standard auction. */
 		uint64 bidAmount;
 
+		/** @brief Wallet that owns this participant record. */
+		id participant;
+
 		/** @brief Timestamp of the participant's latest accepted bid. */
 		DateAndTime lastBidTime;
 
-		/** @brief Wallet that owns this participant record. */
-		id participant;
+		/** @brief Marks whether this fixed array slot contains a reusable historical or active record. */
+		uint8 isUsed;
+
+		/** @brief Marks bids that are still eligible for allocation or standard highest-bid settlement. */
+		uint8 isActive;
 
 		/** @brief Marks bids that remain inside the winning allocation after settlement. */
 		uint8 isWinningBid;
@@ -277,6 +288,12 @@ struct NOST : public ContractBase
 
 		/** @brief Monotonic identifier assigned when the auction is created. */
 		uint64 auctionIndex;
+
+		/** @brief Monotonic per-auction bid index used to store every batch bid as a separate position. */
+		uint64 nextBidIndex;
+
+		/** @brief Fixed-array slot of the current standard-auction highest bid, or `NOST_INVALID_PARTICIPANT_SLOT`. */
+		uint64 highestBidSlotIndex;
 
 		/** @brief Auction House mode: Batch Auction or Standard Auction. */
 		EAuctionType type;
@@ -399,7 +416,7 @@ struct NOST : public ContractBase
 		uint64 closedAuctionHistoryCounter;
 
 		HashMap<uint64, AuctionData, NOST_AUCTION_NUM> auctionList;
-		HashMap<AuctionParticipantKey, AuctionParticipantData, NOST_AUCTION_PARTICIPANT_NUM> participants;
+		Array<AuctionParticipantData, NOST_AUCTION_PARTICIPANT_NUM> participants;
 	};
 
 	/** @brief Input payload used to create a Batch Auction or Standard Auction in the Auction House. */
@@ -963,6 +980,29 @@ struct NOST : public ContractBase
 		uint8 found;
 	};
 
+	/** @brief Input payload used to read current bid capacity guidance for one active Batch Auction. */
+	struct GetBatchAuctionBidAvailability_input
+	{
+		/** @brief Monotonic index of the Batch Auction to inspect. */
+		uint64 auctionIndex;
+	};
+
+	/** @brief Read-only guidance for the next acceptable Batch Auction bid. */
+	struct GetBatchAuctionBidAvailability_output
+	{
+		/** @brief Lowest price per asset that can currently accept a new bid meeting the auction minimum quantity. */
+		uint64 minimumBidPrice;
+
+		/** @brief Quantity available at `minimumBidPrice`; zero when no valid new bid can be accepted. */
+		uint64 availableQuantity;
+
+		/** @brief Flag indicating whether the auction exists. */
+		uint8 found;
+
+		/** @brief Flag indicating whether the auction is an active Batch Auction that can accept another valid bid. */
+		uint8 isAcceptingBids;
+	};
+
 	/** @brief Internal input used to validate an auction lot and resolve its total escrow quantity. */
 	struct AnalyzeAuctionLot_input
 	{
@@ -1057,7 +1097,6 @@ struct NOST : public ContractBase
 	struct GetterScan_locals
 	{
 		AuctionData auction;
-		AuctionParticipantKey participantKey;
 		AuctionParticipantData participantData;
 		AuctionSummary auctionSummary;
 		ParticipantSummary participantSummary;
@@ -1066,7 +1105,7 @@ struct NOST : public ContractBase
 		uint64 boundedLimit;
 		uint64 metadataIndex;
 		uint64 requestedIndex;
-		sint64 participantMapIndex;
+		uint64 participantSlotIndex;
 		uint8 metadataMatches;
 	};
 
@@ -1080,6 +1119,43 @@ struct NOST : public ContractBase
 	using GetUserParticipations_locals = GetterScan_locals;
 	using GetAuctionCountBySeller_locals = GetterScan_locals;
 	using GetAuctionAtCreationSnapshot_locals = GetterScan_locals;
+
+	struct GetAuctionParticipant_locals
+	{
+		AuctionParticipantData participantData;
+		uint64 participantSlotIndex;
+		uint64 bestParticipantSlotIndex;
+		uint8 bestParticipantFound;
+	};
+
+	/** @brief Internal input used to compute Batch Auction capacity at a candidate bid price. */
+	struct ComputeBatchBidAvailability_input
+	{
+		/** @brief Monotonic index of the Batch Auction to inspect. */
+		uint64 auctionIndex;
+
+		/** @brief Candidate bid price; zero returns capacity at the computed minimum valid price. */
+		uint64 bidAmount;
+	};
+
+	using ComputeBatchBidAvailability_output = GetBatchAuctionBidAvailability_output;
+
+	struct ComputeBatchBidAvailability_locals
+	{
+		AuctionData auction;
+		AuctionParticipantData participantData;
+		uint64 lowestWinningPrice;
+		uint64 outputPrice;
+		uint64 priorityQuantity;
+		uint64 salePriorityQuantity;
+		uint64 participantIndex;
+		uint8 lowestWinningPriceFound;
+	};
+
+	struct GetBatchAuctionBidAvailability_locals
+	{
+		ComputeBatchBidAvailability_input computeBatchBidAvailabilityInput;
+	};
 
 	/** @brief Internal input used to verify whether the invocator satisfies any private asset requirement. */
 	struct HasRequiredAccessAsset_input
@@ -1317,13 +1393,21 @@ struct NOST : public ContractBase
 	{
 		AuctionData auction;
 		AuctionParticipantData participantData;
-		AuctionParticipantKey participantKey;
+		AuctionParticipantData worstParticipantData;
+		ComputeBatchBidAvailability_input computeBatchBidAvailabilityInput;
+		ComputeBatchBidAvailability_output computeBatchBidAvailabilityOutput;
 		RecomputeBatchHighestBid_input recomputeBatchHighestBidInput;
 		RecomputeBatchHighestBid_output recomputeBatchHighestBidOutput;
-		uint64 previousEscrow;
+		uint64 activeQuantity;
+		uint64 displacedQuantity;
+		uint64 displacedRefund;
+		uint64 excessQuantity;
 		uint64 requiredEscrow;
-		uint8 mustRecomputeHighestBid;
-		uint8 participantExists;
+		uint64 participantIndex;
+		uint64 freeParticipantSlotIndex;
+		uint64 worstParticipantSlotIndex;
+		uint8 worstParticipantFound;
+		uint8 freeParticipantSlotFound;
 	};
 
 	struct RecomputeBatchHighestBid_locals
@@ -1331,9 +1415,8 @@ struct NOST : public ContractBase
 		AuctionData auction;
 		AuctionParticipantData participantData;
 		AuctionParticipantData bestParticipantData;
-		AuctionParticipantKey participantKey;
-		AuctionParticipantKey bestParticipantKey;
-		sint64 participantIndex;
+		uint64 participantIndex;
+		uint64 bestParticipantSlotIndex;
 		uint8 bestParticipantFound;
 	};
 
@@ -1374,14 +1457,16 @@ struct NOST : public ContractBase
 		AuctionData auction;
 		AuctionParticipantData participantData;
 		AuctionParticipantData previousHighestBidderData;
-		AuctionParticipantKey participantKey;
-		AuctionParticipantKey highestBidderKey;
 		FinalizeStandardAuction_input finalizeStandardAuctionInput;
 		FinalizeStandardAuction_output finalizeStandardAuctionOutput;
 		uint64 previousEscrow;
 		uint64 requiredEscrow;
+		uint64 participantSlotIndex;
+		uint64 highestBidderSlotIndex;
+		uint64 freeParticipantSlotIndex;
 		uint8 participantExists;
 		uint8 highestBidderExists;
+		uint8 freeParticipantSlotFound;
 		uint8 finalizeImmediately;
 	};
 
@@ -1473,8 +1558,6 @@ struct NOST : public ContractBase
 		AuctionData auction;
 		AuctionParticipantData participantData;
 		AuctionParticipantData bestParticipantData;
-		AuctionParticipantKey participantKey;
-		AuctionParticipantKey bestParticipantKey;
 		AuctionAssetEntry batchLotItem;
 		DistributeAuctionRevenue_input distributeAuctionRevenueInput;
 		DistributeAuctionRevenue_output distributeAuctionRevenueOutput;
@@ -1486,7 +1569,8 @@ struct NOST : public ContractBase
 		uint64 soldQuantity;
 		uint64 totalGrossAmount;
 		uint64 lotItemIndex;
-		sint64 participantIndex;
+		uint64 participantIndex;
+		uint64 bestParticipantSlotIndex;
 		uint8 bestParticipantFound;
 		uint8 lotItemFound;
 	};
@@ -1495,11 +1579,11 @@ struct NOST : public ContractBase
 	{
 		AuctionData auction;
 		AuctionParticipantData highestBidderData;
-		AuctionParticipantKey highestBidderKey;
 		RollbackAuctionLotAssets_input rollbackAuctionLotAssetsInput;
 		RollbackAuctionLotAssets_output rollbackAuctionLotAssetsOutput;
 		DistributeAuctionRevenue_input distributeAuctionRevenueInput;
 		DistributeAuctionRevenue_output distributeAuctionRevenueOutput;
+		uint64 highestBidderSlotIndex;
 		uint8 highestBidderExists;
 		uint8 lotSold;
 	};
@@ -1522,9 +1606,9 @@ struct NOST : public ContractBase
 	{
 		AuctionData auction;
 		AuctionParticipantData highestBidderData;
-		AuctionParticipantKey highestBidderKey;
 		RollbackAuctionLotAssets_input rollbackAuctionLotAssetsInput;
 		RollbackAuctionLotAssets_output rollbackAuctionLotAssetsOutput;
+		uint64 highestBidderSlotIndex;
 		uint8 highestBidderExists;
 	};
 
@@ -1580,7 +1664,6 @@ struct NOST : public ContractBase
 	{
 		AuctionData auction;
 		AuctionParticipantData participantData;
-		AuctionParticipantKey participantKey;
 		NostromoProcedureLog log;
 		RollbackAuctionLotAssets_input rollbackAuctionLotAssetsInput;
 		RollbackAuctionLotAssets_output rollbackAuctionLotAssetsOutput;
@@ -1588,7 +1671,7 @@ struct NOST : public ContractBase
 		DistributeAuctionServiceFee_output distributeAuctionServiceFeeOutput;
 		DateAndTime currentDate;
 		uint64 cancellationBaseAmount;
-		sint64 participantIndex;
+		uint64 participantIndex;
 	};
 
 	struct ResolvePendingStandardAuction_locals
@@ -1703,6 +1786,7 @@ struct NOST : public ContractBase
 		REGISTER_USER_FUNCTION(GetLatestAuctionIndex, 16);
 		REGISTER_USER_FUNCTION(GetAuctionCountBySeller, 17);
 		REGISTER_USER_FUNCTION(GetAuctionAtCreationSnapshot, 18);
+		REGISTER_USER_FUNCTION(GetBatchAuctionBidAvailability, 19);
 	}
 
 	INITIALIZE()
@@ -1794,7 +1878,6 @@ struct NOST : public ContractBase
 	END_EPOCH()
 	{
 		state.mut().auctionList.cleanupIfNeeded();
-		state.mut().participants.cleanupIfNeeded();
 	}
 
 	END_TICK_WITH_LOCALS()
@@ -2221,37 +2304,38 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		for (locals.participantIndex = state.get().participants.nextElementIndex(NULL_INDEX); locals.participantIndex != NULL_INDEX;
-		     locals.participantIndex = state.get().participants.nextElementIndex(locals.participantIndex))
+		for (locals.participantIndex = 0; locals.participantIndex < state.get().participants.capacity(); ++locals.participantIndex)
 		{
-			locals.participantKey = state.get().participants.key(locals.participantIndex);
-			if (locals.participantKey.auctionIndex != input.auctionIndex)
+			locals.participantData = state.get().participants.get(locals.participantIndex);
+			if (!locals.participantData.isUsed || locals.participantData.auctionIndex != input.auctionIndex)
 			{
 				continue;
 			}
 
-			locals.participantData = state.get().participants.value(locals.participantIndex);
-			if (locals.participantData.escrowedAmount == 0)
+			if (!locals.participantData.isActive || locals.participantData.escrowedAmount == 0)
 			{
 				continue;
 			}
 
 			if (!locals.bestParticipantFound || locals.participantData.bidAmount > locals.bestParticipantData.bidAmount ||
 			    (locals.participantData.bidAmount == locals.bestParticipantData.bidAmount &&
-			     locals.participantData.lastBidTime < locals.bestParticipantData.lastBidTime))
+			     (locals.participantData.lastBidTime < locals.bestParticipantData.lastBidTime ||
+			      (locals.participantData.lastBidTime == locals.bestParticipantData.lastBidTime &&
+			       locals.participantData.bidIndex < locals.bestParticipantData.bidIndex))))
 			{
 				locals.bestParticipantFound = 1;
 				locals.bestParticipantData = locals.participantData;
-				locals.bestParticipantKey = locals.participantKey;
+				locals.bestParticipantSlotIndex = locals.participantIndex;
 			}
 		}
 
 		if (locals.bestParticipantFound)
 		{
-			locals.auction.core.highestBidder = locals.bestParticipantKey.participant;
+			locals.auction.core.highestBidder = locals.bestParticipantData.participant;
 			locals.auction.core.highestBidPrice = locals.bestParticipantData.bidAmount;
 			locals.auction.core.highestBidQuantity = locals.bestParticipantData.requestedQuantity;
 			locals.auction.core.highestBidAmount = locals.bestParticipantData.escrowedAmount;
+			locals.auction.core.highestBidSlotIndex = locals.bestParticipantSlotIndex;
 		}
 		else
 		{
@@ -2259,9 +2343,124 @@ struct NOST : public ContractBase
 			locals.auction.core.highestBidPrice = 0;
 			locals.auction.core.highestBidQuantity = 0;
 			locals.auction.core.highestBidder = NULL_ID;
+			locals.auction.core.highestBidSlotIndex = NOST_INVALID_PARTICIPANT_SLOT;
 		}
 
 		state.mut().auctionList.replace(locals.auction.core.auctionIndex, locals.auction);
+	}
+
+	PRIVATE_FUNCTION_WITH_LOCALS(ComputeBatchBidAvailability)
+	{
+		output.found = 0;
+		output.isAcceptingBids = 0;
+		output.minimumBidPrice = 0;
+		output.availableQuantity = 0;
+		locals.lowestWinningPriceFound = 0;
+		locals.lowestWinningPrice = 0;
+		locals.salePriorityQuantity = 0;
+		locals.priorityQuantity = 0;
+
+		if (!state.get().auctionList.get(input.auctionIndex, locals.auction))
+		{
+			return;
+		}
+
+		output.found = 1;
+		if (locals.auction.core.type != EAuctionType::Batch || locals.auction.core.status != EAuctionStatus::Active ||
+		    locals.auction.core.quantityForSale < locals.auction.core.minimumPurchaseQuantity)
+		{
+			return;
+		}
+
+		for (locals.participantIndex = 0; locals.participantIndex < state.get().participants.capacity(); ++locals.participantIndex)
+		{
+			locals.participantData = state.get().participants.get(locals.participantIndex);
+			if (!locals.participantData.isUsed || locals.participantData.auctionIndex != input.auctionIndex)
+			{
+				continue;
+			}
+
+			if (!locals.participantData.isActive || locals.participantData.escrowedAmount == 0 || locals.participantData.requestedQuantity == 0)
+			{
+				continue;
+			}
+
+			if (!locals.lowestWinningPriceFound || locals.participantData.bidAmount < locals.lowestWinningPrice)
+			{
+				locals.lowestWinningPriceFound = 1;
+				locals.lowestWinningPrice = locals.participantData.bidAmount;
+			}
+
+			if (locals.participantData.bidAmount >= locals.auction.core.salePrice)
+			{
+				locals.salePriorityQuantity = sadd(locals.salePriorityQuantity, locals.participantData.requestedQuantity);
+			}
+		}
+
+		if (locals.salePriorityQuantity >= locals.auction.core.quantityForSale)
+		{
+			output.availableQuantity = 0;
+		}
+		else
+		{
+			output.availableQuantity = locals.auction.core.quantityForSale - locals.salePriorityQuantity;
+		}
+
+		if (output.availableQuantity >= locals.auction.core.minimumPurchaseQuantity)
+		{
+			output.minimumBidPrice = locals.auction.core.salePrice;
+			output.isAcceptingBids = 1;
+		}
+		else
+		{
+			output.availableQuantity = 0;
+			if (!locals.lowestWinningPriceFound || locals.lowestWinningPrice == UINT64_MAX)
+			{
+				return;
+			}
+
+			output.minimumBidPrice = sadd(locals.lowestWinningPrice, 1ULL);
+			output.isAcceptingBids = 1;
+			if (input.bidAmount == 0)
+			{
+				return;
+			}
+		}
+
+		locals.outputPrice = input.bidAmount > 0 ? input.bidAmount : output.minimumBidPrice;
+		if (locals.outputPrice < output.minimumBidPrice)
+		{
+			output.availableQuantity = 0;
+			return;
+		}
+
+		locals.priorityQuantity = 0;
+		for (locals.participantIndex = 0; locals.participantIndex < state.get().participants.capacity(); ++locals.participantIndex)
+		{
+			locals.participantData = state.get().participants.get(locals.participantIndex);
+			if (!locals.participantData.isUsed || locals.participantData.auctionIndex != input.auctionIndex)
+			{
+				continue;
+			}
+
+			if (!locals.participantData.isActive || locals.participantData.escrowedAmount == 0 || locals.participantData.requestedQuantity == 0)
+			{
+				continue;
+			}
+
+			if (locals.participantData.bidAmount > locals.outputPrice || locals.participantData.bidAmount == locals.outputPrice)
+			{
+				locals.priorityQuantity = sadd(locals.priorityQuantity, locals.participantData.requestedQuantity);
+			}
+		}
+
+		if (locals.priorityQuantity >= locals.auction.core.quantityForSale)
+		{
+			output.availableQuantity = 0;
+			return;
+		}
+
+		output.availableQuantity = locals.auction.core.quantityForSale - locals.priorityQuantity;
 	}
 
 	PRIVATE_PROCEDURE_WITH_LOCALS(ProcessBatchBid)
@@ -2272,6 +2471,7 @@ struct NOST : public ContractBase
 		output.success = 0;
 		if (!state.get().auctionList.get(input.auctionIndex, locals.auction))
 		{
+			output.refundedAmount = static_cast<uint64>(qpi.invocationReward());
 			output.errorCode = EAuctionError::AuctionNotFound;
 			return;
 		}
@@ -2285,22 +2485,53 @@ struct NOST : public ContractBase
 
 		if (input.bidAmount < locals.auction.core.salePrice)
 		{
+			output.refundedAmount = static_cast<uint64>(qpi.invocationReward());
 			output.errorCode = EAuctionError::BidTooLow;
+			return;
+		}
+
+		locals.computeBatchBidAvailabilityInput.auctionIndex = input.auctionIndex;
+		locals.computeBatchBidAvailabilityInput.bidAmount = input.bidAmount;
+		CALL(ComputeBatchBidAvailability, locals.computeBatchBidAvailabilityInput, locals.computeBatchBidAvailabilityOutput);
+		if (!locals.computeBatchBidAvailabilityOutput.isAcceptingBids || input.bidAmount < locals.computeBatchBidAvailabilityOutput.minimumBidPrice)
+		{
+			output.refundedAmount = static_cast<uint64>(qpi.invocationReward());
+			output.errorCode = EAuctionError::BidTooLow;
+			return;
+		}
+		if (input.effectiveQuantity > locals.computeBatchBidAvailabilityOutput.availableQuantity)
+		{
+			output.refundedAmount = static_cast<uint64>(qpi.invocationReward());
+			output.errorCode = EAuctionError::QuantityUnavailable;
 			return;
 		}
 
 		locals.requiredEscrow = smul(input.effectiveQuantity, input.bidAmount);
 		if (static_cast<uint64>(qpi.invocationReward()) < locals.requiredEscrow)
 		{
+			output.refundedAmount = static_cast<uint64>(qpi.invocationReward());
 			output.errorCode = EAuctionError::InsufficientFunds;
 			return;
 		}
 
-		locals.participantKey = {input.auctionIndex, qpi.invocator()};
-		locals.participantExists = state.get().participants.get(locals.participantKey, locals.participantData);
-		locals.previousEscrow = locals.participantExists ? locals.participantData.escrowedAmount : 0;
-		locals.mustRecomputeHighestBid = locals.participantExists && locals.auction.core.highestBidder == qpi.invocator() &&
-		                                 input.bidAmount <= locals.auction.core.highestBidPrice;
+		locals.freeParticipantSlotFound = 0;
+		for (locals.participantIndex = 0; locals.participantIndex < state.get().participants.capacity(); ++locals.participantIndex)
+		{
+			locals.participantData = state.get().participants.get(locals.participantIndex);
+			if (!locals.participantData.isUsed)
+			{
+				locals.freeParticipantSlotFound = 1;
+				locals.freeParticipantSlotIndex = locals.participantIndex;
+				break;
+			}
+		}
+
+		if (!locals.freeParticipantSlotFound || locals.auction.core.nextBidIndex == UINT64_MAX)
+		{
+			output.refundedAmount = static_cast<uint64>(qpi.invocationReward());
+			output.errorCode = EAuctionError::StorageFull;
+			return;
+		}
 
 		locals.participantData.escrowedAmount = locals.requiredEscrow;
 		locals.participantData.requestedQuantity = input.effectiveQuantity;
@@ -2308,15 +2539,11 @@ struct NOST : public ContractBase
 		locals.participantData.bidAmount = input.bidAmount;
 		locals.participantData.lastBidTime = input.currentDate;
 		locals.participantData.participant = qpi.invocator();
-		locals.participantData.isWinningBid = 0;
-
-		if (input.bidAmount > locals.auction.core.highestBidPrice)
-		{
-			locals.auction.core.highestBidder = qpi.invocator();
-			locals.auction.core.highestBidPrice = input.bidAmount;
-			locals.auction.core.highestBidQuantity = input.effectiveQuantity;
-			locals.auction.core.highestBidAmount = locals.requiredEscrow;
-		}
+		locals.participantData.auctionIndex = input.auctionIndex;
+		locals.participantData.bidIndex = locals.auction.core.nextBidIndex;
+		locals.participantData.isUsed = 1;
+		locals.participantData.isActive = 1;
+		locals.participantData.isWinningBid = 1;
 
 		locals.auction.core.lastBidAt = input.currentDate;
 		if ((locals.auction.core.auctionDurationSeconds - input.elapsedSeconds) <= NOST_AUCTION_EXTENSION_SECONDS)
@@ -2324,23 +2551,87 @@ struct NOST : public ContractBase
 			locals.auction.core.auctionDurationSeconds = sadd(locals.auction.core.auctionDurationSeconds, NOST_AUCTION_EXTENSION_SECONDS);
 		}
 
-		if (state.mut().participants.set(locals.participantKey, locals.participantData) == NULL_INDEX)
-		{
-			output.errorCode = EAuctionError::StorageFull;
-			return;
-		}
+		locals.auction.core.nextBidIndex = sadd(locals.auction.core.nextBidIndex, 1ULL);
+		state.mut().participants.set(locals.freeParticipantSlotIndex, locals.participantData);
 		state.mut().auctionList.replace(input.auctionIndex, locals.auction);
-		if (locals.mustRecomputeHighestBid)
+
+		locals.activeQuantity = 0;
+		for (locals.participantIndex = 0; locals.participantIndex < state.get().participants.capacity(); ++locals.participantIndex)
 		{
-			locals.recomputeBatchHighestBidInput.auctionIndex = input.auctionIndex;
-			CALL(RecomputeBatchHighestBid, locals.recomputeBatchHighestBidInput, locals.recomputeBatchHighestBidOutput);
+			locals.participantData = state.get().participants.get(locals.participantIndex);
+			if (!locals.participantData.isUsed || locals.participantData.auctionIndex != input.auctionIndex)
+			{
+				continue;
+			}
+			if (locals.participantData.isActive && locals.participantData.escrowedAmount > 0 && locals.participantData.requestedQuantity > 0)
+			{
+				locals.activeQuantity = sadd(locals.activeQuantity, locals.participantData.requestedQuantity);
+			}
 		}
 
-		if (locals.previousEscrow > 0)
+		while (locals.activeQuantity > locals.auction.core.quantityForSale)
 		{
-			qpi.transfer(qpi.invocator(), locals.previousEscrow);
-			output.refundedAmount = sadd(output.refundedAmount, locals.previousEscrow);
+			locals.worstParticipantFound = 0;
+			for (locals.participantIndex = 0; locals.participantIndex < state.get().participants.capacity(); ++locals.participantIndex)
+			{
+				locals.participantData = state.get().participants.get(locals.participantIndex);
+				if (!locals.participantData.isUsed || locals.participantData.auctionIndex != input.auctionIndex)
+				{
+					continue;
+				}
+
+				if (!locals.participantData.isActive || locals.participantData.escrowedAmount == 0 || locals.participantData.requestedQuantity == 0)
+				{
+					continue;
+				}
+
+				if (!locals.worstParticipantFound || locals.participantData.bidAmount < locals.worstParticipantData.bidAmount ||
+				    (locals.participantData.bidAmount == locals.worstParticipantData.bidAmount &&
+				     (locals.participantData.lastBidTime > locals.worstParticipantData.lastBidTime ||
+				      (locals.participantData.lastBidTime == locals.worstParticipantData.lastBidTime &&
+				       locals.participantData.bidIndex > locals.worstParticipantData.bidIndex))))
+				{
+					locals.worstParticipantFound = 1;
+					locals.worstParticipantData = locals.participantData;
+					locals.worstParticipantSlotIndex = locals.participantIndex;
+				}
+			}
+
+			if (!locals.worstParticipantFound)
+			{
+				break;
+			}
+
+			locals.excessQuantity = locals.activeQuantity - locals.auction.core.quantityForSale;
+			locals.displacedQuantity = min(locals.excessQuantity, locals.worstParticipantData.requestedQuantity);
+			locals.displacedRefund = smul(locals.displacedQuantity, locals.worstParticipantData.bidAmount);
+			if (locals.displacedQuantity >= locals.worstParticipantData.requestedQuantity)
+			{
+				locals.worstParticipantData.escrowedAmount = 0;
+				locals.worstParticipantData.requestedQuantity = 0;
+				locals.worstParticipantData.allocatedQuantity = 0;
+				locals.worstParticipantData.isActive = 0;
+				locals.worstParticipantData.isWinningBid = 0;
+			}
+			else
+			{
+				locals.worstParticipantData.requestedQuantity -= locals.displacedQuantity;
+				locals.worstParticipantData.escrowedAmount -= locals.displacedRefund;
+				locals.worstParticipantData.isWinningBid = 1;
+			}
+
+			state.mut().participants.set(locals.worstParticipantSlotIndex, locals.worstParticipantData);
+			if (locals.displacedRefund > 0)
+			{
+				qpi.transfer(locals.worstParticipantData.participant, locals.displacedRefund);
+				output.refundedAmount = sadd(output.refundedAmount, locals.displacedRefund);
+			}
+			locals.activeQuantity -= locals.displacedQuantity;
 		}
+
+		locals.recomputeBatchHighestBidInput.auctionIndex = input.auctionIndex;
+		CALL(RecomputeBatchHighestBid, locals.recomputeBatchHighestBidInput, locals.recomputeBatchHighestBidOutput);
+
 		if (static_cast<uint64>(qpi.invocationReward()) > locals.requiredEscrow)
 		{
 			qpi.transfer(qpi.invocator(), static_cast<uint64>(qpi.invocationReward()) - locals.requiredEscrow);
@@ -2359,6 +2650,8 @@ struct NOST : public ContractBase
 		output.success = 0;
 		locals.highestBidderExists = 0;
 		locals.finalizeImmediately = 0;
+		locals.participantExists = 0;
+		locals.freeParticipantSlotFound = 0;
 		if (!state.get().auctionList.get(input.auctionIndex, locals.auction))
 		{
 			output.errorCode = EAuctionError::AuctionNotFound;
@@ -2393,13 +2686,35 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.participantKey = {input.auctionIndex, qpi.invocator()};
-		locals.participantExists = state.get().participants.get(locals.participantKey, locals.participantData);
+		for (locals.participantSlotIndex = 0; locals.participantSlotIndex < state.get().participants.capacity(); ++locals.participantSlotIndex)
+		{
+			locals.participantData = state.get().participants.get(locals.participantSlotIndex);
+			if (locals.participantData.isUsed && locals.participantData.isActive && locals.participantData.auctionIndex == input.auctionIndex &&
+			    locals.participantData.participant == qpi.invocator())
+			{
+				locals.participantExists = 1;
+				break;
+			}
+			if (!locals.freeParticipantSlotFound && !locals.participantData.isUsed)
+			{
+				locals.freeParticipantSlotFound = 1;
+				locals.freeParticipantSlotIndex = locals.participantSlotIndex;
+			}
+		}
 		locals.previousEscrow = locals.participantExists ? locals.participantData.escrowedAmount : 0;
-		if (!locals.participantExists && state.get().participants.population() >= state.get().participants.capacity())
+		if (!locals.participantExists && !locals.freeParticipantSlotFound)
 		{
 			output.errorCode = EAuctionError::StorageFull;
 			return;
+		}
+		if (!locals.participantExists)
+		{
+			locals.participantSlotIndex = locals.freeParticipantSlotIndex;
+			if (locals.auction.core.nextBidIndex == UINT64_MAX)
+			{
+				output.errorCode = EAuctionError::StorageFull;
+				return;
+			}
 		}
 
 		locals.participantData.escrowedAmount = locals.requiredEscrow;
@@ -2408,20 +2723,32 @@ struct NOST : public ContractBase
 		locals.participantData.bidAmount = input.bidAmount;
 		locals.participantData.lastBidTime = input.currentDate;
 		locals.participantData.participant = qpi.invocator();
+		locals.participantData.auctionIndex = input.auctionIndex;
+		locals.participantData.bidIndex = locals.participantExists ? locals.participantData.bidIndex : locals.auction.core.nextBidIndex;
+		locals.participantData.isUsed = 1;
+		locals.participantData.isActive = 1;
 		locals.participantData.isWinningBid = 0;
-
-		if (!isZero(locals.auction.core.highestBidder))
+		if (!locals.participantExists)
 		{
-			locals.highestBidderKey = {locals.auction.core.auctionIndex, locals.auction.core.highestBidder};
-			locals.highestBidderExists = state.get().participants.get(locals.highestBidderKey, locals.previousHighestBidderData);
+			locals.auction.core.nextBidIndex = sadd(locals.auction.core.nextBidIndex, 1ULL);
+		}
+
+		locals.highestBidderSlotIndex = locals.auction.core.highestBidSlotIndex;
+		if (locals.highestBidderSlotIndex < state.get().participants.capacity())
+		{
+			locals.previousHighestBidderData = state.get().participants.get(locals.highestBidderSlotIndex);
+			locals.highestBidderExists = locals.previousHighestBidderData.isUsed && locals.previousHighestBidderData.isActive &&
+			                             locals.previousHighestBidderData.auctionIndex == input.auctionIndex;
 		}
 		if (locals.highestBidderExists && locals.previousHighestBidderData.participant != qpi.invocator())
 		{
 			qpi.transfer(locals.previousHighestBidderData.participant, locals.previousHighestBidderData.escrowedAmount);
 			output.refundedAmount = sadd(output.refundedAmount, locals.previousHighestBidderData.escrowedAmount);
 			locals.previousHighestBidderData.escrowedAmount = 0;
+			locals.previousHighestBidderData.requestedQuantity = 0;
+			locals.previousHighestBidderData.isActive = 0;
 			locals.previousHighestBidderData.isWinningBid = 0;
-			state.mut().participants.replace(locals.highestBidderKey, locals.previousHighestBidderData);
+			state.mut().participants.set(locals.highestBidderSlotIndex, locals.previousHighestBidderData);
 		}
 
 		locals.participantData.isWinningBid = 1;
@@ -2429,6 +2756,7 @@ struct NOST : public ContractBase
 		locals.auction.core.highestBidPrice = input.bidAmount;
 		locals.auction.core.highestBidQuantity = locals.auction.core.quantityForSale;
 		locals.auction.core.highestBidAmount = locals.requiredEscrow;
+		locals.auction.core.highestBidSlotIndex = locals.participantSlotIndex;
 
 		locals.auction.core.lastBidAt = input.currentDate;
 		if ((locals.auction.core.auctionDurationSeconds - input.elapsedSeconds) <= NOST_AUCTION_EXTENSION_SECONDS)
@@ -2440,11 +2768,7 @@ struct NOST : public ContractBase
 			locals.finalizeImmediately = 1;
 		}
 
-		if (state.mut().participants.set(locals.participantKey, locals.participantData) == NULL_INDEX)
-		{
-			output.errorCode = EAuctionError::StorageFull;
-			return;
-		}
+		state.mut().participants.set(locals.participantSlotIndex, locals.participantData);
 		state.mut().auctionList.replace(input.auctionIndex, locals.auction);
 
 		if (locals.previousEscrow > 0)
@@ -2580,33 +2904,34 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		// Once supply falls below the minimum, no valid allocation remains; the common refund path returns all residual escrow and assets.
+		// Bids were valid when submitted; final fragments may be smaller than `minimumPurchaseQuantity` after displacement.
 		locals.remainingQuantity = locals.auction.core.quantityForSale;
-		while (locals.remainingQuantity >= locals.auction.core.minimumPurchaseQuantity)
+		while (locals.remainingQuantity > 0)
 		{
 			locals.bestParticipantFound = 0;
-			locals.participantIndex = state.get().participants.nextElementIndex(NULL_INDEX);
+			locals.participantIndex = 0;
 
 			// Scan all bids for this auction to find the highest price, using earlier bid time as the tie-breaker.
-			while (locals.participantIndex != NULL_INDEX)
+			while (locals.participantIndex < state.get().participants.capacity())
 			{
-				locals.participantKey = state.get().participants.key(locals.participantIndex);
-				if (locals.participantKey.auctionIndex == input.auctionIndex)
+				locals.participantData = state.get().participants.get(locals.participantIndex);
+				if (locals.participantData.isUsed && locals.participantData.auctionIndex == input.auctionIndex)
 				{
-					locals.participantData = state.get().participants.value(locals.participantIndex);
-					if (locals.participantData.escrowedAmount > 0)
+					if (locals.participantData.isActive && locals.participantData.escrowedAmount > 0)
 					{
 						if (!locals.bestParticipantFound || locals.participantData.bidAmount > locals.bestParticipantData.bidAmount ||
 						    (locals.participantData.bidAmount == locals.bestParticipantData.bidAmount &&
-						     locals.participantData.lastBidTime < locals.bestParticipantData.lastBidTime))
+						     (locals.participantData.lastBidTime < locals.bestParticipantData.lastBidTime ||
+						      (locals.participantData.lastBidTime == locals.bestParticipantData.lastBidTime &&
+						       locals.participantData.bidIndex < locals.bestParticipantData.bidIndex))))
 						{
 							locals.bestParticipantFound = 1;
 							locals.bestParticipantData = locals.participantData;
-							locals.bestParticipantKey = locals.participantKey;
+							locals.bestParticipantSlotIndex = locals.participantIndex;
 						}
 					}
 				}
-				locals.participantIndex = state.get().participants.nextElementIndex(locals.participantIndex);
+				++locals.participantIndex;
 			}
 
 			if (!locals.bestParticipantFound)
@@ -2643,27 +2968,28 @@ struct NOST : public ContractBase
 
 			// Clear the processed escrow so the same bid cannot participate in later iterations.
 			locals.bestParticipantData.escrowedAmount = 0;
-			state.mut().participants.replace(locals.bestParticipantKey, locals.bestParticipantData);
+			locals.bestParticipantData.isActive = 0;
+			state.mut().participants.set(locals.bestParticipantSlotIndex, locals.bestParticipantData);
 		}
 
 		// Refund every non-winning or non-allocated bid that still has escrow locked after winner selection.
-		locals.participantIndex = state.get().participants.nextElementIndex(NULL_INDEX);
-		while (locals.participantIndex != NULL_INDEX)
+		locals.participantIndex = 0;
+		while (locals.participantIndex < state.get().participants.capacity())
 		{
-			locals.participantKey = state.get().participants.key(locals.participantIndex);
-			if (locals.participantKey.auctionIndex == input.auctionIndex)
+			locals.participantData = state.get().participants.get(locals.participantIndex);
+			if (locals.participantData.isUsed && locals.participantData.auctionIndex == input.auctionIndex)
 			{
-				locals.participantData = state.get().participants.value(locals.participantIndex);
 				if (locals.participantData.escrowedAmount > 0)
 				{
 					qpi.transfer(locals.participantData.participant, locals.participantData.escrowedAmount);
 					locals.participantData.escrowedAmount = 0;
 					locals.participantData.allocatedQuantity = 0;
 					locals.participantData.isWinningBid = 0;
-					state.mut().participants.replace(locals.participantKey, locals.participantData);
 				}
+				locals.participantData.isActive = 0;
+				state.mut().participants.set(locals.participantIndex, locals.participantData);
 			}
-			locals.participantIndex = state.get().participants.nextElementIndex(locals.participantIndex);
+			++locals.participantIndex;
 		}
 
 		// Return any unsold batch quantity to the seller when demand did not consume the entire lot.
@@ -2685,6 +3011,7 @@ struct NOST : public ContractBase
 		locals.auction.core.allocatedQuantity = locals.soldQuantity;
 		locals.auction.core.status = EAuctionStatus::Finalized;
 		locals.auction.core.settledAt = input.currentDate;
+		locals.auction.core.highestBidSlotIndex = NOST_INVALID_PARTICIPANT_SLOT;
 		state.mut().auctionList.replace(locals.auction.core.auctionIndex, locals.auction);
 		addClosedAuctionToHistory(state, locals.auction.core.auctionIndex);
 		output.success = 1;
@@ -2706,10 +3033,12 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (!isZero(locals.auction.core.highestBidder))
+		locals.highestBidderSlotIndex = locals.auction.core.highestBidSlotIndex;
+		if (locals.highestBidderSlotIndex < state.get().participants.capacity())
 		{
-			locals.highestBidderKey = {locals.auction.core.auctionIndex, locals.auction.core.highestBidder};
-			locals.highestBidderExists = state.get().participants.get(locals.highestBidderKey, locals.highestBidderData);
+			locals.highestBidderData = state.get().participants.get(locals.highestBidderSlotIndex);
+			locals.highestBidderExists = locals.highestBidderData.isUsed && locals.highestBidderData.isActive &&
+			                             locals.highestBidderData.auctionIndex == input.auctionIndex;
 		}
 
 		if (locals.highestBidderExists && locals.highestBidderData.escrowedAmount > 0)
@@ -2728,7 +3057,8 @@ struct NOST : public ContractBase
 			locals.highestBidderData.allocatedQuantity = locals.auction.core.quantityForSale;
 			locals.highestBidderData.isWinningBid = 1;
 			locals.highestBidderData.escrowedAmount = 0;
-			state.mut().participants.replace(locals.highestBidderKey, locals.highestBidderData);
+			locals.highestBidderData.isActive = 0;
+			state.mut().participants.set(locals.highestBidderSlotIndex, locals.highestBidderData);
 			locals.auction.core.allocatedQuantity = locals.auction.core.quantityForSale;
 			locals.lotSold = 1;
 		}
@@ -2749,6 +3079,7 @@ struct NOST : public ContractBase
 			locals.auction.core.highestBidQuantity = 0;
 			locals.auction.core.highestBidder = NULL_ID;
 		}
+		locals.auction.core.highestBidSlotIndex = NOST_INVALID_PARTICIPANT_SLOT;
 		state.mut().auctionList.replace(locals.auction.core.auctionIndex, locals.auction);
 		addClosedAuctionToHistory(state, locals.auction.core.auctionIndex);
 		output.success = 1;
@@ -2770,10 +3101,12 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (!isZero(locals.auction.core.highestBidder))
+		locals.highestBidderSlotIndex = locals.auction.core.highestBidSlotIndex;
+		if (locals.highestBidderSlotIndex < state.get().participants.capacity())
 		{
-			locals.highestBidderKey = {locals.auction.core.auctionIndex, locals.auction.core.highestBidder};
-			locals.highestBidderExists = state.get().participants.get(locals.highestBidderKey, locals.highestBidderData);
+			locals.highestBidderData = state.get().participants.get(locals.highestBidderSlotIndex);
+			locals.highestBidderExists = locals.highestBidderData.isUsed && locals.highestBidderData.isActive &&
+			                             locals.highestBidderData.auctionIndex == input.auctionIndex;
 		}
 
 		if (locals.highestBidderExists && locals.highestBidderData.escrowedAmount > 0)
@@ -2782,8 +3115,9 @@ struct NOST : public ContractBase
 			output.refundedAmount = locals.highestBidderData.escrowedAmount;
 			locals.highestBidderData.escrowedAmount = 0;
 			locals.highestBidderData.allocatedQuantity = 0;
+			locals.highestBidderData.isActive = 0;
 			locals.highestBidderData.isWinningBid = 0;
-			state.mut().participants.replace(locals.highestBidderKey, locals.highestBidderData);
+			state.mut().participants.set(locals.highestBidderSlotIndex, locals.highestBidderData);
 		}
 
 		locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.core.auctionLotItems;
@@ -2795,6 +3129,7 @@ struct NOST : public ContractBase
 		locals.auction.core.highestBidPrice = 0;
 		locals.auction.core.highestBidQuantity = 0;
 		locals.auction.core.highestBidder = NULL_ID;
+		locals.auction.core.highestBidSlotIndex = NOST_INVALID_PARTICIPANT_SLOT;
 		locals.auction.core.status = EAuctionStatus::Finalized;
 		locals.auction.core.settledAt = input.currentDate;
 		state.mut().auctionList.replace(locals.auction.core.auctionIndex, locals.auction);
@@ -3066,6 +3401,7 @@ struct NOST : public ContractBase
 		locals.auction.core.createdAt = qpi.now();
 		locals.auction.core.lastBidAt = locals.auction.core.createdAt;
 		locals.auction.core.seller = qpi.invocator();
+		locals.auction.core.highestBidSlotIndex = NOST_INVALID_PARTICIPANT_SLOT;
 		for (locals.requiredAccessAssetIndex = 0; locals.requiredAccessAssetIndex < input.requiredAccessAssets.capacity();
 		     ++locals.requiredAccessAssetIndex)
 		{
@@ -3336,19 +3672,6 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (locals.auction.core.highestBidAmount > 0)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			output.errorCode = EAuctionError::Forbidden;
-			setProcedureLogInput(locals.log, qpi.invocator(), EProcedureId::CancelAuction, output.errorCode, input.auctionIndex,
-			                     output.cancellationFee);
-			logProcedureResult(locals.log);
-			return;
-		}
-
 		locals.cancellationBaseAmount = locals.auction.core.salePrice;
 		if (locals.auction.core.type == EAuctionType::Batch)
 		{
@@ -3370,24 +3693,23 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.participantIndex = state.get().participants.nextElementIndex(NULL_INDEX);
-		while (locals.participantIndex != NULL_INDEX)
+		locals.participantIndex = 0;
+		while (locals.participantIndex < state.get().participants.capacity())
 		{
-			locals.participantKey = state.get().participants.key(locals.participantIndex);
-			if (locals.participantKey.auctionIndex == input.auctionIndex)
+			locals.participantData = state.get().participants.get(locals.participantIndex);
+			if (locals.participantData.isUsed && locals.participantData.auctionIndex == input.auctionIndex)
 			{
-				locals.participantData = state.get().participants.value(locals.participantIndex);
 				if (locals.participantData.escrowedAmount > 0)
 				{
 					qpi.transfer(locals.participantData.participant, locals.participantData.escrowedAmount);
 					output.refundedAmount = sadd(output.refundedAmount, locals.participantData.escrowedAmount);
 				}
-				state.mut().participants.removeByKey(locals.participantKey);
+				locals.participantData = {};
+				state.mut().participants.set(locals.participantIndex, locals.participantData);
 			}
 
-			locals.participantIndex = state.get().participants.nextElementIndex(locals.participantIndex);
+			++locals.participantIndex;
 		}
-		state.mut().participants.cleanupIfNeeded();
 
 		locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.core.auctionLotItems;
 		locals.rollbackAuctionLotAssetsInput.recipient = locals.auction.core.seller;
@@ -3396,6 +3718,12 @@ struct NOST : public ContractBase
 		locals.currentDate = qpi.now();
 		locals.auction.core.status = EAuctionStatus::Cancelled;
 		locals.auction.core.settledAt = locals.currentDate;
+		locals.auction.core.allocatedQuantity = 0;
+		locals.auction.core.highestBidAmount = 0;
+		locals.auction.core.highestBidPrice = 0;
+		locals.auction.core.highestBidQuantity = 0;
+		locals.auction.core.highestBidder = NULL_ID;
+		locals.auction.core.highestBidSlotIndex = NOST_INVALID_PARTICIPANT_SLOT;
 		state.mut().auctionList.replace(input.auctionIndex, locals.auction);
 		addClosedAuctionToHistory(state, locals.auction.core.auctionIndex);
 
@@ -3673,9 +4001,29 @@ struct NOST : public ContractBase
 	 * @brief Returns the stored bid state of one wallet in one auction.
 	 * @note The response indicates whether a participant record exists for the requested auction and wallet.
 	 */
-	PUBLIC_FUNCTION(GetAuctionParticipant)
+	PUBLIC_FUNCTION_WITH_LOCALS(GetAuctionParticipant)
 	{
-		output.found = state.get().participants.get({input.auctionIndex, input.participant}, output.participantData) ? 1 : 0;
+		output.found = 0;
+		locals.bestParticipantFound = 0;
+		for (locals.participantSlotIndex = 0; locals.participantSlotIndex < state.get().participants.capacity(); ++locals.participantSlotIndex)
+		{
+			locals.participantData = state.get().participants.get(locals.participantSlotIndex);
+			if (!locals.participantData.isUsed || locals.participantData.auctionIndex != input.auctionIndex ||
+			    locals.participantData.participant != input.participant)
+			{
+				continue;
+			}
+
+			if (!locals.bestParticipantFound || locals.participantData.lastBidTime > output.participantData.lastBidTime ||
+			    (locals.participantData.lastBidTime == output.participantData.lastBidTime &&
+			     locals.participantData.bidIndex > output.participantData.bidIndex))
+			{
+				locals.bestParticipantFound = 1;
+				locals.bestParticipantSlotIndex = locals.participantSlotIndex;
+				output.participantData = locals.participantData;
+				output.found = 1;
+			}
+		}
 	}
 
 	/**
@@ -3744,13 +4092,21 @@ struct NOST : public ContractBase
 	PUBLIC_FUNCTION_WITH_LOCALS(GetContractStats)
 	{
 		output.stats.totalAuctionsCreated = state.get().totalAuctionsCreated;
-		output.stats.participantCount = state.get().participants.population();
 		output.stats.closedAuctionHistoryCounter = state.get().closedAuctionHistoryCounter;
 		output.stats.auctionShareholderDividendPool = state.get().auctionShareholderDividendPool;
 		output.stats.qxTransferFee = state.get().qxTransferFee;
 		output.stats.routeAllFeesToDevelopment = state.get().routeAllFeesToDevelopment;
 		output.stats.isAuctionTimerPaused = state.get().isAuctionTimerPaused;
 		output.stats.isPostBeginEpochPauseArmed = state.get().isPostBeginEpochPauseArmed;
+
+		for (locals.participantSlotIndex = 0; locals.participantSlotIndex < state.get().participants.capacity(); ++locals.participantSlotIndex)
+		{
+			locals.participantData = state.get().participants.get(locals.participantSlotIndex);
+			if (locals.participantData.isUsed)
+			{
+				output.stats.participantCount = sadd(output.stats.participantCount, 1ULL);
+			}
+		}
 
 		for (locals.auctionIndex = 0; locals.auctionIndex < state.get().totalAuctionsCreated; ++locals.auctionIndex)
 		{
@@ -3885,17 +4241,15 @@ struct NOST : public ContractBase
 		output.totalCount = 0;
 		output.returnedCount = 0;
 		locals.boundedLimit = min(input.limit, NOST_AUCTION_GETTER_PAGE_SIZE);
-		for (locals.participantMapIndex = state.get().participants.nextElementIndex(NULL_INDEX); locals.participantMapIndex != NULL_INDEX;
-		     locals.participantMapIndex = state.get().participants.nextElementIndex(locals.participantMapIndex))
+		for (locals.participantSlotIndex = 0; locals.participantSlotIndex < state.get().participants.capacity(); ++locals.participantSlotIndex)
 		{
-			locals.participantKey = state.get().participants.key(locals.participantMapIndex);
-			if (locals.participantKey.auctionIndex != input.auctionIndex)
+			locals.participantData = state.get().participants.get(locals.participantSlotIndex);
+			if (!locals.participantData.isUsed || locals.participantData.auctionIndex != input.auctionIndex)
 			{
 				continue;
 			}
 			if (output.totalCount >= input.offset && output.returnedCount < locals.boundedLimit)
 			{
-				locals.participantData = state.get().participants.value(locals.participantMapIndex);
 				fillParticipantSummary(locals.participantData, locals.participantSummary);
 				output.participants.set(output.returnedCount, locals.participantSummary);
 				output.returnedCount = sadd(output.returnedCount, 1ULL);
@@ -3909,18 +4263,16 @@ struct NOST : public ContractBase
 		output.totalCount = 0;
 		output.returnedCount = 0;
 		locals.boundedLimit = min(input.limit, NOST_AUCTION_GETTER_PAGE_SIZE);
-		for (locals.participantMapIndex = state.get().participants.nextElementIndex(NULL_INDEX); locals.participantMapIndex != NULL_INDEX;
-		     locals.participantMapIndex = state.get().participants.nextElementIndex(locals.participantMapIndex))
+		for (locals.participantSlotIndex = 0; locals.participantSlotIndex < state.get().participants.capacity(); ++locals.participantSlotIndex)
 		{
-			locals.participantKey = state.get().participants.key(locals.participantMapIndex);
-			if (locals.participantKey.participant != input.participant)
+			locals.participantData = state.get().participants.get(locals.participantSlotIndex);
+			if (!locals.participantData.isUsed || locals.participantData.participant != input.participant)
 			{
 				continue;
 			}
 			if (output.totalCount >= input.offset && output.returnedCount < locals.boundedLimit)
 			{
-				locals.participantData = state.get().participants.value(locals.participantMapIndex);
-				fillUserParticipationSummary(locals.participantKey.auctionIndex, locals.participantData, locals.userParticipationSummary);
+				fillUserParticipationSummary(locals.participantData.auctionIndex, locals.participantData, locals.userParticipationSummary);
 				output.participations.set(output.returnedCount, locals.userParticipationSummary);
 				output.returnedCount = sadd(output.returnedCount, 1ULL);
 			}
@@ -3965,6 +4317,17 @@ struct NOST : public ContractBase
 		output.auctionDurationSeconds = locals.auction.core.auctionDurationSeconds;
 		output.type = static_cast<uint8>(locals.auction.core.type);
 		output.visibility = static_cast<uint8>(locals.auction.core.visibility);
+	}
+
+	/**
+	 * @brief Returns current read-only guidance for the next valid Batch Auction bid.
+	 * @note `PlaceBid` re-runs the same availability validation before accepting a bid.
+	 */
+	PUBLIC_FUNCTION_WITH_LOCALS(GetBatchAuctionBidAvailability)
+	{
+		locals.computeBatchBidAvailabilityInput.auctionIndex = input.auctionIndex;
+		locals.computeBatchBidAvailabilityInput.bidAmount = 0;
+		CALL(ComputeBatchBidAvailability, locals.computeBatchBidAvailabilityInput, output);
 	}
 
 	/**
@@ -4109,7 +4472,8 @@ protected:
 	{
 		quantityForSale = 0;
 		resolvedMinimumPurchaseQuantity = 0;
-		if (minimumBidIncrement == 0 || salePrice == 0)
+		if (initialPrice < NOST_STANDARD_MIN_PRICE || salePrice < NOST_STANDARD_MIN_PRICE ||
+		    minimumBidIncrement < NOST_STANDARD_MIN_BID_INCREMENT)
 		{
 			return false;
 		}
