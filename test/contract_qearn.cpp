@@ -462,7 +462,11 @@ public:
         {
             EXPECT_GE(amountBefore, amountUnlock);
             uint64 expectedAmountAfter = amountBefore - amountUnlock;
-            if (expectedAmountAfter < QEARN_MINIMUM_LOCKING_AMOUNT)
+            if (lockingEpoch != system.epoch)
+            {
+                expectedAmountAfter = 0;
+            }
+            else if (expectedAmountAfter < QEARN_MINIMUM_LOCKING_AMOUNT)
             {
                 expectedAmountAfter = 0;
             }
@@ -788,9 +792,10 @@ TEST(TestContractQearn, EarlyUnlockForfeitsBonusToRemainingLockers)
 
     const sint64 earlyBalanceBefore = getBalance(earlyUser);
     const sint64 contractBalanceBefore = getBalance(QEARN_CONTRACT_ID);
-    ASSERT_TRUE(qearn.unlockAndCheck(earlyUser, lockedEpoch, stake));
+    ASSERT_TRUE(qearn.unlockAndCheck(earlyUser, lockedEpoch, QEARN_MINIMUM_LOCKING_AMOUNT));
     EXPECT_EQ(getBalance(earlyUser), earlyBalanceBefore + stake + 1);
     EXPECT_EQ(getBalance(QEARN_CONTRACT_ID), contractBalanceBefore - stake);
+    EXPECT_EQ(qearn.getUserLockedInfo(lockedEpoch, earlyUser), 0ULL);
 
     roundInfo = qearn.getLockInfoPerEpoch(lockedEpoch);
     EXPECT_EQ(roundInfo.currentLockedAmount, stake);
