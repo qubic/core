@@ -785,8 +785,13 @@ protected:
             return ;
         }
 
+        if(input.lockedEpoch != qpi.epoch())
+        {
+            locals.amountOfUnlocking = state.get().locker.get(locals.indexOfinvocator)._lockedAmount;
+        }
+
         /* the rest amount after unlocking should be more than MINIMUM_LOCKING_AMOUNT */
-        if(state.get().locker.get(locals.indexOfinvocator)._lockedAmount - input.amount < QEARN_MINIMUM_LOCKING_AMOUNT)
+        else if(state.get().locker.get(locals.indexOfinvocator)._lockedAmount - input.amount < QEARN_MINIMUM_LOCKING_AMOUNT)
         {
             locals.amountOfUnlocking = state.get().locker.get(locals.indexOfinvocator)._lockedAmount;
         }
