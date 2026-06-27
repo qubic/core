@@ -99,6 +99,9 @@
     <ClInclude Include="contracts\Quottery.h">
       <Filter>contracts</Filter>
     </ClInclude>
+    <ClInclude Include="contracts\Qassand.h">
+      <Filter>contracts</Filter>
+    </ClInclude>
     <ClInclude Include="contracts\MsVault.h">
       <Filter>contracts</Filter>
     </ClInclude>
