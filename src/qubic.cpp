@@ -2,7 +2,7 @@
 
 // #define INCLUDE_CONTRACT_TEST_EXAMPLES
 
-// #define NO_GGWP
+// #define OLD_QBAY
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
@@ -161,7 +161,7 @@ static unsigned int numberOfTransactions = 0;
 static unsigned long long spectrumChangeFlags[SPECTRUM_CAPACITY / (sizeof(unsigned long long) * 8)];
 
 static unsigned long long mainLoopNumerator = 0, mainLoopDenominator = 0;
-static unsigned char contractProcessorState = 0;
+static volatile unsigned char contractProcessorState = 0;
 static unsigned int contractProcessorPhase;
 static const Transaction* contractProcessorTransaction = 0; // does not have signature in some cases, see notifyContractOfIncomingTransfer()
 static int contractProcessorTransactionMoneyflew = 0;
@@ -1371,6 +1371,33 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     enqueueResponse(peer, sizeof(respondedSystemInfo), RespondSystemInfo::type(), header->dejavu(), &respondedSystemInfo);
 }
 
+// Per-processor revenue response buffers
+static RespondRevenueData gRevenueDataResponseBuffer[MAX_NUMBER_OF_PROCESSORS];
+
+// Returns the current (approximate) raw per-computor revenue scores so a consumer can compute revenue
+// without reprocessing transactions. This function is pure copy, no computation
+static void processRequestRevenueData(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
+{
+    if (processorNumber >= MAX_NUMBER_OF_PROCESSORS)
+    {
+        return;
+    }
+    RespondRevenueData& response = gRevenueDataResponseBuffer[processorNumber];
+
+    response.tick = system.tick;
+    response.dogeK = (unsigned short)REVENUE_DOGE_K;
+    response.ipc = REVENUE_IPC;
+
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        response.txScore[i] = gMultiDimRevenue.txScore[i];
+        response.oracleScore[i] = oracleEngine.getRevenuePointUnsafe(i);
+        response.dogeScore[i] = gDogeMiningSharesCounter.getSharesCount(i);
+    }
+
+    enqueueResponse(peer, sizeof(response), RespondRevenueData::type(), header->dejavu(), &response);
+}
+
 // Hardcoded doge dispatcher public key (identity: XPILPIJYHRBTACMMIRSJLIZWCXDBHWVEOTZBQFBXWEUXDZGGDEKDQPIEQKQK)
 static const unsigned char dogeDispatcherPubkey[32] = {
     0x25, 0x98, 0x6d, 0x38, 0xa6, 0x3d, 0xd6, 0x45,
@@ -2031,6 +2058,12 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
+                case RequestRevenueData::type():
+                {
+                    processRequestRevenueData(processorNumber, peer, header);
+                }
+                break;
+
                 case RequestAssets::type():
                 {
                     processRequestAssets(peer, header);
@@ -2622,6 +2655,16 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
 
     const m256i& transactionDigest = nextTickData.transactionDigests[transactionIndex];
     const m256i& dataLock = nextTickData.timelock;
+
+    // Reject transactions whose source is a smart-contract address ({contractIndex, 0, 0, 0}).
+    // No legitimate keypair maps to such an address, so it can never be a real signer. Some of
+    // these addresses are even low-order FourQ points whose signatures are forgeable (e.g. the
+    // QX contract address {1,0,0,0} is the identity point), which would let an attacker move
+    // funds "from" a contract. Never process such a transaction.
+    if (isPublicKeyOfContract(transaction->sourcePublicKey))
+    {
+        return;
+    }
 
     // Record the tx with digest
     ts.transactionsDigestAccess.acquireLock();
@@ -3961,27 +4004,6 @@ static void endEpoch()
     // Only issue qus if the max supply is not yet reached
     if (spectrumInfo.totalAmount + ISSUANCE_RATE <= MAX_SUPPLY)
     {
-        // Compute revenue scores of computors
-        unsigned long long revenueScore[NUMBER_OF_COMPUTORS];
-        setMem(revenueScore, sizeof(revenueScore), 0);
-        for (unsigned int tick = system.initialTick; tick < system.tick; tick++)
-        {
-            ts.tickData.acquireLock();
-            TickData& td = ts.tickData.getByTickInCurrentEpoch(tick);
-            if (td.epoch == system.epoch)
-            {
-                unsigned int numberOfTransactions = 0;
-                for (unsigned int transactionIndex = 0; transactionIndex < NUMBER_OF_TRANSACTIONS_PER_TICK; transactionIndex++)
-                {
-                    if (!isZero(td.transactionDigests[transactionIndex]))
-                    {
-                        numberOfTransactions++;
-                    }
-                }
-                revenueScore[tick % NUMBER_OF_COMPUTORS] += gTxRevenuePoints[numberOfTransactions];
-            }
-            ts.tickData.releaseLock();
-        }
 
         // Collect mining scores for V2
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
@@ -4001,25 +4023,10 @@ static void endEpoch()
         }
         computeRevenueV2(gEpochRevenueData);
 
-        // Multi dimension revenue in shadow mode
+        // Multi-dimension revenue: computed for offline comparison; paid to computors
+        // only when USE_REVENUE_MULTI_DIMENSION is set (see src/revenue.h).
         gMultiDimRevenue.totalTicks = system.tick - system.initialTick;
         computeMultiDimRevenue();
-
-        // Save data of custom mining.
-        {
-            for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; i++)
-            {
-                gRevenueComponents.voteScore[i] = voteCounter.getVoteCount(i);
-                gRevenueComponents.txScore[i] = revenueScore[i];
-            }
-            setMem(gRevenueComponents.customMiningScore, sizeof(gRevenueComponents.customMiningScore), 0);
-            computeRevenue(
-                gRevenueComponents.txScore,
-                gRevenueComponents.voteScore,
-                gRevenueComponents.customMiningScore,
-                gRevenueComponents.revenue);
-        }
-
 
         // Get revenue donation data by calling contract GQMPROP::GetRevenueDonation()
         QpiContextUserFunctionCall qpiContext(GQMPROP::__contract_index);
@@ -4033,10 +4040,10 @@ static void endEpoch()
         for (unsigned int computorIndex = 0; computorIndex < NUMBER_OF_COMPUTORS; computorIndex++)
         {
             // Compute initial computor revenue, reducing arbitrator revenue
-#if USE_REVENUE_V2
-            long long revenue = gEpochRevenueData.v2Revenue[computorIndex];
+#if USE_REVENUE_MULTI_DIMENSION
+            long long revenue = gMultiDimRevenue.revenue[computorIndex];
 #else
-            long long revenue = gRevenueComponents.revenue[computorIndex];
+            long long revenue = gEpochRevenueData.v2Revenue[computorIndex];
 #endif
             arbitratorRevenue -= revenue;
 
@@ -4549,10 +4556,13 @@ static bool loadAllNodeStates()
     long long mdSize = load(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME, sizeof(gMultiDimRevenue), (unsigned char*)&gMultiDimRevenue, directory);
     if (mdSize != sizeof(gMultiDimRevenue))
     {
-        // SHADOW: gMultiDimRevenue is computed but not applied to balances, so zero+continue is safe.
-        // TODO: when applied this must return false
+#if USE_REVENUE_MULTI_DIMENSION
+        logToConsole(L"Failed to load multi dim revenue snapshot");
+        return false;
+#else
         logToConsole(L"Multi dim revenue snapshot missing/mismatch (shadow mode), zeroing");
         setMem(&gMultiDimRevenue, sizeof(gMultiDimRevenue), 0);
+#endif                                                                                                                 
     }
 
     // update own computor indices
@@ -5796,7 +5806,8 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                     ContractStateChangeType changeType;
                     for (unsigned int i = 0; i < contractStateChangeCount; i++)
                     {
-                        if (contractStateChangeInfos[i].contractIndex == contractIndex)
+                        if (contractStateChangeInfos[i].contractIndex == contractIndex
+                            && contractStateChangeInfos[i].changeEpoch == system.epoch)
                         {
                             stateChangeAllowed = true;
                             changeType = contractStateChangeInfos[i].changeType;
@@ -5812,7 +5823,7 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                             setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
                             appendText(message, L" state reset to all 0 as requested");
                             logToConsole(message);
-                            continue;
+                            continue; // continue to next contract
                         }
                         else if (changeType == PADDING)
                         {
@@ -5830,10 +5841,42 @@ static bool loadContractStateFiles(CHAR16* directory, bool forceLoadFromFile)
                                     appendNumber(message, contractDescriptions[contractIndex].stateSize, FALSE);
                                     appendText(message, L" bytes), zero-padded");
                                     logToConsole(message);
-                                    continue;
+                                    continue; // continue to next contract
                                 }
                                 // Reload also failed — fall through to error
                             }
+                        }
+                        else if (changeType == MIGRATE)
+                        {
+                            long long actualSize = getFileSize(CONTRACT_FILE_NAME, directory);
+                            if (actualSize == contractMigrateOldStateSizes[contractIndex])
+                            {
+                                __ScopedScratchpad scratchpad(actualSize, /*initZero=*/false);
+                                if (scratchpad.ptr)
+                                {
+                                    long long reloadedSize = load(CONTRACT_FILE_NAME, (unsigned long long)actualSize, reinterpret_cast<unsigned char*>(scratchpad.ptr), directory);
+                                    if (reloadedSize == actualSize && contractMigrateProcedures[contractIndex])
+                                    {
+                                        // Zero the entire state before calling MIGRATE
+                                        setMem(contractStates[contractIndex], contractDescriptions[contractIndex].stateSize, 0);
+                                        QpiContextMigrateProcedureCall ctx(contractIndex);
+                                        if (ctx.call(/*oldState=*/scratchpad.ptr) == NoContractError)
+                                        {
+                                            appendText(message, L" state migration succeeded");
+                                            logToConsole(message);
+                                            continue; // migration succeeded, continue to next contract
+                                        }
+                                        else
+                                        {
+                                            // migration failed
+                                            appendText(message, L" attempted state migration failed -");
+                                            logToConsole(message);
+                                            // fall through to error
+                                        }
+                                    }
+                                }
+                            }
+                            // else fall through to error
                         }
                     }
 
@@ -6084,6 +6127,9 @@ static bool initialize()
         // needs to be called after ts.beginEpoch() because it looks up tickIndex, which requires to setup begin of epoch in ts
         updateNumberOfTickTransactions();
 
+        // contract functions and procedures need to be initialized before loading to enable the use of contract MIGRATE procedures
+        initializeContracts();
+
 #if TICK_STORAGE_AUTOSAVE_MODE
         bool canLoadFromFile = loadAllNodeStates();
 
@@ -6204,9 +6250,8 @@ static bool initialize()
         }
     }
 
-
+    // universe needs to be initialized before initializing contract errors
     initializeContractErrors();
-    initializeContracts();
 
     if (loadMiningSeedFromFile)
     {
