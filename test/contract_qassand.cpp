@@ -99,8 +99,8 @@ TEST(ContractQassand, InitializeSetsPingV0Metadata)
 	ContractTestingQassand qassand;
 	QassandChecker* state = qassand.state();
 
-	EXPECT_EQ(state->versionValue(), QASSAND_VERSION);
-	EXPECT_EQ(state->constructionEpochValue(), QASSAND_CONSTRUCTION_EPOCH_PLACEHOLDER);
+	EXPECT_EQ(static_cast<unsigned int>(state->versionValue()), static_cast<unsigned int>(QASSAND_VERSION));
+	EXPECT_EQ(static_cast<unsigned int>(state->constructionEpochValue()), static_cast<unsigned int>(QASSAND_CONSTRUCTION_EPOCH_PLACEHOLDER));
 	EXPECT_EQ(state->totalPingCountValue(), 0ull);
 	EXPECT_EQ(state->protocolEarnedFeeValue(), 0ull);
 	EXPECT_EQ(state->burnEarnedFeeValue(), 0ull);
@@ -114,8 +114,8 @@ TEST(ContractQassand, ReadsMetadataAndFeeState)
 
 	const QASSAND::GetInfo_output info = qassand.getInfo();
 	EXPECT_TRUE(arrayStartsWith(info.protocolName, "Qassandra"));
-	EXPECT_EQ(info.version, QASSAND_VERSION);
-	EXPECT_EQ(info.constructionEpoch, QASSAND_CONSTRUCTION_EPOCH_PLACEHOLDER);
+	EXPECT_EQ(static_cast<unsigned int>(info.version), static_cast<unsigned int>(QASSAND_VERSION));
+	EXPECT_EQ(static_cast<unsigned int>(info.constructionEpoch), static_cast<unsigned int>(QASSAND_CONSTRUCTION_EPOCH_PLACEHOLDER));
 	EXPECT_EQ(info.totalPingCount, 0ull);
 
 	const QASSAND::GetFeeInfo_output fees = qassand.getFeeInfo();
@@ -135,25 +135,25 @@ TEST(ContractQassand, ReadsLaneTaxonomy)
 	ContractTestingQassand qassand;
 
 	const QASSAND::GetLaneInfo_output forecastingLane = qassand.getLaneInfo(QASSAND_LANE_FORECASTING);
-	EXPECT_EQ(forecastingLane.returnCode, QASSAND_SUCCESS);
-	EXPECT_EQ(forecastingLane.laneId, QASSAND_LANE_FORECASTING);
+	EXPECT_EQ(static_cast<unsigned int>(forecastingLane.returnCode), static_cast<unsigned int>(QASSAND_SUCCESS));
+	EXPECT_EQ(static_cast<unsigned int>(forecastingLane.laneId), static_cast<unsigned int>(QASSAND_LANE_FORECASTING));
 	EXPECT_TRUE(arrayStartsWith(forecastingLane.laneName, "Forecasting"));
 	EXPECT_EQ(forecastingLane.requiredFee, 0ull);
 
 	const QASSAND::GetLaneInfo_output stableLane = qassand.getLaneInfo(QASSAND_LANE_STABLE_OPERATIONS);
-	EXPECT_EQ(stableLane.returnCode, QASSAND_SUCCESS);
-	EXPECT_EQ(stableLane.laneId, QASSAND_LANE_STABLE_OPERATIONS);
+	EXPECT_EQ(static_cast<unsigned int>(stableLane.returnCode), static_cast<unsigned int>(QASSAND_SUCCESS));
+	EXPECT_EQ(static_cast<unsigned int>(stableLane.laneId), static_cast<unsigned int>(QASSAND_LANE_STABLE_OPERATIONS));
 	EXPECT_TRUE(arrayStartsWith(stableLane.laneName, "StableOps"));
 	EXPECT_EQ(stableLane.requiredFee, 0ull);
 
 	const QASSAND::GetLaneInfo_output attestationLane = qassand.getLaneInfo(QASSAND_LANE_DATA_ATTESTATION);
-	EXPECT_EQ(attestationLane.returnCode, QASSAND_SUCCESS);
-	EXPECT_EQ(attestationLane.laneId, QASSAND_LANE_DATA_ATTESTATION);
+	EXPECT_EQ(static_cast<unsigned int>(attestationLane.returnCode), static_cast<unsigned int>(QASSAND_SUCCESS));
+	EXPECT_EQ(static_cast<unsigned int>(attestationLane.laneId), static_cast<unsigned int>(QASSAND_LANE_DATA_ATTESTATION));
 	EXPECT_TRUE(arrayStartsWith(attestationLane.laneName, "Data"));
 	EXPECT_EQ(attestationLane.requiredFee, 0ull);
 
 	const QASSAND::GetLaneInfo_output unknownLane = qassand.getLaneInfo(QASSAND_LANE_UNKNOWN);
-	EXPECT_EQ(unknownLane.returnCode, QASSAND_UNKNOWN_LANE);
+	EXPECT_EQ(static_cast<unsigned int>(unknownLane.returnCode), static_cast<unsigned int>(QASSAND_UNKNOWN_LANE));
 }
 
 TEST(ContractQassand, UnderpaymentRefundsAndDoesNotAccountFee)
@@ -164,7 +164,7 @@ TEST(ContractQassand, UnderpaymentRefundsAndDoesNotAccountFee)
 
 	const uint64 underpaidAmount = QASSAND_PING_FEE - 1;
 	const QASSAND::Ping_output underpaid = qassand.ping(user, underpaidAmount);
-	EXPECT_EQ(underpaid.returnCode, QASSAND_UNDERPAID);
+	EXPECT_EQ(static_cast<unsigned int>(underpaid.returnCode), static_cast<unsigned int>(QASSAND_UNDERPAID));
 	EXPECT_EQ(underpaid.refundedAmount, underpaidAmount);
 	EXPECT_EQ(qassand.balanceOf(user), QASSAND_PING_FEE);
 	EXPECT_EQ(qassand.balanceQassand(), 0ull);
@@ -181,7 +181,7 @@ TEST(ContractQassand, ExactFeeAccountsProtocolAndDeferredBurn)
 	qassand.fund(user, QASSAND_PING_FEE);
 
 	const QASSAND::Ping_output ping = qassand.ping(user, QASSAND_PING_FEE);
-	EXPECT_EQ(ping.returnCode, QASSAND_SUCCESS);
+	EXPECT_EQ(static_cast<unsigned int>(ping.returnCode), static_cast<unsigned int>(QASSAND_SUCCESS));
 	EXPECT_EQ(ping.acceptedFee, QASSAND_PING_FEE);
 	EXPECT_EQ(ping.refundedAmount, 0ull);
 	EXPECT_EQ(ping.protocolEarnedFee, QASSAND_PROTOCOL_FEE);
@@ -204,7 +204,7 @@ TEST(ContractQassand, ExcessFeeRefundsOnlyOverage)
 	qassand.fund(user, paidAmount);
 
 	const QASSAND::Ping_output ping = qassand.ping(user, paidAmount);
-	EXPECT_EQ(ping.returnCode, QASSAND_SUCCESS);
+	EXPECT_EQ(static_cast<unsigned int>(ping.returnCode), static_cast<unsigned int>(QASSAND_SUCCESS));
 	EXPECT_EQ(ping.acceptedFee, QASSAND_PING_FEE);
 	EXPECT_EQ(ping.refundedAmount, 12345ull);
 	EXPECT_EQ(qassand.balanceOf(user), 12345ull);
