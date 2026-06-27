@@ -179,32 +179,7 @@ public:
 
         for (unsigned int epChanges = 0; epChanges <= 52; ++epChanges)
         {
-            if (epChanges <= 4)
-                epochChangesToUnlockParams.push_back(UnlockTableEntry{ 0, 0 });
-            else if (epChanges <= 12)
-                epochChangesToUnlockParams.push_back(UnlockTableEntry{ 5, 45 });
-            else if (epChanges <= 16)
-                epochChangesToUnlockParams.push_back(UnlockTableEntry{ 10, 45 });
-            else if (epChanges <= 20)
-                epochChangesToUnlockParams.push_back(UnlockTableEntry{ 15, 40 });
-            else if (epChanges <= 24)
-                epochChangesToUnlockParams.push_back(UnlockTableEntry{ 20, 40 });
-            else if (epChanges <= 28)
-                epochChangesToUnlockParams.push_back(UnlockTableEntry{ 25, 35 });
-            else if (epChanges <= 32)
-                epochChangesToUnlockParams.push_back(UnlockTableEntry{ 30, 35 });
-            else if (epChanges <= 36)
-                epochChangesToUnlockParams.push_back(UnlockTableEntry{ 35, 35 });
-            else if (epChanges <= 40)
-                epochChangesToUnlockParams.push_back(UnlockTableEntry{ 40, 30 });
-            else if (epChanges <= 44)
-                epochChangesToUnlockParams.push_back(UnlockTableEntry{ 45, 30 });
-            else if (epChanges <= 48)
-                epochChangesToUnlockParams.push_back(UnlockTableEntry{ 50, 30 });
-            else if (epChanges <= 52)
-                epochChangesToUnlockParams.push_back(UnlockTableEntry{ 55, 25 });
-            else
-                epochChangesToUnlockParams.push_back(UnlockTableEntry{ 100, 0 });
+            epochChangesToUnlockParams.push_back(UnlockTableEntry{ 0, 0 });
         }
     }
 
@@ -487,7 +462,11 @@ public:
         {
             EXPECT_GE(amountBefore, amountUnlock);
             uint64 expectedAmountAfter = amountBefore - amountUnlock;
-            if (expectedAmountAfter < QEARN_MINIMUM_LOCKING_AMOUNT)
+            if (lockingEpoch != system.epoch)
+            {
+                expectedAmountAfter = 0;
+            }
+            else if (expectedAmountAfter < QEARN_MINIMUM_LOCKING_AMOUNT)
             {
                 expectedAmountAfter = 0;
             }
@@ -774,6 +753,74 @@ TEST(TestContractQearn, ErrorChecking)
 
     // finally, test success case
     EXPECT_EQ(qearn.unlock(otherUser, QEARN_MINIMUM_LOCKING_AMOUNT, system.epoch), QEARN_UNLOCK_SUCCESS);
+}
+
+TEST(TestContractQearn, EarlyUnlockForfeitsBonusToRemainingLockers)
+{
+    ContractTestingQearn qearn;
+    const id loyalUser = getUser(1001);
+    const id earlyUser = getUser(1002);
+    constexpr uint64 stake = 1000000000ULL;
+    constexpr uint64 bonus = 100000000ULL;
+    constexpr uint16 lockedEpoch = QEARN_INITIAL_EPOCH;
+
+    system.epoch = QEARN_INITIAL_EPOCH - 1;
+    qearn.beginEpoch();
+    qearn.simulateDonation(bonus);
+    qearn.endEpoch();
+
+    system.epoch = lockedEpoch;
+    qearn.beginEpoch();
+    increaseEnergy(loyalUser, stake);
+    increaseEnergy(earlyUser, stake);
+    ASSERT_TRUE(qearn.lockAndCheck(loyalUser, stake));
+    ASSERT_TRUE(qearn.lockAndCheck(earlyUser, stake));
+
+    QEARN::getLockInfoPerEpoch_output roundInfo = qearn.getLockInfoPerEpoch(lockedEpoch);
+    EXPECT_EQ(roundInfo.currentLockedAmount, 2ULL * stake);
+    EXPECT_EQ(roundInfo.currentBonusAmount, bonus);
+    qearn.endEpoch();
+
+    for (system.epoch = lockedEpoch + 1; system.epoch < lockedEpoch + 5; ++system.epoch)
+    {
+        qearn.beginEpoch();
+        qearn.endEpoch();
+    }
+
+    system.epoch = lockedEpoch + 5;
+    qearn.beginEpoch();
+
+    const sint64 earlyBalanceBefore = getBalance(earlyUser);
+    const sint64 contractBalanceBefore = getBalance(QEARN_CONTRACT_ID);
+    ASSERT_TRUE(qearn.unlockAndCheck(earlyUser, lockedEpoch, QEARN_MINIMUM_LOCKING_AMOUNT));
+    EXPECT_EQ(getBalance(earlyUser), earlyBalanceBefore + stake + 1);
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID), contractBalanceBefore - stake);
+    EXPECT_EQ(qearn.getUserLockedInfo(lockedEpoch, earlyUser), 0ULL);
+
+    roundInfo = qearn.getLockInfoPerEpoch(lockedEpoch);
+    EXPECT_EQ(roundInfo.currentLockedAmount, stake);
+    EXPECT_EQ(roundInfo.currentBonusAmount, bonus);
+
+    const uint64 rewardFactorTenmillionth = QPI::div(bonus * 10000000ULL, 2ULL * stake);
+    const uint64 commonFactor = QPI::div(rewardFactorTenmillionth * stake, 100ULL);
+    const uint64 expectedBoostedAmount = QPI::div(commonFactor * 100ULL, 10000000ULL);
+    QEARN::getBurnedAndBoostedStatsPerEpoch_output stats = qearn.getBurnedAndBoostedStatsPerEpoch(lockedEpoch);
+    EXPECT_EQ(stats.rewardedAmount, 0ULL);
+    EXPECT_EQ(stats.burnedAmount, 0ULL);
+    EXPECT_EQ(stats.boostedAmount, expectedBoostedAmount);
+
+    qearn.endEpochAndCheck();
+    for (system.epoch = lockedEpoch + 6; system.epoch < lockedEpoch + 52; ++system.epoch)
+    {
+        qearn.beginEpoch();
+        qearn.endEpochAndCheck();
+    }
+
+    system.epoch = lockedEpoch + 52;
+    qearn.beginEpoch();
+    const sint64 loyalBalanceBeforePayout = getBalance(loyalUser);
+    qearn.endEpochAndCheck();
+    EXPECT_EQ(getBalance(loyalUser), loyalBalanceBeforePayout + stake + bonus);
 }
 
 // Test case for gap removal logic in overflow check (lines 635-656 in Qearn.h)
