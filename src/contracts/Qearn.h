@@ -7,34 +7,35 @@ constexpr uint64 QEARN_MAX_USERS = 131072;
 constexpr uint64 QEARN_MAX_LOCK_AMOUNT = 1000000000000ULL;
 constexpr uint64 QEARN_MAX_BONUS_AMOUNT = 1000000000000ULL;
 constexpr uint64 QEARN_INITIAL_EPOCH = 138;
+constexpr uint64 QEARN_FAIRNESS_ACTIVATION_EPOCH = 228;
 
 constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_0_3 = 0;
-constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_4_7 = 0;
-constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_8_11 = 0;
-constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_12_15 = 0;
-constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_16_19 = 0;
-constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_20_23 = 0;
-constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_24_27 = 0;
-constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_28_31 = 0;
-constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_32_35 = 0;
-constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_36_39 = 0;
-constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_40_43 = 0;
-constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_44_47 = 0;
-constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_48_51 = 0;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_4_7 = 5;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_8_11 = 5;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_12_15 = 10;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_16_19 = 15;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_20_23 = 20;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_24_27 = 25;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_28_31 = 30;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_32_35 = 35;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_36_39 = 40;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_40_43 = 45;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_44_47 = 50;
+constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_48_51 = 55;
 
 constexpr uint64 QEARN_BURN_PERCENT_0_3 = 0;
-constexpr uint64 QEARN_BURN_PERCENT_4_7 = 0;
-constexpr uint64 QEARN_BURN_PERCENT_8_11 = 0;
-constexpr uint64 QEARN_BURN_PERCENT_12_15 = 0;
-constexpr uint64 QEARN_BURN_PERCENT_16_19 = 0;
-constexpr uint64 QEARN_BURN_PERCENT_20_23 = 0;
-constexpr uint64 QEARN_BURN_PERCENT_24_27 = 0;
-constexpr uint64 QEARN_BURN_PERCENT_28_31 = 0;
-constexpr uint64 QEARN_BURN_PERCENT_32_35 = 0;
-constexpr uint64 QEARN_BURN_PERCENT_36_39 = 0;
-constexpr uint64 QEARN_BURN_PERCENT_40_43 = 0;
-constexpr uint64 QEARN_BURN_PERCENT_44_47 = 0;
-constexpr uint64 QEARN_BURN_PERCENT_48_51 = 0;
+constexpr uint64 QEARN_BURN_PERCENT_4_7 = 45;
+constexpr uint64 QEARN_BURN_PERCENT_8_11 = 45;
+constexpr uint64 QEARN_BURN_PERCENT_12_15 = 45;
+constexpr uint64 QEARN_BURN_PERCENT_16_19 = 40;
+constexpr uint64 QEARN_BURN_PERCENT_20_23 = 40;
+constexpr uint64 QEARN_BURN_PERCENT_24_27 = 35;
+constexpr uint64 QEARN_BURN_PERCENT_28_31 = 35;
+constexpr uint64 QEARN_BURN_PERCENT_32_35 = 35;
+constexpr uint64 QEARN_BURN_PERCENT_36_39 = 30;
+constexpr uint64 QEARN_BURN_PERCENT_40_43 = 30;
+constexpr uint64 QEARN_BURN_PERCENT_44_47 = 30;
+constexpr uint64 QEARN_BURN_PERCENT_48_51 = 25;
 
 constexpr sint32 QEARN_INVALID_INPUT_AMOUNT = 0;
 constexpr sint32 QEARN_LOCK_SUCCESS = 1;
@@ -785,7 +786,7 @@ protected:
             return ;
         }
 
-        if(input.lockedEpoch != qpi.epoch())
+        if(input.lockedEpoch >= QEARN_FAIRNESS_ACTIVATION_EPOCH && input.lockedEpoch != qpi.epoch())
         {
             locals.amountOfUnlocking = state.get().locker.get(locals.indexOfinvocator)._lockedAmount;
         }
@@ -875,6 +876,12 @@ protected:
         {
             locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_48_51;
             locals.burnPercent = QEARN_BURN_PERCENT_48_51;
+        }
+
+        if(input.lockedEpoch >= QEARN_FAIRNESS_ACTIVATION_EPOCH)
+        {
+            locals.earlyUnlockingPercent = 0;
+            locals.burnPercent = 0;
         }
 
         locals.rewardPercent = div(state.get()._currentRoundInfo.get(input.lockedEpoch)._epochBonusAmount * 10000000ULL, state.get()._currentRoundInfo.get(input.lockedEpoch)._totalLockedAmount);
