@@ -746,6 +746,18 @@ protected:
 
         }
 
+        if(input.lockedEpoch >= QEARN_FAIRNESS_ACTIVATION_EPOCH && input.lockedEpoch == qpi.epoch())
+        {
+
+            output.returnCode = QEARN_INVALID_INPUT_LOCKED_EPOCH;
+
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), 0, QearnInvalidInput, 0};
+            LOG_INFO(locals.log);
+
+            return ;
+
+        }
+
         locals.indexOfinvocator = QEARN_MAX_LOCKS;
         locals.startIndex = state.get()._epochIndex.get(input.lockedEpoch).startIndex;
         locals.endIndex = state.get()._epochIndex.get(input.lockedEpoch).endIndex;
