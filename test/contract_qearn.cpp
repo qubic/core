@@ -922,7 +922,7 @@ TEST(TestContractQearn, LegacyLockKeepsOriginalEarlyUnlockTermsAfterActivation)
     const sint64 legacyBalanceBefore = getBalance(legacyUser);
     ASSERT_TRUE(qearn.unlockAndCheck(legacyUser, lockedEpoch, partialUnlock));
     EXPECT_EQ(qearn.getUserLockedInfo(lockedEpoch, legacyUser), stake - partialUnlock);
-    EXPECT_GT(getBalance(legacyUser), legacyBalanceBefore + partialUnlock + 1);
+    EXPECT_GT(getBalance(legacyUser), legacyBalanceBefore + static_cast<sint64>(partialUnlock) + 1);
 
     QEARN::getBurnedAndBoostedStatsPerEpoch_output stats = qearn.getBurnedAndBoostedStatsPerEpoch(lockedEpoch);
     EXPECT_GT(stats.rewardedAmount, 0ULL);
