@@ -34,6 +34,11 @@ constexpr uint8 PULSE_DEFAULT_SCHEDULE = 1 << WEDNESDAY | 1 << FRIDAY | 1 << SUN
 constexpr uint32 PULSE_DEFAULT_INIT_TIME = 22 << 9 | 4 << 5 | 13;
 constexpr uint16 PULSE_DEFAULT_MAX_AUTO_TICKETS_PER_USER = div<uint16>(PULSE_MAX_NUMBER_OF_PLAYERS, 2);
 constexpr uint64 PULSE_CLEANUP_THRESHOLD = 75ULL;
+constexpr uint64 PULSE_ENTROPY_DOMAIN_SETTLEMENT = 0x736574746C656D74ULL; // "settlemt"
+constexpr uint64 PULSE_ENTROPY_DOMAIN_EPOCH_AUTO = 0x65706F6368617574ULL;  // "epochaut"
+constexpr uint64 PULSE_ENTROPY_DOMAIN_BOOTSTRAP_AUTO = 0x626F6F7473747270ULL; // "bootstrp"
+constexpr uint64 PULSE_ENTROPY_DOMAIN_POST_DRAW_AUTO = 0x706F737464726177ULL; // "postdraw"
+constexpr uint64 PULSE_ENTROPY_DOMAIN_MANUAL = 0x6D616E75616C6279ULL; // "manualby"
 
 constexpr uint64 PULSE_CONTRACT_ASSET_NAME = 297750254928ULL; // "PULSE"
 
@@ -69,6 +74,7 @@ public:
 	enum class EState : uint8
 	{
 		SELLING = 1 << 0,
+		AUTO_PENDING = 1 << 1,
 	};
 
 	friend EState operator|(const EState& a, const EState& b) { return static_cast<EState>(static_cast<uint8>(a) | static_cast<uint8>(b)); }
@@ -300,7 +306,9 @@ public:
 
 	struct AllocateRandomTickets_input
 	{
+		bit_4096 entropy;
 		id player;
+		uint64 entropyDomain;
 		uint16 count;
 	};
 
@@ -315,8 +323,6 @@ public:
 		uint64 randomSeed;
 		uint64 tempSeed;
 		m256i randomDigest;
-		RANDOM::BuyEntropy_input buyEntropyInput;
-		RANDOM::BuyEntropy_output buyEntropyOutput;
 		uint16 i;
 		Ticket ticket;
 		GetRandomDigits_input randomInput;
@@ -325,10 +331,27 @@ public:
 		struct RandomData
 		{
 			bit_4096 entropy;
-			AllocateRandomTickets_input allocateInput;
+			id player;
+			uint64 domain;
 			sint64 ticketCounter;
 			uint32 tick;
+			uint16 count;
 		} randomData;
+	};
+
+	struct BuyPulseEntropy_input
+	{
+	};
+	struct BuyPulseEntropy_output
+	{
+		bit_4096 entropy;
+		bit success;
+	};
+	struct BuyPulseEntropy_locals
+	{
+		RANDOM::BuyEntropy_output buyEntropyOutput;
+		RANDOM::BuyEntropy_input buyEntropyInput;
+		Entity entity;
 	};
 
 	struct BuyRandomTickets_input
@@ -349,6 +372,8 @@ public:
 		ChargeTicketsFromPlayer_output chargeOutput;
 		AllocateRandomTickets_input allocateInput;
 		AllocateRandomTickets_output allocateOutput;
+		BuyPulseEntropy_input buyEntropyInput;
+		BuyPulseEntropy_output buyEntropyOutput;
 		sint64 refundAmount;
 	};
 
@@ -739,6 +764,8 @@ public:
 
 	struct SettleRound_input
 	{
+		bit_4096 entropy;
+		uint64 entropyDomain;
 	};
 	struct SettleRound_output
 	{
@@ -758,8 +785,6 @@ public:
 		uint64 totalPrize;
 		uint64 reservedBalance;
 		m256i randomDigest;
-		RANDOM::BuyEntropy_input buyEntropyInput;
-		RANDOM::BuyEntropy_output buyEntropyOutput;
 		uint64 randomSeed;
 		GetRandomDigits_input randomInput;
 		GetRandomDigits_output randomOutput;
@@ -776,6 +801,7 @@ public:
 		struct SettleEntropyData
 		{
 			bit_4096 entropy;
+			uint64 domain;
 			sint64 ticketCounter;
 			sint64 ticketPrice;
 			uint32 tick;
@@ -785,6 +811,8 @@ public:
 
 	struct ProcessAutoTickets_input
 	{
+		bit_4096 entropy;
+		uint64 entropyDomain;
 	};
 	struct ProcessAutoTickets_output
 	{
@@ -802,14 +830,19 @@ public:
 
 	struct BEGIN_TICK_locals
 	{
+		bit_4096 entropy;
+		BuyPulseEntropy_output buyEntropyOutput;
+		SettleRound_input settleInput;
+		ProcessAutoTickets_input autoTicketsInput;
 		uint32 currentDateStamp;
 		uint8 currentDayOfWeek;
 		uint8 currentHour;
 		uint8 isWednesday;
 		uint8 isScheduledToday;
-		SettleRound_input settleInput;
+		bit entropyAttempted;
+		bit entropyAvailable;
+		BuyPulseEntropy_input buyEntropyInput;
 		SettleRound_output settleOutput;
-		ProcessAutoTickets_input autoTicketsInput;
 		ProcessAutoTickets_output autoTicketsOutput;
 	};
 
@@ -817,8 +850,6 @@ public:
 	{
 		QX::Fees_input feesInput;
 		QX::Fees_output feesOutput;
-		ProcessAutoTickets_input autoTicketsInput;
-		ProcessAutoTickets_output autoTicketsOutput;
 	};
 
 public:
@@ -893,7 +924,7 @@ public:
 
 		if (state.get().lastDrawDateStamp != PULSE_DEFAULT_INIT_TIME)
 		{
-			CALL(ProcessAutoTickets, locals.autoTicketsInput, locals.autoTicketsOutput);
+			enableAutoPending(state, true);
 		}
 	}
 
@@ -907,6 +938,24 @@ public:
 
 	BEGIN_TICK_WITH_LOCALS()
 	{
+		if (isAutoPending(state))
+		{
+			enableAutoPending(state, false);
+			if (isSellingOpen(state) && state.get().autoParticipants.population() > 0 && getSlotsLeft(state) > 0)
+			{
+				locals.entropyAttempted = true;
+				CALL(BuyPulseEntropy, locals.buyEntropyInput, locals.buyEntropyOutput);
+				locals.entropyAvailable = locals.buyEntropyOutput.success;
+				locals.entropy = locals.buyEntropyOutput.entropy;
+				if (locals.entropyAvailable)
+				{
+					locals.autoTicketsInput.entropy = locals.entropy;
+					locals.autoTicketsInput.entropyDomain = PULSE_ENTROPY_DOMAIN_EPOCH_AUTO;
+					CALL(ProcessAutoTickets, locals.autoTicketsInput, locals.autoTicketsOutput);
+				}
+			}
+		}
+
 		// Throttle draw checks to reduce per-tick cost.
 		if (mod(qpi.tick(), static_cast<uint32>(PULSE_TICK_UPDATE_PERIOD)) != 0)
 		{
@@ -934,7 +983,22 @@ public:
 		if (state.get().lastDrawDateStamp == PULSE_DEFAULT_INIT_TIME)
 		{
 			enableBuyTicket(state, true);
-			CALL(ProcessAutoTickets, locals.autoTicketsInput, locals.autoTicketsOutput);
+			if (state.get().autoParticipants.population() > 0 && getSlotsLeft(state) > 0)
+			{
+				if (!locals.entropyAttempted)
+				{
+					locals.entropyAttempted = true;
+					CALL(BuyPulseEntropy, locals.buyEntropyInput, locals.buyEntropyOutput);
+					locals.entropyAvailable = locals.buyEntropyOutput.success;
+					locals.entropy = locals.buyEntropyOutput.entropy;
+				}
+				if (locals.entropyAvailable)
+				{
+					locals.autoTicketsInput.entropy = locals.entropy;
+					locals.autoTicketsInput.entropyDomain = PULSE_ENTROPY_DOMAIN_BOOTSTRAP_AUTO;
+					CALL(ProcessAutoTickets, locals.autoTicketsInput, locals.autoTicketsOutput);
+				}
+			}
 			if (locals.isWednesday)
 			{
 				state.mut().lastDrawDateStamp = locals.currentDateStamp;
@@ -959,13 +1023,37 @@ public:
 		state.mut().lastDrawDateStamp = locals.currentDateStamp;
 		enableBuyTicket(state, false);
 
+		if (state.get().ticketCounter > 0 && !locals.entropyAttempted)
+		{
+			locals.entropyAttempted = true;
+			CALL(BuyPulseEntropy, locals.buyEntropyInput, locals.buyEntropyOutput);
+			locals.entropyAvailable = locals.buyEntropyOutput.success;
+			locals.entropy = locals.buyEntropyOutput.entropy;
+		}
+		locals.settleInput.entropy = locals.entropyAvailable ? locals.entropy : BIT4096_ZERO;
+		locals.settleInput.entropyDomain = PULSE_ENTROPY_DOMAIN_SETTLEMENT;
 		CALL(SettleRound, locals.settleInput, locals.settleOutput);
 
 		clearStateOnEndDraw(state);
 		enableBuyTicket(state, !locals.isWednesday);
 		if (!locals.isWednesday)
 		{
-			CALL(ProcessAutoTickets, locals.autoTicketsInput, locals.autoTicketsOutput);
+			if (state.get().autoParticipants.population() > 0 && getSlotsLeft(state) > 0)
+			{
+				if (!locals.entropyAttempted)
+				{
+					locals.entropyAttempted = true;
+					CALL(BuyPulseEntropy, locals.buyEntropyInput, locals.buyEntropyOutput);
+					locals.entropyAvailable = locals.buyEntropyOutput.success;
+					locals.entropy = locals.buyEntropyOutput.entropy;
+				}
+				if (locals.entropyAvailable)
+				{
+					locals.autoTicketsInput.entropy = locals.entropy;
+					locals.autoTicketsInput.entropyDomain = PULSE_ENTROPY_DOMAIN_POST_DRAW_AUTO;
+					CALL(ProcessAutoTickets, locals.autoTicketsInput, locals.autoTicketsOutput);
+				}
+			}
 		}
 	}
 
@@ -1556,7 +1644,24 @@ public:
 			return;
 		}
 
+		CALL(BuyPulseEntropy, locals.buyEntropyInput, locals.buyEntropyOutput);
+		if (!locals.buyEntropyOutput.success)
+		{
+			locals.refundAmount =
+			    static_cast<sint64>(smul(static_cast<uint64>(locals.prepareOutput.count), static_cast<uint64>(state.get().ticketPrice)));
+			if (locals.refundAmount > 0)
+			{
+				qpi.transferShareOwnershipAndPossession(PULSE_QHEART_ASSET_NAME, state.get().qheartIssuer, SELF, SELF, locals.refundAmount,
+				                                        qpi.invocator());
+			}
+			qpi.transfer(qpi.invocator(), RL_RANDOM_ENTROPY_FEE);
+			output.returnCode = EReturnCode::UNKNOWN_ERROR;
+			return;
+		}
+
+		locals.allocateInput.entropy = locals.buyEntropyOutput.entropy;
 		locals.allocateInput.player = qpi.invocator();
+		locals.allocateInput.entropyDomain = PULSE_ENTROPY_DOMAIN_MANUAL;
 		locals.allocateInput.count = locals.prepareOutput.count;
 		CALL(AllocateRandomTickets, locals.allocateInput, locals.allocateOutput);
 
@@ -1667,6 +1772,27 @@ public:
 	}
 
 private:
+	PRIVATE_PROCEDURE_WITH_LOCALS(BuyPulseEntropy)
+	{
+		qpi.getEntity(SELF, locals.entity);
+		if ((locals.entity.incomingAmount - locals.entity.outgoingAmount) < RL_RANDOM_ENTROPY_FEE)
+		{
+			return;
+		}
+
+		locals.buyEntropyInput.collateralTier = RL_RANDOM_COLLATERAL_TIER;
+		locals.buyEntropyInput.numberOfBits = RL_RANDOM_ENTROPY_BITS;
+		locals.buyEntropyInput.trustee = id::zero();
+		INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, RL_RANDOM_ENTROPY_FEE);
+		if (interContractCallError != NoCallError || RL::isZeroEntropy(locals.buyEntropyOutput.entropy))
+		{
+			return;
+		}
+
+		output.entropy = locals.buyEntropyOutput.entropy;
+		output.success = true;
+	}
+
 	PRIVATE_PROCEDURE_WITH_LOCALS(ProcessAutoTickets)
 	{
 		if (!isSellingOpen(state) || state.get().autoParticipants.population() == 0)
@@ -1711,6 +1837,8 @@ private:
 			}
 
 			locals.allocateInput.player = locals.entry.player;
+			locals.allocateInput.entropy = input.entropy;
+			locals.allocateInput.entropyDomain = input.entropyDomain;
 			locals.allocateInput.count = static_cast<uint16>(locals.toBuy);
 			CALL(AllocateRandomTickets, locals.allocateInput, locals.allocateOutput);
 			if (locals.allocateOutput.returnCode != EReturnCode::SUCCESS)
@@ -1754,24 +1882,14 @@ private:
 			return;
 		}
 
-		qpi.getEntity(SELF, locals.entity);
-		if ((locals.entity.incomingAmount - locals.entity.outgoingAmount) < RL_RANDOM_ENTROPY_FEE)
+		if (RL::isZeroEntropy(input.entropy))
 		{
 			CALL(ReturnAllTickets, locals.returnAllTicketsInput, locals.returnAllTicketsOutput);
 			return;
 		}
 
-		locals.buyEntropyInput.collateralTier = RL_RANDOM_COLLATERAL_TIER;
-		locals.buyEntropyInput.numberOfBits = RL_RANDOM_ENTROPY_BITS;
-		locals.buyEntropyInput.trustee = id::zero();
-		INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, RL_RANDOM_ENTROPY_FEE);
-		if (interContractCallError != NoCallError || RL::isZeroEntropy(locals.buyEntropyOutput.entropy))
-		{
-			CALL(ReturnAllTickets, locals.returnAllTicketsInput, locals.returnAllTicketsOutput);
-			return;
-		}
-
-		locals.settleEntropyData.entropy = locals.buyEntropyOutput.entropy;
+		locals.settleEntropyData.entropy = input.entropy;
+		locals.settleEntropyData.domain = input.entropyDomain;
 		locals.settleEntropyData.ticketCounter = state.get().ticketCounter;
 		locals.settleEntropyData.ticketPrice = state.get().ticketPrice;
 		locals.settleEntropyData.tick = qpi.tick();
@@ -1954,20 +2072,18 @@ private:
 			return;
 		}
 
-		locals.buyEntropyInput.collateralTier = RL_RANDOM_COLLATERAL_TIER;
-		locals.buyEntropyInput.numberOfBits = RL_RANDOM_ENTROPY_BITS;
-		locals.buyEntropyInput.trustee = id::zero();
-		INVOKE_OTHER_CONTRACT_PROCEDURE(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, RL_RANDOM_ENTROPY_FEE);
-		if (interContractCallError != NoCallError || RL::isZeroEntropy(locals.buyEntropyOutput.entropy))
+		if (RL::isZeroEntropy(input.entropy))
 		{
 			output.returnCode = EReturnCode::UNKNOWN_ERROR;
 			return;
 		}
 
-		locals.randomData.entropy = locals.buyEntropyOutput.entropy;
-		locals.randomData.allocateInput = input;
+		locals.randomData.entropy = input.entropy;
+		locals.randomData.player = input.player;
+		locals.randomData.domain = input.entropyDomain;
 		locals.randomData.ticketCounter = state.get().ticketCounter;
 		locals.randomData.tick = qpi.tick();
+		locals.randomData.count = input.count;
 
 		locals.randomDigest = qpi.K12(locals.randomData);
 		locals.randomSeed = locals.randomDigest.u64._0;
@@ -2065,6 +2181,16 @@ protected:
 	static bool isSellingOpen(const QPI::ContractState<StateData, CONTRACT_INDEX>& state)
 	{
 		return (state.get().currentState & EState::SELLING) != 0;
+	}
+
+	static void enableAutoPending(QPI::ContractState<StateData, CONTRACT_INDEX>& state, bool enable)
+	{
+		state.mut().currentState = enable ? state.get().currentState | EState::AUTO_PENDING : state.get().currentState & ~EState::AUTO_PENDING;
+	}
+
+	static bool isAutoPending(const QPI::ContractState<StateData, CONTRACT_INDEX>& state)
+	{
+		return (state.get().currentState & EState::AUTO_PENDING) != 0;
 	}
 
 	static void getWinnerCounter(const QPI::ContractState<StateData, CONTRACT_INDEX>& state, uint64& outCounter)

@@ -114,6 +114,23 @@ public:
 
 	void forceSelling(bool enable) { enableBuyTicket(asMutState(), enable); }
 	bool isSelling() const { return isSellingOpen(asState()); }
+	bool hasAutoPending() const { return isAutoPending(asState()); }
+
+	void addAutoParticipant(const id& player, sint64 deposit, uint16 desiredTickets)
+	{
+		AutoParticipant entry{};
+		entry.player = player;
+		entry.deposit = deposit;
+		entry.desiredTickets = desiredTickets;
+		autoParticipants.set(player, entry);
+	}
+
+	AutoParticipant getAutoParticipant(const id& player) const
+	{
+		AutoParticipant entry{};
+		autoParticipants.get(player, entry);
+		return entry;
+	}
 
 	ValidateDigits_output callValidateDigits(const QPI::QpiContextFunctionCall& qpi, const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED>& digits) const
 	{
@@ -312,6 +329,7 @@ public:
 	{
 		PULSE::SettleRound_locals::SettleEntropyData settleEntropyData{};
 		settleEntropyData.entropy = entropy;
+		settleEntropyData.domain = PULSE_ENTROPY_DOMAIN_SETTLEMENT;
 		settleEntropyData.ticketCounter = (ticketCounter == static_cast<uint64>(-1)) ? state()->getTicketCounter() : ticketCounter;
 		settleEntropyData.ticketPrice = state()->getTicketPriceInternal();
 		settleEntropyData.tick = system.tick + (PULSE_TICK_UPDATE_PERIOD - (system.tick % PULSE_TICK_UPDATE_PERIOD));
@@ -663,6 +681,43 @@ TEST(ContractPulse_Static, ComputePrizeSelectsBestReward)
 
 	const Array<uint8, PULSE_PLAYER_DIGITS_ALIGNED> none = makePlayerDigits(9, 9, 9, 9, 9, 9);
 	EXPECT_EQ(ctl.state()->callComputePrize(winning, none), 0u);
+}
+
+TEST(ContractPulse_Static, EntropyDomainsProduceIndependentDeterministicDigests)
+{
+	PULSE::AllocateRandomTickets_locals::RandomData data{};
+	for (uint64 i = 0; i < RL_RANDOM_ENTROPY_BITS; ++i)
+	{
+		data.entropy.set(i, (i & 1ULL) != 0);
+	}
+	data.player = id(1, 2, 3, 4);
+	data.ticketCounter = 7;
+	data.tick = 11;
+	data.count = 2;
+
+	m256i epochDigest{};
+	m256i epochDigestAgain{};
+	m256i bootstrapDigest{};
+	m256i postDrawDigest{};
+	m256i settlementDigest{};
+
+	data.domain = PULSE_ENTROPY_DOMAIN_EPOCH_AUTO;
+	KangarooTwelve(reinterpret_cast<const uint8*>(&data), sizeof(data), reinterpret_cast<uint8*>(&epochDigest), sizeof(epochDigest));
+	KangarooTwelve(reinterpret_cast<const uint8*>(&data), sizeof(data), reinterpret_cast<uint8*>(&epochDigestAgain), sizeof(epochDigestAgain));
+	data.domain = PULSE_ENTROPY_DOMAIN_BOOTSTRAP_AUTO;
+	KangarooTwelve(reinterpret_cast<const uint8*>(&data), sizeof(data), reinterpret_cast<uint8*>(&bootstrapDigest), sizeof(bootstrapDigest));
+	data.domain = PULSE_ENTROPY_DOMAIN_POST_DRAW_AUTO;
+	KangarooTwelve(reinterpret_cast<const uint8*>(&data), sizeof(data), reinterpret_cast<uint8*>(&postDrawDigest), sizeof(postDrawDigest));
+	data.domain = PULSE_ENTROPY_DOMAIN_SETTLEMENT;
+	KangarooTwelve(reinterpret_cast<const uint8*>(&data), sizeof(data), reinterpret_cast<uint8*>(&settlementDigest), sizeof(settlementDigest));
+
+	EXPECT_EQ(epochDigest, epochDigestAgain);
+	EXPECT_NE(epochDigest, bootstrapDigest);
+	EXPECT_NE(epochDigest, postDrawDigest);
+	EXPECT_NE(epochDigest, settlementDigest);
+	EXPECT_NE(bootstrapDigest, postDrawDigest);
+	EXPECT_NE(bootstrapDigest, settlementDigest);
+	EXPECT_NE(postDrawDigest, settlementDigest);
 }
 
 // Prevent stale config from leaking across epochs.
@@ -1462,6 +1517,27 @@ TEST(ContractPulse_Public, SettleRound_ZeroEntropy_ReturnsTicketsAndDoesNotRecor
 	EXPECT_EQ(getBalance(ctl.pulseSelf()), RL_RANDOM_ENTROPY_FEE);
 }
 
+TEST(ContractPulse_Public, SettleRound_InsufficientQuReturnsTicketsAndClearsRound)
+{
+	ContractTestingPulse ctl;
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
+	ctl.setDateTime(2025, 1, 9, 12);
+	ctl.beginEpoch();
+
+	const id player = id::randomValue();
+	ctl.transferQHeart(issuance, player, PULSE_TICKET_PRICE_DEFAULT);
+	const uint64 balanceBefore = ctl.qheartBalanceOf(player);
+	ASSERT_EQ(ctl.buyTicket(player, makePlayerDigits(0, 1, 2, 3, 4, 5)).returnCode, PULSE::EReturnCode::SUCCESS);
+	ctl.seedRandomEntropy(0x7171ULL);
+
+	ctl.setDateTime(2025, 1, 10, 12);
+	ctl.forceBeginTick();
+
+	EXPECT_EQ(ctl.state()->getTicketCounter(), 0u);
+	EXPECT_EQ(ctl.qheartBalanceOf(player), balanceBefore);
+	EXPECT_EQ(ctl.randomState()->earnedAmount, 0u);
+}
+
 // ============================================================================
 // SYSTEM PROCEDURES
 // ============================================================================
@@ -1478,6 +1554,94 @@ TEST(ContractPulse_System, BeginEpochRestoresDefaultsAndOpensSelling)
 	EXPECT_EQ(ctl.state()->getScheduleInternal(), PULSE_DEFAULT_SCHEDULE);
 	EXPECT_EQ(ctl.state()->getDrawHourInternal(), PULSE_DEFAULT_DRAW_HOUR);
 	EXPECT_TRUE(ctl.state()->isSelling());
+}
+
+TEST(ContractPulse_System, BeginEpochDefersAutoPurchaseUntilNextTick)
+{
+	ContractTestingPulse ctl;
+	ctl.setDateTime(2025, 1, 9, 12);
+
+	ctl.beginEpoch();
+
+	EXPECT_TRUE(ctl.state()->isSelling());
+	EXPECT_TRUE(ctl.state()->hasAutoPending());
+	EXPECT_EQ(ctl.state()->getTicketCounter(), 0u);
+
+	ctl.beginTick();
+
+	EXPECT_FALSE(ctl.state()->hasAutoPending());
+	EXPECT_EQ(ctl.state()->getTicketCounter(), 0u);
+}
+
+TEST(ContractPulse_System, NextTickProcessesPendingAutoPurchase)
+{
+	ContractTestingPulse ctl;
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
+	const id player = id::randomValue();
+	const sint64 deposit = static_cast<sint64>(PULSE_TICKET_PRICE_DEFAULT) * 2;
+	ctl.transferQHeart(issuance, ctl.pulseSelf(), deposit);
+	ctl.state()->addAutoParticipant(player, deposit, 1);
+	increaseEnergy(ctl.pulseSelf(), RL_RANDOM_ENTROPY_FEE);
+	ctl.seedRandomEntropy(0x6162ULL);
+	ctl.setDateTime(2025, 1, 9, 12);
+
+	ctl.beginEpoch();
+	ASSERT_TRUE(ctl.state()->hasAutoPending());
+	ASSERT_EQ(ctl.state()->getTicketCounter(), 0u);
+	ctl.beginTick();
+
+	EXPECT_FALSE(ctl.state()->hasAutoPending());
+	EXPECT_EQ(ctl.state()->getTicketCounter(), 1u);
+	EXPECT_EQ(ctl.state()->getTicket(0).player, player);
+	EXPECT_EQ(ctl.state()->getAutoParticipant(player).deposit, deposit - static_cast<sint64>(PULSE_TICKET_PRICE_DEFAULT));
+}
+
+TEST(ContractPulse_System, AutoPendingPreservesDepositWhenPulseCannotBuyEntropy)
+{
+	ContractTestingPulse ctl;
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(1000000);
+	const id player = id::randomValue();
+	const sint64 deposit = static_cast<sint64>(PULSE_TICKET_PRICE_DEFAULT) * 2;
+	ctl.transferQHeart(issuance, ctl.pulseSelf(), deposit);
+	ctl.state()->addAutoParticipant(player, deposit, 1);
+	ctl.setDateTime(2025, 1, 9, 12);
+
+	ctl.beginEpoch();
+	ctl.beginTick();
+
+	EXPECT_FALSE(ctl.state()->hasAutoPending());
+	EXPECT_EQ(ctl.state()->getTicketCounter(), 0u);
+	EXPECT_EQ(ctl.state()->getAutoParticipant(player).deposit, deposit);
+}
+
+TEST(ContractPulse_System, BeginTickSharesOneEntropyPurchaseAcrossAutoDrawAndPostDrawAuto)
+{
+	ContractTestingPulse ctl;
+	const ContractTestingPulse::QHeartIssuance& issuance = ctl.issueQHeart(2000000);
+	const id autoPlayer = id::randomValue();
+	const id manualPlayer = id::randomValue();
+	const sint64 autoDeposit = static_cast<sint64>(PULSE_TICKET_PRICE_DEFAULT) * 3;
+
+	EXPECT_EQ(ctl.setFees(ctl.state()->getQHeartIssuer(), 0, 0, 0, 0).returnCode, PULSE::EReturnCode::SUCCESS);
+	ctl.endEpoch();
+	ctl.transferQHeart(issuance, ctl.pulseSelf(), autoDeposit);
+	ctl.transferQHeart(issuance, manualPlayer, PULSE_TICKET_PRICE_DEFAULT);
+	ctl.state()->addAutoParticipant(autoPlayer, autoDeposit, 1);
+	ctl.setDateTime(2025, 1, 10, 12); // Friday
+	ctl.beginEpoch();
+	ASSERT_EQ(ctl.buyTicket(manualPlayer, makePlayerDigits(0, 1, 2, 3, 4, 5)).returnCode, PULSE::EReturnCode::SUCCESS);
+	ctl.state()->setLastDrawDateStamp(0);
+	increaseEnergy(ctl.pulseSelf(), RL_RANDOM_ENTROPY_FEE);
+	ctl.seedRandomEntropy(0x5151ULL);
+	const uint64 earnedBefore = ctl.randomState()->earnedAmount;
+
+	ctl.forceBeginTick();
+
+	EXPECT_FALSE(ctl.state()->hasAutoPending());
+	EXPECT_EQ(ctl.randomState()->earnedAmount, earnedBefore + RL_RANDOM_ENTROPY_FEE);
+	EXPECT_EQ(ctl.state()->getTicketCounter(), 1u);
+	EXPECT_EQ(ctl.state()->getAutoParticipant(autoPlayer).deposit,
+	          autoDeposit - static_cast<sint64>(PULSE_TICKET_PRICE_DEFAULT) * 2);
 }
 
 // Ensure epoch end applies pending config and clears state.
