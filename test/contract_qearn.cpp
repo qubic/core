@@ -179,7 +179,55 @@ public:
 
         for (unsigned int epChanges = 0; epChanges <= 52; ++epChanges)
         {
-            epochChangesToUnlockParams.push_back(UnlockTableEntry{ 0, 0 });
+            const unsigned int lockedEpochs = (epChanges == 0) ? 0 : epChanges - 1;
+            UnlockTableEntry params{ 0, 0 };
+
+            if (lockedEpochs >= 4 && lockedEpochs <= 11)
+            {
+                params = { 5, 45 };
+            }
+            else if (lockedEpochs >= 12 && lockedEpochs <= 15)
+            {
+                params = { 10, 45 };
+            }
+            else if (lockedEpochs >= 16 && lockedEpochs <= 19)
+            {
+                params = { 15, 40 };
+            }
+            else if (lockedEpochs >= 20 && lockedEpochs <= 23)
+            {
+                params = { 20, 40 };
+            }
+            else if (lockedEpochs >= 24 && lockedEpochs <= 27)
+            {
+                params = { 25, 35 };
+            }
+            else if (lockedEpochs >= 28 && lockedEpochs <= 31)
+            {
+                params = { 30, 35 };
+            }
+            else if (lockedEpochs >= 32 && lockedEpochs <= 35)
+            {
+                params = { 35, 35 };
+            }
+            else if (lockedEpochs >= 36 && lockedEpochs <= 39)
+            {
+                params = { 40, 30 };
+            }
+            else if (lockedEpochs >= 40 && lockedEpochs <= 43)
+            {
+                params = { 45, 30 };
+            }
+            else if (lockedEpochs >= 44 && lockedEpochs <= 47)
+            {
+                params = { 50, 30 };
+            }
+            else if (lockedEpochs >= 48 && lockedEpochs <= 51)
+            {
+                params = { 55, 25 };
+            }
+
+            epochChangesToUnlockParams.push_back(params);
         }
     }
 
@@ -303,6 +351,15 @@ public:
     std::map<uint16, EpochData> allEpochData;
 
     std::map<id, unsigned long long> amountUnlockPerUser;
+
+    void ensureEpochDataWindow(uint16 epoch)
+    {
+        const uint16 beginEpoch = std::max((int)QEARN_INITIAL_EPOCH, (int)epoch - 52);
+        for (uint16 t = beginEpoch; t <= epoch; ++t)
+        {
+            allEpochData[t];
+        }
+    }
 
     void simulateDonation(const unsigned long long donationAmount)
     {
@@ -462,7 +519,7 @@ public:
         {
             EXPECT_GE(amountBefore, amountUnlock);
             uint64 expectedAmountAfter = amountBefore - amountUnlock;
-            if (lockingEpoch != system.epoch)
+            if (lockingEpoch >= QEARN_FAIRNESS_ACTIVATION_EPOCH && lockingEpoch != system.epoch)
             {
                 expectedAmountAfter = 0;
             }
@@ -476,15 +533,22 @@ public:
             uint16 epochTransitions = system.epoch - lockingEpoch;
             unsigned long long rewardFactorTenmillionth = getAndCheckRewardFactorTenmillionth(lockingEpoch);
             unsigned long long commonFactor = QPI::div(rewardFactorTenmillionth * amountUnlocked, 100ULL);
-            unsigned long long amountReward = QPI::div(commonFactor * epochChangesToUnlockParams[epochTransitions].rewardPercent, 10000000ULL);
-            unsigned long long amountBurn = QPI::div(commonFactor * epochChangesToUnlockParams[epochTransitions].burnPercent, 10000000ULL);
+            unsigned long long rewardPercent = epochChangesToUnlockParams[epochTransitions].rewardPercent;
+            unsigned long long burnPercent = epochChangesToUnlockParams[epochTransitions].burnPercent;
+            if (lockingEpoch >= QEARN_FAIRNESS_ACTIVATION_EPOCH)
+            {
+                rewardPercent = 0;
+                burnPercent = 0;
+            }
+            unsigned long long amountReward = QPI::div(commonFactor * rewardPercent, 10000000ULL);
+            unsigned long long amountBurn = QPI::div(commonFactor * burnPercent, 10000000ULL);
             {
                 // Check for overflows
                 double commonFactorError = fabs((double(rewardFactorTenmillionth) * double(amountUnlocked) / 100.0) - commonFactor);
                 EXPECT_LT(commonFactorError, 1e3);
-                double amountRewardError = fabs((double(commonFactor) * double(epochChangesToUnlockParams[epochTransitions].rewardPercent) / 10000000.0) - amountReward);
+                double amountRewardError = fabs((double(commonFactor) * double(rewardPercent) / 10000000.0) - amountReward);
                 EXPECT_LE(amountRewardError, 1);
-                double amountBurnError = fabs((double(commonFactor) * double(epochChangesToUnlockParams[epochTransitions].burnPercent) / 10000000.0) - amountBurn);
+                double amountBurnError = fabs((double(commonFactor) * double(burnPercent) / 10000000.0) - amountBurn);
                 EXPECT_LE(amountBurnError, 1);
             }
 
@@ -762,9 +826,10 @@ TEST(TestContractQearn, EarlyUnlockForfeitsBonusToRemainingLockers)
     const id earlyUser = getUser(1002);
     constexpr uint64 stake = 1000000000ULL;
     constexpr uint64 bonus = 100000000ULL;
-    constexpr uint16 lockedEpoch = QEARN_INITIAL_EPOCH;
+    constexpr uint16 lockedEpoch = QEARN_FAIRNESS_ACTIVATION_EPOCH;
 
-    system.epoch = QEARN_INITIAL_EPOCH - 1;
+    qearn.ensureEpochDataWindow(lockedEpoch);
+    system.epoch = lockedEpoch - 1;
     qearn.beginEpoch();
     qearn.simulateDonation(bonus);
     qearn.endEpoch();
@@ -821,6 +886,47 @@ TEST(TestContractQearn, EarlyUnlockForfeitsBonusToRemainingLockers)
     const sint64 loyalBalanceBeforePayout = getBalance(loyalUser);
     qearn.endEpochAndCheck();
     EXPECT_EQ(getBalance(loyalUser), loyalBalanceBeforePayout + stake + bonus);
+}
+
+TEST(TestContractQearn, LegacyLockKeepsOriginalEarlyUnlockTermsAfterActivation)
+{
+    ContractTestingQearn qearn;
+    const id legacyUser = getUser(1003);
+    constexpr uint64 stake = 1000000000ULL;
+    constexpr uint64 partialUnlock = 400000000ULL;
+    constexpr uint64 bonus = 100000000ULL;
+    constexpr uint16 lockedEpoch = QEARN_FAIRNESS_ACTIVATION_EPOCH - 1;
+    constexpr uint16 unlockEpoch = QEARN_FAIRNESS_ACTIVATION_EPOCH + 5;
+
+    qearn.ensureEpochDataWindow(lockedEpoch);
+    qearn.ensureEpochDataWindow(unlockEpoch);
+    system.epoch = lockedEpoch - 1;
+    qearn.beginEpoch();
+    qearn.simulateDonation(bonus);
+    qearn.endEpoch();
+
+    system.epoch = lockedEpoch;
+    qearn.beginEpoch();
+    increaseEnergy(legacyUser, stake);
+    ASSERT_TRUE(qearn.lockAndCheck(legacyUser, stake));
+    qearn.endEpoch();
+
+    for (system.epoch = lockedEpoch + 1; system.epoch < unlockEpoch; ++system.epoch)
+    {
+        qearn.beginEpoch();
+        qearn.endEpoch();
+    }
+
+    system.epoch = unlockEpoch;
+    qearn.beginEpoch();
+    const sint64 legacyBalanceBefore = getBalance(legacyUser);
+    ASSERT_TRUE(qearn.unlockAndCheck(legacyUser, lockedEpoch, partialUnlock));
+    EXPECT_EQ(qearn.getUserLockedInfo(lockedEpoch, legacyUser), stake - partialUnlock);
+    EXPECT_GT(getBalance(legacyUser), legacyBalanceBefore + partialUnlock + 1);
+
+    QEARN::getBurnedAndBoostedStatsPerEpoch_output stats = qearn.getBurnedAndBoostedStatsPerEpoch(lockedEpoch);
+    EXPECT_GT(stats.rewardedAmount, 0ULL);
+    EXPECT_GT(stats.burnedAmount, 0ULL);
 }
 
 // Test case for gap removal logic in overflow check (lines 635-656 in Qearn.h)
