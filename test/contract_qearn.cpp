@@ -888,6 +888,29 @@ TEST(TestContractQearn, EarlyUnlockForfeitsBonusToRemainingLockers)
     EXPECT_EQ(getBalance(loyalUser), loyalBalanceBeforePayout + stake + bonus);
 }
 
+TEST(TestContractQearn, ActivationLockCannotUnlockInLockEpoch)
+{
+    ContractTestingQearn qearn;
+    const id user = getUser(1004);
+    constexpr uint64 stake = 1000000000ULL;
+    constexpr uint64 bonus = 100000000ULL;
+    constexpr uint16 lockedEpoch = QEARN_FAIRNESS_ACTIVATION_EPOCH;
+
+    qearn.ensureEpochDataWindow(lockedEpoch);
+    system.epoch = lockedEpoch - 1;
+    qearn.beginEpoch();
+    qearn.simulateDonation(bonus);
+    qearn.endEpoch();
+
+    system.epoch = lockedEpoch;
+    qearn.beginEpoch();
+    increaseEnergy(user, stake);
+    ASSERT_TRUE(qearn.lockAndCheck(user, stake));
+
+    ASSERT_FALSE(qearn.unlockAndCheck(user, lockedEpoch, QEARN_MINIMUM_LOCKING_AMOUNT, false));
+    EXPECT_EQ(qearn.getUserLockedInfo(lockedEpoch, user), stake);
+}
+
 TEST(TestContractQearn, LegacyLockKeepsOriginalEarlyUnlockTermsAfterActivation)
 {
     ContractTestingQearn qearn;
