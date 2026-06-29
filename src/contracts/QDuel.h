@@ -620,7 +620,7 @@ public:
 			return;
 		}
 
-		if (input.stake < state.get().minimumDuelAmount || (input.maxStake > 0 && input.maxStake < input.stake))
+		if ((input.stake < state.get().minimumDuelAmount || input.stake < (RL_RANDOM_ENTROPY_FEE * 2)) || (input.maxStake > 0 && input.maxStake < input.stake))
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 

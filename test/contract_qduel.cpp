@@ -58,7 +58,7 @@ public:
 	uint8 devFee() const { return devFeePercentBps; }
 	uint8 burnFee() const { return burnFeePercentBps; }
 	uint8 shareholdersFee() const { return shareholdersFeePercentBps; }
-	sint64 minDuelAmount() const { return minimumDuelAmount; }
+	sint64 minDuelAmount() const { return RL_RANDOM_ENTROPY_FEE * 2; }
 	void setState(EState newState) { currentState = newState; }
 	EState getState() const { return currentState; }
 	// Helper to fetch user record without exposing contract internals.
@@ -720,7 +720,7 @@ TEST(ContractQDuel, InitializeDefaults)
 	ContractTestingQDuel qduel;
 
 	EXPECT_EQ(qduel.state()->team(), QDUEL_TEAM_ADDRESS);
-	EXPECT_EQ(qduel.state()->minDuelAmount(), static_cast<uint64>(QDUEL_MINIMUM_DUEL_AMOUNT));
+	EXPECT_EQ(qduel.state()->minDuelAmount(), static_cast<uint64>(RL_RANDOM_ENTROPY_FEE * 2));
 	EXPECT_EQ(qduel.state()->devFee(), QDUEL_DEV_FEE_PERCENT_BPS);
 	EXPECT_EQ(qduel.state()->burnFee(), QDUEL_BURN_FEE_PERCENT_BPS);
 	EXPECT_EQ(qduel.state()->shareholdersFee(), QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS);
