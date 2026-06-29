@@ -2,7 +2,7 @@ using namespace QPI;
 
 constexpr uint16 QDUEL_MAX_NUMBER_OF_ROOMS = 512;
 constexpr uint64 QDUEL_MAX_NUMBER_OF_WINNER = 128;
-constexpr uint16 QDUEL_MINIMUM_DUEL_AMOUNT = RL_RANDOM_ENTROPY_FEE * 2;
+constexpr uint16 QDUEL_MINIMUM_DUEL_AMOUNT = 10000;
 constexpr uint8 QDUEL_DEV_FEE_PERCENT_BPS = 15;          // 0.15% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_BURN_FEE_PERCENT_BPS = 30;         // 0.3% * QDUEL_PERCENT_SCALE
 constexpr uint8 QDUEL_SHAREHOLDERS_FEE_PERCENT_BPS = 55; // 0.55% * QDUEL_PERCENT_SCALE
@@ -345,16 +345,6 @@ public:
 		CloseRoomInternal_output closeRoomInternalOutput;
 	};
 
-	struct SetMinimumDuelAmount_input
-	{
-		sint64 newMinimumDuelAmount;
-	};
-
-	struct SetMinimumDuelAmount_output
-	{
-		EReturnCode returnCode;
-	};
-
 	struct GetPercentFees_input
 	{
 	};
@@ -513,7 +503,6 @@ public:
 		REGISTER_USER_PROCEDURE(Deposit, 5);
 		REGISTER_USER_PROCEDURE(Withdraw, 6);
 		REGISTER_USER_PROCEDURE(CloseRoom, 7);
-		REGISTER_USER_PROCEDURE(SetMinimumDuelAmount, 8);
 
 		REGISTER_USER_FUNCTION(GetPercentFees, 1);
 		REGISTER_USER_FUNCTION(GetRooms, 2);
@@ -623,7 +612,7 @@ public:
 			return;
 		}
 
-		if (qpi.invocationReward() < state.get().minimumDuelAmount)
+		if (qpi.invocationReward() < state.get().minimumDuelAmount || qpi.invocationReward() < (RL_RANDOM_ENTROPY_FEE * 2))
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
 
@@ -1047,30 +1036,6 @@ public:
 		CALL(CloseRoomInternal, locals.closeRoomInternalInput, locals.closeRoomInternalOutput);
 
 		output.returnCode = locals.closeRoomInternalOutput.returnCode;
-	}
-
-	PUBLIC_PROCEDURE(SetMinimumDuelAmount)
-	{
-		if (qpi.invocationReward() > 0)
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-		}
-
-		if (qpi.invocator() != state.get().teamAddress)
-		{
-			output.returnCode = EReturnCode::ACCESS_DENIED;
-			return;
-		}
-
-		if (input.newMinimumDuelAmount < 0)
-		{
-			output.returnCode = EReturnCode::INVALID_VALUE;
-			return;
-		}
-
-		state.mut().minimumDuelAmount = input.newMinimumDuelAmount;
-
-		output.returnCode = EReturnCode::SUCCESS;
 	}
 
 protected:
