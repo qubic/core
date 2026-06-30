@@ -133,6 +133,7 @@ class ContractTestingRL : protected ContractTesting
 public:
 	ContractTestingRL()
 	{
+		system.tick = 0;
 		initEmptySpectrum();
 		initEmptyUniverse();
 		INIT_CONTRACT(RANDOM);
