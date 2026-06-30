@@ -113,7 +113,6 @@ public:
 	{
 		id player;
 		sint64 deposit;
-		sint64 entropyDeposit;
 		uint16 desiredTickets;
 	};
 
