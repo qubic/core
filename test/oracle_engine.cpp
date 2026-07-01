@@ -1924,3 +1924,166 @@ TEST(PriceOracle, SubscriptionFee)
 	EXPECT_EQ(Price::getSubscriptionFee(query, 1024 * 60000), 133);
 	EXPECT_EQ(Price::getSubscriptionFee(query, 2047 * 60000), 133);
 }
+
+// --- EvmErc20Transfer oracle interface (cross-chain ERC20 transfer read) ---
+
+// The query/reply structs must fit in a transaction and must agree with the size table registered
+// in oracle_interfaces_def.h. Their sizes are also pinned so accidental layout changes (which would
+// break the reply digest that computors must agree on) are caught.
+TEST(EvmErc20TransferOracle, DataContract)
+{
+	using OI::EvmErc20Transfer;
+
+	// registered at index 3
+	EXPECT_EQ(EvmErc20Transfer::oracleInterfaceIndex, 3u);
+	EXPECT_LT(EvmErc20Transfer::oracleInterfaceIndex, OI::oracleInterfacesCount);
+
+	// fits within transaction limits
+	EXPECT_LE(sizeof(EvmErc20Transfer::OracleQuery), (size_t)MAX_ORACLE_QUERY_SIZE);
+	EXPECT_LE(sizeof(EvmErc20Transfer::OracleReply), (size_t)MAX_ORACLE_REPLY_SIZE);
+
+	// pinned sizes (no padding holes -> canonical bytes for the reply digest)
+	EXPECT_EQ(sizeof(EvmErc20Transfer::OracleQuery), 144u);
+	EXPECT_EQ(sizeof(EvmErc20Transfer::OracleReply), 72u);
+
+	// registry size table matches the actual structs
+	EXPECT_EQ(OI::oracleInterfaces[EvmErc20Transfer::oracleInterfaceIndex].querySize, sizeof(EvmErc20Transfer::OracleQuery));
+	EXPECT_EQ(OI::oracleInterfaces[EvmErc20Transfer::oracleInterfaceIndex].replySize, sizeof(EvmErc20Transfer::OracleReply));
+}
+
+// The fee must be accepted by the engine (>= MIN_ORACLE_QUERY_FEE) and must be reachable through the
+// type-erased function pointer registered by initOracleInterfaces().
+TEST(EvmErc20TransferOracle, QueryFee)
+{
+	using OI::EvmErc20Transfer;
+
+	EXPECT_TRUE(OI::initOracleInterfaces());
+
+	EvmErc20Transfer::OracleQuery query{};
+	query.chainId = OI::Evm::ChainId::ethereum;
+
+	EXPECT_EQ(EvmErc20Transfer::getQueryFee(query), 1000);
+	EXPECT_GE(EvmErc20Transfer::getQueryFee(query), MIN_ORACLE_QUERY_FEE);
+
+	// dispatched through the registry pointer gives the same value
+	auto* feeFunc = OI::getOracleQueryFeeFunc[EvmErc20Transfer::oracleInterfaceIndex];
+	ASSERT_NE(feeFunc, nullptr);
+	EXPECT_EQ(feeFunc(&query), 1000);
+}
+
+TEST(EvmErc20TransferOracle, ChainIds)
+{
+	namespace Evm = OI::Evm;
+
+	// values from the chain-id table
+	EXPECT_EQ(Evm::ChainId::ethereum, 1u);
+	EXPECT_EQ(Evm::ChainId::optimism, 10u);
+	EXPECT_EQ(Evm::ChainId::bsc, 56u);
+	EXPECT_EQ(Evm::ChainId::polygon, 137u);
+	EXPECT_EQ(Evm::ChainId::fantom, 250u);
+	EXPECT_EQ(Evm::ChainId::base, 8453u);
+	EXPECT_EQ(Evm::ChainId::avalanche, 43114u);
+	EXPECT_EQ(Evm::ChainId::arbitrum, 42161u);
+
+	// every listed chain is recognized
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::ethereum));
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::optimism));
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::bsc));
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::polygon));
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::fantom));
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::base));
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::avalanche));
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::arbitrum));
+
+	// unknown chain ids are rejected
+	EXPECT_FALSE(Evm::isSupportedChain(0));
+	EXPECT_FALSE(Evm::isSupportedChain(2));        // a real but unsupported chain id
+	EXPECT_FALSE(Evm::isSupportedChain(999999));
+}
+
+// Constraint flags must be distinct single bits so they can be OR-combined; result codes must have
+// success == 0 and all failure reasons distinct and non-zero.
+TEST(EvmErc20TransferOracle, FlagsAndResultCodes)
+{
+	using E = OI::EvmErc20Transfer;
+
+	const QPI::uint64 flags[] = {
+		E::CONSTRAINT_TIME_RANGE, E::CONSTRAINT_BLOCK_HEIGHT, E::CONSTRAINT_SOURCE, E::CONSTRAINT_DEST,
+	};
+	EXPECT_EQ(E::CONSTRAINT_NONE, 0u);
+	for (unsigned i = 0; i < 4; ++i)
+	{
+		// power of two (single bit)
+		EXPECT_NE(flags[i], 0u);
+		EXPECT_EQ(flags[i] & (flags[i] - 1), 0u);
+		// pairwise disjoint
+		for (unsigned j = i + 1; j < 4; ++j)
+			EXPECT_EQ(flags[i] & flags[j], 0u);
+	}
+	// combinable into a mask
+	const QPI::uint64 all = E::CONSTRAINT_TIME_RANGE | E::CONSTRAINT_BLOCK_HEIGHT | E::CONSTRAINT_SOURCE | E::CONSTRAINT_DEST;
+	EXPECT_EQ(all, 0xfu);
+
+	EXPECT_EQ(E::RESULT_SUCCESS, 0u);
+	const QPI::uint64 failureCodes[] = {
+		E::RESULT_BAD_QUERY, E::RESULT_CHAIN_UNSUPPORTED, E::RESULT_TX_NOT_FOUND, E::RESULT_TX_NOT_CONFIRMED,
+		E::RESULT_NO_ERC20_TRANSFER, E::RESULT_MULTIPLE_ERC20_TRANSFER, E::RESULT_CONSTRAINT_TIME_RANGE,
+		E::RESULT_CONSTRAINT_BLOCK_HEIGHT, E::RESULT_CONSTRAINT_SOURCE, E::RESULT_CONSTRAINT_DEST,
+	};
+	const unsigned n = sizeof(failureCodes) / sizeof(failureCodes[0]);
+	for (unsigned i = 0; i < n; ++i)
+	{
+		EXPECT_NE(failureCodes[i], E::RESULT_SUCCESS);
+		for (unsigned j = i + 1; j < n; ++j)
+			EXPECT_NE(failureCodes[i], failureCodes[j]);
+	}
+}
+
+TEST(EvmErc20TransferOracle, ReplyIsValid)
+{
+	using E = OI::EvmErc20Transfer;
+
+	E::OracleReply reply{};
+	reply.code = E::RESULT_SUCCESS;
+	EXPECT_TRUE(E::replyIsValid(reply));
+
+	// any non-success code means no usable token/amount
+	reply.code = E::RESULT_MULTIPLE_ERC20_TRANSFER;
+	EXPECT_FALSE(E::replyIsValid(reply));
+	reply.code = E::RESULT_TX_NOT_FOUND;
+	EXPECT_FALSE(E::replyIsValid(reply));
+}
+
+// Two queries built with identical logical values must serialize to identical bytes. This guards the
+// determinism requirement: every computor must produce the exact same query bytes (and therefore the
+// OM must produce the exact same reply digest), so no padding byte may be left uninitialized.
+TEST(EvmErc20TransferOracle, DeterministicQueryBytes)
+{
+	using E = OI::EvmErc20Transfer;
+
+	auto build = [](E::OracleQuery& q)
+	{
+		setMem(&q, sizeof(q), 0);
+		for (QPI::uint64 i = 0; i < 32; ++i)
+			q.txHash.set(i, (QPI::uint8)(i + 1));
+		q.chainId = OI::Evm::ChainId::bsc;
+		q.constraintFlags = E::CONSTRAINT_DEST | E::CONSTRAINT_BLOCK_HEIGHT;
+		q.minBlockHeight = 1000;
+		q.maxBlockHeight = 2000;
+		for (QPI::uint64 i = 0; i < 32; ++i)
+			q.destAddress.set(i, (QPI::uint8)(0xa0 + i));
+	};
+
+	E::OracleQuery a, b;
+	build(a);
+	build(b);
+	EXPECT_EQ(compareMem(&a, &b, sizeof(E::OracleQuery)), 0);
+
+	// survives a copy through a raw wire buffer of the maximum query size
+	unsigned char buffer[MAX_ORACLE_QUERY_SIZE];
+	setMem(buffer, sizeof(buffer), 0);
+	copyMem(buffer, &a, sizeof(a));
+	E::OracleQuery roundtrip{};
+	copyMem(&roundtrip, buffer, sizeof(roundtrip));
+	EXPECT_EQ(compareMem(&a, &roundtrip, sizeof(E::OracleQuery)), 0);
+}
