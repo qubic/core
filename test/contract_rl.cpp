@@ -133,8 +133,12 @@ class ContractTestingRL : protected ContractTesting
 public:
 	ContractTestingRL()
 	{
+		system.tick = 0;
 		initEmptySpectrum();
 		initEmptyUniverse();
+		INIT_CONTRACT(RANDOM);
+		system.epoch = contractDescriptions[RANDOM_CONTRACT_INDEX].constructionEpoch;
+		callSystemProcedure(RANDOM_CONTRACT_INDEX, INITIALIZE);
 		INIT_CONTRACT(QX);
 		system.epoch = contractDescriptions[QX_CONTRACT_INDEX].constructionEpoch;
 		callSystemProcedure(QX_CONTRACT_INDEX, INITIALIZE);
@@ -145,6 +149,32 @@ public:
 
 	// Access internal contract state for assertions
 	RLChecker* state() { return reinterpret_cast<RLChecker*>(contractStates[RL_CONTRACT_INDEX]); }
+	RANDOM::StateData* randomState() { return reinterpret_cast<RANDOM::StateData*>(contractStates[RANDOM_CONTRACT_INDEX]); }
+
+	QPI::bit_4096 seedRandomEntropy(uint64 seed)
+	{
+		QPI::bit_4096 entropy{};
+		for (uint64 i = 0; i < RL_RANDOM_ENTROPY_BITS; ++i)
+		{
+			entropy.set(i, ((seed + i) & 1ULL) != 0);
+		}
+
+		const uint32 stream = (system.tick + 2u) % 3u;
+		randomState()->entropy.set(stream * 10u + RL_RANDOM_COLLATERAL_TIER, entropy);
+		const uint32 drawTick = system.tick + (RL_TICK_UPDATE_PERIOD - mod(system.tick, static_cast<uint32>(RL_TICK_UPDATE_PERIOD)));
+		const uint32 drawStream = (drawTick + 2u) % 3u;
+		randomState()->entropy.set(drawStream * 10u + RL_RANDOM_COLLATERAL_TIER, entropy);
+		return entropy;
+	}
+
+	void seedRandomEntropy(const QPI::bit_4096& entropy)
+	{
+		const uint32 stream = (system.tick + 2u) % 3u;
+		randomState()->entropy.set(stream * 10u + RL_RANDOM_COLLATERAL_TIER, entropy);
+		const uint32 drawTick = system.tick + (RL_TICK_UPDATE_PERIOD - mod(system.tick, static_cast<uint32>(RL_TICK_UPDATE_PERIOD)));
+		const uint32 drawStream = (drawTick + 2u) % 3u;
+		randomState()->entropy.set(drawStream * 10u + RL_RANDOM_COLLATERAL_TIER, entropy);
+	}
 
 	RL::GetFees_output getFees()
 	{
@@ -346,6 +376,7 @@ public:
 			d = 1; // wrap within month for simplicity in tests
 		}
 		setDateTime(y, m, d, 12);
+		seedRandomEntropy(static_cast<uint64>(system.tick) ^ static_cast<uint64>(d) ^ static_cast<uint64>(system.epoch));
 		forceBeginTick();
 	}
 
@@ -369,6 +400,7 @@ TEST(ContractRandomLottery, SetPriceAndScheduleApplyNextEpoch)
 {
 	ContractTestingRL ctl;
 	ctl.beginEpochWithValidTime();
+	ctl.seedRandomEntropy(0xAAAABBBBULL);
 
 	// Default epoch configuration: draws 3 times per week at the default price
 	const uint64 oldPrice = ctl.state()->getTicketPrice();
@@ -452,6 +484,7 @@ TEST(ContractRandomLottery, SetPriceAndScheduleApplyNextEpoch)
 TEST(ContractRandomLottery, DefaultInitTimeGuardSkipsPlaceholderDate)
 {
 	ContractTestingRL ctl;
+	ctl.seedRandomEntropy(0xAAAABBBBULL);
 
 	const uint64 ticketPrice = ctl.state()->getTicketPrice();
 
@@ -795,7 +828,7 @@ TEST(ContractRandomLottery, DrawAndPayout_BeginTick)
 		// Newly appended winner info
 		const RL::WinnerInfo wi = winnersAfter.winners.get(mod(winnersCountBefore, winnersAfter.winners.capacity()));
 		EXPECT_NE(wi.winnerAddress, id::zero());
-		EXPECT_EQ(wi.revenue, (ticketPrice * N * winnerPercent) / 100);
+		EXPECT_EQ(wi.revenue, (((ticketPrice * N) - RL_RANDOM_ENTROPY_FEE) * winnerPercent) / 100);
 
 		// Winner address must be one of the players
 		bool found = false;
@@ -818,11 +851,11 @@ TEST(ContractRandomLottery, DrawAndPayout_BeginTick)
 		}
 
 		// Team fee transferred
-		const uint64 teamFeeExpected = (ticketPrice * N * teamPercent) / 100;
+		const uint64 teamFeeExpected = (((ticketPrice * N) - RL_RANDOM_ENTROPY_FEE) * teamPercent) / 100;
 		EXPECT_EQ(getBalance(ctl.state()->team()), teamBalanceBefore + teamFeeExpected);
 
 		// Burn (remaining on contract)
-		const uint64 burnExpected = ctl.expectedRemainingAfterPayout(contractBalanceBefore, fees);
+		const uint64 burnExpected = ctl.expectedRemainingAfterPayout((contractBalanceBefore - RL_RANDOM_ENTROPY_FEE), fees);
 		EXPECT_EQ(getBalance(contractAddress), burnExpected);
 	}
 
@@ -874,7 +907,7 @@ TEST(ContractRandomLottery, DrawAndPayout_BeginTick)
 			// Validate winner entry
 			const RL::WinnerInfo newWi = wOut.winners.get(mod(winnersBefore, wOut.winners.capacity()));
 			EXPECT_NE(newWi.winnerAddress, id::zero());
-			EXPECT_EQ(newWi.revenue, (contractBefore * winnerPercent) / 100);
+			EXPECT_EQ(newWi.revenue, ((contractBefore - RL_RANDOM_ENTROPY_FEE) * winnerPercent) / 100);
 
 			// Winner must be one of the current round players
 			bool inRound = false;
@@ -897,12 +930,12 @@ TEST(ContractRandomLottery, DrawAndPayout_BeginTick)
 			}
 
 			// Team fee for the whole round's contract balance
-			const uint64 teamFee = (contractBefore * teamPercent) / 100;
+			const uint64 teamFee = ((contractBefore - RL_RANDOM_ENTROPY_FEE) * teamPercent) / 100;
 			teamAccrued += teamFee;
 			EXPECT_EQ(getBalance(ctl.state()->team()), teamBalBeforeRound + teamFee);
 
 			// Contract remaining should match expected
-			const uint64 expectedRemaining = ctl.expectedRemainingAfterPayout(contractBefore, fees);
+			const uint64 expectedRemaining = ctl.expectedRemainingAfterPayout((contractBefore - RL_RANDOM_ENTROPY_FEE), fees);
 			EXPECT_EQ(getBalance(contractAddress), expectedRemaining);
 		}
 
@@ -911,6 +944,44 @@ TEST(ContractRandomLottery, DrawAndPayout_BeginTick)
 		EXPECT_EQ(getBalance(ctl.state()->team()), teamStartBal + teamAccrued);
 	}
 }
+
+TEST(ContractRandomLottery, DrawAndPayout_ZeroEntropyRefundsAllTickets)
+{
+	ContractTestingRL ctl;
+	ctl.forceSchedule(RL_ANY_DAY_DRAW_SCHEDULE);
+	ctl.beginEpochWithValidTime();
+
+	const id contractAddress = ctl.rlSelf();
+	const uint64 ticketPrice = ctl.state()->getTicketPrice();
+	const id playerA = id::randomValue();
+	const id playerB = id::randomValue();
+	increaseEnergy(playerA, ticketPrice);
+	increaseEnergy(playerB, ticketPrice);
+	const uint64 playerABefore = getBalance(playerA);
+	const uint64 playerBBefore = getBalance(playerB);
+	ASSERT_EQ(ctl.buyTicket(playerA, ticketPrice).returnCode, RL::EReturnCode::SUCCESS);
+	ASSERT_EQ(ctl.buyTicket(playerB, ticketPrice).returnCode, RL::EReturnCode::SUCCESS);
+	ASSERT_EQ(ctl.state()->getPlayerCounter(), 2u);
+	increaseEnergy(contractAddress, RL_RANDOM_ENTROPY_FEE);
+
+	const uint64 teamBefore = getBalance(ctl.state()->team());
+	const uint64 winnersBefore = ctl.getWinners().winnersCounter;
+	const uint64 randomEarnedBefore = ctl.randomState()->earnedAmount;
+
+	ctl.setDateTime(2025, 1, 10, 12);
+	QPI::bit_4096 zeroEntropy{};
+	ctl.seedRandomEntropy(zeroEntropy);
+	ctl.forceBeginTick();
+
+	EXPECT_EQ(getBalance(playerA), playerABefore);
+	EXPECT_EQ(getBalance(playerB), playerBBefore);
+	EXPECT_EQ(ctl.state()->getPlayerCounter(), 0u);
+	EXPECT_EQ(ctl.getWinners().winnersCounter, winnersBefore);
+	EXPECT_EQ(getBalance(ctl.state()->team()), teamBefore);
+	EXPECT_EQ(ctl.randomState()->earnedAmount, randomEarnedBefore);
+	EXPECT_EQ(getBalance(contractAddress), RL_RANDOM_ENTROPY_FEE);
+}
+
 TEST(ContractRandomLottery, GetBalance)
 {
 	ContractTestingRL ctl;
@@ -954,7 +1025,7 @@ TEST(ContractRandomLottery, GetBalance)
 	const uint64 envAfter = getBalance(contractAddress);
 	EXPECT_EQ(outAfter.balance, envAfter);
 
-	const uint64 expectedRemaining = ctl.expectedRemainingAfterPayout(contractBalanceBefore, fees);
+	const uint64 expectedRemaining = ctl.expectedRemainingAfterPayout((contractBalanceBefore - RL_RANDOM_ENTROPY_FEE), fees);
 	EXPECT_EQ(outAfter.balance, expectedRemaining);
 }
 
@@ -1279,5 +1350,3 @@ TEST(ContractRandomLottery, GetDrawHour_DefaultAfterBeginEpoch)
 	ctl.beginEpochWithValidTime();
 	EXPECT_EQ(ctl.getDrawHour().drawHour, RL_DEFAULT_DRAW_HOUR);
 }
-
-

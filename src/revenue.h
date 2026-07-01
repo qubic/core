@@ -13,6 +13,9 @@
 // Both formulas always run for offline comparison; this switch only selects which
 // output is paid to computors.
 #define USE_REVENUE_MULTI_DIMENSION 1
+// 1 = DOGE has no effect on revenue (dogeFactor forced to SCALE for all).
+// 0 = normal DOGE.
+#define REVENUE_DOGE_DISABLED 1
 
 // gTxRevenuePoints is calculated from 4096 * ln(tx + 1)
 // When NUMBER_OF_TRANSACTIONS_PER_TICK is changed, this table needs to be regenerated
@@ -735,9 +738,9 @@ static void computeMultiDimRevenue()
             break; 
         } 
     }
-    if (anyDoge) 
+    if (!REVENUE_DOGE_DISABLED && anyDoge) 
     { 
-        computeRevFactor(gEpochRevenueData.dogeMiningScore, REVENUE_SCALE, dogeFactor); 
+        computeRevFactor(gEpochRevenueData.dogeMiningScore, REVENUE_SCALE, dogeFactor);
     }
     else 
     {

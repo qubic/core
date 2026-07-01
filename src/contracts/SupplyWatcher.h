@@ -16,29 +16,17 @@ struct SWATCH : public ContractBase
         sint64 ownBalance;
         sint64 reserve6, reserve7, reserve8;
         sint64 target, adjustedTotal;
-        sint64 burn6, burn7, burn8, burn10, burn17;
+        sint64 burn6, burn7, burn8;
         sint64 leftover;
         sint64 count;
     };
 
     BEGIN_EPOCH_WITH_LOCALS()
     {
-        // Burn to balance fee reserves of GQMPROP (6), SWATCH (7), CCF (8), QVAULT (10), QBond (17)
+        // Burn to balance fee reserves of GQMPROP (6), SWATCH (7), and CCF (8)
         if (qpi.getEntity(SELF, locals.ownEntity))
         {
-	    // TODO Remove after epoch 219
-            locals.burn10 = 38300000000LL;   // 38.3 Billion QUBIC
-            locals.burn17 = 6250000000LL;    // 6.25 Billion QUBIC
             locals.ownBalance = locals.ownEntity.incomingAmount - locals.ownEntity.outgoingAmount;
-
-            if (locals.ownBalance >= locals.burn10 + locals.burn17)
-            {
-                qpi.burn(locals.burn10, 10);
-                qpi.burn(locals.burn17, 17);
-                locals.ownBalance -= locals.burn10;
-                locals.ownBalance -= locals.burn17;
-            }
-
             if (locals.ownBalance > 0)
             {
                 locals.reserve6 = qpi.queryFeeReserve(6);
