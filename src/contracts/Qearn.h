@@ -7,6 +7,7 @@ constexpr uint64 QEARN_MAX_USERS = 131072;
 constexpr uint64 QEARN_MAX_LOCK_AMOUNT = 1000000000000ULL;
 constexpr uint64 QEARN_MAX_BONUS_AMOUNT = 1000000000000ULL;
 constexpr uint64 QEARN_INITIAL_EPOCH = 138;
+constexpr uint64 QEARN_FAIRNESS_ACTIVATION_EPOCH = 221;
 
 constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_0_3 = 0;
 constexpr uint64 QEARN_EARLY_UNLOCKING_PERCENT_4_7 = 5;
@@ -745,6 +746,18 @@ protected:
 
         }
 
+        if(input.lockedEpoch >= QEARN_FAIRNESS_ACTIVATION_EPOCH && input.lockedEpoch == qpi.epoch())
+        {
+
+            output.returnCode = QEARN_INVALID_INPUT_LOCKED_EPOCH;
+
+            locals.log = {QEARN_CONTRACT_INDEX, SELF, qpi.invocator(), 0, QearnInvalidInput, 0};
+            LOG_INFO(locals.log);
+
+            return ;
+
+        }
+
         locals.indexOfinvocator = QEARN_MAX_LOCKS;
         locals.startIndex = state.get()._epochIndex.get(input.lockedEpoch).startIndex;
         locals.endIndex = state.get()._epochIndex.get(input.lockedEpoch).endIndex;
@@ -785,9 +798,13 @@ protected:
             return ;
         }
 
-        /* the rest amount after unlocking should be more than MINIMUM_LOCKING_AMOUNT */
-        if(state.get().locker.get(locals.indexOfinvocator)._lockedAmount - input.amount < QEARN_MINIMUM_LOCKING_AMOUNT)
+        if(input.lockedEpoch >= QEARN_FAIRNESS_ACTIVATION_EPOCH && input.lockedEpoch != qpi.epoch())
         {
+            locals.amountOfUnlocking = state.get().locker.get(locals.indexOfinvocator)._lockedAmount;
+        }
+        else if(state.get().locker.get(locals.indexOfinvocator)._lockedAmount - input.amount < QEARN_MINIMUM_LOCKING_AMOUNT)
+        {
+			/* the rest amount after unlocking should be more than MINIMUM_LOCKING_AMOUNT, otherwise the full locked amount is unlocked */
             locals.amountOfUnlocking = state.get().locker.get(locals.indexOfinvocator)._lockedAmount;
         }
         else
@@ -870,6 +887,12 @@ protected:
         {
             locals.earlyUnlockingPercent = QEARN_EARLY_UNLOCKING_PERCENT_48_51;
             locals.burnPercent = QEARN_BURN_PERCENT_48_51;
+        }
+
+        if(input.lockedEpoch >= QEARN_FAIRNESS_ACTIVATION_EPOCH)
+        {
+            locals.earlyUnlockingPercent = 0;
+            locals.burnPercent = 0;
         }
 
         locals.rewardPercent = div(state.get()._currentRoundInfo.get(input.lockedEpoch)._epochBonusAmount * 10000000ULL, state.get()._currentRoundInfo.get(input.lockedEpoch)._totalLockedAmount);
