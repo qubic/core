@@ -32,6 +32,10 @@ constexpr uint64 NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM = 4;
 constexpr uint32 NOST_AUCTION_MAX_DURATION_DAYS = 30;
 // Default fee charged to create a private auction, in qu.
 constexpr sint64 NOST_DEFAULT_PRIVATE_AUCTION_FEE = 50000000LL;
+// Default fee accumulated after successfully creating a public Batch Auction and distributed at END_EPOCH, in qu.
+constexpr uint64 NOST_PUBLIC_BATCH_AUCTION_CREATION_FEE = 100LL;
+// Exclusive upper bound used to taper the accumulated Batch Auction bid fee against its normalized bid value, in qu.
+constexpr uint64 NOST_BATCH_BID_FEE_CUTOFF = 101ULL;
 // Default fee deducted when an auction is cancelled, in basis points.
 constexpr uint64 NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP = 1000ULL;
 // Default management fee applied to gross auction proceeds, in basis points.
@@ -107,6 +111,10 @@ constexpr uint32 NOST_DEFAULT_INIT_TIME =
     NOST_DEFAULT_INIT_YEAR << NOST_DATE_STAMP_YEAR_SHIFT | NOST_DEFAULT_INIT_MONTH << NOST_DATE_STAMP_MONTH_SHIFT | NOST_DEFAULT_INIT_DAY;
 // Default enabled flag that routes all collected auction fees to development.
 constexpr uint8 NOST_ROUTE_ALL_FEES_TO_DEVELOPMENT = 1;
+// Default drop in the execution fee reserve that triggers an emergency pause, in basis points.
+constexpr uint64 NOST_DEFAULT_FEE_RESERVE_GUARD_DROP_BP = 1000ULL;
+// Default rolling window used to evaluate the execution fee reserve drop, in seconds.
+constexpr uint64 NOST_DEFAULT_FEE_RESERVE_GUARD_WINDOW_SECONDS = 600ULL;
 
 struct NOST2
 {
@@ -123,7 +131,9 @@ struct NOST : public ContractBase
 		ResolvePendingStandardAuction = 5,
 		SetAuctionFees = 6,
 		SetAuctionFeesByManagement = 7,
-		SetManagement = 8
+		SetManagement = 8,
+		SetFeeReserveGuardConfig = 9,
+		SetEmergencyPause = 10
 	};
 
 	enum class EAuctionType : uint8
@@ -349,6 +359,9 @@ struct NOST : public ContractBase
 		/** @brief Configured fee charged when creating a private auction. */
 		sint64 privateAuctionFee;
 
+		/** @brief Configured fee accumulated when creating a public Batch Auction and distributed at `END_EPOCH`. */
+		uint64 batchAuctionCreationFee;
+
 		/** @brief Configured cancellation fee rate in basis points. */
 		uint64 auctionCancellationFeeBasisPoints;
 
@@ -417,6 +430,27 @@ struct NOST : public ContractBase
 
 		HashMap<uint64, AuctionData, NOST_AUCTION_NUM> auctionList;
 		Array<AuctionParticipantData, NOST_AUCTION_PARTICIPANT_NUM> participants;
+
+		/** @brief Auction creation and Batch bid service fees accumulated during the epoch, distributed at `END_EPOCH`. */
+		uint64 pendingServiceFeePool;
+
+		/** @brief Configured drop in the execution fee reserve that triggers an emergency pause, in basis points. */
+		uint64 feeReserveGuardDropBasisPoints;
+
+		/** @brief Configured rolling window used to evaluate the execution fee reserve drop, in seconds. */
+		uint64 feeReserveGuardWindowSeconds;
+
+		/** @brief Execution fee reserve value recorded at the start of the current guard window. */
+		sint64 feeReserveBaseline;
+
+		/** @brief Start of the current guard window; invalid when the window has not been initialized. */
+		DateAndTime feeReserveBaselineAt;
+
+		/** @brief Timestamp at which the emergency pause was triggered; invalid when not paused. */
+		DateAndTime emergencyPausedAt;
+
+		/** @brief Flag indicating whether an emergency pause is currently blocking auction interactions. */
+		uint8 isEmergencyPaused;
 	};
 
 	/** @brief Input payload used to create a Batch Auction or Standard Auction in the Auction House. */
@@ -542,6 +576,9 @@ struct NOST : public ContractBase
 		/** @brief Fee charged when a private auction is created. */
 		sint64 privateAuctionFee;
 
+		/** @brief Fee accumulated when a public Batch Auction is created and distributed at `END_EPOCH`; must not exceed `INT64_MAX`. */
+		uint64 batchAuctionCreationFee;
+
 		/** @brief Cancellation fee rate in basis points. */
 		uint64 auctionCancellationFeeBasisPoints;
 
@@ -582,6 +619,9 @@ struct NOST : public ContractBase
 		/** @brief Fee charged when a private auction is created. */
 		sint64 privateAuctionFee;
 
+		/** @brief Fee accumulated when a public Batch Auction is created and distributed at `END_EPOCH`; must not exceed `INT64_MAX`. */
+		uint64 batchAuctionCreationFee;
+
 		/** @brief Cancellation fee rate in basis points. */
 		uint64 auctionCancellationFeeBasisPoints;
 
@@ -620,6 +660,35 @@ struct NOST : public ContractBase
 	struct SetManagement_output
 	{
 		/** @brief Result code describing whether the management update succeeded. */
+		EAuctionError errorCode;
+	};
+
+	/** @brief Input payload used by the takeover coordinator or management to configure the execution fee reserve guard. */
+	struct SetFeeReserveGuardConfig_input
+	{
+		/** @brief Drop in the execution fee reserve, relative to the window baseline, that triggers an emergency pause, in basis points. */
+		uint64 dropBasisPoints;
+
+		/** @brief Rolling window used to evaluate the execution fee reserve drop, in seconds. */
+		uint64 windowSeconds;
+	};
+
+	struct SetFeeReserveGuardConfig_output
+	{
+		/** @brief Result code describing whether the guard configuration update succeeded. */
+		EAuctionError errorCode;
+	};
+
+	/** @brief Input payload used by the takeover coordinator or management to manually pause or resume auction interactions. */
+	struct SetEmergencyPause_input
+	{
+		/** @brief Set to `1` to activate the emergency pause or `0` to resume normal operation. */
+		uint8 paused;
+	};
+
+	struct SetEmergencyPause_output
+	{
+		/** @brief Result code describing whether the emergency pause update succeeded. */
 		EAuctionError errorCode;
 	};
 
@@ -671,12 +740,51 @@ struct NOST : public ContractBase
 	};
 
 	/** @brief Input payload used to read the current auction fee configuration. */
+	/** @brief Input payload used to read the amount of accumulated service fees awaiting distribution at `END_EPOCH`. */
+	using GetPendingServiceFeePool_input = NoData;
+
+	struct GetPendingServiceFeePool_output
+	{
+		/** @brief Auction creation and Batch bid service fees accumulated during the epoch, distributed at `END_EPOCH`. */
+		uint64 pendingServiceFeePool;
+	};
+
+	/** @brief Input payload used to read the current state of the execution fee reserve guard. */
+	using GetFeeReserveGuardState_input = NoData;
+
+	struct GetFeeReserveGuardState_output
+	{
+		/** @brief Live execution fee reserve value read from the system contract. */
+		sint64 currentFeeReserve;
+
+		/** @brief Execution fee reserve value recorded at the start of the current guard window. */
+		sint64 feeReserveBaseline;
+
+		/** @brief Start of the current guard window; invalid when the window has not been initialized. */
+		DateAndTime feeReserveBaselineAt;
+
+		/** @brief Timestamp at which the emergency pause was triggered; invalid when not paused. */
+		DateAndTime emergencyPausedAt;
+
+		/** @brief Configured drop in the execution fee reserve that triggers an emergency pause, in basis points. */
+		uint64 dropBasisPoints;
+
+		/** @brief Configured rolling window used to evaluate the execution fee reserve drop, in seconds. */
+		uint64 windowSeconds;
+
+		/** @brief Flag indicating whether an emergency pause is currently blocking auction interactions. */
+		uint8 isEmergencyPaused;
+	};
+
 	using GetAuctionFees_input = NoData;
 
 	struct GetAuctionFees_output
 	{
 		/** @brief Fee charged when a private auction is created. */
 		sint64 privateAuctionFee;
+
+		/** @brief Fee accumulated when a public Batch Auction is created and distributed at `END_EPOCH`. */
+		uint64 batchAuctionCreationFee;
 
 		/** @brief Cancellation fee rate in basis points. */
 		uint64 auctionCancellationFeeBasisPoints;
@@ -704,6 +812,33 @@ struct NOST : public ContractBase
 
 		/** @brief Shareholder fee tier for auctions above the third threshold. */
 		uint64 shareholderFeeBasisPointsTier4;
+	};
+
+	/** @brief Input for the arithmetic-only Batch Auction bid reward calculator. */
+	struct CalculateBatchAuctionBidFee_input
+	{
+		/** @brief Number of assets requested by the prospective bid. */
+		uint64 bidQuantity;
+
+		/** @brief Total number of assets offered by the Batch Auction. */
+		uint64 tokensForSale;
+
+		/** @brief Prospective price per asset, in qu. */
+		uint64 bidAmount;
+	};
+
+	/** @brief Escrow, accumulated fee, and total reward required by the Batch Auction bid arithmetic. */
+	struct CalculateBatchAuctionBidFee_output
+	{
+		/** @brief Saturating product of `bidQuantity` and `bidAmount`. */
+		uint64 escrowAmount;
+
+		/** @brief Amount accumulated for distribution at `END_EPOCH` for an accepted bid: `max(101 - bidQuantity * floor(bidAmount / tokensForSale),
+		 * 0)`. */
+		uint64 fee;
+
+		/** @brief Saturating sum of `escrowAmount` and `fee`. */
+		uint64 requiredReward;
 	};
 
 	/**
@@ -846,10 +981,12 @@ struct NOST : public ContractBase
 		uint64 participantCount;
 		uint64 closedAuctionHistoryCounter;
 		uint64 auctionShareholderDividendPool;
+		uint64 pendingServiceFeePool;
 		uint32 qxTransferFee;
 		uint8 routeAllFeesToDevelopment;
 		uint8 isAuctionTimerPaused;
 		uint8 isPostBeginEpochPauseArmed;
+		uint8 isEmergencyPaused;
 	};
 
 	using GetContractStats_input = NoData;
@@ -1402,7 +1539,7 @@ struct NOST : public ContractBase
 		uint64 displacedQuantity;
 		uint64 displacedRefund;
 		uint64 excessQuantity;
-		uint64 requiredEscrow;
+		CalculateBatchAuctionBidFee_output bidFeeCalculation;
 		uint64 participantIndex;
 		uint64 freeParticipantSlotIndex;
 		uint64 worstParticipantSlotIndex;
@@ -1701,12 +1838,22 @@ struct NOST : public ContractBase
 		FinalizeBatchAuction_output finalizeBatchAuctionOutput;
 		FinalizeStandardAuction_input finalizeStandardAuctionInput;
 		FinalizeStandardAuction_output finalizeStandardAuctionOutput;
+		sint64 currentReserve;
+		sint64 reserveDrop;
+		uint64 guardElapsedSeconds;
+		uint64 guardDropThreshold;
 	};
 
 	struct BEGIN_EPOCH_locals
 	{
 		QX::Fees_input feesInput;
 		QX::Fees_output feesOutput;
+	};
+
+	struct END_EPOCH_locals
+	{
+		DistributeAuctionServiceFee_input distributeAuctionServiceFeeInput;
+		DistributeAuctionServiceFee_output distributeAuctionServiceFeeOutput;
 	};
 
 	/** @brief Input payload used to move share management rights to another managing contract. */
@@ -1757,6 +1904,16 @@ struct NOST : public ContractBase
 		NostromoProcedureLog log;
 	};
 
+	struct SetFeeReserveGuardConfig_locals
+	{
+		NostromoProcedureLog log;
+	};
+
+	struct SetEmergencyPause_locals
+	{
+		NostromoProcedureLog log;
+	};
+
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_PROCEDURE(CreateAuction, static_cast<uint16>(EProcedureId::CreateAuction));
@@ -1767,6 +1924,8 @@ struct NOST : public ContractBase
 		REGISTER_USER_PROCEDURE(SetAuctionFees, static_cast<uint16>(EProcedureId::SetAuctionFees));
 		REGISTER_USER_PROCEDURE(SetAuctionFeesByManagement, static_cast<uint16>(EProcedureId::SetAuctionFeesByManagement));
 		REGISTER_USER_PROCEDURE(SetManagement, static_cast<uint16>(EProcedureId::SetManagement));
+		REGISTER_USER_PROCEDURE(SetFeeReserveGuardConfig, static_cast<uint16>(EProcedureId::SetFeeReserveGuardConfig));
+		REGISTER_USER_PROCEDURE(SetEmergencyPause, static_cast<uint16>(EProcedureId::SetEmergencyPause));
 
 		REGISTER_USER_FUNCTION(GetAuctionByIndex, 1);
 		REGISTER_USER_FUNCTION(GetAuctionParticipant, 2);
@@ -1787,11 +1946,15 @@ struct NOST : public ContractBase
 		REGISTER_USER_FUNCTION(GetAuctionCountBySeller, 17);
 		REGISTER_USER_FUNCTION(GetAuctionAtCreationSnapshot, 18);
 		REGISTER_USER_FUNCTION(GetBatchAuctionBidAvailability, 19);
+		REGISTER_USER_FUNCTION(CalculateBatchAuctionBidFee, 20);
+		REGISTER_USER_FUNCTION(GetPendingServiceFeePool, 21);
+		REGISTER_USER_FUNCTION(GetFeeReserveGuardState, 22);
 	}
 
 	INITIALIZE()
 	{
 		state.mut().privateAuctionFee = NOST_DEFAULT_PRIVATE_AUCTION_FEE;
+		state.mut().batchAuctionCreationFee = NOST_PUBLIC_BATCH_AUCTION_CREATION_FEE;
 		state.mut().auctionCancellationFeeBasisPoints = NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP;
 		state.mut().managementFeeBasisPoints = NOST_DEFAULT_AUCTION_MANAGEMENT_FEE_BP;
 		state.mut().developmentFeeBasisPoints = NOST_DEFAULT_AUCTION_DEVELOPMENT_FEE_BP;
@@ -1806,6 +1969,8 @@ struct NOST : public ContractBase
 		state.mut().routeAllFeesToDevelopment = NOST_ROUTE_ALL_FEES_TO_DEVELOPMENT;
 		state.mut().auctionTimerPauseStartedAt.setInvalid();
 		state.mut().auctionTimerPauseEndsAt.setInvalid();
+		state.mut().feeReserveGuardDropBasisPoints = NOST_DEFAULT_FEE_RESERVE_GUARD_DROP_BP;
+		state.mut().feeReserveGuardWindowSeconds = NOST_DEFAULT_FEE_RESERVE_GUARD_WINDOW_SECONDS;
 		state.mut().management = ID(_I, _G, _P, _Z, _X, _Q, _O, _R, _J, _Y, _Q, _P, _A, _G, _V, _A, _B, _N, _T, _N, _I, _S, _O, _Y, _T, _M, _T, _A,
 		                            _N, _M, _K, _Z, _A, _S, _T, _P, _P, _G, _Z, _O, _N, _A, _Q, _J, _X, _Q, _O, _S, _W, _Q, _O, _V, _J, _C, _K, _D);
 		state.mut().development = ID(_D, _Q, _V, _H, _M, _Z, _F, _C, _W, _O, _K, _M, _H, _F, _B, _H, _L, _X, _U, _I, _U, _G, _P, _P, _X, _R, _Z, _C,
@@ -1828,6 +1993,7 @@ struct NOST : public ContractBase
 		{
 			// Initialize
 			state.mut().privateAuctionFee = NOST_DEFAULT_PRIVATE_AUCTION_FEE;
+			state.mut().batchAuctionCreationFee = NOST_PUBLIC_BATCH_AUCTION_CREATION_FEE;
 			state.mut().auctionCancellationFeeBasisPoints = NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP;
 			state.mut().managementFeeBasisPoints = NOST_DEFAULT_AUCTION_MANAGEMENT_FEE_BP;
 			state.mut().developmentFeeBasisPoints = NOST_DEFAULT_AUCTION_DEVELOPMENT_FEE_BP;
@@ -1839,6 +2005,8 @@ struct NOST : public ContractBase
 			state.mut().shareholderFeeBasisPointsTier4 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_4;
 			state.mut().maxAuctionDurationDays = NOST_AUCTION_MAX_DURATION_DAYS;
 			state.mut().routeAllFeesToDevelopment = NOST_ROUTE_ALL_FEES_TO_DEVELOPMENT;
+			state.mut().feeReserveGuardDropBasisPoints = NOST_DEFAULT_FEE_RESERVE_GUARD_DROP_BP;
+			state.mut().feeReserveGuardWindowSeconds = NOST_DEFAULT_FEE_RESERVE_GUARD_WINDOW_SECONDS;
 			state.mut().management =
 			    ID(_I, _G, _P, _Z, _X, _Q, _O, _R, _J, _Y, _Q, _P, _A, _G, _V, _A, _B, _N, _T, _N, _I, _S, _O, _Y, _T, _M, _T, _A, _N, _M, _K, _Z, _A,
 			       _S, _T, _P, _P, _G, _Z, _O, _N, _A, _Q, _J, _X, _Q, _O, _S, _W, _Q, _O, _V, _J, _C, _K, _D);
@@ -1875,14 +2043,60 @@ struct NOST : public ContractBase
 		}
 	}
 
-	END_EPOCH()
+	END_EPOCH_WITH_LOCALS()
 	{
+		if (state.get().pendingServiceFeePool > 0)
+		{
+			locals.distributeAuctionServiceFeeInput.feeAmount = state.get().pendingServiceFeePool;
+			CALL(DistributeAuctionServiceFee, locals.distributeAuctionServiceFeeInput, locals.distributeAuctionServiceFeeOutput);
+			state.mut().pendingServiceFeePool = 0;
+		}
+
 		state.mut().auctionList.cleanupIfNeeded();
 	}
 
 	END_TICK_WITH_LOCALS()
 	{
 		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
+		locals.currentDate = qpi.now();
+
+		if (!state.get().isEmergencyPaused)
+		{
+			locals.currentReserve = qpi.queryFeeReserve(SELF_INDEX);
+			if (!state.get().feeReserveBaselineAt.isValid())
+			{
+				state.mut().feeReserveBaseline = locals.currentReserve;
+				state.mut().feeReserveBaselineAt = locals.currentDate;
+			}
+			else
+			{
+				diffDateInSecond(state.get().feeReserveBaselineAt, locals.currentDate, locals.guardElapsedSeconds);
+				locals.reserveDrop = state.get().feeReserveBaseline - locals.currentReserve;
+				if (state.get().feeReserveBaseline > 0 && locals.reserveDrop > 0)
+				{
+					locals.guardDropThreshold =
+					    div<uint64>(smul(static_cast<uint64>(state.get().feeReserveBaseline), state.get().feeReserveGuardDropBasisPoints),
+					                NOST_BASIS_POINTS_SCALE);
+					if (static_cast<uint64>(locals.reserveDrop) >= locals.guardDropThreshold &&
+					    locals.guardElapsedSeconds <= state.get().feeReserveGuardWindowSeconds)
+					{
+						state.mut().isEmergencyPaused = 1;
+						state.mut().emergencyPausedAt = locals.currentDate;
+						state.mut().feeReserveBaselineAt.setInvalid();
+					}
+					else if (locals.guardElapsedSeconds >= state.get().feeReserveGuardWindowSeconds)
+					{
+						state.mut().feeReserveBaseline = locals.currentReserve;
+						state.mut().feeReserveBaselineAt = locals.currentDate;
+					}
+				}
+				else if (locals.guardElapsedSeconds >= state.get().feeReserveGuardWindowSeconds)
+				{
+					state.mut().feeReserveBaseline = locals.currentReserve;
+					state.mut().feeReserveBaselineAt = locals.currentDate;
+				}
+			}
+		}
 
 		CALL(SyncAuctionPauseState, locals.syncAuctionPauseStateInput, locals.syncAuctionPauseStateOutput);
 		if (state.get().isAuctionTimerPaused)
@@ -1890,7 +2104,6 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.currentDate = qpi.now();
 		locals.auctionIndex = state.get().auctionList.nextElementIndex(NULL_INDEX);
 		while (locals.auctionIndex != NULL_INDEX)
 		{
@@ -2004,6 +2217,12 @@ struct NOST : public ContractBase
 
 	PRIVATE_FUNCTION(IsAuctionInteractionPaused)
 	{
+		if (state.get().isEmergencyPaused)
+		{
+			output.isPaused = 1;
+			return;
+		}
+
 		output.isPaused = state.get().isAuctionTimerPaused;
 		if (output.isPaused)
 		{
@@ -2016,6 +2235,22 @@ struct NOST : public ContractBase
 	PRIVATE_PROCEDURE_WITH_LOCALS(SyncAuctionPauseState)
 	{
 		locals.currentDate = qpi.now();
+
+		if (state.get().isEmergencyPaused)
+		{
+			if (!state.get().isAuctionTimerPaused)
+			{
+				state.mut().isAuctionTimerPaused = 1;
+				state.mut().auctionTimerPauseStartedAt = locals.currentDate;
+				state.mut().auctionTimerPauseEndsAt = locals.currentDate;
+			}
+			else
+			{
+				state.mut().auctionTimerPauseEndsAt = locals.currentDate;
+			}
+			return;
+		}
+
 		CALL(GetAuctionPauseState, locals.getAuctionPauseStateInput, locals.getAuctionPauseStateOutput);
 
 		if (state.get().isPostBeginEpochPauseArmed)
@@ -2483,6 +2718,15 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		calculateBatchAuctionBidFee(input.effectiveQuantity, locals.auction.core.quantityForSale, input.bidAmount, locals.bidFeeCalculation);
+		// A full-auction-normalized bid value of zero cannot contribute to price discovery.
+		if (locals.bidFeeCalculation.fee == NOST_BATCH_BID_FEE_CUTOFF)
+		{
+			output.refundedAmount = static_cast<uint64>(qpi.invocationReward());
+			output.errorCode = EAuctionError::InvalidInput;
+			return;
+		}
+
 		if (input.bidAmount < locals.auction.core.salePrice)
 		{
 			output.refundedAmount = static_cast<uint64>(qpi.invocationReward());
@@ -2506,8 +2750,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.requiredEscrow = smul(input.effectiveQuantity, input.bidAmount);
-		if (static_cast<uint64>(qpi.invocationReward()) < locals.requiredEscrow)
+		if (static_cast<uint64>(qpi.invocationReward()) < locals.bidFeeCalculation.requiredReward)
 		{
 			output.refundedAmount = static_cast<uint64>(qpi.invocationReward());
 			output.errorCode = EAuctionError::InsufficientFunds;
@@ -2533,7 +2776,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.participantData.escrowedAmount = locals.requiredEscrow;
+		locals.participantData.escrowedAmount = locals.bidFeeCalculation.escrowAmount;
 		locals.participantData.requestedQuantity = input.effectiveQuantity;
 		locals.participantData.allocatedQuantity = 0;
 		locals.participantData.bidAmount = input.bidAmount;
@@ -2632,13 +2875,19 @@ struct NOST : public ContractBase
 		locals.recomputeBatchHighestBidInput.auctionIndex = input.auctionIndex;
 		CALL(RecomputeBatchHighestBid, locals.recomputeBatchHighestBidInput, locals.recomputeBatchHighestBidOutput);
 
-		if (static_cast<uint64>(qpi.invocationReward()) > locals.requiredEscrow)
+		if (locals.bidFeeCalculation.fee > 0)
 		{
-			qpi.transfer(qpi.invocator(), static_cast<uint64>(qpi.invocationReward()) - locals.requiredEscrow);
-			output.refundedAmount = sadd(output.refundedAmount, static_cast<uint64>(qpi.invocationReward()) - locals.requiredEscrow);
+			state.mut().pendingServiceFeePool = sadd(state.get().pendingServiceFeePool, locals.bidFeeCalculation.fee);
 		}
 
-		output.escrowedAmount = locals.requiredEscrow;
+		if (static_cast<uint64>(qpi.invocationReward()) > locals.bidFeeCalculation.requiredReward)
+		{
+			qpi.transfer(qpi.invocator(), static_cast<uint64>(qpi.invocationReward()) - locals.bidFeeCalculation.requiredReward);
+			output.refundedAmount =
+			    sadd(output.refundedAmount, static_cast<uint64>(qpi.invocationReward()) - locals.bidFeeCalculation.requiredReward);
+		}
+
+		output.escrowedAmount = locals.bidFeeCalculation.escrowAmount;
 		output.success = 1;
 	}
 
@@ -3037,8 +3286,8 @@ struct NOST : public ContractBase
 		if (locals.highestBidderSlotIndex < state.get().participants.capacity())
 		{
 			locals.highestBidderData = state.get().participants.get(locals.highestBidderSlotIndex);
-			locals.highestBidderExists = locals.highestBidderData.isUsed && locals.highestBidderData.isActive &&
-			                             locals.highestBidderData.auctionIndex == input.auctionIndex;
+			locals.highestBidderExists =
+			    locals.highestBidderData.isUsed && locals.highestBidderData.isActive && locals.highestBidderData.auctionIndex == input.auctionIndex;
 		}
 
 		if (locals.highestBidderExists && locals.highestBidderData.escrowedAmount > 0)
@@ -3105,8 +3354,8 @@ struct NOST : public ContractBase
 		if (locals.highestBidderSlotIndex < state.get().participants.capacity())
 		{
 			locals.highestBidderData = state.get().participants.get(locals.highestBidderSlotIndex);
-			locals.highestBidderExists = locals.highestBidderData.isUsed && locals.highestBidderData.isActive &&
-			                             locals.highestBidderData.auctionIndex == input.auctionIndex;
+			locals.highestBidderExists =
+			    locals.highestBidderData.isUsed && locals.highestBidderData.isActive && locals.highestBidderData.auctionIndex == input.auctionIndex;
 		}
 
 		if (locals.highestBidderExists && locals.highestBidderData.escrowedAmount > 0)
@@ -3174,8 +3423,10 @@ struct NOST : public ContractBase
 	 * @brief Creates a new Batch Auction or Standard Auction in the Nostromo Auction House.
 	 * @note `CreateAuction_input` defines the IPFS metadata CID stored through Pinata, the auction lot, pricing, duration, and visibility rules.
 	 * @note Batch auctions require `minimumPurchaseQuantity` in the range `[1, quantityForSale]`; standard auctions ignore it and store zero.
-	 * @note Private auctions require the configured private auction fee, which is distributed between shareholders and the configured fee recipients,
-	 * and must use exactly one access mode.
+	 * @note A successful public Batch Auction accumulates the configured creation fee, distributed at `END_EPOCH`. Public Standard Auctions remain
+	 * free, and failed creation refunds the full reward.
+	 * @note Private auctions require the configured private auction fee, which is accumulated and distributed at `END_EPOCH` between shareholders
+	 * and the configured fee recipients, and must use exactly one access mode.
 	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(CreateAuction)
 	{
@@ -3346,7 +3597,8 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.requiredFee = getCreateAuctionFee(static_cast<EAuctionVisibility>(input.auctionVisibility), state);
+		locals.requiredFee =
+		    getCreateAuctionFee(static_cast<EAuctionType>(input.auctionType), static_cast<EAuctionVisibility>(input.auctionVisibility), state);
 		if (qpi.invocationReward() < locals.requiredFee)
 		{
 			if (qpi.invocationReward() > 0)
@@ -3442,8 +3694,10 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.distributeAuctionServiceFeeInput.feeAmount = static_cast<uint64>(locals.requiredFee);
-		CALL(DistributeAuctionServiceFee, locals.distributeAuctionServiceFeeInput, locals.distributeAuctionServiceFeeOutput);
+		if (locals.requiredFee > 0)
+		{
+			state.mut().pendingServiceFeePool = sadd(state.get().pendingServiceFeePool, static_cast<uint64>(locals.requiredFee));
+		}
 
 		if (qpi.invocationReward() > locals.requiredFee)
 		{
@@ -3461,6 +3715,9 @@ struct NOST : public ContractBase
 	 * @brief Places a bid in an active auction.
 	 * @note Batch auctions interpret `bidAmount` as price per asset and reject requested `quantity` below `minimumPurchaseQuantity` with a full
 	 * refund.
+	 * @note An accepted Batch bid escrows `quantity * bidAmount` and accumulates
+	 * `max(101 - floor(quantity * bidAmount / quantityForSale), 0)` qu for distribution at `END_EPOCH`. A zero normalized value is rejected. Excess
+	 * reward is refunded; rejected bids refund the full reward. The accumulated fee is not refunded if the bid is later displaced.
 	 * @note Batch final allocations are also at least `minimumPurchaseQuantity`; smaller unsold remainders return to the seller and affected bids are
 	 * fully refunded.
 	 * @note Standard auctions interpret `bidAmount` as the total price for the whole lot and ignore `quantity`.
@@ -3632,6 +3889,19 @@ struct NOST : public ContractBase
 		output.refundedAmount = 0;
 		output.cancellationFee = 0;
 		output.errorCode = EAuctionError::InvalidInput;
+
+		if (state.get().isEmergencyPaused)
+		{
+			if (qpi.invocationReward() > 0)
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+			}
+			output.errorCode = EAuctionError::AuctionPaused;
+			setProcedureLogInput(locals.log, qpi.invocator(), EProcedureId::CancelAuction, output.errorCode, input.auctionIndex,
+			                     output.cancellationFee);
+			logProcedureResult(locals.log);
+			return;
+		}
 
 		if (!state.get().auctionList.get(input.auctionIndex, locals.auction))
 		{
@@ -3854,10 +4124,11 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (!isValidAuctionFeeConfiguration(
-		        input.privateAuctionFee, input.auctionCancellationFeeBasisPoints, input.managementFeeBasisPoints, input.developmentFeeBasisPoints,
-		        input.takeoverCoordinatorFeeBasisPoints, input.shareholderDividendBasisPoints, input.shareholderFeeBasisPointsTier1,
-		        input.shareholderFeeBasisPointsTier2, input.shareholderFeeBasisPointsTier3, input.shareholderFeeBasisPointsTier4))
+		if (!isValidAuctionFeeConfiguration(input.privateAuctionFee, input.batchAuctionCreationFee, input.auctionCancellationFeeBasisPoints,
+		                                    input.managementFeeBasisPoints, input.developmentFeeBasisPoints, input.takeoverCoordinatorFeeBasisPoints,
+		                                    input.shareholderDividendBasisPoints, input.shareholderFeeBasisPointsTier1,
+		                                    input.shareholderFeeBasisPointsTier2, input.shareholderFeeBasisPointsTier3,
+		                                    input.shareholderFeeBasisPointsTier4))
 		{
 			output.errorCode = EAuctionError::InvalidInput;
 			setProcedureLogInput(locals.log, qpi.invocator(), EProcedureId::SetAuctionFees, output.errorCode, 0, 0);
@@ -3866,6 +4137,7 @@ struct NOST : public ContractBase
 		}
 
 		state.mut().privateAuctionFee = input.privateAuctionFee;
+		state.mut().batchAuctionCreationFee = input.batchAuctionCreationFee;
 		state.mut().auctionCancellationFeeBasisPoints = input.auctionCancellationFeeBasisPoints;
 		state.mut().managementFeeBasisPoints = input.managementFeeBasisPoints;
 		state.mut().developmentFeeBasisPoints = input.developmentFeeBasisPoints;
@@ -3901,10 +4173,11 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (!isValidAuctionFeeConfiguration(
-		        input.privateAuctionFee, input.auctionCancellationFeeBasisPoints, input.managementFeeBasisPoints, input.developmentFeeBasisPoints,
-		        state.get().takeoverCoordinatorFeeBasisPoints, state.get().shareholderDividendBasisPoints, input.shareholderFeeBasisPointsTier1,
-		        input.shareholderFeeBasisPointsTier2, input.shareholderFeeBasisPointsTier3, input.shareholderFeeBasisPointsTier4))
+		if (!isValidAuctionFeeConfiguration(input.privateAuctionFee, input.batchAuctionCreationFee, input.auctionCancellationFeeBasisPoints,
+		                                    input.managementFeeBasisPoints, input.developmentFeeBasisPoints,
+		                                    state.get().takeoverCoordinatorFeeBasisPoints, state.get().shareholderDividendBasisPoints,
+		                                    input.shareholderFeeBasisPointsTier1, input.shareholderFeeBasisPointsTier2,
+		                                    input.shareholderFeeBasisPointsTier3, input.shareholderFeeBasisPointsTier4))
 		{
 			output.errorCode = EAuctionError::InvalidInput;
 			setProcedureLogInput(locals.log, qpi.invocator(), EProcedureId::SetAuctionFeesByManagement, output.errorCode, 0, 0);
@@ -3913,6 +4186,7 @@ struct NOST : public ContractBase
 		}
 
 		state.mut().privateAuctionFee = input.privateAuctionFee;
+		state.mut().batchAuctionCreationFee = input.batchAuctionCreationFee;
 		state.mut().auctionCancellationFeeBasisPoints = input.auctionCancellationFeeBasisPoints;
 		state.mut().managementFeeBasisPoints = input.managementFeeBasisPoints;
 		state.mut().developmentFeeBasisPoints = input.developmentFeeBasisPoints;
@@ -3957,6 +4231,80 @@ struct NOST : public ContractBase
 		state.mut().management = input.management;
 		output.errorCode = EAuctionError::Success;
 		setProcedureLogInput(locals.log, qpi.invocator(), EProcedureId::SetManagement, output.errorCode, 0, 0);
+		logProcedureResult(locals.log);
+	}
+
+	/**
+	 * @brief Configures the execution fee reserve guard that triggers an emergency pause on a sudden reserve drop.
+	 * @note Only the configured takeover coordinator or management wallet can call this procedure.
+	 */
+	PUBLIC_PROCEDURE_WITH_LOCALS(SetFeeReserveGuardConfig)
+	{
+		output.errorCode = EAuctionError::InvalidInput;
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (qpi.invocator() != state.get().takeoverCoordinator && qpi.invocator() != state.get().management)
+		{
+			output.errorCode = EAuctionError::Forbidden;
+			setProcedureLogInput(locals.log, qpi.invocator(), EProcedureId::SetFeeReserveGuardConfig, output.errorCode, 0, 0);
+			logProcedureResult(locals.log);
+			return;
+		}
+
+		if (input.dropBasisPoints == 0 || input.dropBasisPoints > NOST_BASIS_POINTS_SCALE || input.windowSeconds == 0)
+		{
+			output.errorCode = EAuctionError::InvalidInput;
+			setProcedureLogInput(locals.log, qpi.invocator(), EProcedureId::SetFeeReserveGuardConfig, output.errorCode, 0, 0);
+			logProcedureResult(locals.log);
+			return;
+		}
+
+		state.mut().feeReserveGuardDropBasisPoints = input.dropBasisPoints;
+		state.mut().feeReserveGuardWindowSeconds = input.windowSeconds;
+		state.mut().feeReserveBaselineAt.setInvalid();
+		output.errorCode = EAuctionError::Success;
+		setProcedureLogInput(locals.log, qpi.invocator(), EProcedureId::SetFeeReserveGuardConfig, output.errorCode, 0, 0);
+		logProcedureResult(locals.log);
+	}
+
+	/**
+	 * @brief Manually pauses or resumes every auction interaction, overriding the automatic execution fee reserve guard.
+	 * @note Only the configured takeover coordinator or management wallet can call this procedure. Resuming clears the guard window so a stale
+	 * baseline cannot immediately retrigger the pause.
+	 */
+	PUBLIC_PROCEDURE_WITH_LOCALS(SetEmergencyPause)
+	{
+		output.errorCode = EAuctionError::InvalidInput;
+		if (qpi.invocationReward() > 0)
+		{
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+		}
+
+		if (qpi.invocator() != state.get().takeoverCoordinator && qpi.invocator() != state.get().management)
+		{
+			output.errorCode = EAuctionError::Forbidden;
+			setProcedureLogInput(locals.log, qpi.invocator(), EProcedureId::SetEmergencyPause, output.errorCode, 0, 0);
+			logProcedureResult(locals.log);
+			return;
+		}
+
+		if (input.paused)
+		{
+			state.mut().isEmergencyPaused = 1;
+			state.mut().emergencyPausedAt = qpi.now();
+		}
+		else
+		{
+			state.mut().isEmergencyPaused = 0;
+			state.mut().emergencyPausedAt.setInvalid();
+			state.mut().feeReserveBaselineAt.setInvalid();
+		}
+
+		output.errorCode = EAuctionError::Success;
+		setProcedureLogInput(locals.log, qpi.invocator(), EProcedureId::SetEmergencyPause, output.errorCode, 0, 0);
 		logProcedureResult(locals.log);
 	}
 
@@ -4060,7 +4408,17 @@ struct NOST : public ContractBase
 		output.shareholderFeeBasisPointsTier2 = state.get().shareholderFeeBasisPointsTier2;
 		output.shareholderFeeBasisPointsTier3 = state.get().shareholderFeeBasisPointsTier3;
 		output.shareholderFeeBasisPointsTier4 = state.get().shareholderFeeBasisPointsTier4;
+		output.batchAuctionCreationFee = state.get().batchAuctionCreationFee;
 	}
+
+	/**
+	 * @brief Calculates the escrow, accumulated fee, and reward required by Batch Auction bid arithmetic.
+	 * @param input Prospective bid quantity, total auction quantity, and price per asset; zero values are accepted for arithmetic inspection.
+	 * @param output Saturating escrow product, tapered bid fee, and saturating total reward.
+	 * @note Division by `tokensForSale` rounds down; when it is zero, the normalized bid value is treated as zero.
+	 * @note This function does not validate whether `PlaceBid` would accept the bid or mutate contract state.
+	 */
+	PUBLIC_FUNCTION(CalculateBatchAuctionBidFee) { calculateBatchAuctionBidFee(input.bidQuantity, input.tokensForSale, input.bidAmount, output); }
 
 	/**
 	 * @brief Returns the current wallets that receive auction fee transfers.
@@ -4089,15 +4447,36 @@ struct NOST : public ContractBase
 	 */
 	PUBLIC_FUNCTION(GetRouteAllFeesToDevelopment) { output.enabled = state.get().routeAllFeesToDevelopment; }
 
+	/**
+	 * @brief Returns the amount of accumulated auction service fees awaiting distribution at `END_EPOCH`.
+	 */
+	PUBLIC_FUNCTION(GetPendingServiceFeePool) { output.pendingServiceFeePool = state.get().pendingServiceFeePool; }
+
+	/**
+	 * @brief Returns the current state of the execution fee reserve guard, including a live reserve reading.
+	 */
+	PUBLIC_FUNCTION(GetFeeReserveGuardState)
+	{
+		output.currentFeeReserve = qpi.queryFeeReserve(SELF_INDEX);
+		output.feeReserveBaseline = state.get().feeReserveBaseline;
+		output.feeReserveBaselineAt = state.get().feeReserveBaselineAt;
+		output.emergencyPausedAt = state.get().emergencyPausedAt;
+		output.dropBasisPoints = state.get().feeReserveGuardDropBasisPoints;
+		output.windowSeconds = state.get().feeReserveGuardWindowSeconds;
+		output.isEmergencyPaused = state.get().isEmergencyPaused;
+	}
+
 	PUBLIC_FUNCTION_WITH_LOCALS(GetContractStats)
 	{
 		output.stats.totalAuctionsCreated = state.get().totalAuctionsCreated;
 		output.stats.closedAuctionHistoryCounter = state.get().closedAuctionHistoryCounter;
 		output.stats.auctionShareholderDividendPool = state.get().auctionShareholderDividendPool;
+		output.stats.pendingServiceFeePool = state.get().pendingServiceFeePool;
 		output.stats.qxTransferFee = state.get().qxTransferFee;
 		output.stats.routeAllFeesToDevelopment = state.get().routeAllFeesToDevelopment;
 		output.stats.isAuctionTimerPaused = state.get().isAuctionTimerPaused;
 		output.stats.isPostBeginEpochPauseArmed = state.get().isPostBeginEpochPauseArmed;
+		output.stats.isEmergencyPaused = state.get().isEmergencyPaused;
 
 		for (locals.participantSlotIndex = 0; locals.participantSlotIndex < state.get().participants.capacity(); ++locals.participantSlotIndex)
 		{
@@ -4344,6 +4723,19 @@ struct NOST : public ContractBase
 		output.transferredNumberOfShares = 0;
 		output.errorCode = EAuctionError::InvalidInput;
 
+		if (state.get().isEmergencyPaused)
+		{
+			if (locals.refundAmount > 0)
+			{
+				qpi.transfer(qpi.invocator(), locals.refundAmount);
+			}
+			output.errorCode = EAuctionError::AuctionPaused;
+			setProcedureLogInput(locals.log, qpi.invocator(), EProcedureId::TransferShareManagementRights, output.errorCode, 0,
+			                     output.transferredNumberOfShares);
+			logProcedureResult(locals.log);
+			return;
+		}
+
 		if (input.numberOfShares > 0 && qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer, qpi.invocator(), qpi.invocator(),
 		                                                            SELF_INDEX, SELF_INDEX) >= input.numberOfShares)
 		{
@@ -4472,8 +4864,7 @@ protected:
 	{
 		quantityForSale = 0;
 		resolvedMinimumPurchaseQuantity = 0;
-		if (initialPrice < NOST_STANDARD_MIN_PRICE || salePrice < NOST_STANDARD_MIN_PRICE ||
-		    minimumBidIncrement < NOST_STANDARD_MIN_BID_INCREMENT)
+		if (initialPrice < NOST_STANDARD_MIN_PRICE || salePrice < NOST_STANDARD_MIN_PRICE || minimumBidIncrement < NOST_STANDARD_MIN_BID_INCREMENT)
 		{
 			return false;
 		}
@@ -4499,13 +4890,14 @@ protected:
 		return visibility != EAuctionVisibility::Private || ((requiredAccessAssetCount > 0) != (allowedWalletCount > 0));
 	}
 
-	constexpr static bool isValidAuctionFeeConfiguration(sint64 privateAuctionFee, uint64 auctionCancellationFeeBasisPoints,
-	                                                     uint64 managementFeeBasisPoints, uint64 developmentFeeBasisPoints,
-	                                                     uint64 takeoverCoordinatorFeeBasisPoints, uint64 shareholderDividendBasisPoints,
-	                                                     uint64 shareholderFeeBasisPointsTier1, uint64 shareholderFeeBasisPointsTier2,
-	                                                     uint64 shareholderFeeBasisPointsTier3, uint64 shareholderFeeBasisPointsTier4)
+	constexpr static bool isValidAuctionFeeConfiguration(sint64 privateAuctionFee, uint64 batchAuctionCreationFee,
+	                                                     uint64 auctionCancellationFeeBasisPoints, uint64 managementFeeBasisPoints,
+	                                                     uint64 developmentFeeBasisPoints, uint64 takeoverCoordinatorFeeBasisPoints,
+	                                                     uint64 shareholderDividendBasisPoints, uint64 shareholderFeeBasisPointsTier1,
+	                                                     uint64 shareholderFeeBasisPointsTier2, uint64 shareholderFeeBasisPointsTier3,
+	                                                     uint64 shareholderFeeBasisPointsTier4)
 	{
-		return privateAuctionFee >= 0 && auctionCancellationFeeBasisPoints <= NOST_BASIS_POINTS_SCALE &&
+		return privateAuctionFee >= 0 && batchAuctionCreationFee <= UINT64_MAX && auctionCancellationFeeBasisPoints <= NOST_BASIS_POINTS_SCALE &&
 		       managementFeeBasisPoints <= NOST_BASIS_POINTS_SCALE && developmentFeeBasisPoints <= NOST_BASIS_POINTS_SCALE &&
 		       takeoverCoordinatorFeeBasisPoints <= NOST_BASIS_POINTS_SCALE && shareholderDividendBasisPoints <= NOST_BASIS_POINTS_SCALE &&
 		       shareholderFeeBasisPointsTier1 <= NOST_BASIS_POINTS_SCALE && shareholderFeeBasisPointsTier2 <= NOST_BASIS_POINTS_SCALE &&
@@ -4578,9 +4970,25 @@ protected:
 		                                        output.developmentFeeAmount - output.takeoverCoordinatorFeeAmount);
 	}
 
-	static sint64 getCreateAuctionFee(EAuctionVisibility visibility, const ContractState<StateData, CONTRACT_INDEX>& state)
+	static void calculateBatchAuctionBidFee(uint64 bidQuantity, uint64 tokensForSale, uint64 bidAmount, CalculateBatchAuctionBidFee_output& output)
 	{
-		return visibility == EAuctionVisibility::Private ? state.get().privateAuctionFee : 0;
+		output.escrowAmount = smul(bidQuantity, bidAmount);
+		output.fee = tokensForSale == 0 ? NOST_BATCH_BID_FEE_CUTOFF
+		             : div<uint64>(output.escrowAmount, tokensForSale) < NOST_BATCH_BID_FEE_CUTOFF
+		                 ? NOST_BATCH_BID_FEE_CUTOFF - div<uint64>(output.escrowAmount, tokensForSale)
+		                 : 0;
+		output.requiredReward = sadd(output.escrowAmount, output.fee);
+	}
+
+	static sint64 getCreateAuctionFee(EAuctionType auctionType, EAuctionVisibility visibility, const ContractState<StateData, CONTRACT_INDEX>& state)
+	{
+		if (visibility == EAuctionVisibility::Private)
+		{
+			return state.get().privateAuctionFee;
+		}
+		return auctionType == EAuctionType::Batch && visibility == EAuctionVisibility::Public
+		           ? static_cast<sint64>(state.get().batchAuctionCreationFee)
+		           : 0;
 	}
 
 	static bool isSupportedAuctionType(EAuctionType auctionType)
