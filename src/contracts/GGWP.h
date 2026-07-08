@@ -102,6 +102,7 @@ constexpr uint32 WOLFPACK_ERROR_INSUFFICIENT_FEE = 21;
 constexpr uint32 WOLFPACK_ERROR_BELOW_MIN_STAKE = 22;
 constexpr uint32 WOLFPACK_ERROR_NO_PROPOSAL_SLOT = 23;
 constexpr uint32 WOLFPACK_ERROR_INVALID_PROPOSAL = 24;
+constexpr uint32 WOLFPACK_ERROR_RECONCILE_INVALID = 25;
 
 // Secondary state struct, reserved for future EXPAND events.
 struct WOLFPACK2
@@ -232,6 +233,10 @@ struct WOLFPACK : public ContractBase
     struct DepositStakingRewards_input { uint64 numberOfShares; };
     struct DepositStakingRewards_output { uint32 returnCode; };
     struct DepositStakingRewards_locals { sint64 transferResult; };
+
+    struct AdminReconcileStake_input  { id staker; uint64 correctAmount; };
+    struct AdminReconcileStake_output { uint32 returnCode; };
+    struct AdminReconcileStake_locals { uint64 oldStake; uint64 oldUnstake; sint64 possessed; };
 
     struct ClaimStakingRewards_input { };
     struct ClaimStakingRewards_output { uint32 returnCode; uint64 claimedAmount; };
@@ -426,7 +431,18 @@ struct WOLFPACK : public ContractBase
             return;
         }
 
-        state.mut().clanRanks.set(input.memberAddress, input.rank);
+        if (qpi.epoch() < 221)
+        {
+            state.mut().clanRanks.set(input.memberAddress, input.rank);
+        }
+        else
+        {
+            if (state.mut().clanRanks.set(input.memberAddress, input.rank) == NULL_INDEX)
+            {
+                output.returnCode = WOLFPACK_ERROR_INVALID_SLOT;
+                return;
+            }
+        }
         state.mut().clanMemberCount = state.get().clanMemberCount + 1;
 
         if (input.rank == 0) state.mut().clanWeightedTotal = state.get().clanWeightedTotal + WOLFPACK_RANK_MULTIPLIER_0;
@@ -724,13 +740,26 @@ struct WOLFPACK : public ContractBase
             output.returnCode = WOLFPACK_ERROR_BELOW_MIN_STAKE;
             return;
         }
-        // Verify invocator has enough GGWP shares already under WP's management.
-        // User must call QX.TransferShareManagementRights(asset=wpToken, shares=N, newMgmtIdx=GGWP) first.
-        if (qpi.numberOfPossessedShares(state.get().wpToken.assetName, state.get().wpToken.issuer,
-            qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < (sint64)input.numberOfShares)
+
+        if (qpi.epoch() < 221)
         {
-            output.returnCode = WOLFPACK_ERROR_ACQUIRE_FAILED;
-            return;
+            if (qpi.numberOfPossessedShares(state.get().wpToken.assetName, state.get().wpToken.issuer,
+                qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < (sint64)input.numberOfShares)
+            {
+                output.returnCode = WOLFPACK_ERROR_ACQUIRE_FAILED;
+                return;
+            }
+        }
+        else
+        {
+            // Verify invocator has enough GGWP shares already under WP's management.
+            // User must call QX.TransferShareManagementRights(asset=wpToken, shares=N, newMgmtIdx=GGWP) first.
+            if (qpi.numberOfPossessedShares(state.get().wpToken.assetName, state.get().wpToken.issuer,
+                qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < (sint64)(locals.existingStake + input.numberOfShares))
+            {
+                output.returnCode = WOLFPACK_ERROR_ACQUIRE_FAILED;
+                return;
+            }
         }
 
         // Causer-pays (self-sustain): the stake fee stays in the contract's QU balance
@@ -789,6 +818,17 @@ struct WOLFPACK : public ContractBase
             return;
         }
 
+        if (qpi.epoch() >= 221)
+        {
+            if (state.mut().unstakeAmounts.set(qpi.invocator(), input.numberOfShares) == NULL_INDEX)
+            {
+                output.returnCode = WOLFPACK_ERROR_ACQUIRE_FAILED;
+                return;
+            }
+            state.mut().unstakeEpochs.set(qpi.invocator(), qpi.epoch());
+            state.mut().unstakeCount = state.get().unstakeCount + 1;
+        }
+
         if (input.numberOfShares == locals.currentStake)
         {
             state.mut().stakedBalances.removeByKey(qpi.invocator());
@@ -799,10 +839,14 @@ struct WOLFPACK : public ContractBase
             state.mut().stakedBalances.replace(qpi.invocator(), locals.currentStake - input.numberOfShares);
         }
         state.mut().totalStaked = state.get().totalStaked - input.numberOfShares;
-
-        state.mut().unstakeAmounts.set(qpi.invocator(), input.numberOfShares);
-        state.mut().unstakeEpochs.set(qpi.invocator(), qpi.epoch());
-        state.mut().unstakeCount = state.get().unstakeCount + 1;
+        
+        if (qpi.epoch() < 221)
+        {
+            state.mut().unstakeAmounts.set(qpi.invocator(), input.numberOfShares);
+            state.mut().unstakeEpochs.set(qpi.invocator(), qpi.epoch());
+            state.mut().unstakeCount = state.get().unstakeCount + 1;
+        }
+        
         output.returnCode = WOLFPACK_OK;
     }
 
@@ -914,6 +958,73 @@ struct WOLFPACK : public ContractBase
         output.returnCode = WOLFPACK_OK;
     }
 
+    PUBLIC_PROCEDURE_WITH_LOCALS(AdminReconcileStake)
+    {
+        if (qpi.epoch() < 221)
+        {
+            // Before epoch 221, this procedure should be unknown. processTickTransactionContractProcedure will call POST_INCOMING_TRANSFER
+            // if a tx with amount > 0 is invoking an unknown procedure. So before epoch 221, POST_INCOMING_TRANSFER should be invoked here as well,
+            // however, this can be skipped because the contract does not define POST_INCOMING_TRANSFER.
+            return;
+        }
+
+        if (qpi.invocator() != state.get().adminAddress)
+        {
+            output.returnCode = WOLFPACK_ERROR_ACCESS_DENIED;
+            return;
+        }
+        locals.possessed = qpi.numberOfPossessedShares(state.get().wpToken.assetName, state.get().wpToken.issuer,
+            input.staker, input.staker, SELF_INDEX, SELF_INDEX);
+        if (locals.possessed < 0 || input.correctAmount > (uint64)locals.possessed)
+        {
+            output.returnCode = WOLFPACK_ERROR_RECONCILE_INVALID;
+            return;
+        }
+        locals.oldStake = 0;
+        if (state.get().stakedBalances.get(input.staker, locals.oldStake))
+        {
+            if (input.correctAmount > locals.oldStake)
+            {
+                output.returnCode = WOLFPACK_ERROR_RECONCILE_INVALID;
+                return;
+            }
+            state.mut().totalStaked = state.get().totalStaked - (locals.oldStake - input.correctAmount);
+            if (input.correctAmount == 0)
+            {
+                state.mut().stakedBalances.removeByKey(input.staker);
+                state.mut().stakerCount = state.get().stakerCount - 1;
+            }
+            else
+            {
+                state.mut().stakedBalances.set(input.staker, input.correctAmount);
+            }
+            output.returnCode = WOLFPACK_OK;
+            return;
+        }
+        locals.oldUnstake = 0;
+        if (state.get().unstakeAmounts.get(input.staker, locals.oldUnstake))
+        {
+            if (input.correctAmount > locals.oldUnstake)
+            {
+                output.returnCode = WOLFPACK_ERROR_RECONCILE_INVALID;
+                return;
+            }
+            if (input.correctAmount == 0)
+            {
+                state.mut().unstakeAmounts.removeByKey(input.staker);
+                state.mut().unstakeEpochs.removeByKey(input.staker);
+                state.mut().unstakeCount = state.get().unstakeCount - 1;
+            }
+            else
+            {
+                state.mut().unstakeAmounts.set(input.staker, input.correctAmount);
+            }
+            output.returnCode = WOLFPACK_OK;
+            return;
+        }
+        output.returnCode = WOLFPACK_ERROR_NOT_STAKER;
+    }
+
     // ======================== REGISTRATION ========================
 
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
@@ -936,6 +1047,7 @@ struct WOLFPACK : public ContractBase
         REGISTER_USER_PROCEDURE(ClaimStakingRewards, 11);
         REGISTER_USER_PROCEDURE(ProposeGovChange, 12);
         REGISTER_USER_PROCEDURE(VoteGovChange, 13);
+        REGISTER_USER_PROCEDURE(AdminReconcileStake, 14);
 
         REGISTER_USER_FUNCTION(GetStakingInfo, 5);
         REGISTER_USER_FUNCTION(GetExcludeAddresses, 6);

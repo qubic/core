@@ -110,20 +110,20 @@ TEST(ContractQReservePool, WithdrawReserveEnforcesAuthorizationAndBalance)
 	qrp.fund(QRP_DEFAULT_SC_ID, 0);
 
 	QRP::WithdrawReserve_output denied = qrp.withdrawReserveReserve(unauthorized, 100);
-	EXPECT_EQ(denied.returnCode, QRP::toReturnCode(QRP::EReturnCode::ACCESS_DENIED));
+	EXPECT_EQ(denied.returnCode, QRP::EReturnCode::ACCESS_DENIED);
 	EXPECT_EQ(denied.allocatedRevenue, 0ull);
 
 	qrp.fundQrp(1000);
 	EXPECT_EQ(qrp.balanceQrp(), 1000);
 
 	QRP::WithdrawReserve_output granted = qrp.withdrawReserveReserve(QRP_DEFAULT_SC_ID, 600);
-	EXPECT_EQ(granted.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
+	EXPECT_EQ(granted.returnCode, QRP::EReturnCode::SUCCESS);
 	EXPECT_EQ(granted.allocatedRevenue, 600ull);
 	EXPECT_EQ(qrp.balanceQrp(), 400);
 	EXPECT_EQ(qrp.balanceOf(QRP_DEFAULT_SC_ID), 600);
 
 	QRP::WithdrawReserve_output insufficient = qrp.withdrawReserveReserve(QRP_DEFAULT_SC_ID, 500);
-	EXPECT_EQ(insufficient.returnCode, QRP::toReturnCode(QRP::EReturnCode::INSUFFICIENT_RESERVE));
+	EXPECT_EQ(insufficient.returnCode, QRP::EReturnCode::INSUFFICIENT_RESERVE);
 	EXPECT_EQ(insufficient.allocatedRevenue, 0ull);
 	EXPECT_EQ(qrp.balanceQrp(), 400);
 	EXPECT_EQ(qrp.balanceOf(QRP_DEFAULT_SC_ID), 600);
@@ -139,13 +139,13 @@ TEST(ContractQReservePool, WithdrawReserve_ZeroAndExactRemaining)
 
 	// Zero request should not move funds.
 	const QRP::WithdrawReserve_output zero = qrp.withdrawReserveReserve(QRP_DEFAULT_SC_ID, 0);
-	EXPECT_EQ(zero.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
+	EXPECT_EQ(zero.returnCode, QRP::EReturnCode::SUCCESS);
 	EXPECT_EQ(zero.allocatedRevenue, 0ull);
 	EXPECT_EQ(qrp.balanceQrp(), 1000);
 
 	// Exact remaining should succeed and drain the reserve.
 	const QRP::WithdrawReserve_output exact = qrp.withdrawReserveReserve(QRP_DEFAULT_SC_ID, 1000);
-	EXPECT_EQ(exact.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
+	EXPECT_EQ(exact.returnCode, QRP::EReturnCode::SUCCESS);
 	EXPECT_EQ(exact.allocatedRevenue, 1000ull);
 	EXPECT_EQ(qrp.balanceQrp(), 0);
 	EXPECT_EQ(qrp.balanceOf(QRP_DEFAULT_SC_ID), 1000);
@@ -163,22 +163,22 @@ TEST(ContractQReservePool, OwnerAddsAndRemovesSmartContracts)
 	qrp.fund(state->owner(), 0);
 
 	QRP::AddAllowedSC_output deniedAdd = qrp.addAllowedSC(outsider, newScIndex);
-	EXPECT_EQ(deniedAdd.returnCode, QRP::toReturnCode(QRP::EReturnCode::ACCESS_DENIED));
+	EXPECT_EQ(deniedAdd.returnCode, QRP::EReturnCode::ACCESS_DENIED);
 	EXPECT_FALSE(state->hasAllowedSC(newScId));
 
 	QRP::AddAllowedSC_output approvedAdd = qrp.addAllowedSC(state->owner(), newScIndex);
-	EXPECT_EQ(approvedAdd.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
+	EXPECT_EQ(approvedAdd.returnCode, QRP::EReturnCode::SUCCESS);
 	EXPECT_TRUE(state->hasAllowedSC(newScId));
 
 	QRP::GetAllowedSC_output allowed = qrp.getAllowedSC();
 	EXPECT_TRUE(containsAllowedSC(allowed, newScId));
 
 	QRP::RemoveAllowedSC_output deniedRemove = qrp.removeAllowedSC(outsider, newScIndex);
-	EXPECT_EQ(deniedRemove.returnCode, QRP::toReturnCode(QRP::EReturnCode::ACCESS_DENIED));
+	EXPECT_EQ(deniedRemove.returnCode, QRP::EReturnCode::ACCESS_DENIED);
 	EXPECT_TRUE(state->hasAllowedSC(newScId));
 
 	QRP::RemoveAllowedSC_output approvedRemove = qrp.removeAllowedSC(state->owner(), newScIndex);
-	EXPECT_EQ(approvedRemove.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
+	EXPECT_EQ(approvedRemove.returnCode, QRP::EReturnCode::SUCCESS);
 	EXPECT_FALSE(state->hasAllowedSC(newScId));
 }
 
@@ -197,7 +197,7 @@ TEST(ContractQReservePool, OwnerAddRemove_IdempotencyAndBounds)
 	// This test focuses on idempotency (repeat add/remove) while keeping authorization valid.
 	// Add twice: first should succeed, second should not change membership (return code may be SUCCESS or specific).
 	const auto add1 = qrp.addAllowedSC(state->owner(), newScIndex);
-	EXPECT_EQ(add1.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
+	EXPECT_EQ(add1.returnCode, QRP::EReturnCode::SUCCESS);
 	EXPECT_TRUE(state->hasAllowedSC(newScId));
 
 	const auto add2 = qrp.addAllowedSC(state->owner(), newScIndex);
@@ -205,7 +205,7 @@ TEST(ContractQReservePool, OwnerAddRemove_IdempotencyAndBounds)
 
 	// Remove twice: first should succeed, second should keep it removed (return code may be SUCCESS or specific).
 	const auto rem1 = qrp.removeAllowedSC(state->owner(), newScIndex);
-	EXPECT_EQ(rem1.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
+	EXPECT_EQ(rem1.returnCode, QRP::EReturnCode::SUCCESS);
 	EXPECT_FALSE(state->hasAllowedSC(newScId));
 
 	const auto rem2 = qrp.removeAllowedSC(state->owner(), newScIndex);
@@ -229,20 +229,20 @@ TEST(ContractQReservePool, SendReserve_AllValidAndInvalidScenarios)
 
 	// ACCESS_DENIED: only owner can invoke SendReserve.
 	const QRP::SendReserve_output& denied = qrp.sendReserve(outsider, QRP_QTF_INDEX, 1);
-	EXPECT_EQ(denied.returnCode, QRP::toReturnCode(QRP::EReturnCode::ACCESS_DENIED));
+	EXPECT_EQ(denied.returnCode, QRP::EReturnCode::ACCESS_DENIED);
 
 	// SC_NOT_FOUND: owner invokes, but target SC is not whitelisted.
 	const QRP::SendReserve_output& notFound = qrp.sendReserve(state->owner(), unknownScIndex, 1);
-	EXPECT_EQ(notFound.returnCode, QRP::toReturnCode(QRP::EReturnCode::SC_NOT_FOUND));
+	EXPECT_EQ(notFound.returnCode, QRP::EReturnCode::SC_NOT_FOUND);
 
 	// Add a new allowed SC to validate insufficient/success flows with a non-default recipient.
 	const QRP::AddAllowedSC_output& addSc = qrp.addAllowedSC(state->owner(), recipientScIndex);
-	EXPECT_EQ(addSc.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
+	EXPECT_EQ(addSc.returnCode, QRP::EReturnCode::SUCCESS);
 	EXPECT_TRUE(state->hasAllowedSC(recipientSc));
 
 	// INSUFFICIENT_RESERVE: reserve is 0.
 	const QRP::SendReserve_output& insufficientZeroReserve = qrp.sendReserve(state->owner(), recipientScIndex, 1);
-	EXPECT_EQ(insufficientZeroReserve.returnCode, QRP::toReturnCode(QRP::EReturnCode::INSUFFICIENT_RESERVE));
+	EXPECT_EQ(insufficientZeroReserve.returnCode, QRP::EReturnCode::INSUFFICIENT_RESERVE);
 	EXPECT_EQ(qrp.balanceQrp(), 0);
 	EXPECT_EQ(qrp.balanceOf(recipientSc), 0);
 
@@ -251,13 +251,13 @@ TEST(ContractQReservePool, SendReserve_AllValidAndInvalidScenarios)
 
 	// INSUFFICIENT_RESERVE: requested amount is above available reserve.
 	const QRP::SendReserve_output& insufficientAboveReserve = qrp.sendReserve(state->owner(), recipientScIndex, 1001);
-	EXPECT_EQ(insufficientAboveReserve.returnCode, QRP::toReturnCode(QRP::EReturnCode::INSUFFICIENT_RESERVE));
+	EXPECT_EQ(insufficientAboveReserve.returnCode, QRP::EReturnCode::INSUFFICIENT_RESERVE);
 	EXPECT_EQ(qrp.balanceQrp(), 1000);
 	EXPECT_EQ(qrp.balanceOf(recipientSc), 0);
 
 	// SUCCESS: exact available reserve should be transferable.
 	const QRP::SendReserve_output& successExact = qrp.sendReserve(state->owner(), recipientScIndex, 1000);
-	EXPECT_EQ(successExact.returnCode, QRP::toReturnCode(QRP::EReturnCode::SUCCESS));
+	EXPECT_EQ(successExact.returnCode, QRP::EReturnCode::SUCCESS);
 	EXPECT_EQ(qrp.balanceQrp(), 0);
 	EXPECT_EQ(qrp.balanceOf(recipientSc), 1000);
 }

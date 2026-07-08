@@ -2,7 +2,6 @@
 
 // #define INCLUDE_CONTRACT_TEST_EXAMPLES
 
-// #define OLD_QBAY
 
 // contract_def.h needs to be included first to make sure that contracts have minimal access
 #include "contract_core/contract_def.h"
@@ -589,6 +588,10 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 {
                                 case MESSAGE_TYPE_SOLUTION:
                                 {
+                                    if (system.epoch == DISABLE_QUBIC_MINING_EPOCH)
+                                    {
+                                        break;
+                                    }
                                     if (messagePayloadSize >= 32 + 32)
                                     {
 
@@ -2435,6 +2438,12 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
 
 static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, const unsigned long long processorNumber)
 {
+    // Epoch 221 event: no qubic mining activity
+    if (system.epoch == DISABLE_QUBIC_MINING_EPOCH)
+    {
+        return;
+    }
+
     PROFILE_SCOPE();
 
     ASSERT(nextTickData.epoch == system.epoch);
@@ -3750,7 +3759,8 @@ static void processTick(unsigned long long processorNumber)
         commonBuffers.releaseBuffer(txBuffer);
     }
 
-    if (isMainMode())
+    // Epoch 221 event: no qubic mining activity
+    if (isMainMode() && system.epoch != DISABLE_QUBIC_MINING_EPOCH)
     {
         // Publish solutions that were sent via BroadcastMessage as MiningSolutionTransaction
         PROFILE_NAMED_SCOPE("processTick(): broadcast solutions as tx (from BroadcastMessage)");
