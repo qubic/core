@@ -34,8 +34,8 @@ constexpr uint32 NOST_AUCTION_MAX_DURATION_DAYS = 30;
 constexpr sint64 NOST_DEFAULT_PRIVATE_AUCTION_FEE = 50000000LL;
 // Default fee accumulated after successfully creating a public Batch Auction and distributed at END_EPOCH, in qu.
 constexpr uint64 NOST_PUBLIC_BATCH_AUCTION_CREATION_FEE = 100LL;
-// Exclusive upper bound used to taper the accumulated Batch Auction bid fee against its normalized bid value, in qu.
-constexpr uint64 NOST_BATCH_BID_FEE_CUTOFF = 101ULL;
+// Minimum total payment target for small accepted Batch Auction bids, in qu.
+constexpr uint64 NOST_BATCH_BID_FEE_CUTOFF = 100ULL;
 // Default fee deducted when an auction is cancelled, in basis points.
 constexpr uint64 NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP = 1000ULL;
 // Default management fee applied to gross auction proceeds, in basis points.
@@ -820,9 +820,6 @@ struct NOST : public ContractBase
 		/** @brief Number of assets requested by the prospective bid. */
 		uint64 bidQuantity;
 
-		/** @brief Total number of assets offered by the Batch Auction. */
-		uint64 tokensForSale;
-
 		/** @brief Prospective price per asset, in qu. */
 		uint64 bidAmount;
 	};
@@ -833,8 +830,7 @@ struct NOST : public ContractBase
 		/** @brief Saturating product of `bidQuantity` and `bidAmount`. */
 		uint64 escrowAmount;
 
-		/** @brief Amount accumulated for distribution at `END_EPOCH` for an accepted bid: `max(101 - bidQuantity * floor(bidAmount / tokensForSale),
-		 * 0)`. */
+		/** @brief Amount accumulated for distribution at `END_EPOCH` for an accepted bid: `max(100 - bidQuantity * bidAmount, 0)`. */
 		uint64 fee;
 
 		/** @brief Saturating sum of `escrowAmount` and `fee`. */
@@ -2718,9 +2714,8 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		calculateBatchAuctionBidFee(input.effectiveQuantity, locals.auction.core.quantityForSale, input.bidAmount, locals.bidFeeCalculation);
-		// A full-auction-normalized bid value of zero cannot contribute to price discovery.
-		if (locals.bidFeeCalculation.fee == NOST_BATCH_BID_FEE_CUTOFF)
+		calculateBatchAuctionBidFee(input.effectiveQuantity, input.bidAmount, locals.bidFeeCalculation);
+		if (locals.bidFeeCalculation.escrowAmount == 0)
 		{
 			output.refundedAmount = static_cast<uint64>(qpi.invocationReward());
 			output.errorCode = EAuctionError::InvalidInput;
@@ -3715,9 +3710,9 @@ struct NOST : public ContractBase
 	 * @brief Places a bid in an active auction.
 	 * @note Batch auctions interpret `bidAmount` as price per asset and reject requested `quantity` below `minimumPurchaseQuantity` with a full
 	 * refund.
-	 * @note An accepted Batch bid escrows `quantity * bidAmount` and accumulates
-	 * `max(101 - floor(quantity * bidAmount / quantityForSale), 0)` qu for distribution at `END_EPOCH`. A zero normalized value is rejected. Excess
-	 * reward is refunded; rejected bids refund the full reward. The accumulated fee is not refunded if the bid is later displaced.
+	 * @note An accepted Batch bid escrows `quantity * bidAmount` and accumulates `max(100 - quantity * bidAmount, 0)` qu for distribution at
+	 * `END_EPOCH`. Excess reward is refunded; rejected bids refund the full reward. The accumulated fee is not refunded if the bid is later
+	 * displaced.
 	 * @note Batch final allocations are also at least `minimumPurchaseQuantity`; smaller unsold remainders return to the seller and affected bids are
 	 * fully refunded.
 	 * @note Standard auctions interpret `bidAmount` as the total price for the whole lot and ignore `quantity`.
@@ -4413,12 +4408,12 @@ struct NOST : public ContractBase
 
 	/**
 	 * @brief Calculates the escrow, accumulated fee, and reward required by Batch Auction bid arithmetic.
-	 * @param input Prospective bid quantity, total auction quantity, and price per asset; zero values are accepted for arithmetic inspection.
-	 * @param output Saturating escrow product, tapered bid fee, and saturating total reward.
-	 * @note Division by `tokensForSale` rounds down; when it is zero, the normalized bid value is treated as zero.
+	 * @param input Prospective bid quantity and price per asset; zero values are accepted for arithmetic inspection.
+	 * @param output Saturating escrow product, small-bid fee, and saturating total reward.
+	 * @note Non-zero escrow pays enough fee to reach `NOST_BATCH_BID_FEE_CUTOFF`; escrow at or above the cutoff pays no bid fee.
 	 * @note This function does not validate whether `PlaceBid` would accept the bid or mutate contract state.
 	 */
-	PUBLIC_FUNCTION(CalculateBatchAuctionBidFee) { calculateBatchAuctionBidFee(input.bidQuantity, input.tokensForSale, input.bidAmount, output); }
+	PUBLIC_FUNCTION(CalculateBatchAuctionBidFee) { calculateBatchAuctionBidFee(input.bidQuantity, input.bidAmount, output); }
 
 	/**
 	 * @brief Returns the current wallets that receive auction fee transfers.
@@ -4970,13 +4965,17 @@ protected:
 		                                        output.developmentFeeAmount - output.takeoverCoordinatorFeeAmount);
 	}
 
-	static void calculateBatchAuctionBidFee(uint64 bidQuantity, uint64 tokensForSale, uint64 bidAmount, CalculateBatchAuctionBidFee_output& output)
+	static void calculateBatchAuctionBidFee(uint64 bidQuantity, uint64 bidAmount, CalculateBatchAuctionBidFee_output& output)
 	{
 		output.escrowAmount = smul(bidQuantity, bidAmount);
-		output.fee = tokensForSale == 0 ? NOST_BATCH_BID_FEE_CUTOFF
-		             : div<uint64>(output.escrowAmount, tokensForSale) < NOST_BATCH_BID_FEE_CUTOFF
-		                 ? NOST_BATCH_BID_FEE_CUTOFF - div<uint64>(output.escrowAmount, tokensForSale)
-		                 : 0;
+		if (output.escrowAmount == 0)
+		{
+			output.fee = 0;
+			output.requiredReward = 0;
+			return;
+		}
+
+		output.fee = output.escrowAmount <= NOST_BATCH_BID_FEE_CUTOFF ? NOST_BATCH_BID_FEE_CUTOFF - output.escrowAmount : 0;
 		output.requiredReward = sadd(output.escrowAmount, output.fee);
 	}
 
