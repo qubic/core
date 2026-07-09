@@ -1947,8 +1947,12 @@ struct NOST : public ContractBase
 		REGISTER_USER_FUNCTION(GetFeeReserveGuardState, 22);
 	}
 
+	/**
+	 * @brief Initializes default governance, fee, pause, and guard settings.
+	 */
 	INITIALIZE()
 	{
+		// Install the default governance, fee, pause, and guard configuration into the zeroed contract state.
 		state.mut().privateAuctionFee = NOST_DEFAULT_PRIVATE_AUCTION_FEE;
 		state.mut().batchAuctionCreationFee = NOST_PUBLIC_BATCH_AUCTION_CREATION_FEE;
 		state.mut().auctionCancellationFeeBasisPoints = NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP;
@@ -1976,12 +1980,18 @@ struct NOST : public ContractBase
 		       _N, _Z, _O, _X, _S, _V, _O, _B, _K, _G, _Z, _C, _C, _F, _D, _B, _D, _M, _T, _M, _L, _C);
 	}
 
+	/**
+	 * @brief Allows share acquisition without charging an additional contract fee.
+	 */
 	PRE_ACQUIRE_SHARES()
 	{
 		output.requestedFee = 0;
 		output.allowTransfer = true;
 	}
 
+	/**
+	 * @brief Refreshes epoch-scoped configuration and arms auction timer pauses.
+	 */
 	BEGIN_EPOCH_WITH_LOCALS()
 	{
 		// TODO: Change to valid epoch
@@ -2014,12 +2024,14 @@ struct NOST : public ContractBase
 			       _E, _N, _Z, _O, _X, _S, _V, _O, _B, _K, _G, _Z, _C, _C, _F, _D, _B, _D, _M, _T, _M, _L, _C);
 		}
 
+		// Refresh the QX fee cache once per epoch so share transfers can expose current cost guidance.
 		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
 		if (interContractCallError == NoCallError)
 		{
 			state.mut().qxTransferFee = locals.feesOutput.transferFee;
 		}
 
+		// Freeze auction timers across the epoch boundary; END_TICK later accounts this pause back into deadlines.
 		state.mut().isPostBeginEpochPauseArmed = 1;
 		if (!state.get().isAuctionTimerPaused)
 		{
@@ -2039,8 +2051,12 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Distributes pending service fees and performs auction storage cleanup.
+	 */
 	END_EPOCH_WITH_LOCALS()
 	{
+		// Service fees collected during the epoch are distributed as one batch to avoid repeated dividend dust handling.
 		if (state.get().pendingServiceFeePool > 0)
 		{
 			locals.distributeAuctionServiceFeeInput.feeAmount = state.get().pendingServiceFeePool;
@@ -2051,11 +2067,15 @@ struct NOST : public ContractBase
 		state.mut().auctionList.cleanupIfNeeded();
 	}
 
+	/**
+	 * @brief Advances auction lifecycle state and finalizes auctions whose deadlines elapsed.
+	 */
 	END_TICK_WITH_LOCALS()
 	{
 		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
 		locals.currentDate = qpi.now();
 
+		// The reserve guard converts a sudden execution-fee reserve drop into an emergency pause.
 		if (!state.get().isEmergencyPaused)
 		{
 			locals.currentReserve = qpi.queryFeeReserve(SELF_INDEX);
@@ -2100,6 +2120,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// Only live auctions advance after pause synchronization has extended their timers.
 		locals.auctionIndex = state.get().auctionList.nextElementIndex(NULL_INDEX);
 		while (locals.auctionIndex != NULL_INDEX)
 		{
@@ -2125,6 +2146,7 @@ struct NOST : public ContractBase
 							}
 							else
 							{
+								// Below-sale standard bids enter a seller decision window instead of settling immediately.
 								locals.auction.core.status = EAuctionStatus::PendingSellerDecision;
 								locals.auction.core.sellerDecisionDeadline = locals.currentDate;
 								locals.auction.core.sellerDecisionDeadline.add(0, 0, 0, 0, 0, NOST_AUCTION_SELLER_DECISION_WINDOW_SECONDS);
@@ -2147,12 +2169,16 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Validates auction lot entries and totals the escrowed quantity.
+	 */
 	PRIVATE_FUNCTION_WITH_LOCALS(AnalyzeAuctionLot)
 	{
 		output.totalEscrowQuantity = 0;
 		output.lotItemCount = 0;
 		output.isValid = 0;
 
+		// Lot validation also enforces the configured maximum auction lifetime.
 		if (input.durationDays == 0 || input.durationDays > state.get().maxAuctionDurationDays)
 		{
 			return;
@@ -2182,12 +2208,16 @@ struct NOST : public ContractBase
 		output.isValid = output.lotItemCount > 0 ? 1 : 0;
 	}
 
+	/**
+	 * @brief Resolves whether the current tick belongs to a scheduled auction pause window.
+	 */
 	PRIVATE_FUNCTION_WITH_LOCALS(GetAuctionPauseState)
 	{
 		output.isPaused = 0;
 		output.pauseStartedAt.setInvalid();
 		output.pauseEndsAt.setInvalid();
 
+		// The initial runtime date is treated as a full-day launch pause.
 		locals.currentDate = qpi.now();
 		makeDateStamp(qpi.year(), qpi.month(), qpi.day(), locals.currentDateStamp);
 		if (locals.currentDateStamp == NOST_DEFAULT_INIT_TIME)
@@ -2200,6 +2230,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// Scheduled pre-epoch pauses keep auctions from expiring during the transition window.
 		if (qpi.dayOfWeek(qpi.year(), qpi.month(), qpi.day()) == NOST_PRE_EPOCH_PAUSE_DAY_OF_WEEK && qpi.hour() == NOST_PRE_EPOCH_PAUSE_HOUR &&
 		    qpi.minute() >= NOST_PRE_EPOCH_PAUSE_MINUTE)
 		{
@@ -2211,8 +2242,12 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Reports whether user-facing auction interactions are currently paused.
+	 */
 	PRIVATE_FUNCTION(IsAuctionInteractionPaused)
 	{
+		// Emergency pause takes precedence over scheduled and post-epoch launch pauses.
 		if (state.get().isEmergencyPaused)
 		{
 			output.isPaused = 1;
@@ -2228,10 +2263,14 @@ struct NOST : public ContractBase
 		output.isPaused = state.get().isPostBeginEpochPauseArmed && (qpi.tick() - qpi.initialTick()) < NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS;
 	}
 
+	/**
+	 * @brief Synchronizes timer pause state and extends affected auction deadlines.
+	 */
 	PRIVATE_PROCEDURE_WITH_LOCALS(SyncAuctionPauseState)
 	{
 		locals.currentDate = qpi.now();
 
+		// While emergency pause is active, keep extending the timer pause window.
 		if (state.get().isEmergencyPaused)
 		{
 			if (!state.get().isAuctionTimerPaused)
@@ -2249,6 +2288,7 @@ struct NOST : public ContractBase
 
 		CALL(GetAuctionPauseState, locals.getAuctionPauseStateInput, locals.getAuctionPauseStateOutput);
 
+		// The launch pause can overlap the scheduled pause; merge both windows before timers resume.
 		if (state.get().isPostBeginEpochPauseArmed)
 		{
 			if ((qpi.tick() - qpi.initialTick()) < NOST_AUCTION_POST_BEGIN_EPOCH_PAUSE_TICKS)
@@ -2290,6 +2330,7 @@ struct NOST : public ContractBase
 			state.mut().isPostBeginEpochPauseArmed = 0;
 		}
 
+		// Scheduled pauses are recorded as a window that will later be added to all active deadlines.
 		if (locals.getAuctionPauseStateOutput.isPaused)
 		{
 			if (!state.get().isAuctionTimerPaused)
@@ -2325,6 +2366,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// When the pause ends, preserve elapsed auction time by extending every affected deadline.
 		diffDateInSecond(state.get().auctionTimerPauseStartedAt, state.get().auctionTimerPauseEndsAt, locals.pausedSeconds);
 		if (locals.pausedSeconds > 0)
 		{
@@ -2351,6 +2393,9 @@ struct NOST : public ContractBase
 		state.mut().auctionTimerPauseEndsAt.setInvalid();
 	}
 
+	/**
+	 * @brief Returns remaining launch-delay ticks after the current epoch begins.
+	 */
 	PRIVATE_FUNCTION_WITH_LOCALS(GetTicksBeforeAuctionLaunchInternal)
 	{
 		output.ticks = 0;
@@ -2365,11 +2410,15 @@ struct NOST : public ContractBase
 		                                               0));
 	}
 
+	/**
+	 * @brief Splits auction sale revenue between the seller and configured fee recipients.
+	 */
 	PRIVATE_PROCEDURE_WITH_LOCALS(DistributeAuctionRevenue)
 	{
 		output.sellerPayout = input.grossAmount;
 		output.success = 0;
 
+		// Zero-gross settlements still report success so callers can close no-sale auctions cleanly.
 		if (input.grossAmount == 0)
 		{
 			output.success = 1;
@@ -2379,6 +2428,7 @@ struct NOST : public ContractBase
 		calculateAuctionRevenueBreakdown(input.grossAmount, state, locals.auctionRevenueBreakdown);
 		output.sellerPayout = locals.auctionRevenueBreakdown.sellerPayout;
 
+		// The temporary routing switch keeps seller payout math unchanged while sending every fee to development.
 		if (routeAllFeesToDevelopment(state))
 		{
 			if (input.grossAmount > output.sellerPayout)
@@ -2388,6 +2438,7 @@ struct NOST : public ContractBase
 		}
 		else
 		{
+			// Dividend dust stays pooled until it can be distributed evenly to all computors.
 			state.mut().auctionShareholderDividendPool =
 			    sadd(state.get().auctionShareholderDividendPool, locals.auctionRevenueBreakdown.shareholderDividendAmount);
 			if (locals.auctionRevenueBreakdown.managementFeeAmount > 0)
@@ -2414,16 +2465,21 @@ struct NOST : public ContractBase
 		output.success = 1;
 	}
 
+	/**
+	 * @brief Distributes accumulated service fees to shareholders and configured recipients.
+	 */
 	PRIVATE_PROCEDURE_WITH_LOCALS(DistributeAuctionServiceFee)
 	{
 		output.success = 0;
 
+		// Creation and cancellation paths may call this with zero after fee configuration changes.
 		if (input.feeAmount == 0)
 		{
 			output.success = 1;
 			return;
 		}
 
+		// Service fees use fixed recipients unless the runtime override sends all fees to development.
 		if (routeAllFeesToDevelopment(state))
 		{
 			qpi.transfer(state.get().development, input.feeAmount);
@@ -2457,6 +2513,9 @@ struct NOST : public ContractBase
 		output.success = 1;
 	}
 
+	/**
+	 * @brief Counts non-empty wallet entries allowed to bid in a private auction.
+	 */
 	PRIVATE_FUNCTION_WITH_LOCALS(CountAllowedBidderWallets)
 	{
 		output.allowedWalletCount = 0;
@@ -2469,10 +2528,14 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Counts valid access-asset requirements for private auction gating.
+	 */
 	PRIVATE_FUNCTION_WITH_LOCALS(CountRequiredAccessAssets)
 	{
 		output.requiredAccessAssetCount = 0;
 		output.isValid = 1;
+		// Empty asset slots are allowed only when their quantity is also empty.
 		for (locals.requiredAccessAssetIndex = 0; locals.requiredAccessAssetIndex < input.requiredAccessAssets.capacity();
 		     ++locals.requiredAccessAssetIndex)
 		{
@@ -2497,6 +2560,9 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Checks whether the invocator owns at least one configured access asset.
+	 */
 	PRIVATE_FUNCTION_WITH_LOCALS(HasRequiredAccessAsset)
 	{
 		output.hasRequiredAccessAsset = 0;
@@ -2505,6 +2571,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// Owning any one configured access asset at the required quantity grants private auction access.
 		for (locals.requiredAccessAssetSetIndex = locals.auction.requiredAccessAssets.nextElementIndex(NULL_INDEX);
 		     locals.requiredAccessAssetSetIndex != NULL_INDEX;
 		     locals.requiredAccessAssetSetIndex = locals.auction.requiredAccessAssets.nextElementIndex(locals.requiredAccessAssetSetIndex))
@@ -2521,6 +2588,9 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Recomputes the displayed highest active Batch Auction bid.
+	 */
 	PRIVATE_PROCEDURE_WITH_LOCALS(RecomputeBatchHighestBid)
 	{
 		locals.bestParticipantFound = 0;
@@ -2535,6 +2605,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// Batch auctions expose the highest active price, with FIFO tie-breaking for equal bids.
 		for (locals.participantIndex = 0; locals.participantIndex < state.get().participants.capacity(); ++locals.participantIndex)
 		{
 			locals.participantData = state.get().participants.get(locals.participantIndex);
@@ -2580,6 +2651,9 @@ struct NOST : public ContractBase
 		state.mut().auctionList.replace(locals.auction.core.auctionIndex, locals.auction);
 	}
 
+	/**
+	 * @brief Computes the price and quantity still available for a Batch Auction bid.
+	 */
 	PRIVATE_FUNCTION_WITH_LOCALS(ComputeBatchBidAvailability)
 	{
 		output.found = 0;
@@ -2603,6 +2677,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// Existing sale-price-or-better bids reserve priority quantity before a new bid can enter.
 		for (locals.participantIndex = 0; locals.participantIndex < state.get().participants.capacity(); ++locals.participantIndex)
 		{
 			locals.participantData = state.get().participants.get(locals.participantIndex);
@@ -2637,6 +2712,7 @@ struct NOST : public ContractBase
 			output.availableQuantity = locals.auction.core.quantityForSale - locals.salePriorityQuantity;
 		}
 
+		// If sale-price capacity is exhausted, new bids must improve the current lowest winning price.
 		if (output.availableQuantity >= locals.auction.core.minimumPurchaseQuantity)
 		{
 			output.minimumBidPrice = locals.auction.core.salePrice;
@@ -2665,6 +2741,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// Recompute capacity at the requested price so callers know the maximum acceptable quantity.
 		locals.priorityQuantity = 0;
 		for (locals.participantIndex = 0; locals.participantIndex < state.get().participants.capacity(); ++locals.participantIndex)
 		{
@@ -2694,6 +2771,9 @@ struct NOST : public ContractBase
 		output.availableQuantity = locals.auction.core.quantityForSale - locals.priorityQuantity;
 	}
 
+	/**
+	 * @brief Validates, escrows, and ranks a new Batch Auction bid.
+	 */
 	PRIVATE_PROCEDURE_WITH_LOCALS(ProcessBatchBid)
 	{
 		output.escrowedAmount = 0;
@@ -2752,6 +2832,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// Batch bids always consume a new participant slot; historical slots remain readable after settlement.
 		locals.freeParticipantSlotFound = 0;
 		for (locals.participantIndex = 0; locals.participantIndex < state.get().participants.capacity(); ++locals.participantIndex)
 		{
@@ -2783,6 +2864,7 @@ struct NOST : public ContractBase
 		locals.participantData.isActive = 1;
 		locals.participantData.isWinningBid = 1;
 
+		// Accepted bids near deadline extend the auction to reduce last-moment sniping.
 		locals.auction.core.lastBidAt = input.currentDate;
 		if ((locals.auction.core.auctionDurationSeconds - input.elapsedSeconds) <= NOST_AUCTION_EXTENSION_SECONDS)
 		{
@@ -2793,6 +2875,7 @@ struct NOST : public ContractBase
 		state.mut().participants.set(locals.freeParticipantSlotIndex, locals.participantData);
 		state.mut().auctionList.replace(input.auctionIndex, locals.auction);
 
+		// Keep only the highest-priority quantity active; displaced escrow is refunded immediately.
 		locals.activeQuantity = 0;
 		for (locals.participantIndex = 0; locals.participantIndex < state.get().participants.capacity(); ++locals.participantIndex)
 		{
@@ -2870,6 +2953,7 @@ struct NOST : public ContractBase
 		locals.recomputeBatchHighestBidInput.auctionIndex = input.auctionIndex;
 		CALL(RecomputeBatchHighestBid, locals.recomputeBatchHighestBidInput, locals.recomputeBatchHighestBidOutput);
 
+		// Small-bid service fees are retained even if the bid is later displaced.
 		if (locals.bidFeeCalculation.fee > 0)
 		{
 			state.mut().pendingServiceFeePool = sadd(state.get().pendingServiceFeePool, locals.bidFeeCalculation.fee);
@@ -2886,6 +2970,9 @@ struct NOST : public ContractBase
 		output.success = 1;
 	}
 
+	/**
+	 * @brief Validates and records a Standard Auction bid, refunding replaced escrow.
+	 */
 	PRIVATE_PROCEDURE_WITH_LOCALS(ProcessStandardBid)
 	{
 		output.escrowedAmount = 0;
@@ -2930,6 +3017,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// Standard bidders update their own active slot, while a new bidder needs one reusable slot.
 		for (locals.participantSlotIndex = 0; locals.participantSlotIndex < state.get().participants.capacity(); ++locals.participantSlotIndex)
 		{
 			locals.participantData = state.get().participants.get(locals.participantSlotIndex);
@@ -2977,6 +3065,7 @@ struct NOST : public ContractBase
 			locals.auction.core.nextBidIndex = sadd(locals.auction.core.nextBidIndex, 1ULL);
 		}
 
+		// A new highest bid releases the previous bidder's escrow before storing the replacement.
 		locals.highestBidderSlotIndex = locals.auction.core.highestBidSlotIndex;
 		if (locals.highestBidderSlotIndex < state.get().participants.capacity())
 		{
@@ -3015,6 +3104,7 @@ struct NOST : public ContractBase
 		state.mut().participants.set(locals.participantSlotIndex, locals.participantData);
 		state.mut().auctionList.replace(input.auctionIndex, locals.auction);
 
+		// Refund replaced self-escrow and excess reward after the new bid state is durable.
 		if (locals.previousEscrow > 0)
 		{
 			qpi.transfer(qpi.invocator(), locals.previousEscrow);
@@ -3029,6 +3119,7 @@ struct NOST : public ContractBase
 		output.escrowedAmount = locals.requiredEscrow;
 		output.success = 1;
 
+		// Buy Now closes the auction in the same procedure after the winning bid is recorded.
 		if (locals.finalizeImmediately)
 		{
 			locals.finalizeStandardAuctionInput.auctionIndex = input.auctionIndex;
@@ -3037,17 +3128,22 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Validates the fixed-size IPFS metadata CID field.
+	 */
 	PRIVATE_FUNCTION_WITH_LOCALS(ValidateMetadataCid)
 	{
 		output.isValid = 0;
 		locals.hasPayloadCharacters = 0;
 		locals.reachedTerminator = 0;
 
+		// Nostromo stores lowercase base32 CIDv1 values, which begin with the multibase prefix `b`.
 		if (input.metadataIpfsCid.get(0) != QPI::Ch::b)
 		{
 			return;
 		}
 
+		// After the first zero byte, the fixed-size CID field must remain zero-padded.
 		for (locals.cidIndex = 1; locals.cidIndex < input.metadataIpfsCid.capacity(); ++locals.cidIndex)
 		{
 			locals.cidChar = input.metadataIpfsCid.get(locals.cidIndex);
@@ -3079,9 +3175,13 @@ struct NOST : public ContractBase
 		output.isValid = 1;
 	}
 
+	/**
+	 * @brief Verifies that the invocator can escrow every non-empty lot asset.
+	 */
 	PRIVATE_FUNCTION_WITH_LOCALS(VerifyAuctionLotBalances)
 	{
 		output.hasEnoughBalance = 1;
+		// Creation validates possession before attempting escrow so failures can refund without rollback.
 		for (locals.lotItemIndex = 0; locals.lotItemIndex < input.auctionLotItems.capacity(); ++locals.lotItemIndex)
 		{
 			locals.lotItem = input.auctionLotItems.get(locals.lotItemIndex);
@@ -3100,8 +3200,12 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Returns escrowed lot assets to the specified recipient.
+	 */
 	PRIVATE_PROCEDURE_WITH_LOCALS(RollbackAuctionLotAssets)
 	{
+		// Rollback is shared by cancellation, failed creation, rejected standard sales, and no-sale finalization.
 		for (locals.lotItemIndex = 0; locals.lotItemIndex < input.auctionLotItems.capacity(); ++locals.lotItemIndex)
 		{
 			locals.lotItem = input.auctionLotItems.get(locals.lotItemIndex);
@@ -3114,6 +3218,9 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Settles a Batch Auction by allocating winning quantities and closing the auction.
+	 */
 	PRIVATE_PROCEDURE_WITH_LOCALS(FinalizeBatchAuction)
 	{
 		output.success = 0;
@@ -3261,6 +3368,9 @@ struct NOST : public ContractBase
 		output.success = 1;
 	}
 
+	/**
+	 * @brief Settles a Standard Auction by transferring the lot or returning it to the seller.
+	 */
 	PRIVATE_PROCEDURE_WITH_LOCALS(FinalizeStandardAuction)
 	{
 		output.success = 0;
@@ -3285,6 +3395,7 @@ struct NOST : public ContractBase
 			    locals.highestBidderData.isUsed && locals.highestBidderData.isActive && locals.highestBidderData.auctionIndex == input.auctionIndex;
 		}
 
+		// A valid highest bid transfers the whole standard lot and treats escrow as gross proceeds.
 		if (locals.highestBidderExists && locals.highestBidderData.escrowedAmount > 0)
 		{
 			locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.core.auctionLotItems;
@@ -3308,12 +3419,14 @@ struct NOST : public ContractBase
 		}
 		else
 		{
+			// No active funded bid means the seller receives the lot back with no revenue distribution.
 			locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.core.auctionLotItems;
 			locals.rollbackAuctionLotAssetsInput.recipient = locals.auction.core.seller;
 			CALL(RollbackAuctionLotAssets, locals.rollbackAuctionLotAssetsInput, locals.rollbackAuctionLotAssetsOutput);
 			locals.auction.core.allocatedQuantity = 0;
 		}
 
+		// Closed standard auctions retain winner fields only when the lot actually sold.
 		locals.auction.core.status = EAuctionStatus::Finalized;
 		locals.auction.core.settledAt = input.currentDate;
 		if (!locals.lotSold)
@@ -3329,6 +3442,9 @@ struct NOST : public ContractBase
 		output.success = 1;
 	}
 
+	/**
+	 * @brief Rejects a pending Standard Auction bid and closes the auction without a sale.
+	 */
 	PRIVATE_PROCEDURE_WITH_LOCALS(RejectStandardAuction)
 	{
 		output.refundedAmount = 0;
@@ -3353,6 +3469,7 @@ struct NOST : public ContractBase
 			    locals.highestBidderData.isUsed && locals.highestBidderData.isActive && locals.highestBidderData.auctionIndex == input.auctionIndex;
 		}
 
+		// Seller rejection unwinds the pending bid instead of distributing its escrow as proceeds.
 		if (locals.highestBidderExists && locals.highestBidderData.escrowedAmount > 0)
 		{
 			qpi.transfer(locals.highestBidderData.participant, locals.highestBidderData.escrowedAmount);
@@ -3364,6 +3481,7 @@ struct NOST : public ContractBase
 			state.mut().participants.set(locals.highestBidderSlotIndex, locals.highestBidderData);
 		}
 
+		// The seller keeps the lot after rejection, and the auction is closed as finalized.
 		locals.rollbackAuctionLotAssetsInput.auctionLotItems = locals.auction.core.auctionLotItems;
 		locals.rollbackAuctionLotAssetsInput.recipient = locals.auction.core.seller;
 		CALL(RollbackAuctionLotAssets, locals.rollbackAuctionLotAssetsInput, locals.rollbackAuctionLotAssetsOutput);
@@ -3381,9 +3499,13 @@ struct NOST : public ContractBase
 		output.success = 1;
 	}
 
+	/**
+	 * @brief Transfers auction lot assets into contract escrow during creation.
+	 */
 	PRIVATE_PROCEDURE_WITH_LOCALS(EscrowAuctionLotAssets)
 	{
 		output.success = 1;
+		// Escrow entries one by one; a later failure rolls back earlier successful transfers.
 		for (locals.lotItemIndex = 0; locals.lotItemIndex < input.auctionLotItems.capacity(); ++locals.lotItemIndex)
 		{
 			locals.lotItem = input.auctionLotItems.get(locals.lotItemIndex);
@@ -3427,6 +3549,7 @@ struct NOST : public ContractBase
 	{
 		output.errorCode = EAuctionError::InvalidInput;
 
+		// Any rejection before escrow succeeds refunds the full invocation reward.
 		CALL(IsAuctionInteractionPaused, locals.isAuctionInteractionPausedInput, locals.isAuctionInteractionPausedOutput);
 		if (locals.isAuctionInteractionPausedOutput.isPaused)
 		{
@@ -3523,6 +3646,7 @@ struct NOST : public ContractBase
 			logProcedureResult(locals.log);
 			return;
 		}
+		// Resolve auction-type-specific quantity and price invariants before touching assets.
 		locals.resolvedQuantityForSale = 0;
 		locals.resolvedMinimumPurchaseQuantity = 0;
 		switch (static_cast<EAuctionType>(input.auctionType))
@@ -3572,6 +3696,7 @@ struct NOST : public ContractBase
 				return;
 		}
 
+		// Private auctions must choose exactly one access gate: wallet list or asset ownership.
 		locals.countAllowedBidderWalletsInput.allowedBidderWallets = input.allowedBidderWallets;
 		CALL(CountAllowedBidderWallets, locals.countAllowedBidderWalletsInput, locals.countAllowedBidderWalletsOutput);
 		locals.countRequiredAccessAssetsInput.requiredAccessAssets = input.requiredAccessAssets;
@@ -3622,6 +3747,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// From this point onward, asset escrow may need explicit rollback on storage failure.
 		locals.escrowAuctionLotAssetsInput.auctionLotItems = input.auctionLotItems;
 		CALL(EscrowAuctionLotAssets, locals.escrowAuctionLotAssetsInput, locals.escrowAuctionLotAssetsOutput);
 		if (!locals.escrowAuctionLotAssetsOutput.success)
@@ -3649,6 +3775,7 @@ struct NOST : public ContractBase
 		locals.auction.core.lastBidAt = locals.auction.core.createdAt;
 		locals.auction.core.seller = qpi.invocator();
 		locals.auction.core.highestBidSlotIndex = NOST_INVALID_PARTICIPANT_SLOT;
+		// Duplicate required access assets collapse to the highest configured quantity.
 		for (locals.requiredAccessAssetIndex = 0; locals.requiredAccessAssetIndex < input.requiredAccessAssets.capacity();
 		     ++locals.requiredAccessAssetIndex)
 		{
@@ -3673,6 +3800,7 @@ struct NOST : public ContractBase
 		locals.auction.core.visibility = static_cast<EAuctionVisibility>(input.auctionVisibility);
 		locals.auction.core.status = EAuctionStatus::Active;
 
+		// If persistent auction storage fails after escrow, return the lot before refunding the fee reward.
 		if (state.mut().auctionList.set(locals.auction.core.auctionIndex, locals.auction) == NULL_INDEX)
 		{
 			locals.rollbackAuctionLotAssetsInput.auctionLotItems = input.auctionLotItems;
@@ -3689,6 +3817,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// Creation fees are held until END_EPOCH; overpayment is returned immediately.
 		if (locals.requiredFee > 0)
 		{
 			state.mut().pendingServiceFeePool = sadd(state.get().pendingServiceFeePool, static_cast<uint64>(locals.requiredFee));
@@ -3721,6 +3850,7 @@ struct NOST : public ContractBase
 	{
 		output.errorCode = EAuctionError::InvalidInput;
 
+		// Common auction gates run before type-specific bid processing; failed gates refund the reward.
 		CALL(IsAuctionInteractionPaused, locals.isAuctionInteractionPausedInput, locals.isAuctionInteractionPausedOutput);
 		if (locals.isAuctionInteractionPausedOutput.isPaused)
 		{
@@ -3784,6 +3914,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// Private access accepts either the configured asset gate or the configured wallet gate.
 		if (locals.auction.core.visibility == EAuctionVisibility::Private)
 		{
 			if (locals.auction.requiredAccessAssets.population() > 0)
@@ -3811,6 +3942,7 @@ struct NOST : public ContractBase
 			}
 		}
 
+		// Type-specific processors own escrow/refund details once common validation succeeds.
 		switch (locals.auction.core.type)
 		{
 			case EAuctionType::Batch:
@@ -3885,6 +4017,7 @@ struct NOST : public ContractBase
 		output.cancellationFee = 0;
 		output.errorCode = EAuctionError::InvalidInput;
 
+		// Cancellation is blocked during emergency pause but does not use the scheduled auction timer pause.
 		if (state.get().isEmergencyPaused)
 		{
 			if (qpi.invocationReward() > 0)
@@ -3937,6 +4070,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// The fee base represents the full reserve value of the lot being withdrawn.
 		locals.cancellationBaseAmount = locals.auction.core.salePrice;
 		if (locals.auction.core.type == EAuctionType::Batch)
 		{
@@ -3958,6 +4092,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// Clear any participant escrow defensively before returning the seller's lot.
 		locals.participantIndex = 0;
 		while (locals.participantIndex < state.get().participants.capacity())
 		{
@@ -3980,6 +4115,7 @@ struct NOST : public ContractBase
 		locals.rollbackAuctionLotAssetsInput.recipient = locals.auction.core.seller;
 		CALL(RollbackAuctionLotAssets, locals.rollbackAuctionLotAssetsInput, locals.rollbackAuctionLotAssetsOutput);
 
+		// Cancellation closes the auction and records it in the same history ring as finalized auctions.
 		locals.currentDate = qpi.now();
 		locals.auction.core.status = EAuctionStatus::Cancelled;
 		locals.auction.core.settledAt = locals.currentDate;
@@ -3992,6 +4128,7 @@ struct NOST : public ContractBase
 		state.mut().auctionList.replace(input.auctionIndex, locals.auction);
 		addClosedAuctionToHistory(state, locals.auction.core.auctionIndex);
 
+		// Cancellation fees are distributed immediately because cancellation is already a settlement action.
 		locals.distributeAuctionServiceFeeInput.feeAmount = output.cancellationFee;
 		CALL(DistributeAuctionServiceFee, locals.distributeAuctionServiceFeeInput, locals.distributeAuctionServiceFeeOutput);
 
@@ -4014,6 +4151,7 @@ struct NOST : public ContractBase
 		output.refundedAmount = 0;
 		output.errorCode = EAuctionError::InvalidInput;
 
+		// This procedure does not need a reward; return any supplied amount before validation.
 		if (qpi.invocationReward() > 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -4065,6 +4203,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// If the decision window has expired, the automatic sale wins over the seller action.
 		locals.currentDate = qpi.now();
 		if (!state.get().isAuctionTimerPaused && locals.auction.core.sellerDecisionDeadline <= locals.currentDate)
 		{
@@ -4079,6 +4218,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// Accepting finalizes the sale; rejecting refunds the bidder and returns the lot to the seller.
 		if (input.acceptSale)
 		{
 			locals.finalizeStandardAuctionInput.auctionIndex = input.auctionIndex;
@@ -4106,6 +4246,7 @@ struct NOST : public ContractBase
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetAuctionFees)
 	{
 		output.errorCode = EAuctionError::InvalidInput;
+		// Administrative procedures never consume invocation rewards.
 		if (qpi.invocationReward() > 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -4119,6 +4260,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// Validate all fee tiers together so no gross-proceeds tier can exceed 100 percent.
 		if (!isValidAuctionFeeConfiguration(input.privateAuctionFee, input.batchAuctionCreationFee, input.auctionCancellationFeeBasisPoints,
 		                                    input.managementFeeBasisPoints, input.developmentFeeBasisPoints, input.takeoverCoordinatorFeeBasisPoints,
 		                                    input.shareholderDividendBasisPoints, input.shareholderFeeBasisPointsTier1,
@@ -4155,6 +4297,7 @@ struct NOST : public ContractBase
 	{
 		output.errorCode = EAuctionError::InvalidInput;
 
+		// Management can update operational fees, but takeover-specific fee parameters stay unchanged.
 		if (qpi.invocationReward() > 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -4236,6 +4379,7 @@ struct NOST : public ContractBase
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetFeeReserveGuardConfig)
 	{
 		output.errorCode = EAuctionError::InvalidInput;
+		// Resetting the baseline forces the guard to start a fresh observation window.
 		if (qpi.invocationReward() > 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -4273,6 +4417,7 @@ struct NOST : public ContractBase
 	PUBLIC_PROCEDURE_WITH_LOCALS(SetEmergencyPause)
 	{
 		output.errorCode = EAuctionError::InvalidInput;
+		// Manual pause shares the same state as the automatic reserve guard.
 		if (qpi.invocationReward() > 0)
 		{
 			qpi.transfer(qpi.invocator(), qpi.invocationReward());
@@ -4318,6 +4463,7 @@ struct NOST : public ContractBase
 		output.found = 1;
 		output.auction.core = locals.auction.core;
 
+		// Hash containers are flattened into arrays because they are not part of the public ABI surface.
 		output.auction.requiredAccessAssetCount = 0;
 		for (locals.requiredAccessAssetSetIndex = locals.auction.requiredAccessAssets.nextElementIndex(NULL_INDEX);
 		     locals.requiredAccessAssetSetIndex != NULL_INDEX;
@@ -4348,6 +4494,7 @@ struct NOST : public ContractBase
 	{
 		output.found = 0;
 		locals.bestParticipantFound = 0;
+		// A wallet can have multiple historical batch bid slots; return the newest matching record.
 		for (locals.participantSlotIndex = 0; locals.participantSlotIndex < state.get().participants.capacity(); ++locals.participantSlotIndex)
 		{
 			locals.participantData = state.get().participants.get(locals.participantSlotIndex);
@@ -4461,6 +4608,9 @@ struct NOST : public ContractBase
 		output.isEmergencyPaused = state.get().isEmergencyPaused;
 	}
 
+	/**
+	 * @brief Returns aggregate auction, participant, fee, and pause counters.
+	 */
 	PUBLIC_FUNCTION_WITH_LOCALS(GetContractStats)
 	{
 		output.stats.totalAuctionsCreated = state.get().totalAuctionsCreated;
@@ -4473,6 +4623,7 @@ struct NOST : public ContractBase
 		output.stats.isPostBeginEpochPauseArmed = state.get().isPostBeginEpochPauseArmed;
 		output.stats.isEmergencyPaused = state.get().isEmergencyPaused;
 
+		// Stats scan fixed storage because participant slots and auction records are not separately indexed by status.
 		for (locals.participantSlotIndex = 0; locals.participantSlotIndex < state.get().participants.capacity(); ++locals.participantSlotIndex)
 		{
 			locals.participantData = state.get().participants.get(locals.participantSlotIndex);
@@ -4501,11 +4652,15 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Returns a page of auction summaries ordered by creation index.
+	 */
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAuctionSummaries)
 	{
 		output.totalCount = state.get().totalAuctionsCreated;
 		output.returnedCount = 0;
 		locals.boundedLimit = min(input.limit, NOST_AUCTION_GETTER_PAGE_SIZE);
+		// This getter paginates by creation index, so skipped missing records still count in `totalCount`.
 		for (locals.auctionIndex = input.offset; locals.auctionIndex < state.get().totalAuctionsCreated && output.returnedCount < locals.boundedLimit;
 		     ++locals.auctionIndex)
 		{
@@ -4519,11 +4674,15 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Returns a page of active or pending-seller-decision auction indices.
+	 */
 	PUBLIC_FUNCTION_WITH_LOCALS(GetActiveAuctionIndices)
 	{
 		output.totalCount = 0;
 		output.returnedCount = 0;
 		locals.boundedLimit = min(input.limit, NOST_AUCTION_GETTER_PAGE_SIZE);
+		// Filtered getters count matches before pagination so callers can request the next page.
 		for (locals.auctionIndex = 0; locals.auctionIndex < state.get().totalAuctionsCreated; ++locals.auctionIndex)
 		{
 			if (!state.get().auctionList.get(locals.auctionIndex, locals.auction))
@@ -4543,6 +4702,9 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Returns a page of auction summaries created by a seller.
+	 */
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAuctionsBySeller)
 	{
 		output.totalCount = 0;
@@ -4564,10 +4726,14 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Looks up the first auction matching a metadata CID.
+	 */
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAuctionByMetadataCid)
 	{
 		output.found = 0;
 		output.auctionIndex = 0;
+		// Metadata lookup returns the first matching auction in creation order.
 		for (locals.auctionIndex = 0; locals.auctionIndex < state.get().totalAuctionsCreated; ++locals.auctionIndex)
 		{
 			if (!state.get().auctionList.get(locals.auctionIndex, locals.auction))
@@ -4593,10 +4759,14 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Returns auction summaries for a batch of requested indices.
+	 */
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAuctionSummariesByIndexBatch)
 	{
 		output.returnedCount = 0;
 		locals.boundedLimit = min(input.count, NOST_AUCTION_GETTER_PAGE_SIZE);
+		// Preserve input positions so callers can correlate each requested index with its found flag.
 		for (locals.requestedIndex = 0; locals.requestedIndex < locals.boundedLimit; ++locals.requestedIndex)
 		{
 			locals.auctionIndex = input.auctionIndices.get(locals.requestedIndex);
@@ -4610,11 +4780,15 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Returns a page of participants for one auction.
+	 */
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAuctionParticipants)
 	{
 		output.totalCount = 0;
 		output.returnedCount = 0;
 		locals.boundedLimit = min(input.limit, NOST_AUCTION_GETTER_PAGE_SIZE);
+		// Participant storage is global, so auction participant pages are built by scanning all slots.
 		for (locals.participantSlotIndex = 0; locals.participantSlotIndex < state.get().participants.capacity(); ++locals.participantSlotIndex)
 		{
 			locals.participantData = state.get().participants.get(locals.participantSlotIndex);
@@ -4632,11 +4806,15 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Returns a page of historical auction participations for one wallet.
+	 */
 	PUBLIC_FUNCTION_WITH_LOCALS(GetUserParticipations)
 	{
 		output.totalCount = 0;
 		output.returnedCount = 0;
 		locals.boundedLimit = min(input.limit, NOST_AUCTION_GETTER_PAGE_SIZE);
+		// User participation history includes inactive records so settled and displaced bids remain visible.
 		for (locals.participantSlotIndex = 0; locals.participantSlotIndex < state.get().participants.capacity(); ++locals.participantSlotIndex)
 		{
 			locals.participantData = state.get().participants.get(locals.participantSlotIndex);
@@ -4654,12 +4832,18 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Returns the most recently created auction index when one exists.
+	 */
 	PUBLIC_FUNCTION(GetLatestAuctionIndex)
 	{
 		output.found = state.get().totalAuctionsCreated > 0;
 		output.auctionIndex = output.found ? state.get().totalAuctionsCreated - 1 : 0;
 	}
 
+	/**
+	 * @brief Counts auctions created by a seller.
+	 */
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAuctionCountBySeller)
 	{
 		output.count = 0;
@@ -4672,6 +4856,9 @@ struct NOST : public ContractBase
 		}
 	}
 
+	/**
+	 * @brief Returns immutable creation-time fields for an auction.
+	 */
 	PUBLIC_FUNCTION_WITH_LOCALS(GetAuctionAtCreationSnapshot)
 	{
 		output.found = 0;
@@ -4718,6 +4905,7 @@ struct NOST : public ContractBase
 		output.transferredNumberOfShares = 0;
 		output.errorCode = EAuctionError::InvalidInput;
 
+		// Emergency pause blocks cross-contract share release and returns the caller's fee budget.
 		if (state.get().isEmergencyPaused)
 		{
 			if (locals.refundAmount > 0)
@@ -4731,6 +4919,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		// `releaseShares` consumes only the destination transfer fee; any unused reward is refunded below.
 		if (input.numberOfShares > 0 && qpi.numberOfPossessedShares(input.asset.assetName, input.asset.issuer, qpi.invocator(), qpi.invocator(),
 		                                                            SELF_INDEX, SELF_INDEX) >= input.numberOfShares)
 		{
@@ -4760,6 +4949,9 @@ struct NOST : public ContractBase
 	}
 
 protected:
+	/**
+	 * @brief Emits a procedure log as success or error based on its error code.
+	 */
 	static void logProcedureResult(const NostromoProcedureLog& log)
 	{
 		if (log.errorCode == static_cast<uint32>(EAuctionError::Success))
@@ -4772,6 +4964,9 @@ protected:
 		}
 	}
 
+	/**
+	 * @brief Fills the common procedure log payload.
+	 */
 	static void setProcedureLogInput(NostromoProcedureLog& log, const id& actor, EProcedureId procedure, EAuctionError errorCode, uint64 auctionIndex,
 	                                 sint64 amount)
 	{
@@ -4784,6 +4979,9 @@ protected:
 		log._terminator = 0;
 	}
 
+	/**
+	 * @brief Copies persisted auction data into a compact summary.
+	 */
 	static void fillAuctionSummary(const AuctionData& auction, AuctionSummary& summary)
 	{
 		summary.metadataIpfsCid = auction.core.metadataIpfsCid;
@@ -4805,6 +5003,9 @@ protected:
 		summary.status = static_cast<uint8>(auction.core.status);
 	}
 
+	/**
+	 * @brief Copies participant storage data into an auction participant summary.
+	 */
 	static void fillParticipantSummary(const AuctionParticipantData& participantData, ParticipantSummary& summary)
 	{
 		summary.participant = participantData.participant;
@@ -4816,6 +5017,9 @@ protected:
 		summary.isWinningBid = participantData.isWinningBid;
 	}
 
+	/**
+	 * @brief Copies participant storage data into a user participation summary.
+	 */
 	static void fillUserParticipationSummary(uint64 auctionIndex, const AuctionParticipantData& participantData, UserParticipationSummary& summary)
 	{
 		summary.participant = participantData.participant;
@@ -4828,17 +5032,26 @@ protected:
 		summary.isWinningBid = participantData.isWinningBid;
 	}
 
+	/**
+	 * @brief Returns the smaller of two values.
+	 */
 	template<typename T>
 	static constexpr T min(const T& a, const T& b)
 	{
 		return (a < b) ? a : b;
 	}
+	/**
+	 * @brief Returns the larger of two values.
+	 */
 	template<typename T>
 	static constexpr T max(const T& a, const T& b)
 	{
 		return a > b ? a : b;
 	}
 
+	/**
+	 * @brief Resolves Batch Auction quantity invariants from creation input.
+	 */
 	static bool resolveBatchAuctionCreateParams(uint64 lotItemCount, uint64 totalEscrowQuantity, uint64 minimumPurchaseQuantity,
 	                                            uint64& quantityForSale, uint64& resolvedMinimumPurchaseQuantity, uint64 buyNowPrice)
 	{
@@ -4854,6 +5067,9 @@ protected:
 		return true;
 	}
 
+	/**
+	 * @brief Resolves Standard Auction quantity and price invariants from creation input.
+	 */
 	static bool resolveStandardAuctionCreateParams(uint64 minimumBidIncrement, uint64& quantityForSale, uint64& resolvedMinimumPurchaseQuantity,
 	                                               uint64 buyNowPrice, uint64 initialPrice, uint64 salePrice)
 	{
@@ -4880,11 +5096,17 @@ protected:
 		return true;
 	}
 
+	/**
+	 * @brief Validates that private auctions use exactly one supported access mode.
+	 */
 	constexpr static bool validatePrivateAuctionAccess(EAuctionVisibility visibility, uint64 requiredAccessAssetCount, uint64 allowedWalletCount)
 	{
 		return visibility != EAuctionVisibility::Private || ((requiredAccessAssetCount > 0) != (allowedWalletCount > 0));
 	}
 
+	/**
+	 * @brief Validates governance fee percentages and fixed service fees.
+	 */
 	constexpr static bool isValidAuctionFeeConfiguration(sint64 privateAuctionFee, uint64 batchAuctionCreationFee,
 	                                                     uint64 auctionCancellationFeeBasisPoints, uint64 managementFeeBasisPoints,
 	                                                     uint64 developmentFeeBasisPoints, uint64 takeoverCoordinatorFeeBasisPoints,
@@ -4907,6 +5129,9 @@ protected:
 		           NOST_BASIS_POINTS_SCALE;
 	}
 
+	/**
+	 * @brief Selects the shareholder fee tier for a gross auction amount.
+	 */
 	static uint64 getAuctionShareholderFeeBasisPoints(uint64 grossAmount, const StateData& state)
 	{
 		if (grossAmount <= NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_1)
@@ -4924,6 +5149,9 @@ protected:
 		return state.shareholderFeeBasisPointsTier4;
 	}
 
+	/**
+	 * @brief Selects the shareholder fee tier from contract state.
+	 */
 	static uint64 getAuctionShareholderFeeBasisPoints(uint64 grossAmount, const ContractState<StateData, CONTRACT_INDEX>& state)
 	{
 		return getAuctionShareholderFeeBasisPoints(grossAmount, state.get());
@@ -4965,6 +5193,9 @@ protected:
 		                                        output.developmentFeeAmount - output.takeoverCoordinatorFeeAmount);
 	}
 
+	/**
+	 * @brief Computes escrow, bid fee, and required reward for a Batch Auction bid.
+	 */
 	static void calculateBatchAuctionBidFee(uint64 bidQuantity, uint64 bidAmount, CalculateBatchAuctionBidFee_output& output)
 	{
 		output.escrowAmount = smul(bidQuantity, bidAmount);
@@ -4979,6 +5210,9 @@ protected:
 		output.requiredReward = sadd(output.escrowAmount, output.fee);
 	}
 
+	/**
+	 * @brief Returns the service fee required to create an auction.
+	 */
 	static sint64 getCreateAuctionFee(EAuctionType auctionType, EAuctionVisibility visibility, const ContractState<StateData, CONTRACT_INDEX>& state)
 	{
 		if (visibility == EAuctionVisibility::Private)
@@ -4990,16 +5224,25 @@ protected:
 		           : 0;
 	}
 
+	/**
+	 * @brief Returns whether an auction type is accepted by the contract.
+	 */
 	static bool isSupportedAuctionType(EAuctionType auctionType)
 	{
 		return auctionType == EAuctionType::Batch || auctionType == EAuctionType::Standard;
 	}
 
+	/**
+	 * @brief Returns whether an auction visibility is accepted by the contract.
+	 */
 	static bool isSupportedAuctionVisibility(EAuctionVisibility visibility)
 	{
 		return visibility == EAuctionVisibility::Public || visibility == EAuctionVisibility::Private;
 	}
 
+	/**
+	 * @brief Returns whether an asset entry is empty.
+	 */
 	static bool isZeroAsset(const Asset& asset) { return asset.assetName == 0 && isZero(asset.issuer); }
 
 	/** @brief Returns whether the runtime fee override routes every auction fee to the development wallet. */
@@ -5008,17 +5251,26 @@ protected:
 		return state.get().routeAllFeesToDevelopment;
 	}
 
+	/**
+	 * @brief Appends a closed auction index to the ring-buffer history.
+	 */
 	static void addClosedAuctionToHistory(QPI::ContractState<StateData, CONTRACT_INDEX>& state, uint64 auctionIndex)
 	{
 		state.mut().closedAuctionHistory.set(mod(state.get().closedAuctionHistoryCounter, state.get().closedAuctionHistory.capacity()), auctionIndex);
 		state.mut().closedAuctionHistoryCounter = sadd(state.get().closedAuctionHistoryCounter, 1ULL);
 	}
 
+	/**
+	 * @brief Packs year, month, and day into the contract date-stamp format.
+	 */
 	static void makeDateStamp(uint8 year, uint8 month, uint8 day, uint32& res)
 	{
 		res = static_cast<uint32>(year << NOST_DATE_STAMP_YEAR_SHIFT | month << NOST_DATE_STAMP_MONTH_SHIFT | day);
 	}
 
+	/**
+	 * @brief Expands an accumulated pause window to include a candidate window.
+	 */
 	static void accumulatePauseWindow(uint8& hasPauseWindow, DateAndTime& pauseStartedAt, DateAndTime& pauseEndsAt,
 	                                  const DateAndTime& candidatePauseStartedAt, const DateAndTime& candidatePauseEndsAt)
 	{
