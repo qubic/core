@@ -390,6 +390,60 @@ TEST(ContractRandom, MissedRevealThenReCommitReRegistersProvider)
 }
 
 // ---------------------------------------------------------------------------
+// Safe unsubscribe ("reveal and leave"): a provider reveals the preimage of its
+// outstanding commit and submits an EMPTY new commit. Its reveal is still mixed
+// into this round's entropy (count-it), then END_TICK removes it from the pool
+// (then-leave) and all collateral is returned -- no slashing, no lost funds.
+// ---------------------------------------------------------------------------
+TEST(ContractRandom, RevealWithEmptyCommitCountsRevealThenLeavesSafely)
+{
+    ContractTestingRandom r;
+
+    const uint32 startTick = 1002;          // 1002 % 3 == 0 -> stream 0
+    const uint32 stream = startTick % 3;
+    const uint8 tier = 2;                    // 100 qu collateral
+    const sint64 collateral = collateralForTier(tier);
+
+    const QPI::bit_4096 reveal1 = makeReveal(11);
+    const id commit1 = commitOf(reveal1);
+
+    const id provider = getUser(0xF00D);
+    QPI::bit_4096 zero; zero.setAll(0);
+
+    // ----- Tick T: enroll (first-commit) ----------------------------------
+    r.setTick(startTick);
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, /*reveal=*/zero, /*commit=*/commit1, collateral);
+    r.endTick();
+    ASSERT_EQ(r.state()->populations.get(stream), 1u);
+
+    // ----- Tick T+3: reveal the outstanding commit with an EMPTY commit = leave
+    r.setTick(startTick + 3);
+    increaseEnergy(provider, collateral);
+    const long long balBefore = getBalance(provider); // just the freshly-added collateral
+    r.revealAndCommit(provider, /*reveal=*/reveal1, /*commit=*/id::zero(), collateral);
+
+    // The reveal is recorded (so END_TICK can mix it); the slot is marked leaving
+    // (commit == 0); collateral is unlocked; both the locked collateral and the
+    // amount attached to this call are refunded (no loss).
+    EXPECT_TRUE(r.state()->reveals.get(stream * 1365 + 0) == reveal1)
+        << "reveal must be recorded so END_TICK mixes it into entropy";
+    EXPECT_TRUE(r.state()->commits.get(stream * 1365 + 0) == id::zero())
+        << "empty commit marks the provider as leaving";
+    EXPECT_EQ(r.state()->lockedCollateralAmounts.get(stream * 1365 + 0), 0u)
+        << "collateral must be unlocked on leave (prevents END_TICK double-refund)";
+    EXPECT_EQ(getBalance(provider), balBefore + collateral)
+        << "leave must return locked collateral + the attached amount (no funds lost)";
+
+    // ----- END_TICK: mix the reveal, THEN evict the leaver -----------------
+    r.endTick();
+    EXPECT_TRUE(r.state()->entropy.get(stream * 10 + tier) == reveal1)
+        << "the leaver's reveal must still contribute to this round's entropy";
+    EXPECT_EQ(r.state()->populations.get(stream), 0u)
+        << "provider must be gone from the pool after leaving";
+}
+
+// ---------------------------------------------------------------------------
 // Trustee condition. BuyEntropy carries a single optional trustee:
 //   - trustee == 0                         : unconditional, plain buy.
 //   - trustee is a provider in the
