@@ -60,7 +60,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
 // If this flag is 0, the node will try to fetch data of the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
 // If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
-#define START_NETWORK_FROM_SCRATCH 1
+#define START_NETWORK_FROM_SCRATCH 0
 
 // Addons: If you don't know it, leave it 0.
 #define ADDON_TX_STATUS_REQUEST 0
@@ -70,13 +70,16 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // Config options that should NOT be changed by operators
 
 #define VERSION_A 1
-#define VERSION_B 294
-#define VERSION_C 0
+#define VERSION_B 298
+#define VERSION_C 2
 
 // Epoch and initial tick for node startup
-#define EPOCH 216
-#define TICK 55900000
+#define EPOCH 221
+#define TICK 64911281
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
+
+// Temporarily disable native qubic mining
+static constexpr unsigned short DISABLE_QUBIC_MINING_EPOCH = 221;
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
 #define DISPATCHER "XPXYKFLGSWRHRGAUKWFWVXCDVEYAPCPCNUTMUDWFGDYQCWZNJMWFZEEGCFFO"
@@ -100,7 +103,7 @@ static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_TICKS = 1000;       
 static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
 static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_MUTATIONS = 150;
 static constexpr unsigned long long HYPERIDENTITY_POPULATION_THRESHOLD = HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_MUTATIONS; // P
-static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT = 321;
+static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT = 316;
 
 static constexpr unsigned long long ADDITION_NUMBER_OF_INPUT_NEURONS = 14;
 static constexpr unsigned long long ADDITION_NUMBER_OF_OUTPUT_NEURONS = 8;
@@ -109,7 +112,7 @@ static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = 256;
 // Each neuron is connected to every other neuron(exclude self). The effective is clamp to (ADDITION_POPULATION_THRESHOLD - 1) at runtime
 static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = ADDITION_POPULATION_THRESHOLD;
 static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 256;
-static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 76000;
+static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 74100;
 
 // Multipler of score
 static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;
@@ -121,7 +124,7 @@ static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 #define SOLUTION_SECURITY_DEPOSIT 1000000
 
 // Signing difficulty
-#define TARGET_TICK_VOTE_SIGNATURE 0x00095CBEU // around 7000 signing operations per ID
+#define TARGET_TICK_VOTE_SIGNATURE 0x000242ECU // ~28,980 signing operations per ID
 
 // include commonly needed definitions
 #include "network_messages/common_def.h"

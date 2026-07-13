@@ -36,6 +36,7 @@ enum ContractError
     ContractErrorTimeout,
     ContractErrorStoppedToResolveDeadlock, // only returned by function call, not set to contractError
     ContractErrorIPOFailed, // IPO failed i.e. final price was 0. This contract is not constructed.
+    ContractErrorFuncProcUnknown, // returned when trying to call an unknown function/procedure
 };
 
 // Used to store: locals and for first invocation level also input and output
@@ -161,6 +162,11 @@ static bool initContractExec()
     {
         contractStates[contractIndex] = nullptr;
     }
+    setMem(contractExpandProcedures, sizeof(contractExpandProcedures), 0);
+    setMem(contractMigrateProcedures, sizeof(contractMigrateProcedures), 0);
+    setMem(contractMigrateOldStateSizes, sizeof(contractMigrateOldStateSizes), 0);
+    setMem(contractMigrateLocalsSizes, sizeof(contractMigrateLocalsSizes), 0);
+
     setMem(contractSystemProcedures, sizeof(contractSystemProcedures), 0);
     setMem(contractSystemProcedureLocalsSizes, sizeof(contractSystemProcedureLocalsSizes), 0);
     setMem(contractUserFunctions, sizeof(contractUserFunctions), 0);
@@ -1300,7 +1306,6 @@ struct QpiContextUserFunctionCall : public QPI::QpiContextFunctionCall
     }
 };
 
-
 // QPI context used to call contract user procedure as a notification from qubic core (contract processor).
 // This means, it isn't triggered by a transaction, but following an event after having setup the notification
 // callback in the contract code.
@@ -1379,4 +1384,69 @@ struct QpiContextUserProcedureNotificationCall : public QPI::QpiContextProcedure
 
 private:
     const UserProcedureRegistry::UserProcedureData& notif;
+};
+
+// QPI context used to call a contract's MIGRATE procedure from qubic core (during loading of contract files -> main processor!)
+struct QpiContextMigrateProcedureCall : public QPI::QpiContextProcedureCall
+{
+    QpiContextMigrateProcedureCall(unsigned int contractIndex) : QPI::QpiContextProcedureCall(contractIndex, NULL_ID, 0, MIGRATE_PROCEDURE_CALL)
+    {
+        contractActionTracker.init();
+    }
+
+    // Run MIGRATE procedure of the contract on the old state data. Returns ContractError code.
+    unsigned int call(void* oldState)
+    {
+        ASSERT(_currentContractIndex < contractCount);
+
+        // Empty procedures lead to null pointer in contractMigrateProcedures -> nothing to call
+        if (!contractMigrateProcedures[_currentContractIndex])
+            return ContractErrorFuncProcUnknown;
+
+        // reserve stack for this processor (may block), needed even if there are no locals, because procedure may call
+        // functions / procedures / notifications that create locals etc.
+        acquireContractLocalsStack(_stackIndex);
+
+        // acquire state for writing (may block)
+        contractStateLock[_currentContractIndex].acquireWrite();
+
+        unsigned long long startTime, endTime;
+        unsigned short localsSize = contractMigrateLocalsSizes[_currentContractIndex];
+        if (localsSize == sizeof(QPI::NoData))
+        {
+            // no locals -> call
+            QPI::NoData locals;
+            startTime = __rdtsc();
+            contractMigrateProcedures[_currentContractIndex](*this, contractStates[_currentContractIndex], oldState, &locals);
+            endTime = __rdtsc();
+        }
+        else
+        {
+            // locals required: use stack (should not block because stack 0 is reserved for procedures)
+            char* localsBuffer = contractLocalsStack[_stackIndex].allocate(localsSize);
+            if (!localsBuffer)
+                return ContractErrorAllocLocalsFailed;
+            setMem(localsBuffer, localsSize, 0);
+
+            // call system proc
+            startTime = __rdtsc();
+            contractMigrateProcedures[_currentContractIndex](*this, contractStates[_currentContractIndex], oldState, localsBuffer);
+            endTime = __rdtsc();
+
+            // free data on stack
+            contractLocalsStack[_stackIndex].free();
+            ASSERT(contractLocalsStack[_stackIndex].size() == 0);
+        }
+        const unsigned long long executionTime = endTime - startTime;
+        _interlockedadd64(&contractTotalExecutionTime[_currentContractIndex], executionTime);
+        executionTimeAccumulator.addTime(_currentContractIndex, executionTime);
+
+        // release lock of contract state
+        contractStateLock[_currentContractIndex].releaseWrite();
+
+        // release stack
+        releaseContractLocalsStack(_stackIndex);
+
+        return NoContractError;
+    }
 };

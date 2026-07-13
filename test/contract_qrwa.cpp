@@ -702,6 +702,63 @@ TEST(ContractQRWA, Payout_FullDistribution)
     EXPECT_EQ(divBalances.poolAQrwaDividend, 50000 - (qrwaPerShare * NUMBER_OF_COMPUTORS)); // Dust
 }
 
+// Network downtime over the scheduled payout window must not eat a payout.
+// The schedule only matches Friday at the pool hour. If the network is halted across
+// that window the slot is missed, and with the old code the next run only happens the
+// following Friday. The catch-up path pays out on the next tick once a pool is overdue,
+// even on a non-Friday.
+TEST(ContractQRWA, Payout_CatchUpAfterDowntime)
+{
+    ContractTestingQRWA qrwa;
+
+    // Issue QMINE and distribute. No mid-epoch transfers, so begin == end and the
+    // payout math is independent of the sale-eligibility rules.
+    qrwa.issueAsset(QMINE_ISSUER, QMINE_ASSET.assetName, 1000000);
+    increaseEnergy(HOLDER_A, 1000000);
+    increaseEnergy(HOLDER_B, 1000000);
+    qrwa.transferAsset(QMINE_ISSUER, HOLDER_A, QMINE_ASSET, 200000);
+    qrwa.transferAsset(QMINE_ISSUER, HOLDER_B, QMINE_ASSET, 300000);
+    // QMINE_ISSUER keeps 500000. mTotalQmineBeginEpoch = 1,000,000
+
+    qrwa.beginEpoch();
+
+    const id QRWA_SH = id::randomValue();
+    std::vector<std::pair<m256i, unsigned int>> qrwaContractShares{ {QRWA_SH, NUMBER_OF_COMPUTORS} };
+    qrwa.issueContractSharesHelper(QRWA_CONTRACT_INDEX, qrwaContractShares);
+
+    qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), 1000000); // Pool A revenue
+    qrwa.endEpoch();
+
+    // Per holder: 1M revenue - 50% fees = 500k, QMINE share = 90% = 450k.
+    // A: 200k/1M * 450k = 90,000   B: 300k/1M * 450k = 135,000
+    const sint64 payoutA = 90000;
+    const sint64 payoutB = 135000;
+
+    // First payout on the scheduled Friday.
+    etalonTick.year = 25; etalonTick.month = 11; etalonTick.day = 7; // Friday
+    etalonTick.hour = 12; etalonTick.minute = 1; etalonTick.second = 0;
+    qrwa.resetPayoutTime();
+    qrwa.endTick();
+
+    EXPECT_EQ(getBalance(HOLDER_A), 1000000 + payoutA);
+    EXPECT_EQ(getBalance(HOLDER_B), 1000000 + payoutB);
+    EXPECT_TRUE(qrwa.getState()->mLastPayoutTimePoolA.getYear() != 0);
+
+    // New revenue for the next cycle.
+    qrwa.sendToMany(ADMIN_ADDRESS, id(QRWA_CONTRACT_INDEX, 0, 0, 0), 1000000);
+
+    // The scheduled Friday is missed (network was down). It is now Sunday, more than
+    // 8 days after the last payout. The old code would wait for the next Friday;
+    // the catch-up pays out now.
+    etalonTick.year = 25; etalonTick.month = 11; etalonTick.day = 16; // Sunday, +9 days
+    etalonTick.hour = 13; etalonTick.minute = 0; etalonTick.second = 0;
+    qrwa.endTick();
+
+    EXPECT_EQ(getBalance(HOLDER_A), 1000000 + payoutA * 2);
+    EXPECT_EQ(getBalance(HOLDER_B), 1000000 + payoutB * 2);
+    EXPECT_EQ(qrwa.getDividendBalances().revenuePoolA, 0u);
+}
+
 TEST(ContractQRWA, Payout_SnapshotLogic)
 {
     ContractTestingQRWA qrwa;

@@ -1911,9 +1911,46 @@ static bool verify(const unsigned char* publicKey, const unsigned char* messageD
         }
     }
 
+    // Fast-path reject of the identity (neutral) point, encoded as 01 00..00. It is the
+    // most dangerous forgeable key: a single forged (R,S) is valid for EVERY message, with
+    // no grinding and no private key. Mask the sign bit of the top limb, matching decode().
+    // although we already blocks it "outside" before calling `verify`, this still needs to be here
+    // because this code is ported to many other places
+    {
+        const unsigned long long* pk = (const unsigned long long*)publicKey;
+        // pk[0] == 1
+        if (pk[1] == 0 && pk[2] == 0
+            && (pk[3] & 0x7FFFFFFFFFFFFFFFULL) == 0)
+        {
+            return false;
+        }
+    }
+
     if (!decode(publicKey, A)) // Also verifies that A is on the curve, if it is not it fails
     {
         return false;
+    }
+
+    // Reject low-order (weak) public keys to prevent signature forgery.
+    // FourQ's group order is 392*r (cofactor 392 = 2^3 * 7^2, r = prime subgroup order).
+    // Any key whose order divides 392 (the 392-point cofactor subgroup, including the
+    // identity, NULL_ID, and the non-canonical y=p alias) lets an attacker forge a valid
+    // signature without a private key, because h*A then depends only on h mod (order of A).
+    // A legitimate key has order r, so [392]*A != O; every weak key has [392]*A == O.
+    // cofactor_clearing() computes exactly [392]*A. The neutral point is the only possible
+    // weak result and has affine x = 0, i.e. projective X == 0 (Z is never 0 here), so we
+    // test the reduced projective X directly and avoid eccnorm's field inversion.
+    {
+        point_extproj_t cofactorMultiple;
+        point_setup(A, cofactorMultiple);
+        cofactor_clearing(cofactorMultiple);             // cofactorMultiple = 392 * A
+        mod1271(cofactorMultiple->x[0]);
+        mod1271(cofactorMultiple->x[1]);
+        if ((cofactorMultiple->x[0][0] | cofactorMultiple->x[0][1]
+            | cofactorMultiple->x[1][0] | cofactorMultiple->x[1][1]) == 0) // [392]*A == neutral point?
+        {
+            return false;
+        }
     }
 
     *((__m256i*)temp) = *((__m256i*)signature);
