@@ -2681,6 +2681,18 @@ namespace QPI
 		*/
 		inline uint8 getOracleQueryStatus(sint64 queryId) const;
 
+		/**
+		* @brief Get status of an OC invocation by invocationId.
+		* @param invocationId Identifier returned from INVOKE_OC().
+		* @return One of the values OC_INVOCATION_STATUS_* listed below.
+		*
+		* - OC_INVOCATION_STATUS_UNKNOWN: Invocation not found / not valid.
+		* - OC_INVOCATION_STATUS_PENDING_AUTH: Recorded; waiting for QUORUM authorization signatures.
+		* - OC_INVOCATION_STATUS_AUTHORIZED: QUORUM signatures counted; bundle eligible for delivery.
+		* - OC_INVOCATION_STATUS_TIMEOUT: Authorization did not reach quorum before the timeout.
+		*/
+		inline uint8 getOcInvocationStatus(sint64 invocationId) const;
+
 		// Access proposal functions with qpi(proposalVotingObject).func().
 		template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 		inline QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType> operator()(
@@ -2850,6 +2862,12 @@ namespace QPI
 			unsigned int notificationProcId,
 			uint32 notificationPeriodInMilliseconds = 60000,
 			bool notifyWithPreviousReply = true
+		) const;
+
+		// Internal version of INVOKE_OC.
+		template <typename OcInterface>
+		inline sint64 __qpiInvokeOC(
+			const typename OcInterface::OcRequest& request
 		) const;
 
 		// Internal version of transfer() that takes the TransferType as additional argument.
@@ -3325,6 +3343,23 @@ namespace QPI
 	* In order to change the notification period of an existing query, it needs to be unsubscribed first and subscribed again afterwards.
 	*/
 	#define SUBSCRIBE_ORACLE(OracleInterface, query, userProcNotification, notificationPeriodInMilliseconds, notifyWithPreviousReply) qpi.__qpiSubscribeOracle<OracleInterface>(query, userProcNotification, __id_##userProcNotification, notificationPeriodInMilliseconds, notifyWithPreviousReply)
+
+	/**
+	* @brief Issue an OC (Outsourced Computation) invocation to an external system.
+	* @param OcInterface The OC interface type to invoke (e.g. OCI::Mock).
+	* @param request An OcRequest value matching OcInterface::OcRequest. The caller MUST
+	*           zero-initialize the request struct (e.g. via setMemory) before assigning fields,
+	*           because hidden padding bytes are hashed into paramsDigest for consensus.
+	* @return Invocation ID (non-negative sint64) on success, -1 on any failure.
+	*
+	* The call is non-blocking and has no notification callback or return path. The contract
+	* observes invocation state by polling qpi.getOcInvocationStatus(invocationId).
+	*
+	* The invocation fee (OcInterface::getInvocationFee(request)) is deducted from the contract's
+	* spectrum balance and destroyed (not added to execution reserve). If the engine cannot record
+	* the invocation, the fee is refunded.
+	*/
+	#define INVOKE_OC(OcInterface, request) qpi.__qpiInvokeOC<OcInterface>(request)
 
 	#define SELF id(CONTRACT_INDEX, 0, 0, 0)
 

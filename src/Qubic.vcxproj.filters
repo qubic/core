@@ -346,6 +346,9 @@
     <ClInclude Include="contract_core\qpi_oracle_impl.h">
       <Filter>contract_core</Filter>
     </ClInclude>
+    <ClInclude Include="contract_core\qpi_oc_impl.h">
+      <Filter>contract_core</Filter>
+    </ClInclude>
     <ClInclude Include="network_messages\network_message_type.h">
       <Filter>network_messages</Filter>
     </ClInclude>
@@ -388,8 +391,23 @@
     <ClInclude Include="platform\virtual_memory.h">
       <Filter>platform</Filter>
     </ClInclude>
+    <ClInclude Include="oc_core\oc_engine.h">
+      <Filter>oc_core</Filter>
+    </ClInclude>
+    <ClInclude Include="oc_core\oc_interfaces_def.h">
+      <Filter>oc_core</Filter>
+    </ClInclude>
+    <ClInclude Include="oc_core\oc_transactions.h">
+      <Filter>oc_core</Filter>
+    </ClInclude>
     <ClInclude Include="oc_core\core_oc_network_messages.h">
       <Filter>oc_core</Filter>
+    </ClInclude>
+    <ClInclude Include="oc_core\snapshot_files.h">
+      <Filter>oc_core</Filter>
+    </ClInclude>
+    <ClInclude Include="oc_interfaces\Mock.h">
+      <Filter>oc_interfaces</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -437,6 +455,9 @@
     </Filter>
     <Filter Include="oc_core">
       <UniqueIdentifier>{632d0d96-29d2-4b1d-bb23-7f055e7d32b1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="oc_interfaces">
+      <UniqueIdentifier>{804c1cd3-c9f7-4f71-bc5e-a66907c4d63f}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
