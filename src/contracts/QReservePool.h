@@ -35,8 +35,6 @@ struct QRP : ContractBase
 		SC_NOT_FOUND,
 	};
 
-	static constexpr uint8 toReturnCode(const EReturnCode& code) { return static_cast<uint8>(code); };
-
 	// Withdraw Reserve
 	struct WithdrawReserve_input
 	{
@@ -47,7 +45,7 @@ struct QRP : ContractBase
 	{
 		// How much revenue is allocated to SC
 		uint64 allocatedRevenue;
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 
 	struct WithdrawReserve_locals
@@ -64,7 +62,7 @@ struct QRP : ContractBase
 
 	struct AddAllowedSC_output
 	{
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 
 	// Remove Allowed Smart Contract
@@ -75,7 +73,7 @@ struct QRP : ContractBase
 
 	struct RemoveAllowedSC_output
 	{
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 
 	// Get Available Reserve
@@ -117,7 +115,7 @@ struct QRP : ContractBase
 
 	struct SendReserve_output
 	{
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 
 	struct SendReserve_locals
@@ -157,7 +155,7 @@ struct QRP : ContractBase
 		if (!state.get().allowedSmartContracts.contains(qpi.invocator()))
 		{
 			output.allocatedRevenue = 0;
-			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			output.returnCode = EReturnCode::ACCESS_DENIED;
 			return;
 		}
 
@@ -166,12 +164,12 @@ struct QRP : ContractBase
 		if (locals.checkAmount == 0 || input.revenue > locals.checkAmount)
 		{
 			output.allocatedRevenue = 0;
-			output.returnCode = toReturnCode(EReturnCode::INSUFFICIENT_RESERVE);
+			output.returnCode = EReturnCode::INSUFFICIENT_RESERVE;
 			return;
 		}
 
 		output.allocatedRevenue = input.revenue;
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		output.returnCode = EReturnCode::SUCCESS;
 
 		qpi.transfer(qpi.invocator(), output.allocatedRevenue);
 	}
@@ -180,24 +178,24 @@ struct QRP : ContractBase
 	{
 		if (qpi.invocator() != state.get().ownerAddress)
 		{
-			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			output.returnCode = EReturnCode::ACCESS_DENIED;
 			return;
 		}
 
 		state.mut().allowedSmartContracts.add(id(input.scIndex, 0, 0, 0));
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		output.returnCode = EReturnCode::SUCCESS;
 	}
 
 	PUBLIC_PROCEDURE(RemoveAllowedSC)
 	{
 		if (qpi.invocator() != state.get().ownerAddress)
 		{
-			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			output.returnCode = EReturnCode::ACCESS_DENIED;
 			return;
 		}
 
 		state.mut().allowedSmartContracts.remove(id(input.scIndex, 0, 0, 0));
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		output.returnCode = EReturnCode::SUCCESS;
 
 		if (state.get().allowedSmartContracts.needsCleanup(QRP_REMOVAL_THRESHOLD_PERCENT)) { state.mut().allowedSmartContracts.cleanup(); }
 	}
@@ -225,7 +223,7 @@ struct QRP : ContractBase
 	{
 		if (qpi.invocator() != state.get().ownerAddress)
 		{
-			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			output.returnCode = EReturnCode::ACCESS_DENIED;
 			return;
 		}
 
@@ -233,18 +231,18 @@ struct QRP : ContractBase
 
 		if (!state.get().allowedSmartContracts.contains(locals.scId))
 		{
-			output.returnCode = toReturnCode(EReturnCode::SC_NOT_FOUND);
+			output.returnCode = EReturnCode::SC_NOT_FOUND;
 			return;
 		}
 
 		CALL(GetAvailableReserve, locals.getAvailableReserveInput, locals.getAvailableReserveOutput);
 		if (input.amount > locals.getAvailableReserveOutput.availableReserve)
 		{
-			output.returnCode = toReturnCode(EReturnCode::INSUFFICIENT_RESERVE);
+			output.returnCode = EReturnCode::INSUFFICIENT_RESERVE;
 			return;
 		}
 
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		output.returnCode = EReturnCode::SUCCESS;
 		qpi.transfer(locals.scId, input.amount);
 	}
 };

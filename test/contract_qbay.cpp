@@ -52,6 +52,11 @@ static std::vector<id> getRandomUsers(unsigned int totalUsers, unsigned int maxN
     return users;
 }
 
+static uint64 quSalePriceToRequiredCFB(uint64 salePriceQu, uint64 cfbPrice, uint64 qubicPrice)
+{
+    return div(salePriceQu * cfbPrice + qubicPrice - 1ULL, qubicPrice);
+}
+
 static Array<uint8, 64> getRandomURI()
 {
     Array<uint8, 64> URI;
@@ -842,7 +847,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_9001_10000;
     totalIncommingNFTNumber += 10000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_9001_10000 * cfbPrice;
     
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_8001_9000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_8001_9000);
     pfp.createCollection(users[0], 0, 9, 10, 100, 1, URI);
@@ -850,7 +854,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_8001_9000;
     totalIncommingNFTNumber += 9000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_8001_9000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_7001_8000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_7001_8000);
     pfp.createCollection(users[0], 0, 8, 10, 100, 1, URI);
@@ -858,7 +861,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_7001_8000;
     totalIncommingNFTNumber += 8000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_7001_8000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_6001_7000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_6001_7000);
     pfp.createCollection(users[0], 0, 7, 10, 100, 1, URI);
@@ -866,7 +868,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_6001_7000;
     totalIncommingNFTNumber += 7000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_6001_7000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_5001_6000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_5001_6000);
     pfp.createCollection(users[0], 0, 6, 10, 100, 1, URI);
@@ -874,7 +875,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_5001_6000;
     totalIncommingNFTNumber += 6000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_5001_6000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_4001_5000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_4001_5000);
     pfp.createCollection(users[0], 0, 5, 10, 100, 1, URI);
@@ -882,7 +882,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_4001_5000;
     totalIncommingNFTNumber += 5000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_4001_5000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_3001_4000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_3001_4000);
     pfp.createCollection(users[0], 0, 4, 10, 100, 1, URI);
@@ -890,7 +889,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_3001_4000;
     totalIncommingNFTNumber += 4000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_3001_4000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_2001_3000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_2001_3000);
     pfp.createCollection(users[0], 0, 3, 10, 100, 1, URI);
@@ -898,7 +896,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_2001_3000;
     totalIncommingNFTNumber += 3000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_2001_3000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_1001_2000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_1001_2000);
     pfp.createCollection(users[0], 0, 2, 10, 100, 1, URI);
@@ -906,7 +903,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_1001_2000;
     totalIncommingNFTNumber += 2000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_1001_2000 * cfbPrice;
 
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_201_1000, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_201_1000);
     pfp.createCollection(users[0], 0, 1, 10, 100, 1, URI);
@@ -914,7 +910,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_201_1000;
     totalIncommingNFTNumber += 1000;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_201_1000 * cfbPrice;
 
     // Collection for Drop. collection id: 10
     EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, cfbPrice * QBAY_FEE_COLLECTION_CREATE_2_200, users[0]), cfbPrice * QBAY_FEE_COLLECTION_CREATE_2_200);
@@ -923,7 +918,6 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     totalPriceForCollectionCreating += QBAY_FEE_COLLECTION_CREATE_2_200;
     totalIncommingNFTNumber += 200;
     numberOfCollectionCreated++;
-    earnedCFB += QBAY_FEE_COLLECTION_CREATE_2_200 * cfbPrice;
 
     // getting the id of collection user created
 
@@ -941,7 +935,7 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     auto getInfoOfCollectionById_output = pfp.getInfoOfCollectionById(0);
     pfp.getState()->getInfoOfCollectionByIdChecker(getInfoOfCollectionById_output, 0);
 
-    EXPECT_EQ(numberOfPossessedShares(assetName, CFB_ISSUER, id(12, 0, 0, 0), id(12, 0, 0, 0), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX), cfbPrice * totalPriceForCollectionCreating);
+    EXPECT_EQ(numberOfPossessedShares(assetName, CFB_ISSUER, id(12, 0, 0, 0), id(12, 0, 0, 0), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX), 0);
 
     EXPECT_EQ(numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, id(QBAY_CONTRACT_INDEX, 0, 0, 0), id(QBAY_CONTRACT_INDEX, 0, 0, 0), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX), earnedCFB);
     EXPECT_EQ(getBalance(id(QBAY_CONTRACT_INDEX, 0, 0, 0)), earnedQubic);
@@ -1055,12 +1049,13 @@ TEST(TestContractQBAY, testingAllProceduresAndFunctions)
     increaseEnergy(users[4], 10000000);
     increaseEnergy(CFB_ISSUER, QBAY_TOKEN_TRANSFER_FEE);
     EXPECT_EQ(pfp.TransferShareOwnershipAndPossession(CFB_ISSUER, assetName, 10000000000, users[4]), 10000000000);
-    EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, div(10000000ULL, qubicPrice) * cfbPrice, users[4]), div(10000000ULL, qubicPrice) * cfbPrice);
+    const uint64 requiredCFBForBuy = quSalePriceToRequiredCFB(10000000ULL, cfbPrice, qubicPrice);
+    EXPECT_EQ(pfp.TransferShareManagementRights(CFB_ISSUER, QBAY_CFB_NAME, QBAY_CONTRACT_INDEX, requiredCFBForBuy, users[4]), requiredCFBForBuy);
 
     pfp.buy(users[4], 0, 1, 0);
-    earnedCFB += div(div(10000000ULL, qubicPrice) * cfbPrice * QBAY_FEE_NFT_SALE_MARKET, 1000ULL);
+    earnedCFB += div(requiredCFBForBuy * QBAY_FEE_NFT_SALE_MARKET, 1000ULL);
 
-    pfp.getState()->buyChecker(oldPossesor, users[4], 0, div(10000000ULL, qubicPrice) * cfbPrice, 1, initialBalanceOfCreator, initialBalanceOfPossesor, initialBalanceOfMarket, pfp.getState()->getCreatorOfNFT(0) == pfp.getState()->getPossessorOfNFT(0));
+    pfp.getState()->buyChecker(oldPossesor, users[4], 0, requiredCFBForBuy, 1, initialBalanceOfCreator, initialBalanceOfPossesor, initialBalanceOfMarket, pfp.getState()->getCreatorOfNFT(0) == pfp.getState()->getPossessorOfNFT(0));
 
     EXPECT_EQ(numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, id(QBAY_CONTRACT_INDEX, 0, 0, 0), id(QBAY_CONTRACT_INDEX, 0, 0, 0), QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX), earnedCFB);
     EXPECT_EQ(getBalance(id(QBAY_CONTRACT_INDEX, 0, 0, 0)), earnedQubic + collectedShareHolderFee);
@@ -1416,4 +1411,51 @@ TEST(TestContractQBAY, SignednessRegression_MakeOfferReplaceOfferBlocksPoisonedE
 
     EXPECT_EQ(pfp.getState()->NFTs.get(nftId).askUser, victim);
     EXPECT_EQ(getBalance(qbayContract), contractBalanceBefore);
+}
+
+TEST(TestContractQBAY, SettingOraclePriceRejectsZero)
+{
+    ContractTestingQBAY pfp;
+    pfp.beginEpoch();
+    system.epoch = 200;
+    increaseEnergy(MARKETPLACE_OWNER, 1);
+
+    EXPECT_EQ(pfp.settingCFBAndQubicPrice(MARKETPLACE_OWNER, 0, 1000).returnCode, QBAY::LogInfo::invalidInput);
+    EXPECT_EQ(pfp.settingCFBAndQubicPrice(MARKETPLACE_OWNER, 1000, 0).returnCode, QBAY::LogInfo::invalidInput);
+}
+
+TEST(TestContractQBAY, EconomicExploit_BuyWithCFBModeCanAcquireForFreeWhenSalePriceBelowQubicPrice)
+{
+    ContractTestingQBAY pfp;
+    id nftOwner;
+    uint32 nftId = 0;
+    initQbayMarketplaceForSignednessTests(pfp, nftOwner, nftId);
+
+    const id buyer = getUser(550);
+    const uint64 livePriceOfCFB = 454000ULL;
+    const uint64 livePriceOfQubic = 1052631ULL;
+    const uint64 salePrice = livePriceOfQubic - 1ULL;
+
+    pfp.settingCFBAndQubicPrice(MARKETPLACE_OWNER, livePriceOfCFB, livePriceOfQubic);
+    EXPECT_EQ(pfp.getState()->priceOfCFB, livePriceOfCFB);
+    EXPECT_EQ(pfp.getState()->priceOfQubic, livePriceOfQubic);
+
+    EXPECT_EQ(pfp.listInMarket(nftOwner, salePrice, nftId).returnCode, QBAY::LogInfo::success);
+    EXPECT_EQ(pfp.getState()->NFTs.get(nftId).possessor, nftOwner);
+    EXPECT_EQ(pfp.getState()->NFTs.get(nftId).statusOfSale, 1);
+
+    increaseEnergy(buyer, 0);
+    const sint64 buyerCfbBefore =
+        numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, buyer, buyer, QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX)
+        + numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, buyer, buyer, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
+
+    auto out = pfp.buy(buyer, nftId, 1, 0);
+    EXPECT_EQ(out.returnCode, QBAY::LogInfo::insufficientCFB);
+    EXPECT_EQ(pfp.getState()->NFTs.get(nftId).possessor, nftOwner);
+
+    const sint64 buyerCfbAfter =
+        numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, buyer, buyer, QBAY_CONTRACT_INDEX, QBAY_CONTRACT_INDEX)
+        + numberOfPossessedShares(QBAY_CFB_NAME, CFB_ISSUER, buyer, buyer, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX);
+    EXPECT_EQ(buyerCfbBefore, buyerCfbAfter);
+    EXPECT_EQ(getBalance(buyer), 0ULL);
 }

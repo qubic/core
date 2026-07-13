@@ -619,31 +619,40 @@ protected:
 		id liqPov;
 		sint64 liqElementIndex;
 		id r;
-		GetPoolBasicState_input getPoolBasicState_input;
-		GetPoolBasicState_output getPoolBasicState_output;
+		sint64 poolSlot;
+		LiquidityInfo li;
+		uint128 pendingFeeX64;
+		FindPoolSlotReadOnly_input  fsRoIn;
+		FindPoolSlotReadOnly_output fsRoOut;
 	};
 
 	PUBLIC_FUNCTION_WITH_LOCALS(GetLiquidityOf)
 	{
 		output.liquidity = 0;
-
-		locals.getPoolBasicState_input.assetName = input.assetName;
-		locals.getPoolBasicState_input.assetIssuer = input.assetIssuer;
-		CALL(GetPoolBasicState, locals.getPoolBasicState_input, locals.getPoolBasicState_output);
+		output.earnedFees = 0;
 
 		locals.poolID = input.assetIssuer;
 		locals.poolID.u64._3 = input.assetName;
 
+		locals.fsRoIn.assetIssuer = input.assetIssuer;
+		locals.fsRoIn.assetName = input.assetName;
+		CALL(FindPoolSlotReadOnly, locals.fsRoIn, locals.fsRoOut);
+		locals.poolSlot = locals.fsRoOut.poolSlot;
+
 		locals.liqPov = liquidityPov(locals.poolID, input.account, locals.r);
 		locals.liqElementIndex = state.get().mLiquidities.headIndex(locals.liqPov, 0);
-
-		if (locals.liqElementIndex != NULL_INDEX)
+		if (locals.liqElementIndex == NULL_INDEX)
 		{
-			output.liquidity = state.get().mLiquidities.element(locals.liqElementIndex).liquidity;
-			if (locals.getPoolBasicState_output.poolExists && locals.getPoolBasicState_output.accFeePerLP > 0)
-			{
-				output.earnedFees = state.get().mLiquidities.element(locals.liqElementIndex).accumulatedFee + state.get().mLiquidities.element(locals.liqElementIndex).liquidity * (locals.getPoolBasicState_output.accFeePerLP - state.get().mLiquidities.element(locals.liqElementIndex).feeDebtX64.high);
-			}
+			return;
+		}
+
+		locals.li = state.get().mLiquidities.element(locals.liqElementIndex);
+		output.liquidity = locals.li.liquidity;
+
+		if (locals.poolSlot != NULL_INDEX)
+		{
+			locals.pendingFeeX64 = uint128(locals.li.liquidity) * (state.get().mPoolBasicStates.get(locals.poolSlot).accFeePerLPX64 - locals.li.feeDebtX64);
+			output.earnedFees = locals.li.accumulatedFee + locals.pendingFeeX64.high;
 		}
 	}
 

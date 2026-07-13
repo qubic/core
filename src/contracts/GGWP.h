@@ -42,7 +42,8 @@ constexpr uint64 WOLFPACK_DISTRIBUTION_PERMILLE_EXEC_RESERVE = 10;   // NEW: ret
 static_assert(WOLFPACK_DISTRIBUTION_PERMILLE_HOLDERS + WOLFPACK_DISTRIBUTION_PERMILLE_SHAREHOLDERS
             + WOLFPACK_DISTRIBUTION_PERMILLE_CLAN + WOLFPACK_DISTRIBUTION_PERMILLE_REINVEST
             + WOLFPACK_DISTRIBUTION_PERMILLE_EXEC_RESERVE == 1000);
-constexpr uint64 WOLFPACK_SC_ASSET_NAME = 1347897159ULL; // "GGWP" as uint64
+constexpr uint64 WOLFPACK_SC_ASSET_NAME = 1347897159ULL; // "GGWP" as uint64 — the contract's own 676 IPO/SC shares (issuer = NULL_ID)
+constexpr uint64 WOLFPACK_WP_ASSET_NAME = 20567ULL;      // "WP" as uint64 — the EXTERNAL staking/holder token issued on QX by MLMWPS... (distinct from the SC shares above)
 
 // --- Shareholder governance: change admin / reinvest address by >51% of SC shares ---
 constexpr uint64 WOLFPACK_TOTAL_SC_SHARES = 676;       // total IPO shares = 100%
@@ -101,6 +102,7 @@ constexpr uint32 WOLFPACK_ERROR_INSUFFICIENT_FEE = 21;
 constexpr uint32 WOLFPACK_ERROR_BELOW_MIN_STAKE = 22;
 constexpr uint32 WOLFPACK_ERROR_NO_PROPOSAL_SLOT = 23;
 constexpr uint32 WOLFPACK_ERROR_INVALID_PROPOSAL = 24;
+constexpr uint32 WOLFPACK_ERROR_RECONCILE_INVALID = 25;
 
 // Secondary state struct, reserved for future EXPAND events.
 struct WOLFPACK2
@@ -232,9 +234,13 @@ struct WOLFPACK : public ContractBase
     struct DepositStakingRewards_output { uint32 returnCode; };
     struct DepositStakingRewards_locals { sint64 transferResult; };
 
+    struct AdminReconcileStake_input  { id staker; uint64 correctAmount; };
+    struct AdminReconcileStake_output { uint32 returnCode; };
+    struct AdminReconcileStake_locals { uint64 oldStake; uint64 oldUnstake; sint64 possessed; };
+
     struct ClaimStakingRewards_input { };
     struct ClaimStakingRewards_output { uint32 returnCode; uint64 claimedAmount; };
-    struct ClaimStakingRewards_locals { uint64 pending; sint64 releaseResult; };
+    struct ClaimStakingRewards_locals { uint64 pending; sint64 releaseResult; sint64 transferResult; };
 
     struct GetStakingInfo_input { id stakerAddress; };
     struct GetStakingInfo_output { uint64 stakedAmount; uint64 pendingRewards; uint64 unstakeAmount; uint64 unstakeEpoch; uint64 totalStaked; uint64 stakingRewardPool; uint32 isStaker; };
@@ -425,7 +431,11 @@ struct WOLFPACK : public ContractBase
             return;
         }
 
-        state.mut().clanRanks.set(input.memberAddress, input.rank);
+        if (state.mut().clanRanks.set(input.memberAddress, input.rank) == NULL_INDEX)
+        {
+            output.returnCode = WOLFPACK_ERROR_INVALID_SLOT;
+            return;
+        }
         state.mut().clanMemberCount = state.get().clanMemberCount + 1;
 
         if (input.rank == 0) state.mut().clanWeightedTotal = state.get().clanWeightedTotal + WOLFPACK_RANK_MULTIPLIER_0;
@@ -726,7 +736,7 @@ struct WOLFPACK : public ContractBase
         // Verify invocator has enough GGWP shares already under WP's management.
         // User must call QX.TransferShareManagementRights(asset=wpToken, shares=N, newMgmtIdx=GGWP) first.
         if (qpi.numberOfPossessedShares(state.get().wpToken.assetName, state.get().wpToken.issuer,
-            qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < (sint64)input.numberOfShares)
+            qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < (sint64)(locals.existingStake + input.numberOfShares))
         {
             output.returnCode = WOLFPACK_ERROR_ACQUIRE_FAILED;
             return;
@@ -788,6 +798,14 @@ struct WOLFPACK : public ContractBase
             return;
         }
 
+        if (state.mut().unstakeAmounts.set(qpi.invocator(), input.numberOfShares) == NULL_INDEX)
+        {
+            output.returnCode = WOLFPACK_ERROR_ACQUIRE_FAILED;
+            return;
+        }
+        state.mut().unstakeEpochs.set(qpi.invocator(), qpi.epoch());
+        state.mut().unstakeCount = state.get().unstakeCount + 1;
+
         if (input.numberOfShares == locals.currentStake)
         {
             state.mut().stakedBalances.removeByKey(qpi.invocator());
@@ -798,10 +816,6 @@ struct WOLFPACK : public ContractBase
             state.mut().stakedBalances.replace(qpi.invocator(), locals.currentStake - input.numberOfShares);
         }
         state.mut().totalStaked = state.get().totalStaked - input.numberOfShares;
-
-        state.mut().unstakeAmounts.set(qpi.invocator(), input.numberOfShares);
-        state.mut().unstakeEpochs.set(qpi.invocator(), qpi.epoch());
-        state.mut().unstakeCount = state.get().unstakeCount + 1;
         output.returnCode = WOLFPACK_OK;
     }
 
@@ -855,10 +869,11 @@ struct WOLFPACK : public ContractBase
             output.returnCode = WOLFPACK_ERROR_ZERO_AMOUNT;
             return;
         }
-        // Verify invocator has enough GGWP shares under WP's management.
-        // User must call QX.TransferShareManagementRights(asset=wpToken, newMgmtIdx=GGWP) first.
-        if (qpi.numberOfPossessedShares(state.get().wpToken.assetName, state.get().wpToken.issuer,
-            qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < (sint64)input.numberOfShares)
+
+        locals.transferResult = qpi.transferShareOwnershipAndPossession(
+            state.get().wpToken.assetName, state.get().wpToken.issuer,
+            qpi.invocator(), qpi.invocator(), (sint64)input.numberOfShares, SELF);
+        if (locals.transferResult < 0)
         {
             output.returnCode = WOLFPACK_ERROR_ACQUIRE_FAILED;
             return;
@@ -888,6 +903,17 @@ struct WOLFPACK : public ContractBase
             qpi.transfer(qpi.invocator(), qpi.invocationReward() - WOLFPACK_QX_TRANSFER_FEE);
         }
 
+        // Pay the reward from the contract-held pool: move ownership+possession of
+        // `pending` WP from the contract to the claimer, then hand management back to QX
+        // so the claimer freely controls them — fully decoupled from the staker's principal.
+        locals.transferResult = qpi.transferShareOwnershipAndPossession(
+            state.get().wpToken.assetName, state.get().wpToken.issuer,
+            SELF, SELF, (sint64)locals.pending, qpi.invocator());
+        if (locals.transferResult < 0)
+        {
+            output.returnCode = WOLFPACK_ERROR_TRANSFER_FAILED;
+            return;
+        }
         locals.releaseResult = qpi.releaseShares(state.get().wpToken, qpi.invocator(), qpi.invocator(),
             (sint64)locals.pending, WOLFPACK_QX_CONTRACT_INDEX, WOLFPACK_QX_CONTRACT_INDEX, WOLFPACK_QX_TRANSFER_FEE);
         if (locals.releaseResult < 0)
@@ -899,6 +925,65 @@ struct WOLFPACK : public ContractBase
         state.mut().pendingStakingRewards.removeByKey(qpi.invocator());
         output.claimedAmount = locals.pending;
         output.returnCode = WOLFPACK_OK;
+    }
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(AdminReconcileStake)
+    {
+        if (qpi.invocator() != state.get().adminAddress)
+        {
+            output.returnCode = WOLFPACK_ERROR_ACCESS_DENIED;
+            return;
+        }
+        locals.possessed = qpi.numberOfPossessedShares(state.get().wpToken.assetName, state.get().wpToken.issuer,
+            input.staker, input.staker, SELF_INDEX, SELF_INDEX);
+        if (locals.possessed < 0 || input.correctAmount > (uint64)locals.possessed)
+        {
+            output.returnCode = WOLFPACK_ERROR_RECONCILE_INVALID;
+            return;
+        }
+        locals.oldStake = 0;
+        if (state.get().stakedBalances.get(input.staker, locals.oldStake))
+        {
+            if (input.correctAmount > locals.oldStake)
+            {
+                output.returnCode = WOLFPACK_ERROR_RECONCILE_INVALID;
+                return;
+            }
+            state.mut().totalStaked = state.get().totalStaked - (locals.oldStake - input.correctAmount);
+            if (input.correctAmount == 0)
+            {
+                state.mut().stakedBalances.removeByKey(input.staker);
+                state.mut().stakerCount = state.get().stakerCount - 1;
+            }
+            else
+            {
+                state.mut().stakedBalances.set(input.staker, input.correctAmount);
+            }
+            output.returnCode = WOLFPACK_OK;
+            return;
+        }
+        locals.oldUnstake = 0;
+        if (state.get().unstakeAmounts.get(input.staker, locals.oldUnstake))
+        {
+            if (input.correctAmount > locals.oldUnstake)
+            {
+                output.returnCode = WOLFPACK_ERROR_RECONCILE_INVALID;
+                return;
+            }
+            if (input.correctAmount == 0)
+            {
+                state.mut().unstakeAmounts.removeByKey(input.staker);
+                state.mut().unstakeEpochs.removeByKey(input.staker);
+                state.mut().unstakeCount = state.get().unstakeCount - 1;
+            }
+            else
+            {
+                state.mut().unstakeAmounts.set(input.staker, input.correctAmount);
+            }
+            output.returnCode = WOLFPACK_OK;
+            return;
+        }
+        output.returnCode = WOLFPACK_ERROR_NOT_STAKER;
     }
 
     // ======================== REGISTRATION ========================
@@ -923,6 +1008,7 @@ struct WOLFPACK : public ContractBase
         REGISTER_USER_PROCEDURE(ClaimStakingRewards, 11);
         REGISTER_USER_PROCEDURE(ProposeGovChange, 12);
         REGISTER_USER_PROCEDURE(VoteGovChange, 13);
+        REGISTER_USER_PROCEDURE(AdminReconcileStake, 14);
 
         REGISTER_USER_FUNCTION(GetStakingInfo, 5);
         REGISTER_USER_FUNCTION(GetExcludeAddresses, 6);
@@ -934,7 +1020,7 @@ struct WOLFPACK : public ContractBase
 
     INITIALIZE()
     {
-        // GGWP token (external, issued on QX by MLMWPS...)
+        // WP token (external staking/holder token, issued on QX by MLMWPS...)
         state.mut().wpToken.issuer = ID(
             _M, _L, _M, _W, _P, _S, _Q, _N,
             _V, _A, _I, _B, _R, _F, _D, _H,
@@ -944,7 +1030,7 @@ struct WOLFPACK : public ContractBase
             _E, _F, _D, _U, _R, _P, _W, _I,
             _P, _Q, _X, _A, _C, _Y, _O, _E
         );
-        state.mut().wpToken.assetName = WOLFPACK_SC_ASSET_NAME; // "GGWP"
+        state.mut().wpToken.assetName = WOLFPACK_WP_ASSET_NAME; // "WP" — external token on QX (NOT the "GGWP" SC shares)
 
         // Admin and reinvestment recipient are hardcoded to the GGWP token
         // issuer identity. Hardcoding the admin (instead of a NULL_ID bootstrap)

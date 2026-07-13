@@ -161,6 +161,9 @@ public:
     }
 };
 
+static constexpr uint16 QEARN_RECOVERED_EPOCH = 217;
+static constexpr unsigned long long QEARN_RECOVERED_EPOCH_BONUS = 50227542196ULL;
+
 class ContractTestingQearn : protected ContractTesting
 {
     struct UnlockTableEntry
@@ -331,10 +334,19 @@ public:
 
     void simulateDonation(const unsigned long long donationAmount)
     {
-        increaseEnergy(QEARN_CONTRACT_ID, donationAmount);
-
         unsigned long long& totalBonusAmount = allEpochData[system.epoch + 1].bonusAmount;
-        totalBonusAmount += donationAmount;
+
+        unsigned long long amount = donationAmount;
+        // Epoch 217's bonus is overwritten by Qearn.h's, fund it with
+        // exactly that value (clamp the accumulated donation)
+        if (system.epoch + 1 == QEARN_RECOVERED_EPOCH)
+        {
+            amount = (totalBonusAmount >= QEARN_RECOVERED_EPOCH_BONUS) ? 0ULL : (QEARN_RECOVERED_EPOCH_BONUS - totalBonusAmount);
+        }
+
+        increaseEnergy(QEARN_CONTRACT_ID, amount);
+
+        totalBonusAmount += amount;
         if (totalBonusAmount > QEARN_MAX_BONUS_AMOUNT)
             totalBonusAmount = QEARN_MAX_BONUS_AMOUNT;
     }

@@ -285,7 +285,6 @@
     <ClInclude Include="network_messages\execution_fees.h">
       <Filter>network_messages</Filter>
     </ClInclude>
-    <ClInclude Include="platform\virtual_memory.h" />
     <ClInclude Include="platform\profiling.h">
       <Filter>platform</Filter>
     </ClInclude>
@@ -385,6 +384,9 @@
     </ClInclude>
     <ClInclude Include="mining\custom_qubic_mining_storage.h">
       <Filter>mining</Filter>
+    </ClInclude>
+    <ClInclude Include="platform\virtual_memory.h">
+      <Filter>platform</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
