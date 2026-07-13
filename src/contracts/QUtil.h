@@ -1999,6 +1999,122 @@ public:
         LOG_INFO(locals.log);
     }
 
+    /*************************************************/
+    /*   OC (OUTSOURCED COMPUTATION) INVOCATION TESTING   */
+    /*************************************************/
+
+    // Trigger an OC (Outsourced Computation) invocation via the Mock interface, for end-to-end testing.
+    struct TriggerOC_input
+    {
+        uint64 value;
+    };
+    struct TriggerOC_output
+    {
+        sint64 invocationId;
+    };
+    struct TriggerOC_locals
+    {
+        OCI::Mock::OcRequest request;
+        sint64 fee;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(TriggerOC)
+    {
+        output.invocationId = -1;
+
+        // Zero-initialize the request so padding bytes hashed into paramsDigest are deterministic
+        // across all computors (mirrors the OM reply convention). setMemory is the contract-safe
+        // zero-init (contracts cannot call the core setMem directly).
+        setMemory(locals.request, 0);
+        locals.request.value = input.value;
+
+        // Gate on the invocation reward so the caller pays the burned fee, not this contract
+        // (mirrors QueryPriceOracle). Refund the whole reward if it does not cover the fee.
+        locals.fee = OCI::Mock::getInvocationFee(locals.request);
+        if (qpi.invocationReward() < locals.fee)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        output.invocationId = INVOKE_OC(OCI::Mock, locals.request);
+
+        // Refund the caller's reward minus the fee actually consumed (0 if the engine rejected).
+        qpi.transfer(qpi.invocator(),
+            qpi.invocationReward() - (output.invocationId < 0 ? 0 : locals.fee));
+    }
+
+    // Trigger up to `count` OC invocations with sequential values in one transaction, for load
+    // testing the OC engine (in-flight pool exhaustion, request-storage budget, per-tick scan
+    // costs) without being limited by the one-transaction-per-identity-per-tick transport cap.
+    // The caller must fund the full batch (count * fee) via the invocation reward, so filling the
+    // in-flight pool costs the caller real QU rather than draining this contract's balance.
+    struct TriggerOCBatch_input
+    {
+        uint64 baseValue; // invocation i carries value baseValue + i
+        uint32 count;     // clamped to maxOcBatchCount
+    };
+    struct TriggerOCBatch_output
+    {
+        uint32 invokedCount;      // invocations accepted before the first rejection (or count)
+        sint64 lastInvocationId;  // id of the last accepted invocation, -1 if none
+    };
+    struct TriggerOCBatch_locals
+    {
+        OCI::Mock::OcRequest request;
+        uint32 i;
+        sint64 invocationId;
+        sint64 fee;
+    };
+
+    // Upper bound per batch; above the in-flight pool size (1024) so a single transaction can
+    // drive the engine into pool exhaustion, and a provable loop-termination bound.
+    static constexpr uint32 maxOcBatchCount = 2048;
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(TriggerOCBatch)
+    {
+        output.invokedCount = 0;
+        output.lastInvocationId = -1;
+
+        if (input.count > maxOcBatchCount)
+        {
+            input.count = maxOcBatchCount;
+        }
+
+        // Gate on the invocation reward so the caller pays the burned fees, not this contract
+        // (mirrors QueryPriceOracle). Mock's fee is constant, so the whole batch costs
+        // count * fee; refund the whole reward if it does not cover that.
+        locals.fee = OCI::Mock::getInvocationFee(locals.request);
+        if (qpi.invocationReward() < locals.fee * input.count)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        locals.i = 0;
+        while (locals.i < input.count)
+        {
+            // Zero-initialize so padding bytes hashed into paramsDigest are deterministic
+            // across all computors (same as TriggerOC).
+            setMemory(locals.request, 0);
+            locals.request.value = input.baseValue + locals.i;
+            locals.invocationId = INVOKE_OC(OCI::Mock, locals.request);
+            if (locals.invocationId < 0)
+            {
+                // Engine rejected (in-flight pool exhausted, storage budget, or fee balance);
+                // subsequent invocations in this tick would be rejected for the same reason.
+                break;
+            }
+            output.lastInvocationId = locals.invocationId;
+            output.invokedCount++;
+            locals.i++;
+        }
+
+        // Refund the caller's reward minus the fees actually consumed.
+        qpi.transfer(qpi.invocator(),
+            qpi.invocationReward() - locals.fee * output.invokedCount);
+    }
+
     /**************************************/
     /*      GET BALANCE BULK REQUEST      */
     /**************************************/
@@ -2084,6 +2200,8 @@ public:
         REGISTER_USER_PROCEDURE(QueryPriceOracle, 100);
         REGISTER_USER_PROCEDURE(SubscribePriceOracle, 101);
         REGISTER_USER_PROCEDURE(UnsubscribeOracle, 102);
+        REGISTER_USER_PROCEDURE(TriggerOC, 103);
+        REGISTER_USER_PROCEDURE(TriggerOCBatch, 104);
 
         REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyPriceOracleReply);
 
