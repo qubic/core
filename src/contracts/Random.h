@@ -205,7 +205,7 @@ private:
 
 		if (input.reveal != locals.zeroReveal)
 		{
-			// Reveal path: verify preimage of prior commit and re-commit for next round.
+			// Reveal path: locate the provider for this stream/tier.
 			for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
 			{
 				if (qpi.invocator() == state.get().providers.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) &&
@@ -214,37 +214,48 @@ private:
 					break;
 				}
 			}
-			if (locals.i == state.get().populations.get(locals.stream) ||
-			    state.get().reveals.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) != locals.zeroReveal ||
-			    qpi.K12(input.reveal) != state.get().commits.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) ||
-			    state.get().revealOrCommitFlags.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i)) // same-tick commit+reveal is forbidden
+
+			// If the provider is still registered, verify the reveal and re-commit.
+			// If it is NOT registered — e.g. it was evicted by END_TICK after missing
+			// a reveal — fall through to the registration path below and treat
+			// input.commit as a fresh first-commit. The off-chain provider is
+			// fire-and-forget and cannot learn it was dropped, so re-enrolling it here
+			// keeps the stream alive instead of locking it out forever. The stale
+			// input.reveal is discarded (its prior commit no longer exists).
+			if (locals.i != state.get().populations.get(locals.stream))
 			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				locals.index = locals.stream * RANDOM_STREAM_CAPACITY + locals.i;
+
+				if (state.get().reveals.get(locals.index) != locals.zeroReveal ||
+				    qpi.K12(input.reveal) != state.get().commits.get(locals.index) ||
+				    state.get().revealOrCommitFlags.get(locals.index)) // same-tick commit+reveal is forbidden
+				{
+					qpi.transfer(qpi.invocator(), qpi.invocationReward());
+					return;
+				}
+
+				// Refund prior collateral — reveal fulfills obligation.
+				if (state.get().lockedCollateralAmounts.get(locals.index) > 0)
+				{
+					qpi.transfer(qpi.invocator(), state.get().lockedCollateralAmounts.get(locals.index));
+				}
+
+				// Record the reveal for END_TICK entropy mixing.
+				state.mut().reveals.set(locals.index, input.reveal);
+
+				// Store the next commit and lock fresh collateral for it.
+				state.mut().commits.set(locals.index, input.commit);
+				state.mut().lockedCollateralAmounts.set(locals.index, qpi.invocationReward());
+
+				state.mut().revealOrCommitFlags.set(locals.index, 1);
+				state.mut().revealedThisTickFlags.set(locals.index, 1);
+
 				return;
 			}
-
-			locals.index = locals.stream * RANDOM_STREAM_CAPACITY + locals.i;
-
-			// Refund prior collateral — reveal fulfills obligation.
-			if (state.get().lockedCollateralAmounts.get(locals.index) > 0)
-			{
-				qpi.transfer(qpi.invocator(), state.get().lockedCollateralAmounts.get(locals.index));
-			}
-
-			// Record the reveal for END_TICK entropy mixing.
-			state.mut().reveals.set(locals.index, input.reveal);
-
-			// Store the next commit and lock fresh collateral for it.
-			state.mut().commits.set(locals.index, input.commit);
-			state.mut().lockedCollateralAmounts.set(locals.index, qpi.invocationReward());
-
-			state.mut().revealOrCommitFlags.set(locals.index, 1);
-			state.mut().revealedThisTickFlags.set(locals.index, 1);
-
-			return;
+			// Provider not registered: fall through and re-enroll it from input.commit.
 		}
 
-		// First-commit path: register a brand-new provider for this stream/tier.
+		// First-commit / re-register path: register a brand-new provider for this stream/tier.
 		for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
 		{
 			if (qpi.invocator() == state.get().providers.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) &&

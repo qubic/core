@@ -327,6 +327,69 @@ TEST(ContractRandom, EndToEnd_LatestEntropyRetrieved_TickMod3_Is2)
 }
 
 // ---------------------------------------------------------------------------
+// Regression: self-healing re-registration after a missed reveal.
+//
+// A provider that fails to reveal in its window is evicted by END_TICK. The
+// off-chain miner is fire-and-forget -- it "can't get the results from the
+// procedure calls" -- so it keeps sending its normal reveal+commit every cycle,
+// unaware it was dropped. The reveal it sends refers to a commit the contract no
+// longer holds and cannot validate; if the contract merely refunds and rejects
+// it, the provider is locked out forever and the stream silently "stops
+// accepting data". The reveal path must instead re-enroll the provider from the
+// commit it carries (discarding the unusable reveal), so the next cycle resumes
+// normally.
+// ---------------------------------------------------------------------------
+TEST(ContractRandom, MissedRevealThenReCommitReRegistersProvider)
+{
+    ContractTestingRandom r;
+
+    const uint32 startTick = 1002;          // 1002 % 3 == 0 -> stream 0
+    const uint32 stream = startTick % 3;
+    const uint8 tier = 2;                    // 100 qu collateral
+    const sint64 collateral = collateralForTier(tier);
+
+    const id commit1 = commitOf(makeReveal(11));  // first committed hash
+    const QPI::bit_4096 reveal2 = makeReveal(22); // stale reveal sent after eviction
+    const id commit3 = commitOf(makeReveal(33));  // commit carried when the miner re-appears
+
+    const id provider = getUser(0xF00D);
+    QPI::bit_4096 zero; zero.setAll(0);
+
+    // ----- Tick T: provider first-commits and is enrolled -----------------
+    r.setTick(startTick);
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, /*reveal=*/zero, /*commit=*/commit1, collateral);
+    ASSERT_EQ(r.state()->populations.get(stream), 1u);
+    r.endTick();
+    ASSERT_EQ(r.state()->populations.get(stream), 1u)
+        << "provider must survive the tick it committed in";
+
+    // ----- Tick T+3: reveal is DROPPED; END_TICK evicts the no-show --------
+    r.setTick(startTick + 3);
+    r.endTick();
+    ASSERT_EQ(r.state()->populations.get(stream), 0u)
+        << "a missed reveal must evict the provider (pool is now empty)";
+
+    // ----- Tick T+6: fire-and-forget miner sends reveal+commit as usual ----
+    // reveal2 cannot validate (its commit is gone), but commit3 must re-enroll.
+    r.setTick(startTick + 6);
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, /*reveal=*/reveal2, /*commit=*/commit3, collateral);
+
+    ASSERT_EQ(r.state()->populations.get(stream), 1u)
+        << "reveal+commit from an evicted provider must re-register it, "
+           "not be rejected -- otherwise the stream stops accepting data";
+    EXPECT_TRUE(r.state()->providers.get(stream * 1365 + 0) == provider)
+        << "re-registered slot must hold the provider";
+    EXPECT_TRUE(r.state()->commits.get(stream * 1365 + 0) == commit3)
+        << "re-registered slot must store the new commit";
+    EXPECT_TRUE(r.state()->reveals.get(stream * 1365 + 0) == zero)
+        << "the unusable reveal must be discarded on re-register";
+    EXPECT_EQ(r.state()->collateralTiers.get(stream * 1365 + 0), (uint64)tier)
+        << "re-registered slot must record the collateral tier";
+}
+
+// ---------------------------------------------------------------------------
 // Trustee condition. BuyEntropy carries a single optional trustee:
 //   - trustee == 0                         : unconditional, plain buy.
 //   - trustee is a provider in the
