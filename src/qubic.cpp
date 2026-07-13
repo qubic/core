@@ -82,6 +82,11 @@
 #include "oracle_core/oracle_interfaces_def.h"
 #include "contract_core/qpi_oracle_impl.h"
 
+#include "oc_core/oc_engine.h"
+#include "oc_core/oc_interfaces_def.h"
+#include "oc_core/snapshot_files.h"
+#include "contract_core/qpi_oc_impl.h"
+
 #include "contract_core/qpi_mining_impl.h"
 #include "revenue.h"
 
@@ -101,6 +106,7 @@
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define ORACLE_REPLY_COMMIT_PUBLICATION_OFFSET 4
 #define ORACLE_REPLY_REVEAL_PUBLICATION_OFFSET 3
+#define OC_AUTH_SIGNATURE_PUBLICATION_OFFSET 1
 #define TIME_ACCURACY 5000
 constexpr unsigned long long TARGET_MAINTHREAD_LOOP_DURATION = 30; // mcs, it is the target duration of the main thread loop
 constexpr unsigned int COMMON_BUFFERS_COUNT = 2;
@@ -2774,6 +2780,12 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                 }
                 break;
 
+                case OcAuthSignatureTransactionPrefix::transactionType():
+                {
+                    ocEngine.processOcAuthSignatureTransaction((OcAuthSignatureTransactionPrefix*)transaction);
+                }
+                break;
+
                 case OracleUserQueryTransactionPrefix::transactionType():
                 {
                     // check for special cases
@@ -3328,6 +3340,12 @@ static void processTick(unsigned long long processorNumber)
     // Check for oracle query timeouts (may schedule notification)
     oracleEngine.processTimeouts();
 
+    // Check for OC invocation timeouts (PENDING_AUTH -> TIMEOUT)
+    ocEngine.processTimeouts();
+
+    // Push any newly AUTHORIZED bundles to configured OC machine peers
+    ocEngine.deliverAuthorizedInvocations();
+
     // Notify contracts about successfully obtained oracle replies and about errors (using contract processor)
     const OracleNotificationData* oracleNotification = oracleEngine.getNotification();
     while (oracleNotification)
@@ -3746,6 +3764,51 @@ static void processTick(unsigned long long processorNumber)
             }
         }
 
+        // Publish OcAuthSignatureTransactions for any new PENDING_AUTH invocations
+        {
+            PROFILE_NAMED_SCOPE("processTick(): broadcast OC auth signature transactions");
+            const auto txTick = system.tick + OC_AUTH_SIGNATURE_PUBLICATION_OFFSET;
+            auto* tx = (OcAuthSignatureTransactionPrefix*)txBuffer;
+            for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+            {
+                const auto ownCompIdx = ownComputorIndicesMapping[i];
+                const auto overallCompIdx = ownComputorIndices[i];
+                unsigned int retCode = 0;
+                do
+                {
+                    retCode = ocEngine.getAuthSignatureTransaction(tx, overallCompIdx, txTick, retCode);
+                    if (!retCode)
+                        break;
+
+                    // Sign each item individually with the computor's key (per-item signature
+                    // over the canonical auth message). The engine left item.signature zeroed.
+                    const unsigned short itemCount = *(const unsigned short*)tx->inputPtr();
+                    auto* items = reinterpret_cast<OcAuthSignatureItem*>(tx->inputPtr() + 2 * sizeof(unsigned short));
+                    m256i itemHash;
+                    for (unsigned short itemIdx = 0; itemIdx < itemCount; ++itemIdx)
+                    {
+                        OcEngine::computeOcAuthMessageHash(
+                            items[itemIdx].epoch,
+                            items[itemIdx].interfaceIndex,
+                            items[itemIdx].invocationId,
+                            items[itemIdx].paramsDigest,
+                            itemHash);
+                        sign(
+                            computorSubseeds[ownCompIdx].m256i_u8,
+                            computorPublicKeys[ownCompIdx].m256i_u8,
+                            (const unsigned char*)&itemHash,
+                            items[itemIdx].signature);
+                    }
+
+                    // Sign and broadcast outer tx
+                    KangarooTwelve(tx, sizeof(Transaction) + tx->inputSize, digest, sizeof(digest));
+                    sign(computorSubseeds[ownCompIdx].m256i_u8, computorPublicKeys[ownCompIdx].m256i_u8, digest, tx->signaturePtr());
+                    enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                }
+                while (retCode != UINT32_MAX);
+            }
+        }
+
         commonBuffers.releaseBuffer(txBuffer);
     }
 
@@ -3893,6 +3956,7 @@ static void beginEpoch()
     ts.beginEpoch(system.initialTick);
     pendingTxsPool.beginEpoch(system.initialTick);
     oracleEngine.beginEpoch();
+    ocEngine.beginEpoch();
     voteCounter.init();
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
@@ -4424,6 +4488,11 @@ static bool saveAllNodeStates()
         return false;
     }
 
+    if (!ocEngine.saveSnapshot(system.epoch, directory))
+    {
+        return false;
+    }
+
 #if ADDON_TX_STATUS_REQUEST
     if (!saveStateTxStatus(numberOfTransactions, directory))
     {
@@ -4627,6 +4696,11 @@ static bool loadAllNodeStates()
     }
 
     if (!oracleEngine.loadSnapshot(system.epoch, directory))
+    {
+        return false;
+    }
+
+    if (!ocEngine.loadSnapshot(system.epoch, directory))
     {
         return false;
     }
@@ -6093,6 +6167,14 @@ static bool initialize()
         if (!oracleEngine.init(broadcastedComputors.computors.publicKeys))
             return false;
 
+        if (!OCI::initOcInterfaces())
+        {
+            logToConsole(L"initOcInterfaces() failed! Not all interfaces are properly defined!");
+            return false;
+        }
+        if (!ocEngine.init(broadcastedComputors.computors.publicKeys))
+            return false;
+
 #if ADDON_TX_STATUS_REQUEST
         if (!initTxStatusRequestAddOn())
         {
@@ -6410,6 +6492,7 @@ static void deinitialize()
 #endif
 
     oracleEngine.deinit();
+    ocEngine.deinit();
 
     customQubicMiningStorage.deinit();
 
