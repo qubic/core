@@ -220,8 +220,8 @@ static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
 static constexpr unsigned int gScoreMultiplier[score_engine::AlgoType::MaxAlgoCount] =
 {
-    HYPERIDENTITY_SOLUTION_MULTIPLER,   // HyperIdentity
-    ADDITION_SOLUTION_MULTIPLER         // Addition
+    NEURAXON_SOLUTION_MULTIPLER,   // Neuraxon (reserved)
+    BPP9000_SOLUTION_MULTIPLER     // Bpp9000
 };
 
 
@@ -1350,8 +1350,8 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.numberOfTransactions = numberOfTransactions;
 
     respondedSystemInfo.randomMiningSeed = score->currentRandomSeed;
-    respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch][score_engine::AlgoType::HyperIdentity] : HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;
-    respondedSystemInfo.solutionAdditionalThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch][score_engine::AlgoType::Addition] : ADDITION_SOLUTION_THRESHOLD_DEFAULT;
+    respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch][score_engine::AlgoType::Bpp9000] : BPP9000_SOLUTION_THRESHOLD_DEFAULT;
+    respondedSystemInfo.solutionAdditionalThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch][score_engine::AlgoType::Neuraxon] : NEURAXON_SOLUTION_THRESHOLD_DEFAULT;
 
     respondedSystemInfo.totalSpectrumAmount = spectrumInfo.totalAmount;
     respondedSystemInfo.currentEntityBalanceDustThreshold = (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf;
@@ -1548,13 +1548,13 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 // can only set future epoch
                 if (_request->epoch > system.epoch && _request->epoch < MAX_NUMBER_EPOCH)
                 {
-                    if (_request->algoType == score_engine::AlgoType::HyperIdentity)
+                    if (_request->algoType == score_engine::AlgoType::Neuraxon)
                     {
-                        solutionThreshold[_request->epoch][score_engine::AlgoType::HyperIdentity] = _request->threshold;
+                        solutionThreshold[_request->epoch][score_engine::AlgoType::Neuraxon] = _request->threshold;
                     }
-                    else if (_request->algoType == score_engine::AlgoType::Addition)
+                    else if (_request->algoType == score_engine::AlgoType::Bpp9000)
                     {
-                        solutionThreshold[_request->epoch][score_engine::AlgoType::Addition] = _request->threshold;
+                        solutionThreshold[_request->epoch][score_engine::AlgoType::Bpp9000] = _request->threshold;
                     }
                     else // unknown algo, don't do anything
                     {
@@ -1565,13 +1565,13 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 response.everIncreasingNonceAndCommandType = _request->everIncreasingNonceAndCommandType;
                 response.epoch = _request->epoch;
                 response.algoType = _request->algoType;
-                if (_request->algoType == score_engine::AlgoType::HyperIdentity)
+                if (_request->algoType == score_engine::AlgoType::Neuraxon)
                 {
-                    response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch][score_engine::AlgoType::HyperIdentity] : HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;
+                    response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch][score_engine::AlgoType::Neuraxon] : NEURAXON_SOLUTION_THRESHOLD_DEFAULT;
                 }
-                else if (_request->algoType == score_engine::AlgoType::Addition)
+                else if (_request->algoType == score_engine::AlgoType::Bpp9000)
                 {
-                    response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch][score_engine::AlgoType::Addition] : ADDITION_SOLUTION_THRESHOLD_DEFAULT;
+                    response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch][score_engine::AlgoType::Bpp9000] : BPP9000_SOLUTION_THRESHOLD_DEFAULT;
                 }
                 else // unknown algo, respond with an invalid number
                 {
@@ -2442,7 +2442,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     ASSERT(transaction->tick == system.tick);
     ASSERT(isZero(transaction->destinationPublicKey));
     ASSERT(transaction->amount >=MiningSolutionTransaction::minAmount()
-            && transaction->inputSize == 64
+            && transaction->inputSize == MiningSolutionTransaction::minInputSize()
             && transaction->inputType == MiningSolutionTransaction::transactionType());
 
     m256i data[3] = { transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce };
@@ -3143,7 +3143,7 @@ static void processTick(unsigned long long processorNumber)
                             && transaction->amount >= MiningSolutionTransaction::minAmount()
                             && transaction->inputType == MiningSolutionTransaction::transactionType())
                         {
-                            if (transaction->inputSize == 32 + 32)
+                            if (transaction->inputSize == MiningSolutionTransaction::minInputSize())
                             {
                                 const m256i& solution_miningSeed = *(m256i*)transaction->inputPtr();
                                 const m256i& solution_nonce = *(m256i*)(transaction->inputPtr() + 32);
@@ -3937,13 +3937,14 @@ static void beginEpoch()
     minimumComputorScore = 0;
     minimumCandidateScore = 0;
 
-    if (system.epoch < MAX_NUMBER_EPOCH && !score_engine::checkAlgoThreshold(solutionThreshold[system.epoch][score_engine::AlgoType::HyperIdentity], score_engine::AlgoType::HyperIdentity))
-    { 
-        solutionThreshold[system.epoch][score_engine::AlgoType::HyperIdentity] = HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;
-    }
-    if (system.epoch < MAX_NUMBER_EPOCH && !score_engine::checkAlgoThreshold(solutionThreshold[system.epoch][score_engine::AlgoType::Addition], score_engine::AlgoType::Addition))
+    if (system.epoch < MAX_NUMBER_EPOCH && !score_engine::checkAlgoThreshold(solutionThreshold[system.epoch][score_engine::AlgoType::Bpp9000], score_engine::AlgoType::Bpp9000))
     {
-        solutionThreshold[system.epoch][score_engine::AlgoType::Addition] = ADDITION_SOLUTION_THRESHOLD_DEFAULT;
+        solutionThreshold[system.epoch][score_engine::AlgoType::Bpp9000] = BPP9000_SOLUTION_THRESHOLD_DEFAULT;
+    }
+    // Neuraxon slot is reserved (not minable); keep its threshold slot at the placeholder default.
+    if (system.epoch < MAX_NUMBER_EPOCH)
+    {
+        solutionThreshold[system.epoch][score_engine::AlgoType::Neuraxon] = NEURAXON_SOLUTION_THRESHOLD_DEFAULT;
     }
 
     system.latestOperatorNonce = 0;

@@ -11,24 +11,24 @@ namespace score_engine
 
 enum AlgoType
 {
-    HyperIdentity = 0,
-    Addition = 1,
-    MaxAlgoCount // for counting current supported ago
+    Neuraxon = 0,   // even nonce - reserved for a future algorithm (not yet implemented)
+    Bpp9000 = 1,    // odd nonce - the active mining algorithm
+    MaxAlgoCount    // for counting current supported algos
 };
 
 // =============================================================================
-// Algorithm 0: HyperIdentity Parameters
+// Slot 0 (even nonce): Neuraxon - reserved placeholder until it is implemented.
 // =============================================================================
 template<
-    unsigned long long inputNeurons,   // numberOfInputNeurons
-    unsigned long long outputNeurons,   // numberOfOutputNeurons
-    unsigned long long ticks,   // numberOfTicks
-    unsigned long long neighbor,  // numberOfNeighbors
-    unsigned long long population,   // populationThreshold
-    unsigned long long mutations,   // numberOfMutations
-    unsigned int threshold          // solutionThreshold
+    unsigned long long inputNeurons,
+    unsigned long long outputNeurons,
+    unsigned long long ticks,
+    unsigned long long neighbor,
+    unsigned long long population,
+    unsigned long long mutations,
+    unsigned int threshold
 >
-struct HyperIdentityParams
+struct NeuraxonParams
 {
     static constexpr unsigned long long numberOfInputNeurons = inputNeurons;
     static constexpr unsigned long long numberOfOutputNeurons = outputNeurons;
@@ -38,41 +38,46 @@ struct HyperIdentityParams
     static constexpr unsigned long long numberOfMutations = mutations;
     static constexpr unsigned int solutionThreshold = threshold;
 
-    static constexpr AlgoType algoType = AlgoType::HyperIdentity;
+    static constexpr AlgoType algoType = AlgoType::Neuraxon;
     static constexpr unsigned int paramsCount = 7;
 };
 
 // =============================================================================
-// Algorithm 1: Addition Parameters
+// Slot 1 (odd nonce): bpp9000
 // =============================================================================
 template<
-    unsigned long long inputNeurons,   // numberOfInputNeurons
-    unsigned long long outputNeurons,   // numberOfOutputNeurons
-    unsigned long long ticks,   // numberOfTicks
-    unsigned long long neighbor,  // maxNumberOfNeigbor
-    unsigned long long population,   // populationThreshold
-    unsigned long long mutations,   // numberOfMutations
-    unsigned int threshold          // solutionThreshold
+    unsigned long long inputNeurons,
+    unsigned long long outputNeurons,
+    unsigned long long seqLength,
+    unsigned long long winWidth,
+    unsigned long long maxTicks,
+    unsigned long long neighbor,
+    unsigned long long population,
+    unsigned long long mutations,
+    unsigned int threshold
 >
-struct AdditionParams
+struct Bpp9000Params
 {
     static constexpr unsigned long long numberOfInputNeurons = inputNeurons;
     static constexpr unsigned long long numberOfOutputNeurons = outputNeurons;
-    static constexpr unsigned long long numberOfTicks = ticks;
+    static constexpr unsigned long long sequenceLength = seqLength;
+    static constexpr unsigned long long windowWidth = winWidth;
+    static constexpr unsigned long long maxNumberOfTicks = maxTicks;
     static constexpr unsigned long long numberOfNeighbors = neighbor;
     static constexpr unsigned long long populationThreshold = population;
     static constexpr unsigned long long numberOfMutations = mutations;
     static constexpr unsigned int solutionThreshold = threshold;
+    static constexpr unsigned long long numberOfWindows = seqLength - winWidth;
 
-    static constexpr AlgoType algoType = AlgoType::Addition;
-    static constexpr unsigned int paramsCount = 7;
+    static constexpr AlgoType algoType = AlgoType::Bpp9000;
+    static constexpr unsigned int paramsCount = 9;
 };
 
 //=================================================================================================
 // Defines and constants
-static constexpr unsigned int DEFAUL_SOLUTION_THRESHOLD[AlgoType::MaxAlgoCount] = { 
-    HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT, 
-    ADDITION_SOLUTION_THRESHOLD_DEFAULT};
+static constexpr unsigned int DEFAUL_SOLUTION_THRESHOLD[AlgoType::MaxAlgoCount] = {
+    NEURAXON_SOLUTION_THRESHOLD_DEFAULT,
+    BPP9000_SOLUTION_THRESHOLD_DEFAULT};
 static constexpr unsigned int INVALID_SCORE_VALUE = 0xFFFFFFFFU;
 static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 
@@ -507,7 +512,7 @@ static inline unsigned long long clampCirculatingIndex(
 // In case of not provided threholdBuffer, just return the default value
 static AlgoType getAlgoType(const unsigned char* nonce)
 {
-    AlgoType selectedAgo = ((nonce[0] & 1) == 0) ? AlgoType::HyperIdentity : AlgoType::Addition;
+    AlgoType selectedAgo = ((nonce[0] & 1) == 0) ? AlgoType::Neuraxon : AlgoType::Bpp9000;
     return selectedAgo;
 }
 
@@ -521,19 +526,15 @@ static bool checkAlgoThreshold(int threshold, AlgoType algo)
 
     switch (algo)
     {
-    case AlgoType::HyperIdentity:
-        if (threshold > HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS)
+    case AlgoType::Bpp9000:
+        if (threshold > (int)BPP9000_NUMBER_OF_WINDOWS)
         {
             return false;
         }
         break;
-    case AlgoType::Addition:
-        if (threshold > ADDITION_NUMBER_OF_OUTPUT_NEURONS * (1U << ADDITION_NUMBER_OF_INPUT_NEURONS))
-        {
-            return false;
-        }
-        break;
+    case AlgoType::Neuraxon:
     default:
+        // Neuraxon slot is reserved and not yet minable.
         return false;
     }
     return true;
