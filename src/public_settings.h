@@ -94,26 +94,34 @@ static unsigned short REVENUE_DATA_SNAPSHOT_FILE_NAME[] = L"revenue_data.???";
 static unsigned short MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[] = L"revenue_data_multi.???";
 static unsigned short MULTIDIM_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"revenue_data_multi.eoe";
 
-static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS = 512;     // K
-static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS = 512;    // L
-static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_TICKS = 1000;               // N
-static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
-static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_MUTATIONS = 150;
-static constexpr unsigned long long HYPERIDENTITY_POPULATION_THRESHOLD = HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_MUTATIONS; // P
-static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT = 316;
+// Neuraxon (even-nonce slot) - reserved for a future algorithm, not yet implemented.
+static constexpr unsigned long long NEURAXON_NUMBER_OF_INPUT_NEURONS = 1;
+static constexpr unsigned long long NEURAXON_NUMBER_OF_OUTPUT_NEURONS = 1;
+static constexpr unsigned long long NEURAXON_NUMBER_OF_TICKS = 1;
+static constexpr unsigned long long NEURAXON_NUMBER_OF_NEIGHBORS = 1;
+static constexpr unsigned long long NEURAXON_POPULATION_THRESHOLD = 4;
+static constexpr unsigned long long NEURAXON_NUMBER_OF_MUTATIONS = 1;
+static constexpr unsigned int NEURAXON_SOLUTION_THRESHOLD_DEFAULT = 1;
 
-static constexpr unsigned long long ADDITION_NUMBER_OF_INPUT_NEURONS = 14;
-static constexpr unsigned long long ADDITION_NUMBER_OF_OUTPUT_NEURONS = 8;
-static constexpr unsigned long long ADDITION_NUMBER_OF_TICKS = 256;
-static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = 256;
-// Each neuron is connected to every other neuron(exclude self). The effective is clamp to (ADDITION_POPULATION_THRESHOLD - 1) at runtime
-static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = ADDITION_POPULATION_THRESHOLD;
-static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 256;
-static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 74100;
+// bpp9000 (odd-nonce slot) - the active mining algorithm
+static constexpr unsigned long long BPP9000_NUMBER_OF_INPUT_NEURONS = 18;
+static constexpr unsigned long long BPP9000_NUMBER_OF_OUTPUT_NEURONS = 1;
+static constexpr unsigned long long BPP9000_SEQUENCE_LENGTH = 24 * 365;
+static constexpr unsigned long long BPP9000_WINDOW_WIDTH = 24 * 28;
+static constexpr unsigned long long BPP9000_MAX_NUMBER_OF_TICKS = 100000;
+static constexpr unsigned long long BPP9000_NUMBER_OF_NEIGHBORS = 3;
+static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 128;
+static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 100;
+// Number of graded windows. The score is an error count in [0, BPP9000_NUMBER_OF_WINDOWS], smaller is
+// better, and a solution passes when score <= threshold.
+static constexpr unsigned long long BPP9000_NUMBER_OF_WINDOWS = BPP9000_SEQUENCE_LENGTH - BPP9000_WINDOW_WIDTH;
+// Anti-spam default: reject anything no better than random guessing (2 of 3 trits wrong).
+// To be replaced with the empirical value once the task data and parameters are final.
+static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = (unsigned int)(BPP9000_NUMBER_OF_WINDOWS * 2 / 3);
 
 // Multipler of score
-static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;
-static constexpr unsigned int ADDITION_SOLUTION_MULTIPLER = 1;
+static constexpr unsigned int NEURAXON_SOLUTION_MULTIPLER = 1;
+static constexpr unsigned int BPP9000_SOLUTION_MULTIPLER = 1;
 
 static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 
