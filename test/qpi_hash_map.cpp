@@ -2,10 +2,10 @@
 
 #include "gtest/gtest.h"
 
-#include "../src/contract_core/pre_qpi_def.h"
-#include "../src/qpi/qpi.h"
-#include "../src/common_buffers.h"
-#include "../src/contract_core/qpi_hash_map_impl.h"
+#include "contract_core/pre_qpi_def.h"
+#include "qpi/qpi.h"
+#include "common_buffers.h"
+#include "qpi/impl/qpi_hash_map_impl.h"
 #include <unordered_set>
 #include <array>
 #include <ranges>

@@ -2,11 +2,11 @@
 
 #include "gtest/gtest.h"
 
-#include "../src/contract_core/pre_qpi_def.h"
-#include "../src/qpi/qpi.h"
-#include "../src/common_buffers.h"
-#include "../src/contract_core/qpi_collection_impl.h"
-#include "../src/contract_core/qpi_trivial_impl.h"
+#include "contract_core/pre_qpi_def.h"
+#include "qpi/qpi.h"
+#include "common_buffers.h"
+#include "qpi/impl/qpi_collection_impl.h"
+#include "qpi/impl/qpi_trivial_impl.h"
 
 
 #include <vector>

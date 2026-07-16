@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../qpi/qpi.h"
+#include "qpi/qpi.h"
 
 namespace QPI
 {

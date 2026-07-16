@@ -13,7 +13,7 @@
 // When adding something, be cautious to keep access of contracts limited to safe features only.
 #include "pre_qpi_def.h"
 #include "qpi/qpi.h"
-#include "qpi_proposal_voting.h"
+#include "qpi/impl/qpi_proposals_impl.h"
 
 // make interfaces to oracles available for all contracts
 #include "oracle_core/oracle_interfaces_def.h"
@@ -354,10 +354,10 @@ constexpr unsigned short TESTEXD_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 
 // The following are included after the contracts to keep their definitions and dependencies
 // inaccessible for contracts
-#include "qpi_collection_impl.h"
-#include "qpi_trivial_impl.h"
-#include "qpi_hash_map_impl.h"
-#include "qpi_linked_list_impl.h"
+#include "qpi/impl/qpi_collection_impl.h"
+#include "qpi/impl/qpi_trivial_impl.h"
+#include "qpi/impl/qpi_hash_map_impl.h"
+#include "qpi/impl/qpi_linked_list_impl.h"
 
 #include "platform/global_var.h"
 

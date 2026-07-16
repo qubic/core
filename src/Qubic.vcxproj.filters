@@ -166,10 +166,7 @@
       <Filter>contract_core</Filter>
     </ClInclude>
     <ClInclude Include="vote_counter.h" />
-    <ClInclude Include="contract_core\qpi_collection_impl.h">
-      <Filter>contract_core</Filter>
-    </ClInclude>
-    <ClInclude Include="contract_core\qpi_proposal_voting.h">
+    <ClInclude Include="contract_core\qpi_proposals_impl.h">
       <Filter>contract_core</Filter>
     </ClInclude>
     <ClInclude Include="contracts\EmptyTemplate.h">
@@ -177,9 +174,6 @@
     </ClInclude>
     <ClInclude Include="contracts\GeneralQuorumProposal.h">
       <Filter>contracts</Filter>
-    </ClInclude>
-    <ClInclude Include="contract_core\qpi_trivial_impl.h">
-      <Filter>contract_core</Filter>
     </ClInclude>
     <ClInclude Include="contracts\SupplyWatcher.h">
       <Filter>contracts</Filter>
@@ -203,19 +197,7 @@
     <ClInclude Include="platform\assert.h">
       <Filter>platform</Filter>
     </ClInclude>
-    <ClInclude Include="contract_core\qpi_spectrum_impl.h">
-      <Filter>contract_core</Filter>
-    </ClInclude>
-    <ClInclude Include="contract_core\qpi_system_impl.h">
-      <Filter>contract_core</Filter>
-    </ClInclude>
-    <ClInclude Include="contract_core\qpi_hash_map_impl.h">
-      <Filter>contract_core</Filter>
-    </ClInclude>
-    <ClInclude Include="contract_core\qpi_linked_list_impl.h">
-      <Filter>contract_core</Filter>
-    </ClInclude>
-    <ClInclude Include="contract_core\qpi_asset_impl.h">
+    <ClInclude Include="contract_core\qpi_assets_impl.h">
       <Filter>contract_core</Filter>
     </ClInclude>
     <ClInclude Include="assets\net_msg_impl.h">
@@ -235,9 +217,6 @@
     </ClInclude>
     <ClInclude Include="ticking\ticking.h">
       <Filter>ticking</Filter>
-    </ClInclude>
-    <ClInclude Include="contract_core\qpi_ticking_impl.h">
-      <Filter>contract_core</Filter>
     </ClInclude>
     <ClInclude Include="ticking\tick_storage.h">
       <Filter>ticking</Filter>
@@ -267,9 +246,6 @@
     <ClInclude Include="contract_core\ipo.h">
       <Filter>contract_core</Filter>
     </ClInclude>
-    <ClInclude Include="contract_core\qpi_ipo_impl.h">
-      <Filter>contract_core</Filter>
-    </ClInclude>
     <ClInclude Include="contracts\TestExampleD.h">
       <Filter>contracts</Filter>
     </ClInclude>
@@ -289,9 +265,6 @@
       <Filter>platform</Filter>
     </ClInclude>
     <ClInclude Include="revenue.h" />
-    <ClInclude Include="contract_core\qpi_mining_impl.h">
-      <Filter>contract_core</Filter>
-    </ClInclude>
     <ClInclude Include="ticking\pending_txs_pool.h">
       <Filter>ticking</Filter>
     </ClInclude>
@@ -339,9 +312,6 @@
     </ClInclude>
     <ClInclude Include="platform\memory_util.h">
       <Filter>platform</Filter>
-    </ClInclude>
-    <ClInclude Include="contract_core\qpi_oracle_impl.h">
-      <Filter>contract_core</Filter>
     </ClInclude>
     <ClInclude Include="network_messages\network_message_type.h">
       <Filter>network_messages</Filter>
@@ -409,6 +379,42 @@
     <ClInclude Include="qpi\qpi_date_time.h">
       <Filter>qpi</Filter>
     </ClInclude>
+    <ClInclude Include="qpi\impl\qpi_assets_impl.h">
+      <Filter>qpi\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\impl\qpi_collection_impl.h">
+      <Filter>qpi\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\impl\qpi_hash_map_impl.h">
+      <Filter>qpi\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\impl\qpi_ipo_impl.h">
+      <Filter>qpi\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\impl\qpi_linked_list_impl.h">
+      <Filter>qpi\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\impl\qpi_mining_impl.h">
+      <Filter>qpi\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\impl\qpi_oracle_impl.h">
+      <Filter>qpi\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\impl\qpi_proposals_impl.h">
+      <Filter>qpi\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\impl\qpi_spectrum_impl.h">
+      <Filter>qpi\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\impl\qpi_system_impl.h">
+      <Filter>qpi\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\impl\qpi_ticking_impl.h">
+      <Filter>qpi\impl</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\impl\qpi_trivial_impl.h">
+      <Filter>qpi\impl</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
@@ -455,6 +461,9 @@
     </Filter>
     <Filter Include="qpi">
       <UniqueIdentifier>{c1a2bec9-4637-4079-a00c-a7234e854fb5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="qpi\impl">
+      <UniqueIdentifier>{09aad857-4f8c-40c8-9ffb-41fcfcbef0ba}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
