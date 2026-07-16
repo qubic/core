@@ -139,6 +139,7 @@
     <ClInclude Include="qpi\qpi_assets.h" />
     <ClInclude Include="qpi\qpi_containers.h" />
     <ClInclude Include="qpi\qpi_context.h" />
+    <ClInclude Include="qpi\qpi_date_time.h" />
     <ClInclude Include="qpi\qpi_macros.h" />
     <ClInclude Include="qpi\qpi_proposals.h" />
     <ClInclude Include="qpi\qpi_types.h" />

@@ -406,6 +406,9 @@
     <ClInclude Include="qpi\qpi.h">
       <Filter>qpi</Filter>
     </ClInclude>
+    <ClInclude Include="qpi\qpi_date_time.h">
+      <Filter>qpi</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
