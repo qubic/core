@@ -1,6 +1,6 @@
 #pragma once
 
-#include "contracts/qpi.h"
+#include "qpi/qpi.h"
 #include "oracle_core/oracle_engine.h"
 #include "spectrum/spectrum.h"
 

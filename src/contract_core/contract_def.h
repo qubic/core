@@ -12,7 +12,7 @@
 // With no other includes before, the following are the only headers available to contracts.
 // When adding something, be cautious to keep access of contracts limited to safe features only.
 #include "pre_qpi_def.h"
-#include "contracts/qpi.h"
+#include "qpi/qpi.h"
 #include "qpi_proposal_voting.h"
 
 // make interfaces to oracles available for all contracts

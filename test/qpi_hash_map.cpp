@@ -3,7 +3,7 @@
 #include "gtest/gtest.h"
 
 #include "../src/contract_core/pre_qpi_def.h"
-#include "../src/contracts/qpi.h"
+#include "../src/qpi/qpi.h"
 #include "../src/common_buffers.h"
 #include "../src/contract_core/qpi_hash_map_impl.h"
 #include <unordered_set>

@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "../contracts/qpi.h"
+#include "../qpi/qpi.h"
 #include "../platform/memory.h"
 
 namespace QPI

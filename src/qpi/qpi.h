@@ -1,0 +1,3466 @@
+// Qubic Programming Interface 1.0.0
+
+#pragma once
+
+// m256i is used for the id data type
+#include "../platform/m256.h"
+
+// uint128
+#include "../platform/uint128.h"
+
+// ASSERT can be used to support debugging and speed-up development
+#include "../platform/assert.h"
+
+namespace QPI
+{
+	/*
+
+	Prohibited character combinations in contracts:
+
+	"
+	#
+	%
+	'
+	* (not prohibited as multiplication operator)
+	...
+	/ as division operator
+	:: (not prohibited as scope operator for structs, enums, and namespaces defined in contracts and `qpi.h`)
+	[
+	]
+	__
+	double
+	float
+	typedef
+	union
+
+	const_cast
+	QpiContext
+	TODO: prevent other casts trying to cast const away from state
+
+	*/
+
+	// Boolean type ensuring that input values > 1 are mapped to 1.
+	struct bit
+	{
+		bit(bool v = false) : charValue(v)
+		{
+		}
+
+		operator bool() const
+		{
+			return !!charValue;
+		}
+
+		char charValue;
+	};
+
+	typedef signed char sint8;
+	typedef unsigned char uint8;
+	typedef signed short sint16;
+	typedef unsigned short uint16;
+	typedef signed int sint32;
+	typedef unsigned int uint32;
+	typedef signed long long sint64;
+	typedef unsigned long long uint64;
+
+	// Error codes for inter-contract calls (used when calling other contracts fails)
+	// These are returned to the calling contract so it can handle the error
+	enum InterContractCallError : uint8
+	{
+		NoCallError = 0,
+		CallErrorContractInErrorState = 1,      // Called contract is already in error state
+		CallErrorInsufficientFees = 2,          // Called contract has no execution fee reserve
+		CallErrorAllocationFailed = 3,          // Failed to allocate context on stack
+		CallErrorContractInactive = 4,			// Called contract has been inactive
+	};
+
+	typedef uint128_t uint128;
+	typedef m256i id;
+
+#define STATIC_ASSERT(condition, identifier) static_assert(condition, #identifier);
+
+#define NULL_ID id::zero()
+
+	constexpr sint64 NULL_INDEX = -1;
+
+	constexpr sint64 INVALID_AMOUNT = 0x8000000000000000;
+
+	// Characters for building strings (for example in constructor of id / m256i)
+	namespace Ch
+	{
+		enum : char
+		{
+			null = 0,
+			space = ' ', slash = '/', backslash = '\\', dot = '.', comma = ',', colon = ':', semicolon = ';',
+			underscore = '_', minus = '-', plus = '+', star = '*', dollar = '$', question_mark = '?', exclamation_mark = '!',
+			a = 'a', b = 'b', c = 'c', d = 'd', e = 'e', f = 'f', g = 'g', h = 'h', i = 'i', j = 'j', k = 'k', l = 'l', m = 'm',
+			n = 'n', o = 'o', p = 'p', q = 'q', r = 'r', s = 's', t = 't', u = 'u', v = 'v', w = 'w', x = 'x', y = 'y', z = 'z',
+			A = 'A', B = 'B', C = 'C', D = 'D', E = 'E', F = 'F', G = 'G', H = 'H', I = 'I', J = 'J', K = 'K', L = 'L', M = 'M',
+			N = 'N', O = 'O', P = 'P', Q = 'Q', R = 'R', S = 'S', T = 'T', U = 'U', V = 'V', W = 'W', X = 'X', Y = 'Y', Z = 'Z',
+			_0 = '0', _1 = '1', _2 = '2', _3 = '3', _4 = '4', _5 = '5', _6 = '6', _7 = '7', _8 = '8', _9 = '9',
+		};
+	}
+
+	// Wrapper around a contract's entire state struct.
+	// sizeof(ContractState<T, contractIndex>) == sizeof(T), standard layout, zero-init compatible.
+	// Use get() for reads, mut() for writes (marks dirty).
+	template <typename T, unsigned int contractIndex>
+	struct ContractState {
+		static constexpr unsigned int __contract_index = contractIndex;
+		const T& get() const { return _data; }
+		T& mut() { ::__markContractStateDirty(contractIndex); return _data; }
+	private:
+		T _data;
+	};
+
+	// Letters for defining identity with ID function
+	constexpr long long _A = 0;
+	constexpr long long _B = 1;
+	constexpr long long _C = 2;
+	constexpr long long _D = 3;
+	constexpr long long _E = 4;
+	constexpr long long _F = 5;
+	constexpr long long _G = 6;
+	constexpr long long _H = 7;
+	constexpr long long _I = 8;
+	constexpr long long _J = 9;
+	constexpr long long _K = 10;
+	constexpr long long _L = 11;
+	constexpr long long _M = 12;
+	constexpr long long _N = 13;
+	constexpr long long _O = 14;
+	constexpr long long _P = 15;
+	constexpr long long _Q = 16;
+	constexpr long long _R = 17;
+	constexpr long long _S = 18;
+	constexpr long long _T = 19;
+	constexpr long long _U = 20;
+	constexpr long long _V = 21;
+	constexpr long long _W = 22;
+	constexpr long long _X = 23;
+	constexpr long long _Y = 24;
+	constexpr long long _Z = 25;
+
+	inline id ID(long long _00, long long _01, long long _02, long long _03, long long _04, long long _05, long long _06, long long _07, long long _08, long long _09,
+		long long _10, long long _11, long long _12, long long _13, long long _14, long long _15, long long _16, long long _17, long long _18, long long _19,
+		long long _20, long long _21, long long _22, long long _23, long long _24, long long _25, long long _26, long long _27, long long _28, long long _29,
+		long long _30, long long _31, long long _32, long long _33, long long _34, long long _35, long long _36, long long _37, long long _38, long long _39,
+		long long _40, long long _41, long long _42, long long _43, long long _44, long long _45, long long _46, long long _47, long long _48, long long _49,
+		long long _50, long long _51, long long _52, long long _53, long long _54, long long _55)
+	{ 
+		return _mm256_set_epi64x(((((((((((((((uint64)_55) * 26 + _54) * 26 + _53) * 26 + _52) * 26 + _51) * 26 + _50) * 26 + _49) * 26 + _48) * 26 + _47) * 26 + _46) * 26 + _45) * 26 + _44) * 26 + _43) * 26 + _42, ((((((((((((((uint64)_41) * 26 + _40) * 26 + _39) * 26 + _38) * 26 + _37) * 26 + _36) * 26 + _35) * 26 + _34) * 26 + _33) * 26 + _32) * 26 + _31) * 26 + _30) * 26 + _29) * 26 + _28, ((((((((((((((uint64)_27) * 26 + _26) * 26 + _25) * 26 + _24) * 26 + _23) * 26 + _22) * 26 + _21) * 26 + _20) * 26 + _19) * 26 + _18) * 26 + _17) * 26 + _16) * 26 + _15) * 26 + _14, ((((((((((((((uint64)_13) * 26 + _12) * 26 + _11) * 26 + _10) * 26 + _09) * 26 + _08) * 26 + _07) * 26 + _06) * 26 + _05) * 26 + _04) * 26 + _03) * 26 + _02) * 26 + _01) * 26 + _00); 
+	}
+
+#define NUMBER_OF_COMPUTORS 676
+#define QUORUM (NUMBER_OF_COMPUTORS * 2 / 3 + 1)
+
+    constexpr int JANUARY = 1;
+    constexpr int FEBRUARY = 2;
+    constexpr int MARCH = 3;
+    constexpr int APRIL = 4;
+    constexpr int MAY = 5;
+    constexpr int JUNE = 6;
+    constexpr int JULY = 7;
+    constexpr int AUGUST = 8;
+    constexpr int SEPTEMBER = 9;
+    constexpr int OCTOBER = 10;
+    constexpr int NOVEMBER = 11;
+    constexpr int DECEMBER = 12;
+
+    constexpr int WEDNESDAY = 0;
+    constexpr int THURSDAY = 1;
+    constexpr int FRIDAY = 2;
+    constexpr int SATURDAY = 3;
+    constexpr int SUNDAY = 4;
+    constexpr int MONDAY = 5;
+    constexpr int TUESDAY = 6;
+
+	constexpr unsigned long long X_MULTIPLIER = 1ULL;
+
+	// Copy memory of src to dst. Both may have different types, but size of both must match exactly.
+	template <typename T1, typename T2>
+	inline void copyMemory(T1& dst, const T2& src);
+
+	// Copy object src into buffer dst. The size of the dst buffer must be grater or equal to the size of src object.
+	// If dst size is greater than src size and setTailToZero is true, set the part of dst to zero that follows
+	// behind the copy of src.
+	template <typename T1, typename T2>
+	inline void copyToBuffer(T1& dst, const T2& src, bool setTailToZero = false);
+
+	// Set object dst from buffer src. The size of the src buffer must be grater or equal to the size of dst object.
+	template <typename T1, typename T2>
+	inline void copyFromBuffer(T1& dst, const T2& src);
+
+	// Set all memory of dst to byte value.
+	template <typename T>
+	inline void setMemory(T& dst, uint8 value);
+
+	/**
+	 * Date and time (up to microsecond precision, year range from 0 to 65535, 8-byte representation)
+	 *
+	 * May contain invalid dates. Follows Gregorian calendar, implementing leap years but no leap seconds.
+	 */
+	struct DateAndTime
+	{
+		/// Return instance with current time (defined in qpi_ticking_impl.h)
+		static inline DateAndTime now();
+
+		/// Init with value 0 (no valid date).
+		DateAndTime()
+		{
+			value = 0;
+		}
+
+		/// Init object with date/time. See `set()` for info about parameters.
+		DateAndTime(uint64 year, uint64 month, uint64 day, uint64 hour = 0, uint64 minute = 0, uint64 second = 0, uint64 millisec = 0, uint64 microsecDuringMillisec = 0)
+		{
+			set(year, month, day, hour, minute, second, millisec, microsecDuringMillisec);
+		}
+
+		/// Copy object
+		DateAndTime(const DateAndTime& other)
+		{
+			value = other.value;
+		}
+
+		/// Assign object
+		DateAndTime& operator = (const DateAndTime& other)
+		{
+			value = other.value;
+			return *this;
+		}
+
+		/**
+		* @brief Set date and time value without checking if it is valid.
+		* @param year	Year of the date (without offset). Should be in range 0 to 65335.
+		* @param month	Month of the date. Should be in range 1 to 12 to be valid.
+		* @param day	Day of the month. Should be in range 1 to 31/30/29/28 to be valid, depending on year and month.
+		* @param hour	Hour during the day. Should be in range 0 to 23 to be valid.
+		* @param minute	Minute during the hour. Should be in range 0 to 59 to be valid.
+		* @param second	Second during the minute. Should be in range 0 to 59 to be valid.
+		* @param millisec Millisecond during the second. Should be in range 0 to 999 to be valid.
+		* @param microsecDuringMillisec Microsecond during the millisecond. Should be in range 0 to 999 to be valid.
+		*/
+		inline void set(uint64 year, uint64 month, uint64 day, uint64 hour, uint64 minute, uint64 second, uint64 millisec = 0, uint64 microsecDuringMillisec = 0)
+		{
+			value = (year << 46) | (month << 42) | (day << 37)
+				| (hour << 32) | (minute << 26) | (second << 20)
+				| (millisec << 10) | (microsecDuringMillisec);
+		}
+
+		/// Set date/time if valid (returns true). Otherwise returns false.
+		bool setIfValid(uint64 year, uint64 month, uint64 day, uint64 hour, uint64 minute, uint64 second, uint64 millisec = 0, uint64 microsecDuringMillisec = 0)
+		{
+			if (!isValid(year, month, day, hour, minute, second, millisec, microsecDuringMillisec))
+				return false;
+			set(year, month, day, hour, minute, second, millisec, microsecDuringMillisec);
+			return true;
+		}
+
+		/// Set date/time to invalid value. Depending on the desired behavior of comparison, you may chose a value less or greater than all valid values.
+		inline void setInvalid(bool smallestValue = true)
+		{
+			value = (smallestValue) ? 0 : UINT64_MAX;
+		}
+
+		/**
+		* @brief Set date value without checking if it is valid.
+		* @param year	Year of the date (without offset). Should be in range 0 to 65335.
+		* @param month	Month of the date. Should be in range 1 to 12 to be valid.
+		* @param day	Day of the month. Should be in range 1 to 31/30/29/28 to be valid, depending on year and month.
+		*/
+		inline void setDate(uint64 year, uint64 month, uint64 day)
+		{
+			// clear bits of current date (only keep 37 bits of time) before setting new date
+			value &= 0x1fffffffff;
+			value |= (year << 46) | (month << 42) | (day << 37);
+		}
+
+		/**
+		* @brief Set time without checking if it is valid.
+		* @param hour	Hour during the day. Should be in range 0 to 23 to be valid.
+		* @param minute	Minute during the hour. Should be in range 0 to 59 to be valid.
+		* @param second	Second during the minute. Should be in range 0 to 59 to be valid.
+		* @param millisec Millisecond during the second. Should be in range 0 to 999 to be valid.
+		* @param microsecDuringMillisec Microsecond during the millisecond. Should be in range 0 to 999 to be valid.
+		*/
+		inline void setTime(uint64 hour, uint64 minute, uint64 second, uint64 millisec = 0, uint64 microsecDuringMillisec = 0)
+		{
+			// clear bits of current time (only keep 25 bits of date) before setting new time
+			value &= (0x1ffffffllu << 37llu);
+			value |= (hour << 32) | (minute << 26) | (second << 20)
+				| (millisec << 10) | (microsecDuringMillisec);
+		}
+
+		/// Return year of date/time (range 0 to 65535).
+		uint16 getYear() const
+		{
+			return static_cast<uint16>(value >> 46);
+		}
+
+		/// Return month of date/time (range 1 to 12 if valid).
+		uint8 getMonth() const
+		{
+			return static_cast<uint8>(value >> 42) & 0b1111;
+		}
+
+		/// Return month of date/time (range 1 to 31/30/29/28 depending on month if valid).
+		uint8 getDay() const
+		{
+			return static_cast<uint8>(value >> 37) & 0b11111;
+		}
+
+		/// Return hour of date/time (range 0 to 23 if valid).
+		uint8 getHour() const
+		{
+			return static_cast<uint8>(value >> 32) & 0b11111;
+		}
+
+		/// Return minute of date/time (range 0 to 59 if valid).
+		uint8 getMinute() const
+		{
+			return static_cast<uint8>(value >> 26) & 0b111111;
+		}
+
+		/// Return second of date/time (range 0 to 59 if valid).
+		uint8 getSecond() const
+		{
+			return static_cast<uint8>(value >> 20) & 0b111111;
+		}
+
+		/// Return millisecond of date/time (range 0 to 999 if valid).
+		uint16 getMillisec() const
+		{
+			return static_cast<uint16>(value >> 10) & 0b1111111111;
+		}
+
+		/// Return microsecond in current millisecond of date/time (range 0 to 999 if valid).
+		uint16 getMicrosecDuringMillisec() const
+		{
+			return static_cast<uint16>(value) & 0b1111111111;
+		}
+
+		/// Check if this instance contains a valid date and time.
+		bool isValid() const
+		{
+			if (!value)
+				return false;
+			return isValid(getYear(), getMonth(), getDay(), getHour(), getMinute(), getSecond(), getMillisec(), getMicrosecDuringMillisec());
+		}
+
+		/// Check if a year is a leap year.
+		static bool isLeapYear(uint64 year)
+		{
+			if (year % 4 != 0)
+				return false;
+			if (year % 100 == 0)
+			{
+				if (year % 400 == 0)
+					return true;
+				else
+					return false;
+			}
+			return true;
+		}
+
+		/// Return the number of days in a month of a specific year.
+		static uint8 daysInMonth(uint64 year, uint64 month)
+		{
+			const int daysInMonth[] = { 0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 };
+			if (month < 1 || month > 12)
+				return 0;
+			if (month == 2 && DateAndTime::isLeapYear(year))
+				return 29;
+			else
+				return daysInMonth[month];
+		};
+
+		/// Check if the date and time given by parameters is valid.
+		static inline bool isValid(uint64 year, uint64 month, uint64 day, uint64 hour, uint64 minute, uint64 second, uint64 millisec, uint64 microsecDuringMillisec)
+		{
+			if (year > 0xffffu)
+				return false;
+			if (month > 12 || month == 0)
+				return false;
+			if (day > 31 || day == 0)
+				return false;
+			if ((day == 31) && (month != 1) && (month != 3) && (month != 5) && (month != 7) && (month != 8) && (month != 10) && (month != 12))
+				return false;
+			if ((day == 30) && (month == 2))
+				return false;
+			if ((day == 29) && (month == 2) && !isLeapYear(year))
+				return false;
+			if (hour >= 24)
+				return false;
+			if (minute >= 60)
+				return false;
+			if (second >= 60)
+				return false;
+			if (millisec >= 1000)
+				return false;
+			if (microsecDuringMillisec >= 1000)
+				return false;
+			return true;
+		}
+
+		/// Checks if this date is earlier than the `other` date.
+		bool operator<(const DateAndTime& other) const
+		{
+			return value < other.value;
+		}
+
+		/// Checks if this date is later than the `other` date.
+		bool operator>(const DateAndTime& other) const
+		{
+			return value > other.value;
+		}
+
+		/// Checks if this date is earlier than the `other` date or the same.
+		bool operator<=(const DateAndTime& other) const
+		{
+			return value <= other.value;
+		}
+
+		/// Checks if this date is later than the `other` date or the same.
+		bool operator>=(const DateAndTime& other) const
+		{
+			return value >= other.value;
+		}
+
+		/// Checks if this date is identical to the `other` date.
+		bool operator==(const DateAndTime& other) const
+		{
+			return value == other.value;
+		}
+
+		/// Checks if this date is different from the `other` date.
+		bool operator!=(const DateAndTime& other) const
+		{
+			return value != other.value;
+		}
+
+		/**
+		* Change date and time by adding a combination of time units.
+		* @param years Number of years to add. May be negative.
+		* @param months Number of months to add. May be negative and abs(months) may be > 12.
+		* @param days Number of days to add. May be negative and abs(days) may be > 365.
+		* @param hours Number of hours to add. May be negative and abs(hours) may be > 24.
+		* @param minutes Number of minutes to add. May be negative and abs(minutes) may be > 60.
+		* @param seconds Number of seconds to add. May be negative and abs(seconds) may be > 60.
+		* @param millisecs Number of millisecs to add. May be negative and abs(millisecs) may be > 1000.
+		* @param microsecsDuringMillisec Number of millisecs to add. May be negative and abs(microsecsDuringMillisec) may be > 1000.
+		* @return Returns if update of date and time was successful. Error cases: Overflow, starting with invalid date (see below).
+		*
+		* This function requires a valid date to start with if it needs to change the date. If less than 1 day is added/subtracted
+		* and the date does not flip due to the added/subtracted time (hours/minutes/seconds etc.), `add()` succeeds even with an
+		* invalid date. Thus, for example if you want to accumulate short periods of time, you may use `add()` with an invalid date
+		* such as 0000-00-00. However, it will fail and return false if you the accumulated time exceeds 23:59:59.999'999.
+		*/
+		bool add(sint64 years, sint64 months, sint64 days, sint64 hours, sint64 minutes, sint64 seconds, sint64 millisecs = 0, sint64 microsecsDuringMillisec = 0)
+		{
+			sint64 newMicrosec = getMicrosecDuringMillisec();
+			sint64 newMillisec = getMillisec();
+			sint64 newSec = getSecond();
+			sint64 newMinute = getMinute();
+			sint64 newHour = getHour();
+			sint64 millisecCarry = 0, secCarry = 0, minuteCarry = 0, hourCarry = 0, dayCarry = 0;
+
+			// update microseconds (checking for overflow)
+			if (microsecsDuringMillisec &&
+				!addAndComputeCarry(newMicrosec, millisecCarry, 1000, microsecsDuringMillisec))
+			{
+				return false;
+			}
+
+			// update milliseconds (checking for overflow)
+			if ((millisecs || millisecCarry) &&
+				!addAndComputeCarry(newMillisec, secCarry, 1000, millisecs, millisecCarry))
+			{
+				return false;
+			}
+
+			// update seconds (checking for overflow)
+			if ((seconds || secCarry) &&
+				!addAndComputeCarry(newSec, minuteCarry, 60, seconds, secCarry))
+			{
+				return false;
+			}
+
+			// update minutes (checking for overflow)
+			if ((minutes | minuteCarry) &&
+				!addAndComputeCarry(newMinute, hourCarry, 60, minutes, minuteCarry))
+			{
+				return false;
+			}
+
+			// update hours (checking for overflow)
+			if ((hours | hourCarry) &&
+				!addAndComputeCarry(newHour, dayCarry, 24, hours, hourCarry))
+			{
+				return false;
+			}
+
+			// set time
+			if (this->isValid())
+			{
+				ASSERT(isValid(getYear(), getMonth(), getDay(), newHour, newMinute, newSec, newMillisec, newMicrosec));
+			}
+			setTime(newHour, newMinute, newSec, newMillisec, newMicrosec);
+
+			// update date if needed
+			if (dayCarry || days || months || years)
+			{
+				if (dayCarry && !addWithoutOverflow(days, dayCarry))
+					return false;
+				return add(years, months, days);
+			}
+
+			return true;
+		}
+
+		/**
+		* Change date by adding number of days, months, and years.
+		* @param years Number of years to add. May be negative.
+		* @param months Number of months to add. May be negative and abs(months) may be > 12.
+		* @param days Number of days to add. May be negative and abs(days) may be > 365.
+		* @return Returns if update of date was successful. Error cases: starting with invalid date, overflow.
+		*/
+		bool add(sint64 years, sint64 months, sint64 days)
+		{
+			sint64 newDay = getDay();
+			sint64 newMonth = getMonth();
+			sint64 newYear = getYear();
+
+			if (!isValid())
+				return false;
+
+			// speed-up processing large number of days (400 years and more)
+			// (400 years always have the same number of leap years and days)
+			constexpr sint64 daysPer400years = 97ll * 366ll + 303ll * 365ll;
+			if (days >= daysPer400years || days <= -daysPer400years)
+			{
+				sint64 factor400years = days / daysPer400years;
+				sint64 daysProcessed = factor400years * daysPer400years;
+				newYear += factor400years * 400;
+				days -= daysProcessed;
+			}
+
+			// speed-up processing large number of days (more than 1 year)
+			if (days >= 365)
+			{
+				sint64 yShift = (newMonth >= 3) ? 1 : 0;
+				while (days >= 365)
+				{
+					sint64 daysInYear = DateAndTime::isLeapYear(newYear + yShift) ? 366 : 365;
+					if (days < daysInYear)
+						break;
+					++newYear;
+					days -= daysInYear;
+				}
+			}
+			else if (days <= -365)
+			{
+				sint64 yShift = (newMonth >= 3) ? 0 : -1;
+				while (days <= -365)
+				{
+					sint64 daysInYear = DateAndTime::isLeapYear(newYear + yShift) ? -366 : -365;
+					if (days > daysInYear)
+						break;
+					--newYear;
+					days -= daysInYear;
+				}
+			}
+
+			// general processing of any number of days
+			while (days > 0)
+			{
+				// update day and month
+				const sint64 monthDays = daysInMonth(newYear, newMonth);
+				if (days >= monthDays)
+				{
+					// 1 month or more -> skip current month
+					++newMonth;
+					days -= monthDays;
+				}
+				else
+				{
+					// less than one month -> update day (and month if needed)
+					newDay += days;
+					days = 0;
+					if (newDay > monthDays)
+					{
+						++newMonth;
+						newDay -= monthDays;
+					}
+				}
+				// update year if needed
+				if (newMonth > 12)
+				{
+					newMonth = 1;
+					++newYear;
+				}
+				// check if day exists in month
+				if (newDay > 28)
+				{
+					const sint64 monthDays = daysInMonth(newYear, newMonth);
+					if (newDay > monthDays)
+					{
+						ASSERT(newDay <= 31);
+						ASSERT(newMonth < 12);
+						newDay -= monthDays;
+						newMonth += 1;
+					}
+				}
+			}
+			while (days < 0)
+			{
+				// update day and month
+				if (-days < newDay)
+				{
+					// new date is in current month
+					newDay += days;
+					days = 0;
+				}
+				else
+				{
+					// new date is before current month
+					--newMonth;
+					if (newMonth < 1)
+					{
+						--newYear;
+						newMonth = 12;
+					}
+					const sint64 monthDays = daysInMonth(newYear, newMonth);
+					if (-days >= monthDays)
+					{
+						// at least one month back -> keep day (month was already updated before)
+						days += monthDays;
+					}
+					else
+					{
+						// less than one month -> update day
+						newDay += monthDays + days;
+						days = 0;
+					}
+				}
+			}
+
+			// add month that were passed to this function
+			if (months)
+			{
+				// Add months to newMonth, getting years carry. Months are computed in 0-11 instead of 1-12.
+				sint64 yearsCarry = 0;
+				--newMonth;
+				if (!addAndComputeCarry(newMonth, yearsCarry, 12, months))
+					return false;
+				++newMonth;
+				if (yearsCarry && !addWithoutOverflow(newYear, yearsCarry))
+					return false;
+			}
+			
+			// add years passed to function
+			if (years && !addWithoutOverflow(newYear, years))
+				return false;
+
+			// check that day exists in final month
+			if (newDay > 28)
+			{
+				const sint64 monthDays = daysInMonth(newYear, newMonth);
+				if (newDay > monthDays)
+				{
+					ASSERT(newDay <= 31);
+					ASSERT(newMonth < 12);
+					newDay -= monthDays;
+					newMonth += 1;
+				}
+			}
+
+			// check if year is outside supported range
+			if (newYear < 0 || newYear > 0xffff)
+				return false;
+
+			ASSERT(isValid(newYear, newMonth, newDay, getHour(), getMinute(), getSecond(), getMillisec(), getMicrosecDuringMillisec()));
+			setDate(newYear, newMonth, newDay);
+
+			return true;
+		}
+
+		/**
+		* Convenience function for adding a number of days.
+		* @param days Number of days to add. May be negative and abs(days) may be > 365.
+		* @return Returns if update of date was successful. Error cases: starting with invalid date, overflow.
+		*/
+		bool addDays(sint64 days)
+		{
+			return add(0, 0, days);
+		}
+
+		/**
+		* Convenience function for adding a number of milliseconds.
+		* @param millisec Number of milliseconds to add. May be negative and abs(millisec) may be > 1000.
+		* @return Returns if update of date was successful. Error cases: starting with invalid date, overflow.
+		*/
+		bool addMillisec(sint64 millisec)
+		{
+			return add(0, 0, 0, 0, 0, 0, millisec);
+		}
+
+		/**
+		* Convenience function for adding a number of microseconds.
+		* @param microsec Number of microsecs to add. May be negative and abs(microsecs) may be > 1000000.
+		* @return Returns if update of date was successful. Error cases: starting with invalid date, overflow.
+		*/
+		bool addMicrosec(sint64 microsec)
+		{
+			return add(0, 0, 0, 0, 0, 0, 0, microsec);
+		}
+
+		/**
+		* Compute duration between this and dt in microseconds. Returns UINT64_MAX if dt or this is invalid.
+		*/
+		uint64 durationMicrosec(const DateAndTime& dt) const
+		{
+			if (!isValid() || !dt.isValid())
+				return UINT64_MAX;
+
+			if (value == dt.value)
+				return 0;
+
+			DateAndTime begin = *this;
+			DateAndTime end = dt;
+			if (begin > end)
+			{
+				begin = dt;
+				end = *this;
+			}
+
+			sint64 microDiff = end.getMicrosecDuringMillisec() - begin.getMicrosecDuringMillisec();
+			sint64 milliDiff = end.getMillisec() - begin.getMillisec();
+			sint64 secondDiff = end.getSecond() - begin.getSecond();
+			sint64 minuteDiff = end.getMinute() - begin.getMinute();
+			sint64 hourDiff = end.getHour() - begin.getHour();
+
+			// compute the microsec offset needed to sync the time of t0 and t1 (may be negative)
+			sint64 totalMicrosec = ((((((hourDiff * 60) + minuteDiff) * 60) + secondDiff) * 1000) + milliDiff) * 1000 + microDiff;
+			bool okay = begin.add(0, 0, 0, hourDiff, minuteDiff, secondDiff, milliDiff, microDiff);
+			ASSERT(okay);
+			ASSERT((begin.value & 0x1fffffffff) == (end.value & 0x1fffffffff));
+			ASSERT(begin.value <= end.value);
+
+			// heuristic iterative algorithm for computing the days
+			if (begin.value != end.value)
+			{
+				sint64 totalDays = 0;
+				for (int i = 0; i < 10 && begin.value != end.value; ++i)
+				{
+					sint64 dayDiff = end.getDay() - begin.getDay();
+					sint64 monthDiff = end.getMonth() - begin.getMonth();
+					sint64 yearDiff = end.getYear() - begin.getYear();
+					sint64 days = yearDiff * 365 + monthDiff * 28; // days may be negative
+					if (!days)
+						days = dayDiff;
+					totalDays += days;
+					okay = begin.add(0, 0, days);
+					ASSERT(okay);
+				}
+				if (begin.value != end.value)
+					return UINT64_MAX;
+				ASSERT(totalDays >= 0);
+				totalMicrosec += totalDays * (24llu * 60llu * 60 * 1000 * 1000);
+			}
+
+			ASSERT(totalMicrosec >= 0);
+			return totalMicrosec;
+		}
+
+		/**
+		* Compute duration between this and dt in full days. Returns UINT64_MAX if dt or this is invalid.
+		*/
+		uint64 durationDays(const DateAndTime& dt) const
+		{
+			uint64 ret = durationMicrosec(dt);
+			if (ret != UINT64_MAX)
+				ret /= (24llu * 60llu * 60llu * 1000llu * 1000llu);
+			return ret;
+		}
+
+	protected:
+		// condensed binary 8-byte representation supporting fast comparison:
+		// - padding/reserved: 2 bits (most significant bits in 8-byte number, bits 62-63)
+		// - year: 16 bits (bits 46-61)
+		// - month: 4 bits (bits 42-45)
+		// - day: 5 bits (bits 37-41)
+		// - hour: 5 bits (bits 32-36)
+		// - minute: 6 bits (bits 26-31)
+		// - second: 6 bits (bits 20-25)
+		// - millisecond: 10 bits (bits 10-19)
+		// - microsecondDuringMillisecond: 10 bits (lowest significance in 8-byte number, bits 0-9)
+		uint64 value;
+
+		/// Adds valToAdd to valInAndOut and returns true if there is no overflow. Otherwise, returns false.
+		static bool addWithoutOverflow(sint64& valInAndOut, sint64 valToAdd)
+		{
+			sint64 sum = valInAndOut + valToAdd;
+			if (valInAndOut < 0 && valToAdd < 0 && sum > 0) // negative overflow
+				return false;
+			if (valInAndOut > 0 && valToAdd > 0 && sum < 0) // positive overflow
+				return false;
+			valInAndOut = sum;
+			return true;
+		}
+
+		// Add of up to 2 values to low significance value (such as milliseconds) and split it
+		// into high significance carry (for example in seconds) and low significance value (milliseconds).
+		// All low and high values may be positive or negative.
+		static bool addAndComputeCarry(sint64& low, sint64& highCarryOut, sint64 lowToHighFactor, sint64 lowAdd1, sint64 lowAdd2 = 0)
+		{
+			if (!addWithoutOverflow(low, lowAdd1))
+				return false;
+
+			if (lowAdd2 != 0 && !addWithoutOverflow(low, lowAdd2))
+				return false;
+
+			if (low == 0)
+			{
+				highCarryOut = 0;
+			}
+			else if (low > 0)
+			{
+				highCarryOut = low / lowToHighFactor;
+				low %= lowToHighFactor;
+			}
+			else // (low < 0)
+			{
+				highCarryOut = (low - lowToHighFactor + 1) / lowToHighFactor;
+				low = low - highCarryOut * lowToHighFactor;
+				ASSERT(low < lowToHighFactor);
+			}
+			return true;
+		}
+	};
+
+	// Array of L bits encoded in array of uint64 (overall size is at least 8 bytes, L must be 2^N)
+	template <uint64 L>
+	struct BitArray
+	{
+	private:
+		static_assert(L && !(L & (L - 1)),
+			"The capacity of the BitArray must be 2^N."
+			);
+
+		static constexpr uint64 _bits = L;
+		static constexpr uint64 _elements = ((L + 63) / 64);
+
+		uint64 _values[_elements];
+
+	public:
+		// Return number of bits
+		static inline constexpr uint64 capacity()
+		{
+			return L;
+		}
+
+		// Return bit value at given index
+		inline bit get(uint64 index) const
+		{
+			return (_values[(index >> 6) & (_elements - 1)] >> (index & 63)) & 1;
+		}
+
+		// Set bit with given index to the given value
+		inline void set(uint64 index, bit value)
+		{
+			_values[(index >> 6) & (_elements - 1)] = (_values[(index >> 6) & (_elements - 1)] & (~(1ULL << (index & 63)))) | (((uint64)value) << (index & 63));
+		}
+
+		// Set content of bit array by copying memory (size must match)
+		template <typename AT>
+		inline void setMem(const AT& value)
+		{
+			static_assert(sizeof(_values) == sizeof(value), "This function can only be used if the overall size of both objects match.");
+			// This if is resolved at compile time
+			if (sizeof(_values) == 32)
+			{
+				// assignment uses __m256i intrinsic CPU functions which should be very fast
+				*((id*)_values) = *((id*)&value);
+			}
+			else
+			{
+				// generic copying
+				copyMemory(*this, value);
+			}
+		}
+
+		// Set all bits to passed bit value
+		inline void setAll(bit value)
+		{
+			uint64 setValue = (value) ? 0xffffffffffffffffllu : 0llu;
+			for (uint64 i = 0; i < _elements; ++i)
+				_values[i] = setValue;
+		}
+
+
+        bool operator==(const BitArray<L>& other) const
+        {
+            for (uint64 i = 0; i < _elements; ++i)
+            {
+                if (_values[i] != other._values[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        bool operator!=(const BitArray<L>& other) const
+        {
+            return !(*this == other);
+        }
+
+	};
+
+	// Bit array convenience definitions
+	typedef BitArray<2> bit_2;
+	typedef BitArray<4> bit_4;
+	typedef BitArray<8> bit_8;
+	typedef BitArray<16> bit_16;
+	typedef BitArray<32> bit_32;
+	typedef BitArray<64> bit_64;
+	typedef BitArray<128> bit_128;
+	typedef BitArray<256> bit_256;
+	typedef BitArray<512> bit_512;
+	typedef BitArray<1024> bit_1024;
+	typedef BitArray<2048> bit_2048;
+	typedef BitArray<4096> bit_4096;
+
+	constexpr bit_2 BIT2_ZERO = {};
+	constexpr bit_4 BIT4_ZERO = {};
+	constexpr bit_8 BIT8_ZERO = {};
+	constexpr bit_16 BIT16_ZERO = {};
+	constexpr bit_32 BIT32_ZERO = {};
+	constexpr bit_64 BIT64_ZERO = {};
+	constexpr bit_128 BIT128_ZERO = {};
+	constexpr bit_256 BIT256_ZERO = {};
+	constexpr bit_512 BIT512_ZERO = {};
+	constexpr bit_1024 BIT1024_ZERO = {};
+	constexpr bit_2048 BIT2048_ZERO = {};
+	constexpr bit_4096 BIT4096_ZERO = {};
+
+
+	// Array of L elements of type T (L must be 2^N)
+	template <typename T, uint64 L>
+	struct Array
+	{
+	private:
+		static_assert(L && !(L & (L - 1)),
+			"The capacity of the array must be 2^N."
+			);
+
+		T _values[L];
+
+	public:
+		// Return number of elements in array
+		static inline constexpr uint64 capacity()
+		{
+			return L;
+		}
+
+		// Get element of array
+		inline const T& get(uint64 index) const
+		{
+			return _values[index & (L - 1)];
+		}
+
+		// Set element of array
+		inline void set(uint64 index, const T& value)
+		{
+			_values[index & (L - 1)] = value;
+		}
+
+		// Set content of array by copying memory (size must match)
+		template <typename AT>
+		inline void setMem(const AT& value)
+		{
+			static_assert(sizeof(_values) == sizeof(value), "This function can only be used if the overall size of both objects match.");
+			// This if is resolved at compile time
+			if (sizeof(_values) == 32)
+			{
+				// assignment uses __m256i intrinsic CPU functions which should be very fast
+				*((id*)_values) = *((id*)&value);
+			}
+			else
+			{
+				// generic copying
+				copyMemory(*this, value);
+			}
+		}
+
+		// Set all elements to passed value
+		inline void setAll(const T& value)
+		{
+			for (uint64 i = 0; i < L; ++i)
+				_values[i] = value;
+		}
+
+		// Set elements in range to passed value
+		inline void setRange(uint64 indexBegin, uint64 indexEnd, const T& value)
+		{
+			for (uint64 i = indexBegin; i < indexEnd; ++i)
+				_values[i & (L - 1)] = value;
+		}
+
+		// Returns true if all elements of the range equal value (and range is valid).
+		inline bool rangeEquals(uint64 indexBegin, uint64 indexEnd, const T& value) const
+		{
+			if (indexEnd > L || indexBegin > indexEnd)
+				return false;
+			for (uint64 i = indexBegin; i < indexEnd; ++i)
+			{
+				if (!(_values[i] == value))
+					return false;
+			}
+			return true;
+		}
+
+		// Implement assignment operator to prevent generating call to unavailable memcpy()
+		inline Array<T, L>& operator=(const Array<T, L>& other)
+		{
+			copyMemory(*this, other);
+			return *this;
+		}
+
+		// Implement copy constructor to prevent generating call to unavailable memcpy()
+		inline Array(const Array<T, L>& other)
+		{
+			copyMemory(*this, other);
+		}
+
+		Array() = default;
+	};
+	
+	// Array convenience definitions
+	typedef Array<sint8, 2> sint8_2;
+	typedef Array<sint8, 4> sint8_4;
+	typedef Array<sint8, 8> sint8_8;
+
+	typedef Array<uint8, 2> uint8_2;
+	typedef Array<uint8, 4> uint8_4;
+	typedef Array<uint8, 8> uint8_8;
+
+	typedef Array<sint16, 2> sint16_2;
+	typedef Array<sint16, 4> sint16_4;
+	typedef Array<sint16, 8> sint16_8;
+
+	typedef Array<uint16, 2> uint16_2;
+	typedef Array<uint16, 4> uint16_4;
+	typedef Array<uint16, 8> uint16_8;
+
+	typedef Array<sint32, 2> sint32_2;
+	typedef Array<sint32, 4> sint32_4;
+	typedef Array<sint32, 8> sint32_8;
+
+	typedef Array<uint32, 2> uint32_2;
+	typedef Array<uint32, 4> uint32_4;
+	typedef Array<uint32, 8> uint32_8;
+
+	typedef Array<sint64, 2> sint64_2;
+	typedef Array<sint64, 4> sint64_4;
+	typedef Array<sint64, 8> sint64_8;
+
+	typedef Array<uint64, 2> uint64_2;
+	typedef Array<uint64, 4> uint64_4;
+	typedef Array<uint64, 8> uint64_8;
+
+	typedef Array<id, 2> id_2;
+	typedef Array<id, 8> id_4;
+	typedef Array<id, 8> id_8;
+
+	// Check if array is sorted in given range (duplicates allowed). Returns false if range is invalid.
+	template <typename T, uint64 L>
+	bool isArraySorted(const Array<T, L>& Array, uint64 beginIdx = 0, uint64 endIdx = L);
+
+	// Check if array is sorted without duplicates in given range. Returns false if range is invalid.
+	template <typename T, uint64 L>
+	bool isArraySortedWithoutDuplicates(const Array<T, L>& Array, uint64 beginIdx = 0, uint64 endIdx = L);
+
+	// Array of L elements of type T that is slower than normal Array but may have any capacity L.
+	// This should be only used when a specific L != 2^N is needed for a good reason, e.g., in input/output.
+	template <typename T, uint64 L>
+	struct SlowAnySizeArray
+	{
+	private:
+		static_assert(L, "The capacity of the array must be != 0.");
+
+		T _values[L];
+
+	public:
+		// Return number of elements in array
+		static inline constexpr uint64 capacity()
+		{
+			return L;
+		}
+
+		// Get element of array
+		inline const T& get(uint64 index) const
+		{
+			return _values[index % L];
+		}
+
+		// Set element of array
+		inline void set(uint64 index, const T& value)
+		{
+			_values[index % L] = value;
+		}
+
+		// Set all elements to passed value
+		inline void setAll(const T& value)
+		{
+			for (uint64 i = 0; i < L; ++i)
+				_values[i] = value;
+		}
+
+		// Implement assignment operator to prevent generating call to unavailable memcpy()
+		inline SlowAnySizeArray<T, L>& operator=(const SlowAnySizeArray<T, L>& other)
+		{
+			copyMemory(*this, other);
+			return *this;
+		}
+
+		// Implement copy constructor to prevent generating call to unavailable memcpy()
+		inline SlowAnySizeArray(const SlowAnySizeArray<T, L>& other)
+		{
+			copyMemory(*this, other);
+		}
+
+		SlowAnySizeArray() = default;
+	};
+
+	// Hash function class to be used with the hash map.
+	template <typename KeyT> class HashFunction 
+	{
+	public:
+		static uint64 hash(const KeyT& key);
+	};
+
+	// Hash map of (key, value) pairs of type (KeyT, ValueT) and total element capacity L. Access time is approx. constant
+	// with population < 80% of L but gets close to linear with population > 90% of L.
+	template <typename KeyT, typename ValueT, uint64 L, typename HashFunc = HashFunction<KeyT>>
+	class HashMap
+	{
+	private:
+		static_assert(L && !(L& (L - 1)),
+			"The capacity of the hash map must be 2^N."
+			);
+		static constexpr sint64 _nEncodedFlags = L > 32 ? 32 : L;
+
+		// Hash map of (key, value) pairs
+		struct Element
+		{
+			KeyT key;
+			ValueT value;
+		} _elements[L];
+
+		// 2 bits per element of _elements: 0b00 = not occupied; 0b01 = occupied; 0b10 = occupied but marked for removal; 0b11 is unused
+		// The state "occupied but marked for removal" is needed for finding the index of a key in the hash map. Setting an entry to
+		// "not occupied" in remove() would potentially undo a collision, create a gap, and mess up the entry search.
+		uint64 _occupationFlags[(L * 2 + 63) / 64];
+
+		uint64 _population;
+		uint64 _markRemovalCounter;
+
+		// Read and encode 32 POV occupation flags, return a 64bits number presents 32 occupation flags
+		uint64 _getEncodedOccupationFlags(const uint64* occupationFlags, const sint64 elementIndex) const;
+
+	public:
+		HashMap()
+		{
+			reset();
+		}
+
+		// Return maximum number of elements that may be stored.
+		static constexpr uint64 capacity()
+		{
+			return L;
+		}
+
+		// Return overall number of elements.
+		inline uint64 population() const;
+
+		// Return boolean indicating whether key is contained in the hash map.
+		bool contains(const KeyT& key) const;
+
+		// Return boolean indicating whether key is contained in the hash map.
+		// If key is contained, write the associated value into the provided ValueT&. 
+		bool get(const KeyT& key, ValueT& value) const;
+
+		// Return index of element with key in hash map _elements, or NULL_INDEX if not found.
+		sint64 getElementIndex(const KeyT& key) const;
+
+		// Return if slot at elementIndex is empty (not occupied by an element). If false, key() is valid.
+		inline bool isEmptySlot(sint64 elementIndex) const;
+
+		// Return index of the next occupied element following the index passed as an argument. Pass NULL_INDEX to get
+		// the first occupied element. Returns NULL_INDEX if there are no more occupied elements.
+		inline sint64 nextElementIndex(sint64 elementIndex) const;
+
+		// Return key at elementIndex. Invalid if isEmptySlot(elementIndex).
+		inline const KeyT& key(sint64 elementIndex) const;
+
+		// Return value at elementIndex.
+		inline const ValueT& value(sint64 elementIndex) const;
+
+		// Add element (key, value) to the hash map, return elementIndex of new element.
+		// If key already exists in the hash map, the old value will be overwritten.
+		// If the hash map is full, return NULL_INDEX.
+		sint64 set(const KeyT& key, const ValueT& value);
+
+		// Mark element for removal.
+		void removeByIndex(sint64 elementIdx);
+
+		// Mark element for removal if key is contained in the hash map, 
+		// returning the elementIndex (or NULL_INDEX if the hash map does not contain the key).
+		sint64 removeByKey(const KeyT& key);
+
+		// Check if cleanup is needed based on the removal threshold, without modifying the container.
+		bool needsCleanup(uint64 removalThresholdPercent = 50) const;
+
+		// Call cleanup() if it makes sense. The content of this object may be reordered, so prior indices are invalidated.
+		void cleanupIfNeeded(uint64 removalThresholdPercent = 50);
+
+		// Remove all elements marked for removal. This is an expensive operation, but it improves lookup performance
+		// if remove has been called often. Content is reordered, so prior indices are invalidated.
+		void cleanup();
+
+		// Replace value for *existing* key, do nothing otherwise.
+		// - The key exists: replace its value. Return true.
+		// - The key is not contained in the hash map: no action is taken. Return false.
+		bool replace(const KeyT& key, const ValueT& newValue);
+
+		// Reinitialize as empty hash map.
+		void reset();
+	};
+
+	// Hash set of keys of type KeyT and total element capacity L. Access time is approx. constant with
+	// population < 80% of L but gets close to linear with population > 90% of L.
+	template <typename KeyT, uint64 L, typename HashFunc = HashFunction<KeyT>>
+	class HashSet
+	{
+	private:
+		static_assert(L && !(L& (L - 1)),
+			"The capacity of the hash set must be 2^N."
+			);
+		static constexpr sint64 _nEncodedFlags = L > 32 ? 32 : L;
+
+		// Hash set
+		KeyT _keys[L];
+
+		// 2 bits per element of _elements: 0b00 = not occupied; 0b01 = occupied; 0b10 = occupied but marked for removal; 0b11 is unused
+		// The state "occupied but marked for removal" is needed for finding the index of a key in the hash map. Setting an entry to
+		// "not occupied" in remove() would potentially undo a collision, create a gap, and mess up the entry search.
+		uint64 _occupationFlags[(L * 2 + 63) / 64];
+
+		uint64 _population;
+		uint64 _markRemovalCounter;
+
+		// Read and encode 32 POV occupation flags, return a 64bits number presents 32 occupation flags
+		uint64 _getEncodedOccupationFlags(const uint64* occupationFlags, const sint64 elementIndex) const;
+
+	public:
+		HashSet()
+		{
+			reset();
+		}
+
+		// Return maximum number of elements that may be stored.
+		static constexpr uint64 capacity()
+		{
+			return L;
+		}
+
+		// Return overall number of elements.
+		inline uint64 population() const;
+
+		// Return boolean indicating whether key is contained in the hash set.
+		bool contains(const KeyT& key) const;
+
+		// Return index of element with key in hash set _keys, or NULL_INDEX if not found.
+		sint64 getElementIndex(const KeyT& key) const;
+
+		// Return if slot at elementIndex is empty (not occupied by an element). If false, key() is valid.
+		inline bool isEmptySlot(sint64 elementIndex) const;
+
+		// Return index of the next occupied element following the index passed as an argument. Pass NULL_INDEX to get
+		// the first occupied element. Returns NULL_INDEX if there are no more occupied elements.
+		inline sint64 nextElementIndex(sint64 elementIndex) const;
+
+		// Return key at elementIndex. Invalid if isEmptySlot(elementIndex).
+		inline KeyT key(sint64 elementIndex) const;
+
+		// Add key to the hash set, return elementIndex of new element.
+		// If key already exists in the hash set, this does nothing.
+		// If the hash map is full, return NULL_INDEX.
+		sint64 add(const KeyT& key);
+
+		// Mark element for removal.
+		void removeByIndex(sint64 elementIdx);
+
+		// Mark element for removal if key is contained in the hash set, 
+		// returning the elementIndex (or NULL_INDEX if the hash map does not contain the key).
+		sint64 remove(const KeyT& key);
+
+		// Check if cleanup is needed based on the removal threshold, without modifying the container.
+		bool needsCleanup(uint64 removalThresholdPercent = 50) const;
+
+		// Call cleanup() if it makes sense. The content of this object may be reordered, so prior indices are invalidated.
+		void cleanupIfNeeded(uint64 removalThresholdPercent = 50);
+
+		// Remove all elements marked for removal. This is an expensive operation, but it improves lookup performance
+		// if remove has been called often. Content is reordered, so prior indices are invalidated.
+		void cleanup();
+
+		// Reinitialize as empty hash set.
+		void reset();
+	};
+
+
+	// Collection of priority queues of elements with type T and total element capacity L.
+	// Each ID pov (point of view) has an own queue.
+	template <typename T, uint64 L>
+	struct Collection
+	{
+	private:
+		static_assert(L && !(L & (L - 1)),
+			"The capacity of the Collection must be 2^N."
+			);
+		static constexpr sint64 _nEncodedFlags = L > 32 ? 32 : L;
+
+		// Hash map of point of views = element filters, each with one priority queue (or empty)
+		struct PoV
+		{
+			id value;
+			uint64 population;
+			sint64 headIndex, tailIndex;
+			sint64 bstRootIndex;
+		} _povs[L];
+
+		// 2 bits per element of _povs: 0b00 = not occupied; 0b01 = occupied; 0b10 = occupied but marked for removal; 0b11 is unused
+		// The state "occupied but marked for removal" is needed for finding the index of a pov in the hash map. Setting an entry to
+		// "not occupied" in remove() would potentially undo a collision, create a gap, and mess up the entry search.
+		uint64 _povOccupationFlags[(L * 2 + 63) / 64];
+
+		// Array of elements (filled sequentially), each belongs to one PoV / priority queue (or is empty)
+		// Elements of a POV entry will be stored as a binary search tree (BST); so this structure has some properties related to BST
+		// (bstParentIndex, bstLeftIndex, bstRightIndex).
+		struct Element
+		{
+			T value;
+			sint64 priority;
+			sint64 povIndex;
+			sint64 bstParentIndex;
+			sint64 bstLeftIndex;
+			sint64 bstRightIndex;
+
+			Element& init(const T& value, const sint64& priority, const sint64& povIndex)
+			{
+				this->value = value;
+				this->priority = priority;
+				this->povIndex = povIndex;
+				this->bstParentIndex = NULL_INDEX;
+				this->bstLeftIndex = NULL_INDEX;
+				this->bstRightIndex = NULL_INDEX;
+				return *this;
+			}
+		} _elements[L];
+		uint64 _population;
+		uint64 _markRemovalCounter;
+
+		// Internal reinitialize as empty collection.
+		void _softReset();
+
+		// Return index of id pov in hash map _povs, or NULL_INDEX if not found
+		sint64 _povIndex(const id& pov) const;
+
+		// Return elementIndex of first element in priority queue of pov,
+		// and ignore elements with priority greater than maxPriority
+		sint64 _headIndex(const sint64 povIndex, const sint64 maxPriority) const;
+
+		// Return elementIndex of last element in priority queue of pov,
+		// and ignore elements with priority less than minPriority
+		sint64 _tailIndex(const sint64 povIndex, const sint64 minPriority) const;
+
+		// Return index of parent element to insert a priority
+		sint64 _searchElement(const sint64 bstRootIndex,
+			const sint64 priority, int* pIterationsCount = nullptr) const;
+
+		// Add element to priority queue, return elementIndex of new element
+		sint64 _addPovElement(const sint64 povIndex, const T value, const sint64 priority);
+
+		// Get element indices and store them in an array, return number of elements
+		uint64 _getSortedElements(const sint64 rootIdx, sint64* sortedElementIndices) const;
+
+		// Fill a sint64_4 vector with specified values
+		inline void _set(sint64_4& vec, sint64 v0, sint64 v1, sint64 v2, sint64 v3) const;
+
+		// Rebuild pov's elements indexing as balanced BST
+		sint64 _rebuild(sint64 rootIdx);
+
+		// Return most left element index
+		sint64 _getMostLeft(sint64 elementIdx) const;
+
+		// Return most right element index
+		sint64 _getMostRight(sint64 elementIdx) const;
+
+		// Return elementIndex of previous element in priority queue (or NULL_INDEX if this is the last element).
+		sint64 _previousElementIndex(sint64 elementIdx) const;
+
+		// Return elementIndex of next element in priority queue (or NULL_INDEX if this is the last element).
+		sint64 _nextElementIndex(sint64 elementIdx) const;
+
+		// Update parent of the current element into parent of the new element, return true if exists parent
+		inline bool _updateParent(const sint64 elementIdx, const sint64 newElementIdx);
+
+		// Move the current element into new position
+		void _moveElement(const sint64 srcIdx, const sint64 dstIdx);
+
+		// Read and encode 32 POV occupation flags, return a 64bits number presents 32 occupation flags
+		uint64 _getEncodedPovOccupationFlags(const uint64* povOccupationFlags, const sint64 povIndex) const;;
+
+	public:
+		// Add element to priority queue of ID pov, return elementIndex of new element
+		sint64 add(const id& pov, T element, sint64 priority);
+
+		// Return maximum number of elements that may be stored.
+		static constexpr uint64 capacity()
+		{
+			return L;
+		}
+
+		// Check if cleanup is needed based on the removal threshold, without modifying the collection.
+		bool needsCleanup(uint64 removalThresholdPercent = 50) const;
+
+		// Call cleanup() if more than the given percent of pov slots are marked for removal.
+		void cleanupIfNeeded(uint64 removalThresholdPercent = 50);
+
+		// Remove all povs marked for removal, this is a very expensive operation, but it improves lookup performance
+		// if remove has been called often. Content is reordered, so prior indices are invalidated.
+		void cleanup();
+
+		// Return element value at elementIndex.
+		inline T element(sint64 elementIndex) const;
+
+		// Return elementIndex of first element in priority queue of pov (or NULL_INDEX if pov is unknown).
+		sint64 headIndex(const id& pov) const;
+
+		// Return elementIndex of first element with priority <= maxPriority in priority queue of pov (or NULL_INDEX if pov is unknown).
+		sint64 headIndex(const id& pov, sint64 maxPriority) const;
+
+		// Return elementIndex of next element in priority queue (or NULL_INDEX if this is the last element).
+		sint64 nextElementIndex(sint64 elementIndex) const;
+
+		// Return overall number of elements.
+		inline uint64 population() const;
+
+		// Return number of elements of specific PoV.
+		uint64 population(const id& pov) const;
+
+		// Return point of view elementIndex belongs to (or 0 id if unused).
+		id pov(sint64 elementIndex) const;
+
+		// Return elementIndex of previous element in priority queue (or NULL_INDEX if this is the last element).
+		sint64 prevElementIndex(sint64 elementIndex) const;
+
+		// Return priority of elementIndex (or 0 id if unused).
+		sint64 priority(sint64 elementIndex) const;
+
+		// Remove element and mark its pov for removal, if the last element.
+		// Returns element index of next element in priority queue (the one following elementIdx).
+		// Element indices obtained before this call are invalidated, because at least one element is moved.
+		sint64 remove(sint64 elementIdx);
+
+		// Replace *existing* element, do nothing otherwise.
+		// - The element exists: replace its value.
+		// - The index is out of bounds: no action is taken.
+		void replace(sint64 oldElementIndex, const T& newElement);
+
+		// Reinitialize as empty collection.
+		void reset();
+
+		// Return elementIndex of last element in priority queue of pov (or NULL_INDEX if pov is unknown).
+		sint64 tailIndex(const id& pov) const;
+
+		// Return elementIndex of last element with priority >= minPriority in priority queue of pov (or NULL_INDEX if pov is unknown).
+		sint64 tailIndex(const id& pov, sint64 minPriority) const;
+	};
+
+
+	// Doubly-linked list of elements of type T with fixed capacity L.
+	// Provides O(1) insertion at head/tail, O(1) insertion before/after a given index,
+	// O(1) removal by index, and bidirectional traversal.
+	// Removed nodes are immediately recycled via a free list (no deferred cleanup needed).
+	template <typename T, uint64 L>
+	class LinkedList
+	{
+	private:
+		static_assert(L && !(L & (L - 1)),
+			"The capacity of the LinkedList must be 2^N."
+			);
+
+		struct Node
+		{
+			T value;
+			sint64 nextIndex;  // Next in data list, or next in free list when freed
+			sint64 prevIndex;  // Previous in data list (undefined when freed)
+		} _nodes[L];
+
+		// 1 bit per node: 1 = occupied, 0 = free
+		uint64 _occupiedFlags[(L + 63) / 64];
+
+		sint64 _headIndex;      // First element in the list (NULL_INDEX if empty)
+		sint64 _tailIndex;      // Last element in the list (NULL_INDEX if empty)
+		sint64 _freeHeadIndex;  // Head of recycled-nodes free list (NULL_INDEX if none)
+		uint64 _nextUnusedIndex; // Next never-used node index (lazy free list init)
+		uint64 _population;
+
+		// Check if elementIndex is in range [0, L) and the slot is occupied.
+		bool _isValidAndOccupied(sint64 elementIndex) const;
+
+		// Initialize sentinel values if the list has never been used (handles zero-initialized contract state).
+		void _initIfNeeded();
+
+		// Get a node from the free list or unused pool. Returns NULL_INDEX if full.
+		sint64 _allocateNode();
+
+		// Return node to free list.
+		void _freeNode(sint64 nodeIndex);
+
+	public:
+		// Return maximum number of elements that may be stored.
+		static constexpr uint64 capacity()
+		{
+			return L;
+		}
+
+		// Return current number of elements.
+		inline uint64 population() const;
+
+		// Return elementIndex of first element in the list (or NULL_INDEX if empty).
+		inline sint64 headIndex() const;
+
+		// Return elementIndex of last element in the list (or NULL_INDEX if empty).
+		inline sint64 tailIndex() const;
+
+		// Return elementIndex of next element (or NULL_INDEX if this is the last element).
+		sint64 nextElementIndex(sint64 elementIndex) const;
+
+		// Return elementIndex of previous element (or NULL_INDEX if this is the first element).
+		sint64 prevElementIndex(sint64 elementIndex) const;
+
+		// Return element value at elementIndex.
+		inline const T& element(sint64 elementIndex) const;
+
+		// Return true if the slot at elementIndex is empty (not occupied by an element).
+		// Out-of-range indices are considered empty.
+		inline bool isEmptySlot(sint64 elementIndex) const;
+
+		// Add element at the head of the list, return elementIndex of new element (or NULL_INDEX if full).
+		sint64 addHead(const T& value);
+
+		// Add element at the tail of the list, return elementIndex of new element (or NULL_INDEX if full).
+		sint64 addTail(const T& value);
+
+		// Insert element after the element at elementIndex.
+		// Returns elementIndex of new element (or NULL_INDEX if full or elementIndex is invalid).
+		sint64 insertAfter(sint64 elementIndex, const T& value);
+
+		// Insert element before the element at elementIndex.
+		// Returns elementIndex of new element (or NULL_INDEX if full or elementIndex is invalid).
+		sint64 insertBefore(sint64 elementIndex, const T& value);
+
+		// Remove element at elementIndex. The node is immediately returned to the free list.
+		void remove(sint64 elementIndex);
+
+		// Replace the value at elementIndex with newValue.
+		// Returns true if elementIndex was valid and occupied, false otherwise.
+		bool replace(sint64 elementIndex, const T& newValue);
+
+		// Reinitialize as empty linked list.
+		void reset();
+	};
+
+
+	//////////
+	// safety multiplying a and b and then clamp
+
+	inline static sint64 smul(sint64 a, sint64 b);
+	inline static uint64 smul(uint64 a, uint64 b);
+	inline static sint32 smul(sint32 a, sint32 b);
+	inline static uint32 smul(uint32 a, uint32 b);
+
+	//////////
+	// safety adding a and b and then clamp
+
+	inline static sint64 sadd(sint64 a, sint64 b);
+	inline static uint64 sadd(uint64 a, uint64 b);
+	inline static sint32 sadd(sint32 a, sint32 b);
+	inline static uint32 sadd(uint32 a, uint32 b);
+
+	// Divide a by b, but return 0 if b is 0 (rounding to lower magnitude in case of integers)
+	template <typename T>
+	inline static constexpr T div(T a, T b)
+	{
+		return b ? (a / b) : T(0);
+	}
+
+	// Return remainder of dividing a by b, but return 0 if b is 0 (requires modulo % operator)
+	template <typename T>
+	inline static constexpr T mod(T a, T b)
+	{
+		return b ? (a % b) : 0;
+	}
+
+	//////////
+
+	struct Entity
+	{
+		id publicKey;
+		sint64 incomingAmount, outgoingAmount;
+
+		// Numbers of transfers. These may overflow for entities with high traffic, such as Qx.
+		uint32 numberOfIncomingTransfers, numberOfOutgoingTransfers;
+
+		uint32 latestIncomingTransferTick, latestOutgoingTransferTick;
+	};
+
+	//////////
+
+
+	struct Asset
+	{
+		id issuer;
+		uint64 assetName;
+	};
+
+	struct AssetIssuanceSelect : public Asset
+	{
+		bool anyIssuer;
+		bool anyName;
+
+		inline static AssetIssuanceSelect any()
+		{
+			return { id::zero(), 0, true, true };
+		}
+
+		inline static AssetIssuanceSelect byIssuer(const id& owner)
+		{
+			return { owner, 0, false, true };
+		}
+
+		inline static AssetIssuanceSelect byName(uint64 assetName)
+		{
+			return { m256i::zero(), assetName, true, false };
+		}
+	};
+
+	struct AssetOwnershipSelect
+	{
+		id owner;
+		uint16 managingContract;
+		bool anyOwner;
+		bool anyManagingContract;
+
+		inline static AssetOwnershipSelect any()
+		{
+			return { id::zero(), 0, true, true };
+		}
+
+		inline static AssetOwnershipSelect byOwner(const id& owner)
+		{
+			return { owner, 0, false, true };
+		}
+
+		inline static AssetOwnershipSelect byManagingContract(uint16 managingContract)
+		{
+			return { m256i::zero(), managingContract, true, false };
+		}
+	};
+
+	struct AssetPossessionSelect
+	{
+		id possessor;
+		uint16 managingContract;
+		bool anyPossessor;
+		bool anyManagingContract;
+
+		inline static AssetPossessionSelect any()
+		{
+			return { id::zero(), 0, true, true };
+		}
+
+		inline static AssetPossessionSelect byPossessor(const id& possessor)
+		{
+			return { possessor, 0, false, true };
+		}
+
+		inline static AssetPossessionSelect byManagingContract(uint16 managingContract)
+		{
+			return { m256i::zero(), managingContract, true, false };
+		}
+	};
+
+	// Iterator for asset issuance records.
+	// CAUTION CORE DEVS: DOES NOT TAKE CARE FOR LOCKING! (not relevant for contract devs)
+	class AssetIssuanceIterator
+	{
+	protected:
+		AssetIssuanceSelect _issuance;
+		unsigned int _issuanceIdx;
+
+	public:
+		AssetIssuanceIterator(const AssetIssuanceSelect& issuance = AssetIssuanceSelect::any())
+		{
+			begin(issuance);
+		}
+
+		// Start iteration with issuance filter (selects first record).
+		inline void begin(const AssetIssuanceSelect& issuance);
+
+		// Return if iteration with next() has reached end.
+		inline bool reachedEnd() const;
+
+		// Step to next issuance record matching filtering criteria.
+		inline bool next();
+
+		// Issuer of current record
+		inline id issuer() const;
+
+		// Asset name of current record
+		inline uint64 assetName() const;
+
+		// Return asset (pair of issuer and asset name)
+		inline Asset asset() const
+		{
+			return Asset{issuer(), assetName()};
+		}
+
+		// Index of issuance in universe. Should not be used by contracts, because it may change between contract calls.
+		// Changed by next(). NO_ASSET_INDEX if issuance has not been found.
+		inline unsigned int issuanceIndex() const
+		{
+			return _issuanceIdx;
+		}
+	};
+
+	// Iterator for ownership records of specific issuance also providing filtering options.
+	// CAUTION CORE DEVS: DOES NOT TAKE CARE OF LOCKING! (not relevant for contract devs)
+	class AssetOwnershipIterator
+	{
+	protected:
+		Asset _issuance;
+		unsigned int _issuanceIdx;
+		AssetOwnershipSelect _ownership;
+		unsigned int _ownershipIdx;
+
+		// Constructor for derived classes, which should call begin() themselves.
+		AssetOwnershipIterator()
+		{
+		}
+
+	public:
+		AssetOwnershipIterator(const Asset& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any())
+		{
+			begin(issuance, ownership);
+		}
+
+		// Start iteration with given issuance and given ownership filter (selects first record).
+		inline void begin(const Asset& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any());
+
+		// Return if iteration with next() has reached end.
+		inline bool reachedEnd() const;
+
+		// Step to next ownership record matching filtering criteria.
+		inline bool next();
+
+		// Issuer of current record
+		inline id issuer() const;
+
+		// Asset name of current record
+		inline uint64 assetName() const;
+
+		// Owner of current record
+		inline id owner() const;
+
+		// Number of shares in current ownership record
+		inline sint64 numberOfOwnedShares() const;
+
+		// Contract index of contract having management rights (can transfer ownership)
+		inline uint16 ownershipManagingContract() const;
+
+		// Index of issuance in universe. Should not be used by contracts, because it may change between contract calls.
+		// Constant not changed by next(). NO_ASSET_INDEX if issuance has not been found.
+		inline unsigned int issuanceIndex() const
+		{
+			return _issuanceIdx;
+		}
+
+		// Index of ownership in universe. Should not be used by contracts, because it may change between contract calls.
+		// Changed by next(). NO_ASSET_INDEX if no (more) matching ownership has not been found.
+		inline unsigned int ownershipIndex() const
+		{
+			return _ownershipIdx;
+		}
+	};
+
+	// Iterator for possession records of specific issuance also providing filtering options.
+	// CAUTION CORE DEVS: DOES NOT TAKE CARE OF LOCKING! (not relevant for contract devs)
+	class AssetPossessionIterator : public AssetOwnershipIterator
+	{
+	protected:
+		AssetPossessionSelect _possession;
+		unsigned int _possessionIdx;
+
+	public:
+		AssetPossessionIterator(const Asset& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(), const AssetPossessionSelect& possession = AssetPossessionSelect::any())
+		{
+			begin(issuance, ownership, possession);
+		}
+
+		// Start iteration with given issuance and given ownership + possession filters (selects first record).
+		inline void begin(const Asset& issuance, const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(), const AssetPossessionSelect& possession = AssetPossessionSelect::any());
+
+		// Return if iteration with next() has reached end.
+		inline bool reachedEnd() const;
+
+		// Step to next possession record matching filtering criteria.
+		inline bool next();
+
+		// Owner of current record
+		inline id possessor() const;
+
+		// Number of shares in current possession record
+		inline sint64 numberOfPossessedShares() const;
+
+		// Index of possession record in universe. Should not be used by contracts, because it may change between contract calls.
+		// Changed by next(). NO_ASSET_INDEX if no (more) matching ownership has not been found.
+		inline unsigned int possessionIndex() const
+		{
+			return _possessionIdx;
+		}
+
+		// Contract index of contract having management rights (can transfer possession)
+		inline uint16 possessionManagingContract() const;
+	};
+
+	//////////
+	
+	constexpr uint16 INVALID_PROPOSAL_INDEX = 0xffff;
+	constexpr uint32 INVALID_VOTE_INDEX = 0xffffffff;
+	constexpr sint64 NO_VOTE_VALUE = 0x8000000000000000;
+
+	// Single vote for all types of proposals defined in August 2024.
+	// Input data for contract procedure call
+	struct ProposalSingleVoteDataV1
+	{
+		// Index of proposal the vote is about (can be requested with proposal voting API)
+		uint16 proposalIndex;
+
+		// Type of proposal, see ProposalTypes
+		uint16 proposalType;
+
+		// Tick when proposal has been set (to make sure that proposal version known by the voter matches the current version).
+		uint32 proposalTick;
+
+		// Value of vote. NO_VOTE_VALUE means no vote for every type.
+		// For proposals types with multiple options, 0 is no, 1 to N are the other options in order of definition in proposal.
+		// For scalar proposal types the value is passed directly.
+		sint64 voteValue;
+	};
+	static_assert(sizeof(ProposalSingleVoteDataV1) == 16, "Unexpected struct size.");
+
+	// For casting multiple votes for all types of proposals defined in August 2024.
+	// This makes sense for shareholder voting, where a single shareholder may own multiple shares, allowing to cast
+	// multiple votes. With this structs, the votes may be individually distributed to multiple options/values.
+	// Input data for contract procedure call, compatible with ProposalSingleVoteDataV1. That is, to cast all votes
+	// of a shareholder with the same value, just set element 0 of voteValues and leave/set the rest to zero (including
+	// the voteCounts).
+	struct ProposalMultiVoteDataV1
+	{
+		// Index of proposal the vote is about (can be requested with proposal voting API)
+		uint16 proposalIndex;
+
+		// Type of proposal, see ProposalTypes
+		uint16 proposalType;
+
+		// Tick when proposal has been set (to make sure that proposal version known by the voter matches the current version).
+		uint32 proposalTick;
+
+		// Value of vote. NO_VOTE_VALUE means no vote for every type.
+		// For proposals types with multiple options, 0 is no, 1 to N are the other options in order of definition in proposal.
+		// For scalar proposal types the value is passed directly.
+		Array<sint64, 8> voteValues;
+
+		// Count of votes to cast for the corresponding voteValues.
+		// For compatibility with ProposalSingleVoteDataV1, voteCounts.get(0) == 0 means all votes of the voter. In
+		// the other elements, 0 means no votes for the given value.
+		Array<uint32, 8> voteCounts;
+	};
+	static_assert(sizeof(ProposalMultiVoteDataV1) == 104, "Unexpected struct size.");
+
+	// Voting result summary for all types of proposals defined in August 2024.
+	// Output data for contract function call for getting voting results.
+	struct ProposalSummarizedVotingDataV1
+	{
+		// Index of proposal the vote is about (can be requested with proposal voting API)
+		uint16 proposalIndex;
+
+		// Count of options in proposal type (number of valid elements in optionVoteCount, 0 for scalar voting)
+		uint16 optionCount;
+
+		// Tick when proposal has been set (useful for checking if cached ProposalData is still up to date).
+		uint32 proposalTick;
+
+		// Maximal number of votes (number of voters who have the right to vote if there aren't multiple votes per voter)
+		uint32 totalVotesAuthorized;
+
+		// Number of total votes casted
+		uint32 totalVotesCasted;
+
+		// Voting results
+		union
+		{
+			// Number of votes for different options (0 = no change, 1 to N = yes to specific proposed value)
+			Array<uint32, 8> optionVoteCount;
+
+			// Scalar voting result (currently only for proposalType VariableScalarMean, mean value of all valid votes)
+			sint64 scalarVotingResult;
+		};
+
+		// Return index of most voted option or -1 if this is scalar voting
+		sint32 getMostVotedOption() const
+		{
+			if (optionCount == 0)
+				return -1;
+			sint32 mostVotedOptionIndex = 0;
+			uint32 mostVotedOptionVotes = optionVoteCount.get(0);
+			for (sint32 optionIndex = 1; optionIndex < optionCount; ++optionIndex)
+			{
+				uint32 optionVotes = optionVoteCount.get(optionIndex);
+				if (mostVotedOptionVotes < optionVotes)
+				{
+					mostVotedOptionVotes = optionVotes;
+					mostVotedOptionIndex = optionIndex;
+				}
+			}
+			return mostVotedOptionIndex;
+		}
+
+		// Return index of option accepted by quorum or -1 if none is accepted
+		sint32 getAcceptedOption(uint32 totalVotesThresh = QUORUM, uint32 mostVotedThreshold = QUORUM/2) const
+		{
+			if (totalVotesCasted >= totalVotesThresh)
+			{
+				sint32 opt = getMostVotedOption();
+				if (opt >= 0 && optionVoteCount.get(opt) > mostVotedThreshold)
+					return opt;
+			}
+			return -1;
+		}
+
+		ProposalSummarizedVotingDataV1() = default;
+		ProposalSummarizedVotingDataV1(const ProposalSummarizedVotingDataV1& src)
+		{
+			copyMemory(*this, src);
+		}
+		ProposalSummarizedVotingDataV1& operator=(const ProposalSummarizedVotingDataV1& src)
+		{
+			copyMemory(*this, src);
+			return *this;
+		}
+	};
+	static_assert(sizeof(ProposalSummarizedVotingDataV1) == 16 + 8*4, "Unexpected struct size.");
+
+	// Proposal type constants and functions.
+	// Each proposal type is composed of a class and a number of options. As an alternative to having N options (option votes),
+	// some proposal classes (currently the one to set a variable) may allow to vote with a scalar value in a range defined
+	// by the proposal (scalar voting).
+	namespace ProposalTypes
+	{
+		// Class of proposal type
+		namespace Class
+		{
+			// Options without extra data. Supported options: 2 <= N <= 8 with ProposalDataV1.
+			static constexpr uint16 GeneralOptions = 0;
+
+			// Propose to transfer amount to address. Supported options: 2 <= N <= 5 with ProposalDataV1.
+			static constexpr uint16 Transfer = 0x100;
+
+			// Propose to set variable to a value. Supported options: 2 <= N <= 5 with ProposalDataV1; N == 0 means scalar voting.
+			static constexpr uint16 Variable = 0x200;
+
+			// Propose to set multiple variables. Supported options: 2 <= N <= 8 with ProposalDataV1
+			static constexpr uint16 MultiVariables = 0x300;
+
+			// Propose to transfer amount to address in a specific epoch. Supported options: 1 with ProposalDataV1.
+			static constexpr uint16 TransferInEpoch = 0x400;
+		};
+
+		// Invalid proposal type returned to encode error in some interfaces
+		static constexpr uint16 Invalid = 0;
+
+		// Options yes and no without extra data -> result is histogram of options
+		static constexpr uint16 YesNo = Class::GeneralOptions | 2;
+
+		// 3 options without extra data -> result is histogram of options
+		static constexpr uint16 ThreeOptions = Class::GeneralOptions | 3;
+
+		// 3 options without extra data -> result is histogram of options
+		static constexpr uint16 FourOptions = Class::GeneralOptions | 4;
+
+		// Transfer given amount to address with options yes/no
+		static constexpr uint16 TransferYesNo = Class::Transfer | 2;
+
+		// Transfer amount to address with two options of amounts and option "no change"
+		static constexpr uint16 TransferTwoAmounts = Class::Transfer | 3;
+
+		// Transfer amount to address with three options of amounts and option "no change"
+		static constexpr uint16 TransferThreeAmounts = Class::Transfer | 4;
+
+		// Transfer amount to address with four options of amounts and option "no change"
+		static constexpr uint16 TransferFourAmounts = Class::Transfer | 5;
+
+		// Transfer given amount to address in a specific epoch, with options yes/no
+		static constexpr uint16 TransferInEpochYesNo = Class::TransferInEpoch | 2;
+
+		// Set given variable to proposed value with options yes/no
+		static constexpr uint16 VariableYesNo = Class::Variable | 2;
+
+		// Set given variable to proposed value with two options of values and option "no change"
+		static constexpr uint16 VariableTwoValues = Class::Variable | 3;
+
+		// Set given variable to proposed value with three options of values and option "no change"
+		static constexpr uint16 VariableThreeValues = Class::Variable | 4;
+
+		// Set given variable to proposed value with four options of values and option "no change"
+		static constexpr uint16 VariableFourValues = Class::Variable | 5;
+
+		// Set given variable to value, allowing to vote with scalar value, voting result is mean value
+		static constexpr uint16 VariableScalarMean = Class::Variable | 0;
+
+		// TODO: support quorum value max / min as voting result
+
+		// Set multiple variables with options yes/no (data stored by contract) -> result is histogram of options
+		static constexpr uint16 MultiVariablesYesNo = Class::MultiVariables | 2;
+
+		// Set multiple variables with 3 options "no change" / "values A" / "values B" (data stored by contract)
+		// -> result is histogram of options
+		static constexpr uint16 MultiVariablesThreeOptions = Class::MultiVariables | 3;
+
+		// Set multiple variables with 4 options "no change" / "values A" / "values B" / "values C" (data stored by
+		// contract) -> result is histogram of options
+		static constexpr uint16 MultiVariablesFourOptions = Class::MultiVariables | 4;
+
+		// Construct type from class + number of options (no checking if type is valid)
+		static constexpr uint16 type(uint16 cls, uint16 options)
+		{
+			return cls | options;
+		}
+
+		// Return option count for a given proposal type (including "no change" option),
+		// 0 for scalar voting (no checking if type is valid).
+		static uint16 optionCount(uint16 proposalType)
+		{
+			return proposalType & 0x00ff;
+		}
+
+		// Return class of proposal type (no checking if type is valid).
+		static uint16 cls(uint16 proposalType)
+		{
+			return proposalType & 0xff00;
+		}
+
+		// Check if given type is valid (supported by most comprehensive ProposalData class).
+		inline static bool isValid(uint16 proposalType);
+	};
+
+	// Proposal data struct for all types of proposals defined in August 2024 and revised in June 2025.
+	// Input data for contract procedure call, usable as ProposalDataType in ProposalVoting (persisted in contract states).
+	// You have to choose, whether to support scalar votes next to option votes. Scalar votes require 8x more storage in the state.
+	template <bool SupportScalarVotes>
+	struct ProposalDataV1
+	{
+		// URL explaining proposal, zero-terminated string.
+		Array<uint8, 256> url;
+
+		// Epoch, when proposal is active. For setProposal(), 0 means to clear proposal and non-zero means the current epoch.
+		uint16 epoch;
+
+		// Type of proposal, see ProposalTypes.
+		uint16 type;
+
+		// Tick when proposal has been set. Output only, overwritten in setProposal().
+		uint32 tick;
+
+		// Proposal payload data (for all except types with class GeneralProposal)
+		union Data
+		{
+			// Used if type class is Transfer
+			struct Transfer
+			{
+				id destination;
+				Array<sint64, 4> amounts;   // N first amounts are the proposed options (non-negative, sorted without duplicates), rest zero
+			} transfer;
+
+			// Used if type class is TransferInEpoch
+			struct TransferInEpoch
+			{
+				id destination;
+				sint64 amount;              // non-negative
+				uint16 targetEpoch;         // not checked by isValid()!
+			} transferInEpoch;
+
+			// Used if type class is Variable and type is not VariableScalarMean
+			struct VariableOptions
+			{
+				uint64 variable;            // For identifying variable (interpreted by contract only)
+				Array<sint64, 4> values;    // N first amounts are proposed options sorted without duplicates, rest zero
+			} variableOptions;
+
+			// Used if type is VariableScalarMean
+			struct VariableScalar
+			{
+				uint64 variable;            // For identifying variable (interpreted by contract only)
+				sint64 minValue;            // Minimum value allowed in proposedValue and votes, must be > NO_VOTE_VALUE
+				sint64 maxValue;            // Maximum value allowed in proposedValue and votes, must be >= minValue
+				sint64 proposedValue;       // Needs to be in range between minValue and maxValue
+
+				static constexpr sint64 minSupportedValue = 0x8000000000000001;
+				static constexpr sint64 maxSupportedValue = 0x7fffffffffffffff;
+			} variableScalar;
+		} data;
+
+		// Check if content of instance are valid. Epoch is not checked.
+		// Also useful to show requirements of valid proposal.
+		bool checkValidity() const
+		{
+			bool okay = false;
+			// TODO: validate URL
+			uint16 cls = ProposalTypes::cls(type);
+			uint16 options = ProposalTypes::optionCount(type);
+			switch (cls)
+			{
+			case ProposalTypes::Class::GeneralOptions:
+			case ProposalTypes::Class::MultiVariables:
+				okay = options >= 2 && options <= 8;
+				break;
+			case ProposalTypes::Class::Transfer:
+				if (!isZero(data.transfer.destination) && options >= 2 && options <= 5)
+				{
+					uint16 proposedAmounts = options - 1;
+					okay = true;
+					for (uint16 i = 0; i < proposedAmounts; ++i)
+					{
+						// no negative amounts
+						if (data.transfer.amounts.get(i) < 0)
+						{
+							okay = false;
+							break;
+						}
+					}
+					okay = okay
+						   && isArraySortedWithoutDuplicates(data.transfer.amounts, 0, proposedAmounts)
+						   && data.transfer.amounts.rangeEquals(proposedAmounts, data.transfer.amounts.capacity(), 0);
+				}
+				break;
+			case ProposalTypes::Class::TransferInEpoch:
+				okay = options == 2 && !isZero(data.transferInEpoch.destination) && data.transferInEpoch.amount >= 0;
+				break;
+			case ProposalTypes::Class::Variable:
+				if (options >= 2 && options <= 5)
+				{
+					// option voting
+					uint16 proposedValues = options - 1;
+					okay = isArraySortedWithoutDuplicates(data.variableOptions.values, 0, proposedValues)
+						   && data.variableOptions.values.rangeEquals(proposedValues, data.variableOptions.values.capacity(), 0);
+				}
+				else if (options == 0)
+				{
+					// scalar voting
+					if (supportScalarVotes)
+						okay = data.variableScalar.minValue <= data.variableScalar.proposedValue
+							&& data.variableScalar.proposedValue <= data.variableScalar.maxValue
+							&& data.variableScalar.minValue > NO_VOTE_VALUE;
+				}
+				break;
+			}
+			return okay;
+		}
+
+		// Whether to support scalar votes next to option votes.
+		static constexpr bool supportScalarVotes = SupportScalarVotes;
+
+		ProposalDataV1() = default;
+		ProposalDataV1(const ProposalDataV1<SupportScalarVotes>& src)
+		{
+			copyMemory(*this, src);
+		}
+		ProposalDataV1<SupportScalarVotes>& operator=(const ProposalDataV1<SupportScalarVotes>& src)
+		{
+			copyMemory(*this, src);
+			return *this;
+		}
+	};
+	static_assert(sizeof(ProposalDataV1<true>) == 256 + 8 + 64, "Unexpected struct size.");
+
+	// Proposal data struct for 2-option proposals (requires less storage space).
+	// Input data for contract procedure call, usable as ProposalDataType in ProposalVoting
+	struct ProposalDataYesNo
+	{
+		// URL explaining proposal, zero-terminated string.
+		Array<uint8, 256> url;
+
+		// Epoch, when proposal is active. For setProposal(), 0 means to clear proposal and non-zero means the current epoch.
+		uint16 epoch;
+
+		// Type of proposal, see ProposalTypes.
+		uint16 type;
+
+		// Tick when proposal has been set. Output only, overwritten in setProposal().
+		uint32 tick;
+
+		// Proposal payload data (for all except types with class GeneralProposal)
+		union Data
+		{
+			// Used if type class is Transfer
+			struct Transfer
+			{
+				id destination;
+				sint64 amount;		// Amount of proposed option (non-negative)
+			} transfer;
+
+			// Used if type class is Variable and type is not VariableScalarMean
+			struct VariableOptions
+			{
+				uint64 variable;    // For identifying variable (interpreted by contract only)
+				sint64 value;		// Value of proposed option, rest zero
+			} variableOptions;
+		} data;
+
+		// Check if content of instance are valid. Epoch is not checked.
+		// Also useful to show requirements of valid proposal.
+		bool checkValidity() const
+		{
+			bool okay = false;
+			// TODO: validate URL
+			uint16 cls = ProposalTypes::cls(type);
+			uint16 options = ProposalTypes::optionCount(type);
+			switch (cls)
+			{
+			case ProposalTypes::Class::GeneralOptions:
+			case ProposalTypes::Class::MultiVariables:
+				okay = options >= 2 && options <= 3; // 3 options can be encoded in the yes/no type of storage as well
+				break;
+			case ProposalTypes::Class::Transfer:
+				okay = (options == 2 && !isZero(data.transfer.destination) && data.transfer.amount >= 0);
+				break;
+			case ProposalTypes::Class::Variable:
+				okay = (options == 2);
+				break;
+			}
+			return okay;
+		}
+
+		// Whether to support scalar votes next to option votes.
+		static constexpr bool supportScalarVotes = false;
+
+		ProposalDataYesNo() = default;
+		ProposalDataYesNo(const ProposalDataYesNo& src)
+		{
+			copyMemory(*this, src);
+		}
+		ProposalDataYesNo& operator=(const ProposalDataYesNo& src)
+		{
+			copyMemory(*this, src);
+			return *this;
+		}
+	};
+	static_assert(sizeof(ProposalDataYesNo) == 256 + 8 + 40, "Unexpected struct size.");
+
+
+	// Used internally by ProposalVoting to store a proposal with all votes
+	template <typename ProposalDataType, uint32 numOfVoters>
+	struct ProposalWithAllVoteData;
+
+
+	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting and setting proposals for computors only.
+	template <uint16 proposalSlotCount = NUMBER_OF_COMPUTORS>
+	struct ProposalAndVotingByComputors;
+
+	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting for computors only and creating/changing proposals for anyone.
+	template <uint16 proposalSlotCount>
+	struct ProposalByAnyoneVotingByComputors;
+
+	// Option for ProposerAndVoterHandlingT in ProposalVoting that allows both voting and setting proposals for contract shareholders only.
+	template <uint16 proposalSlotCount, uint64 contractAssetName>
+	struct ProposalAndVotingByShareholders;
+
+	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+	struct QpiContextProposalFunctionCall;
+
+	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+	struct QpiContextProposalProcedureCall;
+
+	/*
+	* Proposal voting state for use in contract state.
+	* Voting is running until end of epoch, each proposer/computor can have one proposal at a time (or zero).
+	* ProposerAndVoterHandlingType:
+	*	Class for checking right to propose/vote and getting index in array. May have member data such
+	*   as an array of IDs and may be initialized by accessing the public member proposerAndVoter.
+	* ProposalDataT:
+	*   Class defining supported proposals. Also determines storage for proposals and votes.
+	*/
+	template <typename ProposerAndVoterHandlingT, typename ProposalDataT>
+	class ProposalVoting
+	{
+	public:
+		static constexpr uint16 maxProposals = ProposerAndVoterHandlingT::maxProposals;
+		static constexpr uint32 maxVotes = ProposerAndVoterHandlingT::maxVotes;
+
+		typedef ProposerAndVoterHandlingT ProposerAndVoterHandlingType;
+		typedef ProposalDataT ProposalDataType;
+		typedef ProposalWithAllVoteData<
+			ProposalDataT,
+			maxVotes
+		> ProposalAndVotesDataType;
+
+		static_assert(maxProposals <= INVALID_PROPOSAL_INDEX);
+		static_assert(maxVotes <= INVALID_VOTE_INDEX);
+
+		// Handling of who has the right to propose and to vote + proposal / voter indices
+		ProposerAndVoterHandlingType proposersAndVoters;
+
+	protected:
+		// Proposals and corresponding votes. No direct access for contracts.
+		ProposalAndVotesDataType proposals[maxProposals];
+
+		// Give user interface access to proposals
+		friend struct QpiContextProposalProcedureCall<ProposerAndVoterHandlingT, ProposalDataT>;
+		friend struct QpiContextProposalFunctionCall<ProposerAndVoterHandlingT, ProposalDataT>;
+	};
+
+	// Proposal user interface available in contract functions
+	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+	struct QpiContextProposalFunctionCall
+	{
+		// Get proposal with given index if index is valid and proposal is set (epoch > 0). On error returns false and sets proposal.type = 0.
+		bool getProposal(uint16 proposalIndex, ProposalDataType& proposal) const;
+
+		// Get data of single vote. On error returns false and sets vote.proposalType = 0.
+		bool getVote(uint16 proposalIndex, uint32 voteIndex, ProposalSingleVoteDataV1& vote) const;
+
+		// Get data of votes of a given voter. On error returns false and sets votes.proposalType = 0.
+		bool getVotes(uint16 proposalIndex, const id& voter, ProposalMultiVoteDataV1& votes) const;
+
+		// Get summary of all votes casted. On error returns false and sets votingSummary.totalVotesAuthorized = 0.
+		bool getVotingSummary(uint16 proposalIndex, ProposalSummarizedVotingDataV1& votingSummary) const;
+
+		// Return index of existing proposal or INVALID_PROPOSAL_INDEX if there is no proposal by given proposer
+		uint16 proposalIndex(const id& proposerId) const;
+
+		// Return proposer ID of given proposal index or NULL_ID if there is no proposal at this index
+		id proposerId(uint16 proposalIndex) const;
+
+		// Return vote index for given ID or INVALID_VOTE_INDEX if ID has no right to vote. If the voter has multiple
+		// votes, this returns the first index. All votes of a voter are stored consecutively.
+		// If voters are shareholders, proposalIndex must be passed. If voters are computors, proposalIndex is ignored.
+		uint32 voteIndex(const id& voterId, uint16 proposalIndex = 0) const;
+
+		// Return ID for given vote index or NULL_ID if index is invalid.
+		// If voters are shareholders, proposalIndex must be passed. If voters are computors, proposalIndex is ignored.
+		id voterId(uint32 voteIndex, uint16 proposalIndex = 0) const;
+
+		// Return count of votes of a voter if his first vote index is passed. Otherwise return the number of votes
+		// including this and the following indices. Returns 0 if an invalid index is passed.
+		// If voters are shareholders, proposalIndex must be passed. If voters are computors, proposalIndex is ignored.
+		uint32 voteCount(uint32 voteIndex, uint16 proposalIndex = 0) const;
+
+		// Return next proposal index of proposals of given epoch (default: current epoch)
+		// or -1 if there are not any more such proposals behind the passed index.
+		// Pass -1 to get first index.
+		sint32 nextProposalIndex(sint32 prevProposalIndex, uint16 epoch = 0) const;
+
+		// Return next proposal index of finished proposal (not created in current epoch, voting not possible anymore)
+		// or -1 if there are not any more such proposals behind the passed index.
+		// Pass -1 to get first index.
+		sint32 nextFinishedProposalIndex(sint32 prevProposalIndex) const;
+
+		// ProposalVoting type to work with
+		typedef ProposalVoting<ProposerAndVoterHandlingType, ProposalDataType> ProposalVotingType;
+
+		// Constructor. Use qpi(proposalVotingObject) to construct instance.
+		QpiContextProposalFunctionCall(
+			const QpiContextFunctionCall& qpi,
+			const ProposalVotingType& pv
+		) : qpi(qpi), pv(pv) {}
+
+		const QpiContextFunctionCall& qpi;
+		const ProposalVotingType& pv;
+	};
+
+	// Proposal user interface available in contract procedures
+	template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+	struct QpiContextProposalProcedureCall : public QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType>
+	{
+		// Set proposal if proposer has right to do so, proposal is valid, proposal.epoch is current epoch,
+		// and a proposal slot is available.
+		// If the proposer already has a proposal slot, his previous proposal is overwritten (and all votes
+		// are discarded).
+		// If there is no free slot, one of the oldest proposals from prior epochs is deleted to free a slot.
+		// This may be also used to clear a proposal by setting proposal.epoch = 0.
+		// Return proposalIndex if proposal has been set, or INVALID_PROPOSAL_INDEX on error.
+		uint16 setProposal(
+			const id& proposer,
+			const ProposalDataType& proposal
+		);
+
+		// Clear proposal of given index (without checking rights). Returns false if proposalIndex is invalid.
+		bool clearProposal(
+			uint16 proposalIndex
+		);
+
+		// Cast vote for proposal with index vote.proposalIndex if voter has right to vote, the proposal's epoch
+		// is the current epoch, vote.proposalType and vote.proposalTick match the corresponding proposal's values,
+		// and vote.voteValue is valid for the proposal type.
+		// If voter has multiple votes (possible in shareholder voting), cast all votes of voter with the same value.
+		// This can be used to remove a previous vote by vote.voteValue = NO_VOTE_VALUE.
+		// Return whether vote has been casted.
+		bool vote(
+			const id& voter,
+			const ProposalSingleVoteDataV1& vote
+		);
+
+		// Cast votes for proposal with index votes.proposalIndex if voter has right to vote, the proposal's epoch
+		// is the current epoch, votes.proposalType and votes.proposalTick match the corresponding proposal's values,
+		// the votes.voteValues are valid for the proposal type, and the sum of votes.voteCounts does not exceed the
+		// number of votes available to the voter.
+		// If any vote value is invalid, all votes of the voter are set to NO_VOTE_VALUE.
+		// This can be used to remove previous votes by using a vote value of NO_VOTE_VALUE or a total vote count less
+		// than the number of votes available to the voter.
+		// For compatibility with ProposalSingleVoteDataV1, all votes are set with votes.voteValues.get(0) if the sum
+		// of votes.voteCounts is 0.
+		// Return whether the votes have been casted.
+		bool vote(
+			const id& voter,
+			const ProposalMultiVoteDataV1& votes
+		);
+
+		// ProposalVoting type to work with
+		typedef ProposalVoting<ProposerAndVoterHandlingType, ProposalDataType> ProposalVotingType;
+
+		// Base class
+		typedef QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType> BaseClass;
+
+		// Constructor. Use qpi(proposalVotingObject) to construct instance.
+		QpiContextProposalProcedureCall(
+			const QpiContextFunctionCall& qpi,
+			ProposalVotingType& pv
+		) : BaseClass(qpi, pv) {}
+	};
+
+	//////////
+
+	// QPI context base class (common data, by default has no stack for locals)
+	struct QpiContext
+	{
+	protected:
+		// Construction is done in core, not allowed in contracts
+		QpiContext(
+			unsigned int contractIndex,
+			const m256i& originator,
+			const m256i& invocator,
+			long long invocationReward,
+			unsigned char entryPoint
+		) {
+			init(contractIndex, originator, invocator, invocationReward, entryPoint, -1);
+		}
+
+		void init(
+			unsigned int contractIndex,
+			const m256i& originator,
+			const m256i& invocator,
+			long long invocationReward,
+			unsigned char entryPoint,
+			int stackIndex
+		) {
+			ASSERT(invocationReward >= 0);
+			_currentContractIndex = contractIndex;
+			_currentContractId = m256i(contractIndex, 0, 0, 0);
+			_originator = originator;
+			_invocator = invocator;
+			_invocationReward = invocationReward;
+			_entryPoint = entryPoint;
+			_stackIndex = stackIndex;
+		}
+
+		unsigned int _currentContractIndex;
+		int _stackIndex;
+		m256i _currentContractId, _originator, _invocator;
+		long long _invocationReward;
+		unsigned char _entryPoint;
+
+	private:
+		// Disabling copy and move
+		QpiContext(const QpiContext&) = delete;
+		QpiContext(QpiContext&&) = delete;
+		QpiContext& operator=(const QpiContext&) = delete;
+		QpiContext& operator=(QpiContext&&) = delete;
+	};
+
+	// QPI function available to contract functions and procedures
+	struct QpiContextFunctionCall : public QpiContext
+	{
+		inline id arbitrator(
+		) const;
+
+		inline id computor(
+			uint16 computorIndex // [0..675]
+		) const;
+
+		inline uint8 day(
+		) const; // [1..31]
+
+		inline uint8 dayOfWeek(
+			uint8 year, // (0 = 2000, 1 = 2001, ..., 99 = 2099)
+			uint8 month,
+			uint8 day
+		) const; // [0..6] (0 = Wednesday)
+
+		inline uint16 epoch(
+		) const; // [0..9'999]
+
+		inline bit getEntity(
+			const id& id,
+			Entity& entity
+		) const; // Returns "true" if the entity has been found, returns "false" otherwise
+
+		inline uint8 hour(
+		) const; // [0..23]
+
+		// Return the invocation reward (amount transferred to contract immediately before invoking)
+		sint64 invocationReward() const { return _invocationReward; }
+
+		// Returns the id of the user/contract who has triggered this contract; returns NULL_ID if there has been no user/contract
+		id invocator() const { return _invocator; }
+
+		// Returns the ID of the entity who has made this IPO bid or NULL_ID if the ipoContractIndex or ipoBidIndex are invalid.
+		inline id ipoBidId(
+			uint32 ipoContractIndex,
+			uint32 ipoBidIndex
+		) const;
+
+		// Returns the price of an IPO bid, -1 if contract index is invalid, -2 if contract is not in IPO, -3 if bid index is invalid.
+		inline sint64 ipoBidPrice(
+			uint32 ipoContractIndex,
+			uint32 ipoBidIndex
+		) const;
+
+		// Returns true if the id passed belongs to a contract (no user entity).
+		inline bit isContractId(
+			const id& id
+		) const;
+
+		template <typename T>
+		inline id K12(
+			const T& data
+		) const;
+
+		inline uint16 millisecond(
+		) const; // [0..999]
+
+		inline uint8 minute(
+		) const; // [0..59]
+
+		inline uint8 month(
+		) const; // [1..12]
+
+		inline id nextId(
+			const id& currentId
+		) const;
+
+		inline id prevId(
+			const id& currentId
+		) const;
+
+		inline sint64 numberOfPossessedShares(
+			uint64 assetName,
+			const id& issuer,
+			const id& owner,
+			const id& possessor,
+			uint16 ownershipManagingContractIndex,
+			uint16 possessionManagingContractIndex
+		) const;
+
+		inline sint64 numberOfShares(
+			const Asset& asset,
+			const AssetOwnershipSelect& ownership = AssetOwnershipSelect::any(),
+			const AssetPossessionSelect& possession = AssetPossessionSelect::any()
+		) const;
+
+		inline bool isAssetIssued(
+			const m256i& id,
+			unsigned long long assetName
+		) const;
+
+		// Returns -1 if the current tick is empty, returns the number of the transactions in the tick otherwise, including 0.
+		inline sint32 numberOfTickTransactions(
+		) const;
+
+		// Returns the id of the user who has triggered the whole chain of invocations with their transaction; returns NULL_ID if there has been no user
+		id originator() const { return _originator; }
+
+		inline uint8 second(
+		) const; // [0..59]
+
+		// return current datetime (year, month, day, hour, minute, second, millisec)
+		inline DateAndTime now() const;
+
+		// return last spectrum digest on etalonTick
+		inline m256i getPrevSpectrumDigest() const;
+
+		// return last universe digest on etalonTick
+		inline m256i getPrevUniverseDigest() const;
+
+		// return last computer digest on etalonTick
+		inline m256i getPrevComputerDigest() const;
+
+		// run the score function (in qubic mining) and return first 256 bit of output
+		inline m256i computeMiningFunction(const m256i miningSeed, const m256i publicKey, const m256i nonce) const;
+
+		inline bit signatureValidity(
+			const id& entity,
+			const id& digest,
+			const Array<sint8, 64>& signature
+		) const;
+
+		inline uint32 tick(
+		) const; // [0..999'999'999]
+
+		inline uint8 year(
+		) const; // [0..99] (0 = 2000, 1 = 2001, ..., 99 = 2099)
+
+		// Return the amount of Qu in the fee reserve for the specified contract.
+		// If the provided index is invalid (< 1 or >= contractCount) the currentContractIndex is used instead.
+		inline sint64 queryFeeReserve(uint32 contractIndex = 0) const;
+
+		/**
+		* @brief Get oracle query by queryId.
+		* @param queryId Identifier of oracle query to get query data from.
+		* @param query Output query data (only set if true is returned).
+		* @return Whether queryId is found and matches the oracle interface.
+		*/
+		template <typename OracleInterface>
+		inline bool getOracleQuery(sint64 queryId, typename OracleInterface::OracleQuery& query) const;
+
+		/**
+		* @brief Get oracle reply by queryId.
+		* @param queryId Identifier of oracle query.
+		* @param reply Output reply data (only set if true is returned).
+		* @return Whether queryId is found, matches the oracle interface, and a valid reply is available.
+		*/
+		template <typename OracleInterface>
+		inline bool getOracleReply(sint64 queryId, typename OracleInterface::OracleReply& reply) const;
+
+		/**
+		* @brief Get status of oracle query by queryId.
+		* @param queryId Identifier of oracle query to get query status from.
+		* @return One of the values ORACLE_QUERY_STATUS_* listed below.
+		*
+		* - ORACLE_QUERY_STATUS_UNKNOWN: Query not found / not valid.
+		* - ORACLE_QUERY_STATUS_PENDING: Query is being processed.
+		* - ORACLE_QUERY_STATUS_COMMITTED: The quorum has committed to an oracle reply, but it has not been revealed yet.
+		* - ORACLE_QUERY_STATUS_SUCCESS: The oracle reply has been confirmed and is available.
+		* - ORACLE_QUERY_STATUS_UNRESOLVABLE: No valid oracle reply is available, because computors disagreed about the value.
+		* - ORACLE_QUERY_STATUS_TIMEOUT: No valid oracle reply is available and timeout has hit.
+		*/
+		inline uint8 getOracleQueryStatus(sint64 queryId) const;
+
+		// Access proposal functions with qpi(proposalVotingObject).func().
+		template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+		inline QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType> operator()(
+			const ProposalVoting<ProposerAndVoterHandlingType, ProposalDataType>& proposalVoting
+		) const;
+
+		// Internal functions, calling not allowed in contracts
+		inline void* __qpiAllocLocals(unsigned int sizeOfLocals) const;
+		inline void __qpiFreeLocals() const;
+		inline const QpiContextFunctionCall* __qpiConstructContextOtherContractFunctionCall(unsigned int otherContractIndex, InterContractCallError& callError) const;
+		inline void __qpiFreeContext() const;
+		inline void * __qpiAcquireStateForReading(unsigned int contractIndex) const;
+		inline void __qpiReleaseStateForReading(unsigned int contractIndex) const;
+		inline void __qpiAbort(unsigned int errorCode) const;
+
+	protected:
+		// Construction is done in core, not allowed in contracts
+		QpiContextFunctionCall(unsigned int contractIndex, const m256i& originator, long long invocationReward, unsigned char entryPoint) : QpiContext(contractIndex, originator, originator, invocationReward, entryPoint) {}
+	};
+
+	// Used if no locals, input, or output is needed in a procedure or function
+	struct NoData {};
+
+	template <typename OracleInterface>
+	struct OracleNotificationInput
+	{
+		sint64 queryId;         ///< ID of the oracle query that led to this notification.
+		sint32 subscriptionId;  ///< ID of the oracle subscription or -1 in case of a one-time oracle query.
+		uint8 status;           ///< Oracle query status as defined in `network_messages/common_def.h`
+		uint8 __reserved0;
+		uint16 __reserved1;
+		typename OracleInterface::OracleReply reply;	///< Oracle reply if status == ORACLE_QUERY_STATUS_SUCCESS
+	};
+
+	// QPI procedures available to contract procedures (not to contract functions)
+	struct QpiContextProcedureCall : public QPI::QpiContextFunctionCall
+	{
+		inline sint64 acquireShares(
+			const Asset& asset,
+			const id& owner,
+			const id& possessor,
+			sint64 numberOfShares,
+			uint16 sourceOwnershipManagingContractIndex,
+			uint16 sourcePossessionManagingContractIndex,
+			sint64 offeredTransferFee
+		) const; // Returns payed fee on success (>= 0), -requestedFee if offeredTransferFee or contract balance is not sufficient, INVALID_AMOUNT in case of other error.
+
+		// Burns Qus from the current contract's balance to fill the contract fee reserve of the contract specified via contractIndexBurnedFor.
+		// If the provided index is invalid (< 1 or >= contractCount), the Qus are burned for the currentContractIndex.
+		// Returns the remaining balance (>= 0) of the current contract if the burning is successful. A negative return value indicates failure.  
+		inline sint64 burn(
+			sint64 amount,
+			uint32 contractIndexBurnedFor = 0
+		) const; 
+
+		inline bool distributeDividends( //  Attempts to pay dividends
+			sint64 amountPerShare // Total amount will be 676x of this
+		) const; // "true" if the contract has had enough qus, "false" otherwise
+
+		inline sint64 issueAsset(
+			uint64 name,
+			const id& issuer,
+			sint8 numberOfDecimalPlaces,
+			sint64 numberOfShares,
+			uint64 unitOfMeasurement
+		) const; // Returns number of shares or 0 on error
+
+		// Bid in contract IPO, deducting price * quantity QU. Bids that don't get shares are refunded.
+		// Returns number of bids registered or -1 if any invalid value is passed or the owned funds aren't sufficient.
+		// If the return value >= 0, the full amount has been deducted, but if return value < quantity it has been partially
+		// refunded.
+		inline sint64 bidInIPO(
+			uint32 IPOContractIndex,
+			sint64 price,
+			uint32 quantity
+		) const;
+
+		inline sint64 releaseShares(
+			const Asset& asset,
+			const id& owner,
+			const id& possessor,
+			sint64 numberOfShares,
+			uint16 destinationOwnershipManagingContractIndex,
+			uint16 destinationPossessionManagingContractIndex,
+			sint64 offeredTransferFee
+		) const; // Returns payed fee on success (>= 0), -requestedFee if offeredTransferFee or contract balance is not sufficient, INVALID_AMOUNT in case of other error.
+
+		/**
+		* @brief Add/change/cancel shareholder proposal as shareholder of another contract.
+		* @param contractIndex Index of the other contract, that SELF is shareholder of and that the proposal is about.
+		* @param proposalDataBuffer Buffer for passing the contract-dependent proposal data. You may use copyToBuffer() to fill it.
+		* @param invocationReward Invocation reward sent to contractIndex when invoking it's procedure.
+		* @return Proposal index on success, INVALID_PROPOSAL_INDEX on error.
+		* @note Invokes SET_SHAREHOLDER_PROPOSAL of contractIndex without checking shareholder status and proposalDataBuffer.
+		*/
+		inline uint16 setShareholderProposal(
+			uint16 contractIndex,
+			const Array<uint8, 1024>& proposalDataBuffer,
+			sint64 invocationReward
+		) const;
+
+		/**
+		* @brief Add/change/cancel shareholder vote(s) in another contract.
+		* @param contractIndex Index of the other contract, that SELF is shareholder of and that the proposal is about.
+		* @param shareholderVoteData Vote(s) to cast. See ProposalMultiVoteDataV1 for details.
+		* @param invocationReward Invocation reward sent to contractIndex when invoking it's procedure.
+		* @return Proposal index on success, INVALID_PROPOSAL_INDEX on error.
+		* @note Invokes SET_SHAREHOLDER_VOTES of contractIndex without checking shareholder status and shareholderVoteData.
+		*/
+		inline bool setShareholderVotes(
+			uint16 contractIndex,
+			const ProposalMultiVoteDataV1& shareholderVoteData,
+			sint64 invocationReward
+		) const;
+
+		inline sint64 transfer( // Attempts to transfer energy from this qubic
+			const id& destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
+			sint64 amount // Energy amount to transfer, must be in [0..1'000'000'000'000'000] range
+		) const; // Returns remaining energy amount; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient amount
+
+		inline sint64 transferShareOwnershipAndPossession(
+			uint64 assetName,
+			const id& issuer,
+			const id& owner,
+			const id& possessor,
+			sint64 numberOfShares,
+			const id& newOwnerAndPossessor // New owner and possessor. Pass NULL_ID to burn shares (not allowed for contract shares).
+		) const; // Returns remaining number of possessed shares satisfying all the conditions; if the value is less than 0, the attempt has failed, in this case the absolute value equals to the insufficient number, INVALID_AMOUNT indicates another error
+
+		/// Unsubscribe oracle based on subscription ID (returning false if oracleSubscriptionId is invalid).
+		inline bool unsubscribeOracle(
+			sint32 oracleSubscriptionId
+		) const;
+
+		// Bring base class const operator() into scope (otherwise hidden by non-const overload below)
+		using QpiContextFunctionCall::operator();
+
+		// Access proposal procedures with qpi(proposalVotingObject).proc().
+		template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
+		inline QpiContextProposalProcedureCall<ProposerAndVoterHandlingType, ProposalDataType> operator()(
+			ProposalVoting<ProposerAndVoterHandlingType, ProposalDataType>& proposalVoting
+		) const;
+
+
+		// Internal functions, calling not allowed in contracts
+		inline const QpiContextProcedureCall* __qpiConstructProcedureCallContext(unsigned int otherContractIndex, sint64 invocationReward, InterContractCallError& callError, bool skipFeeCheck = false) const;
+		inline void* __qpiAcquireStateForWriting(unsigned int contractIndex) const;
+		inline void __qpiReleaseStateForWriting(unsigned int contractIndex) const;
+		template <unsigned int sysProcId, typename InputType, typename OutputType>
+		bool __qpiCallSystemProc(unsigned int otherContractIndex, InputType& input, OutputType& output, sint64 invocationReward) const;
+		inline void __qpiNotifyPostIncomingTransfer(const id& source, const id& dest, sint64 amount, uint8 type) const;
+
+		// Internal version of QUERY_ORACLE (macro ensures that proc pointer and id match)
+		template <typename OracleInterface, typename ContractStateType, typename LocalsType>
+		inline sint64 __qpiQueryOracle(
+			const typename OracleInterface::OracleQuery& query,
+			void (*notificationProcPtr)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
+			unsigned int notificationProcId,
+			uint32 timeoutMillisec
+		) const;
+
+		// Internal version of SUBSCRIBE_ORACLE (macro ensures that proc pointer and id match)
+		template <typename OracleInterface, typename ContractStateType, typename LocalsType>
+		inline sint32 __qpiSubscribeOracle(
+			const typename OracleInterface::OracleQuery& query,
+			void (*notificationProcPtr)(const QPI::QpiContextProcedureCall& qpi, ContractStateType& state, OracleNotificationInput<OracleInterface>& input, NoData& output, LocalsType& locals),
+			unsigned int notificationProcId,
+			uint32 notificationPeriodInMilliseconds = 60000,
+			bool notifyWithPreviousReply = true
+		) const;
+
+		// Internal version of transfer() that takes the TransferType as additional argument.
+		inline sint64 __transfer( // Attempts to transfer energy from this qubic
+			const id& destination, // Destination to transfer to, use NULL_ID to destroy the transferred energy
+			sint64 amount, // Energy amount to transfer, must be in [0..1'000'000'000'000'000] range
+			uint8 transferType // the type of transfer
+		) const; // Returns remaining energy amount; if the value is less than 0 then the attempt has failed, in this case the absolute value equals to the insufficient amount
+
+	protected:
+		// Construction is done in core, not allowed in contracts
+		QpiContextProcedureCall(unsigned int contractIndex, const m256i& originator, long long invocationReward, unsigned char entryPoint) : QpiContextFunctionCall(contractIndex, originator, invocationReward, entryPoint) {}
+	};
+
+	// QPI available in REGISTER_USER_FUNCTIONS_AND_PROCEDURES
+	struct QpiContextForInit : public QPI::QpiContext
+	{
+		inline void __registerUserFunction(USER_FUNCTION, unsigned short, unsigned short, unsigned short, unsigned int) const;
+		inline void __registerUserProcedure(USER_PROCEDURE, unsigned short, unsigned short, unsigned short, unsigned int) const;
+		inline void __registerUserProcedureNotification(USER_PROCEDURE, unsigned int, unsigned short, unsigned short, unsigned int) const;
+
+		// Construction is done in core, not allowed in contracts
+		inline QpiContextForInit(unsigned int contractIndex);
+	};
+
+	// Management rights transfer: pre-transfer input
+	struct PreManagementRightsTransfer_input
+	{
+		Asset asset;
+		id owner;
+		id possessor;
+		sint64 numberOfShares;
+		sint64 offeredFee;
+		uint16 otherContractIndex;
+	};
+
+	// Management rights transfer: pre-transfer output (default is all-zeroed = don't allow transfer)
+	struct PreManagementRightsTransfer_output
+	{
+		bool allowTransfer;
+		sint64 requestedFee;
+	};
+
+	// Management rights transfer: post-transfer input
+	struct PostManagementRightsTransfer_input
+	{
+		Asset asset;
+		id owner;
+		id possessor;
+		sint64 numberOfShares;
+		sint64 receivedFee;
+		uint16 otherContractIndex;
+	};
+
+	namespace TransferType
+	{
+		constexpr uint8 standardTransaction = 0;
+		constexpr uint8 procedureTransaction = 1;
+		constexpr uint8 qpiTransfer = 2;
+		constexpr uint8 qpiDistributeDividends = 3;
+		constexpr uint8 revenueDonation = 4;
+		constexpr uint8 ipoBidRefund = 5;
+		constexpr uint8 procedureInvocationByOtherContract = 6;
+	};
+
+	// Input of POST_INCOMING_TRANSFER notification system call
+	struct PostIncomingTransfer_input
+	{
+		id sourceId;
+		sint64 amount;
+		uint8 type;
+	};
+
+	// Input of SET_SHAREHOLDER_PROPOSAL system procedure (buffer for passing the contract-dependent proposal data)
+	typedef Array<uint8, 1024> SET_SHAREHOLDER_PROPOSAL_input;
+
+	// Output of SET_SHAREHOLDER_PROPOSAL system procedure (proposal index, or INVALID_PROPOSAL_INDEX on error)
+	typedef uint16 SET_SHAREHOLDER_PROPOSAL_output;
+
+	// Input of SET_SHAREHOLDER_VOTES system procedure (vote data)
+	typedef ProposalMultiVoteDataV1 SET_SHAREHOLDER_VOTES_input;
+
+	// Output of SET_SHAREHOLDER_VOTES system procedure (success flag)
+	typedef bit SET_SHAREHOLDER_VOTES_output;
+
+	//////////
+	
+	struct ContractBase
+	{
+		struct StateData {};
+		enum { __initializeEmpty = 1, __initializeLocalsSize = sizeof(NoData) };
+		static void __initialize(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
+		enum { __beginEpochEmpty = 1, __beginEpochLocalsSize = sizeof(NoData) };
+		static void __beginEpoch(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
+		enum { __endEpochEmpty = 1, __endEpochLocalsSize = sizeof(NoData) };
+		static void __endEpoch(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
+		enum { __beginTickEmpty = 1, __beginTickLocalsSize = sizeof(NoData) };
+		static void __beginTick(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
+		enum { __endTickEmpty = 1, __endTickLocalsSize = sizeof(NoData) };
+		static void __endTick(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
+		enum { __preAcquireSharesEmpty = 1, __preAcquireSharesLocalsSize = sizeof(NoData) };
+		static void __preAcquireShares(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
+		enum { __preReleaseSharesEmpty = 1, __preReleaseSharesLocalsSize = sizeof(NoData) };
+		static void __preReleaseShares(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
+		enum { __postAcquireSharesEmpty = 1, __postAcquireSharesLocalsSize = sizeof(NoData) };
+		static void __postAcquireShares(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
+		enum { __postReleaseSharesEmpty = 1, __postReleaseSharesLocalsSize = sizeof(NoData) };
+		static void __postReleaseShares(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
+		enum { __postIncomingTransferEmpty = 1, __postIncomingTransferLocalsSize = sizeof(NoData) };
+		static void __postIncomingTransfer(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
+		enum { __setShareholderProposalEmpty = 1, __setShareholderProposalLocalsSize = sizeof(NoData) };
+		static void __setShareholderProposal(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
+		enum { __setShareholderVotesEmpty = 1, __setShareholderVotesLocalsSize = sizeof(NoData) };
+		static void __setShareholderVotes(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
+		enum { __expandEmpty = 1 };
+		static void __expand(const QpiContextProcedureCall& qpi, void*, void*) {}
+		enum { __migrateEmpty = 1, __migrateOldStateSize = 0 , __migrateLocalsSize = sizeof(NoData) };
+		static void __migrate(const QpiContextProcedureCall& qpi, void* state, void* oldState, void* locals) {}
+	};
+
+	// Internal macro for defining the system procedure macros
+	#define NO_IO_SYSTEM_PROC(CapLetterName, FuncName, InputType, OutputType) \
+		public: \
+			typedef NoData CapLetterName##_locals; \
+			NO_IO_SYSTEM_PROC_WITH_LOCALS(CapLetterName, FuncName, InputType, OutputType)
+
+	// Internal macro for defining the system procedure macros
+	#define NO_IO_SYSTEM_PROC_WITH_LOCALS(CapLetterName, FuncName, InputType, OutputType) \
+		 public: \
+			enum { FuncName##Empty = 0, FuncName##LocalsSize = sizeof(CapLetterName##_locals) }; \
+			static_assert(sizeof(CapLetterName##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #CapLetterName "_locals size too large"); \
+			inline static void FuncName(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, InputType& input, OutputType& output, CapLetterName##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##FuncName(qpi, state, input, output, locals); } \
+			static void __impl_##FuncName(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, InputType& input, OutputType& output, CapLetterName##_locals& locals)
+
+	// Define contract system procedure called to initialize contract state after IPO
+	#define INITIALIZE()  NO_IO_SYSTEM_PROC(INITIALIZE, __initialize, NoData, NoData)
+
+	// Define contract system procedure called to initialize contract state after IPO, provides zeroed instance of INITIALIZE_locals struct
+	#define INITIALIZE_WITH_LOCALS()  NO_IO_SYSTEM_PROC_WITH_LOCALS(INITIALIZE, __initialize, NoData, NoData)
+
+	// Define contract system procedure called at beginning of each epoch
+	#define BEGIN_EPOCH()  NO_IO_SYSTEM_PROC(BEGIN_EPOCH, __beginEpoch, NoData, NoData)
+
+	// Define contract system procedure called at beginning of each epoch, provides zeroed instance of BEGIN_EPOCH_locals struct
+	#define BEGIN_EPOCH_WITH_LOCALS() NO_IO_SYSTEM_PROC_WITH_LOCALS(BEGIN_EPOCH, __beginEpoch, NoData, NoData)
+
+	// Define contract system procedure called at end of each epoch
+	#define END_EPOCH() NO_IO_SYSTEM_PROC(END_EPOCH, __endEpoch, NoData, NoData)
+
+	// Define contract system procedure called at end of each epoch, provides zeroed instance of END_EPOCH_locals struct
+	#define END_EPOCH_WITH_LOCALS() NO_IO_SYSTEM_PROC_WITH_LOCALS(END_EPOCH, __endEpoch, NoData, NoData)
+
+	// Define contract system procedure called at beginning of each tick
+	#define BEGIN_TICK() NO_IO_SYSTEM_PROC(BEGIN_TICK, __beginTick, NoData, NoData)
+
+	// Define contract system procedure called at beginning of each tick, provides zeroed instance of BEGIN_TICK_locals struct
+	#define BEGIN_TICK_WITH_LOCALS() NO_IO_SYSTEM_PROC_WITH_LOCALS(BEGIN_TICK, __beginTick, NoData, NoData)
+
+	// Define contract system procedure called at end of each tick
+	#define END_TICK() NO_IO_SYSTEM_PROC(END_TICK, __endTick, NoData, NoData)
+
+	// Define contract system procedure called at end of each tick, provides zeroed instance of BEGIN_TICK_locals struct
+	#define END_TICK_WITH_LOCALS() NO_IO_SYSTEM_PROC_WITH_LOCALS(END_TICK, __endTick, NoData, NoData)
+
+	// Define contract system procedure called before asset management rights transfer with `qpi.releaseShares(). See
+	// `doc/contracts.md` for details.
+	#define PRE_ACQUIRE_SHARES() \
+        NO_IO_SYSTEM_PROC(PRE_ACQUIRE_SHARES, __preAcquireShares, PreManagementRightsTransfer_input, \
+                          PreManagementRightsTransfer_output)
+
+	// Define contract system procedure called before asset management rights transfer with `qpi.releaseShares(). Provides
+	// zeroed instance of PRE_ACQUIRE_SHARES_locals struct. See `doc/contracts.md` for details.
+	#define PRE_ACQUIRE_SHARES_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(PRE_ACQUIRE_SHARES, __preAcquireShares, PreManagementRightsTransfer_input, \
+                                      PreManagementRightsTransfer_output)
+
+	// Define contract system procedure called before asset management rights transfer with `qpi.acquireShares(). See
+	// `doc/contracts.md` for details.
+	#define PRE_RELEASE_SHARES() \
+        NO_IO_SYSTEM_PROC(PRE_RELEASE_SHARES, __preReleaseShares, PreManagementRightsTransfer_input, \
+                          PreManagementRightsTransfer_output)
+
+	// Define contract system procedure called before asset management rights transfer with `qpi.acquireShares(). Provides
+	// zeroed instance of PRE_RELEASE_SHARES_locals struct. See `doc/contracts.md` for details.
+	#define PRE_RELEASE_SHARES_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(PRE_RELEASE_SHARES, __preReleaseShares, PreManagementRightsTransfer_input, \
+                                      PreManagementRightsTransfer_output)
+
+	// Define contract system procedure called after asset management rights transfer with `qpi.releaseShares(). See
+	// `doc/contracts.md` for details.
+	#define POST_ACQUIRE_SHARES() \
+        NO_IO_SYSTEM_PROC(POST_ACQUIRE_SHARES, __postAcquireShares, PostManagementRightsTransfer_input, NoData)
+
+	// Define contract system procedure called after asset management rights transfer with `qpi.releaseShares(). Provides
+	// zeroed instance of POST_ACQUIRE_SHARES_locals struct. See `doc/contracts.md` for details.
+	#define POST_ACQUIRE_SHARES_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_ACQUIRE_SHARES, __postAcquireShares, PostManagementRightsTransfer_input, \
+                                      NoData)
+
+	// Define contract system procedure called after asset management rights transfer with `qpi.acquireShares(). See
+	// `doc/contracts.md` for details.
+	#define POST_RELEASE_SHARES() \
+        NO_IO_SYSTEM_PROC(POST_RELEASE_SHARES, __postReleaseShares, PostManagementRightsTransfer_input, NoData)
+
+	// Define contract system procedure called after asset management rights transfer with `qpi.acquireShares(). Provides
+	// zeroed instance of POST_RELEASE_SHARES_locals struct. See `doc/contracts.md` for details.
+	#define POST_RELEASE_SHARES_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_RELEASE_SHARES, __postReleaseShares, PostManagementRightsTransfer_input, \
+                                      NoData)
+
+	// Define contract system procedure called when QUs are transferred to the contract. See `doc/contracts.md` for
+	// details.
+	#define POST_INCOMING_TRANSFER() \
+        NO_IO_SYSTEM_PROC(POST_INCOMING_TRANSFER, __postIncomingTransfer, PostIncomingTransfer_input, NoData)
+
+	// Define contract system procedure called when QUs are transferred to the contract. Provides zeroed instance of
+	// POST_INCOMING_TRANSFER_locals struct. See `doc/contracts.md` for details.
+	#define POST_INCOMING_TRANSFER_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(POST_INCOMING_TRANSFER, __postIncomingTransfer, PostIncomingTransfer_input, \
+                                      NoData)
+
+	// Define contract system procedure called when another contract tries to set/change/cancel a proposal through
+	// qpi.setShareholderProposal(). See `doc/contracts.md` for details.
+	#define SET_SHAREHOLDER_PROPOSAL() \
+        NO_IO_SYSTEM_PROC(SET_SHAREHOLDER_PROPOSAL, __setShareholderProposal, SET_SHAREHOLDER_PROPOSAL_input, \
+						  SET_SHAREHOLDER_PROPOSAL_output)
+
+	// Define contract system procedure called when another contract tries to set/change/cancel a proposal through
+	// qpi.setShareholderProposal(). Provides zeroed instance of SET_SHAREHOLDER_PROPOSAL_locals struct. See
+	// `doc/contracts.md` for details.
+	#define SET_SHAREHOLDER_PROPOSAL_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(SET_SHAREHOLDER_PROPOSAL, __setShareholderProposal, SET_SHAREHOLDER_PROPOSAL_input, \
+						              SET_SHAREHOLDER_PROPOSAL_output)
+
+	// Define contract system procedure called when another contract tries to set/change/cancel a vote through
+	// qpi.setShareholderVotes(). See `doc/contracts.md` for details.
+	#define SET_SHAREHOLDER_VOTES() \
+        NO_IO_SYSTEM_PROC(SET_SHAREHOLDER_VOTES, __setShareholderVotes, SET_SHAREHOLDER_VOTES_input, \
+						  SET_SHAREHOLDER_VOTES_output)
+
+	// Define contract system procedure called when another contract tries to set/change/cancel a vote through
+	// qpi.setShareholderVotes(). Provides zeroed instance of SET_SHAREHOLDER_VOTES_locals struct. See
+	// `doc/contracts.md` for details.
+	#define SET_SHAREHOLDER_VOTES_WITH_LOCALS() \
+        NO_IO_SYSTEM_PROC_WITH_LOCALS(SET_SHAREHOLDER_VOTES, __setShareholderVotes, SET_SHAREHOLDER_VOTES_input, \
+						              SET_SHAREHOLDER_VOTES_output)
+
+	#define EXPAND() \
+      public: \
+        enum { __expandEmpty = 0 }; \
+		inline static void __expand(const QPI::QpiContextFunctionCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, QPI::ContractState<CONTRACT_STATE2_TYPE, CONTRACT_INDEX>& state2) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_expand(qpi, state, state2); } \
+		static void __impl_expand(const QPI::QpiContextFunctionCall & qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>&state, QPI::ContractState<CONTRACT_STATE2_TYPE, CONTRACT_INDEX>& state2)
+
+	#define MIGRATE_WITH_LOCALS() \
+      public: \
+        enum { __migrateEmpty = 0, __migrateOldStateSize = sizeof(CONTRACT_STATE_TYPE::OldStateData), __migrateLocalsSize = sizeof(MIGRATE_locals) }; \
+		static_assert(sizeof(MIGRATE_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, "MIGRATE_locals size too large"); \
+		inline static void __migrate(const QPI::QpiContextFunctionCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_TYPE::OldStateData& oldState, MIGRATE_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_migrate(qpi, state, oldState, locals); } \
+		static void __impl_migrate(const QPI::QpiContextFunctionCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_TYPE::OldStateData& oldState, MIGRATE_locals& locals)
+
+	#define MIGRATE() \
+      public: \
+		typedef NoData MIGRATE_locals; \
+		MIGRATE_WITH_LOCALS()
+
+	#define LOG_DEBUG(message) __logContractDebugMessage(CONTRACT_INDEX, message);
+
+	#define LOG_ERROR(message) __logContractErrorMessage(CONTRACT_INDEX, message);
+
+	#define LOG_INFO(message) __logContractInfoMessage(CONTRACT_INDEX, message);
+
+	#define LOG_WARNING(message) __logContractWarningMessage(CONTRACT_INDEX, message);
+
+	#define LOG_PAUSE() __pauseLogMessage();
+
+	#define LOG_RESUME() __resumeLogMessage();
+
+	#define PRIVATE_FUNCTION(function) \
+		protected: \
+			typedef QPI::NoData function##_locals; \
+			PRIVATE_FUNCTION_WITH_LOCALS(function)
+
+	#define PRIVATE_FUNCTION_WITH_LOCALS(function) \
+		protected: \
+			enum { __is_function_##function = true }; \
+			inline static void function(const QPI::QpiContextFunctionCall& qpi, const QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, function##_input& input, function##_output& output, function##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##function(qpi, state, input, output, locals); } \
+			static void __impl_##function(const QPI::QpiContextFunctionCall& qpi, const QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, function##_input& input, function##_output& output, function##_locals& locals)
+
+	#define PRIVATE_PROCEDURE(procedure) \
+		protected: \
+			typedef QPI::NoData procedure##_locals; \
+			PRIVATE_PROCEDURE_WITH_LOCALS(procedure)
+
+	#define PRIVATE_PROCEDURE_WITH_LOCALS(procedure) \
+		protected: \
+			enum { __is_function_##procedure = false, __id_##procedure = (CONTRACT_INDEX << 22) | __LINE__ }; \
+			inline static void procedure(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##procedure(qpi, state, input, output, locals); } \
+			static void __impl_##procedure(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals)
+
+	#define PUBLIC_FUNCTION(function) \
+		public: \
+			typedef QPI::NoData function##_locals; \
+			PUBLIC_FUNCTION_WITH_LOCALS(function)
+
+	#define PUBLIC_FUNCTION_WITH_LOCALS(function) \
+		public: \
+			enum { __is_function_##function = true }; \
+			inline static void function(const QPI::QpiContextFunctionCall& qpi, const QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, function##_input& input, function##_output& output, function##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##function(qpi, state, input, output, locals); } \
+			static void __impl_##function(const QPI::QpiContextFunctionCall& qpi, const QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, function##_input& input, function##_output& output, function##_locals& locals)
+
+	#define PUBLIC_PROCEDURE(procedure) \
+		public: \
+			typedef QPI::NoData procedure##_locals; \
+			PUBLIC_PROCEDURE_WITH_LOCALS(procedure)
+
+	#define PUBLIC_PROCEDURE_WITH_LOCALS(procedure) \
+		public: \
+			enum { __is_function_##procedure = false, __id_##procedure = (CONTRACT_INDEX << 22) | __LINE__ }; \
+			static_assert(sizeof(procedure##_input) <= MAX_INPUT_SIZE, #procedure "_input size too large"); \
+			inline static void procedure(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##procedure(qpi, state, input, output, locals); } \
+			static void __impl_##procedure(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals)
+
+	#define REGISTER_USER_FUNCTIONS_AND_PROCEDURES() \
+		public: \
+			enum { __contract_index = CONTRACT_INDEX }; \
+			inline static void __registerUserFunctionsAndProcedures(const QPI::QpiContextForInit& qpi) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl___registerUserFunctionsAndProcedures(qpi); } \
+			static void __impl___registerUserFunctionsAndProcedures(const QPI::QpiContextForInit& qpi)
+
+	#define REGISTER_USER_FUNCTION(userFunction, inputType) \
+		static_assert(__is_function_##userFunction, #userFunction " is procedure"); \
+		static_assert(inputType >= 1 && inputType <= 65535, "inputType must be >= 1 and <= 65535"); \
+		static_assert(sizeof(userFunction##_output) <= 65535, #userFunction "_output size too large"); \
+		static_assert(sizeof(userFunction##_input) <= 65535, #userFunction "_input size too large"); \
+		static_assert(sizeof(userFunction##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #userFunction "_locals size too large"); \
+		qpi.__registerUserFunction((USER_FUNCTION)userFunction, inputType, sizeof(userFunction##_input), sizeof(userFunction##_output), sizeof(userFunction##_locals));
+
+	#define REGISTER_USER_PROCEDURE(userProcedure, inputType) \
+		static_assert(!__is_function_##userProcedure, #userProcedure " is function"); \
+		static_assert(inputType >= 1 && inputType <= 65535, "inputType must be >= 1 and <= 65535"); \
+		static_assert(sizeof(userProcedure##_output) <= 65535, #userProcedure "_output size too large"); \
+		static_assert(sizeof(userProcedure##_input) <= 65535, #userProcedure "_input size too large"); \
+		static_assert(sizeof(userProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #userProcedure "_locals size too large"); \
+		qpi.__registerUserProcedure((USER_PROCEDURE)userProcedure, inputType, sizeof(userProcedure##_input), sizeof(userProcedure##_output), sizeof(userProcedure##_locals));
+
+	// Register procedure for notifications (such as oracle reply notification)
+	#define REGISTER_USER_PROCEDURE_NOTIFICATION(userProcedure) \
+		static_assert(!__is_function_##userProcedure, #userProcedure " is function"); \
+		static_assert(sizeof(userProcedure##_output) <= 65535, #userProcedure "_output size too large"); \
+		static_assert(sizeof(userProcedure##_input) <= 65535, #userProcedure "_input size too large"); \
+		static_assert(sizeof(userProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #userProcedure "_locals size too large"); \
+		qpi.__registerUserProcedureNotification((USER_PROCEDURE)userProcedure, __id_##userProcedure, sizeof(userProcedure##_input), sizeof(userProcedure##_output), sizeof(userProcedure##_locals));
+
+	// Call function or procedure of current contract (without changing invocation reward)
+	// WARNING: input may be changed by called function
+	#define CALL(functionOrProcedure, input, output) \
+		static_assert(sizeof(CONTRACT_STATE_TYPE::functionOrProcedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #functionOrProcedure "_locals size too large"); \
+		functionOrProcedure(qpi, state, input, output, *(functionOrProcedure##_locals*)qpi.__qpiAllocLocals(sizeof(CONTRACT_STATE_TYPE::functionOrProcedure##_locals))); \
+		qpi.__qpiFreeLocals()
+
+	// Invoke procedure of current contract with changed invocation reward
+	// WARNING: input may be changed by called function
+	// TODO: INVOKE
+
+	// Call function of other contract with custom error variable name
+	// Use this variant when making multiple inter-contract calls in the same scope
+	// WARNING: input may be changed by called function
+	#define CALL_OTHER_CONTRACT_FUNCTION_E(contractStateType, function, input, output, errorVar) \
+		static_assert(sizeof(contractStateType::function##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #function "_locals size too large"); \
+		static_assert(contractStateType::__is_function_##function, "CALL_OTHER_CONTRACT_FUNCTION_E() cannot be used to invoke procedures."); \
+		static_assert(!(contractStateType::__contract_index == CONTRACT_STATE_TYPE::__contract_index), "Use CALL() to call a function of this contract."); \
+		static_assert(contractStateType::__contract_index < CONTRACT_STATE_TYPE::__contract_index, "You can only call contracts with lower index."); \
+		InterContractCallError errorVar; \
+		do { \
+			const QpiContextFunctionCall* __ctx = qpi.__qpiConstructContextOtherContractFunctionCall(contractStateType::__contract_index, errorVar); \
+			if (__ctx) { \
+				const QPI::ContractState<contractStateType::StateData, contractStateType::__contract_index>* __state = (const QPI::ContractState<contractStateType::StateData, contractStateType::__contract_index>*)qpi.__qpiAcquireStateForReading(contractStateType::__contract_index); \
+				contractStateType::function##_locals* __locals = (contractStateType::function##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::function##_locals)); \
+				contractStateType::function(*__ctx, *__state, input, output, *__locals); \
+				qpi.__qpiFreeLocals(); \
+				qpi.__qpiReleaseStateForReading(contractStateType::__contract_index); \
+				qpi.__qpiFreeContext(); \
+			} \
+		} while(0)
+
+	// Call function of other contract
+	// WARNING: input may be changed by called function
+	#define CALL_OTHER_CONTRACT_FUNCTION(contractStateType, function, input, output) \
+		CALL_OTHER_CONTRACT_FUNCTION_E(contractStateType, function, input, output, interContractCallError)
+
+	// Transfer invocation reward and invoke of other contract (procedure only) with custom error variable name
+	// Use this variant when making multiple inter-contract calls in the same scope
+	// WARNING: input may be changed by called function
+	#define INVOKE_OTHER_CONTRACT_PROCEDURE_E(contractStateType, procedure, input, output, invocationReward, errorVar) \
+		static_assert(sizeof(contractStateType::procedure##_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, #procedure "_locals size too large"); \
+		static_assert(!contractStateType::__is_function_##procedure, "INVOKE_OTHER_CONTRACT_PROCEDURE_E() cannot be used to call functions."); \
+		static_assert(!(contractStateType::__contract_index == CONTRACT_STATE_TYPE::__contract_index), "Use CALL() to call a function/procedure of this contract."); \
+		static_assert(contractStateType::__contract_index < CONTRACT_STATE_TYPE::__contract_index, "You can only call contracts with lower index."); \
+		InterContractCallError errorVar; \
+		do { \
+			const QpiContextProcedureCall* __ctx = qpi.__qpiConstructProcedureCallContext(contractStateType::__contract_index, invocationReward, errorVar); \
+			if (__ctx) { \
+				QPI::ContractState<contractStateType::StateData, contractStateType::__contract_index>* __state = (QPI::ContractState<contractStateType::StateData, contractStateType::__contract_index>*)qpi.__qpiAcquireStateForWriting(contractStateType::__contract_index); \
+				contractStateType::procedure##_locals* __locals = (contractStateType::procedure##_locals*)qpi.__qpiAllocLocals(sizeof(contractStateType::procedure##_locals)); \
+				contractStateType::procedure(*__ctx, *__state, input, output, *__locals); \
+				qpi.__qpiFreeLocals(); \
+				qpi.__qpiReleaseStateForWriting(contractStateType::__contract_index); \
+				qpi.__qpiFreeContext(); \
+			} \
+		} while(0)
+
+	// Transfer invocation reward and invoke of other contract (procedure only)
+	// WARNING: input may be changed by called function
+	#define INVOKE_OTHER_CONTRACT_PROCEDURE(contractStateType, procedure, input, output, invocationReward) \
+		INVOKE_OTHER_CONTRACT_PROCEDURE_E(contractStateType, procedure, input, output, invocationReward, interContractCallError)
+
+	/**
+	* @brief Initiate oracle query that will lead to notification later.
+	* @param OracleInterface Oracle interface struct of interface to query, e.g., OI::Price
+	* @param query Details about which oracle to query for which information, as defined by a specific oracle interface.
+	* @param userProcNotification User procedure that shall be executed when the oracle reply is available or an error occurs.
+	* @param timeoutMillisec Maximum number of milliseconds to wait for reply.
+	* @return Oracle query ID that can be used to get the status of the query, or -1 on error.
+	*
+	* This will automatically burn the oracle query fee as defined by the oracle interface (burning without
+	* adding to the contract's execution fee reserve). It will fail if the contract doesn't have enough QU.
+	*
+	* The notification callback will be executed when the reply is available or on error.
+	* The callback must be a user procedure of the contract calling QUERY_ORACLE() with the procedure input type
+	* OracleNotificationInput<OracleInterface> and NoData as output. The procedure must be registered with
+	* REGISTER_USER_PROCEDURE_NOTIFICATION() in REGISTER_USER_FUNCTIONS_AND_PROCEDURES().
+	*
+	* In the notification callback, success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
+	* If an error happened before the query has been created and sent, input.status is ORACLE_QUERY_STATUS_UNKNOWN
+	* and input.queryId is -1 (invalid).
+	* Other errors that may happen with valid input.queryId are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
+	* input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE.
+	*/
+	#define QUERY_ORACLE(OracleInterface, query, userProcNotification, timeoutMillisec) qpi.__qpiQueryOracle<OracleInterface>(query, userProcNotification, __id_##userProcNotification, timeoutMillisec)
+
+	/**
+	* @brief Subscribe for regularly querying an oracle.
+	* @param query The regular query, which must have a member `DateAndTime timestamp`.
+	* @param notificationCallback User procedure that shall be executed when the oracle reply is available or an error occurs.
+	* @param notificationPeriodInMilliseconds Number of milliseconds between consecutive queries/replies that the contract
+	*           is notified about. Currently, only multiples of 60000 are supported and other values are rejected with an error.
+	* @param notifyWithPreviousReply Whether to immediately notify this contract with the most up-to-date value if any is available.
+	* @return Oracle subscription ID or -1 on error.
+	*
+	* Subscriptions automatically expire at the end of each epoch. So, a common pattern is to call SUBSCRIBE_ORACLE
+	* in BEGIN_EPOCH.
+	*
+	* Subscriptions facilitate sharing common oracle queries among multiple contracts. This saves network resources and allows
+	* to provide a fixed-price subscription for the whole epoch, which is usually much cheaper than the equivalent series of
+	* individual QUERY_ORACLE() calls.
+	*
+	* The SUBSCRIBE_ORACLE call will automatically burn the oracle subscription fee as defined by the oracle interface
+	* (burning without adding to the contract's execution fee reserve). It will fail if the contract doesn't have enough QU.
+	*
+	* The notification callback will be executed when the reply is available or on error.
+	* The callback must be a user procedure of the contract calling SUBSCRIBE_ORACLE with the procedure input type
+	* OracleNotificationInput<OracleInterface> and NoData as output. The procedure must be registered with
+	* REGISTER_USER_PROCEDURE_NOTIFICATION() in REGISTER_USER_FUNCTIONS_AND_PROCEDURES().
+	*
+	* In the notification callback, success is indicated by input.status == ORACLE_QUERY_STATUS_SUCCESS.
+	* If an error happened before the query has been created and sent, input.status is ORACLE_QUERY_STATUS_UNKNOWN
+	* and input.queryId is -1 (invalid).
+	* Other errors that may happen with valid input.queryId are input.status == ORACLE_QUERY_STATUS_TIMEOUT and
+	* input.status == ORACLE_QUERY_STATUS_UNRESOLVABLE.
+	* The timeout of subscription queries is always 60000 milliseconds.
+	*
+	* A contract may subscribe to the same oracle interface with multiple different queries.
+	* However, it cannot subscribe with the same query multiple times.
+	* In order to change the notification period of an existing query, it needs to be unsubscribed first and subscribed again afterwards.
+	*/
+	#define SUBSCRIBE_ORACLE(OracleInterface, query, userProcNotification, notificationPeriodInMilliseconds, notifyWithPreviousReply) qpi.__qpiSubscribeOracle<OracleInterface>(query, userProcNotification, __id_##userProcNotification, notificationPeriodInMilliseconds, notifyWithPreviousReply)
+
+	#define SELF id(CONTRACT_INDEX, 0, 0, 0)
+
+	#define SELF_INDEX CONTRACT_INDEX
+
+	//////////
+
+	#define DEFINE_SHAREHOLDER_PROPOSAL_TYPES(numProposalSlots, assetNameInt64) \
+		public: \
+			typedef ProposalDataYesNo ProposalDataT; \
+			typedef ProposalAndVotingByShareholders<numProposalSlots, assetNameInt64> ProposersAndVotersT; \
+			typedef ProposalVoting<ProposersAndVotersT, ProposalDataT> ProposalVotingT
+
+	#define IMPLEMENT_SetShareholderProposal(numFeeStateVariables, setProposalFeeVarOrValue) \
+		typedef ProposalDataT SetShareholderProposal_input; \
+		typedef uint16 SetShareholderProposal_output; \
+		PUBLIC_PROCEDURE(SetShareholderProposal) { \
+			if (qpi.invocationReward() < setProposalFeeVarOrValue || (input.epoch \
+				&& (input.type != ProposalTypes::VariableYesNo || input.data.variableOptions.variable >= numFeeStateVariables \
+					|| input.data.variableOptions.value < 0))) { \
+				qpi.transfer(qpi.invocator(), qpi.invocationReward()); \
+				output = INVALID_PROPOSAL_INDEX; \
+				return; } \
+			output = qpi(state.mut().proposals).setProposal(qpi.invocator(), input); \
+			if (output == INVALID_PROPOSAL_INDEX) { \
+				qpi.transfer(qpi.invocator(), qpi.invocationReward()); \
+				return;	} \
+			qpi.burn(setProposalFeeVarOrValue); \
+			if (qpi.invocationReward() > setProposalFeeVarOrValue) { \
+				qpi.transfer(qpi.invocator(), qpi.invocationReward() - setProposalFeeVarOrValue); } }
+
+	#define IMPLEMENT_GetShareholderProposal() \
+		struct GetShareholderProposal_input { uint16 proposalIndex; }; \
+		struct GetShareholderProposal_output { ProposalDataT proposal; id proposerPubicKey; }; \
+		PUBLIC_FUNCTION(GetShareholderProposal) { \
+			output.proposerPubicKey = qpi(state.get().proposals).proposerId(input.proposalIndex); \
+			qpi(state.get().proposals).getProposal(input.proposalIndex, output.proposal); }
+
+	#define IMPLEMENT_GetShareholderProposalIndices() \
+		struct GetShareholderProposalIndices_input { bit activeProposals; sint32 prevProposalIndex; }; \
+		struct GetShareholderProposalIndices_output { uint16 numOfIndices; Array<uint16, 64> indices; }; \
+		PUBLIC_FUNCTION(GetShareholderProposalIndices) {\
+			if (input.activeProposals) { \
+				while ((input.prevProposalIndex = qpi(state.get().proposals).nextProposalIndex(input.prevProposalIndex, qpi.epoch())) >= 0) { \
+					output.indices.set(output.numOfIndices, input.prevProposalIndex); \
+					++output.numOfIndices; \
+					if (output.numOfIndices == output.indices.capacity()) break; } } \
+			else { \
+				while ((input.prevProposalIndex = qpi(state.get().proposals).nextFinishedProposalIndex(input.prevProposalIndex)) >= 0) { \
+					output.indices.set(output.numOfIndices, input.prevProposalIndex); \
+					++output.numOfIndices; \
+					if (output.numOfIndices == output.indices.capacity()) break; } } }
+
+	#define IMPLEMENT_GetShareholderProposalFees(setProposalFeeVarOrValue) \
+		typedef NoData GetShareholderProposalFees_input; \
+		struct GetShareholderProposalFees_output { sint64 setProposalFee; sint64 setVoteFee; }; \
+		PUBLIC_FUNCTION(GetShareholderProposalFees) { \
+			output.setProposalFee = setProposalFeeVarOrValue; \
+			output.setVoteFee = 0; }
+
+	#define IMPLEMENT_SetShareholderVotes() \
+		typedef ProposalMultiVoteDataV1 SetShareholderVotes_input; \
+		typedef bit SetShareholderVotes_output; \
+		PUBLIC_PROCEDURE(SetShareholderVotes) { \
+			output = qpi(state.mut().proposals).vote(qpi.invocator(), input); } \
+
+	#define IMPLEMENT_GetShareholderVotes() \
+		struct GetShareholderVotes_input { id voter; uint16 proposalIndex; }; \
+		typedef ProposalMultiVoteDataV1 GetShareholderVotes_output; \
+		PUBLIC_FUNCTION(GetShareholderVotes) { \
+			qpi(state.get().proposals).getVotes(input.proposalIndex, input.voter,	output); }
+
+	#define IMPLEMENT_GetShareholderVotingResults() \
+		struct GetShareholderVotingResults_input { uint16 proposalIndex; }; \
+		typedef ProposalSummarizedVotingDataV1 GetShareholderVotingResults_output; \
+		PUBLIC_FUNCTION(GetShareholderVotingResults) { \
+			qpi(state.get().proposals).getVotingSummary(input.proposalIndex, output); }
+
+	#define IMPLEMENT_SET_SHAREHOLDER_PROPOSAL() \
+		struct SET_SHAREHOLDER_PROPOSAL_locals { SetShareholderProposal_input userProcInput; }; \
+		SET_SHAREHOLDER_PROPOSAL_WITH_LOCALS() { \
+			copyFromBuffer(locals.userProcInput, input); \
+			CALL(SetShareholderProposal, locals.userProcInput, output); }
+
+	#define IMPLEMENT_SET_SHAREHOLDER_VOTES() \
+		SET_SHAREHOLDER_VOTES() { \
+			CALL(SetShareholderVotes, input, output); }
+
+	// Define procedures for easily implementing END_EPOCH
+	#define IMPLEMENT_FinalizeShareholderStateVarProposals() \
+		struct FinalizeShareholderProposalSetStateVar_input { \
+			sint32 proposalIndex; ProposalDataT proposal; ProposalSummarizedVotingDataV1 results; \
+			sint32 acceptedOption; 	sint64 acceptedValue; }; \
+		typedef NoData FinalizeShareholderProposalSetStateVar_output; \
+		typedef NoData FinalizeShareholderStateVarProposals_input; \
+		typedef NoData FinalizeShareholderStateVarProposals_output; \
+		struct FinalizeShareholderStateVarProposals_locals { \
+			FinalizeShareholderProposalSetStateVar_input p; uint16 proposalClass; }; \
+		PRIVATE_PROCEDURE_WITH_LOCALS(FinalizeShareholderStateVarProposals) { \
+			locals.p.proposalIndex = -1; \
+			while ((locals.p.proposalIndex = qpi(state.get().proposals).nextProposalIndex(locals.p.proposalIndex, qpi.epoch())) >= 0) { \
+				if (!qpi(state.get().proposals).getProposal(locals.p.proposalIndex, locals.p.proposal)) \
+					continue; \
+				locals.proposalClass = ProposalTypes::cls(locals.p.proposal.type); \
+				if (locals.proposalClass == ProposalTypes::Class::Variable || locals.proposalClass == ProposalTypes::Class::MultiVariables) { \
+					if (!qpi(state.get().proposals).getVotingSummary(locals.p.proposalIndex, locals.p.results)) \
+						continue; \
+					locals.p.acceptedOption = locals.p.results.getAcceptedOption(); \
+					if (locals.p.acceptedOption <= 0) \
+						continue; \
+					locals.p.acceptedValue = locals.p.proposal.data.variableOptions.value; \
+					CALL(FinalizeShareholderProposalSetStateVar, locals.p, output); } } } \
+		PRIVATE_PROCEDURE(FinalizeShareholderProposalSetStateVar)
+
+	#define IMPLEMENT_DEFAULT_SHAREHOLDER_PROPOSAL_VOTING(numFeeStateVariables, setProposalFeeVarOrValue) \
+		IMPLEMENT_SetShareholderProposal(numFeeStateVariables, setProposalFeeVarOrValue) \
+		IMPLEMENT_GetShareholderProposal() \
+		IMPLEMENT_GetShareholderProposalIndices() \
+		IMPLEMENT_GetShareholderProposalFees(setProposalFeeVarOrValue) \
+		IMPLEMENT_SetShareholderVotes() \
+		IMPLEMENT_GetShareholderVotes() \
+		IMPLEMENT_GetShareholderVotingResults() \
+		IMPLEMENT_SET_SHAREHOLDER_PROPOSAL() \
+		IMPLEMENT_SET_SHAREHOLDER_VOTES()
+
+	#define REGISTER_GetShareholderProposalFees() REGISTER_USER_FUNCTION(GetShareholderProposalFees, 65531)
+	#define REGISTER_GetShareholderProposalIndices() REGISTER_USER_FUNCTION(GetShareholderProposalIndices, 65532)
+	#define REGISTER_GetShareholderProposal() REGISTER_USER_FUNCTION(GetShareholderProposal, 65533)
+	#define REGISTER_GetShareholderVotes() REGISTER_USER_FUNCTION(GetShareholderVotes, 65534)
+	#define REGISTER_GetShareholderVotingResults() REGISTER_USER_FUNCTION(GetShareholderVotingResults, 65535)
+	#define REGISTER_SetShareholderProposal() REGISTER_USER_PROCEDURE(SetShareholderProposal, 65534)
+	#define REGISTER_SetShareholderVotes() REGISTER_USER_PROCEDURE(SetShareholderVotes, 65535)
+
+	#define REGISTER_SHAREHOLDER_PROPOSAL_VOTING()  REGISTER_GetShareholderProposalFees() \
+		REGISTER_GetShareholderProposalIndices(); REGISTER_GetShareholderProposal(); \
+		REGISTER_GetShareholderVotes(); REGISTER_GetShareholderVotingResults(); \
+		REGISTER_SetShareholderProposal(); REGISTER_SetShareholderVotes()
+
+}

@@ -2,7 +2,7 @@
 
 #include "public_settings.h"
 
-#include "contracts/qpi.h"
+#include "qpi/qpi.h"
 
 #include "platform/global_var.h"
 #include "platform/read_write_lock.h"

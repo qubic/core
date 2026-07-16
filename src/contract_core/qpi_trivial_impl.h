@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "../contracts/qpi.h"
+#include "../qpi/qpi.h"
 #include "../contracts/math_lib.h"
 #include "../platform/memory.h"
 #include "../platform/time.h"

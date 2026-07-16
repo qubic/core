@@ -93,9 +93,6 @@
     <ClInclude Include="contracts\math_lib.h">
       <Filter>contracts</Filter>
     </ClInclude>
-    <ClInclude Include="contracts\qpi.h">
-      <Filter>contracts</Filter>
-    </ClInclude>
     <ClInclude Include="contracts\Quottery.h">
       <Filter>contracts</Filter>
     </ClInclude>
@@ -388,6 +385,27 @@
     <ClInclude Include="platform\virtual_memory.h">
       <Filter>platform</Filter>
     </ClInclude>
+    <ClInclude Include="qpi\qpi_types.h">
+      <Filter>qpi</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\qpi_containers.h">
+      <Filter>qpi</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\qpi_assets.h">
+      <Filter>qpi</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\qpi_proposals.h">
+      <Filter>qpi</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\qpi_context.h">
+      <Filter>qpi</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\qpi_macros.h">
+      <Filter>qpi</Filter>
+    </ClInclude>
+    <ClInclude Include="qpi\qpi.h">
+      <Filter>qpi</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
@@ -431,6 +449,9 @@
     </Filter>
     <Filter Include="oracle_core">
       <UniqueIdentifier>{a42dd6f2-617c-4fbc-b3ec-f51975e5c447}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="qpi">
+      <UniqueIdentifier>{c1a2bec9-4637-4079-a00c-a7234e854fb5}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

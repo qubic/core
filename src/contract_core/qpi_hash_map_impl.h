@@ -7,7 +7,7 @@
 
 #include "pre_qpi_def.h"
 #include "../common_buffers.h"
-#include "../contracts/qpi.h"
+#include "../qpi/qpi.h"
 #include "../platform/memory.h"
 #include "../kangaroo_twelve.h"
 #include "../contracts/math_lib.h"
