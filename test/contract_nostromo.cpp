@@ -141,7 +141,7 @@ public:
 	}
 
 	NOST::CreateAuction_output createAuction(const id& seller, const NOST::CreateAuction_input& input,
-	                                         sint64 reward = NOST_PUBLIC_BATCH_AUCTION_CREATION_FEE)
+	                                         sint64 reward = NOST_PUBLIC_AUCTION_CREATION_FEE)
 	{
 		if (reward > 0)
 		{
@@ -331,12 +331,12 @@ public:
 		return output;
 	}
 
-	NOST::SetAuctionFees_input makeCoordinatorFeeInput(uint64 batchAuctionCreationFee) const
+	NOST::SetAuctionFees_input makeCoordinatorFeeInput(sint64 publicAuctionCreationFee) const
 	{
 		const auto fees = getAuctionFees();
 		NOST::SetAuctionFees_input input{};
 		input.privateAuctionFee = fees.privateAuctionFee;
-		input.batchAuctionCreationFee = batchAuctionCreationFee;
+		input.publicAuctionCreationFee = publicAuctionCreationFee;
 		input.auctionCancellationFeeBasisPoints = fees.auctionCancellationFeeBasisPoints;
 		input.managementFeeBasisPoints = fees.managementFeeBasisPoints;
 		input.developmentFeeBasisPoints = fees.developmentFeeBasisPoints;
@@ -349,12 +349,12 @@ public:
 		return input;
 	}
 
-	NOST::SetAuctionFeesByManagement_input makeManagementFeeInput(uint64 batchAuctionCreationFee) const
+	NOST::SetAuctionFeesByManagement_input makeManagementFeeInput(sint64 publicAuctionCreationFee) const
 	{
 		const auto fees = getAuctionFees();
 		NOST::SetAuctionFeesByManagement_input input{};
 		input.privateAuctionFee = fees.privateAuctionFee;
-		input.batchAuctionCreationFee = batchAuctionCreationFee;
+		input.publicAuctionCreationFee = publicAuctionCreationFee;
 		input.auctionCancellationFeeBasisPoints = fees.auctionCancellationFeeBasisPoints;
 		input.managementFeeBasisPoints = fees.managementFeeBasisPoints;
 		input.developmentFeeBasisPoints = fees.developmentFeeBasisPoints;
@@ -780,7 +780,7 @@ TEST(ContractNostromoAuction, InitialStateAndGettersAuction)
 
 	const auto fees = nostromo.getAuctionFees();
 	EXPECT_EQ(fees.privateAuctionFee, NOST_DEFAULT_PRIVATE_AUCTION_FEE);
-	EXPECT_EQ(fees.batchAuctionCreationFee, static_cast<uint64>(NOST_PUBLIC_BATCH_AUCTION_CREATION_FEE));
+	EXPECT_EQ(fees.publicAuctionCreationFee, NOST_PUBLIC_AUCTION_CREATION_FEE);
 	EXPECT_EQ(fees.auctionCancellationFeeBasisPoints, NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP);
 	EXPECT_EQ(fees.managementFeeBasisPoints, NOST_DEFAULT_AUCTION_MANAGEMENT_FEE_BP);
 	EXPECT_EQ(fees.developmentFeeBasisPoints, NOST_DEFAULT_AUCTION_DEVELOPMENT_FEE_BP);
@@ -1068,15 +1068,15 @@ TEST(ContractNostromoAuction, CreateBatchPublicAuctionEscrowsLotAuction)
 	EXPECT_EQ(nostromo.sharesManagedBy(asset, NOST_CONTRACT_ID, NOST_CONTRACT_INDEX), 9);
 }
 
-TEST(ContractNostromoAuction, PublicBatchCreationAccumulatesConfiguredFeeAndRefundsExcessAuction)
+TEST(ContractNostromoAuction, PublicAuctionCreationAccumulatesConfiguredFeeAndRefundsExcessAuction)
 {
 	ContractTestingNOST nostromo;
 	const id seller(901, 902, 903, 904);
 	const Asset asset{seller, assetNameFromString("BCRFEE")};
-	constexpr uint64 configuredFee = 73;
+	constexpr sint64 configuredFee = 73;
 	const auto feeInput = nostromo.makeCoordinatorFeeInput(configuredFee);
 	ASSERT_EQ(nostromo.setAuctionFees(ContractTestingNOST::takeoverCoordinatorWallet(), feeInput).errorCode, NOST::EAuctionError::Success);
-	ASSERT_EQ(nostromo.getAuctionFees().batchAuctionCreationFee, configuredFee);
+	ASSERT_EQ(nostromo.getAuctionFees().publicAuctionCreationFee, configuredFee);
 
 	EXPECT_EQ(nostromo.issueAsset(seller, asset.assetName, 3), 3);
 	EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 3), 3);
@@ -1094,37 +1094,60 @@ TEST(ContractNostromoAuction, PublicBatchCreationAccumulatesConfiguredFeeAndRefu
 
 	const auto exact = nostromo.createAuctionWithFundedReward(seller, input, configuredFee);
 	ASSERT_EQ(exact.errorCode, NOST::EAuctionError::Success);
-	EXPECT_EQ(getBalance(seller), sellerBefore - static_cast<sint64>(configuredFee));
-	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), contractBefore + static_cast<sint64>(configuredFee));
-	expectedPool += configuredFee;
+	EXPECT_EQ(getBalance(seller), sellerBefore - configuredFee);
+	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), contractBefore + configuredFee);
+	expectedPool += static_cast<uint64>(configuredFee);
 	EXPECT_EQ(nostromo.getPendingServiceFeePool().pendingServiceFeePool, expectedPool);
 
 	constexpr sint64 excessReward = configuredFee + 37;
 	const auto excess = nostromo.createAuctionWithFundedReward(seller, input, excessReward);
 	ASSERT_EQ(excess.errorCode, NOST::EAuctionError::Success);
-	EXPECT_EQ(getBalance(seller), sellerBefore - static_cast<sint64>(2 * configuredFee));
-	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), contractBefore + static_cast<sint64>(2 * configuredFee));
-	expectedPool += configuredFee;
+	EXPECT_EQ(getBalance(seller), sellerBefore - 2 * configuredFee);
+	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), contractBefore + 2 * configuredFee);
+	expectedPool += static_cast<uint64>(configuredFee);
 	EXPECT_EQ(nostromo.getPendingServiceFeePool().pendingServiceFeePool, expectedPool);
 
-	constexpr uint64 managementConfiguredFee = 29;
+	constexpr sint64 managementConfiguredFee = 29;
 	const auto managementFeeInput = nostromo.makeManagementFeeInput(managementConfiguredFee);
 	ASSERT_EQ(nostromo.setAuctionFeesByManagement(ContractTestingNOST::managementWallet(), managementFeeInput).errorCode,
 	          NOST::EAuctionError::Success);
-	ASSERT_EQ(nostromo.getAuctionFees().batchAuctionCreationFee, managementConfiguredFee);
+	ASSERT_EQ(nostromo.getAuctionFees().publicAuctionCreationFee, managementConfiguredFee);
 	const auto managementConfigured = nostromo.createAuctionWithFundedReward(seller, input, managementConfiguredFee);
 	ASSERT_EQ(managementConfigured.errorCode, NOST::EAuctionError::Success);
-	EXPECT_EQ(getBalance(seller), sellerBefore - static_cast<sint64>(2 * configuredFee + managementConfiguredFee));
-	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), contractBefore + static_cast<sint64>(2 * configuredFee + managementConfiguredFee));
-	expectedPool += managementConfiguredFee;
+	EXPECT_EQ(getBalance(seller), sellerBefore - (2 * configuredFee + managementConfiguredFee));
+	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), contractBefore + 2 * configuredFee + managementConfiguredFee);
+	expectedPool += static_cast<uint64>(managementConfiguredFee);
 	EXPECT_EQ(nostromo.getPendingServiceFeePool().pendingServiceFeePool, expectedPool);
 
 	const id standardSeller(921, 922, 923, 924);
 	const Asset standardAsset{standardSeller, assetNameFromString("BCFSTD")};
-	ASSERT_EQ(nostromo.issueAsset(standardSeller, standardAsset.assetName, 1), 1);
-	ASSERT_EQ(nostromo.transferShareManagementRightsToNostromo(standardSeller, standardAsset, 1), 1);
+	ASSERT_EQ(nostromo.issueAsset(standardSeller, standardAsset.assetName, 3), 3);
+	ASSERT_EQ(nostromo.transferShareManagementRightsToNostromo(standardSeller, standardAsset, 3), 3);
 	const auto standardInput = ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(standardAsset, 1));
-	EXPECT_EQ(nostromo.createAuctionWithFundedReward(standardSeller, standardInput, 0).errorCode, NOST::EAuctionError::Success);
+	nostromo.seedUser(standardSeller, 1000);
+	const sint64 standardSellerBefore = getBalance(standardSeller);
+	const sint64 standardContractBefore = getBalance(NOST_CONTRACT_ID);
+
+	const auto standardInsufficient =
+	    nostromo.createAuctionWithFundedReward(standardSeller, standardInput, managementConfiguredFee - 1);
+	EXPECT_EQ(standardInsufficient.errorCode, NOST::EAuctionError::InsufficientFunds);
+	EXPECT_EQ(getBalance(standardSeller), standardSellerBefore);
+	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), standardContractBefore);
+	EXPECT_EQ(nostromo.getPendingServiceFeePool().pendingServiceFeePool, expectedPool);
+
+	const auto standardExact = nostromo.createAuctionWithFundedReward(standardSeller, standardInput, managementConfiguredFee);
+	ASSERT_EQ(standardExact.errorCode, NOST::EAuctionError::Success);
+	EXPECT_EQ(getBalance(standardSeller), standardSellerBefore - managementConfiguredFee);
+	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), standardContractBefore + managementConfiguredFee);
+	expectedPool += static_cast<uint64>(managementConfiguredFee);
+	EXPECT_EQ(nostromo.getPendingServiceFeePool().pendingServiceFeePool, expectedPool);
+
+	constexpr sint64 standardExcessReward = managementConfiguredFee + 17;
+	const auto standardExcess = nostromo.createAuctionWithFundedReward(standardSeller, standardInput, standardExcessReward);
+	ASSERT_EQ(standardExcess.errorCode, NOST::EAuctionError::Success);
+	EXPECT_EQ(getBalance(standardSeller), standardSellerBefore - 2 * managementConfiguredFee);
+	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), standardContractBefore + 2 * managementConfiguredFee);
+	expectedPool += static_cast<uint64>(managementConfiguredFee);
 	EXPECT_EQ(nostromo.getPendingServiceFeePool().pendingServiceFeePool, expectedPool);
 
 	const id privateSeller(925, 926, 927, 928);
@@ -1140,6 +1163,22 @@ TEST(ContractNostromoAuction, PublicBatchCreationAccumulatesConfiguredFeeAndRefu
 	EXPECT_EQ(nostromo.createAuctionWithFundedReward(privateSeller, privateInput, NOST_DEFAULT_PRIVATE_AUCTION_FEE).errorCode,
 	          NOST::EAuctionError::Success);
 	EXPECT_EQ(getBalance(privateSeller), privateSellerBefore - NOST_DEFAULT_PRIVATE_AUCTION_FEE);
+	expectedPool += static_cast<uint64>(NOST_DEFAULT_PRIVATE_AUCTION_FEE);
+	EXPECT_EQ(nostromo.getPendingServiceFeePool().pendingServiceFeePool, expectedPool);
+
+	const id privateStandardSeller(933, 934, 935, 936);
+	const Asset privateStandardAsset{privateStandardSeller, assetNameFromString("PRVSTD")};
+	ASSERT_EQ(nostromo.issueAsset(privateStandardSeller, privateStandardAsset.assetName, 1), 1);
+	ASSERT_EQ(nostromo.transferShareManagementRightsToNostromo(privateStandardSeller, privateStandardAsset, 1), 1);
+	auto privateStandardInput =
+	    ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(privateStandardAsset, 1));
+	privateStandardInput.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
+	privateStandardInput.allowedBidderWallets = ContractTestingNOST::makeAllowedWallets({allowedBidder});
+	nostromo.seedUser(privateStandardSeller, NOST_DEFAULT_PRIVATE_AUCTION_FEE + 100);
+	const sint64 privateStandardSellerBefore = getBalance(privateStandardSeller);
+	EXPECT_EQ(nostromo.createAuctionWithFundedReward(privateStandardSeller, privateStandardInput, NOST_DEFAULT_PRIVATE_AUCTION_FEE).errorCode,
+	          NOST::EAuctionError::Success);
+	EXPECT_EQ(getBalance(privateStandardSeller), privateStandardSellerBefore - NOST_DEFAULT_PRIVATE_AUCTION_FEE);
 	expectedPool += static_cast<uint64>(NOST_DEFAULT_PRIVATE_AUCTION_FEE);
 	EXPECT_EQ(nostromo.getPendingServiceFeePool().pendingServiceFeePool, expectedPool);
 
@@ -1171,14 +1210,14 @@ TEST(ContractNostromoAuction, BatchBidFeeBoundariesAuction)
 	}
 }
 
-TEST(ContractNostromoAuction, BatchAuctionCreationFeeConfigurationBoundariesAuction)
+TEST(ContractNostromoAuction, PublicAuctionCreationFeeConfigurationBoundariesAuction)
 {
 	ContractTestingNOST nostromo;
-	EXPECT_EQ(nostromo.getAuctionFees().batchAuctionCreationFee, static_cast<uint64>(NOST_PUBLIC_BATCH_AUCTION_CREATION_FEE));
+	EXPECT_EQ(nostromo.getAuctionFees().publicAuctionCreationFee, NOST_PUBLIC_AUCTION_CREATION_FEE);
 
 	auto coordinatorInput = nostromo.makeCoordinatorFeeInput(0);
 	ASSERT_EQ(nostromo.setAuctionFees(ContractTestingNOST::takeoverCoordinatorWallet(), coordinatorInput).errorCode, NOST::EAuctionError::Success);
-	EXPECT_EQ(nostromo.getAuctionFees().batchAuctionCreationFee, 0ULL);
+	EXPECT_EQ(nostromo.getAuctionFees().publicAuctionCreationFee, 0LL);
 	const id zeroFeeSeller(941, 942, 943, 944);
 	const Asset zeroFeeAsset{zeroFeeSeller, assetNameFromString("ZEROFEE")};
 	ASSERT_EQ(nostromo.issueAsset(zeroFeeSeller, zeroFeeAsset.assetName, 1), 1);
@@ -1186,13 +1225,22 @@ TEST(ContractNostromoAuction, BatchAuctionCreationFeeConfigurationBoundariesAuct
 	EXPECT_EQ(nostromo.createAuctionWithFundedReward(zeroFeeSeller, ContractTestingNOST::makeBatchAuctionInput(zeroFeeAsset, 1, 1), 0).errorCode,
 	          NOST::EAuctionError::Success);
 
-	coordinatorInput.batchAuctionCreationFee = static_cast<uint64>(INT64_MAX);
+	coordinatorInput.publicAuctionCreationFee = INT64_MAX;
 	ASSERT_EQ(nostromo.setAuctionFees(ContractTestingNOST::takeoverCoordinatorWallet(), coordinatorInput).errorCode, NOST::EAuctionError::Success);
-	EXPECT_EQ(nostromo.getAuctionFees().batchAuctionCreationFee, static_cast<uint64>(INT64_MAX));
+	EXPECT_EQ(nostromo.getAuctionFees().publicAuctionCreationFee, INT64_MAX);
+
+	const auto feesBeforeInvalidUpdate = nostromo.getAuctionFees();
+	coordinatorInput.publicAuctionCreationFee = -1;
+	coordinatorInput.auctionCancellationFeeBasisPoints = 0;
+	EXPECT_EQ(nostromo.setAuctionFees(ContractTestingNOST::takeoverCoordinatorWallet(), coordinatorInput).errorCode,
+	          NOST::EAuctionError::InvalidInput);
+	const auto feesAfterInvalidUpdate = nostromo.getAuctionFees();
+	EXPECT_EQ(feesAfterInvalidUpdate.publicAuctionCreationFee, feesBeforeInvalidUpdate.publicAuctionCreationFee);
+	EXPECT_EQ(feesAfterInvalidUpdate.auctionCancellationFeeBasisPoints, feesBeforeInvalidUpdate.auctionCancellationFeeBasisPoints);
 
 	auto managementInput = nostromo.makeManagementFeeInput(41);
 	ASSERT_EQ(nostromo.setAuctionFeesByManagement(ContractTestingNOST::managementWallet(), managementInput).errorCode, NOST::EAuctionError::Success);
-	EXPECT_EQ(nostromo.getAuctionFees().batchAuctionCreationFee, 41ULL);
+	EXPECT_EQ(nostromo.getAuctionFees().publicAuctionCreationFee, 41LL);
 }
 
 TEST(ContractNostromoAuction, AcceptedBatchBidAccumulatesFeeAndKeepsEscrowAuction)
@@ -1254,10 +1302,16 @@ TEST(ContractNostromoAuction, CreateStandardSingleAssetAuctionEscrowsLotAuction)
 	auto input = ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(asset, 5));
 	input.minimumPurchaseQuantity = UINT64_MAX;
 
+	nostromo.seedUser(seller, 1000);
 	const sint64 sellerBalanceBefore = getBalance(seller);
-	const auto output = nostromo.createAuctionWithFundedReward(seller, input, 0);
+	const sint64 contractBalanceBefore = getBalance(NOST_CONTRACT_ID);
+	const uint64 poolBefore = nostromo.getPendingServiceFeePool().pendingServiceFeePool;
+	const auto output = nostromo.createAuctionWithFundedReward(seller, input, NOST_PUBLIC_AUCTION_CREATION_FEE);
 	ASSERT_EQ(output.errorCode, NOST::EAuctionError::Success);
-	EXPECT_EQ(getBalance(seller), sellerBalanceBefore);
+	EXPECT_EQ(getBalance(seller), sellerBalanceBefore - NOST_PUBLIC_AUCTION_CREATION_FEE);
+	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), contractBalanceBefore + NOST_PUBLIC_AUCTION_CREATION_FEE);
+	EXPECT_EQ(nostromo.getPendingServiceFeePool().pendingServiceFeePool,
+	          poolBefore + static_cast<uint64>(NOST_PUBLIC_AUCTION_CREATION_FEE));
 
 	const auto auction = nostromo.getAuction(output.auctionIndex).auction;
 	EXPECT_EQ(auction.core.quantityForSale, 1ULL);
@@ -3207,7 +3261,7 @@ TEST(ContractNostromoAuction, GovernanceAndFeeSettersAuction)
 
 	NOST::SetAuctionFees_input coordinatorInput{};
 	coordinatorInput.privateAuctionFee = 60000000;
-	coordinatorInput.batchAuctionCreationFee = 123;
+	coordinatorInput.publicAuctionCreationFee = 123;
 	coordinatorInput.auctionCancellationFeeBasisPoints = 900;
 	coordinatorInput.managementFeeBasisPoints = 60;
 	coordinatorInput.developmentFeeBasisPoints = 70;
@@ -3237,7 +3291,7 @@ TEST(ContractNostromoAuction, GovernanceAndFeeSettersAuction)
 	EXPECT_EQ(fees.takeoverCoordinatorFeeBasisPoints, 80ULL);
 	EXPECT_EQ(fees.shareholderDividendBasisPoints, 8500ULL);
 	EXPECT_EQ(fees.shareholderFeeBasisPointsTier1, 400ULL);
-	EXPECT_EQ(fees.batchAuctionCreationFee, 123ULL);
+	EXPECT_EQ(fees.publicAuctionCreationFee, 123LL);
 
 	const auto setManagementForbidden = nostromo.setManagement(outsider, newManagement);
 	EXPECT_EQ(setManagementForbidden.errorCode, NOST::EAuctionError::Forbidden);
@@ -3251,7 +3305,7 @@ TEST(ContractNostromoAuction, GovernanceAndFeeSettersAuction)
 
 	NOST::SetAuctionFeesByManagement_input managementInput{};
 	managementInput.privateAuctionFee = 70000000;
-	managementInput.batchAuctionCreationFee = 456;
+	managementInput.publicAuctionCreationFee = 456;
 	managementInput.auctionCancellationFeeBasisPoints = 800;
 	managementInput.managementFeeBasisPoints = 90;
 	managementInput.developmentFeeBasisPoints = 110;
@@ -3274,7 +3328,7 @@ TEST(ContractNostromoAuction, GovernanceAndFeeSettersAuction)
 
 	fees = nostromo.getAuctionFees();
 	EXPECT_EQ(fees.privateAuctionFee, 70000000);
-	EXPECT_EQ(fees.batchAuctionCreationFee, 456ULL);
+	EXPECT_EQ(fees.publicAuctionCreationFee, 456LL);
 	EXPECT_EQ(fees.auctionCancellationFeeBasisPoints, 800ULL);
 	EXPECT_EQ(fees.managementFeeBasisPoints, 90ULL);
 	EXPECT_EQ(fees.developmentFeeBasisPoints, 110ULL);

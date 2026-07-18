@@ -32,8 +32,8 @@ constexpr uint64 NOST_AUCTION_REQUIRED_ACCESS_ASSET_NUM = 4;
 constexpr uint32 NOST_AUCTION_MAX_DURATION_DAYS = 30;
 // Default fee charged to create a private auction, in qu.
 constexpr sint64 NOST_DEFAULT_PRIVATE_AUCTION_FEE = 50000000LL;
-// Default fee accumulated after successfully creating a public Batch Auction and distributed at END_EPOCH, in qu.
-constexpr uint64 NOST_PUBLIC_BATCH_AUCTION_CREATION_FEE = 100LL;
+// Default fee accumulated after successfully creating a public auction and distributed at END_EPOCH, in qu.
+constexpr sint64 NOST_PUBLIC_AUCTION_CREATION_FEE = 100LL;
 // Minimum total payment target for small accepted Batch Auction bids, in qu.
 constexpr uint64 NOST_BATCH_BID_FEE_CUTOFF = 100ULL;
 // Default fee deducted when an auction is cancelled, in basis points.
@@ -359,8 +359,8 @@ struct NOST : public ContractBase
 		/** @brief Configured fee charged when creating a private auction. */
 		sint64 privateAuctionFee;
 
-		/** @brief Configured fee accumulated when creating a public Batch Auction and distributed at `END_EPOCH`. */
-		uint64 batchAuctionCreationFee;
+		/** @brief Configured non-negative fee accumulated when creating a public auction and distributed at `END_EPOCH`. */
+		sint64 publicAuctionCreationFee;
 
 		/** @brief Configured cancellation fee rate in basis points. */
 		uint64 auctionCancellationFeeBasisPoints;
@@ -576,8 +576,8 @@ struct NOST : public ContractBase
 		/** @brief Fee charged when a private auction is created. */
 		sint64 privateAuctionFee;
 
-		/** @brief Fee accumulated when a public Batch Auction is created and distributed at `END_EPOCH`; must not exceed `INT64_MAX`. */
-		uint64 batchAuctionCreationFee;
+		/** @brief Non-negative fee accumulated when a public auction is created and distributed at `END_EPOCH`. */
+		sint64 publicAuctionCreationFee;
 
 		/** @brief Cancellation fee rate in basis points. */
 		uint64 auctionCancellationFeeBasisPoints;
@@ -619,8 +619,8 @@ struct NOST : public ContractBase
 		/** @brief Fee charged when a private auction is created. */
 		sint64 privateAuctionFee;
 
-		/** @brief Fee accumulated when a public Batch Auction is created and distributed at `END_EPOCH`; must not exceed `INT64_MAX`. */
-		uint64 batchAuctionCreationFee;
+		/** @brief Non-negative fee accumulated when a public auction is created and distributed at `END_EPOCH`. */
+		sint64 publicAuctionCreationFee;
 
 		/** @brief Cancellation fee rate in basis points. */
 		uint64 auctionCancellationFeeBasisPoints;
@@ -783,8 +783,8 @@ struct NOST : public ContractBase
 		/** @brief Fee charged when a private auction is created. */
 		sint64 privateAuctionFee;
 
-		/** @brief Fee accumulated when a public Batch Auction is created and distributed at `END_EPOCH`. */
-		uint64 batchAuctionCreationFee;
+		/** @brief Non-negative fee accumulated when a public auction is created and distributed at `END_EPOCH`. */
+		sint64 publicAuctionCreationFee;
 
 		/** @brief Cancellation fee rate in basis points. */
 		uint64 auctionCancellationFeeBasisPoints;
@@ -1954,7 +1954,7 @@ struct NOST : public ContractBase
 	{
 		// Install the default governance, fee, pause, and guard configuration into the zeroed contract state.
 		state.mut().privateAuctionFee = NOST_DEFAULT_PRIVATE_AUCTION_FEE;
-		state.mut().batchAuctionCreationFee = NOST_PUBLIC_BATCH_AUCTION_CREATION_FEE;
+		state.mut().publicAuctionCreationFee = NOST_PUBLIC_AUCTION_CREATION_FEE;
 		state.mut().auctionCancellationFeeBasisPoints = NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP;
 		state.mut().managementFeeBasisPoints = NOST_DEFAULT_AUCTION_MANAGEMENT_FEE_BP;
 		state.mut().developmentFeeBasisPoints = NOST_DEFAULT_AUCTION_DEVELOPMENT_FEE_BP;
@@ -1999,7 +1999,7 @@ struct NOST : public ContractBase
 		{
 			// Initialize
 			state.mut().privateAuctionFee = NOST_DEFAULT_PRIVATE_AUCTION_FEE;
-			state.mut().batchAuctionCreationFee = NOST_PUBLIC_BATCH_AUCTION_CREATION_FEE;
+			state.mut().publicAuctionCreationFee = NOST_PUBLIC_AUCTION_CREATION_FEE;
 			state.mut().auctionCancellationFeeBasisPoints = NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP;
 			state.mut().managementFeeBasisPoints = NOST_DEFAULT_AUCTION_MANAGEMENT_FEE_BP;
 			state.mut().developmentFeeBasisPoints = NOST_DEFAULT_AUCTION_DEVELOPMENT_FEE_BP;
@@ -2125,44 +2125,54 @@ struct NOST : public ContractBase
 		while (locals.auctionIndex != NULL_INDEX)
 		{
 			locals.auction = state.get().auctionList.value(locals.auctionIndex);
-			if (locals.auction.core.status == EAuctionStatus::Active)
+			switch (locals.auction.core.status)
 			{
-				diffDateInSecond(locals.auction.core.createdAt, locals.currentDate, locals.elapsedSeconds);
-				if (locals.elapsedSeconds >= locals.auction.core.auctionDurationSeconds)
-				{
+				case EAuctionStatus::Active:
+					diffDateInSecond(locals.auction.core.createdAt, locals.currentDate, locals.elapsedSeconds);
+					if (locals.elapsedSeconds >= locals.auction.core.auctionDurationSeconds)
+					{
+						switch (locals.auction.core.type)
+						{
+							case EAuctionType::Batch:
+								locals.finalizeBatchAuctionInput.auctionIndex = locals.auction.core.auctionIndex;
+								locals.finalizeBatchAuctionInput.currentDate = locals.currentDate;
+								CALL(FinalizeBatchAuction, locals.finalizeBatchAuctionInput, locals.finalizeBatchAuctionOutput);
+								break;
+							case EAuctionType::Standard:
+								if (locals.auction.core.highestBidAmount == 0 || locals.auction.core.highestBidPrice >= locals.auction.core.salePrice)
+								{
+									locals.finalizeStandardAuctionInput.auctionIndex = locals.auction.core.auctionIndex;
+									locals.finalizeStandardAuctionInput.currentDate = locals.currentDate;
+									CALL(FinalizeStandardAuction, locals.finalizeStandardAuctionInput, locals.finalizeStandardAuctionOutput);
+								}
+								else
+								{
+									// Below-sale standard bids enter a seller decision window instead of settling immediately.
+									locals.auction.core.status = EAuctionStatus::PendingSellerDecision;
+									locals.auction.core.sellerDecisionDeadline = locals.currentDate;
+									locals.auction.core.sellerDecisionDeadline.add(0, 0, 0, 0, 0, NOST_AUCTION_SELLER_DECISION_WINDOW_SECONDS);
+									state.mut().auctionList.replace(locals.auction.core.auctionIndex, locals.auction);
+								}
+								break;
+							default: break;
+						};
+					}
+					break;
+				case EAuctionStatus::PendingSellerDecision:
 					switch (locals.auction.core.type)
 					{
-						case EAuctionType::Batch:
-							locals.finalizeBatchAuctionInput.auctionIndex = locals.auction.core.auctionIndex;
-							locals.finalizeBatchAuctionInput.currentDate = locals.currentDate;
-							CALL(FinalizeBatchAuction, locals.finalizeBatchAuctionInput, locals.finalizeBatchAuctionOutput);
-							break;
 						case EAuctionType::Standard:
-							if (locals.auction.core.highestBidAmount == 0 || locals.auction.core.highestBidPrice >= locals.auction.core.salePrice)
+							if (locals.auction.core.sellerDecisionDeadline <= locals.currentDate)
 							{
 								locals.finalizeStandardAuctionInput.auctionIndex = locals.auction.core.auctionIndex;
 								locals.finalizeStandardAuctionInput.currentDate = locals.currentDate;
 								CALL(FinalizeStandardAuction, locals.finalizeStandardAuctionInput, locals.finalizeStandardAuctionOutput);
 							}
-							else
-							{
-								// Below-sale standard bids enter a seller decision window instead of settling immediately.
-								locals.auction.core.status = EAuctionStatus::PendingSellerDecision;
-								locals.auction.core.sellerDecisionDeadline = locals.currentDate;
-								locals.auction.core.sellerDecisionDeadline.add(0, 0, 0, 0, 0, NOST_AUCTION_SELLER_DECISION_WINDOW_SECONDS);
-								state.mut().auctionList.replace(locals.auction.core.auctionIndex, locals.auction);
-							}
 							break;
 						default: break;
-					};
-				}
-			}
-			else if (locals.auction.core.status == EAuctionStatus::PendingSellerDecision &&
-			         locals.auction.core.sellerDecisionDeadline <= locals.currentDate)
-			{
-				locals.finalizeStandardAuctionInput.auctionIndex = locals.auction.core.auctionIndex;
-				locals.finalizeStandardAuctionInput.currentDate = locals.currentDate;
-				CALL(FinalizeStandardAuction, locals.finalizeStandardAuctionInput, locals.finalizeStandardAuctionOutput);
+					}
+					break;
+				default: break;
 			}
 
 			locals.auctionIndex = state.get().auctionList.nextElementIndex(locals.auctionIndex);
@@ -3540,8 +3550,8 @@ struct NOST : public ContractBase
 	 * @brief Creates a new Batch Auction or Standard Auction in the Nostromo Auction House.
 	 * @note `CreateAuction_input` defines the IPFS metadata CID stored through Pinata, the auction lot, pricing, duration, and visibility rules.
 	 * @note Batch auctions require `minimumPurchaseQuantity` in the range `[1, quantityForSale]`; standard auctions ignore it and store zero.
-	 * @note A successful public Batch Auction accumulates the configured creation fee, distributed at `END_EPOCH`. Public Standard Auctions remain
-	 * free, and failed creation refunds the full reward.
+	 * @note A successful public Batch or Standard Auction accumulates the configured public creation fee, distributed at `END_EPOCH`.
+	 * Insufficient payment rejects creation, overpayment is refunded, and failed creation refunds the full reward.
 	 * @note Private auctions require the configured private auction fee, which is accumulated and distributed at `END_EPOCH` between shareholders
 	 * and the configured fee recipients, and must use exactly one access mode.
 	 */
@@ -3717,8 +3727,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		locals.requiredFee =
-		    getCreateAuctionFee(static_cast<EAuctionType>(input.auctionType), static_cast<EAuctionVisibility>(input.auctionVisibility), state);
+		locals.requiredFee = getCreateAuctionFee(static_cast<EAuctionVisibility>(input.auctionVisibility), state);
 		if (qpi.invocationReward() < locals.requiredFee)
 		{
 			if (qpi.invocationReward() > 0)
@@ -4261,7 +4270,7 @@ struct NOST : public ContractBase
 		}
 
 		// Validate all fee tiers together so no gross-proceeds tier can exceed 100 percent.
-		if (!isValidAuctionFeeConfiguration(input.privateAuctionFee, input.batchAuctionCreationFee, input.auctionCancellationFeeBasisPoints,
+		if (!isValidAuctionFeeConfiguration(input.privateAuctionFee, input.publicAuctionCreationFee, input.auctionCancellationFeeBasisPoints,
 		                                    input.managementFeeBasisPoints, input.developmentFeeBasisPoints, input.takeoverCoordinatorFeeBasisPoints,
 		                                    input.shareholderDividendBasisPoints, input.shareholderFeeBasisPointsTier1,
 		                                    input.shareholderFeeBasisPointsTier2, input.shareholderFeeBasisPointsTier3,
@@ -4274,7 +4283,7 @@ struct NOST : public ContractBase
 		}
 
 		state.mut().privateAuctionFee = input.privateAuctionFee;
-		state.mut().batchAuctionCreationFee = input.batchAuctionCreationFee;
+		state.mut().publicAuctionCreationFee = input.publicAuctionCreationFee;
 		state.mut().auctionCancellationFeeBasisPoints = input.auctionCancellationFeeBasisPoints;
 		state.mut().managementFeeBasisPoints = input.managementFeeBasisPoints;
 		state.mut().developmentFeeBasisPoints = input.developmentFeeBasisPoints;
@@ -4311,7 +4320,7 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (!isValidAuctionFeeConfiguration(input.privateAuctionFee, input.batchAuctionCreationFee, input.auctionCancellationFeeBasisPoints,
+		if (!isValidAuctionFeeConfiguration(input.privateAuctionFee, input.publicAuctionCreationFee, input.auctionCancellationFeeBasisPoints,
 		                                    input.managementFeeBasisPoints, input.developmentFeeBasisPoints,
 		                                    state.get().takeoverCoordinatorFeeBasisPoints, state.get().shareholderDividendBasisPoints,
 		                                    input.shareholderFeeBasisPointsTier1, input.shareholderFeeBasisPointsTier2,
@@ -4324,7 +4333,7 @@ struct NOST : public ContractBase
 		}
 
 		state.mut().privateAuctionFee = input.privateAuctionFee;
-		state.mut().batchAuctionCreationFee = input.batchAuctionCreationFee;
+		state.mut().publicAuctionCreationFee = input.publicAuctionCreationFee;
 		state.mut().auctionCancellationFeeBasisPoints = input.auctionCancellationFeeBasisPoints;
 		state.mut().managementFeeBasisPoints = input.managementFeeBasisPoints;
 		state.mut().developmentFeeBasisPoints = input.developmentFeeBasisPoints;
@@ -4550,7 +4559,7 @@ struct NOST : public ContractBase
 		output.shareholderFeeBasisPointsTier2 = state.get().shareholderFeeBasisPointsTier2;
 		output.shareholderFeeBasisPointsTier3 = state.get().shareholderFeeBasisPointsTier3;
 		output.shareholderFeeBasisPointsTier4 = state.get().shareholderFeeBasisPointsTier4;
-		output.batchAuctionCreationFee = state.get().batchAuctionCreationFee;
+		output.publicAuctionCreationFee = state.get().publicAuctionCreationFee;
 	}
 
 	/**
@@ -5107,14 +5116,14 @@ protected:
 	/**
 	 * @brief Validates governance fee percentages and fixed service fees.
 	 */
-	constexpr static bool isValidAuctionFeeConfiguration(sint64 privateAuctionFee, uint64 batchAuctionCreationFee,
+	constexpr static bool isValidAuctionFeeConfiguration(sint64 privateAuctionFee, sint64 publicAuctionCreationFee,
 	                                                     uint64 auctionCancellationFeeBasisPoints, uint64 managementFeeBasisPoints,
 	                                                     uint64 developmentFeeBasisPoints, uint64 takeoverCoordinatorFeeBasisPoints,
 	                                                     uint64 shareholderDividendBasisPoints, uint64 shareholderFeeBasisPointsTier1,
 	                                                     uint64 shareholderFeeBasisPointsTier2, uint64 shareholderFeeBasisPointsTier3,
 	                                                     uint64 shareholderFeeBasisPointsTier4)
 	{
-		return privateAuctionFee >= 0 && batchAuctionCreationFee <= UINT64_MAX && auctionCancellationFeeBasisPoints <= NOST_BASIS_POINTS_SCALE &&
+		return privateAuctionFee >= 0 && publicAuctionCreationFee >= 0 && auctionCancellationFeeBasisPoints <= NOST_BASIS_POINTS_SCALE &&
 		       managementFeeBasisPoints <= NOST_BASIS_POINTS_SCALE && developmentFeeBasisPoints <= NOST_BASIS_POINTS_SCALE &&
 		       takeoverCoordinatorFeeBasisPoints <= NOST_BASIS_POINTS_SCALE && shareholderDividendBasisPoints <= NOST_BASIS_POINTS_SCALE &&
 		       shareholderFeeBasisPointsTier1 <= NOST_BASIS_POINTS_SCALE && shareholderFeeBasisPointsTier2 <= NOST_BASIS_POINTS_SCALE &&
@@ -5213,15 +5222,15 @@ protected:
 	/**
 	 * @brief Returns the service fee required to create an auction.
 	 */
-	static sint64 getCreateAuctionFee(EAuctionType auctionType, EAuctionVisibility visibility, const ContractState<StateData, CONTRACT_INDEX>& state)
+	static sint64 getCreateAuctionFee(EAuctionVisibility visibility, const ContractState<StateData, CONTRACT_INDEX>& state)
 	{
-		if (visibility == EAuctionVisibility::Private)
+		switch (visibility)
 		{
-			return state.get().privateAuctionFee;
+			case EAuctionVisibility::Public: return state.get().publicAuctionCreationFee; break;
+			case EAuctionVisibility::Private: return state.get().privateAuctionFee; break;
+			default: break;
 		}
-		return auctionType == EAuctionType::Batch && visibility == EAuctionVisibility::Public
-		           ? static_cast<sint64>(state.get().batchAuctionCreationFee)
-		           : 0;
+		return 0;
 	}
 
 	/**
