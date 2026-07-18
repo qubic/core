@@ -116,6 +116,12 @@ constexpr uint64 NOST_DEFAULT_FEE_RESERVE_GUARD_DROP_BP = 1000ULL;
 // Default rolling window used to evaluate the execution fee reserve drop, in seconds.
 constexpr uint64 NOST_DEFAULT_FEE_RESERVE_GUARD_WINDOW_SECONDS = 600ULL;
 
+/** Old */
+constexpr uint32 NOSTROMO_MAX_USER_OLD = 262144;
+constexpr uint32 NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST_OLD = 128;
+constexpr uint32 NOSTROMO_MAX_NUMBER_TOKEN_OLD = 262144;
+constexpr uint32 NOSTROMO_MAX_NUMBER_PROJECT_OLD = 262144;
+
 struct NOST2
 {
 };
@@ -352,6 +358,68 @@ struct NOST : public ContractBase
 
 		/** @brief Number of populated entries in `allowedBidderWallets`. */
 		uint64 allowedBidderWalletCount;
+	};
+
+	struct OldStateData
+	{
+		struct investInfo
+		{
+			uint64 investedAmount;
+			uint64 claimedAmount;
+			uint32 indexOfFundraising;
+		};
+
+		struct projectInfo
+		{
+			id creator;
+			uint64 tokenName;
+			uint64 supplyOfToken;
+			uint32 startDate;
+			uint32 endDate;
+			uint32 numberOfYes;
+			uint32 numberOfNo;
+			bit isCreatedFundarasing;
+		};
+
+		struct fundaraisingInfo
+		{
+			uint64 tokenPrice;
+			uint64 soldAmount;
+			uint64 requiredFunds;
+			uint64 raisedFunds;
+			uint32 indexOfProject;
+			uint32 firstPhaseStartDate;
+			uint32 firstPhaseEndDate;
+			uint32 secondPhaseStartDate;
+			uint32 secondPhaseEndDate;
+			uint32 thirdPhaseStartDate;
+			uint32 thirdPhaseEndDate;
+			uint32 listingStartDate;
+			uint32 cliffEndDate;
+			uint32 vestingEndDate;
+			uint8 threshold;
+			uint8 TGE;
+			uint8 stepOfVesting;
+			bit isCreatedToken;
+		};
+
+		HashMap<id, uint8, NOSTROMO_MAX_USER_OLD> users;
+		HashMap<id, Array<uint32, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST_OLD>, NOSTROMO_MAX_USER_OLD> voteStatus;
+		HashMap<id, uint32, NOSTROMO_MAX_USER_OLD> numberOfVotedProject;
+		HashSet<uint64, NOSTROMO_MAX_NUMBER_TOKEN_OLD> tokens;
+
+		HashMap<id, Array<investInfo, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST_OLD>, NOSTROMO_MAX_USER_OLD> investors;
+		HashMap<id, uint32, NOSTROMO_MAX_USER_OLD> numberOfInvestedProjects;
+		Array<investInfo, NOSTROMO_MAX_NUMBER_OF_PROJECT_USER_INVEST_OLD> tmpInvestedList;
+
+		Array<projectInfo, NOSTROMO_MAX_NUMBER_PROJECT_OLD> projects;
+
+		Array<fundaraisingInfo, NOSTROMO_MAX_NUMBER_PROJECT_OLD> fundaraisings;
+
+		id teamAddress;
+		sint64 transferRightsFee;
+		uint64 epochRevenue, totalPoolWeight;
+		uint32 numberOfRegister, numberOfCreatedProject, numberOfFundraising;
 	};
 
 	struct StateData
@@ -1980,6 +2048,32 @@ struct NOST : public ContractBase
 		       _N, _Z, _O, _X, _S, _V, _O, _B, _K, _G, _Z, _C, _C, _F, _D, _B, _D, _M, _T, _M, _L, _C);
 	}
 
+	MIGRATE()
+	{
+		state.mut().privateAuctionFee = NOST_DEFAULT_PRIVATE_AUCTION_FEE;
+		state.mut().publicAuctionCreationFee = NOST_PUBLIC_AUCTION_CREATION_FEE;
+		state.mut().auctionCancellationFeeBasisPoints = NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP;
+		state.mut().managementFeeBasisPoints = NOST_DEFAULT_AUCTION_MANAGEMENT_FEE_BP;
+		state.mut().developmentFeeBasisPoints = NOST_DEFAULT_AUCTION_DEVELOPMENT_FEE_BP;
+		state.mut().takeoverCoordinatorFeeBasisPoints = NOST_DEFAULT_AUCTION_TAKEOVER_COORDINATOR_FEE_BP;
+		state.mut().shareholderDividendBasisPoints = NOST_DEFAULT_AUCTION_SHAREHOLDER_DIVIDEND_BP;
+		state.mut().shareholderFeeBasisPointsTier1 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_1;
+		state.mut().shareholderFeeBasisPointsTier2 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_2;
+		state.mut().shareholderFeeBasisPointsTier3 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_3;
+		state.mut().shareholderFeeBasisPointsTier4 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_4;
+		state.mut().maxAuctionDurationDays = NOST_AUCTION_MAX_DURATION_DAYS;
+		state.mut().routeAllFeesToDevelopment = NOST_ROUTE_ALL_FEES_TO_DEVELOPMENT;
+		state.mut().feeReserveGuardDropBasisPoints = NOST_DEFAULT_FEE_RESERVE_GUARD_DROP_BP;
+		state.mut().feeReserveGuardWindowSeconds = NOST_DEFAULT_FEE_RESERVE_GUARD_WINDOW_SECONDS;
+		state.mut().management = ID(_I, _G, _P, _Z, _X, _Q, _O, _R, _J, _Y, _Q, _P, _A, _G, _V, _A, _B, _N, _T, _N, _I, _S, _O, _Y, _T, _M, _T, _A,
+		                            _N, _M, _K, _Z, _A, _S, _T, _P, _P, _G, _Z, _O, _N, _A, _Q, _J, _X, _Q, _O, _S, _W, _Q, _O, _V, _J, _C, _K, _D);
+		state.mut().development = ID(_D, _Q, _V, _H, _M, _Z, _F, _C, _W, _O, _K, _M, _H, _F, _B, _H, _L, _X, _U, _I, _U, _G, _P, _P, _X, _R, _Z, _C,
+		                             _U, _V, _S, _N, _J, _F, _Z, _J, _F, _M, _Q, _M, _Y, _D, _B, _X, _E, _S, _E, _A, _T, _M, _W, _L, _K, _N, _L, _D);
+		state.mut().takeoverCoordinator =
+		    ID(_X, _J, _O, _S, _N, _L, _T, _Z, _V, _V, _H, _N, _Z, _C, _B, _Y, _X, _I, _E, _V, _N, _E, _P, _P, _B, _O, _Q, _A, _W, _D, _B, _V, _G, _E,
+		       _N, _Z, _O, _X, _S, _V, _O, _B, _K, _G, _Z, _C, _C, _F, _D, _B, _D, _M, _T, _M, _L, _C);
+	}
+
 	/**
 	 * @brief Allows share acquisition without charging an additional contract fee.
 	 */
@@ -1994,36 +2088,6 @@ struct NOST : public ContractBase
 	 */
 	BEGIN_EPOCH_WITH_LOCALS()
 	{
-		// TODO: Change to valid epoch
-		if (qpi.epoch() == NOST_REINITIALIZATION_EPOCH)
-		{
-			// Initialize
-			state.mut().privateAuctionFee = NOST_DEFAULT_PRIVATE_AUCTION_FEE;
-			state.mut().publicAuctionCreationFee = NOST_PUBLIC_AUCTION_CREATION_FEE;
-			state.mut().auctionCancellationFeeBasisPoints = NOST_DEFAULT_AUCTION_CANCELLATION_FEE_BP;
-			state.mut().managementFeeBasisPoints = NOST_DEFAULT_AUCTION_MANAGEMENT_FEE_BP;
-			state.mut().developmentFeeBasisPoints = NOST_DEFAULT_AUCTION_DEVELOPMENT_FEE_BP;
-			state.mut().takeoverCoordinatorFeeBasisPoints = NOST_DEFAULT_AUCTION_TAKEOVER_COORDINATOR_FEE_BP;
-			state.mut().shareholderDividendBasisPoints = NOST_DEFAULT_AUCTION_SHAREHOLDER_DIVIDEND_BP;
-			state.mut().shareholderFeeBasisPointsTier1 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_1;
-			state.mut().shareholderFeeBasisPointsTier2 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_2;
-			state.mut().shareholderFeeBasisPointsTier3 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_3;
-			state.mut().shareholderFeeBasisPointsTier4 = NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_4;
-			state.mut().maxAuctionDurationDays = NOST_AUCTION_MAX_DURATION_DAYS;
-			state.mut().routeAllFeesToDevelopment = NOST_ROUTE_ALL_FEES_TO_DEVELOPMENT;
-			state.mut().feeReserveGuardDropBasisPoints = NOST_DEFAULT_FEE_RESERVE_GUARD_DROP_BP;
-			state.mut().feeReserveGuardWindowSeconds = NOST_DEFAULT_FEE_RESERVE_GUARD_WINDOW_SECONDS;
-			state.mut().management =
-			    ID(_I, _G, _P, _Z, _X, _Q, _O, _R, _J, _Y, _Q, _P, _A, _G, _V, _A, _B, _N, _T, _N, _I, _S, _O, _Y, _T, _M, _T, _A, _N, _M, _K, _Z, _A,
-			       _S, _T, _P, _P, _G, _Z, _O, _N, _A, _Q, _J, _X, _Q, _O, _S, _W, _Q, _O, _V, _J, _C, _K, _D);
-			state.mut().development =
-			    ID(_D, _Q, _V, _H, _M, _Z, _F, _C, _W, _O, _K, _M, _H, _F, _B, _H, _L, _X, _U, _I, _U, _G, _P, _P, _X, _R, _Z, _C, _U, _V, _S, _N, _J,
-			       _F, _Z, _J, _F, _M, _Q, _M, _Y, _D, _B, _X, _E, _S, _E, _A, _T, _M, _W, _L, _K, _N, _L, _D);
-			state.mut().takeoverCoordinator =
-			    ID(_X, _J, _O, _S, _N, _L, _T, _Z, _V, _V, _H, _N, _Z, _C, _B, _Y, _X, _I, _E, _V, _N, _E, _P, _P, _B, _O, _Q, _A, _W, _D, _B, _V, _G,
-			       _E, _N, _Z, _O, _X, _S, _V, _O, _B, _K, _G, _Z, _C, _C, _F, _D, _B, _D, _M, _T, _M, _L, _C);
-		}
-
 		// Refresh the QX fee cache once per epoch so share transfers can expose current cost guidance.
 		CALL_OTHER_CONTRACT_FUNCTION(QX, Fees, locals.feesInput, locals.feesOutput);
 		if (interContractCallError == NoCallError)

@@ -577,8 +577,9 @@ struct ContractStateChangeInfo
 // When enabling, replace both lines below, e.g.:
 //constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { DUMMY_CONTRACT_INDEX, MIGRATE, 219 } };
 //constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
- constexpr const ContractStateChangeInfo* contractStateChangeInfos = nullptr;
- constexpr unsigned int contractStateChangeCount = 0;
+// TODO: delete this comment and set the required epoch, after Proposal in NOST
+ constexpr ContractStateChangeInfo contractStateChangeInfos[] = {{NOST_CONTRACT_INDEX, MIGRATE, 226}};
+ constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
 
 
 // Class for registering and looking up user procedures independently of input type, for example for notifications
