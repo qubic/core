@@ -91,8 +91,6 @@ struct QTF : ContractBase
 		MAX_VALUE = UINT8_MAX
 	};
 
-	static constexpr uint8 toReturnCode(const EReturnCode& code) { return static_cast<uint8>(code); };
-
 	enum EState : uint8
 	{
 		STATE_NONE = 0,
@@ -226,7 +224,7 @@ struct QTF : ContractBase
 	struct BuyPreparedTickets_output
 	{
 		uint16 boughtTicketCount;
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 	struct BuyPreparedTickets_locals
 	{
@@ -265,7 +263,7 @@ struct QTF : ContractBase
 	};
 	struct BuyTicket_output
 	{
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 	struct BuyTicket_locals
 	{
@@ -282,7 +280,7 @@ struct QTF : ContractBase
 	struct BuyTicketsBatch_output
 	{
 		uint16 boughtTicketCount;
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 	struct BuyTicketsBatch_locals
 	{
@@ -305,7 +303,7 @@ struct QTF : ContractBase
 	{
 		uint16 requestedTicketCount;
 		uint16 boughtTicketCount;
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 	struct BuyTicketsBySelection_locals
 	{
@@ -327,7 +325,7 @@ struct QTF : ContractBase
 	};
 	struct SetPrice_output
 	{
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 
 	// Set Schedule
@@ -337,7 +335,7 @@ struct QTF : ContractBase
 	};
 	struct SetSchedule_output
 	{
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 
 	// Set draw hour
@@ -347,7 +345,7 @@ struct QTF : ContractBase
 	};
 	struct SetDrawHour_output
 	{
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 
 	// Set Target Jackpot
@@ -357,7 +355,7 @@ struct QTF : ContractBase
 	};
 	struct SetTargetJackpot_output
 	{
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 
 	// Return All Tickets (refund all players)
@@ -632,7 +630,7 @@ struct QTF : ContractBase
 		uint8 distributionFeePercent; // Distribution/shareholders share in percent
 		uint8 winnerFeePercent;       // Winner share in percent
 		uint8 burnPercent;            // Burn share in percent
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 
 	struct GetFees_locals
@@ -727,6 +725,9 @@ struct QTF : ContractBase
 		CheckContractBalance_locals checkBalanceLocals;
 		CountMatches_input countMatchesInput;
 		CountMatches_output countMatchesOutput;
+		RANDOM::BuyEntropy_input buyEntropyInput;
+		RANDOM::BuyEntropy_output buyEntropyOutput;
+		m256i randomDigest;
 		uint16 currentEpoch;
 		uint64 revenue; // ticketPrice * players count
 		uint64 winnersBlock;
@@ -794,6 +795,16 @@ struct QTF : ContractBase
 		// Cache for countMatches results to avoid redundant calculations
 		Array<uint8, QTF_MAX_NUMBER_OF_PLAYERS> cachedMatches;
 		WinnerPlayerData winnerPlayerData;
+
+		struct SettleEntropyData
+		{
+			bit_4096 entropy;
+			uint64 numberOfPlayers;
+			uint64 ticketPrice;
+			uint64 jackpot;
+			uint32 tick;
+			uint16 epoch;
+		} settleEntropyData;
 	};
 
 	struct END_EPOCH_locals
@@ -821,7 +832,7 @@ struct QTF : ContractBase
 	struct GetPlayers_output
 	{
 		Array<PlayerData, QTF_MAX_NUMBER_OF_PLAYERS> players;
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 
 	struct GetWinningCombinationsHistory_input
@@ -836,7 +847,7 @@ struct QTF : ContractBase
 		};
 
 		Array<WinningCombination, QTF_WINNING_COMBINATIONS_HISTORY_SIZE> history;
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 
 	struct SyncJackpot_input
@@ -845,7 +856,7 @@ struct QTF : ContractBase
 
 	struct SyncJackpot_output
 	{
-		uint8 returnCode;
+		EReturnCode returnCode;
 	};
 
 	struct SyncJackpot_locals
@@ -1033,7 +1044,7 @@ struct QTF : ContractBase
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
-			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
+			output.returnCode = EReturnCode::TICKET_SELLING_CLOSED;
 			return;
 		}
 
@@ -1044,7 +1055,7 @@ struct QTF : ContractBase
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
-			output.returnCode = toReturnCode(EReturnCode::MAX_PLAYERS_REACHED);
+			output.returnCode = EReturnCode::MAX_PLAYERS_REACHED;
 			return;
 		}
 
@@ -1056,7 +1067,7 @@ struct QTF : ContractBase
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
-			output.returnCode = toReturnCode(EReturnCode::INVALID_TICKET_PRICE);
+			output.returnCode = EReturnCode::INVALID_TICKET_PRICE;
 			return;
 		}
 
@@ -1068,7 +1079,7 @@ struct QTF : ContractBase
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
-			output.returnCode = toReturnCode(EReturnCode::INVALID_NUMBERS);
+			output.returnCode = EReturnCode::INVALID_NUMBERS;
 			return;
 		}
 
@@ -1096,7 +1107,7 @@ struct QTF : ContractBase
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
-			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
+			output.returnCode = EReturnCode::TICKET_SELLING_CLOSED;
 			return;
 		}
 
@@ -1153,7 +1164,7 @@ struct QTF : ContractBase
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
-			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
+			output.returnCode = EReturnCode::TICKET_SELLING_CLOSED;
 			return;
 		}
 
@@ -1165,7 +1176,7 @@ struct QTF : ContractBase
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
-			output.returnCode = toReturnCode(EReturnCode::INVALID_NUMBERS);
+			output.returnCode = EReturnCode::INVALID_NUMBERS;
 			return;
 		}
 
@@ -1180,7 +1191,7 @@ struct QTF : ContractBase
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
-			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			output.returnCode = EReturnCode::INVALID_VALUE;
 			return;
 		}
 
@@ -1197,86 +1208,86 @@ struct QTF : ContractBase
 	{
 		if (qpi.invocator() != state.get().ownerAddress)
 		{
-			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			output.returnCode = EReturnCode::ACCESS_DENIED;
 			return;
 		}
 
 		if (input.newPrice == 0)
 		{
-			output.returnCode = toReturnCode(EReturnCode::INVALID_TICKET_PRICE);
+			output.returnCode = EReturnCode::INVALID_TICKET_PRICE;
 			return;
 		}
 
 		state.mut().nextEpochData.newTicketPrice = input.newPrice;
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		output.returnCode = EReturnCode::SUCCESS;
 	}
 
 	PUBLIC_PROCEDURE(SetSchedule)
 	{
 		if (qpi.invocator() != state.get().ownerAddress)
 		{
-			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			output.returnCode = EReturnCode::ACCESS_DENIED;
 			return;
 		}
 
 		if (input.newSchedule == 0)
 		{
-			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			output.returnCode = EReturnCode::INVALID_VALUE;
 			return;
 		}
 
 		state.mut().nextEpochData.newSchedule = input.newSchedule;
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		output.returnCode = EReturnCode::SUCCESS;
 	}
 
 	PUBLIC_PROCEDURE(SetTargetJackpot)
 	{
 		if (qpi.invocator() != state.get().ownerAddress)
 		{
-			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			output.returnCode = EReturnCode::ACCESS_DENIED;
 			return;
 		}
 
 		if (input.newTargetJackpot == 0)
 		{
-			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			output.returnCode = EReturnCode::INVALID_VALUE;
 			return;
 		}
 
 		state.mut().nextEpochData.newTargetJackpot = input.newTargetJackpot;
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		output.returnCode = EReturnCode::SUCCESS;
 	}
 
 	PUBLIC_PROCEDURE(SetDrawHour)
 	{
 		if (qpi.invocator() != state.get().ownerAddress)
 		{
-			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			output.returnCode = EReturnCode::ACCESS_DENIED;
 			return;
 		}
 
 		if (input.newDrawHour == 0 || input.newDrawHour > 23)
 		{
-			output.returnCode = toReturnCode(EReturnCode::INVALID_VALUE);
+			output.returnCode = EReturnCode::INVALID_VALUE;
 			return;
 		}
 
 		state.mut().nextEpochData.newDrawHour = input.newDrawHour;
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		output.returnCode = EReturnCode::SUCCESS;
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(SyncJackpot)
 	{
 		if (qpi.invocator() != state.get().ownerAddress)
 		{
-			output.returnCode = toReturnCode(EReturnCode::ACCESS_DENIED);
+			output.returnCode = EReturnCode::ACCESS_DENIED;
 			return;
 		}
 
 		qpi.getEntity(SELF, locals.entity);
 		state.mut().jackpot = locals.entity.incomingAmount - locals.entity.outgoingAmount;
 
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		output.returnCode = EReturnCode::SUCCESS;
 	}
 
 	// Functions
@@ -1312,7 +1323,7 @@ struct QTF : ContractBase
 			output.winnerFeePercent = QTF_DEFAULT_WINNERS_PERCENT;
 		}
 
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		output.returnCode = EReturnCode::SUCCESS;
 	}
 
 	PUBLIC_FUNCTION_WITH_LOCALS(EstimatePrizePayouts)
@@ -1395,13 +1406,13 @@ struct QTF : ContractBase
 	PUBLIC_FUNCTION(GetPlayers)
 	{
 		output.players = state.get().players;
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		output.returnCode = EReturnCode::SUCCESS;
 	}
 
 	PUBLIC_FUNCTION(GetWinningCombinationsHistory)
 	{
 		copyMemory(output.history, state.get().winningCombinationsHistory);
-		output.returnCode = toReturnCode(EReturnCode::SUCCESS);
+		output.returnCode = EReturnCode::SUCCESS;
 	}
 
 protected:
@@ -1427,17 +1438,9 @@ protected:
 
 	// ========== Helper static functions ==========
 
-	static void mix64(const uint64& x, uint64& outValue)
-	{
-		outValue = x;
-		outValue ^= outValue >> 30;
-		outValue *= 0xbf58476d1ce4e5b9ULL;
-		outValue ^= outValue >> 27;
-		outValue *= 0x94d049bb133111ebULL;
-		outValue ^= outValue >> 31;
-	}
+	static void mix64(const uint64& x, uint64& outValue) { RL::mix64(x, outValue); }
 
-	static void deriveOne(const uint64& r, const uint64& idx, uint64& outValue) { mix64(r + 0x9e3779b97f4a7c15ULL * (idx + 1), outValue); }
+	static void deriveOne(const uint64& r, const uint64& idx, uint64& outValue) { RL::deriveOne(r, idx, outValue); }
 
 	static void addPlayerInfo(QPI::ContractState<StateData, CONTRACT_INDEX>& state, const id& playerId,
 	                          const Array<uint8, QTF_RANDOM_VALUES_COUNT>& randomValues)
@@ -1505,7 +1508,7 @@ private:
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
-			output.returnCode = toReturnCode(EReturnCode::TICKET_SELLING_CLOSED);
+			output.returnCode = EReturnCode::TICKET_SELLING_CLOSED;
 			return;
 		}
 
@@ -1516,7 +1519,7 @@ private:
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
-			output.returnCode = toReturnCode(EReturnCode::INVALID_NUMBERS);
+			output.returnCode = EReturnCode::INVALID_NUMBERS;
 			return;
 		}
 
@@ -1528,7 +1531,7 @@ private:
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
-			output.returnCode = toReturnCode(EReturnCode::MAX_PLAYERS_REACHED);
+			output.returnCode = EReturnCode::MAX_PLAYERS_REACHED;
 			return;
 		}
 
@@ -1541,7 +1544,7 @@ private:
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 			}
 
-			output.returnCode = toReturnCode(EReturnCode::INVALID_TICKET_PRICE);
+			output.returnCode = EReturnCode::INVALID_TICKET_PRICE;
 			return;
 		}
 
@@ -1567,7 +1570,7 @@ private:
 
 		output.boughtTicketCount = static_cast<uint16>(locals.effectiveTicketCount);
 		output.returnCode =
-		    (locals.effectiveTicketCount < input.ticketCount) ? toReturnCode(EReturnCode::PARTIAL_PURCHASE) : toReturnCode(EReturnCode::SUCCESS);
+		    (locals.effectiveTicketCount < input.ticketCount) ? EReturnCode::PARTIAL_PURCHASE : EReturnCode::SUCCESS;
 	}
 
 	// Core settlement pipeline for one epoch: fees, FR redirects, payouts, jackpot/reserve updates.
@@ -1589,7 +1592,7 @@ private:
 		}
 
 		// Check if contract has sufficient balance for settlement
-		locals.checkBalanceInput.expectedRevenue = locals.revenue;
+		locals.checkBalanceInput.expectedRevenue = sadd(locals.revenue, RL_RANDOM_ENTROPY_FEE);
 		CALL(CheckContractBalance, locals.checkBalanceInput, locals.checkBalanceOutput);
 		if (!locals.checkBalanceOutput.hasEnough)
 		{
@@ -1599,6 +1602,26 @@ private:
 
 			return;
 		}
+
+		locals.buyEntropyInput.collateralTier = RL_RANDOM_COLLATERAL_TIER;
+		locals.buyEntropyInput.numberOfBits = RL_RANDOM_ENTROPY_BITS;
+		locals.buyEntropyInput.trustee = id::zero();
+		INVOKE_OTHER_CONTRACT_PROCEDURE_E(RANDOM, BuyEntropy, locals.buyEntropyInput, locals.buyEntropyOutput, RL_RANDOM_ENTROPY_FEE,
+		                                  buyEntropyError);
+		if (buyEntropyError != NoCallError || RL::isZeroEntropy(locals.buyEntropyOutput.entropy))
+		{
+			CALL(ReturnAllTickets, locals.returnAllTicketsInput, locals.returnAllTicketsOutput);
+			clearPlayerData(state);
+			return;
+		}
+
+		locals.settleEntropyData.entropy = locals.buyEntropyOutput.entropy;
+		locals.settleEntropyData.numberOfPlayers = state.get().numberOfPlayers;
+		locals.settleEntropyData.ticketPrice = state.get().ticketPrice;
+		locals.settleEntropyData.jackpot = state.get().jackpot;
+		locals.settleEntropyData.tick = qpi.tick();
+		locals.settleEntropyData.epoch = qpi.epoch();
+		locals.randomDigest = qpi.K12(locals.settleEntropyData);
 
 		CALL(GetFees, locals.feesInput, locals.feesOutput);
 
@@ -1711,8 +1734,8 @@ private:
 		// Reset last-winner snapshot for this settlement (per-round view).
 		clearWinerData(state);
 
-		// Generate winning random values using CALL
-		locals.getRandomInput.seed = qpi.K12(qpi.getPrevSpectrumDigest()).u64._0;
+		// Generate winning values from the Random entropy purchase.
+		locals.getRandomInput.seed = locals.randomDigest.u64._0;
 		CALL(GetRandomValues, locals.getRandomInput, locals.getRandomOutput);
 		locals.winningValues = locals.getRandomOutput.values;
 
@@ -1855,7 +1878,7 @@ private:
 				locals.qrpGetReserveInput.revenue = locals.qrpRequested;
 				INVOKE_OTHER_CONTRACT_PROCEDURE(QRP, WithdrawReserve, locals.qrpGetReserveInput, locals.qrpGetReserveOutput, 0ll);
 
-				if (locals.qrpGetReserveOutput.returnCode == QRP::toReturnCode(QRP::EReturnCode::SUCCESS))
+				if (locals.qrpGetReserveOutput.returnCode == QRP::QRP::EReturnCode::SUCCESS)
 				{
 					locals.qrpReceived = locals.qrpGetReserveOutput.allocatedRevenue;
 					state.mut().jackpot = sadd(state.get().jackpot, locals.qrpReceived);
@@ -2323,7 +2346,7 @@ private:
 				locals.qrpGetReserveInput.revenue = locals.qrpRequested;
 				INVOKE_OTHER_CONTRACT_PROCEDURE(QRP, WithdrawReserve, locals.qrpGetReserveInput, locals.qrpGetReserveOutput, 0ll);
 
-				if (locals.qrpGetReserveOutput.returnCode == QRP::toReturnCode(QRP::EReturnCode::SUCCESS))
+				if (locals.qrpGetReserveOutput.returnCode == QRP::EReturnCode::SUCCESS)
 				{
 					output.topUpReceived = locals.qrpGetReserveOutput.allocatedRevenue;
 					locals.finalPool = sadd(input.payoutPool, output.topUpReceived);

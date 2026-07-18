@@ -864,32 +864,32 @@ public:
         inline static Tick* getByTickIndex(unsigned int tickIndex)
         {
             ASSERT(tickIndex < tickDataLength);
-            return ticksPtr + tickIndex * NUMBER_OF_COMPUTORS;
+            return ticksPtr + static_cast<unsigned long long>(tickIndex) * NUMBER_OF_COMPUTORS;
         }
 
         // Return pointer to array of one Tick per computor in current epoch by tick (checking tick with ASSERT)
         inline static Tick* getByTickInCurrentEpoch(unsigned int tick)
         {
             ASSERT(tickInCurrentEpochStorage(tick));
-            return ticksPtr + tickToIndexCurrentEpoch(tick) * NUMBER_OF_COMPUTORS;
+            return ticksPtr + static_cast<unsigned long long>(tickToIndexCurrentEpoch(tick)) * NUMBER_OF_COMPUTORS;
         }
 
         // Return pointer to array of one Tick per computor in previous epoch by tick (checking tick with ASSERT)
         inline static Tick* getByTickInPreviousEpoch(unsigned int tick)
         {
             ASSERT(tickInPreviousEpochStorage(tick));
-            return ticksPtr + tickToIndexPreviousEpoch(tick) * NUMBER_OF_COMPUTORS;
+            return ticksPtr + static_cast<unsigned long long>(tickToIndexPreviousEpoch(tick)) * NUMBER_OF_COMPUTORS;
         }
 
         // Get ticks element at offset (checking offset with ASSERT)
-        inline Tick& operator[](unsigned int offset)
+        inline Tick& operator[](unsigned long long offset)
         {
             ASSERT(offset < ticksLength);
             return ticksPtr[offset];
         }
 
         // Get ticks element at offset (checking offset with ASSERT)
-        inline const Tick& operator[](unsigned int offset) const
+        inline const Tick& operator[](unsigned long long offset) const
         {
             ASSERT(offset < ticksLength);
             return ticksPtr[offset];

@@ -23,6 +23,9 @@ The execution fee system follows a key principle: **"The Contract Initiating Exe
 Execution fees are checked (contracts must have `executionFeeReserve > 0`) before most contract entry points (see next section).
 The deducted execution fees are proportional to the actual execution time of the contract procedures.
 
+Next to executing a procedure, every tick that has a change of contract's state (via `state.mut()`) costs fees due to the need to recompute the digest of the state.
+Depending on the size of the state, the digest computation may be significantly more expensive than the run-time of the procedures.
+
 ## What Operations Require Execution Fees
 
 The execution fee system checks whether a contract has positive `executionFeeReserve` at different entry points. The table below summarizes when fees are checked and who pays:
@@ -34,14 +37,14 @@ The execution fee system checks whether a contract has positive `executionFeeRes
 | Contract-to-contract procedure | Contract A | ✅ Called contract (B) must have positive reserve, otherwise error is returned to caller | contract_exec.h |
 | Contract-to-contract function | Contract A | ✅ Called contract (B) must have positive reserve, otherwise error is returned to caller | contract_exec.h |
 | Contract-to-contract callback (`POST_INCOMING_TRANSFER`, etc.) | System | ❌ Not checked (callbacks execute regardless of reserve) | contract_exec.h |
-| Epoch transistion system procedures (`BEGIN_EPOCH`, `END_EPOCH`) | System | ❌ Not checked | qubic.cpp |
+| Epoch transition system procedures (`BEGIN_EPOCH`, `END_EPOCH`) | System | ❌ Not checked | qubic.cpp |
 | Revenue donation (`POST_INCOMING_TRANSFER`) | System | ❌ Not checked | qubic.cpp |
 | IPO refund (`POST_INCOMING_TRANSFER`) | System | ❌ Not checked | ipo.h |
 | User functions | User | ❌ Never checked (read-only) | N/A |
 
 **Basic system procedures** (`BEGIN_TICK`, `END_TICK`) require the contract to have `executionFeeReserve > 0`. If the reserve is depleted, these procedures are skipped and the contract becomes dormant. These procedures are invoked by the system directly.
 
-**Epoch transistion system procedures**  `BEGIN_EPOCH`, `END_EPOCH` are executed even with a non-positive `executionFeeReserve` to keep contract state in a valid state.
+**Epoch transition system procedures**  `BEGIN_EPOCH`, `END_EPOCH` are executed even with a non-positive `executionFeeReserve` to keep contract state in a valid state.
 
 **User procedure calls** check the contract's execution fee reserve before execution. If `executionFeeReserve <= 0`, the transaction fails and any attached amount is refunded to the user. If the contract has fees, the procedure executes normally and may trigger `POST_INCOMING_TRANSFER` callback first if amount > 0.
 
@@ -61,10 +64,16 @@ Example: Contract A (executionFeeReserve = 1000) transfers 500 QU to Contract B 
 
 ### For Contract Developers
 
-1. **Plan for sustainability**: Charge invocation rewards for running user procedures
-2. **Burn collected invocation rewards**: Regularly call `qpi.burn()` to replenish executionFeeReserve
-3. **Monitor reserve**: Implement a function to expose current reserve level
-4. **Graceful degradation**: Consider what happens when reserve runs low
+1. **Plan for sustainability**: Charge invocation rewards for running user procedures.
+  With no invocation reward, spamming will happen and drain your execution fee reserve.
+  Error checking of the inputs should happen before changing state with `state.mut()`, because this will trigger recomputing the digest of the contract state, which is expensive (especially for large states).
+  It is common practice to fully reimburse the invocation reward if there is an error; however be aware that this may be used in an attack to drain the fee reserve at very low cost. So you may think about burning a part of the fee (also in case of an error) or other counter-measures against spamming.
+  Select a reasonable size for arrays and other containers, because costs for digest computation increase with state size.
+2. **Burn collected invocation rewards**: Regularly call `qpi.burn()` to replenish `executionFeeReserve`.
+3. **Monitor reserve**: Implement a function to expose current reserve level, or just use [qfront.org](https://qfront.org/ContractReserves), [qubic.li](https://explorer.qubic.li/analytics/execution-fees), [qubic.tools](https://contracts.qubic.tools/), or [qubic-cli -qutilqueryfeereserve](https://github.com/qubic/qubic-cli).
+4. **Graceful degradation**: Consider what happens when reserve runs low and plan counter-measures in advance.
+  One option is to have a burn rate that is adjustable by shareholder voting and increase it if needed.
+  The contract may also monitor its reserve level by itself via `qpi.queryFeeReserve(contractIndex)` and adjust the burning automatically.
 5. **Handle inter-contract call errors**: After using `INVOKE_OTHER_CONTRACT_PROCEDURE`, check the `interContractCallError` variable to verify the call succeeded. Handle errors gracefully (e.g., skip operations, use fallback logic). You can also proactively verify the called contract has positive `executionFeeReserve` using `qpi.queryFeeReserve(contractIndex) > 0` before calling.
 
 ### For Contract Users

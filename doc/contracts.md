@@ -34,11 +34,22 @@ The state is accessed through a `ContractState` wrapper named `state`: use `stat
 Functions can only read the state (via `state.get()`), making them useful to query information with the network message `RequestContractFunction`.
 Procedures can modify the state (via `state.mut()`) and are either invoked by special transactions (user procedures) or internal core events (system procedures).
 
+Execution of contract procedures costs fees that are paid from its contract fee reserve.
+This reserve is initially filled with the QUs burned during the IPO of the contract and refilled by additional burning of QUs during contract execution.
+In the long run, each contract needs to burn QUs to stay alive.
+If a contract's execution fee reserve runs empty, the contract will not be executed anymore.
+The contract developers / shareholders are strongly recommended to monitor the fee reserve and adjust the burning in order to prevent such situations.
+For monitoring, tools are provided by [qfront.org](https://qfront.org/ContractReserves), [qubic.li](https://explorer.qubic.li/analytics/execution-fees), [qubic.tools](https://contracts.qubic.tools/), and [qubic-cli](https://github.com/qubic/qubic-cli).
+
+Additionally, every tick that has a change of contract's state (via `state.mut()`) costs fees due to the need to recompute the digest of the state.
+Depending on the size of the state, the digest computation may be significantly more expensive than the run-time of the procedures.
+Thus, we recommend to keep the size of the state low for new contracts, for example by not overestimating the number of users.
+The state size may be increased if needed when the contract is widely adopted.
+
+The execution fees are detailed [here](execution_fees.md).
+Every contract dev should at least read the [best practice recommendation](execution_fees.md#for-contract-developers).
+
 Contract developers should be aware of the following parts of the Qubic protocol that are not implemented yet in the core:
-- Execution of contract procedures will cost fees that will be paid from its contract fee reserve.
-  This reserve is initially filled with the QUs burned during the IPO of the contract and refilled by additional burning of QUs happening in the contract.
-  In the long run, each contract needs to burn QUs to stay alive.
-  If a contract's execution fee reserve runs empty, the contract will not be executed anymore.
 - In the future, the issuer of an asset, more specifically the managing contract, will have to pay for entries in the ledger.
   This is why it is a good idea to collect fees when issuing an asset.
 
@@ -75,7 +86,7 @@ In order to develop a contract, follow these steps:
       Think about the data structures you use, for example if you can use a hash map instead of an array with linear search.
       Check if you can optimize code in loops and especially in nested loops.
     - Also be efficient with the state memory you reserve.
-      Larger state sizes will also lead to more execution fees, because the hashing of the state memory will be included in the execution time.
+      Larger state sizes will also lead to more execution fees, because the hashing of the state memory is included in the execution time.
       For example, your contract does not need to be prepared for 1 Million users right from the beginning.
       The size of data structures can be increased later with `EXPAND` events.
       Currently, the contract state size is limited to 1 GB.
@@ -501,6 +512,8 @@ The following container types are available in the QPI:
 - `LinkedList<T, L>`: Doubly-linked list of elements of type `T` with fixed capacity `L` (`L` must be 2^N).
   Provides O(1) insertion at head/tail, O(1) insertion before/after a given index, O(1) removal by index, and bidirectional traversal.
   Removed nodes are immediately recycled via a free list (no deferred cleanup needed).
+- `SlowAnySizeArray<T, L>`: Array of `L` elements of type `T` that is slower than the normal `Array` but may have any capacity `L`.
+  This should be only used when a specific `L` != 2^N is needed for a good reason, e.g., in input/output.
 
 Please note that removing items from `Collection`, `HashMap`, and `HashSet` does not immediately free the hash map slots used for the removed items.
 This may negatively impact the lookup speed, which depends on the maximum population seen since the last cleanup.
@@ -625,10 +638,26 @@ However there are situations where you want to change your SC.
 
 ### Bugfix
 A bugfix is possible at any time. It can be applied during the epoch (if no state is changed) or must be coordinated with an epoch update.
-Such state changes are preferably done by extending the state with new data structures at the end while existing state variables remain unchanged.
-This provides an easy way to extend the state files with 0 at the end (via command line during epoch transition) and initializing the new state variables in the `BEGIN_EPOCH` procedure.
-If this is not possible, the state file can be adjusted with an external tool that computors apply during epoch transition.
-This external tool can be written in C++, Python or Bash and the source code has to be public.
+
+### State Change
+Qubic core supports three types of state changes that can be requested by setting the `contractStateChangeInfos` variable in `contract_def.h` accordingly:
+
+```
+constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { <contract_index>, <change_type>, <epoch> } };
+```
+
+The available options for `<change_type>` are:
+* `PADDING`: Core will add zero-padding to the contract's old state file to reach the new state size. This works only if the state is extended with new data structures at the end while existing state variables remain unchanged.
+* `RESET`: Core will reset the state completely and re-initialize it to all 0 with the new state size. All previous data will be lost.
+* `MIGRATE`: Core will load the contract's old state file and run the `MIGRATE` procedure defined in the contract to populate the new state. More details below.
+
+Note that contract state changes are currently only triggered in core if the size of the new state struct is different from the old contract state file. In case you require a state change (`RESET` / `MIGRATE`) where the size remains the same, reach out to the core dev team.
+
+#### Implementing a `MIGRATE` Procedure
+
+In order to do a state change via state migration, the following need to be added in the contract:
+* An `OldStateData` struct that is defined as nested struct within the contract struct. `OldStateData` should have exactly the same layout as the previous `StateData`. Special attention is required if constants are changed that are used to define state variables. The best way to handle this is to keep the old constant value as `<constant_name>_OLD` and use it in `OldStateData` until after successful state migration.
+* A `MIGRATE` or `MIGRATE_WITH_LOCALS` procedure. Within this procedure, the contract has access to a QPI context `const QPI::QpiContextFunctionCall& qpi`, the new `StateData` struct `QPI::ContractState<StateData>& state`, the old state `const OldStateData& oldState`, and potentially some local variables `MIGRATE_locals& locals`. Note that `MIGRATE` procedures are prohibited to use any QPI functions that change the universe or spectrum (enforced by passing `QpiContextFunctionCall`).
 
 ### New Features
 If you want to add new features, this needs to be approved by the computors again. Please refer to the [Deployment](#deployment) for the needed steps. The IPO is not anymore needed for an update of your SC.

@@ -117,3 +117,137 @@ TEST(TestCoreMathLib, GreatestCommonDivisor)
     EXPECT_EQ(math_lib::greatestCommonDivisor<int>(8, -12), 0);
     EXPECT_EQ(math_lib::greatestCommonDivisor<int>(-12, -18), 0);
 }
+
+template<unsigned int k>
+static unsigned long long floorRootRef(unsigned long long n)
+{
+    if (n < 2) 
+    { 
+        return n; 
+    }
+    double est;
+    if constexpr (k == 2)
+    { 
+        est = std::sqrt(static_cast<double>(n));
+    }
+    else 
+    { 
+        est = std::pow(static_cast<double>(n), 1.0 / static_cast<double>(k));
+    }
+    unsigned long long r = static_cast<unsigned long long>(est);
+    // double overshot -> down
+    while (r > 0 && !math_lib::powerLessOrEqual(r, k, n))
+    { 
+        r--; 
+    }
+    // double undershot -> up
+    while (r < 0xFFFFFFFFFFFFFFFFULL && math_lib::powerLessOrEqual(r + 1, k, n))
+    { 
+        r++; 
+    }
+    return r;
+}
+
+template<unsigned int k>
+static void expectRoot(unsigned long long n)
+{
+    EXPECT_EQ(math_lib::irootK64<k>(n), floorRootRef<k>(n)) << "k=" << k << " n=" << n;
+}
+
+TEST(TestCoreMathLib, BitLength)
+{
+    EXPECT_EQ(math_lib::bitLength(0), 0u);
+    EXPECT_EQ(math_lib::bitLength(1), 1u);
+    EXPECT_EQ(math_lib::bitLength(2), 2u);
+    EXPECT_EQ(math_lib::bitLength(3), 2u);
+    EXPECT_EQ(math_lib::bitLength(4), 3u);
+    EXPECT_EQ(math_lib::bitLength(255), 8u);
+    EXPECT_EQ(math_lib::bitLength(256), 9u);
+    EXPECT_EQ(math_lib::bitLength(1ULL << 63), 64u);
+    EXPECT_EQ(math_lib::bitLength(0xFFFFFFFFFFFFFFFFULL), 64u);
+}
+
+TEST(TestCoreMathLib, PowerLessOrEqual)
+{
+    EXPECT_TRUE(math_lib::powerLessOrEqual(2, 3, 8));      // 2^3 == 8
+    EXPECT_FALSE(math_lib::powerLessOrEqual(2, 3, 7));      // 2^3 > 7
+    EXPECT_TRUE(math_lib::powerLessOrEqual(0, 0, 5));      // 0^0 == 1
+    EXPECT_FALSE(math_lib::powerLessOrEqual(0, 0, 0));      // 0^0 == 1 > 0
+    EXPECT_TRUE(math_lib::powerLessOrEqual(0, 3, 5));      // 0^3 == 0
+    EXPECT_TRUE(math_lib::powerLessOrEqual(1, 100, 1));    // 1^100 == 1
+    EXPECT_TRUE(math_lib::powerLessOrEqual(2, 63, 0xFFFFFFFFFFFFFFFFULL));   // 2^63 <= u64max
+    EXPECT_FALSE(math_lib::powerLessOrEqual(2, 64, 0xFFFFFFFFFFFFFFFFULL));   // 2^64 > u64max (no overflow in check)
+    EXPECT_FALSE(math_lib::powerLessOrEqual(1000000, 4, 0xFFFFFFFFFFFFFFFFULL)); // 1e24 > u64max
+}
+
+TEST(TestCoreMathLib, IRootVsFloorDouble)
+{
+    const int testCount = 10;
+    unsigned long long s[testCount] = {1000, 541, 475, 9978, 1234, 45, 0, 1, 7, 65};
+    for (int i = 0; i < testCount; i++)
+    {
+        const unsigned long long n = s[i];
+        expectRoot<2>(n);
+        expectRoot<3>(n);
+        expectRoot<4>(n);
+        expectRoot<6>(n);
+        expectRoot<8>(n);
+    }
+    expectRoot<2>(0xFFFFFFFFFFFFFFFFULL);
+    expectRoot<3>(0xFFFFFFFFFFFFFFFFULL);
+    expectRoot<8>(0xFFFFFFFFFFFFFFFFULL);
+}
+
+TEST(TestCoreMathLib, IRootK64Integer)
+{
+    EXPECT_EQ(math_lib::irootK64<1>(0), 0ULL);
+    EXPECT_EQ(math_lib::irootK64<1>(1), 1ULL);
+    EXPECT_EQ(math_lib::irootK64<1>(12345), 12345ULL);
+
+    EXPECT_EQ(math_lib::irootK64<2>(0), 0ULL);
+    EXPECT_EQ(math_lib::irootK64<2>(1), 1ULL);
+    EXPECT_EQ(math_lib::irootK64<2>(3), 1ULL);
+    EXPECT_EQ(math_lib::irootK64<2>(4), 2ULL);
+    EXPECT_EQ(math_lib::irootK64<2>(9), 3ULL);
+    EXPECT_EQ(math_lib::irootK64<2>(15), 3ULL);
+    EXPECT_EQ(math_lib::irootK64<2>(16), 4ULL);
+
+    EXPECT_EQ(math_lib::irootK64<3>(0), 0ULL);
+    EXPECT_EQ(math_lib::irootK64<3>(7), 1ULL);
+    EXPECT_EQ(math_lib::irootK64<3>(8), 2ULL);
+    EXPECT_EQ(math_lib::irootK64<3>(26), 2ULL);
+    EXPECT_EQ(math_lib::irootK64<3>(27), 3ULL);
+
+    EXPECT_EQ(math_lib::irootK64<4>(0), 0ULL);
+    EXPECT_EQ(math_lib::irootK64<4>(15), 1ULL);
+    EXPECT_EQ(math_lib::irootK64<4>(16), 2ULL);
+    EXPECT_EQ(math_lib::irootK64<4>(80), 2ULL);
+    EXPECT_EQ(math_lib::irootK64<4>(81), 3ULL);
+    EXPECT_EQ(math_lib::irootK64<4>(1024), 5ULL);
+
+    EXPECT_LE(math_lib::irootK64<4>(81), math_lib::irootK64<4>(82));
+    EXPECT_LE(math_lib::irootK64<4>(82), math_lib::irootK64<4>(255));
+    EXPECT_LE(math_lib::irootK64<4>(255), math_lib::irootK64<4>(256));
+}
+
+TEST(TestCoreMathLib, IpowEdgeCases)
+{
+    constexpr unsigned long long u64Max = 0xFFFFFFFFFFFFFFFFULL;
+
+    EXPECT_EQ(math_lib::ipow(0, 0), 1ULL);
+    EXPECT_EQ(math_lib::ipow(0, 1), 0ULL);
+    EXPECT_EQ(math_lib::ipow(0, 10), 0ULL);
+
+    EXPECT_EQ(math_lib::ipow(1, 0), 1ULL);
+    EXPECT_EQ(math_lib::ipow(1, 1), 1ULL);
+    EXPECT_EQ(math_lib::ipow(1, 1000), 1ULL);
+
+    EXPECT_EQ(math_lib::ipow(1024, 0), 1ULL);
+    EXPECT_EQ(math_lib::ipow(1024, 1), 1024ULL);
+    EXPECT_EQ(math_lib::ipow(1024, 2), 1048576ULL);
+    EXPECT_EQ(math_lib::ipow(1024, 3), 1073741824ULL);
+
+    // Max overflow
+    EXPECT_EQ(math_lib::ipow(2, 64), u64Max);
+    EXPECT_EQ(math_lib::ipow(1024, 7), u64Max);
+}

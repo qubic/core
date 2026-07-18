@@ -932,6 +932,19 @@ namespace QPI
 	typedef BitArray<2048> bit_2048;
 	typedef BitArray<4096> bit_4096;
 
+	constexpr bit_2 BIT2_ZERO = {};
+	constexpr bit_4 BIT4_ZERO = {};
+	constexpr bit_8 BIT8_ZERO = {};
+	constexpr bit_16 BIT16_ZERO = {};
+	constexpr bit_32 BIT32_ZERO = {};
+	constexpr bit_64 BIT64_ZERO = {};
+	constexpr bit_128 BIT128_ZERO = {};
+	constexpr bit_256 BIT256_ZERO = {};
+	constexpr bit_512 BIT512_ZERO = {};
+	constexpr bit_1024 BIT1024_ZERO = {};
+	constexpr bit_2048 BIT2048_ZERO = {};
+	constexpr bit_4096 BIT4096_ZERO = {};
+
 
 	// Array of L elements of type T (L must be 2^N)
 	template <typename T, uint64 L>
@@ -1069,6 +1082,57 @@ namespace QPI
 	template <typename T, uint64 L>
 	bool isArraySortedWithoutDuplicates(const Array<T, L>& Array, uint64 beginIdx = 0, uint64 endIdx = L);
 
+	// Array of L elements of type T that is slower than normal Array but may have any capacity L.
+	// This should be only used when a specific L != 2^N is needed for a good reason, e.g., in input/output.
+	template <typename T, uint64 L>
+	struct SlowAnySizeArray
+	{
+	private:
+		static_assert(L, "The capacity of the array must be != 0.");
+
+		T _values[L];
+
+	public:
+		// Return number of elements in array
+		static inline constexpr uint64 capacity()
+		{
+			return L;
+		}
+
+		// Get element of array
+		inline const T& get(uint64 index) const
+		{
+			return _values[index % L];
+		}
+
+		// Set element of array
+		inline void set(uint64 index, const T& value)
+		{
+			_values[index % L] = value;
+		}
+
+		// Set all elements to passed value
+		inline void setAll(const T& value)
+		{
+			for (uint64 i = 0; i < L; ++i)
+				_values[i] = value;
+		}
+
+		// Implement assignment operator to prevent generating call to unavailable memcpy()
+		inline SlowAnySizeArray<T, L>& operator=(const SlowAnySizeArray<T, L>& other)
+		{
+			copyMemory(*this, other);
+			return *this;
+		}
+
+		// Implement copy constructor to prevent generating call to unavailable memcpy()
+		inline SlowAnySizeArray(const SlowAnySizeArray<T, L>& other)
+		{
+			copyMemory(*this, other);
+		}
+
+		SlowAnySizeArray() = default;
+	};
 
 	// Hash function class to be used with the hash map.
 	template <typename KeyT> class HashFunction 
@@ -2879,37 +2943,33 @@ namespace QPI
 	{
 		struct StateData {};
 		enum { __initializeEmpty = 1, __initializeLocalsSize = sizeof(NoData) };
-		static void __initialize(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __initialize(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __beginEpochEmpty = 1, __beginEpochLocalsSize = sizeof(NoData) };
-		static void __beginEpoch(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __beginEpoch(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __endEpochEmpty = 1, __endEpochLocalsSize = sizeof(NoData) };
-		static void __endEpoch(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __endEpoch(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __beginTickEmpty = 1, __beginTickLocalsSize = sizeof(NoData) };
-		static void __beginTick(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __beginTick(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __endTickEmpty = 1, __endTickLocalsSize = sizeof(NoData) };
-		static void __endTick(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __endTick(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __preAcquireSharesEmpty = 1, __preAcquireSharesLocalsSize = sizeof(NoData) };
-		static void __preAcquireShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __preAcquireShares(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __preReleaseSharesEmpty = 1, __preReleaseSharesLocalsSize = sizeof(NoData) };
-		static void __preReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __preReleaseShares(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __postAcquireSharesEmpty = 1, __postAcquireSharesLocalsSize = sizeof(NoData) };
-		static void __postAcquireShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __postAcquireShares(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __postReleaseSharesEmpty = 1, __postReleaseSharesLocalsSize = sizeof(NoData) };
-		static void __postReleaseShares(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __postReleaseShares(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __postIncomingTransferEmpty = 1, __postIncomingTransferLocalsSize = sizeof(NoData) };
-		static void __postIncomingTransfer(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __postIncomingTransfer(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __setShareholderProposalEmpty = 1, __setShareholderProposalLocalsSize = sizeof(NoData) };
-		static void __setShareholderProposal(const QpiContextProcedureCall&, void*, void*, void*) {}
+		static void __setShareholderProposal(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __setShareholderVotesEmpty = 1, __setShareholderVotesLocalsSize = sizeof(NoData) };
-		static void __setShareholderVotes(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __acceptOracleTrueReplyEmpty = 1, __acceptOracleTrueReplyLocalsSize = sizeof(NoData) };
-		static void __acceptOracleTrueReply(const QpiContextProcedureCall&, void*, void*, void*) {}
-		enum { __acceptOracleFalseReplyEmpty = 1, __acceptOracleFalseReplyLocalsSize = sizeof(NoData) };
-		static void __acceptOracleFalseReply(const QpiContextProcedureCall&, void*, void*) {}
-		enum { __acceptOracleUnknownReplyEmpty = 1, __acceptOracleUnknownReplyLocalsSize = sizeof(NoData) };
-		static void __acceptOracleUnknownReply(const QpiContextProcedureCall&, void*, void*) {}
+		static void __setShareholderVotes(const QpiContextProcedureCall&, void*, void*, void*, void*) {}
 		enum { __expandEmpty = 1 };
 		static void __expand(const QpiContextProcedureCall& qpi, void*, void*) {}
+		enum { __migrateEmpty = 1, __migrateOldStateSize = 0 , __migrateLocalsSize = sizeof(NoData) };
+		static void __migrate(const QpiContextProcedureCall& qpi, void* state, void* oldState, void* locals) {}
 	};
 
 	// Internal macro for defining the system procedure macros
@@ -3042,8 +3102,20 @@ namespace QPI
 	#define EXPAND() \
       public: \
         enum { __expandEmpty = 0 }; \
-		static void __expand(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, QPI::ContractState<CONTRACT_STATE2_TYPE, CONTRACT_INDEX>& state2) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller;
+		inline static void __expand(const QPI::QpiContextFunctionCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, QPI::ContractState<CONTRACT_STATE2_TYPE, CONTRACT_INDEX>& state2) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_expand(qpi, state, state2); } \
+		static void __impl_expand(const QPI::QpiContextFunctionCall & qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>&state, QPI::ContractState<CONTRACT_STATE2_TYPE, CONTRACT_INDEX>& state2)
 
+	#define MIGRATE_WITH_LOCALS() \
+      public: \
+        enum { __migrateEmpty = 0, __migrateOldStateSize = sizeof(CONTRACT_STATE_TYPE::OldStateData), __migrateLocalsSize = sizeof(MIGRATE_locals) }; \
+		static_assert(sizeof(MIGRATE_locals) <= MAX_SIZE_OF_CONTRACT_LOCALS, "MIGRATE_locals size too large"); \
+		inline static void __migrate(const QPI::QpiContextFunctionCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_TYPE::OldStateData& oldState, MIGRATE_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_migrate(qpi, state, oldState, locals); } \
+		static void __impl_migrate(const QPI::QpiContextFunctionCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, const CONTRACT_STATE_TYPE::OldStateData& oldState, MIGRATE_locals& locals)
+
+	#define MIGRATE() \
+      public: \
+		typedef NoData MIGRATE_locals; \
+		MIGRATE_WITH_LOCALS()
 
 	#define LOG_DEBUG(message) __logContractDebugMessage(CONTRACT_INDEX, message);
 
@@ -3098,6 +3170,7 @@ namespace QPI
 	#define PUBLIC_PROCEDURE_WITH_LOCALS(procedure) \
 		public: \
 			enum { __is_function_##procedure = false, __id_##procedure = (CONTRACT_INDEX << 22) | __LINE__ }; \
+			static_assert(sizeof(procedure##_input) <= MAX_INPUT_SIZE, #procedure "_input size too large"); \
 			inline static void procedure(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals) { ::__FunctionOrProcedureBeginEndGuard<(CONTRACT_INDEX << 22) | __LINE__> __prologueEpilogueCaller; __impl_##procedure(qpi, state, input, output, locals); } \
 			static void __impl_##procedure(const QPI::QpiContextProcedureCall& qpi, QPI::ContractState<CONTRACT_STATE_TYPE::StateData, CONTRACT_INDEX>& state, procedure##_input& input, procedure##_output& output, procedure##_locals& locals)
 

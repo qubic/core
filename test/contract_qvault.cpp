@@ -452,6 +452,17 @@ public:
         return output;
     }
 
+    QVAULT::getStakeEpochFlag_output getStakeEpochFlag(id address) const
+    {
+        QVAULT::getStakeEpochFlag_input input;
+        QVAULT::getStakeEpochFlag_output output;
+
+        input.userID = address;
+
+        callFunction(QVAULT_CONTRACT_INDEX, 22, input, output);
+        return output;
+    }
+
     uint32 stake(const id& address, uint32 amount)
     {
         QVAULT::stake_input input;
@@ -469,7 +480,7 @@ public:
         QVAULT::unStake_input input{amount};
         QVAULT::unStake_output output;
 
-        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 2, input, output, address, 0);
+        invokeUserProcedure(QVAULT_CONTRACT_INDEX, 2, input, output, address, QVAULT_UNSTAKE_FEE);
 
         return output.returnCode;
     }
@@ -690,17 +701,29 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
 
         EXPECT_EQ(QvaultV2.TransferShareOwnershipAndPossession(QVAULT_QCAP_ISSUER, qcapAssetName, amountTransfer, QVAULT_CONTRACT_ID, user), amountTransfer);
 
-        increaseEnergy(user, 1);
+        increaseEnergy(user, QVAULT_UNSTAKE_FEE);
         EXPECT_EQ(QvaultV2.QXTransferShareManagementRights(QVAULT_QCAP_ISSUER, qcapAssetName, QVAULT_CONTRACT_INDEX, amountTransfer, user), amountTransfer);
         EXPECT_EQ(numberOfPossessedShares(qcapAssetName, QVAULT_QCAP_ISSUER, user, user, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX), amountTransfer);
-        EXPECT_EQ(QvaultV2.stake(user, amountTransfer), 0);
-        EXPECT_EQ(numberOfPossessedShares(qcapAssetName, QVAULT_QCAP_ISSUER, QVAULT_CONTRACT_ID, QVAULT_CONTRACT_ID, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX), amountTransfer);
-        EXPECT_EQ(QvaultV2.unStake(user, amountTransfer), 0);
-        EXPECT_EQ(numberOfPossessedShares(qcapAssetName, QVAULT_QCAP_ISSUER, user, user, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX), amountTransfer);
+        if (user == stakers[0])
+        {
+            EXPECT_EQ(QvaultV2.stake(user, QVAULT_MIN_STAKE_AMOUNT - 1), QVAULT_INVALID_STAKE_AMOUNT);
+            EXPECT_EQ(numberOfPossessedShares(qcapAssetName, QVAULT_QCAP_ISSUER, QVAULT_CONTRACT_ID, QVAULT_CONTRACT_ID, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX), 0);
+        }
+        else
+        {
+            EXPECT_EQ(QvaultV2.getStakeEpochFlag(user).flag, 0);
+            EXPECT_EQ(QvaultV2.stake(user, amountTransfer), 0);
+            EXPECT_EQ(numberOfPossessedShares(qcapAssetName, QVAULT_QCAP_ISSUER, QVAULT_CONTRACT_ID, QVAULT_CONTRACT_ID, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX), amountTransfer);
+            EXPECT_EQ(QvaultV2.getStakeEpochFlag(user).flag, 1);
+            EXPECT_EQ(QvaultV2.unStake(user, amountTransfer), 0);
+            EXPECT_EQ(numberOfPossessedShares(qcapAssetName, QVAULT_QCAP_ISSUER, user, user, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX), amountTransfer);
+            EXPECT_EQ(QvaultV2.getStakeEpochFlag(user).flag, 3);
+        }
     }
 
-    QvaultV2.TransferShareOwnershipAndPossession(QVAULT_QCAP_ISSUER, qcapAssetName, 10000, QVAULT_CONTRACT_ID, stakers[0]);
+    QvaultV2.TransferShareOwnershipAndPossession(QVAULT_QCAP_ISSUER, qcapAssetName, 10100, QVAULT_CONTRACT_ID, stakers[0]);
     EXPECT_EQ(QvaultV2.stake(stakers[0], 10000), 0);
+    EXPECT_EQ(QvaultV2.stake(stakers[0], 100), QVAULT_STAKE_ALREADY_DONE);
 
     QvaultV2.endEpoch();
     system.epoch++;
@@ -816,6 +839,12 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
 
     EXPECT_EQ(QvaultV2.voteInProposal(stakers[0], 100000000, 1, 0, 1), QVAULT_SUCCESS);
     QvaultV2.getState()->voteInProposalChecker(0, 1, 10000, 0);
+    EXPECT_EQ(QvaultV2.voteInProposal(stakers[0], 100000000, 1, 0, 1), QVAULT_SAME_DECISION);
+    QvaultV2.getState()->voteInProposalChecker(0, 1, 10000, 0);
+    EXPECT_EQ(QvaultV2.voteInProposal(stakers[0], 100000000, 1, 0, 0), QVAULT_SUCCESS);
+    QvaultV2.getState()->voteInProposalChecker(0, 1, 0, 10000);
+    EXPECT_EQ(QvaultV2.voteInProposal(stakers[0], 100000000, 1, 0, 1), QVAULT_OVERFLOW_VOTES);
+    QvaultV2.getState()->voteInProposalChecker(0, 1, 0, 10000);
 
     EXPECT_EQ(QvaultV2.voteInProposal(stakers[0], 100000000, 2, 0, 1), QVAULT_SUCCESS);
     QvaultV2.getState()->voteInProposalChecker(0, 2, 10000, 0);
@@ -897,7 +926,7 @@ TEST(TestContractQvault, testingAllProceduresAndFunctions)
 
     system.epoch++;
     uint64 currentNumberOfQcapInQvault = numberOfPossessedShares(qcapAssetName, QVAULT_QCAP_ISSUER, QVAULT_CONTRACT_ID, QVAULT_CONTRACT_ID, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) + numberOfPossessedShares(qcapAssetName, QVAULT_QCAP_ISSUER, QVAULT_CONTRACT_ID, QVAULT_CONTRACT_ID, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX);
-    QvaultV2.beginEpoch();
+    QvaultV2.beginEpoch(); 
 
     EXPECT_EQ(numberOfPossessedShares(qcapAssetName, QVAULT_QCAP_ISSUER, stakers[0], stakers[0], QX_CONTRACT_INDEX, QX_CONTRACT_INDEX), 0);
     EXPECT_EQ(currentNumberOfQcapInQvault, numberOfPossessedShares(qcapAssetName, QVAULT_QCAP_ISSUER, QVAULT_CONTRACT_ID, QVAULT_CONTRACT_ID, QX_CONTRACT_INDEX, QX_CONTRACT_INDEX) + numberOfPossessedShares(qcapAssetName, QVAULT_QCAP_ISSUER, QVAULT_CONTRACT_ID, QVAULT_CONTRACT_ID, QVAULT_CONTRACT_INDEX, QVAULT_CONTRACT_INDEX));

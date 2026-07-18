@@ -465,6 +465,8 @@ TEST(TestPendingTxsPool, RejectDuplicateTxs)
 
 TEST(TestPendingTxsPool, ProtocolLevelTxsMaxPriority)
 {
+    initSpecialEntities();
+
     TestPendingTxsPool pendingTxsPool;
     unsigned long long seed = 9532;
 
@@ -489,8 +491,13 @@ TEST(TestPendingTxsPool, ProtocolLevelTxsMaxPriority)
     EXPECT_EQ(pendingTxsPool.getTotalNumberOfPendingTxs(firstEpochTick0 - 1), pendingTxsPool.getMaxNumTxsPerTick());
     EXPECT_EQ(pendingTxsPool.getNumberOfPendingTickTxs(firstEpochTick0), pendingTxsPool.getMaxNumTxsPerTick());
 
+    // Add srcComp public key to computor list before sending protocol txs.
+    m256i srcComp = m256i{ 0, 0, 0, (gen64() % NUM_INITIALIZED_ENTITIES) + 1 };
+    broadcastedComputors.computors.publicKeys[0] = srcComp;
+    EXPECT_GE(computorIndex(srcComp), 0);
+
     Transaction tx { 
-        .sourcePublicKey = m256i{ 0, 0, 0, (gen64() % NUM_INITIALIZED_ENTITIES) + 1 },
+        .sourcePublicKey = srcComp,
         .destinationPublicKey = m256i::zero(),
         .amount = 0, .tick = firstEpochTick0, 
         .inputType = VOTE_COUNTER_INPUT_TYPE,
@@ -504,6 +511,7 @@ TEST(TestPendingTxsPool, ProtocolLevelTxsMaxPriority)
     EXPECT_TRUE(pendingTxsPool.add(&tx));
 
     pendingTxsPool.deinit();
+    deinitSpecialEntities();
 }
 
 TEST(TestPendingTxsPool, TxsWithSrcBalance0AreRejected)

@@ -36,7 +36,7 @@ using namespace test_utils;
 
 static const std::string COMMON_TEST_SAMPLES_FILE_NAME = "data/samples_20240815.csv";
 static const std::string COMMON_TEST_SCORES_HYPERIDENTITY_FILE_NAME = "data/scores_hyperidentity.csv";
-static const std::string COMMON_TEST_SCORES_ADDITION_FILE_NAME = "data/scores_addition.csv";
+static const std::string COMMON_TEST_SCORES_ADDITION_FILE_NAME = "data/scores_addition_detour.csv";
 
 static constexpr bool PRINT_DETAILED_INFO = false;
 // Variable control the algo tested

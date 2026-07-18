@@ -205,6 +205,8 @@ static void processRequestConfirmedTx(long long processorNumber, Peer *peer, Req
     ASSERT(txStatusData.confirmedTxCurrentEpochBeginTick == system.initialTick);
     ASSERT(system.tick >= system.initialTick);
 
+    if (!header->checkPayloadSize(sizeof(RequestTxStatus)))
+        return;
     RequestTxStatus *request = header->getPayload<RequestTxStatus>();
 
     // only send a response if the node is in higher tick than the requested tx

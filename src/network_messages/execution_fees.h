@@ -22,7 +22,7 @@ struct ExecutionFeeReportTransactionPrefix : public Transaction
 
     static constexpr unsigned short minInputSize()
     {
-        return sizeof(phaseNumber) + sizeof(numEntries);
+        return sizeof(phaseNumber) + sizeof(numEntries) + sizeof(m256i);
     }
 
     static constexpr unsigned short maxInputSize()
@@ -36,9 +36,11 @@ struct ExecutionFeeReportTransactionPrefix : public Transaction
 
     static bool isValidExecutionFeeReport(const Transaction* transaction)
     {
+        const auto* prefix = (const ExecutionFeeReportTransactionPrefix*)transaction;
         return transaction->amount == minAmount()
             && transaction->inputSize >= minInputSize()
-            && transaction->inputSize <= maxInputSize();
+            && transaction->inputSize <= maxInputSize()
+            && prefix->numEntries <= contractCount;
     }
 
     static unsigned int getNumEntries(const Transaction* transaction)
@@ -50,16 +52,18 @@ struct ExecutionFeeReportTransactionPrefix : public Transaction
     static bool isValidEntryAlignment(const Transaction* transaction)
     {
         const auto* prefix = (const ExecutionFeeReportTransactionPrefix*)transaction;
-        unsigned int numEntries = prefix->numEntries;
+        const unsigned long long numEntries = prefix->numEntries;
+        if (numEntries > contractCount)
+            return false;
 
-        // Calculate expected payload size
-        unsigned int indicesSize = numEntries * sizeof(unsigned int);
-        unsigned int alignmentPadding = (numEntries % 2 == 1) ? sizeof(unsigned int) : 0;
-        unsigned int feesSize = numEntries * sizeof(unsigned long long);
-        unsigned int expectedPayloadSize = indicesSize + alignmentPadding + feesSize;
+        const unsigned long long indicesSize      = numEntries * sizeof(unsigned int);
+        const unsigned long long alignmentPadding = (numEntries % 2 == 1) ? sizeof(unsigned int) : 0;
+        const unsigned long long feesSize         = numEntries * sizeof(unsigned long long);
+        const unsigned long long expectedPayloadSize = indicesSize + alignmentPadding + feesSize;
 
-        // Actual payload size (inputSize - phaseNumber - numEntries - dataLock)
-        unsigned int actualPayloadSize = transaction->inputSize - sizeof(prefix->phaseNumber) - sizeof(prefix->numEntries) - sizeof(m256i);
+        const unsigned long long actualPayloadSize =
+            (unsigned long long)transaction->inputSize
+            - sizeof(prefix->phaseNumber) - sizeof(prefix->numEntries) - sizeof(m256i);
 
         return actualPayloadSize == expectedPayloadSize;
     }

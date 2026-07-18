@@ -7,14 +7,30 @@
 
 #include "network_messages/entity.h"
 #include "network_messages/assets.h"
+#include "network_messages/logging.h"
 #include "contract_core/pre_qpi_def.h"
 #include "contracts/math_lib.h"
-
+#include "private_settings.h"
+#include "public_settings.h"
 
 constexpr unsigned long long spectrumSizeInBytes = SPECTRUM_CAPACITY * sizeof(EntityRecord);
 constexpr unsigned long long universeSizeInBytes = ASSETS_CAPACITY * sizeof(AssetRecord);
-constexpr unsigned long long defaultCommonBuffersSize = math_lib::max(MAX_CONTRACT_STATE_SIZE, math_lib::max(spectrumSizeInBytes, universeSizeInBytes));
 
+#if ENABLE_QUBIC_LOGGING_EVENT
+constexpr unsigned long long loggingStateScratchpadSize =
+LOG_BUFFER_PAGE_SIZE
++ PMAP_LOG_PAGE_SIZE * (sizeof(long long) * 2)
++ IMAP_LOG_PAGE_SIZE * (sizeof(long long) * 2 * LOG_TX_PER_TICK)
++ MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(m256i)
++ 600ULL;
+#else
+constexpr unsigned long long loggingStateScratchpadSize = 0ULL;
+#endif
+
+constexpr unsigned long long defaultCommonBuffersSize = math_lib::max(
+    MAX_CONTRACT_STATE_SIZE,
+    math_lib::max(spectrumSizeInBytes,
+        math_lib::max(universeSizeInBytes, loggingStateScratchpadSize)));
 // Buffer(s) used for:
 // - reorganizing spectrum and universe hash maps (tick processor)
 // - scratchpad buffer used internally in QPI::Collection, QPI::HashMap, QPI::HashSet,
