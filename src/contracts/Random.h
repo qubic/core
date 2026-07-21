@@ -62,6 +62,32 @@ public:
 		sint8 trusteeOk;
 	};
 
+	// Read-only status query so an off-chain provider can discover *where* it is
+	// enrolled (which streams/tiers) and whether it is still active, without having
+	// to know its stream/tier in advance. If count == 0 the provider is not enrolled
+	// anywhere and should (re-)join with a first-commit (reveal == 0).
+	struct GetProviderStatus_input
+	{
+		id provider;
+	};
+
+	struct GetProviderStatus_output
+	{
+		uint32 count;                          // number of (stream, tier) slots held by `provider`
+		Array<uint32, 32> stream;              // stream of slot k
+		Array<uint32, 32> collateralTier;      // collateral tier of slot k
+		Array<uint64, 32> lockedCollateral;    // collateral currently locked for slot k
+		Array<uint8, 32> contributedToEntropy; // 1 if slot k's reveal was mixed into entropy this cycle
+	};
+
+	struct GetProviderStatus_locals
+	{
+		uint32 s;
+		uint32 i;
+		uint32 index;
+		uint32 count;
+	};
+
 	struct StateData
 	{
 		uint64 earnedAmount;
@@ -98,6 +124,33 @@ public:
 		output.fees.set(7, state.get().bitFee);
 		output.fees.set(8, state.get().bitFee);
 		output.fees.set(9, state.get().bitFee);
+	}
+
+	PUBLIC_FUNCTION_WITH_LOCALS(GetProviderStatus)
+	{
+		// Scan every stream for slots owned by input.provider and report each one.
+		// A provider may hold several slots (different streams and/or tiers).
+		locals.count = 0;
+		for (locals.s = 0; locals.s < 3; locals.s++)
+		{
+			for (locals.i = 0; locals.i < state.get().populations.get(locals.s); locals.i++)
+			{
+				locals.index = locals.s * RANDOM_STREAM_CAPACITY + locals.i;
+				if (state.get().providers.get(locals.index) == input.provider && locals.count < 32)
+				{
+					output.stream.set(locals.count, locals.s);
+					output.collateralTier.set(locals.count, static_cast<uint32>(state.get().collateralTiers.get(locals.index)));
+					output.lockedCollateral.set(locals.count, state.get().lockedCollateralAmounts.get(locals.index));
+					output.contributedToEntropy.set(locals.count, 0);
+					if (state.get().contributedToEntropyFlags.get(locals.index))
+					{
+						output.contributedToEntropy.set(locals.count, 1);
+					}
+					locals.count++;
+				}
+			}
+		}
+		output.count = locals.count;
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyEntropy)
@@ -248,7 +301,11 @@ private:
 
 		if (input.reveal != BIT4096_ZERO)
 		{
-			// Reveal path: locate the provider for this stream/tier.
+			// Reveal path: verify preimage of prior commit and re-commit for next round.
+			// A provider that isn't registered (e.g. evicted by END_TICK after missing a
+			// reveal) is rejected here — it must re-enroll with a fresh first-commit
+			// (reveal == 0). The contract does NOT silently re-enroll it; off-chain
+			// clients detect eviction via the GetProviderStatus function and decide.
 			for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
 			{
 				if (qpi.invocator() == state.get().providers.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) &&
@@ -257,48 +314,37 @@ private:
 					break;
 				}
 			}
-
-			// If the provider is still registered, verify the reveal and re-commit.
-			// If it is NOT registered — e.g. it was evicted by END_TICK after missing
-			// a reveal — fall through to the registration path below and treat
-			// input.commit as a fresh first-commit. The off-chain provider is
-			// fire-and-forget and cannot learn it was dropped, so re-enrolling it here
-			// keeps the stream alive instead of locking it out forever. The stale
-			// input.reveal is discarded (its prior commit no longer exists).
-			if (locals.i != state.get().populations.get(locals.stream))
+			if (locals.i == state.get().populations.get(locals.stream) ||
+			    state.get().reveals.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) != BIT4096_ZERO ||
+			    qpi.K12(input.reveal) != state.get().commits.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) ||
+			    state.get().revealOrCommitFlags.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i)) // not found / stale / wrong preimage / same-tick
 			{
-				locals.index = locals.stream * RANDOM_STREAM_CAPACITY + locals.i;
-
-				if (state.get().reveals.get(locals.index) != BIT4096_ZERO ||
-				    qpi.K12(input.reveal) != state.get().commits.get(locals.index) ||
-				    state.get().revealOrCommitFlags.get(locals.index)) // same-tick commit+reveal is forbidden
-				{
-					qpi.transfer(qpi.invocator(), qpi.invocationReward());
-					return;
-				}
-
-				// Refund prior collateral — reveal fulfills obligation.
-				if (state.get().lockedCollateralAmounts.get(locals.index) > 0)
-				{
-					qpi.transfer(qpi.invocator(), state.get().lockedCollateralAmounts.get(locals.index));
-				}
-
-				// Record the reveal for END_TICK entropy mixing.
-				state.mut().reveals.set(locals.index, input.reveal);
-
-				// Store the next commit and lock fresh collateral for it.
-				state.mut().commits.set(locals.index, input.commit);
-				state.mut().lockedCollateralAmounts.set(locals.index, qpi.invocationReward());
-
-				state.mut().revealOrCommitFlags.set(locals.index, 1);
-				state.mut().revealedThisTickFlags.set(locals.index, 1);
-
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				return;
 			}
-			// Provider not registered: fall through and re-enroll it from input.commit.
+
+			locals.index = locals.stream * RANDOM_STREAM_CAPACITY + locals.i;
+
+			// Refund prior collateral — reveal fulfills obligation.
+			if (state.get().lockedCollateralAmounts.get(locals.index) > 0)
+			{
+				qpi.transfer(qpi.invocator(), state.get().lockedCollateralAmounts.get(locals.index));
+			}
+
+			// Record the reveal for END_TICK entropy mixing.
+			state.mut().reveals.set(locals.index, input.reveal);
+
+			// Store the next commit and lock fresh collateral for it.
+			state.mut().commits.set(locals.index, input.commit);
+			state.mut().lockedCollateralAmounts.set(locals.index, qpi.invocationReward());
+
+			state.mut().revealOrCommitFlags.set(locals.index, 1);
+			state.mut().revealedThisTickFlags.set(locals.index, 1);
+
+			return;
 		}
 
-		// First-commit / re-register path: register a brand-new provider for this stream/tier.
+		// First-commit path: register a brand-new provider for this stream/tier.
 		for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
 		{
 			if (qpi.invocator() == state.get().providers.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) &&
@@ -530,6 +576,7 @@ private:
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_FUNCTION(Fees, 1);
+		REGISTER_USER_FUNCTION(GetProviderStatus, 2);
 
 		REGISTER_USER_PROCEDURE(RevealAndCommit, 1);
 		REGISTER_USER_PROCEDURE(BuyEntropy, 2);

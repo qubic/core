@@ -67,6 +67,15 @@ public:
         return output;
     }
 
+    RANDOM::GetProviderStatus_output getProviderStatus(const id& provider)
+    {
+        RANDOM::GetProviderStatus_input input{};
+        input.provider = provider;
+        RANDOM::GetProviderStatus_output output{};
+        callFunction(RANDOM_CONTRACT_INDEX, 2, input, output);
+        return output;
+    }
+
     void revealAndCommit(const id& user, const QPI::bit_4096& reveal,
                         const id& commit, sint64 collateral)
     {
@@ -327,19 +336,13 @@ TEST(ContractRandom, EndToEnd_LatestEntropyRetrieved_TickMod3_Is2)
 }
 
 // ---------------------------------------------------------------------------
-// Regression: self-healing re-registration after a missed reveal.
-//
-// A provider that fails to reveal in its window is evicted by END_TICK. The
-// off-chain miner is fire-and-forget -- it "can't get the results from the
-// procedure calls" -- so it keeps sending its normal reveal+commit every cycle,
-// unaware it was dropped. The reveal it sends refers to a commit the contract no
-// longer holds and cannot validate; if the contract merely refunds and rejects
-// it, the provider is locked out forever and the stream silently "stops
-// accepting data". The reveal path must instead re-enroll the provider from the
-// commit it carries (discarding the unusable reveal), so the next cycle resumes
-// normally.
+// After a missed reveal, END_TICK evicts the provider. Its next reveal+commit is
+// REJECTED -- the contract does NOT silently re-enroll it. The off-chain client
+// detects the eviction via GetProviderStatus (count == 0) and re-joins with a
+// first-commit (reveal == 0). This keeps the contract strict and predictable
+// while giving the client the visibility it needs to recover.
 // ---------------------------------------------------------------------------
-TEST(ContractRandom, MissedRevealThenReCommitReRegistersProvider)
+TEST(ContractRandom, EvictedProviderIsRejectedAndDiscoverableViaStatus)
 {
     ContractTestingRandom r;
 
@@ -348,45 +351,51 @@ TEST(ContractRandom, MissedRevealThenReCommitReRegistersProvider)
     const uint8 tier = 2;                    // 100 qu collateral
     const sint64 collateral = collateralForTier(tier);
 
-    const id commit1 = commitOf(makeReveal(11));  // first committed hash
+    const id commit1 = commitOf(makeReveal(11));
     const QPI::bit_4096 reveal2 = makeReveal(22); // stale reveal sent after eviction
-    const id commit3 = commitOf(makeReveal(33));  // commit carried when the miner re-appears
+    const id commit3 = commitOf(makeReveal(33));  // commit carried when the client re-appears
+    const id commit4 = commitOf(makeReveal(44));  // commit used to re-join via first-commit
 
     const id provider = getUser(0xF00D);
     QPI::bit_4096 zero; zero.setAll(0);
 
-    // ----- Tick T: provider first-commits and is enrolled -----------------
+    // ----- Enroll, then miss the reveal so END_TICK evicts the provider ----
     r.setTick(startTick);
     increaseEnergy(provider, collateral);
     r.revealAndCommit(provider, /*reveal=*/zero, /*commit=*/commit1, collateral);
-    ASSERT_EQ(r.state()->populations.get(stream), 1u);
     r.endTick();
-    ASSERT_EQ(r.state()->populations.get(stream), 1u)
-        << "provider must survive the tick it committed in";
-
-    // ----- Tick T+3: reveal is DROPPED; END_TICK evicts the no-show --------
     r.setTick(startTick + 3);
     r.endTick();
     ASSERT_EQ(r.state()->populations.get(stream), 0u)
-        << "a missed reveal must evict the provider (pool is now empty)";
+        << "a missed reveal must evict the provider";
 
-    // ----- Tick T+6: fire-and-forget miner sends reveal+commit as usual ----
-    // reveal2 cannot validate (its commit is gone), but commit3 must re-enroll.
+    // GetProviderStatus reports the provider is enrolled nowhere.
+    EXPECT_EQ(r.getProviderStatus(provider).count, 0u)
+        << "evicted provider must show no active slots";
+
+    // ----- Its normal reveal+commit is REJECTED (no silent re-enroll) ------
     r.setTick(startTick + 6);
     increaseEnergy(provider, collateral);
+    const long long balBefore = getBalance(provider);
     r.revealAndCommit(provider, /*reveal=*/reveal2, /*commit=*/commit3, collateral);
+    EXPECT_EQ(r.state()->populations.get(stream), 0u)
+        << "reveal+commit from an evicted provider must be rejected, not re-enroll it";
+    EXPECT_EQ(getBalance(provider), balBefore)
+        << "rejected reveal must refund the full attached amount";
 
-    ASSERT_EQ(r.state()->populations.get(stream), 1u)
-        << "reveal+commit from an evicted provider must re-register it, "
-           "not be rejected -- otherwise the stream stops accepting data";
-    EXPECT_TRUE(r.state()->providers.get(stream * 1365 + 0) == provider)
-        << "re-registered slot must hold the provider";
-    EXPECT_TRUE(r.state()->commits.get(stream * 1365 + 0) == commit3)
-        << "re-registered slot must store the new commit";
-    EXPECT_TRUE(r.state()->reveals.get(stream * 1365 + 0) == zero)
-        << "the unusable reveal must be discarded on re-register";
-    EXPECT_EQ(r.state()->collateralTiers.get(stream * 1365 + 0), (uint64)tier)
-        << "re-registered slot must record the collateral tier";
+    // ----- Client re-joins with a first-commit; status now finds it --------
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, /*reveal=*/zero, /*commit=*/commit4, collateral);
+    ASSERT_EQ(r.state()->populations.get(stream), 1u);
+
+    auto st = r.getProviderStatus(provider);
+    ASSERT_EQ(st.count, 1u) << "re-enrolled provider must show exactly one active slot";
+    EXPECT_EQ(st.stream.get(0), stream)
+        << "status must report which stream the provider is in";
+    EXPECT_EQ(st.collateralTier.get(0), (uint32)tier)
+        << "status must report which tier the provider is in";
+    EXPECT_EQ(st.lockedCollateral.get(0), (uint64)collateral)
+        << "status must report the collateral currently at risk";
 }
 
 // ---------------------------------------------------------------------------
