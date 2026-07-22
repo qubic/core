@@ -215,38 +215,22 @@ struct ESCROW : public ContractBase
         locals.error = false;
         locals.offeredQuAndFee = 0;
 
-        if (qpi.epoch() < 221)
+        if (input.offeredAssetsNumber > ESCROW_MAX_ASSETS_IN_DEAL || input.requestedAssetsNumber > ESCROW_MAX_ASSETS_IN_DEAL)
         {
-            if (state.get()._ownerDealIndexes.population() >= ESCROW_MAX_DEALS
-                || state.get()._ownerDealIndexes.population(qpi.invocator()) >= ESCROW_MAX_DEALS_PER_USER
-                || (input.offeredAssetsNumber == 0 && input.requestedAssetsNumber == 0)
-                || input.offeredQU >= MAX_AMOUNT
-                || input.requestedQU >= MAX_AMOUNT
-                || input.offeredAssetsNumber > ESCROW_MAX_ASSETS_IN_DEAL
-                || input.requestedAssetsNumber > ESCROW_MAX_ASSETS_IN_DEAL)
+            if (qpi.invocationReward() > 0)
             {
-                locals.error = true;
+                qpi.transfer(qpi.invocator(), qpi.invocationReward());
             }
+            return;
         }
-        else
-        {
-            if (input.offeredAssetsNumber > ESCROW_MAX_ASSETS_IN_DEAL || input.requestedAssetsNumber > ESCROW_MAX_ASSETS_IN_DEAL)
-            {
-                if (qpi.invocationReward() > 0)
-                {
-                    qpi.transfer(qpi.invocator(), qpi.invocationReward());
-                }
-                return;
-            }
 
-            if (state.get()._ownerDealIndexes.population() >= ESCROW_MAX_DEALS
+        if (state.get()._ownerDealIndexes.population() >= ESCROW_MAX_DEALS
                 || state.get()._ownerDealIndexes.population(qpi.invocator()) >= ESCROW_MAX_DEALS_PER_USER
                 || (input.offeredAssetsNumber == 0 && input.requestedAssetsNumber == 0)
                 || input.offeredQU >= MAX_AMOUNT
                 || input.requestedQU >= MAX_AMOUNT)
-            {
-                locals.error = true;
-            }
+        {
+            locals.error = true;
         }
 
         for (locals.counter = 0; locals.counter < input.offeredAssetsNumber; locals.counter++)

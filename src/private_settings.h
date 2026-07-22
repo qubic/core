@@ -33,6 +33,14 @@ static const unsigned char oracleMachineIPs[][4] = {
      {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
 };
 
+// Enter static IPs of one or multiple OC (Outsourced Computation) machine node(s). This node will connect to these
+// and keep the connection open to forward authorized OC invocation bundles. The OC machine nodes also need to
+// whitelist the IP of this core node. At least one entry is required (an empty array does not compile); point it
+// at a loopback/unreachable address if this node should not forward OC bundles.
+static const unsigned char ocMachineIPs[][4] = {
+     {127, 0, 0, 1}, // REMOVE THIS ENTRY AND REPLACE IT WITH YOUR OWN IP ADDRESSES
+};
+
 #define ENABLE_QUBIC_LOGGING_EVENT 0 // turn on logging events
 
 // Virtual memory settings for logging

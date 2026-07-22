@@ -24,7 +24,13 @@
 #define DISSEMINATION_MULTIPLIER 6
 #define NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS 8
 #define NUMBER_OF_OM_NODE_CONNECTIONS (sizeof(oracleMachineIPs) / sizeof(oracleMachineIPs[0]))
-#define NUMBER_OF_OUTGOING_CONNECTIONS (NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS + NUMBER_OF_OM_NODE_CONNECTIONS)
+#define NUMBER_OF_OC_MACHINE_CONNECTIONS (sizeof(ocMachineIPs) / sizeof(ocMachineIPs[0]))
+// Outgoing slot layout: [0, REGULAR) regular peers, [REGULAR, REGULAR+OM) OM machines,
+// [REGULAR+OM, REGULAR+OM+OC) OC machines.
+#define NUMBER_OF_OUTGOING_CONNECTIONS (NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS + NUMBER_OF_OM_NODE_CONNECTIONS + NUMBER_OF_OC_MACHINE_CONNECTIONS)
+// First outgoing-slot index of the OM and OC machine regions.
+#define FIRST_OM_NODE_CONNECTION_INDEX NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS
+#define FIRST_OC_MACHINE_CONNECTION_INDEX (NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS + NUMBER_OF_OM_NODE_CONNECTIONS)
 #define NUMBER_OF_INCOMING_CONNECTIONS 88
 #define MAX_NUMBER_OF_PUBLIC_PEERS 1024
 #define REQUEST_QUEUE_BUFFER_SIZE 1073741824
@@ -38,8 +44,14 @@
 // OM related setting
 static constexpr unsigned int ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS = 15; // Config timout for connecting attemp to OM
 static constexpr unsigned int ORACLE_MACHINE_TRANSMITING_TIMEOUT_SECS = 30; // Transmitting timeout to OM
-static constexpr unsigned int ORACLE_MACHINE_GRACEFULL_CLOSE_RETIRES = 3; // Gracefull close retries for connecting attemp to OM
+static constexpr unsigned int ORACLE_MACHINE_GRACEFUL_CLOSE_RETRIES = 3; // Graceful close retries for connecting attempt to OM
 static constexpr unsigned long long OM_RECONNECT_COOLDOWN_SECS = 0;
+
+// OC machine setting (mirrors the OM settings above)
+static constexpr unsigned int OC_MACHINE_CONNECTION_TIMEOUT_SECS = 15; // Config timeout for connecting attempt to OC machine
+static constexpr unsigned int OC_MACHINE_TRANSMITING_TIMEOUT_SECS = 30; // Transmitting timeout to OC machine
+static constexpr unsigned int OC_MACHINE_GRACEFUL_CLOSE_RETRIES = 3; // Graceful close retries for connecting attempt to OC machine
+static constexpr unsigned long long OC_RECONNECT_COOLDOWN_SECS = 0;
 
 static_assert((NUMBER_OF_INCOMING_CONNECTIONS / NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS) >= 11, "Number of incoming connections must be x11+ number of outgoing connections to keep healthy network");
 
@@ -48,6 +60,10 @@ static volatile bool listOfPeersIsStatic = false;
 #define OM_RETRY_COUNT(dejavu) ((dejavu) >> 24)
 #define OM_SET_RETRY_COUNT(dejavu, count) (((dejavu) & 0x00FFFFFF) | ((count) << 24))
 #define OM_MAX_RETRIES 3
+
+#define OC_RETRY_COUNT(dejavu) ((dejavu) >> 24)
+#define OC_SET_RETRY_COUNT(dejavu, count) (((dejavu) & 0x00FFFFFF) | ((count) << 24))
+#define OC_MAX_RETRIES 3
 
 struct Peer
 {
@@ -76,6 +92,13 @@ struct Peer
     unsigned long long omTransmitStartTime;
     unsigned long long lastOMCloseTime;
 
+    // Indicate the peer is an OC machine connection type which is a subtype of outgoing connection.
+    // Mirrors the OM fields above; connectionStartTime is shared (set on connect for either kind).
+    BOOLEAN isOcMachine;
+    unsigned long long lastOcActivityTime;
+    unsigned long long ocTransmitStartTime;
+    unsigned long long lastOcCloseTime;
+
     // Extra data to determine if this peer is a fullnode
     // Note: an **active fullnode** is a peer that is able to reply valid tick data, tick vote to this node after getting requested
     // If a peer is an active fullnode, it will receive more requests from this node than others, as well as longer alive connection time.
@@ -94,6 +117,11 @@ struct Peer
     bool isOracleMachineNode() const
     {
         return isOMNode;
+    }
+
+    bool isOcMachineNode() const
+    {
+        return isOcMachine;
     }
 
     // store a dejavu number into local list
@@ -139,6 +167,11 @@ struct Peer
         omTransmitStartTime = 0;
         lastOMCloseTime = 0;
 
+        isOcMachine = FALSE;
+        lastOcActivityTime = 0;
+        ocTransmitStartTime = 0;
+        lastOcCloseTime = 0;
+
         dataToTransmitSize = 0;
         lastActiveTick = 0;
         trackRequestedCounter = 0;
@@ -166,6 +199,9 @@ static PublicPeer publicPeers[MAX_NUMBER_OF_PUBLIC_PEERS];
 static volatile char omPeersLock = 0;
 static unsigned int numberOfOMPeers = 0;
 IPv4Address omIPv4Address[NUMBER_OF_OM_NODE_CONNECTIONS];
+
+static unsigned int numberOfOcPeers = 0;
+IPv4Address ocIPv4Address[NUMBER_OF_OC_MACHINE_CONNECTIONS];
 
 static unsigned long long* dejavu0 = NULL;
 static unsigned long long* dejavu1 = NULL;
@@ -249,6 +285,11 @@ static void closePeer(Peer* peer, int closeGracefullyRetries = 0)
                 // Track close time for OM nodes to enable reconnection cooldown
                 peer->lastOMCloseTime = __rdtsc();
             }
+            else if (peer->isOcMachineNode())
+            {
+                // Track close time for OC machine nodes to enable reconnection cooldown
+                peer->lastOcCloseTime = __rdtsc();
+            }
 
             EFI_STATUS status = EFI_SUCCESS;
             // Decide to close gracefully with Close()
@@ -300,9 +341,11 @@ static void closePeer(Peer* peer, int closeGracefullyRetries = 0)
                 ASSERT(numberOfAcceptedIncommingConnection >= 0);
             }
 
-            // Save OM close time before reset
+            // Save OM/OC close time before reset
             unsigned long long savedOMCloseTime = peer->lastOMCloseTime;
+            unsigned long long savedOcCloseTime = peer->lastOcCloseTime;
             bool wasOMNode = peer->isOracleMachineNode();
+            bool wasOcMachine = peer->isOcMachineNode();
             unsigned int peerIndex = (unsigned int)(peer - peers);
 
             peer->reset();
@@ -311,18 +354,25 @@ static void closePeer(Peer* peer, int closeGracefullyRetries = 0)
             {
                 peer->lastOMCloseTime = savedOMCloseTime;
                 peer->isOMNode = TRUE;
-                peer->address = omIPv4Address[peerIndex - NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS];
+                peer->address = omIPv4Address[peerIndex - FIRST_OM_NODE_CONNECTION_INDEX];
+            }
+            else if (wasOcMachine)
+            {
+                peer->lastOcCloseTime = savedOcCloseTime;
+                peer->isOcMachine = TRUE;
+                peer->address = ocIPv4Address[peerIndex - FIRST_OC_MACHINE_CONNECTION_INDEX];
             }
         }
     }
 }
 
-// Closes all peer connections; optionally includes Oracle Machine nodes.
-static void closeAllPeers(bool closeOM = false)
+// Closes all peer connections; optionally includes the persistent machine-node connections
+// (Oracle Machine and OC machine), which are otherwise kept open for low latency.
+static void closeAllPeers(bool closeMachineNodes = false)
 {
     for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
     {
-        if (closeOM || !peers[i].isOracleMachineNode())
+        if (closeMachineNodes || (!peers[i].isOracleMachineNode() && !peers[i].isOcMachineNode()))
         {
             closePeer(&peers[i]);
         }
@@ -520,6 +570,51 @@ static void pushToOracleMachineNodes(RequestResponseHeader* requestResponseHeade
     addDebugMessage(::message);
 #endif
 
+}
+
+
+// Push a message (an OcMachineInvocation) to all connected OC machine peers.
+// Mirrors pushToOracleMachineNodes. Re-enqueues for retry if no OC peer is ready yet.
+static void pushToOcMachineNodes(RequestResponseHeader* requestResponseHeader)
+{
+    if (NUMBER_OF_OC_MACHINE_CONNECTIONS > 0)
+    {
+        bool pushedToAny = false;
+        unsigned short numberOfSuitablePeers = 0;
+
+        unsigned int currentDejavu = requestResponseHeader->dejavu();
+        if (OC_RETRY_COUNT(currentDejavu) > OC_MAX_RETRIES)
+        {
+            requestResponseHeader->setDejavu(currentDejavu & 0x00FFFFFF);
+        }
+
+        for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS && numberOfSuitablePeers < NUMBER_OF_OC_MACHINE_CONNECTIONS; i++)
+        {
+            if (peers[i].isOcMachineNode())
+            {
+                if (peers[i].tcp4Protocol
+                    && peers[i].isConnectedAccepted
+                    && !peers[i].isClosing)
+                {
+                    push(&peers[i], requestResponseHeader);
+                    numberOfSuitablePeers++;
+                    pushedToAny = true;
+                }
+            }
+        }
+
+        // Re-enqueue if no OC peer was ready.
+        if (!pushedToAny)
+        {
+            unsigned int retryCount = OC_RETRY_COUNT(requestResponseHeader->dejavu());
+            if (retryCount < OC_MAX_RETRIES)
+            {
+                requestResponseHeader->setDejavu(
+                    OC_SET_RETRY_COUNT(requestResponseHeader->dejavu(), retryCount + 1));
+                enqueueResponse((Peer*)2, requestResponseHeader);
+            }
+        }
+    }
 }
 
 
@@ -734,6 +829,10 @@ static bool peerConnectionNewlyEstablished(unsigned int i)
                     if (peers[i].isOracleMachineNode())
                     {
                         peers[i].lastOMActivityTime = __rdtsc();
+                    }
+                    else if (peers[i].isOcMachineNode())
+                    {
+                        peers[i].lastOcActivityTime = __rdtsc();
                     }
                 }
             }
@@ -1000,6 +1099,19 @@ static void processTransmittedData(unsigned int i, unsigned int salt)
             }
         }
 
+        // Same treatment for OC machine peers: close when transmitting is stuck
+        if (peers[i].isOcMachineNode() && peers[i].isTransmitting && peers[i].ocTransmitStartTime > 0)
+        {
+            unsigned long long elapsedSecs = (__rdtsc() - peers[i].ocTransmitStartTime) / frequency;
+            if (elapsedSecs > OC_MACHINE_TRANSMITING_TIMEOUT_SECS)
+            {
+                peers[i].isTransmitting = FALSE;
+                peers[i].ocTransmitStartTime = 0; // mark as invalid
+                closePeer(&peers[i]);
+                return;  // Exit early
+            }
+        }
+
         // check if transmission is completed
         if (peers[i].transmitToken.CompletionToken.Status != -1)
         {
@@ -1027,6 +1139,10 @@ static void processTransmittedData(unsigned int i, unsigned int salt)
                     if (peers[i].isOracleMachineNode())
                     {
                         peers[i].lastOMActivityTime = __rdtsc();
+                    }
+                    else if (peers[i].isOcMachineNode())
+                    {
+                        peers[i].lastOcActivityTime = __rdtsc();
                     }
                 }
             }
@@ -1067,6 +1183,10 @@ static void transmitData(unsigned int i, unsigned int salt)
                     {
                         peers[i].omTransmitStartTime = __rdtsc();
                     }
+                    else if (peers[i].isOcMachineNode())
+                    {
+                        peers[i].ocTransmitStartTime = __rdtsc();
+                    }
                 }
             }
         }
@@ -1095,8 +1215,9 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
     EFI_STATUS status;
     if (!peers[i].tcp4Protocol)
     {
-        // Save OM close time before reset (for cooldown to work)
+        // Save OM/OC close time before reset (for cooldown to work)
         unsigned long long savedOMCloseTime = peers[i].lastOMCloseTime;
+        unsigned long long savedOcCloseTime = peers[i].lastOcCloseTime;
 
         peers[i].reset();
         // peer slot without active connection
@@ -1106,11 +1227,33 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
             bool experimentSetting = false;
             // outgoing connection:
             peers[i].isIncommingConnection = FALSE;
-            // Check if this slot is for OM node
-            if (i >= NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS)
+            // Slot layout: [0,REGULAR) regular, [REGULAR,REGULAR+OM) OM, [REGULAR+OM,...) OC
+            if (i >= FIRST_OC_MACHINE_CONNECTION_INDEX)
+            {
+                // OC machine slot
+                peers[i].isOcMachine = TRUE;
+                peers[i].address = ocIPv4Address[i - FIRST_OC_MACHINE_CONNECTION_INDEX];
+
+                // Restore OC close time for cooldown check
+                peers[i].lastOcCloseTime = savedOcCloseTime;
+
+                // Mark it as failure
+                peers[i].connectAcceptToken.CompletionToken.Status = -1;
+
+                // Reconnection cooldown: prevent rapid reconnect cycles of the OC machine
+                if (peers[i].lastOcCloseTime > 0)
+                {
+                    unsigned long long elapsedSecs = (__rdtsc() - peers[i].lastOcCloseTime) / frequency;
+                    if (elapsedSecs < OC_RECONNECT_COOLDOWN_SECS)
+                    {
+                        return;  // Still in cooldown, don't attempt reconnection yet
+                    }
+                }
+            }
+            else if (i >= FIRST_OM_NODE_CONNECTION_INDEX)
             {
                 peers[i].isOMNode = TRUE;
-                peers[i].address = omIPv4Address[i - NUMBER_OF_REGULAR_OUTGOING_CONNECTIONS];
+                peers[i].address = omIPv4Address[i - FIRST_OM_NODE_CONNECTION_INDEX];
 
                 // Restore OM close time for cooldown check
                 peers[i].lastOMCloseTime = savedOMCloseTime;
@@ -1132,6 +1275,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
             else
             {
                 peers[i].isOMNode = FALSE;
+                peers[i].isOcMachine = FALSE;
                 // randomly select public peer and try to connect if we do not
                 // yet have an outgoing connection to it
                 peers[i].address = publicPeers[random(numberOfPublicPeers)].address;
@@ -1164,7 +1308,7 @@ static void peerReconnectIfInactive(unsigned int i, unsigned short port)
                         else
                         {
                             peers[i].isConnectingAccepting = TRUE;
-                            if (peers[i].isOracleMachineNode())
+                            if (peers[i].isOracleMachineNode() || peers[i].isOcMachineNode())
                             {
                                 peers[i].connectionStartTime = __rdtsc();
                             }

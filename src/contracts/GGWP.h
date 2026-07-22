@@ -431,17 +431,10 @@ struct WOLFPACK : public ContractBase
             return;
         }
 
-        if (qpi.epoch() < 221)
+        if (state.mut().clanRanks.set(input.memberAddress, input.rank) == NULL_INDEX)
         {
-            state.mut().clanRanks.set(input.memberAddress, input.rank);
-        }
-        else
-        {
-            if (state.mut().clanRanks.set(input.memberAddress, input.rank) == NULL_INDEX)
-            {
-                output.returnCode = WOLFPACK_ERROR_INVALID_SLOT;
-                return;
-            }
+            output.returnCode = WOLFPACK_ERROR_INVALID_SLOT;
+            return;
         }
         state.mut().clanMemberCount = state.get().clanMemberCount + 1;
 
@@ -740,26 +733,13 @@ struct WOLFPACK : public ContractBase
             output.returnCode = WOLFPACK_ERROR_BELOW_MIN_STAKE;
             return;
         }
-
-        if (qpi.epoch() < 221)
+        // Verify invocator has enough GGWP shares already under WP's management.
+        // User must call QX.TransferShareManagementRights(asset=wpToken, shares=N, newMgmtIdx=GGWP) first.
+        if (qpi.numberOfPossessedShares(state.get().wpToken.assetName, state.get().wpToken.issuer,
+            qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < (sint64)(locals.existingStake + input.numberOfShares))
         {
-            if (qpi.numberOfPossessedShares(state.get().wpToken.assetName, state.get().wpToken.issuer,
-                qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < (sint64)input.numberOfShares)
-            {
-                output.returnCode = WOLFPACK_ERROR_ACQUIRE_FAILED;
-                return;
-            }
-        }
-        else
-        {
-            // Verify invocator has enough GGWP shares already under WP's management.
-            // User must call QX.TransferShareManagementRights(asset=wpToken, shares=N, newMgmtIdx=GGWP) first.
-            if (qpi.numberOfPossessedShares(state.get().wpToken.assetName, state.get().wpToken.issuer,
-                qpi.invocator(), qpi.invocator(), SELF_INDEX, SELF_INDEX) < (sint64)(locals.existingStake + input.numberOfShares))
-            {
-                output.returnCode = WOLFPACK_ERROR_ACQUIRE_FAILED;
-                return;
-            }
+            output.returnCode = WOLFPACK_ERROR_ACQUIRE_FAILED;
+            return;
         }
 
         // Causer-pays (self-sustain): the stake fee stays in the contract's QU balance
@@ -818,16 +798,13 @@ struct WOLFPACK : public ContractBase
             return;
         }
 
-        if (qpi.epoch() >= 221)
+        if (state.mut().unstakeAmounts.set(qpi.invocator(), input.numberOfShares) == NULL_INDEX)
         {
-            if (state.mut().unstakeAmounts.set(qpi.invocator(), input.numberOfShares) == NULL_INDEX)
-            {
-                output.returnCode = WOLFPACK_ERROR_ACQUIRE_FAILED;
-                return;
-            }
-            state.mut().unstakeEpochs.set(qpi.invocator(), qpi.epoch());
-            state.mut().unstakeCount = state.get().unstakeCount + 1;
+            output.returnCode = WOLFPACK_ERROR_ACQUIRE_FAILED;
+            return;
         }
+        state.mut().unstakeEpochs.set(qpi.invocator(), qpi.epoch());
+        state.mut().unstakeCount = state.get().unstakeCount + 1;
 
         if (input.numberOfShares == locals.currentStake)
         {
@@ -839,14 +816,6 @@ struct WOLFPACK : public ContractBase
             state.mut().stakedBalances.replace(qpi.invocator(), locals.currentStake - input.numberOfShares);
         }
         state.mut().totalStaked = state.get().totalStaked - input.numberOfShares;
-        
-        if (qpi.epoch() < 221)
-        {
-            state.mut().unstakeAmounts.set(qpi.invocator(), input.numberOfShares);
-            state.mut().unstakeEpochs.set(qpi.invocator(), qpi.epoch());
-            state.mut().unstakeCount = state.get().unstakeCount + 1;
-        }
-        
         output.returnCode = WOLFPACK_OK;
     }
 
@@ -960,14 +929,6 @@ struct WOLFPACK : public ContractBase
 
     PUBLIC_PROCEDURE_WITH_LOCALS(AdminReconcileStake)
     {
-        if (qpi.epoch() < 221)
-        {
-            // Before epoch 221, this procedure should be unknown. processTickTransactionContractProcedure will call POST_INCOMING_TRANSFER
-            // if a tx with amount > 0 is invoking an unknown procedure. So before epoch 221, POST_INCOMING_TRANSFER should be invoked here as well,
-            // however, this can be skipped because the contract does not define POST_INCOMING_TRANSFER.
-            return;
-        }
-
         if (qpi.invocator() != state.get().adminAddress)
         {
             output.returnCode = WOLFPACK_ERROR_ACCESS_DENIED;
