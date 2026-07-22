@@ -3408,6 +3408,12 @@ TEST(ContractQraffle, InitialRegisters_CannotLogout)
 
     for (const auto& reg : ir)
     {
+        // The 5 bootstrap registers are seeded directly into contract state by INITIALIZE and are
+        // NOT present in the (empty) test spectrum. invokeUserProcedure() bails out before running
+        // the procedure when the invocator has no spectrum entry, leaving returnCode at its zeroed
+        // default (SUCCESS). Give each ID a spectrum entry so the logout procedure actually runs and
+        // hits the initial-register guard.
+        increaseEnergy(reg, QRAFFLE_REGISTER_AMOUNT);
         auto result = qraffle.logoutInSystem(reg);
         EXPECT_EQ(result.returnCode, QRAFFLE_INITIAL_REGISTER_CANNOT_LOGOUT);
     }
@@ -3730,7 +3736,10 @@ TEST(ContractQraffle, MultipleEpochs_StateResetAndReuse)
 TEST(ContractQraffle, TokenRaffle_WinnerReceivesTokensMinusFees)
 {
     ContractTestingQraffle qraffle;
-    system.epoch = 5;
+    // Must be >= QRAFFLE's construction epoch: transferring token management rights to QRAFFLE
+    // via qpi.releaseShares() is rejected when system.epoch < QRAFFLE constructionEpoch, which
+    // would otherwise make every depositInTokenRaffle() fail with QRAFFLE_FAILED_TO_DEPOSIT.
+    system.epoch = 200;
 
     const uint32 numMembers = 8;
     id members[numMembers];
@@ -3778,7 +3787,7 @@ TEST(ContractQraffle, TokenRaffle_WinnerReceivesTokensMinusFees)
     increaseEnergy(members[0], qraffle.getState()->getQuRaffleEntryAmount());
     qraffle.depositInQuRaffle(members[0], qraffle.getState()->getQuRaffleEntryAmount());
 
-    system.epoch = 6;
+    system.epoch = 201;
     qraffle.endEpoch();
 
     // Exactly 1 token raffle must have ended.
@@ -3794,9 +3803,12 @@ TEST(ContractQraffle, TokenRaffle_WinnerReceivesTokensMinusFees)
     uint64 charity       = pool * QRAFFLE_CHARITY_FEE / 100;
     uint64 shareholder   = (pool * QRAFFLE_SHAREHOLDER_FEE / 100) / NUMBER_OF_COMPUTORS * NUMBER_OF_COMPUTORS;
     uint32 numRegisters  = qraffle.getState()->getNumberOfRegisters();
-    uint64 reg           = (pool * QRAFFLE_REGISTER_FEE / 100) / numRegisters * numRegisters;
+    uint64 registerPerShare = (pool * QRAFFLE_REGISTER_FEE / 100) / numRegisters;
+    uint64 reg           = registerPerShare * numRegisters;
     uint64 fee           = pool * QRAFFLE_FEE / 100;
-    uint64 expectedWinner = pool - burn - charity - shareholder - reg - fee;
+    // The winner is itself a DAO register, so on top of the winner payout it also receives one
+    // register-share slice of the register fee that END_EPOCH redistributes to every register.
+    uint64 expectedWinner = pool - burn - charity - shareholder - reg - fee + registerPerShare;
 
     id winner = ended.epochWinner;
     sint64 winnerShares = numberOfPossessedShares(aname, tokenIssuer, winner, winner,
@@ -4016,7 +4028,9 @@ TEST(ContractQraffle, EndEpoch_qREAmountResetsToDefaultWhenNoSubmissions)
 TEST(ContractQraffle, TokenRaffle_DepositSlotFull)
 {
     ContractTestingQraffle qraffle;
-    system.epoch = 5;
+    // Must be >= QRAFFLE's construction epoch, otherwise transferring token management rights to
+    // QRAFFLE (qpi.releaseShares) is rejected and every depositInTokenRaffle() fails.
+    system.epoch = 200;
 
     // Create a token.
     id tokenIssuer = getUser(100);
