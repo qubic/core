@@ -574,7 +574,7 @@ struct ContractStateChangeInfo
 };
 // Contracts whose state struct changed this epoch. Update this list each epoch as needed.
 // Each entry is { CONTRACT_INDEX, PADDING or RESET or MIGRATE, EPOCH }
-constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { QRAFFLE_CONTRACT_INDEX, MIGRATE, 221 } };
+constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { QRAFFLE_CONTRACT_INDEX, MIGRATE, 223 } };
 constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
 
 
