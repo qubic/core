@@ -166,9 +166,6 @@
       <Filter>contract_core</Filter>
     </ClInclude>
     <ClInclude Include="vote_counter.h" />
-    <ClInclude Include="contract_core\qpi_proposals_impl.h">
-      <Filter>contract_core</Filter>
-    </ClInclude>
     <ClInclude Include="contracts\EmptyTemplate.h">
       <Filter>contracts</Filter>
     </ClInclude>
@@ -196,9 +193,6 @@
     </ClInclude>
     <ClInclude Include="platform\assert.h">
       <Filter>platform</Filter>
-    </ClInclude>
-    <ClInclude Include="contract_core\qpi_assets_impl.h">
-      <Filter>contract_core</Filter>
     </ClInclude>
     <ClInclude Include="assets\net_msg_impl.h">
       <Filter>assets</Filter>
