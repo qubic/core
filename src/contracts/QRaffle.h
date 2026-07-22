@@ -1409,16 +1409,6 @@ protected:
 				LOG_INFO(locals.log);
 				return;
 			}
-			// QRAFFLE and QXMR are reserved for dividends/registration; disallow in bundles.
-			if ((locals.item.asset.assetName == QRAFFLE_ASSET_NAME && locals.item.asset.issuer == NULL_ID)
-				|| (locals.item.asset.assetName == QRAFFLE_QXMR_ASSET_NAME && locals.item.asset.issuer == state.get().QXMRIssuer))
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-				output.returnCode = QRAFFLE_INVALID_BUNDLE;
-				locals.log = Logger{ QRAFFLE_CONTRACT_INDEX, QRAFFLE_invalidBundle, 0 };
-				LOG_INFO(locals.log);
-				return;
-			}
 			// Duplicate-asset check within the bundle; O(N²) acceptable for N ≤ 4.
 			locals.dupFound = 0;
 			for (locals.j = 0; locals.j < locals.i; locals.j++)
