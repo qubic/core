@@ -388,6 +388,9 @@
     <ClInclude Include="platform\virtual_memory.h">
       <Filter>platform</Filter>
     </ClInclude>
+    <ClInclude Include="oc_core\core_oc_network_messages.h">
+      <Filter>oc_core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
@@ -431,6 +434,9 @@
     </Filter>
     <Filter Include="oracle_core">
       <UniqueIdentifier>{a42dd6f2-617c-4fbc-b3ec-f51975e5c447}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="oc_core">
+      <UniqueIdentifier>{632d0d96-29d2-4b1d-bb23-7f055e7d32b1}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

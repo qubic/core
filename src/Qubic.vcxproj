@@ -115,6 +115,7 @@
     <ClInclude Include="oracle_interfaces\DogeShareValidation.h" />
     <ClInclude Include="oracle_interfaces\Mock.h" />
     <ClInclude Include="oracle_interfaces\Price.h" />
+    <ClInclude Include="oc_core\core_oc_network_messages.h" />
     <ClInclude Include="platform\assert.h" />
     <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />
