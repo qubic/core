@@ -6349,6 +6349,17 @@ static bool initialize()
         }
     }
 
+    if (NUMBER_OF_OC_MACHINE_CONNECTIONS > 0)
+    {
+        logToConsole(L"Populating OC machine node ...");
+        numberOfOcPeers = 0;
+        for (unsigned int i = 0; i < NUMBER_OF_OC_MACHINE_CONNECTIONS; i++)
+        {
+            const IPv4Address& peer_ip = *reinterpret_cast<const IPv4Address*>(ocMachineIPs[i]);
+            copyMem(&ocIPv4Address[numberOfOcPeers++], &peer_ip, sizeof(IPv4Address));
+        }
+    }
+
     logToConsole(L"Init TCP...");
     if (!initTcp4(PORT))
         return false;
@@ -7486,8 +7497,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                 for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
                 {
-                    // handle new connections. For Oracle Machine, not need the ExchangePublicPeers
-                    if (peerConnectionNewlyEstablished(i) && !peers[i].isOracleMachineNode())
+                    // handle new connections. For Oracle Machine and OC machine, not need the ExchangePublicPeers
+                    if (peerConnectionNewlyEstablished(i) && !peers[i].isOracleMachineNode() && !peers[i].isOcMachineNode())
                     {
                         // new connection established:
                         // prepare and send ExchangePublicPeers message
@@ -7562,10 +7573,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     {
                         if (ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS > 0
                             && peers[i].connectionStartTime > 0
-                            && peers[i].isConnectingAccepting 
+                            && peers[i].isConnectingAccepting
                             && ((__rdtsc() - peers[i].connectionStartTime) / frequency > ORACLE_MACHINE_CONNECTION_TIMEOUT_SECS))
                         {
-                            closePeer(&peers[i], ORACLE_MACHINE_GRACEFULL_CLOSE_RETIRES);
+                            closePeer(&peers[i], ORACLE_MACHINE_GRACEFUL_CLOSE_RETRIES);
                         }
 
                         // inactivity timeout between 1 and 2 minutes (depending on peer index to reduce risk of
@@ -7576,7 +7587,27 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                             peers[i].lastOMActivityTime > 0 &&
                             ((__rdtsc() - peers[i].lastOMActivityTime) / frequency > OM_INACTIVITY_TIMEOUT_SECS))
                         {
-                            closePeer(&peers[i], ORACLE_MACHINE_GRACEFULL_CLOSE_RETIRES);
+                            closePeer(&peers[i], ORACLE_MACHINE_GRACEFUL_CLOSE_RETRIES);
+                        }
+                    }
+                    else if (peers[i].isOcMachineNode())
+                    {
+                        // Mirror the OM connection lifecycle handling for OC machine peers.
+                        if (OC_MACHINE_CONNECTION_TIMEOUT_SECS > 0
+                            && peers[i].connectionStartTime > 0
+                            && peers[i].isConnectingAccepting
+                            && ((__rdtsc() - peers[i].connectionStartTime) / frequency > OC_MACHINE_CONNECTION_TIMEOUT_SECS))
+                        {
+                            closePeer(&peers[i], OC_MACHINE_GRACEFUL_CLOSE_RETRIES);
+                        }
+
+                        const unsigned long long OC_INACTIVITY_TIMEOUT_SECS = 120 - (i % 5) * 15;
+                        if (peers[i].isConnectedAccepted &&
+                            !peers[i].isClosing &&
+                            peers[i].lastOcActivityTime > 0 &&
+                            ((__rdtsc() - peers[i].lastOcActivityTime) / frequency > OC_INACTIVITY_TIMEOUT_SECS))
+                        {
+                            closePeer(&peers[i], OC_MACHINE_GRACEFUL_CLOSE_RETRIES);
                         }
                     }
 
@@ -7725,6 +7756,10 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                         else if (responseQueueElements[responseQueueElementTail].peer == (Peer*)1)
                         {
                             pushToOracleMachineNodes(responseHeader);
+                        }
+                        else if (responseQueueElements[responseQueueElementTail].peer == (Peer*)2)
+                        {
+                            pushToOcMachineNodes(responseHeader);
                         }
                         else
                         {

@@ -409,6 +409,9 @@
     <ClInclude Include="qpi\impl\qpi_trivial_impl.h">
       <Filter>qpi\impl</Filter>
     </ClInclude>
+    <ClInclude Include="oc_core\core_oc_network_messages.h">
+      <Filter>oc_core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="platform">
@@ -458,6 +461,9 @@
     </Filter>
     <Filter Include="qpi\impl">
       <UniqueIdentifier>{09aad857-4f8c-40c8-9ffb-41fcfcbef0ba}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="oc_core">
+      <UniqueIdentifier>{632d0d96-29d2-4b1d-bb23-7f055e7d32b1}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
