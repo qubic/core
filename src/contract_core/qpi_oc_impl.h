@@ -22,7 +22,7 @@ QPI::sint64 QPI::QpiContextProcedureCall::__qpiInvokeOC(
     const QPI::uint16 contractIndex = static_cast<QPI::uint16>(this->_currentContractIndex);
 
     // compute fee
-    const sint64 fee = OcInterface::getInvocationFee(request);
+    const sint64 fee = OCI::getOcInvocationFeeFunc[OcInterface::ocInterfaceIndex](&request);
     if (fee < MIN_OC_INVOCATION_FEE)
         return -1;
 
