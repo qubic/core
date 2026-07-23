@@ -39,9 +39,18 @@ constexpr uint64_t OC_REQUEST_STORAGE_SIZE = 256ULL * MAX_OC_INVOCATIONS_PER_EPO
 constexpr int64_t MIN_OC_INVOCATION_FEE = 10;
 
 // Maximum number of ticks an invocation may remain in PENDING_AUTH before timing out.
-// Auth txs target tick T+OC_AUTH_SIGNATURE_PUBLICATION_OFFSET (= T+3) and are one-shot
-// (no re-emission), so this only needs to cover that window plus a little slack.
-constexpr uint32_t OC_INVOCATION_TIMEOUT_DEFAULT_TICKS = 5;
+// Auth txs target tick T+OC_AUTH_SIGNATURE_PUBLICATION_OFFSET (= T+3) and are re-emitted
+// every OC_AUTH_RESCHEDULE_TICKS while unsigned; 12 leaves room for two retry rounds
+// (retries emitted at T+4 and T+8 execute at T+7 and T+11, inside the window).
+constexpr uint32_t OC_INVOCATION_TIMEOUT_DEFAULT_TICKS = 12;
+
+// Minimum ticks between this node's auth-tx emissions for the same in-flight invocation.
+// Must exceed OC_AUTH_SIGNATURE_PUBLICATION_OFFSET: an attempt emitted at T executes at
+// T+3 (setting signedBy), so retrying before T+4 would duplicate a tx that may still
+// land. Emitting bumps lastScheduledTick, so a stuck invocation re-emits once per
+// window, not once per tick; the happy path (signedBy set within the window) never
+// re-emits at all.
+constexpr uint32_t OC_AUTH_RESCHEDULE_TICKS = 4;
 
 // Maximum number of invocations that may be in flight (PENDING_AUTH, or AUTHORIZED but
 // not yet delivered) at any moment. Bounds the heavy per-computor auth-tracking state
@@ -63,7 +72,7 @@ constexpr uint32_t OC_IN_FLIGHT_SLOT_NONE = 0xFFFFFFFFu;
 
 
 // Per-invocation engine record, kept for the whole epoch. Deliberately slim (64 bytes):
-// all per-computor tracking (signature bundle, signedBy/scheduledBy bitmaps) lives in
+// all per-computor tracking (signature bundle, signedBy bitmap, retry stamp) lives in
 // the bounded in-flight pool referenced by inFlightSlot, and only while the invocation
 // is unresolved — the same split OM uses between OracleQueryMetadata and
 // OracleReplyState.
@@ -93,12 +102,13 @@ struct OcInFlightAuthState
 {
     unsigned char signatures[QUORUM][SIGNATURE_SIZE]; // first QUORUM accepted signatures
     unsigned short signerIndices[QUORUM];             // computor index in broadcastedComputors for each
-    unsigned char signedBy[(NUMBER_OF_COMPUTORS + 7) / 8];    // bitmap; computor's sig tx has executed and been counted
-    unsigned char scheduledBy[(NUMBER_OF_COMPUTORS + 7) / 8]; // bitmap; computor has queued an OcAuthSignatureTransaction
     unsigned short agreeingSigs;                      // count of distinct valid signatures observed
+    unsigned int lastScheduledTick;                   // tick this node last emitted auth items for this slot; 0 = never. Node-local retry pacing, not consensus state.
+    unsigned char signedBy[(NUMBER_OF_COMPUTORS + 7) / 8]; // bitmap; computor's sig tx has executed and been counted
+    unsigned char padding[3];                         // explicit tail padding — keeps sizeof stable regardless of compiler packing
 };
 
-static_assert(sizeof(OcInFlightAuthState) == QUORUM * (SIGNATURE_SIZE + sizeof(unsigned short)) + 2 * ((NUMBER_OF_COMPUTORS + 7) / 8) + sizeof(unsigned short),
+static_assert(sizeof(OcInFlightAuthState) == QUORUM * (SIGNATURE_SIZE + sizeof(unsigned short)) + sizeof(unsigned short) + sizeof(unsigned int) + (NUMBER_OF_COMPUTORS + 7) / 8 + 3,
     "OcInFlightAuthState size mismatch.");
 
 
@@ -429,9 +439,13 @@ public:
                 continue;
             ASSERT(rec.inFlightSlot < MAX_OC_IN_FLIGHT_INVOCATIONS);
             OcInFlightAuthState& auth = inFlightStates[rec.inFlightSlot];
-            // skip if this computor has already scheduled or signed for this invocation
-            if (auth.scheduledBy[byteIdx] & bitMask)
+            // skip if this node emitted for this invocation within the reschedule window.
+            // stamp == system.tick is the same tick's emission round: later own computors
+            // (and continuation calls) must still get their items in.
+            if (auth.lastScheduledTick != 0 && auth.lastScheduledTick != system.tick
+                && system.tick - auth.lastScheduledTick < OC_AUTH_RESCHEDULE_TICKS)
                 continue;
+            // skip if this computor's signature already executed on-chain
             if (auth.signedBy[byteIdx] & bitMask)
                 continue;
 
@@ -447,8 +461,9 @@ public:
             item.paramsDigest = rec.paramsDigest;
             // item.signature is left zeroed; caller MUST sign before broadcast.
 
-            // mark scheduled so we don't re-emit until the tx executes (which will set signedBy[c])
-            auth.scheduledBy[byteIdx] |= bitMask;
+            // stamp the emission — suppresses re-emit until the reschedule window elapses;
+            // on-chain execution sets signedBy[c], which suppresses that computor permanently
+            auth.lastScheduledTick = system.tick;
             ++itemsAdded;
         }
 

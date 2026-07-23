@@ -530,11 +530,56 @@ TEST_F(OcEngineTest, GetAuthSignatureTransactionBatchesPendingInvocations)
     EXPECT_EQ(tx->sourcePublicKey, comps.publicKeys[5]);
     EXPECT_EQ(*reinterpret_cast<const unsigned short*>(tx->inputPtr()), 3);
 
-    // Second call returns 0 — all already scheduled for this computor.
-    EXPECT_EQ(engine.getAuthSignatureTransaction(txBuf, /*computorIdx=*/5, system.tick + 1, 0), 0u);
-
-    // A different computor still has them to schedule.
+    // Same-tick repeat calls still emit (lastScheduledTick == current tick is the same
+    // emission round, so every own computor gets its items); duplicates dedup on-chain.
+    EXPECT_EQ(engine.getAuthSignatureTransaction(txBuf, /*computorIdx=*/5, system.tick + 1, 0), UINT32_MAX);
     EXPECT_EQ(engine.getAuthSignatureTransaction(txBuf, /*computorIdx=*/6, system.tick + 1, 0), UINT32_MAX);
+
+    // Later ticks inside the reschedule window are suppressed for every computor.
+    ++system.tick;
+    EXPECT_EQ(engine.getAuthSignatureTransaction(txBuf, /*computorIdx=*/5, system.tick + 1, 0), 0u);
+    EXPECT_EQ(engine.getAuthSignatureTransaction(txBuf, /*computorIdx=*/6, system.tick + 1, 0), 0u);
+}
+
+
+TEST_F(OcEngineTest, AuthTxRescheduleReEmitsOnlyUnsignedComputors)
+{
+    OcEngineForTest engine(comps.publicKeys);
+
+    OCI::Mock::OcRequest req;
+    setMem(&req, sizeof(req), 0);
+    req.value = 77;
+    const int64_t id = engine.startContractInvocation(0, OCI::Mock::ocInterfaceIndex, &req, sizeof(req));
+    ASSERT_GE(id, 0);
+    const m256i digest = engine.record(0).paramsDigest;
+    const uint32_t scheduleTick = system.tick;
+
+    // Initial emission round for computors 5 and 6.
+    unsigned char txBuf[MAX_TRANSACTION_SIZE];
+    EXPECT_EQ(engine.getAuthSignatureTransaction(txBuf, /*computorIdx=*/5, system.tick + 1, 0), UINT32_MAX);
+    EXPECT_EQ(engine.getAuthSignatureTransaction(txBuf, /*computorIdx=*/6, system.tick + 1, 0), UINT32_MAX);
+
+    // Computor 6's auth tx executes on-chain; computor 5's is lost.
+    buildAuthTx(comps, 6, id, OCI::Mock::ocInterfaceIndex, system.epoch, digest, txBuf);
+    EXPECT_TRUE(engine.processOcAuthSignatureTransaction(
+        reinterpret_cast<OcAuthSignatureTransactionPrefix*>(txBuf)));
+
+    // Inside the reschedule window: no re-emission for anyone.
+    system.tick = scheduleTick + OC_AUTH_RESCHEDULE_TICKS - 1;
+    EXPECT_EQ(engine.getAuthSignatureTransaction(txBuf, /*computorIdx=*/5, system.tick + 1, 0), 0u);
+    EXPECT_EQ(engine.getAuthSignatureTransaction(txBuf, /*computorIdx=*/6, system.tick + 1, 0), 0u);
+
+    // Window elapsed: the unsigned computor retries, the signed one stays quiet.
+    system.tick = scheduleTick + OC_AUTH_RESCHEDULE_TICKS;
+    EXPECT_EQ(engine.getAuthSignatureTransaction(txBuf, /*computorIdx=*/5, system.tick + 1, 0), UINT32_MAX);
+    auto* tx = reinterpret_cast<OcAuthSignatureTransactionPrefix*>(txBuf);
+    EXPECT_EQ(*reinterpret_cast<const unsigned short*>(tx->inputPtr()), 1);
+    EXPECT_EQ(reinterpret_cast<const OcAuthSignatureItem*>(tx->inputPtr() + 4)->invocationId, id);
+    EXPECT_EQ(engine.getAuthSignatureTransaction(txBuf, /*computorIdx=*/6, system.tick + 1, 0), 0u);
+
+    // Edge-triggered: the retry bumped the stamp, so the next tick is suppressed again.
+    ++system.tick;
+    EXPECT_EQ(engine.getAuthSignatureTransaction(txBuf, /*computorIdx=*/5, system.tick + 1, 0), 0u);
 }
 
 
