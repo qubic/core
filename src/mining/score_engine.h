@@ -50,22 +50,23 @@ struct ScoreEngine
     unsigned int computeScore(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* randomPool)
     {
         lastNonceByte0 = nonce[0];
-        if ((nonce[0] & 1) == 0)
+        switch (getAlgoType(nonce))
         {
-            return computeNeuraxonScore(publicKey, nonce, randomPool);
-        }
-        else
-        {
+        case AlgoType::Bpp9000:
             return computeBpp9000Score(publicKey, nonce, randomPool);
+        case AlgoType::Neuraxon:
+            return computeNeuraxonScore(publicKey, nonce, randomPool);
+        default:
+            return INVALID_SCORE_VALUE;
         }
     }
 
-    // returns last computed output neurons of the active odd-nonce (bpp9000) slot
+    // returns last computed output neurons of the active bpp9000 slot
     m256i getLastOutput()
     {
         m256i result;
         result = m256i::zero();
-        if ((lastNonceByte0 & 1) != 0)
+        if (lastNonceByte0 == AlgoType::Bpp9000)
         {
             _bpp9000Score.getLastOutput(result.m256i_u8, 32);
         }

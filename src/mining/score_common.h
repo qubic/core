@@ -9,15 +9,18 @@
 namespace score_engine
 {
 
+// nonce[0] is the algorithm id
+// Any id at or above MaxAlgoCount is unknown and maps to the MaxAlgoCount
+// Up to MaxAlgoCount-1 algorithms fit in the byte; the id space is rotated if we ever exceed 255.
 enum AlgoType
 {
-    Neuraxon = 0,   // even nonce - reserved for a future algorithm (not yet implemented)
-    Bpp9000 = 1,    // odd nonce - the active mining algorithm
-    MaxAlgoCount    // for counting current supported algos
+    Neuraxon = 0,   // reserved for a future algorithm (not yet implemented)
+    Bpp9000 = 1,    // the active mining algorithm
+    MaxAlgoCount    // number of supported algos; also the "no valid algorithm" sentinel from getAlgoType
 };
 
 // =============================================================================
-// Slot 0 (even nonce): Neuraxon - reserved placeholder until it is implemented.
+// Slot 0: Neuraxon - reserved placeholder until it is implemented.
 // =============================================================================
 template<
     unsigned long long inputNeurons,
@@ -43,7 +46,7 @@ struct NeuraxonParams
 };
 
 // =============================================================================
-// Slot 1 (odd nonce): bpp9000
+// Slot 1: bpp9000
 // =============================================================================
 template<
     unsigned long long inputNeurons,
@@ -509,11 +512,9 @@ static inline unsigned long long clampCirculatingIndex(
 }
 
 // Get the solution threshold depend on nonce
-// In case of not provided threholdBuffer, just return the default value
 static AlgoType getAlgoType(const unsigned char* nonce)
 {
-    AlgoType selectedAgo = ((nonce[0] & 1) == 0) ? AlgoType::Neuraxon : AlgoType::Bpp9000;
-    return selectedAgo;
+    return (nonce[0] < AlgoType::MaxAlgoCount) ? (AlgoType)nonce[0] : AlgoType::MaxAlgoCount;
 }
 
 // Verify if the solution threshold is valid
