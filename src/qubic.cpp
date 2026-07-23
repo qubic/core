@@ -106,7 +106,7 @@
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define ORACLE_REPLY_COMMIT_PUBLICATION_OFFSET 4
 #define ORACLE_REPLY_REVEAL_PUBLICATION_OFFSET 3
-#define OC_AUTH_SIGNATURE_PUBLICATION_OFFSET 1
+#define OC_AUTH_SIGNATURE_PUBLICATION_OFFSET 3 // Must be 3+: tick data for T+2 is already crafted during processTick(T)
 #define TIME_ACCURACY 5000
 constexpr unsigned long long TARGET_MAINTHREAD_LOOP_DURATION = 30; // mcs, it is the target duration of the main thread loop
 constexpr unsigned int COMMON_BUFFERS_COUNT = 2;

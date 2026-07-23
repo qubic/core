@@ -39,7 +39,9 @@ constexpr uint64_t OC_REQUEST_STORAGE_SIZE = 256ULL * MAX_OC_INVOCATIONS_PER_EPO
 constexpr int64_t MIN_OC_INVOCATION_FEE = 10;
 
 // Maximum number of ticks an invocation may remain in PENDING_AUTH before timing out.
-constexpr uint32_t OC_INVOCATION_TIMEOUT_DEFAULT_TICKS = 3;
+// Auth txs target tick T+OC_AUTH_SIGNATURE_PUBLICATION_OFFSET (= T+3) and are one-shot
+// (no re-emission), so this only needs to cover that window plus a little slack.
+constexpr uint32_t OC_INVOCATION_TIMEOUT_DEFAULT_TICKS = 5;
 
 // Maximum number of invocations that may be in flight (PENDING_AUTH, or AUTHORIZED but
 // not yet delivered) at any moment. Bounds the heavy per-computor auth-tracking state
@@ -611,7 +613,7 @@ public:
         appendNumber(::message, timeout, FALSE);
         appendText(::message, L", delivered ");
         appendNumber(::message, delivered, FALSE);
-        appendText(::message, L"); rejected (pool full) ");
+        appendText(::message, L"); pool-full rejects ");
         appendNumber(::message, stats.poolExhaustedRejectCount, FALSE);
         appendText(::message, L"; record slots ");
         appendNumber(::message, invocationCount * 100 / MAX_OC_INVOCATIONS_PER_EPOCH, FALSE);
