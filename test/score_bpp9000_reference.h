@@ -1,16 +1,20 @@
 #pragma once
 
-#include "score_common.h"
-#include "task_file.h"
+#include "../src/mining/score_common.h"
+#include "../src/mining/task_file.h"
+#include "score_common_reference.h"
+#include "kangaroo_twelve.h"
 
-// bpp9000 scorer: a recurrent ternary ANN (trits {0,1,2}, 2 = UNKNOWN) predicting a windowed series;
-// only the per-neuron LUTs change under mutation. Freestanding node port of the reference in
-// test/score_bpp9000_reference.h - the two must stay bit-exact.
-namespace score_engine
+#include <vector>
+#include <cstring>
+
+// Generic LUT scorer: a recurrent ternary ANN (trits {0,1,2}, 2 = UNKNOWN) predicting a windowed
+// series; only the per-neuron LUTs change under mutation.
+namespace score_bpp9000_reference
 {
 
-template<typename Params>
-struct ScoreBpp9000
+template <typename Params>
+struct Miner
 {
     static constexpr unsigned long long numberOfInputNeurons = Params::numberOfInputNeurons;
     static constexpr unsigned long long numberOfOutputNeurons = Params::numberOfOutputNeurons;
@@ -25,19 +29,19 @@ struct ScoreBpp9000
     static constexpr unsigned long long maxNumberOfNeurons = populationThreshold;
     static constexpr unsigned long long numberOfWindows = sequenceLength - windowWidth;
 
-    static constexpr unsigned char TRIT_UNKNOWN = 2;
-    static constexpr unsigned int INFINITE_ERROR = 0xFFFFFFFFU;
-    static constexpr unsigned long long lutSize = 27;
-    static constexpr unsigned int MAX_LUT_ENTRIES_PER_STEP = 10;
+    static constexpr unsigned long long topoBlockSize =
+        (numberOfInputNeurons + numberOfOutputNeurons + 1 + populationThreshold * numberOfNeighbors) * sizeof(uint32_t);
+    static constexpr unsigned long long dataBlockSize =
+        sequenceLength * (((numberOfInputNeurons + score_task_file::TRITS_PER_BYTE - 1) / score_task_file::TRITS_PER_BYTE)
+                          + ((numberOfOutputNeurons + score_task_file::TRITS_PER_BYTE - 1) / score_task_file::TRITS_PER_BYTE));
 
-    // The node random2 requires the draw size to be a multiple of 64 bytes. Pad each draw up to the next
-    // multiple and use only the leading (actual) bytes; this yields exactly the same leading bytes as the
-    // reference's internally-padded random2, so the two implementations stay bit-exact.
-    static constexpr unsigned long long lutInitBytes = maxNumberOfNeurons * lutSize;
-    static constexpr unsigned long long lutInitPaddedBytes = ((lutInitBytes + 63) / 64) * 64;
-    static constexpr unsigned long long mutationSeedCount = numberOfMutations * MAX_LUT_ENTRIES_PER_STEP;
-    static constexpr unsigned long long mutationSeedBytes = mutationSeedCount * sizeof(unsigned long long);
-    static constexpr unsigned long long mutationSeedPaddedBytes = ((mutationSeedBytes + 63) / 64) * 64;
+    static constexpr unsigned char TRIT_UNKNOWN = 2;
+
+    static constexpr unsigned int INFINITE_ERROR = 0xFFFFFFFFU;
+
+    static constexpr unsigned long long lutSize = 27;
+
+    static constexpr unsigned int MAX_LUT_ENTRIES_PER_STEP = 10;
 
     static_assert(
         numberOfNeighbors == 3,
@@ -58,52 +62,12 @@ struct ScoreBpp9000
         maxNumberOfTicks > windowWidth,
         "maxNumberOfTicks must exceed windowWidth so a window can be fully fed before timing out");
 
-    struct Neuron
+    std::vector<unsigned char> poolVec;
+
+    void initialize(const unsigned char miningSeed[32])
     {
-        enum Type
-        {
-            kInput,
-            kOutput,
-            kEvolution,
-        };
-        Type type;
-        unsigned char value;
-    };
-
-    struct ANN
-    {
-        Neuron neurons[maxNumberOfNeurons];
-        unsigned char lut[maxNumberOfNeurons * lutSize];
-    };
-    ANN bestANN;
-    ANN currentANN;
-    ANN prevANN;
-
-    struct InitValue
-    {
-        unsigned char lutInit[lutInitPaddedBytes];
-        unsigned long long mutationSeed[mutationSeedPaddedBytes / sizeof(unsigned long long)];
-    } initValue;
-
-    unsigned char inputs[sequenceLength][numberOfInputNeurons];
-    unsigned char outputs[sequenceLength][numberOfOutputNeurons];
-
-    unsigned char nextNeuronValue[maxNumberOfNeurons];
-
-    unsigned int neighborIndices[populationThreshold * numberOfNeighbors];
-
-    unsigned int inputNeuronIndices[numberOfInputNeurons];
-    unsigned int outputNeuronIndices[numberOfOutputNeurons];
-
-    unsigned int signalNeuronIndex;
-
-    typename Neuron::Type neuronTypes[maxNumberOfNeurons];
-
-    unsigned long long updatedNeuronIndices[maxNumberOfNeurons];
-    unsigned long long numberOfUpdatedNeurons;
-
-    void initMemory()
-    {
+        poolVec.resize(score_reference::POOL_VEC_PADDING_SIZE);
+        score_reference::generateRandom2Pool(miningSeed, poolVec.data());
     }
 
     // In-memory task load: parse/validate the topology and unpack the data block directly (no file I/O).
@@ -201,6 +165,50 @@ struct ScoreBpp9000
             }
         }
     }
+
+    unsigned char inputs[sequenceLength][numberOfInputNeurons];
+    unsigned char outputs[sequenceLength][numberOfOutputNeurons];
+
+    struct Neuron
+    {
+        enum Type
+        {
+            kInput,
+            kOutput,
+            kEvolution,
+        };
+        Type type;
+        unsigned char value;
+    };
+
+    struct ANN
+    {
+        Neuron neurons[maxNumberOfNeurons];
+        unsigned char lut[maxNumberOfNeurons * lutSize];
+    };
+    ANN bestANN;
+    ANN currentANN;
+    ANN prevANN;
+
+    struct InitValue
+    {
+        unsigned char lutInit[maxNumberOfNeurons * lutSize];
+        unsigned long long mutationSeed[numberOfMutations * MAX_LUT_ENTRIES_PER_STEP];
+    } initValue;
+
+    unsigned char nextNeuronValue[maxNumberOfNeurons];
+
+    unsigned int neighborIndices[populationThreshold * numberOfNeighbors];
+
+    unsigned int inputNeuronIndices[numberOfInputNeurons];
+    unsigned int outputNeuronIndices[numberOfOutputNeurons];
+
+    unsigned int signalNeuronIndex;
+
+    typename Neuron::Type neuronTypes[maxNumberOfNeurons];
+
+    unsigned long long updatedNeuronIndices[maxNumberOfNeurons];
+    unsigned long long numberOfUpdatedNeurons;
 
     // One inference tick: each non-input neuron looks up its next trit from its 3 neighbours.
     void processTick()
@@ -310,24 +318,24 @@ struct ScoreBpp9000
 
     // Seed the ANN: root LUT from the pubkey alone (each computor's fixed root); mutation seeds from
     // pubkey+nonce (nonce[0..2] are the algo/L/K knobs, excluded from the RNG). Returns the start score.
-    unsigned int initializeANN(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* pRandom2Pool)
+    unsigned int initializeANN(const unsigned char* publicKey, const unsigned char* nonce)
     {
         const unsigned long long population = populationThreshold;
         Neuron* neurons = currentANN.neurons;
 
         unsigned char rootHash[32];
         KangarooTwelve(publicKey, 32, rootHash, 32);
-        random2(rootHash, pRandom2Pool, (unsigned char*)&initValue.lutInit, lutInitPaddedBytes);
+        score_reference::random2(rootHash, poolVec.data(), (unsigned char*)&initValue.lutInit, sizeof(initValue.lutInit));
 
         unsigned char searchHash[32];
         unsigned char combined[64];
-        copyMem(combined, publicKey, 32);
-        copyMem(combined + 32, nonce, 32);
+        memcpy(combined, publicKey, 32);
+        memcpy(combined + 32, nonce, 32);
         combined[32] = 0;
         combined[33] = 0;
         combined[34] = 0;
         KangarooTwelve(combined, 64, searchHash, 32);
-        random2(searchHash, pRandom2Pool, (unsigned char*)&initValue.mutationSeed, mutationSeedPaddedBytes);
+        score_reference::random2(searchHash, poolVec.data(), (unsigned char*)&initValue.mutationSeed, sizeof(initValue.mutationSeed));
 
         for (unsigned long long i = 0; i < population; ++i)
         {
@@ -347,10 +355,8 @@ struct ScoreBpp9000
     }
 
     // Anti-attractor search: L mutations/step; accept worse-or-equal for the first K steps (explore),
-    // then better-or-equal (exploit); one-step rollback; keep and return the best score found. Returns the
-    // failure count (lower is better), or numberOfWindows on timeout. K is fixed to 0 in the pre-ant phase
-    // (see below), so every step is exploit (greedy descent).
-    unsigned int computeScore(const unsigned char* publicKey, const unsigned char* nonce, const unsigned char* pRandom2Pool)
+    // then better-or-equal (exploit); one-step rollback; keep and return the best score found.
+    unsigned int computeScore(const unsigned char* publicKey, const unsigned char* nonce)
     {
         unsigned int L = nonce[1];
         if (L < 1)
@@ -361,16 +367,17 @@ struct ScoreBpp9000
         {
             L = MAX_LUT_ENTRIES_PER_STEP;
         }
-        // Pre-ant-colony phase, the anti-attractor (explore) is disabled. nonce[2] is temporarily unused here.
+        // Pre-ant-colony phase, the anti-attractor (explore) is disabled to match the production scorer and
+        // Qiner. nonce[2] is temporarily unused here; restore K = nonce[2] (clamped) when ants return.
         const unsigned long long K = 0;
 
-        unsigned int cur = initializeANN(publicKey, nonce, pRandom2Pool);
-        copyMem(&bestANN, &currentANN, sizeof(bestANN));
+        unsigned int cur = initializeANN(publicKey, nonce);
+        memcpy(&bestANN, &currentANN, sizeof(bestANN));
         unsigned int best = cur;
 
         for (unsigned long long s = 0; s < numberOfMutations; ++s)
         {
-            copyMem(&prevANN, &currentANN, sizeof(prevANN));
+            memcpy(&prevANN, &currentANN, sizeof(prevANN));
 
             for (unsigned int i = 0; i < L; ++i)
             {
@@ -395,22 +402,16 @@ struct ScoreBpp9000
             }
             else
             {
-                copyMem(&currentANN, &prevANN, sizeof(currentANN));
+                memcpy(&currentANN, &prevANN, sizeof(currentANN));
             }
 
             if (cur < best)
             {
                 best = cur;
-                copyMem(&bestANN, &currentANN, sizeof(bestANN));
+                memcpy(&bestANN, &currentANN, sizeof(bestANN));
             }
         }
-
         return best;
-    }
-
-    int getLastOutput(unsigned char* requestedOutput, int requestedSizeInBytes)
-    {
-        return 0;
     }
 };
 
