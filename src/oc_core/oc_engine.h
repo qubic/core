@@ -10,72 +10,51 @@
 #include "oc_transactions.h"
 #include "core_oc_network_messages.h"
 
-// Only the one-shot KangarooTwelve() is used below (computeOcAuthMessageHash,
-// paramsDigest). Pull in the self-contained wrapper (static/internal linkage)
-// rather than K12/kangaroo_twelve_xkcp.h, whose external-linkage XKCP backend
-// symbols would clash at link if another TU (e.g. test/kangaroo_twelve.cpp)
-// also defines them.
+// Self-contained K12 wrapper; K12/kangaroo_twelve_xkcp.h's external-linkage
+// XKCP symbols would clash at link with other TUs defining them.
 #include "kangaroo_twelve.h"
 
 
 void enqueueResponse(Peer* peer, unsigned int dataSize, unsigned char type, unsigned int dejavu, const void* data);
 
 
-// Maximum number of OC invocations that may be recorded in a single epoch.
-// Mirrors OM's MAX_ORACLE_QUERIES (must be a power of 2 for invocationIdToIndex).
+// Maximum OC invocations recorded per epoch (power of 2, required by invocationIdToIndex).
 constexpr uint32_t MAX_OC_INVOCATIONS_PER_EPOCH = (1 << 21);
 
-// Maximum size of pinned OcRequest payload, mirrors MAX_ORACLE_QUERY_SIZE.
+// Maximum size of a pinned OcRequest payload.
 constexpr uint16_t MAX_OC_REQUEST_SIZE = MAX_INPUT_SIZE - 16;
 
-// Total bytes reserved for per-invocation pinned request storage. Provisioned as a
-// total byte budget assuming an average request size of 256 bytes (mirrors OM's
-// ORACLE_QUERY_STORAGE_SIZE), NOT as MAX_OC_REQUEST_SIZE * capacity. Interfaces with
-// large fixed request sizes exhaust the byte budget before the record-count cap;
-// startContractInvocation rejects on either limit.
+// Byte budget for pinned request storage, assuming 256 bytes average request size.
+// startContractInvocation rejects when either this or the record cap is exhausted.
 constexpr uint64_t OC_REQUEST_STORAGE_SIZE = 256ULL * MAX_OC_INVOCATIONS_PER_EPOCH;
 
 // Minimum invocation fee an interface may return.
 constexpr int64_t MIN_OC_INVOCATION_FEE = 10;
 
-// Maximum number of ticks an invocation may remain in PENDING_AUTH before timing out.
-// Auth txs target tick T+OC_AUTH_SIGNATURE_PUBLICATION_OFFSET (= T+3) and are re-emitted
-// every OC_AUTH_RESCHEDULE_TICKS while unsigned; 12 leaves room for two retry rounds
-// (retries emitted at T+4 and T+8 execute at T+7 and T+11, inside the window).
+// Maximum ticks an invocation may stay PENDING_AUTH before timing out.
+// Leaves room for two auth-tx retry rounds (see OC_AUTH_RESCHEDULE_TICKS).
 constexpr uint32_t OC_INVOCATION_TIMEOUT_DEFAULT_TICKS = 12;
 
-// Minimum ticks between this node's auth-tx emissions for the same in-flight invocation.
-// Must exceed OC_AUTH_SIGNATURE_PUBLICATION_OFFSET: an attempt emitted at T executes at
-// T+3 (setting signedBy), so retrying before T+4 would duplicate a tx that may still
-// land. Emitting bumps lastScheduledTick, so a stuck invocation re-emits once per
-// window, not once per tick; the happy path (signedBy set within the window) never
-// re-emits at all.
+// Minimum ticks between this node's auth-tx emissions for the same invocation.
+// Must exceed OC_AUTH_SIGNATURE_PUBLICATION_OFFSET so a retry cannot duplicate
+// a tx that may still execute.
 constexpr uint32_t OC_AUTH_RESCHEDULE_TICKS = 4;
 
-// Maximum number of invocations that may be in flight (PENDING_AUTH, or AUTHORIZED but
-// not yet delivered) at any moment. Bounds the heavy per-computor auth-tracking state
-// the same way OM's MAX_SIMULTANEOUS_ORACLE_QUERIES bounds OracleReplyState: it exists
-// only while an invocation is unresolved (at most OC_INVOCATION_TIMEOUT_DEFAULT_TICKS
-// plus the delivery tick), never for the whole epoch. Because every invocation needs a
-// slot from creation, this also acts as deterministic admission control: slot state is
-// derived purely from tick processing, so all nodes reject the same invocation when
-// the pool is exhausted.
+// Maximum invocations in flight (PENDING_AUTH, or AUTHORIZED but undelivered) at once.
+// Every invocation holds a slot from creation, so this is deterministic admission
+// control: slot state derives purely from tick processing, all nodes reject alike.
 constexpr uint32_t MAX_OC_IN_FLIGHT_INVOCATIONS = 1024;
 
-// Sentinel meaning "this record holds no in-flight slot" (invocation resolved, or
-// auth state discarded after delivery).
+// Sentinel: record holds no in-flight slot (resolved, or discarded after delivery).
 constexpr uint32_t OC_IN_FLIGHT_SLOT_NONE = 0xFFFFFFFFu;
 
 
-// Consensus status values (OC_INVOCATION_STATUS_*) are defined in network_messages/common_def.h
-// so contracts can see them, mirroring ORACLE_QUERY_STATUS_*.
+// Consensus status values (OC_INVOCATION_STATUS_*) are defined in
+// network_messages/common_def.h so contracts can see them.
 
 
-// Per-invocation engine record, kept for the whole epoch. Deliberately slim (64 bytes):
-// all per-computor tracking (signature bundle, signedBy bitmap, retry stamp) lives in
-// the bounded in-flight pool referenced by inFlightSlot, and only while the invocation
-// is unresolved — the same split OM uses between OracleQueryMetadata and
-// OracleReplyState.
+// Per-invocation record, kept for the whole epoch. Slim (64 bytes): per-computor
+// auth tracking lives in the in-flight pool (inFlightSlot), only while unresolved.
 struct OcInvocationRecord
 {
     long long invocationId;
@@ -88,16 +67,14 @@ struct OcInvocationRecord
     unsigned short interfaceIndex;
     unsigned short paramsSize;          // equals OCI::ocInterfaces[interfaceIndex].requestSize
     unsigned char status;               // one of OC_INVOCATION_STATUS_*
-    unsigned char delivered;            // 1 = OcMachineInvocation has been enqueued for delivery. Node-local: written to the snapshot as part of the record but reset to 0 on load (not consensus state).
+    unsigned char delivered;            // 1 = OcMachineInvocation enqueued. Node-local: reset to 0 on snapshot load
 };
 
 static_assert(sizeof(OcInvocationRecord) == 64, "OcInvocationRecord must stay 64 bytes — it is allocated MAX_OC_INVOCATIONS_PER_EPOCH times.");
 
 
-// Per-invocation authorization tracking state, alive only while the invocation is in
-// flight (creation until timeout or delivery). Holds the accumulating signature bundle
-// plus the per-computor bitmaps. signatures/signerIndices grow in lockstep — entry i
-// is filled when the (i+1)-th valid signature arrives.
+// Auth tracking state, alive only while the invocation is in flight (creation
+// until timeout or delivery). signatures/signerIndices grow in lockstep.
 struct OcInFlightAuthState
 {
     unsigned char signatures[QUORUM][SIGNATURE_SIZE]; // first QUORUM accepted signatures
@@ -131,12 +108,8 @@ protected:
     /// number of slots used in invocations array
     uint32_t invocationCount;
 
-    /// index of the first record that may still be unresolved (PENDING_AUTH, or
-    /// AUTHORIZED and not yet delivered). Records resolve within a few ticks of
-    /// creation (fixed timeout), so per-tick scans start here instead of at 0 —
-    /// without this, processTimeouts/deliverAuthorizedInvocations/
-    /// getAuthSignatureTransaction degrade to O(epoch total) per tick.
-    /// Node-local scan optimization; never part of consensus state or snapshots.
+    /// index of the first record that may still be unresolved; per-tick scans start
+    /// here instead of at 0. Node-local optimization, not consensus state.
     uint32_t firstActiveIndex;
 
     /// buffer continuously filled with pinned OcRequest payloads
@@ -148,14 +121,14 @@ protected:
     /// pool of in-flight auth states; record.inFlightSlot indexes into inFlightStates[]
     OcInFlightAuthState* inFlightStates;
 
-    /// next slot to consider when looking for an empty in-flight slot (cyclic; mirrors OM's replyStatesIndex)
+    /// next slot to consider when looking for an empty in-flight slot (cyclic)
     uint32_t inFlightSlotCursor;
 
     /// per-slot bookkeeping: which invocation owns the slot, or -1 if free.
     /// Sized as int64_t to hold an invocationId; negative => free slot.
     int64_t* inFlightSlotOwners;
 
-    /// state for assigning invocation IDs (mirrors OracleEngine::contractQueryIdState)
+    /// state for assigning invocation IDs
     struct
     {
         uint32_t tick;
@@ -264,11 +237,11 @@ public:
     }
 
     /// Save current state to snapshot files. Can only be called from main processor.
-    /// Impl in oc_core/snapshot_files.h, matching OM split.
+    /// Impl in oc_core/snapshot_files.h.
     bool saveSnapshot(unsigned short epoch, CHAR16* directory) const;
 
     /// Load state from snapshot files. Can only be called from main processor.
-    /// Impl in oc_core/snapshot_files.h, matching OM split.
+    /// Impl in oc_core/snapshot_files.h.
     bool loadSnapshot(unsigned short epoch, CHAR16* directory);
 
     /// Record a new invocation from a contract; returns invocationId or -1 on error.
@@ -305,9 +278,7 @@ public:
             return -1;
 
         // admission control: every invocation holds an in-flight slot from creation
-        // until resolution. Rejecting here (instead of accepting and silently dropping
-        // signatures later) keeps the outcome deterministic across nodes and refundable
-        // for the calling contract.
+        // until resolution; rejecting here is deterministic across nodes and refundable
         const uint32_t slot = allocateInFlightSlot(invocationId);
         if (slot == OC_IN_FLIGHT_SLOT_NONE)
         {
@@ -373,7 +344,6 @@ public:
     }
 
     /// Refund a fee to the contract when startContractInvocation fails after fee deduction.
-    /// Mirrors OracleEngine::refundFees.
     static void refundFees(const m256i& contractId, int64_t refundAmount)
     {
         ASSERT(refundAmount >= 0);
@@ -383,7 +353,6 @@ public:
     }
 
     /// Return consensus status for an invocation, or OC_INVOCATION_STATUS_UNKNOWN if not found.
-    /// Mirrors OracleEngine::getOracleQueryStatus.
     uint8_t getOcInvocationStatus(int64_t invocationId) const
     {
         LockGuard lockGuard(lock);
@@ -394,14 +363,9 @@ public:
     }
 
     /**
-    * Build an OcAuthSignatureTransaction batching items for invocations this computor has not yet
-    * scheduled. Fills the tx prefix and items with everything EXCEPT per-item signatures and the
-    * outer tx signature; the caller must sign each item (via computeOcAuthMessageHash + sign) and
-    * the outer tx as usual.
-    *
-    * Mirrors OracleEngine::getReplyCommitTransaction shape: returns 0 if no items are pending,
-    * UINT32_MAX if all pending items fit in a single tx, otherwise a continuation index for the
-    * next call (which produces a second tx batching the remaining items).
+    * Build an OcAuthSignatureTransaction batching items for invocations this computor has not
+    * yet scheduled. Fills everything EXCEPT per-item signatures and the outer tx signature;
+    * the caller must sign both.
     *
     * @param txBuffer Caller-provided buffer of at least MAX_TRANSACTION_SIZE bytes.
     * @param computorIdx Global computor slot the tx is being prepared for.
@@ -439,9 +403,8 @@ public:
                 continue;
             ASSERT(rec.inFlightSlot < MAX_OC_IN_FLIGHT_INVOCATIONS);
             OcInFlightAuthState& auth = inFlightStates[rec.inFlightSlot];
-            // skip if this node emitted for this invocation within the reschedule window.
-            // stamp == system.tick is the same tick's emission round: later own computors
-            // (and continuation calls) must still get their items in.
+            // skip if emitted within the reschedule window; stamp == system.tick is this
+            // tick's own round (later own computors / continuation calls still add items)
             if (auth.lastScheduledTick != 0 && auth.lastScheduledTick != system.tick
                 && system.tick - auth.lastScheduledTick < OC_AUTH_RESCHEDULE_TICKS)
                 continue;
@@ -461,8 +424,7 @@ public:
             item.paramsDigest = rec.paramsDigest;
             // item.signature is left zeroed; caller MUST sign before broadcast.
 
-            // stamp the emission — suppresses re-emit until the reschedule window elapses;
-            // on-chain execution sets signedBy[c], which suppresses that computor permanently
+            // suppress re-emit until the reschedule window elapses
             auth.lastScheduledTick = system.tick;
             ++itemsAdded;
         }
@@ -486,16 +448,12 @@ public:
     }
 
     /**
-    * Enqueue OcMachineInvocation messages for any AUTHORIZED records that have not yet been
-    * delivered. Each call processes all undelivered records.
+    * Enqueue OcMachineInvocation messages for all AUTHORIZED records not yet delivered,
+    * then mark them delivered (node-local) and free their in-flight slots.
     *
-    * Once enqueued, the record is marked delivered (node-local; not in snapshot) and its
-    * in-flight slot is freed per the discard-after-delivery optimization.
-    *
-    * Called once per tick from the tick processor (after processOcAuthSignatureTransaction has
-    * had a chance to flip records to AUTHORIZED in the current tick). MUST run unconditionally
-    * on every node (not only on nodes with OC machine peers configured): freeing the in-flight
-    * slot here is part of the deterministic pool state that admission control depends on.
+    * Called once per tick from the tick processor. MUST run unconditionally on every node
+    * (even without OC machine peers): freeing the in-flight slot here is part of the
+    * deterministic pool state that admission control depends on.
     */
     void deliverAuthorizedInvocations()
     {
@@ -509,19 +467,15 @@ public:
                 continue;
             if (rec.inFlightSlot == OC_IN_FLIGHT_SLOT_NONE)
             {
-                // auth state was discarded (e.g. after snapshot restore where the slot wasn't
-                // kept); mark delivered so we don't retry forever
+                // auth state was discarded; mark delivered so we don't retry forever
                 rec.delivered = 1;
                 continue;
             }
             const OcInFlightAuthState& auth = inFlightStates[rec.inFlightSlot];
             ASSERT(auth.agreeingSigs == QUORUM);
 
-            // Assemble message in deliveryBuffer. Assembled unconditionally on every node
-            // (mirroring OracleEngine's OM query dispatch); on nodes with no OC machine peers
-            // configured, pushToOcMachineNodes is a no-op that drops the enqueued message.
-            // Freeing the in-flight slot below is deterministic pool state and must run on
-            // every node regardless of peer configuration.
+            // Assemble message in deliveryBuffer; on nodes with no OC machine peers,
+            // pushToOcMachineNodes drops the enqueued message.
             auto* msg = reinterpret_cast<OcMachineInvocation*>(deliveryBuffer);
             msg->invocationId = rec.invocationId;
             msg->epoch = rec.epoch;
@@ -545,8 +499,7 @@ public:
 
             const unsigned int payloadSize = (unsigned int)(cursor - deliveryBuffer);
 
-            // Enqueue to all configured OC machine peers. Peer sentinel (Peer*)2 routes to
-            // pushToOcMachineNodes in the response-queue dispatcher ((Peer*)1 is the OM sentinel).
+            // Peer sentinel (Peer*)2 routes to pushToOcMachineNodes in the dispatcher.
             enqueueResponse((Peer*)2, payloadSize, OcMachineInvocation::type(), 0, deliveryBuffer);
 
             // Mark delivered and discard auth state
@@ -584,16 +537,12 @@ public:
         advanceFirstActiveIndex();
     }
 
-    /// Print a one-line OC engine status summary (mirrors OracleEngine::logStatus).
-    /// Called from the main loop's logInfo path.
+    /// Print a one-line OC engine status summary. Called from the main loop's logInfo path.
     void logStatus() const
     {
         LockGuard lockGuard(lock);
 
-        // Live per-phase counts. Records before firstActiveIndex are resolved (TIMEOUT,
-        // or AUTHORIZED and delivered), so only the bounded active window is scanned;
-        // resolved-prefix counts are derived from the per-epoch stats counters. A full
-        // scan would be O(MAX_OC_INVOCATIONS_PER_EPOCH) on the main loop's logInfo path.
+        // Scan only the active window; resolved-prefix counts come from the stats counters.
         uint32_t pending = 0, timeoutActive = 0, delivered = 0;
         for (uint32_t i = firstActiveIndex; i < invocationCount; ++i)
         {
@@ -663,9 +612,7 @@ public:
         if (transaction->inputSize != expectedInputSize)
             return false;
 
-        // resolve source pubkey to computor index in the CURRENT epoch's broadcastedComputors.
-        // Records from other epochs were dropped at beginEpoch, so any valid record
-        // referenced by this tx has record.epoch == system.epoch.
+        // resolve source pubkey to computor index in the current epoch's broadcastedComputors
         const int compIdx = computorIndex(transaction->sourcePublicKey);
         if (compIdx < 0)
             return false;
@@ -705,7 +652,7 @@ public:
             if (auth.signedBy[byteIdx] & bitMask)
                 continue;
 
-            // step 5+6: recompute authMessage using record-authoritative fields & verify signature
+            // step 5+6: recompute auth message from record-authoritative fields & verify signature
             m256i authHash;
             computeOcAuthMessageHash(rec.epoch, rec.interfaceIndex, rec.invocationId, rec.paramsDigest, authHash);
             if (!verify((const unsigned char*)&transaction->sourcePublicKey, (const unsigned char*)&authHash, item.signature))
@@ -717,10 +664,8 @@ public:
             auth.signedBy[byteIdx] |= bitMask;
             ++auth.agreeingSigs;
 
-            // step 8: atomic transition to AUTHORIZED at the QUORUM threshold.
-            // Atomic w.r.t. additional signature processing because the engine lock is held;
-            // step 2 above will reject subsequent items for this record (status != PENDING_AUTH).
-            // The in-flight slot is kept until deliverAuthorizedInvocations frees it.
+            // step 8: transition to AUTHORIZED at the QUORUM threshold; the in-flight
+            // slot is kept until deliverAuthorizedInvocations frees it
             if (auth.agreeingSigs >= QUORUM)
             {
                 rec.status = OC_INVOCATION_STATUS_AUTHORIZED;
@@ -733,7 +678,7 @@ public:
 
 protected:
     /// Find a free in-flight slot or return OC_IN_FLIGHT_SLOT_NONE.
-    /// Caller must hold the engine lock. Mirrors OracleEngine::getEmptyReplyStateSlot.
+    /// Caller must hold the engine lock.
     uint32_t allocateInFlightSlot(int64_t ownerInvocationId)
     {
         ASSERT(inFlightSlotCursor < MAX_OC_IN_FLIGHT_INVOCATIONS);
@@ -763,10 +708,8 @@ protected:
         setMem(&inFlightStates[slot], sizeof(*inFlightStates), 0);
     }
 
-    /// Advance firstActiveIndex past records that are fully resolved (TIMEOUT, or
-    /// AUTHORIZED and delivered). Bounded because every record resolves within
-    /// OC_INVOCATION_TIMEOUT_DEFAULT_TICKS + 1 ticks of creation.
-    /// Caller must hold the engine lock.
+    /// Advance firstActiveIndex past fully resolved records (TIMEOUT, or AUTHORIZED
+    /// and delivered). Caller must hold the engine lock.
     void advanceFirstActiveIndex()
     {
         while (firstActiveIndex < invocationCount)
