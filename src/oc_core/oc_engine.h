@@ -567,6 +567,62 @@ public:
         advanceFirstActiveIndex();
     }
 
+    /// Print a one-line OC engine status summary (mirrors OracleEngine::logStatus).
+    /// Called from the main loop's logInfo path.
+    void logStatus() const
+    {
+        LockGuard lockGuard(lock);
+
+        // Live per-phase counts. Records before firstActiveIndex are resolved (TIMEOUT,
+        // or AUTHORIZED and delivered), so only the bounded active window is scanned;
+        // resolved-prefix counts are derived from the per-epoch stats counters. A full
+        // scan would be O(MAX_OC_INVOCATIONS_PER_EPOCH) on the main loop's logInfo path.
+        uint32_t pending = 0, timeoutActive = 0, delivered = 0;
+        for (uint32_t i = firstActiveIndex; i < invocationCount; ++i)
+        {
+            const OcInvocationRecord& rec = invocations[i];
+            if (rec.status == OC_INVOCATION_STATUS_PENDING_AUTH)
+                ++pending;
+            else if (rec.status == OC_INVOCATION_STATUS_TIMEOUT)
+                ++timeoutActive;
+            if (rec.delivered)
+                ++delivered;
+        }
+        const uint32_t authorized = (uint32_t)stats.authorizedCount;
+        const uint32_t timeout = (uint32_t)stats.timeoutCount;
+        // resolved prefix = timeouts + delivered AUTHORIZED records
+        delivered += firstActiveIndex - (timeout - timeoutActive);
+
+        // In-flight pool occupancy (slots with a live owner).
+        uint32_t inFlightSlotsUsed = 0;
+        for (uint32_t i = 0; i < MAX_OC_IN_FLIGHT_INVOCATIONS; ++i)
+        {
+            if (inFlightSlotOwners[i] >= 0)
+                ++inFlightSlotsUsed;
+        }
+
+        setText(::message, L"OC invocations: total ");
+        appendNumber(::message, invocationCount, FALSE);
+        appendText(::message, L" (pending ");
+        appendNumber(::message, pending, FALSE);
+        appendText(::message, L", authorized ");
+        appendNumber(::message, authorized, FALSE);
+        appendText(::message, L", timeout ");
+        appendNumber(::message, timeout, FALSE);
+        appendText(::message, L", delivered ");
+        appendNumber(::message, delivered, FALSE);
+        appendText(::message, L"); rejected (pool full) ");
+        appendNumber(::message, stats.poolExhaustedRejectCount, FALSE);
+        appendText(::message, L"; record slots ");
+        appendNumber(::message, invocationCount * 100 / MAX_OC_INVOCATIONS_PER_EPOCH, FALSE);
+        appendText(::message, L"%, in-flight slots ");
+        appendNumber(::message, inFlightSlotsUsed * 100 / MAX_OC_IN_FLIGHT_INVOCATIONS, FALSE);
+        appendText(::message, L"%, request storage ");
+        appendNumber(::message, (unsigned long long)(requestStorageBytesUsed * 100 / OC_REQUEST_STORAGE_SIZE), FALSE);
+        appendText(::message, L"%");
+        logToConsole(::message);
+    }
+
     /// Process an incoming OcAuthSignatureTransaction.
     /// Called from tick processor when a tx with inputType==OcAuthSignatureTransactionPrefix::transactionType() executes.
     /// Returns true if the tx was structurally valid (regardless of how many items survived processing).

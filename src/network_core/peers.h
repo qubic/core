@@ -203,6 +203,12 @@ IPv4Address omIPv4Address[NUMBER_OF_OM_NODE_CONNECTIONS];
 static unsigned int numberOfOcPeers = 0;
 IPv4Address ocIPv4Address[NUMBER_OF_OC_MACHINE_CONNECTIONS];
 
+// Delivery counters for OcMachineInvocation messages (reported by logInfo).
+// A message is "sent" once it was pushed to at least one connected OC peer,
+// "dropped" when all OC_MAX_RETRIES re-enqueues found no ready OC peer.
+static volatile long long numberOfOcInvocationsSent = 0;
+static volatile long long numberOfOcInvocationsDropped = 0;
+
 static unsigned long long* dejavu0 = NULL;
 static unsigned long long* dejavu1 = NULL;
 static unsigned int dejavuSwapCounter = DEJAVU_SWAP_LIMIT;
@@ -613,6 +619,14 @@ static void pushToOcMachineNodes(RequestResponseHeader* requestResponseHeader)
                     OC_SET_RETRY_COUNT(requestResponseHeader->dejavu(), retryCount + 1));
                 enqueueResponse((Peer*)2, requestResponseHeader);
             }
+            else
+            {
+                _InterlockedIncrement64(&numberOfOcInvocationsDropped);
+            }
+        }
+        else
+        {
+            _InterlockedIncrement64(&numberOfOcInvocationsSent);
         }
     }
 }

@@ -6788,6 +6788,26 @@ static void logInfo()
     logToConsole(message);
 
     oracleEngine.logStatus();
+    ocEngine.logStatus();
+
+    // OC machine connectivity + delivery outcome (sent/dropped counted in pushToOcMachineNodes)
+    unsigned int numberOfConnectedOcPeers = 0;
+    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
+    {
+        if (peers[i].isOcMachineNode() && peers[i].tcp4Protocol && peers[i].isConnectedAccepted && !peers[i].isClosing)
+        {
+            numberOfConnectedOcPeers++;
+        }
+    }
+    setText(message, L"OC machines: ");
+    appendNumber(message, numberOfConnectedOcPeers, FALSE);
+    appendText(message, L"/");
+    appendNumber(message, numberOfOcPeers, FALSE);
+    appendText(message, L" connected; invocations sent ");
+    appendNumber(message, numberOfOcInvocationsSent, FALSE);
+    appendText(message, L", dropped ");
+    appendNumber(message, numberOfOcInvocationsDropped, FALSE);
+    logToConsole(message);
 }
 
 static void logHealthStatus()
