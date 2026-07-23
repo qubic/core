@@ -229,6 +229,18 @@ static constexpr unsigned int gScoreMultiplier[score_engine::AlgoType::MaxAlgoCo
     BPP9000_SOLUTION_MULTIPLER     // Bpp9000
 };
 
+// Active solution threshold for an algorithm
+static int getSolutionThreshold(score_engine::AlgoType selectedAlgo)
+{
+    if (selectedAlgo >= score_engine::AlgoType::MaxAlgoCount)
+    {
+        return 0;
+    }
+    return (system.epoch < MAX_NUMBER_EPOCH)
+        ? solutionThreshold[system.epoch][selectedAlgo]
+        : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
+}
+
 
 // DOGE merged-mining shares
 static volatile char gDogeMiningSharesCountLock = 0;
@@ -615,9 +627,7 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                         {
                                             unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
                                             score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(solution_nonce.m256i_u8);
-                                            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ?
-                                                solutionThreshold[system.epoch][selectedAlgo]
-                                                : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
+                                            const int threshold = getSolutionThreshold(selectedAlgo);
                                             if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
                                                 && solution_claimedScore == solutionScore
                                                 && score->isValidScore(solutionScore, selectedAlgo)
@@ -2484,9 +2494,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
         {
             resourceTestingDigest ^= solutionScore;
             KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
-            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ?
-                solutionThreshold[system.epoch][selectedAlgo]
-                : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
+            const int threshold = getSolutionThreshold(selectedAlgo);
             // The deposit is only returned when the miner's claimed score matches the one computed
             if (transaction->score == solutionScore
                 && score->isGoodScore(solutionScore, threshold, selectedAlgo))

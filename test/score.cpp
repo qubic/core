@@ -27,11 +27,11 @@ static std::vector<unsigned char> readBinaryFile(const std::string& path)
     return std::vector<unsigned char>((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
 }
 
-// A 32-byte value with byte[0] odd (selects the bpp9000 slot) and nonce[30:31] set to `v`.
+// A 32-byte value with byte[0] set to the bpp9000 algorithm id and nonce[30:31] set to `v`.
 static m256i stubNonce(unsigned int v)
 {
     m256i n = m256i::zero();
-    n.m256i_u8[0] = 1u;                       // odd -> bpp9000
+    n.m256i_u8[0] = 1u;                       // AlgoType::Bpp9000
     n.m256i_u8[30] = (unsigned char)(v & 0xFF);
     n.m256i_u8[31] = (unsigned char)((v >> 8) & 0xFF);
     return n;
