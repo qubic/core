@@ -104,6 +104,11 @@ static constexpr unsigned long long NEURAXON_NUMBER_OF_MUTATIONS = 1;
 static constexpr unsigned int NEURAXON_SOLUTION_THRESHOLD_DEFAULT = 1;
 
 // bpp9000 (odd-nonce slot) - the active mining algorithm
+// bpp9000 task file: the fixed ANN wiring + windowed target series the scorer runs against. It is loaded
+// and hash-verified at node init
+static unsigned short SCORE_BPP9000_TASK_FILE_NAME[] = L"bpp9000.task";
+static constexpr unsigned char BPP9000_TOPOLOGY_HASH[32] = { 0 };
+static constexpr unsigned char BPP9000_DATA_HASH[32] = { 0 };
 static constexpr unsigned long long BPP9000_NUMBER_OF_INPUT_NEURONS = 18;
 static constexpr unsigned long long BPP9000_NUMBER_OF_OUTPUT_NEURONS = 1;
 static constexpr unsigned long long BPP9000_SEQUENCE_LENGTH = 24 * 365;
@@ -118,6 +123,7 @@ static constexpr unsigned long long BPP9000_NUMBER_OF_WINDOWS = BPP9000_SEQUENCE
 // Anti-spam default: reject anything no better than random guessing (2 of 3 trits wrong).
 // To be replaced with the empirical value once the task data and parameters are final.
 static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = (unsigned int)(BPP9000_NUMBER_OF_WINDOWS * 2 / 3);
+
 
 // Multipler of score
 static constexpr unsigned int NEURAXON_SOLUTION_MULTIPLER = 1;

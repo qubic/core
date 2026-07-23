@@ -10,6 +10,14 @@ static unsigned long long top_of_stack;
 #include "score_cache.h"
 #include "mining/score_engine.h"
 
+// Operational status of the scorer, surfaced to the main thread for reporting. Extend with new error
+// kinds (e.g. an invalid/rejected task, a corrupted pool) as the engine gains more failure modes.
+enum ScoreStatus
+{
+    ScoreStatusOk = 0,
+    ScoreStatusTaskNotLoaded,
+};
+
 template <unsigned long long solutionBufferCount>
 struct ScoreFunction
 {
@@ -39,6 +47,14 @@ struct ScoreFunction
     unsigned char state[score_engine::STATE_SIZE];
     unsigned char externalPoolVec[score_engine::POOL_VEC_PADDING_SIZE];
     unsigned char poolVec[score_engine::POOL_VEC_PADDING_SIZE];
+
+    // Last operational status of the scorer
+    volatile ScoreStatus _lastStatus;
+
+    ScoreStatus getLastStatus() const
+    {
+        return _lastStatus;
+    }
 
     void initPool(const unsigned char* miningSeed)
     {
@@ -78,6 +94,7 @@ struct ScoreFunction
         {
             ok = _computeBuffer[i].loadTask(topoBlock, dataBlock) && ok;
         }
+        _lastStatus = ok ? ScoreStatusOk : ScoreStatusTaskNotLoaded;
         return ok;
     }
 
@@ -93,6 +110,7 @@ struct ScoreFunction
     bool initMemory()
     {
         random2PoolLock = 0;
+        _lastStatus = ScoreStatusTaskNotLoaded;
 
         // Make sure all padding data is set as zeros
         setMem(_computeBuffer, sizeof(_computeBuffer), 0);
