@@ -33,7 +33,7 @@ struct MiningSolutionTransaction : public Transaction
 
     static constexpr unsigned short minInputSize()
     {
-        return sizeof(miningSeed) + sizeof(nonce);
+        return sizeof(miningSeed) + sizeof(nonce) + sizeof(score) + sizeof(reserved);
     }
 
     static bool isSolutionTransaction(const Transaction* tx)
@@ -46,8 +46,11 @@ struct MiningSolutionTransaction : public Transaction
 
     m256i miningSeed;
     m256i nonce;
+    unsigned int score;
+    unsigned int reserved;
     unsigned char signature[SIGNATURE_SIZE];
 };
+static_assert(sizeof(MiningSolutionTransaction) == sizeof(Transaction) + 32 + 32 + 4 + 4 + SIGNATURE_SIZE, "MiningSolutionTransaction has unexpected padding");
 
 // Define in doc/protocol.md
 constexpr int DOGE_MINING_SHARE_COUNTER_INPUT_TYPE = 11;
