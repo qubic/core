@@ -1790,8 +1790,9 @@ static void setNewMiningSeed()
 // resetPhase: if true, force a mining-seed rotation even when not at the regular rotation boundary.
 static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate, bool resetPhase)
 {
-    // The mining seed rotates every MINING_SEED_ROTATION_INTERVAL ticks.
-    if (resetPhase || (system.tick % MINING_SEED_ROTATION_INTERVAL) == 0)
+    // One shared random2 pool per epoch, the mining seed is set once at epoch begin (from the epoch-start
+    // spectrum digest) and stays fixed for the whole epoch
+    if (resetPhase)
     {
         setNewMiningSeed();
     }
@@ -3882,11 +3883,6 @@ static void processTick(unsigned long long processorNumber)
             {
                 // Compute tick offset, when to publish solution
                 unsigned int publishingTickOffset = MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
-
-                // Do not publish if the solution tx would land in the next mining-seed rotation,
-                // preventing loss of security deposit from verifying against a rotated seed.
-                if ((system.tick % MINING_SEED_ROTATION_INTERVAL) + publishingTickOffset >= MINING_SEED_ROTATION_INTERVAL)
-                    continue;
 
                 // Prepare, sign, and broadcast the solution transaction
                 MiningSolutionTransaction payload;
