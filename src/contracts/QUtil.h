@@ -38,6 +38,10 @@ constexpr sint64 QUTIL_POLL_CREATION_FEE = 10000000LL; // Fee for poll creation 
 constexpr uint16 QUTIL_POLL_GITHUB_URL_MAX_SIZE = 256; // Max String Length for Poll's Github URLs
 constexpr uint64 QUTIL_MAX_NEW_POLL = div(QUTIL_MAX_POLL, 4ULL); // Max number of new poll per epoch
 
+// Upper bound per OC batch; above the in-flight pool size (1024) so a single transaction can
+// drive the engine into pool exhaustion, and a provable loop-termination bound.
+constexpr uint32 QUTIL_MAX_OC_BATCH_COUNT = 2048;
+
 
 // Voting log types enum
 constexpr uint64 QUTILLogTypePollCreated = 5;                       // Poll created successfully
@@ -2052,7 +2056,7 @@ public:
     struct TriggerOCBatch_input
     {
         uint64 baseValue; // invocation i carries value baseValue + i
-        uint32 count;     // clamped to maxOcBatchCount
+        uint32 count;     // clamped to QUTIL_MAX_OC_BATCH_COUNT
     };
     struct TriggerOCBatch_output
     {
@@ -2067,18 +2071,14 @@ public:
         sint64 fee;
     };
 
-    // Upper bound per batch; above the in-flight pool size (1024) so a single transaction can
-    // drive the engine into pool exhaustion, and a provable loop-termination bound.
-    static constexpr uint32 maxOcBatchCount = 2048;
-
     PUBLIC_PROCEDURE_WITH_LOCALS(TriggerOCBatch)
     {
         output.invokedCount = 0;
         output.lastInvocationId = -1;
 
-        if (input.count > maxOcBatchCount)
+        if (input.count > QUTIL_MAX_OC_BATCH_COUNT)
         {
-            input.count = maxOcBatchCount;
+            input.count = QUTIL_MAX_OC_BATCH_COUNT;
         }
 
         // Gate on the invocation reward so the caller pays the burned fees, not this contract
