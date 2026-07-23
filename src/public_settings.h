@@ -110,7 +110,7 @@ static constexpr unsigned long long BPP9000_SEQUENCE_LENGTH = 24 * 365;
 static constexpr unsigned long long BPP9000_WINDOW_WIDTH = 24 * 28;
 static constexpr unsigned long long BPP9000_MAX_NUMBER_OF_TICKS = 100000;
 static constexpr unsigned long long BPP9000_NUMBER_OF_NEIGHBORS = 3;
-static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 128;
+static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 64;
 static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 100;
 // Number of graded windows. The score is an error count in [0, BPP9000_NUMBER_OF_WINDOWS], smaller is
 // better, and a solution passes when score <= threshold.
