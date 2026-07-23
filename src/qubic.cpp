@@ -203,6 +203,7 @@ static int nSolutionProcessorIDs = 0;
 static ScoreFunction<
     NUMBER_OF_SOLUTION_PROCESSORS
 > * score = nullptr;
+static unsigned char* gBpp9000TaskBuffer = nullptr;
 static volatile char solutionsLock = 0;
 static unsigned long long* minerSolutionFlags = NULL;
 static volatile m256i minerPublicKeys[MAX_NUMBER_OF_MINERS + 1];
@@ -240,7 +241,7 @@ static int getSolutionThreshold(score_engine::AlgoType selectedAlgo)
         ? solutionThreshold[system.epoch][selectedAlgo]
         : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
 }
-
+static bool applyBpp9000Task();
 
 // DOGE merged-mining shares
 static volatile char gDogeMiningSharesCountLock = 0;
@@ -5738,6 +5739,15 @@ static void tickProcessor(void*)
                                     beginEpoch();
                                     isBeginEpoch = true;
 
+                                    // beginEpoch() called score->initMemory(), which zeroed the scorer, so re-apply
+                                    // the task from the resident buffer. This assumes the task is unchanged across the transition; 
+                                    // if a future epoch needs a different task file, branch here on the epoch to reload from file 
+                                    // instead of re-applying memory
+                                    if (!applyBpp9000Task())
+                                    {
+                                        ASSERT(false);
+                                    }
+
                                     // Some debug checks that we are ready for the next epoch
                                     ASSERT(system.numberOfSolutions == 0);
                                     ASSERT(numberOfMiners == NUMBER_OF_COMPUTORS);
@@ -6059,6 +6069,91 @@ static bool saveSystem(CHAR16* directory)
     return false;
 }
 
+// Load and verify the bpp9000 task file (topology + windowed data) and hand it to the scorer
+static bool loadBpp9000Task()
+{
+    const unsigned int N = (unsigned int)BPP9000_NUMBER_OF_INPUT_NEURONS;
+    const unsigned int M = (unsigned int)BPP9000_NUMBER_OF_OUTPUT_NEURONS;
+    const unsigned int P = (unsigned int)BPP9000_POPULATION_THRESHOLD;
+    const unsigned int K = (unsigned int)BPP9000_NUMBER_OF_NEIGHBORS;
+    const unsigned long long T = BPP9000_SEQUENCE_LENGTH;
+
+    const unsigned long long topoBytes = score_task_file::topologyBytes(N, M, P, K);
+    const unsigned long long dataBytes = score_task_file::dataBytes(N, M, T);
+    const unsigned long long headerBytes = sizeof(score_task_file::TaskFileHeader);
+    const unsigned long long totalBytes = headerBytes + topoBytes + dataBytes;
+
+    if (!allocPoolWithErrorLog(L"bpp9000Task", totalBytes, (void**)&gBpp9000TaskBuffer, __LINE__))
+    {
+        return false;
+    }
+
+    bool ok = false;
+    const long long loadedSize = load(SCORE_BPP9000_TASK_FILE_NAME, totalBytes, gBpp9000TaskBuffer, NULL);
+    if (loadedSize != (long long)totalBytes)
+    {
+        logToConsole(L"bpp9000 task file missing or wrong size - node will not do score verification.");
+    }
+    else
+    {
+        const score_task_file::TaskFileHeader* h = (const score_task_file::TaskFileHeader*)gBpp9000TaskBuffer;
+        const unsigned char* topoBlock = gBpp9000TaskBuffer + headerBytes;
+        const unsigned char* dataBlock = topoBlock + topoBytes;
+
+        unsigned char topoHash[32];
+        unsigned char dataHash[32];
+        KangarooTwelve(topoBlock, (unsigned int)topoBytes, topoHash, 32);
+        KangarooTwelve(dataBlock, (unsigned int)dataBytes, dataHash, 32);
+
+        if (h->magic != score_task_file::MAGIC || h->version != score_task_file::VERSION
+            || h->numInputTrits != N || h->numOutputTrits != M || h->population != P
+            || h->numNeighbors != K || h->numPairs < T)
+        {
+            logToConsole(L"bpp9000 task header does not match configured parameters - node will not do score verification.");
+        }
+        else if (*(const m256i*)topoHash != *(const m256i*)BPP9000_TOPOLOGY_HASH
+              || *(const m256i*)dataHash != *(const m256i*)BPP9000_DATA_HASH)
+        {
+            logToConsole(L"bpp9000 task hash mismatch (not the pinned canonical task) - node will not do score verification.");
+        }
+        else if (!score->loadTask(topoBlock, dataBlock))
+        {
+            logToConsole(L"bpp9000 task failed topology validation - node will not do score verification.");
+        }
+        else
+        {
+            logToConsole(L"Loaded bpp9000 task file");
+            ok = true;
+        }
+    }
+
+    // Keep the verified buffer resident (for applyBpp9000Task) on success; release it on failure.
+    if (!ok)
+    {
+        freePool(gBpp9000TaskBuffer);
+        gBpp9000TaskBuffer = nullptr;
+    }
+    return ok;
+}
+
+// Re-apply the already-verified, resident task to the scorer. Used after beginEpoch() zeroes the scorer:
+// no file I/O and no re-hashing (the blocks were verified once at init), so it cannot fail on a missing or
+// altered file. Returns false only if the task was never loaded.
+static bool applyBpp9000Task()
+{
+    if (gBpp9000TaskBuffer == nullptr)
+    {
+        return false;
+    }
+    const unsigned long long headerBytes = sizeof(score_task_file::TaskFileHeader);
+    const unsigned long long topoBytes = score_task_file::topologyBytes(
+        (unsigned int)BPP9000_NUMBER_OF_INPUT_NEURONS, (unsigned int)BPP9000_NUMBER_OF_OUTPUT_NEURONS,
+        (unsigned int)BPP9000_POPULATION_THRESHOLD, (unsigned int)BPP9000_NUMBER_OF_NEIGHBORS);
+    const unsigned char* topoBlock = gBpp9000TaskBuffer + headerBytes;
+    const unsigned char* dataBlock = topoBlock + topoBytes;
+    return score->loadTask(topoBlock, dataBlock);
+}
+
 static bool initialize()
 {
     enableAVX();
@@ -6340,6 +6435,12 @@ static bool initialize()
         checkAndSwitchMiningPhase(tickEpoch, tickDate, true);
     }    
     score->loadScoreCache(system.epoch);
+
+    // Load + hash-verify the bpp9000 task once at init
+    if (!loadBpp9000Task())
+    {
+        return false;
+    }
 
     logToConsole(L"Allocating buffers ...");
     if ((!allocPoolWithErrorLog(L"dejavu0", 536870912, (void**)&dejavu0, __LINE__)) ||
@@ -7552,6 +7653,20 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     PROFILE_NAMED_SCOPE("main loop: updateTime()");
                     updateTime();
+
+                    // Report a stalled scorer from the main thread. Anything other than ScoreStatusOk means the
+                    // node cannot verify mining solutions; add a case per new status kind.
+                    switch (score->getLastStatus())
+                    {
+                    case ScoreStatusOk:
+                        break;
+                    case ScoreStatusTaskNotLoaded:
+                        logToConsole(L"ERROR: bpp9000 task not loaded - node cannot verify mining solutions.");
+                        break;
+                    default:
+                        logToConsole(L"ERROR: score engine not ready - node cannot verify mining solutions.");
+                        break;
+                    }
                 }
 
                 if (contractProcessorState == 1)
