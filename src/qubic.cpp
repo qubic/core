@@ -7276,7 +7276,9 @@ static void processKeyPresses()
             setNumber(message, numberOfMiners, TRUE);
             appendText(message, L" miners, ");
             appendNumber(message, numberOfScoredMiners, TRUE);
-            appendText(message, L" scored (worst computor error = ");
+            appendText(message, L" scored (best error = ");
+            appendNumber(message, minerScores[0], TRUE);
+            appendText(message, L", worst computor error = ");
             appendNumber(message, minimumComputorScore, TRUE);
             appendText(message, L", worst candidate error = ");
             appendNumber(message, minimumCandidateScore, TRUE);
