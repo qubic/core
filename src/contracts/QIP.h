@@ -528,18 +528,18 @@ public:
 
             if (locals.errorCode == 0)
             {
-                if (input.amount == 0 || input.amount > MAX_AMOUNT)
+                locals.requiredPayment = smul(input.amount, locals.price);
+
+                if (input.amount == 0 || input.amount >= MAX_AMOUNT)
                 {
                     locals.errorCode = QIPLogInfo::QIP_invalidAmount;
                 }
-                else if (locals.price == 0 || input.amount * locals.price > MAX_AMOUNT)
+                else if (locals.price == 0 || locals.requiredPayment >= MAX_AMOUNT)
                 {
                     locals.errorCode = QIPLogInfo::QIP_insufficientInvocationReward;
                 }
                 else
                 {
-                    locals.requiredPayment = input.amount * locals.price;
-
                     if (locals.requiredPayment < QIP_MIN_PARTICIPATION_AMOUNT)
                     {
                         locals.errorCode = QIPLogInfo::QIP_amountBelowMinimum;
