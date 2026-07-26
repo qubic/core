@@ -43,7 +43,6 @@
     <ClInclude Include="contracts\Qearn.h" />
     <ClInclude Include="contracts\QVAULT.h" />
     <ClInclude Include="contracts\QBAY.h" />
-    <ClInclude Include="contracts\Qbay_old.h" />
     <ClInclude Include="contracts\Nostromo.h" />
     <ClInclude Include="contracts\QRaffle.h" />
     <ClInclude Include="contracts\QBond.h" />
@@ -116,6 +115,7 @@
     <ClInclude Include="oracle_interfaces\DogeShareValidation.h" />
     <ClInclude Include="oracle_interfaces\Mock.h" />
     <ClInclude Include="oracle_interfaces\Price.h" />
+    <ClInclude Include="oc_core\core_oc_network_messages.h" />
     <ClInclude Include="platform\assert.h" />
     <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />

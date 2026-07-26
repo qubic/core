@@ -32,6 +32,7 @@ constexpr uint64 QRWA_PAYOUT_HOUR_POOL_D = 15;      // MLM Water     | Friday 15
 constexpr uint64 QRWA_PAYOUT_MINUTE = 0;             // Trigger at :00
 constexpr uint64 QRWA_CHECK_DAY_OF_WEEK = 1;         // 1=Friday only
 constexpr uint64 QRWA_MIN_PAYOUT_INTERVAL_MS = 518400000ULL; // 6 days (6 * 86400000)
+constexpr uint64 QRWA_PAYOUT_OVERDUE_MS = 691200000ULL; // 8 days. Catch-up: if a scheduled payout is missed (e.g. network halt over the Friday window), fire on the next tick instead of skipping a full week
 constexpr uint64 QRWA_MIN_REVENUE_THRESHOLD = 1000ULL; // skip distribution if pool revenue below this
 
 // STATUS CODES for Procedures
@@ -2015,6 +2016,47 @@ public:
                             locals.poolDReady = 1;
                         }
                     }
+                }
+            }
+
+            // Catch-up after downtime.
+            // The schedule above only matches when a tick lands inside the scheduled
+            // weekday/hour window. If the network is halted across that window (e.g. a
+            // restart that spans the Friday payout), the payout is otherwise skipped for a
+            // whole week and the accumulated revenue is later distributed against a newer
+            // shareholder snapshot. When a pool is overdue and still has revenue to pay out,
+            // fire on the next available tick regardless of weekday/hour. The distribution
+            // below updates mLastPayoutTimePool*, so each missed slot is caught up only once.
+            if (state.get().mLastPayoutTimePoolA.getYear() != 0 && state.get().mRevenuePoolA >= QRWA_MIN_REVENUE_THRESHOLD)
+            {
+                locals.durationMicros = state.get().mLastPayoutTimePoolA.durationMicrosec(locals.now);
+                if (div<uint64>(locals.durationMicros, 1000) >= QRWA_PAYOUT_OVERDUE_MS)
+                {
+                    locals.poolAReady = 1;
+                }
+            }
+            if (state.get().mLastPayoutTimePoolB.getYear() != 0 && state.get().mRevenuePoolB >= QRWA_MIN_REVENUE_THRESHOLD)
+            {
+                locals.durationMicros = state.get().mLastPayoutTimePoolB.durationMicrosec(locals.now);
+                if (div<uint64>(locals.durationMicros, 1000) >= QRWA_PAYOUT_OVERDUE_MS)
+                {
+                    locals.poolBReady = 1;
+                }
+            }
+            if (state.get().mLastPayoutTimePoolC.getYear() != 0 && state.get().mDedicatedRevenuePool >= QRWA_MIN_REVENUE_THRESHOLD)
+            {
+                locals.durationMicros = state.get().mLastPayoutTimePoolC.durationMicrosec(locals.now);
+                if (div<uint64>(locals.durationMicros, 1000) >= QRWA_PAYOUT_OVERDUE_MS)
+                {
+                    locals.poolCReady = 1;
+                }
+            }
+            if (state.get().mLastPayoutTimePoolD.getYear() != 0 && state.get().mPoolDRevenuePool >= QRWA_MIN_REVENUE_THRESHOLD)
+            {
+                locals.durationMicros = state.get().mLastPayoutTimePoolD.durationMicrosec(locals.now);
+                if (div<uint64>(locals.durationMicros, 1000) >= QRWA_PAYOUT_OVERDUE_MS)
+                {
+                    locals.poolDReady = 1;
                 }
             }
         }

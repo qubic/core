@@ -132,11 +132,7 @@
 #define CONTRACT_INDEX QBAY_CONTRACT_INDEX
 #define CONTRACT_STATE_TYPE QBAY
 #define CONTRACT_STATE2_TYPE QBAY2
-#ifdef OLD_QBAY
-#include "contracts/Qbay_old.h"
-#else
 #include "contracts/Qbay.h"
-#endif
 
 #undef CONTRACT_INDEX
 #undef CONTRACT_STATE_TYPE
@@ -578,11 +574,8 @@ struct ContractStateChangeInfo
 };
 // Contracts whose state struct changed this epoch. Update this list each epoch as needed.
 // Each entry is { CONTRACT_INDEX, PADDING or RESET or MIGRATE, EPOCH }
-// When enabling, replace both lines below, e.g.:
-//constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { DUMMY_CONTRACT_INDEX, MIGRATE, 219 } };
-//constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
- constexpr const ContractStateChangeInfo* contractStateChangeInfos = nullptr;
- constexpr unsigned int contractStateChangeCount = 0;
+constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { QRAFFLE_CONTRACT_INDEX, MIGRATE, 223 } };
+constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
 
 
 // Class for registering and looking up user procedures independently of input type, for example for notifications
