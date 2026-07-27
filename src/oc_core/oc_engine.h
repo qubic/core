@@ -329,6 +329,8 @@ public:
 
         ++stats.invocationCount;
 
+        logger.logOcInvocationStatusChange({ rec.invocationId, rec.contractIndex, rec.interfaceIndex, rec.status });
+
 #if !defined(NDEBUG) && !defined(NO_UEFI)
         CHAR16 dbgMsg[200];
         setText(dbgMsg, L"ocEngine.startContractInvocation(), tick ");
@@ -527,6 +529,8 @@ public:
             rec.status = OC_INVOCATION_STATUS_TIMEOUT;
             ++stats.timeoutCount;
 
+            logger.logOcInvocationStatusChange({ rec.invocationId, rec.contractIndex, rec.interfaceIndex, rec.status });
+
             // free the in-flight slot (held since creation)
             if (rec.inFlightSlot != OC_IN_FLIGHT_SLOT_NONE)
             {
@@ -670,6 +674,8 @@ public:
             {
                 rec.status = OC_INVOCATION_STATUS_AUTHORIZED;
                 ++stats.authorizedCount;
+
+                logger.logOcInvocationStatusChange({ rec.invocationId, rec.contractIndex, rec.interfaceIndex, rec.status });
             }
         }
 
