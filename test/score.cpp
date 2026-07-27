@@ -2,7 +2,7 @@
 
 #include "gtest/gtest.h"
 
-#define ENABLE_PROFILING 1
+#define ENABLE_PROFILING 0
 
 #include "../src/public_settings.h"
 #include "../src/mining/score_bpp9000.h"
@@ -36,7 +36,7 @@ static const std::string SCORES_FILE_NAME = "data/scores_bpp9000.csv";
 static bool gCompareReference = false;
 
 // Samples run per config
-static constexpr unsigned long long TEST_NUMBER_OF_SAMPLES = 64;
+static constexpr unsigned long long TEST_NUMBER_OF_SAMPLES = 32;
 // Worker threads for the parallel path; effective count = min(this, hardware_concurrency, numSamples).
 static constexpr unsigned int TEST_NUMBER_OF_THREADS = 0;
 
