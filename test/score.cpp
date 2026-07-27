@@ -419,6 +419,9 @@ static void runBpp9000Profile()
     std::vector<double> threadSumMs(numThreads, 0.0);
     std::vector<unsigned long long> threadCount(numThreads, 0);
 
+    // Per-sample scores: sample s is written by exactly one worker (disjoint stride), so no lock is needed.
+    std::vector<unsigned int> scores(seeds.size(), 0);
+
     runWorkers(numThreads, [&](unsigned int threadIdx, unsigned int nThreads)
     {
         auto engine = makeEngine<Cfg>(topo.data(), data.data());
@@ -431,9 +434,9 @@ static void runBpp9000Profile()
             const m256i& n = nonces[s];
 
             const auto callStart = std::chrono::steady_clock::now();
-            volatile unsigned int score = engine->computeScore(pubkeys[s].m256i_u8, n.m256i_u8, pool.data());
+            const unsigned int score = engine->computeScore(pubkeys[s].m256i_u8, n.m256i_u8, pool.data());
             const auto callEnd = std::chrono::steady_clock::now();
-            (void)score;
+            scores[s] = score;
 
             threadSumMs[threadIdx] += std::chrono::duration<double, std::milli>(callEnd - callStart).count();
             threadCount[threadIdx] += 1;
@@ -454,6 +457,41 @@ static void runBpp9000Profile()
               << "-" << Cfg::windowWidth << "-" << Cfg::maxNumberOfTicks << "-" << Cfg::numberOfNeighbors
               << "-" << Cfg::populationThreshold << "-" << Cfg::numberOfMutations << "-" << Cfg::solutionThreshold
               << " : avg " << avgMs << " ms/solution" << std::endl;
+
+    // Score distribution over the same samples
+    const unsigned int infiniteError = score_engine::ScoreBpp9000<Cfg>::INFINITE_ERROR;
+    unsigned long long validCount = 0;
+    unsigned long long timeoutCount = 0;
+    unsigned long long scoreSum = 0;
+    unsigned int scoreMin = infiniteError;
+    unsigned int scoreMax = 0;
+    for (unsigned long long s = 0; s < scores.size(); ++s)
+    {
+        const unsigned int sc = scores[s];
+        if (sc == infiniteError)
+        {
+            timeoutCount++;
+            continue;
+        }
+        validCount++;
+        scoreSum += sc;
+        if (sc < scoreMin)
+        {
+            scoreMin = sc;
+        }
+        if (sc > scoreMax)
+        {
+            scoreMax = sc;
+        }
+    }
+    const double scoreMean = (validCount > 0) ? ((double)scoreSum / (double)validCount) : 0.0;
+    if (validCount == 0)
+    {
+        scoreMin = 0;
+    }
+
+    std::cout << "[bpp9000 profile] score (valid " << validCount << ", timeout " << timeoutCount << ")"
+              << " : min " << scoreMin << " mean " << scoreMean << " max " << scoreMax << std::endl;
 
     // Dump the PROFILE_NAMED_SCOPE breakdown (per-scope count + avg/min/max microseconds) to profiling.csv.
     gProfilingDataCollector.writeToFile();
