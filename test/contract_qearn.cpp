@@ -1,5 +1,7 @@
 #define NO_UEFI
 
+#include <algorithm>
+#include <cstddef>
 #include <random>
 #include <map>
 
@@ -17,6 +19,7 @@
 
 
 static const id QEARN_CONTRACT_ID(QEARN_CONTRACT_INDEX, 0, 0, 0);
+static const id CCF_CONTRACT_ID(CCF_CONTRACT_INDEX, 0, 0, 0);
 
 static std::mt19937_64 rand64;
 
@@ -25,6 +28,45 @@ static unsigned long long random(unsigned long long maxValue);
 
 static std::vector<uint64> fullyUnlockedAmount;
 static std::vector<id> fullyUnlockedUser;
+
+struct QearnV1StateLayout
+{
+    QPI::Array<QEARN::RoundInfo, QEARN_MAX_EPOCHS> initialRoundInfo;
+    QPI::Array<QEARN::RoundInfo, QEARN_MAX_EPOCHS> currentRoundInfo;
+    QPI::Array<QEARN::EpochIndexInfo, QEARN_MAX_EPOCHS> epochIndex;
+    QPI::Array<QEARN::LockInfo, QEARN_MAX_LOCKS> locker;
+    QPI::Array<QEARN::HistoryInfo, QEARN_MAX_USERS> earlyUnlocker;
+    QPI::Array<QEARN::HistoryInfo, QEARN_MAX_USERS> fullyUnlocker;
+    uint32 earlyUnlockedCnt;
+    uint32 fullyUnlockedCnt;
+    QPI::Array<QEARN::StatsInfo, QEARN_MAX_EPOCHS> statsInfo;
+};
+
+static_assert(
+    sizeof(QearnV1StateLayout) == offsetof(QEARN::StateData, lockerLockPeriods),
+    "QEarn V2 PADDING must preserve the exact V1 state prefix");
+static_assert(
+    sizeof(QearnV1StateLayout) == 214171656ULL,
+    "QEarn V1 deployed state size changed; PADDING is no longer safe");
+static_assert(
+    sizeof(QEARN::StateData) == 244645904ULL,
+    "QEarn V2 state layout changed; review the epoch-227 deployment plan");
+
+static_assert(sizeof(QEARN::lockV2_input) == 4);
+static_assert(sizeof(QEARN::lockV2_output) == 4);
+static_assert(sizeof(QEARN::unlockV2_input) == 8);
+static_assert(sizeof(QEARN::unlockV2_output) == 4);
+static_assert(sizeof(QEARN::getV2LockInfoPerEpoch_input) == 8);
+static_assert(sizeof(QEARN::getV2LockInfoPerEpoch_output) == 128);
+static_assert(offsetof(QEARN::getV2LockInfoPerEpoch_output, finalized) == 112);
+static_assert(offsetof(QEARN::getV2LockInfoPerEpoch_output, state) == 116);
+static_assert(offsetof(QEARN::getV2LockInfoPerEpoch_output, returnCode) == 120);
+static_assert(sizeof(QEARN::getV2UserLockedInfo_input) == 40);
+static_assert(offsetof(QEARN::getV2UserLockedInfo_input, epoch) == 32);
+static_assert(offsetof(QEARN::getV2UserLockedInfo_input, lockPeriod) == 36);
+static_assert(sizeof(QEARN::getV2UserLockedInfo_output) == 24);
+static_assert(offsetof(QEARN::getV2UserLockedInfo_output, maturityEpoch) == 8);
+static_assert(offsetof(QEARN::getV2UserLockedInfo_output, returnCode) == 16);
 
 
 class QearnChecker : public QEARN, public QEARN::StateData
@@ -295,6 +337,27 @@ public:
         return output;
     }
 
+    QEARN::getV2LockInfoPerEpoch_output getV2LockInfoPerEpoch(uint32 epoch, uint32 lockPeriod) const
+    {
+        QEARN::getV2LockInfoPerEpoch_input input;
+        input.epoch = epoch;
+        input.lockPeriod = lockPeriod;
+        QEARN::getV2LockInfoPerEpoch_output output;
+        callFunction(QEARN_CONTRACT_INDEX, 9, input, output);
+        return output;
+    }
+
+    QEARN::getV2UserLockedInfo_output getV2UserLockedInfo(uint32 epoch, const id& user, uint32 lockPeriod) const
+    {
+        QEARN::getV2UserLockedInfo_input input;
+        input.user = user;
+        input.epoch = epoch;
+        input.lockPeriod = lockPeriod;
+        QEARN::getV2UserLockedInfo_output output;
+        callFunction(QEARN_CONTRACT_INDEX, 10, input, output);
+        return output;
+    }
+
     sint32 lock(const id& user, long long amount, bool expectSuccess = true)
     {
         QEARN::lock_input input;
@@ -310,6 +373,25 @@ public:
         input.lockedEpoch = lockedEpoch;
         QEARN::unlock_output output;
         EXPECT_EQ(invokeUserProcedure(QEARN_CONTRACT_INDEX, 2, input, output, user, 0), expectSuccess);
+        return output.returnCode;
+    }
+
+    sint32 lockV2(const id& user, long long amount, uint32 lockPeriod, bool expectSuccess = true)
+    {
+        QEARN::lockV2_input input;
+        input.lockPeriod = lockPeriod;
+        QEARN::lockV2_output output;
+        EXPECT_EQ(invokeUserProcedure(QEARN_CONTRACT_INDEX, 3, input, output, user, amount), expectSuccess);
+        return output.returnCode;
+    }
+
+    sint32 unlockV2(const id& user, uint32 lockedEpoch, uint32 lockPeriod, bool expectSuccess = true)
+    {
+        QEARN::unlockV2_input input;
+        input.lockedEpoch = lockedEpoch;
+        input.lockPeriod = lockPeriod;
+        QEARN::unlockV2_output output;
+        EXPECT_EQ(invokeUserProcedure(QEARN_CONTRACT_INDEX, 4, input, output, user, 0), expectSuccess);
         return output.returnCode;
     }
 
@@ -788,6 +870,1393 @@ TEST(TestContractQearn, ErrorChecking)
     EXPECT_EQ(qearn.unlock(otherUser, QEARN_MINIMUM_LOCKING_AMOUNT, system.epoch), QEARN_UNLOCK_SUCCESS);
 }
 
+TEST(TestContractQearn, V2ActivationAndLegacyWrappersRemainCompatible)
+{
+    ContractTestingQearn qearn;
+    const uint32 legacyEpoch = QEARN_V2_ACTIVATION_EPOCH - 1;
+    const uint32 v2Epoch = QEARN_V2_ACTIVATION_EPOCH;
+    const uint64 principal = 100000000ULL;
+    const id legacyUser(1001, 1, 1, 1);
+    const id inactiveV2User(1002, 2, 2, 2);
+    const id wrapperUser(1003, 3, 3, 3);
+    const id shortTermUser(1004, 4, 4, 4);
+
+    system.epoch = legacyEpoch;
+    qearn.beginEpoch();
+
+    increaseEnergy(legacyUser, principal);
+    EXPECT_EQ(qearn.lock(legacyUser, principal), QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.getUserLockedInfo(legacyEpoch, legacyUser), principal);
+
+    increaseEnergy(inactiveV2User, principal);
+    const sint64 inactiveBalance = getBalance(inactiveV2User);
+    EXPECT_EQ(qearn.lockV2(inactiveV2User, principal, QEARN_V2_LOCK_PERIOD_13), QEARN_V2_NOT_ACTIVE);
+    EXPECT_EQ(getBalance(inactiveV2User), inactiveBalance);
+    EXPECT_EQ(qearn.getV2LockInfoPerEpoch(legacyEpoch, QEARN_V2_LOCK_PERIOD_13).returnCode,
+        QEARN_INVALID_INPUT_LOCKED_EPOCH);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(legacyEpoch, inactiveV2User, QEARN_V2_LOCK_PERIOD_13).returnCode,
+        QEARN_INVALID_INPUT_LOCKED_EPOCH);
+    qearn.endEpoch();
+
+    system.epoch = v2Epoch;
+    qearn.beginEpoch();
+
+    increaseEnergy(wrapperUser, principal);
+    increaseEnergy(shortTermUser, principal);
+    EXPECT_EQ(qearn.lock(wrapperUser, principal), QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(shortTermUser, principal, QEARN_V2_LOCK_PERIOD_13), QEARN_LOCK_SUCCESS);
+
+    // The V1 lock procedure remains a compatibility wrapper for a V2 52-epoch lock.
+    EXPECT_EQ(qearn.getUserLockedInfo(v2Epoch, wrapperUser), principal);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(v2Epoch, wrapperUser, QEARN_V2_LOCK_PERIOD_52).lockedAmount, principal);
+    EXPECT_EQ(qearn.getUserLockedInfo(v2Epoch, shortTermUser), 0ULL);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(v2Epoch, shortTermUser, QEARN_V2_LOCK_PERIOD_13).lockedAmount, principal);
+
+    // Neither the new procedure nor the legacy 52-epoch wrapper may unlock in the lock epoch.
+    EXPECT_EQ(qearn.unlockV2(shortTermUser, v2Epoch, QEARN_V2_LOCK_PERIOD_13),
+        QEARN_INVALID_INPUT_LOCKED_EPOCH);
+    EXPECT_EQ(qearn.unlock(wrapperUser, QEARN_MINIMUM_LOCKING_AMOUNT, v2Epoch),
+        QEARN_INVALID_INPUT_LOCKED_EPOCH);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(v2Epoch, shortTermUser, QEARN_V2_LOCK_PERIOD_13).lockedAmount, principal);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(v2Epoch, wrapperUser, QEARN_V2_LOCK_PERIOD_52).lockedAmount, principal);
+
+    // A pre-activation position continues to use the original V1 unlock path after activation.
+    const sint64 legacyBalance = getBalance(legacyUser);
+    EXPECT_EQ(qearn.unlock(legacyUser, principal, legacyEpoch), QEARN_UNLOCK_SUCCESS);
+    EXPECT_EQ(getBalance(legacyUser), legacyBalance + principal);
+    EXPECT_EQ(qearn.getUserLockedInfo(legacyEpoch, legacyUser), 0ULL);
+    qearn.endEpoch();
+
+    system.epoch = v2Epoch + 1;
+    qearn.beginEpoch();
+
+    // The legacy wrapper requires an exact full-position amount, preventing an
+    // old partial-unlock UI from silently closing the complete V2 position.
+    const sint64 wrapperBalance = getBalance(wrapperUser);
+    EXPECT_EQ(qearn.unlock(wrapperUser, QEARN_MINIMUM_LOCKING_AMOUNT, v2Epoch),
+        QEARN_INVALID_INPUT_UNLOCK_AMOUNT);
+    EXPECT_EQ(getBalance(wrapperUser), wrapperBalance);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(
+        v2Epoch, wrapperUser, QEARN_V2_LOCK_PERIOD_52).lockedAmount, principal);
+    EXPECT_EQ(qearn.unlock(wrapperUser, principal, v2Epoch), QEARN_UNLOCK_SUCCESS);
+    EXPECT_EQ(getBalance(wrapperUser), wrapperBalance + principal);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(v2Epoch, wrapperUser, QEARN_V2_LOCK_PERIOD_52).lockedAmount, 0ULL);
+
+    const sint64 shortTermBalance = getBalance(shortTermUser);
+    EXPECT_EQ(qearn.unlockV2(shortTermUser, v2Epoch, QEARN_V2_LOCK_PERIOD_13), QEARN_UNLOCK_SUCCESS);
+    EXPECT_EQ(getBalance(shortTermUser), shortTermBalance + principal);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(v2Epoch, shortTermUser, QEARN_V2_LOCK_PERIOD_13).lockedAmount, 0ULL);
+    EXPECT_EQ(qearn.getEndedStatus(wrapperUser).earlyRewardedAmount, 0ULL);
+    EXPECT_EQ(qearn.getEndedStatus(shortTermUser).earlyRewardedAmount, 0ULL);
+}
+
+TEST(TestContractQearn, V2FailedPrincipalTransferDoesNotClosePosition)
+{
+    ContractTestingQearn qearn;
+    const uint32 lockedEpoch = QEARN_V2_ACTIVATION_EPOCH;
+    const uint64 principal = 100000000ULL;
+    const id contractUser(QVAULT_CONTRACT_INDEX, 0, 0, 0);
+
+    system.epoch = lockedEpoch;
+    qearn.beginEpoch();
+    increaseEnergy(contractUser, principal);
+    EXPECT_EQ(qearn.lockV2(contractUser, principal, QEARN_V2_LOCK_PERIOD_13),
+        QEARN_LOCK_SUCCESS);
+    qearn.endEpoch();
+
+    system.epoch = lockedEpoch + 1;
+    qearn.beginEpoch();
+    const sint64 userBalanceBefore = getBalance(contractUser);
+    const sint64 qearnBalanceBefore = getBalance(QEARN_CONTRACT_ID);
+
+    // QPI rejects transfers to contracts while an incoming-transfer callback
+    // is active. A failed repayment must leave the position fully intact.
+    contractCallbacksRunning = ContractCallbackPostIncomingTransfer;
+    EXPECT_EQ(qearn.unlockV2(contractUser, lockedEpoch, QEARN_V2_LOCK_PERIOD_13),
+        QEARN_TRANSFER_FAILED);
+    contractCallbacksRunning = NoContractCallback;
+
+    EXPECT_EQ(getBalance(contractUser), userBalanceBefore);
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID), qearnBalanceBefore);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(
+        lockedEpoch, contractUser, QEARN_V2_LOCK_PERIOD_13).lockedAmount, principal);
+    auto term13 =
+        qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_13);
+    EXPECT_EQ(term13.currentLockedAmount, principal);
+    EXPECT_EQ(term13.termEarlyUnlockedAmount, 0ULL);
+    EXPECT_EQ(term13.termForfeitedClaimAmount, 0ULL);
+
+    EXPECT_EQ(qearn.unlockV2(contractUser, lockedEpoch, QEARN_V2_LOCK_PERIOD_13),
+        QEARN_UNLOCK_SUCCESS);
+    EXPECT_EQ(getBalance(contractUser), userBalanceBefore + static_cast<sint64>(principal));
+    EXPECT_EQ(qearn.getV2UserLockedInfo(
+        lockedEpoch, contractUser, QEARN_V2_LOCK_PERIOD_13).lockedAmount, 0ULL);
+}
+
+TEST(TestContractQearn, V2ValidatesTermsAmountsAndLockEpochRange)
+{
+    ContractTestingQearn qearn;
+    const uint32 lockedEpoch = QEARN_V2_ACTIVATION_EPOCH;
+    const id user(1051, 1, 1, 1);
+
+    system.epoch = lockedEpoch;
+    qearn.beginEpoch();
+
+    increaseEnergy(user, QEARN_MINIMUM_LOCKING_AMOUNT);
+    const sint64 balanceBeforeInvalidPeriod = getBalance(user);
+    EXPECT_EQ(qearn.lockV2(user, QEARN_MINIMUM_LOCKING_AMOUNT, 12),
+        QEARN_INVALID_LOCK_PERIOD);
+    EXPECT_EQ(getBalance(user), balanceBeforeInvalidPeriod);
+    EXPECT_EQ(qearn.getV2LockInfoPerEpoch(lockedEpoch, 12).returnCode,
+        QEARN_INVALID_LOCK_PERIOD);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(lockedEpoch, user, 12).returnCode,
+        QEARN_INVALID_LOCK_PERIOD);
+
+    increaseEnergy(user, QEARN_MINIMUM_LOCKING_AMOUNT - 1);
+    const sint64 balanceBeforeSmallLock = getBalance(user);
+    EXPECT_EQ(qearn.lockV2(
+        user, QEARN_MINIMUM_LOCKING_AMOUNT - 1, QEARN_V2_LOCK_PERIOD_52),
+        QEARN_INVALID_INPUT_AMOUNT);
+    EXPECT_EQ(getBalance(user), balanceBeforeSmallLock);
+
+    increaseEnergy(user, QEARN_MAX_LOCK_AMOUNT + QEARN_MINIMUM_LOCKING_AMOUNT);
+    EXPECT_EQ(qearn.lockV2(user, QEARN_MAX_LOCK_AMOUNT, QEARN_V2_LOCK_PERIOD_52),
+        QEARN_LOCK_SUCCESS);
+    const sint64 balanceBeforeLimit = getBalance(user);
+    EXPECT_EQ(qearn.lockV2(user, QEARN_MINIMUM_LOCKING_AMOUNT, QEARN_V2_LOCK_PERIOD_52),
+        QEARN_LIMIT_LOCK);
+    EXPECT_EQ(getBalance(user), balanceBeforeLimit);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(
+        lockedEpoch, user, QEARN_V2_LOCK_PERIOD_52).lockedAmount,
+        QEARN_MAX_LOCK_AMOUNT);
+}
+
+TEST(TestContractQearn, V2HonorsLastLockEpoch)
+{
+    ContractTestingQearn qearn;
+    const id lastEpochUser(1052, 2, 2, 2);
+    const id lateUser(1053, 3, 3, 3);
+
+    system.epoch = QEARN_V2_LAST_LOCK_EPOCH;
+    qearn.beginEpoch();
+    increaseEnergy(lastEpochUser, QEARN_MINIMUM_LOCKING_AMOUNT);
+    EXPECT_EQ(qearn.lockV2(
+        lastEpochUser, QEARN_MINIMUM_LOCKING_AMOUNT, QEARN_V2_LOCK_PERIOD_13),
+        QEARN_LOCK_SUCCESS);
+
+    system.epoch = QEARN_V2_LAST_LOCK_EPOCH + 1;
+    increaseEnergy(lateUser, QEARN_MINIMUM_LOCKING_AMOUNT);
+    const sint64 lateBalance = getBalance(lateUser);
+    EXPECT_EQ(qearn.lockV2(
+        lateUser, QEARN_MINIMUM_LOCKING_AMOUNT, QEARN_V2_LOCK_PERIOD_13),
+        QEARN_V2_NOT_ACTIVE);
+    EXPECT_EQ(getBalance(lateUser), lateBalance);
+}
+
+TEST(TestContractQearn, V2KeepsThreeTermsSeparateForOneAddress)
+{
+    ContractTestingQearn qearn;
+    const uint32 lockedEpoch = QEARN_V2_ACTIVATION_EPOCH;
+    const uint64 principal = 100000000ULL;
+    const id user(1061, 13, 26, 52);
+
+    system.epoch = lockedEpoch;
+    qearn.beginEpoch();
+    increaseEnergy(user, principal * 3);
+    EXPECT_EQ(qearn.lockV2(user, principal, QEARN_V2_LOCK_PERIOD_13),
+        QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(user, principal, QEARN_V2_LOCK_PERIOD_26),
+        QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(user, principal, QEARN_V2_LOCK_PERIOD_52),
+        QEARN_LOCK_SUCCESS);
+
+    EXPECT_EQ(qearn.getV2UserLockedInfo(
+        lockedEpoch, user, QEARN_V2_LOCK_PERIOD_13).lockedAmount, principal);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(
+        lockedEpoch, user, QEARN_V2_LOCK_PERIOD_26).lockedAmount, principal);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(
+        lockedEpoch, user, QEARN_V2_LOCK_PERIOD_52).lockedAmount, principal);
+    EXPECT_EQ(qearn.getUserLockedInfo(lockedEpoch, user), principal);
+    EXPECT_EQ(qearn.getUserLockStatus(user), 1ULL);
+}
+
+TEST(TestContractQearn, V1MaturityIsPreservedAlongsideLiveV2Cohorts)
+{
+    ContractTestingQearn qearn;
+    const uint32 v1Epoch = QEARN_V2_ACTIVATION_EPOCH - 1;
+    const uint32 v2Epoch = QEARN_V2_ACTIVATION_EPOCH;
+    const uint64 bonus = 100000000ULL;
+    const uint64 principal = 1000000000ULL;
+    const id v1User(1101, 1, 1, 1);
+    const id v2ShortUser(1102, 13, 2, 2);
+    const id v2LongUser(1103, 52, 3, 3);
+
+    system.epoch = v1Epoch;
+    increaseEnergy(QEARN_CONTRACT_ID, bonus);
+    qearn.beginEpoch();
+    increaseEnergy(v1User, principal);
+    EXPECT_EQ(qearn.lock(v1User, principal), QEARN_LOCK_SUCCESS);
+    qearn.endEpoch();
+
+    system.epoch = v2Epoch;
+    increaseEnergy(QEARN_CONTRACT_ID, bonus);
+    qearn.beginEpoch();
+    increaseEnergy(v2ShortUser, principal);
+    increaseEnergy(v2LongUser, principal);
+    EXPECT_EQ(qearn.lockV2(v2ShortUser, principal, QEARN_V2_LOCK_PERIOD_13),
+        QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(v2LongUser, principal, QEARN_V2_LOCK_PERIOD_52),
+        QEARN_LOCK_SUCCESS);
+    qearn.endEpoch();
+
+    for (system.epoch = v2Epoch + 1;
+        system.epoch <= v2Epoch + QEARN_V2_LOCK_PERIOD_52;
+        ++system.epoch)
+    {
+        qearn.beginEpoch();
+        qearn.endEpoch();
+
+        if (system.epoch == v1Epoch + QEARN_V2_LOCK_PERIOD_52)
+        {
+            EXPECT_EQ(getBalance(v1User), principal + bonus);
+            EXPECT_EQ(qearn.getUserLockedInfo(v1Epoch, v1User), 0ULL);
+            EXPECT_EQ(getBalance(v2LongUser), 0);
+        }
+    }
+
+    EXPECT_EQ(getBalance(v2ShortUser), principal + bonus * 10 / 100);
+    EXPECT_EQ(getBalance(v2LongUser), principal + bonus * 90 / 100);
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID), 0);
+
+    const auto v1Round = qearn.getLockInfoPerEpoch(v1Epoch);
+    EXPECT_EQ(v1Round.lockedAmount, principal);
+    EXPECT_EQ(v1Round.bonusAmount, bonus);
+    EXPECT_EQ(v1Round.yield, 1000000ULL);
+    const auto v2LongRound =
+        qearn.getV2LockInfoPerEpoch(v2Epoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(v2LongRound.termRewardedAmount, bonus * 90 / 100);
+    EXPECT_EQ(v2LongRound.currentTermReturn, 900000ULL);
+}
+
+TEST(TestContractQearn, V2AllocatesBonusAcrossAllTerms)
+{
+    ContractTestingQearn qearn;
+    const uint32 lockedEpoch = QEARN_V2_ACTIVATION_EPOCH;
+    const uint64 bonus = 100000000ULL;
+    const uint64 principal = 1000000000ULL;
+    const id user13(2001, 13, 13, 13);
+    const id user26(2002, 26, 26, 26);
+    const id user52(2003, 52, 52, 52);
+
+    system.epoch = lockedEpoch;
+    increaseEnergy(QEARN_CONTRACT_ID, bonus);
+    qearn.beginEpoch();
+
+    increaseEnergy(user13, principal);
+    increaseEnergy(user26, principal);
+    increaseEnergy(user52, principal);
+    EXPECT_EQ(qearn.lockV2(user13, principal, QEARN_V2_LOCK_PERIOD_13), QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(user26, principal, QEARN_V2_LOCK_PERIOD_26), QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(user52, principal, QEARN_V2_LOCK_PERIOD_52), QEARN_LOCK_SUCCESS);
+    qearn.endEpoch();
+
+    const auto term13 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_13);
+    const auto term26 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_26);
+    const auto term52 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+
+    EXPECT_EQ(term13.returnCode, QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(term26.returnCode, QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(term52.returnCode, QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(term13.initialLockedAmount, principal);
+    EXPECT_EQ(term26.initialLockedAmount, principal);
+    EXPECT_EQ(term52.initialLockedAmount, principal);
+    EXPECT_EQ(term13.initialRewardPool, bonus * 10 / 100);
+    EXPECT_EQ(term26.initialRewardPool, bonus * 20 / 100);
+    EXPECT_EQ(term52.initialRewardPool, bonus * 70 / 100);
+    EXPECT_EQ(term13.currentRewardPool, term13.initialRewardPool);
+    EXPECT_EQ(term26.currentRewardPool, term26.initialRewardPool);
+    EXPECT_EQ(term52.currentRewardPool, term52.initialRewardPool);
+    EXPECT_EQ(term13.currentTermReturn, 100000ULL);
+    EXPECT_EQ(term26.currentTermReturn, 200000ULL);
+    EXPECT_EQ(term52.currentTermReturn, 700000ULL);
+    EXPECT_EQ(term13.maturityEpoch, lockedEpoch + QEARN_V2_LOCK_PERIOD_13);
+    EXPECT_EQ(term26.maturityEpoch, lockedEpoch + QEARN_V2_LOCK_PERIOD_26);
+    EXPECT_EQ(term52.maturityEpoch, lockedEpoch + QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term52.epochBonusAmount, bonus);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, 0ULL);
+    EXPECT_EQ(term52.finalized, 1U);
+    EXPECT_EQ(bonus,
+        term13.currentRewardPool + term26.currentRewardPool + term52.currentRewardPool
+        + term52.epochRewardedAmount + term52.epochTransferredToCCFAmount);
+
+    // The original read APIs expose the compatibility 52-epoch term only.
+    const auto legacyRoundInfo = qearn.getLockInfoPerEpoch(lockedEpoch);
+    EXPECT_EQ(legacyRoundInfo.lockedAmount, principal);
+    EXPECT_EQ(legacyRoundInfo.bonusAmount, bonus * 70 / 100);
+    EXPECT_EQ(legacyRoundInfo.currentLockedAmount, principal);
+    EXPECT_EQ(legacyRoundInfo.currentBonusAmount, bonus * 70 / 100);
+    EXPECT_EQ(legacyRoundInfo.yield, 700000ULL);
+    EXPECT_EQ(qearn.getUserLockedInfo(lockedEpoch, user13), 0ULL);
+    EXPECT_EQ(qearn.getUserLockedInfo(lockedEpoch, user26), 0ULL);
+    EXPECT_EQ(qearn.getUserLockedInfo(lockedEpoch, user52), principal);
+}
+
+TEST(TestContractQearn, V2EarlyExitReturnsPrincipalAndRoutesForfeitureToCohort52)
+{
+    ContractTestingQearn qearn;
+    const uint32 lockedEpoch = QEARN_V2_ACTIVATION_EPOCH;
+    const uint64 bonus = 100000000ULL;
+    const uint64 firstLock = 400000000ULL;
+    const uint64 secondLock = 600000000ULL;
+    const uint64 principal = firstLock + secondLock;
+    const id shortTermUser(3001, 13, 1, 1);
+    const id longTermUser(3002, 52, 2, 2);
+
+    system.epoch = lockedEpoch;
+    increaseEnergy(QEARN_CONTRACT_ID, bonus);
+    qearn.beginEpoch();
+
+    increaseEnergy(shortTermUser, principal);
+    increaseEnergy(longTermUser, principal);
+    EXPECT_EQ(qearn.lockV2(shortTermUser, firstLock, QEARN_V2_LOCK_PERIOD_13), QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(shortTermUser, secondLock, QEARN_V2_LOCK_PERIOD_13), QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(longTermUser, principal, QEARN_V2_LOCK_PERIOD_52), QEARN_LOCK_SUCCESS);
+
+    const sint64 sameEpochBalance = getBalance(shortTermUser);
+    EXPECT_EQ(qearn.unlockV2(shortTermUser, lockedEpoch, QEARN_V2_LOCK_PERIOD_13),
+        QEARN_INVALID_INPUT_LOCKED_EPOCH);
+    EXPECT_EQ(getBalance(shortTermUser), sameEpochBalance);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(lockedEpoch, shortTermUser, QEARN_V2_LOCK_PERIOD_13).lockedAmount,
+        principal);
+    qearn.endEpoch();
+
+    auto term13 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_13);
+    auto term52 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term13.initialRewardPool, 10000000ULL);
+    EXPECT_EQ(term52.initialRewardPool, 90000000ULL);
+
+    system.epoch = lockedEpoch + 1;
+    qearn.beginEpoch();
+    const sint64 userBalanceBefore = getBalance(shortTermUser);
+    const sint64 contractBalanceBefore = getBalance(QEARN_CONTRACT_ID);
+    EXPECT_EQ(qearn.unlockV2(shortTermUser, lockedEpoch, QEARN_V2_LOCK_PERIOD_13), QEARN_UNLOCK_SUCCESS);
+
+    // The two deposits formed one position: it is closed in full and pays no early reward.
+    EXPECT_EQ(getBalance(shortTermUser), userBalanceBefore + principal);
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID), contractBalanceBefore - principal);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(lockedEpoch, shortTermUser, QEARN_V2_LOCK_PERIOD_13).lockedAmount,
+        0ULL);
+    const auto endedStatus = qearn.getEndedStatus(shortTermUser);
+    EXPECT_EQ(endedStatus.earlyUnlockedAmount, principal);
+    EXPECT_EQ(endedStatus.earlyRewardedAmount, 0ULL);
+
+    term13 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_13);
+    term52 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term13.currentLockedAmount, 0ULL);
+    EXPECT_EQ(term13.currentRewardPool, 0ULL);
+    EXPECT_EQ(term13.epochForfeitedClaimAmount, 10000000ULL);
+    EXPECT_EQ(term52.initialRewardPool, 90000000ULL);
+    EXPECT_EQ(term52.currentRewardPool, 100000000ULL);
+    EXPECT_EQ(term52.epochTransferredTo52Amount, 10000000ULL);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, 0ULL);
+    EXPECT_EQ(bonus,
+        term13.currentRewardPool + term52.currentRewardPool
+        + term52.epochRewardedAmount + term52.epochTransferredToCCFAmount);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(lockedEpoch, longTermUser, QEARN_V2_LOCK_PERIOD_52).lockedAmount,
+        principal);
+
+    const auto stats = qearn.getBurnedAndBoostedStatsPerEpoch(lockedEpoch);
+    EXPECT_EQ(stats.boostedAmount, 10000000ULL);
+    EXPECT_EQ(stats.burnedAmount, 0ULL);
+}
+
+TEST(TestContractQearn, V2PaysEachTermAtItsMaturity)
+{
+    ContractTestingQearn qearn;
+    const uint32 lockedEpoch = QEARN_V2_ACTIVATION_EPOCH;
+    const uint64 bonus = 100000000ULL;
+    const uint64 principal = 1000000000ULL;
+    const uint64 reward13 = 10000000ULL;
+    const uint64 reward26 = 20000000ULL;
+    const uint64 reward52 = 70000000ULL;
+    const id user13(4001, 13, 1, 1);
+    const id user26(4002, 26, 2, 2);
+    const id user52(4003, 52, 3, 3);
+
+    system.epoch = lockedEpoch;
+    increaseEnergy(QEARN_CONTRACT_ID, bonus);
+    qearn.beginEpoch();
+    increaseEnergy(user13, principal);
+    increaseEnergy(user26, principal);
+    increaseEnergy(user52, principal);
+    EXPECT_EQ(qearn.lockV2(user13, principal, QEARN_V2_LOCK_PERIOD_13), QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(user26, principal, QEARN_V2_LOCK_PERIOD_26), QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(user52, principal, QEARN_V2_LOCK_PERIOD_52), QEARN_LOCK_SUCCESS);
+    qearn.endEpoch();
+
+    for (system.epoch = lockedEpoch + 1;
+        system.epoch <= lockedEpoch + QEARN_V2_LOCK_PERIOD_52;
+        ++system.epoch)
+    {
+        qearn.beginEpoch();
+
+        if (system.epoch == lockedEpoch + QEARN_V2_LOCK_PERIOD_13)
+        {
+            EXPECT_EQ(qearn.unlockV2(user13, lockedEpoch, QEARN_V2_LOCK_PERIOD_13),
+                QEARN_V2_POSITION_MATURED);
+            EXPECT_EQ(getBalance(user13), 0);
+        }
+        if (system.epoch == lockedEpoch + QEARN_V2_LOCK_PERIOD_26)
+        {
+            EXPECT_EQ(qearn.unlockV2(user26, lockedEpoch, QEARN_V2_LOCK_PERIOD_26),
+                QEARN_V2_POSITION_MATURED);
+            EXPECT_EQ(getBalance(user26), 0);
+        }
+        if (system.epoch == lockedEpoch + QEARN_V2_LOCK_PERIOD_52)
+        {
+            EXPECT_EQ(qearn.unlockV2(user52, lockedEpoch, QEARN_V2_LOCK_PERIOD_52),
+                QEARN_V2_POSITION_MATURED);
+            EXPECT_EQ(getBalance(user52), 0);
+        }
+
+        qearn.endEpoch();
+
+        if (system.epoch == lockedEpoch + QEARN_V2_LOCK_PERIOD_13)
+        {
+            EXPECT_EQ(getBalance(user13), principal + reward13);
+            EXPECT_EQ(qearn.getV2UserLockedInfo(
+                lockedEpoch, user13, QEARN_V2_LOCK_PERIOD_13).lockedAmount, 0ULL);
+            const auto endedStatus = qearn.getEndedStatus(user13);
+            EXPECT_EQ(endedStatus.fullyUnlockedAmount, principal);
+            EXPECT_EQ(endedStatus.fullyRewardedAmount, reward13);
+        }
+        if (system.epoch == lockedEpoch + QEARN_V2_LOCK_PERIOD_26)
+        {
+            EXPECT_EQ(getBalance(user26), principal + reward26);
+            EXPECT_EQ(qearn.getV2UserLockedInfo(
+                lockedEpoch, user26, QEARN_V2_LOCK_PERIOD_26).lockedAmount, 0ULL);
+            const auto endedStatus = qearn.getEndedStatus(user26);
+            EXPECT_EQ(endedStatus.fullyUnlockedAmount, principal);
+            EXPECT_EQ(endedStatus.fullyRewardedAmount, reward26);
+        }
+        if (system.epoch == lockedEpoch + QEARN_V2_LOCK_PERIOD_52)
+        {
+            EXPECT_EQ(getBalance(user52), principal + reward52);
+            EXPECT_EQ(qearn.getV2UserLockedInfo(
+                lockedEpoch, user52, QEARN_V2_LOCK_PERIOD_52).lockedAmount, 0ULL);
+            const auto endedStatus = qearn.getEndedStatus(user52);
+            EXPECT_EQ(endedStatus.fullyUnlockedAmount, principal);
+            EXPECT_EQ(endedStatus.fullyRewardedAmount, reward52);
+        }
+    }
+
+    const auto term52 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term52.epochRewardedAmount, bonus);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, 0ULL);
+    EXPECT_EQ(term52.currentTermReturn, 700000ULL);
+    EXPECT_EQ(bonus,
+        term52.currentRewardPool + term52.epochRewardedAmount
+        + term52.epochTransferredToCCFAmount);
+    EXPECT_EQ(qearn.getStatsPerEpoch(lockedEpoch).earlyUnlockedAmount, 0ULL);
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID), 0);
+}
+
+TEST(TestContractQearn, V2CapsReturnsAndTransfersLongPoolSurplusToCCF)
+{
+    ContractTestingQearn qearn;
+    const uint32 lockedEpoch = QEARN_V2_ACTIVATION_EPOCH;
+    const uint64 bonus = 100000000ULL;
+    const uint64 principal = 100000000ULL;
+    const id user13(5001, 13, 1, 1);
+    const id user26(5002, 26, 2, 2);
+    const id user52(5003, 52, 3, 3);
+
+    system.epoch = lockedEpoch;
+    increaseEnergy(QEARN_CONTRACT_ID, bonus);
+    qearn.beginEpoch();
+    increaseEnergy(user13, principal);
+    increaseEnergy(user26, principal);
+    increaseEnergy(user52, principal);
+    EXPECT_EQ(qearn.lockV2(user13, principal, QEARN_V2_LOCK_PERIOD_13), QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(user26, principal, QEARN_V2_LOCK_PERIOD_26), QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(user52, principal, QEARN_V2_LOCK_PERIOD_52), QEARN_LOCK_SUCCESS);
+
+    const sint64 contractBalanceBeforeFinalization = getBalance(QEARN_CONTRACT_ID);
+    const sint64 ccfBalanceBeforeFinalization = getBalance(CCF_CONTRACT_ID);
+    qearn.endEpoch();
+
+    auto term13 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_13);
+    const auto term26 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_26);
+    auto term52 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term13.initialRewardPool, 3000000ULL);
+    EXPECT_EQ(term26.initialRewardPool, 6000000ULL);
+    EXPECT_EQ(term52.initialRewardPool, 18000000ULL);
+    EXPECT_EQ(term13.currentTermReturn, 300000ULL);
+    EXPECT_EQ(term26.currentTermReturn, 600000ULL);
+    EXPECT_EQ(term52.currentTermReturn, 1800000ULL);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, 73000000ULL);
+    EXPECT_EQ(bonus,
+        term13.currentRewardPool + term26.currentRewardPool + term52.currentRewardPool
+        + term52.epochRewardedAmount + term52.epochTransferredToCCFAmount);
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID), contractBalanceBeforeFinalization - 73000000LL);
+    EXPECT_EQ(getBalance(CCF_CONTRACT_ID), ccfBalanceBeforeFinalization + 73000000LL);
+    EXPECT_EQ(qearn.getBurnedAndBoostedStatsPerEpoch(lockedEpoch).burnedAmount, 0ULL);
+
+    // With the 52-epoch pool already at 18%, a forfeited short-term reward is surplus.
+    system.epoch = lockedEpoch + 1;
+    qearn.beginEpoch();
+    const sint64 contractBalanceBeforeExit = getBalance(QEARN_CONTRACT_ID);
+    const sint64 ccfBalanceBeforeExit = getBalance(CCF_CONTRACT_ID);
+    EXPECT_EQ(qearn.unlockV2(user13, lockedEpoch, QEARN_V2_LOCK_PERIOD_13), QEARN_UNLOCK_SUCCESS);
+
+    term13 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_13);
+    term52 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term13.epochForfeitedClaimAmount, 3000000ULL);
+    EXPECT_EQ(term52.currentRewardPool, 18000000ULL);
+    EXPECT_EQ(term52.epochTransferredTo52Amount, 0ULL);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, 76000000ULL);
+    EXPECT_EQ(bonus,
+        term13.currentRewardPool + term26.currentRewardPool + term52.currentRewardPool
+        + term52.epochRewardedAmount + term52.epochTransferredToCCFAmount);
+    EXPECT_EQ(qearn.getBurnedAndBoostedStatsPerEpoch(lockedEpoch).burnedAmount, 0ULL);
+    EXPECT_EQ(getBalance(user13), principal);
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID),
+        contractBalanceBeforeExit - static_cast<sint64>(principal) - 3000000LL);
+    EXPECT_EQ(getBalance(CCF_CONTRACT_ID), ccfBalanceBeforeExit + 3000000LL);
+}
+
+TEST(TestContractQearn, V2ShortOnlyCohortTransfersUnusedAndForfeitedRewardToCCF)
+{
+    ContractTestingQearn qearn;
+    const uint32 lockedEpoch = QEARN_V2_ACTIVATION_EPOCH;
+    const uint64 bonus = 100000000ULL;
+    const uint64 principal = 100000000ULL;
+    const uint64 shortRewardCap = 3000000ULL;
+    const id shortUser(5101, 13, 1, 1);
+
+    system.epoch = lockedEpoch;
+    increaseEnergy(QEARN_CONTRACT_ID, bonus);
+    qearn.beginEpoch();
+    increaseEnergy(shortUser, principal);
+    EXPECT_EQ(qearn.lockV2(shortUser, principal, QEARN_V2_LOCK_PERIOD_13),
+        QEARN_LOCK_SUCCESS);
+    const sint64 ccfBalanceBefore = getBalance(CCF_CONTRACT_ID);
+    qearn.endEpoch();
+
+    auto term13 =
+        qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_13);
+    auto term52 =
+        qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term13.currentRewardPool, shortRewardCap);
+    EXPECT_EQ(term52.initialLockedAmount, 0ULL);
+    EXPECT_EQ(term52.currentRewardPool, 0ULL);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, bonus - shortRewardCap);
+    EXPECT_EQ(getBalance(CCF_CONTRACT_ID),
+        ccfBalanceBefore + static_cast<sint64>(bonus - shortRewardCap));
+    EXPECT_EQ(bonus,
+        term13.currentRewardPool + term52.currentRewardPool
+        + term52.epochRewardedAmount + term52.epochTransferredToCCFAmount);
+
+    system.epoch = lockedEpoch + 1;
+    qearn.beginEpoch();
+    EXPECT_EQ(qearn.unlockV2(shortUser, lockedEpoch, QEARN_V2_LOCK_PERIOD_13),
+        QEARN_UNLOCK_SUCCESS);
+
+    term13 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_13);
+    term52 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term13.currentRewardPool, 0ULL);
+    EXPECT_EQ(term13.termForfeitedClaimAmount, shortRewardCap);
+    EXPECT_EQ(term52.currentRewardPool, 0ULL);
+    EXPECT_EQ(term52.epochTransferredTo52Amount, 0ULL);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, bonus);
+    EXPECT_EQ(getBalance(shortUser), static_cast<sint64>(principal));
+    EXPECT_EQ(getBalance(CCF_CONTRACT_ID),
+        ccfBalanceBefore + static_cast<sint64>(bonus));
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID), 0);
+}
+
+TEST(TestContractQearn, V2LongEarlyExitShrinksCapAndPreservesSurvivorReturn)
+{
+    ContractTestingQearn qearn;
+    const uint32 lockedEpoch = QEARN_V2_ACTIVATION_EPOCH;
+    const uint64 bonus = 100000000ULL;
+    const uint64 principal = 100000000ULL;
+    const uint64 initialPool = 36000000ULL;
+    const uint64 initialCCFTransfer = 64000000ULL;
+    const uint64 exitingClaim = 18000000ULL;
+    const uint64 survivorReward = 18000000ULL;
+    const id exitingUser(6001, 52, 1, 1);
+    const id survivingUser(6002, 52, 2, 2);
+
+    system.epoch = lockedEpoch;
+    increaseEnergy(QEARN_CONTRACT_ID, bonus);
+    qearn.beginEpoch();
+    increaseEnergy(exitingUser, principal);
+    increaseEnergy(survivingUser, principal);
+    EXPECT_EQ(qearn.lockV2(exitingUser, principal, QEARN_V2_LOCK_PERIOD_52), QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(survivingUser, principal, QEARN_V2_LOCK_PERIOD_52), QEARN_LOCK_SUCCESS);
+    const sint64 ccfBalanceBeforeFinalization = getBalance(CCF_CONTRACT_ID);
+    qearn.endEpoch();
+
+    auto term52 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term52.initialLockedAmount, principal * 2);
+    EXPECT_EQ(term52.currentLockedAmount, principal * 2);
+    EXPECT_EQ(term52.initialRewardPool, initialPool);
+    EXPECT_EQ(term52.currentRewardPool, initialPool);
+    EXPECT_EQ(term52.currentTermReturn, 1800000ULL);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, initialCCFTransfer);
+    EXPECT_EQ(exitingClaim, initialPool * principal / (principal * 2));
+    EXPECT_EQ(bonus, term52.currentRewardPool + term52.epochTransferredToCCFAmount);
+    EXPECT_EQ(getBalance(CCF_CONTRACT_ID),
+        ccfBalanceBeforeFinalization + static_cast<sint64>(initialCCFTransfer));
+
+    system.epoch = lockedEpoch + 1;
+    qearn.beginEpoch();
+    const sint64 exitingBalanceBefore = getBalance(exitingUser);
+    const sint64 contractBalanceBefore = getBalance(QEARN_CONTRACT_ID);
+    const sint64 ccfBalanceBeforeExit = getBalance(CCF_CONTRACT_ID);
+    EXPECT_EQ(qearn.unlockV2(exitingUser, lockedEpoch, QEARN_V2_LOCK_PERIOD_52),
+        QEARN_UNLOCK_SUCCESS);
+
+    // The exit returns principal only. Its abandoned 18% claim stays in the
+    // long pool until the smaller survivor-only cap sends that surplus to CCF.
+    EXPECT_EQ(getBalance(exitingUser), exitingBalanceBefore + principal);
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID),
+        contractBalanceBefore - static_cast<sint64>(principal + exitingClaim));
+    EXPECT_EQ(getBalance(CCF_CONTRACT_ID),
+        ccfBalanceBeforeExit + static_cast<sint64>(exitingClaim));
+    const auto exitingStatus = qearn.getEndedStatus(exitingUser);
+    EXPECT_EQ(exitingStatus.earlyUnlockedAmount, principal);
+    EXPECT_EQ(exitingStatus.earlyRewardedAmount, 0ULL);
+
+    term52 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term52.currentLockedAmount, principal);
+    EXPECT_EQ(term52.termEarlyUnlockedAmount, principal);
+    EXPECT_EQ(term52.initialRewardPool, initialPool);
+    EXPECT_EQ(term52.currentRewardPool, survivorReward);
+    EXPECT_EQ(term52.termForfeitedClaimAmount, exitingClaim);
+    EXPECT_EQ(term52.epochForfeitedClaimAmount, exitingClaim);
+    EXPECT_EQ(term52.epochTransferredTo52Amount, 0ULL);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, initialCCFTransfer + exitingClaim);
+    EXPECT_EQ(term52.currentTermReturn, 1800000ULL);
+    EXPECT_EQ(qearn.getV2UserLockedInfo(
+        lockedEpoch, survivingUser, QEARN_V2_LOCK_PERIOD_52).lockedAmount, principal);
+    EXPECT_EQ(bonus,
+        term52.currentRewardPool + term52.epochRewardedAmount
+        + term52.epochTransferredToCCFAmount);
+    EXPECT_EQ(qearn.getBurnedAndBoostedStatsPerEpoch(lockedEpoch).burnedAmount, 0ULL);
+    qearn.endEpoch();
+
+    for (system.epoch = lockedEpoch + 2;
+        system.epoch <= lockedEpoch + QEARN_V2_LOCK_PERIOD_52;
+        ++system.epoch)
+    {
+        qearn.beginEpoch();
+        qearn.endEpoch();
+    }
+
+    EXPECT_EQ(getBalance(exitingUser), principal);
+    EXPECT_EQ(getBalance(survivingUser), principal + survivorReward);
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID), 0);
+    const auto survivingStatus = qearn.getEndedStatus(survivingUser);
+    EXPECT_EQ(survivingStatus.fullyUnlockedAmount, principal);
+    EXPECT_EQ(survivingStatus.fullyRewardedAmount, survivorReward);
+
+    term52 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term52.currentLockedAmount, 0ULL);
+    EXPECT_EQ(term52.currentRewardPool, 0ULL);
+    EXPECT_EQ(term52.termEarlyUnlockedAmount, principal);
+    EXPECT_EQ(term52.termRewardedAmount, survivorReward);
+    EXPECT_EQ(term52.termForfeitedClaimAmount, exitingClaim);
+    EXPECT_EQ(term52.epochRewardedAmount, survivorReward);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, initialCCFTransfer + exitingClaim);
+    EXPECT_EQ(term52.currentTermReturn, 1800000ULL);
+    EXPECT_EQ(term52.state, 2U);
+    EXPECT_EQ(bonus,
+        term52.epochRewardedAmount + term52.epochTransferredToCCFAmount);
+}
+
+TEST(TestContractQearn, V2FinalLongEarlyExitTransfersTheEntireRewardPoolToCCF)
+{
+    ContractTestingQearn qearn;
+    const uint32 lockedEpoch = QEARN_V2_ACTIVATION_EPOCH;
+    const uint64 bonus = 18000000ULL;
+    const uint64 principal = 100000000ULL;
+    const id longUser(6101, 52, 1, 1);
+
+    system.epoch = lockedEpoch;
+    increaseEnergy(QEARN_CONTRACT_ID, bonus);
+    qearn.beginEpoch();
+    increaseEnergy(longUser, principal);
+    EXPECT_EQ(qearn.lockV2(longUser, principal, QEARN_V2_LOCK_PERIOD_52),
+        QEARN_LOCK_SUCCESS);
+    const sint64 ccfBalanceBefore = getBalance(CCF_CONTRACT_ID);
+    qearn.endEpoch();
+
+    auto term52 =
+        qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term52.currentRewardPool, bonus);
+    EXPECT_EQ(term52.currentTermReturn, 1800000ULL);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, 0ULL);
+
+    system.epoch = lockedEpoch + 1;
+    qearn.beginEpoch();
+    EXPECT_EQ(qearn.unlockV2(longUser, lockedEpoch, QEARN_V2_LOCK_PERIOD_52),
+        QEARN_UNLOCK_SUCCESS);
+
+    term52 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term52.currentLockedAmount, 0ULL);
+    EXPECT_EQ(term52.currentRewardPool, 0ULL);
+    EXPECT_EQ(term52.termEarlyUnlockedAmount, principal);
+    EXPECT_EQ(term52.termForfeitedClaimAmount, bonus);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, bonus);
+    EXPECT_EQ(getBalance(longUser), static_cast<sint64>(principal));
+    EXPECT_EQ(getBalance(CCF_CONTRACT_ID),
+        ccfBalanceBefore + static_cast<sint64>(bonus));
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID), 0);
+    EXPECT_EQ(bonus,
+        term52.epochRewardedAmount + term52.epochTransferredToCCFAmount);
+}
+
+TEST(TestContractQearn, V2ShortFixedEntitlementsRouteRoundingDustTo52)
+{
+    ContractTestingQearn qearn;
+    const uint32 lockedEpoch = QEARN_V2_ACTIVATION_EPOCH;
+    const uint64 bonus = 101ULL;
+    const uint64 exitingPrincipal = 10000000ULL;
+    const uint64 survivingPrincipal = 20000000ULL;
+    const uint64 longPrincipal = 10000000ULL;
+    const uint64 shortPool = 10ULL;
+    const uint64 exitingClaim = 3ULL;
+    const uint64 survivorReward = 6ULL;
+    const uint64 roundingDust = 1ULL;
+    const uint64 initialLongPool = 91ULL;
+    const id exitingUser(7001, 13, 1, 1);
+    const id survivingUser(7002, 13, 2, 2);
+    const id longUser(7003, 52, 3, 3);
+
+    system.epoch = lockedEpoch;
+    increaseEnergy(QEARN_CONTRACT_ID, bonus);
+    qearn.beginEpoch();
+    increaseEnergy(exitingUser, exitingPrincipal);
+    increaseEnergy(survivingUser, survivingPrincipal);
+    increaseEnergy(longUser, longPrincipal);
+    EXPECT_EQ(qearn.lockV2(
+        exitingUser, exitingPrincipal, QEARN_V2_LOCK_PERIOD_13), QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(
+        survivingUser, survivingPrincipal, QEARN_V2_LOCK_PERIOD_13), QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(
+        longUser, longPrincipal, QEARN_V2_LOCK_PERIOD_52), QEARN_LOCK_SUCCESS);
+    qearn.endEpoch();
+
+    auto term13 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_13);
+    auto term52 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term13.initialLockedAmount, exitingPrincipal + survivingPrincipal);
+    EXPECT_EQ(term13.initialRewardPool, shortPool);
+    EXPECT_EQ(term13.currentRewardPool, shortPool);
+    EXPECT_EQ(term52.initialRewardPool, initialLongPool);
+    EXPECT_EQ(term52.currentRewardPool, initialLongPool);
+    EXPECT_EQ(exitingClaim,
+        shortPool * exitingPrincipal / (exitingPrincipal + survivingPrincipal));
+    EXPECT_EQ(survivorReward,
+        shortPool * survivingPrincipal / (exitingPrincipal + survivingPrincipal));
+    EXPECT_EQ(roundingDust, shortPool - exitingClaim - survivorReward);
+    EXPECT_EQ(bonus, term13.currentRewardPool + term52.currentRewardPool);
+
+    system.epoch = lockedEpoch + 1;
+    qearn.beginEpoch();
+    const sint64 contractBalanceBefore = getBalance(QEARN_CONTRACT_ID);
+    EXPECT_EQ(qearn.unlockV2(exitingUser, lockedEpoch, QEARN_V2_LOCK_PERIOD_13),
+        QEARN_UNLOCK_SUCCESS);
+    EXPECT_EQ(getBalance(exitingUser), exitingPrincipal);
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID),
+        contractBalanceBefore - static_cast<sint64>(exitingPrincipal));
+
+    term13 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_13);
+    term52 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term13.currentLockedAmount, survivingPrincipal);
+    EXPECT_EQ(term13.termEarlyUnlockedAmount, exitingPrincipal);
+    EXPECT_EQ(term13.currentRewardPool, shortPool - exitingClaim);
+    EXPECT_EQ(term13.termForfeitedClaimAmount, exitingClaim);
+    EXPECT_EQ(term13.epochForfeitedClaimAmount, exitingClaim);
+    EXPECT_EQ(term52.currentRewardPool, initialLongPool + exitingClaim);
+    EXPECT_EQ(term52.epochTransferredTo52Amount, exitingClaim);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, 0ULL);
+    EXPECT_EQ(bonus, term13.currentRewardPool + term52.currentRewardPool);
+    qearn.endEpoch();
+
+    for (system.epoch = lockedEpoch + 2;
+        system.epoch <= lockedEpoch + QEARN_V2_LOCK_PERIOD_13;
+        ++system.epoch)
+    {
+        qearn.beginEpoch();
+        qearn.endEpoch();
+    }
+
+    // Entitlements always use the original pool and original total principal:
+    // floor(10 * 10M / 30M) = 3 and floor(10 * 20M / 30M) = 6.
+    // The unclaimable final qu is routed to this cohort's 52-epoch pool.
+    EXPECT_EQ(shortPool, exitingClaim + survivorReward + roundingDust);
+    EXPECT_EQ(getBalance(exitingUser), exitingPrincipal);
+    EXPECT_EQ(getBalance(survivingUser), survivingPrincipal + survivorReward);
+    EXPECT_EQ(getBalance(longUser), 0);
+    const auto survivingStatus = qearn.getEndedStatus(survivingUser);
+    EXPECT_EQ(survivingStatus.fullyUnlockedAmount, survivingPrincipal);
+    EXPECT_EQ(survivingStatus.fullyRewardedAmount, survivorReward);
+
+    term13 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_13);
+    term52 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term13.currentLockedAmount, 0ULL);
+    EXPECT_EQ(term13.currentRewardPool, 0ULL);
+    EXPECT_EQ(term13.termEarlyUnlockedAmount, exitingPrincipal);
+    EXPECT_EQ(term13.termRewardedAmount, survivorReward);
+    EXPECT_EQ(term13.termForfeitedClaimAmount, exitingClaim);
+    EXPECT_EQ(term13.epochRewardedAmount, survivorReward);
+    EXPECT_EQ(term52.currentRewardPool, initialLongPool + exitingClaim + roundingDust);
+    EXPECT_EQ(term52.epochTransferredTo52Amount, exitingClaim + roundingDust);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, 0ULL);
+    EXPECT_EQ(qearn.getBurnedAndBoostedStatsPerEpoch(lockedEpoch).boostedAmount,
+        exitingClaim + roundingDust);
+    EXPECT_EQ(bonus,
+        term13.currentRewardPool + term52.currentRewardPool
+        + term52.epochRewardedAmount + term52.epochTransferredToCCFAmount);
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID),
+        static_cast<sint64>(longPrincipal + term52.currentRewardPool));
+}
+
+TEST(TestContractQearn, V2TransfersLongMaturityRoundingRemainderToCCF)
+{
+    ContractTestingQearn qearn;
+    const uint32 lockedEpoch = QEARN_V2_ACTIVATION_EPOCH;
+    const uint64 bonus = 101ULL;
+    const uint64 firstPrincipal = 10000000ULL;
+    const uint64 secondPrincipal = 20000000ULL;
+    const uint64 firstReward = 33ULL;
+    const uint64 secondReward = 67ULL;
+    const uint64 roundingRemainder = 1ULL;
+    const id firstUser(7101, 52, 1, 1);
+    const id secondUser(7102, 52, 2, 2);
+
+    system.epoch = lockedEpoch;
+    increaseEnergy(QEARN_CONTRACT_ID, bonus);
+    qearn.beginEpoch();
+    increaseEnergy(firstUser, firstPrincipal);
+    increaseEnergy(secondUser, secondPrincipal);
+    EXPECT_EQ(qearn.lockV2(
+        firstUser, firstPrincipal, QEARN_V2_LOCK_PERIOD_52), QEARN_LOCK_SUCCESS);
+    EXPECT_EQ(qearn.lockV2(
+        secondUser, secondPrincipal, QEARN_V2_LOCK_PERIOD_52), QEARN_LOCK_SUCCESS);
+    const sint64 ccfBalanceBefore = getBalance(CCF_CONTRACT_ID);
+    qearn.endEpoch();
+
+    auto term52 =
+        qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term52.initialRewardPool, bonus);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, 0ULL);
+
+    for (system.epoch = lockedEpoch + 1;
+        system.epoch <= lockedEpoch + QEARN_V2_LOCK_PERIOD_52;
+        ++system.epoch)
+    {
+        qearn.beginEpoch();
+        qearn.endEpoch();
+    }
+
+    EXPECT_EQ(getBalance(firstUser), firstPrincipal + firstReward);
+    EXPECT_EQ(getBalance(secondUser), secondPrincipal + secondReward);
+    EXPECT_EQ(getBalance(CCF_CONTRACT_ID),
+        ccfBalanceBefore + static_cast<sint64>(roundingRemainder));
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID), 0);
+
+    term52 = qearn.getV2LockInfoPerEpoch(lockedEpoch, QEARN_V2_LOCK_PERIOD_52);
+    EXPECT_EQ(term52.currentRewardPool, 0ULL);
+    EXPECT_EQ(term52.termRewardedAmount, firstReward + secondReward);
+    EXPECT_EQ(term52.epochRewardedAmount, firstReward + secondReward);
+    EXPECT_EQ(term52.epochTransferredToCCFAmount, roundingRemainder);
+    EXPECT_EQ(bonus,
+        term52.epochRewardedAmount + term52.epochTransferredToCCFAmount);
+    EXPECT_EQ(qearn.getBurnedAndBoostedStatsPerEpoch(lockedEpoch).burnedAmount, 0ULL);
+}
+
+TEST(TestContractQearn, V2RandomizedMixedTermsPreserveAccountingThroughExitsAndMaturities)
+{
+    struct PropertyPosition
+    {
+        id user;
+        uint32 termIndex;
+        uint32 lockPeriod;
+        uint32 exitEpochOffset;
+        uint64 principal;
+        bool active;
+    };
+
+    struct PropertyTermModel
+    {
+        uint64 initialLockedAmount;
+        uint64 currentLockedAmount;
+        uint64 earlyUnlockedAmount;
+        uint64 initialRewardPool;
+        uint64 currentRewardPool;
+        uint64 rewardedAmount;
+        uint64 forfeitedClaimAmount;
+    };
+
+    struct PropertyEpochModel
+    {
+        PropertyTermModel terms[QEARN_V2_NUMBER_OF_TERMS];
+        uint64 rewardedAmount;
+        uint64 forfeitedClaimAmount;
+        uint64 transferredTo52Amount;
+        uint64 transferredToCCFAmount;
+    };
+
+    ContractTestingQearn qearn;
+    const uint32 lockedEpoch = QEARN_V2_ACTIVATION_EPOCH;
+    const uint64 bonus = 250000123ULL;
+    const uint32 walletCount = 18;
+    const uint32 lockPeriods[QEARN_V2_NUMBER_OF_TERMS] = {
+        QEARN_V2_LOCK_PERIOD_13,
+        QEARN_V2_LOCK_PERIOD_26,
+        QEARN_V2_LOCK_PERIOD_52,
+    };
+    const uint32 exitOffsets[QEARN_V2_NUMBER_OF_TERMS][6] = {
+        {1, 2, 4, 7, 10, 12},
+        {1, 3, 8, 13, 19, 25},
+        {1, 5, 12, 20, 33, 51},
+    };
+    const uint64 seed = 0x514541524E5632ULL;
+    std::mt19937_64 rng(seed);
+    std::vector<PropertyPosition> positions;
+    std::map<id, uint64> expectedWalletBalances;
+    PropertyEpochModel model = {};
+    SCOPED_TRACE(::testing::Message() << "seed=" << seed);
+
+    // Every wallet owns all three independent terms. The first three wallets
+    // remain through maturity; the others create deterministic, seeded exits.
+    // All long positions except those first three exit, which guarantees both
+    // dynamic-cap CCF routing and live long-term maturity recipients.
+    for (uint32 walletIndex = 0; walletIndex < walletCount; ++walletIndex)
+    {
+        const id user(
+            8000 + walletIndex,
+            0xA000 + walletIndex,
+            0xB000 + walletIndex,
+            0xC000 + walletIndex);
+        for (uint32 termIndex = 0;
+            termIndex < QEARN_V2_NUMBER_OF_TERMS;
+            ++termIndex)
+        {
+            const uint64 principal = 80000001ULL + (rng() % 80000000ULL);
+            uint32 exitEpochOffset = 0;
+            if (walletIndex >= 3)
+            {
+                bool exitsEarly = false;
+                if (termIndex == QEARN_V2_TERM_INDEX_13)
+                {
+                    exitsEarly = walletIndex == 3 || (rng() % 100ULL) < 45ULL;
+                }
+                else if (termIndex == QEARN_V2_TERM_INDEX_26)
+                {
+                    exitsEarly = walletIndex == 3 || (rng() % 100ULL) < 50ULL;
+                }
+                else
+                {
+                    exitsEarly = true;
+                }
+
+                if (exitsEarly)
+                {
+                    exitEpochOffset =
+                        exitOffsets[termIndex][rng() % 6ULL];
+                    if (walletIndex == 3)
+                    {
+                        // Force mixed-term exits in one epoch. Their order is
+                        // shuffled below, exercising order-dependent counters.
+                        exitEpochOffset = 1;
+                    }
+                }
+            }
+
+            positions.push_back(PropertyPosition{
+                user,
+                termIndex,
+                lockPeriods[termIndex],
+                exitEpochOffset,
+                principal,
+                true,
+            });
+            model.terms[termIndex].initialLockedAmount += principal;
+            model.terms[termIndex].currentLockedAmount += principal;
+            expectedWalletBalances[user] += principal;
+        }
+    }
+
+    system.epoch = lockedEpoch;
+    increaseEnergy(QEARN_CONTRACT_ID, bonus);
+    qearn.beginEpoch();
+    for (const auto& wallet : expectedWalletBalances)
+    {
+        increaseEnergy(wallet.first, wallet.second);
+    }
+    for (const auto& position : positions)
+    {
+        EXPECT_EQ(qearn.lockV2(
+            position.user,
+            position.principal,
+            position.lockPeriod),
+            QEARN_LOCK_SUCCESS);
+    }
+    for (auto& wallet : expectedWalletBalances)
+    {
+        EXPECT_EQ(getBalance(wallet.first), 0);
+        wallet.second = 0;
+    }
+
+    const sint64 initialCCFBalance = getBalance(CCF_CONTRACT_ID);
+    model.terms[QEARN_V2_TERM_INDEX_13].initialRewardPool =
+        std::min(
+            bonus * QEARN_V2_ALLOCATION_PERCENT_13 / 100ULL,
+            model.terms[QEARN_V2_TERM_INDEX_13].initialLockedAmount
+                * QEARN_V2_RETURN_PERCENT_13 / 100ULL);
+    model.terms[QEARN_V2_TERM_INDEX_13].currentRewardPool =
+        model.terms[QEARN_V2_TERM_INDEX_13].initialRewardPool;
+    model.terms[QEARN_V2_TERM_INDEX_26].initialRewardPool =
+        std::min(
+            bonus * QEARN_V2_ALLOCATION_PERCENT_26 / 100ULL,
+            model.terms[QEARN_V2_TERM_INDEX_26].initialLockedAmount
+                * QEARN_V2_RETURN_PERCENT_26 / 100ULL);
+    model.terms[QEARN_V2_TERM_INDEX_26].currentRewardPool =
+        model.terms[QEARN_V2_TERM_INDEX_26].initialRewardPool;
+
+    const uint64 availableLongReward =
+        bonus
+        - model.terms[QEARN_V2_TERM_INDEX_13].initialRewardPool
+        - model.terms[QEARN_V2_TERM_INDEX_26].initialRewardPool;
+    const uint64 initialLongCap =
+        model.terms[QEARN_V2_TERM_INDEX_52].initialLockedAmount
+        * QEARN_V2_RETURN_PERCENT_52 / 100ULL;
+    model.terms[QEARN_V2_TERM_INDEX_52].initialRewardPool =
+        std::min(availableLongReward, initialLongCap);
+    model.terms[QEARN_V2_TERM_INDEX_52].currentRewardPool =
+        model.terms[QEARN_V2_TERM_INDEX_52].initialRewardPool;
+    model.transferredToCCFAmount =
+        availableLongReward
+        - model.terms[QEARN_V2_TERM_INDEX_52].initialRewardPool;
+
+    auto fundLongPool = [&](uint64 amount)
+    {
+        PropertyTermModel& longTerm =
+            model.terms[QEARN_V2_TERM_INDEX_52];
+        const uint64 previousPool = longTerm.currentRewardPool;
+        const uint64 availableAmount = previousPool + amount;
+        const uint64 currentCap =
+            longTerm.currentLockedAmount
+            * QEARN_V2_RETURN_PERCENT_52 / 100ULL;
+        longTerm.currentRewardPool =
+            std::min(availableAmount, currentCap);
+        if (longTerm.currentRewardPool > previousPool)
+        {
+            model.transferredTo52Amount +=
+                longTerm.currentRewardPool - previousPool;
+        }
+        model.transferredToCCFAmount +=
+            availableAmount - longTerm.currentRewardPool;
+    };
+
+    auto checkAccounting = [&]()
+    {
+        uint64 activePrincipal = 0;
+        uint64 currentRewardPools = 0;
+        for (const auto& position : positions)
+        {
+            if (position.active)
+            {
+                activePrincipal += position.principal;
+            }
+        }
+
+        for (uint32 termIndex = 0;
+            termIndex < QEARN_V2_NUMBER_OF_TERMS;
+            ++termIndex)
+        {
+            const PropertyTermModel& expectedTerm = model.terms[termIndex];
+            const auto actualTerm = qearn.getV2LockInfoPerEpoch(
+                lockedEpoch,
+                lockPeriods[termIndex]);
+            EXPECT_EQ(actualTerm.returnCode, QEARN_LOCK_SUCCESS);
+            EXPECT_EQ(actualTerm.epochBonusAmount, bonus);
+            EXPECT_EQ(actualTerm.finalized, 1U);
+            EXPECT_EQ(actualTerm.initialLockedAmount,
+                expectedTerm.initialLockedAmount);
+            EXPECT_EQ(actualTerm.currentLockedAmount,
+                expectedTerm.currentLockedAmount);
+            EXPECT_EQ(actualTerm.termEarlyUnlockedAmount,
+                expectedTerm.earlyUnlockedAmount);
+            EXPECT_EQ(actualTerm.initialRewardPool,
+                expectedTerm.initialRewardPool);
+            EXPECT_EQ(actualTerm.currentRewardPool,
+                expectedTerm.currentRewardPool);
+            EXPECT_EQ(actualTerm.termRewardedAmount,
+                expectedTerm.rewardedAmount);
+            EXPECT_EQ(actualTerm.termForfeitedClaimAmount,
+                expectedTerm.forfeitedClaimAmount);
+            EXPECT_EQ(actualTerm.epochRewardedAmount,
+                model.rewardedAmount);
+            EXPECT_EQ(actualTerm.epochForfeitedClaimAmount,
+                model.forfeitedClaimAmount);
+            EXPECT_EQ(actualTerm.epochTransferredTo52Amount,
+                model.transferredTo52Amount);
+            EXPECT_EQ(actualTerm.epochTransferredToCCFAmount,
+                model.transferredToCCFAmount);
+            currentRewardPools += expectedTerm.currentRewardPool;
+        }
+
+        EXPECT_EQ(bonus,
+            currentRewardPools
+            + model.rewardedAmount
+            + model.transferredToCCFAmount);
+        EXPECT_EQ(getBalance(QEARN_CONTRACT_ID),
+            static_cast<sint64>(activePrincipal + currentRewardPools));
+        EXPECT_EQ(getBalance(CCF_CONTRACT_ID),
+            initialCCFBalance
+            + static_cast<sint64>(model.transferredToCCFAmount));
+
+        const auto stats =
+            qearn.getBurnedAndBoostedStatsPerEpoch(lockedEpoch);
+        EXPECT_EQ(stats.burnedAmount, 0ULL);
+        EXPECT_EQ(stats.boostedAmount, model.transferredTo52Amount);
+        EXPECT_EQ(stats.rewardedAmount, model.rewardedAmount);
+        for (const auto& wallet : expectedWalletBalances)
+        {
+            EXPECT_EQ(getBalance(wallet.first),
+                static_cast<sint64>(wallet.second));
+        }
+    };
+
+    auto checkCompactedLockerRange = [&]()
+    {
+        uint32 expectedActivePositions = 0;
+        for (const auto& position : positions)
+        {
+            const uint64 expectedLockedAmount =
+                position.active ? position.principal : 0ULL;
+            EXPECT_EQ(qearn.getV2UserLockedInfo(
+                lockedEpoch,
+                position.user,
+                position.lockPeriod).lockedAmount,
+                expectedLockedAmount);
+            if (position.active)
+            {
+                expectedActivePositions++;
+            }
+        }
+
+        const QearnChecker* contractState = qearn.getState();
+        const QEARN::EpochIndexInfo range =
+            contractState->_epochIndex.get(lockedEpoch);
+        EXPECT_EQ(range.endIndex - range.startIndex,
+            expectedActivePositions);
+        for (uint32 lockerIndex = range.startIndex;
+            lockerIndex < range.endIndex;
+            ++lockerIndex)
+        {
+            const QEARN::LockInfo& actualLock =
+                contractState->locker.get(lockerIndex);
+            const uint32 actualLockPeriod =
+                contractState->lockerLockPeriods.get(lockerIndex);
+            EXPECT_GT(actualLock._lockedAmount, 0ULL);
+            EXPECT_EQ(actualLock._lockedEpoch, lockedEpoch);
+
+            uint32 matchingPositions = 0;
+            for (const auto& position : positions)
+            {
+                if (position.active
+                    && position.user == actualLock.ID
+                    && position.lockPeriod == actualLockPeriod
+                    && position.principal == actualLock._lockedAmount)
+                {
+                    matchingPositions++;
+                }
+            }
+            EXPECT_EQ(matchingPositions, 1U);
+        }
+    };
+
+    auto exitPosition = [&](size_t positionIndex)
+    {
+        PropertyPosition& position = positions[positionIndex];
+        PropertyTermModel& term = model.terms[position.termIndex];
+        SCOPED_TRACE(
+            ::testing::Message()
+            << "exit position=" << positionIndex
+            << ", term=" << position.lockPeriod
+            << ", epochOffset=" << position.exitEpochOffset);
+        EXPECT_TRUE(position.active);
+
+        uint64 forfeitedAmount = 0;
+        uint64 amountToLongPool = 0;
+        if (position.termIndex == QEARN_V2_TERM_INDEX_52)
+        {
+            if (term.currentLockedAmount)
+            {
+                forfeitedAmount =
+                    term.currentRewardPool * position.principal
+                    / term.currentLockedAmount;
+            }
+        }
+        else if (term.initialLockedAmount)
+        {
+            forfeitedAmount =
+                term.initialRewardPool * position.principal
+                / term.initialLockedAmount;
+            forfeitedAmount =
+                std::min(forfeitedAmount, term.currentRewardPool);
+            amountToLongPool = forfeitedAmount;
+        }
+
+        EXPECT_EQ(qearn.unlockV2(
+            position.user,
+            lockedEpoch,
+            position.lockPeriod),
+            QEARN_UNLOCK_SUCCESS);
+
+        if (position.termIndex != QEARN_V2_TERM_INDEX_52)
+        {
+            term.currentRewardPool -= forfeitedAmount;
+        }
+        term.currentLockedAmount -= position.principal;
+        term.earlyUnlockedAmount += position.principal;
+        term.forfeitedClaimAmount += forfeitedAmount;
+        model.forfeitedClaimAmount += forfeitedAmount;
+        if (position.termIndex != QEARN_V2_TERM_INDEX_52
+            && !term.currentLockedAmount)
+        {
+            amountToLongPool += term.currentRewardPool;
+            term.currentRewardPool = 0;
+        }
+        position.active = false;
+        expectedWalletBalances[position.user] += position.principal;
+        fundLongPool(amountToLongPool);
+        checkAccounting();
+    };
+
+    auto matureTerm = [&](uint32 termIndex)
+    {
+        PropertyTermModel& term = model.terms[termIndex];
+        const uint64 numerator =
+            termIndex == QEARN_V2_TERM_INDEX_52
+                ? term.currentRewardPool
+                : term.initialRewardPool;
+        const uint64 denominator =
+            termIndex == QEARN_V2_TERM_INDEX_52
+                ? term.currentLockedAmount
+                : term.initialLockedAmount;
+        uint64 remainingRewardPool = term.currentRewardPool;
+        uint64 totalRewardedAmount = 0;
+        uint64 totalUnlockedAmount = 0;
+
+        // Stable compaction preserves lock order, matching the contract's
+        // deterministic floor-and-remainder settlement.
+        for (auto& position : positions)
+        {
+            if (!position.active || position.termIndex != termIndex)
+            {
+                continue;
+            }
+
+            uint64 rewardAmount = 0;
+            if (denominator)
+            {
+                rewardAmount =
+                    numerator * position.principal / denominator;
+                rewardAmount =
+                    std::min(rewardAmount, remainingRewardPool);
+            }
+            remainingRewardPool -= rewardAmount;
+            totalRewardedAmount += rewardAmount;
+            totalUnlockedAmount += position.principal;
+            expectedWalletBalances[position.user] +=
+                position.principal + rewardAmount;
+            position.active = false;
+        }
+
+        EXPECT_EQ(term.currentLockedAmount, totalUnlockedAmount);
+        term.currentLockedAmount -= totalUnlockedAmount;
+        term.currentRewardPool = 0;
+        term.rewardedAmount += totalRewardedAmount;
+        model.rewardedAmount += totalRewardedAmount;
+        if (termIndex == QEARN_V2_TERM_INDEX_52)
+        {
+            model.transferredToCCFAmount += remainingRewardPool;
+        }
+        else
+        {
+            fundLongPool(remainingRewardPool);
+        }
+    };
+
+    qearn.endEpoch();
+    checkAccounting();
+    checkCompactedLockerRange();
+
+    for (uint32 epochOffset = 1;
+        epochOffset <= QEARN_V2_LOCK_PERIOD_52;
+        ++epochOffset)
+    {
+        system.epoch = lockedEpoch + epochOffset;
+        SCOPED_TRACE(
+            ::testing::Message()
+            << "seed=" << seed
+            << ", epochOffset=" << epochOffset);
+        qearn.beginEpoch();
+
+        std::vector<size_t> scheduledExits;
+        for (size_t positionIndex = 0;
+            positionIndex < positions.size();
+            ++positionIndex)
+        {
+            if (positions[positionIndex].active
+                && positions[positionIndex].exitEpochOffset == epochOffset)
+            {
+                scheduledExits.push_back(positionIndex);
+            }
+        }
+        std::shuffle(scheduledExits.begin(), scheduledExits.end(), rng);
+        for (const size_t positionIndex : scheduledExits)
+        {
+            exitPosition(positionIndex);
+        }
+
+        if (epochOffset == QEARN_V2_LOCK_PERIOD_13)
+        {
+            matureTerm(QEARN_V2_TERM_INDEX_13);
+        }
+        if (epochOffset == QEARN_V2_LOCK_PERIOD_26)
+        {
+            matureTerm(QEARN_V2_TERM_INDEX_26);
+        }
+        if (epochOffset == QEARN_V2_LOCK_PERIOD_52)
+        {
+            matureTerm(QEARN_V2_TERM_INDEX_52);
+        }
+
+        qearn.endEpoch();
+        checkAccounting();
+        checkCompactedLockerRange();
+    }
+
+    EXPECT_GT(model.transferredTo52Amount, 0ULL);
+    EXPECT_GT(model.transferredToCCFAmount, 0ULL);
+    EXPECT_GT(model.rewardedAmount, 0ULL);
+    for (uint32 termIndex = 0;
+        termIndex < QEARN_V2_NUMBER_OF_TERMS;
+        ++termIndex)
+    {
+        EXPECT_GT(model.terms[termIndex].earlyUnlockedAmount, 0ULL);
+    }
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID), 0);
+}
+
 // Test case for gap removal logic in overflow check (lines 635-656 in Qearn.h)
 // This test verifies that when the locker array is near capacity and contains gaps,
 // attempting to lock triggers gap removal, allowing the lock to succeed.
@@ -885,11 +2354,15 @@ TEST(TestContractQearn, GapRemovalOnOverflow)
 
 void testRandomLockWithoutUnlock(const uint16 numEpochs, const unsigned int totalUsers, const unsigned int maxUserLocking)
 {
-    std::cout << "random test without early unlock for " << numEpochs << " epochs with " << totalUsers << " total users and up to " << maxUserLocking << " lock calls per epoch" << std::endl;
     ContractTestingQearn qearn;
 
     const uint16 firstEpoch = contractDescriptions[QEARN_CONTRACT_INDEX].constructionEpoch;
-    const uint16 lastEpoch = firstEpoch + numEpochs;
+    // This model checks the original 52-epoch economics. V2 behavior is covered by
+    // focused tests above, so do not carry the V1 model across the activation boundary.
+    const uint16 v1NumEpochs = std::min<uint16>(
+        numEpochs, QEARN_V2_ACTIVATION_EPOCH - firstEpoch - 1);
+    const uint16 lastEpoch = firstEpoch + v1NumEpochs;
+    std::cout << "random V1 test without early unlock for " << v1NumEpochs << " epochs with " << totalUsers << " total users and up to " << maxUserLocking << " lock calls per epoch" << std::endl;
 
     // first epoch is without donation/bonus
     for (system.epoch = firstEpoch; system.epoch <= lastEpoch; ++system.epoch)
@@ -934,11 +2407,15 @@ TEST(TestContractQearn, RandomLockWithoutUnlock)
 
 void testRandomLockWithUnlock(const uint16 numEpochs, const unsigned int totalUsers, const unsigned int maxUserLocking, const unsigned int maxUserUnlocking)
 {
-    std::cout << "random test with early unlock for " << numEpochs << " epochs with " << totalUsers << " total users, up to " << maxUserLocking << " lock calls (per epoch), and up to " << maxUserUnlocking << " unlock calls (per running round)" << std::endl;
     ContractTestingQearn qearn;
 
     const uint16 firstEpoch = contractDescriptions[QEARN_CONTRACT_INDEX].constructionEpoch;
-    const uint16 lastEpoch = firstEpoch + numEpochs;
+    // This model checks V1 partial unlock rewards and burns. Keep it entirely
+    // before activation because V2 early unlocks intentionally close full positions.
+    const uint16 v1NumEpochs = std::min<uint16>(
+        numEpochs, QEARN_V2_ACTIVATION_EPOCH - firstEpoch - 1);
+    const uint16 lastEpoch = firstEpoch + v1NumEpochs;
+    std::cout << "random V1 test with early unlock for " << v1NumEpochs << " epochs with " << totalUsers << " total users, up to " << maxUserLocking << " lock calls (per epoch), and up to " << maxUserUnlocking << " unlock calls (per running round)" << std::endl;
 
     for (system.epoch = firstEpoch; system.epoch <= lastEpoch; ++system.epoch)
     {
