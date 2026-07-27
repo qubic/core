@@ -9,7 +9,7 @@
 #include "oracle_core/oracle_transactions.h"
 #include "oracle_core/oracle_interfaces_def.h"
 #include "network_messages/custom_mining.h"
-#include "contract_core/qpi_hash_map_impl.h"
+#include "qpi/impl/qpi_hash_map_impl.h"
 #include "oracle_core/oracle_interfaces_def.h"
 #include "kangaroo_twelve.h"
 
