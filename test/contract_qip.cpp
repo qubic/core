@@ -18,7 +18,7 @@ const id QIP_devAddress = ID(_Q, _O, _W, _F, _W, _Q, _C, _P, _C, _M, _V, _S, _W,
 class QIPChecker : public QIP, public QIP::StateData
 {
 public:
-    uint32 getNumberOfICO() const { return numberOfICO; }
+    uint64 getNumberOfICO() const { return activeIcoIndexes.population(); }
     
     void checkICOInfo(const QIP::getICOInfo_output& output, const QIP::createICO_input& input, const id& creator)
     {
@@ -146,6 +146,16 @@ public:
         return output;
     }
 
+    QIP::getBuyerInfo_output getBuyerInfo(id buyer, uint32 indexOfICO)
+    {
+        QIP::getBuyerInfo_input input;
+        input.indexOfICO = indexOfICO;
+        input.buyer = buyer;
+        QIP::getBuyerInfo_output output;
+        callFunction(QIP_CONTRACT_INDEX, 2, input, output);
+        return output;
+    }
+
     sint64 transferShareManagementRightsQX(const id& invocator, const Asset& asset, sint64 numberOfShares, uint32 newManagingContractIndex, sint64 fee)
     {
         QX::TransferShareManagementRights_input input;
@@ -181,7 +191,7 @@ TEST(ContractQIP, createICO_Success)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
     
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -250,7 +260,7 @@ TEST(ContractQIP, createICO_InvalidStartEpoch)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
     
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -317,7 +327,7 @@ TEST(ContractQIP, createICO_InvalidSaleAmount)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
     
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -376,7 +386,7 @@ TEST(ContractQIP, createICO_InvalidPrice)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
     
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -435,7 +445,7 @@ TEST(ContractQIP, createICO_InvalidPercent)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
     
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -509,7 +519,7 @@ TEST(ContractQIP, buyToken_Phase1)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
     
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -645,7 +655,7 @@ TEST(ContractQIP, buyToken_Phase2)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
     
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -770,7 +780,7 @@ TEST(ContractQIP, buyToken_Phase3)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
     
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -896,7 +906,7 @@ TEST(ContractQIP, buyVestedToken_Phase3)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
 
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -1009,24 +1019,26 @@ TEST(ContractQIP, buyVestedToken_Phase3)
     EXPECT_EQ(getBalance(QIP_testAddress3), balanceBefore3);
     EXPECT_EQ(getBalance(QIP_devAddress), 300000);
 
-    ++system.epoch;
     QIP.endEpoch();
+
     EXPECT_EQ(getBalance(QIP_testAddress1), balanceBefore1 + expectedForAddress1);
     EXPECT_EQ(getBalance(QIP_testAddress2), 7900001);
     EXPECT_EQ(getBalance(QIP_testAddress3), 1000001);
     EXPECT_EQ(getBalance(QIP_devAddress), 300000);
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer, buyer, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 3333);
-
+    
     ++system.epoch;
     QIP.endEpoch();
+
     EXPECT_EQ(getBalance(QIP_testAddress1), balanceBefore1 + expectedForAddress1);
     EXPECT_EQ(getBalance(QIP_testAddress2), 15800001);
     EXPECT_EQ(getBalance(QIP_testAddress3), 2000001);
     EXPECT_EQ(getBalance(QIP_devAddress), 300000);
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer, buyer, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 6666);
-
+    
     ++system.epoch;
     QIP.endEpoch();
+    
     EXPECT_EQ(getBalance(QIP_testAddress1), balanceBefore1 + expectedForAddress1);
     EXPECT_EQ(getBalance(QIP_testAddress2), balanceBefore2 + expectedForAddress2);
     EXPECT_EQ(getBalance(QIP_testAddress3), balanceBefore3 + expectedForAddress3);
@@ -1127,7 +1139,7 @@ TEST(ContractQIP, returnFunds)
     QIP.beginEpoch();
     QIP::buyToken_output buyOutput2 = QIP.buyToken(buyer2, 0, buyAmount2, requiredReward2);
     EXPECT_EQ(buyOutput2.returnCode, QIPLogInfo::QIP_success);
-    QIP.endEpoch();
+    //QIP.endEpoch();
 
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer, buyer, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 0);
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer2, buyer2, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 0);
@@ -1135,17 +1147,19 @@ TEST(ContractQIP, returnFunds)
     EXPECT_EQ(getBalance(QIP_CONTRACT_ID), 24171804);
     EXPECT_EQ(getBalance(QIP_testAddress2), 0);
 
-    ++system.epoch; // 1
-    QIP.beginEpoch();
-    QIP.endEpoch();
+    QIP.endEpoch(); // 1
+
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer, buyer, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 792);  // buyAmount / vestingPeriod
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer2, buyer2, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 1269);
     EXPECT_EQ(getBalance(QIP_testAddress1), 12463110);
     EXPECT_EQ(getBalance(QIP_testAddress2), 3452981);
-    
-    ++system.epoch; // 2
+
+    ++system.epoch;
     QIP.beginEpoch();
-    QIP.endEpoch();
+    QIP::getBuyerInfo_output buyerInfo = QIP.getBuyerInfo(buyer2, 0);
+    EXPECT_EQ(buyerInfo.remainingVestingPeriod, 6);
+    QIP.endEpoch(); // 2
+
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer, buyer, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 792 * 2);
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer2, buyer2, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 1269 * 2);
     EXPECT_EQ(getBalance(QIP_testAddress2), 3452981 * 2);
@@ -1153,6 +1167,7 @@ TEST(ContractQIP, returnFunds)
     ++system.epoch; // 3
     QIP.beginEpoch();
     QIP.endEpoch();
+
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer, buyer, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 792 * 3);
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer2, buyer2, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 1269 * 3);
     EXPECT_EQ(getBalance(QIP_testAddress2), 3452981 * 3);
@@ -1182,6 +1197,7 @@ TEST(ContractQIP, returnFunds)
     ++system.epoch; // 6
     QIP.beginEpoch();
     QIP.endEpoch();
+
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer, buyer, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 792 * 3);
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer2, buyer2, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 1269 * 6);
     EXPECT_EQ(getBalance(QIP_testAddress2), 3452981 * 3 + 2438124 * 3);
@@ -1189,6 +1205,7 @@ TEST(ContractQIP, returnFunds)
     ++system.epoch; // 7
     QIP.beginEpoch();
     QIP.endEpoch();
+
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer, buyer, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 792 * 3);
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer2, buyer2, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), buyAmount2);
     EXPECT_EQ(getBalance(QIP_testAddress2), 3452981 * 3 + 2438124 * 4);
@@ -1205,7 +1222,7 @@ TEST(ContractQIP, buyToken_InvalidEpoch)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
     
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -1276,7 +1293,7 @@ TEST(ContractQIP, buyToken_InvalidAmount)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
     
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -1363,7 +1380,7 @@ TEST(ContractQIP, buyToken_InsufficientInvocationReward)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
     
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -1438,7 +1455,7 @@ TEST(ContractQIP, END_EPOCH_Phase1Rollover)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
     
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -1516,7 +1533,7 @@ TEST(ContractQIP, END_EPOCH_Phase2Rollover)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
     
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -1595,7 +1612,7 @@ TEST(ContractQIP, END_EPOCH_Phase3ReturnToCreator)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
     
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -1682,7 +1699,7 @@ TEST(ContractQIP, END_EPOCH_BurnRemainingTokens)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
 
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
@@ -1768,7 +1785,7 @@ TEST(ContractQIP, TransferShareManagementRights)
     increaseEnergy(issuer, QIP_ISSUE_ASSET_FEE);
     EXPECT_EQ(QIP.issueAsset(issuer, assetName, totalShares), totalShares);
     
-    id creator = QIP_testBuyer;
+    id creator = QIP_testIssuer;
     increaseEnergy(creator, QIP_TRANSFER_ASSET_FEE);
     increaseEnergy(issuer, QIP_TRANSFER_ASSET_FEE);
     EXPECT_EQ(QIP.transferAsset(issuer, creator, assetName, issuer, totalShares), totalShares);
