@@ -3,7 +3,7 @@
 #include "platform/quorum_value.h"
 #include "network_messages/execution_fees.h"
 #include "contract_core/contract_def.h"
-#include "contract_core/qpi_spectrum_impl.h"
+#include "qpi/impl/qpi_spectrum_impl.h"
 #include "logging/logging.h"
 
 class ExecutionFeeReportCollector

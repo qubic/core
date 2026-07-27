@@ -67,6 +67,15 @@ public:
         return output;
     }
 
+    RANDOM::GetProviderStatus_output getProviderStatus(const id& provider)
+    {
+        RANDOM::GetProviderStatus_input input{};
+        input.provider = provider;
+        RANDOM::GetProviderStatus_output output{};
+        callFunction(RANDOM_CONTRACT_INDEX, 2, input, output);
+        return output;
+    }
+
     void revealAndCommit(const id& user, const QPI::bit_4096& reveal,
                         const id& commit, sint64 collateral)
     {
@@ -324,6 +333,123 @@ TEST(ContractRandom, EndToEnd_LatestEntropyRetrieved_TickMod3_Is1)
 TEST(ContractRandom, EndToEnd_LatestEntropyRetrieved_TickMod3_Is2)
 {
     runFullRandomCycle(/*startTick=*/1004); // 1004 % 3 == 2 -> stream 2
+}
+
+// ---------------------------------------------------------------------------
+// After a missed reveal, END_TICK evicts the provider. Its next reveal+commit is
+// REJECTED -- the contract does NOT silently re-enroll it. The off-chain client
+// detects the eviction via GetProviderStatus (count == 0) and re-joins with a
+// first-commit (reveal == 0). This keeps the contract strict and predictable
+// while giving the client the visibility it needs to recover.
+// ---------------------------------------------------------------------------
+TEST(ContractRandom, EvictedProviderIsRejectedAndDiscoverableViaStatus)
+{
+    ContractTestingRandom r;
+
+    const uint32 startTick = 1002;          // 1002 % 3 == 0 -> stream 0
+    const uint32 stream = startTick % 3;
+    const uint8 tier = 2;                    // 100 qu collateral
+    const sint64 collateral = collateralForTier(tier);
+
+    const id commit1 = commitOf(makeReveal(11));
+    const QPI::bit_4096 reveal2 = makeReveal(22); // stale reveal sent after eviction
+    const id commit3 = commitOf(makeReveal(33));  // commit carried when the client re-appears
+    const id commit4 = commitOf(makeReveal(44));  // commit used to re-join via first-commit
+
+    const id provider = getUser(0xF00D);
+    QPI::bit_4096 zero; zero.setAll(0);
+
+    // ----- Enroll, then miss the reveal so END_TICK evicts the provider ----
+    r.setTick(startTick);
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, /*reveal=*/zero, /*commit=*/commit1, collateral);
+    r.endTick();
+    r.setTick(startTick + 3);
+    r.endTick();
+    ASSERT_EQ(r.state()->populations.get(stream), 0u)
+        << "a missed reveal must evict the provider";
+
+    // GetProviderStatus reports the provider is enrolled nowhere.
+    EXPECT_EQ(r.getProviderStatus(provider).count, 0u)
+        << "evicted provider must show no active slots";
+
+    // ----- Its normal reveal+commit is REJECTED (no silent re-enroll) ------
+    r.setTick(startTick + 6);
+    increaseEnergy(provider, collateral);
+    const long long balBefore = getBalance(provider);
+    r.revealAndCommit(provider, /*reveal=*/reveal2, /*commit=*/commit3, collateral);
+    EXPECT_EQ(r.state()->populations.get(stream), 0u)
+        << "reveal+commit from an evicted provider must be rejected, not re-enroll it";
+    EXPECT_EQ(getBalance(provider), balBefore)
+        << "rejected reveal must refund the full attached amount";
+
+    // ----- Client re-joins with a first-commit; status now finds it --------
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, /*reveal=*/zero, /*commit=*/commit4, collateral);
+    ASSERT_EQ(r.state()->populations.get(stream), 1u);
+
+    auto st = r.getProviderStatus(provider);
+    ASSERT_EQ(st.count, 1u) << "re-enrolled provider must show exactly one active slot";
+    EXPECT_EQ(st.stream.get(0), stream)
+        << "status must report which stream the provider is in";
+    EXPECT_EQ(st.collateralTier.get(0), (uint32)tier)
+        << "status must report which tier the provider is in";
+    EXPECT_EQ(st.lockedCollateral.get(0), (uint64)collateral)
+        << "status must report the collateral currently at risk";
+}
+
+// ---------------------------------------------------------------------------
+// Safe unsubscribe ("reveal and leave"): a provider reveals the preimage of its
+// outstanding commit and submits an EMPTY new commit. Its reveal is still mixed
+// into this round's entropy (count-it), then END_TICK removes it from the pool
+// (then-leave) and all collateral is returned -- no slashing, no lost funds.
+// ---------------------------------------------------------------------------
+TEST(ContractRandom, RevealWithEmptyCommitCountsRevealThenLeavesSafely)
+{
+    ContractTestingRandom r;
+
+    const uint32 startTick = 1002;          // 1002 % 3 == 0 -> stream 0
+    const uint32 stream = startTick % 3;
+    const uint8 tier = 2;                    // 100 qu collateral
+    const sint64 collateral = collateralForTier(tier);
+
+    const QPI::bit_4096 reveal1 = makeReveal(11);
+    const id commit1 = commitOf(reveal1);
+
+    const id provider = getUser(0xF00D);
+    QPI::bit_4096 zero; zero.setAll(0);
+
+    // ----- Tick T: enroll (first-commit) ----------------------------------
+    r.setTick(startTick);
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, /*reveal=*/zero, /*commit=*/commit1, collateral);
+    r.endTick();
+    ASSERT_EQ(r.state()->populations.get(stream), 1u);
+
+    // ----- Tick T+3: reveal the outstanding commit with an EMPTY commit = leave
+    r.setTick(startTick + 3);
+    increaseEnergy(provider, collateral);
+    const long long balBefore = getBalance(provider); // just the freshly-added collateral
+    r.revealAndCommit(provider, /*reveal=*/reveal1, /*commit=*/id::zero(), collateral);
+
+    // The reveal is recorded (so END_TICK can mix it); the slot is marked leaving
+    // (commit == 0); collateral is unlocked; both the locked collateral and the
+    // amount attached to this call are refunded (no loss).
+    EXPECT_TRUE(r.state()->reveals.get(stream * 1365 + 0) == reveal1)
+        << "reveal must be recorded so END_TICK mixes it into entropy";
+    EXPECT_TRUE(r.state()->commits.get(stream * 1365 + 0) == id::zero())
+        << "empty commit marks the provider as leaving";
+    EXPECT_EQ(r.state()->lockedCollateralAmounts.get(stream * 1365 + 0), 0u)
+        << "collateral must be unlocked on leave (prevents END_TICK double-refund)";
+    EXPECT_EQ(getBalance(provider), balBefore + collateral)
+        << "leave must return locked collateral + the attached amount (no funds lost)";
+
+    // ----- END_TICK: mix the reveal, THEN evict the leaver -----------------
+    r.endTick();
+    EXPECT_TRUE(r.state()->entropy.get(stream * 10 + tier) == reveal1)
+        << "the leaver's reveal must still contribute to this round's entropy";
+    EXPECT_EQ(r.state()->populations.get(stream), 0u)
+        << "provider must be gone from the pool after leaving";
 }
 
 // ---------------------------------------------------------------------------
