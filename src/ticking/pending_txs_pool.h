@@ -13,7 +13,7 @@
 #include "mining/mining.h"
 
 #include "contracts/math_lib.h"
-#include "contract_core/qpi_collection_impl.h"
+#include "qpi/impl/qpi_collection_impl.h"
 
 #include "public_settings.h"
 #include "kangaroo_twelve.h"

@@ -67,6 +67,15 @@ public:
         return output;
     }
 
+    RANDOM::GetProviderStatus_output getProviderStatus(const id& provider)
+    {
+        RANDOM::GetProviderStatus_input input{};
+        input.provider = provider;
+        RANDOM::GetProviderStatus_output output{};
+        callFunction(RANDOM_CONTRACT_INDEX, 2, input, output);
+        return output;
+    }
+
     void revealAndCommit(const id& user, const QPI::bit_4096& reveal,
                         const id& commit, sint64 collateral)
     {
@@ -324,6 +333,123 @@ TEST(ContractRandom, EndToEnd_LatestEntropyRetrieved_TickMod3_Is1)
 TEST(ContractRandom, EndToEnd_LatestEntropyRetrieved_TickMod3_Is2)
 {
     runFullRandomCycle(/*startTick=*/1004); // 1004 % 3 == 2 -> stream 2
+}
+
+// ---------------------------------------------------------------------------
+// After a missed reveal, END_TICK evicts the provider. Its next reveal+commit is
+// REJECTED -- the contract does NOT silently re-enroll it. The off-chain client
+// detects the eviction via GetProviderStatus (count == 0) and re-joins with a
+// first-commit (reveal == 0). This keeps the contract strict and predictable
+// while giving the client the visibility it needs to recover.
+// ---------------------------------------------------------------------------
+TEST(ContractRandom, EvictedProviderIsRejectedAndDiscoverableViaStatus)
+{
+    ContractTestingRandom r;
+
+    const uint32 startTick = 1002;          // 1002 % 3 == 0 -> stream 0
+    const uint32 stream = startTick % 3;
+    const uint8 tier = 2;                    // 100 qu collateral
+    const sint64 collateral = collateralForTier(tier);
+
+    const id commit1 = commitOf(makeReveal(11));
+    const QPI::bit_4096 reveal2 = makeReveal(22); // stale reveal sent after eviction
+    const id commit3 = commitOf(makeReveal(33));  // commit carried when the client re-appears
+    const id commit4 = commitOf(makeReveal(44));  // commit used to re-join via first-commit
+
+    const id provider = getUser(0xF00D);
+    QPI::bit_4096 zero; zero.setAll(0);
+
+    // ----- Enroll, then miss the reveal so END_TICK evicts the provider ----
+    r.setTick(startTick);
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, /*reveal=*/zero, /*commit=*/commit1, collateral);
+    r.endTick();
+    r.setTick(startTick + 3);
+    r.endTick();
+    ASSERT_EQ(r.state()->populations.get(stream), 0u)
+        << "a missed reveal must evict the provider";
+
+    // GetProviderStatus reports the provider is enrolled nowhere.
+    EXPECT_EQ(r.getProviderStatus(provider).count, 0u)
+        << "evicted provider must show no active slots";
+
+    // ----- Its normal reveal+commit is REJECTED (no silent re-enroll) ------
+    r.setTick(startTick + 6);
+    increaseEnergy(provider, collateral);
+    const long long balBefore = getBalance(provider);
+    r.revealAndCommit(provider, /*reveal=*/reveal2, /*commit=*/commit3, collateral);
+    EXPECT_EQ(r.state()->populations.get(stream), 0u)
+        << "reveal+commit from an evicted provider must be rejected, not re-enroll it";
+    EXPECT_EQ(getBalance(provider), balBefore)
+        << "rejected reveal must refund the full attached amount";
+
+    // ----- Client re-joins with a first-commit; status now finds it --------
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, /*reveal=*/zero, /*commit=*/commit4, collateral);
+    ASSERT_EQ(r.state()->populations.get(stream), 1u);
+
+    auto st = r.getProviderStatus(provider);
+    ASSERT_EQ(st.count, 1u) << "re-enrolled provider must show exactly one active slot";
+    EXPECT_EQ(st.stream.get(0), stream)
+        << "status must report which stream the provider is in";
+    EXPECT_EQ(st.collateralTier.get(0), (uint32)tier)
+        << "status must report which tier the provider is in";
+    EXPECT_EQ(st.lockedCollateral.get(0), (uint64)collateral)
+        << "status must report the collateral currently at risk";
+}
+
+// ---------------------------------------------------------------------------
+// Safe unsubscribe ("reveal and leave"): a provider reveals the preimage of its
+// outstanding commit and submits an EMPTY new commit. Its reveal is still mixed
+// into this round's entropy (count-it), then END_TICK removes it from the pool
+// (then-leave) and all collateral is returned -- no slashing, no lost funds.
+// ---------------------------------------------------------------------------
+TEST(ContractRandom, RevealWithEmptyCommitCountsRevealThenLeavesSafely)
+{
+    ContractTestingRandom r;
+
+    const uint32 startTick = 1002;          // 1002 % 3 == 0 -> stream 0
+    const uint32 stream = startTick % 3;
+    const uint8 tier = 2;                    // 100 qu collateral
+    const sint64 collateral = collateralForTier(tier);
+
+    const QPI::bit_4096 reveal1 = makeReveal(11);
+    const id commit1 = commitOf(reveal1);
+
+    const id provider = getUser(0xF00D);
+    QPI::bit_4096 zero; zero.setAll(0);
+
+    // ----- Tick T: enroll (first-commit) ----------------------------------
+    r.setTick(startTick);
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, /*reveal=*/zero, /*commit=*/commit1, collateral);
+    r.endTick();
+    ASSERT_EQ(r.state()->populations.get(stream), 1u);
+
+    // ----- Tick T+3: reveal the outstanding commit with an EMPTY commit = leave
+    r.setTick(startTick + 3);
+    increaseEnergy(provider, collateral);
+    const long long balBefore = getBalance(provider); // just the freshly-added collateral
+    r.revealAndCommit(provider, /*reveal=*/reveal1, /*commit=*/id::zero(), collateral);
+
+    // The reveal is recorded (so END_TICK can mix it); the slot is marked leaving
+    // (commit == 0); collateral is unlocked; both the locked collateral and the
+    // amount attached to this call are refunded (no loss).
+    EXPECT_TRUE(r.state()->reveals.get(stream * 1365 + 0) == reveal1)
+        << "reveal must be recorded so END_TICK mixes it into entropy";
+    EXPECT_TRUE(r.state()->commits.get(stream * 1365 + 0) == id::zero())
+        << "empty commit marks the provider as leaving";
+    EXPECT_EQ(r.state()->lockedCollateralAmounts.get(stream * 1365 + 0), 0u)
+        << "collateral must be unlocked on leave (prevents END_TICK double-refund)";
+    EXPECT_EQ(getBalance(provider), balBefore + collateral)
+        << "leave must return locked collateral + the attached amount (no funds lost)";
+
+    // ----- END_TICK: mix the reveal, THEN evict the leaver -----------------
+    r.endTick();
+    EXPECT_TRUE(r.state()->entropy.get(stream * 10 + tier) == reveal1)
+        << "the leaver's reveal must still contribute to this round's entropy";
+    EXPECT_EQ(r.state()->populations.get(stream), 0u)
+        << "provider must be gone from the pool after leaving";
 }
 
 // ---------------------------------------------------------------------------
@@ -739,10 +865,12 @@ TEST(ContractRandom, SameTickCommitAndRevealIsRejected)
     QPI::bit_4096 zero; zero.setAll(0);
 
     // Tx 1: first-commit. Registers the provider and sets revealOrCommitFlags=1.
+    const uint32 commitTick = r.tick();
     increaseEnergy(provider, collateral);
     r.revealAndCommit(provider, zero, commit1, collateral);
     ASSERT_EQ(r.state()->populations.get(stream), 1u);
     ASSERT_TRUE(r.state()->commits.get(index) == commit1);
+    ASSERT_EQ(r.state()->lastUpdateTick.get(index), commitTick);
 
     // Tx 2 (same tick): attempt to reveal the preimage of commit1 immediately.
     // Must be rejected — provider must not be able to pick the preimage after
@@ -760,6 +888,9 @@ TEST(ContractRandom, SameTickCommitAndRevealIsRejected)
         << "same-tick reveal must not set the revealed flag";
     EXPECT_TRUE(r.state()->commits.get(index) == commit1)
         << "same-tick reveal must not overwrite the existing commit";
+    EXPECT_EQ(r.state()->lastUpdateTick.get(index), commitTick)
+        << "a rejected same-tick reveal must not advance lastUpdateTick — a client "
+           "polling GetProviderStatus can tell this resubmission did not take effect";
 
     // After END_TICK the provider is still enrolled (they committed legitimately).
     r.endTick();
@@ -768,6 +899,7 @@ TEST(ContractRandom, SameTickCommitAndRevealIsRejected)
 
     // Tick T+3: the normal reveal must now succeed.
     r.setTick(r.tick() + 3);
+    const uint32 revealTick = r.tick();
     increaseEnergy(provider, collateral);
     const long long before2 = getBalance(provider);
 
@@ -777,6 +909,8 @@ TEST(ContractRandom, SameTickCommitAndRevealIsRejected)
         << "legitimate reveal at T+3 must refund prior collateral (net zero)";
     EXPECT_EQ(r.state()->revealedThisTickFlags.get(index), 1)
         << "legitimate reveal at T+3 must set the revealed flag";
+    EXPECT_EQ(r.state()->lastUpdateTick.get(index), revealTick)
+        << "the accepted reveal at T+3 must advance lastUpdateTick";
 }
 
 // C1: when at least one reveal lands in a round, a no-show provider's stake is
@@ -1083,4 +1217,151 @@ TEST(ContractRandom, NoShowInTierDoesNotLockOutOtherProviders)
         }
     }
     EXPECT_TRUE(found) << "good provider must still be in the pool";
+}
+
+// ---------------------------------------------------------------------------
+// lastUpdateTick: a durable, tick-precise signal so an off-chain client can tell
+// whether a submitted RevealAndCommit tx actually took effect. It is stamped
+// with the current tick on every accepted call and left untouched on rejection,
+// so a client that remembers which tick it submitted in can compare afterwards
+// via GetProviderStatus -- no wallet-balance monitoring required.
+// ---------------------------------------------------------------------------
+
+TEST(ContractRandom, GetProviderStatusReportsLastUpdateTickOnSuccess)
+{
+    ContractTestingRandom r;
+    const uint8 tier = 2;
+    const sint64 collateral = collateralForTier(tier);
+    const uint32 firstTick = r.tick();
+
+    id provider = getUser(1);
+    QPI::bit_4096 zero; zero.setAll(0);
+    auto reveal1 = makeReveal(1);
+
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, zero, commitOf(reveal1), collateral);
+
+    auto st1 = r.getProviderStatus(provider);
+    ASSERT_EQ(st1.count, 1u);
+    EXPECT_EQ(st1.lastUpdateTick.get(0), firstTick)
+        << "an accepted first-commit must stamp lastUpdateTick with the current tick";
+
+    r.endTick();
+    r.setTick(r.tick() + 3);
+    const uint32 secondTick = r.tick();
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, reveal1, commitOf(makeReveal(2)), collateral);
+
+    auto st2 = r.getProviderStatus(provider);
+    ASSERT_EQ(st2.count, 1u);
+    EXPECT_EQ(st2.lastUpdateTick.get(0), secondTick)
+        << "an accepted reveal+recommit must advance lastUpdateTick to the new tick";
+}
+
+TEST(ContractRandom, WrongPreimageRevealDoesNotAdvanceLastUpdateTick)
+{
+    ContractTestingRandom r;
+    const uint8 tier = 2;
+    const sint64 collateral = collateralForTier(tier);
+    const uint32 stream = r.tick() % 3;
+    const uint32 index = stream * RANDOM_STREAM_CAPACITY + 0;
+
+    id provider = getUser(1);
+    QPI::bit_4096 zero; zero.setAll(0);
+    auto reveal1 = makeReveal(1);
+    auto wrongReveal = makeReveal(999); // does not hash to commitOf(reveal1)
+
+    const uint32 commitTick = r.tick();
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, zero, commitOf(reveal1), collateral);
+    r.endTick();
+
+    r.setTick(r.tick() + 3);
+    increaseEnergy(provider, collateral);
+    const long long before = getBalance(provider);
+
+    r.revealAndCommit(provider, wrongReveal, commitOf(makeReveal(2)), collateral);
+
+    EXPECT_EQ(getBalance(provider), before)
+        << "wrong-preimage reveal must be refunded in full";
+    EXPECT_EQ(r.state()->lastUpdateTick.get(index), commitTick)
+        << "a rejected wrong-preimage reveal must leave lastUpdateTick at the last accepted tick";
+
+    auto st = r.getProviderStatus(provider);
+    ASSERT_EQ(st.count, 1u);
+    EXPECT_EQ(st.lastUpdateTick.get(0), commitTick)
+        << "client-visible status must also show the tx did not take effect";
+}
+
+TEST(ContractRandom, DuplicateFirstCommitDoesNotAdvanceLastUpdateTick)
+{
+    ContractTestingRandom r;
+    const uint8 tier = 2;
+    const sint64 collateral = collateralForTier(tier);
+    const uint32 stream = r.tick() % 3;
+    const uint32 index = stream * RANDOM_STREAM_CAPACITY + 0;
+
+    id provider = getUser(1);
+    QPI::bit_4096 zero; zero.setAll(0);
+    const id commit1 = commitOf(makeReveal(1));
+
+    const uint32 commitTick = r.tick();
+    increaseEnergy(provider, collateral);
+    r.revealAndCommit(provider, zero, commit1, collateral);
+    ASSERT_EQ(r.state()->populations.get(stream), 1u);
+
+    // Same tick: provider tries to first-commit again without revealing first.
+    increaseEnergy(provider, collateral);
+    const long long before = getBalance(provider);
+
+    r.revealAndCommit(provider, zero, commitOf(makeReveal(2)), collateral);
+
+    EXPECT_EQ(getBalance(provider), before)
+        << "a duplicate first-commit from an already-registered provider must be refunded";
+    EXPECT_EQ(r.state()->lastUpdateTick.get(index), commitTick)
+        << "a rejected duplicate first-commit must not advance lastUpdateTick";
+    EXPECT_TRUE(r.state()->commits.get(index) == commit1)
+        << "the original commit must be untouched";
+}
+
+// lastUpdateTick must survive END_TICK's swap-delete relocation: when a slot is
+// evicted, the last active slot in the stream is moved into the freed index, and
+// every per-slot field -- including lastUpdateTick -- must move with it.
+TEST(ContractRandom, LastUpdateTickSurvivesSwapDeleteRelocation)
+{
+    ContractTestingRandom r;
+    const uint8 tier = 2;
+    const sint64 collateral = collateralForTier(tier);
+    const uint32 stream = r.tick() % 3;
+
+    id bad  = getUser(1); // index 0: will no-show and get evicted
+    id good = getUser(2); // index 1: will be swap-deleted into index 0
+
+    QPI::bit_4096 zero; zero.setAll(0);
+    auto goodReveal1 = makeReveal(11);
+    auto badReveal1  = makeReveal(21);
+
+    increaseEnergy(bad, collateral);
+    increaseEnergy(good, collateral);
+    r.revealAndCommit(bad,  zero, commitOf(badReveal1),  collateral);
+    r.revealAndCommit(good, zero, commitOf(goodReveal1), collateral);
+    r.endTick();
+    ASSERT_EQ(r.state()->populations.get(stream), 2u);
+
+    // good reveals (advancing its lastUpdateTick); bad is a no-show.
+    r.setTick(r.tick() + 3);
+    const uint32 revealTick = r.tick();
+    increaseEnergy(good, collateral);
+    r.revealAndCommit(good, goodReveal1, commitOf(makeReveal(12)), collateral);
+    r.endTick();
+
+    // bad's slot (index 0) was evicted; good must have been swap-deleted into it.
+    ASSERT_EQ(r.state()->populations.get(stream), 1u);
+    EXPECT_TRUE(r.state()->providers.get(stream * RANDOM_STREAM_CAPACITY + 0) == good)
+        << "the surviving provider must have been relocated to the freed slot";
+
+    auto st = r.getProviderStatus(good);
+    ASSERT_EQ(st.count, 1u);
+    EXPECT_EQ(st.lastUpdateTick.get(0), revealTick)
+        << "lastUpdateTick must survive swap-delete relocation, not reset to 0";
 }

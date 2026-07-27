@@ -18,7 +18,7 @@ struct Peer;
 
 #define LOG_CONTRACTS (LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES)
 
-#if LOG_SPECTRUM | LOG_UNIVERSE | LOG_CONTRACTS | LOG_CUSTOM_MESSAGES | LOG_ORACLES
+#if LOG_SPECTRUM | LOG_UNIVERSE | LOG_CONTRACTS | LOG_CUSTOM_MESSAGES | LOG_ORACLES | LOG_OC
 #define ENABLED_LOGGING 1
 #else
 #define ENABLED_LOGGING 0
@@ -59,6 +59,7 @@ struct Peer;
 #define CONTRACT_RESERVE_DEDUCTION 13
 #define ORACLE_QUERY_STATUS_CHANGE 14
 #define ORACLE_SUBSCRIBER_MESSAGE 15
+#define OC_INVOCATION_STATUS_CHANGE 16
 #define CUSTOM_MESSAGE 255
 
 #define CUSTOM_MESSAGE_OP_START_DISTRIBUTE_DIVIDENDS 6217575821008262227ULL // STA_DDIV
@@ -261,6 +262,16 @@ struct OracleSubscriberLogMessage
     unsigned int contractIndex;
     unsigned int periodInMilliseconds;    // 0 means unsubscribe
     unsigned long long firstQueryDateAndTime;
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
+struct OcInvocationStatusChange
+{
+    long long invocationId;
+    unsigned int contractIndex;
+    unsigned int interfaceIndex;
+    unsigned char status;
 
     char _terminator; // Only data before "_terminator" are logged
 };
@@ -905,6 +916,13 @@ public:
     {
 #if LOG_ORACLES
         logMessage(offsetof(OracleSubscriberLogMessage, _terminator), ORACLE_SUBSCRIBER_MESSAGE, &message);
+#endif
+    }
+
+    void logOcInvocationStatusChange(const OcInvocationStatusChange& message)
+    {
+#if LOG_OC
+        logMessage(offsetof(OcInvocationStatusChange, _terminator), OC_INVOCATION_STATUS_CHANGE, &message);
 #endif
     }
 

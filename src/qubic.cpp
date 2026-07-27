@@ -46,14 +46,14 @@
 #include "network_core/peers.h"
 
 #include "system.h"
-#include "contract_core/qpi_system_impl.h"
+#include "qpi/impl/qpi_system_impl.h"
 
 #include "assets/assets.h"
 #include "assets/net_msg_impl.h"
-#include "contract_core/qpi_asset_impl.h"
+#include "qpi/impl/qpi_assets_impl.h"
 
 #include "spectrum/spectrum.h"
-#include "contract_core/qpi_spectrum_impl.h"
+#include "qpi/impl/qpi_spectrum_impl.h"
 
 #include "logging/logging.h"
 #include "logging/net_msg_impl.h"
@@ -61,14 +61,14 @@
 #include "ticking/ticking.h"
 #include "ticking/tick_storage.h"
 #include "ticking/pending_txs_pool.h"
-#include "contract_core/qpi_ticking_impl.h"
+#include "qpi/impl/qpi_ticking_impl.h"
 #include "vote_counter.h"
 #include "ticking/execution_fee_report_collector.h"
 #include "ticking/stable_computor_index.h"
 #include "network_messages/execution_fees.h"
 
 #include "contract_core/ipo.h"
-#include "contract_core/qpi_ipo_impl.h"
+#include "qpi/impl/qpi_ipo_impl.h"
 
 #include "addons/tx_status_request.h"
 
@@ -80,9 +80,14 @@
 #include "oracle_core/net_msg_impl.h"
 #include "oracle_core/snapshot_files.h"
 #include "oracle_core/oracle_interfaces_def.h"
-#include "contract_core/qpi_oracle_impl.h"
+#include "qpi/impl/qpi_oracle_impl.h"
 
-#include "contract_core/qpi_mining_impl.h"
+#include "oc_core/oc_engine.h"
+#include "oc_core/oc_interfaces_def.h"
+#include "oc_core/snapshot_files.h"
+#include "qpi/impl/qpi_oc_impl.h"
+
+#include "qpi/impl/qpi_mining_impl.h"
 #include "revenue.h"
 
 ////////// Qubic \\\\\\\\\\
@@ -101,6 +106,11 @@
 #define MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET 3 // Must be 3+
 #define ORACLE_REPLY_COMMIT_PUBLICATION_OFFSET 4
 #define ORACLE_REPLY_REVEAL_PUBLICATION_OFFSET 3
+#define OC_AUTH_SIGNATURE_PUBLICATION_OFFSET 3 // Must be 3+: tick data for T+2 is already crafted during processTick(T)
+static_assert(OC_AUTH_RESCHEDULE_TICKS > OC_AUTH_SIGNATURE_PUBLICATION_OFFSET,
+    "A retry must not fire before the previous attempt's target tick has executed.");
+static_assert(OC_AUTH_RESCHEDULE_TICKS + OC_AUTH_SIGNATURE_PUBLICATION_OFFSET < OC_INVOCATION_TIMEOUT_DEFAULT_TICKS,
+    "The first retry must be able to execute before the invocation times out.");
 #define TIME_ACCURACY 5000
 constexpr unsigned long long TARGET_MAINTHREAD_LOOP_DURATION = 30; // mcs, it is the target duration of the main thread loop
 constexpr unsigned int COMMON_BUFFERS_COUNT = 2;
@@ -2774,6 +2784,12 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                 }
                 break;
 
+                case OcAuthSignatureTransactionPrefix::transactionType():
+                {
+                    ocEngine.processOcAuthSignatureTransaction((OcAuthSignatureTransactionPrefix*)transaction);
+                }
+                break;
+
                 case OracleUserQueryTransactionPrefix::transactionType():
                 {
                     // check for special cases
@@ -3328,6 +3344,12 @@ static void processTick(unsigned long long processorNumber)
     // Check for oracle query timeouts (may schedule notification)
     oracleEngine.processTimeouts();
 
+    // Check for OC invocation timeouts (PENDING_AUTH -> TIMEOUT)
+    ocEngine.processTimeouts();
+
+    // Push any newly AUTHORIZED bundles to configured OC machine peers
+    ocEngine.deliverAuthorizedInvocations();
+
     // Notify contracts about successfully obtained oracle replies and about errors (using contract processor)
     const OracleNotificationData* oracleNotification = oracleEngine.getNotification();
     while (oracleNotification)
@@ -3746,6 +3768,51 @@ static void processTick(unsigned long long processorNumber)
             }
         }
 
+        // Publish OcAuthSignatureTransactions for any new PENDING_AUTH invocations
+        {
+            PROFILE_NAMED_SCOPE("processTick(): broadcast OC auth signature transactions");
+            const auto txTick = system.tick + OC_AUTH_SIGNATURE_PUBLICATION_OFFSET;
+            auto* tx = (OcAuthSignatureTransactionPrefix*)txBuffer;
+            for (unsigned int i = 0; i < numberOfOwnComputorIndices; i++)
+            {
+                const auto ownCompIdx = ownComputorIndicesMapping[i];
+                const auto overallCompIdx = ownComputorIndices[i];
+                unsigned int retCode = 0;
+                do
+                {
+                    retCode = ocEngine.getAuthSignatureTransaction(tx, overallCompIdx, txTick, retCode);
+                    if (!retCode)
+                        break;
+
+                    // Sign each item individually with the computor's key (per-item signature
+                    // over the canonical auth message). The engine left item.signature zeroed.
+                    const unsigned short itemCount = *(const unsigned short*)tx->inputPtr();
+                    auto* items = reinterpret_cast<OcAuthSignatureItem*>(tx->inputPtr() + 2 * sizeof(unsigned short));
+                    m256i itemHash;
+                    for (unsigned short itemIdx = 0; itemIdx < itemCount; ++itemIdx)
+                    {
+                        OcEngine::computeOcAuthMessageHash(
+                            items[itemIdx].epoch,
+                            items[itemIdx].interfaceIndex,
+                            items[itemIdx].invocationId,
+                            items[itemIdx].paramsDigest,
+                            itemHash);
+                        sign(
+                            computorSubseeds[ownCompIdx].m256i_u8,
+                            computorPublicKeys[ownCompIdx].m256i_u8,
+                            (const unsigned char*)&itemHash,
+                            items[itemIdx].signature);
+                    }
+
+                    // Sign and broadcast outer tx
+                    KangarooTwelve(tx, sizeof(Transaction) + tx->inputSize, digest, sizeof(digest));
+                    sign(computorSubseeds[ownCompIdx].m256i_u8, computorPublicKeys[ownCompIdx].m256i_u8, digest, tx->signaturePtr());
+                    enqueueResponse(NULL, tx->totalSize(), BROADCAST_TRANSACTION, 0, tx);
+                }
+                while (retCode != UINT32_MAX);
+            }
+        }
+
         commonBuffers.releaseBuffer(txBuffer);
     }
 
@@ -3893,6 +3960,7 @@ static void beginEpoch()
     ts.beginEpoch(system.initialTick);
     pendingTxsPool.beginEpoch(system.initialTick);
     oracleEngine.beginEpoch();
+    ocEngine.beginEpoch();
     voteCounter.init();
 #ifndef NDEBUG
     ts.checkStateConsistencyWithAssert();
@@ -4424,6 +4492,11 @@ static bool saveAllNodeStates()
         return false;
     }
 
+    if (!ocEngine.saveSnapshot(system.epoch, directory))
+    {
+        return false;
+    }
+
 #if ADDON_TX_STATUS_REQUEST
     if (!saveStateTxStatus(numberOfTransactions, directory))
     {
@@ -4627,6 +4700,11 @@ static bool loadAllNodeStates()
     }
 
     if (!oracleEngine.loadSnapshot(system.epoch, directory))
+    {
+        return false;
+    }
+
+    if (!ocEngine.loadSnapshot(system.epoch, directory))
     {
         return false;
     }
@@ -6093,6 +6171,14 @@ static bool initialize()
         if (!oracleEngine.init(broadcastedComputors.computors.publicKeys))
             return false;
 
+        if (!OCI::initOcInterfaces())
+        {
+            logToConsole(L"initOcInterfaces() failed! Not all interfaces are properly defined!");
+            return false;
+        }
+        if (!ocEngine.init(broadcastedComputors.computors.publicKeys))
+            return false;
+
 #if ADDON_TX_STATUS_REQUEST
         if (!initTxStatusRequestAddOn())
         {
@@ -6410,6 +6496,7 @@ static void deinitialize()
 #endif
 
     oracleEngine.deinit();
+    ocEngine.deinit();
 
     customQubicMiningStorage.deinit();
 
@@ -6705,6 +6792,26 @@ static void logInfo()
     logToConsole(message);
 
     oracleEngine.logStatus();
+    ocEngine.logStatus();
+
+    // OC machine connectivity + delivery outcome (sent/dropped counted in pushToOcMachineNodes)
+    unsigned int numberOfConnectedOcPeers = 0;
+    for (unsigned int i = 0; i < NUMBER_OF_OUTGOING_CONNECTIONS + NUMBER_OF_INCOMING_CONNECTIONS; i++)
+    {
+        if (peers[i].isOcMachineNode() && peers[i].tcp4Protocol && peers[i].isConnectedAccepted && !peers[i].isClosing)
+        {
+            numberOfConnectedOcPeers++;
+        }
+    }
+    setText(message, L"OC machines: ");
+    appendNumber(message, numberOfConnectedOcPeers, FALSE);
+    appendText(message, L"/");
+    appendNumber(message, numberOfOcPeers, FALSE);
+    appendText(message, L" connected; invocations sent ");
+    appendNumber(message, numberOfOcInvocationsSent, FALSE);
+    appendText(message, L", dropped ");
+    appendNumber(message, numberOfOcInvocationsDropped, FALSE);
+    logToConsole(message);
 }
 
 static void logHealthStatus()
