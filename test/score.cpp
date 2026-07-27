@@ -114,10 +114,32 @@ static void buildSyntheticTask(const unsigned char* pool, std::vector<unsigned c
 
     unsigned long long off = 0;
 
+    // Each neuron gets K distinct neighbours, none the neuron itself. On a clash, bump +1 mod P (this
+    // consumes the same P*K random bytes, so the draw stream stays deterministic).
     std::vector<unsigned int> neighborIndices(P * K);
-    for (unsigned long long i = 0; i < P * K; ++i)
+    for (unsigned long long n = 0; n < P; ++n)
     {
-        neighborIndices[i] = (unsigned int)(rnd[off++] % P);
+        for (unsigned long long j = 0; j < K; ++j)
+        {
+            unsigned int cand = (unsigned int)(rnd[off++] % P);
+            bool ok = false;
+            while (!ok)
+            {
+                ok = (cand != (unsigned int)n);
+                for (unsigned long long p = 0; p < j && ok; ++p)
+                {
+                    if (neighborIndices[n * K + p] == cand)
+                    {
+                        ok = false;
+                    }
+                }
+                if (!ok)
+                {
+                    cand = (unsigned int)((cand + 1) % P);
+                }
+            }
+            neighborIndices[n * K + j] = cand;
+        }
     }
 
     std::vector<char> used(P, 0);
