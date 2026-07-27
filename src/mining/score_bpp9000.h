@@ -305,12 +305,11 @@ struct ScoreBpp9000
         // numberOfUpdatedNeurons+i. simdCanonicalRow[j] = canonical LUT row.
         unsigned long long simdOrder[maxNumberOfNeurons];
         unsigned int canonOf[maxNumberOfNeurons];
-        unsigned long long jj = 0;
+        copyMem(canonOf, liveCanon, nLive * sizeof(canonOf[0]));
+        unsigned long long jj = nLive;
         for (unsigned long long j = 0; j < nLive; ++j)
         {
-            simdOrder[jj] = live[j];
-            canonOf[jj] = liveCanon[j];
-            jj++;
+            simdOrder[j] = live[j];
         }
         for (unsigned long long k = 0; k < numberOfUpdatedNeurons; ++k)
         {
@@ -322,10 +321,10 @@ struct ScoreBpp9000
             }
         }
 
+        copyMem(simdCanonicalRow, canonOf, numberOfUpdatedNeurons * sizeof(simdCanonicalRow[0]));
         for (unsigned long long j = 0; j < numberOfUpdatedNeurons; ++j)
         {
             simdRowOf[simdOrder[j]] = (unsigned int)j;
-            simdCanonicalRow[j] = canonOf[j];
         }
         // Partition input neurons live-first: live inputs take the first numLiveInputs rows, dead inputs
         // the rest (never fed/reset, bit-exact). liveSrc[r] = original input position feeding live row r.
