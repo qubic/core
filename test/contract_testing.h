@@ -14,14 +14,14 @@
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
 
-#include "contract_core/qpi_spectrum_impl.h"
-#include "contract_core/qpi_asset_impl.h"
-#include "contract_core/qpi_system_impl.h"
-#include "contract_core/qpi_ticking_impl.h"
-#include "contract_core/qpi_ipo_impl.h"
-#include "contract_core/qpi_mining_impl.h"
-#include "contract_core/qpi_oracle_impl.h"
-#include "contract_core/qpi_oc_impl.h"
+#include "qpi/impl/qpi_spectrum_impl.h"
+#include "qpi/impl/qpi_assets_impl.h"
+#include "qpi/impl/qpi_system_impl.h"
+#include "qpi/impl/qpi_ticking_impl.h"
+#include "qpi/impl/qpi_ipo_impl.h"
+#include "qpi/impl/qpi_mining_impl.h"
+#include "qpi/impl/qpi_oracle_impl.h"
+#include "qpi/impl/qpi_oc_impl.h"
 
 #include "test_util.h"
 

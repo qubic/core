@@ -1,6 +1,6 @@
 #pragma once
 
-#include "contracts/qpi.h"
+#include "qpi/qpi.h"
 #include "oc_core/oc_engine.h"
 #include "spectrum/spectrum.h"
 

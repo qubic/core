@@ -46,14 +46,14 @@
 #include "network_core/peers.h"
 
 #include "system.h"
-#include "contract_core/qpi_system_impl.h"
+#include "qpi/impl/qpi_system_impl.h"
 
 #include "assets/assets.h"
 #include "assets/net_msg_impl.h"
-#include "contract_core/qpi_asset_impl.h"
+#include "qpi/impl/qpi_assets_impl.h"
 
 #include "spectrum/spectrum.h"
-#include "contract_core/qpi_spectrum_impl.h"
+#include "qpi/impl/qpi_spectrum_impl.h"
 
 #include "logging/logging.h"
 #include "logging/net_msg_impl.h"
@@ -61,14 +61,14 @@
 #include "ticking/ticking.h"
 #include "ticking/tick_storage.h"
 #include "ticking/pending_txs_pool.h"
-#include "contract_core/qpi_ticking_impl.h"
+#include "qpi/impl/qpi_ticking_impl.h"
 #include "vote_counter.h"
 #include "ticking/execution_fee_report_collector.h"
 #include "ticking/stable_computor_index.h"
 #include "network_messages/execution_fees.h"
 
 #include "contract_core/ipo.h"
-#include "contract_core/qpi_ipo_impl.h"
+#include "qpi/impl/qpi_ipo_impl.h"
 
 #include "addons/tx_status_request.h"
 
@@ -80,14 +80,14 @@
 #include "oracle_core/net_msg_impl.h"
 #include "oracle_core/snapshot_files.h"
 #include "oracle_core/oracle_interfaces_def.h"
-#include "contract_core/qpi_oracle_impl.h"
+#include "qpi/impl/qpi_oracle_impl.h"
 
 #include "oc_core/oc_engine.h"
 #include "oc_core/oc_interfaces_def.h"
 #include "oc_core/snapshot_files.h"
-#include "contract_core/qpi_oc_impl.h"
+#include "qpi/impl/qpi_oc_impl.h"
 
-#include "contract_core/qpi_mining_impl.h"
+#include "qpi/impl/qpi_mining_impl.h"
 #include "revenue.h"
 
 ////////// Qubic \\\\\\\\\\
