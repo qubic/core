@@ -407,9 +407,9 @@ struct ScoreBpp9000
         const unsigned long long o0 = neuronWiringSimd[k * SIMD_WIRING_STRIDE + 0];
         const unsigned long long o1 = neuronWiringSimd[k * SIMD_WIRING_STRIDE + 1];
         const unsigned long long o2 = neuronWiringSimd[k * SIMD_WIRING_STRIDE + 2];
-        const __m512i t0 = _mm512_load_si512((const void*)&cur[o0]);
-        const __m512i t1 = _mm512_load_si512((const void*)&cur[o1]);
-        const __m512i t2 = _mm512_load_si512((const void*)&cur[o2]);
+        const __m512i t0 = _mm512_loadu_si512((const void*)&cur[o0]);
+        const __m512i t1 = _mm512_loadu_si512((const void*)&cur[o1]);
+        const __m512i t2 = _mm512_loadu_si512((const void*)&cur[o2]);
 
         const __m512i m30 = _mm512_set1_epi8((char)0x30);
         const __m512i mCC = _mm512_set1_epi8((char)0xCC);
@@ -424,11 +424,11 @@ struct ScoreBpp9000
         // gihh index
         const __m512i idxHi = _mm512_ternarylogic_epi32(_mm512_srli_epi16(M, 4), t2, m30, 0xD8);
 
-        const __m512i tbl = _mm512_load_si512((const void*)&lut[k * SIMD_LUT_STRIDE]);
+        const __m512i tbl = _mm512_loadu_si512((const void*)&lut[k * SIMD_LUT_STRIDE]);
         const __m512i rLo = _mm512_permutexvar_epi8(idxLo, tbl);
         const __m512i rHi = _mm512_permutexvar_epi8(idxHi, tbl);
         const __m512i res = _mm512_ternarylogic_epi32(rLo, rHi, mF0, 0xD8);
-        _mm512_store_si512((void*)&nxt[k * SIMD_LANES], res);
+        _mm512_storeu_si512((void*)&nxt[k * SIMD_LANES], res);
     }
 
     // Drives tickNeuron across the live neurons this help to improve cache access
@@ -541,15 +541,15 @@ struct ScoreBpp9000
             __m512i thrLo = makeThr(0);
             __m512i thrHi = makeThr(0);
             // position for feed counter
-            _mm512_store_si512((void*)&simdFeedCounter[0], kLaneLo);
-            _mm512_store_si512((void*)&simdFeedCounter[32], kLaneHi);
-            _mm512_store_si512((void*)&simdFeedCounterHi[0], kLaneLo);
-            _mm512_store_si512((void*)&simdFeedCounterHi[32], kLaneHi);
+            _mm512_storeu_si512((void*)&simdFeedCounter[0], kLaneLo);
+            _mm512_storeu_si512((void*)&simdFeedCounter[32], kLaneHi);
+            _mm512_storeu_si512((void*)&simdFeedCounterHi[0], kLaneLo);
+            _mm512_storeu_si512((void*)&simdFeedCounterHi[32], kLaneHi);
 
             unsigned long long tick;
             for (tick = 0; tick < maxNumberOfTicks; tick++)
             {
-                const __m512i sig = _mm512_load_si512((const void*)&cur[(unsigned long long)sigIdx * SIMD_LANES]);
+                const __m512i sig = _mm512_loadu_si512((const void*)&cur[(unsigned long long)sigIdx * SIMD_LANES]);
                 const __mmask64 unkLo = _mm512_test_epi8_mask(sig, m02);
                 const __mmask64 unkHi = _mm512_test_epi8_mask(sig, m20);
                 const __mmask64 unkActiveLo = unkLo & ~doneLo;
@@ -567,7 +567,7 @@ struct ScoreBpp9000
                 // Output complete
                 if (finishLo | finishHi)
                 {
-                    const __m512i outv = _mm512_load_si512((const void*)&cur[(unsigned long long)outIdx * SIMD_LANES]);
+                    const __m512i outv = _mm512_loadu_si512((const void*)&cur[(unsigned long long)outIdx * SIMD_LANES]);
                     if (finishLo)
                     {
                         const __m512i loVal = _mm512_and_si512(outv, m03);
@@ -615,8 +615,8 @@ struct ScoreBpp9000
                             const __mmask32 sat1 = _mm512_cmpeq_epi16_mask(relW1, k255w);
                             soLo = _mm512_mask_loadu_epi16(soLo, sat0, (const void*)&simdFeedCounter[0]);
                             soHi = _mm512_mask_loadu_epi16(soHi, sat1, (const void*)&simdFeedCounter[32]);
-                            _mm512_store_si512((void*)&simdFeedCounter[0],  soLo);
-                            _mm512_store_si512((void*)&simdFeedCounter[32], soHi);
+                            _mm512_storeu_si512((void*)&simdFeedCounter[0],  soLo);
+                            _mm512_storeu_si512((void*)&simdFeedCounter[32], soHi);
                             // Minmal on cache miss
                             __m512i mnv = _mm512_min_epu16(
                                 _mm512_mask_blend_epi16(fmLo, kFFFF, soLo),
@@ -688,8 +688,8 @@ struct ScoreBpp9000
                             const __mmask32 sat1 = _mm512_cmpeq_epi16_mask(relW1, k255w);
                             soLo = _mm512_mask_loadu_epi16(soLo, sat0, (const void*)&simdFeedCounterHi[0]);
                             soHi = _mm512_mask_loadu_epi16(soHi, sat1, (const void*)&simdFeedCounterHi[32]);
-                            _mm512_store_si512((void*)&simdFeedCounterHi[0],  soLo);
-                            _mm512_store_si512((void*)&simdFeedCounterHi[32], soHi);
+                            _mm512_storeu_si512((void*)&simdFeedCounterHi[0],  soLo);
+                            _mm512_storeu_si512((void*)&simdFeedCounterHi[32], soHi);
                             __m512i mnv = _mm512_min_epu16(
                                 _mm512_mask_blend_epi16(fmLo, kFFFF, soLo),
                                 _mm512_mask_blend_epi16(fmHi, kFFFF, soHi));
@@ -752,7 +752,7 @@ struct ScoreBpp9000
                         }
                         else if (loScalar)
                         {
-                            pLo = _mm512_load_si512((const void*)scalarLoBuf[r]);
+                            pLo = _mm512_loadu_si512((const void*)scalarLoBuf[r]);
                         }
                         else
                         {
@@ -769,7 +769,7 @@ struct ScoreBpp9000
                         }
                         else if (hiScalar)
                         {
-                            pHi = _mm512_load_si512((const void*)scalarHiBuf[r]);
+                            pHi = _mm512_loadu_si512((const void*)scalarHiBuf[r]);
                         }
                         else
                         {
@@ -778,7 +778,7 @@ struct ScoreBpp9000
                             pHi = _mm512_mask_mov_epi8(vTWENTY, feedHi, _mm512_slli_epi16(gHi, 4));
                         }
 
-                        _mm512_store_si512((void*)(curInBase + r * SIMD_LANES), _mm512_or_si512(pLo, pHi));
+                        _mm512_storeu_si512((void*)(curInBase + r * SIMD_LANES), _mm512_or_si512(pLo, pHi));
                     }
                 }
                 else
@@ -786,7 +786,7 @@ struct ScoreBpp9000
                     unsigned char* const curInBase = cur + numberOfUpdatedNeurons * SIMD_LANES;
                     for (unsigned long long r = 0; r < numLiveInputs; ++r)
                     {
-                        _mm512_store_si512((void*)(curInBase + r * SIMD_LANES), vPACKED_UNKNOWN);
+                        _mm512_storeu_si512((void*)(curInBase + r * SIMD_LANES), vPACKED_UNKNOWN);
                     }
                 }
 
@@ -837,21 +837,21 @@ struct ScoreBpp9000
         for (unsigned long long k = 0; k < m; ++k)
         {
             const unsigned int* w = &wiring[k * WIRING_STRIDE];
-            const __m256i t0 = _mm256_load_si256((const __m256i*)(cur + (unsigned long long)w[1] * SIMD_LANES));
-            const __m256i t1 = _mm256_load_si256((const __m256i*)(cur + (unsigned long long)w[2] * SIMD_LANES));
-            const __m256i t2 = _mm256_load_si256((const __m256i*)(cur + (unsigned long long)w[3] * SIMD_LANES));
+            const __m256i t0 = _mm256_loadu_si256((const __m256i*)(cur + (unsigned long long)w[1] * SIMD_LANES));
+            const __m256i t1 = _mm256_loadu_si256((const __m256i*)(cur + (unsigned long long)w[2] * SIMD_LANES));
+            const __m256i t2 = _mm256_loadu_si256((const __m256i*)(cur + (unsigned long long)w[3] * SIMD_LANES));
 
             const __m256i t2x3 = _mm256_add_epi8(_mm256_add_epi8(t2, t2), t2);
             const __m256i inner = _mm256_add_epi8(t1, t2x3);
             const __m256i inner3 = _mm256_add_epi8(_mm256_add_epi8(inner, inner), inner);
             const __m256i idx = _mm256_add_epi8(t0, inner3);
-            const __m256i tblLo = _mm256_broadcastsi128_si256(_mm_load_si128((const __m128i*)(lut + k * lutStride)));
-            const __m256i tblHi = _mm256_broadcastsi128_si256(_mm_load_si128((const __m128i*)(lut + k * lutStride + 16)));
+            const __m256i tblLo = _mm256_broadcastsi128_si256(_mm_loadu_si128((const __m128i*)(lut + k * lutStride)));
+            const __m256i tblHi = _mm256_broadcastsi128_si256(_mm_loadu_si128((const __m128i*)(lut + k * lutStride + 16)));
             const __m256i rLo = _mm256_shuffle_epi8(tblLo, idx);
             const __m256i rHi = _mm256_shuffle_epi8(tblHi, idx);
             const __m256i ge16 = _mm256_cmpgt_epi8(idx, fifteen);
             const __m256i res = _mm256_blendv_epi8(rLo, rHi, ge16);
-            _mm256_store_si256((__m256i*)(nxt + (unsigned long long)w[0] * SIMD_LANES), res);
+            _mm256_storeu_si256((__m256i*)(nxt + (unsigned long long)w[0] * SIMD_LANES), res);
         }
     }
 
