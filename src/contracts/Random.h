@@ -78,6 +78,11 @@ public:
 		Array<uint32, 32> collateralTier;      // collateral tier of slot k
 		Array<uint64, 32> lockedCollateral;    // collateral currently locked for slot k
 		Array<uint8, 32> contributedToEntropy; // 1 if slot k's reveal was mixed into entropy this cycle
+		// Tick of slot k's last accepted RevealAndCommit call. A client that submitted
+		// a tx targeting tick T can compare this to T after the fact: equal means the
+		// tx was accepted; anything earlier means it was rejected (wrong preimage,
+		// same-tick resubmit, stream full, etc.) and the attached amount was refunded.
+		Array<uint32, 32> lastUpdateTick;
 	};
 
 	struct GetProviderStatus_locals
@@ -110,6 +115,10 @@ public:
 		bit_4096 revealedThisTickFlags;
 		// Cleared each END_TICK; set when reveal is XOR'd into entropy. BuyEntropy uses for trustee verification.
 		bit_4096 contributedToEntropyFlags;
+		// Tick of the last RevealAndCommit call accepted for this slot. Never touched
+		// on a rejected call, so it is a durable, tick-precise signal off-chain clients
+		// can use (via GetProviderStatus) to tell whether a submitted tx took effect.
+		Array<uint32, RANDOM_MAX_PROVIDERS> lastUpdateTick;
 	};
 
 	PUBLIC_FUNCTION(Fees)
@@ -141,6 +150,7 @@ public:
 					output.stream.set(locals.count, locals.s);
 					output.collateralTier.set(locals.count, static_cast<uint32>(state.get().collateralTiers.get(locals.index)));
 					output.lockedCollateral.set(locals.count, state.get().lockedCollateralAmounts.get(locals.index));
+					output.lastUpdateTick.set(locals.count, state.get().lastUpdateTick.get(locals.index));
 					output.contributedToEntropy.set(locals.count, 0);
 					if (state.get().contributedToEntropyFlags.get(locals.index))
 					{
@@ -295,6 +305,7 @@ private:
 			state.mut().commits.set(locals.index, id::zero()); // leaving marker: enrolled providers always keep a non-zero commit
 			state.mut().revealOrCommitFlags.set(locals.index, 1);
 			state.mut().revealedThisTickFlags.set(locals.index, 1);
+			state.mut().lastUpdateTick.set(locals.index, qpi.tick());
 
 			return;
 		}
@@ -340,6 +351,7 @@ private:
 
 			state.mut().revealOrCommitFlags.set(locals.index, 1);
 			state.mut().revealedThisTickFlags.set(locals.index, 1);
+			state.mut().lastUpdateTick.set(locals.index, qpi.tick());
 
 			return;
 		}
@@ -374,6 +386,7 @@ private:
 
 		state.mut().revealOrCommitFlags.set(locals.index, 1);
 		state.mut().revealedThisTickFlags.set(locals.index, 0);
+		state.mut().lastUpdateTick.set(locals.index, qpi.tick());
 
 		state.mut().populations.set(locals.stream, locals.i + 1);
 	}
@@ -447,6 +460,7 @@ private:
 					state.mut().revealOrCommitFlags.set(locals.index, state.get().revealOrCommitFlags.get(locals.lastIndex));
 					state.mut().revealedThisTickFlags.set(locals.index, state.get().revealedThisTickFlags.get(locals.lastIndex));
 					state.mut().contributedToEntropyFlags.set(locals.index, state.get().contributedToEntropyFlags.get(locals.lastIndex));
+					state.mut().lastUpdateTick.set(locals.index, state.get().lastUpdateTick.get(locals.lastIndex));
 				}
 				state.mut().providers.set(locals.lastIndex, id::zero());
 				state.mut().collateralTiers.set(locals.lastIndex, 0);
@@ -456,6 +470,7 @@ private:
 				state.mut().revealOrCommitFlags.set(locals.lastIndex, 0);
 				state.mut().revealedThisTickFlags.set(locals.lastIndex, 0);
 				state.mut().contributedToEntropyFlags.set(locals.lastIndex, 0);
+				state.mut().lastUpdateTick.set(locals.lastIndex, 0);
 
 				state.mut().populations.set(locals.stream, state.get().populations.get(locals.stream) - 1);
 			}
@@ -511,6 +526,7 @@ private:
 						state.mut().revealOrCommitFlags.set(locals.index, state.get().revealOrCommitFlags.get(locals.lastIndex));
 						state.mut().revealedThisTickFlags.set(locals.index, state.get().revealedThisTickFlags.get(locals.lastIndex));
 						state.mut().contributedToEntropyFlags.set(locals.index, state.get().contributedToEntropyFlags.get(locals.lastIndex));
+						state.mut().lastUpdateTick.set(locals.index, state.get().lastUpdateTick.get(locals.lastIndex));
 					}
 					state.mut().providers.set(locals.lastIndex, id::zero());
 					state.mut().collateralTiers.set(locals.lastIndex, 0);
@@ -520,6 +536,7 @@ private:
 					state.mut().revealOrCommitFlags.set(locals.lastIndex, 0);
 					state.mut().revealedThisTickFlags.set(locals.lastIndex, 0);
 					state.mut().contributedToEntropyFlags.set(locals.lastIndex, 0);
+					state.mut().lastUpdateTick.set(locals.lastIndex, 0);
 
 					state.mut().populations.set(locals.stream, state.get().populations.get(locals.stream) - 1);
 				}
@@ -549,6 +566,7 @@ private:
 					state.mut().revealOrCommitFlags.set(locals.index, state.get().revealOrCommitFlags.get(locals.lastIndex));
 					state.mut().revealedThisTickFlags.set(locals.index, state.get().revealedThisTickFlags.get(locals.lastIndex));
 					state.mut().contributedToEntropyFlags.set(locals.index, state.get().contributedToEntropyFlags.get(locals.lastIndex));
+					state.mut().lastUpdateTick.set(locals.index, state.get().lastUpdateTick.get(locals.lastIndex));
 				}
 				state.mut().providers.set(locals.lastIndex, id::zero());
 				state.mut().collateralTiers.set(locals.lastIndex, 0);
@@ -558,6 +576,7 @@ private:
 				state.mut().revealOrCommitFlags.set(locals.lastIndex, 0);
 				state.mut().revealedThisTickFlags.set(locals.lastIndex, 0);
 				state.mut().contributedToEntropyFlags.set(locals.lastIndex, 0);
+				state.mut().lastUpdateTick.set(locals.lastIndex, 0);
 
 				state.mut().populations.set(locals.stream, state.get().populations.get(locals.stream) - 1);
 			}
