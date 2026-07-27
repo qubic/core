@@ -220,6 +220,21 @@ The engine MAY track, for each `(invocationId, ocPeerId)` pair, whether the bund
 This state is private to each Core node, MUST NOT enter snapshots, and MUST NOT be exposed via public RPC.
 See section 8 for delivery rules.
 
+### 5.3 Status-change logging
+
+Nodes built with `LOG_OC` enabled emit a log event of type `OC_INVOCATION_STATUS_CHANGE` (message type 16) on every consensus-status transition, i.e. on entering `PENDING_AUTH`, `AUTHORIZED`, and `TIMEOUT`.
+
+Logged payload (17 bytes, fields in order):
+
+| Field            | Type               | Description                                  |
+|------------------|--------------------|----------------------------------------------|
+| `invocationId`   | `long long`        | Invocation ID (section 2.1).                 |
+| `contractIndex`  | `unsigned int`     | Index of the invoking contract.              |
+| `interfaceIndex` | `unsigned int`     | OC interface index.                          |
+| `status`         | `unsigned char`    | The `OC_INVOCATION_STATUS_*` value entered.  |
+
+This is optional node-side event logging for external log subscribers, NOT consensus state. Delivery status (section 5.2) is never logged: it is node-local and non-deterministic. The `QuTransfer` fee burn (section 10) is logged immediately before the `PENDING_AUTH` event in the same tick, which lets subscribers attribute the burn to the invocation. If `startContractInvocation` fails and the fee is refunded, no status event is emitted.
+
 
 ## 6. QPI surface
 

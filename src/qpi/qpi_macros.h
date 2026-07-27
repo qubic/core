@@ -415,6 +415,23 @@ namespace QPI
 	*/
 #define SUBSCRIBE_ORACLE(OracleInterface, query, userProcNotification, notificationPeriodInMilliseconds, notifyWithPreviousReply) qpi.__qpiSubscribeOracle<OracleInterface>(query, userProcNotification, __id_##userProcNotification, notificationPeriodInMilliseconds, notifyWithPreviousReply)
 
+	/**
+	* @brief Issue an OC (Outsourced Computation) invocation to an external system.
+	* @param OcInterface The OC interface type to invoke (e.g. OCI::Mock).
+	* @param request An OcRequest value matching OcInterface::OcRequest. The caller MUST
+	*           zero-initialize the request struct (e.g. via setMemory) before assigning fields,
+	*           because hidden padding bytes are hashed into paramsDigest for consensus.
+	* @return Invocation ID (non-negative sint64) on success, -1 on any failure.
+	*
+	* The call is non-blocking and has no notification callback or return path. The contract
+	* observes invocation state by polling qpi.getOcInvocationStatus(invocationId).
+	*
+	* The invocation fee (OcInterface::getInvocationFee(request)) is deducted from the contract's
+	* spectrum balance and destroyed (not added to execution reserve). If the engine cannot record
+	* the invocation, the fee is refunded.
+	*/
+#define INVOKE_OC(OcInterface, request) qpi.__qpiInvokeOC<OcInterface>(request)
+
 #define SELF id(CONTRACT_INDEX, 0, 0, 0)
 
 #define SELF_INDEX CONTRACT_INDEX

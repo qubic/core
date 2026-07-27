@@ -224,6 +224,18 @@ namespace QPI
 		*/
 		inline uint8 getOracleQueryStatus(sint64 queryId) const;
 
+		/**
+		* @brief Get status of an OC invocation by invocationId.
+		* @param invocationId Identifier returned from INVOKE_OC().
+		* @return One of the values OC_INVOCATION_STATUS_* listed below.
+		*
+		* - OC_INVOCATION_STATUS_UNKNOWN: Invocation not found / not valid.
+		* - OC_INVOCATION_STATUS_PENDING_AUTH: Recorded; waiting for QUORUM authorization signatures.
+		* - OC_INVOCATION_STATUS_AUTHORIZED: QUORUM signatures counted; bundle eligible for delivery.
+		* - OC_INVOCATION_STATUS_TIMEOUT: Authorization did not reach quorum before the timeout.
+		*/
+		inline uint8 getOcInvocationStatus(sint64 invocationId) const;
+
 		// Access proposal functions with qpi(proposalVotingObject).func().
 		template <typename ProposerAndVoterHandlingType, typename ProposalDataType>
 		inline QpiContextProposalFunctionCall<ProposerAndVoterHandlingType, ProposalDataType> operator()(
@@ -392,6 +404,12 @@ namespace QPI
 			unsigned int notificationProcId,
 			uint32 notificationPeriodInMilliseconds = 60000,
 			bool notifyWithPreviousReply = true
+		) const;
+
+		// Internal version of INVOKE_OC.
+		template <typename OcInterface>
+		inline sint64 __qpiInvokeOC(
+			const typename OcInterface::OcRequest& request
 		) const;
 
 		// Internal version of transfer() that takes the TransferType as additional argument.

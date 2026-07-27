@@ -21,6 +21,7 @@
 #include "qpi/impl/qpi_ipo_impl.h"
 #include "qpi/impl/qpi_mining_impl.h"
 #include "qpi/impl/qpi_oracle_impl.h"
+#include "qpi/impl/qpi_oc_impl.h"
 
 #include "test_util.h"
 

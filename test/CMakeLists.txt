@@ -39,6 +39,7 @@ add_executable(
   m256.cpp
   math_lib.cpp
   network_messages.cpp
+  # oc_engine.cpp
   # platform.cpp
   # qpi_collection.cpp
   # qpi.cpp

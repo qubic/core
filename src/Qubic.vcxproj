@@ -103,6 +103,11 @@
     <ClInclude Include="oracle_interfaces\Mock.h" />
     <ClInclude Include="oracle_interfaces\Price.h" />
     <ClInclude Include="oc_core\core_oc_network_messages.h" />
+    <ClInclude Include="oc_core\oc_engine.h" />
+    <ClInclude Include="oc_core\oc_interfaces_def.h" />
+    <ClInclude Include="oc_core\oc_transactions.h" />
+    <ClInclude Include="oc_core\snapshot_files.h" />
+    <ClInclude Include="oc_interfaces\Mock.h" />
     <ClInclude Include="platform\assert.h" />
     <ClInclude Include="platform\concurrency.h" />
     <ClInclude Include="four_q.h" />
@@ -130,6 +135,7 @@
     <ClInclude Include="qpi\impl\qpi_ipo_impl.h" />
     <ClInclude Include="qpi\impl\qpi_linked_list_impl.h" />
     <ClInclude Include="qpi\impl\qpi_mining_impl.h" />
+    <ClInclude Include="qpi\impl\qpi_oc_impl.h" />
     <ClInclude Include="qpi\impl\qpi_oracle_impl.h" />
     <ClInclude Include="qpi\impl\qpi_proposals_impl.h" />
     <ClInclude Include="qpi\impl\qpi_spectrum_impl.h" />
