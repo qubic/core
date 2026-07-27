@@ -38,10 +38,6 @@ constexpr sint64 QUTIL_POLL_CREATION_FEE = 10000000LL; // Fee for poll creation 
 constexpr uint16 QUTIL_POLL_GITHUB_URL_MAX_SIZE = 256; // Max String Length for Poll's Github URLs
 constexpr uint64 QUTIL_MAX_NEW_POLL = div(QUTIL_MAX_POLL, 4ULL); // Max number of new poll per epoch
 
-// Upper bound per OC batch; above the in-flight pool size (1024) so a single transaction can
-// drive the engine into pool exhaustion, and a provable loop-termination bound.
-constexpr uint32 QUTIL_MAX_OC_BATCH_COUNT = 2048;
-
 
 // Voting log types enum
 constexpr uint64 QUTILLogTypePollCreated = 5;                       // Poll created successfully
@@ -2048,73 +2044,6 @@ public:
             qpi.invocationReward() - (output.invocationId < 0 ? 0 : locals.fee));
     }
 
-    // Trigger up to `count` OC invocations with sequential values in one transaction, for load
-    // testing the OC engine (in-flight pool exhaustion, request-storage budget, per-tick scan
-    // costs) without being limited by the one-transaction-per-identity-per-tick transport cap.
-    // The caller must fund the full batch (count * fee) via the invocation reward, so filling the
-    // in-flight pool costs the caller real QU rather than draining this contract's balance.
-    struct TriggerOCBatch_input
-    {
-        uint64 baseValue; // invocation i carries value baseValue + i
-        uint32 count;     // clamped to QUTIL_MAX_OC_BATCH_COUNT
-    };
-    struct TriggerOCBatch_output
-    {
-        uint32 invokedCount;      // invocations accepted before the first rejection (or count)
-        sint64 lastInvocationId;  // id of the last accepted invocation, -1 if none
-    };
-    struct TriggerOCBatch_locals
-    {
-        OCI::Mock::OcRequest request;
-        uint32 i;
-        sint64 invocationId;
-        sint64 fee;
-    };
-
-    PUBLIC_PROCEDURE_WITH_LOCALS(TriggerOCBatch)
-    {
-        output.invokedCount = 0;
-        output.lastInvocationId = -1;
-
-        if (input.count > QUTIL_MAX_OC_BATCH_COUNT)
-        {
-            input.count = QUTIL_MAX_OC_BATCH_COUNT;
-        }
-
-        // Gate on the invocation reward so the caller pays the burned fees, not this contract
-        // (mirrors QueryPriceOracle). Mock's fee is constant, so the whole batch costs
-        // count * fee; refund the whole reward if it does not cover that.
-        locals.fee = OCI::Mock::getInvocationFee(locals.request);
-        if (qpi.invocationReward() < locals.fee * input.count)
-        {
-            qpi.transfer(qpi.invocator(), qpi.invocationReward());
-            return;
-        }
-
-        locals.i = 0;
-        while (locals.i < input.count)
-        {
-            // Zero-initialize so padding bytes hashed into paramsDigest are deterministic
-            // across all computors (same as TriggerOC).
-            setMemory(locals.request, 0);
-            locals.request.value = input.baseValue + locals.i;
-            locals.invocationId = INVOKE_OC(OCI::Mock, locals.request);
-            if (locals.invocationId < 0)
-            {
-                // Engine rejected (in-flight pool exhausted, storage budget, or fee balance);
-                // subsequent invocations in this tick would be rejected for the same reason.
-                break;
-            }
-            output.lastInvocationId = locals.invocationId;
-            output.invokedCount++;
-            locals.i++;
-        }
-
-        // Refund the caller's reward minus the fees actually consumed.
-        qpi.transfer(qpi.invocator(),
-            qpi.invocationReward() - locals.fee * output.invokedCount);
-    }
-
     /**************************************/
     /*      GET BALANCE BULK REQUEST      */
     /**************************************/
@@ -2201,7 +2130,6 @@ public:
         REGISTER_USER_PROCEDURE(SubscribePriceOracle, 101);
         REGISTER_USER_PROCEDURE(UnsubscribeOracle, 102);
         REGISTER_USER_PROCEDURE(TriggerOC, 103);
-        REGISTER_USER_PROCEDURE(TriggerOCBatch, 104);
 
         REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyPriceOracleReply);
 
