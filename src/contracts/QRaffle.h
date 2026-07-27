@@ -16,7 +16,7 @@ constexpr uint32 QRAFFLE_SHAREHOLDER_FEE = 8; // percent
 constexpr uint32 QRAFFLE_MAX_EPOCH = 65536;
 constexpr uint32 QRAFFLE_MAX_PROPOSAL_EPOCH = 128;
 constexpr uint32 QRAFFLE_MAX_MEMBER = 65536;
-constexpr uint32 QRAFFLE_DEFAULT_QRAFFLE_AMOUNT = 10000000ull;
+constexpr uint32 QRAFFLE_DEFAULT_QRAFFLE_AMOUNT = 1000000ull;
 constexpr uint32 QRAFFLE_MIN_QRAFFLE_AMOUNT = 1000000ull;
 constexpr uint32 QRAFFLE_MAX_QRAFFLE_AMOUNT = 1000000000ull;
 // Ended token-raffle ring: 16 384 slots × ~96 B ≈ 1.5 MB.
