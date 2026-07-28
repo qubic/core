@@ -399,6 +399,7 @@ static_assert((unsigned long long)REVENUE_TX_DIM* REVENUE_M_MAX* REVENUE_M_MAX
     <= 0xFFFFFFFFFFFFFFFFULL / (REVENUE_TX_WINDOWSUM_MAX * REVENUE_TX_WINDOWSUM_MAX), "L2 sumsq overflow");
 
 // Struct record all data so that we can do the offline analysis
+#pragma pack(push, 1)
 struct EpochRevenueData
 {
     // Header
@@ -418,6 +419,7 @@ struct EpochRevenueData
     unsigned short perTickOtherTxCount[MAX_NUMBER_OF_TICKS_PER_EPOCH];   // mainly: user transfers
     unsigned short perTickTxTickLeaderCount[MAX_NUMBER_OF_TICKS_PER_EPOCH];           // total of txs
 };
+#pragma pack(pop)
 
 static EpochRevenueData gEpochRevenueData;
 
