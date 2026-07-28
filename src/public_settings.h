@@ -143,7 +143,7 @@ static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 
 #define TESTNET_EPOCH_DURATION 3000
 
-#define MAX_NUMBER_OF_TICKS_PER_EPOCH (TESTNET_EPOCH_DURATION + 5)
+#define MAX_NUMBER_OF_TICKS_PER_EPOCH (NUMBER_OF_COMPUTORS * 5) // = 3380 - this has to be % NUMBER_OF_COMPUTORS == 0 for snapshot loading to work properly
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
 
