@@ -421,6 +421,44 @@ struct EpochRevenueData
 
 static EpochRevenueData gEpochRevenueData;
 
+static constexpr unsigned long long revenueDataPerTickArrays = 5;
+static constexpr unsigned long long revenueDataFixedSize =
+    sizeof(EpochRevenueData) - revenueDataPerTickArrays * MAX_NUMBER_OF_TICKS_PER_EPOCH * sizeof(unsigned short);
+static_assert(revenueDataFixedSize == 8 + 4ULL * NUMBER_OF_COMPUTORS * sizeof(unsigned long long),
+    "EpochRevenueData has unexpected padding; the snapshot re-layout below relies on its exact layout");
+
+// Restore a revenue snapshot saved with a different MAX_NUMBER_OF_TICKS_PER_EPOCH.
+static bool remapEpochRevenueData(const unsigned char* saved, unsigned long long savedSize, EpochRevenueData& out)
+{
+    constexpr unsigned long long stride = revenueDataPerTickArrays * sizeof(unsigned short);
+    if (savedSize < revenueDataFixedSize || (savedSize - revenueDataFixedSize) % stride)
+    {
+        return false;
+    }
+    const unsigned long long savedTicks = (savedSize - revenueDataFixedSize) / stride;
+    if (savedTicks % NUMBER_OF_COMPUTORS)
+    {
+        return false;
+    }
+
+    // static_assert pins the sizes; this pins the field order the copies below rely on
+    ASSERT((const unsigned char*)out.perTickTxCount == (const unsigned char*)&out + revenueDataFixedSize);
+
+    copyMem(&out, saved, revenueDataFixedSize);
+
+    const unsigned long long copyTicks = savedTicks < MAX_NUMBER_OF_TICKS_PER_EPOCH ? savedTicks : MAX_NUMBER_OF_TICKS_PER_EPOCH;
+    unsigned short* dst[revenueDataPerTickArrays] = {
+        out.perTickTxCount, out.perTickProtocolTxCount, out.perTickContractTxCount,
+        out.perTickOtherTxCount, out.perTickTxTickLeaderCount };
+    const unsigned char* src = saved + revenueDataFixedSize;
+    for (unsigned long long i = 0; i < revenueDataPerTickArrays; i++)
+    {
+        copyMem(dst[i], src + i * savedTicks * sizeof(unsigned short), copyTicks * sizeof(unsigned short));
+        setMem(dst[i] + copyTicks, (MAX_NUMBER_OF_TICKS_PER_EPOCH - copyTicks) * sizeof(unsigned short), 0);
+    }
+    return true;
+}
+
 // Intermediate buffers for V2 revenue computation
 struct RevenueV2Buffers
 {

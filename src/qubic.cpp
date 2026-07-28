@@ -4608,6 +4608,19 @@ static bool loadAllNodeStates()
         logToConsole(L"Found epoch snapshot directory. Using node states snapshot.");
     }
 
+#if ENABLED_LOGGING
+    // Reject an unusable logging state here: returning false after node state has been loaded
+    // would leave it partially applied
+    {
+        unsigned long long savedDigestsSz;
+        if (!logger.checkLastLoggingStates(directory, savedDigestsSz))
+        {
+            logToConsole(L"Skip using node states snapshot.");
+            return false;
+        }
+    }
+#endif
+
     if (ts.tryLoadFromFile(system.epoch, directory) != 0)
     {
         logToConsole(L"Failed to load tick storage");
@@ -4689,11 +4702,32 @@ static bool loadAllNodeStates()
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
-    long long revenueDataSize = load(REVENUE_DATA_SNAPSHOT_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData, directory);
-    if (revenueDataSize != sizeof(gEpochRevenueData))
+    const long long revenueFileSize = getFileSize(REVENUE_DATA_SNAPSHOT_FILE_NAME, directory);
+    bool revenueDataLoaded = false;
+    if (revenueFileSize == (long long)sizeof(gEpochRevenueData))
     {
+        revenueDataLoaded = load(REVENUE_DATA_SNAPSHOT_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData, directory)
+            == (long long)sizeof(gEpochRevenueData);
+    }
+    else if (revenueFileSize > 0 && revenueFileSize <= (long long)defaultCommonBuffersSize)
+    {
+        // Saved with a different MAX_NUMBER_OF_TICKS_PER_EPOCH
+        __ScopedScratchpad scratchpad(revenueFileSize, /*initZero=*/false);
+        revenueDataLoaded = scratchpad.ptr
+            && load(REVENUE_DATA_SNAPSHOT_FILE_NAME, revenueFileSize, (unsigned char*)scratchpad.ptr, directory) == revenueFileSize
+            && remapEpochRevenueData((unsigned char*)scratchpad.ptr, revenueFileSize, gEpochRevenueData);
+    }
+    if (!revenueDataLoaded)
+    {
+#if USE_REVENUE_MULTI_DIMENSION
+        // v2Revenue is shadow when multi-dim is active, revenue uses gMultiDimRevenue.
+        // We mark zero to make flag out this data is invalid for analysis
+        logToConsole(L"Revenue data snapshot load/remap failed (v2 shadow mode), zeroing");
+        setMem(&gEpochRevenueData, sizeof(gEpochRevenueData), 0);
+#else
         logToConsole(L"Failed to load revenue data snapshot");
         return false;
+#endif
     }
 
     MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME) / sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
@@ -4796,7 +4830,11 @@ static bool loadAllNodeStates()
 
 #if ENABLED_LOGGING
     logToConsole(L"Loading old logger...");
-    logger.loadLastLoggingStates(directory);
+    if (!logger.loadLastLoggingStates(directory))
+    {
+        logToConsole(L"Failed to load logging state, discarding snapshot");
+        return false;
+    }
 #endif
 
 #if !defined(NDEBUG)
