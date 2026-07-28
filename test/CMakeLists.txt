@@ -46,7 +46,7 @@ add_executable(
   # qpi.cpp
   # qpi_hash_map.cpp
   # score_cache.cpp
-  # score.cpp
+  score.cpp
   # spectrum.cpp
   # stdlib_impl.cpp
   # tick_storage.cpp

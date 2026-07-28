@@ -4,907 +4,507 @@
 
 #define ENABLE_PROFILING 0
 
-// current optimized implementation
 #include "../src/public_settings.h"
-#include "../src/mining/score_engine.h"
-#include "../src/score.h"
+#include "../src/mining/score_bpp9000.h"
+#include "../src/mining/task_file.h"
 
-// reference implementation
-#include "score_reference.h"
-
-// params settting
+#include "score_bpp9000_reference.h"
 #include "score_params.h"
 
 #include "utils.h"
 
-#include <chrono>
+#include <vector>
+#include <array>
+#include <tuple>
+#include <memory>
+#include <string>
 #include <fstream>
-#include <filesystem>
+#include <utility>
 #include <thread>
+#include <cstring>
+#include <chrono>
+#include <iostream>
 
 using namespace score_params;
 using namespace test_utils;
 
-// When algorithm change, belows need to do
-// - score_params.h: adjust the number of ParamType and change the config of kSettings
-// - Modify the score reference run with new setting
-// - Need to verify about the idex of setting in the template of score/score_reference class
-// - Re-run the test_score_generation for generating 2 csv files, scores and samples
-// - Copy the files into test/data
-// - Rename COMMON_TEST_SAMPLES_FILE_NAME and COMMON_TEST_SCORES_FILE_NAME if neccessary
+static const std::string TASK_FILE_NAME = "data/example_task_bpp9000.bin";
+static const std::string SAMPLES_FILE_NAME = "data/samples_bpp9000.csv";
+static const std::string SCORES_FILE_NAME = "data/scores_bpp9000.csv";
 
-
-static const std::string COMMON_TEST_SAMPLES_FILE_NAME = "data/samples_20240815.csv";
-static const std::string COMMON_TEST_SCORES_HYPERIDENTITY_FILE_NAME = "data/scores_hyperidentity.csv";
-static const std::string COMMON_TEST_SCORES_ADDITION_FILE_NAME = "data/scores_addition_detour.csv";
-
-static constexpr bool PRINT_DETAILED_INFO = false;
-// Variable control the algo tested
-// AllAlgo: run the score that alg is retermined by nonce
-static std::vector<std::pair<score_engine::AlgoType, std::string>> TEST_ALGOS = {
-    {score_engine::AlgoType::HyperIdentity, "HyperIdentity"},
-    {score_engine::AlgoType::Addition, "Addition"},
-    {score_engine::AlgoType::MaxAlgoCount, "Mixed"},
-};
-
-// set to 0 for run all available samples
-// For profiling enable, run all available samples
-static constexpr unsigned long long COMMON_TEST_NUMBER_OF_SAMPLES = 16;
-static constexpr unsigned long long PROFILING_NUMBER_OF_SAMPLES = 48;
-
-
-// set 0 for run maximum number of threads of the computer.
-// For profiling enable, set it equal to deployment setting
-static constexpr int MAX_NUMBER_OF_THREADS = 0;
-static constexpr int MAX_NUMBER_OF_PROFILING_THREADS = 12;
+// true  = ALSO run the engine-vs-reference cross-check on random tasks, for isolating a divergence.
 static bool gCompareReference = false;
 
-// Only run on specific index of samples and setting
-std::vector<unsigned int> filteredSamples;// = { 0 };
-std::vector<unsigned int> filteredSettings;// = { 0 };
+// Samples run per config
+static constexpr unsigned long long TEST_NUMBER_OF_SAMPLES = 32;
+// Worker threads for the parallel path; effective count = min(this, hardware_concurrency, numSamples).
+static constexpr unsigned int TEST_NUMBER_OF_THREADS = 0;
 
-std::vector<std::vector<unsigned int>> gScoresHyperIdentityGroundTruth;
-std::vector<std::vector<unsigned int>> gScoresHyperAdditionGroundTruth;
-std::map<unsigned int, unsigned long long> gScoreProcessingTime;
-std::map<int, int> gScoreHyperIdentityIndexMap;
-std::map<int, int> gScoreAdditionIndexMap;
+// Samples and worker threads for the Bpp9000Profile timing run.
+static constexpr unsigned long long PROFILING_NUMBER_OF_SAMPLES = 48;
+static constexpr unsigned int MAX_NUMBER_OF_PROFILING_THREADS = 12;
 
-struct ScoreResult
+static std::string trim(const std::string& s)
 {
-    unsigned int score;
-    long long elapsedMs;
+    size_t a = s.find_first_not_of(" \t\r\n");
+    if (a == std::string::npos)
+    {
+        return "";
+    }
+    size_t b = s.find_last_not_of(" \t\r\n");
+    return s.substr(a, b - a + 1);
+}
+
+static std::vector<unsigned char> readBinaryFile(const std::string& path)
+{
+    std::ifstream f(path, std::ios::binary);
+    return std::vector<unsigned char>((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+}
+
+// samples_bpp9000.csv: header + rows of "seed, publickey, nonce" (each 32-byte hex).
+static void loadSamples(std::vector<m256i>& seeds, std::vector<m256i>& pubkeys, std::vector<m256i>& nonces, unsigned long long limit)
+{
+    auto rows = readCSV(SAMPLES_FILE_NAME);
+    ASSERT_GT(rows.size(), 1u) << "missing/empty " << SAMPLES_FILE_NAME;
+    unsigned long long n = rows.size() - 1;   // minus header
+    if (n > limit)
+    {
+        n = limit;
+    }
+    for (unsigned long long i = 0; i < n; ++i)
+    {
+        seeds.push_back(hexTo32Bytes(trim(rows[i + 1][0]), 32));
+        pubkeys.push_back(hexTo32Bytes(trim(rows[i + 1][1]), 32));
+        nonces.push_back(hexTo32Bytes(trim(rows[i + 1][2]), 32));
+    }
+}
+
+// scores_bpp9000.csv: header (config params) + rows of FAILURE counts, one column per config.
+static std::vector<std::vector<unsigned int>> loadGolden()
+{
+    auto rows = readCSV(SCORES_FILE_NAME);
+    std::vector<std::vector<unsigned int>> golden;
+    for (unsigned long long i = 1; i < rows.size(); ++i)   // skip header
+    {
+        std::vector<unsigned int> row;
+        for (const auto& cell : rows[i])
+        {
+            row.push_back((unsigned int)std::stoul(trim(cell)));
+        }
+        golden.push_back(row);
+    }
+    return golden;
+}
+
+// Build synthetic task
+template<typename Cfg>
+static void buildSyntheticTask(const unsigned char* pool, std::vector<unsigned char>& topoBlock, std::vector<unsigned char>& dataBlock)
+{
+    constexpr unsigned long long N = Cfg::numberOfInputNeurons;
+    constexpr unsigned long long M = Cfg::numberOfOutputNeurons;
+    constexpr unsigned long long T = Cfg::sequenceLength;
+    constexpr unsigned long long P = Cfg::populationThreshold;
+    constexpr unsigned long long K = Cfg::numberOfNeighbors;
+
+    const unsigned long long need = P * K + (N + M + 1) + T * N + T * M;
+    const unsigned long long padded = ((need + 63) / 64) * 64;   // random2 draws multiples of 64
+    std::vector<unsigned char> rnd(padded);
+    unsigned char taskSeed[32] = {};
+    score_engine::random2(taskSeed, pool, rnd.data(), padded);
+
+    unsigned long long off = 0;
+
+    // Each neuron gets K distinct neighbours, none the neuron itself. On a clash, bump +1 mod P (this
+    // consumes the same P*K random bytes, so the draw stream stays deterministic).
+    std::vector<unsigned int> neighborIndices(P * K);
+    for (unsigned long long n = 0; n < P; ++n)
+    {
+        for (unsigned long long j = 0; j < K; ++j)
+        {
+            unsigned int cand = (unsigned int)(rnd[off++] % P);
+            bool ok = false;
+            while (!ok)
+            {
+                ok = (cand != (unsigned int)n);
+                for (unsigned long long p = 0; p < j && ok; ++p)
+                {
+                    if (neighborIndices[n * K + p] == cand)
+                    {
+                        ok = false;
+                    }
+                }
+                if (!ok)
+                {
+                    cand = (unsigned int)((cand + 1) % P);
+                }
+            }
+            neighborIndices[n * K + j] = cand;
+        }
+    }
+
+    std::vector<char> used(P, 0);
+    auto pickDistinct = [&]() -> unsigned int
+    {
+        unsigned int idx = (unsigned int)(rnd[off++] % P);
+        while (used[idx])
+        {
+            idx = (unsigned int)((idx + 1) % P);
+        }
+        used[idx] = 1;
+        return idx;
+    };
+
+    std::vector<unsigned int> inputNeuronIndices(N);
+    for (unsigned long long i = 0; i < N; ++i)
+    {
+        inputNeuronIndices[i] = pickDistinct();
+    }
+    std::vector<unsigned int> outputNeuronIndices(M);
+    for (unsigned long long i = 0; i < M; ++i)
+    {
+        outputNeuronIndices[i] = pickDistinct();
+    }
+    unsigned int signalNeuronIndex = pickDistinct();
+
+    topoBlock.resize(score_task_file::topologyBytes((unsigned int)N, (unsigned int)M, (unsigned int)P, (unsigned int)K));
+    score_task_file::serializeTopologyBlock((unsigned int)N, (unsigned int)M, (unsigned int)P, (unsigned int)K,
+                                      inputNeuronIndices.data(), outputNeuronIndices.data(),
+                                      signalNeuronIndex, neighborIndices.data(), topoBlock.data());
+
+    std::vector<unsigned char> inputsTrits(T * N);
+    for (unsigned long long i = 0; i < T * N; ++i)
+    {
+        inputsTrits[i] = (unsigned char)(rnd[off++] % 3);
+    }
+    std::vector<unsigned char> outputsTrits(T * M);
+    for (unsigned long long i = 0; i < T * M; ++i)
+    {
+        outputsTrits[i] = (unsigned char)(rnd[off++] % 3);
+    }
+
+    dataBlock.resize(score_task_file::dataBytes((unsigned int)N, (unsigned int)M, T));
+    score_task_file::packDataBlock((unsigned int)N, (unsigned int)M, T, inputsTrits.data(), outputsTrits.data(), dataBlock.data());
+}
+
+// Threading helpers: workerThreadCount() picks the thread count; runWorkers() spawns that many threads,
+// each running worker(threadIdx, numThreads) on its strided sample slice [threadIdx, +numThreads, ...].
+// Runs inline when a single thread is enough.
+static unsigned int workerThreadCount(unsigned long long numSamples)
+{
+    unsigned int hw = std::thread::hardware_concurrency();
+    if (hw == 0)
+    {
+        hw = 1;
+    }
+    unsigned int chosen = (hw < TEST_NUMBER_OF_THREADS) ? hw : TEST_NUMBER_OF_THREADS;   // min(hardware_concurrency, chosen)
+    return (unsigned int)((numSamples < (unsigned long long)chosen) ? numSamples : (unsigned long long)chosen);   // no more than one thread per sample
+}
+
+template<typename Worker>
+static void runWorkers(unsigned int numThreads, const Worker& worker)
+{
+    if (numThreads <= 1)
+    {
+        worker(0u, 1u);
+        return;
+    }
+    std::vector<std::thread> threads;
+    for (unsigned int t = 0; t < numThreads; ++t)
+    {
+        threads.emplace_back(worker, t, numThreads);
+    }
+    for (auto& th : threads)
+    {
+        th.join();
+    }
+}
+
+// Fill `pool` with the random2 pool derived from `seed` (state is a throwaway scratch buffer).
+static void generatePool(const m256i& seed, std::vector<unsigned char>& pool)
+{
+    std::vector<unsigned char> state(score_engine::STATE_SIZE);
+    pool.resize(score_engine::POOL_VEC_PADDING_SIZE);
+    score_engine::generateRandom2Pool(seed.m256i_u8, state.data(), pool.data());
+}
+
+// Pointers to the topology and data blocks inside a task file, for a config's first-T-rows subview.
+struct TaskBlocks
+{
+    const unsigned char* topo;
+    const unsigned char* data;
 };
 
-template<template<typename, typename> class ScoreType, typename CurrentConfig>
-ScoreResult computeScore(
-    const unsigned char* miningSeed,
-    const unsigned char* publicKey,
-    const unsigned char* nonce,
-    score_engine::AlgoType algo,
-    unsigned char* externalRandomPool)
+template<typename Cfg>
+static TaskBlocks taskSubview(const std::vector<unsigned char>& taskBytes)
 {
-    std::unique_ptr<ScoreType< typename CurrentConfig::HyperIdentity,typename CurrentConfig::Addition>> scoreEngine = 
-        std::make_unique<ScoreType<typename CurrentConfig::HyperIdentity, typename CurrentConfig::Addition >>();
+    // The subview only offsets by T; the config's N/M/P/K must equal the task file's - P and K are NOT
+    // sub-viewable (the wiring is global). Fail loudly on a mismatch instead of pointing into garbage.
+    const score_task_file::TaskFileHeader* h = (const score_task_file::TaskFileHeader*)taskBytes.data();
+    EXPECT_EQ(h->population, (unsigned int)Cfg::populationThreshold) << "task file P != config P";
+    EXPECT_EQ(h->numInputTrits, (unsigned int)Cfg::numberOfInputNeurons) << "task file N != config N";
+    EXPECT_EQ(h->numOutputTrits, (unsigned int)Cfg::numberOfOutputNeurons) << "task file M != config M";
+    EXPECT_EQ(h->numNeighbors, (unsigned int)Cfg::numberOfNeighbors) << "task file K != config K";
+    EXPECT_GE(h->numPairs, (unsigned long long)Cfg::sequenceLength) << "task file T < config T";
 
-    scoreEngine->initMemory();
-    if (nullptr == externalRandomPool)
-    {
-        scoreEngine->initMiningData(miningSeed);
-    }
-
-    unsigned int scoreValue = 0;
-
-    auto t0 = std::chrono::high_resolution_clock::now();
-
-    switch (algo)
-    {
-    case score_engine::AlgoType::HyperIdentity:
-        scoreValue = scoreEngine->computeHyperIdentityScore(publicKey, nonce, externalRandomPool);
-        break;
-    case score_engine::AlgoType::Addition:
-        scoreValue = scoreEngine->computeAdditionScore(publicKey, nonce, externalRandomPool);
-        break;
-    default:
-        scoreValue = scoreEngine->computeScore(publicKey, nonce, externalRandomPool);
-        break;
-    }
-
-    auto t1 = std::chrono::high_resolution_clock::now();
-    auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
-
-    return { scoreValue, elapsedMs };
-
+    const unsigned long long topoBytes = score_task_file::topologyBytes(
+        (unsigned int)Cfg::numberOfInputNeurons, (unsigned int)Cfg::numberOfOutputNeurons,
+        (unsigned int)Cfg::populationThreshold, (unsigned int)Cfg::numberOfNeighbors);
+    const unsigned char* topo = taskBytes.data() + sizeof(score_task_file::TaskFileHeader);
+    return { topo, topo + topoBytes };
 }
 
-void processQubicScore(const unsigned char* miningSeed, const unsigned char* publicKey, const unsigned char* nonce, int sampleIndex)
+// A fresh engine loaded with the task; nullptr (and a recorded failure) if the task is rejected.
+template<typename Cfg>
+static std::unique_ptr<score_engine::ScoreBpp9000<Cfg>> makeEngine(const unsigned char* topo, const unsigned char* data)
 {
-    // Core use the external random pool
-    std::unique_ptr<ScoreFunction<1>> pScore = std::make_unique<ScoreFunction<1>>();
-    pScore->initMemory();
-    pScore->initMiningData(miningSeed);
-
-    unsigned int scoreValue = (*pScore)(0, publicKey, miningSeed, nonce);
-
-    // Determine which algo to use to get the correct ground truth
-    int gtIndex = -1;
-    unsigned int gtScore = 0;
-    score_engine::AlgoType effectiveAlgo = (nonce[0] & 1) == 0 ? score_engine::AlgoType::HyperIdentity : score_engine::AlgoType::Addition;
-
-    std::vector<unsigned char> state(score_engine::STATE_SIZE);
-    std::vector<unsigned char> externalPoolVec(score_engine::POOL_VEC_PADDING_SIZE);
-    score_engine::generateRandom2Pool(miningSeed, state.data(), externalPoolVec.data());
-    ScoreResult scoreResult = computeScore<score_engine::ScoreEngine,
-        ConfigPair<
-            score_engine::HyperIdentityParams<
-            HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS,
-            HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS,
-            HYPERIDENTITY_NUMBER_OF_TICKS,
-            HYPERIDENTITY_NUMBER_OF_NEIGHBORS,
-            HYPERIDENTITY_POPULATION_THRESHOLD,
-            HYPERIDENTITY_NUMBER_OF_MUTATIONS,
-            HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT>,
-            score_engine::AdditionParams<
-            ADDITION_NUMBER_OF_INPUT_NEURONS,
-            ADDITION_NUMBER_OF_OUTPUT_NEURONS,
-            ADDITION_NUMBER_OF_TICKS,
-            ADDITION_NUMBER_OF_NEIGHBORS,
-            ADDITION_POPULATION_THRESHOLD,
-            ADDITION_NUMBER_OF_MUTATIONS,
-            ADDITION_SOLUTION_THRESHOLD_DEFAULT>
-        >>(
-        miningSeed, publicKey, nonce, effectiveAlgo, externalPoolVec.data());
-    unsigned int refScore = scoreResult.score;
-
-#pragma omp critical
+    auto engine = std::make_unique<score_engine::ScoreBpp9000<Cfg>>();
+    engine->initMemory();
+    if (!engine->loadTaskFromMemory(topo, data))
     {
-        EXPECT_EQ(refScore, scoreValue);
+        ADD_FAILURE() << "loadTaskFromMemory failed (T=" << Cfg::sequenceLength << ")";
+        return nullptr;
+    }
+    return engine;
+}
+
+// regression: ScoreBpp9000 on the real task subview vs the groundtruth. One read-only pool is shared
+// across threads (all samples use the same mining seed)
+template<std::size_t I>
+static void runRegressionConfig(const std::vector<m256i>& seeds, const std::vector<m256i>& pubkeys, const std::vector<m256i>& nonces,
+                                const std::vector<unsigned char>& taskBytes, const std::vector<std::vector<unsigned int>>& golden)
+{
+    using Cfg = std::tuple_element_t<I, ConfigList>;
+
+    const TaskBlocks tb = taskSubview<Cfg>(taskBytes);   // configs are first-T-rows subviews of the task file
+    std::vector<unsigned char> pool;
+    generatePool(seeds[0], pool);
+
+    runWorkers(workerThreadCount(seeds.size()), [&](unsigned int threadIdx, unsigned int numThreads)
+    {
+        auto engine = makeEngine<Cfg>(tb.topo, tb.data);
+        if (!engine)
+        {
+            return;
+        }
+        for (unsigned long long s = threadIdx; s < seeds.size(); s += numThreads)
+        {
+            const m256i& n = nonces[s];
+            unsigned int eng = engine->computeScore(pubkeys[s].m256i_u8, n.m256i_u8, pool.data());
+
+            EXPECT_EQ(eng, golden[s][I]) << "config " << I << " sample " << s;
+        }
+    });
+}
+
+// ScoreBpp9000 vs the reference on a random task. Used to debug a mismatch.
+// Note: each thread's reference owns a full pool, so this path costs ~512MB per thread.
+template<std::size_t I>
+static void runRefVsEngineConfig(const std::vector<m256i>& seeds, const std::vector<m256i>& pubkeys, const std::vector<m256i>& nonces)
+{
+    using Cfg = std::tuple_element_t<I, ConfigList>;
+
+    std::vector<unsigned char> enginePool;
+    generatePool(seeds[0], enginePool);
+
+    // One task (all samples share the seed -> same task); shared read-only across threads.
+    std::vector<unsigned char> topo;
+    std::vector<unsigned char> data;
+    buildSyntheticTask<Cfg>(enginePool.data(), topo, data);
+
+    runWorkers(workerThreadCount(seeds.size()), [&](unsigned int threadIdx, unsigned int numThreads)
+    {
+        auto engine = makeEngine<Cfg>(topo.data(), data.data());
+        if (!engine)
+        {
+            return;
+        }
+        auto ref = std::make_unique<score_bpp9000_reference::Miner<Cfg>>();
+        ref->initialize(seeds[0].m256i_u8);   // reference's own pool (own generator), once per thread
+        if (!ref->loadTaskFromMemory(topo.data(), data.data()))
+        {
+            ADD_FAILURE() << "config " << I << ": reference loadTaskFromMemory failed";
+            return;
+        }
+        for (unsigned long long s = threadIdx; s < seeds.size(); s += numThreads)
+        {
+            const m256i& n = nonces[s];
+            unsigned int eng = engine->computeScore(pubkeys[s].m256i_u8, n.m256i_u8, enginePool.data());
+            unsigned int r = ref->computeScore(pubkeys[s].m256i_u8, n.m256i_u8);
+            EXPECT_EQ(eng, r) << "config " << I << " sample " << s;
+        }
+    });
+}
+
+template<std::size_t I = 0>
+static void runRegression(const std::vector<m256i>& seeds, const std::vector<m256i>& pubkeys, const std::vector<m256i>& nonces,
+                          const std::vector<unsigned char>& taskBytes, const std::vector<std::vector<unsigned int>>& golden)
+{
+    if constexpr (I < CONFIG_COUNT)
+    {
+        runRegressionConfig<I>(seeds, pubkeys, nonces, taskBytes, golden);
+        runRegression<I + 1>(seeds, pubkeys, nonces, taskBytes, golden);
     }
 }
 
-
-template <unsigned long long i>
-static void processElement(const unsigned char* miningSeed, const unsigned char* publicKey, const unsigned char* nonce, 
-    int sampleIndex, score_engine::AlgoType algo)
+template<std::size_t I = 0>
+static void runRefVsEngine(const std::vector<m256i>& seeds, const std::vector<m256i>& pubkeys, const std::vector<m256i>& nonces)
 {
-    // Skip filter settings
-    if (!filteredSettings.empty()
-        && std::find(filteredSettings.begin(), filteredSettings.end(), i) == filteredSettings.end())
+    if constexpr (I < CONFIG_COUNT)
+    {
+        runRefVsEngineConfig<I>(seeds, pubkeys, nonces);
+        runRefVsEngine<I + 1>(seeds, pubkeys, nonces);
+    }
+}
+
+// TestBpp9000, internal score vs the samples groundtruth
+TEST(TestQubicScoreFunction, Bpp9000Regression)
+{
+    std::vector<m256i> seeds, pubkeys, nonces;
+    loadSamples(seeds, pubkeys, nonces, TEST_NUMBER_OF_SAMPLES);
+
+    auto golden = loadGolden();
+    ASSERT_GE(golden.size(), seeds.size()) << "fewer golden rows than samples";
+
+    auto taskBytes = readBinaryFile(TASK_FILE_NAME);
+    ASSERT_GT(taskBytes.size(), sizeof(score_task_file::TaskFileHeader)) << "missing/short " << TASK_FILE_NAME;
+
+    // The parallel path shares one pool, valid because all samples use the same mining seed.
+    for (unsigned long long i = 1; i < seeds.size(); ++i)
+    {
+        ASSERT_EQ(memcmp(seeds[i].m256i_u8, seeds[0].m256i_u8, 32), 0)
+            << "all samples must share one mining seed for the shared-pool parallel path";
+    }
+
+    runRegression(seeds, pubkeys, nonces, taskBytes, golden);
+}
+
+// TestBpp9000, internal score vs the score reference from Qiner
+TEST(TestQubicScoreFunction, Bpp9000EngineVsReference)
+{
+    if (gCompareReference)
+    {
+        std::vector<m256i> seeds, pubkeys, nonces;
+        loadSamples(seeds, pubkeys, nonces, TEST_NUMBER_OF_SAMPLES);
+
+        runRefVsEngine(seeds, pubkeys, nonces);
+    }
+}
+
+static void runBpp9000Profile()
+{
+    using Cfg = ProductionConfig;
+
+    std::vector<m256i> seeds, pubkeys, nonces;
+    loadSamples(seeds, pubkeys, nonces, PROFILING_NUMBER_OF_SAMPLES);
+    if (seeds.empty())
     {
         return;
     }
 
-    // Get the current config
-    using CurrentConfig = std::tuple_element_t<i, ConfigList>;
-    
-    // Core use the external random pool
-    std::vector<unsigned char> state(score_engine::STATE_SIZE);
-    std::vector<unsigned char> externalPoolVec(score_engine::POOL_VEC_PADDING_SIZE);
-    score_engine::generateRandom2Pool(miningSeed, state.data(), externalPoolVec.data());
-    ScoreResult scoreResult = computeScore<score_engine::ScoreEngine, CurrentConfig>(
-        miningSeed, publicKey, nonce, algo, externalPoolVec.data());
-    unsigned int scoreValue = scoreResult.score;
+    std::vector<unsigned char> pool;
+    generatePool(seeds[0], pool);
 
-    // Determine which algo to use to get the correct ground truth
-    int gtIndex = -1;
-    unsigned int gtScore = 0;
-    score_engine::AlgoType effectiveAlgo = algo;
-    if (algo != score_engine::AlgoType::HyperIdentity && algo != score_engine::AlgoType::Addition)
+    // Profile against a synthetic in-memory task (valid random topology + data built for this config),
+    // so a parameter change (e.g. population) needs only a rebuild - no regenerated task file.
+    std::vector<unsigned char> topo, data;
+    buildSyntheticTask<Cfg>(pool.data(), topo, data);
+
+    // Discard any scope measurements accumulated by earlier tests (Bpp9000Regression /
+    // Bpp9000EngineVsReference also call computeScore) so profiling.csv reflects only this run.
+    gProfilingDataCollector.clear();
+
+    const unsigned int numThreads = std::max(1U, MAX_NUMBER_OF_PROFILING_THREADS);
+
+    // Each thread sums its own computeScore times into its own slot (distinct indices, no lock).
+    std::vector<double> threadSumMs(numThreads, 0.0);
+    std::vector<unsigned long long> threadCount(numThreads, 0);
+
+    // Per-sample scores: sample s is written by exactly one worker (disjoint stride), so no lock is needed.
+    std::vector<unsigned int> scores(seeds.size(), 0);
+
+    runWorkers(numThreads, [&](unsigned int threadIdx, unsigned int nThreads)
     {
-        // Default/Mixed mode: select based on nonce
-        effectiveAlgo = (nonce[0] & 1) == 0 ? score_engine::AlgoType::HyperIdentity : score_engine::AlgoType::Addition;
-    }
-    if (effectiveAlgo == score_engine::AlgoType::HyperIdentity)
-    {
-        if (gScoreHyperIdentityIndexMap.count(i) > 0)
+        auto engine = makeEngine<Cfg>(topo.data(), data.data());
+        if (!engine)
         {
-            gtIndex = gScoreHyperIdentityIndexMap[i];
-            gtScore = gScoresHyperIdentityGroundTruth[sampleIndex][gtIndex];
-        }
-    }
-    else if (effectiveAlgo == score_engine::AlgoType::Addition)
-    {
-        if (gScoreAdditionIndexMap.count(i) > 0)
-        {
-            gtIndex = gScoreAdditionIndexMap[i];
-            gtScore = gScoresHyperAdditionGroundTruth[sampleIndex][gtIndex];
-        }
-    }
-
-    unsigned int refScore = 0;
-    if (gCompareReference)
-    {
-        // Reference score always re-compute the pools
-        ScoreResult scoreRefResult = computeScore<score_reference::ScoreReferenceImplementation, CurrentConfig>(
-            miningSeed, publicKey, nonce, algo, nullptr);
-        refScore = scoreRefResult.score;
-    }
-
-#pragma omp critical
-    if (gCompareReference)
-    {
-        EXPECT_EQ(refScore, scoreValue);
-    }
-    else
-    {
-        if (PRINT_DETAILED_INFO || gtIndex < 0 || (scoreValue != gtScore))
-        {
-            std::cout << "    score " << scoreValue;
-            if (gtIndex >= 0)
-            {
-                std::cout << " vs gt " << gtScore << std::endl;
-            }
-            else // No mapping from ground truth
-            {
-                std::cout << " vs gt NA" << std::endl;
-            }
-        }
-        {
-            EXPECT_GE(gtIndex, 0);
-            if (gtIndex >= 0)
-            {
-                EXPECT_EQ(gtScore, scoreValue);
-            }
-        }
-    }
-}
-
-// Recursive template to process each element in scoreSettings
-template <unsigned long long i>
-static void processElementPerf(const unsigned char* miningSeed, const unsigned char* publicKey, const  unsigned char* nonce, 
-    int sampleIndex, score_engine::AlgoType algo)
-{
-    using CurrentConfig = std::tuple_element_t<i, ProfileConfigList>;
-
-    std::vector<unsigned char> state(score_engine::STATE_SIZE);
-    std::vector<unsigned char> externalPoolVec(score_engine::POOL_VEC_PADDING_SIZE);
-    score_engine::generateRandom2Pool(miningSeed, state.data(), externalPoolVec.data());
-    ScoreResult scoreRefResult = computeScore<score_engine::ScoreEngine, CurrentConfig>(
-        miningSeed, publicKey, nonce, algo, externalPoolVec.data());
-    auto elapsed = scoreRefResult.elapsedMs;
-#pragma omp critical
-    {
-        if (gScoreProcessingTime.count(i) == 0)
-        {
-            gScoreProcessingTime[i] = elapsed;
-        }
-        else
-        {
-            gScoreProcessingTime[i] += elapsed;
-        }
-    }
-}
-
-// Main processing function
-template <char profiling, unsigned long long N, unsigned long long... Is>
-static void processHelper(const unsigned char* miningSeed, const unsigned char* publicKey, const unsigned char* nonce, 
-    int sampleIndex, score_engine::AlgoType algo, std::index_sequence<Is...>)
-{
-    if constexpr (profiling)
-    {
-        (processElementPerf<Is>(miningSeed, publicKey, nonce, sampleIndex, algo), ...);
-    }
-    else
-    {
-        (processElement<Is>(miningSeed, publicKey, nonce, sampleIndex, algo), ...);
-    }
-    
-}
-
-// Recursive template to process each element in scoreSettings
-template <char profiling, unsigned long long N>
-static void process(const unsigned char* miningSeed, const  unsigned char* publicKey, const unsigned char* nonce, 
-    int sampleIndex = 0, score_engine::AlgoType algo = score_engine::AlgoType::AllAlgo)
-{
-    processHelper<profiling, N>(miningSeed, publicKey, nonce, sampleIndex, algo, std::make_index_sequence<N>{});
-}
-
-template<typename P>
-void writeParams(std::ostream& os, const std::string& sep = ",")
-{
-    // Because currently 2 params set shared the same things, incase of new algo have different params
-    // need to make a separate check
-    if constexpr (P::algoType == score_engine::AlgoType::HyperIdentity)
-    {
-        os  << "InputNeurons: " << P::numberOfInputNeurons << sep
-            << " OutputNeurons: " << P::numberOfOutputNeurons << sep
-            << " Ticks: " << P::numberOfTicks << sep
-            << " Neighbor: " << P::numberOfNeighbors << sep
-            << " Population: " << P::populationThreshold << sep
-            << " Mutate: " << P::numberOfMutations << sep
-            << " Threshold: " << P::solutionThreshold;
-    }
-    else if constexpr (P::algoType == score_engine::AlgoType::Addition)
-    {
-         os << "InputNeurons: " << P::numberOfInputNeurons << sep
-            << " OutputNeurons: " << P::numberOfOutputNeurons << sep
-            << " Ticks: " << P::numberOfTicks << sep
-            << " Neighbor: " << P::numberOfNeighbors << sep
-            << " Population: " << P::populationThreshold << sep
-            << " Mutate: " << P::numberOfMutations << sep
-            << " Threshold: " << P::solutionThreshold;
-    }
-    else
-    {
-        std::cerr << "UNKNOWN ALGO !" << std::endl;
-    }
-}
-
-template<std::size_t I>
-void printConfigProfileImpl(score_engine::AlgoType algo)
-{
-    using CurrentConfig = std::tuple_element_t<I, ProfileConfigList>;
-
-    if (algo & score_engine::AlgoType::HyperIdentity)
-    {
-        writeParams<typename CurrentConfig::HyperIdentity>(std::cout);
-    }
-    else if (algo & score_engine::AlgoType::Addition)
-    {
-        writeParams<typename CurrentConfig::Addition>(std::cout);
-    }
-}
-
-template<std::size_t I>
-void printConfigImpl(score_engine::AlgoType algo)
-{
-    using CurrentConfig = std::tuple_element_t<I, ConfigList>;
-
-    if (algo & score_engine::AlgoType::HyperIdentity)
-    {
-        writeParams<typename CurrentConfig::HyperIdentity>(std::cout);
-    }
-    else if (algo & score_engine::AlgoType::Addition)
-    {
-        writeParams<typename CurrentConfig::Addition>(std::cout);
-    }
-}
-
-template<char profiling, std::size_t... Is>
-void printConfigByIndex(std::size_t index, score_engine::AlgoType algo, std::index_sequence<Is...>)
-{
-    if constexpr (profiling)
-    {
-        ((Is == index ? (printConfigProfileImpl<Is>(algo), 0) : 0), ...);
-    }
-    else
-    {
-        ((Is == index ? (printConfigImpl<Is>(algo), 0) : 0), ...);
-    }
-}
-
-template<char profiling>
-void printConfig(std::size_t index, score_engine::AlgoType algo)
-{
-    if constexpr (profiling)
-    {
-        printConfigByIndex<profiling>(index, algo, std::make_index_sequence<std::tuple_size_v<ProfileConfigList>>{});
-    }
-    else
-    {
-        printConfigByIndex<profiling>(index, algo, std::make_index_sequence<std::tuple_size_v<ConfigList>>{});
-    }
-}
-
-template<typename P>
-bool compareParams(const std::vector<unsigned long long>& values)
-{
-    // Because currently 2 params set shared the same things, incase of new algo have different params
-    // need to make a separate check
-    if constexpr (P::algoType == score_engine::AlgoType::HyperIdentity)
-    {
-        return values[0] == P::numberOfInputNeurons
-            && values[1] == P::numberOfOutputNeurons
-            && values[2] == P::numberOfTicks
-            && values[3] == P::numberOfNeighbors
-            && values[4] == P::populationThreshold
-            && values[5] == P::numberOfMutations
-            && values[6] == P::solutionThreshold;
-    }
-    else if constexpr (P::algoType == score_engine::AlgoType::Addition)
-    {
-        return values[0] == P::numberOfInputNeurons
-            && values[1] == P::numberOfOutputNeurons
-            && values[2] == P::numberOfTicks
-            && values[3] == P::numberOfNeighbors
-            && values[4] == P::populationThreshold
-            && values[5] == P::numberOfMutations
-            && values[6] == P::solutionThreshold;
-    }
-    return false;
-}
-
-template<std::size_t I>
-bool checkConfig(const std::vector<unsigned long long>& values, score_engine::AlgoType algo)
-{
-    using CurrentConfig = std::tuple_element_t<I, ConfigList>;
-    switch (algo)
-    {
-    case score_engine::AlgoType::HyperIdentity:
-        // HyperIdentity
-        return compareParams<typename CurrentConfig::HyperIdentity>(values);
-        break;
-    case score_engine::AlgoType::Addition:
-        // Addition
-        return compareParams<typename CurrentConfig::Addition>(values);
-        break;
-    default:
-        return false;
-        break;
-    }
-}
-
-template<std::size_t... Is>
-int findMatchingConfigImpl(const std::vector<unsigned long long>& values, score_engine::AlgoType algo, std::index_sequence<Is...>)
-{
-    int result = -1;
-    ((checkConfig<Is>(values, algo) ? (result = Is, false) : true) && ...);
-    return result;
-}
-
-int findMatchingConfig(const std::vector<unsigned long long>& values, score_engine::AlgoType algo)
-{
-    return findMatchingConfigImpl(values, algo, std::make_index_sequence<std::tuple_size_v<ConfigList>>{});
-}
-
-void loadSamples(
-    const std::vector<std::vector<std::string>>& sampleString,
-    unsigned long long numberOfSamples,
-    unsigned long long numberOfSamplesReadFromFile,
-    std::vector<m256i>& miningSeeds,
-    std::vector<m256i>& publicKeys,
-    std::vector<m256i>& nonces)
-{
-    miningSeeds.resize(numberOfSamples);
-    publicKeys.resize(numberOfSamples);
-    nonces.resize(numberOfSamples);
-
-    // Reading the input samples
-    for (unsigned long long i = 0; i < numberOfSamples; ++i)
-    {
-        if (i < numberOfSamplesReadFromFile)
-        {
-            miningSeeds[i] = hexTo32Bytes(sampleString[i][0], 32);
-            publicKeys[i] = hexTo32Bytes(sampleString[i][1], 32);
-            nonces[i] = hexTo32Bytes(sampleString[i][2], 32);
-        }
-        else // Samples from files are not enough, randomly generate more
-        {
-            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[0]);
-            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[8]);
-            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[16]);
-            _rdrand64_step((unsigned long long*) & miningSeeds[i].m256i_u8[24]);
-
-            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[0]);
-            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[8]);
-            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[16]);
-            _rdrand64_step((unsigned long long*) & publicKeys[i].m256i_u8[24]);
-
-            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[0]);
-            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[8]);
-            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[16]);
-            _rdrand64_step((unsigned long long*) & nonces[i].m256i_u8[24]);
-
-        }
-    }
-}
-
-template<typename ProcessFunc>
-void runTest(
-    const std::string& testName,
-    const std::vector<int>& samples,
-    int numberOfThreads,
-    ProcessFunc processFunc)
-{
-    std::cout << "Test " << testName << " ..." << std::endl;
-    int proccessedSamples = 0;
-#pragma omp parallel for num_threads(numberOfThreads)
-    for (int i = 0; i < static_cast<int>(samples.size()); ++i)
-    {
-        int index = samples[i];
-        processFunc(index);
-#pragma omp critical
-        proccessedSamples++;
-        std::cout << "\r-Processed: " << proccessedSamples << " / " << static_cast<int>(samples.size()) << "    " << std::flush;
-    }
-    std::cout << std::endl;
-}
-
-static std::vector<std::vector<std::string>> readSampleAsStr(const std::string& filename)
-{
-    std::vector<std::vector<std::string>> sampleString = readCSV(filename);
-
-    // Remove header
-    sampleString.erase(sampleString.begin());
-
-    return sampleString;
-}
-
-void runCommonTests()
-{
-
-#if defined (__AVX512F__) && !GENERIC_K12
-    initAVX512KangarooTwelveConstants();
-#endif
-    constexpr unsigned long long numberOfGeneratedSetting = CONFIG_COUNT;
-
-    // Read the parameters and results
-    auto sampleString = readSampleAsStr(COMMON_TEST_SAMPLES_FILE_NAME);
-
-    // Convert the raw string and do the data verification
-    unsigned long long numberOfSamplesReadFromFile = sampleString.size();
-    unsigned long long numberOfSamples = numberOfSamplesReadFromFile;
-    unsigned long long requestedNumberOfSamples = COMMON_TEST_NUMBER_OF_SAMPLES;
-
-    if (requestedNumberOfSamples > 0)
-    {
-        std::cout << "Request testing with " << requestedNumberOfSamples << " samples." << std::endl;
-
-        numberOfSamples = std::min(requestedNumberOfSamples, numberOfSamples);
-        if (requestedNumberOfSamples <= numberOfSamples)
-        {
-            numberOfSamples = requestedNumberOfSamples;
-        }
-        else // Request number of samples greater than existed. Only valid for reference score validation only
-        {
-            if (gCompareReference)
-            {
-                numberOfSamples = requestedNumberOfSamples;
-                std::cout << "Refenrece comparison mode: " << numberOfSamples << " samples are read from file for comparision."
-                    << "Remained are generated randomly."
-                    << std::endl;
-            }
-            else
-            {
-                std::cout << "Only " << numberOfSamples << " samples can be read from file for comparison" << std::endl;
-            }
-        }
-    }
-
-    // Reading the input samples
-    std::vector<m256i> miningSeeds(numberOfSamples);
-    std::vector<m256i> publicKeys(numberOfSamples);
-    std::vector<m256i> nonces(numberOfSamples);
-    loadSamples(sampleString, numberOfSamples, numberOfSamplesReadFromFile, miningSeeds, publicKeys, nonces);
-
-    // Reading the header of score and verification
-    if (!gCompareReference)
-    {
-        auto scoresStringHyperidentity = readCSV(COMMON_TEST_SCORES_HYPERIDENTITY_FILE_NAME);
-        auto scoresStringAddition = readCSV(COMMON_TEST_SCORES_ADDITION_FILE_NAME);
-
-        if (scoresStringAddition.size() == 0 ||  scoresStringAddition.size() == 0)
-        {
-            ASSERT_GT(scoresStringHyperidentity.size(), 0);
-            ASSERT_GT(scoresStringAddition.size(), 0);
-            std::cout << "Number of Hyperidentity and Addition settings must greater than zero." << std::endl;
             return;
         }
-        if (scoresStringAddition.size() != scoresStringAddition.size())
+        for (unsigned long long s = threadIdx; s < seeds.size(); s += nThreads)
         {
-            ASSERT_EQ(scoresStringHyperidentity.size(), scoresStringAddition.size());
-            std::cout << "Number of Hyperidentity and Addition settings must be equal." << std::endl;
-            return;
+            const m256i& n = nonces[s];
+
+            const auto callStart = std::chrono::steady_clock::now();
+            const unsigned int score = engine->computeScore(pubkeys[s].m256i_u8, n.m256i_u8, pool.data());
+            const auto callEnd = std::chrono::steady_clock::now();
+            scores[s] = score;
+
+            threadSumMs[threadIdx] += std::chrono::duration<double, std::milli>(callEnd - callStart).count();
+            threadCount[threadIdx] += 1;
         }
-
-        // 
-        auto buildIndexMap = [](
-            std::vector<std::string>& header,
-            score_engine::AlgoType algo,
-            std::map<int, int>& indexMap)
-            {
-                for (int gtIdx = 0; gtIdx < (int)header.size(); ++gtIdx)
-                {
-                    auto scoresSettingHeader = convertULLFromString(header[gtIdx]);
-                    int foundIndex = findMatchingConfig(scoresSettingHeader, algo);
-                    if (foundIndex >= 0)
-                    {
-                        indexMap[foundIndex] = gtIdx;
-                    }
-                }
-            };
-        buildIndexMap(scoresStringHyperidentity[0], score_engine::AlgoType::HyperIdentity, gScoreHyperIdentityIndexMap);
-        buildIndexMap(scoresStringAddition[0], score_engine::AlgoType::Addition, gScoreAdditionIndexMap);
-
-        if (gScoreHyperIdentityIndexMap.size() != gScoreHyperIdentityIndexMap.size())
-        {
-            ASSERT_EQ(gScoreHyperIdentityIndexMap.size(), gScoreHyperIdentityIndexMap.size());
-            std::cout << "Number of tested Hyperidentity and Addition must be equal." << std::endl;
-            return;
-        }
-        
-        std::cout << "Testing " << CONFIG_COUNT << " param combinations on " << scoresStringHyperidentity[0].size() << " Hyperidentity and Addition ground truth settings." << std::endl;
-        // In case of number of setting is lower than the ground truth. Consider we are in experiement, still run but expect the test failed
-        if (gScoreHyperIdentityIndexMap.size() < CONFIG_COUNT)
-        {
-            std::cout << "WARNING: Number of provided ground truth settings is lower than tested settings. Only test with available ones."
-                << std::endl;
-            EXPECT_EQ(gScoreHyperIdentityIndexMap.size(), CONFIG_COUNT);
-        }
-
-        auto loadGroundTruth = [](
-            const std::vector<std::vector<std::string>>& scoresString,
-            std::vector<std::vector<unsigned int>>& groundTruth,
-            int numberOfSamples) -> int
-            {
-                int numberOfGTSetting = (int)scoresString.size() - 1;
-                numberOfSamples = std::min(numberOfSamples, numberOfGTSetting);
-                groundTruth.resize(numberOfSamples);
-
-                for (size_t i = 0; i < numberOfSamples; ++i)
-                {
-                    auto& scoresStr = scoresString[i + 1];
-                    for (const auto& str : scoresStr)
-                    {
-                        groundTruth[i].push_back(std::stoi(str));
-                    }
-                }
-
-                return numberOfSamples;
-            };
-
-        int numHI = loadGroundTruth(scoresStringHyperidentity, gScoresHyperIdentityGroundTruth, (int)numberOfSamples);
-        int numAdd = loadGroundTruth(scoresStringAddition, gScoresHyperAdditionGroundTruth, (int)numberOfSamples);
-
-        std::cout << "There are " << numHI << " Hyperidentity results and " << numAdd << " Addition results." << std::endl;
-    }
-
-
-    // Run the test
-    unsigned int numberOfThreads = std::thread::hardware_concurrency();
-    if (MAX_NUMBER_OF_THREADS > 0)
-    {
-        numberOfThreads = numberOfThreads > MAX_NUMBER_OF_THREADS ? MAX_NUMBER_OF_THREADS : numberOfThreads;
-    }
-
-    if (numberOfThreads > 1)
-    {
-        std::cout << "Compare score only. Lauching test with all available " << numberOfThreads << " threads." << std::endl;
-    }
-    else
-    {
-        std::cout << "Running one sample on one thread for collecting single thread performance." << std::endl;
-    }
-
-    std::vector<int> samples;
-    for (int i = 0; i < numberOfSamples; ++i)
-    {
-        if (!filteredSamples.empty()
-            && std::find(filteredSamples.begin(), filteredSamples.end(), i) == filteredSamples.end())
-        {
-            continue;
-        }
-        samples.push_back(i);
-    }
-
-    std::string compTerm = "and compare with groundtruths from file.";
-    if (gCompareReference)
-    {
-        compTerm = "and compare with reference code.";
-    }
-
-    std::cout << "Processing " << samples.size() << " samples " << compTerm << "..." << std::endl;
-
-    for (const auto& [algoType, algoName] : TEST_ALGOS)
-    {
-        runTest(algoName, samples, numberOfThreads, [&](int index)
-        {
-            process<0, CONFIG_COUNT>(
-                miningSeeds[index].m256i_u8,
-                publicKeys[index].m256i_u8,
-                nonces[index].m256i_u8,
-                index,
-                algoType);
-        });
-    }
-
-    // Test Qubic score vs internal engine (always runs)
-    runTest("Qubic's score vs internal score engine on active config", samples, numberOfThreads, [&](int index)
-    {
-        processQubicScore(
-            miningSeeds[index].m256i_u8,
-            publicKeys[index].m256i_u8,
-            nonces[index].m256i_u8,
-            index);
     });
 
-}
-
-template<int Profiling, std::size_t ConfigCount>
-void profileAlgo(
-    score_engine::AlgoType algo,
-    const std::string& algoName,
-    const std::vector<int>& samples,
-    const std::vector<m256i>& miningSeeds,
-    const std::vector<m256i>& publicKeys,
-    const std::vector<m256i>& nonces,
-    const std::vector<unsigned int>& filteredSamples,
-    int numberOfThreads,
-    unsigned long long numberOfSamples)
-{
-    std::cout << "Profile " << algoName << " ... " << std::endl;
-    gScoreProcessingTime.clear();
-
-    int numSamples = static_cast<int>(samples.size());
-    int proccessedSamples = 0;
-#pragma omp parallel for num_threads(numberOfThreads)
-    for (int i = 0; i < numSamples; ++i)
+    double totalMs = 0.0;
+    unsigned long long totalCount = 0;
+    for (unsigned int t = 0; t < numThreads; ++t)
     {
-        int index = samples[i];
-        process<Profiling, ConfigCount>(
-            miningSeeds[index].m256i_u8,
-            publicKeys[index].m256i_u8,
-            nonces[index].m256i_u8,
-            index,
-            algo);
-#pragma omp critical
-        proccessedSamples++;
-        std::cout << "\r-Processed: " << proccessedSamples << " / " << numSamples << "    " << std::flush;
+        totalMs += threadSumMs[t];
+        totalCount += threadCount[t];
     }
-    std::cout << std::endl;
+    const double avgMs = (totalCount > 0) ? (totalMs / (double)totalCount) : 0.0;
 
-    std::size_t sampleCount = filteredSamples.empty() ? numberOfSamples : filteredSamples.size();
-    for (const auto& [settingIndex, totalTime] : gScoreProcessingTime)
+    std::cout << "[bpp9000 profile] config "
+              << Cfg::numberOfInputNeurons << "-" << Cfg::numberOfOutputNeurons << "-" << Cfg::sequenceLength
+              << "-" << Cfg::windowWidth << "-" << Cfg::maxNumberOfTicks << "-" << Cfg::numberOfNeighbors
+              << "-" << Cfg::populationThreshold << "-" << Cfg::numberOfMutations << "-" << Cfg::solutionThreshold
+              << " : avg " << avgMs << " ms/solution" << std::endl;
+
+    // Score distribution over the same samples
+    const unsigned int infiniteError = score_engine::ScoreBpp9000<Cfg>::INFINITE_ERROR;
+    unsigned long long validCount = 0;
+    unsigned long long timeoutCount = 0;
+    unsigned long long scoreSum = 0;
+    unsigned int scoreMin = infiniteError;
+    unsigned int scoreMax = 0;
+    for (unsigned long long s = 0; s < scores.size(); ++s)
     {
-        unsigned long long avgTime = totalTime / sampleCount;
-        std::cout << "Avg time [setting " << settingIndex << "]: ";
-        printConfig<Profiling>(settingIndex, algo);
-        std::cout << " - " << avgTime << " ms" << std::endl;
-    }
-}
-
-void runPerformanceTests()
-{
-#if defined (__AVX512F__) && !GENERIC_K12
-    initAVX512KangarooTwelveConstants();
-#endif
-    constexpr unsigned long long numberOfGeneratedSetting = PROFILE_CONFIG_COUNT;
-
-    // Read the parameters and results
-    auto sampleString = readSampleAsStr(COMMON_TEST_SAMPLES_FILE_NAME);
-
-    // Convert the raw string and do the data verification
-    unsigned long long numberOfSamplesReadFromFile = sampleString.size();
-    unsigned long long numberOfSamples = numberOfSamplesReadFromFile;
-    unsigned long long requestedNumberOfSamples = PROFILING_NUMBER_OF_SAMPLES;
-
-    if (requestedNumberOfSamples > 0)
-    {
-        std::cout << "Request testing with " << requestedNumberOfSamples << " samples." << std::endl;
-
-        numberOfSamples = std::min(requestedNumberOfSamples, numberOfSamples);
-        if (requestedNumberOfSamples <= numberOfSamples)
+        const unsigned int sc = scores[s];
+        if (sc == infiniteError)
         {
-            numberOfSamples = requestedNumberOfSamples;
-        }
-    }
-
-    // Loading samples
-    std::vector<m256i> miningSeeds(numberOfSamples);
-    std::vector<m256i> publicKeys(numberOfSamples);
-    std::vector<m256i> nonces(numberOfSamples);
-    loadSamples(sampleString, numberOfSamples, numberOfSamplesReadFromFile, miningSeeds, publicKeys, nonces);
-
-    std::cout << "Profiling " << numberOfGeneratedSetting << " param combinations. " << std::endl;
-
-    // Run the profiling
-    unsigned int numberOfThreads = std::thread::hardware_concurrency();
-    if (MAX_NUMBER_OF_PROFILING_THREADS > 0)
-    {
-        numberOfThreads = numberOfThreads > MAX_NUMBER_OF_PROFILING_THREADS ? MAX_NUMBER_OF_PROFILING_THREADS : numberOfThreads;
-    }
-    std::cout << "Running " << numberOfThreads << " threads for collecting multiple threads performance" << std::endl;
-
-    std::vector<int> samples;
-    for (int i = 0; i < numberOfSamples; ++i)
-    {
-        if (!filteredSamples.empty()
-            && std::find(filteredSamples.begin(), filteredSamples.end(), i) == filteredSamples.end())
-        {
+            timeoutCount++;
             continue;
         }
-        samples.push_back(i);
+        validCount++;
+        scoreSum += sc;
+        if (sc < scoreMin)
+        {
+            scoreMin = sc;
+        }
+        if (sc > scoreMax)
+        {
+            scoreMax = sc;
+        }
+    }
+    const double scoreMean = (validCount > 0) ? ((double)scoreSum / (double)validCount) : 0.0;
+    if (validCount == 0)
+    {
+        scoreMin = 0;
     }
 
-    std::string compTerm = "for profiling, don't compare any result.";
+    std::cout << "[bpp9000 profile] score (valid " << validCount << ", timeout " << timeoutCount << ")"
+              << " : min " << scoreMin << " mean " << scoreMean << " max " << scoreMax << std::endl;
 
-    std::cout << "Processing " << samples.size() << " samples " << compTerm << "..." << std::endl;
-
-    profileAlgo<1, PROFILE_CONFIG_COUNT>(
-        score_engine::AlgoType::HyperIdentity, "HyperIdentity",
-        samples, miningSeeds, publicKeys, nonces, filteredSamples, numberOfThreads, numberOfSamples);
-
-    profileAlgo<1, PROFILE_CONFIG_COUNT>(
-        score_engine::AlgoType::Addition, "Addition",
-        samples, miningSeeds, publicKeys, nonces, filteredSamples, numberOfThreads, numberOfSamples);
-
-    profileAlgo<1, PROFILE_CONFIG_COUNT>(
-        score_engine::AlgoType::MaxAlgoCount, "Mixed",
-        samples, miningSeeds, publicKeys, nonces, filteredSamples, numberOfThreads, numberOfSamples);
-
+    // Dump the PROFILE_NAMED_SCOPE breakdown (per-scope count + avg/min/max microseconds) to profiling.csv.
     gProfilingDataCollector.writeToFile();
+    std::cout << "[bpp9000 profile] wrote profiling.csv (scopes: computeScore/score/initializeANN)" << std::endl;
 }
+
 
 #if ENABLE_PROFILING
-
-TEST(TestQubicScoreFunction, PerformanceTests)
+TEST(TestQubicScoreFunction, Bpp9000Profile)
 {
-    runPerformanceTests();
+    runBpp9000Profile();
 }
 #endif
 
-TEST(TestQubicScoreFunction, CommonTests)
-{
-    runCommonTests();
-}
 
-#if not ENABLE_PROFILING
-TEST(TestQubicScoreFunction, TestDeterministic)
-{
-    constexpr int NUMBER_OF_THREADS = 4;
-    constexpr int NUMBER_OF_PHASES = 2;
-    constexpr int NUMBER_OF_SAMPLES = 4;
 
-    // Read the parameters and results
-    auto sampleString = readSampleAsStr(COMMON_TEST_SAMPLES_FILE_NAME);
-
-    // Convert the raw string and do the data verification
-    unsigned long long numberOfSamples = sampleString.size();
-    if (COMMON_TEST_NUMBER_OF_SAMPLES > 0)
-    {
-        numberOfSamples = std::min(COMMON_TEST_NUMBER_OF_SAMPLES, numberOfSamples);
-    }
-
-    std::vector<m256i> miningSeeds(numberOfSamples);
-    std::vector<m256i> publicKeys(numberOfSamples);
-    std::vector<m256i> nonces(numberOfSamples);
-
-    // Reading the input samples
-    for (unsigned long long i = 0; i < numberOfSamples; ++i)
-    {
-        miningSeeds[i] = hexTo32Bytes(sampleString[i][0], 32);
-        publicKeys[i] = hexTo32Bytes(sampleString[i][1], 32);
-        nonces[i] = hexTo32Bytes(sampleString[i][2], 32);
-    }
-
-    std::unique_ptr<ScoreFunction<NUMBER_OF_THREADS>> pScore = std::make_unique<ScoreFunction<NUMBER_OF_THREADS>>();
-    pScore->initMemory();
-
-    // Run with 4 mining seeds, each run 4 separate threads and the result need to matched
-    int scores[NUMBER_OF_PHASES][NUMBER_OF_THREADS * NUMBER_OF_SAMPLES] = { 0 };
-    for (unsigned long long i = 0; i < NUMBER_OF_PHASES; ++i)
-    {
-        pScore->initMiningData(miningSeeds[i]);
-
-#pragma omp parallel for num_threads(NUMBER_OF_THREADS)
-        for (int threadId = 0; threadId < NUMBER_OF_THREADS; ++threadId)
-        {
-            if (threadId % 2 == 0)
-            {
-                for (int sampleId = 0; sampleId < NUMBER_OF_SAMPLES; ++sampleId)
-                {
-                    scores[i][threadId * NUMBER_OF_SAMPLES + sampleId] = (*pScore)(threadId, publicKeys[sampleId], miningSeeds[i], nonces[sampleId]);
-                }
-            }
-            else
-            {
-                for (int sampleId = NUMBER_OF_SAMPLES - 1; sampleId >= 0; --sampleId)
-                {
-                    scores[i][threadId * NUMBER_OF_SAMPLES + sampleId] = (*pScore)(threadId, publicKeys[sampleId], miningSeeds[i], nonces[sampleId]);
-                }
-            }
-        }
-    }
-
-    // Each threads run with the same samples but the order is reversed. Expect the scores are matched.
-    for (unsigned long long i = 0; i < NUMBER_OF_PHASES; ++i)
-    {
-        for (int threadId = 0; threadId < NUMBER_OF_THREADS - 1; ++threadId)
-        {
-            for (int sampleId = 0; sampleId < NUMBER_OF_SAMPLES; ++sampleId)
-            {
-                EXPECT_EQ(scores[i][threadId * NUMBER_OF_SAMPLES + sampleId], scores[i][(threadId + 1) * NUMBER_OF_SAMPLES + sampleId]);
-            }
-        }
-    }
-}
-#endif

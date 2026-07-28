@@ -94,26 +94,42 @@ static unsigned short REVENUE_DATA_SNAPSHOT_FILE_NAME[] = L"revenue_data.???";
 static unsigned short MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[] = L"revenue_data_multi.???";
 static unsigned short MULTIDIM_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"revenue_data_multi.eoe";
 
-static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS = 512;     // K
-static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS = 512;    // L
-static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_TICKS = 1000;               // N
-static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_NEIGHBORS = 728;    // 2M. Must be divided by 2
-static constexpr unsigned long long HYPERIDENTITY_NUMBER_OF_MUTATIONS = 150;
-static constexpr unsigned long long HYPERIDENTITY_POPULATION_THRESHOLD = HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS + HYPERIDENTITY_NUMBER_OF_MUTATIONS; // P
-static constexpr unsigned int HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT = 316;
+// Neuraxon (even-nonce slot) - reserved for a future algorithm, not yet implemented.
+static constexpr unsigned long long NEURAXON_NUMBER_OF_INPUT_NEURONS = 1;
+static constexpr unsigned long long NEURAXON_NUMBER_OF_OUTPUT_NEURONS = 1;
+static constexpr unsigned long long NEURAXON_NUMBER_OF_TICKS = 1;
+static constexpr unsigned long long NEURAXON_NUMBER_OF_NEIGHBORS = 1;
+static constexpr unsigned long long NEURAXON_POPULATION_THRESHOLD = 4;
+static constexpr unsigned long long NEURAXON_NUMBER_OF_MUTATIONS = 1;
+static constexpr unsigned int NEURAXON_SOLUTION_THRESHOLD_DEFAULT = 1;
 
-static constexpr unsigned long long ADDITION_NUMBER_OF_INPUT_NEURONS = 14;
-static constexpr unsigned long long ADDITION_NUMBER_OF_OUTPUT_NEURONS = 8;
-static constexpr unsigned long long ADDITION_NUMBER_OF_TICKS = 256;
-static constexpr unsigned long long ADDITION_POPULATION_THRESHOLD = 256;
-// Each neuron is connected to every other neuron(exclude self). The effective is clamp to (ADDITION_POPULATION_THRESHOLD - 1) at runtime
-static constexpr unsigned long long ADDITION_NUMBER_OF_NEIGHBORS = ADDITION_POPULATION_THRESHOLD;
-static constexpr unsigned long long ADDITION_NUMBER_OF_MUTATIONS = 256;
-static constexpr unsigned int ADDITION_SOLUTION_THRESHOLD_DEFAULT = 74100;
+// bpp9000 (odd-nonce slot) - the active mining algorithm
+// bpp9000 task file: the fixed ANN wiring + windowed target series the scorer runs against. It is loaded
+// and hash-verified at node init
+static unsigned short SCORE_BPP9000_TASK_FILE_NAME[] = L"bpp9000.task";
+static constexpr unsigned char BPP9000_TOPOLOGY_HASH[32] =
+    { 0x13, 0xe9, 0x9d, 0x5b, 0x2f, 0xca, 0x56, 0xaa, 0x78, 0x9c, 0xb9, 0x59, 0x57, 0x5f, 0x48, 0x39,
+      0x2f, 0x1a, 0x44, 0x90, 0x9a, 0x8e, 0xaf, 0x27, 0xf2, 0xde, 0x8f, 0x8d, 0x74, 0xb0, 0x7a, 0x6b };
+static constexpr unsigned char BPP9000_DATA_HASH[32] =
+    { 0x97, 0x9c, 0xdc, 0x22, 0x47, 0xd2, 0xca, 0x4e, 0xd3, 0xd6, 0x14, 0xbf, 0x27, 0x89, 0x63, 0x84,
+      0xcb, 0x1c, 0x9c, 0x3d, 0x80, 0x4a, 0xf6, 0xed, 0xe6, 0xb5, 0x9f, 0xc5, 0x2c, 0x0e, 0x3d, 0xfa };
+static constexpr unsigned long long BPP9000_NUMBER_OF_INPUT_NEURONS = 18;
+static constexpr unsigned long long BPP9000_NUMBER_OF_OUTPUT_NEURONS = 1;
+static constexpr unsigned long long BPP9000_SEQUENCE_LENGTH = 24 * 365;
+static constexpr unsigned long long BPP9000_WINDOW_WIDTH = 24 * 28;
+static constexpr unsigned long long BPP9000_MAX_NUMBER_OF_TICKS = 100000;
+static constexpr unsigned long long BPP9000_NUMBER_OF_NEIGHBORS = 3;
+static constexpr unsigned long long BPP9000_POPULATION_THRESHOLD = 64;
+static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 100;
+// Number of graded windows. The score is an error count in [0, BPP9000_NUMBER_OF_WINDOWS], smaller is
+// better, and a solution passes when score <= threshold.
+static constexpr unsigned long long BPP9000_NUMBER_OF_WINDOWS = BPP9000_SEQUENCE_LENGTH - BPP9000_WINDOW_WIDTH;
+static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 3800;
+
 
 // Multipler of score
-static constexpr unsigned int HYPERIDENTITY_SOLUTION_MULTIPLER = 1;
-static constexpr unsigned int ADDITION_SOLUTION_MULTIPLER = 1;
+static constexpr unsigned int NEURAXON_SOLUTION_MULTIPLER = 1;
+static constexpr unsigned int BPP9000_SOLUTION_MULTIPLER = 1;
 
 static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 
@@ -130,14 +146,9 @@ static constexpr long long NEURON_VALUE_LIMIT = 1LL;
 #define FIRST_TICK_TRANSACTION_OFFSET sizeof(unsigned long long)
 #define MAX_TRANSACTION_SIZE (MAX_INPUT_SIZE + sizeof(Transaction) + SIGNATURE_SIZE)
 
-// Period (in ticks) of the mining-seed rotation. Qubic mining runs every tick against the current seed,
-// which rotates deterministically every MINING_SEED_ROTATION_INTERVAL ticks
-// (triggered when tick % MINING_SEED_ROTATION_INTERVAL == 0).
-#define MINING_SEED_ROTATION_INTERVAL 2400
 // Total length of the DOGE share-counter broadcast cycle, in ticks.
 // Every DOGE_BROADCAST_CYCLE ticks the packed 10-bit share counts are broadcast and the counter is reset.
 #define DOGE_BROADCAST_CYCLE (2 * NUMBER_OF_COMPUTORS + 1)
-static_assert(MINING_SEED_ROTATION_INTERVAL >= NUMBER_OF_COMPUTORS, "Mining-seed rotation interval must span at least one full leader cycle");
 
 #define STACK_SIZE 4194304
 #define TRACK_MAX_STACK_BUFFER_SIZE

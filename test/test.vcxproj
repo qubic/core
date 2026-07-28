@@ -119,7 +119,6 @@
     <ClInclude Include="score_common_reference.h" />
     <ClInclude Include="score_hyperidentity_reference.h" />
     <ClInclude Include="score_params.h" />
-    <ClInclude Include="score_reference.h" />
     <ClInclude Include="test_util.h" />
   </ItemGroup>
   <ItemGroup>

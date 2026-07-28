@@ -10,33 +10,51 @@ static unsigned long long top_of_stack;
 #include "score_cache.h"
 #include "mining/score_engine.h"
 
+// Operational status of the scorer, surfaced to the main thread for reporting. Extend with new error
+// kinds (e.g. an invalid/rejected task, a corrupted pool) as the engine gains more failure modes.
+enum ScoreStatus
+{
+    ScoreStatusOk = 0,
+    ScoreStatusTaskNotLoaded,
+};
+
 template <unsigned long long solutionBufferCount>
 struct ScoreFunction
 {
     score_engine::ScoreEngine<
-        score_engine::HyperIdentityParams<
-        HYPERIDENTITY_NUMBER_OF_INPUT_NEURONS,
-        HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS,
-        HYPERIDENTITY_NUMBER_OF_TICKS,
-        HYPERIDENTITY_NUMBER_OF_NEIGHBORS,
-        HYPERIDENTITY_POPULATION_THRESHOLD,
-        HYPERIDENTITY_NUMBER_OF_MUTATIONS,
-        HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT>,
+        score_engine::NeuraxonParams<
+        NEURAXON_NUMBER_OF_INPUT_NEURONS,
+        NEURAXON_NUMBER_OF_OUTPUT_NEURONS,
+        NEURAXON_NUMBER_OF_TICKS,
+        NEURAXON_NUMBER_OF_NEIGHBORS,
+        NEURAXON_POPULATION_THRESHOLD,
+        NEURAXON_NUMBER_OF_MUTATIONS,
+        NEURAXON_SOLUTION_THRESHOLD_DEFAULT>,
 
-        score_engine::AdditionParams<
-        ADDITION_NUMBER_OF_INPUT_NEURONS,
-        ADDITION_NUMBER_OF_OUTPUT_NEURONS,
-        ADDITION_NUMBER_OF_TICKS,
-        ADDITION_NUMBER_OF_NEIGHBORS,
-        ADDITION_POPULATION_THRESHOLD,
-        ADDITION_NUMBER_OF_MUTATIONS,
-        ADDITION_SOLUTION_THRESHOLD_DEFAULT>
+        score_engine::Bpp9000Params<
+        BPP9000_NUMBER_OF_INPUT_NEURONS,
+        BPP9000_NUMBER_OF_OUTPUT_NEURONS,
+        BPP9000_SEQUENCE_LENGTH,
+        BPP9000_WINDOW_WIDTH,
+        BPP9000_MAX_NUMBER_OF_TICKS,
+        BPP9000_NUMBER_OF_NEIGHBORS,
+        BPP9000_POPULATION_THRESHOLD,
+        BPP9000_NUMBER_OF_MUTATIONS,
+        BPP9000_SOLUTION_THRESHOLD_DEFAULT>
     > _computeBuffer[solutionBufferCount];
 
     volatile char random2PoolLock;
     unsigned char state[score_engine::STATE_SIZE];
     unsigned char externalPoolVec[score_engine::POOL_VEC_PADDING_SIZE];
     unsigned char poolVec[score_engine::POOL_VEC_PADDING_SIZE];
+
+    // Last operational status of the scorer
+    volatile ScoreStatus _lastStatus;
+
+    ScoreStatus getLastStatus() const
+    {
+        return _lastStatus;
+    }
 
     void initPool(const unsigned char* miningSeed)
     {
@@ -68,6 +86,18 @@ struct ScoreFunction
         RELEASE(random2PoolLock);
     }
 
+    // Load the task blocks into every compute buffer; returns false if any leaf rejects them.
+    bool loadTask(const unsigned char* topoBlock, const unsigned char* dataBlock)
+    {
+        bool ok = true;
+        for (unsigned long long i = 0; i < solutionBufferCount; i++)
+        {
+            ok = _computeBuffer[i].loadTask(topoBlock, dataBlock) && ok;
+        }
+        _lastStatus = ok ? ScoreStatusOk : ScoreStatusTaskNotLoaded;
+        return ok;
+    }
+
     ~ScoreFunction()
     {
         freeMemory();
@@ -80,6 +110,7 @@ struct ScoreFunction
     bool initMemory()
     {
         random2PoolLock = 0;
+        _lastStatus = ScoreStatusTaskNotLoaded;
 
         // Make sure all padding data is set as zeros
         setMem(_computeBuffer, sizeof(_computeBuffer), 0);
@@ -131,23 +162,18 @@ struct ScoreFunction
 
     bool isValidScore(unsigned int solutionScore, score_engine::AlgoType selectedAlgo)
     {
-        if (selectedAlgo == score_engine::AlgoType::HyperIdentity)
+        if (selectedAlgo == score_engine::AlgoType::Bpp9000)
         {
-            return (solutionScore >= 0) 
-                && (solutionScore <= HYPERIDENTITY_NUMBER_OF_OUTPUT_NEURONS)
+            return (solutionScore <= BPP9000_NUMBER_OF_WINDOWS)
                 && (solutionScore != score_engine::INVALID_SCORE_VALUE);
         }
-        else if (selectedAlgo == score_engine::AlgoType::Addition)
-        {
-            return (solutionScore >= 0 )
-                && (solutionScore <= ADDITION_NUMBER_OF_OUTPUT_NEURONS * (1ULL << ADDITION_NUMBER_OF_INPUT_NEURONS))
-                && (solutionScore != score_engine::INVALID_SCORE_VALUE);
-        }
+        // Neuraxon slot is reserved and not yet minable.
         return false;
     }
+    // Score is an error count, so a solution is good when it is at or below the threshold.
     bool isGoodScore(unsigned int solutionScore, int threshold, score_engine::AlgoType selectedAlgo)
     {
-        return checkAlgoThreshold(threshold, selectedAlgo) && (solutionScore >= (unsigned int)threshold);
+        return checkAlgoThreshold(threshold, selectedAlgo) && (solutionScore <= (unsigned int)threshold);
     }
 
     unsigned int computeScore(const unsigned long long solutionBufIdx, const m256i& publicKey, const m256i& nonce)
