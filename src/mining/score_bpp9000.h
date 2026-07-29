@@ -8,6 +8,19 @@
 namespace score_engine
 {
 
+// Largest L (mutations per step) the scorer clamps nonce[1] to
+static constexpr unsigned int MAX_LUT_ENTRIES_PER_STEP = 10;
+
+// A bpp9000 nonce is canonical iff its score-irrelevant knob bytes are canonical:
+// nonce[0] = algo (enforced by routing), nonce[1] = L in [1, MAX_LUT_ENTRIES_PER_STEP], nonce[2] = K = 0
+static bool isCanonicalBpp9000Nonce(const unsigned char* nonce)
+{
+    return (getAlgoType(nonce) == AlgoType::Bpp9000)
+        && (nonce[1] >= 1)
+        && (nonce[1] <= MAX_LUT_ENTRIES_PER_STEP)
+        && (nonce[2] == 0);
+}
+
 template<typename Params>
 struct ScoreBpp9000
 {
@@ -29,7 +42,6 @@ struct ScoreBpp9000
     static constexpr unsigned long long lutSize = 27;
     // LUT row storage stride, padded to 32; only leading lutSize entries logical (index <= 26).
     static constexpr unsigned long long lutStride = 32;
-    static constexpr unsigned int MAX_LUT_ENTRIES_PER_STEP = 10;
 
     static_assert(lutSize <= lutStride, "LUT rows must fit the padded stride");
 
