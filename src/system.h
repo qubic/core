@@ -34,10 +34,13 @@ struct System
         m256i computorPublicKey;
         m256i miningSeed;
         m256i nonce;
+        unsigned int score;
+        unsigned int reserved;
     } solutions[MAX_NUMBER_OF_SOLUTIONS];
 
     m256i futureComputors[NUMBER_OF_COMPUTORS];
 };
-static_assert(sizeof(System) == 20 + 8 + 8 + 8 + 4 + 96 * MAX_NUMBER_OF_SOLUTIONS + 32 * NUMBER_OF_COMPUTORS, "Unexpected size");
+// Solution is 3 * 32 bytes + score + reserved = 104 bytes, no implicit padding.
+static_assert(sizeof(System) == 20 + 8 + 8 + 8 + 4 + 104 * MAX_NUMBER_OF_SOLUTIONS + 32 * NUMBER_OF_COMPUTORS, "Unexpected size");
 
 GLOBAL_VAR_DECL System system;

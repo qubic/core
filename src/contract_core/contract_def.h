@@ -12,11 +12,14 @@
 // With no other includes before, the following are the only headers available to contracts.
 // When adding something, be cautious to keep access of contracts limited to safe features only.
 #include "pre_qpi_def.h"
-#include "contracts/qpi.h"
-#include "qpi_proposal_voting.h"
+#include "qpi/qpi.h"
+#include "qpi/impl/qpi_proposals_impl.h"
 
 // make interfaces to oracles available for all contracts
 #include "oracle_core/oracle_interfaces_def.h"
+
+// make OC (Outsourced Computation) interfaces available for all contracts (OCI::)
+#include "oc_core/oc_interfaces_def.h"
 
 #define QX_CONTRACT_INDEX 1
 #define CONTRACT_INDEX QX_CONTRACT_INDEX
@@ -354,10 +357,10 @@ constexpr unsigned short TESTEXD_CONTRACT_INDEX = (CONTRACT_INDEX + 1);
 
 // The following are included after the contracts to keep their definitions and dependencies
 // inaccessible for contracts
-#include "qpi_collection_impl.h"
-#include "qpi_trivial_impl.h"
-#include "qpi_hash_map_impl.h"
-#include "qpi_linked_list_impl.h"
+#include "qpi/impl/qpi_collection_impl.h"
+#include "qpi/impl/qpi_trivial_impl.h"
+#include "qpi/impl/qpi_hash_map_impl.h"
+#include "qpi/impl/qpi_linked_list_impl.h"
 
 #include "platform/global_var.h"
 
@@ -574,7 +577,10 @@ struct ContractStateChangeInfo
 };
 // Contracts whose state struct changed this epoch. Update this list each epoch as needed.
 // Each entry is { CONTRACT_INDEX, PADDING or RESET or MIGRATE, EPOCH }
-constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { QRAFFLE_CONTRACT_INDEX, MIGRATE, 223 } };
+// When enabling, replace both lines below, e.g.:
+//constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { DUMMY_CONTRACT_INDEX, MIGRATE, 219 } };
+//constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
+constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { QIP_CONTRACT_INDEX, RESET, 224 }, { RANDOM_CONTRACT_INDEX, PADDING, 224 } };
 constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
 
 

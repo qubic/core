@@ -1,6 +1,6 @@
 #pragma once
 
-#include "contracts/qpi.h"
+#include "qpi/qpi.h"
 #include "score.h"
 
 static ScoreFunction<1>* score_qpi = nullptr; // NOTE: SC is single-threaded
@@ -13,10 +13,10 @@ m256i QPI::QpiContextFunctionCall::computeMiningFunction(const m256i miningSeed,
     {
         score_qpi->initMiningData(miningSeed);
     }
-    m256i hyperIdentityNonce = nonce;
-    // Currently, only hyperidentity scoring support the last output
-    hyperIdentityNonce.m256i_u8[0] = (hyperIdentityNonce.m256i_u8[0] & 0xFE);
-    ASSERT((hyperIdentityNonce.m256i_u8[0] & 1) == 0);
-    (*score_qpi)(0, publicKey, miningSeed, hyperIdentityNonce);
+    m256i bpp9000Nonce = nonce;
+    // Only the active odd-nonce (bpp9000) slot supports the last output
+    bpp9000Nonce.m256i_u8[0] = (bpp9000Nonce.m256i_u8[0] | 0x01);
+    ASSERT((bpp9000Nonce.m256i_u8[0] & 1) == 1);
+    (*score_qpi)(0, publicKey, miningSeed, bpp9000Nonce);
     return score_qpi->getLastOutput(0);
 }

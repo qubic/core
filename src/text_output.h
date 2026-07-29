@@ -5,7 +5,7 @@
 
 #include "network_messages/common_def.h"
 
-#include "contracts/qpi.h"
+#include "qpi/qpi.h"
 
 
 static void appendQubicVersion(CHAR16* dst)

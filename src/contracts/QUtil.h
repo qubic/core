@@ -1999,6 +1999,51 @@ public:
         LOG_INFO(locals.log);
     }
 
+    /*************************************************/
+    /*   OC (OUTSOURCED COMPUTATION) INVOCATION TESTING   */
+    /*************************************************/
+
+    // Trigger an OC (Outsourced Computation) invocation via the Mock interface, for end-to-end testing.
+    struct TriggerOC_input
+    {
+        uint64 value;
+    };
+    struct TriggerOC_output
+    {
+        sint64 invocationId;
+    };
+    struct TriggerOC_locals
+    {
+        OCI::Mock::OcRequest request;
+        sint64 fee;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(TriggerOC)
+    {
+        output.invocationId = -1;
+
+        // Zero-initialize the request so padding bytes hashed into paramsDigest are deterministic
+        // across all computors (mirrors the OM reply convention). setMemory is the contract-safe
+        // zero-init (contracts cannot call the core setMem directly).
+        setMemory(locals.request, 0);
+        locals.request.value = input.value;
+
+        // Gate on the invocation reward so the caller pays the burned fee, not this contract
+        // (mirrors QueryPriceOracle). Refund the whole reward if it does not cover the fee.
+        locals.fee = OCI::Mock::getInvocationFee(locals.request);
+        if (qpi.invocationReward() < locals.fee)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+
+        output.invocationId = INVOKE_OC(OCI::Mock, locals.request);
+
+        // Refund the caller's reward minus the fee actually consumed (0 if the engine rejected).
+        qpi.transfer(qpi.invocator(),
+            qpi.invocationReward() - (output.invocationId < 0 ? 0 : locals.fee));
+    }
+
     /**************************************/
     /*      GET BALANCE BULK REQUEST      */
     /**************************************/
@@ -2084,6 +2129,7 @@ public:
         REGISTER_USER_PROCEDURE(QueryPriceOracle, 100);
         REGISTER_USER_PROCEDURE(SubscribePriceOracle, 101);
         REGISTER_USER_PROCEDURE(UnsubscribeOracle, 102);
+        REGISTER_USER_PROCEDURE(TriggerOC, 103);
 
         REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyPriceOracleReply);
 
