@@ -1876,6 +1876,71 @@ static void signWithRandomK(const unsigned char* subseed, const unsigned char* p
     }
 }
 
+// Completes the second half of the signature[32..64]. Since the vote signing PoW only checks the first half
+// of the signature[0..32], the second half only needs to be computed once using the r that passed the PoW check. 
+// kConst is K12(subseed,32); r is the winning rOut (consumed, modified in place exactly as signWithRandomK does);
+// signature[0..32] = the winning encode(R); messageDigest is the same digest passed to signWithRandomK_incremental.
+static void signWithRandomK_finishHalf(const unsigned char* kConst, const unsigned char* publicKey, const unsigned char* messageDigest, unsigned long long* r, unsigned char* signature)
+{
+    // h = K12(encode(R) || publicKey || messageDigest) exactly as in signWithRandomK
+    unsigned char h[64], temp[32 + 64];
+    *((m256i*)temp) = *((m256i*)signature);
+    *((m256i*)(temp + 32)) = *((m256i*)publicKey);
+    *((m256i*)(temp + 64)) = *((m256i*)messageDigest);
+    KangarooTwelve(temp, 32 + 64, h, 64);
+    Montgomery_multiply_mod_order(r, Montgomery_Rprime, r);
+    Montgomery_multiply_mod_order(r, ONE, r);
+    Montgomery_multiply_mod_order((unsigned long long*)h, Montgomery_Rprime, (unsigned long long*)h);
+    Montgomery_multiply_mod_order((unsigned long long*)h, ONE, (unsigned long long*)h);
+    Montgomery_multiply_mod_order((unsigned long long*)kConst, Montgomery_Rprime, (unsigned long long*)(signature + 32));
+    Montgomery_multiply_mod_order((unsigned long long*)h, Montgomery_Rprime, (unsigned long long*)h);
+    Montgomery_multiply_mod_order((unsigned long long*)(signature + 32), (unsigned long long*)h, (unsigned long long*)(signature + 32));
+    Montgomery_multiply_mod_order((unsigned long long*)(signature + 32), ONE, (unsigned long long*)(signature + 32));
+    if (_subborrow_u64(_subborrow_u64(_subborrow_u64(_subborrow_u64(0, r[0], ((unsigned long long*)signature)[4], &((unsigned long long*)signature)[4]), r[1], ((unsigned long long*)signature)[5], &((unsigned long long*)signature)[5]), r[2], ((unsigned long long*)signature)[6], &((unsigned long long*)signature)[6]), r[3], ((unsigned long long*)signature)[7], &((unsigned long long*)signature)[7]))
+    {
+        _addcarry_u64(_addcarry_u64(_addcarry_u64(_addcarry_u64(0, ((unsigned long long*)signature)[4], CURVE_ORDER_0, &((unsigned long long*)signature)[4]), ((unsigned long long*)signature)[5], CURVE_ORDER_1, &((unsigned long long*)signature)[5]), ((unsigned long long*)signature)[6], CURVE_ORDER_2, &((unsigned long long*)signature)[6]), ((unsigned long long*)signature)[7], CURVE_ORDER_3, &((unsigned long long*)signature)[7]);
+    }
+}
+
+// Incremental vote signing PoW. The PoW score is fully determined by encode(r*G) but calculating
+// the ecc_mul_fixed for each signWithRandomK try is expensive. Searching r sequentially (random r0, then r0+1, r0+2, ...)
+// makes each step a significantly cheaper point addition R_{i+1}=R_i+G (eccadd).
+// gIncrSignG is G in eccadd-precomp form, built once by initIncrementalSignG() at boot.
+static point_extproj_precomp_t gIncrSignG;
+
+static void initIncrementalSignG()
+{
+    unsigned long long one[8] = { 1,0,0,0,0,0,0,0 };
+    point_t Gaff; ecc_mul_fixed(one, Gaff);
+    point_extproj_t Gext; point_setup(Gaff, Gext);
+    R1_to_R2(Gext, gIncrSignG);
+}
+
+static void signWithRandomK_incremental(const unsigned char* subseed, const unsigned char* publicKey, const unsigned char* messageDigest, unsigned char* signature, unsigned int target)
+{
+    unsigned char kConst[32];
+    KangarooTwelve((unsigned char*)subseed, 32, kConst, 32);
+    unsigned char rndKAndMsg[64];                                            // r0 = K12(randomK || msg)
+    for (int j = 0; j < 32; j += 8) _rdrand64_step((unsigned long long*)(rndKAndMsg + j));
+    *((m256i*)(rndKAndMsg + 32)) = *((m256i*)messageDigest);
+    unsigned long long base[8];
+    KangarooTwelve(rndKAndMsg, 64, (unsigned char*)base, 64);
+    point_t R0aff; ecc_mul_fixed(base, R0aff);                               // R0 = base * G (one full mul)
+    point_extproj_t Rext; point_setup(R0aff, Rext);
+    unsigned long long offset = 0;
+    while (true)                                                             // R_i = R0 + offset * G
+    {
+        point_extproj_t cpy; copyMem(cpy, Rext, sizeof(point_extproj_t));    // eccnorm mutates z -> work on a copy
+        point_t Raff; eccnorm(cpy, Raff); encode(Raff, signature);           // signature[0..32] = encode(R_i)
+        if (_byteswap_ulong(((unsigned int*)signature)[0]) <= target) break; // break loop if PoW target met
+        eccadd(gIncrSignG, Rext); offset++;                                  // Rext += G  -> R_{i+1}
+    }
+    unsigned long long r[8]; copyMem(r, base, sizeof(r));                    // winning nonce r = base + offset
+    unsigned long long carry = offset;
+    for (int j = 0; j < 8 && carry; j++) { unsigned long long old = r[j]; r[j] += carry; carry = (r[j] < old) ? 1ull : 0ull; }
+    signWithRandomK_finishHalf(kConst, publicKey, messageDigest, r, signature);
+}
+
 static bool verify(const unsigned char* publicKey, const unsigned char* messageDigest, const unsigned char* signature)
 { // SchnorrQ signature verification
   // It verifies the signature Signature of a message MessageDigest of size 32 in bytes

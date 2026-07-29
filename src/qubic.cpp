@@ -5226,13 +5226,8 @@ static void signTickVote(const unsigned char* subseed, const unsigned char* publ
 {
     PROFILE_SCOPE();
 
-    signWithRandomK(subseed, publicKey, messageDigest, signature);
-    bool isOk = verifyTickVoteSignature(publicKey, messageDigest, signature, false);
-    while (!isOk)
-    {
-        signWithRandomK(subseed, publicKey, messageDigest, signature);
-        isOk = verifyTickVoteSignature(publicKey, messageDigest, signature, false);
-    }
+    signWithRandomK_incremental(subseed, publicKey, messageDigest, signature, TARGET_TICK_VOTE_SIGNATURE);
+    return;
 }
 
 // broadcast all tickVotes from all IDs in this node
@@ -6280,6 +6275,9 @@ static bool initialize()
 #if defined (__AVX512F__)
     initAVX512FourQConstants();
 #endif
+
+    // Precalc for vote signing: build G's eccadd-precomp once (needs FourQ constants above)
+    initIncrementalSignG();
 
     if (!initSpecialEntities())
         return false;
