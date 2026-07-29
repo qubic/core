@@ -11,14 +11,14 @@ namespace score_engine
 // Largest L (mutations per step) the scorer clamps nonce[1] to
 static constexpr unsigned int MAX_LUT_ENTRIES_PER_STEP = 10;
 
-// A bpp9000 nonce is canonical if its score-irrelevant knob bytes are canonical: nonce[0] = algo (enforced by
-// routing), nonce[1] = L in [1, MAX_LUT_ENTRIES_PER_STEP], nonce[2] = K = 0. Non-canonical nonces score
-// identically to their canonical twin, so accepting them would let one solution mint many distinct valid
-// nonces
-static bool isNonCanonicalBpp9000Nonce(const unsigned char* nonce)
+// A bpp9000 nonce is canonical iff its score-irrelevant knob bytes are canonical:
+// nonce[0] = algo (enforced by routing), nonce[1] = L in [1, MAX_LUT_ENTRIES_PER_STEP], nonce[2] = K = 0
+static bool isCanonicalBpp9000Nonce(const unsigned char* nonce)
 {
-    return getAlgoType(nonce) == AlgoType::Bpp9000
-        && (nonce[1] < 1 || nonce[1] > MAX_LUT_ENTRIES_PER_STEP || nonce[2] != 0);
+    return (getAlgoType(nonce) == AlgoType::Bpp9000)
+        && (nonce[1] >= 1)
+        && (nonce[1] <= MAX_LUT_ENTRIES_PER_STEP)
+        && (nonce[2] == 0);
 }
 
 template<typename Params>
