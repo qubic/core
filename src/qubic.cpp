@@ -636,7 +636,8 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                         }
                                         if (k == system.numberOfSolutions)
                                         {
-                                            unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
+                                            unsigned int solutionScore = (system.tick >= BPP9000_NONCE_CANONICAL_ACTIVATION_TICK && score_engine::isNonCanonicalBpp9000Nonce(solution_nonce.m256i_u8)) ? 
+                                                score_engine::INVALID_SCORE_VALUE : (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
                                             score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(solution_nonce.m256i_u8);
                                             const int threshold = getSolutionThreshold(selectedAlgo);
                                             if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
@@ -1015,7 +1016,10 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 {
                     const m256i& solutionMiningSeed = *(m256i*)request->inputPtr();
                     const m256i& solutionNonce = *(m256i*)(request->inputPtr() + 32);
-                    (*score)(processorNumber, request->sourcePublicKey, solutionMiningSeed, solutionNonce);
+                    if (!(system.tick >= BPP9000_NONCE_CANONICAL_ACTIVATION_TICK && score_engine::isNonCanonicalBpp9000Nonce(solutionNonce.m256i_u8)))
+                    { 
+                        (*score)(processorNumber, request->sourcePublicKey, solutionMiningSeed, solutionNonce); 
+                    }
                 }
             }
 
@@ -2500,7 +2504,8 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
         minerSolutionFlags[flagIndices[0] >> 6] |= (1ULL << (flagIndices[0] & 63));
         minerSolutionFlags[flagIndices[1] >> 6] |= (1ULL << (flagIndices[1] & 63));
 
-        unsigned int solutionScore = (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
+        unsigned int solutionScore = (system.tick >= BPP9000_NONCE_CANONICAL_ACTIVATION_TICK && score_engine::isNonCanonicalBpp9000Nonce(transaction->nonce.m256i_u8)) ?
+            score_engine::INVALID_SCORE_VALUE : (*::score)(processorNumber, transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce);
         score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(transaction->nonce.m256i_u8);
         if (score->isValidScore(solutionScore, selectedAlgo))
         {
