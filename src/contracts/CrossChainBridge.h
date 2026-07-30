@@ -7,7 +7,7 @@
 #define CCB_MAX_VALIDATORS 16
 #define CCB_REPLAY_BUFFER_SIZE 256
 
-struct CROSSCHAINBRIDGE {
+struct CROSSCHAINBRIDGE : public ContractBase {
     id contractOwner;
     uint8 isPaused;
     uint64 totalLockedQus;
