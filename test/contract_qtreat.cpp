@@ -1,5 +1,6 @@
 #define NO_UEFI
 
+#include <sstream>
 #include "contract_testing.h"
 
 // MARKETPLACE_OWNER must match the hardcoded id set in QBAY::INITIALIZE() (Qbay.h).
@@ -438,6 +439,18 @@ public:
 // =============================================================================
 // Basic state / views
 // =============================================================================
+
+TEST(ContractQtreat, AdminAddressRoundTripsToExpectedIdentity)
+{
+    // Confirms the ID(...) letter macro in INITIALIZE() encodes exactly the intended
+    // 60-character address, checksum included (the checksum is a K12 hash of the
+    // underlying public key, not derivable by inspection of the 56 identity letters
+    // alone - this is the only reliable way to catch a transcription error here).
+    ContractTestingQtreat t;
+    std::ostringstream oss;
+    oss << t.getState()->getAdminAddress();
+    EXPECT_EQ(oss.str(), "QTREATZZIVFYQAIBKCZPSHGLIRMALZKHEWAPFLFXJAMDAXMGTBKQVXHHDHUD");
+}
 
 TEST(ContractQtreat, InitialStateAfterFirstBeginEpoch)
 {
@@ -1095,10 +1108,40 @@ TEST(ContractQtreat, AsicRigDeactivatedWhenPartOwnershipChanges)
 
     t.transferNft(owner, m, newOwner); // motherboard no longer owned by the rig's registered owner
 
-    t.advanceEpoch();
+    // Ownership re-verification is spread across QTREAT_ASIC_VERIFY_SPREAD_EPOCHS epochs
+    // (round-robin by rig slot) rather than checking every rig every epoch, so the
+    // deactivation isn't guaranteed on the very next epoch - only within that window.
+    for (uint64 i = 0; i < QTREAT_ASIC_VERIFY_SPREAD_EPOCHS; i++)
+        t.advanceEpoch();
 
     EXPECT_EQ(t.getState()->getTotalAsicCount(), 0u);
     EXPECT_EQ(t.getState()->getRig((sint64)reg.rigIndex).active, 0u);
+}
+
+TEST(ContractQtreat, AsicRigStaysActiveUntilItsVerificationSlotComesUp)
+{
+    // The very first registered rig lands at slot 0. constructionEpoch mod
+    // QTREAT_ASIC_VERIFY_SPREAD_EPOCHS != 0 for this fixture's construction epoch, so slot 0
+    // is *not* re-verified on the first END_EPOCH after registration - only after enough
+    // epochs have passed for (slot + epoch) mod SPREAD to hit 0. This pins down the
+    // "eventually consistent, not immediate" tradeoff explicitly rather than leaving it implicit.
+    ContractTestingQtreat t;
+    t.activateQbayMarket();
+    id owner = getUser(1);
+    id newOwner = getUser(2);
+    uint32 m = t.mintNft(owner), c = t.mintNft(owner), p = t.mintNft(owner), f = t.mintNft(owner);
+    t.loadFullAsicCatalog();
+    auto reg = t.registerAsic(owner, m, c, p, f);
+    ASSERT_EQ(reg.returnCode, QTREAT_OK);
+    ASSERT_EQ(reg.rigIndex, 0u);
+    ASSERT_NE(((uint64)reg.rigIndex + (uint64)system.epoch) % QTREAT_ASIC_VERIFY_SPREAD_EPOCHS, 0u)
+        << "test assumption violated: adjust which epoch this fixture starts at, or the rig slot used";
+
+    t.transferNft(owner, m, newOwner);
+    t.advanceEpoch(); // this epoch's slot isn't due for re-verification yet
+
+    EXPECT_EQ(t.getState()->getTotalAsicCount(), 1u);
+    EXPECT_EQ(t.getState()->getRig((sint64)reg.rigIndex).active, 1u);
 }
 
 TEST(ContractQtreat, DripQdogePaysCatalogedNftHoldersByRarityAndExcludesAdmin)

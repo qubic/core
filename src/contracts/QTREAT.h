@@ -33,6 +33,12 @@ constexpr uint64 QTREAT_ASIC_CATALOG_CAPACITY = 512;
 constexpr uint64 QTREAT_ASIC_PARTS_TOTAL      = 400;
 constexpr uint64 QTREAT_MAX_ASIC_RIGS         = 128;
 constexpr uint64 QTREAT_MAX_TOTAL_ASICS       = 100;
+// Ownership re-verification / possessor snapshotting is spread across this many epochs
+// (round-robin by slot index) instead of touching every entry every epoch, so a large
+// registered-rig or dividend-NFT set can't force hundreds of external QBAY calls into a
+// single END_EPOCH. Each entry is still re-checked at least once every N epochs.
+constexpr uint64 QTREAT_ASIC_VERIFY_SPREAD_EPOCHS = 8;
+constexpr uint64 QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS = 4;
 constexpr uint64 QTREAT_MINING_REWARD_DEFAULT = 20000000ULL;
 constexpr uint64 QTREAT_MINING_REWARD_MAX     = 100000000ULL;
 static_assert(QTREAT_MINING_REWARD_DEFAULT <= QTREAT_MINING_REWARD_MAX);
@@ -160,6 +166,10 @@ struct QTREAT : public ContractBase
 
         Array<uint32, QTREAT_MAX_DIVIDEND_NFTS> dividendNftIds;
         uint64 dividendNftIdCount;
+        // Last possessor observed for each dividendNftIds slot (NULL_ID = none/excluded), so the
+        // round-robin snapshot below can update nftCounts incrementally instead of resetting and
+        // re-querying all QTREAT_MAX_DIVIDEND_NFTS ids every single epoch.
+        Array<id, QTREAT_MAX_DIVIDEND_NFTS> dividendNftLastPossessor;
         HashMap<id, uint64, QTREAT_MAX_NFT_HOLDERS> nftCounts;
         uint64 totalNftCount;
 
@@ -889,15 +899,15 @@ struct QTREAT : public ContractBase
         state.mut().qdogeToken.issuer = state.get().qtreatToken.issuer;
         state.mut().qdogeToken.assetName = QTREAT_QDOGE_ASSETNAME;
 
-        // DEV TESTNET: admin decoupled from token issuer.
+        // Admin address: QTREATZZIVFYQAIBKCZPSHGLIRMALZKHEWAPFLFXJAMDAXMGTBKQVXHHDHUD
         state.mut().adminAddress = ID(
-            _E, _Y, _Y, _T, _L, _U, _Z, _O,
-            _D, _U, _W, _O, _W, _F, _Y, _C,
-            _B, _J, _P, _Q, _M, _Y, _R, _S,
-            _O, _C, _C, _A, _D, _H, _Y, _S,
-            _Z, _Z, _O, _U, _N, _K, _Q, _W,
-            _Y, _D, _C, _J, _A, _U, _A, _H,
-            _G, _I, _D, _V, _D, _J, _M, _D
+            _Q, _T, _R, _E, _A, _T, _Z, _Z,
+            _I, _V, _F, _Y, _Q, _A, _I, _B,
+            _K, _C, _Z, _P, _S, _H, _G, _L,
+            _I, _R, _M, _A, _L, _Z, _K, _H,
+            _E, _W, _A, _P, _F, _L, _F, _X,
+            _J, _A, _M, _D, _A, _X, _M, _G,
+            _T, _B, _K, _Q, _V, _X, _H, _H
         );
 
         state.mut().dividendNftIds.set(0, 4968);
@@ -1194,6 +1204,7 @@ struct QTREAT : public ContractBase
         uint64 minerReward; uint64 stillOwned; uint32 rigPartId; sint64 pIdx; uint64 verifyOk;
         QBAY::getInfoOfNFTById_input qbayIn; QBAY::getInfoOfNFTById_output qbayOut;
         Entity ent; uint64 contractBalance;
+        id oldPossessor;
     };
     END_EPOCH_WITH_LOCALS()
     {
@@ -1443,6 +1454,9 @@ struct QTREAT : public ContractBase
         {
             locals.rig = state.get().asicRigs.get(locals.sidx);
             if (locals.rig.active == 0) continue;
+            // Only re-verify a rotating slice of rigs this epoch (see QTREAT_ASIC_VERIFY_SPREAD_EPOCHS);
+            // un-checked rigs simply keep their current active state until their turn comes up.
+            if (mod((uint64)locals.sidx + qpi.epoch(), QTREAT_ASIC_VERIFY_SPREAD_EPOCHS) != 0) continue;
             locals.stillOwned = 1;
             locals.verifyOk = 1;
             for (locals.pIdx = 0; locals.pIdx < 4; locals.pIdx++)
@@ -1510,28 +1524,55 @@ struct QTREAT : public ContractBase
 
         if (state.get().dividendNftIdCount > 0)
         {
-            state.mut().nftCounts.reset();
-            state.mut().totalNftCount = 0;
+            // Re-check only a rotating slice of the dividend-NFT ids this epoch (see
+            // QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS) instead of resetting nftCounts and re-querying
+            // QBAY for all of them every epoch. nftCounts/totalNftCount are updated incrementally
+            // against dividendNftLastPossessor, so ids not re-checked this epoch keep contributing
+            // their last-known possessor unchanged.
             for (locals.sidx = 0; locals.sidx < (sint64)state.get().dividendNftIdCount; locals.sidx++)
             {
+                if (mod((uint64)locals.sidx + qpi.epoch(), QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS) != 0) continue;
+
                 locals.qbayIn.NFTId = state.get().dividendNftIds.get(locals.sidx);
                 CALL_OTHER_CONTRACT_FUNCTION(QBAY, getInfoOfNFTById, locals.qbayIn, locals.qbayOut);
-                if (interContractCallError != NoCallError) continue;
-                if (locals.qbayOut.possessor == NULL_ID || locals.qbayOut.possessor == SELF) continue;
-                locals.isExcluded = 0;
-                for (locals.exIdx = 0; locals.exIdx < (sint64)QTREAT_MAX_EXCLUDE_ADDRESSES; locals.exIdx++)
+                locals.h = (interContractCallError != NoCallError) ? NULL_ID : locals.qbayOut.possessor;
+                if (locals.h == SELF) locals.h = NULL_ID;
+                if (locals.h != NULL_ID)
                 {
-                    if (state.get().excludeAddresses.get(locals.exIdx) != NULL_ID
-                        && locals.qbayOut.possessor == state.get().excludeAddresses.get(locals.exIdx))
+                    locals.isExcluded = 0;
+                    for (locals.exIdx = 0; locals.exIdx < (sint64)QTREAT_MAX_EXCLUDE_ADDRESSES; locals.exIdx++)
                     {
-                        locals.isExcluded = 1;
+                        if (state.get().excludeAddresses.get(locals.exIdx) != NULL_ID
+                            && locals.h == state.get().excludeAddresses.get(locals.exIdx))
+                        {
+                            locals.isExcluded = 1;
+                        }
                     }
+                    if (locals.isExcluded != 0) locals.h = NULL_ID;
                 }
-                if (locals.isExcluded != 0) continue;
-                locals.existing = 0;
-                state.get().nftCounts.get(locals.qbayOut.possessor, locals.existing);
-                state.mut().nftCounts.set(locals.qbayOut.possessor, locals.existing + 1);
-                state.mut().totalNftCount = state.get().totalNftCount + 1;
+
+                locals.oldPossessor = state.get().dividendNftLastPossessor.get(locals.sidx);
+                if (locals.h != locals.oldPossessor)
+                {
+                    if (locals.oldPossessor != NULL_ID)
+                    {
+                        locals.nftCnt = 0;
+                        state.get().nftCounts.get(locals.oldPossessor, locals.nftCnt);
+                        if (locals.nftCnt <= 1)
+                            state.mut().nftCounts.removeByKey(locals.oldPossessor);
+                        else
+                            state.mut().nftCounts.set(locals.oldPossessor, locals.nftCnt - 1);
+                        state.mut().totalNftCount = state.get().totalNftCount - 1;
+                    }
+                    if (locals.h != NULL_ID)
+                    {
+                        locals.nftCnt = 0;
+                        state.get().nftCounts.get(locals.h, locals.nftCnt);
+                        state.mut().nftCounts.set(locals.h, locals.nftCnt + 1);
+                        state.mut().totalNftCount = state.get().totalNftCount + 1;
+                    }
+                    state.mut().dividendNftLastPossessor.set(locals.sidx, locals.h);
+                }
             }
         }
 
