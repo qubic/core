@@ -18,20 +18,9 @@ enum ScoreStatus
     ScoreStatusTaskNotLoaded,
 };
 
-template <unsigned long long solutionBufferCount>
-struct ScoreFunction
+namespace score_engine
 {
-    score_engine::ScoreEngine<
-        score_engine::NeuraxonParams<
-        NEURAXON_NUMBER_OF_INPUT_NEURONS,
-        NEURAXON_NUMBER_OF_OUTPUT_NEURONS,
-        NEURAXON_NUMBER_OF_TICKS,
-        NEURAXON_NUMBER_OF_NEIGHBORS,
-        NEURAXON_POPULATION_THRESHOLD,
-        NEURAXON_NUMBER_OF_MUTATIONS,
-        NEURAXON_SOLUTION_THRESHOLD_DEFAULT>,
-
-        score_engine::Bpp9000Params<
+    using Bpp9000ParamsT = Bpp9000Params<
         BPP9000_NUMBER_OF_INPUT_NEURONS,
         BPP9000_NUMBER_OF_OUTPUT_NEURONS,
         BPP9000_SEQUENCE_LENGTH,
@@ -40,8 +29,27 @@ struct ScoreFunction
         BPP9000_NUMBER_OF_NEIGHBORS,
         BPP9000_POPULATION_THRESHOLD,
         BPP9000_NUMBER_OF_MUTATIONS,
-        BPP9000_SOLUTION_THRESHOLD_DEFAULT>
-    > _computeBuffer[solutionBufferCount];
+        BPP9000_SOLUTION_THRESHOLD_DEFAULT>;
+
+    using NeuraxonParamsT = NeuraxonParams<
+        NEURAXON_NUMBER_OF_INPUT_NEURONS,
+        NEURAXON_NUMBER_OF_OUTPUT_NEURONS,
+        NEURAXON_NUMBER_OF_TICKS,
+        NEURAXON_NUMBER_OF_NEIGHBORS,
+        NEURAXON_POPULATION_THRESHOLD,
+        NEURAXON_NUMBER_OF_MUTATIONS,
+        NEURAXON_SOLUTION_THRESHOLD_DEFAULT>;
+
+    // The bpp9000 scorer the ant colony branches on; exposes ANN (the inheritable per-neuron LUT).
+    using ScoreBpp9000T = ScoreBpp9000<Bpp9000ParamsT>;
+
+    using ScoreEngineT = ScoreEngine<NeuraxonParamsT, Bpp9000ParamsT>;
+}
+
+template <unsigned long long solutionBufferCount>
+struct ScoreFunction
+{
+    score_engine::ScoreEngineT _computeBuffer[solutionBufferCount];
 
     volatile char random2PoolLock;
     unsigned char state[score_engine::STATE_SIZE];

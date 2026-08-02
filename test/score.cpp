@@ -506,5 +506,341 @@ TEST(TestQubicScoreFunction, Bpp9000Profile)
 }
 #endif
 
+// =============================================================================
+// Ant-colony related 
 
+namespace
+{
+using AntCfg = ProductionConfig;
+using AntEngine = score_engine::ScoreBpp9000<AntCfg>;
+
+// Pool + synthetic task + loaded engine. Every ant test starts from one of these.
+template<typename Cfg>
+struct AntFixtureT
+{
+    std::vector<unsigned char> pool;
+    std::vector<unsigned char> taskBytes;
+    std::unique_ptr<score_engine::ScoreBpp9000<Cfg>> engine;
+};
+using AntFixture = AntFixtureT<AntCfg>;
+
+template<typename Cfg>
+static bool makeAntFixtureT(AntFixtureT<Cfg>& f)
+{
+    std::vector<m256i> seeds;
+    std::vector<m256i> pubkeys;
+    std::vector<m256i> nonces;
+    loadSamples(seeds, pubkeys, nonces, 1);
+    if (seeds.empty())
+    {
+        ADD_FAILURE() << "missing/short " << SAMPLES_FILE_NAME;
+        return false;
+    }
+    generatePool(seeds[0], f.pool);
+
+    f.taskBytes = readBinaryFile(TASK_FILE_NAME);
+    if (f.taskBytes.size() <= sizeof(score_task_file::TaskFileHeader))
+    {
+        ADD_FAILURE() << "missing/short " << TASK_FILE_NAME;
+        return false;
+    }
+    const TaskBlocks tb = taskSubview<Cfg>(f.taskBytes);
+    f.engine = makeEngine<Cfg>(tb.topo, tb.data);
+    return f.engine != nullptr;
+}
+
+static bool makeAntFixture(AntFixture& f)
+{
+    return makeAntFixtureT<AntCfg>(f);
+}
+
+static m256i makePubkey(unsigned char tag)
+{
+    m256i k = m256i::zero();
+    k.m256i_u8[0] = tag;
+    k.m256i_u8[31] = (unsigned char)(tag * 3 + 1);
+    return k;
+}
+
+// Canonical ant nonce: nonce[0] selects bpp9000, nonce[1] = L, nonce[2] = K, rest is the walk seed.
+static m256i makeAntNonce(unsigned char L, unsigned char K, unsigned char tag)
+{
+    m256i n = m256i::zero();
+    n.m256i_u8[0] = (unsigned char)score_engine::AlgoType::Bpp9000;
+    n.m256i_u8[1] = L;
+    n.m256i_u8[2] = K;
+    n.m256i_u8[3] = tag;
+    n.m256i_u8[17] = (unsigned char)(tag ^ 0x5A);
+    return n;
+}
+
+// Find a nonce whose walk from this parent actually improves on the parent's score. Needed only by
+// tests that compare two children of the SAME parent
+static bool findImprovingNonce(AntEngine& engine, const AntEngine::ANN& parent, const m256i& pk,
+                               const m256i& anchor, const unsigned char* pool, m256i& outNonce)
+{
+    for (unsigned char tag = 1; tag <= 6; ++tag)
+    {
+        const m256i n = makeAntNonce(6, 5, (unsigned char)(50 + tag));
+        const unsigned int sc = engine.computeScoreFromParent(parent, pk.m256i_u8, n.m256i_u8,
+                                                              anchor.m256i_u8, pool);
+        if (sc != score_engine::INVALID_SCORE_VALUE)
+        {
+            outNonce = n;
+            return true;
+        }
+    }
+    return false;
+}
+}
+
+// Make sure the score at the full computeScore flow have the same score with
+// the engine start directly from the best/final LUT
+TEST(TestQubicScoreAntColony, BestAnnReproducesReturnedScore)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pk = makePubkey(1);
+    const m256i nonce = makeAntNonce(3, 0, 11);
+
+    const unsigned int best = f.engine->computeScore(pk.m256i_u8, nonce.m256i_u8, f.pool.data());
+    // Re-score the LUT the walk kept, taken out and put back through the public form - this also
+    // exercises the compact/expand round trip the tree relies on.
+    AntEngine::ANN bestLut;
+    f.engine->getBestANN(bestLut);
+    f.engine->expand(bestLut, f.engine->currentANN);
+    EXPECT_EQ(f.engine->score(), best);
+}
+
+// Make sure the score at the full computeScoreFromParent flow have the same score with
+// the engine start directly from the best/final LUT
+TEST(TestQubicScoreAntColony, BestAnnReproducesScoreFromParent)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pk = makePubkey(2);
+    const m256i nonce = makeAntNonce(4, 2, 23);
+    const m256i anchor = makePubkey(9);
+
+    AntEngine::ANN root;
+    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), root);
+
+    const unsigned int childScore = f.engine->computeScoreFromParent(
+        root, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, f.pool.data());
+
+    // Re-score the LUT the walk kept, taken out and put back through the public form - this also
+    // exercises the compact/expand round trip the tree relies on.
+    AntEngine::ANN bestLut;
+    f.engine->getBestANN(bestLut);
+    f.engine->expand(bestLut, f.engine->currentANN);
+    EXPECT_EQ(f.engine->score(), childScore);
+}
+
+// An ANN is exactly its LUT: no storage padding escapes the engine, so hashing or shipping one is
+// just sizeof(ANN) and a future change to lutStride cannot alter a digest or the wire format.
+TEST(TestQubicScoreAntColony, AnnCarriesOnlyTheLut)
+{
+    static_assert(sizeof(AntEngine::ANN) == AntCfg::populationThreshold * AntEngine::lutSize,
+                  "ANN must be the LUT and nothing else");
+    static_assert(sizeof(AntEngine::ANN) < sizeof(AntEngine::PaddedLut),
+                  "the working layout is the padded one, not the other way round");
+
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pk = makePubkey(3);
+    AntEngine::ANN root;
+    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), root);
+
+    // Every byte handed out is a trit; nothing from the padded rows leaked in.
+    for (unsigned long long i = 0; i < sizeof(root.lut); ++i)
+    {
+        ASSERT_LT(root.lut[i], 3) << "byte " << i << " of the returned ANN is not a trit";
+    }
+
+    // Scribbling on the working layout's padding cannot change what comes out of it.
+    AntEngine::PaddedLut working;
+    f.engine->expand(root, working);
+    for (unsigned long long k = 0; k < AntEngine::maxNumberOfNeurons; ++k)
+    {
+        for (unsigned long long b = AntEngine::lutSize; b < AntEngine::lutStride; ++b)
+        {
+            working.lut[k * AntEngine::lutStride + b] = (unsigned char)(0xA5 + k + b);
+        }
+    }
+    AntEngine::ANN again;
+    f.engine->compact(working, again);
+    EXPECT_EQ(memcmp(&again, &root, sizeof(root)), 0) << "storage padding reached the ANN";
+}
+
+// expand/compact must be lossless, since every parent read from the tree goes through expand and
+// every child written back goes through compact.
+TEST(TestQubicScoreAntColony, AnnSurvivesExpandAndCompact)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    AntEngine::ANN original;
+    f.engine->deriveRootANN(makePubkey(44).m256i_u8, f.pool.data(), original);
+
+    AntEngine::PaddedLut working;
+    f.engine->expand(original, working);
+    AntEngine::ANN restored;
+    f.engine->compact(working, restored);
+
+    EXPECT_EQ(memcmp(&restored, &original, sizeof(original)), 0) << "expand/compact is not lossless";
+}
+
+TEST(TestQubicScoreAntColony, RootAnnIsDeterministicAndPerIdentity)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pkA = makePubkey(4);
+    const m256i pkB = makePubkey(5);
+
+    AntEngine::ANN a1;
+    AntEngine::ANN a2;
+    AntEngine::ANN b1;
+
+    f.engine->deriveRootANN(pkA.m256i_u8, f.pool.data(), a1);
+    // Deriving another identity's root overwrites initValue.lutInit, which is the state a1 came from.
+    f.engine->deriveRootANN(pkB.m256i_u8, f.pool.data(), b1);
+    f.engine->deriveRootANN(pkA.m256i_u8, f.pool.data(), a2);
+
+    EXPECT_EQ(memcmp(&a1, &a2, sizeof(a1)), 0) << "root depends on engine state";
+    EXPECT_NE(memcmp(&a1, &b1, sizeof(a1)), 0) << "two identities share a root";
+}
+
+// A child is a function of (parent, pubkey, nonce, anchor). Same inputs must give the same score AND
+// the same inherited LUT; a different parent must not give the same child.
+TEST(TestQubicScoreAntColony, ChildIsDeterministicAndInheritsParent)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pk = makePubkey(6);
+    const m256i nonce = makeAntNonce(5, 3, 41);
+    const m256i anchor = makePubkey(12);
+
+    AntEngine::ANN parentA;
+    AntEngine::ANN parentB;
+    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), parentA);
+    f.engine->deriveRootANN(makePubkey(7).m256i_u8, f.pool.data(), parentB);
+
+    const unsigned int s1 = f.engine->computeScoreFromParent(
+        parentA, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, f.pool.data());
+    AntEngine::ANN child1;
+    f.engine->getBestANN(child1);
+
+    const unsigned int s2 = f.engine->computeScoreFromParent(
+        parentA, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, f.pool.data());
+
+    EXPECT_EQ(s1, s2) << "same inputs gave different scores";
+    AntEngine::ANN child2;
+    f.engine->getBestANN(child2);
+    EXPECT_EQ(memcmp(&child1, &child2, sizeof(child1)), 0) << "same inputs gave a different child LUT";
+
+    f.engine->computeScoreFromParent(parentB, pk.m256i_u8, nonce.m256i_u8, anchor.m256i_u8, f.pool.data());
+    AntEngine::ANN child3;
+    f.engine->getBestANN(child3);
+    EXPECT_NE(memcmp(&child1, &child3, sizeof(child1)), 0) << "the parent LUT was not inherited";
+}
+
+// The anchor digest is part of the child's walk seed, so the same nonce on the same parent must not
+// produce the same child at a different anchor.
+TEST(TestQubicScoreAntColony, ChildDependsOnAnchorDigest)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pk = makePubkey(8);
+    const m256i anchorA = makePubkey(20);
+    const m256i anchorB = makePubkey(21);
+
+    AntEngine::ANN parent;
+    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), parent);
+
+    m256i nonce;
+    ASSERT_TRUE(findImprovingNonce(*f.engine, parent, pk, anchorA, f.pool.data(), nonce))
+        << "no nonce improved on this parent, so bestANN would not move and the comparison below "
+           "would be vacuous";
+
+    f.engine->computeScoreFromParent(parent, pk.m256i_u8, nonce.m256i_u8, anchorA.m256i_u8, f.pool.data());
+    AntEngine::ANN c1;
+    f.engine->getBestANN(c1);
+
+    f.engine->computeScoreFromParent(parent, pk.m256i_u8, nonce.m256i_u8, anchorB.m256i_u8, f.pool.data());
+    AntEngine::ANN c2;
+    f.engine->getBestANN(c2);
+
+    EXPECT_NE(memcmp(&c1, &c2, sizeof(c1)), 0) << "anchor digest does not reach the walk";
+}
+
+// Non-canonical nonces are refused by the scorer itself, so no caller can score first and check after.
+TEST(TestQubicScoreAntColony, NonCanonicalNonceIsRejected)
+{
+    AntFixture f;
+    ASSERT_TRUE(makeAntFixture(f));
+
+    const m256i pk = makePubkey(10);
+    const m256i anchor = makePubkey(30);
+    AntEngine::ANN parentA;
+    AntEngine::ANN parentB;
+    f.engine->deriveRootANN(pk.m256i_u8, f.pool.data(), parentA);
+    f.engine->deriveRootANN(makePubkey(11).m256i_u8, f.pool.data(), parentB);
+
+    constexpr unsigned char maxK = (unsigned char)AntCfg::numberOfMutations;
+    const m256i good = makeAntNonce(3, 5, 62);
+
+    // A rejected nonce and a timed-out walk
+    f.engine->computeScoreFromParent(parentA, pk.m256i_u8, good.m256i_u8, anchor.m256i_u8, f.pool.data());
+    AntEngine::ANN afterA;
+    f.engine->getBestANN(afterA);
+
+    // L below range, L above range, K above numberOfMutations, wrong algorithm slot.
+    static constexpr unsigned int numberOfBadNonces = 4;
+    m256i bad[numberOfBadNonces];
+    bad[0] = makeAntNonce(0, 0, 64);
+    bad[1] = makeAntNonce((unsigned char)(score_engine::MAX_LUT_ENTRIES_PER_STEP + 1), 0, 65);
+    bad[2] = makeAntNonce(3, (unsigned char)(maxK + 1), 66);
+    bad[3] = makeAntNonce(3, 0, 67);
+    bad[3].m256i_u8[0] = (unsigned char)score_engine::AlgoType::Neuraxon;
+
+    for (unsigned int i = 0; i < numberOfBadNonces; i++)
+    {
+        // The bad nonce is early rejected in computeScoreFromParent()
+        EXPECT_EQ(f.engine->computeScoreFromParent(parentB, pk.m256i_u8, bad[i].m256i_u8, anchor.m256i_u8, f.pool.data()),
+                  score_engine::INVALID_SCORE_VALUE) << "non-canonical nonce " << i << " accepted";
+
+        AntEngine::ANN now;
+        f.engine->getBestANN(now);
+        EXPECT_EQ(memcmp(&now, &afterA, sizeof(now)), 0) << "rejected nonce " << i << " still ran the walk";
+    }
+
+    // Now after bad nonce, we feed good nonce, we expect this is ok
+    f.engine->computeScoreFromParent(parentB, pk.m256i_u8, good.m256i_u8, anchor.m256i_u8, f.pool.data());
+    AntEngine::ANN afterB;
+    f.engine->getBestANN(afterB);
+    EXPECT_NE(memcmp(&afterB, &afterA, sizeof(afterB)), 0) << "canonical nonce was not scored";
+}
+
+
+// L and K boundaries of the canonical rule, checked as a pure predicate so no walk is needed.
+TEST(TestQubicScoreAntColony, NonceCanonicalRuleBoundaries)
+{
+    constexpr unsigned long long mutations = AntCfg::numberOfMutations;
+    constexpr unsigned char maxL = (unsigned char)score_engine::MAX_LUT_ENTRIES_PER_STEP;
+    constexpr unsigned char maxK = (unsigned char)mutations;
+
+    EXPECT_TRUE(score_engine::isCanonicalAntNonce(makeAntNonce(1, 0, 70).m256i_u8, mutations));
+    EXPECT_TRUE(score_engine::isCanonicalAntNonce(makeAntNonce(maxL, 0, 71).m256i_u8, mutations));
+    EXPECT_TRUE(score_engine::isCanonicalAntNonce(makeAntNonce(3, maxK, 72).m256i_u8, mutations));
+
+    EXPECT_FALSE(score_engine::isCanonicalAntNonce(makeAntNonce(0, 0, 73).m256i_u8, mutations));
+    EXPECT_FALSE(score_engine::isCanonicalAntNonce(makeAntNonce((unsigned char)(maxL + 1), 0, 74).m256i_u8, mutations));
+    EXPECT_FALSE(score_engine::isCanonicalAntNonce(makeAntNonce(3, (unsigned char)(maxK + 1), 75).m256i_u8, mutations));
+}
 
