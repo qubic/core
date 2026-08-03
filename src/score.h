@@ -49,8 +49,14 @@ namespace score_engine
 template <unsigned long long solutionBufferCount>
 struct ScoreFunction
 {
+private:
+    // The engine scratch buffers and the locks guarding them. Private on purpose: a work function run
+    // by the task queue cannot reach them, so it cannot take a slot lock and then call a method that
+    // takes the same one. Every route into the engine locks exactly once, inside this class.
     score_engine::ScoreEngineT _computeBuffer[solutionBufferCount];
+    volatile char solutionEngineLock[solutionBufferCount];
 
+public:
     volatile char random2PoolLock;
     unsigned char state[score_engine::STATE_SIZE];
     unsigned char externalPoolVec[score_engine::POOL_VEC_PADDING_SIZE];
@@ -71,8 +77,6 @@ struct ScoreFunction
     }
 
     m256i currentRandomSeed;
-
-    volatile char solutionEngineLock[solutionBufferCount];
 
 #if USE_SCORE_CACHE
     volatile char scoreCacheLock;
@@ -245,22 +249,39 @@ struct ScoreFunction
     unsigned long long stackSize = 0;
 #endif
 
-    // Multithreaded solutions verification:
-    // This module mainly serve tick processor in qubic core node, thus the queue size is limited at NUMBER_OF_TRANSACTIONS_PER_TICK 
-    // for future use for somewhere else, you can only increase the size.
+    // Multithreaded solutions verification.
+    //
+    // A task is a (work function, payload) pair rather than a fixed tuple, so different kinds of
+    // scoring work can share one queue and one drain: the queue arbitrates nothing except who runs
+    // next. The payload is COPIED in, so the caller may reuse or discard its buffer immediately - a
+    // pointer here would make every caller responsible for keeping data alive across a drain.
+    //
+    // The work function is responsible for taking whatever locks it needs, including
+    // solutionEngineLock. The queue must not take it: solutionEngineLock is a non-reentrant spinlock
+    // and operator() takes it itself, so a queue that pre-acquired would deadlock any work function
+    // that reuses operator().
+    typedef void (*WorkFunc)(unsigned long long processorNumber, void* payload);
+
+    static constexpr unsigned int TASK_PAYLOAD_MAX = 128;
+
+private:
+    static constexpr unsigned int TASK_QUEUE_CAPACITY = NUMBER_OF_TRANSACTIONS_PER_TICK;
+
+    struct Task
+    {
+        WorkFunc func;
+        // 8-byte aligned: m256i is a plain union accessed with unaligned intrinsics, so it needs no more.
+        unsigned long long payload[TASK_PAYLOAD_MAX / sizeof(unsigned long long)];
+    };
 
     volatile char taskQueueLock = 0;
-    struct
-    {
-        m256i publicKey[NUMBER_OF_TRANSACTIONS_PER_TICK];
-        m256i miningSeed[NUMBER_OF_TRANSACTIONS_PER_TICK];
-        m256i nonce[NUMBER_OF_TRANSACTIONS_PER_TICK];
-    } taskQueue;
+    Task taskQueue[TASK_QUEUE_CAPACITY];
     unsigned int _nTask;
     unsigned int _nProcessing;
     unsigned int _nFinished;
-    bool _nIsTaskQueueReady;
+    volatile bool _nIsTaskQueueReady;
 
+public:
     void resetTaskQueue()
     {
         ACQUIRE(taskQueueLock);
@@ -271,81 +292,98 @@ struct ScoreFunction
         RELEASE(taskQueueLock);
     }
 
-    // add task to the queue
-    // queue size is limited at NUMBER_OF_TRANSACTIONS_PER_TICK 
-    void addTask(m256i publicKey, m256i miningSeed, m256i nonce)
+    // Copies size bytes of data. Returns false if the queue is full or the payload does not fit.
+    bool addTask(WorkFunc func, const void* data, unsigned int size)
     {
-        ACQUIRE(taskQueueLock);
-        if (_nTask < NUMBER_OF_TRANSACTIONS_PER_TICK)
+        if (size > TASK_PAYLOAD_MAX)
         {
-            unsigned int index = _nTask++;
-            taskQueue.publicKey[index] = publicKey;
-            taskQueue.miningSeed[index] = miningSeed;
-            taskQueue.nonce[index] = nonce;
+            return false;
+        }
+        bool added = false;
+        ACQUIRE(taskQueueLock);
+        if (_nTask < TASK_QUEUE_CAPACITY)
+        {
+            Task& t = taskQueue[_nTask++];
+            t.func = func;
+            copyMem(t.payload, data, size);
+            added = true;
         }
         RELEASE(taskQueueLock);
+        return added;
     }
 
-    void startProcessTaskQueue()
+    // Outcome of one dispatch attempt, so a caller waiting for the batch does not need a second
+    // lock acquisition just to ask whether it is over.
+    enum TaskDispatchResult
+    {
+        TaskRan,         // a task was taken and executed
+        TaskNonePending, // nothing left to take, but tasks are still running elsewhere
+        TaskAllDone      // every queued task has finished
+    };
+
+    // Run one task if any is pending. Called from request processors' idle path and from the drain.
+    TaskDispatchResult tryProcessOneTask(unsigned long long processorNumber)
+    {
+        if (!_nIsTaskQueueReady)
+        {
+            // No thing to process
+            return TaskNonePending;
+        }
+
+        WorkFunc func = nullptr;
+        unsigned long long payload[TASK_PAYLOAD_MAX / sizeof(unsigned long long)];
+        TaskDispatchResult result = TaskNonePending;
+
+        ACQUIRE(taskQueueLock);
+        if (_nFinished >= _nTask)
+        {
+            result = TaskAllDone;
+        }
+        else if (_nIsTaskQueueReady && _nProcessing < _nTask)
+        {
+            const Task& t = taskQueue[_nProcessing++];
+            func = t.func;
+            copyMem(payload, t.payload, TASK_PAYLOAD_MAX);
+            result = TaskRan;
+        }
+        RELEASE(taskQueueLock);
+
+        if (func == nullptr)
+        {
+            return result;
+        }
+        func(processorNumber, payload);
+
+        ACQUIRE(taskQueueLock);
+        _nFinished++;
+        RELEASE(taskQueueLock);
+        return result;
+    }
+
+    // Open the queue and work it down. The caller participates rather than spinning idle, and returns
+    // only once every task has finished - including those running on other threads
+    void runUntilDone(unsigned long long processorNumber)
     {
         ACQUIRE(taskQueueLock);
         _nIsTaskQueueReady = true;
         RELEASE(taskQueueLock);
-    }
 
-    void stopProcessTaskQueue()
-    {
+        // Wait for task queue finish
+        for (;;)
+        {
+            const TaskDispatchResult result = tryProcessOneTask(processorNumber);
+            if (result == TaskAllDone)
+            {
+                break;
+            }
+            if (result == TaskNonePending)
+            {
+                _mm_pause();
+            }
+        }
+
         ACQUIRE(taskQueueLock);
         _nIsTaskQueueReady = false;
         RELEASE(taskQueueLock);
-    }
-
-    // get a task, can call on any thread
-    bool getTask(m256i* publicKey, m256i* miningSeed, m256i* nonce)
-    {
-        if (!_nIsTaskQueueReady)
-        {
-            return false;
-        }
-        bool result = false;
-        ACQUIRE(taskQueueLock);
-        if (_nProcessing < _nTask)
-        {
-            unsigned int index = _nProcessing++;
-            *publicKey = taskQueue.publicKey[index];
-            *miningSeed = taskQueue.miningSeed[index];
-            *nonce = taskQueue.nonce[index];
-            result = true;
-        }
-        else
-        {
-            result = false;
-        }
-        RELEASE(taskQueueLock);
-        return result;
-    }
-    void finishTask()
-    {
-        ACQUIRE(taskQueueLock);
-        _nFinished++;
-        RELEASE(taskQueueLock);
-    }
-
-    bool isTaskQueueProcessed()
-    {
-        return _nFinished == _nTask;
-    }
-
-    void tryProcessSolution(unsigned long long processorNumber)
-    {
-        m256i publicKey;
-        m256i miningSeed;
-        m256i nonce;
-        bool res = this->getTask(&publicKey, &miningSeed, &nonce);
-        if (res)
-        {
-            (*this)(processorNumber, publicKey, miningSeed, nonce);
-            this->finishTask();
-        }
     }
 };

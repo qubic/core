@@ -7,6 +7,7 @@
 #include "../src/public_settings.h"
 #include "../src/mining/score_bpp9000.h"
 #include "../src/mining/task_file.h"
+#include "../src/score.h"
 
 #include "score_bpp9000_reference.h"
 #include "score_params.h"
@@ -23,7 +24,9 @@
 #include <thread>
 #include <cstring>
 #include <chrono>
+#include <atomic>
 #include <iostream>
+#include <cstddef>
 
 using namespace score_params;
 using namespace test_utils;
@@ -842,5 +845,342 @@ TEST(TestQubicScoreAntColony, NonceCanonicalRuleBoundaries)
     EXPECT_FALSE(score_engine::isCanonicalAntNonce(makeAntNonce(0, 0, 73).m256i_u8, mutations));
     EXPECT_FALSE(score_engine::isCanonicalAntNonce(makeAntNonce((unsigned char)(maxL + 1), 0, 74).m256i_u8, mutations));
     EXPECT_FALSE(score_engine::isCanonicalAntNonce(makeAntNonce(3, (unsigned char)(maxK + 1), 75).m256i_u8, mutations));
+}
+
+
+// ---------------------------------------------------------------------------
+// ScoreFunction task queue.
+
+typedef ScoreFunction<1> TaskQueueScoreFunction;
+
+static constexpr unsigned int TASK_QUEUE_PROBE_CAPACITY = 256;
+
+// What the work functions record, so a test can see which tasks ran and what they received.
+struct TaskQueueProbe
+{
+    std::atomic<unsigned int> runCount[TASK_QUEUE_PROBE_CAPACITY];
+    std::atomic<unsigned int> altRunCount;
+    std::atomic<unsigned int> payloadMismatches;
+    std::atomic<unsigned int> started;
+    std::atomic<unsigned int> finished;
+
+    void reset()
+    {
+        for (unsigned int i = 0; i < TASK_QUEUE_PROBE_CAPACITY; i++)
+        {
+            runCount[i].store(0);
+        }
+        altRunCount.store(0);
+        payloadMismatches.store(0);
+        started.store(0);
+        finished.store(0);
+    }
+};
+
+struct TaskQueuePayload
+{
+    TaskQueueProbe* probe;
+    unsigned int id;
+    unsigned int patternSize;
+    unsigned char pattern[64];
+};
+static_assert(sizeof(TaskQueuePayload) <= TaskQueueScoreFunction::TASK_PAYLOAD_MAX,
+    "TaskQueuePayload must fit one queue slot");
+
+// Bigger than one slot, but starts with a valid payload so a wrongly accepted task records the run
+// instead of dereferencing garbage.
+struct TaskQueueOversizedPayload
+{
+    TaskQueuePayload base;
+    unsigned char extra[TaskQueueScoreFunction::TASK_PAYLOAD_MAX];
+};
+
+static TaskQueueProbe gTaskQueueProbe;
+static std::unique_ptr<TaskQueueScoreFunction> gTaskQueueOwner;
+static std::atomic<bool> gTaskQueueHelpersStop;
+
+static TaskQueuePayload makeTaskQueuePayload(unsigned int id, unsigned int patternSize = sizeof(TaskQueuePayload::pattern))
+{
+    TaskQueuePayload task;
+    setMem(&task, sizeof(task), 0);
+    task.probe = &gTaskQueueProbe;
+    task.id = id;
+    task.patternSize = patternSize;
+    // Fill the pattern with id+i, so it varies by task and by position
+    for (unsigned int i = 0; i < patternSize; i++)
+    {
+        task.pattern[i] = (unsigned char)(id + i);
+    }
+    return task;
+}
+
+// Records the run and checks the payload survived the copy into and out of the queue.
+static void countTaskRun(unsigned long long, void* payload)
+{
+    const TaskQueuePayload* task = (const TaskQueuePayload*)payload;
+    if (task->id >= TASK_QUEUE_PROBE_CAPACITY)
+    {
+        // Surfaces as a failed test rather than a write past runCount.
+        task->probe->payloadMismatches.fetch_add(1);
+        return;
+    }
+    if (task->patternSize > sizeof(task->pattern))
+    {
+        // A scalar that did not survive the copy is itself a mismatch, and it must not be trusted as
+        // the loop bound below.
+        task->probe->payloadMismatches.fetch_add(1);
+        return;
+    }
+    for (unsigned int i = 0; i < task->patternSize; i++)
+    {
+        if (task->pattern[i] != (unsigned char)(task->id + i))
+        {
+            task->probe->payloadMismatches.fetch_add(1);
+            break;
+        }
+    }
+    task->probe->runCount[task->id].fetch_add(1);
+}
+
+class TestQubicScoreTaskQueue : public ::testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        if (gTaskQueueOwner.get() == nullptr)
+        {
+            gTaskQueueOwner.reset(new TaskQueueScoreFunction());
+        }
+        gTaskQueueOwner->resetTaskQueue();
+        gTaskQueueProbe.reset();
+        gTaskQueueHelpersStop.store(false);
+    }
+
+    TaskQueueScoreFunction& queue()
+    {
+        return *gTaskQueueOwner;
+    }
+};
+
+// Task run once. Normal case
+TEST_F(TestQubicScoreTaskQueue, EveryTaskRunsExactlyOnce)
+{
+    const unsigned int taskCount = TASK_QUEUE_PROBE_CAPACITY;
+    for (unsigned int i = 0; i < taskCount; i++)
+    {
+        const TaskQueuePayload task = makeTaskQueuePayload(i);
+        EXPECT_TRUE(queue().addTask(countTaskRun, &task, sizeof(task)));
+    }
+
+    // Try to process every task in queue until all done
+    queue().runUntilDone(0);
+
+    for (unsigned int i = 0; i < taskCount; i++)
+    {
+        // Each task is expected run once
+        EXPECT_EQ(gTaskQueueProbe.runCount[i].load(), 1u) << "task " << i;
+    }
+}
+
+// Mixed mutiple size of tasks
+TEST_F(TestQubicScoreTaskQueue, PayloadArrivesIntact)
+{
+    // Bytes a task of this pattern length hands to addTask.
+    const auto taskQueuePayloadBytes = [](unsigned int patternSize) -> unsigned int
+    {
+        return (unsigned int)offsetof(TaskQueuePayload, pattern) + patternSize;
+    };
+
+    const unsigned int patternSizes[] = { 0, sizeof(TaskQueuePayload::pattern) };
+    const unsigned int sizeCount = (unsigned int)(sizeof(patternSizes) / sizeof(patternSizes[0]));
+    const unsigned int perSize = 4;
+
+    unsigned int id = 0;
+    for (unsigned int s = 0; s < sizeCount; s++)
+    {
+        for (unsigned int i = 0; i < perSize; i++)
+        {
+            const TaskQueuePayload task = makeTaskQueuePayload(id, patternSizes[s]);
+            EXPECT_TRUE(queue().addTask(countTaskRun, &task, taskQueuePayloadBytes(patternSizes[s])));
+            id++;
+        }
+    }
+
+    // Try to process every task in queue until all done
+    queue().runUntilDone(0);
+
+    EXPECT_EQ(gTaskQueueProbe.payloadMismatches.load(), 0u);
+    for (unsigned int i = 0; i < id; i++)
+    {
+        EXPECT_EQ(gTaskQueueProbe.runCount[i].load(), 1u) << "task " << i;
+    }
+}
+
+// A payload larger than one slot must be refused, not truncated into the slot or written past it.
+TEST_F(TestQubicScoreTaskQueue, OversizedPayloadIsRejected)
+{
+    TaskQueueOversizedPayload oversized;
+    setMem(&oversized, sizeof(oversized), 0);
+    oversized.base = makeTaskQueuePayload(0);
+
+    EXPECT_FALSE(queue().addTask(countTaskRun, &oversized, sizeof(oversized)));
+
+    // Nothing was queued, so the drain has nothing to run.
+    queue().runUntilDone(0);
+    EXPECT_EQ(gTaskQueueProbe.runCount[0].load(), 0u);
+}
+
+// The queue is bounded. Filling it until addTask refuses shows where the bound is, and that going
+// past it fails instead of writing off the end of the array.
+TEST_F(TestQubicScoreTaskQueue, QueueRejectsOverflow)
+{
+    unsigned long long accepted = 0;
+    for (unsigned long long i = 0; i < NUMBER_OF_TRANSACTIONS_PER_TICK + 16; i++)
+    {
+        const TaskQueuePayload task = makeTaskQueuePayload(0);
+        const bool added = queue().addTask(countTaskRun, &task, sizeof(task));
+        if (!added)
+        {
+            break;
+        }
+        accepted++;
+    }
+
+    EXPECT_EQ(accepted, NUMBER_OF_TRANSACTIONS_PER_TICK);
+}
+
+// The drain must return only after every task has finished, including the ones other threads picked
+// up. Returning once the last task was merely taken would leave work still running.
+TEST_F(TestQubicScoreTaskQueue, DrainWaitsForTasksRunningOnOtherThreads)
+{
+    // Stays in flight long enough that a drain returning on tasks taken, rather than tasks finished,
+    // would be visible.
+    const TaskQueueScoreFunction::WorkFunc slowTaskRun = [](unsigned long long, void* payload)
+    {
+        const TaskQueuePayload* task = (const TaskQueuePayload*)payload;
+        task->probe->started.fetch_add(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        task->probe->finished.fetch_add(1);
+    };
+
+    const unsigned int taskCount = 64;
+    const unsigned int helperCount = 4;
+    for (unsigned int i = 0; i < taskCount; i++)
+    {
+        const TaskQueuePayload task = makeTaskQueuePayload(i);
+        EXPECT_TRUE(queue().addTask(slowTaskRun, &task, sizeof(task)));
+    }
+
+    // Create another threads for process some tasks in queues
+    std::vector<std::thread> helpers;
+    for (unsigned int t = 0; t < helperCount; t++)
+    {
+        const unsigned long long helperProcessorNumber = t + 1;
+        helpers.emplace_back([helperProcessorNumber]()
+        {
+            // What a request processor does: keep offering to run queued work until told to stop.
+            while (!gTaskQueueHelpersStop.load())
+            {
+                gTaskQueueOwner->tryProcessOneTask(helperProcessorNumber);
+            }
+        });
+    }
+
+    // Mark the task queue ready and process remained task
+    queue().runUntilDone(0);
+    const unsigned int finishedOnReturn = gTaskQueueProbe.finished.load();
+
+    gTaskQueueHelpersStop.store(true);
+    for (unsigned int t = 0; t < helperCount; t++)
+    {
+        helpers[t].join();
+    }
+
+    // Expect all task are done
+    EXPECT_EQ(finishedOnReturn, taskCount);
+    EXPECT_EQ(gTaskQueueProbe.started.load(), taskCount);
+}
+
+// Tasks are queued before the drain opens the queue. Until it does, a helper must pick up nothing, so
+// a half-built batch is never started.
+TEST_F(TestQubicScoreTaskQueue, ClosedQueueHandsOutNothing)
+{
+    const unsigned int taskCount = 8;
+    for (unsigned int i = 0; i < taskCount; i++)
+    {
+        const TaskQueuePayload task = makeTaskQueuePayload(i);
+        EXPECT_TRUE(queue().addTask(countTaskRun, &task, sizeof(task)));
+    }
+
+    // Try to run many task but no thing run because the queue is not ready
+    for (unsigned int i = 0; i < 32; i++)
+    {
+        queue().tryProcessOneTask(0);
+    }
+    for (unsigned int i = 0; i < taskCount; i++)
+    {
+        EXPECT_EQ(gTaskQueueProbe.runCount[i].load(), 0u) << "task " << i << " ran before the drain";
+    }
+
+    // Process all items
+    queue().runUntilDone(0);
+    for (unsigned int i = 0; i < taskCount; i++)
+    {
+        EXPECT_EQ(gTaskQueueProbe.runCount[i].load(), 1u) << "task " << i;
+    }
+}
+
+// Every tick resets the queue and refills it, so a second batch must behave like the first. It will
+// not if reset leaves any of the three counters behind.
+TEST_F(TestQubicScoreTaskQueue, QueueIsReusableAfterReset)
+{
+    const unsigned int taskCount = 16;
+    for (unsigned int batch = 0; batch < 2; batch++)
+    {
+        queue().resetTaskQueue();
+        gTaskQueueProbe.reset();
+
+        for (unsigned int i = 0; i < taskCount; i++)
+        {
+            const TaskQueuePayload task = makeTaskQueuePayload(i);
+            EXPECT_TRUE(queue().addTask(countTaskRun, &task, sizeof(task)));
+        }
+
+        queue().runUntilDone(0);
+
+        for (unsigned int i = 0; i < taskCount; i++)
+        {
+            EXPECT_EQ(gTaskQueueProbe.runCount[i].load(), 1u) << "batch " << batch << " task " << i;
+        }
+    }
+}
+
+// Each task carries its own work function, so one batch can mix kinds. This is what lets a second
+// caller share the queue without changing it.
+TEST_F(TestQubicScoreTaskQueue, OneBatchCarriesDifferentWorkFunctions)
+{
+    // A second work function, so a batch can be shown to carry more than one kind of task.
+    const TaskQueueScoreFunction::WorkFunc countAltTaskRun = [](unsigned long long, void* payload)
+    {
+        const TaskQueuePayload* task = (const TaskQueuePayload*)payload;
+        task->probe->altRunCount.fetch_add(1);
+    };
+
+    const unsigned int pairCount = 32;
+    for (unsigned int i = 0; i < pairCount; i++)
+    {
+        const TaskQueuePayload counted = makeTaskQueuePayload(i);
+        EXPECT_TRUE(queue().addTask(countTaskRun, &counted, sizeof(counted)));
+        const TaskQueuePayload alt = makeTaskQueuePayload(i);
+        EXPECT_TRUE(queue().addTask(countAltTaskRun, &alt, sizeof(alt)));
+    }
+
+    queue().runUntilDone(0);
+
+    for (unsigned int i = 0; i < pairCount; i++)
+    {
+        EXPECT_EQ(gTaskQueueProbe.runCount[i].load(), 1u) << "task " << i;
+    }
+    EXPECT_EQ(gTaskQueueProbe.altRunCount.load(), pairCount);
 }
 

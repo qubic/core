@@ -214,6 +214,17 @@ static ScoreFunction<
     NUMBER_OF_SOLUTION_PROCESSORS
 > * score = nullptr;
 static unsigned char* gBpp9000TaskBuffer = nullptr;
+
+// The payload is the { publicKey, miningSeed, nonce }
+static_assert(3 * sizeof(m256i) <= ScoreFunction<NUMBER_OF_SOLUTION_PROCESSORS>::TASK_PAYLOAD_MAX,
+    "A legacy solution must fit the task queue payload");
+
+static void scoreLegacySolutionTask(unsigned long long processorNumber, void* payload)
+{
+    const m256i* data = (const m256i*)payload;
+    (*score)(processorNumber, data[0], data[1], data[2]);
+}
+
 static volatile char solutionsLock = 0;
 static unsigned long long* minerSolutionFlags = NULL;
 static volatile m256i minerPublicKeys[MAX_NUMBER_OF_MINERS + 1];
@@ -1896,7 +1907,7 @@ static void requestProcessor(void* ProcedureArgument)
         if (solutionProcessorFlags[processorNumber])
         {
             PROFILE_NAMED_SCOPE("requestProcessor(): solution processing");
-            score->tryProcessSolution(processorNumber);
+            score->tryProcessOneTask(processorNumber);
         }
         
         if (requestQueueElementTail == requestQueueElementHead)
@@ -3247,7 +3258,7 @@ static void processTick(unsigned long long processorNumber)
                                 if (!(minerSolutionFlags[flagIndices[0] >> 6] & (1ULL << (flagIndices[0] & 63)))
                                     || !(minerSolutionFlags[flagIndices[1] >> 6] & (1ULL << (flagIndices[1] & 63))))
                                 {
-                                    score->addTask(transaction->sourcePublicKey, solution_miningSeed, solution_nonce);
+                                    score->addTask(scoreLegacySolutionTask, data, sizeof(data));
                                 }
                             }
                         }
@@ -3258,15 +3269,10 @@ static void processTick(unsigned long long processorNumber)
         PROFILE_SCOPE_END();
 
         {
-            // Process solutions in this tick and store in cache. In parallel, score->tryProcessSolution() is called by
-            // request processors to speed up solution processing.
+            // Process solutions in this tick and store in cache. In parallel, request processors call
+            // score->tryProcessOneTask() from their idle path to speed this up.
             PROFILE_NAMED_SCOPE("processTick(): process solutions");
-            score->startProcessTaskQueue();
-            while (!score->isTaskQueueProcessed())
-            {
-                score->tryProcessSolution(processorNumber);
-            }
-            score->stopProcessTaskQueue();
+            score->runUntilDone(processorNumber);
         }
         solutionTotalExecutionTicks = __rdtsc() - solutionProcessStartTick; // for tracking the time processing solutions
 
