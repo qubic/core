@@ -36,7 +36,10 @@ constexpr uint64 QTREAT_MAX_TOTAL_ASICS       = 100;
 // Ownership re-verification / possessor snapshotting is spread across this many epochs
 // (round-robin by slot index) instead of touching every entry every epoch, so a large
 // registered-rig or dividend-NFT set can't force hundreds of external QBAY calls into a
-// single END_EPOCH. Each entry is still re-checked at least once every N epochs.
+// single END_EPOCH. Each entry is re-checked exactly once every N epochs, and is only ever
+// paid/credited in the same epoch it's freshly re-checked (payout amount scaled by N to
+// compensate) - a sold/transferred asset can never keep paying its previous owner between
+// checks, and a new owner starts earning as soon as their asset's next check lands.
 constexpr uint64 QTREAT_ASIC_VERIFY_SPREAD_EPOCHS = 8;
 constexpr uint64 QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS = 4;
 constexpr uint64 QTREAT_MINING_REWARD_DEFAULT = 20000000ULL;
@@ -166,10 +169,6 @@ struct QTREAT : public ContractBase
 
         Array<uint32, QTREAT_MAX_DIVIDEND_NFTS> dividendNftIds;
         uint64 dividendNftIdCount;
-        // Last possessor observed for each dividendNftIds slot (NULL_ID = none/excluded), so the
-        // round-robin snapshot below can update nftCounts incrementally instead of resetting and
-        // re-querying all QTREAT_MAX_DIVIDEND_NFTS ids every single epoch.
-        Array<id, QTREAT_MAX_DIVIDEND_NFTS> dividendNftLastPossessor;
         HashMap<id, uint64, QTREAT_MAX_NFT_HOLDERS> nftCounts;
         uint64 totalNftCount;
 
@@ -1204,7 +1203,6 @@ struct QTREAT : public ContractBase
         uint64 minerReward; uint64 stillOwned; uint32 rigPartId; sint64 pIdx; uint64 verifyOk;
         QBAY::getInfoOfNFTById_input qbayIn; QBAY::getInfoOfNFTById_output qbayOut;
         Entity ent; uint64 contractBalance;
-        id oldPossessor;
     };
     END_EPOCH_WITH_LOCALS()
     {
@@ -1450,12 +1448,45 @@ struct QTREAT : public ContractBase
             state.mut().stakers.set(locals.h, locals.info);
         }
 
+        // Mining budget envelope for this epoch, computed once. The dividend half is cut
+        // unconditionally below (it isn't tied to any individual rig's ownership); the miner
+        // half is only ever paid to a rig in the same pass that freshly re-verifies it (see
+        // the merged loop below) so a sold/transferred part can never keep drawing rewards
+        // for its old owner.
+        locals.minerBudget = 0;
+        if (state.get().totalMiningWeight > 0 && state.get().miningFund > 0)
+        {
+            qpi.getEntity(SELF, locals.ent);
+            locals.contractBalance = locals.ent.incomingAmount - locals.ent.outgoingAmount;
+            locals.miningBudget = state.get().miningRewardRate;
+            if (locals.miningBudget > state.get().miningFund) locals.miningBudget = state.get().miningFund;
+            // Only ~1/QTREAT_ASIC_VERIFY_SPREAD_EPOCHS of rigs are due for (scaled-up) payment
+            // in any given epoch, so take this epoch's dividend cut from the same fair 1/N
+            // slice of the budget instead of the full envelope - otherwise the dividend cut
+            // would drain miningFund at full speed every epoch regardless of how many rigs
+            // are actually due, starving the miner side before rigs get their scaled turn
+            // (especially with few registered rigs, where most epochs have nobody due at all).
+            locals.miningBudget = div(locals.miningBudget, QTREAT_ASIC_VERIFY_SPREAD_EPOCHS);
+
+            // Split 50/50; odd QU goes to dividends.
+            locals.minerBudget = div(locals.miningBudget, 2ULL);
+            locals.miningDividendCut = locals.miningBudget - locals.minerBudget;
+
+            if (locals.miningDividendCut > 0)
+            {
+                state.mut().miningFund = state.get().miningFund - locals.miningDividendCut;
+                state.mut().dividendFund = sadd(state.get().dividendFund, locals.miningDividendCut);
+            }
+        }
+
         for (locals.sidx = 0; locals.sidx < (sint64)state.get().asicRigHighWater; locals.sidx++)
         {
             locals.rig = state.get().asicRigs.get(locals.sidx);
             if (locals.rig.active == 0) continue;
-            // Only re-verify a rotating slice of rigs this epoch (see QTREAT_ASIC_VERIFY_SPREAD_EPOCHS);
-            // un-checked rigs simply keep their current active state until their turn comes up.
+            // Only re-verify (and potentially pay) a rotating slice of rigs this epoch (see
+            // QTREAT_ASIC_VERIFY_SPREAD_EPOCHS); un-checked rigs keep their current active
+            // state and simply wait for their next scheduled turn - no ownership-dependent
+            // payment happens for them outside their own verification epoch.
             if (mod((uint64)locals.sidx + qpi.epoch(), QTREAT_ASIC_VERIFY_SPREAD_EPOCHS) != 0) continue;
             locals.stillOwned = 1;
             locals.verifyOk = 1;
@@ -1473,7 +1504,9 @@ struct QTREAT : public ContractBase
                     locals.stillOwned = 0;
                 }
             }
-            if (locals.verifyOk == 1 && locals.stillOwned == 0)
+            if (locals.verifyOk == 0) continue; // inconclusive this epoch; try again next scheduled turn
+
+            if (locals.stillOwned == 0)
             {
                 state.mut().asicUsedParts.removeByKey((uint64)locals.rig.partMotherboard);
                 state.mut().asicUsedParts.removeByKey((uint64)locals.rig.partChip);
@@ -1483,96 +1516,70 @@ struct QTREAT : public ContractBase
                 state.mut().totalMiningWeight = state.get().totalMiningWeight - locals.rig.weight;
                 locals.rig.active = 0;
                 state.mut().asicRigs.set(locals.sidx, locals.rig);
-            }
-        }
-
-        if (state.get().totalMiningWeight > 0 && state.get().miningFund > 0)
-        {
-            qpi.getEntity(SELF, locals.ent);
-            locals.contractBalance = locals.ent.incomingAmount - locals.ent.outgoingAmount;
-            locals.miningBudget = state.get().miningRewardRate;
-            if (locals.miningBudget > state.get().miningFund) locals.miningBudget = state.get().miningFund;
-
-            // Split 50/50; odd QU goes to dividends.
-            locals.minerBudget = div(locals.miningBudget, 2ULL);
-            locals.miningDividendCut = locals.miningBudget - locals.minerBudget;
-
-            if (locals.miningDividendCut > 0)
-            {
-                state.mut().miningFund = state.get().miningFund - locals.miningDividendCut;
-                state.mut().dividendFund = sadd(state.get().dividendFund, locals.miningDividendCut);
+                continue;
             }
 
-            for (locals.sidx = 0; locals.sidx < (sint64)state.get().asicRigHighWater; locals.sidx++)
+            // Freshly verified as still valid this epoch: pay its share now, scaled by the
+            // spread factor to compensate for only being eligible on 1-in-N epochs (so the
+            // rig's total earnings over a full verification cycle match what continuous
+            // per-epoch payment at the same weight ratio would have produced).
+            if (locals.minerBudget > 0 && locals.rig.weight > 0 && state.get().totalMiningWeight > 0)
             {
-                locals.rig = state.get().asicRigs.get(locals.sidx);
-                if (locals.rig.active == 0 || locals.rig.weight == 0) continue;
-
-                locals.minerReward = div((uint128)locals.minerBudget * (uint128)locals.rig.weight,
-                    (uint128)state.get().totalMiningWeight).low;
-                if (locals.minerReward == 0) continue;
-                if (locals.minerReward > locals.contractBalance) locals.minerReward = locals.contractBalance;
-
-                qpi.transfer(locals.rig.owner, locals.minerReward);
-                locals.contractBalance -= locals.minerReward;
-                state.mut().miningFund = state.get().miningFund - locals.minerReward;
-                state.mut().totalMiningRewardsDistributed =
-                    sadd(state.get().totalMiningRewardsDistributed, locals.minerReward);
-                if (locals.contractBalance == 0) break;
+                locals.minerReward = div((uint128)locals.minerBudget * (uint128)locals.rig.weight
+                    * (uint128)QTREAT_ASIC_VERIFY_SPREAD_EPOCHS, (uint128)state.get().totalMiningWeight).low;
+                if (locals.minerReward > 0)
+                {
+                    if (locals.minerReward > locals.contractBalance) locals.minerReward = locals.contractBalance;
+                    if (locals.minerReward > state.get().miningFund) locals.minerReward = state.get().miningFund;
+                    if (locals.minerReward > 0)
+                    {
+                        qpi.transfer(locals.rig.owner, locals.minerReward);
+                        locals.contractBalance -= locals.minerReward;
+                        state.mut().miningFund = state.get().miningFund - locals.minerReward;
+                        state.mut().totalMiningRewardsDistributed =
+                            sadd(state.get().totalMiningRewardsDistributed, locals.minerReward);
+                    }
+                }
             }
         }
 
         if (state.get().dividendNftIdCount > 0)
         {
-            // Re-check only a rotating slice of the dividend-NFT ids this epoch (see
-            // QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS) instead of resetting nftCounts and re-querying
-            // QBAY for all of them every epoch. nftCounts/totalNftCount are updated incrementally
-            // against dividendNftLastPossessor, so ids not re-checked this epoch keep contributing
-            // their last-known possessor unchanged.
+            // Only this epoch's rotating slice of ids (see QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS) is
+            // queried and counted - nftCounts is fully rebuilt from just that fresh slice every
+            // epoch (no carried-forward "last known possessor" state), so a holder only ever
+            // gets dividend credit for an id in the same epoch its current possessor is actually
+            // re-confirmed. A seller can't keep collecting after a sale, and the buyer starts
+            // getting credit as soon as their id's next scheduled check lands - never mid-cycle
+            // stale data either way. Each matched id counts QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS
+            // times (instead of once) to compensate for only ~1/N of the collection being checked
+            // in any given epoch, so the collection's aggregate share of the dividend pool matches
+            // what checking everyone every epoch would produce, in expectation over a full cycle.
+            state.mut().nftCounts.reset();
+            state.mut().totalNftCount = 0;
             for (locals.sidx = 0; locals.sidx < (sint64)state.get().dividendNftIdCount; locals.sidx++)
             {
                 if (mod((uint64)locals.sidx + qpi.epoch(), QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS) != 0) continue;
 
                 locals.qbayIn.NFTId = state.get().dividendNftIds.get(locals.sidx);
                 CALL_OTHER_CONTRACT_FUNCTION(QBAY, getInfoOfNFTById, locals.qbayIn, locals.qbayOut);
-                locals.h = (interContractCallError != NoCallError) ? NULL_ID : locals.qbayOut.possessor;
-                if (locals.h == SELF) locals.h = NULL_ID;
-                if (locals.h != NULL_ID)
+                if (interContractCallError != NoCallError) continue;
+                if (locals.qbayOut.possessor == NULL_ID || locals.qbayOut.possessor == SELF) continue;
+                locals.isExcluded = 0;
+                for (locals.exIdx = 0; locals.exIdx < (sint64)QTREAT_MAX_EXCLUDE_ADDRESSES; locals.exIdx++)
                 {
-                    locals.isExcluded = 0;
-                    for (locals.exIdx = 0; locals.exIdx < (sint64)QTREAT_MAX_EXCLUDE_ADDRESSES; locals.exIdx++)
+                    if (state.get().excludeAddresses.get(locals.exIdx) != NULL_ID
+                        && locals.qbayOut.possessor == state.get().excludeAddresses.get(locals.exIdx))
                     {
-                        if (state.get().excludeAddresses.get(locals.exIdx) != NULL_ID
-                            && locals.h == state.get().excludeAddresses.get(locals.exIdx))
-                        {
-                            locals.isExcluded = 1;
-                        }
+                        locals.isExcluded = 1;
                     }
-                    if (locals.isExcluded != 0) locals.h = NULL_ID;
                 }
+                if (locals.isExcluded != 0) continue;
 
-                locals.oldPossessor = state.get().dividendNftLastPossessor.get(locals.sidx);
-                if (locals.h != locals.oldPossessor)
-                {
-                    if (locals.oldPossessor != NULL_ID)
-                    {
-                        locals.nftCnt = 0;
-                        state.get().nftCounts.get(locals.oldPossessor, locals.nftCnt);
-                        if (locals.nftCnt <= 1)
-                            state.mut().nftCounts.removeByKey(locals.oldPossessor);
-                        else
-                            state.mut().nftCounts.set(locals.oldPossessor, locals.nftCnt - 1);
-                        state.mut().totalNftCount = state.get().totalNftCount - 1;
-                    }
-                    if (locals.h != NULL_ID)
-                    {
-                        locals.nftCnt = 0;
-                        state.get().nftCounts.get(locals.h, locals.nftCnt);
-                        state.mut().nftCounts.set(locals.h, locals.nftCnt + 1);
-                        state.mut().totalNftCount = state.get().totalNftCount + 1;
-                    }
-                    state.mut().dividendNftLastPossessor.set(locals.sidx, locals.h);
-                }
+                locals.nftCnt = 0;
+                state.get().nftCounts.get(locals.qbayOut.possessor, locals.nftCnt);
+                state.mut().nftCounts.set(locals.qbayOut.possessor, locals.nftCnt + QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS);
+                state.mut().totalNftCount = state.get().totalNftCount + QTREAT_NFT_SNAPSHOT_SPREAD_EPOCHS;
             }
         }
 

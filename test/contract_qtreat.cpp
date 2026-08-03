@@ -1083,13 +1083,24 @@ TEST(ContractQtreat, MiningRewardSplits5050WithDividendFundAndPaysByWeight)
     increaseEnergy(funder, 1000000);
     EXPECT_EQ(t.depositMiningFund(funder, 1000000), QTREAT_OK);
 
+    // Mining rewards are only ever paid to a rig in the same epoch it's freshly re-verified
+    // (see QTREAT_ASIC_VERIFY_SPREAD_EPOCHS); force the clock to land exactly on this rig's
+    // (slot 0's) next due epoch so no intervening "nobody due" epoch drains miningFund via
+    // the dividend cut first, keeping the expected amounts exact.
+    ASSERT_EQ(reg.rigIndex, 0u);
+    system.epoch = system.epoch - (system.epoch % QTREAT_ASIC_VERIFY_SPREAD_EPOCHS) + QTREAT_ASIC_VERIFY_SPREAD_EPOCHS;
+    ASSERT_EQ((uint64)system.epoch % QTREAT_ASIC_VERIFY_SPREAD_EPOCHS, 0u);
+
     uint64 dividendBefore = t.getFunds().dividendFund;
     long long ownerBefore = getBalance(owner);
     t.advanceEpoch();
 
-    // Sole rig owns 100% of totalMiningWeight, so it gets the full miner half.
-    uint64 expectedMinerHalf = 1000000 / 2;
-    uint64 expectedDividendHalf = 1000000 - expectedMinerHalf;
+    // This epoch's budget slice is rate/SPREAD (see the same reasoning in QTREAT.h), split
+    // 50/50; the sole due rig owns 100% of totalMiningWeight so its scaled-up payment
+    // reconstitutes the full miner half of that slice.
+    uint64 epochSlice = 1000000 / QTREAT_ASIC_VERIFY_SPREAD_EPOCHS;
+    uint64 expectedMinerHalf = (epochSlice / 2) * QTREAT_ASIC_VERIFY_SPREAD_EPOCHS;
+    uint64 expectedDividendHalf = epochSlice - epochSlice / 2;
     EXPECT_EQ((uint64)(getBalance(owner) - ownerBefore), expectedMinerHalf);
     EXPECT_EQ(t.getFunds().dividendFund - dividendBefore, expectedDividendHalf);
 }
@@ -1142,6 +1153,42 @@ TEST(ContractQtreat, AsicRigStaysActiveUntilItsVerificationSlotComesUp)
 
     EXPECT_EQ(t.getState()->getTotalAsicCount(), 1u);
     EXPECT_EQ(t.getState()->getRig((sint64)reg.rigIndex).active, 1u);
+}
+
+TEST(ContractQtreat, AsicSoldPartOwnerReceivesNoRewardOnDeactivationEpoch)
+{
+    // Core guarantee: mining reward payment and ownership re-verification always happen
+    // together (same pass, same epoch) - a rig is never paid based on stale ownership. Once
+    // a part is sold away, the old owner collects nothing more, starting with the very epoch
+    // the mismatch is caught (no one-more-payment-then-deactivate window).
+    ContractTestingQtreat t;
+    t.activateQbayMarket();
+    id owner = getUser(1);
+    id newOwner = getUser(2);
+    uint32 m = t.mintNft(owner), c = t.mintNft(owner), p = t.mintNft(owner), f = t.mintNft(owner);
+    t.loadFullAsicCatalog();
+    auto reg = t.registerAsic(owner, m, c, p, f);
+    ASSERT_EQ(reg.returnCode, QTREAT_OK);
+    ASSERT_EQ(reg.rigIndex, 0u);
+
+    EXPECT_EQ(t.setMiningRate(t.adminAddress, 1000000), QTREAT_OK);
+    id funder = getUser(9);
+    increaseEnergy(funder, 1000000);
+    EXPECT_EQ(t.depositMiningFund(funder, 1000000), QTREAT_OK);
+
+    t.transferNft(owner, m, newOwner); // sell before the rig's part ever gets fresh-verified
+
+    // Advance straight to slot 0's next due epoch, same as the payment test, so no
+    // intervening epoch's dividend cut muddies the miningFund balance.
+    system.epoch = system.epoch - (system.epoch % QTREAT_ASIC_VERIFY_SPREAD_EPOCHS) + QTREAT_ASIC_VERIFY_SPREAD_EPOCHS;
+
+    long long ownerBefore = getBalance(owner);
+    t.advanceEpoch();
+
+    // Deactivated (ownership mismatch caught), and the old owner got paid nothing this epoch.
+    EXPECT_EQ(t.getState()->getTotalAsicCount(), 0u);
+    EXPECT_EQ(t.getState()->getRig((sint64)reg.rigIndex).active, 0u);
+    EXPECT_EQ(getBalance(owner), ownerBefore);
 }
 
 TEST(ContractQtreat, DripQdogePaysCatalogedNftHoldersByRarityAndExcludesAdmin)
