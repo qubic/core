@@ -126,11 +126,6 @@ static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 100;
 static constexpr unsigned long long BPP9000_NUMBER_OF_WINDOWS = BPP9000_SEQUENCE_LENGTH - BPP9000_WINDOW_WIDTH;
 static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 3838;
 
-// From this tick, bpp9000 solutions whose nonce is non-canonical (nonce[1] outside [1, MAX_LUT_ENTRIES_PER_STEP]
-// or nonce[2] != 0) are rejected as invalid
-static constexpr unsigned int BPP9000_NONCE_CANONICAL_ACTIVATION_TICK = 70900000;
-
-
 // Multipler of score
 static constexpr unsigned int NEURAXON_SOLUTION_MULTIPLER = 1;
 static constexpr unsigned int BPP9000_SOLUTION_MULTIPLER = 1;
