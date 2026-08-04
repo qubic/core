@@ -50,6 +50,9 @@
     <ClInclude Include="network_messages\all.h">
       <Filter>network_messages</Filter>
     </ClInclude>
+    <ClInclude Include="network_messages\ant_colony_message.h">
+      <Filter>network_messages</Filter>
+    </ClInclude>
     <ClInclude Include="network_messages\header.h">
       <Filter>network_messages</Filter>
     </ClInclude>
