@@ -202,10 +202,17 @@ public:
     {
         PROFILE_SCOPE();
 
-        // TODO: When neuraxon's going, this check need to be modified
-        if (!score_engine::isCanonicalBpp9000Nonce(nonce.m256i_u8))
+        switch (score_engine::getAlgoType(nonce.m256i_u8))
         {
-            return score_engine::INVALID_SCORE_VALUE;
+            case score_engine::AlgoType::Bpp9000:
+                if (!score_engine::isCanonicalBpp9000Nonce(nonce.m256i_u8))
+                {
+                    return score_engine::INVALID_SCORE_VALUE;
+                }
+                break;
+            default:
+                // Unsupported algo
+                return score_engine::INVALID_SCORE_VALUE;
         }
 
         if (isZero(miningSeed) || miningSeed != currentRandomSeed)
