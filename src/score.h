@@ -195,6 +195,12 @@ struct ScoreFunction
     {
         PROFILE_SCOPE();
 
+        // TODO: When neuraxon's going, this check need to be modified
+        if (!score_engine::isCanonicalBpp9000Nonce(nonce.m256i_u8))
+        {
+            return score_engine::INVALID_SCORE_VALUE;
+        }
+
         if (isZero(miningSeed) || miningSeed != currentRandomSeed)
         {
             return score_engine::INVALID_SCORE_VALUE;

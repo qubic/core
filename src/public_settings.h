@@ -71,7 +71,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 
 #define VERSION_A 1
 #define VERSION_B 301
-#define VERSION_C 0
+#define VERSION_C 2
 
 // Epoch and initial tick for node startup
 #define EPOCH 224
@@ -125,7 +125,6 @@ static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 100;
 // better, and a solution passes when score <= threshold.
 static constexpr unsigned long long BPP9000_NUMBER_OF_WINDOWS = BPP9000_SEQUENCE_LENGTH - BPP9000_WINDOW_WIDTH;
 static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 3838;
-
 
 // Multipler of score
 static constexpr unsigned int NEURAXON_SOLUTION_MULTIPLER = 1;
