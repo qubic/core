@@ -93,9 +93,8 @@ public:
         }
         currentRandomSeed = randomSeed; // persist the initial random seed to be able to send it back on system info response
 
-        ACQUIRE(random2PoolLock);
+        LockGuard guard(random2PoolLock);
         copyMem(poolVec, externalPoolVec, score_engine::POOL_VEC_PADDING_SIZE);
-        RELEASE(random2PoolLock);
     }
 
     // Load the task blocks into every compute buffer; returns false if any leaf rejects them.
@@ -148,12 +147,11 @@ public:
     void saveScoreCache(int epoch, CHAR16* directory = NULL)
     {
 #if USE_SCORE_CACHE
-        ACQUIRE(scoreCacheLock);
+        LockGuard guard(scoreCacheLock);
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
         SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
         scoreCache.save(SCORE_CACHE_FILE_NAME, directory);
-        RELEASE(scoreCacheLock);
 #endif
     }
 
@@ -162,12 +160,13 @@ public:
     {
         bool success = true;
 #if USE_SCORE_CACHE
-        ACQUIRE(scoreCacheLock);
-        SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
-        SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
-        SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
-        success = scoreCache.load(SCORE_CACHE_FILE_NAME);
-        RELEASE(scoreCacheLock);
+        {
+            LockGuard guard(scoreCacheLock);
+            SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 4] = epoch / 100 + L'0';
+            SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 3] = (epoch % 100) / 10 + L'0';
+            SCORE_CACHE_FILE_NAME[sizeof(SCORE_CACHE_FILE_NAME) / sizeof(SCORE_CACHE_FILE_NAME[0]) - 2] = epoch % 10 + L'0';
+            success = scoreCache.load(SCORE_CACHE_FILE_NAME);
+        }
 #endif
         return success;
     }
@@ -195,12 +194,8 @@ public:
 
     m256i getLastOutput(const unsigned long long processor_Number)
     {
-        ACQUIRE(solutionEngineLock[processor_Number]);
-
-        m256i result = _computeBuffer[processor_Number].getLastOutput();
-
-        RELEASE(solutionEngineLock[processor_Number]);
-        return result;
+        LockGuard guard(solutionEngineLock[processor_Number]);
+        return _computeBuffer[processor_Number].getLastOutput();
     }
     // main score function
     unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)
@@ -230,11 +225,11 @@ public:
 #endif
 
         const int solutionBufIdx = (int)(processor_Number % solutionBufferCount);
-        ACQUIRE(solutionEngineLock[solutionBufIdx]);
-
-        score = computeScore(solutionBufIdx, publicKey, nonce);
-
-        RELEASE(solutionEngineLock[solutionBufIdx]);
+        {
+            // Scoped so the cache write below happens with the engine slot released.
+            LockGuard guard(solutionEngineLock[solutionBufIdx]);
+            score = computeScore(solutionBufIdx, publicKey, nonce);
+        }
 #if USE_SCORE_CACHE
         scoreCache.addEntry(publicKey, miningSeed, nonce, scoreCacheIndex, score);
 #endif
@@ -284,12 +279,11 @@ private:
 public:
     void resetTaskQueue()
     {
-        ACQUIRE(taskQueueLock);
+        LockGuard guard(taskQueueLock);
         _nTask = 0;
         _nProcessing = 0;
         _nFinished = 0;
         _nIsTaskQueueReady = false;
-        RELEASE(taskQueueLock);
     }
 
     // Copies size bytes of data. Returns false if the queue is full or the payload does not fit.
@@ -299,17 +293,16 @@ public:
         {
             return false;
         }
-        bool added = false;
-        ACQUIRE(taskQueueLock);
-        if (_nTask < TASK_QUEUE_CAPACITY)
+
+        LockGuard guard(taskQueueLock);
+        if (_nTask >= TASK_QUEUE_CAPACITY)
         {
-            Task& t = taskQueue[_nTask++];
-            t.func = func;
-            copyMem(t.payload, data, size);
-            added = true;
+            return false;
         }
-        RELEASE(taskQueueLock);
-        return added;
+        Task& t = taskQueue[_nTask++];
+        t.func = func;
+        copyMem(t.payload, data, size);
+        return true;
     }
 
     // Outcome of one dispatch attempt, so a caller waiting for the batch does not need a second
@@ -334,19 +327,21 @@ public:
         unsigned long long payload[TASK_PAYLOAD_MAX / sizeof(unsigned long long)];
         TaskDispatchResult result = TaskNonePending;
 
-        ACQUIRE(taskQueueLock);
-        if (_nFinished >= _nTask)
+        // The task itself must run with the lock released
         {
-            result = TaskAllDone;
+            LockGuard guard(taskQueueLock);
+            if (_nFinished >= _nTask)
+            {
+                result = TaskAllDone;
+            }
+            else if (_nIsTaskQueueReady && _nProcessing < _nTask)
+            {
+                const Task& t = taskQueue[_nProcessing++];
+                func = t.func;
+                copyMem(payload, t.payload, TASK_PAYLOAD_MAX);
+                result = TaskRan;
+            }
         }
-        else if (_nIsTaskQueueReady && _nProcessing < _nTask)
-        {
-            const Task& t = taskQueue[_nProcessing++];
-            func = t.func;
-            copyMem(payload, t.payload, TASK_PAYLOAD_MAX);
-            result = TaskRan;
-        }
-        RELEASE(taskQueueLock);
 
         if (func == nullptr)
         {
@@ -354,9 +349,10 @@ public:
         }
         func(processorNumber, payload);
 
-        ACQUIRE(taskQueueLock);
-        _nFinished++;
-        RELEASE(taskQueueLock);
+        {
+            LockGuard guard(taskQueueLock);
+            _nFinished++;
+        }
         return result;
     }
 
@@ -364,9 +360,10 @@ public:
     // only once every task has finished - including those running on other threads
     void runUntilDone(unsigned long long processorNumber)
     {
-        ACQUIRE(taskQueueLock);
-        _nIsTaskQueueReady = true;
-        RELEASE(taskQueueLock);
+        {
+            LockGuard guard(taskQueueLock);
+            _nIsTaskQueueReady = true;
+        }
 
         // Wait for task queue finish
         for (;;)
@@ -382,8 +379,9 @@ public:
             }
         }
 
-        ACQUIRE(taskQueueLock);
-        _nIsTaskQueueReady = false;
-        RELEASE(taskQueueLock);
+        {
+            LockGuard guard(taskQueueLock);
+            _nIsTaskQueueReady = false;
+        }
     }
 };
