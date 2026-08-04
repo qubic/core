@@ -2487,6 +2487,146 @@ static bool ranksBelow(unsigned int scoreA, unsigned int tickA, unsigned int sco
     return tickA > tickB;
 }
 
+// Tick-processor only: the competitor sort between the two minerScoreArrayLock sections runs
+// unlocked on purpose.
+static void updateMinerRankingAndFutureComputors(
+    const m256i& sourcePublicKey,
+    unsigned int newScore,
+    unsigned int newTick)
+{
+    ACQUIRE(minerScoreArrayLock);
+    bool minerEntryChanged = false;
+    unsigned int minerIndex;
+    for (minerIndex = 0; minerIndex < numberOfMiners; minerIndex++)
+    {
+        if (sourcePublicKey == minerPublicKeys[minerIndex])
+        {
+            if (newScore < minerScores[minerIndex])
+            {
+                minerScores[minerIndex] = newScore;
+                minerBestScoreTicks[minerIndex] = newTick;
+                minerEntryChanged = true;
+            }
+
+            break;
+        }
+    }
+    if (minerIndex == numberOfMiners)
+    {
+        if (numberOfMiners < MAX_NUMBER_OF_MINERS)
+        {
+            minerPublicKeys[numberOfMiners] = sourcePublicKey;
+            minerBestScoreTicks[numberOfMiners] = newTick;
+            minerScores[numberOfMiners++] = newScore;
+            minerEntryChanged = true;
+        }
+        else
+        {
+            // The table is full. Entries beyond the computor block are kept sorted, so the
+            // worst-ranked one sits at the end and is replaced only if the newcomer outranks it.
+            const unsigned int worstIndex = numberOfMiners - 1;
+            if (ranksBelow(minerScores[worstIndex], minerBestScoreTicks[worstIndex], newScore, newTick))
+            {
+                minerPublicKeys[worstIndex] = sourcePublicKey;
+                minerScores[worstIndex] = newScore;
+                minerBestScoreTicks[worstIndex] = newTick;
+                minerIndex = worstIndex;
+                minerEntryChanged = true;
+            }
+        }
+    }
+
+    if (minerEntryChanged)
+    {
+        const m256i tmpPublicKey = minerPublicKeys[minerIndex];
+        const unsigned int tmpScore = minerScores[minerIndex];
+        const unsigned int tmpTick = minerBestScoreTicks[minerIndex];
+        while (minerIndex > (unsigned int)(minerIndex < NUMBER_OF_COMPUTORS ? 0 : NUMBER_OF_COMPUTORS)
+            && ranksBelow(minerScores[minerIndex - 1], minerBestScoreTicks[minerIndex - 1], minerScores[minerIndex], minerBestScoreTicks[minerIndex]))
+        {
+            minerPublicKeys[minerIndex] = minerPublicKeys[minerIndex - 1];
+            minerScores[minerIndex] = minerScores[minerIndex - 1];
+            minerBestScoreTicks[minerIndex] = minerBestScoreTicks[minerIndex - 1];
+            minerPublicKeys[--minerIndex] = tmpPublicKey;
+            minerScores[minerIndex] = tmpScore;
+            minerBestScoreTicks[minerIndex] = tmpTick;
+        }
+    }
+
+    // combine 225 worst current computors with 225 best candidates
+    for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS - QUORUM; i++)
+    {
+        competitorPublicKeys[i] = minerPublicKeys[QUORUM + i];
+        competitorScores[i] = minerScores[QUORUM + i];
+        competitorTicks[i] = minerBestScoreTicks[QUORUM + i];
+        competitorComputorStatuses[i] = true;
+
+        if (NUMBER_OF_COMPUTORS + i < numberOfMiners)
+        {
+            competitorPublicKeys[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerPublicKeys[NUMBER_OF_COMPUTORS + i];
+            competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerScores[NUMBER_OF_COMPUTORS + i];
+            competitorTicks[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerBestScoreTicks[NUMBER_OF_COMPUTORS + i];
+        }
+        else
+        {
+            competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = NO_MINER_SCORE;
+            competitorTicks[i + (NUMBER_OF_COMPUTORS - QUORUM)] = 0;
+        }
+        competitorComputorStatuses[i + (NUMBER_OF_COMPUTORS - QUORUM)] = false;
+    }
+    RELEASE(minerScoreArrayLock);
+
+    // bubble sorting -> top 225 from competitorPublicKeys have computors and candidates which are the best from that subset
+    for (unsigned int i = NUMBER_OF_COMPUTORS - QUORUM; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
+    {
+        int j = i;
+        const m256i tmpPublicKey = competitorPublicKeys[j];
+        const unsigned int tmpScore = competitorScores[j];
+        const unsigned int tmpTick = competitorTicks[j];
+        const bool tmpComputorStatus = false;
+        while (j
+            && ranksBelow(competitorScores[j - 1], competitorTicks[j - 1], competitorScores[j], competitorTicks[j]))
+        {
+            competitorPublicKeys[j] = competitorPublicKeys[j - 1];
+            competitorScores[j] = competitorScores[j - 1];
+            competitorTicks[j] = competitorTicks[j - 1];
+            competitorComputorStatuses[j] = competitorComputorStatuses[j - 1];
+            competitorPublicKeys[--j] = tmpPublicKey;
+            competitorScores[j] = tmpScore;
+            competitorTicks[j] = tmpTick;
+            competitorComputorStatuses[j] = tmpComputorStatus;
+        }
+    }
+
+    minimumComputorScore = competitorScores[NUMBER_OF_COMPUTORS - QUORUM - 1];
+
+    unsigned char candidateCounter = 0;
+    for (unsigned int i = 0; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
+    {
+        if (!competitorComputorStatuses[i])
+        {
+            minimumCandidateScore = competitorScores[i];
+            candidateCounter++;
+        }
+    }
+    if (candidateCounter < NUMBER_OF_COMPUTORS - QUORUM)
+    {
+        minimumCandidateScore = minimumComputorScore;
+    }
+
+    ACQUIRE(minerScoreArrayLock);
+    for (unsigned int i = 0; i < QUORUM; i++)
+    {
+        system.futureComputors[i] = minerPublicKeys[i];
+    }
+    RELEASE(minerScoreArrayLock);
+
+    for (unsigned int i = QUORUM; i < NUMBER_OF_COMPUTORS; i++)
+    {
+        system.futureComputors[i] = competitorPublicKeys[i - QUORUM];
+    }
+}
+
 static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, const unsigned long long processorNumber)
 {
     PROFILE_SCOPE();
@@ -2568,140 +2708,9 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                 // accepted solutions
                 const unsigned int newScore = solutionScore * gScoreMultiplier[selectedAlgo];
                 const unsigned int newTick = system.tick;
-
-                ACQUIRE(minerScoreArrayLock);
-                bool minerEntryChanged = false;
-                unsigned int minerIndex;
-                for (minerIndex = 0; minerIndex < numberOfMiners; minerIndex++)
-                {
-                    if (transaction->sourcePublicKey == minerPublicKeys[minerIndex])
-                    {
-                        if (newScore < minerScores[minerIndex])
-                        {
-                            minerScores[minerIndex] = newScore;
-                            minerBestScoreTicks[minerIndex] = newTick;
-                            minerEntryChanged = true;
-                        }
-
-                        break;
-                    }
-                }
-                if (minerIndex == numberOfMiners)
-                {
-                    if (numberOfMiners < MAX_NUMBER_OF_MINERS)
-                    {
-                        minerPublicKeys[numberOfMiners] = transaction->sourcePublicKey;
-                        minerBestScoreTicks[numberOfMiners] = newTick;
-                        minerScores[numberOfMiners++] = newScore;
-                        minerEntryChanged = true;
-                    }
-                    else
-                    {
-                        // The table is full. Entries beyond the computor block are kept sorted, so the
-                        // worst-ranked one sits at the end and is replaced only if the newcomer outranks it.
-                        const unsigned int worstIndex = numberOfMiners - 1;
-                        if (ranksBelow(minerScores[worstIndex], minerBestScoreTicks[worstIndex], newScore, newTick))
-                        {
-                            minerPublicKeys[worstIndex] = transaction->sourcePublicKey;
-                            minerScores[worstIndex] = newScore;
-                            minerBestScoreTicks[worstIndex] = newTick;
-                            minerIndex = worstIndex;
-                            minerEntryChanged = true;
-                        }
-                    }
-                }
-
-                if (minerEntryChanged)
-                {
-                    const m256i tmpPublicKey = minerPublicKeys[minerIndex];
-                    const unsigned int tmpScore = minerScores[minerIndex];
-                    const unsigned int tmpTick = minerBestScoreTicks[minerIndex];
-                    while (minerIndex > (unsigned int)(minerIndex < NUMBER_OF_COMPUTORS ? 0 : NUMBER_OF_COMPUTORS)
-                        && ranksBelow(minerScores[minerIndex - 1], minerBestScoreTicks[minerIndex - 1], minerScores[minerIndex], minerBestScoreTicks[minerIndex]))
-                    {
-                        minerPublicKeys[minerIndex] = minerPublicKeys[minerIndex - 1];
-                        minerScores[minerIndex] = minerScores[minerIndex - 1];
-                        minerBestScoreTicks[minerIndex] = minerBestScoreTicks[minerIndex - 1];
-                        minerPublicKeys[--minerIndex] = tmpPublicKey;
-                        minerScores[minerIndex] = tmpScore;
-                        minerBestScoreTicks[minerIndex] = tmpTick;
-                    }
-                }
-
-                // combine 225 worst current computors with 225 best candidates
-                for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS - QUORUM; i++)
-                {
-                    competitorPublicKeys[i] = minerPublicKeys[QUORUM + i];
-                    competitorScores[i] = minerScores[QUORUM + i];
-                    competitorTicks[i] = minerBestScoreTicks[QUORUM + i];
-                    competitorComputorStatuses[i] = true;
-
-                    if (NUMBER_OF_COMPUTORS + i < numberOfMiners)
-                    {
-                        competitorPublicKeys[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerPublicKeys[NUMBER_OF_COMPUTORS + i];
-                        competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerScores[NUMBER_OF_COMPUTORS + i];
-                        competitorTicks[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerBestScoreTicks[NUMBER_OF_COMPUTORS + i];
-                    }
-                    else
-                    {
-                        competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = NO_MINER_SCORE;
-                        competitorTicks[i + (NUMBER_OF_COMPUTORS - QUORUM)] = 0;
-                    }
-                    competitorComputorStatuses[i + (NUMBER_OF_COMPUTORS - QUORUM)] = false;
-                }
-                RELEASE(minerScoreArrayLock);
-
-                // bubble sorting -> top 225 from competitorPublicKeys have computors and candidates which are the best from that subset
-                for (unsigned int i = NUMBER_OF_COMPUTORS - QUORUM; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
-                {
-                    int j = i;
-                    const m256i tmpPublicKey = competitorPublicKeys[j];
-                    const unsigned int tmpScore = competitorScores[j];
-                    const unsigned int tmpTick = competitorTicks[j];
-                    const bool tmpComputorStatus = false;
-                    while (j
-                        && ranksBelow(competitorScores[j - 1], competitorTicks[j - 1], competitorScores[j], competitorTicks[j]))
-                    {
-                        competitorPublicKeys[j] = competitorPublicKeys[j - 1];
-                        competitorScores[j] = competitorScores[j - 1];
-                        competitorTicks[j] = competitorTicks[j - 1];
-                        competitorComputorStatuses[j] = competitorComputorStatuses[j - 1];
-                        competitorPublicKeys[--j] = tmpPublicKey;
-                        competitorScores[j] = tmpScore;
-                        competitorTicks[j] = tmpTick;
-                        competitorComputorStatuses[j] = tmpComputorStatus;
-                    }
-                }
-
-                minimumComputorScore = competitorScores[NUMBER_OF_COMPUTORS - QUORUM - 1];
-
-                unsigned char candidateCounter = 0;
-                for (unsigned int i = 0; i < (NUMBER_OF_COMPUTORS - QUORUM) * 2; i++)
-                {
-                    if (!competitorComputorStatuses[i])
-                    {
-                        minimumCandidateScore = competitorScores[i];
-                        candidateCounter++;
-                    }
-                }
-                if (candidateCounter < NUMBER_OF_COMPUTORS - QUORUM)
-                {
-                    minimumCandidateScore = minimumComputorScore;
-                }
-
-                ACQUIRE(minerScoreArrayLock);
-                for (unsigned int i = 0; i < QUORUM; i++)
-                {
-                    system.futureComputors[i] = minerPublicKeys[i];
-                }
-                RELEASE(minerScoreArrayLock);
-
-                for (unsigned int i = QUORUM; i < NUMBER_OF_COMPUTORS; i++)
-                {
-                    system.futureComputors[i] = competitorPublicKeys[i - QUORUM];
-                }
+                updateMinerRankingAndFutureComputors(transaction->sourcePublicKey, newScore, newTick);
             }
-        }        
+        }
     }
     else
     {
