@@ -188,6 +188,15 @@
     <ClInclude Include="mining\mining.h">
       <Filter>mining</Filter>
     </ClInclude>
+    <ClInclude Include="mining\ant_colony.h">
+      <Filter>mining</Filter>
+    </ClInclude>
+    <ClInclude Include="mining\ant_colony_bpp9000.h">
+      <Filter>mining</Filter>
+    </ClInclude>
+    <ClInclude Include="mining\trit_pack.h">
+      <Filter>mining</Filter>
+    </ClInclude>
     <ClInclude Include="logging\logging.h">
       <Filter>logging</Filter>
     </ClInclude>

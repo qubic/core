@@ -10,6 +10,11 @@
 
 #include <lib/platform_efi/uefi.h>
 
+// Miners tracked in the ranking table that feeds computor selection. A hard cap rather than mere
+// sizing: once full, a newcomer is admitted only if it outranks the current worst entry. Lives here
+// rather than in qubic.cpp so mining headers can size per-miner structures against it.
+#define MAX_NUMBER_OF_MINERS 8192
+
 static unsigned int getTickInDogeBroadcastCycle()
 {
 #ifdef NO_UEFI
