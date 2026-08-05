@@ -60,7 +60,7 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 // If this flag is 1, it indicates that the whole network (all 676 IDs) will start from scratch and agree that the very first tick time will be set at (2022-04-13 Wed 12:00:00.000UTC).
 // If this flag is 0, the node will try to fetch data of the initial tick of the epoch from other nodes, because the tick's timestamp may differ from (2022-04-13 Wed 12:00:00.000UTC).
 // If you restart your node after seamless epoch transition, make sure EPOCH and TICK are set correctly for the currently running epoch.
-#define START_NETWORK_FROM_SCRATCH 1
+#define START_NETWORK_FROM_SCRATCH 0
 
 // Addons: If you don't know it, leave it 0.
 #define ADDON_TX_STATUS_REQUEST 0
@@ -71,11 +71,11 @@ static_assert(AUTO_FORCE_NEXT_TICK_THRESHOLD* TARGET_TICK_DURATION >= PEER_REFRE
 
 #define VERSION_A 1
 #define VERSION_B 301
-#define VERSION_C 2
+#define VERSION_C 3
 
 // Epoch and initial tick for node startup
-#define EPOCH 224
-#define TICK 70550000
+#define EPOCH 225
+#define TICK 72065097
 #define TICK_IS_FIRST_TICK_OF_EPOCH 1 // Set to 0 if the network is restarted during the EPOCH with a new initial TICK
 
 #define ARBITRATOR "AFZPUAIYVPNUYGJRQVLUKOPPVLHAZQTGLYAAUUNBXFTVTAMSBKQBLEIEPCVJ"
@@ -125,11 +125,6 @@ static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 100;
 // better, and a solution passes when score <= threshold.
 static constexpr unsigned long long BPP9000_NUMBER_OF_WINDOWS = BPP9000_SEQUENCE_LENGTH - BPP9000_WINDOW_WIDTH;
 static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 3838;
-
-// From this tick, bpp9000 solutions whose nonce is non-canonical (nonce[1] outside [1, MAX_LUT_ENTRIES_PER_STEP]
-// or nonce[2] != 0) are rejected as invalid
-static constexpr unsigned int BPP9000_NONCE_CANONICAL_ACTIVATION_TICK = 70900000;
-
 
 // Multipler of score
 static constexpr unsigned int NEURAXON_SOLUTION_MULTIPLER = 1;
