@@ -133,7 +133,7 @@ using namespace QPI;
 
 constexpr uint64 QPAYHUB_RECEIPT_CAPACITY = 262144; // 2^18 (was 65536) -- ~9.4k/day mainnet headroom
 constexpr sint64 QPAYHUB_MIN_PAYMENT = 100;        // dust floor, QU - rejects the payment outright
-constexpr uint64 QPAYHUB_FEE_PERMILLE = 10;        // 10 per 1000 = 1 percent
+constexpr uint64 QPAYHUB_FEE_PERMILLE = 75;        // 75 per 10000 = 0.75 percent
 // Floor on the fee itself, not a rejection threshold like MIN_PAYMENT.
 constexpr sint64 QPAYHUB_FEE_FLOOR_QU = 100;
 constexpr uint32 QPAYHUB_RECEIPT_RETENTION_EPOCHS = 2;
@@ -159,7 +159,7 @@ constexpr uint32 QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS = 16u * 60u * 1000u;
 constexpr uint32 QPAYHUB_PRICE_STALE_TICKS = 4000; // roughly 20-25 min at current tick rates
 
 static_assert((QPAYHUB_RECEIPT_CAPACITY & (QPAYHUB_RECEIPT_CAPACITY - 1)) == 0);
-static_assert(QPAYHUB_FEE_PERMILLE < 1000);
+static_assert(QPAYHUB_FEE_PERMILLE < 10000);
 static_assert(QPAYHUB_DIVIDEND_SHAREHOLDER_PERMILLE <= 1000);
 
 // Return codes — append-only, never renumber.
@@ -496,7 +496,7 @@ struct QPAYHUB : public ContractBase
 
         // 1% or QPAYHUB_FEE_FLOOR_QU, whichever is greater. Floor and minimum
         // are both 100, so a payment at the minimum nets the seller zero.
-        locals.fee = (sint64)div((uint64)locals.amount * QPAYHUB_FEE_PERMILLE, (uint64)1000);
+        locals.fee = (sint64)div((uint64)locals.amount * QPAYHUB_FEE_PERMILLE, (uint64)10000);
         if (locals.fee < QPAYHUB_FEE_FLOOR_QU)
         {
             locals.fee = QPAYHUB_FEE_FLOOR_QU;
