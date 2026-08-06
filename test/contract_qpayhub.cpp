@@ -282,7 +282,7 @@ TEST(ContractQPayhub, PayHappyPathRecordsReceiptAndPaysSellerNetOfFee)
     increaseEnergy(BUYER1, 10000000);
 
     const sint64 amount = 1000000;
-    const sint64 expectedFee = 10000;  // 1% of 1,000,000
+    const sint64 expectedFee = 7500;  // 0.75% of 1,000,000
     const sint64 expectedNet = amount - expectedFee;
 
     const sint64 sellerBalanceBefore = getBalance(SELLER1);
@@ -366,40 +366,48 @@ TEST(ContractQPayhub, PayDuplicateKeyRefundsAndRejects)
     EXPECT_EQ(qpayhub.getInfo().receiptCount, 1ULL);
 }
 
-TEST(ContractQPayhub, PayFeeFloorDominatesBelowOnePercentThreshold)
+TEST(ContractQPayhub, PayFeeFloorDominatesBelowPercentThreshold)
 {
     ContractTestingQPayhub qpayhub;
     increaseEnergy(BUYER1, 10000000);
 
-    // 1% of 5000 is 50, below the 100 QU floor, so the floor applies.
+    // 0.75% of 5000 is 37 (5000*75/10000), below the 100 QU floor, so the floor applies.
     auto output = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 5000);
     EXPECT_EQ(output.returnCode, QPAYHUB_OK);
     EXPECT_EQ(output.fee, QPAYHUB_FEE_FLOOR_QU);
     EXPECT_EQ(output.net, 5000 - QPAYHUB_FEE_FLOOR_QU);
 }
 
-TEST(ContractQPayhub, PayFeePercentDominatesAboveOnePercentThreshold)
+TEST(ContractQPayhub, PayFeePercentDominatesAbovePercentThreshold)
 {
     ContractTestingQPayhub qpayhub;
     increaseEnergy(BUYER1, 10000000);
 
-    // 1% of 20000 is 200, above the 100 QU floor, so the percentage applies.
+    // 0.75% of 20000 is 150 (20000*75/10000), above the 100 QU floor, so the percentage applies.
     auto output = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 20000);
     EXPECT_EQ(output.returnCode, QPAYHUB_OK);
-    EXPECT_EQ(output.fee, 200);
-    EXPECT_EQ(output.net, 20000 - 200);
+    EXPECT_EQ(output.fee, 150);
+    EXPECT_EQ(output.net, 20000 - 150);
 }
 
-TEST(ContractQPayhub, PayFeeExactTieBetweenFloorAndPercent)
+TEST(ContractQPayhub, PayFeeBoundaryJustBelowAndAboveFloor)
 {
     ContractTestingQPayhub qpayhub;
     increaseEnergy(BUYER1, 10000000);
 
-    // 1% of 10000 is exactly 100, equal to the floor.
-    auto output = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 10000);
-    EXPECT_EQ(output.returnCode, QPAYHUB_OK);
-    EXPECT_EQ(output.fee, 100);
-    EXPECT_EQ(output.net, 9900);
+    // 0.75% of 13200 is exactly 99 (13200*75/10000), just below the 100 QU
+    // floor, so the floor applies.
+    auto below = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 13200);
+    EXPECT_EQ(below.returnCode, QPAYHUB_OK);
+    EXPECT_EQ(below.fee, 100);
+    EXPECT_EQ(below.net, 13200 - 100);
+
+    // 0.75% of 13600 is exactly 102 (13600*75/10000), just above the 100 QU
+    // floor, so the percentage applies.
+    auto above = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 2, 13600);
+    EXPECT_EQ(above.returnCode, QPAYHUB_OK);
+    EXPECT_EQ(above.fee, 102);
+    EXPECT_EQ(above.net, 13600 - 102);
 }
 
 TEST(ContractQPayhub, PayAtMinimumPaymentClampsFeeToAmountForZeroNet)
@@ -511,8 +519,8 @@ TEST(ContractQPayhub, GetInfoReflectsRunningTotalsAndConstants)
     EXPECT_EQ(info.receiptCount, 3ULL);
     EXPECT_EQ(info.totalPayments, 3ULL);
     EXPECT_EQ(info.totalVolume, 70000ULL);
-    EXPECT_EQ(info.totalFeesCollected, 700ULL); // 200 + 300 + 200
-    EXPECT_EQ(info.feePool, 700);
+    EXPECT_EQ(info.totalFeesCollected, 525ULL); // 150 + 225 + 150
+    EXPECT_EQ(info.feePool, 525);
     EXPECT_EQ(info.totalConsumed, 1ULL);
 }
 

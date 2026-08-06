@@ -23,9 +23,9 @@ using namespace QPI;
 //   payments with zero registration.
 //
 // FEES
-//   Protocol fee is QPAY_FEE_PERMILLE of each payment (1%) or
+//   Protocol fee is QPAY_FEE_PERMILLE of each payment (0.75%) or
 //   QPAY_FEE_FLOOR_QU (100 QU), whichever is greater - modeled like a card
-//   processor's percentage-plus-minimum, so a sale small enough that 1%
+//   processor's percentage-plus-minimum, so a sale small enough that 0.75%
 //   would round to near-nothing still pays a floor rather than the
 //   protocol effectively processing it for free. The floor can never push
 //   fee above the paid amount itself (see Pay_locals.fee clamp) - the
@@ -43,8 +43,8 @@ using namespace QPI;
 //   same as pricing near a card processor's minimum fee - not a bug, but
 //   worth flagging: this project's OTHER default, QUBIC_PRICE_PER_CALL in
 //   the off-chain facilitator's .env, defaults to exactly 1000 QU, which
-//   nets a seller 900 QU under this fee once routed through QPAY (1% of
-//   1000 is 10, so the 100 QU floor applies). Anyone pricing per-call
+//   nets a seller 900 QU under this fee once routed through QPAY (0.75% of
+//   1000 is 7, so the 100 QU floor applies). Anyone pricing per-call
 //   sales through QPAY should be aware the floor, not the percentage,
 //   dominates below 10,000 QU.
 //
@@ -494,8 +494,8 @@ struct QPAYHUB : public ContractBase
             return;
         }
 
-        // 1% or QPAYHUB_FEE_FLOOR_QU, whichever is greater. Floor and minimum
-        // are both 100, so a payment at the minimum nets the seller zero.
+        // 0.75% or QPAYHUB_FEE_FLOOR_QU, whichever is greater. Floor and
+        // minimum are both 100, so a payment at the minimum nets the seller zero.
         locals.fee = (sint64)div((uint64)locals.amount * QPAYHUB_FEE_PERMILLE, (uint64)10000);
         if (locals.fee < QPAYHUB_FEE_FLOOR_QU)
         {
