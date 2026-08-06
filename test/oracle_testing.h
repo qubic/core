@@ -12,8 +12,8 @@
 #include "gtest/gtest.h"
 
 #include "oracle_core/oracle_engine.h"
-#include "contract_core/qpi_ticking_impl.h"
-#include "contract_core/qpi_spectrum_impl.h"
+#include "qpi/impl/qpi_ticking_impl.h"
+#include "qpi/impl/qpi_spectrum_impl.h"
 
 #include "test_util.h"
 

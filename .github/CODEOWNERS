@@ -1,0 +1,13 @@
+# CODEOWNERS — reviewed by the workflow-security group for high-risk paths.
+# Docs: https://docs.github.com/en/repositories/managing-your-repositories-settings-and-security/customizing-your-repository/about-code-owners
+#
+# The workflow-security group reviews CI/CD attack surface. Domain reviewers
+# provide functional review via a separate CODEOWNERS entry per repo.
+
+# Workflow files and composite actions — mandatory review by workflow-security.
+/.github/workflows/         @qubic/workflow-security
+/.github/actions/           @qubic/workflow-security
+/.github/CODEOWNERS         @qubic/workflow-security
+
+# Repository-level automation config — mandatory review by workflow-security.
+/.github/dependabot.yml     @qubic/workflow-security

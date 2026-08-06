@@ -119,7 +119,6 @@
     <ClInclude Include="score_common_reference.h" />
     <ClInclude Include="score_hyperidentity_reference.h" />
     <ClInclude Include="score_params.h" />
-    <ClInclude Include="score_reference.h" />
     <ClInclude Include="test_util.h" />
   </ItemGroup>
   <ItemGroup>
@@ -137,6 +136,7 @@
     <ClCompile Include="quorum_value.cpp" />
     <ClCompile Include="sorting.cpp" />
     <ClCompile Include="oracle_engine.cpp" />
+    <ClCompile Include="oc_engine.cpp" />
     <ClCompile Include="uint128.cpp" />
     <ClCompile Include="assets.cpp" />
     <ClCompile Include="contract_core.cpp" />

@@ -75,6 +75,13 @@ constexpr uint16_t ORACLE_FLAG_OM_DISAGREE = 0x400;    ///< Oracle engine got di
 constexpr uint16_t ORACLE_FLAG_BAD_SIZE_REVEAL = 0x800; ///< Reply in a reveal tx had wrong size.
 constexpr uint16_t ORACLE_FLAG_FAKE_COMMITS = 0x1000;   ///< Unresolvable, because reveal exposed too many fake commits.
 
+// OC (Outsourced Computation) invocation consensus status. Defined here (not in oc_engine.h)
+// so contracts can compare against the named constants, mirroring ORACLE_QUERY_STATUS_* above.
+constexpr uint8_t OC_INVOCATION_STATUS_UNKNOWN = 0;      ///< Invocation ID not found.
+constexpr uint8_t OC_INVOCATION_STATUS_PENDING_AUTH = 1; ///< Recorded; waiting for QUORUM authorization signatures.
+constexpr uint8_t OC_INVOCATION_STATUS_AUTHORIZED = 2;   ///< QUORUM signatures counted; bundle eligible for delivery.
+constexpr uint8_t OC_INVOCATION_STATUS_TIMEOUT = 3;      ///< Authorization did not reach quorum before the timeout.
+
 typedef union IPv4Address
 {
     uint8_t     u8[4];

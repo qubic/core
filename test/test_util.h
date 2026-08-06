@@ -12,10 +12,10 @@
 // for QPI::DateAndTime
 #include "contract_core/contract_def.h"
 #include "contract_core/contract_exec.h"
-#include "contract_core/qpi_spectrum_impl.h"
+#include "qpi/impl/qpi_spectrum_impl.h"
 
 // for etalonTick
-#include "contract_core/qpi_ticking_impl.h"
+#include "qpi/impl/qpi_ticking_impl.h"
 
 
 static std::ostream& operator<<(std::ostream& s, const m256i& v)

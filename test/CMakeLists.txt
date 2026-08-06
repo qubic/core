@@ -34,17 +34,19 @@ add_executable(
   # contract_qvault.cpp
   # contract_qx.cpp
   contract_qraffle.cpp
+  contract_random.cpp
   contract_vottunbridge.cpp
   # kangaroo_twelve.cpp
   m256.cpp
   math_lib.cpp
   network_messages.cpp
+  # oc_engine.cpp
   # platform.cpp
   # qpi_collection.cpp
   # qpi.cpp
   # qpi_hash_map.cpp
   # score_cache.cpp
-  # score.cpp
+  score.cpp
   # spectrum.cpp
   # stdlib_impl.cpp
   # tick_storage.cpp
