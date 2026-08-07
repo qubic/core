@@ -75,6 +75,7 @@
 #include "files/files.h"
 #include "mining/mining.h"
 #include "mining/custom_qubic_mining_storage.h"
+#include "mining/ant_colony_bpp9000.h"
 
 #include "oracle_core/oracle_engine.h"
 #include "oracle_core/net_msg_impl.h"
@@ -262,6 +263,35 @@ static int getSolutionThreshold(score_engine::AlgoType selectedAlgo)
         : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
 }
 static bool applyBpp9000Task();
+
+static AntColonyBpp9000T gAntColony;
+
+// The anchor digest a solution's mutation walk seeds from, K12(tick || transactionDigest)
+static void computeAntAnchorDigest(unsigned int tick, const m256i& transactionDigest, m256i& out)
+{
+    unsigned char preimage[sizeof(unsigned int) + sizeof(m256i)];
+    copyMem(preimage, &tick, sizeof(tick));
+    copyMem(preimage + sizeof(tick), &transactionDigest, sizeof(transactionDigest));
+    KangarooTwelve(preimage, sizeof(preimage), &out, sizeof(out));
+}
+
+// Reseed the colony for a new epoch. The root seed is score->currentRandomSeed, the epoch-start
+// spectrum digest
+static void antColonyBeginEpoch()
+{
+    gAntColony.beginEpoch(score->currentRandomSeed);
+    gAntColony.setErrorThreshold((unsigned int)getSolutionThreshold(score_engine::AlgoType::Bpp9000));
+
+    // Every identity's root derives from this one value, so a node that seeded differently builds a
+    // different forest and diverges. Logged as an identity so operators can compare it across nodes
+    // by eye at epoch start, which is cheaper than finding out from a digest split later.
+    CHAR16 digestChars[60 + 1];
+    getIdentity(gAntColony.rootSeed().m256i_u8, digestChars, true);
+    CHAR16 msg[128];
+    setText(msg, L"[ant-colony] Root seed = ");
+    appendText(msg, digestChars);
+    logToConsole(msg);
+}
 
 // DOGE merged-mining shares
 static volatile char gDogeMiningSharesCountLock = 0;
@@ -1816,6 +1846,7 @@ static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate, bool r
     if (resetPhase)
     {
         setNewMiningSeed();
+        antColonyBeginEpoch();
     }
 
     // Roll DOGE per-phase stats at broadcast-cycle boundaries (display only).
@@ -3227,6 +3258,7 @@ static void processTick(unsigned long long processorNumber)
     ts.tickData.acquireLock();
     copyMem(&nextTickData, &ts.tickData[tickIndex], sizeof(TickData));
     ts.tickData.releaseLock();
+
     unsigned long long solutionProcessStartTick = __rdtsc(); // for tracking the time processing solutions
     if (nextTickData.epoch == system.epoch)
     {
@@ -3374,6 +3406,15 @@ static void processTick(unsigned long long processorNumber)
             }
         }
         PROFILE_SCOPE_END();
+
+        // Ant colony anchor for this non-empty tick, K12(tick || transactionDigest)
+        {
+            m256i anchorTxDigest;
+            KangarooTwelve(&nextTickData, sizeof(TickData), &anchorTxDigest, 32);
+            m256i anchorDigest;
+            computeAntAnchorDigest(system.tick, anchorTxDigest, anchorDigest);
+            gAntColony.recordAnchorDigest(system.tick, anchorDigest);
+        }
     }
 
     // Resend own oracle queries for share validation if they were scheduled for but not included in this tick.
@@ -6369,6 +6410,11 @@ static bool initialize()
         }
         setMem(score_qpi, sizeof(*score_qpi), 0);
 
+        if (!gAntColony.init())
+        {
+            return false;
+        }
+
         setMem(&solutionThreshold[0][0], sizeof(int) * MAX_NUMBER_EPOCH * score_engine::AlgoType::MaxAlgoCount, 0);
         if (!allocPoolWithErrorLog(L"minserSolutionFlag", NUMBER_OF_MINER_SOLUTION_FLAGS / 8, (void**)&minerSolutionFlags, __LINE__))
         {
@@ -6564,6 +6610,8 @@ static bool initialize()
     {
         score->initMiningData(initialRandomSeedFromPersistingState);
         loadMiningSeedFromFile = false;;
+        // This branch does not go through checkAndSwitchMiningPhase, so the colony is seeded here
+        antColonyBeginEpoch();
     }
     else
     {
@@ -6740,6 +6788,8 @@ static void deinitialize()
     ts.deinit();
 
     pendingTxsPool.deinit();
+
+    gAntColony.deinit();
 
     if (score)
     {

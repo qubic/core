@@ -327,11 +327,6 @@ private:
     AntColonyDiagnostics _stats;
 };
 
-// No concrete scorer is named here on purpose - see ant_colony_bpp9000.h for the binding and for
-// what a second algorithm would still cost beyond it.
-
-// ---------------------------------------------------------------------------------------------
-
 template<typename ScoreT>
 inline bool AntColony<ScoreT>::init()
 {
