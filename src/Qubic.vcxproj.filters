@@ -194,6 +194,9 @@
     <ClInclude Include="mining\ant_colony_bpp9000.h">
       <Filter>mining</Filter>
     </ClInclude>
+    <ClInclude Include="mining\ant_colony_snapshot.h">
+      <Filter>mining</Filter>
+    </ClInclude>
     <ClInclude Include="mining\trit_pack.h">
       <Filter>mining</Filter>
     </ClInclude>

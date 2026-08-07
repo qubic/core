@@ -252,6 +252,15 @@ public:
         _stats.count(r);
     }
 
+    // Only records, the ANN pool and the anchor ring are written; 
+    // the tick index, both head maps and the dedup set are DERIVED and are
+    // rebuilt from the records on load
+    bool saveSnapshot(unsigned short epoch, CHAR16* directory, unsigned int initialTick) const;
+    // rootSeed and errorThreshold are the NODE's values, not the file's. The snapshot must agree
+    // with them or it is refused
+    bool loadSnapshot(unsigned short epoch, CHAR16* directory,
+        const m256i& rootSeed, unsigned int errorThreshold, unsigned int initialTick);
+
     // Anchor digests. Both take an ABSOLUTE system tick, never an epoch-relative tickOffset.
     // Called from tick processor only
     void recordAnchorDigest(unsigned int tick, const m256i& digest);
@@ -314,6 +323,10 @@ private:
     unsigned int siblingFloor(const SolutionRef& parentRef, const m256i& childPubkey,
         unsigned int childAnchorTick /* ABSOLUTE */,
         unsigned int walkLimit = ANT_MAX_NODES_PER_EPOCH) const;
+
+    // loadSnapshot() helper: rebuild the tick index, head maps and dedup set from the loaded
+    // records, treating them as untrusted input. Defined in ant_colony_snapshot.h.
+    bool rebuildDerivedState(unsigned int initialTick);
 
     AntSolutionRecord* _records;
     PackedAnn* _annPool;

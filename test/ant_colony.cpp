@@ -6,6 +6,7 @@
 
 // The bound colony, not the bare template: these tests check bpp9000's binding as well as the rules.
 #include "../src/mining/ant_colony_bpp9000.h"
+#include "../src/mining/ant_colony_snapshot.h"
 
 #include <vector>
 
@@ -261,8 +262,12 @@ static long long commitRootChild(AntColonyBpp9000T* colony, const m256i& owner, 
     setMem(&ann, sizeof(ann), 0);
     ann.lut[0] = (unsigned char)(score % 3);
 
+    // The real hash, not a stand-in: the snapshot rebuild re-derives it from the stored network.
+    unsigned int annHash;
+    KangarooTwelve(&ann, sizeof(ann), &annHash, sizeof(annHash));
+
     const long long landsAt = (long long)colony->solutionCount();
-    if (colony->commit(in, nullptr, score, ann, score) != ValidityResult::Valid)
+    if (colony->commit(in, nullptr, score, ann, annHash) != ValidityResult::Valid)
     {
         return ANT_INVALID_INDEX;
     }
@@ -388,4 +393,217 @@ TEST(TestAntColonyStore, EpochResetClearsTheRing)
     colony->beginEpoch(makeKey(999));
     EXPECT_FALSE(colony->getAnchorDigest(100000, out));
     EXPECT_FALSE(colony->getAnchorDigest(0, out));
+}
+
+
+// Snapshot test cases
+
+static constexpr unsigned short TEST_EPOCH = 200;
+static const m256i TEST_ROOT_SEED = makeKey(999);   // what freshColony() seeds with
+
+// commitRootChild() writes tickOffset 7000 and publishes at tick 100000, so this is the base those
+// two agree on. The load re-derives publishTick as initialTick + tickOffset and re-checks freshness,
+// so a mismatched base makes every record look stale.
+static constexpr unsigned int TEST_INITIAL_TICK = 100000 - 7000;
+
+// Save, wipe, load. beginEpoch() clears everything the load has to bring back, so anything that
+// survives came out of the files.
+static bool saveWipeLoad(AntColonyBpp9000T* colony)
+{
+    if (!colony->saveSnapshot(TEST_EPOCH, NULL, TEST_INITIAL_TICK))
+    {
+        return false;
+    }
+    colony->beginEpoch(TEST_ROOT_SEED);
+    colony->setErrorThreshold(TEST_THRESHOLD);
+    return colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK);
+}
+
+// Records and the tick index come back, and the sibling chain is rebuilt to the same shape commit()
+// built. Only the records are on disk - nextSiblingIdx is replayed, so matching the pre-save chain
+// is what proves the replay reproduces the head-insert.
+TEST(TestAntColonySnapshot, RoundTripRestoresTheTree)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    const m256i me = makeKey(1);
+    ASSERT_NE(commitRootChild(colony, me, 3800, 0, 500), ANT_INVALID_INDEX);
+    ASSERT_NE(commitRootChild(colony, me, 3810, 1, 501), ANT_INVALID_INDEX);
+    ASSERT_NE(commitRootChild(colony, me, 3820, 2, 502), ANT_INVALID_INDEX);
+
+    ASSERT_TRUE(saveWipeLoad(colony));
+
+    ASSERT_EQ(colony->solutionCount(), 3u);
+    EXPECT_EQ(colony->recordAt(2)->nextSiblingIdx, 1u);
+    EXPECT_EQ(colony->recordAt(1)->nextSiblingIdx, 0u);
+    EXPECT_EQ(colony->recordAt(0)->nextSiblingIdx, NO_SIBLING);
+    EXPECT_EQ(colony->recordAt(1)->score, 3810u);
+    EXPECT_TRUE(colony->recordAt(1)->pubkey == me);
+
+    // The tick index is derived too, so resolving a logical ref proves it was rebuilt.
+    const SolutionRef ref = { 7000, 1 };
+    EXPECT_EQ(colony->findIndexBySolutionRef(ref), 1LL);
+}
+
+// The stored network must come back byte for byte, otherwise children score against a parent the
+// rest of the network does not have.
+TEST(TestAntColonySnapshot, RoundTripRestoresTheStoredNetwork)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    const m256i me = makeKey(2);
+    ASSERT_NE(commitRootChild(colony, me, 3800, 0, 900), ANT_INVALID_INDEX);
+
+    AntColonyBpp9000T::Ann before;
+    ASSERT_TRUE(colony->annOfNonRoot(*colony->recordAt(0), before));
+
+    ASSERT_TRUE(saveWipeLoad(colony));
+
+    AntColonyBpp9000T::Ann after;
+    ASSERT_TRUE(colony->annOfNonRoot(*colony->recordAt(0), after));
+    for (unsigned long long i = 0; i < sizeof(before); i++)
+    {
+        ASSERT_EQ(after.lut[i], before.lut[i]) << "entry " << i;
+    }
+}
+
+// The dedup set is not written to disk. If the rebuild misses it, a restarted node re-accepts
+// solutions it already has.
+TEST(TestAntColonySnapshot, DedupIsRebuiltSoReplaysStillFail)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    const m256i me = makeKey(3);
+    ASSERT_NE(commitRootChild(colony, me, 3800, 0, 600), ANT_INVALID_INDEX);
+    ASSERT_TRUE(saveWipeLoad(colony));
+
+    // Same (pubkey, nonce, parentRef) as before the restart.
+    EXPECT_EQ(commitRootChild(colony, me, 3700, 1, 600), ANT_INVALID_INDEX);
+    EXPECT_EQ(colony->solutionCount(), 1u);
+}
+
+// A cold ring would reject solutions anchored before the restart that peers accept.
+TEST(TestAntColonySnapshot, AnchorRingSurvivesTheRoundTrip)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    const m256i digest = makeKey(4242);
+    colony->recordAnchorDigest(100000, digest);
+    ASSERT_TRUE(saveWipeLoad(colony));
+
+    m256i out = m256i::zero();
+    EXPECT_TRUE(colony->getAnchorDigest(100000, out));
+    EXPECT_TRUE(out == digest);
+    EXPECT_FALSE(colony->getAnchorDigest(100001, out));
+}
+
+// The seed and threshold are supplied by the node, not read from the file. A disagreement means the
+// colony files and the node state are from different moments, so the tree is refused.
+TEST(TestAntColonySnapshot, FileMustAgreeWithTheNodeState)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    ASSERT_NE(commitRootChild(colony, makeKey(4), 3800, 0, 700), ANT_INVALID_INDEX);
+    ASSERT_TRUE(colony->saveSnapshot(TEST_EPOCH, NULL, TEST_INITIAL_TICK));
+
+    EXPECT_FALSE(colony->loadSnapshot(TEST_EPOCH, NULL, makeKey(12345), TEST_THRESHOLD, TEST_INITIAL_TICK));
+    EXPECT_FALSE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD + 1, TEST_INITIAL_TICK));
+
+    // A different base would resolve every parentRef to the wrong record.
+    EXPECT_FALSE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK + 1));
+
+    // The epoch is part of the file name, so a different one finds no snapshot at all.
+    EXPECT_FALSE(colony->loadSnapshot((unsigned short)(TEST_EPOCH + 1), NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK));
+
+    // And the matching one still loads, so the refusals above were the checks and not a bad file.
+    EXPECT_TRUE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK));
+}
+
+// Those refusals all happen while only the meta has been read, so the tree the node is already
+// running on must be left alone.
+TEST(TestAntColonySnapshot, RefusedLoadLeavesTheRunningTreeIntact)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    const m256i me = makeKey(5);
+    ASSERT_NE(commitRootChild(colony, me, 3800, 0, 800), ANT_INVALID_INDEX);
+    ASSERT_TRUE(colony->saveSnapshot(TEST_EPOCH, NULL, TEST_INITIAL_TICK));
+    ASSERT_NE(commitRootChild(colony, me, 3790, 1, 801), ANT_INVALID_INDEX);
+    ASSERT_EQ(colony->solutionCount(), 2u);
+
+    EXPECT_FALSE(colony->loadSnapshot(TEST_EPOCH, NULL, makeKey(12345), TEST_THRESHOLD, TEST_INITIAL_TICK));
+    EXPECT_EQ(colony->solutionCount(), 2u);
+}
+
+// An empty colony still writes all four files, so an operator's backup is always the same set and a
+// short one means a lost file rather than an empty epoch.
+TEST(TestAntColonySnapshot, EmptyColonyWritesTheFullFileSet)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    ASSERT_EQ(colony->solutionCount(), 0u);
+
+    // Clear whatever an earlier test left at this epoch, so the files below can only come from the
+    // save under test.
+    antSnapshotNameForEpoch(TEST_EPOCH);
+    _wremove(ANT_SNAPSHOT_RECORDS_FILENAME);
+    _wremove(ANT_SNAPSHOT_POOL_FILENAME);
+
+    ASSERT_TRUE(colony->saveSnapshot(TEST_EPOCH, NULL, TEST_INITIAL_TICK));
+
+    // Both exist and hold a full slot, so neither is zero length.
+    AntSolutionRecord recordSlot;
+    AntColonyBpp9000T::PackedAnn poolSlot;
+    EXPECT_EQ(load(ANT_SNAPSHOT_RECORDS_FILENAME, sizeof(recordSlot), (unsigned char*)&recordSlot),
+        (long long)sizeof(recordSlot));
+    EXPECT_EQ(load(ANT_SNAPSHOT_POOL_FILENAME, sizeof(poolSlot), (unsigned char*)&poolSlot),
+        (long long)sizeof(poolSlot));
+
+    EXPECT_TRUE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK));
+    EXPECT_EQ(colony->solutionCount(), 0u);
+}
+
+// childAnnHash is the only thing tying a record to its stored network, so it is the only check on
+// the pool file. Overwrite the pool behind the colony's back and the load must refuse.
+TEST(TestAntColonySnapshot, CorruptedPoolIsRefused)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    // score % 3 == 2, so an all-zero network is not the one this record hashes to.
+    ASSERT_NE(commitRootChild(colony, makeKey(6), 3800, 0, 1000), ANT_INVALID_INDEX);
+    ASSERT_TRUE(colony->saveSnapshot(TEST_EPOCH, NULL, TEST_INITIAL_TICK));
+
+    AntColonyBpp9000T::PackedAnn junk;
+    setMem(&junk, sizeof(junk), 0);
+    ASSERT_EQ(save(ANT_SNAPSHOT_POOL_FILENAME, sizeof(junk), (unsigned char*)&junk),
+        (long long)sizeof(junk));
+
+    EXPECT_FALSE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK));
+
+    // The pool is read after the meta checks pass, so a refusal here does clear the colony.
+    EXPECT_EQ(colony->solutionCount(), 0u);
+}
+
+// anchorTick is the sibling-floor clock and has no other guard, so the load re-derives publishTick
+// from the record's own address and re-checks the freshness rule. A record anchored 100000 ticks
+// after the tick it claims to sit in cannot have passed that rule when it was admitted.
+TEST(TestAntColonySnapshot, RecordOutsideItsFreshnessWindowIsRefused)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    // Published at tick 200000 but still written at tickOffset 7000, so the load re-derives 100000.
+    ASSERT_NE(commitRootChild(colony, makeKey(7), 3800, 0, 1100, 200000), ANT_INVALID_INDEX);
+    ASSERT_TRUE(colony->saveSnapshot(TEST_EPOCH, NULL, TEST_INITIAL_TICK));
+
+    EXPECT_FALSE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK));
+    EXPECT_EQ(colony->solutionCount(), 0u);
 }

@@ -80,6 +80,7 @@
 #include "oracle_core/oracle_engine.h"
 #include "oracle_core/net_msg_impl.h"
 #include "oracle_core/snapshot_files.h"
+#include "mining/ant_colony_snapshot.h"
 #include "oracle_core/oracle_interfaces_def.h"
 #include "qpi/impl/qpi_oracle_impl.h"
 
@@ -4855,6 +4856,11 @@ static bool saveAllNodeStates()
 #if !defined(NDEBUG)
     oracleEngine.checkStateConsistencyWithAssert();
 #endif
+    if (!gAntColony.saveSnapshot(system.epoch, directory, system.initialTick))
+    {
+        return false;
+    }
+
     if (!oracleEngine.saveSnapshot(system.epoch, directory))
     {
         return false;
@@ -5109,6 +5115,16 @@ static bool loadAllNodeStates()
     if (loadedSize != NUMBER_OF_ANT_SOLUTION_FLAGS / 8)
     {
         logToConsole(L"Failed to load ant solution flag");
+        return false;
+    }
+
+    // initialRandomSeedFromPersistingState, not score->currentRandomSeed, the scorer is not reseeded
+    // until initialize() finishes, so this is the only restored copy available here.
+    if (!gAntColony.loadSnapshot(system.epoch, directory,
+        initialRandomSeedFromPersistingState,
+        (unsigned int)getSolutionThreshold(score_engine::AlgoType::Bpp9000),
+        system.initialTick))
+    {
         return false;
     }
 
@@ -6864,16 +6880,19 @@ static bool initialize()
     {
         score->initMiningData(initialRandomSeedFromPersistingState);
         loadMiningSeedFromFile = false;;
-        // This branch does not go through checkAndSwitchMiningPhase, so the colony is seeded here
-        antColonyBeginEpoch();
+        // Skipped entirely when a snapshot was restored
+        if (!loadAllNodeStateFromFile)
+        {
+            antColonyBeginEpoch();
+        }
     }
     else
     {
-        short tickEpoch = -1; 
+        short tickEpoch = -1;
         TimeDate tickDate;
         setMem((void*)&tickDate, sizeof(TimeDate), 0);
         checkAndSwitchMiningPhase(tickEpoch, tickDate, true);
-    }    
+    }
     score->loadScoreCache(system.epoch);
 
     // Load + hash-verify the bpp9000 task once at init
