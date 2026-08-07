@@ -9,14 +9,6 @@
 
 #include <vector>
 
-// The colony's rules and its stored network form. validateChild() is static and touches no member state,
-// so the whole rule set is exercised here without allocating a colony, loading a task, or running
-// the engine.
-//
-// Score is an ERROR COUNT: lower is better. Every expectation below depends on that direction, which
-// is the thing most likely to be silently inverted by a future edit - a stale `>` reads fine and
-// quietly accepts the wrong children.
-
 static constexpr unsigned int TEST_THRESHOLD = 3838;   // BPP9000_SOLUTION_THRESHOLD_DEFAULT
 
 static m256i makeKey(unsigned long long n)
@@ -59,15 +51,7 @@ static ValidityResult admit(const ChildCandidate& child, const AntSolutionRecord
     return AntColonyBpp9000T::validateChild(child, parent, siblingFloorScore, TEST_THRESHOLD);
 }
 
-// ---------------------------------------------------------------------------------------------
-// Stored network form
-// ---------------------------------------------------------------------------------------------
-
-// The packing itself is generic and tested exhaustively in trit_pack.cpp. What is ant-specific is
-// the binding: that PackedAnn is dimensioned from the scorer's real ANN and covers all of it. The
-// hazard is bpp9000's two strides - ANN is packed at lutSize (27) while the engine's internal
-// PaddedLut is 32 - so a PackedAnn built on the wrong one would drop or duplicate entries, change
-// childAnnHash, and surface as a resourceTestingDigest split rather than a crash.
+// The packing itself is generic and tested exhaustively
 TEST(TestAntColonyPackedAnn, CoversAWholeAnnAtTheUnpaddedStride)
 {
     AntColonyBpp9000T::Ann src;
@@ -89,12 +73,7 @@ TEST(TestAntColonyPackedAnn, CoversAWholeAnnAtTheUnpaddedStride)
     }
 }
 
-// ---------------------------------------------------------------------------------------------
-// Threshold
-// ---------------------------------------------------------------------------------------------
-
-// The threshold is checked before the parent comparison, so nodes worse than it are never stored -
-// which is why the early descent never consumes the store.
+// The threshold is checked before the parent comparison, so nodes worse than it are never stored 
 TEST(TestAntColonyValidate, ThresholdIsAnUpperBoundOnError)
 {
     const m256i me = makeKey(1);
@@ -107,10 +86,6 @@ TEST(TestAntColonyValidate, ThresholdIsAnUpperBoundOnError)
     // Exactly at the bound is accepted: the rule is score > threshold, not >=.
     EXPECT_EQ(admit(makeChild(me, TEST_THRESHOLD), &looseParent, WORST_SCORE), ValidityResult::Valid);
 }
-
-// ---------------------------------------------------------------------------------------------
-// Parent
-// ---------------------------------------------------------------------------------------------
 
 TEST(TestAntColonyValidate, MustStrictlyBeatParent)
 {
@@ -147,10 +122,7 @@ TEST(TestAntColonyValidate, CannotBranchFromAnotherIdentity)
     EXPECT_EQ(admit(makeChild(me, 3700), &myNode, WORST_SCORE), ValidityResult::Valid);
 }
 
-// ---------------------------------------------------------------------------------------------
 // Sibling floor
-// ---------------------------------------------------------------------------------------------
-
 TEST(TestAntColonyValidate, MustStrictlyBeatSiblingFloor)
 {
     const m256i me = makeKey(6);
@@ -164,10 +136,7 @@ TEST(TestAntColonyValidate, MustStrictlyBeatSiblingFloor)
     EXPECT_EQ(admit(makeChild(me, TEST_THRESHOLD), &parent, WORST_SCORE), ValidityResult::Valid);
 }
 
-// ---------------------------------------------------------------------------------------------
 // Freshness
-// ---------------------------------------------------------------------------------------------
-
 TEST(TestAntColonyValidate, FreshnessWindowBoundaries)
 {
     const m256i me = makeKey(7);
@@ -189,12 +158,7 @@ TEST(TestAntColonyValidate, FreshnessWindowBoundaries)
         ValidityResult::RejectStale);
 }
 
-// ---------------------------------------------------------------------------------------------
-// Order of checks
-// ---------------------------------------------------------------------------------------------
-
-// The order is consensus-visible: it decides which reject a solution is charged with, which drives
-// the diagnostics an operator reads. Freshness first, then tree isolation, then threshold, then
+// Order of checks: Freshness first, then tree isolation, then threshold, then
 // parent, then sibling floor.
 TEST(TestAntColonyValidate, ReportsTheFirstFailingRule)
 {
@@ -223,11 +187,7 @@ TEST(TestAntColonyValidate, ReportsTheFirstFailingRule)
         ValidityResult::RejectLeParent);
 }
 
-// ---------------------------------------------------------------------------------------------
-// Direction sweep
-// ---------------------------------------------------------------------------------------------
-
-// The whole rule set restated as one property: for a fixed parent, floor and threshold, acceptance
+// For a fixed parent, floor and threshold, acceptance
 // must be monotone in the score - every score at or below the tightest bound is accepted, every
 // score above it is rejected. An inverted comparison anywhere breaks this even if the individual
 // boundary tests above were adjusted to match it.
@@ -257,4 +217,175 @@ TEST(TestAntColonyValidate, AcceptanceIsMonotoneInScore)
         }
     }
     EXPECT_TRUE(sawAccept) << "the sweep must cover the accepting region";
+}
+
+// init() allocates ~6.2 GB, so the colony is built once for the file and re-seeded between tests.
+// Lazy rather than SetUpTestSuite: that does not exist before gtest 1.10, and test.vcxproj builds
+// against 1.8.1, where it would compile clean and never run.
+static AntColonyBpp9000T* freshColony()
+{
+    static AntColonyBpp9000T colony;
+    static bool allocated = false;
+    static bool allocationFailed = false;
+
+    if (!allocated && !allocationFailed)
+    {
+        allocationFailed = !colony.init();
+        allocated = !allocationFailed;
+    }
+    if (allocationFailed)
+    {
+        return nullptr;
+    }
+
+    colony.beginEpoch(makeKey(999));
+    colony.setErrorThreshold(TEST_THRESHOLD);
+    return &colony;
+}
+
+// Commits one child of the root, returns its index or ANT_INVALID_INDEX. nonceSeed keeps calls
+// distinct, since (pubkey, nonce, parentRef) is the replay key.
+static long long commitRootChild(AntColonyBpp9000T* colony, const m256i& owner, unsigned int score,
+    unsigned int txIdx, unsigned long long nonceSeed, unsigned int tick = 100000)
+{
+    AntCommitInput in;
+    in.pubkey = owner;
+    in.nonce = makeKey(nonceSeed);
+    in.parentRef = ROOT_REF;
+    in.selfRef.tickOffset = 7000;
+    in.selfRef.solutionIndexInTick = txIdx;
+    in.anchorTick = tick;
+    in.publishTick = tick;
+
+    AntColonyBpp9000T::Ann ann;
+    setMem(&ann, sizeof(ann), 0);
+    ann.lut[0] = (unsigned char)(score % 3);
+
+    const long long landsAt = (long long)colony->solutionCount();
+    if (colony->commit(in, nullptr, score, ann, score) != ValidityResult::Valid)
+    {
+        return ANT_INVALID_INDEX;
+    }
+    return landsAt;
+}
+
+// commit() head-inserts, so children run newest to oldest. siblingFloor() relies on it: only the
+// older ones compete, so they sit at the tail.
+TEST(TestAntColonyStore, SiblingsChainNewestFirst)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    const m256i me = makeKey(1);
+    // Same anchor tick, so all three are inside the freshness window and coexist.
+    const long long a = commitRootChild(colony, me, 3800, 0, 500);
+    const long long b = commitRootChild(colony, me, 3810, 1, 501);
+    const long long c = commitRootChild(colony, me, 3820, 2, 502);
+    ASSERT_NE(a, ANT_INVALID_INDEX);
+    ASSERT_NE(b, ANT_INVALID_INDEX);
+    ASSERT_NE(c, ANT_INVALID_INDEX);
+
+    EXPECT_EQ(colony->recordAt(c)->nextSiblingIdx, (unsigned int)b);
+    EXPECT_EQ(colony->recordAt(b)->nextSiblingIdx, (unsigned int)a);
+    EXPECT_EQ(colony->recordAt(a)->nextSiblingIdx, NO_SIBLING);
+}
+
+// parentRef is a logical address, so it must map back to the record index.
+TEST(TestAntColonyStore, SolutionRefResolvesToItsRecord)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    const m256i me = makeKey(2);
+    const long long idx = commitRootChild(colony, me, 3800, 42, 600);
+    ASSERT_NE(idx, ANT_INVALID_INDEX);
+
+    const SolutionRef ref = { 7000, 42 };
+    EXPECT_EQ(colony->findIndexBySolutionRef(ref), idx);
+
+    // An uncommitted ref must not resolve to a neighbour.
+    const SolutionRef missing = { 7000, 43 };
+    EXPECT_EQ(colony->findIndexBySolutionRef(missing), ANT_INVALID_INDEX);
+}
+
+// Same (pubkey, nonce, parentRef) is a replay whatever its score.
+TEST(TestAntColonyStore, SameSolutionCannotCommitTwice)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    const m256i me = makeKey(3);
+    ASSERT_NE(commitRootChild(colony, me, 3800, 0, 700), ANT_INVALID_INDEX);
+
+    EXPECT_EQ(commitRootChild(colony, me, 3700, 1, 700), ANT_INVALID_INDEX);
+    EXPECT_EQ(colony->stats().rejectReplay, 1u);
+    EXPECT_EQ(colony->solutionCount(), 1u);
+}
+
+// ROOT is never stored, so resolving it is Valid with a null record, not a lookup failure.
+TEST(TestAntColonyStore, RootRefResolvesToValidWithNoRecord)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    const AntSolutionRecord* parent = (const AntSolutionRecord*)1;   // must be overwritten
+    EXPECT_EQ(colony->tryGetParent(ROOT_REF, &parent), ValidityResult::Valid);
+    EXPECT_EQ(parent, nullptr);
+
+    const SolutionRef missing = { 7000, 0 };
+    EXPECT_EQ(colony->tryGetParent(missing, &parent), ValidityResult::RejectParentNotRegistered);
+}
+
+// Anchor ring
+TEST(TestAntColonyStore, AnchorDigestRoundTrips)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    const m256i digest = makeKey(4242);
+    colony->recordAnchorDigest(100000, digest);
+
+    m256i out = m256i::zero();
+    EXPECT_TRUE(colony->getAnchorDigest(100000, out));
+    EXPECT_TRUE(out == digest);
+
+    // An unrecorded tick is a miss, not whatever sits in that slot.
+    EXPECT_FALSE(colony->getAnchorDigest(100001, out));
+}
+
+// A tick ANT_ANCHOR_RING_SIZE later lands in the same slot. The evicted one must miss - returning
+// the new digest would score against a network the miner never used.
+TEST(TestAntColonyStore, AgedOutAnchorIsAMissNotTheWrongDigest)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    const unsigned int oldTick = 100000;
+    const unsigned int newTick = oldTick + ANT_ANCHOR_RING_SIZE;
+    const m256i oldDigest = makeKey(11);
+    const m256i newDigest = makeKey(22);
+
+    colony->recordAnchorDigest(oldTick, oldDigest);
+    colony->recordAnchorDigest(newTick, newDigest);
+
+    m256i out = m256i::zero();
+    EXPECT_FALSE(colony->getAnchorDigest(oldTick, out));
+    EXPECT_TRUE(colony->getAnchorDigest(newTick, out));
+    EXPECT_TRUE(out == newDigest);
+}
+
+// beginEpoch() wipes the ring. It fills with ANT_ANCHOR_TICK_NONE, not zero, so tick 0 does not
+// look recorded.
+TEST(TestAntColonyStore, EpochResetClearsTheRing)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
+
+    colony->recordAnchorDigest(100000, makeKey(7));
+    m256i out = m256i::zero();
+    ASSERT_TRUE(colony->getAnchorDigest(100000, out));
+
+    colony->beginEpoch(makeKey(999));
+    EXPECT_FALSE(colony->getAnchorDigest(100000, out));
+    EXPECT_FALSE(colony->getAnchorDigest(0, out));
 }
