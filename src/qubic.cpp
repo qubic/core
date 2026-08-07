@@ -265,6 +265,8 @@ static int getSolutionThreshold(score_engine::AlgoType selectedAlgo)
 static bool applyBpp9000Task();
 
 static AntColonyBpp9000T gAntColony;
+static AntColonyBpp9000T::Ann gAntParentAnnScratch[MAX_NUMBER_OF_PROCESSORS];
+static AntColonyBpp9000T::Ann gAntChildAnnScratch[MAX_NUMBER_OF_PROCESSORS];
 
 // The anchor digest a solution's mutation walk seeds from, K12(tick || transactionDigest)
 static void computeAntAnchorDigest(unsigned int tick, const m256i& transactionDigest, m256i& out)
@@ -2780,6 +2782,91 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     }
 }
 
+// One ant solution: resolve its parent, score the child against it, and commit. Every rejection
+// forfeits the deposit by simply not refunding it
+static void processTickTransactionAntColonySolution(
+    const AntColonyMiningSolutionTransaction* transaction,
+    unsigned int transactionIndex,
+    const unsigned long long processorNumber)
+{
+    AntColonyBpp9000T::Ann& parentAnnScratch = gAntParentAnnScratch[processorNumber];
+    AntColonyBpp9000T::Ann& childAnnScratch = gAntChildAnnScratch[processorNumber];
+
+    const SolutionRef parentRef = { transaction->parentTickOffset, transaction->parentSolutionIndexInTick };
+
+    const AntSolutionRecord* parentRec = nullptr;
+    ValidityResult result = gAntColony.tryGetParent(parentRef, &parentRec);
+    if (result != ValidityResult::Valid)
+    {
+        gAntColony.recordReject(result);
+        return;
+    }
+
+    // The anchor digest seeds the child's mutation walk, so an anchor the ring no longer holds cannot
+    // be scored
+    m256i anchorDigest;
+    if (!gAntColony.getAnchorDigest(transaction->anchorTick, anchorDigest))
+    {
+        gAntColony.recordReject(ValidityResult::RejectStale);
+        return;
+    }
+
+    // A null parent record means root, the scorer derives the submitter's own root, since roots are
+    // never stored and so cannot be handed in.
+    const AntColonyBpp9000T::Ann* parentAnn = nullptr;
+    if (parentRec != nullptr)
+    {
+        if (!gAntColony.annOfNonRoot(*parentRec, parentAnnScratch))
+        {
+            gAntColony.recordReject(ValidityResult::RejectParentNotRegistered);
+            return;
+        }
+        parentAnn = &parentAnnScratch;
+    }
+
+    const unsigned int childScore = score->computeAntChildScore(
+        processorNumber, parentAnn, transaction->sourcePublicKey, transaction->nonce,
+        anchorDigest, childAnnScratch);
+    if (!score->isValidScore(childScore, score_engine::AlgoType::Bpp9000))
+    {
+        gAntColony.recordReject(ValidityResult::RejectNonCanonicalNonce);
+        return;
+    }
+
+    // Keep previous behavior, we fold both good and bad score into resource testing digest
+    unsigned int childAnnHash;
+    KangarooTwelve(&childAnnScratch, sizeof(childAnnScratch), &childAnnHash, sizeof(childAnnHash));
+    resourceTestingDigest ^= childScore;
+    resourceTestingDigest ^= childAnnHash;
+    KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
+
+    const AntCommitInput in = {
+        transaction->sourcePublicKey,
+        transaction->nonce,
+        parentRef,
+        { system.tick - system.initialTick, transactionIndex },   // selfRef, epoch-RELATIVE tick
+        transaction->anchorTick,                                  // ABSOLUTE
+        system.tick };                                            // ABSOLUTE
+    result = gAntColony.commit(in, parentRec, childScore, childAnnScratch, childAnnHash);
+    if (result != ValidityResult::Valid)
+    {
+        return;   // commit() counted this one itself
+    }
+
+    // Refund AND ranking
+    if (transaction->claimedScore == childScore)
+    {
+        increaseEnergy(transaction->sourcePublicKey, transaction->amount);
+
+        const QuTransfer quTransfer = { m256i::zero(), transaction->sourcePublicKey, transaction->amount };
+        logger.logQuTransfer(quTransfer);
+
+        // A miner is ranked by its single best score of the epoch
+        const unsigned int newScore = childScore * gScoreMultiplier[score_engine::AlgoType::Bpp9000];
+        updateMinerRankingAndFutureComputors(transaction->sourcePublicKey, newScore, system.tick);
+    }
+}
+
 static void processTickTransaction(const Transaction* transaction, unsigned int transactionIndex, unsigned long long processorNumber)
 {
     PROFILE_SCOPE();
@@ -2895,6 +2982,19 @@ static void processTickTransaction(const Transaction* transaction, unsigned int 
                         && transaction->inputSize >= MiningSolutionTransaction::minInputSize())
                     {
                         processTickTransactionSolution((MiningSolutionTransaction*)transaction, processorNumber);
+                    }
+                }
+                break;
+
+                case AntColonyMiningSolutionTransaction::transactionType():
+                {
+                    // Exact inputSize, not >=: the payload is fixed and a longer one is not a
+                    // forward-compatible variant, it is a different transaction.
+                    if (transaction->amount >= AntColonyMiningSolutionTransaction::minAmount()
+                        && transaction->inputSize == AntColonyMiningSolutionTransaction::minInputSize())
+                    {
+                        processTickTransactionAntColonySolution(
+                            (AntColonyMiningSolutionTransaction*)transaction, transactionIndex, processorNumber);
                     }
                 }
                 break;
