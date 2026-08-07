@@ -56,6 +56,9 @@ private:
     score_engine::ScoreEngineT _computeBuffer[solutionBufferCount];
     volatile char solutionEngineLock[solutionBufferCount];
 
+    // Scratch for the ant root derivation, one per engine slot and covered by that slot's own lock
+    score_engine::ScoreBpp9000T::ANN _antRootScratch[solutionBufferCount];
+
 public:
     volatile char random2PoolLock;
     unsigned char state[score_engine::STATE_SIZE];
@@ -196,6 +199,44 @@ public:
     {
         LockGuard guard(solutionEngineLock[processor_Number]);
         return _computeBuffer[processor_Number].getLastOutput();
+    }
+
+    // Ant colony main score function
+    // score a child by inheriting its parent's network and walking it with the child's own seeds.
+    // parentAnn == nullptr means the parent is the submitter's root, which is derived here from the pubkey
+    // Returns INVALID_SCORE_VALUE for a non-canonical nonce, in which case outChildAnn is not written
+    // bestANN would still hold the previous call's network, and committing that would put one node's
+    // stale bytes into childAnnHash.
+    unsigned int computeAntChildScore(
+        const unsigned long long processor_Number,
+        const score_engine::ScoreBpp9000T::ANN* parentAnn,
+        const m256i& publicKey,
+        const m256i& nonce,
+        const m256i& anchorDigest,
+        score_engine::ScoreBpp9000T::ANN& outChildAnn)
+    {
+        const int solutionBufIdx = (int)(processor_Number % solutionBufferCount);
+        LockGuard guard(solutionEngineLock[solutionBufIdx]);
+        score_engine::ScoreBpp9000T& engine = _computeBuffer[solutionBufIdx]._bpp9000Score;
+
+        // Derived into this slot's scratch rather than the engine's own buffer: deriveRootANN() uses
+        // currentANN as working space
+        const score_engine::ScoreBpp9000T::ANN* parent = parentAnn;
+        // Depth 1, the start node of every public key
+        if (parent == nullptr)
+        {
+            engine.deriveRootANN(publicKey.m256i_u8, poolVec, _antRootScratch[solutionBufIdx]);
+            parent = &_antRootScratch[solutionBufIdx];
+        }
+
+        const unsigned int childScore = engine.computeScoreFromParent(
+            *parent, publicKey.m256i_u8, nonce.m256i_u8, anchorDigest.m256i_u8, poolVec);
+        if (childScore == score_engine::INVALID_SCORE_VALUE)
+        {
+            return childScore;
+        }
+        engine.getBestANN(outChildAnn);
+        return childScore;
     }
     // main score function
     unsigned int operator()(const unsigned long long processor_Number, const m256i& publicKey, const m256i& miningSeed, const m256i& nonce)

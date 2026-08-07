@@ -87,6 +87,7 @@ enum ValidityResult
     RejectReplay,                // (pubkey, parentRef, nonce) already committed this epoch
     RejectDedupFull,
     RejectMinerIndexFull,        // more than MAX_NUMBER_OF_MINERS identities hold a tree this epoch
+    RejectNonCanonicalNonce,     // scorer refused the nonce; no score was produced
 };
 
 struct AntColonyDiagnostics
@@ -102,6 +103,7 @@ struct AntColonyDiagnostics
     unsigned long long rejectReplay;
     unsigned long long rejectDedupFull;
     unsigned long long rejectMinerIndexFull;
+    unsigned long long rejectNonCanonicalNonce;
 
     unsigned long long acceptedSolutions;
     unsigned long long treeDepthMax;
@@ -127,6 +129,7 @@ struct AntColonyDiagnostics
         case ValidityResult::RejectReplay:              rejectReplay++; break;
         case ValidityResult::RejectDedupFull:           rejectDedupFull++; break;
         case ValidityResult::RejectMinerIndexFull:      rejectMinerIndexFull++; break;
+        case ValidityResult::RejectNonCanonicalNonce:   rejectNonCanonicalNonce++; break;
         default: break;
         }
     }
@@ -241,6 +244,12 @@ public:
     const AntColonyDiagnostics& stats() const
     {
         return _stats;
+    }
+
+    void recordReject(ValidityResult r)
+    {
+        ASSERT(r != ValidityResult::Valid);
+        _stats.count(r);
     }
 
     // Anchor digests. Both take an ABSOLUTE system tick, never an epoch-relative tickOffset.
@@ -625,31 +634,31 @@ inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const 
     const ValidityResult result = validateChild(child, parentRec, floor, _errorThreshold);
     if (result != ValidityResult::Valid)
     {
-        _stats.count(result);
+        recordReject(result);
         return result;
     }
 
     const AntDedupKey dedupKey{ in.pubkey, in.nonce, in.parentRef };
     if (_dedup->contains(dedupKey))
     {
-        _stats.count(ValidityResult::RejectReplay);
+        recordReject(ValidityResult::RejectReplay);
         return ValidityResult::RejectReplay;
     }
     if (_solutionCount >= ANT_MAX_NODES_PER_EPOCH)
     {
-        _stats.count(ValidityResult::RejectRecordsCapFull);
+        recordReject(ValidityResult::RejectRecordsCapFull);
         return ValidityResult::RejectRecordsCapFull;
     }
     if (in.selfRef.tickOffset >= MAX_NUMBER_OF_TICKS_PER_EPOCH)
     {
-        _stats.count(ValidityResult::RejectTickOutOfRange);
+        recordReject(ValidityResult::RejectTickOutOfRange);
         return ValidityResult::RejectTickOutOfRange;
     }
     // never commit a solution without recording its replay key. Cannot fire under the
     // cap (population <= ANT_MAX_NODES_PER_EPOCH = 50% of ANT_DEDUP_SIZE), kept as a defensive check
     if (_dedup->add(dedupKey) == QPI::NULL_INDEX)
     {
-        _stats.count(ValidityResult::RejectDedupFull);
+        recordReject(ValidityResult::RejectDedupFull);
         return ValidityResult::RejectDedupFull;
     }
 
@@ -665,7 +674,7 @@ inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const 
             // Fail closed. Degrading instead, accepting the node but leaving the identity without a
             // chain head, would silently drop its sibling floor
             _dedup->remove(dedupKey);
-            _stats.count(ValidityResult::RejectMinerIndexFull);
+            recordReject(ValidityResult::RejectMinerIndexFull);
             return ValidityResult::RejectMinerIndexFull;
         }
     }
