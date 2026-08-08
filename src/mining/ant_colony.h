@@ -5,6 +5,8 @@
 #include "platform/m256.h"
 #include "platform/memory.h"
 #include "platform/memory_util.h"
+#include "kangaroo_twelve.h"
+#include "platform/file_io.h"
 #include "contract_core/pre_qpi_def.h"
 #include "qpi/qpi.h"
 #include "qpi/impl/qpi_hash_map_impl.h"
@@ -209,6 +211,38 @@ public:
     static constexpr unsigned long long ANT_ANN_POOL_BYTES =
         (unsigned long long)ANT_MAX_NODES_PER_EPOCH * sizeof(PackedAnn);
 
+    // The score is actually a function of below
+    struct ReplayKey
+    {
+        m256i pubkey;
+        m256i nonce;
+        m256i parentAnnHash;   // K12 of the parent's ANN bytes; zero for a child of the root
+        m256i anchorDigest;    // the digest the walk consumed, not the tick it came from
+
+        bool operator==(const ReplayKey& other) const
+        {
+            return (pubkey == other.pubkey) && (nonce == other.nonce)
+                && (parentAnnHash == other.parentAnnHash) && (anchorDigest == other.anchorDigest);
+        }
+    };
+    static_assert(sizeof(ReplayKey) == 4 * sizeof(m256i), "ReplayKey must be padding-free");
+
+    struct ReplayEntry
+    {
+        ReplayKey key;
+        PackedAnn ann;
+        unsigned int score;
+        unsigned int occupied;
+    };
+
+    // Padding-free, so the on-disk entry matches the in-memory one byte for byte.
+    static_assert(sizeof(ReplayEntry) ==
+        sizeof(ReplayKey) + sizeof(PackedAnn) + 2 * sizeof(unsigned int),
+        "ReplayEntry unexpected padding");
+
+    static constexpr unsigned long long ANT_REPLAY_CACHE_BYTES =
+        (unsigned long long)ANT_REPLAY_CACHE_SIZE * sizeof(ReplayEntry);
+
     bool init();
     void deinit();
 
@@ -218,6 +252,7 @@ public:
     void beginEpoch(const m256i& rootSeed)
     {
         reset();
+        clearReplayCache();
         _rootSeed = rootSeed;
     }
 
@@ -260,6 +295,16 @@ public:
     // with them or it is refused
     bool loadSnapshot(unsigned short epoch, CHAR16* directory,
         const m256i& rootSeed, unsigned int errorThreshold, unsigned int initialTick);
+
+    void putReplayScore(const ReplayKey& key, unsigned int score, const Ann& ann);
+    bool tryGetReplayScore(const ReplayKey& key, unsigned int& outScore, Ann& outAnn);
+    void clearReplayCache();
+    unsigned int replayCacheOccupancy() const
+    {
+        return _replayCacheOccupancy;
+    }
+    bool saveReplayCache(unsigned short epoch, CHAR16* directory);
+    bool loadReplayCache(unsigned short epoch, CHAR16* directory);
 
     // Anchor digests. Both take an ABSOLUTE system tick, never an epoch-relative tickOffset.
     // Called from tick processor only
@@ -328,6 +373,13 @@ private:
     // records, treating them as untrusted input. Defined in ant_colony_snapshot.h.
     bool rebuildDerivedState(unsigned int initialTick);
 
+    static unsigned int replaySlotOf(const ReplayKey& key)
+    {
+        unsigned long long digest;
+        KangarooTwelve(&key, sizeof(key), &digest, sizeof(digest));
+        return (unsigned int)(digest & (ANT_REPLAY_CACHE_SIZE - 1));
+    }
+
     AntSolutionRecord* _records;
     PackedAnn* _annPool;
     AntTickSlot* _tickIndex;
@@ -342,6 +394,10 @@ private:
     // miner's pubkey -> newest depth-1 node (a child OF that miner's root, not a root itself).
     // Keyed by miner because ROOT_REF is shared by everyone.
     QPI::HashMap<m256i, unsigned int, ANT_CHILD_HEAD_BY_MINER_SIZE>* _childHeadByMiner;
+
+    ReplayEntry* _replayCache;
+    volatile char _replayCacheLock;
+    unsigned int _replayCacheOccupancy;
 
     unsigned int _solutionCount;
     unsigned int _errorThreshold;
@@ -393,14 +449,24 @@ inline bool AntColony<ScoreT>::init()
     {
         return false;
     }
+    if (!allocPoolWithErrorLog(L"AntColony::_replayCache",
+        ANT_REPLAY_CACHE_BYTES, (void**)&_replayCache, __LINE__))
+    {
+        return false;
+    }
 
     reset();
+    clearReplayCache();
     return true;
 }
 
 template<typename ScoreT>
 inline void AntColony<ScoreT>::deinit()
 {
+    if (_replayCache)
+    {
+        freePool(_replayCache);
+    }
     if (_dedup)
     {
         freePool(_dedup);
@@ -430,6 +496,7 @@ inline void AntColony<ScoreT>::deinit()
         freePool(_records);
     }
 
+    _replayCache = nullptr;
     _dedup = nullptr;
     _childHeadByMiner = nullptr;
     _childHeadByParent = nullptr;
@@ -471,6 +538,125 @@ inline void AntColony<ScoreT>::reset()
     _errorThreshold = 0;
 
     _stats.reset();
+}
+
+template<typename ScoreT>
+inline void AntColony<ScoreT>::clearReplayCache()
+{
+    if (_replayCache == nullptr)
+    {
+        return;
+    }
+    LockGuard guard(_replayCacheLock);
+    for (unsigned int i = 0; i < ANT_REPLAY_CACHE_SIZE; i++)
+    {
+        _replayCache[i].occupied = 0;
+    }
+    _replayCacheOccupancy = 0;
+}
+
+template<typename ScoreT>
+inline void AntColony<ScoreT>::putReplayScore(const ReplayKey& key, unsigned int score, const Ann& ann)
+{
+    if (_replayCache == nullptr)
+    {
+        return;
+    }
+    ReplayEntry staged;
+    staged.key = key;
+    staged.ann.pack(ann.lut);
+    staged.score = score;
+    staged.occupied = 1;
+
+    ReplayEntry& slot = _replayCache[replaySlotOf(key)];
+    LockGuard guard(_replayCacheLock);
+    if (!slot.occupied)
+    {
+        _replayCacheOccupancy++;
+    }
+    copyMem(&slot, &staged, sizeof(ReplayEntry));
+}
+
+template<typename ScoreT>
+inline bool AntColony<ScoreT>::tryGetReplayScore(const ReplayKey& key, unsigned int& outScore, Ann& outAnn)
+{
+    if (_replayCache == nullptr)
+    {
+        return false;
+    }
+    ReplayEntry& slot = _replayCache[replaySlotOf(key)];
+    LockGuard guard(_replayCacheLock);
+    if (!slot.occupied || !(slot.key == key))
+    {
+        return false;
+    }
+    outScore = slot.score;
+    slot.ann.unpack(outAnn.lut);
+    return true;
+}
+
+// Cache the already computed score for the ant colony
+static unsigned short ANT_COLONY_REPLAY_CACHE_FILENAME[] = L"antColonyReplayCache.???";
+
+template<typename ScoreT>
+inline bool AntColony<ScoreT>::saveReplayCache(unsigned short epoch, CHAR16* directory)
+{
+    if (_replayCache == nullptr)
+    {
+        return false;
+    }
+    addEpochToFileName(ANT_COLONY_REPLAY_CACHE_FILENAME,
+        sizeof(ANT_COLONY_REPLAY_CACHE_FILENAME) / sizeof(ANT_COLONY_REPLAY_CACHE_FILENAME[0]), epoch);
+
+    // Held across the file IO so the table cannot change under the write. That blocks the solution
+    // processors for the duration
+    LockGuard guard(_replayCacheLock);
+    if (saveLargeFile(ANT_COLONY_REPLAY_CACHE_FILENAME, ANT_REPLAY_CACHE_BYTES,
+        (unsigned char*)_replayCache, directory, false) != (long long)ANT_REPLAY_CACHE_BYTES)
+    {
+        logToConsole(L"[ant-colony] failed to save replay cache");
+        return false;
+    }
+    return true;
+}
+
+template<typename ScoreT>
+inline bool AntColony<ScoreT>::loadReplayCache(unsigned short epoch, CHAR16* directory)
+{
+    if (_replayCache == nullptr)
+    {
+        return false;
+    }
+    addEpochToFileName(ANT_COLONY_REPLAY_CACHE_FILENAME,
+        sizeof(ANT_COLONY_REPLAY_CACHE_FILENAME) / sizeof(ANT_COLONY_REPLAY_CACHE_FILENAME[0]), epoch);
+
+    LockGuard guard(_replayCacheLock);
+    if (loadLargeFile(ANT_COLONY_REPLAY_CACHE_FILENAME, ANT_REPLAY_CACHE_BYTES,
+        (unsigned char*)_replayCache, directory) != (long long)ANT_REPLAY_CACHE_BYTES)
+    {
+        // Absent at the start of an epoch, and a wrong size means another build wrote it. Either way
+        // the table is zeroed and every solution gets computed honestly.
+        logToConsole(L"[ant-colony] no usable replay cache, solutions will be recomputed");
+        setMem(_replayCache, ANT_REPLAY_CACHE_BYTES, 0);
+        _replayCacheOccupancy = 0;
+        return false;
+    }
+
+    unsigned int occupied = 0;
+    for (unsigned int i = 0; i < ANT_REPLAY_CACHE_SIZE; i++)
+    {
+        if (_replayCache[i].occupied)
+        {
+            occupied++;
+        }
+    }
+    _replayCacheOccupancy = occupied;
+
+    CHAR16 message[192];
+    setText(message, L"[ant-colony] replay cache loaded, entries ");
+    appendNumber(message, occupied, FALSE);
+    logToConsole(message);
+    return true;
 }
 
 template<typename ScoreT>

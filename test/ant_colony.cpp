@@ -607,3 +607,171 @@ TEST(TestAntColonySnapshot, RecordOutsideItsFreshnessWindowIsRefused)
     EXPECT_FALSE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK));
     EXPECT_EQ(colony->solutionCount(), 0u);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Replay cache
+
+// A key whose four components are all distinct, so a slot function that ignores one still separates
+// these.
+static AntColonyBpp9000T::ReplayKey makeReplayKey(unsigned long long n)
+{
+    AntColonyBpp9000T::ReplayKey k;
+    k.pubkey = makeKey(n);
+    k.nonce = makeKey(n + 1000);
+    k.parentAnnHash = makeKey(n + 2000);
+    k.anchorDigest = makeKey(n + 3000);
+    return k;
+}
+
+// lut[0] carries n so two networks are distinguishable; the rest stays a legal trit.
+static AntColonyBpp9000T::Ann makeAnn(unsigned char n)
+{
+    AntColonyBpp9000T::Ann a;
+    setMem(&a, sizeof(a), 0);
+    a.lut[0] = (unsigned char)(n % 3);
+    a.lut[1] = (unsigned char)((n / 3) % 3);
+    return a;
+}
+
+static bool annEquals(const AntColonyBpp9000T::Ann& a, const AntColonyBpp9000T::Ann& b)
+{
+    for (unsigned long long i = 0; i < sizeof(a); i++)
+    {
+        if (a.lut[i] != b.lut[i])
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The score and the network both come back. The network matters as much as the score: commit()
+// stores it and childAnnHash folds it into resourceTestingDigest.
+TEST(TestAntColonyReplayCache, StoresAndReturnsScoreAndNetwork)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
+
+    const AntColonyBpp9000T::ReplayKey key = makeReplayKey(1);
+    const AntColonyBpp9000T::Ann ann = makeAnn(7);
+    colony->putReplayScore(key, 3800, ann);
+
+    unsigned int score = 0;
+    AntColonyBpp9000T::Ann out;
+    setMem(&out, sizeof(out), 0xFF);
+    ASSERT_TRUE(colony->tryGetReplayScore(key, score, out));
+    EXPECT_EQ(score, 3800u);
+    EXPECT_TRUE(annEquals(out, ann));
+}
+
+// Every component is part of the key, so changing any one of them must miss. Missing one would
+// return a score computed from different inputs.
+TEST(TestAntColonyReplayCache, EveryKeyComponentIsPartOfTheLookup)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
+
+    const AntColonyBpp9000T::ReplayKey key = makeReplayKey(2);
+    colony->putReplayScore(key, 3800, makeAnn(1));
+
+    unsigned int score = 0;
+    AntColonyBpp9000T::Ann out;
+    for (int component = 0; component < 4; component++)
+    {
+        AntColonyBpp9000T::ReplayKey altered = key;
+        switch (component)
+        {
+        case 0: altered.pubkey = makeKey(90001); break;
+        case 1: altered.nonce = makeKey(90002); break;
+        case 2: altered.parentAnnHash = makeKey(90003); break;
+        case 3: altered.anchorDigest = makeKey(90004); break;
+        }
+        EXPECT_FALSE(colony->tryGetReplayScore(altered, score, out)) << "component " << component;
+    }
+    EXPECT_TRUE(colony->tryGetReplayScore(key, score, out));
+}
+
+// A new epoch changes every root and anchor digest, so no entry could hit anyway; keeping them would
+// just hold slots.
+TEST(TestAntColonyReplayCache, BeginEpochClearsIt)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
+
+    const AntColonyBpp9000T::ReplayKey key = makeReplayKey(3);
+    colony->putReplayScore(key, 3800, makeAnn(2));
+    ASSERT_EQ(colony->replayCacheOccupancy(), 1u);
+
+    colony->beginEpoch(TEST_ROOT_SEED);
+
+    unsigned int score = 0;
+    AntColonyBpp9000T::Ann out;
+    EXPECT_FALSE(colony->tryGetReplayScore(key, score, out));
+    EXPECT_EQ(colony->replayCacheOccupancy(), 0u);
+}
+
+// loadSnapshot() calls reset(), and the catch-up that follows a restore is the one moment the cache
+// is worth most. Losing it there would defeat the feature.
+TEST(TestAntColonyReplayCache, SurvivesResetAndSnapshotLoad)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
+
+    const AntColonyBpp9000T::ReplayKey key = makeReplayKey(4);
+    colony->putReplayScore(key, 3800, makeAnn(3));
+    ASSERT_TRUE(colony->saveSnapshot(TEST_EPOCH, NULL, TEST_INITIAL_TICK));
+    ASSERT_TRUE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK));
+
+    unsigned int score = 0;
+    AntColonyBpp9000T::Ann out;
+    EXPECT_TRUE(colony->tryGetReplayScore(key, score, out));
+    EXPECT_EQ(score, 3800u);
+}
+
+// The file is the table verbatim, so this checks that entries survive the write and stay findable
+// under their own keys. Enough of them that collisions and evictions are in play. One save writes
+// the whole ANT_REPLAY_CACHE_BYTES table, so this is the only test here that touches a file.
+TEST(TestAntColonyReplayCache, RoundTripsThroughAFile)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
+
+    constexpr unsigned int COUNT = 500;
+    for (unsigned int i = 0; i < COUNT; i++)
+    {
+        colony->putReplayScore(makeReplayKey(10000 + i), 3000 + i, makeAnn((unsigned char)i));
+    }
+    ASSERT_EQ(colony->replayCacheOccupancy(), COUNT);
+    ASSERT_TRUE(colony->saveReplayCache(TEST_EPOCH, NULL));
+
+    colony->clearReplayCache();
+    ASSERT_EQ(colony->replayCacheOccupancy(), 0u);
+
+    ASSERT_TRUE(colony->loadReplayCache(TEST_EPOCH, NULL));
+    EXPECT_EQ(colony->replayCacheOccupancy(), COUNT);
+
+    unsigned int score = 0;
+    AntColonyBpp9000T::Ann out;
+    for (unsigned int i = 0; i < COUNT; i++)
+    {
+        ASSERT_TRUE(colony->tryGetReplayScore(makeReplayKey(10000 + i), score, out)) << "entry " << i;
+        ASSERT_EQ(score, 3000 + i) << "entry " << i;
+        ASSERT_TRUE(annEquals(out, makeAnn((unsigned char)i))) << "entry " << i;
+    }
+}
+
+// No cache is the normal state at the start of an epoch, so it must report a miss and leave an empty
+// table rather than fail the boot.
+TEST(TestAntColonyReplayCache, AbsentFileIsNotAnError)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.9 GB";
+
+    colony->putReplayScore(makeReplayKey(7), 3800, makeAnn(6));
+    EXPECT_FALSE(colony->loadReplayCache((unsigned short)(TEST_EPOCH + 77), NULL));
+    EXPECT_EQ(colony->replayCacheOccupancy(), 0u);
+
+    unsigned int score = 0;
+    AntColonyBpp9000T::Ann out;
+    EXPECT_FALSE(colony->tryGetReplayScore(makeReplayKey(7), score, out));
+}

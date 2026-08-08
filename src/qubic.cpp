@@ -288,6 +288,24 @@ struct AntScoreTaskPayload
 };
 static_assert(sizeof(AntScoreTaskPayload) <= 128, "ant score payload must fit TASK_PAYLOAD_MAX");
 
+// The cache is keyed by what the score is a function of, not by where the inputs were found. A
+// parent named by position and an anchor named by tick number both depend on this node already
+// holding the same tree, which is exactly what a node replaying after a restart is still building.
+static AntColonyBpp9000T::ReplayKey makeAntReplayKey(const m256i& pubkey, const m256i& nonce,
+    const AntColonyBpp9000T::Ann* parentAnn, const m256i& anchorDigest)
+{
+    AntColonyBpp9000T::ReplayKey key;
+    key.pubkey = pubkey;
+    key.nonce = nonce;
+    key.parentAnnHash = m256i::zero();   // a child of the root has no parent network to name
+    if (parentAnn != nullptr)
+    {
+        KangarooTwelve(parentAnn, sizeof(*parentAnn), &key.parentAnnHash, sizeof(key.parentAnnHash));
+    }
+    key.anchorDigest = anchorDigest;
+    return key;
+}
+
 // Score one ant solution ahead of the transaction loop, on whichever processor drains the queue.
 static void scoreAntSolutionTask(unsigned long long processorNumber, void* payload)
 {
@@ -315,10 +333,18 @@ static void scoreAntSolutionTask(unsigned long long processorNumber, void* paylo
         parentAnn = &gAntParentAnnScratch[processorNumber];
     }
 
-    // Straight into this transaction's own result slot, so nothing is copied afterwards.
-    gAntScoredValue[task->txIdx] = score->computeAntChildScore(
-        processorNumber, parentAnn, task->pubkey, task->nonce,
-        anchorDigest, gAntScoredAnn[task->txIdx]);
+    const AntColonyBpp9000T::ReplayKey replayKey =
+        makeAntReplayKey(task->pubkey, task->nonce, parentAnn, anchorDigest);
+
+    // Check in the cache first if this sol was computed
+    if (!gAntColony.tryGetReplayScore(replayKey, gAntScoredValue[task->txIdx], gAntScoredAnn[task->txIdx]))
+    {
+        // Straight into this transaction's own result slot, so nothing is copied afterwards.
+        gAntScoredValue[task->txIdx] = score->computeAntChildScore(
+            processorNumber, parentAnn, task->pubkey, task->nonce,
+            anchorDigest, gAntScoredAnn[task->txIdx]);
+        gAntColony.putReplayScore(replayKey, gAntScoredValue[task->txIdx], gAntScoredAnn[task->txIdx]);
+    }
 
     // Last, so the transaction loop never sees a slot whose score or network is half written.
     gAntScoredReady[task->txIdx] = true;
@@ -2928,9 +2954,17 @@ static void processTickTransactionAntColonySolution(
             parentAnn = &parentAnnScratch;
         }
 
-        childScore = score->computeAntChildScore(
-            processorNumber, parentAnn, transaction->sourcePublicKey, transaction->nonce,
-            anchorDigest, childAnnScratch);
+        // Same cache the async path uses. Reached when the pre-scan did not enqueue this one or the
+        // queue did not drain in time, which is exactly the catch-up case the cache exists for.
+        const AntColonyBpp9000T::ReplayKey replayKey =
+            makeAntReplayKey(transaction->sourcePublicKey, transaction->nonce, parentAnn, anchorDigest);
+        if (!gAntColony.tryGetReplayScore(replayKey, childScore, childAnnScratch))
+        {
+            childScore = score->computeAntChildScore(
+                processorNumber, parentAnn, transaction->sourcePublicKey, transaction->nonce,
+                anchorDigest, childAnnScratch);
+            gAntColony.putReplayScore(replayKey, childScore, childAnnScratch);
+        }
         childAnn = &childAnnScratch;
     }
 
@@ -6895,6 +6929,11 @@ static bool initialize()
     }
     score->loadScoreCache(system.epoch);
 
+    // After the branch above, never before: both paths can call antColonyBeginEpoch(), which clears
+    // the cache. A memo, not state - absence or any load failure just means the solutions get
+    // computed honestly.
+    gAntColony.loadReplayCache(system.epoch, NULL);
+
     // Load + hash-verify the bpp9000 task once at init
     if (!loadBpp9000Task())
     {
@@ -8118,6 +8157,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #endif
             
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
+            unsigned long long antReplayCacheSavingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
             autoResendTickVotes.lastTick = system.initialTick;
             autoResendTickVotes.lastCheck = __rdtsc();
@@ -8305,6 +8345,16 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     score->saveScoreCache(system.epoch);
                 }
 #endif
+                // Deliberately outside the guard above: the cache earns its keep by being newer than
+                // the snapshot, so tying it to the snapshot's schedule would make every entry it holds
+                // one the restored tree already covers. AUX only - saving parks the solution
+                // processors for the length of the write.
+                if ((!isMainMode())
+                    && curTimeTick - antReplayCacheSavingTick >= SYSTEM_DATA_SAVING_PERIOD * frequency / 1000)
+                {
+                    antReplayCacheSavingTick = curTimeTick;
+                    gAntColony.saveReplayCache(system.epoch, NULL);
+                }
                 tryResendTickVotes();
 
                 if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
