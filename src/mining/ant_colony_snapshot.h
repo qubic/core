@@ -9,6 +9,7 @@ static unsigned short ANT_SNAPSHOT_META_FILENAME[] = L"snapshotAntColonyMeta.???
 static unsigned short ANT_SNAPSHOT_ANCHORS_FILENAME[] = L"snapshotAntColonyAnchors.???";
 static unsigned short ANT_SNAPSHOT_RECORDS_FILENAME[] = L"snapshotAntColonyRecords.???";
 static unsigned short ANT_SNAPSHOT_POOL_FILENAME[] = L"snapshotAntColonyPool.???";
+static unsigned short ANT_SNAPSHOT_EXPORT_FILENAME[] = L"snapshotAntColonyExport.???";
 
 struct AntColonySnapshotMeta
 {
@@ -56,6 +57,7 @@ static void antSnapshotNameForEpoch(unsigned short epoch)
     addEpochToFileName(ANT_SNAPSHOT_ANCHORS_FILENAME, sizeof(ANT_SNAPSHOT_ANCHORS_FILENAME) / sizeof(ANT_SNAPSHOT_ANCHORS_FILENAME[0]), epoch);
     addEpochToFileName(ANT_SNAPSHOT_RECORDS_FILENAME, sizeof(ANT_SNAPSHOT_RECORDS_FILENAME) / sizeof(ANT_SNAPSHOT_RECORDS_FILENAME[0]), epoch);
     addEpochToFileName(ANT_SNAPSHOT_POOL_FILENAME, sizeof(ANT_SNAPSHOT_POOL_FILENAME) / sizeof(ANT_SNAPSHOT_POOL_FILENAME[0]), epoch);
+    addEpochToFileName(ANT_SNAPSHOT_EXPORT_FILENAME, sizeof(ANT_SNAPSHOT_EXPORT_FILENAME) / sizeof(ANT_SNAPSHOT_EXPORT_FILENAME[0]), epoch);
 }
 
 template<typename ScoreT>
@@ -107,6 +109,13 @@ inline bool AntColony<ScoreT>::saveSnapshot(unsigned short epoch, CHAR16* direct
         != (long long)poolBytes)
     {
         logToConsole(L"[ant-colony] failed to save snapshot pool");
+        return false;
+    }
+    // Whole struct, fixed size - there is no used prefix to take, the order array indexes all of it.
+    if (save(ANT_SNAPSHOT_EXPORT_FILENAME, sizeof(ExportSet), (unsigned char*)_exportSet, directory)
+        != (long long)sizeof(ExportSet))
+    {
+        logToConsole(L"[ant-colony] failed to save snapshot export set");
         return false;
     }
     return true;
@@ -201,6 +210,30 @@ inline bool AntColony<ScoreT>::loadSnapshot(unsigned short epoch, CHAR16* direct
         logToConsole(L"[ant-colony] failed to load snapshot pool");
         reset();
         return false;
+    }
+
+    if (load(ANT_SNAPSHOT_EXPORT_FILENAME, sizeof(ExportSet), (unsigned char*)_exportSet, directory)
+        != (long long)sizeof(ExportSet))
+    {
+        logToConsole(L"[ant-colony] failed to load snapshot export set");
+        reset();
+        return false;
+    }
+    if (_exportSet->count > ANT_EXPORT_MAX_SOLUTIONS)
+    {
+        antSnapshotFailure(L"export count exceeds the cap, count/cap", _exportSet->count, ANT_EXPORT_MAX_SOLUTIONS);
+        reset();
+        return false;
+    }
+    for (unsigned int i = 0; i < _exportSet->count; i++)
+    {
+        // order[] indexes slots[]; a bad entry would make the export read a slot that was never written.
+        if (_exportSet->order[i] >= ANT_EXPORT_MAX_SOLUTIONS)
+        {
+            antSnapshotFailure(L"export order out of range, position/slot", i, _exportSet->order[i]);
+            reset();
+            return false;
+        }
     }
 
     // The caller's values, which the checks above proved the file agrees with.

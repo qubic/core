@@ -274,6 +274,39 @@ static long long commitRootChild(AntColonyBpp9000T* colony, const m256i& owner, 
     return landsAt;
 }
 
+// A child of an existing node, so a test can build a lineage rather than a flat set of root children.
+static long long commitChild(AntColonyBpp9000T* colony, const m256i& owner, const SolutionRef& parentRef,
+    unsigned int score, unsigned int txIdx, unsigned long long nonceSeed, unsigned int tick = 100000)
+{
+    const AntSolutionRecord* parentRec = nullptr;
+    if (colony->tryGetParent(parentRef, &parentRec) != ValidityResult::Valid)
+    {
+        return ANT_INVALID_INDEX;
+    }
+
+    AntCommitInput in;
+    in.pubkey = owner;
+    in.nonce = makeKey(nonceSeed);
+    in.parentRef = parentRef;
+    in.selfRef.tickOffset = 7000;
+    in.selfRef.solutionIndexInTick = txIdx;
+    in.anchorTick = tick;
+    in.publishTick = tick;
+
+    AntColonyBpp9000T::Ann ann;
+    setMem(&ann, sizeof(ann), 0);
+    ann.lut[0] = (unsigned char)(score % 3);
+    unsigned int annHash;
+    KangarooTwelve(&ann, sizeof(ann), &annHash, sizeof(annHash));
+
+    const long long landsAt = (long long)colony->solutionCount();
+    if (colony->commit(in, parentRec, score, ann, annHash) != ValidityResult::Valid)
+    {
+        return ANT_INVALID_INDEX;
+    }
+    return landsAt;
+}
+
 // commit() head-inserts, so children run newest to oldest. siblingFloor() relies on it: only the
 // older ones compete, so they sit at the tail.
 TEST(TestAntColonyStore, SiblingsChainNewestFirst)
@@ -774,4 +807,195 @@ TEST(TestAntColonyReplayCache, AbsentFileIsNotAnError)
     unsigned int score = 0;
     AntColonyBpp9000T::Ann out;
     EXPECT_FALSE(colony->tryGetReplayScore(makeReplayKey(7), score, out));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Export best ANN at the end of epoch
+
+// The file layout: one header, then entryCount of these.
+struct ExportFileEntry
+{
+    AntColonyExportEntry meta;
+    AntColonyBpp9000T::Ann ann;
+};
+
+// Reads antColonySolutions.eoe back. Header first, since only it says how long the body is.
+static bool readExport(AntColonyExportHeader& header, std::vector<ExportFileEntry>& entries)
+{
+    if (load(ANT_COLONY_SOLUTIONS_EOE_FILENAME, sizeof(header), (unsigned char*)&header)
+        != (long long)sizeof(header))
+    {
+        return false;
+    }
+    entries.clear();
+    if (header.entryCount == 0)
+    {
+        return true;
+    }
+
+    const unsigned long long total = sizeof(header)
+        + (unsigned long long)header.entryCount * sizeof(ExportFileEntry);
+    std::vector<unsigned char> raw(total);
+    if (load(ANT_COLONY_SOLUTIONS_EOE_FILENAME, total, raw.data()) != (long long)total)
+    {
+        return false;
+    }
+    entries.resize(header.entryCount);
+    copyMem(entries.data(), raw.data() + sizeof(header), total - sizeof(header));
+    return true;
+}
+
+// More solutions than the file holds, so the cap, the eviction and the ordering are all exercised.
+TEST(TestAntColonyExport, KeepsTheLowestScoresInOrder)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.6 GB";
+
+    const m256i me = makeKey(1);
+    constexpr unsigned int COMMITTED = ANT_EXPORT_MAX_SOLUTIONS + 24;
+    for (unsigned int i = 0; i < COMMITTED; i++)
+    {
+        ASSERT_NE(commitRootChild(colony, me, 3000 + i, i, 5000 + i), ANT_INVALID_INDEX) << "commit " << i;
+    }
+    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
+
+    AntColonyExportHeader header;
+    std::vector<ExportFileEntry> entries;
+    ASSERT_TRUE(readExport(header, entries));
+
+    EXPECT_EQ(header.entryCount, ANT_EXPORT_MAX_SOLUTIONS);
+    EXPECT_EQ(header.solutionCount, COMMITTED);
+    EXPECT_EQ(header.entrySizeBytes, (unsigned int)sizeof(AntColonyExportEntry));
+    EXPECT_EQ(header.annSizeBytes, (unsigned int)sizeof(AntColonyBpp9000T::Ann));
+    ASSERT_EQ(entries.size(), (size_t)ANT_EXPORT_MAX_SOLUTIONS);
+
+    // The 676 lowest of 3000..3699, so exactly 3000..3675, ascending.
+    EXPECT_EQ(entries[0].meta.score, 3000u) << "entry 0 must be the best network of the epoch";
+    EXPECT_EQ(entries[ANT_EXPORT_MAX_SOLUTIONS - 1].meta.score, 3000u + ANT_EXPORT_MAX_SOLUTIONS - 1);
+    for (unsigned int i = 1; i < entries.size(); i++)
+    {
+        ASSERT_LE(entries[i - 1].meta.score, entries[i].meta.score) << "not ascending at " << i;
+    }
+}
+
+// Below the cap the file holds everything, still ordered - and the scores are committed descending
+// here, so every insert lands at the front and the shift path is the one being used.
+TEST(TestAntColonyExport, OrdersFewerThanTheCap)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.6 GB";
+
+    const m256i me = makeKey(2);
+    constexpr unsigned int COUNT = 40;
+    for (unsigned int i = 0; i < COUNT; i++)
+    {
+        ASSERT_NE(commitRootChild(colony, me, 3800 - i, i, 6000 + i), ANT_INVALID_INDEX);
+    }
+    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
+
+    AntColonyExportHeader header;
+    std::vector<ExportFileEntry> entries;
+    ASSERT_TRUE(readExport(header, entries));
+
+    ASSERT_EQ(header.entryCount, COUNT);
+    EXPECT_EQ(entries[0].meta.score, 3800u - (COUNT - 1));
+    for (unsigned int i = 1; i < entries.size(); i++)
+    {
+        ASSERT_LE(entries[i - 1].meta.score, entries[i].meta.score) << "not ascending at " << i;
+    }
+}
+
+// Equal scores keep the incumbent, so the earlier solution ranks first. Without a total order two
+// nodes with the same solutions could write different files.
+TEST(TestAntColonyExport, TiesKeepTheEarlierSolution)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.6 GB";
+
+    const m256i first = makeKey(3);
+    const m256i second = makeKey(4);
+    ASSERT_NE(commitRootChild(colony, first, 3500, 0, 6100), ANT_INVALID_INDEX);
+    ASSERT_NE(commitRootChild(colony, second, 3500, 1, 6101), ANT_INVALID_INDEX);
+    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
+
+    AntColonyExportHeader header;
+    std::vector<ExportFileEntry> entries;
+    ASSERT_TRUE(readExport(header, entries));
+
+    ASSERT_EQ(header.entryCount, 2u);
+    EXPECT_TRUE(entries[0].meta.pubkey == first);
+    EXPECT_TRUE(entries[1].meta.pubkey == second);
+}
+
+// The stored network has to survive the round trip, a wrong ANN here is a wrong harvest, and
+// nothing downstream would notice.
+TEST(TestAntColonyExport, CarriesTheNetworkAndItsDepth)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.6 GB";
+
+    const m256i me = makeKey(5);
+    ASSERT_NE(commitRootChild(colony, me, 3800, 0, 6200), ANT_INVALID_INDEX);
+    const SolutionRef aRef = { 7000, 0 };
+    ASSERT_NE(commitChild(colony, me, aRef, 3700, 1, 6201), ANT_INVALID_INDEX);
+    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
+
+    AntColonyExportHeader header;
+    std::vector<ExportFileEntry> entries;
+    ASSERT_TRUE(readExport(header, entries));
+    ASSERT_EQ(header.entryCount, 2u);
+
+    // Best first: the depth-2 child at 3700, then its depth-1 parent at 3800.
+    EXPECT_EQ(entries[0].meta.score, 3700u);
+    EXPECT_EQ(entries[0].meta.depth, 2u);
+    EXPECT_EQ(entries[1].meta.score, 3800u);
+    EXPECT_EQ(entries[1].meta.depth, 1u);
+
+    AntColonyBpp9000T::Ann expected;
+    ASSERT_TRUE(colony->annOfNonRoot(*colony->recordAt(1), expected));
+    for (unsigned long long i = 0; i < sizeof(expected); i++)
+    {
+        ASSERT_EQ(entries[0].ann.lut[i], expected.lut[i]) << "genome byte " << i;
+    }
+}
+
+// The set holds networks the records cannot reproduce once the store is full, so it is saved rather
+// than rebuilt. If that file went missing the export would come back empty after a restart.
+TEST(TestAntColonyExport, SurvivesASnapshot)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.6 GB";
+
+    const m256i me = makeKey(6);
+    for (unsigned int i = 0; i < 10; i++)
+    {
+        ASSERT_NE(commitRootChild(colony, me, 3700 + i, i, 6300 + i), ANT_INVALID_INDEX);
+    }
+    ASSERT_TRUE(saveWipeLoad(colony));
+    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
+
+    AntColonyExportHeader header;
+    std::vector<ExportFileEntry> entries;
+    ASSERT_TRUE(readExport(header, entries));
+
+    ASSERT_EQ(header.entryCount, 10u);
+    EXPECT_EQ(entries[0].meta.score, 3700u);
+    EXPECT_EQ(entries[9].meta.score, 3709u);
+}
+
+// A new epoch starts with nothing to export, and the file must say so rather than carry last epoch's.
+TEST(TestAntColonyExport, BeginEpochClearsIt)
+{
+    AntColonyBpp9000T* colony = freshColony();
+    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.6 GB";
+
+    ASSERT_NE(commitRootChild(colony, makeKey(7), 3500, 0, 6400), ANT_INVALID_INDEX);
+    colony->beginEpoch(TEST_ROOT_SEED);
+    ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
+
+    AntColonyExportHeader header;
+    std::vector<ExportFileEntry> entries;
+    ASSERT_TRUE(readExport(header, entries));
+    EXPECT_EQ(header.entryCount, 0u);
+    EXPECT_EQ(header.solutionCount, 0u);
 }

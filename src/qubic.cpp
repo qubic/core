@@ -6196,6 +6196,8 @@ static void tickProcessor(void*)
                                     asyncSave(REVENUE_DATA_END_OF_EPOCH_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData);
                                     // Multi-dim revenue (shadow) - for offline comparison against the additive
                                     asyncSave(MULTIDIM_REVENUE_END_OF_EPOCH_FILE_NAME, sizeof(gMultiDimRevenue), (unsigned char*)&gMultiDimRevenue);
+                                    // The epoch's best networks, for offline extraction
+                                    gAntColony.exportBestSolutions(system.epoch, NULL);
 
                                     // Reorder futureComputors so requalifying computors keep their index
                                     // This is needed for correct execution fee reporting across epoch boundaries

@@ -65,6 +65,16 @@ static constexpr unsigned int WORST_SCORE = 0xFFFFFFFFu;
 static constexpr long long ANT_INVALID_INDEX = -1;
 static_assert(sizeof(AntSolutionRecord) == 104, "AntSolutionRecord unexpected padding");
 
+// ANN that will be saved for the epoch
+template<typename PackedAnnT>
+struct AntExportSlotT
+{
+    m256i pubkey;
+    unsigned int score;
+    unsigned int depth;
+    PackedAnnT ann;
+};
+
 // tickOffset -> the run of records committed in that tick, so findIndexBySolutionRef() resolves a
 // SolutionRef without scanning the store. The run is unbroken because the store is append-only and
 // a tick's solutions all commit while that tick is processed
@@ -171,6 +181,10 @@ static_assert(ANT_CHILD_HEAD_BY_PARENT_SIZE >= 2ULL * ANT_MAX_NODES_PER_EPOCH,
 // submit, so this one CAN fill - commit() fails closed with RejectMinerIndexFull.
 static constexpr unsigned long long ANT_CHILD_HEAD_BY_MINER_SIZE = 2ULL * MAX_NUMBER_OF_MINERS;
 
+// How many ANN the epoch's harvest keeps. The target is the LUT with the best error, so this is
+// simply the lowest N scores of the epoch - not one per identity, and not tied to the ranking
+static constexpr unsigned int ANT_EXPORT_MAX_SOLUTIONS = NUMBER_OF_COMPUTORS;
+
 // Anchor digests for recent ticks, indexed by tick & (size - 1). Smallest power of two holding
 // 2*(N+1) entries so a lookup inside the freshness window can never be aliased by a newer tick.
 static constexpr unsigned int antAnchorRingSize(unsigned int window)
@@ -206,6 +220,19 @@ public:
         "PackedAnn must not be padded");
     // Catches sizing from a scorer's padded genome (bpp9000: lutSize 27 vs PaddedLut 32).
     static_assert(PackedAnn::tritCount == sizeof(Ann), "PackedAnn must cover exactly one ANN");
+
+    using ExportSlot = AntExportSlotT<PackedAnn>;
+
+    // The epoch's best ANN, maintained as solutions arrive
+    struct ExportSet
+    {
+        ExportSlot slots[ANT_EXPORT_MAX_SOLUTIONS];
+        // Indices into slots, ascending by score. Kept separate so an insert shifts 4-byte indices
+        // rather than 552-byte slots.
+        unsigned int order[ANT_EXPORT_MAX_SOLUTIONS];
+        unsigned int count;
+        unsigned int padding;
+    };
 
     static constexpr unsigned long long ANT_RECORDS_BYTES =
         (unsigned long long)ANT_MAX_NODES_PER_EPOCH * sizeof(AntSolutionRecord);
@@ -307,6 +334,10 @@ public:
     bool saveReplayCache(unsigned short epoch, CHAR16* directory);
     bool loadReplayCache(unsigned short epoch, CHAR16* directory);
 
+    // Writes the ANT_EXPORT_MAX_SOLUTIONS lowest-scoring networks of the epoch to a file for offline
+    // extraction. MUST be called between endEpoch() and the reset that starts the next epoch
+    bool exportBestSolutions(unsigned short epoch, CHAR16* directory);
+
     // Anchor digests. Both take an ABSOLUTE system tick, never an epoch-relative tickOffset.
     // Called from tick processor only
     void recordAnchorDigest(unsigned int tick, const m256i& digest);
@@ -370,6 +401,47 @@ private:
         unsigned int childAnchorTick /* ABSOLUTE */,
         unsigned int walkLimit = ANT_MAX_NODES_PER_EPOCH) const;
 
+    // Offers a solution to the epoch's best-N set. Called for EVERY solution that passes the rules
+    void noteExportCandidate(const m256i& pubkey, unsigned int score, unsigned int depth, const Ann& ann)
+    {
+        ExportSet& set = *_exportSet;
+        unsigned int slot;
+        if (set.count < ANT_EXPORT_MAX_SOLUTIONS)
+        {
+            slot = set.count;
+        }
+        else if (score >= set.slots[set.order[ANT_EXPORT_MAX_SOLUTIONS - 1]].score)
+        {
+            // The common case once the set is full
+            return;
+        }
+        else
+        {
+            // Reuse the worst entry's storage; its index leaves the order below.
+            slot = set.order[ANT_EXPORT_MAX_SOLUTIONS - 1];
+        }
+
+        set.slots[slot].pubkey = pubkey;
+        set.slots[slot].score = score;
+        set.slots[slot].depth = depth;
+        set.slots[slot].ann.pack(ann.lut);
+
+        // Insert into the order, shifting indices only. Equal scores keep the incumbent ahead, so
+        // among equals the earlier solution ranks first
+        const unsigned int end = (set.count < ANT_EXPORT_MAX_SOLUTIONS) ? set.count : (ANT_EXPORT_MAX_SOLUTIONS - 1);
+        unsigned int i = end;
+        while (i > 0 && set.slots[set.order[i - 1]].score > score)
+        {
+            set.order[i] = set.order[i - 1];
+            i--;
+        }
+        set.order[i] = slot;
+        if (set.count < ANT_EXPORT_MAX_SOLUTIONS)
+        {
+            set.count++;
+        }
+    }
+
     // loadSnapshot() helper: rebuild the tick index, head maps and dedup set from the loaded
     // records, treating them as untrusted input. Defined in ant_colony_snapshot.h.
     bool rebuildDerivedState(unsigned int initialTick);
@@ -388,6 +460,7 @@ private:
 
     // Solutions already committed this epoch, so a resend is rejected instead of re-added.
     QPI::HashSet<AntDedupKey, ANT_DEDUP_SIZE>* _dedup;
+    ExportSet* _exportSet;
     // Both give siblingFloor() a parent's children without scanning the store: the value is the
     // newest child's record index, and nextSiblingIdx chains back to the older ones.
     // parent's address -> newest child
@@ -444,6 +517,11 @@ inline bool AntColony<ScoreT>::init()
     {
         return false;
     }
+    if (!allocPoolWithErrorLog(L"AntColony::_exportSet",
+        sizeof(ExportSet), (void**)&_exportSet, __LINE__))
+    {
+        return false;
+    }
     if (!allocPoolWithErrorLog(L"AntColony::_dedup",
         sizeof(QPI::HashSet<AntDedupKey, ANT_DEDUP_SIZE>),
         (void**)&_dedup, __LINE__))
@@ -467,6 +545,10 @@ inline void AntColony<ScoreT>::deinit()
     if (_replayCache)
     {
         freePool(_replayCache);
+    }
+    if (_exportSet)
+    {
+        freePool(_exportSet);
     }
     if (_dedup)
     {
@@ -498,6 +580,7 @@ inline void AntColony<ScoreT>::deinit()
     }
 
     _replayCache = nullptr;
+    _exportSet = nullptr;
     _dedup = nullptr;
     _childHeadByMiner = nullptr;
     _childHeadByParent = nullptr;
@@ -517,6 +600,7 @@ inline void AntColony<ScoreT>::reset()
     ASSERT(_childHeadByParent != nullptr);
     ASSERT(_childHeadByMiner != nullptr);
     ASSERT(_dedup != nullptr);
+    ASSERT(_exportSet != nullptr);
 
     setMem(_records, ANT_RECORDS_BYTES, 0);
     setMem(_tickIndex,
@@ -524,6 +608,7 @@ inline void AntColony<ScoreT>::reset()
     _childHeadByParent->reset();
     _childHeadByMiner->reset();
     _dedup->reset();
+    setMem(_exportSet, sizeof(ExportSet), 0);
 
     // ANT_ANCHOR_TICK_NONE is used rather than zero
     for (unsigned int i = 0; i < ANT_ANCHOR_RING_SIZE; i++)
@@ -656,6 +741,104 @@ inline bool AntColony<ScoreT>::loadReplayCache(unsigned short epoch, CHAR16* dir
     CHAR16 message[192];
     setText(message, L"[ant-colony] replay cache loaded, entries ");
     appendNumber(message, occupied, FALSE);
+    logToConsole(message);
+    return true;
+}
+
+// The epoch's harvest file
+static unsigned short ANT_COLONY_SOLUTIONS_EOE_FILENAME[] = L"antColonySolutions.eoe";
+
+
+// Written once at the front of the file
+struct AntColonyExportHeader
+{
+    unsigned int epoch;
+    unsigned int entryCount;
+    unsigned int entrySizeBytes;     // of AntColonyExportEntry, not of a store record
+    unsigned int annSizeBytes;
+    unsigned int solutionCount;      // the whole epoch, of which entryCount are exported
+    unsigned int errorThreshold;
+    unsigned char topologyHash[32];  // == BPP9000_TOPOLOGY_HASH of the build that wrote this
+    unsigned char dataHash[32];      // == BPP9000_DATA_HASH
+    m256i rootSeed;
+};
+static_assert(sizeof(AntColonyExportHeader) == 24 + 64 + 32, "AntColonyExportHeader unexpected padding");
+
+// What the harvest needs to reproduce the best error
+struct AntColonyExportEntry
+{
+    // Names the identity that found this network, log only
+    m256i pubkey;
+    unsigned int score;    // error count, lower is better - how good this network is
+    unsigned int depth;    // generations of strict improvement behind it, so the chain length is visible
+};
+static_assert(sizeof(AntColonyExportEntry) == 32 + 8, "AntColonyExportEntry unexpected padding");
+
+template<typename ScoreT>
+inline bool AntColony<ScoreT>::exportBestSolutions(unsigned short epoch, CHAR16* directory)
+{
+    ASSERT(_exportSet != nullptr);
+
+    struct Entry
+    {
+        AntColonyExportEntry meta;
+        Ann ann;
+    };
+    const ExportSet& set = *_exportSet;
+
+    AntColonyExportHeader header;
+    setMem(&header, sizeof(header), 0);
+    header.epoch = epoch;
+    header.entryCount = set.count;
+    header.entrySizeBytes = (unsigned int)sizeof(AntColonyExportEntry);
+    header.annSizeBytes = (unsigned int)sizeof(Ann);
+    header.solutionCount = _solutionCount;
+    header.errorThreshold = _errorThreshold;
+    copyMem(header.topologyHash, BPP9000_TOPOLOGY_HASH, sizeof(header.topologyHash));
+    copyMem(header.dataHash, BPP9000_DATA_HASH, sizeof(header.dataHash));
+    header.rootSeed = _rootSeed;
+
+    if (set.count == 0)
+    {
+        return save(ANT_COLONY_SOLUTIONS_EOE_FILENAME, sizeof(header), (unsigned char*)&header, directory)
+            == (long long)sizeof(header);
+    }
+
+    const unsigned long long totalBytes = sizeof(header) + (unsigned long long)set.count * sizeof(Entry);
+    unsigned char* buffer = nullptr;
+    if (!allocPoolWithErrorLog(L"AntColony::export", totalBytes, (void**)&buffer, __LINE__))
+    {
+        logToConsole(L"[ant-colony] no memory for the solution export, harvest for this epoch is lost");
+        return false;
+    }
+
+    copyMem(buffer, &header, sizeof(header));
+    Entry* out = (Entry*)(buffer + sizeof(header));
+    for (unsigned int i = 0; i < set.count; i++)
+    {
+        const ExportSlot& slot = set.slots[set.order[i]];
+        out[i].meta.pubkey = slot.pubkey;
+        out[i].meta.score = slot.score;
+        out[i].meta.depth = slot.depth;
+        slot.ann.unpack(out[i].ann.lut);
+    }
+
+    const long long saved = save(ANT_COLONY_SOLUTIONS_EOE_FILENAME, totalBytes, buffer, directory);
+    freePool(buffer);
+
+    if (saved != (long long)totalBytes)
+    {
+        logToConsole(L"[ant-colony] failed to write the solution export");
+        return false;
+    }
+
+    CHAR16 message[192];
+    setText(message, L"[ant-colony] exported best networks, entries ");
+    appendNumber(message, set.count, FALSE);
+    appendText(message, L", best error ");
+    appendNumber(message, set.slots[set.order[0]].score, FALSE);
+    appendText(message, L", worst kept ");
+    appendNumber(message, set.slots[set.order[set.count - 1]].score, FALSE);
     logToConsole(message);
     return true;
 }
@@ -849,6 +1032,8 @@ inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const 
     // Honour it and stop storing: the tree freezes, the leaderboard does not.
     if (_solutionCount >= ANT_MAX_NODES_PER_EPOCH)
     {
+        // The record is dropped, the network is not, still note this sols for end of epoch exppot
+        noteExportCandidate(in.pubkey, score, (parentRec != nullptr) ? (parentRec->depth + 1) : 1, childAnn);
         _stats.acceptedNotStored++;
         return ValidityResult::ValidNotStored;
     }
@@ -917,6 +1102,8 @@ inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const 
     // plain unsigned ints written only by the tick processor
     ATOMIC_STORE32(_solutionCount, (long)(newIdx + 1));
     ATOMIC_STORE32(tslot.count, (long)(tslot.count + 1));
+
+    noteExportCandidate(in.pubkey, score, newRec.depth, childAnn);
 
     _stats.acceptedSolutions++;
     _stats.treeSizeCurrent = _solutionCount;
