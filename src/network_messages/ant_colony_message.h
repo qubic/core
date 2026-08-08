@@ -2,18 +2,28 @@
 
 #include "common_def.h"
 
-// Asks for the current frontier of parents it can branch a child from
+// Asks for the parents one identity can branch a child from. Scoped by pubkey because a child must
+// name a parent in its OWN tree - validate() rejects anything else with RejectWrongTree -
+// Operator-signed: the request payload is followed by SIGNATURE_SIZE bytes signed by
+// operatorPublicKey. Signature only, no monotonic nonce - the shape the retired
+// REQUEST_CUSTOM_MINING_DATA used, not SpecialCommand's. The nonce sequences operator ACTIONS so each
+// executes once; replaying a read costs a duplicate answer, while consuming the nonce would make a
+// polling miner collide with every other operator command.
+//
 // Paginated via fromIndex / nextIndex.
 struct RequestAntMineableParents
 {
+    // Whose tree to report. Usually the caller's own.
+    m256i pubkey;
     // Record index to resume scanning from (0 on the first call).
     unsigned int fromIndex;
+    unsigned int padding;
     static constexpr unsigned char type()
     {
         return REQUEST_ANT_MINEABLE_PARENTS;
     }
 };
-static_assert(sizeof(RequestAntMineableParents) == 4, "RequestAntMineableParents unexpected size");
+static_assert(sizeof(RequestAntMineableParents) == 40, "RequestAntMineableParents unexpected size");
 
 // Max mineable-parent entries returned per response. Miners page through the
 // rest via the nextIndex cursor.
@@ -22,20 +32,25 @@ constexpr unsigned int ANT_MINEABLE_PARENTS_PER_RESPONSE = 64;
 // Max records scanned per request
 constexpr unsigned int ANT_MINEABLE_PARENTS_SCAN_BUDGET = 1024;
 
-// One mineable parent. parentTickOffset/parentSolutionIndexInTick is the ref a child sets as its own
-// parentRef. The score is an error count, so smaller is better: the child must score strictly below
-// parentScore and strictly below siblingFloor (the best sibling more than N ticks earlier, computed
-// for a child anchoring at the current tick).
+// One stored node of the requested identity's tree. selfTickOffset/selfSolutionIndexInTick is the
+// ref a child sets as its own parentRef to extend this node; parentTickOffset/parentSolutionIndexInTick
+// is this node's OWN parent - (0, 0xFFFFFFFF) means the root - so paging every node of a pubkey
+// reconstructs the whole tree, edges included, without fetching any network bytes.
+// The score is an error count, so smaller is better: a child must score strictly below score and
+// strictly below siblingFloor (the best sibling more than N ticks earlier, computed for a child
+// anchoring at the current tick).
 struct AntMineableParent
 {
+    unsigned int selfTickOffset;
+    unsigned int selfSolutionIndexInTick;
     unsigned int parentTickOffset;
     unsigned int parentSolutionIndexInTick;
-    unsigned int parentScore;
+    unsigned int score;
     unsigned int siblingFloor;
-    unsigned int anchorTick;            // the parent's own anchor tick number
+    unsigned int anchorTick;            // this node's own anchor tick number
     unsigned int depth;
 };
-static_assert(sizeof(AntMineableParent) == 24, "AntMineableParent unexpected size");
+static_assert(sizeof(AntMineableParent) == 32, "AntMineableParent unexpected size");
 
 // Metadata header only; followed by count * AntMineableParent (count * itemSize
 // bytes). itemSize lets the receiver validate the payload without hardcoding the
@@ -54,6 +69,17 @@ struct RespondAntMineableParentsHeader
     }
 };
 static_assert(sizeof(RespondAntMineableParentsHeader) == 12, "RespondAntMineableParentsHeader unexpected size");
+
+// The largest a mineable-parents response can be, the header followed by a full page of entries
+struct AntMineableParentsResponse
+{
+    RespondAntMineableParentsHeader header;
+    AntMineableParent items[ANT_MINEABLE_PARENTS_PER_RESPONSE];
+};
+static_assert(sizeof(AntMineableParentsResponse)
+    == sizeof(RespondAntMineableParentsHeader)
+     + ANT_MINEABLE_PARENTS_PER_RESPONSE * sizeof(AntMineableParent),
+    "AntMineableParentsResponse must have no padding between the header and the items");
 
 // RespondAntAnnStateHeader.status values.
 constexpr unsigned char ANT_ANN_STATUS_OK = 0;        // ANN bytes follow the header
@@ -102,14 +128,14 @@ struct RequestAntEpochContext
 };
 
 // Per-epoch ant-colony parameters a miner needs to start building solutions:
-// the score threshold, the freshness window, the per-identity root seed (spectrum digest),
-// and pool occupancy. The anchor digest is not included; a miner derives it from the standard
+// the score threshold, the freshness window, the epoch's root seed, and pool occupancy.
+// The anchor digest is not included; a miner derives it from the standard
 // protocol as K12(anchorTick || transactionDigest), with transactionDigest taken from the
 // anchor tick's quorum votes (REQUEST_QUORUM_TICK).
 #pragma pack(push, 1)
 struct RespondAntEpochContext
 {
-    // per-identity root seed (epoch-start spectrum digest); each root = K12(pubkey || this)
+    // The epoch-start spectrum digest
     m256i spectrumDigest;
     // score threshold for this epoch
     unsigned int threshold;

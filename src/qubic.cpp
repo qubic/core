@@ -1511,6 +1511,100 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
     }
 }
 
+// One response buffer per processor
+static AntMineableParentsResponse gAntMineableParentsResponseBuffer[MAX_NUMBER_OF_PROCESSORS];
+
+// Request ant colony in epoch contex
+static void processRequestAntEpochContext(Peer* peer, RequestResponseHeader* header)
+{
+    RespondAntEpochContext respond;
+    setMem(&respond, sizeof(respond), 0);
+
+    respond.spectrumDigest = gAntColony.rootSeed();
+    respond.threshold = gAntColony.errorThreshold();
+    respond.freshnessWindow = ANT_FRESHNESS_WINDOW_TICKS;
+    respond.solutionCount = gAntColony.solutionCount();
+    respond.freeAnnSlotsCount = gAntColony.freeAnnSlotsCount();
+    respond.epoch = system.epoch;
+
+    enqueueResponse(peer, sizeof(respond), RespondAntEpochContext::type(), header->dejavu(), &respond);
+}
+
+// The parents ONE identity can branch from, each with the bar a child of it must beat. Scoped by
+// pubkey: a child must name a parent in its own tree, so an unscoped answer would be mostly nodes the
+// caller can never use.
+//
+// Paged, because the store holds millions and a response is one datagram - the cursor is a record
+// index, and ANT_MINEABLE_PARENTS_SCAN_BUDGET caps how far one request may scan, so a caller cannot
+// walk the whole store in a single call. Sweeping a full store therefore costs many requests; the
+// alternative, walking the identity's tree through the head maps, needs a resumable cursor that does
+// not fit a record index, and the scan is cache-friendly where a chain walk is not.
+//
+// Operator-signed
+static void processRequestAntMineableParents(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
+{
+    if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestAntMineableParents) + SIGNATURE_SIZE)
+    {
+        return;
+    }
+    const RequestAntMineableParents* request = header->getPayload<RequestAntMineableParents>();
+
+    // Signature check
+    unsigned char digest[32];
+    KangarooTwelve(request, header->size() - sizeof(RequestResponseHeader) - SIGNATURE_SIZE, digest, sizeof(digest));
+    if (!verify(operatorPublicKey.m256i_u8, digest, ((const unsigned char*)header + (header->size() - SIGNATURE_SIZE))))
+    {
+        return;
+    }
+
+    AntMineableParentsResponse& response = gAntMineableParentsResponseBuffer[processorNumber];
+    setMem(&response, sizeof(response), 0);
+    response.header.itemSize = (unsigned int)sizeof(AntMineableParent);
+
+    // Sampled once: it only grows, and a child mined against this frontier anchors at or after the
+    // tick this answer describes.
+    const unsigned int total = gAntColony.solutionCount();
+    const unsigned int anchorTick = system.tick;
+
+    unsigned int idx = request->fromIndex;
+    unsigned int scanned = 0;
+    while (idx < total
+        && response.header.count < ANT_MINEABLE_PARENTS_PER_RESPONSE
+        && scanned < ANT_MINEABLE_PARENTS_SCAN_BUDGET)
+    {
+        const AntSolutionRecord* rec = gAntColony.recordAt(idx);
+        if (rec == nullptr)
+        {
+            break;
+        }
+        scanned++;
+        if (!(rec->pubkey == request->pubkey))
+        {
+            idx++;
+            continue;
+        }
+
+        AntMineableParent& item = response.items[response.header.count];
+        item.selfTickOffset = rec->selfRef.tickOffset;
+        item.selfSolutionIndexInTick = rec->selfRef.solutionIndexInTick;
+        item.parentTickOffset = rec->parentRef.tickOffset;
+        item.parentSolutionIndexInTick = rec->parentRef.solutionIndexInTick;
+        item.score = rec->score;
+        item.siblingFloor = gAntColony.siblingFloorForQuery(rec->selfRef, rec->pubkey, anchorTick);
+        item.anchorTick = rec->anchorTick;
+        item.depth = rec->depth;
+        response.header.count++;
+        idx++;
+    }
+
+    // Zero means the caller reached the end of what this node holds, per the protocol.
+    response.header.nextIndex = (idx < total) ? idx : 0;
+
+    enqueueResponse(peer,
+        (unsigned int)sizeof(response.header) + response.header.count * (unsigned int)sizeof(AntMineableParent),
+        RespondAntMineableParentsHeader::type(), header->dejavu(), &response);
+}
+
 static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
 {
     RespondSystemInfo respondedSystemInfo;
@@ -2281,6 +2375,18 @@ static void requestProcessor(void* ProcedureArgument)
                 case RequestOracleData::type():
                 {
                     oracleEngine.processRequestOracleData(peer, header);
+                }
+                break;
+
+                case RequestAntEpochContext::type():
+                {
+                    processRequestAntEpochContext(peer, header);
+                }
+                break;
+
+                case RequestAntMineableParents::type():
+                {
+                    processRequestAntMineableParents(processorNumber, peer, header);
                 }
                 break;
 

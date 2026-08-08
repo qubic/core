@@ -304,6 +304,14 @@ public:
         return _solutionCount;
     }
 
+    // Slots a miner can still claim. Reaching zero does not stop acceptance, a valid solution is
+    // still scored, folded, refunded and ranked, but no NEW branch point can be created, which is
+    // what a miner needs to know before planning a lineage.
+    unsigned int freeAnnSlotsCount() const
+    {
+        return (_solutionCount < ANT_MAX_NODES_PER_EPOCH) ? (ANT_MAX_NODES_PER_EPOCH - _solutionCount) : 0;
+    }
+
     const AntColonyDiagnostics& stats() const
     {
         return _stats;
@@ -337,6 +345,24 @@ public:
     // Writes the ANT_EXPORT_MAX_SOLUTIONS lowest-scoring networks of the epoch to a file for offline
     // extraction. MUST be called between endEpoch() and the reset that starts the next epoch
     bool exportBestSolutions(unsigned short epoch, CHAR16* directory);
+
+    // Get the sibling floor for querry purpose. Note that it return the best at current time
+    unsigned int siblingFloorForQuery(const SolutionRef& parentRef, const m256i& childPubkey,
+        unsigned int childAnchorTick)
+    {
+        unsigned int head = NO_SIBLING;
+        // Take the latest child first with lock to touch the head map
+        {
+            LockGuard guard(_headMapLock);
+            if (!chainHead(parentRef, childPubkey, head))
+            {
+                return WORST_SCORE;
+            }
+        }
+
+        // Escape the lock, then read from head, in which the record is imutable 
+        return siblingFloorFromHead(head, childAnchorTick);
+    }
 
     // Anchor digests. Both take an ABSOLUTE system tick, never an epoch-relative tickOffset.
     // Called from tick processor only
@@ -398,8 +424,26 @@ private:
     // RespondAntMineableParents), serve it from a snapshot the tick processor computed, do not
     // recompute it on the request thread.
     unsigned int siblingFloor(const SolutionRef& parentRef, const m256i& childPubkey,
-        unsigned int childAnchorTick /* ABSOLUTE */,
-        unsigned int walkLimit = ANT_MAX_NODES_PER_EPOCH) const;
+        unsigned int childAnchorTick /* ABSOLUTE */) const;
+
+    // The map read, and the ONLY part of a floor computation that touches a head map. Split out
+    // because the walk that follows it does not, which is what lets the query hold the lock for a
+    // constant time instead of a whole chain.
+    // Depth-1 nodes chain per identity, so one miner's never raise another's floor; deeper nodes
+    // chain per parent, which is single-identity by the wrong-tree check.
+    bool chainHead(const SolutionRef& parentRef, const m256i& childPubkey, unsigned int& out) const
+    {
+        if (parentRef.isRoot())
+        {
+            return _childHeadByMiner->get(childPubkey, out);
+        }
+        return _childHeadByParent->get(parentRef, out);
+    }
+
+    // The walk half, from a chain head already in hand. Takes no lock: _records is append-only and a
+    // record's nextSiblingIdx is written once at commit and never touched again, so a chain is stable
+    // to follow even while the tick processor is appending elsewhere.
+    unsigned int siblingFloorFromHead(unsigned int head, unsigned int childAnchorTick) const;
 
     // Offers a solution to the epoch's best-N set. Called for EVERY solution that passes the rules
     void noteExportCandidate(const m256i& pubkey, unsigned int score, unsigned int depth, const Ann& ann)
@@ -461,6 +505,11 @@ private:
     // Solutions already committed this epoch, so a resend is rejected instead of re-added.
     QPI::HashSet<AntDedupKey, ANT_DEDUP_SIZE>* _dedup;
     ExportSet* _exportSet;
+
+    // The two head maps have no reader/writer protocol of their own: QPI::HashMap::set() makes a
+    // slot's key visible before its value, so a reader asking for the key being inserted can get a
+    // garbage index
+    volatile char _headMapLock;
     // Both give siblingFloor() a parent's children without scanning the store: the value is the
     // newest child's record index, and nextSiblingIdx chains back to the older ones.
     // parent's address -> newest child
@@ -896,7 +945,20 @@ inline long long AntColony<ScoreT>::findIndexBySolutionRef(const SolutionRef& re
 
 template<typename ScoreT>
 inline unsigned int AntColony<ScoreT>::siblingFloor(const SolutionRef& parentRef, const m256i& childPubkey,
-    unsigned int childAnchorTick, unsigned int walkLimit) const
+    unsigned int childAnchorTick) const
+{
+    // Tick processor only, so the head map read needs no lock here - nothing else writes it.
+    unsigned int head = NO_SIBLING;
+    if (!chainHead(parentRef, childPubkey, head))
+    {
+        return WORST_SCORE;
+    }
+    return siblingFloorFromHead(head, childAnchorTick);
+}
+
+template<typename ScoreT>
+inline unsigned int AntColony<ScoreT>::siblingFloorFromHead(unsigned int head,
+    unsigned int childAnchorTick) const
 {
     // A competing sibling anchors more than N ticks earlier, so guard the subtraction. This only
     // fires during the network's first N ticks, when there are no siblings to compete with anyway.
@@ -906,30 +968,19 @@ inline unsigned int AntColony<ScoreT>::siblingFloor(const SolutionRef& parentRef
     }
     const unsigned int boundary = childAnchorTick - ANT_FRESHNESS_WINDOW_TICKS;
 
-    // Depth-1 nodes chain per identity, so one miner's never raise another's floor.
-    // Deeper nodes chain per parent, which is single-identity by the wrong-tree check.
-    unsigned int idx = NO_SIBLING;
-    if (parentRef.isRoot())
-    {
-        if (!_childHeadByMiner->get(childPubkey, idx))
-        {
-            return WORST_SCORE;
-        }
-    }
-    else if (!_childHeadByParent->get(parentRef, idx))
-    {
-        return WORST_SCORE;
-    }
-
-    // The bar is the BEST score among competing siblings, because lower is better.
-    // The chain strictly decreases (commit head-inserts) so it terminates on its own; walkLimit is a
-    // backstop, and the default does not truncate. Truncating from the head would be wrong rather
-    // than merely approximate: entries are newest-first and only the older ones compete, so a
-    // head-side cut removes exactly the siblings that set the floor.
+    // The bar is the BEST score among competing siblings, because lower is better. The chain is
+    // finite and terminates on its own, and there is deliberately no hop limit: entries are
+    // newest-first and only the older ones compete, so cutting from the head would remove exactly
+    // the siblings that set the floor - wrong, not merely approximate.
     unsigned int floor = WORST_SCORE;
-    unsigned int hops = 0;
-    while (idx != NO_SIBLING && hops < walkLimit)
+    unsigned int idx = head;
+    while (idx != NO_SIBLING)
     {
+        // NOT a redundant bounds check - it is the publication barrier this walk relies on. commit()
+        // points the head map at a new index BEFORE it writes that record, and only bumps
+        // _solutionCount once the record is complete. An off-thread walk that reaches the new index
+        // early therefore stops here instead of reading half a record. Removing this reintroduces a
+        // torn read that would only ever show up under load.
         if (idx >= _solutionCount)
         {
             break;
@@ -940,7 +991,6 @@ inline unsigned int AntColony<ScoreT>::siblingFloor(const SolutionRef& parentRef
             floor = s.score;
         }
         idx = s.nextSiblingIdx;
-        hops++;
     }
     return floor;
 }
@@ -1054,22 +1104,28 @@ inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const 
 
     // Claim the sibling-chain head before writing the record
     unsigned int prevHead = NO_SIBLING;
-    if (in.parentRef.isRoot())
+    bool headClaimed = true;
     {
-        _childHeadByMiner->get(in.pubkey, prevHead);
-        if (_childHeadByMiner->set(in.pubkey, newIdx) == QPI::NULL_INDEX)
+        LockGuard guard(_headMapLock);
+        if (in.parentRef.isRoot())
         {
-            // Fail closed. Degrading instead, accepting the node but leaving the identity without a
-            // chain head, would silently drop its sibling floor
-            _dedup->remove(dedupKey);
-            recordReject(ValidityResult::RejectMinerIndexFull);
-            return ValidityResult::RejectMinerIndexFull;
+            _childHeadByMiner->get(in.pubkey, prevHead);
+            headClaimed = (_childHeadByMiner->set(in.pubkey, newIdx) != QPI::NULL_INDEX);
+        }
+        else
+        {
+            _childHeadByParent->get(in.parentRef, prevHead);
+            _childHeadByParent->set(in.parentRef, newIdx);   // cannot fail, see the static_assert on its size
         }
     }
-    else
+    if (!headClaimed)
     {
-        _childHeadByParent->get(in.parentRef, prevHead);
-        _childHeadByParent->set(in.parentRef, newIdx);   // cannot fail, see the static_assert on its size
+        // Fail closed. Degrading instead, accepting the node but leaving the identity without a
+        // chain head, would silently drop its sibling floor. Released first: this touches _dedup,
+        // which must not be reached under the head-map lock.
+        _dedup->remove(dedupKey);
+        recordReject(ValidityResult::RejectMinerIndexFull);
+        return ValidityResult::RejectMinerIndexFull;
     }
 
     // The record and its network share an index, which keeps the used portion of the allocation a
