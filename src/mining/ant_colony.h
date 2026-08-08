@@ -128,6 +128,44 @@ struct AntColonyDiagnostics
         setMem(this, sizeof(*this), 0);
     }
 
+    void appendLog(CHAR16* message) const
+    {
+        appendText(message, L"tree ");
+        appendNumber(message, treeSizeCurrent, TRUE);
+        appendText(message, L"/");
+        appendNumber(message, ANT_MAX_NODES_PER_EPOCH, TRUE);
+        appendText(message, L" depth ");
+        appendNumber(message, treeDepthMax, FALSE);
+        appendText(message, L" | accepted ");
+        appendNumber(message, acceptedSolutions, TRUE);
+        appendText(message, L" (not stored ");
+        appendNumber(message, acceptedNotStored, TRUE);
+        appendText(message, L")");
+
+        appendText(message, L" | rejected: parent ");
+        appendNumber(message, rejectParentNotRegistered, TRUE);
+        appendText(message, L", stale ");
+        appendNumber(message, rejectStale, TRUE);
+        appendText(message, L", wrongTree ");
+        appendNumber(message, rejectWrongTree, TRUE);
+        appendText(message, L", threshold ");
+        appendNumber(message, rejectThreshold, TRUE);
+        appendText(message, L", leParent ");
+        appendNumber(message, rejectLeParent, TRUE);
+        appendText(message, L", floor ");
+        appendNumber(message, rejectSiblingFloor, TRUE);
+        appendText(message, L", tickRange ");
+        appendNumber(message, rejectTickOutOfRange, TRUE);
+        appendText(message, L", replay ");
+        appendNumber(message, rejectReplay, TRUE);
+        appendText(message, L", dedupFull ");
+        appendNumber(message, rejectDedupFull, TRUE);
+        appendText(message, L", minerIndexFull ");
+        appendNumber(message, rejectMinerIndexFull, TRUE);
+        appendText(message, L", nonCanonicalNonce ");
+        appendNumber(message, rejectNonCanonicalNonce, TRUE);
+    }
+
     void count(ValidityResult r)
     {
         switch (r)

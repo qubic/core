@@ -5,10 +5,9 @@
 // Asks for the parents one identity can branch a child from. Scoped by pubkey because a child must
 // name a parent in its OWN tree - validate() rejects anything else with RejectWrongTree -
 // Operator-signed: the request payload is followed by SIGNATURE_SIZE bytes signed by
-// operatorPublicKey. Signature only, no monotonic nonce - the shape the retired
-// REQUEST_CUSTOM_MINING_DATA used, not SpecialCommand's. The nonce sequences operator ACTIONS so each
-// executes once; replaying a read costs a duplicate answer, while consuming the nonce would make a
-// polling miner collide with every other operator command.
+// operatorPublicKey. Signature only, with no monotonic nonce. A nonce exists to make an operator
+// ACTION execute exactly once; replaying a read just costs a duplicate answer, while consuming the
+// nonce would put a polling miner in contention with every other operator command.
 //
 // Paginated via fromIndex / nextIndex.
 struct RequestAntMineableParents
@@ -90,7 +89,7 @@ constexpr unsigned char ANT_ANN_STATUS_IS_ROOT = 2;   // ROOT_REF; no ANN payloa
 // operatorPublicKey.
 struct RequestAntAnnState
 {
-    // Monotonic per-operator nonce, the same rule processSpecialCommand uses
+    // Monotonic per-operator nonce: must exceed the last one the node accepted.
     unsigned long long everIncreasingNonce;
     unsigned int parentRefTickOffset;
     unsigned int parentRefSolutionIndexInTick;

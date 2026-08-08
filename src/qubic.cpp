@@ -7924,6 +7924,12 @@ static void processKeyPresses()
             setText(message, L"DogeMining: ");
             gDogeMiningStats.appendLog(message);
             logToConsole(message);
+
+            setText(message, L"AntColony: ");
+            gAntColony.stats().appendLog(message);
+            appendText(message, L" | replay cache ");
+            appendNumber(message, gAntColony.replayCacheOccupancy(), TRUE);
+            logToConsole(message);
         }
         break;
 
