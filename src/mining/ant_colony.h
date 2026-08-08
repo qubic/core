@@ -78,13 +78,15 @@ struct AntTickSlot
 enum ValidityResult
 {
     Valid,
+    // Passed every rule but the store is full, so it was not recorded. Still a valid solution: its
+    // score is already folded into resourceTestingDigest, and the caller must refund and rank it.
+    ValidNotStored,
     RejectParentNotRegistered,
     RejectStale,                 // anchor in the future, or published more than N ticks after it
     RejectWrongTree,             // parent belongs to a different identity
     RejectBelowThreshold,        // score above the per-epoch error bound
     RejectLeParent,              // did not strictly beat the parent
     RejectBelowSiblingFloor,     // did not strictly beat the best sibling anchored more than N earlier
-    RejectRecordsCapFull,
     RejectTickOutOfRange,
     RejectReplay,                // (pubkey, parentRef, nonce) already committed this epoch
     RejectDedupFull,
@@ -100,7 +102,6 @@ struct AntColonyDiagnostics
     unsigned long long rejectThreshold;
     unsigned long long rejectLeParent;
     unsigned long long rejectSiblingFloor;
-    unsigned long long rejectRecordsCapFull;
     unsigned long long rejectTickOutOfRange;
     unsigned long long rejectReplay;
     unsigned long long rejectDedupFull;
@@ -108,6 +109,7 @@ struct AntColonyDiagnostics
     unsigned long long rejectNonCanonicalNonce;
 
     unsigned long long acceptedSolutions;
+    unsigned long long acceptedNotStored;
     unsigned long long treeDepthMax;
     unsigned long long treeSizeCurrent;
 
@@ -126,7 +128,6 @@ struct AntColonyDiagnostics
         case ValidityResult::RejectBelowThreshold:      rejectThreshold++; break;
         case ValidityResult::RejectLeParent:            rejectLeParent++; break;
         case ValidityResult::RejectBelowSiblingFloor:   rejectSiblingFloor++; break;
-        case ValidityResult::RejectRecordsCapFull:      rejectRecordsCapFull++; break;
         case ValidityResult::RejectTickOutOfRange:      rejectTickOutOfRange++; break;
         case ValidityResult::RejectReplay:              rejectReplay++; break;
         case ValidityResult::RejectDedupFull:           rejectDedupFull++; break;
@@ -843,10 +844,13 @@ inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const 
         recordReject(ValidityResult::RejectReplay);
         return ValidityResult::RejectReplay;
     }
+    // Store full. Every rule above already passed, so the solution is honest work and its score is
+    // in the digest whatever happens here - rejecting it would burn the deposit for a valid answer.
+    // Honour it and stop storing: the tree freezes, the leaderboard does not.
     if (_solutionCount >= ANT_MAX_NODES_PER_EPOCH)
     {
-        recordReject(ValidityResult::RejectRecordsCapFull);
-        return ValidityResult::RejectRecordsCapFull;
+        _stats.acceptedNotStored++;
+        return ValidityResult::ValidNotStored;
     }
     if (in.selfRef.tickOffset >= MAX_NUMBER_OF_TICKS_PER_EPOCH)
     {

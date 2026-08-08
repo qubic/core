@@ -2629,8 +2629,7 @@ static bool ranksBelow(unsigned int scoreA, unsigned int tickA, unsigned int sco
     return tickA > tickB;
 }
 
-// Tick-processor only: the competitor sort between the two minerScoreArrayLock sections runs
-// unlocked on purpose.
+// Tick-processor only
 static void updateMinerRankingAndFutureComputors(
     const m256i& sourcePublicKey,
     unsigned int newScore,
@@ -2989,14 +2988,18 @@ static void processTickTransactionAntColonySolution(
         transaction->anchorTick,                                  // ABSOLUTE
         system.tick };                                            // ABSOLUTE
     result = gAntColony.commit(in, parentRec, childScore, *childAnn, childAnnHash);
-    if (result != ValidityResult::Valid)
+    // ValidNotStored is the store being full: the solution passed every rule and only missed a slot,
+    // so it earns its refund and its ranking exactly like a stored one
+    if (result != ValidityResult::Valid && result != ValidityResult::ValidNotStored)
     {
         return;   // commit() counted this one itself
     }
 
-    // Refund AND ranking
+    // Refund AND ranking. A valid solution is refunded whether or not it improved this miner's best,
+    // and whether or not the store had room for it, ranking is best-score-only
     if (transaction->claimedScore == childScore)
     {
+        // Refund if this score == its claimed score and the ann tree check
         increaseEnergy(transaction->sourcePublicKey, transaction->amount);
 
         const QuTransfer quTransfer = { m256i::zero(), transaction->sourcePublicKey, transaction->amount };
