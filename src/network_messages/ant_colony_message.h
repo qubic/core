@@ -92,14 +92,18 @@ static_assert(sizeof(AntMineableParentsResponse)
      + ANT_MINEABLE_PARENTS_PER_RESPONSE * sizeof(AntMineableParent),
     "AntMineableParentsResponse must have no padding between the header and the items");
 
-// RespondAntAnnStateHeader.status values.
-constexpr unsigned char ANT_ANN_STATUS_OK = 0;        // ANN bytes follow the header
-constexpr unsigned char ANT_ANN_STATUS_NOT_FOUND = 1; // parentRef has no record
-constexpr unsigned char ANT_ANN_STATUS_IS_ROOT = 2;   // ROOT_REF; no ANN payload - miner derives its own per-identity root
+// RespondAntParentAnnHeader.status values.
+constexpr unsigned char ANT_PARENT_ANN_STATUS_OK = 0;        // ANN bytes follow the header
+constexpr unsigned char ANT_PARENT_ANN_STATUS_NOT_FOUND = 1; // parentRef has no record
+constexpr unsigned char ANT_PARENT_ANN_STATUS_IS_ROOT = 2;   // ROOT_REF; no ANN payload - miner derives its own per-identity root
 
+// ONE tree node's stored network, named by parentRef - the 1728 bytes a miner mutates to extend
+// that node. The tree itself is listed by mineable-parents; this fetches the material for a single
+// chosen parent.
+//
 // Operator-signed. The request payload is followed by SIGNATURE_SIZE bytes signed by
 // operatorPublicKey.
-struct RequestAntAnnState
+struct RequestAntParentAnn
 {
     // Monotonic per-operator nonce: must exceed the last one the node accepted.
     unsigned long long everIncreasingNonce;
@@ -107,15 +111,15 @@ struct RequestAntAnnState
     unsigned int parentRefSolutionIndexInTick;
     static constexpr unsigned char type()
     {
-        return REQUEST_ANT_ANN_STATE;
+        return REQUEST_ANT_PARENT_ANN;
     }
 };
-static_assert(sizeof(RequestAntAnnState) == 16, "RequestAntAnnState unexpected size");
+static_assert(sizeof(RequestAntParentAnn) == 16, "RequestAntParentAnn unexpected size");
 
 // Metadata header only; when status is Ok or IsRoot, annSizeBytes bytes of packed
 // ANN follow the header (annSizeBytes is 0 otherwise). Kept ANN-agnostic here to
 // avoid a heavy include; the receiver uses annSizeBytes to read the trailing blob.
-struct RespondAntAnnStateHeader
+struct RespondAntParentAnnHeader
 {
     unsigned int parentRefTickOffset;
     unsigned int parentRefSolutionIndexInTick;
@@ -125,10 +129,10 @@ struct RespondAntAnnStateHeader
     unsigned char padding[3];
     static constexpr unsigned char type()
     {
-        return RESPOND_ANT_ANN_STATE;
+        return RESPOND_ANT_PARENT_ANN;
     }
 };
-static_assert(sizeof(RespondAntAnnStateHeader) == 16, "RespondAntAnnStateHeader unexpected size");
+static_assert(sizeof(RespondAntParentAnnHeader) == 16, "RespondAntParentAnnHeader unexpected size");
 
 struct RequestAntEpochContext
 {
