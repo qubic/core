@@ -5171,6 +5171,7 @@ static bool saveAllNodeStates()
     }
     
     score->saveScoreCache(system.epoch, directory);
+    gAntColony.saveReplayCache(system.epoch, directory);
     
     copyMem(&nodeStateBuffer.etalonTick, &etalonTick, sizeof(etalonTick));
     copyMem(nodeStateBuffer.minerPublicKeys, (void*)minerPublicKeys, sizeof(minerPublicKeys));
@@ -9115,6 +9116,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
             saveSystem();
             score->saveScoreCache(system.epoch);
+            gAntColony.saveReplayCache(system.epoch, NULL);
 #ifdef ENABLE_PROFILING
             gProfilingDataCollector.writeToFile();
 #endif
