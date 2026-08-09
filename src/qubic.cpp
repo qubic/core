@@ -81,6 +81,7 @@
 #include "oracle_core/net_msg_impl.h"
 #include "oracle_core/snapshot_files.h"
 #include "mining/ant_colony_snapshot.h"
+#include "mining/ant_pending_solutions.h"
 #include "oracle_core/oracle_interfaces_def.h"
 #include "qpi/impl/qpi_oracle_impl.h"
 
@@ -268,6 +269,7 @@ static int getSolutionThreshold(score_engine::AlgoType selectedAlgo)
 static bool applyBpp9000Task();
 
 static AntColonyBpp9000T gAntColony;
+static AntPendingSolutions gAntPendingSolutions;
 static AntColonyBpp9000T::Ann gAntParentAnnScratch[MAX_NUMBER_OF_PROCESSORS];
 static AntColonyBpp9000T::Ann gAntChildAnnScratch[MAX_NUMBER_OF_PROCESSORS];
 
@@ -387,10 +389,108 @@ static void computeAntAnchorDigest(unsigned int tick, const m256i& transactionDi
     KangarooTwelve(preimage, sizeof(preimage), &out, sizeof(out));
 }
 
+// A pool miner's solution, arriving over BroadcastMessage
+static void queueAntSolution(unsigned long long processorNumber, const m256i& computorPublicKey,
+    const AntSolutionBroadcastPayload& payload)
+{
+    gAntPendingSolutions.noteReceived();
+
+    // A non-canonical nonce is rejected by the scorer without producing a score, so the transaction
+    // would forfeit the deposit with nothing to show. The computor pays that, not the miner.
+    if (!score_engine::isCanonicalAntNonce(payload.nonce.m256i_u8,
+        score_engine::ScoreBpp9000T::numberOfMutations))
+    {
+        gAntPendingSolutions.noteDroppedNonCanonical();
+        return;
+    }
+
+    // The same bits the commit path checks before RejectReplay, so a hit here is a solution this
+    // node has already processed on-chain - publishing it again would forfeit the deposit. The
+    // filter is restored from the snapshot, so unlike this buffer the check survives a restart.
+    const SolutionRef parentRef = { payload.parentTickOffset, payload.parentSolutionIndexInTick };
+    unsigned int seenFlagIndices[2];
+    computeAntSolutionFlagIndices(computorPublicKey, payload.nonce, parentRef, seenFlagIndices);
+    if (isAntSolutionSeen(seenFlagIndices))
+    {
+        gAntPendingSolutions.noteDroppedDuplicate();
+        return;
+    }
+
+    // An anchor in the future is malformed, and one the ring no longer holds cannot be scored.
+    m256i anchorDigest;
+    if (payload.anchorTick > system.tick
+        || system.tick - payload.anchorTick > ANT_PUBLISH_WINDOW_TICKS
+        || !gAntColony.getAnchorDigest(payload.anchorTick, anchorDigest))
+    {
+        gAntPendingSolutions.noteDroppedBadAnchor();
+        return;
+    }
+
+    const AntSolutionRecord* parentRec = nullptr;
+    if (gAntColony.tryGetParent(parentRef, &parentRec) != ValidityResult::Valid)
+    {
+        gAntPendingSolutions.noteDroppedParentUnknown();
+        return;
+    }
+
+    const score_engine::ScoreBpp9000T::ANN* parentAnn = nullptr;
+    if (parentRec != nullptr)
+    {
+        if (!gAntColony.annOfNonRoot(*parentRec, gAntParentAnnScratch[processorNumber]))
+        {
+            gAntPendingSolutions.noteDroppedParentUnknown();
+            return;
+        }
+        parentAnn = &gAntParentAnnScratch[processorNumber];
+    }
+
+    // Building the key is far cheaper than a miss, so the cache is consulted first.
+    const AntColonyBpp9000T::ReplayKey replayKey =
+        makeAntReplayKey(computorPublicKey, payload.nonce, parentAnn, anchorDigest);
+    unsigned int childScore = 0;
+    if (!gAntColony.tryGetReplayScore(replayKey, childScore, gAntChildAnnScratch[processorNumber]))
+    {
+        childScore = score->computeAntChildScore(processorNumber, parentAnn, computorPublicKey,
+            payload.nonce, anchorDigest, gAntChildAnnScratch[processorNumber]);
+        // Cached whatever the outcome: a timed-out network scores invalid, and the walk is
+        // deterministic, so the cached rejection stays right - without the entry the same doomed
+        // solution costs a full walk again on every path that sees it.
+        gAntColony.putReplayScore(replayKey, childScore, gAntChildAnnScratch[processorNumber]);
+    }
+    if (!score->isValidScore(childScore, score_engine::AlgoType::Bpp9000))
+    {
+        gAntPendingSolutions.noteDroppedUnscorable();
+        return;
+    }
+
+    // The sender's own number, checked where it can still prevent work rather than merely be counted.
+    if (payload.claimedScore != childScore)
+    {
+        gAntPendingSolutions.noteClaimMismatch();
+        return;
+    }
+
+    // The floor moves as siblings age into competition, so passing now is not a promise it will pass
+    // at publication - the publisher re-checks. Failing now is final enough to refuse the slot.
+    const unsigned int floor = gAntColony.siblingFloorForQuery(parentRef, computorPublicKey,
+        payload.anchorTick);
+    const ChildCandidate candidate{ computorPublicKey, childScore, payload.anchorTick, system.tick };
+    if (AntColonyBpp9000T::validateChild(candidate, parentRec, floor,
+        gAntColony.errorThreshold()) != ValidityResult::Valid)
+    {
+        gAntPendingSolutions.noteDroppedUnacceptable();
+        return;
+    }
+
+    gAntPendingSolutions.add(computorPublicKey, parentRef, payload.anchorTick, childScore,
+        payload.nonce);
+}
+
 // Reseed the colony for a new epoch. The root seed is score->currentRandomSeed, the epoch-start
 // spectrum digest
 static void antColonyBeginEpoch()
 {
+    gAntPendingSolutions.reset();
     gAntColony.beginEpoch(score->currentRandomSeed);
     gAntColony.setErrorThreshold((unsigned int)getSolutionThreshold(score_engine::AlgoType::Bpp9000));
 
@@ -818,6 +918,19 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                                 RELEASE(solutionsLock);
                                             }
                                         }
+                                    }
+                                }
+                                break;
+
+                                case MESSAGE_TYPE_ANT_SOLUTION:
+                                {
+                                    // Exact size, not a minimum: the payload is fixed, so a longer
+                                    // one is a different message rather than a forward-compatible
+                                    // variant of this one.
+                                    if (messagePayloadSize == sizeof(AntSolutionBroadcastPayload))
+                                    {
+                                        queueAntSolution(processorNumber, request->destinationPublicKey,
+                                            *(AntSolutionBroadcastPayload*)((unsigned char*)request + sizeof(BroadcastMessage)));
                                     }
                                 }
                                 break;
@@ -3093,6 +3206,16 @@ static void processTickTransactionAntColonySolution(
         { system.tick - system.initialTick, transactionIndex },   // selfRef, epoch-RELATIVE tick
         transaction->anchorTick,                                  // ABSOLUTE
         system.tick };                                            // ABSOLUTE
+    // Seeing this transaction execute, that mean those solution is recognized on-chain, mark them as recorded
+    for (unsigned int ownIdx = 0; ownIdx < computorSeedsCount; ownIdx++)
+    {
+        if (transaction->sourcePublicKey == computorPublicKeys[ownIdx])
+        {
+            gAntPendingSolutions.markRecorded(transaction->sourcePublicKey, parentRef, transaction->nonce);
+            break;
+        }
+    }
+
     result = gAntColony.commit(in, parentRec, childScore, *childAnn, childAnnHash);
     // ValidNotStored is the store being full: the solution passed every rule and only missed a slot,
     // so it earns its refund and its ranking exactly like a stored one
@@ -3531,6 +3654,85 @@ static bool makeAndBroadcastExecutionFeeTransaction(int i, BroadcastFutureTickDa
 }
 
 OPTIMIZE_OFF()
+
+// Publish at most one queued ant solution for computor i, retrying anything whose transaction never
+// landed. Mirrors the legacy solution publisher: the tick the transaction is targeted at is also the
+// deadline to see it on-chain, so missing it is what triggers the retry.
+static void publishAntSolutionFor(unsigned long long processorNumber, unsigned int computorIndex)
+{
+    AntPendingSolution entry;
+    const unsigned int idx = gAntPendingSolutions.selectForPublish(
+        computorPublicKeys[computorIndex], system.tick, entry);
+    if (idx == AntPendingSolutions::NO_ENTRY)
+    {
+        return;
+    }
+
+    const AntSolutionRecord* parentRec = nullptr;
+    if (gAntColony.tryGetParent(entry.parentRef, &parentRec) != ValidityResult::Valid)
+    {
+        gAntPendingSolutions.markObsoleteParentGone(idx);
+        return;
+    }
+
+    m256i anchorDigest;
+    if (!gAntColony.getAnchorDigest(entry.anchorTick, anchorDigest))
+    {
+        // The ring no longer holds it, so this node could not score the transaction it is about to
+        // publish - and neither could anyone else.
+        gAntPendingSolutions.markObsoleteExpired(idx);
+        return;
+    }
+
+    // Last point before the node signs with its own computor key and funds the deposit from its own
+    // balance. The commit path forfeits the deposit on a non-canonical nonce, and a check this cheap
+    // belongs on both sides of the queue.
+    if (!score_engine::isCanonicalAntNonce(entry.nonce.m256i_u8,
+        score_engine::ScoreBpp9000T::numberOfMutations))
+    {
+        gAntPendingSolutions.markObsoleteGateRejected(idx);
+        return;
+    }
+
+    // The score was computed at receipt, on a request processor, and the entry has
+    // carried it since.
+    // Judged at the tick the transaction will EXECUTE in, not the current one, so this gate sees
+    // what commit will see - a solution at the window boundary now would commit stale.
+    const unsigned int publishTick = system.tick + MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
+    const unsigned int floor = gAntColony.siblingFloorForQuery(entry.parentRef,
+        entry.computorPublicKey, entry.anchorTick);
+    const ChildCandidate candidate{ entry.computorPublicKey, entry.score, entry.anchorTick, publishTick };
+    if (AntColonyBpp9000T::validateChild(candidate, parentRec, floor,
+        gAntColony.errorThreshold()) != ValidityResult::Valid)
+    {
+        gAntPendingSolutions.markObsoleteGateRejected(idx);
+        return;
+    }
+
+    AntColonyMiningSolutionTransaction payload;
+    setMem(&payload, sizeof(payload), 0);
+    payload.sourcePublicKey = computorPublicKeys[computorIndex];
+    payload.destinationPublicKey = m256i::zero();
+    payload.amount = AntColonyMiningSolutionTransaction::minAmount();
+    payload.tick = publishTick;
+    payload.inputType = AntColonyMiningSolutionTransaction::transactionType();
+    payload.inputSize = AntColonyMiningSolutionTransaction::minInputSize();
+    payload.parentTickOffset = entry.parentRef.tickOffset;
+    payload.parentSolutionIndexInTick = entry.parentRef.solutionIndexInTick;
+    payload.anchorTick = entry.anchorTick;
+    payload.claimedScore = entry.score;
+    payload.nonce = entry.nonce;
+
+    unsigned char digest[32];
+    KangarooTwelve(&payload, sizeof(Transaction) + AntColonyMiningSolutionTransaction::minInputSize(),
+        digest, sizeof(digest));
+    sign(computorSubseeds[computorIndex].m256i_u8, computorPublicKeys[computorIndex].m256i_u8,
+        digest, payload.signature);
+
+    enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
+    gAntPendingSolutions.markScheduled(idx, (int)payload.tick);
+}
+
 static void processTick(unsigned long long processorNumber)
 {
     PROFILE_SCOPE();
@@ -4401,6 +4603,9 @@ static void processTick(unsigned long long processorNumber)
 
                 enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
             }
+
+            // Re-publish the solutions that are not on chain
+            publishAntSolutionFor(processorNumber, i);
         }
     }
 
@@ -6821,6 +7026,10 @@ static bool initialize()
         }
         setMem(score_qpi, sizeof(*score_qpi), 0);
 
+        if (!gAntPendingSolutions.init())
+        {
+            return false;
+        }
         if (!gAntColony.init())
         {
             return false;
@@ -7212,6 +7421,7 @@ static void deinitialize()
 
     pendingTxsPool.deinit();
 
+    gAntPendingSolutions.deinit();
     gAntColony.deinit();
 
     if (score)
@@ -7929,6 +8139,41 @@ static void processKeyPresses()
             gAntColony.stats().appendLog(message);
             appendText(message, L" | replay cache ");
             appendNumber(message, gAntColony.replayCacheOccupancy(), TRUE);
+            logToConsole(message);
+
+            AntPendingSolutions::Stats pending;
+            unsigned int pendingCount = 0;
+            gAntPendingSolutions.getStats(pending, pendingCount);
+            setText(message, L"AntPool: queued ");
+            appendNumber(message, pendingCount, TRUE);
+            appendText(message, L" | received ");
+            appendNumber(message, pending.received, TRUE);
+            appendText(message, L" | published ");
+            appendNumber(message, pending.published, TRUE);
+            appendText(message, L" | recorded ");
+            appendNumber(message, pending.recorded, TRUE);
+            appendText(message, L" | dropped: nonCanonical ");
+            appendNumber(message, pending.droppedNonCanonical, TRUE);
+            appendText(message, L", badAnchor ");
+            appendNumber(message, pending.droppedBadAnchor, TRUE);
+            appendText(message, L", parentUnknown ");
+            appendNumber(message, pending.droppedParentUnknown, TRUE);
+            appendText(message, L", unscorable ");
+            appendNumber(message, pending.droppedUnscorable, TRUE);
+            appendText(message, L", unacceptable ");
+            appendNumber(message, pending.droppedUnacceptable, TRUE);
+            appendText(message, L", duplicate ");
+            appendNumber(message, pending.droppedDuplicate, TRUE);
+            appendText(message, L", full ");
+            appendNumber(message, pending.droppedFull, TRUE);
+            appendText(message, L" | obsolete: parentGone ");
+            appendNumber(message, pending.obsoleteParentGone, TRUE);
+            appendText(message, L", expired ");
+            appendNumber(message, pending.obsoleteExpired, TRUE);
+            appendText(message, L", gateRejected ");
+            appendNumber(message, pending.obsoleteGateRejected, TRUE);
+            appendText(message, L" | claim mismatch ");
+            appendNumber(message, pending.claimMismatch, TRUE);
             logToConsole(message);
         }
         break;

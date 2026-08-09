@@ -24,6 +24,18 @@ struct RequestAntMineableParents
 };
 static_assert(sizeof(RequestAntMineableParents) == 40, "RequestAntMineableParents unexpected size");
 
+// A pool miner hands its computor a solution over BroadcastMessage(MESSAGE_TYPE_ANT_SOLUTION); this
+// is the payload that follows the header.
+struct AntSolutionBroadcastPayload
+{
+    unsigned int parentTickOffset;
+    unsigned int parentSolutionIndexInTick;
+    unsigned int anchorTick;            // ABSOLUTE
+    unsigned int claimedScore;
+    m256i nonce;
+};
+static_assert(sizeof(AntSolutionBroadcastPayload) == 48, "AntSolutionBroadcastPayload unexpected size");
+
 // Max mineable-parent entries returned per response. Miners page through the
 // rest via the nextIndex cursor.
 constexpr unsigned int ANT_MINEABLE_PARENTS_PER_RESPONSE = 64;

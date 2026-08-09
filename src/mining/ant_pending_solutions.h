@@ -14,7 +14,7 @@ struct AntPendingSolution
     m256i nonce;
     SolutionRef parentRef;
     unsigned int anchorTick;      // ABSOLUTE. Bounds how long this entry is worth publishing.
-    unsigned int padding;
+    unsigned int score;           // computed at receipt; the publisher uses it without re-scoring
 };
 static_assert(sizeof(AntPendingSolution) == 32 + 32 + 8 + 8, "AntPendingSolution unexpected padding");
 
@@ -23,6 +23,7 @@ class AntPendingSolutions
 public:
     static constexpr unsigned int CAPACITY = 65536;
     static_assert((CAPACITY & (CAPACITY - 1)) == 0, "CAPACITY must be a power of two");
+    static constexpr unsigned int NO_ENTRY = 0xFFFFFFFFU;
 
     // publicationTick[] states. A positive value is the tick the transaction was targeted at, which
     // is also the deadline to see it on-chain
@@ -34,7 +35,10 @@ public:
     {
         unsigned long long received;
         unsigned long long droppedNonCanonical;
-        unsigned long long droppedParentUnknown;
+        unsigned long long droppedBadAnchor;      // anchor in the future, or aged out of the ring
+        unsigned long long droppedParentUnknown;  // parentRef names a node this node does not hold
+        unsigned long long droppedUnscorable;     // the scorer returned no usable value
+        unsigned long long droppedUnacceptable;   // scored, but the colony would reject it now
         unsigned long long droppedDuplicate;
         unsigned long long droppedFull;
         unsigned long long published;
@@ -42,6 +46,7 @@ public:
         unsigned long long obsoleteParentGone;
         unsigned long long obsoleteExpired;
         unsigned long long obsoleteGateRejected;
+        unsigned long long claimMismatch;
     };
 
     bool init()
@@ -91,8 +96,6 @@ public:
         LockGuard guard(_lock);
         setMem(_entries, CAPACITY * sizeof(AntPendingSolution), 0);
         setMem(_publicationTick, CAPACITY * sizeof(int), 0);
-        // setMem, not a fill loop: MSVC turns one into a memset call, which does not exist in the
-        // freestanding UEFI build. EMPTY is all-ones, so a 0xFF byte fill is exact.
         setMem(_index, INDEX_CAPACITY * sizeof(unsigned int), 0xFF);
         _count = 0;
         _nextFree = 0;
@@ -112,10 +115,30 @@ public:
         LockGuard guard(_lock);
         _stats.droppedNonCanonical++;
     }
+    void noteDroppedBadAnchor()
+    {
+        LockGuard guard(_lock);
+        _stats.droppedBadAnchor++;
+    }
     void noteDroppedParentUnknown()
     {
         LockGuard guard(_lock);
         _stats.droppedParentUnknown++;
+    }
+    void noteDroppedDuplicate()
+    {
+        LockGuard guard(_lock);
+        _stats.droppedDuplicate++;
+    }
+    void noteDroppedUnscorable()
+    {
+        LockGuard guard(_lock);
+        _stats.droppedUnscorable++;
+    }
+    void noteDroppedUnacceptable()
+    {
+        LockGuard guard(_lock);
+        _stats.droppedUnacceptable++;
     }
 
     void getStats(Stats& outStats, unsigned int& outCount) const
@@ -127,12 +150,12 @@ public:
 
     // Queue a solution for publication, called from request processors.
     bool add(const m256i& computorPublicKey, const SolutionRef& parentRef,
-        unsigned int anchorTick, const m256i& nonce)
+        unsigned int anchorTick, unsigned int score, const m256i& nonce)
     {
         LockGuard guard(_lock);
         const unsigned int slot = indexSlotFor(computorPublicKey, parentRef, nonce);
         unsigned int entryIdx = NO_ENTRY;
-        if (_index[slot] != EMPTY)
+        if (_index[slot] != INDEX_EMPTY)
         {
             // An OBSOLETE entry is not a duplicate
             // Every other state is a real duplicate: NOT_SCHEDULED and scheduled are still live, and
@@ -159,9 +182,9 @@ public:
         e.nonce = nonce;
         e.parentRef = parentRef;
         e.anchorTick = anchorTick;
-        e.padding = 0;
+        e.score = score;
         _publicationTick[entryIdx] = NOT_SCHEDULED;
-        if (_index[slot] == EMPTY)
+        if (_index[slot] == INDEX_EMPTY)
         {
             _index[slot] = entryIdx;
             _count++;
@@ -212,12 +235,18 @@ public:
         retire(index, _stats.obsoleteGateRejected);
     }
 
+    void noteClaimMismatch()
+    {
+        LockGuard guard(_lock);
+        _stats.claimMismatch++;
+    }
+
     void markRecorded(const m256i& computorPublicKey, const SolutionRef& parentRef, const m256i& nonce)
     {
         LockGuard guard(_lock);
 
         const unsigned int slot = indexSlotFor(computorPublicKey, parentRef, nonce);
-        if (_index[slot] != EMPTY)
+        if (_index[slot] != INDEX_EMPTY)
         {
             _publicationTick[_index[slot]] = RECORDED;
             _stats.recorded++;
@@ -236,7 +265,7 @@ public:
         e.nonce = nonce;
         e.parentRef = parentRef;
         e.anchorTick = 0;
-        e.padding = 0;
+        e.score = 0;
         _publicationTick[entryIdx] = RECORDED;
         _index[slot] = entryIdx;
         _count++;
@@ -245,8 +274,9 @@ public:
 
 private:
     static constexpr unsigned int INDEX_CAPACITY = 2 * CAPACITY;
-    static constexpr unsigned int EMPTY = 0xFFFFFFFFU;
-    static constexpr unsigned int NO_ENTRY = 0xFFFFFFFFU;
+    // Not INDEX_EMPTY: network_messages/assets.h defines that as a macro, and this header is included
+    // after it in qubic.cpp.
+    static constexpr unsigned int INDEX_EMPTY = 0xFFFFFFFFU;
 
     // A slot is free if it has never been used or if its entry is finished. Reuse is IN PLACE:
     // nothing is ever moved, so an index the tick processor is holding across the publish gate
@@ -357,7 +387,7 @@ private:
         for (unsigned int probe = 0; probe < INDEX_CAPACITY; probe++)
         {
             const unsigned int e = _index[slot];
-            if (e == EMPTY)
+            if (e == INDEX_EMPTY)
             {
                 return slot;
             }
@@ -374,18 +404,18 @@ private:
     void indexRemove(const AntPendingSolution& entry)
     {
         const unsigned int slot = indexSlotFor(entry.computorPublicKey, entry.parentRef, entry.nonce);
-        if (_index[slot] == EMPTY)
+        if (_index[slot] == INDEX_EMPTY)
         {
             return;
         }
-        _index[slot] = EMPTY;
+        _index[slot] = INDEX_EMPTY;
 
         // Re-place the run that followed it, or a probe would stop early at the hole just made.
         unsigned int next = (slot + 1) & (INDEX_CAPACITY - 1);
-        while (_index[next] != EMPTY)
+        while (_index[next] != INDEX_EMPTY)
         {
             const unsigned int moved = _index[next];
-            _index[next] = EMPTY;
+            _index[next] = INDEX_EMPTY;
             const unsigned int target = indexSlotFor(_entries[moved].computorPublicKey,
                 _entries[moved].parentRef, _entries[moved].nonce);
             _index[target] = moved;
