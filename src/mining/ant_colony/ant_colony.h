@@ -947,12 +947,14 @@ inline bool AntColony<ScoreT>::getAnchorDigest(unsigned int tick, m256i& digest)
         return false;
     }
     const unsigned int slot = tick & (ANT_ANCHOR_RING_SIZE - 1);
-    if (_anchors->ticks[slot] != tick)
+    // Seqlock read: the tick is loaded atomically before and after the digest copy, so a re-check
+    // that still sees the same tick means the digest was not overwritten mid-copy.
+    if ((unsigned int)ATOMIC_LOAD32(_anchors->ticks[slot]) != tick)
     {
         return false;   // never recorded, or aged out and overwritten by a newer tick
     }
     digest = _anchors->digests[slot];
-    return (_anchors->ticks[slot] == tick);
+    return ((unsigned int)ATOMIC_LOAD32(_anchors->ticks[slot]) == tick);
 }
 
 template<typename ScoreT>
