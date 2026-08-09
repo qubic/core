@@ -222,12 +222,21 @@ inline bool AntColony<ScoreT>::loadSnapshot(unsigned short epoch, CHAR16* direct
     }
     for (unsigned int i = 0; i < _exportSet->count; i++)
     {
-        // order[] indexes slots[]; a bad entry would make the export read a slot that was never written.
-        if (_exportSet->order[i] >= ANT_EXPORT_MAX_SOLUTIONS)
+        const unsigned int slot = _exportSet->order[i];
+        if (slot >= _exportSet->count)
         {
-            antSnapshotFailure(L"export order out of range, position/slot", i, _exportSet->order[i]);
+            antSnapshotFailure(L"export order out of range, position/slot", i, slot);
             reset();
             return false;
+        }
+        for (unsigned int j = 0; j < i; j++)
+        {
+            if (_exportSet->order[j] == slot)
+            {
+                antSnapshotFailure(L"export order duplicate, position/slot", i, slot);
+                reset();
+                return false;
+            }
         }
     }
 
