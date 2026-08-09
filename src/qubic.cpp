@@ -1284,6 +1284,53 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 }
             }
 
+            // Same latency hiding for ant solution transactions, we do simple check first then the last
+            // is the score engine that where the heavy load stay
+            if (preprocessSolutionFlags[processorNumber]
+                && AntColonyMiningSolutionTransaction::isSolutionTransaction(request))
+            {
+                const AntColonyMiningSolutionTransaction* antTx = (const AntColonyMiningSolutionTransaction*)request;
+                const SolutionRef preParentRef = { antTx->parentTickOffset, antTx->parentSolutionIndexInTick };
+                unsigned int preFlagIndices[2];
+                computeAntSolutionFlagIndices(antTx->sourcePublicKey, antTx->nonce, preParentRef, preFlagIndices);
+                const int spectrumIdx = spectrumIndex(antTx->sourcePublicKey);
+                if (spectrumIdx >= 0
+                    && energy(spectrumIdx) >= AntColonyMiningSolutionTransaction::minAmount()
+                    && !isAntSolutionSeen(preFlagIndices)
+                    && score_engine::isCanonicalAntNonce(antTx->nonce.m256i_u8,
+                        score_engine::ScoreBpp9000T::numberOfMutations))
+                {
+                    const AntSolutionRecord* preParentRec = nullptr;
+                    m256i preAnchorDigest;
+                    if (gAntColony.tryGetParent(preParentRef, &preParentRec) == ValidityResult::Valid
+                        && gAntColony.getAnchorDigest(antTx->anchorTick, preAnchorDigest))
+                    {
+                        const AntColonyBpp9000T::Ann* preParentAnn = nullptr;
+                        bool preParentOk = true;
+                        if (preParentRec != nullptr)
+                        {
+                            preParentOk = gAntColony.annOfNonRoot(*preParentRec, gAntParentAnnScratch[processorNumber]);
+                            preParentAnn = &gAntParentAnnScratch[processorNumber];
+                        }
+                        if (preParentOk)
+                        {
+                            const AntColonyBpp9000T::ReplayKey preKey = makeAntReplayKey(
+                                antTx->sourcePublicKey, antTx->nonce, preParentAnn, preAnchorDigest);
+                            unsigned int preScore = 0;
+                            if (!gAntColony.tryGetReplayScore(preKey, preScore, gAntChildAnnScratch[processorNumber]))
+                            {
+                                preScore = score->computeAntChildScore(processorNumber, preParentAnn,
+                                    antTx->sourcePublicKey, antTx->nonce, preAnchorDigest,
+                                    gAntChildAnnScratch[processorNumber]);
+                                // cache this score so later can skip the heavy score computation,
+                                // invalid ones included
+                                gAntColony.putReplayScore(preKey, preScore, gAntChildAnnScratch[processorNumber]);
+                            }
+                        }
+                    }
+                }
+            }
+
             // shortcut: oracle reply reveal transactions are analyzed immediately after receiving them (before execution of the tx),
             // in order to minimize the number of reveal transaction (one per oracle query is enough, so no reveal tx is generated
             // after one has been seen)
