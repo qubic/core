@@ -1674,6 +1674,16 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
 // One response buffer per processor
 static AntMineableParentsResponse gAntMineableParentsResponseBuffer[MAX_NUMBER_OF_PROCESSORS];
 
+struct AntParentAnnResponse
+{
+    RespondAntParentAnnHeader header;
+    AntColonyBpp9000T::Ann ann;
+};
+static_assert(sizeof(AntParentAnnResponse)
+    == sizeof(RespondAntParentAnnHeader) + sizeof(AntColonyBpp9000T::Ann),
+    "AntParentAnnResponse must have no padding between the header and the network");
+static AntParentAnnResponse gAntParentAnnResponseBuffer[MAX_NUMBER_OF_PROCESSORS];
+
 // Request ant colony in epoch contex
 static void processRequestAntEpochContext(Peer* peer, RequestResponseHeader* header)
 {
@@ -1703,6 +1713,10 @@ static void processRequestAntEpochContext(Peer* peer, RequestResponseHeader* hea
 // Operator-signed
 static void processRequestAntMineableParents(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
 {
+    if (processorNumber >= MAX_NUMBER_OF_PROCESSORS)
+    {
+        return;
+    }
     if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestAntMineableParents) + SIGNATURE_SIZE)
     {
         return;
@@ -1763,6 +1777,61 @@ static void processRequestAntMineableParents(unsigned long long processorNumber,
     enqueueResponse(peer,
         (unsigned int)sizeof(response.header) + response.header.count * (unsigned int)sizeof(AntMineableParent),
         RespondAntMineableParentsHeader::type(), header->dejavu(), &response);
+}
+
+// One stored node's network, for the pool that is about to mine a child of it
+static void processRequestAntParentAnn(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
+{
+    if (processorNumber >= MAX_NUMBER_OF_PROCESSORS)
+    {
+        return;
+    }
+    if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestAntParentAnn) + SIGNATURE_SIZE)
+    {
+        return;
+    }
+    const RequestAntParentAnn* request = header->getPayload<RequestAntParentAnn>();
+
+    // Signature check
+    unsigned char digest[32];
+    KangarooTwelve(request, header->size() - sizeof(RequestResponseHeader) - SIGNATURE_SIZE, digest, sizeof(digest));
+    if (!verify(operatorPublicKey.m256i_u8, digest, ((const unsigned char*)header + (header->size() - SIGNATURE_SIZE))))
+    {
+        return;
+    }
+
+    AntParentAnnResponse& response = gAntParentAnnResponseBuffer[processorNumber];
+    setMem(&response, sizeof(response), 0);
+    response.header.parentRefTickOffset = request->parentRefTickOffset;
+    response.header.parentRefSolutionIndexInTick = request->parentRefSolutionIndexInTick;
+
+    const SolutionRef ref = { request->parentRefTickOffset, request->parentRefSolutionIndexInTick };
+    if (ref.isRoot())
+    {
+        // Roots are never stored; the miner derives its own from the epoch context's seed.
+        response.header.status = ANT_PARENT_ANN_STATUS_IS_ROOT;
+        enqueueResponse(peer, sizeof(response.header), RespondAntParentAnnHeader::type(), header->dejavu(), &response);
+        return;
+    }
+
+    const AntSolutionRecord* rec = nullptr;
+    const ValidityResult parentResult = gAntColony.tryGetParent(ref, &rec);
+    bool annLoaded = false;
+    if (parentResult == ValidityResult::Valid && rec != nullptr)
+    {
+        annLoaded = gAntColony.annOfNonRoot(*rec, response.ann);
+    }
+    if (!annLoaded)
+    {
+        response.header.status = ANT_PARENT_ANN_STATUS_NOT_FOUND;
+        enqueueResponse(peer, sizeof(response.header), RespondAntParentAnnHeader::type(), header->dejavu(), &response);
+        return;
+    }
+
+    response.header.status = ANT_PARENT_ANN_STATUS_OK;
+    response.header.annSizeBytes = (unsigned int)sizeof(response.ann);
+    enqueueResponse(peer, (unsigned int)(sizeof(response.header) + sizeof(response.ann)),
+        RespondAntParentAnnHeader::type(), header->dejavu(), &response);
 }
 
 static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
@@ -2547,6 +2616,12 @@ static void requestProcessor(void* ProcedureArgument)
                 case RequestAntMineableParents::type():
                 {
                     processRequestAntMineableParents(processorNumber, peer, header);
+                }
+                break;
+
+                case RequestAntParentAnn::type():
+                {
+                    processRequestAntParentAnn(processorNumber, peer, header);
                 }
                 break;
 

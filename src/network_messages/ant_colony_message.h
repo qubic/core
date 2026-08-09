@@ -97,16 +97,13 @@ constexpr unsigned char ANT_PARENT_ANN_STATUS_OK = 0;        // ANN bytes follow
 constexpr unsigned char ANT_PARENT_ANN_STATUS_NOT_FOUND = 1; // parentRef has no record
 constexpr unsigned char ANT_PARENT_ANN_STATUS_IS_ROOT = 2;   // ROOT_REF; no ANN payload - miner derives its own per-identity root
 
-// ONE tree node's stored network, named by parentRef - the 1728 bytes a miner mutates to extend
+// ONE tree node's stored network, named by parentRef - the ANN state a miner mutates to extend
 // that node. The tree itself is listed by mineable-parents; this fetches the material for a single
 // chosen parent.
-//
-// Operator-signed. The request payload is followed by SIGNATURE_SIZE bytes signed by
-// operatorPublicKey.
+// Operator-signed: the request payload is followed by SIGNATURE_SIZE bytes signed by
+// operatorPublicKey
 struct RequestAntParentAnn
 {
-    // Monotonic per-operator nonce: must exceed the last one the node accepted.
-    unsigned long long everIncreasingNonce;
     unsigned int parentRefTickOffset;
     unsigned int parentRefSolutionIndexInTick;
     static constexpr unsigned char type()
@@ -114,16 +111,18 @@ struct RequestAntParentAnn
         return REQUEST_ANT_PARENT_ANN;
     }
 };
-static_assert(sizeof(RequestAntParentAnn) == 16, "RequestAntParentAnn unexpected size");
+static_assert(sizeof(RequestAntParentAnn) == 8, "RequestAntParentAnn unexpected size");
 
-// Metadata header only; when status is Ok or IsRoot, annSizeBytes bytes of packed
-// ANN follow the header (annSizeBytes is 0 otherwise). Kept ANN-agnostic here to
-// avoid a heavy include; the receiver uses annSizeBytes to read the trailing blob.
+// Metadata header, when status is Ok, annSizeBytes bytes of CANONICAL ANN follow it - one trit per
+// byte, the form the scorer consumes, so the receiver does no unpacking. annSizeBytes is 0 for every
+// other status. Kept ANN-agnostic here to avoid a heavy include; the receiver reads the trailing
+// blob by annSizeBytes.
 struct RespondAntParentAnnHeader
 {
     unsigned int parentRefTickOffset;
     unsigned int parentRefSolutionIndexInTick;
-    // Bytes of packed ANN that follow this header (0 unless status is Ok/IsRoot).
+    // Bytes of canonical ANN that follow this header: ANN LUT size when status is Ok, 0 for every other
+    // status.
     unsigned int annSizeBytes;
     unsigned char status;
     unsigned char padding[3];
