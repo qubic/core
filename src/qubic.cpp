@@ -273,6 +273,107 @@ static AntPendingSolutions gAntPendingSolutions;
 static AntColonyBpp9000T::Ann gAntParentAnnScratch[MAX_NUMBER_OF_PROCESSORS];
 static AntColonyBpp9000T::Ann gAntChildAnnScratch[MAX_NUMBER_OF_PROCESSORS];
 
+#ifndef NDEBUG
+static constexpr unsigned int ANT_DEBUG_PRINTS_PER_EPOCH = 512;
+static unsigned int gAntDebugPrintBudget = ANT_DEBUG_PRINTS_PER_EPOCH;
+static bool antDebugCanPrint()
+{
+    if (gAntDebugPrintBudget == 0)
+    {
+        return false;
+    }
+    gAntDebugPrintBudget--;
+    if (gAntDebugPrintBudget == 0)
+    {
+        logToConsole(L"[ant-colony] debug print budget exhausted, silent until next epoch");
+    }
+    return true;
+}
+#endif
+
+static void antDebugLine(const CHAR16* text)
+{
+#ifndef NDEBUG
+    if (antDebugCanPrint())
+    {
+        logToConsole(text);
+    }
+#endif
+}
+
+static void antDebugPoolDrop(const CHAR16* reason, const AntSolutionBroadcastPayload& payload)
+{
+#ifndef NDEBUG
+    if (!antDebugCanPrint())
+    {
+        return;
+    }
+    CHAR16 msg[256];
+    setText(msg, L"[ant-colony] pool drop ");
+    appendText(msg, reason);
+    appendText(msg, L": parent=");
+    appendNumber(msg, payload.parentTickOffset, FALSE);
+    appendText(msg, L"/");
+    appendNumber(msg, payload.parentSolutionIndexInTick, FALSE);
+    appendText(msg, L" anchor=");
+    appendNumber(msg, payload.anchorTick, FALSE);
+    appendText(msg, L" nonce0=");
+    appendNumber(msg, payload.nonce.m256i_u64[0], FALSE);
+    logToConsole(msg);
+#endif
+}
+
+static void antDebugPending(const CHAR16* outcome, const AntPendingSolution& entry, unsigned int targetTick)
+{
+#ifndef NDEBUG
+    if (!antDebugCanPrint())
+    {
+        return;
+    }
+    CHAR16 msg[256];
+    setText(msg, L"[ant-colony] ");
+    appendText(msg, outcome);
+    appendText(msg, L": parent=");
+    appendNumber(msg, entry.parentRef.tickOffset, FALSE);
+    appendText(msg, L"/");
+    appendNumber(msg, entry.parentRef.solutionIndexInTick, FALSE);
+    appendText(msg, L" anchor=");
+    appendNumber(msg, entry.anchorTick, FALSE);
+    appendText(msg, L" score=");
+    appendNumber(msg, entry.score, FALSE);
+    appendText(msg, L" target=");
+    appendNumber(msg, targetTick, FALSE);
+    logToConsole(msg);
+#endif
+}
+
+static void antDebugAccepted(const AntColonyMiningSolutionTransaction* transaction, unsigned int score,
+    unsigned int depth, unsigned int transactionIndex, ValidityResult result)
+{
+#ifndef NDEBUG
+    if (result != ValidityResult::Valid && result != ValidityResult::ValidNotStored)
+    {
+        return;
+    }
+    if (!antDebugCanPrint())
+    {
+        return;
+    }
+    CHAR16 msg[256];
+    setText(msg, L"[ant-colony] accepted: tick=");
+    appendNumber(msg, system.tick, FALSE);
+    appendText(msg, L" idx=");
+    appendNumber(msg, transactionIndex, FALSE);
+    appendText(msg, L" score=");
+    appendNumber(msg, score, FALSE);
+    appendText(msg, L" depth=");
+    appendNumber(msg, depth, FALSE);
+    appendText(msg, L" stored=");
+    appendNumber(msg, (result == ValidityResult::Valid) ? 1 : 0, FALSE);
+    logToConsole(msg);
+#endif
+}
+
 // Pre-scored ant solutions for the current tick, indexed by TRANSACTION index. Each transaction is
 // enqueued at most once, so no two workers ever write the same slot and no lock is needed
 static bool gAntScoredReady[NUMBER_OF_TRANSACTIONS_PER_TICK];
@@ -400,6 +501,7 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
     if (!score_engine::isCanonicalAntNonce(payload.nonce.m256i_u8,
         score_engine::ScoreBpp9000T::numberOfMutations))
     {
+        antDebugPoolDrop(L"nonCanonical", payload);
         gAntPendingSolutions.noteDroppedNonCanonical();
         return;
     }
@@ -422,6 +524,7 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
         || system.tick - payload.anchorTick > ANT_PUBLISH_WINDOW_TICKS
         || !gAntColony.getAnchorDigest(payload.anchorTick, anchorDigest))
     {
+        antDebugPoolDrop(L"badAnchor", payload);
         gAntPendingSolutions.noteDroppedBadAnchor();
         return;
     }
@@ -429,6 +532,7 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
     const AntSolutionRecord* parentRec = nullptr;
     if (gAntColony.tryGetParent(parentRef, &parentRec) != ValidityResult::Valid)
     {
+        antDebugPoolDrop(L"parentUnknown", payload);
         gAntPendingSolutions.noteDroppedParentUnknown();
         return;
     }
@@ -438,7 +542,8 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
     {
         if (!gAntColony.annOfNonRoot(*parentRec, gAntParentAnnScratch[processorNumber]))
         {
-            gAntPendingSolutions.noteDroppedParentUnknown();
+            antDebugPoolDrop(L"parentUnknown", payload);
+        gAntPendingSolutions.noteDroppedParentUnknown();
             return;
         }
         parentAnn = &gAntParentAnnScratch[processorNumber];
@@ -459,6 +564,7 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
     }
     if (!score->isValidScore(childScore, score_engine::AlgoType::Bpp9000))
     {
+        antDebugPoolDrop(L"unscorable", payload);
         gAntPendingSolutions.noteDroppedUnscorable();
         return;
     }
@@ -466,6 +572,7 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
     // The sender's own number, checked where it can still prevent work rather than merely be counted.
     if (payload.claimedScore != childScore)
     {
+        antDebugPoolDrop(L"claimMismatch", payload);
         gAntPendingSolutions.noteClaimMismatch();
         return;
     }
@@ -478,6 +585,7 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
     if (AntColonyBpp9000T::validateChild(candidate, parentRec, floor,
         gAntColony.errorThreshold()) != ValidityResult::Valid)
     {
+        antDebugPoolDrop(L"unacceptable", payload);
         gAntPendingSolutions.noteDroppedUnacceptable();
         return;
     }
@@ -490,6 +598,9 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
 // spectrum digest
 static void antColonyBeginEpoch()
 {
+#ifndef NDEBUG
+    gAntDebugPrintBudget = ANT_DEBUG_PRINTS_PER_EPOCH;
+#endif
     gAntPendingSolutions.reset();
     gAntColony.beginEpoch(score->currentRandomSeed);
     gAntColony.setErrorThreshold((unsigned int)getSolutionThreshold(score_engine::AlgoType::Bpp9000));
@@ -1728,6 +1839,7 @@ static void processRequestAntMineableParents(unsigned long long processorNumber,
     KangarooTwelve(request, header->size() - sizeof(RequestResponseHeader) - SIGNATURE_SIZE, digest, sizeof(digest));
     if (!verify(operatorPublicKey.m256i_u8, digest, ((const unsigned char*)header + (header->size() - SIGNATURE_SIZE))))
     {
+        antDebugLine(L"[ant-colony] query signature rejected");
         return;
     }
 
@@ -1797,6 +1909,7 @@ static void processRequestAntParentAnn(unsigned long long processorNumber, Peer*
     KangarooTwelve(request, header->size() - sizeof(RequestResponseHeader) - SIGNATURE_SIZE, digest, sizeof(digest));
     if (!verify(operatorPublicKey.m256i_u8, digest, ((const unsigned char*)header + (header->size() - SIGNATURE_SIZE))))
     {
+        antDebugLine(L"[ant-colony] query signature rejected");
         return;
     }
 
@@ -3364,6 +3477,7 @@ static void processTickTransactionAntColonySolution(
 
     result = gAntColony.commit(in, parentRec, childScore, *childAnn, childAnnHash);
     logAntSolutionOutcome(transaction, childScore, result);
+    antDebugAccepted(transaction, childScore, (parentRec != nullptr) ? (parentRec->depth + 1) : 1, transactionIndex, result);
     // ValidNotStored is the store being full: the solution passed every rule and only missed a slot,
     // so it earns its refund and its ranking exactly like a stored one
     if (result != ValidityResult::Valid && result != ValidityResult::ValidNotStored)
@@ -3819,6 +3933,7 @@ static void publishAntSolutionFor(unsigned long long processorNumber, unsigned i
     if (gAntColony.tryGetParent(entry.parentRef, &parentRec) != ValidityResult::Valid)
     {
         gAntPendingSolutions.markObsoleteParentGone(idx);
+        antDebugPending(L"retire parentGone", entry, 0);
         return;
     }
 
@@ -3828,6 +3943,7 @@ static void publishAntSolutionFor(unsigned long long processorNumber, unsigned i
         // The ring no longer holds it, so this node could not score the transaction it is about to
         // publish - and neither could anyone else.
         gAntPendingSolutions.markObsoleteExpired(idx);
+        antDebugPending(L"retire expired", entry, 0);
         return;
     }
 
@@ -3838,6 +3954,7 @@ static void publishAntSolutionFor(unsigned long long processorNumber, unsigned i
         score_engine::ScoreBpp9000T::numberOfMutations))
     {
         gAntPendingSolutions.markObsoleteGateRejected(idx);
+        antDebugPending(L"retire gateRejected", entry, 0);
         return;
     }
 
@@ -3853,6 +3970,7 @@ static void publishAntSolutionFor(unsigned long long processorNumber, unsigned i
         gAntColony.errorThreshold()) != ValidityResult::Valid)
     {
         gAntPendingSolutions.markObsoleteGateRejected(idx);
+        antDebugPending(L"retire gateRejected", entry, 0);
         return;
     }
 
@@ -3878,6 +3996,7 @@ static void publishAntSolutionFor(unsigned long long processorNumber, unsigned i
 
     enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
     gAntPendingSolutions.markScheduled(idx, (int)payload.tick);
+    antDebugPending(L"published", entry, payload.tick);
 }
 
 static void processTick(unsigned long long processorNumber)
@@ -5623,6 +5742,14 @@ static bool loadAllNodeStates()
     {
         return false;
     }
+#ifndef NDEBUG
+    {
+        CHAR16 dbg[128];
+        setText(dbg, L"[ant-colony] snapshot loaded, solutions=");
+        appendNumber(dbg, gAntColony.solutionCount(), FALSE);
+        logToConsole(dbg);
+    }
+#endif
 
     if (!oracleEngine.loadSnapshot(system.epoch, directory))
     {
@@ -6656,6 +6783,14 @@ static void tickProcessor(void*)
                                     // Multi-dim revenue (shadow) - for offline comparison against the additive
                                     asyncSave(MULTIDIM_REVENUE_END_OF_EPOCH_FILE_NAME, sizeof(gMultiDimRevenue), (unsigned char*)&gMultiDimRevenue);
                                     // The epoch's best networks, for offline extraction
+#ifndef NDEBUG
+                                    {
+                                        CHAR16 dbg[768];
+                                        setText(dbg, L"[ant-colony] epoch end: ");
+                                        gAntColony.stats().appendLog(dbg);
+                                        logToConsole(dbg);
+                                    }
+#endif
                                     gAntColony.exportBestSolutions(system.epoch, NULL);
 
                                     // Reorder futureComputors so requalifying computors keep their index
@@ -7401,6 +7536,14 @@ static bool initialize()
     // the cache. A memo, not state - absence or any load failure just means the solutions get
     // computed honestly.
     gAntColony.loadReplayCache(system.epoch, NULL);
+#ifndef NDEBUG
+    {
+        CHAR16 dbg[128];
+        setText(dbg, L"[ant-colony] replay cache loaded, occupancy=");
+        appendNumber(dbg, gAntColony.replayCacheOccupancy(), FALSE);
+        logToConsole(dbg);
+    }
+#endif
 
     // Load + hash-verify the bpp9000 task once at init
     if (!loadBpp9000Task())
