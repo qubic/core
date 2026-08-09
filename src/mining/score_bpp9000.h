@@ -21,17 +21,6 @@ static bool isCanonicalBpp9000Nonce(const unsigned char* nonce)
         && (nonce[2] == 0);
 }
 
-// Same rule for the ant colony, except that K is a real degree of freedom there: the walk restores
-// K = nonce[2] as its explore-step count, so K is range-checked instead of pinned to 0. Values above
-// numberOfMutations are rejected
-static bool isCanonicalAntNonce(const unsigned char* nonce, unsigned long long numberOfMutations)
-{
-    return (getAlgoType(nonce) == AlgoType::Bpp9000)
-        && (nonce[1] >= 1)
-        && (nonce[1] <= MAX_LUT_ENTRIES_PER_STEP)
-        && (nonce[2] <= numberOfMutations);
-}
-
 template<typename Params>
 struct ScoreBpp9000
 {
@@ -55,6 +44,15 @@ struct ScoreBpp9000
     static constexpr unsigned long long lutStride = 32;
 
     static_assert(lutSize <= lutStride, "LUT rows must fit the padded stride");
+
+    // K is a real degree of freedom here: the walk restores K = nonce[2] as its explore-step count
+    static bool isCanonicalAntNonce(const unsigned char* nonce)
+    {
+        return (getAlgoType(nonce) == AlgoType::Bpp9000)
+            && (nonce[1] >= 1)
+            && (nonce[1] <= MAX_LUT_ENTRIES_PER_STEP)
+            && (nonce[2] <= numberOfMutations);
+    }
 
     // random2 draw sizes padded up to a multiple of 64 bytes; leading bytes bit-exact with reference.
     static constexpr unsigned long long lutInitBytes = maxNumberOfNeurons * lutSize;
@@ -1191,7 +1189,7 @@ struct ScoreBpp9000
         const unsigned char* pRandom2Pool)
     {
         // The canonical rule
-        if (!isCanonicalAntNonce(nonce, numberOfMutations))
+        if (!isCanonicalAntNonce(nonce))
         {
             return INVALID_SCORE_VALUE;
         }

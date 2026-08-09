@@ -834,17 +834,17 @@ TEST(TestQubicScoreAntColony, NonCanonicalNonceIsRejected)
 // L and K boundaries of the canonical rule, checked as a pure predicate so no walk is needed.
 TEST(TestQubicScoreAntColony, NonceCanonicalRuleBoundaries)
 {
-    constexpr unsigned long long mutations = AntCfg::numberOfMutations;
+    using AntScorer = score_engine::ScoreBpp9000<AntCfg>;
     constexpr unsigned char maxL = (unsigned char)score_engine::MAX_LUT_ENTRIES_PER_STEP;
-    constexpr unsigned char maxK = (unsigned char)mutations;
+    constexpr unsigned char maxK = (unsigned char)AntScorer::numberOfMutations;
 
-    EXPECT_TRUE(score_engine::isCanonicalAntNonce(makeAntNonce(1, 0, 70).m256i_u8, mutations));
-    EXPECT_TRUE(score_engine::isCanonicalAntNonce(makeAntNonce(maxL, 0, 71).m256i_u8, mutations));
-    EXPECT_TRUE(score_engine::isCanonicalAntNonce(makeAntNonce(3, maxK, 72).m256i_u8, mutations));
+    EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(1, 0, 70).m256i_u8));
+    EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(maxL, 0, 71).m256i_u8));
+    EXPECT_TRUE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, maxK, 72).m256i_u8));
 
-    EXPECT_FALSE(score_engine::isCanonicalAntNonce(makeAntNonce(0, 0, 73).m256i_u8, mutations));
-    EXPECT_FALSE(score_engine::isCanonicalAntNonce(makeAntNonce((unsigned char)(maxL + 1), 0, 74).m256i_u8, mutations));
-    EXPECT_FALSE(score_engine::isCanonicalAntNonce(makeAntNonce(3, (unsigned char)(maxK + 1), 75).m256i_u8, mutations));
+    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(0, 0, 73).m256i_u8));
+    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce((unsigned char)(maxL + 1), 0, 74).m256i_u8));
+    EXPECT_FALSE(AntScorer::isCanonicalAntNonce(makeAntNonce(3, (unsigned char)(maxK + 1), 75).m256i_u8));
 }
 
 

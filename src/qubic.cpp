@@ -498,8 +498,7 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
 
     // A non-canonical nonce is rejected by the scorer without producing a score, so the transaction
     // would forfeit the deposit with nothing to show. The computor pays that, not the miner.
-    if (!score_engine::isCanonicalAntNonce(payload.nonce.m256i_u8,
-        score_engine::ScoreBpp9000T::numberOfMutations))
+    if (!score_engine::ScoreEngineT::isCanonicalAntNonce(payload.nonce.m256i_u8))
     {
         antDebugPoolDrop(L"nonCanonical", payload);
         gAntPendingSolutions.noteDroppedNonCanonical();
@@ -1408,8 +1407,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 if (spectrumIdx >= 0
                     && energy(spectrumIdx) >= AntColonyMiningSolutionTransaction::minAmount()
                     && !isAntSolutionSeen(preFlagIndices)
-                    && score_engine::isCanonicalAntNonce(antTx->nonce.m256i_u8,
-                        score_engine::ScoreBpp9000T::numberOfMutations))
+                    && score_engine::ScoreEngineT::isCanonicalAntNonce(antTx->nonce.m256i_u8))
                 {
                     const AntSolutionRecord* preParentRec = nullptr;
                     m256i preAnchorDigest;
@@ -3950,8 +3948,7 @@ static void publishAntSolutionFor(unsigned long long processorNumber, unsigned i
     // Last point before the node signs with its own computor key and funds the deposit from its own
     // balance. The commit path forfeits the deposit on a non-canonical nonce, and a check this cheap
     // belongs on both sides of the queue.
-    if (!score_engine::isCanonicalAntNonce(entry.nonce.m256i_u8,
-        score_engine::ScoreBpp9000T::numberOfMutations))
+    if (!score_engine::ScoreEngineT::isCanonicalAntNonce(entry.nonce.m256i_u8))
     {
         gAntPendingSolutions.markObsoleteGateRejected(idx);
         antDebugPending(L"retire gateRejected", entry, 0);
