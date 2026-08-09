@@ -3112,6 +3112,25 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
 
 // One ant solution: resolve its parent, score the child against it, and commit. Every rejection
 // forfeits the deposit by simply not refunding it
+// One line per ant solution transaction, whatever became of it. The body follows the logger's own
+// convention: compiled out with LOG_CUSTOM_MESSAGES, so a build without qlogging pays nothing here.
+static void logAntSolutionOutcome(const AntColonyMiningSolutionTransaction* transaction,
+    unsigned int score, ValidityResult result)
+{
+#if LOG_CUSTOM_MESSAGES
+    AntSolutionLogMessage logMsg;
+    logMsg._type = CUSTOM_MESSAGE_ANT_SOLUTION;
+    logMsg.sourcePublicKey = transaction->sourcePublicKey;
+    logMsg.nonce = transaction->nonce;
+    logMsg.parentTickOffset = transaction->parentTickOffset;
+    logMsg.parentSolutionIndexInTick = transaction->parentSolutionIndexInTick;
+    logMsg.anchorTick = transaction->anchorTick;
+    logMsg.score = score;
+    logMsg.result = (unsigned int)result;
+    logger.logCustomMessage(logMsg);
+#endif
+}
+
 static void processTickTransactionAntColonySolution(
     const AntColonyMiningSolutionTransaction* transaction,
     unsigned int transactionIndex,
@@ -3129,6 +3148,7 @@ static void processTickTransactionAntColonySolution(
     if (isAntSolutionSeen(antFlagIndices))
     {
         gAntColony.recordReject(ValidityResult::RejectReplay);
+        logAntSolutionOutcome(transaction, 0, ValidityResult::RejectReplay);
         return;
     }
     markAntSolutionSeen(antFlagIndices);
@@ -3138,6 +3158,7 @@ static void processTickTransactionAntColonySolution(
     if (result != ValidityResult::Valid)
     {
         gAntColony.recordReject(result);
+        logAntSolutionOutcome(transaction, 0, result);
         return;
     }
 
@@ -3147,6 +3168,7 @@ static void processTickTransactionAntColonySolution(
     if (!gAntColony.getAnchorDigest(transaction->anchorTick, anchorDigest))
     {
         gAntColony.recordReject(ValidityResult::RejectStale);
+        logAntSolutionOutcome(transaction, 0, ValidityResult::RejectStale);
         return;
     }
 
@@ -3167,6 +3189,7 @@ static void processTickTransactionAntColonySolution(
             if (!gAntColony.annOfNonRoot(*parentRec, parentAnnScratch))
             {
                 gAntColony.recordReject(ValidityResult::RejectParentNotRegistered);
+                logAntSolutionOutcome(transaction, 0, ValidityResult::RejectParentNotRegistered);
                 return;
             }
             parentAnn = &parentAnnScratch;
@@ -3189,6 +3212,7 @@ static void processTickTransactionAntColonySolution(
     if (!score->isValidScore(childScore, score_engine::AlgoType::Bpp9000))
     {
         gAntColony.recordReject(ValidityResult::RejectNonCanonicalNonce);
+        logAntSolutionOutcome(transaction, 0, ValidityResult::RejectNonCanonicalNonce);
         return;
     }
 
@@ -3217,6 +3241,7 @@ static void processTickTransactionAntColonySolution(
     }
 
     result = gAntColony.commit(in, parentRec, childScore, *childAnn, childAnnHash);
+    logAntSolutionOutcome(transaction, childScore, result);
     // ValidNotStored is the store being full: the solution passed every rule and only missed a slot,
     // so it earns its refund and its ranking exactly like a stored one
     if (result != ValidityResult::Valid && result != ValidityResult::ValidNotStored)
@@ -9070,3 +9095,5 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
     return EFI_SUCCESS;
 }
+
+
