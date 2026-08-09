@@ -254,6 +254,9 @@ static constexpr unsigned int gScoreMultiplier[score_engine::AlgoType::MaxAlgoCo
     NEURAXON_SOLUTION_MULTIPLER,   // Neuraxon (reserved)
     BPP9000_SOLUTION_MULTIPLER     // Bpp9000
 };
+// Bpp9000's score is a raw error count consumed directly by the minimum-is-best ranking; scaling it
+// serves no purpose and a large multiplier would overflow the ranking score. Pin it to 1.
+static_assert(BPP9000_SOLUTION_MULTIPLER == 1, "Bpp9000 error score is ranked by minimum; its multiplier must be 1");
 
 // Active solution threshold for an algorithm
 static int getSolutionThreshold(score_engine::AlgoType selectedAlgo)
