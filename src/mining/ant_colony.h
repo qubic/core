@@ -769,7 +769,6 @@ inline bool AntColony<ScoreT>::tryGetReplayScore(const ReplayKey& key, unsigned 
 }
 
 // Cache the already computed score for the ant colony
-static unsigned short ANT_COLONY_REPLAY_CACHE_FILENAME[] = L"antColonyReplayCache.???";
 
 template<typename ScoreT>
 inline bool AntColony<ScoreT>::saveReplayCache(unsigned short epoch, CHAR16* directory)
@@ -833,7 +832,6 @@ inline bool AntColony<ScoreT>::loadReplayCache(unsigned short epoch, CHAR16* dir
 }
 
 // The epoch's harvest file
-static unsigned short ANT_COLONY_SOLUTIONS_EOE_FILENAME[] = L"antColonySolutions.eoe";
 
 
 // Written once at the front of the file

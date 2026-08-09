@@ -5448,7 +5448,6 @@ static bool saveAllNodeStates()
         return false;
     }
 
-    CHAR16 ANT_SOL_FLAG_FILE_NAME[] = L"snapshotAntSolutionFlag";
     logToConsole(L"Saving ant solution flags");
     savedSize = save(ANT_SOL_FLAG_FILE_NAME, NUMBER_OF_ANT_SOLUTION_FLAGS / 8, (unsigned char*)gAntSolutionFlags, directory);
     if (savedSize != NUMBER_OF_ANT_SOLUTION_FLAGS / 8)
@@ -5721,7 +5720,6 @@ static bool loadAllNodeStates()
         return false;
     }
 
-    CHAR16 ANT_SOL_FLAG_FILE_NAME[] = L"snapshotAntSolutionFlag";
     logToConsole(L"Loading ant solution flags");
     loadedSize = load(ANT_SOL_FLAG_FILE_NAME, NUMBER_OF_ANT_SOLUTION_FLAGS / 8, (unsigned char*)gAntSolutionFlags, directory);
     if (loadedSize != NUMBER_OF_ANT_SOLUTION_FLAGS / 8)

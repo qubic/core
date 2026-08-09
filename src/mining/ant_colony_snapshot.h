@@ -5,11 +5,6 @@
 
 // Only what cannot be derived is written. The tick index, both head maps and the dedup set are
 // rebuilt from the records
-static unsigned short ANT_SNAPSHOT_META_FILENAME[] = L"snapshotAntColonyMeta.???";
-static unsigned short ANT_SNAPSHOT_ANCHORS_FILENAME[] = L"snapshotAntColonyAnchors.???";
-static unsigned short ANT_SNAPSHOT_RECORDS_FILENAME[] = L"snapshotAntColonyRecords.???";
-static unsigned short ANT_SNAPSHOT_POOL_FILENAME[] = L"snapshotAntColonyPool.???";
-static unsigned short ANT_SNAPSHOT_EXPORT_FILENAME[] = L"snapshotAntColonyExport.???";
 
 struct AntColonySnapshotMeta
 {
