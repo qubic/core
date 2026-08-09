@@ -3386,6 +3386,15 @@ static void processTickTransactionAntColonySolution(
     }
     markAntSolutionSeen(antFlagIndices);
 
+    // Reject a parent ref into the current or a later tick: a real parent is always on-chain from an
+    // earlier tick. Root is exempt, it is derived rather than stored.
+    if (!parentRef.isRoot() && parentRef.tickOffset >= (unsigned int)(system.tick - system.initialTick))
+    {
+        gAntColony.recordReject(ValidityResult::RejectParentNotRegistered);
+        logAntSolutionOutcome(transaction, 0, ValidityResult::RejectParentNotRegistered);
+        return;
+    }
+
     const AntSolutionRecord* parentRec = nullptr;
     ValidityResult result = gAntColony.tryGetParent(parentRef, &parentRec);
     if (result != ValidityResult::Valid)
