@@ -149,9 +149,9 @@ TEST(TestAntColonyValidate, FreshnessWindowBoundaries)
         ValidityResult::Valid);
 
     // Exactly at the window edge is still legal; one past it is not.
-    EXPECT_EQ(admit(makeChild(me, 3700, anchor, anchor + ANT_FRESHNESS_WINDOW_TICKS),
+    EXPECT_EQ(admit(makeChild(me, 3700, anchor, anchor + ANT_PUBLISH_WINDOW_TICKS),
         &parent, WORST_SCORE), ValidityResult::Valid);
-    EXPECT_EQ(admit(makeChild(me, 3700, anchor, anchor + ANT_FRESHNESS_WINDOW_TICKS + 1),
+    EXPECT_EQ(admit(makeChild(me, 3700, anchor, anchor + ANT_PUBLISH_WINDOW_TICKS + 1),
         &parent, WORST_SCORE), ValidityResult::RejectStale);
 
     // An anchor in the future is rejected rather than wrapping the unsigned subtraction.
@@ -166,7 +166,7 @@ TEST(TestAntColonyValidate, ReportsTheFirstFailingRule)
     const m256i me = makeKey(8);
     const m256i other = makeKey(9);
     const unsigned int anchor = 100000;
-    const unsigned int stalePublish = anchor + ANT_FRESHNESS_WINDOW_TICKS + 1;
+    const unsigned int stalePublish = anchor + ANT_PUBLISH_WINDOW_TICKS + 1;
 
     const AntSolutionRecord theirs = makeParent(other, 3000);
 

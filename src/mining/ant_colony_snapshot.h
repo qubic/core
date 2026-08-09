@@ -282,7 +282,7 @@ inline bool AntColony<ScoreT>::rebuildDerivedState(unsigned int initialTick)
         // need to be - commit() sets tickOffset to (publishTick - initialTick), so it inverts exactly
         const unsigned int publishTick = initialTick + rec.selfRef.tickOffset;
         if (rec.anchorTick > publishTick
-            || publishTick - rec.anchorTick > ANT_FRESHNESS_WINDOW_TICKS)
+            || publishTick - rec.anchorTick > ANT_PUBLISH_WINDOW_TICKS)
         {
             antSnapshotFailure(L"anchor tick outside the freshness window, record/anchorTick", i, rec.anchorTick);
             return false;

@@ -138,7 +138,9 @@ struct RespondAntEpochContext
     m256i spectrumDigest;
     // score threshold for this epoch
     unsigned int threshold;
-    // ANT_FRESHNESS_WINDOW_TICKS (N): publish within N of the anchor tick; siblings within N coexist
+    // ANT_PUBLISH_WINDOW_TICKS: publish within this many ticks of the anchor. The sibling
+    // no-compete band is a separate constant and is not reported here - mineable-parents already
+    // returns the computed floor per parent, so a miner never needs to derive it.
     unsigned int freshnessWindow;
     // accepted solutions so far this epoch
     unsigned int solutionCount;

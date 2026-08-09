@@ -1522,7 +1522,7 @@ static void processRequestAntEpochContext(Peer* peer, RequestResponseHeader* hea
 
     respond.spectrumDigest = gAntColony.rootSeed();
     respond.threshold = gAntColony.errorThreshold();
-    respond.freshnessWindow = ANT_FRESHNESS_WINDOW_TICKS;
+    respond.freshnessWindow = ANT_PUBLISH_WINDOW_TICKS;
     respond.solutionCount = gAntColony.solutionCount();
     respond.freeAnnSlotsCount = gAntColony.freeAnnSlotsCount();
     respond.epoch = system.epoch;

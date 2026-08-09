@@ -191,6 +191,9 @@
     <ClInclude Include="mining\ant_colony.h">
       <Filter>mining</Filter>
     </ClInclude>
+    <ClInclude Include="mining\ant_pending_solutions.h">
+      <Filter>mining</Filter>
+    </ClInclude>
     <ClInclude Include="mining\ant_colony_bpp9000.h">
       <Filter>mining</Filter>
     </ClInclude>

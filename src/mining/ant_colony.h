@@ -234,7 +234,7 @@ static constexpr unsigned int antAnchorRingSize(unsigned int window)
     }
     return size;
 }
-static constexpr unsigned int ANT_ANCHOR_RING_SIZE = antAnchorRingSize(ANT_FRESHNESS_WINDOW_TICKS);
+static constexpr unsigned int ANT_ANCHOR_RING_SIZE = antAnchorRingSize(ANT_PUBLISH_WINDOW_TICKS);
 static constexpr unsigned int ANT_ANCHOR_TICK_NONE = 0xFFFFFFFFU;
 
 struct AnchorRing
@@ -1000,11 +1000,11 @@ inline unsigned int AntColony<ScoreT>::siblingFloorFromHead(unsigned int head,
 {
     // A competing sibling anchors more than N ticks earlier, so guard the subtraction. This only
     // fires during the network's first N ticks, when there are no siblings to compete with anyway.
-    if (childAnchorTick <= ANT_FRESHNESS_WINDOW_TICKS)
+    if (childAnchorTick <= ANT_SIBLING_NOCOMPETE_TICKS)
     {
         return WORST_SCORE;
     }
-    const unsigned int boundary = childAnchorTick - ANT_FRESHNESS_WINDOW_TICKS;
+    const unsigned int boundary = childAnchorTick - ANT_SIBLING_NOCOMPETE_TICKS;
 
     // The bar is the BEST score among competing siblings, because lower is better. The chain is
     // finite and terminates on its own, and there is deliberately no hop limit: entries are
@@ -1063,7 +1063,7 @@ inline ValidityResult AntColony<ScoreT>::validateChild(const ChildCandidate& chi
 {
     // Freshness, the anchor cannot be in the future, and publication cannot lag it by more than N.
     if (child.anchorTick > child.publishTick
-        || (child.publishTick - child.anchorTick) > ANT_FRESHNESS_WINDOW_TICKS)
+        || (child.publishTick - child.anchorTick) > ANT_PUBLISH_WINDOW_TICKS)
     {
         return ValidityResult::RejectStale;
     }

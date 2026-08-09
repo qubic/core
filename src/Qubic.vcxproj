@@ -69,6 +69,7 @@
     <ClInclude Include="mining\ant_colony.h" />
     <ClInclude Include="mining\ant_colony_bpp9000.h" />
     <ClInclude Include="mining\ant_colony_snapshot.h" />
+    <ClInclude Include="mining\ant_pending_solutions.h" />
     <ClInclude Include="mining\custom_qubic_mining_storage.h" />
     <ClInclude Include="mining\mining.h" />
     <ClInclude Include="mining\score_bpp9000.h" />

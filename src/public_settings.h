@@ -126,11 +126,11 @@ static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 100;
 static constexpr unsigned long long BPP9000_NUMBER_OF_WINDOWS = BPP9000_SEQUENCE_LENGTH - BPP9000_WINDOW_WIDTH;
 static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 3838;
 
-// Ant colony: a solution anchors to a recent tick (its RNG seeds from that tick's digest) and must be
-// published within ANT_FRESHNESS_WINDOW_TICKS of it. The same window is the sibling no-compete band:
-// two siblings whose anchor ticks differ by <= N coexist; a child only has to beat siblings whose
-// anchor tick is more than N earlier.
-static constexpr unsigned int ANT_FRESHNESS_WINDOW_TICKS = 676;
+// Ant colony: a solution must be published within this many ticks of the anchor its walk seeded from.
+static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 16000;
+
+// Sibling no-compete band: a child only has to beat siblings anchored more than N ticks earlier.
+static constexpr unsigned int ANT_SIBLING_NOCOMPETE_TICKS = 676;
 
 // Ant colony: tree nodes recorded per epoch; one per accepted solution.
 static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = 1u << 23;

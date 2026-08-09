@@ -177,6 +177,7 @@
     <ClCompile Include="platform.cpp" />
     <ClCompile Include="qpi.cpp" />
     <ClCompile Include="ant_colony.cpp" />
+    <ClCompile Include="ant_pending_solutions.cpp" />
     <ClCompile Include="score.cpp" />
     <ClCompile Include="score_cache.cpp" />
     <ClCompile Include="tick_storage.cpp" />
