@@ -75,13 +75,13 @@
 #include "files/files.h"
 #include "mining/mining.h"
 #include "mining/custom_qubic_mining_storage.h"
-#include "mining/ant_colony_bpp9000.h"
+#include "mining/ant_colony/ant_colony_bpp9000.h"
 
 #include "oracle_core/oracle_engine.h"
 #include "oracle_core/net_msg_impl.h"
 #include "oracle_core/snapshot_files.h"
-#include "mining/ant_colony_snapshot.h"
-#include "mining/ant_pending_solutions.h"
+#include "mining/ant_colony/ant_colony_snapshot.h"
+#include "mining/ant_colony/ant_pending_solutions.h"
 #include "oracle_core/oracle_interfaces_def.h"
 #include "qpi/impl/qpi_oracle_impl.h"
 

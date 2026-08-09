@@ -1,6 +1,6 @@
 #pragma once
 
-#include "mining/ant_colony_bpp9000.h"
+#include "mining/ant_colony/ant_colony_bpp9000.h"
 #include "platform/file_io.h"
 
 // Only what cannot be derived is written. The tick index, both head maps and the dedup set are

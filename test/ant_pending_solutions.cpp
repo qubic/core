@@ -2,7 +2,7 @@
 
 #include "gtest/gtest.h"
 
-#include "../src/mining/ant_pending_solutions.h"
+#include "../src/mining/ant_colony/ant_pending_solutions.h"
 
 static m256i key(unsigned long long n)
 {

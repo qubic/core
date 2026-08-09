@@ -66,10 +66,10 @@
     <ClInclude Include="files\files.h" />
     <ClInclude Include="logging\logging.h" />
     <ClInclude Include="logging\net_msg_impl.h" />
-    <ClInclude Include="mining\ant_colony.h" />
-    <ClInclude Include="mining\ant_colony_bpp9000.h" />
-    <ClInclude Include="mining\ant_colony_snapshot.h" />
-    <ClInclude Include="mining\ant_pending_solutions.h" />
+    <ClInclude Include="mining\ant_colony\ant_colony.h" />
+    <ClInclude Include="mining\ant_colony\ant_colony_bpp9000.h" />
+    <ClInclude Include="mining\ant_colony\ant_colony_snapshot.h" />
+    <ClInclude Include="mining\ant_colony\ant_pending_solutions.h" />
     <ClInclude Include="mining\custom_qubic_mining_storage.h" />
     <ClInclude Include="mining\mining.h" />
     <ClInclude Include="mining\score_bpp9000.h" />

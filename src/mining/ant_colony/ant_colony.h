@@ -11,8 +11,8 @@
 #include "qpi/qpi.h"
 #include "qpi/impl/qpi_hash_map_impl.h"
 #include "public_settings.h"
-#include "mining.h"
-#include "trit_pack.h"
+#include "mining/mining.h"
+#include "mining/trit_pack.h"
 
 // (tickOffset, solutionIndexInTick), epoch-relative tick plus the solution transaction's index in tick
 struct SolutionRef

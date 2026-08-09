@@ -5,8 +5,8 @@
 #define ENABLE_PROFILING 0
 
 // The bound colony, not the bare template: these tests check bpp9000's binding as well as the rules.
-#include "../src/mining/ant_colony_bpp9000.h"
-#include "../src/mining/ant_colony_snapshot.h"
+#include "../src/mining/ant_colony/ant_colony_bpp9000.h"
+#include "../src/mining/ant_colony/ant_colony_snapshot.h"
 
 #include <vector>
 

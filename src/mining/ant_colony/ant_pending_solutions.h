@@ -3,7 +3,7 @@
 #include "platform/m256.h"
 #include "platform/concurrency.h"
 #include "platform/memory.h"
-#include "ant_colony.h"
+#include "mining/ant_colony/ant_colony.h"
 
 // Solutions waiting to be published as transactions signed by the node's own computors
 // A queue is needed because a broadcast can be lost with nothing reporting it. An entry stores the
