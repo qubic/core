@@ -46,9 +46,9 @@ static ChildCandidate makeChild(const m256i& owner, unsigned int score,
 
 // Every test runs at TEST_THRESHOLD, so wrapping it keeps the assertions on one line.
 static ValidityResult admit(const ChildCandidate& child, const AntSolutionRecord* parent,
-    unsigned int siblingFloorScore)
+    unsigned int childCount)
 {
-    return AntColonyBpp9000T::validateChild(child, parent, siblingFloorScore, TEST_THRESHOLD);
+    return AntColonyBpp9000T::validateChild(child, parent, childCount, TEST_THRESHOLD);
 }
 
 // The packing itself is generic and tested exhaustively
@@ -80,11 +80,11 @@ TEST(TestAntColonyValidate, ThresholdIsAnUpperBoundOnError)
 
     // A parent that would otherwise admit anything, so only the threshold can reject.
     const AntSolutionRecord looseParent = makeParent(me, WORST_SCORE);
-    EXPECT_EQ(admit(makeChild(me, 3839), &looseParent, WORST_SCORE),
+    EXPECT_EQ(admit(makeChild(me, 3839), &looseParent, 0),
         ValidityResult::RejectBelowThreshold);
 
     // Exactly at the bound is accepted: the rule is score > threshold, not >=.
-    EXPECT_EQ(admit(makeChild(me, TEST_THRESHOLD), &looseParent, WORST_SCORE), ValidityResult::Valid);
+    EXPECT_EQ(admit(makeChild(me, TEST_THRESHOLD), &looseParent, 0), ValidityResult::Valid);
 }
 
 TEST(TestAntColonyValidate, MustStrictlyBeatParent)
@@ -92,9 +92,9 @@ TEST(TestAntColonyValidate, MustStrictlyBeatParent)
     const m256i me = makeKey(2);
     const AntSolutionRecord parent = makeParent(me, 3800);
 
-    EXPECT_EQ(admit(makeChild(me, 3799), &parent, WORST_SCORE), ValidityResult::Valid);
-    EXPECT_EQ(admit(makeChild(me, 3800), &parent, WORST_SCORE), ValidityResult::RejectLeParent);
-    EXPECT_EQ(admit(makeChild(me, 3801), &parent, WORST_SCORE), ValidityResult::RejectLeParent);
+    EXPECT_EQ(admit(makeChild(me, 3799), &parent, 0), ValidityResult::Valid);
+    EXPECT_EQ(admit(makeChild(me, 3800), &parent, 0), ValidityResult::RejectLeParent);
+    EXPECT_EQ(admit(makeChild(me, 3801), &parent, 0), ValidityResult::RejectLeParent);
 }
 
 // A root has no score of its own, so any threshold-passing child improves on it. This is what lets a
@@ -103,9 +103,9 @@ TEST(TestAntColonyValidate, RootParentAdmitsAnyPassingScore)
 {
     const m256i me = makeKey(3);
 
-    EXPECT_EQ(admit(makeChild(me, TEST_THRESHOLD), nullptr, WORST_SCORE), ValidityResult::Valid);
-    EXPECT_EQ(admit(makeChild(me, 0), nullptr, WORST_SCORE), ValidityResult::Valid);
-    EXPECT_EQ(admit(makeChild(me, TEST_THRESHOLD + 1), nullptr, WORST_SCORE),
+    EXPECT_EQ(admit(makeChild(me, TEST_THRESHOLD), nullptr, 0), ValidityResult::Valid);
+    EXPECT_EQ(admit(makeChild(me, 0), nullptr, 0), ValidityResult::Valid);
+    EXPECT_EQ(admit(makeChild(me, TEST_THRESHOLD + 1), nullptr, 0),
         ValidityResult::RejectBelowThreshold);
 }
 
@@ -116,24 +116,29 @@ TEST(TestAntColonyValidate, CannotBranchFromAnotherIdentity)
     const m256i someoneElse = makeKey(5);
     const AntSolutionRecord theirNode = makeParent(someoneElse, 3800);
 
-    EXPECT_EQ(admit(makeChild(me, 3700), &theirNode, WORST_SCORE), ValidityResult::RejectWrongTree);
+    EXPECT_EQ(admit(makeChild(me, 3700), &theirNode, 0), ValidityResult::RejectWrongTree);
 
     const AntSolutionRecord myNode = makeParent(me, 3800);
-    EXPECT_EQ(admit(makeChild(me, 3700), &myNode, WORST_SCORE), ValidityResult::Valid);
+    EXPECT_EQ(admit(makeChild(me, 3700), &myNode, 0), ValidityResult::Valid);
 }
 
-// Sibling floor
-TEST(TestAntColonyValidate, MustStrictlyBeatSiblingFloor)
+// Per-parent child cap. The cap is compile-time; 0 means unbound.
+TEST(TestAntColonyValidate, RejectsAtTheChildCap)
 {
     const m256i me = makeKey(6);
     const AntSolutionRecord parent = makeParent(me, WORST_SCORE);
 
-    EXPECT_EQ(admit(makeChild(me, 3799), &parent, 3800), ValidityResult::Valid);
-    EXPECT_EQ(admit(makeChild(me, 3800), &parent, 3800), ValidityResult::RejectBelowSiblingFloor);
-    EXPECT_EQ(admit(makeChild(me, 3801), &parent, 3800), ValidityResult::RejectBelowSiblingFloor);
+    // Below the cap - and always, when unbound - a passing child is admitted.
+    EXPECT_EQ(admit(makeChild(me, 3799), &parent, 0), ValidityResult::Valid);
 
-    // No competing sibling yet: the floor is WORST_SCORE and anything passing gets through.
-    EXPECT_EQ(admit(makeChild(me, TEST_THRESHOLD), &parent, WORST_SCORE), ValidityResult::Valid);
+    // At the cap it is refused. Skipped when unbound (0). The runtime copy keeps the compile-time
+    // zero from tripping a constant-condition warning.
+    const unsigned int cap = ANT_MAX_CHILDREN_PER_PARENT;
+    if (cap != 0)
+    {
+        EXPECT_EQ(admit(makeChild(me, 3799), &parent, cap),
+            ValidityResult::RejectMaxChildrenPerParent);
+    }
 }
 
 // Freshness
@@ -144,22 +149,22 @@ TEST(TestAntColonyValidate, FreshnessWindowBoundaries)
     const unsigned int anchor = 100000;
 
     // Published in the same tick it anchored to: the tightest legal case.
-    EXPECT_EQ(admit(makeChild(me, 3700, anchor, anchor), &parent, WORST_SCORE),
+    EXPECT_EQ(admit(makeChild(me, 3700, anchor, anchor), &parent, 0),
         ValidityResult::Valid);
 
     // Exactly at the window edge is still legal; one past it is not.
     EXPECT_EQ(admit(makeChild(me, 3700, anchor, anchor + ANT_PUBLISH_WINDOW_TICKS),
-        &parent, WORST_SCORE), ValidityResult::Valid);
+        &parent, 0), ValidityResult::Valid);
     EXPECT_EQ(admit(makeChild(me, 3700, anchor, anchor + ANT_PUBLISH_WINDOW_TICKS + 1),
-        &parent, WORST_SCORE), ValidityResult::RejectStale);
+        &parent, 0), ValidityResult::RejectStale);
 
     // An anchor in the future is rejected rather than wrapping the unsigned subtraction.
-    EXPECT_EQ(admit(makeChild(me, 3700, anchor + 1, anchor), &parent, WORST_SCORE),
+    EXPECT_EQ(admit(makeChild(me, 3700, anchor + 1, anchor), &parent, 0),
         ValidityResult::RejectStale);
 }
 
 // Order of checks: Freshness first, then tree isolation, then threshold, then
-// parent, then sibling floor.
+// parent, then the child cap.
 TEST(TestAntColonyValidate, ReportsTheFirstFailingRule)
 {
     const m256i me = makeKey(8);
@@ -170,24 +175,24 @@ TEST(TestAntColonyValidate, ReportsTheFirstFailingRule)
     const AntSolutionRecord theirs = makeParent(other, 3000);
 
     // Stale AND wrong tree AND above threshold AND worse than parent -> reports Stale.
-    EXPECT_EQ(admit(makeChild(me, 9999, anchor, stalePublish), &theirs, 100),
+    EXPECT_EQ(admit(makeChild(me, 9999, anchor, stalePublish), &theirs, 0),
         ValidityResult::RejectStale);
 
     // Fresh, but wrong tree AND above threshold -> reports WrongTree.
-    EXPECT_EQ(admit(makeChild(me, 9999, anchor, anchor), &theirs, 100),
+    EXPECT_EQ(admit(makeChild(me, 9999, anchor, anchor), &theirs, 0),
         ValidityResult::RejectWrongTree);
 
     // Own tree, above threshold AND worse than parent -> reports the threshold.
     const AntSolutionRecord mine = makeParent(me, 3000);
-    EXPECT_EQ(admit(makeChild(me, 9999, anchor, anchor), &mine, 100),
+    EXPECT_EQ(admit(makeChild(me, 9999, anchor, anchor), &mine, 0),
         ValidityResult::RejectBelowThreshold);
 
-    // Passes the threshold, but worse than parent AND below the floor -> reports the parent.
-    EXPECT_EQ(admit(makeChild(me, 3500, anchor, anchor), &mine, 100),
+    // Passes the threshold but worse than parent -> reports the parent.
+    EXPECT_EQ(admit(makeChild(me, 3500, anchor, anchor), &mine, 0),
         ValidityResult::RejectLeParent);
 }
 
-// For a fixed parent, floor and threshold, acceptance
+// For a fixed parent and threshold, acceptance
 // must be monotone in the score - every score at or below the tightest bound is accepted, every
 // score above it is rejected. An inverted comparison anywhere breaks this even if the individual
 // boundary tests above were adjusted to match it.
@@ -195,16 +200,15 @@ TEST(TestAntColonyValidate, AcceptanceIsMonotoneInScore)
 {
     const m256i me = makeKey(10);
     const unsigned int parentScore = 3800;
-    const unsigned int floor = 3750;
     const AntSolutionRecord parent = makeParent(me, parentScore);
 
-    // Tightest of: <= threshold, < parent, < floor.
-    const unsigned int bestRejected = (parentScore < floor) ? parentScore : floor;
+    // Tightest of: <= threshold, < parent.
+    const unsigned int bestRejected = parentScore;
 
     bool sawAccept = false;
     for (unsigned int score = 3700; score <= 3900; score++)
     {
-        const ValidityResult r = admit(makeChild(me, score), &parent, floor);
+        const ValidityResult r = admit(makeChild(me, score), &parent, 0);
         const bool accepted = (r == ValidityResult::Valid);
         if (score < bestRejected && score <= TEST_THRESHOLD)
         {
@@ -306,8 +310,8 @@ static long long commitChild(AntColonyBpp9000T* colony, const m256i& owner, cons
     return landsAt;
 }
 
-// commit() head-inserts, so children run newest to oldest. siblingFloor() relies on it: only the
-// older ones compete, so they sit at the tail.
+// commit() head-inserts, so children chain from newest to oldest. countChildren() walks this chain
+// from the head, so it must stay intact and terminate.
 TEST(TestAntColonyStore, SiblingsChainNewestFirst)
 {
     AntColonyBpp9000T* colony = freshColony();
@@ -629,7 +633,7 @@ TEST(TestAntColonySnapshot, CorruptedPoolIsRefused)
     EXPECT_EQ(colony->solutionCount(), 0u);
 }
 
-// anchorTick is the sibling-floor clock and has no other guard, so the load re-derives publishTick
+// anchorTick seeds the score's RNG and has no other guard, so the load re-derives publishTick
 // from the record's own address and re-checks the freshness rule. A record anchored 100000 ticks
 // after the tick it claims to sit in cannot have passed that rule when it was admitted.
 TEST(TestAntColonySnapshot, RecordOutsideItsFreshnessWindowIsRefused)
@@ -855,11 +859,12 @@ TEST(TestAntColonyExport, KeepsTheLowestScoresInOrder)
     AntColonyBpp9000T* colony = freshColony();
     ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.6 GB";
 
-    const m256i me = makeKey(1);
     constexpr unsigned int COMMITTED = ANT_EXPORT_MAX_SOLUTIONS + 24;
+    // One identity per solution so the per-parent child cap never binds - the export set is what is
+    // under test here, not the tree shape.
     for (unsigned int i = 0; i < COMMITTED; i++)
     {
-        ASSERT_NE(commitRootChild(colony, me, 3000 + i, i, 5000 + i), ANT_INVALID_INDEX) << "commit " << i;
+        ASSERT_NE(commitRootChild(colony, makeKey(1 + i), 3000 + i, i, 5000 + i), ANT_INVALID_INDEX) << "commit " << i;
     }
     ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
 
@@ -889,11 +894,11 @@ TEST(TestAntColonyExport, OrdersFewerThanTheCap)
     AntColonyBpp9000T* colony = freshColony();
     ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.6 GB";
 
-    const m256i me = makeKey(2);
     constexpr unsigned int COUNT = 40;
+    // One identity per solution so the per-parent child cap never binds.
     for (unsigned int i = 0; i < COUNT; i++)
     {
-        ASSERT_NE(commitRootChild(colony, me, 3800 - i, i, 6000 + i), ANT_INVALID_INDEX);
+        ASSERT_NE(commitRootChild(colony, makeKey(2000 + i), 3800 - i, i, 6000 + i), ANT_INVALID_INDEX);
     }
     ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
 

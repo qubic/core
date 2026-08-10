@@ -136,8 +136,10 @@ static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 3838;
 // Ant colony: a solution must be published within this many ticks of the anchor its walk seeded from.
 static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 16000;
 
-// Sibling no-compete band: a child only has to beat siblings anchored more than N ticks earlier.
-static constexpr unsigned int ANT_SIBLING_NOCOMPETE_TICKS = 676;
+// Per-parent child cap: a parent accepts at most this many children - a miner's parallel branches
+// off one node. 0 means unbound (no cap). A child's score must still strictly beat its parent's.
+// A child over the cap is rejected without a refund, so miners should stop submitting to a full parent.
+static constexpr unsigned int ANT_MAX_CHILDREN_PER_PARENT = 32;
 
 // Ant colony: tree nodes recorded per epoch; one per accepted solution.
 static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = 1u << 23;

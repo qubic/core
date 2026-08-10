@@ -90,7 +90,7 @@ struct AntSolutionRecord
     SolutionRef parentRef;        // this solution's parent, or ROOT_REF
     SolutionRef selfRef;          // this solution's own address (RELATIVE tick inside)
     unsigned int score;           // error count, lower is better
-    unsigned int anchorTick;      // ABSOLUTE. tick whose digest seeded the RNG; clock for the sibling floor
+    unsigned int anchorTick;      // ABSOLUTE. tick whose digest seeded the RNG
     unsigned int depth;           // a child of the root is depth 1; the root itself is never stored
     unsigned int childAnnHash;    // K12 of the canonical ANN at commit; digest-fold input
     unsigned int annStateSlot;    // index into the ANN pool; always equals the record index
@@ -129,7 +129,7 @@ enum ValidityResult
     RejectWrongTree,             // parent belongs to a different identity
     RejectBelowThreshold,        // score above the per-epoch error bound
     RejectLeParent,              // did not strictly beat the parent
-    RejectBelowSiblingFloor,     // did not strictly beat the best sibling anchored more than N earlier
+    RejectMaxChildrenPerParent,  // the parent already holds ANT_MAX_CHILDREN_PER_PARENT children
     RejectTickOutOfRange,
     RejectReplay,                // (pubkey, parentRef, nonce) already committed this epoch
     RejectDedupFull,
@@ -144,7 +144,7 @@ struct AntColonyDiagnostics
     unsigned long long rejectWrongTree;
     unsigned long long rejectThreshold;
     unsigned long long rejectLeParent;
-    unsigned long long rejectSiblingFloor;
+    unsigned long long rejectMaxChildren;
     unsigned long long rejectTickOutOfRange;
     unsigned long long rejectReplay;
     unsigned long long rejectDedupFull;
@@ -185,8 +185,8 @@ struct AntColonyDiagnostics
         appendNumber(message, rejectThreshold, TRUE);
         appendText(message, L", leParent ");
         appendNumber(message, rejectLeParent, TRUE);
-        appendText(message, L", floor ");
-        appendNumber(message, rejectSiblingFloor, TRUE);
+        appendText(message, L", maxChildren ");
+        appendNumber(message, rejectMaxChildren, TRUE);
         appendText(message, L", tickRange ");
         appendNumber(message, rejectTickOutOfRange, TRUE);
         appendText(message, L", replay ");
@@ -208,7 +208,7 @@ struct AntColonyDiagnostics
         case ValidityResult::RejectWrongTree:           rejectWrongTree++; break;
         case ValidityResult::RejectBelowThreshold:      rejectThreshold++; break;
         case ValidityResult::RejectLeParent:            rejectLeParent++; break;
-        case ValidityResult::RejectBelowSiblingFloor:   rejectSiblingFloor++; break;
+        case ValidityResult::RejectMaxChildrenPerParent: rejectMaxChildren++; break;
         case ValidityResult::RejectTickOutOfRange:      rejectTickOutOfRange++; break;
         case ValidityResult::RejectReplay:              rejectReplay++; break;
         case ValidityResult::RejectDedupFull:           rejectDedupFull++; break;
@@ -389,9 +389,9 @@ public:
     // extraction. MUST be called between endEpoch() and the reset that starts the next epoch
     bool exportBestSolutions(unsigned short epoch, CHAR16* directory);
 
-    // Get the sibling floor for querry purpose. Note that it return the best at current time
-    unsigned int siblingFloorForQuery(const SolutionRef& parentRef, const m256i& childPubkey,
-        unsigned int childAnchorTick)
+    // Children already recorded under this parent, capped at ANT_MAX_CHILDREN_PER_PARENT, for query
+    // purposes. Off-thread safe: the head map is read under the lock, the chain walk after it is not.
+    unsigned int childCountForQuery(const SolutionRef& parentRef, const m256i& childPubkey)
     {
         unsigned int head = NO_SIBLING;
         // Take the latest child first with lock to touch the head map
@@ -399,12 +399,12 @@ public:
             LockGuard guard(_headMapLock);
             if (!chainHead(parentRef, childPubkey, head))
             {
-                return WORST_SCORE;
+                return 0;
             }
         }
 
-        // Escape the lock, then read from head, in which the record is imutable 
-        return siblingFloorFromHead(head, childAnchorTick);
+        // Escape the lock, then count from head, in which the record is imutable
+        return childCountFromHead(head);
     }
 
     // Anchor digests. Both take an ABSOLUTE system tick, never an epoch-relative tickOffset.
@@ -446,34 +446,25 @@ public:
     ValidityResult tryGetParent(const SolutionRef& parentRef,
         const AntSolutionRecord** outParentRec) const;
 
-    // Admission rules for a proposed child: freshness, tree ownership, threshold, parent, sibling
-    // floor. Static and pure, so the rule set is testable without a colony. Lower score is better.
+    // Admission rules for a proposed child: freshness, tree ownership, threshold, parent, per-parent
+    // child cap. Static and pure, so the rule set is testable without a colony. Lower score is better.
     static ValidityResult validateChild(const ChildCandidate& child,
-        const AntSolutionRecord* parentRecord, unsigned int siblingFloorScore, unsigned int threshold);
+        const AntSolutionRecord* parentRecord, unsigned int childCount, unsigned int threshold);
 
     // Validates and, if accepted, appends the record and its network to the store.
     ValidityResult commit(const AntCommitInput& in, const AntSolutionRecord* parentRec,
         unsigned int score, const Ann& childAnn, unsigned int childAnnHash);
 
 private:
-    // Computes the bar a new child must beat, beyond just beating its parent: the best (lowest)
-    // score among the siblings that count as competition, or WORST_SCORE when there is none.
-    //
-    // PRIVATE ON PURPOSE - tick processor only. It is the only reader of the two head maps, and
-    // QPI::HashMap has no reader/writer protocol: set() makes a slot's key visible before its value,
-    // so a reader asking for the key being inserted can get a garbage index. Everything else public
-    // here is safe off-thread because records/annPool are append-only behind the _solutionCount
-    // barrier, but these maps are mutated in place. If a request path ever needs this value (see
-    // RespondAntMineableParents), serve it from a snapshot the tick processor computed, do not
-    // recompute it on the request thread.
-    unsigned int siblingFloor(const SolutionRef& parentRef, const m256i& childPubkey,
-        unsigned int childAnchorTick /* ABSOLUTE */) const;
+    // Children already recorded under this parent, capped at ANT_MAX_CHILDREN_PER_PARENT. Root
+    // children are keyed by miner, deeper ones by parent.
+    unsigned int countChildren(const SolutionRef& parentRef, const m256i& childPubkey) const;
 
-    // The map read, and the ONLY part of a floor computation that touches a head map. Split out
-    // because the walk that follows it does not, which is what lets the query hold the lock for a
-    // constant time instead of a whole chain.
-    // Depth-1 nodes chain per identity, so one miner's never raise another's floor; deeper nodes
-    // chain per parent, which is single-identity by the wrong-tree check.
+    // The map read, and the ONLY part of a child count that touches a head map. Split out because the
+    // walk that follows it does not, which is what lets the query hold the lock for a constant time
+    // instead of a whole chain.
+    // Depth-1 nodes chain per identity; deeper nodes chain per parent, which is single-identity by the
+    // wrong-tree check.
     bool chainHead(const SolutionRef& parentRef, const m256i& childPubkey, unsigned int& out) const
     {
         if (parentRef.isRoot())
@@ -486,7 +477,7 @@ private:
     // The walk half, from a chain head already in hand. Takes no lock: _records is append-only and a
     // record's nextSiblingIdx is written once at commit and never touched again, so a chain is stable
     // to follow even while the tick processor is appending elsewhere.
-    unsigned int siblingFloorFromHead(unsigned int head, unsigned int childAnchorTick) const;
+    unsigned int childCountFromHead(unsigned int head) const;
 
     // Offers a solution to the epoch's best-N set. Called for EVERY solution that passes the rules
     void noteExportCandidate(const m256i& pubkey, unsigned int score, unsigned int depth, const Ann& ann)
@@ -553,7 +544,7 @@ private:
     // slot's key visible before its value, so a reader asking for the key being inserted can get a
     // garbage index
     volatile char _headMapLock;
-    // Both give siblingFloor() a parent's children without scanning the store: the value is the
+    // Both give countChildren() a parent's children without scanning the store: the value is the
     // newest child's record index, and nextSiblingIdx chains back to the older ones.
     // parent's address -> newest child
     QPI::HashMap<SolutionRef, unsigned int, ANT_CHILD_HEAD_BY_PARENT_SIZE>* _childHeadByParent;
@@ -995,37 +986,26 @@ inline long long AntColony<ScoreT>::findIndexBySolutionRef(const SolutionRef& re
 }
 
 template<typename ScoreT>
-inline unsigned int AntColony<ScoreT>::siblingFloor(const SolutionRef& parentRef, const m256i& childPubkey,
-    unsigned int childAnchorTick) const
+inline unsigned int AntColony<ScoreT>::countChildren(const SolutionRef& parentRef, const m256i& childPubkey) const
 {
     // Tick processor only, so the head map read needs no lock here - nothing else writes it.
     unsigned int head = NO_SIBLING;
     if (!chainHead(parentRef, childPubkey, head))
     {
-        return WORST_SCORE;
+        return 0;
     }
-    return siblingFloorFromHead(head, childAnchorTick);
+    return childCountFromHead(head);
 }
 
 template<typename ScoreT>
-inline unsigned int AntColony<ScoreT>::siblingFloorFromHead(unsigned int head,
-    unsigned int childAnchorTick) const
+inline unsigned int AntColony<ScoreT>::childCountFromHead(unsigned int head) const
 {
-    // A competing sibling anchors more than N ticks earlier, so guard the subtraction. This only
-    // fires during the network's first N ticks, when there are no siblings to compete with anyway.
-    if (childAnchorTick <= ANT_SIBLING_NOCOMPETE_TICKS)
-    {
-        return WORST_SCORE;
-    }
-    const unsigned int boundary = childAnchorTick - ANT_SIBLING_NOCOMPETE_TICKS;
-
-    // The bar is the BEST score among competing siblings, because lower is better. The chain is
-    // finite and terminates on its own, and there is deliberately no hop limit: entries are
-    // newest-first and only the older ones compete, so cutting from the head would remove exactly
-    // the siblings that set the floor - wrong, not merely approximate.
-    unsigned int floor = WORST_SCORE;
+    // Count only up to the cap: past it the child is rejected regardless, so the walk and with it
+    // the whole per-commit cost, is bounded by ANT_MAX_CHILDREN_PER_PARENT. A cap of 0 (unbound)
+    // leaves the loop empty and returns 0, since the count is then never used.
+    unsigned int count = 0;
     unsigned int idx = head;
-    while (idx != NO_SIBLING)
+    while (idx != NO_SIBLING && count < ANT_MAX_CHILDREN_PER_PARENT)
     {
         // NOT a redundant bounds check - it is the publication barrier this walk relies on. commit()
         // points the head map at a new index BEFORE it writes that record, and only bumps
@@ -1036,14 +1016,10 @@ inline unsigned int AntColony<ScoreT>::siblingFloorFromHead(unsigned int head,
         {
             break;
         }
-        const AntSolutionRecord& s = _records[idx];
-        if (s.anchorTick < boundary && s.score < floor)
-        {
-            floor = s.score;
-        }
-        idx = s.nextSiblingIdx;
+        count++;
+        idx = _records[idx].nextSiblingIdx;
     }
-    return floor;
+    return count;
 }
 
 template<typename ScoreT>
@@ -1072,7 +1048,7 @@ inline ValidityResult AntColony<ScoreT>::tryGetParent(const SolutionRef& parentR
 
 template<typename ScoreT>
 inline ValidityResult AntColony<ScoreT>::validateChild(const ChildCandidate& child,
-    const AntSolutionRecord* parentRecord, unsigned int siblingFloorScore, unsigned int threshold)
+    const AntSolutionRecord* parentRecord, unsigned int childCount, unsigned int threshold)
 {
     // Freshness, the anchor cannot be in the future, and publication cannot lag it by more than N.
     if (child.anchorTick > child.publishTick
@@ -1101,9 +1077,10 @@ inline ValidityResult AntColony<ScoreT>::validateChild(const ChildCandidate& chi
     {
         return ValidityResult::RejectLeParent;
     }
-    if (child.score >= siblingFloorScore)
+    // Per-parent breadth cap. 0 means unbound - no cap.
+    if (ANT_MAX_CHILDREN_PER_PARENT != 0 && childCount >= ANT_MAX_CHILDREN_PER_PARENT)
     {
-        return ValidityResult::RejectBelowSiblingFloor;
+        return ValidityResult::RejectMaxChildrenPerParent;
     }
     return ValidityResult::Valid;
 }
@@ -1112,10 +1089,10 @@ template<typename ScoreT>
 inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const AntSolutionRecord* parentRec,
     unsigned int score, const Ann& childAnn, unsigned int childAnnHash)
 {
-    const unsigned int floor = siblingFloor(in.parentRef, in.pubkey, in.anchorTick);
+    const unsigned int childCount = countChildren(in.parentRef, in.pubkey);
     const ChildCandidate child{ in.pubkey, score, in.anchorTick, in.publishTick };
 
-    const ValidityResult result = validateChild(child, parentRec, floor, _errorThreshold);
+    const ValidityResult result = validateChild(child, parentRec, childCount, _errorThreshold);
     if (result != ValidityResult::Valid)
     {
         recordReject(result);
@@ -1172,8 +1149,8 @@ inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const 
     if (!headClaimed)
     {
         // Fail closed. Degrading instead, accepting the node but leaving the identity without a
-        // chain head, would silently drop its sibling floor. Released first: this touches _dedup,
-        // which must not be reached under the head-map lock.
+        // chain head, would leave its children uncounted and silently disable its cap. Released
+        // first: this touches _dedup, which must not be reached under the head-map lock.
         _dedup->remove(dedupKey);
         recordReject(ValidityResult::RejectMinerIndexFull);
         return ValidityResult::RejectMinerIndexFull;
@@ -1495,11 +1472,10 @@ inline bool AntColony<ScoreT>::rebuildDerivedState(unsigned int initialTick)
             return false;
         }
 
-        // The freshness rule validateChild() applied at admission, re-checked here. This is the only
-        // guard on anchorTick, which is consensus-relevant: siblingFloor() compares a stored record's
-        // anchorTick against a later child's, so a corrupt one changes which siblings compete and
-        // therefore which solutions the node accepts. publishTick was not stored because it does not
-        // need to be - commit() sets tickOffset to (publishTick - initialTick), so it inverts exactly
+        // The freshness rule validateChild() applied at admission, re-checked here so a tampered
+        // snapshot cannot smuggle in a record that was never admissible. anchorTick seeds the score's
+        // RNG, so it is consensus-relevant. publishTick was not stored because it does not need to be -
+        // commit() sets tickOffset to (publishTick - initialTick), so it inverts exactly
         const unsigned int publishTick = initialTick + rec.selfRef.tickOffset;
         if (rec.anchorTick > publishTick
             || publishTick - rec.anchorTick > ANT_PUBLISH_WINDOW_TICKS)
@@ -1548,7 +1524,7 @@ inline bool AntColony<ScoreT>::rebuildDerivedState(unsigned int initialTick)
         }
 
         // The two score rules validateChild() enforced when this record was admitted. A corrupt
-        // score would otherwise set a wrong sibling floor and a wrong bar for its own children.
+        // score would otherwise set a wrong bar for its own children.
         if (rec.score > _errorThreshold)
         {
             antSnapshotFailure(L"score above the epoch threshold, record/score", i, rec.score);

@@ -578,12 +578,11 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
         return;
     }
 
-    // The floor moves as siblings age into competition, so passing now is not a promise it will pass
-    // at publication - the publisher re-checks. Failing now is final enough to refuse the slot.
-    const unsigned int floor = gAntColony.siblingFloorForQuery(parentRef, computorPublicKey,
-        payload.anchorTick);
+    // The child count only grows, so passing now is not a promise it will pass at publication - the
+    // publisher re-checks. Failing now is final enough to refuse the slot.
+    const unsigned int childCount = gAntColony.childCountForQuery(parentRef, computorPublicKey);
     const ChildCandidate candidate{ computorPublicKey, childScore, payload.anchorTick, system.tick };
-    if (AntColonyBpp9000T::validateChild(candidate, parentRec, floor,
+    if (AntColonyBpp9000T::validateChild(candidate, parentRec, childCount,
         gAntColony.errorThreshold()) != ValidityResult::Valid)
     {
         antDebugPoolDrop(L"unacceptable", payload);
@@ -1847,10 +1846,7 @@ static void processRequestAntMineableParents(unsigned long long processorNumber,
     setMem(&response, sizeof(response), 0);
     response.header.itemSize = (unsigned int)sizeof(AntMineableParent);
 
-    // Sampled once: it only grows, and a child mined against this frontier anchors at or after the
-    // tick this answer describes.
     const unsigned int total = gAntColony.solutionCount();
-    const unsigned int anchorTick = system.tick;
 
     unsigned int idx = request->fromIndex;
     unsigned int scanned = 0;
@@ -1876,7 +1872,7 @@ static void processRequestAntMineableParents(unsigned long long processorNumber,
         item.parentTickOffset = rec->parentRef.tickOffset;
         item.parentSolutionIndexInTick = rec->parentRef.solutionIndexInTick;
         item.score = rec->score;
-        item.siblingFloor = gAntColony.siblingFloorForQuery(rec->selfRef, rec->pubkey, anchorTick);
+        item.childCount = gAntColony.childCountForQuery(rec->selfRef, rec->pubkey);
         item.anchorTick = rec->anchorTick;
         item.depth = rec->depth;
         response.header.count++;
@@ -3971,10 +3967,10 @@ static void publishAntSolutionFor(unsigned long long processorNumber, unsigned i
     // Judged at the tick the transaction will EXECUTE in, not the current one, so this gate sees
     // what commit will see - a solution at the window boundary now would commit stale.
     const unsigned int publishTick = system.tick + MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
-    const unsigned int floor = gAntColony.siblingFloorForQuery(entry.parentRef,
-        entry.computorPublicKey, entry.anchorTick);
+    const unsigned int childCount = gAntColony.childCountForQuery(entry.parentRef,
+        entry.computorPublicKey);
     const ChildCandidate candidate{ entry.computorPublicKey, entry.score, entry.anchorTick, publishTick };
-    if (AntColonyBpp9000T::validateChild(candidate, parentRec, floor,
+    if (AntColonyBpp9000T::validateChild(candidate, parentRec, childCount,
         gAntColony.errorThreshold()) != ValidityResult::Valid)
     {
         gAntPendingSolutions.markObsoleteGateRejected(idx);

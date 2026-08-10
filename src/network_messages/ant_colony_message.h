@@ -47,9 +47,9 @@ constexpr unsigned int ANT_MINEABLE_PARENTS_SCAN_BUDGET = 1024;
 // ref a child sets as its own parentRef to extend this node; parentTickOffset/parentSolutionIndexInTick
 // is this node's OWN parent - (0, 0xFFFFFFFF) means the root - so paging every node of a pubkey
 // reconstructs the whole tree, edges included, without fetching any network bytes.
-// The score is an error count, so smaller is better: a child must score strictly below score and
-// strictly below siblingFloor (the best sibling more than N ticks earlier, computed for a child
-// anchoring at the current tick).
+// The score is an error count, so smaller is better: a child must score strictly below score.
+// childCount is how many children this node already holds, capped at ANT_MAX_CHILDREN_PER_PARENT; at
+// the cap it takes no more children (0 for the cap means unbound).
 struct AntMineableParent
 {
     unsigned int selfTickOffset;
@@ -57,7 +57,7 @@ struct AntMineableParent
     unsigned int parentTickOffset;
     unsigned int parentSolutionIndexInTick;
     unsigned int score;
-    unsigned int siblingFloor;
+    unsigned int childCount;
     unsigned int anchorTick;            // this node's own anchor tick number
     unsigned int depth;
 };

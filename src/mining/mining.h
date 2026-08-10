@@ -388,7 +388,7 @@ struct AntColonyMiningSolutionTransaction : public Transaction
 
     unsigned int parentTickOffset;              // epoch-relative tick of the parent ref
     unsigned int parentSolutionIndexInTick;     // dense within-tick index of the parent ref
-    unsigned int anchorTick;                    // tick whose digest the solution anchored to (sibling-floor clock + freshness)
+    unsigned int anchorTick;                    // tick whose digest the solution anchored to (RNG seed + freshness)
     // The score the submitter claims this solution reaches. The deposit is refunded only when it
     // matches the score the node computes
     unsigned int claimedScore;
