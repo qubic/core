@@ -11,20 +11,25 @@ static const id RESOURCE1(101, 101, 101, 101);
 static const id RESOURCE2(202, 202, 202, 202);
 static const id SHAREHOLDER1(301, 301, 301, 301);
 static const id TOKENHOLDER1(401, 401, 401, 401);
+static const id OPERATOR1(501, 501, 501, 501);
+static const id RECOVERY1(601, 601, 601, 601);
+static const id IMPOSTOR1(701, 701, 701, 701);
+static const id NEWOPERATOR1(801, 801, 801, 801);
 
 static const id QPAYHUB_CONTRACT_ID(QPAYHUB_CONTRACT_INDEX, 0, 0, 0);
 
 // The exact issuer identity QPayhub.h's INITIALIZE() hardcodes for the QPAY
-// dividend token (devnet placeholder). Copied verbatim so tests can issue the
-// matching "QPAY" asset via QX and exercise the token-holder dividend path.
+// dividend token: QPAYNOWSWZMGHFEAEVJXGZAVSHABAZDDBDIHTEBOPCOGHRGBCYCUZOHCVLXG.
+// Copied verbatim so tests can issue the matching "QPAY" asset via QX and
+// exercise the token-holder dividend path.
 static const id QPAYHUB_DIVIDEND_TOKEN_ISSUER = ID(
-    _Q, _D, _O, _G, _E, _E, _E, _S,
-    _K, _Y, _P, _A, _I, _C, _E, _C,
-    _H, _E, _A, _H, _O, _X, _P, _U,
-    _L, _E, _O, _A, _D, _T, _K, _G,
-    _E, _J, _H, _A, _V, _Y, _P, _F,
-    _K, _H, _L, _E, _W, _G, _X, _X,
-    _Z, _Q, _U, _G, _I, _G, _M, _B
+    _Q, _P, _A, _Y, _N, _O, _W, _S,
+    _W, _Z, _M, _G, _H, _F, _E, _A,
+    _E, _V, _J, _X, _G, _Z, _A, _V,
+    _S, _H, _A, _B, _A, _Z, _D, _D,
+    _B, _D, _I, _H, _T, _E, _B, _O,
+    _P, _C, _O, _G, _H, _R, _G, _B,
+    _C, _Y, _C, _U, _Z, _O, _H, _C
 );
 
 // Exposes state fields directly (same pattern as StateCheckerTestExampleA in
@@ -151,6 +156,38 @@ public:
         QPAYHUB::SubscribeToPriceFeed_input input;
         QPAYHUB::SubscribeToPriceFeed_output output;
         invokeUserProcedure(QPAYHUB_CONTRACT_INDEX, 3, input, output, invocator, reward);
+        return output;
+    }
+
+    QPAYHUB::GetPromoRate_output getPromoRate(const id& seller)
+    {
+        QPAYHUB::GetPromoRate_input input{ seller };
+        QPAYHUB::GetPromoRate_output output;
+        callFunction(QPAYHUB_CONTRACT_INDEX, 5, input, output);
+        return output;
+    }
+
+    QPAYHUB::SetPromoRate_output setPromoRate(const id& invocator, const id& seller, uint64 feePermille, sint64 reward = 0)
+    {
+        QPAYHUB::SetPromoRate_input input{ seller, feePermille };
+        QPAYHUB::SetPromoRate_output output;
+        invokeUserProcedure(QPAYHUB_CONTRACT_INDEX, 4, input, output, invocator, reward);
+        return output;
+    }
+
+    QPAYHUB::RemovePromoRate_output removePromoRate(const id& invocator, const id& seller, sint64 reward = 0)
+    {
+        QPAYHUB::RemovePromoRate_input input{ seller };
+        QPAYHUB::RemovePromoRate_output output;
+        invokeUserProcedure(QPAYHUB_CONTRACT_INDEX, 5, input, output, invocator, reward);
+        return output;
+    }
+
+    QPAYHUB::ChangeOperator_output changeOperator(const id& invocator, const id& newOperator, sint64 reward = 0)
+    {
+        QPAYHUB::ChangeOperator_input input{ newOperator };
+        QPAYHUB::ChangeOperator_output output;
+        invokeUserProcedure(QPAYHUB_CONTRACT_INDEX, 6, input, output, invocator, reward);
         return output;
     }
 
@@ -807,4 +844,222 @@ TEST(ContractQPayhub, NotifyQuUsdPriceReplyWithInvalidResolvedReplyIsIgnored)
 
     EXPECT_EQ(qpayhub.state()->quUsdDenominator, 0);
     EXPECT_TRUE(qpayhub.getQuUsdPrice().stale);
+}
+
+TEST(ContractQPayhub, GetPromoRateReflectsStandardRateWhenUnset)
+{
+    ContractTestingQPayhub qpayhub;
+
+    auto rate = qpayhub.getPromoRate(SELLER1);
+    EXPECT_EQ(rate.feePermille, QPAYHUB_FEE_PERMILLE);
+    EXPECT_EQ(rate.isPromo, 0);
+}
+
+TEST(ContractQPayhub, SetPromoRateByOperatorAffectsPayAndGetPromoRate)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->operatorId = OPERATOR1;
+    increaseEnergy(OPERATOR1, 10000000);
+    increaseEnergy(BUYER1, 10000000);
+
+    // 0.50%, between the 0.25% floor and the 0.75% standard rate.
+    auto setOut = qpayhub.setPromoRate(OPERATOR1, SELLER1, 50);
+    EXPECT_EQ(setOut.returnCode, QPAYHUB_OK);
+
+    auto rate = qpayhub.getPromoRate(SELLER1);
+    EXPECT_EQ(rate.feePermille, 50ULL);
+    EXPECT_EQ(rate.isPromo, 1);
+
+    // A different seller is unaffected - the override is per-seller, not global.
+    auto otherRate = qpayhub.getPromoRate(SELLER2);
+    EXPECT_EQ(otherRate.feePermille, QPAYHUB_FEE_PERMILLE);
+    EXPECT_EQ(otherRate.isPromo, 0);
+
+    // amount=1,000,000: standard fee would be 7500 (0.75%); the promo rate
+    // must actually be applied by Pay(), not just stored.
+    auto payOut = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 1000000);
+    EXPECT_EQ(payOut.returnCode, QPAYHUB_OK);
+    EXPECT_EQ(payOut.fee, 5000); // 0.50% of 1,000,000
+    EXPECT_LT(payOut.fee, 7500); // strictly cheaper than the standard rate
+}
+
+TEST(ContractQPayhub, SetPromoRateByNonOperatorRejectedAndRefunded)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->operatorId = OPERATOR1;
+    increaseEnergy(IMPOSTOR1, 10000000);
+
+    const sint64 balanceBefore = getBalance(IMPOSTOR1);
+    auto out = qpayhub.setPromoRate(IMPOSTOR1, SELLER1, 50, 1000);
+
+    EXPECT_EQ(out.returnCode, QPAYHUB_ERR_ACCESS_DENIED);
+    EXPECT_EQ(getBalance(IMPOSTOR1), balanceBefore);
+    EXPECT_EQ(qpayhub.getPromoRate(SELLER1).isPromo, 0); // rejected call never touched state
+}
+
+TEST(ContractQPayhub, SetPromoRateInvalidSellerRejected)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->operatorId = OPERATOR1;
+    increaseEnergy(OPERATOR1, 10000000);
+
+    EXPECT_EQ(qpayhub.setPromoRate(OPERATOR1, NULL_ID, 50).returnCode, QPAYHUB_ERR_INVALID_SELLER);
+    EXPECT_EQ(qpayhub.setPromoRate(OPERATOR1, QPAYHUB_CONTRACT_ID, 50).returnCode, QPAYHUB_ERR_INVALID_SELLER);
+}
+
+TEST(ContractQPayhub, SetPromoRateBelowFloorRejected)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->operatorId = OPERATOR1;
+    increaseEnergy(OPERATOR1, 10000000);
+
+    auto below = qpayhub.setPromoRate(OPERATOR1, SELLER1, QPAYHUB_PROMO_FLOOR_PERMILLE - 1);
+    EXPECT_EQ(below.returnCode, QPAYHUB_ERR_INVALID_RATE);
+    EXPECT_EQ(qpayhub.getPromoRate(SELLER1).isPromo, 0);
+
+    auto atFloor = qpayhub.setPromoRate(OPERATOR1, SELLER1, QPAYHUB_PROMO_FLOOR_PERMILLE);
+    EXPECT_EQ(atFloor.returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.getPromoRate(SELLER1).feePermille, QPAYHUB_PROMO_FLOOR_PERMILLE);
+}
+
+TEST(ContractQPayhub, SetPromoRateAboveStandardRejected)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->operatorId = OPERATOR1;
+    increaseEnergy(OPERATOR1, 10000000);
+
+    // A promo rate can only ever discount - never charge a seller MORE
+    // than the standard rate everyone else pays.
+    auto out = qpayhub.setPromoRate(OPERATOR1, SELLER1, QPAYHUB_FEE_PERMILLE + 1);
+    EXPECT_EQ(out.returnCode, QPAYHUB_ERR_INVALID_RATE);
+
+    // The standard rate itself is accepted (a no-op discount, but not an error).
+    auto atStandard = qpayhub.setPromoRate(OPERATOR1, SELLER1, QPAYHUB_FEE_PERMILLE);
+    EXPECT_EQ(atStandard.returnCode, QPAYHUB_OK);
+}
+
+TEST(ContractQPayhub, RemovePromoRateRevertsToStandardFee)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->operatorId = OPERATOR1;
+    increaseEnergy(OPERATOR1, 10000000);
+
+    ASSERT_EQ(qpayhub.setPromoRate(OPERATOR1, SELLER1, 50).returnCode, QPAYHUB_OK);
+    ASSERT_EQ(qpayhub.getPromoRate(SELLER1).isPromo, 1);
+
+    auto removeOut = qpayhub.removePromoRate(OPERATOR1, SELLER1);
+    EXPECT_EQ(removeOut.returnCode, QPAYHUB_OK);
+
+    auto rate = qpayhub.getPromoRate(SELLER1);
+    EXPECT_EQ(rate.feePermille, QPAYHUB_FEE_PERMILLE);
+    EXPECT_EQ(rate.isPromo, 0);
+
+    // Removing an already-absent entry is a clean not-found, not a crash.
+    auto removeAgain = qpayhub.removePromoRate(OPERATOR1, SELLER1);
+    EXPECT_EQ(removeAgain.returnCode, QPAYHUB_ERR_NOT_FOUND);
+}
+
+TEST(ContractQPayhub, RemovePromoRateByNonOperatorRejected)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->operatorId = OPERATOR1;
+    increaseEnergy(OPERATOR1, 10000000);
+    increaseEnergy(IMPOSTOR1, 10000000);
+    ASSERT_EQ(qpayhub.setPromoRate(OPERATOR1, SELLER1, 50).returnCode, QPAYHUB_OK);
+
+    auto out = qpayhub.removePromoRate(IMPOSTOR1, SELLER1);
+    EXPECT_EQ(out.returnCode, QPAYHUB_ERR_ACCESS_DENIED);
+    EXPECT_EQ(qpayhub.getPromoRate(SELLER1).isPromo, 1); // untouched
+}
+
+TEST(ContractQPayhub, PromoRateCapacityEnforcedButUpdatesAlwaysAllowed)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->operatorId = OPERATOR1;
+    increaseEnergy(OPERATOR1, 10000000);
+
+    // Fill every promo slot with distinct sellers.
+    id sellers[QPAYHUB_PROMO_CAPACITY];
+    for (uint64 i = 0; i < QPAYHUB_PROMO_CAPACITY; ++i)
+    {
+        sellers[i] = id::randomValue();
+        auto out = qpayhub.setPromoRate(OPERATOR1, sellers[i], 50);
+        ASSERT_EQ(out.returnCode, QPAYHUB_OK);
+    }
+    EXPECT_EQ(qpayhub.state()->promoFeePermille.population(), QPAYHUB_PROMO_CAPACITY);
+
+    // A brand-new seller is rejected once every slot is taken.
+    const id overflow = id::randomValue();
+    auto overflowOut = qpayhub.setPromoRate(OPERATOR1, overflow, 50);
+    EXPECT_EQ(overflowOut.returnCode, QPAYHUB_ERR_CAPACITY);
+    EXPECT_EQ(qpayhub.getPromoRate(overflow).isPromo, 0); // rejected, never inserted
+
+    // Updating an EXISTING seller's rate is a free overwrite - it must
+    // still succeed even while every slot is already taken.
+    auto updateOut = qpayhub.setPromoRate(OPERATOR1, sellers[0], 60);
+    EXPECT_EQ(updateOut.returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.getPromoRate(sellers[0]).feePermille, 60ULL);
+    EXPECT_EQ(qpayhub.state()->promoFeePermille.population(), QPAYHUB_PROMO_CAPACITY); // unchanged - no new slot consumed
+
+    // Removing one entry frees a slot for a genuinely new seller.
+    ASSERT_EQ(qpayhub.removePromoRate(OPERATOR1, sellers[0]).returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.state()->promoFeePermille.population(), QPAYHUB_PROMO_CAPACITY - 1);
+    EXPECT_EQ(qpayhub.setPromoRate(OPERATOR1, overflow, 50).returnCode, QPAYHUB_OK);
+}
+
+TEST(ContractQPayhub, ChangeOperatorByCurrentOperatorSucceeds)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->operatorId = OPERATOR1;
+    increaseEnergy(OPERATOR1, 10000000);
+    increaseEnergy(NEWOPERATOR1, 10000000);
+
+    auto out = qpayhub.changeOperator(OPERATOR1, NEWOPERATOR1);
+    EXPECT_EQ(out.returnCode, QPAYHUB_OK);
+
+    // The old operator can no longer administer promo rates; the new one can.
+    EXPECT_EQ(qpayhub.setPromoRate(OPERATOR1, SELLER1, 50).returnCode, QPAYHUB_ERR_ACCESS_DENIED);
+    EXPECT_EQ(qpayhub.setPromoRate(NEWOPERATOR1, SELLER1, 50).returnCode, QPAYHUB_OK);
+}
+
+TEST(ContractQPayhub, ChangeOperatorByRecoveryOverridesCompromisedOperator)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->operatorId = OPERATOR1;
+    qpayhub.state()->recoveryId = RECOVERY1;
+    increaseEnergy(OPERATOR1, 10000000);
+    increaseEnergy(RECOVERY1, 10000000);
+    increaseEnergy(NEWOPERATOR1, 10000000);
+
+    // recoveryId can reassign operatorId even without the current operator's
+    // cooperation - the emergency-override path this whole mechanism exists for.
+    auto out = qpayhub.changeOperator(RECOVERY1, NEWOPERATOR1);
+    EXPECT_EQ(out.returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.setPromoRate(NEWOPERATOR1, SELLER1, 50).returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.setPromoRate(OPERATOR1, SELLER2, 50).returnCode, QPAYHUB_ERR_ACCESS_DENIED); // old operator locked out
+}
+
+TEST(ContractQPayhub, ChangeOperatorByThirdPartyRejected)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->operatorId = OPERATOR1;
+    qpayhub.state()->recoveryId = RECOVERY1;
+    increaseEnergy(OPERATOR1, 10000000);
+    increaseEnergy(IMPOSTOR1, 10000000);
+
+    auto out = qpayhub.changeOperator(IMPOSTOR1, IMPOSTOR1);
+    EXPECT_EQ(out.returnCode, QPAYHUB_ERR_ACCESS_DENIED);
+    // Neither operator nor recovery changed.
+    EXPECT_EQ(qpayhub.setPromoRate(OPERATOR1, SELLER1, 50).returnCode, QPAYHUB_OK);
+}
+
+TEST(ContractQPayhub, ChangeOperatorRejectsNullNewOperator)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->operatorId = OPERATOR1;
+    increaseEnergy(OPERATOR1, 10000000);
+
+    auto out = qpayhub.changeOperator(OPERATOR1, NULL_ID);
+    EXPECT_EQ(out.returnCode, QPAYHUB_ERR_INVALID_SELLER);
+    EXPECT_EQ(qpayhub.setPromoRate(OPERATOR1, SELLER1, 50).returnCode, QPAYHUB_OK); // operator unchanged
 }

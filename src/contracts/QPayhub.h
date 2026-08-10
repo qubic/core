@@ -46,7 +46,15 @@ using namespace QPI;
 //   nets a seller 900 QU under this fee once routed through QPAY (0.75% of
 //   1000 is 7, so the 100 QU floor applies). Anyone pricing per-call
 //   sales through QPAY should be aware the floor, not the percentage,
-//   dominates below 10,000 QU.
+//   dominates below 13,334 QU.
+//
+//   PROMO RATES ADDITION: a specific seller can be given a discounted rate
+//   below QPAYHUB_FEE_PERMILLE via SetPromoRate (search PROMO RATES ADDITION
+//   below). This is the one on-chain concession to the admin-free design
+//   described below - see that section for the operator/recovery model and
+//   why the discount is bounded rather than open-ended. The 100 QU floor is
+//   untouched by a promo rate; only the percentage is discounted, never the
+//   dust floor.
 //
 // TEST STATUS (append-only, keep accurate)
 //   Pay/Consume/GetReceipt/ComputeReceiptKey/GetInfo/END_EPOCH/
@@ -70,6 +78,12 @@ using namespace QPI;
 //   to contract/test/contract_qpay.cpp for floor-dominates, percent-
 //   dominates, and the exact-tie amount, modeled directly on the existing
 //   PayHappyPathFeeSplitAcrossAmounts test - reviewed by hand, not run.
+//   SetPromoRate/RemovePromoRate/ChangeOperator/GetPromoRate and Pay's
+//   promo-rate lookup (search PROMO RATES ADDITION below): ported from
+//   profitphil/qubic-x402 PR #3 (feature/qpay-promo-rates), reviewed for
+//   access-control/bounds correctness, and re-tested against this file's
+//   own GoogleTest suite (test/contract_qpayhub.cpp) - see that file's
+//   Promo/Operator/Recovery test cases.
 //
 // WHY THE ORACLE ADDITIONS EXIST
 //   src/priceOracle.js (the off-chain USD->QU pricing used by the POS/
@@ -95,6 +109,23 @@ using namespace QPI;
 //   procedure body, so ANYONE can permissionlessly call it (e.g. to renew
 //   an expired subscription) without being able to redirect the feed to a
 //   bogus source. Permissionless renewal, not permissioned control.
+//
+//   UPDATE - PROMO RATES ADDITION: this is no longer fully accurate. A
+//   merchant promo-pricing feature (early-adopter discounted rates) needed
+//   a real privileged actor - there is no way to single out one seller for
+//   a better rate without someone authorized to say which seller and what
+//   rate. Rather than pretend that requirement doesn't exist, it is scoped
+//   as tightly as this file's other design choices are: two keys, not one -
+//   operatorId (day-to-day SetPromoRate/RemovePromoRate) and recoveryId
+//   (can only reassign operatorId via ChangeOperator, so a compromised
+//   operator key can be rotated out without redeploying the contract).
+//   Neither key can push a seller's rate below QPAYHUB_PROMO_FLOOR_PERMILLE
+//   - that floor is a hardcoded constexpr, not admin-settable, specifically
+//   so a compromised or malicious key's worst case is bounded and known in
+//   advance rather than "the operator can waive fees entirely." Every
+//   promo rate is publicly readable via GetPromoRate - discounted pricing
+//   is visible on-chain, not a private side deal. See PROMO RATES ADDITION
+//   below for the full mechanism.
 //
 // VERIFIED BEFORE WRITING THIS:
 //   - The oracle interaction pattern (QUERY_ORACLE/SUBSCRIBE_ORACLE macros,
@@ -143,6 +174,13 @@ constexpr sint64 QPAYHUB_EXEC_RESERVE = 1000000;   // never distributed, QU
 constexpr uint64 QPAYHUB_DIVIDEND_SHAREHOLDER_PERMILLE = 100;   // 100 per 1000 = 10%
 constexpr uint64 QPAYHUB_TOKEN_ASSETNAME = 1497452625ULL;       // "QPAY"
 
+// ---- PROMO RATES ADDITION: constants ----
+// A promo rate can only ever discount, never below this floor and never
+// above the standard rate - see the header's UPDATE - PROMO RATES ADDITION
+// note above for why this is hardcoded rather than admin-settable.
+constexpr uint64 QPAYHUB_PROMO_CAPACITY = 32; // concurrent promo sellers; grow via redeploy, not a live concern at launch scale
+constexpr uint64 QPAYHUB_PROMO_FLOOR_PERMILLE = 25; // 25 per 10000 = 0.25 percent, the deepest discount any operator key can grant
+
 // ---- ORACLE PRICE FEED ADDITIONS: constants ----
 // A 16-minute renewal period sits in the efficient tier of the fee table
 // (1,784 QU) - frequent enough for an invoice payment window, rare
@@ -161,6 +199,8 @@ constexpr uint32 QPAYHUB_PRICE_STALE_TICKS = 4000; // roughly 20-25 min at curre
 static_assert((QPAYHUB_RECEIPT_CAPACITY & (QPAYHUB_RECEIPT_CAPACITY - 1)) == 0);
 static_assert(QPAYHUB_FEE_PERMILLE < 10000);
 static_assert(QPAYHUB_DIVIDEND_SHAREHOLDER_PERMILLE <= 1000);
+static_assert((QPAYHUB_PROMO_CAPACITY & (QPAYHUB_PROMO_CAPACITY - 1)) == 0);
+static_assert(QPAYHUB_PROMO_FLOOR_PERMILLE <= QPAYHUB_FEE_PERMILLE);
 
 // Return codes — append-only, never renumber.
 constexpr uint64 QPAYHUB_OK = 0;
@@ -173,6 +213,7 @@ constexpr uint64 QPAYHUB_ERR_ACCESS_DENIED = 6;
 constexpr uint64 QPAYHUB_ERR_ALREADY_CONSUMED = 7;
 constexpr uint64 QPAYHUB_ERR_ALREADY_SUBSCRIBED = 8;
 constexpr uint64 QPAYHUB_ERR_SUBSCRIBE_FAILED = 9;
+constexpr uint64 QPAYHUB_ERR_INVALID_RATE = 10; // SetPromoRate's feePermille outside [QPAYHUB_PROMO_FLOOR_PERMILLE, QPAYHUB_FEE_PERMILLE]
 
 struct QPAYHUB2
 {
@@ -227,6 +268,14 @@ struct QPAYHUB : public ContractBase
         Asset  dividendToken;
         uint64 totalShareholderDividends;
         uint64 totalTokenholderDividends;
+
+        // ---- PROMO RATES ADDITION: state ----
+        // operatorId: day-to-day SetPromoRate/RemovePromoRate caller.
+        // recoveryId: can ONLY call ChangeOperator - narrow on purpose, see
+        // header note above. Both fixed in INITIALIZE to real identities.
+        id operatorId;
+        id recoveryId;
+        HashMap<id, uint64, QPAYHUB_PROMO_CAPACITY> promoFeePermille;
     };
 
     // ------------------------------------------------------------------
@@ -254,6 +303,7 @@ struct QPAYHUB : public ContractBase
         sint64 amount;
         sint64 fee;
         sint64 net;
+        uint64 feePermille; // QPAYHUB_FEE_PERMILLE, or this seller's promo rate if one is set - PROMO RATES ADDITION
     };
 
     struct Consume_input
@@ -376,6 +426,50 @@ struct QPAYHUB : public ContractBase
         OI::Price::OracleReply reply;
     };
 
+    // ---- PROMO RATES ADDITION: I/O structs ----
+
+    struct GetPromoRate_input
+    {
+        id seller;
+    };
+    struct GetPromoRate_output
+    {
+        uint64 feePermille; // this seller's effective rate right now
+        bit isPromo;        // 1 = feePermille came from promoFeePermille, 0 = it's the standard QPAYHUB_FEE_PERMILLE
+    };
+    struct GetPromoRate_locals
+    {
+        uint64 rate;
+    };
+
+    struct SetPromoRate_input
+    {
+        id seller;
+        uint64 feePermille;
+    };
+    struct SetPromoRate_output
+    {
+        uint64 returnCode;
+    };
+
+    struct RemovePromoRate_input
+    {
+        id seller;
+    };
+    struct RemovePromoRate_output
+    {
+        uint64 returnCode;
+    };
+
+    struct ChangeOperator_input
+    {
+        id newOperator;
+    };
+    struct ChangeOperator_output
+    {
+        uint64 returnCode;
+    };
+
     // ------------------------------------------------------------------
     // Functions (read-only)
     // ------------------------------------------------------------------
@@ -446,6 +540,24 @@ struct QPAYHUB : public ContractBase
         output.stale = (locals.age > QPAYHUB_PRICE_STALE_TICKS) ? 1 : 0;
     }
 
+    // ---- PROMO RATES ADDITION: read function ----
+    // Permissionless, like every other read in this file - a promo rate is
+    // a public fact about a seller, not a private arrangement between that
+    // seller and the operator.
+    PUBLIC_FUNCTION_WITH_LOCALS(GetPromoRate)
+    {
+        if (state.get().promoFeePermille.get(input.seller, locals.rate))
+        {
+            output.feePermille = locals.rate;
+            output.isPromo = 1;
+        }
+        else
+        {
+            output.feePermille = QPAYHUB_FEE_PERMILLE;
+            output.isPromo = 0;
+        }
+    }
+
     // ------------------------------------------------------------------
     // Procedures
     // ------------------------------------------------------------------
@@ -494,9 +606,19 @@ struct QPAYHUB : public ContractBase
             return;
         }
 
-        // 0.75% or QPAYHUB_FEE_FLOOR_QU, whichever is greater. Floor and
-        // minimum are both 100, so a payment at the minimum nets the seller zero.
-        locals.fee = (sint64)div((uint64)locals.amount * QPAYHUB_FEE_PERMILLE, (uint64)10000);
+        // PROMO RATES ADDITION: a seller with an entry in promoFeePermille
+        // pays that rate instead of the standard QPAYHUB_FEE_PERMILLE. The
+        // 100 QU floor below applies either way - a promo rate only
+        // discounts the percentage, never the dust floor.
+        if (!state.get().promoFeePermille.get(input.seller, locals.feePermille))
+        {
+            locals.feePermille = QPAYHUB_FEE_PERMILLE;
+        }
+
+        // 0.75% (or the seller's promo rate) or QPAYHUB_FEE_FLOOR_QU,
+        // whichever is greater. Floor and minimum are both 100, so a
+        // payment at the minimum nets the seller zero.
+        locals.fee = (sint64)div((uint64)locals.amount * locals.feePermille, (uint64)10000);
         if (locals.fee < QPAYHUB_FEE_FLOOR_QU)
         {
             locals.fee = QPAYHUB_FEE_FLOOR_QU;
@@ -625,6 +747,95 @@ struct QPAYHUB : public ContractBase
         output.returnCode = QPAYHUB_OK;
     }
 
+    // ---- PROMO RATES ADDITION: operator-gated procedures ----
+    // operatorId-only. feePermille is clamped to
+    // [QPAYHUB_PROMO_FLOOR_PERMILLE, QPAYHUB_FEE_PERMILLE] - never below the
+    // hardcoded floor, and never above the standard rate (this is a discount
+    // mechanism, not a way to charge one seller more than everyone else).
+    PUBLIC_PROCEDURE(SetPromoRate)
+    {
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+        if (qpi.invocator() != state.get().operatorId)
+        {
+            output.returnCode = QPAYHUB_ERR_ACCESS_DENIED;
+            return;
+        }
+        if (input.seller == NULL_ID || input.seller == SELF)
+        {
+            output.returnCode = QPAYHUB_ERR_INVALID_SELLER;
+            return;
+        }
+        if (input.feePermille < QPAYHUB_PROMO_FLOOR_PERMILLE || input.feePermille > QPAYHUB_FEE_PERMILLE)
+        {
+            output.returnCode = QPAYHUB_ERR_INVALID_RATE;
+            return;
+        }
+        // Only a NEW seller consumes a capacity slot; updating an existing
+        // seller's rate is a plain overwrite and always allowed.
+        if (!state.get().promoFeePermille.contains(input.seller)
+            && state.get().promoFeePermille.population() >= QPAYHUB_PROMO_CAPACITY)
+        {
+            output.returnCode = QPAYHUB_ERR_CAPACITY;
+            return;
+        }
+        state.mut().promoFeePermille.set(input.seller, input.feePermille);
+        output.returnCode = QPAYHUB_OK;
+    }
+
+    // operatorId-only. Reverting a seller to the standard rate is always
+    // free of the capacity check above - it can only shrink the table.
+    PUBLIC_PROCEDURE(RemovePromoRate)
+    {
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+        if (qpi.invocator() != state.get().operatorId)
+        {
+            output.returnCode = QPAYHUB_ERR_ACCESS_DENIED;
+            return;
+        }
+        if (!state.get().promoFeePermille.contains(input.seller))
+        {
+            output.returnCode = QPAYHUB_ERR_NOT_FOUND;
+            return;
+        }
+        state.mut().promoFeePermille.removeByKey(input.seller);
+        output.returnCode = QPAYHUB_OK;
+    }
+
+    // Callable by the CURRENT operator (planned rotation, e.g. moving to a
+    // new wallet) or by recoveryId (emergency override when the operator
+    // key is lost or compromised and cannot be trusted to rotate itself).
+    // recoveryId itself is fixed in INITIALIZE and has no procedure that
+    // can ever change it - rotating recoveryId requires a redeploy, same
+    // tier of rare as changing QPAYHUB_FEE_PERMILLE itself. See the
+    // header's UPDATE - PROMO RATES ADDITION note for why this is
+    // deliberately not a single self-reassigning key.
+    PUBLIC_PROCEDURE(ChangeOperator)
+    {
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+        if (qpi.invocator() != state.get().operatorId
+            && qpi.invocator() != state.get().recoveryId)
+        {
+            output.returnCode = QPAYHUB_ERR_ACCESS_DENIED;
+            return;
+        }
+        if (input.newOperator == NULL_ID)
+        {
+            output.returnCode = QPAYHUB_ERR_INVALID_SELLER;
+            return;
+        }
+        state.mut().operatorId = input.newOperator;
+        output.returnCode = QPAYHUB_OK;
+    }
+
     // ---- ORACLE PRICE FEED ADDITIONS: notification callback ----
     // Fires whenever the subscription produces a new reply. Only a
     // confirmed SUCCESS with a sane reply updates state - everything else
@@ -655,10 +866,14 @@ struct QPAYHUB : public ContractBase
         REGISTER_USER_FUNCTION(ComputeReceiptKey, 2);
         REGISTER_USER_FUNCTION(GetInfo, 3);
         REGISTER_USER_FUNCTION(GetQuUsdPrice, 4);
+        REGISTER_USER_FUNCTION(GetPromoRate, 5);
 
         REGISTER_USER_PROCEDURE(Pay, 1);
         REGISTER_USER_PROCEDURE(Consume, 2);
         REGISTER_USER_PROCEDURE(SubscribeToPriceFeed, 3);
+        REGISTER_USER_PROCEDURE(SetPromoRate, 4);
+        REGISTER_USER_PROCEDURE(RemovePromoRate, 5);
+        REGISTER_USER_PROCEDURE(ChangeOperator, 6);
 
         REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyQuUsdPriceReply);
     }
@@ -668,17 +883,43 @@ struct QPAYHUB : public ContractBase
         state.mut().priceOracleSubscriptionId = -1;
         state.mut().quUsdDenominator = 0; // 0 = no price known yet, GetQuUsdPrice reports stale
 
-        // DEVNET issuer - must be re-pointed before mainnet deployment.
+        // QPAY token issuer: QPAYNOWSWZMGHFEAEVJXGZAVSHABAZDDBDIHTEBOPCOGHRGBCYCUZOHCVLXG
         state.mut().dividendToken.issuer = ID(
-            _Q, _D, _O, _G, _E, _E, _E, _S,
-            _K, _Y, _P, _A, _I, _C, _E, _C,
-            _H, _E, _A, _H, _O, _X, _P, _U,
-            _L, _E, _O, _A, _D, _T, _K, _G,
-            _E, _J, _H, _A, _V, _Y, _P, _F,
-            _K, _H, _L, _E, _W, _G, _X, _X,
-            _Z, _Q, _U, _G, _I, _G, _M, _B
+            _Q, _P, _A, _Y, _N, _O, _W, _S,
+            _W, _Z, _M, _G, _H, _F, _E, _A,
+            _E, _V, _J, _X, _G, _Z, _A, _V,
+            _S, _H, _A, _B, _A, _Z, _D, _D,
+            _B, _D, _I, _H, _T, _E, _B, _O,
+            _P, _C, _O, _G, _H, _R, _G, _B,
+            _C, _Y, _C, _U, _Z, _O, _H, _C
         );
         state.mut().dividendToken.assetName = QPAYHUB_TOKEN_ASSETNAME;
+
+        // ---- PROMO RATES ADDITION: operator/recovery init ----
+        // Real identities ported from profitphil/qubic-x402 PR #3 - NOT
+        // independently verifiable against their intended 60-character
+        // source identities the way the QPAY issuer above was (that one
+        // was cross-checked against a string this session was given
+        // directly). Re-verify both before relying on them for a live
+        // deployment.
+        state.mut().operatorId = ID(
+            _I, _Q, _D, _Z, _L, _W, _S, _S,
+            _Q, _O, _G, _R, _F, _D, _W, _D,
+            _I, _N, _C, _E, _O, _Q, _W, _H,
+            _M, _F, _A, _A, _Z, _C, _G, _T,
+            _N, _E, _R, _H, _A, _Z, _K, _F,
+            _M, _A, _G, _L, _E, _J, _I, _Z,
+            _I, _K, _O, _E, _Z, _X, _Y, _G
+        );
+        state.mut().recoveryId = ID(
+            _L, _A, _W, _L, _X, _E, _I, _B,
+            _Q, _H, _G, _W, _O, _G, _K, _U,
+            _F, _K, _X, _Q, _L, _B, _K, _Q,
+            _D, _M, _Z, _A, _I, _J, _Z, _L,
+            _V, _E, _U, _C, _T, _F, _B, _C,
+            _D, _A, _Z, _M, _N, _C, _S, _W,
+            _W, _J, _Q, _Y, _L, _J, _C, _B
+        );
     }
 
     POST_INCOMING_TRANSFER()
