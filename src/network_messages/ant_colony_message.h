@@ -10,7 +10,7 @@
 // nonce would put a polling miner in contention with every other operator command.
 //
 // Paginated via fromIndex / nextIndex.
-struct RequestAntMineableParents
+struct RequestAntIdentityTree
 {
     // Whose tree to report. Usually the caller's own.
     m256i pubkey;
@@ -19,10 +19,10 @@ struct RequestAntMineableParents
     unsigned int padding;
     static constexpr unsigned char type()
     {
-        return REQUEST_ANT_MINEABLE_PARENTS;
+        return REQUEST_ANT_IDENTITY_TREE;
     }
 };
-static_assert(sizeof(RequestAntMineableParents) == 40, "RequestAntMineableParents unexpected size");
+static_assert(sizeof(RequestAntIdentityTree) == 40, "RequestAntIdentityTree unexpected size");
 
 // A pool miner hands its computor a solution over BroadcastMessage(MESSAGE_TYPE_ANT_SOLUTION); this
 // is the payload that follows the header.
@@ -36,12 +36,12 @@ struct AntSolutionBroadcastPayload
 };
 static_assert(sizeof(AntSolutionBroadcastPayload) == 48, "AntSolutionBroadcastPayload unexpected size");
 
-// Max mineable-parent entries returned per response. Miners page through the
+// Max identity-tree nodes returned per response. Miners page through the
 // rest via the nextIndex cursor.
-constexpr unsigned int ANT_MINEABLE_PARENTS_PER_RESPONSE = 64;
+constexpr unsigned int ANT_IDENTITY_TREE_NODES_PER_RESPONSE = 64;
 
 // Max records scanned per request
-constexpr unsigned int ANT_MINEABLE_PARENTS_SCAN_BUDGET = 1024;
+constexpr unsigned int ANT_IDENTITY_TREE_SCAN_BUDGET = 1024;
 
 // One stored node of the requested identity's tree. selfTickOffset/selfSolutionIndexInTick is the
 // ref a child sets as its own parentRef to extend this node; parentTickOffset/parentSolutionIndexInTick
@@ -50,7 +50,7 @@ constexpr unsigned int ANT_MINEABLE_PARENTS_SCAN_BUDGET = 1024;
 // The score is an error count, so smaller is better: a child must score strictly below score.
 // childCount is how many children this node already holds, capped at ANT_MAX_CHILDREN_PER_PARENT; at
 // the cap it takes no more children (0 for the cap means unbound).
-struct AntMineableParent
+struct AntIdentityTreeNode
 {
     unsigned int selfTickOffset;
     unsigned int selfSolutionIndexInTick;
@@ -61,36 +61,36 @@ struct AntMineableParent
     unsigned int anchorTick;            // this node's own anchor tick number
     unsigned int depth;
 };
-static_assert(sizeof(AntMineableParent) == 32, "AntMineableParent unexpected size");
+static_assert(sizeof(AntIdentityTreeNode) == 32, "AntIdentityTreeNode unexpected size");
 
-// Metadata header only; followed by count * AntMineableParent (count * itemSize
+// Metadata header only; followed by count * AntIdentityTreeNode (count * itemSize
 // bytes). itemSize lets the receiver validate the payload without hardcoding the
 // entry size.
-struct RespondAntMineableParentsHeader
+struct RespondAntIdentityTreeHeader
 {
-    // Number of AntMineableParent entries that follow this header.
+    // Number of AntIdentityTreeNode entries that follow this header.
     unsigned int count;
-    // Size in bytes of one AntMineableParent entry.
+    // Size in bytes of one AntIdentityTreeNode entry.
     unsigned int itemSize;
     // Resume cursor for the next request; 0 means no more records.
     unsigned int nextIndex;
     static constexpr unsigned char type()
     {
-        return RESPOND_ANT_MINEABLE_PARENTS;
+        return RESPOND_ANT_IDENTITY_TREE;
     }
 };
-static_assert(sizeof(RespondAntMineableParentsHeader) == 12, "RespondAntMineableParentsHeader unexpected size");
+static_assert(sizeof(RespondAntIdentityTreeHeader) == 12, "RespondAntIdentityTreeHeader unexpected size");
 
-// The largest a mineable-parents response can be, the header followed by a full page of entries
-struct AntMineableParentsResponse
+// The largest an identity-tree response can be, the header followed by a full page of entries
+struct AntIdentityTreeResponse
 {
-    RespondAntMineableParentsHeader header;
-    AntMineableParent items[ANT_MINEABLE_PARENTS_PER_RESPONSE];
+    RespondAntIdentityTreeHeader header;
+    AntIdentityTreeNode items[ANT_IDENTITY_TREE_NODES_PER_RESPONSE];
 };
-static_assert(sizeof(AntMineableParentsResponse)
-    == sizeof(RespondAntMineableParentsHeader)
-     + ANT_MINEABLE_PARENTS_PER_RESPONSE * sizeof(AntMineableParent),
-    "AntMineableParentsResponse must have no padding between the header and the items");
+static_assert(sizeof(AntIdentityTreeResponse)
+    == sizeof(RespondAntIdentityTreeHeader)
+     + ANT_IDENTITY_TREE_NODES_PER_RESPONSE * sizeof(AntIdentityTreeNode),
+    "AntIdentityTreeResponse must have no padding between the header and the items");
 
 // RespondAntParentAnnHeader.status values.
 constexpr unsigned char ANT_PARENT_ANN_STATUS_OK = 0;        // ANN bytes follow the header
@@ -98,8 +98,8 @@ constexpr unsigned char ANT_PARENT_ANN_STATUS_NOT_FOUND = 1; // parentRef has no
 constexpr unsigned char ANT_PARENT_ANN_STATUS_IS_ROOT = 2;   // ROOT_REF; no ANN payload - miner derives its own per-identity root
 
 // ONE tree node's stored network, named by parentRef - the ANN state a miner mutates to extend
-// that node. The tree itself is listed by mineable-parents; this fetches the material for a single
-// chosen parent.
+// that node. The tree itself is listed by the identity-tree query; this fetches the material for a
+// single chosen parent.
 // Operator-signed: the request payload is followed by SIGNATURE_SIZE bytes signed by
 // operatorPublicKey
 struct RequestAntParentAnn
@@ -153,9 +153,7 @@ struct RespondAntEpochContext
     m256i spectrumDigest;
     // score threshold for this epoch
     unsigned int threshold;
-    // ANT_PUBLISH_WINDOW_TICKS: publish within this many ticks of the anchor. The sibling
-    // no-compete band is a separate constant and is not reported here - mineable-parents already
-    // returns the computed floor per parent, so a miner never needs to derive it.
+    // ANT_PUBLISH_WINDOW_TICKS: publish within this many ticks of the anchor.
     unsigned int freshnessWindow;
     // accepted solutions so far this epoch
     unsigned int solutionCount;

@@ -1782,7 +1782,7 @@ static void processRequestContractFunction(Peer* peer, const unsigned long long 
 }
 
 // One response buffer per processor
-static AntMineableParentsResponse gAntMineableParentsResponseBuffer[MAX_NUMBER_OF_PROCESSORS];
+static AntIdentityTreeResponse gAntIdentityTreeResponseBuffer[MAX_NUMBER_OF_PROCESSORS];
 
 struct AntParentAnnResponse
 {
@@ -1815,23 +1815,23 @@ static void processRequestAntEpochContext(Peer* peer, RequestResponseHeader* hea
 // caller can never use.
 //
 // Paged, because the store holds millions and a response is one datagram - the cursor is a record
-// index, and ANT_MINEABLE_PARENTS_SCAN_BUDGET caps how far one request may scan, so a caller cannot
+// index, and ANT_IDENTITY_TREE_SCAN_BUDGET caps how far one request may scan, so a caller cannot
 // walk the whole store in a single call. Sweeping a full store therefore costs many requests; the
 // alternative, walking the identity's tree through the head maps, needs a resumable cursor that does
 // not fit a record index, and the scan is cache-friendly where a chain walk is not.
 //
 // Operator-signed
-static void processRequestAntMineableParents(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
+static void processRequestAntIdentityTree(unsigned long long processorNumber, Peer* peer, RequestResponseHeader* header)
 {
     if (processorNumber >= MAX_NUMBER_OF_PROCESSORS)
     {
         return;
     }
-    if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestAntMineableParents) + SIGNATURE_SIZE)
+    if (header->size() != sizeof(RequestResponseHeader) + sizeof(RequestAntIdentityTree) + SIGNATURE_SIZE)
     {
         return;
     }
-    const RequestAntMineableParents* request = header->getPayload<RequestAntMineableParents>();
+    const RequestAntIdentityTree* request = header->getPayload<RequestAntIdentityTree>();
 
     // Signature check
     unsigned char digest[32];
@@ -1842,17 +1842,17 @@ static void processRequestAntMineableParents(unsigned long long processorNumber,
         return;
     }
 
-    AntMineableParentsResponse& response = gAntMineableParentsResponseBuffer[processorNumber];
+    AntIdentityTreeResponse& response = gAntIdentityTreeResponseBuffer[processorNumber];
     setMem(&response, sizeof(response), 0);
-    response.header.itemSize = (unsigned int)sizeof(AntMineableParent);
+    response.header.itemSize = (unsigned int)sizeof(AntIdentityTreeNode);
 
     const unsigned int total = gAntColony.solutionCount();
 
     unsigned int idx = request->fromIndex;
     unsigned int scanned = 0;
     while (idx < total
-        && response.header.count < ANT_MINEABLE_PARENTS_PER_RESPONSE
-        && scanned < ANT_MINEABLE_PARENTS_SCAN_BUDGET)
+        && response.header.count < ANT_IDENTITY_TREE_NODES_PER_RESPONSE
+        && scanned < ANT_IDENTITY_TREE_SCAN_BUDGET)
     {
         const AntSolutionRecord* rec = gAntColony.recordAt(idx);
         if (rec == nullptr)
@@ -1866,7 +1866,7 @@ static void processRequestAntMineableParents(unsigned long long processorNumber,
             continue;
         }
 
-        AntMineableParent& item = response.items[response.header.count];
+        AntIdentityTreeNode& item = response.items[response.header.count];
         item.selfTickOffset = rec->selfRef.tickOffset;
         item.selfSolutionIndexInTick = rec->selfRef.solutionIndexInTick;
         item.parentTickOffset = rec->parentRef.tickOffset;
@@ -1883,8 +1883,8 @@ static void processRequestAntMineableParents(unsigned long long processorNumber,
     response.header.nextIndex = (idx < total) ? idx : 0;
 
     enqueueResponse(peer,
-        (unsigned int)sizeof(response.header) + response.header.count * (unsigned int)sizeof(AntMineableParent),
-        RespondAntMineableParentsHeader::type(), header->dejavu(), &response);
+        (unsigned int)sizeof(response.header) + response.header.count * (unsigned int)sizeof(AntIdentityTreeNode),
+        RespondAntIdentityTreeHeader::type(), header->dejavu(), &response);
 }
 
 // One stored node's network, for the pool that is about to mine a child of it
@@ -2722,9 +2722,9 @@ static void requestProcessor(void* ProcedureArgument)
                 }
                 break;
 
-                case RequestAntMineableParents::type():
+                case RequestAntIdentityTree::type():
                 {
-                    processRequestAntMineableParents(processorNumber, peer, header);
+                    processRequestAntIdentityTree(processorNumber, peer, header);
                 }
                 break;
 
