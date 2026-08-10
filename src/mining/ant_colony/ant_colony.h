@@ -223,6 +223,10 @@ static constexpr unsigned long long ANT_CHILD_HEAD_BY_MINER_SIZE = 2ULL * MAX_NU
 // simply the lowest N scores of the epoch - not one per identity, and not tied to the ranking
 static constexpr unsigned int ANT_EXPORT_MAX_SOLUTIONS = NUMBER_OF_COMPUTORS;
 
+// Serial scratch for the save/load header (meta + anchor ring + export set) and the solution export.
+// In case of this grow to large, consider use the one in common buffer
+static constexpr unsigned long long ANT_SNAPSHOT_SCRATCH_BYTES = 2ULL * 1024 * 1024; // 2MB
+
 // Anchor digests for recent ticks, indexed by tick & (size - 1). Smallest power of two holding
 // 2*(N+1) entries so a lookup inside the freshness window can never be aliased by a newer tick.
 static constexpr unsigned int antAnchorRingSize(unsigned int window)
@@ -558,6 +562,9 @@ private:
 
     ReplayEntry* _replayCache;
     volatile char _replayCacheLock;
+
+    // Serial scratch for save/load and the solution export
+    unsigned char* _snapshotScratch;
     unsigned int _replayCacheOccupancy;
 
     unsigned int _solutionCount;
@@ -620,6 +627,11 @@ inline bool AntColony<ScoreT>::init()
     {
         return false;
     }
+    if (!allocPoolWithErrorLog(L"AntColony::_snapshotScratch",
+        ANT_SNAPSHOT_SCRATCH_BYTES, (void**)&_snapshotScratch, __LINE__))
+    {
+        return false;
+    }
 
     reset();
     clearReplayCache();
@@ -629,6 +641,10 @@ inline bool AntColony<ScoreT>::init()
 template<typename ScoreT>
 inline void AntColony<ScoreT>::deinit()
 {
+    if (_snapshotScratch)
+    {
+        freePool(_snapshotScratch);
+    }
     if (_replayCache)
     {
         freePool(_replayCache);
@@ -889,13 +905,10 @@ inline bool AntColony<ScoreT>::exportBestSolutions(unsigned short epoch, CHAR16*
             == (long long)sizeof(header);
     }
 
+    static_assert(sizeof(AntColonyExportHeader) + (unsigned long long)ANT_EXPORT_MAX_SOLUTIONS * sizeof(Entry)
+        <= ANT_SNAPSHOT_SCRATCH_BYTES, "ant solution export exceeds the scratch buffer");
     const unsigned long long totalBytes = sizeof(header) + (unsigned long long)set.count * sizeof(Entry);
-    unsigned char* buffer = nullptr;
-    if (!allocPoolWithErrorLog(L"AntColony::export", totalBytes, (void**)&buffer, __LINE__))
-    {
-        logToConsole(L"[ant-colony] no memory for the solution export, harvest for this epoch is lost");
-        return false;
-    }
+    unsigned char* buffer = _snapshotScratch;
 
     copyMem(buffer, &header, sizeof(header));
     Entry* out = (Entry*)(buffer + sizeof(header));
@@ -909,7 +922,6 @@ inline bool AntColony<ScoreT>::exportBestSolutions(unsigned short epoch, CHAR16*
     }
 
     const long long saved = save(ANT_COLONY_SOLUTIONS_EOE_FILENAME, totalBytes, buffer, directory);
-    freePool(buffer);
 
     if (saved != (long long)totalBytes)
     {
@@ -947,7 +959,7 @@ inline bool AntColony<ScoreT>::getAnchorDigest(unsigned int tick, m256i& digest)
         return false;
     }
     const unsigned int slot = tick & (ANT_ANCHOR_RING_SIZE - 1);
-    // Seqlock read: the tick is loaded atomically before and after the digest copy, so a re-check
+    // Seqlock read, the tick is loaded atomically before and after the digest copy, so a re-check
     // that still sees the same tick means the digest was not overwritten mid-copy.
     if ((unsigned int)ATOMIC_LOAD32(_anchors->ticks[slot]) != tick)
     {
