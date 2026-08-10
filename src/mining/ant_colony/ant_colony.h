@@ -14,6 +14,42 @@
 #include "mining/mining.h"
 #include "mining/trit_pack.h"
 
+// The keyed structures are twice the population they index.
+static constexpr unsigned long long ANT_DEDUP_SIZE = 2ULL * ANT_MAX_NODES_PER_EPOCH;
+// At most one key per record, and records are capped, so load stays at or below 50% and set() cannot fail.
+static constexpr unsigned long long ANT_CHILD_HEAD_BY_PARENT_SIZE = 2ULL * ANT_MAX_NODES_PER_EPOCH;
+static_assert(ANT_CHILD_HEAD_BY_PARENT_SIZE >= 2ULL * ANT_MAX_NODES_PER_EPOCH,
+    "child-head-by-parent map must stay at or below 50% load so its set() cannot fail");
+// One entry per identity holding a tree. Unlike the map above, nothing caps how many identities
+// submit, so this one CAN fill - commit() fails closed with RejectMinerIndexFull.
+static constexpr unsigned long long ANT_CHILD_HEAD_BY_MINER_SIZE = 2ULL * MAX_NUMBER_OF_MINERS;
+
+// How many ANN the epoch's harvest keeps. The target is the LUT with the best error, so this is
+// simply the lowest N scores of the epoch - not one per identity, and not tied to the ranking
+static constexpr unsigned int ANT_EXPORT_MAX_SOLUTIONS = NUMBER_OF_COMPUTORS;
+
+// Serial scratch for the save/load header (meta + anchor ring + export set) and the solution export.
+// In case of this grow to large, consider use the one in common buffer
+static constexpr unsigned long long ANT_SNAPSHOT_SCRATCH_BYTES = 2ULL * 1024 * 1024; // 2MB
+
+static constexpr unsigned int NO_SIBLING = 0xFFFFFFFFU;
+static constexpr unsigned int WORST_SCORE = 0xFFFFFFFFU;
+static constexpr long long ANT_INVALID_INDEX = -1;
+
+// Anchor digests for recent ticks, indexed by tick & (size - 1). Smallest power of two holding
+// 2*(N+1) entries so a lookup inside the freshness window can never be aliased by a newer tick.
+static constexpr unsigned int antAnchorRingSize(unsigned int window)
+{
+    unsigned int size = 1;
+    while (size < 2u * (window + 1u))
+    {
+        size <<= 1;
+    }
+    return size;
+}
+static constexpr unsigned int ANT_ANCHOR_RING_SIZE = antAnchorRingSize(ANT_PUBLISH_WINDOW_TICKS);
+static constexpr unsigned int ANT_ANCHOR_TICK_NONE = 0xFFFFFFFFU;
+
 // (tickOffset, solutionIndexInTick), epoch-relative tick plus the solution transaction's index in tick
 struct SolutionRef
 {
@@ -60,9 +96,6 @@ struct AntSolutionRecord
     unsigned int annStateSlot;    // index into the ANN pool; always equals the record index
     unsigned int nextSiblingIdx;  // next child of the same parent, NO_SIBLING terminates
 };
-static constexpr unsigned int NO_SIBLING = 0xFFFFFFFFu;
-static constexpr unsigned int WORST_SCORE = 0xFFFFFFFFu;
-static constexpr long long ANT_INVALID_INDEX = -1;
 static_assert(sizeof(AntSolutionRecord) == 104, "AntSolutionRecord unexpected padding");
 
 // ANN that will be saved for the epoch
@@ -208,38 +241,6 @@ struct AntCommitInput
     unsigned int anchorTick;      // ABSOLUTE
     unsigned int publishTick;     // ABSOLUTE
 };
-
-// The keyed structures are twice the population they index.
-static constexpr unsigned long long ANT_DEDUP_SIZE = 2ULL * ANT_MAX_NODES_PER_EPOCH;
-// At most one key per record, and records are capped, so load stays at or below 50% and set() cannot fail.
-static constexpr unsigned long long ANT_CHILD_HEAD_BY_PARENT_SIZE = 2ULL * ANT_MAX_NODES_PER_EPOCH;
-static_assert(ANT_CHILD_HEAD_BY_PARENT_SIZE >= 2ULL * ANT_MAX_NODES_PER_EPOCH,
-    "child-head-by-parent map must stay at or below 50% load so its set() cannot fail");
-// One entry per identity holding a tree. Unlike the map above, nothing caps how many identities
-// submit, so this one CAN fill - commit() fails closed with RejectMinerIndexFull.
-static constexpr unsigned long long ANT_CHILD_HEAD_BY_MINER_SIZE = 2ULL * MAX_NUMBER_OF_MINERS;
-
-// How many ANN the epoch's harvest keeps. The target is the LUT with the best error, so this is
-// simply the lowest N scores of the epoch - not one per identity, and not tied to the ranking
-static constexpr unsigned int ANT_EXPORT_MAX_SOLUTIONS = NUMBER_OF_COMPUTORS;
-
-// Serial scratch for the save/load header (meta + anchor ring + export set) and the solution export.
-// In case of this grow to large, consider use the one in common buffer
-static constexpr unsigned long long ANT_SNAPSHOT_SCRATCH_BYTES = 2ULL * 1024 * 1024; // 2MB
-
-// Anchor digests for recent ticks, indexed by tick & (size - 1). Smallest power of two holding
-// 2*(N+1) entries so a lookup inside the freshness window can never be aliased by a newer tick.
-static constexpr unsigned int antAnchorRingSize(unsigned int window)
-{
-    unsigned int size = 1;
-    while (size < 2u * (window + 1u))
-    {
-        size <<= 1;
-    }
-    return size;
-}
-static constexpr unsigned int ANT_ANCHOR_RING_SIZE = antAnchorRingSize(ANT_PUBLISH_WINDOW_TICKS);
-static constexpr unsigned int ANT_ANCHOR_TICK_NONE = 0xFFFFFFFFU;
 
 struct AnchorRing
 {
