@@ -20,12 +20,14 @@ struct AntColonySnapshotMeta
     // The base every selfRef.tickOffset in the records file is relative to. Records address each
     // other by offset, so a snapshot restored against a different base is silently mis-addressed
     unsigned int initialTick;
+    unsigned int anchorRingBytes;
+    unsigned int exportSetBytes;
     m256i rootSeed;
 
     static constexpr unsigned int MAGIC = 0x414E5443;   // "ANTC"
     static constexpr unsigned int VERSION = 1;
 };
-static_assert(sizeof(AntColonySnapshotMeta) == 32 + 32, "AntColonySnapshotMeta unexpected padding");
+static_assert(sizeof(AntColonySnapshotMeta) == 40 + 32, "AntColonySnapshotMeta unexpected padding");
 
 static void antSnapshotFailure(const CHAR16* what, unsigned long long a, unsigned long long b)
 {
@@ -48,11 +50,9 @@ static unsigned long long antSnapshotSlotCount(unsigned int solutionCount)
 
 static void antSnapshotNameForEpoch(unsigned short epoch)
 {
-    addEpochToFileName(ANT_SNAPSHOT_META_FILENAME, sizeof(ANT_SNAPSHOT_META_FILENAME) / sizeof(ANT_SNAPSHOT_META_FILENAME[0]), epoch);
-    addEpochToFileName(ANT_SNAPSHOT_ANCHORS_FILENAME, sizeof(ANT_SNAPSHOT_ANCHORS_FILENAME) / sizeof(ANT_SNAPSHOT_ANCHORS_FILENAME[0]), epoch);
+    addEpochToFileName(ANT_SNAPSHOT_HEADER_FILENAME, sizeof(ANT_SNAPSHOT_HEADER_FILENAME) / sizeof(ANT_SNAPSHOT_HEADER_FILENAME[0]), epoch);
     addEpochToFileName(ANT_SNAPSHOT_RECORDS_FILENAME, sizeof(ANT_SNAPSHOT_RECORDS_FILENAME) / sizeof(ANT_SNAPSHOT_RECORDS_FILENAME[0]), epoch);
     addEpochToFileName(ANT_SNAPSHOT_POOL_FILENAME, sizeof(ANT_SNAPSHOT_POOL_FILENAME) / sizeof(ANT_SNAPSHOT_POOL_FILENAME[0]), epoch);
-    addEpochToFileName(ANT_SNAPSHOT_EXPORT_FILENAME, sizeof(ANT_SNAPSHOT_EXPORT_FILENAME) / sizeof(ANT_SNAPSHOT_EXPORT_FILENAME[0]), epoch);
 }
 
 template<typename ScoreT>
@@ -75,18 +75,26 @@ inline bool AntColony<ScoreT>::saveSnapshot(unsigned short epoch, CHAR16* direct
     meta.annPoolEntryBytes = (unsigned int)sizeof(PackedAnn);
     meta.errorThreshold = _errorThreshold;
     meta.initialTick = initialTick;
+    meta.anchorRingBytes = (unsigned int)sizeof(AnchorRing);
+    meta.exportSetBytes = (unsigned int)sizeof(ExportSet);
     meta.rootSeed = _rootSeed;
 
-    if (save(ANT_SNAPSHOT_META_FILENAME, sizeof(meta), (unsigned char*)&meta, directory)
-        != (long long)sizeof(meta))
+    // The meta, anchor ring and export set share one file. The file API writes a single contiguous
+    // buffer, so the three are gathered into a scratch block: meta, then anchors, then export.
+    const unsigned long long headerBytes = sizeof(meta) + sizeof(AnchorRing) + sizeof(ExportSet);
+    unsigned char* headerBuffer = nullptr;
+    if (!allocPoolWithErrorLog(L"AntColony::snapshotHeader", headerBytes, (void**)&headerBuffer, __LINE__))
     {
-        logToConsole(L"[ant-colony] failed to save snapshot meta");
         return false;
     }
-    if (save(ANT_SNAPSHOT_ANCHORS_FILENAME, sizeof(AnchorRing), (unsigned char*)_anchors, directory)
-        != (long long)sizeof(AnchorRing))
+    copyMem(headerBuffer, &meta, sizeof(meta));
+    copyMem(headerBuffer + sizeof(meta), _anchors, sizeof(AnchorRing));
+    copyMem(headerBuffer + sizeof(meta) + sizeof(AnchorRing), _exportSet, sizeof(ExportSet));
+    const long long headerSaved = save(ANT_SNAPSHOT_HEADER_FILENAME, headerBytes, headerBuffer, directory);
+    freePool(headerBuffer);
+    if (headerSaved != (long long)headerBytes)
     {
-        logToConsole(L"[ant-colony] failed to save snapshot anchors");
+        logToConsole(L"[ant-colony] failed to save snapshot header");
         return false;
     }
 
@@ -106,13 +114,6 @@ inline bool AntColony<ScoreT>::saveSnapshot(unsigned short epoch, CHAR16* direct
         logToConsole(L"[ant-colony] failed to save snapshot pool");
         return false;
     }
-    // Whole struct, fixed size - there is no used prefix to take, the order array indexes all of it.
-    if (save(ANT_SNAPSHOT_EXPORT_FILENAME, sizeof(ExportSet), (unsigned char*)_exportSet, directory)
-        != (long long)sizeof(ExportSet))
-    {
-        logToConsole(L"[ant-colony] failed to save snapshot export set");
-        return false;
-    }
     return true;
 }
 
@@ -126,32 +127,54 @@ inline bool AntColony<ScoreT>::loadSnapshot(unsigned short epoch, CHAR16* direct
 
     antSnapshotNameForEpoch(epoch);
 
-    AntColonySnapshotMeta meta;
-    if (load(ANT_SNAPSHOT_META_FILENAME, sizeof(meta), (unsigned char*)&meta, directory)
-        != (long long)sizeof(meta))
+    // The meta, anchor ring and export set share one file. Read it whole, validate the meta before
+    // any colony state is touched, then copy the two sections into place.
+    const unsigned long long headerBytes = sizeof(AntColonySnapshotMeta) + sizeof(AnchorRing) + sizeof(ExportSet);
+    unsigned char* headerBuffer = nullptr;
+    if (!allocPoolWithErrorLog(L"AntColony::snapshotHeader", headerBytes, (void**)&headerBuffer, __LINE__))
     {
-        logToConsole(L"[ant-colony] failed to load snapshot meta");
         return false;
     }
+    if (load(ANT_SNAPSHOT_HEADER_FILENAME, headerBytes, headerBuffer, directory) != (long long)headerBytes)
+    {
+        logToConsole(L"[ant-colony] failed to load snapshot header");
+        freePool(headerBuffer);
+        return false;
+    }
+
+    AntColonySnapshotMeta meta;
+    copyMem(&meta, headerBuffer, sizeof(meta));
     if (meta.magic != AntColonySnapshotMeta::MAGIC || meta.version != AntColonySnapshotMeta::VERSION)
     {
         antSnapshotFailure(L"bad magic/version", meta.magic, meta.version);
+        freePool(headerBuffer);
         return false;
     }
     if (meta.epoch != epoch)
     {
         antSnapshotFailure(L"epoch mismatch, file/expected", meta.epoch, epoch);
+        freePool(headerBuffer);
         return false;
     }
     // A differently sized record or ANN would parse cleanly and produce a tree that is silently wrong.
     if (meta.recordSizeBytes != sizeof(AntSolutionRecord) || meta.annPoolEntryBytes != sizeof(PackedAnn))
     {
         antSnapshotFailure(L"layout mismatch, record/ann", meta.recordSizeBytes, meta.annPoolEntryBytes);
+        freePool(headerBuffer);
+        return false;
+    }
+    // The two sections after the meta must be exactly the size this build lays them out at, or the
+    // copies below would read them at the wrong offset.
+    if (meta.anchorRingBytes != sizeof(AnchorRing) || meta.exportSetBytes != sizeof(ExportSet))
+    {
+        antSnapshotFailure(L"layout mismatch, anchors/export", meta.anchorRingBytes, meta.exportSetBytes);
+        freePool(headerBuffer);
         return false;
     }
     if (meta.solutionCount > ANT_MAX_NODES_PER_EPOCH)
     {
         antSnapshotFailure(L"solutionCount exceeds the cap, count/cap", meta.solutionCount, ANT_MAX_NODES_PER_EPOCH);
+        freePool(headerBuffer);
         return false;
     }
     // Cross-check against the node state restored alongside this file. A mismatch means the two
@@ -160,11 +183,13 @@ inline bool AntColony<ScoreT>::loadSnapshot(unsigned short epoch, CHAR16* direct
     if (!(meta.rootSeed == rootSeed))
     {
         antSnapshotFailure(L"root seed does not match the restored node state, record/0", 0, 0);
+        freePool(headerBuffer);
         return false;
     }
     if (meta.errorThreshold != errorThreshold)
     {
         antSnapshotFailure(L"threshold does not match the node, file/node", meta.errorThreshold, errorThreshold);
+        freePool(headerBuffer);
         return false;
     }
     // Every selfRef.tickOffset is relative to this. Restoring against a different base would not
@@ -172,6 +197,7 @@ inline bool AntColony<ScoreT>::loadSnapshot(unsigned short epoch, CHAR16* direct
     if (meta.initialTick != initialTick)
     {
         antSnapshotFailure(L"initial tick does not match the node, file/node", meta.initialTick, initialTick);
+        freePool(headerBuffer);
         return false;
     }
 
@@ -179,13 +205,9 @@ inline bool AntColony<ScoreT>::loadSnapshot(unsigned short epoch, CHAR16* direct
     // on the state is being overwritten
     reset();
 
-    if (load(ANT_SNAPSHOT_ANCHORS_FILENAME, sizeof(AnchorRing), (unsigned char*)_anchors, directory)
-        != (long long)sizeof(AnchorRing))
-    {
-        logToConsole(L"[ant-colony] failed to load snapshot anchors");
-        reset();
-        return false;
-    }
+    copyMem(_anchors, headerBuffer + sizeof(meta), sizeof(AnchorRing));
+    copyMem(_exportSet, headerBuffer + sizeof(meta) + sizeof(AnchorRing), sizeof(ExportSet));
+    freePool(headerBuffer);
 
     // Read unconditionally and at the same sizing the save used, so an incomplete copy is refused
     // here rather than booting a node with an empty tree.
@@ -203,14 +225,6 @@ inline bool AntColony<ScoreT>::loadSnapshot(unsigned short epoch, CHAR16* direct
         != (long long)poolBytes)
     {
         logToConsole(L"[ant-colony] failed to load snapshot pool");
-        reset();
-        return false;
-    }
-
-    if (load(ANT_SNAPSHOT_EXPORT_FILENAME, sizeof(ExportSet), (unsigned char*)_exportSet, directory)
-        != (long long)sizeof(ExportSet))
-    {
-        logToConsole(L"[ant-colony] failed to load snapshot export set");
         reset();
         return false;
     }

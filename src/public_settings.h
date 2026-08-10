@@ -93,12 +93,10 @@ static unsigned short REVENUE_DATA_END_OF_EPOCH_FILE_NAME[] = L"revenue_data.eoe
 static unsigned short REVENUE_DATA_SNAPSHOT_FILE_NAME[] = L"revenue_data.???";
 static unsigned short MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[] = L"revenue_data_multi.???";
 static unsigned short MULTIDIM_REVENUE_END_OF_EPOCH_FILE_NAME[] = L"revenue_data_multi.eoe";
-// Ant colony files
-static unsigned short ANT_SNAPSHOT_META_FILENAME[] = L"snapshotAntColonyMeta.???";
-static unsigned short ANT_SNAPSHOT_ANCHORS_FILENAME[] = L"snapshotAntColonyAnchors.???";
+// Ant colony files. The header file carries the meta, the anchor ring and the export set together
+static unsigned short ANT_SNAPSHOT_HEADER_FILENAME[] = L"snapshotAntColonyHeader.???";
 static unsigned short ANT_SNAPSHOT_RECORDS_FILENAME[] = L"snapshotAntColonyRecords.???";
 static unsigned short ANT_SNAPSHOT_POOL_FILENAME[] = L"snapshotAntColonyPool.???";
-static unsigned short ANT_SNAPSHOT_EXPORT_FILENAME[] = L"snapshotAntColonyExport.???";
 static unsigned short ANT_COLONY_REPLAY_CACHE_FILENAME[] = L"antColonyReplayCache.???";
 static unsigned short ANT_COLONY_SOLUTIONS_EOE_FILENAME[] = L"antColonySolutions.eoe";
 static unsigned short ANT_SOL_FLAG_FILE_NAME[] = L"snapshotAntSolutionFlag";

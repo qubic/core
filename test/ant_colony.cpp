@@ -574,7 +574,7 @@ TEST(TestAntColonySnapshot, RefusedLoadLeavesTheRunningTreeIntact)
     EXPECT_EQ(colony->solutionCount(), 2u);
 }
 
-// An empty colony still writes all four files, so an operator's backup is always the same set and a
+// An empty colony still writes all three files, so an operator's backup is always the same set and a
 // short one means a lost file rather than an empty epoch.
 TEST(TestAntColonySnapshot, EmptyColonyWritesTheFullFileSet)
 {
@@ -586,14 +586,19 @@ TEST(TestAntColonySnapshot, EmptyColonyWritesTheFullFileSet)
     // Clear whatever an earlier test left at this epoch, so the files below can only come from the
     // save under test.
     antSnapshotNameForEpoch(TEST_EPOCH);
+    _wremove(ANT_SNAPSHOT_HEADER_FILENAME);
     _wremove(ANT_SNAPSHOT_RECORDS_FILENAME);
     _wremove(ANT_SNAPSHOT_POOL_FILENAME);
 
     ASSERT_TRUE(colony->saveSnapshot(TEST_EPOCH, NULL, TEST_INITIAL_TICK));
 
-    // Both exist and hold a full slot, so neither is zero length.
+    // All three are written. Records and pool hold a full slot even when empty, so neither is zero
+    // length; the header always carries the meta, anchor ring and export set.
+    AntColonySnapshotMeta metaSlot;
     AntSolutionRecord recordSlot;
     AntColonyBpp9000T::PackedAnn poolSlot;
+    EXPECT_EQ(load(ANT_SNAPSHOT_HEADER_FILENAME, sizeof(metaSlot), (unsigned char*)&metaSlot),
+        (long long)sizeof(metaSlot));
     EXPECT_EQ(load(ANT_SNAPSHOT_RECORDS_FILENAME, sizeof(recordSlot), (unsigned char*)&recordSlot),
         (long long)sizeof(recordSlot));
     EXPECT_EQ(load(ANT_SNAPSHOT_POOL_FILENAME, sizeof(poolSlot), (unsigned char*)&poolSlot),
