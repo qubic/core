@@ -63,7 +63,7 @@ class ContractTestingQIP : protected ContractTesting
 public:
     ContractTestingQIP()
     {
-        system.epoch = 190;
+        system.epoch = 224;
         initEmptySpectrum();
         initEmptyUniverse();
         INIT_CONTRACT(QIP);
@@ -898,6 +898,8 @@ TEST(ContractQIP, buyToken_Phase3)
 TEST(ContractQIP, buyVestedToken_Phase3)
 {
     ContractTestingQIP QIP;
+    system.epoch = 224;
+    QIP.beginEpoch();
 
     id issuer = QIP_testIssuer;
     uint64 assetName = assetNameFromString("ICOASST");
@@ -1017,14 +1019,14 @@ TEST(ContractQIP, buyVestedToken_Phase3)
     EXPECT_EQ(getBalance(QIP_testAddress1), balanceBefore1 + expectedForAddress1);
     EXPECT_EQ(getBalance(QIP_testAddress2), balanceBefore2);
     EXPECT_EQ(getBalance(QIP_testAddress3), balanceBefore3);
-    EXPECT_EQ(getBalance(QIP_devAddress), 300000);
+    EXPECT_EQ(getBalance(QIP_devAddress), 300300000);
 
     QIP.endEpoch();
 
     EXPECT_EQ(getBalance(QIP_testAddress1), balanceBefore1 + expectedForAddress1);
     EXPECT_EQ(getBalance(QIP_testAddress2), 7900001);
     EXPECT_EQ(getBalance(QIP_testAddress3), 1000001);
-    EXPECT_EQ(getBalance(QIP_devAddress), 300000);
+    EXPECT_EQ(getBalance(QIP_devAddress), 300300000);
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer, buyer, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 3333);
     
     ++system.epoch;
@@ -1033,7 +1035,7 @@ TEST(ContractQIP, buyVestedToken_Phase3)
     EXPECT_EQ(getBalance(QIP_testAddress1), balanceBefore1 + expectedForAddress1);
     EXPECT_EQ(getBalance(QIP_testAddress2), 15800001);
     EXPECT_EQ(getBalance(QIP_testAddress3), 2000001);
-    EXPECT_EQ(getBalance(QIP_devAddress), 300000);
+    EXPECT_EQ(getBalance(QIP_devAddress), 300300000);
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer, buyer, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 6666);
     
     ++system.epoch;
@@ -1042,7 +1044,7 @@ TEST(ContractQIP, buyVestedToken_Phase3)
     EXPECT_EQ(getBalance(QIP_testAddress1), balanceBefore1 + expectedForAddress1);
     EXPECT_EQ(getBalance(QIP_testAddress2), balanceBefore2 + expectedForAddress2);
     EXPECT_EQ(getBalance(QIP_testAddress3), balanceBefore3 + expectedForAddress3);
-    EXPECT_EQ(getBalance(QIP_devAddress), 300000);
+    EXPECT_EQ(getBalance(QIP_devAddress), 300300000);
     EXPECT_EQ(numberOfPossessedShares(assetName, issuer, buyer, buyer, QIP_CONTRACT_INDEX, QIP_CONTRACT_INDEX), 10000);
 }
 

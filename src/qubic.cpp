@@ -213,15 +213,21 @@ static int nSolutionProcessorIDs = 0;
 static ScoreFunction<
     NUMBER_OF_SOLUTION_PROCESSORS
 > * score = nullptr;
+static unsigned char* gBpp9000TaskBuffer = nullptr;
 static volatile char solutionsLock = 0;
 static unsigned long long* minerSolutionFlags = NULL;
 static volatile m256i minerPublicKeys[MAX_NUMBER_OF_MINERS + 1];
 static volatile unsigned int minerScores[MAX_NUMBER_OF_MINERS + 1];
+// Tick in which each miner reached its currently recorded best score, used as ranking tie-breaker
+static volatile unsigned int minerBestScoreTicks[MAX_NUMBER_OF_MINERS + 1];
 static volatile unsigned int numberOfMiners = NUMBER_OF_COMPUTORS;
 static m256i competitorPublicKeys[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static unsigned int competitorScores[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
+static unsigned int competitorTicks[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
 static bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
-static unsigned int minimumComputorScore = 0, minimumCandidateScore = 0;
+static constexpr unsigned int NO_MINER_SCORE = 0xFFFFFFFFU;
+static unsigned int minimumComputorScore = NO_MINER_SCORE;
+static unsigned int minimumCandidateScore = NO_MINER_SCORE;
 static int solutionThreshold[MAX_NUMBER_EPOCH][score_engine::AlgoType::MaxAlgoCount];
 static unsigned long long solutionTotalExecutionTicks = 0;
 static unsigned long long K12MeasurementsCount = 0;
@@ -230,10 +236,22 @@ static volatile char minerScoreArrayLock = 0;
 static SpecialCommandGetMiningScoreRanking<MAX_NUMBER_OF_MINERS> requestMiningScoreRanking;
 static constexpr unsigned int gScoreMultiplier[score_engine::AlgoType::MaxAlgoCount] =
 {
-    HYPERIDENTITY_SOLUTION_MULTIPLER,   // HyperIdentity
-    ADDITION_SOLUTION_MULTIPLER         // Addition
+    NEURAXON_SOLUTION_MULTIPLER,   // Neuraxon (reserved)
+    BPP9000_SOLUTION_MULTIPLER     // Bpp9000
 };
 
+// Active solution threshold for an algorithm
+static int getSolutionThreshold(score_engine::AlgoType selectedAlgo)
+{
+    if (selectedAlgo >= score_engine::AlgoType::MaxAlgoCount)
+    {
+        return 0;
+    }
+    return (system.epoch < MAX_NUMBER_EPOCH)
+        ? solutionThreshold[system.epoch][selectedAlgo]
+        : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
+}
+static bool applyBpp9000Task();
 
 // DOGE merged-mining shares
 static volatile char gDogeMiningSharesCountLock = 0;
@@ -255,8 +273,10 @@ struct
     Tick etalonTick;
     m256i minerPublicKeys[MAX_NUMBER_OF_MINERS + 1];
     unsigned int minerScores[MAX_NUMBER_OF_MINERS + 1];
+    unsigned int minerBestScoreTicks[MAX_NUMBER_OF_MINERS + 1];
     m256i competitorPublicKeys[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
     unsigned int competitorScores[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
+    unsigned int competitorTicks[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
     bool competitorComputorStatuses[(NUMBER_OF_COMPUTORS - QUORUM) * 2];
     m256i currentRandomSeed;    
     int solutionPublicationTicks[MAX_NUMBER_OF_SOLUTIONS];
@@ -598,11 +618,12 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                 {
                                 case MESSAGE_TYPE_SOLUTION:
                                 {
-                                    if (messagePayloadSize >= 32 + 32)
+                                    if (messagePayloadSize >= 32 + 32 + 4)
                                     {
 
                                         const m256i& solution_miningSeed = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage));
                                         const m256i& solution_nonce = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage) + 32);
+                                        const unsigned int solution_claimedScore = *(unsigned int*)((unsigned char*)request + sizeof(BroadcastMessage) + 64);
                                         unsigned int k;
                                         for (k = 0; k < system.numberOfSolutions; k++)
                                         {
@@ -617,10 +638,9 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                         {
                                             unsigned int solutionScore = (*score)(processorNumber, request->destinationPublicKey, solution_miningSeed, solution_nonce);
                                             score_engine::AlgoType selectedAlgo = score_engine::getAlgoType(solution_nonce.m256i_u8);
-                                            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ?
-                                                solutionThreshold[system.epoch][selectedAlgo]
-                                                : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
+                                            const int threshold = getSolutionThreshold(selectedAlgo);
                                             if (system.numberOfSolutions < MAX_NUMBER_OF_SOLUTIONS
+                                                && solution_claimedScore == solutionScore
                                                 && score->isValidScore(solutionScore, selectedAlgo)
                                                 && score->isGoodScore(solutionScore, threshold, selectedAlgo))
                                             {
@@ -639,7 +659,8 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
                                                 {
                                                     system.solutions[system.numberOfSolutions].computorPublicKey = request->destinationPublicKey;
                                                     system.solutions[system.numberOfSolutions].miningSeed = solution_miningSeed;
-                                                    system.solutions[system.numberOfSolutions++].nonce = solution_nonce;
+                                                    system.solutions[system.numberOfSolutions].nonce = solution_nonce;
+                                                    system.solutions[system.numberOfSolutions++].score = solutionScore;
                                                 }
 
                                                 RELEASE(solutionsLock);
@@ -1360,8 +1381,8 @@ static void processRequestSystemInfo(Peer* peer, RequestResponseHeader* header)
     respondedSystemInfo.numberOfTransactions = numberOfTransactions;
 
     respondedSystemInfo.randomMiningSeed = score->currentRandomSeed;
-    respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch][score_engine::AlgoType::HyperIdentity] : HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;
-    respondedSystemInfo.solutionAdditionalThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch][score_engine::AlgoType::Addition] : ADDITION_SOLUTION_THRESHOLD_DEFAULT;
+    respondedSystemInfo.solutionThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch][score_engine::AlgoType::Bpp9000] : BPP9000_SOLUTION_THRESHOLD_DEFAULT;
+    respondedSystemInfo.solutionAdditionalThreshold = (system.epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[system.epoch][score_engine::AlgoType::Neuraxon] : NEURAXON_SOLUTION_THRESHOLD_DEFAULT;
 
     respondedSystemInfo.totalSpectrumAmount = spectrumInfo.totalAmount;
     respondedSystemInfo.currentEntityBalanceDustThreshold = (dustThresholdBurnAll > dustThresholdBurnHalf) ? dustThresholdBurnAll : dustThresholdBurnHalf;
@@ -1558,13 +1579,13 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 // can only set future epoch
                 if (_request->epoch > system.epoch && _request->epoch < MAX_NUMBER_EPOCH)
                 {
-                    if (_request->algoType == score_engine::AlgoType::HyperIdentity)
+                    if (_request->algoType == score_engine::AlgoType::Neuraxon)
                     {
-                        solutionThreshold[_request->epoch][score_engine::AlgoType::HyperIdentity] = _request->threshold;
+                        solutionThreshold[_request->epoch][score_engine::AlgoType::Neuraxon] = _request->threshold;
                     }
-                    else if (_request->algoType == score_engine::AlgoType::Addition)
+                    else if (_request->algoType == score_engine::AlgoType::Bpp9000)
                     {
-                        solutionThreshold[_request->epoch][score_engine::AlgoType::Addition] = _request->threshold;
+                        solutionThreshold[_request->epoch][score_engine::AlgoType::Bpp9000] = _request->threshold;
                     }
                     else // unknown algo, don't do anything
                     {
@@ -1575,13 +1596,13 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
                 response.everIncreasingNonceAndCommandType = _request->everIncreasingNonceAndCommandType;
                 response.epoch = _request->epoch;
                 response.algoType = _request->algoType;
-                if (_request->algoType == score_engine::AlgoType::HyperIdentity)
+                if (_request->algoType == score_engine::AlgoType::Neuraxon)
                 {
-                    response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch][score_engine::AlgoType::HyperIdentity] : HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;
+                    response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch][score_engine::AlgoType::Neuraxon] : NEURAXON_SOLUTION_THRESHOLD_DEFAULT;
                 }
-                else if (_request->algoType == score_engine::AlgoType::Addition)
+                else if (_request->algoType == score_engine::AlgoType::Bpp9000)
                 {
-                    response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch][score_engine::AlgoType::Addition] : ADDITION_SOLUTION_THRESHOLD_DEFAULT;
+                    response.threshold = (_request->epoch < MAX_NUMBER_EPOCH) ? solutionThreshold[_request->epoch][score_engine::AlgoType::Bpp9000] : BPP9000_SOLUTION_THRESHOLD_DEFAULT;
                 }
                 else // unknown algo, respond with an invalid number
                 {
@@ -1780,8 +1801,9 @@ static void setNewMiningSeed()
 // resetPhase: if true, force a mining-seed rotation even when not at the regular rotation boundary.
 static void checkAndSwitchMiningPhase(short tickEpoch, TimeDate tickDate, bool resetPhase)
 {
-    // The mining seed rotates every MINING_SEED_ROTATION_INTERVAL ticks.
-    if (resetPhase || (system.tick % MINING_SEED_ROTATION_INTERVAL) == 0)
+    // One shared random2 pool per epoch, the mining seed is set once at epoch begin (from the epoch-start
+    // spectrum digest) and stays fixed for the whole epoch
+    if (resetPhase)
     {
         setNewMiningSeed();
     }
@@ -2442,6 +2464,18 @@ static bool processTickTransactionContractProcedure(const Transaction* transacti
     return transaction->amount > 0;
 }
 
+// Ranking order of miners and competitors, the score is an error count, so the smaller score ranks
+// first, and on equal score the entry that reached it in the earlier tick ranks first. Returns true
+// if entry A ranks below entry B.
+static bool ranksBelow(unsigned int scoreA, unsigned int tickA, unsigned int scoreB, unsigned int tickB)
+{
+    if (scoreA != scoreB)
+    {
+        return scoreA > scoreB;
+    }
+    return tickA > tickB;
+}
+
 static void processTickTransactionSolution(const MiningSolutionTransaction* transaction, const unsigned long long processorNumber)
 {
     PROFILE_SCOPE();
@@ -2452,7 +2486,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     ASSERT(transaction->tick == system.tick);
     ASSERT(isZero(transaction->destinationPublicKey));
     ASSERT(transaction->amount >=MiningSolutionTransaction::minAmount()
-            && transaction->inputSize == 64
+            && transaction->inputSize == MiningSolutionTransaction::minInputSize()
             && transaction->inputType == MiningSolutionTransaction::transactionType());
 
     m256i data[3] = { transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce };
@@ -2472,10 +2506,10 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
         {
             resourceTestingDigest ^= solutionScore;
             KangarooTwelve(&resourceTestingDigest, sizeof(resourceTestingDigest), &resourceTestingDigest, sizeof(resourceTestingDigest));
-            const int threshold = (system.epoch < MAX_NUMBER_EPOCH) ?
-                solutionThreshold[system.epoch][selectedAlgo]
-                : score_engine::DEFAUL_SOLUTION_THRESHOLD[selectedAlgo];
-            if (score->isGoodScore(solutionScore, threshold, selectedAlgo))
+            const int threshold = getSolutionThreshold(selectedAlgo);
+            // The deposit is only returned when the miner's claimed score matches the one computed
+            if (transaction->score == solutionScore
+                && score->isGoodScore(solutionScore, threshold, selectedAlgo))
             {
                 // Solution deposit return
                 {
@@ -2509,6 +2543,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                             system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
                             system.solutions[system.numberOfSolutions].miningSeed = transaction->miningSeed;
                             system.solutions[system.numberOfSolutions].nonce = transaction->nonce;
+                            system.solutions[system.numberOfSolutions].score = solutionScore;
                             solutionPublicationTicks[system.numberOfSolutions++] = SOLUTION_RECORDED_FLAG;
                         }
 
@@ -2518,33 +2553,68 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                     }
                 }
 
+                // A miner is ranked by its single best score of the epoch, not by the number of
+                // accepted solutions
+                const unsigned int newScore = solutionScore * gScoreMultiplier[selectedAlgo];
+                const unsigned int newTick = system.tick;
+
                 ACQUIRE(minerScoreArrayLock);
+                bool minerEntryChanged = false;
                 unsigned int minerIndex;
                 for (minerIndex = 0; minerIndex < numberOfMiners; minerIndex++)
                 {
                     if (transaction->sourcePublicKey == minerPublicKeys[minerIndex])
                     {
-                        minerScores[minerIndex] += gScoreMultiplier[selectedAlgo];
+                        if (newScore < minerScores[minerIndex])
+                        {
+                            minerScores[minerIndex] = newScore;
+                            minerBestScoreTicks[minerIndex] = newTick;
+                            minerEntryChanged = true;
+                        }
 
                         break;
                     }
                 }
-                if (minerIndex == numberOfMiners
-                    && numberOfMiners < MAX_NUMBER_OF_MINERS)
+                if (minerIndex == numberOfMiners)
                 {
-                    minerPublicKeys[numberOfMiners] = transaction->sourcePublicKey;
-                    minerScores[numberOfMiners++] = gScoreMultiplier[selectedAlgo];
+                    if (numberOfMiners < MAX_NUMBER_OF_MINERS)
+                    {
+                        minerPublicKeys[numberOfMiners] = transaction->sourcePublicKey;
+                        minerBestScoreTicks[numberOfMiners] = newTick;
+                        minerScores[numberOfMiners++] = newScore;
+                        minerEntryChanged = true;
+                    }
+                    else
+                    {
+                        // The table is full. Entries beyond the computor block are kept sorted, so the
+                        // worst-ranked one sits at the end and is replaced only if the newcomer outranks it.
+                        const unsigned int worstIndex = numberOfMiners - 1;
+                        if (ranksBelow(minerScores[worstIndex], minerBestScoreTicks[worstIndex], newScore, newTick))
+                        {
+                            minerPublicKeys[worstIndex] = transaction->sourcePublicKey;
+                            minerScores[worstIndex] = newScore;
+                            minerBestScoreTicks[worstIndex] = newTick;
+                            minerIndex = worstIndex;
+                            minerEntryChanged = true;
+                        }
+                    }
                 }
 
-                const m256i tmpPublicKey = minerPublicKeys[minerIndex];
-                const unsigned int tmpScore = minerScores[minerIndex];
-                while (minerIndex > (unsigned int)(minerIndex < NUMBER_OF_COMPUTORS ? 0 : NUMBER_OF_COMPUTORS)
-                    && minerScores[minerIndex - 1] < minerScores[minerIndex])
+                if (minerEntryChanged)
                 {
-                    minerPublicKeys[minerIndex] = minerPublicKeys[minerIndex - 1];
-                    minerScores[minerIndex] = minerScores[minerIndex - 1];
-                    minerPublicKeys[--minerIndex] = tmpPublicKey;
-                    minerScores[minerIndex] = tmpScore;
+                    const m256i tmpPublicKey = minerPublicKeys[minerIndex];
+                    const unsigned int tmpScore = minerScores[minerIndex];
+                    const unsigned int tmpTick = minerBestScoreTicks[minerIndex];
+                    while (minerIndex > (unsigned int)(minerIndex < NUMBER_OF_COMPUTORS ? 0 : NUMBER_OF_COMPUTORS)
+                        && ranksBelow(minerScores[minerIndex - 1], minerBestScoreTicks[minerIndex - 1], minerScores[minerIndex], minerBestScoreTicks[minerIndex]))
+                    {
+                        minerPublicKeys[minerIndex] = minerPublicKeys[minerIndex - 1];
+                        minerScores[minerIndex] = minerScores[minerIndex - 1];
+                        minerBestScoreTicks[minerIndex] = minerBestScoreTicks[minerIndex - 1];
+                        minerPublicKeys[--minerIndex] = tmpPublicKey;
+                        minerScores[minerIndex] = tmpScore;
+                        minerBestScoreTicks[minerIndex] = tmpTick;
+                    }
                 }
 
                 // combine 225 worst current computors with 225 best candidates
@@ -2552,16 +2622,19 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                 {
                     competitorPublicKeys[i] = minerPublicKeys[QUORUM + i];
                     competitorScores[i] = minerScores[QUORUM + i];
+                    competitorTicks[i] = minerBestScoreTicks[QUORUM + i];
                     competitorComputorStatuses[i] = true;
 
                     if (NUMBER_OF_COMPUTORS + i < numberOfMiners)
                     {
                         competitorPublicKeys[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerPublicKeys[NUMBER_OF_COMPUTORS + i];
                         competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerScores[NUMBER_OF_COMPUTORS + i];
+                        competitorTicks[i + (NUMBER_OF_COMPUTORS - QUORUM)] = minerBestScoreTicks[NUMBER_OF_COMPUTORS + i];
                     }
                     else
                     {
-                        competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = 0;
+                        competitorScores[i + (NUMBER_OF_COMPUTORS - QUORUM)] = NO_MINER_SCORE;
+                        competitorTicks[i + (NUMBER_OF_COMPUTORS - QUORUM)] = 0;
                     }
                     competitorComputorStatuses[i + (NUMBER_OF_COMPUTORS - QUORUM)] = false;
                 }
@@ -2573,15 +2646,18 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                     int j = i;
                     const m256i tmpPublicKey = competitorPublicKeys[j];
                     const unsigned int tmpScore = competitorScores[j];
+                    const unsigned int tmpTick = competitorTicks[j];
                     const bool tmpComputorStatus = false;
                     while (j
-                        && competitorScores[j - 1] < competitorScores[j])
+                        && ranksBelow(competitorScores[j - 1], competitorTicks[j - 1], competitorScores[j], competitorTicks[j]))
                     {
                         competitorPublicKeys[j] = competitorPublicKeys[j - 1];
                         competitorScores[j] = competitorScores[j - 1];
+                        competitorTicks[j] = competitorTicks[j - 1];
                         competitorComputorStatuses[j] = competitorComputorStatuses[j - 1];
                         competitorPublicKeys[--j] = tmpPublicKey;
                         competitorScores[j] = tmpScore;
+                        competitorTicks[j] = tmpTick;
                         competitorComputorStatuses[j] = tmpComputorStatus;
                     }
                 }
@@ -2642,6 +2718,7 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
                     system.solutions[system.numberOfSolutions].computorPublicKey = transaction->sourcePublicKey;
                     system.solutions[system.numberOfSolutions].miningSeed = transaction->miningSeed;
                     system.solutions[system.numberOfSolutions].nonce = transaction->nonce;
+                    system.solutions[system.numberOfSolutions].score = transaction->score;
                     solutionPublicationTicks[system.numberOfSolutions++] = SOLUTION_RECORDED_FLAG;
                 }
 
@@ -3159,7 +3236,7 @@ static void processTick(unsigned long long processorNumber)
                             && transaction->amount >= MiningSolutionTransaction::minAmount()
                             && transaction->inputType == MiningSolutionTransaction::transactionType())
                         {
-                            if (transaction->inputSize == 32 + 32)
+                            if (transaction->inputSize == MiningSolutionTransaction::minInputSize())
                             {
                                 const m256i& solution_miningSeed = *(m256i*)transaction->inputPtr();
                                 const m256i& solution_nonce = *(m256i*)(transaction->inputPtr() + 32);
@@ -3875,31 +3952,21 @@ static void processTick(unsigned long long processorNumber)
                 // Compute tick offset, when to publish solution
                 unsigned int publishingTickOffset = MIN_MINING_SOLUTIONS_PUBLICATION_OFFSET;
 
-                // Do not publish if the solution tx would land in the next mining-seed rotation,
-                // preventing loss of security deposit from verifying against a rotated seed.
-                if ((system.tick % MINING_SEED_ROTATION_INTERVAL) + publishingTickOffset >= MINING_SEED_ROTATION_INTERVAL)
-                    continue;
-
-                // Prepare, sign, and broadcast MiningSolutionTransaction
-                struct
-                {
-                    Transaction transaction;
-                    m256i miningSeed;
-                    m256i nonce;
-                    unsigned char signature[SIGNATURE_SIZE];
-                } payload;
-                static_assert(sizeof(payload) == sizeof(Transaction) + 32 + 32 + SIGNATURE_SIZE, "Unexpected struct size!");
-                payload.transaction.sourcePublicKey = computorPublicKeys[i];
-                payload.transaction.destinationPublicKey = m256i::zero();
-                payload.transaction.amount = MiningSolutionTransaction::minAmount();
-                solutionPublicationTicks[solutionIndexToPublish] = payload.transaction.tick = system.tick + publishingTickOffset;
-                payload.transaction.inputType = MiningSolutionTransaction::transactionType();
-                payload.transaction.inputSize = sizeof(payload.miningSeed) + sizeof(payload.nonce);
+                // Prepare, sign, and broadcast the solution transaction
+                MiningSolutionTransaction payload;
+                payload.sourcePublicKey = computorPublicKeys[i];
+                payload.destinationPublicKey = m256i::zero();
+                payload.amount = MiningSolutionTransaction::minAmount();
+                solutionPublicationTicks[solutionIndexToPublish] = payload.tick = system.tick + publishingTickOffset;
+                payload.inputType = MiningSolutionTransaction::transactionType();
+                payload.inputSize = MiningSolutionTransaction::minInputSize();
                 payload.miningSeed = system.solutions[solutionIndexToPublish].miningSeed;
                 payload.nonce = system.solutions[solutionIndexToPublish].nonce;
+                payload.score = system.solutions[solutionIndexToPublish].score;
+                payload.reserved = 0;
 
                 unsigned char digest[32];
-                KangarooTwelve(&payload.transaction, sizeof(payload.transaction) + sizeof(payload.miningSeed) + sizeof(payload.nonce), digest, sizeof(digest));
+                KangarooTwelve(&payload, sizeof(Transaction) + MiningSolutionTransaction::minInputSize(), digest, sizeof(digest));
                 sign(computorSubseeds[i].m256i_u8, computorPublicKeys[i].m256i_u8, digest, payload.signature);
 
                 enqueueResponse(NULL, sizeof(payload), BROADCAST_TRANSACTION, 0, &payload);
@@ -3997,21 +4064,24 @@ static void beginEpoch()
     score->resetTaskQueue();
     setMem(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8, 0);
     setMem((void*)minerPublicKeys, sizeof(minerPublicKeys), 0);
-    setMem((void*)minerScores, sizeof(minerScores), 0);
+    setMem((void*)minerScores, sizeof(minerScores), 0xFF);
+    setMem((void*)minerBestScoreTicks, sizeof(minerBestScoreTicks), 0);
     numberOfMiners = NUMBER_OF_COMPUTORS;
     setMem(competitorPublicKeys, sizeof(competitorPublicKeys), 0);
-    setMem(competitorScores, sizeof(competitorScores), 0);
+    setMem(competitorScores, sizeof(competitorScores), 0xFF);
+    setMem(competitorTicks, sizeof(competitorTicks), 0);
     setMem(competitorComputorStatuses, sizeof(competitorComputorStatuses), 0);
-    minimumComputorScore = 0;
-    minimumCandidateScore = 0;
+    minimumComputorScore = NO_MINER_SCORE;
+    minimumCandidateScore = NO_MINER_SCORE;
 
-    if (system.epoch < MAX_NUMBER_EPOCH && !score_engine::checkAlgoThreshold(solutionThreshold[system.epoch][score_engine::AlgoType::HyperIdentity], score_engine::AlgoType::HyperIdentity))
-    { 
-        solutionThreshold[system.epoch][score_engine::AlgoType::HyperIdentity] = HYPERIDENTITY_SOLUTION_THRESHOLD_DEFAULT;
-    }
-    if (system.epoch < MAX_NUMBER_EPOCH && !score_engine::checkAlgoThreshold(solutionThreshold[system.epoch][score_engine::AlgoType::Addition], score_engine::AlgoType::Addition))
+    if (system.epoch < MAX_NUMBER_EPOCH && !score_engine::checkAlgoThreshold(solutionThreshold[system.epoch][score_engine::AlgoType::Bpp9000], score_engine::AlgoType::Bpp9000))
     {
-        solutionThreshold[system.epoch][score_engine::AlgoType::Addition] = ADDITION_SOLUTION_THRESHOLD_DEFAULT;
+        solutionThreshold[system.epoch][score_engine::AlgoType::Bpp9000] = BPP9000_SOLUTION_THRESHOLD_DEFAULT;
+    }
+    // Neuraxon slot is reserved (not minable); keep its threshold slot at the placeholder default.
+    if (system.epoch < MAX_NUMBER_EPOCH)
+    {
+        solutionThreshold[system.epoch][score_engine::AlgoType::Neuraxon] = NEURAXON_SOLUTION_THRESHOLD_DEFAULT;
     }
 
     system.latestOperatorNonce = 0;
@@ -4397,8 +4467,10 @@ static bool saveAllNodeStates()
     copyMem(&nodeStateBuffer.etalonTick, &etalonTick, sizeof(etalonTick));
     copyMem(nodeStateBuffer.minerPublicKeys, (void*)minerPublicKeys, sizeof(minerPublicKeys));
     copyMem(nodeStateBuffer.minerScores, (void*)minerScores, sizeof(minerScores));
+    copyMem(nodeStateBuffer.minerBestScoreTicks, (void*)minerBestScoreTicks, sizeof(minerBestScoreTicks));
     copyMem(nodeStateBuffer.competitorPublicKeys, (void*)competitorPublicKeys, sizeof(competitorPublicKeys));
     copyMem(nodeStateBuffer.competitorScores, (void*)competitorScores, sizeof(competitorScores));
+    copyMem(nodeStateBuffer.competitorTicks, (void*)competitorTicks, sizeof(competitorTicks));
     copyMem(nodeStateBuffer.competitorComputorStatuses, (void*)competitorComputorStatuses, sizeof(competitorComputorStatuses));
     copyMem(nodeStateBuffer.solutionPublicationTicks, (void*)solutionPublicationTicks, sizeof(solutionPublicationTicks));
     copyMem(nodeStateBuffer.faultyComputorFlags, (void*)faultyComputorFlags, sizeof(faultyComputorFlags));
@@ -4536,6 +4608,19 @@ static bool loadAllNodeStates()
         logToConsole(L"Found epoch snapshot directory. Using node states snapshot.");
     }
 
+#if ENABLED_LOGGING
+    // Reject an unusable logging state here: returning false after node state has been loaded
+    // would leave it partially applied
+    {
+        unsigned long long savedDigestsSz;
+        if (!logger.checkLastLoggingStates(directory, savedDigestsSz))
+        {
+            logToConsole(L"Skip using node states snapshot.");
+            return false;
+        }
+    }
+#endif
+
     if (ts.tryLoadFromFile(system.epoch, directory) != 0)
     {
         logToConsole(L"Failed to load tick storage");
@@ -4597,8 +4682,10 @@ static bool loadAllNodeStates()
     copyMem(&etalonTick, &nodeStateBuffer.etalonTick, sizeof(etalonTick));
     copyMem((void*)minerPublicKeys, nodeStateBuffer.minerPublicKeys, sizeof(minerPublicKeys));
     copyMem((void*)minerScores, nodeStateBuffer.minerScores, sizeof(minerScores));
+    copyMem((void*)minerBestScoreTicks, nodeStateBuffer.minerBestScoreTicks, sizeof(minerBestScoreTicks));
     copyMem((void*)competitorPublicKeys, nodeStateBuffer.competitorPublicKeys, sizeof(competitorPublicKeys));
     copyMem((void*)competitorScores, nodeStateBuffer.competitorScores, sizeof(competitorScores));
+    copyMem((void*)competitorTicks, nodeStateBuffer.competitorTicks, sizeof(competitorTicks));
     copyMem((void*)competitorComputorStatuses, nodeStateBuffer.competitorComputorStatuses, sizeof(competitorComputorStatuses));
     copyMem((void*)solutionPublicationTicks, nodeStateBuffer.solutionPublicationTicks, sizeof(solutionPublicationTicks));
     copyMem((void*)faultyComputorFlags, nodeStateBuffer.faultyComputorFlags, sizeof(faultyComputorFlags));
@@ -4615,11 +4702,32 @@ static bool loadAllNodeStates()
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 3] = (system.epoch % 100) / 10 + L'0';
     REVENUE_DATA_SNAPSHOT_FILE_NAME[sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME) / sizeof(REVENUE_DATA_SNAPSHOT_FILE_NAME[0]) - 2] = system.epoch % 10 + L'0';
-    long long revenueDataSize = load(REVENUE_DATA_SNAPSHOT_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData, directory);
-    if (revenueDataSize != sizeof(gEpochRevenueData))
+    const long long revenueFileSize = getFileSize(REVENUE_DATA_SNAPSHOT_FILE_NAME, directory);
+    bool revenueDataLoaded = false;
+    if (revenueFileSize == (long long)sizeof(gEpochRevenueData))
     {
+        revenueDataLoaded = load(REVENUE_DATA_SNAPSHOT_FILE_NAME, sizeof(gEpochRevenueData), (unsigned char*)&gEpochRevenueData, directory)
+            == (long long)sizeof(gEpochRevenueData);
+    }
+    else if (revenueFileSize > 0 && revenueFileSize <= (long long)defaultCommonBuffersSize)
+    {
+        // Saved with a different MAX_NUMBER_OF_TICKS_PER_EPOCH
+        __ScopedScratchpad scratchpad(revenueFileSize, /*initZero=*/false);
+        revenueDataLoaded = scratchpad.ptr
+            && load(REVENUE_DATA_SNAPSHOT_FILE_NAME, revenueFileSize, (unsigned char*)scratchpad.ptr, directory) == revenueFileSize
+            && remapEpochRevenueData((unsigned char*)scratchpad.ptr, revenueFileSize, gEpochRevenueData);
+    }
+    if (!revenueDataLoaded)
+    {
+#if USE_REVENUE_MULTI_DIMENSION
+        // v2Revenue is shadow when multi-dim is active, revenue uses gMultiDimRevenue.
+        // We mark zero to make flag out this data is invalid for analysis
+        logToConsole(L"Revenue data snapshot load/remap failed (v2 shadow mode), zeroing");
+        setMem(&gEpochRevenueData, sizeof(gEpochRevenueData), 0);
+#else
         logToConsole(L"Failed to load revenue data snapshot");
         return false;
+#endif
     }
 
     MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME) / sizeof(MULTIDIM_REVENUE_SNAPSHOT_FILE_NAME[0]) - 4] = system.epoch / 100 + L'0';
@@ -4722,7 +4830,11 @@ static bool loadAllNodeStates()
 
 #if ENABLED_LOGGING
     logToConsole(L"Loading old logger...");
-    logger.loadLastLoggingStates(directory);
+    if (!logger.loadLastLoggingStates(directory))
+    {
+        logToConsole(L"Failed to load logging state, discarding snapshot");
+        return false;
+    }
 #endif
 
 #if !defined(NDEBUG)
@@ -5743,18 +5855,29 @@ static void tickProcessor(void*)
                                     beginEpoch();
                                     isBeginEpoch = true;
 
+                                    // beginEpoch() called score->initMemory(), which zeroed the scorer, so re-apply
+                                    // the task from the resident buffer. This assumes the task is unchanged across the transition; 
+                                    // if a future epoch needs a different task file, branch here on the epoch to reload from file 
+                                    // instead of re-applying memory
+                                    if (!applyBpp9000Task())
+                                    {
+                                        ASSERT(false);
+                                    }
+
                                     // Some debug checks that we are ready for the next epoch
                                     ASSERT(system.numberOfSolutions == 0);
                                     ASSERT(numberOfMiners == NUMBER_OF_COMPUTORS);
                                     ASSERT(isZero(system.solutions, sizeof(system.solutions)));
                                     ASSERT(isZero(solutionPublicationTicks, sizeof(solutionPublicationTicks)));
                                     ASSERT(isZero(minerSolutionFlags, NUMBER_OF_MINER_SOLUTION_FLAGS / 8));
-                                    ASSERT(isZero((void*)minerScores, sizeof(minerScores)));
+                                    ASSERT(minerScores[0] == NO_MINER_SCORE && minerScores[MAX_NUMBER_OF_MINERS] == NO_MINER_SCORE);
+                                    ASSERT(isZero((void*)minerBestScoreTicks, sizeof(minerBestScoreTicks)));
                                     ASSERT(isZero((void*)minerPublicKeys, sizeof(minerPublicKeys)));
-                                    ASSERT(isZero(competitorScores, sizeof(competitorScores)));
+                                    ASSERT(competitorScores[0] == NO_MINER_SCORE);
+                                    ASSERT(isZero(competitorTicks, sizeof(competitorTicks)));
                                     ASSERT(isZero(competitorPublicKeys, sizeof(competitorPublicKeys)));
                                     ASSERT(isZero(competitorComputorStatuses, sizeof(competitorComputorStatuses)));
-                                    ASSERT(minimumComputorScore == 0 && minimumCandidateScore == 0);
+                                    ASSERT(minimumComputorScore == NO_MINER_SCORE && minimumCandidateScore == NO_MINER_SCORE);
 
                                     // instruct main loop to save files and wait until it is done
                                     spectrumMustBeSaved = true;
@@ -6062,6 +6185,91 @@ static bool saveSystem(CHAR16* directory)
     return false;
 }
 
+// Load and verify the bpp9000 task file (topology + windowed data) and hand it to the scorer
+static bool loadBpp9000Task()
+{
+    const unsigned int N = (unsigned int)BPP9000_NUMBER_OF_INPUT_NEURONS;
+    const unsigned int M = (unsigned int)BPP9000_NUMBER_OF_OUTPUT_NEURONS;
+    const unsigned int P = (unsigned int)BPP9000_POPULATION_THRESHOLD;
+    const unsigned int K = (unsigned int)BPP9000_NUMBER_OF_NEIGHBORS;
+    const unsigned long long T = BPP9000_SEQUENCE_LENGTH;
+
+    const unsigned long long topoBytes = score_task_file::topologyBytes(N, M, P, K);
+    const unsigned long long dataBytes = score_task_file::dataBytes(N, M, T);
+    const unsigned long long headerBytes = sizeof(score_task_file::TaskFileHeader);
+    const unsigned long long totalBytes = headerBytes + topoBytes + dataBytes;
+
+    if (!allocPoolWithErrorLog(L"bpp9000Task", totalBytes, (void**)&gBpp9000TaskBuffer, __LINE__))
+    {
+        return false;
+    }
+
+    bool ok = false;
+    const long long loadedSize = load(SCORE_BPP9000_TASK_FILE_NAME, totalBytes, gBpp9000TaskBuffer, NULL);
+    if (loadedSize != (long long)totalBytes)
+    {
+        logToConsole(L"bpp9000 task file missing or wrong size - node will not do score verification.");
+    }
+    else
+    {
+        const score_task_file::TaskFileHeader* h = (const score_task_file::TaskFileHeader*)gBpp9000TaskBuffer;
+        const unsigned char* topoBlock = gBpp9000TaskBuffer + headerBytes;
+        const unsigned char* dataBlock = topoBlock + topoBytes;
+
+        unsigned char topoHash[32];
+        unsigned char dataHash[32];
+        KangarooTwelve(topoBlock, (unsigned int)topoBytes, topoHash, 32);
+        KangarooTwelve(dataBlock, (unsigned int)dataBytes, dataHash, 32);
+
+        if (h->magic != score_task_file::MAGIC || h->version != score_task_file::VERSION
+            || h->numInputTrits != N || h->numOutputTrits != M || h->population != P
+            || h->numNeighbors != K || h->numPairs < T)
+        {
+            logToConsole(L"bpp9000 task header does not match configured parameters - node will not do score verification.");
+        }
+        else if (*(const m256i*)topoHash != *(const m256i*)BPP9000_TOPOLOGY_HASH
+              || *(const m256i*)dataHash != *(const m256i*)BPP9000_DATA_HASH)
+        {
+            logToConsole(L"bpp9000 task hash mismatch (not the pinned canonical task) - node will not do score verification.");
+        }
+        else if (!score->loadTask(topoBlock, dataBlock))
+        {
+            logToConsole(L"bpp9000 task failed topology validation - node will not do score verification.");
+        }
+        else
+        {
+            logToConsole(L"Loaded bpp9000 task file");
+            ok = true;
+        }
+    }
+
+    // Keep the verified buffer resident (for applyBpp9000Task) on success; release it on failure.
+    if (!ok)
+    {
+        freePool(gBpp9000TaskBuffer);
+        gBpp9000TaskBuffer = nullptr;
+    }
+    return ok;
+}
+
+// Re-apply the already-verified, resident task to the scorer. Used after beginEpoch() zeroes the scorer:
+// no file I/O and no re-hashing (the blocks were verified once at init), so it cannot fail on a missing or
+// altered file. Returns false only if the task was never loaded.
+static bool applyBpp9000Task()
+{
+    if (gBpp9000TaskBuffer == nullptr)
+    {
+        return false;
+    }
+    const unsigned long long headerBytes = sizeof(score_task_file::TaskFileHeader);
+    const unsigned long long topoBytes = score_task_file::topologyBytes(
+        (unsigned int)BPP9000_NUMBER_OF_INPUT_NEURONS, (unsigned int)BPP9000_NUMBER_OF_OUTPUT_NEURONS,
+        (unsigned int)BPP9000_POPULATION_THRESHOLD, (unsigned int)BPP9000_NUMBER_OF_NEIGHBORS);
+    const unsigned char* topoBlock = gBpp9000TaskBuffer + headerBytes;
+    const unsigned char* dataBlock = topoBlock + topoBytes;
+    return score->loadTask(topoBlock, dataBlock);
+}
+
 static bool initialize()
 {
     enableAVX();
@@ -6351,6 +6559,12 @@ static bool initialize()
         checkAndSwitchMiningPhase(tickEpoch, tickDate, true);
     }    
     score->loadScoreCache(system.epoch);
+
+    // Load + hash-verify the bpp9000 task once at init
+    if (!loadBpp9000Task())
+    {
+        return false;
+    }
 
     logToConsole(L"Allocating buffers ...");
     if ((!allocPoolWithErrorLog(L"dejavu0", 536870912, (void**)&dejavu0, __LINE__)) ||
@@ -7196,17 +7410,22 @@ static void processKeyPresses()
         */
         case 0x0D:
         {
-            unsigned int numberOfSolutions = 0;
+            unsigned int numberOfScoredMiners = 0;
             for (unsigned int i = 0; i < numberOfMiners; i++)
             {
-                numberOfSolutions += minerScores[i];
+                if (minerScores[i] != NO_MINER_SCORE)
+                {
+                    numberOfScoredMiners++;
+                }
             }
             setNumber(message, numberOfMiners, TRUE);
-            appendText(message, L" miners with ");
-            appendNumber(message, numberOfSolutions, TRUE);
-            appendText(message, L" solutions (min computor score = ");
+            appendText(message, L" miners, ");
+            appendNumber(message, numberOfScoredMiners, TRUE);
+            appendText(message, L" scored (best error = ");
+            appendNumber(message, minerScores[0], TRUE);
+            appendText(message, L", worst computor error = ");
             appendNumber(message, minimumComputorScore, TRUE);
-            appendText(message, L", min candidate score = ");
+            appendText(message, L", worst candidate error = ");
             appendNumber(message, minimumCandidateScore, TRUE);
             appendText(message, L").");
             logToConsole(message);
@@ -7581,6 +7800,20 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     PROFILE_NAMED_SCOPE("main loop: updateTime()");
                     updateTime();
+
+                    // Report a stalled scorer from the main thread. Anything other than ScoreStatusOk means the
+                    // node cannot verify mining solutions; add a case per new status kind.
+                    switch (score->getLastStatus())
+                    {
+                    case ScoreStatusOk:
+                        break;
+                    case ScoreStatusTaskNotLoaded:
+                        logToConsole(L"ERROR: bpp9000 task not loaded - node cannot verify mining solutions.");
+                        break;
+                    default:
+                        logToConsole(L"ERROR: score engine not ready - node cannot verify mining solutions.");
+                        break;
+                    }
                 }
 
                 if (contractProcessorState == 1)

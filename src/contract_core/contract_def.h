@@ -582,6 +582,7 @@ struct ContractStateChangeInfo
 //constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
 constexpr ContractStateChangeInfo contractStateChangeInfos[] = {
     { QIP_CONTRACT_INDEX, RESET, 224 },
+    { RANDOM_CONTRACT_INDEX, PADDING, 224 },
     { QEARN_CONTRACT_INDEX, PADDING, QEARN_V2_ACTIVATION_EPOCH },
 };
 constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);

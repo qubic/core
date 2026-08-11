@@ -68,10 +68,10 @@
     <ClInclude Include="logging\net_msg_impl.h" />
     <ClInclude Include="mining\custom_qubic_mining_storage.h" />
     <ClInclude Include="mining\mining.h" />
-    <ClInclude Include="mining\score_addition.h" />
+    <ClInclude Include="mining\score_bpp9000.h" />
     <ClInclude Include="mining\score_common.h" />
     <ClInclude Include="mining\score_engine.h" />
-    <ClInclude Include="mining\score_hyperidentity.h" />
+    <ClInclude Include="mining\task_file.h" />
     <ClInclude Include="network_core\peers.h" />
     <ClInclude Include="network_core\tcp4.h" />
     <ClInclude Include="network_messages\all.h" />

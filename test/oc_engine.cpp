@@ -135,6 +135,10 @@ struct FakeComputors
 
     FakeComputors()
     {
+#ifdef __AVX512F__
+        initAVX512FourQConstants();
+#endif
+
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
         {
             // Build a unique seed for computor i and derive subseed/pubkey.

@@ -328,10 +328,10 @@
     <ClInclude Include="mining\score_engine.h">
       <Filter>mining</Filter>
     </ClInclude>
-    <ClInclude Include="mining\score_hyperidentity.h">
+    <ClInclude Include="mining\score_bpp9000.h">
       <Filter>mining</Filter>
     </ClInclude>
-    <ClInclude Include="mining\score_addition.h">
+    <ClInclude Include="mining\task_file.h">
       <Filter>mining</Filter>
     </ClInclude>
     <ClInclude Include="contracts\qRWA.h">
