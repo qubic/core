@@ -142,7 +142,8 @@ struct RequestAntEpochContext
 };
 
 // Per-epoch ant-colony parameters a miner needs to start building solutions:
-// the score threshold, the freshness window, the epoch's root seed, and pool occupancy.
+// the score threshold, the freshness window, the epoch's root seed, pool occupancy,
+// and the per-parent child cap.
 // The anchor digest is not included; a miner derives it from the standard
 // protocol as K12(anchorTick || transactionDigest), with transactionDigest taken from the
 // anchor tick's quorum votes (REQUEST_QUORUM_TICK).
@@ -159,6 +160,8 @@ struct RespondAntEpochContext
     unsigned int solutionCount;
     // free slots in the live ANN pool
     unsigned int freeAnnSlotsCount;
+    // ANT_MAX_CHILDREN_PER_PARENT: max children a parent takes; 0 = unbound
+    unsigned int maxChildrenPerParent;
     // epoch this context is for
     unsigned short epoch;
     unsigned short padding;
@@ -169,4 +172,4 @@ struct RespondAntEpochContext
     }
 };
 #pragma pack(pop)
-static_assert(sizeof(RespondAntEpochContext) == 52, "RespondAntEpochContext unexpected size");
+static_assert(sizeof(RespondAntEpochContext) == 56, "RespondAntEpochContext unexpected size");

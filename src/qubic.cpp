@@ -1805,6 +1805,7 @@ static void processRequestAntEpochContext(Peer* peer, RequestResponseHeader* hea
     respond.freshnessWindow = ANT_PUBLISH_WINDOW_TICKS;
     respond.solutionCount = gAntColony.solutionCount();
     respond.freeAnnSlotsCount = gAntColony.freeAnnSlotsCount();
+    respond.maxChildrenPerParent = ANT_MAX_CHILDREN_PER_PARENT;
     respond.epoch = system.epoch;
 
     enqueueResponse(peer, sizeof(respond), RespondAntEpochContext::type(), header->dejavu(), &respond);
