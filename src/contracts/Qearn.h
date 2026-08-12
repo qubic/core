@@ -2173,6 +2173,34 @@ protected:
 
 	}
 
+    struct POST_INCOMING_TRANSFER_locals
+    {
+        sint64 transferResult;
+        QEARNLogger log;
+    };
+
+    POST_INCOMING_TRANSFER_WITH_LOCALS()
+    {
+        if (input.type != TransferType::standardTransaction || input.amount <= 0)
+        {
+            return;
+        }
+
+        locals.transferResult = qpi.transfer(input.sourceId, input.amount);
+        if (locals.transferResult < 0)
+        {
+            locals.log = {
+                QEARN_CONTRACT_INDEX,
+                SELF,
+                input.sourceId,
+                input.amount,
+                QearnFailedTransfer,
+                0
+            };
+            LOG_INFO(locals.log);
+        }
+    }
+
     struct BEGIN_EPOCH_locals
     {
         HistoryInfo INITIALIZE_HISTORY;
