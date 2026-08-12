@@ -15,6 +15,10 @@ static const id OPERATOR1(501, 501, 501, 501);
 static const id RECOVERY1(601, 601, 601, 601);
 static const id IMPOSTOR1(701, 701, 701, 701);
 static const id NEWOPERATOR1(801, 801, 801, 801);
+static const id REGISTRAR1(901, 901, 901, 901);
+static const id NEWREGISTRAR1(1001, 1001, 1001, 1001);
+static const id AFFILIATE1(1101, 1101, 1101, 1101);
+static const id AFFILIATE2(1201, 1201, 1201, 1201);
 
 static const id QPAYHUB_CONTRACT_ID(QPAYHUB_CONTRACT_INDEX, 0, 0, 0);
 
@@ -188,6 +192,38 @@ public:
         QPAYHUB::ChangeOperator_input input{ newOperator };
         QPAYHUB::ChangeOperator_output output;
         invokeUserProcedure(QPAYHUB_CONTRACT_INDEX, 6, input, output, invocator, reward);
+        return output;
+    }
+
+    QPAYHUB::GetAffiliate_output getAffiliate(const id& seller)
+    {
+        QPAYHUB::GetAffiliate_input input{ seller };
+        QPAYHUB::GetAffiliate_output output;
+        callFunction(QPAYHUB_CONTRACT_INDEX, 6, input, output);
+        return output;
+    }
+
+    QPAYHUB::SetAffiliate_output setAffiliate(const id& invocator, const id& seller, const id& affiliate, sint64 reward = 0)
+    {
+        QPAYHUB::SetAffiliate_input input{ seller, affiliate };
+        QPAYHUB::SetAffiliate_output output;
+        invokeUserProcedure(QPAYHUB_CONTRACT_INDEX, 7, input, output, invocator, reward);
+        return output;
+    }
+
+    QPAYHUB::RemoveAffiliate_output removeAffiliate(const id& invocator, const id& seller, sint64 reward = 0)
+    {
+        QPAYHUB::RemoveAffiliate_input input{ seller };
+        QPAYHUB::RemoveAffiliate_output output;
+        invokeUserProcedure(QPAYHUB_CONTRACT_INDEX, 8, input, output, invocator, reward);
+        return output;
+    }
+
+    QPAYHUB::ChangeAffiliateRegistrar_output changeAffiliateRegistrar(const id& invocator, const id& newRegistrar, sint64 reward = 0)
+    {
+        QPAYHUB::ChangeAffiliateRegistrar_input input{ newRegistrar };
+        QPAYHUB::ChangeAffiliateRegistrar_output output;
+        invokeUserProcedure(QPAYHUB_CONTRACT_INDEX, 9, input, output, invocator, reward);
         return output;
     }
 
@@ -1062,4 +1098,174 @@ TEST(ContractQPayhub, ChangeOperatorRejectsNullNewOperator)
     auto out = qpayhub.changeOperator(OPERATOR1, NULL_ID);
     EXPECT_EQ(out.returnCode, QPAYHUB_ERR_INVALID_SELLER);
     EXPECT_EQ(qpayhub.setPromoRate(OPERATOR1, SELLER1, 50).returnCode, QPAYHUB_OK); // operator unchanged
+}
+
+TEST(ContractQPayhub, SetAffiliateByRegistrarThenPaySplitsFeeToAffiliate)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->affiliateRegistrarId = REGISTRAR1;
+    increaseEnergy(REGISTRAR1, 10000000);
+    increaseEnergy(BUYER1, 10000000);
+
+    ASSERT_EQ(qpayhub.setAffiliate(REGISTRAR1, SELLER1, AFFILIATE1).returnCode, QPAYHUB_OK);
+    auto info = qpayhub.getAffiliate(SELLER1);
+    EXPECT_EQ(info.affiliate, AFFILIATE1);
+    EXPECT_EQ(info.active, 1);
+
+    const sint64 amount = 100000;
+    const sint64 affBefore = getBalance(AFFILIATE1);
+    const sint64 sellerBefore = getBalance(SELLER1);
+
+    auto payOut = qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, amount);
+    ASSERT_EQ(payOut.returnCode, QPAYHUB_OK);
+
+    // fee = 0.75% of 100,000 = 750; affiliate cut = 5% of 750 = 37.
+    EXPECT_EQ(getBalance(AFFILIATE1), affBefore + 37);
+    // Seller's net is unchanged by the split - the cut comes out of the fee.
+    EXPECT_EQ(getBalance(SELLER1), sellerBefore + payOut.net);
+}
+
+TEST(ContractQPayhub, SetAffiliateRejectsSelfReferral)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->affiliateRegistrarId = REGISTRAR1;
+    increaseEnergy(REGISTRAR1, 10000000);
+
+    auto out = qpayhub.setAffiliate(REGISTRAR1, SELLER1, SELLER1);
+    EXPECT_EQ(out.returnCode, QPAYHUB_ERR_INVALID_SELLER);
+    EXPECT_EQ(qpayhub.getAffiliate(SELLER1).active, 0);
+}
+
+TEST(ContractQPayhub, SetAffiliateFirstAttributionWins)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->affiliateRegistrarId = REGISTRAR1;
+    increaseEnergy(REGISTRAR1, 10000000);
+
+    ASSERT_EQ(qpayhub.setAffiliate(REGISTRAR1, SELLER1, AFFILIATE1).returnCode, QPAYHUB_OK);
+    auto out = qpayhub.setAffiliate(REGISTRAR1, SELLER1, AFFILIATE2);
+    EXPECT_EQ(out.returnCode, QPAYHUB_ERR_ALREADY_HAS_AFFILIATE);
+    EXPECT_EQ(qpayhub.getAffiliate(SELLER1).affiliate, AFFILIATE1);
+}
+
+TEST(ContractQPayhub, SetAffiliateByThirdPartyRejected)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->affiliateRegistrarId = REGISTRAR1;
+    increaseEnergy(IMPOSTOR1, 10000000);
+
+    auto out = qpayhub.setAffiliate(IMPOSTOR1, SELLER1, AFFILIATE1, 1000);
+    EXPECT_EQ(out.returnCode, QPAYHUB_ERR_ACCESS_DENIED);
+    EXPECT_EQ(qpayhub.getAffiliate(SELLER1).active, 0);
+}
+
+TEST(ContractQPayhub, RemoveAffiliateFreesTheSellerForReattribution)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->affiliateRegistrarId = REGISTRAR1;
+    increaseEnergy(REGISTRAR1, 10000000);
+
+    ASSERT_EQ(qpayhub.setAffiliate(REGISTRAR1, SELLER1, AFFILIATE1).returnCode, QPAYHUB_OK);
+    ASSERT_EQ(qpayhub.removeAffiliate(REGISTRAR1, SELLER1).returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.getAffiliate(SELLER1).active, 0);
+
+    // A fraudulent or mistaken attribution can be corrected, not just deleted.
+    EXPECT_EQ(qpayhub.setAffiliate(REGISTRAR1, SELLER1, AFFILIATE2).returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.getAffiliate(SELLER1).affiliate, AFFILIATE2);
+}
+
+TEST(ContractQPayhub, RemoveAffiliateByRecoveryAlsoAllowed)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->affiliateRegistrarId = REGISTRAR1;
+    qpayhub.state()->recoveryId = RECOVERY1;
+    increaseEnergy(REGISTRAR1, 10000000);
+    increaseEnergy(RECOVERY1, 10000000);
+
+    ASSERT_EQ(qpayhub.setAffiliate(REGISTRAR1, SELLER1, AFFILIATE1).returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.removeAffiliate(RECOVERY1, SELLER1).returnCode, QPAYHUB_OK);
+}
+
+// An affiliate link stops paying out after QPAYHUB_AFFILIATE_TERM_EPOCHS,
+// and END_EPOCH actively purges the entry once expired, same purge pattern
+// as receipt retention.
+TEST(ContractQPayhub, AffiliateCutStopsAndEntryIsPurgedAfterTerm)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->affiliateRegistrarId = REGISTRAR1;
+    increaseEnergy(REGISTRAR1, 10000000);
+    increaseEnergy(BUYER1, 10000000);
+
+    system.epoch = 10;
+    ASSERT_EQ(qpayhub.setAffiliate(REGISTRAR1, SELLER1, AFFILIATE1).returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.getAffiliate(SELLER1).active, 1);
+
+    // Still within term: one epoch short of expiry.
+    system.epoch = 10 + QPAYHUB_AFFILIATE_TERM_EPOCHS - 1;
+    EXPECT_EQ(qpayhub.getAffiliate(SELLER1).active, 1);
+    const sint64 affBefore = getBalance(AFFILIATE1);
+    qpayhub.pay(BUYER1, SELLER1, RESOURCE1, 1, 100000);
+    EXPECT_GT(getBalance(AFFILIATE1), affBefore);
+
+    // Past the term: Pay no longer pays the affiliate, even though the
+    // entry has not been purged yet.
+    system.epoch = 10 + QPAYHUB_AFFILIATE_TERM_EPOCHS;
+    EXPECT_EQ(qpayhub.getAffiliate(SELLER1).active, 0);
+    const sint64 affBefore2 = getBalance(AFFILIATE1);
+    qpayhub.pay(BUYER1, SELLER1, RESOURCE2, 2, 100000);
+    EXPECT_EQ(getBalance(AFFILIATE1), affBefore2);
+
+    // END_EPOCH at or past expiry purges the entry and frees the slot.
+    qpayhub.endEpoch();
+    EXPECT_EQ(qpayhub.state()->affiliateOf.population(), 0ULL);
+}
+
+TEST(ContractQPayhub, AffiliateCapacityEnforced)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->affiliateRegistrarId = REGISTRAR1;
+    increaseEnergy(REGISTRAR1, 10000000);
+
+    id sellers[QPAYHUB_AFFILIATE_CAPACITY];
+    for (uint64 i = 0; i < QPAYHUB_AFFILIATE_CAPACITY; ++i)
+    {
+        sellers[i] = id::randomValue();
+        auto out = qpayhub.setAffiliate(REGISTRAR1, sellers[i], id::randomValue());
+        ASSERT_EQ(out.returnCode, QPAYHUB_OK);
+    }
+
+    const id overflow = id::randomValue();
+    auto overflowOut = qpayhub.setAffiliate(REGISTRAR1, overflow, id::randomValue());
+    EXPECT_EQ(overflowOut.returnCode, QPAYHUB_ERR_CAPACITY);
+    EXPECT_EQ(qpayhub.getAffiliate(overflow).active, 0);
+
+    ASSERT_EQ(qpayhub.removeAffiliate(REGISTRAR1, sellers[0]).returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.setAffiliate(REGISTRAR1, overflow, id::randomValue()).returnCode, QPAYHUB_OK);
+}
+
+TEST(ContractQPayhub, ChangeAffiliateRegistrarByCurrentRegistrarSucceeds)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->affiliateRegistrarId = REGISTRAR1;
+    increaseEnergy(REGISTRAR1, 10000000);
+    increaseEnergy(NEWREGISTRAR1, 10000000);
+
+    EXPECT_EQ(qpayhub.changeAffiliateRegistrar(REGISTRAR1, NEWREGISTRAR1).returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.setAffiliate(REGISTRAR1, SELLER1, AFFILIATE1).returnCode, QPAYHUB_ERR_ACCESS_DENIED);
+    EXPECT_EQ(qpayhub.setAffiliate(NEWREGISTRAR1, SELLER1, AFFILIATE1).returnCode, QPAYHUB_OK);
+}
+
+TEST(ContractQPayhub, ChangeAffiliateRegistrarByRecoveryOverridesCompromisedRegistrar)
+{
+    ContractTestingQPayhub qpayhub;
+    qpayhub.state()->affiliateRegistrarId = REGISTRAR1;
+    qpayhub.state()->recoveryId = RECOVERY1;
+    increaseEnergy(REGISTRAR1, 10000000);
+    increaseEnergy(RECOVERY1, 10000000);
+    increaseEnergy(NEWREGISTRAR1, 10000000);
+
+    auto out = qpayhub.changeAffiliateRegistrar(RECOVERY1, NEWREGISTRAR1);
+    EXPECT_EQ(out.returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.setAffiliate(NEWREGISTRAR1, SELLER1, AFFILIATE1).returnCode, QPAYHUB_OK);
+    EXPECT_EQ(qpayhub.setAffiliate(REGISTRAR1, SELLER2, AFFILIATE2).returnCode, QPAYHUB_ERR_ACCESS_DENIED); // old registrar locked out
 }

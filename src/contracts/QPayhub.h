@@ -56,6 +56,14 @@ using namespace QPI;
 //   untouched by a promo rate; only the percentage is discounted, never the
 //   dust floor.
 //
+//   AFFILIATE ADDITION: a seller can be attributed to a referring affiliate
+//   via SetAffiliate (search AFFILIATE ADDITION below), who then earns
+//   QPAYHUB_AFFILIATE_COMMISSION_PERMILLE of that seller's fee - never the
+//   seller's net, never the buyer's payment - for QPAYHUB_AFFILIATE_TERM_EPOCHS
+//   epochs from the referral. A growth incentive for whoever brings a
+//   merchant onto QPAY, bounded and time-limited the same way promo rates
+//   are bounded by a floor.
+//
 // TEST STATUS (append-only, keep accurate)
 //   Pay/Consume/GetReceipt/ComputeReceiptKey/GetInfo/END_EPOCH/
 //   POST_INCOMING_TRANSFER: 11/11 GoogleTest unit + 19/19 live-chain
@@ -84,6 +92,14 @@ using namespace QPI;
 //   access-control/bounds correctness, and re-tested against this file's
 //   own GoogleTest suite (test/contract_qpayhub.cpp) - see that file's
 //   Promo/Operator/Recovery test cases.
+//   SetAffiliate/RemoveAffiliate/ChangeAffiliateRegistrar/GetAffiliate and
+//   Pay's affiliate-cut split (search AFFILIATE ADDITION below): ported
+//   from the same PR #3 branch after it grew affiliate referrals, reviewed
+//   for the same access-control/bounds properties (self-referral blocked,
+//   cut comes out of the fee not the seller's net, first-attribution-wins,
+//   term-expiry enforced in both Pay() and END_EPOCH), and re-tested
+//   against this file's own GoogleTest suite - see that file's Affiliate
+//   test cases.
 //
 // WHY THE ORACLE ADDITIONS EXIST
 //   src/priceOracle.js (the off-chain USD->QU pricing used by the POS/
@@ -126,6 +142,14 @@ using namespace QPI;
 //   promo rate is publicly readable via GetPromoRate - discounted pricing
 //   is visible on-chain, not a private side deal. See PROMO RATES ADDITION
 //   below for the full mechanism.
+//
+//   UPDATE - AFFILIATE ADDITION: a second, separate admin role -
+//   affiliateRegistrarId - was added the same way, deliberately not folded
+//   into operatorId, so a compromised key on one surface (promo rates)
+//   can't touch the other (affiliate attribution), and vice versa.
+//   recoveryId can reassign either via ChangeOperator or
+//   ChangeAffiliateRegistrar. Every affiliate link is publicly readable via
+//   GetAffiliate, same transparency rationale as promo rates above.
 //
 // VERIFIED BEFORE WRITING THIS:
 //   - The oracle interaction pattern (QUERY_ORACLE/SUBSCRIBE_ORACLE macros,
@@ -181,6 +205,13 @@ constexpr uint64 QPAYHUB_TOKEN_ASSETNAME = 1497452625ULL;       // "QPAY"
 constexpr uint64 QPAYHUB_PROMO_CAPACITY = 32; // concurrent promo sellers; grow via redeploy, not a live concern at launch scale
 constexpr uint64 QPAYHUB_PROMO_FLOOR_PERMILLE = 25; // 25 per 10000 = 0.25 percent, the deepest discount any operator key can grant
 
+// ---- AFFILIATE ADDITION: constants ----
+// A referrer earns a slice of a referred seller's fee for a bounded term,
+// not an open-ended cut - see the header's UPDATE - AFFILIATE ADDITION note.
+constexpr uint64 QPAYHUB_AFFILIATE_CAPACITY = 128; // concurrent active affiliate links; grow via redeploy
+constexpr uint64 QPAYHUB_AFFILIATE_COMMISSION_PERMILLE = 500; // 500 per 10000 = 5% of the fee, not the seller's net
+constexpr uint32 QPAYHUB_AFFILIATE_TERM_EPOCHS = 52; // ~12 months at ~1 epoch/week
+
 // ---- ORACLE PRICE FEED ADDITIONS: constants ----
 // A 16-minute renewal period sits in the efficient tier of the fee table
 // (1,784 QU) - frequent enough for an invoice payment window, rare
@@ -201,6 +232,8 @@ static_assert(QPAYHUB_FEE_PERMILLE < 10000);
 static_assert(QPAYHUB_DIVIDEND_SHAREHOLDER_PERMILLE <= 1000);
 static_assert((QPAYHUB_PROMO_CAPACITY & (QPAYHUB_PROMO_CAPACITY - 1)) == 0);
 static_assert(QPAYHUB_PROMO_FLOOR_PERMILLE <= QPAYHUB_FEE_PERMILLE);
+static_assert((QPAYHUB_AFFILIATE_CAPACITY & (QPAYHUB_AFFILIATE_CAPACITY - 1)) == 0);
+static_assert(QPAYHUB_AFFILIATE_COMMISSION_PERMILLE <= 10000);
 
 // Return codes — append-only, never renumber.
 constexpr uint64 QPAYHUB_OK = 0;
@@ -214,6 +247,7 @@ constexpr uint64 QPAYHUB_ERR_ALREADY_CONSUMED = 7;
 constexpr uint64 QPAYHUB_ERR_ALREADY_SUBSCRIBED = 8;
 constexpr uint64 QPAYHUB_ERR_SUBSCRIBE_FAILED = 9;
 constexpr uint64 QPAYHUB_ERR_INVALID_RATE = 10; // SetPromoRate's feePermille outside [QPAYHUB_PROMO_FLOOR_PERMILLE, QPAYHUB_FEE_PERMILLE]
+constexpr uint64 QPAYHUB_ERR_ALREADY_HAS_AFFILIATE = 11; // SetAffiliate: seller already has an attributed affiliate - remove it first
 
 struct QPAYHUB2
 {
@@ -242,6 +276,13 @@ struct QPAYHUB : public ContractBase
         id seller;
         id resourceId;
         uint64 nonce;
+    };
+
+    // ---- AFFILIATE ADDITION: referral record ----
+    struct Affiliate
+    {
+        id affiliate;
+        uint32 referredAtEpoch;
     };
 
     struct StateData
@@ -276,6 +317,14 @@ struct QPAYHUB : public ContractBase
         id operatorId;
         id recoveryId;
         HashMap<id, uint64, QPAYHUB_PROMO_CAPACITY> promoFeePermille;
+
+        // ---- AFFILIATE ADDITION: state ----
+        // affiliateRegistrarId: day-to-day SetAffiliate/RemoveAffiliate caller,
+        // a separate role from operatorId so a compromised key only ever
+        // touches one of the two admin surfaces. recoveryId (above) can
+        // reassign this one too, via ChangeAffiliateRegistrar.
+        id affiliateRegistrarId;
+        HashMap<id, Affiliate, QPAYHUB_AFFILIATE_CAPACITY> affiliateOf;
     };
 
     // ------------------------------------------------------------------
@@ -304,6 +353,8 @@ struct QPAYHUB : public ContractBase
         sint64 fee;
         sint64 net;
         uint64 feePermille; // QPAYHUB_FEE_PERMILLE, or this seller's promo rate if one is set - PROMO RATES ADDITION
+        Affiliate aff;      // AFFILIATE ADDITION
+        sint64 affiliateCut;
     };
 
     struct Consume_input
@@ -382,6 +433,10 @@ struct QPAYHUB : public ContractBase
         uint64 shareholderPermille;
         uint64 totalShareholderDividends;
         uint64 totalTokenholderDividends;
+        // Likewise appended - AFFILIATE ADDITION.
+        uint64 affiliateCommissionPermille;
+        uint32 affiliateTermEpochs;
+        uint32 padding1;
     };
 
     // ---- ORACLE PRICE FEED ADDITIONS: I/O structs ----
@@ -470,6 +525,55 @@ struct QPAYHUB : public ContractBase
         uint64 returnCode;
     };
 
+    // ---- AFFILIATE ADDITION: I/O structs ----
+
+    struct GetAffiliate_input
+    {
+        id seller;
+    };
+    struct GetAffiliate_output
+    {
+        id affiliate;
+        uint32 referredAtEpoch;
+        bit active; // within QPAYHUB_AFFILIATE_TERM_EPOCHS of referredAtEpoch
+    };
+    struct GetAffiliate_locals
+    {
+        Affiliate aff;
+    };
+
+    struct SetAffiliate_input
+    {
+        id seller;
+        id affiliate;
+    };
+    struct SetAffiliate_output
+    {
+        uint64 returnCode;
+    };
+    struct SetAffiliate_locals
+    {
+        Affiliate a;
+    };
+
+    struct RemoveAffiliate_input
+    {
+        id seller;
+    };
+    struct RemoveAffiliate_output
+    {
+        uint64 returnCode;
+    };
+
+    struct ChangeAffiliateRegistrar_input
+    {
+        id newRegistrar;
+    };
+    struct ChangeAffiliateRegistrar_output
+    {
+        uint64 returnCode;
+    };
+
     // ------------------------------------------------------------------
     // Functions (read-only)
     // ------------------------------------------------------------------
@@ -520,6 +624,9 @@ struct QPAYHUB : public ContractBase
         output.shareholderPermille = QPAYHUB_DIVIDEND_SHAREHOLDER_PERMILLE;
         output.totalShareholderDividends = state.get().totalShareholderDividends;
         output.totalTokenholderDividends = state.get().totalTokenholderDividends;
+        output.affiliateCommissionPermille = QPAYHUB_AFFILIATE_COMMISSION_PERMILLE;
+        output.affiliateTermEpochs = QPAYHUB_AFFILIATE_TERM_EPOCHS;
+        output.padding1 = 0;
     }
 
     // ---- ORACLE PRICE FEED ADDITIONS: read function ----
@@ -555,6 +662,24 @@ struct QPAYHUB : public ContractBase
         {
             output.feePermille = QPAYHUB_FEE_PERMILLE;
             output.isPromo = 0;
+        }
+    }
+
+    // ---- AFFILIATE ADDITION: read function ----
+    // Permissionless, same rationale as GetPromoRate above.
+    PUBLIC_FUNCTION_WITH_LOCALS(GetAffiliate)
+    {
+        if (state.get().affiliateOf.get(input.seller, locals.aff))
+        {
+            output.affiliate = locals.aff.affiliate;
+            output.referredAtEpoch = locals.aff.referredAtEpoch;
+            output.active = (uint32)qpi.epoch() < locals.aff.referredAtEpoch + QPAYHUB_AFFILIATE_TERM_EPOCHS ? 1 : 0;
+        }
+        else
+        {
+            output.affiliate = NULL_ID;
+            output.referredAtEpoch = 0;
+            output.active = 0;
         }
     }
 
@@ -629,6 +754,16 @@ struct QPAYHUB : public ContractBase
         }
         locals.net = locals.amount - locals.fee;
 
+        // AFFILIATE ADDITION: if this seller was referred and is still
+        // within term, the affiliate's cut comes out of the fee, never out
+        // of the seller's net - locals.net above is already final.
+        locals.affiliateCut = 0;
+        if (state.get().affiliateOf.get(input.seller, locals.aff)
+            && (uint32)qpi.epoch() < locals.aff.referredAtEpoch + QPAYHUB_AFFILIATE_TERM_EPOCHS)
+        {
+            locals.affiliateCut = (sint64)div((uint64)locals.fee * QPAYHUB_AFFILIATE_COMMISSION_PERMILLE, (uint64)10000);
+        }
+
         // Effects before the outbound interaction: record everything first,
         // then pay the seller last.
         locals.r.payer = qpi.invocator();
@@ -641,12 +776,16 @@ struct QPAYHUB : public ContractBase
         locals.r.tickPaid = (uint32)qpi.tick();
         locals.r.consumed = 0;
         state.mut().receipts.set(locals.key, locals.r);
-        state.mut().feePool = sadd(state.get().feePool, locals.fee);
+        state.mut().feePool = sadd(state.get().feePool, locals.fee - locals.affiliateCut);
         state.mut().totalPayments = sadd(state.get().totalPayments, (uint64)1);
         state.mut().totalVolume = sadd(state.get().totalVolume, (uint64)locals.amount);
         state.mut().totalFeesCollected = sadd(state.get().totalFeesCollected, (uint64)locals.fee);
 
         qpi.transfer(input.seller, locals.net);
+        if (locals.affiliateCut > 0)
+        {
+            qpi.transfer(locals.aff.affiliate, locals.affiliateCut);
+        }
 
         output.returnCode = QPAYHUB_OK;
         output.receiptKey = locals.key;
@@ -836,6 +975,90 @@ struct QPAYHUB : public ContractBase
         output.returnCode = QPAYHUB_OK;
     }
 
+    // ---- AFFILIATE ADDITION: registrar-gated procedures ----
+    // affiliateRegistrarId-only. First-attribution-wins: an existing
+    // affiliate link can't be overwritten directly, only removed then
+    // re-set, so the registrar can't silently reassign credit after the
+    // fact.
+    PUBLIC_PROCEDURE_WITH_LOCALS(SetAffiliate)
+    {
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+        if (qpi.invocator() != state.get().affiliateRegistrarId)
+        {
+            output.returnCode = QPAYHUB_ERR_ACCESS_DENIED;
+            return;
+        }
+        if (input.seller == NULL_ID || input.affiliate == NULL_ID || input.affiliate == input.seller)
+        {
+            output.returnCode = QPAYHUB_ERR_INVALID_SELLER;
+            return;
+        }
+        if (state.get().affiliateOf.contains(input.seller))
+        {
+            output.returnCode = QPAYHUB_ERR_ALREADY_HAS_AFFILIATE;
+            return;
+        }
+        if (state.get().affiliateOf.population() >= QPAYHUB_AFFILIATE_CAPACITY)
+        {
+            output.returnCode = QPAYHUB_ERR_CAPACITY;
+            return;
+        }
+        locals.a.affiliate = input.affiliate;
+        locals.a.referredAtEpoch = (uint32)qpi.epoch();
+        state.mut().affiliateOf.set(input.seller, locals.a);
+        output.returnCode = QPAYHUB_OK;
+    }
+
+    // affiliateRegistrarId OR recoveryId - a confirmed bad attribution needs
+    // a way out even if the registrar key is the one that's compromised.
+    PUBLIC_PROCEDURE(RemoveAffiliate)
+    {
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+        if (qpi.invocator() != state.get().affiliateRegistrarId
+            && qpi.invocator() != state.get().recoveryId)
+        {
+            output.returnCode = QPAYHUB_ERR_ACCESS_DENIED;
+            return;
+        }
+        if (!state.get().affiliateOf.contains(input.seller))
+        {
+            output.returnCode = QPAYHUB_ERR_NOT_FOUND;
+            return;
+        }
+        state.mut().affiliateOf.removeByKey(input.seller);
+        output.returnCode = QPAYHUB_OK;
+    }
+
+    // Callable by the CURRENT registrar (planned rotation) or by recoveryId
+    // (emergency override) - same self-rotation/recovery-override pattern
+    // as ChangeOperator above.
+    PUBLIC_PROCEDURE(ChangeAffiliateRegistrar)
+    {
+        if (qpi.invocationReward() > 0)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+        }
+        if (qpi.invocator() != state.get().affiliateRegistrarId
+            && qpi.invocator() != state.get().recoveryId)
+        {
+            output.returnCode = QPAYHUB_ERR_ACCESS_DENIED;
+            return;
+        }
+        if (input.newRegistrar == NULL_ID)
+        {
+            output.returnCode = QPAYHUB_ERR_INVALID_SELLER;
+            return;
+        }
+        state.mut().affiliateRegistrarId = input.newRegistrar;
+        output.returnCode = QPAYHUB_OK;
+    }
+
     // ---- ORACLE PRICE FEED ADDITIONS: notification callback ----
     // Fires whenever the subscription produces a new reply. Only a
     // confirmed SUCCESS with a sane reply updates state - everything else
@@ -867,6 +1090,7 @@ struct QPAYHUB : public ContractBase
         REGISTER_USER_FUNCTION(GetInfo, 3);
         REGISTER_USER_FUNCTION(GetQuUsdPrice, 4);
         REGISTER_USER_FUNCTION(GetPromoRate, 5);
+        REGISTER_USER_FUNCTION(GetAffiliate, 6);
 
         REGISTER_USER_PROCEDURE(Pay, 1);
         REGISTER_USER_PROCEDURE(Consume, 2);
@@ -874,6 +1098,9 @@ struct QPAYHUB : public ContractBase
         REGISTER_USER_PROCEDURE(SetPromoRate, 4);
         REGISTER_USER_PROCEDURE(RemovePromoRate, 5);
         REGISTER_USER_PROCEDURE(ChangeOperator, 6);
+        REGISTER_USER_PROCEDURE(SetAffiliate, 7);
+        REGISTER_USER_PROCEDURE(RemoveAffiliate, 8);
+        REGISTER_USER_PROCEDURE(ChangeAffiliateRegistrar, 9);
 
         REGISTER_USER_PROCEDURE_NOTIFICATION(NotifyQuUsdPriceReply);
     }
@@ -920,6 +1147,18 @@ struct QPAYHUB : public ContractBase
             _D, _A, _Z, _M, _N, _C, _S, _W,
             _W, _J, _Q, _Y, _L, _J, _C, _B
         );
+
+        // ---- AFFILIATE ADDITION: registrar init ----
+        // Real identity: LWKZMFLWSBGAIBGRHZTRANQQTVFDSBSEBJSLISUUYAVZUMLBWZCSTQJALJZE
+        state.mut().affiliateRegistrarId = ID(
+            _L, _W, _K, _Z, _M, _F, _L, _W,
+            _S, _B, _G, _A, _I, _B, _G, _R,
+            _H, _Z, _T, _R, _A, _N, _Q, _Q,
+            _T, _V, _F, _D, _S, _B, _S, _E,
+            _B, _J, _S, _L, _I, _S, _U, _U,
+            _Y, _A, _V, _Z, _U, _M, _L, _B,
+            _W, _Z, _C, _S, _T, _Q, _J, _A
+        );
     }
 
     POST_INCOMING_TRANSFER()
@@ -940,6 +1179,7 @@ struct QPAYHUB : public ContractBase
     {
         sint64 idx;
         Receipt r;
+        Affiliate aff; // AFFILIATE ADDITION
         uint32 cur;
         uint32 cutoff;
         Entity ent;
@@ -984,6 +1224,22 @@ struct QPAYHUB : public ContractBase
             }
         }
         state.mut().receipts.cleanupIfNeeded();
+
+        // AFFILIATE ADDITION: purge referral links past their term, freeing
+        // the slot - same purge pattern as receipt retention above. Pay()
+        // already stops paying an expired affiliate on its own (it checks
+        // the term itself), this just reclaims the capacity slot.
+        for (locals.idx = state.get().affiliateOf.nextElementIndex(NULL_INDEX);
+             locals.idx != NULL_INDEX;
+             locals.idx = state.get().affiliateOf.nextElementIndex(locals.idx))
+        {
+            locals.aff = state.get().affiliateOf.value(locals.idx);
+            if (locals.cur >= locals.aff.referredAtEpoch + QPAYHUB_AFFILIATE_TERM_EPOCHS)
+            {
+                state.mut().affiliateOf.removeByKey(state.get().affiliateOf.key(locals.idx));
+            }
+        }
+        state.mut().affiliateOf.cleanupIfNeeded();
 
         // Distribute above the exec reserve: 10% shares, 90% token holders.
         // Balance is re-read before spending; every payment is clamped to it.
