@@ -785,6 +785,92 @@ static std::vector<id> getRandomUsers(unsigned int totalUsers, unsigned int maxN
 }
 
 
+TEST(TestContractQearn, StandardTransferIsRefundedWithoutCreatingPosition)
+{
+    ContractTestingQearn qearn;
+    system.epoch = QEARN_V2_ACTIVATION_EPOCH;
+    qearn.beginEpoch();
+
+    const id sender(1091, 9, 1, 1);
+    constexpr sint64 amount = 100000000LL;
+    increaseEnergy(sender, amount);
+
+    const sint64 senderBalanceBefore = getBalance(sender);
+    const sint64 qearnBalanceBefore = getBalance(QEARN_CONTRACT_ID);
+    const int senderIndex = spectrumIndex(sender);
+    ASSERT_GE(senderIndex, 0);
+    ASSERT_TRUE(decreaseEnergy(senderIndex, amount));
+    increaseEnergy(QEARN_CONTRACT_ID, amount);
+    ASSERT_EQ(getBalance(sender), senderBalanceBefore - amount);
+    ASSERT_EQ(getBalance(QEARN_CONTRACT_ID), qearnBalanceBefore + amount);
+
+    notifyContractOfIncomingTransfer(
+        sender,
+        QEARN_CONTRACT_ID,
+        amount,
+        QPI::TransferType::standardTransaction);
+
+    EXPECT_EQ(getBalance(sender), senderBalanceBefore);
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID), qearnBalanceBefore);
+    EXPECT_EQ(
+        qearn.getV2UserLockedInfo(system.epoch, sender, QEARN_V2_LOCK_PERIOD_13).lockedAmount,
+        0ULL);
+    EXPECT_EQ(
+        qearn.getV2UserLockedInfo(system.epoch, sender, QEARN_V2_LOCK_PERIOD_26).lockedAmount,
+        0ULL);
+    EXPECT_EQ(
+        qearn.getV2UserLockedInfo(system.epoch, sender, QEARN_V2_LOCK_PERIOD_52).lockedAmount,
+        0ULL);
+}
+
+TEST(TestContractQearn, RevenueDonationIsRetained)
+{
+    ContractTestingQearn qearn;
+    system.epoch = QEARN_V2_ACTIVATION_EPOCH;
+    qearn.beginEpoch();
+
+    const id donor(1093, 9, 3, 3);
+    constexpr sint64 amount = 100000000LL;
+    increaseEnergy(donor, amount);
+
+    const sint64 qearnBalanceBefore = getBalance(QEARN_CONTRACT_ID);
+    const int donorIndex = spectrumIndex(donor);
+    ASSERT_GE(donorIndex, 0);
+    ASSERT_TRUE(decreaseEnergy(donorIndex, amount));
+    increaseEnergy(QEARN_CONTRACT_ID, amount);
+
+    notifyContractOfIncomingTransfer(
+        donor,
+        QEARN_CONTRACT_ID,
+        amount,
+        QPI::TransferType::revenueDonation);
+
+    EXPECT_EQ(getBalance(donor), 0);
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID), qearnBalanceBefore + amount);
+}
+
+TEST(TestContractQearn, ProcedureTransactionStillFundsLockV2)
+{
+    ContractTestingQearn qearn;
+    system.epoch = QEARN_V2_ACTIVATION_EPOCH;
+    qearn.beginEpoch();
+
+    const id sender(1092, 9, 2, 2);
+    constexpr sint64 amount = 100000000LL;
+    increaseEnergy(sender, amount);
+    const sint64 qearnBalanceBefore = getBalance(QEARN_CONTRACT_ID);
+
+    EXPECT_EQ(
+        qearn.lockV2(sender, amount, QEARN_V2_LOCK_PERIOD_13),
+        QEARN_LOCK_SUCCESS);
+
+    EXPECT_EQ(getBalance(sender), 0);
+    EXPECT_EQ(getBalance(QEARN_CONTRACT_ID), qearnBalanceBefore + amount);
+    EXPECT_EQ(
+        qearn.getV2UserLockedInfo(system.epoch, sender, QEARN_V2_LOCK_PERIOD_13).lockedAmount,
+        uint64(amount));
+}
+
 TEST(TestContractQearn, ErrorChecking)
 {
     ContractTestingQearn qearn;
