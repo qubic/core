@@ -11,28 +11,6 @@ namespace
 	static const id NOST_CONTRACT_ID(NOST_CONTRACT_INDEX, 0, 0, 0);
 } // namespace
 
-class NOSTChecker : public NOST, public NOST::StateData
-{
-
-public:
-	const QPI::ContractState<StateData, NOST_CONTRACT_INDEX>& asState() const
-	{
-		return *reinterpret_cast<const QPI::ContractState<StateData, NOST_CONTRACT_INDEX>*>(static_cast<const StateData*>(this));
-	}
-
-	void calculateAuctionRevenueBreakdown(uint64 grossAmount, AuctionRevenueBreakdown& output) const
-	{
-		NOST::calculateAuctionRevenueBreakdown(grossAmount, asState(), output);
-	}
-
-	void calculateAuctionServiceFeeBreakdown(uint64 feeAmount, AuctionServiceFeeBreakdown& output) const
-	{
-		NOST::calculateAuctionServiceFeeBreakdown(feeAmount, output);
-	}
-
-	uint64 getAuctionShareholderFeeBasisPoints(uint64 grossAmount) const { return NOST::getAuctionShareholderFeeBasisPoints(grossAmount, asState()); }
-};
-
 class ContractTestingNOST : protected ContractTesting
 {
 public:
@@ -49,8 +27,6 @@ public:
 		setNow(2026, 1, 1, 9, 0, 0);
 		callSystemProcedure(NOST_CONTRACT_INDEX, END_TICK);
 	}
-
-	NOSTChecker* state() { return reinterpret_cast<NOSTChecker*>(contractStates[NOST_CONTRACT_INDEX]); }
 
 	void ensureUser(const id& user, sint64 amount = 1000)
 	{
@@ -190,13 +166,13 @@ public:
 
 	NOST::PlaceBid_output placeBatchBidWithRequiredReward(const id& bidder, uint64 auctionIndex, uint64 bidQuantity, uint64 bidAmount)
 	{
-		const auto calculation = calculateBatchAuctionBidFee(bidQuantity, bidAmount);
+		const NOST::CalculateBatchAuctionBidFee_output& calculation = calculateBatchAuctionBidFee(bidQuantity, bidAmount);
 		return placeBid(bidder, auctionIndex, bidQuantity, bidAmount, static_cast<sint64>(calculation.requiredReward));
 	}
 
 	NOST::PlaceBid_output placeBatchBidWithFundedRequiredReward(const id& bidder, uint64 auctionIndex, uint64 bidQuantity, uint64 bidAmount)
 	{
-		const auto calculation = calculateBatchAuctionBidFee(bidQuantity, bidAmount);
+		const NOST::CalculateBatchAuctionBidFee_output& calculation = calculateBatchAuctionBidFee(bidQuantity, bidAmount);
 		return placeBidWithFundedReward(bidder, auctionIndex, bidQuantity, bidAmount, static_cast<sint64>(calculation.requiredReward));
 	}
 
@@ -333,7 +309,7 @@ public:
 
 	NOST::SetAuctionFees_input makeCoordinatorFeeInput(sint64 publicAuctionCreationFee) const
 	{
-		const auto fees = getAuctionFees();
+		const NOST::GetAuctionFees_output& fees = getAuctionFees();
 		NOST::SetAuctionFees_input input{};
 		input.privateAuctionFee = fees.privateAuctionFee;
 		input.publicAuctionCreationFee = publicAuctionCreationFee;
@@ -351,7 +327,7 @@ public:
 
 	NOST::SetAuctionFeesByManagement_input makeManagementFeeInput(sint64 publicAuctionCreationFee) const
 	{
-		const auto fees = getAuctionFees();
+		const NOST::GetAuctionFees_output& fees = getAuctionFees();
 		NOST::SetAuctionFeesByManagement_input input{};
 		input.privateAuctionFee = fees.privateAuctionFee;
 		input.publicAuctionCreationFee = publicAuctionCreationFee;
@@ -716,24 +692,12 @@ public:
 		return input;
 	}
 
-	void calculateAuctionRevenueBreakdown(uint64 grossAmount, NOST::AuctionRevenueBreakdown& output)
-	{
-		state()->calculateAuctionRevenueBreakdown(grossAmount, output);
-	}
-
-	void calculateAuctionServiceFeeBreakdown(uint64 feeAmount, NOST::AuctionServiceFeeBreakdown& output)
-	{
-		state()->calculateAuctionServiceFeeBreakdown(feeAmount, output);
-	}
-
 	sint64 expectedDividendPoolIncrease(uint64 addedDividendAmount) const
 	{
 		const uint64 poolBefore = stateData().auctionShareholderDividendPool;
 		const uint64 poolAfterFunding = poolBefore + addedDividendAmount;
 		return static_cast<sint64>(poolAfterFunding % NUMBER_OF_COMPUTORS) - static_cast<sint64>(poolBefore);
 	}
-
-	uint64 getAuctionShareholderFeeBasisPoints(uint64 grossAmount) { return state()->getAuctionShareholderFeeBasisPoints(grossAmount); }
 
 	static id managementWallet()
 	{
@@ -790,6 +754,21 @@ static bool containsAuctionIndex(const Array<uint64, NOST_AUCTION_HISTORY_NUM>& 
 		}
 	}
 	return false;
+}
+
+static void expectAuctionFeesEqual(const NOST::GetAuctionFees_output& actual, const NOST::GetAuctionFees_output& expected)
+{
+	EXPECT_EQ(actual.privateAuctionFee, expected.privateAuctionFee);
+	EXPECT_EQ(actual.publicAuctionCreationFee, expected.publicAuctionCreationFee);
+	EXPECT_EQ(actual.auctionCancellationFeeBasisPoints, expected.auctionCancellationFeeBasisPoints);
+	EXPECT_EQ(actual.managementFeeBasisPoints, expected.managementFeeBasisPoints);
+	EXPECT_EQ(actual.developmentFeeBasisPoints, expected.developmentFeeBasisPoints);
+	EXPECT_EQ(actual.takeoverCoordinatorFeeBasisPoints, expected.takeoverCoordinatorFeeBasisPoints);
+	EXPECT_EQ(actual.shareholderDividendBasisPoints, expected.shareholderDividendBasisPoints);
+	EXPECT_EQ(actual.shareholderFeeBasisPointsTier1, expected.shareholderFeeBasisPointsTier1);
+	EXPECT_EQ(actual.shareholderFeeBasisPointsTier2, expected.shareholderFeeBasisPointsTier2);
+	EXPECT_EQ(actual.shareholderFeeBasisPointsTier3, expected.shareholderFeeBasisPointsTier3);
+	EXPECT_EQ(actual.shareholderFeeBasisPointsTier4, expected.shareholderFeeBasisPointsTier4);
 }
 
 TEST(ContractNostromoAuction, InitialStateAndGettersAuction)
@@ -944,8 +923,9 @@ TEST(ContractNostromoAuction, RetainedAuctionGetterPaginationAcrossLiveAndClosed
 	const id sellerA(61, 62, 63, 64);
 	const id sellerB(65, 66, 67, 68);
 	const id missingSeller(69, 70, 71, 72);
-	const auto makeAuction = [](uint64 auctionIndex, const id& seller, NOST::EAuctionStatus status,
-	                            const Array<uint8, NOST_AUCTION_METADATA_CID_LENGTH>& metadataCid) {
+	const auto makeAuction =
+	    [](uint64 auctionIndex, const id& seller, NOST::EAuctionStatus status, const Array<uint8, NOST_AUCTION_METADATA_CID_LENGTH>& metadataCid)
+	{
 		NOST::AuctionData auction{};
 		auction.core.auctionIndex = auctionIndex;
 		auction.core.seller = seller;
@@ -970,8 +950,7 @@ TEST(ContractNostromoAuction, RetainedAuctionGetterPaginationAcrossLiveAndClosed
 	ASSERT_NE(nostromo.stateData().auctionList.set(7, makeAuction(7, sellerA, NOST::EAuctionStatus::Active, cidAtIndex7)), NULL_INDEX);
 	ASSERT_NE(nostromo.stateData().auctionList.set(1, makeAuction(1, sellerB, NOST::EAuctionStatus::Active, cidAtIndex1)), NULL_INDEX);
 	ASSERT_NE(nostromo.stateData().auctionList.set(9, makeAuction(9, sellerA, NOST::EAuctionStatus::Active, sharedCid)), NULL_INDEX);
-	ASSERT_NE(nostromo.stateData().auctionList.set(5, makeAuction(5, sellerA, NOST::EAuctionStatus::PendingSellerDecision, cidAtIndex5)),
-	          NULL_INDEX);
+	ASSERT_NE(nostromo.stateData().auctionList.set(5, makeAuction(5, sellerA, NOST::EAuctionStatus::PendingSellerDecision, cidAtIndex5)), NULL_INDEX);
 
 	// A partially filled history verifies that uninitialized ring capacity is not scanned as retained data.
 	nostromo.stateData().closedAuctionHistory.set(0, makeAuction(2, sellerA, NOST::EAuctionStatus::Finalized, sharedCid));
@@ -1218,8 +1197,7 @@ TEST(ContractNostromoAuction, PublicAuctionCreationAccumulatesConfiguredFeeAndRe
 	const sint64 standardSellerBefore = getBalance(standardSeller);
 	const sint64 standardContractBefore = getBalance(NOST_CONTRACT_ID);
 
-	const auto standardInsufficient =
-	    nostromo.createAuctionWithFundedReward(standardSeller, standardInput, managementConfiguredFee - 1);
+	const auto standardInsufficient = nostromo.createAuctionWithFundedReward(standardSeller, standardInput, managementConfiguredFee - 1);
 	EXPECT_EQ(standardInsufficient.errorCode, NOST::EAuctionError::InsufficientFunds);
 	EXPECT_EQ(getBalance(standardSeller), standardSellerBefore);
 	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), standardContractBefore);
@@ -1260,8 +1238,7 @@ TEST(ContractNostromoAuction, PublicAuctionCreationAccumulatesConfiguredFeeAndRe
 	const Asset privateStandardAsset{privateStandardSeller, assetNameFromString("PRVSTD")};
 	ASSERT_EQ(nostromo.issueAsset(privateStandardSeller, privateStandardAsset.assetName, 1), 1);
 	ASSERT_EQ(nostromo.transferShareManagementRightsToNostromo(privateStandardSeller, privateStandardAsset, 1), 1);
-	auto privateStandardInput =
-	    ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(privateStandardAsset, 1));
+	auto privateStandardInput = ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(privateStandardAsset, 1));
 	privateStandardInput.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
 	privateStandardInput.allowedBidderWallets = ContractTestingNOST::makeAllowedWallets({allowedBidder});
 	nostromo.seedUser(privateStandardSeller, NOST_DEFAULT_PRIVATE_AUCTION_FEE + 100);
@@ -1293,6 +1270,7 @@ TEST(ContractNostromoAuction, BatchBidFeeBoundariesAuction)
 
 	for (const auto& testCase : cases)
 	{
+		SCOPED_TRACE(::testing::Message() << "quantity=" << testCase.bidQuantity << ", bidAmount=" << testCase.bidAmount);
 		const auto output = nostromo.calculateBatchAuctionBidFee(testCase.bidQuantity, testCase.bidAmount);
 		EXPECT_EQ(output.escrowAmount, testCase.escrowAmount);
 		EXPECT_EQ(output.fee, testCase.fee);
@@ -1401,8 +1379,7 @@ TEST(ContractNostromoAuction, CreateStandardSingleAssetAuctionEscrowsLotAuction)
 	ASSERT_EQ(output.errorCode, NOST::EAuctionError::Success);
 	EXPECT_EQ(getBalance(seller), sellerBalanceBefore - NOST_PUBLIC_AUCTION_CREATION_FEE);
 	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), contractBalanceBefore + NOST_PUBLIC_AUCTION_CREATION_FEE);
-	EXPECT_EQ(nostromo.getPendingServiceFeePool().pendingServiceFeePool,
-	          poolBefore + static_cast<uint64>(NOST_PUBLIC_AUCTION_CREATION_FEE));
+	EXPECT_EQ(nostromo.getPendingServiceFeePool().pendingServiceFeePool, poolBefore + static_cast<uint64>(NOST_PUBLIC_AUCTION_CREATION_FEE));
 
 	const auto auction = nostromo.getAuction(output.auctionIndex).auction;
 	EXPECT_EQ(auction.core.quantityForSale, 1ULL);
@@ -1778,6 +1755,7 @@ TEST(ContractNostromoAuction, PrivateAuctionFeeIsDistributedAcrossRecipientsAuct
 	const uint8 routeModes[] = {0, 1};
 	for (uint32 routeIndex = 0; routeIndex < sizeof(routeModes) / sizeof(routeModes[0]); ++routeIndex)
 	{
+		SCOPED_TRACE(::testing::Message() << "routeAllFeesToDevelopment=" << static_cast<uint32>(routeModes[routeIndex]));
 		ContractTestingNOST nostromo;
 		const uint8 routeMode = routeModes[routeIndex];
 		const id seller(61 + routeIndex, 62 + routeIndex, 63 + routeIndex, 64 + routeIndex);
@@ -1796,9 +1774,11 @@ TEST(ContractNostromoAuction, PrivateAuctionFeeIsDistributedAcrossRecipientsAuct
 		const sint64 developmentBefore = getBalance(ContractTestingNOST::developmentWallet());
 		const sint64 coordinatorBefore = getBalance(ContractTestingNOST::takeoverCoordinatorWallet());
 		const sint64 contractBefore = getBalance(NOST_CONTRACT_ID);
-		NOST::AuctionServiceFeeBreakdown expectedBreakdown{};
-		nostromo.calculateAuctionServiceFeeBreakdown(static_cast<uint64>(NOST_DEFAULT_PRIVATE_AUCTION_FEE), expectedBreakdown);
-		const sint64 expectedDividendPoolIncrease = nostromo.expectedDividendPoolIncrease(expectedBreakdown.shareholderDividendAmount);
+		constexpr uint64 expectedShareholderDividend = 36350000ULL;
+		constexpr uint64 expectedManagementFee = 4550000ULL;
+		constexpr uint64 expectedDevelopmentFee = 4550000ULL;
+		constexpr uint64 expectedCoordinatorFee = 4550000ULL;
+		const sint64 expectedDividendPoolIncrease = nostromo.expectedDividendPoolIncrease(expectedShareholderDividend);
 
 		auto input = ContractTestingNOST::makeBatchAuctionInput(asset, 4, 12);
 		input.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
@@ -1817,10 +1797,8 @@ TEST(ContractNostromoAuction, PrivateAuctionFeeIsDistributedAcrossRecipientsAuct
 		EXPECT_EQ(nostromo.getPendingServiceFeePool().pendingServiceFeePool, static_cast<uint64>(NOST_DEFAULT_PRIVATE_AUCTION_FEE));
 		const auto pendingFeePool = nostromo.getNostromoFeePool();
 		EXPECT_EQ(pendingFeePool.totalAmount, static_cast<uint64>(NOST_DEFAULT_PRIVATE_AUCTION_FEE));
-		EXPECT_EQ(pendingFeePool.feePool.commonServiceFeeAmount,
-		          routeMode == 0 ? static_cast<uint64>(NOST_DEFAULT_PRIVATE_AUCTION_FEE) : 0ULL);
-		EXPECT_EQ(pendingFeePool.feePool.developmentAmount,
-		          routeMode != 0 ? static_cast<uint64>(NOST_DEFAULT_PRIVATE_AUCTION_FEE) : 0ULL);
+		EXPECT_EQ(pendingFeePool.feePool.commonServiceFeeAmount, routeMode == 0 ? static_cast<uint64>(NOST_DEFAULT_PRIVATE_AUCTION_FEE) : 0ULL);
+		EXPECT_EQ(pendingFeePool.feePool.developmentAmount, routeMode != 0 ? static_cast<uint64>(NOST_DEFAULT_PRIVATE_AUCTION_FEE) : 0ULL);
 
 		nostromo.endEpoch();
 		EXPECT_EQ(nostromo.getPendingServiceFeePool().pendingServiceFeePool, 0ULL);
@@ -1835,10 +1813,9 @@ TEST(ContractNostromoAuction, PrivateAuctionFeeIsDistributedAcrossRecipientsAuct
 		}
 		else
 		{
-			EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, expectedBreakdown.managementFeeAmount);
-			EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, expectedBreakdown.developmentFeeAmount);
-			EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore,
-			          expectedBreakdown.takeoverCoordinatorFeeAmount);
+			EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, expectedManagementFee);
+			EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, expectedDevelopmentFee);
+			EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore, expectedCoordinatorFee);
 			EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore, expectedDividendPoolIncrease);
 		}
 	}
@@ -1860,17 +1837,14 @@ TEST(ContractNostromoAuction, EndEpochUsesCurrentManagementWalletForAccruedFeesA
 	input.allowedBidderWallets = ContractTestingNOST::makeAllowedWallets({allowedBidder});
 	ASSERT_EQ(nostromo.createAuction(seller, input, NOST_DEFAULT_PRIVATE_AUCTION_FEE).errorCode, NOST::EAuctionError::Success);
 
-	NOST::AuctionServiceFeeBreakdown expectedBreakdown{};
-	nostromo.calculateAuctionServiceFeeBreakdown(static_cast<uint64>(NOST_DEFAULT_PRIVATE_AUCTION_FEE), expectedBreakdown);
 	nostromo.ensureUser(newManagement);
 	const sint64 previousManagementBefore = getBalance(ContractTestingNOST::managementWallet());
 	const sint64 newManagementBefore = getBalance(newManagement);
-	ASSERT_EQ(nostromo.setManagement(ContractTestingNOST::takeoverCoordinatorWallet(), newManagement).errorCode,
-	          NOST::EAuctionError::Success);
+	ASSERT_EQ(nostromo.setManagement(ContractTestingNOST::takeoverCoordinatorWallet(), newManagement).errorCode, NOST::EAuctionError::Success);
 
 	nostromo.endEpoch();
 	EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()), previousManagementBefore);
-	EXPECT_EQ(getBalance(newManagement) - newManagementBefore, expectedBreakdown.managementFeeAmount);
+	EXPECT_EQ(getBalance(newManagement) - newManagementBefore, 4550000ULL);
 }
 
 TEST(ContractNostromoAuction, CreateAuctionRejectsInvalidInputsAuction)
@@ -1885,95 +1859,110 @@ TEST(ContractNostromoAuction, CreateAuctionRejectsInvalidInputsAuction)
 	EXPECT_EQ(nostromo.issueAsset(seller, assetNameA, 5), 5);
 	EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, assetA, 5), 5);
 	EXPECT_EQ(nostromo.issueAsset(altIssuer, assetNameFromString("GATINV"), 1), 1);
+	nostromo.seedUser(seller, NOST_DEFAULT_PRIVATE_AUCTION_FEE);
+	const sint64 sellerBalanceBeforeInvalidCalls = getBalance(seller);
+	const sint64 contractBalanceBeforeInvalidCalls = getBalance(NOST_CONTRACT_ID);
+	const auto invokeRejectedPublicAuction = [&nostromo, &seller](const NOST::CreateAuction_input& input) {
+		return nostromo.createAuctionWithFundedReward(seller, input, NOST_PUBLIC_AUCTION_CREATION_FEE);
+	};
+	const auto invokeRejectedPrivateAuction = [&nostromo, &seller](const NOST::CreateAuction_input& input) {
+		return nostromo.createAuctionWithFundedReward(seller, input, NOST_DEFAULT_PRIVATE_AUCTION_FEE);
+	};
 
 	auto invalidCid = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	invalidCid.metadataIpfsCid = ContractTestingNOST::makeInvalidMetadataCidFirstChar();
-	EXPECT_EQ(nostromo.createAuction(seller, invalidCid).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPublicAuction(invalidCid).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto invalidCidUppercase = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	invalidCidUppercase.metadataIpfsCid = ContractTestingNOST::makeInvalidMetadataCidUppercase();
-	EXPECT_EQ(nostromo.createAuction(seller, invalidCidUppercase).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPublicAuction(invalidCidUppercase).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto emptyLot = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	emptyLot.auctionLotItems = Array<NOST::AuctionAssetEntry, NOST_AUCTION_LOT_ITEM_NUM>{};
-	EXPECT_EQ(nostromo.createAuction(seller, emptyLot).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPublicAuction(emptyLot).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto negativeQuantity = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	negativeQuantity.auctionLotItems = ContractTestingNOST::makeSingleLot(assetA, -1);
-	EXPECT_EQ(nostromo.createAuction(seller, negativeQuantity).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPublicAuction(negativeQuantity).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto zeroDuration = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	zeroDuration.durationDays = 0;
-	EXPECT_EQ(nostromo.createAuction(seller, zeroDuration).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPublicAuction(zeroDuration).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto tooLongDuration = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	tooLongDuration.durationDays = NOST_AUCTION_MAX_DURATION_DAYS + 1;
-	EXPECT_EQ(nostromo.createAuction(seller, tooLongDuration).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPublicAuction(tooLongDuration).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto invalidType = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	invalidType.auctionType = 99;
-	EXPECT_EQ(nostromo.createAuction(seller, invalidType).errorCode, NOST::EAuctionError::InvalidAuctionType);
+	EXPECT_EQ(invokeRejectedPublicAuction(invalidType).errorCode, NOST::EAuctionError::InvalidAuctionType);
 
 	auto invalidVisibility = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	invalidVisibility.auctionVisibility = 99;
-	EXPECT_EQ(nostromo.createAuction(seller, invalidVisibility).errorCode, NOST::EAuctionError::InvalidVisibility);
+	EXPECT_EQ(invokeRejectedPublicAuction(invalidVisibility).errorCode, NOST::EAuctionError::InvalidVisibility);
 
 	auto partiallyEmptyLot = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	partiallyEmptyLot.auctionLotItems = ContractTestingNOST::makeSingleLot(Asset{}, 1);
-	EXPECT_EQ(nostromo.createAuction(seller, partiallyEmptyLot).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPublicAuction(partiallyEmptyLot).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto invalidBatchBuyNow = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	invalidBatchBuyNow.buyNowPrice = 100;
-	EXPECT_EQ(nostromo.createAuction(seller, invalidBatchBuyNow).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPublicAuction(invalidBatchBuyNow).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto invalidStandardIncrement = ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(assetA, 1));
 	invalidStandardIncrement.minimumBidIncrement = 0;
-	EXPECT_EQ(nostromo.createAuction(seller, invalidStandardIncrement).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPublicAuction(invalidStandardIncrement).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto invalidStandardLowInitial = ContractTestingNOST::makeStandardAuctionInput(
 	    ContractTestingNOST::makeSingleLot(assetA, 1), NOST_STANDARD_MIN_PRICE - 1, NOST_STANDARD_MIN_PRICE, NOST_STANDARD_MIN_BID_INCREMENT);
-	EXPECT_EQ(nostromo.createAuction(seller, invalidStandardLowInitial).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPublicAuction(invalidStandardLowInitial).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto invalidStandardLowSale = ContractTestingNOST::makeStandardAuctionInput(
 	    ContractTestingNOST::makeSingleLot(assetA, 1), NOST_STANDARD_MIN_PRICE, NOST_STANDARD_MIN_PRICE - 1, NOST_STANDARD_MIN_BID_INCREMENT);
-	EXPECT_EQ(nostromo.createAuction(seller, invalidStandardLowSale).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPublicAuction(invalidStandardLowSale).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto invalidStandardLowIncrement = ContractTestingNOST::makeStandardAuctionInput(
 	    ContractTestingNOST::makeSingleLot(assetA, 1), NOST_STANDARD_MIN_PRICE, NOST_STANDARD_MIN_PRICE, NOST_STANDARD_MIN_BID_INCREMENT - 1);
-	EXPECT_EQ(nostromo.createAuction(seller, invalidStandardLowIncrement).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPublicAuction(invalidStandardLowIncrement).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto invalidStandardPrice = ContractTestingNOST::makeStandardAuctionInput(
 	    ContractTestingNOST::makeSingleLot(assetA, 1), NOST_STANDARD_MIN_PRICE + 1, NOST_STANDARD_MIN_PRICE, NOST_STANDARD_MIN_BID_INCREMENT);
-	EXPECT_EQ(nostromo.createAuction(seller, invalidStandardPrice).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPublicAuction(invalidStandardPrice).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto invalidStandardSalePrice = ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(assetA, 1));
 	invalidStandardSalePrice.salePrice = 0;
-	EXPECT_EQ(nostromo.createAuction(seller, invalidStandardSalePrice).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPublicAuction(invalidStandardSalePrice).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto invalidStandardBuyNow = ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(assetA, 1), NOST_STANDARD_MIN_PRICE,
 	                                                                           NOST_STANDARD_MIN_PRICE + NOST_STANDARD_MIN_BID_INCREMENT,
 	                                                                           NOST_STANDARD_MIN_BID_INCREMENT, NOST_STANDARD_MIN_PRICE - 1);
-	EXPECT_EQ(nostromo.createAuction(seller, invalidStandardBuyNow).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPublicAuction(invalidStandardBuyNow).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto privateWithoutGate = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	privateWithoutGate.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
-	EXPECT_EQ(nostromo.createAuction(seller, privateWithoutGate, NOST_DEFAULT_PRIVATE_AUCTION_FEE).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPrivateAuction(privateWithoutGate).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto zeroAccessQuantity = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	zeroAccessQuantity.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
 	zeroAccessQuantity.requiredAccessAssets = ContractTestingNOST::makeRequiredAccessAssets({NOST::AuctionAssetEntry{accessAsset, 0}});
-	EXPECT_EQ(nostromo.createAuction(seller, zeroAccessQuantity, NOST_DEFAULT_PRIVATE_AUCTION_FEE).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPrivateAuction(zeroAccessQuantity).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto negativeAccessQuantity = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	negativeAccessQuantity.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
 	negativeAccessQuantity.requiredAccessAssets = ContractTestingNOST::makeRequiredAccessAssets({NOST::AuctionAssetEntry{accessAsset, -1}});
-	EXPECT_EQ(nostromo.createAuction(seller, negativeAccessQuantity, NOST_DEFAULT_PRIVATE_AUCTION_FEE).errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPrivateAuction(negativeAccessQuantity).errorCode, NOST::EAuctionError::InvalidInput);
 
 	auto partiallyEmptyAccessAsset = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	partiallyEmptyAccessAsset.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
 	partiallyEmptyAccessAsset.requiredAccessAssets = ContractTestingNOST::makeRequiredAccessAssets({NOST::AuctionAssetEntry{Asset{}, 1}});
-	EXPECT_EQ(nostromo.createAuction(seller, partiallyEmptyAccessAsset, NOST_DEFAULT_PRIVATE_AUCTION_FEE).errorCode,
-	          NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(invokeRejectedPrivateAuction(partiallyEmptyAccessAsset).errorCode, NOST::EAuctionError::InvalidInput);
+
+	EXPECT_EQ(getBalance(seller), sellerBalanceBeforeInvalidCalls);
+	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), contractBalanceBeforeInvalidCalls);
+	EXPECT_EQ(nostromo.managedShares(assetA, seller), 5);
+	EXPECT_EQ(nostromo.getLatestAuctionIndex().found, 0);
+	EXPECT_EQ(nostromo.getContractStats().stats.totalAuctionsCreated, 0ULL);
+	EXPECT_EQ(nostromo.getNostromoFeePool().totalAmount, 0ULL);
 }
 
 TEST(ContractNostromoAuction, CreateAuctionRejectsInsufficientFundsInsufficientAssetBalanceAndPauseAuction)
@@ -2386,6 +2375,7 @@ TEST(ContractNostromoAuction, DeterministicBatchAllocationPropertiesAuction)
 	// Unsigned wraparound is intentional: this fixed LCG makes boundary-heavy scenarios reproducible.
 	for (uint64 scenario = 0; scenario < 12; ++scenario)
 	{
+		SCOPED_TRACE(::testing::Message() << "scenario=" << scenario);
 		ContractTestingNOST nostromo;
 		generatorState = generatorState * 6364136223846793005ULL + 1442695040888963407ULL;
 		const uint64 quantityForSale = 3ULL + generatorState % 6ULL;
@@ -2394,8 +2384,7 @@ TEST(ContractNostromoAuction, DeterministicBatchAllocationPropertiesAuction)
 		const id seller(7000 + scenario, 7100 + scenario, 7200 + scenario, 7300 + scenario);
 		const Asset asset{seller, assetNameFromString("PROPBA")};
 
-		ASSERT_EQ(nostromo.issueAsset(seller, asset.assetName, static_cast<sint64>(quantityForSale)),
-		          static_cast<sint64>(quantityForSale));
+		ASSERT_EQ(nostromo.issueAsset(seller, asset.assetName, static_cast<sint64>(quantityForSale)), static_cast<sint64>(quantityForSale));
 		ASSERT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, static_cast<sint64>(quantityForSale)),
 		          static_cast<sint64>(quantityForSale));
 		auto input = ContractTestingNOST::makeBatchAuctionInput(asset, static_cast<sint64>(quantityForSale), 10);
@@ -2405,16 +2394,19 @@ TEST(ContractNostromoAuction, DeterministicBatchAllocationPropertiesAuction)
 
 		for (uint64 bidIndex = 0; bidIndex < 6; ++bidIndex)
 		{
+			SCOPED_TRACE(::testing::Message() << "bidIndex=" << bidIndex);
 			generatorState = generatorState * 6364136223846793005ULL + 1442695040888963407ULL;
 			const uint64 bidQuantity = minimumPurchaseQuantity + generatorState % (quantityForSale - minimumPurchaseQuantity + 1ULL);
 			const uint64 bidPrice = 20ULL + bidIndex * 10ULL;
 			const id bidder(8000 + scenario * 10 + bidIndex, 9000 + bidIndex, 10000 + scenario, 11000 + bidIndex);
-			nostromo.placeBatchBidWithRequiredReward(bidder, createOutput.auctionIndex, bidQuantity, bidPrice);
+			ASSERT_EQ(nostromo.placeBatchBidWithRequiredReward(bidder, createOutput.auctionIndex, bidQuantity, bidPrice).errorCode,
+			          NOST::EAuctionError::Success);
 		}
 
 		nostromo.advanceAndEndTick((NOST_SECONDS_PER_DAY + 1ULL) * 1000ULL);
 		const auto auction = nostromo.getAuction(createOutput.auctionIndex).auction;
 		const auto participants = nostromo.getAuctionParticipants(createOutput.auctionIndex, 0, NOST_AUCTION_GETTER_PAGE_SIZE);
+		EXPECT_EQ(auction.core.status, NOST::EAuctionStatus::Finalized);
 		uint64 allocatedTotal = 0;
 		for (uint64 participantIndex = 0; participantIndex < participants.returnedCount; ++participantIndex)
 		{
@@ -2646,12 +2638,9 @@ TEST(ContractNostromoAuction, PrivateAuctionCombinedAccessUsesInclusiveOrAuction
 	EXPECT_EQ(getBalance(deniedBidder), deniedBalanceBefore);
 	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), contractBalanceBeforeDeniedBid);
 	EXPECT_EQ(nostromo.getParticipant(createOutput.auctionIndex, deniedBidder).found, 0);
-	EXPECT_EQ(nostromo.placeBatchBidWithRequiredReward(walletOnlyBidder, createOutput.auctionIndex, 1, 12).errorCode,
-	          NOST::EAuctionError::Success);
-	EXPECT_EQ(nostromo.placeBatchBidWithRequiredReward(assetOnlyBidder, createOutput.auctionIndex, 1, 13).errorCode,
-	          NOST::EAuctionError::Success);
-	EXPECT_EQ(nostromo.placeBatchBidWithRequiredReward(bothBidder, createOutput.auctionIndex, 1, 14).errorCode,
-	          NOST::EAuctionError::Success);
+	EXPECT_EQ(nostromo.placeBatchBidWithRequiredReward(walletOnlyBidder, createOutput.auctionIndex, 1, 12).errorCode, NOST::EAuctionError::Success);
+	EXPECT_EQ(nostromo.placeBatchBidWithRequiredReward(assetOnlyBidder, createOutput.auctionIndex, 1, 13).errorCode, NOST::EAuctionError::Success);
+	EXPECT_EQ(nostromo.placeBatchBidWithRequiredReward(bothBidder, createOutput.auctionIndex, 1, 14).errorCode, NOST::EAuctionError::Success);
 }
 
 TEST(ContractNostromoAuction, PlaceStandardBidBuyNowFinalizesImmediatelyAuction)
@@ -2668,8 +2657,6 @@ TEST(ContractNostromoAuction, PlaceStandardBidBuyNowFinalizesImmediatelyAuction)
 	auto input = ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(asset, 3), NOST_STANDARD_MIN_PRICE,
 	                                                           NOST_STANDARD_MIN_PRICE + 500000ULL, NOST_STANDARD_MIN_BID_INCREMENT,
 	                                                           NOST_STANDARD_MIN_PRICE + 800000ULL);
-	NOST::AuctionRevenueBreakdown expectedRevenue{};
-	nostromo.calculateAuctionRevenueBreakdown(NOST_STANDARD_MIN_PRICE + 800000ULL, expectedRevenue);
 	const auto createOutput = nostromo.createAuction(seller, input);
 	ASSERT_EQ(createOutput.errorCode, NOST::EAuctionError::Success);
 	const sint64 sellerBalanceBefore = getBalance(seller);
@@ -2687,7 +2674,7 @@ TEST(ContractNostromoAuction, PlaceStandardBidBuyNowFinalizesImmediatelyAuction)
 	EXPECT_EQ(participant.participantData.escrowedAmount, 0ULL);
 	EXPECT_EQ(participant.participantData.isWinningBid, 1u);
 	EXPECT_EQ(nostromo.managedShares(asset, bidder), 3);
-	EXPECT_EQ(getBalance(seller) - sellerBalanceBefore, expectedRevenue.sellerPayout);
+	EXPECT_EQ(getBalance(seller) - sellerBalanceBefore, 1683000ULL);
 }
 
 TEST(ContractNostromoAuction, EndTickFinalizesBatchAuctionByPriceTimeAndPartialFillAuction)
@@ -2776,8 +2763,6 @@ TEST(ContractNostromoAuction, EndTickFinalizesBatchAuctionByPriceTimeAndPartialF
 		input.minimumPurchaseQuantity = 10;
 		const auto createOutput = nostromo.createAuction(seller, input);
 		ASSERT_EQ(createOutput.errorCode, NOST::EAuctionError::Success);
-		NOST::AuctionRevenueBreakdown expectedRevenue{};
-		nostromo.calculateAuctionRevenueBreakdown(200ULL, expectedRevenue);
 		const sint64 sellerBalanceBefore = getBalance(seller);
 		nostromo.seedUser(firstBidder, 291);
 		nostromo.seedUser(secondBidder, 150);
@@ -2799,7 +2784,7 @@ TEST(ContractNostromoAuction, EndTickFinalizesBatchAuctionByPriceTimeAndPartialF
 		EXPECT_EQ(nostromo.managedShares(asset, seller), 5);
 		EXPECT_EQ(nostromo.getAuction(createOutput.auctionIndex).auction.core.allocatedQuantity, 10ULL);
 		EXPECT_EQ(getBalance(secondBidder), secondBidderBalanceBefore);
-		EXPECT_EQ(getBalance(seller) - sellerBalanceBefore, expectedRevenue.sellerPayout);
+		EXPECT_EQ(getBalance(seller) - sellerBalanceBefore, 187ULL);
 	}
 
 	{
@@ -3025,6 +3010,7 @@ TEST(ContractNostromoAuction, EndTickFinalizesStandardAuctionAtSalePriceAuction)
 	const uint8 routeModes[] = {0, 1};
 	for (uint32 routeIndex = 0; routeIndex < sizeof(routeModes) / sizeof(routeModes[0]); ++routeIndex)
 	{
+		SCOPED_TRACE(::testing::Message() << "routeAllFeesToDevelopment=" << static_cast<uint32>(routeModes[routeIndex]));
 		ContractTestingNOST nostromo;
 		const uint8 routeMode = routeModes[routeIndex];
 		const id seller(221 + routeIndex, 222 + routeIndex, 223 + routeIndex, 224 + routeIndex);
@@ -3036,15 +3022,18 @@ TEST(ContractNostromoAuction, EndTickFinalizesStandardAuctionAtSalePriceAuction)
 		EXPECT_EQ(nostromo.issueAsset(seller, assetName, 1), 1);
 		EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 1), 1);
 
-		NOST::AuctionRevenueBreakdown expectedRevenue{};
-		nostromo.calculateAuctionRevenueBreakdown(NOST_STANDARD_MIN_PRICE, expectedRevenue);
-
 		const auto createOutput =
 		    nostromo.createAuction(seller, ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(asset, 1)));
 		ASSERT_EQ(createOutput.errorCode, NOST::EAuctionError::Success);
 		// Isolate the sale-fee pool from the auction creation fee.
 		nostromo.endEpoch();
-		const sint64 expectedDividendPoolIncrease = nostromo.expectedDividendPoolIncrease(expectedRevenue.shareholderDividendAmount);
+		constexpr uint64 expectedSellerPayout = 935000ULL;
+		constexpr uint64 expectedShareholderDividend = 45000ULL;
+		constexpr uint64 expectedManagementFee = 5000ULL;
+		constexpr uint64 expectedDevelopmentFee = 5000ULL;
+		constexpr uint64 expectedCoordinatorFee = 10000ULL;
+		constexpr uint64 expectedTotalFees = 65000ULL;
+		const sint64 expectedDividendPoolIncrease = nostromo.expectedDividendPoolIncrease(expectedShareholderDividend);
 		const sint64 sellerBalanceBefore = getBalance(seller);
 		const sint64 managementBefore = getBalance(ContractTestingNOST::managementWallet());
 		const sint64 developmentBefore = getBalance(ContractTestingNOST::developmentWallet());
@@ -3059,13 +3048,12 @@ TEST(ContractNostromoAuction, EndTickFinalizesStandardAuctionAtSalePriceAuction)
 		EXPECT_EQ(auction.core.status, NOST::EAuctionStatus::Finalized);
 		EXPECT_EQ(auction.core.allocatedQuantity, 1ULL);
 		EXPECT_EQ(nostromo.managedShares(asset, bidder), 1);
-		EXPECT_EQ(getBalance(seller) - sellerBalanceBefore, expectedRevenue.sellerPayout);
+		EXPECT_EQ(getBalance(seller) - sellerBalanceBefore, expectedSellerPayout);
 		EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, 0);
 		EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, 0);
 		EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore, 0);
-		EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore,
-		          static_cast<sint64>(NOST_STANDARD_MIN_PRICE - expectedRevenue.sellerPayout));
-		EXPECT_EQ(nostromo.getNostromoFeePool().totalAmount, NOST_STANDARD_MIN_PRICE - expectedRevenue.sellerPayout);
+		EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore, expectedTotalFees);
+		EXPECT_EQ(nostromo.getNostromoFeePool().totalAmount, expectedTotalFees);
 
 		nostromo.endEpoch();
 		EXPECT_EQ(nostromo.getNostromoFeePool().totalAmount, 0ULL);
@@ -3073,16 +3061,15 @@ TEST(ContractNostromoAuction, EndTickFinalizesStandardAuctionAtSalePriceAuction)
 		if (routeMode != 0)
 		{
 			EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, 0);
-			EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore,
-			          NOST_STANDARD_MIN_PRICE - expectedRevenue.sellerPayout);
+			EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, expectedTotalFees);
 			EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore, 0);
 			EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore, 0);
 		}
 		else
 		{
-			EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, expectedRevenue.managementFeeAmount);
-			EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, expectedRevenue.developmentFeeAmount);
-			EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore, expectedRevenue.takeoverCoordinatorFeeAmount);
+			EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, expectedManagementFee);
+			EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, expectedDevelopmentFee);
+			EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore, expectedCoordinatorFee);
 			EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore, expectedDividendPoolIncrease);
 		}
 	}
@@ -3196,6 +3183,7 @@ TEST(ContractNostromoAuction, CancelAuctionWithoutBidsDistributesFeeAuction)
 	const uint8 routeModes[] = {0, 1};
 	for (uint32 routeIndex = 0; routeIndex < sizeof(routeModes) / sizeof(routeModes[0]); ++routeIndex)
 	{
+		SCOPED_TRACE(::testing::Message() << "routeAllFeesToDevelopment=" << static_cast<uint32>(routeModes[routeIndex]));
 		{
 			ContractTestingNOST nostromo;
 			const uint8 routeMode = routeModes[routeIndex];
@@ -3215,9 +3203,9 @@ TEST(ContractNostromoAuction, CancelAuctionWithoutBidsDistributesFeeAuction)
 			const sint64 developmentBefore = getBalance(ContractTestingNOST::developmentWallet());
 			const sint64 coordinatorBefore = getBalance(ContractTestingNOST::takeoverCoordinatorWallet());
 			const sint64 contractBefore = getBalance(NOST_CONTRACT_ID);
-			NOST::AuctionServiceFeeBreakdown expectedBreakdown{};
-			nostromo.calculateAuctionServiceFeeBreakdown(1000ULL, expectedBreakdown);
-			const sint64 expectedDividendPoolIncrease = nostromo.expectedDividendPoolIncrease(expectedBreakdown.shareholderDividendAmount);
+			constexpr uint64 expectedShareholderDividend = 727ULL;
+			constexpr uint64 expectedRecipientFee = 91ULL;
+			const sint64 expectedDividendPoolIncrease = nostromo.expectedDividendPoolIncrease(expectedShareholderDividend);
 
 			const auto cancelOutput = nostromo.cancelAuction(seller, createOutput.auctionIndex, 1000);
 			EXPECT_EQ(cancelOutput.errorCode, NOST::EAuctionError::Success);
@@ -3241,10 +3229,9 @@ TEST(ContractNostromoAuction, CancelAuctionWithoutBidsDistributesFeeAuction)
 			}
 			else
 			{
-				EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, expectedBreakdown.managementFeeAmount);
-				EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, expectedBreakdown.developmentFeeAmount);
-				EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore,
-				          expectedBreakdown.takeoverCoordinatorFeeAmount);
+				EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, expectedRecipientFee);
+				EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, expectedRecipientFee);
+				EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore, expectedRecipientFee);
 				EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore, expectedDividendPoolIncrease);
 			}
 		}
@@ -3269,9 +3256,9 @@ TEST(ContractNostromoAuction, CancelAuctionWithoutBidsDistributesFeeAuction)
 			const sint64 developmentBefore = getBalance(ContractTestingNOST::developmentWallet());
 			const sint64 coordinatorBefore = getBalance(ContractTestingNOST::takeoverCoordinatorWallet());
 			const sint64 contractBefore = getBalance(NOST_CONTRACT_ID);
-			NOST::AuctionServiceFeeBreakdown expectedBreakdown{};
-			nostromo.calculateAuctionServiceFeeBreakdown(100000ULL, expectedBreakdown);
-			const sint64 expectedDividendPoolIncrease = nostromo.expectedDividendPoolIncrease(expectedBreakdown.shareholderDividendAmount);
+			constexpr uint64 expectedShareholderDividend = 72700ULL;
+			constexpr uint64 expectedRecipientFee = 9100ULL;
+			const sint64 expectedDividendPoolIncrease = nostromo.expectedDividendPoolIncrease(expectedShareholderDividend);
 
 			const auto cancelOutput = nostromo.cancelAuction(seller, createOutput.auctionIndex, 100000);
 			EXPECT_EQ(cancelOutput.errorCode, NOST::EAuctionError::Success);
@@ -3295,10 +3282,9 @@ TEST(ContractNostromoAuction, CancelAuctionWithoutBidsDistributesFeeAuction)
 			}
 			else
 			{
-				EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, expectedBreakdown.managementFeeAmount);
-				EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, expectedBreakdown.developmentFeeAmount);
-				EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore,
-				          expectedBreakdown.takeoverCoordinatorFeeAmount);
+				EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, expectedRecipientFee);
+				EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, expectedRecipientFee);
+				EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore, expectedRecipientFee);
 				EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore, expectedDividendPoolIncrease);
 			}
 		}
@@ -3310,6 +3296,7 @@ TEST(ContractNostromoAuction, CancelAuctionUsesTruncatedFeeAndAssignsServiceFeeR
 	const uint8 routeModes[] = {0, 1};
 	for (uint32 routeIndex = 0; routeIndex < sizeof(routeModes) / sizeof(routeModes[0]); ++routeIndex)
 	{
+		SCOPED_TRACE(::testing::Message() << "routeAllFeesToDevelopment=" << static_cast<uint32>(routeModes[routeIndex]));
 		{
 			ContractTestingNOST nostromo;
 			const uint8 routeMode = routeModes[routeIndex];
@@ -3325,9 +3312,9 @@ TEST(ContractNostromoAuction, CancelAuctionUsesTruncatedFeeAndAssignsServiceFeeR
 			ASSERT_EQ(batchCreateOutput.errorCode, NOST::EAuctionError::Success);
 			nostromo.endEpoch();
 
-			NOST::AuctionServiceFeeBreakdown expectedBatchBreakdown{};
-			nostromo.calculateAuctionServiceFeeBreakdown(233ULL, expectedBatchBreakdown);
-			const sint64 expectedBatchDividendPoolIncrease = nostromo.expectedDividendPoolIncrease(expectedBatchBreakdown.shareholderDividendAmount);
+			constexpr uint64 expectedBatchShareholderDividend = 170ULL;
+			constexpr uint64 expectedBatchRecipientFee = 21ULL;
+			const sint64 expectedBatchDividendPoolIncrease = nostromo.expectedDividendPoolIncrease(expectedBatchShareholderDividend);
 			const sint64 managementBefore = getBalance(ContractTestingNOST::managementWallet());
 			const sint64 developmentBefore = getBalance(ContractTestingNOST::developmentWallet());
 			const sint64 coordinatorBefore = getBalance(ContractTestingNOST::takeoverCoordinatorWallet());
@@ -3351,15 +3338,12 @@ TEST(ContractNostromoAuction, CancelAuctionUsesTruncatedFeeAndAssignsServiceFeeR
 			}
 			else
 			{
-				EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, expectedBatchBreakdown.managementFeeAmount);
-				EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, expectedBatchBreakdown.developmentFeeAmount);
-				EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore,
-				          expectedBatchBreakdown.takeoverCoordinatorFeeAmount);
+				EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, expectedBatchRecipientFee);
+				EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, expectedBatchRecipientFee);
+				EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore, expectedBatchRecipientFee);
 				EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore, expectedBatchDividendPoolIncrease);
 			}
-			EXPECT_EQ(expectedBatchBreakdown.shareholderDividendAmount + expectedBatchBreakdown.managementFeeAmount +
-			              expectedBatchBreakdown.developmentFeeAmount + expectedBatchBreakdown.takeoverCoordinatorFeeAmount,
-			          batchCancelOutput.cancellationFee);
+			EXPECT_EQ(expectedBatchShareholderDividend + expectedBatchRecipientFee * 3ULL, batchCancelOutput.cancellationFee);
 		}
 
 		{
@@ -3378,20 +3362,13 @@ TEST(ContractNostromoAuction, CancelAuctionUsesTruncatedFeeAndAssignsServiceFeeR
 			ASSERT_EQ(standardCreateOutput.errorCode, NOST::EAuctionError::Success);
 			smallFeeNostromo.endEpoch();
 
-			NOST::AuctionServiceFeeBreakdown expectedSmallBreakdown{};
-			smallFeeNostromo.calculateAuctionServiceFeeBreakdown(1ULL, expectedSmallBreakdown);
-			const sint64 expectedSmallDividendPoolIncrease =
-			    smallFeeNostromo.expectedDividendPoolIncrease(expectedSmallBreakdown.shareholderDividendAmount);
+			const sint64 expectedSmallDividendPoolIncrease = smallFeeNostromo.expectedDividendPoolIncrease(1ULL);
 			const sint64 developmentBefore = getBalance(ContractTestingNOST::developmentWallet());
 			const sint64 contractBefore = getBalance(NOST_CONTRACT_ID);
 
 			const auto standardCancelOutput = smallFeeNostromo.cancelAuction(standardSeller, standardCreateOutput.auctionIndex, 1);
 			EXPECT_EQ(standardCancelOutput.errorCode, NOST::EAuctionError::Success);
 			EXPECT_EQ(standardCancelOutput.cancellationFee, 1ULL);
-			EXPECT_EQ(expectedSmallBreakdown.shareholderDividendAmount, 1ULL);
-			EXPECT_EQ(expectedSmallBreakdown.managementFeeAmount, 0ULL);
-			EXPECT_EQ(expectedSmallBreakdown.developmentFeeAmount, 0ULL);
-			EXPECT_EQ(expectedSmallBreakdown.takeoverCoordinatorFeeAmount, 0ULL);
 			EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, 0);
 			EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore, 1ULL);
 			EXPECT_EQ(smallFeeNostromo.getNostromoFeePool().totalAmount, 1ULL);
@@ -3505,9 +3482,9 @@ TEST(ContractNostromoAuction, FinalizationArchivesRecordsAndReusesActiveSlotsAuc
 
 	EXPECT_EQ(nostromo.issueAsset(seller, asset.assetName, 2), 2);
 	EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 2), 2);
-	auto firstInput = ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(asset, 1),
-	                                                               NOST_STANDARD_MIN_PRICE, NOST_STANDARD_MIN_PRICE,
-	                                                               NOST_STANDARD_MIN_BID_INCREMENT, NOST_STANDARD_MIN_PRICE);
+	auto firstInput =
+	    ContractTestingNOST::makeStandardAuctionInput(ContractTestingNOST::makeSingleLot(asset, 1), NOST_STANDARD_MIN_PRICE, NOST_STANDARD_MIN_PRICE,
+	                                                  NOST_STANDARD_MIN_BID_INCREMENT, NOST_STANDARD_MIN_PRICE);
 	const auto firstAuction = nostromo.createAuction(seller, firstInput);
 	ASSERT_EQ(firstAuction.errorCode, NOST::EAuctionError::Success);
 	ASSERT_EQ(nostromo.placeBid(bidderA, firstAuction.auctionIndex, 1, NOST_STANDARD_MIN_PRICE, NOST_STANDARD_MIN_PRICE).errorCode,
@@ -3606,14 +3583,17 @@ TEST(ContractNostromoAuction, GovernanceAndFeeSettersAuction)
 	coordinatorInput.shareholderFeeBasisPointsTier2 = 350;
 	coordinatorInput.shareholderFeeBasisPointsTier3 = 300;
 	coordinatorInput.shareholderFeeBasisPointsTier4 = 250;
+	const auto defaultFees = nostromo.getAuctionFees();
 
 	const auto coordinatorForbidden = nostromo.setAuctionFees(outsider, coordinatorInput);
 	EXPECT_EQ(coordinatorForbidden.errorCode, NOST::EAuctionError::Forbidden);
+	expectAuctionFeesEqual(nostromo.getAuctionFees(), defaultFees);
 
 	NOST::SetAuctionFees_input invalidCoordinatorInput = coordinatorInput;
 	invalidCoordinatorInput.privateAuctionFee = -1;
 	const auto coordinatorInvalid = nostromo.setAuctionFees(ContractTestingNOST::takeoverCoordinatorWallet(), invalidCoordinatorInput);
 	EXPECT_EQ(coordinatorInvalid.errorCode, NOST::EAuctionError::InvalidInput);
+	expectAuctionFeesEqual(nostromo.getAuctionFees(), defaultFees);
 
 	const auto coordinatorSuccess = nostromo.setAuctionFees(ContractTestingNOST::takeoverCoordinatorWallet(), coordinatorInput);
 	EXPECT_EQ(coordinatorSuccess.errorCode, NOST::EAuctionError::Success);
@@ -3628,11 +3608,14 @@ TEST(ContractNostromoAuction, GovernanceAndFeeSettersAuction)
 	EXPECT_EQ(fees.shareholderFeeBasisPointsTier1, 400ULL);
 	EXPECT_EQ(fees.publicAuctionCreationFee, 123LL);
 
+	const id managementBeforeRejectedUpdates = nostromo.getFeeRecipients().management;
 	const auto setManagementForbidden = nostromo.setManagement(outsider, newManagement);
 	EXPECT_EQ(setManagementForbidden.errorCode, NOST::EAuctionError::Forbidden);
+	EXPECT_EQ(nostromo.getFeeRecipients().management, managementBeforeRejectedUpdates);
 
 	const auto setManagementInvalid = nostromo.setManagement(ContractTestingNOST::takeoverCoordinatorWallet(), NULL_ID);
 	EXPECT_EQ(setManagementInvalid.errorCode, NOST::EAuctionError::InvalidInput);
+	EXPECT_EQ(nostromo.getFeeRecipients().management, managementBeforeRejectedUpdates);
 
 	const auto setManagementSuccess = nostromo.setManagement(ContractTestingNOST::takeoverCoordinatorWallet(), newManagement);
 	EXPECT_EQ(setManagementSuccess.errorCode, NOST::EAuctionError::Success);
@@ -3649,14 +3632,17 @@ TEST(ContractNostromoAuction, GovernanceAndFeeSettersAuction)
 	managementInput.shareholderFeeBasisPointsTier3 = 200;
 	managementInput.shareholderFeeBasisPointsTier4 = 150;
 
+	const auto coordinatorConfiguredFees = nostromo.getAuctionFees();
 	const auto oldManagementForbidden = nostromo.setAuctionFeesByManagement(ContractTestingNOST::managementWallet(), managementInput);
 	EXPECT_EQ(oldManagementForbidden.errorCode, NOST::EAuctionError::Forbidden);
+	expectAuctionFeesEqual(nostromo.getAuctionFees(), coordinatorConfiguredFees);
 
 	NOST::SetAuctionFeesByManagement_input invalidManagementInput = managementInput;
 	invalidManagementInput.managementFeeBasisPoints = 9900;
 	invalidManagementInput.developmentFeeBasisPoints = 200;
 	const auto managementInvalid = nostromo.setAuctionFeesByManagement(newManagement, invalidManagementInput);
 	EXPECT_EQ(managementInvalid.errorCode, NOST::EAuctionError::InvalidInput);
+	expectAuctionFeesEqual(nostromo.getAuctionFees(), coordinatorConfiguredFees);
 
 	const auto managementSuccess = nostromo.setAuctionFeesByManagement(newManagement, managementInput);
 	EXPECT_EQ(managementSuccess.errorCode, NOST::EAuctionError::Success);
@@ -3681,12 +3667,19 @@ TEST(ContractNostromoAuction, BatchSettlementAutomaticallyFlushesLargeSellerPayo
 	const id seller(901, 902, 903, 904);
 	const Asset asset{seller, assetNameFromString("BIGPAY")};
 	constexpr uint64 bidderCount = NOST_MAX_QU_TRANSFER_CHUNKS_PER_CALL + 1ULL;
+	auto feeInput = nostromo.makeCoordinatorFeeInput(0);
+	feeInput.managementFeeBasisPoints = 0;
+	feeInput.developmentFeeBasisPoints = 0;
+	feeInput.takeoverCoordinatorFeeBasisPoints = 0;
+	feeInput.shareholderFeeBasisPointsTier1 = 0;
+	feeInput.shareholderFeeBasisPointsTier2 = 0;
+	feeInput.shareholderFeeBasisPointsTier3 = 0;
+	feeInput.shareholderFeeBasisPointsTier4 = 0;
+	ASSERT_EQ(nostromo.setAuctionFees(ContractTestingNOST::takeoverCoordinatorWallet(), feeInput).errorCode, NOST::EAuctionError::Success);
 
 	EXPECT_EQ(nostromo.issueAsset(seller, asset.assetName, static_cast<sint64>(bidderCount)), static_cast<sint64>(bidderCount));
-	EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, static_cast<sint64>(bidderCount)),
-	          static_cast<sint64>(bidderCount));
-	const auto createOutput =
-	    nostromo.createAuction(seller, ContractTestingNOST::makeBatchAuctionInput(asset, bidderCount, 1));
+	EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, static_cast<sint64>(bidderCount)), static_cast<sint64>(bidderCount));
+	const auto createOutput = nostromo.createAuction(seller, ContractTestingNOST::makeBatchAuctionInput(asset, bidderCount, 1));
 	ASSERT_EQ(createOutput.errorCode, NOST::EAuctionError::Success);
 
 	for (uint64 bidderIndex = 0; bidderIndex < bidderCount; ++bidderIndex)
@@ -3697,22 +3690,17 @@ TEST(ContractNostromoAuction, BatchSettlementAutomaticallyFlushesLargeSellerPayo
 	}
 
 	const uint64 grossAmount = bidderCount * static_cast<uint64>(MAX_AMOUNT);
-	NOST::AuctionRevenueBreakdown breakdown{};
-	nostromo.calculateAuctionRevenueBreakdown(grossAmount, breakdown);
-	EXPECT_EQ(breakdown.sellerPayout + breakdown.shareholderDividendAmount + breakdown.managementFeeAmount +
-	              breakdown.developmentFeeAmount + breakdown.takeoverCoordinatorFeeAmount,
-	          grossAmount);
 	const sint64 sellerBeforeSettlement = getBalance(seller);
 	nostromo.advanceAndEndTick((NOST_SECONDS_PER_DAY + 1ULL) * 1000ULL);
 
 	const uint64 expectedImmediatePayout = NOST_MAX_QU_TRANSFER_CHUNKS_PER_CALL * static_cast<uint64>(MAX_AMOUNT);
-	ASSERT_GT(breakdown.sellerPayout, expectedImmediatePayout);
+	ASSERT_GT(grossAmount, expectedImmediatePayout);
 	EXPECT_EQ(static_cast<uint64>(getBalance(seller) - sellerBeforeSettlement), expectedImmediatePayout);
-	EXPECT_EQ(nostromo.getPendingPayout(seller).amount, breakdown.sellerPayout - expectedImmediatePayout);
-	EXPECT_EQ(nostromo.getContractStats().stats.totalPendingQuPayouts, breakdown.sellerPayout - expectedImmediatePayout);
+	EXPECT_EQ(nostromo.getPendingPayout(seller).amount, grossAmount - expectedImmediatePayout);
+	EXPECT_EQ(nostromo.getContractStats().stats.totalPendingQuPayouts, grossAmount - expectedImmediatePayout);
 
 	nostromo.endEpoch();
-	EXPECT_EQ(static_cast<uint64>(getBalance(seller) - sellerBeforeSettlement), breakdown.sellerPayout);
+	EXPECT_EQ(static_cast<uint64>(getBalance(seller) - sellerBeforeSettlement), grossAmount);
 	EXPECT_EQ(nostromo.getPendingPayout(seller).amount, 0ULL);
 	EXPECT_EQ(nostromo.getContractStats().stats.totalPendingQuPayouts, 0ULL);
 }
@@ -3740,20 +3728,79 @@ TEST(ContractNostromoAuction, EndEpochPendingPayoutProcessingIsBoundedAuction)
 	EXPECT_EQ(nostromo.getContractStats().stats.totalPendingQuPayouts, 0ULL);
 }
 
+TEST(ContractNostromoAuction, EndEpochDoesNotRematerializeServiceFeesWhenPayoutQueueIsFullAuction)
+{
+	ContractTestingNOST nostromo;
+	const id seller(1601, 1602, 1603, 1604);
+	const id allowedBidder(1605, 1606, 1607, 1608);
+	const Asset asset{seller, assetNameFromString("FULQUE")};
+
+	nostromo.setRouteAllFeesToDevelopment(0);
+	ASSERT_EQ(nostromo.getRouteAllFeesToDevelopment(), 0);
+	ASSERT_EQ(nostromo.issueAsset(seller, asset.assetName, 1), 1);
+	ASSERT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 1), 1);
+	auto input = ContractTestingNOST::makeBatchAuctionInput(asset, 1, 10);
+	input.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
+	input.allowedBidderWallets = ContractTestingNOST::makeAllowedWallets({allowedBidder});
+	ASSERT_EQ(nostromo.createAuction(seller, input, NOST_DEFAULT_PRIVATE_AUCTION_FEE).errorCode, NOST::EAuctionError::Success);
+
+	constexpr uint64 blockedPayoutAmount = static_cast<uint64>(MAX_AMOUNT);
+	for (uint64 recipientIndex = 0; recipientIndex < NOST_PENDING_PAYOUT_NUM; ++recipientIndex)
+	{
+		const id recipient(20000 + recipientIndex, 30000 + recipientIndex, 40000 + recipientIndex, 50000 + recipientIndex);
+		ASSERT_NE(nostromo.stateData().pendingQuPayouts.set(recipient, blockedPayoutAmount), NULL_INDEX);
+		nostromo.stateData().totalPendingQuPayouts = sadd(nostromo.stateData().totalPendingQuPayouts, blockedPayoutAmount);
+	}
+	ASSERT_EQ(nostromo.stateData().pendingQuPayouts.population(), NOST_PENDING_PAYOUT_NUM);
+
+	const sint64 managementBefore = getBalance(ContractTestingNOST::managementWallet());
+	const sint64 developmentBefore = getBalance(ContractTestingNOST::developmentWallet());
+	const sint64 coordinatorBefore = getBalance(ContractTestingNOST::takeoverCoordinatorWallet());
+	nostromo.endEpoch();
+
+	const auto poolAfterFirstEpoch = nostromo.getNostromoFeePool();
+	EXPECT_EQ(poolAfterFirstEpoch.feePool.commonServiceFeeAmount, 0ULL);
+	EXPECT_EQ(poolAfterFirstEpoch.feePool.shareholderDividendAmount, 0ULL);
+	EXPECT_EQ(poolAfterFirstEpoch.feePool.managementAmount, 4550000ULL);
+	EXPECT_EQ(poolAfterFirstEpoch.feePool.developmentAmount, 4550000ULL);
+	EXPECT_EQ(poolAfterFirstEpoch.feePool.takeoverCoordinatorAmount, 4550000ULL);
+	EXPECT_EQ(poolAfterFirstEpoch.totalAmount, 13650000ULL);
+	EXPECT_EQ(nostromo.stateData().auctionShareholderDividendPool, 128ULL);
+	EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()), managementBefore);
+	EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()), developmentBefore);
+	EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()), coordinatorBefore);
+
+	nostromo.endEpoch();
+
+	const auto poolAfterRetry = nostromo.getNostromoFeePool();
+	EXPECT_EQ(poolAfterRetry.feePool.commonServiceFeeAmount, 0ULL);
+	EXPECT_EQ(poolAfterRetry.feePool.managementAmount, poolAfterFirstEpoch.feePool.managementAmount);
+	EXPECT_EQ(poolAfterRetry.feePool.developmentAmount, poolAfterFirstEpoch.feePool.developmentAmount);
+	EXPECT_EQ(poolAfterRetry.feePool.takeoverCoordinatorAmount, poolAfterFirstEpoch.feePool.takeoverCoordinatorAmount);
+	EXPECT_EQ(poolAfterRetry.totalAmount, poolAfterFirstEpoch.totalAmount);
+	EXPECT_EQ(nostromo.stateData().auctionShareholderDividendPool, 128ULL);
+	EXPECT_EQ(nostromo.stateData().pendingQuPayouts.population(), NOST_PENDING_PAYOUT_NUM);
+}
+
 TEST(ContractNostromoAuction, ShareholderFeeTiersAreAppliedAuction)
 {
 	struct TierCase
 	{
 		uint64 grossAmount;
-		uint64 expectedShareholderFeeBp;
+		uint64 sellerPayout;
+		uint64 shareholderDividend;
+		uint64 managementFee;
+		uint64 developmentFee;
+		uint64 coordinatorFee;
+		uint64 totalFee;
 		uint64 assetName;
 	};
 
 	const TierCase cases[] = {
-	    {5000000000ULL, NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_1, assetNameFromString("TIERA1")},
-	    {5000000001ULL, NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_2, assetNameFromString("TIERA2")},
-	    {50000000001ULL, NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_3, assetNameFromString("TIERA3")},
-	    {200000000001ULL, NOST_DEFAULT_AUCTION_SHAREHOLDER_FEE_BP_TIER_4, assetNameFromString("TIERA4")},
+	    {5000000000ULL, 4675000000ULL, 225000000ULL, 25000000ULL, 25000000ULL, 50000000ULL, 325000000ULL, assetNameFromString("TIERA1")},
+	    {5000000001ULL, 4700000001ULL, 202500000ULL, 25000000ULL, 25000000ULL, 47500000ULL, 300000000ULL, assetNameFromString("TIERA2")},
+	    {50000000001ULL, 47250000001ULL, 1800000000ULL, 250000000ULL, 250000000ULL, 450000000ULL, 2750000000ULL, assetNameFromString("TIERA3")},
+	    {200000000001ULL, 190000000001ULL, 6300000000ULL, 1000000000ULL, 1000000000ULL, 1700000000ULL, 10000000000ULL, assetNameFromString("TIERA4")},
 	};
 
 	const uint8 routeModes[] = {0, 1};
@@ -3761,6 +3808,8 @@ TEST(ContractNostromoAuction, ShareholderFeeTiersAreAppliedAuction)
 	{
 		for (uint32 routeIndex = 0; routeIndex < sizeof(routeModes) / sizeof(routeModes[0]); ++routeIndex)
 		{
+			SCOPED_TRACE(::testing::Message() << "caseIndex=" << caseIndex
+			                                  << ", routeAllFeesToDevelopment=" << static_cast<uint32>(routeModes[routeIndex]));
 			ContractTestingNOST nostromo;
 			const uint8 routeMode = routeModes[routeIndex];
 			const id seller(301 + caseIndex * 2 + routeIndex, 302 + caseIndex * 2 + routeIndex, 303 + caseIndex * 2 + routeIndex,
@@ -3768,9 +3817,6 @@ TEST(ContractNostromoAuction, ShareholderFeeTiersAreAppliedAuction)
 			const id bidder(401 + caseIndex * 2 + routeIndex, 402 + caseIndex * 2 + routeIndex, 403 + caseIndex * 2 + routeIndex,
 			                404 + caseIndex * 2 + routeIndex);
 			const Asset asset{seller, cases[caseIndex].assetName};
-			NOST::AuctionRevenueBreakdown expectedRevenue{};
-			nostromo.calculateAuctionRevenueBreakdown(cases[caseIndex].grossAmount, expectedRevenue);
-
 			nostromo.setRouteAllFeesToDevelopment(routeMode);
 			EXPECT_EQ(nostromo.issueAsset(seller, cases[caseIndex].assetName, 1), 1);
 			EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 1), 1);
@@ -3780,7 +3826,7 @@ TEST(ContractNostromoAuction, ShareholderFeeTiersAreAppliedAuction)
 			                                                          cases[caseIndex].grossAmount, NOST_STANDARD_MIN_BID_INCREMENT));
 			ASSERT_EQ(createOutput.errorCode, NOST::EAuctionError::Success);
 			nostromo.endEpoch();
-			const sint64 expectedDividendPoolIncrease = nostromo.expectedDividendPoolIncrease(expectedRevenue.shareholderDividendAmount);
+			const sint64 expectedDividendPoolIncrease = nostromo.expectedDividendPoolIncrease(cases[caseIndex].shareholderDividend);
 			const sint64 sellerBefore = getBalance(seller);
 			const sint64 managementBefore = getBalance(ContractTestingNOST::managementWallet());
 			const sint64 developmentBefore = getBalance(ContractTestingNOST::developmentWallet());
@@ -3791,25 +3837,22 @@ TEST(ContractNostromoAuction, ShareholderFeeTiersAreAppliedAuction)
 
 			nostromo.advanceAndEndTick((NOST_SECONDS_PER_DAY + 1ULL) * 1000ULL);
 
-			EXPECT_EQ(nostromo.getAuctionShareholderFeeBasisPoints(cases[caseIndex].grossAmount), cases[caseIndex].expectedShareholderFeeBp);
-			EXPECT_EQ(getBalance(seller) - sellerBefore, expectedRevenue.sellerPayout);
+			EXPECT_EQ(getBalance(seller) - sellerBefore, cases[caseIndex].sellerPayout);
 			EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, 0);
 			EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, 0);
 			EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore, 0);
-			EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore,
-			          static_cast<sint64>(cases[caseIndex].grossAmount - expectedRevenue.sellerPayout));
+			EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore, cases[caseIndex].totalFee);
 
 			const auto pendingFeePool = nostromo.getNostromoFeePool();
-			EXPECT_EQ(pendingFeePool.totalAmount, cases[caseIndex].grossAmount - expectedRevenue.sellerPayout);
+			EXPECT_EQ(pendingFeePool.totalAmount, cases[caseIndex].totalFee);
 			if (routeMode == 0)
 			{
-				const uint64 tierAmounts[] = {pendingFeePool.feePool.shareholderDividendTier1Amount,
-				                              pendingFeePool.feePool.shareholderDividendTier2Amount,
-				                              pendingFeePool.feePool.shareholderDividendTier3Amount,
-				                              pendingFeePool.feePool.shareholderDividendTier4Amount};
+				const uint64 tierAmounts[] = {
+				    pendingFeePool.feePool.shareholderDividendTier1Amount, pendingFeePool.feePool.shareholderDividendTier2Amount,
+				    pendingFeePool.feePool.shareholderDividendTier3Amount, pendingFeePool.feePool.shareholderDividendTier4Amount};
 				for (uint64 tierIndex = 0; tierIndex < sizeof(tierAmounts) / sizeof(tierAmounts[0]); ++tierIndex)
 				{
-					EXPECT_EQ(tierAmounts[tierIndex], tierIndex == caseIndex ? expectedRevenue.shareholderDividendAmount : 0ULL);
+					EXPECT_EQ(tierAmounts[tierIndex], tierIndex == caseIndex ? cases[caseIndex].shareholderDividend : 0ULL);
 				}
 			}
 
@@ -3819,17 +3862,15 @@ TEST(ContractNostromoAuction, ShareholderFeeTiersAreAppliedAuction)
 			if (routeMode != 0)
 			{
 				EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, 0);
-				EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore,
-				          cases[caseIndex].grossAmount - expectedRevenue.sellerPayout);
+				EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, cases[caseIndex].totalFee);
 				EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore, 0);
 				EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore, 0);
 			}
 			else
 			{
-				EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, expectedRevenue.managementFeeAmount);
-				EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, expectedRevenue.developmentFeeAmount);
-				EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore,
-				          expectedRevenue.takeoverCoordinatorFeeAmount);
+				EXPECT_EQ(getBalance(ContractTestingNOST::managementWallet()) - managementBefore, cases[caseIndex].managementFee);
+				EXPECT_EQ(getBalance(ContractTestingNOST::developmentWallet()) - developmentBefore, cases[caseIndex].developmentFee);
+				EXPECT_EQ(getBalance(ContractTestingNOST::takeoverCoordinatorWallet()) - coordinatorBefore, cases[caseIndex].coordinatorFee);
 				EXPECT_EQ(getBalance(NOST_CONTRACT_ID) - contractBefore, expectedDividendPoolIncrease);
 			}
 		}
@@ -3919,6 +3960,7 @@ TEST(ContractNostromoAuction, SetFeeReserveGuardConfigValidatesAndRestrictsCalle
 {
 	ContractTestingNOST nostromo;
 	const id stranger(1101, 1102, 1103, 1104);
+	const NOST::GetFeeReserveGuardState_output& defaultGuardState = nostromo.getFeeReserveGuardState();
 
 	EXPECT_EQ(nostromo.setFeeReserveGuardConfig(stranger, 500ULL, 300ULL).errorCode, NOST::EAuctionError::Forbidden);
 
@@ -3928,10 +3970,13 @@ TEST(ContractNostromoAuction, SetFeeReserveGuardConfigValidatesAndRestrictsCalle
 	          NOST::EAuctionError::InvalidInput);
 	EXPECT_EQ(nostromo.setFeeReserveGuardConfig(ContractTestingNOST::takeoverCoordinatorWallet(), 500ULL, 0ULL).errorCode,
 	          NOST::EAuctionError::InvalidInput);
+	NOST::GetFeeReserveGuardState_output guardState = nostromo.getFeeReserveGuardState();
+	EXPECT_EQ(guardState.dropBasisPoints, defaultGuardState.dropBasisPoints);
+	EXPECT_EQ(guardState.windowSeconds, defaultGuardState.windowSeconds);
 
 	EXPECT_EQ(nostromo.setFeeReserveGuardConfig(ContractTestingNOST::takeoverCoordinatorWallet(), 500ULL, 300ULL).errorCode,
 	          NOST::EAuctionError::Success);
-	auto guardState = nostromo.getFeeReserveGuardState();
+	guardState = nostromo.getFeeReserveGuardState();
 	EXPECT_EQ(guardState.dropBasisPoints, 500ULL);
 	EXPECT_EQ(guardState.windowSeconds, 300ULL);
 
@@ -3949,7 +3994,7 @@ TEST(ContractNostromoAuction, EndEpochDistributesPendingFeesWhileEmergencyPaused
 
 	EXPECT_EQ(nostromo.issueAsset(seller, asset.assetName, 3), 3);
 	EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, asset, 3), 3);
-	const auto createOutput = nostromo.createAuction(seller, ContractTestingNOST::makeBatchAuctionInput(asset, 3, 1));
+	const NOST::CreateAuction_output& createOutput = nostromo.createAuction(seller, ContractTestingNOST::makeBatchAuctionInput(asset, 3, 1));
 	ASSERT_EQ(createOutput.errorCode, NOST::EAuctionError::Success);
 
 	const uint64 poolBefore = nostromo.getPendingServiceFeePool().pendingServiceFeePool;
