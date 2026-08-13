@@ -1913,12 +1913,6 @@ TEST(ContractNostromoAuction, CreateAuctionRejectsInvalidInputsAuction)
 	privateWithoutGate.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
 	EXPECT_EQ(nostromo.createAuction(seller, privateWithoutGate, NOST_DEFAULT_PRIVATE_AUCTION_FEE).errorCode, NOST::EAuctionError::InvalidInput);
 
-	auto privateWithBothGates = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
-	privateWithBothGates.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
-	privateWithBothGates.allowedBidderWallets = ContractTestingNOST::makeAllowedWallets({id(99, 1, 1, 1)});
-	privateWithBothGates.requiredAccessAssets = ContractTestingNOST::makeRequiredAccessAssets({NOST::AuctionAssetEntry{accessAsset, 1}});
-	EXPECT_EQ(nostromo.createAuction(seller, privateWithBothGates, NOST_DEFAULT_PRIVATE_AUCTION_FEE).errorCode, NOST::EAuctionError::InvalidInput);
-
 	auto zeroAccessQuantity = ContractTestingNOST::makeBatchAuctionInput(assetA, 5, 10);
 	zeroAccessQuantity.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
 	zeroAccessQuantity.requiredAccessAssets = ContractTestingNOST::makeRequiredAccessAssets({NOST::AuctionAssetEntry{accessAsset, 0}});
@@ -2566,6 +2560,52 @@ TEST(ContractNostromoAuction, PrivateAuctionAccessRulesAuction)
 		EXPECT_EQ(nostromo.placeBatchBidWithRequiredReward(alternateAssetBidder, createOutput.auctionIndex, 1, 13).errorCode,
 		          NOST::EAuctionError::Success);
 	}
+}
+
+TEST(ContractNostromoAuction, PrivateAuctionCombinedAccessUsesInclusiveOrAuction)
+{
+	ContractTestingNOST nostromo;
+	const id seller(177, 178, 179, 180);
+	const id gateIssuer(181, 182, 183, 184);
+	const id walletOnlyBidder(185, 186, 187, 188);
+	const id assetOnlyBidder(189, 190, 191, 192);
+	const id bothBidder(193, 194, 195, 196);
+	const id deniedBidder(197, 198, 199, 200);
+	const uint64 saleAssetName = assetNameFromString("PRIORA");
+	const Asset saleAsset{seller, saleAssetName};
+	const Asset accessAsset{gateIssuer, assetNameFromString("PRIORG")};
+
+	EXPECT_EQ(nostromo.issueAsset(seller, saleAssetName, 3), 3);
+	EXPECT_EQ(nostromo.issueAsset(gateIssuer, accessAsset.assetName, 2), 2);
+	EXPECT_EQ(nostromo.transferAsset(gateIssuer, assetOnlyBidder, accessAsset, 1), 1);
+	EXPECT_EQ(nostromo.transferAsset(gateIssuer, bothBidder, accessAsset, 1), 1);
+	EXPECT_EQ(nostromo.transferShareManagementRightsToNostromo(seller, saleAsset, 3), 3);
+
+	auto input = ContractTestingNOST::makeBatchAuctionInput(saleAsset, 3, 10);
+	input.auctionVisibility = static_cast<uint8>(NOST::EAuctionVisibility::Private);
+	input.allowedBidderWallets = ContractTestingNOST::makeAllowedWallets({walletOnlyBidder, bothBidder});
+	input.requiredAccessAssets = ContractTestingNOST::makeRequiredAccessAssets({NOST::AuctionAssetEntry{accessAsset, 1}});
+
+	const auto createOutput = nostromo.createAuction(seller, input, NOST_DEFAULT_PRIVATE_AUCTION_FEE);
+	ASSERT_EQ(createOutput.errorCode, NOST::EAuctionError::Success);
+	const auto auctionOutput = nostromo.getAuction(createOutput.auctionIndex);
+	EXPECT_EQ(auctionOutput.auction.allowedBidderWalletCount, 2U);
+	EXPECT_EQ(auctionOutput.auction.requiredAccessAssetCount, 1U);
+
+	nostromo.seedUser(deniedBidder, 100);
+	const sint64 deniedBalanceBefore = getBalance(deniedBidder);
+	const sint64 contractBalanceBeforeDeniedBid = getBalance(NOST_CONTRACT_ID);
+	EXPECT_EQ(nostromo.placeBidWithFundedReward(deniedBidder, createOutput.auctionIndex, 1, 12, 12).errorCode,
+	          NOST::EAuctionError::PrivateAuctionAccessDenied);
+	EXPECT_EQ(getBalance(deniedBidder), deniedBalanceBefore);
+	EXPECT_EQ(getBalance(NOST_CONTRACT_ID), contractBalanceBeforeDeniedBid);
+	EXPECT_EQ(nostromo.getParticipant(createOutput.auctionIndex, deniedBidder).found, 0);
+	EXPECT_EQ(nostromo.placeBatchBidWithRequiredReward(walletOnlyBidder, createOutput.auctionIndex, 1, 12).errorCode,
+	          NOST::EAuctionError::Success);
+	EXPECT_EQ(nostromo.placeBatchBidWithRequiredReward(assetOnlyBidder, createOutput.auctionIndex, 1, 13).errorCode,
+	          NOST::EAuctionError::Success);
+	EXPECT_EQ(nostromo.placeBatchBidWithRequiredReward(bothBidder, createOutput.auctionIndex, 1, 14).errorCode,
+	          NOST::EAuctionError::Success);
 }
 
 TEST(ContractNostromoAuction, PlaceStandardBidBuyNowFinalizesImmediatelyAuction)

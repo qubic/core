@@ -4547,7 +4547,7 @@ struct NOST : public ContractBase
 	 * @note A successful public Batch or Standard Auction accumulates the configured public creation fee, distributed at `END_EPOCH`.
 	 * Insufficient payment rejects creation, overpayment is refunded, and failed creation refunds the full reward.
 	 * @note Private auctions require the configured private auction fee, which is accumulated and distributed at `END_EPOCH` between shareholders
-	 * and the configured fee recipients, and must use exactly one access mode.
+	 * and the configured fee recipients, and must use at least one access mode. If both modes are configured, either one grants access.
 	 */
 	PUBLIC_PROCEDURE_WITH_LOCALS(CreateAuction)
 	{
@@ -4700,7 +4700,7 @@ struct NOST : public ContractBase
 				return;
 		}
 
-		// Private auctions must choose exactly one access gate: wallet list or asset ownership.
+		// Private auctions require at least one access gate and may combine wallet and asset access.
 		locals.countAllowedBidderWalletsInput.allowedBidderWallets = input.allowedBidderWallets;
 		CALL(CountAllowedBidderWallets, locals.countAllowedBidderWalletsInput, locals.countAllowedBidderWalletsOutput);
 		locals.countRequiredAccessAssetsInput.requiredAccessAssets = input.requiredAccessAssets;
@@ -4919,18 +4919,15 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		// Private access accepts either the configured asset gate or the configured wallet gate.
+		// When both gates are configured, satisfying either one grants access.
 		if (locals.auction.core.visibility == EAuctionVisibility::Private)
 		{
-			if (locals.auction.requiredAccessAssets.population() > 0)
+			locals.hasAccess = locals.auction.allowedBidderWallets.population() > 0 && locals.auction.allowedBidderWallets.contains(qpi.invocator());
+			if (!locals.hasAccess && locals.auction.requiredAccessAssets.population() > 0)
 			{
 				locals.hasRequiredAccessAssetInput.auctionIndex = input.auctionIndex;
 				CALL(HasRequiredAccessAsset, locals.hasRequiredAccessAssetInput, locals.hasRequiredAccessAssetOutput);
 				locals.hasAccess = locals.hasRequiredAccessAssetOutput.hasRequiredAccessAsset;
-			}
-			else
-			{
-				locals.hasAccess = locals.auction.allowedBidderWallets.contains(qpi.invocator());
 			}
 
 			if (!locals.hasAccess)
@@ -6220,11 +6217,11 @@ protected:
 	}
 
 	/**
-	 * @brief Validates that private auctions use exactly one supported access mode.
+	 * @brief Validates that private auctions use at least one supported access mode.
 	 */
 	constexpr static bool validatePrivateAuctionAccess(EAuctionVisibility visibility, uint64 requiredAccessAssetCount, uint64 allowedWalletCount)
 	{
-		return visibility != EAuctionVisibility::Private || ((requiredAccessAssetCount > 0) != (allowedWalletCount > 0));
+		return visibility != EAuctionVisibility::Private || requiredAccessAssetCount > 0 || allowedWalletCount > 0;
 	}
 
 	/**
