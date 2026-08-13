@@ -18,10 +18,8 @@ constexpr uint64 NOST_AUCTION_METADATA_CID_LENGTH = 64;
 constexpr uint64 NOST_AUCTION_PARTICIPANT_NUM = 4096;
 // Maximum number of wallets with unpaid QU obligations retained by the contract.
 constexpr uint64 NOST_PENDING_PAYOUT_NUM = 8192;
-// Maximum pending-payout slots one revenue distribution may require for management, development, coordinator, and seller.
-constexpr uint64 NOST_AUCTION_REVENUE_MAX_PAYOUT_RECIPIENTS = 4;
-// Maximum pending-payout slots one service-fee distribution may require for management, development, and coordinator.
-constexpr uint64 NOST_AUCTION_SERVICE_FEE_MAX_PAYOUT_RECIPIENTS = 3;
+// Maximum pending-payout slots one auction settlement may require before END_EPOCH fee distribution.
+constexpr uint64 NOST_AUCTION_REVENUE_MAX_PAYOUT_RECIPIENTS = 1;
 // Additional pending-payout slot reserved for the Batch bid caller's possible overpayment refund.
 constexpr uint64 NOST_BATCH_BID_CALLER_PAYOUT_RECIPIENTS = 1;
 // Maximum pending-payout slots reserved by a Standard bid for refunds and an immediate Buy Now settlement.
@@ -66,13 +64,13 @@ constexpr uint64 NOST_DEFAULT_AUCTION_MANAGEMENT_FEE_BP = 50ULL;
 constexpr uint64 NOST_DEFAULT_AUCTION_DEVELOPMENT_FEE_BP = 50ULL;
 // Default takeover coordinator fee applied to gross auction proceeds, in basis points.
 constexpr uint64 NOST_DEFAULT_AUCTION_TAKEOVER_COORDINATOR_FEE_BP = 50ULL;
-// Shareholder allocation of private-creation and cancellation service fees, in basis points.
+// Shareholder allocation of auction creation, small-bid, and cancellation service fees, in basis points.
 constexpr uint64 NOST_AUCTION_SERVICE_FEE_SHAREHOLDER_BP = 7270ULL;
-// Management allocation of private-creation and cancellation service fees, in basis points.
+// Management allocation of auction creation, small-bid, and cancellation service fees, in basis points.
 constexpr uint64 NOST_AUCTION_SERVICE_FEE_MANAGEMENT_BP = 910ULL;
-// Development allocation of private-creation and cancellation service fees, in basis points.
+// Development allocation of auction creation, small-bid, and cancellation service fees, in basis points.
 constexpr uint64 NOST_AUCTION_SERVICE_FEE_DEVELOPMENT_BP = 910ULL;
-// Takeover coordinator allocation of private-creation and cancellation service fees, in basis points.
+// Takeover coordinator allocation of auction creation, small-bid, and cancellation service fees, in basis points.
 constexpr uint64 NOST_AUCTION_SERVICE_FEE_TAKEOVER_COORDINATOR_BP = 910ULL;
 // Default portion of the shareholder fee distributed as dividends, in basis points.
 constexpr uint64 NOST_DEFAULT_AUCTION_SHAREHOLDER_DIVIDEND_BP = 9000ULL;
@@ -189,7 +187,8 @@ struct NOST : public ContractBase
 		CalculateBatchAuctionBidFee = 20,
 		GetPendingServiceFeePool = 21,
 		GetFeeReserveGuardState = 22,
-		GetPendingPayout = 23
+		GetPendingPayout = 23,
+		GetNostromoFeePool = 24
 	};
 
 	enum class EAuctionType : uint8
@@ -474,6 +473,23 @@ struct NOST : public ContractBase
 		uint32 numberOfRegister, numberOfCreatedProject, numberOfFundraising;
 	};
 
+	/**
+	 * @brief Epoch fee accrual shared by Nostromo modules.
+	 * @note Auction shareholder amounts are separated by sale tier because their fee formulas differ. Other recipient amounts are compatible sums.
+	 */
+	struct NostromoFeePool
+	{
+		uint64 shareholderDividendTier1Amount;
+		uint64 shareholderDividendTier2Amount;
+		uint64 shareholderDividendTier3Amount;
+		uint64 shareholderDividendTier4Amount;
+		uint64 commonServiceFeeAmount;
+		uint64 shareholderDividendAmount;
+		uint64 managementAmount;
+		uint64 developmentAmount;
+		uint64 takeoverCoordinatorAmount;
+	};
+
 	struct StateData
 	{
 		/** @brief Configured fee charged when creating a private auction. */
@@ -485,7 +501,7 @@ struct NOST : public ContractBase
 		/** @brief Configured cancellation fee rate in basis points. */
 		uint64 auctionCancellationFeeBasisPoints;
 
-		/** @brief Undistributed shareholder revenue from auction proceeds and service fees reserved for contract dividends. */
+		/** @brief Undistributed shareholder revenue from the shared fee pool reserved for contract dividends. */
 		uint64 auctionShareholderDividendPool;
 
 		/** @brief Configured management fee rate in basis points, charged from auction proceeds. */
@@ -567,8 +583,8 @@ struct NOST : public ContractBase
 		/** @brief Lifetime number of cancelled auctions. */
 		uint64 totalCancelledAuctions;
 
-		/** @brief Auction creation and Batch bid service fees accumulated during the epoch, distributed at `END_EPOCH`. */
-		uint64 pendingServiceFeePool;
+		/** @brief Shared fee accrual for Auction House and future Nostromo modules, settled at `END_EPOCH`. */
+		NostromoFeePool feePool;
 
 		/** @brief Configured drop in the execution fee reserve that triggers an emergency pause, in basis points. */
 		uint64 feeReserveGuardDropBasisPoints;
@@ -881,8 +897,20 @@ struct NOST : public ContractBase
 
 	struct GetPendingServiceFeePool_output
 	{
-		/** @brief Auction creation and Batch bid service fees accumulated during the epoch, distributed at `END_EPOCH`. */
+		/** @brief Aggregate fee amount still awaiting `END_EPOCH` settlement. */
 		uint64 pendingServiceFeePool;
+	};
+
+	/** @brief Input payload used to inspect the detailed shared Nostromo fee pool. */
+	using GetNostromoFeePool_input = NoData;
+
+	struct GetNostromoFeePool_output
+	{
+		/** @brief Detailed fee accumulators that have not yet been moved to dividends or recipient payout liabilities. */
+		NostromoFeePool feePool;
+
+		/** @brief Aggregate of every amount in `feePool`. */
+		uint64 totalAmount;
 	};
 
 	/** @brief Input used to inspect a wallet's registered QU payout. */
@@ -1748,17 +1776,25 @@ struct NOST : public ContractBase
 		uint8 success;
 	};
 
-	/** @brief Internal input used to split private-auction and cancellation service fees between shareholders and configured recipients. */
-	struct DistributeAuctionServiceFee_input
+	/** @brief Internal input used to accrue a service fee in the shared Nostromo fee pool. */
+	struct AccumulateAuctionServiceFee_input
 	{
-		/** @brief Fee amount that should be distributed. */
+		/** @brief Fee amount that should be accumulated. */
 		uint64 feeAmount;
 	};
 
-	/** @brief Internal output returned after service-fee distribution is completed. */
-	struct DistributeAuctionServiceFee_output
+	/** @brief Internal output returned after service-fee accrual is completed. */
+	struct AccumulateAuctionServiceFee_output
 	{
-		/** @brief Flag indicating whether the service-fee distribution completed successfully. */
+		/** @brief Flag indicating whether the service fee was recorded. */
+		uint8 success;
+	};
+
+	using DistributeNostromoFeePool_input = NoData;
+
+	struct DistributeNostromoFeePool_output
+	{
+		/** @brief Flag indicating whether every current pool accumulator was durably settled. */
 		uint8 success;
 	};
 
@@ -1935,6 +1971,8 @@ struct NOST : public ContractBase
 		ArchiveParticipant_output archiveParticipantOutput;
 		QueueAndFlushQuPayout_input payoutInput;
 		QueueAndFlushQuPayout_output payoutOutput;
+		AccumulateAuctionServiceFee_input accumulateAuctionServiceFeeInput;
+		AccumulateAuctionServiceFee_output accumulateAuctionServiceFeeOutput;
 		uint64 activeQuantity;
 		uint64 displacedQuantity;
 		uint64 displacedRefund;
@@ -2158,17 +2196,24 @@ struct NOST : public ContractBase
 	struct DistributeAuctionRevenue_locals
 	{
 		AuctionRevenueBreakdown auctionRevenueBreakdown;
+		NostromoFeePool feePool;
 		QueueAndFlushQuPayout_input payoutInput;
 		QueueAndFlushQuPayout_output payoutOutput;
-		uint64 distributedDividendAmount;
-		uint64 dividendPerShare;
+		uint64 shareholderFeeTierIndex;
 	};
 
-	struct DistributeAuctionServiceFee_locals
+	struct AccumulateAuctionServiceFee_locals
+	{
+		NostromoFeePool feePool;
+	};
+
+	struct DistributeNostromoFeePool_locals
 	{
 		AuctionServiceFeeBreakdown auctionServiceFeeBreakdown;
+		NostromoFeePool feePool;
 		QueueAndFlushQuPayout_input payoutInput;
 		QueueAndFlushQuPayout_output payoutOutput;
+		uint64 shareholderDividendAmount;
 		uint64 distributedDividendAmount;
 		uint64 dividendPerShare;
 	};
@@ -2207,7 +2252,7 @@ struct NOST : public ContractBase
 		VerifyAuctionLotBalances_input verifyAuctionLotBalancesInput;
 		EscrowAuctionLotAssets_input escrowAuctionLotAssetsInput;
 		RollbackAuctionLotAssets_input rollbackAuctionLotAssetsInput;
-		DistributeAuctionServiceFee_input distributeAuctionServiceFeeInput;
+		AccumulateAuctionServiceFee_input accumulateAuctionServiceFeeInput;
 		sint64 requiredFee;
 		sint64 existingRequiredAccessQuantity;
 		uint64 resolvedQuantityForSale;
@@ -2217,7 +2262,7 @@ struct NOST : public ContractBase
 		RollbackAuctionLotAssets_output rollbackAuctionLotAssetsOutput;
 		EscrowAuctionLotAssets_output escrowAuctionLotAssetsOutput;
 		VerifyAuctionLotBalances_output verifyAuctionLotBalancesOutput;
-		DistributeAuctionServiceFee_output distributeAuctionServiceFeeOutput;
+		AccumulateAuctionServiceFee_output accumulateAuctionServiceFeeOutput;
 	};
 
 	struct PlaceBid_locals
@@ -2248,8 +2293,8 @@ struct NOST : public ContractBase
 		NostromoProcedureLog log;
 		RollbackAuctionLotAssets_input rollbackAuctionLotAssetsInput;
 		RollbackAuctionLotAssets_output rollbackAuctionLotAssetsOutput;
-		DistributeAuctionServiceFee_input distributeAuctionServiceFeeInput;
-		DistributeAuctionServiceFee_output distributeAuctionServiceFeeOutput;
+		AccumulateAuctionServiceFee_input accumulateAuctionServiceFeeInput;
+		AccumulateAuctionServiceFee_output accumulateAuctionServiceFeeOutput;
 		ArchiveClosedAuction_input archiveClosedAuctionInput;
 		ArchiveClosedAuction_output archiveClosedAuctionOutput;
 		DateAndTime currentDate;
@@ -2300,8 +2345,8 @@ struct NOST : public ContractBase
 
 	struct END_EPOCH_locals
 	{
-		DistributeAuctionServiceFee_input distributeAuctionServiceFeeInput;
-		DistributeAuctionServiceFee_output distributeAuctionServiceFeeOutput;
+		DistributeNostromoFeePool_input distributeNostromoFeePoolInput;
+		DistributeNostromoFeePool_output distributeNostromoFeePoolOutput;
 		ProcessPendingQuPayouts_input processPendingQuPayoutsInput;
 		ProcessPendingQuPayouts_output processPendingQuPayoutsOutput;
 	};
@@ -2400,6 +2445,7 @@ struct NOST : public ContractBase
 		REGISTER_USER_FUNCTION(GetPendingServiceFeePool, static_cast<uint16>(EFunctionId::GetPendingServiceFeePool));
 		REGISTER_USER_FUNCTION(GetFeeReserveGuardState, static_cast<uint16>(EFunctionId::GetFeeReserveGuardState));
 		REGISTER_USER_FUNCTION(GetPendingPayout, static_cast<uint16>(EFunctionId::GetPendingPayout));
+		REGISTER_USER_FUNCTION(GetNostromoFeePool, static_cast<uint16>(EFunctionId::GetNostromoFeePool));
 	}
 
 	/**
@@ -2504,23 +2550,13 @@ struct NOST : public ContractBase
 	}
 
 	/**
-	 * @brief Retries pending QU payouts, distributes pending service fees, and performs storage cleanup.
+	 * @brief Retries pending QU payouts, settles the shared Nostromo fee pool, and performs storage cleanup.
 	 */
 	END_EPOCH_WITH_LOCALS()
 	{
 		CALL(ProcessPendingQuPayouts, locals.processPendingQuPayoutsInput, locals.processPendingQuPayoutsOutput);
 
-		// Service fees collected during the epoch are distributed as one batch to avoid repeated dividend dust handling.
-		if (state.get().pendingServiceFeePool > 0)
-		{
-			locals.distributeAuctionServiceFeeInput.feeAmount = state.get().pendingServiceFeePool;
-			CALL(DistributeAuctionServiceFee, locals.distributeAuctionServiceFeeInput, locals.distributeAuctionServiceFeeOutput);
-			// Clear the pool only after all liabilities were registered, so a capacity failure can be retried next epoch.
-			if (locals.distributeAuctionServiceFeeOutput.success)
-			{
-				state.mut().pendingServiceFeePool = 0;
-			}
-		}
+		CALL(DistributeNostromoFeePool, locals.distributeNostromoFeePoolInput, locals.distributeNostromoFeePoolOutput);
 
 		state.mut().auctionList.cleanupIfNeeded();
 		state.mut().pendingQuPayouts.cleanupIfNeeded();
@@ -3241,7 +3277,7 @@ struct NOST : public ContractBase
 	}
 
 	/**
-	 * @brief Splits auction sale revenue between the seller and configured fee recipients.
+	 * @brief Pays auction sale proceeds to the seller and records every fee for end-of-epoch settlement.
 	 */
 	PRIVATE_PROCEDURE_WITH_LOCALS(DistributeAuctionRevenue)
 	{
@@ -3254,7 +3290,7 @@ struct NOST : public ContractBase
 			output.success = 1;
 			return;
 		}
-		// Reserve worst-case recipient headroom before any fee liability is queued, keeping failure atomic.
+		// Only the seller is queued during settlement; fee recipients are handled by END_EPOCH.
 		if (state.get().pendingQuPayouts.population() > state.get().pendingQuPayouts.capacity() - NOST_AUCTION_REVENUE_MAX_PAYOUT_RECIPIENTS)
 		{
 			return;
@@ -3263,69 +3299,7 @@ struct NOST : public ContractBase
 		calculateAuctionRevenueBreakdown(input.grossAmount, state, locals.auctionRevenueBreakdown);
 		output.sellerPayout = locals.auctionRevenueBreakdown.sellerPayout;
 
-		// The temporary routing switch keeps seller payout math unchanged while sending every fee to development.
-		if (routeAllFeesToDevelopment(state))
-		{
-			if (input.grossAmount > output.sellerPayout)
-			{
-				locals.payoutInput.recipient = state.get().development;
-				locals.payoutInput.amount = input.grossAmount - output.sellerPayout;
-				locals.payoutInput.maxChunks = NOST_MAX_QU_TRANSFER_CHUNKS_PER_CALL;
-				CALL(QueueAndFlushQuPayout, locals.payoutInput, locals.payoutOutput);
-				if (!locals.payoutOutput.success)
-				{
-					return;
-				}
-			}
-		}
-		// Normal routing preserves each configured recipient and accumulates the shareholder portion separately.
-		else
-		{
-			if (locals.auctionRevenueBreakdown.managementFeeAmount > 0)
-			{
-				locals.payoutInput.recipient = state.get().management;
-				locals.payoutInput.amount = locals.auctionRevenueBreakdown.managementFeeAmount;
-				locals.payoutInput.maxChunks = NOST_MAX_QU_TRANSFER_CHUNKS_PER_CALL;
-				CALL(QueueAndFlushQuPayout, locals.payoutInput, locals.payoutOutput);
-				if (!locals.payoutOutput.success)
-				{
-					return;
-				}
-			}
-			if (locals.auctionRevenueBreakdown.developmentFeeAmount > 0)
-			{
-				locals.payoutInput.recipient = state.get().development;
-				locals.payoutInput.amount = locals.auctionRevenueBreakdown.developmentFeeAmount;
-				locals.payoutInput.maxChunks = NOST_MAX_QU_TRANSFER_CHUNKS_PER_CALL;
-				CALL(QueueAndFlushQuPayout, locals.payoutInput, locals.payoutOutput);
-				if (!locals.payoutOutput.success)
-				{
-					return;
-				}
-			}
-			if (locals.auctionRevenueBreakdown.takeoverCoordinatorFeeAmount > 0)
-			{
-				locals.payoutInput.recipient = state.get().takeoverCoordinator;
-				locals.payoutInput.amount = locals.auctionRevenueBreakdown.takeoverCoordinatorFeeAmount;
-				locals.payoutInput.maxChunks = NOST_MAX_QU_TRANSFER_CHUNKS_PER_CALL;
-				CALL(QueueAndFlushQuPayout, locals.payoutInput, locals.payoutOutput);
-				if (!locals.payoutOutput.success)
-				{
-					return;
-				}
-			}
-
-			// Dividend dust stays pooled until it can be distributed evenly to all computors.
-			state.mut().auctionShareholderDividendPool =
-			    sadd(state.get().auctionShareholderDividendPool, locals.auctionRevenueBreakdown.shareholderDividendAmount);
-			locals.dividendPerShare = div<uint64>(state.get().auctionShareholderDividendPool, NUMBER_OF_COMPUTORS);
-			if (locals.dividendPerShare > 0 && qpi.distributeDividends(locals.dividendPerShare))
-			{
-				locals.distributedDividendAmount = smul(locals.dividendPerShare, static_cast<uint64>(NUMBER_OF_COMPUTORS));
-				state.mut().auctionShareholderDividendPool -= locals.distributedDividendAmount;
-			}
-		}
-
+		// Register the seller liability before recording fees so a queue-capacity failure cannot duplicate fee accrual on retry.
 		locals.payoutInput.recipient = input.seller;
 		locals.payoutInput.amount = output.sellerPayout;
 		locals.payoutInput.maxChunks = NOST_MAX_QU_TRANSFER_CHUNKS_PER_CALL;
@@ -3335,81 +3309,151 @@ struct NOST : public ContractBase
 			return;
 		}
 
+		locals.feePool = state.get().feePool;
+		// The routing decision and fee configuration are captured when revenue is settled; recipient wallets are resolved at END_EPOCH.
+		if (routeAllFeesToDevelopment(state))
+		{
+			locals.feePool.developmentAmount = sadd(locals.feePool.developmentAmount, input.grossAmount - output.sellerPayout);
+		}
+		else
+		{
+			locals.shareholderFeeTierIndex = getAuctionShareholderFeeTierIndex(input.grossAmount);
+			switch (locals.shareholderFeeTierIndex)
+			{
+				case 0:
+					locals.feePool.shareholderDividendTier1Amount =
+					    sadd(locals.feePool.shareholderDividendTier1Amount, locals.auctionRevenueBreakdown.shareholderDividendAmount);
+					break;
+				case 1:
+					locals.feePool.shareholderDividendTier2Amount =
+					    sadd(locals.feePool.shareholderDividendTier2Amount, locals.auctionRevenueBreakdown.shareholderDividendAmount);
+					break;
+				case 2:
+					locals.feePool.shareholderDividendTier3Amount =
+					    sadd(locals.feePool.shareholderDividendTier3Amount, locals.auctionRevenueBreakdown.shareholderDividendAmount);
+					break;
+				default:
+					locals.feePool.shareholderDividendTier4Amount =
+					    sadd(locals.feePool.shareholderDividendTier4Amount, locals.auctionRevenueBreakdown.shareholderDividendAmount);
+					break;
+			}
+
+			locals.feePool.managementAmount = sadd(locals.feePool.managementAmount, locals.auctionRevenueBreakdown.managementFeeAmount);
+			locals.feePool.developmentAmount = sadd(locals.feePool.developmentAmount, locals.auctionRevenueBreakdown.developmentFeeAmount);
+			locals.feePool.takeoverCoordinatorAmount =
+			    sadd(locals.feePool.takeoverCoordinatorAmount, locals.auctionRevenueBreakdown.takeoverCoordinatorFeeAmount);
+		}
+
+		state.mut().feePool = locals.feePool;
 		output.success = 1;
 	}
 
 	/**
-	 * @brief Distributes accumulated service fees to shareholders and configured recipients.
+	 * @brief Accumulates a service fee using the routing mode active when the fee is charged.
 	 */
-	PRIVATE_PROCEDURE_WITH_LOCALS(DistributeAuctionServiceFee)
+	PRIVATE_PROCEDURE_WITH_LOCALS(AccumulateAuctionServiceFee)
 	{
 		output.success = 0;
 
-		// Creation and cancellation paths may call this with zero after fee configuration changes.
+		// Creation, bidding, and cancellation paths may call this with zero after fee configuration changes.
 		if (input.feeAmount == 0)
 		{
 			output.success = 1;
 			return;
 		}
-		// Management, development, and coordinator may each require a new liability slot.
-		if (state.get().pendingQuPayouts.population() > state.get().pendingQuPayouts.capacity() - NOST_AUCTION_SERVICE_FEE_MAX_PAYOUT_RECIPIENTS)
-		{
-			return;
-		}
 
-		// Service fees use fixed recipients unless the runtime override sends all fees to development.
+		locals.feePool = state.get().feePool;
 		if (routeAllFeesToDevelopment(state))
 		{
-			locals.payoutInput.recipient = state.get().development;
-			locals.payoutInput.amount = input.feeAmount;
-			locals.payoutInput.maxChunks = NOST_MAX_QU_TRANSFER_CHUNKS_PER_CALL;
-			CALL(QueueAndFlushQuPayout, locals.payoutInput, locals.payoutOutput);
-			output.success = locals.payoutOutput.success;
-			return;
+			locals.feePool.developmentAmount = sadd(locals.feePool.developmentAmount, input.feeAmount);
+		}
+		else
+		{
+			locals.feePool.commonServiceFeeAmount = sadd(locals.feePool.commonServiceFeeAmount, input.feeAmount);
+		}
+		state.mut().feePool = locals.feePool;
+		output.success = 1;
+	}
+
+	/**
+	 * @brief Materializes compatible service fees and settles every shared pool accumulator using the recipients active at `END_EPOCH`.
+	 * @note Each accumulator is cleared only after its value has moved to dividend dust or a durable payout liability.
+	 */
+	PRIVATE_PROCEDURE_WITH_LOCALS(DistributeNostromoFeePool)
+	{
+		output.success = 0;
+		locals.feePool = state.get().feePool;
+
+		if (locals.feePool.commonServiceFeeAmount > 0)
+		{
+			calculateAuctionServiceFeeBreakdown(locals.feePool.commonServiceFeeAmount, locals.auctionServiceFeeBreakdown);
+			locals.feePool.shareholderDividendAmount =
+			    sadd(locals.feePool.shareholderDividendAmount, locals.auctionServiceFeeBreakdown.shareholderDividendAmount);
+			locals.feePool.managementAmount = sadd(locals.feePool.managementAmount, locals.auctionServiceFeeBreakdown.managementFeeAmount);
+			locals.feePool.developmentAmount = sadd(locals.feePool.developmentAmount, locals.auctionServiceFeeBreakdown.developmentFeeAmount);
+			locals.feePool.takeoverCoordinatorAmount =
+			    sadd(locals.feePool.takeoverCoordinatorAmount, locals.auctionServiceFeeBreakdown.takeoverCoordinatorFeeAmount);
+			locals.feePool.commonServiceFeeAmount = 0;
+			state.mut().feePool = locals.feePool;
 		}
 
-		calculateAuctionServiceFeeBreakdown(input.feeAmount, locals.auctionServiceFeeBreakdown);
-		if (locals.auctionServiceFeeBreakdown.managementFeeAmount > 0)
+		locals.shareholderDividendAmount =
+		    sadd(sadd(sadd(locals.feePool.shareholderDividendTier1Amount, locals.feePool.shareholderDividendTier2Amount),
+		              sadd(locals.feePool.shareholderDividendTier3Amount, locals.feePool.shareholderDividendTier4Amount)),
+		         locals.feePool.shareholderDividendAmount);
+		if (locals.shareholderDividendAmount > 0)
 		{
-			locals.payoutInput.recipient = state.get().management;
-			locals.payoutInput.amount = locals.auctionServiceFeeBreakdown.managementFeeAmount;
-			locals.payoutInput.maxChunks = NOST_MAX_QU_TRANSFER_CHUNKS_PER_CALL;
-			CALL(QueueAndFlushQuPayout, locals.payoutInput, locals.payoutOutput);
-			if (!locals.payoutOutput.success)
-			{
-				return;
-			}
-		}
-		if (locals.auctionServiceFeeBreakdown.developmentFeeAmount > 0)
-		{
-			locals.payoutInput.recipient = state.get().development;
-			locals.payoutInput.amount = locals.auctionServiceFeeBreakdown.developmentFeeAmount;
-			locals.payoutInput.maxChunks = NOST_MAX_QU_TRANSFER_CHUNKS_PER_CALL;
-			CALL(QueueAndFlushQuPayout, locals.payoutInput, locals.payoutOutput);
-			if (!locals.payoutOutput.success)
-			{
-				return;
-			}
-		}
-		if (locals.auctionServiceFeeBreakdown.takeoverCoordinatorFeeAmount > 0)
-		{
-			locals.payoutInput.recipient = state.get().takeoverCoordinator;
-			locals.payoutInput.amount = locals.auctionServiceFeeBreakdown.takeoverCoordinatorFeeAmount;
-			locals.payoutInput.maxChunks = NOST_MAX_QU_TRANSFER_CHUNKS_PER_CALL;
-			CALL(QueueAndFlushQuPayout, locals.payoutInput, locals.payoutOutput);
-			if (!locals.payoutOutput.success)
-			{
-				return;
-			}
+			state.mut().auctionShareholderDividendPool = sadd(state.get().auctionShareholderDividendPool, locals.shareholderDividendAmount);
+			locals.feePool.shareholderDividendTier1Amount = 0;
+			locals.feePool.shareholderDividendTier2Amount = 0;
+			locals.feePool.shareholderDividendTier3Amount = 0;
+			locals.feePool.shareholderDividendTier4Amount = 0;
+			locals.feePool.shareholderDividendAmount = 0;
+			state.mut().feePool = locals.feePool;
 		}
 
-		state.mut().auctionShareholderDividendPool =
-		    sadd(state.get().auctionShareholderDividendPool, locals.auctionServiceFeeBreakdown.shareholderDividendAmount);
 		locals.dividendPerShare = div<uint64>(state.get().auctionShareholderDividendPool, NUMBER_OF_COMPUTORS);
 		if (locals.dividendPerShare > 0 && qpi.distributeDividends(locals.dividendPerShare))
 		{
 			locals.distributedDividendAmount = smul(locals.dividendPerShare, static_cast<uint64>(NUMBER_OF_COMPUTORS));
 			state.mut().auctionShareholderDividendPool -= locals.distributedDividendAmount;
+		}
+
+		if (state.get().feePool.managementAmount > 0)
+		{
+			locals.payoutInput.recipient = state.get().management;
+			locals.payoutInput.amount = state.get().feePool.managementAmount;
+			locals.payoutInput.maxChunks = NOST_MAX_QU_TRANSFER_CHUNKS_PER_CALL;
+			CALL(QueueAndFlushQuPayout, locals.payoutInput, locals.payoutOutput);
+			if (!locals.payoutOutput.success)
+			{
+				return;
+			}
+			state.mut().feePool.managementAmount = 0;
+		}
+		if (state.get().feePool.developmentAmount > 0)
+		{
+			locals.payoutInput.recipient = state.get().development;
+			locals.payoutInput.amount = state.get().feePool.developmentAmount;
+			locals.payoutInput.maxChunks = NOST_MAX_QU_TRANSFER_CHUNKS_PER_CALL;
+			CALL(QueueAndFlushQuPayout, locals.payoutInput, locals.payoutOutput);
+			if (!locals.payoutOutput.success)
+			{
+				return;
+			}
+			state.mut().feePool.developmentAmount = 0;
+		}
+		if (state.get().feePool.takeoverCoordinatorAmount > 0)
+		{
+			locals.payoutInput.recipient = state.get().takeoverCoordinator;
+			locals.payoutInput.amount = state.get().feePool.takeoverCoordinatorAmount;
+			locals.payoutInput.maxChunks = NOST_MAX_QU_TRANSFER_CHUNKS_PER_CALL;
+			CALL(QueueAndFlushQuPayout, locals.payoutInput, locals.payoutOutput);
+			if (!locals.payoutOutput.success)
+			{
+				return;
+			}
+			state.mut().feePool.takeoverCoordinatorAmount = 0;
 		}
 
 		output.success = 1;
@@ -3889,7 +3933,8 @@ struct NOST : public ContractBase
 		// Small-bid service fees are retained even if the bid is later displaced.
 		if (locals.bidFeeCalculation.fee > 0)
 		{
-			state.mut().pendingServiceFeePool = sadd(state.get().pendingServiceFeePool, locals.bidFeeCalculation.fee);
+			locals.accumulateAuctionServiceFeeInput.feeAmount = locals.bidFeeCalculation.fee;
+			CALL(AccumulateAuctionServiceFee, locals.accumulateAuctionServiceFeeInput, locals.accumulateAuctionServiceFeeOutput);
 		}
 
 		if (static_cast<uint64>(qpi.invocationReward()) > locals.bidFeeCalculation.requiredReward)
@@ -4823,7 +4868,8 @@ struct NOST : public ContractBase
 		// Creation fees are held until END_EPOCH; overpayment is returned immediately.
 		if (locals.requiredFee > 0)
 		{
-			state.mut().pendingServiceFeePool = sadd(state.get().pendingServiceFeePool, static_cast<uint64>(locals.requiredFee));
+			locals.accumulateAuctionServiceFeeInput.feeAmount = static_cast<uint64>(locals.requiredFee);
+			CALL(AccumulateAuctionServiceFee, locals.accumulateAuctionServiceFeeInput, locals.accumulateAuctionServiceFeeOutput);
 		}
 
 		if (qpi.invocationReward() > locals.requiredFee)
@@ -5087,19 +5133,6 @@ struct NOST : public ContractBase
 			return;
 		}
 
-		if (state.get().pendingQuPayouts.population() > state.get().pendingQuPayouts.capacity() - NOST_AUCTION_SERVICE_FEE_MAX_PAYOUT_RECIPIENTS)
-		{
-			if (qpi.invocationReward() > 0)
-			{
-				qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			}
-			output.errorCode = EAuctionError::PayoutQueueFull;
-			setProcedureLogInput(locals.log, qpi.invocator(), EProcedureId::CancelAuction, output.errorCode, input.auctionIndex,
-			                     output.cancellationFee);
-			logProcedureResult(locals.log);
-			return;
-		}
-
 		// The fee base represents the full reserve value of the lot being withdrawn.
 		locals.cancellationBaseAmount = locals.auction.core.salePrice;
 		if (locals.auction.core.type == EAuctionType::Batch)
@@ -5139,9 +5172,9 @@ struct NOST : public ContractBase
 		locals.archiveClosedAuctionInput.auction = locals.auction;
 		CALL(ArchiveClosedAuction, locals.archiveClosedAuctionInput, locals.archiveClosedAuctionOutput);
 
-		// Cancellation fees are distributed immediately because cancellation is already a settlement action.
-		locals.distributeAuctionServiceFeeInput.feeAmount = output.cancellationFee;
-		CALL(DistributeAuctionServiceFee, locals.distributeAuctionServiceFeeInput, locals.distributeAuctionServiceFeeOutput);
+		// Cancellation fees use the same epoch pool as creation and small-bid service fees.
+		locals.accumulateAuctionServiceFeeInput.feeAmount = output.cancellationFee;
+		CALL(AccumulateAuctionServiceFee, locals.accumulateAuctionServiceFeeInput, locals.accumulateAuctionServiceFeeOutput);
 
 		if (static_cast<uint64>(qpi.invocationReward()) > output.cancellationFee)
 		{
@@ -5628,9 +5661,17 @@ struct NOST : public ContractBase
 	PUBLIC_FUNCTION(GetRouteAllFeesToDevelopment) { output.enabled = state.get().routeAllFeesToDevelopment; }
 
 	/**
-	 * @brief Returns the amount of accumulated auction service fees awaiting distribution at `END_EPOCH`.
+	 * @brief Returns the aggregate shared fee amount awaiting `END_EPOCH` settlement.
+	 * @note The legacy field name is retained for ABI compatibility.
 	 */
-	PUBLIC_FUNCTION(GetPendingServiceFeePool) { output.pendingServiceFeePool = state.get().pendingServiceFeePool; }
+	PUBLIC_FUNCTION(GetPendingServiceFeePool) { output.pendingServiceFeePool = getNostromoFeePoolTotal(state.get().feePool); }
+
+	/** @brief Returns every accumulator in the shared Nostromo fee pool. */
+	PUBLIC_FUNCTION(GetNostromoFeePool)
+	{
+		output.feePool = state.get().feePool;
+		output.totalAmount = getNostromoFeePoolTotal(state.get().feePool);
+	}
 
 	/** @brief Returns the QU obligation currently registered for one wallet. */
 	PUBLIC_FUNCTION(GetPendingPayout)
@@ -5661,7 +5702,7 @@ struct NOST : public ContractBase
 		output.stats.totalAuctionsCreated = state.get().totalAuctionsCreated;
 		output.stats.closedAuctionHistoryCounter = state.get().closedAuctionHistoryCounter;
 		output.stats.auctionShareholderDividendPool = state.get().auctionShareholderDividendPool;
-		output.stats.pendingServiceFeePool = state.get().pendingServiceFeePool;
+		output.stats.pendingServiceFeePool = getNostromoFeePoolTotal(state.get().feePool);
 		output.stats.totalPendingQuPayouts = state.get().totalPendingQuPayouts;
 		output.stats.retainedClosedAuctionCount = min(state.get().closedAuctionHistoryCounter, state.get().closedAuctionHistory.capacity());
 		output.stats.retainedParticipantHistoryCount = min(state.get().participantHistoryCounter, state.get().participantHistory.capacity());
@@ -6277,6 +6318,33 @@ protected:
 		return getAuctionShareholderFeeBasisPoints(grossAmount, state.get());
 	}
 
+	/** @brief Returns the zero-based shareholder fee tier selected by an auction gross amount. */
+	constexpr static uint64 getAuctionShareholderFeeTierIndex(uint64 grossAmount)
+	{
+		if (grossAmount <= NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_1)
+		{
+			return 0;
+		}
+		if (grossAmount <= NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_2)
+		{
+			return 1;
+		}
+		if (grossAmount <= NOST_AUCTION_SHAREHOLDER_FEE_THRESHOLD_TIER_3)
+		{
+			return 2;
+		}
+		return 3;
+	}
+
+	/** @brief Returns the saturating aggregate of every unsettled fee-pool accumulator. */
+	static uint64 getNostromoFeePoolTotal(const NostromoFeePool& feePool)
+	{
+		return sadd(sadd(sadd(feePool.shareholderDividendTier1Amount, feePool.shareholderDividendTier2Amount),
+		                 sadd(feePool.shareholderDividendTier3Amount, feePool.shareholderDividendTier4Amount)),
+		            sadd(sadd(feePool.commonServiceFeeAmount, feePool.shareholderDividendAmount),
+		                 sadd(sadd(feePool.managementAmount, feePool.developmentAmount), feePool.takeoverCoordinatorAmount)));
+	}
+
 	/**
 	 * @brief Computes `floor(amount * basisPoints / 10000)` without overflowing the intermediate product.
 	 */
@@ -6307,7 +6375,7 @@ protected:
 
 	/**
 	 * @brief Computes the exact service-fee split without performing transfers.
-	 * @note Keep this helper pure so tests can reuse the same arithmetic as `DistributeAuctionServiceFee`.
+	 * @note Keep this helper pure so tests can reuse the same arithmetic as `DistributeNostromoFeePool`.
 	 */
 	static void calculateAuctionServiceFeeBreakdown(uint64 feeAmount, AuctionServiceFeeBreakdown& output)
 	{
