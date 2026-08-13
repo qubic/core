@@ -2580,9 +2580,9 @@ struct NOST : public ContractBase
 				state.mut().feeReserveBaseline = locals.currentReserve;
 				state.mut().feeReserveBaselineAt = locals.currentDate;
 			}
-			// Subsequent observations either trigger the guard or roll the baseline into a new window.
 			else
 			{
+				// Subsequent observations either trigger the guard or roll the baseline into a new window.
 				diffDateInSecond(state.get().feeReserveBaselineAt, locals.currentDate, locals.guardElapsedSeconds);
 				locals.reserveDrop = state.get().feeReserveBaseline - locals.currentReserve;
 				if (state.get().feeReserveBaseline > 0 && locals.reserveDrop > 0)
@@ -2645,9 +2645,9 @@ struct NOST : public ContractBase
 									locals.finalizeStandardAuctionInput.currentDate = locals.currentDate;
 									CALL(FinalizeStandardAuction, locals.finalizeStandardAuctionInput, locals.finalizeStandardAuctionOutput);
 								}
-								// A funded bid below the seller's sale price requires an explicit, time-bounded seller choice.
 								else
 								{
+									// A funded bid below the seller's sale price requires an explicit, time-bounded seller choice.
 									// Below-sale standard bids enter a seller decision window instead of settling immediately.
 									locals.auction.core.status = EAuctionStatus::PendingSellerDecision;
 									locals.auction.core.sellerDecisionDeadline = locals.currentDate;
@@ -2960,9 +2960,9 @@ struct NOST : public ContractBase
 				return;
 			}
 		}
-		// First-time recipients consume a new map slot; failure leaves the global liability total unchanged.
 		else
 		{
+			// First-time recipients consume a new map slot; failure leaves the global liability total unchanged.
 			locals.payoutIndex = state.mut().pendingQuPayouts.set(input.recipient, input.amount);
 			if (locals.payoutIndex == NULL_INDEX)
 			{
@@ -3655,9 +3655,9 @@ struct NOST : public ContractBase
 		{
 			output.availableQuantity = 0;
 		}
-		// Otherwise expose the full unreserved quantity; the minimum check below decides whether bidding remains viable.
 		else
 		{
+			// Otherwise expose the full unreserved quantity; the minimum check below decides whether bidding remains viable.
 			output.availableQuantity = locals.auction.core.quantityForSale - locals.salePriorityQuantity;
 		}
 
@@ -3667,9 +3667,9 @@ struct NOST : public ContractBase
 			output.minimumBidPrice = locals.auction.core.salePrice;
 			output.isAcceptingBids = 1;
 		}
-		// A full book can still accept a strictly better bid that displaces the current lowest-priced allocation.
 		else
 		{
+			// A full book can still accept a strictly better bid that displaces the current lowest-priced allocation.
 			output.availableQuantity = 0;
 			if (!locals.lowestWinningPriceFound || locals.lowestWinningPrice == UINT64_MAX)
 			{
