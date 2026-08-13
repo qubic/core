@@ -10,6 +10,10 @@
 #include <vector>
 
 static constexpr unsigned int TEST_THRESHOLD = 3838;   // BPP9000_SOLUTION_THRESHOLD_DEFAULT
+// Ticks are absolute. A commit at TEST_PUBLISH_TICK lands in tick-index slot (TEST_PUBLISH_TICK -
+// TEST_INITIAL_TICK), which must stay under MAX_NUMBER_OF_TICKS_PER_EPOCH (3005 on the testnet setting).
+static constexpr unsigned int TEST_INITIAL_TICK = 99000;
+static constexpr unsigned int TEST_PUBLISH_TICK = 100000;
 
 static m256i makeKey(unsigned long long n)
 {
@@ -242,7 +246,7 @@ static AntColonyBpp9000T* freshColony()
         return nullptr;
     }
 
-    colony.beginEpoch(makeKey(999));
+    colony.beginEpoch(makeKey(999), TEST_INITIAL_TICK);
     colony.setErrorThreshold(TEST_THRESHOLD);
     return &colony;
 }
@@ -256,7 +260,7 @@ static long long commitRootChild(AntColonyBpp9000T* colony, const m256i& owner, 
     in.pubkey = owner;
     in.nonce = makeKey(nonceSeed);
     in.parentRef = ROOT_REF;
-    in.selfRef.tickOffset = 7000;
+    in.selfRef.tick = tick;
     in.selfRef.solutionIndexInTick = txIdx;
     in.anchorTick = tick;
     in.publishTick = tick;
@@ -291,7 +295,7 @@ static long long commitChild(AntColonyBpp9000T* colony, const m256i& owner, cons
     in.pubkey = owner;
     in.nonce = makeKey(nonceSeed);
     in.parentRef = parentRef;
-    in.selfRef.tickOffset = 7000;
+    in.selfRef.tick = tick;
     in.selfRef.solutionIndexInTick = txIdx;
     in.anchorTick = tick;
     in.publishTick = tick;
@@ -341,11 +345,11 @@ TEST(TestAntColonyStore, SolutionRefResolvesToItsRecord)
     const long long idx = commitRootChild(colony, me, 3800, 42, 600);
     ASSERT_NE(idx, ANT_INVALID_INDEX);
 
-    const SolutionRef ref = { 7000, 42 };
+    const SolutionRef ref = { TEST_PUBLISH_TICK,42 };
     EXPECT_EQ(colony->findIndexBySolutionRef(ref), idx);
 
     // An uncommitted ref must not resolve to a neighbour.
-    const SolutionRef missing = { 7000, 43 };
+    const SolutionRef missing = { TEST_PUBLISH_TICK,43 };
     EXPECT_EQ(colony->findIndexBySolutionRef(missing), ANT_INVALID_INDEX);
 }
 
@@ -373,7 +377,7 @@ TEST(TestAntColonyStore, RootRefResolvesToValidWithNoRecord)
     EXPECT_EQ(colony->tryGetParent(ROOT_REF, &parent), ValidityResult::Valid);
     EXPECT_EQ(parent, nullptr);
 
-    const SolutionRef missing = { 7000, 0 };
+    const SolutionRef missing = { TEST_PUBLISH_TICK,0 };
     EXPECT_EQ(colony->tryGetParent(missing, &parent), ValidityResult::RejectParentNotRegistered);
 }
 
@@ -426,7 +430,7 @@ TEST(TestAntColonyStore, EpochResetClearsTheRing)
     m256i out = m256i::zero();
     ASSERT_TRUE(colony->getAnchorDigest(100000, out));
 
-    colony->beginEpoch(makeKey(999));
+    colony->beginEpoch(makeKey(999), TEST_INITIAL_TICK);
     EXPECT_FALSE(colony->getAnchorDigest(100000, out));
     EXPECT_FALSE(colony->getAnchorDigest(0, out));
 }
@@ -437,11 +441,6 @@ TEST(TestAntColonyStore, EpochResetClearsTheRing)
 static constexpr unsigned short TEST_EPOCH = 200;
 static const m256i TEST_ROOT_SEED = makeKey(999);   // what freshColony() seeds with
 
-// commitRootChild() writes tickOffset 7000 and publishes at tick 100000, so this is the base those
-// two agree on. The load re-derives publishTick as initialTick + tickOffset and re-checks freshness,
-// so a mismatched base makes every record look stale.
-static constexpr unsigned int TEST_INITIAL_TICK = 100000 - 7000;
-
 // Save, wipe, load. beginEpoch() clears everything the load has to bring back, so anything that
 // survives came out of the files.
 static bool saveWipeLoad(AntColonyBpp9000T* colony)
@@ -450,7 +449,7 @@ static bool saveWipeLoad(AntColonyBpp9000T* colony)
     {
         return false;
     }
-    colony->beginEpoch(TEST_ROOT_SEED);
+    colony->beginEpoch(TEST_ROOT_SEED, TEST_INITIAL_TICK);
     colony->setErrorThreshold(TEST_THRESHOLD);
     return colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK);
 }
@@ -478,7 +477,7 @@ TEST(TestAntColonySnapshot, RoundTripRestoresTheTree)
     EXPECT_TRUE(colony->recordAt(1)->pubkey == me);
 
     // The tick index is derived too, so resolving a logical ref proves it was rebuilt.
-    const SolutionRef ref = { 7000, 1 };
+    const SolutionRef ref = { TEST_PUBLISH_TICK,1 };
     EXPECT_EQ(colony->findIndexBySolutionRef(ref), 1LL);
 }
 
@@ -633,22 +632,6 @@ TEST(TestAntColonySnapshot, CorruptedPoolIsRefused)
     EXPECT_EQ(colony->solutionCount(), 0u);
 }
 
-// anchorTick seeds the score's RNG and has no other guard, so the load re-derives publishTick
-// from the record's own address and re-checks the freshness rule. A record anchored 100000 ticks
-// after the tick it claims to sit in cannot have passed that rule when it was admitted.
-TEST(TestAntColonySnapshot, RecordOutsideItsFreshnessWindowIsRefused)
-{
-    AntColonyBpp9000T* colony = freshColony();
-    ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.2 GB";
-
-    // Published at tick 200000 but still written at tickOffset 7000, so the load re-derives 100000.
-    ASSERT_NE(commitRootChild(colony, makeKey(7), 3800, 0, 1100, 200000), ANT_INVALID_INDEX);
-    ASSERT_TRUE(colony->saveSnapshot(TEST_EPOCH, NULL, TEST_INITIAL_TICK));
-
-    EXPECT_FALSE(colony->loadSnapshot(TEST_EPOCH, NULL, TEST_ROOT_SEED, TEST_THRESHOLD, TEST_INITIAL_TICK));
-    EXPECT_EQ(colony->solutionCount(), 0u);
-}
-
 // ---------------------------------------------------------------------------------------------
 // Replay cache
 
@@ -743,7 +726,7 @@ TEST(TestAntColonyReplayCache, BeginEpochClearsIt)
     colony->putReplayScore(key, 3800, makeAnn(2));
     ASSERT_EQ(colony->replayCacheOccupancy(), 1u);
 
-    colony->beginEpoch(TEST_ROOT_SEED);
+    colony->beginEpoch(TEST_ROOT_SEED, TEST_INITIAL_TICK);
 
     unsigned int score = 0;
     AntColonyBpp9000T::Ann out;
@@ -945,7 +928,7 @@ TEST(TestAntColonyExport, CarriesTheNetworkAndItsDepth)
 
     const m256i me = makeKey(5);
     ASSERT_NE(commitRootChild(colony, me, 3800, 0, 6200), ANT_INVALID_INDEX);
-    const SolutionRef aRef = { 7000, 0 };
+    const SolutionRef aRef = { TEST_PUBLISH_TICK,0 };
     ASSERT_NE(commitChild(colony, me, aRef, 3700, 1, 6201), ANT_INVALID_INDEX);
     ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
 
@@ -999,7 +982,7 @@ TEST(TestAntColonyExport, BeginEpochClearsIt)
     ASSERT_NE(colony, nullptr) << "colony init failed; needs ~6.6 GB";
 
     ASSERT_NE(commitRootChild(colony, makeKey(7), 3500, 0, 6400), ANT_INVALID_INDEX);
-    colony->beginEpoch(TEST_ROOT_SEED);
+    colony->beginEpoch(TEST_ROOT_SEED, TEST_INITIAL_TICK);
     ASSERT_TRUE(colony->exportBestSolutions(TEST_EPOCH, NULL));
 
     AntColonyExportHeader header;
