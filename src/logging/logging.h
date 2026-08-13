@@ -199,7 +199,7 @@ struct AntSolutionLogMessage
     unsigned long long _type; // CUSTOM_MESSAGE_ANT_SOLUTION
     m256i sourcePublicKey;
     m256i nonce;
-    unsigned int parentTickOffset;
+    unsigned int parentTick;
     unsigned int parentSolutionIndexInTick;
     unsigned int anchorTick;
     unsigned int score;

@@ -314,7 +314,7 @@ static void antDebugPoolDrop(const CHAR16* reason, const AntSolutionBroadcastPay
     setText(msg, L"[ant-colony] pool drop ");
     appendText(msg, reason);
     appendText(msg, L": parent=");
-    appendNumber(msg, payload.parentTickOffset, FALSE);
+    appendNumber(msg, payload.parentTick, FALSE);
     appendText(msg, L"/");
     appendNumber(msg, payload.parentSolutionIndexInTick, FALSE);
     appendText(msg, L" anchor=");
@@ -336,7 +336,7 @@ static void antDebugPending(const CHAR16* outcome, const AntPendingSolution& ent
     setText(msg, L"[ant-colony] ");
     appendText(msg, outcome);
     appendText(msg, L": parent=");
-    appendNumber(msg, entry.parentRef.tickOffset, FALSE);
+    appendNumber(msg, entry.parentRef.tick, FALSE);
     appendText(msg, L"/");
     appendNumber(msg, entry.parentRef.solutionIndexInTick, FALSE);
     appendText(msg, L" anchor=");
@@ -510,7 +510,7 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
     // The same bits the commit path checks before RejectReplay, so a hit here is a solution this
     // node has already processed on-chain - publishing it again would forfeit the deposit. The
     // filter is restored from the snapshot, so unlike this buffer the check survives a restart.
-    const SolutionRef parentRef = { payload.parentTickOffset, payload.parentSolutionIndexInTick };
+    const SolutionRef parentRef = { payload.parentTick, payload.parentSolutionIndexInTick };
     unsigned int seenFlagIndices[2];
     computeAntSolutionFlagIndices(computorPublicKey, payload.nonce, parentRef, seenFlagIndices);
     if (isAntSolutionSeen(seenFlagIndices))
@@ -602,7 +602,7 @@ static void antColonyBeginEpoch()
     gAntDebugPrintBudget = ANT_DEBUG_PRINTS_PER_EPOCH;
 #endif
     gAntPendingSolutions.reset();
-    gAntColony.beginEpoch(score->currentRandomSeed);
+    gAntColony.beginEpoch(score->currentRandomSeed, system.initialTick);
     gAntColony.setErrorThreshold((unsigned int)getSolutionThreshold(score_engine::AlgoType::Bpp9000));
 
     // Every identity's root derives from this one value, so a node that seeded differently builds a
@@ -1401,7 +1401,7 @@ static void processBroadcastTransaction(Peer* peer, RequestResponseHeader* heade
                 && AntColonyMiningSolutionTransaction::isSolutionTransaction(request))
             {
                 const AntColonyMiningSolutionTransaction* antTx = (const AntColonyMiningSolutionTransaction*)request;
-                const SolutionRef preParentRef = { antTx->parentTickOffset, antTx->parentSolutionIndexInTick };
+                const SolutionRef preParentRef = { antTx->parentTick, antTx->parentSolutionIndexInTick };
                 unsigned int preFlagIndices[2];
                 computeAntSolutionFlagIndices(antTx->sourcePublicKey, antTx->nonce, preParentRef, preFlagIndices);
                 const int spectrumIdx = spectrumIndex(antTx->sourcePublicKey);
@@ -1870,9 +1870,9 @@ static void processRequestAntIdentityTree(unsigned long long processorNumber, Pe
         }
 
         AntIdentityTreeNode& item = response.items[response.header.count];
-        item.selfTickOffset = rec->selfRef.tickOffset;
+        item.selfTick = rec->selfRef.tick;
         item.selfSolutionIndexInTick = rec->selfRef.solutionIndexInTick;
-        item.parentTickOffset = rec->parentRef.tickOffset;
+        item.parentTick = rec->parentRef.tick;
         item.parentSolutionIndexInTick = rec->parentRef.solutionIndexInTick;
         item.score = rec->score;
         item.childCount = gAntColony.childCountForQuery(rec->selfRef, rec->pubkey);
@@ -1914,10 +1914,10 @@ static void processRequestAntParentAnn(unsigned long long processorNumber, Peer*
 
     AntParentAnnResponse& response = gAntParentAnnResponseBuffer[processorNumber];
     setMem(&response, sizeof(response), 0);
-    response.header.parentRefTickOffset = request->parentRefTickOffset;
+    response.header.parentRefTick = request->parentRefTick;
     response.header.parentRefSolutionIndexInTick = request->parentRefSolutionIndexInTick;
 
-    const SolutionRef ref = { request->parentRefTickOffset, request->parentRefSolutionIndexInTick };
+    const SolutionRef ref = { request->parentRefTick, request->parentRefSolutionIndexInTick };
     if (ref.isRoot())
     {
         // Roots are never stored; the miner derives its own from the epoch context's seed.
@@ -3356,7 +3356,7 @@ static void logAntSolutionOutcome(const AntColonyMiningSolutionTransaction* tran
     logMsg._type = CUSTOM_MESSAGE_ANT_SOLUTION;
     logMsg.sourcePublicKey = transaction->sourcePublicKey;
     logMsg.nonce = transaction->nonce;
-    logMsg.parentTickOffset = transaction->parentTickOffset;
+    logMsg.parentTick = transaction->parentTick;
     logMsg.parentSolutionIndexInTick = transaction->parentSolutionIndexInTick;
     logMsg.anchorTick = transaction->anchorTick;
     logMsg.score = score;
@@ -3373,7 +3373,7 @@ static void processTickTransactionAntColonySolution(
     AntColonyBpp9000T::Ann& parentAnnScratch = gAntParentAnnScratch[processorNumber];
     AntColonyBpp9000T::Ann& childAnnScratch = gAntChildAnnScratch[processorNumber];
 
-    const SolutionRef parentRef = { transaction->parentTickOffset, transaction->parentSolutionIndexInTick };
+    const SolutionRef parentRef = { transaction->parentTick, transaction->parentSolutionIndexInTick };
 
     // Already looked at, accepted or not. Marked BEFORE the walk below, so one solution costs at
     // most one walk for the whole epoch - _dedup alone would only cover the accepted ones.
@@ -3389,7 +3389,7 @@ static void processTickTransactionAntColonySolution(
 
     // Reject a parent ref into the current or a later tick: a real parent is always on-chain from an
     // earlier tick. Root is exempt, it is derived rather than stored.
-    if (!parentRef.isRoot() && parentRef.tickOffset >= (unsigned int)(system.tick - system.initialTick))
+    if (!parentRef.isRoot() && parentRef.tick >= system.tick)
     {
         gAntColony.recordReject(ValidityResult::RejectParentNotRegistered);
         logAntSolutionOutcome(transaction, 0, ValidityResult::RejectParentNotRegistered);
@@ -3470,9 +3470,9 @@ static void processTickTransactionAntColonySolution(
         transaction->sourcePublicKey,
         transaction->nonce,
         parentRef,
-        { system.tick - system.initialTick, transactionIndex },   // selfRef, epoch-RELATIVE tick
+        { system.tick, transactionIndex },                        // selfRef, ABSOLUTE tick
         transaction->anchorTick,                                  // ABSOLUTE
-        system.tick };                                            // ABSOLUTE
+        system.tick };                                            // publishTick, ABSOLUTE (== selfRef.tick)
     // Seeing this transaction execute, that mean those solution is recognized on-chain, mark them as recorded
     for (unsigned int ownIdx = 0; ownIdx < computorSeedsCount; ownIdx++)
     {
@@ -3989,7 +3989,7 @@ static void publishAntSolutionFor(unsigned long long processorNumber, unsigned i
     payload.tick = publishTick;
     payload.inputType = AntColonyMiningSolutionTransaction::transactionType();
     payload.inputSize = AntColonyMiningSolutionTransaction::minInputSize();
-    payload.parentTickOffset = entry.parentRef.tickOffset;
+    payload.parentTick = entry.parentRef.tick;
     payload.parentSolutionIndexInTick = entry.parentRef.solutionIndexInTick;
     payload.anchorTick = entry.anchorTick;
     payload.claimedScore = entry.score;
@@ -4140,7 +4140,7 @@ static void processTick(unsigned long long processorNumber)
                             AntScoreTaskPayload task;
                             task.pubkey = antTx->sourcePublicKey;
                             task.nonce = antTx->nonce;
-                            task.parentRef.tickOffset = antTx->parentTickOffset;
+                            task.parentRef.tick = antTx->parentTick;
                             task.parentRef.solutionIndexInTick = antTx->parentSolutionIndexInTick;
                             task.anchorTick = antTx->anchorTick;
                             task.txIdx = transactionIndex;

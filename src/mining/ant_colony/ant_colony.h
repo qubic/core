@@ -50,20 +50,21 @@ static constexpr unsigned int antAnchorRingSize(unsigned int window)
 static constexpr unsigned int ANT_ANCHOR_RING_SIZE = antAnchorRingSize(ANT_PUBLISH_WINDOW_TICKS);
 static constexpr unsigned int ANT_ANCHOR_TICK_NONE = 0xFFFFFFFFU;
 
-// (tickOffset, solutionIndexInTick), epoch-relative tick plus the solution transaction's index in tick
+// (tick, solutionIndexInTick), ABSOLUTE system tick plus the solution transaction's index in tick.
+// Every tick in the subsystem is absolute; slotOf() is the only place a tick becomes a tick-index offset.
 struct SolutionRef
 {
-    unsigned int tickOffset;          // RELATIVE to the epoch start, never an absolute system tick
+    unsigned int tick;                // ABSOLUTE system tick
     unsigned int solutionIndexInTick;
 
     bool operator==(const SolutionRef& other) const
     {
-        return (tickOffset == other.tickOffset) && (solutionIndexInTick == other.solutionIndexInTick);
+        return (tick == other.tick) && (solutionIndexInTick == other.solutionIndexInTick);
     }
 
     bool isRoot() const
     {
-        return (tickOffset == 0) && (solutionIndexInTick == 0xFFFFFFFFu);
+        return (tick == 0) && (solutionIndexInTick == 0xFFFFFFFFu);
     }
 };
 
@@ -88,7 +89,7 @@ struct AntSolutionRecord
     m256i pubkey;
     m256i nonce;
     SolutionRef parentRef;        // this solution's parent, or ROOT_REF
-    SolutionRef selfRef;          // this solution's own address (RELATIVE tick inside)
+    SolutionRef selfRef;          // this solution's own address (ABSOLUTE tick inside)
     unsigned int score;           // error count, lower is better
     unsigned int anchorTick;      // ABSOLUTE. tick whose digest seeded the RNG
     unsigned int depth;           // a child of the root is depth 1; the root itself is never stored
@@ -108,7 +109,7 @@ struct AntExportSlotT
     PackedAnnT ann;
 };
 
-// tickOffset -> the run of records committed in that tick, so findIndexBySolutionRef() resolves a
+// slotOf(tick) -> the run of records committed in that tick, so findIndexBySolutionRef() resolves a
 // SolutionRef without scanning the store. The run is unbroken because the store is append-only and
 // a tick's solutions all commit while that tick is processed
 struct AntTickSlot
@@ -229,9 +230,8 @@ struct ChildCandidate
     unsigned int publishTick;     // ABSOLUTE
 };
 
-// Carries BOTH tick bases. selfRef/parentRef hold epoch-RELATIVE ticks, anchorTick/publishTick are
-// ABSOLUTE system ticks. They are all unsigned int and all named "tick", so comparing one against
-// the other compiles silently and is meaningless - on mainnet that is ~2,000,000 against ~70,000,000.
+// Every tick here is an ABSOLUTE system tick: selfRef/parentRef ticks, anchorTick and publishTick all
+// share one basis (publishTick equals selfRef.tick), so no cross-basis comparison can slip in.
 struct AntCommitInput
 {
     m256i pubkey;
@@ -320,11 +320,12 @@ public:
     // Wipe the whole tree. A new epoch starts empty and reseeded.
     void reset();
 
-    void beginEpoch(const m256i& rootSeed)
+    void beginEpoch(const m256i& rootSeed, unsigned int initialTick)
     {
         reset();
         clearReplayCache();
         _rootSeed = rootSeed;
+        _initialTick = initialTick;
     }
 
     const m256i& rootSeed() const
@@ -407,7 +408,7 @@ public:
         return childCountFromHead(head);
     }
 
-    // Anchor digests. Both take an ABSOLUTE system tick, never an epoch-relative tickOffset.
+    // Anchor digests. Both take an ABSOLUTE system tick.
     // Called from tick processor only
     void recordAnchorDigest(unsigned int tick, const m256i& digest);
     // Can be called from any processors
@@ -521,14 +522,27 @@ private:
     }
 
     // loadSnapshot() helper: rebuild the tick index, head maps and dedup set from the loaded
-    // records, treating them as untrusted input.
-    bool rebuildDerivedState(unsigned int initialTick);
+    // records, treating them as untrusted input. Uses _initialTick, set by the caller beforehand.
+    bool rebuildDerivedState();
 
     static unsigned int replaySlotOf(const ReplayKey& key)
     {
         unsigned long long digest;
         KangarooTwelve(&key, sizeof(key), &digest, sizeof(digest));
         return (unsigned int)(digest & (ANT_REPLAY_CACHE_SIZE - 1));
+    }
+
+    // The sole place an absolute tick becomes a tick-index offset. Returns false when the tick falls
+    // outside this epoch's window (before initialTick, or past the per-epoch tick cap); callers treat
+    // that as "no such record" - RejectParentNotRegistered on lookup, RejectTickOutOfRange on commit.
+    bool slotOf(unsigned int tick, unsigned int& slot) const
+    {
+        if (tick < _initialTick)
+        {
+            return false;
+        }
+        slot = tick - _initialTick;
+        return slot < MAX_NUMBER_OF_TICKS_PER_EPOCH;
     }
 
     AntSolutionRecord* _records;
@@ -561,6 +575,8 @@ private:
 
     unsigned int _solutionCount;
     unsigned int _errorThreshold;
+    // This epoch's first tick. slotOf() maps an absolute tick to a tick-index offset against it.
+    unsigned int _initialTick;
     m256i _rootSeed;
     AntColonyDiagnostics _stats;
 };
@@ -964,12 +980,13 @@ inline bool AntColony<ScoreT>::getAnchorDigest(unsigned int tick, m256i& digest)
 template<typename ScoreT>
 inline long long AntColony<ScoreT>::findIndexBySolutionRef(const SolutionRef& ref) const
 {
-    if (ref.isRoot() || ref.tickOffset >= MAX_NUMBER_OF_TICKS_PER_EPOCH)
+    unsigned int tickSlot = 0;
+    if (ref.isRoot() || !slotOf(ref.tick, tickSlot))
     {
         return ANT_INVALID_INDEX;
     }
     // Start from tick' begin index in the record and loop total of record in the tick
-    const AntTickSlot& slot = _tickIndex[ref.tickOffset];
+    const AntTickSlot& slot = _tickIndex[tickSlot];
     for (unsigned int i = 0; i < slot.count; i++)
     {
         const unsigned int idx = slot.startIdx + i;
@@ -1115,7 +1132,8 @@ inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const 
         _stats.acceptedNotStored++;
         return ValidityResult::ValidNotStored;
     }
-    if (in.selfRef.tickOffset >= MAX_NUMBER_OF_TICKS_PER_EPOCH)
+    unsigned int selfSlot = 0;
+    if (!slotOf(in.selfRef.tick, selfSlot))
     {
         recordReject(ValidityResult::RejectTickOutOfRange);
         return ValidityResult::RejectTickOutOfRange;
@@ -1172,7 +1190,7 @@ inline ValidityResult AntColony<ScoreT>::commit(const AntCommitInput& in, const 
     newRec.annStateSlot = newIdx;
     newRec.nextSiblingIdx = prevHead;
 
-    AntTickSlot& tslot = _tickIndex[in.selfRef.tickOffset];
+    AntTickSlot& tslot = _tickIndex[selfSlot];
     if (tslot.count == 0)
     {
         tslot.startIdx = newIdx;
@@ -1212,15 +1230,15 @@ struct AntColonySnapshotMeta
     unsigned int recordSizeBytes;
     unsigned int annPoolEntryBytes;
     unsigned int errorThreshold;
-    // The base every selfRef.tickOffset in the records file is relative to. Records address each
-    // other by offset, so a snapshot restored against a different base is silently mis-addressed
+    // This epoch's first tick. Records hold absolute ticks; the base must still match so slotOf() maps
+    // them into this node's tick index, and a snapshot from another epoch is refused rather than mis-read.
     unsigned int initialTick;
     unsigned int anchorRingBytes;
     unsigned int exportSetBytes;
     m256i rootSeed;
 
     static constexpr unsigned int MAGIC = 0x414E5443;   // "ANTC"
-    static constexpr unsigned int VERSION = 1;
+    static constexpr unsigned int VERSION = 1;   // SolutionRef holds absolute ticks
 };
 static_assert(sizeof(AntColonySnapshotMeta) == 40 + 32, "AntColonySnapshotMeta unexpected padding");
 
@@ -1373,8 +1391,8 @@ inline bool AntColony<ScoreT>::loadSnapshot(unsigned short epoch, CHAR16* direct
         antSnapshotFailure(L"threshold does not match the node, file/node", meta.errorThreshold, errorThreshold);
         return false;
     }
-    // Every selfRef.tickOffset is relative to this. Restoring against a different base would not
-    // fail anywhere - it would resolve parent references to the wrong records
+    // Records hold absolute ticks; slotOf() maps them against initialTick, so a snapshot taken at a
+    // different base would resolve parent references to the wrong records. Refuse it.
     if (meta.initialTick != initialTick)
     {
         antSnapshotFailure(L"initial tick does not match the node, file/node", meta.initialTick, initialTick);
@@ -1437,9 +1455,10 @@ inline bool AntColony<ScoreT>::loadSnapshot(unsigned short epoch, CHAR16* direct
     _rootSeed = rootSeed;
     _errorThreshold = errorThreshold;
     _solutionCount = meta.solutionCount;
+    _initialTick = initialTick;
 
     // Rebuild the intermediate data
-    if (!rebuildDerivedState(initialTick))
+    if (!rebuildDerivedState())
     {
         reset();
         return false;
@@ -1448,7 +1467,7 @@ inline bool AntColony<ScoreT>::loadSnapshot(unsigned short epoch, CHAR16* direct
 }
 
 template<typename ScoreT>
-inline bool AntColony<ScoreT>::rebuildDerivedState(unsigned int initialTick)
+inline bool AntColony<ScoreT>::rebuildDerivedState()
 {
     // Hoisted out of the loop: unpacking each stored network to verify its hash needs somewhere to
     // put it, and this path runs once at boot.
@@ -1458,9 +1477,10 @@ inline bool AntColony<ScoreT>::rebuildDerivedState(unsigned int initialTick)
     {
         const AntSolutionRecord& rec = _records[i];
 
-        if (rec.selfRef.tickOffset >= MAX_NUMBER_OF_TICKS_PER_EPOCH)
+        unsigned int selfSlot = 0;
+        if (!slotOf(rec.selfRef.tick, selfSlot))
         {
-            antSnapshotFailure(L"tickOffset out of range, record/tickOffset", i, rec.selfRef.tickOffset);
+            antSnapshotFailure(L"tick out of range, record/tick", i, rec.selfRef.tick);
             return false;
         }
         // commit() writes the record and its network at the same index, and findIndexBySolutionRef
@@ -1474,9 +1494,8 @@ inline bool AntColony<ScoreT>::rebuildDerivedState(unsigned int initialTick)
 
         // The freshness rule validateChild() applied at admission, re-checked here so a tampered
         // snapshot cannot smuggle in a record that was never admissible. anchorTick seeds the score's
-        // RNG, so it is consensus-relevant. publishTick was not stored because it does not need to be -
-        // commit() sets tickOffset to (publishTick - initialTick), so it inverts exactly
-        const unsigned int publishTick = initialTick + rec.selfRef.tickOffset;
+        // RNG, so it is consensus-relevant. The record's own absolute tick is its publish tick.
+        const unsigned int publishTick = rec.selfRef.tick;
         if (rec.anchorTick > publishTick
             || publishTick - rec.anchorTick > ANT_PUBLISH_WINDOW_TICKS)
         {
@@ -1485,14 +1504,14 @@ inline bool AntColony<ScoreT>::rebuildDerivedState(unsigned int initialTick)
         }
 
         // Rebuild the tick index
-        AntTickSlot& tslot = _tickIndex[rec.selfRef.tickOffset];
+        AntTickSlot& tslot = _tickIndex[selfSlot];
         if (tslot.count == 0)
         {
             tslot.startIdx = i;
         }
         else if (tslot.startIdx + tslot.count != i)
         {
-            antSnapshotFailure(L"record breaks tick contiguity, record/tickOffset", i, rec.selfRef.tickOffset);
+            antSnapshotFailure(L"record breaks tick contiguity, record/tick", i, rec.selfRef.tick);
             return false;
         }
         tslot.count++;
@@ -1506,7 +1525,7 @@ inline bool AntColony<ScoreT>::rebuildDerivedState(unsigned int initialTick)
             const long long parentIdx = findIndexBySolutionRef(rec.parentRef);
             if (parentIdx == ANT_INVALID_INDEX || (unsigned long long)parentIdx >= i)
             {
-                antSnapshotFailure(L"parent not an earlier record, record/parentTickOffset", i, rec.parentRef.tickOffset);
+                antSnapshotFailure(L"parent not an earlier record, record/parentTick", i, rec.parentRef.tick);
                 return false;
             }
             parentRec = &_records[parentIdx];

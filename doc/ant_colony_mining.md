@@ -171,7 +171,7 @@ stored. The same every time for the epoch.
    `RejectLeParent`).
 
 **Anchor digest.** `anchorTickDigest = K12(anchorTick || transactionDigest)`, where `transactionDigest`
-is taken from the anchor tick's quorum votes (`REQUEST_QUORUM_TICK`). This binds a solution to a tick.
+is `K12(TickData)` of the anchor tick's `TickData` (`REQUEST_TICK_DATA`). This binds a solution to a tick.
 
 Score is an error count in `[0, 8088]`; lower is better.
 
@@ -228,7 +228,7 @@ BroadcastMessage {              // 96-byte envelope
 }
 // then the payload:
 AntSolutionBroadcastPayload {   // 48 bytes
-    unsigned int parentTickOffset;
+    unsigned int parentTick;      // ABSOLUTE tick of the parent node (0 with the index below = root)
     unsigned int parentSolutionIndexInTick;
     unsigned int anchorTick;      // ABSOLUTE tick number
     unsigned int claimedScore;
@@ -255,7 +255,7 @@ AntColonyMiningSolutionTransaction : Transaction {  // 80-byte header + 48-byte 
     unsigned short inputType;            // ANT_COLONY_MINING_SOLUTION_INPUT_TYPE = 12
     unsigned short inputSize;            // 48
     // --- payload (48 bytes) ---
-    unsigned int   parentTickOffset;
+    unsigned int   parentTick;           // ABSOLUTE tick of the parent node
     unsigned int   parentSolutionIndexInTick;
     unsigned int   anchorTick;           // ABSOLUTE
     unsigned int   claimedScore;
@@ -264,8 +264,13 @@ AntColonyMiningSolutionTransaction : Transaction {  // 80-byte header + 48-byte 
 }
 ```
 
-`parentRef = (parentTickOffset, parentSolutionIndexInTick) = (0, 0xFFFFFFFF)` means the **virtual root**
+`parentRef = (parentTick, parentSolutionIndexInTick) = (0, 0xFFFFFFFF)` means the **virtual root**
 (a depth-1 child).
+
+**Every tick in the protocol is absolute.** `parentTick`, `selfTick` and `anchorTick` are all real
+system tick numbers - the same values `getCurrentTick` or a tick-data query returns. A parent is named
+by the absolute tick it was committed in (plus its index within that tick), so the ref you copy from
+the identity tree is used verbatim - there is no epoch-relative offset to convert.
 
 **For a pool.** The tree belongs to the **computor** - `destinationPublicKey` of the broadcast, which
 becomes `sourcePublicKey` of the transaction. Workers hold no tree and post no on-chain deposit; they
@@ -326,9 +331,9 @@ Response: `RespondAntIdentityTreeHeader` (12 bytes: `count`, `itemSize`, `nextIn
 
 ```
 AntIdentityTreeNode {                     // 32 bytes
-    unsigned int selfTickOffset;          // set these two as your parentRef to extend THIS node
+    unsigned int selfTick;                // ABSOLUTE; set these two as your parentRef to extend THIS node
     unsigned int selfSolutionIndexInTick;
-    unsigned int parentTickOffset;        // this node's own parent; (0, 0xFFFFFFFF) = root
+    unsigned int parentTick;              // this node's own parent (ABSOLUTE); (0, 0xFFFFFFFF) = root
     unsigned int parentSolutionIndexInTick;
     unsigned int score;                   // error count; a child must score strictly below this
     unsigned int childCount;              // children already attached (compare vs maxChildrenPerParent)
@@ -344,7 +349,7 @@ Paging every node of a pubkey reconstructs the whole tree, edges included, with 
 Request `RequestAntParentAnn` (8 bytes) + 64-byte signature:
 
 ```
-unsigned int parentRefTickOffset;
+unsigned int parentRefTick;
 unsigned int parentRefSolutionIndexInTick;
 ```
 
@@ -352,7 +357,7 @@ Response `RespondAntParentAnnHeader` (16 bytes), then `annSizeBytes` of **canoni
 byte, the exact form the scorer consumes - no unpacking needed):
 
 ```
-unsigned int  parentRefTickOffset;
+unsigned int  parentRefTick;
 unsigned int  parentRefSolutionIndexInTick;
 unsigned int  annSizeBytes;   // ANN LUT size when status is OK, else 0
 unsigned char status;         // 0 = OK, 1 = NOT_FOUND, 2 = IS_ROOT (derive your own root instead)

@@ -28,7 +28,7 @@ static_assert(sizeof(RequestAntIdentityTree) == 40, "RequestAntIdentityTree unex
 // is the payload that follows the header.
 struct AntSolutionBroadcastPayload
 {
-    unsigned int parentTickOffset;
+    unsigned int parentTick;            // ABSOLUTE
     unsigned int parentSolutionIndexInTick;
     unsigned int anchorTick;            // ABSOLUTE
     unsigned int claimedScore;
@@ -43,8 +43,8 @@ constexpr unsigned int ANT_IDENTITY_TREE_NODES_PER_RESPONSE = 64;
 // Max records scanned per request
 constexpr unsigned int ANT_IDENTITY_TREE_SCAN_BUDGET = 1024;
 
-// One stored node of the requested identity's tree. selfTickOffset/selfSolutionIndexInTick is the
-// ref a child sets as its own parentRef to extend this node; parentTickOffset/parentSolutionIndexInTick
+// One stored node of the requested identity's tree. selfTick/selfSolutionIndexInTick is the
+// ref a child sets as its own parentRef to extend this node; parentTick/parentSolutionIndexInTick
 // is this node's OWN parent - (0, 0xFFFFFFFF) means the root - so paging every node of a pubkey
 // reconstructs the whole tree, edges included, without fetching any network bytes.
 // The score is an error count, so smaller is better: a child must score strictly below score.
@@ -52,13 +52,13 @@ constexpr unsigned int ANT_IDENTITY_TREE_SCAN_BUDGET = 1024;
 // the cap it takes no more children (0 for the cap means unbound).
 struct AntIdentityTreeNode
 {
-    unsigned int selfTickOffset;
+    unsigned int selfTick;
     unsigned int selfSolutionIndexInTick;
-    unsigned int parentTickOffset;
+    unsigned int parentTick;
     unsigned int parentSolutionIndexInTick;
     unsigned int score;
     unsigned int childCount;
-    unsigned int anchorTick;            // this node's own anchor tick number
+    unsigned int anchorTick;            // this node's own anchor tick number (ABSOLUTE)
     unsigned int depth;
 };
 static_assert(sizeof(AntIdentityTreeNode) == 32, "AntIdentityTreeNode unexpected size");
@@ -104,7 +104,7 @@ constexpr unsigned char ANT_PARENT_ANN_STATUS_IS_ROOT = 2;   // ROOT_REF; no ANN
 // operatorPublicKey
 struct RequestAntParentAnn
 {
-    unsigned int parentRefTickOffset;
+    unsigned int parentRefTick;
     unsigned int parentRefSolutionIndexInTick;
     static constexpr unsigned char type()
     {
@@ -119,7 +119,7 @@ static_assert(sizeof(RequestAntParentAnn) == 8, "RequestAntParentAnn unexpected 
 // blob by annSizeBytes.
 struct RespondAntParentAnnHeader
 {
-    unsigned int parentRefTickOffset;
+    unsigned int parentRefTick;
     unsigned int parentRefSolutionIndexInTick;
     // Bytes of canonical ANN that follow this header: ANN LUT size when status is Ok, 0 for every other
     // status.
@@ -144,9 +144,8 @@ struct RequestAntEpochContext
 // Per-epoch ant-colony parameters a miner needs to start building solutions:
 // the score threshold, the freshness window, the epoch's root seed, pool occupancy,
 // and the per-parent child cap.
-// The anchor digest is not included; a miner derives it from the standard
-// protocol as K12(anchorTick || transactionDigest), with transactionDigest taken from the
-// anchor tick's quorum votes (REQUEST_QUORUM_TICK).
+// The anchor digest is not included; a miner derives it from the anchor tick's TickData
+// (REQUEST_TICK_DATA): transactionDigest = K12(TickData), then K12(anchorTick || transactionDigest).
 #pragma pack(push, 1)
 struct RespondAntEpochContext
 {

@@ -375,7 +375,7 @@ struct AntColonyMiningSolutionTransaction : public Transaction
 
     static constexpr unsigned short minInputSize()
     {
-        return sizeof(parentTickOffset) + sizeof(parentSolutionIndexInTick) + sizeof(anchorTick) + sizeof(claimedScore) + sizeof(nonce);   // 4 + 4 + 4 + 4 + 32 = 48 bytes
+        return sizeof(parentTick) + sizeof(parentSolutionIndexInTick) + sizeof(anchorTick) + sizeof(claimedScore) + sizeof(nonce);   // 4 + 4 + 4 + 4 + 32 = 48 bytes
     }
 
     static bool isSolutionTransaction(const Transaction* tx)
@@ -386,9 +386,9 @@ struct AntColonyMiningSolutionTransaction : public Transaction
             && tx->inputSize == minInputSize();
     }
 
-    unsigned int parentTickOffset;              // epoch-relative tick of the parent ref
+    unsigned int parentTick;                    // ABSOLUTE tick of the parent ref
     unsigned int parentSolutionIndexInTick;     // dense within-tick index of the parent ref
-    unsigned int anchorTick;                    // tick whose digest the solution anchored to (RNG seed + freshness)
+    unsigned int anchorTick;                    // ABSOLUTE tick whose digest the solution anchored to (RNG seed + freshness)
     // The score the submitter claims this solution reaches. The deposit is refunded only when it
     // matches the score the node computes
     unsigned int claimedScore;

@@ -11,10 +11,10 @@ static m256i key(unsigned long long n)
     return k;
 }
 
-static SolutionRef ref(unsigned int tickOffset, unsigned int idx)
+static SolutionRef ref(unsigned int tick, unsigned int idx)
 {
     SolutionRef r;
-    r.tickOffset = tickOffset;
+    r.tick = tick;
     r.solutionIndexInTick = idx;
     return r;
 }
