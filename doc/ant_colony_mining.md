@@ -115,7 +115,8 @@ scorer** - the tree, gates, deposit, and queries are the wrapper around it.
 ### 2.1 The mining loop
 
 1. **Epoch context** - `REQUEST_ANT_EPOCH_CONTEXT` (public). Read the threshold, freshness window,
-   epoch spectrum digest, and child cap for this epoch.
+   epoch spectrum digest, and child cap for this epoch, and **verify your task file** against the
+   returned `topologyHash` / `dataHash` (section 2.7a) before doing any work.
 2. **Get a starting point** - derive your identity's virtual root, or fetch an existing node you want
    to extend (`REQUEST_ANT_PARENT_ANN`).
 3. **Pick a parent** - the root, or any node in your own tree.
@@ -288,10 +289,12 @@ signature = sign(operatorSubseed, operatorPublicKey, digest)   // 64 bytes, appe
 
 **(a) Epoch context** - `REQUEST_ANT_EPOCH_CONTEXT` (76) / `RESPOND_ANT_EPOCH_CONTEXT` (77). **Public.**
 
-Request: empty. Response `RespondAntEpochContext` (56 bytes, packed):
+Request: empty. Response `RespondAntEpochContext` (120 bytes, packed):
 
 ```
 m256i          spectrumDigest;       // epoch-start spectrum digest (seeds every root)
+m256i          topologyHash;         // canonical task topology-block hash (BPP9000_TOPOLOGY_HASH)
+m256i          dataHash;             // canonical task data-block hash (BPP9000_DATA_HASH)
 unsigned int   threshold;            // per-epoch accept bound
 unsigned int   freshnessWindow;      // publish within this many ticks of the anchor
 unsigned int   solutionCount;        // accepted solutions so far this epoch
@@ -300,6 +303,12 @@ unsigned int   maxChildrenPerParent; // per-parent child cap; 0 = unbounded
 unsigned short epoch;
 unsigned short padding;
 ```
+
+`topologyHash` / `dataHash` identify the exact task the node scores against. After loading your task
+file, recompute K12 over your own topology and data blocks and compare against these. If either
+differs you are holding the wrong task: **stop**. Mining a stale task wastes work, and the mismatched
+score forfeits the computor's deposit on every submission (the node scores with *its* task, so your
+claimed score never matches).
 
 **(b) Identity tree** - `REQUEST_ANT_IDENTITY_TREE` (72) / `RESPOND_ANT_IDENTITY_TREE` (73).
 **Operator-signed.** Paginated.

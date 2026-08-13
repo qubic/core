@@ -1807,6 +1807,8 @@ static void processRequestAntEpochContext(Peer* peer, RequestResponseHeader* hea
     respond.freeAnnSlotsCount = gAntColony.freeAnnSlotsCount();
     respond.maxChildrenPerParent = ANT_MAX_CHILDREN_PER_PARENT;
     respond.epoch = system.epoch;
+    respond.topologyHash = *(const m256i*)BPP9000_TOPOLOGY_HASH;
+    respond.dataHash = *(const m256i*)BPP9000_DATA_HASH;
 
     enqueueResponse(peer, sizeof(respond), RespondAntEpochContext::type(), header->dejavu(), &respond);
 }

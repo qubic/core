@@ -152,6 +152,9 @@ struct RespondAntEpochContext
 {
     // The epoch-start spectrum digest
     m256i spectrumDigest;
+    // confirm its task file matches the one the node scores against.
+    m256i topologyHash;
+    m256i dataHash;
     // score threshold for this epoch
     unsigned int threshold;
     // ANT_PUBLISH_WINDOW_TICKS: publish within this many ticks of the anchor.
@@ -172,4 +175,4 @@ struct RespondAntEpochContext
     }
 };
 #pragma pack(pop)
-static_assert(sizeof(RespondAntEpochContext) == 56, "RespondAntEpochContext unexpected size");
+static_assert(sizeof(RespondAntEpochContext) == 120, "RespondAntEpochContext unexpected size");
