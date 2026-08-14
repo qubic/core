@@ -139,7 +139,7 @@ static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 16000;
 // Per-parent child cap: a parent accepts at most this many children - a miner's parallel branches
 // off one node. 0 means unbound (no cap). A child's score must still strictly beat its parent's.
 // A child over the cap is rejected without a refund, so miners should stop submitting to a full parent.
-static constexpr unsigned int ANT_MAX_CHILDREN_PER_PARENT = 32;
+static constexpr unsigned int ANT_MAX_CHILDREN_PER_PARENT = 0;
 
 // Ant colony: tree nodes recorded per epoch; one per accepted solution.
 static constexpr unsigned int ANT_MAX_NODES_PER_EPOCH = 1u << 23;
