@@ -62,6 +62,37 @@ public:
 		sint8 trusteeOk;
 	};
 
+	// Read-only status query so an off-chain provider can discover *where* it is
+	// enrolled (which streams/tiers) and whether it is still active, without having
+	// to know its stream/tier in advance. If count == 0 the provider is not enrolled
+	// anywhere and should (re-)join with a first-commit (reveal == 0).
+	struct GetProviderStatus_input
+	{
+		id provider;
+	};
+
+	struct GetProviderStatus_output
+	{
+		uint32 count;                          // number of (stream, tier) slots held by `provider`
+		Array<uint32, 32> stream;              // stream of slot k
+		Array<uint32, 32> collateralTier;      // collateral tier of slot k
+		Array<uint64, 32> lockedCollateral;    // collateral currently locked for slot k
+		Array<uint8, 32> contributedToEntropy; // 1 if slot k's reveal was mixed into entropy this cycle
+		// Tick of slot k's last accepted RevealAndCommit call. A client that submitted
+		// a tx targeting tick T can compare this to T after the fact: equal means the
+		// tx was accepted; anything earlier means it was rejected (wrong preimage,
+		// same-tick resubmit, stream full, etc.) and the attached amount was refunded.
+		Array<uint32, 32> lastUpdateTick;
+	};
+
+	struct GetProviderStatus_locals
+	{
+		uint32 s;
+		uint32 i;
+		uint32 index;
+		uint32 count;
+	};
+
 	struct StateData
 	{
 		uint64 earnedAmount;
@@ -84,6 +115,10 @@ public:
 		bit_4096 revealedThisTickFlags;
 		// Cleared each END_TICK; set when reveal is XOR'd into entropy. BuyEntropy uses for trustee verification.
 		bit_4096 contributedToEntropyFlags;
+		// Tick of the last RevealAndCommit call accepted for this slot. Never touched
+		// on a rejected call, so it is a durable, tick-precise signal off-chain clients
+		// can use (via GetProviderStatus) to tell whether a submitted tx took effect.
+		Array<uint32, RANDOM_MAX_PROVIDERS> lastUpdateTick;
 	};
 
 	PUBLIC_FUNCTION(Fees)
@@ -98,6 +133,34 @@ public:
 		output.fees.set(7, state.get().bitFee);
 		output.fees.set(8, state.get().bitFee);
 		output.fees.set(9, state.get().bitFee);
+	}
+
+	PUBLIC_FUNCTION_WITH_LOCALS(GetProviderStatus)
+	{
+		// Scan every stream for slots owned by input.provider and report each one.
+		// A provider may hold several slots (different streams and/or tiers).
+		locals.count = 0;
+		for (locals.s = 0; locals.s < 3; locals.s++)
+		{
+			for (locals.i = 0; locals.i < state.get().populations.get(locals.s); locals.i++)
+			{
+				locals.index = locals.s * RANDOM_STREAM_CAPACITY + locals.i;
+				if (state.get().providers.get(locals.index) == input.provider && locals.count < 32)
+				{
+					output.stream.set(locals.count, locals.s);
+					output.collateralTier.set(locals.count, static_cast<uint32>(state.get().collateralTiers.get(locals.index)));
+					output.lockedCollateral.set(locals.count, state.get().lockedCollateralAmounts.get(locals.index));
+					output.lastUpdateTick.set(locals.count, state.get().lastUpdateTick.get(locals.index));
+					output.contributedToEntropy.set(locals.count, 0);
+					if (state.get().contributedToEntropyFlags.get(locals.index))
+					{
+						output.contributedToEntropy.set(locals.count, 1);
+					}
+					locals.count++;
+				}
+			}
+		}
+		output.count = locals.count;
 	}
 
 	PUBLIC_PROCEDURE_WITH_LOCALS(BuyEntropy)
@@ -192,19 +255,23 @@ private:
 			default: qpi.transfer(qpi.invocator(), qpi.invocationReward()); return;
 		}
 
-		// Reject empty commit before any state change — double-refund risk: reveal path sets
-		// the participation flag, then END_TICK would refund the collateral a second time.
-		if (input.commit == id::zero())
-		{
-			qpi.transfer(qpi.invocator(), qpi.invocationReward());
-			return;
-		}
-
 		locals.stream = mod<uint32>(qpi.tick(), 3);
 
-		if (input.reveal != BIT4096_ZERO)
+		// Empty commit = "reveal and leave": the provider reveals its outstanding
+		// commit and unsubscribes. The reveal is still recorded here so END_TICK mixes
+		// it into this round's entropy (count-it); END_TICK then evicts the provider
+		// (identified by commit == 0) with no slashing (then-leave). Collateral is
+		// returned now and lockedCollateralAmounts is zeroed so END_TICK cannot refund
+		// it a second time — the exact double-refund the old guard avoided by rejecting.
+		if (input.commit == id::zero())
 		{
-			// Reveal path: verify preimage of prior commit and re-commit for next round.
+			if (input.reveal == BIT4096_ZERO)
+			{
+				// Nothing to reveal — cannot safely leave with an outstanding commitment.
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				return;
+			}
+
 			for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
 			{
 				if (qpi.invocator() == state.get().providers.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) &&
@@ -216,7 +283,52 @@ private:
 			if (locals.i == state.get().populations.get(locals.stream) ||
 			    state.get().reveals.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) != BIT4096_ZERO ||
 			    qpi.K12(input.reveal) != state.get().commits.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) ||
-			    state.get().revealOrCommitFlags.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i)) // same-tick commit+reveal is forbidden
+			    state.get().revealOrCommitFlags.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i)) // not found / stale / wrong preimage / same-tick
+			{
+				qpi.transfer(qpi.invocator(), qpi.invocationReward());
+				return;
+			}
+
+			locals.index = locals.stream * RANDOM_STREAM_CAPACITY + locals.i;
+
+			// Return the collateral locked for the revealed commit, plus the amount
+			// attached to this call (used only to select the tier; nothing is re-committed).
+			if (state.get().lockedCollateralAmounts.get(locals.index) > 0)
+			{
+				qpi.transfer(qpi.invocator(), state.get().lockedCollateralAmounts.get(locals.index));
+			}
+			qpi.transfer(qpi.invocator(), qpi.invocationReward());
+
+			// Record the reveal for END_TICK entropy mixing, then flag the slot as leaving.
+			state.mut().reveals.set(locals.index, input.reveal);
+			state.mut().lockedCollateralAmounts.set(locals.index, 0);
+			state.mut().commits.set(locals.index, id::zero()); // leaving marker: enrolled providers always keep a non-zero commit
+			state.mut().revealOrCommitFlags.set(locals.index, 1);
+			state.mut().revealedThisTickFlags.set(locals.index, 1);
+			state.mut().lastUpdateTick.set(locals.index, qpi.tick());
+
+			return;
+		}
+
+		if (input.reveal != BIT4096_ZERO)
+		{
+			// Reveal path: verify preimage of prior commit and re-commit for next round.
+			// A provider that isn't registered (e.g. evicted by END_TICK after missing a
+			// reveal) is rejected here — it must re-enroll with a fresh first-commit
+			// (reveal == 0). The contract does NOT silently re-enroll it; off-chain
+			// clients detect eviction via the GetProviderStatus function and decide.
+			for (locals.i = 0; locals.i < state.get().populations.get(locals.stream); locals.i++)
+			{
+				if (qpi.invocator() == state.get().providers.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) &&
+				    locals.collateralTier == state.get().collateralTiers.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i))
+				{
+					break;
+				}
+			}
+			if (locals.i == state.get().populations.get(locals.stream) ||
+			    state.get().reveals.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) != BIT4096_ZERO ||
+			    qpi.K12(input.reveal) != state.get().commits.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i) ||
+			    state.get().revealOrCommitFlags.get(locals.stream * RANDOM_STREAM_CAPACITY + locals.i)) // not found / stale / wrong preimage / same-tick
 			{
 				qpi.transfer(qpi.invocator(), qpi.invocationReward());
 				return;
@@ -239,6 +351,7 @@ private:
 
 			state.mut().revealOrCommitFlags.set(locals.index, 1);
 			state.mut().revealedThisTickFlags.set(locals.index, 1);
+			state.mut().lastUpdateTick.set(locals.index, qpi.tick());
 
 			return;
 		}
@@ -273,6 +386,7 @@ private:
 
 		state.mut().revealOrCommitFlags.set(locals.index, 1);
 		state.mut().revealedThisTickFlags.set(locals.index, 0);
+		state.mut().lastUpdateTick.set(locals.index, qpi.tick());
 
 		state.mut().populations.set(locals.stream, locals.i + 1);
 	}
@@ -346,6 +460,7 @@ private:
 					state.mut().revealOrCommitFlags.set(locals.index, state.get().revealOrCommitFlags.get(locals.lastIndex));
 					state.mut().revealedThisTickFlags.set(locals.index, state.get().revealedThisTickFlags.get(locals.lastIndex));
 					state.mut().contributedToEntropyFlags.set(locals.index, state.get().contributedToEntropyFlags.get(locals.lastIndex));
+					state.mut().lastUpdateTick.set(locals.index, state.get().lastUpdateTick.get(locals.lastIndex));
 				}
 				state.mut().providers.set(locals.lastIndex, id::zero());
 				state.mut().collateralTiers.set(locals.lastIndex, 0);
@@ -355,6 +470,7 @@ private:
 				state.mut().revealOrCommitFlags.set(locals.lastIndex, 0);
 				state.mut().revealedThisTickFlags.set(locals.lastIndex, 0);
 				state.mut().contributedToEntropyFlags.set(locals.lastIndex, 0);
+				state.mut().lastUpdateTick.set(locals.lastIndex, 0);
 
 				state.mut().populations.set(locals.stream, state.get().populations.get(locals.stream) - 1);
 			}
@@ -391,6 +507,39 @@ private:
 
 				state.mut().revealOrCommitFlags.set(locals.index, 0);
 				state.mut().revealedThisTickFlags.set(locals.index, 0);
+
+				// "Reveal and leave": an empty commit (commit == 0) marks a provider that
+				// revealed and unsubscribed. Its reveal was mixed into entropy above; now
+				// remove it. Collateral was already returned in RevealAndCommit
+				// (lockedCollateralAmounts is 0), so there is nothing to burn or refund.
+				if (state.get().commits.get(locals.index) == id::zero())
+				{
+					// Swap-delete: move the last active provider into this slot.
+					locals.lastIndex = locals.stream * RANDOM_STREAM_CAPACITY + state.get().populations.get(locals.stream) - 1;
+					if (locals.index != locals.lastIndex)
+					{
+						state.mut().providers.set(locals.index, state.get().providers.get(locals.lastIndex));
+						state.mut().collateralTiers.set(locals.index, state.get().collateralTiers.get(locals.lastIndex));
+						state.mut().commits.set(locals.index, state.get().commits.get(locals.lastIndex));
+						state.mut().reveals.set(locals.index, state.get().reveals.get(locals.lastIndex));
+						state.mut().lockedCollateralAmounts.set(locals.index, state.get().lockedCollateralAmounts.get(locals.lastIndex));
+						state.mut().revealOrCommitFlags.set(locals.index, state.get().revealOrCommitFlags.get(locals.lastIndex));
+						state.mut().revealedThisTickFlags.set(locals.index, state.get().revealedThisTickFlags.get(locals.lastIndex));
+						state.mut().contributedToEntropyFlags.set(locals.index, state.get().contributedToEntropyFlags.get(locals.lastIndex));
+						state.mut().lastUpdateTick.set(locals.index, state.get().lastUpdateTick.get(locals.lastIndex));
+					}
+					state.mut().providers.set(locals.lastIndex, id::zero());
+					state.mut().collateralTiers.set(locals.lastIndex, 0);
+					state.mut().commits.set(locals.lastIndex, id::zero());
+					state.mut().reveals.set(locals.lastIndex, BIT4096_ZERO);
+					state.mut().lockedCollateralAmounts.set(locals.lastIndex, 0);
+					state.mut().revealOrCommitFlags.set(locals.lastIndex, 0);
+					state.mut().revealedThisTickFlags.set(locals.lastIndex, 0);
+					state.mut().contributedToEntropyFlags.set(locals.lastIndex, 0);
+					state.mut().lastUpdateTick.set(locals.lastIndex, 0);
+
+					state.mut().populations.set(locals.stream, state.get().populations.get(locals.stream) - 1);
+				}
 			}
 			else
 			{
@@ -417,6 +566,7 @@ private:
 					state.mut().revealOrCommitFlags.set(locals.index, state.get().revealOrCommitFlags.get(locals.lastIndex));
 					state.mut().revealedThisTickFlags.set(locals.index, state.get().revealedThisTickFlags.get(locals.lastIndex));
 					state.mut().contributedToEntropyFlags.set(locals.index, state.get().contributedToEntropyFlags.get(locals.lastIndex));
+					state.mut().lastUpdateTick.set(locals.index, state.get().lastUpdateTick.get(locals.lastIndex));
 				}
 				state.mut().providers.set(locals.lastIndex, id::zero());
 				state.mut().collateralTiers.set(locals.lastIndex, 0);
@@ -426,6 +576,7 @@ private:
 				state.mut().revealOrCommitFlags.set(locals.lastIndex, 0);
 				state.mut().revealedThisTickFlags.set(locals.lastIndex, 0);
 				state.mut().contributedToEntropyFlags.set(locals.lastIndex, 0);
+				state.mut().lastUpdateTick.set(locals.lastIndex, 0);
 
 				state.mut().populations.set(locals.stream, state.get().populations.get(locals.stream) - 1);
 			}
@@ -444,6 +595,7 @@ private:
 	REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
 	{
 		REGISTER_USER_FUNCTION(Fees, 1);
+		REGISTER_USER_FUNCTION(GetProviderStatus, 2);
 
 		REGISTER_USER_PROCEDURE(RevealAndCommit, 1);
 		REGISTER_USER_PROCEDURE(BuyEntropy, 2);

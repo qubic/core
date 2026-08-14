@@ -18,7 +18,7 @@ struct Peer;
 
 #define LOG_CONTRACTS (LOG_CONTRACT_ERROR_MESSAGES | LOG_CONTRACT_WARNING_MESSAGES | LOG_CONTRACT_INFO_MESSAGES | LOG_CONTRACT_DEBUG_MESSAGES)
 
-#if LOG_SPECTRUM | LOG_UNIVERSE | LOG_CONTRACTS | LOG_CUSTOM_MESSAGES | LOG_ORACLES
+#if LOG_SPECTRUM | LOG_UNIVERSE | LOG_CONTRACTS | LOG_CUSTOM_MESSAGES | LOG_ORACLES | LOG_OC
 #define ENABLED_LOGGING 1
 #else
 #define ENABLED_LOGGING 0
@@ -59,6 +59,7 @@ struct Peer;
 #define CONTRACT_RESERVE_DEDUCTION 13
 #define ORACLE_QUERY_STATUS_CHANGE 14
 #define ORACLE_SUBSCRIBER_MESSAGE 15
+#define OC_INVOCATION_STATUS_CHANGE 16
 #define CUSTOM_MESSAGE 255
 
 #define CUSTOM_MESSAGE_OP_START_DISTRIBUTE_DIVIDENDS 6217575821008262227ULL // STA_DDIV
@@ -265,6 +266,16 @@ struct OracleSubscriberLogMessage
     char _terminator; // Only data before "_terminator" are logged
 };
 
+struct OcInvocationStatusChange
+{
+    long long invocationId;
+    unsigned int contractIndex;
+    unsigned int interfaceIndex;
+    unsigned char status;
+
+    char _terminator; // Only data before "_terminator" are logged
+};
+
 /*
  * LOGGING IMPLEMENTATION
  * For definition of virtual memory sizes, see private_settings.h
@@ -308,6 +319,14 @@ private:
     // custom log from smart contracts are not included in the digest computation
     inline static m256i digests[MAX_NUMBER_OF_TICKS_PER_EPOCH];
     inline static XKCP::KangarooTwelve_Instance k12;
+
+    // Framing of logEventState.db
+    static constexpr unsigned long long logStateVmSize = (LOG_BUFFER_PAGE_SIZE * sizeof(char) + 16)
+        + (PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + 16)
+        + (IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo) + 16);
+    static constexpr unsigned long long logStateTailSize = sizeof(k12) + 8 + 8 + 4 + 4 + 4 + 4;
+    static constexpr unsigned long long logStateBufferSize = LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo)
+        + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo) + sizeof(digests) + 600;
 #endif
 
     inline static unsigned long long logBufferTail;
@@ -694,29 +713,57 @@ public:
         return true;
     }
 
+    // Checks the saved logging state without reading it, so that an unusable file can be rejected
+    // before any node state has been loaded
+    bool checkLastLoggingStates(CHAR16* dir, unsigned long long& savedDigestsSz)
+    {
+        savedDigestsSz = 0;
+#if ENABLED_LOGGING
+        CHAR16 fileName[] = L"logEventState.db";
+        const long long fileSz = getFileSize(fileName, dir);
+        if (fileSz <= 0 || (unsigned long long)fileSz > logStateBufferSize)
+        {
+            logToConsole(L"[1] Failed to load logging events: missing or oversized file");
+            return false;
+        }
+        if ((unsigned long long)fileSz < logStateVmSize + logStateTailSize)
+        {
+            logToConsole(L"[2] Failed to load logging events: file too small");
+            return false;
+        }
+        // digests length follows MAX_NUMBER_OF_TICKS_PER_EPOCH, so take it from the file, not from sizeof
+        savedDigestsSz = (unsigned long long)fileSz - logStateVmSize - logStateTailSize;
+        if (savedDigestsSz % sizeof(digests[0])
+            || (savedDigestsSz / sizeof(digests[0])) % NUMBER_OF_COMPUTORS)
+        {
+            logToConsole(L"[3] Failed to load logging events: bad digests section");
+            return false;
+        }
+#endif
+        return true;
+    }
+
     // This function is part of save/load feature and can only be called from main thread
-    void loadLastLoggingStates(CHAR16* dir)
+    bool loadLastLoggingStates(CHAR16* dir)
     {
 #if ENABLED_LOGGING
-        constexpr auto bufferSize = LOG_BUFFER_PAGE_SIZE + PMAP_LOG_PAGE_SIZE * sizeof(BlobInfo) + IMAP_LOG_PAGE_SIZE * sizeof(TickBlobInfo)
-            + sizeof(digests) + 600;
-        static_assert(defaultCommonBuffersSize >= bufferSize, "commonBuffer size is too small");
-        __ScopedScratchpad scratchpad(bufferSize, /*initZero=*/false);
+        static_assert(defaultCommonBuffersSize >= logStateBufferSize, "commonBuffer size is too small");
+        unsigned long long savedDigestsSz = 0;
+        if (!checkLastLoggingStates(dir, savedDigestsSz))
+        {
+            return false;
+        }
+        __ScopedScratchpad scratchpad(logStateBufferSize, /*initZero=*/false);
         unsigned char* buffer = (unsigned char*)scratchpad.ptr;
         ASSERT(scratchpad.ptr);
         CHAR16 fileName[] = L"logEventState.db";
-        const long long fileSz = getFileSize(fileName, dir);
-        if (fileSz == -1)
-        {
-            logToConsole(L"[1] Failed to load logging events");
-            return;
-        }
+        const unsigned long long fileSz = logStateVmSize + savedDigestsSz + logStateTailSize;
         unsigned long long sz = load(fileName, fileSz, buffer, dir);
         if (fileSz != sz)
         {
             // failed to load
-            logToConsole(L"[2] Failed to load logging events");
-            return;
+            logToConsole(L"[4] Failed to load logging events: short read");
+            return false;
         }
 
         unsigned long long readSz = 0;
@@ -735,10 +782,12 @@ public:
         buffer += sz;
         readSz += sz;
 
-        // copy digests ~ 13MiB
-        copyMem(digests, buffer, sizeof(digests));
-        buffer += sizeof(digests);
-        readSz += sizeof(digests);
+        ASSERT(readSz == logStateVmSize);
+        const unsigned long long copyDigestsSz = savedDigestsSz < sizeof(digests) ? savedDigestsSz : sizeof(digests);
+        copyMem(digests, buffer, copyDigestsSz);
+        setMem((unsigned char*)digests + copyDigestsSz, sizeof(digests) - copyDigestsSz, 0);
+        buffer += savedDigestsSz;
+        readSz += savedDigestsSz;
 
         // copy k12 instance
         copyMem(&k12, buffer, sizeof(k12));
@@ -753,6 +802,7 @@ public:
         currentTxId = *((unsigned int*)buffer); buffer += 4;
         currentTick = *((unsigned int*)buffer);
 #endif
+        return true;
     }
 
 #endif
@@ -905,6 +955,13 @@ public:
     {
 #if LOG_ORACLES
         logMessage(offsetof(OracleSubscriberLogMessage, _terminator), ORACLE_SUBSCRIBER_MESSAGE, &message);
+#endif
+    }
+
+    void logOcInvocationStatusChange(const OcInvocationStatusChange& message)
+    {
+#if LOG_OC
+        logMessage(offsetof(OcInvocationStatusChange, _terminator), OC_INVOCATION_STATUS_CHANGE, &message);
 #endif
     }
 

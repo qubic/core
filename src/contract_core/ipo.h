@@ -3,7 +3,7 @@
 #include "assets/assets.h"
 
 #include "contract_core/contract_exec.h"
-#include "contract_core/qpi_spectrum_impl.h"
+#include "qpi/impl/qpi_spectrum_impl.h"
 
 
 // Notify dest of incoming transfer if dest is a contract. This is for outside QPI context only!

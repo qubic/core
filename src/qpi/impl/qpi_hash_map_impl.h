@@ -5,12 +5,12 @@
 
 #pragma once
 
-#include "pre_qpi_def.h"
-#include "../common_buffers.h"
-#include "../contracts/qpi.h"
-#include "../platform/memory.h"
-#include "../kangaroo_twelve.h"
-#include "../contracts/math_lib.h"
+#include "contract_core/pre_qpi_def.h"
+#include "common_buffers.h"
+#include "qpi/qpi.h"
+#include "platform/memory.h"
+#include "kangaroo_twelve.h"
+#include "contracts/math_lib.h"
 
 namespace QPI
 {
