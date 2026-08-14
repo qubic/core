@@ -35,13 +35,17 @@ static const std::string TASK_FILE_NAME = "data/example_task_bpp9000.bin";
 static const std::string SAMPLES_FILE_NAME = "data/samples_bpp9000.csv";
 static const std::string SCORES_FILE_NAME = "data/scores_bpp9000.csv";
 
+static const std::string PRODUCTION_TASK_FILE_NAME = "data/bpp9000.task";
+static const std::string PRODUCTION_FILE_NAME = "data/gt_production.csv";
+static const std::string PRODUCTION_ANT_FILE_NAME = "data/gt_ant_production.csv";
+
 // true  = ALSO run the engine-vs-reference cross-check on random tasks, for isolating a divergence.
 static bool gCompareReference = false;
 
 // Samples run per config
 static constexpr unsigned long long TEST_NUMBER_OF_SAMPLES = 32;
-// Worker threads for the parallel path; effective count = min(this, hardware_concurrency, numSamples).
-static constexpr unsigned int TEST_NUMBER_OF_THREADS = 0;
+// Worker threads for the parallel path; min with hardware_concurrency and numSamples. 0 falls back to 1 (serial).
+static constexpr unsigned int TEST_NUMBER_OF_THREADS = 4;
 
 // Samples and worker threads for the Bpp9000Profile timing run.
 static constexpr unsigned long long PROFILING_NUMBER_OF_SAMPLES = 48;
@@ -199,7 +203,8 @@ static unsigned int workerThreadCount(unsigned long long numSamples)
     {
         hw = 1;
     }
-    unsigned int chosen = (hw < TEST_NUMBER_OF_THREADS) ? hw : TEST_NUMBER_OF_THREADS;   // min(hardware_concurrency, chosen)
+    unsigned int requested = (TEST_NUMBER_OF_THREADS == 0) ? 1u : TEST_NUMBER_OF_THREADS;   // 0 falls back to 1 (serial)
+    unsigned int chosen = (hw < requested) ? hw : requested;                                // min(hardware_concurrency, requested)
     return (unsigned int)((numSamples < (unsigned long long)chosen) ? numSamples : (unsigned long long)chosen);   // no more than one thread per sample
 }
 
@@ -379,6 +384,179 @@ TEST(TestQubicScoreFunction, Bpp9000Regression)
     }
 
     runRegression(seeds, pubkeys, nonces, taskBytes, golden);
+}
+
+TEST(TestQubicScoreFunction, Bpp9000ProductionRegression)
+{
+    auto rows = readCSV(PRODUCTION_FILE_NAME);
+    ASSERT_GT(rows.size(), 1u) << "missing/empty " << PRODUCTION_FILE_NAME;
+
+    std::vector<m256i> pubkeys;
+    std::vector<m256i> nonces;
+    std::vector<unsigned int> golden;
+    std::vector<m256i> uniqueSeeds;         // distinct mining seeds -> one pool each
+    std::vector<unsigned int> poolIndex;    // per row: index into uniqueSeeds
+    for (unsigned long long i = 1; i < rows.size(); ++i)
+    {
+        pubkeys.push_back(hexTo32Bytes(trim(rows[i][0]), 32));
+        nonces.push_back(hexTo32Bytes(trim(rows[i][1]), 32));
+        const m256i seed = hexTo32Bytes(trim(rows[i][2]), 32);
+        golden.push_back((unsigned int)std::stoul(trim(rows[i][3])));
+
+        unsigned int idx = (unsigned int)uniqueSeeds.size();
+        for (unsigned int k = 0; k < uniqueSeeds.size(); ++k)
+        {
+            if (memcmp(uniqueSeeds[k].m256i_u8, seed.m256i_u8, 32) == 0)
+            {
+                idx = k;
+                break;
+            }
+        }
+        if (idx == uniqueSeeds.size())
+        {
+            uniqueSeeds.push_back(seed);
+        }
+        poolIndex.push_back(idx);
+    }
+    ASSERT_FALSE(pubkeys.empty());
+
+    std::vector<std::vector<unsigned char>> pools(uniqueSeeds.size());
+    for (size_t k = 0; k < uniqueSeeds.size(); ++k)
+    {
+        generatePool(uniqueSeeds[k], pools[k]);
+    }
+
+    // The production task
+    auto taskBytes = readBinaryFile(PRODUCTION_TASK_FILE_NAME);
+    ASSERT_GT(taskBytes.size(), sizeof(score_task_file::TaskFileHeader)) << "missing/short " << PRODUCTION_TASK_FILE_NAME;
+    const TaskBlocks tb = taskSubview<ProductionConfig>(taskBytes);
+
+    runWorkers(workerThreadCount(pubkeys.size()), [&](unsigned int threadIdx, unsigned int numThreads)
+    {
+        auto engine = makeEngine<ProductionConfig>(tb.topo, tb.data);
+        if (!engine)
+        {
+            return;
+        }
+        for (unsigned long long s = threadIdx; s < pubkeys.size(); s += numThreads)
+        {
+            const unsigned int score = engine->computeScore(pubkeys[s].m256i_u8, nonces[s].m256i_u8, pools[poolIndex[s]].data());
+            EXPECT_EQ(score, golden[s]) << "gt_production row " << s;
+        }
+    });
+}
+
+// Ant-colony score seam (deriveRootANN + computeScoreFromParent)
+TEST(TestQubicScoreFunction, Bpp9000AntColonyRegression)
+{
+    // Group by chain each chain is a lineage - level 0 extends the derived root, level i extends level i-1's bestANN.
+    auto rows = readCSV(PRODUCTION_ANT_FILE_NAME);
+    ASSERT_GT(rows.size(), 1u) << "missing/empty " << PRODUCTION_ANT_FILE_NAME;
+
+    struct AntNode
+    {
+        m256i nonce;
+        m256i anchor;
+        unsigned int score;
+    };
+    struct AntChain
+    {
+        m256i pubkey;
+        unsigned int poolIndex;
+        std::vector<AntNode> nodes;   // indexed by depth
+    };
+    std::vector<AntChain> chains;
+    std::vector<int> chainIds;        // chain id per slot, first-seen order
+    std::vector<m256i> uniqueSeeds;
+
+    for (unsigned long long i = 1; i < rows.size(); ++i)
+    {
+        const int chainId = std::stoi(trim(rows[i][0]));
+        const int depth = std::stoi(trim(rows[i][1]));
+        const m256i pubkey = hexTo32Bytes(trim(rows[i][2]), 32);
+        const m256i seed = hexTo32Bytes(trim(rows[i][5]), 32);
+
+        unsigned int sidx = (unsigned int)uniqueSeeds.size();
+        for (unsigned int k = 0; k < uniqueSeeds.size(); ++k)
+        {
+            if (memcmp(uniqueSeeds[k].m256i_u8, seed.m256i_u8, 32) == 0)
+            {
+                sidx = k;
+                break;
+            }
+        }
+        if (sidx == uniqueSeeds.size())
+        {
+            uniqueSeeds.push_back(seed);
+        }
+
+        size_t cidx = chains.size();
+        for (size_t k = 0; k < chainIds.size(); ++k)
+        {
+            if (chainIds[k] == chainId)
+            {
+                cidx = k;
+                break;
+            }
+        }
+        if (cidx == chains.size())
+        {
+            chainIds.push_back(chainId);
+            AntChain created;
+            created.pubkey = pubkey;
+            created.poolIndex = sidx;
+            chains.push_back(created);
+        }
+
+        AntNode node;
+        node.nonce = hexTo32Bytes(trim(rows[i][3]), 32);
+        node.anchor = hexTo32Bytes(trim(rows[i][4]), 32);
+        node.score = (unsigned int)std::stoul(trim(rows[i][6]));
+
+        AntChain& chain = chains[cidx];
+        if ((size_t)depth >= chain.nodes.size())
+        {
+            chain.nodes.resize((size_t)depth + 1);
+        }
+        chain.nodes[(size_t)depth] = node;
+    }
+    ASSERT_FALSE(chains.empty());
+
+    std::vector<std::vector<unsigned char>> pools(uniqueSeeds.size());
+    for (size_t k = 0; k < uniqueSeeds.size(); ++k)
+    {
+        generatePool(uniqueSeeds[k], pools[k]);
+    }
+
+    auto taskBytes = readBinaryFile(PRODUCTION_TASK_FILE_NAME);
+    ASSERT_GT(taskBytes.size(), sizeof(score_task_file::TaskFileHeader)) << "missing/short " << PRODUCTION_TASK_FILE_NAME;
+    const TaskBlocks tb = taskSubview<ProductionConfig>(taskBytes);
+
+    // Thread across chains; a chain is sequential (each node's bestANN feeds the next depth's parent).
+    runWorkers(workerThreadCount(chains.size()), [&](unsigned int threadIdx, unsigned int numThreads)
+    {
+        auto engine = makeEngine<ProductionConfig>(tb.topo, tb.data);
+        if (!engine)
+        {
+            return;
+        }
+        for (size_t ci = threadIdx; ci < chains.size(); ci += numThreads)
+        {
+            const AntChain& chain = chains[ci];
+            const unsigned char* pool = pools[chain.poolIndex].data();
+
+            score_engine::ScoreBpp9000<ProductionConfig>::ANN parent;
+            engine->deriveRootANN(chain.pubkey.m256i_u8, pool, parent);   // depth 0's parent = the derived root
+            for (size_t d = 0; d < chain.nodes.size(); ++d)
+            {
+                const AntNode& node = chain.nodes[d];
+                const unsigned int score = engine->computeScoreFromParent(
+                    parent, chain.pubkey.m256i_u8, node.nonce.m256i_u8, node.anchor.m256i_u8, pool);
+                EXPECT_EQ(score, node.score) << "gt_ant chain " << ci << " depth " << d;
+                engine->getBestANN(parent);   // this node becomes the next depth's parent
+            }
+        }
+    });
 }
 
 // TestBpp9000, internal score vs the score reference from Qiner
