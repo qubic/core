@@ -986,6 +986,12 @@ static void processBroadcastMessage(const unsigned long long processorNumber, Re
 
                                         const m256i& solution_miningSeed = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage));
                                         const m256i& solution_nonce = *(m256i*)((unsigned char*)request + sizeof(BroadcastMessage) + 32);
+                                        // standalone mining disabled for bpp9000
+                                        if (score_engine::getAlgoType(solution_nonce.m256i_u8) == score_engine::AlgoType::Bpp9000)
+                                        {
+                                            break;
+                                        }
+
                                         const unsigned int solution_claimedScore = *(unsigned int*)((unsigned char*)request + sizeof(BroadcastMessage) + 64);
                                         unsigned int k;
                                         for (k = 0; k < system.numberOfSolutions; k++)
@@ -3233,6 +3239,11 @@ static void processTickTransactionSolution(const MiningSolutionTransaction* tran
     ASSERT(transaction->amount >=MiningSolutionTransaction::minAmount()
             && transaction->inputSize == MiningSolutionTransaction::minInputSize()
             && transaction->inputType == MiningSolutionTransaction::transactionType());
+    // Standalone mining is disabled; bpp9000 is mined through the ant colony only.
+    if (score_engine::getAlgoType(transaction->nonce.m256i_u8) == score_engine::AlgoType::Bpp9000)
+    {
+        return;
+    }
 
     m256i data[3] = { transaction->sourcePublicKey, transaction->miningSeed, transaction->nonce };
     static_assert(sizeof(data) == 3 * 32, "Unexpected array size");
