@@ -20,12 +20,12 @@ struct QLOAN2
 
 struct QLOAN : public ContractBase
 {
-    enum class LoanReqState : uint8
+    enum LoanReqState : uint8
     {
         IDLE = 1,
-        ACTIVE,
-        PAYED,
-        EXPIRED,
+        ACTIVE = 2,
+        PAYED = 3,
+        EXPIRED = 4,
     };
 
     struct LoanOutputInfo
@@ -49,7 +49,7 @@ struct QLOAN : public ContractBase
         uint64 epochsLeft;
         uint64 creationEpoch;
 
-        enum LoanReqState state;
+        uint8 state;
 
         bool assetsToCreditor;
     };
@@ -76,7 +76,7 @@ struct QLOAN : public ContractBase
 
         bool assetsToCreditor;
 
-        enum LoanReqState state;
+        uint8 state;
     };
 
     struct StateData
@@ -229,7 +229,7 @@ struct QLOAN : public ContractBase
     struct _FillLoanReqForOutput_input
     {
         uint64 loanReqId;
-        struct LoanReqInfo loanReqInfo;
+        LoanReqInfo loanReqInfo;
     };
 
     struct _FillLoanReqForOutput_output
@@ -357,8 +357,7 @@ public:
                 return;
             }
         }
-        // User want to create creditor request, he wants assets, we need to check he have enough QUs
-        else
+        else    // User want to create creditor request, he wants assets, we need to check he have enough QUs
         {
             if (qpi.invocationReward() < sint64(input.price + QLOAN_PLACE_LOAN_REQ_FEE))
             {
@@ -498,8 +497,7 @@ public:
                 qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.tmpLoanReq.priceAmount);
             }
         }
-        // If request was created by the creditor(he wants asssets for the money)
-        else
+        else    // If request was created by the creditor(he wants asssets for the money)
         {
             locals.checkAssetsPresenceInput.owner = qpi.invocator();
             locals.checkAssetsPresenceInput.assets = locals.tmpLoanReq.assets;
