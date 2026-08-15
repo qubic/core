@@ -51,7 +51,7 @@ struct QLOAN : public ContractBase
 
         uint8 state;
 
-        bool assetsToCreditor;
+        bit assetsToCreditor;
     };
 
     struct LoanReqInfo
@@ -74,7 +74,7 @@ struct QLOAN : public ContractBase
         uint64 epochsLeft;
         uint64 creationEpoch;
 
-        bool assetsToCreditor;
+        bit assetsToCreditor;
 
         uint8 state;
     };
@@ -102,7 +102,7 @@ struct QLOAN : public ContractBase
 
     struct _TransferAssetsFromTo_output
     {
-        bool allGood;
+        bit allGood;
     };
 
     struct _TransferAssetsFromTo_locals
@@ -161,7 +161,7 @@ struct QLOAN : public ContractBase
 
     struct _CheckAssetsPresence_output
     {
-        bool allGood;
+        bit allGood;
     };
 
     struct _CheckAssetsPresence_locals
@@ -271,8 +271,8 @@ public:
         uint64 interestRate;
         uint64 returnPeriodInEpochs;
 
-        bool isLoanReq;
-        bool assetsToCreditor;
+        bit isLoanReq;
+        bit assetsToCreditor;
     };
 
     struct PlaceLoanReq_output
