@@ -43,6 +43,7 @@ struct QLOAN : public ContractBase
 
         uint64 priceAmount;
         uint64 interestRate;
+        uint64 fullInterest;
         uint64 debtAmount;
 
         uint64 returnPeriodInEpochs;
@@ -68,20 +69,21 @@ struct QLOAN : public ContractBase
 
         uint64 priceAmount;
         uint64 interestRate;
-        uint64 returnPeriodInEpochs;
-
+        uint64 fullInterest;
         uint64 debtAmount;
+
+        uint64 returnPeriodInEpochs;
         uint64 epochsLeft;
         uint64 creationEpoch;
 
-        bit assetsToCreditor;
-
         uint8 state;
+
+        bit assetsToCreditor;
     };
 
     struct StateData
     {
-        HashMap<uint64, struct LoanReqInfo, QLOAN_MAX_LOAN_REQS_NUM> _loanReqs;
+        HashMap<uint64, LoanReqInfo, QLOAN_MAX_LOAN_REQS_NUM> _loanReqs;
         uint64 _totalReqs;
         uint64 _currentLoanIndex;
 
@@ -249,6 +251,7 @@ struct QLOAN : public ContractBase
         output.loanOutputInfo.assetsNum = input.loanReqInfo.assetsNum;
         output.loanOutputInfo.priceAmount = input.loanReqInfo.priceAmount;
         output.loanOutputInfo.interestRate = input.loanReqInfo.interestRate;
+        output.loanOutputInfo.fullInterest = input.loanReqInfo.fullInterest;
         output.loanOutputInfo.debtAmount = input.loanReqInfo.debtAmount;
         output.loanOutputInfo.returnPeriodInEpochs = input.loanReqInfo.returnPeriodInEpochs;
         output.loanOutputInfo.epochsLeft = input.loanReqInfo.epochsLeft;
@@ -281,7 +284,7 @@ public:
 
     struct PlaceLoanReq_locals
     {
-        struct LoanReqInfo loanReqInfo;
+        LoanReqInfo loanReqInfo;
         uint8 userReqAssetIdx;
         uint8 userReqAssetIdx2;
 
@@ -379,6 +382,7 @@ public:
         locals.loanReqInfo.assetsNum = input.assetsNum;
         locals.loanReqInfo.priceAmount = input.price;
         locals.loanReqInfo.interestRate = input.interestRate;
+        locals.loanReqInfo.fullInterest = div(smul(input.price, input.interestRate), 100ULL);
         // until 1/3 of the loan period has passed, the debt will be input.price + 1/3 of the total interest
         locals.loanReqInfo.debtAmount = input.price + div(smul(input.price, input.interestRate), 300ULL);
         locals.loanReqInfo.returnPeriodInEpochs = input.returnPeriodInEpochs;
@@ -595,7 +599,7 @@ public:
         sint64 loanReqsIdx;
         LoanReqInfo tmpLoanReq;
 
-        sint64 releaseReturnedFee;
+        sint64 releaseResult;
         uint64 userAssetsAmountInHold;
 
         Asset userReqAsset;
@@ -615,8 +619,8 @@ public:
         {
             locals.tmpLoanReq = state.get()._loanReqs.value(locals.loanReqsIdx);
 
-            if ((locals.tmpLoanReq.borrower == qpi.invocator() || locals.tmpLoanReq.creditor == qpi.invocator())
-                && (locals.tmpLoanReq.state == LoanReqState::ACTIVE || locals.tmpLoanReq.state == LoanReqState::IDLE))
+            if ((locals.tmpLoanReq.borrower == qpi.invocator() && ((locals.tmpLoanReq.state == LoanReqState::ACTIVE && locals.tmpLoanReq.assetsToCreditor == false) || locals.tmpLoanReq.state == LoanReqState::IDLE))
+                || (locals.tmpLoanReq.creditor == qpi.invocator() && (locals.tmpLoanReq.state == LoanReqState::ACTIVE && locals.tmpLoanReq.assetsToCreditor == true)))
             {
                 // Need to scan all assets in loan request to make sure it's have an assets user want to release
                 locals.userReqAssetIdx = 0;
@@ -638,17 +642,18 @@ public:
                                                                     qpi.invocator(), qpi.invocator(),
                                                                     SELF_INDEX, SELF_INDEX) - sint64(locals.userAssetsAmountInHold) >= input.numberOfShares)
         {
-            locals.releaseReturnedFee = qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(),
-                input.numberOfShares, input.newManagingContractIndex,
-                input.newManagingContractIndex, qpi.invocationReward());
-            // Check for success
-            if (locals.releaseReturnedFee >= 0)
-            {
-                qpi.transfer(qpi.invocator(), locals.releaseReturnedFee);
-            }
-            else
+            locals.releaseResult = qpi.releaseShares(input.asset, qpi.invocator(), qpi.invocator(),
+                                                        input.numberOfShares, input.newManagingContractIndex,
+                                                        input.newManagingContractIndex, qpi.invocationReward());
+            if (locals.releaseResult < 0 || locals.releaseResult == INVALID_AMOUNT)
             {
                 qpi.transfer(qpi.invocator(), qpi.invocationReward());
+                return;
+            }
+
+            if (qpi.invocationReward() > locals.releaseResult)
+            {
+                qpi.transfer(qpi.invocator(), qpi.invocationReward() - locals.releaseResult);
             }
         }
         else
@@ -730,7 +735,7 @@ public:
 
     struct GetAllLoanReqs_locals
     {
-        struct LoanReqInfo tmpLoanReqInfo;
+        LoanReqInfo tmpLoanReqInfo;
 
         sint64 outputLoanReqsIdx;
         sint64 activeLoanReqsIdx;
@@ -775,7 +780,7 @@ public:
 
     struct GetUserActiveLoanReqs_locals
     {
-        struct LoanReqInfo tmpLoanReqInfo;
+        LoanReqInfo tmpLoanReqInfo;
 
         sint64 outputLoanReqsIdx;
         sint64 activeLoanReqsIdx;
@@ -849,7 +854,7 @@ public:
 
     struct GetUserDebt_locals
     {
-        struct LoanReqInfo tmpLoanReqInfo;
+        LoanReqInfo tmpLoanReqInfo;
         sint64 activeLoanReqsIdx;
     };
 
@@ -869,6 +874,35 @@ public:
         }
     }
 
+    struct GetLoanReqById_input
+    {
+        uint64 reqId;
+    };
+
+    struct GetLoanReqById_output
+    {
+        LoanOutputInfo loanOutputInfo;
+    };
+
+    struct GetLoanReqById_locals
+    {
+        LoanReqInfo loanReqInfo;
+
+        _FillLoanReqForOutput_input fillLoanReqForOutputInput;
+        _FillLoanReqForOutput_output fillLoanReqForOutputOutput;
+    };
+
+    PUBLIC_FUNCTION_WITH_LOCALS(GetLoanReqById)
+    {
+        if (state.get()._loanReqs.get(input.reqId, locals.loanReqInfo))
+        {
+            locals.fillLoanReqForOutputInput.loanReqId = input.reqId;
+            locals.fillLoanReqForOutputInput.loanReqInfo = locals.loanReqInfo;
+            CALL(_FillLoanReqForOutput, locals.fillLoanReqForOutputInput, locals.fillLoanReqForOutputOutput);
+            output.loanOutputInfo = locals.fillLoanReqForOutputOutput.loanOutputInfo;
+        }
+    }
+
     REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
     {
         REGISTER_USER_PROCEDURE(PlaceLoanReq, 1);
@@ -881,13 +915,14 @@ public:
         REGISTER_USER_FUNCTION(GetUserActiveLoanReqs, 2);
         REGISTER_USER_FUNCTION(GetUserDebt, 3);
         REGISTER_USER_FUNCTION(GetFeesInfo, 4);
-        
+        REGISTER_USER_FUNCTION(GetLoanReqById, 5);
     }
 
     struct BEGIN_EPOCH_locals
     {
         sint64 activeLoanReqsIdx;
         LoanReqInfo tmpLoanReqInfo;
+        uint64 accruedInterest;
 
         _TransferAssetsFromTo_input transferAssetsFromToInput;
         _TransferAssetsFromTo_output transferAssetsFromToOutput;
@@ -928,11 +963,7 @@ public:
                 
                 if (div((locals.tmpLoanReqInfo.returnPeriodInEpochs - locals.tmpLoanReqInfo.epochsLeft) * 100, locals.tmpLoanReqInfo.returnPeriodInEpochs) >= 34)
                 {
-                    locals.tmpLoanReqInfo.debtAmount = div(smul(locals.tmpLoanReqInfo.priceAmount,
-                                                                    sadd(1000000ULL,
-                                                                        div(smul(10000ULL, smul(locals.tmpLoanReqInfo.interestRate,
-                                                                            locals.tmpLoanReqInfo.returnPeriodInEpochs - locals.tmpLoanReqInfo.epochsLeft)),
-                                                                            locals.tmpLoanReqInfo.returnPeriodInEpochs))), 1000000ULL);
+                    locals.tmpLoanReqInfo.debtAmount = sadd(locals.tmpLoanReqInfo.priceAmount, div(smul(locals.tmpLoanReqInfo.fullInterest, locals.tmpLoanReqInfo.returnPeriodInEpochs - locals.tmpLoanReqInfo.epochsLeft), locals.tmpLoanReqInfo.returnPeriodInEpochs));
                 }
 
                 state.mut()._loanReqs.replace(state.get()._loanReqs.key(locals.activeLoanReqsIdx), locals.tmpLoanReqInfo);
@@ -977,11 +1008,6 @@ public:
     }
 
     PRE_ACQUIRE_SHARES()
-    {
-        output.allowTransfer = true;
-    }
-
-    PRE_RELEASE_SHARES()
     {
         output.allowTransfer = true;
     }
