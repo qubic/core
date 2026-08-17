@@ -7,6 +7,7 @@
 #include "platform/memory_util.h"
 #include "kangaroo_twelve.h"
 #include "platform/file_io.h"
+#include "platform/debugging.h"
 #include "contract_core/pre_qpi_def.h"
 #include "qpi/qpi.h"
 #include "qpi/impl/qpi_hash_map_impl.h"
@@ -909,8 +910,12 @@ inline bool AntColony<ScoreT>::exportBestSolutions(unsigned short epoch, CHAR16*
 
     if (set.count == 0)
     {
-        return save(ANT_COLONY_SOLUTIONS_EOE_FILENAME, sizeof(header), (unsigned char*)&header, directory)
-            == (long long)sizeof(header);
+        // gAsyncFileIO is NULL only during early init and in NO_UEFI tests; otherwise route the write
+        // through the async worker so the tick-processor thread never touches the EFI file protocol.
+        const long long headerSaved = gAsyncFileIO
+            ? asyncSave(ANT_COLONY_SOLUTIONS_EOE_FILENAME, sizeof(header), (unsigned char*)&header, directory)
+            : save(ANT_COLONY_SOLUTIONS_EOE_FILENAME, sizeof(header), (unsigned char*)&header, directory);
+        return headerSaved == (long long)sizeof(header);
     }
 
     static_assert(sizeof(AntColonyExportHeader) + (unsigned long long)ANT_EXPORT_MAX_SOLUTIONS * sizeof(Entry)
@@ -929,14 +934,19 @@ inline bool AntColony<ScoreT>::exportBestSolutions(unsigned short epoch, CHAR16*
         slot.ann.unpack(out[i].ann.lut);
     }
 
-    const long long saved = save(ANT_COLONY_SOLUTIONS_EOE_FILENAME, totalBytes, buffer, directory);
+    const long long saved = gAsyncFileIO
+        ? asyncSave(ANT_COLONY_SOLUTIONS_EOE_FILENAME, totalBytes, buffer, directory)
+        : save(ANT_COLONY_SOLUTIONS_EOE_FILENAME, totalBytes, buffer, directory);
 
     if (saved != (long long)totalBytes)
     {
-        logToConsole(L"[ant-colony] failed to write the solution export");
+#ifndef NDEBUG
+        addDebugMessage(L"[ant-colony] failed to write the solution export");
+#endif
         return false;
     }
 
+#ifndef NDEBUG
     CHAR16 message[192];
     setText(message, L"[ant-colony] exported best networks, entries ");
     appendNumber(message, set.count, FALSE);
@@ -944,7 +954,8 @@ inline bool AntColony<ScoreT>::exportBestSolutions(unsigned short epoch, CHAR16*
     appendNumber(message, set.slots[set.order[0]].score, FALSE);
     appendText(message, L", worst kept ");
     appendNumber(message, set.slots[set.order[set.count - 1]].score, FALSE);
-    logToConsole(message);
+    addDebugMessage(message);
+#endif
     return true;
 }
 
