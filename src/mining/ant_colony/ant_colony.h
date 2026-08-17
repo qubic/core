@@ -798,6 +798,7 @@ inline bool AntColony<ScoreT>::tryGetReplayScore(const ReplayKey& key, unsigned 
 template<typename ScoreT>
 inline bool AntColony<ScoreT>::saveReplayCache(unsigned short epoch, CHAR16* directory)
 {
+#if ANT_USE_SCORE_CACHE
     if (_replayCache == nullptr)
     {
         return false;
@@ -815,11 +816,15 @@ inline bool AntColony<ScoreT>::saveReplayCache(unsigned short epoch, CHAR16* dir
         return false;
     }
     return true;
+#else
+    return true;
+#endif
 }
 
 template<typename ScoreT>
 inline bool AntColony<ScoreT>::loadReplayCache(unsigned short epoch, CHAR16* directory)
 {
+#if ANT_USE_SCORE_CACHE
     if (_replayCache == nullptr)
     {
         return false;
@@ -854,6 +859,9 @@ inline bool AntColony<ScoreT>::loadReplayCache(unsigned short epoch, CHAR16* dir
     appendNumber(message, occupied, FALSE);
     logToConsole(message);
     return true;
+#else
+    return true;
+#endif
 }
 
 // The epoch's harvest file

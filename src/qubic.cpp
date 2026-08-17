@@ -8835,7 +8835,6 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 #endif
             
             unsigned long long clockTick = 0, systemDataSavingTick = 0, loggingTick = 0, peerRefreshingTick = 0, tickRequestingTick = 0;
-            unsigned long long antReplayCacheSavingTick = 0;
             unsigned int tickRequestingIndicator = 0, futureTickRequestingIndicator = 0;
             autoResendTickVotes.lastTick = system.initialTick;
             autoResendTickVotes.lastCheck = __rdtsc();
@@ -9013,7 +9012,8 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                 }
 
 #if !TICK_STORAGE_AUTOSAVE_MODE
-                // Only save system + score cache to file regularly here if on AUX and snapshot auto-save is disabled
+                // Only save system + score cache + ant replay cache to file regularly here if on AUX
+                // and snapshot auto-save is disabled
                 if ((!isMainMode())
                     && curTimeTick - systemDataSavingTick >= SYSTEM_DATA_SAVING_PERIOD * frequency / 1000)
                 {
@@ -9021,18 +9021,9 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
 
                     saveSystem();
                     score->saveScoreCache(system.epoch);
-                }
-#endif
-                // Deliberately outside the guard above: the cache earns its keep by being newer than
-                // the snapshot, so tying it to the snapshot's schedule would make every entry it holds
-                // one the restored tree already covers. AUX only - saving parks the solution
-                // processors for the length of the write.
-                if ((!isMainMode())
-                    && curTimeTick - antReplayCacheSavingTick >= SYSTEM_DATA_SAVING_PERIOD * frequency / 1000)
-                {
-                    antReplayCacheSavingTick = curTimeTick;
                     gAntColony.saveReplayCache(system.epoch, NULL);
                 }
+#endif
                 tryResendTickVotes();
 
                 if (curTimeTick - peerRefreshingTick >= PEER_REFRESHING_PERIOD * frequency / 1000)
