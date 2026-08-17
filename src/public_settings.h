@@ -25,6 +25,9 @@
 #define SCORE_CACHE_SIZE 2000000 // the larger the better
 #define SCORE_CACHE_COLLISION_RETRIES 20 // number of retries to find entry in cache in case of hash collision
 
+// Persist the ant-colony replay cache (mirror of USE_SCORE_CACHE for the standalone score cache).
+#define ANT_USE_SCORE_CACHE 1
+
 // Number of ticks from prior epoch that are kept after seamless epoch transition. These can be requested after transition.
 #define TICKS_TO_KEEP_FROM_PRIOR_EPOCH 100
 
