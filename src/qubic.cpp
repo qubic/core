@@ -1093,8 +1093,11 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
                 enqueueResponse(NULL, header);
             }
 
-            // Copy computor list
-            copyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
+            // Copy computor list. epoch is the flag the tick processor gates on without a lock, so
+            // copy publicKeys + signature first and publish epoch last
+            copyMem(broadcastedComputors.computors.publicKeys, request->computors.publicKeys,
+                sizeof(broadcastedComputors.computors.publicKeys) + sizeof(broadcastedComputors.computors.signature));
+            broadcastedComputors.computors.epoch = request->computors.epoch;
 
             // Update ownComputorIndices and minerPublicKeys
             if (request->computors.epoch == system.epoch)
