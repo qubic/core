@@ -5,6 +5,9 @@
 #include "console_logging.h"
 #include "file_io.h"
 
+#ifndef ENABLE_DEBUG_LOG_IN_RELEASE
+#define ENABLE_DEBUG_LOG_IN_RELEASE 1
+#endif
 
 #if defined(EXPECT_TRUE)
 
@@ -19,9 +22,10 @@ static void printDebugMessages()
 {
 }
 
-#elif defined(NDEBUG)
+#elif defined(NDEBUG) && !ENABLE_DEBUG_LOG_IN_RELEASE
 
-// static void addDebugMessage(const CHAR16* msg){} // empty impl
+static void addDebugMessage(const CHAR16* msg) {}
+static void printDebugMessages() {}
 #else
 
 static CHAR16 debugMessage[128][16384];

@@ -381,6 +381,7 @@ static void antDebugAccepted(const AntColonyMiningSolutionTransaction* transacti
 static bool gAntScoredReady[NUMBER_OF_TRANSACTIONS_PER_TICK];
 static unsigned int gAntScoredValue[NUMBER_OF_TRANSACTIONS_PER_TICK];
 static AntColonyBpp9000T::Ann gAntScoredAnn[NUMBER_OF_TRANSACTIONS_PER_TICK];
+static volatile long long gAntScoresComputed = 0;
 
 // Enqueued per ant solution transaction. 80 bytes, inside ScoreFunction::TASK_PAYLOAD_MAX.
 struct AntScoreTaskPayload
@@ -449,6 +450,7 @@ static void scoreAntSolutionTask(unsigned long long processorNumber, void* paylo
             processorNumber, parentAnn, task->pubkey, task->nonce,
             anchorDigest, gAntScoredAnn[task->txIdx]);
         gAntColony.putReplayScore(replayKey, gAntScoredValue[task->txIdx], gAntScoredAnn[task->txIdx]);
+        _InterlockedIncrement64(&gAntScoresComputed);
     }
 
     // Last, so the transaction loop never sees a slot whose score or network is half written.
@@ -594,6 +596,11 @@ static void queueAntSolution(unsigned long long processorNumber, const m256i& co
         payload.nonce);
 }
 
+static void logDual(const CHAR16* message)
+{
+    addDebugMessage(message);
+}
+
 // Reseed the colony for a new epoch. The root seed is score->currentRandomSeed, the epoch-start
 // spectrum digest
 static void antColonyBeginEpoch()
@@ -601,6 +608,7 @@ static void antColonyBeginEpoch()
 #ifndef NDEBUG
     gAntDebugPrintBudget = ANT_DEBUG_PRINTS_PER_EPOCH;
 #endif
+    addDebugMessage(L"[ant-colony] beginEpoch start");
     gAntPendingSolutions.reset();
     gAntColony.beginEpoch(score->currentRandomSeed, system.initialTick);
     gAntColony.setErrorThreshold((unsigned int)getSolutionThreshold(score_engine::AlgoType::Bpp9000));
@@ -613,7 +621,7 @@ static void antColonyBeginEpoch()
     CHAR16 msg[128];
     setText(msg, L"[ant-colony] Root seed = ");
     appendText(msg, digestChars);
-    logToConsole(msg);
+    logDual(msg);
 }
 
 // DOGE merged-mining shares
@@ -1071,6 +1079,22 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
         return;
     BroadcastComputors* request = header->getPayload<BroadcastComputors>();
 
+    if (request->computors.epoch != system.epoch && broadcastedComputors.computors.epoch != system.epoch)
+    {
+        static unsigned short gLastForeignComputorsEpoch = 0xFFFF;
+        if (request->computors.epoch != gLastForeignComputorsEpoch)
+        {
+            gLastForeignComputorsEpoch = request->computors.epoch;
+            CHAR16 foreignComputorsMessage[128];
+            setText(foreignComputorsMessage, L"[computors] received list for epoch ");
+            appendNumber(foreignComputorsMessage, request->computors.epoch, FALSE);
+            appendText(foreignComputorsMessage, L", node on epoch ");
+            appendNumber(foreignComputorsMessage, system.epoch, FALSE);
+            appendText(foreignComputorsMessage, L" (ignored)");
+            addDebugMessage(foreignComputorsMessage);
+        }
+    }
+
     // Only accept computor list from current epoch (important in seamless epoch transition if this node is
     // lagging behind the others that already switched epoch).
     if (request->computors.epoch == system.epoch && request->computors.epoch > broadcastedComputors.computors.epoch)
@@ -1087,7 +1111,21 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
         // Verify that list is signed by Arbitrator
         unsigned char digest[32];
         KangarooTwelve(request, sizeof(BroadcastComputors) - SIGNATURE_SIZE, digest, sizeof(digest));
-        if (verify((unsigned char*)&arbitratorPublicKey, digest, request->computors.signature))
+        const bool computorsSignatureValid = verify((unsigned char*)&arbitratorPublicKey, digest, request->computors.signature);
+        if (!computorsSignatureValid)
+        {
+            static unsigned short gLastSigFailComputorsEpoch = 0xFFFF;
+            if (request->computors.epoch != gLastSigFailComputorsEpoch)
+            {
+                gLastSigFailComputorsEpoch = request->computors.epoch;
+                CHAR16 sigFailComputorsMessage[128];
+                setText(sigFailComputorsMessage, L"[computors] SIGNATURE VERIFY FAILED for epoch ");
+                appendNumber(sigFailComputorsMessage, request->computors.epoch, FALSE);
+                appendText(sigFailComputorsMessage, L" (wrong arbitrator key?)");
+                addDebugMessage(sigFailComputorsMessage);
+            }
+        }
+        if (computorsSignatureValid)
         {
             if (header->isDejavuZero())
             {
@@ -1096,6 +1134,12 @@ static void processBroadcastComputors(Peer* peer, RequestResponseHeader* header)
 
             // Copy computor list
             copyMem(&broadcastedComputors.computors, &request->computors, sizeof(Computors));
+            {
+                CHAR16 acceptComputorsMessage[96];
+                setText(acceptComputorsMessage, L"[computors] accepted list for epoch ");
+                appendNumber(acceptComputorsMessage, request->computors.epoch, FALSE);
+                addDebugMessage(acceptComputorsMessage);
+            }
 
             // Update ownComputorIndices and minerPublicKeys
             if (request->computors.epoch == system.epoch)
@@ -2300,6 +2344,7 @@ static void processSpecialCommand(Peer* peer, RequestResponseHeader* header)
 
             case SPECIAL_COMMAND_CONTINUE_SWITCH_EPOCH:
             {
+                addDebugMessage(L"[operator] remote F10 (CONTINUE_SWITCH_EPOCH): epochTransitionCleanMemoryFlag => 1");
                 epochTransitionCleanMemoryFlag = 1;
                 enqueueResponse(peer, sizeof(SpecialCommand), SpecialCommand::type(), header->dejavu(), request); // echo back to indicate success
             }
@@ -5205,10 +5250,50 @@ static void initializeFirstTick()
     int uniqueVoteCount[NUMBER_OF_COMPUTORS];
     int uniqueCount = 0;
     const unsigned int firstTickIndex = ts.tickToIndexCurrentEpoch(system.initialTick);
+
+    {
+        CHAR16 firstTickMessage[160];
+        setText(firstTickMessage, L"[firstTick] begin: initialTick ");
+        appendNumber(firstTickMessage, system.initialTick, FALSE);
+        appendText(firstTickMessage, L", epoch ");
+        appendNumber(firstTickMessage, system.epoch, FALSE);
+        appendText(firstTickMessage, L", need ");
+        appendNumber(firstTickMessage, NUMBER_OF_COMPUTORS - QUORUM, FALSE);
+        appendText(firstTickMessage, L" first-tick votes");
+        addDebugMessage(firstTickMessage);
+    }
+    bool firstTickLoggedHaveComputors = false;
+    int firstTickLoggedVotes = -1;
+    unsigned long long firstTickLastPeriodicTsc = __rdtsc();
+
     while (!shutDownNode)
     {
+        unsigned long long firstTickNowTsc = __rdtsc();
+        if (firstTickNowTsc - firstTickLastPeriodicTsc > 30ULL * frequency)
+        {
+            firstTickLastPeriodicTsc = firstTickNowTsc;
+            const unsigned int firstTickReqQueue = (requestQueueElementHead >= requestQueueElementTail)
+                ? (requestQueueElementHead - requestQueueElementTail)
+                : (REQUEST_QUEUE_LENGTH - (requestQueueElementTail - requestQueueElementHead));
+            CHAR16 firstTickWaitMessage[192];
+            setText(firstTickWaitMessage, L"[firstTick] waiting: haveComputors ");
+            appendNumber(firstTickWaitMessage, (broadcastedComputors.computors.epoch == system.epoch) ? 1ULL : 0ULL, FALSE);
+            appendText(firstTickWaitMessage, L", reqQueue ");
+            appendNumber(firstTickWaitMessage, (unsigned long long)firstTickReqQueue, FALSE);
+            appendText(firstTickWaitMessage, L", antScores ");
+            appendNumber(firstTickWaitMessage, (unsigned long long)gAntScoresComputed, FALSE);
+            appendText(firstTickWaitMessage, L", scoreQueue ");
+            appendNumber(firstTickWaitMessage, (unsigned long long)score->outstandingTaskCount(), FALSE);
+            addDebugMessage(firstTickWaitMessage);
+        }
+
         if (broadcastedComputors.computors.epoch == system.epoch)
         {
+            if (!firstTickLoggedHaveComputors)
+            {
+                firstTickLoggedHaveComputors = true;
+                addDebugMessage(L"[firstTick] computor list acquired for this epoch; counting first-tick votes");
+            }
             // group ticks with same digest+timestamp and count votes (how many are in each group)
             setMem(uniqueVoteIndex, sizeof(uniqueVoteIndex), 0);
             setMem(uniqueVoteCount, sizeof(uniqueVoteCount), 0);
@@ -5267,6 +5352,17 @@ static void initializeFirstTick()
                 
                 int numberOfVote = uniqueVoteCount[maxUniqueVoteCountIndex];
 
+                if (numberOfVote != firstTickLoggedVotes)
+                {
+                    firstTickLoggedVotes = numberOfVote;
+                    CHAR16 firstTickVotesMessage[128];
+                    setText(firstTickVotesMessage, L"[firstTick] first-tick votes ");
+                    appendNumber(firstTickVotesMessage, (unsigned long long)numberOfVote, FALSE);
+                    appendText(firstTickVotesMessage, L"/");
+                    appendNumber(firstTickVotesMessage, NUMBER_OF_COMPUTORS - QUORUM, FALSE);
+                    addDebugMessage(firstTickVotesMessage);
+                }
+
                 // accept the tick with most votes if it has more than 1/3 of quorum
                 if (numberOfVote >= NUMBER_OF_COMPUTORS - QUORUM)
                 {
@@ -5279,6 +5375,7 @@ static void initializeFirstTick()
                     etalonTick.prevSpectrumDigest = unique->prevSpectrumDigest;
                     etalonTick.prevUniverseDigest = unique->prevUniverseDigest;
                     etalonTick.prevTransactionBodyDigest = unique->prevTransactionBodyDigest;
+                    addDebugMessage(L"[firstTick] established: first tick reached vote quorum, resuming");
                     return;
                 }
             }
@@ -6427,6 +6524,46 @@ static void tickProcessor(void*)
         const unsigned long long curTimeTick = __rdtsc();
         const unsigned int nextTick = system.tick + 1;
 
+        {
+            const bool tickGateOpen = (broadcastedComputors.computors.epoch == system.epoch) && ts.tickInCurrentEpochStorage(nextTick);
+            static bool tickGateWasOpen = true;
+            static unsigned long long tickGateClosedSinceTsc = 0;
+            static unsigned long long tickGateLastLogTsc = 0;
+            if (!tickGateOpen)
+            {
+                if (tickGateWasOpen)
+                {
+                    tickGateWasOpen = false;
+                    tickGateClosedSinceTsc = curTimeTick;
+                    tickGateLastLogTsc = curTimeTick;
+                }
+                else if (curTimeTick - tickGateClosedSinceTsc > 30ULL * frequency && curTimeTick - tickGateLastLogTsc > 30ULL * frequency)
+                {
+                    tickGateLastLogTsc = curTimeTick;
+                    const unsigned int tickGateReqQueue = (requestQueueElementHead >= requestQueueElementTail)
+                        ? (requestQueueElementHead - requestQueueElementTail)
+                        : (REQUEST_QUEUE_LENGTH - (requestQueueElementTail - requestQueueElementHead));
+                    CHAR16 tickGateMessage[224];
+                    setText(tickGateMessage, L"[tickGate] stuck: node epoch ");
+                    appendNumber(tickGateMessage, system.epoch, FALSE);
+                    appendText(tickGateMessage, L", list epoch ");
+                    appendNumber(tickGateMessage, broadcastedComputors.computors.epoch, FALSE);
+                    appendText(tickGateMessage, L", nextTickInStorage ");
+                    appendNumber(tickGateMessage, ts.tickInCurrentEpochStorage(nextTick) ? 1ULL : 0ULL, FALSE);
+                    appendText(tickGateMessage, L", reqQueue ");
+                    appendNumber(tickGateMessage, (unsigned long long)tickGateReqQueue, FALSE);
+                    appendText(tickGateMessage, L", scoreQueue ");
+                    appendNumber(tickGateMessage, (unsigned long long)score->outstandingTaskCount(), FALSE);
+                    logDual(tickGateMessage);
+                }
+            }
+            else if (!tickGateWasOpen)
+            {
+                tickGateWasOpen = true;
+                logDual(L"[tickGate] re-opened, tick advancing");
+            }
+        }
+
         if (broadcastedComputors.computors.epoch == system.epoch
             && ts.tickInCurrentEpochStorage(nextTick))
         {
@@ -6795,6 +6932,7 @@ static void tickProcessor(void*)
 
                                     // end current epoch
                                     endEpoch();
+                                    logDual(L"[transition] endEpoch done");
 
                                     // Save the file of revenue. This blocking save can be called from any thread
                                     // Revenue v2 data
@@ -6810,7 +6948,16 @@ static void tickProcessor(void*)
                                         logToConsole(dbg);
                                     }
 #endif
+                                    logDual(L"[transition] exportBestSolutions start");
+                                    const unsigned long long exportBestT0 = __rdtsc();
                                     gAntColony.exportBestSolutions(system.epoch, NULL);
+                                    {
+                                        CHAR16 exportBestMessage[128];
+                                        setText(exportBestMessage, L"[transition] exportBestSolutions done in ");
+                                        appendNumber(exportBestMessage, (__rdtsc() - exportBestT0) * 1000ULL / frequency, FALSE);
+                                        appendText(exportBestMessage, L" ms");
+                                        logDual(exportBestMessage);
+                                    }
 
                                     // Reorder futureComputors so requalifying computors keep their index
                                     // This is needed for correct execution fee reporting across epoch boundaries
@@ -6823,10 +6970,12 @@ static void tickProcessor(void*)
                                     // instruct main loop to save system and wait until it is done
                                     systemMustBeSaved = true;
                                     WAIT_WHILE(systemMustBeSaved);
+                                    logDual(L"[transition] system saved");
                                     epochTransitionState = 2;
 
                                     beginEpoch();
                                     isBeginEpoch = true;
+                                    logDual(L"[transition] beginEpoch done");
 
                                     // beginEpoch() called score->initMemory(), which zeroed the scorer, so re-apply
                                     // the task from the resident buffer. This assumes the task is unchanged across the transition; 
@@ -6857,6 +7006,7 @@ static void tickProcessor(void*)
                                     universeMustBeSaved = true;
                                     computerMustBeSaved = true;
                                     WAIT_WHILE(computerMustBeSaved || universeMustBeSaved || spectrumMustBeSaved);
+                                    logDual(L"[transition] spectrum/universe/computer saved");
 
                                     // update etalon tick
                                     etalonTick.epoch++;
@@ -6866,6 +7016,7 @@ static void tickProcessor(void*)
                                     getComputerDigest(etalonTick.saltedComputerDigest);
 
                                     epochTransitionState = 0;
+                                    logDual(L"[transition] complete, resuming ticks");
                                 }
                                 ASSERT(epochTransitionWaitingRequestProcessors >= 0 && epochTransitionWaitingRequestProcessors <= nRequestProcessorIDs);
 
@@ -8598,7 +8749,7 @@ static void processKeyPresses()
         */
         case 0x14:
         {
-            logToConsole(L"Pressed F10 key: epochTransitionCleanMemoryFlag => 1");
+            addDebugMessage(L"Pressed F10 key: epochTransitionCleanMemoryFlag => 1");
             epochTransitionCleanMemoryFlag = 1;
         }
         break;
@@ -8684,7 +8835,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
     {
         logToConsole(L"Setting up multiprocessing ...");
 
-        #if !defined(NDEBUG)
+        #if !defined(NDEBUG) || ENABLE_DEBUG_LOG_IN_RELEASE
         // Set flag to false BEFORE starting any processors to avoid race condition
         debugLogOnlyMainProcessorRunning = false;
         #endif
@@ -9028,7 +9179,17 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     && curTimeTick - antReplayCacheSavingTick >= SYSTEM_DATA_SAVING_PERIOD * frequency / 1000)
                 {
                     antReplayCacheSavingTick = curTimeTick;
+                    addDebugMessage(L"[ant-colony] periodic replay cache save start");
+                    printDebugMessages();
+                    const unsigned long long replayCacheSaveT0 = __rdtsc();
                     gAntColony.saveReplayCache(system.epoch, NULL);
+                    {
+                        CHAR16 replayCacheSaveMessage[128];
+                        setText(replayCacheSaveMessage, L"[ant-colony] periodic replay cache save done in ");
+                        appendNumber(replayCacheSaveMessage, (__rdtsc() - replayCacheSaveT0) * 1000ULL / frequency, FALSE);
+                        appendText(replayCacheSaveMessage, L" ms");
+                        addDebugMessage(replayCacheSaveMessage);
+                    }
                 }
                 tryResendTickVotes();
 
@@ -9340,7 +9501,7 @@ EFI_STATUS efi_main(EFI_HANDLE imageHandle, EFI_SYSTEM_TABLE* systemTable)
                     mainLoopDenominator++;
                 }
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) || ENABLE_DEBUG_LOG_IN_RELEASE
                 printDebugMessages();
 #endif
                 // Flush the file system. Only flush one item at a time to avoid the main loop stay too long

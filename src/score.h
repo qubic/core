@@ -334,6 +334,11 @@ public:
         _nIsTaskQueueReady = false;
     }
 
+    unsigned int outstandingTaskCount() const
+    {
+        return _nTask - _nFinished;
+    }
+
     // Copies size bytes of data. Returns false if the queue is full or the payload does not fit.
     bool addTask(WorkFunc func, const void* data, unsigned int size)
     {
