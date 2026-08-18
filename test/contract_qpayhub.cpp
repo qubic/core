@@ -76,11 +76,16 @@ public:
 
         // Needed for SubscribeToPriceFeed() / oracle-engine-backed tests only;
         // harmless setup for the tests that don't touch the oracle at all.
+        // computorPublicKeys holds one entry per computorSeeds entry (currently
+        // one), so it cannot supply NUMBER_OF_COMPUTORS distinct keys. Commit
+        // quorum needs every computor to map to its own index via
+        // computorIndex(), so use synthetic distinct keys - same approach as
+        // OracleEngineTest in test/oracle_engine.cpp.
         for (unsigned int i = 0; i < NUMBER_OF_COMPUTORS; ++i)
         {
-            broadcastedComputors.computors.publicKeys[i] = computorPublicKeys[i];
+            broadcastedComputors.computors.publicKeys[i] = m256i(i * 2, 42, 13, 1337);
         }
-        EXPECT_TRUE(oracleEngine.init(computorPublicKeys));
+        EXPECT_TRUE(oracleEngine.init(broadcastedComputors.computors.publicKeys));
         EXPECT_TRUE(OI::initOracleInterfaces());
         EXPECT_TRUE(ts.init());
         ts.beginEpoch((unsigned int)system.tick);
@@ -664,7 +669,9 @@ TEST(ContractQPayhub, EndEpochDistributesFeePoolAboveReserveToSharesAndTokenHold
     };
     issueContractShares(QPAYHUB_CONTRACT_INDEX, qpayhubShares);
 
-    increaseEnergy(QPAYHUB_DIVIDEND_TOKEN_ISSUER, 10000000);
+    // QX charges 1,000,000,000 QU to issue an asset - fund the issuer for the
+    // real fee, otherwise IssueAsset refunds and issues nothing.
+    increaseEnergy(QPAYHUB_DIVIDEND_TOKEN_ISSUER, qpayhub.qxFees.assetIssuanceFee + qpayhub.qxFees.transferFee + 10000000);
     EXPECT_EQ(qpayhub.issueAsset(QPAYHUB_DIVIDEND_TOKEN_ISSUER, QPAYHUB_TOKEN_ASSETNAME, 1000000), 1000000);
     EXPECT_EQ(qpayhub.transferAsset(QPAYHUB_DIVIDEND_TOKEN_ISSUER, TOKENHOLDER1, QPAYHUB_TOKEN_ASSETNAME, QPAYHUB_DIVIDEND_TOKEN_ISSUER, 1000000), 1000000);
 
