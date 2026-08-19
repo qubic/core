@@ -580,7 +580,11 @@ struct ContractStateChangeInfo
 // When enabling, replace both lines below, e.g.:
 //constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { DUMMY_CONTRACT_INDEX, MIGRATE, 219 } };
 //constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
-constexpr ContractStateChangeInfo contractStateChangeInfos[] = { { QIP_CONTRACT_INDEX, RESET, 224 }, { RANDOM_CONTRACT_INDEX, PADDING, 224 } };
+constexpr ContractStateChangeInfo contractStateChangeInfos[] = {
+    { QIP_CONTRACT_INDEX, RESET, 224 },
+    { RANDOM_CONTRACT_INDEX, PADDING, 224 },
+    { QEARN_CONTRACT_INDEX, PADDING, QEARN_V2_ACTIVATION_EPOCH },
+};
 constexpr unsigned int contractStateChangeCount = sizeof(contractStateChangeInfos) / sizeof(contractStateChangeInfos[0]);
 
 
