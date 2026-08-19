@@ -1924,3 +1924,226 @@ TEST(PriceOracle, SubscriptionFee)
 	EXPECT_EQ(Price::getSubscriptionFee(query, 1024 * 60000), 133);
 	EXPECT_EQ(Price::getSubscriptionFee(query, 2047 * 60000), 133);
 }
+
+// --- EvmLogRead oracle interface (generic cross-chain single-log read) ---
+
+// The query/reply structs must fit in a transaction and must agree with the size table registered
+// in oracle_interfaces_def.h. Their sizes are also pinned so accidental layout changes (which would
+// break the reply digest that computors must agree on) are caught.
+TEST(EvmLogReadOracle, DataContract)
+{
+	using OI::EvmLogRead;
+
+	// registered at index 3
+	EXPECT_EQ(EvmLogRead::oracleInterfaceIndex, 3u);
+	EXPECT_LT(EvmLogRead::oracleInterfaceIndex, OI::oracleInterfacesCount);
+
+	// fits within transaction limits
+	EXPECT_LE(sizeof(EvmLogRead::OracleQuery), (size_t)MAX_ORACLE_QUERY_SIZE);
+	EXPECT_LE(sizeof(EvmLogRead::OracleReply), (size_t)MAX_ORACLE_REPLY_SIZE);
+
+	// pinned sizes (no padding holes -> canonical bytes for the reply digest)
+	EXPECT_EQ(sizeof(EvmLogRead::OracleQuery), 48u);
+	EXPECT_EQ(sizeof(EvmLogRead::OracleReply), 440u);
+
+	// registry size table matches the actual structs
+	EXPECT_EQ(OI::oracleInterfaces[EvmLogRead::oracleInterfaceIndex].querySize, sizeof(EvmLogRead::OracleQuery));
+	EXPECT_EQ(OI::oracleInterfaces[EvmLogRead::oracleInterfaceIndex].replySize, sizeof(EvmLogRead::OracleReply));
+}
+
+// The fee must be accepted by the engine (>= MIN_ORACLE_QUERY_FEE) and must be reachable through the
+// type-erased function pointer registered by initOracleInterfaces().
+TEST(EvmLogReadOracle, QueryFee)
+{
+	using OI::EvmLogRead;
+
+	EXPECT_TRUE(OI::initOracleInterfaces());
+
+	EvmLogRead::OracleQuery query{};
+	query.chainId = OI::Evm::ChainId::ethereum;
+
+	EXPECT_EQ(EvmLogRead::getQueryFee(query), 1000);
+	EXPECT_GE(EvmLogRead::getQueryFee(query), MIN_ORACLE_QUERY_FEE);
+
+	// dispatched through the registry pointer gives the same value
+	auto* feeFunc = OI::getOracleQueryFeeFunc[EvmLogRead::oracleInterfaceIndex];
+	ASSERT_NE(feeFunc, nullptr);
+	EXPECT_EQ(feeFunc(&query), 1000);
+}
+
+TEST(EvmLogReadOracle, ChainIds)
+{
+	namespace Evm = OI::Evm;
+
+	// values from the chain-id table
+	EXPECT_EQ(Evm::ChainId::ethereum, 1u);
+	EXPECT_EQ(Evm::ChainId::optimism, 10u);
+	EXPECT_EQ(Evm::ChainId::bsc, 56u);
+	EXPECT_EQ(Evm::ChainId::polygon, 137u);
+	EXPECT_EQ(Evm::ChainId::fantom, 250u);
+	EXPECT_EQ(Evm::ChainId::base, 8453u);
+	EXPECT_EQ(Evm::ChainId::avalanche, 43114u);
+	EXPECT_EQ(Evm::ChainId::arbitrum, 42161u);
+	EXPECT_EQ(Evm::ChainId::sepolia, 11155111u);
+
+	// every listed chain is recognized
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::ethereum));
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::optimism));
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::bsc));
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::polygon));
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::fantom));
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::base));
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::avalanche));
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::arbitrum));
+	EXPECT_TRUE(Evm::isSupportedChain(Evm::ChainId::sepolia));
+
+	// unknown chain ids are rejected
+	EXPECT_FALSE(Evm::isSupportedChain(0));
+	EXPECT_FALSE(Evm::isSupportedChain(2));        // a real but unsupported chain id
+	EXPECT_FALSE(Evm::isSupportedChain(999999));
+}
+
+// Result codes must have success == 0 and all failure reasons distinct and non-zero.
+TEST(EvmLogReadOracle, ResultCodes)
+{
+	using E = OI::EvmLogRead;
+
+	EXPECT_EQ(E::RESULT_SUCCESS, 0u);
+	const QPI::uint64 failureCodes[] = {
+		E::RESULT_BAD_QUERY, E::RESULT_CHAIN_UNSUPPORTED, E::RESULT_TX_NOT_FOUND,
+		E::RESULT_TX_NOT_FINALIZED, E::RESULT_LOG_INDEX_OUT_OF_RANGE, E::RESULT_LOG_DATA_TOO_LARGE,
+	};
+	const unsigned n = sizeof(failureCodes) / sizeof(failureCodes[0]);
+	for (unsigned i = 0; i < n; ++i)
+	{
+		EXPECT_NE(failureCodes[i], E::RESULT_SUCCESS);
+		for (unsigned j = i + 1; j < n; ++j)
+			EXPECT_NE(failureCodes[i], failureCodes[j]);
+	}
+
+	// on success the reply is valid; any non-zero code means no usable log
+	E::OracleReply reply{};
+	reply.code = E::RESULT_SUCCESS;
+	EXPECT_TRUE(E::replyIsValid(reply));
+	reply.code = E::RESULT_TX_NOT_FINALIZED;
+	EXPECT_FALSE(E::replyIsValid(reply));
+}
+
+// Two queries built with identical logical values must serialize to identical bytes. This guards the
+// determinism requirement: every computor must produce the exact same query bytes (and therefore the
+// OM must produce the exact same reply digest), so no padding byte may be left uninitialized.
+TEST(EvmLogReadOracle, DeterministicQueryBytes)
+{
+	using E = OI::EvmLogRead;
+
+	auto build = [](E::OracleQuery& q)
+	{
+		setMem(&q, sizeof(q), 0);
+		q.chainId = OI::Evm::ChainId::bsc;
+		for (QPI::uint64 i = 0; i < 32; ++i)
+			q.txHash.set(i, (QPI::uint8)(i + 1));
+		q.logIndex = 1;
+	};
+
+	E::OracleQuery a, b;
+	build(a);
+	build(b);
+	EXPECT_EQ(compareMem(&a, &b, sizeof(E::OracleQuery)), 0);
+
+	// survives a copy through a raw wire buffer of the maximum query size
+	unsigned char buffer[MAX_ORACLE_QUERY_SIZE];
+	setMem(buffer, sizeof(buffer), 0);
+	copyMem(buffer, &a, sizeof(a));
+	E::OracleQuery roundtrip{};
+	copyMem(&roundtrip, buffer, sizeof(roundtrip));
+	EXPECT_EQ(compareMem(&a, &roundtrip, sizeof(E::OracleQuery)), 0);
+}
+
+// --- QubicLogRead oracle interface (generic Qubic log event read) ---
+
+// Mirrors EvmLogRead addressing: (tick, txHash, logIndex) -> one raw log. Sizes and offsets are
+// pinned so the query bytes and the reply digest stay canonical.
+TEST(QubicLogReadOracle, DataContract)
+{
+	using OI::QubicLogRead;
+
+	// registered at index 4
+	EXPECT_EQ(QubicLogRead::oracleInterfaceIndex, 4u);
+	EXPECT_LT(QubicLogRead::oracleInterfaceIndex, OI::oracleInterfacesCount);
+
+	// fits within transaction limits
+	EXPECT_LE(sizeof(QubicLogRead::OracleQuery), (size_t)MAX_ORACLE_QUERY_SIZE);
+	EXPECT_LE(sizeof(QubicLogRead::OracleReply), (size_t)MAX_ORACLE_REPLY_SIZE);
+
+	// pinned sizes and offsets (no padding holes -> canonical bytes for the reply digest)
+	EXPECT_EQ(sizeof(QubicLogRead::OracleQuery), 48u);
+	EXPECT_EQ(sizeof(QubicLogRead::OracleReply), 288u);
+	EXPECT_EQ(offsetof(QubicLogRead::OracleQuery, tick), 0u);
+	EXPECT_EQ(offsetof(QubicLogRead::OracleQuery, txHash), 8u);
+	EXPECT_EQ(offsetof(QubicLogRead::OracleQuery, logIndex), 40u);
+	EXPECT_EQ(offsetof(QubicLogRead::OracleReply, code), 0u);
+	EXPECT_EQ(offsetof(QubicLogRead::OracleReply, contractIndex), 8u);
+	EXPECT_EQ(offsetof(QubicLogRead::OracleReply, logType), 16u);
+	EXPECT_EQ(offsetof(QubicLogRead::OracleReply, dataLen), 24u);
+	EXPECT_EQ(offsetof(QubicLogRead::OracleReply, data), 32u);
+
+	// registry size table matches the actual structs
+	EXPECT_EQ(OI::oracleInterfaces[QubicLogRead::oracleInterfaceIndex].querySize, sizeof(QubicLogRead::OracleQuery));
+	EXPECT_EQ(OI::oracleInterfaces[QubicLogRead::oracleInterfaceIndex].replySize, sizeof(QubicLogRead::OracleReply));
+}
+
+TEST(QubicLogReadOracle, QueryFeeAndResultCodes)
+{
+	using Q = OI::QubicLogRead;
+
+	EXPECT_TRUE(OI::initOracleInterfaces());
+
+	Q::OracleQuery query{};
+	EXPECT_EQ(Q::getQueryFee(query), 100);
+	EXPECT_GE(Q::getQueryFee(query), MIN_ORACLE_QUERY_FEE);
+
+	auto* feeFunc = OI::getOracleQueryFeeFunc[Q::oracleInterfaceIndex];
+	ASSERT_NE(feeFunc, nullptr);
+	EXPECT_EQ(feeFunc(&query), 100);
+
+	// success == 0, failure codes distinct and non-zero
+	EXPECT_EQ(Q::RESULT_SUCCESS, 0u);
+	const QPI::uint64 failureCodes[] = {
+		Q::RESULT_BAD_QUERY, Q::RESULT_TX_NOT_FOUND, Q::RESULT_TX_NOT_EXECUTED,
+		Q::RESULT_TICK_MISMATCH, Q::RESULT_LOG_INDEX_OUT_OF_RANGE, Q::RESULT_LOG_DATA_TOO_LARGE,
+	};
+	const unsigned n = sizeof(failureCodes) / sizeof(failureCodes[0]);
+	for (unsigned i = 0; i < n; ++i)
+	{
+		EXPECT_NE(failureCodes[i], Q::RESULT_SUCCESS);
+		for (unsigned j = i + 1; j < n; ++j)
+			EXPECT_NE(failureCodes[i], failureCodes[j]);
+	}
+
+	Q::OracleReply reply{};
+	reply.code = Q::RESULT_SUCCESS;
+	EXPECT_TRUE(Q::replyIsValid(reply));
+	reply.code = Q::RESULT_TX_NOT_EXECUTED;
+	EXPECT_FALSE(Q::replyIsValid(reply));
+}
+
+// Two queries built with identical logical values must serialize to identical bytes (determinism:
+// no padding byte may be left uninitialized).
+TEST(QubicLogReadOracle, DeterministicQueryBytes)
+{
+	using Q = OI::QubicLogRead;
+
+	auto build = [](Q::OracleQuery& q)
+	{
+		setMem(&q, sizeof(q), 0);
+		q.tick = 12345678;
+		for (QPI::uint64 i = 0; i < 32; ++i)
+			q.txHash.set(i, (QPI::uint8)(i + 1));
+		q.logIndex = 1;
+	};
+
+	Q::OracleQuery a, b;
+	build(a);
+	build(b);
+	EXPECT_EQ(compareMem(&a, &b, sizeof(Q::OracleQuery)), 0);
+}
