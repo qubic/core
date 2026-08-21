@@ -32,8 +32,13 @@ using namespace QPI;
 //   worst case is fee == amount, net == 0, at a payment right at the
 //   QPAY_MIN_PAYMENT boundary, never a negative transfer to the seller.
 //   Accrued to feePool and distributed each epoch above an execution-fee
-//   reserve: 10% to QPAY shareholders, 90% pro-rata to QPAY token holders.
-//   Receipts expire after QPAY_RECEIPT_RETENTION_EPOCHS epochs.
+//   reserve: 10% to QPAY shareholders, 1% burned, 89% pro-rata to QPAY
+//   token holders. qpi.burn() takes the QU out of the contract's spectrum
+//   balance and credits it to the contract's own execution fee reserve, so
+//   the 1% is not paid to anyone but is not destroyed outright either - it
+//   is what makes QPayhub fund its own execution out of its own revenue
+//   rather than slowly draining a reserve nothing refills. Receipts expire
+//   after QPAY_RECEIPT_RETENTION_EPOCHS epochs.
 //
 //   REFUNDS: the fee is NOT returned on a refund. No path pays out of
 //   feePool, and invoice.js validates refunds against the GROSS amount,
@@ -205,8 +210,15 @@ constexpr sint64 QPAYHUB_FEE_FLOOR_QU = 100;
 constexpr uint32 QPAYHUB_RECEIPT_RETENTION_EPOCHS = 2;
 constexpr sint64 QPAYHUB_EXEC_RESERVE = 1000000;   // never distributed, QU
 
-// Epoch fee pool splits: shares get this, QPAY-token holders the rest.
+// Epoch fee pool splits: shares get one slice, the burn another, and
+// QPAY-token holders take the rest (89% plus any rounding remainder).
 constexpr uint64 QPAYHUB_DIVIDEND_SHAREHOLDER_PERMILLE = 100;   // 100 per 1000 = 10%
+// ---- BURN ADDITION ----
+// Burned back into this contract's own execution fee reserve rather than
+// paid out, so running the contract is funded by the contract's own revenue
+// instead of draining a reserve that nothing ever refills. Taken out of the
+// token-holder slice (90% -> 89%); the shareholder slice is untouched.
+constexpr uint64 QPAYHUB_DIVIDEND_BURN_PERMILLE = 10;           // 10 per 1000 = 1%
 constexpr uint64 QPAYHUB_TOKEN_ASSETNAME = 1497452625ULL;       // "QPAY"
 
 // ---- PROMO RATES ADDITION: constants ----
@@ -241,6 +253,8 @@ constexpr uint32 QPAYHUB_PRICE_STALE_TICKS = 4000; // roughly 20-25 min at curre
 static_assert((QPAYHUB_RECEIPT_CAPACITY & (QPAYHUB_RECEIPT_CAPACITY - 1)) == 0);
 static_assert(QPAYHUB_FEE_PERMILLE < 10000);
 static_assert(QPAYHUB_DIVIDEND_SHAREHOLDER_PERMILLE <= 1000);
+// The two fixed slices must leave a non-negative remainder for token holders.
+static_assert(QPAYHUB_DIVIDEND_SHAREHOLDER_PERMILLE + QPAYHUB_DIVIDEND_BURN_PERMILLE <= 1000);
 static_assert((QPAYHUB_PROMO_CAPACITY & (QPAYHUB_PROMO_CAPACITY - 1)) == 0);
 static_assert(QPAYHUB_PROMO_FLOOR_PERMILLE <= QPAYHUB_FEE_PERMILLE);
 static_assert((QPAYHUB_AFFILIATE_CAPACITY & (QPAYHUB_AFFILIATE_CAPACITY - 1)) == 0);
@@ -316,7 +330,7 @@ struct QPAYHUB : public ContractBase
         uint32 quUsdUpdatedTick;
         sint32 priceOracleSubscriptionId; // -1 = not currently subscribed
 
-        // Fixed in INITIALIZE; NULL_ID issuer leaves the 90% in feePool.
+        // Fixed in INITIALIZE; NULL_ID issuer leaves the 89% in feePool.
         Asset  dividendToken;
         uint64 totalShareholderDividends;
         uint64 totalTokenholderDividends;
@@ -336,6 +350,12 @@ struct QPAYHUB : public ContractBase
         // reassign this one too, via ChangeAffiliateRegistrar.
         id affiliateRegistrarId;
         HashMap<id, Affiliate, QPAYHUB_AFFILIATE_CAPACITY> affiliateOf;
+
+        // ---- BURN ADDITION: state ----
+        // Lifetime QU burned back into this contract's execution fee reserve
+        // by END_EPOCH. Appended at the end so every field above keeps its
+        // offset, same convention the GetInfo output struct follows.
+        uint64 totalBurned;
     };
 
     // ------------------------------------------------------------------
@@ -448,6 +468,9 @@ struct QPAYHUB : public ContractBase
         uint64 affiliateCommissionPermille;
         uint32 affiliateTermEpochs;
         uint32 padding1;
+        // Likewise appended - BURN ADDITION.
+        uint64 burnPermille;
+        uint64 totalBurned;
     };
 
     // ---- ORACLE PRICE FEED ADDITIONS: I/O structs ----
@@ -638,6 +661,8 @@ struct QPAYHUB : public ContractBase
         output.affiliateCommissionPermille = QPAYHUB_AFFILIATE_COMMISSION_PERMILLE;
         output.affiliateTermEpochs = QPAYHUB_AFFILIATE_TERM_EPOCHS;
         output.padding1 = 0;
+        output.burnPermille = QPAYHUB_DIVIDEND_BURN_PERMILLE;
+        output.totalBurned = state.get().totalBurned;
     }
 
     // ---- ORACLE PRICE FEED ADDITIONS: read function ----
@@ -1223,6 +1248,7 @@ struct QPAYHUB : public ContractBase
         sint64 distributed;
         sint64 shareholderPart;
         sint64 tokenPart;
+        sint64 burnPart; // BURN ADDITION
         sint64 paidShare;
         sint64 totalHeld;
         sint64 holderBal;
@@ -1275,7 +1301,8 @@ struct QPAYHUB : public ContractBase
         }
         state.mut().affiliateOf.cleanupIfNeeded();
 
-        // Distribute above the exec reserve: 10% shares, 90% token holders.
+        // Distribute above the exec reserve: 10% shares, 1% burned back into
+        // this contract's own execution fee reserve, 89% token holders.
         // Balance is re-read before spending; every payment is clamped to it.
         qpi.getEntity(SELF, locals.ent);
         locals.balance = locals.ent.incomingAmount - locals.ent.outgoingAmount;
@@ -1290,8 +1317,27 @@ struct QPAYHUB : public ContractBase
 
         locals.shareholderPart = (sint64)div(
             (uint64)locals.distributable * QPAYHUB_DIVIDEND_SHAREHOLDER_PERMILLE, (uint64)1000);
+        // BURN ADDITION: the burn slice comes out of what would otherwise be
+        // the token-holder side, leaving the shareholder slice untouched.
+        locals.burnPart = (sint64)div(
+            (uint64)locals.distributable * QPAYHUB_DIVIDEND_BURN_PERMILLE, (uint64)1000);
         // Token side takes the rounding remainder; nothing is stranded.
-        locals.tokenPart = locals.distributable - locals.shareholderPart;
+        locals.tokenPart = locals.distributable - locals.shareholderPart - locals.burnPart;
+
+        // BURN ADDITION: burn before paying anyone out. This is what keeps the
+        // contract runnable - qpi.burn() with no explicit index credits this
+        // contract's own execution fee reserve - so it must not be the slice
+        // that gets squeezed out when the balance runs short. Counted into
+        // `distributed` because the QU really does leave the contract balance,
+        // so feePool has to shrink by it like any other payout.
+        if (locals.burnPart > locals.balance) locals.burnPart = locals.balance;
+        if (locals.burnPart > 0 && qpi.burn(locals.burnPart) >= 0)
+        {
+            locals.distributed = locals.distributed + locals.burnPart;
+            locals.balance = locals.balance - locals.burnPart;
+            state.mut().totalBurned = sadd(state.get().totalBurned, (uint64)locals.burnPart);
+        }
+
         if (locals.shareholderPart > 0)
         {
             locals.perShare = (sint64)div((uint64)locals.shareholderPart, (uint64)NUMBER_OF_COMPUTORS);
@@ -1305,7 +1351,7 @@ struct QPAYHUB : public ContractBase
             }
         }
 
-        // No token or no holders: the 90% stays in feePool for a later epoch.
+        // No token or no holders: the 89% stays in feePool for a later epoch.
         if (locals.tokenPart > 0 && state.get().dividendToken.issuer != NULL_ID)
         {
             locals.totalHeld = 0;

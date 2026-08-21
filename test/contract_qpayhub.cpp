@@ -686,15 +686,83 @@ TEST(ContractQPayhub, EndEpochDistributesFeePoolAboveReserveToSharesAndTokenHold
     qpayhub.endEpoch();
 
     const sint64 expectedShareholderTotal = 67600;  // 10% of 676,000
-    const sint64 expectedTokenholderTotal = 608400; // remaining 90%
+    const sint64 expectedBurnTotal = 6760;          // 1% of 676,000 - BURN ADDITION
+    const sint64 expectedTokenholderTotal = 601640; // remaining 89%
 
     EXPECT_EQ(getBalance(SHAREHOLDER1), shareholderBalanceBefore + expectedShareholderTotal);
     EXPECT_EQ(getBalance(TOKENHOLDER1), tokenholderBalanceBefore + expectedTokenholderTotal);
 
+    // The three slices account for every distributable QU, with no remainder
+    // stranded in feePool.
+    EXPECT_EQ(expectedShareholderTotal + expectedBurnTotal + expectedTokenholderTotal, 676000);
+
     auto info = qpayhub.getInfo();
     EXPECT_EQ(info.totalShareholderDividends, (uint64)expectedShareholderTotal);
     EXPECT_EQ(info.totalTokenholderDividends, (uint64)expectedTokenholderTotal);
+    EXPECT_EQ(info.totalBurned, (uint64)expectedBurnTotal);
+    EXPECT_EQ(info.burnPermille, QPAYHUB_DIVIDEND_BURN_PERMILLE);
     EXPECT_EQ(info.feePool, QPAYHUB_EXEC_RESERVE);
+}
+
+// BURN ADDITION. The point of the 1% is not to destroy supply - qpi.burn()
+// with no explicit contract index credits the *calling* contract's execution
+// fee reserve (qpi_spectrum_impl.h: burn -> addToContractFeeReserve). So the
+// QU has to leave the contract balance and land in this contract's reserve,
+// which is what makes QPayhub pay for its own execution out of its own
+// revenue instead of draining a reserve nothing refills. Deliberately runs
+// with no QPAY token issued at all: the burn must not depend on there being
+// token holders to pay.
+TEST(ContractQPayhub, EndEpochBurnsOnePercentIntoOwnExecutionFeeReserve)
+{
+    ContractTestingQPayhub qpayhub;
+
+    const sint64 feePoolAmount = QPAYHUB_EXEC_RESERVE + 676000;
+    qpayhub.state()->feePool = feePoolAmount;
+    increaseEnergy(QPAYHUB_CONTRACT_ID, feePoolAmount + 1000000);
+
+    std::vector<std::pair<m256i, unsigned int>> qpayhubShares{
+        { SHAREHOLDER1, NUMBER_OF_COMPUTORS }
+    };
+    issueContractShares(QPAYHUB_CONTRACT_INDEX, qpayhubShares);
+
+    const sint64 reserveBefore = getContractFeeReserve(QPAYHUB_CONTRACT_INDEX);
+    const sint64 contractBalanceBefore = getBalance(QPAYHUB_CONTRACT_ID);
+
+    qpayhub.endEpoch();
+
+    const sint64 expectedBurnTotal = 6760;         // 1% of 676,000
+    const sint64 expectedShareholderTotal = 67600; // 10%, paid out to shares
+
+    EXPECT_EQ(getContractFeeReserve(QPAYHUB_CONTRACT_INDEX), reserveBefore + expectedBurnTotal);
+    EXPECT_EQ(qpayhub.getInfo().totalBurned, (uint64)expectedBurnTotal);
+
+    // Both the burn and the shareholder payout leave the contract's balance.
+    // The 89% token slice does not: no QPAY asset exists here, so it stays in
+    // feePool for a later epoch.
+    EXPECT_EQ(getBalance(QPAYHUB_CONTRACT_ID),
+              contractBalanceBefore - expectedBurnTotal - expectedShareholderTotal);
+    EXPECT_EQ(qpayhub.getInfo().feePool,
+              feePoolAmount - expectedBurnTotal - expectedShareholderTotal);
+}
+
+// BURN ADDITION. The burn is sized off `distributable`, so a fee pool at or
+// below the execution reserve must burn nothing at all - END_EPOCH returns
+// before the split. Guards against the burn quietly eating into the reserve
+// the contract is supposed to be protecting.
+TEST(ContractQPayhub, EndEpochBurnsNothingWhenFeePoolAtOrBelowReserve)
+{
+    ContractTestingQPayhub qpayhub;
+
+    qpayhub.state()->feePool = QPAYHUB_EXEC_RESERVE;
+    increaseEnergy(QPAYHUB_CONTRACT_ID, QPAYHUB_EXEC_RESERVE);
+
+    const sint64 reserveBefore = getContractFeeReserve(QPAYHUB_CONTRACT_INDEX);
+
+    qpayhub.endEpoch();
+
+    EXPECT_EQ(getContractFeeReserve(QPAYHUB_CONTRACT_INDEX), reserveBefore);
+    EXPECT_EQ(qpayhub.getInfo().totalBurned, 0ULL);
+    EXPECT_EQ(qpayhub.getInfo().feePool, QPAYHUB_EXEC_RESERVE);
 }
 
 TEST(ContractQPayhub, EndEpochDoesNotDistributeWhenFeePoolAtOrBelowReserve)
