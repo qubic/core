@@ -112,6 +112,11 @@ public:
         callSystemProcedure(QPAYHUB_CONTRACT_INDEX, END_EPOCH, expectSuccess);
     }
 
+    void beginEpoch(bool expectSuccess = true)
+    {
+        callSystemProcedure(QPAYHUB_CONTRACT_INDEX, BEGIN_EPOCH, expectSuccess);
+    }
+
     QPAYHUB::Pay_output pay(const id& payer, const id& seller, const id& resourceId, uint64 nonce, sint64 amount)
     {
         QPAYHUB::Pay_input input{ seller, resourceId, nonce };
@@ -767,6 +772,75 @@ TEST(ContractQPayhub, SubscribeToPriceFeedAlreadySubscribedRefundsAndRejects)
     // The whole attached reward is refunded; the already-subscribed check
     // runs before any fee is even computed.
     EXPECT_EQ(getBalance(BUYER1), balanceBefore);
+}
+
+// The currency pair QPayhub subscribes to has to be exactly QUBIC/USDT.
+// id()'s char constructor needs at least 5 characters (m256.h: c0..c4 have no
+// defaults), so a 4-character id(U, S, D, T) silently binds to the
+// id(uint64, uint64, uint64, uint64) overload instead and yields a completely
+// different value - the ASCII codes as four 64-bit limbs rather than "USDT"
+// packed into the first four bytes. The engine dedups subscriptions by query
+// content with the timestamp excluded (see startContractSubscription), so a
+// probe subscription carrying the intended query from a *different* contract
+// must land on the very same subscription id. If QPayhub asked for something
+// else, the probe allocates a second subscription instead.
+TEST(ContractQPayhub, SubscribeToPriceFeedUsesQubicUsdtCurrencyPair)
+{
+    ContractTestingQPayhub qpayhub;
+    increaseEnergy(BUYER1, 10000000);
+
+    OI::Price::OracleQuery dummyQuery;
+    const sint64 requiredFee = OI::Price::getSubscriptionFee(dummyQuery, QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS);
+
+    auto output = qpayhub.subscribeToPriceFeed(BUYER1, requiredFee);
+    ASSERT_EQ(output.returnCode, QPAYHUB_OK);
+    ASSERT_GE(output.subscriptionId, 0);
+
+    OI::Price::OracleQuery expected;
+    expected.oracle = OI::Price::getBinanceMexcOracleId();
+    expected.timestamp = QPI::DateAndTime::now(); // excluded from the comparison
+    {
+        using namespace QPI::Ch;
+        expected.currency1 = id(Q, U, B, I, C);
+        expected.currency2 = id(U, S, D, T, null);
+    }
+
+    const sint32 probeSubscriptionId = oracleEngine.startContractSubscription(
+        QX_CONTRACT_INDEX, OI::Price::oracleInterfaceIndex, &expected, sizeof(expected),
+        QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS, 1, offsetof(OI::Price::OracleQuery, timestamp));
+
+    EXPECT_EQ(probeSubscriptionId, output.subscriptionId);
+}
+
+// The node drops every oracle subscription at the epoch boundary
+// (qubic.cpp beginEpoch() -> oracleEngine.beginEpoch() -> reset(), documented
+// there as "Drop all queries of the previous epoch") and only afterwards runs
+// each contract's BEGIN_EPOCH. If QPayhub kept its stale subscription id, the
+// >= 0 guard in SubscribeToPriceFeed would reject every renewal from then on
+// and the price feed would stay dead for the life of the contract.
+TEST(ContractQPayhub, BeginEpochClearsStaleSubscriptionSoFeedCanBeRenewed)
+{
+    ContractTestingQPayhub qpayhub;
+    increaseEnergy(BUYER1, 10000000);
+
+    OI::Price::OracleQuery dummyQuery;
+    const sint64 requiredFee = OI::Price::getSubscriptionFee(dummyQuery, QPAYHUB_PRICE_SUBSCRIBE_PERIOD_MS);
+
+    auto first = qpayhub.subscribeToPriceFeed(BUYER1, requiredFee);
+    ASSERT_EQ(first.returnCode, QPAYHUB_OK);
+    ASSERT_GE(first.subscriptionId, 0);
+
+    // Epoch rollover, in the order the node performs it.
+    qpayhub.endEpoch();
+    oracleEngine.beginEpoch();
+    qpayhub.beginEpoch();
+
+    EXPECT_LT(qpayhub.state()->priceOracleSubscriptionId, 0);
+
+    auto second = qpayhub.subscribeToPriceFeed(BUYER1, requiredFee);
+    EXPECT_EQ(second.returnCode, QPAYHUB_OK);
+    EXPECT_GE(second.subscriptionId, 0);
+    EXPECT_EQ(qpayhub.state()->priceOracleSubscriptionId, second.subscriptionId);
 }
 
 TEST(ContractQPayhub, GetQuUsdPriceFreshContractIsStale)

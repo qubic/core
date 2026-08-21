@@ -165,19 +165,30 @@ using namespace QPI;
 //     contract_core/contract_def.h including oracle_core/oracle_interfaces_def.h
 //     before any contract file - no include directive needed here,
 //     consistent with the no-include rule.
-//   - The id(...) five-letter constructor (src/platform/m256.h) takes five
-//     REQUIRED single-letter params - id(Q,U,B,I,C) is exactly QUBIC, no
-//     padding needed; id(U,S,D,T) for USDT leaves the unused 5th param at
-//     its default of 0.
+//   - The id(...) character constructor (src/platform/m256.h) takes five
+//     REQUIRED single-letter params and defaults the remaining 27 to 0 -
+//     id(Q,U,B,I,C) is exactly QUBIC, no padding needed. A currency shorter
+//     than five letters MUST still be padded explicitly, as id(U,S,D,T,null)
+//     is: with only four arguments that constructor is not viable at all and
+//     overload resolution silently falls through to
+//     id(uint64,uint64,uint64,uint64), which stores the four ASCII codes as
+//     separate 64-bit limbs instead of packing "USDT" into the first four
+//     bytes - a different value entirely, and one the compiler accepts
+//     without a warning.
+//   - Oracle subscriptions last exactly one epoch. The node drops all of
+//     them during the epoch transition (qubic.cpp beginEpoch() ->
+//     oracleEngine.beginEpoch() -> reset()) and runs each contract's
+//     BEGIN_EPOCH only afterwards, so BEGIN_EPOCH below clears
+//     priceOracleSubscriptionId back to -1 and the feed is renewed by
+//     calling SubscribeToPriceFeed once per epoch. Without that reset the
+//     `>= 0` guard in SubscribeToPriceFeed would reject every renewal and
+//     the price feed would go permanently stale after the first epoch.
 //
-// NOT YET VERIFIED (this file has only had the standalone syntax check
-// run against it, same as Qpay.h originally did - GoogleTest coverage and
-// the exact subscription renewal/lifetime semantics need the real test
-// harness on x86, see oracle_testing.h in the core checkout):
-//   - Whether a subscription persists indefinitely or needs periodic
-//     re-subscription - designed conservatively so calling
-//     SubscribeToPriceFeed again when priceOracleSubscriptionId is already
-//     valid can serve as a manual renewal if needed.
+// NOT YET VERIFIED (the currency pair and the subscription renewal/lifetime
+// semantics are now covered by GoogleTest - see
+// SubscribeToPriceFeedUsesQubicUsdtCurrencyPair and
+// BeginEpochClearsStaleSubscriptionSoFeedCanBeRenewed in
+// test/contract_qpayhub.cpp - but this remains open):
 //   - The real numeric magnitude/precision of a live QUBIC/USDT reply
 //     (this was written for the numerator/denominator SHAPE Price.h
 //     documents, not against an observed live value for this specific
@@ -847,9 +858,16 @@ struct QPAYHUB : public ContractBase
         {
             // Scoped so these single-letter names do not leak into the rest
             // of the file - the same pattern TestExampleC.h uses.
+            //
+            // Always pass at least 5 characters, padding with null: id()'s
+            // character constructor declares c0..c4 without defaults, so a
+            // 4-character id(U, S, D, T) is not viable for it and silently
+            // binds to id(uint64, uint64, uint64, uint64) instead, producing
+            // the four ASCII codes as separate 64-bit limbs rather than
+            // "USDT" packed into the first four bytes.
             using namespace Ch;
             locals.query.currency1 = id(Q, U, B, I, C);
-            locals.query.currency2 = id(U, S, D, T);
+            locals.query.currency2 = id(U, S, D, T, null);
         }
         locals.query.timestamp = qpi.now();
 
@@ -1173,6 +1191,22 @@ struct QPAYHUB : public ContractBase
         {
             state.mut().feePool = sadd(state.get().feePool, input.amount);
         }
+    }
+
+    // ---- ORACLE PRICE FEED ADDITIONS: subscription lifetime ----
+    // Oracle subscriptions do not survive the epoch boundary: the node drops
+    // every one of them during the epoch transition (qubic.cpp beginEpoch()
+    // calls oracleEngine.beginEpoch(), whose reset() is documented there as
+    // "Drop all queries of the previous epoch"), and only afterwards runs
+    // each contract's BEGIN_EPOCH. So by the time this executes the stored id
+    // refers to a subscription that no longer exists. Clearing it back to the
+    // not-subscribed sentinel is what lets SubscribeToPriceFeed be called
+    // again - otherwise its `>= 0` guard would reject every renewal and the
+    // price feed would stay dead for the remaining life of the contract.
+    // Renewal stays permissionless, exactly like the initial subscription.
+    BEGIN_EPOCH()
+    {
+        state.mut().priceOracleSubscriptionId = -1;
     }
 
     struct END_EPOCH_locals
