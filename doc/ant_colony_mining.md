@@ -373,3 +373,24 @@ unsigned char padding[3];
 | `REQUEST_ANT_IDENTITY_TREE` / `RESPOND_ANT_IDENTITY_TREE` | `72` / `73` | operator | read tree |
 | `REQUEST_ANT_PARENT_ANN` / `RESPOND_ANT_PARENT_ANN` | `74` / `75` | operator | read one node's ANN |
 | `REQUEST_ANT_EPOCH_CONTEXT` / `RESPOND_ANT_EPOCH_CONTEXT` | `76` / `77` | public | read epoch params |
+
+## Part 3 - Node files
+
+The ant colony adds the following files on the node's disk. File names are defined in
+`public_settings.h`; `{epoch}` is the epoch number.
+
+| File | Content | Handling |
+|------|---------|----------|
+| `snapshotAntColonyHeader.{epoch}` | colony meta + anchor ring + export set | snapshot set |
+| `snapshotAntColonyRecords.{epoch}` | accepted solution records | snapshot set |
+| `snapshotAntColonyPool.{epoch}` | packed ANN pool | snapshot set |
+| `snapshotAntSolutionFlag` | ant solution flags bitmap | snapshot set |
+| `antColonyReplayCache.{epoch}` | score cache | optional, recommended |
+| `antColonySolutions.eoe` | end-of-epoch export: best 676 networks (pubkey, score, depth, LUT) | output only |
+| `bpp9000.task` | the epoch's pinned task | required at boot |
+
+**Snapshot set**: the four snapshot files are part of the node snapshot. When you back up, copy, or restore node state, take them TOGETHER with the other snapshot files (spectrum, universe, contracts, system) from the same point. On load the node cross-checks the colony snapshot's rootSeed, error threshold, and initial tick against the restored node state, a colony snapshot from a different moment is refused and the node will not start from it.
+
+**Replay cache**: a score memo, not consensus state, same behavior with standalone score. Without it a restart recomputes every stored solution, so keep it for fast restarts; losing it only costs time.
+
+**Export**: written at the epoch transition for offline analysis. It is not read back by the node and is not needed for a restart.
