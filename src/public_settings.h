@@ -134,10 +134,10 @@ static constexpr unsigned long long BPP9000_NUMBER_OF_MUTATIONS = 100;
 // Number of graded windows. The score is an error count in [0, BPP9000_NUMBER_OF_WINDOWS], smaller is
 // better, and a solution passes when score <= threshold.
 static constexpr unsigned long long BPP9000_NUMBER_OF_WINDOWS = BPP9000_SEQUENCE_LENGTH - BPP9000_WINDOW_WIDTH;
-static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 3838;
+static constexpr unsigned int BPP9000_SOLUTION_THRESHOLD_DEFAULT = 4000;
 
 // Ant colony: a solution must be published within this many ticks of the anchor its walk seeded from.
-static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 16000;
+static constexpr unsigned int ANT_PUBLISH_WINDOW_TICKS = 15000;
 
 // Per-parent child cap: a parent accepts at most this many children - a miner's parallel branches
 // off one node. 0 means unbound (no cap). A child's score must still strictly beat its parent's.
