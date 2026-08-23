@@ -3,10 +3,11 @@ using namespace QPI;
 /**
 * Oracle interface "QubicLogRead" (see Price.h for general documentation about oracle interfaces).
 *
-* Generic read of a SINGLE Qubic log event, addressed like EvmLogRead: given
-* (tick, txHash, logIndex) the oracle machine returns that one log verbatim - its type, emitting
-* contract index and raw body bytes. No semantics are baked in; the querying smart contract
-* decodes the raw bytes itself.
+* Generic read of a SINGLE Qubic log event: given (tick, txHash, logId) the oracle machine
+* returns that one log verbatim - its type, emitting contract index and raw body bytes. logId is
+* the GLOBAL log id (counted from the chain's first log event onward), matched against the logId
+* of each log in the transaction's receipt. No semantics are baked in; the querying smart
+* contract decodes the raw bytes itself.
 *
 * A CONTRACT_INFORMATION_MESSAGE (logType 6) can only be emitted by code running inside a
 * contract, and the core stamps the emitting contractIndex itself, so (logType, contractIndex)
@@ -34,7 +35,7 @@ struct QubicLogRead
     static constexpr uint64 RESULT_TX_NOT_FOUND           = 2;  ///< no such transaction
     static constexpr uint64 RESULT_TX_NOT_EXECUTED        = 3;  ///< tx pending or failed (no logs exist)
     static constexpr uint64 RESULT_TICK_MISMATCH          = 4;  ///< tx exists but not in the queried tick
-    static constexpr uint64 RESULT_LOG_INDEX_OUT_OF_RANGE = 5;  ///< logIndex >= number of logs of the tx
+    static constexpr uint64 RESULT_LOG_NOT_FOUND          = 5;  ///< no log with the queried logId in this tx
     static constexpr uint64 RESULT_LOG_DATA_TOO_LARGE     = 6;  ///< log body exceeds the 256-byte reply capacity
     // add new result codes above this line
     //
@@ -50,8 +51,8 @@ struct QubicLogRead
         /// Transaction hash (32-byte digest).
         Array<uint8, 32> txHash; // [8..40)
 
-        /// Index of the log within the transaction's own logs (receipt-local).
-        uint64 logIndex;         // [40..48)
+        /// Global log id of the requested log event (counted from the chain's first log).
+        uint64 logId;            // [40..48)
     };
 
     /// Oracle reply data / output of the oracle machine. Fixed 288 bytes.

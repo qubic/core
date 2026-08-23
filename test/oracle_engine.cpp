@@ -2061,8 +2061,8 @@ TEST(EvmLogReadOracle, DeterministicQueryBytes)
 
 // --- QubicLogRead oracle interface (generic Qubic log event read) ---
 
-// Mirrors EvmLogRead addressing: (tick, txHash, logIndex) -> one raw log. Sizes and offsets are
-// pinned so the query bytes and the reply digest stay canonical.
+// Mirrors EvmLogRead addressing: (tick, txHash, logId) -> one raw log. logId is the GLOBAL log
+// id. Sizes and offsets are pinned so the query bytes and the reply digest stay canonical.
 TEST(QubicLogReadOracle, DataContract)
 {
 	using OI::QubicLogRead;
@@ -2080,7 +2080,7 @@ TEST(QubicLogReadOracle, DataContract)
 	EXPECT_EQ(sizeof(QubicLogRead::OracleReply), 288u);
 	EXPECT_EQ(offsetof(QubicLogRead::OracleQuery, tick), 0u);
 	EXPECT_EQ(offsetof(QubicLogRead::OracleQuery, txHash), 8u);
-	EXPECT_EQ(offsetof(QubicLogRead::OracleQuery, logIndex), 40u);
+	EXPECT_EQ(offsetof(QubicLogRead::OracleQuery, logId), 40u);
 	EXPECT_EQ(offsetof(QubicLogRead::OracleReply, code), 0u);
 	EXPECT_EQ(offsetof(QubicLogRead::OracleReply, contractIndex), 8u);
 	EXPECT_EQ(offsetof(QubicLogRead::OracleReply, logType), 16u);
@@ -2110,7 +2110,7 @@ TEST(QubicLogReadOracle, QueryFeeAndResultCodes)
 	EXPECT_EQ(Q::RESULT_SUCCESS, 0u);
 	const QPI::uint64 failureCodes[] = {
 		Q::RESULT_BAD_QUERY, Q::RESULT_TX_NOT_FOUND, Q::RESULT_TX_NOT_EXECUTED,
-		Q::RESULT_TICK_MISMATCH, Q::RESULT_LOG_INDEX_OUT_OF_RANGE, Q::RESULT_LOG_DATA_TOO_LARGE,
+		Q::RESULT_TICK_MISMATCH, Q::RESULT_LOG_NOT_FOUND, Q::RESULT_LOG_DATA_TOO_LARGE,
 	};
 	const unsigned n = sizeof(failureCodes) / sizeof(failureCodes[0]);
 	for (unsigned i = 0; i < n; ++i)
@@ -2139,7 +2139,7 @@ TEST(QubicLogReadOracle, DeterministicQueryBytes)
 		q.tick = 12345678;
 		for (QPI::uint64 i = 0; i < 32; ++i)
 			q.txHash.set(i, (QPI::uint8)(i + 1));
-		q.logIndex = 1;
+		q.logId = 1;
 	};
 
 	Q::OracleQuery a, b;
