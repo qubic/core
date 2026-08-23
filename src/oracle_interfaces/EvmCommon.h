@@ -18,6 +18,7 @@ using namespace QPI;
 */
 namespace Evm
 {
+    // Array and uint8, uint64 inherit from QPI
     /// Raw 32-byte big-endian value: tx hash, block hash, ABI word, etc.
     typedef Array<uint8, 32> Bytes32;
 

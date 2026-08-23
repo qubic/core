@@ -32,7 +32,7 @@ struct QubicLogRead
     //    reason and implies all other reply fields are all-zero.
     static constexpr uint64 RESULT_SUCCESS                = 0;  ///< log found; reply fields valid
     static constexpr uint64 RESULT_BAD_QUERY              = 1;  ///< malformed query (zero tx hash or zero tick)
-    static constexpr uint64 RESULT_TX_NOT_FOUND           = 2;  ///< no such transaction
+    static constexpr uint64 RESULT_TX_NOT_FOUND           = 2;  ///< no such transaction, also include the too-old transactions (usually 2 month old transactions can't be found efficiently anymore)
     static constexpr uint64 RESULT_TX_NOT_EXECUTED        = 3;  ///< tx pending or failed (no logs exist)
     static constexpr uint64 RESULT_TICK_MISMATCH          = 4;  ///< tx exists but not in the queried tick
     static constexpr uint64 RESULT_LOG_NOT_FOUND          = 5;  ///< no log with the queried logId in this tx
