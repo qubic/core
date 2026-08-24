@@ -5,6 +5,10 @@
 
 // bpp9000 scorer: recurrent ternary ANN (trits {0,1,2}, 2=UNKNOWN); only per-neuron LUTs mutate.
 // Bit-exact with test/score_bpp9000_reference.h.
+#if defined(__AVX512F__) && (defined(__AVX512VBMI__) || defined(_MSC_VER))
+#define BPP9000_AVX512 1
+#endif
+
 namespace score_engine
 {
 
@@ -99,7 +103,7 @@ struct ScoreBpp9000
     // Stride of the interleaved wiring tuples {self, nbr0, nbr1, nbr2} (see neuronWiring below).
     static constexpr unsigned int WIRING_STRIDE = 4;
 
-#if defined(__AVX512F__)
+#if defined(BPP9000_AVX512)
     // AVX-512 window-batched stat
     static constexpr unsigned long long SIMD_LANES = 64;
     static constexpr unsigned long long SIMD_WINDOWS = 128;
@@ -145,7 +149,7 @@ struct ScoreBpp9000
     unsigned long long updatedNeuronIndices[maxNumberOfNeurons];
     unsigned long long numberOfUpdatedNeurons;
 
-#if !defined(__AVX512F__)   // AVX2 fallback (score_common.h requires AVX2 or AVX-512)
+#if !defined(BPP9000_AVX512)   // AVX2 fallback (score_common.h requires AVX2 or AVX-512)
     // AVX2 fallback state: SIMD_LANES windows/batch, one trit per byte-lane, [neuron][lane] layout.
     static constexpr unsigned long long SIMD_LANES = 32;
     alignas(64) unsigned char simdCur[maxNumberOfNeurons * SIMD_LANES];
@@ -264,7 +268,7 @@ struct ScoreBpp9000
             neuronWiring[k * WIRING_STRIDE + 3] = neighborIndices[n * numberOfNeighbors + 2];
         }
 
-#if defined(__AVX512F__)
+#if defined(BPP9000_AVX512)
         // Cone of influence: closure of {signal, output} under neighbour edges. Skipping updates outside
         // the cone is bit-exact.
         bool inCone[maxNumberOfNeurons];
@@ -404,13 +408,13 @@ struct ScoreBpp9000
     }
 
     // Sliding-window self-clocked score via the window-batched SIMD kernel (AVX-512 or AVX2, bit-exact).
-    unsigned int score()
+    unsigned int score(unsigned int failureCap = 0xFFFFFFFFu)
     {
         // PROFILE_NAMED_SCOPE("bpp9000:score");
-        return scoreSIMD();
+        return scoreSIMD(failureCap);
     }
 
-#if defined(__AVX512F__)
+#if defined(BPP9000_AVX512)
     // Ttry to minimal the L1-L3 cache as much as possible
     inline void tickNeuron(const unsigned char* cur, unsigned char* nxt,
                            const unsigned char* lut, unsigned long long k)
@@ -455,7 +459,7 @@ struct ScoreBpp9000
 
     // Window-batched score: SIMD_WINDOWS windows/batch, two per byte-lane (lo bits[0:3], hi bits[4:7]),
     // halves independent. INFINITE_ERROR iff any window times out, else the failure count.
-    unsigned int scoreSIMD()
+    unsigned int scoreSIMD(unsigned int failureCap)
     {
         unsigned int numberOfFailures = 0;
 
@@ -831,13 +835,17 @@ struct ScoreBpp9000
                     numberOfFailures++;
                 }
             }
+            if (numberOfFailures > failureCap)
+            {
+                return numberOfFailures;
+            }
         }
 
         return numberOfFailures;
     }
-#endif // defined(__AVX512F__)
+#endif // defined(BPP9000_AVX512)
 
-#if !defined(__AVX512F__)
+#if !defined(BPP9000_AVX512)
     void processTickSIMD(const unsigned char* cur, unsigned char* nxt)
     {
         // PROFILE_NAMED_SCOPE("bpp9000:processTick");
@@ -867,7 +875,7 @@ struct ScoreBpp9000
     }
 
     // AVX2 window-batched score
-    unsigned int scoreSIMD()
+    unsigned int scoreSIMD(unsigned int failureCap)
     {
         unsigned int numberOfFailures = 0;
         const unsigned int sigIdx = signalNeuronIndex;
@@ -950,11 +958,15 @@ struct ScoreBpp9000
                     ++numberOfFailures;
                 }
             }
+            if (numberOfFailures > failureCap)
+            {
+                return numberOfFailures;
+            }
         }
 
         return numberOfFailures;
     }
-#endif // !defined(__AVX512F__)
+#endif // !defined(BPP9000_AVX512)
 
     // Flip one LUT entry of one non-input neuron (bit 0 picks the new trit, the rest picks the line).
     void mutate(unsigned long long mutationSeed)
@@ -1034,7 +1046,7 @@ struct ScoreBpp9000
                 mutate(initValue.mutationSeed[s * MAX_LUT_ENTRIES_PER_STEP + i]);
             }
 
-            unsigned int r = score();
+            const unsigned int r = (s < K) ? score() : score(cur);
 
             bool accept = false;
             if (s < K)
